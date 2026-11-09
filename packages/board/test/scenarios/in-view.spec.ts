@@ -11,7 +11,9 @@
 //   summarySwapShowsDrawnLevel     a pinch out through the summary cut, a stop there and a pinch back in, then out and in without
 //                                  a stop (state/summary.ts): each level is shown only once it was drawn in the frame before (the
 //                                  card level awake with the cards in view not culled, the summary level with every column),
-//                                  never asleep or half built then
+//                                  never asleep or half built then. The board has more columns than the idle build makes before
+//                                  the first pinch is through (a column an idle moment), so that switch builds the rest under the
+//                                  mist (readying)
 import { emptyBoard, putSummary, summarySig, type Board, type NoteCard, type Section } from "@codeboard/core";
 import type { Page } from "@playwright/test";
 import { files, put, symCard, type Host } from "../harness";
@@ -190,7 +192,10 @@ test("culledCardsShownBeforeInView", async () => {
   await h.page.context().close();
 });
 
-/** Three Sections of three Notes in a row and a loose Note, each with its summary written */
+/** Small Sections of a Note each below the big ones: summary columns the idle build has not made when the first pinch is through */
+const SMALL = 16;
+
+/** Three Sections of three Notes in a row, SMALL Sections of one Note below them and a loose Note, each with its summary written */
 function summaryBoard(): Board {
   const b = emptyBoard("bSwap", "swap");
   ["异构并行计算", "内存层次", "线程调度"].forEach((t, i) => {
@@ -207,14 +212,33 @@ function summaryBoard(): Board {
       b.place[n.id].section = s.id;
     }
   });
+  for (let i = 0; i < SMALL; i++) {
+    const s: Section = {
+      id: `m${i}`,
+      title: `小节 ${i + 1}`,
+      x: 80 + (i % 8) * 1000,
+      y: 1700 + Math.floor(i / 8) * 1000,
+      w: 900,
+      h: 800,
+    };
+    b.sections.push(s);
+    put(
+      b,
+      { id: `nm${i}`, kind: "note", md: `# 小节 ${i + 1}\n\n寄存器、共享内存。`, look: "note" },
+      s.x + 60,
+      s.y + 100,
+      760,
+    );
+    b.place[`nm${i}`].section = s.id;
+  }
   put(
     b,
     { id: "loose", kind: "note", md: "# 本章导读\n\n从 CPU 和 GPU 的设计取舍讲起。", look: "note" },
     80,
-    1800,
+    3800,
     900,
   );
-  for (const k of ["sec:s0", "sec:s1", "sec:s2", "card:loose"])
+  for (const k of [...b.sections.map((s) => `sec:${s.id}`), "card:loose"])
     putSummary(b, k, { text: `众线程押**吞吐量**（${k}）。`, at: Date.now(), sig: summarySig(b, k)! });
   b.cam = { x: 40, y: 40, z: 0.5 };
   return b;
@@ -238,6 +262,9 @@ const levelsOf = async (pg: Page): Promise<Levels> => ({
     };
   })),
 });
+
+/** The summary columns: one a Section and the loose Note */
+const COLS = 3 + SMALL + 1;
 
 test("summarySwapShowsDrawnLevel", async () => {
   const h = await open({ board: summaryBoard(), w: W, h: H, light: true });
@@ -281,7 +308,7 @@ test("summarySwapShowsDrawnLevel", async () => {
       shows.push({
         level: "summaries",
         at: i,
-        ok: b.so > 0 && b.cols === f.cols && f.cols === 4,
+        ok: b.so > 0 && b.cols === f.cols && f.cols === COLS,
         before: { so: b.so, cols: b.cols, now: f.cols },
       });
   });
@@ -289,6 +316,14 @@ test("summarySwapShowsDrawnLevel", async () => {
     "summarySwapShowsDrawnLevel the pinches switch both ways twice",
     shows.filter((s) => s.level === "cards").length === 2 && shows.filter((s) => s.level === "summaries").length === 2,
     shows.map((s) => `${s.level}@${s.at}`),
+  );
+  // the first switch to the summaries is through the cut before the idle build has every column: the rest are built at once,
+  // under the mist (the readying frame, or the swap's on a board that shows what it builds in the same frame)
+  const whole = fs.findIndex((f) => f.cols === COLS);
+  check(
+    "summarySwapShowsDrawnLevel the first switch is through before the idle build has every column",
+    whole > 0 && fs[whole - 1].cols < COLS - 1 && fs[whole].mist,
+    { whole, before: fs[whole - 1]?.cols, of: COLS },
   );
   check(
     "summarySwapShowsDrawnLevel each level shows only once it was drawn in the frame before",
