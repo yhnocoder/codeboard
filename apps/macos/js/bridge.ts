@@ -170,7 +170,13 @@ export function createBridge(native: Native, opts: { fs?: Fs; timers?: boolean; 
   }
 
   // MARK: a session: one open board, with core's history and saving
-  function makeSession(dir: string, storage: Storage, loaded: Board, env: SceneEnv, dropped: (id: string) => void): Session {
+  function makeSession(
+    dir: string,
+    storage: Storage,
+    loaded: Board,
+    env: SceneEnv,
+    dropped: (id: string) => void,
+  ): Session {
     const id = loaded.id;
     let board: Board = emptyBoard("none", "");
     const doc: Doc = {
