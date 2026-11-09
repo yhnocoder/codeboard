@@ -330,7 +330,7 @@ struct LibraryView: View {
   }
 
   private func caption(_ r: BoardRef, _ b: LibBoard) -> String {
-    let when = b.mtime > 0 ? RelativeDateTimeFormatter().localizedString(for: Date(timeIntervalSince1970: b.mtime / 1000), relativeTo: Date()) : ""
+    let when = b.mtime > 0 ? relativeDate(b.mtime) : ""
     var s = "\(b.cards) card\(b.cards == 1 ? "" : "s") · \(when)"
     if m.selection == .recent, let p = m.project(r.dir) { s = "\(p.name) · " + s }
     return s
@@ -412,6 +412,15 @@ struct BoardTile: View {
     .padding(8)
   }
 }
+
+/** "2 days ago" for a file time (ms), in the language the app's words are in (its localization, English while it has only
+ *  that), not the region's: a Chinese region gave "1天前" among English labels */
+private let relative: RelativeDateTimeFormatter = {
+  let f = RelativeDateTimeFormatter()
+  f.locale = Locale(identifier: Bundle.main.preferredLocalizations.first ?? "en")
+  return f
+}()
+@MainActor func relativeDate(_ ms: Double) -> String { relative.localizedString(for: Date(timeIntervalSince1970: ms / 1000), relativeTo: Date()) }
 
 /** The path with symlinks resolved (/tmp and /private/tmp are one folder) */
 func real(_ p: String) -> String { URL(fileURLWithPath: p).resolvingSymlinksInPath().path }

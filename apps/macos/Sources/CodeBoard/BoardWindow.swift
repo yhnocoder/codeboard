@@ -805,7 +805,7 @@ private final class SideCell: NSTableCellView {
     name.stringValue = (b.group.map { "\($0) / " } ?? "") + b.name
     name.font = serif ? Theme.serif(12.5, weight: .semibold) : .systemFont(ofSize: 12.5, weight: .semibold)
     meta.font = serif ? Theme.serif(10.5) : .systemFont(ofSize: 10.5)
-    let when = lib.flatMap { $0.mtime > 0 ? RelativeDateTimeFormatter().localizedString(for: Date(timeIntervalSince1970: $0.mtime / 1000), relativeTo: Date()) : nil }
+    let when = lib.flatMap { $0.mtime > 0 ? relativeDate($0.mtime) : nil }
     meta.stringValue = "\(b.cards) card\(b.cards == 1 ? "" : "s")" + (when.map { " · \($0)" } ?? "")
   }
 }
