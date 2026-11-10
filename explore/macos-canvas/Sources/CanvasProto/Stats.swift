@@ -22,6 +22,8 @@ final class GestureStats {
     var imgBytes = 0, cardBytes = 0
     var presented: [Double] = []  // presentation times of the probe's drawables (0 = not presented)
     var probeMissed = 0
+    var fallbackAny = 0.0, mixedAny = 0.0, fallbackCards = 0
+    var peakCard = 0, peakImg = 0, peakFootprint = 0, footprint = 0
     var settleMs: Double?         // motion end → every visible card sharp again
     var motionEnd: Double?
 
@@ -63,6 +65,9 @@ final class GestureStats {
         s += String(format: " images<=%d img_lowres_any=%.0fms img_lowres=%.0f%% img_blank=%.0fms decodes=%d decode_p50=%.1fms decode_max=%.1fms zoom_end=%.2f img_mem=%.1fMB card_mem=%.1fMB",
                     maxImages, imgLowAny * 1000, imgVis > 0 ? imgLow / imgVis * 100 : 0, imgBlank * 1000, decodeMs.count,
                     GestureStats.pct(decodeMs, 0.5), decodeMs.max() ?? 0, zoomAtEnd, Double(imgBytes) / 1e6, Double(cardBytes) / 1e6)
+        s += String(format: " fallback_any=%.0fms mixed_any=%.0fms peak_card_mem=%.1fMB peak_img_mem=%.1fMB footprint=%.0fMB peak_footprint=%.0fMB",
+                    fallbackAny * 1000, mixedAny * 1000, Double(peakCard) / 1e6, Double(peakImg) / 1e6,
+                    Double(footprint) / 1e6, Double(max(peakFootprint, footprint)) / 1e6)
         return s
     }
 }

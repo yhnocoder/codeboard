@@ -5,7 +5,7 @@ import Metal
 /// The board canvas: a world layer moved by the camera, one layer per card (modes 1–2) or one screen-sized layer that
 /// draws the visible cards with CoreText every frame (mode 3).
 final class Canvas: NSView, CALayerDelegate {
-    static let modeNames = [0: "?", 1: "settle", 2: "ahead", 3: "live"]
+    static let modeNames = [0: "?", 1: "settle", 2: "ahead", 3: "live", 4: "tiles"]
 
     var board: Board!
     var boardIndex = 0
@@ -36,6 +36,10 @@ final class Canvas: NSView, CALayerDelegate {
     var useSurfaces = true   // modes 1–2 hand finished rasters to CA as IOSurfaces (true) or CGImages (false)
     var liveSurfaces: [IOSurface] = []
     var liveNext = 0
+    var cardTiles: [CardTiles] = []
+    var tileBytes = 0
+    var lastMemSample = 0.0
+    var memLine = ""
 
     // Images: their own layers above the cards (and above mode 3's text), decoded at the level the zoom needs.
     let world2 = CALayer()
@@ -213,9 +217,12 @@ final class Canvas: NSView, CALayerDelegate {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         for i in cardLayers.indices { cardLayers[i].contents = baseImage[i]; rasterScale[i] = baseScale[i]; inFlight[i] = false }
         computeVisible()
-        if mode != 3 {
+        clearTiles()
+        if mode == 4 { updateTiles() }
+        if mode == 1 || mode == 2 {
             for i in visible {
-                let s = Render.cappedScale(board.cards[i], z * backing)
+                let want = Canvas.pow2ForDiff ? pow(2, ceil(log2(z * backing))) : z * backing
+                let s = Render.cappedScale(board.cards[i], want)
                 if s > rasterScale[i] { cardLayers[i].contents = Render.raster(board.cards[i], scale: s); rasterScale[i] = s }
             }
         }
@@ -335,6 +342,7 @@ final class Canvas: NSView, CALayerDelegate {
         case "1": mode = 1
         case "2": mode = 2
         case "3": mode = 3
+        case "4": mode = 4
         case "a": liveAsync.toggle(); modeChanged(); updateHud()
         case "c": liveOwn.toggle(); modeChanged(); updateHud()
         case "s": useSurfaces.toggle(); modeChanged(); updateHud()
@@ -368,16 +376,30 @@ final class Canvas: NSView, CALayerDelegate {
             }
             lastMove = now
             if mode == 2 { requestRasters(ahead: true) }
+            if mode == 4 { updateTiles() }
             if mode != 1 { requestImages(ahead: true) }
             pulseProbe(gesture!)
         }
+        sampleMemory(now)
         guard let g = gesture else { return }
         g.maxVisible = max(g.maxVisible, visible.count)
         g.maxImages = max(g.maxImages, visibleSlots.count)
         var low = 0, imgLow = 0, blank = 0
         if dt > 0 {
-            if mode != 3 {
-                for i in visible where rasterScale[i] < Render.cappedScale(board.cards[i], z * backing) * 0.98 { low += 1 }
+            if mode == 4 {
+                let st = tileState()
+                low = st.low
+                if st.fallback > 0 { g.fallbackAny += dt }
+                if st.mixed > 0 { g.mixedAny += dt }
+                g.lowCard += dt * Double(low)
+                g.visCard += dt * Double(visible.count)
+                if low > 0 { g.lowAny += dt }
+            } else if mode != 3 {
+                for i in visible where rasterScale[i] < Render.cappedScale(board.cards[i], z * backing) * 0.98 {
+                    low += 1
+                    if rasterScale[i] <= baseScale[i] { g.fallbackCards += 1 }
+                }
+                if visible.contains(where: { rasterScale[$0] <= baseScale[$0] && rasterScale[$0] < Render.cappedScale(board.cards[$0], z * backing) * 0.98 }) { g.fallbackAny += dt }
                 if low > 0 { g.lowAny += dt }
                 g.lowCard += dt * Double(low)
                 g.visCard += dt * Double(visible.count)
@@ -396,7 +418,8 @@ final class Canvas: NSView, CALayerDelegate {
         if gesture == nil { return }
         if g.motionEnd == nil && now - lastMove > 0.15 {
             g.motionEnd = lastMove
-            if mode != 3 { requestRasters(ahead: false) }
+            if mode == 1 || mode == 2 { requestRasters(ahead: false) }
+            if mode == 4 { updateTiles() }
             requestImages(ahead: false)
         } else if let end = g.motionEnd, now - end > 5 {
             finish(g, interrupted: true)
@@ -409,16 +432,49 @@ final class Canvas: NSView, CALayerDelegate {
         g.decodeMs = store.decodeMs
         g.zoomAtEnd = z
         g.imgBytes = store.bytes
-        g.cardBytes = mode == 3 ? 0 : board.cards.indices.reduce(0) { acc, i in
-            let c = board.cards[i]; return acc + Int(c.rect.width * c.rect.height * rasterScale[i] * rasterScale[i] * 4) }
+        g.cardBytes = cardMemory()
+        g.footprint = physFootprint()
         let v = g.mode == 3 ? (liveOwn ? "own" : liveAsync ? "ca-async" : "ca") : (useSurfaces ? "iosurface" : "cgimage")
         let line = g.summary(board: (board.path as NSString).lastPathComponent) + " variant=" + v
         Log.write(line)
         lastSummary = line
         script?.finished(g)
         updateHud()
-        if mode != 3 { dropOffscreen() }
+        if mode == 1 || mode == 2 { dropOffscreen() }
+        if mode == 4 { trimTiles() }
         dropOffscreenImages()
+    }
+
+    // MARK: memory
+
+    /// Bytes held by card pixels: the fit-zoom bitmaps, plus the sharper whole-card bitmaps (modes 1–2), the tiles
+    /// (mode 4) or the screen surfaces (mode 3).
+    func cardMemory() -> Int {
+        var b = baseImage.reduce(0) { $0 + ($1.map { $0.bytesPerRow * $0.height } ?? 0) }
+        switch mode {
+        case 4: b += tileBytes
+        case 3: b += liveSurfaces.reduce(0) { $0 + $1.allocationSize }
+        default:
+            for (i, c) in board.cards.enumerated() where rasterScale[i] > baseScale[i] {
+                b += Int(c.rect.width * c.rect.height * rasterScale[i] * rasterScale[i] * 4)
+            }
+        }
+        return b
+    }
+
+    /// About twice a second: memory into the HUD, and peaks into the running gesture.
+    func sampleMemory(_ now: Double) {
+        guard board != nil else { return }
+        let card = cardMemory(), img = store.bytes
+        if let g = gesture {
+            g.peakCard = max(g.peakCard, card); g.peakImg = max(g.peakImg, img)
+        }
+        guard now - lastMemSample > 0.5 else { return }
+        lastMemSample = now
+        let foot = physFootprint()
+        gesture.map { $0.peakFootprint = max($0.peakFootprint, foot) }
+        memLine = String(format: "memory: cards %.0f MB · images %.0f MB · process %.0f MB", Double(card) / 1e6, Double(img) / 1e6, Double(foot) / 1e6)
+        updateHud()
     }
 
     // MARK: images
@@ -584,9 +640,9 @@ final class Canvas: NSView, CALayerDelegate {
         let variant = mode == 3 ? (liveOwn ? "(own surface)" : liveAsync ? "(CA, drawsAsynchronously)" : "(CA backing store)")
             : (useSurfaces ? "(IOSurface)" : "(CGImage)")
         hud.string = """
-         mode \(mode) \(Canvas.modeNames[mode]!)\(variant)   1 settle · 2 ahead · 3 live · c live: own surface / CA · a async · s IOSurface / CGImage · f fit · ←/→ · b bench
+         mode \(mode) \(Canvas.modeNames[mode]!)\(variant)   1 settle · 2 ahead · 3 live · 4 tiles · c live: own surface / CA · a async · s IOSurface / CGImage · f fit · ←/→ · b bench
          board \(boardIndex + 1)/\(boards.count) \((board.path as NSString).lastPathComponent)  cards \(board.cards.count)  display \(fps) Hz
-         zoom \(String(format: "%.2f", z))  visible \(visible.count)
+         zoom \(String(format: "%.2f", z))  visible \(visible.count)   \(memLine)
          last: \(lastSummary.split(separator: " ").dropFirst(2).joined(separator: " "))
         """
     }
@@ -606,5 +662,53 @@ extension Canvas {
         guard let img = ctx.makeImage(), let dest = CGImageDestinationCreateWithURL(URL(fileURLWithPath: path) as CFURL, "public.png" as CFString, 1, nil) else { return }
         CGImageDestinationAddImage(dest, img, nil)
         CGImageDestinationFinalize(dest)
+    }
+}
+
+extension Canvas {
+    static var pow2ForDiff = false
+
+    func snapshotPixels() -> (w: Int, h: Int, px: [UInt8]) {
+        let s = backing
+        let w = Int(bounds.width * s), h = Int(bounds.height * s)
+        var px = [UInt8](repeating: 0, count: w * h * 4)
+        px.withUnsafeMutableBytes { buf in
+            guard let ctx = CGContext(data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+            else { return }
+            ctx.scaleBy(x: s, y: s)
+            layer!.render(in: ctx)
+        }
+        return (w, h, px)
+    }
+
+    /// Writes |a − b| amplified 4× as a PNG and logs how many pixels differ, and whether differences line up in rows or
+    /// columns (what a tile seam would look like).
+    static func diff(_ a: (w: Int, h: Int, px: [UInt8]), _ b: (w: Int, h: Int, px: [UInt8]), to path: String) {
+        guard a.w == b.w, a.h == b.h else { return }
+        var out = [UInt8](repeating: 255, count: a.px.count)
+        var differ = 0, maxd = 0
+        var colHits = [Int](repeating: 0, count: a.w), rowHits = [Int](repeating: 0, count: a.h)
+        for i in stride(from: 0, to: a.px.count, by: 4) {
+            var d = 0
+            for k in 0..<3 { d = max(d, abs(Int(a.px[i + k]) - Int(b.px[i + k]))) }
+            maxd = max(maxd, d)
+            if d > 24 { differ += 1; let p = i / 4; colHits[p % a.w] += 1; rowHits[p / a.w] += 1 }
+            let v = UInt8(max(0, 255 - min(255, d * 4)))
+            out[i] = v; out[i + 1] = v; out[i + 2] = 255; out[i + 3] = 255
+        }
+        let lineCols = colHits.filter { $0 > a.h / 3 }.count, lineRows = rowHits.filter { $0 > a.w / 3 }.count
+        Log.write("diff tiles-vs-whole pixels=\(a.w * a.h) differ(>24)=\(differ) max=\(maxd) seam_like_cols=\(lineCols) seam_like_rows=\(lineRows)")
+        out.withUnsafeMutableBytes { buf in
+            guard let ctx = CGContext(data: buf.baseAddress, width: a.w, height: a.h, bitsPerComponent: 8, bytesPerRow: a.w * 4,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
+                  let img = ctx.makeImage(),
+                  let dest = CGImageDestinationCreateWithURL(URL(fileURLWithPath: path) as CFURL, "public.png" as CFString, 1, nil)
+            else { return }
+            CGImageDestinationAddImage(dest, img, nil)
+            CGImageDestinationFinalize(dest)
+        }
     }
 }

@@ -4,7 +4,7 @@ import AppKit
 /// zoom from fit to 300 % around the centre, and back out. Each motion is one gesture in the log.
 final class Bench {
     struct Run { let board: Int; let mode: Int }
-    enum Seg { case pan(Double), zoomIn(Double), zoomOut(Double) }
+    enum Seg { case pan(Double), zoomIn(Double), zoomOut(Double), flick(Double) }
 
     var runs: [Run]
     let quit: Bool
@@ -27,13 +27,16 @@ final class Bench {
             if c.boardIndex != r.board || c.board == nil { c.load(r.board) }
             c.mode = r.mode
             c.fit(); c.resetRasters()
-            segs = [.pan(3), .zoomIn(2), .zoomOut(2)]
+            segs = [.pan(3), .zoomIn(2), .zoomOut(2), .flick(0.8), .zoomIn(0.4), .zoomOut(0.4)]
             seg = 0
         }
-        if case .pan = segs[seg] { place(c, t: 0); c.resetRasters() }  // start sharp where the pan starts
+        switch segs[seg] {  // start sharp where a pan starts
+        case .pan, .flick: place(c, t: 0); c.resetRasters()
+        default: break
+        }
         segStart = now
         waiting = false
-        c.pendingLabel = ["pan", "zoom-in", "zoom-out"][seg]
+        c.pendingLabel = ["pan", "zoom-in", "zoom-out", "flick", "pinch-in", "pinch-out"][seg]
     }
 
     func step(_ c: Canvas, now: Double) {
@@ -48,6 +51,16 @@ final class Bench {
         case .pan(let d):
             let p = min(t / d, 1)
             place(c, t: p)
+            c.cameraMoved()
+            if p >= 1 { pause(now) }
+        case .flick(let d):
+            // A momentum-like flick: starts at 5000 pt/s and decelerates to rest (ease-out cubic).
+            let p = min(t / d, 1)
+            let zp = max(1.0, c.fitZoom)
+            let dist = 5000 * d / 3 / zp
+            place(c, t: 0)
+            c.camX += dist * CGFloat(1 - pow(1 - p, 3))
+            c.applyCamera()
             c.cameraMoved()
             if p >= 1 { pause(now) }
         case .zoomIn(let d), .zoomOut(let d):

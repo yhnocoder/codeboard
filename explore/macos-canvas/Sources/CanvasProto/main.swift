@@ -10,7 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ n: Notification) {
         var args = Array(CommandLine.arguments.dropFirst())
         var bench: Int?
-        var modes = [1, 2, 3]
+        var modes = [1, 2, 3, 4]
         var asyncLive = false, caLive = false, cgimage = false
         if let i = args.firstIndex(of: "--bench"), i + 1 < args.count { bench = Int(args[i + 1]); args.removeSubrange(i...i + 1) }
         if let i = args.firstIndex(of: "--modes"), i + 1 < args.count {
@@ -57,7 +57,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.canvas.snapshot(to: "\(dir)/snap-1.png")
                 self.canvas.mode = 3
                 self.canvas.snapshot(to: "\(dir)/snap-3.png")
-                NSApp.terminate(nil)
+                self.canvas.zoom(by: 1.7, at: CGPoint(x: self.canvas.bounds.midX, y: self.canvas.bounds.midY))
+                self.canvas.mode = 4
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    self.canvas.snapshot(to: "\(dir)/snap-4.png")
+                    let a = self.canvas.snapshotPixels()
+                    Canvas.pow2ForDiff = true  // same scale as the tiles, so only seams and borders can differ
+                    self.canvas.mode = 2  // whole cards rastered synchronously at this zoom
+                    let b = self.canvas.snapshotPixels()
+                    Canvas.diff(a, b, to: "\(dir)/diff-4-vs-2.png")
+                    NSApp.terminate(nil)
+                }
             }
         }
     }
