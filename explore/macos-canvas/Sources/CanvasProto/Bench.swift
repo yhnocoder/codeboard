@@ -17,6 +17,7 @@ final class Bench {
     var results: [GestureStats] = []
     var flickDone: CGFloat = 0
     var flickLast = 0.0
+    var flickLifted = false
 
     init(runs: [Run], quit: Bool) { self.runs = runs; self.quit = quit }
 
@@ -29,11 +30,11 @@ final class Bench {
             if c.boardIndex != r.board || c.board == nil { c.load(r.board) }
             c.mode = r.mode
             c.fit(); c.resetRasters()
-            segs = [.pan(3), .zoomIn(2), .zoomOut(2), .flick(0.8), .zoomIn(0.4), .zoomOut(0.4)]
+            segs = [.pan(3), .zoomIn(2), .zoomOut(2), .flick(0.15), .zoomIn(0.4), .zoomOut(0.4)]
             seg = 0
         }
         switch segs[seg] {  // start sharp where a pan starts
-        case .pan, .flick: place(c, t: 0); c.resetRasters(); flickDone = 0; flickLast = 0
+        case .pan, .flick: place(c, t: 0); c.resetRasters(); flickDone = 0; flickLast = 0; flickLifted = false
         default: break
         }
         segStart = now
@@ -56,18 +57,18 @@ final class Bench {
             c.cameraMoved()
             if p >= 1 { pause(now) }
         case .flick(let d):
-            // A momentum-like flick: starts at 5000 pt/s and decelerates to rest (ease-out cubic).
-            let p = min(t / d, 1)
-            let zp = max(1.0, c.fitZoom)
-            let dist = 5000 * d / 3   // screen points
-            let off = dist * CGFloat(1 - pow(1 - p, 3))
-            // As trackpad momentum would arrive: one step per frame, through the speed shaping (momentum phase).
-            let dtStep = flickLast > 0 ? now - flickLast : 1.0 / 120
-            flickLast = now
-            c.pan(off - flickDone, 0, dt: dtStep, momentum: true, sinceLift: t)
-            flickDone = off
-            _ = zp
-            if p >= 1 { pause(now) }
+            // A flick as the trackpad delivers it: fingers move at 3000 pt/s for `d`, through the shaping, then lift;
+            // the canvas glides on its own. The segment ends when the glide stops.
+            if t < d {
+                let dtStep = flickLast > 0 ? now - flickLast : 1.0 / 120
+                flickLast = now
+                c.pan(3000 * CGFloat(dtStep), 0, dt: dtStep)
+            } else if !flickLifted {
+                flickLifted = true
+                c.startGlide(at: now)
+            } else if c.glide == nil {
+                pause(now)
+            }
         case .zoomIn(let d), .zoomOut(let d):
             let inward: Bool
             if case .zoomIn = segs[seg] { inward = true } else { inward = false }
@@ -113,5 +114,34 @@ extension Canvas {
         s.waitSince = CACurrentMediaTime() - 1
         Log.write("bench start runs=\(runs.count) display=\(window?.screen?.maximumFramesPerSecond ?? 0)Hz backing=\(backing) view=\(Int(bounds.width))x\(Int(bounds.height))")
         script = s
+    }
+}
+
+extension Canvas {
+    /// The same scripted flick (fingers at 3000 pt/s for 150 ms, then lift) at each τ; the glide logs its distance and
+    /// duration. Then quits.
+    func glideTest(_ taus: [Double]) {
+        var rest = taus
+        guard !rest.isEmpty else { NSApp.terminate(nil); return }
+        tau = rest.removeFirst()
+        fit(); z = max(1, fitZoom); applyCamera()
+        let start = CACurrentMediaTime()
+        var last = start
+        func step() {
+            let now = CACurrentMediaTime()
+            if now - start < 0.15 {
+                pan(3000 * CGFloat(now - last), 0, dt: now - last)
+                last = now
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 / 120) { step() }
+            } else {
+                startGlide(at: now)
+                func wait() {
+                    if self.glide == nil { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.glideTest(rest) } }
+                    else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { wait() } }
+                }
+                wait()
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 / 120) { step() }
     }
 }

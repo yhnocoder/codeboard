@@ -17,10 +17,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             modes = args[i + 1].split(separator: ",").compactMap { Int($0) }; args.removeSubrange(i...i + 1)
         }
         if let i = args.firstIndex(of: "--async") { args.remove(at: i); asyncLive = true }
-        var maxZoom: CGFloat = 2, shaping = true, blur = true
+        var maxZoom: CGFloat = 2, shaping = true, glideTest = false
         if let i = args.firstIndex(of: "--max-zoom"), i + 1 < args.count { maxZoom = CGFloat(Double(args[i + 1]) ?? 2); args.removeSubrange(i...i + 1) }
         if let i = args.firstIndex(of: "--no-shaping") { args.remove(at: i); shaping = false }
-        if let i = args.firstIndex(of: "--no-blur") { args.remove(at: i); blur = false }
+        if let i = args.firstIndex(of: "--glide-test") { args.remove(at: i); glideTest = true }
         if let i = args.firstIndex(of: "--ca") { args.remove(at: i); caLive = true }
         if let i = args.firstIndex(of: "--cgimage") { args.remove(at: i); cgimage = true }
         args.removeAll { $0.hasPrefix("-") }  // Launch Services' own arguments
@@ -39,7 +39,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         canvas.liveAsync = asyncLive
         canvas.maxZoom = maxZoom
         canvas.shaping = shaping
-        canvas.blurOn = blur
         canvas.liveOwn = !caLive && !asyncLive
         canvas.useSurfaces = !cgimage
         window.contentView = canvas
@@ -49,6 +48,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         canvas.layoutSubtreeIfNeeded()
         let start = isDir.boolValue ? 0 : (canvas.boards.firstIndex(of: target) ?? 0)
         canvas.load(start)
+        if glideTest {
+            window.level = .floating
+            window.orderFrontRegardless()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.canvas.glideTest([0.15, 0.3, 0.6]) }
+        }
         if let n = bench {
             window.level = .floating  // a covered window gets no display-link callbacks; keep the bench on top
             window.orderFrontRegardless()
