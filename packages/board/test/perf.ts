@@ -242,6 +242,8 @@ async function metrics(cdp: CDPSession) {
   const { metrics } = await cdp.send("Performance.getMetrics");
   return Object.fromEntries(metrics.map((m) => [m.name, m.value]));
 }
+/** How many times the drag pass drops the card: dragEnd is the median drop */
+const DROPS = 5;
 /** Trace marker at the start of each step (console.timeStamp) */
 const STEP_MARK = "perf-step";
 const raf = (h: Host) =>
@@ -850,14 +852,16 @@ async function once() {
       "drag",
     ),
   );
-  const tUp = performance.now();
-  const bUp = await busy(cdp);
-  await profiled(cdp, "dragEnd", async () => {
-    await h.page.mouse.up();
-    await raf(h);
-  });
-  res.dragEndBusy = +((await busy(cdp)) - bUp).toFixed(1);
-  res.dragEnd = +(performance.now() - tUp).toFixed(1);
+  const drop = async () => {
+    const tUp = performance.now();
+    const bUp = await busy(cdp);
+    await profiled(cdp, "dragEnd", async () => {
+      await h.page.mouse.up();
+      await raf(h);
+    });
+    return { wall: performance.now() - tUp, busy: (await busy(cdp)) - bUp };
+  };
+  const drops = [await drop()];
   // The drag must have moved the card (60 steps × 4 px on screen), or drag / nudge / undo numbers measure nothing
   res.dragMoved = Math.round((await hubX()) - x0);
   if (!((res.dragMoved as number) > 20)) {
@@ -880,6 +884,23 @@ async function once() {
       `drag did not move the card ${hub} (moved ${res.dragMoved}px; grabbed ${JSON.stringify(bx)} → ${hit}; card ${JSON.stringify(board.place[hub])})`,
     );
   }
+  // One drop is one sample per run, and on CI the same two commits gave 92 → 86 ms on one runner and 54 → 128 on another
+  // (Regular 2026-11-08), past the 1.75x limit: so the card is dropped DROPS times, after short drags from where the pointer
+  // let go (still on its header), and dragEnd is the median drop
+  let p = { x: bx.x + 4 + 59 * 4, y: bx.y + 4 + 59 * 2 };
+  for (let n = 1; n < DROPS; n++) {
+    await h.page.waitForTimeout(600);
+    await h.page.mouse.down();
+    for (let i = 0; i < 10; i++) {
+      p = { x: p.x + 4, y: p.y + 2 };
+      await h.page.mouse.move(p.x, p.y, { steps: 1 });
+      await raf(h);
+    }
+    drops.push(await drop());
+  }
+  res.dragEnd = +med(drops.map((d) => d.wall)).toFixed(1);
+  res.dragEndBusy = +med(drops.map((d) => d.busy)).toFixed(1);
+  res.dragEnds = drops.map((d) => +d.wall.toFixed(1));
   await h.page.waitForTimeout(1200);
 
   // Hover the hub card and leave it: all its arrows lift above the cards and drop back, with a cross-fade each way
