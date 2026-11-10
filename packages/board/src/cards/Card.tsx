@@ -67,6 +67,7 @@ import * as act from "../actions";
 import { cardStale } from "@codeboard/core/commands";
 import { staleOf } from "../state/views";
 import { farAway } from "../state/cull";
+import { asBars } from "../state/greek";
 import { offscreen } from "../state/offscreen";
 import { landed } from "../canvas/routes";
 import { CodeHead, MarkView, Procs } from "./CodeHead";
@@ -300,6 +301,7 @@ export function CardView(p: { card: Card }) {
           editing: ed(),
           off: offscreen(c().id),
           far: farAway(c().id),
+          bars: asBars(c().id),
           lost: c().kind === "code" && cardStale(c() as CodeCard, staleOf) === "lost",
           gen: c().kind === "code" && !!(c() as CodeCard).gen,
           "merge-hot": !!(drop() & 1),

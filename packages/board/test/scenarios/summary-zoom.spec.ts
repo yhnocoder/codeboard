@@ -286,7 +286,7 @@ test("zoomedOutSimplifiesCards", async () => {
   await outTo(h, 0.45);
   const z = await zoomOf(h);
   check("stopped between the summary cut and 50 %", z < 0.5 && !(await h.page.locator(".cardlay.gone").count()), z);
-  await until(h, "the switch lands", () => h.page.evaluate(() => !!document.querySelector(".world.greek")));
+  await until(h, "the switch lands", () => h.page.evaluate(() => !!document.querySelector('.card.bars[data-id="n1"]')));
   const out = await look(h);
   check("a Note's prose is drawn as bars", out.greek && out.fill === "rgba(0, 0, 0, 0)" && out.bar, out);
   check(

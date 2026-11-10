@@ -417,16 +417,16 @@ textarea {
 .app.still :is(.eport, .port, .porthit, .lport, .bports, .grip, .sgrip, .mkgrip, .lgrip, .cmenu) {
   display: none !important;
 }
-/* 缩到设置的比例以下（Simplify Below，默认 50%；卡片层还显示着，Canvas.tsx .greek）卡片简化：
-   - Note 正文的字画成浅色字条：字的填充透明（Skia 不画透明的字），段落、标题、代码块的背景按行（lh）画横条，公式（.katex）透明。
-     50% 以下世界层不带 will-change（Canvas.tsx HINT_MIN），缩放每帧按新比例重画，画字是最贵的部分（密排的中文 Note，
-     2× 屏幕上捏合头几帧每帧 30–50 ms），画成字条几乎不花时间。
-   - 卡里的行和块不响应指针：正文上盖一层挡板（::after），没有行、块的连线圆点，悬停代码、高亮、调用不变样子，点不开调用
-     （太小，点不准）；拖卡、卡边的连线圆点照旧。
-   在写的卡照常。按停下时的比例切换（stillZ），缩放中途不变。
+/* 缩到设置的比例以下（Simplify Below，默认 50%；卡片层还显示着，state/greek.ts）卡片简化：
+   - Note 正文的字画成浅色字条（.card.note.bars）：字的填充透明（Skia 不画透明的字），段落、标题、代码块的背景按行（lh）画横条，
+     公式（.katex）透明。缩放每帧按显示的比例重画，画字是最贵的部分（密排的中文 Note），画成字条几乎不花时间。
+     一张张分帧换（greek.ts），不是整块白板一帧换完。
+   - 卡里的行和块不响应指针（.world.greek）：正文上盖一层挡板（::after），没有行、块的连线圆点，悬停代码、高亮、调用不变样子，
+     点不开调用（太小，点不准）；拖卡、卡边的连线圆点照旧。
+   在写的卡照常。
    切换只改不往下传的属性，或者传下去在公式那儿停住：公式自己一直写着 -webkit-text-fill-color: currentcolor（和不写一样），
    正文的填充变透明时公式那 2 万多个节点不用重算样式。颜色、下划线、pointer-events 都会传进每个公式节点：persona 上一次切换
-   要重算 2.8 万个节点（~250 ms），这样 ~15 ms */
+   要重算 2.8 万个节点（~250 ms） */
 .card.note .nbody .katex {
   -webkit-text-fill-color: currentcolor;
 }
@@ -443,15 +443,14 @@ textarea {
 .card.note .nbody :is(li, tr) > :nth-child(3n) {
   --tail: 34%;
 }
-.world.greek .card.note:not(.editing) .nbody {
+.card.note.bars:not(.editing) .nbody {
   -webkit-text-fill-color: transparent;
 }
 /* 描了边的字（Ink Wash 的加粗，themes.css）填充透明还剩一圈轮廓：边也去掉 */
-.world.greek .card.note:not(.editing) .nbody :is(strong, b) {
+.card.note.bars:not(.editing) .nbody :is(strong, b) {
   -webkit-text-stroke-width: 0;
 }
-.world.greek
-  .card.note:not(.editing)
+.card.note.bars:not(.editing)
   .nbody
   :is(
     p:not(:has(> img, > .md-fig, > a > img)),
@@ -484,10 +483,10 @@ textarea {
    每行一条，长度错落但不量字：最后一行单独一层（长短随块轮换：--tail），上面的行按 6 行一组的长度模板从倒数第二行往上排
    （每层只铺到最后一行上面，模板不会在段中间又排出一行短的）。
    高亮、行内代码的底色，{字|批注} 的底色、标签和箭头跟着字一起藏起来 */
-.world.greek .card.note:not(.editing) .nbody :is(.katex, .md-annot > .md-annot-n, .md-annot::after) {
+.card.note.bars:not(.editing) .nbody :is(.katex, .md-annot > .md-annot-n, .md-annot::after) {
   opacity: 0;
 }
-.world.greek .card.note:not(.editing) .nbody :is(mark, .md-annot, :not(pre) > code) {
+.card.note.bars:not(.editing) .nbody :is(mark, .md-annot, :not(pre) > code) {
   background: none;
 }
 .world.greek .card:not(.editing) :is(.cbody, .nbody)::after {

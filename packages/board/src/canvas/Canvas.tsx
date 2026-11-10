@@ -4,6 +4,7 @@ import { state, rectOf, cardById, hostOf, placed, placeOf } from "../state/store
 import { sel } from "../state/selection";
 import { cam, setViewport, viewTracked, camMoving, stillZ, camTarget, camTo, fitRect } from "../state/camera";
 import { trackOffscreen } from "../state/cull";
+import { trackGreek } from "../state/greek";
 import { trackSkeletons } from "../state/subboards";
 import { guides, sizeHint, marquee, dragging, carried, dropTarget, walk, editing } from "../state/ui";
 import { CardView } from "../cards/Card";
@@ -37,9 +38,6 @@ const EXT = 512;
 /** 正在写的字在屏幕上至少这么大（px） */
 const READ_PX = 11;
 
-/** The prose drawn as bars below Simplify Below turns back into text only this far above it (see greek) */
-const GREEK_BAND = 1.1;
-
 export function Canvas() {
   const md = useMd();
   let el!: HTMLDivElement, world!: HTMLDivElement;
@@ -68,16 +66,8 @@ export function Canvas() {
   // at each frame's scale, and Chromium shows a frame only once the tiles in view are drawn, so a frame can come late but is
   // never a stretched bitmap (blurry) and never blank. Scaled as a bitmap while it moved and rastered again at the stop, a
   // zoom was faster and blurry, the stop flashed, and the tiles kept at the old scale overran the GPU's tile memory (holes)
-  // Zoomed out past Simplify Below (styles.css .world.greek): the Notes' prose is drawn as bars, which keeps each frame's
-  // raster of a zoom cheap there. Taken from the camera as it moves, so a zoom in from below shows the text as soon as it is
-  // past it, not bars at 130 % until the stop; back only a little above it (GREEK_BAND), so a pinch that wavers around it does
-  // not switch at every step. No fade: a compositor fade puts the Notes' bodies on layers of their own and back, which
-  // flashed the board. A still picture's prose stays text at every zoom
-  const greek = createMemo<boolean>((was) => {
-    if (still() || cardsGone()) return false;
-    const at = state.host.settings.simpleBelow;
-    return cam.z < at || (was && cam.z < at * GREEK_BAND);
-  }, false);
+  // Zoomed out past Simplify Below the cards are simplified (state/greek.ts)
+  const greek = trackGreek();
   // A move of the world by a fraction of a device pixel rasters it again (its tiles are drawn at the new offset): it moves by
   // whole device pixels
   const px = (v: number) => {
