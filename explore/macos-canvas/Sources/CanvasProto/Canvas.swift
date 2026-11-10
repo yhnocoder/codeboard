@@ -11,7 +11,7 @@ final class Canvas: NSView, CALayerDelegate {
     var boardIndex = 0
     var boards: [String] = []
     var vault = ""
-    var mode = 1 { didSet { modeChanged() } }
+    var mode = 2 { didSet { modeChanged() } }
 
     // Camera: board point at the view's top-left, and zoom (view points per board unit).
     var camX: CGFloat = 0, camY: CGFloat = 0, z: CGFloat = 1
