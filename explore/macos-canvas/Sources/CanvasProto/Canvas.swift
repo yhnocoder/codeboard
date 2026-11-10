@@ -1,0 +1,454 @@
+import AppKit
+import QuartzCore
+
+/// The board canvas: a world layer moved by the camera, one layer per card (modes 1–2) or one screen-sized layer that
+/// draws the visible cards with CoreText every frame (mode 3).
+final class Canvas: NSView, CALayerDelegate {
+    static let modeNames = [0: "?", 1: "settle", 2: "ahead", 3: "live"]
+
+    var board: Board!
+    var boardIndex = 0
+    var boards: [String] = []
+    var vault = ""
+    var mode = 1 { didSet { modeChanged() } }
+
+    // Camera: board point at the view's top-left, and zoom (view points per board unit).
+    var camX: CGFloat = 0, camY: CGFloat = 0, z: CGFloat = 1
+    var fitZoom: CGFloat = 1
+    var backing: CGFloat { window?.backingScaleFactor ?? 2 }
+    var refresh: Double { 1.0 / Double(window?.screen?.maximumFramesPerSecond ?? 60) }
+
+    let world = CALayer()
+    let sectionsLayer = CAShapeLayer()
+    let linksLayer = CAShapeLayer()
+    let live = CALayer()
+    let hud = CATextLayer()
+    var cardLayers: [CALayer] = []
+    var rasterScale: [CGFloat] = []
+    var baseImage: [CGImage?] = []
+    var baseScale: [CGFloat] = []
+    var inFlight: [Bool] = []
+    var generation = 0
+    var visible: [Int] = []
+    var liveAsync = false
+    var liveOwn = true       // mode 3 draws into our own IOSurface (true) or the layer's CA backing store (false)
+    var useSurfaces = true   // modes 1–2 hand finished rasters to CA as IOSurfaces (true) or CGImages (false)
+    var liveSurfaces: [IOSurface] = []
+    var liveNext = 0
+
+    let pool: OperationQueue = {
+        let q = OperationQueue()
+        q.maxConcurrentOperationCount = max(2, ProcessInfo.processInfo.activeProcessorCount - 2)
+        q.qualityOfService = .userInteractive
+        return q
+    }()
+
+    // Gesture and frame tracking
+    var link: CADisplayLink?
+    var lastTick: Double = 0
+    var lastMove: Double = 0
+    var moved = false
+    var zoomingIn = false
+    var gesture: GestureStats?
+    var lastSummary = "—"
+    var pendingLabel: String?
+    var tickStart = 0.0
+    var observer: CFRunLoopObserver?
+
+    // Scripted bench
+    var script: Bench?
+
+    override var isFlipped: Bool { false }
+    override var acceptsFirstResponder: Bool { true }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer = CALayer()
+        layer!.backgroundColor = Render.boardBg
+        layer!.addSublayer(world)
+        world.anchorPoint = .zero
+        world.frame = .zero
+        for s in [sectionsLayer, linksLayer] {
+            s.fillColor = nil
+            s.actions = ["lineWidth": NSNull(), "path": NSNull()]
+            world.addSublayer(s)
+        }
+        sectionsLayer.strokeColor = CGColor(srgbRed: 0.38, green: 0.36, blue: 0.33, alpha: 0.45)
+        linksLayer.strokeColor = Render.ink2
+        live.delegate = self
+        live.isOpaque = false
+        live.needsDisplayOnBoundsChange = true
+        live.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull()]
+        layer!.addSublayer(live)
+        hud.fontSize = 11
+        hud.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        hud.foregroundColor = CGColor(gray: 1, alpha: 1)
+        hud.backgroundColor = CGColor(gray: 0, alpha: 0.66)
+        hud.cornerRadius = 6
+        hud.isWrapped = true
+        hud.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull()]
+        layer!.addSublayer(hud)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil, link == nil else { return }
+        let l = displayLink(target: self, selector: #selector(tick(_:)))
+        l.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        l.add(to: .main, forMode: .common)
+        link = l
+        // Main-thread work per frame: from the display link callback to the run loop going idle (includes the CA commit).
+        let o = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, true, Int.max) { [weak self] _, _ in
+            guard let self, self.tickStart > 0 else { return }
+            self.gesture?.busyMs.append((CACurrentMediaTime() - self.tickStart) * 1000)
+            self.tickStart = 0
+        }
+        CFRunLoopAddObserver(CFRunLoopGetMain(), o, .commonModes)
+        observer = o
+        hud.contentsScale = backing
+        live.contentsScale = backing
+    }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        live.frame = bounds
+        layoutHud()
+        CATransaction.commit()
+        applyCamera()
+    }
+
+    // MARK: loading
+
+    func load(_ index: Int) {
+        guard !boards.isEmpty else { return }
+        boardIndex = (index + boards.count) % boards.count
+        let t0 = CACurrentMediaTime()
+        do { board = try Board(path: boards[boardIndex], vault: vault) } catch {
+            Log.write("failed to read \(boards[boardIndex]): \(error)"); return
+        }
+        let t1 = CACurrentMediaTime()
+        generation += 1
+        cardLayers.forEach { $0.removeFromSuperlayer() }
+        cardLayers = []; rasterScale = []; baseImage = []; baseScale = []; inFlight = []
+        fit()
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        for c in board.cards {
+            let l = CALayer()
+            l.anchorPoint = .zero
+            l.frame = CGRect(x: c.rect.minX, y: -c.rect.maxY, width: c.rect.width, height: c.rect.height)
+            l.contentsGravity = .resize
+            l.minificationFilter = .trilinear
+            l.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull()]
+            world.addSublayer(l)
+            cardLayers.append(l)
+            let s = Render.cappedScale(c, max(fitZoom * backing, 0.75))
+            let img = Render.raster(c, scale: s)
+            l.contents = img
+            baseImage.append(img); baseScale.append(s); rasterScale.append(s); inFlight.append(false)
+        }
+        world.insertSublayer(sectionsLayer, at: 0)
+        world.addSublayer(linksLayer)
+        let sp = CGMutablePath()
+        for s in board.sections { sp.addRoundedRect(in: CGRect(x: s.rect.minX, y: -s.rect.maxY, width: s.rect.width, height: s.rect.height), cornerWidth: 10, cornerHeight: 10) }
+        sectionsLayer.path = sp
+        let lp = CGMutablePath()
+        let byId = Dictionary(board.cards.map { ($0.id, $0.rect) }, uniquingKeysWith: { a, _ in a })
+        for l in board.links { if let a = byId[l.from], let b = byId[l.to] {
+            lp.move(to: CGPoint(x: a.midX, y: -a.midY)); lp.addLine(to: CGPoint(x: b.midX, y: -b.midY)) } }
+        linksLayer.path = lp
+        CATransaction.commit()
+        let t2 = CACurrentMediaTime()
+        Log.write(String(format: "load board=%@ cards=%d sections=%d links=%d parse+layout=%.0fms base_rasters=%.0fms",
+                         (board.path as NSString).lastPathComponent, board.cards.count, board.sections.count, board.links.count,
+                         (t1 - t0) * 1000, (t2 - t1) * 1000))
+        window?.title = "\(board.name) — \((board.path as NSString).lastPathComponent)"
+        modeChanged()
+    }
+
+    func fit() {
+        let b = board.bounds.insetBy(dx: -40, dy: -40)
+        fitZoom = min(bounds.width / b.width, bounds.height / b.height)
+        z = fitZoom
+        camX = b.midX - bounds.width / 2 / z
+        camY = b.midY - bounds.height / 2 / z
+        applyCamera()
+    }
+
+    /// Back to the base bitmaps, then the visible cards sharp at the current zoom (synchronously), so a mode starts clean.
+    func resetRasters() {
+        generation += 1
+        pool.cancelAllOperations()
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        for i in cardLayers.indices { cardLayers[i].contents = baseImage[i]; rasterScale[i] = baseScale[i]; inFlight[i] = false }
+        computeVisible()
+        if mode != 3 {
+            for i in visible {
+                let s = Render.cappedScale(board.cards[i], z * backing)
+                if s > rasterScale[i] { cardLayers[i].contents = Render.raster(board.cards[i], scale: s); rasterScale[i] = s }
+            }
+        }
+        CATransaction.commit()
+    }
+
+    func modeChanged() {
+        guard board != nil else { return }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        let hide = mode == 3
+        cardLayers.forEach { $0.isHidden = hide }
+        live.isHidden = !hide
+        live.drawsAsynchronously = liveAsync
+        live.contents = nil
+        CATransaction.commit()
+        resetRasters()
+        if mode == 3 { if liveOwn { drawLiveOwn() } else { live.setNeedsDisplay() } }
+        updateHud()
+    }
+
+    // MARK: camera
+
+    func applyCamera() {
+        guard board != nil else { return }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        world.sublayerTransform = CATransform3DMakeAffineTransform(
+            CGAffineTransform(a: z, b: 0, c: 0, d: z, tx: -camX * z, ty: bounds.height + camY * z))
+        sectionsLayer.lineWidth = 1.2 / z
+        linksLayer.lineWidth = 1.4 / z
+        CATransaction.commit()
+        computeVisible()
+        if mode == 3 { if liveOwn { drawLiveOwn() } else { live.setNeedsDisplay() } }
+    }
+
+    /// Mode 3, own surface: every visible card drawn at the exact scale into a screen-sized IOSurface, on the main thread,
+    /// so the time measured is the whole cost (CoreText and glyph rasterisation included). Three surfaces rotate.
+    func drawLiveOwn() {
+        let s = backing
+        let w = Int(bounds.width * s), h = Int(bounds.height * s)
+        if liveSurfaces.first.map({ $0.width != w || $0.height != h }) ?? true {
+            liveSurfaces = (0..<3).compactMap { _ in Render.surface(width: w, height: h) }
+        }
+        guard !liveSurfaces.isEmpty else { return }
+        let surf = liveSurfaces[liveNext % liveSurfaces.count]
+        liveNext += 1
+        let t0 = CACurrentMediaTime()
+        Render.withContext(surf) { ctx in
+            ctx.clear(CGRect(x: 0, y: 0, width: w, height: h))
+            ctx.scaleBy(x: s, y: s)
+            drawVisible(ctx)
+        }
+        gesture?.drawMs.append((CACurrentMediaTime() - t0) * 1000)
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        live.contents = surf
+        CATransaction.commit()
+    }
+
+    func drawVisible(_ ctx: CGContext) {
+        let h = bounds.height
+        for i in visible {
+            let c = board.cards[i]
+            ctx.saveGState()
+            ctx.translateBy(x: (c.rect.minX - camX) * z, y: h - (c.rect.maxY - camY) * z)
+            ctx.scaleBy(x: z, y: z)
+            Render.draw(c, in: ctx)
+            ctx.restoreGState()
+        }
+    }
+
+    func computeVisible() {
+        let view = CGRect(x: camX, y: camY, width: bounds.width / z, height: bounds.height / z)
+        visible = board.cards.indices.filter { board.cards[$0].rect.intersects(view) }
+    }
+
+    /// Board point under a view point (view y up).
+    func boardPoint(_ p: CGPoint) -> CGPoint { CGPoint(x: camX + p.x / z, y: camY + (bounds.height - p.y) / z) }
+
+    func zoom(by f: CGFloat, at p: CGPoint) {
+        let nz = min(max(z * f, fitZoom * 0.5), 8)
+        let b = boardPoint(p)
+        zoomingIn = nz > z
+        z = nz
+        camX = b.x - p.x / z
+        camY = b.y - (bounds.height - p.y) / z
+        cameraMoved()
+    }
+
+    func cameraMoved() {
+        moved = true
+        applyCamera()
+    }
+
+    // MARK: input
+
+    override func scrollWheel(with e: NSEvent) {
+        guard script == nil else { return }
+        if e.modifierFlags.contains(.command) {
+            let d = e.scrollingDeltaY * (e.hasPreciseScrollingDeltas ? 0.01 : 0.1)
+            zoom(by: exp(d), at: convert(e.locationInWindow, from: nil))
+        } else {
+            let k: CGFloat = e.hasPreciseScrollingDeltas ? 1 : 10
+            camX -= e.scrollingDeltaX * k / z
+            camY -= e.scrollingDeltaY * k / z
+            cameraMoved()
+        }
+    }
+
+    override func magnify(with e: NSEvent) {
+        guard script == nil else { return }
+        zoom(by: 1 + e.magnification, at: convert(e.locationInWindow, from: nil))
+    }
+
+    override func keyDown(with e: NSEvent) {
+        switch e.charactersIgnoringModifiers {
+        case "1": mode = 1
+        case "2": mode = 2
+        case "3": mode = 3
+        case "a": liveAsync.toggle(); modeChanged(); updateHud()
+        case "c": liveOwn.toggle(); modeChanged(); updateHud()
+        case "s": useSurfaces.toggle(); modeChanged(); updateHud()
+        case "f", "0": fit(); resetRasters()
+        case "b": startBench(boards: [boardIndex], modes: [mode], quit: false)
+        default:
+            switch e.keyCode {
+            case 123, 126: load(boardIndex - 1)
+            case 124, 125: load(boardIndex + 1)
+            default: super.keyDown(with: e)
+            }
+        }
+    }
+
+    // MARK: frames
+
+    @objc func tick(_ l: CADisplayLink) {
+        let now = l.timestamp
+        let dt = lastTick > 0 ? now - lastTick : 0
+        lastTick = now
+        tickStart = CACurrentMediaTime()
+        if let s = script { s.step(self, now: CACurrentMediaTime()) }
+        if moved {
+            moved = false
+            if gesture == nil || gesture!.motionEnd != nil {
+                if let g = gesture { finish(g, interrupted: true) }
+                gesture = GestureStats(label: pendingLabel ?? "gesture", mode: mode, refresh: refresh)
+            } else if dt > 0 {
+                gesture!.intervals.append(dt)
+            }
+            lastMove = now
+            if mode == 2 { requestRasters(ahead: true) }
+        }
+        guard let g = gesture else { return }
+        g.maxVisible = max(g.maxVisible, visible.count)
+        if mode != 3 && dt > 0 {
+            var low = 0
+            for i in visible where rasterScale[i] < Render.cappedScale(board.cards[i], z * backing) * 0.98 { low += 1 }
+            if low > 0 { g.lowAny += dt }
+            g.lowCard += dt * Double(low)
+            g.visCard += dt * Double(visible.count)
+            if g.motionEnd != nil && low == 0 { g.settleMs = (now - g.motionEnd!) * 1000; finish(g, interrupted: false) }
+        }
+        if g.motionEnd == nil && now - lastMove > 0.15 {
+            g.motionEnd = lastMove
+            if mode == 3 { finish(g, interrupted: false) } else { requestRasters(ahead: false) }
+        } else if let end = g.motionEnd, now - end > 5 {
+            finish(g, interrupted: true)
+        }
+    }
+
+    func finish(_ g: GestureStats, interrupted: Bool) {
+        if gesture === g { gesture = nil }
+        if g.intervals.isEmpty { return }
+        let v = g.mode == 3 ? (liveOwn ? "own" : liveAsync ? "ca-async" : "ca") : (useSurfaces ? "iosurface" : "cgimage")
+        let line = g.summary(board: (board.path as NSString).lastPathComponent) + " variant=" + v
+        Log.write(line)
+        lastSummary = line
+        script?.finished(g)
+        updateHud()
+        if mode != 3 { dropOffscreen() }
+    }
+
+    /// Off-screen cards go back to their base bitmap, so memory stays bounded.
+    func dropOffscreen() {
+        let vis = Set(visible)
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        for i in cardLayers.indices where !vis.contains(i) && rasterScale[i] > baseScale[i] && !inFlight[i] {
+            cardLayers[i].contents = baseImage[i]; rasterScale[i] = baseScale[i]
+        }
+        CATransaction.commit()
+    }
+
+    /// Re-rasterise visible cards off the main thread; the old bitmap stays until the new one is ready.
+    func requestRasters(ahead: Bool) {
+        let target = z * backing
+        let gen = generation
+        let surfaces = useSurfaces
+        for i in visible where !inFlight[i] {
+            let c = board.cards[i]
+            let best = Render.cappedScale(c, target)
+            let r = rasterScale[i]
+            guard r < best * 0.98 || r > target * 2.5 else { continue }
+            let want = Render.cappedScale(c, ahead && zoomingIn ? target * 1.3 : target)
+            inFlight[i] = true
+            pool.addOperation { [weak self] in
+                let t0 = CACurrentMediaTime()
+                let img: Any? = surfaces ? Render.rasterSurface(c, scale: want) : Render.raster(c, scale: want)
+                let ms = (CACurrentMediaTime() - t0) * 1000
+                DispatchQueue.main.async {
+                    guard let self, self.generation == gen else { return }
+                    self.inFlight[i] = false
+                    CATransaction.begin(); CATransaction.setDisableActions(true)
+                    self.cardLayers[i].contents = img
+                    CATransaction.commit()
+                    self.rasterScale[i] = want
+                    if let g = self.gesture { g.rasters += 1; g.rasterMs.append(ms) }
+                }
+            }
+        }
+    }
+
+    // MARK: live drawing (mode 3)
+
+    func draw(_ layer: CALayer, in ctx: CGContext) {
+        guard layer === live, board != nil, mode == 3, !liveOwn else { return }
+        let t0 = CACurrentMediaTime()
+        drawVisible(ctx)
+        gesture?.drawMs.append((CACurrentMediaTime() - t0) * 1000)
+    }
+
+    // MARK: HUD
+
+    func layoutHud() {
+        hud.frame = CGRect(x: 12, y: bounds.height - 12 - 76, width: min(bounds.width - 24, 1180), height: 76)
+    }
+
+    func updateHud() {
+        guard board != nil else { return }
+        let fps = window?.screen?.maximumFramesPerSecond ?? 0
+        let variant = mode == 3 ? (liveOwn ? "(own surface)" : liveAsync ? "(CA, drawsAsynchronously)" : "(CA backing store)")
+            : (useSurfaces ? "(IOSurface)" : "(CGImage)")
+        hud.string = """
+         mode \(mode) \(Canvas.modeNames[mode]!)\(variant)   1 settle · 2 ahead · 3 live · c live: own surface / CA · a async · s IOSurface / CGImage · f fit · ←/→ · b bench
+         board \(boardIndex + 1)/\(boards.count) \((board.path as NSString).lastPathComponent)  cards \(board.cards.count)  display \(fps) Hz
+         zoom \(String(format: "%.2f", z))  visible \(visible.count)
+         last: \(lastSummary.split(separator: " ").dropFirst(2).joined(separator: " "))
+        """
+    }
+}
+
+extension Canvas {
+    /// Renders the view's layer tree into a PNG (for checking the drawing without screen-recording permission).
+    func snapshot(to path: String) {
+        let s = backing
+        let w = Int(bounds.width * s), h = Int(bounds.height * s)
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        else { return }
+        ctx.scaleBy(x: s, y: s)
+        layer!.render(in: ctx)
+        guard let img = ctx.makeImage(), let dest = CGImageDestinationCreateWithURL(URL(fileURLWithPath: path) as CFURL, "public.png" as CFString, 1, nil) else { return }
+        CGImageDestinationAddImage(dest, img, nil)
+        CGImageDestinationFinalize(dest)
+    }
+}
