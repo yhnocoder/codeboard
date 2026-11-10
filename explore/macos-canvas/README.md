@@ -15,7 +15,16 @@ Variants for comparison: `--ca` (mode 3 into the layer's CA backing store), `--a
 
 Keys: `1` settle, `2` ahead, `3` live, `4` tiles, `c` live via own surface / CA backing store, `a` drawsAsynchronously,
 `s` IOSurface / CGImage rasters, `f` fit, `←` `→` previous / next board, `⌘O` open a board, `b` bench this board.
-Two-finger scroll pans, pinch or ⌘-scroll zooms around the pointer.
+Two-finger scroll pans, pinch or ⌘-scroll zooms around the pointer, up to 200 % (`z` toggles 300 %; `--max-zoom`);
+a pinch past the limit stretches a little (rubber band) and springs back.
+
+Fast motion (`--no-shaping`, `--no-blur` to start without them):
+- `v` speed shaping. With the fingers on the trackpad movement is 1:1 up to the knee (default 1500 pt/s, `[` `]`) and
+  compressed softly above it (tanh towards 1.6× the knee); nothing is buffered, so no latency is added. Momentum after
+  the fingers lift uses 0.6× the knee and decays as exp(−t / friction) (default 0.35 s, `,` `.`).
+- `m` motion blur. A CIMotionBlur on the canvas layer (layer filters, rendered by the window server on the GPU) along
+  the direction of motion, radius = strength (default 0.5, `-` `=`) × the per-frame displacement above 12 pt (1440 pt/s at
+  120 Hz); it rises at once and fades over a few frames, and the filter is removed at rest.
 
 Modes:
 

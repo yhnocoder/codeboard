@@ -17,6 +17,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             modes = args[i + 1].split(separator: ",").compactMap { Int($0) }; args.removeSubrange(i...i + 1)
         }
         if let i = args.firstIndex(of: "--async") { args.remove(at: i); asyncLive = true }
+        var maxZoom: CGFloat = 2, shaping = true, blur = true
+        if let i = args.firstIndex(of: "--max-zoom"), i + 1 < args.count { maxZoom = CGFloat(Double(args[i + 1]) ?? 2); args.removeSubrange(i...i + 1) }
+        if let i = args.firstIndex(of: "--no-shaping") { args.remove(at: i); shaping = false }
+        if let i = args.firstIndex(of: "--no-blur") { args.remove(at: i); blur = false }
         if let i = args.firstIndex(of: "--ca") { args.remove(at: i); caLive = true }
         if let i = args.firstIndex(of: "--cgimage") { args.remove(at: i); cgimage = true }
         args.removeAll { $0.hasPrefix("-") }  // Launch Services' own arguments
@@ -33,6 +37,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         canvas.vault = vault
         canvas.boards = Board.list(vault: vault)
         canvas.liveAsync = asyncLive
+        canvas.maxZoom = maxZoom
+        canvas.shaping = shaping
+        canvas.blurOn = blur
         canvas.liveOwn = !caLive && !asyncLive
         canvas.useSurfaces = !cgimage
         window.contentView = canvas

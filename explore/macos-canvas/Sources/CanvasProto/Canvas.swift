@@ -36,6 +36,27 @@ final class Canvas: NSView, CALayerDelegate {
     var useSurfaces = true   // modes 1–2 hand finished rasters to CA as IOSurfaces (true) or CGImages (false)
     var liveSurfaces: [IOSurface] = []
     var liveNext = 0
+    var maxZoom: CGFloat = 2
+    // Speed shaping: 1:1 below `knee` (pt/s); above it the speed is compressed softly towards knee + soft (tanh), with
+    // no buffering and so no added latency. Momentum (after the fingers lift) uses a lower knee and extra friction.
+    var shaping = true
+    var knee: CGFloat = 1500
+    var friction: Double = 0.35        // momentum gain decays as exp(-t / friction s); 0 = system momentum untouched
+    var lastScrollTs = 0.0
+    var momentumStart = 0.0
+    // Motion blur: a CIMotionBlur on the canvas while it moves faster than `blurFrom` pt per frame.
+    var blurOn = true
+    var blurStrength: CGFloat = 0.5    // blur radius (pt) per pt of per-frame displacement above blurFrom
+    let blurFrom: CGFloat = 12        // 1440 pt/s at 120 Hz: above ordinary reading pans
+    var blurRadius: CGFloat = 0
+    var blurAngle: CGFloat = 0
+    var blurCount = 0                  // frames drawn with blur in the current gesture
+    let content = CALayer()            // the canvas (world, live, world2) the blur applies to; HUD and probe outside
+    // Rubber band past the zoom limit
+    var pinchRaw: CGFloat = 0
+    var springBack: CGPoint?
+    var springAnchor = CGPoint.zero
+    var lastCam = (x: CGFloat(0), y: CGFloat(0), z: CGFloat(1))
     var cardTiles: [CardTiles] = []
     var tileBytes = 0
     var lastMemSample = 0.0
@@ -84,7 +105,11 @@ final class Canvas: NSView, CALayerDelegate {
         wantsLayer = true
         layer = CALayer()
         layer!.backgroundColor = Render.boardBg
-        layer!.addSublayer(world)
+        layerUsesCoreImageFilters = true
+        content.anchorPoint = .zero
+        content.actions = ["filters": NSNull(), "bounds": NSNull(), "position": NSNull()]
+        layer!.addSublayer(content)
+        content.addSublayer(world)
         world.anchorPoint = .zero
         world.frame = .zero
         for s in [sectionsLayer, linksLayer] {
@@ -98,10 +123,10 @@ final class Canvas: NSView, CALayerDelegate {
         live.isOpaque = false
         live.needsDisplayOnBoundsChange = true
         live.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull()]
-        layer!.addSublayer(live)
+        content.addSublayer(live)
         world2.anchorPoint = .zero
         world2.frame = .zero
-        layer!.addSublayer(world2)
+        content.addSublayer(world2)
         if let dev = MTLCreateSystemDefaultDevice() {
             probe.device = dev
             probe.pixelFormat = .bgra8Unorm
@@ -147,6 +172,7 @@ final class Canvas: NSView, CALayerDelegate {
         super.layout()
         CATransaction.begin(); CATransaction.setDisableActions(true)
         live.frame = bounds
+        content.frame = bounds
         layoutHud()
         CATransaction.commit()
         applyCamera()
@@ -302,13 +328,51 @@ final class Canvas: NSView, CALayerDelegate {
     /// Board point under a view point (view y up).
     func boardPoint(_ p: CGPoint) -> CGPoint { CGPoint(x: camX + p.x / z, y: camY + (bounds.height - p.y) / z) }
 
-    func zoom(by f: CGFloat, at p: CGPoint) {
-        let nz = min(max(z * f, fitZoom * 0.5), 8)
+    /// Past the limit the zoom follows the fingers ever more stiffly (rubber band), and springs back when they lift.
+    func rubber(_ raw: CGFloat) -> CGFloat {
+        let top = max(maxZoom, fitZoom), bottom = fitZoom * 0.5
+        if raw > top { return top * (1 + 0.15 * tanh(log(raw / top) / 0.15 / 2)) }
+        if raw < bottom { return bottom / (1 + 0.15 * tanh(log(bottom / raw) / 0.15 / 2)) }
+        return raw
+    }
+
+    func zoom(by f: CGFloat, at p: CGPoint, pinching: Bool = false) {
+        let nz: CGFloat
+        if pinching {
+            if pinchRaw == 0 { pinchRaw = z }
+            pinchRaw *= f
+            nz = rubber(pinchRaw)
+        } else {
+            nz = min(max(z * f, fitZoom * 0.5), max(maxZoom, fitZoom))
+        }
+        springAnchor = p
         let b = boardPoint(p)
         zoomingIn = nz > z
         z = nz
         camX = b.x - p.x / z
         camY = b.y - (bounds.height - p.y) / z
+        cameraMoved()
+    }
+
+    /// Moves the camera by a screen distance. With shaping on, the speed this step implies is compressed above the
+    /// knee (softly); momentum steps also lose speed with time since the fingers lifted.
+    func pan(_ dx: CGFloat, _ dy: CGFloat, dt: Double, momentum: Bool, sinceLift: Double) {
+        var dx = dx, dy = dy
+        if shaping {
+            let d = hypot(dx, dy)
+            let v = d / CGFloat(max(dt, 1.0 / 240))
+            let k = momentum ? knee * 0.6 : knee
+            let soft = k * 0.6
+            if v > k {
+                let out = k + soft * tanh((v - k) / soft)
+                dx *= out / v; dy *= out / v
+            }
+            if momentum && friction > 0 {
+                let g = CGFloat(exp(-sinceLift / friction))
+                dx *= g; dy *= g
+            }
+        }
+        camX += dx / z; camY += dy / z
         cameraMoved()
     }
 
@@ -326,15 +390,37 @@ final class Canvas: NSView, CALayerDelegate {
             zoom(by: exp(d), at: convert(e.locationInWindow, from: nil))
         } else {
             let k: CGFloat = e.hasPreciseScrollingDeltas ? 1 : 10
-            camX -= e.scrollingDeltaX * k / z
-            camY -= e.scrollingDeltaY * k / z
-            cameraMoved()
+            let ts = e.timestamp
+            let dt = lastScrollTs > 0 ? ts - lastScrollTs : 1.0 / 120
+            lastScrollTs = ts
+            let momentum = !e.momentumPhase.isEmpty
+            if e.momentumPhase.contains(.began) { momentumStart = ts }
+            pan(-e.scrollingDeltaX * k, -e.scrollingDeltaY * k, dt: dt, momentum: momentum, sinceLift: momentum ? ts - momentumStart : 0)
         }
     }
 
     override func magnify(with e: NSEvent) {
         guard script == nil else { return }
-        zoom(by: 1 + e.magnification, at: convert(e.locationInWindow, from: nil))
+        if e.phase.contains(.began) { pinchRaw = z }
+        zoom(by: 1 + e.magnification, at: convert(e.locationInWindow, from: nil), pinching: true)
+        if e.phase.contains(.ended) || e.phase.contains(.cancelled) {
+            let clamped = min(max(z, fitZoom * 0.5), max(maxZoom, fitZoom))
+            if abs(clamped - z) > 1e-4 { springBack = CGPoint(x: clamped, y: 0) }
+            pinchRaw = 0
+        }
+    }
+
+    /// The rubber band settling back to the limit after a pinch.
+    func playSpring() {
+        guard let target = springBack?.x else { return }
+        let nz = abs(target - z) < 0.002 ? target : z + (target - z) * 0.25
+        let p = springAnchor
+        let b = boardPoint(p)
+        z = nz
+        camX = b.x - p.x / z
+        camY = b.y - (bounds.height - p.y) / z
+        if nz == target { springBack = nil }
+        cameraMoved()
     }
 
     override func keyDown(with e: NSEvent) {
@@ -343,6 +429,15 @@ final class Canvas: NSView, CALayerDelegate {
         case "2": mode = 2
         case "3": mode = 3
         case "4": mode = 4
+        case "z": maxZoom = maxZoom == 2 ? 3 : 2; updateHud()
+        case "v": shaping.toggle(); updateHud()
+        case "[": knee = max(500, knee - 250); updateHud()
+        case "]": knee = min(6000, knee + 250); updateHud()
+        case ",": friction = max(0, friction - 0.1); updateHud()
+        case ".": friction = min(2, friction + 0.1); updateHud()
+        case "m": blurOn.toggle(); updateBlur(step: 0, dir: .zero, force: true); updateHud()
+        case "-": blurStrength = max(0.1, blurStrength - 0.1); updateHud()
+        case "=": blurStrength = min(2, blurStrength + 0.1); updateHud()
         case "a": liveAsync.toggle(); modeChanged(); updateHud()
         case "c": liveOwn.toggle(); modeChanged(); updateHud()
         case "s": useSurfaces.toggle(); modeChanged(); updateHud()
@@ -365,14 +460,22 @@ final class Canvas: NSView, CALayerDelegate {
         lastTick = now
         tickStart = CACurrentMediaTime()
         if let s = script { s.step(self, now: CACurrentMediaTime()) }
+        playSpring()
+        if !moved && blurRadius > 0 { updateBlur(step: 0, dir: .zero) }
         if moved {
             moved = false
+            let step = hypot((camX - lastCam.x) * z, (camY - lastCam.y) * z)
+            let zoomed = abs(z - lastCam.z) > 1e-6
+            let dir = CGPoint(x: camX - lastCam.x, y: camY - lastCam.y)
+            lastCam = (camX, camY, z)
+            updateBlur(step: zoomed ? 0 : step, dir: dir)
             if gesture == nil || gesture!.motionEnd != nil {
                 if let g = gesture { finish(g, interrupted: true) }
                 gesture = GestureStats(label: pendingLabel ?? "gesture", mode: mode, refresh: refresh)
                 store.decodeMs = []
             } else if dt > 0 {
                 gesture!.intervals.append(dt)
+                if !zoomed { gesture!.maxStep = max(gesture!.maxStep, step); gesture!.maxSpeed = max(gesture!.maxSpeed, step / CGFloat(dt)) }
             }
             lastMove = now
             if mode == 2 { requestRasters(ahead: true) }
@@ -443,6 +546,33 @@ final class Canvas: NSView, CALayerDelegate {
         if mode == 1 || mode == 2 { dropOffscreen() }
         if mode == 4 { trimTiles() }
         dropOffscreenImages()
+    }
+
+    // MARK: motion blur
+
+    /// Blur radius follows the per-frame displacement above `blurFrom`; it rises at once and fades over a few frames.
+    /// The filter is removed entirely at rest, so it costs nothing then.
+    func updateBlur(step: CGFloat, dir: CGPoint, force: Bool = false) {
+        let target = blurOn ? max(0, step - blurFrom) * blurStrength : 0
+        let prev = blurRadius
+        blurRadius = target >= blurRadius ? target : blurRadius * 0.7 + target * 0.3
+        if blurRadius < 0.3 { blurRadius = 0 }
+        if hypot(dir.x, dir.y) > 0 { blurAngle = atan2(-dir.y, dir.x) }  // view y is up, board y is down
+        guard force || blurRadius != prev else { return }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        if blurRadius == 0 {
+            content.filters = nil
+        } else {
+            if content.filters == nil {
+                let f = CIFilter(name: "CIMotionBlur")!
+                f.name = "blur"
+                content.filters = [f]
+            }
+            content.setValue(blurRadius * backing, forKeyPath: "filters.blur.inputRadius")
+            content.setValue(blurAngle, forKeyPath: "filters.blur.inputAngle")
+            gesture?.blurFrames += 1
+        }
+        CATransaction.commit()
     }
 
     // MARK: memory
@@ -640,9 +770,9 @@ final class Canvas: NSView, CALayerDelegate {
         let variant = mode == 3 ? (liveOwn ? "(own surface)" : liveAsync ? "(CA, drawsAsynchronously)" : "(CA backing store)")
             : (useSurfaces ? "(IOSurface)" : "(CGImage)")
         hud.string = """
-         mode \(mode) \(Canvas.modeNames[mode]!)\(variant)   1 settle · 2 ahead · 3 live · 4 tiles · c live: own surface / CA · a async · s IOSurface / CGImage · f fit · ←/→ · b bench
+         mode \(mode) \(Canvas.modeNames[mode]!)\(variant)   1–4 modes · z 200/300% · v shaping [ ] knee , . friction · m blur - = strength · c live: own surface / CA · a async · s IOSurface / CGImage · f fit · ←/→ · b bench
          board \(boardIndex + 1)/\(boards.count) \((board.path as NSString).lastPathComponent)  cards \(board.cards.count)  display \(fps) Hz
-         zoom \(String(format: "%.2f", z))  visible \(visible.count)   \(memLine)
+         zoom \(String(format: "%.2f", z)) (max \(Int(maxZoom * 100))%)  shaping \(shaping ? "knee \(Int(knee)) pt/s, friction \(String(format: "%.1f", friction)) s" : "off")  blur \(blurOn ? String(format: "%.1f", blurStrength) : "off")  visible \(visible.count)   \(memLine)
          last: \(lastSummary.split(separator: " ").dropFirst(2).joined(separator: " "))
         """
     }
