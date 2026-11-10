@@ -206,12 +206,9 @@ describe("rasterChecks", () => {
     expect(checks.find((c) => c.name === "fit restVP")).toMatchObject({ value: 77, ok: false });
     expect(checks.find((c) => c.name === "fit wastedVP")).toMatchObject({ value: 73, ok: false });
     expect(checks.find((c) => c.name === "fit wasted layers at rest")).toMatchObject({ value: 1, ok: false });
-    // the flight that kept the hint off from half its raster scale to the end rastered every frame (35-37 on the persona board)
-    expect(
-      rasterChecks({ fit: pass({ restVP: 36, wastedVP: 4 }) }, "persona").find((c) => c.name === "fit restVP")?.ok,
-    ).toBe(false);
-    const fixed = rasterChecks({ fit: pass({ restVP: 24, wastedVP: 5 }) }, "persona");
-    expect(fixed.filter((c) => !c.ok)).toEqual([]);
+    // the world rastered at the scale of every frame of the flight (37-45 on the persona board), none of it over 2x
+    const sharp = rasterChecks({ fit: pass({ restVP: 45, wastedVP: 1 }) }, "persona");
+    expect(sharp.filter((c) => !c.ok)).toEqual([]);
   });
   it("passes a board whose passes all have their counts", () => {
     const checks = rasterChecks({ drag: pass(), pan: pass(), stops: pass() }, "persona");

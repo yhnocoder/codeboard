@@ -333,16 +333,21 @@ export type RasterResult = {
  * when the stop below the cut left the board remembering the 250 % raster while Chromium had rastered at 1.0).
  * After the zoom passes it is reported only: the summary columns, laid out at 1/K of the board, keep the scale
  * they were first rastered at under the world's will-change (1:1 at the cut).
+ * Since the world lost its will-change hint (it is rastered at the scale shown on every frame, never stretched as a bitmap:
+ * Canvas.tsx), every zoom step rasters what is in and around the view at its own scale, a small one too: stops stepVP is
+ * 9.8 synthetic and 2.7 persona (2.5-2.9 and 0.47 while a stop zoomed a little was left as it was), and the Fit's flight rasters
+ * each of its frames to the end, persona restVP 37-45 (27-28 before). The budgets hold those numbers; the times did not grow
+ * (zoom work per step 0.91x on the synthetic board).
  */
 export const RASTER_BUDGET = {
-  synthetic: { drag: { stepVP: 2.5 }, stops: { stepVP: 5 }, fit: { restVP: 110, wastedVP: 10 } },
+  synthetic: { drag: { stepVP: 2.5 }, stops: { stepVP: 11 }, fit: { restVP: 110, wastedVP: 10 } },
   persona: {
     drag: { stepVP: 0.25, restVP: 12 },
     dragSnap: { stepVP: 0.25 },
     dragSection: { stepVP: 1 },
     nearCut: { wastedVP: 1 },
-    stops: { stepVP: 1.1 },
-    fit: { restVP: 30, wastedVP: 10 },
+    stops: { stepVP: 3 },
+    fit: { restVP: 50, wastedVP: 10 },
   },
   sharp: ["drag", "pan", "nearCut", "stops", "fit", "inOutIn"],
 } as const;
