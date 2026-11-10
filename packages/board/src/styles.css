@@ -406,18 +406,11 @@ textarea {
   top: 0;
   transform-origin: 0 0;
 }
-/* 世界层一直单独成层，镜头一动就按位图缩放、不重画。停下时 Canvas 视情况给 .settle（放大了、或缩小过了 2 倍，Canvas.tsx）：去掉 will-change 的提示，
-   让浏览器按新比例重新清晰栅格化；.settle 留到下次动为止，再次去掉又是一次等光栅的提交。
-   卡片层显示着、缩放低于 50% 时（摘要切点上面一点）动也不加回提示：加回去浏览器会按设备比例（1.0）栅格化，悬停、平移重画的瓦片多到显存放不下，卡和图上出现空洞。
-   一直带着一个看不出来的 3D 变换（绕 x 轴转 0°），去掉 will-change 时它还是单独一层：退回普通层的话要把整层重画一遍（概览档 ~60ms）。
-   这个 3D 变换不能只在 .settle 时加：加上、去掉都会让浏览器把整个世界层 3 万个节点的绘制属性重走一遍（每次 ~20ms，停下时连掉两帧）。
-   只在动的时候才升层的话，每段手势的第一帧都要把整层重画一遍（~25ms，掉一帧） */
+/* 世界层一直单独成层，但不带 will-change：浏览器每一帧都按当前比例栅格化，视野里的瓦片画好才上屏，所以缩放时字一直是清晰的，
+   不会先拉伸旧位图（糊）、停下再重画（闪）。代价是密集白板缩放时帧率会低一些。
+   一直带着一个看不出来的 3D 变换（绕 x 轴转 0°）让它单独成层：退回普通层的话镜头每动一下都要把整层重画一遍 */
 .world {
-  will-change: transform;
   rotate: x 0deg;
-}
-.world.settle {
-  will-change: auto;
 }
 /* A still picture (BoardOptions.still, state/still.ts): the board as it reads, without what is there to edit it: the link dots
    and ports, the resize grips, the card menus */

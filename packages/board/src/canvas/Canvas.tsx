@@ -1,18 +1,8 @@
-import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, on, untrack } from "solid-js";
+import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, on } from "solid-js";
 import { bounds, keepsLook, twinContent, type AlignOp } from "@codeboard/core";
 import { state, rectOf, cardById, hostOf, placed, placeOf } from "../state/store";
 import { sel } from "../state/selection";
-import {
-  cam,
-  setViewport,
-  viewTracked,
-  camMoving,
-  stillZ,
-  camTarget,
-  camTo,
-  fitRect,
-  flyingOut,
-} from "../state/camera";
+import { cam, setViewport, viewTracked, camMoving, stillZ, camTarget, camTo, fitRect } from "../state/camera";
 import { trackOffscreen } from "../state/cull";
 import { trackSkeletons } from "../state/subboards";
 import { guides, sizeHint, marquee, dragging, carried, dropTarget, walk, editing } from "../state/ui";
@@ -41,27 +31,14 @@ import { still } from "../state/still";
 
 /** The world-extent boxes (.wext, .cshield) reach this far beyond the cards and Sections, aligned to it: enough that a card
  *  nudged outward does not move them, and no more, since every tile of the box within ~3000 px of the viewport is a raster task
- *  at each re-raster of the world (see settle) */
+ *  each time the world is rastered at a new scale */
 const EXT = 512;
 
 /** 正在写的字在屏幕上至少这么大（px） */
 const READ_PX = 11;
 
-/** Shown below this share of the device scale, a layer with the will-change hint keeps the scale it was rastered at when the
- *  hint is put back (Chromium: above it, between it and the device scale, it rasters at the device scale) */
-const HINT_KEEPS = 0.25;
-/** Below this zoom, above the summary cut, the world moves with no hint (see settle): under it Chromium would raster it at the
- *  device scale, over 2× the scale shown. Without the hint a zoom rasters the world at each frame's scale, which the Notes'
- *  prose drawn as bars below it (.world.greek) keeps cheap: drawn as text, the first frames of a pinch at 0.3–0.5 took 30–50 ms
- *  each on a 2× Mac on a board of dense Chinese Notes */
-const HINT_MIN = 0.5;
-/** A zoom that took the hint off below HINT_MIN puts it back only this far above it (see settle): a pinch that wavers
- *  around HINT_MIN would raster the whole world again at each crossing */
-const HINT_BAND = 1.1;
-/** A flight drops the hint (or rasters again under it) a little before it is shown at half the scale it was rastered at: the
- *  raster lags the camera by a frame or two at a flight's speed, and what is rastered under the hint then is drawn further out
- *  (at half, up to a sixth of a Fit's raster on an Ink Wash board was at over 2× the scale it was drawn at, 2–3 % at 1.8) */
-const FLY_HALF = 1.8;
+/** The prose drawn as bars below Simplify Below turns back into text only this far above it (see greek) */
+const GREEK_BAND = 1.1;
 
 export function Canvas() {
   const md = useMd();
@@ -87,107 +64,23 @@ export function Canvas() {
       });
     }),
   );
-  // While the camera moves the world is scaled as a bitmap (styles.css .world: will-change; not below HINT_MIN, see below).
-  // Stopped, .settle drops the hint so Chromium rasters the world again at the new scale, which makes the text crisp but is
-  // not free: the compositor thread creates a raster task for every tile of the world in and around the viewport (hundreds, ~0.4 ms each without a GPU) and
-  // the next commit waits for it: 6–17 ms at 75 % and above, 35–70 ms at 40–60 % on a board of dense Notes (their prose is
-  // most of a tile's raster there), and more when it lands in the middle of a gesture. So the world is rastered again only
-  // when it is magnified (zoomed in past the scale it was rastered at: scaled up, a bitmap is blurry) or minified past 2×
-  // (scaled down it looks right, but the tiles at the old scale take many viewports of memory, and past about 8× Chromium
-  // rasters again on its own, 135 ms, wherever that falls). A stop zoomed out a little, or back where it was, costs nothing.
-  // .settle stays until the next move: taking it off again was a second commit that waited for the same raster.
-  // Below HINT_MIN with the card level shown (just above the summary cut) a move does not put the hint back: Chromium would
-  // raster the world at the device scale (see HINT_KEEPS: 1.0 at 0.3, 11× the pixels shown, 44× on a 2× screen), and every
-  // tile a pan uncovers and every card a hover paints again with it, more than the GPU's tile memory holds: the tiles it cannot
-  // keep were drawn as holes in the cards and images while the pointer moved. There a pan moves the world as it was last
-  // rastered, a zoom rasters it at each frame's scale (at most the viewport's pixels), and a stop minified past 2× is rastered
-  // again like any other. A wheel or pinch that zooms below HINT_MIN under the hint takes it off there, in the middle of the
-  // gesture: kept down to 0.3, the world stayed rastered at the device scale, and the stop's raster at its own scale needed
-  // those tiles and the new ones at once, more than the GPU's tile memory holds (a Warm Ink board with pictures in view): the
-  // board showed blank for 1–3 frames about 0.2 s after the stop (Linda 11-08). The same gesture puts it back only above
-  // HINT_MIN × HINT_BAND, and not when it crosses into the summary level (cardsGone), where it would raster the world at the
-  // device scale under the switch's mist. Pushing into the detent is not a stop (summary.ts: the camera is held at the cut while the gesture
-  // goes on), so no re-raster lands under the switch's mist.
-  // A camera flight that zooms out (Fit to Window, a reveal, the zoom keys) takes the hint off once it is shown at about half
-  // its raster scale (FLY_HALF): under the hint every tile that comes into view on the way is rastered at the scale the flight
-  // started from (Fit from 100 % on a board of 40 dense Notes: 43–77 viewports, 31–73 of them at over 2× the scale shown, the
-  // links and cards layer at 1.0 while shown at 0.16–0.5), without it at the scale of each frame (35–40 viewports, 3–4 over
-  // 2×). Chromium rasters a layer with the hint shown between a quarter of the device scale and the device scale at the device
-  // scale, so putting the hint back there would raster the world at 1.0 again; shown below a quarter (HINT_KEEPS) the layer
-  // keeps the scale it was rastered at. So from there on the flight takes the hint off for one frame each time the scale
-  // about halves and puts it back, rastering the world a few times instead of at every frame (Fit from 100 % to 0.13: every
-  // frame from 0.55 to 0.25, then at 0.25 and 0.14; on real study boards Fit to 0.22–0.24 rastered 14–47 viewports instead of
-  // 39–66). A wheel, a drag or a fling that takes over puts the hint back (above HINT_MIN, see
-  // above). Where a flight that put the hint back stops, the world is rastered once more at the scale it stopped at: what came into view under the hint (the summaries, laid out at
-  // 1 / K and shown above a quarter) was rastered at the device scale
-  const [settle, setSettle] = createSignal(false);
-  const hintable = (z: number) => z >= HINT_MIN || cardsGone();
-  // the hint back on above HINT_KEEPS, Chromium rasters the world at the device scale (1.0 here) at least
-  const hint = () => {
-    setSettle(false);
-    if (cam.z > HINT_KEEPS) rasterZ = Math.max(rasterZ, 1);
-  };
-  let rasterZ = Math.max(cam.z, 1),
-    moving = false,
-    unhinted = false,
-    rehinted = false,
-    dropped = false,
-    pulse = 0;
-  createEffect(() => {
-    const m = camMoving(),
-      z = cam.z;
-    untrack(() => {
-      if (m) {
-        if (!moving) {
-          moving = true;
-          unhinted = rehinted = dropped = false;
-          pulse++;
-        }
-        const out = flyingOut();
-        if (out && (unhinted || z < rasterZ / FLY_HALF)) {
-          rasterZ = z;
-          setSettle(true);
-          if (z > HINT_KEEPS) unhinted = true;
-          else {
-            unhinted = false;
-            rehinted = true;
-            const k = ++pulse;
-            requestAnimationFrame(() => k === pulse && setSettle(false));
-          }
-        } else if (unhinted && !out) {
-          unhinted = false;
-          if (hintable(z)) hint();
-        } else if ((!out || !rehinted) && settle() && (dropped ? z >= HINT_MIN * HINT_BAND : hintable(z))) {
-          dropped = false;
-          hint();
-        } else if (!out && !settle() && !hintable(z)) {
-          dropped = true;
-          rasterZ = z;
-          setSettle(true);
-        }
-        return;
-      }
-      if (!moving) return;
-      moving = false;
-      pulse++;
-      if (z > rasterZ * 1.04 || z < rasterZ / 2 || rehinted) {
-        rasterZ = z;
-        setSettle(true);
-      }
-    });
-  });
-  // Zoomed out past Simplify Below (styles.css .world.greek): taken at a stop (stillZ), never in the middle of a zoom, at
-  // once (a GREEK_LAG after the stop did not help the blank frame Linda saw on a Mac, which was the hint's raster, and made
-  // the bars come 1–2 s late). No fade: a compositor fade puts the Notes' bodies on layers of their own and back, which
-  // flashed the board
-  // a still picture is never redrawn mid-gesture: its prose stays text at every zoom
-  const greek = createMemo(() => !still() && stillZ() < state.host.settings.simpleBelow && !cardsGone());
-  // Without the hint a move of the world by a fraction of a device pixel rasters it again (its tiles are drawn at the new
-  // offset): a trackpad pan or a fling at 0.34, 1.4 viewports a step. Settled, it moves by whole device pixels
-  // A still picture has no gestures to keep cheap: the world is always rastered at the scale it is shown at
-  const crisp = () => settle() || still();
+  // The world is always rastered at the scale it is shown at (styles.css .world: no will-change hint): a zoom rasters it again
+  // at each frame's scale, and Chromium shows a frame only once the tiles in view are drawn, so a frame can come late but is
+  // never a stretched bitmap (blurry) and never blank. Scaled as a bitmap while it moved and rastered again at the stop, a
+  // zoom was faster and blurry, the stop flashed, and the tiles kept at the old scale overran the GPU's tile memory (holes)
+  // Zoomed out past Simplify Below (styles.css .world.greek): the Notes' prose is drawn as bars, which keeps each frame's
+  // raster of a zoom cheap there. Taken from the camera as it moves, so a zoom in from below shows the text as soon as it is
+  // past it, not bars at 130 % until the stop; back only a little above it (GREEK_BAND), so a pinch that wavers around it does
+  // not switch at every step. No fade: a compositor fade puts the Notes' bodies on layers of their own and back, which
+  // flashed the board. A still picture's prose stays text at every zoom
+  const greek = createMemo<boolean>((was) => {
+    if (still() || cardsGone()) return false;
+    const at = state.host.settings.simpleBelow;
+    return cam.z < at || (was && cam.z < at * GREEK_BAND);
+  }, false);
+  // A move of the world by a fraction of a device pixel rasters it again (its tiles are drawn at the new offset): it moves by
+  // whole device pixels
   const px = (v: number) => {
-    if (!crisp()) return v;
     const d = window.devicePixelRatio || 1;
     return Math.round(v * d) / d;
   };
@@ -287,7 +180,6 @@ export function Canvas() {
         class="world"
         classList={{
           moving: camMoving(),
-          settle: crisp(),
           greek: greek(),
         }}
         style={{ transform: `translate(${px(cam.x)}px, ${px(cam.y)}px) scale(${cam.z})` }}
