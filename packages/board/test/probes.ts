@@ -111,8 +111,14 @@ export function pageMeasure(): PageMeasure {
 // snapshot of its layer tree at each draw (LayerTreeHostImpl:snapshot: every layer with its ideal and raster scale, every tile
 // with its content rect), and the RasterTask of each tile rastered (its tile id and layer id)
 
-/** A tile in a snapshot (the fields read here) */
-type SnapTile = { id: string; layer_id: number; content_rect: number[]; contents_scale: number };
+/** A tile in a snapshot (the fields read here): gpu_memory_usage is the bytes of its resource (0 for a solid colour) */
+type SnapTile = {
+  id: string;
+  layer_id: number;
+  content_rect: number[];
+  contents_scale: number;
+  gpu_memory_usage?: number;
+};
 /** A layer in a snapshot (the fields read here) */
 type SnapLayer = {
   layer_id: number;
@@ -127,7 +133,28 @@ export type Snapshot = {
   active_tiles?: SnapTile[];
   active_tree?: { layers?: SnapLayer[] };
   device_viewport_size?: { width: number; height: number };
+  /** the tile manager: whether its last pass over the tiles ran out of memory for some it wanted, and its memory limits */
+  tile_manager_basic_state?: {
+    did_oom_on_last_assign?: boolean;
+    global_state?: { hard_memory_limit_in_bytes?: number; soft_memory_limit_in_bytes?: number };
+  };
 };
+
+/** The tile memory of a snapshot: the active tiles' resources (MB, and viewports of 4-byte device pixels), the tile manager's
+ *  hard limit (MB) and whether it ran out of memory for tiles it wanted (it then draws those as nothing: on a GPU, the blank
+ *  frames and holes R2 is about) */
+export function tileMemory(s: Snapshot) {
+  let bytes = 0;
+  for (const t of s.active_tiles ?? []) bytes += t.gpu_memory_usage ?? 0;
+  const vs = s.device_viewport_size;
+  const tm = s.tile_manager_basic_state;
+  return {
+    mb: +(bytes / 1048576).toFixed(1),
+    vp: vs ? +(bytes / 4 / (vs.width * vs.height)).toFixed(2) : 0,
+    limitMB: +((tm?.global_state?.hard_memory_limit_in_bytes ?? 0) / 1048576).toFixed(0),
+    oom: !!tm?.did_oom_on_last_assign,
+  };
+}
 /** The trace events read here */
 export type TraceEvent = { name: string; ph?: string; ts: number; dur?: number; args?: any };
 
@@ -292,6 +319,13 @@ export type RasterResult = {
   /** RasterTasks in the pass's windows, with or without a known tile, and the layer snapshots drawn: what the counts rest on */
   tasks: number;
   snapshots: number;
+  /** the active tiles' memory (tileMemory): the most any snapshot of the pass held, in MB and viewports, and at rest; the tile
+   *  manager's hard limit; the snapshots in which it had run out of memory for tiles it wanted */
+  tileMBMax: number;
+  tileVPMax: number;
+  tileMBRest: number;
+  tileLimitMB: number;
+  oomSnapshots: number;
 };
 
 /**
@@ -388,6 +422,8 @@ export function rasterChecks(
       limit: TRACE_BUDGET.unknownShare,
       ok: share <= TRACE_BUDGET.unknownShare,
     });
+    // out of tile memory, the compositor draws the tiles it could not keep as nothing: on a GPU, a blank frame or a hole
+    out.push({ name: `${pass} snapshots out of tile memory`, value: r.oomSnapshots, limit: 0, ok: !r.oomSnapshots });
   }
   for (const [pass, limits] of Object.entries(budget[board]))
     for (const [k, limit] of Object.entries(limits as Record<string, number>)) {

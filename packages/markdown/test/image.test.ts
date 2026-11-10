@@ -142,6 +142,11 @@ describe("image render", () => {
     expect(im.getAttribute("draggable")).toBe("false");
     expect(im.hasAttribute("width")).toBe(false);
   });
+  it("with eagerImages, loads at once and draws only decoded", () => {
+    const im = imgOf(createMarkdown({ eagerImages: true }).render("![cat](assets/c.png)"));
+    expect(im.hasAttribute("loading")).toBe(false);
+    expect(im.getAttribute("decoding")).toBe("sync");
+  });
   it("uses the resolver's address and size, so the space is reserved before the image loads", () => {
     markdown.setImageResolver((src) => {
       const m = /^assets\/(.*-(\d+)x(\d+)\.\w+)$/.exec(src);

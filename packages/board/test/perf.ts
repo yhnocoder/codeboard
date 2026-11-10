@@ -32,6 +32,7 @@ import {
   rasterWindows,
   scaleHits,
   snapshotsOf,
+  tileMemory,
   type RasterResult,
   type TraceEvent,
 } from "./probes";
@@ -452,13 +453,14 @@ const med = (a: number[]) => {
   const s = [...a].sort((x, y) => x - y);
   return s[Math.floor(s.length / 2)];
 };
-const p95 = (a: number[]) => {
+const pct = (a: number[], q: number) => {
   const s = [...a].sort((x, y) => x - y);
-  return s[Math.min(s.length - 1, Math.floor(s.length * 0.95))];
+  return s[Math.min(s.length - 1, Math.floor(s.length * q))];
 };
+const p95 = (a: number[]) => pct(a, 0.95);
 /**
  * Frames: main-thread task durations (>1 ms); frameMax over 16.7 means a dropped frame, over16 counts such tasks (over8: over 8.3 ms, a dropped frame at 120 fps). frameP95 is the 95th
- * percentile of all the tasks. After steps(..., perStep) (frameOf "stepMedian") it is frameMedian instead, the median of each step's frame (its longest task), with
+ * percentile of all the tasks (frameP99 the 99th). After steps(..., perStep) (frameOf "stepMedian") it is frameMedian instead, the median of each step's frame (its longest task), with
  * the frames themselves in stepFrames: for steps that wait, where the waits' own frames outnumber the steps' (hover: 12 steps that wait 250–500 ms each for the
  * cross-fades, ~125 tasks of which the 6 lifts are 5%, so a p95 over all tasks fell on either side of them by how many fade frames the runner drew: 12.7 → 19.6 ms,
  * same code). A p95 over 12 steps is their longest one, which one stray task decides: 18.9–37.2 ms in four runs of the same commit, a 1.60x hover "regression"
@@ -471,7 +473,10 @@ const sum = (m: M) => ({
   ...m.parts,
   ...(m.frames
     ? { frameOf: "stepMedian", frameMedian: +med(m.frames).toFixed(1), stepFrames: m.frames.map((f) => +f.toFixed(1)) }
-    : { frameP95: +p95(m.tasks?.length ? m.tasks : [0]).toFixed(1) }),
+    : {
+        frameP95: +p95(m.tasks?.length ? m.tasks : [0]).toFixed(1),
+        frameP99: +pct(m.tasks?.length ? m.tasks : [0], 0.99).toFixed(1),
+      }),
   frameMax: +Math.max(0, ...(m.tasks ?? [])).toFixed(1),
   over16: (m.tasks ?? []).filter((t) => t > 16.7).length,
   over8: (m.tasks ?? []).filter((t) => t > 8.3).length,
@@ -1276,6 +1281,7 @@ async function rasterPass(
   const tag = (l: (typeof hits)[number]) =>
     `${l.name.replace(/^Layout\w+ (\([^)]*\) )?/, "")} ${l.w}×${l.h} raster ${l.raster} shown ${l.ideal} (${l.ratio}x)`;
   const vps = (px: number) => +(px / vp).toFixed(2);
+  const mem = snaps.map(({ s }) => tileMemory(s));
   const r: RasterResult = {
     stepVP: vps(medianOf(st.map((x) => x.px))),
     stepVPMax: vps(Math.max(0, ...st.map((x) => x.px))),
@@ -1290,6 +1296,11 @@ async function rasterPass(
     unknown,
     tasks,
     snapshots: snaps.length,
+    tileMBMax: Math.max(0, ...mem.map((m) => m.mb)),
+    tileVPMax: Math.max(0, ...mem.map((m) => m.vp)),
+    tileMBRest: mem.at(-1)?.mb ?? 0,
+    tileLimitMB: mem.at(-1)?.limitMB ?? 0,
+    oomSnapshots: mem.filter((m) => m.oom).length,
   };
   if (process.argv.includes("--steps")) {
     console.log(`  raster ${name}: ${JSON.stringify(r)}`);

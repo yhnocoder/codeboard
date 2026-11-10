@@ -8363,7 +8363,8 @@ mark.wdiff {
    hidden with visibility or content-visibility was styled, laid out and rastered whole in the frame that showed it again.
    The swapped-out card level asleep (state/summary.ts: far below the cut, or under a moving camera) is clipped to nothing: a
    clip empties the cull rect under it, so none of its cards is painted (an opacity of 0 alone leaves a layer with the hint
-   painted, and painted again on every frame of a zoom at the summary level), and waking it is a repaint, not a restyle. The hint
+   painted, and painted again on every frame of a zoom at the summary level), and waking it is a repaint, not a restyle; the
+   switch back wakes it under the mist a few frames before it shows (state/summary.ts READY_FRAMES), never in that frame. The hint
    stays on it throughout: taking it off made Chromium paint and composite the whole level again, 500 ms in the frame the switch
    ended */
 .cardlay,

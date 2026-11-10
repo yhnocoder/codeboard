@@ -1,7 +1,10 @@
 // 屏幕外的卡把内容（.cface）藏起来，卡片本身（底色、阴影）照常画。
 // 镜头动的时候 Chromium 会把世界层上下左右各多画 4000px，241 张卡的一行行代码全要重新分层（缩到 60% 时每帧 ~14ms）；
 // 藏掉屏幕外的以后每帧 ~3ms。离屏幕一整屏以外才藏，进到半屏以内就显示，所以平移过来时内容早就画好了。
-// 显示一张卡要算它的样式、画它的代码（~1–3ms），所以一帧最多显示 SHOW 张（离屏幕近的先；已经在屏幕里的不限）；藏只在镜头停下以后做，
+// 藏着的卡绝不在屏幕里，也不在进到屏幕的那一帧才显示（那一帧的瓦片要现画，GPU 显存紧时那一帧是空白的）：镜头照上一帧的动法
+// 下一两帧会看到的（state/lead.ts leadView(SURE)）算已经在屏幕里，这一帧就显示，不排队；再下一帧会看到的（leadView()）排在队伍最前。
+// 显示一张卡要算它的样式、画它的代码（~1–3ms），所以一帧最多显示 SHOW 张（几帧以后要进屏幕的先，再按离屏幕远近；已经在屏幕里、
+// 下一两帧要进屏幕的不限：快速缩小时一帧进来一整圈卡，全部不排队的话那一帧要画很久）；藏只在镜头停下以后做，
 // 也分帧，一帧最多 HIDE 张：缩小后停下时一次藏一两百张，那一帧要 100+ ms（visibility 会继承，藏一张要把里面几百个节点的样式重算一遍）。
 // 用 visibility：布局不变，measure.ts 照常能量到行的位置
 // 卡片这一层换成摘要以后（summary.ts cardsAsleep）等镜头停下来再做，把屏幕里的卡在看不见的那一层下面先准备好，换回卡片时第一帧
@@ -15,6 +18,7 @@ import { editing, dragging } from "./ui";
 import { cardsAsleep } from "./summary";
 import { offscreen, setOffscreen } from "./offscreen";
 import { zlog, zlogging } from "./zoomlog";
+import { SURE, leadView, meets } from "./lead";
 
 // 一帧最多显示 SHOW 份：代码卡算 1 份；Note 算 1.5 份（表格、高亮的代码、勾选框、公式，画起来比一张代码卡还贵），一帧最多两张
 const SHOW = 3,
@@ -59,7 +63,9 @@ export function trackOffscreen() {
       z = cam.z,
       x = cam.x,
       y = cam.y,
-      moving = camMoving();
+      moving = camMoving(),
+      next = leadView(SURE),
+      lead = leadView();
     const ed = editing()?.id,
       dr = dragging(),
       keep = new Set(sel.cards);
@@ -76,12 +82,14 @@ export function trackOffscreen() {
       // 显示：进到屏幕外半屏以内；隐藏：离开一整屏以外（中间这段不变，免得在边上来回切）
       const m = was ? 0.5 : 1;
       const far = R < -w * m || L > w * (1 + m) || B < -h * m || T > h * (1 + m);
-      const free = !keep.has(id) && ed !== id && !dr.has(id);
+      // 镜头几帧以后会看到的（快速平移、缩小、飞过去时会离屏幕半屏以外）：当作已经在屏幕里
+      const soon = meets(lead, L, T, R, B);
+      const free = !keep.has(id) && ed !== id && !dr.has(id) && !soon;
       const hidden = far && free;
       away.push([id, free && (R < -w * 0.5 || L > w * 1.5 || B < -h * 0.5 || T > h * 1.5)]);
-      // 已经进到屏幕里的（平移极快时会有）不排队，这一帧就显示，不能让人看到空卡
+      // 已经在屏幕里、下一两帧会进来的不排队，这一帧就显示，不能让人看到空卡（-2）；再下一帧会进来的排最前（-1）
       if (was && !hidden) {
-        const d = R > 0 && L < w && B > 0 && T < h ? -1 : Math.hypot((L + R) / 2 - w / 2, (T + B) / 2 - h / 2);
+        const d = meets(next, L, T, R, B) ? -2 : soon ? -1 : Math.hypot((L + R) / 2 - w / 2, (T + B) / 2 - h / 2);
         show.push([id, d, cost]);
       } else if (!was && hidden && !moving) hide.push(id);
     }
@@ -89,7 +97,7 @@ export function trackOffscreen() {
     let n = 0,
       k = 0;
     for (const [id, d, cost] of show) {
-      if (d >= 0 && n + cost > SHOW) break;
+      if (d > -2 && n + cost > SHOW) break;
       setOffscreen(id, false);
       n += cost;
       k++;
