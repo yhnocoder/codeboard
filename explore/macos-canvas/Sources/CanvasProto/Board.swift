@@ -9,9 +9,11 @@ final class Card {
     let title: String
     let body: String
     var rect: CGRect  // board coordinates, y down
-    var image: CGImage?
+    var imagePath: String?            // an Image card's file
     /// Body text laid out at the card's width in board units; immutable, shared by every thread that draws the card.
-    var frame: CTFrame?
+    var frames: [CTFrame] = []
+    /// Where images sit, in board coordinates (y down): Image cards and images inside Notes. Drawn as their own layers.
+    var images: [(path: String, rect: CGRect)] = []
 
     init(id: String, kind: Kind, title: String, body: String, rect: CGRect) {
         self.id = id; self.kind = kind; self.title = title; self.body = body; self.rect = rect
@@ -64,9 +66,12 @@ final class Board {
                             rect: CGRect(x: x, y: y, width: w, height: h ?? mh ?? 0))
             case "image":
                 card = Card(id: id, kind: .image, title: "", body: "", rect: CGRect(x: x, y: y, width: w, height: h ?? mh ?? 0))
-                if let src = c["src"] as? String, let img = NSImage(contentsOfFile: "\(vault)/assets/\(src)") {
-                    card.image = img.cgImage(forProposedRect: nil, context: nil, hints: nil)
-                    if card.rect.height == 0, img.size.width > 0 { card.rect.size.height = w * img.size.height / img.size.width }
+                if let src = c["src"] as? String {
+                    let path = "\(vault)/assets/\(src)"
+                    card.imagePath = path
+                    if card.rect.height == 0, let px = ImageStore.pixelSize(path), px.width > 0 {
+                        card.rect.size.height = w * px.height / px.width
+                    }
                 }
             case "board":
                 card = Card(id: id, kind: .board, title: "Board", body: c["board"] as? String ?? "",
@@ -75,7 +80,7 @@ final class Board {
                 card = Card(id: id, kind: .note, title: "", body: "(\(c["kind"] as? String ?? "?"))",
                             rect: CGRect(x: x, y: y, width: w, height: h ?? mh ?? 80))
             }
-            Render.layout(card)
+            Render.layout(card, vault: vault)
             cards.append(card)
         }
         for s in d["sections"] as? [[String: Any]] ?? [] {

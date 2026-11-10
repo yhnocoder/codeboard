@@ -43,14 +43,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let start = isDir.boolValue ? 0 : (canvas.boards.firstIndex(of: target) ?? 0)
         canvas.load(start)
         if let n = bench {
+            window.level = .floating  // a covered window gets no display-link callbacks; keep the bench on top
+            window.orderFrontRegardless()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                self.canvas.startBench(boards: Array(0..<min(n, self.canvas.boards.count)), modes: modes, quit: true)
+                self.canvas.startBench(boards: Array(start..<min(start + n, self.canvas.boards.count)), modes: modes, quit: true)
             }
         }
         buildMenu()
         if let dir = ProcessInfo.processInfo.environment["CANVAS_SNAP"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                self.canvas.zoom(by: 3, at: CGPoint(x: self.canvas.bounds.midX, y: self.canvas.bounds.midY))
+                self.canvas.zoom(by: 1.5, at: CGPoint(x: self.canvas.bounds.midX, y: self.canvas.bounds.midY))
                 self.canvas.resetRasters()
                 self.canvas.snapshot(to: "\(dir)/snap-1.png")
                 self.canvas.mode = 3

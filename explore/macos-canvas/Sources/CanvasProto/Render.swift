@@ -27,22 +27,65 @@ enum Render {
                       height: max(c.rect.height - top - 2 * Board.pad, 1))
     }
 
-    /// Lays the body out once; cards without a stored height get one from their text.
-    static func layout(_ c: Card) {
-        guard c.kind != .image, !c.body.isEmpty else {
+    static let imageRef = try! NSRegularExpression(pattern: #"!\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)"#)
+
+    /// Lays the body out once: text blocks and images stacked top to bottom (images at most the body width and their
+    /// own pixel width). Cards without a stored height get one from their content.
+    static func layout(_ c: Card, vault: String) {
+        if c.kind == .image {
             if c.rect.height == 0 { c.rect.size.height = 120 }
+            if let p = c.imagePath { c.images = [(p, c.rect.insetBy(dx: 1, dy: 1))] }
             return
         }
-        let s = NSAttributedString(string: c.body, attributes: c.kind == .code
-            ? attrs(mono, ink, lineHeight: 16) : attrs(sans, ink, lineHeight: 20))
-        let fs = CTFramesetterCreateWithAttributedString(s)
         let top = c.kind == .code || c.kind == .board ? Board.header : 0
-        if c.rect.height == 0 {
-            let fit = CTFramesetterSuggestFrameSizeWithConstraints(
-                fs, CFRange(), nil, CGSize(width: c.rect.width - 2 * Board.pad, height: .greatestFiniteMagnitude), nil)
-            c.rect.size.height = min(ceil(fit.height) + top + 2 * Board.pad, Board.maxAutoHeight)
+        let width = c.rect.width - 2 * Board.pad
+        let attrs = c.kind == .code ? attrs(mono, ink, lineHeight: 16) : attrs(sans, ink, lineHeight: 20)
+        // Blocks in card-local y-down offsets from the body top.
+        enum Block { case text(CTFramesetter, CGFloat), image(String, CGSize) }
+        var blocks: [Block] = []
+        func addText(_ t: String) {
+            let t = t.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty else { return }
+            let fs = CTFramesetterCreateWithAttributedString(NSAttributedString(string: t, attributes: attrs))
+            let fit = CTFramesetterSuggestFrameSizeWithConstraints(fs, CFRange(), nil, CGSize(width: width, height: .greatestFiniteMagnitude), nil)
+            blocks.append(.text(fs, ceil(fit.height) + 2))
         }
-        c.frame = CTFramesetterCreateFrame(fs, CFRange(), CGPath(rect: bodyRect(c), transform: nil), nil)
+        if c.kind == .code {
+            addText(c.body)
+        } else {
+            let ns = c.body as NSString
+            var at = 0
+            for m in imageRef.matches(in: c.body, range: NSRange(location: 0, length: ns.length)) {
+                addText(ns.substring(with: NSRange(location: at, length: m.range.location - at)))
+                let ref = ns.substring(with: m.range(at: 1))
+                let path = ref.hasPrefix("assets/") ? "\(vault)/\(ref)" : "\(vault)/assets/\(ref)"
+                if let px = ImageStore.pixelSize(path), px.width > 0 {
+                    let w = min(width, px.width)
+                    blocks.append(.image(path, CGSize(width: w, height: w * px.height / px.width)))
+                }
+                at = m.range.location + m.range.length
+            }
+            addText(ns.substring(from: at))
+        }
+        let gap: CGFloat = 8
+        let content = blocks.reduce(CGFloat(0)) { acc, b in
+            switch b { case .text(_, let h): return acc + h + gap; case .image(_, let s): return acc + s.height + gap }
+        }
+        if c.rect.height == 0 { c.rect.size.height = min(content + top + 2 * Board.pad, Board.maxAutoHeight) }
+        let H = c.rect.height
+        var y = top + Board.pad  // y-down offset of the next block
+        for b in blocks {
+            if y > H { break }
+            switch b {
+            case .text(let fs, let h):
+                let r = CGRect(x: Board.pad, y: H - y - h, width: width, height: h)  // y up
+                c.frames.append(CTFramesetterCreateFrame(fs, CFRange(), CGPath(rect: r, transform: nil), nil))
+                y += h + gap
+            case .image(let path, let size):
+                c.images.append((path, CGRect(x: c.rect.minX + Board.pad, y: c.rect.minY + y, width: size.width, height: size.height)))
+                y += size.height + gap
+            }
+        }
     }
 
     /// Draws the card into ctx in card-local board units (y up, origin at the card's bottom-left).
@@ -66,15 +109,8 @@ enum Render {
             }
             ctx.addPath(p); ctx.setStrokeColor(hairline); ctx.setLineWidth(1); ctx.strokePath()
         }
-        if let img = c.image {
-            ctx.saveGState()
-            ctx.addPath(CGPath(roundedRect: r.insetBy(dx: 1, dy: 1), cornerWidth: 6, cornerHeight: 6, transform: nil)); ctx.clip()
-            ctx.interpolationQuality = .high
-            ctx.draw(img, in: r.insetBy(dx: 1, dy: 1))
-            ctx.restoreGState()
-        }
-        if let f = c.frame {
-            ctx.saveGState(); ctx.clip(to: bodyRect(c)); CTFrameDraw(f, ctx); ctx.restoreGState()
+        if !c.frames.isEmpty {
+            ctx.saveGState(); ctx.clip(to: bodyRect(c)); c.frames.forEach { CTFrameDraw($0, ctx) }; ctx.restoreGState()
         }
     }
 

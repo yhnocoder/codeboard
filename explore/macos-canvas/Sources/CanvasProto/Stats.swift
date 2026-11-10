@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 /// What one gesture (a continuous camera motion) measured.
 final class GestureStats {
@@ -14,6 +15,13 @@ final class GestureStats {
     var rasterMs: [Double] = []
     var drawMs: [Double] = []
     var busyMs: [Double] = []
+    var maxImages = 0
+    var imgLowAny = 0.0, imgLow = 0.0, imgVis = 0.0, imgBlank = 0.0
+    var decodeMs: [Double] = []
+    var zoomAtEnd: CGFloat = 0
+    var imgBytes = 0, cardBytes = 0
+    var presented: [Double] = []  // presentation times of the probe's drawables (0 = not presented)
+    var probeMissed = 0
     var settleMs: Double?         // motion end → every visible card sharp again
     var motionEnd: Double?
 
@@ -45,7 +53,17 @@ final class GestureStats {
             s += String(format: " draw_p50=%.2fms draw_p95=%.2fms draw_max=%.2fms",
                         GestureStats.pct(drawMs, 0.5), GestureStats.pct(drawMs, 0.95), drawMs.max() ?? 0)
         }
-        return s + busy
+        s += busy
+        let pt = presented.filter { $0 > 0 }.sorted()
+        let piv = zip(pt.dropFirst(), pt).map { $0 - $1 }
+        let pdrop = piv.reduce(0) { $0 + max(0, Int(($1 / refresh).rounded()) - 1) }
+        s += String(format: " presented=%d/%d presented_p95=%.2fms presented_max=%.2fms presented_dropped=%d",
+                    pt.count, presented.count + probeMissed, GestureStats.pct(piv.map { $0 * 1000 }, 0.95),
+                    (piv.max() ?? 0) * 1000, pdrop)
+        s += String(format: " images<=%d img_lowres_any=%.0fms img_lowres=%.0f%% img_blank=%.0fms decodes=%d decode_p50=%.1fms decode_max=%.1fms zoom_end=%.2f img_mem=%.1fMB card_mem=%.1fMB",
+                    maxImages, imgLowAny * 1000, imgVis > 0 ? imgLow / imgVis * 100 : 0, imgBlank * 1000, decodeMs.count,
+                    GestureStats.pct(decodeMs, 0.5), decodeMs.max() ?? 0, zoomAtEnd, Double(imgBytes) / 1e6, Double(cardBytes) / 1e6)
+        return s
     }
 }
 

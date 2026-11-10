@@ -1,5 +1,6 @@
 import AppKit
 import QuartzCore
+import Metal
 
 /// The board canvas: a world layer moved by the camera, one layer per card (modes 1–2) or one screen-sized layer that
 /// draws the visible cards with CoreText every frame (mode 3).
@@ -35,6 +36,19 @@ final class Canvas: NSView, CALayerDelegate {
     var useSurfaces = true   // modes 1–2 hand finished rasters to CA as IOSurfaces (true) or CGImages (false)
     var liveSurfaces: [IOSurface] = []
     var liveNext = 0
+
+    // Images: their own layers above the cards (and above mode 3's text), decoded at the level the zoom needs.
+    let world2 = CALayer()
+    let store = ImageStore()
+    var slots: [ImageSlot] = []
+    var visibleSlots: [Int] = []
+    var baseLevel: [Int] = []
+    var loadStart = 0.0
+    var firstVisibleLogged = false, firstAllLogged = false
+
+    // Presented-frame probe: a tiny Metal layer drawn with each moving frame, presented with the CA transaction.
+    let probe = CAMetalLayer()
+    var mtlQueue: MTLCommandQueue?
 
     let pool: OperationQueue = {
         let q = OperationQueue()
@@ -81,6 +95,19 @@ final class Canvas: NSView, CALayerDelegate {
         live.needsDisplayOnBoundsChange = true
         live.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull()]
         layer!.addSublayer(live)
+        world2.anchorPoint = .zero
+        world2.frame = .zero
+        layer!.addSublayer(world2)
+        if let dev = MTLCreateSystemDefaultDevice() {
+            probe.device = dev
+            probe.pixelFormat = .bgra8Unorm
+            probe.presentsWithTransaction = true
+            probe.frame = CGRect(x: 0, y: 0, width: 2, height: 2)
+            probe.drawableSize = CGSize(width: 4, height: 4)
+            probe.actions = ["contents": NSNull()]
+            mtlQueue = dev.makeCommandQueue()
+            layer!.addSublayer(probe)
+        }
         hud.fontSize = 11
         hud.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
         hud.foregroundColor = CGColor(gray: 1, alpha: 1)
@@ -152,6 +179,7 @@ final class Canvas: NSView, CALayerDelegate {
         }
         world.insertSublayer(sectionsLayer, at: 0)
         world.addSublayer(linksLayer)
+        loadImages()
         let sp = CGMutablePath()
         for s in board.sections { sp.addRoundedRect(in: CGRect(x: s.rect.minX, y: -s.rect.maxY, width: s.rect.width, height: s.rect.height), cornerWidth: 10, cornerHeight: 10) }
         sectionsLayer.path = sp
@@ -215,6 +243,7 @@ final class Canvas: NSView, CALayerDelegate {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         world.sublayerTransform = CATransform3DMakeAffineTransform(
             CGAffineTransform(a: z, b: 0, c: 0, d: z, tx: -camX * z, ty: bounds.height + camY * z))
+        world2.sublayerTransform = world.sublayerTransform
         sectionsLayer.lineWidth = 1.2 / z
         linksLayer.lineWidth = 1.4 / z
         CATransaction.commit()
@@ -260,6 +289,7 @@ final class Canvas: NSView, CALayerDelegate {
     func computeVisible() {
         let view = CGRect(x: camX, y: camY, width: bounds.width / z, height: bounds.height / z)
         visible = board.cards.indices.filter { board.cards[$0].rect.intersects(view) }
+        visibleSlots = slots.indices.filter { slots[$0].rect.intersects(view) }
     }
 
     /// Board point under a view point (view y up).
@@ -332,25 +362,42 @@ final class Canvas: NSView, CALayerDelegate {
             if gesture == nil || gesture!.motionEnd != nil {
                 if let g = gesture { finish(g, interrupted: true) }
                 gesture = GestureStats(label: pendingLabel ?? "gesture", mode: mode, refresh: refresh)
+                store.decodeMs = []
             } else if dt > 0 {
                 gesture!.intervals.append(dt)
             }
             lastMove = now
             if mode == 2 { requestRasters(ahead: true) }
+            if mode != 1 { requestImages(ahead: true) }
+            pulseProbe(gesture!)
         }
         guard let g = gesture else { return }
         g.maxVisible = max(g.maxVisible, visible.count)
-        if mode != 3 && dt > 0 {
-            var low = 0
-            for i in visible where rasterScale[i] < Render.cappedScale(board.cards[i], z * backing) * 0.98 { low += 1 }
-            if low > 0 { g.lowAny += dt }
-            g.lowCard += dt * Double(low)
-            g.visCard += dt * Double(visible.count)
-            if g.motionEnd != nil && low == 0 { g.settleMs = (now - g.motionEnd!) * 1000; finish(g, interrupted: false) }
+        g.maxImages = max(g.maxImages, visibleSlots.count)
+        var low = 0, imgLow = 0, blank = 0
+        if dt > 0 {
+            if mode != 3 {
+                for i in visible where rasterScale[i] < Render.cappedScale(board.cards[i], z * backing) * 0.98 { low += 1 }
+                if low > 0 { g.lowAny += dt }
+                g.lowCard += dt * Double(low)
+                g.visCard += dt * Double(visible.count)
+            }
+            for i in visibleSlots {
+                let sl = slots[i]
+                if sl.level == 0 { blank += 1 }
+                if CGFloat(sl.level) < min(sl.rect.width * z * backing, CGFloat(sl.item.cap)) * 0.98 { imgLow += 1 }
+            }
+            if imgLow > 0 { g.imgLowAny += dt }
+            if blank > 0 { g.imgBlank += dt }
+            g.imgLow += dt * Double(imgLow)
+            g.imgVis += dt * Double(visibleSlots.count)
+            if g.motionEnd != nil && low == 0 && imgLow == 0 { g.settleMs = (now - g.motionEnd!) * 1000; finish(g, interrupted: false) }
         }
+        if gesture == nil { return }
         if g.motionEnd == nil && now - lastMove > 0.15 {
             g.motionEnd = lastMove
-            if mode == 3 { finish(g, interrupted: false) } else { requestRasters(ahead: false) }
+            if mode != 3 { requestRasters(ahead: false) }
+            requestImages(ahead: false)
         } else if let end = g.motionEnd, now - end > 5 {
             finish(g, interrupted: true)
         }
@@ -359,6 +406,11 @@ final class Canvas: NSView, CALayerDelegate {
     func finish(_ g: GestureStats, interrupted: Bool) {
         if gesture === g { gesture = nil }
         if g.intervals.isEmpty { return }
+        g.decodeMs = store.decodeMs
+        g.zoomAtEnd = z
+        g.imgBytes = store.bytes
+        g.cardBytes = mode == 3 ? 0 : board.cards.indices.reduce(0) { acc, i in
+            let c = board.cards[i]; return acc + Int(c.rect.width * c.rect.height * rasterScale[i] * rasterScale[i] * 4) }
         let v = g.mode == 3 ? (liveOwn ? "own" : liveAsync ? "ca-async" : "ca") : (useSurfaces ? "iosurface" : "cgimage")
         let line = g.summary(board: (board.path as NSString).lastPathComponent) + " variant=" + v
         Log.write(line)
@@ -366,6 +418,110 @@ final class Canvas: NSView, CALayerDelegate {
         script?.finished(g)
         updateHud()
         if mode != 3 { dropOffscreen() }
+        dropOffscreenImages()
+    }
+
+    // MARK: images
+
+    func loadImages() {
+        slots.forEach { $0.layer.removeFromSuperlayer() }
+        store.generation += 1
+        store.queue.cancelAllOperations()
+        store.items = [:]
+        slots = []; baseLevel = []
+        loadStart = CACurrentMediaTime()
+        firstVisibleLogged = false; firstAllLogged = false
+        for c in board.cards {
+            for im in c.images {
+                guard let item = store.item(im.path) else { continue }
+                let sl = ImageSlot(item: item, rect: im.rect)
+                world2.addSublayer(sl.layer)
+                slots.append(sl)
+                baseLevel.append(item.level(for: im.rect.width * fitZoom * backing))
+            }
+        }
+        computeVisible()
+        // First the visible images at the current zoom, then every image at the fit level (never blank after that).
+        requestImages(ahead: false)
+        for i in slots.indices where slots[i].level == 0 && !slots[i].inFlight { show(i, level: baseLevel[i]) }
+    }
+
+    /// Decode (or reuse) `level` for slot i and show it when ready; the previous level stays on screen until then.
+    func show(_ i: Int, level: Int) {
+        let sl = slots[i]
+        sl.inFlight = true
+        let gen = store.generation
+        store.request(sl.item, level: level) { [weak self] surf in
+            guard let self, self.store.generation == gen else { return }
+            sl.inFlight = false
+            guard let surf, level != sl.level else { return }
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            sl.layer.contents = surf
+            sl.layer.backgroundColor = nil
+            CATransaction.commit()
+            sl.level = level
+            self.checkFirstOpen()
+        }
+    }
+
+    func requestImages(ahead: Bool) {
+        for i in visibleSlots where !slots[i].inFlight {
+            let sl = slots[i]
+            let need = sl.rect.width * z * backing
+            let target = min(need, CGFloat(sl.item.cap))
+            if CGFloat(sl.level) >= target * 0.98 && sl.level <= 4 * sl.item.level(for: need) { continue }
+            let want = sl.item.level(for: ahead && zoomingIn ? need * 1.3 : need)
+            if want != sl.level { show(i, level: want) }
+        }
+    }
+
+    /// After a gesture: off-screen images back to their fit level, and levels nobody shows are freed.
+    func dropOffscreenImages() {
+        let vis = Set(visibleSlots)
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        for i in slots.indices where !vis.contains(i) && slots[i].level > baseLevel[i] && !slots[i].inFlight {
+            if let s = slots[i].item.levels[baseLevel[i]] { slots[i].layer.contents = s; slots[i].level = baseLevel[i] }
+        }
+        CATransaction.commit()
+        var keep: [ObjectIdentifier: Set<Int>] = [:]
+        for (i, sl) in slots.enumerated() { keep[ObjectIdentifier(sl.item), default: []].formUnion([sl.level, baseLevel[i]]) }
+        for item in store.items.values where item.pending.isEmpty { store.trim(item, keep: keep[ObjectIdentifier(item)] ?? []) }
+    }
+
+    func checkFirstOpen() {
+        let ms = (CACurrentMediaTime() - loadStart) * 1000
+        let name = (board.path as NSString).lastPathComponent
+        if !firstVisibleLogged && visibleSlots.allSatisfy({ slots[$0].level > 0 }) {
+            firstVisibleLogged = true
+            Log.write(String(format: "first-open board=%@ images=%d files=%d visible_images=%d visible_ready=%.0fms", name,
+                             slots.count, store.items.count, visibleSlots.count, ms))
+        }
+        if !firstAllLogged && slots.allSatisfy({ $0.level > 0 }) {
+            firstAllLogged = true
+            let d = store.decodeMs
+            Log.write(String(format: "first-open board=%@ all_images_ready=%.0fms decodes=%d decode_p50=%.1fms decode_max=%.1fms image_mem=%.1fMB",
+                             name, ms, d.count, GestureStats.pct(d, 0.5), d.max() ?? 0, Double(store.bytes) / 1e6))
+        }
+    }
+
+    // MARK: presented-frame probe
+
+    func pulseProbe(_ g: GestureStats) {
+        guard let q = mtlQueue, let d = probe.nextDrawable(), let cb = q.makeCommandBuffer() else { g.probeMissed += 1; return }
+        let rp = MTLRenderPassDescriptor()
+        rp.colorAttachments[0].texture = d.texture
+        rp.colorAttachments[0].loadAction = .clear
+        rp.colorAttachments[0].storeAction = .store
+        let v = Double(g.intervals.count % 2) * 0.1 + 0.85
+        rp.colorAttachments[0].clearColor = MTLClearColor(red: v, green: v, blue: v, alpha: 1)
+        cb.makeRenderCommandEncoder(descriptor: rp)?.endEncoding()
+        cb.commit()
+        cb.waitUntilScheduled()
+        d.addPresentedHandler { [weak g] dr in
+            let t = dr.presentedTime
+            DispatchQueue.main.async { g?.presented.append(t) }
+        }
+        d.present()
     }
 
     /// Off-screen cards go back to their base bitmap, so memory stays bounded.
