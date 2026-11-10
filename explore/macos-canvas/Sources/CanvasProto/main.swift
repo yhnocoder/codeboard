@@ -21,6 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let i = args.firstIndex(of: "--max-zoom"), i + 1 < args.count { maxZoom = CGFloat(Double(args[i + 1]) ?? 2); args.removeSubrange(i...i + 1) }
         if let i = args.firstIndex(of: "--no-shaping") { args.remove(at: i); shaping = false }
         if let i = args.firstIndex(of: "--glide-test") { args.remove(at: i); glideTest = true }
+        var webOn = true
+        if let i = args.firstIndex(of: "--no-web") { args.remove(at: i); webOn = false }
         if let i = args.firstIndex(of: "--ca") { args.remove(at: i); caLive = true }
         if let i = args.firstIndex(of: "--cgimage") { args.remove(at: i); cgimage = true }
         args.removeAll { $0.hasPrefix("-") }  // Launch Services' own arguments
@@ -39,9 +41,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         canvas.liveAsync = asyncLive
         canvas.maxZoom = maxZoom
         canvas.shaping = shaping
+        canvas.web.on = webOn
         canvas.liveOwn = !caLive && !asyncLive
         canvas.useSurfaces = !cgimage
-        window.contentView = canvas
+        // The canvas fills a plain container, so web views can sit behind it (offscreen renders) or above it (the editor).
+        let container = NSView(frame: canvas.frame)
+        container.wantsLayer = true
+        canvas.autoresizingMask = [.width, .height]
+        container.addSubview(canvas)
+        window.contentView = container
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(canvas)
         NSApp.activate(ignoringOtherApps: true)
@@ -61,6 +69,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         buildMenu()
+        if let dir = ProcessInfo.processInfo.environment["CANVAS_WEBTEST"] { webTest(dir) }
+        if ProcessInfo.processInfo.environment["CANVAS_EDITTEST"] != nil {
+            window.level = .floating
+            window.orderFrontRegardless()
+            canvas.mode = 2
+            Task { @MainActor in await self.canvas.editTest() }
+        }
         if let dir = ProcessInfo.processInfo.environment["CANVAS_SNAP"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 self.canvas.zoom(by: 1.5, at: CGPoint(x: self.canvas.bounds.midX, y: self.canvas.bounds.midY))
@@ -80,6 +95,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     NSApp.terminate(nil)
                 }
             }
+        }
+    }
+
+    /// Snapshots the largest Note of the board at 1, 2 and 4 device px per CSS px and logs sizes and times.
+    func webTest(_ dir: String) {
+        let web = NoteWeb(vault: canvas.vault)
+        window.contentView!.addSubview(web.view, positioned: .below, relativeTo: canvas)
+        Task { @MainActor in
+            await web.whenReady()
+            Log.write(String(format: "webtest page ready in %.0fms", (web.readyAt - web.created) * 1000))
+            guard let c = canvas.board.cards.filter({ $0.kind == .note }).max(by: { $0.body.count < $1.body.count }) else { return }
+            for s in [1.0, 2.0, 4.0, 2.0] {
+                let (img, r, t) = await web.snapshot(src: c.body, width: c.rect.width, height: c.rect.height, card: true, scale: s)
+                Log.write(String(format: "webtest scale=%.0f card=%.0fx%.0f image=%dx%d render=%.1fms snapshot=%.1fms", s, c.rect.width, c.rect.height,
+                                 img?.width ?? 0, img?.height ?? 0, r, t))
+                if let img { saveImage(img, "\(dir)/web-\(Int(s)).png") }
+            }
+            Log.write("webtest web_footprint=\(footprint(of: web.webPID) / 1_000_000)MB pid=\(web.webPID)")
+            NSApp.terminate(nil)
         }
     }
 

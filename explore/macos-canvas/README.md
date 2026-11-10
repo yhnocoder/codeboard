@@ -18,6 +18,19 @@ Keys: `1` settle, `2` ahead, `3` live, `4` tiles, `c` live via own surface / CA 
 Two-finger scroll pans, pinch or ⌘-scroll zooms around the pointer, up to 200 % (`z` toggles 300 %; `--max-zoom`);
 a pinch past the limit stretches a little (rubber band) and springs back.
 
+Notes drawn by the Markdown package (`w` toggles them against CoreText plain text; `--no-web` starts without): the page in
+`web/` (`web/src/page.ts`, bundled by `web/build.mjs` from the repository's `node_modules` and the package's build) runs in
+WKWebViews. A small pool of them (3; `CANVAS_WEBPOOL`), kept behind the opaque canvas because a web view only paints in a
+visible window, renders a Note statically and snapshots it at the scale the canvas asks for (modes 1–2; a card always goes
+to the same view, so a re-snapshot needs no re-render); the snapshot becomes the card's IOSurface, the old one staying
+until then. Double-click a Note to edit it in the package's editor: one editor web view is kept loaded and warm above
+the canvas, transparent; it gets the card's place, the Note at its 100 % layout scaled with a CSS transform to the
+camera's zoom (so its line breaks are the snapshot's), the caret where you clicked, and shows only after it has painted
+twice. Esc or a click outside leaves: the editor's last picture and the new static snapshot are compared, the snapshot
+is shown, then the editor hides. Edits stay in memory; nothing is written to the board files. `CANVAS_EDITTEST=1` runs
+the scripted edit experiment (switch diffs at 100 / 137 / 200 %, warm and cold open, typing, pan and zoom while editing;
+`CANVAS_EDITZOOM=pagezoom|magnify|scale` for the other ways of following the zoom; `CANVAS_DIFFDIR` saves the pairs).
+
 Fast motion (`--no-shaping` to start without shaping):
 - `v` speed shaping. With the fingers on the trackpad movement is 1:1 up to the knee (default 2500 pt/s, `[` `]`) and
   compressed softly above it (tanh towards 1.6× the knee); nothing is buffered, so no latency is added.

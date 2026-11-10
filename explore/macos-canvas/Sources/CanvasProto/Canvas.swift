@@ -55,6 +55,8 @@ final class Canvas: NSView, CALayerDelegate {
     var springBack: CGPoint?
     var springAnchor = CGPoint.zero
     var lastCam = (x: CGFloat(0), y: CGFloat(0), z: CGFloat(1))
+    let web = WebState()
+    var driver: ((Double) -> Bool)?
     var cardTiles: [CardTiles] = []
     var tileBytes = 0
     var lastMemSample = 0.0
@@ -222,6 +224,7 @@ final class Canvas: NSView, CALayerDelegate {
                          (t1 - t0) * 1000, (t2 - t1) * 1000))
         window?.title = "\(board.name) — \((board.path as NSString).lastPathComponent)"
         modeChanged()
+        loadWebBase()
     }
 
     func fit() {
@@ -238,12 +241,25 @@ final class Canvas: NSView, CALayerDelegate {
         generation += 1
         pool.cancelAllOperations()
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        for i in cardLayers.indices { cardLayers[i].contents = baseImage[i]; rasterScale[i] = baseScale[i]; inFlight[i] = false }
+        for i in cardLayers.indices {
+            cardLayers[i].contents = web.base.count == cardLayers.count ? webBaseContents(i) : baseImage[i]
+            rasterScale[i] = baseScale[i]; inFlight[i] = false
+        }
         computeVisible()
         clearTiles()
         if mode == 4 { updateTiles() }
         if mode == 1 || mode == 2 {
-            for i in visible {
+            for i in visible where web.base.count == cardLayers.count && isWebNote(i) {
+                let s = Render.cappedScale(board.cards[i], z * backing)
+                inFlight[i] = true
+                let gen = generation
+                webSnapshot(i, scale: s) { [weak self] surf, _ in
+                    guard let self, self.generation == gen else { return }
+                    self.inFlight[i] = false
+                    if let surf { CATransaction.begin(); CATransaction.setDisableActions(true); self.cardLayers[i].contents = surf; CATransaction.commit(); self.rasterScale[i] = s }
+                }
+            }
+            for i in visible where !(web.base.count == cardLayers.count && isWebNote(i)) {
                 let want = Canvas.pow2ForDiff ? pow(2, ceil(log2(z * backing))) : z * backing
                 let s = Render.cappedScale(board.cards[i], want)
                 if s > rasterScale[i] { cardLayers[i].contents = Render.raster(board.cards[i], scale: s); rasterScale[i] = s }
@@ -261,6 +277,7 @@ final class Canvas: NSView, CALayerDelegate {
         live.drawsAsynchronously = liveAsync
         live.contents = nil
         CATransaction.commit()
+        styleWebLayers()
         resetRasters()
         if mode == 3 { if liveOwn { drawLiveOwn() } else { live.setNeedsDisplay() } }
         updateHud()
@@ -279,6 +296,7 @@ final class Canvas: NSView, CALayerDelegate {
         CATransaction.commit()
         computeVisible()
         if mode == 3 { if liveOwn { drawLiveOwn() } else { live.setNeedsDisplay() } }
+        if web.editing != nil { placeEditor() }
     }
 
     /// Mode 3, own surface: every visible card drawn at the exact scale into a screen-sized IOSurface, on the main thread,
@@ -430,6 +448,18 @@ final class Canvas: NSView, CALayerDelegate {
         }
     }
 
+    override func mouseDown(with e: NSEvent) {
+        let p = convert(e.locationInWindow, from: nil)
+        if web.editing != nil, let ed = web.editor {
+            Task { @MainActor in self.leaveEdit(value: await ed.call("return cb.value()") as? String) }
+            return
+        }
+        if e.clickCount == 2, let i = card(at: p) {
+            let b = boardPoint(p), r = board.cards[i].rect
+            beginEdit(i, at: CGPoint(x: b.x - r.minX, y: b.y - r.minY))
+        }
+    }
+
     override func magnify(with e: NSEvent) {
         guard script == nil else { return }
         if e.phase.contains(.began) { pinchRaw = z }
@@ -460,6 +490,10 @@ final class Canvas: NSView, CALayerDelegate {
         case "2": mode = 2
         case "3": mode = 3
         case "4": mode = 4
+        case "w":
+            web.on.toggle()
+            if web.editing == nil { loadWebBase(); resetRasters() }
+            updateHud()
         case "z": maxZoom = maxZoom == 2 ? 3 : 2; updateHud()
         case "v": shaping.toggle(); updateHud()
         case "[": knee = max(500, knee - 250); updateHud()
@@ -489,6 +523,7 @@ final class Canvas: NSView, CALayerDelegate {
         tickStart = CACurrentMediaTime()
         if let s = script { s.step(self, now: CACurrentMediaTime()) }
         playSpring()
+        if let d = driver, !d(CACurrentMediaTime()) { driver = nil }
         playGlide(CACurrentMediaTime())
         if !moved { speedNow = 0 }
         if moved {
@@ -549,6 +584,7 @@ final class Canvas: NSView, CALayerDelegate {
         if gesture == nil { return }
         if g.motionEnd == nil && now - lastMove > 0.15 {
             g.motionEnd = lastMove
+            if web.editing != nil { settleEditorZoom() }
             if mode == 1 || mode == 2 { requestRasters(ahead: false) }
             if mode == 4 { updateTiles() }
             requestImages(ahead: false)
@@ -604,7 +640,10 @@ final class Canvas: NSView, CALayerDelegate {
         lastMemSample = now
         let foot = physFootprint()
         gesture.map { $0.peakFootprint = max($0.peakFootprint, foot) }
-        memLine = String(format: "memory: cards %.0f MB · images %.0f MB · process %.0f MB", Double(card) / 1e6, Double(img) / 1e6, Double(foot) / 1e6)
+        let wf = webFootprint()
+        gesture.map { $0.peakWeb = max($0.peakWeb, wf) }
+        memLine = String(format: "memory: cards %.0f MB · images %.0f MB · process %.0f MB · web views %.0f MB (%d)", Double(card) / 1e6, Double(img) / 1e6,
+                         Double(foot) / 1e6, Double(wf) / 1e6, web.pool.count + (web.editor == nil ? 0 : 1))
         updateHud()
     }
 
@@ -716,7 +755,7 @@ final class Canvas: NSView, CALayerDelegate {
         let vis = Set(visible)
         CATransaction.begin(); CATransaction.setDisableActions(true)
         for i in cardLayers.indices where !vis.contains(i) && rasterScale[i] > baseScale[i] && !inFlight[i] {
-            cardLayers[i].contents = baseImage[i]; rasterScale[i] = baseScale[i]
+            cardLayers[i].contents = webBaseContents(i); rasterScale[i] = baseScale[i]
         }
         CATransaction.commit()
     }
@@ -733,6 +772,19 @@ final class Canvas: NSView, CALayerDelegate {
             guard r < best * 0.98 || r > target * 2.5 else { continue }
             let want = Render.cappedScale(c, ahead && zoomingIn ? target * 1.3 : target)
             inFlight[i] = true
+            if isWebNote(i) && web.base.count == cardLayers.count && web.editing != i {
+                webSnapshot(i, scale: want) { [weak self] surf, ms in
+                    guard let self, self.generation == gen else { return }
+                    self.inFlight[i] = false
+                    guard let surf else { return }
+                    CATransaction.begin(); CATransaction.setDisableActions(true)
+                    self.cardLayers[i].contents = surf
+                    CATransaction.commit()
+                    self.rasterScale[i] = want
+                    if let g = self.gesture { g.rasters += 1; g.rasterMs.append(ms) }
+                }
+                continue
+            }
             pool.addOperation { [weak self] in
                 let t0 = CACurrentMediaTime()
                 let img: Any? = surfaces ? Render.rasterSurface(c, scale: want) : Render.raster(c, scale: want)
@@ -771,9 +823,9 @@ final class Canvas: NSView, CALayerDelegate {
         let variant = mode == 3 ? (liveOwn ? "(own surface)" : liveAsync ? "(CA, drawsAsynchronously)" : "(CA backing store)")
             : (useSurfaces ? "(IOSurface)" : "(CGImage)")
         hud.string = """
-         mode \(mode) \(Canvas.modeNames[mode]!)\(variant)   1–4 modes · z 200/300% · v shaping [ ] knee , . glide · c live: own surface / CA · a async · s IOSurface / CGImage · f fit · ←/→ · b bench
+         mode \(mode) \(Canvas.modeNames[mode]!)\(variant)   1–4 modes · w web notes · double-click edit · z 200/300% · v shaping [ ] knee , . glide · c live: own surface / CA · a async · s IOSurface / CGImage · f fit · ←/→ · b bench
          board \(boardIndex + 1)/\(boards.count) \((board.path as NSString).lastPathComponent)  cards \(board.cards.count)  display \(fps) Hz
-         zoom \(String(format: "%.2f", z)) (max \(Int(maxZoom * 100))%)  shaping \(shaping ? "knee \(Int(knee)) pt/s" : "off")  glide τ \(String(format: "%.2f", tau)) s  speed \(Int(speedNow)) pt/s  visible \(visible.count)   \(memLine)
+         notes \(web.on ? "web (Markdown package)" : "CoreText plain text")  zoom \(String(format: "%.2f", z)) (max \(Int(maxZoom * 100))%)  shaping \(shaping ? "knee \(Int(knee)) pt/s" : "off")  glide τ \(String(format: "%.2f", tau)) s  speed \(Int(speedNow)) pt/s  visible \(visible.count)   \(memLine)
          last: \(lastSummary.split(separator: " ").dropFirst(2).joined(separator: " "))
         """
     }

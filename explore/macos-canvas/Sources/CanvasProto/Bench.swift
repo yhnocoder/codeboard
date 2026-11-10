@@ -44,7 +44,7 @@ final class Bench {
 
     func step(_ c: Canvas, now: Double) {
         if waiting {
-            if c.gesture == nil && now - waitSince > 0.4 || now - waitSince > 4 { next(c, now: now) }
+            if c.gesture == nil && c.web.pending == 0 && now - waitSince > 0.4 || now - waitSince > 8 { next(c, now: now) }
             return
         }
         let t = now - segStart

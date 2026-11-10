@@ -24,6 +24,7 @@ final class GestureStats {
     var probeMissed = 0
     var maxStep: CGFloat = 0, maxSpeed: CGFloat = 0
     var fallbackAny = 0.0, mixedAny = 0.0, fallbackCards = 0
+    var peakWeb = 0
     var peakCard = 0, peakImg = 0, peakFootprint = 0, footprint = 0
     var settleMs: Double?         // motion end → every visible card sharp again
     var motionEnd: Double?
@@ -70,6 +71,7 @@ final class GestureStats {
         s += String(format: " fallback_any=%.0fms mixed_any=%.0fms peak_card_mem=%.1fMB peak_img_mem=%.1fMB footprint=%.0fMB peak_footprint=%.0fMB",
                     fallbackAny * 1000, mixedAny * 1000, Double(peakCard) / 1e6, Double(peakImg) / 1e6,
                     Double(footprint) / 1e6, Double(max(peakFootprint, footprint)) / 1e6)
+        s += String(format: " peak_web_mem=%.0fMB", Double(peakWeb) / 1e6)
         return s
     }
 }

@@ -7,13 +7,21 @@ final class Card {
     let id: String
     let kind: Kind
     let title: String
-    let body: String
+    private(set) var body: String
     var rect: CGRect  // board coordinates, y down
     var imagePath: String?            // an Image card's file
     /// Body text laid out at the card's width in board units; immutable, shared by every thread that draws the card.
     var frames: [CTFrame] = []
     /// Where images sit, in board coordinates (y down): Image cards and images inside Notes. Drawn as their own layers.
     var images: [(path: String, rect: CGRect)] = []
+
+    /// New Markdown from the editor: the CoreText layout is redone so mode switches stay consistent.
+    func setBody(_ b: String) {
+        body = b
+        frames = []; images = []
+        Render.layout(self, vault: Card.vault)
+    }
+    static var vault = ""
 
     init(id: String, kind: Kind, title: String, body: String, rect: CGRect) {
         self.id = id; self.kind = kind; self.title = title; self.body = body; self.rect = rect
@@ -37,6 +45,7 @@ final class Board {
 
     init(path: String, vault: String) throws {
         self.path = path
+        Card.vault = vault
         let data = try Data(contentsOf: URL(fileURLWithPath: path))
         guard let d = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw NSError(domain: "board", code: 1) }
         name = (d["name"] as? String) ?? (path as NSString).lastPathComponent
