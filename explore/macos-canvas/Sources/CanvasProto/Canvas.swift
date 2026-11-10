@@ -40,10 +40,10 @@ final class Canvas: NSView, CALayerDelegate {
     // Speed shaping: 1:1 below `knee` (pt/s); above it the speed is compressed softly towards knee + soft (tanh), with
     // no buffering and so no added latency.
     var shaping = true
-    var knee: CGFloat = 1500
+    var knee: CGFloat = 2500
     // Momentum is the app's own: the system's momentum scroll events are ignored; at finger lift the canvas glides from
     // the lift velocity as v0·exp(−t/τ) (distance v0·τ), stops below 15 pt/s, and any new touch stops it at once.
-    var tau: Double = 0.3
+    var tau: Double = 0.24
     var lastScrollTs = 0.0
     var fingerVel = CGPoint.zero        // screen pt/s, smoothed over the last few events
     var glide: (v0: CGPoint, start: Double, done: CGPoint, from: CGPoint)?

@@ -19,11 +19,11 @@ Two-finger scroll pans, pinch or ⌘-scroll zooms around the pointer, up to 200 
 a pinch past the limit stretches a little (rubber band) and springs back.
 
 Fast motion (`--no-shaping` to start without shaping):
-- `v` speed shaping. With the fingers on the trackpad movement is 1:1 up to the knee (default 1500 pt/s, `[` `]`) and
+- `v` speed shaping. With the fingers on the trackpad movement is 1:1 up to the knee (default 2500 pt/s, `[` `]`) and
   compressed softly above it (tanh towards 1.6× the knee); nothing is buffered, so no latency is added.
 - Glide: the system's momentum scroll events are ignored. When the fingers lift, the canvas glides on its own from their
   (shaped) velocity as v0·exp(−t/τ), travelling v0·τ and stopping below 15 pt/s; a new touch stops it at once. `,` `.`
-  divide / multiply τ by 1.25 (default 0.3 s). The HUD shows τ and the current speed; each glide logs its distance and
+  divide / multiply τ by 1.25 (default 0.24 s). The HUD shows τ and the current speed; each glide logs its distance and
   duration, and `--glide-test` flicks at τ 0.15 / 0.3 / 0.6 s and quits.
 
 Modes:
