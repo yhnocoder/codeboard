@@ -1,12 +1,5 @@
 // The nodes of the Markdown schema with their Markdown rules (tokenizing, reading, writing back) and their HTML
-import {
-  Node,
-  mergeAttributes,
-  parseIndentedBlocks,
-  InputRule,
-  type AnyExtension,
-  type JSONContent,
-} from "@tiptap/core";
+import { Node, mergeAttributes, parseIndentedBlocks, type AnyExtension, type JSONContent } from "@tiptap/core";
 import type { MarkdownLexerConfiguration as Lexer } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import CodeBlock from "@tiptap/extension-code-block";
@@ -20,7 +13,6 @@ import { InlineMath, BlockMath } from "@tiptap/extension-mathematics";
 import { Table, TableHeader, TableCell } from "@tiptap/extension-table";
 import { Footnotes, Footnote, FootnoteReference } from "tiptap-footnotes";
 import DOMPurify from "dompurify";
-import katex from "katex";
 import { EMOJI } from "./emoji";
 import { captionOf } from "./image";
 import { imageAttrsText } from "./imageattrs";
@@ -58,8 +50,6 @@ export function splitMath(t: string, prev = ""): ({ text: string } | MathToken)[
   if (last < t.length) out.push({ text: t.slice(last) });
   return out;
 }
-/** 交给 KaTeX 排的 TeX：行内的 $$…$$ 留在行内（displayMode 关着），用 \displaystyle 排成大号的；原文不改 */
-const mathTex = (latex: string, display: boolean) => (display ? `\\displaystyle ${latex}` : latex);
 export const Math1 = InlineMath.extend({
   addAttributes() {
     return {
@@ -71,44 +61,10 @@ export const Math1 = InlineMath.extend({
       },
     };
   },
-  // 和 TipTap 自带的一样，只是 $$…$$ 照 mathTex 排（自带的不认 display，排成小号的）
-  addNodeView() {
-    const { onClick } = this.options,
-      editable = () => this.editor.isEditable;
-    return ({ node, getPos }) => {
-      const dom = document.createElement("span");
-      dom.className = "tiptap-mathematics-render";
-      if (editable()) dom.classList.add("tiptap-mathematics-render--editable");
-      dom.dataset.type = "inline-math";
-      dom.setAttribute("data-latex", node.attrs.latex);
-      if (node.attrs.display) dom.dataset.display = "yes";
-      try {
-        katex.render(mathTex(node.attrs.latex, !!node.attrs.display), dom, {
-          ...this.options.katexOptions,
-          displayMode: false,
-          output: "html",
-        });
-        dom.querySelector(".katex")?.setAttribute("data-latex", node.attrs.latex); // where a paste reads the TeX (texAttrs)
-      } catch {
-        dom.textContent = node.attrs.latex;
-        dom.classList.add("inline-math-error");
-      }
-      const click = (ev: MouseEvent) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        const pos = getPos();
-        if (pos != null) onClick?.(node, pos);
-      };
-      if (onClick) dom.addEventListener("click", click);
-      return { dom, destroy: () => dom.removeEventListener("click", click) };
-    };
-  },
   // 别处排好的公式（网页、聊天应用里 KaTeX / MathML 画的）粘贴进来：TeX 原文在 MathML 的 annotation 里
   parseHTML() {
     return [...(this.parent?.() ?? []), { tag: "span.katex", getAttrs: texAttrs }, { tag: "math", getAttrs: texAttrs }];
   },
-  // 打字时由编辑器按这里的解析规则重解析（editor/typora.ts；TipTap 自带的把 $$x$$ 当行内小公式）
-  addInputRules: () => [],
   parseMarkdown: (t) => ({ type: "inlineMath", attrs: { latex: t.latex, display: !!t.display } }),
   renderMarkdown: (n) => (n.attrs?.display ? `$$${n.attrs.latex}$$` : `$${n.attrs?.latex ?? ""}$`),
   markdownTokenizer: {
@@ -376,7 +332,8 @@ function splitRef(inner: string): { label: string; target?: string } {
   const m = REF_TARGET.exec(inner);
   return m ? { label: inner.slice(0, m.index).trim(), target: m[1] } : { label: inner.trim() };
 }
-/** 写进 Markdown 的样子（id 不是 [\w-]（跨白板的 a/b）的不写：读回来会被当成标题的一部分） */
+/** The Markdown of a reference. A target REF_TARGET cannot read back (other than [\w-] or board/card) is left out: it would read
+ *  back as part of the title */
 export const refSource = (label: string, target?: string) =>
   `[[${label}${target && REF_TARGET.test(`#^${target}`) ? `#^${target}` : ""}]]`;
 export const WikiRef = Node.create({
@@ -429,19 +386,6 @@ export const WikiRef = Node.create({
 });
 
 export const FnRef = FootnoteReference.extend({
-  // 打 [^1] 变引用；段首的先不变（可能是在写定义 [^1]: …，见 editor/typora.ts）
-  addInputRules() {
-    return [
-      new InputRule({
-        find: /\[\^([^\]\s]+)\]$/,
-        undoable: true,
-        handler: ({ state, range, chain }) => {
-          if (range.from === state.doc.resolve(range.from).start()) return null;
-          chain().deleteRange(range).addFootnote().run();
-        },
-      }),
-    ];
-  },
   // 显示和编辑一样：上标的编号（点击、双击跳到脚注由扩展自己按节点处理，不看 DOM）
   parseHTML: () => [
     { tag: "sup.fnref", getAttrs: (e) => ({ "data-id": `fn-${e.textContent}`, referenceNumber: e.textContent }) },

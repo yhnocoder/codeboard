@@ -2,8 +2,9 @@
 // parseMd reads it with) splits it into tokens, and for each: where it is in the source, which characters are markers, and how
 // the text inside is drawn. Only the look; the document is never changed (the decorations are in inline.ts)
 import { TEXT_MATH, inlineTokens, type InlineToken } from "../schema";
-import { ESC_DOLLAR } from "../schema-escape";
+import { ESC_DOLLAR } from "../placeholders";
 import { imageAttrsEnd } from "../imageattrs";
+import { capped } from "../cache";
 
 type Range = [number, number];
 /** Something drawn in place of its source (while the caret is elsewhere the source is hidden and it counts as one character) */
@@ -67,8 +68,7 @@ export function blockInfo(text: string, headings = true): BlockInfo {
   const h = headings ? HEAD.exec(text) : null;
   const prefix = h ? h[0].length : 0;
   info = { level: h ? h[1].length : 0, prefix, spans: inlineSpans(text, prefix) };
-  if (cache.size >= MAX) cache.delete(cache.keys().next().value!);
-  cache.set(key, info);
+  capped(cache, MAX, key, info);
   return info;
 }
 

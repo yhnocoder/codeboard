@@ -14,7 +14,6 @@ export {
   type DraggedImage,
   /** @public */
   type ImageResolver,
-  /** @public */
   type ResolvedImage,
   /** @public */
   type ImageCopy,

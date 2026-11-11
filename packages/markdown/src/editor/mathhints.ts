@@ -6,6 +6,7 @@ import type { EditorView } from "@tiptap/pm/view";
 import { place, virtual } from "../ui/place";
 import { defsIn, withTex, type MathDef, type MathPreamble } from "../math";
 import { blockInfo, flat } from "./spans";
+import { capped } from "../cache";
 
 /** 一条补全：snip 里的 | 是插入后光标的位置；pv 是排出来给人看的样子 */
 export type MathCmd = { name: string; snip: string; pv: string; desc: string; tag?: "预设" | "本式" };
@@ -326,8 +327,7 @@ function cmdPreview(x: MathCmd, src: string, math: MathPreamble): string {
     } catch {
       h = "";
     }
-    if (pvCache.size > 500) pvCache.clear();
-    pvCache.set(key, h);
+    capped(pvCache, 500, key, h);
   }
   return h;
 }

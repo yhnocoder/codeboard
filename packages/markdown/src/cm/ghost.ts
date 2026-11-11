@@ -4,8 +4,9 @@ import { EditorView, Decoration, WidgetType, ViewPlugin, type ViewUpdate } from 
 import { completionStatus } from "@codemirror/autocomplete";
 import { GhostAsker, eatGhost, nextWord, wantGhost, type Complete, type Ghost, type GhostHold } from "../ui/ghost";
 
-/** hold: the page's hold on completions (createGhostHold), shared with whatever else pauses them */
-export type GhostHost = { complete: Complete; hold?: GhostHold };
+/** hold: the page's hold on completions (createGhostHold), shared with whatever else pauses them.
+ *  on: whether there is anything to ask right now (not given: always); while it says no, nothing is scheduled */
+export type GhostHost = { complete: Complete; hold?: GhostHold; on?: () => boolean };
 
 const setGhost = StateEffect.define<Ghost>();
 
@@ -86,7 +87,7 @@ export function ghostExtension(host: GhostHost): Extension {
         const v = this.view,
           s = v.state,
           sel = s.selection;
-        if (!v.hasFocus || !sel.main.empty || sel.ranges.length > 1) return null;
+        if (host.on?.() === false || !v.hasFocus || !sel.main.empty || sel.ranges.length > 1) return null;
         const pos = sel.main.head,
           l = s.doc.lineAt(pos);
         if (!wantGhost(l.text, pos - l.from)) return null;

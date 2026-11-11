@@ -2,9 +2,8 @@
 import type { JSONContent } from "@tiptap/core";
 import { EMOJI_AT, isEmoji, mathAt } from "./schema-nodes";
 import { annotAt, HL_RE, SUP_RE } from "./schema-marks";
+import { ESC_DOLLAR } from "./placeholders";
 
-/** The placeholder an escaped \$ is read as (see TEXT_MATH in schema.ts): always a literal $, never a formula's */
-export const ESC_DOLLAR = "\uE024";
 // 原版把 \ ` * _ [ ] ~ 全部转义，还把 < & 变成实体：block_manager 会写成 block\_manager。这里只在重新解析会变样时才转义
 const PUNCT = /[!-/:-@[-`{-~]/;
 /**

@@ -1,5 +1,6 @@
 import katex from "katex";
 import type { MathPreamble } from "./math";
+import { capped } from "./cache";
 
 // 网页上 KaTeX / MathJax 排好的公式按纯文字复制出来是"显示的字 + TeX 原文"（N×NN\times N）：MathML 里的字和 annotation 连在一起。
 // 认法：从一个 TeX 记号（\ ^ _）往两边找 TeX 的范围，让 KaTeX 排一遍，前面紧挨着的字正好是排出来的字才算，留下 TeX
@@ -27,8 +28,7 @@ function shownText(tex: string, math: MathPreamble): string | null {
     } catch {
       s = null;
     }
-    if (shown.size > 500) shown.clear();
-    shown.set(tex, s);
+    capped(shown, 500, tex, s);
   }
   return s;
 }

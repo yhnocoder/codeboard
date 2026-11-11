@@ -1,5 +1,5 @@
 // The marks (inline formatting) of the Markdown schema with their Markdown rules
-import { Mark, mergeAttributes, InputRule, type JSONContent } from "@tiptap/core";
+import { Mark, mergeAttributes, type JSONContent } from "@tiptap/core";
 import type {
   MarkdownLexerConfiguration as Lexer,
   MarkdownParseHelpers as ParseH,
@@ -12,14 +12,9 @@ import Underline from "@tiptap/extension-underline";
 import CodeMark from "@tiptap/extension-code";
 import { unshield } from "./tiptap-markdown-patch";
 
-// 行内格式的 Markdown 记号：唯一的一份（写回、光标处显示的记号、展开成原文都按它）
-// bold / italic / strike / code / link 的写回是 TipTap 自带的（和这里的记号一样），其余的写回用这张表
+// The Markdown delimiters of the marks this file defines the syntax of (bold, italic, strike, code and link are written back
+// by TipTap's own rules)
 const MARK_MD: Record<string, (attrs: Attrs) => readonly [string, string]> = {
-  bold: () => ["**", "**"],
-  italic: () => ["*", "*"],
-  strike: () => ["~~", "~~"],
-  code: () => ["`", "`"],
-  link: (a) => ["[", `](${a.href ?? ""})`],
   underline: () => ["<u>", "</u>"],
   kbd: () => ["<kbd>", "</kbd>"],
   highlight: () => ["==", "=="],
@@ -193,8 +188,7 @@ export const Annot = Mark.create({
 });
 export const Sub = tagMark("subscript", "sub", SUB_RE);
 export const Sup = tagMark("superscript", "sup", SUP_RE);
-// 行内代码的打字规则在 editor/typora.ts（反引号按长度配对）
-export const InlineCode = CodeMark.extend({ addInputRules: () => [] });
+export const InlineCode = CodeMark;
 // 链接：文字就是网址的写回裸网址（自动链接），不写成 [url](url)
 export const Lnk = Link.extend({
   renderMarkdown(n, h, c) {
@@ -208,12 +202,3 @@ export const Lnk = Link.extend({
   linkOnPaste: true,
   HTMLAttributes: { class: "md-link", rel: null, target: null },
 });
-
-/** 打字规则：匹配到的那一段里有行内代码时不算（规则的正则看的是整行的字，代码里的记号也在里面） */
-export const outsideCode = (r: InputRule) =>
-  new InputRule({
-    find: r.find,
-    undoable: r.undoable,
-    handler: (p) =>
-      p.state.doc.rangeHasMark(p.range.from, p.range.to, p.state.schema.marks.code) ? null : r.handler(p),
-  });

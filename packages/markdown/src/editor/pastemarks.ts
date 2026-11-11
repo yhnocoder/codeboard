@@ -10,16 +10,17 @@ import {
   type Schema,
 } from "@tiptap/pm/model";
 import { mdSchema, parseSource, serializeMd } from "../schema";
+import { HIDE, shifted } from "../placeholders";
 import { mathInSlice } from "./pastemath";
 import type { MathPreamble } from "../math";
 
-// 藏成私用区的字（和 tiptap-markdown-patch.ts 的 SHIELD 错开）：解析器当普通字，位置、长度不变，读完再换回来
-const HIDE = 0xe400;
+// 藏成私用区的字（placeholders.ts 的 HIDE）：解析器当普通字，位置、长度不变，读完再换回来
 const hide = (s: string) =>
   s
     .replace(/[!-/:-<>-@[-`{-}]/g, (c) => String.fromCharCode(HIDE + c.charCodeAt(0)))
     .replace(/~+/g, (m) => (m.length === 2 ? m : String.fromCharCode(HIDE + 0x7e).repeat(m.length)));
-const unhide = (s: string) => s.replace(/[-]/g, (c) => String.fromCharCode(c.charCodeAt(0) - HIDE));
+const HIDDEN = shifted(HIDE, 0x21, 0x7e);
+const unhide = (s: string) => s.replace(HIDDEN, (c) => String.fromCharCode(c.charCodeAt(0) - HIDE));
 
 /** slice 里字中原样留着的 ==…==、~~…~~ 变成高亮、删除线，顶层只有 --- 的一段变成分隔线；代码里的不动。没变返回 null */
 export function marksInSlice(slice: Slice, schema: Schema): Slice | null {

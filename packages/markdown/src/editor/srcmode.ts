@@ -10,6 +10,7 @@ import { RangeSetBuilder } from "@codemirror/state";
 import { ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import { codeEditor, Decoration, EditorView } from "../cm/editor";
 import { layoutOf, sourceDoc, sourceMd, withLayout } from "./srcdoc";
+import { CARET_MARK } from "../placeholders";
 import { blockInfo, flat } from "./spans";
 import { revealMeta } from "./inline";
 import { mdOf } from "./md";
@@ -22,8 +23,6 @@ export type SourceMode = {
   close(apply: boolean, focus: boolean): boolean;
   destroy(): void;
 };
-
-const CARET = "";
 
 /**
  * The Markdown of doc and where position pos lands in it. The marker replaces the character after the caret (or before
@@ -38,9 +37,9 @@ export function mdAt(doc: PMNode, pos: number): { md: string; at: number } {
     const after = $p.parentOffset < p.content.size,
       from = after ? $p.pos : $p.parentOffset ? $p.pos - 1 : $p.pos;
     const ch = after || $p.parentOffset ? p.textContent[from - $p.start()] : "";
-    const d = doc.replace(from, from + ch.length, new Slice(Fragment.from(doc.type.schema.text(CARET)), 0, 0));
+    const d = doc.replace(from, from + ch.length, new Slice(Fragment.from(doc.type.schema.text(CARET_MARK)), 0, 0));
     const m = sourceMd(d.toJSON()),
-      i = m.indexOf(CARET);
+      i = m.indexOf(CARET_MARK);
     if (i >= 0 && m.slice(0, i) + ch + m.slice(i + 1) === md) return { md, at: after || !ch ? i : i + 1 };
   } catch {
     /* falls through */
@@ -58,10 +57,10 @@ export function docAt(old: PMNode, md: string, at: number): { doc: PMNode; pos: 
   const tries = [at, at - (/[^\s]*$/.exec(md.slice(0, at))?.[0].length ?? 0), md.lastIndexOf("\n", at - 1) + 1];
   for (const a of tries) {
     try {
-      const d = parse(md.slice(0, a) + CARET + md.slice(a));
+      const d = parse(md.slice(0, a) + CARET_MARK + md.slice(a));
       let pos: number | null = null;
       d.descendants((n, p) => {
-        if (pos === null && n.isText && n.text!.includes(CARET)) pos = p + n.text!.indexOf(CARET);
+        if (pos === null && n.isText && n.text!.includes(CARET_MARK)) pos = p + n.text!.indexOf(CARET_MARK);
         return pos === null;
       });
       if (pos === null) continue;

@@ -2,6 +2,7 @@
 import type { JSONContent } from "@tiptap/core";
 import type { Attrs, Schema } from "@tiptap/pm/model";
 import type { MarkdownManager } from "@tiptap/markdown";
+import { SHIELD, shifted } from "./placeholders";
 
 // 包着行内原子节点的格式：**a $x$**、==:tada:==、[![i](u)](l)
 // @tiptap/markdown 只给字加格式（applyMarkToContent 只认 text，往下找 content），行内的公式、表情、图片、[[引用]] 这些没有内容的
@@ -24,6 +25,6 @@ export function marksOnAtoms(mm: MarkdownManager, schema: () => Schema) {
 }
 
 // 字的转义由 escText 决定：交给 MarkdownManager 之前，把它会转义、变实体的字符换成私用区的字，写完再换回来，它就原样写出
-export const SHIELD = 0xe200;
 export const shield = (s: string) => s.replace(/[&<>\\`*_[\]~]/g, (c) => String.fromCharCode(SHIELD + c.charCodeAt(0)));
-export const unshield = (s: string) => s.replace(/[-]/g, (c) => String.fromCharCode(c.charCodeAt(0) - SHIELD));
+const SHIELDED = shifted(SHIELD, 0, 0x7f);
+export const unshield = (s: string) => s.replace(SHIELDED, (c) => String.fromCharCode(c.charCodeAt(0) - SHIELD));
