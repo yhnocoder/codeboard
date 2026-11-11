@@ -586,7 +586,10 @@ export function AddNotePop(p: PopProps<"addNote">) {
       case "code": {
         const it = res()[i()];
         if (!it) return;
-        const r = await ask("searchPick", { item: it, alt: true }).catch((e) => (switched(e) ? undefined : null));
+        const r = await ask("searchPick", { item: it, alt: true }).then(
+          (v) => v ?? null,
+          (e) => (switched(e) ? undefined : null),
+        );
         if (r === undefined) return;
         const c = r?.card;
         if (!c || !isCode(c)) return toast("Could not read that code");

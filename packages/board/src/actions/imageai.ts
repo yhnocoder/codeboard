@@ -432,14 +432,18 @@ export async function modifySvg(ref: ImgRef, instruction: string) {
   }
   const url = svgDataUrl(svg);
   if (ref.note === undefined) {
-    const file = await ask("saveAsset", { name: "image.svg", dataUrl: url }).catch((e) =>
-      switched(e) ? undefined : null,
+    const file = await ask("saveAsset", { name: "image.svg", dataUrl: url }).then(
+      (v) => v ?? null,
+      (e) => (switched(e) ? undefined : null),
     );
     if (file === undefined) return;
     if (!file) return toast("Couldn't save the SVG");
     C.replaceImage(commandEnv, { card: ref.card }, file);
   } else {
-    const src = await ask("saveImage", { dataUrl: url }).catch((e) => (switched(e) ? undefined : null));
+    const src = await ask("saveImage", { dataUrl: url }).then(
+      (v) => v ?? null,
+      (e) => (switched(e) ? undefined : null),
+    );
     if (src === undefined) return;
     if (!src) return toast("Couldn't save the SVG");
     // 正在编辑这张 Note：先存下编辑器里的字，再换图（编辑器里的文档不跟着外面的改动走）

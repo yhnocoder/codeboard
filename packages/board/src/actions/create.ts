@@ -179,7 +179,10 @@ export async function addImage(
     toast((e as Error).message);
     return;
   }
-  const file = await ask("saveAsset", { name, dataUrl }).catch((e) => (switched(e) ? undefined : null));
+  const file = await ask("saveAsset", { name, dataUrl }).then(
+    (v) => v ?? null,
+    (e) => (switched(e) ? undefined : null),
+  );
   if (file === undefined) return;
   const src = file ?? dataUrl;
   const img = new Image();

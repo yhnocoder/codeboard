@@ -32,7 +32,10 @@ export const assetSrc = (name?: string) =>
 export async function fetchMeta(id: string, url: string, item?: string) {
   const k = item ? `${id}/${item}` : id;
   setFetchingKeys((s) => new Set(s).add(k));
-  const got = await ask("webMeta", { url }).catch((e) => (switched(e) ? undefined : null));
+  const got = await ask("webMeta", { url }).then(
+    (v) => v ?? null,
+    (e) => (switched(e) ? undefined : null),
+  );
   // nothing failed: the card it was for is on the board that is gone
   if (got === undefined) return;
   const meta = got ?? { failed: true, at: Date.now() };

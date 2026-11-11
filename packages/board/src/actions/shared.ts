@@ -38,7 +38,10 @@ import { copyPicture, fingerprint, imageDataUrl, knownPicture } from "./imagedat
  */
 export async function copyPath(items?: string[]) {
   flushSave(); // 刚建的卡宿主那边也有了
-  const text = await ask("copyPath", { items }).catch((e) => (switched(e) ? undefined : null));
+  const text = await ask("copyPath", { items }).then(
+    (v) => v ?? null,
+    (e) => (switched(e) ? undefined : null),
+  );
   if (text === undefined) return;
   if (!text) return toast("Can't copy the path: the board isn't saved yet");
   const n = text.split("\n").length;

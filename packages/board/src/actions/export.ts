@@ -96,7 +96,10 @@ export async function runExport(md: Markdown, o: ExportOpts) {
       return;
     }
     const segs = order.flatMap((id) => segsOf(b, id));
-    const links = await ask("permalinks", { segs }).catch((e) => (switched(e) ? undefined : {}));
+    const links = await ask("permalinks", { segs }).then(
+      (l) => l ?? {},
+      (e) => (switched(e) ? undefined : {}),
+    );
     if (!links) return;
     const text =
       o.format === "md"

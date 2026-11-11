@@ -177,7 +177,10 @@ export async function placeNameHit(p: NamesPop, h: NameHit) {
     h.def && h.qual
       ? { kind: "symbol", label: h.qual, detail: h.detail, path: h.path, line: h.line, sym: h.qual, glyph: "ƒ" }
       : { kind: "entry", label: h.label, detail: h.detail, path: h.path, line: h.line, end: h.line + 2 };
-  const nc = await ask("searchPick", { item }).catch((e) => (switched(e) ? undefined : null));
+  const nc = await ask("searchPick", { item }).then(
+    (v) => v ?? null,
+    (e) => (switched(e) ? undefined : null),
+  );
   if (nc === undefined) return;
   if (!nc || !isCode(nc.card)) return toast(`Could not open ${h.detail}`);
   // 按字符串转发的（call("run")）：箭头上写 via call("run")
@@ -202,7 +205,10 @@ const hhmm = () => {
 
 /** 从这一行（或这张卡）加 Generated 卡：内容来自剪贴板或选的文件；Generated from 的点线连回这一行 */
 export async function addGenerated(at: { card: string; seg?: string; line?: number }, from: "clipboard" | "file") {
-  const src = await ask("genSource", { from }).catch((e) => (switched(e) ? undefined : null));
+  const src = await ask("genSource", { from }).then(
+    (v) => v ?? null,
+    (e) => (switched(e) ? undefined : null),
+  );
   if (src === undefined) return;
   if (!src) return toast(from === "clipboard" ? "The clipboard has no text." : "No file chosen.");
   const lines = src.text.replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n");
@@ -223,7 +229,10 @@ export async function addGenerated(at: { card: string; seg?: string; line?: numb
     segments: [seg],
     gen: { what: genWhat(src.lang, src.name, src.text), run: `${name ? `${name} · ` : "run "}${hhmm()}` },
   };
-  const views = await ask("views", { segs: [seg] }).catch((e) => (switched(e) ? undefined : {}));
+  const views = await ask("views", { segs: [seg] }).then(
+    (v) => v ?? {},
+    (e) => (switched(e) ? undefined : {}),
+  );
   if (!views) return;
   putViews(views);
   const r = hostRect(at.card);
