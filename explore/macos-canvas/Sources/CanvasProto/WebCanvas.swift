@@ -112,7 +112,8 @@ extension Canvas {
     /// In web display the Note's images are inside its snapshot, so the native image layers of web Notes are hidden.
     func updateSlotVisibility() {
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        for sl in slots where sl.card >= 0 { sl.layer.isHidden = isWebNote(sl.card) }
+        // web Notes have their pictures in the snapshot; mode 5 draws every picture into its card's bitmap
+        for sl in slots where sl.card >= 0 { sl.layer.isHidden = isWebNote(sl.card) || mode == 5 }
         CATransaction.commit()
         computeVisible()
     }
@@ -168,7 +169,10 @@ extension Canvas {
         }
     }
 
-    func webBaseContents(_ i: Int) -> Any? { isWebNote(i) ? (web.base[safe: i] ?? nil) ?? baseImage[i] : baseImage[i] }
+    func webBaseContents(_ i: Int) -> Any? {
+        if levelMode, let p = lv.pictureBase[i] { return p }
+        return isWebNote(i) ? (web.base[safe: i] ?? nil) ?? baseImage[i] : baseImage[i]
+    }
 
     // MARK: editing
 

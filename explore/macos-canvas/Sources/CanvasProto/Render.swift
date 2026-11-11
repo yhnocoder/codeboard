@@ -89,7 +89,7 @@ enum Render {
     }
 
     /// Draws the card into ctx in card-local board units (y up, origin at the card's bottom-left).
-    static func draw(_ c: Card, in ctx: CGContext) {
+    static func draw(_ c: Card, in ctx: CGContext, images: [CGImage?] = []) {
         let r = CGRect(origin: .zero, size: c.rect.size)
         ctx.textMatrix = .identity
         if c.kind != .frameless {
@@ -112,6 +112,23 @@ enum Render {
         if !c.frames.isEmpty {
             ctx.saveGState(); ctx.clip(to: bodyRect(c)); c.frames.forEach { CTFrameDraw($0, ctx) }; ctx.restoreGState()
         }
+        // pictures (mode 5 draws them into the card's bitmap instead of separate image layers)
+        for (k, im) in c.images.enumerated() where k < images.count {
+            guard let img = images[k] else { continue }
+            let local = CGRect(x: im.rect.minX - c.rect.minX, y: c.rect.maxY - im.rect.maxY, width: im.rect.width, height: im.rect.height)
+            ctx.saveGState()
+            ctx.addPath(c.kind == .image ? CGPath(roundedRect: local, cornerWidth: 6, cornerHeight: 6, transform: nil)
+                                         : CGPath(rect: local.intersection(CGRect(origin: .zero, size: c.rect.size)), transform: nil))
+            ctx.clip()
+            ctx.interpolationQuality = .high
+            ctx.draw(img, in: local)
+            ctx.restoreGState()
+        }
+    }
+
+    /// The pictures card c needs at `scale` device px per board unit (blocks: background threads only).
+    static func pictures(_ c: Card, scale: CGFloat) -> [CGImage?] {
+        c.images.map { ImageCache.shared.image($0.path, width: Int(ceil($0.rect.width * scale))) }
     }
 
     /// A bitmap of the card at `scale` device pixels per board unit (capped so one card stays below ~64 MB).
@@ -139,10 +156,10 @@ enum Render {
         body(ctx)
     }
 
-    static func rasterSurface(_ c: Card, scale: CGFloat) -> IOSurface? {
+    static func rasterSurface(_ c: Card, scale: CGFloat, images: [CGImage?] = []) -> IOSurface? {
         let w = Int(ceil(c.rect.width * scale)), h = Int(ceil(c.rect.height * scale))
         guard w > 0, h > 0, let s = surface(width: w, height: h) else { return nil }
-        withContext(s) { ctx in ctx.clear(CGRect(x: 0, y: 0, width: w, height: h)); ctx.scaleBy(x: scale, y: scale); draw(c, in: ctx) }
+        withContext(s) { ctx in ctx.clear(CGRect(x: 0, y: 0, width: w, height: h)); ctx.scaleBy(x: scale, y: scale); draw(c, in: ctx, images: images) }
         return s
     }
 

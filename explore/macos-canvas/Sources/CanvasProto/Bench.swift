@@ -35,8 +35,8 @@ final class Bench {
             if r.mode == 5 {
                 // mode 5: every motion starts from rest at its start zoom with the levels filled
                 segs = [.zoomTo(0.5, 1, 0.4, "pinch-in-2x"), .zoomTo(1, 2, 2, "zoom-in-2x"), .zoomTo(0.5, 2, 2, "zoom-in-4x"),
-                        .zoomTo(2, 0.5, 2, "zoom-out"), .flick(0.15)]
-                labels = ["pinch-in-2x", "zoom-in-2x", "zoom-in-4x", "zoom-out", "flick"]
+                        .zoomTo(2, 0.5, 2, "zoom-out"), .flick(0.15), .pan(3)]
+                labels = ["pinch-in-2x", "zoom-in-2x", "zoom-in-4x", "zoom-out", "flick", "pan-across"]
                 if ProcessInfo.processInfo.environment["CANVAS_ONLYFLICK"] != nil { segs = [.flick(0.15)]; labels = ["flick"] }
             } else {
                 segs = [.pan(3), .zoomIn(2), .zoomOut(2), .flick(0.15), .zoomIn(0.4), .zoomOut(0.4)]
@@ -58,7 +58,7 @@ final class Bench {
             waitSince = now
             return
         }
-        if case .flick = segs[seg], c.mode == 5, !prepared {
+        if c.mode == 5, !prepared, { if case .flick = segs[seg] { return true }; if case .pan = segs[seg] { return true }; return false }() {
             place(c, t: 0); c.resetRasters(); flickDone = 0; flickLast = 0; flickLifted = false
             prepared = true
             seg -= 1

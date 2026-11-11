@@ -138,9 +138,9 @@ extension Canvas {
             applyCamera()
             levelRest()
             await waitIdle(15)
-            Log.write(String(format: "levels board=%@ notes=%@ zoom=%.2f level=%.1f visible=%d card_mem=%.0fMB img_mem=%.0fMB app=%.0fMB web=%.0fMB",
+            Log.write(String(format: "levels board=%@ notes=%@ zoom=%.2f level=%.1f visible=%d card_mem=%.0fMB img_mem=%.0fMB pic_cache=%.0fMB app=%.0fMB web=%.0fMB",
                              name, web.on ? "web" : "coretext", z, restLevel(z), visible.count, Double(cardMemory()) / 1e6,
-                             Double(store.bytes) / 1e6, Double(physFootprint()) / 1e6, Double(webFootprint()) / 1e6))
+                             Double(store.bytes) / 1e6, Double(ImageCache.shared.bytes) / 1e6, Double(physFootprint()) / 1e6, Double(webFootprint()) / 1e6))
         }
         guard web.on else { NSApp.terminate(nil); return }
         // 2. where gestures go while editing
@@ -403,13 +403,15 @@ extension Canvas {
         await waitIdle()
         let name = (board.path as NSString).lastPathComponent
         func need(_ sl: ImageSlot, _ zz: CGFloat) -> CGFloat { min(sl.rect.width * zz * backing, CGFloat(sl.item.cap)) }
+        // mode 5 draws pictures into the card: judge the card's bitmap scale instead of the (hidden) image layer
+        func cardSharp(_ k: Int) -> Bool { let c = slots[k].card; return rasterScale[c] >= Render.cappedScale(board.cards[c], z * backing) * 0.98 }
         func desc(_ k: Int) -> String {
             let sl = slots[k], c = board.cards[sl.card]
             let ext = (sl.item.path as NSString).pathExtension
             return "slot=\(k) card=\(sl.card) kind=\(c.kind == .image ? "image-card" : "note-image") file=\(ext) px=\(Int(sl.item.pixelSize.width))x\(Int(sl.item.pixelSize.height)) shown_w=\(Int(sl.rect.width)) hidden=\(sl.layer.isHidden)"
         }
         Log.write("imgdiag board=\(name) fit=\(String(format: "%.3f", fitZoom)) slots=\(slots.count) visible-able=\(slots.filter { !$0.layer.isHidden }.count)")
-        for k in slots.indices where !slots[k].layer.isHidden {
+        for k in slots.indices where !slots[k].layer.isHidden || board.cards[slots[k].card].kind == .image {
             let sl = slots[k], r = sl.rect
             Log.write("imgdiag " + desc(k) + " base_level=\(baseLevel[k]) cap=\(sl.item.cap)")
             // a) at rest, centred, 175 %
@@ -435,10 +437,11 @@ extension Canvas {
             await drive { [self] t in
                 let p = min(t / 0.6, 1)
                 camX = x0 + viewW * 1.2 * CGFloat(p); cameraMoved()
-                if visibleSlots.contains(k) {
+                let v = CGRect(x: camX, y: camY, width: bounds.width / z, height: bounds.height / z)
+                if sl.rect.intersects(v) {
                     framesVisible += 1
                     minLevel = min(minLevel, slots[k].level)
-                    if CGFloat(slots[k].level) < need(sl, z) * 0.98 { framesVisibleLow += 1 }
+                    if slots[k].layer.isHidden ? !cardSharp(k) : CGFloat(slots[k].level) < need(sl, z) * 0.98 { framesVisibleLow += 1 }
                 }
                 return p < 1
             }

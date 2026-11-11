@@ -22,6 +22,7 @@ final class GestureStats {
     var imgBytes = 0, cardBytes = 0
     var presented: [Double] = []  // presentation times of the probe's drawables (0 = not presented)
     var probeMissed = 0
+    var anyLow = 0.0                        // any card or image on screen below display resolution (s)
     var motionTime = 0.0, lowMotion = 0.0   // during the motion only (before it is called ended)
     var maxStep: CGFloat = 0, maxSpeed: CGFloat = 0
     var fallbackAny = 0.0, mixedAny = 0.0, fallbackCards = 0
@@ -68,6 +69,7 @@ final class GestureStats {
         s += String(format: " images<=%d img_lowres_any=%.0fms img_lowres=%.0f%% img_blank=%.0fms decodes=%d decode_p50=%.1fms decode_max=%.1fms zoom_end=%.2f img_mem=%.1fMB card_mem=%.1fMB",
                     maxImages, imgLowAny * 1000, imgVis > 0 ? imgLow / imgVis * 100 : 0, imgBlank * 1000, decodeMs.count,
                     GestureStats.pct(decodeMs, 0.5), decodeMs.max() ?? 0, zoomAtEnd, Double(imgBytes) / 1e6, Double(cardBytes) / 1e6)
+        s += String(format: " screen_lowres=%.0fms", anyLow * 1000)
         s += String(format: " motion=%.0fms lowres_during_motion=%.0fms (%.0f%%)", motionTime * 1000, lowMotion * 1000,
                     motionTime > 0 ? lowMotion / motionTime * 100 : 0)
         s += String(format: " max_step=%.0fpt peak_speed=%.0fpt/s", maxStep, maxSpeed)

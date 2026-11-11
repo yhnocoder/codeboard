@@ -17,7 +17,8 @@ final class LevelState {
     /// bitmap is a sublayer over the held one; a pan keeps it, a zoom hides it and the held bitmap takes over.
     var exact = true
     var exactLayers: [Int: CALayer] = [:]
-    var exactScale: [Int: CGFloat] = [:]   // scale of the bitmap each rest layer shows
+    var exactScale: [Int: CGFloat] = [:]
+    var pictureBase: [Int: IOSurface] = [:]   // fit-zoom bitmaps with their pictures (cards that have pictures)   // scale of the bitmap each rest layer shows
     var restZ: CGFloat = 0
     var inflight = 0
     var gen = 0
@@ -164,7 +165,8 @@ extension Canvas {
                         return
                     }
                     let t0 = CACurrentMediaTime()
-                    let surf = Render.rasterSurface(c, scale: scale)
+                    // one pipeline: the card's pictures are drawn into its bitmap at the same scale
+                    let surf = Render.rasterSurface(c, scale: scale, images: Render.pictures(c, scale: scale))
                     let ms = (CACurrentMediaTime() - t0) * 1000
                     DispatchQueue.main.async {
                         guard let self else { return }
@@ -246,6 +248,28 @@ extension Canvas {
         for i in lv.exactLayers.keys { hideExact(i) }
         for l in cardLayers where l.minificationFilter != .trilinear { l.minificationFilter = .trilinear }
         CATransaction.commit()
+    }
+
+    /// Mode 5 draws pictures into card bitmaps, so the fit-zoom fallback of a card with pictures is redrawn with them.
+    func loadPictureBases() {
+        lv.pictureBase = [:]
+        guard levelMode else { return }
+        let gen = generation
+        for (i, c) in board.cards.enumerated() where !c.images.isEmpty && !isWebNote(i) {
+            let scale = baseScale[i]
+            lv.raster.addOperation { [weak self] in
+                let surf = Render.rasterSurface(c, scale: scale, images: Render.pictures(c, scale: scale))
+                DispatchQueue.main.async {
+                    guard let self, self.generation == gen, let surf else { return }
+                    self.lv.pictureBase[i] = surf
+                    if self.rasterScale[i] <= self.baseScale[i] && self.web.editing != i {
+                        CATransaction.begin(); CATransaction.setDisableActions(true)
+                        self.cardLayers[i].contents = surf
+                        CATransaction.commit()
+                    }
+                }
+            }
+        }
     }
 
     var levelBusy: Bool { !lv.queue.isEmpty || lv.inflight > 0 || !lv.ready.isEmpty }

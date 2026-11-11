@@ -64,6 +64,10 @@ Modes:
    device pixels) and a card count per frame (`n` / `m`, default 4), whichever is reached first; a new gesture cancels the queue and drops late results. `g` turns the outer ring off. A card bitmap
    is capped at 24 M pixels here. Layers minify with trilinear filtering; Core Animation builds mipmaps for the
    IOSurface contents (checked with CARenderer), so small text does not shimmer while zooming out.
+   Pictures are drawn into their card's bitmap (Image cards and the images in CoreText Notes; `ImageCache`: ImageIO
+   decodes at a power-of-two width, SVG drawn by WebKit), so they follow the same levels, rings, budgets and rest
+   bitmaps as text; the separate image layers of modes 1–4 are hidden in mode 5. The HUD and bench figure
+   `lowres_during_motion` / `screen_lowres` counts anything on screen below display resolution, image layers included.
    Notes (`w`): web Notes are snapshots of the editor's own page (`renderEditor`: the editor mounted without focus,
    caret hidden, images decoded first), so display and edit share one code path; or CoreText. Images inside web Notes
    are part of the snapshot, so their native image layers are hidden. SVG files for the native image layers are drawn

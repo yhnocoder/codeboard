@@ -225,6 +225,7 @@ final class Canvas: NSView, CALayerDelegate {
                          (board.path as NSString).lastPathComponent, board.cards.count, board.sections.count, board.links.count,
                          (t1 - t0) * 1000, (t2 - t1) * 1000))
         window?.title = "\(board.name) — \((board.path as NSString).lastPathComponent)"
+        ImageCache.shared.clear()
         modeChanged()
         loadWebBase()
         // The rest-bitmap sublayers exist from the start: contents set on a sublayer created in the same transaction
@@ -287,6 +288,7 @@ final class Canvas: NSView, CALayerDelegate {
         live.contents = nil
         CATransaction.commit()
         styleWebLayers()
+        loadPictureBases()
         resetRasters()
         if mode == 3 { if liveOwn { drawLiveOwn() } else { live.setNeedsDisplay() } }
         updateHud()
@@ -595,13 +597,15 @@ final class Canvas: NSView, CALayerDelegate {
                 g.lowCard += dt * Double(low)
                 g.visCard += dt * Double(visible.count)
             }
-            if g.motionEnd == nil { g.motionTime += dt; if low > 0 { g.lowMotion += dt } }
+            if g.motionEnd == nil { g.motionTime += dt }
             for i in visibleSlots {
                 let sl = slots[i]
                 if sl.level == 0 { blank += 1 }
                 if CGFloat(sl.level) < min(sl.rect.width * z * backing, CGFloat(sl.item.cap)) * 0.98 { imgLow += 1 }
             }
             if imgLow > 0 { g.imgLowAny += dt }
+            // one number for everything on screen: cards and image layers
+            if low + imgLow > 0 { g.anyLow += dt; if g.motionEnd == nil { g.lowMotion += dt } }
             if blank > 0 { g.imgBlank += dt }
             g.imgLow += dt * Double(imgLow)
             g.imgVis += dt * Double(visibleSlots.count)
