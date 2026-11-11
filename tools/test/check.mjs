@@ -1,7 +1,7 @@
 // npm run check: the local test run, about 90 seconds. See TESTING.md.
 //   1. the @yhnocoder/markdown build (packages/markdown/dist, a few seconds), which the board, its typecheck, the package's own
 //      tests and the demo all use, and the extension's generated package.json contributes, and box's binary (cargo,
-//      incremental); then typecheck, lint (Biome and knip), unit tests (core, box, markdown, board, host, extension), box's
+//      incremental); then typecheck, lint (Biome and knip), unit tests (every package in vitest.config.mts), box's
 //      cargo tests and the Markdown demo (examples/markdown-demo, built and run in Chromium) side by side with the board build, which runs only when its
 //      sources changed since the last one
 //   2. as soon as the board is built (the scenarios need nothing else), the harness scenarios this change needs
@@ -38,6 +38,16 @@ function run(name, cmd, a, env = {}) {
     });
   });
 }
+
+// A fresh checkout: say what to run, not an ENOENT from deep inside the harness a minute in
+for (const [need, cmd] of [
+  ["node_modules", "npm install"],
+  ["examples/nano-vllm/.git", "npm run examples"],
+])
+  if (!fs.existsSync(path.join(REPO, need))) {
+    console.log(`${need} is missing: run \`${cmd}\` first (CONTRIBUTING.md, Setup)`);
+    process.exit(1);
+  }
 
 // first and alone: everything below reads packages/markdown/dist, and the build empties it before writing
 if (!(await run("build @yhnocoder/markdown", "npm", ["run", "build", "-w", "@yhnocoder/markdown"]))) {

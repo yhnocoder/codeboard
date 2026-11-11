@@ -357,13 +357,6 @@
 .st-mr select {
   width: 100%;
 }
-.st-pct {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
-  color: var(--ink-2);
-}
 .st-num {
   display: inline-flex;
   align-items: center;

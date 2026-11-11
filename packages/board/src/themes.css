@@ -25,7 +25,7 @@
    从 0.985 微微放大到 1，取消选中时 90ms 淡出。只动 opacity / scale */
 /* an Image card without a background (.nobg) keeps no edge when selected (the edge's white top line would sit on the
    picture); it still shows the accent ring below */
-:root.look-warm-ink .card.sel:not(.text):not(.nobg):not(.lo-map) {
+:root.look-warm-ink .card.sel:not(.text):not(.nobg) {
   --ring: var(--sh-ring);
 }
 :root.look-warm-ink .card > .cface::before {
@@ -51,9 +51,8 @@
     opacity calc(var(--t) * 120ms) var(--out),
     scale calc(var(--t) * 120ms) var(--out);
 }
-/* Text（虚线框）和地图档各有各的选中样子 */
-:root.look-warm-ink .card.text > .cface::before,
-:root.look-warm-ink .card.lo-map > .cface::before {
+/* Text（虚线框）有自己的选中样子 */
+:root.look-warm-ink .card.text > .cface::before {
   content: none;
 }
 /* 拖起来（过了 DRAG_SLOP）：阴影加深，弹簧放大到 1.01；放下时带一点回弹落定（两条弹簧曲线写成 linear()，只动 scale / box-shadow） */
@@ -62,7 +61,7 @@
   --wi-spring-up: linear(0, 0.16, 0.45, 0.72, 0.9, 1.01, 1.05, 1.05, 1.04, 1.02, 1);
   --wi-spring-down: linear(0, 0.19, 0.59, 0.98, 1.22, 1.28, 1.22, 1.11, 1, 0.94, 0.92, 0.94, 0.97, 1, 1);
 }
-:root.look-warm-ink .card.lift:not(.text):not(.nobg):not(.lo-map) {
+:root.look-warm-ink .card.lift:not(.text):not(.nobg) {
   --ring: var(--sh-ring), var(--sh-lift);
 }
 :root.look-warm-ink .card.lift {
@@ -298,7 +297,6 @@
   --md-hl: rgba(238, 200, 100, 0.3);
   --inote: rgba(60, 45, 20, 0.05);
   --hlrow: rgba(60, 45, 20, 0.06);
-  --hlbar: #6a655c;
   --hatch: rgba(60, 45, 20, 0.07);
   --edge: #1f1e1b;
   --s-sand: rgba(206, 170, 110, 0.16);
@@ -352,7 +350,6 @@
   --md-hl: rgba(224, 176, 85, 0.28);
   --inote: rgba(255, 240, 220, 0.05);
   --hlrow: rgba(255, 240, 220, 0.06);
-  --hlbar: #aca79d;
   --hatch: rgba(255, 240, 220, 0.06);
   --edge: #ece9e1;
   --s-sand: rgba(214, 180, 120, 0.1);
@@ -407,7 +404,6 @@
   --md-hl: rgba(255, 214, 10, 0.24);
   --inote: rgba(0, 0, 0, 0.04);
   --hlrow: rgba(0, 0, 0, 0.05);
-  --hlbar: #6e6e73;
   --hatch: rgba(0, 0, 0, 0.06);
   --edge: #a0a0a6;
   --s-sand: rgba(185, 170, 135, 0.15);
@@ -459,7 +455,6 @@
   --md-hl: rgba(255, 214, 10, 0.22);
   --inote: rgba(255, 255, 255, 0.04);
   --hlrow: rgba(255, 255, 255, 0.06);
-  --hlbar: #a1a1a6;
   --hatch: rgba(255, 255, 255, 0.05);
   --edge: #6c6c72;
   --s-sand: rgba(200, 185, 150, 0.08);
@@ -516,7 +511,6 @@
   --md-hl: rgba(255, 196, 90, 0.3);
   --inote: rgba(55, 38, 20, 0.035);
   --hlrow: rgba(55, 38, 20, 0.045);
-  --hlbar: #b2aa9e;
   --hatch: rgba(55, 38, 20, 0.05);
   --edge: #b9b1a6;
   --s-sand: rgba(225, 200, 150, 0.14);
@@ -570,7 +564,6 @@
   --md-hl: rgba(255, 190, 90, 0.24);
   --inote: rgba(255, 255, 255, 0.035);
   --hlrow: rgba(255, 255, 255, 0.05);
-  --hlbar: #b1a99d;
   --hatch: rgba(255, 255, 255, 0.05);
   --edge: #6f675c;
   --s-sand: rgba(220, 195, 145, 0.07);
@@ -633,7 +626,6 @@
   --md-hl: rgba(240, 210, 110, 0.33);
   --inote: rgba(22, 22, 22, 0.035);
   --hlrow: rgba(22, 22, 22, 0.045);
-  --hlbar: #161616;
   --hatch: rgba(22, 22, 22, 0.08);
   --edge: #55544f;
   --s-sand: rgba(22, 22, 22, 0.025);
@@ -692,7 +684,6 @@
   --md-hl: rgba(230, 200, 110, 0.26);
   --inote: rgba(233, 232, 228, 0.04);
   --hlrow: rgba(233, 232, 228, 0.05);
-  --hlbar: #e9e8e4;
   --hatch: rgba(233, 232, 228, 0.08);
   --edge: #a6a5a0;
   --s-sand: rgba(233, 232, 228, 0.025);
@@ -758,7 +749,6 @@
   --md-hl: rgba(255, 198, 60, 0.36);
   --inote: rgba(226, 166, 47, 0.12);
   --hlrow: rgba(42, 35, 28, 0.06);
-  --hlbar: #2a231c;
   --hatch: rgba(42, 35, 28, 0.08);
   --edge: #2a231c;
   --s-sand: rgba(226, 166, 47, 0.2);
@@ -819,7 +809,6 @@
   --md-hl: rgba(240, 180, 70, 0.3);
   --inote: rgba(176, 141, 69, 0.1);
   --hlrow: rgba(240, 230, 208, 0.06);
-  --hlbar: #c5b9a4;
   --hatch: rgba(240, 230, 208, 0.07);
   --edge: #6f6453;
   --s-sand: rgba(176, 141, 69, 0.12);
@@ -883,7 +872,6 @@
   --md-hl: rgba(240, 205, 90, 0.32);
   --inote: rgba(25, 23, 20, 0.04);
   --hlrow: rgba(25, 23, 20, 0.07);
-  --hlbar: #191714;
   --hatch: rgba(25, 23, 20, 0.08);
   --edge: #191714;
   --s-sand: rgba(175, 145, 90, 0.1);
@@ -942,7 +930,6 @@
   --md-hl: rgba(220, 185, 90, 0.26);
   --inote: rgba(236, 231, 220, 0.045);
   --hlrow: rgba(236, 231, 220, 0.07);
-  --hlbar: #ece7dc;
   --hatch: rgba(236, 231, 220, 0.07);
   --edge: #ece7dc;
   --s-sand: rgba(200, 170, 115, 0.06);
@@ -1004,7 +991,6 @@
   --md-hl: rgba(232, 196, 104, 0.32);
   --inote: rgba(19, 55, 43, 0.04);
   --hlrow: rgba(19, 55, 43, 0.06);
-  --hlbar: #2e5547;
   --hatch: rgba(19, 55, 43, 0.07);
   --edge: #2e5547;
   --s-sand: rgba(160, 140, 90, 0.1);
@@ -1061,7 +1047,6 @@
   --md-hl: rgba(217, 191, 140, 0.24);
   --inote: rgba(223, 233, 223, 0.04);
   --hlrow: rgba(223, 233, 223, 0.06);
-  --hlbar: #8fae9d;
   --hatch: rgba(223, 233, 223, 0.06);
   --edge: #8fae9d;
   --s-sand: rgba(217, 191, 140, 0.06);
@@ -1125,7 +1110,6 @@
   --hl-brush: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 8' preserveAspectRatio='none'%3E%3Cpath d='M1 5.2C18 3.6 34 4.6 52 4.1S88 3.2 119 4.4L118.6 5.6C96 6.2 72 5.4 54 6.1S20 6.8 1.4 6.4Z' fill='%23b8321f' fill-opacity='.85'/%3E%3C/svg%3E");
   --inote: rgba(29, 28, 26, 0.04);
   --hlrow: rgba(29, 28, 26, 0.06);
-  --hlbar: #1d1c1a;
   --hatch: rgba(29, 28, 26, 0.07);
   --edge: rgba(29, 28, 26, 0.8);
   --s-sand: rgba(154, 90, 44, 0.07);
@@ -1186,7 +1170,6 @@
   --hl-brush: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 8' preserveAspectRatio='none'%3E%3Cpath d='M1 5.2C18 3.6 34 4.6 52 4.1S88 3.2 119 4.4L118.6 5.6C96 6.2 72 5.4 54 6.1S20 6.8 1.4 6.4Z' fill='%23d6533a' fill-opacity='.85'/%3E%3C/svg%3E");
   --inote: rgba(233, 229, 218, 0.04);
   --hlrow: rgba(233, 229, 218, 0.07);
-  --hlbar: #e9e5da;
   --hatch: rgba(233, 229, 218, 0.06);
   --edge: rgba(233, 229, 218, 0.78);
   --s-sand: rgba(211, 154, 108, 0.06);
@@ -1255,7 +1238,6 @@
   --md-hl: rgba(255, 205, 60, 0.32);
   --inote: rgba(31, 95, 191, 0.05);
   --hlrow: rgba(0, 0, 0, 0.05);
-  --hlbar: #1f5fbf;
   --hatch: rgba(0, 0, 0, 0.06);
   --edge: #7c828c;
   --s-sand: rgba(224, 200, 140, 0.18);
@@ -1321,7 +1303,6 @@
   --md-hl: rgba(242, 180, 60, 0.28);
   --inote: rgba(110, 160, 240, 0.06);
   --hlrow: rgba(255, 255, 255, 0.06);
-  --hlbar: #6ea0f0;
   --hatch: rgba(255, 255, 255, 0.05);
   --edge: #4a5260;
   --s-sand: rgba(200, 175, 120, 0.07);
@@ -1919,8 +1900,7 @@
   text-transform: uppercase;
   color: var(--ink-2);
 }
-:root.look-drafting .mk,
-:root.look-drafting .addn {
+:root.look-drafting .mk {
   border-radius: 0;
 }
 /* 卡片高度和别的主题一样（切主题不挤卡）：行高 = 13.5px 正文的 1.6 倍；等宽字更宽，字号小一号才折出差不多的行数 */
@@ -2735,8 +2715,7 @@
   content: " —";
   white-space: pre;
 }
-:root.look-newspaper .mk,
-:root.look-newspaper .addn {
+:root.look-newspaper .mk {
   border-radius: 0;
 }
 :root.look-newspaper .card.note .nbody {
@@ -3098,8 +3077,7 @@
   text-transform: uppercase;
   color: var(--ink);
 }
-:root.look-poster .mk,
-:root.look-poster .addn {
+:root.look-poster .mk {
   border-radius: 0;
 }
 :root.look-poster .card.note .nbody {
@@ -3320,7 +3298,7 @@
     var(--canvas);
 }
 /* 卡是一张毛边宣纸：纸是 ::before 上的九宫格位图（Card.tsx paper，state/ink.ts），伸出卡外 14px，不改卡的尺寸和排版；
-   卡自己没有底色、没有细边，阴影是卡的 box-shadow（模糊 4.5px 下看不出纸边的毛）。没有卡框的（Text、无背景）、地图档的照旧 */
+   卡自己没有底色、没有细边，阴影是卡的 box-shadow（模糊 4.5px 下看不出纸边的毛）。没有卡框的（Text、无背景）照旧 */
 :root.look-ink-wash .card:not(.text):not(.nobg) {
   --sh-ring: 0 0 transparent;
 }
@@ -4018,9 +3996,6 @@
 }
 :root.look-ink-wash .toast.show {
   animation: ink-toast calc(var(--t) * 260ms) cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-:root.look-ink-wash .toast.show.bump {
-  animation: bump calc(var(--t) * 260ms) var(--out);
 }
 @keyframes ink-toast {
   from {

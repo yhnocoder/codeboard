@@ -67,6 +67,8 @@ npm run check                         # 本地第 1 层，约 90 秒
 npm run check -- markdownRender notes          # 加上点名的场景
 npm run check -- --all                # 所有场景，不限时间
 npm run harness -- markdownRender     # 只跑点名的场景（HARNESS_LIGHT=1 用亮色主题）
+CPU_THROTTLE=4 npm run harness -- markdownRender   # 把页面的 CPU 放慢 4 倍：在本机复现只在 CI 慢机器上出现的时序问题
+IDLE_DEBUG=1 npm run harness -- markdownRender     # 每次 idle() 等了多久、从哪一行调的：找场景慢在哪
 npm run harness -- --workers=4        # 所有场景（manual 除外），4 个 worker 一起跑
 npm run harness -- --select --base=origin/main --dry       # 只看本地的挑选：碰到了哪些区（因为哪些文件）、会跑哪些场景、为什么、约多少秒场景时间、哪些改过的留给 CI，什么都不跑
 npm run harness -- --select --ci --base=origin/main --dry  # 同上，CI 的挑法：加上所有改过的场景、要几个 harness job、补了哪些、哪些留给定时全量

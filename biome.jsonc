@@ -7,7 +7,6 @@
     "includes": [
       "packages/*/src/**",
       "packages/*/test/**",
-      "packages/*/bench/**",
       "packages/board/stories/**",
       "extensions/vscode/src/**",
       "extensions/vscode/test/**",

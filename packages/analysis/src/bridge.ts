@@ -4,7 +4,6 @@
 import { escapeRegExp, type BoundVal, type CallAlt } from "./basics";
 import type { Arg, CallSite, Sym } from "./syms";
 
-const lineAt = (text: string, i: number) => text.slice(0, i).split("\n").length;
 /** 同一份文本里查很多次行号：先记下每行的开头，二分 */
 export function lineIndex(text: string): (i: number) => number {
   const starts = [0];
@@ -189,6 +188,7 @@ export function stubDevice(macro: string, file: string): string {
 export function torchLibDefs(text: string, name: string): Registration[] {
   if (!/TORCH_LIBRARY/.test(text)) return [];
   const out: Registration[] = [];
+  const lineAt = lineIndex(text);
   const re = new RegExp(`\\.(def|impl)\\s*\\(\\s*"${escapeRegExp(name)}(?:\\.\\w+)?\\s*["(]`, "g");
   for (let m; (m = re.exec(text)); ) {
     const open = text.indexOf("(", m.index);
@@ -196,7 +196,7 @@ export function torchLibDefs(text: string, name: string): Registration[] {
     const args = splitArgs(text.slice(open + 1, close < 0 ? undefined : close));
     const last = args[args.length - 1] ?? "";
     if (args.length < 2) continue; // 只有 schema
-    const line = lineAt(text, m.index);
+    const line = lineAt(m.index);
     if (/^\[/.test(last)) out.push({ line, lambda: true, how: `m.${m[1]}` });
     else {
       const t = targetOf(last);

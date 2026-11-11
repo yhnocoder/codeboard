@@ -113,7 +113,7 @@ jobs:
               const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: context.issue.number });
               const body = pr.body || "";
               const re = /<!-- ci-replay:start -->[\s\S]*<!-- ci-replay:end -->/;
-              await github.rest.pulls.update({ ...context.repo, pull_number: context.issue.number, body: re.test(body) ? body.replace(re, section) : `${body}\n\n${section}` });
+              await github.rest.pulls.update({ ...context.repo, pull_number: context.issue.number, body: re.test(body) ? body.replace(re, () => section) : `${body}\n\n${section}` });
               return;
             }
 

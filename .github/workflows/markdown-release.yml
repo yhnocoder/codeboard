@@ -25,14 +25,9 @@ jobs:
           if [ "$REF_TYPE" != tag ] || [ "$TAG" != "markdown-v$V" ]; then
             echo "::error::$REF_TYPE $TAG does not match packages/markdown/package.json version $V. Bump the version there first, or run this on the tag markdown-v$V."; exit 1
           fi
-      # npm stage publish needs npm 11.15.0 or later
+      # npm stage publish needs npm 11.15.0 or later: the setup action installs its pinned npm
       - uses: ./.github/actions/setup
         with: { build: npm run build -w @yhnocoder/markdown }
-      - name: Check the npm version
-        run: |
-          node -e 'const [a, b] = process.argv[1].split(".").map(Number); process.exit(a > 11 || (a === 11 && b >= 15) ? 0 : 1)' "$(npm --version)" \
-            || npm i -g npm@12.2.1
-          npm --version
       - name: Unit tests (with the tarball check)
         run: npm test -w @yhnocoder/markdown
       - uses: ./.github/actions/chromium
