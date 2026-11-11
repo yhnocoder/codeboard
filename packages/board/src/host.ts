@@ -1,4 +1,4 @@
-import type { AskType, BoardToHost, HostToBoard, ReplyOf } from "@codeboard/core";
+import { WAITS_ON_USER, type AskType, type BoardToHost, type HostToBoard, type ReplyOf } from "@codeboard/core";
 import { unwrap } from "solid-js/store";
 import { onBoardSwitch } from "./state/root";
 
@@ -22,21 +22,8 @@ export function send(m: BoardToHost) {
 let req = 0;
 type Pending = { ok: (v: unknown) => void; fail: (e: Error) => void; timer?: number };
 const pending = new Map<number, Pending>();
-/** 宿主一直不回（出错、重载了）时多久算失败；等用户操作的请求（确认框、选文件、保存对话框、GitHub 登录、输密钥）不限时。
- *  imageAi 也不限：宿主自己按操作限时（重画 SVG 最多 6 分钟），第一次用 Copilot 的模型还要等用户同意 */
+/** How long until an ask the host never answers (an error there, a reload) fails; the ones in WAITS_ON_USER have no limit */
 const TIMEOUT = 60_000;
-const WAITS_ON_USER = new Set<AskType>([
-  "confirm",
-  "pickFile",
-  "exportFile",
-  "deleteEverywhere",
-  "deleteBoard",
-  "newBoard",
-  "gh",
-  "github",
-  "aiKey",
-  "imageAi",
-]);
 
 function settle(id: number): Pending | undefined {
   const p = pending.get(id);

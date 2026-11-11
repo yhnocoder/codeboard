@@ -195,7 +195,7 @@ function handle(m: HostToBoard, md: Markdown) {
       A.applyVariantSync(m.cards);
       break;
     case "githubPicker":
-      A.openGitHubPicker(m.repo);
+      A.openGitHubPicker();
       break;
     case "zoomLog":
       send({ type: "answer", id: m.id, value: toggleZoomLog() });

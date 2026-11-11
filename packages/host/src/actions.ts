@@ -95,8 +95,7 @@ export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, 
     const p = panels.get(boardId);
     let name = p?.board?.name ?? "board";
     if (p) {
-      const sel = p.selection?.cards[0];
-      p.post({ type: "add", cards, ask: built.ask, sel: sel ? { card: sel } : undefined });
+      p.post({ type: "add", cards, ask: built.ask });
     } else {
       const b = await store.update(boardId, (b) => {
         placeCards(b, stackRight(b, built.cards), { copy: false });
@@ -412,16 +411,6 @@ export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, 
     "codeboard.openQuestion": (board: string, card?: string, line?: number, sticker?: string) =>
       openOnBoard(cx, panels, board, card, line, sticker),
     "codeboard.openGithubFile": (abs: string) => cx.ws.editor.open(abs, { readonly: true }),
-    "codeboard._shareCards": async (board: string, cards: string[]) => {
-      const renamed = await store.share(board, cards);
-      if (Object.keys(renamed).length) await panels.get(board)?.init();
-      return renamed;
-    },
-    "codeboard._unshareCard": async (board: string, card: string) => {
-      const to = await store.unshare(board, card);
-      if (to) await panels.get(board)?.init(); // 卡换了 id：白板重新载入
-      return to;
-    },
     "codeboard.openBoardToSide": async (a?: unknown) => {
       const id = boardArg(a);
       if (id) await panels.show(id, { side: true });

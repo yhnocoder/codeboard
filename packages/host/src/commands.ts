@@ -49,9 +49,6 @@ export const COMMANDS = {
   "codeboard.applyRun": { title: "Apply Run…" },
   "codeboard.openQuestion": { title: "Open Question" },
   "codeboard.openBrokenBoard": { title: "Open Broken Board", hidden: true },
-  // 共享卡还没有界面：测试用的入口
-  "codeboard._shareCards": { title: "Share Cards", hidden: true },
-  "codeboard._unshareCard": { title: "Unshare Card", hidden: true },
 } as const satisfies Record<string, CommandDecl>;
 
 export type CommandId = keyof typeof COMMANDS;

@@ -375,7 +375,7 @@ export type HostToBoard =
   | { type: "boards"; boards: BoardMeta[] }
   | { type: "host"; host: Partial<HostInfo> }
   /** 从编辑器加进来的卡：放在选中卡旁边，没选中放视口中央 */
-  | { type: "add"; cards: NewCard[]; ask?: "split"; sel?: { card: string } }
+  | { type: "add"; cards: NewCard[]; ask?: "split" }
   /** 撤销编辑器里的一次添加（⌥B 之后接着按 ⌘Z、通知里的 Undo）：只拿掉这几张卡 */
   | { type: "undoAdd"; cards: string[] }
   | { type: "appendSegment"; card: string; seg: Segment; view: SegView }
@@ -394,7 +394,7 @@ export type HostToBoard =
   | { type: "replaceSegment"; card: string; seg: Segment; view: SegView }
   | { type: "toast"; text: string }
   /** 侧栏 GITHUB FILES 的 Add Repo…：打开 From GitHub… 面板 */
-  | { type: "githubPicker"; repo?: string }
+  | { type: "githubPicker" }
   /** A question CodeBoard asks while this board is where the user works (its own requests, a palette command on it): the board shows it
    *  as one of its dialogs and sends { type: "answer", id } back */
   | { type: "ask"; id: number; ask: BoardAsk }
@@ -480,7 +480,6 @@ export type BoardToHost =
   | { type: "switchCommit"; req: number; seg: Segment; commit: string } // 回 { seg, view }
   | { type: "resolveRef"; req: number; text: string } // 手输 commit / branch / tag
   | { type: "paste"; req: number; text: string } // 回 NewCard | null（工作区代码、GitHub 链接）
-  | { type: "github"; req: number; url: string }
   | { type: "gh"; req: number; q: GhQuery }
   | { type: "saveAsset"; req: number; name: string; dataUrl: string }
   | { type: "saveImage"; req: number; dataUrl: string } // Note 里的图：宿主验过、存进 assets/，回 Markdown 里写的地址
@@ -508,7 +507,7 @@ export type BoardToHost =
       avoid?: Rect[];
     } // Tidy Up 的排版（ELK 只在宿主里）：回每张卡的新 x / y
   | { type: "openStickerDir" }
-  | { type: "copyDiagnostics"; board?: boolean }
+  | { type: "copyDiagnostics" }
   /** 白板里的错误 / 日志：写进 Output 面板的 CodeBoard 频道，Copy Diagnostics 会带上 */
   | { type: "log"; level: "info" | "warn" | "error"; text: string }
   | { type: "openBoard"; id: string; card?: string; line?: number; sticker?: string }
@@ -523,7 +522,6 @@ export type BoardToHost =
   | { type: "pasteCards"; req: number; text?: string; pic?: string; copy?: boolean }
   /** 共享卡 Delete Everywhere：从所有白板上删掉（回删了它的白板数） */
   | { type: "deleteEverywhere"; req: number; card: string }
-  | { type: "confirm"; req: number; text: string; detail?: string; ok: string }
   /** 子白板的骨架（白板上出现了还没有骨架的框时要；null = 那块白板没了） */
   | { type: "skeletons"; req: number; ids: string[] }
   /** 子白板框的地图上点开的一张卡（board = 子白板，card = 卡 id）：回 SubCard（卡已经不在了回 null） */
@@ -730,6 +728,24 @@ export type SubCard = { card: Card; cols?: Card[]; views: Record<string, SegView
 
 /** 要回答的请求（带 req）：白板用 ask 发，宿主用 { type: "reply", req, data } 回 */
 export type AskType = Extract<BoardToHost, { req: number }>["type"];
+/** The messages whose handler waits for the user (a file or save dialog, a confirmation, a sign-in, a key) or runs under its own
+ *  limit (imageAi: up to minutes, and a first use of a Copilot model waits for consent): the board does not time these asks out,
+ *  and the host does not log them as slow. A handler that starts to ask the user something belongs here */
+export const WAITS_ON_USER: ReadonlySet<BoardToHost["type"]> = new Set([
+  "pickFile",
+  "exportFile",
+  "deleteEverywhere",
+  "deleteBoard",
+  "newBoard",
+  "gh",
+  "aiKey",
+  "imageAi",
+  "genSource",
+  "addVariant",
+  "copyDiagnostics",
+  "relocate",
+  "locateRepo",
+] satisfies BoardToHost["type"][]);
 
 /** 请求 → 回答的类型表：白板的 ask 和宿主的回答两边都按它检查 */
 type Replies = {
@@ -748,7 +764,6 @@ type Replies = {
   switchCommit: { seg: Segment; view: SegView };
   resolveRef: Commit | null;
   paste: NewCard | null;
-  github: NewCard;
   gh: GhReplyOf<GhQuery["op"]>; // 按 q.op
   saveAsset: string; // assets/ 里的文件名
   saveImage: string; // Markdown 里写的地址（assets/…）
@@ -764,7 +779,6 @@ type Replies = {
   webMeta: WebMeta;
   stickerPacks: StickerPack[];
   tidy: Record<string, { x: number; y: number }>;
-  confirm: boolean;
   pickFile: string | null; // data URL
   searchName: NameHit[];
   genSource: GenSource | null;

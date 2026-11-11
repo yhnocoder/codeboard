@@ -27,7 +27,7 @@ import {
 } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { commitInfo, headOf, logLines, resolveRef } from "./git";
-import { githubCard, ghQuery } from "./github";
+import { ghQuery } from "./github";
 import { webMeta } from "./web";
 import { tidy } from "@codeboard/core/tidy";
 import { pasteCard } from "./paste";
@@ -112,7 +112,6 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
     switchCommit: (_p, m) => switchCommit(cx, m.seg, m.commit),
     resolveRef: (p, m) => resolveTyped(cx, p, m.text),
     paste: (_p, m) => pasteCard(cx, m.text),
-    github: (_p, m) => githubCard(cx, m.url),
     saveAsset: (_p, m) => saveCardImage(cx, store, m.name, m.dataUrl),
     saveImage: (_p, m) => saveNoteImage(cx, store, m.dataUrl),
     readAsset: (_p, m) => readAsset(store, m.file),
@@ -131,7 +130,7 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
     stickerPacks: () => readPacks(cx),
     tidy: async (_p, m) => Object.fromEntries(await tidy(m.cards, m.links, m.fixed, m.avoid)),
     openStickerDir: () => openStickerDir(cx),
-    copyDiagnostics: (p, m) => copyDiagnostics(cx, prompts(cx, p), p.board, m.board),
+    copyDiagnostics: (p) => copyDiagnostics(cx, prompts(cx, p), p.board),
     log: (_p, m) => cx.log(m.level, m.text),
     openBoard: (_p, m) => openOnBoard(cx, panels, m.id, m.card, m.line, m.sticker),
     copyCards: async (p, m) => {
@@ -158,7 +157,6 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
       return { ...r, views: await viewsFor(cx, segs) };
     },
     deleteEverywhere: async (p, m) => (await store.deleteEverywhere(m.card, p.id)).length,
-    confirm: async (_p, m) => (await cx.ws.ui.warn(m.text, { modal: true, detail: m.detail }, m.ok)) === m.ok,
     pickFile: () => pickImage(cx),
     searchName: (_p, m) => searchName(cx, m.name),
     genSource: (_p, m) => genSource(cx, m.from),
@@ -352,9 +350,9 @@ async function openCard(cx: HostContext, p: BoardPanel, m: Msg<"open">) {
   return openSeg(cx, seg, m.line);
 }
 
-/** 「新版本」diff：钉住的段 vs HEAD（against 可以是别的 commit / branch，或 "working" = 工作区） */
+/** 「新版本」diff：钉住的段 vs HEAD（against 可以是别的 commit / branch，或 "worktree" = 工作区） */
 async function diff(cx: HostContext, seg: Segment, against?: string): Promise<DiffData> {
-  const wt = against === "worktree" || against === "working";
+  const wt = against === "worktree";
   const name = seg.symbol?.qual ?? `${path.basename(seg.path)} ${seg.start}–${seg.end}`;
   const title = wt ? `Uncommitted Changes · ${name}` : `New Version · ${name}`;
   const left = {

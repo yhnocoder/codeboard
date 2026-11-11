@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
 import * as fs from "node:fs";
+import { randomBytes } from "node:crypto";
 import type { BoardToHost } from "@codeboard/core";
 import type { BoardHub, BoardView, HostEnv } from "@codeboard/host";
 
@@ -101,7 +102,7 @@ export class BoardWebviews {
   }
 
   private html(w: vscode.Webview, id: string) {
-    const nonce = Array.from({ length: 24 }, () => Math.random().toString(36)[2]).join("");
+    const nonce = randomBytes(16).toString("base64");
     const u = (f: string) => w.asWebviewUri(vscode.Uri.joinPath(this.ctx.extensionUri, "media", "board", f));
     const csp = [
       "default-src 'none'",
@@ -111,8 +112,9 @@ export class BoardWebviews {
       // 入口是 ES module：import() 进来的 chunk 也在 media/board 下面
       `script-src 'nonce-${nonce}' ${w.cspSource}`,
     ].join("; ");
-    // 在 state 里记下白板 id，窗口重新加载时据此恢复（不影响白板自己用 setState）
-    const keep = `(function(){var a=acquireVsCodeApi(),id=${JSON.stringify(id)};var w={postMessage:function(m){a.postMessage(m)},getState:function(){var s=a.getState();if(s&&typeof s==="object"){s=Object.assign({},s);delete s.__board}return s},setState:function(s){a.setState(Object.assign({},s||{},{__board:id}));return s}};var s0=a.getState();a.setState(Object.assign({},s0||{},{__board:id}));window.acquireVsCodeApi=function(){return w}})();`;
+    // The board's id goes into the webview's state, which restore() reads when the window reloads. acquireVsCodeApi() can be
+    // called once per page, so the same object is handed on to board.js
+    const keep = `(function(){var a=acquireVsCodeApi();a.setState({__board:${JSON.stringify(id)}});window.acquireVsCodeApi=function(){return a}})();`;
     return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="${u("board.css")}"><title>CodeBoard</title></head>
