@@ -241,6 +241,8 @@ extension Canvas {
 
     func windowCaptureProbe(_ dir: String) async {
         await waitIdle()
+        await sleep(1)
+        Log.write("hud frame \(hud.frame) hidden=\(hud.isHidden) superlayer=\(hud.superlayer != nil) string chars=\(((hud.string as? String) ?? "").count) bounds=\(bounds)")
         if let img = windowImage() { saveImage(img, "\(dir)/window.png"); Log.write("window capture \(img.width)x\(img.height)") }
         else { Log.write("window capture failed") }
         NSApp.terminate(nil)
