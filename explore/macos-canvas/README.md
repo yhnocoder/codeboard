@@ -13,7 +13,7 @@ plain text, sections, links as straight lines) and draws them in Warm Ink light.
 Variants for comparison: `--ca` (mode 3 into the layer's CA backing store), `--async` (same with drawsAsynchronously),
 `--cgimage` (modes 1–2 hand CGImages to CA instead of IOSurfaces).
 
-Keys: `1` settle, `2` ahead, `3` live, `4` tiles, `c` live via own surface / CA backing store, `a` drawsAsynchronously,
+Keys: `1` settle, `2` ahead, `3` live, `4` tiles, `5` levels (`j` `k` swap budget, `h` `l` redraws, `g` outer ring), `c` live via own surface / CA backing store, `a` drawsAsynchronously,
 `s` IOSurface / CGImage rasters, `f` fit, `←` `→` previous / next board, `⌘O` open a board, `b` bench this board.
 Two-finger scroll pans, pinch or ⌘-scroll zooms around the pointer, up to 200 % (`z` toggles 300 %; `--max-zoom`);
 a pinch past the limit stretches a little (rubber band) and springs back.
@@ -28,7 +28,10 @@ the canvas, transparent; it gets the card's place, the Note at its 100 % layout 
 camera's zoom (so its line breaks are the snapshot's), the caret where you clicked, and shows only after it has painted
 twice. Esc or a click outside leaves: the editor's last picture and the new static snapshot are compared, the snapshot
 is shown, then the editor hides. Edits stay in memory; nothing is written to the board files. `CANVAS_EDITTEST=1` runs
-the scripted edit experiment (switch diffs at 100 / 137 / 200 %, warm and cold open, typing, pan and zoom while editing;
+the scripted edit experiment (modes 1–2); `CANVAS_MODE5TEST=1` the mode 5 checks (level memory at 25 / 50 / 100 /
+200 %, gesture routing while editing, freeze and thaw diffs; `CANVAS_SKIPMEM`, `CANVAS_SKIPFREEZE`), `--bench 1 --modes 5`
+its bench (each motion from a filled rest: pinch 50→100 %, zoom 100→200 %, 50→200 % in one gesture, 200→50 %, flick);
+also (switch diffs at 100 / 137 / 200 %, warm and cold open, typing, pan and zoom while editing;
 `CANVAS_EDITZOOM=pagezoom|magnify|scale` for the other ways of following the zoom; `CANVAS_DIFFDIR` saves the pairs).
 
 Fast motion (`--no-shaping` to start without shaping):
@@ -50,6 +53,25 @@ Modes:
    as the fallback, and the previous level's tiles stay until the new level covers the card's visible part. Tiles overlap
    by one device pixel and are sized to whole pixels, so no seams show; frameless cards' tiles are filled with the board
    colour so coarser layers below don't show through the text.
+5. **levels** (the default): while a pan or zoom gesture runs (the app's glide and the rubber band included) the GPU
+   only moves and scales the bitmaps the cards already have: nothing is redrawn, snapshotted, laid out or swapped, and
+   the canvas takes no other input. At rest (no gesture event for 150 ms and the glide finished) every card within 25 %
+   of the view holds a bitmap at a fixed level, 50 %, 100 % or 200 %: the smallest level at or above min(2 × zoom, 200 %),
+   so one zoom-in of up to 2x from rest stays at display resolution; cards within one more screen hold the smallest
+   level at or above the zoom (so a pan or flick at the same zoom stays sharp); cards farther away fall back to their
+   fit-zoom bitmap. The redraws are queued nearest the view's centre and the pointer first, run at most `h` / `l`
+   (default 4) at a time, and are swapped onto the screen within a pixel budget per frame (`j` / `k`, default 8 M
+   device pixels); a new gesture cancels the queue and drops late results. `g` turns the outer ring off. A card bitmap
+   is capped at 24 M pixels here. Layers minify with trilinear filtering; Core Animation builds mipmaps for the
+   IOSurface contents (checked with CARenderer), so small text does not shimmer while zooming out.
+   Notes (`w`): web Notes are snapshots of the editor's own page (`renderEditor`: the editor mounted without focus,
+   caret hidden, images decoded first), so display and edit share one code path; or CoreText. Images inside web Notes
+   are part of the snapshot, so their native image layers are hidden. SVG files for the native image layers are drawn
+   by a WebKit view, since NSImage's SVG renderer ignores the file's `<style>` and CSS variables.
+   Editing: every scroll and pinch of the window goes to the canvas (an event monitor), also over the editor. At a
+   gesture's start the editor is replaced, in the same transaction, by a bitmap of itself (kept current at rest after
+   every change); at rest it comes back at the new place and scale (CSS transform, 100 % layout) once it has painted
+   there, with caret and selection untouched; off screen it stays frozen and keeps its edit state.
 3. **live**: every visible card drawn with CoreText at the exact scale every frame, into a screen-sized IOSurface on the
    main thread (or, with `c`, into the layer's own backing store).
 

@@ -24,6 +24,17 @@ final class WebState {
     var diffDir: String? = ProcessInfo.processInfo.environment["CANVAS_DIFFDIR"]
     var diffN = 0
     var snapMs: [Double] = []
+    // Mode 5: while a gesture runs, the editor is replaced by a bitmap of itself (a native layer moving with the canvas)
+    var frozen = false
+    var still: IOSurface?
+    var stillSize = CGSize.zero          // CSS px the still covers (card width × edit height)
+    var stillScale: CGFloat = 0
+    var stillDirty = false
+    var stillTask: Task<Void, Never>?
+    var thawing = false
+    var svgView: NoteWeb?
+    var onThawed: (() -> Void)?
+    var freezeDiff: ((CGImage?) -> Void)?
     /// How the editor follows the camera's zoom: "pagezoom" (re-layout at every frame) or "magnify" (WebKit's
     /// magnification while moving, pageZoom once the gesture ends).
     var zoomMode = ProcessInfo.processInfo.environment["CANVAS_EDITZOOM"] ?? "transform"
@@ -35,7 +46,7 @@ extension Canvas {
     var poolSize: Int { Int(ProcessInfo.processInfo.environment["CANVAS_WEBPOOL"] ?? "") ?? 3 }
 
     func isWebNote(_ i: Int) -> Bool {
-        web.on && (mode == 1 || mode == 2) && (board.cards[i].kind == .note || board.cards[i].kind == .frameless)
+        web.on && (mode == 1 || mode == 2 || mode == 5) && (board.cards[i].kind == .note || board.cards[i].kind == .frameless)
     }
 
     func setUpWeb() {
@@ -77,7 +88,8 @@ extension Canvas {
         web.pending += 1
         onView(i % web.pool.count) { [weak self] v in
             let t0 = CACurrentMediaTime()
-            let (img, _, _) = await v.snapshot(src: c.body, width: c.rect.width, height: c.rect.height, card: c.kind == .note, scale: scale)
+            let (img, _, _) = await v.snapshot(src: c.body, width: c.rect.width, height: c.rect.height, card: c.kind == .note, scale: scale,
+                                               viaEditor: self?.mode == 5)
             let surf: IOSurface? = await Task.detached { img.flatMap { Canvas.surface(from: $0) } }.value
             let ms = (CACurrentMediaTime() - t0) * 1000
             guard let self else { return }
@@ -97,7 +109,16 @@ extension Canvas {
     }
 
     /// Card layer look for web notes: the snapshot has the paper; the frame is the layer's own border and corners.
+    /// In web display the Note's images are inside its snapshot, so the native image layers of web Notes are hidden.
+    func updateSlotVisibility() {
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        for sl in slots where sl.card >= 0 { sl.layer.isHidden = isWebNote(sl.card) }
+        CATransaction.commit()
+        computeVisible()
+    }
+
     func styleWebLayers() {
+        updateSlotVisibility()
         CATransaction.begin(); CATransaction.setDisableActions(true)
         for (i, l) in cardLayers.enumerated() {
             let webNote = isWebNote(i) && board.cards[i].kind == .note
@@ -282,12 +303,16 @@ extension Canvas {
                 cardLayers[i].isHidden = true
                 CATransaction.commit()
                 window?.makeFirstResponder(e.view)
+                if mode == 5 { refreshStill() }
                 Log.write(String(format: "edit-open card=%d ready=%.0fms js_mount=%.0fms", i, ms, (m["ms"] as? Double) ?? 0))
                 web.onPainted?(ms)
             }
+        } else if m["changed"] != nil {
+            if mode == 5 { refreshStill() }
         } else if let h = m["height"] as? Double, m["painted"] == nil, m["leave"] == nil {
             web.editHeight = max(board.cards[i].rect.height, CGFloat(h))
-            placeEditor()
+            if !(mode == 5 && web.frozen) { placeEditor() }
+            if mode == 5 { refreshStill() }
         } else if m["leave"] != nil {
             leaveEdit(value: m["value"] as? String)
         }
@@ -315,6 +340,10 @@ extension Canvas {
                 CATransaction.commit()
                 e.view.frame = CGRect(x: -4000, y: -4000, width: 400, height: 300)
                 self.web.editing = nil
+                self.web.frozen = false
+                self.web.still = nil
+                self.cardLayers[i].frame = CGRect(x: self.board.cards[i].rect.minX, y: -self.board.cards[i].rect.maxY,
+                                                  width: self.board.cards[i].rect.width, height: self.board.cards[i].rect.height)
                 self.window?.makeFirstResponder(self)
                 Task { @MainActor in await e.call("return cb.finish()") }
                 self.web.onLeft?()
@@ -334,7 +363,7 @@ extension Canvas {
 
     /// Memory of the web content processes.
     func webFootprint() -> Int {
-        (web.pool + [web.editor].compactMap { $0 }).reduce(0) { $0 + footprint(of: $1.webPID) }
+        (web.pool + [web.editor, web.svgView].compactMap { $0 }).reduce(0) { $0 + footprint(of: $1.webPID) }
     }
 }
 
@@ -504,5 +533,90 @@ extension Canvas {
         await leaveOnce()
         await sleep(0.3)
         NSApp.terminate(nil)
+    }
+}
+
+extension Canvas {
+    /// Keeps a bitmap of the live editor as it looks now (at rest, debounced after each change), ready for a freeze.
+    func refreshStill() {
+        guard web.editing != nil, !web.frozen else { return }
+        web.stillDirty = true
+        web.stillTask?.cancel()
+        web.stillTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 40_000_000)
+            guard !Task.isCancelled, let i = web.editing, let e = web.editor, !web.frozen, lv.resting else { return }
+            let size = CGSize(width: board.cards[i].rect.width, height: web.editHeight)
+            let zoom = z
+            guard let img = await e.take(width: size.width * zoom, height: size.height * zoom, scale: backing),
+                  web.editing == i, !web.frozen, z == zoom else { return }
+            web.still = await Task.detached { Canvas.surface(from: img) }.value
+            web.stillSize = size
+            web.stillScale = zoom * backing
+            web.stillDirty = false
+        }
+    }
+
+    /// Gesture start while editing: the card layer shows the editor's still and the live editor hides, in the same
+    /// transaction, so the switch happens within one frame of our own layers.
+    func freezeEditor() {
+        guard let i = web.editing, let e = web.editor, !web.frozen else { return }
+        web.stillTask?.cancel()
+        guard let still = web.still else {
+            Log.write("freeze: no still yet; the live editor stays")
+            return
+        }
+        let r = board.cards[i].rect
+        web.freezeDiff?(Canvas.image(from: still))
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        cardLayers[i].frame = CGRect(x: r.minX, y: -(r.minY + web.stillSize.height), width: r.width, height: web.stillSize.height)
+        cardLayers[i].contents = still
+        cardLayers[i].isHidden = false
+        e.view.alphaValue = 0
+        CATransaction.commit()
+        rasterScale[i] = web.stillScale
+        web.frozen = true
+        window?.makeFirstResponder(self)  // no typing during a gesture
+        if web.stillDirty { Log.write("freeze: still was older than the last change") }
+    }
+
+    /// Rest: the live editor at the new place and scale; it is shown once it has painted there, caret and selection
+    /// untouched (the page is never re-rendered). Stays frozen while the Note is off screen.
+    func thawEditor() {
+        guard let i = web.editing, let e = web.editor, web.frozen, !web.thawing else { return }
+        let view = CGRect(x: camX, y: camY, width: bounds.width / z, height: bounds.height / z)
+        guard board.cards[i].rect.intersects(view) else { return }
+        web.thawing = true
+        let gen = lv.gen
+        Task { @MainActor in
+            e.view.frame = screenRect(i, height: web.editHeight)
+            web.editZoom = z
+            await e.call("return await cb.setScaleSettled(s)", ["s": Double(z)])
+            web.thawing = false
+            guard lv.gen == gen, lv.resting, web.editing == i, web.frozen else { return }
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            e.view.alphaValue = 1
+            cardLayers[i].isHidden = true
+            CATransaction.commit()
+            web.frozen = false
+            window?.makeFirstResponder(e.view)
+            web.onThawed?()
+            refreshStill()
+        }
+    }
+
+    /// SVG files drawn by WebKit (for the native image layers), one view kept for it.
+    func setUpSVG() {
+        guard web.svgView == nil, let container = superview else { return }
+        let v = NoteWeb(vault: vault)
+        container.addSubview(v.view, positioned: .below, relativeTo: self)
+        web.svgView = v
+        ImageStore.svgRaster = { [weak self] path, size, width in
+            guard let self, let v = self.web.svgView else { return nil }
+            let w = max(size.width, 1), h = max(size.height, 1)
+            if v.view.frame.width != ceil(w) || v.view.frame.height < ceil(h) { v.view.setFrameSize(CGSize(width: ceil(w), height: ceil(h))) }
+            v.rendered = nil
+            _ = await v.call("return await cb.renderImage(src, w, h)", ["src": URL(fileURLWithPath: path).absoluteString, "w": Double(w), "h": Double(h)])
+            return await v.take(width: w, height: h, scale: CGFloat(width) / w)
+        }
     }
 }

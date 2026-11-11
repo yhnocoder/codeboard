@@ -32,6 +32,7 @@ final class ImageSlot {
     let layer = CALayer()
     var level = 0               // 0 = nothing decoded yet (only before the first decode of a board's first open)
     var inFlight = false
+    var card = -1               // the card it belongs to
 
     init(item: ImageItem, rect: CGRect) {
         self.item = item; self.rect = rect
@@ -53,6 +54,8 @@ final class ImageStore {
         q.qualityOfService = .userInitiated
         return q
     }()
+    /// Draws an SVG file at a pixel width (set by the canvas: a WebKit view).
+    nonisolated(unsafe) static var svgRaster: (@MainActor (String, CGSize, Int) async -> CGImage?)?
     /// Decode times (ms) since the last read.
     var decodeMs: [Double] = []
 
@@ -87,6 +90,19 @@ final class ImageStore {
         if item.pending[level] != nil { item.pending[level]!.append(done); return }
         item.pending[level] = [done]
         let gen = generation
+        if item.isSVG, let svg = ImageStore.svgRaster {
+            // NSImage's SVG renderer ignores the file's <style> and CSS variables; WebKit draws it as the Note does
+            Task { @MainActor in
+                let t0 = CACurrentMediaTime()
+                let img = await svg(item.path, item.pixelSize, level)
+                let s = img.flatMap { Canvas.surface(from: $0) }
+                guard self.generation == gen else { return }
+                self.decodeMs.append((CACurrentMediaTime() - t0) * 1000)
+                if let s { item.levels[level] = s }
+                (item.pending.removeValue(forKey: level) ?? []).forEach { $0(s) }
+            }
+            return
+        }
         queue.addOperation { [weak self] in
             let t0 = CACurrentMediaTime()
             let s = ImageStore.decode(item, width: level)

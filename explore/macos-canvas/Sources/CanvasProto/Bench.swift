@@ -4,7 +4,8 @@ import AppKit
 /// zoom from fit to the maximum zoom around the centre, and back out. Each motion is one gesture in the log.
 final class Bench {
     struct Run { let board: Int; let mode: Int }
-    enum Seg { case pan(Double), zoomIn(Double), zoomOut(Double), flick(Double) }
+    enum Seg { case pan(Double), zoomIn(Double), zoomOut(Double), flick(Double), zoomTo(CGFloat, CGFloat, Double, String) }
+    var labels: [String] = []
 
     var runs: [Run]
     let quit: Bool
@@ -18,6 +19,7 @@ final class Bench {
     var flickDone: CGFloat = 0
     var flickLast = 0.0
     var flickLifted = false
+    var prepared = false
 
     init(runs: [Run], quit: Bool) { self.runs = runs; self.quit = quit }
 
@@ -30,21 +32,55 @@ final class Bench {
             if c.boardIndex != r.board || c.board == nil { c.load(r.board) }
             c.mode = r.mode
             c.fit(); c.resetRasters()
-            segs = [.pan(3), .zoomIn(2), .zoomOut(2), .flick(0.15), .zoomIn(0.4), .zoomOut(0.4)]
+            if r.mode == 5 {
+                // mode 5: every motion starts from rest at its start zoom with the levels filled
+                segs = [.zoomTo(0.5, 1, 0.4, "pinch-in-2x"), .zoomTo(1, 2, 2, "zoom-in-2x"), .zoomTo(0.5, 2, 2, "zoom-in-4x"),
+                        .zoomTo(2, 0.5, 2, "zoom-out"), .flick(0.15)]
+                labels = ["pinch-in-2x", "zoom-in-2x", "zoom-in-4x", "zoom-out", "flick"]
+                if ProcessInfo.processInfo.environment["CANVAS_ONLYFLICK"] != nil { segs = [.flick(0.15)]; labels = ["flick"] }
+            } else {
+                segs = [.pan(3), .zoomIn(2), .zoomOut(2), .flick(0.15), .zoomIn(0.4), .zoomOut(0.4)]
+                labels = ["pan", "zoom-in", "zoom-out", "flick", "pinch-in", "pinch-out"]
+            }
             seg = 0
         }
+        if case .zoomTo(let a, _, _, _) = segs[seg], !prepared {
+            // the start zoom, then wait at rest until the levels are filled
+            let b = c.board.bounds
+            c.z = max(a, c.fitZoom * 0.5)
+            c.camX = b.midX - c.bounds.width / 2 / c.z
+            c.camY = b.midY - c.bounds.height / 2 / c.z
+            c.applyCamera()
+            c.resetRasters()
+            prepared = true
+            seg -= 1
+            waiting = true
+            waitSince = now
+            return
+        }
+        if case .flick = segs[seg], c.mode == 5, !prepared {
+            place(c, t: 0); c.resetRasters(); flickDone = 0; flickLast = 0; flickLifted = false
+            prepared = true
+            seg -= 1
+            waiting = true
+            waitSince = now
+            return
+        }
+        prepared = false
         switch segs[seg] {  // start sharp where a pan starts
-        case .pan, .flick: place(c, t: 0); c.resetRasters(); flickDone = 0; flickLast = 0; flickLifted = false
+        case .pan, .flick:
+            if c.mode != 5 { place(c, t: 0); c.resetRasters() }
+            flickDone = 0; flickLast = 0; flickLifted = false
         default: break
         }
         segStart = now
         waiting = false
-        c.pendingLabel = ["pan", "zoom-in", "zoom-out", "flick", "pinch-in", "pinch-out"][seg]
+        c.pendingLabel = labels[seg]
     }
 
     func step(_ c: Canvas, now: Double) {
         if waiting {
-            if c.gesture == nil && c.web.pending == 0 && now - waitSince > 0.4 || now - waitSince > 8 { next(c, now: now) }
+            if c.gesture == nil && c.web.pending == 0 && !c.levelBusy && now - waitSince > 0.4 || now - waitSince > 12 { next(c, now: now) }
             return
         }
         let t = now - segStart
@@ -69,6 +105,16 @@ final class Bench {
             } else if c.glide == nil {
                 pause(now)
             }
+        case .zoomTo(let a0, let e0, let d, _):
+            let a = max(a0, c.fitZoom * 0.5), e = max(e0, c.fitZoom * 0.5)
+            let p = min(t / d, 1)
+            let nz = a * pow(e / a, CGFloat(p))
+            c.zoomingIn = e > a
+            c.z = nz
+            c.camX = b.midX - w / 2 / nz
+            c.camY = b.midY - h / 2 / nz
+            c.cameraMoved()
+            if p >= 1 { pause(now) }
         case .zoomIn(let d), .zoomOut(let d):
             let inward: Bool
             if case .zoomIn = segs[seg] { inward = true } else { inward = false }

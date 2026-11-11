@@ -5,13 +5,13 @@ import Metal
 /// The board canvas: a world layer moved by the camera, one layer per card (modes 1–2) or one screen-sized layer that
 /// draws the visible cards with CoreText every frame (mode 3).
 final class Canvas: NSView, CALayerDelegate {
-    static let modeNames = [0: "?", 1: "settle", 2: "ahead", 3: "live", 4: "tiles"]
+    static let modeNames = [0: "?", 1: "settle", 2: "ahead", 3: "live", 4: "tiles", 5: "levels"]
 
     var board: Board!
     var boardIndex = 0
     var boards: [String] = []
     var vault = ""
-    var mode = 2 { didSet { modeChanged() } }
+    var mode = 5 { didSet { modeChanged() } }
 
     // Camera: board point at the view's top-left, and zoom (view points per board unit).
     var camX: CGFloat = 0, camY: CGFloat = 0, z: CGFloat = 1
@@ -56,6 +56,7 @@ final class Canvas: NSView, CALayerDelegate {
     var springAnchor = CGPoint.zero
     var lastCam = (x: CGFloat(0), y: CGFloat(0), z: CGFloat(1))
     let web = WebState()
+    let lv = LevelState()
     var driver: ((Double) -> Bool)?
     var cardTiles: [CardTiles] = []
     var tileBytes = 0
@@ -187,6 +188,7 @@ final class Canvas: NSView, CALayerDelegate {
             Log.write("failed to read \(boards[boardIndex]): \(error)"); return
         }
         let t1 = CACurrentMediaTime()
+        setUpSVG()
         generation += 1
         cardLayers.forEach { $0.removeFromSuperlayer() }
         cardLayers = []; rasterScale = []; baseImage = []; baseScale = []; inFlight = []
@@ -248,6 +250,7 @@ final class Canvas: NSView, CALayerDelegate {
         computeVisible()
         clearTiles()
         if mode == 4 { updateTiles() }
+        if mode == 5 { CATransaction.commit(); updateSlotVisibility(); levelRest(); return }
         if mode == 1 || mode == 2 {
             for i in visible where web.base.count == cardLayers.count && isWebNote(i) {
                 let s = Render.cappedScale(board.cards[i], z * backing)
@@ -296,7 +299,7 @@ final class Canvas: NSView, CALayerDelegate {
         CATransaction.commit()
         computeVisible()
         if mode == 3 { if liveOwn { drawLiveOwn() } else { live.setNeedsDisplay() } }
-        if web.editing != nil { placeEditor() }
+        if web.editing != nil && !(mode == 5 && web.frozen) { placeEditor() }
     }
 
     /// Mode 3, own surface: every visible card drawn at the exact scale into a screen-sized IOSurface, on the main thread,
@@ -337,7 +340,7 @@ final class Canvas: NSView, CALayerDelegate {
     func computeVisible() {
         let view = CGRect(x: camX, y: camY, width: bounds.width / z, height: bounds.height / z)
         visible = board.cards.indices.filter { board.cards[$0].rect.intersects(view) }
-        visibleSlots = slots.indices.filter { slots[$0].rect.intersects(view) }
+        visibleSlots = slots.indices.filter { !slots[$0].layer.isHidden && slots[$0].rect.intersects(view) }
     }
 
     /// Board point under a view point (view y up).
@@ -417,6 +420,7 @@ final class Canvas: NSView, CALayerDelegate {
     }
 
     func cameraMoved() {
+        if mode == 5 { levelGestureStart() }
         moved = true
         applyCamera()
     }
@@ -449,6 +453,7 @@ final class Canvas: NSView, CALayerDelegate {
     }
 
     override func mouseDown(with e: NSEvent) {
+        if mode == 5 && !lv.resting { return }
         let p = convert(e.locationInWindow, from: nil)
         if web.editing != nil, let ed = web.editor {
             Task { @MainActor in self.leaveEdit(value: await ed.call("return cb.value()") as? String) }
@@ -485,11 +490,18 @@ final class Canvas: NSView, CALayerDelegate {
     }
 
     override func keyDown(with e: NSEvent) {
+        if mode == 5 && !lv.resting { return }  // a gesture owns the input
         switch e.charactersIgnoringModifiers {
         case "1": mode = 1
         case "2": mode = 2
         case "3": mode = 3
         case "4": mode = 4
+        case "5": mode = 5
+        case "g": lv.ring = lv.ring > 0 ? 0 : 1; updateHud(); levelRest()
+        case "j": lv.budget = max(250_000, lv.budget / 2); updateHud()
+        case "k": lv.budget = min(128_000_000, lv.budget * 2); updateHud()
+        case "h": lv.concurrency = max(1, lv.concurrency - 1); updateHud()
+        case "l": lv.concurrency = min(ProcessInfo.processInfo.activeProcessorCount - 1, lv.concurrency + 1); updateHud()
         case "w":
             web.on.toggle()
             if web.editing == nil { loadWebBase(); resetRasters() }
@@ -543,10 +555,11 @@ final class Canvas: NSView, CALayerDelegate {
             lastMove = now
             if mode == 2 { requestRasters(ahead: true) }
             if mode == 4 { updateTiles() }
-            if mode != 1 { requestImages(ahead: true) }
+            if mode != 1 && mode != 5 { requestImages(ahead: true) }
             pulseProbe(gesture!)
         }
         sampleMemory(now)
+        levelPump()
         guard let g = gesture else { return }
         g.maxVisible = max(g.maxVisible, visible.count)
         g.maxImages = max(g.maxImages, visibleSlots.count)
@@ -570,6 +583,7 @@ final class Canvas: NSView, CALayerDelegate {
                 g.lowCard += dt * Double(low)
                 g.visCard += dt * Double(visible.count)
             }
+            if g.motionEnd == nil { g.motionTime += dt; if low > 0 { g.lowMotion += dt } }
             for i in visibleSlots {
                 let sl = slots[i]
                 if sl.level == 0 { blank += 1 }
@@ -584,10 +598,10 @@ final class Canvas: NSView, CALayerDelegate {
         if gesture == nil { return }
         if g.motionEnd == nil && now - lastMove > 0.15 {
             g.motionEnd = lastMove
-            if web.editing != nil { settleEditorZoom() }
+            if web.editing != nil && mode != 5 { settleEditorZoom() }
             if mode == 1 || mode == 2 { requestRasters(ahead: false) }
             if mode == 4 { updateTiles() }
-            requestImages(ahead: false)
+            if mode == 5 { levelRest() } else { requestImages(ahead: false) }
         } else if let end = g.motionEnd, now - end > 5 {
             finish(g, interrupted: true)
         }
@@ -657,10 +671,11 @@ final class Canvas: NSView, CALayerDelegate {
         slots = []; baseLevel = []
         loadStart = CACurrentMediaTime()
         firstVisibleLogged = false; firstAllLogged = false
-        for c in board.cards {
+        for (ci, c) in board.cards.enumerated() {
             for im in c.images {
                 guard let item = store.item(im.path) else { continue }
                 let sl = ImageSlot(item: item, rect: im.rect)
+                sl.card = ci
                 world2.addSublayer(sl.layer)
                 slots.append(sl)
                 baseLevel.append(item.level(for: im.rect.width * fitZoom * backing))
@@ -690,10 +705,10 @@ final class Canvas: NSView, CALayerDelegate {
         }
     }
 
-    func requestImages(ahead: Bool) {
+    func requestImages(ahead: Bool, headroom: CGFloat = 1) {
         for i in visibleSlots where !slots[i].inFlight {
             let sl = slots[i]
-            let need = sl.rect.width * z * backing
+            let need = sl.rect.width * z * backing * headroom
             let target = min(need, CGFloat(sl.item.cap))
             if CGFloat(sl.level) >= target * 0.98 && sl.level <= 4 * sl.item.level(for: need) { continue }
             let want = sl.item.level(for: ahead && zoomingIn ? need * 1.3 : need)
@@ -823,9 +838,9 @@ final class Canvas: NSView, CALayerDelegate {
         let variant = mode == 3 ? (liveOwn ? "(own surface)" : liveAsync ? "(CA, drawsAsynchronously)" : "(CA backing store)")
             : (useSurfaces ? "(IOSurface)" : "(CGImage)")
         hud.string = """
-         mode \(mode) \(Canvas.modeNames[mode]!)\(variant)   1–4 modes · w web notes · double-click edit · z 200/300% · v shaping [ ] knee , . glide · c live: own surface / CA · a async · s IOSurface / CGImage · f fit · ←/→ · b bench
+         mode \(mode) \(Canvas.modeNames[mode]!)\(variant)   1–5 modes · j k swap budget · h l redraws · g outer ring · w web notes · double-click edit · z 200/300% · v shaping [ ] knee , . glide · c live: own surface / CA · a async · s IOSurface / CGImage · f fit · ←/→ · b bench
          board \(boardIndex + 1)/\(boards.count) \((board.path as NSString).lastPathComponent)  cards \(board.cards.count)  display \(fps) Hz
-         notes \(web.on ? "web (Markdown package)" : "CoreText plain text")  zoom \(String(format: "%.2f", z)) (max \(Int(maxZoom * 100))%)  shaping \(shaping ? "knee \(Int(knee)) pt/s" : "off")  glide τ \(String(format: "%.2f", tau)) s  speed \(Int(speedNow)) pt/s  visible \(visible.count)   \(memLine)
+         \(mode == 5 ? "levels: swap budget \(lv.budget / 1000)k px/frame · redraws \(lv.concurrency) · outer ring \(lv.ring > 0 ? "on" : "off") · queued \(lv.queue.count) · \(lv.resting ? "rest" : "gesture")  " : "")notes \(web.on ? (mode == 5 ? "web (editor page)" : "web (Markdown package)") : "CoreText")  zoom \(String(format: "%.2f", z)) (max \(Int(maxZoom * 100))%)  shaping \(shaping ? "knee \(Int(knee)) pt/s" : "off")  glide τ \(String(format: "%.2f", tau)) s  speed \(Int(speedNow)) pt/s  visible \(visible.count)   \(memLine)
          last: \(lastSummary.split(separator: " ").dropFirst(2).joined(separator: " "))
         """
     }

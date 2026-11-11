@@ -43,12 +43,28 @@ window.cb = {
   async render(src: string, width: number, card: boolean) {
     editor?.destroy();
     editor = undefined;
+    note.classList.remove("still", "bare");
     setBox(width, card);
     const html = md.render(src);
     note.innerHTML = html;
     md.hydrate(note, html);
     await settled();
     return note.getBoundingClientRect().height;
+  },
+  /** The Note as the editor draws it, without focus or caret: display and edit share one code path. */
+  async renderEditor(src: string, width: number, card: boolean) {
+    editor?.destroy();
+    editor = undefined;
+    setBox(width, card);
+    note.textContent = "";
+    note.style.transform = "";
+    note.classList.add("still");
+    note.classList.remove("bare");
+    editor = mountEditor(md, note, { value: src, onDone: () => {}, scrollOwnBox: true });
+    (document.activeElement as HTMLElement | null)?.blur();
+    window.getSelection()?.removeAllRanges();
+    await settled();
+    return note.offsetHeight;
   },
   /** Loads and parses ahead, so the first edit is fast. */
   warm(src: string) {
@@ -60,6 +76,7 @@ window.cb = {
     const t0 = performance.now();
     setBox(width, card);
     note.textContent = "";
+    note.classList.remove("still", "bare");
     editor = mountEditor(md, note, {
       value: src,
       onDone: (v) => {
@@ -100,6 +117,25 @@ window.cb = {
     out.sort((a, b) => a - b);
     return { p50: out[Math.floor(out.length / 2)], max: out[out.length - 1] };
   },
+  /** Same, and resolves once the page has painted at that scale (for thawing a frozen editor). */
+  async setScaleSettled(z: number) {
+    note.style.transformOrigin = "0 0";
+    note.style.transform = z === 1 ? "" : `scale(${z})`;
+    await frames();
+    return true;
+  },
+  /** One image alone, at its own size (an SVG drawn the way the Note draws it). */
+  async renderImage(src: string, w: number, h: number) {
+    editor?.destroy();
+    editor = undefined;
+    note.classList.remove("card", "still");
+    note.classList.add("bare");
+    note.style.width = `${w}px`;
+    note.style.transform = "";
+    note.innerHTML = `<img src="${src}" style="display:block;width:${w}px;height:${h}px">`;
+    await settled();
+    return true;
+  },
   /** Editor zoom without re-layout: the Note keeps its 100 % layout and is scaled. */
   setScale(z: number) {
     note.style.transformOrigin = "0 0";
@@ -125,6 +161,15 @@ document.addEventListener(
   },
   true,
 );
+// Changes while editing (text, selection), so native can keep its bitmap of the editor current.
+let changeTimer = 0;
+const changed = () => {
+  if (!editor || note.classList.contains("still")) return;
+  clearTimeout(changeTimer);
+  changeTimer = window.setTimeout(() => post({ changed: true }), 30);
+};
+note.addEventListener("input", changed);
+document.addEventListener("selectionchange", changed);
 // Height changes while editing, so native can grow the view.
 new ResizeObserver(() => {
   if (editor) post({ height: note.offsetHeight });

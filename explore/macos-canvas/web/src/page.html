@@ -16,6 +16,8 @@
   html { overflow: hidden; }  /* body stays visible: it must not clip the Note when the editor scales it */
   #note { box-sizing: border-box; padding: 10px; color: var(--ink); font-family: var(--sys); line-height: 1.6; }
   #note.card { background: var(--surface); }
+  #note.still, #note.still * { caret-color: transparent !important; }
+  #note.bare { padding: 0; background: transparent; }
 </style>
 </head>
 <body><div id="note" class="md"></div><script src="page.js"></script></body>

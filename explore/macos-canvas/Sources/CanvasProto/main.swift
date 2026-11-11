@@ -6,6 +6,7 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow!
     var canvas: Canvas!
+    var monitor: Any?
 
     func applicationDidFinishLaunching(_ n: Notification) {
         var args = Array(CommandLine.arguments.dropFirst())
@@ -69,7 +70,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         buildMenu()
+        // Gestures always belong to the canvas, also over the editor (a WKWebView would take them otherwise).
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .magnify]) { [weak self] e in
+            if ProcessInfo.processInfo.environment["CANVAS_MODE5TEST"] != nil {
+                Log.write("event \(e.type == .scrollWheel ? "scroll" : "magnify") window=\(e.window === self?.window) routed=\(Canvas.routeGestures)")
+            }
+            guard let self, Canvas.routeGestures, e.window === self.window else { return e }
+            if e.type == .scrollWheel { self.canvas.scrollWheel(with: e) } else { self.canvas.magnify(with: e) }
+            return nil
+        }
+        if ProcessInfo.processInfo.environment["CANVAS_MODE5TEST"] != nil {
+            window.level = .floating
+            window.orderFrontRegardless()
+            Task { @MainActor in await self.canvas.mode5Test() }
+        }
         if let dir = ProcessInfo.processInfo.environment["CANVAS_WEBTEST"] { webTest(dir) }
+        if let spec = ProcessInfo.processInfo.environment["CANVAS_NOTESHOT"] { noteShot(spec) }
         if ProcessInfo.processInfo.environment["CANVAS_EDITTEST"] != nil {
             window.level = .floating
             window.orderFrontRegardless()
@@ -113,6 +129,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let img { saveImage(img, "\(dir)/web-\(Int(s)).png") }
             }
             Log.write("webtest web_footprint=\(footprint(of: web.webPID) / 1_000_000)MB pid=\(web.webPID)")
+            NSApp.terminate(nil)
+        }
+    }
+
+    /// "cardId:dir": the Note drawn by the static render and by the editor path, at 2×, saved as PNGs (for checking a
+    /// rendering difference by eye; the files stay outside the repository).
+    func noteShot(_ spec: String) {
+        let parts = spec.split(separator: ":", maxSplits: 1).map(String.init)
+        let web = NoteWeb(vault: canvas.vault)
+        window.contentView!.addSubview(web.view, positioned: .below, relativeTo: canvas)
+        Task { @MainActor in
+            await web.whenReady()
+            guard let c = canvas.board.cards.first(where: { $0.id == parts[0] }) else { NSApp.terminate(nil); return }
+            for (k, im) in c.images.enumerated() {
+                let item = ImageItem(path: im.path, size: ImageStore.pixelSize(im.path) ?? .zero)
+                if let surf = ImageStore.decode(item, width: 910), let img = Canvas.image(from: surf) {
+                    saveImage(img, "\(parts[1])/note-native-image\(k).png")
+                    Log.write("noteshot native image \(k) at \(Int(im.rect.minX)),\(Int(im.rect.minY)) size \(Int(im.rect.width))x\(Int(im.rect.height))")
+                }
+            }
+            for via in [false, true] { for sc: CGFloat in [0.75, 1, 4] {
+                let (img, r, t) = await web.snapshot(src: c.body, width: c.rect.width, height: c.rect.height, card: true, scale: sc, viaEditor: via)
+                Log.write(String(format: "noteshot via=%@ scale=%.2f render=%.0fms snap=%.0fms size=%dx%d", via ? "editor" : "static", sc, r, t, img?.width ?? 0, img?.height ?? 0))
+                if let img { saveImage(img, "\(parts[1])/note-\(via ? "editor" : "static")-\(sc).png") }
+            } }
             NSApp.terminate(nil)
         }
     }

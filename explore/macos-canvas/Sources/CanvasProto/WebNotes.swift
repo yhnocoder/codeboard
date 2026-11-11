@@ -38,6 +38,10 @@ final class NoteWeb: NSObject, WKScriptMessageHandler {
         self.vault = vault
     }
     private var vault = ""
+    // what the page shows now, so a snapshot at another scale needs no re-render
+    var rendered: String?
+    var renderedWidth: CGFloat = 0
+    var renderedVia = false
 
     func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let m = message.body as? [String: Any] else { return }
@@ -67,12 +71,16 @@ final class NoteWeb: NSObject, WKScriptMessageHandler {
     }
 
     /// Renders `src` statically at `width` CSS px and snapshots the card (width × height) at `scale` device px per CSS px.
-    func snapshot(src: String, width: CGFloat, height: CGFloat, card: Bool, scale: CGFloat) async -> (CGImage?, Double, Double) {
+    func snapshot(src: String, width: CGFloat, height: CGFloat, card: Bool, scale: CGFloat, viaEditor: Bool = false) async -> (CGImage?, Double, Double) {
         let t0 = CACurrentMediaTime()
         if view.frame.width != ceil(width) || view.frame.height < ceil(height) {
             view.setFrameSize(CGSize(width: ceil(width), height: ceil(height)))
         }
-        _ = await call("return await cb.render(src, width, card)", ["src": src, "width": Double(width), "card": card])
+        if rendered != src || renderedWidth != width || renderedVia != viaEditor {
+            _ = await call(viaEditor ? "return await cb.renderEditor(src, width, card)" : "return await cb.render(src, width, card)",
+                           ["src": src, "width": Double(width), "card": card])
+            rendered = src; renderedWidth = width; renderedVia = viaEditor
+        }
         let t1 = CACurrentMediaTime()
         let img = await take(width: width, height: height, scale: scale)
         return (img, (t1 - t0) * 1000, (CACurrentMediaTime() - t1) * 1000)
