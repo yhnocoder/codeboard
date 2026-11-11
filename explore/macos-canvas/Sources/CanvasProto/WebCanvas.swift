@@ -63,7 +63,7 @@ extension Canvas {
     /// One editor web view kept loaded and warmed, above the canvas but transparent until an edit shows it.
     func prepareEditor() {
         guard let container = superview else { return }
-        let e = NoteWeb(vault: vault)
+        let e = NoteWeb(vault: vault, focusable: true)
         e.view.alphaValue = 0
         e.view.frame = CGRect(x: -4000, y: -4000, width: 400, height: 300)
         attachEditor(e, container)
@@ -221,7 +221,7 @@ extension Canvas {
 
     func prepareEditorCold() {
         guard let container = superview else { return }
-        let e = NoteWeb(vault: vault)
+        let e = NoteWeb(vault: vault, focusable: true)
         e.view.alphaValue = 0
         attachEditor(e, container)
         e.onMessage = { [weak self] m in self?.editorMessage(m) }
@@ -303,6 +303,7 @@ extension Canvas {
                 cardLayers[i].isHidden = true
                 CATransaction.commit()
                 window?.makeFirstResponder(e.view)
+                (e.view as? EditorWebView)?.holdFocus = true
                 if mode == 5 { refreshStill() }
                 Log.write(String(format: "edit-open card=%d ready=%.0fms js_mount=%.0fms", i, ms, (m["ms"] as? Double) ?? 0))
                 web.onPainted?(ms)
@@ -339,6 +340,7 @@ extension Canvas {
                 e.view.alphaValue = 0
                 CATransaction.commit()
                 e.view.frame = CGRect(x: -4000, y: -4000, width: 400, height: 300)
+                (e.view as? EditorWebView)?.holdFocus = false
                 self.web.editing = nil
                 self.web.frozen = false
                 self.web.still = nil
@@ -556,6 +558,15 @@ extension Canvas {
         }
     }
 
+    /// How the live editor is hidden while frozen (CANVAS_HIDEMODE: alpha, layer, none; for finding what blurs the page).
+    func setEditorHidden(_ e: NoteWeb, _ hidden: Bool) {
+        switch ProcessInfo.processInfo.environment["CANVAS_HIDEMODE"] ?? "alpha" {
+        case "layer": e.view.layer?.opacity = hidden ? 0 : 1
+        case "none": break
+        default: e.view.alphaValue = hidden ? 0 : 1
+        }
+    }
+
     /// Gesture start while editing: the card layer shows the editor's still and the live editor hides, in the same
     /// transaction, so the switch happens within one frame of our own layers.
     func freezeEditor() {
@@ -571,11 +582,13 @@ extension Canvas {
         cardLayers[i].frame = CGRect(x: r.minX, y: -(r.minY + web.stillSize.height), width: r.width, height: web.stillSize.height)
         cardLayers[i].contents = still
         cardLayers[i].isHidden = false
-        e.view.alphaValue = 0
+        setEditorHidden(e, true)
         CATransaction.commit()
         rasterScale[i] = web.stillScale
         web.frozen = true
-        window?.makeFirstResponder(self)  // no typing during a gesture
+        // The editor keeps first responder (and so its page focus); keys and clicks during the gesture are dropped by the
+        // app's event monitor instead. Taking focus away and giving it back left the page unfocused after the thaw.
+        e.view.evaluateJavaScript("cb.saveSel()")
         if web.stillDirty { Log.write("freeze: still was older than the last change") }
     }
 
@@ -594,11 +607,12 @@ extension Canvas {
             web.thawing = false
             guard lv.gen == gen, lv.resting, web.editing == i, web.frozen else { return }
             CATransaction.begin(); CATransaction.setDisableActions(true)
-            e.view.alphaValue = 1
+            setEditorHidden(e, false)
             cardLayers[i].isHidden = true
             CATransaction.commit()
             web.frozen = false
-            window?.makeFirstResponder(e.view)
+            if window?.firstResponder !== e.view { window?.makeFirstResponder(e.view) }
+            await e.call("return cb.restoreSel()")
             web.onThawed?()
             refreshStill()
         }

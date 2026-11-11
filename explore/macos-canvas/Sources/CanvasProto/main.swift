@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow!
     var canvas: Canvas!
     var monitor: Any?
+    var keyMonitor: Any?
 
     func applicationDidFinishLaunching(_ n: Notification) {
         var args = Array(CommandLine.arguments.dropFirst())
@@ -70,6 +71,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         buildMenu()
+        // During a gesture (mode 5) nothing else is accepted: keys and clicks are dropped here, so the editor can keep focus.
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] e in
+            guard let self, e.window === self.window, self.canvas.mode == 5, !self.canvas.lv.resting else { return e }
+            return nil
+        }
         // Gestures always belong to the canvas, also over the editor (a WKWebView would take them otherwise).
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .magnify]) { [weak self] e in
             if ProcessInfo.processInfo.environment["CANVAS_MODE5TEST"] != nil {
@@ -78,6 +84,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self, Canvas.routeGestures, e.window === self.window else { return e }
             if e.type == .scrollWheel { self.canvas.scrollWheel(with: e) } else { self.canvas.magnify(with: e) }
             return nil
+        }
+        if ProcessInfo.processInfo.environment["CANVAS_CARETTEST"] != nil {
+            window.level = .floating
+            window.orderFrontRegardless()
+            Task { @MainActor in await self.canvas.caretTest() }
+        }
+        if ProcessInfo.processInfo.environment["CANVAS_CARETTEST"] != nil {
+            window.level = .floating
+            window.orderFrontRegardless()
+            Task { @MainActor in await self.canvas.caretTest() }
         }
         if ProcessInfo.processInfo.environment["CANVAS_MODE5TEST"] != nil {
             window.level = .floating

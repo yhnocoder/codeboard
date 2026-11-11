@@ -12,11 +12,24 @@ declare global {
   }
 }
 
+// A page that only draws Notes (snapshots) must never take focus: mounting the editor focuses it, and on macOS that
+// makes the hidden web view ask to become first responder, which blurs the editor the user is typing in.
+let drawOnly = false;
+const realFocus = HTMLElement.prototype.focus;
+HTMLElement.prototype.focus = function (this: HTMLElement, opts?: FocusOptions) {
+  if (!drawOnly) realFocus.call(this, opts);
+};
 const post = (m: unknown) => window.webkit?.messageHandlers.cb.postMessage(m);
 const note = document.getElementById("note") as HTMLDivElement;
 const md = createMarkdown({});
 const frames = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 let editor: MdEditorHandle | undefined;
+let saved: { a: Node; ao: number; f: Node; fo: number; top: number } | null = null;
+const scrollBox = () => note.querySelector<HTMLElement>(".ProseMirror")?.parentElement ?? note;
+const scrollTop = () => scrollBox().scrollTop;
+const setScrollTop = (v: number) => {
+  scrollBox().scrollTop = v;
+};
 
 function setBox(width: number, card: boolean) {
   note.style.width = `${width}px`;
@@ -58,6 +71,7 @@ window.cb = {
     setBox(width, card);
     note.textContent = "";
     note.style.transform = "";
+    drawOnly = true;
     note.classList.add("still");
     note.classList.remove("bare");
     editor = mountEditor(md, note, { value: src, onDone: () => {}, scrollOwnBox: true });
@@ -116,6 +130,48 @@ window.cb = {
     }
     out.sort((a, b) => a - b);
     return { p50: out[Math.floor(out.length / 2)], max: out[out.length - 1] };
+  },
+  /** Freeze: remember the selection exactly (nodes and offsets), as the canvas takes focus for the gesture. */
+  saveSel() {
+    const sel = getSelection();
+    saved = sel && sel.rangeCount && sel.anchorNode && sel.focusNode
+      ? { a: sel.anchorNode, ao: sel.anchorOffset, f: sel.focusNode, fo: sel.focusOffset, top: scrollTop() }
+      : null;
+    return !!saved;
+  },
+  /** Thaw: focus the editable element without scrolling and put the selection back, so nothing resets it. */
+  restoreSel() {
+    const ed = note.querySelector<HTMLElement>('[contenteditable="true"]');
+    ed?.focus({ preventScroll: true });
+    if (saved?.a.isConnected && saved.f.isConnected) {
+      getSelection()?.setBaseAndExtent(saved.a, saved.ao, saved.f, saved.fo);
+      setScrollTop(saved.top);
+    }
+    return document.hasFocus();
+  },
+  /** The selection as a comparable string: node paths from the Note and offsets, and whether the page has focus. */
+  selKey() {
+    const sel = getSelection();
+    const path = (n: Node | null) => {
+      const out: number[] = [];
+      while (n && n !== note) {
+        const p: Node | null = n.parentNode;
+        if (!p) return "detached";
+        out.unshift([...p.childNodes].indexOf(n as ChildNode));
+        n = p;
+      }
+      return n === note ? out.join(".") : "outside";
+    };
+    return sel && sel.rangeCount
+      ? `anchor ${path(sel.anchorNode)}:${sel.anchorOffset} head ${path(sel.focusNode)}:${sel.focusOffset} focus=${document.hasFocus()}`
+      : `none focus=${document.hasFocus()}`;
+  },
+  /** Selects a span of the first text (for the check with a non-empty selection). */
+  selectSome() {
+    const walker = document.createTreeWalker(note, NodeFilter.SHOW_TEXT);
+    const t = walker.nextNode();
+    if (t?.textContent && t.textContent.length > 8) getSelection()?.setBaseAndExtent(t, 2, t, 8);
+    return true;
   },
   /** Same, and resolves once the page has painted at that scale (for thawing a frozen editor). */
   async setScaleSettled(z: number) {

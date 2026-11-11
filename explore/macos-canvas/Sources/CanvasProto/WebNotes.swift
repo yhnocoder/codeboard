@@ -23,10 +23,13 @@ final class NoteWeb: NSObject, WKScriptMessageHandler {
         return nil
     }()
 
-    init(vault: String) {
+    init(vault: String, focusable: Bool = false) {
         let config = WKWebViewConfiguration()
         config.suppressesIncrementalRendering = true
-        view = WKWebView(frame: CGRect(x: 0, y: 0, width: 600, height: 800), configuration: config)
+        // Only the editor may take keyboard focus: a snapshot view mounting the editor to draw a Note would otherwise
+        // become first responder and blur the editor the user is typing in.
+        view = focusable ? EditorWebView(frame: CGRect(x: 0, y: 0, width: 600, height: 800), configuration: config)
+            : UnfocusableWebView(frame: CGRect(x: 0, y: 0, width: 600, height: 800), configuration: config)
         super.init()
         config.userContentController.add(self, name: "cb")
         view.setValue(false, forKey: "drawsBackground")
@@ -120,4 +123,19 @@ func saveImage(_ img: CGImage, _ path: String) {
     guard let d = CGImageDestinationCreateWithURL(URL(fileURLWithPath: path) as CFURL, "public.png" as CFString, 1, nil) else { return }
     CGImageDestinationAddImage(d, img, nil)
     CGImageDestinationFinalize(d)
+}
+
+/// A web view that never takes keyboard focus (offscreen renders).
+final class UnfocusableWebView: WKWebView {
+    override var acceptsFirstResponder: Bool { false }
+    override func becomeFirstResponder() -> Bool { false }
+}
+
+/// The editor's web view: while an edit is open it keeps keyboard focus unless the app itself lets it go.
+final class EditorWebView: WKWebView {
+    var holdFocus = false
+    override func resignFirstResponder() -> Bool {
+        if holdFocus { return false }
+        return super.resignFirstResponder()
+    }
 }
