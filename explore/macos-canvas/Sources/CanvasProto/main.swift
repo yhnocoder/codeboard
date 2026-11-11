@@ -86,6 +86,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if e.type == .scrollWheel { self.canvas.scrollWheel(with: e) } else { self.canvas.magnify(with: e) }
             return nil
         }
+        if ProcessInfo.processInfo.environment["CANVAS_IMGDIAG"] != nil {
+            window.level = .floating
+            window.orderFrontRegardless()
+            Task { @MainActor in await self.canvas.imageDiag() }
+        }
         if ProcessInfo.processInfo.environment["CANVAS_COSTTEST"] != nil {
             window.level = .floating
             window.orderFrontRegardless()

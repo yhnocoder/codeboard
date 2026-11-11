@@ -395,3 +395,74 @@ extension Canvas {
         NSApp.terminate(nil)
     }
 }
+
+extension Canvas {
+    /// Image diagnosis: every visible-able image slot at rest, while panned in from beyond the view, and while zoomed.
+    func imageDiag() async {
+        mode = 5
+        await waitIdle()
+        let name = (board.path as NSString).lastPathComponent
+        func need(_ sl: ImageSlot, _ zz: CGFloat) -> CGFloat { min(sl.rect.width * zz * backing, CGFloat(sl.item.cap)) }
+        func desc(_ k: Int) -> String {
+            let sl = slots[k], c = board.cards[sl.card]
+            let ext = (sl.item.path as NSString).pathExtension
+            return "slot=\(k) card=\(sl.card) kind=\(c.kind == .image ? "image-card" : "note-image") file=\(ext) px=\(Int(sl.item.pixelSize.width))x\(Int(sl.item.pixelSize.height)) shown_w=\(Int(sl.rect.width)) hidden=\(sl.layer.isHidden)"
+        }
+        Log.write("imgdiag board=\(name) fit=\(String(format: "%.3f", fitZoom)) slots=\(slots.count) visible-able=\(slots.filter { !$0.layer.isHidden }.count)")
+        for k in slots.indices where !slots[k].layer.isHidden {
+            let sl = slots[k], r = sl.rect
+            Log.write("imgdiag " + desc(k) + " base_level=\(baseLevel[k]) cap=\(sl.item.cap)")
+            // a) at rest, centred, 175 %
+            z = 1.75; camX = r.midX - bounds.width / 2 / z; camY = r.midY - bounds.height / 2 / z
+            applyCamera(); levelRest(); await waitIdle(); await sleep(0.4)
+            Log.write(String(format: "imgdiag   rest@1.75 centred: level=%d need=%.0f need_x2=%.0f → %@", slots[k].level, need(sl, 1.75), need(sl, 3.5),
+                             CGFloat(slots[k].level) >= need(sl, 1.75) * 0.98 ? "sharp" : "BELOW"))
+            // b) a real gesture far away first (its end drops off-screen images to their fit level), then pan in from one
+            // screen to the left, at 175 %
+            let viewW = bounds.width / z
+            camX = r.midX - bounds.width / 2 / z - viewW * 4
+            applyCamera()
+            let xf = camX
+            pendingLabel = "far"
+            await drive { [self] t in camX = xf + CGFloat(t) * 50; cameraMoved(); return t < 0.2 }
+            await waitIdle(); await sleep(0.4)
+            camX = r.midX - bounds.width / 2 / z - viewW * 1.2
+            applyCamera(); levelRest(); await waitIdle(); await sleep(0.4)
+            pendingLabel = "pan-in-\(k)"
+            let before = slots[k].level
+            let x0 = camX
+            var minLevel = Int.max, framesVisibleLow = 0, framesVisible = 0
+            await drive { [self] t in
+                let p = min(t / 0.6, 1)
+                camX = x0 + viewW * 1.2 * CGFloat(p); cameraMoved()
+                if visibleSlots.contains(k) {
+                    framesVisible += 1
+                    minLevel = min(minLevel, slots[k].level)
+                    if CGFloat(slots[k].level) < need(sl, z) * 0.98 { framesVisibleLow += 1 }
+                }
+                return p < 1
+            }
+            let t0 = CACurrentMediaTime()
+            while CGFloat(slots[k].level) < need(sl, z) * 0.98 && CACurrentMediaTime() - t0 < 3 { await sleep(0.02) }
+            Log.write(String(format: "imgdiag   pan-in@1.75: level before=%d (off screen), during motion min=%d need=%.0f (%.1fx too small), visible frames below res %d/%d, sharp %.0f ms after the motion",
+                             before, minLevel == Int.max ? -1 : minLevel, need(sl, z), need(sl, z) / CGFloat(max(1, minLevel == Int.max ? 1 : minLevel)),
+                             framesVisibleLow, framesVisible, (CACurrentMediaTime() - t0) * 1000))
+            // c) zoom 1.0 → 1.75 with the slot centred
+            z = 1; camX = r.midX - bounds.width / 2 / z; camY = r.midY - bounds.height / 2 / z
+            applyCamera(); levelRest(); await waitIdle(); await sleep(0.4)
+            let atRest1 = slots[k].level
+            var lowFrames = 0, frames = 0
+            await drive { [self] t in
+                let p = min(t / 0.5, 1)
+                zoom(by: pow(1.75, CGFloat(p)) / z, at: CGPoint(x: bounds.width / 2, y: bounds.height / 2))
+                frames += 1
+                if CGFloat(slots[k].level) < need(sl, z) * 0.98 { lowFrames += 1 }
+                return p < 1
+            }
+            Log.write(String(format: "imgdiag   zoom 1.00→1.75: level at rest(1.00)=%d (rule wants ≥ need at 2.00=%.0f), frames below res during zoom %d/%d",
+                             atRest1, need(sl, 2.0), lowFrames, frames))
+            await waitIdle()
+        }
+        NSApp.terminate(nil)
+    }
+}
