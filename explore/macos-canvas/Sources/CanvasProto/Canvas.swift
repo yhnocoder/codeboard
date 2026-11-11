@@ -229,6 +229,7 @@ final class Canvas: NSView, CALayerDelegate {
                          (t1 - t0) * 1000, (t2 - t1) * 1000))
         window?.title = "\(board.name) — \((board.path as NSString).lastPathComponent)"
         ImageCache.shared.clear()
+        lv.cache = [:]
         modeChanged()
         loadWebBase()
         // The rest-bitmap sublayers exist from the start: contents set on a sublayer created in the same transaction
@@ -431,6 +432,14 @@ final class Canvas: NSView, CALayerDelegate {
     }
 
     func cameraMoved() {
+        // Exact pixels: every gesture frame puts the camera on whole device pixels (pans move by whole pixels, so the
+        // 1:1 bitmaps never land between pixels: resampled differently each frame, they shimmered), and the last frame
+        // of a gesture is already aligned, so nothing moves after it ends.
+        if mode == 5 && Canvas.restExact {
+            let s = z * backing
+            camX = (camX * s).rounded() / s
+            camY = (camY * s).rounded() / s
+        }
         if mode == 5 { levelGestureStart(); exactOnCameraMove() }
         moved = true
         applyCamera()
@@ -480,11 +489,16 @@ final class Canvas: NSView, CALayerDelegate {
         guard script == nil else { return }
         if e.phase.contains(.began) { pinchRaw = z }
         zoom(by: 1 + e.magnification, at: convert(e.locationInWindow, from: nil), pinching: true)
-        if e.phase.contains(.ended) || e.phase.contains(.cancelled) {
-            let clamped = min(max(z, fitZoom * 0.5), max(maxZoom, fitZoom))
-            if abs(clamped - z) > 1e-4 { springBack = CGPoint(x: clamped, y: 0) }
-            pinchRaw = 0
-        }
+        if e.phase.contains(.ended) || e.phase.contains(.cancelled) { endPinch() }
+    }
+
+    /// Fingers lifted from a pinch: the rubber band back inside the limits and, with exact pixels and snapping, onto the
+    /// 5 % grid, as one settling motion.
+    func endPinch() {
+        var clamped = min(max(z, fitZoom * 0.5), max(maxZoom, fitZoom))
+        if mode == 5 && Canvas.restExact && lv.snap { clamped = min(max((clamped * 20).rounded() / 20, fitZoom * 0.5), maxZoom) }
+        if abs(clamped - z) > 1e-4 { springBack = CGPoint(x: clamped, y: 0) }
+        pinchRaw = 0
     }
 
     /// The rubber band settling back to the limit after a pinch.
@@ -526,6 +540,7 @@ final class Canvas: NSView, CALayerDelegate {
         case ";": textStroke = max(0, ((textStroke - 0.05) * 100).rounded() / 100); applyTextStroke(); updateHud()
         case "'": textStroke = min(0.5, ((textStroke + 0.05) * 100).rounded() / 100); applyTextStroke(); updateHud()
         case "e": Canvas.restExact.toggle(); resetRasters(); updateHud()
+        case "q": lv.snap.toggle(); updateHud(); levelRest()
         case "z": maxZoom = maxZoom == 2 ? 3 : 2; updateHud()
         case "v": shaping.toggle(); updateHud()
         case "[": knee = max(500, knee - 250); updateHud()
@@ -860,9 +875,9 @@ final class Canvas: NSView, CALayerDelegate {
         let variant = mode == 3 ? (liveOwn ? "(own surface)" : liveAsync ? "(CA, drawsAsynchronously)" : "(CA backing store)")
             : (useSurfaces ? "(IOSurface)" : "(CGImage)")
         hud.string = """
-         mode \(mode) \(Canvas.modeNames[mode]!)\(variant)   1–5 modes · ; ' text weight · e exact pixels · n m cards/frame · j k px/frame · h l redraws · g outer ring · x exact at rest · w web notes · double-click edit · z 200/300% · v shaping [ ] knee , . glide · c live: own surface / CA · a async · s IOSurface / CGImage · f fit · ←/→ · b bench
+         mode \(mode) \(Canvas.modeNames[mode]!)\(variant)   1–5 modes · ; ' text weight · e exact pixels · q zoom snap · n m cards/frame · j k px/frame · h l redraws · g outer ring · x exact at rest · w web notes · double-click edit · z 200/300% · v shaping [ ] knee , . glide · c live: own surface / CA · a async · s IOSurface / CGImage · f fit · ←/→ · b bench
          board \(boardIndex + 1)/\(boards.count) \((board.path as NSString).lastPathComponent)  cards \(board.cards.count)  display \(fps) Hz
-         \(mode == 5 ? "levels: swaps ≤\(lv.cardsPerFrame) cards and ≤\(lv.budget / 1000)k px per frame · redraws \(lv.concurrency) · outer ring \(lv.ring > 0 ? "on" : "off") · exact at rest \(lv.exact ? "on" : "off") · text weight \(String(format: "%.2f", textStroke)) px · \(Canvas.restExact ? "exact pixels" : "levels") · queued \(lv.queue.count) · \(lv.resting ? "rest" : "gesture")  " : "")notes \(web.on ? (mode == 5 ? "web (editor page)" : "web (Markdown package)") : "CoreText")  zoom \(String(format: "%.2f", z)) (max \(Int(maxZoom * 100))%)  shaping \(shaping ? "knee \(Int(knee)) pt/s" : "off")  glide τ \(String(format: "%.2f", tau)) s  speed \(Int(speedNow)) pt/s  visible \(visible.count)   \(memLine)
+         \(mode == 5 ? "levels: swaps ≤\(lv.cardsPerFrame) cards and ≤\(lv.budget / 1000)k px per frame · redraws \(lv.concurrency) · outer ring \(lv.ring > 0 ? "on" : "off") · exact at rest \(lv.exact ? "on" : "off") · text weight \(String(format: "%.2f", textStroke)) px · \(Canvas.restExact ? "exact pixels\(lv.snap ? " + snap" : "") · cache \(lv.cache.values.reduce(0) { $0 + $1.bytes } / 1_000_000) MB" : "levels") · queued \(lv.queue.count) · \(lv.resting ? "rest" : "gesture")  " : "")notes \(web.on ? (mode == 5 ? "web (editor page)" : "web (Markdown package)") : "CoreText")  zoom \(String(format: "%.2f", z)) (max \(Int(maxZoom * 100))%)  shaping \(shaping ? "knee \(Int(knee)) pt/s" : "off")  glide τ \(String(format: "%.2f", tau)) s  speed \(Int(speedNow)) pt/s  visible \(visible.count)   \(memLine)
          last: \(lastSummary.split(separator: " ").dropFirst(2).joined(separator: " "))
         """
     }
@@ -942,6 +957,7 @@ extension Canvas {
             v.view.evaluateJavaScript(js)
         }
         NoteWeb.textStroke = textStroke
+        lv.cache = [:]
         if web.editing == nil { loadWebBase(); resetRasters() }
     }
 }

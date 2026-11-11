@@ -86,6 +86,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if e.type == .scrollWheel { self.canvas.scrollWheel(with: e) } else { self.canvas.magnify(with: e) }
             return nil
         }
+        if ProcessInfo.processInfo.environment["CANVAS_BROWSETEST"] != nil {
+            window.level = .floating
+            window.orderFrontRegardless()
+            Task { @MainActor in await self.canvas.browseTest() }
+        }
+        if ProcessInfo.processInfo.environment["CANVAS_JITTERTEST"] != nil {
+            window.level = .floating
+            window.orderFrontRegardless()
+            Task { @MainActor in await self.canvas.jitterTest() }
+        }
         if ProcessInfo.processInfo.environment["CANVAS_IMGDIAG"] != nil {
             window.level = .floating
             window.orderFrontRegardless()

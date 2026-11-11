@@ -469,3 +469,131 @@ extension Canvas {
         NSApp.terminate(nil)
     }
 }
+
+extension Canvas {
+    /// After a motion ends, captures the window repeatedly and logs every visible change between consecutive captures.
+    func watchSettle(_ label: String, seconds: Double = 1.2) async {
+        let t0 = CACurrentMediaTime()
+        let zBefore = z
+        var prev: CGImage?
+        var changes: [String] = []
+        var n = 0, maxShift = 0
+        while CACurrentMediaTime() - t0 < seconds {
+            guard let full = windowImage(), let img = full.cropping(to: CGRect(x: 0, y: 260, width: full.width, height: full.height - 300)) else { break }
+            if let p = prev {
+                let d = imageDiff(p, img)
+                if d.meanZero > 0.02 || d.differ > img.width * img.height / 20000 {
+                    n += 1; maxShift = max(maxShift, abs(d.shiftX), abs(d.shiftY))
+                    changes.append(String(format: "%.0fms:%.3f%%/mean%.2f/shift(%d,%d)", (CACurrentMediaTime() - t0) * 1000,
+                                          Double(d.differ) / Double(img.width * img.height) * 100, d.meanZero, d.shiftX, d.shiftY))
+                }
+            }
+            prev = img
+            await sleep(0.008)   // let the canvas run between captures (rest detection, swaps)
+        }
+        Log.write(String(format: "settle %@: zoom %.3f→%.3f visible changes=%d max_shift=%dpx ", label, zBefore, z, n, maxShift) + changes.joined(separator: " "))
+    }
+
+    /// The frames of a slow pan, without the camera moving between captures: the camera is held at sub-pixel offsets
+    /// (as a pan passes through them) and the text's sharpness is read at each; a spread means shimmering while moving.
+    func shimmer(_ label: String, card i: Int) async {
+        let s = z * backing
+        let x0 = camX, y0 = camY
+        var grads: [Double] = []
+        for k in 0..<8 {
+            let f = CGFloat(k) / 8
+            camX = x0 + f / s; camY = y0 + f / s
+            cameraMoved()   // as a pan frame does (exact pixels rounds the camera here)
+            await sleep(0.12)
+            if let img = windowImage(), let c = cardCrop(img, i) { grads.append(inkStats(c).grad) }
+        }
+        camX = x0; camY = y0; applyCamera()
+        let lo = grads.min() ?? 0, hi = grads.max() ?? 0
+        Log.write(String(format: "shimmer %@: sharpness over sub-pixel offsets min=%.2f max=%.2f spread=%.1f%%", label, lo, hi, (hi - lo) / max(hi, 1) * 100))
+    }
+
+    func jitterTest() async {
+        mode = 5
+        await waitIdle()
+        let notes = board.cards.indices.filter { isWebNote($0) && board.cards[$0].kind == .note }
+        guard let i = notes.filter({ !board.cards[$0].body.contains("|") }).max(by: { board.cards[$0].body.count < board.cards[$1].body.count })
+        else { NSApp.terminate(nil); return }
+        let r = board.cards[i].rect
+        let tag = Canvas.restExact ? "e-on" : "e-off"
+        let zooms = (ProcessInfo.processInfo.environment["CANVAS_WEIGHTZOOMS"] ?? "1.13,1.37").split(separator: ",").compactMap { Double($0) }.map { CGFloat($0) }
+        for zl in zooms {
+            func home() async {
+                z = zl; camX = r.minX - 80 / z; camY = r.minY - 60 / z
+                applyCamera(); levelRest(); await waitIdle(); await sleep(0.6)
+            }
+            await home()
+            await shimmer(String(format: "%@ pan@%.2f", tag, zl), card: i)
+            await home()
+            let x0 = camX, y0 = camY
+            await drive { [self] t in let p = min(t / 0.4, 1); camX = x0 + 37.3 * CGFloat(p) / z; camY = y0 + 21.7 * CGFloat(p) / z; cameraMoved(); return p < 1 }
+            await watchSettle(String(format: "%@ pan-stop@%.2f", tag, zl))
+            z = 1; camX = r.minX - 80; camY = r.minY - 60; applyCamera(); levelRest(); await waitIdle(); await sleep(0.6)
+            await drive { [self] t in
+                let p = min(t / 0.4, 1)
+                zoom(by: pow(zl, CGFloat(p)) / z, at: CGPoint(x: bounds.width * 0.4, y: bounds.height * 0.6))
+                return p < 1
+            }
+            endPinch()   // as the fingers lifting from a pinch
+            await watchSettle(String(format: "%@ zoom-stop 1.00→%.2f", tag, zl))
+        }
+        NSApp.terminate(nil)
+    }
+}
+
+/// CPU seconds (user + system) of this process and of the given other processes.
+func cpuSeconds(_ pids: [pid_t]) -> (app: Double, web: Double) {
+    var ru = rusage(); getrusage(RUSAGE_SELF, &ru)
+    let app = Double(ru.ru_utime.tv_sec) + Double(ru.ru_utime.tv_usec) / 1e6 + Double(ru.ru_stime.tv_sec) + Double(ru.ru_stime.tv_usec) / 1e6
+    var web = 0.0
+    var tb = mach_timebase_info_data_t(); mach_timebase_info(&tb)
+    for pid in pids where pid > 0 {
+        var info = rusage_info_v4()
+        let r = withUnsafeMutablePointer(to: &info) { $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V4, $0) } }
+        if r == 0 { web += Double(info.ri_user_time + info.ri_system_time) * Double(tb.numer) / Double(tb.denom) / 1e9 }
+    }
+    return (app, web)
+}
+
+extension Canvas {
+    /// A browse session: zoom and pan around a Note and come back, a dozen rests; CPU, drawing work and cache hits.
+    func browseTest() async {
+        mode = 5
+        await waitIdle()
+        let notes = board.cards.indices.filter { isWebNote($0) && board.cards[$0].kind == .note }
+        guard let i = notes.filter({ !board.cards[$0].body.contains("|") }).max(by: { board.cards[$0].body.count < board.cards[$1].body.count })
+        else { NSApp.terminate(nil); return }
+        let r = board.cards[i].rect
+        let pids = (web.pool + [web.editor, web.svgView].compactMap { $0 }).map { $0.webPID }
+        z = 1; camX = r.minX - 80; camY = r.minY - 60; applyCamera(); levelRest(); await waitIdle(); await sleep(0.5)
+        lv.cacheHits = 0; lv.cacheMisses = 0
+        let c0 = cpuSeconds(pids)
+        let steps: [(String, CGFloat, CGFloat, CGFloat)] = [   // (label, zoom, dx, dy in screen pt)
+            ("zoom", 1.37, 0, 0), ("pan", 1.37, 300, 0), ("pan", 1.37, -300, 0), ("zoom", 1.0, 0, 0), ("zoom", 1.37, 0, 0),
+            ("zoom", 1.62, 0, 0), ("pan", 1.62, 0, 250), ("pan", 1.62, 0, -250), ("zoom", 1.37, 0, 0), ("zoom", 1.0, 0, 0),
+            ("zoom", 1.62, 0, 0), ("zoom", 1.0, 0, 0)]
+        var restMs: [Double] = []
+        for (label, zt, dx, dy) in steps {
+            lv.restWorkMs = 0
+            if label == "zoom" {
+                let z0 = z
+                await drive { [self] t in let p = min(t / 0.35, 1); zoom(by: (z0 * pow(zt / z0, CGFloat(p))) / z, at: CGPoint(x: bounds.width * 0.3, y: bounds.height * 0.7)); return p < 1 }
+            } else {
+                let x0 = camX, y0 = camY, zz = z
+                await drive { [self] t in let p = min(t / 0.35, 1); camX = x0 + dx * CGFloat(p) / zz; camY = y0 + dy * CGFloat(p) / zz; cameraMoved(); return p < 1 }
+            }
+            await waitIdle(); await sleep(0.2)
+            restMs.append(lv.restWorkMs)
+        }
+        let c1 = cpuSeconds(pids)
+        Log.write(String(format: "browse %@: rests=%d drawing work per rest p50=%.0fms total=%.0fms cpu app=%.2fs web=%.2fs cache hits=%d misses=%d cache=%.0fMB card_mem=%.0fMB",
+                         Canvas.restExact ? "e-on\(lv.snap ? "+snap" : "")" : "e-off", steps.count, GestureStats.pct(restMs, 0.5), restMs.reduce(0, +),
+                         c1.app - c0.app, c1.web - c0.web, lv.cacheHits, lv.cacheMisses,
+                         Double(lv.cache.values.reduce(0) { $0 + $1.bytes }) / 1e6, Double(cardMemory()) / 1e6))
+        NSApp.terminate(nil)
+    }
+}

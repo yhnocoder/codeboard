@@ -18,7 +18,14 @@ final class LevelState {
     var exact = true
     var exactLayers: [Int: CALayer] = [:]
     var exactScale: [Int: CGFloat] = [:]
-    var pictureBase: [Int: IOSurface] = [:]   // fit-zoom bitmaps with their pictures (cards that have pictures)   // scale of the bitmap each rest layer shows
+    var pictureBase: [Int: IOSurface] = [:]
+    // Exact pixels: the resting zoom eases to a 5 % grid (edit and display then match exactly, and zooms repeat), and
+    // exact bitmaps are kept per (card, zoom step) within a budget, so coming back to a zoom draws nothing.
+    var snap = ProcessInfo.processInfo.environment["CANVAS_ZOOMSNAP"] != "0"
+    var cache: [String: (contents: IOSurface, bytes: Int, used: Double)] = [:]
+    var cacheBudget = 256 * 1024 * 1024
+    var cacheHits = 0, cacheMisses = 0
+    var restWorkMs = 0.0          // background drawing time spent filling since the last rest   // fit-zoom bitmaps with their pictures (cards that have pictures)   // scale of the bitmap each rest layer shows
     var restZ: CGFloat = 0
     var inflight = 0
     var gen = 0
@@ -70,8 +77,40 @@ extension Canvas {
     }
 
     /// Rest: fill the levels the view needs, nearest first; release what is far away.
+    func cacheKey(_ i: Int) -> String { "\(i)@\(Int((z * 1000).rounded()))" }
+
+    func cacheStore(_ i: Int, _ surf: IOSurface) {
+        lv.cache[cacheKey(i)] = (surf, surf.allocationSize, CACurrentMediaTime())
+        var total = lv.cache.values.reduce(0) { $0 + $1.bytes }
+        for (k, v) in lv.cache.sorted(by: { $0.value.used < $1.value.used }) where total > lv.cacheBudget {
+            lv.cache.removeValue(forKey: k); total -= v.bytes
+        }
+    }
+
+    func cacheDrop(card i: Int) { for k in lv.cache.keys where k.hasPrefix("\(i)@") { lv.cache.removeValue(forKey: k) } }
+
+    /// Exact pixels with snapping: a resting zoom off the 5 % grid eases onto it first (a short settle of at most
+    /// 2.5 %), and the rest fill runs when it arrives.
+    func snapZoomIfNeeded() -> Bool {
+        guard Canvas.restExact, lv.snap, springBack == nil else { return false }
+        let target = min(max((z * 20).rounded() / 20, fitZoom * 0.5), maxZoom)
+        guard abs(target - z) > 1e-4 else { return false }
+        let mouse = window.map { convert($0.mouseLocationOutsideOfEventStream, from: nil) }
+        springAnchor = mouse.flatMap { bounds.contains($0) ? $0 : nil } ?? CGPoint(x: bounds.midX, y: bounds.midY)
+        springBack = CGPoint(x: target, y: 0)
+        return true
+    }
+
     func levelRest() {
         guard levelMode else { return }
+        if snapZoomIfNeeded() { return }
+        if Canvas.restExact {
+            // a jump made without a gesture (fit, board switch) can leave the camera between pixels: align it in the
+            // same frame as the jump, before the 1:1 bitmaps are placed
+            let s = z * backing
+            let ax = (camX * s).rounded() / s, ay = (camY * s).rounded() / s
+            if ax != camX || ay != camY { camX = ax; camY = ay; applyCamera() }
+        }
         if let i = web.editing { snapCamera(to: i) }
         exactOnCameraMove()  // the zoom may have been set without a gesture (fit, board switch): reset the rest bitmaps
         lv.resting = true
@@ -121,6 +160,13 @@ extension Canvas {
                 // the held bitmap is already at that level: just show it linearly
                 if abs(levelScale(i, level) - s) / s < 0.01 { hideExact(i); cardLayers[i].minificationFilter = .linear; continue }
                 if let l = lv.exactLayers[i], l.contents != nil, abs((lv.exactScale[i] ?? 0) - s) / s < 0.01 { continue }
+                if Canvas.restExact, let hit = lv.cache[cacheKey(i)] {
+                    lv.cache[cacheKey(i)]?.used = CACurrentMediaTime()
+                    lv.cacheHits += 1
+                    lv.ready.append((i, s, hit.contents, hit.contents.width * hit.contents.height, true))
+                    continue
+                }
+                if Canvas.restExact { lv.cacheMisses += 1 }
                 let p = CGPoint(x: board.cards[i].rect.midX, y: board.cards[i].rect.midY)
                 // what is seen at rest goes first; the held level (for the next zoom-in) after it
                 jobs.append((i, s, true, min(hypot(p.x - center.x, p.y - center.y), hypot(p.x - mouse.x, p.y - mouse.y)) - 50_000))
@@ -152,6 +198,7 @@ extension Canvas {
                     self.lv.inflight -= 1
                     self.lv.queued.remove(i)
                     if self.lv.gen != gen, exact, ProcessInfo.processInfo.environment["CANVAS_RESTLOG"] != nil { Log.write("rest-bitmap dropped card=\(i) (gen \(gen) → \(self.lv.gen))") }
+                    self.lv.restWorkMs += ms
                     guard self.lv.gen == gen, let surf else { return }
                     self.lv.ready.append((i, scale, surf, surf.width * surf.height, exact))
                     self.gesture?.rasterMs.append(ms)
@@ -173,6 +220,7 @@ extension Canvas {
                         guard let self else { return }
                         self.lv.inflight -= 1
                         self.lv.queued.remove(i)
+                        self.lv.restWorkMs += ms
                         guard self.lv.gen == gen, let surf else { return }
                         self.lv.ready.append((i, scale, surf, surf.width * surf.height, exact))
                         self.gesture?.rasterMs.append(ms)
@@ -198,7 +246,7 @@ extension Canvas {
                 l.masksToBounds = Canvas.restExact
                 l.contents = r.contents
                 lv.exactScale[r.i] = r.scale
-                if Canvas.restExact { pixelAlign(r.i) }
+                if Canvas.restExact { pixelAlign(r.i); if let surf = r.contents as? IOSurface { cacheStore(r.i, surf) } }
                 continue
             }
             cardLayers[r.i].contents = r.contents
@@ -298,6 +346,13 @@ extension Canvas {
         let b = cardLayers[i].bounds
         // layer space is y up: moving the top edge down on screen (dy > 0) lowers the layer
         l.frame = CGRect(x: dx, y: -dy, width: b.width, height: b.height)
+        if ProcessInfo.processInfo.environment["CANVAS_ALIGNLOG"] != nil, let root = layer {
+            CATransaction.flush()
+            let tl = l.convert(CGPoint(x: 0, y: l.bounds.height), to: root)   // top-left in the view's layer (y up)
+            let devX = tl.x * backing, devY = (bounds.height - tl.y) * backing
+            Log.write(String(format: "align card=%d corner p=(%.3f,%.3f) → layer top-left on screen (%.3f,%.3f) bitmap=%@", i, p.x, p.y, devX, devY,
+                             (l.contents as? IOSurface).map { "\($0.width)x\($0.height)" } ?? "-"))
+        }
     }
 
     func alignRestLayers() {

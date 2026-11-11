@@ -68,6 +68,12 @@ Modes:
    decodes at a power-of-two width, SVG drawn by WebKit), so they follow the same levels, rings, budgets and rest
    bitmaps as text; the separate image layers of modes 1–4 are hidden in mode 5. The HUD and bench figure
    `lowres_during_motion` / `screen_lowres` counts anything on screen below display resolution, image layers included.
+   Exact pixels (`e`, off by default) without jitter: while the zoom stays at its resting value every gesture frame puts
+   the camera on whole device pixels, so the 1:1 bitmaps never land between pixels (they shimmered while panning: 4.6–8.5 %
+   sharpness swing over sub-pixel offsets, now 0.1 %); each card's 1:1 bitmap is a snapshot of a whole-pixel rectangle
+   placed with its corner on a whole pixel; with `q` (on by default with `e`) the resting zoom settles onto a 5 % grid as
+   the pinch ends, where edit and display match exactly and zooms repeat, and the exact bitmaps are cached per (card,
+   zoom step) within 256 MB (`CANVAS_JITTERTEST`, `CANVAS_BROWSETEST` measure it).
    Text look (for judging by eye): `e` "exact pixels" (rest bitmaps drawn at the zoom itself and shown 1:1, corners on
    whole device pixels; slightly crisper between levels, but a 1-pixel offset against the editor remains at zooms where
    a card's width is a fractional number of pixels); `;` `'` text weight for web Notes (-webkit-text-stroke in the Note

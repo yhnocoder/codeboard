@@ -105,7 +105,8 @@ final class NoteWeb: NSObject, WKScriptMessageHandler {
         if viaEditor && NoteWeb.transformSnapshots {
             if renderedScale != k { _ = await call("return await cb.setScaleSettled(s)", ["s": Double(k)]); renderedScale = k }
             let t1 = CACurrentMediaTime()
-            let img = await take(width: width * k, height: height * k, scale: backing)
+            // a rect of whole device pixels: otherwise WebKit squeezes a fractional width into whole pixels (resampling)
+            let img = await take(width: ceil(width * k * backing) / backing, height: ceil(height * k * backing) / backing, scale: backing)
             return (img, (t1 - t0) * 1000, (CACurrentMediaTime() - t1) * 1000)
         }
         let t1 = CACurrentMediaTime()

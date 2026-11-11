@@ -372,7 +372,7 @@ extension Canvas {
     /// Leaving: snapshot the editor's last picture, render the static Note, show its bitmap, then remove the editor.
     func leaveEdit(value: String?) {
         guard let i = web.editing, let e = web.editor else { return }
-        if let v = value, v != board.cards[i].body { board.cards[i].setBody(v) }
+        if let v = value, v != board.cards[i].body { board.cards[i].setBody(v); cacheDrop(card: i) }
         let scale = z * backing
         let size = board.cards[i].rect.size
         Task { @MainActor in
