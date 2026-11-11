@@ -498,6 +498,8 @@ final class Canvas: NSView, CALayerDelegate {
         case "4": mode = 4
         case "5": mode = 5
         case "g": lv.ring = lv.ring > 0 ? 0 : 1; updateHud(); levelRest()
+        case "n": lv.cardsPerFrame = max(1, lv.cardsPerFrame - 1); updateHud()
+        case "m": lv.cardsPerFrame = min(64, lv.cardsPerFrame + 1); updateHud()
         case "j": lv.budget = max(250_000, lv.budget / 2); updateHud()
         case "k": lv.budget = min(128_000_000, lv.budget * 2); updateHud()
         case "h": lv.concurrency = max(1, lv.concurrency - 1); updateHud()
@@ -838,9 +840,9 @@ final class Canvas: NSView, CALayerDelegate {
         let variant = mode == 3 ? (liveOwn ? "(own surface)" : liveAsync ? "(CA, drawsAsynchronously)" : "(CA backing store)")
             : (useSurfaces ? "(IOSurface)" : "(CGImage)")
         hud.string = """
-         mode \(mode) \(Canvas.modeNames[mode]!)\(variant)   1–5 modes · j k swap budget · h l redraws · g outer ring · w web notes · double-click edit · z 200/300% · v shaping [ ] knee , . glide · c live: own surface / CA · a async · s IOSurface / CGImage · f fit · ←/→ · b bench
+         mode \(mode) \(Canvas.modeNames[mode]!)\(variant)   1–5 modes · n m cards/frame · j k px/frame · h l redraws · g outer ring · w web notes · double-click edit · z 200/300% · v shaping [ ] knee , . glide · c live: own surface / CA · a async · s IOSurface / CGImage · f fit · ←/→ · b bench
          board \(boardIndex + 1)/\(boards.count) \((board.path as NSString).lastPathComponent)  cards \(board.cards.count)  display \(fps) Hz
-         \(mode == 5 ? "levels: swap budget \(lv.budget / 1000)k px/frame · redraws \(lv.concurrency) · outer ring \(lv.ring > 0 ? "on" : "off") · queued \(lv.queue.count) · \(lv.resting ? "rest" : "gesture")  " : "")notes \(web.on ? (mode == 5 ? "web (editor page)" : "web (Markdown package)") : "CoreText")  zoom \(String(format: "%.2f", z)) (max \(Int(maxZoom * 100))%)  shaping \(shaping ? "knee \(Int(knee)) pt/s" : "off")  glide τ \(String(format: "%.2f", tau)) s  speed \(Int(speedNow)) pt/s  visible \(visible.count)   \(memLine)
+         \(mode == 5 ? "levels: swaps ≤\(lv.cardsPerFrame) cards and ≤\(lv.budget / 1000)k px per frame · redraws \(lv.concurrency) · outer ring \(lv.ring > 0 ? "on" : "off") · queued \(lv.queue.count) · \(lv.resting ? "rest" : "gesture")  " : "")notes \(web.on ? (mode == 5 ? "web (editor page)" : "web (Markdown package)") : "CoreText")  zoom \(String(format: "%.2f", z)) (max \(Int(maxZoom * 100))%)  shaping \(shaping ? "knee \(Int(knee)) pt/s" : "off")  glide τ \(String(format: "%.2f", tau)) s  speed \(Int(speedNow)) pt/s  visible \(visible.count)   \(memLine)
          last: \(lastSummary.split(separator: " ").dropFirst(2).joined(separator: " "))
         """
     }

@@ -13,7 +13,7 @@ plain text, sections, links as straight lines) and draws them in Warm Ink light.
 Variants for comparison: `--ca` (mode 3 into the layer's CA backing store), `--async` (same with drawsAsynchronously),
 `--cgimage` (modes 1–2 hand CGImages to CA instead of IOSurfaces).
 
-Keys: `1` settle, `2` ahead, `3` live, `4` tiles, `5` levels (`j` `k` swap budget, `h` `l` redraws, `g` outer ring), `c` live via own surface / CA backing store, `a` drawsAsynchronously,
+Keys: `1` settle, `2` ahead, `3` live, `4` tiles, `5` levels (`n` `m` cards swapped per frame, `j` `k` pixels swapped per frame, `h` `l` redraws, `g` outer ring), `c` live via own surface / CA backing store, `a` drawsAsynchronously,
 `s` IOSurface / CGImage rasters, `f` fit, `←` `→` previous / next board, `⌘O` open a board, `b` bench this board.
 Two-finger scroll pans, pinch or ⌘-scroll zooms around the pointer, up to 200 % (`z` toggles 300 %; `--max-zoom`);
 a pinch past the limit stretches a little (rubber band) and springs back.
@@ -61,7 +61,7 @@ Modes:
    level at or above the zoom (so a pan or flick at the same zoom stays sharp); cards farther away fall back to their
    fit-zoom bitmap. The redraws are queued nearest the view's centre and the pointer first, run at most `h` / `l`
    (default 4) at a time, and are swapped onto the screen within a pixel budget per frame (`j` / `k`, default 8 M
-   device pixels); a new gesture cancels the queue and drops late results. `g` turns the outer ring off. A card bitmap
+   device pixels) and a card count per frame (`n` / `m`, default 4), whichever is reached first; a new gesture cancels the queue and drops late results. `g` turns the outer ring off. A card bitmap
    is capped at 24 M pixels here. Layers minify with trilinear filtering; Core Animation builds mipmaps for the
    IOSurface contents (checked with CARenderer), so small text does not shimmer while zooming out.
    Notes (`w`): web Notes are snapshots of the editor's own page (`renderEditor`: the editor mounted without focus,

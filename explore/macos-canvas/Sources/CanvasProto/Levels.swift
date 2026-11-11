@@ -9,6 +9,7 @@ import QuartzCore
 final class LevelState {
     var budget = 8_000_000          // device pixels swapped onto the screen per frame
     var concurrency = 4             // background redraws at once
+    var cardsPerFrame = 4           // cards swapped onto the screen per frame (with the pixel budget: whichever is hit first)
     var queue: [(i: Int, scale: CGFloat)] = []
     var inflight = 0
     var gen = 0
@@ -147,11 +148,12 @@ extension Canvas {
             }
         }
         guard !lv.ready.isEmpty else { return }
-        var px = 0
+        var px = 0, cards = 0
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        while let r = lv.ready.first, px == 0 || px + r.px <= lv.budget {
+        while let r = lv.ready.first, cards < lv.cardsPerFrame, px == 0 || px + r.px <= lv.budget {
             lv.ready.removeFirst()
             px += r.px
+            cards += 1
             if web.editing == r.i { continue }
             cardLayers[r.i].contents = r.contents
             rasterScale[r.i] = r.scale
