@@ -3,8 +3,10 @@
 // 2. 每种对象（每种 kind 分开）两边的字段名一样，少了或多了都报错。
 // 不比可选 / 必填和 null：schema 故意更宽（可选字段允许 null；Board.id、Section.title、Segment.lang 在文件里可以缺；true 写成 boolean）
 import type * as v from "valibot";
-import type { BoardFileSchema, BoardSchema, CodeCardSchemaKeys, SharedCardSchema, VariantSchema } from "../src/schema";
+import type { BoardFileSchema, BoardSchema, CodeCardSchemaOut, SharedCardSchema, VariantSchema } from "../src/schema";
 import type {
+  Anchor,
+  BlockRef,
   Board,
   BoardFile,
   Variant,
@@ -13,16 +15,33 @@ import type {
   CallSample,
   RpcMark,
   Card,
+  CodeAnnot,
   CodeCard,
+  End,
+  GraphMark,
+  HideFlags,
   Link,
+  LinkItem,
+  LinkStyle,
+  NoteLayout,
   Place,
+  ProcTag,
+  Question,
   Section,
   Segment,
   SharedCardFile,
   SharedRef,
   ShelfEntry,
   Sidenote,
+  Source,
   Sticker,
+  StickerAt,
+  StickerOn,
+  Summary,
+  SummaryPair,
+  SymRef,
+  Version,
+  WebMeta,
 } from "../src/model";
 import type { BoundVal, CallAlt } from "@codeboard/analysis/basics";
 
@@ -42,6 +61,12 @@ type AllTrue<T> = { [K in keyof T]: T[K] extends true ? true : T[K] };
 const ok = <T extends true>(x: T) => x;
 type SNote = Out["sidenotes"][number];
 type VOut = v.InferOutput<typeof VariantSchema>;
+type OutCard = Out["cards"][number];
+type OutLink = Out["links"][number];
+type OutSegment = ByKind<SNote, "code">["code"];
+type OutSummary = NonNullable<Out["place"][string]["summary"]>;
+type OutLayout = NonNullable<ByKind<OutCard, "note">["mdLayout"]>;
+type OutAt = Out["stickers"][number]["at"];
 export const variantWrites: v.InferInput<typeof VariantSchema> = {} as Variant;
 
 export const writes: In = {} as Board;
@@ -63,17 +88,54 @@ export const keys = {
   section: ok({} as SameKeys<Section, Out["sections"][number]>),
   sticker: ok({} as SameKeys<Sticker, Out["stickers"][number]>),
   shelf: ok({} as SameKeys<ShelfEntry, NonNullable<Out["shelf"]>[number]>),
-  segment: ok({} as SameKeys<Segment, ByKind<SNote, "code">["code"]>),
+  segment: ok({} as SameKeys<Segment, OutSegment>),
+  symbol: ok({} as SameKeys<SymRef, NonNullable<OutSegment["symbol"]>>),
+  annot: ok({} as SameKeys<CodeAnnot, NonNullable<OutSegment["annots"]>[number]>),
+  summary: ok({} as SameKeys<Summary, OutSummary>),
+  summaryPair: ok({} as SameKeys<SummaryPair, NonNullable<OutSummary["pairs"]>[number]>),
+  end: ok({} as SameKeys<End, OutLink["from"]>),
+  block: ok({} as SameKeys<BlockRef, NonNullable<OutLink["from"]["block"]>>),
+  linkStyle: ok({} as SameKeys<LinkStyle, NonNullable<OutLink["style"]>>),
+  linkHead: ok({} as SameKeys<NonNullable<LinkStyle["head"]>, NonNullable<NonNullable<OutLink["style"]>["head"]>>),
+  linkSides: ok({} as SameKeys<NonNullable<Link["sides"]>, NonNullable<OutLink["sides"]>>),
+  linkLost: ok({} as SameKeys<NonNullable<Link["lost"]>, NonNullable<OutLink["lost"]>>),
+  proc: ok({} as SameKeys<ProcTag, NonNullable<ByKind<OutCard, "note">["procs"]>[number]>),
+  webMeta: ok({} as SameKeys<WebMeta, NonNullable<ByKind<OutCard, "web">["meta"]>>),
+  linkItem: ok({} as SameKeys<LinkItem, ByKind<OutCard, "links">["items"][number]>),
+  noteLayout: ok({} as SameKeys<NoteLayout, OutLayout>),
+  noteTable: ok(
+    {} as SameKeys<
+      NonNullable<NonNullable<NoteLayout["tables"]>[number]>,
+      NonNullable<NonNullable<OutLayout["tables"]>[number]>
+    >,
+  ),
+  msg: ok({} as SameKeys<NonNullable<ByKind<Card, "note">["msg"]>, NonNullable<ByKind<OutCard, "note">["msg"]>>),
+  anchor: ok({} as SameKeys<Anchor, SNote["at"]>),
+  stickerOn: ok({} as SameKeys<StickerOn, NonNullable<ByKind<OutAt, "canvas">["on"]>>),
+  question: ok({} as SameKeys<Question, NonNullable<Out["stickers"][number]["q"]>>),
+  graphMark: ok({} as SameKeys<GraphMark, NonNullable<Out["marks"]>[string]>),
+  hide: ok({} as SameKeys<HideFlags, NonNullable<CodeCardSchemaOut["hide"]>>),
+  members: ok({} as SameKeys<NonNullable<CodeCard["members"]>, NonNullable<CodeCardSchemaOut["members"]>>),
+  gen: ok({} as SameKeys<NonNullable<CodeCard["gen"]>, NonNullable<CodeCardSchemaOut["gen"]>>),
   file: ok({} as SameKeys<BoardFile, FileOut>),
   ref: ok({} as SameKeys<SharedRef, ByKind<FileOut["cards"][number], "shared">>),
   shared: ok({} as SameKeys<SharedCardFile, SharedOut>),
   // Variant：CodeCard 的 schema 是递归的 GenericSchema 推不出类型，Variant 单独导出来对
   variant: ok({} as SameKeys<Variant, VOut>),
-  code: ok(
-    {} as Same<keyof CodeCard, CodeCardSchemaKeys> extends true
-      ? true
-      : { model: Exclude<keyof CodeCard, CodeCardSchemaKeys>; schema: Exclude<CodeCardSchemaKeys, keyof CodeCard> },
-  ),
+  code: ok({} as SameKeys<CodeCard, CodeCardSchemaOut>),
+};
+export const stickerAts: AllTrue<EachKind<StickerAt, OutAt>> = { line: true, canvas: true };
+export const versions: AllTrue<EachKind<Version, OutSegment["version"]>> = {
+  git: true,
+  pkg: true,
+  hash: true,
+  none: true,
+};
+export const sources: AllTrue<EachKind<Source, OutSegment["src"]>> = {
+  repo: true,
+  external: true,
+  github: true,
+  free: true,
 };
 export const cards: AllTrue<EachKind<Exclude<Card, CodeCard>, Out["cards"][number]>> = {
   note: true,

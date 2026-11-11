@@ -1,6 +1,6 @@
 // Note 里的 [[引用]]：[[标题]]，或者从 [[ 列表选的 [[标题#^id]]（id 是目标的 id，跨白板的是 白板id/卡id）。
 // 写法由 @yhnocoder/markdown 定（schema-nodes.ts WikiRef，那边有为什么是 #^）；core 不引入那个包（它带着编辑器），这里只认同一个写法，
-// 给导出（写成不带 id 的可读引用）和旧文件升级用
+// 给导出（写成不带 id 的可读引用）、一起复制的卡之间的引用换成副本（edit/ops.ts）和旧文件升级用
 import type { BoardFile } from "./model";
 
 const REF = /\[\[([^[\]\n]+?)\]\]/g;

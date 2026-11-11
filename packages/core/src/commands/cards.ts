@@ -65,7 +65,8 @@ export function arrange(env: CommandEnv, ids: Set<string>, how: Arrange, overlap
 
 /**
  * Duplicate: copies with new card and segment ids, placed 48 px down and right, without folding or locks and without arrows.
- * The copies' ids in the order given and the segments' new ids (old → new), or null when the edit failed
+ * A Compare is not copied: its copy would show the same column cards as it. The copies' ids in the order given and the segments'
+ * new ids (old → new), or null when the edit failed
  */
 export function duplicateCards(
   env: CommandEnv,
@@ -74,7 +75,7 @@ export function duplicateCards(
   const b0 = env.board();
   const items: CardCopy[] = ids.flatMap((id) => {
     const c = b0.cards.find((k) => k.id === id);
-    return c ? [{ card: c, place: b0.place[id] }] : [];
+    return c && c.kind !== "compare" ? [{ card: c, place: b0.place[id] }] : [];
   });
   let made: string[] = [],
     segs: Record<string, string> = {};
@@ -118,7 +119,7 @@ export function writeNote(env: CommandEnv, id: string, md: string, layout?: Note
 
 /**
  * The first edit of a new card or question ended without anything written through writeNote, writeFreeCode or writeQuestion
- * (the editor closed unchanged): it stays when it has content after all (a Box, text put in another way), else it goes
+ * (the editor closed unchanged): it stays when it has content after all (text that reached it another way), else it goes
  */
 export function settleUnwritten(env: CommandEnv, id: string) {
   if (!env.fresh.is(id)) return;

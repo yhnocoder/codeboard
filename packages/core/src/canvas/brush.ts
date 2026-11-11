@@ -3,6 +3,8 @@
 // faint wobble whose phase comes from the link's id (one link always looks the same). Three paper-coloured hairlines along the
 // middle are the dry brush (飞白). Pure computation, no DOM; the board recomputes it only when a link's geometry changes.
 
+import { fnv } from "@codeboard/analysis/basics";
+
 /** A path of absolute M / L / C / Q commands (what route.ts and the ink images write) → a polyline */
 function flatten(d: string): number[] {
   const tok = d.match(/[MLCQ]|-?\d*\.?\d+(?:e-?\d+)?/g) ?? [];
@@ -79,13 +81,6 @@ export function pathWalker(d: string) {
       j = 0;
     },
   };
-}
-
-/** FNV-1a of a string (unsigned 32 bit): stable per id or word */
-export function fnv(s: string) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
-  return h >>> 0;
 }
 
 /** A link's id → its wobble phase, 0..2π */

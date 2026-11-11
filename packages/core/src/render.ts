@@ -4,7 +4,7 @@ export type Tok = { text: string; cls?: string };
 /** 一行里的调用：[col, end) 是 UTF-16 下标，idx = SegView.calls 里的下标 */
 export type Mark = { col: number; end: number; idx: number; pkg?: string }; // pkg：library 调用，写成 data-p
 
-import { fnv } from "./canvas/brush";
+import { fnv } from "@codeboard/analysis/basics";
 
 export const escHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

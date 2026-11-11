@@ -7,6 +7,7 @@ import {
   danglingRefs,
   emptyBoard,
   rebaseBlocks,
+  shelveItems,
   BOARD_VERSION,
   type Board,
   type Card,
@@ -106,6 +107,22 @@ describe("Note block ends (rebaseBlocks)", () => {
     c.cards.push(note("x", ["## 子标题"]));
     rebaseBlocks(c, "n", OLD, OLD.slice(0, 2), [{ card: "x", blocks: ["## 子标题", ROOF] }]);
     expect(c.links).toEqual([]);
+  });
+
+  it("follows the block on an arrow hidden on the Shelf, and drops a hidden arrow left with both ends on one card", () => {
+    const b = board([arrow(2), { id: "c", from: { card: "n", block: ref(OLD, 2) }, to: { card: "x" } }]);
+    b.cards.push(note("x", ["## 子标题"]));
+    b.place.x = { x: 800, y: 0, w: 300 };
+    shelveItems(b, { id: "e", at: 0, cards: ["n"] });
+    rebaseBlocks(b, "n", OLD, [OLD[0], "新插入的一段。", ...OLD.slice(1)]);
+    const e = b.shelf![0];
+    expect(e.links.map((l) => (l.from.card === "n" ? l.from : l.to).block)).toEqual(
+      [ref(OLD, 2), ref(OLD, 2)].map((r) => ({ ...r, i: 3 })),
+    );
+    rebaseBlocks(b, "n", OLD, OLD.slice(0, 2), [{ card: "x", blocks: ["## 子标题", ROOF] }]);
+    expect(e.links.map((l) => l.id)).toEqual(["l"]);
+    expect(e.links[0].to).toEqual({ card: "x", block: { i: 1, h: blockSig(ROOF) } });
+    expect(danglingRefs(b)).toEqual([]);
   });
 
   it("blockMap matches unchanged blocks first, also when two blocks read the same", () => {

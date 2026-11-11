@@ -279,7 +279,7 @@ describe("danglingRefs", () => {
     const b: Board = {
       ...emptyBoard("b", "B"),
       cards: [code("a"), code("a")],
-      place: { a: { x: 0, y: 0, w: 1 }, z: { x: 0, y: 0, w: 1 } },
+      place: { a: { x: 0, y: 0, w: 1, section: "S" }, z: { x: 0, y: 0, w: 1 } },
       links: [call("a", "x")],
     };
     b.stickers = [
@@ -293,6 +293,7 @@ describe("danglingRefs", () => {
       "duplicate card id a",
       "link a-x → missing x",
       "sticker k on missing gone",
+      "card a is in missing section S",
       "place for missing card z",
     ]);
     expect(danglingRefs({ ...emptyBoard("b", "B"), cards: [code("a")], place: { a: { x: 0, y: 0, w: 1 } } })).toEqual(
@@ -465,7 +466,7 @@ describe("reference upkeep in board actions", () => {
     const b: Board = {
       ...emptyBoard("b", "B"),
       cards: [code("a", s), code("z")],
-      place: { a: { x: 0, y: 0, w: 1 }, z: { x: 0, y: 0, w: 1 } },
+      place: { a: { x: 0, y: 0, w: 1, section: "S" }, z: { x: 0, y: 0, w: 1 } },
       links: [
         { id: "l1", call: { name: "f", col: 0 }, from: { card: "a", seg: "s1", line: 4 }, to: { card: "z" } },
         { id: "l2", from: { card: "z" }, to: { card: "a" } },

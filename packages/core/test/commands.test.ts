@@ -3,6 +3,7 @@ import {
   DEFAULT_SETTINGS,
   danglingRefs,
   emptyBoard,
+  makeCompare,
   type Board,
   type CodeCard,
   type DiffData,
@@ -13,6 +14,7 @@ import {
 } from "../src";
 import {
   cardStale,
+  duplicateCards,
   keepVersion,
   nextToReview,
   staleCount,
@@ -196,5 +198,20 @@ describe("version commands", () => {
     expect(cardStale(b.cards[0] as CodeCard, (id) => stale[id])).toBeNull();
     keepVersion(e, "c2", "s2");
     expect(stale.s2).toEqual({ state: "ok" });
+  });
+});
+
+describe("duplicateCards", () => {
+  it("copies the cards given but not a Compare, whose copy would share its column cards", () => {
+    const { b, e } = env({ stale: {} });
+    b.cards.push({ id: "c3", kind: "code", segments: [seg("s3", ["x = 1"])] });
+    b.place.c3 = { x: 0, y: 500, w: 400 };
+    makeCompare(b, "cmp", ["c1", "c2"], { x: 0, y: 0, w: 800 });
+    const before = danglingRefs(b);
+    const r = duplicateCards(e, ["cmp", "c3"])!;
+    expect(r.made).toHaveLength(1);
+    expect(b.cards.filter((c) => c.kind === "compare")).toHaveLength(1);
+    expect(b.place[r.made[0]]).toMatchObject({ x: 48, y: 548 });
+    expect(danglingRefs(b)).toEqual(before);
   });
 });

@@ -6,13 +6,17 @@ import * as v from "valibot";
 import {
   BOARD_VERSION,
   BOX_FILLS,
+  FREE_TEXT_LEVELS,
   HAND_COLORS,
+  HAND_WEIGHTS,
   NOTE_LOOKS,
   TEXT_FS,
   type Board,
   type BoardFile,
   type BoardSeal,
   type Camera,
+  type FreeTextLevel,
+  type HandWeight,
   type SharedCardFile,
 } from "./model";
 import { SEAL_COLORS, sealTextOk } from "./seal";
@@ -30,6 +34,10 @@ const NoteLayout = obj({
   tables: opt(v.array(v.nullable(obj({ cols: cellSizes, rows: cellSizes })))),
   wrap: opt(v.array(v.number())),
 });
+
+/** A Mark's weight and a Free Text's level are stored only when they are not the default (regular, plain) */
+const STORED_WEIGHTS = HAND_WEIGHTS.filter((w): w is Exclude<HandWeight, "regular"> => w !== "regular");
+const STORED_LEVELS = FREE_TEXT_LEVELS.filter((k): k is Exclude<FreeTextLevel, 0> => k !== 0);
 
 const Version = v.variant("kind", [
   obj({ kind: v.literal("git"), commit: str, uncommitted: opt(bool) }),
@@ -135,8 +143,8 @@ const codeEntries = {
   active: opt(str),
 };
 const CodeCard: v.GenericSchema = obj(codeEntries);
-/** 代码卡是递归的（mergedFrom），上面只能标成 GenericSchema；它的字段名单独导出给 test/schema-types.ts 和 model.ts 的 CodeCard 对照 */
-export type CodeCardSchemaKeys = keyof typeof codeEntries;
+/** 代码卡是递归的（mergedFrom），上面只能标成 GenericSchema；它的字段单独导出给 test/schema-types.ts 和 model.ts 的 CodeCard 对照 */
+export type CodeCardSchemaOut = v.InferOutput<v.LooseObjectSchema<typeof codeEntries, undefined>>;
 const Card = v.variant("kind", [
   CodeCard as v.LooseObjectSchema<{ kind: v.LiteralSchema<"code", undefined> }, undefined>,
   obj({
@@ -148,8 +156,8 @@ const Card = v.variant("kind", [
     bold: opt(bool),
     fill: opt(v.picklist(BOX_FILLS)),
     hand: opt(v.picklist(HAND_COLORS)),
-    weight: opt(v.picklist(["light", "bold"])),
-    level: opt(v.picklist([1, 2, 3])),
+    weight: opt(v.picklist(STORED_WEIGHTS)),
+    level: opt(v.picklist(STORED_LEVELS)),
     fs: opt(v.pipe(num, v.minValue(TEXT_FS.min), v.maxValue(TEXT_FS.max))),
     msg: opt(obj({ where: opt(str) })),
     mdLayout: opt(NoteLayout),

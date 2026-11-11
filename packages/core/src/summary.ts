@@ -15,6 +15,7 @@ import {
   type Summary,
   type SummaryPair,
 } from "./model";
+import { fnv } from "@codeboard/analysis/basics";
 import type { Rect } from "./layout";
 
 /** The rules' numbers (board units unless they say otherwise) */
@@ -520,11 +521,7 @@ function placeHeads(heads: SumSource[], obs: Rect[], S: number, P: number, measu
   return placed.map((p) => p.col);
 }
 
-const fnv = (s: string) => {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
-  return (h >>> 0).toString(36);
-};
+const sig = (s: string) => fnv(s).toString(36);
 /** The cards a Section's summary is written from: its own and its nested Sections' members */
 function membersOf(b: Board, sec: string): Card[] {
   const ids = new Set([sec]);
@@ -577,10 +574,10 @@ function itemOf(b: Board, key: string) {
 export function summarySig(b: Board, key: string): string | undefined {
   const it = itemOf(b, key);
   if (!it) return undefined;
-  if (it.kind === "card") return fnv(cardTitle(it.cards[0], b));
+  if (it.kind === "card") return sig(cardTitle(it.cards[0], b));
   const ts = it.cards.map((c) => cardTitle(c, b));
   const kids = it.kind === "head" ? it.kids.map((x) => `${x.title}\u0001${x.text}`).join("\u0002") : "";
-  return fnv(`${ts.length}\n${ts.sort().join("\n")}${kids ? `\u0003${kids}` : ""}`);
+  return sig(`${ts.length}\n${ts.sort().join("\n")}${kids ? `\u0003${kids}` : ""}`);
 }
 /**
  * A hash of the content an item's summary is written from: a Section's title and cards (with its nested Sections'), each one's
@@ -593,7 +590,7 @@ export function summaryInput(b: Board, key: string): string | undefined {
   if (!it) return undefined;
   const head = it.kind === "card" ? "" : `${it.kind === "own" ? "own\u0001" : ""}${it.sec.title}`;
   const kids = it.kind === "head" ? it.kids.map((x) => `${x.title}\u0001${x.text}`).join("\u0002") : "";
-  return fnv(
+  return sig(
     `${head}\u0003${it.cards
       .map((c) => `${c.id}\u0001${cardTitle(c, b)}\u0001${cardText(c)}`)
       .sort()

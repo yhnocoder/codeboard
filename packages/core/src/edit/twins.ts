@@ -1,6 +1,6 @@
 // Shared cards and twins: a shared card unlinked on this board, the same card placed several times kept in step.
 // Pure functions that change the board passed in (the board calls them inside a mutate).
-import { renameCard, removeStickers } from "./refs";
+import { allLinks, allStickers, renameCard, removeStickers } from "./refs";
 import { fixHighlights } from "./highlights";
 import { clone, copyTwinContent, twinContent, uid, type Board, type Card } from "../model";
 
@@ -64,7 +64,7 @@ export function detachTwin(b: Board, id: string): Record<string, string> {
 /** 卡 id 上指着段的引用换段 id（map 里没有的：箭头、Sidenote 退到整张卡，行上的 Sticker 删掉） */
 function resegCard(b: Board, id: string, map: Map<string, string | undefined>): void {
   if (!map.size) return;
-  for (const l of b.links)
+  for (const l of allLinks(b))
     for (const e of [l.from, l.to]) {
       if (e.card !== id || !e.seg) continue;
       const n = map.get(e.seg);
@@ -84,7 +84,7 @@ function resegCard(b: Board, id: string, map: Map<string, string | undefined>): 
     }
   }
   const gone: string[] = [];
-  for (const k of b.stickers) {
+  for (const k of allStickers(b)) {
     if (k.at.kind !== "line" || k.at.card !== id) continue;
     const n = map.get(k.at.seg);
     if (n) k.at.seg = n;

@@ -131,6 +131,30 @@ describe("the Shelf", () => {
     expect(danglingRefs(b)).toEqual([]);
   });
 
+  it("keeps an arrow hidden while its other card is on the Shelf in another entry, with the stickers on it", () => {
+    const b = board();
+    b.stickers.push({
+      id: "k4",
+      icon: { pack: "builtin", name: "star" },
+      at: { kind: "canvas", x: 0, y: 0, on: { link: "bc", t: 0.5 } },
+    });
+    const { env } = envOf(b);
+    const s = shelve(env, { sections: ["S"] })!;
+    const c = shelve(env, { cards: ["c"] })!;
+    putBack(env, s);
+    expect(b.links.map((l) => l.id)).toEqual(["ab"]);
+    expect(b.stickers.map((k) => k.id).sort()).toEqual(["k1", "k2", "k3"]);
+    expect(b.shelf!.map((e) => e.id)).toEqual([c]);
+    expect(b.shelf![0].links.map((l) => l.id).sort()).toEqual(["bc", "cd"]);
+    expect(b.shelf![0].stickers.map((k) => k.id)).toEqual(["k4"]);
+    expect(danglingRefs(b)).toEqual([]);
+    putBack(env, c);
+    expect(b.shelf).toBeUndefined();
+    expect(b.links.map((l) => l.id).sort()).toEqual(["ab", "bc", "cd"]);
+    expect(b.stickers.map((k) => k.id).sort()).toEqual(["k1", "k2", "k3", "k4"]);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
   it("drops an entry elsewhere with its layout, out of the Section it came from unless the shell found one", () => {
     const b = board();
     const { env } = envOf(b);

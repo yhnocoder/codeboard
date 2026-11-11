@@ -1,8 +1,6 @@
 // Arrow ends on a Note's block follow that block when the Note is rewritten: blocks are matched by kind and likeness.
 // Pure functions that change the board passed in (the board calls them inside a mutate).
-// Arrow ends on a Note's block follow that block when the Note is rewritten: blocks are matched by kind and likeness.
-// Pure functions that change the board passed in (the board calls them inside a mutate).
-import { removeLinks } from "./refs";
+import { allLinks, removeLinks } from "./refs";
 import { diffArrays } from "diff";
 import { blockAt, blockSig, type Board, type Link } from "../model";
 
@@ -94,7 +92,9 @@ export function rebaseBlocks(
   now: readonly string[] | null,
   moved: readonly { card: string; blocks: readonly string[] }[] = [],
 ): void {
-  const ends = b.links.flatMap((l) => [l.from, l.to].filter((e) => e.card === card && e.block).map((e) => ({ l, e })));
+  const ends = allLinks(b).flatMap((l) =>
+    [l.from, l.to].filter((e) => e.card === card && e.block).map((e) => ({ l, e })),
+  );
   if (!ends.length) return;
   const map = old && now ? blockMap(old, now) : null;
   const sigs = now?.map(blockSig) ?? [];
