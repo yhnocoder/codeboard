@@ -224,3 +224,174 @@ extension Canvas {
 }
 
 extension CGRect { var center: CGPoint { CGPoint(x: midX, y: midY) } }
+
+extension Canvas {
+    /// The window as the window server composites it (own window: no screen-recording permission needed, if allowed).
+    func windowImage() -> CGImage? {
+        guard let w = window else { return nil }
+        // Copied into our own bitmap at once: the returned image can be read lazily, after the screen has changed.
+        guard let img = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(w.windowNumber), [.boundsIgnoreFraming, .bestResolution]),
+              let ctx = CGContext(data: nil, width: img.width, height: img.height, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        else { return nil }
+        ctx.draw(img, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
+        return ctx.makeImage()
+    }
+
+    func windowCaptureProbe(_ dir: String) async {
+        await waitIdle()
+        if let img = windowImage() { saveImage(img, "\(dir)/window.png"); Log.write("window capture \(img.width)x\(img.height)") }
+        else { Log.write("window capture failed") }
+        NSApp.terminate(nil)
+    }
+}
+
+/// Ink weight and sharpness of a grey crop: mean darkness (0–255) and mean gradient between neighbours.
+func inkStats(_ img: CGImage) -> (ink: Double, grad: Double) {
+    let px = pixels(img), w = img.width, h = img.height
+    var ink = 0.0, grad = 0.0
+    for y in 0..<h - 1 {
+        for x in 0..<w - 1 {
+            let i = (y * w + x) * 4
+            let g = Double(px[i + 1]), r = Double(px[i + 4 + 1]), d = Double(px[i + w * 4 + 1])
+            ink += 255 - g
+            grad += abs(g - r) + abs(g - d)
+        }
+    }
+    let n = Double((w - 1) * (h - 1))
+    return (ink / n, grad / n)
+}
+
+extension Canvas {
+    /// The part of the window capture where card i is (device pixels), shrunk by a margin so only the inside counts.
+    func cardCrop(_ img: CGImage, _ i: Int, height: CGFloat? = nil) -> CGImage? {
+        guard let w = window else { return nil }
+        let r = screenRect(i, height: height)                     // container (content view) coordinates, y up
+        let inWin = superview!.convert(r, to: nil)
+        let s = CGFloat(img.width) / w.frame.width
+        let top = (w.frame.height - inWin.maxY) * s
+        var crop = CGRect(x: inWin.minX * s, y: top, width: inWin.width * s, height: inWin.height * s).insetBy(dx: 30 * s, dy: 30 * s)
+        crop = crop.intersection(CGRect(x: 0, y: 0, width: img.width, height: img.height)).integral
+        return img.cropping(to: crop)
+    }
+
+    /// Display vs edit, as composited on screen, at 100 / 137 / 200 %.
+    func weightTest(_ dir: String) async {
+        mode = 5
+        await waitIdle()
+        let notes = board.cards.indices.filter { isWebNote($0) && board.cards[$0].kind == .note }
+        guard let i = notes.filter({ !board.cards[$0].body.contains("|") }).max(by: { board.cards[$0].body.count < board.cards[$1].body.count })
+        else { NSApp.terminate(nil); return }
+        let r = board.cards[i].rect
+        let tag = ProcessInfo.processInfo.environment["CANVAS_WEIGHTTAG"] ?? "base"
+        let zooms = (ProcessInfo.processInfo.environment["CANVAS_WEIGHTZOOMS"] ?? "1,1.37,2").split(separator: ",").compactMap { Double($0) }.map { CGFloat($0) }
+        for zl: CGFloat in zooms {
+            if web.editing != nil { await leaveOnce() }
+            z = zl; camX = r.minX - 60 / z; camY = r.minY - 60 / z
+            applyCamera(); levelRest()
+            await waitIdle(); await sleep(0.6)
+            if ProcessInfo.processInfo.environment["CANVAS_RESTLOG"] != nil { Log.write("display capture now (rest layer contents=\(lv.exactLayers[i]?.contents != nil))") }
+            guard let shotA = windowImage(), let a = cardCrop(shotA, i) else { continue }
+            _ = await withCheckedContinuation { (k: CheckedContinuation<Double, Never>) in
+                web.onPainted = { k.resume(returning: $0) }
+                beginEdit(i, at: CGPoint(x: r.width - 20, y: r.height - 20))
+            }
+            web.onPainted = nil
+            await web.editor?.call("return cb.hideCaret(true)")
+            await sleep(0.8)
+            guard let shotB = windowImage(), let b = cardCrop(shotB, i) else { continue }
+            let sa = inkStats(a), sb = inkStats(b)
+            Log.write(String(format: "weight %@ zoom=%.2f display ink=%.2f grad=%.2f | edit ink=%.2f grad=%.2f | ", tag, zl, sa.ink, sa.grad, sb.ink, sb.grad)
+                      + imageDiff(a, b).summary)
+            saveImage(a, "\(dir)/w-\(tag)-\(zl)-display.png"); saveImage(b, "\(dir)/w-\(tag)-\(zl)-edit.png")
+            await web.editor?.call("return cb.hideCaret(false)")
+        }
+        if web.editing != nil { await leaveOnce() }
+        NSApp.terminate(nil)
+    }
+}
+
+extension Canvas {
+    /// Display vs edit after the edit was opened at 100 % and the canvas was zoomed to the target with a gesture
+    /// (freeze, then thaw at the new scale).
+    func weightAfterZoom(_ dir: String) async {
+        mode = 5
+        await waitIdle()
+        let notes = board.cards.indices.filter { isWebNote($0) && board.cards[$0].kind == .note }
+        guard let i = notes.filter({ !board.cards[$0].body.contains("|") }).max(by: { board.cards[$0].body.count < board.cards[$1].body.count })
+        else { NSApp.terminate(nil); return }
+        let r = board.cards[i].rect
+        let zooms = (ProcessInfo.processInfo.environment["CANVAS_WEIGHTZOOMS"] ?? "1.37,1.95,2").split(separator: ",").compactMap { Double($0) }.map { CGFloat($0) }
+        for zl in zooms {
+            if web.editing != nil { await leaveOnce() }
+            z = 1; camX = r.minX - 60; camY = r.minY - 60
+            applyCamera(); levelRest(); await waitIdle(); await sleep(0.4)
+            _ = await withCheckedContinuation { (k: CheckedContinuation<Double, Never>) in
+                web.onPainted = { k.resume(returning: $0) }
+                beginEdit(i, at: CGPoint(x: r.width - 20, y: r.height - 20))
+            }
+            web.onPainted = nil
+            await web.editor?.call("return cb.hideCaret(true)")
+            await sleep(0.5)
+            // zoom about the card's top-left corner on screen, as a pinch would
+            let anchor = convert(screenRect(i).origin, from: superview)
+            let p0 = CGPoint(x: anchor.x + 60, y: bounds.height - 60)
+            await drive { [self] t in
+                let p = min(t / 0.5, 1)
+                zoom(by: pow(zl, CGFloat(p)) / z, at: p0)
+                return p < 1
+            }
+            await withCheckedContinuation { (k: CheckedContinuation<Void, Never>) in
+                web.onThawed = { k.resume() }
+                if !web.frozen { k.resume() }
+            }
+            web.onThawed = nil
+            await sleep(0.8)
+            guard let shotB = windowImage(), let b = cardCrop(shotB, i) else { continue }
+            await web.editor?.call("return cb.hideCaret(false)")
+            await leaveOnce()
+            levelRest(); await waitIdle(); await sleep(0.6)
+            guard let shotA = windowImage(), let a = cardCrop(shotA, i) else { continue }
+            let sa = inkStats(a), sb = inkStats(b)
+            Log.write(String(format: "weight after-zoom 1.00→%.2f display ink=%.2f grad=%.2f | edit ink=%.2f grad=%.2f | ", z, sa.ink, sa.grad, sb.ink, sb.grad)
+                      + imageDiff(a, b).summary)
+            saveImage(a, "\(dir)/az-\(zl)-display.png"); saveImage(b, "\(dir)/az-\(zl)-edit.png")
+        }
+        NSApp.terminate(nil)
+    }
+}
+
+extension Canvas {
+    /// Cost of the edit and rest-bitmap setup: card memory at rest, time to an editable editor, typing, web memory.
+    func costTest() async {
+        mode = 5
+        await waitIdle()
+        let notes = board.cards.indices.filter { isWebNote($0) && board.cards[$0].kind == .note }
+        guard let i = notes.filter({ !board.cards[$0].body.contains("|") }).max(by: { board.cards[$0].body.count < board.cards[$1].body.count })
+        else { NSApp.terminate(nil); return }
+        let r = board.cards[i].rect
+        let tag = ProcessInfo.processInfo.environment["CANVAS_WEIGHTTAG"] ?? "cost"
+        for zl: CGFloat in [0.6, 1.37, 1.95] {
+            if web.editing != nil { await leaveOnce() }
+            z = zl; camX = r.minX - 60 / z; camY = r.minY - 60 / z
+            applyCamera(); levelRest()
+            await waitIdle(); await sleep(0.5)
+            let cardMem = cardMemory() + lv.exactLayers.values.reduce(0) { $0 + (($1.contents as? IOSurface)?.allocationSize ?? 0) }
+            let webBefore = webFootprint()
+            let open = await withCheckedContinuation { (k: CheckedContinuation<Double, Never>) in
+                web.onPainted = { k.resume(returning: $0) }
+                beginEdit(i, at: CGPoint(x: r.width - 20, y: r.height - 20))
+            }
+            web.onPainted = nil
+            await sleep(0.5)
+            let t = await web.editor?.call("cb.placeCaretEnd(); return await cb.typeTimed(text)", ["text": " typing test, thirty characters"]) as? [String: Any]
+            await sleep(0.5)
+            Log.write(String(format: "cost %@ zoom=%.2f card_mem=%.0fMB open=%.0fms typing_p50=%@ms typing_max=%@ms web_mem %.0f→%.0fMB editor_view=%.0fx%.0fpt",
+                             tag, zl, Double(cardMem) / 1e6, open, "\(t?["p50"] ?? "?")", "\(t?["max"] ?? "?")",
+                             Double(webBefore) / 1e6, Double(webFootprint()) / 1e6, web.editor?.view.frame.width ?? 0, web.editor?.view.frame.height ?? 0))
+        }
+        if web.editing != nil { await leaveOnce() }
+        NSApp.terminate(nil)
+    }
+}

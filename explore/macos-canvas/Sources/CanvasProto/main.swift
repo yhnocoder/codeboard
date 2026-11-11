@@ -43,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         canvas.liveAsync = asyncLive
         canvas.maxZoom = maxZoom
         canvas.shaping = shaping
+        canvas.lv.exact = ProcessInfo.processInfo.environment["CANVAS_EXACT"] != "0"
         canvas.web.on = webOn
         canvas.liveOwn = !caLive && !asyncLive
         canvas.useSurfaces = !cgimage
@@ -84,6 +85,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self, Canvas.routeGestures, e.window === self.window else { return e }
             if e.type == .scrollWheel { self.canvas.scrollWheel(with: e) } else { self.canvas.magnify(with: e) }
             return nil
+        }
+        if ProcessInfo.processInfo.environment["CANVAS_COSTTEST"] != nil {
+            window.level = .floating
+            window.orderFrontRegardless()
+            Task { @MainActor in await self.canvas.costTest() }
+        }
+        if let dir = ProcessInfo.processInfo.environment["CANVAS_WEIGHTTEST"] {
+            window.level = .floating
+            window.orderFrontRegardless()
+            if ProcessInfo.processInfo.environment["CANVAS_AFTERZOOM"] != nil {
+                Task { @MainActor in await self.canvas.weightAfterZoom(dir) }
+            } else {
+                Task { @MainActor in await self.canvas.weightTest(dir) }
+            }
+        }
+        if let dir = ProcessInfo.processInfo.environment["CANVAS_WINCAP"] {
+            window.level = .floating
+            window.orderFrontRegardless()
+            Task { @MainActor in await self.canvas.windowCaptureProbe(dir) }
         }
         if ProcessInfo.processInfo.environment["CANVAS_CARETTEST"] != nil {
             window.level = .floating

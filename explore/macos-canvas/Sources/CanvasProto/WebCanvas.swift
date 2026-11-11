@@ -37,7 +37,7 @@ final class WebState {
     var freezeDiff: ((CGImage?) -> Void)?
     /// How the editor follows the camera's zoom: "pagezoom" (re-layout at every frame) or "magnify" (WebKit's
     /// magnification while moving, pageZoom once the gesture ends).
-    var zoomMode = ProcessInfo.processInfo.environment["CANVAS_EDITZOOM"] ?? "transform"
+    var zoomMode = ProcessInfo.processInfo.environment["CANVAS_EDITZOOM"] ?? "level"
     var editZoom: CGFloat = 1
     let host = NSView()            // the editor sits in it; while zooming, its bounds scale the editor on the GPU
 }
@@ -193,7 +193,9 @@ extension Canvas {
         }
         guard let e = web.editor else { return }
         let c = board.cards[i]
+        if mode == 5 { snapCamera(to: i) }
         web.editing = i
+        hideExact(i)  // its exact bitmap would be stale when the edit ends
         web.editStart = CACurrentMediaTime()
         web.editHeight = c.rect.height
         settleEditorZoom()
@@ -214,7 +216,7 @@ extension Canvas {
         }
         var args: [String: Any] = ["src": c.body, "width": Double(c.rect.width), "card": c.kind == .note]
         if let p = local { args["x"] = Double(p.x); args["y"] = Double(p.y) }
-        args["scale"] = web.zoomMode == "transform" ? Double(z) : 1.0
+        args["scale"] = web.zoomMode == "transform" ? Double(z) : web.zoomMode == "level" ? Double(editLevel) : 1.0
         web.editZoom = z
         Task { @MainActor in await e.call("return await cb.edit(src, width, card, x, y, scale)", args.merging(["x": NSNull(), "y": NSNull()]) { a, _ in a }) }
     }
@@ -229,7 +231,7 @@ extension Canvas {
     }
 
     func attachEditor(_ e: NoteWeb, _ container: NSView) {
-        if web.zoomMode == "scale" {
+        if web.zoomMode == "scale" || web.zoomMode == "level" {
             web.host.wantsLayer = true
             if web.host.superview == nil { container.addSubview(web.host, positioned: .above, relativeTo: self) }
             web.host.addSubview(e.view)
@@ -238,8 +240,43 @@ extension Canvas {
         }
     }
 
+    /// "level": the editor draws at the level the display bitmaps hold (a whole scale, 100 % or 200 % here) and its
+    /// host view is scaled down to the canvas zoom by the GPU, exactly as the display bitmap is.
+    var editLevel: CGFloat { shownLevel }
+
+    /// WebKit's tile layers shrink with linear filtering; the display bitmaps use mipmaps (trilinear). Same filter on
+    /// both, so shrinking the level-drawn editor looks like shrinking the display bitmap.
+    func trilinearEditor(_ e: NoteWeb) {
+        guard ProcessInfo.processInfo.environment["CANVAS_EDITFILTER"] == "trilinear" else { return }
+        func walk(_ l: CALayer) { l.minificationFilter = .trilinear; l.sublayers?.forEach(walk) }
+        if let l = e.view.layer { walk(l) }
+    }
+
+    /// Moves the camera by under half a device pixel so card i's top-left corner falls on a whole device pixel: the
+    /// card bitmap and the editor's view are then both drawn without a sub-pixel offset, and match exactly.
+    func snapCamera(to i: Int) {
+        if ProcessInfo.processInfo.environment["CANVAS_NOSNAP"] != nil { return }
+        let r = board.cards[i].rect, s = z * backing
+        camX = r.minX - ((r.minX - camX) * s).rounded() / s
+        camY = r.minY - ((r.minY - camY) * s).rounded() / s
+        applyCamera()
+    }
+
+    func placeLevelEditor(_ i: Int, _ e: NoteWeb) {
+        let L = editLevel
+        let w = board.cards[i].rect.width, h = web.editHeight
+        web.host.frame = screenRect(i, height: h)
+        web.host.bounds = CGRect(x: 0, y: 0, width: w * L, height: h * L)
+        e.view.frame = CGRect(x: 0, y: 0, width: w * L, height: h * L)
+        if web.editZoom != L {
+            web.editZoom = L
+            e.view.evaluateJavaScript("cb.setScale(\(Double(L)))")
+        }
+    }
+
     func placeEditor() {
         guard let i = web.editing, let e = web.editor else { return }
+        if web.zoomMode == "level" { if e.view.pageZoom != 1 { e.view.pageZoom = 1 }; placeLevelEditor(i, e); return }
         if web.zoomMode == "transform" {
             // 100 % layout always, like the snapshots; the page scales the Note (CSS transform) to the camera's zoom
             if e.view.pageZoom != 1 { e.view.pageZoom = 1 }
@@ -265,7 +302,7 @@ extension Canvas {
     /// pageZoom at the camera's zoom, magnification back to 1: sharp text, same CSS width, so no reflow.
     func settleEditorZoom() {
         guard let i = web.editing, let e = web.editor else { return }
-        if web.zoomMode == "transform" { web.editZoom = -1; placeEditor(); return }
+        if web.zoomMode == "transform" || web.zoomMode == "level" { web.editZoom = -1; placeEditor(); return }
         if e.view.magnification != 1 { e.view.setMagnification(1, centeredAt: .zero) }
         if e.view.pageZoom != z { e.view.pageZoom = z }
         web.editZoom = z
@@ -293,12 +330,13 @@ extension Canvas {
                     let info = await e.call("const n = document.getElementById('note'); return [n.style.transform, n.getBoundingClientRect().width, n.offsetWidth, window.innerWidth, n.className].join(' | ')")
                     Log.write("debug editor note: \(info ?? "nil") view=\(e.view.frame.size) pageZoom=\(e.view.pageZoom)")
                 }
-                let pz = web.zoomMode == "transform" ? z : e.view.pageZoom
+                let pz = web.zoomMode == "transform" ? z : web.zoomMode == "level" ? editLevel : e.view.pageZoom
                 if let shown = web.lastShown, let live = await e.take(width: size.width * pz, height: size.height * pz, scale: backing) {
                     Log.write("switch-in " + imageDiff(shown, live).summary + String(format: " zoom=%.2f", z))
                     if let d = web.diffDir { web.diffN += 1; saveImage(shown, "\(d)/in\(web.diffN)-shown.png"); saveImage(live, "\(d)/in\(web.diffN)-editor.png") }
                 }
                 CATransaction.begin(); CATransaction.setDisableActions(true)
+                if web.zoomMode == "level" { trilinearEditor(e) }
                 e.view.alphaValue = 1
                 cardLayers[i].isHidden = true
                 CATransaction.commit()
@@ -326,7 +364,7 @@ extension Canvas {
         let scale = z * backing
         let size = board.cards[i].rect.size
         Task { @MainActor in
-            let pz = web.zoomMode == "transform" ? z : e.view.pageZoom
+            let pz = web.zoomMode == "transform" ? z : web.zoomMode == "level" ? self.editLevel : e.view.pageZoom
             let live = await e.take(width: size.width * pz, height: size.height * pz, scale: backing)
             webSnapshot(i, scale: scale) { [weak self] s, _ in
                 guard let self else { return }
@@ -549,11 +587,12 @@ extension Canvas {
             guard !Task.isCancelled, let i = web.editing, let e = web.editor, !web.frozen, lv.resting else { return }
             let size = CGSize(width: board.cards[i].rect.width, height: web.editHeight)
             let zoom = z
-            guard let img = await e.take(width: size.width * zoom, height: size.height * zoom, scale: backing),
+            let k = web.zoomMode == "level" ? editLevel : zoom   // the scale the editor draws at
+            guard let img = await e.take(width: size.width * k, height: size.height * k, scale: backing),
                   web.editing == i, !web.frozen, z == zoom else { return }
             web.still = await Task.detached { Canvas.surface(from: img) }.value
             web.stillSize = size
-            web.stillScale = zoom * backing
+            web.stillScale = k * backing
             web.stillDirty = false
         }
     }
@@ -601,12 +640,20 @@ extension Canvas {
         web.thawing = true
         let gen = lv.gen
         Task { @MainActor in
-            e.view.frame = screenRect(i, height: web.editHeight)
-            web.editZoom = z
-            await e.call("return await cb.setScaleSettled(s)", ["s": Double(z)])
+            if web.zoomMode == "level" {
+                let L = editLevel
+                web.editZoom = -1
+                placeLevelEditor(i, e)
+                await e.call("return await cb.setScaleSettled(s)", ["s": Double(L)])
+            } else {
+                e.view.frame = screenRect(i, height: web.editHeight)
+                web.editZoom = z
+                await e.call("return await cb.setScaleSettled(s)", ["s": Double(z)])
+            }
             web.thawing = false
             guard lv.gen == gen, lv.resting, web.editing == i, web.frozen else { return }
             CATransaction.begin(); CATransaction.setDisableActions(true)
+            if web.zoomMode == "level" { trilinearEditor(e) }
             setEditorHidden(e, false)
             cardLayers[i].isHidden = true
             CATransaction.commit()

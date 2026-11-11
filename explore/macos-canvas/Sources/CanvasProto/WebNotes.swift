@@ -45,6 +45,8 @@ final class NoteWeb: NSObject, WKScriptMessageHandler {
     var rendered: String?
     var renderedWidth: CGFloat = 0
     var renderedVia = false
+    var renderedScale: CGFloat = 1
+    nonisolated(unsafe) static var transformSnapshots = ProcessInfo.processInfo.environment["CANVAS_SNAPMODE"] != "scaled"
 
     func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let m = message.body as? [String: Any] else { return }
@@ -76,13 +78,25 @@ final class NoteWeb: NSObject, WKScriptMessageHandler {
     /// Renders `src` statically at `width` CSS px and snapshots the card (width × height) at `scale` device px per CSS px.
     func snapshot(src: String, width: CGFloat, height: CGFloat, card: Bool, scale: CGFloat, viaEditor: Bool = false) async -> (CGImage?, Double, Double) {
         let t0 = CACurrentMediaTime()
-        if view.frame.width != ceil(width) || view.frame.height < ceil(height) {
-            view.setFrameSize(CGSize(width: ceil(width), height: ceil(height)))
+        // The editor's own way of drawing at a scale: the Note keeps its 100 % layout and is scaled by a CSS transform,
+        // drawn 1:1 at the screen's backing scale. (A scaled snapshot of an unscaled page comes out softer between
+        // whole scales than the live editor, which is what made entering edit look sharper.)
+        let backing = view.window?.backingScaleFactor ?? 2
+        let k = viaEditor && NoteWeb.transformSnapshots ? scale / backing : 1
+        let vw = ceil(width * k), vh = ceil(height * k)
+        if view.frame.width != vw || view.frame.height < vh {
+            view.setFrameSize(CGSize(width: vw, height: vh))
         }
         if rendered != src || renderedWidth != width || renderedVia != viaEditor {
             _ = await call(viaEditor ? "return await cb.renderEditor(src, width, card)" : "return await cb.render(src, width, card)",
                            ["src": src, "width": Double(width), "card": card])
-            rendered = src; renderedWidth = width; renderedVia = viaEditor
+            rendered = src; renderedWidth = width; renderedVia = viaEditor; renderedScale = 1
+        }
+        if viaEditor && NoteWeb.transformSnapshots {
+            if renderedScale != k { _ = await call("return await cb.setScaleSettled(s)", ["s": Double(k)]); renderedScale = k }
+            let t1 = CACurrentMediaTime()
+            let img = await take(width: width * k, height: height * k, scale: backing)
+            return (img, (t1 - t0) * 1000, (CACurrentMediaTime() - t1) * 1000)
         }
         let t1 = CACurrentMediaTime()
         let img = await take(width: width, height: height, scale: scale)

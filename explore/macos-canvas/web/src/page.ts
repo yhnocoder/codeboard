@@ -166,6 +166,11 @@ window.cb = {
       ? `anchor ${path(sel.anchorNode)}:${sel.anchorOffset} head ${path(sel.focusNode)}:${sel.focusOffset} focus=${document.hasFocus()}`
       : `none focus=${document.hasFocus()}`;
   },
+  /** Caret visibility (the weight test hides it so it is not counted as a difference). */
+  hideCaret(on: boolean) {
+    note.style.caretColor = on ? "transparent" : "";
+    return true;
+  },
   /** Selects a span of the first text (for the check with a non-empty selection). */
   selectSome() {
     const walker = document.createTreeWalker(note, NodeFilter.SHOW_TEXT);

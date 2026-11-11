@@ -10,10 +10,18 @@ final class LevelState {
     var budget = 8_000_000          // device pixels swapped onto the screen per frame
     var concurrency = 4             // background redraws at once
     var cardsPerFrame = 4           // cards swapped onto the screen per frame (with the pixel budget: whichever is hit first)
-    var queue: [(i: Int, scale: CGFloat)] = []
+    var queue: [(i: Int, scale: CGFloat, exact: Bool)] = []
+    /// At rest, visible cards are shown from the smallest level at or above the zoom (shrunk by at most 2x), with linear
+    /// filtering: drawn exactly as the live editor is, which is drawn at that level by WebKit and shrunk linearly. The
+    /// held level (one up, for zooming in) is shown during gestures with mipmaps. When the two levels differ, the rest
+    /// bitmap is a sublayer over the held one; a pan keeps it, a zoom hides it and the held bitmap takes over.
+    var exact = true
+    var exactLayers: [Int: CALayer] = [:]
+    var exactScale: [Int: CGFloat] = [:]   // scale of the bitmap each rest layer shows
+    var restZ: CGFloat = 0
     var inflight = 0
     var gen = 0
-    var ready: [(i: Int, scale: CGFloat, contents: Any, px: Int)] = []
+    var ready: [(i: Int, scale: CGFloat, contents: Any, px: Int, exact: Bool)] = []
     var resting = true
     var restAt = 0.0
     var queued = Set<Int>()
@@ -63,6 +71,8 @@ extension Canvas {
     /// Rest: fill the levels the view needs, nearest first; release what is far away.
     func levelRest() {
         guard levelMode else { return }
+        if let i = web.editing { snapCamera(to: i) }
+        exactOnCameraMove()  // the zoom may have been set without a gesture (fit, board switch): reset the rest bitmaps
         lv.resting = true
         lv.restAt = CACurrentMediaTime()
         lv.gen += 1
@@ -85,6 +95,7 @@ extension Canvas {
             let inNear = c.rect.intersects(near)
             guard inNear || (lv.ring > 0 && c.rect.intersects(far)) else {
                 // far away: back to the fit-zoom bitmap (no visible change)
+                hideExact(i)
                 if rasterScale[i] > baseScale[i] && !(web.editing == i) {
                     cardLayers[i].contents = webBaseContents(i); rasterScale[i] = baseScale[i]
                 }
@@ -100,7 +111,26 @@ extension Canvas {
             }
         }
         CATransaction.commit()
-        lv.queue = want.sorted { $0.d < $1.d }.map { ($0.i, $0.scale) }
+        var jobs = want.map { (i: $0.i, scale: $0.scale, exact: false, d: $0.d) }
+        if lv.exact {
+            let lr = shownLevel
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            for i in visible where web.editing != i && c_intersects(i, view) {
+                let s = levelScale(i, lr)
+                // the held bitmap is already at that level: just show it linearly
+                if abs(levelScale(i, level) - s) / s < 0.01 { hideExact(i); cardLayers[i].minificationFilter = .linear; continue }
+                if let l = lv.exactLayers[i], l.contents != nil, abs((lv.exactScale[i] ?? 0) - s) / s < 0.01 { continue }
+                let p = CGPoint(x: board.cards[i].rect.midX, y: board.cards[i].rect.midY)
+                // what is seen at rest goes first; the held level (for the next zoom-in) after it
+                jobs.append((i, s, true, min(hypot(p.x - center.x, p.y - center.y), hypot(p.x - mouse.x, p.y - mouse.y)) - 50_000))
+            }
+            CATransaction.commit()
+        }
+        lv.restZ = z
+        if ProcessInfo.processInfo.environment["CANVAS_RESTLOG"] != nil {
+            Log.write(String(format: "rest gen=\(lv.gen) z=%.2f level=%.1f jobs=%d exact_jobs=%d visible=%d", z, level, jobs.count, jobs.filter { $0.exact }.count, visible.count))
+        }
+        lv.queue = jobs.sorted { $0.d < $1.d }.map { ($0.i, $0.scale, $0.exact) }
         lv.queued = Set(lv.queue.map { $0.i })
         requestImages(ahead: false, headroom: 2)
         if web.editing != nil { thawEditor() }
@@ -112,15 +142,16 @@ extension Canvas {
         let gen = lv.gen
         while lv.inflight < lv.concurrency, !lv.queue.isEmpty {
             let job = lv.queue.removeFirst()
-            let i = job.i, scale = job.scale
+            let i = job.i, scale = job.scale, exact = job.exact
             lv.inflight += 1
             if isWebNote(i) {
                 webSnapshot(i, scale: scale) { [weak self] surf, ms in
                     guard let self else { return }
                     self.lv.inflight -= 1
                     self.lv.queued.remove(i)
+                    if self.lv.gen != gen, exact, ProcessInfo.processInfo.environment["CANVAS_RESTLOG"] != nil { Log.write("rest-bitmap dropped card=\(i) (gen \(gen) → \(self.lv.gen))") }
                     guard self.lv.gen == gen, let surf else { return }
-                    self.lv.ready.append((i, scale, surf, surf.width * surf.height))
+                    self.lv.ready.append((i, scale, surf, surf.width * surf.height, exact))
                     self.gesture?.rasterMs.append(ms)
                 }
             } else {
@@ -140,7 +171,7 @@ extension Canvas {
                         self.lv.inflight -= 1
                         self.lv.queued.remove(i)
                         guard self.lv.gen == gen, let surf else { return }
-                        self.lv.ready.append((i, scale, surf, surf.width * surf.height))
+                        self.lv.ready.append((i, scale, surf, surf.width * surf.height, exact))
                         self.gesture?.rasterMs.append(ms)
                     }
                 }
@@ -155,12 +186,66 @@ extension Canvas {
             px += r.px
             cards += 1
             if web.editing == r.i { continue }
+            if r.exact {
+                if ProcessInfo.processInfo.environment["CANVAS_RESTLOG"] != nil { Log.write("rest-bitmap swap card=\(r.i) scale=\(r.scale)") }
+                let l = exactLayer(r.i)
+                l.contents = r.contents
+                lv.exactScale[r.i] = r.scale
+                continue
+            }
             cardLayers[r.i].contents = r.contents
             rasterScale[r.i] = r.scale
             gesture?.rasters += 1
         }
         CATransaction.commit()
+        // A swap made inside the display-link callback reached the screen only with a later commit (seen by capturing
+        // the window): flush so it is drawn in this frame.
+        CATransaction.flush()
         lv.swapsThisFrame = px
+    }
+
+    func exactScale(_ i: Int) -> CGFloat {
+        let c = board.cards[i]
+        var s = z * backing
+        let px = c.rect.width * c.rect.height * s * s
+        if px > LevelState.maxPixels { s *= sqrt(LevelState.maxPixels / px) }
+        return s
+    }
+
+    func c_intersects(_ i: Int, _ view: CGRect) -> Bool { board.cards[i].rect.intersects(view) }
+
+    func exactLayer(_ i: Int) -> CALayer {
+        if let l = lv.exactLayers[i] { l.frame = cardLayers[i].bounds; return l }
+        let l = CALayer()
+        l.anchorPoint = .zero
+        l.frame = cardLayers[i].bounds
+        l.contentsGravity = .resize
+        l.minificationFilter = .linear   // as WebKit shrinks the live editor
+        l.zPosition = 1
+        l.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull(), "hidden": NSNull()]
+        cardLayers[i].addSublayer(l)
+        lv.exactLayers[i] = l
+        return l
+    }
+
+    /// A rest layer is never hidden (IOSurface contents set on a hidden layer did not reach the screen after it was
+    /// shown); without contents it is transparent.
+    func hideExact(_ i: Int) {
+        guard let l = lv.exactLayers[i], l.contents != nil else { return }
+        l.contents = nil
+        lv.exactScale[i] = nil
+    }
+
+    /// The level shown at rest: the smallest level at or above the zoom.
+    var shownLevel: CGFloat { Canvas.levels.first { $0 >= min(z, Canvas.levels.last!) - 1e-6 } ?? Canvas.levels.last! }
+
+    /// A zoom (not a pan) away from the rest zoom: the held bitmaps take over, with mipmaps.
+    func exactOnCameraMove() {
+        guard levelMode, abs(z - lv.restZ) > 1e-6 else { return }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        for i in lv.exactLayers.keys { hideExact(i) }
+        for l in cardLayers where l.minificationFilter != .trilinear { l.minificationFilter = .trilinear }
+        CATransaction.commit()
     }
 
     var levelBusy: Bool { !lv.queue.isEmpty || lv.inflight > 0 || !lv.ready.isEmpty }

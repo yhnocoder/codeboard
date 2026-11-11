@@ -13,7 +13,7 @@ plain text, sections, links as straight lines) and draws them in Warm Ink light.
 Variants for comparison: `--ca` (mode 3 into the layer's CA backing store), `--async` (same with drawsAsynchronously),
 `--cgimage` (modes 1–2 hand CGImages to CA instead of IOSurfaces).
 
-Keys: `1` settle, `2` ahead, `3` live, `4` tiles, `5` levels (`n` `m` cards swapped per frame, `j` `k` pixels swapped per frame, `h` `l` redraws, `g` outer ring), `c` live via own surface / CA backing store, `a` drawsAsynchronously,
+Keys: `1` settle, `2` ahead, `3` live, `4` tiles, `5` levels (`x` rest bitmaps, `n` `m` cards swapped per frame, `j` `k` pixels swapped per frame, `h` `l` redraws, `g` outer ring), `c` live via own surface / CA backing store, `a` drawsAsynchronously,
 `s` IOSurface / CGImage rasters, `f` fit, `←` `→` previous / next board, `⌘O` open a board, `b` bench this board.
 Two-finger scroll pans, pinch or ⌘-scroll zooms around the pointer, up to 200 % (`z` toggles 300 %; `--max-zoom`);
 a pinch past the limit stretches a little (rubber band) and springs back.
@@ -68,6 +68,15 @@ Modes:
    caret hidden, images decoded first), so display and edit share one code path; or CoreText. Images inside web Notes
    are part of the snapshot, so their native image layers are hidden. SVG files for the native image layers are drawn
    by a WebKit view, since NSImage's SVG renderer ignores the file's `<style>` and CSS variables.
+   At rest, visible cards are shown from the smallest level at or above the zoom with linear filtering (`x` turns this
+   off): a sublayer over the held bitmap when the two levels differ, removed by the next zoom (a pan keeps it). The
+   live editor is drawn by WebKit at that same level (a whole scale: 50, 100 or 200 %) and its host view is scaled to
+   the zoom by the GPU, and the camera is nudged by under half a device pixel so the edited Note sits on whole pixels:
+   display and edit are then the same pixels (measured on screen by capturing the app's own window,
+   `CANVAS_WEIGHTTEST=<dir>`, `CANVAS_AFTERZOOM=1` to enter edit at 100 % and zoom by gesture). Drawn by WebKit at an
+   in-between scale instead (a CSS transform), the editor was crisper than the shrunk bitmap, 6–17 % of pixels apart.
+   Only the editor's web view takes keyboard focus; the snapshot views never do (`CANVAS_CARETTEST=1` checks the
+   selection across gestures).
    Editing: every scroll and pinch of the window goes to the canvas (an event monitor), also over the editor. At a
    gesture's start the editor is replaced, in the same transaction, by a bitmap of itself (kept current at rest after
    every change); at rest it comes back at the new place and scale (CSS transform, 100 % layout) once it has painted
