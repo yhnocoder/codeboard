@@ -74,9 +74,7 @@ test("stillBoardPicture", async () => {
   const mid = await still.view(h, { x: 0, y: 0, z: 0.3 });
   check(
     "stillBoardPicture below Simplify Below the prose stays text",
-    mid.z === 0.3 &&
-      (await p.locator(".world.greek").count()) === 0 &&
-      (await p.locator(".world.settle").count()) === 1,
+    mid.z === 0.3 && (await p.locator(".world.greek").count()) === 0,
     mid,
   );
 

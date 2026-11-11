@@ -67,6 +67,7 @@ import * as act from "../actions";
 import { cardStale } from "@codeboard/core/commands";
 import { staleOf } from "../state/views";
 import { farAway } from "../state/cull";
+import { asBars } from "../state/greek";
 import { offscreen } from "../state/offscreen";
 import { landed } from "../canvas/routes";
 import { CodeHead, MarkView, Procs } from "./CodeHead";
@@ -300,6 +301,7 @@ export function CardView(p: { card: Card }) {
           editing: ed(),
           off: offscreen(c().id),
           far: farAway(c().id),
+          bars: asBars(c().id),
           lost: c().kind === "code" && cardStale(c() as CodeCard, staleOf) === "lost",
           gen: c().kind === "code" && !!(c() as CodeCard).gen,
           "merge-hot": !!(drop() & 1),
@@ -846,15 +848,17 @@ function ImageView(p: { card: ImageCard }) {
     <>
       {/* 跟 Note 一样没有标题栏：整张图都能拖，菜单用右键 */}
       <div class="imgb" data-drag ref={box}>
-        {/* src, data-full (the original, for export): md.showImage; data-w: its width, a copy's naturalWidth is not (measure.ts) */}
+        {/* src, data-full (the original, for export): md.showImage; data-w: its width, a copy's naturalWidth is not (measure.ts).
+            Loaded at once and drawn only decoded, as a Note's images (wire.ts eagerImages): never blank while it comes into view.
+            decoding="sync" trades a long frame (the decode on the main thread, the first time it is drawn) for no blank frame; a
+            later swap to a larger copy is decoded ahead (md.showImage: next.decode() in @yhnocoder/markdown's picture.ts) */}
         <img
           ref={img}
           data-w={natural()?.width}
           style={natural() ? { "aspect-ratio": `${natural()!.width} / ${natural()!.height}` } : undefined}
           alt={p.card.alt ?? ""}
           draggable={false}
-          decoding="async"
-          loading="lazy"
+          decoding="sync"
           data-frame={p.card.frame}
           data-loop={p.card.loop ? "" : undefined}
         />

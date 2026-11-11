@@ -221,6 +221,47 @@ describe("the resolver contract", () => {
     expect(decodes.map((d) => d.src)).toEqual([expect.stringContaining("/copy/800.png")]);
   });
 
+  it("an image off screen whose copy is not made yet loads nothing (never the original), then its copy once made", () => {
+    const have = new Set<number>();
+    const asked: number[] = [];
+    const md = createMarkdown({
+      images: (src) => ({
+        src: `/full/${src}`,
+        width: 2400,
+        height: 1200,
+        copies: [400, 800].map((w) => ({ width: w, src: have.has(w) ? `/copy/${w}.png` : undefined })),
+      }),
+      displayScale: () => 1,
+      imageVisible: () => false,
+      makeImageCopy: (_src, w) => void asked.push(w),
+      eagerImages: true,
+    });
+    const { img } = show(md);
+    lay(img, 600); // 690 device px: 800
+    expect(asked).toContain(800);
+    expect(img.hasAttribute("src")).toBe(false);
+    have.add(800);
+    md.updateImages();
+    expect(img.getAttribute("src")).toBe("/copy/800.png");
+  });
+
+  it("an image off screen whose copy is not made yet shows the smallest copy there is meanwhile", () => {
+    const md = createMarkdown({
+      images: (src) => ({
+        src: `/full/${src}`,
+        width: 2400,
+        height: 1200,
+        copies: [400, 800].map((w) => ({ width: w, src: w === 400 ? "/copy/400.png" : undefined })),
+      }),
+      displayScale: () => 1,
+      imageVisible: () => false,
+      makeImageCopy: () => {},
+    });
+    const { img } = show(md);
+    lay(img, 600);
+    expect(img.getAttribute("src")).toBe("/copy/400.png");
+  });
+
   it("a copy that fails to load gives way to the original", () => {
     const { md } = setup();
     const { img } = show(md);

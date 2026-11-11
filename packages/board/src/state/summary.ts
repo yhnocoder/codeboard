@@ -126,10 +126,17 @@ function setAwake(on: boolean) {
   setAwake0(on);
   if (zlogging()) zlog("W", `card level ${on ? "kept drawn" : "let go"} z${cam.z.toFixed(4)}`);
 }
+/** The level a running switch is about to show, drawn under the mist before it is (see run): the summary level with every
+ *  column built, the card level awake with the cards in view prepared. null: none */
+const [readying, setReadying] = boardSignal<0 | 1 | null>(null);
+/** The summary level is about to show: every column is built now (Summaries.tsx) */
+export const summaryReadying = () => readying() === 1;
 /** The card level is swapped out (styles.css .cardlay.gone: not hit) */
 export const cardsGone = rooted(() => createMemo(() => level() === 1));
 /** The card level is swapped out and asleep (Canvas.tsx .cardlay.asleep): cull.ts leaves its cards as they are */
-export const cardsAsleep = rooted(() => createMemo(() => level() === 1 && (!awake() || camMoving())));
+export const cardsAsleep = rooted(() =>
+  createMemo(() => level() === 1 && readying() !== 0 && (!awake() || camMoving())),
+);
 /** The card level's opacity: swapped out, 0 asleep and too low to show while it is kept drawn */
 export const cardsOpacity = () => (level() === 0 ? 1 : cardsAsleep() ? 0 : 0.003);
 
@@ -203,6 +210,7 @@ function drain() {
 /** The board was opened or switched to and its camera set: show its level at once */
 export function showSummaryLevel() {
   running.v = null;
+  setReadying(null);
   draining.v = false;
   push.v = 0;
   setDetent(REST);
@@ -211,11 +219,17 @@ export function showSummaryLevel() {
   setAwake0(false);
 }
 
+/** Frames the level to show is drawn under the mist before it shows: a level made visible in the frame it is first drawn
+ *  in (the card level woken from asleep, the summary columns built at the swap) has its tiles rastered for the frame that shows
+ *  it, and on a GPU short of tile memory the mist cleared over a blank board. Drawn a frame before, its tiles are there:
+ *  Chromium does not commit a frame while the one before it waits for its tiles */
+const READY_FRAMES = 1;
+
 /**
- * The switch to a level: the mist covers the board (from where the push left it), the levels swap under it in one frame (the
- * summary level built then if it is not yet; from a push, the camera is set just across the cut around the push, so the zoom
- * goes on from the other side), and the mist clears. Crossed back meanwhile (a programmatic zoom), the switch back follows at
- * once.
+ * The switch to a level: the mist covers the board (from where the push left it); under it the level to show is drawn (the
+ * summary level built whole, or the card level woken with the cards in view shown) and READY_FRAMES later the levels swap in
+ * one frame (from a push, the camera is set just across the cut around the push, so the zoom goes on from the other side);
+ * then the mist clears. Crossed back meanwhile (a programmatic zoom), the switch back follows at once.
  */
 function run(to: 0 | 1, at?: { x: number; y: number }) {
   const me = {};
@@ -226,11 +240,10 @@ function run(to: 0 | 1, at?: { x: number; y: number }) {
   const mist0 = untrack(detent).mist;
   if (zlogging()) zlog("S", `${from}→${to} start z${cam.z.toFixed(4)}`);
   let t = 0,
-    covered = false;
+    covered = false,
+    ready = -1;
   const swap = () => {
     covered = true;
-    // not built yet (pushed through before an idle moment): it is built now, under the mist
-    if (to === 1 && !untrack(built)) setBuilt(true);
     shown.v = to;
     setLevel(to);
     if (at) {
@@ -249,9 +262,26 @@ function run(to: 0 | 1, at?: { x: number; y: number }) {
     const total = D.coverMs + D.clearMs;
     t = instant ? 1 : Math.min(1, t + (dt * 1000) / total);
     const cover = D.coverMs / total;
+    if (t >= cover && !covered) {
+      // covered: the level to show is drawn under the mist first (not built yet, pushed through before an idle moment: it is
+      // built now), and shown READY_FRAMES frames later
+      if (ready < 0) {
+        ready = 0;
+        if (to === 1 && !untrack(built)) setBuilt(true);
+        setReadying(to);
+      }
+      if (ready++ < READY_FRAMES) {
+        t = cover;
+        if (!instant) setDetent({ mist: D.cover, line: 1, seal: true, to });
+        return false;
+      }
+    }
     if (t < cover) setDetent({ mist: mist0 + (D.cover - mist0) * easeOut(t / cover), line: 1, seal: true, to });
     else {
-      if (!covered) swap();
+      if (!covered) {
+        swap();
+        setReadying(null);
+      }
       const k = (t - cover) / (1 - cover);
       setDetent({ mist: D.cover * (1 - easeInOut(k)), line: 1 - k, seal: k < 0.15, to });
     }

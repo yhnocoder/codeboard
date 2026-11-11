@@ -9,7 +9,9 @@
 // - the next source is decoded before it replaces the one on screen, so the image never blinks;
 // - an image the page says is not on screen (MarkdownOptions.imageVisible) keeps what it shows until updateImages;
 // - a copy listed without an address is asked for (MarkdownOptions.makeImageCopy); until it is there the image keeps what it
-//   shows, or a larger copy that is there, or the original when it shows nothing yet, and takes the copy on updateImages.
+//   shows, or a larger copy that is there, or, when it shows nothing yet, the original if it is on screen and else the smallest
+//   copy there is or no source at all (never the original's full size for an image no one sees), and takes the copy on
+//   updateImages, on screen or not.
 // Only the display changes: the Markdown, the editor's document and data-src keep the address as written, data-full is the
 // original's address (an export uses it); a copy that fails to load falls back to the original
 import { capped, cappedAdd } from "./cache";
@@ -159,9 +161,19 @@ export class Pictures {
           cappedAdd(this.asked, MAX, k);
           this.o.make(s.raw, c.width);
         }
-        to = up.find((u) => u.src)?.src ?? (s.on && !fresh ? s.on : r.src);
+        to =
+          up.find((u) => u.src)?.src ??
+          (s.on && !fresh ? s.on : (this.o.visible?.(img) ?? true) ? r.src : this.held(copies));
       } else if (c) to = c.src!;
       else s.want = Infinity;
+    }
+    if (!to) {
+      // held off screen until its copy is made: no source (not even the original the render wrote), so nothing is fetched; picked
+      // again on updateImages
+      s.on = "";
+      s.gen++;
+      img.removeAttribute("src");
+      return;
     }
     if (to === s.on) return;
     s.on = to;
@@ -178,6 +190,15 @@ export class Pictures {
       if (s.gen === g && this.shown.get(img) === s) img.setAttribute("src", to);
     };
     next.decode().then(swap, swap);
+  }
+
+  /** What an image off screen that shows nothing yet loads while its copy is made: the smallest copy there is (it steps up once in
+   *  view), else nothing. Never the original: an image loaded at once (eagerImages) would fetch the full size of every image off
+   *  screen, the cost the copies are there to save */
+  private held(copies: readonly ImageCopy[]): string {
+    let best: ImageCopy | undefined;
+    for (const c of copies) if (c.src && (!best || c.width < best.width)) best = c;
+    return best?.src ?? "";
   }
 
   private observer() {

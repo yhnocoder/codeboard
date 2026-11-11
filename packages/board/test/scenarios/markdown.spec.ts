@@ -1433,7 +1433,8 @@ test("markdownEditorReuse", async () => {
   await close(h);
 });
 
-/** Large board, pan and zoom straight into areas not rendered yet: a Note in view never shows its raw-text placeholder, every frame */
+/** Large board, pan and zoom straight into areas not rendered yet: a Note in view never shows its raw-text placeholder, every
+ *  frame, and no Note waiting for its Markdown is rendered only in the frame it comes into view (late) */
 test("markdownLazyRender", async () => {
   const b = emptyBoard("b1", "lazy");
   const cols = 16;
@@ -1453,9 +1454,36 @@ test("markdownLazyRender", async () => {
   // 每一帧都查：视野里有没有还没渲染的 Note（藏着的）、有没有露出来的原文（没藏的占位）
   await pg.evaluate(() => {
     const w = window as any;
-    w.__lz = { frames: 0, hiddenInView: 0, rawShown: 0, pendSeen: 0, culled: 0, blankInView: 0, wait: {}, waits: [] };
+    w.__lz = {
+      frames: 0,
+      hiddenInView: 0,
+      rawShown: 0,
+      pendSeen: 0,
+      culled: 0,
+      blankInView: 0,
+      late: 0,
+      lateAt: [],
+      wait: {},
+      waits: [],
+    };
+    // the Notes waiting for their Markdown in the frame before: one in view now that waited then was rendered in the very frame
+    // it came into view (md/lazy.ts renders what the camera will show a few frames on, state/lead.ts)
+    let before = new Set<HTMLElement>();
     const tick = () => {
       w.__lz.frames++;
+      const W0 = innerWidth,
+        H0 = innerHeight;
+      const now = new Set<HTMLElement>();
+      for (const e of document.querySelectorAll<HTMLElement>(".card .md-pend")) now.add(e);
+      for (const e of before) {
+        if (now.has(e) || !e.isConnected) continue;
+        const r = e.getBoundingClientRect();
+        if (r.bottom > 0 && r.top < H0 && r.right > 0 && r.left < W0 && !e.closest(".card.off")) {
+          w.__lz.late++;
+          if (w.__lz.lateAt.length < 8) w.__lz.lateAt.push(w.__lz.frames);
+        }
+      }
+      before = now;
       for (const e of document.querySelectorAll<HTMLElement>(".card .md-pend")) {
         w.__lz.pendSeen++;
         const r = e.getBoundingClientRect();
@@ -1543,6 +1571,7 @@ test("markdownLazyRender", async () => {
       r.rawShown === 0 &&
       r.hiddenInView === 0 &&
       r.blankInView === 0 &&
+      r.late === 0 &&
       r.leftAfter === 0 &&
       r.rendered === 320,
     r,

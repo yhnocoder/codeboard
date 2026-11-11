@@ -32,6 +32,7 @@ import {
   rasterWindows,
   scaleHits,
   snapshotsOf,
+  tileMemory,
   type RasterResult,
   type TraceEvent,
 } from "./probes";
@@ -242,6 +243,8 @@ async function metrics(cdp: CDPSession) {
   const { metrics } = await cdp.send("Performance.getMetrics");
   return Object.fromEntries(metrics.map((m) => [m.name, m.value]));
 }
+/** How many times the drag pass drops the card: dragEnd is the median drop */
+const DROPS = 5;
 /** Trace marker at the start of each step (console.timeStamp) */
 const STEP_MARK = "perf-step";
 const raf = (h: Host) =>
@@ -450,13 +453,14 @@ const med = (a: number[]) => {
   const s = [...a].sort((x, y) => x - y);
   return s[Math.floor(s.length / 2)];
 };
-const p95 = (a: number[]) => {
+const pct = (a: number[], q: number) => {
   const s = [...a].sort((x, y) => x - y);
-  return s[Math.min(s.length - 1, Math.floor(s.length * 0.95))];
+  return s[Math.min(s.length - 1, Math.floor(s.length * q))];
 };
+const p95 = (a: number[]) => pct(a, 0.95);
 /**
  * Frames: main-thread task durations (>1 ms); frameMax over 16.7 means a dropped frame, over16 counts such tasks (over8: over 8.3 ms, a dropped frame at 120 fps). frameP95 is the 95th
- * percentile of all the tasks. After steps(..., perStep) (frameOf "stepMedian") it is frameMedian instead, the median of each step's frame (its longest task), with
+ * percentile of all the tasks (frameP99 the 99th). After steps(..., perStep) (frameOf "stepMedian") it is frameMedian instead, the median of each step's frame (its longest task), with
  * the frames themselves in stepFrames: for steps that wait, where the waits' own frames outnumber the steps' (hover: 12 steps that wait 250–500 ms each for the
  * cross-fades, ~125 tasks of which the 6 lifts are 5%, so a p95 over all tasks fell on either side of them by how many fade frames the runner drew: 12.7 → 19.6 ms,
  * same code). A p95 over 12 steps is their longest one, which one stray task decides: 18.9–37.2 ms in four runs of the same commit, a 1.60x hover "regression"
@@ -469,7 +473,10 @@ const sum = (m: M) => ({
   ...m.parts,
   ...(m.frames
     ? { frameOf: "stepMedian", frameMedian: +med(m.frames).toFixed(1), stepFrames: m.frames.map((f) => +f.toFixed(1)) }
-    : { frameP95: +p95(m.tasks?.length ? m.tasks : [0]).toFixed(1) }),
+    : {
+        frameP95: +p95(m.tasks?.length ? m.tasks : [0]).toFixed(1),
+        frameP99: +pct(m.tasks?.length ? m.tasks : [0], 0.99).toFixed(1),
+      }),
   frameMax: +Math.max(0, ...(m.tasks ?? [])).toFixed(1),
   over16: (m.tasks ?? []).filter((t) => t > 16.7).length,
   over8: (m.tasks ?? []).filter((t) => t > 8.3).length,
@@ -850,14 +857,16 @@ async function once() {
       "drag",
     ),
   );
-  const tUp = performance.now();
-  const bUp = await busy(cdp);
-  await profiled(cdp, "dragEnd", async () => {
-    await h.page.mouse.up();
-    await raf(h);
-  });
-  res.dragEndBusy = +((await busy(cdp)) - bUp).toFixed(1);
-  res.dragEnd = +(performance.now() - tUp).toFixed(1);
+  const drop = async () => {
+    const tUp = performance.now();
+    const bUp = await busy(cdp);
+    await profiled(cdp, "dragEnd", async () => {
+      await h.page.mouse.up();
+      await raf(h);
+    });
+    return { wall: performance.now() - tUp, busy: (await busy(cdp)) - bUp };
+  };
+  const drops = [await drop()];
   // The drag must have moved the card (60 steps × 4 px on screen), or drag / nudge / undo numbers measure nothing
   res.dragMoved = Math.round((await hubX()) - x0);
   if (!((res.dragMoved as number) > 20)) {
@@ -880,6 +889,23 @@ async function once() {
       `drag did not move the card ${hub} (moved ${res.dragMoved}px; grabbed ${JSON.stringify(bx)} → ${hit}; card ${JSON.stringify(board.place[hub])})`,
     );
   }
+  // One drop is one sample per run, and on CI the same two commits gave 92 → 86 ms on one runner and 54 → 128 on another
+  // (Regular 2026-11-08), past the 1.75x limit: so the card is dropped DROPS times, after short drags from where the pointer
+  // let go (still on its header), and dragEnd is the median drop
+  let p = { x: bx.x + 4 + 59 * 4, y: bx.y + 4 + 59 * 2 };
+  for (let n = 1; n < DROPS; n++) {
+    await h.page.waitForTimeout(600);
+    await h.page.mouse.down();
+    for (let i = 0; i < 10; i++) {
+      p = { x: p.x + 4, y: p.y + 2 };
+      await h.page.mouse.move(p.x, p.y, { steps: 1 });
+      await raf(h);
+    }
+    drops.push(await drop());
+  }
+  res.dragEnd = +med(drops.map((d) => d.wall)).toFixed(1);
+  res.dragEndBusy = +med(drops.map((d) => d.busy)).toFixed(1);
+  res.dragEnds = drops.map((d) => +d.wall.toFixed(1));
   await h.page.waitForTimeout(1200);
 
   // Hover the hub card and leave it: all its arrows lift above the cards and drop back, with a cross-fade each way
@@ -1255,6 +1281,7 @@ async function rasterPass(
   const tag = (l: (typeof hits)[number]) =>
     `${l.name.replace(/^Layout\w+ (\([^)]*\) )?/, "")} ${l.w}×${l.h} raster ${l.raster} shown ${l.ideal} (${l.ratio}x)`;
   const vps = (px: number) => +(px / vp).toFixed(2);
+  const mem = snaps.map(({ s }) => tileMemory(s));
   const r: RasterResult = {
     stepVP: vps(medianOf(st.map((x) => x.px))),
     stepVPMax: vps(Math.max(0, ...st.map((x) => x.px))),
@@ -1269,6 +1296,11 @@ async function rasterPass(
     unknown,
     tasks,
     snapshots: snaps.length,
+    tileMBMax: Math.max(0, ...mem.map((m) => m.mb)),
+    tileVPMax: Math.max(0, ...mem.map((m) => m.vp)),
+    tileMBRest: mem.at(-1)?.mb ?? 0,
+    tileLimitMB: mem.at(-1)?.limitMB ?? 0,
+    oomSnapshots: mem.filter((m) => m.oom).length,
   };
   if (process.argv.includes("--steps")) {
     console.log(`  raster ${name}: ${JSON.stringify(r)}`);

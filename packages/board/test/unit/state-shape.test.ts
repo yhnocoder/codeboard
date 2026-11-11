@@ -70,6 +70,10 @@ const OUTLIVES_BOARD: Record<string, string> = {
   "state/camera.ts:running": "the camera's flight",
   "state/camera.ts:viewport": "the window's size",
   "state/camera.ts:heldZ": "the camera's zoom held while it moves",
+  "state/lead.ts:was":
+    "the camera a frame ago, kept only while the lead view is asked for: a board switch is a pause or a jump, which the lead view does not follow",
+  "state/lead.ts:armed": "the frame loop's snapshot of the camera",
+  "state/lead.ts:quiet": "the frame loop's snapshot of the camera: frames since the last call",
   "state/measure.ts:measure": "the page's read-then-write measuring and its shared ResizeObserver",
   "gesture.ts:ghosts": "the page's hold on AI completions: a gesture's drop releases it",
   "state/measure.ts:lastPtr": "the pointer",

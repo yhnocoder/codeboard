@@ -1,0 +1,334 @@
+// Nothing in view is hidden, and nothing hidden comes into view before it is shown (state/lead.ts, state/cull.ts,
+// state/summary.ts; md/lazy.ts: markdownLazyRender, since the render queue keeps a time budget a paused clock never spends).
+// The page's clock is paused and moved one frame at a time, each frame read after its animation frame callbacks ran (what that
+// frame paints): a card in view must not be hidden in that frame, nor in the frame before (shown in the very frame it came into
+// view, its tiles are rastered for the frame that has to show them; on a GPU short of tile memory that frame was blank).
+//   culledCardsShownBeforeInView   a board of 240 code cards in rows of 12, at rest with the far ones culled (.off, .far): mouse
+//                                  wheel notches out and a flight back to 100 %, a pinch out to the summary cut, fast pans and a
+//                                  fling there, notches out and a fast pan: no card in view is culled in its frame or the one
+//                                  before; then a jump (a reveal with reduced motion), which is no motion to follow: no card
+//                                  past the culling's half a viewport is shown, and the rest a few a frame
+//   summarySwapShowsDrawnLevel     a pinch out through the summary cut, a stop there and a pinch back in, then out and in without
+//                                  a stop (state/summary.ts): each level is shown only once it was drawn in the frame before (the
+//                                  card level awake with the cards in view not culled, the summary level with every column),
+//                                  never asleep or half built then. The board has more columns than the idle build makes before
+//                                  the first pinch is through (a column an idle moment), so that switch builds the rest under the
+//                                  mist (readying)
+import { emptyBoard, putSummary, summarySig, type Board, type NoteCard, type Section } from "@codeboard/core";
+import type { Page } from "@playwright/test";
+import { files, put, symCard, type Host } from "../harness";
+import { test, open, check, idle, pauseClock } from "../fixtures";
+
+const W = 1280,
+  H = 800;
+
+/** The page's clock paused: `frame()` moves it on one frame (its timers and animation frame callbacks) and reads what that
+ *  frame paints with `read`; the frames read, the first one before `act` */
+async function stepped<T>(h: Host, read: (pg: Page) => Promise<T>, act: (frame: () => Promise<T>) => Promise<void>) {
+  const pg = h.page;
+  await pg.clock.install();
+  await pauseClock(pg);
+  const out: T[] = [await read(pg)];
+  const frame = async () => {
+    await pg.clock.runFor(16);
+    const f = await read(pg);
+    out.push(f);
+    return f;
+  };
+  try {
+    await act(frame);
+  } finally {
+    await pg.clock.resume();
+  }
+  return out;
+}
+
+/** A frame's cards: those in view, those culled (cull.ts .off: content hidden, .far: not drawn at all) and those more than half a
+ *  viewport outside it (where the culling alone shows none: only the lead view's band does) */
+type Cards = { z: number; view: string[]; culled: string[]; beyond: string[] };
+const cardsOf = (pg: Page) =>
+  pg.evaluate((): Cards => {
+    const view: string[] = [],
+      culled: string[] = [],
+      beyond: string[] = [];
+    const W = innerWidth,
+      H = innerHeight;
+    for (const c of document.querySelectorAll<HTMLElement>(".world .card")) {
+      const r = c.getBoundingClientRect();
+      if (r.right > 0 && r.left < W && r.bottom > 0 && r.top < H) view.push(c.dataset.id!);
+      if (r.right < -W / 2 || r.left > W * 1.5 || r.bottom < -H / 2 || r.top > H * 1.5) beyond.push(c.dataset.id!);
+      if (c.matches(".off, .far")) culled.push(c.dataset.id!);
+    }
+    const world = document.querySelector(".world") as HTMLElement;
+    return { z: +(/scale\(([\d.e-]+)\)/.exec(world.style.transform)?.[1] ?? 1), view, culled, beyond };
+  });
+
+/** Code cards in rows of 12, as the perf board has them (perf.ts bigBoard) */
+function codeGrid(): Board {
+  const b = emptyBoard("bCull", "cull");
+  const defs = [...files.entries()].flatMap(([f, x]) =>
+    x.a.symbols.filter((s) => s.kind === "def").map((s) => ({ f, s })),
+  );
+  for (let i = 0; i < 240; i++) {
+    const d = defs[i % defs.length];
+    put(b, symCard(d.f, d.s), (i % 12) * 620, Math.floor(i / 12) * 700, 560);
+  }
+  b.cam = { x: 40, y: 40, z: 1 };
+  return b;
+}
+
+test("culledCardsShownBeforeInView", async () => {
+  const board = codeGrid(),
+    target = board.cards.at(-1)!.id;
+  const h = await open({ board, w: W, h: H });
+  await idle(h);
+  const pg = h.page,
+    m = pg.mouse;
+  /** the frames read before the jump */
+  let jumpAt = 0;
+  const fs = await stepped(h, cardsOf, async (frame0) => {
+    const frame = async () => {
+      jumpAt++;
+      return frame0();
+    };
+    const frames = async (n: number) => {
+      for (let i = 0; i < n; i++) await frame();
+    };
+    // the camera's stop (CAM_STILL) and the hides after it, a few a frame: the next move starts with the far cards culled
+    const rest = () => frames(40);
+    const pan = async (dx: number, dy: number, n: number) => {
+      for (let i = 0; i < n; i++) {
+        await m.wheel(dx, dy);
+        await frame();
+      }
+      await rest();
+    };
+    /** Ctrl + wheel at the middle, a step a frame: 30 is a mouse wheel's notch (about 0.74, as zoom-perf.cjs zooms), 8 a pinch */
+    const zoomOut = async (n: number, dy: number) => {
+      await m.move(W / 2, H / 2);
+      await pg.keyboard.down("Control");
+      for (let i = 0; i < n; i++) {
+        await m.wheel(0, dy);
+        await frame();
+      }
+      await pg.keyboard.up("Control");
+      await rest();
+    };
+    const to100 = async () => {
+      await pg.keyboard.press("ControlOrMeta+1");
+      await frames(40);
+      await rest();
+    };
+    await zoomOut(5, 30);
+    await to100();
+    // to the summary cut, the card level's lowest zoom, where a pan brings the most cards into view a frame
+    await zoomOut(15, 8);
+    await pan(0, 150, 24);
+    await pan(60, -150, 24);
+    await m.move(W - 100, H - 100);
+    await m.down({ button: "middle" });
+    for (let i = 1; i <= 6; i++) {
+      await m.move(W - 100 - i * 120, H - 100 - i * 40);
+      await frame();
+    }
+    await m.up({ button: "middle" });
+    await frames(60);
+    await rest();
+    await to100();
+    await zoomOut(2, 30);
+    await pan(150, 40, 20);
+    // the far corner revealed with reduced motion: the camera jumps there in a frame
+    await pg.emulateMedia({ reducedMotion: "reduce" });
+    const at = jumpAt;
+    await h.post({ type: "reveal", card: target });
+    await frames(30);
+    jumpAt = at;
+  });
+  const blank: string[] = [],
+    late: string[] = [];
+  // after the jump: the cards shown in a frame outside the view, past half a viewport (the lead band's) and in all
+  const band: string[] = [],
+    burst: string[] = [];
+  fs.forEach((f, i) => {
+    if (!i) return;
+    const now = new Set(f.culled),
+      before = new Set(fs[i - 1].culled);
+    for (const id of f.view) {
+      if (now.has(id)) blank.push(`${i}:${id}@${f.z.toFixed(3)}`);
+      // a jump brings culled cards into view in the frame it lands: shown in that very frame (no blank), never before
+      else if (before.has(id) && i <= jumpAt) late.push(`${i}:${id}@${f.z.toFixed(3)}`);
+    }
+    if (i <= jumpAt) return;
+    const shown = [...before].filter((id) => !now.has(id) && id !== target && !f.view.includes(id));
+    for (const id of shown) if (f.beyond.includes(id)) band.push(`${i}:${id}`);
+    // SHOW (cull.ts) code cards a frame
+    if (shown.length > 3) burst.push(`${i}:${shown.length}`);
+  });
+  const zMin = Math.min(...fs.map((f) => f.z));
+  check(
+    "culledCardsShownBeforeInView the far cards are culled at rest, and the moves bring them into view",
+    fs[0].culled.length > 30 && zMin < 0.35 && fs.some((f, i) => i && f.view.some((id) => fs[0].culled.includes(id))),
+    { culled: fs[0].culled.length, zMin, frames: fs.length },
+  );
+  check("culledCardsShownBeforeInView no card in view is culled", !blank.length, blank.length, blank.slice(0, 12));
+  check(
+    "culledCardsShownBeforeInView no culled card comes into view in the frame it is shown",
+    !late.length,
+    late.length,
+    late.slice(0, 12),
+  );
+  check(
+    "culledCardsShownBeforeInView the jump brings culled cards into view",
+    fs.slice(jumpAt + 1).some((f, i) => f.view.some((id) => fs[jumpAt + i].culled.includes(id))),
+    { jumpAt, frames: fs.length },
+  );
+  check(
+    "culledCardsShownBeforeInView after a jump no card past half a viewport is shown (no lead band)",
+    !band.length,
+    band.length,
+    band.slice(0, 12),
+  );
+  check("culledCardsShownBeforeInView after a jump the cards off view are shown a few a frame", !burst.length, burst);
+  await h.page.context().close();
+});
+
+/** Small Sections of a Note each below the big ones: summary columns the idle build has not made when the first pinch is through */
+const SMALL = 16;
+
+/** Three Sections of three Notes in a row, SMALL Sections of one Note below them and a loose Note, each with its summary written */
+function summaryBoard(): Board {
+  const b = emptyBoard("bSwap", "swap");
+  ["异构并行计算", "内存层次", "线程调度"].forEach((t, i) => {
+    const s: Section = { id: `s${i}`, title: t, x: 80 + i * 2600, y: 80, w: 2400, h: 1400 };
+    b.sections.push(s);
+    for (let j = 0; j < 3; j++) {
+      const n: NoteCard = {
+        id: `n${i}${j}`,
+        kind: "note",
+        md: `# ${t} ${j + 1}\n\nGPU 用大量小算术单元换**吞吐**。`,
+        look: "note",
+      };
+      put(b, n, s.x + 60 + j * 760, s.y + 100, 680);
+      b.place[n.id].section = s.id;
+    }
+  });
+  for (let i = 0; i < SMALL; i++) {
+    const s: Section = {
+      id: `m${i}`,
+      title: `小节 ${i + 1}`,
+      x: 80 + (i % 8) * 1000,
+      y: 1700 + Math.floor(i / 8) * 1000,
+      w: 900,
+      h: 800,
+    };
+    b.sections.push(s);
+    put(
+      b,
+      { id: `nm${i}`, kind: "note", md: `# 小节 ${i + 1}\n\n寄存器、共享内存。`, look: "note" },
+      s.x + 60,
+      s.y + 100,
+      760,
+    );
+    b.place[`nm${i}`].section = s.id;
+  }
+  put(
+    b,
+    { id: "loose", kind: "note", md: "# 本章导读\n\n从 CPU 和 GPU 的设计取舍讲起。", look: "note" },
+    80,
+    3800,
+    900,
+  );
+  for (const k of [...b.sections.map((s) => `sec:${s.id}`), "card:loose"])
+    putSummary(b, k, { text: `众线程押**吞吐量**（${k}）。`, at: Date.now(), sig: summarySig(b, k)! });
+  b.cam = { x: 40, y: 40, z: 0.5 };
+  return b;
+}
+
+/** Both levels in a frame: the card level's opacity, whether it sleeps (clipped to nothing) and is swapped out, the summary
+ *  level's opacity and columns, the cards in view and the culled ones, and whether the switch's mist is up */
+type Levels = Cards & { co: number; asleep: boolean; gone: boolean; so: number; cols: number; mist: boolean };
+const levelsOf = async (pg: Page): Promise<Levels> => ({
+  ...(await cardsOf(pg)),
+  ...(await pg.evaluate(() => {
+    const lay = document.querySelector(".cardlay") as HTMLElement,
+      sum = document.querySelector(".sumlay") as HTMLElement | null;
+    return {
+      co: +lay.style.opacity,
+      asleep: lay.classList.contains("asleep"),
+      gone: lay.classList.contains("gone"),
+      so: sum ? +sum.style.opacity : 0,
+      cols: document.querySelectorAll(".sumcol").length,
+      mist: document.querySelector(".cutmist")!.classList.contains("on"),
+    };
+  })),
+});
+
+/** The summary columns: one a Section and the loose Note */
+const COLS = 3 + SMALL + 1;
+
+test("summarySwapShowsDrawnLevel", async () => {
+  const h = await open({ board: summaryBoard(), w: W, h: H, light: true });
+  await idle(h);
+  const pg = h.page;
+  await pg.mouse.move(W / 2, H / 2);
+  const fs = await stepped(h, levelsOf, async (frame) => {
+    let f = await levelsOf(pg);
+    /** Ctrl + wheel steps of dy, one a frame, until the switch has ended on the level wanted (gone: the summaries) */
+    const pinch = async (dy: number, gone: boolean) => {
+      await pg.keyboard.down("Control");
+      for (let i = 0; i < 160 && !(f.gone === gone && !f.mist); i++) {
+        await pg.mouse.wheel(0, dy);
+        f = await frame();
+      }
+      await pg.keyboard.up("Control");
+    };
+    // out through the cut, a stop at the summary level (its card level let go while the pinch back in moves), back in; then
+    // out and in again without a stop
+    await pinch(6, true);
+    for (let i = 0; i < 60; i++) f = await frame();
+    await pinch(-6, false);
+    for (let i = 0; i < 30; i++) f = await frame();
+    await pinch(6, true);
+    await pinch(-6, false);
+  });
+  const shows: { level: string; at: number; ok: boolean; before: unknown }[] = [];
+  fs.forEach((f, i) => {
+    if (!i) return;
+    const b = fs[i - 1];
+    if (f.co >= 0.5 && b.co < 0.5) {
+      const culled = f.view.filter((id) => b.culled.includes(id));
+      shows.push({
+        level: "cards",
+        at: i,
+        ok: !b.asleep && b.co > 0 && !culled.length,
+        before: { co: b.co, asleep: b.asleep, culled },
+      });
+    }
+    if (f.so >= 0.5 && b.so < 0.5)
+      shows.push({
+        level: "summaries",
+        at: i,
+        ok: b.so > 0 && b.cols === f.cols && f.cols === COLS,
+        before: { so: b.so, cols: b.cols, now: f.cols },
+      });
+  });
+  check(
+    "summarySwapShowsDrawnLevel the pinches switch both ways twice",
+    shows.filter((s) => s.level === "cards").length === 2 && shows.filter((s) => s.level === "summaries").length === 2,
+    shows.map((s) => `${s.level}@${s.at}`),
+  );
+  // the first switch to the summaries is through the cut before the idle build has every column: the rest are built at once,
+  // under the mist (the readying frame, or the swap's on a board that shows what it builds in the same frame)
+  const whole = fs.findIndex((f) => f.cols === COLS);
+  check(
+    "summarySwapShowsDrawnLevel the first switch is through before the idle build has every column",
+    whole > 0 && fs[whole - 1].cols < COLS - 1 && fs[whole].mist,
+    { whole, before: fs[whole - 1]?.cols, of: COLS },
+  );
+  check(
+    "summarySwapShowsDrawnLevel each level shows only once it was drawn in the frame before",
+    shows.every((s) => s.ok),
+    shows.filter((s) => !s.ok),
+  );
+  await h.page.context().close();
+});

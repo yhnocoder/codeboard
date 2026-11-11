@@ -15,7 +15,14 @@ import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount, 
 import { state } from "../state/store";
 import { stillZ } from "../state/camera";
 import { lastDown, observeResize, queueMeasure } from "../state/measure";
-import { summaryLevel, summaryLayout, summaryNear, setSummaryHeights, summaryCut } from "../state/summary";
+import {
+  summaryLevel,
+  summaryLayout,
+  summaryNear,
+  summaryReadying,
+  setSummaryHeights,
+  summaryCut,
+} from "../state/summary";
 import { zlog, zlogging } from "../state/zoomlog";
 import { still } from "../state/still";
 import { SUMMARY, boardLang, summaryOf, summaryPending, type SumCol, type SumKey } from "@codeboard/core";
@@ -69,10 +76,10 @@ export function Summaries() {
     <Show when={summaryNear() && keys().length}>
       {(_) => {
         // Built near the cut, before it shows: a few columns in each idle moment (all of them at once took 35–55 ms, a dropped
-        // frame or three in the middle of a zoom); once the level shows (under the switch's mist), every column not built yet is
-        // built in that frame
+        // frame or three in the middle of a zoom); once the switch to it has covered the board (state/summary.ts readying),
+        // every column not built yet is built in that frame, a few frames before the level shows
         const [n, setN] = createSignal(0);
-        const all = createMemo(() => summaryLevel() === 1 || still());
+        const all = createMemo(() => summaryLevel() === 1 || summaryReadying() || still());
         const shown = createMemo(() => (all() || n() >= keys().length ? keys() : keys().slice(0, n())));
         let idle: number | undefined;
         const more = (d: IdleDeadline) => {
@@ -84,7 +91,9 @@ export function Summaries() {
           while (k < keys().length && (k === from || d.timeRemaining() > 4)) setN(++k);
           // the zoom log (state/zoomlog.ts): each batch of columns built, and how long it took
           if (zlogging()) zlog("B", `${(performance.now() - t0).toFixed(1)} cols ${from}→${k}/${keys().length}`);
-          if (k < keys().length) idle = requestIdleCallback(more);
+          // the effect below asked for the next idle moment already (setN ran it): asked twice, each moment asked for two more, and
+          // the build ran as fast as the page let it
+          if (k < keys().length && idle === undefined) idle = requestIdleCallback(more);
         };
         createEffect(() => {
           if (!all() && n() < keys().length && idle === undefined) idle = requestIdleCallback(more);

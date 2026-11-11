@@ -80,7 +80,7 @@
         "packages/board/src/canvas/Canvas.tsx",
         "packages/core/src/canvas/{index,geom}.ts",
         "packages/board/src/cards/Card.tsx",
-        "packages/board/src/state/{camera,changes,cull,extent,geo,ghost,hover,measure,mode,motion,offscreen,root,selection,still,store,timing,toast,tune,ui,views,zoomlog}.ts",
+        "packages/board/src/state/{camera,changes,cull,extent,geo,ghost,greek,hover,lead,measure,mode,motion,offscreen,root,selection,still,store,timing,toast,tune,ui,views,zoomlog}.ts",
         "packages/core/src/history/*.ts",
         "packages/board/src/actions/{index,common,edit,create,env,clipboard,pastechip}.ts",
         "packages/board/src/ui/{guard,hooks,overlay,shield}.ts",
@@ -91,7 +91,7 @@
         "packages/core/src/commands/{index,env}.ts",
         "packages/core/src/commands/cards.ts",
         "packages/host/src/paste.ts",
-        "packages/board/test/scenarios/{board,fit,drag-by-body,drag-controls,copy-paste,multi-select,text-selection-delete,click-to-edit,still}.spec.ts"
+        "packages/board/test/scenarios/{board,fit,drag-by-body,drag-controls,copy-paste,multi-select,text-selection-delete,click-to-edit,still,in-view}.spec.ts"
       ],
       "scenarios": [
         "zoomKeepsDetail",
@@ -548,7 +548,7 @@
         "packages/board/src/canvas/Summaries.tsx",
         "packages/board/src/actions/summaries.ts",
         "packages/host/src/summaries.ts",
-        "packages/board/test/scenarios/{summaries,summary-zoom}.spec.ts"
+        "packages/board/test/scenarios/{summaries,summary-zoom,in-view}.spec.ts"
       ],
       "scenarios": [
         "summaryDetentSwitch",
