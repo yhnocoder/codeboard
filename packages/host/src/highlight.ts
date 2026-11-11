@@ -210,11 +210,17 @@ export async function segViewOf(seg: Segment, src: SegSource, hl: Highlighter): 
   return buildView(seg, fa, (i) => toks[seg.start - 1 + i], 0, 0, pkgs);
 }
 
-/** Only the segment's text: analysed without its common indent (a Python snippet in the middle of a function parses then), columns added back */
-async function snippetView(seg: Segment, src: SegSource, hl: Highlighter): Promise<SegView> {
-  const ind = Math.min(...seg.text.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length));
+/** Lines without their common indent (cut columns; a line indented less loses only its own indent): a Python snippet from the
+ *  middle of a function parses then */
+export function dedent(lines: string[]): { cut: number; lines: string[] } {
+  const ind = Math.min(...lines.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length));
   const cut = Number.isFinite(ind) ? ind : 0;
-  const ded = seg.text.map((l) => l.slice(Math.min(cut, l.length - l.trimStart().length)));
+  return { cut, lines: lines.map((l) => l.slice(Math.min(cut, l.length - l.trimStart().length))) };
+}
+
+/** Only the segment's text: analysed without its common indent, columns added back */
+async function snippetView(seg: Segment, src: SegSource, hl: Highlighter): Promise<SegView> {
+  const { cut, lines: ded } = dedent(seg.text);
   const fa = src.analyze(seg.lang, ded.join("\n"));
   let pkgs: ((c: { name: string; recv?: string }) => string | undefined) | undefined;
   if (src.callPkgs) {

@@ -44,6 +44,7 @@ import { cardForFileSym, symCard } from "./cards";
 import { hasLocalFile } from "./source";
 import { makeSegment, workingPlace } from "./versions";
 import { highlight, tokensOf } from "./views";
+import { dedent } from "./highlight";
 import { libOf } from "./scope";
 import { type IndexEntry } from "./nameindex";
 import { exists, splitLines } from "./ws";
@@ -263,7 +264,7 @@ async function expandNow(cx: HostContext, m: ExpandReq): Promise<ExpandResult> {
   if (!site)
     cx.log(
       "warn",
-      `vars ${m.name} → callSite miss path=${seg.path}:${m.line}:${m.col}${full ? "" : " (file text unavailable, used saved lines)"}`,
+      `expand ${m.name} → callSite miss path=${seg.path}:${m.line}:${m.col}${full ? "" : " (file text unavailable, used saved lines)"}`,
     );
   const here = full ? { abs: cx.sources.absOf(seg) ?? seg.path, text: full } : null;
   let place: ReturnType<typeof workingPlace> | undefined;
@@ -555,12 +556,9 @@ function callSite(cx: HostContext, seg: Segment, full: string | null, m: ExpandR
     colOff = 0;
   if (full) calls = segAnalysis(seg.lang, full, m.line, m.line, treeAt(cx, cx.sources.absOf(seg))).calls;
   else {
-    const ind = Math.min(...seg.text.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length));
-    colOff = Number.isFinite(ind) ? ind : 0;
-    calls = analysisOf(
-      seg.lang,
-      seg.text.map((l) => l.slice(Math.min(colOff, l.length - l.trimStart().length))).join("\n"),
-    ).calls;
+    const d = dedent(seg.text);
+    colOff = d.cut;
+    calls = analysisOf(seg.lang, d.lines.join("\n")).calls;
     shift = seg.start - 1;
   }
   const on = calls.filter((c) => c.line + shift === m.line);
@@ -593,12 +591,7 @@ export async function callVars(cx: HostContext, m: CallVarsReq): Promise<Var[]> 
   if (full) syms = analysisOf(t.lang, full).symbols;
   else {
     // 只有段文本：去掉公共缩进再分析，行号对回去
-    const ind = Math.min(...t.text.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length));
-    const cut = Number.isFinite(ind) ? ind : 0;
-    syms = analysisOf(
-      t.lang,
-      t.text.map((l) => l.slice(Math.min(cut, l.length - l.trimStart().length))).join("\n"),
-    ).symbols.map((s) => ({
+    syms = analysisOf(t.lang, dedent(t.text).lines.join("\n")).symbols.map((s) => ({
       ...s,
       start: s.start + t.start - 1,
       defLine: s.defLine + t.start - 1,
@@ -688,6 +681,8 @@ export async function peek(cx: HostContext, m: PeekReq): Promise<PeekResult> {
   return f ? peekAt(cx, f, word) : null;
 }
 
+/** How many files with classes classField looks through */
+const CLASS_FILES = 400;
 async function classField(cx: HostContext, word: string): Promise<Def | null> {
   if (!/^[A-Za-z_]\w*$/.test(word)) return null;
   const re = new RegExp(`^\\s+${word}\\s*(:[^=]*)?=(?!=)`);
@@ -701,7 +696,8 @@ async function classField(cx: HostContext, word: string): Promise<Def | null> {
       if (!text || !text.includes(word)) continue;
       ents = await cx.index.entriesOf(abs);
     }
-    if (!ents.some((e) => e.kind === "class") || n++ > 400) continue;
+    if (!ents.some((e) => e.kind === "class")) continue;
+    if (++n > CLASS_FILES) break;
     text ??= await cx.readText(abs);
     if (!text || !text.includes(word)) continue;
     const lines = splitLines(text);

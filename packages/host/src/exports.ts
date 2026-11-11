@@ -9,27 +9,12 @@ import {
   type Segment,
 } from "@codeboard/core";
 import type { Storage } from "./storage/boards";
-import { git } from "./git";
 import type { HostContext } from "./context";
 
 /** 所有白板上的问题（共享卡上的只算一次） */
 export async function allQuestions(store: Storage): Promise<QuestionItem[]> {
   await store.list();
   return collectQuestions(store.cached().map((e) => ({ ...e, group: store.groupOf(e.id) })));
-}
-
-/** One host's repositories' origin URLs */
-export class Remotes {
-  private urls = new Map<string, Promise<string | undefined>>();
-
-  of(root: string): Promise<string | undefined> {
-    let p = this.urls.get(root);
-    if (!p) {
-      p = git(root, ["remote", "get-url", "origin"]).then((s) => s?.trim() || undefined);
-      this.urls.set(root, p);
-    }
-    return p;
-  }
 }
 
 /** 段的 GitHub 永久链接（仓库的 origin 是 GitHub 时；GitHub Code 段直接有） */
@@ -40,7 +25,7 @@ export async function permalinks(cx: HostContext, segs: Segment[]): Promise<Reco
     if (s.src.kind === "repo") {
       const a = cx.sources.absOf(s);
       const r = a ? await cx.git.repoRootOf(a) : null;
-      remote = r ? await cx.remotes.of(r) : undefined;
+      remote = r ? await cx.git.origin(r) : undefined;
     }
     const u = segPermalink(s, () => remote);
     if (u) out[s.id] = u;

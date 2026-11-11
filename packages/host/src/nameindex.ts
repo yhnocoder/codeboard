@@ -61,6 +61,8 @@ export class NameIndex implements Disposable {
   private seq = 0;
   private byFile = new Map<string, IndexEntry[]>();
   private byName = new Map<string, IndexEntry[]>();
+  /** allNames' answer, kept until an entry changes (drop, reset): ⌘K asks it on every keystroke */
+  private names: IndexEntry[][] | undefined;
   private todo = new Set<string>(); // 列出来了、还没分析（或改过）的文件
   private sigs = new Map<string, Uint32Array>(); // 还没分析的文件里出现过的单词（位图，按名字查时读过一次就记下，下次不用再读文件）
   private gen = 0; // reset 一次加一：旧的后台任务看到就停
@@ -82,6 +84,7 @@ export class NameIndex implements Disposable {
   }
 
   private drop(abs: string) {
+    this.names = undefined;
     for (const e of this.byFile.get(abs) ?? []) {
       const l = this.byName.get(e.name);
       if (!l) continue;
@@ -252,13 +255,14 @@ export class NameIndex implements Disposable {
   /** 所有条目（⌘K）：等整个索引建完。名字按第一次出现的位置排（文件列表顺序 + 文件里的顺序） */
   async allNames(): Promise<IndexEntry[][]> {
     await this.ready();
+    if (this.names) return this.names;
     const first = (l: IndexEntry[]) =>
       [this.order.get(l[0].abs) ?? 0, this.byFile.get(l[0].abs)?.indexOf(l[0]) ?? 0] as const;
-    return [...this.byName.values()]
+    return (this.names = [...this.byName.values()]
       .map(this.sorted)
       .map((l) => [l, first(l)] as const)
       .sort((a, b) => a[1][0] - b[1][0] || a[1][1] - b[1][1])
-      .map(([l]) => l);
+      .map(([l]) => l));
   }
 
   /** 所有文件（按列表顺序）和它们的条目；还没分析的文件 ents 是 undefined */
@@ -305,6 +309,7 @@ export class NameIndex implements Disposable {
     this.seq = 0;
     this.byFile.clear();
     this.byName.clear();
+    this.names = undefined;
     this.todo.clear();
     this.sigs.clear();
     this.listing = undefined;

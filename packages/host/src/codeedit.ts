@@ -3,11 +3,20 @@
 // 请求带着全文：先把虚拟文档同步成这段文字再问，补全和内容永远对得上。同一段代码的同一种请求来了新的就作废旧的
 // （VS Code 的 executeXxxProvider 没法取消：排队时就丢掉，回来晚了的也丢掉，白板那边同样只认最新的）。
 import * as path from "node:path";
-import type { LspItem, LspSignature, Segment } from "@codeboard/core";
+import type { Disposable, LspItem, LspSignature, Segment } from "@codeboard/core";
 import type { HostContext } from "./context";
 
 type Near = Pick<Segment, "src" | "path" | "version">;
-type Doc = { lang: string; near?: string; text: string; chain: Promise<unknown> };
+/** owner = who opened it (a board panel): its documents close with it. gen = request kind → the latest request's number: an older
+ *  one's answer is dropped */
+type Doc = {
+  owner: object;
+  lang: string;
+  near?: string;
+  text: string;
+  chain: Promise<unknown>;
+  gen: Record<string, number>;
+};
 /** 补全最多回多少项（Pylance 在空前缀时会给几千个） */
 const MAX_ITEMS = 300;
 
@@ -55,23 +64,23 @@ function narrow(items: LspItem[], word: string, max = MAX_ITEMS): LspItem[] {
 }
 
 /** One host's code being edited on boards, and the language service requests about it */
-export class CodeEdit {
+export class CodeEdit implements Disposable {
   /** editor id → its hidden document */
   private docs = new Map<string, Doc>();
-  /** editor id and request kind → the latest request's number: an older one's answer is dropped */
-  private gen = new Map<string, number>();
+  private gone = false;
 
   constructor(private cx: HostContext) {}
 
-  open(id: string, lang: string, text: string, near?: Near) {
+  open(owner: object, id: string, lang: string, text: string, near?: Near) {
     const cx = this.cx;
-    if (!scratch(cx)) return;
+    if (!scratch(cx) || this.gone) return;
     let d = this.docs.get(id);
     const n = nearAbs(cx, near);
     if (!d) {
-      d = { lang, near: n, text: "", chain: Promise.resolve() };
+      d = { owner, lang, near: n, text: "", chain: Promise.resolve(), gen: {} };
       this.docs.set(id, d);
     }
+    d.owner = owner;
     d.lang = lang;
     d.near = n ?? d.near;
     const dd = d;
@@ -89,6 +98,22 @@ export class CodeEdit {
       if (f) s.close(f);
       cx.scratch.drop(id);
     }).catch(() => undefined);
+  }
+
+  /** The owner's editors are gone without saying so (its view closed, it shows another board): their documents close */
+  closeAll(owner: object) {
+    for (const [id, d] of [...this.docs]) if (d.owner === owner) this.close(id);
+  }
+
+  /** The host stops: the documents close now (their files go with ScratchFiles), and work still queued creates none */
+  dispose() {
+    this.gone = true;
+    const s = scratch(this.cx);
+    for (const id of this.docs.keys()) {
+      const f = this.cx.scratch.fileOf(id);
+      if (s && f) s.close(f);
+    }
+    this.docs.clear();
   }
 
   complete(id: string, text: string, line: number, col: number, trigger?: string): Promise<LspItem[]> {
@@ -110,6 +135,7 @@ export class CodeEdit {
   /** Write the text into the document, creating its file the first time */
   private async sync(id: string, d: Doc, text: string) {
     const cx = this.cx;
+    if (this.gone) return;
     await scratch(cx)!.sync(await cx.scratch.file(id, d.lang, d.near), d.lang, text);
     d.text = text;
   }
@@ -118,10 +144,9 @@ export class CodeEdit {
     const cx = this.cx,
       d = this.docs.get(id);
     if (!scratch(cx) || !d) return Promise.resolve(empty);
-    const k = `${id}|${op}`,
-      g = (this.gen.get(k) ?? 0) + 1;
-    this.gen.set(k, g);
-    const stale = () => this.gen.get(k) !== g;
+    const g = (d.gen[op] ?? 0) + 1;
+    d.gen[op] = g;
+    const stale = () => d.gen[op] !== g;
     return queue(d, async () => {
       if (stale()) return empty;
       if (d.text !== text) await this.sync(id, d, text);

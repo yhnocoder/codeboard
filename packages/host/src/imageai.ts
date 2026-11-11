@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 import type { AiChatRequest, AiChatResult, ImageAiFail, ImageAiOp, ImageAiResult, WorkspaceAi } from "@codeboard/core";
 import { deepseekKey, deepseekTarget } from "./ai";
-import { DEEPSEEK_MODEL, type DeepseekRequest } from "./deepseek";
+import { DEEPSEEK_MODEL, deepseekBase, deepseekPost, type DeepseekRequest } from "./deepseek";
 import type { HostContext } from "./context";
 import { readSetting } from "./settings";
 
@@ -132,7 +132,6 @@ export type ImageAiOpts = {
   cache?: Map<string, string>;
 };
 
-const base = (o: { baseUrl?: string }) => (o.baseUrl || "https://api.deepseek.com").replace(/\/+$/, "");
 const vision = (text: string, url: string) => [
   { type: "text", text },
   { type: "image_url", image_url: { url } },
@@ -196,14 +195,7 @@ export function imageAiRequest(o: ImageAiOpts, op: ImageAiOp): DeepseekRequest {
       { role: "user", content: a.image ? vision(a.text, a.image) : a.text },
     ],
   };
-  return {
-    url: `${base(o)}/chat/completions`,
-    init: {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json", Authorization: `Bearer ${o.key}` },
-      body: JSON.stringify(body),
-    },
-  };
+  return deepseekPost(o, "/chat/completions", body);
 }
 
 /** 包住整个回答的代码围栏（```markdown … ```）去掉；里面的围栏不动 */
@@ -284,7 +276,7 @@ async function run(
 export async function runImageAi(o: ImageAiOpts, op: ImageAiOp): Promise<ImageAiResult> {
   if (!o.key) return { fail: "nokey", via: "DeepSeek" };
   const f = o.fetch ?? fetch;
-  return run(op, `${base(o)}\n${o.model || DEEPSEEK_MODEL}`, "DeepSeek", o, async (signal) => {
+  return run(op, `${deepseekBase(o)}\n${o.model || DEEPSEEK_MODEL}`, "DeepSeek", o, async (signal) => {
     const r = imageAiRequest(o, op);
     const res = await f(r.url, { ...r.init, signal });
     const raw = await res.text().catch((e) => {

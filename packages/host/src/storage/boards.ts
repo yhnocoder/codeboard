@@ -5,8 +5,8 @@
 // 白板发来的改动（patch）马上改缓存里的那份，稍后写盘（WRITE_DELAY 里的改动合成一次写）；关面板、退出时 flush() 把没写的写下去。
 // 存储目录有人在外面（另一个窗口、git pull / checkout）写了：白板文件三方合并进缓存（onDidMerge），卡库里的卡换进有它的白板（onDidShare），不等这边存盘。
 // 镜头不写进白板文件：交给宿主按白板 id 记在这台机器上（cams）。
-// The listing is cached while the storage folder is watched: the watcher reports what other windows and git change, so
-// list(), load() and groups() read the folder again only after such a change. Without a watcher every call reads it.
+// The listing is cached while the folders it was read from keep their mtimes (listedFrom), so list(), load() and groups() read
+// the folder again only after a change there, whoever made it; the watcher only merges other windows' writes into open boards.
 // Here: the board files and the cache; the shared-card library (library.ts), the merges (merge.ts), the write queue
 // (queue.ts) and the trash (trash.ts) have their own modules.
 import {
@@ -145,6 +145,10 @@ export class Storage {
    * them: a scan also pulls the cards the boards show. null = read the folder again
    */
   private listedFrom: Map<string, number> | null = null;
+  /** Counts our changes to the cache and the folder it lists: a scan started before one of them is not shared after it */
+  private edits = 0;
+  /** The scan in flight: callers that need the listing meanwhile take its result instead of reading the folder again */
+  private scanning: { edits: number; done: Promise<Entry[]> } | undefined;
   // A board file rewritten in place outside the app (not written to a temporary file and renamed, as git, editors and sync
   // tools do) changes no folder's mtime: with no watcher event for it, the listing shows it as it was until the next scan.
 
@@ -165,6 +169,7 @@ export class Storage {
   private watchDir() {
     const dir = this.dir();
     this.listedFrom = null;
+    this.edits++;
     if (!this.opts.watch) return;
     this.dispose();
     this.watched = [
@@ -211,7 +216,15 @@ export class Storage {
   /** The boards in the storage folder: the cache while no folder it was read from changed (see listedFrom), otherwise a scan */
   private async entries(): Promise<Entry[]> {
     if (await this.listingGood()) return [...this.cache.values()].sort((a, b) => a.birth - b.birth);
-    return this.scan();
+    const s = this.scanning;
+    if (s && s.edits === this.edits) return s.done;
+    const mine = { edits: this.edits, done: this.scan() };
+    this.scanning = mine;
+    const clear = () => {
+      if (this.scanning === mine) this.scanning = undefined;
+    };
+    mine.done.then(clear, clear);
+    return mine.done;
   }
   private async listingGood(): Promise<boolean> {
     const from = this.listedFrom;
@@ -266,7 +279,7 @@ export class Storage {
     } catch {
       /* 还没有目录 */
     }
-    // 组目录、每个文件的 stat 一起发（每次开白板、进子白板都要扫一遍，逐个等的话白板越多越慢）；处理仍按顺序
+    // 组目录、每个文件的 stat 一起发（逐个等的话白板越多越慢）；处理仍按顺序
     this.emptyGroups.clear();
     const subs = await Promise.all(
       names.map(async (d) => {
@@ -598,6 +611,7 @@ export class Storage {
     e.pending = undefined;
     this.queue.cancel(e.id);
     this.cache.set(e.id, e);
+    this.edits++;
     if (this.failing.delete(e.id)) this.recoveredEmitter.fire(e.id);
     for (const sc of changed) {
       const id = sc.card.id;
@@ -854,6 +868,7 @@ export class Storage {
     const trash = await trashDir(fs, this.dir());
     await fs.rename(e.file, fs.join(trash, trashName(id))).catch(() => fs.rm(e.file));
     this.cache.delete(id);
+    this.edits++;
     this.changed.fire();
     this.removedBoard.fire(id);
   }
@@ -962,6 +977,7 @@ export class Storage {
       this.emptyGroups.delete(from);
       this.cache.clear();
       this.listedFrom = null;
+      this.edits++;
       this.changed.fire();
     });
   }

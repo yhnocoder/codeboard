@@ -81,6 +81,14 @@ describe("BoardHub", () => {
     expect(hub.lastOpened("bA")).toBeLessThanOrEqual(Date.now());
     expect(Object.keys(globalState.get("codeboard.opened") as object)).toEqual(["bA"]);
   });
+  it("forgets when a deleted board was last opened", async () => {
+    await store.save(emptyBoard("bGone", "Gone"));
+    hub.opened("bGone");
+    expect(hub.lastOpened("bGone")).toBeDefined();
+    await store.remove("bGone");
+    expect(hub.lastOpened("bGone")).toBeUndefined();
+    expect(hub.lastOpened("bA")).toBeDefined();
+  });
   it("forgets a closed view and restores an open board that has no view yet after a reload", async () => {
     views[1].dispose.fire();
     expect(hub.get("bB")).toBeUndefined();

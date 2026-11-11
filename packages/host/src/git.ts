@@ -24,13 +24,18 @@ const SHA = /^[0-9a-f]{40}$/;
 /** git rev-parse outside any repo: exit 128 saying so (in English: LC_ALL=C) */
 const NOT_A_REPO = /not a git repository/i;
 
-/** What one host remembers git answered: repository roots, git directories, upstream branches, file contents at commits,
- *  ignored files, ancestry, info/exclude lines written */
+/** The repo's origin URL */
+export const originUrl = async (root: string): Promise<string | undefined> =>
+  (await git(root, ["remote", "get-url", "origin"]))?.trim() || undefined;
+
+/** What one host remembers git answered: repository roots, git directories, upstream branches, origin URLs, file contents at
+ *  commits, ignored files, ancestry, info/exclude lines written */
 export class GitCache {
   private roots = new Map<string, Promise<string | null>>();
   private gitDirs = new Map<string, Promise<string | null>>();
   private commons = new Map<string, Promise<string | null>>();
   private ups = new Map<string, Promise<string>>();
+  private origins = new Map<string, Promise<string | undefined>>();
   private excluded = new Map<string, Promise<void>>();
   private shows = new Lru<Promise<string | null>>(200);
   private ignored = new Lru<Promise<boolean>>(2000);
@@ -121,13 +126,20 @@ export class GitCache {
   }
 
   /** The repos changed (a git event: checkout, a branch made or deleted, a new origin, git init; the workspace folders changed): the
-   *  remembered repo roots, git directories, upstream branches and info/exclude lines written are asked again */
+   *  remembered repo roots, git directories, upstream branches, origin URLs and info/exclude lines written are asked again */
   forgetRepos() {
     this.roots.clear();
     this.gitDirs.clear();
     this.commons.clear();
     this.ups.clear();
+    this.origins.clear();
     this.excluded.clear();
+  }
+
+  origin(root: string): Promise<string | undefined> {
+    let p = this.origins.get(root);
+    if (!p) this.origins.set(root, (p = originUrl(root)));
+    return p;
   }
 
   /** 上游分支：origin/HEAD 指的分支，没有就本地 main / master，都没有 = HEAD */
@@ -254,7 +266,7 @@ export async function branches(root: string, n = 30): Promise<string[]> {
 }
 
 export async function githubRemote(root: string): Promise<{ owner: string; name: string } | null> {
-  const u = (await git(root, ["remote", "get-url", "origin"]))?.trim() ?? "";
+  const u = (await originUrl(root)) ?? "";
   const m = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(u);
   return m ? { owner: m[1], name: m[2] } : null;
 }

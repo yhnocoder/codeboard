@@ -5,7 +5,7 @@ import { importPkg, type FileAnalysis } from "@codeboard/analysis";
 import type { Segment } from "@codeboard/core";
 import type { HostContext } from "./context";
 import { exists } from "./ws";
-import { hasLocalFile } from "./source";
+import { hasLocalFile, SITE_PACKAGES } from "./source";
 
 /** One host's answers to whether a top-level package name is in its workspace */
 export class WorkspacePkgs {
@@ -36,11 +36,9 @@ export class WorkspacePkgs {
   }
 }
 
-const SITE = /[\\/](site-packages|dist-packages)[\\/]/;
-
 /** 工作区外文件所属的顶层包：site-packages 下第一层；否则沿 __init__.py 往上找到最外层包；都不是就用文件名 */
 async function topPkgOf(abs: string): Promise<string> {
-  const site = SITE.exec(abs);
+  const site = SITE_PACKAGES.exec(abs);
   if (site)
     return abs
       .slice(site.index + site[0].length)

@@ -29,7 +29,7 @@ import type { Storage } from "./storage/boards";
 import type { HostContext } from "./context";
 import { git } from "./git";
 import type { Prompts } from "./prompts";
-import { cardMarkdown, imageSrc, preview, sidenoteMarkdown, whereOf } from "./preview";
+import { cardMarkdown, compareColumn, imageSrc, preview, sidenoteMarkdown, sidenoteText, whereOf } from "./preview";
 import { readHostSetting } from "./settings";
 
 /** The embedding endpoint's API key in the secret storage */
@@ -383,12 +383,7 @@ async function projectDocs(store: Storage, here?: string, draw?: (svg: string) =
     const off = shelvedCards(board);
     for (const c of board.cards) {
       if (off.has(c.id)) continue;
-      if (
-        !board.place[c.id] &&
-        c.kind === "code" &&
-        board.cards.some((k) => k.kind === "compare" && k.cols.includes(c.id))
-      )
-        continue;
+      if (compareColumn(board, c)) continue;
       const id = `card:${c.id}`;
       const had = docs.get(id);
       if (had) {
@@ -408,16 +403,7 @@ async function projectDocs(store: Storage, here?: string, draw?: (svg: string) =
     }
     for (const n of board.sidenotes ?? []) {
       if (off.has(n.at.card)) continue;
-      const text =
-        n.kind === "text"
-          ? n.md
-          : n.kind === "code"
-            ? n.code.text.join("\n")
-            : n.kind === "paste"
-              ? n.text
-              : n.kind === "link"
-                ? `${n.title ?? ""} ${n.url}`
-                : "";
+      const text = sidenoteText(n);
       if (!text.trim()) continue;
       const id = `sidenote:${n.id}`;
       const had = docs.get(id);
@@ -461,7 +447,7 @@ const MAX_PICTURES = 4;
  *  now), and its address as the card's Markdown writes it (for the preview) */
 type Picture = { key: string; url: () => Promise<string | undefined>; src: string };
 
-const fingerprint = (s: string) => createHash("sha256").update(s).digest("hex");
+const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
 /** A card's pictures, for embedding on their own: an Image card's, and the local images in a Note (files in assets/, named by
  *  their content, so the name is the key; a data: URL is its own). An SVG goes as the PNG draw makes of it, left out without
@@ -470,8 +456,8 @@ function picturesIn(store: Storage, draw?: (svg: string) => Promise<string | und
   const read = (file: string) => fs.promises.readFile(path.join(store.assetsDir(), file)).catch(() => undefined);
   const asset = (src: string): Omit<Picture, "src"> | undefined => {
     if (src.startsWith("data:")) {
-      if (/^data:image\/(png|jpeg|gif|webp)[;,]/.test(src)) return { key: fingerprint(src), url: async () => src };
-      if (draw && /^data:image\/svg\+xml[;,]/.test(src)) return { key: fingerprint(src), url: () => draw(src) };
+      if (/^data:image\/(png|jpeg|gif|webp)[;,]/.test(src)) return { key: sha256(src), url: async () => src };
+      if (draw && /^data:image\/svg\+xml[;,]/.test(src)) return { key: sha256(src), url: () => draw(src) };
       return undefined;
     }
     const file = src.replace(/^assets\//, "");

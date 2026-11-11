@@ -1,4 +1,4 @@
-// Zoomed-out AI summaries (#130; the rules are in core's summary.ts). DeepSeek writes them (the key stays in the host, like the
+// Zoomed-out AI summaries (the rules are in core's summary.ts). DeepSeek writes them (the key stays in the host, like the
 // other AI tools): at once for ↻ (the board's "summarize", one item, the only way to force a rewrite), and by itself for an open
 // board, one item at a time: a pending item (its Section's card count or a card title changed, or no summary yet) after
 // SUMMARY.regenMs without another change, and on opening a board only the written items whose cards changed since. Each summary
@@ -29,13 +29,13 @@ import {
   type SummaryResult,
 } from "@codeboard/core";
 import { deepseekKey, deepseekTarget } from "./ai";
-import { DEEPSEEK_MODEL, type DeepseekRequest } from "./deepseek";
+import { DEEPSEEK_MODEL, deepseekPost, type DeepseekRequest } from "./deepseek";
 import type { HostContext } from "./context";
 
 /**
- * THE summary prompt (feedback/demo/130-deepseek-prompt.md, "最终提示词", verbatim): the system text and the user template with
- * its few-shot examples, and SUMMARY_PAIRS_INTRO / SUMMARY_PAIR for a summary the user edited. {…} are filled from the request, and the user's own
- * edited summaries take the examples' places (summaryPrompt). Swap a retuned version in here; nothing else holds prompt text
+ * THE summary prompt: the system text and the user template with its few-shot examples, and SUMMARY_PAIRS_INTRO / SUMMARY_PAIR
+ * for a summary the user edited. {…} are filled from the request, and the user's own edited summaries take the examples' places
+ * (summaryPrompt). Swap a retuned version in here; nothing else holds prompt text
  */
 export const SUMMARY_SYSTEM = `你为白板缩远视图写 Section 摘要。缩远时读者只扫一眼，所以摘要必须先让人抓住重点。只输出摘要正文本身，不要标题、不要引号、不要解释。`;
 const SUMMARY_USER = `下面是 4 个好摘要的例子（先是 Section 内容的浓缩，再是理想摘要），学它们的写法：先点出核心观点，细节舍得删；每个要点一句，要点多少决定写多长。
@@ -181,24 +181,17 @@ export function summaryChatRequest(
   r: SumRequest,
 ): DeepseekRequest {
   const p = summaryPrompt(r);
-  return {
-    url: `${(o.baseUrl || "https://api.deepseek.com").replace(/\/+$/, "")}/chat/completions`,
-    init: {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json", Authorization: `Bearer ${o.key}` },
-      body: JSON.stringify({
-        model: o.model || DEEPSEEK_MODEL,
-        max_tokens: 800,
-        temperature: 0.2,
-        stream: false,
-        thinking: { type: "disabled" },
-        messages: [
-          { role: "system", content: p.system },
-          { role: "user", content: p.user },
-        ],
-      }),
-    },
-  };
+  return deepseekPost(o, "/chat/completions", {
+    model: o.model || DEEPSEEK_MODEL,
+    max_tokens: 800,
+    temperature: 0.2,
+    stream: false,
+    thinking: { type: "disabled" },
+    messages: [
+      { role: "system", content: p.system },
+      { role: "user", content: p.user },
+    ],
+  });
 }
 
 /** Ask DeepSeek for one summary. Never throws: failures come back as { fail } (no key: nokey) */

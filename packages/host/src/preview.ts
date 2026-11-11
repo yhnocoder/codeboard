@@ -1,5 +1,6 @@
 // ⌘K's preview pane: a card or sidenote as Markdown, and where it sits. Both the word matches (search.ts) and Related by
 // Meaning (meaning.ts) send it with their results, so moving through the list shows each one without asking the host again.
+// Also what both of them look through: a sidenote's text, and which cards are left out.
 import { cardTitle, type Board, type Card, type SearchPreview, type Sidenote } from "@codeboard/core";
 
 /** Enough of a card to read in the pane (each word match carries one, up to 60 of them); the rest is cut: the card is one
@@ -69,6 +70,23 @@ export function sidenoteMarkdown(n: Sidenote): string {
       return "";
   }
 }
+
+/** A sidenote's text, as both searches read it */
+export function sidenoteText(n: Sidenote): string {
+  return n.kind === "text"
+    ? n.md
+    : n.kind === "code"
+      ? n.code.text.join("\n")
+      : n.kind === "paste"
+        ? n.text
+        : n.kind === "link"
+          ? `${n.title ?? ""} ${n.url}`
+          : "";
+}
+
+/** A code card shown only as a column of a Compare (not placed on its own): searches find the Compare, not it */
+export const compareColumn = (b: Board, c: Card) =>
+  !b.place[c.id] && c.kind === "code" && b.cards.some((k) => k.kind === "compare" && k.cols.includes(c.id));
 
 /** hit: the passage that matched; picture: the picture that did (its address as md writes it) */
 export function preview(md: string, where: string, hit?: string, picture?: string): SearchPreview {

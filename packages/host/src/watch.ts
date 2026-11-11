@@ -44,17 +44,26 @@ export function watchVersions(
     return [...out];
   };
 
+  /** Roots whose watchers are being set up: a second call meanwhile does not watch them twice */
+  const watching = new Set<string>();
+  /** A root is in `watched` only once its watchers exist: one whose git dir could not be found is tried again next time */
   const watchRoot = async (root: string) => {
-    if (watched.has(root)) return;
-    watched.add(root);
-    lastHead.set(root, await headOf(root));
-    const gd = await cx.git.gitDirOf(root);
-    if (!gd) return;
-    subs.push(files.watch(gd, "{HEAD,config,packed-refs,refs/heads/**,refs/remotes/origin/HEAD}", () => onGit()));
-    // 忽略规则变了（保存、在 VS Code 外面改、checkout 都算）：check-ignore 记下的回答作废。
-    // 工作区里的仓库整棵树都看（VS Code 本来就在监听它），别的仓库只看根上的 .gitignore（不为它起递归的监听）
-    subs.push(files.watch(path.join(gd, "info"), "exclude", () => cx.git.forgetIgnored()));
-    subs.push(files.watch(root, cx.inWorkspace(root) ? "**/.gitignore" : ".gitignore", () => cx.git.forgetIgnored()));
+    if (watched.has(root) || watching.has(root)) return;
+    watching.add(root);
+    try {
+      const head = await headOf(root);
+      const gd = await cx.git.gitDirOf(root);
+      if (!gd) return;
+      lastHead.set(root, head);
+      subs.push(files.watch(gd, "{HEAD,config,packed-refs,refs/heads/**,refs/remotes/origin/HEAD}", () => onGit()));
+      // 忽略规则变了（保存、在 VS Code 外面改、checkout 都算）：check-ignore 记下的回答作废。
+      // 工作区里的仓库整棵树都看（VS Code 本来就在监听它），别的仓库只看根上的 .gitignore（不为它起递归的监听）
+      subs.push(files.watch(path.join(gd, "info"), "exclude", () => cx.git.forgetIgnored()));
+      subs.push(files.watch(root, cx.inWorkspace(root) ? "**/.gitignore" : ".gitignore", () => cx.git.forgetIgnored()));
+      watched.add(root);
+    } finally {
+      watching.delete(root);
+    }
   };
 
   /**
@@ -76,7 +85,7 @@ export function watchVersions(
     }
   };
 
-  const onGit = debounce(async () => {
+  const checkGit = async () => {
     cx.git.forgetRepos();
     let changed = false;
     for (const r of watched) {
@@ -91,7 +100,11 @@ export function watchVersions(
     cx.git.forgetIgnored();
     await panels.refreshStale();
     await countClosed();
-  }, GIT_PAUSE);
+  };
+  const onGit = debounce(
+    () => void checkGit().catch((e) => cx.log("warn", `versions: ${e instanceof Error ? e.message : e}`)),
+    GIT_PAUSE,
+  );
 
   subs.push(files.onDidChangeGit(() => onGit()));
 
