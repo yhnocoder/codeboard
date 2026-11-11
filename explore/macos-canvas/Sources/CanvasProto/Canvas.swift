@@ -56,6 +56,9 @@ final class Canvas: NSView, CALayerDelegate {
     var springAnchor = CGPoint.zero
     var lastCam = (x: CGFloat(0), y: CGFloat(0), z: CGFloat(1))
     let web = WebState()
+    /// Text weight for web Notes: a thin outline on the glyphs (-webkit-text-stroke, CSS px) set in the Note page, so the
+    /// display snapshots and the editor change identically. Keys ; and ' step it by 0.05 px.
+    var textStroke: CGFloat = CGFloat(Double(ProcessInfo.processInfo.environment["CANVAS_STROKE"] ?? "") ?? 0)
     let lv = LevelState()
     var driver: ((Double) -> Bool)?
     var cardTiles: [CardTiles] = []
@@ -520,6 +523,9 @@ final class Canvas: NSView, CALayerDelegate {
             web.on.toggle()
             if web.editing == nil { loadWebBase(); resetRasters() }
             updateHud()
+        case ";": textStroke = max(0, ((textStroke - 0.05) * 100).rounded() / 100); applyTextStroke(); updateHud()
+        case "'": textStroke = min(0.5, ((textStroke + 0.05) * 100).rounded() / 100); applyTextStroke(); updateHud()
+        case "e": Canvas.restExact.toggle(); resetRasters(); updateHud()
         case "z": maxZoom = maxZoom == 2 ? 3 : 2; updateHud()
         case "v": shaping.toggle(); updateHud()
         case "[": knee = max(500, knee - 250); updateHud()
@@ -854,9 +860,9 @@ final class Canvas: NSView, CALayerDelegate {
         let variant = mode == 3 ? (liveOwn ? "(own surface)" : liveAsync ? "(CA, drawsAsynchronously)" : "(CA backing store)")
             : (useSurfaces ? "(IOSurface)" : "(CGImage)")
         hud.string = """
-         mode \(mode) \(Canvas.modeNames[mode]!)\(variant)   1–5 modes · n m cards/frame · j k px/frame · h l redraws · g outer ring · x exact at rest · w web notes · double-click edit · z 200/300% · v shaping [ ] knee , . glide · c live: own surface / CA · a async · s IOSurface / CGImage · f fit · ←/→ · b bench
+         mode \(mode) \(Canvas.modeNames[mode]!)\(variant)   1–5 modes · ; ' text weight · e exact pixels · n m cards/frame · j k px/frame · h l redraws · g outer ring · x exact at rest · w web notes · double-click edit · z 200/300% · v shaping [ ] knee , . glide · c live: own surface / CA · a async · s IOSurface / CGImage · f fit · ←/→ · b bench
          board \(boardIndex + 1)/\(boards.count) \((board.path as NSString).lastPathComponent)  cards \(board.cards.count)  display \(fps) Hz
-         \(mode == 5 ? "levels: swaps ≤\(lv.cardsPerFrame) cards and ≤\(lv.budget / 1000)k px per frame · redraws \(lv.concurrency) · outer ring \(lv.ring > 0 ? "on" : "off") · exact at rest \(lv.exact ? "on" : "off") · queued \(lv.queue.count) · \(lv.resting ? "rest" : "gesture")  " : "")notes \(web.on ? (mode == 5 ? "web (editor page)" : "web (Markdown package)") : "CoreText")  zoom \(String(format: "%.2f", z)) (max \(Int(maxZoom * 100))%)  shaping \(shaping ? "knee \(Int(knee)) pt/s" : "off")  glide τ \(String(format: "%.2f", tau)) s  speed \(Int(speedNow)) pt/s  visible \(visible.count)   \(memLine)
+         \(mode == 5 ? "levels: swaps ≤\(lv.cardsPerFrame) cards and ≤\(lv.budget / 1000)k px per frame · redraws \(lv.concurrency) · outer ring \(lv.ring > 0 ? "on" : "off") · exact at rest \(lv.exact ? "on" : "off") · text weight \(String(format: "%.2f", textStroke)) px · \(Canvas.restExact ? "exact pixels" : "levels") · queued \(lv.queue.count) · \(lv.resting ? "rest" : "gesture")  " : "")notes \(web.on ? (mode == 5 ? "web (editor page)" : "web (Markdown package)") : "CoreText")  zoom \(String(format: "%.2f", z)) (max \(Int(maxZoom * 100))%)  shaping \(shaping ? "knee \(Int(knee)) pt/s" : "off")  glide τ \(String(format: "%.2f", tau)) s  speed \(Int(speedNow)) pt/s  visible \(visible.count)   \(memLine)
          last: \(lastSummary.split(separator: " ").dropFirst(2).joined(separator: " "))
         """
     }
@@ -924,5 +930,18 @@ extension Canvas {
             CGImageDestinationAddImage(dest, img, nil)
             CGImageDestinationFinalize(dest)
         }
+    }
+}
+
+extension Canvas {
+    /// New text weight: every web view's page gets it, and every web Note is drawn again.
+    func applyTextStroke() {
+        let js = "cb.setTextStroke(\(Double(textStroke)))"
+        for v in web.pool + [web.editor].compactMap({ $0 }) {
+            v.rendered = nil
+            v.view.evaluateJavaScript(js)
+        }
+        NoteWeb.textStroke = textStroke
+        if web.editing == nil { loadWebBase(); resetRasters() }
     }
 }

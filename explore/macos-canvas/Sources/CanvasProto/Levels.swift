@@ -128,6 +128,7 @@ extension Canvas {
             CATransaction.commit()
         }
         lv.restZ = z
+        alignRestLayers()   // a pan keeps the rest bitmaps; their corners go back onto whole pixels
         if ProcessInfo.processInfo.environment["CANVAS_RESTLOG"] != nil {
             Log.write(String(format: "rest gen=\(lv.gen) z=%.2f level=%.1f jobs=%d exact_jobs=%d visible=%d", z, level, jobs.count, jobs.filter { $0.exact }.count, visible.count))
         }
@@ -191,8 +192,13 @@ extension Canvas {
             if r.exact {
                 if ProcessInfo.processInfo.environment["CANVAS_RESTLOG"] != nil { Log.write("rest-bitmap swap card=\(r.i) scale=\(r.scale)") }
                 let l = exactLayer(r.i)
+                // shown 1:1 at its own scale, not stretched to the card's (fractional) size: no resampling at all
+                l.contentsGravity = Canvas.restExact ? .topLeft : .resize
+                l.contentsScale = Canvas.restExact ? r.scale : 1
+                l.masksToBounds = Canvas.restExact
                 l.contents = r.contents
                 lv.exactScale[r.i] = r.scale
+                if Canvas.restExact { pixelAlign(r.i) }
                 continue
             }
             cardLayers[r.i].contents = r.contents
@@ -217,7 +223,7 @@ extension Canvas {
     func c_intersects(_ i: Int, _ view: CGRect) -> Bool { board.cards[i].rect.intersects(view) }
 
     func exactLayer(_ i: Int) -> CALayer {
-        if let l = lv.exactLayers[i] { l.frame = cardLayers[i].bounds; return l }
+        if let l = lv.exactLayers[i] { return l }
         let l = CALayer()
         l.anchorPoint = .zero
         l.frame = cardLayers[i].bounds
@@ -238,8 +244,13 @@ extension Canvas {
         lv.exactScale[i] = nil
     }
 
-    /// The level shown at rest: the smallest level at or above the zoom.
-    var shownLevel: CGFloat { Canvas.levels.first { $0 >= min(z, Canvas.levels.last!) - 1e-6 } ?? Canvas.levels.last! }
+    /// The level shown at rest: the smallest level at or above the zoom, or (rest mode "exact") the zoom itself, drawn
+    /// 1:1 with no resampling.
+    var shownLevel: CGFloat {
+        if Canvas.restExact { return min(z, Canvas.levels.last!) }
+        return Canvas.levels.first { $0 >= min(z, Canvas.levels.last!) - 1e-6 } ?? Canvas.levels.last!
+    }
+    nonisolated(unsafe) static var restExact = ProcessInfo.processInfo.environment["CANVAS_RESTMODE"] == "exact"
 
     /// A zoom (not a pan) away from the rest zoom: the held bitmaps take over, with mipmaps.
     func exactOnCameraMove() {
@@ -270,6 +281,30 @@ extension Canvas {
                 }
             }
         }
+    }
+
+    /// Card i's top-left corner on screen, in device pixels (y down from the view's top).
+    func deviceCorner(_ i: Int) -> CGPoint {
+        let r = board.cards[i].rect, s = z * backing
+        return CGPoint(x: (r.minX - camX) * s, y: (r.minY - camY) * s)
+    }
+
+    /// Rest mode "exact": the card's 1:1 bitmap is moved by under half a device pixel so its corner lands on a whole
+    /// pixel; drawn without any resampling, like the editor (whose view is rounded the same way).
+    func pixelAlign(_ i: Int) {
+        guard let l = lv.exactLayers[i] else { return }
+        let p = deviceCorner(i), s = z * backing
+        let dx = (p.x.rounded() - p.x) / s, dy = (p.y.rounded() - p.y) / s
+        let b = cardLayers[i].bounds
+        // layer space is y up: moving the top edge down on screen (dy > 0) lowers the layer
+        l.frame = CGRect(x: dx, y: -dy, width: b.width, height: b.height)
+    }
+
+    func alignRestLayers() {
+        guard Canvas.restExact else { return }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        for i in visible where lv.exactLayers[i]?.contents != nil { pixelAlign(i) }
+        CATransaction.commit()
     }
 
     var levelBusy: Bool { !lv.queue.isEmpty || lv.inflight > 0 || !lv.ready.isEmpty }

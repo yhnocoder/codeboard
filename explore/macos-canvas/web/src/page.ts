@@ -48,6 +48,16 @@ async function settled() {
 }
 
 window.cb = {
+  /** Text weight: a thin outline on the glyphs, in CSS px (0 = none), for the static render and the editor alike. */
+  setTextStroke(px: number) {
+    document.documentElement.style.setProperty("--text-stroke", `${px}px`);
+    return true;
+  },
+  /** Text look: "auto" (WebKit's default), "smooth" (opaque page so the system's font smoothing applies) or "thin". */
+  setTextLook(look: string) {
+    document.documentElement.dataset.look = look;
+    return true;
+  },
   /** Asset folder of the vault, as a file URL ending in "/". */
   setVault(base: string) {
     md.setAssetBase("assets", `${base}assets`);

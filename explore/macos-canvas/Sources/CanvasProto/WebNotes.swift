@@ -32,7 +32,13 @@ final class NoteWeb: NSObject, WKScriptMessageHandler {
             : UnfocusableWebView(frame: CGRect(x: 0, y: 0, width: 600, height: 800), configuration: config)
         super.init()
         config.userContentController.add(self, name: "cb")
-        view.setValue(false, forKey: "drawsBackground")
+        // Opaque pages let WebKit use the system's font smoothing (heavier, firmer glyphs); transparent ones do not.
+        if NoteWeb.opaque {
+            view.setValue(true, forKey: "drawsBackground")
+            view.underPageBackgroundColor = NSColor(cgColor: Render.cardBg)
+        } else {
+            view.setValue(false, forKey: "drawsBackground")
+        }
         if let page = NoteWeb.pageURL {
             view.loadFileURL(page, allowingReadAccessTo: URL(fileURLWithPath: NSHomeDirectory()))
         } else {
@@ -46,6 +52,8 @@ final class NoteWeb: NSObject, WKScriptMessageHandler {
     var renderedWidth: CGFloat = 0
     var renderedVia = false
     var renderedScale: CGFloat = 1
+    nonisolated(unsafe) static var textStroke: CGFloat = CGFloat(Double(ProcessInfo.processInfo.environment["CANVAS_STROKE"] ?? "") ?? 0)
+    nonisolated(unsafe) static var opaque = ProcessInfo.processInfo.environment["CANVAS_OPAQUE"] != nil
     nonisolated(unsafe) static var transformSnapshots = ProcessInfo.processInfo.environment["CANVAS_SNAPMODE"] != "scaled"
 
     func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -53,6 +61,8 @@ final class NoteWeb: NSObject, WKScriptMessageHandler {
         if m["ready"] != nil {
             readyAt = CACurrentMediaTime()
             view.evaluateJavaScript("cb.setVault(\(jsString(URL(fileURLWithPath: vault).absoluteString + "/")))")
+            if let look = ProcessInfo.processInfo.environment["CANVAS_TEXTLOOK"] { view.evaluateJavaScript("cb.setTextLook(\(jsString(look)))") }
+            if NoteWeb.textStroke > 0 { view.evaluateJavaScript("cb.setTextStroke(\(Double(NoteWeb.textStroke)))") }
             ready = true
             waiting.forEach { $0.resume() }
             waiting = []

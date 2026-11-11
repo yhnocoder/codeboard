@@ -18,6 +18,9 @@
   #note.card { background: var(--surface); }
   #note.still, #note.still * { caret-color: transparent !important; }
   #note.bare { padding: 0; background: transparent; }
+  #note { -webkit-text-stroke: var(--text-stroke, 0px) currentColor; }
+  html[data-look="smooth"], html[data-look="smooth"] body { background: var(--surface); }
+  html[data-look="thin"] #note { -webkit-font-smoothing: antialiased; }
 </style>
 </head>
 <body><div id="note" class="md"></div><script src="page.js"></script></body>

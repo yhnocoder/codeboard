@@ -68,6 +68,11 @@ Modes:
    decodes at a power-of-two width, SVG drawn by WebKit), so they follow the same levels, rings, budgets and rest
    bitmaps as text; the separate image layers of modes 1–4 are hidden in mode 5. The HUD and bench figure
    `lowres_during_motion` / `screen_lowres` counts anything on screen below display resolution, image layers included.
+   Text look (for judging by eye): `e` "exact pixels" (rest bitmaps drawn at the zoom itself and shown 1:1, corners on
+   whole device pixels; slightly crisper between levels, but a 1-pixel offset against the editor remains at zooms where
+   a card's width is a fractional number of pixels); `;` `'` text weight for web Notes (-webkit-text-stroke in the Note
+   page, 0–0.5 px; any stroke turns off WebKit's font smoothing, so 0.1 px is lighter than none and 0.2 px slightly
+   heavier). A sharpening filter over the window was tried and dropped: Core Animation renders filtered content at 1x.
    Notes (`w`): web Notes are snapshots of the editor's own page (`renderEditor`: the editor mounted without focus,
    caret hidden, images decoded first), so display and edit share one code path; or CoreText. Images inside web Notes
    are part of the snapshot, so their native image layers are hidden. SVG files for the native image layers are drawn

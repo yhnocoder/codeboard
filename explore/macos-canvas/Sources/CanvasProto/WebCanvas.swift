@@ -259,7 +259,7 @@ extension Canvas {
     /// Moves the camera by under half a device pixel so card i's top-left corner falls on a whole device pixel: the
     /// card bitmap and the editor's view are then both drawn without a sub-pixel offset, and match exactly.
     func snapCamera(to i: Int) {
-        if ProcessInfo.processInfo.environment["CANVAS_NOSNAP"] != nil { return }
+        if ProcessInfo.processInfo.environment["CANVAS_NOSNAP"] != nil || Canvas.restExact { return }
         let r = board.cards[i].rect, s = z * backing
         camX = r.minX - ((r.minX - camX) * s).rounded() / s
         camY = r.minY - ((r.minY - camY) * s).rounded() / s
@@ -269,7 +269,15 @@ extension Canvas {
     func placeLevelEditor(_ i: Int, _ e: NoteWeb) {
         let L = editLevel
         let w = board.cards[i].rect.width, h = web.editHeight
-        web.host.frame = screenRect(i, height: h)
+        var hf = screenRect(i, height: h)
+        if Canvas.restExact {
+            // the corner on a whole device pixel, as the card's rest bitmap (top edge, y up in the container)
+            let b = backing
+            let top = ((hf.maxY) * b).rounded() / b
+            hf.origin.x = (hf.minX * b).rounded() / b
+            hf.origin.y = top - hf.height
+        }
+        web.host.frame = hf
         web.host.bounds = CGRect(x: 0, y: 0, width: w * L, height: h * L)
         e.view.frame = CGRect(x: 0, y: 0, width: w * L, height: h * L)
         if web.editZoom != L {
