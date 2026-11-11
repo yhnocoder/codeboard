@@ -85,7 +85,7 @@ Modes:
    ~/Library/Caches/CodeBoardCanvas/snapshots (raw BGRA + LZFSE: lossless, about 1–3 ms to read per Note; PNG is
    larger and 10x slower to read), keyed by the Note's Markdown, size, kind, scale, text weight, the page build and the
    referenced images, 1 GB at most, least recently used out first; an unchanged Note never touches a web view again.
-   Before a Note's first picture it shows its paper only (`o` cycles: paper, paper with a 150 ms fade, the CoreText
+   Before a Note's first picture it shows its paper only, the picture fading in over 150 ms (`o` cycles: fade, paper without the fade, the CoreText
    version as before). `CANVAS_WEBMEMTEST=<other board>.json` measures first open, idle teardown, switching, editing.
    Notes (`w`): web Notes are snapshots of the editor's own page (`renderEditor`: the editor mounted without focus,
    caret hidden, images decoded first), so display and edit share one code path; or CoreText. Images inside web Notes

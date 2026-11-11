@@ -32,7 +32,7 @@ final class WebState {
     var teardowns = 0
     /// What a Note shows before its first snapshot: "coretext" (plain text, then swapped), "paper" (the card only, the
     /// picture appearing in place) or "fade" (the same, the picture fading in over 150 ms).
-    var placeholder = ProcessInfo.processInfo.environment["CANVAS_PLACEHOLDER"] ?? "paper"
+    var placeholder = ProcessInfo.processInfo.environment["CANVAS_PLACEHOLDER"] ?? "fade"
     var waiting = Set<Int>()        // web Notes still showing their placeholder
     var paper: [CGImage?] = []
     // Mode 5: while a gesture runs, the editor is replaced by a bitmap of itself (a native layer moving with the canvas)
