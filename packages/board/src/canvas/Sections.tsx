@@ -3,6 +3,7 @@
 import { For, Show, createMemo, createRenderEffect, createSignal, onCleanup, untrack } from "solid-js";
 import { cardTitle, type Card, type FrameEdge, type Rect, type Section } from "@codeboard/core";
 import { state } from "../state/store";
+import { rooted } from "../state/root";
 import { sel } from "../state/selection";
 import { carried } from "../state/ui";
 import {
@@ -23,6 +24,7 @@ import { shape } from "../state/look";
 import { brushFrame, titleWidth, setTitleWidth } from "../state/inkframe";
 import { Editable } from "../ui/Editable";
 import { Icon } from "../ui/icons";
+import { KIND_ICON } from "../cards/BoardBody";
 import { sectionLabelDown, sectionEdgeDown } from "../interact";
 import * as A from "../actions";
 import { SECTION_PEEK_OUT } from "../state/timing";
@@ -37,7 +39,10 @@ const SCALE_REACH = 8;
 const BRUSH_REACH = 23;
 const sameRect = (a?: Rect, b?: Rect) =>
   a === b || (!!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h);
-const ordered = () => state.board.sections.filter((s) => !hiddenByAncestor(s)).sort((a, b) => depthOf(a) - depthOf(b));
+/** The Sections shown, outer ones first: the frames and the titles both draw in this order */
+const ordered = rooted(() =>
+  createMemo(() => state.board.sections.filter((s) => !hiddenByAncestor(s)).sort((a, b) => depthOf(a) - depthOf(b))),
+);
 
 export function SectionFrames() {
   // 框都放在一个自己排版的容器里（styles.css .sframes）：折叠动画每帧改一个框的大小时，只重排这些框，不碰同一层里的几百张卡
@@ -332,15 +337,6 @@ export function SectionLabels() {
 const PEEK_DELAY = 260;
 /** 预览里最多几格（两栏）：卡更多时最后一格是「+N more」 */
 const PEEK_SLOTS = 6;
-const KIND_ICON: Record<Card["kind"], string> = {
-  code: "code",
-  note: "note",
-  image: "image",
-  web: "web",
-  links: "link",
-  compare: "swap",
-  board: "boards",
-};
 const iconFor = (c: Card) => (c.kind === "note" ? c.look : KIND_ICON[c.kind]);
 
 /** 折叠的 Section 里的卡：从左上往下排的前几张（种类图标 + 名字），点一张 = 展开 Section、镜头移到那张卡 */

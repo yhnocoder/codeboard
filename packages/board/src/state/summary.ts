@@ -25,6 +25,7 @@ import { animate, cam, camMoving, keepCamMoving, setCam, setZoomFloor, viewTrack
 import { boardRef, boardSignal, rooted } from "./root";
 import { dragging } from "./ui";
 import { zlog, zlogging } from "./zoomlog";
+import { CARDS_WAKE_IDLE, SUMMARY_BUILD_IDLE } from "./timing";
 import { still } from "./still";
 
 /** What the summary layer measured at the columns' widths (Summaries.tsx), by item */
@@ -315,7 +316,7 @@ export function wireSummaries() {
           idle = undefined;
           if (untrack(inRange) && !untrack(built)) setBuilt(true);
         };
-        idle = requestIdleCallback(go, { timeout: 400 });
+        idle = requestIdleCallback(go, { timeout: SUMMARY_BUILD_IDLE });
       } else if (outOfRange() && built() && level() === 0) setBuilt(false);
     });
     let wake: number | undefined;
@@ -327,7 +328,7 @@ export function wireSummaries() {
           wake = undefined;
           if (untrack(level) === 1 && !untrack(awake) && !untrack(camMoving)) setAwake(true);
         },
-        { timeout: 500 },
+        { timeout: CARDS_WAKE_IDLE },
       );
     });
     createEffect(

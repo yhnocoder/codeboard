@@ -20,7 +20,7 @@ import { toast } from "../../state/toast";
 import { closePop } from "../../state/pop";
 import { vlive } from "../../state/variants";
 import { markHtml } from "../../cards/CompareBody";
-import { ask } from "../../host";
+import { ask, switched } from "../../host";
 import * as A from "../../actions";
 import { keepVersion, uncommitted } from "@codeboard/core/commands";
 import { versionEnv } from "../../actions/env";
@@ -274,9 +274,10 @@ export function CommitsPop(p: PopProps<"commits">) {
     const r = ref().trim();
     if (!r) return;
     const got = await ask("resolveRef", { text: r }).catch((e) => {
-      toast((e as Error).message);
-      return null;
+      if (!switched(e)) toast((e as Error).message);
+      return undefined;
     });
+    if (got === undefined) return;
     const sha = typeof got === "string" ? got : got?.commit;
     if (!got) toast(`No commit matches “${r}”`);
     if (sha) {

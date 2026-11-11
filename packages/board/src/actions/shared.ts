@@ -26,7 +26,7 @@ import { camTo, camTarget, fitTop, isVisible } from "../state/camera";
 import { ghostOut } from "../state/ghost";
 import { openPop } from "../state/pop";
 import { choose } from "../ui/Menu";
-import { ask, send } from "../host";
+import { ask, send, switched } from "../host";
 import { hostRect, popCard, revealCard, selCards } from "./common";
 import { cardText, remember } from "./clipboard";
 import { offerReference, pasteChip, setPasteChip } from "./pastechip";
@@ -38,7 +38,8 @@ import { copyPicture, fingerprint, imageDataUrl, knownPicture } from "./imagedat
  */
 export async function copyPath(items?: string[]) {
   flushSave(); // 刚建的卡宿主那边也有了
-  const text = await ask("copyPath", { items }).catch(() => null);
+  const text = await ask("copyPath", { items }).catch((e) => (switched(e) ? undefined : null));
+  if (text === undefined) return;
   if (!text) return toast("Can't copy the path: the board isn't saved yet");
   const n = text.split("\n").length;
   toast(n > 1 ? `Copied ${n} paths` : "Copied path");
@@ -345,7 +346,7 @@ export async function deleteEverywhere(ids = selShared()) {
   if (!C.deleteItems(commandEnv, { cards: [id] })) return unghost();
   select({});
   const done = await ask("deleteEverywhere", { card: id }).catch((e: Error) => {
-    toast(`Couldn't delete everywhere: ${e.message}`);
+    if (!switched(e)) toast(`Couldn't delete everywhere: ${e.message}`);
     return -1;
   });
   if (done >= 0) toast(`Deleted from ${Math.max(done, n)} boards`);

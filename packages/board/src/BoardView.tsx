@@ -75,7 +75,7 @@ export function BoardView(p: { children?: JSX.Element }) {
       },
     ),
   );
-  const font = () => (state.host.fontFamily ? `${state.host.fontFamily}, var(--mono0)` : undefined);
+  const font = () => (state.host.fontFamily ? `${state.host.fontFamily}, var(--mono)` : undefined);
   // a still picture is the canvas alone: nothing over it, nothing to edit (styles.css .app.still hides the cards' affordances)
   if (still())
     return (

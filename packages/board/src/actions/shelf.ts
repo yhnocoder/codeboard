@@ -14,7 +14,7 @@ import { toast } from "../state/toast";
 import { animScale, reduceMotion } from "../state/motion";
 import { boardRef } from "../state/root";
 import { setShelfOpen, setShelfOut, shelfOut, setShelfHot } from "../state/shelf";
-import { cardSel } from "../cardsel";
+import { attrSel, cardSel } from "../cardsel";
 import { track } from "../gesture";
 import { openMenu } from "../ui/Menu";
 
@@ -77,9 +77,9 @@ function dockPoint(): { x: number; y: number } | null {
   const r = el.getBoundingClientRect();
   return worldAt({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
 }
-const sectEls = (id: string) => [...document.querySelectorAll<HTMLElement>(`[data-sect="${CSS.escape(id)}"]`)];
+const sectEls = (id: string) => [...document.querySelectorAll<HTMLElement>(attrSel("data-sect", id))];
 const linkEls = (id: string) =>
-  [...document.querySelectorAll(`path.lhit[data-link="${CSS.escape(id)}"]`)].map((p) => p.closest("g") ?? p);
+  [...document.querySelectorAll(`path.lhit${attrSel("data-link", id)}`)].map((p) => p.closest("g") ?? p);
 /** A copy of what is on the board left in its place to animate (no events, no ids), removed when its animation ends */
 function ghostOf(el: Element): HTMLElement | SVGElement {
   const g = el.cloneNode(true) as HTMLElement;

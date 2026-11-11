@@ -6,7 +6,8 @@
 //   as variables on the root while the look is Ink Wash (wireInk)
 // The shapes follow the approved mock (versions/v0.2.1/ink-wash/demo.html: deckleImg, callImg, barImg)
 import { createEffect, createSignal } from "solid-js";
-import { brushLine, fnv } from "@codeboard/core/canvas";
+import { brushLine } from "@codeboard/core/canvas";
+import { fnv } from "@codeboard/analysis/basics";
 import { shape } from "./look";
 import { rooted } from "./root";
 

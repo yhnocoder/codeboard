@@ -8,7 +8,7 @@
 // changes a CSS colour. Drawn once per size, title width and Section and cached; the texture is keyed by stroke and distance
 // along it (not by a running random sequence), so resizing a Section by drag grows the strokes without the rest of the frame
 // changing.
-import { fnv } from "@codeboard/core/canvas";
+import { fnv } from "@codeboard/analysis/basics";
 import { state } from "./store";
 import { boardStore } from "./root";
 import { rng } from "./ink";

@@ -17,7 +17,7 @@ import {
 import { langLabel } from "@codeboard/analysis/langs";
 import { state, flows, collapsedSet, placeOf, shared, sharedOn } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
-import { editing, setEditing } from "../state/ui";
+import { editing, notesOf, setEditing } from "../state/ui";
 import { Icon } from "../ui/icons";
 import { Editable } from "../ui/Editable";
 import { openMenuAt, below, ownMenu } from "../ui/Menu";
@@ -41,13 +41,13 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   // 连进来的箭头：这块白板上的 + 别的白板上连到这张共享卡的（宿主算好的 shared）
   const linkedIn = createMemo(() => act.linksInto(c().id).length + (shared[c().id]?.ins.length ?? 0));
   const onBoards = () => sharedOn(c().id);
-  const review = createMemo(() => act.sidenotesOf(c().id).some((n) => n.review));
+  const review = createMemo(() => notesOf(c().id).some((n) => n.review));
   const s0 = () => c().segments[0];
   const stale = createMemo(() => cardStale(c(), staleOf));
   const mixed = () => mixedVersions(c());
   const multi = () => c().segments.length > 1;
   const free = () => s0()?.src.kind === "free";
-  const notes = () => act.sidenotesOf(c().id).filter((n) => !n.at.lines);
+  const notes = createMemo(() => notesOf(c().id).filter((n) => !n.at.lines));
   // 有 Variant 时版本按钮说的是上游（显示的可能是我的分支）
   const onVar = () => onVariant(c());
   const up0 = () => (onVar() ? upstreamSegs(c())[0] : s0());

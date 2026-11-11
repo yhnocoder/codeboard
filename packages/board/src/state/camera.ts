@@ -138,6 +138,8 @@ export function setCam(x: number, y: number, z: number) {
 export function camTo(x: number, y: number, z: number, soft = false) {
   z = Math.min(ZMAX, Math.max(zMin(), z));
   if (!running) {
+    // a fling under way stops: two animations would both move the camera
+    gen++;
     sx.set(cam.x);
     sy.set(cam.y);
     sz.set(cam.z);
@@ -167,7 +169,9 @@ export const camTarget = () => (running ? { x: sx.t, y: sy.t, z: sz.t } : { ...c
 
 export function fling(vx: number, vy: number) {
   if (reduceMotion() || Math.hypot(vx, vy) < 80) return;
-  const g = ++gen;
+  // a flight under way ends here: whoever waits for it (camRest) goes on, and the next camTo starts from where the camera is
+  stopCam();
+  const g = gen;
   animate((dt) => {
     if (g !== gen) return true;
     vx *= Math.pow(0.004, dt);

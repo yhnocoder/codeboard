@@ -23,7 +23,7 @@ import { putViews } from "../state/views";
 import { select } from "../state/selection";
 import { toast } from "../state/toast";
 import { openPop, type ImplPop, type NamesPop } from "../state/pop";
-import { ask } from "../host";
+import { ask, switched } from "../host";
 import { K, hostRect, popCard, popAlong } from "./common";
 import { expandCall, placeExpanded, isLibCall } from "./flow";
 import { linksInto } from "./nav";
@@ -125,7 +125,7 @@ export async function swapAlt(linkId: string, k: number, o: { label?: string; dr
       pick: { path: a.path, line: a.line ?? 1, qual: a.qual },
     });
   } catch (e) {
-    toast(`Could not swap in ${a.label}: ${(e as Error).message}`);
+    if (!switched(e)) toast(`Could not swap in ${a.label}: ${(e as Error).message}`);
     return;
   }
   if (!("card" in r)) {
@@ -177,7 +177,8 @@ export async function placeNameHit(p: NamesPop, h: NameHit) {
     h.def && h.qual
       ? { kind: "symbol", label: h.qual, detail: h.detail, path: h.path, line: h.line, sym: h.qual, glyph: "ƒ" }
       : { kind: "entry", label: h.label, detail: h.detail, path: h.path, line: h.line, end: h.line + 2 };
-  const nc = await ask("searchPick", { item }).catch(() => null);
+  const nc = await ask("searchPick", { item }).catch((e) => (switched(e) ? undefined : null));
+  if (nc === undefined) return;
   if (!nc || !isCode(nc.card)) return toast(`Could not open ${h.detail}`);
   // 按字符串转发的（call("run")）：箭头上写 via call("run")
   const via = p.call.dispatch ? `${p.call.name}("${p.call.dispatch}")` : "registry";
@@ -201,7 +202,8 @@ const hhmm = () => {
 
 /** 从这一行（或这张卡）加 Generated 卡：内容来自剪贴板或选的文件；Generated from 的点线连回这一行 */
 export async function addGenerated(at: { card: string; seg?: string; line?: number }, from: "clipboard" | "file") {
-  const src = await ask("genSource", { from }).catch(() => null);
+  const src = await ask("genSource", { from }).catch((e) => (switched(e) ? undefined : null));
+  if (src === undefined) return;
   if (!src) return toast(from === "clipboard" ? "The clipboard has no text." : "No file chosen.");
   const lines = src.text.replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n");
   const seg: Segment = {
@@ -221,7 +223,8 @@ export async function addGenerated(at: { card: string; seg?: string; line?: numb
     segments: [seg],
     gen: { what: genWhat(src.lang, src.name, src.text), run: `${name ? `${name} · ` : "run "}${hhmm()}` },
   };
-  const views = await ask("views", { segs: [seg] }).catch(() => ({}));
+  const views = await ask("views", { segs: [seg] }).catch((e) => (switched(e) ? undefined : {}));
+  if (!views) return;
   putViews(views);
   const r = hostRect(at.card);
   // 放在来源卡下面（右边是灰色备选的位置）

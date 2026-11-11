@@ -1,4 +1,4 @@
-// 走线规则见 route.ts。每条线按条建 memo，只在它两端的卡变了时重算：
+// 走线规则见 @codeboard/core/canvas 的 route.ts。每条线按条建 memo（routes.ts 的 makeRoute），只在它两端的卡变了时重算：
 // base（两端的矩形和行的 y）→ sides（走哪一侧，带缓冲）→ ends（端点，换边时滑过去）→ geo（路径、箭头）。
 // 汇到同一处（同一张卡的卡头 / 同一行、同一侧）的几条线：合并点到终点的那一小段和箭头只画一次（<g class="merge">）。
 import {

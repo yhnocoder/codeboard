@@ -110,7 +110,7 @@ const OUTLIVES_BOARD: Record<string, string> = {
   "canvas/Labels.tsx:NONE": "a shared empty value, never written",
   // caches and loaders keyed by content
   "md/blocks.ts:cache": "Markdown blocks by source text",
-  "state/ink.ts:papers": "Ink Wash's card paper images, by size",
+  "state/ink.ts:papers": "Ink Wash's card paper images, by edge pattern and light or dark",
   "state/inkframe.ts:frames": "Ink Wash's Section frames, by size, title width and Section",
   "md/load.ts:mod": "the editor module",
   "cm/load.ts:mod": "the code editor module",
@@ -184,8 +184,9 @@ describe("board state per board", () => {
 });
 
 describe("board wiring", () => {
-  // what the board does is wired by the entries (index.tsx's wireBoard, the stories), not by importing a module: the only top-level
-  // calls elsewhere reset a module's own state on a board switch (onBoardSwitch) or make the shared root (state/root.ts)
+  // what the board does is wired by the entries (index.tsx through boot() and wire.ts's wireBoard, the stories), not by importing
+  // a module: the only top-level calls elsewhere reset a module's own state on a board switch (onBoardSwitch) or make the shared
+  // root (state/root.ts)
   const ENTRIES = ["index.tsx", "export/viewer.ts"];
   it("starts nothing by importing a module", () => {
     expect(

@@ -13,7 +13,7 @@ import { select } from "../state/selection";
 import { toast } from "../state/toast";
 import { paletteOpen, setPaletteOpen } from "../state/ui";
 import { MEANING_PAUSE, MEANING_RETRY, RERANK_SLIDE } from "../state/timing";
-import { ask, send } from "../host";
+import { ask, send, switched } from "../host";
 import * as A from "../actions";
 import { Label, Preview, Thumb } from "./PalettePreview";
 import { refOf, startTrace, type Verdict } from "./searchtrace";
@@ -225,7 +225,7 @@ export function Palette() {
       return;
     }
     const r = await ask("searchPick", { item: it }).catch((e) => {
-      toast((e as Error).message);
+      if (!switched(e)) toast((e as Error).message);
       return null;
     });
     if (r) A.addCards([r], { besideSel: false });

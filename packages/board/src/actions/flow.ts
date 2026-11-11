@@ -47,7 +47,7 @@ import { camTo, camTarget, fitRect, usableW, usableH, fitTop, isVisible, union }
 import { lineY } from "../state/geo";
 import { flash, ping, setWalk, walk } from "../state/ui";
 import { openPop } from "../state/pop";
-import { send, ask } from "../host";
+import { send, ask, switched } from "../host";
 import { headPoint, hostRect, popAlong, showPicker, slideFrom } from "./common";
 import { lastPointer } from "../state/measure";
 import { jumpTo } from "./nav";
@@ -112,7 +112,7 @@ export async function expandCall(
   try {
     r = await ask("expand", { seg, line: call.line, col: call.col, name: call.name, recv: call.recv, pick });
   } catch (e) {
-    toast(`Could not expand ${call.name}(): ${(e as Error).message}`);
+    if (!switched(e)) toast(`Could not expand ${call.name}(): ${(e as Error).message}`);
     return;
   } finally {
     pending.delete(key);

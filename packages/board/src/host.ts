@@ -32,9 +32,17 @@ function settle(id: number): Pending | undefined {
   clearTimeout(p.timer);
   return p;
 }
-// 换了白板：上一块白板的请求都作废（回答到了也对不上现在的卡）
+/** What an ask still waiting fails with when the board is switched: its answer would be about cards that are gone. Nothing went
+ *  wrong, so whoever asked stops without a toast and writes nothing onto the board that came (`switched`) */
+class BoardSwitched extends Error {
+  constructor() {
+    super("The board changed");
+    this.name = "BoardSwitched";
+  }
+}
+export const switched = (e: unknown): boolean => e instanceof BoardSwitched;
 onBoardSwitch(() => {
-  for (const id of [...pending.keys()]) settle(id)?.fail(new Error("The board changed"));
+  for (const id of [...pending.keys()]) settle(id)?.fail(new BoardSwitched());
 });
 
 type Req<T extends AskType> = Omit<Extract<BoardToHost, { type: T }>, "req" | "type">;
@@ -82,6 +90,7 @@ export function forwardErrors() {
   );
   window.addEventListener("unhandledrejection", (e) => {
     const r = e.reason;
+    if (switched(r)) return;
     out(`unhandled rejection: ${r instanceof Error ? `${r.message}\n${r.stack ?? ""}` : String(r)}`);
   });
 }

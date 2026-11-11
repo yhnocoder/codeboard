@@ -48,7 +48,7 @@ import { rowEl, type CodeCx } from "./code/cx";
 import { copyCode, textRange, textSel, useLineSelection } from "./code/text";
 import { useLineHover } from "./code/hover";
 import { useLineMarks } from "./code/marks";
-import { useHighlights, type Hx } from "./code/highlights";
+import { hxClasses, useHighlights, type Hx } from "./code/highlights";
 import { MdStatic } from "../ui/Md";
 import { AnnotRail, useAnnots } from "./code/Annots";
 import { GapRow } from "./code/GapRow";
@@ -58,7 +58,7 @@ import { freeEditBlur } from "./code/freeblur";
  *  adjacent runs read apart with no space added between lines */
 const HX_INSET = 2;
 
-export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; dim?: () => boolean }) {
+export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolean }) {
   let codeEl!: HTMLDivElement, srcEl!: HTMLDivElement, scrollEl!: HTMLDivElement;
   const c = () => p.card;
   const rows = createMemo<Row[]>(() =>
@@ -304,7 +304,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   };
 
   const [scrollY, setScrollY] = createSignal(0);
-  // 滚动只改 scroll：行的位置（offsetTop）不随滚动变。整份重量的话每帧都换掉 ys、rows，概览档的行条、连着这张卡的线全跟着重算（每帧 ~2 ms）
+  // 滚动只改 scroll：行的位置（offsetTop）不随滚动变。整份重量的话每帧都换掉 ys、rows，连着这张卡的线全跟着重算（每帧 ~2 ms）
   const onScroll = () => {
     const t = scrollEl.scrollTop,
       id = c().id;
@@ -406,11 +406,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
           <div
             ref={codeEl}
             class="code"
-            classList={{
-              "hx-band": !bracket(),
-              "hx-bracket": bracket(),
-              "hx-hand": hlLook() === "bracket-hand",
-            }}
+            classList={hxClasses(hlLook())}
             style={{ "--nd": String(numDigits()) }}
             onCopy={(e) => copyCode(cx, e)}
           >

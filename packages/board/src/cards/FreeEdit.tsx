@@ -1,4 +1,4 @@
-// 自由代码卡的编辑：CodeMirror，排版和显示时一模一样（同一个 .code 字体行高、54px 的行号栏、宿主给的着色），进出编辑字的位置不动。
+// 自由代码卡的编辑：CodeMirror，排版和显示时一模一样（同一个 .code 字体行高、同样宽的行号栏、宿主给的着色），进出编辑字的位置不动。
 // 改了的行先留着挪过来的旧着色，宿主的着色回来就换上。CodeMirror 还没加载好时先照原样显示，加载好了再换上
 import { createEffect, For, onCleanup, onMount, Show, createSignal } from "solid-js";
 import { escHtml } from "@codeboard/core";
@@ -121,7 +121,7 @@ export function FreeEdit(p: {
           </For>
         </div>
         <div class="src">
-          <For each={seg().text}>{(t, i) => <div class="l" innerHTML={v0?.html[i()] ?? escHtml(t) ?? "​"} />}</For>
+          <For each={seg().text}>{(t, i) => <div class="l" innerHTML={v0?.html[i()] ?? escHtml(t)} />}</For>
         </div>
       </Show>
     </div>

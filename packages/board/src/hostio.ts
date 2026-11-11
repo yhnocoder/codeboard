@@ -257,12 +257,10 @@ async function hopWalk(w: NonNullable<Extract<HostToBoard, { type: "init" }>["wa
     const r = w.resume;
     if (!state.board.cards.some((c) => c.id === r.root) || r.i < 0) return;
     // 讲到头了（子白板是最后一步）：停在框上
-    const n = walkOrderLen(r.root);
-    if (r.i >= n) return;
+    if (r.i >= walkOrder(state.board, r.root).length) return;
     A.startWalk(r.root, { at: r.i });
   }
 }
-const walkOrderLen = (root: string) => walkOrder(state.board, root).length;
 
 /** 选中的代码里有 ≥2 个顶层函数：问一次 */
 async function askSplit(id: string) {

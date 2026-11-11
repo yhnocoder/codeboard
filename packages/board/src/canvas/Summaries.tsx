@@ -12,7 +12,7 @@
 // Titles and bodies go through the Markdown inline renderer: [[refs]] show their target's current name, ==marks== and **bold**
 // are styled, no syntax shows. A card with no title of its own shows none until the AI wrote one (core untitled).
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js";
-import { state } from "../state/store";
+import { cardById, state } from "../state/store";
 import { stillZ } from "../state/camera";
 import { lastDown, observeResize, queueMeasure } from "../state/measure";
 import {
@@ -198,7 +198,7 @@ function Column(p: { col: SumCol }) {
       : !sum()
         ? "AI summary · Not written yet · ↻ writes it now"
         : pending()
-          ? "AI summary · Cards changed since it was written: rewritten 10 minutes after the last change · ✓ 保留 keeps it"
+          ? `AI summary · Cards changed since it was written: rewritten ${SUMMARY.regenMs / 60_000} minutes after the last change · ✓ 保留 keeps it`
           : sum()?.edited
             ? "AI summary · Edited by hand · rewrites follow your edits"
             : `AI summary · ${ago(sum()!.at)}`;
@@ -252,7 +252,7 @@ function Column(p: { col: SumCol }) {
             alt=""
             ref={(img) =>
               createEffect(() => {
-                const card = state.board.cards.find((x) => `card:${x.id}` === key);
+                const card = key.startsWith("card:") ? cardById(key.slice(5))?.card : undefined;
                 const src = card?.kind === "image" ? card.src : "";
                 if (src) onCleanup(md.showImage(img, /^(data:|https?:)/.test(src) ? src : `assets/${src}`));
               })

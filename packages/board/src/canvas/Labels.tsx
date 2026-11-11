@@ -107,7 +107,7 @@ const evTip = (L: Link) => ["Evidence for this call", ...A.evidenceLines(L)].joi
 const ALT_GAP = 28,
   ALT_W = 240;
 
-/** 灰色备选：同一个调用点的别的实现 / 别的取值，虚线灰框排在目标卡右边；点一下换成它（原来的变灰）。map 缩放级别不画 */
+/** 灰色备选：同一个调用点的别的实现 / 别的取值，虚线灰框排在目标卡右边；点一下换成它（原来的变灰）。在卡片层里，缩小到概要层时跟着换走 */
 export function AltBoxes() {
   const links = createMemo(() =>
     state.board.links.filter(
@@ -128,7 +128,7 @@ function AltsOf(p: { L: Link; watchSize: WatchSize }) {
     return q && { x: q.x + q.w + ALT_GAP, y: q.y };
   };
   const key = `alts:${p.L.id}`;
-  // Not measured yet (the board opened at the map level, where the column is not drawn): the CSS width, about one box per item
+  // Not measured yet: the CSS width, about one box per item
   onCleanup(
     addExtra({
       kind: "alts",

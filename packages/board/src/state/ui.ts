@@ -6,6 +6,7 @@ import { rooted, boardRef, boardSignal, boardStore } from "./root";
 import type { StaticTextRange } from "@yhnocoder/markdown";
 import { FLASH_MS } from "./timing";
 import { shape } from "./look";
+import { animScale } from "./motion";
 
 // 临时展开的手动隐藏范围（Show）："seg:from"
 const [shown, setShown] = boardSignal<Set<string>>(new Set());
@@ -54,11 +55,14 @@ export { flashRows };
 export function flash(card: string, seg: string, lines: number[]) {
   const keys = lines.map((l) => `${card}:${seg}:${l}`);
   setFlashRows(new Set([...flashRows(), ...keys]));
-  setTimeout(() => {
-    const s = new Set(flashRows());
-    keys.forEach((k) => s.delete(k));
-    setFlashRows(s);
-  }, shape().flash ?? FLASH_MS);
+  setTimeout(
+    () => {
+      const s = new Set(flashRows());
+      keys.forEach((k) => s.delete(k));
+      setFlashRows(s);
+    },
+    (shape().flash ?? FLASH_MS) * animScale(),
+  );
 }
 const [pingCard, setPingCard] = boardSignal<{ id: string; n: number } | null>(null);
 export { pingCard };

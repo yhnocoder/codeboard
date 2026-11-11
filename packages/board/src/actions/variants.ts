@@ -28,7 +28,7 @@ import { state, cardById } from "../state/store";
 import { putViews, staleOk } from "../state/views";
 import { sync } from "../state/changes";
 import { toast } from "../state/toast";
-import { ask } from "../host";
+import { ask, switched } from "../host";
 import { openMenu, promptText, choose, type Item } from "../ui/Menu";
 import { openPop } from "../state/pop";
 import { setEditing } from "../state/ui";
@@ -129,7 +129,10 @@ export async function addVariantMenu(id: string, x: number, y: number) {
   if (!c) return;
   const up = upstreamSegs(c).find((s) => s.src.kind !== "free" && s.src.kind !== "github");
   if (!up) return void toast("Only code from a repo or a file can have variants");
-  const src: VariantSources = await ask("variantSources", { seg: up }).catch(() => ({ worktrees: [], branches: [] }));
+  const src = await ask("variantSources", { seg: up }).catch((e): VariantSources | undefined =>
+    switched(e) ? undefined : { worktrees: [], branches: [] },
+  );
+  if (!src) return;
   const have = new Set((c.variants ?? []).map((v) => JSON.stringify(v.from)));
   const add = (from: AddVariantFrom) => () => void addVariant(id, from);
   const items: Item[] = [
@@ -200,7 +203,7 @@ async function addVariant(id: string, from: AddVariantFrom) {
   try {
     nv = await ask("addVariant", { segs, from });
   } catch (e) {
-    return void toast((e as Error).message);
+    return void (switched(e) || toast((e as Error).message));
   }
   if (!nv || !code(id)) return;
   const cur = code(id)!;

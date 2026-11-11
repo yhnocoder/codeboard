@@ -16,7 +16,7 @@ import { staleOf } from "../state/views";
 import { select } from "../state/selection";
 import { toast } from "../state/toast";
 import { openPop, updatePop } from "../state/pop";
-import { send, ask } from "../host";
+import { send, ask, switched } from "../host";
 import { addCards } from "./create";
 import { hostRect, revealCard } from "./common";
 import { lastPointer } from "../state/measure";
@@ -88,14 +88,16 @@ export async function commitMenu(id: string, el: Element) {
 export async function switchCommit(id: string, commit: string) {
   const c = cardById(id)?.card;
   if (!isCode(c)) return;
-  const segs: { seg: Segment; view: SegView }[] = [];
-  for (const s of c.segments) {
-    if (s.src.kind !== "repo" && s.src.kind !== "external") continue;
-    try {
-      segs.push(await ask("switchCommit", { seg: s, commit }));
-    } catch (e) {
-      return toast((e as Error).message);
-    }
+  let segs: { seg: Segment; view: SegView }[];
+  try {
+    segs = await Promise.all(
+      c.segments
+        .filter((s) => s.src.kind === "repo" || s.src.kind === "external")
+        .map((s) => ask("switchCommit", { seg: s, commit })),
+    );
+  } catch (e) {
+    if (!switched(e)) toast((e as Error).message);
+    return;
   }
   batch(() => V.switchCommit(versionEnv, id, segs));
   send({ type: "checkVersions" });

@@ -34,6 +34,7 @@ import { promptText } from "../ui/Menu";
 import { popCard, hostRect } from "./common";
 import { lastPointer } from "../state/measure";
 import { expandCall } from "./flow";
+import { attrSel } from "../cardsel";
 
 const linkById = (id: string) => state.board.links.find((l) => l.id === id);
 
@@ -43,7 +44,7 @@ export function markRpc(id: string, el?: Element) {
   if (!L || !canMark(L)) return;
   C.markRpc(commandEnv, id);
   select({ links: [id] });
-  const lab = el ?? document.querySelector(`.vchips[data-link="${id}"]`);
+  const lab = el ?? document.querySelector(`.vchips${attrSel("data-link", id)}`);
   openPop({ kind: "rpc", link: id }, lab ? { el: lab, prefer: "below" } : lastPointer());
 }
 export const setRpc = (id: string, f: (r: RpcMark) => void) => C.editRpc(commandEnv, id, f);

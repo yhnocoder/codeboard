@@ -6,7 +6,7 @@ import DOMPurify from "dompurify";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 /** SMIL elements DOMPurify's SVG profile leaves out; kept when what they animate cannot be a link or a handler */
-export const SMIL_TAGS = ["animate", "set"];
+const SMIL_TAGS = ["animate", "set"];
 const ANIMATING = "animate, set, animateTransform, animateMotion";
 /** An animation element that would animate a link or an event attribute */
 const unsafeTarget = (el: Element) => /^(?:on|(?:xlink:)?href$)/i.test((el.getAttribute("attributeName") ?? "").trim());
@@ -25,6 +25,28 @@ export function inertCss(css: string): string {
     .replace(/:host(?:-context)?\b|::slotted\b/gi, ":not(*)");
 }
 
+/**
+ * The SVG text parsed as XML and cleaned by DOMPurify (its SVG profile with SMIL_TAGS, less `forbid`): its <svg> element, or null
+ * when the text is not an SVG. Unsafe SMIL is still in it (dropUnsafeSmil)
+ */
+export function purifiedSvg(text: string, forbid: string[] = []): SVGSVGElement | null {
+  const doc = new DOMParser().parseFromString(text, "image/svg+xml");
+  const root = doc.documentElement;
+  if (root.namespaceURI !== SVG_NS || root.localName !== "svg" || doc.getElementsByTagNameNS("*", "parsererror").length)
+    return null;
+  const body = DOMPurify.sanitize(root, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+    ADD_TAGS: SMIL_TAGS,
+    FORBID_TAGS: forbid,
+    RETURN_DOM: true,
+  });
+  return (
+    [...body.childNodes].find(
+      (e): e is SVGSVGElement => e instanceof Element && e.namespaceURI === SVG_NS && e.localName === "svg",
+    ) ?? null
+  );
+}
+
 /** Whether a (cleaned) SVG animates by itself: CSS animations or SMIL */
 const animates = (svg: Element) =>
   !!svg.querySelector(ANIMATING) ||
@@ -36,19 +58,7 @@ const animates = (svg: Element) =>
  * cannot be read
  */
 export function inlineSvg(text: string): string | null {
-  const doc = new DOMParser().parseFromString(text, "image/svg+xml");
-  const root = doc.documentElement;
-  if (root.namespaceURI !== SVG_NS || root.localName !== "svg" || doc.getElementsByTagNameNS("*", "parsererror").length)
-    return null;
-  const body = DOMPurify.sanitize(root, {
-    USE_PROFILES: { svg: true, svgFilters: true },
-    ADD_TAGS: SMIL_TAGS,
-    FORBID_TAGS: ["foreignObject", "script"],
-    RETURN_DOM: true,
-  });
-  const svg = [...body.childNodes].find(
-    (e): e is SVGSVGElement => e instanceof Element && e.namespaceURI === SVG_NS && e.localName === "svg",
-  );
+  const svg = purifiedSvg(text, ["foreignObject", "script"]);
   if (!svg || !animates(svg)) return null;
   dropUnsafeSmil(svg);
   for (const el of [svg, ...svg.querySelectorAll("*")]) {

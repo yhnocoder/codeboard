@@ -17,7 +17,7 @@ import {
 import { state, placeOf } from "../state/store";
 import { isSel, sel } from "../state/selection";
 import { editing } from "../state/ui";
-import { reduceMotion } from "../state/motion";
+import { animScale, reduceMotion } from "../state/motion";
 import { Editable } from "../ui/Editable";
 import { Icon } from "../ui/icons";
 import * as A from "../actions";
@@ -235,7 +235,7 @@ function foldHeader(id: string, entering: boolean, setFolded: (v: boolean) => vo
     return done();
   }
   const opts: KeyframeAnimationOptions = {
-    duration: 220,
+    duration: 220 * animScale(),
     easing: "cubic-bezier(.2, .8, .2, 1)",
     fill: entering ? "none" : "forwards",
   };
@@ -281,6 +281,9 @@ function foldHeader(id: string, entering: boolean, setFolded: (v: boolean) => vo
 }
 
 /** 选中时上方的小工具条：Box 的底色、Mark 的颜色和粗细、Free Text 的级别和粗体；Text 没有 */
+/** A Box's fill (yellow until one is picked) */
+export const boxFill = (c: NoteCard) => c.fill ?? "yellow";
+
 export function WritingToolbar(p: { card: NoteCard }) {
   return (
     <Show when={isSel(p.card.id) && sel.cards.length === 1 && editing()?.id !== p.card.id}>
@@ -291,7 +294,7 @@ export function WritingToolbar(p: { card: NoteCard }) {
               {(k) => (
                 <button
                   class={`bdot bf-${k}`}
-                  classList={{ on: (p.card.fill ?? "yellow") === k }}
+                  classList={{ on: boxFill(p.card) === k }}
                   aria-label={k}
                   data-tip={k[0].toUpperCase() + k.slice(1)}
                   onClick={() => A.setBoxFill(p.card.id, k)}

@@ -7,7 +7,7 @@ import { state, cardById, hostOf, rectOf, flows } from "../state/store";
 import { flushSave } from "../state/changes";
 import { sel, select, clearSel } from "../state/selection";
 import { toast } from "../state/toast";
-import { camTarget, camTo, fitRect, viewportCenter } from "../state/camera";
+import { camRest, camTarget, camTo, fitRect, viewportCenter } from "../state/camera";
 import { iconHtml } from "../ui/icons";
 import {
   crumbs,
@@ -363,12 +363,12 @@ export function walkIntoFrame(frame: string, i: number) {
   const t = fitRect({ x: r.x - 20, y: r.y - 20, w: r.w + 40, h: r.h + 40 }, 2.5);
   camTo(t.x, t.y, t.z, true);
   const hop: WalkHop = { into: { root: w.root, i } };
-  setTimeout(() => {
+  void camRest().then(() => {
     if (walk()?.i === i) {
       setWalk(null);
       enterFrame(frame, hop);
     }
-  }, 420);
+  });
 }
 /** 子白板里的讲解讲完了：回父白板接着讲（dir = +1 下一步，-1 上一步） */
 export function walkOut(dir: 1 | -1) {

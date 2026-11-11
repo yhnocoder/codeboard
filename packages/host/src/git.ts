@@ -25,7 +25,7 @@ const SHA = /^[0-9a-f]{40}$/;
 const NOT_A_REPO = /not a git repository/i;
 
 /** The repo's origin URL */
-export const originUrl = async (root: string): Promise<string | undefined> =>
+const originUrl = async (root: string): Promise<string | undefined> =>
   (await git(root, ["remote", "get-url", "origin"]))?.trim() || undefined;
 
 /** What one host remembers git answered: repository roots, git directories, upstream branches, origin URLs, file contents at

@@ -24,7 +24,7 @@ import { state, rectOf, hostOf, flows } from "../state/store";
 import { sel, select, lineSel, setLineSel } from "../state/selection";
 import { toast } from "../state/toast";
 import { setExportOpen, exportBusy, setExportBusy, setExportHidden, type ExportOpts } from "../state/export";
-import { ask, send } from "../host";
+import { ask, send, switched } from "../host";
 import { flushMd } from "../md/lazy";
 import { resolveCardRef } from "./common";
 import type { Markdown } from "@yhnocoder/markdown";
@@ -32,6 +32,7 @@ import { noteBlocks } from "../md/blocks";
 import type { ViewerData } from "../export/viewer";
 import VIEWER_JS from "../export/viewer.ts?script";
 import { bitmapOf } from "../stickers/glyphs";
+import { CARD_STATE_CLASSES } from "../cardsel";
 
 /** 讲解路径从哪张卡开始：选中的卡，否则第一张 Start 卡，否则第一张调用图的根 */
 export function walkStart(): string | undefined {
@@ -95,7 +96,8 @@ export async function runExport(md: Markdown, o: ExportOpts) {
       return;
     }
     const segs = order.flatMap((id) => segsOf(b, id));
-    const links = (await ask("permalinks", { segs }).catch(() => null)) ?? {};
+    const links = await ask("permalinks", { segs }).catch((e) => (switched(e) ? undefined : {}));
+    if (!links) return;
     const text =
       o.format === "md"
         ? boardMarkdown(b, {
@@ -110,7 +112,7 @@ export async function runExport(md: Markdown, o: ExportOpts) {
     const ok = await ask("exportFile", { kind: o.format === "md" ? "md" : "html", name: fileName(), text });
     if (ok) setExportOpen(null);
   } catch (e) {
-    toast(`Export failed: ${(e as Error).message}`);
+    if (!switched(e)) toast(`Export failed: ${(e as Error).message}`);
   } finally {
     setExportBusy(false);
   }
@@ -136,7 +138,8 @@ const frames = (n = 2) =>
     requestAnimationFrame(f);
   });
 
-// 交互状态的 class（选中、悬停、分档、离屏、镜头在动）：导出的是静止、没选中的样子
+// What is happening in the world (selection, hover, culling, a moving camera): an export shows it at rest with nothing selected.
+// The cards' own are CARD_STATE_CLASSES
 const LIVE_CLASSES = [
   "off",
   "far",
@@ -149,7 +152,6 @@ const LIVE_CLASSES = [
   "settle",
   "bind-hot",
   "bind-anchor",
-  "pinged",
   "md-animsrc",
 ];
 
@@ -213,10 +215,12 @@ async function cloneForExport(
   // zoomed out, the card level is faded out (state/summary.ts): an export always shows the cards
   world.querySelectorAll<HTMLElement>(".cardlay").forEach((el) => {
     el.style.opacity = "";
-    el.classList.remove("gone");
+    el.classList.remove("gone", "asleep");
   });
+  world.querySelectorAll(".card").forEach((el) => el.classList.remove(...CARD_STATE_CLASSES));
   for (const c of LIVE_CLASSES) world.querySelectorAll(`.${c}`).forEach((el) => el.classList.remove(c));
-  world.classList.remove("moving", "settle");
+  // zoomed out, Notes' prose is drawn as bars (state/greek.ts): an export shows the text
+  world.classList.remove("moving", "settle", "greek");
   world.querySelectorAll("[contenteditable]").forEach((el) => el.removeAttribute("contenteditable"));
   return world;
 }
@@ -260,8 +264,8 @@ async function exportPng() {
   let inlined: string;
   try {
     inlined = await ask("inlineRefs", { text: svg });
-  } catch {
-    return toast("Export failed");
+  } catch (e) {
+    return void (switched(e) || toast("Export failed"));
   }
   // a data: URL, not a blob: an SVG with a foreignObject drawn from a blob: URL taints the canvas
   const img = new Image();

@@ -3,12 +3,11 @@
 // 别的地址（网址、手打的别处的路径）照原样。
 // A big still PNG or JPEG also lists its smaller copies (md/copies.ts, in host.thumbBase): the Markdown instance shows the one
 // that fits the size the image is seen at, and the Markdown keeps the address as written
-import DOMPurify from "dompurify";
 import type { Markdown, ResolvedImage } from "@yhnocoder/markdown";
-import { ask } from "../host";
+import { ask, switched } from "../host";
 import { copiesOf } from "./copies";
 import { toast } from "../state/toast";
-import { SMIL_TAGS, dropUnsafeSmil } from "./animsvg";
+import { dropUnsafeSmil, purifiedSvg } from "./animsvg";
 
 const SIZED = /-(\d{1,5})x(\d{1,5})\.(?:png|jpg|webp|gif|svg)$/;
 let base: string | undefined;
@@ -45,12 +44,11 @@ export async function saveNoteImage(dataUrl: string): Promise<string | null> {
   try {
     return await ask("saveImage", { dataUrl: cleanImage(dataUrl) });
   } catch (e) {
-    toast((e as Error).message || "Could not add the image");
+    if (!switched(e)) toast((e as Error).message || "Could not add the image");
     return null;
   }
 }
 
-const SVG_NS = "http://www.w3.org/2000/svg";
 const abs = (v: string | null) => (v && /^\s*[\d.]+(?:e[+-]?\d+)?(?:px)?\s*$/i.test(v) ? parseFloat(v) : NaN);
 
 /**
@@ -62,18 +60,7 @@ const abs = (v: string | null) => (v && /^\s*[\d.]+(?:e[+-]?\d+)?(?:px)?\s*$/i.t
  * 不是 SVG 回 null
  */
 export function cleanSvg(text: string): string | null {
-  const doc = new DOMParser().parseFromString(text, "image/svg+xml");
-  const root = doc.documentElement;
-  if (root.namespaceURI !== SVG_NS || root.localName !== "svg" || doc.getElementsByTagNameNS("*", "parsererror").length)
-    return null;
-  const body = DOMPurify.sanitize(root, {
-    USE_PROFILES: { svg: true, svgFilters: true },
-    ADD_TAGS: SMIL_TAGS,
-    RETURN_DOM: true,
-  });
-  const svg = [...body.childNodes].find(
-    (e): e is Element => e instanceof Element && e.namespaceURI === SVG_NS && e.localName === "svg",
-  );
+  const svg = purifiedSvg(text);
   if (!svg) return null;
   dropUnsafeSmil(svg);
   let w = abs(svg.getAttribute("width")),

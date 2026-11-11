@@ -10,7 +10,7 @@ import { bezAt, nearestT } from "@codeboard/core/canvas";
 import { cam, toWorld } from "../state/camera";
 import { boardOffset } from "../state/measure";
 import { openMenu, type Item } from "../ui/Menu";
-import { STICKER_COLORS, BUILTIN, defaultColor, loadPacks } from "../stickers/glyphs";
+import { STICKER_PALETTE, BUILTIN, defaultColor, loadPacks } from "../stickers/glyphs";
 import { geo } from "../state/geo";
 import {
   stickerPick,
@@ -22,7 +22,7 @@ import {
   type BindTarget,
 } from "../state/stickers";
 import { setMode, placing, idle } from "../state/mode";
-import { track, undoGesture } from "../gesture";
+import { DRAG_SLOP, track, undoGesture } from "../gesture";
 
 export function stickerPicker(el: HTMLElement) {
   if (stickerPick()) return setStickerPick(null);
@@ -191,7 +191,6 @@ export function stickerMenu(id: string, x: number, y: number) {
   const s = state.board.stickers.find((k) => k.id === id);
   if (!s) return;
   setSelSticker(id);
-  const names = ["Gold", "Orange", "Red", "Pink", "Purple", "Blue", "Green", "Grey"];
   const qi: Item[] = isQuestion(s)
     ? [
         {
@@ -215,10 +214,10 @@ export function stickerMenu(id: string, x: number, y: number) {
             label: "Color",
             sub: [
               { label: "Default", checked: !s.color, run: () => setStickerColorOf(id, undefined) } as Item,
-              ...STICKER_COLORS.map((c, i) => ({
-                label: names[i],
-                checked: s.color === c,
-                run: () => setStickerColorOf(id, c),
+              ...STICKER_PALETTE.map((p) => ({
+                label: p.name,
+                checked: s.color === p.color,
+                run: () => setStickerColorOf(id, p.color),
               })),
             ],
           } as Item,
@@ -316,7 +315,7 @@ export function stickerDown(e: PointerEvent, id: string, resize = false) {
       setBindHot(null);
       g.end();
     },
-    resize ? 0 : 3,
+    resize ? 0 : DRAG_SLOP,
     g.drop,
   );
 }
