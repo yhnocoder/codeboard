@@ -79,6 +79,14 @@ Modes:
    a card's width is a fractional number of pixels); `;` `'` text weight for web Notes (-webkit-text-stroke in the Note
    page, 0–0.5 px; any stroke turns off WebKit's font smoothing, so 0.1 px is lighter than none and 0.2 px slightly
    heavier). A sharpening filter over the window was tried and dropped: Core Animation renders filtered content at 1x.
+   Web Notes and memory: one snapshot web view by default (`p` switches 1 / 3), created when a snapshot is needed
+   and closed after 30 s with none (`CANVAS_IDLETEARDOWN`), which ends its WebKit process; SVG pictures are drawn by
+   it too. Only the editor's web view stays (kept warm). Snapshots are kept on disk in
+   ~/Library/Caches/CodeBoardCanvas/snapshots (raw BGRA + LZFSE: lossless, about 1–3 ms to read per Note; PNG is
+   larger and 10x slower to read), keyed by the Note's Markdown, size, kind, scale, text weight, the page build and the
+   referenced images, 1 GB at most, least recently used out first; an unchanged Note never touches a web view again.
+   Before a Note's first picture it shows its paper only (`o` cycles: paper, paper with a 150 ms fade, the CoreText
+   version as before). `CANVAS_WEBMEMTEST=<other board>.json` measures first open, idle teardown, switching, editing.
    Notes (`w`): web Notes are snapshots of the editor's own page (`renderEditor`: the editor mounted without focus,
    caret hidden, images decoded first), so display and edit share one code path; or CoreText. Images inside web Notes
    are part of the snapshot, so their native image layers are hidden. SVG files for the native image layers are drawn

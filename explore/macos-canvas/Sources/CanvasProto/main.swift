@@ -58,6 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         canvas.layoutSubtreeIfNeeded()
         let start = isDir.boolValue ? 0 : (canvas.boards.firstIndex(of: target) ?? 0)
+        if ProcessInfo.processInfo.environment["CANVAS_CLEARCACHE"] != nil { SnapshotCache.shared.clear() }
         canvas.load(start)
         if glideTest {
             window.level = .floating
@@ -85,6 +86,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self, Canvas.routeGestures, e.window === self.window else { return e }
             if e.type == .scrollWheel { self.canvas.scrollWheel(with: e) } else { self.canvas.magnify(with: e) }
             return nil
+        }
+        if let other = ProcessInfo.processInfo.environment["CANVAS_WEBMEMTEST"] {
+            window.level = .floating
+            window.orderFrontRegardless()
+            let idx = canvas.boards.firstIndex { $0.hasSuffix(other) } ?? 1
+            Task { @MainActor in await self.canvas.webMemTest(other: idx) }
+        }
+        if ProcessInfo.processInfo.environment["CANVAS_FMTTEST"] != nil {
+            window.level = .floating
+            window.orderFrontRegardless()
+            Task { @MainActor in await self.canvas.formatTest() }
         }
         if ProcessInfo.processInfo.environment["CANVAS_BROWSETEST"] != nil {
             window.level = .floating

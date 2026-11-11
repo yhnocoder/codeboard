@@ -27,6 +27,15 @@ enum Render {
                       height: max(c.rect.height - top - 2 * Board.pad, 1))
     }
 
+    /// Files of the images a Note's Markdown refers to.
+    static func imagePaths(in md: String, vault: String) -> [String] {
+        let ns = md as NSString
+        return imageRef.matches(in: md, range: NSRange(location: 0, length: ns.length)).map {
+            let ref = ns.substring(with: $0.range(at: 1))
+            return ref.hasPrefix("assets/") ? "\(vault)/\(ref)" : "\(vault)/assets/\(ref)"
+        }
+    }
+
     static let imageRef = try! NSRegularExpression(pattern: #"!\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)"#)
 
     /// Lays the body out once: text blocks and images stacked top to bottom (images at most the body width and their
@@ -89,7 +98,7 @@ enum Render {
     }
 
     /// Draws the card into ctx in card-local board units (y up, origin at the card's bottom-left).
-    static func draw(_ c: Card, in ctx: CGContext, images: [CGImage?] = []) {
+    static func draw(_ c: Card, in ctx: CGContext, images: [CGImage?] = [], paperOnly: Bool = false) {
         let r = CGRect(origin: .zero, size: c.rect.size)
         ctx.textMatrix = .identity
         if c.kind != .frameless {
@@ -109,6 +118,7 @@ enum Render {
             }
             ctx.addPath(p); ctx.setStrokeColor(hairline); ctx.setLineWidth(1); ctx.strokePath()
         }
+        if paperOnly { return }  // a web Note's placeholder: the card without its text
         if !c.frames.isEmpty {
             ctx.saveGState(); ctx.clip(to: bodyRect(c)); c.frames.forEach { CTFrameDraw($0, ctx) }; ctx.restoreGState()
         }
@@ -163,7 +173,7 @@ enum Render {
         return s
     }
 
-    static func raster(_ c: Card, scale: CGFloat) -> CGImage? {
+    static func raster(_ c: Card, scale: CGFloat, paperOnly: Bool = false) -> CGImage? {
         let w = Int(ceil(c.rect.width * scale)), h = Int(ceil(c.rect.height * scale))
         guard w > 0, h > 0, let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
                                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
@@ -171,7 +181,7 @@ enum Render {
         else { return nil }
         ctx.setShouldSmoothFonts(false)
         ctx.scaleBy(x: scale, y: scale)
-        draw(c, in: ctx)
+        draw(c, in: ctx, paperOnly: paperOnly)
         return ctx.makeImage()
     }
 }

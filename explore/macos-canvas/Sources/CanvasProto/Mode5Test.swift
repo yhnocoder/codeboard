@@ -597,3 +597,114 @@ extension Canvas {
         NSApp.terminate(nil)
     }
 }
+
+extension Canvas {
+    /// Disk format comparison on real snapshots: size, encode and decode time, exactness.
+    func formatTest() async {
+        mode = 5
+        await waitIdle()
+        let notes = board.cards.indices.filter { isWebNote($0) }.prefix(12)
+        var rows: [String: (size: Int, enc: Double, dec: Double, exact: Bool)] = [:]
+        var px = 0
+        for scale: CGFloat in [2, 4] {
+            for i in notes {
+                let img: CGImage? = await withCheckedContinuation { k in
+                    webSnapshot(i, scale: scale, useCache: false) { s, _ in k.resume(returning: s.flatMap { Canvas.image(from: $0) }) }
+                }
+                guard let img else { continue }
+                px += img.width * img.height
+                let ref = pixels(img)
+                for f in [SnapshotCache.Format.lzfse, .png] {
+                    let c = SnapshotCache.shared
+                    c.format = f
+                    let t0 = CACurrentMediaTime(); let data = c.encode(img)!; let t1 = CACurrentMediaTime()
+                    let back = c.decode(data); let t2 = CACurrentMediaTime()
+                    let same = back.flatMap { Canvas.image(from: $0) }.map { pixels($0) == ref } ?? false
+                    var r = rows["\(f.rawValue)@\(Int(scale))"] ?? (0, 0, 0, true)
+                    r.size += data.count; r.enc += (t1 - t0) * 1000; r.dec += (t2 - t1) * 1000; r.exact = r.exact && same
+                    rows["\(f.rawValue)@\(Int(scale))"] = r
+                }
+            }
+        }
+        for (k, r) in rows.sorted(by: { $0.key < $1.key }) {
+            Log.write(String(format: "format %@: %d notes, %.1f MB on disk (%.2f bytes/px), encode %.1f ms/note, decode %.1f ms/note, exact=%@",
+                             k, notes.count, Double(r.size) / 1e6, Double(r.size) / Double(max(px / 2, 1)), r.enc / Double(notes.count), r.dec / Double(notes.count), r.exact ? "yes" : "NO"))
+        }
+        NSApp.terminate(nil)
+    }
+}
+
+extension Canvas {
+    func webProcs() -> String {
+        var parts: [String] = []
+        if let e = web.editor { parts.append("editor \(footprint(of: e.webPID) / 1_000_000)MB") }
+        for (k, v) in web.pool.enumerated() { parts.append("snap\(k) \(footprint(of: v.webPID) / 1_000_000)MB") }
+        return String(format: "app %dMB · ", physFootprint() / 1_000_000) + parts.joined(separator: " · ") + String(format: " · web total %dMB", webFootprint() / 1_000_000)
+    }
+
+    func waitBase(_ max: Double = 20) async {
+        let t0 = CACurrentMediaTime()
+        while !web.baseLogged && CACurrentMediaTime() - t0 < max { await sleep(0.05) }
+    }
+
+    /// The web-Note memory and timing scenario: first open (never drawn), idle teardown, switching boards, warm reopen,
+    /// editing one Note, and a 50 %→200 % zoom with the configured number of snapshot views.
+    func webMemTest(other: Int) async {
+        let a = boardIndex
+        let tag = "views=\(web.poolCount)"
+        mode = 5
+        // 1. first open: watch memory while the first snapshots are drawn
+        var peak = (app: 0, web: 0)
+        let t0 = CACurrentMediaTime()
+        while (!web.baseLogged || levelBusy) && CACurrentMediaTime() - t0 < 30 {
+            peak.app = max(peak.app, physFootprint()); peak.web = max(peak.web, webFootprint())
+            await sleep(0.1)
+        }
+        Log.write(String(format: "memtest %@ first-open: everything sharp %.0f ms after load · peak while drawing app %dMB web %dMB",
+                         tag, (CACurrentMediaTime() - web.loadStart) * 1000, peak.app / 1_000_000, peak.web / 1_000_000))
+        await sleep(1)
+        Log.write("memtest \(tag) board open, idle, snapshot views alive: " + webProcs())
+        while !web.pool.isEmpty { await sleep(0.2) }   // idle teardown
+        await sleep(1)
+        Log.write("memtest \(tag) after idle teardown: " + webProcs())
+        // 2. switching boards
+        for (label, idx) in [("switch to other board (never drawn)", other), ("back to first board (disk cache warm)", a)] {
+            let d0 = web.diskHits, n0 = web.drawn
+            load(idx)
+            await waitBase()
+            while levelBusy { await sleep(0.05) }
+            Log.write(String(format: "memtest %@ %@: everything sharp %.0f ms after load · disk hits %d · drawn %d", tag, label,
+                             (CACurrentMediaTime() - web.loadStart) * 1000, web.diskHits - d0, web.drawn - n0))
+        }
+        // 3. edit one Note and leave with a change
+        let notes = board.cards.indices.filter { isWebNote($0) && board.cards[$0].kind == .note && visible.contains($0) }
+        if let i = notes.first {
+            while !web.pool.isEmpty { await sleep(0.2) }   // snapshot views closed: the cold case
+            let open = await editOnce(i, cold: false)
+            await web.editor?.call("cb.placeCaretEnd(); return true")
+            await web.editor?.call("return await cb.typeTimed(text)", ["text": "x"])
+            let n0 = web.drawn
+            let t1 = CACurrentMediaTime()
+            await leaveOnce()
+            let leaveMs = (CACurrentMediaTime() - t1) * 1000
+            while levelBusy { await sleep(0.05) }
+            Log.write(String(format: "memtest %@ edit: open to typing %.0f ms (snapshot views closed) · leave → new picture on screen %.0f ms (snapshot view cold-started) · Notes drawn %d",
+                             tag, open, leaveMs, web.drawn - n0))
+        }
+        // 4. zoom 50 % → 200 %, time from rest to sharp: snapshot views closed (cold), then open (warm)
+        for (label, region) in [("snapshot view closed", 0.0), ("snapshot view open", 0.3)] {
+            if label.hasSuffix("closed") { while !web.pool.isEmpty { await sleep(0.2) } }
+            z = 0.5; let b = board.bounds
+            camX = b.midX - bounds.width / 2 / z + CGFloat(region) * b.width; camY = b.midY - bounds.height / 2 / z
+            applyCamera(); levelRest(); await waitIdle(20)
+            if label.hasSuffix("closed") { while !web.pool.isEmpty { await sleep(0.2) } }
+            await drive { [self] t in let p = min(t / 1.0, 1); zoom(by: (0.5 * pow(4, CGFloat(p))) / z, at: CGPoint(x: bounds.midX, y: bounds.midY)); return p < 1 }
+            let t2 = CACurrentMediaTime()
+            while (!lv.resting || levelBusy) && CACurrentMediaTime() - t2 < 20 { await sleep(0.02) }
+            Log.write(String(format: "memtest %@ zoom 50→200%% (%@): rest to sharp %.0f ms after the motion (incl. 150 ms rest detection)", tag, label, (CACurrentMediaTime() - t2) * 1000))
+        }
+        Log.write(String(format: "memtest %@ disk cache: %d files, %.1f MB, read p50 %.1f ms", tag, SnapshotCache.shared.count,
+                         Double(SnapshotCache.shared.size) / 1e6, GestureStats.pct(SnapshotCache.shared.readMs, 0.5)))
+        NSApp.terminate(nil)
+    }
+}

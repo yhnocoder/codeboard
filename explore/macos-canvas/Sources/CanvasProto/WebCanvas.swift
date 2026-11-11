@@ -24,6 +24,17 @@ final class WebState {
     var diffDir: String? = ProcessInfo.processInfo.environment["CANVAS_DIFFDIR"]
     var diffN = 0
     var snapMs: [Double] = []
+    var diskHits = 0, drawn = 0
+    var lastSnapshot = 0.0
+    var poolCount = Int(ProcessInfo.processInfo.environment["CANVAS_WEBPOOL"] ?? "") ?? 1
+    var idleTeardown = Double(ProcessInfo.processInfo.environment["CANVAS_IDLETEARDOWN"] ?? "") ?? 30
+    var poolCreated = 0.0
+    var teardowns = 0
+    /// What a Note shows before its first snapshot: "coretext" (plain text, then swapped), "paper" (the card only, the
+    /// picture appearing in place) or "fade" (the same, the picture fading in over 150 ms).
+    var placeholder = ProcessInfo.processInfo.environment["CANVAS_PLACEHOLDER"] ?? "paper"
+    var waiting = Set<Int>()        // web Notes still showing their placeholder
+    var paper: [CGImage?] = []
     // Mode 5: while a gesture runs, the editor is replaced by a bitmap of itself (a native layer moving with the canvas)
     var frozen = false
     var still: IOSurface?
@@ -49,15 +60,32 @@ extension Canvas {
         web.on && (mode == 1 || mode == 2 || mode == 5) && (board.cards[i].kind == .note || board.cards[i].kind == .frameless)
     }
 
+    /// The editor is kept loaded and warm (32–50 ms from double-click to typing); the snapshot views are made on demand.
     func setUpWeb() {
+        if web.editor == nil { prepareEditor() }
+    }
+
+    /// The snapshot web views, created when a snapshot is needed (and closed again when idle).
+    func ensurePool() {
         guard web.pool.isEmpty, let container = superview else { return }
-        for _ in 0..<poolSize {
+        web.poolCreated = CACurrentMediaTime()
+        for _ in 0..<web.poolCount {
             let w = NoteWeb(vault: vault)
             container.addSubview(w.view, positioned: .below, relativeTo: self)  // behind the opaque canvas: painted, unseen
             web.pool.append(w)
             web.tails.append(nil)
         }
-        prepareEditor()
+        web.lastSnapshot = CACurrentMediaTime()
+    }
+
+    /// No snapshot needed for a while: close the snapshot views, which ends their WebKit processes.
+    func teardownIdlePool(_ now: Double) {
+        guard !web.pool.isEmpty, web.pending == 0, web.idleTeardown > 0, now - web.lastSnapshot > web.idleTeardown else { return }
+        web.tails.forEach { $0?.cancel() }
+        for v in web.pool { v.view.removeFromSuperview() }
+        web.pool = []; web.tails = []
+        web.teardowns += 1
+        Log.write("snapshot views closed after \(Int(web.idleTeardown)) s idle")
     }
 
     /// One editor web view kept loaded and warmed, above the canvas but transparent until an edit shows it.
@@ -83,13 +111,45 @@ extension Canvas {
     }
 
     /// A snapshot of card i at `scale` device px per CSS px, as an IOSurface, then `done` on the main thread.
-    func webSnapshot(_ i: Int, scale: CGFloat, done: @escaping (IOSurface?, Double) -> Void) {
+    func webSnapshot(_ i: Int, scale: CGFloat, useCache: Bool = true, done: @escaping (IOSurface?, Double) -> Void) {
         let c = board.cards[i]
         web.pending += 1
+        // the disk cache first: an unchanged Note at a scale drawn before never touches a web view
+        let viaEditor = mode == 5
+        let key = SnapshotCache.shared.key(card: c, scale: scale, viaEditor: viaEditor, stroke: NoteWeb.textStroke,
+                                           look: ProcessInfo.processInfo.environment["CANVAS_TEXTLOOK"] ?? "auto")
+        if useCache && SnapshotCache.shared.enabled {
+            let t0 = CACurrentMediaTime()
+            SnapshotCache.shared.read(key) { [weak self] surf in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    if let surf {
+                        self.web.pending -= 1
+                        self.web.diskHits += 1
+                        done(surf, (CACurrentMediaTime() - t0) * 1000)
+                    } else {
+                        self.web.pending -= 1
+                        self.webSnapshotDrawn(i, c, scale: scale, viaEditor: viaEditor, key: key, done: done)
+                    }
+                }
+            }
+            return
+        }
+        web.pending -= 1
+        webSnapshotDrawn(i, c, scale: scale, viaEditor: viaEditor, key: useCache ? key : nil, done: done)
+    }
+
+    /// The snapshot drawn by the snapshot web view (then written to the disk cache).
+    func webSnapshotDrawn(_ i: Int, _ c: Card, scale: CGFloat, viaEditor: Bool, key: String?, done: @escaping (IOSurface?, Double) -> Void) {
+        web.pending += 1
+        web.drawn += 1
+        ensurePool()
         onView(i % web.pool.count) { [weak self] v in
             let t0 = CACurrentMediaTime()
             let (img, _, _) = await v.snapshot(src: c.body, width: c.rect.width, height: c.rect.height, card: c.kind == .note, scale: scale,
-                                               viaEditor: self?.mode == 5)
+                                               viaEditor: viaEditor)
+            if let key, let img { SnapshotCache.shared.write(key, img) }
+            self?.web.lastSnapshot = CACurrentMediaTime()
             let surf: IOSurface? = await Task.detached { img.flatMap { Canvas.surface(from: $0) } }.value
             let ms = (CACurrentMediaTime() - t0) * 1000
             guard let self else { return }
@@ -143,6 +203,14 @@ extension Canvas {
         setUpWeb()
         let gen = generation
         let notes = board.cards.indices.filter { isWebNote($0) }
+        // before the first picture: the card's paper only (or the CoreText version)
+        web.paper = board.cards.indices.map { isWebNote($0) && web.placeholder != "coretext" ? Render.raster(board.cards[$0], scale: baseScale[$0], paperOnly: true) : nil }
+        web.waiting = Set(notes)
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        for i in notes where rasterScale[i] <= baseScale[i] { cardLayers[i].contents = webBaseContents(i) }
+        CATransaction.commit()
+        let visibleNotes = notes.filter { visible.contains($0) }
+        var visibleLogged = false
         // visible ones first
         let order = notes.filter { visible.contains($0) } + notes.filter { !visible.contains($0) }
         for i in order {
@@ -151,15 +219,22 @@ extension Canvas {
                 self.web.base[i] = s
                 if self.rasterScale[i] <= self.baseScale[i] && !self.inFlight[i] {
                     CATransaction.begin(); CATransaction.setDisableActions(true)
+                    self.firstPicture(i)
                     self.cardLayers[i].contents = s
                     CATransaction.commit()
+                }
+                if !visibleLogged && visibleNotes.allSatisfy({ self.web.base[$0] != nil }) {
+                    visibleLogged = true
+                    Log.write(String(format: "web-base board=%@ visible_notes=%d visible_ready=%.0fms disk_hits=%d drawn=%d", (self.board.path as NSString).lastPathComponent,
+                                     visibleNotes.count, (CACurrentMediaTime() - self.web.loadStart) * 1000, self.web.diskHits, self.web.drawn))
                 }
                 if !self.web.baseLogged && notes.allSatisfy({ self.web.base[$0] != nil }) {
                     self.web.baseLogged = true
                     let ms = self.web.snapMs
-                    Log.write(String(format: "web-base board=%@ notes=%d pool=%d all_ready=%.0fms snap_p50=%.1fms snap_max=%.1fms",
-                                     (self.board.path as NSString).lastPathComponent, notes.count, self.web.pool.count,
-                                     (CACurrentMediaTime() - self.web.loadStart) * 1000, GestureStats.pct(ms, 0.5), ms.max() ?? 0))
+                    Log.write(String(format: "web-base board=%@ notes=%d pool=%d all_ready=%.0fms snap_p50=%.1fms snap_max=%.1fms disk_hits=%d drawn=%d",
+                                     (self.board.path as NSString).lastPathComponent, notes.count, self.web.poolCount,
+                                     (CACurrentMediaTime() - self.web.loadStart) * 1000, GestureStats.pct(ms, 0.5), ms.max() ?? 0,
+                                     self.web.diskHits, self.web.drawn))
                     if ProcessInfo.processInfo.environment["CANVAS_LOADONLY"] != nil {
                         Log.write("web-mem views=\(self.web.pool.count + 1) web=\(self.webFootprint() / 1_000_000)MB")
                         NSApp.terminate(nil)
@@ -169,9 +244,25 @@ extension Canvas {
         }
     }
 
+    /// Comparison runs (switch diffs, saved pairs): an extra snapshot when an edit opens and a capture when it ends.
+    nonisolated(unsafe) static var compareSwitches = ProcessInfo.processInfo.environment["CANVAS_SWITCHDIFF"] != nil
+        || ProcessInfo.processInfo.environment["CANVAS_DIFFDIR"] != nil || ProcessInfo.processInfo.environment["CANVAS_EDITTEST"] != nil
+        || ProcessInfo.processInfo.environment["CANVAS_MODE5TEST"] != nil
+
     func webBaseContents(_ i: Int) -> Any? {
         if levelMode, let p = lv.pictureBase[i] { return p }
-        return isWebNote(i) ? (web.base[safe: i] ?? nil) ?? baseImage[i] : baseImage[i]
+        guard isWebNote(i) else { return baseImage[i] }
+        if let b = web.base[safe: i] ?? nil { return b }
+        return (web.paper[safe: i] ?? nil) ?? baseImage[i]
+    }
+
+    /// The first web picture of a Note replaces its placeholder: in place, faded with "fade" (inside a transaction).
+    func firstPicture(_ i: Int) {
+        guard web.waiting.remove(i) != nil, web.placeholder == "fade" else { return }
+        let t = CATransition()
+        t.type = .fade
+        t.duration = 0.15
+        cardLayers[i].add(t, forKey: "first")
     }
 
     // MARK: editing
@@ -203,11 +294,12 @@ extension Canvas {
         web.editStart = CACurrentMediaTime()
         web.editHeight = c.rect.height
         settleEditorZoom()
-        // the bitmap now on screen, at the editor's scale, to compare with the editor once it has painted
+        // (comparison runs only) the bitmap now on screen, at the editor's scale, to compare with the editor once it
+        // has painted; in normal use nothing is drawn when an edit opens
         let scale = z * backing
-        web.shownDone = false
+        web.shownDone = !Canvas.compareSwitches
         web.lastShown = nil
-        webSnapshot(i, scale: scale) { [weak self] s, _ in
+        if Canvas.compareSwitches { webSnapshot(i, scale: scale) { [weak self] s, _ in
             guard let self else { return }
             defer { self.web.shownDone = true; self.web.shownReady?.resume(); self.web.shownReady = nil }
             self.web.lastShown = s.flatMap { surf in Canvas.image(from: surf) }
@@ -217,7 +309,7 @@ extension Canvas {
                 CATransaction.commit()
                 self.rasterScale[i] = scale
             }
-        }
+        } }
         var args: [String: Any] = ["src": c.body, "width": Double(c.rect.width), "card": c.kind == .note]
         if let p = local { args["x"] = Double(p.x); args["y"] = Double(p.y) }
         args["scale"] = web.zoomMode == "transform" ? Double(z) : web.zoomMode == "level" ? Double(editLevel) : 1.0
@@ -343,7 +435,7 @@ extension Canvas {
                     Log.write("debug editor note: \(info ?? "nil") view=\(e.view.frame.size) pageZoom=\(e.view.pageZoom)")
                 }
                 let pz = web.zoomMode == "transform" ? z : web.zoomMode == "level" ? editLevel : e.view.pageZoom
-                if let shown = web.lastShown, let live = await e.take(width: size.width * pz, height: size.height * pz, scale: backing) {
+                if Canvas.compareSwitches, let shown = web.lastShown, let live = await e.take(width: size.width * pz, height: size.height * pz, scale: backing) {
                     Log.write("switch-in " + imageDiff(shown, live).summary + String(format: " zoom=%.2f", z))
                     if let d = web.diffDir { web.diffN += 1; saveImage(shown, "\(d)/in\(web.diffN)-shown.png"); saveImage(live, "\(d)/in\(web.diffN)-editor.png") }
                 }
@@ -377,7 +469,7 @@ extension Canvas {
         let size = board.cards[i].rect.size
         Task { @MainActor in
             let pz = web.zoomMode == "transform" ? z : web.zoomMode == "level" ? self.editLevel : e.view.pageZoom
-            let live = await e.take(width: size.width * pz, height: size.height * pz, scale: backing)
+            let live = Canvas.compareSwitches ? await e.take(width: size.width * pz, height: size.height * pz, scale: backing) : nil
             webSnapshot(i, scale: scale) { [weak self] s, _ in
                 guard let self else { return }
                 if let live, let s, let still = Canvas.image(from: s) {
@@ -678,18 +770,24 @@ extension Canvas {
     }
 
     /// SVG files drawn by WebKit (for the native image layers), one view kept for it.
+    /// SVG files are drawn by the snapshot view too (no web view of their own), in its queue.
     func setUpSVG() {
-        guard web.svgView == nil, let container = superview else { return }
-        let v = NoteWeb(vault: vault)
-        container.addSubview(v.view, positioned: .below, relativeTo: self)
-        web.svgView = v
         ImageStore.svgRaster = { [weak self] path, size, width in
-            guard let self, let v = self.web.svgView else { return nil }
-            let w = max(size.width, 1), h = max(size.height, 1)
-            if v.view.frame.width != ceil(w) || v.view.frame.height < ceil(h) { v.view.setFrameSize(CGSize(width: ceil(w), height: ceil(h))) }
-            v.rendered = nil
-            _ = await v.call("return await cb.renderImage(src, w, h)", ["src": URL(fileURLWithPath: path).absoluteString, "w": Double(w), "h": Double(h)])
-            return await v.take(width: w, height: h, scale: CGFloat(width) / w)
+            guard let self else { return nil }
+            self.ensurePool()
+            self.web.pending += 1
+            let img: CGImage? = await withCheckedContinuation { k in
+                self.onView(0) { v in
+                    let w = max(size.width, 1), h = max(size.height, 1)
+                    if v.view.frame.width != ceil(w) || v.view.frame.height < ceil(h) { v.view.setFrameSize(CGSize(width: ceil(w), height: ceil(h))) }
+                    v.rendered = nil
+                    _ = await v.call("return await cb.renderImage(src, w, h)", ["src": URL(fileURLWithPath: path).absoluteString, "w": Double(w), "h": Double(h)])
+                    k.resume(returning: await v.take(width: w, height: h, scale: CGFloat(width) / w))
+                }
+            }
+            self.web.pending -= 1
+            self.web.lastSnapshot = CACurrentMediaTime()
+            return img
         }
     }
 }

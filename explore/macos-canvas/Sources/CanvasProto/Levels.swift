@@ -249,6 +249,7 @@ extension Canvas {
                 if Canvas.restExact { pixelAlign(r.i); if let surf = r.contents as? IOSurface { cacheStore(r.i, surf) } }
                 continue
             }
+            firstPicture(r.i)
             cardLayers[r.i].contents = r.contents
             rasterScale[r.i] = r.scale
             gesture?.rasters += 1

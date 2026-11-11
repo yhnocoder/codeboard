@@ -541,6 +541,15 @@ final class Canvas: NSView, CALayerDelegate {
         case "'": textStroke = min(0.5, ((textStroke + 0.05) * 100).rounded() / 100); applyTextStroke(); updateHud()
         case "e": Canvas.restExact.toggle(); resetRasters(); updateHud()
         case "q": lv.snap.toggle(); updateHud(); levelRest()
+        case "p":
+            web.poolCount = web.poolCount == 1 ? 3 : 1
+            web.tails.forEach { $0?.cancel() }; web.pool.forEach { $0.view.removeFromSuperview() }; web.pool = []; web.tails = []
+            updateHud()
+        case "o":
+            let ways = ["paper", "fade", "coretext"]
+            web.placeholder = ways[((ways.firstIndex(of: web.placeholder) ?? 0) + 1) % ways.count]
+            if web.editing == nil { loadWebBase(); resetRasters() }
+            updateHud()
         case "z": maxZoom = maxZoom == 2 ? 3 : 2; updateHud()
         case "v": shaping.toggle(); updateHud()
         case "[": knee = max(500, knee - 250); updateHud()
@@ -595,6 +604,7 @@ final class Canvas: NSView, CALayerDelegate {
         }
         sampleMemory(now)
         levelPump()
+        teardownIdlePool(CACurrentMediaTime())
         guard let g = gesture else { return }
         g.maxVisible = max(g.maxVisible, visible.count)
         g.maxImages = max(g.maxImages, visibleSlots.count)
@@ -875,9 +885,9 @@ final class Canvas: NSView, CALayerDelegate {
         let variant = mode == 3 ? (liveOwn ? "(own surface)" : liveAsync ? "(CA, drawsAsynchronously)" : "(CA backing store)")
             : (useSurfaces ? "(IOSurface)" : "(CGImage)")
         hud.string = """
-         mode \(mode) \(Canvas.modeNames[mode]!)\(variant)   1–5 modes · ; ' text weight · e exact pixels · q zoom snap · n m cards/frame · j k px/frame · h l redraws · g outer ring · x exact at rest · w web notes · double-click edit · z 200/300% · v shaping [ ] knee , . glide · c live: own surface / CA · a async · s IOSurface / CGImage · f fit · ←/→ · b bench
+         mode \(mode) \(Canvas.modeNames[mode]!)\(variant)   1–5 modes · p 1/3 snapshot views · o placeholder · ; ' text weight · e exact pixels · q zoom snap · n m cards/frame · j k px/frame · h l redraws · g outer ring · x exact at rest · w web notes · double-click edit · z 200/300% · v shaping [ ] knee , . glide · c live: own surface / CA · a async · s IOSurface / CGImage · f fit · ←/→ · b bench
          board \(boardIndex + 1)/\(boards.count) \((board.path as NSString).lastPathComponent)  cards \(board.cards.count)  display \(fps) Hz
-         \(mode == 5 ? "levels: swaps ≤\(lv.cardsPerFrame) cards and ≤\(lv.budget / 1000)k px per frame · redraws \(lv.concurrency) · outer ring \(lv.ring > 0 ? "on" : "off") · exact at rest \(lv.exact ? "on" : "off") · text weight \(String(format: "%.2f", textStroke)) px · \(Canvas.restExact ? "exact pixels\(lv.snap ? " + snap" : "") · cache \(lv.cache.values.reduce(0) { $0 + $1.bytes } / 1_000_000) MB" : "levels") · queued \(lv.queue.count) · \(lv.resting ? "rest" : "gesture")  " : "")notes \(web.on ? (mode == 5 ? "web (editor page)" : "web (Markdown package)") : "CoreText")  zoom \(String(format: "%.2f", z)) (max \(Int(maxZoom * 100))%)  shaping \(shaping ? "knee \(Int(knee)) pt/s" : "off")  glide τ \(String(format: "%.2f", tau)) s  speed \(Int(speedNow)) pt/s  visible \(visible.count)   \(memLine)
+         \(mode == 5 ? "levels: swaps ≤\(lv.cardsPerFrame) cards and ≤\(lv.budget / 1000)k px per frame · redraws \(lv.concurrency) · outer ring \(lv.ring > 0 ? "on" : "off") · exact at rest \(lv.exact ? "on" : "off") · text weight \(String(format: "%.2f", textStroke)) px · \(Canvas.restExact ? "exact pixels\(lv.snap ? " + snap" : "") · cache \(lv.cache.values.reduce(0) { $0 + $1.bytes } / 1_000_000) MB" : "levels") · queued \(lv.queue.count) · \(lv.resting ? "rest" : "gesture")  " : "")snapshot views \(web.pool.count)/\(web.poolCount) · placeholder \(web.placeholder) · disk hits \(web.diskHits) drawn \(web.drawn) · notes \(web.on ? (mode == 5 ? "web (editor page)" : "web (Markdown package)") : "CoreText")  zoom \(String(format: "%.2f", z)) (max \(Int(maxZoom * 100))%)  shaping \(shaping ? "knee \(Int(knee)) pt/s" : "off")  glide τ \(String(format: "%.2f", tau)) s  speed \(Int(speedNow)) pt/s  visible \(visible.count)   \(memLine)
          last: \(lastSummary.split(separator: " ").dropFirst(2).joined(separator: " "))
         """
     }
