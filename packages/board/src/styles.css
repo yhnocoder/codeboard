@@ -12,6 +12,8 @@
   --hair: rgba(60, 45, 20, 0.16);
   --accent: #b5552d;
   --accent-ink: #ffffff;
+  /* a selected Section: a softer apricot than the accent, so a big selected frame does not read as red (Warm Ink only) */
+  --sect-sel: #bb7442;
   --warn: #c48a1f;
   --k-kw: #9a3f22;
   --k-fn: #2e5d86;
@@ -139,6 +141,7 @@
   --hair: rgba(255, 240, 220, 0.11);
   --accent: #e3895f;
   --accent-ink: #1d1c1a;
+  --sect-sel: #e3a273;
   --warn: #e0b055;
   --k-kw: #e59572;
   --k-fn: #86b4de;
@@ -217,8 +220,10 @@
   --sect-fill: color-mix(in srgb, var(--ink) 2.5%, transparent);
   --sect-sh: inset 0 1px 0 rgba(255, 245, 230, 0.025);
 }
-/* the Note code block colours above are Warm Ink's alone: another look (the board's or a preview's) falls back to its own */
+/* the Note code block colours and the selected Section's colour above are Warm Ink's alone: another look (the board's or a
+   preview's) falls back to its own (its accent, for a selected Section) */
 [data-look]:not([data-look="warm-ink"]) {
+  --sect-sel: initial;
   --nc-bg: initial;
   --nc-pill: initial;
   --nc-kw: initial;
@@ -2212,17 +2217,17 @@ textarea {
 /* selected: an accent border and ring, and an accent wash over its fill (a layer of its own that only fades in and out, so a
    big Section is not painted again; on top of a coloured Section's fill too) */
 .sect.sel {
-  border-color: var(--accent);
+  border-color: var(--sect-sel, var(--accent));
   box-shadow:
     var(--sect-sh),
-    0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+    0 0 0 3px color-mix(in srgb, var(--sect-sel, var(--accent)) 18%, transparent);
 }
 .sect::after {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  background: color-mix(in srgb, var(--sect-sel, var(--accent)) 7%, transparent);
   opacity: 0;
   transition: opacity 0.15s var(--out);
   pointer-events: none;
@@ -2238,7 +2243,7 @@ textarea {
     0 0 0 4px color-mix(in srgb, var(--ink) 7%, transparent);
 }
 .sect.sel.drop {
-  border-color: var(--accent);
+  border-color: var(--sect-sel, var(--accent));
 }
 /* Fit Content: the frame and its title ease to the new rect */
 .sect.fit {
@@ -2344,7 +2349,7 @@ textarea {
   color: var(--ink);
 }
 .slabel.sel {
-  color: var(--accent);
+  color: var(--sect-sel, var(--accent));
 }
 .slabel .dots {
   position: absolute;
