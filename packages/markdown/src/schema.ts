@@ -28,6 +28,7 @@ import {
   HtmlBlock,
   HtmlInline,
   Img,
+  notHtmlTag,
   Item,
   Math1,
   Math2,
@@ -41,7 +42,7 @@ import {
   WikiRef,
 } from "./schema-nodes";
 import { Annot, Highlight, InlineCode, Kbd, Lnk, Sub, Sup, U } from "./schema-marks";
-import { escText, markStarts } from "./schema-escape";
+import { escText, markStarts, WORD_END } from "./schema-escape";
 import { ESC_DOLLAR, SHIELD } from "./placeholders";
 import { imageAttrsAt } from "./imageattrs";
 import { markableLeaf, marksOnAtoms, shield, unshield } from "./tiptap-markdown-patch";
@@ -176,8 +177,19 @@ const mm = new MarkdownManager({
     // _ 不当强调：__init__、block_manager 都是代码里的名字
     m.use({
       tokenizer: {
-        emStrong(src: string) {
-          return src[0] === "_" ? undefined : false;
+        // * and ** inside a name or an expression (a*b*c, 2*3*4, f(x)*2*) are not emphasis: a delimiter may not open right after
+        // an ASCII letter, digit, _ or ) (CJK text has no spaces, so ** right after it still opens). It may still close inside a
+        // word, so formatting the start of one (*pre*fill) keeps working
+        emStrong(src: string, _masked: string, prev = "") {
+          if (src[0] === "_") return undefined;
+          return src[0] === "*" && WORD_END.test(prev) ? undefined : false;
+        },
+        // a tag HTML has no element for is text
+        tag(src: string) {
+          return notHtmlTag(src) ? undefined : false;
+        },
+        html(src: string) {
+          return notHtmlTag(src) ? undefined : false;
         },
         // 图片后面紧跟的 {width=…% frame=… loop=true} 是它的属性（见 imageattrs.ts），连同图片一起读掉
         link(this: Tokenizer, src: string) {

@@ -2007,3 +2007,68 @@ test("noteTableRoundedCorners", async () => {
   );
   await close(h);
 });
+
+/** Names and expressions in a Note's prose (snake_case_name, __init__, a*b*c, 2*3*4, vector<int>, <T>) are drawn as written, on
+ *  the board and while editing; *em* and **strong** between words still are emphasis, and editing elsewhere in the Note writes
+ *  every line back exactly as it was */
+test("codeWordsInProse", async () => {
+  const MD = [
+    "call snake_case_name, __init__ and a*b*c here",
+    "2*3*4 and f(x)*2* stay",
+    "vector<int> v; template <T> and <Foo> x",
+    "but *em* and **strong** and 中文**粗体** do",
+  ].join("\n\n");
+  const b = emptyBoard("b1", "code words");
+  put(b, { id: "n0", kind: "note", md: MD, look: "note" } as NoteCard, 60, 60, 640);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 900, h: 600, scale: 2, settings: { theme: "warm-ink" } as any });
+  const pg = h.page;
+  await idle(h);
+  const look = (root: string) =>
+    pg.locator(root).evaluate((e) => {
+      const ps = [...e.querySelectorAll("p")];
+      const copy = e.cloneNode(true) as HTMLElement;
+      copy.querySelectorAll(".md-hide").forEach((x) => x.remove());
+      return {
+        em: [...e.querySelectorAll("em, strong")].map((x) => x.textContent),
+        html: e.querySelectorAll(".md-html").length,
+        text: ps.length ? [...copy.querySelectorAll("p")].map((p) => p.textContent) : [],
+      };
+    });
+  const want = [
+    "call snake_case_name, __init__ and a*b*c here",
+    "2*3*4 and f(x)*2* stay",
+    "vector<int> v; template <T> and <Foo> x",
+    "but em and strong and 中文粗体 do",
+  ];
+  const still = await look('.card[data-id="n0"] .nbody');
+  check(
+    "codeWordsInProse on the board",
+    JSON.stringify(still.text) === JSON.stringify(want) &&
+      JSON.stringify(still.em) === '["em","strong","粗体"]' &&
+      !still.html,
+    still,
+  );
+  await pg.locator('.card[data-id="n0"] .nbody p').last().dblclick();
+  await pg.locator(".md-pm:focus").waitFor();
+  await focusSettled(pg);
+  await pg.keyboard.press("ControlOrMeta+End");
+  await pmHasSelection(pg);
+  await idle(h);
+  const ed = await look(".md-pm");
+  check(
+    "codeWordsInProse while editing",
+    JSON.stringify(ed.text.slice(0, 3)) === JSON.stringify(want.slice(0, 3)) &&
+      JSON.stringify(ed.em) === '["em","strong","粗体"]' &&
+      !ed.html,
+    ed,
+  );
+  await pg.screenshot({ path: path.join(OUT, "code-words-editing-warm-ink.png") });
+  await pg.keyboard.type("!");
+  await pg.keyboard.press("Escape");
+  await until(h, "Esc saves the Note", () => (h.board().cards[0] as NoteCard).md !== MD);
+  const saved = (h.board().cards[0] as NoteCard).md;
+  check("codeWordsInProse saved as written", saved === `${MD}!`, saved);
+  await idle(h);
+  await pg.screenshot({ path: path.join(OUT, "code-words-board-warm-ink.png") });
+});

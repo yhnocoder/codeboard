@@ -760,3 +760,37 @@ describe("annotations {text|note}", () => {
     expect(annots(rt(s))).toEqual(d);
   });
 });
+
+describe("names and expressions in prose", () => {
+  const lines = [
+    "use snake_case_name, __init__ and a*b*c here",
+    "2*3*4 and f(x)*2* stay as written",
+    "vector<int> v; template <T> and </Foo> x",
+  ];
+  it("draws * inside a name or an expression and a tag HTML has no element for as written", () => {
+    const h = markdown.render(lines.join("\n\n"));
+    expect(h).not.toMatch(/<em>|<strong>/);
+    expect(h).toContain("a*b*c");
+    expect(h).toContain("2*3*4 and f(x)*2*");
+    expect(h).toContain("vector&lt;int&gt; v; template &lt;T&gt; and &lt;/Foo&gt; x");
+  });
+  it("keeps emphasis between words, after CJK text, with spaces inside and on the start of a word, and real HTML tags", () => {
+    const h = markdown.render("*em*, **strong**, 中文**粗体**, *a * b*, *pre*fill and <kbd>K</kbd> <span>s</span>");
+    expect(h).toContain("<em>em</em>");
+    expect(h).toContain("<strong>strong</strong>");
+    expect(h).toContain("中文<strong>粗体</strong>");
+    expect(h).toContain("<em>a * b</em>");
+    expect(h).toContain("<em>pre</em>fill");
+    expect(h).toContain("<kbd>K</kbd>");
+    expect(h).toMatch(/<span[^>]*>s<\/span>/);
+  });
+  it("writes them back as they were typed", () => {
+    for (const l of lines) {
+      expect(serializeMd(parseMd(l))).toBe(l);
+      expect(sourceMd(sourceDoc(l))).toBe(l);
+    }
+    // * that still pairs is escaped when it is text
+    expect(serializeMd(parseMd("a \\*b\\* c"))).toBe("a \\*b\\* c");
+    expect(serializeMd(parseMd("\\<div>"))).toBe("\\<div>");
+  });
+});
