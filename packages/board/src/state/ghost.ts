@@ -35,7 +35,7 @@ export function ghostOut(ids: Iterable<string>): () => void {
 }
 
 /**
- * A cloned <img> loads its picture again (decoding="async", loading="lazy" copied too): the first frames painted the ghost
+ * A cloned <img> loads its picture again (lazy and decoded async, as board images were then): the first frames painted the ghost
  * without it, the picture blinking out and back as the card started to go (an Image card, a Note's images). The card's own
  * images, loaded and decoded, go into the ghost instead (the card is removed this same task; its copies take their places);
  * a canvas's drawing is copied over

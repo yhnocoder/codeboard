@@ -9,6 +9,8 @@ import {
   applyPatch,
   DEFAULT_SETTINGS,
   renderLine,
+  inlineSnapshot,
+  mimeOf,
   type Board,
   type BoardToHost,
   type Card,
@@ -466,6 +468,16 @@ window.__still = boot({ post: (m) => { window.__inflight++; window.__host(JSON.s
       case "images":
         // this host makes no copies of images: each shows its own file
         return reply(m.req, {});
+      case "inlineRefs":
+        // a PNG export's fonts and pictures, from the board build (this host has no assets/)
+        return reply(
+          m.req,
+          await inlineSnapshot(m.text, async (kind, rel) => {
+            const abs = path.resolve(MEDIA, rel);
+            if (kind !== "media" || path.relative(MEDIA, abs).startsWith("..") || !fs.existsSync(abs)) return null;
+            return { mime: mimeOf(abs), base64: fs.readFileSync(abs).toString("base64") };
+          }),
+        );
       default:
         if (m.req) return reply(m.req, null);
     }
@@ -651,8 +663,7 @@ export async function shot(h: Host, name: string, at: "idle" | "now" = "idle") {
 
 /**
  * Waits until the board has settled: no board message still being handled by the host (window.__inflight, counted in the page
- * file above until the handler returns, i.e. after its reply was posted), the camera at rest (.world not .moving; .settle is
- * the world at rest without its will-change hint and stays until the next move), no finite Web Animation or CSS transition running (infinite ones, like spinners and animated stickers, don't count),
+ * file above until the handler returns, i.e. after its reply was posted), the camera at rest (.world not .moving), no finite Web Animation or CSS transition running (infinite ones, like spinners and animated stickers, don't count),
  * fonts loaded, no card moved or resized (their inline styles: the pop-in, slide, fold and grow springs) and no arrow moved (its
  * path: an end switching sides slides over in rAF steps, Links.tsx, which is no Web Animation) for `frames` frames in a row.
  * Throws after `ms`, saying what was still busy.

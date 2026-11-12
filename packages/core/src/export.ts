@@ -311,8 +311,9 @@ export function segPermalink(s: Segment, remoteOf?: (s: Segment) => string | und
   return r ? githubPermalink(r, s.version.commit, s.path, s.start, s.end) : undefined;
 }
 
-/** HTML 快照里引用的本地文件：cbres:media/<相对插件 media/board 的路径> 或 cbres:asset/<assets 里的文件名> */
-const RES_RE = /cbres:(media|asset)\/([^"')\s]+)/g;
+/** HTML 快照里引用的本地文件：cbres:media/<相对插件 media/board 的路径> 或 cbres:asset/<assets 里的文件名>。
+ *  到 & 为止：属性值里的引号写成 &quot;（元素 style 里的 url("…")） */
+const RES_RE = /cbres:(media|asset)\/([^"'&)\s]+)/g;
 
 /** 把 cbres: 引用换成 data: URL（load 读文件；读不到的留空，图片显示成破图而不是去连网） */
 export async function inlineSnapshot(

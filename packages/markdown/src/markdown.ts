@@ -32,6 +32,10 @@ export type MarkdownOptions = {
   /** Make the copy `width` wide that the resolver listed without a src for the image written as src; call updateImages once it
    *  is there (the resolver then gives its src) */
   makeImageCopy?: (src: string, width: number) => void;
+  /** Load every image at once and draw it only decoded (no loading="lazy", decoding="sync"; default: lazy and async): for a page
+   *  whose images come into view by a transform (a canvas zoomed out), where a lazy image is not loaded yet and an async one is
+   *  drawn as nothing until it is decoded, a blank for a few frames */
+  eagerImages?: boolean;
   /** \newcommand / \def lines every formula can use (or setMathPreamble later) */
   mathPreamble?: string;
   /** Unhandled keys inside the editors' inputs that still bubble out to the page (see keepKey in @yhnocoder/markdown/ui) */
@@ -113,6 +117,7 @@ export class Md implements Markdown {
         for (const k of [...this.cache.keys()]) if (k.includes(raw)) this.cache.delete(k);
       },
       { scale: o.displayScale, visible: o.imageVisible, make: o.makeImageCopy },
+      !!o.eagerImages,
     );
     if (o.images) this.images.setResolver(o.images);
     if (o.mathPreamble) this.math.set(o.mathPreamble);

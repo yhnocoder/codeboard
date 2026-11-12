@@ -44,7 +44,7 @@ import { pasteFar, recordClip } from "./transfer";
 import { applyFlow, captureFlow } from "./runs";
 import { prompts } from "./prompts";
 import { setSeal } from "./seals";
-import { allQuestions, exportFile, permalinks } from "./exports";
+import { allQuestions, exportFile, inlineFor, permalinks } from "./exports";
 import { exportFlow } from "./bundle";
 import { currentVersion, currentVersionLabel, srcKey, hasLocalFile } from "./source";
 import { makeSegment, workingPlace } from "./versions";
@@ -120,6 +120,7 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
     images: (_p, m) => imagesOf(cx, store, m.files),
     readImageUri: (_p, m) => readImageUri(cx, m.uri),
     exportPng: (_p, m) => exportPng(cx, m.dataUrl, m.name),
+    inlineRefs: (_p, m) => inlineFor(mediaDir, store, m.text),
     views: (_p, m) => viewsFor(cx, m.segs),
     checkVersions: (p) => p.refreshStale(),
     relocate: (p, m) => relocate(cx, p, m.card),

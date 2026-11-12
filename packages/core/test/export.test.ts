@@ -246,4 +246,15 @@ describe("export", () => {
     );
     expect(seen).toEqual(["media:fonts/A.woff2", "asset:x.png", "asset:missing.png"]);
   });
+
+  it("ends a reference at an escaped quote, as in an element's style attribute", async () => {
+    const html = await inlineSnapshot(
+      `<div style="background: url(&quot;cbres:asset/x.png&quot;)"></div>`,
+      async () => ({
+        mime: "image/png",
+        base64: "QQ==",
+      }),
+    );
+    expect(html).toBe(`<div style="background: url(&quot;data:image/png;base64,QQ==&quot;)"></div>`);
+  });
 });
