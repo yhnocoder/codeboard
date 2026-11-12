@@ -590,3 +590,26 @@ test("cardMenusLeaveMovedItems", async () => {
   );
   await h.close();
 });
+
+test("sectionBlankRightClickOpensSectionMenu", async () => {
+  const h = await open({ board: board(), light, w: 1600, h: 900, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  await away(h);
+  const f = (await pg.locator('.sect[data-sect="S"]').first().boundingBox())!;
+  await pg.mouse.click(f.x + f.width - 30, f.y + f.height - 30, { button: "right" });
+  await pg.locator(".ctx.open").first().waitFor();
+  await idle(h);
+  const inside = await menuLabels(pg);
+  const row = await pg.locator(".ctx.open .mrow").count();
+  check(
+    "sectionBlankRightClickOpensSectionMenu the Section's menu, with its row",
+    inside.join("|") === "Collapse|Copy Path|Remove Section" && row === 1,
+    { inside, row },
+  );
+  await closeMenu(h);
+  await pg.mouse.click(f.x - 30, f.y + f.height - 30, { button: "right" });
+  await pg.locator(".ctx.open").first().waitFor();
+  await idle(h);
+  const outside = await menuLabels(pg);
+  check("sectionBlankRightClickOpensSectionMenu outside it, the canvas menu", outside.includes("Paste"), outside);
+});
