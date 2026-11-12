@@ -1084,9 +1084,9 @@ math {
   font-style: normal;
   text-decoration: none;
 }
-/* The caret's heading level (editor/headings.ts), in the left padding (--md-gutter, the editor's left padding: centred in
-   it). The holder has no width and sits on the heading's first baseline; the chip is its only line, so the chip's text
-   shares that baseline */
+/* The caret's heading level (editor/headings.ts), in the left padding: it ends a small gap before the heading's first
+   letter, so it never covers text whatever the padding (a Note's is 14px). The holder has no width and sits on the
+   heading's first baseline; the chip is its only line, so the chip's text shares that baseline */
 .md-pm .md-hchip {
   display: inline-block;
   width: 0;
@@ -1097,10 +1097,10 @@ math {
 }
 .md-pm .md-hchip-b {
   position: relative;
-  left: calc(var(--md-gutter, 14px) / -2 - 6.5px);
+  left: -13.5px;
   display: inline-block;
   box-sizing: border-box;
-  width: 13px;
+  width: 12px;
   height: 13px;
   border-radius: 3.5px;
   font: 600 8.5px / 13px var(--sys);
