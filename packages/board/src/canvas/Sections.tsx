@@ -16,7 +16,6 @@ import {
   fitting,
   measureShut,
   setLabelEl,
-  fitFrame,
 } from "../state/sections";
 import { foldOf, foldAt, frameAt, toTitle, fadeAt, goneAt, shutLook, lerp } from "../state/fold";
 import { observeResize } from "../state/measure";
@@ -29,7 +28,7 @@ import { KIND_ICON } from "../cards/BoardBody";
 import { sectionLabelDown, sectionEdgeDown } from "../interact";
 import * as A from "../actions";
 import { SECTION_PEEK_OUT } from "../state/timing";
-import { kbd } from "../keymap";
+import { SectionTools, sectionToolsInMenu } from "./SectionTools";
 
 /** a resize handle on each side and each corner of an open frame (styles.css .sedge) */
 const FRAME_EDGES: FrameEdge[] = ["n", "s", "e", "w", "nw", "ne", "sw", "se"];
@@ -352,75 +351,13 @@ export function SectionLabels() {
 /**
  * The title's hover buttons: Fit Content, Color (which opens the five swatches to its right) and Lock. They sit just past the
  * title, out of its layout (absolute), so showing them never changes the title's size: nothing is measured again (Ink Wash's
- * gap in the brush stroke, a collapsed frame) and only their own opacity changes on hover (styles.css .sacts)
+ * gap in the brush stroke, a collapsed frame) and only their own opacity changes on hover (styles.css .sacts). While the
+ * Section's context menu shows the same row at its top, they stay hidden
  */
 function SectionActs(p: { s: Section; live: boolean; swatches: boolean; setSwatches: (v: boolean) => void }) {
-  // why Fit Content can't run ("" = it can); worked out only while the buttons can show, not on every drag of a member card
-  const why = createMemo(() =>
-    !p.live
-      ? ""
-      : p.s.collapsed
-        ? "expand the Section first"
-        : A.sectionLocked(p.s)
-          ? "the Section is locked"
-          : fitFrame(p.s)
-            ? ""
-            : "no cards inside",
-  );
   return (
-    <span class="sacts" data-export="strip">
-      <button
-        class="ib sfit"
-        aria-label="Fit Content"
-        aria-disabled={!!why()}
-        data-tip={why() ? `Fit Content · ${why()}` : "Fit Content"}
-        data-kbd={kbd("fitContent")}
-        data-nodrag
-        onClick={() => !why() && A.fitSections([p.s.id])}
-      >
-        <Icon name="fit" />
-      </button>
-      <button
-        class="ib scolor"
-        classList={{ on: p.swatches }}
-        aria-label="Color"
-        aria-expanded={p.swatches}
-        data-tip="Color"
-        data-nodrag
-        onClick={() => p.setSwatches(!p.swatches)}
-      >
-        <Icon name="swatch" />
-      </button>
-      <span class="swrow" classList={{ open: p.swatches }}>
-        <span>
-          <For each={A.SECTION_COLORS}>
-            {([v, label]) => (
-              <button
-                class={`sw c-${v}`}
-                classList={{ cur: (p.s.color ?? "none") === v }}
-                aria-label={label}
-                aria-pressed={(p.s.color ?? "none") === v}
-                tabIndex={p.swatches ? 0 : -1}
-                data-tip={label}
-                data-nodrag
-                onClick={() => A.setSectionColor([p.s.id], v === "none" ? undefined : v)}
-              />
-            )}
-          </For>
-        </span>
-      </span>
-      <button
-        class="ib slock"
-        classList={{ on: !!p.s.locked }}
-        aria-label={p.s.locked ? "Unlock" : "Lock"}
-        aria-pressed={!!p.s.locked}
-        data-tip={p.s.locked ? "Unlock" : "Lock"}
-        data-kbd={kbd("lock")}
-        data-nodrag
-        onClick={() => A.toggleLock([], [p.s.id])}
-      >
-        <Icon name="lock" />
-      </button>
+    <span class="sacts" classList={{ off: sectionToolsInMenu() === p.s.id }} data-export="strip">
+      <SectionTools s={p.s} live={p.live} swatches={p.swatches} setSwatches={p.setSwatches} />
     </span>
   );
 }

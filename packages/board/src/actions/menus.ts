@@ -1,3 +1,4 @@
+import { createComponent } from "solid-js";
 import {
   isCode,
   cardTitle,
@@ -21,6 +22,7 @@ import { hiddenByAncestor, fitFrame } from "../state/sections";
 import { toWorld } from "../state/camera";
 import { setEditing, setPaletteOpen } from "../state/ui";
 import { openMenu, type Item } from "../ui/Menu";
+import { SECTION_COLORS, SectionMenuRow } from "../canvas/SectionTools";
 import {
   K,
   fitAll,
@@ -917,13 +919,6 @@ const LINK_COLORS = [
   ["blue", "Blue"],
   ["green", "Green"],
 ] as const;
-export const SECTION_COLORS = [
-  ["none", "None"],
-  ["sand", "Warm Sand"],
-  ["blue", "Light Blue"],
-  ["green", "Light Green"],
-  ["pink", "Light Pink"],
-] as const;
 
 /** Color ▸ for these Sections: the one checked is the colour all of them have */
 const sectionColorItem = (ids: string[], label = "Color"): Item => ({
@@ -972,9 +967,12 @@ export function sectionMenu(id: string, x: number, y: number) {
   // several selected: what applies to all of them (with cards too: the menu for several cards, as on a card)
   if (sel.cards.length) return openMenu(multiItems(), x, y);
   if (sel.sections.length > 1) return openMenu(multiSectionItems([...sel.sections]), x, y);
-  // Rename is a double-click on the title; Fit Content, Color and Lock are the title's hover buttons (canvas/Sections.tsx)
+  // Rename is a double-click on the title; Fit Content, Color and Lock are the row at the top, the same as the title's hover
+  // buttons (canvas/SectionTools.tsx)
   openMenu(
     [
+      { label: "Section", row: () => createComponent(SectionMenuRow, { id }) },
+      null,
       { label: s.collapsed ? "Expand" : "Collapse", run: () => toggleSection(id) },
       ...(s.parent
         ? [

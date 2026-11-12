@@ -2944,7 +2944,7 @@ textarea {
     transition-duration: 0s;
   }
 }
-.ctx button {
+.ctx > button {
   display: flex;
   width: 100%;
   align-items: center;
@@ -2955,27 +2955,27 @@ textarea {
   color: var(--ink);
   text-align: left;
 }
-.ctx button .lb {
+.ctx > button .lb {
   flex: 1 0 auto;
   max-width: calc(100% - 22px);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ctx button .ck {
+.ctx > button .ck {
   width: 12px;
   flex: none;
   color: var(--accent);
   font-size: 11px;
 }
-.ctx button:not([disabled]):is(:hover, .kb, .subopen) {
+.ctx > button:not([disabled]):is(:hover, .kb, .subopen) {
   background: var(--accent);
   color: var(--accent-ink);
 }
-.ctx button:not([disabled]):is(:hover, .kb, .subopen) .ck {
+.ctx > button:not([disabled]):is(:hover, .kb, .subopen) .ck {
   color: var(--accent-ink);
 }
-.ctx button small {
+.ctx > button small {
   margin-left: auto;
   font: 10.5px var(--mono);
   color: var(--ink-3);
@@ -2985,22 +2985,22 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ctx button:not([disabled]):is(:hover, .kb, .subopen) small {
+.ctx > button:not([disabled]):is(:hover, .kb, .subopen) small {
   color: color-mix(in srgb, var(--accent-ink) 75%, transparent);
 }
-.ctx button.danger {
+.ctx > button.danger {
   color: #d6453d;
 }
-.ctx button.danger:not([disabled]):is(:hover, .kb, .subopen) {
+.ctx > button.danger:not([disabled]):is(:hover, .kb, .subopen) {
   background: #d6453d;
   color: #fff;
 }
-.ctx button[disabled] {
+.ctx > button[disabled] {
   color: var(--ink-3);
   flex-wrap: wrap;
   row-gap: 0;
 }
-.ctx button .why {
+.ctx > button .why {
   flex-basis: 100%;
   font: 11px / 1.35 var(--sys);
   color: var(--ink-3);
@@ -3020,6 +3020,16 @@ textarea {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* A row of buttons inside a menu (Item.row: a Section's Fit Content, Color, Lock), above the items. Not an item: no hover fill
+   of its own beyond the buttons' */
+.ctx > .mrow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 2px 1px 4px;
+  font: 400 12px / 1 var(--sys);
+  color: var(--ink-2);
 }
 .tip {
   position: absolute;
@@ -5906,15 +5916,18 @@ mark.wdiff {
 /* the header's hover buttons that toggle something (Wrap Lines) show it on: the accent colour; one that has nothing to do
    (a Note already as tall as its content, no headings to split at) stays visible but faint, and its tooltip says why */
 .chead > .hov .ib.on,
-.sacts > .ib.on {
+.sacts > .ib.on,
+.mrow > .ib.on {
   color: var(--accent);
 }
 .chead > .hov .ib[aria-disabled="true"],
-.sacts > .ib[aria-disabled="true"] {
+.sacts > .ib[aria-disabled="true"],
+.mrow > .ib[aria-disabled="true"] {
   opacity: 0.35;
 }
 .chead > .hov .ib[aria-disabled="true"]:hover,
-.sacts > .ib[aria-disabled="true"]:hover {
+.sacts > .ib[aria-disabled="true"]:hover,
+.mrow > .ib[aria-disabled="true"]:hover {
   background: none;
 }
 
@@ -5948,8 +5961,13 @@ mark.wdiff {
     opacity calc(var(--t) * 150ms) var(--out),
     visibility 0s;
 }
-/* Color's swatches open inline to its right: a one-row grid whose column eases 0fr → 1fr, laid out inside .sacts only */
-.sacts > .swrow {
+/* the Section's context menu shows the same row at its top meanwhile (canvas/SectionTools.tsx) */
+.slabel > .sacts.off {
+  opacity: 0;
+  visibility: hidden;
+}
+/* Color's swatches open inline to its right: a one-row grid whose column eases 0fr → 1fr, laid out inside their row only */
+.swrow {
   display: grid;
   grid-template-columns: minmax(0, 0fr);
   opacity: 0;
@@ -5957,11 +5975,11 @@ mark.wdiff {
     grid-template-columns calc(var(--t) * 160ms) var(--out),
     opacity calc(var(--t) * 160ms) var(--out);
 }
-.sacts > .swrow.open {
+.swrow.open {
   grid-template-columns: minmax(0, 1fr);
   opacity: 1;
 }
-.sacts > .swrow > span {
+.swrow > span {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -5970,7 +5988,7 @@ mark.wdiff {
   /* room for the current swatch's ring (3.5px) while it is scaled up on hover */
   padding: 6px;
 }
-.sacts .sw {
+.swrow .sw {
   flex: none;
   width: 16px;
   height: 16px;
@@ -5980,25 +5998,25 @@ mark.wdiff {
   background: var(--surface);
   transition: scale 0.1s;
 }
-.sacts .sw:hover {
+.swrow .sw:hover {
   scale: 1.12;
 }
-.sacts .sw.cur {
+.swrow .sw.cur {
   box-shadow:
     0 0 0 2px var(--surface),
     0 0 0 3.5px var(--ink-2);
 }
 /* the fills are faint washes (--s-*) over a frame; a swatch shows the same hue stronger so the five tell apart */
-.sacts .sw.c-sand {
+.swrow .sw.c-sand {
   background: rgb(from var(--s-sand) r g b / 0.6);
 }
-.sacts .sw.c-blue {
+.swrow .sw.c-blue {
   background: rgb(from var(--s-blue) r g b / 0.5);
 }
-.sacts .sw.c-green {
+.swrow .sw.c-green {
   background: rgb(from var(--s-green) r g b / 0.5);
 }
-.sacts .sw.c-pink {
+.swrow .sw.c-pink {
   background: rgb(from var(--s-pink) r g b / 0.5);
 }
 .cbody.wrap .src.ded .l {
@@ -8076,7 +8094,7 @@ mark.wdiff {
 }
 
 /* 图片的 AI 操作（actions/imageai.ts）：Convert to SVG 下面缩进的勾选项、等 DeepSeek 时卡上的那一层、Modify SVG 的输入框 */
-.ctx button.inset {
+.ctx > button.inset {
   padding-left: 22px;
   font-size: 12px;
   color: var(--ink-2);

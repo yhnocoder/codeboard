@@ -7,7 +7,11 @@
 //   sectionHoverFitColorLock  the pointer over a Section's title shows Fit Content, Color and Lock right after it; Color opens five
 //                             swatches inline (the current one ringed), a swatch recolours the Section, Color again folds them; Lock locks
 //                             (on); Fit Content fits the frame; showing them does not change the title's size
-//   hoverButtonsStayWithMenu  a card's and a Section's hover buttons stay while its context menu is open and the pointer is on the menu
+//   hoverButtonsStayWithMenu  a card's hover buttons stay while its context menu is open and the pointer is on the menu; a Section's
+//                             title hides its own while its menu shows the same row
+//   sectionMenuRow            a Section's menu starts with a row of Fit Content, Color and Lock (tooltips with shortcuts), then a
+//                             separator and the items; Color opens the five swatches inline (current ringed), a swatch recolours,
+//                             Color again folds them; Fit Content fits, Lock locks (on, Fit Content then disabled); the menu stays open
 //   cardMenusLeaveMovedItems  each kind's menu: Move to Section / New Section / Shelf, Turn into Board, Tilt, Lock, Rename (but on a Link List), Edit ▸ and
 //                             the items now on hover buttons or toolbars are gone; Tilt and Lock are in Arrange ▸; the code card's and
 //                             the Section's menus are exactly the decided ones
@@ -323,7 +327,6 @@ test("hoverButtonsStayWithMenu", async () => {
   for (const [what, open, scope, label] of [
     ["code card", `${card("r1")} .chead .ctitle`, card("r1"), "Wrap Lines"],
     ["Note", `${card("n1")} .chead .ctitle`, card("n1"), "Split by Headings"],
-    ["Section", '.slabel[data-sect="S"] .sname', '.slabel[data-sect="S"]', "Color"],
   ] as const) {
     await away(h);
     await pg.locator(open).click({ button: "right" });
@@ -339,6 +342,129 @@ test("hoverButtonsStayWithMenu", async () => {
     );
     await closeMenu(h);
   }
+  // the Section's menu has the title's row at its top: the title hides its own meanwhile, and shows it again after
+  const label = '.slabel[data-sect="S"]';
+  await away(h);
+  await pg.locator(`${label} .sname`).click({ button: "right" });
+  await pg.locator(".ctx.open").first().waitFor();
+  await onMenu();
+  const inTitle = await btn(pg, label, "Color"),
+    inMenu = await btn(pg, ".ctx.open", "Color");
+  check(
+    "hoverButtonsStayWithMenu Section: the row is in the menu, not on the title too",
+    !!inTitle && inTitle.o === 0 && !inTitle.hit && !!inMenu && inMenu.o === 1 && inMenu.hit,
+    { inTitle, inMenu },
+  );
+  await closeMenu(h);
+  await pg.hover(`${label} .sname`);
+  await idle(h);
+  const back = await btn(pg, label, "Color");
+  check(
+    "hoverButtonsStayWithMenu Section: the title's row is back once the menu closes",
+    back?.o === 1 && back.hit,
+    back,
+  );
+  await h.close();
+});
+
+test("sectionMenuRow", async () => {
+  const h = await open({ board: board(), light, w: 1600, h: 900, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  const menu = ".ctx.open";
+  await away(h);
+  await pg.locator('.slabel[data-sect="S"] .sname').click({ button: "right" });
+  await pg.locator(menu).first().waitFor();
+  await idle(h);
+  const layout = await pg
+    .locator(menu)
+    .evaluate((m) =>
+      [...m.children]
+        .filter((e) => !e.matches(".mpill"))
+        .map((e) =>
+          e.matches(".mrow")
+            ? `row:${[...e.querySelectorAll(":scope > .ib")].map((b) => b.getAttribute("aria-label")).join("/")}`
+            : e.matches("hr")
+              ? "—"
+              : (e.querySelector(".lb")?.textContent ?? e.tagName),
+        ),
+    );
+  check(
+    "sectionMenuRow the row first, a separator, then the items",
+    layout.join("|") === "row:Fit Content/Color/Lock|—|Collapse|Copy Path|—|Remove Section",
+    layout,
+  );
+  const fit = await btn(pg, menu, "Fit Content"),
+    color = await btn(pg, menu, "Color"),
+    lock = await btn(pg, menu, "Lock");
+  check(
+    "sectionMenuRow the buttons show, with the title's tooltips and shortcuts",
+    [fit, color, lock].every((b) => !!b && b.o === 1 && b.hit && b.w === 26) &&
+      fit?.tip === "Fit Content" &&
+      !!fit.kbd &&
+      color?.tip === "Color" &&
+      lock?.tip === "Lock" &&
+      !!lock.kbd,
+    { fit, color, lock },
+  );
+  const swatches = () =>
+    pg.locator(`${menu} .sw`).evaluateAll((es) =>
+      es.map((e) => {
+        const r = e.getBoundingClientRect(),
+          row = e.closest(".swrow")!.getBoundingClientRect();
+        const w = Math.max(0, Math.min(r.right, row.right) - Math.max(r.left, row.left));
+        return { label: e.getAttribute("aria-label"), w, cur: e.classList.contains("cur") };
+      }),
+    );
+  const isOpen = async () => (await pg.locator(menu).count()) === 1;
+  const shut = await swatches();
+  await pg.locator(`${menu} .ib[aria-label="Color"]`).click();
+  await idle(h);
+  const opened = await swatches();
+  check(
+    "sectionMenuRow Color opens the five swatches in the row, None ringed",
+    shut.every((s) => s.w < 1) &&
+      opened.length === 5 &&
+      opened.every((s) => s.w > 15.5) &&
+      opened.map((s) => s.label).join() === "None,Warm Sand,Light Blue,Light Green,Light Pink" &&
+      opened[0].cur &&
+      opened.filter((s) => s.cur).length === 1 &&
+      (await isOpen()),
+    { shut, opened },
+  );
+  await pg.locator(`${menu} .sw[aria-label="Light Green"]`).click();
+  await until(h, "the colour is saved", () => h.board().sections[0].color === "green");
+  await idle(h);
+  check(
+    "sectionMenuRow a swatch recolours the Section, is ringed, and the menu stays",
+    (await swatches()).find((s) => s.cur)?.label === "Light Green" &&
+      (await pg.locator('.sect[data-sect="S"]').evaluate((e) => e.classList.contains("c-green"))) &&
+      (await isOpen()),
+  );
+  await pg.locator(`${menu} .ib[aria-label="Color"]`).click();
+  await idle(h);
+  check("sectionMenuRow Color again folds the swatches", (await swatches()).every((s) => s.w < 1) && (await isOpen()));
+  const w0 = h.board().sections[0].w;
+  await pg.locator(`${menu} .ib[aria-label="Fit Content"]`).click();
+  await until(h, "Fit Content is saved", () => h.board().sections[0].w !== w0);
+  await idle(h);
+  check(
+    "sectionMenuRow Fit Content fits the frame and the menu stays",
+    h.board().sections[0].w !== w0 && (await isOpen()),
+    h.board().sections[0],
+  );
+  await pg.locator(`${menu} .ib[aria-label="Lock"]`).click();
+  await until(h, "the lock is saved", () => h.board().sections[0].locked);
+  await idle(h);
+  const locked = await btn(pg, menu, "Unlock"),
+    fit2 = await pg.locator(`${menu} .ib[aria-label="Fit Content"]`).getAttribute("aria-disabled");
+  check(
+    "sectionMenuRow Lock locks (on, Fit Content disabled) and the menu stays",
+    !!locked?.on && locked.tip === "Unlock" && fit2 === "true" && (await isOpen()),
+    { locked, fit2 },
+  );
+  await pg.locator(`${menu} .ib[aria-label="Unlock"]`).click();
+  await until(h, "the unlock is saved", () => !h.board().sections[0].locked);
+  check("sectionMenuRow Unlock unlocks, the menu still open", await isOpen());
   await h.close();
 });
 
