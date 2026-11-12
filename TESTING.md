@@ -82,6 +82,7 @@ E2E_FLOW=my-flow.cjs npm run e2e                          # 在真的 VS Code �
 # 流程会点白板的话别和 E2E_PART=2 一起用：part 2 最后一步 winzoom 缩放窗口再还原，VS Code 1.142 之后有时 webview 收不到点击；用 E2E_ONLY 挑不含 winzoom 的步骤
 E2E_WS=/path/to/repo E2E_FLOW=my-flow.cjs npm run e2e    # 同上，打开的是别的仓库的副本（git 仓库用 clone，别的文件夹直接拷贝）；drive.cjs 自己的步骤只认 nano-vllm
 # extensions/vscode/test/torch-routing.cjs 是手动的 E2E_FLOW（不进 CI）：在配好的 PyTorch checkout 上点 12 个调用，看路由到的 kernel；要原地打开那个 checkout，run.sh 做不到，见文件开头
+# extensions/vscode/test/zoom-perf.cjs 也是手动的 E2E_FLOW（不进 CI）：在真的 VS Code 里对一块卡很多的白板平移、缩放，量 webview 的帧、主线程任务和空白帧（CI 的 perf 没有 GPU，量不到这些）；Mac 上加 E2E_GPU=1 用显卡，参数和结果的位置见文件开头
 ```
 
 截图在 `test-out/harness/`，Playwright 自己的输出（失败时的上下文）在 `test-out/harness/results/`。
