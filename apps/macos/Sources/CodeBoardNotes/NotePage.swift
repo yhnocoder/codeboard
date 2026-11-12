@@ -5,17 +5,23 @@ import WebKit
 /// counts the view as visible, which by default means its window is on screen and not covered (and the app pumps the
 /// events that report this). With that check off (WebKit's `_windowOcclusionDetectionEnabled`, the one private switch
 /// for it) a window ordered in but far off screen is enough: nothing shows, nothing covers it, no Space or full-screen
-/// app hides it. Closing the window and letting go of the view ends the web process.
+/// app hides it. Closing the window and letting go of the view ends the web process. Notes stay mounted in the page once
+/// mounted (up to `cap`), so measuring a board is one layout pass and a picture at any scale is a snapshot.
 @MainActor
 final class NotePage {
   private let window: NSWindow
   private let view: WKWebView
   private let signal = ReadySignal()
-  /// What the page shows now (a Note's JSON and image folder, or an image), so a snapshot at another scale draws nothing
-  /// again
-  private var shown: (what: String, size: CGSize, complete: Bool)?
-  /// The CSS scale the shown Note is under (show puts it back to 1)
-  private var zoom = 1.0
+  /// The Notes (and images) mounted, by id, with their size at 100 %; the most recently used last
+  private var mounted: [String: CGSize] = [:]
+  private var used: [String] = []
+  /// The board theme the mounted Notes are drawn in: the page has one, and mounting a Note in another lets the rest go
+  private var look = ""
+  /// The size every mounted Note fits in: the window never gets smaller, as a code block draws only the lines in view
+  private var extent = CGSize.zero
+  /// What stays mounted: a board's Notes, at 3–5 MB of the web process each. Past it the least recently used go
+  /// (mounting one again costs what its first picture did)
+  static let cap = 48
 
   init(page: URL) throws {
     let html = page.appending(path: "page.html")
@@ -52,62 +58,103 @@ final class NotePage {
     window.close()
   }
 
-  /// Shows the Note (unless it is the one shown) and returns its size at 100 % and whether every image came in
-  func show(note: String, folder: URL) async throws -> (size: CGSize, complete: Bool) {
-    let images = folder.appending(path: "images", directoryHint: .notDirectory).absoluteString
-    return try await show(
-      "note \(images) \(note)", "return await note.show(JSON.parse(n), images)", ["n": note, "images": images])
-  }
-
-  /// An image file as an image card shows it, `width` pixels wide at the window's backing scale (`stamp`: the file's
-  /// size and time, so a file replaced under its name is shown again), and whether it came in
-  func picture(of file: URL, stamp: String, width: Int) async throws -> (NoteSnapshot, complete: Bool) {
-    let backing = window.backingScaleFactor
-    let r = try await show(
-      "image \(file.absoluteString) \(stamp) \(width)", "return await note.image(src, width)",
-      ["src": file.absoluteString, "width": Double(width) / backing])
-    return (try await snapshot(size: r.size, scale: backing), r.complete)
-  }
-
-  private func show(_ what: String, _ js: String, _ args: [String: Any]) async throws -> (
+  /// Mounts the Notes not mounted yet (`id`: what the Note draws, its images included), all in the board theme `look`,
+  /// in one layout pass, and returns every one's size at 100 % and whether every image came in
+  func mount(_ notes: [(id: String, json: String, images: URL)], look: String) async throws -> [String: (
     size: CGSize, complete: Bool
-  ) {
-    if let s = shown, s.what == what { return (s.size, s.complete) }
-    shown = nil
+  )] {
     await signal.ready()
-    var r = try await call(js, args)
-    zoom = 1
-    // the whole card in view at 100 %: code blocks draw only the lines in view and the rest would be missing; a few
-    // rounds, as the card grows with each one
-    for _ in 0..<4 where !view.frame.size.contains(r.size) {
-      window.setContentSize(view.frame.size.union(r.size))
-      r = try await call("return await note.measure()", [:])
+    if look != self.look {
+      self.look = look
+      mounted = [:]
+      used = []
     }
-    shown = (what, r.size, r.complete)
+    let list = notes.map { n -> [String: Any] in
+      ["id": n.id, "note": n.json, "images": n.images.absoluteString]
+    }
+    var r = try await call(
+      "return await note.mount(list.map((l) => ({ id: l.id, note: JSON.parse(l.note), images: l.images })))",
+      ["list": list])
+    // every card whole in view at 100 %: code blocks draw only the lines in view and the rest would be missing; a few
+    // rounds, as cards grow with each one
+    for _ in 0..<4 {
+      let need = r.values.reduce(extent) { $0.union($1.size) }
+      guard !view.frame.size.contains(need) else { break }
+      extent = need
+      window.setContentSize(view.frame.size.union(need))
+      r = try await call("return await note.measure(ids)", ["ids": Array(r.keys)])
+    }
+    for (id, v) in r { keep(id, v.size) }
     return r
   }
 
-  private func call(_ js: String, _ args: [String: Any]) async throws -> (size: CGSize, complete: Bool) {
+  /// An image file as an image card shows it, `width` pixels wide at the window's backing scale (`stamp`: the file's
+  /// size and time, so a file replaced under its name is shown again), and whether it came in. Mounted only for this
+  func picture(of file: URL, stamp: String, width: Int) async throws -> (NoteSnapshot, complete: Bool) {
+    await signal.ready()
+    let backing = window.backingScaleFactor
+    let id = "image \(file.absoluteString) \(stamp) \(width)"
+    let r = try await view.callAsyncJavaScript(
+      "return await note.image(id, src, width)",
+      arguments: [
+        "id": id, "src": file.absoluteString,
+        "width": Double(width) / backing,
+      ], contentWorld: .page)
+    defer { view.callAsyncJavaScript("note.drop([id])", arguments: ["id": id], in: nil, in: .page) }
+    let size = try Self.size(r)
+    window.setContentSize(view.frame.size.union(size.size))
+    let shot = try await snapshot(id, size: size.size, scale: backing)
+    return (shot.0, size.complete && shot.complete)
+  }
+
+  /// That Note's size at 100 % if it is mounted (it counts as used now)
+  func mountedSize(_ id: String) -> CGSize? {
+    guard let s = mounted[id] else { return nil }
+    touch(id)
+    return s
+  }
+
+  private func keep(_ id: String, _ size: CGSize) {
+    mounted[id] = size
+    touch(id)
+    guard used.count > Self.cap else { return }
+    let gone = Array(used.prefix(used.count - Self.cap))
+    used.removeFirst(gone.count)
+    for g in gone { mounted[g] = nil }
+    view.callAsyncJavaScript("note.drop(ids)", arguments: ["ids": gone], in: nil, in: .page)
+  }
+
+  private func touch(_ id: String) {
+    if let i = used.lastIndex(of: id) { used.remove(at: i) }
+    used.append(id)
+  }
+
+  private func call(_ js: String, _ args: [String: Any]) async throws -> [String: (size: CGSize, complete: Bool)] {
     let r = try await view.callAsyncJavaScript(js, arguments: args, contentWorld: .page)
+    guard let d = r as? [String: Any] else { throw NoteRenderError.page("the page answered \(String(describing: r))") }
+    return try d.mapValues(Self.size)
+  }
+
+  private static func size(_ r: Any?) throws -> (size: CGSize, complete: Bool) {
     guard let d = r as? [String: Any], let w = d["width"] as? Double, let h = d["height"] as? Double else {
       throw NoteRenderError.page("the page answered \(String(describing: r))")
     }
     return (CGSize(width: w, height: h), d["complete"] as? Bool ?? false)
   }
 
-  /// The shown Note as `scale` device pixels per CSS px, covering whole pixels from its top left corner. Drawn the way
-  /// the editor is shown at a zoom: the 100 % layout under a CSS transform, drawn at the window's backing scale.
-  func snapshot(size: CGSize, scale: Double) async throws -> NoteSnapshot {
+  /// A mounted Note as `scale` device pixels per CSS px, covering whole pixels from its top left corner, and whether
+  /// every image in it is in. Drawn the way the editor is shown at a zoom: the 100 % layout under a CSS transform, drawn
+  /// at the window's backing scale.
+  func snapshot(_ id: String, size: CGSize, scale: Double) async throws -> (NoteSnapshot, complete: Bool) {
     let backing = window.backingScaleFactor
     let px = (w: Int((size.width * scale).rounded(.up)), h: Int((size.height * scale).rounded(.up)))
     guard px.w > 0, px.h > 0 else { throw NoteRenderError.page("empty Note \(size)") }
     let points = CGSize(width: CGFloat(px.w) / backing, height: CGFloat(px.h) / backing)
-    // never smaller than the card at 100 %, which show made sure is all in view
-    window.setContentSize(points.union(size))
-    if scale / backing != zoom {
-      zoom = scale / backing
-      _ = try await view.callAsyncJavaScript("await note.scale(k)", arguments: ["k": zoom], contentWorld: .page)
-    }
+    // never smaller than every mounted card at 100 %, which mount made sure are all in view
+    window.setContentSize(points.union(extent).union(size))
+    let shown = try await view.callAsyncJavaScript(
+      "return await note.show(id, k)", arguments: ["id": id, "k": scale / backing], contentWorld: .page)
+    guard let complete = shown as? Bool else { throw NoteRenderError.page("\(id) is not mounted") }
     let c = WKSnapshotConfiguration()
     c.rect = CGRect(origin: .zero, size: points)
     c.snapshotWidth = NSNumber(value: Double(points.width))
@@ -117,7 +164,7 @@ final class NotePage {
       let surface = NoteSnapshot.makeSurface(width: px.w, height: px.h)
     else { throw NoteRenderError.page("no snapshot") }
     NoteSnapshot.draw(cg, into: surface)
-    return NoteSnapshot(surface: surface, size: size)
+    return (NoteSnapshot(surface: surface, size: size), complete)
   }
 }
 

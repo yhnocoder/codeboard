@@ -1,7 +1,9 @@
-// The Note page of the Mac app: one Note on a card laid out as the VS Code board lays it out (the board's own stylesheets,
-// in the board theme the canvas draws), drawn by the Markdown package's editor, so a snapshot of it is what editing it shows. Native drives it
-// through window.note and hears back on the "note" message handler.
-import { createMarkdown, type MdLayout, type RefBroken, type RefTarget } from "@yhnocoder/markdown";
+// The Note page of the Mac app: Notes on cards laid out as the VS Code board lays them out (the board's own
+// stylesheets, in the board theme the canvas draws), drawn by the Markdown package's editor, so a snapshot of one is
+// what editing it shows. Many Notes stay mounted at once, each in a slot of its own at the page's top left, all hidden
+// but the one being snapshotted: measuring a board is one layout pass, and a picture at another scale lays nothing out
+// again. Native drives it through window.note and hears back on the "note" message handler.
+import { createMarkdown, type Markdown, type MdLayout, type RefBroken, type RefTarget } from "@yhnocoder/markdown";
 import { type MdEditorHandle, mountEditor, warmUp } from "@yhnocoder/markdown/editor";
 import "@yhnocoder/markdown/katex.css";
 import "../../../../packages/board/src/fonts.css";
@@ -40,21 +42,32 @@ declare global {
 HTMLElement.prototype.focus = () => {};
 
 const refKey = (label: string, target?: string | null) => `${label}\u0000${target ?? ""}`;
-let refs = new Map<string, RefTarget | RefBroken>();
-// images load at once, not when scrolled to: the picture waits for every one of them
-const md = createMarkdown({
-  eagerImages: true,
-  refs: { resolve: (label, target) => refs.get(refKey(label, target)) ?? null },
-});
-warmUp(md);
+
+/** A Markdown instance for one Note: its images resolve against the Note's folder, and its [[refs]] as given. Its own,
+ *  not shared: an instance learns the size of each image it loads and lays the image out from that size the next time,
+ *  a fraction of a pixel off the first, and the first is what a Note on the board is drawn as */
+function mdFor(images: string, refs: Note["refs"]): Markdown {
+  const hits = new Map(refs.map((r) => [refKey(r.label, r.target), r.hit]));
+  // images load at once, not when scrolled to: the picture waits for every one of them
+  const md = createMarkdown({
+    eagerImages: true,
+    refs: { resolve: (label, target) => hits.get(refKey(label, target)) ?? null },
+  });
+  md.setAssetBase("images", images);
+  return md;
+}
+// the editor's code runs once on a sample before the first Note, so the first one mounts as fast as the rest
+warmUp(mdFor("", []));
+
+/** A mounted Note (or image): its slot is laid out as the page's top left corner, hidden unless it is the one shown */
+type Slot = { slot: HTMLDivElement; card: HTMLElement; editor?: MdEditorHandle };
 const root = document.getElementById("root") as HTMLDivElement;
-let editor: MdEditorHandle | undefined;
-let card: HTMLDivElement | undefined;
+const slots = new Map<string, Slot>();
+let shown: Slot | undefined;
 const frames = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
 const HAND_WEIGHT = { light: 300, regular: 400, bold: 700 };
 const FREE_TEXT_SIZE = [20, 40, 30, 24];
-
 /** The card and body classes Card.tsx and NoteBody.tsx give each style, with the variables they set on the card */
 function cardFor(n: Note): { card: HTMLDivElement; body: HTMLDivElement; markdown: boolean } {
   const c = document.createElement("div");
@@ -103,75 +116,126 @@ function cardFor(n: Note): { card: HTMLDivElement; body: HTMLDivElement; markdow
   return { card: c, body, markdown };
 }
 
-/** Resolves once everything that can still change the picture is in: fonts, and images loaded and decoded */
-async function settled(el: HTMLElement): Promise<boolean> {
+/** Resolves once everything that can still change the pictures is in: fonts, and images loaded and decoded; after two
+ *  frames unless `laidOut` (a Note shown again: it was laid out when mounted, and a snapshot waits for the screen
+ *  update anyway). Whether every image of each came in */
+async function settled(els: HTMLElement[], laidOut = false): Promise<boolean[]> {
   await document.fonts.ready;
   const loaded = await Promise.all(
-    [...el.querySelectorAll("img")].map((img) =>
-      img.decode().then(
-        () => true,
-        () => false,
-      ),
+    els.map((el) =>
+      Promise.all(
+        [...el.querySelectorAll("img")].map((img) =>
+          img.decode().then(
+            () => true,
+            () => false,
+          ),
+        ),
+      ).then((all) => all.every(Boolean)),
     ),
   );
   await document.fonts.ready;
-  await frames();
-  return loaded.every(Boolean);
+  if (!laidOut) await frames();
+  return loaded;
 }
 
-/** The card's size in CSS px, once everything is in, and whether every image came in */
-async function measure() {
-  if (!card) return null;
-  const complete = await settled(card);
-  const r = card.getBoundingClientRect();
-  return { width: r.width, height: r.height, complete };
+type Size = { width: number; height: number; complete: boolean };
+
+/** The cards' sizes in CSS px, once everything is in, and whether every image came in */
+async function measure(ids: string[]): Promise<Record<string, Size>> {
+  const there = ids.flatMap((id) => {
+    const s = slots.get(id);
+    return s ? [[id, s] as const] : [];
+  });
+  const complete = await settled(there.map(([, s]) => s.card));
+  const out: Record<string, Size> = {};
+  there.forEach(([id, s], i) => {
+    const r = s.card.getBoundingClientRect();
+    out[id] = { width: r.width, height: r.height, complete: complete[i] };
+  });
+  return out;
+}
+
+function newSlot(id: string, card: HTMLElement): Slot {
+  const slot = document.createElement("div");
+  slot.className = "slot";
+  slot.append(card);
+  root.append(slot);
+  const s: Slot = { slot, card };
+  slots.set(id, s);
+  return s;
+}
+
+function drop(id: string) {
+  const s = slots.get(id);
+  if (!s) return;
+  if (shown === s) shown = undefined;
+  s.editor?.destroy();
+  s.slot.remove();
+  slots.delete(id);
+}
+
+function setLook(look: string) {
+  const html = document.documentElement;
+  if (html.dataset.look === look) return;
+  // every mounted Note is drawn in the page's one look
+  for (const id of [...slots.keys()]) drop(id);
+  html.classList.remove(`look-${html.dataset.look}`);
+  html.dataset.look = look;
+  html.classList.add(`look-${look}`);
 }
 
 window.note = {
-  /** Shows the Note at 100 % and measures it */
-  async show(n: Note, images: string) {
-    editor?.destroy();
-    editor = undefined;
-    card?.remove();
-    md.setAssetBase("images", images);
-    refs = new Map(n.refs.map((r) => [refKey(r.label, r.target), r.hit]));
-    const html = document.documentElement;
-    if (html.dataset.look !== n.look) {
-      html.classList.remove(`look-${html.dataset.look}`);
-      html.dataset.look = n.look;
-      html.classList.add(`look-${n.look}`);
+  /** Mounts Notes at 100 % (each one not mounted yet, under its id) and measures them all */
+  async mount(list: { id: string; note: Note; images: string }[]) {
+    for (const { id, note: n, images } of list) {
+      if (slots.has(id)) continue;
+      setLook(n.look);
+      const made = cardFor(n);
+      const s = newSlot(id, made.card);
+      if (made.markdown)
+        s.editor = mountEditor(mdFor(images, n.refs), made.body, {
+          value: n.text,
+          layout: n.layout,
+          onDone: () => {},
+          scrollOwnBox: true,
+        });
+      else made.body.textContent = n.text;
     }
-    const made = cardFor(n);
-    card = made.card;
-    root.style.transform = "";
-    root.append(card);
-    if (made.markdown)
-      editor = mountEditor(md, made.body, { value: n.text, layout: n.layout, onDone: () => {}, scrollOwnBox: true });
-    else made.body.textContent = n.text;
-    return measure();
+    return measure(list.map((l) => l.id));
   },
   /** An image file as the board's image card shows it (Card.tsx, .imgb img): an <img> `width` px wide, as tall as its
    * proportions make it. An SVG in an <img> sees only itself: its own styles and variables, none of the page's */
-  async image(src: string, width: number) {
-    editor?.destroy();
-    editor = undefined;
-    card?.remove();
-    root.style.transform = "";
-    const img = document.createElement("img");
-    img.style.width = `${width}px`;
-    img.style.display = "block";
-    img.src = src;
-    card = document.createElement("div");
-    card.append(img);
-    root.append(card);
-    return measure();
+  async image(id: string, src: string, width: number) {
+    if (!slots.has(id)) {
+      const img = document.createElement("img");
+      img.style.width = `${width}px`;
+      img.style.display = "block";
+      img.src = src;
+      const card = document.createElement("div");
+      card.append(img);
+      newSlot(id, card);
+    }
+    return (await measure([id]))[id];
   },
-  /** Measures again after the view grew: code blocks draw only the lines in view, so the card can grow with it */
+  /** Measures again after the view grew: code blocks draw only the lines in view, so a card can grow with it */
   measure,
-  /** The Note at a zoom as the editor is shown at one: its 100 % layout under a CSS transform, so no line breaks move */
-  async scale(k: number) {
-    root.style.transform = k === 1 ? "" : `scale(${k})`;
-    await frames();
+  /** Shows that Note alone, at a zoom as the editor is shown at one: its 100 % layout under a CSS transform, so no line
+   * breaks move. Resolves once its images are decoded again (a hidden image's pixels may have been let go) */
+  async show(id: string, k: number) {
+    const s = slots.get(id);
+    if (!s) return null;
+    if (shown && shown !== s) {
+      shown.slot.classList.remove("shown");
+      shown.slot.style.transform = "";
+    }
+    shown = s;
+    s.slot.classList.add("shown");
+    s.slot.style.transform = k === 1 ? "" : `scale(${k})`;
+    return (await settled([s.card], true))[0];
+  },
+  /** Lets these go */
+  drop(ids: string[]) {
+    for (const id of ids) drop(id);
   },
 };
 window.webkit?.messageHandlers.note.postMessage("ready");

@@ -5,9 +5,10 @@ import IOSurface
 import Synchronization
 
 /// Note snapshots on disk, one file per key, the least recently used removed first once the folder holds more than
-/// `limit` bytes. A file is raw BGRA compressed with LZFSE (lossless; 1–3 ms to read, PNG is ten times slower), after a
-/// header with its pixel size and the Note's size at 100 %; a measured size alone is the header with no pixels. Reads
-/// and writes run on the caller's thread and may overlap.
+/// `limit` bytes. A file is raw BGRA compressed with LZ4 (lossless; a 35 MB picture in 6 ms and read back in 3, where
+/// LZFSE took 150 ms to write it at half the size, and PNG is slower still), after a header with its pixel size and the
+/// Note's size at 100 %; a measured size alone is the header with no pixels. Reads and writes run on the caller's thread
+/// and may overlap.
 final class SnapshotStore: Sendable {
   let folder: URL
   private let index: Mutex<CacheIndex?>
@@ -47,7 +48,7 @@ final class SnapshotStore: Sendable {
   }
 
   func writeSize(_ size: CGSize, as key: SnapshotKey) throws {
-    try put(Self.header(width: 0, height: 0, size: size), as: key)
+    try put(Self.header(width: 0, height: 0, row: 0, size: size), as: key)
   }
 
   private func put(_ data: Data, as key: SnapshotKey) throws {
@@ -80,33 +81,40 @@ final class SnapshotStore: Sendable {
 
   // MARK: the file format
 
-  private static let magic: UInt32 = 0x314E_4243  // "CBN1"
-  private static let headerSize = 28
+  private static let magic: UInt32 = 0x324E_4243  // "CBN2"; CBN1 files were LZFSE and read as misses
+  private static let headerSize = 32
 
+  /// The surface's memory as it is, row padding included, so that neither writing nor reading a picture copies its
+  /// pixels into a buffer of their size. What it is compressed into is mapped, not allocated: the allocator keeps a
+  /// freed block that large for reuse, in the footprint
   static func encode(_ snap: NoteSnapshot) -> Data? {
     let s = snap.surface
-    let w = s.width
-    let h = s.height
-    let row = w * 4
-    var raw = [UInt8](repeating: 0, count: row * h)
+    let count = s.bytesPerRow * s.height
+    // LZ4 grows what it cannot compress by at most a 255th, plus its headers; only the pages written take memory
+    let room = headerSize + count + count / 255 + 4096
+    guard let out = mmap(nil, room, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0),
+      out != UnsafeMutableRawPointer(bitPattern: -1)
+    else { return nil }
+    let bytes = out.assumingMemoryBound(to: UInt8.self)
+    header(width: s.width, height: s.height, row: s.bytesPerRow, size: snap.size).copyBytes(
+      to: bytes, count: headerSize)
     s.lock(options: .readOnly, seed: nil)
-    raw.withUnsafeMutableBytes { dst in
-      guard let base = dst.baseAddress else { return }
-      for y in 0..<h { (base + y * row).copyMemory(from: s.baseAddress + y * s.bytesPerRow, byteCount: row) }
-    }
+    let n = compression_encode_buffer(
+      bytes + headerSize, room - headerSize, s.baseAddress.assumingMemoryBound(to: UInt8.self), count, nil,
+      COMPRESSION_LZ4_RAW)
     s.unlock(options: .readOnly, seed: nil)
-    var out = header(width: w, height: h, size: snap.size)
-    // LZFSE of raw pixels never grows past the input by more than its block headers
-    var packed = [UInt8](repeating: 0, count: raw.count + 4096)
-    let n = compression_encode_buffer(&packed, packed.count, raw, raw.count, nil, COMPRESSION_LZFSE)
-    guard n > 0 else { return nil }
-    out.append(contentsOf: packed[..<n])
-    return out
+    guard n > 0 else {
+      munmap(out, room)
+      return nil
+    }
+    return Data(bytesNoCopy: out, count: headerSize + n, deallocator: .custom { p, _ in munmap(p, room) })
   }
 
-  private static func header(width w: Int, height h: Int, size: CGSize) -> Data {
-    var out = Data(capacity: headerSize + w * h)
-    for v in [magic, UInt32(w), UInt32(h)] { withUnsafeBytes(of: v.littleEndian) { out.append(contentsOf: $0) } }
+  private static func header(width w: Int, height h: Int, row: Int, size: CGSize) -> Data {
+    var out = Data(capacity: headerSize)
+    for v in [magic, UInt32(w), UInt32(h), UInt32(row)] {
+      withUnsafeBytes(of: v.littleEndian) { out.append(contentsOf: $0) }
+    }
     for v in [size.width, size.height] {
       withUnsafeBytes(of: Double(v).bitPattern.littleEndian) { out.append(contentsOf: $0) }
     }
@@ -116,7 +124,7 @@ final class SnapshotStore: Sendable {
   /// The Note's size at 100 % from a file's header (a snapshot's or a measured size's)
   static func size(_ data: Data) -> CGSize? {
     guard data.count >= headerSize, u32(data, 0) == magic else { return nil }
-    return CGSize(width: f64(data, 12), height: f64(data, 20))
+    return CGSize(width: f64(data, 16), height: f64(data, 24))
   }
 
   private static func u32(_ data: Data, _ at: Int) -> UInt32 {
@@ -131,25 +139,20 @@ final class SnapshotStore: Sendable {
 
   static func decode(_ data: Data) -> NoteSnapshot? {
     guard data.count > headerSize, let size = size(data) else { return nil }
-    let w = Int(u32(data, 4))
-    let h = Int(u32(data, 8))
-    guard w > 0, h > 0, let s = NoteSnapshot.makeSurface(width: w, height: h) else { return nil }
-    let row = w * 4
-    var raw = [UInt8](repeating: 0, count: row * h)
+    let (w, h, row) = (Int(u32(data, 4)), Int(u32(data, 8)), Int(u32(data, 12)))
+    // a surface laid out as the one written, or none (IOSurface would not take that row length here)
+    guard w > 0, h > 0, let s = NoteSnapshot.makeSurface(width: w, height: h, bytesPerRow: row), s.bytesPerRow == row
+    else { return nil }
+    s.lock(options: [], seed: nil)
     let n = data.withUnsafeBytes { src in
       guard let base = src.baseAddress else { return 0 }
       return compression_decode_buffer(
-        &raw, raw.count, base.advanced(by: headerSize).assumingMemoryBound(to: UInt8.self), data.count - headerSize,
-        nil,
-        COMPRESSION_LZFSE)
-    }
-    guard n == raw.count else { return nil }
-    s.lock(options: [], seed: nil)
-    raw.withUnsafeBytes { src in
-      guard let base = src.baseAddress else { return }
-      for y in 0..<h { (s.baseAddress + y * s.bytesPerRow).copyMemory(from: base + y * row, byteCount: row) }
+        s.baseAddress.assumingMemoryBound(to: UInt8.self), row * h,
+        base.advanced(by: headerSize).assumingMemoryBound(to: UInt8.self), data.count - headerSize, nil,
+        COMPRESSION_LZ4_RAW)
     }
     s.unlock(options: [], seed: nil)
+    guard n == row * h else { return nil }
     return NoteSnapshot(surface: s, size: size)
   }
 }

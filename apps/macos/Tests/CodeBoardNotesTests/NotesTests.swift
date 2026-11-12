@@ -231,6 +231,7 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     #expect(sizes[0].width == 320 && sizes[0].height > 200)
     #expect(r.webViewOpen)
 
+    await r.written()
     let fresh = NoteRenderer(cache: cache)
     let again = try await fresh.snapshot(
       of: Self.note, width: 320, height: nil, folder: folder, scale: 2, look: "warm-ink", priority: 0)
@@ -242,6 +243,57 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     let wash = try await r.snapshot(
       of: Self.note, width: 320, height: nil, folder: folder, scale: 2, look: "ink-wash", priority: 0)
     #expect(pixels(wash.surface) != atTwo)
+  }
+
+  /// Notes measured together stay mounted together, each drawn as if it were the only one: the same sizes and the same
+  /// pixels at every scale as a renderer that mounts it alone, also after the page switched looks and back. The other
+  /// Notes are what could leak into a picture: wider and taller ones, a Free Text, a box, one in a fixed height
+  @Test func notesMountedTogetherDrawAsAlone() async throws {
+    _ = NSApplication.shared
+    let cache = try tempFolder()
+    let alone = try tempFolder()
+    defer {
+      try? FileManager.default.removeItem(at: cache)
+      try? FileManager.default.removeItem(at: alone)
+    }
+    let code = (1...90).map { "x\($0) = step(\($0))" }.joined(separator: "\n")
+    let notes: [(Note, Double)] = [
+      (Self.note, 320),
+      (Note(text: "# Long\n\n```python\n\(code)\n```\n\nThe end.", style: .note), 420),
+      (Note(text: "A free text title", style: .freeText(level: 1, bold: false, fontSize: nil)), 50),
+      (Note(text: "Boxed **words** over two lines of a box", style: .box(fill: .yellow)), 160),
+      (Note(text: "- [x] done\n- [ ] open\n\n> quoted", style: .note), 240),
+    ]
+    let r = NoteRenderer(cache: cache)
+    let sizes = try await r.sizes(
+      of: notes.map { NoteRenderer.SizeRequest(note: $0.0, width: $0.1, folder: cache, look: "warm-ink") }, priority: 0)
+    // the long one is taller than the window the page starts with, the Free Text as wide as its text
+    #expect(sizes[1].map { $0.height > 1500 } == true)
+    #expect(sizes[2].map { $0.width > 50 } == true)
+    for (i, (note, width)) in notes.enumerated() {
+      let one = NoteRenderer(cache: alone.appending(path: "\(i)"))
+      #expect(
+        try await one.sizes(of: [.init(note: note, width: width, folder: cache, look: "warm-ink")], priority: 0) == [
+          sizes[i]
+        ])
+      for scale in [0.5, 1, 2, 4] {
+        let together = try await r.snapshot(
+          of: note, width: width, height: nil, folder: cache, scale: scale, look: "warm-ink", priority: 0)
+        let single = try await one.snapshot(
+          of: note, width: width, height: nil, folder: cache, scale: scale, look: "warm-ink", priority: 0)
+        #expect(together.size == sizes[i])
+        #expect(pixels(together.surface) == pixels(single.surface), "Note \(i) at \(scale)")
+      }
+    }
+    // a fixed height and another look in between: the page lets the warm-ink Notes go and mounts them again
+    let fixed = try await r.snapshot(
+      of: Self.note, width: 300, height: 120, folder: cache, scale: 2, look: "ink-wash", priority: 0)
+    #expect(fixed.size == CGSize(width: 300, height: 120))
+    let first = try await NoteRenderer(cache: alone.appending(path: "0")).snapshot(
+      of: Self.note, width: 320, height: nil, folder: cache, scale: 1, look: "warm-ink", priority: 0)
+    let back = try await r.snapshot(
+      of: Self.note, width: 320, height: nil, folder: alone, scale: 1, look: "warm-ink", priority: 0)
+    #expect(pixels(back.surface) == pixels(first.surface))
   }
 
   /// A code block draws only the lines in view: the whole card must be in view, or its end is missing
@@ -350,6 +402,7 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     #expect(text.count > 200 && text.allSatisfy { $0[0] > 80 }, "text in #6a4c93")
 
     // a second renderer on the same cache reads it from disk, and another width draws again
+    await r.written()
     let fresh = NoteRenderer(cache: cache)
     let again = try await fresh.picture(of: file, width: 400, priority: 0)
     #expect(!fresh.webViewOpen && pixels(again.surface) == px)

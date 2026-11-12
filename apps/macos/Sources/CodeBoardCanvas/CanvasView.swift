@@ -157,24 +157,18 @@ public final class CanvasView: NSView {
   }
 
   /// The sizes the Note renderer gives the Notes without a stored height: from what it kept, else measured in the web
-  /// view one after another. A Note it could not measure is left out (`Scene` gives it a height of its own)
+  /// view all together. A Note it could not measure is left out (`Scene` gives it a height of its own)
   private nonisolated static func measure(_ ms: [Scene.Measure], look: String, notes: NoteRenderer) async -> [CardID:
     CGSize]
   {
-    await withTaskGroup(of: (CardID, CGSize?).self) { g in
-      for m in ms {
-        // before any picture: the board waits for these
-        g.addTask {
-          (
-            m.card,
-            try? await notes.size(of: m.note, width: m.width, folder: m.folder, look: look, refs: m.refs, priority: 1)
-          )
-        }
-      }
-      var out: [CardID: CGSize] = [:]
-      for await (id, s) in g { out[id] = s }
-      return out
+    let requests = ms.map {
+      NoteRenderer.SizeRequest(note: $0.note, width: $0.width, folder: $0.folder, look: look, refs: $0.refs)
     }
+    // before any picture: the board waits for these
+    let sizes = (try? await notes.sizes(of: requests, priority: 1)) ?? []
+    var out: [CardID: CGSize] = [:]
+    for (m, s) in zip(ms, sizes) { out[m.card] = s }
+    return out
   }
 
   // MARK: Layers

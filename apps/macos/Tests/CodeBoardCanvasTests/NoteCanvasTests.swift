@@ -100,6 +100,7 @@ import Testing
         scale: Levels.noteOverview(fit, backing: backing, size: it.bitmapSize), look: Theme.warmInk.id.rawValue,
         priority: 0)
     }
+    await renderer.written()
     let again = CanvasView(frame: frame, noteCache: cache)
     try await again.show(at, in: vault, theme: .warmInk)
     #expect(again.boardBounds == bounds)

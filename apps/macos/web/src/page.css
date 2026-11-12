@@ -1,4 +1,4 @@
-/* Only the Note's content is drawn here: the canvas draws the card's paper, edge, shadow and header around it, so the
+/* Only the Notes' content is drawn here: the canvas draws the card's paper, edge, shadow and header around it, so the
    picture can fade in over the paper the card already shows */
 html,
 body {
@@ -7,11 +7,18 @@ body {
 :root {
   --t: 0;
 }
-#root {
+/* Every slot is laid out as the page's top left corner, as wide as its card wants (a Free Text as its text, whatever
+   the window's width); only the one shown is drawn */
+#root > .slot {
   position: absolute;
   left: 0;
   top: 0;
+  width: max-content;
   transform-origin: 0 0;
+  visibility: hidden;
+}
+#root > .slot.shown {
+  visibility: visible;
 }
 #root .card {
   background: transparent;

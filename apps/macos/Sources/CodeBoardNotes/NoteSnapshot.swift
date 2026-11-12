@@ -8,10 +8,13 @@ public struct NoteSnapshot: Sendable {
   public let surface: IOSurface
   public let size: CGSize
 
-  static func makeSurface(width: Int, height: Int) -> IOSurface? {
-    let s = IOSurface(properties: [
+  /// `bytesPerRow`: a row length IOSurface gave a surface of this width before (nil: its own choice)
+  static func makeSurface(width: Int, height: Int, bytesPerRow: Int? = nil) -> IOSurface? {
+    var p: [IOSurfacePropertyKey: any Sendable] = [
       .width: width, .height: height, .bytesPerElement: 4, .pixelFormat: 0x4247_5241,  // 'BGRA'
-    ])
+    ]
+    if let bytesPerRow { p[.bytesPerRow] = bytesPerRow }
+    let s = IOSurface(properties: p)
     if let s, let space = CGColorSpace(name: CGColorSpace.sRGB)?.copyPropertyList() {
       IOSurfaceSetValue(s as IOSurfaceRef, kIOSurfaceColorSpace, space)
     }
