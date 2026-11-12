@@ -1,5 +1,6 @@
 // The report of a scheduled regular run (.github/workflows/regular.yml, every 6 hours) for the results issue (#19):
-//   failures      harness (harness-<k>/result.json), e2e (e2e-<k>/e2e.log), perf and Storybook (storybook/result.json); kept in the hidden marker
+//   failures      harness (harness-<k>/result.json), e2e (e2e-<k>/e2e.log), perf, Storybook (storybook/result.json) and the Markdown
+//                 demo (markdown-demo/markdown-demo.log, its Playwright output); kept in the hidden marker
 //                 <!-- regular-failures: [...] --> that the next run's "Passing again" diff and the PR carry-over read
 // Flakes, alone-passes and a repeat error go into their own marker, <!-- regular-flaky: {...} -->.
 // Area groups (tiers.json) over their time limits, timed by this run, go into <!-- regular-groups: [...] -->: npm run check runs
@@ -71,6 +72,15 @@ export function regularReport({ dir, jobs, comments, run, sha, tiers, streaks = 
       `storybook: ${jobs.storybook?.result === "success" ? "no results" : "failed before any story ran (see the run log)"}`,
     );
   else for (const x of sb.failures) fails.push(`storybook ${x.id}: ${first({ error: x.error })}`);
+
+  // Playwright's list reporter ends with "N passed" / "N failed"; no log means the step never ran (harness shard 1 stopped first)
+  const demo = read(`${dir}/markdown-demo/markdown-demo.log`).replace(/\u001b\[[0-9;]*m/g, "");
+  if (!demo) fails.push("markdown demo: did not run (see the run log)");
+  else if (/^\s*\d+ failed\b/m.test(demo) || !/^\s*\d+ passed\b/m.test(demo)) {
+    const lines = demo.split("\n");
+    const why = lines.find((l) => /^\s*\w*Error\b/.test(l)) ?? lines.find((l) => /^\s*✘/.test(l));
+    fails.push(`markdown demo: ${why?.trim().slice(0, 160) || "failed (see the run log)"}`);
+  }
 
   // The flake repeat. A scenario failing in the full run is a failure above, not a flake.
   const rep = json(`${dir}/repeat/repeat.json`);

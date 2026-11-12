@@ -22,6 +22,7 @@ import { Storage } from "./storage/boards";
 import { pasteClip, type CardClip, type Pasted } from "./storage/clip";
 import type { StateStore } from "./env";
 import { nodeFs } from "./storage/nodefs";
+import { isAssetName } from "./storage/names";
 import { srcKey } from "./source";
 import { exists, posix } from "./ws";
 import type { HostContext } from "./context";
@@ -264,13 +265,11 @@ async function readShared(files: Files, id: string): Promise<SharedCard | "bad" 
   }
 }
 
-const FILE = /^[\w-][\w.-]*$/;
-
 /** 白板（或几张卡）用到的 assets/ 里的文件：图片卡、网页卡和链接列表的预览图和图标，Markdown 里的 assets/xxx */
 function assetsOf(b: Pick<Board, "cards">): string[] {
   const out = new Set<string>();
   const add = (n?: string) => {
-    if (n && FILE.test(n)) out.add(n);
+    if (n && isAssetName(n)) out.add(n);
   };
   const meta = (m?: WebMeta) => {
     add(m?.image);
@@ -288,8 +287,8 @@ function assetsOf(b: Pick<Board, "cards">): string[] {
 /** 白板（或几张卡）引用的运行记录（Generated 卡、observed 的 Call） */
 function runsOf(b: Pick<Board, "cards" | "links">): Set<string> {
   const out = new Set<string>();
-  for (const c of allCodeCards(b)) if (c.gen?.run && FILE.test(c.gen.run)) out.add(c.gen.run);
-  for (const l of b.links) if (l.call?.ev?.run && FILE.test(l.call.ev.run)) out.add(l.call.ev.run);
+  for (const c of allCodeCards(b)) if (c.gen?.run && isAssetName(c.gen.run)) out.add(c.gen.run);
+  for (const l of b.links) if (l.call?.ev?.run && isAssetName(l.call.ev.run)) out.add(l.call.ev.run);
   return out;
 }
 

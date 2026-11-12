@@ -51,7 +51,7 @@ import {
 import { dirName, extName, type Fs } from "./fs";
 import { SharedLibrary } from "./library";
 import { itemsChanged, merged, rebuild, withPending } from "./merge";
-import { groupName, RESERVED, SAFE_ID } from "./names";
+import { groupName, isAssetName, RESERVED, SAFE_ID } from "./names";
 import { WriteQueue } from "./queue";
 import { lastTrashed, trashDir, trashName } from "./trash";
 
@@ -1040,7 +1040,7 @@ export class Storage {
    * 写到一半断掉不会留下一个名字对、内容不全的文件
    */
   async putAsset(file: string, buf: Uint8Array): Promise<void> {
-    if (!/^[\w.-]+$/.test(file) || file.startsWith(".")) throw new Error(`Bad asset name ${file}`);
+    if (!isAssetName(file)) throw new Error(`Bad asset name ${file}`);
     const abs = this.fs.join(this.assetsDir(), file);
     if (
       await this.fs.stat(abs).then(

@@ -30,10 +30,16 @@ jobs:
         run: node tools/test/harness.mjs --coverage --shard=${{ matrix.shard }}/2 --json=test-out/harness/result.json
       - name: Markdown demo
         if: ${{ !cancelled() && matrix.shard == 1 }}
-        run: npm test -w @codeboard/markdown-demo
+        # bash (pipefail) keeps the step red when the test fails; the log for the report goes outside test-out/markdown-demo,
+        # which Playwright empties when it starts
+        shell: bash
+        run: mkdir -p test-out && npm test -w @codeboard/markdown-demo 2>&1 | tee test-out/markdown-demo.log
       - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with: { name: "harness-${{ matrix.shard }}", path: test-out/harness/result.json, retention-days: 14, if-no-files-found: ignore }
+      - uses: actions/upload-artifact@v6
+        if: ${{ !cancelled() && matrix.shard == 1 }}
+        with: { name: markdown-demo, path: test-out/markdown-demo.log, retention-days: 14, if-no-files-found: ignore }
 
   e2e:
     runs-on: ubuntu-24.04
