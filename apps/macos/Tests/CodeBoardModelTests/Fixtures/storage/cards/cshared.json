@@ -1,0 +1,11 @@
+{
+ "version": 13,
+ "card": {
+  "id": "cshared",
+  "kind": "note",
+  "look": "note",
+  "md": "Shared: ![](assets/5f1a2b3c4d5e6f70-1x1.png)",
+  "tilt": true
+ },
+ "sidenotes": [{ "id": "n9", "kind": "text", "md": "travels", "at": { "card": "cshared" } }]
+}

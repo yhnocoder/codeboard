@@ -1,0 +1,156 @@
+{
+ "version": 13,
+ "id": "bflow1",
+ "name": "Engine step",
+ "cards": [
+  {
+   "id": "cstep",
+   "kind": "code",
+   "title": "One engine step",
+   "desc": "Runs the scheduler, then the model. ![diagram](assets/9e8d7c6b5a493827-1x1.png)",
+   "procs": [{ "text": "rank 0" }, { "text": "stream 1", "light": true }],
+   "segments": [
+    {
+     "id": "sstep",
+     "src": { "kind": "repo", "repo": "" },
+     "path": "nanovllm/engine/llm_engine.py",
+     "lang": "python",
+     "start": 49,
+     "end": 52,
+     "text": [
+      "    def step(self):",
+      "        seqs, is_prefill = self.scheduler.schedule()",
+      "        token_ids = self.model_runner.call(\"run\", seqs, is_prefill)",
+      "        return token_ids"
+     ],
+     "version": { "kind": "git", "commit": "bb823b3e06983d71485a8e1f23715ebd87d98ef8" },
+     "symbol": { "qual": "LLMEngine.step", "kind": "function" },
+     "scope": "LLMEngine",
+     "hidden": [[52, 52]],
+     "hl": [[50, 51]],
+     "keep": "bb823b3",
+     "annots": [{ "line": 50, "from": 8, "to": 12, "text": "a batch", "color": "orange" }, { "line": 51, "from": 0, "to": 4, "text": "rpc", "below": true }]
+    }
+   ],
+   "hide": { "comments": true },
+   "wrap": true
+  },
+  {
+   "id": "cgh",
+   "kind": "code",
+   "bg": false,
+   "segments": [
+    {
+     "id": "sgh",
+     "src": { "kind": "github", "owner": "GeeeekExplorer", "name": "nano-vllm", "ref": "main" },
+     "path": "nanovllm/engine/scheduler.py",
+     "lang": "python",
+     "start": 1,
+     "end": 1,
+     "text": ["from collections import deque"],
+     "version": { "kind": "git", "commit": "0123456789abcdef0123456789abcdef01234567" }
+    },
+    {
+     "id": "spkg",
+     "src": { "kind": "external", "root": "/usr/lib/python3/site-packages" },
+     "path": "torch/nn/functional.py",
+     "lang": "python",
+     "start": 10,
+     "end": 11,
+     "text": ["def relu(x):", "    return x"],
+     "version": { "kind": "pkg", "name": "torch", "version": "2.9.0" }
+    },
+    {
+     "id": "shash",
+     "src": { "kind": "repo", "repo": "third_party/kernels" },
+     "path": "notes.txt",
+     "lang": "plaintext",
+     "start": 3,
+     "end": 3,
+     "text": ["untracked"],
+     "version": { "kind": "hash", "hash": "4f2a" }
+    }
+   ]
+  },
+  {
+   "id": "cfree",
+   "kind": "code",
+   "segments": [
+    {
+     "id": "sfree",
+     "src": { "kind": "free", "langPicked": true },
+     "path": "",
+     "lang": "cuda-cpp",
+     "start": 1,
+     "end": 2,
+     "text": ["__global__ void k() {", "}"],
+     "version": { "kind": "none" }
+    }
+   ],
+   "variants": [{ "id": "up", "name": "upstream", "from": { "kind": "upstream" } }]
+  },
+  {
+   "id": "cnote",
+   "kind": "note",
+   "look": "note",
+   "md": "# Prefill\nThe first pass.\n\n![shot](assets/5f1a2b3c4d5e6f70-1x1.png){width=50%}\n\nNot an asset: myassets/x.png",
+   "mdLayout": { "tables": [null, { "cols": [120, null] }], "wrap": [0] }
+  },
+  { "id": "ctext", "kind": "note", "look": "text", "md": "Decode", "size": "title", "bold": true, "tilt": true },
+  { "id": "cbox", "kind": "note", "look": "box", "md": "loop", "fill": "blue", "bold": true },
+  { "id": "cmark", "kind": "note", "look": "mark", "md": "hot path", "hand": "green", "weight": "bold", "fs": 24 },
+  { "id": "cfreetext", "kind": "note", "look": "freetext", "md": "assets/ stays as typed", "level": 2 },
+  { "id": "cmsg", "kind": "note", "look": "note", "md": "Req", "msg": { "where": "io_struct.py" } },
+  { "id": "cimg", "kind": "image", "src": "0a1b2c3d4e5f6071-1x1.png", "alt": "A plot", "bg": true, "frame": 2, "loop": true },
+  { "id": "cmissing", "kind": "image", "src": "ffffffffffffffff-1x1.png" },
+  { "id": "cweb", "kind": "web", "url": "https://example.com", "meta": { "title": "Example" } },
+  { "id": "cshared", "kind": "shared" }
+ ],
+ "place": {
+  "cstep": { "x": 80, "y": 80, "w": 640, "section": "sec-outer", "locked": true, "mh": 300 },
+  "cgh": { "x": 800, "y": 80, "w": 500, "h": 200, "collapsed": true },
+  "cfree": { "x": 80, "y": 500, "w": 400 },
+  "cnote": { "x": 800, "y": 400, "w": 360, "section": "sec-inner" },
+  "ctext": { "x": 80, "y": 20, "w": 300 },
+  "cbox": { "x": 400, "y": 20, "w": 120 },
+  "cmark": { "x": 520, "y": 20, "w": 160 },
+  "cfreetext": { "x": 700, "y": 20, "w": 300 },
+  "cmsg": { "x": 1000, "y": 20, "w": 120 },
+  "cimg": { "x": 80, "y": 700, "w": 200.5 },
+  "cmissing": { "x": 300, "y": 700, "w": 100 },
+  "cweb": { "x": 500, "y": 700, "w": 300 },
+  "cshared": { "x": 900, "y": 700, "w": 300, "summary": { "text": "a note", "at": 1, "sig": "x" } }
+ },
+ "links": [
+  {
+   "id": "lcall",
+   "from": { "card": "cstep", "seg": "sstep", "line": 50 },
+   "to": { "card": "cgh" },
+   "call": { "name": "schedule", "col": 42 }
+  },
+  {
+   "id": "lstyled",
+   "from": { "card": "cnote", "block": { "i": 1, "h": "1x2y3z" } },
+   "to": { "card": "cimg" },
+   "label": "see",
+   "at": 0.25,
+   "style": { "dash": true, "width": 3, "head": { "start": true, "end": false }, "color": "red" },
+   "sides": { "from": "right", "to": "left" },
+   "lost": { "to": true }
+  },
+  { "id": "lweb", "from": { "card": "cnote" }, "to": { "card": "cweb" } },
+  { "id": "lshared", "from": { "card": "cstep" }, "to": { "card": "cshared" } }
+ ],
+ "sections": [
+  { "id": "sec-outer", "title": "Step", "x": 40, "y": 40, "w": 1400, "h": 900, "color": "blue", "desc": "Outer", "summary": { "text": "s", "at": 1, "sig": "x" } },
+  { "id": "sec-inner", "title": "Prefill", "x": 780, "y": 380, "w": 400, "h": 300, "parent": "sec-outer", "collapsed": true, "locked": true }
+ ],
+ "sidenotes": [
+  { "id": "n1", "kind": "text", "md": "why", "at": { "card": "cstep", "seg": "sstep", "lines": [50, 51] } },
+  { "id": "n2", "kind": "text", "md": "only here", "at": { "card": "cshared" }, "boardOnly": true }
+ ],
+ "stickers": [{ "id": "k1", "icon": { "pack": "builtin", "name": "question" }, "at": { "kind": "canvas", "x": 1, "y": 2 } }],
+ "hideNumbers": true,
+ "born": { "cstep": 0 },
+ "seq": 1
+}
