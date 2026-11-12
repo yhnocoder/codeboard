@@ -25,7 +25,7 @@ let package = Package(
       cSettings: [.disableWarning("shorten-64-to-32")]
     ),
     .target(name: "CodeBoardNotes", dependencies: ["CodeBoardModel"]),
-    .target(name: "CodeBoardCanvas", dependencies: ["CodeBoardModel", "CodeBoardSyntax"]),
+    .target(name: "CodeBoardCanvas", dependencies: ["CodeBoardModel", "CodeBoardSyntax", "CodeBoardNotes"]),
     .target(name: "CodeBoardShell", dependencies: ["CodeBoardModel", "CodeBoardCanvas"]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
     .executableTarget(name: "CanvasBench", dependencies: ["CodeBoardCanvas"]),

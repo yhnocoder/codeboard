@@ -38,8 +38,38 @@ struct Scene: Sendable {
   /// The tilt of a tilted card, as the board's (counter-clockwise)
   static let tilt = -1.2 * CGFloat.pi / 180
 
-  /// Off the main thread: code is highlighted here, once, and kept with its item for every redraw
-  init(_ board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter) {
+  /// A Note whose size only the Note renderer knows: one without a stored height
+  struct Measure: Sendable {
+    var card: CardID
+    var note: Note
+    var width: Double
+    /// Where its images are: the board package or the vault's shared folder
+    var folder: URL
+  }
+
+  /// The Notes the renderer must measure before the scene can be made
+  static func measures(_ board: Board, package: URL, vault: Vault) -> [Measure] {
+    board.cards.compactMap { c in
+      guard c.height == nil, let (content, folder) = content(of: c, package: package, vault: vault),
+        case .note(let n) = content.body
+      else { return nil }
+      return Measure(card: c.id, note: n, width: c.width, folder: folder)
+    }
+  }
+
+  /// A card's content and the folder its images are in; nil for a shared card whose file could not be read
+  private static func content(of c: Card, package: URL, vault: Vault) -> (CardContent, URL)? {
+    switch c.content {
+    case .own(let own): (own, package)
+    case .shared: (try? vault.sharedCard(c.id)).map { ($0.content, vault.sharedFolderURL) }
+    }
+  }
+
+  /// Off the main thread: code is highlighted here, once, and kept with its item for every redraw. `sizes`: what the
+  /// Note renderer measured of each Note in `measures`
+  init(
+    _ board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter, sizes: [CardID: CGSize] = [:]
+  ) {
     for s in board.sections {
       let r = CGRect(x: s.x, y: s.y, width: s.width, height: s.height)
       frames.append(Frame(rect: r, fill: s.color.flatMap { t.sectionColors[$0] } ?? t.sectionFill))
@@ -55,23 +85,14 @@ struct Scene: Sendable {
     }
     var placed: [CardID: Placed] = [:]
     for c in board.cards {
-      let content: CardContent
-      let images: URL
-      switch c.content {
-      case .own(let own):
-        content = own
-        images = package.appending(path: Vault.imagesFolder)
-      case .shared:
-        guard let s = try? vault.sharedCard(c.id) else {
-          missing.append(c.id)
-          continue
-        }
-        content = s.content
-        images = vault.sharedFolderURL.appending(path: Vault.imagesFolder)
+      guard let (content, folder) = Scene.content(of: c, package: package, vault: vault) else {
+        missing.append(c.id)
+        continue
       }
       let tilt = c.tilted ? Scene.tilt : 0
-      let (drawing, height, code) = Scene.card(c, content, images: images, theme: t, highlighter: highlighter)
-      let r = CGRect(x: c.x, y: c.y, width: c.width, height: height)
+      let (drawing, size, code) = Scene.card(
+        c, content, folder: folder, measured: sizes[c.id], theme: t, highlighter: highlighter)
+      let r = CGRect(origin: CGPoint(x: c.x, y: c.y), size: size)
       placed[c.id] = Placed(rect: r, code: code, tilt: tilt)
       items.append(Item(rect: r, drawing: drawing, tilt: tilt))
       bounds = bounds.union(r)
@@ -141,10 +162,11 @@ struct Scene: Sendable {
   }
 
   private static func card(
-    _ c: Card, _ content: CardContent, images: URL, theme t: Theme, highlighter: Highlighter
+    _ c: Card, _ content: CardContent, folder: URL, measured: CGSize?, theme t: Theme, highlighter: Highlighter
   ) -> (
-    Drawing, CGFloat, (layout: CodeLayout, top: CGFloat, segments: [SegmentID])?
+    Drawing, CGSize, (layout: CodeLayout, top: CGFloat, segments: [SegmentID])?
   ) {
+    let images = folder.appending(path: Vault.imagesFolder)
     switch content.body {
     case .code(let code):
       let tokens = code.segments.map { highlighter.tokens(lines: $0.lines, language: $0.language) }
@@ -156,11 +178,13 @@ struct Scene: Sendable {
       let body = c.height ?? min(layout.height, t.metrics.maxAutoHeight)
       let d = Drawing.Code(
         title: title, path: path == title ? nil : path, layout: layout, framed: code.framed)
-      return (.code(d), top + body, (layout, top, code.segments.map(\.id)))
+      return (.code(d), CGSize(width: c.width, height: top + body), (layout, top, code.segments.map(\.id)))
     case .note(let n):
       let title = content.title ?? firstLine(n.text)
-      let h = c.height ?? noteHeight(n, width: c.width, images: images, theme: t)
-      return (.note(.init(title: title, style: n.style)), h, nil)
+      // a Free Text is as wide as its text; a Note the renderer could not measure is shown as paper of an arbitrary height
+      var size = CGSize(width: c.width, height: c.height ?? measured?.height ?? c.width * 0.6)
+      if case .freeText = n.style, c.height == nil, let m = measured { size.width = m.width }
+      return (.note(.init(title: title, content: n, folder: folder, height: c.height)), size, nil)
     case .image(let img):
       var url: URL?
       if case .file(let f) = img.source { url = images.appending(path: f) }
@@ -168,7 +192,7 @@ struct Scene: Sendable {
       let h = c.height ?? size.map { c.width * $0.height / max($0.width, 1) } ?? c.width * 0.6
       let pic = Drawing.Picture(
         url: size == nil ? nil : url, fileSize: size ?? .zero, frame: (img.stillFrame ?? 1) - 1, framed: img.framed)
-      return (.image(pic), h, nil)
+      return (.image(pic), CGSize(width: c.width, height: h), nil)
     }
   }
 
@@ -177,35 +201,5 @@ struct Scene: Sendable {
   private static func firstLine(_ md: String) -> String {
     let l = md.split(whereSeparator: \.isNewline).first { !$0.allSatisfy(\.isWhitespace) } ?? ""
     return String(l.drop { $0 == "#" || $0 == " " })
-  }
-
-  /// ponytail: a guess from the Markdown's lines, off by tens of points, until the Note renderer measures Notes (the
-  /// model keeps no height for a Note that grows with its text)
-  static func noteHeight(_ n: Note, width: CGFloat, images: URL, theme t: Theme) -> CGFloat {
-    let body = max(width - 28, 40)
-    var h: CGFloat = n.style == .note ? t.headerHeight + 24 : 16
-    var fence = false
-    for raw in n.text.split(separator: "\n", omittingEmptySubsequences: false) {
-      let l = raw.trimmingCharacters(in: .whitespaces)
-      if l.hasPrefix("```") {
-        fence.toggle()
-        h += 10
-      } else if fence {
-        h += 20
-      } else if l.isEmpty {
-        h += 8
-      } else if let m = l.firstMatch(of: /!\[[^\]]*\]\(images\/([^)\s]+)/) {
-        let size = DecodeCache.pixelSize(images.appending(path: String(m.1)))
-        h += size.map { min(body, $0.width) * $0.height / max($0.width, 1) } ?? 200
-      } else if l.hasPrefix("|") {
-        h += 30
-      } else {
-        // wide (CJK) characters count twice
-        let units = l.unicodeScalars.reduce(0) { $0 + ($1.value > 0x2E80 ? 2 : 1) }
-        let lines = max(1, (CGFloat(units) * 7.2 / body).rounded(.up))
-        h += lines * (l.hasPrefix("#") ? 30 : 22)
-      }
-    }
-    return h
   }
 }

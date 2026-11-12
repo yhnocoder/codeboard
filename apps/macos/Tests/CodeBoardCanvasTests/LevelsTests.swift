@@ -134,3 +134,84 @@ import Testing
     #expect(swaps6.map(\.payload) == [1])
   }
 }
+
+@Suite struct NoteLevelsTests {
+  let view = CGRect(x: 0, y: 0, width: 1000, height: 800)
+
+  func note(_ x: CGFloat, _ y: CGFloat, overview: CGFloat = 0.2, drawn: Bool = false) -> RestPlan.Item {
+    RestPlan.Item(
+      rect: CGRect(x: x, y: y, width: 100, height: 100), held: overview, rest: nil, overview: overview, note: true,
+      overviewDrawn: drawn)
+  }
+
+  @Test func notesInViewGetTheirLevelsFirstAndOverviewPicturesFollowTheirHeldLevel() {
+    // zoom 0.7 on a 2x screen: in view the rest level (scale 2) then the held one (4) and the overview while the web
+    // view shows that Note; one just off screen, and one far away whose overview is all it needs, last
+    let p = RestPlan(
+      items: [note(5000, 5000), note(450, 350), note(1100, 0), note(450, 350, drawn: true)], view: view, zoom: 0.7,
+      backing: 2, pointer: nil)
+    #expect(
+      p.jobs == [
+        .init(item: 1, slot: .rest, scale: 2, note: true), .init(item: 3, slot: .rest, scale: 2, note: true),
+        .init(item: 1, slot: .held, scale: 4, note: true), .init(item: 3, slot: .held, scale: 4, note: true),
+        .init(item: 1, slot: .overview, scale: 0.2, note: true), .init(item: 2, slot: .held, scale: 4, note: true),
+        .init(item: 2, slot: .overview, scale: 0.2, note: true),
+        .init(item: 0, slot: .overview, scale: 0.2, note: true),
+      ])
+  }
+
+  @Test func anOverviewThatIsWhatTheViewShowsGoesFirst() {
+    let p = RestPlan(
+      items: [note(450, 350), note(600, 350, overview: 2)], view: view, zoom: 0.25, backing: 2, pointer: nil)
+    #expect(p.jobs.first == .init(item: 1, slot: .overview, scale: 2, note: true))
+  }
+
+  @Test func notesHaveALaneOfTheirOwn() {
+    var q = RedrawQueue<Int>()
+    let notes = (0..<6).map { RestPlan.Job(item: $0, slot: .held, scale: 2, note: true) }
+    let code = (6..<9).map { RestPlan.Job(item: $0, slot: .held, scale: 2) }
+    q.replace(with: notes + code)
+    let started = q.start()
+    // four Notes waiting for the web view, and the code cards behind them drawn meanwhile
+    #expect(started.map(\.job.item) == [0, 1, 2, 3, 6, 7, 8])
+    q.finish(started[0].job, generation: started[0].generation, payload: 0, pixels: 1)
+    #expect(q.start().map(\.job.item) == [4])
+  }
+
+  @Test func theFirstPictureFadesInOnce() {
+    var f = NoteFace.paper
+    var drawn = NoteFace.drawn
+    let fades = [f.picture(overview: false), f.picture(overview: false), f.picture(overview: true)]
+    #expect(fades == [true, false, false])
+    let fadesDrawn = drawn.picture(overview: false)
+    #expect(!fadesDrawn)
+  }
+
+  @Test func aNoteThatHadAPictureNeverShowsPaperAgain() {
+    var f = NoteFace.paper
+    _ = f.picture(overview: false)
+    // its overview is still paper: a held picture stays, a rest picture moves into the held slot
+    #expect(!f.mayShowOverview(holdsOwn: true))
+    #expect(f.keepsRest(holdsOwn: false))
+    #expect(!f.keepsRest(holdsOwn: true))
+    _ = f.picture(overview: true)
+    #expect(f.mayShowOverview(holdsOwn: true))
+    #expect(!f.keepsRest(holdsOwn: false))
+    // code cards and the rest are never paper in this sense
+    #expect(NoteFace.drawn.mayShowOverview(holdsOwn: true) && !NoteFace.drawn.keepsRest(holdsOwn: false))
+  }
+
+  @Test func aBitmapStaysWithinTheSideLimit() {
+    let s = Levels.scale(2, backing: 2, size: CGSize(width: 400, height: 9000))
+    #expect((9000 * s).rounded(.up) <= 16384)
+    #expect(Levels.scale(1, backing: 2, size: CGSize(width: 400, height: 9000)) == s)
+  }
+
+  @Test func aNotesOverviewScaleIsStableAcrossSmallResizes() {
+    let size = CGSize(width: 300, height: 400)
+    let a = Levels.noteOverview(0.30, backing: 2, size: size)
+    #expect(a >= 0.6 && a < 0.6 * 1.19)
+    #expect(Levels.noteOverview(0.31, backing: 2, size: size) == a)
+    #expect(Levels.noteOverview(0.36, backing: 2, size: size) > a)
+  }
+}

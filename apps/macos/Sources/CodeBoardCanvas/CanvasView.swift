@@ -1,12 +1,18 @@
 import AppKit
 import CodeBoardModel
+import CodeBoardNotes
 import CodeBoardSyntax
 import QuartzCore
 
 /// One board, read-only, panned and zoomed. While a gesture runs (its glide and rubber band included) Core Animation
 /// only moves and scales the bitmaps the items already have; at rest they are redrawn at fixed levels (`Levels`,
-/// `RestPlan`), off the main thread, and swapped in a few per frame (`RedrawQueue`).
+/// `RestPlan`), off the main thread, and swapped in a few per frame (`RedrawQueue`). A Note's bitmap at each level is
+/// its paper drawn here with the Note renderer's picture over it, so Notes go through the same levels, queue and
+/// budgets; until its first picture comes in a Note shows its paper (`NoteFace`).
 public final class CanvasView: NSView {
+  /// The design allows one snapshot web view in the app, so every canvas shares one renderer
+  private static let sharedNotes = NoteRenderer()
+  private let notes: NoteRenderer
   private var theme = Theme.warmInkLight
   private var scene: Scene?
   private var items: [ItemLayers] = []
@@ -23,6 +29,8 @@ public final class CanvasView: NSView {
   private var restZoom: CGFloat?
   private var tasks: [Int: Task<Void, Never>] = [:]
   private var nextTask = 0
+  /// Notes' renderer priority: plan order, nearest the view's centre and the pointer first
+  private var nextNote = 0
   private var loads = 0
   private var link: CADisplayLink?
   private let images = DecodeCache(cap: 128 << 20)
@@ -34,10 +42,20 @@ public final class CanvasView: NSView {
   package var onFrame: ((CADisplayLink) -> Void)? {
     didSet { link?.isPaused = false }
   }
-  /// Work begun while a gesture was active; the gesture rule says all three stay 0
-  package private(set) var ruleBreaks = (redraws: 0, decodes: 0, swaps: 0)
+  /// Work begun while a gesture was active; the gesture rule says all stay 0
+  package private(set) var ruleBreaks = (redraws: 0, decodes: 0, swaps: 0, noteRequests: 0, noteSwaps: 0)
 
-  public override init(frame: NSRect) {
+  public convenience override init(frame: NSRect) {
+    self.init(frame: frame, notes: CanvasView.sharedNotes)
+  }
+
+  /// With a Note renderer of its own, its snapshots cached in `noteCache` (CanvasBench and tests: not the app's cache)
+  package convenience init(frame: NSRect, noteCache: URL) {
+    self.init(frame: frame, notes: NoteRenderer(cache: noteCache))
+  }
+
+  private init(frame: NSRect, notes: NoteRenderer) {
+    self.notes = notes
     super.init(frame: frame)
     // layer-hosting: the canvas owns its layer tree, y-down like the board
     let root = CALayer()
@@ -58,7 +76,9 @@ public final class CanvasView: NSView {
   public override var acceptsFirstResponder: Bool { true }
 
   /// Shows a board of the vault, fitted to the view. Returns once every item is on screen (each at least as its
-  /// overview bitmap, so nothing is ever blank); a later call supersedes an earlier one still loading
+  /// overview bitmap, so nothing is ever blank); a later call supersedes an earlier one still loading. Notes without a
+  /// stored height are measured first (the renderer keeps what it measured with its snapshots), so no card moves once
+  /// shown; a Note's overview is its picture when the snapshot cache has it, else its paper.
   public func show(_ board: VaultBoard, in vault: Vault, theme: Theme) async throws {
     loads += 1
     let load = loads
@@ -67,21 +87,33 @@ public final class CanvasView: NSView {
     let backing = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
     let images = self.images
     let known = highlighter
+    let notes = self.notes
     let (scene, overviews, shadow, highlighter) = try await Task.detached(priority: .userInitiated) {
       let package = vault.url(of: board.path)
+      let b = try vault.board(at: board.path)
+      let sizes = await CanvasView.measure(Scene.measures(b, package: package, vault: vault), notes: notes)
       let highlighter = known ?? Highlighter()
-      let scene = Scene(
-        try vault.board(at: board.path), package: package, vault: vault, theme: theme, highlighter: highlighter)
+      let scene = Scene(b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes)
       let fit = Camera.fit(scene.bounds, in: size).zoom
-      let overviews = await withTaskGroup(of: (Int, IOSurface?, CGFloat).self) { g in
+      let overviews = await withTaskGroup(of: (Int, Overview).self) { g in
         for (i, it) in scene.items.enumerated() {
           g.addTask {
-            let s = Levels.scale(fit, backing: backing, size: it.rect.size)
-            return (i, CanvasView.render(it, scale: s, theme: theme, images: images).surface, s)
+            guard case .note(let n) = it.drawing else {
+              let s = Levels.scale(fit, backing: backing, size: it.rect.size)
+              return (i, (CanvasView.render(it, scale: s, theme: theme, images: images).surface, s, .drawn))
+            }
+            let s = Levels.noteOverview(fit, backing: backing, size: it.rect.size)
+            if let snap = await notes.cached(
+              of: n.content, width: it.rect.width, height: n.height, folder: n.folder, scale: s),
+              let drawn = CanvasView.compose(it, snap, scale: s, theme: theme, images: images)
+            {
+              return (i, (drawn, s, .drawn))
+            }
+            return (i, (CanvasView.render(it, scale: s, theme: theme, images: images).surface, s, .paper))
           }
         }
-        var out = [(IOSurface?, CGFloat)](repeating: (nil, 1), count: scene.items.count)
-        for await (i, s, scale) in g { out[i] = (s, scale) }
+        var out = [Overview](repeating: (nil, 1, .drawn), count: scene.items.count)
+        for await (i, o) in g { out[i] = o }
         return out
       }
       return (scene, overviews, CanvasView.shadow(theme), highlighter)
@@ -91,23 +123,45 @@ public final class CanvasView: NSView {
     install(scene, overviews: overviews, shadow: shadow, theme: theme)
   }
 
+  /// The sizes the Note renderer gives the Notes without a stored height: from what it kept, else measured in the web
+  /// view one after another. A Note it could not measure is left out (`Scene` gives it a height of its own)
+  private nonisolated static func measure(_ ms: [Scene.Measure], notes: NoteRenderer) async -> [CardID: CGSize] {
+    await withTaskGroup(of: (CardID, CGSize?).self) { g in
+      for m in ms {
+        // before any picture: the board waits for these
+        g.addTask { (m.card, try? await notes.size(of: m.note, width: m.width, folder: m.folder, priority: 1)) }
+      }
+      var out: [CardID: CGSize] = [:]
+      for await (id, s) in g { out[id] = s }
+      return out
+    }
+  }
+
   // MARK: Layers
+
+  /// An item's overview bitmap, its scale, and whether a Note's is its picture or its paper
+  private typealias Overview = (surface: IOSurface?, scale: CGFloat, face: NoteFace)
 
   /// An item's layers: its shadow (framed cards), the held bitmap and the rest bitmap over it
   private final class ItemLayers {
     let box = CALayer()
     let held = CALayer()
     let rest = CALayer()
-    let overview: IOSurface?
+    var overview: IOSurface?
     let overviewScale: CGFloat
+    /// The held slot's own bitmap; nil: it shows the overview
     var heldSurface: IOSurface?
     var heldScale: CGFloat
     var restScale: CGFloat?
+    let note: Bool
+    var face: NoteFace
 
-    init(_ item: Scene.Item, overview: IOSurface?, scale: CGFloat, shadow: (IOSurface, margin: CGFloat)?) {
-      self.overview = overview
-      overviewScale = scale
-      heldScale = scale
+    init(_ item: Scene.Item, overview o: Overview, shadow: (IOSurface, margin: CGFloat)?) {
+      overview = o.surface
+      overviewScale = o.scale
+      face = o.face
+      if case .note = item.drawing { note = true } else { note = false }
+      heldScale = o.scale
       let r = item.rect
       box.bounds = CGRect(origin: .zero, size: r.size)
       box.position = CGPoint(x: r.midX, y: r.midY)
@@ -141,19 +195,30 @@ public final class CanvasView: NSView {
     }
 
     func showOverview() {
+      guard face.mayShowOverview(holdsOwn: heldSurface != nil) else { return }
       held.contents = overview
       heldSurface = nil
       heldScale = overviewScale
     }
 
     func clearRest() {
+      if let s = rest.contents as? IOSurface, let scale = restScale, face.keepsRest(holdsOwn: heldSurface != nil) {
+        held.contents = s
+        heldSurface = s
+        heldScale = scale
+      }
       rest.contents = nil
       restScale = nil
+    }
+
+    /// The highest scale it shows its picture at: 0 while a Note shows only paper
+    var pictureScale: CGFloat {
+      max(heldSurface != nil ? heldScale : face.paperOverview ? 0 : overviewScale, restScale ?? 0)
     }
   }
 
   private func install(
-    _ s: Scene, overviews: [(IOSurface?, CGFloat)], shadow: (IOSurface, margin: CGFloat)?, theme: Theme
+    _ s: Scene, overviews: [Overview], shadow: (IOSurface, margin: CGFloat)?, theme: Theme
   ) {
     cancelRedraws()
     self.theme = theme
@@ -172,8 +237,7 @@ public final class CanvasView: NSView {
         sections.addSublayer(l)
       }
       items = s.items.enumerated().map { i, it in
-        ItemLayers(
-          it, overview: overviews[i].0, scale: overviews[i].1, shadow: it.drawing.framed ? shadow : nil)
+        ItemLayers(it, overview: overviews[i], shadow: it.drawing.framed ? shadow : nil)
       }
       for (i, l) in items.enumerated() { (i < s.labelsFrom ? below : above).addSublayer(l.box) }
       for a in s.arrows {
@@ -365,7 +429,9 @@ public final class CanvasView: NSView {
     let pointer = window.map { camera.board(convert($0.mouseLocationOutsideOfEventStream, from: nil)) }
     let plan = RestPlan(
       items: items.map {
-        RestPlan.Item(rect: $0.box.frame, held: $0.heldScale, rest: $0.restScale, overview: $0.overviewScale)
+        RestPlan.Item(
+          rect: $0.box.frame, held: $0.heldScale, rest: $0.restScale, overview: $0.overviewScale, note: $0.note,
+          overviewDrawn: !$0.face.paperOverview)
       },
       view: camera.visible(bounds.size), zoom: camera.zoom, backing: backing, pointer: pointer)
     withoutAnimation {
@@ -383,31 +449,59 @@ public final class CanvasView: NSView {
   private func pump() {
     guard let scene else { return }
     for (job, generation) in queue.start() {
-      if !motion.isResting { ruleBreaks.redraws += 1 }
+      if !motion.isResting {
+        ruleBreaks.redraws += 1
+        if job.note { ruleBreaks.noteRequests += 1 }
+      }
       let item = scene.items[job.item]
       let theme = self.theme
       let images = self.images
       let id = nextTask
       nextTask += 1
-      tasks[id] = Task.detached(priority: .userInitiated) { [weak self] in
-        let r = CanvasView.render(item, scale: job.scale, theme: theme, images: images)
-        await self?.finished(job, generation: generation, result: r, overlapped: Task.isCancelled, task: id)
+      if job.note, case .note(let n) = item.drawing {
+        let notes = self.notes
+        let priority = nextNote
+        nextNote -= 1
+        tasks[id] = Task.detached(priority: .userInitiated) { [weak self] in
+          let r = await CanvasView.drawNote(
+            item, n, scale: job.scale, theme: theme, images: images, notes: notes, priority: priority)
+          await self?.finished(
+            job, generation: generation, surface: r.surface, decodes: 0, overlapped: r.late, task: id)
+        }
+      } else {
+        tasks[id] = Task.detached(priority: .userInitiated) { [weak self] in
+          let r = CanvasView.render(item, scale: job.scale, theme: theme, images: images)
+          await self?.finished(
+            job, generation: generation, surface: r.surface, decodes: r.decodes, overlapped: Task.isCancelled, task: id)
+        }
       }
     }
     let swaps = queue.takeSwaps()
     guard !swaps.isEmpty else { return }
-    if !motion.isResting { ruleBreaks.swaps += swaps.count }
+    if !motion.isResting {
+      ruleBreaks.swaps += swaps.count
+      ruleBreaks.noteSwaps += swaps.count { $0.job.note }
+    }
     withoutAnimation {
       for s in swaps {
         let l = items[s.job.item]
+        let fades = s.job.note && l.face.picture(overview: s.job.slot == .overview)
         switch s.job.slot {
         case .held:
           l.held.contents = s.payload
           l.heldSurface = s.payload
           l.heldScale = s.job.scale
+          if fades { CanvasView.fadeIn(l.held) }
         case .rest:
           l.rest.contents = s.payload
           l.restScale = s.job.scale
+          if fades { CanvasView.fadeIn(l.rest) }
+        case .overview:
+          l.overview = s.payload
+          if l.heldSurface == nil {
+            l.held.contents = s.payload
+            if fades { CanvasView.fadeIn(l.held) }
+          }
         }
       }
     }
@@ -418,20 +512,55 @@ public final class CanvasView: NSView {
   /// overlapped: a gesture started while it ran (its result is dropped); counted against the gesture rule, as the work
   /// may have run on into the gesture
   private func finished(
-    _ job: RestPlan.Job, generation: Int, result: (surface: IOSurface?, decodes: Int), overlapped: Bool, task: Int
+    _ job: RestPlan.Job, generation: Int, surface s: IOSurface?, decodes: Int, overlapped: Bool, task: Int
   ) {
     tasks[task] = nil
-    let s = result.surface
     queue.finish(job, generation: generation, payload: s, pixels: s.map { $0.width * $0.height } ?? 0)
     if overlapped {
       ruleBreaks.redraws += 1
-      ruleBreaks.decodes += result.decodes
+      ruleBreaks.decodes += decodes
     }
     link?.isPaused = false
   }
 
+  /// The first picture of a Note fades in over its paper
+  private static func fadeIn(_ l: CALayer) {
+    let t = CATransition()
+    t.type = .fade
+    t.duration = 0.15
+    l.add(t, forKey: "picture")
+  }
+
+  /// A Note's bitmap at a scale: its picture from the renderer over its paper. No bitmap when cancelled (a gesture
+  /// started: a picture the web view was drawing still finishes, into the renderer's cache) or when the renderer failed.
+  /// late: cancelled while the paper was being drawn under the picture
+  nonisolated static func drawNote(
+    _ item: Scene.Item, _ n: Drawing.Note, scale: CGFloat, theme: Theme, images: DecodeCache, notes: NoteRenderer,
+    priority: Int
+  ) async -> (surface: IOSurface?, late: Bool) {
+    guard !Task.isCancelled,
+      let snap = try? await notes.snapshot(
+        of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale, priority: priority),
+      !Task.isCancelled
+    else { return (nil, false) }
+    let s = compose(item, snap, scale: scale, theme: theme, images: images)
+    return Task.isCancelled ? (nil, true) : (s, false)
+  }
+
+  /// The paper the canvas draws for the card, with the snapshot (transparent around the content) pixel for pixel over it
+  nonisolated static func compose(
+    _ item: Scene.Item, _ snap: NoteSnapshot, scale: CGFloat, theme: Theme, images: DecodeCache
+  ) -> IOSurface? {
+    Raster.surface(size: item.rect.size, scale: scale) { ctx in
+      _ = item.drawing.draw(in: ctx, size: item.rect.size, scale: scale, theme: theme, images: images)
+      let px = snap.surface
+      Raster.draw(
+        px, in: CGRect(x: 0, y: 0, width: CGFloat(px.width) / scale, height: CGFloat(px.height) / scale), of: ctx)
+    }
+  }
+
   /// Draws an item off the main thread: no bitmap when cancelled (a gesture started) or when it could not be made
-  private nonisolated static func render(_ item: Scene.Item, scale: CGFloat, theme: Theme, images: DecodeCache) -> (
+  nonisolated static func render(_ item: Scene.Item, scale: CGFloat, theme: Theme, images: DecodeCache) -> (
     surface: IOSurface?, decodes: Int
   ) {
     guard !Task.isCancelled else { return (nil, 0) }
@@ -451,6 +580,25 @@ public final class CanvasView: NSView {
   package var boardBounds: CGRect { scene?.bounds ?? .zero }
   package var bitmapBytes: Int { items.reduce(0) { $0 + $1.bytes } }
   package var decodedBytes: Int { images.bytes }
+
+  /// The Notes in view, those of them showing a picture and those showing it at display resolution; Notes whose
+  /// overview is their picture, of all Notes
+  package var noteProgress: (inView: Int, present: Int, sharp: Int, overviews: Int, notes: Int) {
+    let view = camera.visible(bounds.size)
+    let z = min(camera.zoom, limits.max)
+    var p = (inView: 0, present: 0, sharp: 0, overviews: 0, notes: 0)
+    for l in items where l.note {
+      p.notes += 1
+      if !l.face.paperOverview { p.overviews += 1 }
+      let r = l.box.frame
+      guard r.intersects(view) else { continue }
+      p.inView += 1
+      let s = l.pictureScale
+      if s > 0 { p.present += 1 }
+      if s >= Levels.scale(z, backing: backing, size: r.size) * 0.98 { p.sharp += 1 }
+    }
+    return p
+  }
 
   /// Anything in view drawn below display resolution
   package var lowRes: Bool {

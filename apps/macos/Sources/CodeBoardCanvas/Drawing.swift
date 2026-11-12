@@ -4,7 +4,8 @@ import CoreText
 import IOSurface
 
 /// What one item's bitmap shows. Drawn off the main thread at any scale: a producer gets the item's size, a scale and
-/// the theme and draws into a context. Note content will be another producer (the web renderer's snapshot).
+/// the theme and draws into a context. A Note's content is the other producer: the Note renderer's picture, drawn over
+/// the paper drawn here (`CanvasView.drawNote`).
 enum Drawing: Sendable {
   case code(Code)
   case note(Note)
@@ -20,7 +21,13 @@ enum Drawing: Sendable {
 
   struct Note: Sendable {
     var title: String
-    var style: NoteStyle
+    var content: CodeBoardModel.Note
+    /// Where its images are: the board package or the vault's shared folder
+    var folder: URL
+    /// The stored height, as the renderer is asked for it; nil: as tall as its content
+    var height: Double?
+
+    var style: NoteStyle { content.style }
   }
 
   struct Picture: Sendable {
@@ -294,6 +301,29 @@ enum Drawing: Sendable {
 }
 
 enum Raster {
+  /// Draws a BGRA, premultiplied, sRGB surface pixel for pixel into `rect` of a y-down context, without copying it
+  static func draw(_ s: IOSurface, in rect: CGRect, of ctx: CGContext) {
+    s.lock(options: .readOnly, seed: nil)
+    defer { s.unlock(options: .readOnly, seed: nil) }
+    guard
+      let provider = CGDataProvider(
+        dataInfo: nil, data: s.baseAddress, size: s.bytesPerRow * s.height, releaseData: { _, _, _ in }),
+      let space = CGColorSpace(name: CGColorSpace.sRGB),
+      let image = CGImage(
+        width: s.width, height: s.height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: s.bytesPerRow,
+        space: space,
+        bitmapInfo: CGBitmapInfo(
+          rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
+        provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+    else { return }
+    ctx.saveGState()
+    ctx.interpolationQuality = .none
+    ctx.translateBy(x: rect.minX, y: rect.maxY)
+    ctx.scaleBy(x: 1, y: -1)
+    ctx.draw(image, in: CGRect(origin: .zero, size: rect.size))
+    ctx.restoreGState()
+  }
+
   /// A bitmap of `size` board units at `scale` device pixels per unit, drawn y-down, as an IOSurface Core Animation shows
   /// without a copy
   static func surface(size: CGSize, scale: CGFloat, _ draw: (CGContext) -> Void) -> IOSurface? {
