@@ -41,6 +41,8 @@ public struct ShellState: Codable, Equatable, Sendable {
   public var importing = false
   /// The look every board is drawn in; app-wide, kept by the app delegate
   public var theme: Theme.ID = .warmInk
+  /// The tab row's glass, tuned by hand in GlassTuning
+  var glass = TopGlass.Look()
   private var byID: [BoardID: VaultBoard] = [:]
 
   public init() {}

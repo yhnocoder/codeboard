@@ -177,14 +177,17 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
 
 /// The glass under the tabs: blurring what is behind it in the window whether or not the window is key, whole over the
 /// bar and gone a dissolve's length below it, the material and its canvas-coloured tint along the same curve
-@MainActor @Test(arguments: Theme.ID.allCases) func topGlassFrostsTheBarAndDissolvesBelowIt(_ id: Theme.ID) throws {
+@MainActor
+@Test(arguments: Theme.ID.allCases, [TopGlass.Look(), TopGlass.Look(material: .hudWindow, tint: 0.3, dissolve: 30)])
+func topGlassFrostsTheBarAndDissolvesBelowIt(_ id: Theme.ID, _ look: TopGlass.Look) throws {
   let theme = Theme.named(id)
   let bar: CGFloat = 36
-  let d = ShellTheme.glassDissolve
+  let d = look.dissolve
   let glass = TopGlass(frame: NSRect(x: 0, y: 0, width: 200, height: bar + d))
   glass.theme = theme
+  glass.look = look
   glass.place(bar: bar)
-  #expect(glass.blendingMode == .withinWindow && glass.state == .active)
+  #expect(glass.blendingMode == .withinWindow && glass.state == look.state && glass.material == look.material)
 
   // the mask as the material stretches it over the glass, y-down
   let mask = try #require(glass.maskImage)
@@ -206,11 +209,36 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
   let locations = try #require(tint.locations).map { CGFloat($0.doubleValue) }
   let top = try #require(colors.first)
   #expect(top.copy(alpha: 1)?.components == theme.canvas.components)
-  #expect(abs(top.alpha - ShellTheme.glassTint) < 0.001)
+  #expect(abs(top.alpha - look.tint) < 0.001)
   #expect(colors.last?.alpha == 0 && locations.last == 1)
   // whole over the bar, then down without a step
   let barEnd = try #require(locations.firstIndex { $0 >= bar / (bar + d) - 0.001 })
-  #expect(abs(colors[barEnd].alpha - ShellTheme.glassTint) < 0.001)
+  #expect(abs(colors[barEnd].alpha - look.tint) < 0.001)
   #expect(zip(colors, colors.dropFirst()).allSatisfy { $1.alpha <= $0.alpha })
-  #expect(zip(colors, colors.dropFirst()).allSatisfy { $0.alpha - $1.alpha < 0.3 * ShellTheme.glassTint })
+  #expect(zip(colors, colors.dropFirst()).allSatisfy { $0.alpha - $1.alpha < 0.3 * look.tint })
+}
+
+/// The tuned glass is kept across launches, and Reset goes back to the compiled look and stores nothing
+@MainActor @Test func tunedGlassIsKeptAndResetRestoresTheDefaults() async throws {
+  let suite = "glass-\(UUID())"
+  let defaults = try #require(UserDefaults(suiteName: suite))
+  defer { defaults.removePersistentDomain(forName: suite) }
+  let tuned = TopGlass.Look(
+    material: .hudWindow, tint: 0.55, dissolve: 18, emphasized: true, state: .followsWindowActiveState)
+  let shell = Shell()
+  let tuning = GlassTuning(shell: shell, defaults: defaults)
+  #expect(shell.glass == TopGlass.Look())
+  shell.glass = tuned
+  for _ in 0..<100 where defaults.data(forKey: GlassTuning.key) == nil { await Task.yield() }
+  let relaunched = Shell()
+  _ = GlassTuning(shell: relaunched, defaults: defaults)
+  #expect(relaunched.glass == tuned)
+  #expect(
+    GlassTuning.line(tuned) == "material=hudWindow tint=0.55 dissolve=18 emphasized=true state=followsWindowActiveState"
+  )
+
+  tuning.reset()
+  #expect(shell.glass == TopGlass.Look())
+  for _ in 0..<100 where defaults.data(forKey: GlassTuning.key) != nil { await Task.yield() }
+  #expect(defaults.data(forKey: GlassTuning.key) == nil)
 }
