@@ -178,10 +178,10 @@ public final class CanvasView: NSView {
   // MARK: Layers
 
   /// An item's overview bitmap, its scale, and whether a Note's is its picture or its paper
-  private typealias Overview = (surface: IOSurface?, scale: CGFloat, face: NoteFace)
+  typealias Overview = (surface: IOSurface?, scale: CGFloat, face: NoteFace)
 
   /// An item's layers: its shadow (framed cards), the held bitmap and the rest bitmap over it
-  private final class ItemLayers {
+  @MainActor final class ItemLayers {
     let box = CALayer()
     let held = CALayer()
     let rest = CALayer()
@@ -242,6 +242,37 @@ public final class CanvasView: NSView {
       held.contents = overview
       heldSurface = nil
       heldScale = overviewScale
+      coverHeld()
+    }
+
+    /// A finished redraw into one of its slots; a Note's first picture fades in
+    func take(_ job: RestPlan.Job, _ s: IOSurface) {
+      let fades = job.note && face.picture(overview: job.slot == .overview)
+      switch job.slot {
+      case .held:
+        held.contents = s
+        heldSurface = s
+        heldScale = job.scale
+        if fades { CanvasView.fadeIn(held) }
+      case .rest:
+        rest.contents = s
+        restScale = job.scale
+        if fades { CanvasView.fadeIn(rest) }
+      case .overview:
+        overview = s
+        if heldSurface == nil {
+          held.contents = s
+          if fades { CanvasView.fadeIn(held) }
+        }
+      }
+      coverHeld()
+    }
+
+    /// The rest bitmap is the whole item at the zoom: where the item is transparent (a frameless Note, an image, a label)
+    /// the held bitmap under it would add its text a second time and make it look bold. Only a Note's paper stays under
+    /// it, for its first picture to fade in over
+    private func coverHeld() {
+      held.isHidden = rest.contents != nil && (heldSurface != nil || !face.paperOverview)
     }
 
     func clearRest() {
@@ -252,6 +283,7 @@ public final class CanvasView: NSView {
       }
       rest.contents = nil
       restScale = nil
+      coverHeld()
     }
 
     /// The highest scale it shows its picture at: 0 while a Note shows only paper
@@ -572,27 +604,7 @@ public final class CanvasView: NSView {
       ruleBreaks.noteSwaps += swaps.count { $0.job.note }
     }
     withoutAnimation {
-      for s in swaps {
-        let l = items[s.job.item]
-        let fades = s.job.note && l.face.picture(overview: s.job.slot == .overview)
-        switch s.job.slot {
-        case .held:
-          l.held.contents = s.payload
-          l.heldSurface = s.payload
-          l.heldScale = s.job.scale
-          if fades { CanvasView.fadeIn(l.held) }
-        case .rest:
-          l.rest.contents = s.payload
-          l.restScale = s.job.scale
-          if fades { CanvasView.fadeIn(l.rest) }
-        case .overview:
-          l.overview = s.payload
-          if l.heldSurface == nil {
-            l.held.contents = s.payload
-            if fades { CanvasView.fadeIn(l.held) }
-          }
-        }
-      }
+      for s in swaps { items[s.job.item].take(s.job, s.payload) }
     }
     // a swap made in the display-link callback otherwise reaches the screen a frame later
     CATransaction.flush()
