@@ -309,4 +309,22 @@ import Testing
     #expect(Levels.noteOverview(0.31, backing: 2, size: size) == a)
     #expect(Levels.noteOverview(0.36, backing: 2, size: size) > a)
   }
+
+  /// Five tabs: the one on screen plans with the budget less the others' overviews; the others keep their sharp
+  /// bitmaps, latest shown first, while they fit in what it leaves, and the older ones give theirs up
+  @Test func canvasesShareOneBudget() {
+    let others = [
+      BudgetShare.Other(overviews: 20, sharp: 100, shown: 1), BudgetShare.Other(overviews: 30, sharp: 60, shown: 4),
+      BudgetShare.Other(overviews: 10, sharp: 50, shown: 3), BudgetShare.Other(overviews: 40, sharp: 0, shown: 2),
+    ]
+    #expect(BudgetShare.planning(1000, others: others) == 900)
+    // nothing on screen yet takes room: every one keeps what it has
+    #expect(BudgetShare.keeps(1000, others: others, used: 0) == [true, true, true, true])
+    // 200 left: the latest (60) and the one before it (50) keep theirs, the next (0) costs nothing, the oldest goes
+    #expect(BudgetShare.keeps(1000, others: others, used: 700) == [false, true, true, true])
+    // 100 left: the latest keeps its 60; the next does not fit, and nothing shown before it keeps anything
+    #expect(BudgetShare.keeps(1000, others: others, used: 800) == [false, true, false, false])
+    #expect(BudgetShare.keeps(1000, others: others, used: 900) == [false, false, false, false])
+    #expect(BudgetShare.keeps(1000, others: [], used: 900).isEmpty)
+  }
 }

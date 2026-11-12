@@ -14,8 +14,9 @@ enum Levels {
 
   static func atLeast(_ z: CGFloat) -> CGFloat { all.first { $0 >= z - 1e-6 } ?? 2 }
 
-  /// What all card bitmaps (overviews, held and rest) may take at rest before the farthest go back to their overviews:
-  /// on the measured boards a few screens around the view stay sharp at 100 %, for about 1.5 times the prototype's peak
+  /// What all card bitmaps (overviews, held and rest) of every canvas in the app may take at rest before the farthest go
+  /// back to their overviews (`BudgetShare`): on the measured boards a few screens around the view stay sharp at 100 %,
+  /// for about 1.5 times the prototype's peak
   static let budget = 384 << 20
 
   /// Pixels along a bitmap's longer side: Core Animation's texture limit, and the Note renderer's
@@ -217,4 +218,34 @@ struct NoteFace: Equatable {
 
   /// Whether a rest bitmap being cleared must move to the held slot instead, which would otherwise show paper
   func keepsRest(holdsOwn: Bool) -> Bool { paperOverview && !holdsOwn }
+}
+
+/// One bitmap budget for every canvas in the app. The canvas on screen plans its rest work with all of it but the other
+/// canvases' overviews, which always stay (a tab shown again is never blank and never flashes); the others keep their
+/// sharp bitmaps while they fit in what it leaves over, the most recently shown first, and give them up when they do not.
+enum BudgetShare {
+  /// What another canvas holds, and when it was last on screen (higher: later)
+  struct Other: Equatable {
+    var overviews: Int
+    var sharp: Int
+    var shown: Int
+  }
+
+  /// The budget the canvas on screen plans with
+  static func planning(_ budget: Int, others: [Other]) -> Int {
+    budget - others.reduce(0) { $0 + $1.overviews }
+  }
+
+  /// Which of the others keep their sharp bitmaps once the canvas on screen holds `used` of what `planning` gave it
+  static func keeps(_ budget: Int, others: [Other], used: Int) -> [Bool] {
+    var room = planning(budget, others: others) - used
+    var out = [Bool](repeating: false, count: others.count)
+    for i in others.indices.sorted(by: { others[$0].shown > others[$1].shown }) {
+      // the first that does not fit gives up its sharp bitmaps, and so does every one shown before it
+      guard others[i].sharp <= room else { break }
+      room -= others[i].sharp
+      out[i] = true
+    }
+    return out
+  }
 }

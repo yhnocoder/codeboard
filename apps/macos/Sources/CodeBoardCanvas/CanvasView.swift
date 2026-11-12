@@ -9,10 +9,18 @@ import QuartzCore
 /// `RestPlan`), off the main thread, and swapped in a few per frame (`RedrawQueue`). A Note's bitmap at each level is
 /// its paper drawn here with the Note renderer's picture over it, so Notes go through the same levels, queue and
 /// budgets; until its first picture comes in a Note shows its paper (`NoteFace`). An SVG picture is drawn by the Note
-/// renderer too (WebKit draws it as the web board does), and goes the same way.
+/// renderer too (WebKit draws it as the web board does), and goes the same way. Every canvas shares one bitmap budget
+/// (`BudgetShare`): only the canvas on screen draws, and a hidden one keeps its overviews.
 public final class CanvasView: NSView {
   /// The design allows one snapshot web view in the app, so every canvas shares one renderer
   private static let sharedNotes = NoteRenderer()
+  /// Pictures decoded for drawing, by file: one cache for every canvas, as tabs often show the same images
+  private static let sharedImages = DecodeCache(cap: 128 << 20)
+  /// Every canvas alive, for the one budget they share
+  private static let all = NSHashTable<CanvasView>.weakObjects()
+  private static var clock = 0
+  /// When it was last on screen and at rest (the clock's time)
+  private var shownAt = 0
   private let notes: NoteRenderer
   private var theme = Theme.warmInk
   /// The board shown, to show again in another theme
@@ -39,10 +47,13 @@ public final class CanvasView: NSView {
   /// Notes' renderer priority: plan order, nearest the view's centre and the pointer first
   private var nextNote = 0
   private var loads = 0
+  /// Rest work was started since the queue was last idle
+  private var worked = false
   private var link: CADisplayLink?
-  private let images = DecodeCache(cap: 128 << 20)
-  /// Made by the first board shown, off the main thread (compiling its queries takes tens of milliseconds)
-  private var highlighter: Highlighter?
+  private let images = CanvasView.sharedImages
+  /// Made by the first board shown, off the main thread (compiling its queries takes tens of milliseconds and as many
+  /// megabytes), and kept for every canvas
+  private static var highlighter: Highlighter?
 
   /// Called at the start of every display-link frame, before the canvas moves (CanvasBench drives and measures from it).
   /// While set, the display link never pauses
@@ -61,9 +72,11 @@ public final class CanvasView: NSView {
     self.init(frame: frame, notes: NoteRenderer(cache: noteCache))
   }
 
-  private init(frame: NSRect, notes: NoteRenderer) {
+  /// With that Note renderer (CanvasBench: one for several canvases, as the app's)
+  package init(frame: NSRect, notes: NoteRenderer) {
     self.notes = notes
     super.init(frame: frame)
+    CanvasView.all.add(self)
     // layer-hosting: the canvas owns its layer tree, y-down like the board
     let root = CALayer()
     root.isGeometryFlipped = true
@@ -116,7 +129,7 @@ public final class CanvasView: NSView {
       bounds.isEmpty ? (window?.screen ?? NSScreen.main)?.frame.size ?? CGSize(width: 1440, height: 900) : bounds.size
     let backing = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
     let images = self.images
-    let known = highlighter
+    let known = CanvasView.highlighter
     let notes = self.notes
     let (scene, overviews, shadow, highlighter) = try await Task.detached(priority: .userInitiated) {
       let package = vault.url(of: board.path)
@@ -150,7 +163,7 @@ public final class CanvasView: NSView {
       _ = theme.backdrop.flatMap(Backdrop.image)
       return (scene, overviews, CanvasView.shadow(theme), highlighter)
     }.value
-    self.highlighter = highlighter
+    CanvasView.highlighter = highlighter
     guard load == loads else { return }
     shown = (board, vault)
     install(scene, overviews: overviews, shadow: shadow, theme: theme, keepCamera: keepCamera)
@@ -228,10 +241,10 @@ public final class CanvasView: NSView {
     /// What its bitmaps cover on the board
     var bitmapFrame: CGRect { box.frame.insetBy(dx: -bleed, dy: -bleed) }
 
-    var bytes: Int {
-      (overview?.allocationSize ?? 0) + (heldSurface?.allocationSize ?? 0)
-        + ((rest.contents as? IOSurface)?.allocationSize ?? 0)
-    }
+    var bytes: Int { (overview?.allocationSize ?? 0) + sharpBytes }
+
+    /// Its bitmaps but the overview
+    var sharpBytes: Int { (heldSurface?.allocationSize ?? 0) + ((rest.contents as? IOSurface)?.allocationSize ?? 0) }
 
     func showOverview() {
       guard face.mayShowOverview(holdsOwn: heldSurface != nil) else { return }
@@ -467,6 +480,20 @@ public final class CanvasView: NSView {
     if motion.isResting && scene != nil { arrive() }
   }
 
+  /// On screen: in a window, neither it nor a view it is in hidden. Only then does it draw
+  private var onScreen: Bool { window != nil && !isHiddenOrHasHiddenAncestor }
+
+  /// Hidden (its tab is not the one shown): what it was drawing is dropped, what it has stays
+  public override func viewDidHide() {
+    super.viewDidHide()
+    cancelRedraws()
+  }
+
+  public override func viewDidUnhide() {
+    super.viewDidUnhide()
+    if motion.isResting && scene != nil { arrive() }
+  }
+
   public override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
     link?.invalidate()
@@ -537,12 +564,25 @@ public final class CanvasView: NSView {
     }
     if rested { arrive() }
     if motion.isResting { pump() }
+    if motion.isResting && queue.isIdle && worked {
+      worked = false
+      // decoding and drawing free large blocks that the allocator would otherwise keep, counted in the footprint
+      DispatchQueue.global(qos: .utility).async { _ = malloc_zone_pressure_relief(nil, 0) }
+    }
     if motion.isResting && queue.isIdle && onFrame == nil { l.isPaused = true }
   }
 
-  /// At rest: what each item should hold now
+  /// At rest: what each item should hold now, within what the other canvases leave of the budget
   private func arrive() {
-    guard scene != nil else { return }
+    guard scene != nil, onScreen else { return }
+    CanvasView.clock += 1
+    shownAt = CanvasView.clock
+    let others = CanvasView.all.allObjects.filter { $0 !== self }
+    let held = others.map {
+      BudgetShare.Other(
+        overviews: $0.items.reduce(0) { $0 + ($1.overview?.allocationSize ?? 0) },
+        sharp: $0.items.reduce(0) { $0 + $1.sharpBytes }, shown: $0.shownAt)
+    }
     let pointer = window.map { camera.board(convert($0.mouseLocationOutsideOfEventStream, from: nil)) }
     let plan = RestPlan(
       items: items.map {
@@ -550,7 +590,11 @@ public final class CanvasView: NSView {
           rect: $0.bitmapFrame, held: $0.heldScale, rest: $0.restScale, overview: $0.overviewScale, note: $0.note,
           overviewDrawn: !$0.face.paperOverview)
       },
-      view: camera.visible(bounds.size), zoom: camera.zoom, backing: backing, pointer: pointer)
+      view: camera.visible(bounds.size), zoom: camera.zoom, backing: backing, pointer: pointer,
+      budget: BudgetShare.planning(Levels.budget, others: held))
+    for (other, keeps) in zip(others, BudgetShare.keeps(Levels.budget, others: held, used: plan.bytes)) where !keeps {
+      other.dropSharp()
+    }
     withoutAnimation {
       for i in plan.dropHeld { items[i].showOverview() }
       for i in plan.dropRest { items[i].clearRest() }
@@ -566,6 +610,7 @@ public final class CanvasView: NSView {
   private func pump() {
     guard let scene else { return }
     for (job, generation) in queue.start() {
+      worked = true
       if !motion.isResting {
         ruleBreaks.redraws += 1
         if job.note { ruleBreaks.noteRequests += 1 }
@@ -736,6 +781,18 @@ public final class CanvasView: NSView {
     }
     let cards = scene?.items.filter { if case .label = $0.drawing { false } else { true } } ?? []
     return cards.min { distance($0.rect) < distance($1.rect) }.map { CGPoint(x: $0.rect.midX, y: $0.rect.midY) }
+  }
+
+  /// Every item back to its overview (a hidden canvas giving its room to the one on screen; CanvasBench: Note
+  /// throughput from cold)
+  package func dropSharp() {
+    cancelRedraws()
+    withoutAnimation {
+      for l in items {
+        l.clearRest()
+        l.showOverview()
+      }
+    }
   }
 
   /// Jumps to a zoom with the board point `centre` in the middle of the view, at rest

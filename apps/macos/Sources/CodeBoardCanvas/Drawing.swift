@@ -252,6 +252,8 @@ enum Drawing: Sendable {
     guard let rule else { return }
     let bar = CGRect(x: 0, y: 0, width: r.width, height: t.headerHeight)
     ctx.saveGState()
+    // the bar's pixels first: clipped to the card's shape alone, Core Graphics would mask all of the card (`strips`)
+    ctx.clip(to: ctx.convertToUserSpace(ctx.convertToDeviceSpace(bar).integral))
     ctx.addPath(squircle(r, t.cardRadius))
     ctx.clip()
     switch t.header {
@@ -280,20 +282,40 @@ enum Drawing: Sendable {
   private static func edge(_ ctx: CGContext, _ r: CGRect, _ t: Theme) {
     guard t.paper == .sheet else { return }
     let p = squircle(r, t.cardRadius)
-    ctx.saveGState()
-    ctx.addPath(p)
-    ctx.clip()
-    for (dy, color) in [(CGFloat(1), t.edgeTop), (-1.5, t.edgeBottom)] {
+    // the two lines through strips along the top and bottom, where they are
+    for strip in strips(ctx, r, depth: t.cardRadius + 2) {
+      ctx.saveGState()
+      ctx.clip(to: strip)
       ctx.addPath(p)
-      ctx.addPath(squircle(r.offsetBy(dx: 0, dy: dy), t.cardRadius))
-      ctx.setFillColor(color)
-      ctx.fillPath(using: .evenOdd)
+      ctx.clip()
+      for (dy, color) in [(CGFloat(1), t.edgeTop), (-1.5, t.edgeBottom)] {
+        ctx.addPath(p)
+        ctx.addPath(squircle(r.offsetBy(dx: 0, dy: dy), t.cardRadius))
+        ctx.setFillColor(color)
+        ctx.fillPath(using: .evenOdd)
+      }
+      ctx.restoreGState()
     }
-    ctx.restoreGState()
     ctx.addPath(squircle(r.insetBy(dx: -0.25, dy: -0.25), t.cardRadius + 0.25))
     ctx.setStrokeColor(t.hair)
     ctx.setLineWidth(0.5)
     ctx.strokePath()
+  }
+
+  /// Strips along the top and bottom of `r`, from `depth` inside it to a unit past it, on whole device pixels and not
+  /// overlapping, so what is drawn through both is drawn once and looks the same. Clipped to the card's shape over all of
+  /// it, Core Graphics takes a mask the size of the card for every bitmap drawn, and the allocator keeps such blocks once
+  /// freed, in the footprint. (Fills and strokes of the whole shape take one too, but come out a level different on
+  /// some edge pixels when clipped, so they are left whole.)
+  private static func strips(_ ctx: CGContext, _ r: CGRect, depth: CGFloat) -> [CGRect] {
+    let outer = ctx.convertToDeviceSpace(r.insetBy(dx: -1, dy: -1)).integral
+    let inner = ctx.convertToDeviceSpace(r.insetBy(dx: 0, dy: depth))
+    let (low, high) = (inner.minY.rounded(.up), inner.maxY.rounded(.down))
+    guard low < high else { return [ctx.convertToUserSpace(outer)] }
+    return [
+      CGRect(x: outer.minX, y: outer.minY, width: outer.width, height: low - outer.minY),
+      CGRect(x: outer.minX, y: high, width: outer.width, height: outer.maxY - high),
+    ].map(ctx.convertToUserSpace)
   }
 
   private static func code(_ ctx: CGContext, _ c: Code, _ r: CGRect, _ t: Theme) {
