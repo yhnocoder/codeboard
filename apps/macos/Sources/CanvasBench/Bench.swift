@@ -104,6 +104,9 @@ final class Bench {
     case flick
     /// Across the board at 100 % in 3 s, fingers still before they lift
     case pan
+    /// After 2 s at rest at 100 %, three screens to the right in 2 s, lift, and back the same way 0.1 s later (too
+    /// soon for a rest): what was drawn ahead at rest is seen on the way out, what was kept on the way back
+    case awayAndBack
   }
 
   struct Segment: Encodable {
@@ -115,6 +118,11 @@ final class Bench {
     var restToSharpMs: Double?
     var peakBitmapMB = 0.0
     var peakFootprintMB = 0.0
+    /// From being placed at the start zoom until every redraw was done (nil: the segment does not wait for that)
+    var fillMs: Double?
+    /// awayAndBack: the low-res share of the frames out and of the frames back
+    var lowResOutShare: Double?
+    var lowResBackShare: Double?
   }
 
   /// Opening the board, from the call until the board was shown, every Note in view showed its picture, every Note in
@@ -145,7 +153,7 @@ final class Bench {
 
   private static let script: [(String, Motion)] = [
     ("fast-pinch", .zoom(0.5, 1, 0.4)), ("slow-zoom", .zoom(1, 2, 2)), ("zoom-50-200", .zoom(0.5, 2, 2)),
-    ("zoom-200-50", .zoom(2, 0.5, 2)), ("flick", .flick), ("pan-across", .pan),
+    ("zoom-200-50", .zoom(2, 0.5, 2)), ("flick", .flick), ("pan-across", .pan), ("away-and-back", .awayAndBack),
   ]
 
   private enum Step {
@@ -161,6 +169,8 @@ final class Bench {
   private var seg = Segment(name: "")
   private var busy: [Double] = []
   private var lowFrames = 0
+  /// awayAndBack: moving frames and low-res ones on the way back
+  private var back: (frames: Int, low: Int)?
   private var lastMove: CFTimeInterval?
   private var lastFootprint: CFTimeInterval = 0
   private var results: [Segment] = []
@@ -253,12 +263,13 @@ final class Bench {
     case .zoom(let a, _, _):
       let mid = CGPoint(x: b.midX, y: b.midY)
       canvas.place(zoom: a, centre: canvas.cardCentre(nearest: mid) ?? mid)
-    case .flick, .pan:
+    case .flick, .pan, .awayAndBack:
       canvas.place(zoom: 1, centre: CGPoint(x: b.minX + canvas.bounds.width / 2, y: b.midY))
     }
     seg = Segment(name: Bench.script[index].0)
     busy = []
     lowFrames = 0
+    back = nil
     lastMove = nil
     step = .prepare(since: now)
   }
@@ -267,7 +278,12 @@ final class Bench {
     let now = l.timestamp
     switch step {
     case .prepare(let since):
-      if canvas.isSettled && now - since > 0.4 || now - since > 12 { step = .drive(start: now, last: now) }
+      if seg.fillMs == nil, canvas.isSettled { seg.fillMs = ((now - since) * 1000).rounded() }
+      let ready =
+        if case .awayAndBack = Bench.script[index].1 { now - since >= 2 } else {
+          canvas.isSettled && now - since > 0.4 || now - since > 12
+        }
+      if ready { step = .drive(start: now, last: now) }
     case .drive(let start, let last):
       let t = now - start
       let dt = max(now - last, 1.0 / 240)
@@ -294,6 +310,18 @@ final class Bench {
           canvas.scroll(by: .zero, at: now, began: false, ended: true)
           finished = true
         }
+      case .awayAndBack:
+        // fingers still for 60 ms before each lift: no glide
+        let speed = canvas.bounds.width * 3 / 2
+        let leg = t < 2.16 ? t : t - 2.16
+        if t >= 2.16 && back == nil { back = (0, 0) }
+        if leg < 2 {
+          let dx = t < 2.16 ? -speed * dt : speed * dt
+          canvas.scroll(by: CGVector(dx: dx, dy: 0), at: now, began: back == nil ? t == 0 : leg < dt, ended: false)
+        } else {
+          canvas.scroll(by: .zero, at: now, began: false, ended: leg >= 2.06)
+          finished = t >= 2.16 && leg >= 2.06
+        }
       }
       step = finished ? .settle(since: now) : .drive(start: start, last: now)
     case .settle(let since):
@@ -301,6 +329,11 @@ final class Bench {
       if sharp && canvas.isSettled || now - since > 8 {
         seg.mainP95Ms = percentile(busy, 0.95)
         seg.lowResShare = seg.frames > 0 ? Double(lowFrames) / Double(seg.frames) : 0
+        if let b = back {
+          let out = seg.frames - b.frames
+          seg.lowResOutShare = out > 0 ? Double(lowFrames - b.low) / Double(out) : 0
+          seg.lowResBackShare = b.frames > 0 ? Double(b.low) / Double(b.frames) : 0
+        }
         results.append(seg)
         index += 1
         begin(now: now)
@@ -320,6 +353,11 @@ final class Bench {
       seg.dropped += f.dropped
       busy.append(f.busyMs)
       if f.lowRes { lowFrames += 1 }
+      if var b = back {
+        b.frames += 1
+        if f.lowRes { b.low += 1 }
+        back = b
+      }
       lastMove = f.time
     } else if case .settle = step, seg.restToSharpMs == nil, f.resting, !f.lowRes, let m = lastMove {
       seg.restToSharpMs = ((f.time - m) * 1000).rounded()
