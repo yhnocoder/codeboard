@@ -1,6 +1,6 @@
 // CodeBoard 的设置只在这里声明一次：设置名（codeboard.<key>）、宿主收下白板改的值前怎么检查、编辑器设置页里的说明（JSON Schema）。
 // VS Code 插件的 package.json（contributes.configuration）由它生成（extensions/vscode/src/contributes.ts），宿主读写设置也按它（host/settings.ts）。
-// 白板不引入这个文件
+// The board reads only the choices of the settings that have a few fixed values (choicesOf), for its Settings page
 import {
   DEFAULT_SETTINGS,
   EXPERIMENTAL_THEMES,
@@ -50,6 +50,55 @@ const choices = (pairs: [string, string][]) => ({
   enumDescriptions: pairs.map(([, d]) => d),
 });
 
+/**
+ * The settings with a fixed set of values: each value with what an editor's settings page says about it, in the order both that
+ * page and the board's Settings page list them. Typed against Settings, so a value added on one side only does not compile
+ */
+const CHOICES = {
+  aiProvider: {
+    auto: "DeepSeek if an API key is set, otherwise a language model the editor provides, such as Copilot.",
+    copilot: "A language model the editor provides (for example GitHub Copilot).",
+    deepseek: 'DeepSeek. Set the key with "CodeBoard: Set DeepSeek API Key".',
+    off: "No gray inline completions.",
+  },
+  dblClick: {
+    text: "Text",
+    note: "Note",
+    code: "Free Code card",
+    none: "Nothing",
+  },
+  themeReflow: {
+    push: "Push cards below down",
+    overlap: "Allow overlap",
+  },
+  pasteOther: {
+    linked: "Linked card: the same card on both boards, content stays in sync",
+    copy: "Copy: a new card that changes on its own",
+  },
+  sharedUpdate: {
+    ask: "Ask every time",
+    all: "Update on all boards",
+    this: "Update this board only (makes a copy here)",
+  },
+  subPreview: {
+    skeleton: "Named skeleton: card titles, call graph marks and arrows of the board inside",
+    title: "Title only: the board's name and card count",
+  },
+  welcomeBack: {
+    "2d": "When the board was last opened more than 2 days ago",
+    always: "Every time a board with open questions opens",
+    off: "Never",
+  },
+  exportScope: {
+    board: "Whole board",
+    sections: "Selected sections",
+    walk: "One walkthrough path (from the Start card or the selected card)",
+  },
+} satisfies { [K in keyof Settings]?: Record<Extract<Settings[K], string>, string> };
+export type ChoiceSetting = keyof typeof CHOICES;
+/** A setting's values, in its declaration's order */
+export const choicesOf = <K extends ChoiceSetting>(k: K) => Object.keys(CHOICES[k]) as Settings[K][];
+
 const AI_CHOICE_TAIL =
   "`auto` (DeepSeek if an API key is set, otherwise a language model the editor provides, such as GitHub Copilot), `deepseek`, or the id of one of the editor's language models. Pick it in CodeBoard Settings › AI, which lists the models you have.";
 const fontLevel = (name: string, [lo, hi]: readonly [number, number]): SettingSchema => ({
@@ -62,15 +111,10 @@ const fontLevel = (name: string, [lo, hi]: readonly [number, number]): SettingSc
 export const SETTINGS: { [K in keyof Settings]-?: SettingDecl } = {
   aiProvider: {
     key: "ai.provider",
-    valid: oneOf("auto", "copilot", "deepseek", "off"),
+    valid: oneOf(...choicesOf("aiProvider")),
     schema: {
       type: "string",
-      ...choices([
-        ["auto", "DeepSeek if an API key is set, otherwise a language model the editor provides, such as Copilot."],
-        ["copilot", "A language model the editor provides (for example GitHub Copilot)."],
-        ["deepseek", 'DeepSeek. Set the key with "CodeBoard: Set DeepSeek API Key".'],
-        ["off", "No gray inline completions."],
-      ]),
+      ...choices(Object.entries(CHOICES.aiProvider)),
       markdownDescription:
         "Model for the gray inline completions while you write a Note. The DeepSeek API key is kept in the editor's secret storage: use **CodeBoard: Set DeepSeek API Key**.",
     },
@@ -178,15 +222,10 @@ export const SETTINGS: { [K in keyof Settings]-?: SettingDecl } = {
   },
   dblClick: {
     key: "doubleClick",
-    valid: oneOf("text", "note", "code", "none"),
+    valid: oneOf(...choicesOf("dblClick")),
     schema: {
       type: "string",
-      ...choices([
-        ["text", "Text"],
-        ["note", "Note"],
-        ["code", "Free Code card"],
-        ["none", "Nothing"],
-      ]),
+      ...choices(Object.entries(CHOICES.dblClick)),
       description: "What double-clicking empty board space creates.",
     },
   },
@@ -281,64 +320,47 @@ export const SETTINGS: { [K in keyof Settings]-?: SettingDecl } = {
   // not "theme.reflow": codeboard.theme is a string, so VS Code ignores keys under it
   themeReflow: {
     key: "themeReflow",
-    valid: oneOf("push", "overlap"),
+    valid: oneOf(...choicesOf("themeReflow")),
     schema: {
       type: "string",
-      ...choices([
-        ["push", "Push cards below down"],
-        ["overlap", "Allow overlap"],
-      ]),
+      ...choices(Object.entries(CHOICES.themeReflow)),
       description: "When switching themes makes cards taller: push the cards below them down, or let them overlap.",
     },
   },
   pasteOther: {
     key: "sharedCards.paste",
-    valid: oneOf("linked", "copy"),
+    valid: oneOf(...choicesOf("pasteOther")),
     schema: {
       type: "string",
-      ...choices([
-        ["linked", "Linked card: the same card on both boards, content stays in sync"],
-        ["copy", "Copy: a new card that changes on its own"],
-      ]),
+      ...choices(Object.entries(CHOICES.pasteOther)),
       description:
         "What pasting a card onto another board makes. Holding Alt (Option) while pasting makes the other one.",
     },
   },
   sharedUpdate: {
     key: "sharedCards.update",
-    valid: oneOf("ask", "all", "this"),
+    valid: oneOf(...choicesOf("sharedUpdate")),
     schema: {
       type: "string",
-      ...choices([
-        ["ask", "Ask every time"],
-        ["all", "Update on all boards"],
-        ["this", "Update this board only (makes a copy here)"],
-      ]),
+      ...choices(Object.entries(CHOICES.sharedUpdate)),
       description: "When updating a card that is on several boards to a new version.",
     },
   },
   subPreview: {
     key: "subBoards.preview",
-    valid: oneOf("skeleton", "title"),
+    valid: oneOf(...choicesOf("subPreview")),
     schema: {
       type: "string",
-      ...choices([
-        ["skeleton", "Named skeleton: card titles, call graph marks and arrows of the board inside"],
-        ["title", "Title only: the board's name and card count"],
-      ]),
+      ...choices(Object.entries(CHOICES.subPreview)),
       description: "What a sub-board frame shows on its parent board.",
     },
   },
   welcomeBack: {
     key: "questions.welcomeBack",
-    valid: oneOf("2d", "always", "off"),
+    valid: oneOf(...choicesOf("welcomeBack")),
     schema: {
       type: "string",
-      ...choices([
-        ["2d", "When the board was last opened more than 2 days ago"],
-        ["always", "Every time a board with open questions opens"],
-        ["off", "Never"],
-      ]),
+      ...choices(Object.entries(CHOICES.welcomeBack)),
       description: "When reopening a board, show how many questions on it are still open.",
     },
   },
@@ -357,14 +379,10 @@ export const SETTINGS: { [K in keyof Settings]-?: SettingDecl } = {
   },
   exportScope: {
     key: "export.scope",
-    valid: oneOf("board", "sections", "walk"),
+    valid: oneOf(...choicesOf("exportScope")),
     schema: {
       type: "string",
-      ...choices([
-        ["board", "Whole board"],
-        ["sections", "Selected sections"],
-        ["walk", "One walkthrough path (from the Start card or the selected card)"],
-      ]),
+      ...choices(Object.entries(CHOICES.exportScope)),
       description: "What the Export dialog exports by default.",
     },
   },

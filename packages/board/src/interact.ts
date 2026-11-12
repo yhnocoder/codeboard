@@ -137,15 +137,12 @@ function snapPace(e: PointerEvent, again: (ev: PointerEvent, still: boolean) => 
 
 // 双击检测（pointerdown 里 preventDefault 后浏览器的 dblclick 不可靠）：同一个东西上、够快、两下点在差不多同一个地方
 const DBL_SLOP = 6;
-const dbl: { key?: string; t: number; x: number; y: number } = { t: 0, x: 0, y: 0 };
+const dbl = boardRef<{ key?: string; t: number; x: number; y: number }>({ t: 0, x: 0, y: 0 });
 export function isDbl(key: string, e: { clientX: number; clientY: number }) {
-  const now = performance.now();
-  const r =
-    dbl.key === key && now - dbl.t < tune("dblClick") && Math.hypot(e.clientX - dbl.x, e.clientY - dbl.y) <= DBL_SLOP;
-  dbl.key = r ? undefined : key;
-  dbl.t = now;
-  dbl.x = e.clientX;
-  dbl.y = e.clientY;
+  const now = performance.now(),
+    d = dbl.v;
+  const r = d.key === key && now - d.t < tune("dblClick") && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= DBL_SLOP;
+  dbl.v = { key: r ? undefined : key, t: now, x: e.clientX, y: e.clientY };
   return r;
 }
 
@@ -1557,34 +1554,34 @@ export function installKeys(md: Markdown) {
   // An image dragged in a Note being edited: released in that editor, the editor moves it there; anywhere else on the board but
   // that Note it moves out of the Note into an image card there (the drop says "move", the editor then takes its source out,
   // and at the drag's end the board makes both one change). Which Note and how wide the image is drawn are read when it starts
-  let outOf: {
+  const outOf = boardRef<{
     card: string;
     w: number;
     drop?: { img: DraggedImage; at: { x: number; y: number }; before?: string };
-  } | null = null;
+  } | null>(null);
   const fromNote = (e: DragEvent) =>
     (e.target instanceof Element ? e.target.closest<HTMLElement>(".card[data-id]")?.dataset.id : undefined) ===
-    outOf?.card;
+    outOf.v?.card;
   document.addEventListener("dragstart", (e) => {
     const t = e.target instanceof Element ? e.target : null,
       card = t?.closest<HTMLElement>(".card[data-id]");
     const img = t?.querySelector("img") ?? t?.closest("img");
-    outOf =
+    outOf.v =
       card && img && draggedImage(e.dataTransfer)
         ? { card: card.dataset.id!, w: img.getBoundingClientRect().width / cam.z }
         : null;
   });
   // after the editor's own dragend (on the image, before this one): its source is out of the editor's text by now
   document.addEventListener("dragend", () => {
-    const o = outOf;
-    outOf = null;
+    const o = outOf.v;
+    outOf.v = null;
     if (o?.drop)
       A.dropNoteImage(o.drop.img, o.drop.at, o.w, { id: o.card, before: o.drop.before, md: liveNoteMd(o.card) });
   });
   document.addEventListener("dragover", (e) => {
     const dt = e.dataTransfer;
     if (!dt || e.defaultPrevented) return; // an editor under the pointer took it
-    if (outOf && dt.types.includes(IMAGE_DRAG_TYPE)) {
+    if (outOf.v && dt.types.includes(IMAGE_DRAG_TYPE)) {
       if (fromNote(e)) {
         dt.dropEffect = "none";
         return;
@@ -1597,10 +1594,11 @@ export function installKeys(md: Markdown) {
   });
   document.addEventListener("drop", (e) => {
     if (e.defaultPrevented || !e.dataTransfer) return;
-    const img = outOf && !fromNote(e) && draggedImage(e.dataTransfer);
-    if (img) {
+    const o = outOf.v;
+    const img = o && !fromNote(e) && draggedImage(e.dataTransfer);
+    if (o && img) {
       e.preventDefault();
-      outOf!.drop = { img, at: worldOf(e), before: liveNoteMd(outOf!.card) };
+      o.drop = { img, at: worldOf(e), before: liveNoteMd(o.card) };
       return;
     }
     if (A.dropFiles(e.dataTransfer, worldOf(e))) e.preventDefault();
