@@ -153,11 +153,6 @@ private final class Panel: NSView {
       glass.theme = look
       panes.sync()
     }
-    track { [weak self] in
-      guard let self else { return }
-      glass.look = shell.glass
-      needsLayout = true
-    }
   }
 
   @available(*, unavailable)
@@ -174,7 +169,7 @@ private final class Panel: NSView {
       roundedRect: bounds, cornerWidth: ShellTheme.panelRadius, cornerHeight: ShellTheme.panelRadius, transform: nil)
     tabs.frame = NSRect(x: tabsLeading, y: 0, width: max(0, bounds.width - tabsLeading - 8), height: barHeight)
     panes.frame = NSRect(x: 0, y: barHeight, width: bounds.width, height: max(0, bounds.height - barHeight))
-    glass.frame = NSRect(x: 0, y: 0, width: bounds.width, height: barHeight + glass.look.dissolve)
+    glass.frame = NSRect(x: 0, y: 0, width: bounds.width, height: barHeight + ShellTheme.glassDissolve)
     glass.place(bar: barHeight)
     let size = empty.fittingSize
     empty.frame = NSRect(
@@ -182,52 +177,24 @@ private final class Panel: NSView {
   }
 }
 
-/// The canvas runs on under the top bar, so cards pass under the tabs: there they are seen blurred through frosted glass
-/// tinted with the canvas colour, which dissolves into the canvas over a few points below the bar so it has no edge.
-/// Core Animation blurs what is behind it on the GPU as it composites; nothing here runs per frame
-final class TopGlass: NSView {
-  /// What the glass is made of; the defaults are ShellTheme's
-  struct Look: Equatable, Sendable {
-    var kind = Kind.material
-    var material = ShellTheme.glassMaterial
-    var tint = ShellTheme.glassTint
-    var dissolve = ShellTheme.glassDissolve
-    var emphasized = false
-    /// The rest of the panel looks the same when the window is in the background, so the row does too
-    var state = NSVisualEffectView.State.active
-  }
-
-  // ponytail: two ways of making the glass while the owner compares them in GlassTuning; keep one, drop the enum. A
-  // layer blurring what is behind it by a radius of our own was tried: background filters (CIGaussianBlur) draw nothing
-  // within the window on macOS 27, and nothing else public blurs what is behind a layer
-  enum Kind: String, Sendable {
-    /// A system material (NSVisualEffectView)
-    case material
-    /// Liquid Glass in its clear style (NSGlassEffectView)
-    case glass
-  }
-
+/// The canvas runs on under the top bar, so cards pass under the tabs: there they are behind a material in the canvas
+/// colour, which dissolves into the canvas over a few points below the bar so it has no edge. Core Animation composites
+/// it on the GPU; nothing here runs per frame
+final class TopGlass: NSVisualEffectView {
   var theme = Theme.warmInk { didSet { retint() } }
-  var look = Look() {
-    didSet {
-      guard look != oldValue else { return }
-      if look.kind != oldValue.kind { rebuild() }
-      adopt()
-      retint()
-    }
-  }
-  /// What blurs, by the kind: built in GlassTuning
-  private(set) var effect = NSView()
   private var bar: CGFloat = 0
   private let tint = GradientView()
 
   override init(frame: NSRect) {
     super.init(frame: frame)
+    blendingMode = .withinWindow
+    material = ShellTheme.glassMaterial
+    // The rest of the panel looks the same when the window is in the background, so the row does too
+    state = .active
+    maskImage = TopGlass.mask
     tint.frame = bounds
     tint.autoresizingMask = [.width, .height]
     addSubview(tint)
-    rebuild()
-    adopt()
     retint()
   }
 
@@ -239,38 +206,23 @@ final class TopGlass: NSView {
   override var isFlipped: Bool { true }
   override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-  override func layout() {
-    super.layout()
-    effect.layer?.mask?.frame = effect.bounds
-  }
-
   func place(bar: CGFloat) {
     guard bar != self.bar else { return }
     self.bar = bar
-    adopt()
     retint()
   }
 
-  private func rebuild() {
-    effect.removeFromSuperview()
-    effect = TopGlass.effect(look.kind)
-    effect.frame = bounds
-    effect.autoresizingMask = [.width, .height]
-    addSubview(effect, positioned: .below, relativeTo: tint)
-  }
-
-  private func adopt() { TopGlass.adopt(look, on: effect, stops: TopGlass.stops(bar: bar, dissolve: look.dissolve)) }
-
-  /// The effect's mask fades it out below the bar; the tint, which it does not mask, fades along the same curve
+  /// The material's own mask stretches its one opaque row over the bar; the tint, which it does not mask, fades along
+  /// the same curve
   private func retint() {
-    let stops = TopGlass.stops(bar: bar, dissolve: look.dissolve)
-    tint.gradient.colors = stops.map { theme.canvas.copy(alpha: look.tint * $0.alpha) ?? theme.canvas }
+    let stops = TopGlass.stops(bar: bar)
+    tint.gradient.colors = stops.map { theme.canvas.copy(alpha: ShellTheme.glassTint * $0.alpha) ?? theme.canvas }
     tint.gradient.locations = stops.map { NSNumber(value: Double($0.at)) }
   }
 
-  /// A material's mask: its one opaque row stretched over the bar
-  static func mask(dissolve d: CGFloat) -> NSImage {
-    let stops = TopGlass.stops(bar: 1, dissolve: d)
+  private static let mask: NSImage = {
+    let d = ShellTheme.glassDissolve
+    let stops = TopGlass.stops(bar: 1)
     let img = NSImage(size: NSSize(width: 1, height: 1 + d), flipped: true) { r in
       NSGradient(
         colors: stops.map { NSColor(white: 0, alpha: $0.alpha) }, atLocations: stops.map(\.at), colorSpace: .sRGB
@@ -280,15 +232,16 @@ final class TopGlass: NSView {
     img.capInsets = NSEdgeInsets(top: 0, left: 0, bottom: d, right: 0)
     img.resizingMode = .stretch
     return img
-  }
+  }()
 
   /// Opacity down the glass, at fractions of its height: whole over the bar, then out to nothing along a smoothstep
-  static func stops(bar: CGFloat, dissolve d: CGFloat) -> [(at: CGFloat, alpha: CGFloat)] {
+  static func stops(bar: CGFloat) -> [(at: CGFloat, alpha: CGFloat)] {
+    let d = ShellTheme.glassDissolve
     let n = 8
     return [(0, 1)]
       + (0...n).map { i in
         let t = CGFloat(i) / CGFloat(n)
-        return ((bar + t * d) / max(bar + d, 1), 1 - t * t * (3 - 2 * t))
+        return ((bar + t * d) / (bar + d), 1 - t * t * (3 - 2 * t))
       }
   }
 }

@@ -43,8 +43,6 @@ public struct ShellState: Codable, Equatable, Sendable {
   public var theme: Theme.ID = .warmInk
   /// Whether the Mac's appearance is dark: the app follows it (`follow(_:)`) and has no setting of its own
   public private(set) var dark = false
-  /// The tab row's glass, tuned by hand in GlassTuning
-  var glass = TopGlass.Look()
   private var byID: [BoardID: VaultBoard] = [:]
 
   public init() {}

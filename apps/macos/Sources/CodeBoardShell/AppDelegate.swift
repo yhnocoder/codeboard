@@ -21,7 +21,6 @@ import CodeBoardModel
   private var window: NSWindow?
   private var panes: BoardPanes?
   private var watcher: VaultWatcher?
-  private var glassTuning: GlassTuning?
   private var appearance: NSKeyValueObservation?
   /// Only the latest tree read is applied
   private var treeRead = 0
@@ -29,7 +28,6 @@ import CodeBoardModel
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSWindow.allowsAutomaticWindowTabbing = false
     NSApp.mainMenu = mainMenu()
-    glassTuning = GlassTuning(shell: shell)
     let saved = UserDefaults.standard.data(forKey: Self.stateKey).flatMap {
       try? JSONDecoder().decode(ShellState.self, from: $0)
     }
@@ -126,8 +124,6 @@ import CodeBoardModel
   @objc func goForward(_ sender: Any?) { shell.goForward() }
   @objc func showNextTab(_ sender: Any?) { shell.selectTab(by: 1) }
   @objc func showPreviousTab(_ sender: Any?) { shell.selectTab(by: -1) }
-
-  @objc func tuneGlass(_ sender: Any?) { glassTuning?.show() }
 
   @objc func chooseTheme(_ sender: NSMenuItem) {
     guard let id = (sender.representedObject as? String).flatMap(Theme.ID.init) else { return }
@@ -227,7 +223,7 @@ import CodeBoardModel
     NSApp.windowsMenu = windows
 
     let bar = NSMenu()
-    for menu in [app, file, edit, view, windows, GlassTuning.menu()] {
+    for menu in [app, file, edit, view, windows] {
       bar.addItem(withTitle: menu.title, action: nil, keyEquivalent: "").submenu = menu
     }
     return bar

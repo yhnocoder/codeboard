@@ -54,11 +54,11 @@ enum ShellTheme {
   static let tabPadding: CGFloat = 20
   static let tabMinWidth: CGFloat = 72
   static let tabMaxWidth: CGFloat = 200
-  /// The frosted glass under the tabs: the system material blurred, the share of the canvas colour laid over it, and
-  /// how far below the bar it dissolves into the canvas
-  static let glassMaterial = NSVisualEffectView.Material.popover
-  static let glassTint: CGFloat = 0.6
-  static let glassDissolve: CGFloat = 14
+  /// The surface under the tabs: the system material, the share of the canvas colour laid over it (all of it: the row
+  /// is opaque), and how far below the bar it dissolves into the canvas
+  static let glassMaterial = NSVisualEffectView.Material.contentBackground
+  static let glassTint: CGFloat = 1
+  static let glassDissolve: CGFloat = 13
 }
 
 extension View {
