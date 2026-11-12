@@ -5967,8 +5967,8 @@ mark.wdiff {
   gap: 6px;
   min-width: 0;
   overflow: hidden;
-  /* room for the current swatch's ring */
-  padding: 4px 5px;
+  /* room for the current swatch's ring (3.5px) while it is scaled up on hover */
+  padding: 6px;
 }
 .sacts .sw {
   flex: none;
