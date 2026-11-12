@@ -307,7 +307,6 @@ const OUTLIVES_BOARD: Record<string, string> = {
   "stickers/glyphs.tsx:stills": "still frames of animated stickers, by image",
   "md/anim.ts:bytes": "animated images' bytes, by address (assets/ names carry their content's hash)",
   "md/anim.ts:svgMarkup": "animated SVGs cleaned for inline drawing, by address",
-  "md/anim.ts:gifThumbs": "GIF filmstrip stills, by address",
   "actions/imageai.ts:colorCtx": "a canvas for parsing colors",
   "actions/flow.ts:sent": "calls prefetched lately, by segment: the host caches them",
   "md/copies.ts:known": "the host's smaller copies of images, by asset name (named by its content)",
