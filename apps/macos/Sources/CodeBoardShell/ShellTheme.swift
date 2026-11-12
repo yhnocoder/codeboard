@@ -7,7 +7,7 @@ enum ShellTheme {
   /// The window background, which the sidebar is part of
   static let ground = NSColor(srgbRed: 0.933, green: 0.914, blue: 0.878, alpha: 1)
   /// The whole board panel, top bar included, is one surface with the canvas boards are shown on
-  static let board = NSColor(cgColor: Theme.warmInkLight.canvas) ?? ground
+  static let board = NSColor(cgColor: Theme.warmInk.canvas) ?? ground
   static let capsule = Color(red: 0.992, green: 0.988, blue: 0.980)
   static let ink = Color(red: 0.129, green: 0.122, blue: 0.106)
   static let muted = Color(red: 0.384, green: 0.369, blue: 0.337)

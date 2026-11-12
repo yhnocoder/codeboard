@@ -29,7 +29,7 @@ import Testing
       CardID(rawValue: "free"): CGSize(width: 87, height: 24),
     ]
     let s = Scene(
-      board, package: package, vault: vault, theme: .warmInkLight, highlighter: Highlighter(), sizes: sizes)
+      board, package: package, vault: vault, theme: .warmInk, highlighter: Highlighter(), sizes: sizes)
     #expect(
       s.items.map(\.rect.size) == [
         CGSize(width: 300, height: 333), CGSize(width: 300, height: 120), CGSize(width: 87, height: 24),
@@ -70,7 +70,7 @@ import Testing
 
     // measured before it is shown: the tall Note's height is its content's, no more than paper so far
     let first = CanvasView(frame: frame, noteCache: cache)
-    try await first.show(at, in: vault, theme: .warmInkLight)
+    try await first.show(at, in: vault, theme: .warmInk)
     let bounds = first.boardBounds
     #expect(bounds.height > 300)
     #expect(first.noteProgress.overviews == 0 && first.noteProgress.notes == 2)
@@ -79,7 +79,7 @@ import Testing
     let renderer = NoteRenderer(cache: cache)
     let sizes = [CardID(rawValue: "tall"): CGSize(width: 300, height: bounds.height)]
     let scene = Scene(
-      board, package: package, vault: vault, theme: .warmInkLight, highlighter: Highlighter(), sizes: sizes)
+      board, package: package, vault: vault, theme: .warmInk, highlighter: Highlighter(), sizes: sizes)
     guard case .note(let n) = scene.items[0].drawing else {
       Issue.record("not a Note")
       return
@@ -87,9 +87,9 @@ import Testing
     let images = DecodeCache(cap: 1 << 20)
     let composed = try #require(
       await CanvasView.drawNote(
-        scene.items[0], n, scale: 2, theme: .warmInkLight, images: images, notes: renderer, priority: 0
+        scene.items[0], n, scale: 2, theme: .warmInk, images: images, notes: renderer, priority: 0
       ).surface)
-    let paper = try #require(CanvasView.render(scene.items[0], scale: 2, theme: .warmInkLight, images: images).surface)
+    let paper = try #require(CanvasView.render(scene.items[0], scale: 2, theme: .warmInk, images: images).surface)
     #expect(composed.width == 600 && composed.height == Int((bounds.height * 2).rounded(.up)))
     #expect(ink(composed) > ink(paper) + 2000)
 
@@ -100,10 +100,11 @@ import Testing
       guard case .note(let n) = it.drawing else { continue }
       _ = try await renderer.snapshot(
         of: n.content, width: it.rect.width, height: height, folder: package,
-        scale: Levels.noteOverview(fit, backing: backing, size: it.rect.size), priority: 0)
+        scale: Levels.noteOverview(fit, backing: backing, size: it.bitmapSize), look: Theme.warmInk.id.rawValue,
+        priority: 0)
     }
     let again = CanvasView(frame: frame, noteCache: cache)
-    try await again.show(at, in: vault, theme: .warmInkLight)
+    try await again.show(at, in: vault, theme: .warmInk)
     #expect(again.boardBounds == bounds)
     #expect(again.noteProgress.overviews == 2)
   }

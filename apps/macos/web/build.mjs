@@ -2,7 +2,7 @@
 // loads from file URLs. dist/build-id is a hash of everything in it: Note snapshots drawn by another build are not reused.
 import { build } from "esbuild";
 import { createHash } from "node:crypto";
-import { copyFileSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,6 +22,10 @@ await build({
   logLevel: "warning",
 });
 copyFileSync(join(here, "src/page.html"), join(out, "page.html"));
+// the board's fonts ship under the SIL Open Font License, whose text travels with them (the Mac canvas draws with them too)
+const licences = join(here, "../../../packages/board/public/fonts");
+mkdirSync(join(out, "fonts"));
+for (const f of readdirSync(licences).filter((n) => n.endsWith(".txt"))) copyFileSync(join(licences, f), join(out, "fonts", f));
 const hash = createHash("sha256");
 for (const f of readdirSync(out, { recursive: true, withFileTypes: true }).filter((e) => e.isFile())) {
   const path = join(f.parentPath, f.name);

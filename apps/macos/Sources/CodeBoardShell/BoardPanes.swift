@@ -110,7 +110,7 @@ private final class Pane: NSView {
         }
       }
       Task {
-        do { try await canvas.show(at, in: vault, theme: .warmInkLight) } catch { fail(error) }
+        do { try await canvas.show(at, in: vault, theme: .warmInk) } catch { fail(error) }
         becomeReady()
       }
     } catch {

@@ -56,7 +56,7 @@ final class App: NSObject, NSApplicationDelegate {
           if bench {
             print(try await Bench(canvas, meter: meter).run(b, in: vault))
           } else {
-            try await canvas.show(b, in: vault, theme: .warmInkLight)
+            try await canvas.show(b, in: vault, theme: .warmInk)
           }
         } catch {
           FileHandle.standardError.write(Data("\(b.path): \(error)\n".utf8))

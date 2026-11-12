@@ -2,24 +2,27 @@ import CodeBoardModel
 import Foundation
 
 /// What the Note page draws (`web/src/page.ts`, type `Note`). Its JSON is both the page's argument and, in the snapshot
-/// key, the description of everything the page draws.
+/// key, the description of everything the page draws: the look among it, so no picture or size is shared across looks.
 struct PageNote: Encodable {
   var text: String
   var layout: NoteLayout?
   var style: NoteStyle
   var width: Double
   var height: Double?
+  /// The board theme's id: the page applies the board's own stylesheet for it
+  var look: String
 
-  init(_ note: Note, width: Double, height: Double?) {
+  init(_ note: Note, width: Double, height: Double?, look: String) {
     text = note.text
     layout = note.layout
     style = note.style
     self.width = width
     self.height = height
+    self.look = look
   }
 
   private enum Keys: String, CodingKey {
-    case text, layout, style, width, height
+    case text, layout, style, width, height, look
   }
 
   func encode(to encoder: Encoder) throws {
@@ -29,6 +32,7 @@ struct PageNote: Encodable {
     try c.encode(PageStyle(style), forKey: .style)
     try c.encode(width, forKey: .width)
     try c.encode(height, forKey: .height)
+    try c.encode(look, forKey: .look)
   }
 
   /// Sorted keys: the same Note always gives the same bytes

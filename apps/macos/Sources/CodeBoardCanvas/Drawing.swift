@@ -4,8 +4,9 @@ import CoreText
 import IOSurface
 
 /// What one item's bitmap shows. Drawn off the main thread at any scale: a producer gets the item's size, a scale and
-/// the theme and draws into a context. A Note's content is the other producer: the Note renderer's picture, drawn over
-/// the paper drawn here (`CanvasView.drawNote`).
+/// the theme and draws into a context whose origin is the item's top left; it may draw `bleed(theme)` past each side
+/// (paper, rings), and the bitmap has room for that. A Note's content is the other producer: the Note renderer's picture,
+/// drawn over the paper drawn here (`CanvasView.compose`).
 enum Drawing: Sendable {
   case code(Code)
   case note(Note)
@@ -13,14 +14,26 @@ enum Drawing: Sendable {
   case label(Label)
 
   struct Code: Sendable {
+    /// The card's id: picks its paper
+    var id: String
     var title: String
     var path: String?
+    /// The card's kind before its title (ƒ, C, ⋮…), when the theme shows it
+    var glyph: String?
+    /// Its source's version (a commit, a package version, a file's fingerprint)
+    var version: String?
+    /// Arrows ending on the card
+    var linkedIn: Int
+    /// Rows arrows start from: segment index and line
+    var linked: Set<[Int]>
     var layout: CodeLayout
     var framed: Bool
   }
 
   struct Note: Sendable {
-    var title: String
+    var id: String
+    /// nil: untitled, shown as "Note"
+    var title: String?
     var content: CodeBoardModel.Note
     /// Where its images are: the board package or the vault's shared folder
     var folder: URL
@@ -31,6 +44,7 @@ enum Drawing: Sendable {
   }
 
   struct Picture: Sendable {
+    var id: String
     /// nil: not drawable here (a web address, or a missing file)
     var url: URL?
     var fileSize: CGSize
@@ -39,9 +53,12 @@ enum Drawing: Sendable {
   }
 
   struct Label: Sendable {
+    enum Kind: Sendable {
+      case arrow, section
+    }
+
     var text: String
-    /// An arrow's label sits on a paper box; a section's title is bare
-    var boxed: Bool
+    var kind: Kind
   }
 
   var framed: Bool {
@@ -53,6 +70,18 @@ enum Drawing: Sendable {
     }
   }
 
+  /// How far it draws past its rect on each side
+  func bleed(_ t: Theme) -> CGFloat {
+    if framed { return t.bleed }
+    // a box's ring and its shadow lie outside it, and an arrow label's box's
+    switch self {
+    case .note(let n): if case .box = n.style { return 3 }
+    case .label(let l): if l.kind == .arrow && t.label == .box { return 3 }
+    default: break
+    }
+    return 0
+  }
+
   /// Draws the item in board units, y-down from its top-left. Returns how many pictures had to be decoded
   func draw(in ctx: CGContext, size: CGSize, scale: CGFloat, theme t: Theme, images: DecodeCache) -> Int {
     let r = CGRect(origin: .zero, size: size)
@@ -60,21 +89,35 @@ enum Drawing: Sendable {
     var decodes = 0
     switch self {
     case .code(let c):
-      if c.framed { Drawing.paper(ctx, r, t, headerLine: false) }
+      if c.framed { Drawing.paper(ctx, r, t, id: c.id, rule: false) }
       Drawing.code(ctx, c, r, t)
       if c.framed { Drawing.edge(ctx, r, t) }
     case .note(let n):
       switch n.style {
       case .note:
-        Drawing.paper(ctx, r, t, headerLine: true)
-        Drawing.text(ctx, n.title, t.noteTitle.ct, t.ink, x: 10, midY: t.headerHeight / 2, width: size.width - 20)
+        Drawing.paper(ctx, r, t, id: n.id, rule: true)
+        var x = t.headerPad
+        if let g = t.kindGlyph {
+          Drawing.text(
+            ctx, "¶", g, t.ink3, x: x + (10 - Drawing.width("¶", g)) / 2, midY: t.headerHeight / 2, width: 10)
+          x += 10 + t.headerGap
+        }
+        Drawing.text(
+          ctx, n.title ?? "Note", t.noteTitle, n.title == nil ? t.ink3 : t.ink, x: x, midY: t.headerHeight / 2,
+          width: size.width - x - t.headerPadRight)
         Drawing.edge(ctx, r, t)
       case .box(let fill):
-        let p = Drawing.squircle(r.insetBy(dx: 0.625, dy: 0.625), t.cardRadius)
+        let p = Drawing.squircle(r, t.cardRadius)
+        ctx.saveGState()
+        ctx.setShadow(
+          offset: CGSize(width: 0, height: -1 * scale), blur: 2 * scale,
+          color: CGColor(srgbRed: 50 / 255, green: 35 / 255, blue: 10 / 255, alpha: 0.06))
         ctx.addPath(p)
         ctx.setFillColor(t.boxFills[fill] ?? t.surface)
         ctx.fillPath()
-        ctx.addPath(p)
+        ctx.restoreGState()
+        // a ring wholly outside the box (box-shadow 0 0 0 1.25px)
+        ctx.addPath(Drawing.squircle(r.insetBy(dx: -0.625, dy: -0.625), t.cardRadius + 0.625))
         ctx.setStrokeColor(t.boxEdge)
         ctx.setLineWidth(1.25)
         ctx.strokePath()
@@ -82,6 +125,7 @@ enum Drawing: Sendable {
         break
       }
     case .image(let p):
+      if p.framed { Drawing.paper(ctx, r, t, id: p.id, rule: nil) }
       let shape = Drawing.squircle(r, t.cardRadius)
       ctx.saveGState()
       ctx.addPath(shape)
@@ -95,10 +139,6 @@ enum Drawing: Sendable {
         }
       if got?.decoded == true { decodes += 1 }
       if let img = got?.image {
-        if p.framed {
-          ctx.setFillColor(t.surface)
-          ctx.fill(r)
-        }
         ctx.interpolationQuality = .high
         ctx.translateBy(x: 0, y: size.height)
         ctx.scaleBy(x: 1, y: -1)
@@ -110,20 +150,39 @@ enum Drawing: Sendable {
       ctx.restoreGState()
       if p.framed { Drawing.edge(ctx, r, t) }
     case .label(let l):
-      if l.boxed {
-        let p = CGPath(
-          roundedRect: r.insetBy(dx: 0.25, dy: 0.25), cornerWidth: t.labelRadius, cornerHeight: t.labelRadius,
-          transform: nil)
-        ctx.addPath(p)
+      switch (l.kind, t.label) {
+      case (.arrow, .box):
+        // a box of card paper in a hairline ring and a faint shadow (.vcard)
+        ctx.saveGState()
+        ctx.setShadow(offset: CGSize(width: 0, height: -scale), blur: 2 * scale, color: CGColor(gray: 0, alpha: 0.05))
+        ctx.addPath(Drawing.squircle(r, t.labelRadius))
         ctx.setFillColor(t.surface)
         ctx.fillPath()
-        ctx.addPath(p)
+        ctx.restoreGState()
+        ctx.addPath(Drawing.squircle(r.insetBy(dx: -0.25, dy: -0.25), t.labelRadius + 0.25))
         ctx.setStrokeColor(t.hair)
         ctx.setLineWidth(0.5)
         ctx.strokePath()
-        Drawing.text(ctx, l.text, t.arrowLabel.ct, t.ink, x: 6, midY: size.height / 2, width: size.width - 12)
-      } else {
-        Drawing.text(ctx, l.text, t.sectionTitle.ct, t.ink2, x: 6, midY: size.height / 2, width: size.width - 8)
+        Drawing.text(ctx, l.text, t.arrowLabel, t.ink, x: 6, midY: size.height / 2, width: size.width - 12)
+      case (.arrow, .halo):
+        // radial-gradient(closest-side, canvas 62%, transparent): an ellipse filling the box
+        ctx.saveGState()
+        ctx.translateBy(x: size.width / 2, y: size.height / 2)
+        ctx.scaleBy(x: size.width / size.height, y: 1)
+        let clear = t.canvas.copy(alpha: 0) ?? t.canvas
+        if let g = CGGradient(
+          colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: [t.canvas, t.canvas, clear] as CFArray,
+          locations: [0, 0.62, 1])
+        {
+          ctx.drawRadialGradient(
+            g, startCenter: .zero, startRadius: 0, endCenter: .zero, endRadius: size.height / 2, options: [])
+        }
+        ctx.restoreGState()
+        Drawing.text(ctx, l.text, t.arrowLabel, t.ink2, x: 16, midY: size.height / 2, width: size.width - 32)
+      case (.section, _):
+        let x: CGFloat = t.frame == .tray ? 6 : 0
+        Drawing.text(
+          ctx, l.text, t.sectionTitleFont, t.sectionTitle, x: x, midY: size.height / 2, width: size.width - x)
       }
     }
     return decodes
@@ -131,26 +190,66 @@ enum Drawing: Sendable {
 
   // MARK: Parts
 
-  /// The card's paper and its title bar
-  private static func paper(_ ctx: CGContext, _ r: CGRect, _ t: Theme, headerLine: Bool) {
-    let p = squircle(r, t.cardRadius)
-    ctx.addPath(p)
-    ctx.setFillColor(t.surface)
-    ctx.fillPath()
+  /// The card's paper and its title bar (rule: whether the bar has a rule under it, where the theme draws one; nil: no bar)
+  private static func paper(_ ctx: CGContext, _ r: CGRect, _ t: Theme, id: String, rule: Bool?) {
+    switch t.paper {
+    case .sheet:
+      ctx.addPath(squircle(r, t.cardRadius))
+      ctx.setFillColor(t.surface)
+      ctx.fillPath()
+    case .deckle:
+      let p = Deckle.paper(Deckle.sheet(for: id), size: r.size)
+      ctx.addPath(p.outline)
+      ctx.setFillColor(t.surface)
+      ctx.fillPath()
+      ctx.saveGState()
+      ctx.setLineCap(.butt)
+      ctx.setLineWidth(0.5)
+      ctx.setStrokeColor(t.fibre.copy(alpha: 0.04) ?? t.fibre)
+      ctx.addPath(p.inner)
+      ctx.strokePath()
+      ctx.setLineCap(.round)
+      ctx.setLineWidth(0.7)
+      ctx.setStrokeColor(t.surface)
+      ctx.addPath(p.fibres)
+      ctx.strokePath()
+      ctx.setLineCap(.butt)
+      ctx.setLineWidth(0.5)
+      ctx.setStrokeColor(t.fibre.copy(alpha: 0.1) ?? t.fibre)
+      ctx.addPath(p.outline)
+      ctx.strokePath()
+      ctx.restoreGState()
+    }
+    guard let rule else { return }
+    let bar = CGRect(x: 0, y: 0, width: r.width, height: t.headerHeight)
     ctx.saveGState()
-    ctx.addPath(p)
+    ctx.addPath(squircle(r, t.cardRadius))
     ctx.clip()
-    ctx.setFillColor(t.head)
-    ctx.fill(CGRect(x: 0, y: 0, width: r.width, height: t.headerHeight))
-    if headerLine {
-      ctx.setFillColor(t.line)
-      ctx.fill(CGRect(x: 0, y: t.headerHeight - 1, width: r.width, height: 1))
+    switch t.header {
+    case .band:
+      ctx.setFillColor(t.head)
+      ctx.fill(bar)
+      if rule {
+        ctx.setFillColor(t.line)
+        ctx.fill(CGRect(x: 0, y: t.headerHeight - 1, width: r.width, height: 1))
+      }
+    case .wash:
+      let ink = { (a: CGFloat) in t.ink.copy(alpha: a) ?? t.ink }
+      if let g = CGGradient(
+        colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: [ink(0.06), ink(0.035), ink(0)] as CFArray,
+        locations: [0, 0.45, 0.85])
+      {
+        ctx.clip(to: bar)
+        ctx.drawLinearGradient(
+          g, start: .zero, end: CGPoint(x: r.width, y: 0), options: [.drawsAfterEndLocation])
+      }
     }
     ctx.restoreGState()
   }
 
-  /// Warm Ink's card edge: a hairline, a light line inside the top and a warm one inside the bottom
+  /// `Paper.sheet`'s card edge: a hairline, a light line inside the top and a warm one inside the bottom
   private static func edge(_ ctx: CGContext, _ r: CGRect, _ t: Theme) {
+    guard t.paper == .sheet else { return }
     let p = squircle(r, t.cardRadius)
     ctx.saveGState()
     ctx.addPath(p)
@@ -162,7 +261,7 @@ enum Drawing: Sendable {
       ctx.fillPath(using: .evenOdd)
     }
     ctx.restoreGState()
-    ctx.addPath(squircle(r.insetBy(dx: 0.25, dy: 0.25), t.cardRadius))
+    ctx.addPath(squircle(r.insetBy(dx: -0.25, dy: -0.25), t.cardRadius + 0.25))
     ctx.setStrokeColor(t.hair)
     ctx.setLineWidth(0.5)
     ctx.strokePath()
@@ -171,17 +270,17 @@ enum Drawing: Sendable {
   private static func code(_ ctx: CGContext, _ c: Code, _ r: CGRect, _ t: Theme) {
     let m = t.metrics
     let top = c.framed ? t.headerHeight : 0
-    if c.framed {
-      let pathWidth = c.path.map { min(width($0, t.codePath.ct), r.width * 0.3) } ?? 0
-      let titleRoom = r.width - 16 - (pathWidth > 0 ? pathWidth + 7 : 0)
-      let titleWidth = min(width(c.title, t.codeTitle.ct), titleRoom)
-      text(ctx, c.title, t.codeTitle.ct, t.ink, x: 10, midY: top / 2, width: titleWidth)
-      if let p = c.path { text(ctx, p, t.codePath.ct, t.ink3, x: 10 + titleWidth + 7, midY: top / 2, width: pathWidth) }
-    }
+    if c.framed { header(ctx, c, r, t) }
     ctx.saveGState()
     ctx.clip(to: CGRect(x: 0, y: top, width: r.width, height: r.height - top))
     ctx.translateBy(x: 0, y: top)
     let l = c.layout
+    for p in l.rows {
+      if case .line(let s, let n?, _, _) = p.row, c.linked.contains([s, n]) {
+        ctx.setFillColor(t.linkedRow)
+        ctx.fill(CGRect(x: 0, y: p.y, width: r.width, height: p.height))
+      }
+    }
     for b in l.bands {
       let band = CGRect(
         x: l.gutter - 4, y: b.lowerBound + 2, width: r.width - 14 - (l.gutter - 4),
@@ -190,17 +289,17 @@ enum Drawing: Sendable {
       ctx.setFillColor(t.highlight)
       ctx.fillPath()
     }
-    let numbers = t.ink3.copy(alpha: t.ink3.alpha * 0.65) ?? t.ink3
     let numberRight = l.gutter - m.numberGap
     for p in l.rows {
       let mid = p.y + p.height / 2
       switch p.row {
-      case .line(_, let n, let s, let tokens):
+      case .line(let si, let n, let s, let tokens):
         if let n {
           let ns = String(n)
-          text(ctx, ns, t.code.ct, numbers, x: numberRight - width(ns, t.code.ct), midY: mid, width: .infinity)
+          let color = c.linked.contains([si, n]) ? t.linkedNumber : t.number
+          text(ctx, ns, t.code, color, x: numberRight - width(ns, t.code), midY: mid, width: .infinity)
         }
-        codeLine(ctx, s, tokens, t, x: l.gutter, midY: mid)
+        codeLine(ctx, s, tokens, t, x: l.gutter + l.shift, midY: mid)
       case .gap(let a, let b):
         let row = CGRect(x: 0, y: p.y + 1, width: r.width, height: p.height - 2)
         ctx.setFillColor(t.hiddenRow)
@@ -214,8 +313,11 @@ enum Drawing: Sendable {
         ])
         ctx.setLineDash(phase: 0, lengths: [])
         let n = b - a + 1
-        let what = "⋯ \(n) line\(n > 1 ? "s" : "") hidden (\(a == b ? "\(a)" : "\(a)–\(b)"))"
-        text(ctx, what, t.small.ct, t.ink3, x: l.gutter + 8, midY: mid, width: r.width - l.gutter - 16)
+        let what = "··· \(n) line\(n > 1 ? "s" : "") hidden (\(a == b ? "\(a)" : "\(a)–\(b)")) · "
+        let x = l.gutter + 8
+        text(ctx, what, t.small, t.ink3, x: x, midY: mid, width: r.width - x - 8)
+        let shown = x + width(what, t.small) + 5
+        text(ctx, "Show", t.smallStrong, t.ink2, x: shown, midY: mid, width: r.width - shown - 8)
       case .file(let path):
         let x0 = max(0, l.gutter - 58)
         let bar = CGRect(x: x0, y: p.y + 2, width: r.width - 12 - x0, height: p.height - 4)
@@ -224,12 +326,57 @@ enum Drawing: Sendable {
         ctx.setFillColor(t.line)
         ctx.fill(CGRect(x: bar.minX, y: bar.minY, width: bar.width, height: 1))
         ctx.fill(CGRect(x: bar.minX, y: bar.maxY - 1, width: bar.width, height: 1))
-        text(ctx, path, t.code.ct, t.ink2, x: x0 + 14, midY: mid, width: bar.width - 20)
+        text(ctx, path, t.code, t.ink2, x: x0 + 14, midY: mid, width: bar.width - 20)
       case .function(let name):
-        text(ctx, name, t.codePath.ct, t.ink3, x: l.gutter, midY: mid, width: r.width - l.gutter - m.padRight)
+        text(ctx, name, t.codePath, t.ink3, x: l.gutter, midY: mid, width: r.width - l.gutter - m.padRight)
+      }
+    }
+    if l.dedent > 0 { dedentMark(ctx, levels: min(4, max(1, Int((CGFloat(l.dedent) / 4).rounded()))), l, r, t) }
+    ctx.restoreGState()
+  }
+
+  /// Hidden indentation: a hairline per level hidden, dashed, down the left of the code (styles.css .dedm)
+  private static func dedentMark(_ ctx: CGContext, levels: Int, _ l: CodeLayout, _ r: CGRect, _ t: Theme) {
+    let bottom = l.height - 4
+    ctx.saveGState()
+    ctx.setFillColor(t.hair.copy(alpha: t.hair.alpha * 0.7) ?? t.hair)
+    for k in 0..<levels {
+      var y: CGFloat = 4
+      while y < bottom {
+        ctx.fill(CGRect(x: l.gutter + 1 + CGFloat(k) * 3, y: y, width: 0.5, height: min(2, bottom - y)))
+        y += 4
       }
     }
     ctx.restoreGState()
+  }
+
+  /// A code card's title bar: kind, title and path from the left; the arrows ending on it and its version from the right
+  private static func header(_ ctx: CGContext, _ c: Code, _ r: CGRect, _ t: Theme) {
+    let mid = t.headerHeight / 2
+    var right = r.width - t.headerPadRight
+    if let v = c.version {
+      // the chip's own padding
+      let w = width(v, t.codePath)
+      text(ctx, v, t.codePath, t.ink3, x: right - 5 - w, midY: mid, width: w)
+      right -= w + 10 + t.headerGap
+    }
+    if c.linkedIn > 0 {
+      let s = "← \(c.linkedIn)"
+      let w = width(s, t.linkedIn)
+      text(ctx, s, t.linkedIn, t.ink3, x: right - 4 - w, midY: mid, width: w)
+      right -= w + 8 + t.headerGap
+    }
+    var x = t.headerPad
+    if let g = c.glyph, let font = g == "ƒ" ? t.kindGlyph : t.kindGlyphMono {
+      text(ctx, g, font, t.ink3, x: x + (10 - width(g, font)) / 2, midY: mid, width: .infinity)
+      x += 10 + t.headerGap
+    }
+    let pathWidth = c.path.map { min(width($0, t.codePath), max(0, right - x - 60)) } ?? 0
+    let titleWidth = min(width(c.title, t.codeTitle), right - x - (pathWidth > 0 ? pathWidth + 6 + t.headerGap : 0))
+    text(ctx, c.title, t.codeTitle, t.ink, x: x, midY: mid, width: titleWidth)
+    if let p = c.path, pathWidth > 0 {
+      text(ctx, p, t.codePath, t.ink3, x: x + titleWidth + t.headerGap + 3, midY: mid, width: pathWidth)
+    }
   }
 
   /// A row of code in its token colours, with its middle at midY (the body's clip cuts it)
@@ -246,32 +393,40 @@ enum Drawing: Sendable {
       guard !r.isEmpty else { continue }
       let range = NSRange(location: r.lowerBound, length: r.count)
       a.addAttribute(color, value: t.syntax[tok.kind] ?? t.ink, range: range)
-      if tok.kind == .comment { a.addAttribute(font, value: t.codeComment.ct, range: range) }
+      switch tok.kind {
+      case .comment: a.addAttribute(font, value: t.codeComment.ct, range: range)
+      case .keyword, .operator: a.addAttribute(font, value: t.codeKeyword.ct, range: range)
+      default: break
+      }
     }
     let f = t.code.ct
     ctx.textPosition = CGPoint(x: x, y: midY + (CTFontGetAscent(f) - CTFontGetDescent(f)) / 2)
     CTLineDraw(CTLineCreateWithAttributedString(a), ctx)
   }
 
-  /// One line of text with its middle at midY, cut with an ellipsis to `width`
-  private static func text(
-    _ ctx: CGContext, _ s: String, _ font: CTFont, _ color: CGColor, x: CGFloat, midY: CGFloat, width w: CGFloat
-  ) {
-    guard !s.isEmpty, w > 0 else { return }
-    let attrs = [kCTFontAttributeName: font, kCTForegroundColorAttributeName: color] as CFDictionary
-    var line = CTLineCreateWithAttributedString(CFAttributedStringCreate(nil, s as CFString, attrs))
-    if w.isFinite, CTLineGetTypographicBounds(line, nil, nil, nil) > w {
-      let dots = CTLineCreateWithAttributedString(CFAttributedStringCreate(nil, "…" as CFString, attrs))
-      line = CTLineCreateTruncatedLine(line, w, .end, dots) ?? line
-    }
-    ctx.textPosition = CGPoint(x: x, y: midY + (CTFontGetAscent(font) - CTFontGetDescent(font)) / 2)
-    CTLineDraw(line, ctx)
+  private static func line(_ s: String, _ font: Font, _ color: CGColor? = nil) -> CTLine {
+    var attrs: [CFString: Any] = [kCTFontAttributeName: font.ct]
+    if let color { attrs[kCTForegroundColorAttributeName] = color }
+    if font.tracking != 0 { attrs[kCTKernAttributeName] = font.tracking }
+    return CTLineCreateWithAttributedString(CFAttributedStringCreate(nil, s as CFString, attrs as CFDictionary))
   }
 
-  static func width(_ s: String, _ font: CTFont) -> CGFloat {
-    let attrs = [kCTFontAttributeName: font] as CFDictionary
-    return CTLineGetTypographicBounds(
-      CTLineCreateWithAttributedString(CFAttributedStringCreate(nil, s as CFString, attrs)), nil, nil, nil)
+  /// One line of text with its middle at midY, cut with an ellipsis to `width`
+  private static func text(
+    _ ctx: CGContext, _ s: String, _ font: Font, _ color: CGColor, x: CGFloat, midY: CGFloat, width w: CGFloat
+  ) {
+    guard !s.isEmpty, w > 0 else { return }
+    var l = line(s, font, color)
+    if w.isFinite, CTLineGetTypographicBounds(l, nil, nil, nil) > w + 0.5 {
+      l = CTLineCreateTruncatedLine(l, w, .end, line("…", font, color)) ?? l
+    }
+    let f = font.ct
+    ctx.textPosition = CGPoint(x: x, y: midY + (CTFontGetAscent(f) - CTFontGetDescent(f)) / 2)
+    CTLineDraw(l, ctx)
+  }
+
+  static func width(_ s: String, _ font: Font) -> CGFloat {
+    CTLineGetTypographicBounds(line(s, font), nil, nil, nil)
   }
 
   /// A rounded rectangle with the board's squircle corners (CSS corner-shape: squircle, a superellipse of exponent 4)
@@ -324,11 +479,11 @@ enum Raster {
     ctx.restoreGState()
   }
 
-  /// A bitmap of `size` board units at `scale` device pixels per unit, drawn y-down, as an IOSurface Core Animation shows
-  /// without a copy
-  static func surface(size: CGSize, scale: CGFloat, _ draw: (CGContext) -> Void) -> IOSurface? {
-    let w = max(1, Int((size.width * scale).rounded(.up)))
-    let h = max(1, Int((size.height * scale).rounded(.up)))
+  /// A bitmap of `size` board units and `bleed` more on each side at `scale` device pixels per unit, drawn y-down with the
+  /// origin at the size's top left, as an IOSurface Core Animation shows without a copy
+  static func surface(size: CGSize, scale: CGFloat, bleed: CGFloat = 0, _ draw: (CGContext) -> Void) -> IOSurface? {
+    let w = max(1, Int(((size.width + 2 * bleed) * scale).rounded(.up)))
+    let h = max(1, Int(((size.height + 2 * bleed) * scale).rounded(.up)))
     guard
       let s = IOSurface(properties: [
         .width: w, .height: h, .bytesPerElement: 4, .pixelFormat: 0x4247_5241,  // 'BGRA'
@@ -348,6 +503,7 @@ enum Raster {
     ctx.setShouldSmoothFonts(false)
     ctx.translateBy(x: 0, y: CGFloat(h))
     ctx.scaleBy(x: scale, y: -scale)
+    ctx.translateBy(x: bleed, y: bleed)
     draw(ctx)
     return s
   }

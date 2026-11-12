@@ -13,14 +13,20 @@ public final class CanvasView: NSView {
   /// The design allows one snapshot web view in the app, so every canvas shares one renderer
   private static let sharedNotes = NoteRenderer()
   private let notes: NoteRenderer
-  private var theme = Theme.warmInkLight
+  private var theme = Theme.warmInk
+  /// The board shown, to show again in another theme
+  private var shown: (board: VaultBoard, vault: Vault)?
   private var scene: Scene?
   private var items: [ItemLayers] = []
   private let world = CALayer()
+  /// The theme's picture behind the board, fixed to the view
+  private let backdrop = CALayer()
+  private var backdropImage: CGImage?
   private let sections = CALayer()
   private let below = CALayer()
   private let arrows = CALayer()
   private let above = CALayer()
+  private let cards = CALayer()
   private var camera = Camera(origin: .zero, zoom: 1)
   private var limits = ZoomLimits(fit: 1)
   private var motion = Motion()
@@ -64,8 +70,10 @@ public final class CanvasView: NSView {
     root.backgroundColor = theme.canvas
     layer = root
     wantsLayer = true
-    for l in [world, sections, below, arrows, above] { l.anchorPoint = .zero }
-    for l in [sections, below, arrows, above] { world.addSublayer(l) }
+    for l in [world, sections, below, arrows, above, cards] { l.anchorPoint = .zero }
+    for l in [sections, below, arrows, above, cards] { world.addSublayer(l) }
+    backdrop.anchorPoint = .zero
+    root.addSublayer(backdrop)
     root.addSublayer(world)
   }
 
@@ -82,6 +90,25 @@ public final class CanvasView: NSView {
   /// stored height are measured first (the renderer keeps what it measured with its snapshots), so no card moves once
   /// shown; a Note's overview is its picture when the snapshot cache has it, else its paper.
   public func show(_ board: VaultBoard, in vault: Vault, theme: Theme) async throws {
+    try await load(board, in: vault, theme: theme, keepCamera: false)
+  }
+
+  /// Draws the board shown in another theme where the camera is: what is on screen stays until every item has its
+  /// picture in the new look (a Note its paper, until the Note renderer has drawn it in that look)
+  public func show(theme: Theme) async throws {
+    guard let (board, vault) = shown, theme.id != self.theme.id else { return }
+    try await load(board, in: vault, theme: theme, keepCamera: true)
+  }
+
+  /// The theme the canvas draws in
+  public var currentTheme: Theme { theme }
+
+  private func load(_ board: VaultBoard, in vault: Vault, theme: Theme, keepCamera: Bool) async throws {
+    // before its first board the canvas is its colour in the look it will show
+    if scene == nil {
+      self.theme = theme
+      layer?.backgroundColor = theme.canvas
+    }
     loads += 1
     let load = loads
     let size =
@@ -93,7 +120,8 @@ public final class CanvasView: NSView {
     let (scene, overviews, shadow, highlighter) = try await Task.detached(priority: .userInitiated) {
       let package = vault.url(of: board.path)
       let b = try vault.board(at: board.path)
-      let sizes = await CanvasView.measure(Scene.measures(b, package: package, vault: vault), notes: notes)
+      let sizes = await CanvasView.measure(
+        Scene.measures(b, package: package, vault: vault), look: theme.id.rawValue, notes: notes)
       let highlighter = known ?? Highlighter()
       let scene = Scene(b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes)
       let fit = Camera.fit(scene.bounds, in: size).zoom
@@ -101,12 +129,13 @@ public final class CanvasView: NSView {
         for (i, it) in scene.items.enumerated() {
           g.addTask {
             guard case .note(let n) = it.drawing else {
-              let s = Levels.scale(fit, backing: backing, size: it.rect.size)
+              let s = Levels.scale(fit, backing: backing, size: it.bitmapSize)
               return (i, (CanvasView.render(it, scale: s, theme: theme, images: images).surface, s, .drawn))
             }
-            let s = Levels.noteOverview(fit, backing: backing, size: it.rect.size)
+            let s = Levels.noteOverview(fit, backing: backing, size: it.bitmapSize)
             if let snap = await notes.cached(
-              of: n.content, width: it.rect.width, height: n.height, folder: n.folder, scale: s),
+              of: n.content, width: it.rect.width, height: n.height, folder: n.folder, scale: s, look: theme.id.rawValue
+            ),
               let drawn = CanvasView.compose(it, snap, scale: s, theme: theme, images: images)
             {
               return (i, (drawn, s, .drawn))
@@ -118,20 +147,27 @@ public final class CanvasView: NSView {
         for await (i, o) in g { out[i] = o }
         return out
       }
+      // drawn here once, so installing it on the main thread finds it ready
+      _ = theme.backdrop.flatMap(Backdrop.image)
       return (scene, overviews, CanvasView.shadow(theme), highlighter)
     }.value
     self.highlighter = highlighter
     guard load == loads else { return }
-    install(scene, overviews: overviews, shadow: shadow, theme: theme)
+    shown = (board, vault)
+    install(scene, overviews: overviews, shadow: shadow, theme: theme, keepCamera: keepCamera)
   }
 
   /// The sizes the Note renderer gives the Notes without a stored height: from what it kept, else measured in the web
   /// view one after another. A Note it could not measure is left out (`Scene` gives it a height of its own)
-  private nonisolated static func measure(_ ms: [Scene.Measure], notes: NoteRenderer) async -> [CardID: CGSize] {
+  private nonisolated static func measure(_ ms: [Scene.Measure], look: String, notes: NoteRenderer) async -> [CardID:
+    CGSize]
+  {
     await withTaskGroup(of: (CardID, CGSize?).self) { g in
       for m in ms {
         // before any picture: the board waits for these
-        g.addTask { (m.card, try? await notes.size(of: m.note, width: m.width, folder: m.folder, priority: 1)) }
+        g.addTask {
+          (m.card, try? await notes.size(of: m.note, width: m.width, folder: m.folder, look: look, priority: 1))
+        }
       }
       var out: [CardID: CGSize] = [:]
       for await (id, s) in g { out[id] = s }
@@ -157,10 +193,12 @@ public final class CanvasView: NSView {
     var restScale: CGFloat?
     let note: Bool
     var face: NoteFace
+    let bleed: CGFloat
 
     init(_ item: Scene.Item, overview o: Overview, shadow: (IOSurface, margin: CGFloat)?) {
       overview = o.surface
       overviewScale = o.scale
+      bleed = item.bleed
       face = o.face
       if case .note = item.drawing { note = true } else { note = false }
       heldScale = o.scale
@@ -181,7 +219,7 @@ public final class CanvasView: NSView {
         box.addSublayer(l)
       }
       for l in [held, rest] {
-        l.frame = box.bounds
+        l.frame = box.bounds.insetBy(dx: -item.bleed, dy: -item.bleed)
         l.contentsGravity = .resize
         l.magnificationFilter = .linear
         box.addSublayer(l)
@@ -190,6 +228,9 @@ public final class CanvasView: NSView {
       held.contents = overview
       rest.minificationFilter = .linear
     }
+
+    /// What its bitmaps cover on the board
+    var bitmapFrame: CGRect { box.frame.insetBy(dx: -bleed, dy: -bleed) }
 
     var bytes: Int {
       (overview?.allocationSize ?? 0) + (heldSurface?.allocationSize ?? 0)
@@ -220,89 +261,129 @@ public final class CanvasView: NSView {
   }
 
   private func install(
-    _ s: Scene, overviews: [Overview], shadow: (IOSurface, margin: CGFloat)?, theme: Theme
+    _ s: Scene, overviews: [Overview], shadow: (IOSurface, margin: CGFloat)?, theme: Theme, keepCamera: Bool
   ) {
     cancelRedraws()
     self.theme = theme
     scene = s
     withoutAnimation {
       layer?.backgroundColor = theme.canvas
-      for l in [sections, below, arrows, above] { l.sublayers = nil }
-      for f in s.frames {
-        let l = CALayer()
-        l.frame = f.rect
-        l.backgroundColor = f.fill
-        l.borderColor = theme.hair
-        l.borderWidth = 0.5
-        l.cornerRadius = theme.sectionRadius
-        l.cornerCurve = .continuous
-        sections.addSublayer(l)
-      }
+      backdropImage = theme.backdrop.flatMap(Backdrop.image)
+      backdrop.contents = backdropImage
+      placeBackdrop()
+      for l in [sections, below, arrows, above, cards] { l.sublayers = nil }
+      for f in s.frames { sections.addSublayer(CanvasView.frameLayer(f, theme)) }
       items = s.items.enumerated().map { i, it in
         ItemLayers(it, overview: overviews[i], shadow: it.drawing.framed ? shadow : nil)
       }
-      for (i, l) in items.enumerated() { (i < s.labelsFrom ? below : above).addSublayer(l.box) }
+      for (i, l) in items.enumerated() {
+        (i < s.cardsFrom ? below : i < s.labelsFrom ? cards : above).addSublayer(l.box)
+      }
       for a in s.arrows {
-        let line = CAShapeLayer()
-        line.path = CanvasView.path(a.line)
-        line.fillColor = nil
-        line.strokeColor = a.color
-        line.lineWidth = a.width
-        line.lineCap = .round
-        if a.dashed { line.lineDashPattern = [4, 4] }
-        arrows.addSublayer(line)
-        if !a.heads.isEmpty {
-          let heads = CAShapeLayer()
-          let p = CGMutablePath()
-          for h in a.heads { p.addPath(CanvasView.path(h)) }
-          heads.path = p
-          heads.fillColor = a.color
-          arrows.addSublayer(heads)
-        }
+        for l in CanvasView.arrowLayers(a, theme) { arrows.addSublayer(l) }
       }
     }
     let fit = Camera.fit(s.bounds, in: bounds.isEmpty ? CGSize(width: 1440, height: 900) : bounds.size)
     limits = ZoomLimits(fit: fit.zoom)
-    camera = fit
+    if !keepCamera { camera = fit }
     motion = Motion()
     restZoom = nil
     applyCamera()
     arrive()
   }
 
-  /// The soft shadow under a framed card, nine-sliced onto every one
+  /// The soft shadow under a framed card, nine-sliced onto every one: only the shadow, the card's own area left clear
+  /// (a deckled sheet's torn edge must not show a card-shaped shadow fill through it)
   private nonisolated static func shadow(_ t: Theme) -> (IOSurface, margin: CGFloat)? {
     let m: CGFloat = 80
-    let k = t.cardRadius
-    let side = 2 * (m + k + 1)
+    let k = t.shadowRadius
+    let side = 2 * (m + max(k, t.cardRadius) + 1)
     let card = CGRect(x: m, y: m, width: side - 2 * m, height: side - 2 * m)
     let s = Raster.surface(size: CGSize(width: side, height: side), scale: 2) { ctx in
-      for l in t.shadow {
-        ctx.saveGState()
-        // shadow offsets and blurs are in device space, which is y-up
-        ctx.setShadow(
-          offset: CGSize(width: 0, height: -l.y * 2), blur: l.blur * 2,
-          color: CGColor(srgbRed: t.shadowColor.r, green: t.shadowColor.g, blue: t.shadowColor.b, alpha: l.alpha))
-        ctx.addPath(Drawing.squircle(card.insetBy(dx: -l.spread, dy: -l.spread), k))
-        ctx.setFillColor(t.surface)
-        ctx.fillPath()
-        ctx.restoreGState()
-      }
+      Shadow.draw(t, card: card, scale: 2, in: ctx)
     }
     return s.map { ($0, m) }
   }
 
-  private static func path(_ ops: [PathOp]) -> CGPath {
-    let p = CGMutablePath()
-    for op in ops {
-      switch op {
-      case .move(let a): p.move(to: a)
-      case .line(let a): p.addLine(to: a)
-      case .quad(let c, let a): p.addQuadCurve(to: a, control: c)
-      case .curve(let c1, let c2, let a): p.addCurve(to: a, control1: c1, control2: c2)
-      }
+  /// A Section's frame: a tray (fill, hairline, light inner top line) or the fill under its brush strokes
+  private static func frameLayer(_ f: Scene.Frame, _ t: Theme) -> CALayer {
+    let l = CALayer()
+    l.frame = f.rect
+    l.backgroundColor = f.fill
+    if let strokes = f.strokes {
+      let brush = CAShapeLayer()
+      brush.path = strokes.cg
+      brush.fillColor = t.sectionEdge
+      l.addSublayer(brush)
+      return l
     }
-    return p
+    // the web's squircle corners, which Core Animation's own corner curves are not
+    let r = CGRect(origin: .zero, size: f.rect.size)
+    let tray = CAShapeLayer()
+    tray.frame = f.rect
+    tray.path = Drawing.squircle(r, t.sectionRadius)
+    tray.fillColor = f.fill
+    let top = CAShapeLayer()
+    top.path = Shadow.innerTop(r.size, radius: t.sectionRadius)
+    top.fillColor = t.sectionEdge
+    let edge = CAShapeLayer()
+    edge.path = Drawing.squircle(r.insetBy(dx: 0.25, dy: 0.25), t.sectionRadius - 0.25)
+    edge.fillColor = nil
+    edge.strokeColor = t.hair
+    edge.lineWidth = 0.5
+    tray.addSublayer(top)
+    tray.addSublayer(edge)
+    return tray
+  }
+
+  /// An arrow's layers: the filled line and heads, a dashed line, the dry brush. Core Animation scales filled paths as
+  /// cheaply as stroked ones: each is one path rasterised by the render server at the zoom shown
+  private static func arrowLayers(_ a: Scene.Arrow, _ t: Theme) -> [CALayer] {
+    var out: [CALayer] = []
+    if !a.fill.isEmpty {
+      let l = CAShapeLayer()
+      l.path = a.fill.cg
+      l.fillColor = a.color
+      out.append(l)
+    }
+    if let p = a.stroke {
+      let l = CAShapeLayer()
+      l.path = p.cg
+      l.fillColor = nil
+      l.strokeColor = a.color
+      l.lineWidth = a.width
+      l.lineCap = .round
+      l.lineDashPattern = [4, 4]
+      out.append(l)
+    }
+    if let p = a.dry {
+      let l = CAShapeLayer()
+      l.path = p.cg
+      l.fillColor = nil
+      l.strokeColor = t.dryBrush
+      l.lineWidth = 0.6
+      l.lineCap = .round
+      out.append(l)
+    }
+    if !a.heads.isEmpty {
+      let l = CAShapeLayer()
+      l.path = a.heads.cg
+      l.fillColor = a.headColor
+      l.strokeColor = a.headColor
+      l.lineWidth = a.headStroke
+      l.lineJoin = .round
+      out.append(l)
+    }
+    return out
+  }
+
+  /// The backdrop covers the view, its bottom on the view's bottom (CSS `center bottom / cover`)
+  private func placeBackdrop() {
+    guard let img = backdropImage, !bounds.isEmpty else { return }
+    let k = max(bounds.width / CGFloat(img.width), bounds.height / CGFloat(img.height))
+    let size = CGSize(width: CGFloat(img.width) * k, height: CGFloat(img.height) * k)
+    backdrop.frame = CGRect(
+      x: (bounds.width - size.width) / 2, y: bounds.height - size.height, width: size.width, height: size.height)
   }
 
   private func withoutAnimation(_ f: () -> Void) {
@@ -338,6 +419,7 @@ public final class CanvasView: NSView {
   public override func setFrameSize(_ newSize: NSSize) {
     let unsized = bounds.isEmpty
     super.setFrameSize(newSize)
+    withoutAnimation { placeBackdrop() }
     guard let scene, newSize.width > 0, newSize.height > 0 else { return }
     let fit = Camera.fit(scene.bounds, in: newSize)
     limits = ZoomLimits(fit: fit.zoom)
@@ -432,7 +514,7 @@ public final class CanvasView: NSView {
     let plan = RestPlan(
       items: items.map {
         RestPlan.Item(
-          rect: $0.box.frame, held: $0.heldScale, rest: $0.restScale, overview: $0.overviewScale, note: $0.note,
+          rect: $0.bitmapFrame, held: $0.heldScale, rest: $0.restScale, overview: $0.overviewScale, note: $0.note,
           overviewDrawn: !$0.face.paperOverview)
       },
       view: camera.visible(bounds.size), zoom: camera.zoom, backing: backing, pointer: pointer)
@@ -542,7 +624,9 @@ public final class CanvasView: NSView {
   ) async -> (surface: IOSurface?, late: Bool) {
     guard !Task.isCancelled,
       let snap = try? await notes.snapshot(
-        of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale, priority: priority),
+        of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale,
+        look: theme.id.rawValue,
+        priority: priority),
       !Task.isCancelled
     else { return (nil, false) }
     let s = compose(item, snap, scale: scale, theme: theme, images: images)
@@ -553,7 +637,7 @@ public final class CanvasView: NSView {
   nonisolated static func compose(
     _ item: Scene.Item, _ snap: NoteSnapshot, scale: CGFloat, theme: Theme, images: DecodeCache
   ) -> IOSurface? {
-    Raster.surface(size: item.rect.size, scale: scale) { ctx in
+    Raster.surface(size: item.rect.size, scale: scale, bleed: item.bleed) { ctx in
       _ = item.drawing.draw(in: ctx, size: item.rect.size, scale: scale, theme: theme, images: images)
       let px = snap.surface
       Raster.draw(
@@ -567,7 +651,7 @@ public final class CanvasView: NSView {
   ) {
     guard !Task.isCancelled else { return (nil, 0) }
     var decodes = 0
-    let s = Raster.surface(size: item.rect.size, scale: scale) { ctx in
+    let s = Raster.surface(size: item.rect.size, scale: scale, bleed: item.bleed) { ctx in
       decodes = item.drawing.draw(in: ctx, size: item.rect.size, scale: scale, theme: theme, images: images)
     }
     return (Task.isCancelled ? nil : s, decodes)
@@ -592,7 +676,7 @@ public final class CanvasView: NSView {
     for l in items where l.note {
       p.notes += 1
       if !l.face.paperOverview { p.overviews += 1 }
-      let r = l.box.frame
+      let r = l.bitmapFrame
       guard r.intersects(view) else { continue }
       p.inView += 1
       let s = l.pictureScale
@@ -607,7 +691,7 @@ public final class CanvasView: NSView {
     let view = camera.visible(bounds.size)
     let z = min(camera.zoom, limits.max)
     return items.contains { l in
-      let r = l.box.frame
+      let r = l.bitmapFrame
       guard r.intersects(view) else { return false }
       return max(l.heldScale, l.restScale ?? 0) < Levels.scale(z, backing: backing, size: r.size) * 0.98
     }

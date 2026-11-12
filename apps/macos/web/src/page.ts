@@ -1,5 +1,5 @@
 // The Note page of the Mac app: one Note on a card laid out as the VS Code board lays it out (the board's own stylesheets,
-// Warm Ink), drawn by the Markdown package's editor, so a snapshot of it is what editing it shows. Native drives it
+// in the board theme the canvas draws), drawn by the Markdown package's editor, so a snapshot of it is what editing it shows. Native drives it
 // through window.note and hears back on the "note" message handler.
 import { createMarkdown, type MdLayout } from "@yhnocoder/markdown";
 import { type MdEditorHandle, mountEditor, warmUp } from "@yhnocoder/markdown/editor";
@@ -22,6 +22,8 @@ type Note = {
     | { freeText: { level: number; bold: boolean; fontSize?: number } };
   width: number;
   height: number | null;
+  /** The board theme's id: html[data-look] and its class, as the board's settings apply it (actions/settings.ts applyLook) */
+  look: string;
 };
 
 declare global {
@@ -125,6 +127,12 @@ window.note = {
     editor = undefined;
     card?.remove();
     md.setAssetBase("images", images);
+    const html = document.documentElement;
+    if (html.dataset.look !== n.look) {
+      html.classList.remove(`look-${html.dataset.look}`);
+      html.dataset.look = n.look;
+      html.classList.add(`look-${n.look}`);
+    }
     const made = cardFor(n);
     card = made.card;
     root.style.transform = "";

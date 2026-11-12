@@ -130,7 +130,7 @@ private func segment(_ id: String, path: String? = "src/engine.py", first: Int, 
 
   func scene(_ b: Board) -> Scene {
     Scene(
-      b, package: URL(filePath: "/nonexistent-vault/B.board"), vault: vault, theme: .warmInkLight,
+      b, package: URL(filePath: "/nonexistent-vault/B.board"), vault: vault, theme: .warmInk,
       highlighter: highlighter)
   }
 
@@ -159,14 +159,15 @@ private func segment(_ id: String, path: String? = "src/engine.py", first: Int, 
     #expect(s.missing == [gone.id])
     #expect(s.arrows.count == 1)
     // line 11 is the second row: 36 header + 6 padding + 20 + half a row
-    #expect(s.arrows[0].line.first == .move(CGPoint(x: 300, y: 36 + 6 + 20 + 10)))
-    #expect(s.arrows[0].heads.count == 1)
-    #expect(s.labelsFrom == 2)
+    let line = s.arrows[0].fill.cg.boundingBoxOfPath
+    #expect(abs(line.minX - 300) < 2 && line.minY < 72 && line.maxY > 72)
+    #expect(!s.arrows[0].heads.isEmpty)
+    #expect(s.cardsFrom == 0 && s.labelsFrom == 2)
     guard case .label(let l)? = s.items.last?.drawing else {
       Issue.record("no label")
       return
     }
-    #expect(l.text == "next" && l.boxed)
+    #expect(l.text == "next" && l.kind == .arrow)
     if case .note(let n) = s.items[1].drawing { #expect(n.title == "Idea") }
   }
 
@@ -178,7 +179,7 @@ private func segment(_ id: String, path: String? = "src/engine.py", first: Int, 
           Section(id: SectionID(rawValue: "s"), title: "Step", x: 10, y: 20, width: 500, height: 300, color: "blue")
         ]))
     #expect(s.frames.map(\.rect) == [CGRect(x: 10, y: 20, width: 500, height: 300)])
-    #expect(s.frames[0].fill == Theme.warmInkLight.sectionColors["blue"])
+    #expect(s.frames[0].fill == Theme.warmInk.sectionColors["blue"])
     #expect(s.items.first?.rect.origin == CGPoint(x: 26, y: 26))
   }
 }

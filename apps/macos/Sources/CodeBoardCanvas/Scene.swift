@@ -11,23 +11,40 @@ struct Scene: Sendable {
     var drawing: Drawing
     /// Radians, about the centre
     var tilt: CGFloat
+    /// How far its bitmap reaches past `rect` on each side (paper, rings)
+    var bleed: CGFloat = 0
+
+    /// What its bitmap covers, in the item's own units (its rect's top left at 0, 0)
+    var bitmapSize: CGSize { CGSize(width: rect.width + 2 * bleed, height: rect.height + 2 * bleed) }
   }
 
   struct Frame: Sendable {
     var rect: CGRect
     var fill: CGColor
+    /// `Theme.Frame.brush`'s strokes, filled, in the Section's units
+    var strokes: Outline?
   }
 
+  /// An arrow as filled and stroked paths in board units
   struct Arrow: Sendable {
-    var line: [PathOp]
-    var heads: [[PathOp]]
+    /// The line's outline and its heads, filled
+    var fill: Outline
     var color: CGColor
+    /// A dashed line, stroked; nil when the line is in `fill`
+    var stroke: Outline?
     var width: CGFloat
-    var dashed: Bool
+    /// The heads' own outline, stroked in the line's colour
+    var heads: Outline
+    var headColor: CGColor
+    var headStroke: CGFloat
+    /// The dry brush's hairlines
+    var dry: Outline?
   }
 
-  /// In drawing order: section titles, cards, then arrow labels from `labelsFrom` on (the arrows are drawn in between)
+  /// Section titles, cards from `cardsFrom` on, then arrow labels from `labelsFrom` on. Drawn as the web board layers
+  /// them: section titles, the arrows, their labels, then the cards over all of them
   var items: [Item] = []
+  var cardsFrom = 0
   var labelsFrom = 0
   var frames: [Frame] = []
   var arrows: [Arrow] = []
@@ -38,7 +55,7 @@ struct Scene: Sendable {
   /// The tilt of a tilted card, as the board's (counter-clockwise)
   static let tilt = -1.2 * CGFloat.pi / 180
 
-  /// A Note whose size only the Note renderer knows: one without a stored height
+  /// A Note whose size only the Note renderer knows: one without a stored height, or a Free Text
   struct Measure: Sendable {
     var card: CardID
     var note: Note
@@ -50,9 +67,12 @@ struct Scene: Sendable {
   /// The Notes the renderer must measure before the scene can be made
   static func measures(_ board: Board, package: URL, vault: Vault) -> [Measure] {
     board.cards.compactMap { c in
-      guard c.height == nil, let (content, folder) = content(of: c, package: package, vault: vault),
-        case .note(let n) = content.body
+      guard let (content, folder) = content(of: c, package: package, vault: vault), case .note(let n) = content.body
       else { return nil }
+      // a Free Text is as wide as its text, whatever its stored height
+      var freeText = false
+      if case .freeText = n.style { freeText = true }
+      guard c.height == nil || freeText else { return nil }
       return Measure(card: c.id, note: n, width: c.width, folder: folder)
     }
   }
@@ -72,17 +92,26 @@ struct Scene: Sendable {
   ) {
     for s in board.sections {
       let r = CGRect(x: s.x, y: s.y, width: s.width, height: s.height)
-      frames.append(Frame(rect: r, fill: s.color.flatMap { t.sectionColors[$0] } ?? t.sectionFill))
+      // the title's room: a tray's label has 6 before its text and 2 after, a brush title 2 after
+      let titleWidth = s.title.isEmpty ? 0 : Drawing.width(s.title, t.sectionTitleFont) + (t.frame == .tray ? 8 : 2)
+      let strokes: Outline? =
+        switch t.frame {
+        case .tray: nil
+        // the gap is the title label's width, its collapse chevron (16, shown on hover) and the gap before it included
+        case .brush: Outline(InkFrame.path(id: s.id.rawValue, size: r.size, gap: max(40, titleWidth + 18)))
+        }
+      frames.append(Frame(rect: r, fill: s.color.flatMap { t.sectionColors[$0] } ?? t.sectionFill, strokes: strokes))
       bounds = bounds.union(r)
       if !s.title.isEmpty {
-        let w = Drawing.width(s.title, t.sectionTitle.ct) + 8
         items.append(
           Item(
-            rect: CGRect(x: s.x + 16, y: s.y + 6, width: w, height: 22),
-            drawing: .label(.init(text: s.title, boxed: false)),
+            rect: CGRect(
+              x: s.x + t.sectionTitleAt.x, y: s.y + t.sectionTitleAt.y, width: titleWidth, height: t.sectionTitleHeight),
+            drawing: .label(.init(text: s.title, kind: .section)),
             tilt: 0))
       }
     }
+    cardsFrom = items.count
     var placed: [CardID: Placed] = [:]
     for c in board.cards {
       guard let (content, folder) = Scene.content(of: c, package: package, vault: vault) else {
@@ -91,10 +120,10 @@ struct Scene: Sendable {
       }
       let tilt = c.tilted ? Scene.tilt : 0
       let (drawing, size, code) = Scene.card(
-        c, content, folder: folder, measured: sizes[c.id], theme: t, highlighter: highlighter)
+        c, content, board: board, folder: folder, measured: sizes[c.id], theme: t, highlighter: highlighter)
       let r = CGRect(origin: CGPoint(x: c.x, y: c.y), size: size)
       placed[c.id] = Placed(rect: r, code: code, tilt: tilt)
-      items.append(Item(rect: r, drawing: drawing, tilt: tilt))
+      items.append(Item(rect: r, drawing: drawing, tilt: tilt, bleed: drawing.bleed(t)))
       bounds = bounds.union(r)
     }
     labelsFrom = items.count
@@ -131,27 +160,86 @@ struct Scene: Sendable {
           ArrowRoute.turn(p, from.rect, from.tilt), ArrowRoute.turn(q, to.rect, to.tilt), a: from.rect, b: to.rect)
       }
       let headScale: CGFloat = a.width == 1 ? 0.85 : a.width == 3 ? 1.25 : 1
-      var heads: [[PathOp]] = []
-      if a.endHead { heads.append(ArrowRoute.dart(tip: shape.pts[3], shape.inDir, scale: headScale)) }
-      if a.startHead { heads.append(ArrowRoute.dart(tip: shape.pts[0], shape.outDir, scale: headScale)) }
-      let color = a.from.lost || a.to.lost ? t.arrowLost : a.color.flatMap { t.arrowColors[$0] } ?? t.arrow
-      arrows.append(
-        Arrow(
-          line: shape.path, heads: heads, color: color,
-          width: t.arrowWidth * (a.width == 1 ? 0.6 : a.width == 3 ? 1.6 : 1), dashed: a.dashed))
+      let k: CGFloat = a.width == 1 ? 0.6 : a.width == 3 ? 1.6 : 1
+      let base = a.from.lost || a.to.lost ? t.arrowLost : a.color.flatMap { t.arrowColors[$0] } ?? t.arrow
+      arrows.append(Scene.arrow(a, shape, base: base, k: k, headScale: headScale, theme: t))
       if let label = a.label, !label.isEmpty {
-        let box = CGSize(width: Drawing.width(label, t.arrowLabel.ct) + 13, height: 22)
+        let box =
+          switch t.label {
+          case .box: CGSize(width: Drawing.width(label, t.arrowLabel) + 13, height: 22)
+          case .halo: CGSize(width: Drawing.width(label, t.arrowLabel) + 33, height: 22)
+          }
         let at =
           a.labelPosition.map {
             ArrowRoute.bezAt(shape.pts, ArrowRoute.placeT(shape.pts, $0, box, [from.rect, to.rect]))
           } ?? shape.mid
+        let drawing = Drawing.label(.init(text: label, kind: .arrow))
         items.append(
           Item(
             rect: CGRect(x: at.x - box.width / 2, y: at.y - box.height / 2, width: box.width, height: box.height),
-            drawing: .label(.init(text: label, boxed: true)), tilt: 0))
+            drawing: drawing, tilt: 0, bleed: drawing.bleed(t)))
       }
     }
     if bounds.isNull { bounds = CGRect(x: 0, y: 0, width: 800, height: 600) }
+  }
+
+  /// The arrow in the theme's strokes: a solid line as a filled outline (tapered or brushed), a dashed one stroked
+  private static func arrow(
+    _ a: CodeBoardModel.Arrow, _ shape: ArrowShape, base: CGColor, k: CGFloat, headScale s: CGFloat, theme t: Theme
+  ) -> Arrow {
+    let fill = CGMutablePath()
+    var stroke: Outline?
+    var dry: Outline?
+    var color = base
+    if a.dashed {
+      stroke = Outline(path(shape.path))
+    } else {
+      switch t.arrowLine {
+      case .taper(let w0, let w1):
+        fill.addPath(Strokes.taper(shape.path, w0: w0 * k, w1: w1 * k))
+      case .brush(let half):
+        let b = Strokes.brush(shape.path, seed: Strokes.brushSeed(a.id.rawValue), w: half * k)
+        fill.addPath(b.outline)
+        dry = b.dry.isEmpty ? nil : Outline(b.dry)
+        // the brush's fill-opacity
+        color = base.copy(alpha: base.alpha * 0.95) ?? base
+      }
+    }
+    let heads = CGMutablePath()
+    var tips: [(CGPoint, CGVector)] = []
+    if a.endHead { tips.append((shape.pts[3], shape.inDir)) }
+    if a.startHead { tips.append((shape.pts[0], shape.outDir)) }
+    let headColor: CGColor
+    let headStroke: CGFloat
+    switch t.arrowHead {
+    case .dart:
+      for (tip, u) in tips { heads.addPath(path(ArrowRoute.dart(tip: tip, u, scale: s))) }
+      headColor = base
+      headStroke = 0.35 * k
+    case .dot:
+      for (tip, _) in tips {
+        heads.addEllipse(in: CGRect(x: tip.x - 3.5 * s, y: tip.y - 3.5 * s, width: 7 * s, height: 7 * s))
+      }
+      headColor = base.copy(alpha: base.alpha * 0.9) ?? base
+      headStroke = t.arrowWidth * k
+    }
+    return Arrow(
+      fill: Outline(fill), color: color, stroke: stroke, width: t.arrowWidth * k, heads: Outline(heads),
+      headColor: headColor,
+      headStroke: headStroke, dry: dry)
+  }
+
+  static func path(_ ops: [PathOp]) -> CGPath {
+    let p = CGMutablePath()
+    for op in ops {
+      switch op {
+      case .move(let a): p.move(to: a)
+      case .line(let a): p.addLine(to: a)
+      case .quad(let c, let a): p.addQuadCurve(to: a, control: c)
+      case .curve(let c1, let c2, let a): p.addCurve(to: a, control1: c1, control2: c2)
+      }
+    }
+    return p
   }
 
   /// A card where arrows can find its lines
@@ -162,7 +250,8 @@ struct Scene: Sendable {
   }
 
   private static func card(
-    _ c: Card, _ content: CardContent, folder: URL, measured: CGSize?, theme t: Theme, highlighter: Highlighter
+    _ c: Card, _ content: CardContent, board: Board, folder: URL, measured: CGSize?, theme t: Theme,
+    highlighter: Highlighter
   ) -> (
     Drawing, CGSize, (layout: CodeLayout, top: CGFloat, segments: [SegmentID])?
   ) {
@@ -173,33 +262,81 @@ struct Scene: Sendable {
       let layout = CodeLayout(code, tokens: tokens, width: c.width, metrics: t.metrics)
       let s = code.segments.first
       let title = content.title ?? s?.symbol?.name ?? s?.scope ?? s.flatMap(CodeLayout.path).map(file) ?? "Code"
-      let path = s.flatMap(CodeLayout.path).map(file)
+      let path = s.flatMap { s in CodeLayout.path(s).map { "\(file($0)):\(s.firstLine)" } }
       let top = code.framed ? t.headerHeight : 0
       let body = c.height ?? min(layout.height, t.metrics.maxAutoHeight)
+      var linked = Set<[Int]>()
+      for a in board.arrows {
+        for e in [a.from, a.to] where e.card == c.id && !e.lost {
+          if let l = e.line, let si = code.segments.firstIndex(where: { $0.id == e.segment }) {
+            linked.insert([si, l])
+          }
+        }
+      }
       let d = Drawing.Code(
-        title: title, path: path == title ? nil : path, layout: layout, framed: code.framed)
+        id: c.id.rawValue, title: title, path: code.segments.count > 1 ? nil : path, glyph: glyph(code),
+        version: s.flatMap(version), linkedIn: board.arrows.count { $0.to.card == c.id }, linked: linked,
+        layout: layout, framed: code.framed)
       return (.code(d), CGSize(width: c.width, height: top + body), (layout, top, code.segments.map(\.id)))
     case .note(let n):
-      let title = content.title ?? firstLine(n.text)
+      let title = content.title ?? heading(n.text)
       // a Free Text is as wide as its text; a Note the renderer could not measure is shown as paper of an arbitrary height
       var size = CGSize(width: c.width, height: c.height ?? measured?.height ?? c.width * 0.6)
-      if case .freeText = n.style, c.height == nil, let m = measured { size.width = m.width }
-      return (.note(.init(title: title, content: n, folder: folder, height: c.height)), size, nil)
+      if case .freeText = n.style, let m = measured { size.width = m.width }
+      return (.note(.init(id: c.id.rawValue, title: title, content: n, folder: folder, height: c.height)), size, nil)
     case .image(let img):
       var url: URL?
       if case .file(let f) = img.source { url = images.appending(path: f) }
       let size = url.flatMap(DecodeCache.pixelSize)
       let h = c.height ?? size.map { c.width * $0.height / max($0.width, 1) } ?? c.width * 0.6
       let pic = Drawing.Picture(
-        url: size == nil ? nil : url, fileSize: size ?? .zero, frame: (img.stillFrame ?? 1) - 1, framed: img.framed)
+        id: c.id.rawValue, url: size == nil ? nil : url, fileSize: size ?? .zero, frame: (img.stillFrame ?? 1) - 1,
+        framed: img.framed)
       return (.image(pic), CGSize(width: c.width, height: h), nil)
     }
   }
 
   private static func file(_ path: String) -> String { path.split(separator: "/").last.map(String.init) ?? path }
 
-  private static func firstLine(_ md: String) -> String {
-    let l = md.split(whereSeparator: \.isNewline).first { !$0.allSatisfy(\.isWhitespace) } ?? ""
-    return String(l.drop { $0 == "#" || $0 == " " })
+  /// The heading a Note starts with (its first non-blank line, when that is a heading), as its header shows it
+  private static func heading(_ md: String) -> String? {
+    guard let l = md.split(whereSeparator: \.isNewline).first(where: { !$0.allSatisfy(\.isWhitespace) }),
+      l.hasPrefix("#")
+    else { return nil }
+    let t = String(l.drop { $0 == "#" || $0 == " " })
+    return t.isEmpty ? nil : t
   }
+
+  /// The card's kind before its title (core model.ts codeGlyph); nil for Free code, which shows none
+  private static func glyph(_ c: CodeCard) -> String? {
+    guard let s = c.segments.first else { return "⋮" }
+    guard let source = s.source else { return nil }
+    if case .git(let repo?, _, _, _, _) = source, repo.contains("github.com") { return "GH" }
+    if c.segments.count > 1 { return "⋮" }
+    switch s.symbol?.kind {
+    case .class: return "C"
+    case .function: return "ƒ"
+    default: return "⋮"
+    }
+  }
+
+  /// A segment's version as its header's chip shows it (core model.ts versionLabel, short)
+  private static func version(_ s: Segment) -> String? {
+    switch s.source {
+    case .git(_, let commit, _, _, _): String(commit.prefix(7))
+    case .package(let name, let version, _): "\(name) \(version)"
+    case .file(_, let hash?): String(hash.prefix(4))
+    case .file(_, nil), nil: nil
+    }
+  }
+}
+
+/// A path kept in a scene: an immutable copy, which CoreGraphics allows any thread to read, though the SDK does not mark
+/// CGPath Sendable
+struct Outline: @unchecked Sendable {
+  let cg: CGPath
+
+  init(_ p: CGPath) { cg = p.copy() ?? p }
+
+  var isEmpty: Bool { cg.isEmpty }
 }

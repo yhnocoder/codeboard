@@ -204,7 +204,7 @@ final class Bench {
 
   private func open(_ board: VaultBoard, in vault: Vault) async throws -> Open {
     let start = CACurrentMediaTime()
-    try await canvas.show(board, in: vault, theme: .warmInkLight)
+    try await canvas.show(board, in: vault, theme: .warmInk)
     opening = Open(shownMs: ms(since: start))
     await withCheckedContinuation { c in
       done = c

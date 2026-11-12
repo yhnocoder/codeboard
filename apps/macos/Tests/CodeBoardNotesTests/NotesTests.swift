@@ -11,8 +11,10 @@ private func tempFolder() throws -> URL {
   return u
 }
 
-private func json(_ note: Note, width: Double = 300, height: Double? = nil) throws -> String {
-  try PageNote(note, width: width, height: height).json()
+private func json(_ note: Note, width: Double = 300, height: Double? = nil, look: String = "warm-ink") throws
+  -> String
+{
+  try PageNote(note, width: width, height: height, look: look).json()
 }
 
 @Suite struct SnapshotKeyTests {
@@ -35,6 +37,7 @@ private func json(_ note: Note, width: Double = 300, height: Double? = nil) thro
     var others = [
       try key(build: "c"), try key(system: "t"), try key(scale: 4), try key(images: ["a.png 10 1.0"]),
       try key(note: json(base, width: 301)), try key(note: json(base, height: 200)),
+      try key(note: json(base, look: "ink-wash")),
     ]
     let notes: [Note] = [
       Note(text: "# Title\n\nbody!", style: .note),
@@ -213,7 +216,8 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     var sizes: [CGSize] = []
     var atTwo: [UInt8] = []
     for scale in [1.0, 2, 4] {
-      let s = try await r.snapshot(of: Self.note, width: 320, height: nil, folder: folder, scale: scale, priority: 0)
+      let s = try await r.snapshot(
+        of: Self.note, width: 320, height: nil, folder: folder, scale: scale, look: "warm-ink", priority: 0)
       sizes.append(s.size)
       if scale == 2 { atTwo = pixels(s.surface) }
       #expect(s.surface.width == Int((s.size.width * scale).rounded(.up)))
@@ -226,10 +230,16 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     #expect(r.webViewOpen)
 
     let fresh = NoteRenderer(cache: cache)
-    let again = try await fresh.snapshot(of: Self.note, width: 320, height: nil, folder: folder, scale: 2, priority: 0)
+    let again = try await fresh.snapshot(
+      of: Self.note, width: 320, height: nil, folder: folder, scale: 2, look: "warm-ink", priority: 0)
     #expect(!fresh.webViewOpen)
     #expect(again.size == sizes[0])
     #expect(pixels(again.surface) == atTwo)
+
+    // the page takes the board's look: Ink Wash sets the title in its serif, not Warm Ink's sans
+    let wash = try await r.snapshot(
+      of: Self.note, width: 320, height: nil, folder: folder, scale: 2, look: "ink-wash", priority: 0)
+    #expect(pixels(wash.surface) != atTwo)
   }
 
   /// A code block draws only the lines in view: the whole card must be in view, or its end is missing
@@ -241,7 +251,8 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     let code = (1...120).map { "x\($0) = step(\($0))" }.joined(separator: "\n")
     let note = Note(text: "# Long\n\n\(prose)\n\n```python\n\(code)\n```\n\nThe end.", style: .note)
     let r = NoteRenderer(cache: cache)
-    let s = try await r.snapshot(of: note, width: 360, height: nil, folder: cache, scale: 1, priority: 0)
+    let s = try await r.snapshot(
+      of: note, width: 360, height: nil, folder: cache, scale: 1, look: "warm-ink", priority: 0)
     // 30 paragraphs of about 30 px and 120 code lines of about 20 px
     #expect(s.size.height > 3200)
     let rows = pixels(s.surface).count / (s.surface.width * 4)

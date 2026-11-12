@@ -44,6 +44,11 @@ struct CodeLayout: Equatable, Sendable {
   var rows: [Placed] = []
   /// Left edge of the code
   var gutter: CGFloat
+  /// Spaces of indentation every shown line has, hidden: the code moves left by them, less a small pad (the board's
+  /// CodeBody `ded`, DED_PAD)
+  var dedent = 0
+  /// How far the code is moved right of the gutter (negative: left)
+  var shift: CGFloat = 0
   /// Highlights as y ranges of their rows
   var bands: [ClosedRange<CGFloat>] = []
   /// The body's natural height
@@ -111,6 +116,17 @@ struct CodeLayout: Equatable, Sendable {
     self.rows = rows
     self.bands = bands
     height = y + m.padBottom
+    // core lines.ts commonIndent, over the rows shown
+    var common = Int.max
+    for p in rows {
+      guard case .line(_, _, let text, _) = p.row, !text.allSatisfy(\.isWhitespace) else { continue }
+      common = min(common, text.prefix { $0 == " " || $0 == "\t" }.count)
+      if common < 2 { break }
+    }
+    if common != Int.max && common >= 2 {
+      dedent = common
+      shift = 16 - CGFloat(common) * m.charWidth
+    }
   }
 
   /// The middle of the row of a segment's line, when it is shown
