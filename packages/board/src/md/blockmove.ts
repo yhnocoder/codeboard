@@ -48,8 +48,10 @@ const NEAR = 12;
 const SETTLE_MS = 200,
   FLIP_MS = 160;
 const EASE = "cubic-bezier(.2,.7,.3,1)";
-/** The editor's own controls drawn inside blocks (a code block's language pill, a table's grips): not part of the copy */
-const EDIT_UI = "button, .mdui, .md-cbpill, .md-rowline, .md-rowshield, .md-tcount, .ProseMirror-gapcursor";
+/** The editor's own controls drawn inside blocks (a heading's level chip, a table's grips and drag pieces, an image's
+ *  resize grips): not part of the copy */
+const EDIT_UI =
+  "button, .mdui, .md-hchip, .md-tov, .md-tghost, .md-thole, .md-tdrop, .md-tgone, .md-imgrip, .md-rowline, .md-rowshield, .md-tcount, .ProseMirror-gapcursor";
 
 type Kind = "text" | "code" | "table" | "img";
 type Rect = { x: number; y: number; w: number; h: number };
@@ -250,12 +252,21 @@ function showLine(t: Target | null) {
   line.classList.add("is-on");
 }
 
+/** A paragraph's text as read, without the editor's hidden source (an image's `![](…)` is there while it is drawn) */
+function shownText(p: HTMLElement): string {
+  let t = "";
+  const walk = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode())
+    if (!n.parentElement?.closest(".md-hide, .md-img")) t += n.nodeValue ?? "";
+  return t.trim();
+}
+
 function kindOf(els: HTMLElement[]): Kind {
   if (els.length !== 1) return "text";
   const e = els[0];
   if (e.matches("pre, .md-code")) return "code";
   if (e.matches("table, .tableWrapper")) return "table";
-  if (e.tagName === "P" && e.querySelectorAll("img").length === 1 && !(e.textContent ?? "").trim()) return "img";
+  if (e.tagName === "P" && e.querySelectorAll("img").length === 1 && !shownText(e)) return "img";
   return "text";
 }
 
@@ -301,6 +312,7 @@ function makeCopy(id: string, els: HTMLElement[]) {
     c.classList.remove("md-mv-dim", "md-mv-away", "md-mv-gone", "ProseMirror-selectednode");
     for (const e of [c, ...c.querySelectorAll("[contenteditable]")]) e.removeAttribute("contenteditable");
     for (const e of c.querySelectorAll(EDIT_UI)) e.remove();
+    for (const e of c.querySelectorAll(".md-picked")) e.classList.remove("md-picked");
     if (!k) c.style.setProperty("margin-top", "0", "important");
     if (k === els.length - 1) c.style.setProperty("margin-bottom", "0", "important");
     inner.append(c);

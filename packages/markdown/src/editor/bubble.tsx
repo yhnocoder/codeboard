@@ -7,6 +7,7 @@ import { Icon, type IconName } from "./icons";
 import { isWrapped, revealMeta, toggleWrap } from "./inline";
 import { blockInfo, flat, type Span } from "./spans";
 import { linkAt as linkIn } from "./links";
+import { movingBlocks } from "./moveblocks";
 import { escAnnot } from "../schema-marks";
 import { place, virtual } from "../ui/place";
 import { TOOLBAR_SETTLE } from "../ui/timing";
@@ -26,7 +27,7 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   const want = () => {
     p.tick();
     const s = e.state.selection;
-    if (s.empty || !(s instanceof TextSelection) || !e.isFocused || p.ui.menu()) return false;
+    if (s.empty || !(s instanceof TextSelection) || !e.isFocused || p.ui.menu() || movingBlocks(e.state)) return false;
     return !s.$from.parent.type.spec.code && s.$from.parent.inlineContent;
   };
   // 不是一选就出：选区停住 TOOLBAR_SETTLE 后才出（拖选、⇧方向键扩选的途中不闪），按着鼠标时不算停住；

@@ -3,7 +3,7 @@
 // edits, and the document with blocks moved, taken out or put in. Empty paragraphs are not blocks (nothing of them is saved)
 import { Extension, type Editor } from "@tiptap/core";
 import { Fragment, type Node as PMNode } from "@tiptap/pm/model";
-import { Plugin, PluginKey, Selection } from "@tiptap/pm/state";
+import { Plugin, PluginKey, Selection, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { MdPart } from "../blockmove";
 import { layoutOf, sourceDoc, sourceMd } from "./srcdoc";
@@ -33,6 +33,9 @@ export type MdBlocks = {
 type Mark = { from: number; to: number; how: BlockMark } | null;
 const key = new PluginKey<Mark>("cbMoveBlocks");
 
+/** Blocks are being moved (dragged, floating or landing): the selection's own controls stand aside meanwhile */
+export const movingBlocks = (st: EditorState) => !!key.getState(st);
+
 const empty = (n: PMNode) => n.type.name === "paragraph" && !n.content.size;
 /** Positions of the blocks (before each), and the end of the last */
 function spans(doc: PMNode): { pos: number; node: PMNode; k: number }[] {
@@ -60,6 +63,7 @@ export const MoveBlocks = Extension.create({
         },
       },
       props: {
+        attributes: (st): Record<string, string> => (key.getState(st) ? { class: "md-moving" } : {}),
         decorations(st) {
           const m = key.getState(st);
           if (!m) return null;

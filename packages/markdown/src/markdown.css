@@ -2482,3 +2482,9 @@ body .cm-tooltip.cbcm-ac.cm-tooltip-autocomplete > ul {
 .md-pm > .md-mv-gone {
   visibility: hidden;
 }
+/* While blocks move, the controls of the block under the caret or pointer (a code block's or table's band, table grips,
+   an image's resize grips, the heading level chip) would hang over a placeholder or over the gap a picked-up block left */
+.md-pm.md-moving ~ .md-bands,
+.md-pm.md-moving :is(.md-hchip, .md-tov, .md-imgrip) {
+  visibility: hidden;
+}
