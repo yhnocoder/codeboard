@@ -8,7 +8,7 @@ import UniformTypeIdentifiers
 
 // The Swift half of the look comparison (tools/look/compare.mjs runs it after the web half): the fixture storage folder
 // imported into a vault, drawn by the canvas's drawing code at the same rects and zooms as the web board's pictures in
-// <out>/<theme>/, and each pair written side by side with their difference.
+// <out>/<theme>/ (and <theme>-dark/), and each pair written side by side with their difference.
 //   swift run -c release LookCompare <storage folder> <out folder>
 
 struct Rects: Decodable {
@@ -97,12 +97,13 @@ func sideBySide(_ web: CGImage, _ swift: CGImage) -> (CGImage?, Double) {
 
 var report = ""
 let highlighter = Highlighter()
-for theme in Theme.all {
-  let dir = out.appending(path: theme.id.rawValue)
+for theme in Theme.all.flatMap({ [$0, Theme.named($0.id, dark: true)] }) {
+  let name = theme.id.rawValue + (theme.dark ? "-dark" : "")
+  let dir = out.appending(path: name)
   guard let data = try? Data(contentsOf: dir.appending(path: "rects.json")),
     let rects = try? JSONDecoder().decode(Rects.self, from: data)
   else {
-    print("\(theme.id.rawValue): no web pictures (run tools/look/compare.mjs)")
+    print("\(name): no web pictures (run tools/look/compare.mjs)")
     continue
   }
   // what the Note page measures, as the web board measured it
@@ -120,7 +121,7 @@ for theme in Theme.all {
     if let web = read(dir.appending(path: "web-board.png")) {
       let (pair, d) = sideBySide(web, img)
       if let pair { write(pair, dir.appending(path: "board.png")) }
-      report += String(format: "%@ board: %.2f\n", theme.id.rawValue, d)
+      report += String(format: "%@ board: %.2f\n", name, d)
     }
   }
   for z in rects.zooms {
@@ -129,17 +130,16 @@ for theme in Theme.all {
       let wpx = ((r.w + 2 * m) * z).rounded(.up)
       let hpx = ((r.h + 2 * m) * z).rounded(.up)
       let rect = CGRect(x: r.x - m, y: r.y - m, width: wpx / z, height: hpx / z)
-      let name = "\(card)@\(Int(z))"
+      let crop = "\(card)@\(Int(z))"
       guard
         let img = picture(rect, scale: 2 * z, backdrop: false).image,
-        let web = read(dir.appending(path: "web-\(name).png"))
+        let web = read(dir.appending(path: "web-\(crop).png"))
       else { continue }
-      write(img, dir.appending(path: "swift-\(name).png"))
+      write(img, dir.appending(path: "swift-\(crop).png"))
       let (pair, d) = sideBySide(web, img)
-      if let pair { write(pair, dir.appending(path: "\(name).png")) }
+      if let pair { write(pair, dir.appending(path: "\(crop).png")) }
       let mine = whole.cards[card].map { "\(Int($0.width))×\(Int($0.height))" } ?? "missing"
-      report += String(
-        format: "%@ %@: %.2f (web %d×%d, swift %@)\n", theme.id.rawValue, name, d, Int(r.w), Int(r.h), mine)
+      report += String(format: "%@ %@: %.2f (web %d×%d, swift %@)\n", name, crop, d, Int(r.w), Int(r.h), mine)
     }
   }
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The look comparison (CONTRIBUTING.md, apps/macos): the fixture board in storage/ drawn by the real web board and by the Mac
-// canvas's drawing code, in every theme, side by side. Output in apps/macos/.build-look/ (git-ignored):
-// <theme>/board.png (the whole board) and <theme>/<card>@<zoom>.png (web | Swift | difference).
+// canvas's drawing code, in every theme, light and dark, side by side. Output in apps/macos/.build-look/ (git-ignored):
+// <theme>[-dark]/board.png (the whole board) and <theme>[-dark]/<card>@<zoom>.png (web | Swift | difference).
 //   node apps/macos/tools/look/compare.mjs [--skip-build] [--swift-only]
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -50,7 +50,7 @@ if (!args.has("--swift-only")) {
     boardDist: path.join(repo, "packages/board/dist"),
     page: here,
     out,
-    themes: ["warm-ink", "ink-wash"],
+    themes: ["warm-ink", "ink-wash"].flatMap((look) => [false, true].map((dark) => ({ look, dark }))),
   });
 }
 run("swift", ["run", "-c", "release", "LookCompare", path.join(here, "storage"), out], mac);
