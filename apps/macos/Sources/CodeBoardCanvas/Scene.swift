@@ -1,4 +1,5 @@
 import CodeBoardModel
+import CodeBoardSyntax
 import CoreGraphics
 import Foundation
 
@@ -37,7 +38,8 @@ struct Scene: Sendable {
   /// The tilt of a tilted card, as the board's (counter-clockwise)
   static let tilt = -1.2 * CGFloat.pi / 180
 
-  init(_ board: Board, package: URL, vault: Vault, theme t: Theme) {
+  /// Off the main thread: code is highlighted here, once, and kept with its item for every redraw
+  init(_ board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter) {
     for s in board.sections {
       let r = CGRect(x: s.x, y: s.y, width: s.width, height: s.height)
       frames.append(Frame(rect: r, fill: s.color.flatMap { t.sectionColors[$0] } ?? t.sectionFill))
@@ -68,7 +70,7 @@ struct Scene: Sendable {
         images = vault.sharedFolderURL.appending(path: Vault.imagesFolder)
       }
       let tilt = c.tilted ? Scene.tilt : 0
-      let (drawing, height, code) = Scene.card(c, content, images: images, theme: t)
+      let (drawing, height, code) = Scene.card(c, content, images: images, theme: t, highlighter: highlighter)
       let r = CGRect(x: c.x, y: c.y, width: c.width, height: height)
       placed[c.id] = Placed(rect: r, code: code, tilt: tilt)
       items.append(Item(rect: r, drawing: drawing, tilt: tilt))
@@ -138,12 +140,15 @@ struct Scene: Sendable {
     var tilt: CGFloat
   }
 
-  private static func card(_ c: Card, _ content: CardContent, images: URL, theme t: Theme) -> (
+  private static func card(
+    _ c: Card, _ content: CardContent, images: URL, theme t: Theme, highlighter: Highlighter
+  ) -> (
     Drawing, CGFloat, (layout: CodeLayout, top: CGFloat, segments: [SegmentID])?
   ) {
     switch content.body {
     case .code(let code):
-      let layout = CodeLayout(code, width: c.width, metrics: t.metrics)
+      let tokens = code.segments.map { highlighter.tokens(lines: $0.lines, language: $0.language) }
+      let layout = CodeLayout(code, tokens: tokens, width: c.width, metrics: t.metrics)
       let s = code.segments.first
       let title = content.title ?? s?.symbol?.name ?? s?.scope ?? s.flatMap(CodeLayout.path).map(file) ?? "Code"
       let path = s.flatMap(CodeLayout.path).map(file)

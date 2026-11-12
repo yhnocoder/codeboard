@@ -1,4 +1,5 @@
 import CodeBoardModel
+import CodeBoardSyntax
 import CoreText
 import IOSurface
 
@@ -187,12 +188,12 @@ enum Drawing: Sendable {
     for p in l.rows {
       let mid = p.y + p.height / 2
       switch p.row {
-      case .line(_, let n, let s):
+      case .line(_, let n, let s, let tokens):
         if let n {
           let ns = String(n)
           text(ctx, ns, t.code.ct, numbers, x: numberRight - width(ns, t.code.ct), midY: mid, width: .infinity)
         }
-        text(ctx, s, t.code.ct, t.ink, x: l.gutter, midY: mid, width: .infinity)
+        codeLine(ctx, s, tokens, t, x: l.gutter, midY: mid)
       case .gap(let a, let b):
         let row = CGRect(x: 0, y: p.y + 1, width: r.width, height: p.height - 2)
         ctx.setFillColor(t.hiddenRow)
@@ -222,6 +223,27 @@ enum Drawing: Sendable {
       }
     }
     ctx.restoreGState()
+  }
+
+  /// A row of code in its token colours, with its middle at midY (the body's clip cuts it)
+  private static func codeLine(
+    _ ctx: CGContext, _ s: String, _ tokens: [Token], _ t: Theme, x: CGFloat, midY: CGFloat
+  ) {
+    guard !s.isEmpty else { return }
+    let font = NSAttributedString.Key(kCTFontAttributeName as String)
+    let color = NSAttributedString.Key(kCTForegroundColorAttributeName as String)
+    let a = NSMutableAttributedString(string: s, attributes: [font: t.code.ct, color: t.ink])
+    let units = a.length
+    for tok in tokens {
+      let r = tok.columns.clamped(to: 0..<units)
+      guard !r.isEmpty else { continue }
+      let range = NSRange(location: r.lowerBound, length: r.count)
+      a.addAttribute(color, value: t.syntax[tok.kind] ?? t.ink, range: range)
+      if tok.kind == .comment { a.addAttribute(font, value: t.codeComment.ct, range: range) }
+    }
+    let f = t.code.ct
+    ctx.textPosition = CGPoint(x: x, y: midY + (CTFontGetAscent(f) - CTFontGetDescent(f)) / 2)
+    CTLineDraw(CTLineCreateWithAttributedString(a), ctx)
   }
 
   /// One line of text with its middle at midY, cut with an ellipsis to `width`

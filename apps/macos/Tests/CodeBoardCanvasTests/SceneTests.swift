@@ -1,4 +1,5 @@
 import CodeBoardModel
+import CodeBoardSyntax
 import CoreGraphics
 import Foundation
 import Testing
@@ -6,6 +7,18 @@ import Testing
 @testable import CodeBoardCanvas
 
 private let metrics = CodeMetrics(charWidth: 6.6)
+private let highlighter = Highlighter()
+
+/// Each line row's text and the text its tokens cover
+private func coloured(_ l: CodeLayout) -> [(text: String, tokens: [String: TokenClass])] {
+  l.rows.compactMap { p in
+    guard case .line(_, _, let text, let tokens) = p.row else { return nil }
+    let units = Array(text.utf16)
+    var covered: [String: TokenClass] = [:]
+    for t in tokens { covered[String(decoding: units[t.columns], as: UTF16.self)] = t.kind }
+    return (text, covered)
+  }
+}
 
 private func segment(_ id: String, path: String? = "src/engine.py", first: Int, _ lines: [String]) -> Segment {
   Segment(
@@ -55,7 +68,47 @@ private func segment(_ id: String, path: String? = "src/engine.py", first: Int, 
     let l = CodeLayout(CodeCard(segments: [s], wrap: true), width: 52.2 + 66 + 18 + 1, metrics: metrics)
     #expect(l.gutter == 17 + 2 * 6.6 + 22)
     #expect(l.rows.count == 5)
-    #expect(l.rows.dropFirst().allSatisfy { if case .line(_, nil, _) = $0.row { true } else { false } })
+    #expect(l.rows.dropFirst().allSatisfy { if case .line(_, nil, _, _) = $0.row { true } else { false } })
+  }
+
+  @Test func tokensKeepTheirCharactersThroughTabsWideTextAndHiddenLines() {
+    // columns are UTF-16 within the original line: the emoji is two units, the tab one
+    var s = segment("a", first: 1, ["\tx = 1  # 注释 🙂 ok", "hidden", "y = '中'"])
+    s.hidden = [2...2]
+    let tokens: [[Token]] = [
+      [Token(columns: 1..<2, kind: .keyword), Token(columns: 8..<18, kind: .comment)],
+      [Token(columns: 0..<6, kind: .string)],
+      [Token(columns: 4..<7, kind: .string)],
+    ]
+    let rows = coloured(CodeLayout(CodeCard(segments: [s]), tokens: [tokens], width: 400, metrics: metrics))
+    #expect(rows.map(\.text) == ["    x = 1  # 注释 🙂 ok", "y = '中'"])
+    #expect(rows[0].tokens == ["x": .keyword, "# 注释 🙂 ok": .comment])
+    #expect(rows[1].tokens == ["'中'": .string])
+  }
+
+  @Test func aWrappedLinesTokensSplitAtTheWrap() {
+    // 10 characters a row; the string runs from column 4 to 23, over all three rows
+    let line = "x = '一二三四五六七八九十一二三四五六七八' + y"
+    let s = segment("a", first: 98, [line])
+    let units = line.utf16.count
+    let tokens: [[Token]] = [
+      [Token(columns: 4..<24, kind: .string), Token(columns: units - 1..<units, kind: .function)]
+    ]
+    let l = CodeLayout(
+      CodeCard(segments: [s], wrap: true), tokens: [tokens], width: 52.2 + 66 + 18 + 1, metrics: metrics)
+    let rows = coloured(l)
+    #expect(rows.map(\.text) == ["x = '一二三四五", "六七八九十一二三四五", "六七八' + y"])
+    #expect(rows.map(\.tokens) == [["'一二三四五": .string], ["六七八九十一二三四五": .string], ["六七八'": .string, "y": .function]])
+  }
+
+  @Test func theHighlighterColoursACardsRows() {
+    let s = segment("a", first: 1, ["def f(self):  # 注释", "    return 1"])
+    let code = CodeCard(segments: [s])
+    let tokens = code.segments.map { highlighter.tokens(lines: $0.lines, language: $0.language) }
+    let rows = coloured(CodeLayout(code, tokens: tokens, width: 400, metrics: metrics))
+    #expect(rows[0].tokens["def"] == .keyword && rows[0].tokens["f"] == .function)
+    #expect(rows[0].tokens["self"] == .receiver && rows[0].tokens["# 注释"] == .comment)
+    #expect(rows[1].tokens["return"] == .keyword && rows[1].tokens["1"] == .number)
   }
 
   @Test func highlightsBandTheirShownRows() {
@@ -76,7 +129,9 @@ private func segment(_ id: String, path: String? = "src/engine.py", first: Int, 
   }
 
   func scene(_ b: Board) -> Scene {
-    Scene(b, package: URL(filePath: "/nonexistent-vault/B.board"), vault: vault, theme: .warmInkLight)
+    Scene(
+      b, package: URL(filePath: "/nonexistent-vault/B.board"), vault: vault, theme: .warmInkLight,
+      highlighter: highlighter)
   }
 
   @Test func aCodeCardWithoutAHeightGrowsWithItsCodeUpToTheCap() {

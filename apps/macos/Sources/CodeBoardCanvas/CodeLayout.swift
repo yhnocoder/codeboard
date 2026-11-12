@@ -1,4 +1,5 @@
 import CodeBoardModel
+import CodeBoardSyntax
 import CoreGraphics
 
 /// Sizes of a code card's body, the same in every theme (the board's: 11 px code on 20 px rows): a card holds the same
@@ -27,8 +28,8 @@ struct CodeMetrics: Equatable, Sendable {
 /// A code card's rows and where they sit in its body (y from the body's top).
 struct CodeLayout: Equatable, Sendable {
   enum Row: Equatable, Sendable {
-    /// A line, or (`number` nil) the continuation of a wrapped one
-    case line(segment: Int, number: Int?, text: String)
+    /// A line, or (`number` nil) the continuation of a wrapped one; tokens in UTF-16 columns of `text`
+    case line(segment: Int, number: Int?, text: String, tokens: [Token] = [])
     case gap(from: Int, to: Int)
     case file(String)
     case function(String)
@@ -49,8 +50,8 @@ struct CodeLayout: Equatable, Sendable {
   var height: CGFloat
 
   /// Hiding comments and docstrings needs the language analysis, which comes later: only blank lines and hidden ranges are
-  /// left out for now
-  init(_ code: CodeCard, width: CGFloat, metrics m: CodeMetrics) {
+  /// left out for now. `tokens`: the highlighter's, per segment and line
+  init(_ code: CodeCard, tokens: [[[Token]]] = [], width: CGFloat, metrics m: CodeMetrics) {
     var last = 1
     for s in code.segments { last = max(last, s.lastLine) }
     gutter = m.padLeft + CGFloat(String(last).count) * m.charWidth + m.numberGap
@@ -83,18 +84,20 @@ struct CodeLayout: Equatable, Sendable {
           l = to + 1
           continue
         }
-        let text = s.lines[l - s.firstLine].replacing("\t", with: "    ")
-        if code.hide.blankLines && text.allSatisfy(\.isWhitespace) {
+        let i = l - s.firstLine
+        if code.hide.blankLines && s.lines[i].allSatisfy(\.isWhitespace) {
           l += 1
           continue
         }
         top[l] = y
-        var rest = Substring(text)
+        let lineTokens = si < tokens.count && i < tokens[si].count ? tokens[si][i] : []
+        var rest = CodeLayout.expand(s.lines[i], lineTokens)[...]
         var number: Int? = l
         repeat {
-          let n = code.wrap ? cols : rest.count
-          put(.line(segment: si, number: number, text: String(rest.prefix(n))), m.row)
-          rest = rest.dropFirst(n)
+          let piece = rest.prefix(code.wrap ? cols : rest.count)
+          put(
+            .line(segment: si, number: number, text: String(piece.map(\.char)), tokens: CodeLayout.runs(piece)), m.row)
+          rest = rest.dropFirst(piece.count)
           number = nil
         } while !rest.isEmpty
         bottom[l] = y
@@ -113,9 +116,47 @@ struct CodeLayout: Equatable, Sendable {
   /// The middle of the row of a segment's line, when it is shown
   func lineY(segment: Int, line: Int) -> CGFloat? {
     for p in rows {
-      if case .line(let s, let n?, _) = p.row, s == segment, n == line { return p.y + p.height / 2 }
+      if case .line(let s, let n?, _, _) = p.row, s == segment, n == line { return p.y + p.height / 2 }
     }
     return nil
+  }
+
+  /// The line's characters with tabs as four spaces, each with the class of its first UTF-16 unit
+  static func expand(_ line: String, _ tokens: [Token]) -> [(char: Character, kind: TokenClass?)] {
+    var kinds = [TokenClass?](repeating: nil, count: line.utf16.count)
+    for t in tokens {
+      for c in t.columns.clamped(to: 0..<kinds.count) { kinds[c] = t.kind }
+    }
+    var out: [(char: Character, kind: TokenClass?)] = []
+    var col = 0
+    for ch in line {
+      let k = col < kinds.count ? kinds[col] : nil
+      if ch == "\t" {
+        out += Array(repeating: (" ", k), count: 4)
+      } else {
+        out.append((ch, k))
+      }
+      col += ch.utf16.count
+    }
+    return out
+  }
+
+  /// Tokens in UTF-16 columns of the piece's text
+  static func runs(_ piece: ArraySlice<(char: Character, kind: TokenClass?)>) -> [Token] {
+    var out: [Token] = []
+    var col = 0
+    for (ch, k) in piece {
+      let end = col + ch.utf16.count
+      if let k {
+        if let last = out.last, last.kind == k, last.columns.upperBound == col {
+          out[out.count - 1].columns = last.columns.lowerBound..<end
+        } else {
+          out.append(Token(columns: col..<end, kind: k))
+        }
+      }
+      col = end
+    }
+    return out
   }
 
   static func path(_ s: Segment) -> String? {

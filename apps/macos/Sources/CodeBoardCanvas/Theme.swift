@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardModel
+import CodeBoardSyntax
 
 /// How the board looks: colours, fonts and the few sizes that are the look's. Values from the board's Warm Ink
 /// (packages/board/src/styles.css, themes.css).
@@ -32,8 +33,12 @@ public struct Theme: Sendable {
   /// The soft shadow under a card: offset y, blur, spread and alpha of each layer (CSS box-shadow)
   var shadow: [(y: CGFloat, blur: CGFloat, spread: CGFloat, alpha: CGFloat)]
   var shadowColor: (r: CGFloat, g: CGFloat, b: CGFloat)
+  /// Code colours (`--k-*`); plain code is `ink`
+  var syntax: [TokenClass: CGColor]
 
   var code: Font
+  /// Comments in code: italic in Warm Ink
+  var codeComment: Font
   var codeTitle: Font
   var codePath: Font
   var noteTitle: Font
@@ -82,7 +87,14 @@ public struct Theme: Sendable {
       boxEdge: rgb(0x211f1b, 0.34),
       shadow: [(1, 1, 0, 0.05), (3, 6, -2, 0.05), (12, 24, -12, 0.1), (28, 50, -26, 0.12)],
       shadowColor: (50.0 / 255, 35.0 / 255, 10.0 / 255),
-      code: Font(mono), codeTitle: Font(NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)),
+      syntax: [
+        // an operator is a keyword on a card (`kw op`)
+        .keyword: rgb(0x9a3f22), .operator: rgb(0x9a3f22), .function: rgb(0x2e5d86), .string: rgb(0x4a7536),
+        .comment: rgb(0x9a958a), .number: rgb(0x8a6416), .receiver: rgb(0x7a4f9a), .punctuation: rgb(0x6f6a62),
+      ],
+      code: Font(mono),
+      codeComment: Font(NSFont(descriptor: mono.fontDescriptor.withSymbolicTraits(.italic), size: 11) ?? mono),
+      codeTitle: Font(NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)),
       codePath: Font(NSFont.monospacedSystemFont(ofSize: 10.5, weight: .regular)),
       noteTitle: Font(NSFont.systemFont(ofSize: 12, weight: .medium)), small: Font(NSFont.systemFont(ofSize: 11)),
       sectionTitle: Font(NSFont.systemFont(ofSize: 12.5, weight: .semibold)),

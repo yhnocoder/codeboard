@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardModel
+import CodeBoardSyntax
 import QuartzCore
 
 /// One board, read-only, panned and zoomed. While a gesture runs (its glide and rubber band included) Core Animation
@@ -25,6 +26,8 @@ public final class CanvasView: NSView {
   private var loads = 0
   private var link: CADisplayLink?
   private let images = DecodeCache(cap: 128 << 20)
+  /// Made by the first board shown, off the main thread (compiling its queries takes tens of milliseconds)
+  private var highlighter: Highlighter?
 
   /// Called at the start of every display-link frame, before the canvas moves (CanvasBench drives and measures from it).
   /// While set, the display link never pauses
@@ -63,9 +66,12 @@ public final class CanvasView: NSView {
       bounds.isEmpty ? (window?.screen ?? NSScreen.main)?.frame.size ?? CGSize(width: 1440, height: 900) : bounds.size
     let backing = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
     let images = self.images
-    let (scene, overviews, shadow) = try await Task.detached(priority: .userInitiated) {
+    let known = highlighter
+    let (scene, overviews, shadow, highlighter) = try await Task.detached(priority: .userInitiated) {
       let package = vault.url(of: board.path)
-      let scene = Scene(try vault.board(at: board.path), package: package, vault: vault, theme: theme)
+      let highlighter = known ?? Highlighter()
+      let scene = Scene(
+        try vault.board(at: board.path), package: package, vault: vault, theme: theme, highlighter: highlighter)
       let fit = Camera.fit(scene.bounds, in: size).zoom
       let overviews = await withTaskGroup(of: (Int, IOSurface?, CGFloat).self) { g in
         for (i, it) in scene.items.enumerated() {
@@ -78,8 +84,9 @@ public final class CanvasView: NSView {
         for await (i, s, scale) in g { out[i] = (s, scale) }
         return out
       }
-      return (scene, overviews, CanvasView.shadow(theme))
+      return (scene, overviews, CanvasView.shadow(theme), highlighter)
     }.value
+    self.highlighter = highlighter
     guard load == loads else { return }
     install(scene, overviews: overviews, shadow: shadow, theme: theme)
   }
