@@ -328,7 +328,7 @@ public final class CanvasView: NSView {
 
   /// The soft shadow under a framed card, nine-sliced onto every one: only the shadow, the card's own area left clear
   /// (a deckled sheet's torn edge must not show a card-shaped shadow fill through it)
-  private nonisolated static func shadow(_ t: Theme) -> (IOSurface, margin: CGFloat)? {
+  nonisolated static func shadow(_ t: Theme) -> (IOSurface, margin: CGFloat)? {
     let m: CGFloat = 80
     let k = t.shadowRadius
     let side = 2 * (m + max(k, t.cardRadius) + 1)

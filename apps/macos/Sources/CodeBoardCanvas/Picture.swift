@@ -11,9 +11,18 @@ enum Shadow {
   static func draw(_ t: Theme, card: CGRect, scale: CGFloat, in ctx: CGContext) {
     ctx.saveGState()
     ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+    // each shape casting a shadow is drawn this far to the side and its shadow moved back: only the shadow lands. The
+    // shape itself, cleared below, would leave its antialiased edge as a dark line where the card's corners curve in
+    let reach = 2 * (t.shadow.map { $0.blur + abs($0.spread) + abs($0.y) }.max() ?? 0)
+    // past everything the context draws (the clip's right edge), whatever the transform
+    let away = max(ctx.boundingBoxOfClipPath.maxX, card.maxX) - card.minX + reach
+    let o = CGPoint(x: away, y: 0).applying(ctx.ctm)
+    let z = CGPoint.zero.applying(ctx.ctm)
     for l in t.shadow {
       ctx.saveGState()
-      ctx.setShadow(offset: CGSize(width: 0, height: -l.y * scale), blur: l.blur * scale, color: l.color)
+      ctx.setShadow(
+        offset: CGSize(width: z.x - o.x, height: z.y - o.y - l.y * scale), blur: l.blur * scale, color: l.color)
+      ctx.translateBy(x: away, y: 0)
       let r = card.insetBy(dx: -l.spread, dy: -l.spread)
       let k = max(0, t.shadowRadius + l.spread)
       ctx.addPath(

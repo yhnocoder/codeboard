@@ -158,8 +158,9 @@ public struct Theme: Sendable {
   var arrowWidth: CGFloat
   var metrics: CodeMetrics
 
-  /// The paper a framed item draws past its rect on each side
-  var bleed: CGFloat { paper == .deckle ? Deckle.margin : 0 }
+  /// What a framed item draws past its rect on each side: a deckled sheet's paper, a sheet's hairline ring (CSS
+  /// 0 0 0 0.5px), which a bitmap of the rect alone would cut off along its sides and keep only round the corners
+  var bleed: CGFloat { paper == .deckle ? Deckle.margin : 0.5 }
 
   public static let all: [Theme] = [.warmInk, .inkWash]
 

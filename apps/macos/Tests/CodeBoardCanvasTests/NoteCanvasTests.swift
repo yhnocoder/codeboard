@@ -86,7 +86,8 @@ import Testing
         scene.items[0], scale: 2, theme: .warmInk, images: images, notes: renderer, priority: 0
       ).surface)
     let paper = try #require(CanvasView.render(scene.items[0], scale: 2, theme: .warmInk, images: images).surface)
-    #expect(composed.width == 600 && composed.height == Int((bounds.height * 2).rounded(.up)))
+    // and the sheet's hairline ring, half a unit round it
+    #expect(composed.width == 602 && composed.height == Int(((bounds.height + 1) * 2).rounded(.up)))
     #expect(ink(composed) > ink(paper) + 2000)
 
     // the overviews the canvas asks for, in the cache: a re-open shows them at once, at the same sizes
