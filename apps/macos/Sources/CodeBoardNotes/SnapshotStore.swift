@@ -6,7 +6,8 @@ import Synchronization
 
 /// Note snapshots on disk, one file per key, the least recently used removed first once the folder holds more than
 /// `limit` bytes. A file is raw BGRA compressed with LZFSE (lossless; 1–3 ms to read, PNG is ten times slower), after a
-/// header with its pixel size and the Note's size at 100 %. Reads and writes run on the caller's thread and may overlap.
+/// header with its pixel size and the Note's size at 100 %; a measured size alone is the header with no pixels. Reads
+/// and writes run on the caller's thread and may overlap.
 final class SnapshotStore: Sendable {
   let folder: URL
   private let index: Mutex<CacheIndex?>
@@ -33,6 +34,23 @@ final class SnapshotStore: Sendable {
 
   func write(_ snap: NoteSnapshot, as key: SnapshotKey) throws {
     guard let data = Self.encode(snap) else { return }
+    try put(data, as: key)
+  }
+
+  func readSize(_ key: SnapshotKey) -> CGSize? {
+    let url = file(key)
+    guard let data = try? Data(contentsOf: url), let size = Self.size(data) else { return nil }
+    let now = Date()
+    try? FileManager.default.setAttributes([.modificationDate: now], ofItemAtPath: url.path(percentEncoded: false))
+    withIndex { $0.touch(key.hex, at: now) }
+    return size
+  }
+
+  func writeSize(_ size: CGSize, as key: SnapshotKey) throws {
+    try put(Self.header(width: 0, height: 0, size: size), as: key)
+  }
+
+  private func put(_ data: Data, as key: SnapshotKey) throws {
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     try data.write(to: file(key), options: .atomic)
     let gone = withIndex { $0.insert(key.hex, size: data.count, at: Date()) }
@@ -77,11 +95,7 @@ final class SnapshotStore: Sendable {
       for y in 0..<h { (base + y * row).copyMemory(from: s.baseAddress + y * s.bytesPerRow, byteCount: row) }
     }
     s.unlock(options: .readOnly, seed: nil)
-    var out = Data(capacity: headerSize + raw.count / 4)
-    for v in [magic, UInt32(w), UInt32(h)] { withUnsafeBytes(of: v.littleEndian) { out.append(contentsOf: $0) } }
-    for v in [snap.size.width, snap.size.height] {
-      withUnsafeBytes(of: Double(v).bitPattern.littleEndian) { out.append(contentsOf: $0) }
-    }
+    var out = header(width: w, height: h, size: snap.size)
     // LZFSE of raw pixels never grows past the input by more than its block headers
     var packed = [UInt8](repeating: 0, count: raw.count + 4096)
     let n = compression_encode_buffer(&packed, packed.count, raw, raw.count, nil, COMPRESSION_LZFSE)
@@ -90,19 +104,36 @@ final class SnapshotStore: Sendable {
     return out
   }
 
+  private static func header(width w: Int, height h: Int, size: CGSize) -> Data {
+    var out = Data(capacity: headerSize + w * h)
+    for v in [magic, UInt32(w), UInt32(h)] { withUnsafeBytes(of: v.littleEndian) { out.append(contentsOf: $0) } }
+    for v in [size.width, size.height] {
+      withUnsafeBytes(of: Double(v).bitPattern.littleEndian) { out.append(contentsOf: $0) }
+    }
+    return out
+  }
+
+  /// The Note's size at 100 % from a file's header (a snapshot's or a measured size's)
+  static func size(_ data: Data) -> CGSize? {
+    guard data.count >= headerSize, u32(data, 0) == magic else { return nil }
+    return CGSize(width: f64(data, 12), height: f64(data, 20))
+  }
+
+  private static func u32(_ data: Data, _ at: Int) -> UInt32 {
+    data.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: at, as: UInt32.self)) }
+  }
+
+  private static func f64(_ data: Data, _ at: Int) -> Double {
+    data.withUnsafeBytes {
+      Double(bitPattern: UInt64(littleEndian: $0.loadUnaligned(fromByteOffset: at, as: UInt64.self)))
+    }
+  }
+
   static func decode(_ data: Data) -> NoteSnapshot? {
-    guard data.count > headerSize else { return nil }
-    func u32(_ at: Int) -> UInt32 {
-      data.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: at, as: UInt32.self)) }
-    }
-    func f64(_ at: Int) -> Double {
-      data.withUnsafeBytes {
-        Double(bitPattern: UInt64(littleEndian: $0.loadUnaligned(fromByteOffset: at, as: UInt64.self)))
-      }
-    }
-    let w = Int(u32(4))
-    let h = Int(u32(8))
-    guard u32(0) == magic, w > 0, h > 0, let s = NoteSnapshot.makeSurface(width: w, height: h) else { return nil }
+    guard data.count > headerSize, let size = size(data) else { return nil }
+    let w = Int(u32(data, 4))
+    let h = Int(u32(data, 8))
+    guard w > 0, h > 0, let s = NoteSnapshot.makeSurface(width: w, height: h) else { return nil }
     let row = w * 4
     var raw = [UInt8](repeating: 0, count: row * h)
     let n = data.withUnsafeBytes { src in
@@ -119,7 +150,7 @@ final class SnapshotStore: Sendable {
       for y in 0..<h { (s.baseAddress + y * s.bytesPerRow).copyMemory(from: base + y * row, byteCount: row) }
     }
     s.unlock(options: [], seed: nil)
-    return NoteSnapshot(surface: s, size: CGSize(width: f64(12), height: f64(20)))
+    return NoteSnapshot(surface: s, size: size)
   }
 }
 

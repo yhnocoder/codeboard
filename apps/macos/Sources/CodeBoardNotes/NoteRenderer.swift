@@ -66,6 +66,55 @@ public final class NoteRenderer {
     return drawn.snapshot
   }
 
+  /// The picture `snapshot` would give, if the disk cache has it; never opens the web view
+  public func cached(of note: Note, width: Double, height: Double?, folder: URL, scale: Double) async -> NoteSnapshot? {
+    guard let json = try? PageNote(note, width: width, height: height).json() else { return nil }
+    return await Self.lookUp(
+      store: store, build: build, note: json, markdown: note.text, folder: folder, scale: scale
+    ).1
+  }
+
+  /// The size at 100 % of `note` on a card `width` wide that is as tall as its content (a Free Text: as wide as its
+  /// text too): what `snapshot` with no height gives as its size, without drawing it. Measured in the web view once,
+  /// then kept with the snapshots
+  public func size(of note: Note, width: Double, folder: URL, priority: Int) async throws -> CGSize {
+    let json = try PageNote(note, width: width, height: nil).json()
+    let (key, cached) = await Self.lookUpSize(
+      store: store, build: build, note: json, markdown: note.text, folder: folder)
+    if let cached { return cached }
+    try await takeTurn(priority: priority)
+    let shown: (size: CGSize, complete: Bool)
+    do {
+      let p = try page ?? NotePage(page: pageFolder)
+      page = p
+      shown = try await p.show(note: json, folder: folder)
+    } catch {
+      page = nil
+      endTurn()
+      throw error
+    }
+    endTurn()
+    // measured without an image that did not come in: too small, so not kept
+    if shown.complete { try? await Self.keepSize(shown.size, as: key, in: store) }
+    return shown.size
+  }
+
+  @concurrent
+  private static func lookUpSize(
+    store: SnapshotStore, build: String, note: String, markdown: String, folder: URL
+  ) async -> (SnapshotKey, CGSize?) {
+    // scale 0: the size alone
+    let key = SnapshotKey(
+      build: build, system: ProcessInfo.processInfo.operatingSystemVersionString, note: note, scale: 0,
+      images: SnapshotKey.imageStamps(in: markdown, folder: folder))
+    return (key, store.readSize(key))
+  }
+
+  @concurrent
+  private static func keepSize(_ size: CGSize, as key: SnapshotKey, in store: SnapshotStore) async throws {
+    try store.writeSize(size, as: key)
+  }
+
   @concurrent
   private static func lookUp(
     store: SnapshotStore, build: String, note: String, markdown: String, folder: URL, scale: Double
