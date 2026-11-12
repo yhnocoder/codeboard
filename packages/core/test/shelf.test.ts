@@ -1,8 +1,12 @@
 // The Shelf: what putting cards and Sections aside takes along, what comes back, and that the board stays consistent meanwhile
 import { describe, expect, it } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   DEFAULT_SETTINGS,
   applyPatch,
+  cardsToFrame,
   checkBoard,
   clone,
   computeFlows,
@@ -10,14 +14,17 @@ import {
   deflate,
   diffBoards,
   emptyBoard,
+  placeCards,
   removeCards,
+  removeLostCalls,
   removeSections,
   renameCard,
   shelvedCards,
+  swapCallTarget,
   type Board,
   type Card,
 } from "../src";
-import { putBack, removeFromShelf, shelfLabel, shelve, type CommandEnv } from "../src/commands";
+import { cardToSidenote, putBack, removeFromShelf, shelfLabel, shelve, type CommandEnv } from "../src/commands";
 
 const note = (id: string, md = `# ${id}`): Card => ({ id, kind: "note", md, look: "note" });
 const code = (id: string, path = "nanovllm/engine/model_runner.py"): Card => ({
@@ -248,6 +255,74 @@ describe("the Shelf", () => {
     expect(file.shelf![0].place.a).toBeDefined();
   });
 
+  it("counts a card's hidden arrows when asking before it turns into a sidenote", async () => {
+    const b = board();
+    const { env } = envOf(b);
+    shelve(env, { sections: ["S"] });
+    const asked: string[] = [];
+    env.choose = async (o) => {
+      asked.push(o.text ?? "");
+      return 1;
+    };
+    await cardToSidenote(env, "c", { card: "a" });
+    expect(asked).toEqual(["2 links on this card will be deleted."]);
+  });
+
+  it("keeps a call's old target when its only other arrow is hidden on the Shelf", () => {
+    const b = board();
+    const { env } = envOf(b);
+    shelve(env, { sections: ["S"] });
+    b.cards.push(code("z"));
+    b.place.z = { x: 900, y: 900, w: 300 };
+    b.links = [{ id: "zc", from: { card: "z", seg: "sz", line: 1 }, to: { card: "c" }, call: { name: "c", col: 4 } }];
+    expect(swapCallTarget(b, "zc", code("n"), { alt: 0, w: 300 })).toEqual({ kept: true });
+    expect(b.cards.some((c) => c.id === "c")).toBe(true);
+    expect(b.shelf![0].links.find((l) => l.id === "bc")!.to.card).toBe("c");
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("Turn into Board moves a hidden arrow to the frame like the arrows on the canvas", () => {
+    const b = board();
+    const { env } = envOf(b);
+    shelve(env, { sections: ["S"] });
+    cardsToFrame(b, ["c"], { id: "f", kind: "board", board: "child" } as Card, { x: 900, y: 100, w: 300 }, []);
+    expect(b.links.map((l) => [l.id, l.from.card, l.to.card])).toEqual([["cd", "f", "d"]]);
+    expect(b.shelf![0].links.map((l) => [l.id, l.from.card, l.to.card])).toEqual([
+      ["ab", "a", "b"],
+      ["bc", "b", "f"],
+    ]);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("an expanded call replaces its lost arrow to a shelved card too", () => {
+    const b = board();
+    const { env } = envOf(b);
+    b.cards.push(code("z"));
+    b.place.z = { x: 900, y: 900, w: 300 };
+    b.links.push({
+      id: "zd",
+      from: { card: "z", seg: "sz", line: 1 },
+      to: { card: "d" },
+      call: { name: "d", col: 4 },
+      lost: { to: true },
+    });
+    shelve(env, { cards: ["d"] });
+    expect(b.shelf![0].links.map((l) => l.id)).toEqual(["cd", "zd"]);
+    removeLostCalls(b, { card: "z", seg: "sz", line: 1 }, "d");
+    expect(b.shelf![0].links.map((l) => l.id)).toEqual(["cd"]);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("placing cards with an arrow the Shelf already holds does not add it again on the canvas", () => {
+    const b = board();
+    const { env } = envOf(b);
+    shelve(env, { sections: ["S"] });
+    const cards = b.cards.filter((c) => c.id === "b" || c.id === "c").map((card) => ({ card: clone(card) }));
+    placeCards(b, cards, { copy: false, links: [{ id: "q", from: { card: "b" }, to: { card: "c" } }] });
+    expect(b.links.map((l) => l.id)).toEqual(["cd"]);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
   it("labels its rows", () => {
     const b = board();
     const { env } = envOf(b);
@@ -261,5 +336,90 @@ describe("the Shelf", () => {
       { title: "c", kind: "Note" },
       { title: "model_runner.py 1–2", kind: "Code · model_runner.py" },
     ]);
+  });
+});
+
+// A shelved card's arrows and stickers live in its Shelf entry, not in Board.links / Board.stickers: code that walks or rewrites
+// the board's arrows or stickers takes allLinks / allStickers. Reading the canvas collection itself is checked here by shape:
+// adding to it (push), replacing it (=) and finding one item by its id (what the user picked on the canvas) are not reads, and
+// neither is an options parameter's (o.links: arrows or ids handed in).
+describe("arrows and stickers on the Shelf are not missed by edit/ and commands/", () => {
+  /** [file, top-level function, why reading the canvas collection (or something else's links / stickers) is right there] */
+  const ALLOW: [string, string, string][] = [
+    ["edit/refs.ts", "allLinks", "the canvas and every Shelf entry, the walk itself"],
+    ["edit/refs.ts", "allStickers", "the canvas and every Shelf entry, the walk itself"],
+    ["edit/refs.ts", "removeCards", "filters the canvas and each entry on their own: an item stays where it is"],
+    ["edit/refs.ts", "pruneRefs", "prunes the canvas and each entry on their own: an item stays where it is"],
+    ["edit/refs.ts", "removeLinks", "filters the canvas and each entry on their own: an item stays where it is"],
+    ["edit/refs.ts", "pruneStickers", "a shelved sticker is bound within its own entry, so each is pruned on its own"],
+    ["edit/refs.ts", "retargetCards", "drops looped arrows from the canvas and each entry on their own"],
+    ["edit/refs.ts", "removeStickers", "filters the canvas and each entry on their own: an item stays where it is"],
+    ["edit/check.ts", "danglingRefs", "checks the canvas and each entry on their own (what may be where differs)"],
+    ["edit/shelf.ts", "shelveItems", "moves items from the canvas into the new entry"],
+    ["edit/shelf.ts", "unshelve", "moves an entry's items back onto the canvas or into another entry"],
+    [
+      "edit/ops.ts",
+      "makeCompare",
+      "both columns are on the canvas; a shelved sticker is only on a shelved card or arrow",
+    ],
+    ["commands/shelf.ts", "shelfLabel", "counts one entry's own arrows"],
+  ];
+  const root = fileURLToPath(new URL("../src/", import.meta.url));
+  const DECL = /^(?:export\s+)?(?:async\s+)?(?:function\*?\s+([\w$]+)|(?:const|let)\s+([\w$]+))/gm;
+  const USE = /(?<!(?<![\w$.])o)(?<=[\w$)\]])\s*\??\.\s*(links|stickers)\b/g;
+  const NOT_READ = [
+    /^\s*\.\s*(?:push|unshift)\s*\(/,
+    /^\s*=(?![=>])/,
+    /^\s*\.\s*(?:find|findIndex|some)\s*\(\s*\(?\s*([\w$]+)\s*\)?\s*=>\s*\1\.id\s*===/,
+  ];
+  type Hit = { fn: string; at: string };
+  const scan = (file: string, text: string): Hit[] => {
+    // comments blanked, line numbers kept
+    const src = text
+      .replace(/^[ \t]*(\/\/|\/?\*).*$/gm, (m) => " ".repeat(m.length))
+      .replace(/(^|\s)\/\/.*$/gm, (m) => " ".repeat(m.length));
+    const decls = [...src.matchAll(DECL)].map((m) => ({ at: m.index, name: m[1] ?? m[2] }));
+    const out: Hit[] = [];
+    for (const m of src.matchAll(USE)) {
+      const end = m.index + m[0].length;
+      if (NOT_READ.some((re) => re.test(src.slice(end, end + 200)))) continue;
+      const fn = decls.filter((d) => d.at < m.index).pop()?.name ?? "";
+      out.push({ fn, at: `${file}:${src.slice(0, m.index).split("\n").length}` });
+    }
+    return out;
+  };
+
+  it("reads Board.links / Board.stickers directly only where the canvas alone is meant", () => {
+    const bad: string[] = [];
+    const used = new Set<number>();
+    for (const dir of ["edit", "commands"])
+      for (const f of fs.readdirSync(path.join(root, dir)).filter((n) => n.endsWith(".ts"))) {
+        const rel = `${dir}/${f}`;
+        for (const h of scan(rel, fs.readFileSync(path.join(root, rel), "utf8"))) {
+          const i = ALLOW.findIndex(([file, fn]) => file === rel && fn === h.fn);
+          if (i < 0) bad.push(`${h.at} (${h.fn}): use allLinks / allStickers, or allow-list it with the reason`);
+          else used.add(i);
+        }
+      }
+    expect(bad).toEqual([]);
+    expect(ALLOW.filter((_, i) => !used.has(i)).map(([f, fn]) => `${f} ${fn}`)).toEqual([]);
+  });
+
+  it("tells a read from adding, replacing and finding by id", () => {
+    const hits = scan(
+      "x.ts",
+      [
+        "export function f(b: Board) {",
+        "  for (const l of b.links) l.at = 0;",
+        "  const n = b.stickers",
+        "    .filter((k) => k.q).length; // b.links in a comment",
+        "  b.links.push(l); b.stickers = []; const k = b.stickers.find((s) => s.id === id);",
+        "  if (env.board().links.some((k) => k.id === id && k.rpc)) {}",
+        "  const s = new Set(b.links.map(key)); return [...b.stickers];",
+        "}",
+        "const g = (b: Board, o: { links: Link[] }) => b.links.find((l) => l.from.card === id) ?? o.links[0];",
+      ].join("\n"),
+    );
+    expect(hits.map((h) => `${h.fn}:${h.at.split(":")[1]}`)).toEqual(["f:2", "f:3", "f:7", "f:7", "g:9"]);
   });
 });

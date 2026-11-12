@@ -41,6 +41,7 @@ import {
   type CodeCard,
   type NoteCard,
   type Sidenote,
+  type Sticker,
   plainRefs,
   type Link,
   type Segment,
@@ -1241,6 +1242,28 @@ describe("board action edits (core edit)", () => {
     expect((b.cards[0] as { md: string }).md).toBe("see [[Baz]] and [[foo.bar]]");
     expect(b.cards[1].desc).toBe("[[Baz]]");
     expect((b.sidenotes[0] as { md: string }).md).toBe("[[Baz]]");
+  });
+  it("renameTitleRefs renames only where Markdown reads a reference: not in code, not one with its target's id", () => {
+    const md = "[[foo]] and `[[foo]]` and [[foo#^a]]\n\n```\n[[foo]]\n```\n\n~~~py\nx = [[foo]]\n~~~\nafter [[ foo ]]";
+    const b = base([{ id: "n", kind: "note", md, look: "note" }]);
+    renameTitleRefs(b, "foo", "Baz");
+    expect((b.cards[0] as { md: string }).md).toBe(
+      "[[Baz]] and `[[foo]]` and [[foo#^a]]\n\n```\n[[foo]]\n```\n\n~~~py\nx = [[foo]]\n~~~\nafter [[Baz]]",
+    );
+  });
+  it("renameTitleRefs follows a rename into questions, on the canvas and on the Shelf", () => {
+    const b = base([code("a")]);
+    const q = (id: string, md: string): Sticker => ({
+      id,
+      icon: { pack: "builtin", name: "question" },
+      at: { kind: "canvas", x: 0, y: 0 },
+      q: { md, at: 0 },
+    });
+    b.stickers = [q("k1", "why does [[foo]] call `[[foo]]`?")];
+    b.shelf = [{ id: "e", at: 0, place: {}, sections: [], links: [], stickers: [q("k2", "[[FOO]]")] }];
+    renameTitleRefs(b, "foo", "Baz");
+    expect(b.stickers[0].q!.md).toBe("why does [[Baz]] call `[[foo]]`?");
+    expect(b.shelf[0].stickers[0].q!.md).toBe("[[Baz]]");
   });
 });
 

@@ -156,7 +156,7 @@ export function renameCard(b: Board, from: string, to: string): void {
 export function removeLostCalls(b: Board, from: End, name: string): void {
   removeLinks(
     b,
-    b.links
+    allLinks(b)
       .filter(
         (l) =>
           l.lost?.to &&

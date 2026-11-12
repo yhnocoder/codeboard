@@ -56,6 +56,11 @@ export function danglingRefs(b: Board): string[] {
   for (const n of b.sidenotes) {
     if (!segOk(n.at.card, n.at.seg)) out.push(`sidenote ${n.id} on missing ${n.at.card}`);
     if (n.kind === "card" && !cards.has(n.card)) out.push(`sidenote ${n.id} points to missing ${n.card}`);
+    if (n.variant) {
+      const c = cards.get(n.at.card);
+      if (c && !(c.kind === "code" && c.variants?.some((v) => v.id === n.variant)))
+        out.push(`sidenote ${n.id} on missing variant ${n.variant} of ${n.at.card}`);
+    }
     // a sidenote on lines lies in its segment; one that goes along with the card is on the segment's Highlight with exactly those
     // lines, a local one is a Highlight of its own (edit/highlights.ts)
     const s = n.at.lines && noteSegment(b, n);

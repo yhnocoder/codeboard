@@ -72,8 +72,11 @@ function inlineRefs(src: string, f: (r: MdRef) => string | undefined): string {
   return out + src.slice(i);
 }
 
-/** 存 Markdown 的地方：Note 的正文、卡的说明、文字 Sidenote、问题贴纸（共享卡的引用不是卡，没有） */
-export function eachMarkdown(b: Pick<BoardFile, "cards" | "sidenotes" | "stickers">, f: (md: string) => string) {
+/** 存 Markdown 的地方：Note 的正文、卡的说明、文字 Sidenote、问题贴纸（Shelf 上的也算；共享卡的引用不是卡，没有） */
+export function eachMarkdown(
+  b: Pick<BoardFile, "cards" | "sidenotes" | "stickers" | "shelf">,
+  f: (md: string) => string,
+) {
   for (const c of b.cards) {
     if (c.kind === "shared") continue;
     if (c.kind === "note") {
@@ -90,7 +93,7 @@ export function eachMarkdown(b: Pick<BoardFile, "cards" | "sidenotes" | "sticker
       const m = f(n.md);
       if (m !== n.md) n.md = m;
     }
-  for (const k of b.stickers)
+  for (const k of [...b.stickers, ...(b.shelf ?? []).flatMap((e) => e.stickers)])
     if (k.q) {
       const m = f(k.q.md);
       if (m !== k.q.md) k.q.md = m;

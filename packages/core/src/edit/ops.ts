@@ -2,7 +2,7 @@
 // placing cards, Turn into Board, Sections, stacking order, Compare and inserting a card into an arrow.
 // Pure functions that change the board passed in (the board calls them inside a mutate).
 import type { BoundVal, CallAlt } from "@codeboard/analysis/basics";
-import { removeCards, removeLinks, removeSidenotes, replaceCards } from "./refs";
+import { allLinks, removeCards, removeLinks, removeSidenotes, replaceCards } from "./refs";
 import { onHighlight } from "./highlights";
 import { clone, withCols, uid, type Board, type Card, type End, type Link, type Place, type Sidenote } from "../model";
 import { eachMarkdown, retargetRefs } from "../mdrefs";
@@ -23,7 +23,7 @@ export function swapCallTarget(
   if (!l?.call) return null;
   const oldId = l.to.card;
   const kept =
-    b.links.some((x) => x.id !== linkId && (x.from.card === oldId || x.to.card === oldId)) ||
+    allLinks(b).some((x) => x.id !== linkId && (x.from.card === oldId || x.to.card === oldId)) ||
     b.sidenotes.some((n) => n.at.card === oldId);
   const p = b.place[oldId];
   const section = p?.section;
@@ -157,7 +157,7 @@ export function placeCards(
       l.to.line,
       l.to.block?.i,
     ]);
-  const there = new Set(b.links.map(key));
+  const there = new Set(allLinks(b).map(key));
   for (const l of o.links ?? []) {
     const from = on(l.from.card),
       to = on(l.to.card);
@@ -191,7 +191,7 @@ export function cardsToFrame(
   sections: Iterable<string>,
 ): void {
   const want = new Set(withCols(b, ids));
-  for (const l of b.links) {
+  for (const l of allLinks(b)) {
     const a = want.has(l.from.card),
       t = want.has(l.to.card);
     if (a === t) continue;

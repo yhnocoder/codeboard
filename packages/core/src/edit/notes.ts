@@ -2,7 +2,7 @@
 // Pure functions that change the board passed in (the board calls them inside a mutate).
 import { removeCards } from "./refs";
 import { mdHeading, uid, type Board } from "../model";
-import { escapeRegExp } from "@codeboard/analysis/basics";
+import { eachMarkdown, mapRefs } from "../mdrefs";
 import { estSize, type Rect } from "../layout";
 import { headingTree, splitHeadings } from "../split";
 
@@ -58,26 +58,14 @@ export function turnNoteInto(b: Board, id: string, look: "note" | "text"): void 
   delete p.h;
 }
 
-/** 卡改了名：Note、卡片说明、Text sidenote 里写着 [[旧名]] 的引用跟着改 */
+/**
+ * A card was renamed: references by title to its old name ([[old]], no id, title compared ignoring case) follow, wherever the board
+ * keeps Markdown (eachMarkdown) and only where mdrefs reads a reference, so not in code
+ */
 export function renameTitleRefs(b: Board, from: string, to: string): void {
-  if (!from || from === to || /[\[\]\n]/.test(to)) return;
-  const re = new RegExp(`\\[\\[\\s*${escapeRegExp(from)}\\s*\\]\\]`, "gi");
-  const fix = (s: string) => (s.includes("[[") ? s.replace(re, `[[${to}]]`) : s);
-  for (const k of b.cards) {
-    if (k.kind === "note") {
-      const m = fix(k.md);
-      if (m !== k.md) k.md = m;
-    }
-    if (k.desc) {
-      const d = fix(k.desc);
-      if (d !== k.desc) k.desc = d;
-    }
-  }
-  for (const n of b.sidenotes)
-    if (n.kind === "text") {
-      const m = fix(n.md);
-      if (m !== n.md) n.md = m;
-    }
+  if (!from || from === to || /[[\]\n]/.test(to)) return;
+  const old = from.toLowerCase();
+  eachMarkdown(b, (md) => mapRefs(md, (r) => (!r.target && r.label.toLowerCase() === old ? `[[${to}]]` : undefined)));
 }
 
 /**

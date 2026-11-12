@@ -23,6 +23,7 @@ import {
 } from "../model";
 import { NEW_CARD_W, type Rect } from "../layout";
 import {
+  allLinks,
   cardIntoSidenote,
   imageIntoNote,
   dropOwnHighlight,
@@ -62,7 +63,7 @@ export async function cardToSidenote(env: CommandEnv, cardId: string, at: Anchor
   const b = env.board();
   const c = findCard(b, cardId)?.card;
   if (!c) return false;
-  const links = b.links.filter((l) => l.from.card === cardId || l.to.card === cardId).length;
+  const links = allLinks(b).filter((l) => l.from.card === cardId || l.to.card === cardId).length;
   if (links) {
     const ok = await env.choose({
       title: "Turn into a Sidenote?",

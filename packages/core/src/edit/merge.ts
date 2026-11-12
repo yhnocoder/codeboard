@@ -4,6 +4,7 @@ import { replaceCards } from "./refs";
 import { unlinkCard } from "./twins";
 import { clipHighlights, fixHighlights } from "./highlights";
 import {
+  activeOf,
   clone,
   sameVersion,
   sortSegments,
@@ -65,6 +66,15 @@ export function mergeCodeCards(
   };
   for (const c of orig)
     if (c !== T && c.desc) b.sidenotes.push({ id: uid("n"), at: { card: mid }, kind: "text", md: c.desc });
+  // the merged card has no Variants: a sidenote bound to one goes along with the card; one on lines of code it no longer shows
+  // (another Variant than the shown one) keeps its text on the whole card
+  const shown = new Map(orig.map((c) => [c.id, activeOf(c)]));
+  for (const n of b.sidenotes) {
+    const v = shown.get(n.at.card);
+    if (v === undefined || n.variant === undefined) continue;
+    if (n.variant !== v) n.at = { card: n.at.card };
+    delete n.variant;
+  }
   const w = Math.max(560, ...orig.map((c) => b.place[c.id]?.w ?? 560)); // 先量宽度，再删原来的摆放
   replaceCards(
     b,
