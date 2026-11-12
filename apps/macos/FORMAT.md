@@ -41,8 +41,7 @@ A vault is a folder of its own. Its folder tree is the sidebar's tree: real fold
 ## board.json
 
 ```json
-{ "version": 1, "id": "…", "cards": [Card], "arrows": [Arrow], "sections": [Section],
-  "hideComments": false, "hideLineNumbers": false }
+{ "version": 1, "id": "…", "cards": [Card], "arrows": [Arrow], "sections": [Section], "hideComments": false }
 ```
 
 Written deterministically: keys sorted, two-space indent, one value per line, `[]` / `{}` and lists of numbers (line
@@ -156,7 +155,7 @@ deleted in VS Code stay in the vault; images no longer used stay in `images/`.
 | --- | --- |
 | `name` | package name (title) |
 | `cards` order + `place[id]` `x y w h section locked` | Card, same order; `w` → `width`, `h` → `height` |
-| `hideAllComments`, `hideNumbers` | `hideComments`, `hideLineNumbers` |
+| `hideAllComments` | `hideComments` |
 | card `title desc procs tilt` | `title description processes`, `tilted` (placement) |
 | code `segments hide wrap bg` | `segments`, `hide` (`blank` → `blankLines`), `wrap`, `framed = bg != false` |
 | segment `start end text` | `firstLine`, `lines` |
@@ -202,5 +201,6 @@ holds more. Kinds:
 - `arrowWithoutEnd`, `danglingReference` (a card's section or a section's parent that does not exist: left out)
 - `missingImage`: named but not in `assets/` (the reference is kept)
 - `field` (`<owner id>.<field>`): any other field, known or unknown: e.g. `born`, `seq`, `marks`, `legend`, `seal`,
+  `hideNumbers` (it hides the call graph marks, which v1 does not draw; line numbers are always drawn),
   `place.collapsed`, `place.start`, `segment.keep`, `keepOld`, free code's `url` and `langPicked`, a style field the look
   does not use (`bold` on a Box)

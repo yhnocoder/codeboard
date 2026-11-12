@@ -14,7 +14,6 @@ enum Drawing: Sendable {
     var title: String
     var path: String?
     var layout: CodeLayout
-    var hideNumbers: Bool
     var framed: Bool
   }
 
@@ -189,7 +188,7 @@ enum Drawing: Sendable {
       let mid = p.y + p.height / 2
       switch p.row {
       case .line(_, let n, let s):
-        if let n, !c.hideNumbers {
+        if let n {
           let ns = String(n)
           text(ctx, ns, t.code.ct, numbers, x: numberRight - width(ns, t.code.ct), midY: mid, width: .infinity)
         }

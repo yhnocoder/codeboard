@@ -59,7 +59,10 @@ private func onlyCard(_ v: Vault, _ path: String) throws -> CardContent {
   #expect(s[.arrowWithoutEnd] == ["lweb"])
   #expect(s[.missingImage] == ["ffffffffffffffff-1x1.png"])
   #expect(
-    s[.field] == ["bflow1.born", "bflow1.seq", "sstep.keep", "cgh.collapsed", "sfree.src.langPicked", "cbox.bold"])
+    s[.field] == [
+      "bflow1.born", "bflow1.hideNumbers", "bflow1.seq", "sstep.keep", "cgh.collapsed", "sfree.src.langPicked",
+      "cbox.bold",
+    ])
   // the sidenote that travels with the shared card is in its library file
   #expect(skipped(report, "cards/cshared.json") == [.sidenote: ["n9"]])
   #expect(report.imported.first { $0.source == "cards/cshared.json" }?.destination == ".codeboard/shared/cshared.json")
@@ -80,7 +83,6 @@ private func onlyCard(_ v: Vault, _ path: String) throws -> CardContent {
     ])
   let board = try vault.board(at: "Engine step.board")
   #expect(board.cards.count == 12)
-  #expect(board.hideLineNumbers)
   let shared = try vault.sharedCard(CardID(rawValue: "cshared"))
   #expect(shared.content.body == .note(Note(text: "Shared: ![](images/5f1a2b3c4d5e6f70-1x1.png)")))
   // tilt was the shared card's; in a vault it is the placement's, on every board
@@ -327,13 +329,13 @@ private func fixtureVaultCopy() throws -> URL {
   // the old board changes in VS Code meanwhile
   let file = source.appending(path: "bflow1.json")
   var old = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
-  old["hideNumbers"] = false
+  old["hideAllComments"] = true
   try put(old, at: file)
   let report = try LegacyImport.run(from: source, to: dst)
   #expect(report.imported.first { $0.source == "bflow1.json" }?.destination == "Mine/Deep/Renamed.board")
   #expect(!fm.fileExists(atPath: dst.appending(path: "Engine step.board").path))
   let vault = Vault(root: dst)
-  #expect(try !vault.board(at: "Mine/Deep/Renamed.board").hideLineNumbers)
+  #expect(try vault.board(at: "Mine/Deep/Renamed.board").hideComments)
   #expect(try vault.tree().allBoards.count == 2)
 }
 

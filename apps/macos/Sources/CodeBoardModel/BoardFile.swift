@@ -225,7 +225,7 @@ private struct Empty: Codable {}
 
 extension Board: Codable {
   private enum Keys: String, CodingKey {
-    case version, id, cards, arrows, sections, hideComments, hideLineNumbers
+    case version, id, cards, arrows, sections, hideComments
   }
 
   public init(from decoder: any Decoder) throws {
@@ -234,8 +234,7 @@ extension Board: Codable {
     self.init(
       id: try c.decode(BoardID.self, forKey: .id), cards: try c.decode([Card].self, forKey: .cards),
       arrows: try c.decode([Arrow].self, forKey: .arrows), sections: try c.decode([Section].self, forKey: .sections),
-      hideComments: try c.decode(Bool.self, forKey: .hideComments),
-      hideLineNumbers: try c.decode(Bool.self, forKey: .hideLineNumbers))
+      hideComments: try c.decode(Bool.self, forKey: .hideComments))
   }
 
   public func encode(to encoder: any Encoder) throws {
@@ -246,7 +245,6 @@ extension Board: Codable {
     try c.encode(arrows, forKey: .arrows)
     try c.encode(sections, forKey: .sections)
     try c.encode(hideComments, forKey: .hideComments)
-    try c.encode(hideLineNumbers, forKey: .hideLineNumbers)
   }
 }
 

@@ -68,7 +68,7 @@ struct Scene: Sendable {
         images = vault.sharedFolderURL.appending(path: Vault.imagesFolder)
       }
       let tilt = c.tilted ? Scene.tilt : 0
-      let (drawing, height, code) = Scene.card(c, content, images: images, board: board, theme: t)
+      let (drawing, height, code) = Scene.card(c, content, images: images, theme: t)
       let r = CGRect(x: c.x, y: c.y, width: c.width, height: height)
       placed[c.id] = Placed(rect: r, code: code, tilt: tilt)
       items.append(Item(rect: r, drawing: drawing, tilt: tilt))
@@ -138,7 +138,7 @@ struct Scene: Sendable {
     var tilt: CGFloat
   }
 
-  private static func card(_ c: Card, _ content: CardContent, images: URL, board: Board, theme t: Theme) -> (
+  private static func card(_ c: Card, _ content: CardContent, images: URL, theme t: Theme) -> (
     Drawing, CGFloat, (layout: CodeLayout, top: CGFloat, segments: [SegmentID])?
   ) {
     switch content.body {
@@ -150,8 +150,7 @@ struct Scene: Sendable {
       let top = code.framed ? t.headerHeight : 0
       let body = c.height ?? min(layout.height, t.metrics.maxAutoHeight)
       let d = Drawing.Code(
-        title: title, path: path == title ? nil : path, layout: layout, hideNumbers: board.hideLineNumbers,
-        framed: code.framed)
+        title: title, path: path == title ? nil : path, layout: layout, framed: code.framed)
       return (.code(d), top + body, (layout, top, code.segments.map(\.id)))
     case .note(let n):
       let title = content.title ?? firstLine(n.text)

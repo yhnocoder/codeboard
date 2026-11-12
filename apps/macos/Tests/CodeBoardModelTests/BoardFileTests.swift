@@ -70,7 +70,7 @@ private func everything() -> Board {
       Section(
         id: SectionID(rawValue: "sec"), title: "S", x: 1, y: 2, width: 3, height: 4, parent: SectionID(rawValue: "top"),
         color: "blue", collapsed: true, locked: true, description: "d"),
-    ], hideComments: true, hideLineNumbers: true)
+    ], hideComments: true)
 }
 
 @Test func boardRoundTripsThroughItsFile() throws {
@@ -88,7 +88,6 @@ private func everything() -> Board {
         "arrows": [],
         "cards": [],
         "hideComments": false,
-        "hideLineNumbers": false,
         "id": "b",
         "sections": [],
         "version": 1

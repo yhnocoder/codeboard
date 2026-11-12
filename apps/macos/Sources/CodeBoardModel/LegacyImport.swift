@@ -360,7 +360,7 @@ private struct Mapper {
       o,
       [
         "version", "id", "name", "cards", "place", "links", "sections", "sidenotes", "stickers", "hideAllComments",
-        "hideNumbers", "shelf",
+        "shelf",
       ], id: bid)
     for n in try o.optObjects("sidenotes") { skips.add(.sidenote, try n.string("id")) }
     for s in try o.optObjects("stickers") { skips.add(.sticker, try s.string("id")) }
@@ -438,8 +438,7 @@ private struct Mapper {
       if ok { arrows.append(a) } else { skips.add(.arrowWithoutEnd, a.id.rawValue) }
     }
     return Board(
-      id: id, cards: cards, arrows: arrows, sections: sections, hideComments: try o.flag("hideAllComments"),
-      hideLineNumbers: try o.flag("hideNumbers"))
+      id: id, cards: cards, arrows: arrows, sections: sections, hideComments: try o.flag("hideAllComments"))
   }
 
   /// A card's content and whether it was tilted; nil (reported) for a kind model v1 does not hold

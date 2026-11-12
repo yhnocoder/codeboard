@@ -10,18 +10,15 @@ public struct Board: Equatable, Sendable {
   public var arrows: [Arrow]
   public var sections: [Section]
   public var hideComments: Bool
-  public var hideLineNumbers: Bool
 
   public init(
-    id: BoardID, cards: [Card] = [], arrows: [Arrow] = [], sections: [Section] = [], hideComments: Bool = false,
-    hideLineNumbers: Bool = false
+    id: BoardID, cards: [Card] = [], arrows: [Arrow] = [], sections: [Section] = [], hideComments: Bool = false
   ) {
     self.id = id
     self.cards = cards
     self.arrows = arrows
     self.sections = sections
     self.hideComments = hideComments
-    self.hideLineNumbers = hideLineNumbers
   }
 }
 
