@@ -359,6 +359,7 @@ const OUTLIVES_BOARD: Record<string, string> = {
   "state/sections.ts:shown": "a signal per Section, read by its frame (stopEasing resets the values)",
   "state/fold.ts:folds": "a signal per Section, read by its frame (set back to undefined on a switch)",
   "md/load.ts:current": "the mounted Note editor",
+  "md/blockmove.ts:view": "the block-move layer in the world, which outlives boards: its copy is dropped on a switch",
   "state/ui.ts:codeTextRange": "set by each mounted code view, by its element (weakly held)",
   "md/anim.ts:watchers": "players by the element they watch: each leaves when dropped",
   "ui/Menu.tsx:levels": "the open menu's levels: each leaves when it unmounts",

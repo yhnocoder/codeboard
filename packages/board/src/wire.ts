@@ -23,6 +23,7 @@ import { makeCopy } from "./md/copies";
 import { stillZ } from "./state/camera";
 import { offscreen } from "./state/offscreen";
 import { setStill } from "./state/still";
+import { wireBlockMove } from "./md/blockmove";
 
 export type { Transport };
 export type BoardOptions = {
@@ -71,6 +72,7 @@ export function wireBoard(t: Transport, o: BoardOptions): Markdown {
   followHostTheme();
   wireInk();
   wireSummaries();
+  if (!o.still) wireBlockMove();
   rooted(() => wireRefTitles(md));
   rooted(() => createEffect(on(stillZ, () => md.updateImages(), { defer: true })));
   return md;
