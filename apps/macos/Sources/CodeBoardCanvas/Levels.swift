@@ -14,6 +14,10 @@ enum Levels {
 
   static func atLeast(_ z: CGFloat) -> CGFloat { all.first { $0 >= z - 1e-6 } ?? 2 }
 
+  /// What all card bitmaps (overviews, held and rest) may take at rest before the farthest go back to their overviews:
+  /// on the measured boards a few screens around the view stay sharp at 100 %, for about 1.5 times the prototype's peak
+  static let budget = 384 << 20
+
   /// Pixels along a bitmap's longer side: Core Animation's texture limit, and the Note renderer's
   static let maxSide: CGFloat = 16384
 
@@ -34,10 +38,16 @@ enum Levels {
   }
 }
 
-/// What to draw when the camera comes to rest, nearest the view's centre and the pointer first. A Note also needs its
-/// overview drawn once by the Note renderer (until then it is the card's paper): first when that is what it shows in
-/// view, else right after a held level drawn for the next zoom-in or one screen further out (the web view shows one
-/// Note at a time, and showing it again costs as much as a picture), else after everything else.
+/// What to draw when the camera comes to rest, nearest the view's centre and the pointer first. Within 25 % of the view
+/// an item holds the level for the next zoom-in, one screen further out the level the zoom needs; beyond that the
+/// sharper bitmaps are a cache: what an item has is kept while it is at or above what the zoom needs, and items
+/// without one are drawn at that level too, nearest first after the rings, until all card bitmaps reach `budget`; then
+/// the farthest go back to their overview. A bitmap below what the zoom needs is replaced first; one above it is
+/// redrawn at the level when it is more than 2.5 times that (it would take the room of several sharp cards and costs
+/// the GPU to shrink) or does not fit. A Note also needs its overview drawn once by the Note renderer (until
+/// then it is the card's paper): first when that is what it shows in view, else right after a held level drawn for it
+/// (the web view shows one Note at a time, and showing it again costs as much as a picture), else by distance with
+/// the fill beyond the rings.
 struct RestPlan: Equatable {
   enum Slot: Equatable, Sendable {
     /// The bitmap shown in gestures (trilinear), and at rest when no rest bitmap is needed
@@ -70,55 +80,107 @@ struct RestPlan: Equatable {
   }
 
   var jobs: [Job] = []
-  /// Far from the view: back to the overview bitmap
+  /// Back to the overview bitmap: far away and over the budget, or the overview is enough
   var dropHeld: [Int] = []
   var dropRest: [Int] = []
   /// In view with a held bitmap at the shown level: shown with linear filtering, no rest bitmap needed
   var linear: [Int] = []
+  /// The card bitmaps' bytes once the jobs are done
+  var bytes = 0
 
-  init(items: [Item], view: CGRect, zoom: CGFloat, backing: CGFloat, pointer: CGPoint?) {
+  /// Bytes of an item's bitmap at a scale, as `Raster.surface` makes it
+  static func bytes(_ size: CGSize, _ scale: CGFloat) -> Int {
+    max(1, Int((size.width * scale).rounded(.up))) * max(1, Int((size.height * scale).rounded(.up))) * 4
+  }
+
+  init(
+    items: [Item], view: CGRect, zoom: CGFloat, backing: CGFloat, pointer: CGPoint?, budget: Int = Levels.budget
+  ) {
     let near = view.insetBy(dx: -view.width * 0.25, dy: -view.height * 0.25)
     let far = view.insetBy(dx: -view.width, dy: -view.height)
     let centre = CGPoint(x: view.midX, y: view.midY)
     let focus = pointer.flatMap { view.contains($0) ? $0 : nil }
-    var order: [(job: Job, d: CGFloat)] = []
-    for (i, it) in items.enumerated() {
-      let mid = CGPoint(x: it.rect.midX, y: it.rect.midY)
+    // by distance, ring by ring: the budget goes to the nearest first
+    let walk = items.indices.map { i in
+      let r = items[i].rect
+      let mid = CGPoint(x: r.midX, y: r.midY)
       var d = hypot(mid.x - centre.x, mid.y - centre.y)
       if let f = focus { d = min(d, hypot(mid.x - f.x, mid.y - f.y)) }
-      let inView = it.rect.intersects(view)
-      let inNear = it.rect.intersects(near)
-      let shown = Levels.scale(Levels.shown(zoom), backing: backing, size: it.rect.size)
-      let ring: CGFloat = inView ? 0 : inNear ? 100_000 : 1_000_000
+      let ring: CGFloat =
+        r.intersects(view) ? 0 : r.intersects(near) ? 100_000 : r.intersects(far) ? 1_000_000 : 2_000_000
+      return (i: i, d: d, ring: ring)
+    }.sorted { $0.d + $0.ring < $1.d + $1.ring }
+    var total = items.reduce(0) { $0 + RestPlan.bytes($1.rect.size, $1.overview) }
+    // the fill beyond the rings stopped at the first item that did not fit: everything farther goes back
+    var full = false
+    var order: [(job: Job, d: CGFloat)] = []
+    for (i, d, ring) in walk {
+      let it = items[i]
+      let size = it.rect.size
+      let inView = ring == 0
+      let inNear = ring <= 100_000
+      let cache = ring == 2_000_000
+      let shown = Levels.scale(Levels.shown(zoom), backing: backing, size: size)
+      let want = Levels.scale(inNear ? Levels.held(zoom) : Levels.shown(zoom), backing: backing, size: size)
+      let own = it.held > it.overview
+      // a Note's own picture over a paper overview never goes
+      let pinned = own && it.note && !it.overviewDrawn
       var overviewShown = false
       var heldAt: CGFloat?
-      if inNear || it.rect.intersects(far) {
-        let want = Levels.scale(inNear ? Levels.held(zoom) : Levels.shown(zoom), backing: backing, size: it.rect.size)
-        // exactly the level: a higher one left by an earlier zoom costs memory and hides what a zoom-in would show
-        if it.overview >= want * 0.98 {
-          // the overview is kept anyway and is enough
-          if it.held > it.overview { dropHeld.append(i) }
-          overviewShown = true
-        } else if abs(it.held - want) / want >= 0.02 {
-          heldAt = d + ring
-          order.append((Job(item: i, slot: .held, scale: want, note: it.note), d + ring))
+      /// The held level once the jobs are done
+      var holds = it.overview
+      func fits(_ b: Int) -> Bool { !full && total + b <= budget }
+      func draw(_ scale: CGFloat) {
+        heldAt = d + ring
+        holds = scale
+        total += RestPlan.bytes(size, scale)
+        order.append((Job(item: i, slot: .held, scale: scale, note: it.note), d + ring))
+      }
+      func keep() {
+        holds = it.held
+        total += RestPlan.bytes(size, it.held)
+      }
+      func drop() {
+        if pinned { keep() } else if own { dropHeld.append(i) }
+      }
+      if it.overview >= want * 0.98 {
+        // the overview is kept anyway and is enough
+        drop()
+        overviewShown = true
+      } else if own && it.held >= want * 0.98 && it.held <= want * 2.5 {
+        // at or above what is needed: kept while it fits, else redrawn at the level
+        let b = RestPlan.bytes(size, it.held)
+        let smaller = RestPlan.bytes(size, want) < b
+        if cache ? fits(b) : !smaller || total + b <= budget {
+          keep()
+        } else if !cache || fits(RestPlan.bytes(size, want)) {
+          draw(want)
+        } else {
+          full = true
+          drop()
         }
-        if inView && abs(want - shown) / shown < 0.01 {
-          linear.append(i)
-          if it.rest != nil { dropRest.append(i) }
-          // the held level is what is seen: the overview waits until every Note in view has its picture
-          heldAt = nil
-        } else if inView {
-          // what is seen at rest goes before the held level for the next zoom-in
-          if it.rest.map({ abs($0 - shown) / shown >= 0.01 }) ?? true {
-            order.append((Job(item: i, slot: .rest, scale: shown, note: it.note), d - 50_000))
-          }
-        } else if let r = it.rest, !inNear || abs(r - shown) / shown >= 0.01 {
-          dropRest.append(i)
-        }
+      } else if !cache || fits(RestPlan.bytes(size, want)) {
+        draw(want)
       } else {
-        if it.held > it.overview { dropHeld.append(i) }
+        // the fill ends here; below what is needed, but better than the overview while there is room
+        let room = own && fits(RestPlan.bytes(size, it.held))
+        full = true
+        if room { keep() } else { drop() }
+      }
+      // an overview that is enough counts as the level it stands in for
+      if inView && abs((overviewShown ? want : holds) - shown) / shown < 0.01 {
+        linear.append(i)
         if it.rest != nil { dropRest.append(i) }
+        // the held level is what is seen: the overview waits until every Note in view has its picture
+        heldAt = nil
+      } else if inView {
+        total += RestPlan.bytes(size, shown)
+        // what is seen at rest goes before the held level for the next zoom-in
+        if it.rest.map({ abs($0 - shown) / shown >= 0.01 }) ?? true {
+          order.append((Job(item: i, slot: .rest, scale: shown, note: it.note), d - 50_000))
+        }
+      } else if let r = it.rest {
+        if !inNear || abs(r - shown) / shown >= 0.01 { dropRest.append(i) } else { total += RestPlan.bytes(size, r) }
       }
       if it.note && !it.overviewDrawn {
         // right behind its held level, while the web view still shows that Note
@@ -126,6 +188,7 @@ struct RestPlan: Equatable {
         order.append((Job(item: i, slot: .overview, scale: it.overview, note: true), at))
       }
     }
+    bytes = total
     jobs = order.sorted { $0.d < $1.d }.map(\.job)
   }
 }

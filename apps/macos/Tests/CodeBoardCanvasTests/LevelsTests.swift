@@ -31,7 +31,7 @@ import Testing
     // zoom 0.7 on a 2x screen: held 200 % (scale 4) near the view, shown 100 % (scale 2)
     let p = RestPlan(
       items: [item(1600, 0), item(450, 350), item(1100, 0), item(5000, 5000)], view: view, zoom: 0.7, backing: 2,
-      pointer: nil)
+      pointer: nil, budget: 0)
     #expect(
       p.jobs == [
         .init(item: 1, slot: .rest, scale: 2), .init(item: 1, slot: .held, scale: 4),
@@ -40,10 +40,92 @@ import Testing
     #expect(p.dropHeld.isEmpty)
   }
 
-  @Test func farAwayFallsBackToTheOverview() {
-    let p = RestPlan(items: [item(5000, 5000, held: 4)], view: view, zoom: 1, backing: 2, pointer: nil)
+  @Test func withNoRoomFarAwayFallsBackToTheOverview() {
+    let p = RestPlan(items: [item(5000, 5000, held: 4)], view: view, zoom: 1, backing: 2, pointer: nil, budget: 0)
     #expect(p.dropHeld == [0])
     #expect(p.jobs.isEmpty)
+  }
+
+  /// Bytes of a 100 × 100 item at a scale
+  func mb(_ scale: CGFloat) -> Int { RestPlan.bytes(CGSize(width: 100, height: 100), scale) }
+
+  @Test func beyondTheRingsItemsAreDrawnAtTheZoomsLevelNearestFirst() {
+    // zoom 1: the level 100 % (scale 2) for cards beyond the rings, after the rings' own
+    let p = RestPlan(
+      items: [item(9000, 0), item(450, 350), item(4000, 0), item(2100, 0)], view: view, zoom: 1, backing: 2,
+      pointer: nil, budget: 1 << 30)
+    #expect(
+      p.jobs == [
+        .init(item: 1, slot: .rest, scale: 2), .init(item: 1, slot: .held, scale: 4),
+        .init(item: 3, slot: .held, scale: 2), .init(item: 2, slot: .held, scale: 2),
+        .init(item: 0, slot: .held, scale: 2),
+      ])
+  }
+
+  @Test func overTheBudgetTheFarthestGoBackFirst() {
+    // four sharp cards beyond the rings and room for two besides the overviews
+    let far = [item(9000, 0, held: 2), item(3000, 0, held: 2), item(6000, 0, held: 2), item(4000, 0, held: 2)]
+    let p = RestPlan(
+      items: far, view: view, zoom: 1, backing: 2, pointer: nil,
+      budget: 4 * RestPlan.bytes(CGSize(width: 100, height: 100), 0.2) + 2 * mb(2))
+    #expect(p.jobs.isEmpty)
+    #expect(Set(p.dropHeld) == [0, 2])
+    #expect(p.bytes <= 4 * mb(0.2) + 2 * mb(2))
+  }
+
+  @Test func theFillStopsWhereTheBudgetEnds() {
+    let p = RestPlan(
+      items: [item(3000, 0), item(4000, 0), item(5000, 0)], view: view, zoom: 1, backing: 2, pointer: nil,
+      budget: 3 * mb(0.2) + mb(2) + mb(2) / 2)
+    #expect(p.jobs == [.init(item: 0, slot: .held, scale: 2)])
+  }
+
+  @Test func aHigherBitmapIsKeptWhileItFitsUpToTwoAndAHalfTimesItsLevel() {
+    // back at 50 % after 200 %: near the view 200 % is twice the held level and stays (only the rest level is drawn);
+    // beyond the rings 100 % stays, 200 % is four times the level and is redrawn at it
+    let p = RestPlan(
+      items: [item(450, 350, held: 4), item(5000, 0, held: 2), item(5000, 3000, held: 4)], view: view, zoom: 0.5,
+      backing: 2, pointer: nil, budget: 1 << 30)
+    #expect(p.jobs == [.init(item: 0, slot: .rest, scale: 1), .init(item: 2, slot: .held, scale: 1)])
+    #expect(p.dropHeld.isEmpty)
+  }
+
+  @Test func aHigherBitmapThatDoesNotFitIsRedrawnAtItsLevel() {
+    let p = RestPlan(
+      items: [item(450, 350, held: 4, rest: 0.5)], view: view, zoom: 0.25, backing: 2, pointer: nil, budget: 0)
+    #expect(p.jobs == [.init(item: 0, slot: .held, scale: 1)])
+    #expect(p.linear == [0])
+  }
+
+  @Test func afterAZoomInWhatIsNowTooSoftIsReplacedAndWhatIsSharpStays() {
+    // at 200 %: one card beyond the rings holds 100 % (scale 2, soft now), one 200 % (scale 4)
+    let p = RestPlan(
+      items: [item(9000, 0, held: 2), item(9000, 3000, held: 4)], view: view, zoom: 2, backing: 2, pointer: nil,
+      budget: 1 << 30)
+    #expect(p.jobs == [.init(item: 0, slot: .held, scale: 4)])
+    #expect(p.dropHeld.isEmpty)
+  }
+
+  @Test func whenTheFillEndsASoftBitmapIsKeptOnlyIfThereIsRoom() {
+    // at 200 % with room for one soft bitmap but not its replacement: kept; the next has no room and goes back
+    let p = RestPlan(
+      items: [item(9000, 0, held: 2), item(12000, 0, held: 2)], view: view, zoom: 2, backing: 2, pointer: nil,
+      budget: 2 * mb(0.2) + mb(2))
+    #expect(p.jobs.isEmpty)
+    #expect(p.dropHeld == [1])
+  }
+
+  @Test func aTinyBudgetHoldsExactlyTheRingsLevels() {
+    // what the rings need is drawn whatever the budget; a higher bitmap there is redrawn at the level, beyond it goes
+    let p = RestPlan(
+      items: [item(450, 350, held: 4), item(1100, 0, held: 4), item(9000, 0, held: 4)], view: view, zoom: 0.5,
+      backing: 2, pointer: nil, budget: 1)
+    #expect(
+      p.jobs == [
+        .init(item: 0, slot: .rest, scale: 1), .init(item: 0, slot: .held, scale: 2),
+        .init(item: 1, slot: .held, scale: 2),
+      ])
+    #expect(p.dropHeld == [2])
   }
 
   @Test func nearestThePointerOrTheCentreFirst() {
@@ -57,17 +139,6 @@ import Testing
     #expect(p.jobs.isEmpty)
     #expect(p.linear == [0])
     #expect(p.dropRest == [0])
-  }
-
-  @Test func twoLevelsTooMuchIsRedrawnSmaller() {
-    let p = RestPlan(items: [item(450, 350, held: 4, rest: 0.5)], view: view, zoom: 0.25, backing: 2, pointer: nil)
-    #expect(p.jobs == [.init(item: 0, slot: .held, scale: 1)])
-  }
-
-  @Test func oneLevelTooMuchIsRedrawnSmallerToo() {
-    // back at 50 % after 200 %: the rule holds 100 % (scale 2), so the next zoom-in goes soft past 100 %
-    let p = RestPlan(items: [item(450, 350, held: 4)], view: view, zoom: 0.5, backing: 2, pointer: nil)
-    #expect(p.jobs.filter { $0.slot == .held } == [.init(item: 0, slot: .held, scale: 2)])
   }
 
   @Test func anOverviewThatIsEnoughReplacesAHigherBitmap() {
@@ -149,7 +220,7 @@ import Testing
     // view shows that Note; one just off screen, and one far away whose overview is all it needs, last
     let p = RestPlan(
       items: [note(5000, 5000), note(450, 350), note(1100, 0), note(450, 350, drawn: true)], view: view, zoom: 0.7,
-      backing: 2, pointer: nil)
+      backing: 2, pointer: nil, budget: 0)
     #expect(
       p.jobs == [
         .init(item: 1, slot: .rest, scale: 2, note: true), .init(item: 3, slot: .rest, scale: 2, note: true),
@@ -164,6 +235,30 @@ import Testing
     let p = RestPlan(
       items: [note(450, 350), note(600, 350, overview: 2)], view: view, zoom: 0.25, backing: 2, pointer: nil)
     #expect(p.jobs.first == .init(item: 1, slot: .overview, scale: 2, note: true))
+  }
+
+  @Test func notesBeyondTheRingsAreDrawnWithTheirOverviewAndOnesOverTheBudgetGetTheOverviewOnly() {
+    // room for one Note at 100 % beyond the rings: it and its overview, then the next one's overview alone
+    let size = CGSize(width: 100, height: 100)
+    let p = RestPlan(
+      items: [note(9000, 0), note(4000, 0)], view: view, zoom: 1, backing: 2, pointer: nil,
+      budget: 2 * RestPlan.bytes(size, 0.2) + RestPlan.bytes(size, 2))
+    #expect(
+      p.jobs == [
+        .init(item: 1, slot: .held, scale: 2, note: true), .init(item: 1, slot: .overview, scale: 0.2, note: true),
+        .init(item: 0, slot: .overview, scale: 0.2, note: true),
+      ])
+  }
+
+  @Test func aNotePictureOverPaperIsNeverDroppedForTheBudget() {
+    let p = RestPlan(
+      items: [
+        RestPlan.Item(
+          rect: CGRect(x: 9000, y: 0, width: 100, height: 100), held: 2, rest: nil, overview: 0.2, note: true,
+          overviewDrawn: false)
+      ], view: view, zoom: 1, backing: 2, pointer: nil, budget: 0)
+    #expect(p.dropHeld.isEmpty)
+    #expect(p.jobs == [.init(item: 0, slot: .overview, scale: 0.2, note: true)])
   }
 
   @Test func notesHaveALaneOfTheirOwn() {
