@@ -112,7 +112,7 @@ private final class RootView: NSView {
 }
 
 /// The floating board panel: one canvas-coloured surface (top bar, canvases, empty and error states alike), the tabs
-/// over a hairline at the top
+/// at the top with nothing between them and the canvas
 private final class Panel: NSView {
   let panes: BoardPanes
   var barHeight: CGFloat = 36 { didSet { needsLayout = true } }
@@ -120,7 +120,6 @@ private final class Panel: NSView {
   private let shell: Shell
   private let clip = FlippedView()
   private let tabs: NSView
-  private let hairline = NSView()
   private let empty = NSButton(title: "Open Vault…", target: nil, action: #selector(AppDelegate.openVault(_:)))
 
   init(shell: Shell) {
@@ -140,12 +139,10 @@ private final class Panel: NSView {
     clip.layer?.masksToBounds = true
     clip.layer?.borderWidth = 0.5
     clip.layer?.borderColor = ShellTheme.shadeNS.withAlphaComponent(0.14).cgColor
-    hairline.wantsLayer = true
-    hairline.layer?.backgroundColor = ShellTheme.shadeNS.withAlphaComponent(0.08).cgColor
     empty.bezelStyle = .push
     empty.controlSize = .large
     addSubview(clip)
-    for view in [panes, tabs, hairline, empty] { clip.addSubview(view) }
+    for view in [panes, tabs, empty] { clip.addSubview(view) }
     track { [weak self] in
       guard let self else { return }
       empty.isHidden = shell.vault != nil
@@ -167,7 +164,6 @@ private final class Panel: NSView {
     layer?.shadowPath = CGPath(
       roundedRect: bounds, cornerWidth: ShellTheme.panelRadius, cornerHeight: ShellTheme.panelRadius, transform: nil)
     tabs.frame = NSRect(x: tabsLeading, y: 0, width: max(0, bounds.width - tabsLeading - 8), height: barHeight)
-    hairline.frame = NSRect(x: 0, y: barHeight - 1, width: bounds.width, height: 1)
     panes.frame = NSRect(x: 0, y: barHeight, width: bounds.width, height: max(0, bounds.height - barHeight))
     let size = empty.fittingSize
     empty.frame = NSRect(
