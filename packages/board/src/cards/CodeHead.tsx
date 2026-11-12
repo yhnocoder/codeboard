@@ -136,11 +136,36 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       </Show>
       <span class="grow" />
       <Procs card={c().id} procs={c().procs} />
-      {/* 悬停才出现的按钮放在右侧这一组的最左边：没悬停时它们不占宽度（.hov 收成 0 宽），标题能用满整行，悬停时展开、淡入 */}
+      {/* 悬停才出现的按钮（Fit Content、Wrap Lines、Copy Code）放在右侧这一组的最左边：没悬停时它们不占宽度（.hov 收成 0 宽），
+          标题能用满整行，悬停时展开、淡入 */}
       {/* 窄卡卡头的取舍（styles.css「卡头优先级」）：版本 / + uncommitted 先缩成小记号，再收起 ← N，然后路径省略，标题最后；
           .rw 里的 .rl 放不下时整个折到看不见的第二行。完整文字在 data-tip 里 */}
       <span class="hov">
         <span>
+          <Show when={!p.col}>
+            <button
+              class="ib hfit"
+              aria-label="Fit Content"
+              data-tip="Fit Content"
+              data-kbd={kbd("fitContent")}
+              data-nodrag
+              onClick={() => act.fitContent([c().id])}
+            >
+              <Icon name="fit" />
+            </button>
+          </Show>
+          <button
+            class="ib hwrap"
+            classList={{ on: !!c().wrap }}
+            aria-label="Wrap Lines"
+            aria-pressed={!!c().wrap}
+            data-tip="Wrap Lines"
+            data-kbd={kbd("wrap")}
+            data-nodrag
+            onClick={() => act.toggleWrap([c().id])}
+          >
+            <Icon name="wrap" />
+          </button>
           <button
             class="ib cpy"
             aria-label="Copy Code"

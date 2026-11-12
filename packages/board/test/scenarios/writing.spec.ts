@@ -182,7 +182,7 @@ test("boxFillEditAndToolbars", async () => {
   const boxMenu = await menu("box");
   check(
     "boxMenu no Turn into, no Background",
-    !boxMenu.some((l) => /Turn into (Text|Note)|Background/.test(l)) && boxMenu.includes("Edit"),
+    !boxMenu.some((l) => /Turn into (Text|Note)|Background/.test(l)) && boxMenu.includes("AI"),
     boxMenu,
   );
 
@@ -283,11 +283,8 @@ test("noteTextRoundTripKeepsTitle", async () => {
   await idle(h);
   const items = await menuItems(h);
   check(
-    "noteMenu Turn into Text first, Fit Content, Edit, no background",
-    items[0] === "Turn into Text" &&
-      items.includes("Fit Content") &&
-      items.includes("Edit") &&
-      !items.some((l) => /Background/.test(l)),
+    "noteMenu Turn into Text first, then AI, no background",
+    items[0] === "Turn into Text" && items[1] === "AI" && !items.some((l) => /Background/.test(l)),
     items,
   );
   await shot(h, "writing-note-menu");

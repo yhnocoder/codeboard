@@ -2944,7 +2944,7 @@ textarea {
     transition-duration: 0s;
   }
 }
-.ctx button {
+.ctx button:not(:where(.mrow *)) {
   display: flex;
   width: 100%;
   align-items: center;
@@ -2955,27 +2955,27 @@ textarea {
   color: var(--ink);
   text-align: left;
 }
-.ctx button .lb {
+.ctx button:not(:where(.mrow *)) .lb {
   flex: 1 0 auto;
   max-width: calc(100% - 22px);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ctx button .ck {
+.ctx button:not(:where(.mrow *)) .ck {
   width: 12px;
   flex: none;
   color: var(--accent);
   font-size: 11px;
 }
-.ctx button:not([disabled]):is(:hover, .kb, .subopen) {
+.ctx button:not(:where(.mrow *)):not([disabled]):is(:hover, .kb, .subopen) {
   background: var(--accent);
   color: var(--accent-ink);
 }
-.ctx button:not([disabled]):is(:hover, .kb, .subopen) .ck {
+.ctx button:not(:where(.mrow *)):not([disabled]):is(:hover, .kb, .subopen) .ck {
   color: var(--accent-ink);
 }
-.ctx button small {
+.ctx button:not(:where(.mrow *)) small {
   margin-left: auto;
   font: 10.5px var(--mono);
   color: var(--ink-3);
@@ -2985,22 +2985,22 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ctx button:not([disabled]):is(:hover, .kb, .subopen) small {
+.ctx button:not(:where(.mrow *)):not([disabled]):is(:hover, .kb, .subopen) small {
   color: color-mix(in srgb, var(--accent-ink) 75%, transparent);
 }
-.ctx button.danger {
+.ctx button:not(:where(.mrow *)).danger {
   color: #d6453d;
 }
-.ctx button.danger:not([disabled]):is(:hover, .kb, .subopen) {
+.ctx button:not(:where(.mrow *)).danger:not([disabled]):is(:hover, .kb, .subopen) {
   background: #d6453d;
   color: #fff;
 }
-.ctx button[disabled] {
+.ctx button:not(:where(.mrow *))[disabled] {
   color: var(--ink-3);
   flex-wrap: wrap;
   row-gap: 0;
 }
-.ctx button .why {
+.ctx button:not(:where(.mrow *)) .why {
   flex-basis: 100%;
   font: 11px / 1.35 var(--sys);
   color: var(--ink-3);
@@ -3020,6 +3020,16 @@ textarea {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* A row of buttons inside a menu (Item.row: a Section's Fit Content, Color, Lock), above the items. Not an item: no hover fill
+   of its own beyond the buttons' */
+.ctx > .mrow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 2px 1px 4px;
+  font: 400 12px / 1 var(--sys);
+  color: var(--ink-2);
 }
 .tip {
   position: absolute;
@@ -5880,8 +5890,11 @@ mark.wdiff {
     grid-template-columns calc(var(--t) * 260ms) cubic-bezier(0.4, 0, 0.2, 1) calc(var(--t) * 60ms),
     opacity calc(var(--t) * 160ms) ease;
 }
+/* anchored right: in a card too narrow for all of them the clip takes the leftmost (Fit Content, Wrap Lines, which have keys)
+   and keeps Copy Code and the language label */
 .chead > .hov > span {
   display: flex;
+  justify-content: flex-end;
   align-items: center;
   gap: 2px;
   min-width: 0;
@@ -5899,6 +5912,112 @@ mark.wdiff {
 }
 .chead:has(> .hov) .ctitle {
   flex-shrink: 1e4;
+}
+/* the header's hover buttons that toggle something (Wrap Lines) show it on: the accent colour; one that has nothing to do
+   (a Note already as tall as its content, no headings to split at) stays visible but faint, and its tooltip says why */
+.chead > .hov .ib.on,
+.sacts > .ib.on,
+.mrow > .ib.on {
+  color: var(--accent);
+}
+.chead > .hov .ib[aria-disabled="true"],
+.sacts > .ib[aria-disabled="true"],
+.mrow > .ib[aria-disabled="true"] {
+  opacity: 0.35;
+}
+.chead > .hov .ib[aria-disabled="true"]:hover,
+.sacts > .ib[aria-disabled="true"]:hover,
+.mrow > .ib[aria-disabled="true"]:hover {
+  background: none;
+}
+
+/* A Section title's hover buttons (canvas/Sections.tsx SectionActs): Fit Content, Color, Lock just past the title. Absolute, so
+   the title keeps its size whether they show or not; showing them only fades them in (no layout). Hidden they take no clicks */
+.sacts {
+  position: absolute;
+  left: 100%;
+  /* past the title's right edge there is no room left in it: without this it would shrink to its min-content (swatches shut) */
+  width: max-content;
+  top: 50%;
+  translate: 0 -50%;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 6px;
+  opacity: 0;
+  visibility: hidden;
+  font: 400 12px / 1 var(--sys);
+  color: var(--ink-2);
+  transition:
+    opacity calc(var(--t) * 160ms) ease,
+    visibility 0s linear calc(var(--t) * 160ms);
+}
+.slabel:hover > .sacts,
+.slabel.sel > .sacts,
+.sacts:focus-within {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity calc(var(--t) * 150ms) var(--out),
+    visibility 0s;
+}
+/* the Section's context menu shows the same row at its top meanwhile (canvas/SectionTools.tsx) */
+.slabel > .sacts.off {
+  opacity: 0;
+  visibility: hidden;
+}
+/* Color's swatches open inline to its right: a one-row grid whose column eases 0fr → 1fr, laid out inside their row only */
+.swrow {
+  display: grid;
+  grid-template-columns: minmax(0, 0fr);
+  opacity: 0;
+  transition:
+    grid-template-columns calc(var(--t) * 160ms) var(--out),
+    opacity calc(var(--t) * 160ms) var(--out);
+}
+.swrow.open {
+  grid-template-columns: minmax(0, 1fr);
+  opacity: 1;
+}
+.swrow > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  /* room for the current swatch's ring (3.5px) while it is scaled up on hover */
+  padding: 6px;
+}
+.swrow .sw {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  corner-shape: round;
+  border: 1px solid color-mix(in srgb, var(--ink) 16%, transparent);
+  background: var(--surface);
+  transition: scale 0.1s;
+}
+.swrow .sw:hover {
+  scale: 1.12;
+}
+.swrow .sw.cur {
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 3.5px var(--ink-2);
+}
+/* the fills are faint washes (--s-*) over a frame; a swatch shows the same hue stronger so the five tell apart */
+.swrow .sw.c-sand {
+  background: rgb(from var(--s-sand) r g b / 0.6);
+}
+.swrow .sw.c-blue {
+  background: rgb(from var(--s-blue) r g b / 0.5);
+}
+.swrow .sw.c-green {
+  background: rgb(from var(--s-green) r g b / 0.5);
+}
+.swrow .sw.c-pink {
+  background: rgb(from var(--s-pink) r g b / 0.5);
 }
 .cbody.wrap .src.ded .l {
   text-indent: 0;
@@ -7975,7 +8094,7 @@ mark.wdiff {
 }
 
 /* 图片的 AI 操作（actions/imageai.ts）：Convert to SVG 下面缩进的勾选项、等 DeepSeek 时卡上的那一层、Modify SVG 的输入框 */
-.ctx button.inset {
+.ctx button:not(:where(.mrow *)).inset {
   padding-left: 22px;
   font-size: 12px;
   color: var(--ink-2);

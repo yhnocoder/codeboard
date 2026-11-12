@@ -25,6 +25,8 @@ import { below, ownMenu } from "../ui/Menu";
 import { sourceModeOf, toggleNoteSource } from "../md/load";
 import { trackBlocks } from "../state/blocks";
 import { cardSel } from "../cardsel";
+import { kbd } from "../keymap";
+import { hoverCard } from "../state/hover";
 
 /**
  * 卡头的名字就是 Markdown 开头的标题时，正文里藏起那一行（正文元素加 hidehead，styles.css 藏掉第一个标题）：没自己起名字、开头是标题、
@@ -44,6 +46,10 @@ export function NoteBody(p: { card: NoteCard }) {
   const [sliding, setSliding] = createSignal(false);
   const [folded, setFolded] = createSignal(false);
   const isEditing = () => editing()?.kind === "note" && editing()?.id === c().id;
+  // how many cuts Split by Headings would make (0: none), read only while its button can show (the card hovered or selected),
+  // so mounting a board of Notes scans none of them
+  const live = createMemo(() => c().look === "note" && (hoverCard() === c().id || isSel(c().id)));
+  const splitParts = createMemo(() => (live() ? A.headingSplitCount(c().id) : 0));
   // 有箭头连着这张 Note 的某一块：量每一块的位置（线的端点）
   trackBlocks(
     () => c().id,
@@ -125,6 +131,36 @@ export function NoteBody(p: { card: NoteCard }) {
             {c().title || heading() || "Note"}
           </span>
           <span class="grow" />
+          {/* hover-only, as on code cards (styles.css .chead > .hov): no width until the pointer is over the card */}
+          <span class="hov">
+            <span>
+              <button
+                class="ib hfit"
+                aria-label="Fit Content"
+                aria-disabled={!placeOf(c().id).h}
+                data-tip={placeOf(c().id).h ? "Fit Content" : "Fit Content · already as tall as its content"}
+                data-kbd={kbd("fitContent")}
+                data-nodrag
+                onClick={() => placeOf(c().id).h && A.fitContent([c().id])}
+              >
+                <Icon name="fit" />
+              </button>
+              <button
+                class="ib hsplit"
+                aria-label="Split by Headings"
+                aria-disabled={!splitParts()}
+                data-tip={
+                  splitParts()
+                    ? `Split by Headings · ${splitParts() + 1} cards, linked by arrows`
+                    : "Split by Headings · no headings to split at"
+                }
+                data-nodrag
+                onClick={() => A.headingSplitCount(c().id) && void A.splitByHeadings(c().id)}
+              >
+                <Icon name="splitH" />
+              </button>
+            </span>
+          </span>
           {/* ⌘/: the Note as its Markdown source; mousedown keeps focus in the editor (data-md-keep: not a blur) */}
           <Show when={isEditing()}>
             <button

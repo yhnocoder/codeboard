@@ -1,7 +1,7 @@
 // The image tools (DeepSeek reading images), with the host's own request code (packages/host/src/imageai.ts) answered by a fake
 // DeepSeek: the board sends the image, the host builds the request, and the fake answers like the API does.
-//   imageAiMenus                    right-click an image card: Copy Image, then Extract Text to Note / to Clipboard, Convert to SVG
-//                                   with its two check items (they toggle without closing the menu and are saved as settings); an SVG
+//   imageAiMenus                    right-click an image card: Add Description and AI ▸ (no Copy Image, Fit Content or Background);
+//                                   AI ▸ has Extract Text to Note / to Clipboard, Convert to SVG with its two check items (they toggle without closing the menu and are saved as settings); an SVG
 //                                   image instead gets Modify SVG… and Copy SVG Source
 //   imageAiExtractNoteThenClip      Extract Text to Note: a Note with the Markdown next to the image, an arrow from the image, one undo;
 //                                   Extract Text to Clipboard right after copies the same Markdown without asking DeepSeek again
@@ -15,7 +15,7 @@
 //                                   Paste Image Text reads the clipboard's image into a Note in the middle of the view, with no image card
 //   drawSvgFromTextMenu             Image ▾ New SVG from Text… asks for a description; while waiting an empty card with the busy layer sits
 //                                   in the middle of the view (Esc cancels, the host is told); the answer becomes a cleaned SVG image card there
-//   drawSvgFromNoteCard             right-click a Note: Draw as SVG (before Auto Focus) sends the card's text; the card is busy while
+//   drawSvgFromNoteCard             right-click a Note, AI ▸: Draw as SVG (before Auto Focus) sends the card's text; the card is busy while
 //                                   waiting; the SVG image card lands right of the Note with an arrow from it, one undo; Text cards have it too
 //   drawSvgFromNoteSelection        a selection in a Note (shown, then while editing) + right-click: Draw as SVG sends only the selected
 //                                   words; the image card lands beside the Note with an arrow
@@ -131,6 +131,12 @@ async function rightClick(h: Host, sel: string) {
   await h.page.mouse.click(r.x + r.width / 2, r.y + r.height / 2, { button: "right" });
   await h.page.locator(".ctx.open").first().waitFor();
 }
+/** right-click a card, then its menu's AI ▸: menuLabels then reads the AI submenu */
+async function aiMenu(h: Host, sel: string) {
+  await rightClick(h, sel);
+  await h.page.locator('.ctx.open button:has(.lb:text-is("AI"))').first().hover();
+  await until(h, "the AI submenu", async () => (await h.page.locator(".ctx.open").count()) > 1);
+}
 const pick = (h: Host, label: string) =>
   h.page.locator(".ctx:not(.closing) button", { hasText: label }).first().click();
 const shoot = async (h: Host, name: string) => {
@@ -159,7 +165,8 @@ test("imageAiMenus", async () => {
     }),
     () => "",
   );
-  await rightClick(h, '.card[data-id="i1"] .imgb img');
+  await aiMenu(h, '.card[data-id="i1"] .imgb img');
+  const top = await h.page.locator(".ctx.open").first().locator("button .lb").allInnerTexts();
   const png = await menuLabels(h);
   const items = h.page.locator(".ctx.open button");
   const state = async (label: string) =>
@@ -170,9 +177,15 @@ test("imageAiMenus", async () => {
   const bg0 = await state("Remove Background"),
     think0 = await state("Think First (slower)");
   check(
+    "imageAiMenus image card menu: Add Description, AI ▸; no Copy Image, Fit Content or Background",
+    top.slice(0, 2).join("|") === "Add Description|AI" &&
+      !top.some((l) => /^(Copy Image|Fit Content|Background)$/.test(l)),
+    top,
+  );
+  check(
     "imageAiMenus image card items",
-    png.slice(0, 6).join("|") ===
-      "Copy Image|Extract Text to Note|Extract Text to Clipboard|Convert to SVG|Remove Background|Think First (slower)" &&
+    png.slice(0, 5).join("|") ===
+      "Extract Text to Note|Extract Text to Clipboard|Convert to SVG|Remove Background|Think First (slower)" &&
       !png.includes("Modify SVG…"),
     png,
   );
@@ -186,7 +199,7 @@ test("imageAiMenus", async () => {
   const think1 = await state("Think First (slower)");
   check(
     "imageAiMenus Think First toggles and the menu stays open",
-    think1.checked === "true" && (await h.page.locator(".ctx.open").count()) === 1,
+    think1.checked === "true" && (await h.page.locator(".ctx.open").count()) === 2,
     think1,
   );
   check(
@@ -195,12 +208,11 @@ test("imageAiMenus", async () => {
     sentOf(h, "setSetting"),
   );
   await h.page.keyboard.press("Escape");
-  await rightClick(h, '.card[data-id="s1"] .imgb img');
+  await aiMenu(h, '.card[data-id="s1"] .imgb img');
   const svg = await menuLabels(h);
   check(
     "imageAiMenus SVG image items",
-    svg.slice(0, 5).join("|") ===
-      "Copy Image|Modify SVG…|Extract Text to Note|Extract Text to Clipboard|Copy SVG Source" &&
+    svg.slice(0, 4).join("|") === "Modify SVG…|Extract Text to Note|Extract Text to Clipboard|Copy SVG Source" &&
       !svg.includes("Convert to SVG"),
     svg,
   );
@@ -219,7 +231,7 @@ test("imageAiExtractNoteThenClip", async () => {
   const { h, fake, done } = await aiHost(withPng(), (op) =>
     op.kind === "extract" ? "```markdown\n" + MD + "\n```" : "",
   );
-  await rightClick(h, '.card[data-id="i1"] .imgb img');
+  await aiMenu(h, '.card[data-id="i1"] .imgb img');
   await pick(h, "Extract Text to Note");
   const note = await until(h, "a Note is made", () => h.board().cards.find((c): c is NoteCard => c.kind === "note"));
   const body = fake.calls[0]?.body;
@@ -241,7 +253,7 @@ test("imageAiExtractNoteThenClip", async () => {
   );
   await until(h, "the formula is drawn", () => h.page.locator(`.card[data-id="${note.id}"] .katex`).count());
   await shoot(h, "52-note.png");
-  await rightClick(h, '.card[data-id="i1"] .imgb img');
+  await aiMenu(h, '.card[data-id="i1"] .imgb img');
   await pick(h, "Extract Text to Clipboard");
   await until(h, "the Markdown is copied", () => sentOf(h, "copyText").length);
   check(
@@ -263,7 +275,7 @@ test("imageAiConvertThenModify", async () => {
   const { h, fake, asset, done } = await aiHost(withPng(), (op) =>
     op.kind === "svg" ? SVG_SRC : op.kind === "modify" ? SVG_BLUE : "",
   );
-  await rightClick(h, '.card[data-id="i1"] .imgb img');
+  await aiMenu(h, '.card[data-id="i1"] .imgb img');
   await pick(h, "Convert to SVG");
   const svgCard = await until(h, "an SVG image card is made", () =>
     h.board().cards.find((c): c is ImageCard => c.kind === "image" && c.id !== "i1"),
@@ -291,7 +303,7 @@ test("imageAiConvertThenModify", async () => {
     { p0, p1, links: h.board().links },
   );
   await h.page.locator(`.card[data-id="${svgCard.id}"] .imgb img`).evaluate((i) => (i as HTMLImageElement).decode());
-  await rightClick(h, `.card[data-id="${svgCard.id}"] .imgb img`);
+  await aiMenu(h, `.card[data-id="${svgCard.id}"] .imgb img`);
   await pick(h, "Modify SVG…");
   const ta = h.page.locator(".pop.k-modifySvg textarea");
   await ta.waitFor();
@@ -438,7 +450,7 @@ test("imageAiPasteImageText", async () => {
 
 test("imageAiBusyCancelAndNoKey", async () => {
   const { h, done } = await aiHost(withPng(), () => "hang");
-  await rightClick(h, '.card[data-id="i1"] .imgb img');
+  await aiMenu(h, '.card[data-id="i1"] .imgb img');
   await pick(h, "Extract Text to Note");
   const busy = h.page.locator('.card[data-id="i1"] .aibusy');
   await busy.waitFor();
@@ -457,7 +469,7 @@ test("imageAiBusyCancelAndNoKey", async () => {
   );
   await done();
   const k = await aiHost(withPng(), () => MD, { key: null });
-  await rightClick(k.h, '.card[data-id="i1"] .imgb img');
+  await aiMenu(k.h, '.card[data-id="i1"] .imgb img');
   await pick(k.h, "Extract Text to Note");
   const act = k.h.page.locator(".toast .tlink", { hasText: "Set DeepSeek API Key…" });
   await act.waitFor();
@@ -571,11 +583,11 @@ test("drawSvgFromNoteCard", async () => {
     }),
     () => reply,
   );
-  await rightClick(h, '.card[data-id="n1"] .nbody');
+  await aiMenu(h, '.card[data-id="n1"] .nbody');
   const items = await menuLabels(h);
   check(
-    "drawSvgFromNoteCard the Note's menu has Draw as SVG right before Auto Focus",
-    items.indexOf("Draw as SVG") > 0 && items.indexOf("Draw as SVG") === items.indexOf("Auto Focus") - 1,
+    "drawSvgFromNoteCard the Note's AI ▸ has Draw as SVG right before Auto Focus",
+    items.indexOf("Draw as SVG") === 0 && items.indexOf("Auto Focus") === 1,
     items,
   );
   await shoot(h, "64-note-menu.png");
@@ -599,7 +611,7 @@ test("drawSvgFromNoteCard", async () => {
     h.board().cards.map((c) => c.id),
   );
   reply = DRAWN;
-  await rightClick(h, '.card[data-id="n1"] .nbody');
+  await aiMenu(h, '.card[data-id="n1"] .nbody');
   await pick(h, "Draw as SVG");
   const img = await until(h, "an SVG image card is made", () => images(h)[0]);
   checkDrawn("drawSvgFromNoteCard", h, img, asset);
@@ -615,10 +627,10 @@ test("drawSvgFromNoteCard", async () => {
   await h.page.locator(`.card[data-id="${img.id}"] .imgb img`).evaluate((i) => (i as HTMLImageElement).decode());
   await shoot(h, "64-note-drawn.png");
   // an ordinary SVG image: Modify SVG… works on it
-  await rightClick(h, `.card[data-id="${img.id}"] .imgb img`);
+  await aiMenu(h, `.card[data-id="${img.id}"] .imgb img`);
   check(
     "drawSvgFromNoteCard the drawn image has the SVG tools",
-    (await menuLabels(h)).slice(0, 2).join("|") === "Copy Image|Modify SVG…",
+    (await menuLabels(h))[0] === "Modify SVG…",
     await menuLabels(h),
   );
   await h.page.keyboard.press("Escape");
@@ -629,7 +641,7 @@ test("drawSvgFromNoteCard", async () => {
     !h.board().links.length && !!card(h, "n1"),
     h.board().cards.map((c) => c.id),
   );
-  await rightClick(h, '.card[data-id="t1"] .cface');
+  await aiMenu(h, '.card[data-id="t1"] .cface');
   check(
     "drawSvgFromNoteCard Text cards have Draw as SVG too",
     (await menuLabels(h)).includes("Draw as SVG"),

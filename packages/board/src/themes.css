@@ -232,20 +232,20 @@
 :root.look-warm-ink .ctx.closing:not(.open) {
   scale: 0.98;
 }
-:root.look-warm-ink .ctx button {
+:root.look-warm-ink .ctx button:not(:where(.mrow *)) {
   border-radius: 5px;
 }
-:root.look-warm-ink .ctx button:not([disabled]):is(:hover, .kb, .subopen) {
+:root.look-warm-ink .ctx button:not(:where(.mrow *)):not([disabled]):is(:hover, .kb, .subopen) {
   background: none;
   color: var(--ink);
 }
-:root.look-warm-ink .ctx button:not([disabled]):is(:hover, .kb, .subopen) .ck {
+:root.look-warm-ink .ctx button:not(:where(.mrow *)):not([disabled]):is(:hover, .kb, .subopen) .ck {
   color: var(--accent);
 }
-:root.look-warm-ink .ctx button:not([disabled]):is(:hover, .kb, .subopen) small {
+:root.look-warm-ink .ctx button:not(:where(.mrow *)):not([disabled]):is(:hover, .kb, .subopen) small {
   color: var(--ink-3);
 }
-:root.look-warm-ink .ctx button.danger:not([disabled]):is(:hover, .kb, .subopen) {
+:root.look-warm-ink .ctx button:not(:where(.mrow *)).danger:not([disabled]):is(:hover, .kb, .subopen) {
   background: none;
   color: #d6453d;
 }
@@ -1677,15 +1677,15 @@
   width: 30px;
   height: 30px;
 }
-:root.look-soft-light .ctx button {
+:root.look-soft-light .ctx button:not(:where(.mrow *)) {
   border-radius: 11px;
 }
-:root.look-soft-light .ctx button:not([disabled]):is(:hover, .kb, .subopen) {
+:root.look-soft-light .ctx button:not(:where(.mrow *)):not([disabled]):is(:hover, .kb, .subopen) {
   background: var(--well);
   color: var(--ink);
 }
-:root.look-soft-light .ctx button:not([disabled]):is(:hover, .kb, .subopen) .ck,
-:root.look-soft-light .ctx button:not([disabled]):is(:hover, .kb, .subopen) small {
+:root.look-soft-light .ctx button:not(:where(.mrow *)):not([disabled]):is(:hover, .kb, .subopen) .ck,
+:root.look-soft-light .ctx button:not(:where(.mrow *)):not([disabled]):is(:hover, .kb, .subopen) small {
   color: var(--ink-3);
 }
 :root.look-soft-light .sep {
@@ -1972,7 +1972,7 @@
 :root.look-drafting .ib,
 :root.look-drafting .tbtn,
 :root.look-drafting .btn,
-:root.look-drafting .ctx button,
+:root.look-drafting .ctx button:not(:where(.mrow *)),
 :root.look-drafting .cand,
 :root.look-drafting .fld,
 :root.look-drafting .db button,
@@ -2002,7 +2002,7 @@
   font: 10.5px var(--mono);
   color: var(--ink);
 }
-:root.look-drafting .ctx button:not([disabled]):is(:hover, .kb, .subopen) {
+:root.look-drafting .ctx button:not(:where(.mrow *)):not([disabled]):is(:hover, .kb, .subopen) {
   background: var(--ink);
   color: var(--bg);
 }
@@ -2476,7 +2476,7 @@
 :root.look-colorful .ib,
 :root.look-colorful .tbtn,
 :root.look-colorful .btn,
-:root.look-colorful .ctx button,
+:root.look-colorful .ctx button:not(:where(.mrow *)),
 :root.look-colorful .cand,
 :root.look-colorful .db button,
 :root.look-colorful .fld,
@@ -2497,12 +2497,12 @@
 }
 :root.look-colorful .pill .tbtn:hover,
 :root.look-colorful .pill .ib:hover,
-:root.look-colorful .ctx button:not([disabled]):is(:hover, .kb, .subopen) {
+:root.look-colorful .ctx button:not(:where(.mrow *)):not([disabled]):is(:hover, .kb, .subopen) {
   background: color-mix(in srgb, var(--f2) 35%, transparent);
   color: var(--ink);
 }
-:root.look-colorful .ctx button:not([disabled]):is(:hover, .kb, .subopen) .ck,
-:root.look-colorful .ctx button:not([disabled]):is(:hover, .kb, .subopen) small {
+:root.look-colorful .ctx button:not(:where(.mrow *)):not([disabled]):is(:hover, .kb, .subopen) .ck,
+:root.look-colorful .ctx button:not(:where(.mrow *)):not([disabled]):is(:hover, .kb, .subopen) small {
   color: var(--ink-2);
 }
 :root.look-colorful .zoom {
@@ -2772,7 +2772,7 @@
 :root.look-newspaper .ib,
 :root.look-newspaper .tbtn,
 :root.look-newspaper .btn,
-:root.look-newspaper .ctx button,
+:root.look-newspaper .ctx button:not(:where(.mrow *)),
 :root.look-newspaper .cand,
 :root.look-newspaper .db button,
 :root.look-newspaper .fld,
@@ -2805,7 +2805,7 @@
 :root.look-newspaper .pill .ib:hover {
   background: var(--bg);
 }
-:root.look-newspaper .ctx button:not([disabled]):is(:hover, .kb, .subopen) {
+:root.look-newspaper .ctx button:not(:where(.mrow *)):not([disabled]):is(:hover, .kb, .subopen) {
   background: var(--ink);
   color: var(--surface);
 }
@@ -3138,7 +3138,7 @@
 :root.look-poster .ib,
 :root.look-poster .tbtn,
 :root.look-poster .btn,
-:root.look-poster .ctx button,
+:root.look-poster .ctx button:not(:where(.mrow *)),
 :root.look-poster .cand,
 :root.look-poster .db button,
 :root.look-poster .fld,
@@ -3190,7 +3190,7 @@
 :root.look-poster :is(.bbar, .dock) .zoom:hover {
   background: color-mix(in srgb, var(--band-ink) 14%, transparent);
 }
-:root.look-poster .ctx button:not([disabled]):is(:hover, .kb, .subopen) {
+:root.look-poster .ctx button:not(:where(.mrow *)):not([disabled]):is(:hover, .kb, .subopen) {
   background: var(--band);
   color: var(--band-ink);
 }
@@ -3786,6 +3786,12 @@
 :root.look-ink-wash .slabel .scount {
   font: italic 400 13px / 32px var(--serif);
 }
+/* the title sits in a gap of the frame's top stroke; its hover buttons reach past the gap, so they lie on paper of their own */
+:root.look-ink-wash .slabel > .sacts {
+  padding-right: 4px;
+  border-radius: 6px;
+  background: var(--bg);
+}
 :root.look-ink-wash .pill,
 :root.look-ink-wash .ctx,
 :root.look-ink-wash .pop,
@@ -3848,7 +3854,7 @@
 :root.look-ink-wash .ib,
 :root.look-ink-wash .tbtn,
 :root.look-ink-wash .btn,
-:root.look-ink-wash .ctx button,
+:root.look-ink-wash .ctx button:not(:where(.mrow *)),
 :root.look-ink-wash .cand,
 :root.look-ink-wash .db button,
 :root.look-ink-wash .fld,
@@ -3859,12 +3865,12 @@
 :root.look-ink-wash .pill .ib {
   color: var(--ink);
 }
-:root.look-ink-wash .ctx button:not([disabled]):is(:hover, .kb, .subopen) {
+:root.look-ink-wash .ctx button:not(:where(.mrow *)):not([disabled]):is(:hover, .kb, .subopen) {
   background: var(--wash);
   color: var(--ink);
 }
-:root.look-ink-wash .ctx button:not([disabled]):is(:hover, .kb, .subopen) .ck,
-:root.look-ink-wash .ctx button:not([disabled]):is(:hover, .kb, .subopen) small {
+:root.look-ink-wash .ctx button:not(:where(.mrow *)):not([disabled]):is(:hover, .kb, .subopen) .ck,
+:root.look-ink-wash .ctx button:not(:where(.mrow *)):not([disabled]):is(:hover, .kb, .subopen) small {
   color: var(--ink-3);
 }
 :root.look-ink-wash :is(.bbar, .dock) .pill :is(.tbtn, .ib) {
@@ -4396,7 +4402,7 @@
 :root.look-city .ib,
 :root.look-city .tbtn,
 :root.look-city .btn,
-:root.look-city .ctx button,
+:root.look-city .ctx button:not(:where(.mrow *)),
 :root.look-city .cand,
 :root.look-city .db button,
 :root.look-city .fld {

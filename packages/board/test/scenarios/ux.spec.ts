@@ -273,7 +273,7 @@ async function lineMenu(res: Record<string, unknown>) {
   };
   await page.locator(".ctx.open button", { hasText: /^Card/ }).hover();
   await idle(h); // its submenu opens on pointerenter
-  res.cardSub = (await menuTexts(h)).some((t) => /Open in Editor/.test(t));
+  res.cardSub = (await menuTexts(h)).some((t) => /^Add Variant/.test(t));
   await page.keyboard.press("Escape");
   await menuClosed();
   const no = (n: number) =>

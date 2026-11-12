@@ -167,7 +167,8 @@ function atEdge(ids: string[], top: boolean) {
   const edge = top ? cards.slice(cards.length - n) : cards.slice(0, n);
   return n > 0 && edge.every((c) => set.has(c.id));
 }
-export const arrangeItem = (ids: () => string[]): Item => {
+/** Arrange ▸: the four order items; a single card's menu adds its Tilt and Lock after them (extra) */
+export const arrangeItem = (ids: () => string[], extra: Item[] = []): Item => {
   const front = atEdge(ids(), true) && "Already in front",
     back = atEdge(ids(), false) && "Already at the back";
   return {
@@ -177,6 +178,7 @@ export const arrangeItem = (ids: () => string[]): Item => {
       { label: "Bring Forward", kbd: kbd("forward"), disabled: front, run: () => arrange(ids(), "forward") },
       { label: "Send Backward", kbd: kbd("backward"), disabled: back, run: () => arrange(ids(), "backward") },
       { label: "Send to Back", kbd: kbd("back"), disabled: back, run: () => arrange(ids(), "back") },
+      ...(extra.length ? [null, ...extra] : []),
     ],
   };
 };

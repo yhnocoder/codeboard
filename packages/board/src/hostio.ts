@@ -8,7 +8,7 @@ import { putViews, putStale, resetSegs } from "./state/views";
 import { markSaved, setBoard, sync, syncShared, syncGone, syncMerged, syncSummaries } from "./state/changes";
 import { select, setLineSel, lineSel, sel } from "./state/selection";
 import { toast } from "./state/toast";
-import { setCam } from "./state/camera";
+import { placeCam } from "./state/camera";
 import { showSummaryLevel } from "./state/summary";
 import { cardsMeasured } from "./state/measure";
 import { putSkels, setCrumbs, setWalkBack } from "./state/subboards";
@@ -77,7 +77,9 @@ function handle(m: HostToBoard, md: Markdown) {
         setWelcome(m.welcome ?? null);
       });
       if (questionsOpen()) A.refreshQuestions();
-      setCam(b.cam.x, b.cam.y, b.cam.z);
+      // after the batch: the zoom is held to the floor this board's effects have just set (state/summary.ts); in the same task, so
+      // nothing is drawn at the last board's zoom
+      placeCam(b.cam.x, b.cam.y, b.cam.z);
       showSummaryLevel();
       markSaved();
       A.boardShown();

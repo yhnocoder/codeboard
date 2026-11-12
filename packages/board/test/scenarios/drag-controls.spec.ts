@@ -308,7 +308,7 @@ test("pressRightAfterPan", async () => {
   await pg.mouse.down();
   await pg.mouse.up();
   const more = await until(h, "the card menu", menu, 2000).catch(() => "");
-  check("pressRightAfterPan click on ··· opens the card menu", b.shield && more.includes("Fit Content"), {
+  check("pressRightAfterPan click on ··· opens the card menu", b.shield && more.includes("Turn into Text"), {
     ...b,
     more,
   });
@@ -321,7 +321,7 @@ test("pressRightAfterPan", async () => {
   const ctx = await until(h, "a context menu", menu, 2000).catch(() => "");
   check(
     "pressRightAfterPan right click opens the card menu",
-    c.shield && ctx.includes("Fit Content") && !ctx.includes("New Text"),
+    c.shield && ctx.includes("Turn into Text") && !ctx.includes("New Text"),
     { ...c, ctx },
   );
   await pg.keyboard.press("Escape");

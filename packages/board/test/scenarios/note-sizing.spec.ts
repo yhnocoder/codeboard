@@ -151,7 +151,7 @@ test("noteGhostStaysInCard", async () => {
   );
 });
 
-/** Fit Content is in a Note's menu; it grows the card to its content, animated, in one undo step. A Text has no height to fit:
+/** Fit Content is a hover button in a Note's header; it grows the card to its content, animated, in one undo step. A Text has no height to fit:
  *  an old board's (v9) Text with a fixed height loads without it (its Fit Content fits the width: textCardFitContent) */
 test("noteTextFitContent", async () => {
   const old = board([
@@ -170,20 +170,12 @@ test("noteTextFitContent", async () => {
   await pg.locator(`${card("n1")} .tx`).click(); // selected: the outline shows the card's box
   await cardShot(h, "n1", "05-fit-content-text-before");
   await pg.keyboard.press("Escape");
-  const items = async (sel: string) => {
-    await pg.locator(sel).click({ button: "right" });
-    await pg.waitForSelector(".ctx:not(.closing)", { timeout: 3000 });
-    return pg.locator(".ctx:not(.closing) button").allTextContents();
-  };
-  const noteMenu = await items(`${card("n0")} .chead`);
-  check(
-    "noteTextFitContent note menu",
-    noteMenu.some((t) => t.includes("Fit Content")),
-    { noteMenu },
-  );
+  await pg.locator(`${card("n0")} .chead .ctitle`).hover();
+  await idle(h);
+  const fitBtn = pg.locator(`${card("n0")} .chead .ib[aria-label="Fit Content"]`);
+  check("noteTextFitContent the Note header's Fit Content hover button", await fitBtn.isVisible());
   const h0 = (await rect(h, card("n0"))).h;
-  if (!noteMenu.some((t) => t.includes("Fit Content"))) return;
-  await pg.locator(".ctx:not(.closing) button", { hasText: "Fit Content" }).click();
+  await fitBtn.click();
   // sample the height over the next frames: it has to pass through values between the start and the end
   const samples = await pg.evaluate(
     (sel) =>
@@ -605,9 +597,10 @@ test("noteManualHeightSticks", async () => {
   const emptied = (await rect(h, card("n0"))).h;
   check("noteManualHeightSticks no shrink after deleting text", Math.abs(emptied - taller) < 1, { taller, emptied });
   // Fit Content: back to the content's height, following it again
-  await pg.locator(`${card("n0")} .chead`).click({ button: "right" });
+  await pg.locator(`${card("n0")} .chead .ctitle`).hover();
+  await idle(h);
   const hand = placeH(h, "n0");
-  await pg.locator(".ctx:not(.closing) button", { hasText: "Fit Content" }).click();
+  await pg.locator(`${card("n0")} .chead .ib[aria-label="Fit Content"]`).click();
   await newH("Fit Content is saved", hand);
   const fit = (await rect(h, card("n0"))).h;
   await cardShot(h, "n0", "24-manual-height-fit");

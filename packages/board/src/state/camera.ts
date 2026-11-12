@@ -135,6 +135,22 @@ export function setCam(x: number, y: number, z: number) {
   if (running) stopCam();
   setCamStore({ x, y, z: Math.min(ZMAX, Math.max(zMin(), z)) });
 }
+/**
+ * A board opens at its own camera. Not a move: nothing of this board was drawn at the last zoom, so the camera counts as at rest
+ * at once and what is drawn by stillZ is drawn at this zoom from the first frame. Above all the image copies (wire.ts
+ * displayScale): an image picked at the last board's zoom never steps down while it stays on the page, so opening a board at
+ * 20 % from one at 100 % used to keep every image at full size (summaryImageCopy)
+ */
+export function placeCam(x: number, y: number, z: number) {
+  // a flight or a fling of the last board ends here
+  stopCam();
+  clearTimeout(still);
+  stillGen++;
+  batch(() => {
+    setCamMoving(false);
+    setCamStore0({ x, y, z: Math.min(ZMAX, Math.max(zMin(), z)) });
+  });
+}
 export function camTo(x: number, y: number, z: number, soft = false) {
   z = Math.min(ZMAX, Math.max(zMin(), z));
   if (!running) {

@@ -1199,6 +1199,10 @@ export function canvasContextMenu(e: MouseEvent, md: Markdown) {
   if (lk) return A.linkMenu(lk.dataset.link!, e.clientX, e.clientY);
   const sl = t.closest("[data-sect]") as HTMLElement | null;
   if (sl) return A.sectionMenu(sl.dataset.sect!, e.clientX, e.clientY);
+  // a Section's blank inside is that Section (the innermost one), as for a ⌘-drag there
+  const w = worldOf(e);
+  const s = deepestAt(frames(), w.x, w.y, hiddenSections());
+  if (s) return A.sectionMenu(s.id, e.clientX, e.clientY);
   A.canvasMenu(md, e.clientX, e.clientY);
 }
 
