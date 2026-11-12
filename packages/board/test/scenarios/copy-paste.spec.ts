@@ -15,7 +15,7 @@
 //                                         the two places share the original's segments. A click elsewhere puts the chip away
 //   copiedImagesArePictures               every way of copying one image gives other apps only the picture (image/png, no text):
 //                                         ⌘C in a Note being edited with the caret in the image's source (a selected source copies
-//                                         its Markdown as text), right-click Copy Image on an image in a shown Note and on an image card; pasted back
+//                                         its Markdown as text), right-click Copy Image on an image in a shown Note, ⌘C on a selected image card; pasted back
 //                                         into the Note, the picture is the same Markdown (no new file)
 //   imageCopyFallsBackToEditor            when the webview may not write the clipboard, the picture goes to the editor, which puts the
 //                                         PNG alone on the OS clipboard (no text); an editor that can't gets the text
@@ -279,14 +279,15 @@ test("copiedImagesArePictures", async () => {
   const menuCopy = await nextCopy(h, "Copy Image on the Note's image is on the clipboard");
   check("copiedImagesArePictures Copy Image on an image in a Note", isPicture(menuCopy), menuCopy);
 
-  // right-click an image card: Copy Image (the card copy: pasted back on the board it is the card again)
+  // an image card selected, ⌘C (the card copy: pasted back on the board it is the card again)
   await clear(h);
-  await cardEl(h, "i1").locator(".imgb").click({ button: "right" });
-  await pg.locator(".ctx.open button", { hasText: "Copy Image" }).first().click();
-  const cardCopy = await nextCopy(h, "Copy Image on the image card is on the clipboard");
-  check("copiedImagesArePictures Copy Image on an image card", isPicture(cardCopy), cardCopy);
+  await cardEl(h, "i1").locator(".imgb").click();
+  await idle(h);
+  await pg.keyboard.press("ControlOrMeta+c");
+  const cardCopy = await nextCopy(h, "⌘C on the image card is on the clipboard");
+  check("copiedImagesArePictures ⌘C on an image card", isPicture(cardCopy), cardCopy);
   check(
-    "copiedImagesArePictures the image card's Copy Image is a card copy",
+    "copiedImagesArePictures the image card's ⌘C is a card copy",
     h.sent.some((m) => m.type === "copyCards" && m.cards.join() === "i1"),
   );
   await done();

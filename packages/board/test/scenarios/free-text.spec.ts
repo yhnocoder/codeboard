@@ -323,15 +323,24 @@ test("freeTextLevels", async () => {
   await until(h, "the level is undone", () => byId(h, "p0")?.level === undefined);
   check("freeTextLevels each pick is one undo step", (await lookOf(h, "p0", "t3")).size === "20px");
 
-  // the menu: a dragged size goes back to the level's preset; Bold toggles
+  // another one's toolbar: a dragged size goes back to the level's preset; Bold toggles. The menu no longer has them
   await pg.locator(`${card("h1")} .tx`).click({ button: "right" });
-  await pg.locator(".ctx:not(.closing) button", { hasText: "Level" }).hover();
-  await pg.locator(".ctx:not(.closing) button", { hasText: "Heading 2" }).click();
+  await pg.locator(".ctx:not(.closing) button").first().waitFor();
+  const menu = await pg.locator(".ctx:not(.closing) button .lb").allTextContents();
+  check(
+    "freeTextLevels the menu leaves Level and Bold to the toolbar",
+    !menu.includes("Level") && !menu.includes("Bold") && menu.includes("Arrange"),
+    menu,
+  );
+  // the right-click selected it: Escape closes the menu and its toolbar shows (another click would start editing)
+  await pg.keyboard.press("Escape");
+  const bar1 = pg.locator(`${card("h1")} .ftbar`);
+  await bar1.waitFor();
+  await bar1.locator('button[aria-label="Heading 2"]').click();
   await until(h, "H1 is now H2", () => byId(h, "h1")?.level === 2);
-  await pg.locator(`${card("h1")} .tx`).click({ button: "right" });
-  await pg.locator(".ctx.open button", { hasText: /^Bold/ }).click();
+  await bar1.locator('button[aria-label="Bold"]').click();
   await until(h, "and bold", () => byId(h, "h1")?.bold === true);
   await idle(h);
-  check("freeTextLevels Level and Bold from the menu", (await lookOf(h, "h1")).size === "30px", byId(h, "h1"));
+  check("freeTextLevels Level and Bold from the toolbar", (await lookOf(h, "h1")).size === "30px", byId(h, "h1"));
   await h.close();
 });

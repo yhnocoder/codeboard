@@ -79,7 +79,7 @@ test("sectionLook", async () => {
   await close(h);
 });
 
-/** Section ▸ Fit Content: the frame tightens to its member cards plus the standard padding (22 at the sides and bottom, 34 at the top
+/** The Section title's Fit Content hover button: the frame tightens to its member cards plus the standard padding (22 at the sides and bottom, 34 at the top
  *  for the title), animated; one undo step brings the old frame back */
 test("sectionFitContent", async () => {
   const b = emptyBoard("b1", "fit section");
@@ -98,18 +98,12 @@ test("sectionFitContent", async () => {
   const h = await open({ board: b, light, w: 1300, h: 900 });
   await idle(h);
   await shot(h, "sect-fit-01-before");
-  await h.page.locator('.slabel[data-sect="S"] .sname').click({ button: "right" });
-  await h.page.locator(".ctx:not(.closing) button").first().waitFor();
+  await h.page.locator('.slabel[data-sect="S"] .sname').hover();
   await idle(h);
-  const items = await h.page.locator(".ctx:not(.closing) button").allTextContents();
-  check(
-    "sectionFitContent in the Section menu",
-    items.some((t) => t.includes("Fit Content")),
-    { items },
-  );
-  if (!items.some((t) => t.includes("Fit Content"))) return;
+  const fit = h.page.locator('.slabel[data-sect="S"] .sacts .ib[aria-label="Fit Content"]');
+  check("sectionFitContent a hover button on the Section's title", await fit.isVisible());
   const w0 = (await h.page.locator('.sect[data-sect="S"]').boundingBox())!.width;
-  await h.page.locator(".ctx:not(.closing) button", { hasText: "Fit Content" }).click();
+  await fit.click();
   const samples = await h.page.evaluate(
     () =>
       new Promise<number[]>((res) => {
@@ -594,7 +588,12 @@ test("dragCardIntoOtherSection", async () => {
   await h.page.keyboard.press("ControlOrMeta+z");
   await idle(h);
   check("drag-into-section-undo", h.board().place.n1.section === "S2", { section: h.board().place.n1.section });
-  // the same move from the card menu: Move to Section ▸ 异构并行计算 (the card lands inside that Section's frame)
+  // the same move from the menu of a selection (a single card's menu no longer has it): Move to Section ▸ 异构并行计算 (the card
+  // lands inside that Section's frame; the code card already is in it)
+  const other = h.board().cards.find((c) => c.id !== "n1")!.id;
+  await h.page.locator('.card[data-id="n1"] .chead').click();
+  await h.page.locator(`.card[data-id="${other}"] .chead`).click({ modifiers: ["Shift"] });
+  await idle(h);
   await h.page.locator('.card[data-id="n1"] .chead').click({ button: "right" });
   await h.page.locator(".ctx:not(.closing) button", { hasText: "Move to Section" }).hover();
   await h.page.locator(".ctx:not(.closing) button", { hasText: "异构并行计算" }).waitFor();

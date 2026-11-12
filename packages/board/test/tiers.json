@@ -298,6 +298,7 @@
       "about": "Sections (frames): drawing, membership, folding, Fit Content",
       "files": [
         "packages/board/src/canvas/Sections.tsx",
+        "packages/board/src/canvas/SectionTools.tsx",
         "packages/board/src/state/sections.ts",
         "packages/board/src/state/fold.ts",
         "packages/core/src/layout.ts",
@@ -431,7 +432,7 @@
         "packages/host/src/meaning.ts",
         "packages/host/src/searchtrace.ts",
         "packages/host/src/preview.ts",
-        "packages/board/test/scenarios/{dialogs,keyboard-focus,header,multi-select}.spec.ts"
+        "packages/board/test/scenarios/{dialogs,keyboard-focus,header,multi-select,card-menus}.spec.ts"
       ],
       "scenarios": [
         "palette",

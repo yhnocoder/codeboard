@@ -187,9 +187,13 @@ async function lineMenu(h: Host, card: string, line: number, label: string) {
   const b = (await l.boundingBox())!;
   await page.mouse.click(b.x + b.width + 260, b.y + b.height / 2, { button: "right" });
   await page.locator(".ctx:not(.closing) button").first().waitFor();
-  if (!(await page.locator(".ctx:not(.closing) button", { hasText: label }).count()))
-    await page.locator(".ctx:not(.closing) button", { hasText: /^Edit/ }).hover();
-  await page.locator(".ctx:not(.closing) button", { hasText: label }).first().click();
+  // the line menu has it; the card menu (the right-click missed the line) has it under Add ▸ without "Ask a"
+  if (await page.locator(".ctx:not(.closing) button", { hasText: label }).count())
+    await page.locator(".ctx:not(.closing) button", { hasText: label }).first().click();
+  else {
+    await page.locator('.ctx:not(.closing) button:has(.lb:text-is("Add"))').hover();
+    await page.locator(`.ctx:not(.closing) button:has(.lb:text-is("${label.replace(/^Ask a /, "")}"))`).click();
+  }
 }
 
 /** Ask a Question, then close it without writing anything: no question is left behind and nothing goes on the undo stack.

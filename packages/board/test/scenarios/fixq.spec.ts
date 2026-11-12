@@ -425,8 +425,8 @@ async function fithide(res: Record<string, unknown>) {
   await idle(h);
   const card = page.locator(`.card[data-id="${c.id}"]`);
   const w0 = await card.evaluate((el) => (el as HTMLElement).offsetWidth);
-  await card.locator(".chead").click({ position: { x: 200, y: 10 }, button: "right" });
-  await page.locator(".ctx:not(.closing) button", { hasText: "Fit Content" }).click();
+  await card.locator(".chead").hover({ position: { x: 200, y: 10 } });
+  await card.locator('.chead .ib[aria-label="Fit Content"]').click();
   await until(h, "Fit Content changes the card's width", () =>
     card.evaluate((el, w0) => (el as HTMLElement).offsetWidth !== w0, w0),
   );
