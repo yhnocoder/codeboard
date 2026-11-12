@@ -93,10 +93,16 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
     }
     queueMicrotask(() => {
       if (el)
-        void place(el, virtual({ x: r.left, y: r.top, width: r.width, height: r.height }), "top", {
-          gap: 8,
-          pad: 6,
-        }).then(({ x, y }) => {
+        // the link box opens under the link, where the eye already is, and leaves the lines above it readable
+        void place(
+          el,
+          virtual({ x: r.left, y: r.top, width: r.width, height: r.height }),
+          link() !== null ? "bottom-start" : "top",
+          {
+            gap: 8,
+            pad: 6,
+          },
+        ).then(({ x, y }) => {
           el.style.left = `${x}px`;
           el.style.top = `${y}px`;
         });
