@@ -1,5 +1,5 @@
 {
-  "originHash" : "9938ce63356e859324616e65c03fbf1ef5824f14962e23b43a243481625b40e4",
+  "originHash" : "2de714e3bd30bdcd3ee8d0921018d0de2f535bf7f09c723353d09a0babd766b3",
   "pins" : [
     {
       "identity" : "tree-sitter",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/yhnocoder/tree-sitter-cuda",
       "state" : {
-        "revision" : "9bbc052820f228600f8a22cef6d3597759f49a3b",
-        "version" : "0.21.2-cb.2"
+        "revision" : "e6347df069363c3d27bab83061b07cc4041e5e68",
+        "version" : "0.21.2-cb.3"
       }
     },
     {

@@ -14,7 +14,7 @@ let package = Package(
       url: "https://github.com/tree-sitter/tree-sitter-rust",
       revision: "261b20226c04ef601adbdf185a800512a5f66291"
     ),
-    .package(url: "https://github.com/yhnocoder/tree-sitter-cuda", exact: "0.21.2-cb.2"),
+    .package(url: "https://github.com/yhnocoder/tree-sitter-cuda", exact: "0.21.2-cb.3"),
   ],
   targets: [
     .target(name: "CodeBoardModel"),
@@ -28,10 +28,10 @@ let package = Package(
         "CTreeSitterScanners",
       ]
     ),
-    // The Python and CUDA grammars' external scanners, which their packages leave out (include/scanners.h says why)
+    // The Python grammar's external scanner, which its package leaves out (include/scanners.h says why)
     .target(
       name: "CTreeSitterScanners",
-      exclude: ["python/LICENSE", "cuda/LICENSE"],
+      exclude: ["python/LICENSE"],
       cSettings: [.headerSearchPath("."), .disableWarning("shorten-64-to-32")]
     ),
     .target(name: "CodeBoardNotes", dependencies: ["CodeBoardModel"]),
