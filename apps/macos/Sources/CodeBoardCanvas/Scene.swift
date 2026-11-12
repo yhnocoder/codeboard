@@ -1,4 +1,5 @@
 import CodeBoardModel
+import CodeBoardNotes
 import CodeBoardSyntax
 import CoreGraphics
 import Foundation
@@ -62,23 +63,25 @@ struct Scene: Sendable {
     var width: Double
     /// Where its images are: the board package or the vault's shared folder
     var folder: URL
+    var refs: [NoteRef]
   }
 
   /// The Notes the renderer must measure before the scene can be made
   static func measures(_ board: Board, package: URL, vault: Vault) -> [Measure] {
-    board.cards.compactMap { c in
+    let refs = RefResolver(board, package: package, vault: vault)
+    return board.cards.compactMap { c in
       guard let (content, folder) = content(of: c, package: package, vault: vault), case .note(let n) = content.body
       else { return nil }
       // a Free Text is as wide as its text, whatever its stored height
       var freeText = false
       if case .freeText = n.style { freeText = true }
       guard c.height == nil || freeText else { return nil }
-      return Measure(card: c.id, note: n, width: c.width, folder: folder)
+      return Measure(card: c.id, note: n, width: c.width, folder: folder, refs: refs.refs(in: n.text))
     }
   }
 
   /// A card's content and the folder its images are in; nil for a shared card whose file could not be read
-  private static func content(of c: Card, package: URL, vault: Vault) -> (CardContent, URL)? {
+  static func content(of c: Card, package: URL, vault: Vault) -> (CardContent, URL)? {
     switch c.content {
     case .own(let own): (own, package)
     case .shared: (try? vault.sharedCard(c.id)).map { ($0.content, vault.sharedFolderURL) }
@@ -112,6 +115,7 @@ struct Scene: Sendable {
       }
     }
     cardsFrom = items.count
+    let refs = RefResolver(board, package: package, vault: vault)
     var placed: [CardID: Placed] = [:]
     for c in board.cards {
       guard let (content, folder) = Scene.content(of: c, package: package, vault: vault) else {
@@ -120,7 +124,7 @@ struct Scene: Sendable {
       }
       let tilt = c.tilted ? Scene.tilt : 0
       let (drawing, size, code) = Scene.card(
-        c, content, board: board, folder: folder, measured: sizes[c.id], theme: t, highlighter: highlighter)
+        c, content, board: board, folder: folder, measured: sizes[c.id], theme: t, highlighter: highlighter, refs: refs)
       let r = CGRect(origin: CGPoint(x: c.x, y: c.y), size: size)
       placed[c.id] = Placed(rect: r, code: code, tilt: tilt)
       items.append(Item(rect: r, drawing: drawing, tilt: tilt, bleed: drawing.bleed(t)))
@@ -251,7 +255,7 @@ struct Scene: Sendable {
 
   private static func card(
     _ c: Card, _ content: CardContent, board: Board, folder: URL, measured: CGSize?, theme t: Theme,
-    highlighter: Highlighter
+    highlighter: Highlighter, refs: RefResolver
   ) -> (
     Drawing, CGSize, (layout: CodeLayout, top: CGFloat, segments: [SegmentID])?
   ) {
@@ -283,7 +287,9 @@ struct Scene: Sendable {
       // a Free Text is as wide as its text; a Note the renderer could not measure is shown as paper of an arbitrary height
       var size = CGSize(width: c.width, height: c.height ?? measured?.height ?? c.width * 0.6)
       if case .freeText = n.style, let m = measured { size.width = m.width }
-      return (.note(.init(id: c.id.rawValue, title: title, content: n, folder: folder, height: c.height)), size, nil)
+      let note = Drawing.Note(
+        id: c.id.rawValue, title: title, content: n, folder: folder, height: c.height, refs: refs.refs(in: n.text))
+      return (.note(note), size, nil)
     case .image(let img):
       var url: URL?
       if case .file(let f) = img.source { url = images.appending(path: f) }

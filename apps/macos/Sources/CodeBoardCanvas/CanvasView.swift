@@ -165,7 +165,10 @@ public final class CanvasView: NSView {
       for m in ms {
         // before any picture: the board waits for these
         g.addTask {
-          (m.card, try? await notes.size(of: m.note, width: m.width, folder: m.folder, look: look, priority: 1))
+          (
+            m.card,
+            try? await notes.size(of: m.note, width: m.width, folder: m.folder, look: look, refs: m.refs, priority: 1)
+          )
         }
       }
       var out: [CardID: CGSize] = [:]
@@ -654,11 +657,12 @@ public final class CanvasView: NSView {
       let look = theme.id.rawValue
       guard let priority else {
         return await notes.cached(
-          of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale, look: look)
+          of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale, look: look,
+          refs: n.refs)
       }
       return try? await notes.snapshot(
         of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale, look: look,
-        priority: priority)
+        refs: n.refs, priority: priority)
     case .image(let p):
       guard p.svg, let url = p.url else { return nil }
       let width = Int((item.rect.width * scale).rounded(.up))

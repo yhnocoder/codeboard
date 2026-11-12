@@ -1,4 +1,5 @@
 import CodeBoardModel
+import CodeBoardNotes
 import CodeBoardSyntax
 import CoreText
 import IOSurface
@@ -39,6 +40,8 @@ enum Drawing: Sendable {
     var folder: URL
     /// The stored height, as the renderer is asked for it; nil: as tall as its content
     var height: Double?
+    /// What its [[refs]] point at now
+    var refs: [NoteRef]
 
     var style: NoteStyle { content.style }
   }

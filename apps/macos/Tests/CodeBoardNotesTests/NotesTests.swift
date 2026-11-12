@@ -11,10 +11,10 @@ private func tempFolder() throws -> URL {
   return u
 }
 
-private func json(_ note: Note, width: Double = 300, height: Double? = nil, look: String = "warm-ink") throws
-  -> String
-{
-  try PageNote(note, width: width, height: height, look: look).json()
+private func json(
+  _ note: Note, width: Double = 300, height: Double? = nil, look: String = "warm-ink", refs: [NoteRef] = []
+) throws -> String {
+  try PageNote(note, width: width, height: height, look: look, refs: refs).json()
 }
 
 @Suite struct SnapshotKeyTests {
@@ -38,6 +38,8 @@ private func json(_ note: Note, width: Double = 300, height: Double? = nil, look
       try key(build: "c"), try key(system: "t"), try key(scale: 4), try key(images: ["a.png 10 1.0"]),
       try key(note: json(base, width: 301)), try key(note: json(base, height: 200)),
       try key(note: json(base, look: "ink-wash")),
+      try key(note: json(base, refs: [NoteRef(label: "Plan", target: nil, hit: .found(title: "Plan", seal: nil))])),
+      try key(note: json(base, refs: [NoteRef(label: "Plan", target: nil, hit: .found(title: "Plans", seal: nil))])),
     ]
     let notes: [Note] = [
       Note(text: "# Title\n\nbody!", style: .note),
@@ -258,6 +260,32 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     let rows = pixels(s.surface).count / (s.surface.width * 4)
     let tail = pixels(s.surface).suffix(s.surface.width * 4 * rows / 50).enumerated()
     #expect(tail.contains { $0.offset % 4 == 3 && $0.element > 0 }, "the last lines are drawn")
+  }
+
+  /// A [[ref]] the canvas resolved shows its target's title now, in the ref colour with its arrow; one it did not is greyed
+  /// and struck through; another board's card has that board's seal before its title
+  @Test func drawsRefsAsTheyResolve() async throws {
+    _ = NSApplication.shared
+    let cache = try tempFolder()
+    defer { try? FileManager.default.removeItem(at: cache) }
+    let note = Note(text: "Next comes [[step#^c2]] in the loop.", style: .note)
+    let r = NoteRenderer(cache: cache)
+    func draw(_ refs: [NoteRef]) async throws -> [UInt8] {
+      pixels(
+        try await r.snapshot(
+          of: note, width: 320, height: nil, folder: cache, scale: 2, look: "warm-ink", refs: refs, priority: 0
+        ).surface)
+    }
+    let missing = try await draw([])
+    let found = try await draw([NoteRef(label: "step", target: "c2", hit: .found(title: "step", seal: nil))])
+    let renamed = try await draw([NoteRef(label: "step", target: "c2", hit: .found(title: "Scheduler.step", seal: nil))]
+    )
+    let sealed = try await draw([
+      NoteRef(
+        label: "step", target: "c2",
+        hit: .found(title: "step", seal: NoteRef.Seal(text: "SP", color: "teal", alone: false)))
+    ])
+    #expect(Set([missing, found, renamed, sealed]).count == 4)
   }
 
   /// What NSImage draws wrong (black, or nothing): a <style> with classes and a dark-mode rule, CSS variables defined

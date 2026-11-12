@@ -1,7 +1,7 @@
 // The Note page of the Mac app: one Note on a card laid out as the VS Code board lays it out (the board's own stylesheets,
 // in the board theme the canvas draws), drawn by the Markdown package's editor, so a snapshot of it is what editing it shows. Native drives it
 // through window.note and hears back on the "note" message handler.
-import { createMarkdown, type MdLayout } from "@yhnocoder/markdown";
+import { createMarkdown, type MdLayout, type RefBroken, type RefTarget } from "@yhnocoder/markdown";
 import { type MdEditorHandle, mountEditor, warmUp } from "@yhnocoder/markdown/editor";
 import "@yhnocoder/markdown/katex.css";
 import "../../../../packages/board/src/fonts.css";
@@ -24,6 +24,8 @@ type Note = {
   height: number | null;
   /** The board theme's id: html[data-look] and its class, as the board's settings apply it (actions/settings.ts applyLook) */
   look: string;
+  /** What its [[refs]] point at, as the board resolves them (CodeBoardNotes' NoteRef); one not here is not found */
+  refs: { label: string; target: string | null; hit: RefTarget | RefBroken }[];
 };
 
 declare global {
@@ -37,8 +39,13 @@ declare global {
 // keyboard from the window the user types in
 HTMLElement.prototype.focus = () => {};
 
+const refKey = (label: string, target?: string | null) => `${label}\u0000${target ?? ""}`;
+let refs = new Map<string, RefTarget | RefBroken>();
 // images load at once, not when scrolled to: the picture waits for every one of them
-const md = createMarkdown({ eagerImages: true });
+const md = createMarkdown({
+  eagerImages: true,
+  refs: { resolve: (label, target) => refs.get(refKey(label, target)) ?? null },
+});
 warmUp(md);
 const root = document.getElementById("root") as HTMLDivElement;
 let editor: MdEditorHandle | undefined;
@@ -127,6 +134,7 @@ window.note = {
     editor = undefined;
     card?.remove();
     md.setAssetBase("images", images);
+    refs = new Map(n.refs.map((r) => [refKey(r.label, r.target), r.hit]));
     const html = document.documentElement;
     if (html.dataset.look !== n.look) {
       html.classList.remove(`look-${html.dataset.look}`);

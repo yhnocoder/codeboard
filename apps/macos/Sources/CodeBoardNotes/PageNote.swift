@@ -11,18 +11,21 @@ struct PageNote: Encodable {
   var height: Double?
   /// The board theme's id: the page applies the board's own stylesheet for it
   var look: String
+  /// What its [[refs]] point at, in the order written
+  var refs: [NoteRef]
 
-  init(_ note: Note, width: Double, height: Double?, look: String) {
+  init(_ note: Note, width: Double, height: Double?, look: String, refs: [NoteRef]) {
     text = note.text
     layout = note.layout
     style = note.style
     self.width = width
     self.height = height
     self.look = look
+    self.refs = refs
   }
 
   private enum Keys: String, CodingKey {
-    case text, layout, style, width, height, look
+    case text, layout, style, width, height, look, refs
   }
 
   func encode(to encoder: Encoder) throws {
@@ -33,6 +36,7 @@ struct PageNote: Encodable {
     try c.encode(width, forKey: .width)
     try c.encode(height, forKey: .height)
     try c.encode(look, forKey: .look)
+    try c.encode(refs, forKey: .refs)
   }
 
   /// Sorted keys: the same Note always gives the same bytes

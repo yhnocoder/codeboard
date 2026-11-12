@@ -44,12 +44,13 @@ public final class NoteRenderer {
 
   /// `note` on a card `width` wide (and `height` tall; nil: as tall as its content), its images resolving against
   /// `folder` (the board package or `.codeboard/shared`), as `scale` device pixels per point, in the board theme `look`
-  /// (its id: warm-ink, ink-wash). Among the requests waiting for the web view a higher `priority` goes first; a request
+  /// (its id: warm-ink, ink-wash), its [[refs]] drawn as `refs` resolve them. Among the requests waiting for the web view a higher `priority` goes first; a request
   /// cancelled before its turn draws nothing.
   public func snapshot(
-    of note: Note, width: Double, height: Double?, folder: URL, scale: Double, look: String, priority: Int
+    of note: Note, width: Double, height: Double?, folder: URL, scale: Double, look: String, refs: [NoteRef] = [],
+    priority: Int
   ) async throws -> NoteSnapshot {
-    let json = try PageNote(note, width: width, height: height, look: look).json()
+    let json = try PageNote(note, width: width, height: height, look: look, refs: refs).json()
     let (key, cached) = await Self.lookUp(
       store: store, build: build, note: json, markdown: note.text, folder: folder, scale: scale)
     if let cached { return cached }
@@ -77,9 +78,11 @@ public final class NoteRenderer {
 
   /// The picture `snapshot` would give, if the disk cache has it; never opens the web view
   public func cached(
-    of note: Note, width: Double, height: Double?, folder: URL, scale: Double, look: String
+    of note: Note, width: Double, height: Double?, folder: URL, scale: Double, look: String, refs: [NoteRef] = []
   ) async -> NoteSnapshot? {
-    guard let json = try? PageNote(note, width: width, height: height, look: look).json() else { return nil }
+    guard let json = try? PageNote(note, width: width, height: height, look: look, refs: refs).json() else {
+      return nil
+    }
     return await Self.lookUp(
       store: store, build: build, note: json, markdown: note.text, folder: folder, scale: scale
     ).1
@@ -88,8 +91,10 @@ public final class NoteRenderer {
   /// The size at 100 % of `note` on a card `width` wide that is as tall as its content (a Free Text: as wide as its
   /// text too): what `snapshot` with no height gives as its size, without drawing it. Measured in the web view once,
   /// then kept with the snapshots
-  public func size(of note: Note, width: Double, folder: URL, look: String, priority: Int) async throws -> CGSize {
-    let json = try PageNote(note, width: width, height: nil, look: look).json()
+  public func size(
+    of note: Note, width: Double, folder: URL, look: String, refs: [NoteRef] = [], priority: Int
+  ) async throws -> CGSize {
+    let json = try PageNote(note, width: width, height: nil, look: look, refs: refs).json()
     let (key, cached) = await Self.lookUpSize(
       store: store, build: build, note: json, markdown: note.text, folder: folder)
     if let cached { return cached }
