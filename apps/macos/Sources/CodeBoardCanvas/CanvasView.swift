@@ -377,13 +377,18 @@ public final class CanvasView: NSView {
     return out
   }
 
-  /// The backdrop covers the view, its bottom on the view's bottom (CSS `center bottom / cover`)
   private func placeBackdrop() {
     guard let img = backdropImage, !bounds.isEmpty else { return }
-    let k = max(bounds.width / CGFloat(img.width), bounds.height / CGFloat(img.height))
+    backdrop.frame = CanvasView.backdropFrame(img, in: bounds.size)
+  }
+
+  /// The backdrop covers the view, its bottom on the view's bottom (CSS `center bottom / cover`); y-down. The shell
+  /// draws it the same way where the canvas runs on under its chrome
+  package static func backdropFrame(_ img: CGImage, in view: CGSize) -> CGRect {
+    let k = max(view.width / CGFloat(img.width), view.height / CGFloat(img.height))
     let size = CGSize(width: CGFloat(img.width) * k, height: CGFloat(img.height) * k)
-    backdrop.frame = CGRect(
-      x: (bounds.width - size.width) / 2, y: bounds.height - size.height, width: size.width, height: size.height)
+    return CGRect(
+      x: (view.width - size.width) / 2, y: view.height - size.height, width: size.width, height: size.height)
   }
 
   private func withoutAnimation(_ f: () -> Void) {

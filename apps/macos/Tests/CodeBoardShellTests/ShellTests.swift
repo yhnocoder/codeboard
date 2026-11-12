@@ -1,4 +1,5 @@
 import CodeBoardCanvas
+import CoreGraphics
 import Foundation
 import Testing
 
@@ -171,4 +172,29 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
     for t in Theme.all { #expect(ShellTheme.board(t.id).components == t.canvas.components) }
     #expect(ShellTheme.board(.warmInk).components != ShellTheme.board(.inkWash).components)
   }
+}
+
+/// The cover over the top bar: the canvas colour, opaque over the bar, gone a fade's length below it
+@MainActor @Test(arguments: Theme.ID.allCases) func topFadeCoversTheBarAndFadesOut(_ id: Theme.ID) throws {
+  let theme = Theme.named(id)
+  let img = try #require(
+    TopFade.image(width: 200, bar: 36, canvas: CGSize(width: 200, height: 600), theme: theme, scale: 2))
+  let srgb = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+  let ctx = try #require(
+    CGContext(
+      data: nil, width: img.width, height: img.height, bitsPerComponent: 8, bytesPerRow: img.width * 4, space: srgb,
+      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+  ctx.draw(img, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
+  let px = try #require(ctx.data).assumingMemoryBound(to: UInt8.self)
+  /// Alpha at a y-down row
+  func alpha(_ row: Int) -> UInt8 { px[row * img.width * 4 + 3] }
+  #expect(img.height == 2 * (36 + Int(TopFade.length)))
+  #expect(alpha(0) == 255 && alpha(71) == 255)
+  #expect(alpha(img.height - 1) < 3)
+  let mid = alpha(72 + Int(TopFade.length))
+  #expect(mid > 60 && mid < 200)
+  let c = try #require(theme.canvas.converted(to: srgb, intent: .defaultIntent, options: nil)?.components)
+  let red = Double(px[0]) - Double(c[0]) * 255
+  let blue = Double(px[2]) - Double(c[2]) * 255
+  #expect(abs(red) < 2 && abs(blue) < 2)
 }

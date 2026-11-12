@@ -70,6 +70,8 @@ public struct Theme: Sendable {
   package var canvas: CGColor
   /// A picture behind the board, fixed to the view (an asset of the Note page build, by its source name): nil for none
   var backdrop: String?
+  /// The backdrop drawn (once per process; tens of milliseconds the first time)
+  package var backdropImage: CGImage? { backdrop.flatMap(Backdrop.image) }
   /// Card paper
   var surface: CGColor
   /// Card title bars (`Header.band`)
