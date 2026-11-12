@@ -2112,6 +2112,16 @@ test("noteLinkBox", async () => {
   await pg.locator(".md-bubble .md-linkbox").waitFor({ timeout: 5000 });
   const opened = await box();
   check("noteLinkBox a click opens the box", JSON.stringify(opened) === JSON.stringify(["nano-vllm", URL]), opened);
+  const link = (await pg.locator(".md-pm a.md-link", { hasText: "nano-vllm" }).boundingBox())!,
+    panel = (await pg
+      .locator(".md-bubble")
+      .filter({ has: pg.locator(".md-linkbox") })
+      .boundingBox())!;
+  check(
+    "noteLinkBox the box opens just under its link",
+    Math.abs(panel.x - link.x) < 5 && panel.y >= link.y + link.height && panel.y - (link.y + link.height) < 16,
+    { link, panel },
+  );
   await pg.screenshot({ path: path.join(OUT, "note-link-box-warm-ink.png") });
   await pg.locator(".md-bubble .md-linktext").fill("the scheduler");
   await pg.keyboard.press("Enter");

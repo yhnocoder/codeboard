@@ -223,7 +223,7 @@ test("headingLevelChip", async () => {
     out.chip === null &&
       inside.chip?.text === "H2" &&
       inside.chip.left >= 0 &&
-      inside.chip.right <= inside.head!.x &&
+      inside.chip.right <= inside.head!.x - 1 &&
       Math.abs(inside.chip.base - inside.head!.base) <= 0.75,
     inside,
   );

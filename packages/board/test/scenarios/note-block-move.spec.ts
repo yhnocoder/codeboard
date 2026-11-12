@@ -102,6 +102,7 @@ test("noteBlockMoveAcross", async () => {
   await h.page.keyboard.press("Home");
   await h.page.keyboard.press("Shift+ArrowDown");
   await h.page.keyboard.press("Shift+ArrowDown");
+  await until(h, "the formatting bubble", async () => (await h.page.locator(".md-bubble:visible").count()) === 1);
   await h.page.keyboard.down("ControlOrMeta");
   await h.page.mouse.move(p.x + 30, p.y + 6);
   await h.page.mouse.move(p.x + 32, p.y + 7);
@@ -118,6 +119,11 @@ test("noteBlockMoveAcross", async () => {
   await idle(h);
   await shot(h, "across-drag");
   const thumb = await box(h, ".bmv-g");
+  check(
+    "noteBlockMoveAcross the formatting bubble stands aside while blocks move",
+    (await h.page.locator(".md-bubble:visible").count()) === 0,
+    await h.page.locator(".md-bubble").count(),
+  );
   check(
     "noteBlockMoveAcross over a Note the copy is a small thumbnail at the pointer's lower right",
     thumb.x > o2.x + 40 && thumb.y > o2.y + 3 && thumb.width <= 133 && thumb.height <= 133,
