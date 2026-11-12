@@ -1,3 +1,4 @@
+import CodeBoardCanvas
 import Foundation
 import Testing
 
@@ -164,5 +165,9 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
     #expect(summary.title == "Imported 2 boards and 1 shared card")
     #expect(summary.subtitle == "1 file could not be imported. 3 items left out, which this version does not show yet.")
     #expect(summary.details == ["/old/z.json: bad", "sidenote: 1", "web card: 2"])
+  }
+
+  @Test func theBoardPanelTakesTheCanvasThemesBackground() {
+    #expect(ShellTheme.background(of: .warmInkLight) != nil)
   }
 }

@@ -1,12 +1,13 @@
 import AppKit
+import CodeBoardCanvas
 import SwiftUI
 
 /// The window chrome's colours and metrics, from the D2 mock; tuned on the running app, so only here
 enum ShellTheme {
   /// The window background, which the sidebar is part of
   static let ground = NSColor(srgbRed: 0.933, green: 0.914, blue: 0.878, alpha: 1)
-  /// The board panel and its top bar: the canvas colour
-  static let canvas = NSColor(srgbRed: 0.973, green: 0.965, blue: 0.945, alpha: 1)
+  /// The whole board panel, top bar included, is one surface with the canvas boards are shown on
+  static let board = background(of: .warmInkLight) ?? ground
   static let capsule = Color(red: 0.992, green: 0.988, blue: 0.980)
   static let ink = Color(red: 0.129, green: 0.122, blue: 0.106)
   static let muted = Color(red: 0.384, green: 0.369, blue: 0.337)
@@ -24,20 +25,35 @@ enum ShellTheme {
   static let rowHeight: CGFloat = 28
   static let rowRadius: CGFloat = 7
   static let indent: CGFloat = 18
-  static let tabMinWidth: CGFloat = 104
-  static let tabMaxWidth: CGFloat = 220
+  static let tabHeight: CGFloat = 28
+  /// The mock's 11, widened to hold the hover close button (16 wide, 4 in) on both sides so the title stays centred
+  static let tabPadding: CGFloat = 20
+  static let tabMinWidth: CGFloat = 72
+  static let tabMaxWidth: CGFloat = 200
+
+  /// `Theme` keeps its colours to the canvas module; until it exposes its background the shell reads the stored value,
+  /// so the panel can never drift from the canvas (a test fails if the field goes)
+  static func background(of theme: Theme) -> NSColor? {
+    guard let value = Mirror(reflecting: theme).children.first(where: { $0.label == "canvas" })?.value else {
+      return nil
+    }
+    let ref = value as CFTypeRef
+    return CFGetTypeID(ref) == CGColor.typeID ? NSColor(cgColor: unsafeDowncast(ref, to: CGColor.self)) : nil
+  }
 }
 
 extension View {
-  /// The white capsule of a selected row or tab
+  /// The white capsule of a selected row or tab: the mock's `box-shadow: 0 0 0 .5px shade/.12, 0 1px 3px shade/.10`, a
+  /// hairline ring wholly outside the fill and a soft drop
   func capsule(_ on: Bool) -> some View {
     background {
       if on {
         RoundedRectangle(cornerRadius: ShellTheme.rowRadius)
           .fill(ShellTheme.capsule)
           .shadow(color: ShellTheme.shade.opacity(0.10), radius: 1.5, x: 0, y: 1)
-          .overlay(
-            RoundedRectangle(cornerRadius: ShellTheme.rowRadius).stroke(ShellTheme.shade.opacity(0.12), lineWidth: 0.5))
+          .background(
+            RoundedRectangle(cornerRadius: ShellTheme.rowRadius + 0.5).fill(ShellTheme.shade.opacity(0.12))
+              .padding(-0.5))
       }
     }
   }

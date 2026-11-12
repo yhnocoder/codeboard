@@ -3,10 +3,12 @@ import CodeBoardCanvas
 import CodeBoardModel
 
 /// The board panel's content below the top bar: one canvas per tab, kept while the tab lives so switching back is
-/// instant; only the selected tab's is visible
+/// instant. One pane is on screen: the selected tab's once its board is drawn; until then the one before it stays, so
+/// opening a tab never passes through an empty canvas
 @MainActor final class BoardPanes: NSView {
   private let shell: Shell
   private var panes: [Tab.ID: Pane] = [:]
+  private var front: Tab.ID?
 
   init(shell: Shell) {
     self.shell = shell
@@ -32,18 +34,35 @@ import CodeBoardModel
         panes[tab.id] = pane
         pane.frame = bounds
         pane.autoresizingMask = [.width, .height]
+        pane.isHidden = true
+        pane.onReady = { [weak self] in self?.reveal() }
         addSubview(pane)
       }
       if reload || pane.board?.id != tab.board, let vault = shell.vault, let at = shell.board(tab.board) {
         pane.load(at, in: vault)
       }
-      pane.isHidden = tab.id != shell.selected
     }
+    reveal()
+  }
+
+  private func reveal() {
+    guard let selected = shell.selected, let pane = panes[selected] else { return place(nil) }
+    if pane.ready || front.flatMap({ panes[$0] }) == nil { place(selected) }
+  }
+
+  private func place(_ id: Tab.ID?) {
+    front = id
+    for (tab, pane) in panes { pane.isHidden = tab != id }
   }
 }
 
 private final class Pane: NSView {
   private(set) var board: Board?
+  /// Whether it may come on screen: its first board is drawn or failed, or `patience` has passed, after which an empty
+  /// canvas is better than a tab switch that seems ignored
+  private(set) var ready = false
+  var onReady: (() -> Void)?
+  private static let patience = Duration.milliseconds(250)
   private let canvas = CanvasView()
   private let problem = NSTextField(wrappingLabelWithString: "")
 
@@ -84,12 +103,26 @@ private final class Pane: NSView {
       canvas.isHidden = false
       guard new != board else { return }
       board = new
+      if !ready {
+        Task { [weak self] in
+          try? await Task.sleep(for: Self.patience)
+          self?.becomeReady()
+        }
+      }
       Task {
         do { try await canvas.show(at, in: vault, theme: .warmInkLight) } catch { fail(error) }
+        becomeReady()
       }
     } catch {
       fail(error)
+      becomeReady()
     }
+  }
+
+  private func becomeReady() {
+    guard !ready else { return }
+    ready = true
+    onReady?()
   }
 
   private func fail(_ error: any Error) {

@@ -111,7 +111,8 @@ private final class RootView: NSView {
   }
 }
 
-/// The floating board panel: a canvas-coloured top bar with the tabs over a hairline, the canvases below
+/// The floating board panel: one canvas-coloured surface (top bar, canvases, empty and error states alike), the tabs
+/// over a hairline at the top
 private final class Panel: NSView {
   let panes: BoardPanes
   var barHeight: CGFloat = 36 { didSet { needsLayout = true } }
@@ -133,7 +134,7 @@ private final class Panel: NSView {
     layer?.shadowRadius = 1.5
     layer?.shadowOffset = CGSize(width: 0, height: -1)
     clip.wantsLayer = true
-    clip.layer?.backgroundColor = ShellTheme.canvas.cgColor
+    clip.layer?.backgroundColor = ShellTheme.board.cgColor
     clip.layer?.cornerRadius = ShellTheme.panelRadius
     clip.layer?.cornerCurve = .continuous
     clip.layer?.masksToBounds = true

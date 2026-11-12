@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The board tabs in the panel's top bar: a click selects on mouse down, a drag reorders, the strip scrolls sideways
@@ -83,6 +84,8 @@ struct TabStrip: View {
   }
 }
 
+/// Sized to its title in the selected weight, so selecting never moves its neighbours. The close button appears on hover
+/// at the leading edge (where macOS tabs keep it), in padding wide enough to hold it, so nothing shifts or hides
 private struct TabItem: View {
   let title: String
   let selected: Bool
@@ -90,33 +93,39 @@ private struct TabItem: View {
 
   var body: some View {
     Hover { hovered in
-      HStack(spacing: 4) {
-        Text(title)
-          .font(.system(size: 12, weight: selected ? .semibold : .regular))
-          .foregroundStyle(selected ? ShellTheme.ink : ShellTheme.muted)
-          .lineLimit(1)
-          .truncationMode(.tail)
-          .frame(maxWidth: .infinity)
-        Button(action: close) {
-          Image(systemName: "xmark").font(.system(size: 8.5, weight: .semibold)).foregroundStyle(ShellTheme.muted)
-            .frame(width: 16, height: 16)
-            .background(Circle().fill(ShellTheme.shade.opacity(0.08)).opacity(hovered ? 1 : 0))
+      Text(title)
+        .font(.system(size: 12, weight: selected ? .semibold : .regular))
+        .foregroundStyle(selected ? ShellTheme.ink : ShellTheme.muted)
+        .lineLimit(1)
+        .truncationMode(.tail)
+        .padding(.horizontal, ShellTheme.tabPadding)
+        .frame(width: Self.width(of: title), height: ShellTheme.tabHeight)
+        .overlay(alignment: .leading) {
+          Hover { over in
+            Button(action: close) {
+              Image(systemName: "xmark").font(.system(size: 8.5, weight: .semibold)).foregroundStyle(ShellTheme.muted)
+                .frame(width: 16, height: 16)
+                .background(Circle().fill(ShellTheme.shade.opacity(over ? 0.1 : 0)))
+            }
+            .buttonStyle(.plain)
+          }
+          .padding(.leading, 4)
+          .opacity(hovered ? 1 : 0)
+          .help("Close Tab")
         }
-        .buttonStyle(.plain)
-        .opacity(hovered ? 1 : 0)
-        .help("Close Tab")
-      }
-      .padding(.leading, 11 + 20)
-      .padding(.trailing, 6)
-      .frame(minWidth: ShellTheme.tabMinWidth, maxWidth: ShellTheme.tabMaxWidth, minHeight: 28, maxHeight: 28)
-      .fixedSize()
-      .background {
-        if hovered && !selected {
-          RoundedRectangle(cornerRadius: ShellTheme.rowRadius).fill(ShellTheme.shade.opacity(0.05))
+        .background {
+          if hovered && !selected {
+            RoundedRectangle(cornerRadius: ShellTheme.rowRadius).fill(ShellTheme.shade.opacity(0.05))
+          }
         }
-      }
-      .capsule(selected)
-      .contentShape(Rectangle())
+        .capsule(selected)
+        .contentShape(Rectangle())
     }
+  }
+
+  private static func width(of title: String) -> CGFloat {
+    let font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+    let text = ceil(NSAttributedString(string: title, attributes: [.font: font]).size().width)
+    return min(max(text + 2 * ShellTheme.tabPadding, ShellTheme.tabMinWidth), ShellTheme.tabMaxWidth)
   }
 }
