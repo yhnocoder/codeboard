@@ -20,7 +20,7 @@ cd apps/android && ./gradlew :app:test :app:lintDebug :app:assembleDebug  # the 
 
 1. Bump `version` in `extensions/vscode/package.json` in a PR and merge it (add a `CHANGELOG.md` entry in the same PR).
 2. Push the tag `v<that version>`; a tag that does not match fails the release. CI builds the `.vsix` and screenshots into a draft GitHub Release.
-3. Review the draft (install its `.vsix`), then **Publish release**. That publishes exactly that `.vsix` to the VS Code Marketplace and Open VSX (the `publish` job, in the `marketplace` environment). To publish an already published release again, run the Release workflow by hand with `publish_tag` set to its tag.
+3. Review the draft (install its `.vsix`), then **Publish release**. That publishes exactly that `.vsix` to the VS Code Marketplace and Open VSX (the `publish` job, in the `marketplace` environment). To publish an already published release again, run the Release workflow by hand with `publish_tag` set to its tag. Publishing also puts the release's screenshots at `release/` on the `ci-screenshots` branch (the `pictures` job; the hand run with `publish_tag` does it again).
 
 One-time setup for the stores: create the Marketplace publisher `yhnocoder`; add an Azure DevOps personal access token (Organization: All accessible organizations, scope Marketplace: Manage) as the repository secret `VSCE_PAT`; create an Open VSX access token, add it as `OVSX_PAT`, and create the namespace once with `npx ovsx create-namespace yhnocoder -p <token>`. Until a secret is set, its store is skipped with a notice. Add required reviewers to the `marketplace` environment to approve each publish.
 

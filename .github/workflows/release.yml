@@ -173,3 +173,25 @@ jobs:
         run: |
           if [ -z "$OVSX_PAT" ]; then echo "::notice::OVSX_PAT is not set: skipped publishing to Open VSX."; exit 0; fi
           npx -y ovsx@1.2.0 publish "$VSIX" --skip-duplicate
+
+  # The published release's screenshots go to release/ on the ci-screenshots branch, a fixed address a page can show them from
+  # (the "latest release" address cannot serve: the Android viewer's releases are latest too, and carry no pictures)
+  pictures:
+    if: startsWith(github.event.release.tag_name || inputs.publish_tag, 'v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with: { sparse-checkout: tools/review/push-ci-branch.sh, sparse-checkout-cone-mode: false }
+      - name: Push the release's screenshots to the ci-screenshots branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.publish_tag }}
+        run: |
+          if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft)" != false ]; then
+            echo "::error::Release $TAG is not published (or does not exist). Publish the draft on GitHub first."; exit 1
+          fi
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "*.png" --dir out/release
+          tools/review/push-ci-branch.sh "release screenshots @ $TAG" out/release release
