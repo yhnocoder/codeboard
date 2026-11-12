@@ -267,6 +267,29 @@ describe("code card rules", () => {
   });
 });
 
+describe("moving blocks between Notes", () => {
+  it("writes both Notes and their layouts in one step; a Note left empty goes in that step", () => {
+    const { b, env, log } = setup([note("a", "A\n\nB"), note("c", "C"), note("e", "E")]);
+    C.moveNoteBlocks(env, [
+      { id: "a", md: "A", layout: null },
+      { id: "c", md: "B\n\nC", layout: { wrap: [0] } },
+    ]);
+    expect(log.edits).toBe(1);
+    expect(b.cards).toMatchObject([
+      { id: "a", md: "A" },
+      { id: "c", md: "B\n\nC", mdLayout: { wrap: [0] } },
+      { id: "e" },
+    ]);
+    C.moveNoteBlocks(env, [
+      { id: "e", md: "", layout: null },
+      { id: "a", md: "A\n\nE", layout: null },
+    ]);
+    expect(log.edits).toBe(2);
+    expect(b.cards.map((c) => c.id)).toEqual(["a", "c"]);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+});
+
 describe("new cards and questions with nothing written yet", () => {
   it("a new Note is no undo step until written; written empty it goes as if it never was", () => {
     const { b, env, log } = setup();

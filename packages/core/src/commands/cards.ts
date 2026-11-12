@@ -118,6 +118,25 @@ export function writeNote(env: CommandEnv, id: string, md: string, layout?: Note
 }
 
 /**
+ * Blocks moved out of one Note into another (or within one): each Note's new Markdown and layout (null = all automatic), written
+ * in one step, so one undo puts both back. A Note left empty goes away, in the same step
+ */
+export function moveNoteBlocks(env: CommandEnv, notes: { id: string; md: string; layout: NoteLayout | null }[]) {
+  env.edit((b) => {
+    for (const n of notes) {
+      const c = findCard(b, n.id)?.card;
+      if (c?.kind !== "note") continue;
+      if (!noteKept(c, n.md)) {
+        removeCards(b, [n.id]);
+        continue;
+      }
+      c.md = n.md;
+      c.mdLayout = n.layout ?? undefined;
+    }
+  });
+}
+
+/**
  * The first edit of a new card or question ended without anything written through writeNote, writeFreeCode or writeQuestion
  * (the editor closed unchanged): it stays when it has content after all (text that reached it another way), else it goes
  */
