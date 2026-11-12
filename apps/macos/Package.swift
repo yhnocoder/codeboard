@@ -8,6 +8,7 @@ let package = Package(
     .target(name: "CodeBoardModel"),
     .target(name: "CodeBoardCanvas", dependencies: ["CodeBoardModel"]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardCanvas"]),
+    .executableTarget(name: "CanvasBench", dependencies: ["CodeBoardCanvas"]),
     .testTarget(name: "CodeBoardModelTests", dependencies: ["CodeBoardModel"], resources: [.copy("Fixtures")]),
     .testTarget(name: "CodeBoardCanvasTests", dependencies: ["CodeBoardCanvas"]),
   ]
