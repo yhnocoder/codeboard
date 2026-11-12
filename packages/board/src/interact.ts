@@ -205,7 +205,7 @@ const armed = boardRef<{ id: string; kind: "note" | "free"; x: number; y: number
 export function cardClick(e: MouseEvent, id: string) {
   const a = armed.v;
   armed.v = null;
-  // a click on an animated image in the one selected Note selects the image (its filmstrip), not the text: no editing yet
+  // a click on an animated image in the one selected Note selects the image (its keys and bar stay), not the text: no editing yet
   const anim = playerAt(e.target as Element);
   if (anim && anim.key.card === id && !e.shiftKey && !e.metaKey && !e.ctrlKey && !justDragged()) {
     if (isSel(id) && sel.cards.length === 1 && editing()?.id !== id) selectAnim(anim);

@@ -5,17 +5,20 @@
 // inline in a shadow root, whose CSS / SMIL timeline is paused and moved. A GIF that has one frame, an SVG that does not animate
 // or an image whose bytes cannot be read (the web) stays the plain <img>.
 // Playing images stop off screen and while the camera moves, like animated stickers; reduced motion never plays one by itself.
-// The filmstrip of the selected image is ui/AnimStrip.tsx; selecting, keys and saving the playback are wired in installAnims
+// The control bar floating at the bottom of each image is ui/AnimBar.tsx; selecting, keys and saving the playback are wired in
+// installAnims
 import { createEffect, createRoot, createSignal, on, untrack, type Accessor } from "solid-js";
+import { render } from "solid-js/web";
 import { ask } from "../host";
 import { camMoving } from "../state/camera";
 import { reduceMotion } from "../state/motion";
 import { boardSignal } from "../state/root";
-import { sel } from "../state/selection";
+import { select, sel } from "../state/selection";
 import { editing } from "../state/ui";
 import { noteImageSrc } from "./images";
 import { GIF_MIN_DELAY } from "../state/timing";
 import { clockMs, inlineSvg } from "./animsvg";
+import { AnimBar, BAR_MIN_W } from "../ui/AnimBar";
 
 /** One image in a Note: its address as written and which of the Note's images with that address it is (from 0). whole: the image
  *  is an image card's (cards/Card.tsx), its playback stored on the card, and the card is all there is to select */
@@ -23,10 +26,6 @@ export type AnimKey = { card: string; src: string; nth: number; whole?: true };
 const same = (a: AnimKey, b: AnimKey) => a.card === b.card && a.src === b.src && a.nth === b.nth;
 const idOf = (k: AnimKey) => `${k.card}\n${k.nth}\n${k.src}`;
 
-/** Most thumbnails in a filmstrip: a longer GIF shows evenly spaced frames (each still jumps to its own frame) */
-const MAX_THUMBS = 60;
-/** Thumbnail height in board px (ui/AnimStrip.tsx lays them out); drawn at twice that for sharp screens */
-export const THUMB_H = 24;
 /** An SVG with data-steps="N" stands on each step this far into it (after the step's own movement), as the approved demo did */
 const STEP_HOLD = 0.6;
 /** An SVG without data-steps: this many stills, evenly spaced over its cycle */
@@ -116,8 +115,6 @@ function unwatch(el: Element, p: Player) {
   }
 }
 
-/** What a filmstrip shows: one element per still, and the frame each one stands for */
-export type Thumbs = { els: HTMLElement[]; frames: number[] };
 type Handoff = { frame: number; time?: number; want: boolean | null; still?: HTMLCanvasElement };
 
 export abstract class Player {
@@ -129,6 +126,12 @@ export abstract class Player {
   /** Played now by the user (while selected), or always (loop) */
   readonly on: Accessor<boolean>;
   private setOn: (v: boolean) => void;
+  /** The pointer is over the image or its bar */
+  readonly hovered: Accessor<boolean>;
+  private setHovered: (v: boolean) => void;
+  /** Played (true) or stood still (false) by the user; null: as the Markdown says */
+  readonly want: Accessor<boolean | null>;
+  private setWant: (v: boolean | null) => void;
   /** The Markdown's {loop=true} and {frame=N} (from 0), as this view was drawn with */
   readonly loop: boolean;
   readonly stored: number;
@@ -139,7 +142,7 @@ export abstract class Player {
   protected dead = false;
   protected live = false;
   private visible = true;
-  private want: boolean | null = null;
+  private bar?: () => void;
 
   constructor(
     readonly key: AnimKey,
@@ -150,9 +153,13 @@ export abstract class Player {
     [this.frame, this.setFrame] = createSignal(0);
     [this.count, this.setCount] = createSignal(0);
     [this.on, this.setOn] = createSignal(false);
+    [this.hovered, this.setHovered] = createSignal(false);
+    [this.want, this.setWant] = createSignal(handoff?.want ?? null);
     this.loop = img.hasAttribute("data-loop");
     this.stored = Math.max(0, (Number(img.dataset.frame) || 1) - 1);
-    this.want = handoff?.want ?? null;
+    // what the image showed passes on, unless it stood on its snapshot (neither played nor held by the user, not always playing)
+    // and the snapshot is another now (an undo, another window's edit): then it shows that one
+    if (handoff && handoff.want === null && !this.loop && handoff.frame !== this.stored) this.handoff = undefined;
     this.host = document.createElement("span");
     this.host.className = "md-anim";
     this.host.dataset.export = "strip";
@@ -163,12 +170,13 @@ export abstract class Player {
       ".b{position:absolute;top:6px;right:6px;padding:1px 7px;border-radius:999px;font:500 10.5px/1.5 system-ui,sans-serif;" +
       "color:var(--ink-2);background:var(--surface);box-shadow:0 0 0 1px var(--line);opacity:0;transition:opacity .14s;" +
       "pointer-events:none;white-space:nowrap}:host(.loop.hover) .b{opacity:1}</style>";
+    // the control bar (ui/AnimBar.tsx) is the host's own child, shown through the slot: the board's styles and tips reach it
     this.view = document.createElement("span");
     this.view.className = "v";
     const badge = document.createElement("span");
     badge.className = "b";
     badge.textContent = "Always playing";
-    sr.append(this.view, badge);
+    sr.append(this.view, badge, document.createElement("slot"));
   }
 
   /** Shows the image drawn here instead of the <img>, and starts following its place */
@@ -180,6 +188,24 @@ export abstract class Player {
     this.img.classList.add("md-animsrc");
     this.hoverEl.addEventListener("pointerenter", this.hover);
     this.hoverEl.addEventListener("pointerleave", this.hover);
+    // drawn again under a pointer that is already there (its Note repainted): hovered without a pointerenter
+    if (this.hoverEl.matches(":hover")) {
+      this.setHovered(true);
+      this.host.classList.add("hover");
+    }
+    this.bar = render(
+      () =>
+        AnimBar({
+          p: this,
+          selected: () => {
+            const k = selKey();
+            return !!k && same(k, this.key);
+          },
+          grab: () => grabAnim(this),
+          toggleLoop: () => toggleLoop(this),
+        }),
+      this.host,
+    );
     this.place();
     watch(this.img, this);
     watch(this.box, this);
@@ -190,7 +216,14 @@ export abstract class Player {
     seen.observe(this.host);
     bumpPlayers(0);
   }
-  private hover = (e: PointerEvent) => this.host.classList.toggle("hover", e.type === "pointerenter");
+  /** Over the image or its bar (moving between the two is not leaving) */
+  hover = (e: PointerEvent) => {
+    const to = e.relatedTarget as Node | null,
+      on = e.type === "pointerenter";
+    if (!on && to && (this.host.contains(to) || this.hoverEl.contains(to))) return;
+    this.setHovered(on);
+    this.host.classList.toggle("hover", on);
+  };
   /** An image card's <img> takes no pointer events (the card is dragged by its box): the box is what is hovered */
   private get hoverEl(): HTMLElement {
     return this.key.whole ? this.box : this.img;
@@ -210,16 +243,19 @@ export abstract class Player {
       x += (e as HTMLElement).offsetLeft;
       y += (e as HTMLElement).offsetTop;
     }
-    const s = this.host.style;
+    const s = this.host.style,
+      w = this.img.offsetWidth;
     s.left = `${x}px`;
     s.top = `${y}px`;
-    s.width = `${this.img.offsetWidth}px`;
+    s.width = `${w}px`;
     s.height = `${this.img.offsetHeight}px`;
+    // a narrow image's bar is drawn smaller, to fit inside it
+    s.setProperty("--fit", String(Math.max(0.3, Math.min(1, (w - 12) / BAR_MIN_W))));
   }
 
   /** Plays while it should: asked to (selected) or always (loop, not under reduced motion), on screen, the camera still */
   sync() {
-    const on = this.want ?? (this.loop && !reduceMotion());
+    const on = untrack(this.want) ?? (this.loop && !reduceMotion());
     this.setOn(on && this.count() > 1);
     const go = this.mounted && !this.dead && on && this.visible && !camMoving() && this.count() > 1;
     if (go === this.live) return;
@@ -235,14 +271,14 @@ export abstract class Player {
   }
   /** Play (true) or stand still (false) at the frame it is on; null: as the Markdown says (loop) */
   play(v: boolean | null) {
-    this.want = v;
+    this.setWant(v);
     this.sync();
   }
   /** Stand still on frame i (wraps around) */
   seek(i: number) {
     const n = this.count();
     if (!n) return;
-    this.want = false;
+    this.setWant(false);
     this.sync();
     this.show(((i % n) + n) % n);
   }
@@ -262,13 +298,11 @@ export abstract class Player {
     this.hoverEl.removeEventListener("pointerenter", this.hover);
     this.hoverEl.removeEventListener("pointerleave", this.hover);
     this.img.classList.remove("md-animsrc");
+    this.bar?.();
     this.host.remove();
-    return this.mounted ? { frame: this.frame(), want: this.want, ...this.passOn() } : undefined;
+    return this.mounted ? { frame: this.frame(), want: this.want(), ...this.passOn() } : undefined;
   }
   abstract tick(t: number): void;
-  abstract thumbs(): Thumbs;
-  /** Called by the filmstrip once the thumbnails are on the page */
-  thumbsShown() {}
   protected abstract start(): void;
   protected abstract stop(): void;
   protected abstract show(i: number): void;
@@ -282,27 +316,17 @@ const delayOf = (f: VideoFrame) => {
   const ms = (f.duration ?? 0) / 1000;
   return ms <= 10 ? GIF_MIN_DELAY : ms;
 };
-/** Thumbnails by GIF, filled once (content-addressed) */
-const gifThumbs = new Map<string, Thumbs>();
-function sample(n: number): number[] {
-  if (n <= MAX_THUMBS) return Array.from({ length: n }, (_, i) => i);
-  return Array.from({ length: MAX_THUMBS }, (_, k) => Math.round((k * (n - 1)) / (MAX_THUMBS - 1)));
-}
-const thumbWidth = (img: HTMLImageElement) => {
-  const w = img.naturalWidth || Number(img.getAttribute("width")) || 4,
-    h = img.naturalHeight || Number(img.getAttribute("height")) || 3;
-  return Math.max(18, Math.min(64, Math.round((THUMB_H * w) / h)));
-};
-
 class GifPlayer extends Player {
   private canvas = document.createElement("canvas");
   private dec: ImageDecoder | null = null;
-  private data: Uint8Array | null = null;
   private delays: number[] = [];
   private due = 0;
   private next: { frame: VideoFrame; i: number } | null = null;
   private busy = false;
   private gen = 0;
+  /** A still asked for while one is being decoded (a scrub outruns the decoder): only the last one asked is drawn */
+  private drawing = false;
+  private pending = -1;
 
   constructor(key: AnimKey, img: HTMLImageElement, box: HTMLElement, handoff?: Handoff) {
     super(key, img, box, handoff);
@@ -313,7 +337,6 @@ class GifPlayer extends Player {
     if (typeof ImageDecoder === "undefined") return;
     const b = await bytesOf(this.key.src);
     if (!b || this.dead) return;
-    this.data = b;
     const dec = new ImageDecoder({ data: b, type: "image/gif" });
     try {
       await dec.tracks.ready;
@@ -357,7 +380,17 @@ class GifPlayer extends Player {
     r.image.close();
   }
   protected show(i: number) {
-    void this.draw(i);
+    this.pending = i;
+    if (!this.drawing) void this.pump();
+  }
+  private async pump() {
+    this.drawing = true;
+    while (this.pending >= 0 && !this.dead) {
+      const i = this.pending;
+      this.pending = -1;
+      await this.draw(i);
+    }
+    this.drawing = false;
   }
   private prefetch() {
     if (this.busy || this.next || !this.dec || !this.live) return;
@@ -403,63 +436,15 @@ class GifPlayer extends Player {
   protected passOn() {
     return { still: this.canvas };
   }
-  thumbs(): Thumbs {
-    let t = gifThumbs.get(this.key.src);
-    if (t) return t;
-    const frames = sample(this.count()),
-      w = thumbWidth(this.img);
-    t = {
-      frames,
-      els: frames.map((i) => {
-        const c = document.createElement("canvas");
-        c.width = w * 2;
-        c.height = THUMB_H * 2;
-        c.title = `Frame ${i + 1}`;
-        return c;
-      }),
-    };
-    gifThumbs.set(this.key.src, t);
-    if (gifThumbs.size > BYTES_MAX) gifThumbs.delete(gifThumbs.keys().next().value!);
-    if (this.data) void fillThumbs(this.data, t);
-    return t;
-  }
-}
-/** Decodes the stills with a decoder of their own (in order: a GIF decodes forward), each scaled down off the main thread */
-async function fillThumbs(data: Uint8Array, t: Thumbs) {
-  const dec = new ImageDecoder({ data, type: "image/gif" });
-  try {
-    for (let k = 0; k < t.frames.length; k++) {
-      const c = t.els[k] as HTMLCanvasElement;
-      const r = await dec.decode({ frameIndex: t.frames[k] });
-      const bm = await createImageBitmap(r.image, {
-        resizeWidth: c.width,
-        resizeHeight: c.height,
-        resizeQuality: "medium",
-      });
-      r.image.close();
-      c.getContext("2d")!.drawImage(bm, 0, 0);
-      bm.close();
-    }
-  } catch {
-    /* a still that cannot be decoded stays blank */
-  } finally {
-    dec.close();
-  }
 }
 
 // ---------- SVG ----------
-const FREEZE = (ms: number) =>
-  `<style>:host{display:block;width:100%;height:100%}svg{display:block;width:100%;height:100%}` +
-  `svg,svg *{animation-play-state:paused!important;animation-delay:${-ms}ms!important}</style>`;
-
 class SvgPlayer extends Player {
   private svg: SVGSVGElement | null = null;
   private anims: Animation[] = [];
   private smil = false;
   private cycle = 1000;
   private hold = 0;
-  private markup = "";
-  private th: Thumbs | null = null;
   /** Standing still with its CSS animations cancelled (freeze), on time t; the elements' own style attributes, to give back */
   private frozen = false;
   private t = 0;
@@ -472,7 +457,6 @@ class SvgPlayer extends Player {
   private async init() {
     const m = await svgOf(this.key.src);
     if (!m || this.dead || !this.img.isConnected) return;
-    this.markup = m;
     const root = this.view.attachShadow({ mode: "open" });
     root.innerHTML = `<style>:host{display:block;width:100%;height:100%}svg{display:block;width:100%;height:100%}</style>${m}`;
     this.svg = root.querySelector("svg");
@@ -574,43 +558,6 @@ class SvgPlayer extends Player {
   protected passOn() {
     return { time: this.svg ? this.now() : undefined };
   }
-  thumbs(): Thumbs {
-    if (this.th) return this.th;
-    const w = thumbWidth(this.img),
-      frames = Array.from({ length: this.count() }, (_, i) => i);
-    this.th = {
-      frames,
-      els: frames.map((i) => {
-        const d = document.createElement("span");
-        d.className = "tsvg";
-        d.style.width = `${w}px`;
-        d.title = `Step ${i + 1}`;
-        // frozen by CSS (paused, a negative delay), so a still is right before it is on the page
-        d.attachShadow({ mode: "open" }).innerHTML = FREEZE(this.timeOf(i)) + this.markup;
-        return d;
-      }),
-    };
-    return this.th;
-  }
-  thumbsShown() {
-    if (!this.th) return;
-    this.th.els.forEach((d, i) => {
-      const s = d.shadowRoot?.querySelector("svg");
-      if (!s?.isConnected) return;
-      // a still's CSS animations, paused on its step, written into its elements and cancelled, as the image's own (freeze)
-      for (const a of d.shadowRoot!.getAnimations()) {
-        try {
-          a.commitStyles();
-        } catch {
-          continue;
-        }
-        a.cancel();
-      }
-      if (!this.smil) return;
-      s.pauseAnimations();
-      s.setCurrentTime(this.timeOf(i) / 1000);
-    });
-  }
 }
 
 /** Draws the animated images of a Note's static view `box` (just painted) as players; the ones it had before are dropped */
@@ -683,6 +630,14 @@ export function selectAnim(p: Player) {
   setSelKey(p.key);
 }
 
+/** A press on an image's bar: the image is selected first (a Note image: its Note becomes the one selected card), so what the bar
+ *  does is saved on deselect as a click and the keys would */
+function grabAnim(p: Player) {
+  if (editing()?.id === p.key.card) return;
+  if (sel.cards.length !== 1 || sel.cards[0] !== p.key.card) select({ cards: [p.key.card] });
+  selectAnim(p);
+}
+
 /** Saves an image's playback ({frame=N loop=true}) into its Note; wired by installAnims */
 export type SavePlayback = (k: AnimKey, p: { frame?: number | null; loop?: boolean }) => void;
 let save: SavePlayback = () => {};
@@ -700,13 +655,13 @@ function deselectAnim(keep = false) {
 }
 
 /** Always play this image, or stop that (standing on the frame it is on) */
-export function toggleLoop(p: Player) {
+function toggleLoop(p: Player) {
   if (p.loop) save(p.key, { loop: false, frame: p.frame() + 1 });
   else save(p.key, { loop: true });
 }
 
 /** Wiring (wire.ts): the camera stops and restarts what plays; the selected image deselects when its Note is no longer the one
- *  selected card, when the Note is edited, or on a press anywhere but the image and its filmstrip; saving the playback */
+ *  selected card, when the Note is edited, or on a press anywhere but the image and its bar; saving the playback */
 export function installAnims(o: { save: SavePlayback }) {
   save = o.save;
   createRoot(() => {
@@ -745,7 +700,7 @@ export function installAnims(o: { save: SavePlayback }) {
       const p = selectedAnim(),
         t = e.target as Element | null;
       // an image card's image goes with the card's selection only
-      if (p && !p.key.whole && t !== p.img && !t?.closest?.(".animstrip")) deselectAnim();
+      if (p && !p.key.whole && t !== p.img && !(t && p.host.contains(t))) deselectAnim();
     },
     true,
   );

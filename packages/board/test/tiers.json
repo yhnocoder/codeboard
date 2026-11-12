@@ -465,7 +465,7 @@
       "files": [
         "packages/board/src/md/{images,copies}.ts",
         "packages/board/src/md/{anim,animsvg}.ts",
-        "packages/board/src/ui/AnimStrip.tsx",
+        "packages/board/src/ui/AnimBar.tsx",
         "packages/board/src/notedrop.ts",
         "packages/board/src/actions/{imagedata,imageai}.ts",
         "packages/markdown/src/{image,picture}.ts",

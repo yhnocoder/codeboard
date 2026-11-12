@@ -8209,6 +8209,8 @@ mark.wdiff {
 }
 .md-anim {
   position: absolute;
+  /* over its <img> (positioned in a Note, later in the page): the bar in it takes the pointer */
+  z-index: 1;
   pointer-events: none;
   overflow: hidden;
   white-space: normal;
@@ -8216,62 +8218,135 @@ mark.wdiff {
 .md-anim.sel {
   box-shadow: 0 0 0 1.5px var(--accent);
 }
-/* The selected animated image's filmstrip (ui/AnimStrip.tsx): floats just under the image in the world layer, zooms with it */
-.animstrip {
+/* An animated image's control bar (ui/AnimBar.tsx): a glass capsule over the bottom of the image, inside its overlay (the host's
+   own child, through the overlay's slot), so it zooms with the board and changes no layout. The glass is the theme's tooltip
+   colours in light (dark glass, light ink); in dark the theme's surface and ink (still dark glass over the picture). A narrow
+   image draws it smaller (--fit, md/anim.ts). It takes the pointer only while shown */
+.md-anim {
+  --ab-glass: color-mix(in srgb, var(--tip-bg) 78%, transparent);
+  --ab-ink: var(--tip-ink);
+}
+:root[data-theme="dark"] .md-anim {
+  --ab-glass: color-mix(in srgb, var(--surface) 80%, transparent);
+  --ab-ink: var(--ink);
+}
+.animbar {
   position: absolute;
-  z-index: 20;
+  left: 50%;
+  bottom: 8px;
+  width: calc(min(320px, (100% - 12px) / var(--fit, 1)));
+  box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding: 5px 6px 5px 5px;
-  border-radius: 12px;
-  background: var(--surface);
-  box-shadow: var(--sh-float);
+  gap: 1px;
+  padding: 3px 6px 3px 4px;
+  border-radius: 999px;
+  background: var(--ab-glass);
+  color: var(--ab-ink);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.14),
+    0 6px 16px -6px rgba(0, 0, 0, 0.3);
   font: 13px / 1.4 var(--sys);
+  white-space: nowrap;
+  user-select: none;
+  contain: layout style;
+  transform-origin: bottom center;
+  transform: translate(-50%, 4px) scale(var(--fit, 1));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity calc(0.14s * var(--t)),
+    transform calc(0.14s * var(--t));
 }
-.animstrip .ib svg {
+.animbar.on {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(var(--fit, 1));
+  pointer-events: auto;
+}
+.animbar .ib {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: inherit;
+}
+.animbar .ib:hover {
+  background: color-mix(in srgb, var(--ab-ink) 16%, transparent);
+  color: inherit;
+}
+.animbar .ib:active {
+  background: color-mix(in srgb, var(--ab-ink) 24%, transparent);
+}
+.animbar .ib svg {
   width: 14px;
   height: 14px;
   fill: currentColor;
 }
-.animstrip .ib.loop[aria-pressed="true"] {
+.animbar .ib.loop[aria-pressed="true"] {
   background: var(--accent);
   color: var(--surface);
 }
-.animstrip .thumbs {
-  display: flex;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
-  overflow-x: auto;
-  padding: 2px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--hair) transparent;
+/* The scrubber: the fill scales and the knob's full-width carrier moves by a transform, so a drag lays nothing out */
+.animbar .scrub {
+  position: relative;
+  flex: 1 1 120px;
+  min-width: 40px;
+  height: 20px;
+  margin: 0 6px;
+  touch-action: none;
+  cursor: pointer;
 }
-.animstrip .thumbs > * {
+.animbar .scrub::before,
+.animbar .scrub > i {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 9px;
+  height: 2px;
+  border-radius: 1px;
+}
+.animbar .scrub::before {
+  background: color-mix(in srgb, var(--ab-ink) 38%, transparent);
+}
+.animbar .scrub > i {
+  background: var(--ab-ink);
+  transform-origin: left center;
+}
+.animbar .scrub > span {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.animbar .scrub b {
+  position: absolute;
+  left: -5px;
+  top: 5px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ab-ink);
+  transition: scale calc(0.1s * var(--t));
+}
+.animbar .scrub:hover b,
+.animbar .scrub.held b {
+  scale: 1.25;
+}
+.animbar .fno {
   flex: none;
-  display: block;
-  height: var(--th);
-  border-radius: 3px;
-  overflow: hidden;
-  opacity: 0.55;
-  background: var(--surface);
-  box-shadow: 0 0 0 1px var(--line);
-}
-.animstrip .thumbs > :hover {
-  opacity: 0.85;
-}
-.animstrip .thumbs > .on {
-  opacity: 1;
-  box-shadow: 0 0 0 1.5px var(--accent);
-}
-.animstrip .fno {
-  min-width: 36px;
-  padding: 0 2px;
+  width: 44px;
+  padding-right: 2px;
   text-align: right;
-  font: 500 11px var(--mono);
+  contain: strict;
+  height: 16px;
+  font: 500 11px / 16px var(--mono);
   font-variant-numeric: tabular-nums;
-  color: var(--ink-2);
+  opacity: 0.9;
+}
+.animbar .fno::after {
+  content: attr(data-n);
 }
 
 /* Zoomed-out summaries (#130; canvas/Summaries.tsx, state/summary.ts). The card level (Marks included), the cards that stay as

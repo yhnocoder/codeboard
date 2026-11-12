@@ -1,18 +1,22 @@
 // Animated images in a Note (GIFs, SVGs animated by their own CSS / SMIL), on the real host with the pictures in its assets/:
-//   animGifSnapshot           a GIF stands still on its first frame (its snapshot), drawn over the hidden <img>, and keeps still
-//   animGifFilmstrip          clicking the GIF selects it: a filmstrip of its frames floats under it (over the caption, the card's
-//                             size unchanged); a still jumps there, Space plays and pauses, ← → step; deselecting saves the frame
-//                             it stopped on as {frame=N}, which the next view starts on; zoomed out under 50% the strip hides
-//   animLoopAlwaysPlays       the strip's loop button saves {loop=true}: the GIF plays after deselecting, with an "Always playing"
+//   animGifSnapshot           a GIF stands still on its first frame (its snapshot), drawn over the hidden <img>, and keeps still;
+//                             its control bar stays hidden until the image is hovered
+//   animGifHoverBar           hovering the GIF fades in a capsule over the bottom of the image (inside it, the card's size
+//                             unchanged) that fades out again when the pointer leaves; its buttons step and play (selecting the
+//                             image), dragging its scrubber stands the image on that frame (also dragged off the image), Home /
+//                             End go to the first / last frame and ← → step without nudging; zoomed out under 50% it hides;
+//                             deselecting saves the frame it stopped on as {frame=N}, one undo step, which the next view starts on
+//   animLoopAlwaysPlays       the bar's loop button saves {loop=true}: the GIF plays after deselecting, with an "Always playing"
 //                             badge on hover; turning it off saves the frame it stopped on; reduced motion never starts it
 //   animSvgInline             an SVG animated by CSS keyframes and SMIL is drawn inline (shadow root), cleaned (no script,
-//                             handlers or outside references), paused on its step (data-steps), stepped by its filmstrip, and its
+//                             handlers or outside references), paused on its step (data-steps), stepped by its bar, and its
 //                             colours follow the board's light / dark theme; a still SVG stays an <img>
-//   animImageCardFilmstrip    an image card's GIF stands on the card's stored frame; selecting the card opens the same filmstrip
-//                             under the image (thumbs, ← →, Space, hidden zoomed out); deselecting stores the frame on the card;
-//                             the loop button stores loop and the GIF plays unselected with the badge; an HTML snapshot taken
-//                             while it plays has the plain <img>
-//   animImageCardSvg          an image card's animated SVG is drawn inline and paused, stepped by its filmstrip, the step stored;
+//   animBarFollowsTheme       the bar's glass is the theme's own (Ink Wash: its tooltip colours in light, its surface in dark)
+//   animImageCardHoverBar     an image card's GIF stands on the card's stored frame; hovering shows the same bar, selecting the
+//                             card keeps it (scrub, Home / End, ← →, Space; ↑ ↓ still nudge the card; hidden zoomed out);
+//                             deselecting stores the frame on the card (one undo step); the loop button stores loop and the GIF
+//                             plays unselected with the badge; an HTML snapshot taken while it plays has the plain <img>
+//   animImageCardSvg          an image card's animated SVG is drawn inline and paused, stepped by its bar, the step stored;
 //                             standing still, nothing in it is a compositor layer (its CSS animations frozen into its style)
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -93,9 +97,9 @@ async function animHost(md: string, o: { light?: boolean } = {}) {
 }
 /** The board on the real host with the pictures in its assets/; Export's save dialog writes into a temp file (exported: what was
  *  written, once it is) */
-async function openAnim(b: Board, o: { light?: boolean } = {}) {
+async function openAnim(b: Board, o: { light?: boolean; theme?: string } = {}) {
   const run = await hostBoards([b], {
-    page: { light: o.light ?? true, w: 1100, h: 760, settings: { theme: "warm-ink" } },
+    page: { light: o.light ?? true, w: 1100, h: 760, settings: { theme: o.theme ?? "warm-ink" } },
   });
   const dir = run.host.store.assetsDir(),
     saved = path.join(run.host.store.dir(), "export.html");
@@ -132,18 +136,39 @@ const gifShown = (h: Host, inside = ".card .nbody") =>
     },
     [BAR_Y, inside] as const,
   );
-const strip = (h: Host) =>
-  h.page.evaluate(() => {
-    const s = document.querySelector<HTMLElement>(".animstrip");
-    if (!s) return null;
+/** The control bar over the image in `inside`: shown (faded in, taking the pointer), its frame number, loop button, scrubbing */
+const bar = (h: Host, inside = ".card .nbody") =>
+  h.page.evaluate((inside) => {
+    const b = document.querySelector<HTMLElement>(`${inside} .md-anim .animbar`);
+    if (!b) return null;
+    const cs = getComputedStyle(b);
     return {
-      thumbs: s.querySelectorAll(".thumbs > *").length,
-      on: [...s.querySelectorAll(".thumbs > *")].findIndex((t) => t.classList.contains("on")),
-      fno: s.querySelector(".fno")?.textContent ?? "",
-      loop: s.querySelector(".loop")?.getAttribute("aria-pressed"),
+      shown: b.classList.contains("on") && cs.opacity === "1" && cs.pointerEvents === "auto",
+      gone: !b.classList.contains("on") && cs.opacity === "0",
+      fno: b.querySelector<HTMLElement>(".fno")?.dataset.n ?? "",
+      loop: b.querySelector(".loop")?.getAttribute("aria-pressed"),
+      held: !!b.querySelector(".scrub.held"),
+      bg: cs.backgroundColor,
     };
+  }, inside);
+const barShown = (h: Host, inside?: string) =>
+  until(h, "the bar fades in", async () => {
+    const b = await bar(h, inside);
+    return b?.shown ? b : null;
   });
+const barGone = (h: Host, inside?: string) =>
+  until(h, "the bar fades out", async () => {
+    const b = await bar(h, inside);
+    return b?.gone ? b : null;
+  });
+const btn = (h: Host, label: string, inside = ".card .nbody") =>
+  h.page.locator(`${inside} .animbar [aria-label="${label}"]`);
+/** Waits until the GIF in `inside` shows frame f (from 0) */
+const onFrame = (h: Host, f: number, what: string, inside?: string) =>
+  until(h, what, async () => ((await gifShown(h, inside)).frame === f ? true : null)).catch(() => false);
 const imgBox = (h: Host) => h.page.locator(".card .nbody img").first().boundingBox();
+const center = (b: { x: number; y: number; width: number; height: number }) =>
+  [b.x + b.width / 2, b.y + b.height / 2] as const;
 
 test("animGifSnapshot", async () => {
   const h = await animHost(`Tiles\n\n![](assets/${GIF_FILE} "Fig 1: tiles")\n\nAfter.`);
@@ -155,120 +180,164 @@ test("animGifSnapshot", async () => {
   const b = await gifShown(h);
   check("anim-gif-snapshot-drawn", !!a && a.hidden && a.over, a);
   check("anim-gif-snapshot-first-frame", a?.frame === 0 && b.frame === 0, { a, b });
+  check("anim-gif-bar-hidden-unhovered", (await bar(h))?.gone === true, await bar(h));
   await shot(h, "105-gif-snapshot");
 });
 
 /** A far Note makes the board big enough to zoom out below 50%: on a small board the zoom floor is 50% (core summaryMinZoom),
- *  where the filmstrip still shows */
+ *  where the bar still shows */
 const farNote = (b: Board) => {
   put(b, { id: "far", kind: "note", md: "Far away", look: "note" } as NoteCard, 3000, 2000, 200);
   return b;
 };
 
-test("animGifFilmstrip", async () => {
-  const { h } = await openAnim(farNote(board(`Tiles\n\n![](assets/${GIF_FILE} "Fig 1: tiles")\n\nAfter.`)));
+test("animGifHoverBar", async () => {
+  const MD = `Tiles\n\n![](assets/${GIF_FILE} "Fig 1: tiles")\n\nAfter.`;
+  const { h } = await openAnim(farNote(board(MD)));
+  const pg = h.page;
   await until(h, "the GIF is drawn", async () => ((await gifShown(h)).frame >= 0 ? true : null));
-  const card0 = await h.page.locator('.card[data-id="n1"]').boundingBox();
+  const card0 = await pg.locator('.card[data-id="n1"]').boundingBox();
   const box = (await imgBox(h))!;
-  await h.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  const s0 = await until(h, "the filmstrip opens", () => strip(h)).catch(() => null);
-  const sb = await h.page.locator(".animstrip").boundingBox();
-  const card1 = await h.page.locator('.card[data-id="n1"]').boundingBox();
-  check("anim-strip-shows-frames", s0?.thumbs === N && s0.fno === `1/${N}` && s0.on === 0, s0);
+
+  // hovering fades the bar in over the bottom of the image, inside it; leaving fades it out
+  await pg.mouse.move(...center(box));
+  const b0 = await barShown(h).catch(() => null);
+  const bb = await pg.locator(".card .nbody .animbar").boundingBox();
+  const card1 = await pg.locator('.card[data-id="n1"]').boundingBox();
+  check("anim-bar-shows-on-hover", b0?.fno === `1/${N}` && b0.loop === "false", b0);
   check(
-    "anim-strip-floats-under-image",
-    !!sb && Math.abs(sb.y - (box.y + box.height) - 8) < 2 && card0?.height === card1?.height,
-    { sb, box, card0, card1 },
+    "anim-bar-floats-over-image-bottom",
+    !!bb &&
+      Math.abs(bb.y + bb.height - (box.y + box.height - 8)) < 2 &&
+      Math.abs(bb.x + bb.width / 2 - (box.x + box.width / 2)) < 2 &&
+      bb.width <= box.width &&
+      card0?.height === card1?.height,
+    { bb, box, card0, card1 },
   );
-  check("anim-click-image-not-editing", (await h.page.locator(".nbody[contenteditable]").count()) === 0);
-  await shot(h, "102-gif-filmstrip");
+  await shot(h, "102-gif-hover-bar");
+  await pg.mouse.move(900, 700);
+  const g0 = await barGone(h).catch(() => null);
+  check("anim-bar-hides-on-leave", !!g0 && h.board().cards.length === 2, g0);
 
-  await h.page.locator(".animstrip .thumbs > *").nth(9).click();
-  const at10 = await until(h, "the GIF shows frame 10", async () => {
-    const g = await gifShown(h);
-    return g.frame === 9 ? g : null;
-  }).catch(() => null);
-  check("anim-thumb-jumps-to-frame", !!at10 && (await strip(h))?.fno === `10/${N}`, at10, await strip(h));
-  await h.page.keyboard.press("ArrowRight");
-  const r = await until(h, "→ steps to frame 11", async () => ((await gifShown(h)).frame === 10 ? true : null)).catch(
+  // its buttons select the image (its Note the one card selected) and step / play it
+  await pg.mouse.move(...center(box));
+  await barShown(h);
+  await btn(h, "Next Frame").click();
+  await btn(h, "Next Frame").click();
+  const n2 = await onFrame(h, 2, "Next Frame twice shows frame 3");
+  await btn(h, "Previous Frame").click();
+  const p1 = await onFrame(h, 1, "Previous Frame shows frame 2");
+  check(
+    "anim-bar-steps-and-selects",
+    n2 && p1 && (await bar(h))?.fno === `2/${N}` && (await pg.locator(".card.sel").count()) === 1,
+    await bar(h),
+  );
+  check("anim-bar-click-not-editing", (await pg.locator(".nbody[contenteditable]").count()) === 0);
+  await btn(h, "Play").click();
+  const plays = await until(h, "Play plays", async () => ((await gifShown(h)).frame > 2 ? true : null)).catch(
     () => false,
   );
-  await h.page.keyboard.press("ArrowLeft");
-  await h.page.keyboard.press("ArrowLeft");
-  const l = await until(h, "← ← steps to frame 9", async () => ((await gifShown(h)).frame === 8 ? true : null)).catch(
-    () => false,
-  );
-  check("anim-arrows-step", r && l, await gifShown(h));
-  check("anim-arrows-do-not-nudge", h.board().place.n1.x === 80, h.board().place.n1);
-
-  await h.page.keyboard.press(" ");
-  const moved = await until(h, "Space plays", async () => ((await gifShown(h)).frame > 9 ? true : null)).catch(
-    () => false,
-  );
-  await h.page.keyboard.press(" ");
-  const p1 = (await gifShown(h)).frame;
+  await btn(h, "Pause").click();
+  const q1 = (await gifShown(h)).frame;
   await hold(h, GIF_MIN_DELAY * 3, "a paused GIF stays on its frame");
-  const p2 = (await gifShown(h)).frame;
-  check("anim-space-plays-and-pauses", moved && p1 === p2 && p1 > 8, { moved, p1, p2 });
+  const q2 = (await gifShown(h)).frame;
+  check("anim-bar-plays-and-pauses", plays && q1 === q2 && q1 > 1, { plays, q1, q2 });
 
-  // zoomed out under 50% (four steps of ×0.8) the strip hides; back in it returns
-  for (let i = 0; i < 4; i++) await h.page.keyboard.press("ControlOrMeta+Minus");
-  await idle(h);
-  const small = await strip(h);
-  for (let i = 0; i < 4; i++) await h.page.keyboard.press("ControlOrMeta+Equal");
-  await idle(h);
-  const back = await strip(h);
-  check("anim-strip-hides-zoomed-out", small === null && back !== null, small, back);
-
-  // deselect: the frame it stopped on is its snapshot, saved in the Markdown
-  await h.page.mouse.click(900, 700);
-  const md = await until(h, "the frame is saved", () => (/\{frame=\d+\}/.test(noteMd(h)) ? noteMd(h) : null)).catch(
-    () => noteMd(h),
+  // dragging the scrubber stands the image on the frame under the pointer, held even off the image
+  const sc = (await pg.locator(".card .nbody .animbar .scrub").boundingBox())!;
+  const cy = sc.y + sc.height / 2;
+  await pg.mouse.move(sc.x + 1, cy);
+  await pg.mouse.down();
+  const s0 = await onFrame(h, 0, "pressing the scrubber's start shows frame 1");
+  await pg.mouse.move(sc.x + (sc.width * 10) / (N - 1), cy, { steps: 4 });
+  const s10 = await onFrame(h, 10, "dragging to 10/23 of the scrubber shows frame 11");
+  const mid = await bar(h);
+  await shot(h, "102-gif-scrub", "now");
+  await pg.mouse.move(sc.x + sc.width + 40, box.y + box.height + 80, { steps: 3 });
+  const sEnd = await onFrame(h, N - 1, "past the end, off the image, shows the last frame");
+  const off = await bar(h);
+  await pg.mouse.up();
+  check(
+    "anim-bar-scrub-drags-frame",
+    s0 && s10 && sEnd && mid?.fno === `11/${N}` && !!mid.held && !!off?.shown && off.held,
+    { s0, s10, sEnd, mid, off },
   );
   check(
-    "anim-deselect-saves-frame",
-    md.includes(`![](assets/${GIF_FILE} "Fig 1: tiles"){frame=${p2 + 1}}`) && (await strip(h)) === null,
-    md,
+    "anim-bar-scrub-not-dragging-card",
+    h.board().place.n1.x === 80 && h.board().place.n1.y === 60,
+    h.board().place.n1,
   );
-  const again = await until(h, "the redrawn GIF stands on the saved frame", async () => {
-    const g = await gifShown(h);
-    return g.frame === p2 ? g : null;
-  }).catch(() => null);
-  check("anim-saved-frame-shown", !!again, await gifShown(h));
+
+  // the keys of the selected image: Home / End, ← →; the bar stays while it is selected, the pointer away
+  await pg.keyboard.press("Home");
+  const home = await onFrame(h, 0, "Home shows the first frame");
+  await pg.keyboard.press("End");
+  const end = await onFrame(h, N - 1, "End shows the last frame");
+  await pg.keyboard.press("ArrowLeft");
+  await pg.keyboard.press("ArrowLeft");
+  const left = await onFrame(h, N - 3, "← ← steps back two frames");
+  await pg.keyboard.press("ArrowRight");
+  const right = await onFrame(h, N - 2, "→ steps on one");
+  check("anim-keys-home-end-arrows", home && end && left && right, await gifShown(h));
+  check("anim-arrows-do-not-nudge", h.board().place.n1.x === 80, h.board().place.n1);
+  check("anim-bar-stays-while-selected", (await bar(h))?.shown === true, await bar(h));
+
+  // zoomed out under 50% (four steps of ×0.8) the bar hides; back in it returns
+  for (let i = 0; i < 4; i++) await pg.keyboard.press("ControlOrMeta+Minus");
+  await idle(h);
+  const small = await bar(h);
+  for (let i = 0; i < 4; i++) await pg.keyboard.press("ControlOrMeta+Equal");
+  await idle(h);
+  const back = await bar(h);
+  check("anim-bar-hides-zoomed-out", !!small?.gone && !!back?.shown, small, back);
+
+  // deselect: the frame it stopped on is its snapshot, saved in the Markdown as one undo step
+  await pg.mouse.click(900, 700);
+  const saved = `![](assets/${GIF_FILE} "Fig 1: tiles"){frame=${N - 1}}`;
+  const md = await until(h, "the frame is saved", () => (noteMd(h).includes(saved) ? noteMd(h) : null)).catch(() =>
+    noteMd(h),
+  );
+  const gone = await barGone(h).catch(() => null);
+  check("anim-deselect-saves-frame", md.includes(saved) && !!gone, md);
+  const again = await onFrame(h, N - 2, "the redrawn GIF stands on the saved frame");
+  check("anim-saved-frame-shown", again, await gifShown(h));
+  await pg.keyboard.press("ControlOrMeta+z");
+  const undone = await until(h, "undo takes the frame back", () => (noteMd(h) === MD ? true : null)).catch(() => false);
+  const first = await onFrame(h, 0, "after undo the GIF stands on its first frame again");
+  check("anim-deselect-one-undo-step", undone && first, noteMd(h));
 });
 
 test("animLoopAlwaysPlays", async () => {
   const h = await animHost(`![](assets/${GIF_FILE})`);
   await until(h, "the GIF is drawn", async () => ((await gifShown(h)).frame >= 0 ? true : null));
   const box = (await imgBox(h))!;
-  await h.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await until(h, "the filmstrip opens", () => strip(h));
-  await h.page.locator(".animstrip .loop").click();
+  await h.page.mouse.move(...center(box));
+  await barShown(h);
+  await btn(h, "Always Play").click();
   const md = await until(h, "loop is saved", () => (noteMd(h).includes("{loop=true}") ? noteMd(h) : null)).catch(() =>
     noteMd(h),
   );
   check("anim-loop-saved", md === `![](assets/${GIF_FILE}){loop=true}`, md);
   await h.page.mouse.click(900, 700);
-  await until(h, "the strip closes", async () => ((await strip(h)) === null ? true : null));
+  await barGone(h);
   const f0 = (await gifShown(h)).frame;
   const plays = await until(h, "an always-playing GIF moves on unselected", async () =>
     (await gifShown(h)).frame !== f0 ? true : null,
   ).catch(() => false);
   check("anim-loop-plays-unselected", plays, f0, await gifShown(h));
-  await h.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await h.page.mouse.move(...center(box));
   const badge = await until(h, "the always-play badge shows on hover", () =>
     h.page.evaluate(() => {
       const b = document.querySelector(".md-anim")?.shadowRoot?.querySelector<HTMLElement>(".b");
       return b && getComputedStyle(b).opacity === "1" ? b.textContent : null;
     }),
   ).catch(() => null);
-  check("anim-loop-badge-on-hover", badge === "Always playing", badge);
+  const lb = await barShown(h).catch(() => null);
+  check("anim-loop-badge-on-hover", badge === "Always playing" && lb?.loop === "true", badge, lb);
   await shot(h, "105-loop-badge", "now");
 
   // turning it off stands it on the frame it is on, saved with it
-  await h.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await until(h, "the filmstrip opens", () => strip(h));
-  await h.page.locator(".animstrip .loop").click();
+  await btn(h, "Always Play").click();
   const off = await until(h, "loop off is saved", () => (noteMd(h).includes("loop") ? null : noteMd(h))).catch(() =>
     noteMd(h),
   );
@@ -276,11 +345,11 @@ test("animLoopAlwaysPlays", async () => {
 
   // reduced motion: an always-playing image does not start by itself
   await h.page.emulateMedia({ reducedMotion: "reduce" });
-  await until(h, "the filmstrip is back", () => strip(h));
-  await h.page.locator(".animstrip .loop").click();
+  await barShown(h);
+  await btn(h, "Always Play").click();
   await until(h, "loop is saved again", () => (noteMd(h).includes("loop=true}") ? true : null));
   await h.page.mouse.click(900, 700);
-  await until(h, "the strip closes", async () => ((await strip(h)) === null ? true : null));
+  await barGone(h);
   const r0 = (await gifShown(h)).frame;
   await hold(h, GIF_MIN_DELAY * 4, "an always-playing GIF would move on, but not under reduced motion");
   const r1 = (await gifShown(h)).frame;
@@ -331,22 +400,16 @@ test("animSvgInline", async () => {
   check("anim-svg-still-stays-img", still === 1, still);
 
   const box = (await imgBox(h))!;
-  await h.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  const st = await until(h, "the filmstrip opens", () => strip(h)).catch(() => null);
-  check("anim-svg-strip-steps", st?.thumbs === 8 && st.fno === "1/8", st);
-  const thumb = await h.page.evaluate(() => {
-    const t = document.querySelectorAll<HTMLElement>(".animstrip .thumbs > *")[3];
-    const r = t?.shadowRoot?.querySelector<SVGRectElement>("rect.hop");
-    return r ? Math.round(new DOMMatrix(getComputedStyle(r).transform).m41) : null;
-  });
-  check("anim-svg-thumb-frozen-on-its-step", thumb === 120, thumb);
-  await h.page.locator(".animstrip .thumbs > *").nth(3).click();
+  await h.page.mouse.move(...center(box));
+  const st = await barShown(h).catch(() => null);
+  check("anim-svg-bar-steps", st?.fno === "1/8", st);
+  for (let i = 0; i < 3; i++) await btn(h, "Next Frame").click();
   const s4 = await until(h, "the SVG stands on step 4", async () => {
     const v = await inner();
     return v?.x === 120 ? v : null;
   }).catch(() => null);
-  check("anim-svg-thumb-seeks", !!s4 && s4.frozen && s4.smil === 1800 && (await strip(h))?.fno === "4/8", s4);
-  await shot(h, "104-svg-filmstrip-light");
+  check("anim-svg-bar-seeks", !!s4 && s4.frozen && s4.smil === 1800 && (await bar(h))?.fno === "4/8", s4);
+  await shot(h, "104-svg-bar-light");
   check("anim-svg-follows-theme-light", !!s4 && s4.fill === hexRgb(s4.ink), s4);
   await h.page.evaluate(() => document.body.classList.replace("vscode-light", "vscode-dark"));
   const dark = await until(h, "the theme turns dark", async () => {
@@ -354,7 +417,36 @@ test("animSvgInline", async () => {
     return v && v.ink !== s4?.ink ? v : null;
   }).catch(() => null);
   check("anim-svg-follows-theme-dark", !!dark && dark.fill === hexRgb(dark.ink) && dark.fill !== s4?.fill, dark, s4);
-  await shot(h, "104-svg-filmstrip-dark");
+  await shot(h, "104-svg-bar-dark");
+});
+
+test("animBarFollowsTheme", async () => {
+  const { h } = await openAnim(board(`Tiles\n\n![](assets/${GIF_FILE} "Fig 1: tiles")\n\nAfter.`), {
+    theme: "ink-wash",
+  });
+  await until(h, "the GIF is drawn", async () => ((await gifShown(h)).frame >= 0 ? true : null));
+  /** The glass the theme asks for: its tooltip colour (light) or surface (dark), at the bar's opacity */
+  const want = (dark: boolean) =>
+    h.page.evaluate((dark) => {
+      const probe = document.createElement("i");
+      probe.style.color = `color-mix(in srgb, var(${dark ? "--surface" : "--tip-bg"}) ${dark ? 80 : 78}%, transparent)`;
+      document.querySelector(".card .nbody")!.append(probe);
+      const c = getComputedStyle(probe).color;
+      probe.remove();
+      return c;
+    }, dark);
+  await h.page.mouse.move(...center((await imgBox(h))!));
+  const lt = await barShown(h).catch(() => null);
+  const wl = await want(false);
+  await shot(h, "107-bar-ink-wash-light");
+  await h.page.evaluate(() => document.body.classList.replace("vscode-light", "vscode-dark"));
+  const dk = await until(h, "the bar's glass turns dark", async () => {
+    const b = await bar(h);
+    return b?.shown && b.bg !== lt?.bg ? b : null;
+  }).catch(() => null);
+  const wd = await want(true);
+  await shot(h, "107-bar-ink-wash-dark");
+  check("anim-bar-theme-glass", !!lt && lt.bg === wl && !!dk && dk.bg === wd && wl !== wd, { lt, wl, dk, wd });
 });
 
 /** A board with one image card (cards/Card.tsx), its playback as given */
@@ -367,7 +459,7 @@ function cardBoard(c: Partial<ImageCard> & { src: string }): Board {
 const CARD = '.card[data-id="i1"] .imgb';
 const imageCard = (h: Host) => h.board().cards.find((c) => c.id === "i1") as ImageCard;
 
-test("animImageCardFilmstrip", async () => {
+test("animImageCardHoverBar", async () => {
   const { h, exported } = await openAnim(farNote(cardBoard({ src: GIF_FILE, frame: 6 })));
   const pg = h.page;
   const a = await until(h, "the card's GIF is drawn", async () => {
@@ -378,32 +470,58 @@ test("animImageCardFilmstrip", async () => {
   const b = await gifShown(h, CARD);
   check("anim-card-stands-on-stored-frame", !!a && a.hidden && a.over && a.frame === 5 && b.frame === 5, { a, b });
 
-  // selecting the card opens the filmstrip under its image
+  // hovering the card shows the bar over the bottom of its image
   const box = (await pg.locator(CARD).boundingBox())!;
-  await pg.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  const s0 = await until(h, "the filmstrip opens", () => strip(h)).catch(() => null);
-  const sb = await pg.locator(".animstrip").boundingBox();
-  check("anim-card-strip-shows-frames", s0?.thumbs === N && s0.fno === `6/${N}` && s0.on === 5, s0);
+  await pg.mouse.move(...center(box));
+  const b0 = await barShown(h, CARD).catch(() => null);
+  const bb = await pg.locator(`${CARD} .animbar`).boundingBox();
   check(
-    "anim-card-strip-under-image",
-    !!sb &&
-      Math.abs(sb.y - (box.y + box.height) - 8) < 2 &&
-      Math.abs(sb.x + sb.width / 2 - (box.x + box.width / 2)) < 2,
-    { sb, box },
+    "anim-card-bar-over-image",
+    b0?.fno === `6/${N}` &&
+      !!bb &&
+      Math.abs(bb.y + bb.height - (box.y + box.height - 8)) < 2 &&
+      Math.abs(bb.x + bb.width / 2 - (box.x + box.width / 2)) < 2,
+    { b0, bb, box },
   );
-  await shot(h, "106-card-gif-filmstrip");
+  await shot(h, "106-card-gif-hover-bar", "now");
 
-  await pg.locator(".animstrip .thumbs > *").nth(9).click();
-  const at10 = await until(h, "the GIF shows frame 10", async () =>
-    (await gifShown(h, CARD)).frame === 9 ? true : null,
-  ).catch(() => false);
+  // selecting the card selects its image: scrub, Home / End, ← →, Space; ↑ ↓ still nudge the card
+  await pg.mouse.click(...center(box));
+  await until(h, "the card is selected", async () =>
+    (await pg.locator('.card.sel[data-id="i1"]').count()) ? true : null,
+  );
+  const sc = (await pg.locator(`${CARD} .animbar .scrub`).boundingBox())!;
+  const cy = sc.y + sc.height / 2;
+  await pg.mouse.move(sc.x + (sc.width * 9) / (N - 1), cy);
+  await pg.mouse.down();
+  const s9 = await onFrame(h, 9, "pressing 9/23 into the scrubber shows frame 10", CARD);
+  await pg.mouse.move(sc.x + (sc.width * 14) / (N - 1), cy, { steps: 3 });
+  const s14 = await onFrame(h, 14, "dragging to 14/23 shows frame 15", CARD);
+  await pg.mouse.up();
+  check(
+    "anim-card-scrub",
+    s9 && s14 && h.board().place.i1.x === 120 && h.board().place.i1.y === 80,
+    h.board().place.i1,
+  );
+  await pg.keyboard.press("End");
+  const end = await onFrame(h, N - 1, "End shows the last frame", CARD);
+  await pg.keyboard.press("Home");
+  const home = await onFrame(h, 0, "Home shows the first frame", CARD);
   await pg.keyboard.press("ArrowRight");
-  const r = await until(h, "→ steps to frame 11", async () =>
-    (await gifShown(h, CARD)).frame === 10 ? true : null,
-  ).catch(() => false);
-  check("anim-card-thumb-and-arrows", at10 && r && h.board().place.i1.x === 120, await gifShown(h, CARD));
+  await pg.keyboard.press("ArrowRight");
+  const r = await onFrame(h, 2, "→ → steps to frame 3", CARD);
+  await pg.keyboard.press("ArrowLeft");
+  const l = await onFrame(h, 1, "← steps back to frame 2", CARD);
+  check("anim-card-keys", end && home && r && l && h.board().place.i1.x === 120, await gifShown(h, CARD));
+  await pg.keyboard.press("ArrowDown");
+  const down = await until(h, "↓ nudges the card", () =>
+    h.board().place.i1.y > 80 ? h.board().place.i1.y : null,
+  ).catch(() => null);
+  await pg.keyboard.press("ArrowUp");
+  const up = await until(h, "↑ nudges it back", () => (h.board().place.i1.y === 80 ? true : null)).catch(() => false);
+  check("anim-card-up-down-nudge", !!down && up && (await gifShown(h, CARD)).frame === 1, { down, up });
   await pg.keyboard.press(" ");
-  const moved = await until(h, "Space plays", async () => ((await gifShown(h, CARD)).frame > 10 ? true : null)).catch(
+  const moved = await until(h, "Space plays", async () => ((await gifShown(h, CARD)).frame > 1 ? true : null)).catch(
     () => false,
   );
   await pg.keyboard.press(" ");
@@ -414,31 +532,41 @@ test("animImageCardFilmstrip", async () => {
 
   for (let i = 0; i < 4; i++) await pg.keyboard.press("ControlOrMeta+Minus");
   await idle(h);
-  const small = await strip(h);
+  const small = await bar(h, CARD);
   for (let i = 0; i < 4; i++) await pg.keyboard.press("ControlOrMeta+Equal");
   await idle(h);
-  check("anim-card-strip-hides-zoomed-out", small === null && (await strip(h)) !== null, small);
+  check("anim-card-bar-hides-zoomed-out", !!small?.gone && !!(await bar(h, CARD))?.shown, small);
 
-  // deselecting stores the frame it stopped on on the card
+  // deselecting stores the frame it stopped on on the card, one undo step
   await pg.mouse.click(900, 700);
   const f = await until(h, "the frame is saved", () => (imageCard(h).frame !== 6 ? imageCard(h).frame : null)).catch(
     () => imageCard(h).frame,
   );
-  check("anim-card-deselect-saves-frame", f === p2 + 1 && (await strip(h)) === null, { f, p2 });
+  const gone = await barGone(h, CARD).catch(() => null);
+  check("anim-card-deselect-saves-frame", f === p2 + 1 && !!gone, { f, p2 });
+  await pg.keyboard.press("ControlOrMeta+z");
+  const undone = await until(h, "undo gives the card its frame back", () =>
+    imageCard(h).frame === 6 ? true : null,
+  ).catch(() => false);
+  check(
+    "anim-card-deselect-one-undo-step",
+    undone && (await onFrame(h, 5, "the GIF stands on frame 6 again", CARD)),
+    imageCard(h),
+  );
 
   // the loop button: always plays, unselected, with the badge on hover; stored as loop on the card
-  await pg.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await until(h, "the filmstrip opens", () => strip(h));
-  await pg.locator(".animstrip .loop").click();
+  await pg.mouse.move(...center(box));
+  await barShown(h, CARD);
+  await btn(h, "Always Play", CARD).click();
   const loop = await until(h, "loop is saved", () => imageCard(h).loop ?? null).catch(() => false);
   await pg.mouse.click(700, 450);
-  await until(h, "the strip closes", async () => ((await strip(h)) === null ? true : null));
+  await barGone(h, CARD);
   const f0 = (await gifShown(h, CARD)).frame;
   const plays = await until(h, "the always-playing card moves on unselected", async () =>
     (await gifShown(h, CARD)).frame !== f0 ? true : null,
   ).catch(() => false);
   check("anim-card-loop-plays-unselected", loop === true && plays, { loop, f0 });
-  await pg.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await pg.mouse.move(...center(box));
   const badge = await until(h, "the always-play badge shows on hover", () =>
     pg.evaluate((q) => {
       const b = document.querySelector(`${q} .md-anim`)?.shadowRoot?.querySelector<HTMLElement>(".b");
@@ -448,7 +576,7 @@ test("animImageCardFilmstrip", async () => {
   check("anim-card-loop-badge-on-hover", badge === "Always playing", badge);
   await shot(h, "106-card-loop-badge", "now");
 
-  // an HTML snapshot taken while it plays has the plain picture, without the overlay
+  // an HTML snapshot taken while it plays has the plain picture, without the overlay or its bar
   await pg.locator('.bbar [aria-label="More"]').click();
   await pg.locator(".ctx:not(.closing) button", { hasText: "Export…" }).click();
   await pg.locator(".xdlg").waitFor();
@@ -470,8 +598,9 @@ test("animImageCardFilmstrip", async () => {
       imgs.length === 1 &&
       /src="data:image\/gif;base64,/.test(imgs[0]) &&
       !/class="[^"]*md-anim/.test(html) &&
+      !/class="[^"]*animbar/.test(html) &&
       !/md-animsrc/.test(imgs[0]),
-    imgs.map((i) => i.slice(0, 120)),
+    imgs.map((i) => i.replace(/base64,[^"]*/, "base64,…")),
   );
 });
 
@@ -497,15 +626,15 @@ test("animImageCardSvg", async () => {
   const inside = await svgLayers(h);
   check("anim-card-svg-still-no-layers", inside.length === 0, inside);
   const box = (await h.page.locator(CARD).boundingBox())!;
-  await h.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  const st = await until(h, "the filmstrip opens", () => strip(h)).catch(() => null);
-  check("anim-card-svg-strip-steps", st?.thumbs === 8 && st.fno === "1/8", st);
-  await h.page.locator(".animstrip .thumbs > *").nth(3).click();
+  await h.page.mouse.click(...center(box));
+  const st = await barShown(h, CARD).catch(() => null);
+  check("anim-card-svg-bar-steps", st?.fno === "1/8", st);
+  for (let i = 0; i < 3; i++) await btn(h, "Next Frame", CARD).click();
   const s4 = await until(h, "the SVG stands on step 4", async () => {
     const v = await inner();
     return v?.x === 120 ? v : null;
   }).catch(() => null);
-  await shot(h, "106-card-svg-filmstrip");
+  await shot(h, "106-card-svg-bar");
   // Space plays it (its animation running again from the step it stood on) and pauses it: frozen again where it stopped
   await h.page.keyboard.press(" ");
   const ran = await until(h, "Space plays the SVG", async () => {
