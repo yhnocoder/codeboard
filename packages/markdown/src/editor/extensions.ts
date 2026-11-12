@@ -27,6 +27,7 @@ import type { Md } from "../markdown";
 import { mdPlugin } from "./md";
 import { markTags } from "../marktag";
 import { openLinkBox } from "./links";
+import { MoveBlocks } from "./moveblocks";
 
 export function editorExtensions(
   md: Md,
@@ -385,6 +386,7 @@ export function editorExtensions(
         ]
       : []),
     Ghost.configure({ complete: () => o.complete }),
+    MoveBlocks,
   ];
 }
 

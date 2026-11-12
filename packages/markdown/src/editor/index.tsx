@@ -15,8 +15,10 @@ import { caretAt, prepKey, stateFor, takeInst, type Sess } from "./session";
 import { uiOf, type Ui } from "./ui";
 import type { MdEditorHandle, MdEditorOpts } from "./types";
 import { coreOf, type Markdown } from "../markdown";
+import { mdBlocks } from "./moveblocks";
 
 // The API for npm users (README); an export the board itself does not use is marked @public for the dead-code check
+export type { MdBlocks, BlockMark } from "./moveblocks";
 export type {
   MdEditorOpts,
   MdEditorHandle,
@@ -114,6 +116,7 @@ export function mountEditor(md: Markdown, host: HTMLElement, o: MdEditorOpts): M
     return doc0 && sourceMd(doc0.toJSON()) === md ? null : md;
   };
   const layout = (): MdLayout | null => layoutOf(editor.state.doc);
+  let blocks: ReturnType<typeof mdBlocks> | undefined;
   const finish = () => {
     if (done) return;
     done = true;
@@ -254,6 +257,7 @@ export function mountEditor(md: Markdown, host: HTMLElement, o: MdEditorOpts): M
       }
     },
     toggleSource,
+    blocks: () => (done || src || editor.isDestroyed ? null : (blocks ??= mdBlocks(editor))),
     destroy: () => {
       if (!done) {
         done = true;

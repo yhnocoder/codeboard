@@ -2467,3 +2467,18 @@ body .cm-tooltip.cbcm-ac.cm-tooltip-autocomplete > ul {
   color: var(--warn);
   box-shadow: inset 0 -1.5px 0 var(--warn);
 }
+
+/* Blocks the caller is moving (editor/moveblocks.ts): a faint placeholder while dragged, taken out while picked up, unseen
+   while the moved copy settles into their place */
+.md-pm > .md-mv-dim {
+  opacity: 0.3;
+}
+.md-pm > .md-mv-dim::selection {
+  background: transparent;
+}
+.md-pm > .md-mv-away {
+  display: none !important;
+}
+.md-pm > .md-mv-gone {
+  visibility: hidden;
+}
