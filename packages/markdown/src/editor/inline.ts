@@ -26,8 +26,11 @@ import {
   imageViews,
   mathBelow,
   placeCaret,
+  urlChip,
+  bareLink,
   type CaptionHit,
 } from "./widgets";
+import { bareSpan, LONG_URL, shortUrl } from "./links";
 import { measureImages, slideImages } from "./imageslide";
 
 type Tag = NonNullable<Span["tag"]>;
@@ -181,10 +184,32 @@ function layout(
           );
         continue;
       }
+      const href = String(sp.tag?.href ?? "");
+      // a long address written as it is, away from the caret: its site, drawn as the link (it steps as one character)
+      if (!act && href && bareSpan(sp) && to - from > LONG_URL) {
+        hide(from, to, true);
+        out?.push(Decoration.widget(from, bareLink(href, shortUrl(href)), { side: 1, key: `bare:${href}` }));
+        continue;
+      }
       if (sp.inner && sp.tag && sp.inner[1] > sp.inner[0])
         out?.push(Decoration.inline(base + sp.inner[0], base + sp.inner[1], { ...sp.tag }));
-      for (const [x, y] of sp.marks)
-        mk(base + x, base + y, act, sp.tag?.nodeName === "a" && x > sp.inner![0] ? " md-url" : "");
+      // [text](url) with the caret in its text: the address stays folded to its site (a chip that opens the link's box);
+      // it is written out only while the caret is inside it
+      const tail = sp.tag?.nodeName === "a" && sp.marks.length === 2 ? sp.marks[1] : null,
+        fold =
+          act &&
+          href &&
+          tail &&
+          text.startsWith("](", tail[0]) &&
+          !(head! > base + tail[0] + 1 && head! < base + tail[1]);
+      if (fold && tail) {
+        mk(base + sp.marks[0][0], base + sp.marks[0][1], true);
+        mk(base + tail[0], base + tail[0] + 1, true);
+        hide(base + tail[0] + 1, base + tail[1], true);
+        out?.push(Decoration.widget(base + tail[0] + 1, urlChip(shortUrl(href)), { side: 1, key: `chip:${href}` }));
+      } else
+        for (const [x, y] of sp.marks)
+          mk(base + x, base + y, act, sp.tag?.nodeName === "a" && x > sp.inner![0] ? " md-url" : "");
       walk(sp.kids, sp.tag ? [...wrap, sp.tag] : wrap);
     }
   };

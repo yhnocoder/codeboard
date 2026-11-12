@@ -308,7 +308,8 @@ test("markdownInputRules", async () => {
       seq: "[t](https://q.r){ArrowLeft}",
       md: "[t](https://q.r)",
       dom: marks,
-      domOk: (v) => JSON.stringify(v) === '["[","](https://q.r)"]',
+      // the address stays folded to its site (a chip) while the caret is in the link's text
+      domOk: (v) => JSON.stringify(v) === '["[","]"]',
     },
     {
       name: "source bold to italic",
@@ -325,9 +326,15 @@ test("markdownInputRules", async () => {
       dom: count(".md-pm h3"),
       domOk: (n) => n === 1,
     },
+    // the address is edited in the link's box (⌘K in the link): → steps over the folded address in one go
     {
       name: "source link url",
-      seq: "[t](https://q.r) z{Home}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}s{End}",
+      seq: "[t](https://q.r) z{Home}{ArrowRight}{ArrowRight}{ControlOrMeta+k}",
+      after: async (pg) => {
+        await pg.waitForSelector(".md-linkbox");
+        await pg.keyboard.type("https://qs.r");
+        await pg.keyboard.press("Enter");
+      },
       md: "[t](https://qs.r) z",
     },
     // 原文里改了一下又离开（收回去了）：一次 ⌘Z 回到改之前，格式照旧

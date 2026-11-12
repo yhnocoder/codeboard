@@ -1003,6 +1003,21 @@ math {
 .md-pm .md-imgalt {
   color: var(--ink-2);
 }
+/* a link's address beside its text while the caret is in the link: its site; a click opens the link's box */
+.md-pm .md-urlchip {
+  margin: 0 1px;
+  padding: 0 4px;
+  border-radius: 4px;
+  color: var(--ink-3);
+  font-size: 0.85em;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.md-pm .md-urlchip:hover {
+  color: var(--ink-2);
+  background: var(--hlrow);
+}
 /* a long image address folds to its head and tail; the button opens it */
 .md-pm .md-ell {
   color: var(--ink-3);
@@ -1984,6 +1999,28 @@ math {
 }
 .md-langbox .md-langs .md-lo.md-lo.md-lo:not([disabled]) .ck {
   color: var(--accent);
+}
+/* the box of a link being edited: its text, its address, then open / remove */
+.md-linkbox {
+  display: flex;
+  flex-direction: column;
+  width: 280px;
+}
+.md-linkbox .md-linkin {
+  width: 100%;
+}
+.md-linkbox .md-linktext {
+  border-bottom: 1px solid var(--hair);
+}
+.md-linkacts {
+  display: flex;
+  gap: 2px;
+  padding: 2px 2px 0;
+}
+.md-linkacts .md-linkbtn {
+  padding: 0 8px;
+  height: 24px;
+  font-size: 12px;
 }
 .md-linkin {
   width: 240px;

@@ -212,7 +212,7 @@
         "packages/markdown/src/{index,markdown,cache,render,schema,schema-nodes,schema-marks,schema-escape,tiptap-markdown-patch,gaps,selmap,view,annots,diagram,emoji,emoji-data,layout,placeholders,marktag}.ts",
         "packages/markdown/src/markdown.css",
         "packages/markdown/src/editor/{index,icons,menu,bubble}.tsx",
-        "packages/markdown/src/editor/{clipboard,codeblock,codelang,find,ghost,pairs,pastemarks,typora,inline,spans,srcdoc,srcmode,table,visible,widgets,types,ui,extensions,paste,pad,session,gaps,md,headings}.ts",
+        "packages/markdown/src/editor/{clipboard,codeblock,codelang,find,ghost,pairs,pastemarks,typora,inline,spans,srcdoc,srcmode,table,visible,widgets,types,ui,extensions,paste,pad,session,gaps,md,headings,links}.ts",
         "packages/markdown/src/ui/**",
         "packages/markdown/src/editor/{band,gap,tablecmds,tablemove,tableview}.ts",
         "packages/board/test/scenarios/md-bands.spec.ts",

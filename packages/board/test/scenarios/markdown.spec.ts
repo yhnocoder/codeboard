@@ -2072,3 +2072,84 @@ test("codeWordsInProse", async () => {
   await idle(h);
   await pg.screenshot({ path: path.join(OUT, "code-words-board-warm-ink.png") });
 });
+
+/** Links in a Note being edited: the address stays folded (a long bare one shows its site, a [text](url) with the caret in it
+ *  shows its site as a chip); a click on a link the caret is not in, or ⌘K in one, opens its box (text, address, Open,
+ *  Remove Link); ⌘-click still opens the link and nothing else */
+test("noteLinkBox", async () => {
+  const URL = "https://github.com/GeeeekExplorer/nano-vllm/blob/main/nanovllm/engine/scheduler.py",
+    BARE = "https://github.com/GeeeekExplorer/nano-vllm/blob/main/README.md";
+  const MD = `see [nano-vllm](${URL}) here\n\nbare ${BARE} end\n\nlast line`;
+  const b = emptyBoard("b1", "links");
+  put(b, { id: "n0", kind: "note", md: MD, look: "note" } as NoteCard, 60, 80, 560);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 900, h: 600, scale: 2, settings: { theme: "warm-ink" } as any });
+  const pg = h.page;
+  await idle(h);
+  const shown = () =>
+    pg.locator(".md-pm").evaluate((e) => {
+      const c = e.cloneNode(true) as HTMLElement;
+      c.querySelectorAll(".md-hide").forEach((x) => x.remove());
+      return [...c.querySelectorAll("p")].map((p) => p.textContent);
+    });
+  const box = () =>
+    pg.locator(".md-bubble .md-linkbox input").evaluateAll((is) => is.map((i) => (i as HTMLInputElement).value));
+  const src = () => pg.locator(".md-pm").evaluate((e) => (e as any).editor.state.doc.firstChild.textContent as string);
+  await pg.locator('.card[data-id="n0"] .nbody p').last().dblclick();
+  await pg.locator(".md-pm:focus").waitFor();
+  await focusSettled(pg);
+  await pg.keyboard.press("ControlOrMeta+End");
+  await pmHasSelection(pg);
+  await idle(h);
+  const away = await shown();
+  check(
+    "noteLinkBox addresses folded away from the caret",
+    away[0] === "see nano-vllm here" && away[1] === "bare github.com/… end",
+    away,
+  );
+  // a click on the link: its box, with its text and address
+  await pg.locator(".md-pm a.md-link", { hasText: "nano-vllm" }).click();
+  await pg.locator(".md-bubble .md-linkbox").waitFor({ timeout: 5000 });
+  const opened = await box();
+  check("noteLinkBox a click opens the box", JSON.stringify(opened) === JSON.stringify(["nano-vllm", URL]), opened);
+  await pg.screenshot({ path: path.join(OUT, "note-link-box-warm-ink.png") });
+  await pg.locator(".md-bubble .md-linktext").fill("the scheduler");
+  await pg.keyboard.press("Enter");
+  await until(h, "the link's text changes", async () => (await src()).includes("[the scheduler]"));
+  check("noteLinkBox the box edits the text", (await src()) === `see [the scheduler](${URL}) here`, await src());
+  // the caret in the link's text: markers, and the address as its site
+  await pg.keyboard.press("ArrowLeft");
+  await idle(h);
+  const inLink = await shown();
+  check(
+    "noteLinkBox the caret in a link shows its site, not its address",
+    inLink[0] === "see [the scheduler]github.com/… here" && (await pg.locator(".md-pm .md-urlchip").count()) === 1,
+    inLink,
+  );
+  await pg.screenshot({ path: path.join(OUT, "note-link-caret-in-warm-ink.png") });
+  // ⌘K in it: the same box; Remove Link keeps the text
+  await pg.keyboard.press("ControlOrMeta+k");
+  await pg.locator(".md-bubble .md-linkbox").waitFor({ timeout: 5000 });
+  const cmdk = await box();
+  check("noteLinkBox ⌘K opens the box", JSON.stringify(cmdk) === JSON.stringify(["the scheduler", URL]), cmdk);
+  await pg.locator(".md-bubble .md-linkbtn", { hasText: "Remove Link" }).click();
+  await until(h, "the link is removed", async () => !(await src()).includes("]("));
+  check("noteLinkBox Remove Link keeps the text", (await src()) === "see the scheduler here", await src());
+  // ⌘-click on the bare address: opened, no box
+  await pg.keyboard.press("ControlOrMeta+End");
+  await idle(h);
+  const n = h.sent.length;
+  await pg.locator(".md-pm a.md-bare").click({ modifiers: ["ControlOrMeta"] });
+  await until(h, "the link is opened", () => h.sent.slice(n).some((m) => m.type === "openLink"));
+  check(
+    "noteLinkBox ⌘-click opens the link without the box",
+    h.sent.slice(n).some((m) => m.type === "openLink" && m.url === BARE) &&
+      (await pg.locator(".md-bubble .md-linkbox").count()) === 0,
+    h.sent.slice(n),
+  );
+  const was = (h.board().cards[0] as NoteCard).md;
+  await pg.keyboard.press("Escape");
+  await until(h, "Esc saves the Note", () => (h.board().cards[0] as NoteCard).md !== was);
+  const saved = (h.board().cards[0] as NoteCard).md;
+  check("noteLinkBox saved", saved === `see the scheduler here\n\nbare ${BARE} end\n\nlast line`, saved);
+});

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { blockInfo, flat, type Span } from "../src/editor/spans";
+import { shortUrl } from "../src/editor/links";
 
 // What the editor draws for a paragraph's source: where each span is, which characters are its markers, the text inside
 const at = (text: string, sp: Span) => ({
@@ -82,5 +83,14 @@ describe("decoration ranges of a paragraph's source", () => {
     expect(all("中文**粗体**中文")[0]).toMatchObject({ kind: "strong", inner: "粗体" });
     const c = flat(blockInfo("a <!-- n --> b").spans)[0];
     expect(c.plain).toBe(true);
+  });
+});
+
+describe("folded link addresses", () => {
+  it("shows a web address as its site, and an ellipsis when it goes on", () => {
+    expect(shortUrl("https://github.com/a/b/blob/main/x.py")).toBe("github.com/…");
+    expect(shortUrl("https://www.example.org/")).toBe("example.org");
+    expect(shortUrl("www.example.org/docs?q=1")).toBe("example.org/…");
+    expect(shortUrl("not a url but quite a long piece of text")).toBe("not a url but quite a …");
   });
 });

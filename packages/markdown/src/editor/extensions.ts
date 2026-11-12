@@ -26,6 +26,7 @@ import type { MdEditorOpts, RefGroup, RefItem, RefPick } from "./types";
 import type { Md } from "../markdown";
 import { mdPlugin } from "./md";
 import { markTags } from "../marktag";
+import { openLinkBox } from "./links";
 
 export function editorExtensions(
   md: Md,
@@ -368,7 +369,10 @@ export function editorExtensions(
     FindExt(() => uiOf.get(ed())?.closeFind() ?? false),
     Typora.configure({
       openMath: openMathAt,
-      openLink: (e) => uiOf.get(e)?.setLink(e.getAttributes("link").href ?? ""),
+      openLink: (e) => {
+        const ui = uiOf.get(e);
+        if (ui) openLinkBox(e.view, ui.setLink);
+      },
       classes: () => o.classes,
     }),
     Placeholder.configure({ placeholder: () => o.placeholder ?? "Type / for blocks", showOnlyCurrent: true }),

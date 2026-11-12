@@ -439,6 +439,26 @@ export const ellipsis = () => {
 };
 const CHEV = (down: boolean) =>
   `<svg viewBox="0 0 12 12" aria-hidden="true"><path d="${down ? "M3 4.5l3 3 3-3" : "M3 7.5l3-3 3 3"}"/></svg>`;
+/** A link's folded address beside its text: its site; a click on it opens the link's box (session.ts) */
+export const urlChip =
+  (short: string): ToDOM =>
+  () => {
+    const e = span("md-urlchip");
+    e.textContent = short;
+    e.setAttribute("data-tip", "Edit Link");
+    return e;
+  };
+/** A long address written as it is, away from the caret: its site, drawn as the link it is */
+export const bareLink =
+  (url: string, short: string): ToDOM =>
+  () => {
+    const e = document.createElement("a");
+    e.className = "md-link md-bare";
+    e.contentEditable = "false";
+    e.setAttribute("href", url);
+    e.textContent = short;
+    return e;
+  };
 /** Expand / collapse a folded address */
 export function foldButton(expanded: boolean, toggle: (view: EditorView) => void): ToDOM {
   return (view) => {
