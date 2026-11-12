@@ -126,6 +126,16 @@ const sizedImg = (p: PMNode) => {
   });
   return y;
 };
+/** A paragraph of the Note's own (not in a list or a cell) holding only an image: centred too (editor/inline.ts does the same) */
+const loneImg = (p: PMNode) => {
+  let imgs = 0,
+    other = false;
+  p.forEach((c) => {
+    if (c.type.name === "image") imgs++;
+    else if (!c.isText || c.text!.trim()) other = true;
+  });
+  return imgs === 1 && !other;
+};
 
 function markParts(m: Mark, display: boolean): [string, string] {
   const spec = (display && DISPLAY_MARKS[m.type.name]?.(m)) || m.type.spec.toDOM!(m, true);
@@ -203,7 +213,10 @@ function contentHtml(n: PMNode, cx: Cx | null): string {
   let s = "",
     prev: GapKind = null;
   n.forEach((c) => {
-    const h = nodeHtml(c, cx);
+    const h =
+      cx && n.type.name === "doc" && c.type.name === "paragraph" && loneImg(c)
+        ? specHtml(["p", { class: "md-psized" }, 0], contentHtml(c, cx))
+        : nodeHtml(c, cx);
     if (!h) return; // nothing drawn (an HTML comment, footnotes without text): not an element between its neighbours
     const kind = htmlGapKind(h),
       cls = cx && gapClass(prev, kind);

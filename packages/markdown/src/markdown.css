@@ -230,8 +230,8 @@ math {
   margin: 4px 0;
   border-radius: 5px;
 }
-/* A narrowed image (![a](u){width=40%}) is centred in its line: the image is inline, so its paragraph is centred, marked
-   p.md-psized by the static render (render.ts) and by the editor's decorations (editor/inline.ts). A class, not p:has():
+/* A narrowed image (![a](u){width=40%}), or an image alone in its paragraph, is centred in its line: the image is inline, so its
+   paragraph is centred, marked p.md-psized by the static render (render.ts) and by the editor's decorations (editor/inline.ts). A class, not p:has():
    Chrome checks a :has() rule again for every paragraph on each change, which made Enter in a long Note slow */
 .md p.md-psized,
 .md-pm p.md-psized {
@@ -889,7 +889,7 @@ math {
 }
 /* Images the editor draws for their hidden source (editor/widgets.ts): laid out like <img> in the static render (inline
    block, middle aligned, same margins, at most full width); a reduced width (percent of the body width) is on this box.
-   .below: the copy under the source while the caret is in it, with the resize grips */
+   .below: the copy under its source while the source is open */
 .md-pm .md-img {
   display: inline-block;
   position: relative;
@@ -899,12 +899,24 @@ math {
   border-radius: 5px;
   text-indent: 0;
 }
-.md-pm .md-img > img {
+/* the picture in its frame (the selection ring; what a resize scales), the frame in a box with the resize grips */
+.md-pm .md-imgbox {
+  display: block;
+  position: relative;
+}
+.md-pm .md-imgframe {
+  display: block;
+  position: relative;
+  border-radius: 5px;
+  transform-origin: 50% 0;
+}
+.md-pm .md-imgframe > img {
   display: block;
   margin: 0;
+  border-radius: 5px;
   cursor: inherit;
 }
-.md-pm .md-img.sized > img {
+.md-pm .md-img.sized .md-imgframe > img {
   width: 100%;
 }
 /* its space below is padding, and it holds its caption's margin (flow-root): margins at the paragraph's end would merge with the
@@ -915,7 +927,7 @@ math {
   margin: 4px auto 0 0;
   padding-bottom: 4px;
 }
-.md-pm .md-img.below.sized {
+.md-pm :is(.md-img.below.sized, p.md-psized .md-img.below) {
   margin-inline: auto;
 }
 /* the picture under its source ends its paragraph: ProseMirror's trailing break after it would be an empty line under it */
@@ -931,28 +943,27 @@ math {
   background: var(--accent);
   border-radius: 1px;
 }
-/* the selected image (the copy under its source): a thin accent frame with a soft shadow on the image itself, and the width
-   grips on the frame's two sides, centred (the width changes symmetrically about the centre) */
-.md-pm .md-imgframe {
-  display: block;
-  position: relative;
-  border-radius: 5px;
-  box-shadow:
-    0 0 0 1.5px color-mix(in srgb, var(--accent) 75%, transparent),
-    0 6px 18px -8px rgba(0, 0, 0, 0.28);
-}
-/* 没缩小的图按它自己的 width / height 属性排（文件名里的宽高，和静态显示、编辑器里没选中时一样）：写成 width: 100% 的话
-   .below 的 fit-content 取的是图解码出来的大小，SVG 的宽高单位不是 px（pt、mm）时和属性不一样，选中时图就缩了、靠了左；
-   第一次选中时地址晚一点才给（IMAGE_SETTLE），那一下还没有大小，整块先塌下去 */
-.md-pm .md-imgframe > img {
-  display: block;
-  border-radius: 5px;
-}
-.md-pm .md-img.sized > .md-imgframe > img {
-  width: 100%;
-}
 .md-pm .md-imgframe[draggable="true"] {
   -webkit-user-drag: element;
+}
+/* the selected image (editor/inline.ts md-picked, while the editor has the focus): a thin accent ring on the picture itself (not
+   around its caption) and the width grips on its two sides, centred (the width changes symmetrically about the centre). Its
+   source is selected underneath: no selection colour on the picture */
+.md-pm .md-imgframe::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 5px;
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--accent) 75%, transparent);
+  opacity: 0;
+  transition: opacity 0.1s ease-out;
+  pointer-events: none;
+}
+.md-pm.ProseMirror-focused .md-img.md-picked .md-imgframe::after {
+  opacity: 1;
+}
+.md-pm .md-img.md-picked ::selection {
+  background: transparent;
 }
 .md-pm .md-imgrip {
   position: absolute;
@@ -967,12 +978,27 @@ math {
     0 1px 3px rgba(0, 0, 0, 0.18);
   cursor: ew-resize;
   touch-action: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease-out;
+}
+.md-pm.ProseMirror-focused .md-img.md-picked .md-imgrip {
+  opacity: 1;
+  pointer-events: auto;
+}
+.md-pm .md-img.resizing .md-imgrip {
+  transition: none;
 }
 .md-pm .md-imgrip.l {
   left: -3.75px;
+  transform: translate(calc(-1 * var(--gx, 0px)), var(--gy, 0px));
 }
 .md-pm .md-imgrip.r {
   right: -3.75px;
+  transform: translate(var(--gx, 0px), var(--gy, 0px));
+}
+.md-pm .md-img.resizing {
+  z-index: 2;
 }
 .md-pm .md-imgalt {
   color: var(--ink-2);

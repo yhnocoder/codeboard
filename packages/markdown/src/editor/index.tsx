@@ -9,6 +9,7 @@ import { sourceMode, type SourceMode } from "./srcmode";
 import { noteFind } from "./find";
 import { findKey } from "../ui/find";
 import { visibleRange } from "./visible";
+import { pickImageAt } from "./inline";
 import { Bubble } from "./bubble";
 import { caretAt, prepKey, stateFor, takeInst, type Sess } from "./session";
 import { uiOf, type Ui } from "./ui";
@@ -224,6 +225,7 @@ export function mountEditor(md: Markdown, host: HTMLElement, o: MdEditorOpts): M
       if (p) caretAt(editor, p.pos);
       return !!p;
     },
+    pickImage: (at) => pickImageAt(editor.view, at.x, at.y),
     selectVisible: (r) => {
       const c = visibleRange(editor.state.doc, r);
       if (c) editor.commands.setTextSelection(c);

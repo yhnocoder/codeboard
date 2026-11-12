@@ -73,6 +73,8 @@ export type MdEditorHandle = {
    * False when the characters are not in the document
    */
   placeCaret(at: "end" | { visible: StaticTextRange; after?: boolean } | { x: number; y: number }): boolean;
+  /** Select the image drawn at a point on the page (the press that started the editing was on it); false when none is there */
+  pickImage(at: { x: number; y: number }): boolean;
   /** Select characters counted as the static render shows them (staticTextRange); false when they are not in the document */
   selectVisible(r: StaticTextRange): boolean;
   /** Press a key as if typed in the editor (its key bindings run); a key nothing handles deletes the selection */

@@ -677,7 +677,7 @@ test("noteImageFold", async () => {
   // the drawn image (offline here: its failed-to-load placeholder, which opens the source the same way)
   const img = pg.locator(`${card("n0")} .md-pm .md-img:not(.below)`);
   await img.waitFor();
-  await img.click();
+  await img.dblclick();
   await until(
     h,
     "the source opens with the image under it",

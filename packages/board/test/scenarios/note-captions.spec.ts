@@ -59,7 +59,7 @@ async function prompt(h: Host, text: string) {
 const layout = (h: Host, scope: string) =>
   h.page.locator(`.card[data-id="n"] ${scope}`).evaluate((root) => {
     const cap = root.querySelector<HTMLElement>(".md-cap"),
-      im = cap?.parentElement?.querySelector(":scope > img");
+      im = cap?.parentElement?.querySelector("img");
     if (!cap || !im || cap.hidden) return null;
     const a = cap.getBoundingClientRect(),
       r = im.getBoundingClientRect(),
@@ -211,9 +211,9 @@ async function editAtEnd(h: Host) {
   await card(h).locator(".md-pm").waitFor();
   await idle(h);
 }
-/** Opens the image's source in the editor (a click on the drawn image) and waits for the framed picture under it to load */
+/** Opens the image's source in the editor (a double-click on the drawn image) and waits for the picture under it to load */
 async function openImage(h: Host) {
-  await card(h).locator(".md-pm .md-img:not(.below) img").first().click();
+  await card(h).locator(".md-pm .md-img:not(.below) img").first().dblclick();
   const im = card(h).locator(".md-pm .md-img.below img");
   await im.waitFor();
   await until(h, "the opened image loads", () =>
@@ -242,7 +242,7 @@ const figGeo = (h: Host, fig: string) =>
       cap = f?.querySelector(":scope > .md-cap"),
       body = c.querySelector(".nbody p, .md-pm p")!;
     return {
-      img: box(f?.querySelector(":scope > .md-imgframe") ?? f?.querySelector("img")),
+      img: box(f?.querySelector(".md-imgframe") ?? f?.querySelector("img")),
       cap: box(cap),
       para: box(f?.closest("p")),
       last: box([...c.querySelectorAll(".nbody > p, .md-pm > p")].at(-1)),
@@ -350,8 +350,11 @@ test("noteOpenedSvgImageKeepsStaticSize", async () => {
   await idle(h);
   const before = await figGeo(h, ".nbody .md-fig");
   await shot(h, "noteOpenedSvgImageKeepsStaticSize-static");
-  // the first click into the image: the Note starts editing with the image's source open, the framed copy under it
+  // a double-click on the image: the Note starts editing with the image selected; a click on it then opens its source, the
+  // copy under it
   await still.dblclick();
+  await card(h).locator(".md-pm .md-img.md-picked").waitFor();
+  await card(h).locator(".md-pm .md-img.md-picked img").click();
   const im = card(h).locator(".md-pm .md-img.below img");
   await im.waitFor();
   await until(h, "the opened image loads", () =>

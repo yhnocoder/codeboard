@@ -113,22 +113,13 @@ const imageOnly = (p: PMNode) => {
   return !rest.trim();
 };
 
-/**
- * The image the selection stands for: the caret in its source (the image is drawn selected, with its grips) or exactly its
- * source selected (spaces around it aside)
- */
-function selectedImage(state: EditorState): { src: string; md: string } | null {
-  const { $from, $to, from, to } = state.selection;
-  if (!$from.sameParent($to) || $from.parent.type.name !== "paragraph") return null;
-  const text = $from.parent.textContent;
-  let a = from - $from.start(),
-    b = to - $from.start();
-  const picked = text.slice(a, b);
-  a += picked.length - picked.trimStart().length;
-  b -= picked.length - picked.trimEnd().length;
-  const sp = flat(blockInfo(text).spans).find(
-    (s) => s.atom?.type === "image" && (a === b ? s.from <= a && a <= s.to : s.from === a && s.to === b),
-  );
+/** The image the caret alone stands for: the caret inside its open source (a selected image copies as its Markdown) */
+function caretImage(state: EditorState): { src: string; md: string } | null {
+  const { $head, empty } = state.selection;
+  if (!empty || $head.parent.type.name !== "paragraph") return null;
+  const text = $head.parent.textContent,
+    a = $head.parentOffset;
+  const sp = flat(blockInfo(text).spans).find((s) => s.atom?.type === "image" && s.from < a && a < s.to);
   return sp?.atom?.type === "image" && sp.atom.src ? { src: sp.atom.src, md: text.slice(sp.from, sp.to) } : null;
 }
 
@@ -177,13 +168,13 @@ export function imageEditing(
             handleDOMEvents: {
               // the caret alone in an image's source copies nothing by default: saying so before the copy lets it happen
               beforecopy: (view: EditorView, ev: Event) => {
-                if (copy() && view.state.selection.empty && selectedImage(view.state)) ev.preventDefault();
+                if (copy() && caretImage(view.state)) ev.preventDefault();
                 return false;
               },
               copy: (view: EditorView, ev: ClipboardEvent) => {
                 // a selection over the source is text the writer picked (copyInsideShownSource); the caret alone is the picture
                 const c = copy(),
-                  img = c && view.state.selection.empty && selectedImage(view.state);
+                  img = c && caretImage(view.state);
                 if (!img) return false;
                 // the picture alone (an app given text as well pastes the text); a paste of it back is the Markdown (knownImage)
                 ev.preventDefault();

@@ -130,6 +130,13 @@ describe("image width", () => {
     expect(host.querySelector("td > p.md-psized img.sized")).not.toBeNull();
     expect(host.querySelectorAll("p.md-psized").length).toBe(2);
   });
+  it("centres a paragraph of the Note's own that holds only an image, not one with text beside it", () => {
+    const host = document.createElement("div");
+    host.innerHTML = markdown.render("![](assets/w.png)\n\nSee ![](assets/w.png) here.\n\n- ![](assets/w.png)");
+    const ps = [...host.querySelectorAll(":scope > p")];
+    expect(ps.map((p) => p.classList.contains("md-psized"))).toEqual([true, false]);
+    expect(host.querySelector("li > p")).toBeNull();
+  });
 });
 
 describe("image render", () => {

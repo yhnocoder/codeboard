@@ -276,9 +276,11 @@ const widthIn = (text: string) => {
   const m = /\)\{width=(\d+(?:\.\d+)?)%\}/.exec(text);
   return m ? +m[1] : null;
 };
-/** Click the image in the editor (selects it), take the screenshot `name` if given, and give the centre of its left or right resize grip */
+/** Select the image in the editor (a click, unless it is selected), take the screenshot `name` if given, and give the centre of
+ *  its left or right resize grip */
 async function imgGrip(h: Host, id: string, name?: string, side: "l" | "r" = "r") {
-  await h.page.locator(`.card[data-id="${id}"] .md-pm img:not(.ProseMirror-separator)`).first().click();
+  if (!(await h.page.locator(`.card[data-id="${id}"] .md-pm .md-img.md-picked`).count()))
+    await h.page.locator(`.card[data-id="${id}"] .md-pm img:not(.ProseMirror-separator)`).first().click();
   if (name) await shot(h, name);
   const g = h.page.locator(`.card[data-id="${id}"] .md-pm .md-imgrip.${side}`).first();
   await g.waitFor({ state: "visible", timeout: 3000 });
@@ -296,9 +298,10 @@ async function dragBy(h: Host, at: { x: number; y: number }, dx: number, steps =
   await h.page.mouse.up();
 }
 
-/** A Note's image shrinks by dragging the grip on its corner while it is selected: the width goes into the Markdown as a
+/** A Note's image shrinks by dragging the grip on its side while it is selected: the width goes into the Markdown as a
  *  percentage of the body ({width=N%}), centered, the same in the static render, scales with the card, one undo step per drag;
- *  either side's grip changes the width around the centre, and a double-click on a grip gives the full width back */
+ *  either side's grip changes the width around the centre, and dragged out to the full width (this image's natural size is
+ *  wider than the body) no width is written */
 test("noteImageResize", async () => {
   const { h, done } = await imageHost(["A figure of the grid:"]);
   const pg = h.page;
@@ -310,12 +313,16 @@ test("noteImageResize", async () => {
   await imgBox(h, "n0", ".md-pm");
   const full = await imgFrac(h, "n0", ".md-pm");
   check("noteImageResize full width at first", full.frac > 0.99, full);
-  // the caret after the pasted image is in its source: the image shows under it, with grips. Elsewhere it is drawn alone, without
+  // the grips show only on the selected image
   await pg.keyboard.press("Control+Home");
   await idle(h);
+  const gripsShown = () =>
+    pg
+      .locator('.card[data-id="n0"] .md-pm .md-imgrip')
+      .evaluateAll((gs) => gs.filter((g) => getComputedStyle(g).opacity !== "0").length);
   check(
     "noteImageResize grip hidden until selected",
-    (await pg.locator('.card[data-id="n0"] .md-pm .md-imgrip:visible').count()) === 0 &&
+    (await gripsShown()) === 0 &&
       (await pg.locator('.card[data-id="n0"] .md-pm img:not(.ProseMirror-separator)').count()) === 1,
   );
   const g = await imgGrip(h, "n0", "17-note-image-selected");
@@ -385,19 +392,16 @@ test("noteImageResize", async () => {
     wide.w > disp.w + 80 && Math.abs(wide.frac - disp.frac) < 0.01 && widthIn(md(h, "n0")) === w,
     { disp, wide },
   );
-  // double-click on the grip: full width again, nothing written for the width. The card's height is back to fitting its content
-  // first: the corner drag fixed it, and the image's source line shown while editing would push the image's grips under the
-  // card's bottom edge handle
-  await pg.locator('.card[data-id="n0"] .grip').dblclick();
-  await idle(h);
-  await editNote(h, "n0");
+  // dragged out to the full width: nothing written for the width
+  await pg.locator('.card[data-id="n0"] .nbody p').first().dblclick();
+  await pg.locator('.card[data-id="n0"] .md-pm:focus').waitFor();
   const g2 = await imgGrip(h, "n0");
-  await pg.mouse.dblclick(g2.x, g2.y);
-  await until(h, "double-click gives the full width back", async () => (await imgFrac(h, "n0", ".md-pm")).frac > 0.99);
+  await dragBy(h, g2, wide.w);
+  await until(h, "the drag gives the full width back", async () => (await imgFrac(h, "n0", ".md-pm")).frac > 0.99);
   await exitEdit(h);
   const reset = await imgFrac(h, "n0", ".nbody");
   check(
-    "noteImageResize double-click resets",
+    "noteImageResize full width writes no width",
     widthIn(md(h, "n0")) === null && /!\[\]\(assets\/[^)]+\)$/.test(md(h, "n0")) && reset.frac > 0.99,
     { md: md(h, "n0"), reset },
   );
@@ -425,11 +429,15 @@ const frameOf = (h: Host, id: string, sel: string) =>
       };
       const r = el.getBoundingClientRect(),
         frame = el.closest(".md-imgframe"),
-        wrap = el.closest(".md-img");
+        wrap = el.closest(".md-img"),
+        ring = frame && getComputedStyle(frame, "::after");
       return {
         img: look(el),
         frame: frame ? look(frame) : null,
         wrap: wrap ? look(wrap) : null,
+        ring: ring ? { shadow: ring.boxShadow, opacity: ring.opacity } : null,
+        grips: [...(wrap?.querySelectorAll(".md-imgrip") ?? [])].filter((g) => getComputedStyle(g).opacity === "1")
+          .length,
         box: {
           x: Math.round(r.x * 10) / 10,
           y: Math.round(r.y * 10) / 10,
@@ -448,8 +456,8 @@ const bare = (l: Look | null) =>
     l.filter === "none");
 
 /** An image in a Note is drawn bare, with no hairline frame, shadow, padding or background around it, the same in the
- *  static view and in the editor; clicked, it opens its source with the image under it, the image itself bare inside its
- *  selection frame (the frame hugs the image, not its caption) with its resize grips */
+ *  static view and in the editor; clicked, it is selected: the image itself bare inside its selection ring (on the image, not
+ *  around its caption) with its resize grips */
 test("noteImageNoFrame", async () => {
   const { h, done } = await imageHost([
     `Pages the scheduler hands out:\n\n![](${PAGE_SRC})\n\nOne block per sequence.`,
@@ -475,11 +483,17 @@ test("noteImageNoFrame", async () => {
     edit: edit.box,
   });
   await h.page.locator('.card[data-id="n0"] .md-pm img:not(.ProseMirror-separator)').first().click();
-  await pg.locator('.card[data-id="n0"] .md-pm .md-img.below .md-imgrip.r').waitFor({ state: "visible" });
-  const picked = await frameOf(h, "n0", ".md-pm .md-img.below");
+  await pg.locator('.card[data-id="n0"] .md-pm .md-img.md-picked').waitFor();
+  await idle(h);
+  const picked = await frameOf(h, "n0", ".md-pm .md-img.md-picked");
   check(
-    "noteImageNoFrame opened: bare, with grips",
-    bare(picked.img) && picked.wrap?.shadow === "none" && !!picked.frame && picked.frame.shadow !== "none",
+    "noteImageNoFrame selected: bare, ring and grips",
+    bare(picked.img) &&
+      picked.wrap?.shadow === "none" &&
+      picked.ring?.opacity === "1" &&
+      picked.ring.shadow !== "none" &&
+      picked.grips === 2 &&
+      JSON.stringify(picked.box) === JSON.stringify(edit.box),
     picked,
   );
   await exitEdit(h);
@@ -513,9 +527,9 @@ const centreOf = (r: { x: number; y: number; width: number; height: number }) =>
 });
 
 /** A narrowed image in the editor: centred where the static render draws it, also with the caret in the paragraph after it;
- *  clicked, its source line opens with a slide (the image and what follows move instead of jumping, the source fades in) and it
- *  shows a frame on the image with the width grips centred on its sides; it can still be dragged to move it; closing slides
- *  back; with reduced motion nothing animates */
+ *  clicked, it is selected: a ring on the image with the width grips centred on its sides; double-clicked, its source line opens
+ *  with a slide (the image and what follows move instead of jumping, the source fades in); it can still be dragged to move it;
+ *  closing slides back; with reduced motion nothing animates */
 test("noteImageOpenSlidesFramed", async () => {
   const { h, done } = await imageHost([`Text above the image.\n\n![](${PAGE_SRC}){width=60%}\n\nEnd text.`]);
   const pg = h.page,
@@ -526,13 +540,11 @@ test("noteImageOpenSlidesFramed", async () => {
   await card.locator(".md-pm:focus").waitFor();
   await imgBox(h, "n0", ".md-pm");
   const edit = await frameOf(h, "n0", ".md-pm");
-  await recordAnimations(pg);
   await pg.locator(imgSel(false)).click();
-  await pg.locator(imgSel(true)).waitFor();
+  await card.locator(".md-pm .md-img.md-picked").waitFor();
   await idle(h);
-  const opened = await animations(pg);
   await shot(h, "noteImageOpenSlidesFramed-selected");
-  const look = await card.locator(".md-pm .md-img.below").evaluate((el) => {
+  const look = await card.locator(".md-pm .md-img.md-picked").evaluate((el) => {
     const img = el.querySelector("img")!.getBoundingClientRect(),
       f = el.querySelector(".md-imgframe");
     const g = [...el.querySelectorAll(".md-imgrip")].map((e) => {
@@ -540,11 +552,16 @@ test("noteImageOpenSlidesFramed", async () => {
       return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
     });
     return {
-      frame: f ? getComputedStyle(f).boxShadow : null,
+      frame: f ? getComputedStyle(f, "::after").boxShadow : null,
       img: { l: img.left, r: img.right, y: img.top + img.height / 2 },
       g,
     };
   });
+  await recordAnimations(pg);
+  await pg.locator(imgSel(false)).dblclick();
+  await pg.locator(imgSel(true)).waitFor();
+  await idle(h);
+  const opened = await animations(pg);
   check(
     "noteImageOpenSlidesFramed centred as in the static render",
     Math.abs(edit.box.x - disp.box.x) < 0.6 && Math.abs(edit.box.w - disp.box.w) < 0.6,
@@ -590,7 +607,7 @@ test("noteImageOpenSlidesFramed", async () => {
   await pg.keyboard.press("ControlOrMeta+z");
   await until(h, "undo puts it back", async () => (await card.locator(".md-pm > p").count()) === 3);
   // closing: the caret leaves the source, the image slides back up
-  await pg.locator(imgSel(false)).click();
+  await pg.locator(imgSel(false)).dblclick();
   await pg.locator(imgSel(true)).waitFor();
   await idle(h);
   await animations(pg);
@@ -604,7 +621,7 @@ test("noteImageOpenSlidesFramed", async () => {
     closed,
   );
   await pg.emulateMedia({ reducedMotion: "reduce" });
-  await pg.locator(imgSel(false)).click();
+  await pg.locator(imgSel(false)).dblclick();
   await pg.locator(imgSel(true)).waitFor();
   await idle(h);
   const reduced = await animations(pg);
@@ -723,10 +740,11 @@ test("noteImageDragMoves", async () => {
   );
   await pg.keyboard.press("ControlOrMeta+Shift+z");
   await until(h, "redo moves it again", async () => (await card.locator(".md-pm > p").count()) === 2);
-  // a click opens the image's source; the grip still resizes the image (it does not start a drag of its own)
+  // a click selects the image; its grip still resizes it (it does not start a drag of its own)
+  await pg.keyboard.press("Control+Home");
   await img.click();
-  const opened = await card.locator(".md-pm .md-img.below").count();
-  check("noteImageDragMoves click opens the source", opened === 1, opened);
+  const picked = await card.locator(".md-pm .md-img.md-picked").count();
+  check("noteImageDragMoves click selects", picked === 1, picked);
   const g = card.locator(".md-pm .md-imgrip.r").first();
   await g.waitFor({ state: "visible" });
   const gb = (await g.boundingBox())!;
@@ -855,7 +873,7 @@ test("noteImageDragOut", async () => {
   const card1 = pg.locator('.card[data-id="n1"]');
   await card1.locator(".nbody p").first().dblclick();
   await card1.locator(".md-pm:focus").waitFor();
-  await card1.locator(".md-pm .md-img:not(.below) img").first().click();
+  await card1.locator(".md-pm .md-img:not(.below) img").first().dblclick();
   await card1.locator(".md-pm .md-img.below").waitFor();
   const before = images().length;
   const img1 = card1.locator(".md-pm .md-img.below img").first();
@@ -912,4 +930,257 @@ test("notePastedImageCaptionWhileEditing", async () => {
     md(h, "n0"),
   );
   await done();
+});
+
+const PIC_SRC = `data:image/png;base64,${screenshot(320, 180).toString("base64")}`,
+  SMALL_SRC = `data:image/png;base64,${screenshot(120, 68).toString("base64")}`;
+const PIC_MD = `![pic](${PIC_SRC} "A small caption here")`;
+type PmDoc = {
+  textBetween(a: number, b: number): string;
+  forEach(f: (n: { textContent: string }) => void): void;
+  descendants(f: (n: { isTextblock: boolean; textContent: string }, pos: number) => boolean): void;
+};
+type PmEditor = { state: { doc: PmDoc; selection: { from: number; to: number } } };
+/** The editor's state: the selection (and its text), the paragraphs' text */
+const pmState = (pg: Page) =>
+  pg.evaluate(() => {
+    const e = (document.querySelector(".md-pm") as unknown as { editor: PmEditor }).editor,
+      s = e.state.selection;
+    const paras: string[] = [];
+    e.state.doc.forEach((n) => {
+      paras.push(n.textContent);
+    });
+    return { from: s.from, to: s.to, sel: e.state.doc.textBetween(s.from, s.to), paras };
+  });
+/** Where the image's source starts and ends in the document */
+const picRange = (pg: Page) =>
+  pg.evaluate((md) => {
+    const e = (document.querySelector(".md-pm") as unknown as { editor: PmEditor }).editor;
+    let at = -1;
+    e.state.doc.descendants((n, pos) => {
+      if (at < 0 && n.isTextblock && n.textContent.includes(md)) at = pos + 1 + n.textContent.indexOf(md);
+      return at < 0;
+    });
+    return [at, at + md.length];
+  }, PIC_MD);
+const clip = (pg: Page, type: "copy" | "cut") =>
+  pg.evaluate((type) => {
+    const dt = new DataTransfer();
+    document.activeElement!.dispatchEvent(
+      new ClipboardEvent(type, { clipboardData: dt, bubbles: true, cancelable: true }),
+    );
+    return dt.getData("text/plain");
+  }, type);
+
+/** In the editor a click on an image selects it (a ring and its grips) without opening its source or moving anything; ← → step
+ *  over it whole; ⌫ beside it selects it first, ⌫ or Delete on the selected image removes it with a space beside it; ⌘C / ⌘X
+ *  give its Markdown; ↵ or a click on the selected image opens its source; a double-click on its caption opens the source with
+ *  the caret at that character; an image alone in its paragraph is centred */
+test("noteImageSelect", async () => {
+  const text = `Text above.\n\nSee ${PIC_MD} inline.\n\n![](${SMALL_SRC})\n\nEnd text.`;
+  const h = await open({ board: board([text]), light, w: 1240, h: 820, settings: { theme: "warm-ink" } });
+  const pg = h.page,
+    card = pg.locator('.card[data-id="n0"]'),
+    pic = card.locator(".md-pm .md-img:not(.below) img").first();
+  await idle(h);
+  const lone = () =>
+    card
+      .locator(":is(.nbody, .md-pm) > p")
+      .nth(2)
+      .evaluate((p) => {
+        const r = p.querySelector("img")!.getBoundingClientRect(),
+          pr = p.getBoundingClientRect();
+        return { cls: p.className, off: Math.round(r.left + r.width / 2 - (pr.left + pr.width / 2)) };
+      });
+  const loneStatic = await lone();
+  await card.locator(".nbody p").last().dblclick();
+  await card.locator(".md-pm:focus").waitFor();
+  await idle(h);
+  const loneEdit = await lone();
+  check(
+    "noteImageSelect a lone image is centred, in both modes",
+    /md-psized/.test(loneStatic.cls) &&
+      /md-psized/.test(loneEdit.cls) &&
+      Math.abs(loneStatic.off) <= 1 &&
+      Math.abs(loneEdit.off) <= 1,
+    { loneStatic, loneEdit },
+  );
+  const [a, b] = await picRange(pg);
+  const top0 = await card
+    .locator(".md-pm > p")
+    .last()
+    .evaluate((p) => p.getBoundingClientRect().top);
+  await pic.click();
+  await card.locator(".md-pm .md-img.md-picked").waitFor();
+  await idle(h);
+  const picked = await pmState(pg);
+  const top1 = await card
+    .locator(".md-pm > p")
+    .last()
+    .evaluate((p) => p.getBoundingClientRect().top);
+  await shot(h, "noteImageSelect-selected");
+  check(
+    "noteImageSelect a click selects the image, its source stays closed and nothing moves",
+    picked.from === a &&
+      picked.to === b &&
+      (await card.locator(".md-pm .md-img.below").count()) === 0 &&
+      Math.abs(top1 - top0) < 0.5,
+    { picked, a, b, top0, top1 },
+  );
+  check("noteImageSelect ⌘C gives its Markdown", (await clip(pg, "copy")) === PIC_MD);
+  await pg.keyboard.press("ArrowRight");
+  const right = await pmState(pg);
+  await pg.keyboard.press("ArrowLeft");
+  const left = await pmState(pg);
+  check(
+    "noteImageSelect ← → step over the image whole",
+    right.from === b && right.to === b && left.from === a && left.to === a,
+    { right, left, a, b },
+  );
+  // Delete before it and ⌫ after it select it first
+  await pg.keyboard.press("Delete");
+  const del1 = await pmState(pg);
+  await pg.keyboard.press("ArrowRight");
+  await pg.keyboard.press("Backspace");
+  const bs1 = await pmState(pg);
+  check(
+    "noteImageSelect ⌫ / Delete beside the image select it",
+    del1.from === a && del1.to === b && bs1.from === a && bs1.to === b && bs1.paras[1] === `See ${PIC_MD} inline.`,
+    { del1, bs1 },
+  );
+  await pg.keyboard.press("Backspace");
+  await idle(h);
+  const gone = await pmState(pg);
+  check("noteImageSelect ⌫ removes the selected image whole", gone.paras[1] === "See inline.", gone.paras);
+  // undo brings it back selected
+  await pg.keyboard.press("ControlOrMeta+z");
+  await card.locator(".md-pm .md-img.md-picked").waitFor();
+  const cut = await clip(pg, "cut");
+  await idle(h);
+  const afterCut = await pmState(pg);
+  check("noteImageSelect ⌘X takes the Markdown out", cut === PIC_MD && afterCut.paras[1] === "See  inline.", {
+    cut,
+    paras: afterCut.paras,
+  });
+  await pg.keyboard.press("ControlOrMeta+z");
+  await card.locator(".md-pm .md-img.md-picked").waitFor();
+  await idle(h);
+  // ↵ on the selected image, or a click on it, opens its source
+  await pg.keyboard.press("Enter");
+  await card.locator(".md-pm .md-img.below").waitFor();
+  const enter = await pmState(pg);
+  check(
+    "noteImageSelect ↵ opens the source",
+    enter.from === a + 2 && enter.paras[1] === `See ${PIC_MD} inline.`,
+    enter,
+  );
+  await pg.keyboard.press("Control+End");
+  await card.locator(".md-pm .md-img.below").waitFor({ state: "detached" });
+  await pic.click();
+  await card.locator(".md-pm .md-img.md-picked").waitFor();
+  await pic.click();
+  await card.locator(".md-pm .md-img.below").waitFor();
+  await pg.keyboard.press("Control+End");
+  await card.locator(".md-pm .md-img.below").waitFor({ state: "detached" });
+  await idle(h);
+  // a double-click on the "c" of "caption"
+  const c = await card
+    .locator(".md-pm .md-img:not(.below) .md-cap")
+    .first()
+    .evaluate((cap) => {
+      const t = cap.firstChild as Text,
+        i = t.data.indexOf("caption"),
+        rg = document.createRange();
+      rg.setStart(t, i);
+      rg.setEnd(t, i + 1);
+      const r = rg.getBoundingClientRect();
+      return { x: r.left + r.width * 0.3, y: r.top + r.height / 2 };
+    });
+  await pg.mouse.dblclick(c.x, c.y);
+  await card.locator(".md-pm .md-img.below").waitFor();
+  const onCap = await pmState(pg);
+  check(
+    "noteImageSelect a double-click on the caption puts the caret at that character of the source",
+    onCap.from === onCap.to && onCap.from - a === PIC_MD.indexOf("caption"),
+    { at: onCap.from - a, want: PIC_MD.indexOf("caption") },
+  );
+  await pg.keyboard.press("Control+End");
+  await exitEdit(h);
+  check("noteImageSelect the Markdown is unchanged", md(h, "n0") === text, md(h, "n0"));
+  await h.close();
+});
+
+/** The grips of a selected image scale only the picture while dragged (a transform: the text after it does not move until the
+ *  release, nothing is written before it), and the width is written once on release; the drag stops at the image's natural size
+ *  (no width written) and at the body's full width */
+test("noteImageResizeScales", async () => {
+  const h = await open({
+    board: board([`Above.\n\n![](${SMALL_SRC})\n\nBelow the image.`]),
+    light,
+    w: 1240,
+    h: 820,
+    settings: { theme: "warm-ink" },
+  });
+  const pg = h.page,
+    card = pg.locator('.card[data-id="n0"]');
+  await idle(h);
+  await card.locator(".nbody p").last().dblclick();
+  await card.locator(".md-pm:focus").waitFor();
+  await idle(h);
+  const para = () => pmState(pg).then((s) => s.paras[1]);
+  const below = () =>
+    card
+      .locator(".md-pm > p")
+      .last()
+      .evaluate((p) => p.getBoundingClientRect().top);
+  const nat = await imgFrac(h, "n0", ".md-pm");
+  /** Drags the right grip by dx; mid: what the picture and the text after it look like before the release */
+  const drag = async (dx: number) => {
+    const g = await imgGrip(h, "n0");
+    const top0 = await below();
+    await pg.mouse.move(g.x, g.y);
+    await pg.mouse.down();
+    for (let i = 1; i <= 8; i++) {
+      await pg.mouse.move(g.x + (dx * i) / 8, g.y);
+      await frames(pg);
+    }
+    const mid = {
+      transform: await card
+        .locator(".md-pm .md-img.md-picked .md-imgframe")
+        .evaluate((f) => (f as HTMLElement).style.transform),
+      moved: Math.abs((await below()) - top0),
+      text: await para(),
+    };
+    await pg.mouse.up();
+    await idle(h);
+    return mid;
+  };
+  const grow = await drag(100);
+  await shot(h, "noteImageResizeScales-grown");
+  const grown = await para();
+  check(
+    "noteImageResizeScales scales while dragged, writes on release",
+    /^scale\([\d.]+\)$/.test(grow.transform) &&
+      grow.moved < 0.5 &&
+      grow.text === `![](${SMALL_SRC})` &&
+      /\{width=\d+%\}$/.test(grown) &&
+      (await card.locator(".md-pm .md-img.md-picked").count()) === 1,
+    { grow, grown: grown.slice(-14) },
+  );
+  // back to within a few pixels of its natural size: no width
+  const now = await imgFrac(h, "n0", ".md-pm");
+  await drag(-(now.w - nat.w) / 2 + 2);
+  check(
+    "noteImageResizeScales stops at the natural size",
+    (await para()) === `![](${SMALL_SRC})`,
+    (await para()).slice(-14),
+  );
+  await drag(800);
+  check(
+    "noteImageResizeScales stops at the full width",
+    (await para()).endsWith("{width=100%}") && (await imgFrac(h, "n0", ".md-pm")).frac > 0.99,
+    (await para()).slice(-14),
+  );
+  await exitEdit(h);
+  await h.close();
 });
