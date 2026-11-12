@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardCanvas
+import CodeBoardModel
 
 /// Per display-link frame: how long the main thread worked on it (from the canvas's frame callback until the run loop
 /// went idle, Core Animation's commit included), frames dropped before it, and what the canvas looked like after it.
@@ -116,13 +117,30 @@ final class Bench {
     var peakFootprintMB = 0.0
   }
 
+  /// Opening the board, from the call until the board was shown, every Note in view showed its picture, every Note in
+  /// view showed it at display resolution and every Note had its overview picture (nil: not within 30 s)
+  struct Open: Encodable {
+    var shownMs = 0.0
+    var presentMs: Double?
+    var sharpMs: Double?
+    var overviewsMs: Double?
+    var notes = 0
+    var notesInView = 0
+  }
+
   struct Result: Encodable {
     var board: String
     var displayHz: Int
     var view: [Int]
+    /// With an empty snapshot cache, then again from the disk cache
+    var firstOpen: Open
+    var reopen: Open
     var segments: [Segment]
-    /// Redraws, decodes and swaps while a gesture was active (the rule: all 0)
+    /// Redraws, decodes, swaps, Note requests started and Note swaps while a gesture was active (the rule: all 0)
     var gestureRule: [String: Int]
+    /// The WebKit processes started since the bench began, at most, and when the first open was complete
+    var webkitPeakMB: Double
+    var webkitAfterOpenMB: Double
   }
 
   private static let script: [(String, Motion)] = [
@@ -147,14 +165,20 @@ final class Bench {
   private var lastFootprint: CFTimeInterval = 0
   private var results: [Segment] = []
   private var done: CheckedContinuation<Void, Never>?
+  private var opening = Open()
+  private var webkitPeak = 0
 
   init(_ canvas: CanvasView, meter: Meter) {
     self.canvas = canvas
     self.meter = meter
   }
 
-  func run(board: String) async -> String {
+  /// Opens the board (its Notes never drawn before, as the snapshot cache is the bench's own), runs the segments on it,
+  /// then opens it again (now from the disk cache)
+  func run(_ board: VaultBoard, in vault: Vault) async throws -> String {
     let broken = canvas.ruleBreaks
+    let first = try await open(board, in: vault)
+    let afterOpen = webkit()
     begin(now: CACurrentMediaTime())
     await withCheckedContinuation { c in
       done = c
@@ -163,17 +187,58 @@ final class Bench {
     }
     meter.drive = nil
     meter.record = nil
+    let again = try await open(board, in: vault)
     let r = canvas.ruleBreaks
     let result = Result(
-      board: board, displayHz: NSScreen.main?.maximumFramesPerSecond ?? 0,
-      view: [Int(canvas.bounds.width), Int(canvas.bounds.height)], segments: results,
+      board: board.id.rawValue, displayHz: NSScreen.main?.maximumFramesPerSecond ?? 0,
+      view: [Int(canvas.bounds.width), Int(canvas.bounds.height)], firstOpen: first, reopen: again, segments: results,
       gestureRule: [
         "redraws": r.redraws - broken.redraws, "decodes": r.decodes - broken.decodes, "swaps": r.swaps - broken.swaps,
-      ])
+        "note_requests": r.noteRequests - broken.noteRequests, "note_swaps": r.noteSwaps - broken.noteSwaps,
+      ], webkitPeakMB: Double(webkitPeak) / 1e6, webkitAfterOpenMB: Double(afterOpen) / 1e6)
     let e = JSONEncoder()
     e.keyEncodingStrategy = .convertToSnakeCase
     e.outputFormatting = [.sortedKeys]
     return (try? e.encode(result)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+  }
+
+  private func open(_ board: VaultBoard, in vault: Vault) async throws -> Open {
+    let start = CACurrentMediaTime()
+    try await canvas.show(board, in: vault, theme: .warmInkLight)
+    opening = Open(shownMs: ms(since: start))
+    await withCheckedContinuation { c in
+      done = c
+      var sampled = 0.0
+      meter.drive = { [weak self] _ in
+        guard let self else { return }
+        let now = CACurrentMediaTime()
+        if now - sampled > 0.25 {
+          sampled = now
+          _ = webkit()
+        }
+        let p = canvas.noteProgress
+        opening.notes = p.notes
+        opening.notesInView = p.inView
+        if opening.presentMs == nil, p.present == p.inView { opening.presentMs = ms(since: start) }
+        if opening.sharpMs == nil, p.sharp == p.inView { opening.sharpMs = ms(since: start) }
+        if opening.overviewsMs == nil, p.overviews == p.notes { opening.overviewsMs = ms(since: start) }
+        if opening.sharpMs != nil && opening.overviewsMs != nil || now - start > 30 {
+          done?.resume()
+          done = nil
+        }
+      }
+    }
+    meter.drive = nil
+    return opening
+  }
+
+  private func ms(since t: CFTimeInterval) -> Double { ((CACurrentMediaTime() - t) * 1000).rounded() }
+
+  /// The WebKit processes' footprint now, keeping the peak
+  private func webkit() -> Int {
+    let now = webKitFootprint()
+    webkitPeak = max(webkitPeak, now)
+    return now
   }
 
   /// The next segment: placed at its start zoom, then wait for the levels to fill
@@ -269,10 +334,32 @@ func percentile(_ a: [Double], _ p: Double) -> Double {
 }
 
 /// The process's footprint, as Activity Monitor shows it
-func footprint() -> Int {
+func footprint(_ pid: pid_t = getpid()) -> Int {
   var info = rusage_info_v4()
   let r = withUnsafeMutablePointer(to: &info) {
-    $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(getpid(), RUSAGE_INFO_V4, $0) }
+    $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V4, $0) }
   }
   return r == 0 ? Int(info.ri_phys_footprint) : 0
+}
+
+/// WebKit's processes running when the bench started (other apps', Safari's): left out of the count. Read on first use,
+/// so `webKitFootprint()` must be called once before anything starts a web view
+private let webKitBefore = webKitProcesses()
+
+private func webKitProcesses() -> Set<pid_t> {
+  var pids = [pid_t](repeating: 0, count: 8192)
+  let n = Int(proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size)))
+  var path = [CChar](repeating: 0, count: 4096)
+  return Set(
+    pids.prefix(max(n, 0)).filter { pid in
+      pid > 0 && proc_pidpath(pid, &path, UInt32(path.count)) > 0
+        && String(decoding: path.prefix { $0 != 0 }.map(UInt8.init(bitPattern:)), as: UTF8.self).contains(
+          "com.apple.WebKit.")
+    })
+}
+
+/// The footprint of the WebKit processes (web content, networking, GPU) started since the bench began: the Note
+/// renderer's, as nothing else here starts one
+func webKitFootprint() -> Int {
+  webKitProcesses().subtracting(webKitBefore).reduce(0) { $0 + footprint($1) }
 }
