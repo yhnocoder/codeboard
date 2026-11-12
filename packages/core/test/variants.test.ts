@@ -5,6 +5,7 @@ import {
   dropVariants,
   emptyBoard,
   isMine,
+  mergeCodeCards,
   placeCards,
   rebaseUpstream,
   removeVariant,
@@ -12,6 +13,7 @@ import {
   setVariantSegs,
   switchVariant,
   threeWay,
+  unmergeCard,
   upstreamSegs,
   variantMarks,
   noteShown,
@@ -117,6 +119,55 @@ describe("variants", () => {
     removeVariant(b, "c1", "v1");
     expect(card(b).variants).toBeUndefined();
     expect(n2.variant).toBeUndefined();
+  });
+
+  it("merging cards releases their sidenotes from Variants the merged card does not have", () => {
+    const b = board();
+    addVariant(b, "c1", { id: "v1", name: "w", from: { kind: "worktree" }, segs: [seg(MINE, 20)] });
+    switchVariant(b, "c1", "v1");
+    // board-only: a note of its own, no Highlight under it to keep in step
+    b.sidenotes = [
+      {
+        id: "on",
+        at: { card: "c1", seg: "s1", lines: [23, 23] },
+        kind: "text",
+        md: "131",
+        variant: "v1",
+        boardOnly: true,
+      },
+      {
+        id: "off",
+        at: { card: "c1", seg: "s1", lines: [12, 12] },
+        kind: "text",
+        md: "up",
+        variant: "up",
+        boardOnly: true,
+      },
+    ];
+    b.cards.push({
+      id: "c3",
+      kind: "code",
+      segments: [{ ...seg(["def g():", "    pass"], 1), id: "s3", path: "g.py" }],
+    });
+    b.place.c3 = { x: 0, y: 400, w: 400 };
+    const m = mergeCodeCards(b, ["c1", "c3"], "c1", { id: "m" })!;
+    const at = (id: string) => b.sidenotes.find((n) => n.id === id)!;
+    // the shown Variant's lines are the merged card's; the other Variant's lines are not on it, so the note goes on the card
+    expect(at("on")).toMatchObject({ at: { card: "m", lines: [23, 23] } });
+    expect(at("on").variant).toBeUndefined();
+    expect(at("off").at).toEqual({ card: "m" });
+    expect(at("off").variant).toBeUndefined();
+    expect(m.segments.map((s) => s.path)).toEqual(["m.py", "g.py"]);
+    expect(danglingRefs(b)).toEqual([]);
+    unmergeCard(b, "m");
+    expect((b.cards.find((c) => c.id === "c1") as CodeCard).variants!.map((v) => v.id)).toEqual(["up", "v1"]);
+    expect(at("on")).toMatchObject({ at: { card: "c1", lines: [23, 23] } });
+    expect(danglingRefs(b)).toEqual([]);
+  });
+  it("danglingRefs reports a sidenote bound to a Variant its card does not have", () => {
+    const b = board();
+    b.sidenotes[0].variant = "v9";
+    expect(danglingRefs(b)).toContain("sidenote n1 on missing variant v9 of c1");
   });
 
   it("refreshing the shown variant moves line ends; Update on upstream while a variant is shown leaves the shown code alone", () => {

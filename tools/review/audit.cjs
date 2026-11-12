@@ -6,7 +6,7 @@
 
 const SEL = {
   hit: "button, [role=button], [role=menuitem], a[href], input, select, textarea, .call, .mk, .step, .handle, [data-hit]",
-  pop: ".pop, .menu, .ctx, .dialog, .diffpop, .srcpop, .stkpick, [role=menu], [role=dialog], .palette",
+  pop: ".pop, .menu, .ctx, .dialog, .diffpop, .stkpick, [role=menu], [role=dialog], .palette",
   text: "button, [role=menuitem], .ctitle, .pop *, .menu *, .ctx *, .bbar *, .chead *",
   card: ".card",
 };
@@ -88,7 +88,7 @@ function inPage(SEL) {
   }
 
   // L10: an anchored popup at the viewport's top-left corner usually lost its anchor and fell back to (0,0)
-  for (const el of document.querySelectorAll(".pop, .diffpop, .srcpop")) {
+  for (const el of document.querySelectorAll(".pop, .diffpop")) {
     // context menus open at the click point and may legitimately sit in a corner
     const r = shown(el);
     if (!r) continue;

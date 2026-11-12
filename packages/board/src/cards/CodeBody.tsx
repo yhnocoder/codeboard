@@ -29,7 +29,7 @@ import { lineSel, setLineSel, reportSelection } from "../state/selection";
 import { StickerChip } from "../stickers/Picker";
 import { geo, setGeo } from "../state/geo";
 import { look, shape } from "../state/look";
-import { queueMeasure, observeResize, monoWidth, DED_PAD } from "../state/measure";
+import { queueMeasure, observeResize, monoWidth, DED_PAD, MONO_GUESS, TAB_SIZE } from "../state/measure";
 import {
   shown,
   notesOn,
@@ -48,7 +48,7 @@ import { rowEl, type CodeCx } from "./code/cx";
 import { copyCode, textRange, textSel, useLineSelection } from "./code/text";
 import { useLineHover } from "./code/hover";
 import { useLineMarks } from "./code/marks";
-import { useHighlights, type Hx } from "./code/highlights";
+import { hxClasses, useHighlights, type Hx } from "./code/highlights";
 import { MdStatic } from "../ui/Md";
 import { AnnotRail, useAnnots } from "./code/Annots";
 import { GapRow } from "./code/GapRow";
@@ -58,7 +58,7 @@ import { freeEditBlur } from "./code/freeblur";
  *  adjacent runs read apart with no space added between lines */
 const HX_INSET = 2;
 
-export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; dim?: () => boolean }) {
+export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolean }) {
   let codeEl!: HTMLDivElement, srcEl!: HTMLDivElement, scrollEl!: HTMLDivElement;
   const c = () => p.card;
   const rows = createMemo<Row[]>(() =>
@@ -178,7 +178,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
    */
   const codeStart = (h: Hx): { css: string; px: number } => {
     // the code font's width once the lines are laid out (measured with them, ys)
-    const ch = (srcEl && ys().length && monoWidth(srcEl)) || 7.2;
+    const ch = (srcEl && ys().length && monoWidth(srcEl)) || MONO_GUESS;
     const pad = ded() ? DED_PAD : 0;
     let stop: number | undefined, // the last tab stop a tab reached (in columns), if any
       cols = -ded(); // columns after it (or after the line's start, with the pad)
@@ -188,7 +188,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
         continue;
       }
       const x = stop === undefined ? pad / ch + cols : stop + cols;
-      stop = (Math.floor((x + 0.5) / 4) + 1) * 4;
+      stop = (Math.floor((x + 0.5) / TAB_SIZE) + 1) * TAB_SIZE;
       cols = 0;
     }
     return stop === undefined
@@ -304,7 +304,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   };
 
   const [scrollY, setScrollY] = createSignal(0);
-  // 滚动只改 scroll：行的位置（offsetTop）不随滚动变。整份重量的话每帧都换掉 ys、rows，概览档的行条、连着这张卡的线全跟着重算（每帧 ~2 ms）
+  // 滚动只改 scroll：行的位置（offsetTop）不随滚动变。整份重量的话每帧都换掉 ys、rows，连着这张卡的线全跟着重算（每帧 ~2 ms）
   const onScroll = () => {
     const t = scrollEl.scrollTop,
       id = c().id;
@@ -345,7 +345,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
    *  按字数乘字宽（ch，等宽字体）算，不量 DOM */
   const flashSpan = (r: Extract<Row, { t: "line" }>) => {
     const s = segById(r.seg);
-    const t = (s?.text[r.line - s.start] ?? "").replace(/\t/g, "    ").trimEnd();
+    const t = (s?.text[r.line - s.start] ?? "").replace(/\t/g, " ".repeat(TAB_SIZE)).trimEnd();
     const lead = t.length - t.trimStart().length;
     return { "--fx": `calc(${shift()} + ${lead - 0.5}ch)`, "--fw": `${t.length - lead + 1}ch` };
   };
@@ -406,11 +406,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
           <div
             ref={codeEl}
             class="code"
-            classList={{
-              "hx-band": !bracket(),
-              "hx-bracket": bracket(),
-              "hx-hand": hlLook() === "bracket-hand",
-            }}
+            classList={hxClasses(hlLook())}
             style={{ "--nd": String(numDigits()) }}
             onCopy={(e) => copyCode(cx, e)}
           >

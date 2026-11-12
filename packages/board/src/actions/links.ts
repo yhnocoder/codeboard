@@ -20,11 +20,10 @@ import { lastPointer } from "../state/measure";
 import { askCands, attachCall, calleeMatches } from "./flow";
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
-
-type EndRef = End;
+import { attrSel } from "../cardsel";
 
 /** 这条箭头其实是调用：从代码行连到「这一行调用的函数」所在的卡（只有一种 Arrow，是不是调用自动判断） */
-export function callOn(from: EndRef, to: EndRef): CallSpan | undefined {
+export function callOn(from: End, to: End): CallSpan | undefined {
   if (from.line === undefined || !from.seg || to.line !== undefined) return;
   const t = cardById(to.card)?.card;
   if (!isCode(t) || !isCode(cardById(from.card)?.card)) return;
@@ -35,7 +34,7 @@ export function callOn(from: EndRef, to: EndRef): CallSpan | undefined {
  * 认不出调用（Process(target=…)、动态分发、整张卡连整张卡）时用户手动标成 Call：名字取目标卡的函数名（__init__ 取类名），
  * col 0 = 不指定是行里哪一处。两端都得是代码卡（可以不同语言）
  */
-export function manualCall(from: EndRef, to: EndRef): CallSpan | undefined {
+export function manualCall(from: End, to: End): CallSpan | undefined {
   const f = cardById(from.card)?.card,
     t = cardById(to.card)?.card;
   if (!isCode(f) || !isCode(t) || hostOf(from.card) === hostOf(to.card)) return;
@@ -50,7 +49,7 @@ export function manualCall(from: EndRef, to: EndRef): CallSpan | undefined {
  * 新箭头。从代码行连到「这一行调用的函数」所在的卡时自动带上 Call 标记，
  * 连到别的（Note、某一行）就是普通箭头。两端可以是整张卡或某一行，数量不限；只有同一张卡的同一处连自己不行
  */
-export function addLink(from: EndRef, to: EndRef, side?: LinkSide) {
+export function addLink(from: End, to: End, side?: LinkSide) {
   const call = callOn(from, to);
   if (call) return void attachCall(from.card, from.seg!, call, to.card, side ? { from: side } : undefined);
   return C.addLink(commandEnv, from, to, side) ?? undefined;
@@ -82,20 +81,20 @@ export function hiVar(L: Link, v: Var, on: boolean) {
 export const setLinkLabel = (id: string, v: string) => C.setLinkLabel(commandEnv, id, v);
 export function openVars(id: string) {
   const el =
-    document.querySelector(`.vchips[data-link="${id}"]`) ?? document.querySelector(`.vplus[data-link="${id}"]`);
+    document.querySelector(`.vchips${attrSel("data-link", id)}`) ??
+    document.querySelector(`.vplus${attrSel("data-link", id)}`);
   openPop({ kind: "vars", link: id }, el ? { el, prefer: "below" } : lastPointer());
 }
 export const toggleVar = (id: string, v: Var) => C.toggleCallVar(commandEnv, id, v);
 
 const setSides = (id: string, from?: LinkSide | "auto", to?: LinkSide | "auto") =>
   C.setLinkSides(commandEnv, id, from, to);
-const resetSides = (id: string) => setSides(id, "auto", "auto");
 
 export const setLinkStyle = (id: string, f: (s: LinkStyle) => void) => C.setLinkStyle(commandEnv, id, f);
 /** 某一端从哪边进出；undefined = Auto */
 export const setLinkSide = (id: string, end: "from" | "to", side: LinkSide | undefined) =>
   end === "from" ? setSides(id, side ?? "auto") : setSides(id, undefined, side ?? "auto");
-export const clearLinkSides = (id: string) => resetSides(id);
+export const clearLinkSides = (id: string) => setSides(id, "auto", "auto");
 /** Call 标记开关：关掉时参数和 ↺ 跟着收起，自己写的字留着；打开时认不出调用也能手动标（manualCall） */
 export function toggleCallMark(id: string) {
   const L = state.board.links.find((l) => l.id === id);

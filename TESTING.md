@@ -67,6 +67,8 @@ npm run check                         # 本地第 1 层，约 90 秒
 npm run check -- markdownRender notes          # 加上点名的场景
 npm run check -- --all                # 所有场景，不限时间
 npm run harness -- markdownRender     # 只跑点名的场景（HARNESS_LIGHT=1 用亮色主题）
+CPU_THROTTLE=4 npm run harness -- markdownRender   # 把页面的 CPU 放慢 4 倍：在本机复现只在 CI 慢机器上出现的时序问题
+IDLE_DEBUG=1 npm run harness -- markdownRender     # 每次 idle() 等了多久、从哪一行调的：找场景慢在哪
 npm run harness -- --workers=4        # 所有场景（manual 除外），4 个 worker 一起跑
 npm run harness -- --select --base=origin/main --dry       # 只看本地的挑选：碰到了哪些区（因为哪些文件）、会跑哪些场景、为什么、约多少秒场景时间、哪些改过的留给 CI，什么都不跑
 npm run harness -- --select --ci --base=origin/main --dry  # 同上，CI 的挑法：加上所有改过的场景、要几个 harness job、补了哪些、哪些留给定时全量
@@ -80,6 +82,7 @@ E2E_FLOW=my-flow.cjs npm run e2e                          # 在真的 VS Code �
 # 流程会点白板的话别和 E2E_PART=2 一起用：part 2 最后一步 winzoom 缩放窗口再还原，VS Code 1.142 之后有时 webview 收不到点击；用 E2E_ONLY 挑不含 winzoom 的步骤
 E2E_WS=/path/to/repo E2E_FLOW=my-flow.cjs npm run e2e    # 同上，打开的是别的仓库的副本（git 仓库用 clone，别的文件夹直接拷贝）；drive.cjs 自己的步骤只认 nano-vllm
 # extensions/vscode/test/torch-routing.cjs 是手动的 E2E_FLOW（不进 CI）：在配好的 PyTorch checkout 上点 12 个调用，看路由到的 kernel；要原地打开那个 checkout，run.sh 做不到，见文件开头
+# extensions/vscode/test/zoom-perf.cjs 也是手动的 E2E_FLOW（不进 CI）：在真的 VS Code 里对一块卡很多的白板平移、缩放，量 webview 的帧、主线程任务和空白帧（CI 的 perf 没有 GPU，量不到这些）；Mac 上加 E2E_GPU=1 用显卡，参数和结果的位置见文件开头
 ```
 
 截图在 `test-out/harness/`，Playwright 自己的输出（失败时的上下文）在 `test-out/harness/results/`。

@@ -262,17 +262,17 @@ class TableBar {
   private open: { pos: number } | null = null;
   private pos: number | null = null;
   private frame = 0;
+  private buttons: { el: HTMLElement; danger: boolean }[] = [];
   constructor(
     private view: EditorView,
-    classes?: MdClasses,
+    private classes: () => MdClasses | undefined,
   ) {
     const K = (s: string) =>
       IS_MAC ? s : s.replace(/⌘/g, "Ctrl+").replace(/⇧/g, "Shift+").replace(/⌫/g, "Backspace").replace(/↵/g, "Enter");
     this.bar = document.createElement("div");
-    this.bar.className = `mdui ${kindClass(classes, "bar")} md-tbar`;
     const btn = (b: Btn) => {
       const e = document.createElement("button");
-      e.className = `${kindClass(classes, "button")} md-ib${b.danger ? " danger" : ""}`;
+      this.buttons.push({ el: e, danger: !!b.danger });
       e.dataset.act = b.act;
       e.dataset.tip = b.tip;
       if (b.kbd) e.dataset.kbd = K(b.kbd);
@@ -385,7 +385,10 @@ class TableBar {
       if (this.open) this.closePick(false);
       return;
     }
-    if (!this.bar.isConnected) document.body.append(this.bar);
+    if (!this.bar.isConnected) {
+      this.dress();
+      document.body.append(this.bar);
+    }
     const t = v.state.doc.nodeAt(pos)!,
       m = TableMap.get(t);
     this.count.textContent = `${m.height}×${m.width}`;
@@ -396,6 +399,13 @@ class TableBar {
       b.setAttribute("aria-pressed", String(al === a));
     }
     this.place();
+  }
+  /** The page's classes, read each time the bar comes up: the bar is built with the editor, before any editing session has
+   *  options, and the editor is kept from one session to the next */
+  private dress() {
+    const c = this.classes();
+    this.bar.className = `mdui ${kindClass(c, "bar")} md-tbar`;
+    for (const b of this.buttons) b.el.className = `${kindClass(c, "button")} md-ib${b.danger ? " danger" : ""}`;
   }
   /** Right-aligned with the table, just above its top edge (over the margin, which every block has anyway) */
   private place() {
@@ -544,7 +554,7 @@ class CaptionedTableView extends TableView {
 }
 
 /** The table node for the editor (column resizing on, cells at least CELL_MIN wide), plus the toolbar and shortcuts */
-export function tableEditing(base: TNode, classes?: MdClasses): AnyExtension[] {
+export function tableEditing(base: TNode, classes: () => MdClasses | undefined): AnyExtension[] {
   const node = base
     .extend({
       addProseMirrorPlugins() {

@@ -11,9 +11,10 @@ async function folderInfo(p: string): Promise<DiagInfo["folders"][number]> {
   return { path: p, git: true, head, dirty: !!st?.trim() };
 }
 
-/** board 给了就带上规模；attach = undefined 时问一次要不要附上白板 JSON */
-export async function copyDiagnostics(cx: HostContext, ask: Prompts, board?: Board, attach?: boolean) {
-  if (board && attach === undefined) {
+/** board 给了就带上规模，并问一次要不要附上白板 JSON */
+export async function copyDiagnostics(cx: HostContext, ask: Prompts, board?: Board) {
+  let attach = false;
+  if (board) {
     const pick = await ask.pick(
       [
         { label: "Copy Diagnostics", description: "Versions, workspace, recent log", attach: false },

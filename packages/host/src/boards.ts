@@ -68,15 +68,15 @@ export interface BoardHost {
   /** ⌘C 复制的卡（贴到别的白板时用） */
   clip: CardClip | undefined;
   /** 共享卡的情况（在几块白板上、谁连到它）重新推给白板；now = 不等防抖 */
-  refreshShared(now?: boolean, fresh?: string): void;
-  /** 子白板的骨架重新推给白板（变了的）；now = 不等防抖，fresh = 刚 init 的白板 */
-  refreshSkeletons(now?: boolean, fresh?: string): void;
+  refreshShared(now?: boolean): void;
+  /** 子白板的骨架重新推给白板（变了的）；now = 不等防抖 */
+  refreshSkeletons(now?: boolean): void;
   /** Zoomed-out summaries: the host writes the board's missing ones and waits on its pending ones (hub.ts) */
   readonly summaries?: { opened(b: Board): void };
   skeleton(id: string): Skeleton | null;
   /** [[ 引用能选的别的白板上的卡（p 之后会收到变了的 boardRefs）；refreshBoardRefs 重推变了的；refPicked 记下最近选过的 */
   boardRefs(p: BoardPanel): BoardRefs;
-  refreshBoardRefs(now?: boolean, fresh?: string): void;
+  refreshBoardRefs(now?: boolean): void;
   refPicked(b: string, id: string): void;
   /** 面板换一块白板显示（进入 / 离开子白板） */
   switchBoard(
@@ -139,6 +139,11 @@ export class BoardPanel {
   completing: AbortController | undefined;
   private asks = new Map<number, (v: string | number | null) => void>();
   private askN = 0;
+  /**
+   * What the hub last pushed to this view, so a push carries only what changed: sub-board skeletons by board id, the shared cards'
+   * state, the [[ boards (undefined until the board asks for them; "" = asked, to be sent). init starts it over
+   */
+  sent: { skels: Map<string, string>; shared?: string; refs?: string } = { skels: new Map() };
 
   /** id 会变：进入子白板时同一个面板换成那块白板（BoardHub.switchBoard） */
   constructor(
@@ -223,7 +228,7 @@ export class BoardPanel {
       this.mgr.metas(),
       this.readonlyNote(b),
       imagesOf(this.cx, this.mgr.store, boardImages(b)).catch((e) => {
-        this.cx.ws.log("warn", `image copies: ${e instanceof Error ? e.message : e}`);
+        this.cx.log("warn", `image copies: ${e instanceof Error ? e.message : e}`);
         return {};
       }),
     ]);
@@ -245,9 +250,10 @@ export class BoardPanel {
     const q = this.queue;
     this.queue = [];
     for (const m of q) this.view.postMessage(m);
-    this.mgr.refreshShared(true, this.id);
-    this.mgr.refreshSkeletons(true, this.id);
-    this.mgr.refreshBoardRefs(true, this.id);
+    this.sent = { skels: new Map(), refs: this.sent.refs === undefined ? undefined : "" };
+    this.mgr.refreshShared(true);
+    this.mgr.refreshSkeletons(true);
+    this.mgr.refreshBoardRefs(true);
     this.mgr.summaries?.opened(b);
     // 排进版本检查的队列：之后的 refreshStale 在它后面（旧的结果不盖掉新的）
     const first = this.staleRun
@@ -258,7 +264,7 @@ export class BoardPanel {
         if (Object.keys(stale).length) this.post({ type: "stale", stale });
         this.mgr.staleChanged(this.id, countStale(b, stale));
       });
-    this.staleRun = first.catch((e) => this.cx.ws.log("warn", `stale: ${e instanceof Error ? e.message : e}`));
+    this.staleRun = first.catch((e) => this.cx.log("warn", `stale: ${e instanceof Error ? e.message : e}`));
     this.variantSent.clear();
     void this.refreshVariants(true);
     // 白板已经出来了：后台让语言服务先热起来
@@ -299,7 +305,7 @@ export class BoardPanel {
       const cards = await syncVariants(this.cx, this.board, this.variantSent, { net });
       if (Object.keys(cards).length) this.post({ type: "variants", cards });
     } catch (e) {
-      this.cx.ws.log("warn", `variants: ${e instanceof Error ? e.message : e}`);
+      this.cx.log("warn", `variants: ${e instanceof Error ? e.message : e}`);
     }
   }
 

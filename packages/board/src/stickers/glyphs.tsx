@@ -1,6 +1,6 @@
 // 内置贴纸：彩色圆底 + 白色线条（各主题在 themes.css 里换画法）；线条是 Lucide 的造型（ISC 许可，见 public/icons/LICENSE-lucide.txt），
 // d / fill 由 tools/icons/gen.mjs 从 tools/icons/icons.src.mjs 写入。Emoji 直接用系统字体；自定义包（Iconify JSON / 图片文件夹）由插件读本地目录。
-// 位图用原生 <img> 画（宿主认过格式的 data: URL），动图由浏览器自己播。动图在白板上只在看得见、且是完整档（不是概览 / 地图档）时播，
+// 位图用原生 <img> 画（宿主认过格式的 data: URL），动图由浏览器自己播。动图在白板上只在看得见、且在卡片层（不是缩小后的概要层）时播，
 // 别的时候换成第一帧的静态图（第一次要用时解一帧画进 canvas，存成 PNG data: URL，每个图标一份）：屏幕外、缩小了的动图不再每帧重画。
 // 播不播由外面用 GlyphPlay 告诉（画布上的贴纸看自己在不在屏幕附近，选图标面板看指针在不在格子上），没人说就一直播
 import { createContext, createMemo, createSignal, Show, useContext, type Accessor, type JSX } from "solid-js";
@@ -26,7 +26,18 @@ export const BUILTIN: Builtin[] = [
 const byName = new Map(BUILTIN.map((b) => [b.name, b]));
 
 export const EMOJI = "⭐ ❓ ❗ ✅ 🚩 ⚡ 🐞 📌 ❤️ ⏳ ⚠️ 💡 🔥 👀 🤔 🧪 🧠 🚀 🐢 🔒 📝 🎯 🧩 🔍 📊 🧮 🛠️ 🗑️ ✨ 🎉 😵 🙃".split(" ");
-export const STICKER_COLORS = ["#E3A132", "#E8743B", "#D9534F", "#E25D8B", "#8B6FD6", "#4C8BF5", "#3FA36B", "#6B7280"];
+/** The colours a sticker can take, in the order the picker and the menu show them, each with its name in the menu */
+export const STICKER_PALETTE = [
+  { name: "Gold", color: "#E3A132" },
+  { name: "Orange", color: "#E8743B" },
+  { name: "Red", color: "#D9534F" },
+  { name: "Pink", color: "#E25D8B" },
+  { name: "Purple", color: "#8B6FD6" },
+  { name: "Blue", color: "#4C8BF5" },
+  { name: "Green", color: "#3FA36B" },
+  { name: "Grey", color: "#6B7280" },
+];
+export const STICKER_COLORS = STICKER_PALETTE.map((p) => p.color);
 export const defaultColor = (i: IconRef) => (i.pack === "builtin" ? byName.get(i.name)?.color : undefined);
 
 // 自定义包：第一次要用时问插件读一次

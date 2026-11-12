@@ -19,7 +19,7 @@ import { openPop, updatePop } from "../state/pop";
 import { ask } from "../host";
 import { openMenu } from "../ui/Menu";
 import { lastPointer } from "../state/measure";
-import { cardSel } from "../cardsel";
+import { attrSel, cardSel } from "../cardsel";
 
 /** 调用处那个名字的元素（浮层挂在它下面） */
 function callEl(cardId: string, segId: string, call: CallSpan): Element | null {
@@ -28,7 +28,7 @@ function callEl(cardId: string, segId: string, call: CallSpan): Element | null {
   const i = calls.findIndex((c) => c.line === call.line && c.col === call.col);
   return i < 0
     ? null
-    : (document.querySelector(`${cardSel(host)} [data-seg="${segId}"] .call[data-c="${i}"]`) ??
+    : (document.querySelector(`${cardSel(host)} ${attrSel("data-seg", segId)} .call[data-c="${i}"]`) ??
         document.querySelector(`${cardSel(host)} .call[data-c="${i}"]`));
 }
 

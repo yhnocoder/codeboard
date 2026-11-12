@@ -7,36 +7,13 @@ import { Portal } from "solid-js/web";
 import { cardTitle, type Card } from "@codeboard/core";
 import { place } from "@yhnocoder/markdown/ui";
 import { cardById, hostOf } from "../../state/store";
-import { TIP_DELAY } from "../../state/timing";
-import { cardSel } from "../../cardsel";
+import { TIP_DELAY, TIP_WARM } from "../../state/timing";
+import { CARD_STATE_CLASSES, cardSel } from "../../cardsel";
 import { MdStatic } from "../Md";
 
 const PEEK_W = 420,
   PEEK_H = 360;
-/** How long after a preview went away the next one shows at once (as the tips) */
-const WARM = 800;
 
-/** The classes a card on the board gets from what is happening to it (selection, drags, culling, map level…), not its look */
-const STATE_CLASSES = [
-  "sel",
-  "solo",
-  "lift",
-  "landing",
-  "dim",
-  "editing",
-  "off",
-  "far",
-  "skel",
-  "skel-in",
-  "merge-hot",
-  "merge-arm",
-  "drop-hot",
-  "drop-cand",
-  "img-drop",
-  "bind-hot",
-  "bind-anchor",
-  "ghost-out",
-];
 /** What a card's inline style gets from its animations and tilt, not its look */
 const STATE_STYLES = ["rotate", "transform", "translate", "scale", "transform-origin", "opacity", "transition"];
 
@@ -49,7 +26,7 @@ export function cardPeeks() {
     warmUntil = 0;
   const hide = () => {
     clearTimeout(t);
-    if (peek()) warmUntil = performance.now() + WARM;
+    if (peek()) warmUntil = performance.now() + TIP_WARM;
     setPeek(null);
   };
   onCleanup(() => clearTimeout(t));
@@ -86,7 +63,7 @@ export function CardPeek(p: { id: string; at: HTMLElement; peeks: CardPeeks }) {
         h = src.offsetHeight,
         k = Math.min(1, PEEK_W / Math.max(1, w));
       const c = src.cloneNode(true) as HTMLElement;
-      c.classList.remove(...STATE_CLASSES);
+      c.classList.remove(...CARD_STATE_CLASSES);
       for (const s of STATE_STYLES) c.style.removeProperty(s);
       for (const e of [
         c,

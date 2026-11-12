@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { brushLine, brushSeed, fnv } from "../src/canvas/brush";
+import { brushLine, brushSeed } from "../src/canvas/brush";
+import { fnv } from "@codeboard/analysis/basics";
 
 const D = "M0 0 C120 0 280 200 400 200";
 const pts = (d: string) => {

@@ -413,6 +413,18 @@ describe("board storage", () => {
     expect(await store.load("a")).toBeNull();
   });
 
+  it("callers that need the listing while it is being read share that one read", async () => {
+    const fs = new MemFs();
+    const store = new Storage(fs, { dir: () => ROOT });
+    fs.put(`${ROOT}/a.json`, emptyBoard("a", "A"));
+    fs.put(`${ROOT}/g/b.json`, emptyBoard("b", "B"));
+    const [l1, l2, a] = await Promise.all([store.list(), store.list(), store.load("a")]);
+    expect(fs.readdirs).toBe(2); // the storage folder and g, once
+    expect(l1.map((m) => m.name)).toEqual(["A", "B"]);
+    expect(l2).toEqual(l1);
+    expect(a?.name).toBe("A");
+  });
+
   it("saving keeps the listing; a folder someone else changed around the save is read again", async () => {
     const fs = new MemFs();
     const store = new Storage(fs, { dir: () => ROOT });

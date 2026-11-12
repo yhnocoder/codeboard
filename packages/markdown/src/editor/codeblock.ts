@@ -94,15 +94,18 @@ export const codeBlockAt = new WeakMap<Element, CodeBlockView>();
 export type CodeBlockHost = {
   editor: () => Editor;
   exit: () => void;
-  complete: (before: string, after: string) => Promise<string | null>;
+  /** The editing session's AI completion (undefined: none). This and the getters below are asked at use: a block can be drawn
+   *  ahead of its editing session (prepare), when there are no options yet */
+  complete: () => ((before: string, after: string) => Promise<string | null>) | undefined;
   comment?: (lang: string | undefined) => string | undefined;
   /** 这一块的语言服务（lang 跟着块的语言变）；这种语言没有就给 undefined。块拆掉时代码编辑器调它的 close */
   lsp?: (lang: () => string) => LspHost | undefined;
-  /** 代码编辑器里按下不往外冒（见 CodeEditorOpts.stopPointerDown） */
-  stopPointerDown?: boolean;
+  /** A press in the code editor stays in it (as CodeEditorOpts.stopPointerDown) */
+  stopPointerDown?: () => boolean;
   /** 语言框里列出的语言（着色认得的）；不给就只有 Mermaid，打别的照打的写 */
   langs?: () => readonly CodeLang[];
-  classes?: MdClasses;
+  /** The page's classes for the block's menus */
+  classes?: () => MdClasses | undefined;
 };
 
 export class CodeBlockView implements NodeView {
@@ -115,7 +118,7 @@ export class CodeBlockView implements NodeView {
   private pill: HTMLElement;
   private wrapBtn: HTMLButtonElement;
   private menu: HTMLElement | null = null;
-  private classes?: MdClasses;
+  private classes?: () => MdClasses | undefined;
   constructor(
     public node: PMNode,
     public view: PMView,
@@ -150,8 +153,11 @@ export class CodeBlockView implements NodeView {
       keys,
       comment: host.comment,
       lsp: host.lsp?.(lang),
-      stopPointerDown: host.stopPointerDown,
-      ghost: { complete: host.complete, hold: md.ghosts },
+      ghost: {
+        complete: (before, after) => host.complete()?.(before, after) ?? Promise.resolve(null),
+        hold: md.ghosts,
+        on: () => !!host.complete(),
+      },
       passKeys: md.passKeys,
       onExit: () => host.exit(),
       // 焦点从代码直接去了编辑器外面：ProseMirror 只听它自己根元素的 blur，代码编辑器是它里面另一个可编辑的元素（stopEvent），
@@ -164,6 +170,9 @@ export class CodeBlockView implements NodeView {
       onUpdate: (u) => this.forward(u),
       className: "cbcm-md",
       extensions: [foundField, this.wrapper.of(node.attrs.wrap ? CmView.lineWrapping : [])],
+    });
+    this.cm.view.dom.addEventListener("pointerdown", (e) => {
+      if (host.stopPointerDown?.()) e.stopPropagation();
     });
     codeBlockAt.set(this.dom, this);
     this.langBox = new LangBox({
@@ -241,7 +250,7 @@ export class CodeBlockView implements NodeView {
   }
   private openMenu(anchor: HTMLElement) {
     const m = (this.menu = document.createElement("div"));
-    m.className = `${kindClass(this.classes, "menu")} open md-cbmenu`;
+    m.className = `${kindClass(this.classes?.(), "menu")} open md-cbmenu`;
     const item = (label: string, run: () => void, danger = false) => {
       const b = document.createElement("button");
       b.className = danger ? "danger" : "";

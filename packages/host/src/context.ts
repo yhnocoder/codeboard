@@ -14,7 +14,6 @@ import { langOfExt } from "@codeboard/analysis/langs";
 import { AiMemory } from "./ai";
 import { CodeEdit } from "./codeedit";
 import { DefCache } from "./defcache";
-import { Remotes } from "./exports";
 import { GitCache } from "./git";
 import { OpenedGithubFiles } from "./github";
 import { Lsp } from "./lsp";
@@ -38,27 +37,33 @@ const LOG_LINES = 200;
 const RECENT_FILES = 80;
 
 export class HostContext implements Disposable {
+  /** What dispose() lets go of, in this order: background work stops before the trees and files it uses go */
+  private owned: Disposable[] = [];
+  private own = <T extends Disposable>(x: T): T => {
+    this.owned.push(x);
+    return x;
+  };
+
   readonly sched = new Scheduler();
   readonly git = new GitCache();
-  /** This host's syntax trees, kept by file for incremental parsing */
-  readonly trees = new TreeCache();
   readonly defs = new DefCache(this);
   readonly lsp = new Lsp(this);
-  readonly index = new NameIndex(this);
-  readonly ops = new OpIndex(this);
-  readonly prefetch = new Prefetch(this);
+  readonly index = this.own(new NameIndex(this));
+  readonly ops = this.own(new OpIndex(this));
+  readonly prefetch = this.own(new Prefetch(this));
   readonly sources = new Sources(this);
   readonly pkgs = new WorkspacePkgs(this);
   readonly settingWrites = new SettingWrites();
-  readonly remotes = new Remotes();
   readonly ai = new AiMemory();
-  readonly githubFiles = new OpenedGithubFiles(this);
-  readonly codeEdit = new CodeEdit(this);
+  readonly githubFiles = this.own(new OpenedGithubFiles(this));
+  readonly codeEdit = this.own(new CodeEdit(this));
   /** ⌘K's Related by Meaning: the project's semantic index */
   readonly meaning: MeaningSearch;
   readonly searchTraces = new SearchTraces(this);
   /** The hidden files behind code being edited on a board */
-  readonly scratch = new ScratchFiles(this);
+  readonly scratch = this.own(new ScratchFiles(this));
+  /** This host's syntax trees, kept by file for incremental parsing */
+  readonly trees = this.own(new TreeCache());
   /** Smaller copies of the board's big images */
   readonly thumbs: Thumbs;
 
@@ -70,19 +75,12 @@ export class HostContext implements Disposable {
     readonly ws: Workspace,
     o: { thumbWorker?: string; box?: BoxOptions } = {},
   ) {
-    this.thumbs = new Thumbs(ws, o.thumbWorker);
-    this.meaning = new MeaningSearch(this, o.box);
+    this.meaning = this.own(new MeaningSearch(this, o.box));
+    this.thumbs = this.own(new Thumbs(ws, o.thumbWorker));
   }
 
   dispose() {
-    this.index.dispose();
-    this.meaning.dispose();
-    this.prefetch.dispose();
-    this.ops.dispose();
-    this.githubFiles.dispose();
-    this.scratch.dispose();
-    this.trees.dispose();
-    this.thumbs.dispose();
+    for (const x of this.owned) x.dispose();
   }
 
   log = (level: LogLevel, text: string) => {

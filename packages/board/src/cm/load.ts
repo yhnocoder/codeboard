@@ -5,6 +5,7 @@ import { state } from "../state/store";
 import { ask, send } from "../host";
 import type { Markdown } from "@yhnocoder/markdown";
 import { ghosts } from "../gesture";
+import { CM_PRELOAD } from "../state/timing";
 import type {
   MdClasses,
   LspHost,
@@ -28,11 +29,12 @@ export const loadCm = () =>
 /** 已经加载好了就直接拿（同一帧里挂上，不等 Promise） */
 export const cmNow = () => ready;
 
-/** 白板打开后空闲时预加载（编辑器包加载完之后） */
+/** Loaded in an idle moment CM_PRELOAD after the first board opens: later than the Note editor's preload (md/load.ts
+ *  preloadEditor) so that one goes first, without waiting for it */
 export function preloadCm() {
   const ric = "requestIdleCallback" in window ? (cb: IdleRequestCallback) => window.requestIdleCallback(cb) : undefined;
   const go = () => void loadCm().catch(() => undefined);
-  setTimeout(() => (ric ? ric((d) => (d.timeRemaining() > 20 ? go() : setTimeout(go, 500))) : go()), 4000);
+  setTimeout(() => (ric ? ric((d) => (d.timeRemaining() > 20 ? go() : setTimeout(go, 500))) : go()), CM_PRELOAD);
 }
 
 /** 放在哪段代码旁边（Python 的 import 按它的目录找）：和这张卡连着线的本地代码，其次是白板上同语言的本地代码 */

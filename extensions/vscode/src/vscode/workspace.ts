@@ -45,14 +45,11 @@ export function registerVersionDocs(
   });
 }
 
-/** flash = the decoration the opened lines light up with for a moment */
-async function show(
-  flash: vscode.TextEditorDecorationType,
-  uri: vscode.Uri,
-  line: number | undefined,
-  end?: number,
-  readonly = false,
-) {
+/** The decoration the opened lines light up with for a moment. One timer: opening another place while the last one is still lit
+ *  must not put that one out early */
+type Flash = { deco: vscode.TextEditorDecorationType; off?: ReturnType<typeof setTimeout> };
+
+async function show(flash: Flash, uri: vscode.Uri, line: number | undefined, end?: number, readonly = false) {
   const doc = await vscode.workspace.openTextDocument(uri);
   const ed = await vscode.window.showTextDocument(doc, {
     viewColumn: codeColumn(),
@@ -69,8 +66,10 @@ async function show(
     ed.selection = new vscode.Selection(pos, pos);
     ed.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
     const r = new vscode.Range(l, 0, Math.max(l, Math.min(doc.lineCount - 1, (end ?? line) - 1)), 0);
-    ed.setDecorations(flash, [r]);
-    setTimeout(() => ed.setDecorations(flash, []), 1200);
+    clearTimeout(flash.off);
+    for (const e of vscode.window.visibleTextEditors) if (e !== ed) e.setDecorations(flash.deco, []);
+    ed.setDecorations(flash.deco, [r]);
+    flash.off = setTimeout(() => ed.setDecorations(flash.deco, []), 1200);
   }
 }
 
@@ -193,11 +192,13 @@ async function lmChat(
 
 export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
   let ch: vscode.LogOutputChannel | undefined;
-  const flash = vscode.window.createTextEditorDecorationType({
-    backgroundColor: new vscode.ThemeColor("editor.rangeHighlightBackground"),
-    isWholeLine: true,
-  });
-  ctx.subscriptions.push(flash);
+  const flash: Flash = {
+    deco: vscode.window.createTextEditorDecorationType({
+      backgroundColor: new vscode.ThemeColor("editor.rangeHighlightBackground"),
+      isWholeLine: true,
+    }),
+  };
+  ctx.subscriptions.push(flash.deco, { dispose: () => clearTimeout(flash.off) });
   const undoAddKey = undoAddContext(ctx);
 
   // VS Code 自带的 git 插件（有的话）：checkout、commit、pull 都会触发；第一次有人订阅时才接上

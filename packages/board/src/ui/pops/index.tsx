@@ -10,6 +10,7 @@ import { pushLayer } from "../overlay";
 import { place, virtual } from "@yhnocoder/markdown/ui";
 import { POPS } from "./registry";
 import type { PopProps } from "./common";
+import { attrSel } from "../../cardsel";
 
 export function Popovers() {
   // 开着弹窗时是一层：Esc 全关（点画布关掉在 interact.ts，拖卡时也关）
@@ -62,7 +63,7 @@ function PopFrame(p: { inst: PopInst }) {
     // a Highlight's gutter area drawn again (its notes changed): the popup goes to the new one
     if (at.el && !at.el.isConnected && p.inst.pop.kind === "highlight") {
       const { card, seg, lines } = p.inst.pop;
-      const hit = document.querySelector(`.hxhit[data-hl="${card}:${seg}:${lines[0]}-${lines[1]}"]`);
+      const hit = document.querySelector(`.hxhit${attrSel("data-hl", `${card}:${seg}:${lines[0]}-${lines[1]}`)}`);
       if (hit) {
         at.el = hit;
         setAnchor(hit);

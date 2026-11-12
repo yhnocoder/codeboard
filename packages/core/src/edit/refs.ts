@@ -156,7 +156,7 @@ export function renameCard(b: Board, from: string, to: string): void {
 export function removeLostCalls(b: Board, from: End, name: string): void {
   removeLinks(
     b,
-    b.links
+    allLinks(b)
       .filter(
         (l) =>
           l.lost?.to &&
@@ -169,10 +169,11 @@ export function removeLostCalls(b: Board, from: End, name: string): void {
   );
 }
 
-/** 删掉这些 Link，绑在它们上面的 Sticker 一起删 */
+/** Delete these Links, on the canvas or on the Shelf, and the Stickers bound to them */
 export function removeLinks(b: Board, ids: Iterable<string>): void {
   const gone = new Set(ids);
   b.links = b.links.filter((l) => !gone.has(l.id));
+  for (const e of b.shelf ?? []) e.links = e.links.filter((l) => !gone.has(l.id));
   pruneStickers(b);
 }
 
@@ -268,7 +269,9 @@ export function removeSidenotes(b: Board, ids: Iterable<string>): void {
   b.sidenotes = b.sidenotes.filter((n) => !gone.has(n.id));
 }
 
+/** Delete these stickers, on the canvas or on the Shelf */
 export function removeStickers(b: Board, ids: Iterable<string>): void {
   const gone = new Set(ids);
   b.stickers = b.stickers.filter((k) => !gone.has(k.id));
+  for (const e of b.shelf ?? []) e.stickers = e.stickers.filter((k) => !gone.has(k.id));
 }

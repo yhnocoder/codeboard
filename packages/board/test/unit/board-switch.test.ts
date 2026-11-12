@@ -16,6 +16,7 @@ import { traffic, setTraffic } from "../../src/state/look";
 import { pushLayer, closeOverlays } from "../../src/ui/overlay";
 import { choose, promptText } from "../../src/ui/Menu";
 import { fromHost, sent } from "./host";
+import { ask, switched } from "../../src/host";
 import { boardMap, boardRef, boardSet, boardSignal, boardStore, boardTimer } from "../../src/state/root";
 
 const HOST: HostInfo = { assetBase: "", target: true, settings: DEFAULT_SETTINGS };
@@ -154,5 +155,14 @@ describe("board switch", () => {
     const second = promptText("Name", "x");
     expect(await settled(first)).toBeNull();
     expect(await settled(second)).toBe("pending");
+  });
+
+  it("cancels an ask still waiting with a cancellation its caller can tell from a failure", async () => {
+    fromHost(init("a"));
+    const waiting = ask("copyPath", {}).catch((e: unknown) => e);
+    fromHost(init("b"));
+    const e = await waiting;
+    expect(switched(e)).toBe(true);
+    expect(switched(new Error("The board changed"))).toBe(false);
   });
 });

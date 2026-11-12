@@ -20,7 +20,7 @@ import { viewsFor } from "./views";
 import { copyDiagnostics } from "./diagnostics";
 import { copyPaths } from "./paths";
 import { applyFlow, captureFlow } from "./runs";
-import { openOnBoard } from "./handlers";
+import { deleteBoardAsked, openOnBoard } from "./handlers";
 import { prompts } from "./prompts";
 import { editSealPrompt } from "./seals";
 import { clearDeepseekKey, setDeepseekKey } from "./ai";
@@ -40,6 +40,8 @@ export type Node = { kind: "board"; id: string } | { kind: "group"; name: string
 export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, follow: () => Promise<boolean>) {
   const ui = () => cx.ws.ui;
   const active = () => panels.all().find((p) => p.view.active);
+  /** The target board's panel, if it is open */
+  const targetPanel = () => (panels.target ? panels.get(panels.target) : undefined);
   const boardArg = (a: unknown): string | undefined =>
     typeof a === "string" ? a : (a as Node)?.kind === "board" ? (a as { id: string }).id : undefined;
 
@@ -95,8 +97,7 @@ export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, 
     const p = panels.get(boardId);
     let name = p?.board?.name ?? "board";
     if (p) {
-      const sel = p.selection?.cards[0];
-      p.post({ type: "add", cards, ask: built.ask, sel: sel ? { card: sel } : undefined });
+      p.post({ type: "add", cards, ask: built.ask });
     } else {
       const b = await store.update(boardId, (b) => {
         placeCards(b, stackRight(b, built.cards), { copy: false });
@@ -188,7 +189,6 @@ export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, 
         panels.get(x)?.view.dispose();
         if (panels.target === x) panels.setTarget(undefined);
       });
-      await panels.pushBoards();
     }
     void ui().info(`${move ? "Moved" : "Copied"} “${b.name}” to ${r.p.name}.`);
   };
@@ -287,20 +287,20 @@ export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, 
     // Asked on the active board (where the keyboard is when the command runs from the palette over it), else in VS Code
     "codeboard.captureRun": async () => {
       const a = active();
-      await captureFlow(cx, store.dir(), a ?? (panels.target ? panels.get(panels.target) : undefined), prompts(cx, a));
+      await captureFlow(cx, store.dir(), a ?? targetPanel(), prompts(cx, a));
     },
     "codeboard.applyRun": async () => {
       const a = active();
-      await applyFlow(cx, store.dir(), a ?? (panels.target ? panels.get(panels.target) : undefined), prompts(cx, a));
+      await applyFlow(cx, store.dir(), a ?? targetPanel(), prompts(cx, a));
     },
     "codeboard.copyDiagnostics": () => {
       const a = active();
-      return copyDiagnostics(cx, prompts(cx, a), (a ?? (panels.target ? panels.get(panels.target) : undefined))?.board);
+      return copyDiagnostics(cx, prompts(cx, a), (a ?? targetPanel())?.board);
     },
 
     // zoom diagnostics: the first run starts recording on the board (up to 30 s), the next one copies what it recorded
     "codeboard.zoomLog": async () => {
-      const p = active() ?? (panels.target ? panels.get(panels.target) : undefined);
+      const p = active() ?? targetPanel();
       if (!p) return void ui().info("Open a board first, then record the zoom log on it.");
       const log = await p.zoomLog();
       if (typeof log !== "string")
@@ -412,16 +412,6 @@ export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, 
     "codeboard.openQuestion": (board: string, card?: string, line?: number, sticker?: string) =>
       openOnBoard(cx, panels, board, card, line, sticker),
     "codeboard.openGithubFile": (abs: string) => cx.ws.editor.open(abs, { readonly: true }),
-    "codeboard._shareCards": async (board: string, cards: string[]) => {
-      const renamed = await store.share(board, cards);
-      if (Object.keys(renamed).length) await panels.get(board)?.init();
-      return renamed;
-    },
-    "codeboard._unshareCard": async (board: string, card: string) => {
-      const to = await store.unshare(board, card);
-      if (to) await panels.get(board)?.init(); // 卡换了 id：白板重新载入
-      return to;
-    },
     "codeboard.openBoardToSide": async (a?: unknown) => {
       const id = boardArg(a);
       if (id) await panels.show(id, { side: true });
@@ -458,6 +448,7 @@ export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, 
         p.view.title = name.trim();
       }
       await store.rename(b.id, name.trim());
+      // an open board's name was changed in the cached board above: the store sees no change to report
       await panels.pushBoards();
     },
     // A board's Mark: from the sidebar (a) VS Code's input box and quick pick; from the palette over a board, the board's own popover
@@ -473,18 +464,7 @@ export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, 
     },
     "codeboard.deleteBoard": async (a?: unknown) => {
       const id = boardArg(a);
-      const b = id && (await store.load(id));
-      if (!b) return;
-      const ok = await ui().warn(
-        `Delete board “${b.name}”?`,
-        { modal: true, detail: `${b.cards.length} cards and their links will be removed. Your code is not affected.` },
-        "Delete",
-      );
-      if (ok !== "Delete") return;
-      panels.get(b.id)?.view.dispose();
-      await store.remove(b.id);
-      if (panels.target === b.id) panels.setTarget(undefined);
-      await panels.pushBoards();
+      if (id) await deleteBoardAsked(cx, panels, id);
     },
     // 白板搬进项目的 .codeboard/（git 能管，克隆了仓库的人看得到）；之后这个项目一直用它
     "codeboard.moveBoardsIntoProject": async () => {
@@ -538,7 +518,6 @@ export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, 
         await store.newGroup(g);
       }
       await store.move(id, g);
-      await panels.pushBoards();
     },
     "codeboard.newGroup": async () => {
       const g = (await ui().input({ prompt: "Name of the new group" }))?.trim();
@@ -549,7 +528,6 @@ export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, 
       const g = (await ui().input({ prompt: "Rename group", value: a.name }))?.trim();
       if (g && g !== a.name) {
         await store.renameGroup(a.name, g);
-        await panels.pushBoards();
       }
     },
     "codeboard.deleteGroup": async (a?: Node) => {
@@ -561,7 +539,6 @@ export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, 
       );
       if (ok !== "Delete Group") return;
       const left = await store.removeGroup(a.name);
-      await panels.pushBoards();
       if (!left.length) return;
       // 读不了的白板、不是白板的文件：不删，文件夹留着
       const reveal = await ui().warn(

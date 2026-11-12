@@ -126,8 +126,8 @@ async function staleOf(
   const work = await cx.readText(abs);
   if (work === null) return { state: "missing" };
   const { at: _at, ...t } = trackSeg(seg, splitLines(work), symsOf(seg.lang, work), {
-    label: await currentVersionLabel(abs, v),
-    version: await currentVersion(abs, v, work),
+    label: await currentVersionLabel(cx, abs, v),
+    version: await currentVersion(cx, abs, v, work),
   });
   return t;
 }

@@ -52,7 +52,7 @@ export function pastedImages(cd: DataTransfer): File[] {
 /** Image source for a saved address */
 const imageSrc = (src: string) => `![](${/[\s()<>]/.test(src) ? `<${src}>` : src})`;
 
-/** The caret's position moved outside the markers of spans it sits at the edge of (spans.ts outsideSpans) */
+/** The caret's position moved outside the markers of spans it sits at the edge of (spans.ts spanEdgeOut) */
 function outsideSpans(doc: PMNode, pos: number) {
   const $p = doc.resolve(pos);
   if ($p.parent.type.name !== "paragraph" || !$p.depth) return pos;

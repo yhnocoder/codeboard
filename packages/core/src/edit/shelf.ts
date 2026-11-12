@@ -4,7 +4,7 @@
 // Pure functions that change the board passed in (the board calls them inside a mutate).
 import { removeCards } from "./refs";
 import { tidyShelf } from "./internal";
-import { findCard, type Board, type Link, type ShelfEntry, type Sticker } from "../model";
+import { findCard, withCols, type Board, type Link, type ShelfEntry, type Sticker } from "../model";
 
 /** Every card on the Shelf: the shelved ones and a shelved Compare's columns */
 export function shelvedCards(b: Pick<Board, "cards" | "shelf">): Set<string> {
@@ -86,8 +86,8 @@ export function shelveItems(
 /**
  * Take entry `id` off the Shelf, back onto the canvas: moved by (dx, dy) (none: where it was). A Section or card that was in a
  * Section left on the board goes back into it when it returns to its place and that Section is still there; moved elsewhere it is
- * in none, or in the one `into` gives it (by card or Section id: the Section the shell found where it lands). The entry, or null
- * when there is none
+ * in none, or in the one `into` gives it (by card or Section id: the Section the shell found where it lands). An arrow whose
+ * other card is still on the Shelf moves to that card's entry. The entry, or null when there is none
  */
 export function unshelve(
   b: Board,
@@ -124,8 +124,22 @@ export function unshelve(
     else delete p.section;
     b.place[cid] = p;
   }
-  b.links.push(...e.links);
-  b.stickers.push(...e.stickers);
+  // an arrow to a card of another entry stays hidden with that entry, and so do the stickers on it
+  const held = new Map<string, ShelfEntry>();
+  for (const x of b.shelf) for (const cid of withCols(b, Object.keys(x.place))) held.set(cid, x);
+  const away = new Map<string, ShelfEntry>();
+  for (const l of e.links) {
+    const x = held.get(l.from.card) ?? held.get(l.to.card);
+    if (x) {
+      x.links.push(l);
+      away.set(l.id, x);
+    } else b.links.push(l);
+  }
+  for (const k of e.stickers) {
+    const on = k.at.kind === "canvas" ? k.at.on : undefined;
+    const x = on && "link" in on ? away.get(on.link) : undefined;
+    (x ?? b).stickers.push(k);
+  }
   tidyShelf(b);
   return e;
 }

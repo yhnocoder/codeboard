@@ -3,12 +3,12 @@
 // outline that follows the pointer while a row is dragged over the board (in the world layer, Canvas.tsx). Resting the pointer on a
 // row shows the entry beside the panel as it was on the board: its Sections and its cards with their content, scaled down
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
-import { cardTitle, type ShelfEntry } from "@codeboard/core";
+import { cardTitle, type Rect, type ShelfEntry } from "@codeboard/core";
 import { shelfLabel } from "@codeboard/core/commands";
 import { state, cardById } from "../state/store";
 import { shelfHot, shelfOut } from "../state/shelf";
 import { cam } from "../state/camera";
-import { TIP_DELAY } from "../state/timing";
+import { TIP_DELAY, TIP_WARM } from "../state/timing";
 import { PvContent } from "../cards/SubPreviews";
 import { Icon } from "./icons";
 import * as A from "../actions";
@@ -39,7 +39,7 @@ function Thumb(p: { e: ShelfEntry }) {
     const box = A.entryBox(p.e);
     if (!box) return { sections: [], cards: [] };
     if (!r.sections.length && r.cards.length === 1) {
-      const kind = state.board.cards.find((c) => c.id === r.cards[0].id)?.kind;
+      const kind = cardById(r.cards[0].id)?.card.kind;
       return { glyph: kind === "code" || kind === "compare" ? "code" : "text", sections: [], cards: [] };
     }
     const k = Math.min((TW - 2 * PAD) / box.w, (TH - 2 * PAD) / box.h);
@@ -78,12 +78,18 @@ const PEEK_W = 560,
   PEEK_MAX = 0.8;
 /** Lines of a code card drawn, at most (its card clips what does not fit) */
 const PEEK_LINES = 80;
-/** How long after a preview went away the next one shows at once (as the tips) */
-const WARM = 800;
 
 /** Where the preview of the entry under the pointer goes: beside the panel (right = from the right of the panel's parent),
  *  level with its row (top; room = the parent's height), measured once when it opens */
 type PeekAt = { id: string; right: number; top: number; room: number };
+
+/** Where q is inside box, as a style */
+const relStyle = (q: Rect, box: { x: number; y: number }) => ({
+  left: `${q.x - box.x}px`,
+  top: `${q.y - box.y}px`,
+  width: `${q.w}px`,
+  height: `${q.h}px`,
+});
 
 /** An entry as it was on the board, scaled down: its Sections' frames with their titles, its cards with their content */
 function ShelfPeek(p: { at: PeekAt }) {
@@ -93,12 +99,7 @@ function ShelfPeek(p: { at: PeekAt }) {
     const box = en && A.entryBox(en);
     if (!en || !box) return null;
     const k = Math.min(PEEK_MAX, PEEK_W / box.w, PEEK_H / box.h);
-    const rel = (q: { x: number; y: number; w: number; h: number }) => ({
-      left: `${q.x - box.x}px`,
-      top: `${q.y - box.y}px`,
-      width: `${q.w}px`,
-      height: `${q.h}px`,
-    });
+    const rel = (q: Rect) => relStyle(q, box);
     const r = A.entryRects(en);
     return {
       box,
@@ -169,7 +170,7 @@ export function ShelfPanel() {
     warmUntil = 0;
   const hide = () => {
     clearTimeout(t);
-    if (peek()) warmUntil = performance.now() + WARM;
+    if (peek()) warmUntil = performance.now() + TIP_WARM;
     setPeek(null);
   };
   const show = (id: string, row: HTMLElement) => {
@@ -268,12 +269,7 @@ export function ShelfOutline() {
     const box = e && A.entryBox(e);
     if (!o?.at || !e || !box) return null;
     const r = A.entryRects(e);
-    const rel = (q: { x: number; y: number; w: number; h: number }) => ({
-      left: `${q.x - box.x}px`,
-      top: `${q.y - box.y}px`,
-      width: `${q.w}px`,
-      height: `${q.h}px`,
-    });
+    const rel = (q: Rect) => relStyle(q, box);
     return {
       at: o.at,
       box,

@@ -3,18 +3,13 @@
 // 波动的相位由箭头 id 定：拖卡时线会拉长、变形，但同一条线的笔迹保持连贯，不会每帧随机。
 // 第二笔用另一组相位，略短、略淡；箭头是两道略弯的短笔画。纯计算（不碰 DOM）。
 
-import { clamp } from "./geom";
+import { fnv } from "@codeboard/analysis/basics";
+import { bezAt, clamp } from "./geom";
 
 /** 抖动的幅度（A）和弓形（B） */
 const A = 1.9,
   B = 5;
 
-/** 箭头 id → 种子（FNV-1a） */
-function hash(s: string) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
-  return h >>> 0;
-}
 /** 由种子定下来的一串 0..1（mulberry32） */
 function rng(seed: number) {
   let s = seed;
@@ -27,13 +22,6 @@ function rng(seed: number) {
 }
 
 type P = { x: number; y: number };
-const bez = (c: readonly number[], t: number): P => {
-  const u = 1 - t;
-  return {
-    x: u * u * u * c[0] + 3 * u * u * t * c[2] + 3 * u * t * t * c[4] + t * t * t * c[6],
-    y: u * u * u * c[1] + 3 * u * u * t * c[3] + 3 * u * t * t * c[5] + t * t * t * c[7],
-  };
-};
 
 /** 沿曲线从弧长比例 from 到 to 取点，往法线方向偏；amp = 波动幅度，bow = 弓形（第二笔跟着主笔的弓形），shift = 整体平移 */
 function wobble(
@@ -49,7 +37,7 @@ function wobble(
     raw: P[] = [],
     len = [0];
   for (let i = 0; i <= n; i++) {
-    raw.push(bez(c, i / n));
+    raw.push(bezAt(c, i / n));
     if (i) len.push(len[i - 1] + Math.hypot(raw[i].x - raw[i - 1].x, raw[i].y - raw[i - 1].y));
   }
   const L = len[n] || 1,
@@ -117,7 +105,7 @@ export type Hand = { d: string; d2: string; head?: string; tail?: string };
  * 同一个 id、同一条贝塞尔永远画出同一个样子
  */
 export function handLine(id: string, c: readonly number[], end: boolean, start: boolean, s = 1): Hand {
-  const rand = rng(hash(id));
+  const rand = rng(fnv(id));
   const bow = (rand() < 0.5 ? -1 : 1) * B * (0.6 + rand() * 0.4);
   const p1 = wobble(c, rand, A, bow, 0, 1, 0);
   const p2 = wobble(

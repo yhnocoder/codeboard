@@ -19,7 +19,6 @@ import { coreOf, type Markdown } from "../markdown";
 export type {
   MdEditorOpts,
   MdEditorHandle,
-  /** @public */
   RefItem,
   RefGroup,
   RefPick,

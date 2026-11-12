@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { BoardToHost } from "@codeboard/core";
 import { Storage } from "../src/storage/boards";
 import { nodeFs } from "../src/storage/nodefs";
@@ -23,7 +23,7 @@ const h = makeHandler(
   } as unknown as BoardHost,
   MEDIA,
 );
-const send = (m: BoardToHost) => h({} as BoardPanel, m);
+const send = (m: BoardToHost, p = {} as BoardPanel) => h(p, m);
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 describe("code editing without a language service", () => {
@@ -155,6 +155,21 @@ describe("code editing with a language service", () => {
     expect(hv).toHaveLength(1);
     expect(hv[0]).toMatch(/def schedule.* 1:16$/s); // the hover of the scratch file, its line counted from 1
     expect(sg?.active).toBe(0);
+  });
+  it("closes the documents of a panel that goes away without closing its editors, and only that panel's", async () => {
+    const gone = {} as BoardPanel,
+      stays = {} as BoardPanel;
+    await send({ type: "codeDoc", id: "free-c", lang: "python", text: "x = 1" }, gone);
+    await send({ type: "codeDoc", id: "free-d", lang: "python", text: "y = 2" }, stays);
+    await vi.waitFor(() => expect(cx.scratch.fileOf("free-c") && cx.scratch.fileOf("free-d")).toBeTruthy());
+    const c = cx.scratch.fileOf("free-c")!,
+      d = cx.scratch.fileOf("free-d")!;
+    cx.codeEdit.closeAll(gone);
+    await vi.waitFor(() => expect(fs.existsSync(c)).toBe(false));
+    expect(log).toContain(`close ${path.relative(WS, c)}`);
+    expect(fs.existsSync(d)).toBe(true);
+    await send({ type: "codeDocClose", id: "free-d" });
+    await vi.waitFor(() => expect(fs.existsSync(d)).toBe(false));
   });
   it("closes the document and deletes its file when the editor closes", async () => {
     await send({ type: "codeDocClose", id: "free-b" });

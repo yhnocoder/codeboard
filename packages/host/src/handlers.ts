@@ -27,7 +27,7 @@ import {
 } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { commitInfo, headOf, logLines, resolveRef } from "./git";
-import { githubCard, ghQuery } from "./github";
+import { ghQuery } from "./github";
 import { webMeta } from "./web";
 import { tidy } from "@codeboard/core/tidy";
 import { pasteCard } from "./paste";
@@ -112,7 +112,6 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
     switchCommit: (_p, m) => switchCommit(cx, m.seg, m.commit),
     resolveRef: (p, m) => resolveTyped(cx, p, m.text),
     paste: (_p, m) => pasteCard(cx, m.text),
-    github: (_p, m) => githubCard(cx, m.url),
     saveAsset: (_p, m) => saveCardImage(cx, store, m.name, m.dataUrl),
     saveImage: (_p, m) => saveNoteImage(cx, store, m.dataUrl),
     readAsset: (_p, m) => readAsset(store, m.file),
@@ -131,7 +130,7 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
     stickerPacks: () => readPacks(cx),
     tidy: async (_p, m) => Object.fromEntries(await tidy(m.cards, m.links, m.fixed, m.avoid)),
     openStickerDir: () => openStickerDir(cx),
-    copyDiagnostics: (p, m) => copyDiagnostics(cx, prompts(cx, p), p.board, m.board),
+    copyDiagnostics: (p) => copyDiagnostics(cx, prompts(cx, p), p.board),
     log: (_p, m) => cx.log(m.level, m.text),
     openBoard: (_p, m) => openOnBoard(cx, panels, m.id, m.card, m.line, m.sticker),
     copyCards: async (p, m) => {
@@ -158,12 +157,11 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
       return { ...r, views: await viewsFor(cx, segs) };
     },
     deleteEverywhere: async (p, m) => (await store.deleteEverywhere(m.card, p.id)).length,
-    confirm: async (_p, m) => (await cx.ws.ui.warn(m.text, { modal: true, detail: m.detail }, m.ok)) === m.ok,
     pickFile: () => pickImage(cx),
     searchName: (_p, m) => searchName(cx, m.name),
     genSource: (_p, m) => genSource(cx, m.from),
     complete: (p, m) => complete(cx, p, m.before, m.after),
-    codeDoc: (_p, m) => cx.codeEdit.open(m.id, m.lang, m.text, m.near),
+    codeDoc: (p, m) => cx.codeEdit.open(p, m.id, m.lang, m.text, m.near),
     codeDocClose: (_p, m) => cx.codeEdit.close(m.id),
     lspComplete: (_p, m) => cx.codeEdit.complete(m.id, m.text, m.line, m.col, m.trigger),
     lspHover: (_p, m) => cx.codeEdit.hover(m.id, m.text, m.line, m.col),
@@ -270,42 +268,44 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
       if ((await store.list()).some((x) => x.id !== p.id && x.subs?.includes(m.id))) return false;
       // 和存下来时一样校验一遍再比（newBoard 存的是校验过的那份）
       if (!(await store.dropIfUnchanged(m.id, checkBoard(m.made)))) return false;
-      closeOthers(p, m.id);
+      closeBoard(panels, m.id, p);
       return true;
     },
-    restoreBoard: async (p, m) => {
-      const ok = await store.restore(m.id, store.groupOf(p.id));
-      if (ok) await panels.pushBoards();
-      return ok;
-    },
-    deleteBoard: async (p, m) => {
-      const b = await store.load(m.id);
-      if (!b) return false;
-      const ok = await cx.ws.ui.warn(
-        `Delete board “${b.name}”?`,
-        { modal: true, detail: `${b.cards.length} cards and their links will be removed. Your code is not affected.` },
-        "Delete",
-      );
-      if (ok !== "Delete") return false;
-      await removeBoard(p, m.id);
-      return true;
-    },
+    restoreBoard: (p, m) => store.restore(m.id, store.groupOf(p.id)),
+    deleteBoard: (p, m) => deleteBoardAsked(cx, panels, m.id, p),
   };
-  async function removeBoard(p: BoardPanel, id: string) {
-    await store.remove(id);
-    closeOthers(p, id);
-  }
-  /** 一块白板删掉了（放进了 .trash）：开着它的别的面板关掉，侧栏刷新 */
-  function closeOthers(p: BoardPanel, id: string) {
-    const open = panels.get(id);
-    if (open && open !== p) open.view.dispose();
-    if (panels.target === id) panels.setTarget(undefined);
-    void panels.pushBoards();
-  }
   return async (p, m) => (h[m.type] as ((p: BoardPanel, m: BoardToHost) => unknown) | undefined)?.(p, m); // 不认识的消息（更新的白板）不理
 }
 
 const openAt = (cx: HostContext, abs: string, line?: number) => cx.ws.editor.open(abs, { line });
+
+/** Delete Board, asked first: the panels showing it (but keep) close, and it goes into .trash. false = not deleted */
+export async function deleteBoardAsked(
+  cx: HostContext,
+  panels: BoardHost,
+  id: string,
+  keep?: BoardPanel,
+): Promise<boolean> {
+  const b = await panels.store.load(id);
+  if (!b) return false;
+  const ok = await cx.ws.ui.warn(
+    `Delete board “${b.name}”?`,
+    { modal: true, detail: `${b.cards.length} cards and their links will be removed. Your code is not affected.` },
+    "Delete",
+  );
+  if (ok !== "Delete") return false;
+  // closed first: the panel's last changes are written before the file goes into .trash
+  closeBoard(panels, id, keep);
+  await panels.store.remove(id);
+  return true;
+}
+
+/** A board is gone or going: the panels showing it (but keep) close, and it is no longer where boards are added */
+function closeBoard(panels: BoardHost, id: string, keep?: BoardPanel) {
+  const open = panels.get(id);
+  if (open && open !== keep) open.view.dispose();
+  if (panels.target === id) panels.setTarget(undefined);
+}
 
 /** Open in Editor：钉的版本就是当前代码时开工作区文件，否则开那个 commit 的只读版本 */
 async function openSeg(cx: HostContext, seg: Segment, line?: number) {
@@ -352,9 +352,9 @@ async function openCard(cx: HostContext, p: BoardPanel, m: Msg<"open">) {
   return openSeg(cx, seg, m.line);
 }
 
-/** 「新版本」diff：钉住的段 vs HEAD（against 可以是别的 commit / branch，或 "working" = 工作区） */
+/** 「新版本」diff：钉住的段 vs HEAD（against 可以是别的 commit / branch，或 "worktree" = 工作区） */
 async function diff(cx: HostContext, seg: Segment, against?: string): Promise<DiffData> {
-  const wt = against === "worktree" || against === "working";
+  const wt = against === "worktree";
   const name = seg.symbol?.qual ?? `${path.basename(seg.path)} ${seg.start}–${seg.end}`;
   const title = wt ? `Uncommitted Changes · ${name}` : `New Version · ${name}`;
   const left = {
@@ -380,10 +380,11 @@ async function diff(cx: HostContext, seg: Segment, against?: string): Promise<Di
   const rel = root ? path.relative(root, abs).split(path.sep).join("/") : seg.path;
   if (wt || seg.version.kind !== "git" || seg.version.uncommitted) {
     text = await cx.readText(abs);
-    label = seg.version.kind === "git" ? "Working Tree" : `Installed ${await currentVersionLabel(abs, seg.version)}`;
+    label =
+      seg.version.kind === "git" ? "Working Tree" : `Installed ${await currentVersionLabel(cx, abs, seg.version)}`;
     if (seg.version.kind === "git")
       newVersion = { kind: "git", commit: (root && (await headOf(root))) || seg.version.commit, uncommitted: true };
-    else if (text !== null) newVersion = await currentVersion(abs, seg.version, text);
+    else if (text !== null) newVersion = await currentVersion(cx, abs, seg.version, text);
   } else if (root) {
     // upstream：有 Variant 的卡跟上游分支比（HEAD 可能是我的分支）
     const ref = against === "upstream" ? await cx.git.upstreamRef(root) : against;

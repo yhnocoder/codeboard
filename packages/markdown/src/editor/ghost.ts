@@ -7,13 +7,13 @@ import { autoClosersAt } from "./pairs";
 import { GhostAsker, eatGhost, nextWord, wantGhost, type Complete, type Ghost as G } from "../ui/ghost";
 import { revealIn, scroller } from "../ui/reveal";
 import { mdOf } from "./md";
+import { CARET_MARK } from "../placeholders";
 
-const CARET = "\uE000";
 /** 问 Markdown 原文：模型看到 **b**、`c`、$x$、[[Ref]]、# 才知道该写 Markdown */
 function mdAround(s: EditorState, pos: number): [string, string] {
   try {
-    const md = sourceMd(s.tr.insertText(CARET, pos).doc.toJSON());
-    const i = md.indexOf(CARET);
+    const md = sourceMd(s.tr.insertText(CARET_MARK, pos).doc.toJSON());
+    const i = md.indexOf(CARET_MARK);
     if (i >= 0) return [md.slice(0, i), md.slice(i + 1)];
   } catch {
     /* 退回纯文字 */
@@ -47,15 +47,16 @@ function probe(view: EditorView) {
   };
 }
 
-export const Ghost = Extension.create<{ complete?: Complete }>({
+/** complete gives the current editing session's completion, undefined when it has none (the editor outlives a session, so
+ *  the plugin is always there): then nothing is scheduled and the document is never serialized */
+export const Ghost = Extension.create<{ complete: () => Complete | undefined }>({
   name: "cbGhost",
   priority: 1000, // Tab / Esc 先到这里
   addOptions() {
-    return { complete: undefined };
+    return { complete: () => undefined };
   },
   addProseMirrorPlugins() {
     const complete = this.options.complete;
-    if (!complete) return [];
     return [
       new Plugin<G>({
         key: ghostKey,
@@ -121,7 +122,7 @@ export const Ghost = Extension.create<{ complete?: Complete }>({
         },
         view: (v) => {
           const asker = new GhostAsker(
-            complete,
+            (before, after) => complete()?.(before, after) ?? Promise.resolve(null),
             () => {
               if (!v.isDestroyed && ghostKey.getState(v.state)) v.dispatch(v.state.tr.setMeta(ghostKey, null));
             },
@@ -132,7 +133,7 @@ export const Ghost = Extension.create<{ complete?: Complete }>({
               const g = ghostKey.getState(view.state);
               if (view.state.doc !== prev.doc || !view.state.selection.eq(prev.selection)) {
                 // 灰字还在（打的字吃掉了一部分）就不再问
-                if (!g) asker.schedule(() => probe(view));
+                if (!g) asker.schedule(() => (complete() ? probe(view) : null));
                 else asker.cancel();
               }
               if (g && g !== ghostKey.getState(prev)) reveal(view, g.pos);

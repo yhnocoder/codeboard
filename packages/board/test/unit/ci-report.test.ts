@@ -144,6 +144,37 @@ describe("passing alone, bounded", () => {
   });
 });
 
+describe("the Markdown demo in the regular report", () => {
+  const report = (name: string, log?: string) =>
+    regularReport({
+      dir: artifacts(name, {
+        "harness-1/result.json": { results: [ok("a")] },
+        "storybook/result.json": { failures: [] },
+        ...(log === undefined ? {} : { "markdown-demo/markdown-demo.log": log }),
+      }),
+      jobs: { e2e: { result: "success" } },
+      comments: [],
+      run: "r",
+      sha: "s",
+      tiers: TIERS,
+    });
+  const demo = (r: { fails: string[] }) => r.fails.filter((f) => f.startsWith("markdown demo"));
+  it("a passing demo is no failure", () => {
+    expect(demo(report("demo-pass", "Running 2 tests using 1 worker\n\n  2 passed (4.1s)\n"))).toEqual([]);
+  });
+  it("a failing demo is listed with its first error", () => {
+    const log =
+      "  \u001b[31m✘\u001b[39m  1 demo.spec.ts:8:1 › edit and save (5.0s)\n    Error: expect(locator).toHaveText(expected) failed\n\n  1 failed\n  1 passed (6.0s)\n";
+    expect(demo(report("demo-fail", log))).toEqual([
+      "markdown demo: Error: expect(locator).toHaveText(expected) failed",
+    ]);
+  });
+  it("a demo that never got to its tests, or never ran, is listed too", () => {
+    expect(demo(report("demo-build", "error during build:\nRollupError: could not resolve\n"))).toHaveLength(1);
+    expect(demo(report("demo-none"))).toEqual(["markdown demo: did not run (see the run log)"]);
+  });
+});
+
 describe("which changes run the perf job (tiers.json perf)", () => {
   it("source of the packages, the benchmark drivers and the lockfile; not docs, scenarios or the extension", () => {
     const run = [

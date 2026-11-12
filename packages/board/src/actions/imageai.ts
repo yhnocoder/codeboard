@@ -19,7 +19,7 @@ import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
 import { toast } from "../state/toast";
 import { IS_MAC } from "@yhnocoder/markdown/ui";
-import { ask, send } from "../host";
+import { ask, send, switched } from "../host";
 import { editing, setEditing } from "../state/ui";
 import { openPop } from "../state/pop";
 import { promptText } from "../ui/Menu";
@@ -378,7 +378,7 @@ async function convertToSvg(ref: ImgRef) {
   if (ref.note !== undefined) {
     // Note 里的图：SVG 原地换掉那张图，原来的图挪到白板上，成一张图片卡放在 Note 旁边、从 Note 连一条箭头过去（一步改动）
     const src = await ask("saveImage", { dataUrl: svgDataUrl(svg) }).catch((e) => {
-      toast((e as Error).message || "Couldn't save the SVG");
+      if (!switched(e)) toast((e as Error).message || "Couldn't save the SVG");
       return null;
     });
     if (!src) return;
@@ -402,7 +402,7 @@ async function convertToSvg(ref: ImgRef) {
     return toast("Converted to SVG in the Note; the original image is next to it");
   }
   const file = await ask("saveAsset", { name: "image.svg", dataUrl: svgDataUrl(svg) }).catch((e) => {
-    toast((e as Error).message || "Couldn't save the SVG");
+    if (!switched(e)) toast((e as Error).message || "Couldn't save the SVG");
     return null;
   });
   if (!file) return;
@@ -432,11 +432,19 @@ export async function modifySvg(ref: ImgRef, instruction: string) {
   }
   const url = svgDataUrl(svg);
   if (ref.note === undefined) {
-    const file = await ask("saveAsset", { name: "image.svg", dataUrl: url }).catch(() => null);
+    const file = await ask("saveAsset", { name: "image.svg", dataUrl: url }).then(
+      (v) => v ?? null,
+      (e) => (switched(e) ? undefined : null),
+    );
+    if (file === undefined) return;
     if (!file) return toast("Couldn't save the SVG");
     C.replaceImage(commandEnv, { card: ref.card }, file);
   } else {
-    const src = await ask("saveImage", { dataUrl: url }).catch(() => null);
+    const src = await ask("saveImage", { dataUrl: url }).then(
+      (v) => v ?? null,
+      (e) => (switched(e) ? undefined : null),
+    );
+    if (src === undefined) return;
     if (!src) return toast("Couldn't save the SVG");
     // 正在编辑这张 Note：先存下编辑器里的字，再换图（编辑器里的文档不跟着外面的改动走）
     const ed = editing();
@@ -495,7 +503,7 @@ async function drawSvg(text: string, from?: string) {
     return toast((e as Error).message);
   }
   const file = await ask("saveAsset", { name: "image.svg", dataUrl: svgDataUrl(svg) }).catch((e) => {
-    toast((e as Error).message || "Couldn't save the SVG");
+    if (!switched(e)) toast((e as Error).message || "Couldn't save the SVG");
     return null;
   });
   if (!file) return;

@@ -27,7 +27,15 @@ import { live } from "./state/changes";
 import { sel, select, toggleSel, clearSel, setLineSel, isSel, type Sel } from "./state/selection";
 import { toast } from "./state/toast";
 import { tune } from "./state/tune";
-import { WHEEL_GESTURE, BLOCK_GLIDE, SNAP_SETTLE } from "./state/timing";
+import {
+  WHEEL_GESTURE,
+  BLOCK_GLIDE,
+  SNAP_SETTLE,
+  DRAG_CLICK,
+  MERGE_HOLD,
+  PAN_KEEPS_WHEEL,
+  FLING_FRESH,
+} from "./state/timing";
 import { cam, setCam, stopCam, camTo, fitRect, fling, toWorld, view, zMin, ZMAX } from "./state/camera";
 import { detentZoom } from "./state/summary";
 import { reduceMotion } from "./state/motion";
@@ -129,15 +137,12 @@ function snapPace(e: PointerEvent, again: (ev: PointerEvent, still: boolean) => 
 
 // 双击检测（pointerdown 里 preventDefault 后浏览器的 dblclick 不可靠）：同一个东西上、够快、两下点在差不多同一个地方
 const DBL_SLOP = 6;
-const dbl: { key?: string; t: number; x: number; y: number } = { t: 0, x: 0, y: 0 };
+const dbl = boardRef<{ key?: string; t: number; x: number; y: number }>({ t: 0, x: 0, y: 0 });
 export function isDbl(key: string, e: { clientX: number; clientY: number }) {
-  const now = performance.now();
-  const r =
-    dbl.key === key && now - dbl.t < tune("dblClick") && Math.hypot(e.clientX - dbl.x, e.clientY - dbl.y) <= DBL_SLOP;
-  dbl.key = r ? undefined : key;
-  dbl.t = now;
-  dbl.x = e.clientX;
-  dbl.y = e.clientY;
+  const now = performance.now(),
+    d = dbl.v;
+  const r = d.key === key && now - d.t < tune("dblClick") && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= DBL_SLOP;
+  dbl.v = { key: r ? undefined : key, t: now, x: e.clientX, y: e.clientY };
   return r;
 }
 
@@ -319,7 +324,7 @@ const hostPlace = (b: Board, id: string) => {
 
 /** 卡头上能点也能拖的东西（文件路径、版本号）：刚拖完松手时浏览器还会补一个 click，这时不算点 */
 const dragEndAt = boardRef(-1e9);
-export const justDragged = () => performance.now() - dragEndAt.v < 250;
+export const justDragged = () => performance.now() - dragEndAt.v < DRAG_CLICK;
 /**
  * Put the dragged cards down: .landing keeps each one a layer of its own until the last of its own transitions (scale, lift
  * shadow: .landing's and the theme's, e.g. Warm Ink's 420 ms spring) has ended, read from the transitions themselves. Taken off
@@ -443,7 +448,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
             setDropTarget({ kind: "merge", card: uid, armed: true });
             setGuides([]);
           }
-        }, 400);
+        }, MERGE_HOLD);
       }
     } else if (imageOk && uid && ucard?.card.kind === "note") {
       clearTimeout(mergeT);
@@ -792,7 +797,7 @@ function ownerFor(e: WheelEvent, el: HTMLElement | null): HTMLElement | "canvas"
     const card = el?.closest(".card") as HTMLElement | null;
     const can = !!el && (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
     const selected = !!card && isSel(card.dataset.id!);
-    wheelOwner.v = can && !e.ctrlKey && !e.metaKey && (selected || now - panEnd.v > 500) ? el! : "canvas";
+    wheelOwner.v = can && !e.ctrlKey && !e.metaKey && (selected || now - panEnd.v > PAN_KEEPS_WHEEL) ? el! : "canvas";
   }
   wheelLast.v = now;
   return wheelOwner.v!;
@@ -1001,6 +1006,7 @@ function finishConnect(e: PointerEvent, id: string) {
   A.addLink(from, { card: to });
 }
 
+const hiddenSections = () => new Set(state.board.sections.filter(hiddenByAncestor).map((x) => x.id));
 export function canvasPointerDown(e: PointerEvent) {
   const t = e.target as HTMLElement;
   if (t.closest(OWNS_POINTER)) return;
@@ -1027,7 +1033,7 @@ export function canvasPointerDown(e: PointerEvent) {
   // ⌘ / Ctrl 按住 Section 的空白处拖就是拖它（和拖标题一样，最里层的那个）；不按时拖空白处总是框选，免得想框选时误拖走整个 Section
   if (!e.shiftKey && (e.metaKey || e.ctrlKey)) {
     const w = worldOf(e);
-    const s = deepestAt(frames(), w.x, w.y, new Set(state.board.sections.filter(hiddenByAncestor).map((x) => x.id)));
+    const s = deepestAt(frames(), w.x, w.y, hiddenSections());
     if (s) return sectionLabelDown(e, s.id, true);
   }
   const base = e.shiftKey ? [...sel.cards] : [],
@@ -1065,7 +1071,7 @@ export function canvasPointerDown(e: PointerEvent) {
       // 在 Section 空白处点一下（没拖）选中它，最里层的那个；⇧ 点是加进、移出选择（和点标题一样）；拖动照常是框选
       if (moved) return;
       const w = worldOf(ev);
-      const s = deepestAt(frames(), w.x, w.y, new Set(state.board.sections.filter(hiddenByAncestor).map((x) => x.id)));
+      const s = deepestAt(frames(), w.x, w.y, hiddenSections());
       if (!s) return;
       if (e.shiftKey) toggleSel("sections", s.id);
       else select({ sections: [s.id] });
@@ -1149,7 +1155,7 @@ function startPan(e: PointerEvent) {
     },
     () => {
       setPanning(false);
-      if (performance.now() - lt < 60) fling(vx * 1000, vy * 1000);
+      if (performance.now() - lt < FLING_FRESH) fling(vx * 1000, vy * 1000);
     },
     0,
   );
@@ -1219,6 +1225,8 @@ export function sectionLabelDown(e: PointerEvent, id: string, fromBody = false) 
   dragGroup(e, group ? [...sel.sections] : [id], group ? [...sel.cards] : [], id);
 }
 
+/** The most layers a Section drag lifts its frames, titles and cards onto (dragGroup) */
+const CARRY_MAX = 40;
 /**
  * Drag Sections and cards together: each Section with its inner Sections and its cards (a selected Section inside another goes
  * with it), the other cards as they are. Locked ones stay. Snaps as one box: a Section alone to the other Sections' frames, with
@@ -1226,8 +1234,6 @@ export function sectionLabelDown(e: PointerEvent, id: string, fromBody = false) 
  * the pointer is), and each card dragged on its own in the Section it now sits in (homeFor, as when a card is dragged).
  * grabbed: the Section pressed (none: a card). onClick: released without moving
  */
-/** The most layers a Section drag lifts its frames, titles and cards onto (dragGroup) */
-const CARRY_MAX = 40;
 function dragGroup(e: PointerEvent, secIds: string[], cardIds: string[], grabbed?: string, onClick?: () => void) {
   const sel0 = secIds.map((i) => sec(i)).filter((q): q is Section => !!q && !A.sectionLocked(q));
   const subs = new Map<string, Section>();
@@ -1451,7 +1457,7 @@ export function sectionEdgeDown(e: PointerEvent, id: string, edge: FrameEdge) {
       g.end();
       A.resizeSection(id, r, homes);
     },
-    3,
+    DRAG_SLOP,
     () => {
       done();
       g.drop();
@@ -1548,34 +1554,34 @@ export function installKeys(md: Markdown) {
   // An image dragged in a Note being edited: released in that editor, the editor moves it there; anywhere else on the board but
   // that Note it moves out of the Note into an image card there (the drop says "move", the editor then takes its source out,
   // and at the drag's end the board makes both one change). Which Note and how wide the image is drawn are read when it starts
-  let outOf: {
+  const outOf = boardRef<{
     card: string;
     w: number;
     drop?: { img: DraggedImage; at: { x: number; y: number }; before?: string };
-  } | null = null;
+  } | null>(null);
   const fromNote = (e: DragEvent) =>
     (e.target instanceof Element ? e.target.closest<HTMLElement>(".card[data-id]")?.dataset.id : undefined) ===
-    outOf?.card;
+    outOf.v?.card;
   document.addEventListener("dragstart", (e) => {
     const t = e.target instanceof Element ? e.target : null,
       card = t?.closest<HTMLElement>(".card[data-id]");
     const img = t?.querySelector("img") ?? t?.closest("img");
-    outOf =
+    outOf.v =
       card && img && draggedImage(e.dataTransfer)
         ? { card: card.dataset.id!, w: img.getBoundingClientRect().width / cam.z }
         : null;
   });
   // after the editor's own dragend (on the image, before this one): its source is out of the editor's text by now
   document.addEventListener("dragend", () => {
-    const o = outOf;
-    outOf = null;
+    const o = outOf.v;
+    outOf.v = null;
     if (o?.drop)
       A.dropNoteImage(o.drop.img, o.drop.at, o.w, { id: o.card, before: o.drop.before, md: liveNoteMd(o.card) });
   });
   document.addEventListener("dragover", (e) => {
     const dt = e.dataTransfer;
     if (!dt || e.defaultPrevented) return; // an editor under the pointer took it
-    if (outOf && dt.types.includes(IMAGE_DRAG_TYPE)) {
+    if (outOf.v && dt.types.includes(IMAGE_DRAG_TYPE)) {
       if (fromNote(e)) {
         dt.dropEffect = "none";
         return;
@@ -1588,10 +1594,11 @@ export function installKeys(md: Markdown) {
   });
   document.addEventListener("drop", (e) => {
     if (e.defaultPrevented || !e.dataTransfer) return;
-    const img = outOf && !fromNote(e) && draggedImage(e.dataTransfer);
-    if (img) {
+    const o = outOf.v;
+    const img = o && !fromNote(e) && draggedImage(e.dataTransfer);
+    if (o && img) {
       e.preventDefault();
-      outOf!.drop = { img, at: worldOf(e), before: liveNoteMd(outOf!.card) };
+      o.drop = { img, at: worldOf(e), before: liveNoteMd(o.card) };
       return;
     }
     if (A.dropFiles(e.dataTransfer, worldOf(e))) e.preventDefault();

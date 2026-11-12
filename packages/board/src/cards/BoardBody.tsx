@@ -3,29 +3,26 @@
 // 地图拼成一段 SVG 一次放进去（不是每块一个组件）：拖别的卡、平移缩放都不碰它，只有骨架换了（宿主推来新的）、框改了大小才重新拼。
 // 点一块：框外弹出那张卡的只读预览（cards/SubPreviews.tsx）；点开的块描边、带和预览一样的编号。双击框还是进子白板
 import { createMemo, createSignal, For, Show } from "solid-js";
-import { escHtml, mapFit, type BoardCard, type MapFit, type Skeleton, type SkelCard } from "@codeboard/core";
+import { escHtml, mapFit, type BoardCard, type Card, type MapFit, type Skeleton, type SkelCard } from "@codeboard/core";
 import { flows, placeOf, state } from "../state/store";
 import { skels, FRAME_H, pvs, pvCols, clearPreviews, foldPreviews, setPreviewCols } from "../state/subboards";
 import { assetSrc } from "../actions/web";
 import { Icon } from "../ui/icons";
 import { MarkView } from "./CodeHead";
 
+/** The icon of a card's kind (a Note's is its look's) */
+export const KIND_ICON: Record<Card["kind"], string> = {
+  code: "code",
+  note: "note",
+  image: "image",
+  web: "web",
+  links: "link",
+  compare: "swap",
+  board: "boards",
+};
 /** 地图上一块的种类图标（提示、预览的标题行用） */
 export function skelIcon(c: Pick<SkelCard, "k" | "lk">): string {
-  if (c.lk) return c.lk;
-  return (
-    (
-      {
-        code: "code",
-        note: "note",
-        image: "image",
-        web: "web",
-        links: "link",
-        compare: "swap",
-        board: "boards",
-      } as Record<string, string>
-    )[c.k] ?? "note"
-  );
+  return c.lk || KIND_ICON[c.k];
 }
 /** 悬停提示、预览标题里的名字：图片没有 alt、图注时写 Image */
 export const skelName = (c: SkelCard) => c.t || (c.k === "image" ? "Image" : c.k === "note" ? "Note" : "Card");

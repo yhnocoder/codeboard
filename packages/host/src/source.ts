@@ -27,15 +27,18 @@ export const srcKey = (s: Source) =>
         : "free";
 /** 代码在本机的工作文件里（工作区仓库、工作区外的文件）；GitHub Code 是钉住的缓存，Free code 没有文件 */
 export const hasLocalFile = (s: Source) => s.kind === "repo" || s.kind === "external";
-const SITE = /[\\/](site-packages|dist-packages)[\\/]/;
+/** A path in an installed Python package */
+export const SITE_PACKAGES = /[\\/](site-packages|dist-packages)[\\/]/;
 
 // 标准库：…/lib/python3.12/xxx.py（不在 site-packages 里）；Pylance 自带的 typeshed 存根
 const STDLIB = /[\\/]python(\d+\.\d+)[\\/](?!.*[\\/](?:site|dist)-packages[\\/])/i;
 const TYPESHED = /[\\/]typeshed(?:-fallback)?[\\/]stdlib[\\/]/;
 
+type Pkg = { name: string; version: string };
+
 /** pip / conda 包：site-packages 下顶层目录对应的 *.dist-info 里的版本 */
-async function pkgVersion(abs: string): Promise<{ name: string; version: string } | null> {
-  const site = SITE.exec(abs);
+async function pkgVersion(cx: HostContext, abs: string): Promise<Pkg | null> {
+  const site = SITE_PACKAGES.exec(abs);
   if (!site) {
     if (TYPESHED.test(abs)) return { name: "typeshed", version: "stdlib" };
     const std = STDLIB.exec(abs);
@@ -43,6 +46,11 @@ async function pkgVersion(abs: string): Promise<{ name: string; version: string 
   }
   const root = abs.slice(0, site.index + site[0].length - 1);
   const top = posix(path.relative(root, abs)).split("/")[0].replace(/\.py$/, "");
+  return cx.sources.installed(root, top);
+}
+
+/** The installed package of a site-packages folder's top-level name, read from its *.dist-info / *.egg-info */
+async function readInstalled(root: string, top: string): Promise<Pkg | null> {
   let dirs: string[] = [];
   try {
     dirs = (await fs.readdir(root)).filter((d) => d.endsWith(".dist-info") || d.endsWith(".egg-info"));
@@ -65,15 +73,15 @@ async function pkgVersion(abs: string): Promise<{ name: string; version: string 
 }
 
 /** 仓库外的文件现在是哪个版本（pkg：装着的包版本；其他：内容指纹）。text = 文件现在的内容 */
-export async function currentVersion(abs: string, v: Version, text: string): Promise<Version> {
-  const pkg = v.kind === "pkg" ? await pkgVersion(abs) : null;
+export async function currentVersion(cx: HostContext, abs: string, v: Version, text: string): Promise<Version> {
+  const pkg = v.kind === "pkg" ? await pkgVersion(cx, abs) : null;
   return pkg ? { kind: "pkg", ...pkg } : { kind: "hash", hash: fingerprint(text) };
 }
 
 /** 现在装着的版本的显示名（pkg / hash 的「新版本」用） */
-export async function currentVersionLabel(abs: string, v: Version): Promise<string> {
+export async function currentVersionLabel(cx: HostContext, abs: string, v: Version): Promise<string> {
   if (v.kind === "pkg") {
-    const p = await pkgVersion(abs);
+    const p = await pkgVersion(cx, abs);
     return p ? `${p.name} ${p.version}` : "Installed";
   }
   return "Current file";
@@ -83,8 +91,25 @@ export async function currentVersionLabel(abs: string, v: Version): Promise<stri
 export class Sources {
   private ghRoot = "";
   private repoMap: Record<string, string> = {};
+  /** site-packages folder and top-level name → the installed package, read while the folder had that mtime: installing,
+   *  upgrading or removing a package renames its *.dist-info there */
+  private pkgs = new Map<string, { mtime: number; pkg: Promise<Pkg | null> }>();
 
   constructor(private cx: HostContext) {}
+
+  installed(root: string, top: string): Promise<Pkg | null> {
+    return fs.stat(root).then(
+      (st) => {
+        const k = `${root}\0${top}`,
+          have = this.pkgs.get(k);
+        if (have?.mtime === st.mtimeMs) return have.pkg;
+        const pkg = readInstalled(root, top);
+        this.pkgs.set(k, { mtime: st.mtimeMs, pkg });
+        return pkg;
+      },
+      () => null,
+    );
+  }
 
   init(githubDir: string) {
     this.ghRoot = githubDir;
@@ -162,7 +187,7 @@ export class Sources {
       };
     }
     if (git) return { src: { kind: "external", root: git }, path: posix(path.relative(git, abs)), root: git, abs };
-    const site = SITE.exec(abs);
+    const site = SITE_PACKAGES.exec(abs);
     if (site) {
       const root = abs.slice(0, site.index + site[0].length - 1);
       return { src: { kind: "external", root }, path: posix(path.relative(root, abs)), root, abs };
@@ -207,7 +232,7 @@ export class Sources {
         return { version: { kind: "git", commit: head, uncommitted: true }, ...keep };
       }
     }
-    const pkg = await pkgVersion(loc.abs);
+    const pkg = await pkgVersion(this.cx, loc.abs);
     if (pkg) return { version: { kind: "pkg", ...pkg }, ...keep };
     const text = await this.cx.readText(loc.abs);
     return { version: text === null ? { kind: "none" } : { kind: "hash", hash: fingerprint(text) }, ...keep };

@@ -1,13 +1,13 @@
 // The filmstrip of the selected animated image in a Note or image card (md/anim.ts): it floats just under the image, over whatever is below it
 // (the caption, the next paragraph, past the card's edge), and never changes the card's size. It lives in the board's world layer,
-// so it zooms with the board like the card does; zoomed out to an overview it is not shown. Play / pause, a still per frame
+// so it zooms with the board like the card does; zoomed out below CONTROLS_MIN_Z it is not shown. Play / pause, a still per frame
 // (clicking one stands the image on it), the frame number, and the loop button that makes the image always play
 import { Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { cam } from "../state/camera";
 import { hostOf, placeOf } from "../state/store";
 import { selectedAnim, toggleLoop, THUMB_H, type Player } from "../md/anim";
 
-/** Below this zoom the filmstrip is too small to use: hidden, as the code cards' buttons are at the overview level */
+/** Below this zoom the filmstrip is too small to use: hidden */
 const CONTROLS_MIN_Z = 0.5;
 const MAX_W = 440,
   MIN_W = 220;

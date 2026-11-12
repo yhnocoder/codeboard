@@ -17,7 +17,7 @@ import { toast } from "../state/toast";
 import { toWorld, viewportCenter } from "../state/camera";
 import { setEditing } from "../state/ui";
 import { openMenu, type Item } from "../ui/Menu";
-import { ask } from "../host";
+import { ask, switched } from "../host";
 import { openLink, popCard } from "./common";
 import { boardOffset } from "../state/measure";
 import { setFetchingKeys, rowDrag, setRowDrag, setGhPicker, type RowDrag } from "../state/web";
@@ -32,7 +32,13 @@ export const assetSrc = (name?: string) =>
 export async function fetchMeta(id: string, url: string, item?: string) {
   const k = item ? `${id}/${item}` : id;
   setFetchingKeys((s) => new Set(s).add(k));
-  const meta = (await ask("webMeta", { url }).catch(() => null)) ?? { failed: true, at: Date.now() };
+  const got = await ask("webMeta", { url }).then(
+    (v) => v ?? null,
+    (e) => (switched(e) ? undefined : null),
+  );
+  // nothing failed: the card it was for is on the board that is gone
+  if (got === undefined) return;
+  const meta = got ?? { failed: true, at: Date.now() };
   setFetchingKeys((s) => {
     const n = new Set(s);
     n.delete(k);
@@ -54,7 +60,7 @@ export async function retryMeta(id: string, item?: string) {
   const url = c?.kind === "web" ? c.url : c?.kind === "links" ? c.items.find((x) => x.id === item)?.url : undefined;
   if (!url) return;
   const m = await fetchMeta(id, url, item);
-  if (m.failed)
+  if (m?.failed)
     toast("Still nothing. The page may need a login: open it in your browser.", [
       { label: "Open in Browser", run: () => openLink(url) },
     ]);

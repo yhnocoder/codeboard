@@ -34,7 +34,7 @@ import { toast } from "../state/toast";
 import { camTo, camTarget, fitTop, isVisible, viewportCenter } from "../state/camera";
 import { editing, setEditing } from "../state/ui";
 import { promptText } from "../ui/Menu";
-import { ask } from "../host";
+import { ask, switched } from "../host";
 import { settleHome } from "../state/sections";
 import { hostRect, popCard } from "./common";
 import { fetchMeta, newLinkList } from "./web";
@@ -69,11 +69,15 @@ export function addCards(
   let at = o.at;
   // where each goes: at the pointer (exact: stacked 36 px apart), beside the one before or the selection, else mid-screen;
   // the cards placed before it are in `b`
+  // the board's cards once, then each card of this call as it is placed
+  let others: Rect[] | undefined,
+    counted = 0;
   const place = (c: Card, b: Board): Place => {
     const w = list[ids.length].w ?? defaultWidth(c);
     const size = estSize(c, { w });
     let p: { x: number; y: number };
-    const others = b.cards.filter((k) => b.place[k.id]).map((k) => rectOf(k));
+    others ??= b.cards.filter((k) => b.place[k.id]).map((k) => rectOf(k));
+    for (; counted < ids.length; counted++) if (b.place[ids[counted]]) others.push(rectOf(ids[counted]));
     if (at && o.exact) {
       p = at;
       at = { x: at.x + 36, y: at.y + 36 };
@@ -175,7 +179,11 @@ export async function addImage(
     toast((e as Error).message);
     return;
   }
-  const file = await ask("saveAsset", { name, dataUrl }).catch(() => null);
+  const file = await ask("saveAsset", { name, dataUrl }).then(
+    (v) => v ?? null,
+    (e) => (switched(e) ? undefined : null),
+  );
+  if (file === undefined) return;
   const src = file ?? dataUrl;
   const img = new Image();
   img.src = dataUrl;
@@ -287,7 +295,7 @@ export function dropFiles(dt: DataTransfer, at: { x: number; y: number }): boole
       rd.readAsDataURL(f);
     });
   const failed = (name: string) => (e: Error) => {
-    toast(e?.message || `Could not add ${name}`);
+    if (!switched(e)) toast(e?.message || `Could not add ${name}`);
     return null;
   };
   const loads = [
@@ -361,9 +369,11 @@ export async function pasteText(md: Markdown, text: string, at?: { x: number; y:
   // 代码：先问宿主是不是工作区里的代码 / GitHub 链接
   let err = "";
   const r = await ask("paste", { text }).catch((e) => {
+    if (switched(e)) return undefined;
     err = (e as Error).message;
     return null;
   });
+  if (r === undefined) return;
   if (r) return addCards([r], { at, exact });
   // GitHub 文件拿不到（离线、私有仓库没登录）：先留一张书签，链接不丢
   if (k.kind === "github") {

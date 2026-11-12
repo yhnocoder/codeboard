@@ -21,8 +21,10 @@ import { toast } from "../../state/toast";
 import { pops, closePop, pinPop } from "../../state/pop";
 import { pickCardThen } from "../../state/mode";
 import { boardSignal } from "../../state/root";
-import { ask } from "../../host";
+import { ask, switched } from "../../host";
 import * as A from "../../actions";
+import { notesOf } from "../../state/ui";
+import { hxClasses } from "../../cards/code/highlights";
 import { useListNav, useDebouncedAsk, useFinish } from "../hooks";
 import { Icon } from "../icons";
 import { MdStatic } from "../Md";
@@ -146,7 +148,7 @@ export function HighlightPop(p: PopProps<"highlight">) {
     return !!s && shownRanges(state.board, s).some((r) => sameRange(r, p.pop.lines));
   };
   const notes = () => {
-    const mine = A.sidenotesOf(p.pop.card).filter(
+    const mine = notesOf(p.pop.card).filter(
       (n) => n.at.seg === p.pop.seg && !!n.at.lines && within(n.at.lines, p.pop.lines),
     );
     const always = (n: Sidenote) => n.kind === "text" && !!n.alwaysShow;
@@ -163,14 +165,7 @@ export function HighlightPop(p: PopProps<"highlight">) {
     A.openAddNote({ card: p.pop.card, seg: p.pop.seg, lines: [a, z] }, "text");
   };
   return (
-    <div
-      class="hxpop"
-      classList={{
-        "hx-band": look() !== "bracket" && look() !== "bracket-hand",
-        "hx-bracket": look() === "bracket" || look() === "bracket-hand",
-        "hx-hand": look() === "bracket-hand",
-      }}
-    >
+    <div class="hxpop" classList={hxClasses(look())}>
       <div class="hh">
         <span class="rng">{a === z ? `${a}` : `${a}–${z}`}</span>
         <span>
@@ -591,7 +586,11 @@ export function AddNotePop(p: PopProps<"addNote">) {
       case "code": {
         const it = res()[i()];
         if (!it) return;
-        const r = await ask("searchPick", { item: it, alt: true }).catch(() => null);
+        const r = await ask("searchPick", { item: it, alt: true }).then(
+          (v) => v ?? null,
+          (e) => (switched(e) ? undefined : null),
+        );
+        if (r === undefined) return;
         const c = r?.card;
         if (!c || !isCode(c)) return toast("Could not read that code");
         const seg = c.segments[0];

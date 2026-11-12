@@ -15,7 +15,6 @@ const P: Record<string, string> = {
   left: "M10 12 6 8l4-4", // chevron-left
   right: "M6 12l4-4-4-4", // chevron-right
   close: "M12 4 4 12M4 4l8 8", // x
-  play: "M4.743 3.413L12.213 7.563A.5 .5 0 0 1 12.213 8.437L4.743 12.587A.5 .5 0 0 1 4 12.15V3.85A.5 .5 0 0 1 4.743 3.413z", // play
   entry: "M7 11l3-3-3-3M10 8H2M10 2H13.5A.5 .5 0 0 1 14 2.5V13.5A.5 .5 0 0 1 13.5 14H10", // log-in
   search: "M12 7A5 5 0 1 1 2 7A5 5 0 1 1 12 7ZM10.6 10.6L14 14", // search
   note: "M10 2L14 6V13.5A.5 .5 0 0 1 13.5 14H2.5A.5 .5 0 0 1 2 13.5V2.5A.5 .5 0 0 1 2.5 2H10zM10 2V5.5A.5 .5 0 0 0 10.5 6H14", // sticky-note
@@ -31,7 +30,6 @@ const P: Record<string, string> = {
   undo: "M6 10 2 6l4-4M2 6h7.5a3.5 3.5 0 0 1 0 7H7", // undo-2
   redo: "M10 10l4-4-4-4M14 6H6.5a3.5 3.5 0 0 0 0 7H9", // redo-2
   lock: "M2.5 7H13.5A.5 .5 0 0 1 14 7.5V13.5A.5 .5 0 0 1 13.5 14H2.5A.5 .5 0 0 1 2 13.5V7.5A.5 .5 0 0 1 2.5 7zM5 7V5a3 3 0 0 1 6 0v2", // lock
-  unlock: "M2.5 7H13.5A.5 .5 0 0 1 14 7.5V13.5A.5 .5 0 0 1 13.5 14H2.5A.5 .5 0 0 1 2 13.5V7.5A.5 .5 0 0 1 2.5 7zM5 7V5a3 3 0 0 1 5.94-.6", // lock-open
   loop: "M14 8a6 6 0 1 1-6-6c1.7 0 3.3.7 4.5 1.8L14 5M14 2v3h-3", // rotate-cw
   layout: "M2.5 2H13.5A.5 .5 0 0 1 14 2.5V13.5A.5 .5 0 0 1 13.5 14H2.5A.5 .5 0 0 1 2 13.5V2.5A.5 .5 0 0 1 2.5 2zM6 2v12", // panel-left
   focus: "M10 8A2 2 0 1 1 6 8A2 2 0 1 1 10 8ZM2 5V2.5A.5 .5 0 0 1 2.5 2H5M11 2H13.5A.5 .5 0 0 1 14 2.5V5M14 11V13.5A.5 .5 0 0 1 13.5 14H11M5 14H2.5A.5 .5 0 0 1 2 13.5V11", // focus
@@ -48,7 +46,6 @@ const P: Record<string, string> = {
   alignB: "M1 14h14M2.5 2H5.5A.5 .5 0 0 1 6 2.5V10.5A.5 .5 0 0 1 5.5 11H2.5A.5 .5 0 0 1 2 10.5V2.5A.5 .5 0 0 1 2.5 2zM10.5 5H13.5A.5 .5 0 0 1 14 5.5V10.5A.5 .5 0 0 1 13.5 11H10.5A.5 .5 0 0 1 10 10.5V5.5A.5 .5 0 0 1 10.5 5z", // align-end-horizontal
   distH: "M2 2v12M14 2v12M6.5 4H9.5A.5 .5 0 0 1 10 4.5V11.5A.5 .5 0 0 1 9.5 12H6.5A.5 .5 0 0 1 6 11.5V4.5A.5 .5 0 0 1 6.5 4z", // align-horizontal-space-around
   distV: "M2 2h12M2 14h12M4.5 6H11.5A.5 .5 0 0 1 12 6.5V9.5A.5 .5 0 0 1 11.5 10H4.5A.5 .5 0 0 1 4 9.5V6.5A.5 .5 0 0 1 4.5 6z", // align-vertical-space-around
-  sameW: "M2.5 2H13.5A.5 .5 0 0 1 14 2.5V5.5A.5 .5 0 0 1 13.5 6H2.5A.5 .5 0 0 1 2 5.5V2.5A.5 .5 0 0 1 2.5 2zM2.5 10H13.5A.5 .5 0 0 1 14 10.5V13.5A.5 .5 0 0 1 13.5 14H2.5A.5 .5 0 0 1 2 13.5V10.5A.5 .5 0 0 1 2.5 10z", // stretch-horizontal
   external: "M10 2h4v4M14 2 7 9M12 9V13.5A.5 .5 0 0 1 11.5 14H2.5A.5 .5 0 0 1 2 13.5V4.5A.5 .5 0 0 1 2.5 4H7", // external-link
   newSection: "M4 3H12A2 2 0 0 1 14 5V11A2 2 0 0 1 12 13H4A2 2 0 0 1 2 11V5A2 2 0 0 1 4 3zM2 6h12", // Section frame with a title bar (multi-select toolbar)
   subBoard: "M4 2H12A2 2 0 0 1 14 4V12A2 2 0 0 1 12 14H4A2 2 0 0 1 2 12V4A2 2 0 0 1 4 2zM6 5H10A1 1 0 0 1 11 6V10A1 1 0 0 1 10 11H6A1 1 0 0 1 5 10V6A1 1 0 0 1 6 5z", // board in a board (multi-select toolbar)
@@ -82,6 +79,3 @@ export function Icon(p: { name: keyof typeof P | string; size?: number; class?: 
     </svg>
   );
 }
-/** 同一套图标拼成 SVG 字符串：整块用 innerHTML 放进去的地方用（子白板框里的小卡片） */
-export const iconHtml = (name: string, size = 16) =>
-  `<svg class="ico" viewBox="0 0 16 16" width="${size}" height="${size}" aria-hidden="true">${P[name] ? `<path d="${P[name]}"/>` : ""}${F[name] ? `<path class="f" d="${F[name]}"/>` : ""}</svg>`;

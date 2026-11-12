@@ -6,6 +6,7 @@ import {
   emptyBoard,
   makeTwin,
   placeCards,
+  shelveItems,
   syncTwins,
   twinContent,
   type Board,
@@ -131,6 +132,43 @@ describe("detachTwin", () => {
     expect(c.segments[0].id).not.toBe("sa");
     expect(b.links[0].from.seg).toBe(segs.sa);
     expect(b.links[0].to.seg).toBe("sa");
+    expect(danglingRefs(b)).toEqual([]);
+  });
+});
+
+describe("a place on the Shelf", () => {
+  const star = { pack: "builtin", name: "star" };
+
+  it("detached there, its hidden arrows and stickers follow to the new segments", () => {
+    const b = board({
+      cards: [code("a"), code("c", "sc"), note("n", "x")],
+      place: { a: { x: 0, y: 0, w: 1 }, c: { x: 0, y: 0, w: 1 }, n: { x: 0, y: 0, w: 1 } },
+      links: [{ id: "l1", from: { card: "c", seg: "sc", line: 2 }, to: { card: "n" } }],
+      stickers: [{ id: "k", icon: star, at: { kind: "line", card: "c", seg: "sc", line: 1 } }],
+    });
+    makeTwin(b, "c", "a");
+    shelveItems(b, { id: "e", at: 0, cards: ["c"] });
+    const segs = detachTwin(b, "c");
+    const e = b.shelf![0];
+    expect(e.links[0].from).toEqual({ card: "c", seg: segs.sa, line: 2 });
+    expect(e.stickers[0].at).toEqual({ kind: "line", card: "c", seg: segs.sa, line: 1 });
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("made another place of a card with fewer segments, what was on a segment that is gone falls back or goes", () => {
+    const two = code("c", "s1");
+    two.segments.push(seg("s2", 10, ["x = 1"]));
+    const b = board({
+      cards: [code("a"), two, note("n", "x")],
+      place: { a: { x: 0, y: 0, w: 1 }, c: { x: 0, y: 0, w: 1 }, n: { x: 0, y: 0, w: 1 } },
+      links: [{ id: "l1", from: { card: "c", seg: "s2", line: 10 }, to: { card: "n" } }],
+      stickers: [{ id: "k", icon: star, at: { kind: "line", card: "c", seg: "s2", line: 10 } }],
+    });
+    shelveItems(b, { id: "e", at: 0, cards: ["c"] });
+    expect(makeTwin(b, "c", "a")).toBe(true);
+    const e = b.shelf![0];
+    expect(e.links[0].from).toEqual({ card: "c" });
+    expect(e.stickers).toEqual([]);
     expect(danglingRefs(b)).toEqual([]);
   });
 });

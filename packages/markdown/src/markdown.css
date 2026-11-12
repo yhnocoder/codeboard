@@ -787,12 +787,6 @@ math {
   color: var(--ink-3);
   font-size: 0.9em;
 }
-.md-pm .block-math-error,
-.md-pm .inline-math-error {
-  color: var(--warn);
-  font-family: var(--mono);
-  font-size: 0.9em;
-}
 /* 公式块展开的 LaTeX 原文（editor/mathblock.ts） */
 .md-pm .md-mathsrc {
   display: none;

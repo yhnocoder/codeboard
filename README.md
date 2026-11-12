@@ -134,14 +134,18 @@ The repository is an npm workspace:
 | [`packages/board`](packages/board) | The board UI, built with SolidJS. Independent of any editor. |
 | [`packages/host`](packages/host) | Reads code, highlights, resolves calls, tracks versions, and stores boards. Independent of any editor. |
 | [`packages/markdown`](packages/markdown) | The Markdown editor and renderer used by Notes, published on npm as [`@yhnocoder/markdown`](https://www.npmjs.com/package/@yhnocoder/markdown). |
+| [`packages/box`](packages/box) | The local index behind Related by Meaning, in Rust. |
+| [`packages/tiles`](packages/tiles) | Draws boards into image tiles for the phone viewer. |
 | [`extensions/vscode`](extensions/vscode) | The VS Code extension: connects the host and the board to VS Code. |
+| [`apps/android`](apps/android) | The read-only board viewer for Android. |
 | [`examples`](examples) | Real codebases (git submodules) used for testing and demos. |
 
 ```bash
-git clone --recurse-submodules https://github.com/yhnocoder/codeboard.git
+git clone https://github.com/yhnocoder/codeboard.git
 cd codeboard
+npm run examples # the repository the tests run on (examples/nano-vllm)
 npm install
-npm run build    # board UI and extension
+npm run build    # every package, then the extension (box needs a Rust toolchain; without one Related by Meaning is off)
 npm run package  # build, then pack an installable .vsix into extensions/vscode/
 npm test         # unit tests
 ```

@@ -9,7 +9,6 @@ import { undoubleTex } from "../doubled";
 import { sourceDoc } from "./srcdoc";
 import { revealMeta } from "./inline";
 import { pastedImages } from "./image";
-import type { MdEditorOpts } from "./types";
 import { mdOf } from "./md";
 
 /** Markdown → editor blocks (source paragraphs) as a slice open at a paragraph on either end, so the first joins the
@@ -27,7 +26,7 @@ function linesSlice(e: Editor, text: string): Slice {
     .map((l) => e.schema.nodes.paragraph.create(null, l ? e.schema.text(l) : null));
   return new Slice(Fragment.from(ps), 1, 1);
 }
-export function handlePaste(e: Editor, _o: MdEditorOpts, ev: ClipboardEvent): boolean {
+export function handlePaste(e: Editor, ev: ClipboardEvent): boolean {
   const cd = ev.clipboardData;
   if (!cd) return false;
   const raw = cd.getData("text/plain").replace(/\r\n?/g, "\n");

@@ -3,7 +3,7 @@
 
 export const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
-export function bezAt(p: number[], t: number) {
+export function bezAt(p: readonly number[], t: number) {
   const u = 1 - t,
     a = u * u * u,
     b = 3 * u * u * t,

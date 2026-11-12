@@ -318,8 +318,8 @@ function pyCall(cx: Cx, n: Node, loop: boolean, inRhs: boolean) {
     assigned: inRhs ? assignedTo(n, "python") : undefined,
   };
   if (launch) site.launch = launch;
-  // call("run", …) / getattr(self, "run")：只记下字符串，不猜
-  if (/^(call|dispatch|invoke|run_method|getattr)$/.test(name)) {
+  // call("run", …)：只记下字符串，不猜
+  if (/^(call|dispatch|invoke|run_method)$/.test(name)) {
     const firstStr = al?.firstNamedChild;
     if (firstStr?.type === "string") site.dispatch = firstStr.text.replace(/^[rbuf]*["']+|["']+$/g, "");
   }

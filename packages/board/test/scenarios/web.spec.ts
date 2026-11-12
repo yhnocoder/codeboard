@@ -512,10 +512,12 @@ test("github", async () => {
     s.end === 36;
   check("github", ok, JSON.stringify({ blobOk, ref: (s?.src as any)?.ref, start: s?.start, end: s?.end }));
   // Paste a link to open at file and line
-  await h.post({
-    type: "githubPicker",
-    repo: "https://github.com/vllm-project/vllm/blob/main/nanovllm/engine/block_manager.py#L10-L20",
-  });
+  await h.post({ type: "githubPicker" });
+  await h.page
+    .locator(".ghp-in")
+    .first()
+    .fill("https://github.com/vllm-project/vllm/blob/main/nanovllm/engine/block_manager.py#L10-L20");
+  await h.page.keyboard.press("Enter");
   await h.page.locator('.ghp .gl.on[data-l="10"]').waitFor(); // the linked file open at its lines
   await shot(h, "gh-06-picker-link");
   await close(h);

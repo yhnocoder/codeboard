@@ -1,5 +1,4 @@
 import { defineConfig } from "vitest/config";
 
-// npm test: the unit tests of every package in one run, the packages side by side (each keeps its own vitest config: host still runs
-// its files one at a time)
+// npm test: the unit tests of every package in one run, the packages side by side (each keeps its own vitest config)
 export default defineConfig({ test: { projects: ["packages/analysis", "packages/core", "packages/box", "packages/markdown", "packages/board", "packages/host", "packages/tiles", "extensions/vscode"] } });

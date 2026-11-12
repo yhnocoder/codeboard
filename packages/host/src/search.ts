@@ -18,7 +18,7 @@ import { initExports, moduleFiles, pyprojectScripts } from "@codeboard/analysis"
 import { analysisOf } from "./analysis";
 import { cardForFileSym, freeCard, newCodeCard, withViews } from "./cards";
 import type { Storage } from "./storage/boards";
-import { cardMarkdown, preview, sidenoteMarkdown, whereOf } from "./preview";
+import { cardMarkdown, compareColumn, preview, sidenoteMarkdown, sidenoteText, whereOf } from "./preview";
 import { makeSegment } from "./versions";
 import { CODE_EXCLUDE, exists, splitLines } from "./ws";
 import type { HostContext } from "./context";
@@ -49,12 +49,7 @@ export async function search(
       const off = shelvedCards(board); // on the Shelf: kept, but not found
       board.cards.forEach((c) => {
         if (off.has(c.id)) return;
-        if (
-          !board.place[c.id] &&
-          c.kind === "code" &&
-          board.cards.some((k) => k.kind === "compare" && k.cols.includes(c.id))
-        )
-          return; // Compare 的栏
+        if (compareColumn(board, c)) return;
         const shared = refs.has(c.id);
         const prev = shared ? seen.get(c.id) : undefined;
         if (prev) {
@@ -85,16 +80,7 @@ export async function search(
           if (seenNotes.has(n.id)) continue;
           seenNotes.add(n.id);
         }
-        const t =
-          n.kind === "text"
-            ? n.md
-            : n.kind === "code"
-              ? n.code.text.join("\n")
-              : n.kind === "paste"
-                ? n.text
-                : n.kind === "link"
-                  ? `${n.title ?? ""} ${n.url}`
-                  : "";
+        const t = sidenoteText(n);
         if (!t || !t.toLowerCase().includes(q.toLowerCase())) continue;
         const host = allCodeCards(board).find((c) => c.id === n.at.card) ?? board.cards.find((c) => c.id === n.at.card);
         scored.push({

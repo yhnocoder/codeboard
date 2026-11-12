@@ -56,7 +56,6 @@ function makeInst(md: Md, dragHandle = false): Inst {
   const o = new Proxy({} as MdEditorOpts, {
     get: (_t, k) => (inst.sess?.o as Record<string | symbol, unknown> | undefined)?.[k],
   });
-  const complete = (b: string, a: string) => (o.complete ? o.complete(b, a) : Promise.resolve(null));
   inst.editor = new Editor({
     element: box,
     extensions: editorExtensions(
@@ -65,14 +64,13 @@ function makeInst(md: Md, dragHandle = false): Inst {
       () => inst.editor,
       handle,
       () => inst.sess?.finish(),
-      complete,
     ),
     content: { type: "doc", content: [{ type: "paragraph" }] },
     autofocus: false,
     injectCSS: false, // 基础样式在 markdown.css
     editorProps: {
       attributes: { class: "md-pm", spellcheck: "false" },
-      handlePaste: (_v, ev) => (inst.sess ? handlePaste(inst.editor, inst.sess.o, ev) : false),
+      handlePaste: (_v, ev) => (inst.sess ? handlePaste(inst.editor, ev) : false),
       clipboardTextSerializer: clipboardText,
       clipboardSerializer: clipboardHtml(() => inst.editor.view) as unknown as DOMSerializer,
       // scrollOwnBox: the caret is brought into view only inside the nearest scrolling box (a fixed-height body scrolls with

@@ -1,6 +1,7 @@
 // 白板的印章（Mark）：几个字 + 一种颜色，[[引用]] 指向别的白板时画在标题前面，代替那块白板的全名。
 // 存在白板自己的文件里（Board.seal），没写的字段用默认的：字取名字里实词的首字母，颜色按白板 id 在 SEAL_COLORS 里挑。
 // 「书」= 子白板树最上面那块白板（侧栏顶层的）：同一本书里的引用只画目标白板的印章，别的书里的前面再加上那本书的。
+import { fnv } from "@codeboard/analysis/basics";
 import type { Board, BoardMeta, BoardSeal } from "./model";
 
 /** 印章的八种颜色（名字存进白板文件；白板界面的主题里每种有亮、暗两个值：--seal-<名字>） */
@@ -50,9 +51,7 @@ export const sealTextOk = (t: string) => t.length > 0 && cleanSealText(t) === t;
 
 /** 默认的颜色：白板 id 的哈希（FNV-1a）在 SEAL_COLORS 里挑一种，同一块白板在哪儿都一样 */
 export function defaultSealColor(id: string): SealColor {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193);
-  return SEAL_COLORS[(h >>> 0) % SEAL_COLORS.length];
+  return SEAL_COLORS[fnv(id) % SEAL_COLORS.length];
 }
 
 /** 一块白板现在的印章：自己写的，没写的字段用默认的 */

@@ -10,7 +10,7 @@ import { extraList } from "../state/extent";
 import { bezAt, bezBox } from "@codeboard/core/canvas";
 import { camTo, camRest, ensureVisible, fitRect, animate, Spring } from "../state/camera";
 import { reduceMotion } from "../state/motion";
-import { notesOf, ping, setPopIn, popIn, setPaletteOpen, setSizeIn, setDrawIn, type SizeAnim } from "../state/ui";
+import { ping, setPopIn, popIn, setPaletteOpen, setSizeIn, setDrawIn, type SizeAnim } from "../state/ui";
 import { shape } from "../state/look";
 import { DRAW_IN } from "../state/timing";
 import { openPop, updatePop } from "../state/pop";
@@ -48,7 +48,6 @@ export const selCards = () => sel.cards.map((id) => cardById(id)?.card).filter(B
 
 // 读 mathRev：公式预设换了，用它的地方重画
 export const mdBlock = (md: Markdown, s: string) => (mathRev(), md.render(s));
-export const sidenotesOf = notesOf;
 /**
  * [[引用]] 找卡：从 [[ 列表选的带着目标的 id（target，[[标题#^id]]），先按它找（改了名也认得出，显示现在的名字）；
  * 没有 id、或者按 id 找不到的，先当 id，再按标题（不分大小写，重名时取第一张），再到子白板里找，最后是别的白板上的

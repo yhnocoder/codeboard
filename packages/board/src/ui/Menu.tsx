@@ -3,7 +3,7 @@ import { Icon } from "./icons";
 import { place, virtual, scrollIntoBox } from "@yhnocoder/markdown/ui";
 import { useOverlay } from "./overlay";
 import { useListNav } from "./hooks";
-import { MENU_AIM, TIP_DELAY } from "../state/timing";
+import { MENU_AIM, TIP_DELAY, TIP_WARM } from "../state/timing";
 import { tune } from "../state/tune";
 import { shape } from "../state/look";
 import { reduceMotion } from "../state/motion";
@@ -398,7 +398,8 @@ type DialogState = {
   options: string[];
   def: number;
   done: (i: number | null) => void;
-  input?: { value: string; placeholder?: string; password?: boolean };
+  /** A text field: onInput gets what is typed in it */
+  input?: { value: string; placeholder?: string; password?: boolean; onInput: (v: string) => void };
   /** A list to choose from (pickOne): done gets the index of the row chosen */
   pick?: PickRow[];
 };
@@ -435,16 +436,8 @@ export function promptText(
       text: o.text,
       options: [ok, "Cancel"],
       def: 0,
-      input: { value, placeholder, password: o.password },
+      input: { value, placeholder, password: o.password, onInput: (s) => (v = s) },
       done: (i) => done(i === 0 ? v.trim() || null : null),
-    });
-    queueMicrotask(() => {
-      const inp = document.querySelector<HTMLInputElement>(".dialog input");
-      if (inp) {
-        inp.oninput = () => (v = inp.value);
-        inp.focus();
-        inp.select();
-      }
     });
   });
 }
@@ -570,6 +563,13 @@ function Dialog(p: { d: DialogState }) {
         </Show>
         <Show when={d().input}>
           <input
+            ref={(el) =>
+              queueMicrotask(() => {
+                el.focus();
+                el.select();
+              })
+            }
+            onInput={(e) => d().input!.onInput(e.currentTarget.value)}
             type={d().input!.password ? "password" : "text"}
             value={d().input!.value}
             placeholder={d().input!.placeholder}
@@ -631,7 +631,7 @@ export function TooltipLayer() {
   });
   const hide = () => {
     clearTimeout(timer);
-    if (tip()) warmUntil = performance.now() + 800;
+    if (tip()) warmUntil = performance.now() + TIP_WARM;
     setTip(null);
   };
   const over = (e: PointerEvent) => {

@@ -6,6 +6,7 @@
 // Markdown 里转义的 \$ 总是字面的 $（旧编辑器写下的 \$…\$ 公式由 migrate.ts 改成 $…$）。
 
 import type { BoundVal, CallAlt, Var } from "@codeboard/analysis/basics";
+import { fnv } from "@codeboard/analysis/basics";
 import type { SealColor } from "./seal";
 
 export const BOARD_VERSION = 13;
@@ -225,7 +226,7 @@ export type NoteLayout = {
   tables?: ({ cols?: (number | null)[]; rows?: (number | null)[] } | null)[];
   wrap?: number[];
 };
-/** 没有卡框、字直接写在画布上的（Text、Box、Mark） */
+/** 没有卡框、字直接写在画布上的（Text、Box、Mark、Free Text） */
 export const frameless = (c: Card | undefined): c is NoteCard => c?.kind === "note" && c.look !== "note";
 /** 图片：默认无背景（只显示图片本身），bg = 有卡片外框 */
 export type ImageCard = CardBase & {
@@ -324,13 +325,7 @@ export type End = { card: string; seg?: string; line?: number; block?: BlockRef 
 export type BlockRef = { i: number; h: string };
 /** 一块 Markdown 原文的指纹（FNV-1a，36 进制）：首尾空白不算 */
 export function blockSig(src: string): string {
-  let h = 0x811c9dc5;
-  const s = src.trim();
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(36);
+  return fnv(src.trim()).toString(36);
 }
 /** 这一端现在落在第几块：第 i 块的指纹对得上就是它，否则找指纹一样、离 i 最近的那块；都没有 = -1（画在卡头，和整张卡一样） */
 export function blockAt(ref: BlockRef, sigs: readonly string[]): number {
@@ -831,13 +826,13 @@ export function noteSegment(b: Pick<Board, "cards">, n: Pick<Sidenote, "at" | "v
   const v = n.variant && n.variant !== activeOf(c) ? c.variants?.find((x) => x.id === n.variant) : undefined;
   return (v ? v.segs : c.segments)?.find((s) => s.id === n.at.seg);
 }
+/** Sidenote.review when its lines grew because the Highlight it is on merged with another (edit/highlights.ts) */
+export const WIDENED = "widened";
 /**
  * A sidenote this board keeps for itself: board-only, or a Card sidenote (the card it points to is on this board only). It does not
  * go along with a shared card, and neither does its Highlight: its lines are a Highlight on this board only (shownRanges), never
  * written into the segment's own Highlights (Segment.hl, which a shared card carries to every board)
  */
-/** Sidenote.review when its lines grew because the Highlight it is on merged with another (edit/highlights.ts) */
-export const WIDENED = "widened";
 export const localNote = (n: Pick<Sidenote, "boardOnly" | "kind">) => !!n.boardOnly || n.kind === "card";
 /** Lines a..z inside range r */
 export const within = (l: readonly number[], r: readonly number[]) => l[0] >= r[0] && l[1] <= r[1];

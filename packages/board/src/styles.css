@@ -28,7 +28,6 @@
   --md-hl: rgba(238, 200, 100, 0.3);
   --inote: rgba(60, 45, 20, 0.05);
   --hlrow: rgba(60, 45, 20, 0.07);
-  --hlbar: #6a655c;
   --chg: rgba(196, 138, 31, 0.13);
   --chg-strong: rgba(196, 138, 31, 0.34);
   --del: rgba(181, 85, 45, 0.09);
@@ -55,10 +54,6 @@
   --s-green: rgba(110, 165, 95, 0.13);
   --s-pink: rgba(215, 120, 145, 0.12);
   /* 便签（子白板框里手写的 Mark）：底色、字、出处、描边 */
-  --sticky: #fbefb6;
-  --sticky-ink: #4a3c12;
-  --sticky-src: #8a6a16;
-  --sticky-edge: rgba(150, 110, 20, 0.2);
   --lk-orange: #c46a2a;
   --lk-blue: #3a72aa;
   --lk-green: #4c8a3a;
@@ -156,7 +151,6 @@
   --md-hl: rgba(224, 176, 85, 0.28);
   --inote: rgba(255, 240, 220, 0.05);
   --hlrow: rgba(255, 240, 220, 0.07);
-  --hlbar: #aca79d;
   --chg: rgba(224, 176, 85, 0.12);
   --chg-strong: rgba(224, 176, 85, 0.32);
   --del: rgba(227, 137, 95, 0.12);
@@ -180,10 +174,6 @@
   --s-blue: rgba(120, 165, 225, 0.09);
   --s-green: rgba(140, 195, 120, 0.09);
   --s-pink: rgba(230, 140, 165, 0.09);
-  --sticky: #4a4127;
-  --sticky-ink: #f1e6c2;
-  --sticky-src: #d2b56a;
-  --sticky-edge: rgba(240, 200, 110, 0.22);
   --lk-orange: #e3955a;
   --lk-blue: #7fb0e0;
   --lk-green: #96c47e;
@@ -723,7 +713,6 @@ textarea {
     0 2px 6px rgba(0, 0, 0, 0.12);
   font: 14px / 1 var(--sys);
   pointer-events: auto;
-  opacity: 0;
   transition: opacity 0.12s;
   z-index: 6;
 }
@@ -763,14 +752,13 @@ textarea {
   border-radius: inherit;
   pointer-events: none;
 }
-/* 模糊的那层只在没卡框、地图档、拿起来时整层去掉，不渐变：渐变的话缩放换到地图档那一下每张卡要多算一个动画 */
 /* 圆角取卡的一半：同样的半径，圆弧在 squircle 里面，阴影会画进卡的四个角里（底色上一道细边）；半径 ≤ 0.54 倍的圆弧整个在 squircle 外面 */
 .card::before {
   corner-shape: round;
   border-radius: calc(var(--cr) * 0.5);
   box-shadow: var(--sh-soft);
 }
-/* --ring 注册成不继承，只有卡和 ::after 读它：会继承的话，换档、选中、悬停每改一次，卡里几百个节点都要跟着重算样式（241 张卡换地图档 ~250ms） */
+/* --ring 注册成不继承，只有卡和 ::after 读它：会继承的话，选中、悬停每改一次，卡里几百个节点都要跟着重算样式 */
 @property --ring {
   syntax: "*";
   inherits: false;
@@ -790,7 +778,7 @@ textarea {
   --lift-out: cubic-bezier(0.3, 0.6, 0.3, 1);
 }
 /* 拿起来阴影在 200ms 里升起来，放下后（.landing）在 240ms 里落回去（.landing 留到卡自己的过渡都走完：interact.ts settling）。
-   过渡只写在这两个状态上：模糊那层换档（地图档）时照旧不渐变 */
+   过渡只写在这两个状态上 */
 .card.lift::before,
 .card.lift::after {
   transition: box-shadow calc(var(--t) * 200ms) var(--lift-in);
@@ -1329,25 +1317,6 @@ textarea {
 .mk.on {
   background: var(--accent);
   color: var(--accent-ink);
-}
-.addn {
-  position: absolute;
-  left: calc(var(--gutter) - 18px);
-  width: 14px;
-  height: 14px;
-  margin-top: 3px;
-  border-radius: 5px;
-  border: 1px dashed var(--ink-2);
-  color: var(--ink-2);
-  font: 12px / 12px var(--sys);
-  text-align: center;
-  background: var(--surface);
-  z-index: 3;
-}
-.addn:hover {
-  border-style: solid;
-  border-color: var(--accent);
-  color: var(--accent);
 }
 .rowbgs {
   position: absolute;
@@ -2557,9 +2526,6 @@ textarea {
   margin: 2px 12px 2px -58px;
   padding-left: 14px;
 }
-.fbar .kind {
-  font-style: normal;
-}
 .mgap {
   height: 22px;
   margin: 1px 12px 1px 0;
@@ -2569,10 +2535,6 @@ textarea {
   border-bottom: 1px dashed var(--hair);
   padding-left: 8px;
   background: repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 5px);
-}
-.mgap code {
-  font: 10.5px var(--mono);
-  color: var(--ink-2);
 }
 .card.merge-arm {
   --ring: 0 0 0 1.5px color-mix(in srgb, var(--k-fn) 60%, transparent), var(--sh-ring);
@@ -3033,14 +2995,6 @@ textarea {
   background: #d6453d;
   color: #fff;
 }
-.ctx .mh {
-  padding: 4px 8px 3px 30px;
-  font-size: 11px;
-  color: var(--ink-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .ctx button[disabled] {
   color: var(--ink-3);
   flex-wrap: wrap;
@@ -3063,6 +3017,9 @@ textarea {
   font: 600 11px var(--sys);
   color: var(--ink-3);
   padding: 4px 8px 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .tip {
   position: absolute;
@@ -3117,20 +3074,6 @@ textarea {
     opacity calc(var(--t) * 180ms) var(--out),
     translate calc(var(--t) * 220ms) var(--out);
 }
-.toast.bump {
-  animation: bump calc(var(--t) * 260ms) var(--out);
-}
-@keyframes bump {
-  0% {
-    scale: 1;
-  }
-  40% {
-    scale: 1.04;
-  }
-  100% {
-    scale: 1;
-  }
-}
 .present {
   position: absolute;
   top: 10px;
@@ -3180,7 +3123,6 @@ textarea {
 }
 
 .pop {
-  position: absolute;
   z-index: 35;
   background: var(--surface);
   border-radius: 14px;
@@ -3189,7 +3131,6 @@ textarea {
     0 18px 40px -16px rgba(0, 0, 0, 0.25);
   display: none;
   width: max-content;
-  max-width: calc(100vw - 16px);
   font-size: 12.5px;
   color: var(--ink);
   transform-origin: 0 0;
@@ -3221,11 +3162,6 @@ textarea {
 .pop .ph b {
   font-weight: 600;
   color: var(--ink);
-}
-.pop .ph .src2 {
-  margin-left: auto;
-  color: var(--ink-3);
-  font: 10.5px var(--mono);
 }
 .pop .ph .pin {
   font: 10.5px var(--sys);
@@ -3981,8 +3917,6 @@ kbd {
 .cmiss button:hover {
   background: var(--hlrow);
 }
-.card.locked .chead {
-}
 .fnbar {
   height: 20px;
   display: flex;
@@ -4019,13 +3953,8 @@ kbd {
   border-radius: 5.5px;
   line-height: 16px;
 }
-.gap.mgap {
-  background: repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 5px);
-}
 .gap .chgd {
   color: var(--warn);
-}
-.src .l.cmt {
 }
 /* Line Selection: one rounded run with a Highlight band's geometry (its insets, its radius; CodeBody HX_INSET), so a selection
    on or beside a Highlight reads as the same kind of mark, a deeper fill */
@@ -4367,7 +4296,6 @@ mark.wdiff {
 }
 .vplus {
   opacity: 1;
-  margin: -10px 0 0 -10px;
 }
 /* + 浮在框左边、不占位：占位会把居中的框挤开，鼠标就滑出框外 → + 消失 → 框回来 → 来回闪 */
 .vplus.in {
@@ -4469,8 +4397,6 @@ mark.wdiff {
   font-size: 12.5px;
   line-height: 1.55;
   color: var(--ink-2);
-}
-.board.walking .card:not(.dim) {
 }
 .toast {
   pointer-events: auto;
@@ -5225,9 +5151,6 @@ mark.wdiff {
 .k-pick,
 .k-vars .sres {
   padding: 4px;
-}
-.srcpop {
-  width: min(640px, 90vw);
 }
 .pop .sres {
   margin-top: 0;
@@ -7793,7 +7716,7 @@ mark.wdiff {
   color: var(--ink-3);
   opacity: 0.6;
 }
-/* 窄面板（白板放在右边一栏时常见）：底栏居中会压到右下的 dock，先靠左；再窄 dock 并进底栏（App.tsx NARROW） */
+/* 窄面板（白板放在右边一栏时常见）：底栏居中会压到右下的 dock，先靠左；再窄 dock 并进底栏（Chrome.tsx NARROW） */
 @media (max-width: 900px) {
   .bbar {
     left: 12px;

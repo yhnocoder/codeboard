@@ -9,7 +9,7 @@ import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from "fflate";
 import * as v from "valibot";
 import { loadBoardFile, loadRun, loadSharedCard, subBoardsOf } from "@codeboard/core";
 import { Storage } from "./storage/boards";
-import { SAFE_ID, groupName } from "./storage/names";
+import { SAFE_ID, groupName, isAssetName } from "./storage/names";
 import { type DirEnt, type Fs } from "./storage/fs";
 import { diskFiles, transfer, type Files } from "./transfer";
 import type { HostContext } from "./context";
@@ -162,7 +162,8 @@ export async function packBoards(
 }
 
 /** 包里允许的条目：manifest、白板文件（根下或一层组文件夹里，文件名是 id）、共享卡、图片、运行记录。别的一概不认（含 ..、绝对路径、反斜杠） */
-const ASSET = /^[\w-][\w.-]{0,199}$/;
+/** A bundle's asset and run names are capped below any file system's limit, so a hostile one fails here, not on writing */
+const ASSET = (name: string) => isAssetName(name) && name.length <= 200;
 function entryKind(name: string): "manifest" | "board" | "card" | "asset" | "run" | null {
   if (name === "manifest.json") return "manifest";
   const parts = name.split("/");
@@ -172,8 +173,8 @@ function entryKind(name: string): "manifest" | "board" | "card" | "asset" | "run
   if (parts.length !== 2) return null;
   const [dir] = parts;
   if (dir === "cards") return SAFE_ID.test(id) ? "card" : null;
-  if (dir === "runs") return ASSET.test(id) ? "run" : null;
-  if (dir === "assets") return ASSET.test(file) ? "asset" : null;
+  if (dir === "runs") return ASSET(id) ? "run" : null;
+  if (dir === "assets") return ASSET(file) ? "asset" : null;
   return groupName(dir) === dir && SAFE_ID.test(id) ? "board" : null;
 }
 

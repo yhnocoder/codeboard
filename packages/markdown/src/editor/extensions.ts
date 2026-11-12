@@ -31,7 +31,6 @@ export function editorExtensions(
   ed: () => Editor,
   handle: HTMLElement | null,
   exit: () => void,
-  complete: (b: string, a: string) => Promise<string | null>,
 ): AnyExtension[] {
   const base = sourceExtensions.flatMap((x): AnyExtension | AnyExtension[] =>
     x.name === "blockMath"
@@ -65,16 +64,16 @@ export function editorExtensions(
                     exit: () => {
                       if (!uiOf.get(ed())?.closeFind()) exit();
                     },
-                    complete,
+                    complete: () => o.complete,
                     comment: (l) => o.code?.comment?.(l),
                     lsp: (l) => o.code?.lsp?.(l),
-                    stopPointerDown: o.code?.stopPointerDown,
+                    stopPointerDown: () => !!o.code?.stopPointerDown,
                     langs: () => o.code?.langs ?? [],
-                    classes: o.classes,
+                    classes: () => o.classes,
                   }),
             })
           : x.name === "table"
-            ? tableEditing(x as TNode, o.classes)
+            ? tableEditing(x as TNode, () => o.classes)
             : x,
   );
   const Slash = Extension.create({
@@ -311,8 +310,8 @@ export function editorExtensions(
       }),
     ],
   });
-  // 行内公式的补全、预览：抢在列表、灰字、Esc 退出前面拿 ↑↓ 回车 Tab Esc
   const Gaps = Extension.create({ name: "cbGaps", addProseMirrorPlugins: () => [gapsPlugin()] });
+  // 行内公式的补全、预览：抢在列表、灰字、Esc 退出前面拿 ↑↓ 回车 Tab Esc
   const MathHintsExt = Extension.create({
     name: "cbMathHints",
     priority: 300,
@@ -357,6 +356,6 @@ export function editorExtensions(
           }),
         ]
       : []),
-    Ghost.configure({ complete }),
+    Ghost.configure({ complete: () => o.complete }),
   ];
 }

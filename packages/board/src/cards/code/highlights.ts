@@ -1,14 +1,22 @@
 // A code card's Highlights as drawn (as the board shows them: the segment's own and this board's local sidenotes', shownRanges): the
 // rows each one covers, the sidenotes on it, and its least indented line's indent (where its notes start). One pass over the rows; the drawn elements are keyed by each Highlight's key, so they stay while its lines do
 import { createMemo } from "solid-js";
-import { shownRanges, within, type HlRange, type Sidenote } from "@codeboard/core";
+import { shownRanges, within, type HighlightLook, type HlRange, type Sidenote } from "@codeboard/core";
 import { state } from "../../state/store";
 import { pops } from "../../state/pop";
 import { exportHidden } from "../../state/export";
 import * as act from "../../actions";
+import { notesOf } from "../../state/ui";
 import type { CodeCx } from "./cx";
+import { TAB_SIZE } from "../../state/measure";
 
 type TextNote = Extract<Sidenote, { kind: "text" }>;
+
+/** The classes that draw Highlights in a look (styles.css .hx-band, .hx-bracket, .hx-hand): on the code and on a Highlight's popup */
+export const hxClasses = (look: HighlightLook) => {
+  const bracket = look === "bracket" || look === "bracket-hand";
+  return { "hx-band": !bracket, "hx-bracket": bracket, "hx-hand": look === "bracket-hand" };
+};
 export type Hx = {
   /** highlightKey: where its popup finds its gutter area */
   key: string;
@@ -26,12 +34,12 @@ export type Hx = {
   review: boolean;
 };
 
-/** Where a line's text starts, in columns: a space is one, a tab goes on to the next tab stop (every 4, .src tab-size) */
+/** Where a line's text starts, in columns: a space is one, a tab goes on to the next tab stop (every TAB_SIZE, .src tab-size) */
 function leadCols(t: string): number {
   let x = 0;
   for (const ch of t) {
     if (ch === " ") x++;
-    else if (ch === "\t") x = (Math.floor(x / 4) + 1) * 4;
+    else if (ch === "\t") x = (Math.floor(x / TAB_SIZE) + 1) * TAB_SIZE;
     else break;
   }
   return x;
@@ -86,7 +94,7 @@ export function useHighlights(cx: CodeCx) {
         }
       }
     });
-    for (const n of act.sidenotesOf(c.id)) {
+    for (const n of notesOf(c.id)) {
       if (gone(n)) continue;
       const e = n.at.lines && n.at.seg ? bySeg.get(n.at.seg) : undefined;
       const h = e?.hs.find((x) => within(n.at.lines!, x.lines));

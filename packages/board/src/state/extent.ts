@@ -1,7 +1,6 @@
 // What a fit frames besides cards and sections: things drawn beside the cards whose size only the DOM knows
 // (a link's label box, the grey alternatives column next to a call's target). Their components register here with the
-// last size their ResizeObserver reported, so a fit reads no layout. The last non-zero size is kept: zoomed out to the
-// map level these are hidden (0 × 0 or not rendered), and a fit from there lands on a zoom where they show again.
+// last size their ResizeObserver reported, so a fit reads no layout. The last non-zero size is kept.
 import type { Rect } from "@codeboard/core";
 import { state } from "./store";
 import { boardMap } from "./root";

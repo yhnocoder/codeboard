@@ -72,13 +72,19 @@ export const worldAt = (p: { x: number; y: number }) => {
 export const DED_PAD = 16;
 /** 没存高度的代码卡（新卡、Fit Content 过的卡）代码区最高多少，更长的在里面滚（BoardView 挂到 body 上的 --code-max） */
 export const CODE_MAX = 460;
+/** A code line's height, px (styles.css .code line-height, .no and .rowbg height; css-constants.test.ts keeps them equal) */
+export const CODE_ROW_H = 20;
+/** Columns between tab stops in code (styles.css .src tab-size; css-constants.test.ts keeps them equal) */
+export const TAB_SIZE = 4;
+/** The code font's character width, px, until it can be measured */
+export const MONO_GUESS = 7.2;
 let charW = 0;
 /** One character of the code font (every code card's is the same), px: where a code column is without measuring the DOM */
 export function monoWidth(el: Element) {
   if (charW) return charW;
   const ctx = document.createElement("canvas").getContext("2d")!;
   ctx.font = getComputedStyle(el).font;
-  const w = ctx.measureText("0".repeat(100)).width / 100 || 7.2;
+  const w = ctx.measureText("0".repeat(100)).width / 100 || MONO_GUESS;
   // kept once the fonts are in: measured before, it may be a fallback font's width
   if (document.fonts.status === "loaded") charW = w;
   return w;
@@ -190,7 +196,7 @@ export function naturalSize(
       // 自动换行开着时：新的宽度放得下最长行，不会再折行，减掉还折着的那几行（每行比一行高多出的部分）
       let wrapped = 0;
       if (src && card.wrap && at === "fit") {
-        const lh = parseFloat(getComputedStyle(src).lineHeight) || 20;
+        const lh = parseFloat(getComputedStyle(src).lineHeight) || CODE_ROW_H;
         for (const l of src.querySelectorAll<HTMLElement>(".l")) wrapped += Math.max(0, l.offsetHeight - lh);
       }
       return code.offsetHeight - wrapped + frame;

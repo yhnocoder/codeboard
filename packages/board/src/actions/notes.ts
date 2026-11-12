@@ -44,9 +44,9 @@ import { requestViews, putViews } from "../state/views";
 import { tune } from "../state/tune";
 import { hostRect, popCard, revealCard } from "./common";
 import { lastPointer } from "../state/measure";
-import { cardSel } from "../cardsel";
+import { attrSel, cardSel } from "../cardsel";
 import { boardTimer } from "../state/root";
-import { NOTE_HOVER } from "../state/timing";
+import { NOTE_HOVER, NOTE_LEAVE } from "../state/timing";
 
 const hoverT = boardTimer(),
   leaveT = boardTimer();
@@ -66,7 +66,7 @@ export function scheduleHideNotes() {
   leaveT.start(() => {
     const p = pops().find((q) => !q.pinned && (q.pop.kind === "notes" || q.pop.kind === "highlight"));
     if (p && !document.querySelector(`.pop[data-pop="${p.id}"]:hover`)) closePop(p.id);
-  }, 260);
+  }, NOTE_LEAVE);
 }
 export const cancelHideNotes = () => leaveT.stop();
 export function pinMarker(el: Element, ids: string[]) {
@@ -129,7 +129,7 @@ function showHighlight(card: string, seg: string, lines: HlRange, pin: boolean) 
     if (pin && !same.pinned) pinPop(same.id);
     return;
   }
-  const el = document.querySelector(`.hxhit[data-hl="${highlightKey(card, seg, lines)}"]`);
+  const el = document.querySelector(`.hxhit${attrSel("data-hl", highlightKey(card, seg, lines))}`);
   if (!el) return;
   const id = openPop({ kind: "highlight", card, seg, lines: [lines[0], lines[1]] }, { el, prefer: "range" });
   if (pin) pinPop(id);
@@ -142,7 +142,9 @@ export function removeHighlight(card: string, seg: string, lines: HlRange) {
 export function openAddNote(at: Anchor, tab: "code" | "paste" | "text" | "link" | "card" = "code") {
   const host = hostOf(at.card);
   const el =
-    (at.lines && at.seg && document.querySelector(`.hxhit[data-hl="${highlightKey(at.card, at.seg, at.lines)}"]`)) ||
+    (at.lines &&
+      at.seg &&
+      document.querySelector(`.hxhit${attrSel("data-hl", highlightKey(at.card, at.seg, at.lines))}`)) ||
     document.querySelector(`${cardSel(host)}`);
   openPop({ kind: "addNote", at, tab }, el ? { el, prefer: "right" } : lastPointer());
 }

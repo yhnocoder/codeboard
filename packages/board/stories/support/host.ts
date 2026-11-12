@@ -63,7 +63,6 @@ const DEFAULTS: Replies = {
   callVars: () => [],
   lspComplete: () => [],
   lspHover: () => [],
-  confirm: () => false,
 };
 
 const area: Partial<Record<AskType, Reply[]>> = {};

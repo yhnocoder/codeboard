@@ -1,6 +1,6 @@
 // Note 里的 [[引用]]：[[标题]]，或者从 [[ 列表选的 [[标题#^id]]（id 是目标的 id，跨白板的是 白板id/卡id）。
 // 写法由 @yhnocoder/markdown 定（schema-nodes.ts WikiRef，那边有为什么是 #^）；core 不引入那个包（它带着编辑器），这里只认同一个写法，
-// 给导出（写成不带 id 的可读引用）和旧文件升级用
+// 给导出（写成不带 id 的可读引用）、一起复制的卡之间的引用换成副本（edit/ops.ts）和旧文件升级用
 import type { BoardFile } from "./model";
 
 const REF = /\[\[([^[\]\n]+?)\]\]/g;
@@ -72,8 +72,11 @@ function inlineRefs(src: string, f: (r: MdRef) => string | undefined): string {
   return out + src.slice(i);
 }
 
-/** 存 Markdown 的地方：Note 的正文、卡的说明、文字 Sidenote、问题贴纸（共享卡的引用不是卡，没有） */
-export function eachMarkdown(b: Pick<BoardFile, "cards" | "sidenotes" | "stickers">, f: (md: string) => string) {
+/** 存 Markdown 的地方：Note 的正文、卡的说明、文字 Sidenote、问题贴纸（Shelf 上的也算；共享卡的引用不是卡，没有） */
+export function eachMarkdown(
+  b: Pick<BoardFile, "cards" | "sidenotes" | "stickers" | "shelf">,
+  f: (md: string) => string,
+) {
   for (const c of b.cards) {
     if (c.kind === "shared") continue;
     if (c.kind === "note") {
@@ -90,7 +93,7 @@ export function eachMarkdown(b: Pick<BoardFile, "cards" | "sidenotes" | "sticker
       const m = f(n.md);
       if (m !== n.md) n.md = m;
     }
-  for (const k of b.stickers)
+  for (const k of [...b.stickers, ...(b.shelf ?? []).flatMap((e) => e.stickers)])
     if (k.q) {
       const m = f(k.q.md);
       if (m !== k.q.md) k.q.md = m;

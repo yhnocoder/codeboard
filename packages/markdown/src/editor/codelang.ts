@@ -53,7 +53,7 @@ export type LangBoxHost = {
   /** 焦点从列表直接去了编辑器外面：替编辑器发一个 blur（用的一方照常保存退出） */
   left: (to: EventTarget | null) => void;
   langs: () => readonly CodeLang[];
-  classes?: MdClasses;
+  classes?: () => MdClasses | undefined;
   passKeys?: PassKeys;
 };
 
@@ -110,7 +110,7 @@ export class LangBox {
     // 挂在 body 下（不跟着白板缩放）；.mdui-anchor：编辑器把它当作自己的浮层，焦点在这里不算离开
     const b = (this.box = document.createElement("div"));
     b.className = "mdui-anchor md-langbox";
-    b.innerHTML = `<div class="${kindClass(this.host.classes, "menu")}"><input class="md-langq" placeholder="Filter languages" spellcheck="false" autocomplete="off" aria-label="Filter languages"><div class="md-langs" role="listbox"></div></div>`;
+    b.innerHTML = `<div class="${kindClass(this.host.classes?.(), "menu")}"><input class="md-langq" placeholder="Filter languages" spellcheck="false" autocomplete="off" aria-label="Filter languages"><div class="md-langs" role="listbox"></div></div>`;
     b.addEventListener("mousedown", (e) => {
       if (e.target !== this.q) e.preventDefault();
     }); // 焦点留在筛选框里

@@ -8,3 +8,8 @@ export function groupName(name: string): string | null {
 }
 /** 白板 id 也是文件名：只允许字母、数字、- 和 _ */
 export const SAFE_ID = /^[\w-]{1,80}$/;
+/** A file kept by name right inside assets/ (or runs/, whose ids follow the same rule): letters, digits, _, - and dots, not
+ *  starting with a dot, so it can never be a path, "." or "..", or a hidden file */
+export function isAssetName(name: string): boolean {
+  return /^[\w-][\w.-]*$/.test(name);
+}

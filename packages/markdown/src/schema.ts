@@ -1,9 +1,9 @@
 // MarkdownManager 只建一个，用自己的 marked 实例（@tiptap/markdown 默认往全局 marked 上挂规则，建几个就叠几层，解析会越来越慢）。
-import { getSchema, markInputRule, markPasteRule, type AnyExtension, type JSONContent } from "@tiptap/core";
+import { getSchema, type AnyExtension, type JSONContent } from "@tiptap/core";
 import type { Attrs, Schema } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
-import Bold, { starPasteRegex } from "@tiptap/extension-bold";
-import Italic, { underscoreInputRegex } from "@tiptap/extension-italic";
+import Bold from "@tiptap/extension-bold";
+import Italic from "@tiptap/extension-italic";
 import Strike from "@tiptap/extension-strike";
 import Document from "@tiptap/extension-document";
 import Paragraph from "@tiptap/extension-paragraph";
@@ -40,10 +40,11 @@ import {
   Toc,
   WikiRef,
 } from "./schema-nodes";
-import { Annot, Highlight, InlineCode, Kbd, Lnk, outsideCode, Sub, Sup, U } from "./schema-marks";
-import { ESC_DOLLAR, escText, markStarts } from "./schema-escape";
+import { Annot, Highlight, InlineCode, Kbd, Lnk, Sub, Sup, U } from "./schema-marks";
+import { escText, markStarts } from "./schema-escape";
+import { ESC_DOLLAR, SHIELD } from "./placeholders";
 import { imageAttrsAt } from "./imageattrs";
-import { markableLeaf, marksOnAtoms, SHIELD, shield, unshield } from "./tiptap-markdown-patch";
+import { markableLeaf, marksOnAtoms, shield, unshield } from "./tiptap-markdown-patch";
 
 /** 两边共用的扩展（只含 schema 和 markdown 规则；编辑器专用的插件在 editor/ 里另加） */
 export const baseExtensions: AnyExtension[] = [
@@ -68,21 +69,10 @@ export const baseExtensions: AnyExtension[] = [
     // 拖图时的落点线：颜色在 markdown.css（.md-dropcursor，跟着主题）
     dropcursor: { color: false, width: 2, class: "md-dropcursor" },
   }),
-  // 打字时的 **b** *i* ~~s~~ 不用 TipTap 自带的正则（要求开头记号前是空白：中文后面紧跟的 **粗体** 不变；整行的字连行内代码里的 ** 一起配对，
-  // 会把代码里的记号吃掉），由编辑器按解析器重解析（editor/typora.ts 的 retype），和存回去再读进来的一样。
-  // 粗体只认 **b**：__init__ 是代码里的名字（解析时 _ 也不当强调）；打 _i_ 照旧变斜体（存成 *i*），但不跨过行内代码
-  Bold.extend({
-    addInputRules: () => [],
-    addPasteRules() {
-      return [markPasteRule({ find: starPasteRegex, type: this.type })];
-    },
-  }),
-  Italic.extend({
-    addInputRules() {
-      return [outsideCode(markInputRule({ find: underscoreInputRegex, type: this.type }))];
-    },
-  }),
-  Strike.extend({ addInputRules: () => [] }),
+  // their own place in the mark order, after the annotation and highlight marks (StarterKit's are off)
+  Bold,
+  Italic,
+  Strike,
   Lnk,
   U,
   Kbd,
@@ -501,7 +491,10 @@ export function inlineTokens(src: string): InlineToken[] {
 
 // 字里看着像 $公式$ 的（Pandoc 规则，和 INLINE_MATH 一样）变成公式：两头都是没转义的 $。转义过的 \$ 总是字面的 $（Typora 一样）：
 // \$x$、\$x\$ 都是普通文字（打 $x$ 变成公式后 ⌘Z 撤回的就存成 \$x$）
-export const TEXT_MATH = /(^|[^$\\\uE024])\$([^$\s\uE024](?:[^$\uE024]*[^$\s\\\uE024])?)\$(?![\d$\uE024])/g;
+export const TEXT_MATH = new RegExp(
+  String.raw`(^|[^$\\${ESC_DOLLAR}])\$([^$\s${ESC_DOLLAR}](?:[^$${ESC_DOLLAR}]*[^$\s\\${ESC_DOLLAR}])?)\$(?![\d$${ESC_DOLLAR}])`,
+  "g",
+);
 /** 占位字换回去：正文、链接地址里是 $；代码、公式源码、原样的 HTML 里原样是 \$ */
 function unDollar(ns: JSONContent[], raw = false): JSONContent[] {
   const fix = (t: string, r: boolean) => (t.includes(ESC_DOLLAR) ? t.replaceAll(ESC_DOLLAR, r ? "\\$" : "$") : t);

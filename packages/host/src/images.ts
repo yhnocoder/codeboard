@@ -7,6 +7,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { type Board, IMAGE_EXT, sniffImage, sniffSvg } from "@codeboard/core";
 import type { Storage } from "./storage/boards";
+import { isAssetName } from "./storage/names";
 import type { HostContext } from "./context";
 
 export const MAX_NOTE_IMAGE = 10 * 1024 * 1024;
@@ -41,7 +42,7 @@ export async function saveNoteImage(cx: HostContext, store: Storage, dataUrl: st
 
 /** Image 卡的图（assets/ 里的文件名）读成 data: URL：复制到剪贴板、拖进 Note 时白板要图的内容（webview 不能 fetch 资源地址）。认不出、太大时抛错 */
 export async function readAsset(store: Storage, file: string): Promise<string> {
-  if (!/^[\w.-]+$/.test(file) || file.startsWith(".")) throw new Error(`Bad asset name ${file}`);
+  if (!isAssetName(file)) throw new Error(`Bad asset name ${file}`);
   const abs = path.join(store.assetsDir(), file);
   if ((await fs.stat(abs)).size > MAX_NOTE_IMAGE) throw new Error(`Image is larger than ${MAX_NOTE_IMAGE >> 20} MB`);
   const buf = await fs.readFile(abs);
@@ -59,7 +60,7 @@ export async function saveCardImage(cx: HostContext, store: Storage, name: strin
 }
 
 const assetName = (file: string) => {
-  if (!/^[\w.-]+$/.test(file) || file.startsWith(".")) throw new Error(`Bad asset name ${file}`);
+  if (!isAssetName(file)) throw new Error(`Bad asset name ${file}`);
   return file;
 };
 
@@ -72,17 +73,17 @@ export function thumbOf(cx: HostContext, store: Storage, file: string, width: nu
 export function imagesOf(cx: HostContext, store: Storage, files: string[]) {
   const dir = store.assetsDir();
   return cx.thumbs
-    .info(Object.fromEntries(files.filter((f) => STILL.test(f)).map((f) => [f, path.join(dir, f)] as [string, string])))
+    .info(Object.fromEntries(files.filter(STILL).map((f) => [f, path.join(dir, f)] as [string, string])))
     .then((r) => Object.fromEntries(files.map((f) => [f, r[f] ?? null])));
 }
 
-/** The assets/ files that can have smaller copies (still PNG or JPEG, by extension: the host checks the content); a name starting
- *  with a dot is never one (assetName refuses it), so a board that writes one still opens */
-const STILL = /^[\w-][\w.-]*\.(?:png|jpe?g)$/i;
+/** The assets/ files that can have smaller copies (still PNG or JPEG, by extension: the host checks the content); only names
+ *  isAssetName accepts (thumbOf refuses the rest), so a board that writes another one still opens */
+const STILL = (f: string) => isAssetName(f) && /\.(?:png|jpe?g)$/i.test(f);
 /** The assets/ images a board shows that can have copies: its Image cards' pictures and the images in its Markdown */
 export function boardImages(b: Board): string[] {
   const out = new Set<string>();
-  for (const c of b.cards) if (c.kind === "image" && STILL.test(c.src)) out.add(c.src);
+  for (const c of b.cards) if (c.kind === "image" && STILL(c.src)) out.add(c.src);
   for (const m of JSON.stringify(b).matchAll(/assets\/([\w.-]+\.(?:png|jpe?g))\b/gi)) out.add(m[1]);
   return [...out];
 }

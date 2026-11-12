@@ -54,12 +54,17 @@ export const GHOST_OUT = 200;
 export const GHOST_DISPERSE = 300;
 /** Resting the pointer on something with a tip (data-tip) shows the tip after this long; right after a tip was shown, at once (ui/Menu.tsx) */
 export const TIP_DELAY = 500;
+/** "Right after": a tip, a card's preview in a Sidenotes popover or a shelf entry's preview shows at once this long after the
+ *  last one went away (ui/Menu.tsx, ui/pops/cardpeek.tsx, ui/ShelfPanel.tsx) */
+export const TIP_WARM = 800;
 /** Fit to Content on a Section: its frame glides (styles.css .sect.fit, 260 ms) and the glide class comes off after this long (actions/edit.ts) */
 export const SECTION_FIT = 320;
 /** Commits for the version menu: if they arrive within this long the menu opens with them, else it opens loading (actions/versions.ts) */
 export const COMMITS_WAIT = 250;
 /** Resting the pointer on a sidenote marker or a Highlight's line numbers opens its popup after this long (actions/notes.ts) */
 export const NOTE_HOVER = 120;
+/** …and the popup closes this long after the pointer leaves the marker, unless it is on the popup by then (actions/notes.ts) */
+export const NOTE_LEAVE = 260;
 /** A code line stays hovered this long after the pointer leaves it (cards/CodeBody.tsx) */
 export const ROW_LEAVE = 200;
 /** Resting the pointer on a Web card shows its page preview after this long (cards/WebBody.tsx) */
@@ -101,3 +106,20 @@ export const MENU_AIM = 300;
 /** An SVG the host wants drawn for the embedding model waits while the camera moves or a card is dragged, looking again this
  *  often: drawing a big one takes a frame or more */
 export const DRAW_QUIET_POLL = 100;
+/** The code editor (CodeMirror) is preloaded this long after the first board opens (cm/load.ts preloadCm) */
+export const CM_PRELOAD = 4000;
+/** A click the browser sends within this long after a drag's release belongs to the drag: the things in a card's head that can
+ *  be both clicked and dragged ignore it (interact.ts justDragged) */
+export const DRAG_CLICK = 250;
+/** A card held over another card's head this long arms the merge (interact.ts) */
+export const MERGE_HOLD = 400;
+/** Within this long after a pan by wheel, the wheel stays the canvas's even over a card that could scroll, unless that card is
+ *  selected (interact.ts ownerFor) */
+export const PAN_KEEPS_WHEEL = 500;
+/** A pan released within this long of its last pointer move glides on (interact.ts) */
+export const FLING_FRESH = 60;
+/** Zoomed near the summary cut, the summaries are built in an idle moment, at the latest after this long (state/summary.ts) */
+export const SUMMARY_BUILD_IDLE = 400;
+/** The cards asleep under the summaries wake in an idle moment once the camera rests, at the latest after this long
+ *  (state/summary.ts) */
+export const CARDS_WAKE_IDLE = 500;

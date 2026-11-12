@@ -1,0 +1,75 @@
+{
+  "calls": [
+    {
+      "args": [
+        {
+          "kw": "slots",
+          "name": undefined,
+          "text": "True",
+        },
+      ],
+      "assigned": undefined,
+      "col": 1,
+      "end": 10,
+      "line": 4,
+      "loop": false,
+      "name": "dataclass",
+      "recv": undefined,
+    },
+  ],
+  "doc": undefined,
+  "flags": [
+    0,
+    1,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    1,
+  ],
+  "imports": [
+    {
+      "from": true,
+      "line": 1,
+      "module": "dataclasses",
+      "name": "dataclass",
+    },
+  ],
+  "lang": "python",
+  "mainBlocks": [],
+  "symbols": [
+    {
+      "defLine": 5,
+      "end": 11,
+      "kind": "class",
+      "name": "SamplingParams",
+      "params": [],
+      "parent": undefined,
+      "qual": "SamplingParams",
+      "sig": "class SamplingParams",
+      "start": 4,
+    },
+    {
+      "defLine": 10,
+      "end": 11,
+      "kind": "def",
+      "name": "__post_init__",
+      "params": [
+        {
+          "kind": "self",
+          "name": "self",
+        },
+      ],
+      "parent": "SamplingParams",
+      "qual": "SamplingParams.__post_init__",
+      "sig": "def __post_init__(self)",
+      "start": 10,
+    },
+  ],
+  "trailing": {},
+}

@@ -4,6 +4,7 @@ import { setEditing, type AnnotDraft } from "../../state/ui";
 import { Editable } from "../../ui/Editable";
 import { annotDraft, annotKey, annotMenu, commitDraft, setAnnotText } from "../../actions/annots";
 import type { CodeCx, LineRow } from "./cx";
+import { TAB_SIZE } from "../../state/measure";
 
 export type Ann = {
   i: number;
@@ -15,10 +16,10 @@ export type Ann = {
   draft?: AnnotDraft;
 };
 
-/** 第 i 个字前面占几个等宽的格（Tab 跳到下一个 4 的倍数，和 .src 的 tab-size 一样） */
+/** 第 i 个字前面占几个等宽的格（Tab 跳到下一个 TAB_SIZE 的倍数，和 .src 的 tab-size 一样） */
 function vcol(t: string, i: number) {
   let c = 0;
-  for (let k = 0; k < i && k < t.length; k++) c = t[k] === "\t" ? c + 4 - (c % 4) : c + 1;
+  for (let k = 0; k < i && k < t.length; k++) c = t[k] === "\t" ? c + TAB_SIZE - (c % TAB_SIZE) : c + 1;
   return c;
 }
 

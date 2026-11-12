@@ -13,6 +13,7 @@ import {
   type NoteFontLevel,
   type Settings as S,
 } from "@codeboard/core";
+import { choicesOf, type ChoiceSetting } from "@codeboard/core/settings";
 import { state } from "../state/store";
 import { settingsOpen } from "../state/ui";
 import { ask, send } from "../host";
@@ -113,26 +114,7 @@ function SettingsPage(p: { section?: string }) {
             Use VS Code's Background
           </label>
           <div class="st-sub">When a theme or font size makes cards taller</div>
-          <div class="st-chips">
-            <For
-              each={
-                [
-                  ["push", "Push Cards Below Down"],
-                  ["overlap", "Allow Overlap"],
-                ] as const
-              }
-            >
-              {([v, lb]) => (
-                <button
-                  class="st-chip pick"
-                  classList={{ on: cur().themeReflow === v }}
-                  onClick={() => A.setSetting("themeReflow", v)}
-                >
-                  {lb}
-                </button>
-              )}
-            </For>
-          </div>
+          <Chips k="themeReflow" />
           <div class="st-sub">Zoomed out, simplify cards: Notes' text as bars, links only from card edges</div>
           <div class="st-chips">
             <For
@@ -304,28 +286,7 @@ function SettingsPage(p: { section?: string }) {
           </div>
         </Sec>
         <Sec id="dblclick" title="Double-click on the board" hint="What double-clicking empty space creates.">
-          <div class="st-chips">
-            <For
-              each={
-                [
-                  ["text", "Text"],
-                  ["note", "Note"],
-                  ["code", "Code"],
-                  ["none", "Nothing"],
-                ] as const
-              }
-            >
-              {([v, lb]) => (
-                <button
-                  class="st-chip pick"
-                  classList={{ on: cur().dblClick === v }}
-                  onClick={() => A.setSetting("dblClick", v)}
-                >
-                  {lb}
-                </button>
-              )}
-            </For>
-          </div>
+          <Chips k="dblClick" />
         </Sec>
         <Sec
           id="shared"
@@ -333,69 +294,11 @@ function SettingsPage(p: { section?: string }) {
           hint="A card pasted onto another board can be the same card on both boards (linked: code, version and sidenotes stay in sync) or a copy."
         >
           <div class="st-sub">Paste onto another board</div>
-          <div class="st-chips">
-            <For
-              each={
-                [
-                  ["linked", "Linked"],
-                  ["copy", "Copy"],
-                ] as const
-              }
-            >
-              {([v, lb]) => (
-                <button
-                  class="st-chip pick"
-                  classList={{ on: cur().pasteOther === v }}
-                  onClick={() => A.setSetting("pasteOther", v)}
-                >
-                  {lb}
-                </button>
-              )}
-            </For>
-          </div>
+          <Chips k="pasteOther" />
           <div class="st-sub">Update a linked card</div>
-          <div class="st-chips">
-            <For
-              each={
-                [
-                  ["ask", "Ask Every Time"],
-                  ["all", "All Boards"],
-                  ["this", "This Board Only"],
-                ] as const
-              }
-            >
-              {([v, lb]) => (
-                <button
-                  class="st-chip pick"
-                  classList={{ on: cur().sharedUpdate === v }}
-                  onClick={() => A.setSetting("sharedUpdate", v)}
-                >
-                  {lb}
-                </button>
-              )}
-            </For>
-          </div>
+          <Chips k="sharedUpdate" />
           <div class="st-sub">Sub-board preview</div>
-          <div class="st-chips">
-            <For
-              each={
-                [
-                  ["skeleton", "Named Skeleton"],
-                  ["title", "Title Only"],
-                ] as const
-              }
-            >
-              {([v, lb]) => (
-                <button
-                  class="st-chip pick"
-                  classList={{ on: cur().subPreview === v }}
-                  onClick={() => A.setSetting("subPreview", v)}
-                >
-                  {lb}
-                </button>
-              )}
-            </For>
-          </div>
+          <Chips k="subPreview" />
         </Sec>
         <Sec
           id="questions"
@@ -403,27 +306,7 @@ function SettingsPage(p: { section?: string }) {
           hint="When you come back to a board, a hint says how many of its questions are still open."
         >
           <div class="st-sub">Welcome-back hint</div>
-          <div class="st-chips">
-            <For
-              each={
-                [
-                  ["2d", "After 2 Days"],
-                  ["always", "Always"],
-                  ["off", "Off"],
-                ] as const
-              }
-            >
-              {([v, lb]) => (
-                <button
-                  class="st-chip pick"
-                  classList={{ on: cur().welcomeBack === v }}
-                  onClick={() => A.setSetting("welcomeBack", v)}
-                >
-                  {lb}
-                </button>
-              )}
-            </For>
-          </div>
+          <Chips k="welcomeBack" />
         </Sec>
         <Sec
           id="export"
@@ -431,27 +314,7 @@ function SettingsPage(p: { section?: string }) {
           hint="Defaults for the Export dialog (HTML snapshot and Markdown). Questions and Board-only notes stay out unless you turn them on."
         >
           <div class="st-sub">Export by default</div>
-          <div class="st-chips">
-            <For
-              each={
-                [
-                  ["board", "Whole Board"],
-                  ["sections", "Selected Sections"],
-                  ["walk", "Walkthrough"],
-                ] as const
-              }
-            >
-              {([v, lb]) => (
-                <button
-                  class="st-chip pick"
-                  classList={{ on: cur().exportScope === v }}
-                  onClick={() => A.setSetting("exportScope", v)}
-                >
-                  {lb}
-                </button>
-              )}
-            </For>
-          </div>
+          <Chips k="exportScope" />
           <div class="st-sub">Include open questions</div>
           <div class="st-chips">
             <For
@@ -509,6 +372,33 @@ function SettingsPage(p: { section?: string }) {
         </Show>
         <Shortcuts />
       </div>
+    </div>
+  );
+}
+
+/** What each value's chip says: the editor's settings page describes the same values at more length (core/settings.ts) */
+const LABELS: { [K in ChoiceSetting]: Record<S[K], string> } = {
+  aiProvider: { auto: "Auto", copilot: "VS Code Model", deepseek: "DeepSeek", off: "Off" },
+  dblClick: { text: "Text", note: "Note", code: "Code", none: "Nothing" },
+  themeReflow: { push: "Push Cards Below Down", overlap: "Allow Overlap" },
+  pasteOther: { linked: "Linked", copy: "Copy" },
+  sharedUpdate: { ask: "Ask Every Time", all: "All Boards", this: "This Board Only" },
+  subPreview: { skeleton: "Named Skeleton", title: "Title Only" },
+  welcomeBack: { "2d": "After 2 Days", always: "Always", off: "Off" },
+  exportScope: { board: "Whole Board", sections: "Selected Sections", walk: "Walkthrough" },
+};
+
+/** One chip per value of a setting, in the order core declares them */
+function Chips<K extends ChoiceSetting>(p: { k: K }) {
+  return (
+    <div class="st-chips">
+      <For each={choicesOf(p.k)}>
+        {(v) => (
+          <button class="st-chip pick" classList={{ on: cur()[p.k] === v }} onClick={() => A.setSetting(p.k, v)}>
+            {LABELS[p.k][v]}
+          </button>
+        )}
+      </For>
     </div>
   );
 }
@@ -787,28 +677,7 @@ function AiSettings() {
         }}
       />
       <div class="st-sub">Inline completions in Notes</div>
-      <div class="st-chips">
-        <For
-          each={
-            [
-              ["auto", "Auto"],
-              ["copilot", "VS Code Model"],
-              ["deepseek", "DeepSeek"],
-              ["off", "Off"],
-            ] as const
-          }
-        >
-          {([v, lb]) => (
-            <button
-              class="st-chip pick"
-              classList={{ on: cur().aiProvider === v }}
-              onClick={() => A.setSetting("aiProvider", v)}
-            >
-              {lb}
-            </button>
-          )}
-        </For>
-      </div>
+      <Chips k="aiProvider" />
       <div class="st-sub">Model for each tool</div>
       <div class="st-models">
         <For each={AI_FEATURES}>

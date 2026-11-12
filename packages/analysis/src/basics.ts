@@ -23,3 +23,10 @@ export type CallAlt = {
 };
 
 export const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** FNV-1a of a string (unsigned 32 bit): stable per id or word */
+export function fnv(s: string) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0;
+}

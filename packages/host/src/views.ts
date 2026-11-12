@@ -1,4 +1,4 @@
-// The host's side of code highlighting: core's highlighter and segment views, reading the file at the segment's version,
+// The host's side of code highlighting: the highlighter and segment views (highlight.ts), reading the file at the segment's version,
 // the analysis cache and the call packages from this workspace.
 import { Highlighter, plainView, segViewOf, type SegSource } from "./highlight";
 import type { Segment, SegView, Tok } from "@codeboard/core";
@@ -44,7 +44,7 @@ export async function viewsFor(cx: HostContext, segs: Segment[]): Promise<Record
       try {
         out[s.id] = await segView(cx, s);
       } catch (e) {
-        console.error("[codeboard] view", s.path, e);
+        cx.log("error", `view ${s.path}: ${e instanceof Error ? (e.stack ?? e.message) : e}`);
         out[s.id] = plainView(s);
       }
     }),

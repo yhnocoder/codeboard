@@ -1,4 +1,4 @@
-// The caches a Markdown instance keeps are bounded: past their size the oldest entry goes first
+// Bounded caches: past their size the oldest entry goes first
 
 /** Set k in m, dropping the oldest entry once m holds max */
 export function capped<K, V>(m: Map<K, V>, max: number, k: K, v: V) {

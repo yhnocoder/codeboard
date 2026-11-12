@@ -3,7 +3,7 @@
 name: Regular
 on:
   schedule:
-    - cron: "30 0,6,12,18 * * *" # every 6 hours: 02:30, 08:30, 14:30, 20:30 Beijing time, each 30 min before a replay (replay.yml)
+    - cron: "30 0,6,12,18 * * *" # every 6 hours: 02:30, 08:30, 14:30, 20:30 Beijing time
   workflow_dispatch:
 # Read-only by default; publish pushes the impact map (ci-screenshots branch) and comments on the results issue
 permissions:
@@ -30,10 +30,16 @@ jobs:
         run: node tools/test/harness.mjs --coverage --shard=${{ matrix.shard }}/2 --json=test-out/harness/result.json
       - name: Markdown demo
         if: ${{ !cancelled() && matrix.shard == 1 }}
-        run: npm test -w @codeboard/markdown-demo
+        # bash (pipefail) keeps the step red when the test fails; the log for the report goes outside test-out/markdown-demo,
+        # which Playwright empties when it starts
+        shell: bash
+        run: mkdir -p test-out && npm test -w @codeboard/markdown-demo 2>&1 | tee test-out/markdown-demo.log
       - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with: { name: "harness-${{ matrix.shard }}", path: test-out/harness/result.json, retention-days: 14, if-no-files-found: ignore }
+      - uses: actions/upload-artifact@v6
+        if: ${{ !cancelled() && matrix.shard == 1 }}
+        with: { name: markdown-demo, path: test-out/markdown-demo.log, retention-days: 14, if-no-files-found: ignore }
 
   e2e:
     runs-on: ubuntu-24.04
@@ -145,13 +151,18 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v7
         with: { path: test-out/artifacts }
+      # Only main's runs are what PRs are compared with: a run started by hand on another branch must not replace the impact map,
+      # the failing list and the alone streaks, or comment as if it were main
       - name: Publish the impact map
+        if: github.ref == 'refs/heads/main'
         run: tools/test/publish-impact.sh test-out/artifacts
       - name: Report to the results issue
+        if: github.ref == 'refs/heads/main'
         uses: actions/github-script@v8
         env:
           JOBS: ${{ toJSON(needs) }}
         with:
+          retries: 3 # the API answers 503 now and then
           script: |
             const { regularReport } = await import(`${process.env.GITHUB_WORKSPACE}/tools/test/regular-report.mjs`);
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
@@ -160,7 +171,7 @@ jobs:
             const LABEL = "replay-nightly";
             const open = await github.rest.issues.listForRepo({ ...context.repo, labels: LABEL, state: "open", per_page: 1 });
             const issue = open.data[0] || (await github.rest.issues.create({ ...context.repo, title: "Scheduled test results", labels: [LABEL],
-              body: "The scheduled runs (`.github/workflows/regular.yml`, `replay.yml`, every 6 hours) comment here when their set of failures changes, including when everything passes again." })).data;
+              body: "The scheduled runs (`.github/workflows/regular.yml` every 6 hours, `replay.yml` daily) comment here when their set of failures changes, including when everything passes again." })).data;
             const comments = await github.paginate(github.rest.issues.listComments, { ...context.repo, issue_number: issue.number, per_page: 100 });
             const r = regularReport({ dir: "test-out/artifacts", jobs: JSON.parse(process.env.JOBS), comments: comments.map((c) => c.body || ""), run, sha: context.sha.slice(0, 7),
               tiers: JSON.parse(require("fs").readFileSync(`${process.env.GITHUB_WORKSPACE}/packages/board/test/tiers.json`, "utf8")),

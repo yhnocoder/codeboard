@@ -1,0 +1,220 @@
+{
+  "calls": [
+    {
+      "args": [
+        {
+          "name": undefined,
+          "text": "temperatures.unsqueeze(dim=1)",
+        },
+      ],
+      "assigned": [
+        "logits",
+      ],
+      "col": 32,
+      "end": 36,
+      "line": 9,
+      "loop": false,
+      "name": "div_",
+      "recv": "logits.float()",
+    },
+    {
+      "args": [],
+      "assigned": [
+        "logits",
+      ],
+      "col": 24,
+      "end": 29,
+      "line": 9,
+      "loop": false,
+      "name": "float",
+      "recv": "logits",
+    },
+    {
+      "args": [
+        {
+          "kw": "dim",
+          "name": undefined,
+          "text": "1",
+        },
+      ],
+      "assigned": undefined,
+      "col": 50,
+      "end": 59,
+      "line": 9,
+      "loop": false,
+      "name": "unsqueeze",
+      "recv": "temperatures",
+    },
+    {
+      "args": [
+        {
+          "name": "logits",
+          "text": "logits",
+        },
+        {
+          "kw": "dim",
+          "name": undefined,
+          "text": "-1",
+        },
+      ],
+      "assigned": [
+        "probs",
+      ],
+      "col": 22,
+      "end": 29,
+      "line": 10,
+      "loop": false,
+      "name": "softmax",
+      "recv": "torch",
+    },
+    {
+      "args": [
+        {
+          "kw": "dim",
+          "name": undefined,
+          "text": "-1",
+        },
+      ],
+      "assigned": [
+        "sample_tokens",
+      ],
+      "col": 94,
+      "end": 100,
+      "line": 11,
+      "loop": false,
+      "name": "argmax",
+      "recv": "probs.div_(torch.empty_like(probs).exponential_(1).clamp_min_(1e-10))",
+    },
+    {
+      "args": [
+        {
+          "name": undefined,
+          "text": "torch.empty_like(probs).exponential_(1).clamp_min_(1e-10)",
+        },
+      ],
+      "assigned": [
+        "sample_tokens",
+      ],
+      "col": 30,
+      "end": 34,
+      "line": 11,
+      "loop": false,
+      "name": "div_",
+      "recv": "probs",
+    },
+    {
+      "args": [
+        {
+          "name": undefined,
+          "text": "1e-10",
+        },
+      ],
+      "assigned": undefined,
+      "col": 75,
+      "end": 85,
+      "line": 11,
+      "loop": false,
+      "name": "clamp_min_",
+      "recv": "torch.empty_like(probs).exponential_(1)",
+    },
+    {
+      "args": [
+        {
+          "name": undefined,
+          "text": "1",
+        },
+      ],
+      "assigned": undefined,
+      "col": 59,
+      "end": 71,
+      "line": 11,
+      "loop": false,
+      "name": "exponential_",
+      "recv": "torch.empty_like(probs)",
+    },
+    {
+      "args": [
+        {
+          "name": "probs",
+          "text": "probs",
+        },
+      ],
+      "assigned": undefined,
+      "col": 41,
+      "end": 51,
+      "line": 11,
+      "loop": false,
+      "name": "empty_like",
+      "recv": "torch",
+    },
+  ],
+  "doc": undefined,
+  "flags": [
+    0,
+    0,
+    1,
+    1,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+  ],
+  "imports": [
+    {
+      "line": 1,
+      "module": "torch",
+      "name": "torch",
+    },
+    {
+      "from": true,
+      "line": 2,
+      "module": "torch",
+      "name": "nn",
+    },
+  ],
+  "lang": "python",
+  "mainBlocks": [],
+  "symbols": [
+    {
+      "defLine": 5,
+      "end": 12,
+      "kind": "class",
+      "name": "Sampler",
+      "params": [],
+      "parent": undefined,
+      "qual": "Sampler",
+      "sig": "class Sampler(nn.Module)",
+      "start": 5,
+    },
+    {
+      "defLine": 8,
+      "end": 12,
+      "kind": "def",
+      "name": "forward",
+      "params": [
+        {
+          "kind": "self",
+          "name": "self",
+        },
+        {
+          "kind": "pos",
+          "name": "logits",
+        },
+        {
+          "kind": "pos",
+          "name": "temperatures",
+        },
+      ],
+      "parent": "Sampler",
+      "qual": "Sampler.forward",
+      "sig": "def forward(self, logits: torch.Tensor, temperatures: torch.Tensor)",
+      "start": 7,
+    },
+  ],
+  "trailing": {},
+}

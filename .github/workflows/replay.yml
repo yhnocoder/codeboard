@@ -89,6 +89,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/github-script@v8
         with:
+          retries: 3 # the API answers 503 now and then
           script: |
             const fs = require("fs");
             const A = "test-out/artifacts";
@@ -113,7 +114,7 @@ jobs:
               const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: context.issue.number });
               const body = pr.body || "";
               const re = /<!-- ci-replay:start -->[\s\S]*<!-- ci-replay:end -->/;
-              await github.rest.pulls.update({ ...context.repo, pull_number: context.issue.number, body: re.test(body) ? body.replace(re, section) : `${body}\n\n${section}` });
+              await github.rest.pulls.update({ ...context.repo, pull_number: context.issue.number, body: re.test(body) ? body.replace(re, () => section) : `${body}\n\n${section}` });
               return;
             }
 

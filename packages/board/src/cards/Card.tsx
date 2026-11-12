@@ -58,7 +58,7 @@ import { isBindHot, isBindAnchor } from "../state/stickers";
 import { fileHue, shape } from "../state/look";
 import { inkDark, paperOf } from "../state/ink";
 import { CompareBody } from "./CompareBody";
-import { NoteBody, WritingToolbar } from "./NoteBody";
+import { NoteBody, WritingToolbar, boxFill } from "./NoteBody";
 import { WebBody, LinksBody } from "./WebBody";
 import { BoardBody } from "./BoardBody";
 import { Editable } from "../ui/Editable";
@@ -182,8 +182,7 @@ export function CardView(p: { card: Card }) {
       (s as Record<string, string>)["--tfs"] = `${textSizeOf(k)}px`;
       if (k.look === "freetext" && !g) delete s.width;
     }
-    if (k.kind === "note" && k.look === "box")
-      (s as Record<string, string>)["--fc"] = `var(--bf-${k.fill ?? "yellow"})`;
+    if (k.kind === "note" && k.look === "box") (s as Record<string, string>)["--fc"] = `var(--bf-${boxFill(k)})`;
     // 斜贴：绕卡的中心转（箭头的端点按同一个中心转，Links.tsx）
     const a = tiltOf(k.id);
     if (a) Object.assign(s, { rotate: `${a}deg`, "transform-origin": "50% 50%", "--aim-t": "0px, 0px" });
@@ -254,6 +253,7 @@ export function CardView(p: { card: Card }) {
     if (h.kind === "compare") return !h.cols.includes(cur);
     return c().id !== cur;
   };
+  // in classList with the rest, not in `class`: a `class` that changes is written whole and wipes what classList set
   const kindClass = () => {
     const k = c();
     if (k.kind === "note")
@@ -262,6 +262,9 @@ export function CardView(p: { card: Card }) {
   };
   // 拖动中的卡、落点是所有卡共用的信号：直接写进 classList 的话，它们一变，241 张卡的整个 classList 都要重算一遍（松手那一帧 ~5ms）。
   // 先算成这张卡自己的真假，只有值真变了的那张卡才重算 classList
+  // The selection too: a card selected or not, and alone or not (.sel.solo), changes only on the cards it is about
+  const selected = createMemo(() => isSel(c().id));
+  const solo = createMemo(() => selected() && sel.cards.length === 1);
   const lift = createMemo(() => dragging().has(c().id));
   const land = createMemo(() => landing().has(c().id));
   const carry = createMemo(() => carried().cards.has(c().id));
@@ -284,13 +287,14 @@ export function CardView(p: { card: Card }) {
     <Show when={staged(c().id) === "in" || (staged(c().id) !== "out" && !isHidden(c().id))}>
       <div
         ref={mount}
-        class={`card ${kindClass()}`}
+        class="card"
         data-id={c().id}
         data-fc={c().kind === "code" ? fileHue((c() as CodeCard).segments[0]?.path) : undefined}
         style={style()}
         classList={{
-          sel: isSel(c().id),
-          solo: sel.cards.length === 1,
+          [kindClass()]: true,
+          sel: selected(),
+          solo: solo(),
           lift: lift(),
           landing: land(),
           carry: carry(),

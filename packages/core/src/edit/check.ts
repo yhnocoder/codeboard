@@ -56,6 +56,11 @@ export function danglingRefs(b: Board): string[] {
   for (const n of b.sidenotes) {
     if (!segOk(n.at.card, n.at.seg)) out.push(`sidenote ${n.id} on missing ${n.at.card}`);
     if (n.kind === "card" && !cards.has(n.card)) out.push(`sidenote ${n.id} points to missing ${n.card}`);
+    if (n.variant) {
+      const c = cards.get(n.at.card);
+      if (c && !(c.kind === "code" && c.variants?.some((v) => v.id === n.variant)))
+        out.push(`sidenote ${n.id} on missing variant ${n.variant} of ${n.at.card}`);
+    }
     // a sidenote on lines lies in its segment; one that goes along with the card is on the segment's Highlight with exactly those
     // lines, a local one is a Highlight of its own (edit/highlights.ts)
     const s = n.at.lines && noteSegment(b, n);
@@ -91,7 +96,11 @@ export function danglingRefs(b: Board): string[] {
   for (const c of b.cards)
     if (c.kind === "compare")
       for (const k of c.cols) if (!cards.has(k)) out.push(`compare ${c.id} column missing ${k}`);
-  for (const id of Object.keys(b.place)) if (!cards.has(id)) out.push(`place for missing card ${id}`);
+  const onCanvas = new Set(b.sections.map((s) => s.id));
+  for (const [id, p] of Object.entries(b.place)) {
+    if (!cards.has(id)) out.push(`place for missing card ${id}`);
+    if (p.section && !onCanvas.has(p.section)) out.push(`card ${id} is in missing section ${p.section}`);
+  }
   const shelved = new Set<string>();
   for (const e of shelf) {
     if (!Object.keys(e.place).length && !e.sections.length) out.push(`shelf entry ${e.id} is empty`);

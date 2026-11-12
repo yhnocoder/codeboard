@@ -16,7 +16,7 @@ import { select, setLineSel } from "../state/selection";
 import { toast } from "../state/toast";
 import { openPop, closePop, pops } from "../state/pop";
 import { setEditing } from "../state/ui";
-import { rooted } from "../state/root";
+import { boardRef, rooted } from "../state/root";
 import { lastPointer } from "../state/measure";
 import { pickCardThen } from "../state/mode";
 import { setSelSticker } from "../state/stickers";
@@ -28,9 +28,9 @@ import {
   setOtherQuestions,
   setWelcome,
 } from "../state/questions";
-import { ask, send } from "../host";
+import { ask, send, switched } from "../host";
 import { revealCard } from "./common";
-import { boardRef } from "../state/root";
+import { attrSel } from "../cardsel";
 
 const QICON: IconRef = { pack: "builtin", name: "question" };
 const DONE: IconRef = { pack: "builtin", name: "check" };
@@ -71,7 +71,7 @@ export function openQuestion(id: string, el?: Element, edit = false) {
   if (!s) return;
   setSelSticker(id);
   for (const p of pops()) if (p.pop.kind === "question" && p.pop.sticker === id) closePop(p.id);
-  const anchor = el ?? document.querySelector(`[data-sticker="${id}"]`) ?? undefined;
+  const anchor = el ?? document.querySelector(attrSel("data-sticker", id)) ?? undefined;
   openPop({ kind: "question", sticker: id }, anchor ? { el: anchor, prefer: "right" } : lastPointer());
   if (edit || !s.q?.md) setEditing({ kind: "question", id });
 }
@@ -126,7 +126,7 @@ export function toggleQuestions(v = !questionsOpen()) {
 export function refreshQuestions() {
   ask("questions", {})
     .then((qs) => setOtherQuestions(qs.filter((q) => q.board !== state.board.id)))
-    .catch(() => setOtherQuestions([]));
+    .catch((e) => switched(e) || setOtherQuestions([]));
 }
 /** 这块白板（当前状态）+ 别的白板（宿主算的），这块白板排在最前 */
 export function questionList(): QuestionItem[] {
@@ -165,7 +165,7 @@ export function exportQuestions(items: QuestionItem[]) {
     kind: "md",
     name: `${state.board.name || "board"} questions`,
     text: questionsMarkdown(items, { title: "Questions" }),
-  }).catch((e) => toast(`Export failed: ${(e as Error).message}`));
+  }).catch((e) => switched(e) || toast(`Export failed: ${(e as Error).message}`));
 }
 
 export function showWelcomeQuestions() {

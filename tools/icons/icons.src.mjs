@@ -45,18 +45,6 @@ export const ICONS = {
   left: ["M10 12 6 8l4-4", "", "chevron-left"],
   right: ["M6 12l4-4-4-4", "", "chevron-right"],
   close: ["M12 4 4 12M4 4l8 8", "", "x"],
-  play: [
-    poly(
-      [
-        [4, 3, R],
-        [13, 8, R],
-        [4, 13, R],
-      ],
-      true,
-    ),
-    "",
-    "play",
-  ],
   entry: [
     "M7 11l3-3-3-3M10 8H2" +
       poly([
@@ -128,7 +116,6 @@ export const ICONS = {
   undo: ["M6 10 2 6l4-4M2 6h7.5a3.5 3.5 0 0 1 0 7H7", "", "undo-2"],
   redo: ["M10 10l4-4-4-4M14 6H6.5a3.5 3.5 0 0 0 0 7H9", "", "redo-2"],
   lock: [rect(2, 7, 14, 14, R) + "M5 7V5a3 3 0 0 1 6 0v2", "", "lock"],
-  unlock: [rect(2, 7, 14, 14, R) + "M5 7V5a3 3 0 0 1 5.94-.6", "", "lock-open"],
   loop: ["M14 8a6 6 0 1 1-6-6c1.7 0 3.3.7 4.5 1.8L14 5M14 2v3h-3", "", "rotate-cw"],
   layout: [rect(2, 2, 14, 14, R) + "M6 2v12", "", "panel-left"],
   focus: [circle(8, 8, 2) + corners(), "", "focus"],
@@ -149,7 +136,6 @@ export const ICONS = {
   alignB: ["M1 14h14" + rect(2, 2, 6, 11, R) + rect(10, 5, 14, 11, R), "", "align-end-horizontal"],
   distH: ["M2 2v12M14 2v12" + rect(6, 4, 10, 12, R), "", "align-horizontal-space-around"],
   distV: ["M2 2h12M2 14h12" + rect(4, 6, 12, 10, R), "", "align-vertical-space-around"],
-  sameW: [rect(2, 2, 14, 6, R) + rect(2, 10, 14, 14, R), "", "stretch-horizontal"],
   external: [
     "M10 2h4v4M14 2 7 9" +
       poly([
