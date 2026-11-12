@@ -359,7 +359,12 @@ export type RasterResult = {
  *   43-77 (31-73 wasted), synthetic 224 (203 wasted); with the hint off from half the raster scale to the end, every layer in
  *   view was rastered at every frame: persona 35-37 (3-4), synthetic 55-84 (2-5); with the hint put back below a quarter of
  *   the device scale and the world rastered again only as the scale halves there (Canvas.tsx HINT_KEEPS), persona 21-26 (4-6).
- *   restVP guards the total (it does not always tell keeping the hint from dropping it); wastedVP does.
+ *   Rastered at the scale shown on every frame (#203): persona 42-47 (0.6-1.4 wasted) in 5 local runs, and 44.8 and 54.2 on CI
+ *   for the same commit (Regular 2026-11-11). The total grows with the frames the flight gets, and the flight is a wall-clock
+ *   spring whose step is capped at 32 ms (state/camera.ts), so a slower runner draws it in more frames. A fixed frame count would
+ *   need the page clock faked from the click on, which would also stop the timers and frame waits of the passes after it; so the
+ *   budget leaves 1.2x over the most seen: 65. restVP guards the total (it does not always tell keeping the hint from dropping
+ *   it); wastedVP does, and stays at 10.
  * The sharpness at rest (blurry and wasted layers, SCALE_BUDGET) is judged after the passes listed in `sharp`: at 100 %; at 0.34
  * after nearCut (the world at 1.0 there before, 2.9x); at the
  * fit (the persona board's summary columns stayed rastered at 1.0 there, 2.4x the scale shown, when the stop past the cut was
@@ -381,7 +386,7 @@ export const RASTER_BUDGET = {
     dragSection: { stepVP: 1 },
     nearCut: { wastedVP: 1 },
     stops: { stepVP: 3 },
-    fit: { restVP: 50, wastedVP: 10 },
+    fit: { restVP: 65, wastedVP: 10 },
   },
   sharp: ["drag", "pan", "nearCut", "stops", "fit", "inOutIn"],
 } as const;

@@ -236,6 +236,16 @@ async function pick(page, text, ms = 5000, label = text) {
 const openPalette = (page) => openQuick(page, "F1", "the command palette");
 /** Run a command from the palette; returns once the palette is gone and the keyboard has settled, or, for a command that asks for
  *  input, once its input box (with `prompt` in its title or message) is up and keeps the keyboard; losing it is a failure, not a retry */
+/** Developer: Reload Window, then the window back with its editors. Not through command(): it reads the page once the palette has
+ *  closed (closed, keyboard settled), and a reload that comes first destroys the page under that read ("Execution context was
+ *  destroyed", Regular 2026-11-11) */
+async function reloadWindow(page) {
+  await openPalette(page);
+  const loaded = page.waitForEvent("load", { timeout: 60000 });
+  if (!(await pick(page, "Developer: Reload Window", 3000))) throw new Error('no command "Developer: Reload Window"');
+  await loaded;
+  await page.locator(".monaco-workbench .part.editor").waitFor({ timeout: 60000 });
+}
 async function command(page, text, prompt) {
   await openPalette(page);
   const mark = await qiMark(page);
@@ -541,6 +551,7 @@ async function fit(f) {
 }
 
 module.exports = {
+  reloadWindow,
   qi,
   qiValue,
   qiOpen,

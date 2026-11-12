@@ -28,6 +28,7 @@ const {
   boardKeys,
   ctrlK,
   webviewBoxes,
+  reloadWindow,
 } = require("./ui.cjs");
 const [OUT, WS, UD] = process.argv.slice(2);
 /** The board file format the extension writes (core's model.ts), so the autosave check follows a format bump */
@@ -1142,11 +1143,8 @@ async function codeeditStep(page) {
     await soon(() => !fs.readdirSync(scratch).some((n) => n.startsWith(".codeboard-")), Boolean, 10000),
     "the hidden file is deleted when editing ends",
   );
-  const reloaded = page.waitForEvent("load", { timeout: 60000 });
-  await command(page, "Developer: Reload Window");
-  await reloaded;
   // the window is back once it has restored its editors (the code file and the board)
-  await page.locator(".monaco-workbench .part.editor").waitFor({ timeout: 60000 });
+  await reloadWindow(page);
   await until(
     "the reloaded window restores its editors",
     () => page.locator(".tabs-container .tab", { hasText: "llm_engine.py" }).count(),
