@@ -10,7 +10,7 @@ let package = Package(
     .target(name: "CodeBoardNotes", dependencies: ["CodeBoardModel"]),
     .target(name: "CodeBoardCanvas", dependencies: ["CodeBoardModel"]),
     .target(name: "CodeBoardShell", dependencies: ["CodeBoardModel", "CodeBoardCanvas"]),
-    .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardCanvas"]),
+    .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
     .executableTarget(name: "CanvasBench", dependencies: ["CodeBoardCanvas"]),
     .testTarget(name: "CodeBoardModelTests", dependencies: ["CodeBoardModel"], resources: [.copy("Fixtures")]),
     .testTarget(name: "CodeBoardSyntaxTests", dependencies: ["CodeBoardSyntax"]),
