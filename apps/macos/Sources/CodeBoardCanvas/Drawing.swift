@@ -5,8 +5,8 @@ import IOSurface
 
 /// What one item's bitmap shows. Drawn off the main thread at any scale: a producer gets the item's size, a scale and
 /// the theme and draws into a context whose origin is the item's top left; it may draw `bleed(theme)` past each side
-/// (paper, rings), and the bitmap has room for that. A Note's content is the other producer: the Note renderer's picture,
-/// drawn over the paper drawn here (`CanvasView.compose`).
+/// (paper, rings), and the bitmap has room for that. The Note renderer is the other producer: a Note's content and an SVG
+/// picture are its pictures, drawn over the paper drawn here (`picture`, `CanvasView.compose`).
 enum Drawing: Sendable {
   case code(Code)
   case note(Note)
@@ -50,6 +50,9 @@ enum Drawing: Sendable {
     var fileSize: CGSize
     var frame: Int
     var framed: Bool
+
+    /// Drawn by the Note renderer (WebKit), as the web board's <img> draws it
+    var svg: Bool { url?.pathExtension.lowercased() == "svg" }
   }
 
   struct Label: Sendable {
@@ -59,6 +62,15 @@ enum Drawing: Sendable {
 
     var text: String
     var kind: Kind
+  }
+
+  /// Its picture comes from the Note renderer: until then it shows its paper
+  var byRenderer: Bool {
+    switch self {
+    case .note: true
+    case .image(let p): p.svg
+    case .code, .label: false
+    }
   }
 
   var framed: Bool {
@@ -82,8 +94,11 @@ enum Drawing: Sendable {
     return 0
   }
 
-  /// Draws the item in board units, y-down from its top-left. Returns how many pictures had to be decoded
-  func draw(in ctx: CGContext, size: CGSize, scale: CGFloat, theme t: Theme, images: DecodeCache) -> Int {
+  /// Draws the item in board units, y-down from its top-left, with the Note renderer's `picture` at `scale` when it is
+  /// drawn by it (without one: its paper). Returns how many pictures had to be decoded
+  func draw(
+    in ctx: CGContext, size: CGSize, scale: CGFloat, theme t: Theme, images: DecodeCache, picture: IOSurface? = nil
+  ) -> Int {
     let r = CGRect(origin: .zero, size: size)
     ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
     var decodes = 0
@@ -124,28 +139,39 @@ enum Drawing: Sendable {
       case .text, .mark, .freeText:
         break
       }
+      // transparent around the content, pixel for pixel from the top left
+      if let px = picture {
+        Raster.draw(
+          px, in: CGRect(x: 0, y: 0, width: CGFloat(px.width) / scale, height: CGFloat(px.height) / scale), of: ctx)
+      }
     case .image(let p):
       if p.framed { Drawing.paper(ctx, r, t, id: p.id, rule: nil) }
       let shape = Drawing.squircle(r, t.cardRadius)
       ctx.saveGState()
       ctx.addPath(shape)
       ctx.clip()
-      // a gesture started: no decode
-      let got =
-        Task.isCancelled
-        ? nil
-        : p.url.map {
-          images.image($0, frame: p.frame, width: Int((size.width * scale).rounded(.up)), fileSize: p.fileSize)
+      if let px = picture {
+        // as wide as the card and as tall as its proportions (.imgb img)
+        Raster.draw(
+          px, in: CGRect(x: 0, y: 0, width: CGFloat(px.width) / scale, height: CGFloat(px.height) / scale), of: ctx)
+      } else if !p.svg {
+        // a gesture started: no decode
+        let got =
+          Task.isCancelled
+          ? nil
+          : p.url.map {
+            images.image($0, frame: p.frame, width: Int((size.width * scale).rounded(.up)), fileSize: p.fileSize)
+          }
+        if got?.decoded == true { decodes += 1 }
+        if let img = got?.image {
+          ctx.interpolationQuality = .high
+          ctx.translateBy(x: 0, y: size.height)
+          ctx.scaleBy(x: 1, y: -1)
+          ctx.draw(img, in: r)
+        } else {
+          ctx.setFillColor(t.hiddenRow)
+          ctx.fill(r)
         }
-      if got?.decoded == true { decodes += 1 }
-      if let img = got?.image {
-        ctx.interpolationQuality = .high
-        ctx.translateBy(x: 0, y: size.height)
-        ctx.scaleBy(x: 1, y: -1)
-        ctx.draw(img, in: r)
-      } else {
-        ctx.setFillColor(t.hiddenRow)
-        ctx.fill(r)
       }
       ctx.restoreGState()
       if p.framed { Drawing.edge(ctx, r, t) }

@@ -71,7 +71,7 @@ enum Backdrop {
 }
 
 /// The whole board as the canvas shows it at rest, drawn offscreen in one go: the look comparison's Swift half and tests.
-/// Notes show their paper only (their content needs the Note renderer's web view)
+/// Notes and SVG pictures show their paper only (they need the Note renderer's web view)
 package enum Picture {
   /// `rect` of the board (board units) at `scale` pixels per unit, the theme's backdrop covering it when asked; sizes: what
   /// the Note renderer would measure of Notes (as `Scene` takes it). Also returns where each card is

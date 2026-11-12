@@ -142,6 +142,22 @@ window.note = {
     else made.body.textContent = n.text;
     return measure();
   },
+  /** An image file as the board's image card shows it (Card.tsx, .imgb img): an <img> `width` px wide, as tall as its
+   * proportions make it. An SVG in an <img> sees only itself: its own styles and variables, none of the page's */
+  async image(src: string, width: number) {
+    editor?.destroy();
+    editor = undefined;
+    card?.remove();
+    root.style.transform = "";
+    const img = document.createElement("img");
+    img.style.width = `${width}px`;
+    img.style.display = "block";
+    img.src = src;
+    card = document.createElement("div");
+    card.append(img);
+    root.append(card);
+    return measure();
+  },
   /** Measures again after the view grew: code blocks draw only the lines in view, so the card can grow with it */
   measure,
   /** The Note at a zoom as the editor is shown at one: its 100 % layout under a CSS transform, so no line breaks move */

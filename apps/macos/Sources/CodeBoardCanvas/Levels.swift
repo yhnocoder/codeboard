@@ -63,7 +63,7 @@ struct RestPlan: Equatable {
     var slot: Slot
     /// Device pixels per board unit
     var scale: CGFloat
-    /// Drawn by the Note renderer
+    /// Drawn by the Note renderer (a Note, an SVG picture)
     var note = false
   }
 

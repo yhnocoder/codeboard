@@ -8,7 +8,8 @@ import QuartzCore
 /// only moves and scales the bitmaps the items already have; at rest they are redrawn at fixed levels (`Levels`,
 /// `RestPlan`), off the main thread, and swapped in a few per frame (`RedrawQueue`). A Note's bitmap at each level is
 /// its paper drawn here with the Note renderer's picture over it, so Notes go through the same levels, queue and
-/// budgets; until its first picture comes in a Note shows its paper (`NoteFace`).
+/// budgets; until its first picture comes in a Note shows its paper (`NoteFace`). An SVG picture is drawn by the Note
+/// renderer too (WebKit draws it as the web board does), and goes the same way.
 public final class CanvasView: NSView {
   /// The design allows one snapshot web view in the app, so every canvas shares one renderer
   private static let sharedNotes = NoteRenderer()
@@ -128,14 +129,12 @@ public final class CanvasView: NSView {
       let overviews = await withTaskGroup(of: (Int, Overview).self) { g in
         for (i, it) in scene.items.enumerated() {
           g.addTask {
-            guard case .note(let n) = it.drawing else {
+            guard it.drawing.byRenderer else {
               let s = Levels.scale(fit, backing: backing, size: it.bitmapSize)
               return (i, (CanvasView.render(it, scale: s, theme: theme, images: images).surface, s, .drawn))
             }
             let s = Levels.noteOverview(fit, backing: backing, size: it.bitmapSize)
-            if let snap = await notes.cached(
-              of: n.content, width: it.rect.width, height: n.height, folder: n.folder, scale: s, look: theme.id.rawValue
-            ),
+            if let snap = await CanvasView.picture(it, scale: s, theme: theme, notes: notes, priority: nil),
               let drawn = CanvasView.compose(it, snap, scale: s, theme: theme, images: images)
             {
               return (i, (drawn, s, .drawn))
@@ -200,7 +199,7 @@ public final class CanvasView: NSView {
       overviewScale = o.scale
       bleed = item.bleed
       face = o.face
-      if case .note = item.drawing { note = true } else { note = false }
+      note = item.drawing.byRenderer
       heldScale = o.scale
       let r = item.rect
       box.bounds = CGRect(origin: .zero, size: r.size)
@@ -579,13 +578,13 @@ public final class CanvasView: NSView {
       let images = self.images
       let id = nextTask
       nextTask += 1
-      if job.note, case .note(let n) = item.drawing {
+      if job.note {
         let notes = self.notes
         let priority = nextNote
         nextNote -= 1
         tasks[id] = Task.detached(priority: .userInitiated) { [weak self] in
           let r = await CanvasView.drawNote(
-            item, n, scale: job.scale, theme: theme, images: images, notes: notes, priority: priority)
+            item, scale: job.scale, theme: theme, images: images, notes: notes, priority: priority)
           await self?.finished(
             job, generation: generation, surface: r.surface, decodes: 0, overlapped: r.late, task: id)
         }
@@ -632,33 +631,51 @@ public final class CanvasView: NSView {
     l.add(t, forKey: "picture")
   }
 
-  /// A Note's bitmap at a scale: its picture from the renderer over its paper. No bitmap when cancelled (a gesture
-  /// started: a picture the web view was drawing still finishes, into the renderer's cache) or when the renderer failed.
-  /// late: cancelled while the paper was being drawn under the picture
+  /// The bitmap at a scale of an item the Note renderer draws (a Note, an SVG picture): its picture over its paper. No
+  /// bitmap when cancelled (a gesture started: a picture the web view was drawing still finishes, into the renderer's
+  /// cache) or when the renderer failed. late: cancelled while the paper was being drawn under the picture
   nonisolated static func drawNote(
-    _ item: Scene.Item, _ n: Drawing.Note, scale: CGFloat, theme: Theme, images: DecodeCache, notes: NoteRenderer,
-    priority: Int
+    _ item: Scene.Item, scale: CGFloat, theme: Theme, images: DecodeCache, notes: NoteRenderer, priority: Int
   ) async -> (surface: IOSurface?, late: Bool) {
     guard !Task.isCancelled,
-      let snap = try? await notes.snapshot(
-        of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale,
-        look: theme.id.rawValue,
-        priority: priority),
+      let snap = await picture(item, scale: scale, theme: theme, notes: notes, priority: priority),
       !Task.isCancelled
     else { return (nil, false) }
     let s = compose(item, snap, scale: scale, theme: theme, images: images)
     return Task.isCancelled ? (nil, true) : (s, false)
   }
 
-  /// The paper the canvas draws for the card, with the snapshot (transparent around the content) pixel for pixel over it
+  /// The Note renderer's picture of an item it draws, at a scale; with no priority only from its disk cache
+  nonisolated static func picture(
+    _ item: Scene.Item, scale: CGFloat, theme: Theme, notes: NoteRenderer, priority: Int?
+  ) async -> NoteSnapshot? {
+    switch item.drawing {
+    case .note(let n):
+      let look = theme.id.rawValue
+      guard let priority else {
+        return await notes.cached(
+          of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale, look: look)
+      }
+      return try? await notes.snapshot(
+        of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale, look: look,
+        priority: priority)
+    case .image(let p):
+      guard p.svg, let url = p.url else { return nil }
+      let width = Int((item.rect.width * scale).rounded(.up))
+      guard let priority else { return await notes.cachedPicture(of: url, width: width) }
+      return try? await notes.picture(of: url, width: width, priority: priority)
+    case .code, .label:
+      return nil
+    }
+  }
+
+  /// The paper the canvas draws for the card, with the renderer's picture over it
   nonisolated static func compose(
     _ item: Scene.Item, _ snap: NoteSnapshot, scale: CGFloat, theme: Theme, images: DecodeCache
   ) -> IOSurface? {
     Raster.surface(size: item.rect.size, scale: scale, bleed: item.bleed) { ctx in
-      _ = item.drawing.draw(in: ctx, size: item.rect.size, scale: scale, theme: theme, images: images)
-      let px = snap.surface
-      Raster.draw(
-        px, in: CGRect(x: 0, y: 0, width: CGFloat(px.width) / scale, height: CGFloat(px.height) / scale), of: ctx)
+      _ = item.drawing.draw(
+        in: ctx, size: item.rect.size, scale: scale, theme: theme, images: images, picture: snap.surface)
     }
   }
 

@@ -11,8 +11,9 @@ final class NotePage {
   private let window: NSWindow
   private let view: WKWebView
   private let signal = ReadySignal()
-  /// The Note on the page now (its JSON and image folder), so a snapshot at another scale draws nothing again
-  private var shown: (note: String, folder: URL, size: CGSize, complete: Bool)?
+  /// What the page shows now (a Note's JSON and image folder, or an image), so a snapshot at another scale draws nothing
+  /// again
+  private var shown: (what: String, size: CGSize, complete: Bool)?
   /// The CSS scale the shown Note is under (show puts it back to 1)
   private var zoom = 1.0
 
@@ -27,6 +28,8 @@ final class NotePage {
     view = DrawOnlyWebView(frame: CGRect(x: 0, y: 0, width: 400, height: 400), configuration: config)
     // the page is transparent: the canvas draws the card under the Note
     view.setValue(false, forKey: "drawsBackground")
+    // the board's looks are light (color-scheme: light): a picture's prefers-color-scheme rules must not follow a dark Mac
+    view.appearance = NSAppearance(named: .aqua)
     guard view.responds(to: NSSelectorFromString("_setWindowOcclusionDetectionEnabled:")) else {
       throw NoteRenderError.page("this WebKit has no _setWindowOcclusionDetectionEnabled:")
     }
@@ -51,11 +54,28 @@ final class NotePage {
 
   /// Shows the Note (unless it is the one shown) and returns its size at 100 % and whether every image came in
   func show(note: String, folder: URL) async throws -> (size: CGSize, complete: Bool) {
-    if let s = shown, s.note == note, s.folder == folder { return (s.size, s.complete) }
+    let images = folder.appending(path: "images", directoryHint: .notDirectory).absoluteString
+    return try await show(
+      "note \(images) \(note)", "return await note.show(JSON.parse(n), images)", ["n": note, "images": images])
+  }
+
+  /// An image file as an image card shows it, `width` pixels wide at the window's backing scale (`stamp`: the file's
+  /// size and time, so a file replaced under its name is shown again), and whether it came in
+  func picture(of file: URL, stamp: String, width: Int) async throws -> (NoteSnapshot, complete: Bool) {
+    let backing = window.backingScaleFactor
+    let r = try await show(
+      "image \(file.absoluteString) \(stamp) \(width)", "return await note.image(src, width)",
+      ["src": file.absoluteString, "width": Double(width) / backing])
+    return (try await snapshot(size: r.size, scale: backing), r.complete)
+  }
+
+  private func show(_ what: String, _ js: String, _ args: [String: Any]) async throws -> (
+    size: CGSize, complete: Bool
+  ) {
+    if let s = shown, s.what == what { return (s.size, s.complete) }
     shown = nil
     await signal.ready()
-    let images = folder.appending(path: "images", directoryHint: .notDirectory).absoluteString
-    var r = try await call("return await note.show(JSON.parse(n), images)", ["n": note, "images": images])
+    var r = try await call(js, args)
     zoom = 1
     // the whole card in view at 100 %: code blocks draw only the lines in view and the rest would be missing; a few
     // rounds, as the card grows with each one
@@ -63,7 +83,7 @@ final class NotePage {
       window.setContentSize(view.frame.size.union(r.size))
       r = try await call("return await note.measure()", [:])
     }
-    shown = (note, folder, r.size, r.complete)
+    shown = (what, r.size, r.complete)
     return r
   }
 

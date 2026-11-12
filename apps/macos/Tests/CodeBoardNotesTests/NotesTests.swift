@@ -259,4 +259,72 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     let tail = pixels(s.surface).suffix(s.surface.width * 4 * rows / 50).enumerated()
     #expect(tail.contains { $0.offset % 4 == 3 && $0.element > 0 }, "the last lines are drawn")
   }
+
+  /// What NSImage draws wrong (black, or nothing): a <style> with classes and a dark-mode rule, CSS variables defined
+  /// and missing (the fallback), currentColor, a gradient, text in a font family
+  static let svg = """
+    <svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">
+      <style>
+        svg { --ink: #264653; }
+        .a { fill: #d62828; }
+        .b { fill: var(--ink); }
+        .c { fill: var(--missing, #2a9d8f); }
+        .t { font: bold 40px Georgia, serif; fill: #6a4c93; }
+        @media (prefers-color-scheme: dark) { .a { fill: #ffffff; } }
+      </style>
+      <defs><linearGradient id="g"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/>
+      </linearGradient></defs>
+      <rect class="a" x="0" y="0" width="40" height="40"/>
+      <rect class="b" x="40" y="0" width="40" height="40"/>
+      <rect class="c" x="80" y="0" width="40" height="40"/>
+      <g style="color: #e76f51"><rect fill="currentColor" x="120" y="0" width="40" height="40"/></g>
+      <rect fill="url(#g)" x="0" y="50" width="100" height="50"/>
+      <text class="t" x="105" y="90">Ab</text>
+    </svg>
+    """
+
+  @Test func drawsAnSVGAsTheBoardsImageCardDoes() async throws {
+    _ = NSApplication.shared
+    let cache = try tempFolder()
+    let folder = try tempFolder()
+    defer {
+      try? FileManager.default.removeItem(at: cache)
+      try? FileManager.default.removeItem(at: folder)
+    }
+    let file = folder.appending(path: "chart-200x100.svg")
+    try Data(Self.svg.utf8).write(to: file)
+    // the board's looks are light: a dark Mac does not turn on the picture's dark rules
+    let appearance = NSApp.appearance
+    NSApp.appearance = NSAppearance(named: .darkAqua)
+    defer { NSApp.appearance = appearance }
+    let r = NoteRenderer(cache: cache)
+    let s = try await r.picture(of: file, width: 400, priority: 0)
+    #expect(s.surface.width == 400 && s.surface.height == 200)
+    let px = pixels(s.surface)
+    /// sRGB at a point of the 200 × 100 picture
+    func rgb(_ x: Int, _ y: Int) -> [Int] {
+      let i = (y * 2 * s.surface.width + x * 2) * 4
+      return [Int(px[i + 2]), Int(px[i + 1]), Int(px[i]), Int(px[i + 3])]
+    }
+    func near(_ x: Int, _ y: Int, _ hex: Int) -> Bool {
+      let want = [hex >> 16, hex >> 8 & 0xff, hex & 0xff, 255]
+      return zip(rgb(x, y), want).allSatisfy { abs($0 - $1) <= 4 }
+    }
+    #expect(near(20, 20, 0xd62828), "class, light: \(rgb(20, 20))")
+    #expect(near(60, 20, 0x264653), "variable: \(rgb(60, 20))")
+    #expect(near(100, 20, 0x2a9d8f), "variable fallback: \(rgb(100, 20))")
+    #expect(near(140, 20, 0xe76f51), "currentColor: \(rgb(140, 20))")
+    #expect(near(2, 75, 0xfd0002) || near(2, 75, 0xff0000), "gradient start: \(rgb(2, 75))")
+    #expect(rgb(98, 75)[2] > 230 && rgb(98, 75)[0] < 25, "gradient end: \(rgb(98, 75))")
+    #expect(rgb(180, 20)[3] == 0, "transparent where nothing is drawn")
+    // the text: ink of its own colour in its box, nothing black
+    let text = (105..<200).flatMap { x in (55..<100).map { rgb(x, $0) } }.filter { $0[3] == 255 }
+    #expect(text.count > 200 && text.allSatisfy { $0[0] > 80 }, "text in #6a4c93")
+
+    // a second renderer on the same cache reads it from disk, and another width draws again
+    let fresh = NoteRenderer(cache: cache)
+    let again = try await fresh.picture(of: file, width: 400, priority: 0)
+    #expect(!fresh.webViewOpen && pixels(again.surface) == px)
+    #expect(await fresh.cachedPicture(of: file, width: 200) == nil)
+  }
 }

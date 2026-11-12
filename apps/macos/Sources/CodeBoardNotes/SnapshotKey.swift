@@ -20,12 +20,15 @@ struct SnapshotKey: Hashable, Sendable {
   /// Anything that looks like a reference counts: one too many only adds a line to the key.
   static func imageStamps(in markdown: String, folder: URL) -> [String] {
     let names = Set(markdown.matches(of: /images\/([A-Za-z0-9_-][A-Za-z0-9_.-]*)/).map { String($0.output.1) })
-    return names.sorted().map { name in
-      let path = folder.appending(components: "images", name).path(percentEncoded: false)
-      guard let a = try? FileManager.default.attributesOfItem(atPath: path),
-        let size = a[.size] as? Int, let date = a[.modificationDate] as? Date
-      else { return "\(name) -" }
-      return "\(name) \(size) \(date.timeIntervalSince1970)"
-    }
+    return names.sorted().map { stamp(folder.appending(components: "images", $0)) }
+  }
+
+  /// An image file as "name size mtime", or "name -" when missing
+  static func stamp(_ file: URL) -> String {
+    let name = file.lastPathComponent
+    guard let a = try? FileManager.default.attributesOfItem(atPath: file.path(percentEncoded: false)),
+      let size = a[.size] as? Int, let date = a[.modificationDate] as? Date
+    else { return "\(name) -" }
+    return "\(name) \(size) \(date.timeIntervalSince1970)"
   }
 }

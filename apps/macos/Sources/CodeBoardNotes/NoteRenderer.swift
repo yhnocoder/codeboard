@@ -53,18 +53,26 @@ public final class NoteRenderer {
     let (key, cached) = await Self.lookUp(
       store: store, build: build, note: json, markdown: note.text, folder: folder, scale: scale)
     if let cached { return cached }
-    try await takeTurn(priority: priority)
-    let drawn: (snapshot: NoteSnapshot, complete: Bool)
-    do {
-      drawn = try await draw(json, folder: folder, scale: scale)
-    } catch {
-      endTurn()
-      throw error
+    return try await draw(as: key, priority: priority) { p in
+      let shown = try await p.show(note: json, folder: folder)
+      return (try await p.snapshot(size: shown.size, scale: scale), shown.complete)
     }
-    endTurn()
-    // a picture with an image that did not come in is not kept: it would stand for the image from now on
-    if drawn.complete { try? await Self.keep(drawn.snapshot, as: key, in: store) }
-    return drawn.snapshot
+  }
+
+  /// An image file (an SVG: ImageIO does not read it, and NSImage draws it without its <style> and CSS variables) drawn
+  /// by WebKit as the board's image card shows it, `width` pixels wide and as tall as its proportions make it. Drawn as
+  /// `snapshot` draws a Note: from the disk cache, else in its turn in the one web view
+  public func picture(of file: URL, width: Int, priority: Int) async throws -> NoteSnapshot {
+    let (key, stamp, cached) = await Self.lookUp(store: store, build: build, file: file, width: width)
+    if let cached { return cached }
+    return try await draw(as: key, priority: priority) { p in
+      try await p.picture(of: file, stamp: stamp, width: width)
+    }
+  }
+
+  /// The picture `picture` would give, if the disk cache has it; never opens the web view
+  public func cachedPicture(of file: URL, width: Int) async -> NoteSnapshot? {
+    await Self.lookUp(store: store, build: build, file: file, width: width).2
   }
 
   /// The picture `snapshot` would give, if the disk cache has it; never opens the web view
@@ -133,17 +141,38 @@ public final class NoteRenderer {
     try store.write(snap, as: key)
   }
 
-  private func draw(_ json: String, folder: URL, scale: Double) async throws -> (NoteSnapshot, Bool) {
-    let p = try page ?? NotePage(page: pageFolder)
-    page = p
+  @concurrent
+  private static func lookUp(
+    store: SnapshotStore, build: String, file: URL, width: Int
+  ) async -> (SnapshotKey, String, NoteSnapshot?) {
+    // the file by its name (the board names images by their content), size and time; the width as the scale
+    let stamp = SnapshotKey.stamp(file)
+    let key = SnapshotKey(
+      build: build, system: ProcessInfo.processInfo.operatingSystemVersionString, note: "image", scale: Double(width),
+      images: [stamp])
+    return (key, stamp, store.read(key))
+  }
+
+  /// Draws in the web view in its turn, and keeps the picture when everything in it came in
+  private func draw(
+    as key: SnapshotKey, priority: Int, _ make: (NotePage) async throws -> (NoteSnapshot, complete: Bool)
+  ) async throws -> NoteSnapshot {
+    try await takeTurn(priority: priority)
+    let drawn: (snapshot: NoteSnapshot, complete: Bool)
     do {
-      let shown = try await p.show(note: json, folder: folder)
-      return (try await p.snapshot(size: shown.size, scale: scale), shown.complete)
+      let p = try page ?? NotePage(page: pageFolder)
+      page = p
+      drawn = try await make(p)
     } catch {
-      // a page that failed once (a script error, its web process gone) is not trusted with the next Note
+      // a page that failed once (a script error, its web process gone) is not trusted with the next picture
       page = nil
+      endTurn()
       throw error
     }
+    endTurn()
+    // a picture with an image that did not come in is not kept: it would stand for the image from now on
+    if drawn.complete { try? await Self.keep(drawn.snapshot, as: key, in: store) }
+    return drawn.snapshot
   }
 
   // MARK: one request at a time in the web view

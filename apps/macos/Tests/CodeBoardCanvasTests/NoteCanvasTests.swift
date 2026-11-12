@@ -80,14 +80,10 @@ import Testing
     let sizes = [CardID(rawValue: "tall"): CGSize(width: 300, height: bounds.height)]
     let scene = Scene(
       board, package: package, vault: vault, theme: .warmInk, highlighter: Highlighter(), sizes: sizes)
-    guard case .note(let n) = scene.items[0].drawing else {
-      Issue.record("not a Note")
-      return
-    }
     let images = DecodeCache(cap: 1 << 20)
     let composed = try #require(
       await CanvasView.drawNote(
-        scene.items[0], n, scale: 2, theme: .warmInk, images: images, notes: renderer, priority: 0
+        scene.items[0], scale: 2, theme: .warmInk, images: images, notes: renderer, priority: 0
       ).surface)
     let paper = try #require(CanvasView.render(scene.items[0], scale: 2, theme: .warmInk, images: images).surface)
     #expect(composed.width == 600 && composed.height == Int((bounds.height * 2).rounded(.up)))
@@ -107,6 +103,53 @@ import Testing
     try await again.show(at, in: vault, theme: .warmInk)
     #expect(again.boardBounds == bounds)
     #expect(again.noteProgress.overviews == 2)
+  }
+
+  /// An SVG picture comes from the Note renderer (WebKit) like a Note: paper until then, then the picture over it with
+  /// what NSImage drew black (a CSS variable's colour)
+  @Test func anSVGPictureIsDrawnByTheNoteRenderer() async throws {
+    _ = NSApplication.shared
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appending(path: "canvas-svg-\(UUID().uuidString)")
+    let cache = fm.temporaryDirectory.appending(path: "canvas-svg-cache-\(UUID().uuidString)")
+    defer {
+      try? fm.removeItem(at: root)
+      try? fm.removeItem(at: cache)
+    }
+    let package = root.appending(path: "B.board")
+    try fm.createDirectory(at: package.appending(path: "images"), withIntermediateDirectories: true)
+    let svg = """
+      <svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"><style>svg { --bar: #2a9d8f }
+      rect { fill: var(--bar) }</style><rect x="0" y="0" width="50" height="50"/></svg>
+      """
+    try Data(svg.utf8).write(to: package.appending(components: "images", "bars.svg"))
+    let card = Card(
+      id: CardID(rawValue: "chart"), x: 0, y: 0, width: 200,
+      content: .own(CardContent(body: .image(ImageCard(source: .file("bars.svg"), framed: false)))))
+    let board = Board(id: BoardID(rawValue: "b"), cards: [card])
+    let scene = Scene(
+      board, package: package, vault: Vault(root: root), theme: .warmInk, highlighter: Highlighter(), sizes: [:])
+    let item = scene.items[0]
+    #expect(item.drawing.byRenderer && item.rect.size == CGSize(width: 200, height: 100))
+    let images = DecodeCache(cap: 1 << 20)
+    let paper = try #require(CanvasView.render(item, scale: 2, theme: .warmInk, images: images).surface)
+    #expect(bgra(paper, 50, 50) == [0, 0, 0, 0])
+    let drawn = try #require(
+      await CanvasView.drawNote(
+        item, scale: 2, theme: .warmInk, images: images, notes: NoteRenderer(cache: cache), priority: 0
+      ).surface)
+    #expect(drawn.width == 400 && drawn.height == 200)
+    let bar = bgra(drawn, 50, 50).map(Int.init)
+    #expect(zip(bar, [0x8f, 0x9d, 0x2a, 255]).allSatisfy { abs($0 - $1) <= 4 }, "\(bar)")
+    #expect(bgra(drawn, 300, 50)[3] == 0)
+  }
+
+  /// BGRA at a pixel
+  private func bgra(_ s: IOSurface, _ x: Int, _ y: Int) -> [UInt8] {
+    s.lock(options: .readOnly, seed: nil)
+    defer { s.unlock(options: .readOnly, seed: nil) }
+    let p = (s.baseAddress + y * s.bytesPerRow + x * 4).assumingMemoryBound(to: UInt8.self)
+    return (0..<4).map { p[$0] }
   }
 
   /// Opaque pixels darker than mid grey: text
