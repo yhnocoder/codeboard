@@ -1,0 +1,29 @@
+/* Only the Note's content is drawn here: the canvas draws the card's paper, edge, shadow and header around it, so the
+   picture can fade in over the paper the card already shows */
+html,
+body {
+  background: transparent;
+}
+:root {
+  --t: 0;
+}
+#root {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+#root .card {
+  background: transparent;
+}
+#root .card::before,
+#root .card::after {
+  content: none;
+}
+#root .card > .cface > .chead {
+  visibility: hidden;
+}
+#root .card,
+#root .card * {
+  caret-color: transparent;
+}
