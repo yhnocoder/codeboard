@@ -1,3 +1,4 @@
+import AppKit
 import CodeBoardCanvas
 import CoreGraphics
 import Foundation
@@ -174,27 +175,42 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
   }
 }
 
-/// The cover over the top bar: the canvas colour, opaque over the bar, gone a fade's length below it
-@MainActor @Test(arguments: Theme.ID.allCases) func topFadeCoversTheBarAndFadesOut(_ id: Theme.ID) throws {
+/// The glass under the tabs: blurring what is behind it in the window whether or not the window is key, whole over the
+/// bar and gone a dissolve's length below it, the material and its canvas-coloured tint along the same curve
+@MainActor @Test(arguments: Theme.ID.allCases) func topGlassFrostsTheBarAndDissolvesBelowIt(_ id: Theme.ID) throws {
   let theme = Theme.named(id)
-  let img = try #require(
-    TopFade.image(width: 200, bar: 36, canvas: CGSize(width: 200, height: 600), theme: theme, scale: 2))
-  let srgb = try #require(CGColorSpace(name: CGColorSpace.sRGB))
-  let ctx = try #require(
-    CGContext(
-      data: nil, width: img.width, height: img.height, bitsPerComponent: 8, bytesPerRow: img.width * 4, space: srgb,
-      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
-  ctx.draw(img, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
-  let px = try #require(ctx.data).assumingMemoryBound(to: UInt8.self)
-  /// Alpha at a y-down row
-  func alpha(_ row: Int) -> UInt8 { px[row * img.width * 4 + 3] }
-  #expect(img.height == 2 * (36 + Int(TopFade.length)))
-  #expect(alpha(0) == 255 && alpha(71) == 255)
-  #expect(alpha(img.height - 1) < 3)
-  let mid = alpha(72 + Int(TopFade.length))
-  #expect(mid > 60 && mid < 200)
-  let c = try #require(theme.canvas.converted(to: srgb, intent: .defaultIntent, options: nil)?.components)
-  let red = Double(px[0]) - Double(c[0]) * 255
-  let blue = Double(px[2]) - Double(c[2]) * 255
-  #expect(abs(red) < 2 && abs(blue) < 2)
+  let bar: CGFloat = 36
+  let d = ShellTheme.glassDissolve
+  let glass = TopGlass(frame: NSRect(x: 0, y: 0, width: 200, height: bar + d))
+  glass.theme = theme
+  glass.place(bar: bar)
+  #expect(glass.blendingMode == .withinWindow && glass.state == .active)
+
+  // the mask as the material stretches it over the glass, y-down
+  let mask = try #require(glass.maskImage)
+  let rep = try #require(
+    NSBitmapImageRep(
+      bitmapDataPlanes: nil, pixelsWide: 10, pixelsHigh: Int(bar + d), bitsPerSample: 8, samplesPerPixel: 4,
+      hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+  NSGraphicsContext.saveGraphicsState()
+  NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+  mask.draw(in: NSRect(x: 0, y: 0, width: 10, height: bar + d))
+  NSGraphicsContext.restoreGraphicsState()
+  func alpha(_ row: Int) -> CGFloat { rep.colorAt(x: 5, y: row)?.alphaComponent ?? -1 }
+  #expect(alpha(0) > 0.99 && alpha(Int(bar) - 1) > 0.99)
+  #expect(abs(alpha(Int(bar + d / 2)) - 0.5) < 0.15)
+  #expect(alpha(Int(bar + d) - 1) < 0.05)
+
+  let tint = try #require(glass.subviews.first?.layer as? CAGradientLayer)
+  let colors = try #require(tint.colors as? [CGColor])
+  let locations = try #require(tint.locations).map { CGFloat($0.doubleValue) }
+  let top = try #require(colors.first)
+  #expect(top.copy(alpha: 1)?.components == theme.canvas.components)
+  #expect(abs(top.alpha - ShellTheme.glassTint) < 0.001)
+  #expect(colors.last?.alpha == 0 && locations.last == 1)
+  // whole over the bar, then down without a step
+  let barEnd = try #require(locations.firstIndex { $0 >= bar / (bar + d) - 0.001 })
+  #expect(abs(colors[barEnd].alpha - ShellTheme.glassTint) < 0.001)
+  #expect(zip(colors, colors.dropFirst()).allSatisfy { $1.alpha <= $0.alpha })
+  #expect(zip(colors, colors.dropFirst()).allSatisfy { $0.alpha - $1.alpha < 0.3 * ShellTheme.glassTint })
 }

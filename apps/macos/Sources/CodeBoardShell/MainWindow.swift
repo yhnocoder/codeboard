@@ -120,7 +120,7 @@ private final class Panel: NSView {
   var tabsLeading: CGFloat = 8 { didSet { needsLayout = true } }
   private let shell: Shell
   private let clip = FlippedView()
-  private let fade = TopFade()
+  private let glass = TopGlass()
   private let tabs: NSView
   private let empty = NSButton(title: "Open Vault…", target: nil, action: #selector(AppDelegate.openVault(_:)))
 
@@ -143,13 +143,13 @@ private final class Panel: NSView {
     empty.bezelStyle = .push
     empty.controlSize = .large
     addSubview(clip)
-    for view in [panes, fade, tabs, empty] { clip.addSubview(view) }
+    for view in [panes, glass, tabs, empty] { clip.addSubview(view) }
     track { [weak self] in
       guard let self else { return }
       empty.isHidden = shell.vault != nil
       tabs.isHidden = shell.vault == nil
       clip.layer?.backgroundColor = ShellTheme.board(shell.theme)
-      fade.theme = Theme.named(shell.theme)
+      glass.theme = Theme.named(shell.theme)
       panes.sync()
     }
   }
@@ -168,91 +168,100 @@ private final class Panel: NSView {
       roundedRect: bounds, cornerWidth: ShellTheme.panelRadius, cornerHeight: ShellTheme.panelRadius, transform: nil)
     tabs.frame = NSRect(x: tabsLeading, y: 0, width: max(0, bounds.width - tabsLeading - 8), height: barHeight)
     panes.frame = NSRect(x: 0, y: barHeight, width: bounds.width, height: max(0, bounds.height - barHeight))
-    fade.frame = NSRect(x: 0, y: 0, width: bounds.width, height: barHeight + TopFade.length)
-    fade.place(bar: barHeight, canvas: panes.frame.size)
+    glass.frame = NSRect(x: 0, y: 0, width: bounds.width, height: barHeight + ShellTheme.glassDissolve)
+    glass.place(bar: barHeight)
     let size = empty.fittingSize
     empty.frame = NSRect(
       x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2, width: size.width, height: size.height)
   }
 }
 
-/// The canvas runs on under the top bar, so cards pass under the tabs: over the bar they are covered by what the canvas
-/// shows without them (its colour and, in Ink Wash, its backdrop where it reaches up there), and come out from under it
-/// over a few points. One still bitmap, drawn again only when the size or theme changes: no mask, no offscreen pass
-final class TopFade: NSView {
-  /// Below the bar, over which the cards come out from under it
-  static let length: CGFloat = 14
-  var theme = Theme.warmInk { didSet { redraw() } }
+/// The canvas runs on under the top bar, so cards pass under the tabs: there they are seen blurred through frosted glass
+/// tinted with the canvas colour, which dissolves into the canvas over a few points below the bar so it has no edge.
+/// Core Animation blurs what is behind it on the GPU as it composites; nothing here runs per frame
+final class TopGlass: NSVisualEffectView {
+  var theme = Theme.warmInk { didSet { retint() } }
   private var bar: CGFloat = 0
-  private var canvas = CGSize.zero
+  private let tint = GradientView()
 
   override init(frame: NSRect) {
     super.init(frame: frame)
-    layer = CALayer()
-    wantsLayer = true
-    layer?.contentsGravity = .resize
+    blendingMode = .withinWindow
+    material = ShellTheme.glassMaterial
+    // The rest of the panel looks the same when the window is in the background, so the row does too
+    state = .active
+    // The panel is a light surface whatever the system appearance
+    appearance = NSAppearance(named: .aqua)
+    maskImage = TopGlass.mask
+    tint.frame = bounds
+    tint.autoresizingMask = [.width, .height]
+    addSubview(tint)
+    retint()
   }
 
   @available(*, unavailable)
   required init?(coder: NSCoder) {
-    fatalError("TopFade is not loaded from nibs")
+    fatalError("TopGlass is not loaded from nibs")
   }
 
   override var isFlipped: Bool { true }
   override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-  override func viewDidChangeBackingProperties() {
-    super.viewDidChangeBackingProperties()
-    redraw()
-  }
-
-  func place(bar: CGFloat, canvas: CGSize) {
-    guard bar != self.bar || canvas != self.canvas else { return }
+  func place(bar: CGFloat) {
+    guard bar != self.bar else { return }
     self.bar = bar
-    self.canvas = canvas
-    redraw()
+    retint()
   }
 
-  private func redraw() {
-    let scale = window?.backingScaleFactor ?? 2
-    layer?.contentsScale = scale
-    layer?.contents = TopFade.image(
-      width: bounds.width, bar: bar, canvas: canvas, theme: theme, scale: scale)
+  /// The material's own mask stretches its one opaque row over the bar; the tint, which it does not mask, fades along
+  /// the same curve
+  private func retint() {
+    let stops = TopGlass.stops(bar: bar)
+    tint.gradient.colors = stops.map { theme.canvas.copy(alpha: ShellTheme.glassTint * $0.alpha) ?? theme.canvas }
+    tint.gradient.locations = stops.map { NSNumber(value: Double($0.at)) }
   }
 
-  /// y-down, the canvas's top `bar` below the image's
-  static func image(width: CGFloat, bar: CGFloat, canvas: CGSize, theme: Theme, scale: CGFloat) -> CGImage? {
-    let h = bar + length
-    let pw = Int((width * scale).rounded(.up))
-    let ph = Int((h * scale).rounded(.up))
-    guard pw > 0, ph > 0, let srgb = CGColorSpace(name: CGColorSpace.sRGB),
-      let ctx = CGContext(
-        data: nil, width: pw, height: ph, bitsPerComponent: 8, bytesPerRow: 0, space: srgb,
-        bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
-      let mask = CGContext(
-        data: nil, width: 1, height: ph, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceGray(),
-        bitmapInfo: CGImageAlphaInfo.none.rawValue)
-    else { return nil }
-    // opaque over the bar, then out to nothing along a smoothstep, so no edge shows where it ends
-    for y in 0..<ph {
-      let t = min(max((CGFloat(y) / scale - bar) / length, 0), 1)
-      let a = 1 - t * t * (3 - 2 * t)
-      // the mask's first row is the image's bottom
-      mask.setFillColor(gray: a, alpha: 1)
-      mask.fill(CGRect(x: 0, y: ph - 1 - y, width: 1, height: 1))
+  private static let mask: NSImage = {
+    let d = ShellTheme.glassDissolve
+    let stops = TopGlass.stops(bar: 1)
+    let img = NSImage(size: NSSize(width: 1, height: 1 + d), flipped: true) { r in
+      NSGradient(
+        colors: stops.map { NSColor(white: 0, alpha: $0.alpha) }, atLocations: stops.map(\.at), colorSpace: .sRGB
+      )?.draw(in: r, angle: 90)
+      return true
     }
-    guard let alpha = mask.makeImage() else { return nil }
-    ctx.scaleBy(x: scale, y: scale)
-    ctx.clip(to: CGRect(x: 0, y: 0, width: width, height: h), mask: alpha)
-    ctx.setFillColor(theme.canvas)
-    ctx.fill(CGRect(x: 0, y: 0, width: width, height: h))
-    if let img = theme.backdropImage, canvas.width > 0, canvas.height > 0 {
-      // the canvas's y-down frame, moved down by the bar, then flipped into this bottom-up context
-      let f = CanvasView.backdropFrame(img, in: canvas)
-      ctx.draw(img, in: CGRect(x: f.minX, y: h - (bar + f.maxY), width: f.width, height: f.height))
-    }
-    return ctx.makeImage()
+    img.capInsets = NSEdgeInsets(top: 0, left: 0, bottom: d, right: 0)
+    img.resizingMode = .stretch
+    return img
+  }()
+
+  /// Opacity down the glass, at fractions of its height: whole over the bar, then out to nothing along a smoothstep
+  static func stops(bar: CGFloat) -> [(at: CGFloat, alpha: CGFloat)] {
+    let d = ShellTheme.glassDissolve
+    let n = 8
+    return [(0, 1)]
+      + (0...n).map { i in
+        let t = CGFloat(i) / CGFloat(n)
+        return ((bar + t * d) / (bar + d), 1 - t * t * (3 - 2 * t))
+      }
   }
+}
+
+private final class GradientView: NSView {
+  let gradient = CAGradientLayer()
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    layer = gradient
+    wantsLayer = true
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) {
+    fatalError("GradientView is not loaded from nibs")
+  }
+
+  override var isFlipped: Bool { true }
 }
 
 private final class FlippedView: NSView {
