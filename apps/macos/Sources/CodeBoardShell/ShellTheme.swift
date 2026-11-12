@@ -7,7 +7,7 @@ enum ShellTheme {
   /// The window background, which the sidebar is part of
   static let ground = NSColor(srgbRed: 0.933, green: 0.914, blue: 0.878, alpha: 1)
   /// The whole board panel, top bar included, is one surface with the canvas boards are shown on
-  static let board = background(of: .warmInkLight) ?? ground
+  static let board = NSColor(cgColor: Theme.warmInkLight.canvas) ?? ground
   static let capsule = Color(red: 0.992, green: 0.988, blue: 0.980)
   static let ink = Color(red: 0.129, green: 0.122, blue: 0.106)
   static let muted = Color(red: 0.384, green: 0.369, blue: 0.337)
@@ -30,16 +30,6 @@ enum ShellTheme {
   static let tabPadding: CGFloat = 20
   static let tabMinWidth: CGFloat = 72
   static let tabMaxWidth: CGFloat = 200
-
-  /// `Theme` keeps its colours to the canvas module; until it exposes its background the shell reads the stored value,
-  /// so the panel can never drift from the canvas (a test fails if the field goes)
-  static func background(of theme: Theme) -> NSColor? {
-    guard let value = Mirror(reflecting: theme).children.first(where: { $0.label == "canvas" })?.value else {
-      return nil
-    }
-    let ref = value as CFTypeRef
-    return CFGetTypeID(ref) == CGColor.typeID ? NSColor(cgColor: unsafeDowncast(ref, to: CGColor.self)) : nil
-  }
 }
 
 extension View {

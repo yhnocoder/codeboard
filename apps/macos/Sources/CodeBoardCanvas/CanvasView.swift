@@ -60,6 +60,8 @@ public final class CanvasView: NSView {
     // layer-hosting: the canvas owns its layer tree, y-down like the board
     let root = CALayer()
     root.isGeometryFlipped = true
+    // never transparent before the first board: whatever is behind would show for a frame
+    root.backgroundColor = theme.canvas
     layer = root
     wantsLayer = true
     for l in [world, sections, below, arrows, above] { l.anchorPoint = .zero }

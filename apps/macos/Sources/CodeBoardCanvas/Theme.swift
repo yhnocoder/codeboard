@@ -5,7 +5,8 @@ import CodeBoardSyntax
 /// How the board looks: colours, fonts and the few sizes that are the look's. Values from the board's Warm Ink
 /// (packages/board/src/styles.css, themes.css).
 public struct Theme: Sendable {
-  var canvas: CGColor
+  /// The board's background; the shell's board panel is the same surface
+  package var canvas: CGColor
   /// Card paper
   var surface: CGColor
   /// Card title bars
