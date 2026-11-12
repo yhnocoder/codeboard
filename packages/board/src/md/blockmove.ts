@@ -270,22 +270,48 @@ function kindOf(els: HTMLElement[]): Kind {
   return "text";
 }
 
-/** The copy of blocks els of Note id: their clones inside the Note's own classes (so they look as they do there) */
-function makeCopy(id: string, els: HTMLElement[]) {
+/** The rows a tall copy is cut by: a code block's lines, a table's rows, else the blocks themselves */
+const unitsOf = (kind: Kind, root: ParentNode, els: HTMLElement[]): Element[] =>
+  kind === "code" ? [...root.querySelectorAll(".cm-line")] : kind === "table" ? [...root.querySelectorAll("tr")] : els;
+
+/**
+ * The copy of blocks els of Note id: their clones inside the Note's own classes (so they look as they do there). Blocks taller
+ * than a readable window are cut to it (the top part for a float, the part round the grabbed point for a drag) with a fade at
+ * the cut edges: only the rows in it are cloned, so a long code block costs no more than a short one to lift and draw
+ */
+function makeCopy(id: string, els: HTMLElement[], float: boolean, grabY: number) {
   const L = layer()!,
     ce = cardEl(id)!,
     body = bodyOf(ce)!,
     pm = body.querySelector<HTMLElement>(".md-pm");
   const kind = kindOf(els);
-  const first = worldRect(els[0]);
+  const first = worldRect(els[0]),
+    last = els.length > 1 ? worldRect(els[els.length - 1]) : first;
+  const tall = last.y + last.h - first.y,
+    win = (FLOAT_FIT * window.innerHeight) / cam.z;
+  // the window's top (world): the blocks' own top, or round the grabbed point
+  const top = tall <= win || float ? first.y : Math.max(first.y, Math.min(grabY - win / 2, first.y + tall - win));
+  const cut = tall > win;
+  const units = cut ? unitsOf(kind, els[0], els) : [];
+  const out = new Set<number>();
+  let lift = 0;
+  if (cut) {
+    const rs = units.map(worldRect);
+    rs.forEach((r, i) => {
+      if (r.y + r.h <= top || r.y >= top + win) out.add(i);
+    });
+    // what is cut above the window: the copy starts that much lower
+    const k = rs.findIndex((_, i) => !out.has(i));
+    if (k > 0) lift = rs[k].y - rs[0].y;
+  }
   let x: number, y: number, w: number;
   if (kind === "text") {
     x = first.x - PX;
-    y = first.y - PY;
+    y = first.y - PY + lift;
     w = first.w + 2 * PX;
   } else {
     x = first.x;
-    y = first.y;
+    y = first.y + lift;
     w = first.w;
   }
   const g = document.createElement("div");
@@ -307,19 +333,26 @@ function makeCopy(id: string, els: HTMLElement[]) {
     inner.className = "md-pm";
     b.append(inner);
   }
-  for (const [k, el] of els.entries()) {
+  const kept = kind === "text" && cut ? els.filter((_, i) => !out.has(i)) : els;
+  for (const [k, el] of kept.entries()) {
     const c = el.cloneNode(true) as HTMLElement;
+    if (cut && kind !== "text") unitsOf(kind, c, []).forEach((u, i) => out.has(i) && u.remove());
     c.classList.remove("md-mv-dim", "md-mv-away", "md-mv-gone", "ProseMirror-selectednode");
     for (const e of [c, ...c.querySelectorAll("[contenteditable]")]) e.removeAttribute("contenteditable");
     for (const e of c.querySelectorAll(EDIT_UI)) e.remove();
     for (const e of c.querySelectorAll(".md-picked")) e.classList.remove("md-picked");
     if (!k) c.style.setProperty("margin-top", "0", "important");
-    if (k === els.length - 1) c.style.setProperty("margin-bottom", "0", "important");
+    if (k === kept.length - 1) c.style.setProperty("margin-bottom", "0", "important");
     inner.append(c);
   }
   face.append(b);
   sheet.append(face);
   sheet.style.width = `${w}px`;
+  if (cut) {
+    g.classList.add("is-cut");
+    g.classList.toggle("cut-top", top > first.y + 0.5);
+    sheet.style.maxHeight = `${win}px`;
+  }
   g.append(sh, sheet);
   g.addEventListener("pointerdown", floatDown);
   L.append(g);
@@ -334,7 +367,8 @@ function makeCopy(id: string, els: HTMLElement[]) {
 }
 
 /** Draws the copy where the move says: over a Note a thumbnail at the pointer's lower right, else where it was grabbed */
-/** The copy's scale off any Note: a tall floating block is shown smaller, so it fits beside its Note on screen */
+/** The copy's scale off any Note: a floating copy the board has since been zoomed in on is shown smaller, so it still fits
+ *  beside its Note on screen */
 const restK = (d: Move) =>
   (d.float ? Math.min(1, (FLOAT_FIT * window.innerHeight) / (cam.z * d.h)) : 1) * (d.drag ? 1.012 : 1);
 
@@ -356,7 +390,11 @@ function place(d: Move) {
   }
   d.g.style.translate = `${x}px ${y}px`;
   d.g.style.scale = String(k);
-  d.g.style.setProperty("--ik", String(1 / (k * cam.z)));
+  // only on the two pieces that draw with it (--ik is not inherited, blockmove.css): inherited, a change (each step of the
+  // thumbnail's scale) would restyle every node of the copy
+  const ik = String(1 / (k * cam.z));
+  (d.g.firstElementChild as HTMLElement).style.setProperty("--ik", ik);
+  d.sheet.style.setProperty("--ik", ik);
   d.g.classList.toggle("is-over", over);
 }
 
@@ -367,10 +405,13 @@ function topsOf(id: string): number[] {
 /** Blocks of a Note slide from the tops they were drawn at (by their index before: map gives it from the index now) */
 function flip(id: string, old: number[], map: (i: number) => number | null) {
   if (reduceMotion()) return;
-  (blockEls(id) ?? []).forEach((e, i) => {
+  const els = blockEls(id) ?? [];
+  // every top read before the first animation starts: one layout, not one per block
+  const now = els.map((e) => worldRect(e).y);
+  els.forEach((e, i) => {
     const j = map(i);
     if (j === null || old[j] === undefined) return;
-    const dy = old[j] - worldRect(e).y;
+    const dy = old[j] - now[i];
     if (Math.abs(dy) >= 0.5)
       e.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], {
         duration: FLIP_MS * animScale(),
@@ -475,8 +516,9 @@ function hover(id: string, t: EventTarget | null) {
     transform: `translate(${l}px, ${r0.y}px)`,
     width: `${r - l}px`,
     height: `${bot - r0.y}px`,
-    "--ik": String(1 / cam.z),
   });
+  // a custom property is only set through setProperty (as a key of style it is ignored)
+  box.style.setProperty("--ik", String(1 / cam.z));
   box.classList.add("is-on");
 }
 
@@ -485,7 +527,7 @@ function startMove(id: string, range: [number, number], float: boolean, p: { x: 
   if (!ed || !layer()) return null;
   const els = ed.els().slice(range[0], range[1]);
   if (!els.length) return null;
-  const c = makeCopy(id, els);
+  const c = makeCopy(id, els, float, p.y);
   const d: Move = {
     src: id,
     range,
