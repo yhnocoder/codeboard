@@ -18,6 +18,7 @@ import { editing } from "../state/ui";
 import { noteImageSrc } from "./images";
 import { GIF_MIN_DELAY } from "../state/timing";
 import { clockMs, inlineSvg } from "./animsvg";
+import { cssTrack, frameAt, phaseOf, smilTracks, svgFrames, type SvgFrames } from "./svgframes";
 import { AnimBar, BAR_MIN_W } from "../ui/AnimBar";
 
 /** One image in a Note: its address as written and which of the Note's images with that address it is (from 0). whole: the image
@@ -28,8 +29,6 @@ const idOf = (k: AnimKey) => `${k.card}\n${k.nth}\n${k.src}`;
 
 /** An SVG with data-steps="N" stands on each step this far into it (after the step's own movement), as the approved demo did */
 const STEP_HOLD = 0.6;
-/** An SVG without data-steps: this many stills, evenly spaced over its cycle */
-const SVG_STILLS = 8;
 const MAX_SVG_STEPS = 120;
 
 type Kind = "gif" | "svg";
@@ -439,12 +438,35 @@ class GifPlayer extends Player {
 }
 
 // ---------- SVG ----------
+const SMIL = "animate, set, animateTransform, animateMotion";
+/** An SVG's frames: with data-steps="N" on its root, N evenly over its longest animation, each stood on STEP_HOLD into it;
+ *  otherwise inferred from its animations (md/svgframes.ts) */
+function framesOf(svg: SVGSVGElement, anims: Animation[]): SvgFrames {
+  const steps = Math.round(Number(svg.getAttribute("data-steps")));
+  if (steps >= 1) {
+    const ends = [
+      ...anims.map((a) => {
+        const t = a.effect?.getTiming();
+        return (Number(t?.delay) || 0) + (typeof t?.duration === "number" ? t.duration : 0);
+      }),
+      ...[...svg.querySelectorAll(SMIL)].map(
+        (e) => (clockMs(e.getAttribute("begin")) || 0) + (clockMs(e.getAttribute("dur")) || 0),
+      ),
+    ];
+    const cycle = Math.max(0, ...ends.filter(Number.isFinite)) || 1000,
+      n = Math.min(steps, MAX_SVG_STEPS);
+    const starts = Array.from({ length: n }, (_, i) => (i * cycle) / n);
+    return { starts, stands: starts.map((t) => t + (STEP_HOLD * cycle) / n), intro: 0, period: cycle };
+  }
+  const tracks = [...anims.map(cssTrack), ...[...svg.querySelectorAll(SMIL)].flatMap(smilTracks)];
+  return svgFrames(tracks.filter((t) => !!t)) ?? { starts: [0], stands: [0], intro: 0, period: 0 };
+}
+
 class SvgPlayer extends Player {
   private svg: SVGSVGElement | null = null;
   private anims: Animation[] = [];
   private smil = false;
-  private cycle = 1000;
-  private hold = 0;
+  private frames: SvgFrames = { starts: [0], stands: [0], intro: 0, period: 0 };
   /** Standing still with its CSS animations cancelled (freeze), on time t; the elements' own style attributes, to give back */
   private frozen = false;
   private t = 0;
@@ -465,20 +487,9 @@ class SvgPlayer extends Player {
     if (!this.mounted) return;
     // only once connected does the SVG have animations to read
     this.anims = root.getAnimations();
-    this.smil = !!this.svg.querySelector("animate, set, animateTransform, animateMotion");
-    const ends = [
-      ...this.anims.map((a) => {
-        const t = a.effect?.getTiming();
-        return (Number(t?.delay) || 0) + (typeof t?.duration === "number" ? t.duration : 0);
-      }),
-      ...[...this.svg.querySelectorAll("animate, set, animateTransform, animateMotion")].map(
-        (e) => (clockMs(e.getAttribute("begin")) || 0) + (clockMs(e.getAttribute("dur")) || 0),
-      ),
-    ];
-    this.cycle = Math.max(0, ...ends.filter(Number.isFinite)) || 1000;
-    const steps = Math.round(Number(this.svg.getAttribute("data-steps")));
-    this.hold = steps >= 1 ? STEP_HOLD : 0;
-    this.setCount(steps >= 1 ? Math.min(steps, MAX_SVG_STEPS) : SVG_STILLS);
+    this.smil = !!this.svg.querySelector(SMIL);
+    this.frames = framesOf(this.svg, this.anims);
+    this.setCount(this.frames.starts.length);
     const h = this.handoff;
     this.handoff = undefined;
     if (h?.time !== undefined) {
@@ -487,12 +498,12 @@ class SvgPlayer extends Player {
     } else this.show(Math.min(this.count() - 1, h ? h.frame : this.stored));
     this.sync();
   }
-  private timeOf = (i: number) => ((i + this.hold) * this.cycle) / this.count();
+  /** Where on its cycle it is now */
   private now() {
-    if (this.frozen) return this.t;
+    if (this.frozen) return phaseOf(this.frames, this.t);
     const a = this.anims[0];
     const t = a ? Number(a.currentTime ?? 0) : this.smil && this.svg ? this.svg.getCurrentTime() * 1000 : 0;
-    return ((t % this.cycle) + this.cycle) % this.cycle;
+    return phaseOf(this.frames, t);
   }
   /** Stands still on time t: paused there, and frozen (below) unless it plays */
   private at(t: number) {
@@ -534,11 +545,11 @@ class SvgPlayer extends Player {
     for (const a of this.anims) a.currentTime = this.t;
   }
   protected show(i: number) {
-    this.at(this.timeOf(i));
+    this.at(this.frames.stands[i] ?? 0);
     this.setFrame(i);
   }
   tick() {
-    const i = Math.min(this.count() - 1, Math.floor((this.now() * this.count()) / this.cycle));
+    const i = frameAt(this.frames, this.now());
     if (i !== this.frame()) this.setFrame(i);
   }
   protected start() {

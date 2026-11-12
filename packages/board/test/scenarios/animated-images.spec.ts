@@ -11,6 +11,9 @@
 //   animSvgInline             an SVG animated by CSS keyframes and SMIL is drawn inline (shadow root), cleaned (no script,
 //                             handlers or outside references), paused on its step (data-steps), stepped by its bar, and its
 //                             colours follow the board's light / dark theme; a still SVG stays an <img>
+//   animSvgInfersFrames       an SVG without data-steps is stepped through the scenes its animations cut between: a diagram of 16
+//                             scenes cut in by opacity over 33.2 s shows 1/16, → shows each scene in turn, and the scene whose
+//                             tiles move stands on them arrived
 //   animBarFollowsTheme       the bar's glass is the theme's own (Ink Wash: its tooltip colours in light, its surface in dark)
 //   animImageCardHoverBar     an image card's GIF stands on the card's stored frame; hovering shows the same bar, selecting the
 //                             card keeps it (scrub, Home / End, ← →, Space; ↑ ↓ still nudge the card; hidden zoomed out);
@@ -22,7 +25,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, type Board, type ImageCard, type NoteCard } from "@codeboard/core";
 import { gif } from "@codeboard/host/testing";
-import { put, shot, type Host } from "../harness";
+import { put, shot, REPO, type Host } from "../harness";
 import { test, check, until, idle, hold, hostBoards } from "../fixtures";
 import { layerScales, snapshotsOf, type TraceEvent } from "../probes";
 import { GIF_MIN_DELAY } from "../../src/state/timing";
@@ -83,6 +86,10 @@ ${Array.from({ length: 8 }, (_, i) => `<rect class="cell" x="${i * 40 + 1}" y="4
 const SVG_ANIM_FILE = "1123456789abcdef-320x120.svg";
 /** One step of SVG_ANIM (4 s in 8 steps) */
 const SVG_STEP_MS = 500;
+/** The animation skeleton of a real diagram (test/svg/scenes-16.svg): 16 scenes .s0….s15 cut in by opacity, the third moving
+ *  tiles .f2_0….f2_7 to their place with ease-in-out */
+const SVG_SCENES = fs.readFileSync(path.join(REPO, "packages/board/test/svg/scenes-16.svg"), "utf8");
+const SVG_SCENES_FILE = "3123456789abcdef-1560x1010.svg";
 const SVG_STILL = `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40"><rect width="80" height="40" fill="#5aa469"/></svg>`;
 const SVG_STILL_FILE = "2123456789abcdef-80x40.svg";
 
@@ -107,6 +114,7 @@ async function openAnim(b: Board, o: { light?: boolean; theme?: string } = {}) {
   fs.writeFileSync(path.join(dir, GIF_FILE), GIF);
   fs.writeFileSync(path.join(dir, SVG_ANIM_FILE), SVG_ANIM);
   fs.writeFileSync(path.join(dir, SVG_STILL_FILE), SVG_STILL);
+  fs.writeFileSync(path.join(dir, SVG_SCENES_FILE), SVG_SCENES);
   run.ws.ui = { ...run.ws.ui, saveDialog: async () => saved };
   const h = await run.open(b.id);
   await idle(h);
@@ -418,6 +426,61 @@ test("animSvgInline", async () => {
   }).catch(() => null);
   check("anim-svg-follows-theme-dark", !!dark && dark.fill === hexRgb(dark.ink) && dark.fill !== s4?.fill, dark, s4);
   await shot(h, "104-svg-bar-dark");
+});
+
+test("animSvgInfersFrames", async () => {
+  const h = await animHost(`Scenes\n\n![](assets/${SVG_SCENES_FILE} "Fig 3: scenes")`);
+  /** The scenes shown (opacity over a half), and where the third scene's first tile is */
+  const shown = () =>
+    h.page.evaluate(() => {
+      const svg = document
+        .querySelector<HTMLElement>(".card .nbody .md-anim")
+        ?.shadowRoot?.querySelector<HTMLElement>(".v")
+        ?.shadowRoot?.querySelector("svg");
+      if (!svg) return null;
+      const op = (sel: string) => Number(getComputedStyle(svg.querySelector(sel)!).opacity);
+      const tile = new DOMMatrix(getComputedStyle(svg.querySelector(".f2_0")!).transform);
+      return {
+        scenes: Array.from({ length: 16 }, (_, i) => i).filter((i) => op(`.s${i}`) > 0.5),
+        tile: { x: Math.round(tile.m41), y: Math.round(tile.m42), s: Math.round(tile.a * 1000) / 1000, o: op(".f2_0") },
+      };
+    });
+  const s0 = await until(h, "the SVG is drawn inline", shown).catch(() => null);
+  check("anim-svg-infers-first-scene", s0?.scenes.join() === "0", s0);
+  await h.page.mouse.move(...center((await imgBox(h))!));
+  const b0 = await barShown(h).catch(() => null);
+  check("anim-svg-infers-frame-count", b0?.fno === "1/16", b0);
+
+  const seen: { fno: string; scenes: string }[] = [];
+  let third: Awaited<ReturnType<typeof shown>> = null;
+  for (let i = 1; i < 16; i++) {
+    await btn(h, "Next Frame").click();
+    const s = await until(h, `the SVG stands on scene ${i + 1}`, async () => {
+      const b = await bar(h),
+        v = await shown();
+      return b?.fno === `${i + 1}/16` && v?.scenes.join() === String(i) ? v : null;
+    }).catch(() => null);
+    seen.push({ fno: (await bar(h))?.fno ?? "", scenes: (await shown())?.scenes.join() ?? "" });
+    if (i === 2) third = s;
+  }
+  check(
+    "anim-svg-infers-steps-scene-by-scene",
+    seen.every((v, i) => v.fno === `${i + 2}/16` && v.scenes === String(i + 1)),
+    seen,
+  );
+  // scene 3 moves its tiles from (120, 580) to (70, 250) at 8/9 size: stood on once they have arrived
+  check(
+    "anim-svg-infers-moves-settled",
+    !!third && third.tile.x === 70 && third.tile.y === 250 && third.tile.s === 0.889 && third.tile.o === 1,
+    third,
+  );
+  await btn(h, "Next Frame").click();
+  const wrap = await until(h, "→ wraps to the first scene", async () => {
+    const v = await shown();
+    return (await bar(h))?.fno === "1/16" && v?.scenes.join() === "0" ? v : null;
+  }).catch(() => null);
+  check("anim-svg-infers-wraps", !!wrap, wrap);
+  await shot(h, "108-svg-scenes");
 });
 
 test("animBarFollowsTheme", async () => {
