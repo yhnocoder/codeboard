@@ -6,10 +6,14 @@ let package = Package(
   platforms: [.macOS(.v27)],
   targets: [
     .target(name: "CodeBoardModel"),
+    .target(name: "CodeBoardSyntax"),
+    .target(name: "CodeBoardNotes", dependencies: ["CodeBoardModel"]),
     .target(name: "CodeBoardCanvas", dependencies: ["CodeBoardModel"]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardCanvas"]),
     .executableTarget(name: "CanvasBench", dependencies: ["CodeBoardCanvas"]),
     .testTarget(name: "CodeBoardModelTests", dependencies: ["CodeBoardModel"], resources: [.copy("Fixtures")]),
+    .testTarget(name: "CodeBoardSyntaxTests", dependencies: ["CodeBoardSyntax"]),
+    .testTarget(name: "CodeBoardNotesTests", dependencies: ["CodeBoardNotes"]),
     .testTarget(name: "CodeBoardCanvasTests", dependencies: ["CodeBoardCanvas"]),
   ]
 )
