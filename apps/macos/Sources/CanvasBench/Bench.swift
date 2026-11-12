@@ -107,6 +107,9 @@ final class Bench {
     /// After 2 s at rest at 100 %, three screens to the right in 2 s, lift, and back the same way 0.1 s later (too
     /// soon for a rest): what was drawn ahead at rest is seen on the way out, what was kept on the way back
     case awayAndBack
+    /// Straight to a zoom around the board's middle card with no Note drawn sharper than its overview, in memory or on
+    /// disk: how long the Notes in view take to sharpen, and the fill after them, when the levels are not there yet
+    case cold(CGFloat)
   }
 
   struct Segment: Encodable {
@@ -116,6 +119,10 @@ final class Bench {
     var mainP95Ms = 0.0
     var lowResShare = 0.0
     var restToSharpMs: Double?
+    /// From the last move until every Note in view showed its picture at display resolution, and until every redraw
+    /// was done (the outward fill); nil: not within 30 s
+    var notesSharpMs: Double?
+    var settledMs: Double?
     var peakBitmapMB = 0.0
     var peakFootprintMB = 0.0
     /// From being placed at the start zoom until every redraw was done (nil: the segment does not wait for that)
@@ -154,6 +161,7 @@ final class Bench {
   private static let script: [(String, Motion)] = [
     ("fast-pinch", .zoom(0.5, 1, 0.4)), ("slow-zoom", .zoom(1, 2, 2)), ("zoom-50-200", .zoom(0.5, 2, 2)),
     ("zoom-200-50", .zoom(2, 0.5, 2)), ("flick", .flick), ("pan-across", .pan), ("away-and-back", .awayAndBack),
+    ("cold-100", .cold(1)), ("cold-200", .cold(2)),
   ]
 
   private enum Step {
@@ -164,7 +172,10 @@ final class Bench {
 
   private let canvas: CanvasView
   private let meter: Meter
+  private let noteCache: URL
   private var index = 0
+  /// The segments run up to here, then the reopen, then the rest
+  private var stop = Bench.script.firstIndex { if case .cold = $0.1 { true } else { false } } ?? Bench.script.count
   private var step = Step.prepare(since: 0)
   private var seg = Segment(name: "")
   private var busy: [Double] = []
@@ -178,9 +189,10 @@ final class Bench {
   private var opening = Open()
   private var webkitPeak = 0
 
-  init(_ canvas: CanvasView, meter: Meter) {
+  init(_ canvas: CanvasView, meter: Meter, noteCache: URL) {
     self.canvas = canvas
     self.meter = meter
+    self.noteCache = noteCache
   }
 
   /// Opens the board (its Notes never drawn before, as the snapshot cache is the bench's own), runs the segments on it,
@@ -198,6 +210,16 @@ final class Bench {
     meter.drive = nil
     meter.record = nil
     let again = try await open(board, in: vault)
+    // after the reopen, which reads the cache these empty
+    stop = Bench.script.count
+    begin(now: CACurrentMediaTime())
+    await withCheckedContinuation { c in
+      done = c
+      meter.drive = { [weak self] l in self?.drive(l) }
+      meter.record = { [weak self] f in self?.record(f) }
+    }
+    meter.drive = nil
+    meter.record = nil
     let r = canvas.ruleBreaks
     let result = Result(
       board: board.id.rawValue, displayHz: NSScreen.main?.maximumFramesPerSecond ?? 0,
@@ -253,7 +275,7 @@ final class Bench {
 
   /// The next segment: placed at its start zoom, then wait for the levels to fill
   private func begin(now: CFTimeInterval) {
-    guard index < Bench.script.count else {
+    guard index < stop else {
       done?.resume()
       done = nil
       return
@@ -265,6 +287,13 @@ final class Bench {
       canvas.place(zoom: a, centre: canvas.cardCentre(nearest: mid) ?? mid)
     case .flick, .pan, .awayAndBack:
       canvas.place(zoom: 1, centre: CGPoint(x: b.minX + canvas.bounds.width / 2, y: b.midY))
+    case .cold(let z):
+      for f in (try? FileManager.default.contentsOfDirectory(at: noteCache, includingPropertiesForKeys: nil)) ?? [] {
+        try? FileManager.default.removeItem(at: f)
+      }
+      canvas.dropSharp()
+      let mid = CGPoint(x: b.midX, y: b.midY)
+      canvas.place(zoom: z, centre: canvas.cardCentre(nearest: mid) ?? mid)
     }
     seg = Segment(name: Bench.script[index].0)
     busy = []
@@ -272,6 +301,10 @@ final class Bench {
     back = nil
     lastMove = nil
     step = .prepare(since: now)
+    if case .cold = Bench.script[index].1 {
+      lastMove = now
+      step = .settle(since: now)
+    }
   }
 
   private func drive(_ l: CADisplayLink) {
@@ -322,11 +355,19 @@ final class Bench {
           canvas.scroll(by: .zero, at: now, began: false, ended: leg >= 2.06)
           finished = t >= 2.16 && leg >= 2.06
         }
+      case .cold:
+        finished = true
       }
       step = finished ? .settle(since: now) : .drive(start: start, last: now)
     case .settle(let since):
-      let sharp = seg.restToSharpMs != nil
-      if sharp && canvas.isSettled || now - since > 8 {
+      if let m = lastMove {
+        let p = canvas.noteProgress
+        if seg.notesSharpMs == nil, canvas.isResting, p.sharp == p.inView {
+          seg.notesSharpMs = ((now - m) * 1000).rounded()
+        }
+        if seg.settledMs == nil, canvas.isSettled { seg.settledMs = ((now - m) * 1000).rounded() }
+      }
+      if seg.restToSharpMs != nil && seg.settledMs != nil || now - since > 30 {
         seg.mainP95Ms = percentile(busy, 0.95)
         seg.lowResShare = seg.frames > 0 ? Double(lowFrames) / Double(seg.frames) : 0
         if let b = back {
