@@ -428,14 +428,20 @@ textarea {
 /* 字条的颜色和每块最后一行的长短（下面 .greek 的背景用）一直写着，不随 .greek 切换：自定义属性往下传，切换时改它会让公式节点重算 */
 .card.note .nbody {
   --gbar: color-mix(in srgb, var(--ink) 16%, transparent);
-  --tail: 58%;
+}
+/* set on the blocks that draw it, never inherited: a block put in or taken out of a long Note shifts the later blocks' turn,
+   which would otherwise restyle every node inside them (a long code block's thousands) */
+@property --tail {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 58%;
 }
 .card.note .nbody > :nth-child(3n + 2),
-.card.note .nbody :is(li, tr) > :nth-child(3n + 2) {
+.card.note .nbody :is(li, tr, ul, ol) > :nth-child(3n + 2) {
   --tail: 81%;
 }
 .card.note .nbody > :nth-child(3n),
-.card.note .nbody :is(li, tr) > :nth-child(3n) {
+.card.note .nbody :is(li, tr, ul, ol) > :nth-child(3n) {
   --tail: 34%;
 }
 .card.note.bars:not(.editing) .nbody {
@@ -5243,7 +5249,7 @@ mark.wdiff {
 .vrow:hover {
   background: var(--hi);
 }
-.vrow:hover > span {
+.vrow:hover > :is(.va, .vto, .vb, .vv) {
   color: var(--k-fn);
 }
 /* 标签框：↺ / 自己写的标签在上，变量在下，同一个框 */
@@ -5317,7 +5323,7 @@ mark.wdiff {
   text-decoration: line-through;
   color: var(--ink-3);
 }
-.vrow.vgone:hover > span {
+.vrow.vgone:hover > :is(.va, .vto, .vb, .vv) {
   color: var(--ink-3);
 }
 
