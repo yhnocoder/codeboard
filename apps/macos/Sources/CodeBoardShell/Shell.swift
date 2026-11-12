@@ -1,3 +1,4 @@
+import CodeBoardCanvas
 import CodeBoardModel
 import Foundation
 import Observation
@@ -38,6 +39,8 @@ public struct ShellState: Codable, Equatable, Sendable {
   public var expanded: Set<String> = []
   public var sidebarShown = true
   public var importing = false
+  /// The look every board is drawn in; app-wide, kept by the app delegate
+  public var theme: Theme.ID = .warmInk
   private var byID: [BoardID: VaultBoard] = [:]
 
   public init() {}

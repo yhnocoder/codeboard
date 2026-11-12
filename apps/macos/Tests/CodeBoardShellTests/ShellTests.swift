@@ -168,6 +168,7 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
   }
 
   @Test func theBoardPanelTakesTheCanvasThemesBackground() {
-    #expect(ShellTheme.board.cgColor.components == Theme.warmInk.canvas.components)
+    for t in Theme.all { #expect(ShellTheme.board(t.id).components == t.canvas.components) }
+    #expect(ShellTheme.board(.warmInk).components != ShellTheme.board(.inkWash).components)
   }
 }

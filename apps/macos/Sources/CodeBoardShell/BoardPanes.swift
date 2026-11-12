@@ -38,8 +38,11 @@ import CodeBoardModel
         pane.onReady = { [weak self] in self?.reveal() }
         addSubview(pane)
       }
+      let theme = Theme.named(shell.theme)
       if reload || pane.board?.id != tab.board, let vault = shell.vault, let at = shell.board(tab.board) {
-        pane.load(at, in: vault)
+        pane.load(at, in: vault, theme: theme)
+      } else {
+        pane.restyle(theme)
       }
     }
     reveal()
@@ -93,15 +96,28 @@ private final class Pane: NSView {
     canvas.frame = bounds
   }
 
-  /// Hands the board to the canvas only when it changed, or shows why it cannot be read
-  func load(_ at: VaultBoard, in vault: Vault) {
+  /// The theme the board is to be drawn in
+  private var theme = Theme.warmInk
+
+  /// Draws the board shown in another theme, where its camera is
+  func restyle(_ theme: Theme) {
+    self.theme = theme
+    guard theme.id != canvas.currentTheme.id, board != nil else { return }
+    Task {
+      do { try await canvas.show(theme: theme) } catch { fail(error) }
+    }
+  }
+
+  /// Hands the board to the canvas only when it or the theme changed, or shows why it cannot be read
+  func load(_ at: VaultBoard, in vault: Vault, theme: Theme) {
+    self.theme = theme
     // ponytail: reads board.json on the main thread to see whether it changed (the canvas reads it again off it);
     // move off it if large boards stall a tab switch
     do {
       let new = try vault.board(at: at.path)
       problem.isHidden = true
       canvas.isHidden = false
-      guard new != board else { return }
+      guard new != board else { return restyle(theme) }
       board = new
       if !ready {
         Task { [weak self] in
@@ -110,8 +126,10 @@ private final class Pane: NSView {
         }
       }
       Task {
-        do { try await canvas.show(at, in: vault, theme: .warmInk) } catch { fail(error) }
+        do { try await canvas.show(at, in: vault, theme: theme) } catch { fail(error) }
         becomeReady()
+        // the theme changed while the board was loading
+        restyle(self.theme)
       }
     } catch {
       fail(error)

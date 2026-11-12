@@ -133,7 +133,6 @@ private final class Panel: NSView {
     layer?.shadowRadius = 1.5
     layer?.shadowOffset = CGSize(width: 0, height: -1)
     clip.wantsLayer = true
-    clip.layer?.backgroundColor = ShellTheme.board.cgColor
     clip.layer?.cornerRadius = ShellTheme.panelRadius
     clip.layer?.cornerCurve = .continuous
     clip.layer?.masksToBounds = true
@@ -147,6 +146,7 @@ private final class Panel: NSView {
       guard let self else { return }
       empty.isHidden = shell.vault != nil
       tabs.isHidden = shell.vault == nil
+      clip.layer?.backgroundColor = ShellTheme.board(shell.theme)
       panes.sync()
     }
   }

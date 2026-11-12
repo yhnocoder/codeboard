@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardCanvas
 import CodeBoardModel
 
 /// Starts the app; the executable's only call
@@ -15,6 +16,7 @@ import CodeBoardModel
 /// saving the state. Menu actions reach it through the responder chain.
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
   private static let stateKey = "shell"
+  private static let themeKey = "theme"
   private let shell = Shell()
   private var window: NSWindow?
   private var panes: BoardPanes?
@@ -29,6 +31,7 @@ import CodeBoardModel
       try? JSONDecoder().decode(ShellState.self, from: $0)
     }
     if let saved { shell.sidebarShown = saved.sidebarShown }
+    if let id = UserDefaults.standard.string(forKey: Self.themeKey).flatMap(Theme.ID.init) { shell.theme = id }
     if let saved, FileManager.default.fileExists(atPath: saved.vault) {
       open(URL(filePath: saved.vault, directoryHint: .isDirectory), restoring: saved)
     }
@@ -120,6 +123,12 @@ import CodeBoardModel
   @objc func showNextTab(_ sender: Any?) { shell.selectTab(by: 1) }
   @objc func showPreviousTab(_ sender: Any?) { shell.selectTab(by: -1) }
 
+  @objc func chooseTheme(_ sender: NSMenuItem) {
+    guard let id = (sender.representedObject as? String).flatMap(Theme.ID.init) else { return }
+    shell.theme = id
+    UserDefaults.standard.set(id.rawValue, forKey: Self.themeKey)
+  }
+
   func validateMenuItem(_ item: NSMenuItem) -> Bool {
     switch item.action {
     case #selector(importOldBoards(_:)): return shell.vault != nil && !shell.importing
@@ -132,6 +141,9 @@ import CodeBoardModel
     case #selector(goBack(_:)): return shell.canGoBack
     case #selector(goForward(_:)): return shell.canGoForward
     case #selector(showNextTab(_:)), #selector(showPreviousTab(_:)): return shell.tabs.count > 1
+    case #selector(chooseTheme(_:)):
+      item.state = item.representedObject as? String == shell.theme.rawValue ? .on : .off
+      return true
     default: return true
     }
   }
@@ -176,6 +188,14 @@ import CodeBoardModel
     view.addItem(.separator())
     view.addItem(withTitle: "Back", action: #selector(goBack(_:)), keyEquivalent: "[")
     view.addItem(withTitle: "Forward", action: #selector(goForward(_:)), keyEquivalent: "]")
+    view.addItem(.separator())
+    let themes = NSMenu(title: "Theme")
+    for t in Theme.all {
+      let i = NSMenuItem(title: t.name, action: #selector(chooseTheme(_:)), keyEquivalent: "")
+      i.representedObject = t.id.rawValue
+      themes.addItem(i)
+    }
+    view.addItem(withTitle: "Theme", action: nil, keyEquivalent: "").submenu = themes
     view.addItem(.separator())
     view.addItem(item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))
 
