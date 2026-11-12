@@ -15,8 +15,10 @@ final class NotePage {
   /// The Notes (and images) mounted, by id, with their size at 100 %; the most recently used last
   private var mounted: [String: CGSize] = [:]
   private var used: [String] = []
-  /// The board theme the mounted Notes are drawn in: the page has one, and mounting a Note in another lets the rest go
+  /// The board theme and appearance the mounted Notes are drawn in: the page has one, and mounting a Note in another
+  /// lets the rest go
   private var look = ""
+  private var dark = false
   /// The size every mounted Note fits in: the window never gets smaller, as a code block draws only the lines in view
   private var extent = CGSize.zero
   /// What stays mounted: a board's Notes, at 3–5 MB of the web process each. Past it the least recently used go
@@ -34,7 +36,7 @@ final class NotePage {
     view = DrawOnlyWebView(frame: CGRect(x: 0, y: 0, width: 400, height: 400), configuration: config)
     // the page is transparent: the canvas draws the card under the Note
     view.setValue(false, forKey: "drawsBackground")
-    // the board's looks are light (color-scheme: light): a picture's prefers-color-scheme rules must not follow a dark Mac
+    // the board's appearance, not the Mac's: a picture's prefers-color-scheme rules follow the board
     view.appearance = NSAppearance(named: .aqua)
     guard view.responds(to: NSSelectorFromString("_setWindowOcclusionDetectionEnabled:")) else {
       throw NoteRenderError.page("this WebKit has no _setWindowOcclusionDetectionEnabled:")
@@ -58,17 +60,13 @@ final class NotePage {
     window.close()
   }
 
-  /// Mounts the Notes not mounted yet (`id`: what the Note draws, its images included), all in the board theme `look`,
-  /// in one layout pass, and returns every one's size at 100 % and whether every image came in
-  func mount(_ notes: [(id: String, json: String, images: URL)], look: String) async throws -> [String: (
+  /// Mounts the Notes not mounted yet (`id`: what the Note draws, its images included), all in the board theme `look`
+  /// and appearance, in one layout pass, and returns every one's size at 100 % and whether every image came in
+  func mount(_ notes: [(id: String, json: String, images: URL)], look: String, dark: Bool) async throws -> [String: (
     size: CGSize, complete: Bool
   )] {
     await signal.ready()
-    if look != self.look {
-      self.look = look
-      mounted = [:]
-      used = []
-    }
+    adopt(look: look, dark: dark)
     let list = notes.map { n -> [String: Any] in
       ["id": n.id, "note": n.json, "images": n.images.absoluteString]
     }
@@ -90,21 +88,32 @@ final class NotePage {
 
   /// An image file as an image card shows it, `width` pixels wide at the window's backing scale (`stamp`: the file's
   /// size and time, so a file replaced under its name is shown again), and whether it came in. Mounted only for this
-  func picture(of file: URL, stamp: String, width: Int) async throws -> (NoteSnapshot, complete: Bool) {
+  func picture(of file: URL, stamp: String, width: Int, dark: Bool) async throws -> (NoteSnapshot, complete: Bool) {
     await signal.ready()
+    adopt(look: look, dark: dark)
     let backing = window.backingScaleFactor
     let id = "image \(file.absoluteString) \(stamp) \(width)"
     let r = try await view.callAsyncJavaScript(
-      "return await note.image(id, src, width)",
+      "return await note.image(id, src, width, dark)",
       arguments: [
         "id": id, "src": file.absoluteString,
-        "width": Double(width) / backing,
+        "width": Double(width) / backing, "dark": dark,
       ], contentWorld: .page)
     defer { view.callAsyncJavaScript("note.drop([id])", arguments: ["id": id], in: nil, in: .page) }
     let size = try Self.size(r)
     window.setContentSize(view.frame.size.union(size.size))
     let shot = try await snapshot(id, size: size.size, scale: backing)
     return (shot.0, size.complete && shot.complete)
+  }
+
+  /// The page draws in one look and appearance (the page itself drops its Notes when either changes)
+  private func adopt(look: String, dark: Bool) {
+    guard look != self.look || dark != self.dark else { return }
+    self.look = look
+    if dark != self.dark { view.appearance = NSAppearance(named: dark ? .darkAqua : .aqua) }
+    self.dark = dark
+    mounted = [:]
+    used = []
   }
 
   /// That Note's size at 100 % if it is mounted (it counts as used now)

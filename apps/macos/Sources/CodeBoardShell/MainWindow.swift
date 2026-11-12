@@ -130,7 +130,6 @@ private final class Panel: NSView {
     tabs = ChromeHost(rootView: TabStrip(shell: shell))
     super.init(frame: .zero)
     wantsLayer = true
-    layer?.shadowColor = ShellTheme.shadeNS.cgColor
     layer?.shadowOpacity = 0.08
     layer?.shadowRadius = 1.5
     layer?.shadowOffset = CGSize(width: 0, height: -1)
@@ -139,7 +138,6 @@ private final class Panel: NSView {
     clip.layer?.cornerCurve = .continuous
     clip.layer?.masksToBounds = true
     clip.layer?.borderWidth = 0.5
-    clip.layer?.borderColor = ShellTheme.shadeNS.withAlphaComponent(0.14).cgColor
     empty.bezelStyle = .push
     empty.controlSize = .large
     addSubview(clip)
@@ -148,8 +146,11 @@ private final class Panel: NSView {
       guard let self else { return }
       empty.isHidden = shell.vault != nil
       tabs.isHidden = shell.vault == nil
-      clip.layer?.backgroundColor = ShellTheme.board(shell.theme)
-      glass.theme = Theme.named(shell.theme)
+      let look = shell.look
+      clip.layer?.backgroundColor = ShellTheme.board(look)
+      clip.layer?.borderColor = ShellTheme.cg(ShellTheme.shadeNS.withAlphaComponent(0.14), dark: look.dark)
+      layer?.shadowColor = ShellTheme.cg(ShellTheme.dropNS, dark: look.dark)
+      glass.theme = look
       panes.sync()
     }
     track { [weak self] in
@@ -211,8 +212,6 @@ final class TopGlass: NSVisualEffectView {
     super.init(frame: frame)
     blendingMode = .withinWindow
     adopt()
-    // The panel is a light surface whatever the system appearance
-    appearance = NSAppearance(named: .aqua)
     maskImage = TopGlass.mask(dissolve: look.dissolve)
     tint.frame = bounds
     tint.autoresizingMask = [.width, .height]

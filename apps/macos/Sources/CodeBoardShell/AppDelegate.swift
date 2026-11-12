@@ -22,6 +22,7 @@ import CodeBoardModel
   private var panes: BoardPanes?
   private var watcher: VaultWatcher?
   private var glassTuning: GlassTuning?
+  private var appearance: NSKeyValueObservation?
   /// Only the latest tree read is applied
   private var treeRead = 0
 
@@ -34,6 +35,7 @@ import CodeBoardModel
     }
     if let saved { shell.sidebarShown = saved.sidebarShown }
     if let id = UserDefaults.standard.string(forKey: Self.themeKey).flatMap(Theme.ID.init) { shell.theme = id }
+    appearance = follow(NSApp, into: shell)
     if let saved, FileManager.default.fileExists(atPath: saved.vault) {
       open(URL(filePath: saved.vault, directoryHint: .isDirectory), restoring: saved)
     }
@@ -237,5 +239,12 @@ import CodeBoardModel
     let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
     item.keyEquivalentModifierMask = mask
     return item
+  }
+}
+
+/// Keeps the shell on the app's effective appearance, now and whenever the Mac's changes; observed while the token lives
+@MainActor func follow(_ app: NSApplication, into shell: Shell) -> NSKeyValueObservation {
+  app.observe(\.effectiveAppearance, options: [.initial]) { app, _ in
+    MainActor.assumeIsolated { shell.follow(app.effectiveAppearance) }
   }
 }

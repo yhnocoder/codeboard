@@ -170,17 +170,62 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
   }
 
   @Test func theBoardPanelTakesTheCanvasThemesBackground() {
-    for t in Theme.all { #expect(ShellTheme.board(t.id).components == t.canvas.components) }
+    for t in Theme.all { #expect(ShellTheme.board(t).components == t.canvas.components) }
     #expect(ShellTheme.board(.warmInk).components != ShellTheme.board(.inkWash).components)
+  }
+
+  /// The look is the chosen theme in the Mac's appearance, light or dark, and follows it as it changes
+  @Test func theLookFollowsTheAppearance() throws {
+    let s = Shell()
+    s.theme = .inkWash
+    s.follow(try #require(NSAppearance(named: .darkAqua)))
+    #expect(s.dark && s.look.same(as: .inkWashDark))
+    s.follow(try #require(NSAppearance(named: .vibrantDark)))
+    #expect(s.dark)
+    s.theme = .warmInk
+    #expect(s.look.same(as: .warmInkDark))
+    s.follow(try #require(NSAppearance(named: .aqua)))
+    #expect(!s.dark && s.look.same(as: .warmInk))
+
+    // the app's appearance, as the app delegate observes it
+    let app = NSApplication.shared
+    let before = app.appearance
+    defer { app.appearance = before }
+    app.appearance = NSAppearance(named: .aqua)
+    let token = follow(app, into: s)
+    #expect(!s.dark)
+    app.appearance = NSAppearance(named: .darkAqua)
+    #expect(s.dark)
+    app.appearance = NSAppearance(named: .aqua)
+    #expect(!s.dark)
+    token.invalidate()
+  }
+
+  /// The chrome's colours resolve to their dark values in a dark appearance, a layer's too
+  @Test func chromeColoursHaveADarkValue() throws {
+    let dark = try #require(NSAppearance(named: .darkAqua))
+    let light = try #require(NSAppearance(named: .aqua))
+    func resolved(_ c: NSColor, _ a: NSAppearance) -> CGColor {
+      var out = c.cgColor
+      a.performAsCurrentDrawingAppearance { out = c.cgColor }
+      return out
+    }
+    for c in [ShellTheme.ground, ShellTheme.shadeNS, ShellTheme.dropNS] {
+      #expect(resolved(c, dark) != resolved(c, light))
+      #expect(ShellTheme.cg(c, dark: true) == resolved(c, dark) && ShellTheme.cg(c, dark: false) == resolved(c, light))
+    }
+    // the ground is dark in dark
+    #expect((resolved(ShellTheme.ground, dark).components?.first ?? 1) < 0.15)
   }
 }
 
 /// The glass under the tabs: blurring what is behind it in the window whether or not the window is key, whole over the
 /// bar and gone a dissolve's length below it, the material and its canvas-coloured tint along the same curve
 @MainActor
-@Test(arguments: Theme.ID.allCases, [TopGlass.Look(), TopGlass.Look(material: .hudWindow, tint: 0.3, dissolve: 30)])
-func topGlassFrostsTheBarAndDissolvesBelowIt(_ id: Theme.ID, _ look: TopGlass.Look) throws {
-  let theme = Theme.named(id)
+@Test(
+  arguments: [Theme.warmInk, .inkWash, .warmInkDark, .inkWashDark],
+  [TopGlass.Look(), TopGlass.Look(material: .hudWindow, tint: 0.3, dissolve: 30)])
+func topGlassFrostsTheBarAndDissolvesBelowIt(_ theme: Theme, _ look: TopGlass.Look) throws {
   let bar: CGFloat = 36
   let d = look.dissolve
   let glass = TopGlass(frame: NSRect(x: 0, y: 0, width: 200, height: bar + d))
@@ -188,6 +233,8 @@ func topGlassFrostsTheBarAndDissolvesBelowIt(_ id: Theme.ID, _ look: TopGlass.Lo
   glass.look = look
   glass.place(bar: bar)
   #expect(glass.blendingMode == .withinWindow && glass.state == look.state && glass.material == look.material)
+  // the material follows the window's appearance
+  #expect(glass.appearance == nil)
 
   // the mask as the material stretches it over the glass, y-down
   let mask = try #require(glass.maskImage)

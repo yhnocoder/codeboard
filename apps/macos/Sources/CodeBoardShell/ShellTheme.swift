@@ -2,21 +2,45 @@ import AppKit
 import CodeBoardCanvas
 import SwiftUI
 
-/// The window chrome's colours and metrics, from the D2 mock; tuned on the running app, so only here
+/// The window chrome's colours and metrics, from the D2 mock; tuned on the running app, so only here. Each colour has a
+/// light and a dark value and resolves itself where it is drawn, in the appearance of the view drawing it, which is the
+/// app's (`Shell.dark` follows the same); a layer's colour is resolved with `cg(_:dark:)`
 enum ShellTheme {
+  // ponytail: the mock is light only; the dark values are Warm Ink dark's tokens (styles.css) in the roles the light
+  // ones play (ink, ink-2, surface, the hairline tint), not tuned on the running app yet
   /// The window background, which the sidebar is part of
-  static let ground = NSColor(srgbRed: 0.933, green: 0.914, blue: 0.878, alpha: 1)
+  static let ground = pair(0xeee9e0, 0x131312)
   /// The whole board panel, top bar included, is one surface with the canvas boards are shown on, in the board theme
-  static func board(_ theme: Theme.ID) -> CGColor { Theme.named(theme).canvas }
-  static let capsule = Color(red: 0.992, green: 0.988, blue: 0.980)
-  static let ink = Color(red: 0.129, green: 0.122, blue: 0.106)
-  static let muted = Color(red: 0.384, green: 0.369, blue: 0.337)
-  static let faint = Color(red: 0.639, green: 0.616, blue: 0.573)
-  static let icon = Color(red: 0.541, green: 0.514, blue: 0.471)
-  static let selectedIcon = Color(red: 0.604, green: 0.247, blue: 0.133)
-  /// The warm brown every hairline, hover and shadow is a tint of
-  static let shade = Color(red: 60 / 255, green: 45 / 255, blue: 20 / 255)
-  static let shadeNS = NSColor(srgbRed: 60 / 255, green: 45 / 255, blue: 20 / 255, alpha: 1)
+  static func board(_ theme: Theme) -> CGColor { theme.canvas }
+  static let capsule = Color(nsColor: pair(0xfdfcfa, 0x252422))
+  static let ink = Color(nsColor: pair(0x211f1b, 0xece8e0))
+  static let muted = Color(nsColor: pair(0x625e56, 0xaca79d))
+  static let faint = Color(nsColor: pair(0xa39d92, 0x6e6a62))
+  static let icon = Color(nsColor: pair(0x8a8378, 0x8a857c))
+  static let selectedIcon = Color(nsColor: pair(0x9a3f22, 0xe59572))
+  /// The warm brown every hairline and hover is a tint of; in dark a warm white
+  static let shadeNS = pair(0x3c2d14, 0xfff0dc)
+  static let shade = Color(nsColor: shadeNS)
+  /// What shadows are a tint of: the warm brown, black in dark
+  static let dropNS = pair(0x3c2d14, 0x000000)
+  static let drop = Color(nsColor: dropNS)
+
+  /// A colour that is `light` in a light appearance and `dark` in a dark one
+  private static func pair(_ light: UInt32, _ dark: UInt32) -> NSColor {
+    NSColor(name: nil) { a in
+      let hex = a.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+      return NSColor(
+        srgbRed: CGFloat(hex >> 16 & 0xff) / 255, green: CGFloat(hex >> 8 & 0xff) / 255,
+        blue: CGFloat(hex & 0xff) / 255, alpha: 1)
+    }
+  }
+
+  /// A colour as a layer takes it, in that appearance (a layer does not follow the appearance by itself)
+  static func cg(_ color: NSColor, dark: Bool) -> CGColor {
+    var out = color.cgColor
+    NSAppearance(named: dark ? .darkAqua : .aqua)?.performAsCurrentDrawingAppearance { out = color.cgColor }
+    return out
+  }
 
   static let sidebarWidth: CGFloat = 244
   /// Between the panel and the window edge
@@ -45,7 +69,7 @@ extension View {
       if on {
         RoundedRectangle(cornerRadius: ShellTheme.rowRadius)
           .fill(ShellTheme.capsule)
-          .shadow(color: ShellTheme.shade.opacity(0.10), radius: 1.5, x: 0, y: 1)
+          .shadow(color: ShellTheme.drop.opacity(0.10), radius: 1.5, x: 0, y: 1)
           .background(
             RoundedRectangle(cornerRadius: ShellTheme.rowRadius + 0.5).fill(ShellTheme.shade.opacity(0.12))
               .padding(-0.5))

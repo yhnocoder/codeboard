@@ -6,7 +6,8 @@ import CodeBoardSyntax
 /// A complete description of how the board looks, which the drawing code only reads: colours, fonts, sizes, and the few
 /// ways of drawing that are not values (`Paper`, `Header`, `Line`…), each a small closed set the drawing code switches on.
 /// A new look is a new instance, and at most a new case where it draws something no look drew before. Values from the web
-/// board's themes (packages/board/src/styles.css for Warm Ink, themes.css for the others), light variants only.
+/// board's themes (packages/board/src/styles.css for Warm Ink, themes.css for the others), each in a light and a dark
+/// variant as the web board's html[data-theme] picks them.
 public struct Theme: Sendable {
   /// The look's stable name: the web board's theme id, kept in settings, cache keys and the Note page
   public enum ID: String, CaseIterable, Sendable {
@@ -65,6 +66,8 @@ public struct Theme: Sendable {
   public let id: ID
   /// As the View menu shows it
   public let name: String
+  /// The variant for a dark appearance (the web board's :root[data-theme="dark"] values)
+  public private(set) var dark = false
 
   /// The board's background; the shell's board panel is the same surface
   package var canvas: CGColor
@@ -102,8 +105,9 @@ public struct Theme: Sendable {
   var arrowColors: [String: CGColor]
   /// The dry brush's hairlines (`Line.brush`)
   var dryBrush: CGColor
-  /// The fibres in and on the edge of `Paper.deckle`
-  var fibre: CGColor
+  /// The faint fibres inside `Paper.deckle`, and its torn edge
+  var fibreInner: CGColor
+  var fibreEdge: CGColor
   /// An uncoloured Section's fill
   var sectionFill: CGColor
   var sectionColors: [String: CGColor]
@@ -162,9 +166,18 @@ public struct Theme: Sendable {
   /// 0 0 0 0.5px), which a bitmap of the rect alone would cut off along its sides and keep only round the corners
   var bleed: CGFloat { paper == .deckle ? Deckle.margin : 0.5 }
 
+  /// The looks to choose from, light; each has its dark variant (`named(_:dark:)`)
   public static let all: [Theme] = [.warmInk, .inkWash]
 
-  public static func named(_ id: ID) -> Theme { all.first { $0.id == id } ?? .warmInk }
+  public static func named(_ id: ID, dark: Bool) -> Theme {
+    switch id {
+    case .warmInk: dark ? .warmInkDark : .warmInk
+    case .inkWash: dark ? .inkWashDark : .inkWash
+    }
+  }
+
+  /// The same look in the same appearance
+  public func same(as other: Theme) -> Bool { id == other.id && dark == other.dark }
 
   public static let warmInk: Theme = {
     let surface: UInt32 = 0xfdfcfa
@@ -178,7 +191,8 @@ public struct Theme: Sendable {
       linkedRow: rgb(0xb5552d, 0.09), linkedNumber: rgb(0xb5552d), number: rgb(0x9a958b, 0.65),
       edgeTop: rgb(0xffffff), edgeBottom: rgb(0x3c2d14, 0.1), arrow: rgb(0x85786a), arrowLost: rgb(0xd64545),
       arrowColors: ["orange": rgb(0xc46a2a), "blue": rgb(0x3a72aa), "green": rgb(0x4c8a3a)],
-      dryBrush: rgb(surface), fibre: rgb(0x6b5a3a), sectionFill: rgb(0x211f1b, 0.022),
+      dryBrush: rgb(surface), fibreInner: rgb(0x6b5a3a, 0.04), fibreEdge: rgb(0x6b5a3a, 0.1),
+      sectionFill: rgb(0x211f1b, 0.022),
       sectionColors: [
         "sand": rgb(0xceaa6e, 0.16), "blue": rgb(0x6091cd, 0.12), "green": rgb(0x6ea55f, 0.13),
         "pink": rgb(0xd77891, 0.12),
@@ -231,7 +245,8 @@ public struct Theme: Sendable {
       edgeTop: rgb(0xffffff), edgeBottom: rgb(0x1d1c1a, 0.1), arrow: rgb(0x1d1c1a, 0.8),
       arrowLost: rgb(0xd64545),
       arrowColors: ["orange": rgb(0x9a5a2c), "blue": rgb(0x2d5b70), "green": rgb(0x4d6b48)],
-      dryBrush: rgb(surface, 0.75), fibre: rgb(0x6b5a3a), sectionFill: rgb(0, 0),
+      dryBrush: rgb(surface, 0.75), fibreInner: rgb(0x6b5a3a, 0.04), fibreEdge: rgb(0x6b5a3a, 0.1),
+      sectionFill: rgb(0, 0),
       sectionColors: [
         "sand": rgb(0x9a5a2c, 0.07), "blue": rgb(0x2d5b70, 0.07), "green": rgb(0x506e50, 0.07),
         "pink": rgb(0xb8321f, 0.06),
@@ -258,6 +273,92 @@ public struct Theme: Sendable {
       cardRadius: 2, sectionRadius: 2, labelRadius: 0, headerHeight: 36, headerPad: 14, headerPadRight: 8, headerGap: 9,
       sectionTitleAt: CGPoint(x: 24, y: -17), sectionTitleHeight: 32, arrowWidth: 2,
       metrics: CodeMetrics(charWidth: code.advance))
+  }()
+
+  /// :root[data-theme="dark"] in styles.css; the card's edge and shadow are its --wi-ring and --wi-soft
+  public static let warmInkDark: Theme = {
+    var t = warmInk
+    let surface: UInt32 = 0x252422
+    t.dark = true
+    t.canvas = rgb(0x191816)
+    t.surface = rgb(surface)
+    t.head = rgb(0x2a2926)
+    t.ink = rgb(0xece8e0)
+    t.ink2 = rgb(0xaca79d)
+    t.ink3 = rgb(0x78746c)
+    t.accent = rgb(0xe3895f)
+    t.line = rgb(0xfff0dc, 0.07)
+    t.hair = rgb(0xfff0dc, 0.11)
+    t.hiddenRow = rgb(0xfff0dc, 0.07)
+    // .hx-band in dark: 11 % of the accent
+    t.highlight = rgb(0xe3895f, 0.11)
+    t.linkedRow = rgb(0xe3895f, 0.09)
+    t.linkedNumber = rgb(0xe3895f)
+    t.number = rgb(0x78746c, 0.65)
+    t.edgeTop = rgb(0xfff5e6, 0.13)
+    t.edgeBottom = rgb(0, 0.35)
+    t.arrow = rgb(0xa69886)
+    t.arrowColors = ["orange": rgb(0xe3955a), "blue": rgb(0x7fb0e0), "green": rgb(0x96c47e)]
+    t.dryBrush = rgb(surface)
+    t.sectionFill = rgb(0xece8e0, 0.025)
+    t.sectionColors = [
+      "sand": rgb(0xd6b478, 0.1), "blue": rgb(0x78a5e1, 0.09), "green": rgb(0x8cc378, 0.09),
+      "pink": rgb(0xe68ca5, 0.09),
+    ]
+    t.sectionTitle = rgb(0xaca79d)
+    t.sectionEdge = rgb(0xfff5e6, 0.025)
+    t.boxFills = boxFills(surface)
+    t.boxEdge = rgb(0xece8e0, 0.34)
+    t.shadow = [
+      (0.5, 1, 0, rgb(0, 0.22)), (2, 5, -1, rgb(0, 0.2)), (10, 22, -10, rgb(0, 0.3)), (26, 48, -24, rgb(0, 0.32)),
+    ]
+    t.syntax = [
+      .keyword: rgb(0xe59572), .operator: rgb(0xe59572), .function: rgb(0x86b4de), .string: rgb(0xa3c98c),
+      .comment: rgb(0x7d786e), .number: rgb(0xd9b36a), .receiver: rgb(0xc8a3e6), .punctuation: rgb(0xa39e93),
+    ]
+    return t
+  }()
+
+  /// The rubbing: :root.look-ink-wash[data-theme="dark"] in themes.css, the paper and its fibres as state/ink.ts draws
+  /// them in dark
+  public static let inkWashDark: Theme = {
+    var t = inkWash
+    t.dark = true
+    t.canvas = rgb(0x131312)
+    t.backdrop = "ink-dark"
+    // the deckled sheet's paper (ink.ts), a shade off --surface, which box Notes mix their fills with
+    t.surface = rgb(0x1e1d1a)
+    t.ink = rgb(0xe9e5da)
+    t.ink2 = rgb(0xb9b4a8)
+    t.ink3 = rgb(0x6e6a62)
+    t.accent = rgb(0xd6533a)
+    t.line = rgb(0xe9e5da, 0.07)
+    t.hair = rgb(0xe9e5da, 0.14)
+    t.hiddenRow = rgb(0xe9e5da, 0.07)
+    t.highlight = rgb(0xd6533a, 0.11)
+    t.linkedRow = rgb(0xd6533a, 0.12)
+    t.linkedNumber = rgb(0xd6533a)
+    t.number = rgb(0x6e6a62, 0.65)
+    t.arrow = rgb(0xe9e5da, 0.78)
+    t.arrowColors = ["orange": rgb(0xd39a6c), "blue": rgb(0x8fb7c9), "green": rgb(0x9cbf92)]
+    // --paper, at the feibai's opacity
+    t.dryBrush = rgb(0x1c1b19, 0.75)
+    t.fibreInner = rgb(0xe9e5da, 0.035)
+    t.fibreEdge = rgb(0xe9e5da, 0.12)
+    t.sectionColors = [
+      "sand": rgb(0xd39a6c, 0.06), "blue": rgb(0x8fb7c9, 0.06), "green": rgb(0x8caa82, 0.06),
+      "pink": rgb(0xd6533a, 0.06),
+    ]
+    t.sectionTitle = rgb(0xe9e5da)
+    t.sectionEdge = rgb(0xe9e5da, 0.72)
+    t.boxFills = boxFills(0x1c1b19)
+    t.boxEdge = rgb(0xe9e5da, 0.34)
+    t.shadow = [(4, 10, 0, rgb(0, 0.5))]
+    t.syntax = [
+      .keyword: rgb(0xe9e5da), .operator: rgb(0xe9e5da), .function: rgb(0x8fb7c9), .string: rgb(0xd39a6c),
+      .comment: rgb(0x6e6a62), .number: rgb(0xd39a6c), .receiver: rgb(0xb9b4a8), .punctuation: rgb(0x8a857c),
+    ]
+    return t
   }()
 
   private static func rgb(_ hex: UInt32, _ a: CGFloat = 1) -> CGColor {

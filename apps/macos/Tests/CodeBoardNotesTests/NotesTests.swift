@@ -12,9 +12,10 @@ private func tempFolder() throws -> URL {
 }
 
 private func json(
-  _ note: Note, width: Double = 300, height: Double? = nil, look: String = "warm-ink", refs: [NoteRef] = []
+  _ note: Note, width: Double = 300, height: Double? = nil, look: String = "warm-ink", dark: Bool = false,
+  refs: [NoteRef] = []
 ) throws -> String {
-  try PageNote(note, width: width, height: height, look: look, refs: refs).json()
+  try PageNote(note, width: width, height: height, look: look, dark: dark, refs: refs).json()
 }
 
 @Suite struct SnapshotKeyTests {
@@ -37,7 +38,8 @@ private func json(
     var others = [
       try key(build: "c"), try key(system: "t"), try key(scale: 4), try key(images: ["a.png 10 1.0"]),
       try key(note: json(base, width: 301)), try key(note: json(base, height: 200)),
-      try key(note: json(base, look: "ink-wash")),
+      try key(note: json(base, look: "ink-wash")), try key(note: json(base, dark: true)),
+      try key(note: json(base, look: "ink-wash", dark: true)),
       try key(note: json(base, refs: [NoteRef(label: "Plan", target: nil, hit: .found(title: "Plan", seal: nil))])),
       try key(note: json(base, refs: [NoteRef(label: "Plan", target: nil, hit: .found(title: "Plans", seal: nil))])),
     ]
@@ -219,7 +221,8 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     var atTwo: [UInt8] = []
     for scale in [1.0, 2, 4] {
       let s = try await r.snapshot(
-        of: Self.note, width: 320, height: nil, folder: folder, scale: scale, look: "warm-ink", priority: 0)
+        of: Self.note, width: 320, height: nil, folder: folder, scale: scale, look: "warm-ink", dark: false, priority: 0
+      )
       sizes.append(s.size)
       if scale == 2 { atTwo = pixels(s.surface) }
       #expect(s.surface.width == Int((s.size.width * scale).rounded(.up)))
@@ -234,15 +237,43 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     await r.written()
     let fresh = NoteRenderer(cache: cache)
     let again = try await fresh.snapshot(
-      of: Self.note, width: 320, height: nil, folder: folder, scale: 2, look: "warm-ink", priority: 0)
+      of: Self.note, width: 320, height: nil, folder: folder, scale: 2, look: "warm-ink", dark: false, priority: 0)
     #expect(!fresh.webViewOpen)
     #expect(again.size == sizes[0])
     #expect(pixels(again.surface) == atTwo)
 
     // the page takes the board's look: Ink Wash sets the title in its serif, not Warm Ink's sans
     let wash = try await r.snapshot(
-      of: Self.note, width: 320, height: nil, folder: folder, scale: 2, look: "ink-wash", priority: 0)
+      of: Self.note, width: 320, height: nil, folder: folder, scale: 2, look: "ink-wash", dark: false, priority: 0)
     #expect(pixels(wash.surface) != atTwo)
+
+    // and its appearance: the same Note on a dark board, its text light, at the size it has on a light one; kept apart
+    // from the light picture on disk, both there at once
+    let dark = try await r.snapshot(
+      of: Self.note, width: 320, height: nil, folder: folder, scale: 2, look: "warm-ink", dark: true, priority: 0)
+    #expect(dark.size == sizes[0] && pixels(dark.surface) != atTwo)
+    // words alone: dark ink on a light board, light ink on a dark one
+    let words = Note(text: "Plain words on a card, and nothing else.", style: .note)
+    for onDark in [false, true] {
+      let px = pixels(
+        try await r.snapshot(
+          of: words, width: 320, height: nil, folder: folder, scale: 2, look: "warm-ink", dark: onDark, priority: 0
+        ).surface)
+      let solid = stride(from: 0, to: px.count, by: 4).filter { px[$0 + 3] > 200 }.map {
+        Int(px[$0 + 1]) * 255 / Int(px[$0 + 3])
+      }
+      let light = solid.count { $0 > 180 }
+      let darkInk = solid.count { $0 < 90 }
+      #expect(onDark ? light > 50 && darkInk == 0 : darkInk > 50 && light == 0, "dark: \(onDark): \(light) \(darkInk)")
+    }
+    await r.written()
+    let both = NoteRenderer(cache: cache)
+    let darkAgain = try #require(
+      await both.cached(of: Self.note, width: 320, height: nil, folder: folder, scale: 2, look: "warm-ink", dark: true))
+    let lightAgain = try #require(
+      await both.cached(of: Self.note, width: 320, height: nil, folder: folder, scale: 2, look: "warm-ink", dark: false)
+    )
+    #expect(pixels(darkAgain.surface) == pixels(dark.surface) && pixels(lightAgain.surface) == atTwo)
   }
 
   /// Notes measured together stay mounted together, each drawn as if it were the only one: the same sizes and the same
@@ -266,33 +297,40 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     ]
     let r = NoteRenderer(cache: cache)
     let sizes = try await r.sizes(
-      of: notes.map { NoteRenderer.SizeRequest(note: $0.0, width: $0.1, folder: cache, look: "warm-ink") }, priority: 0)
+      of: notes.map { NoteRenderer.SizeRequest(note: $0.0, width: $0.1, folder: cache, look: "warm-ink", dark: false) },
+      priority: 0)
     // the long one is taller than the window the page starts with, the Free Text as wide as its text
     #expect(sizes[1].map { $0.height > 1500 } == true)
     #expect(sizes[2].map { $0.width > 50 } == true)
     for (i, (note, width)) in notes.enumerated() {
       let one = NoteRenderer(cache: alone.appending(path: "\(i)"))
       #expect(
-        try await one.sizes(of: [.init(note: note, width: width, folder: cache, look: "warm-ink")], priority: 0) == [
-          sizes[i]
-        ])
+        try await one.sizes(
+          of: [.init(note: note, width: width, folder: cache, look: "warm-ink", dark: false)], priority: 0) == [
+            sizes[i]
+          ])
       for scale in [0.5, 1, 2, 4] {
         let together = try await r.snapshot(
-          of: note, width: width, height: nil, folder: cache, scale: scale, look: "warm-ink", priority: 0)
+          of: note, width: width, height: nil, folder: cache, scale: scale, look: "warm-ink", dark: false, priority: 0)
         let single = try await one.snapshot(
-          of: note, width: width, height: nil, folder: cache, scale: scale, look: "warm-ink", priority: 0)
+          of: note, width: width, height: nil, folder: cache, scale: scale, look: "warm-ink", dark: false, priority: 0)
         #expect(together.size == sizes[i])
         #expect(pixels(together.surface) == pixels(single.surface), "Note \(i) at \(scale)")
       }
     }
+    // measured on a dark board, every Note has the size it has on a light one
+    let dark = try await r.sizes(
+      of: notes.map { NoteRenderer.SizeRequest(note: $0.0, width: $0.1, folder: cache, look: "warm-ink", dark: true) },
+      priority: 0)
+    #expect(dark == sizes)
     // a fixed height and another look in between: the page lets the warm-ink Notes go and mounts them again
     let fixed = try await r.snapshot(
-      of: Self.note, width: 300, height: 120, folder: cache, scale: 2, look: "ink-wash", priority: 0)
+      of: Self.note, width: 300, height: 120, folder: cache, scale: 2, look: "ink-wash", dark: false, priority: 0)
     #expect(fixed.size == CGSize(width: 300, height: 120))
     let first = try await NoteRenderer(cache: alone.appending(path: "0")).snapshot(
-      of: Self.note, width: 320, height: nil, folder: cache, scale: 1, look: "warm-ink", priority: 0)
+      of: Self.note, width: 320, height: nil, folder: cache, scale: 1, look: "warm-ink", dark: false, priority: 0)
     let back = try await r.snapshot(
-      of: Self.note, width: 320, height: nil, folder: alone, scale: 1, look: "warm-ink", priority: 0)
+      of: Self.note, width: 320, height: nil, folder: alone, scale: 1, look: "warm-ink", dark: false, priority: 0)
     #expect(pixels(back.surface) == pixels(first.surface))
   }
 
@@ -306,7 +344,7 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     let note = Note(text: "# Long\n\n\(prose)\n\n```python\n\(code)\n```\n\nThe end.", style: .note)
     let r = NoteRenderer(cache: cache)
     let s = try await r.snapshot(
-      of: note, width: 360, height: nil, folder: cache, scale: 1, look: "warm-ink", priority: 0)
+      of: note, width: 360, height: nil, folder: cache, scale: 1, look: "warm-ink", dark: false, priority: 0)
     // 30 paragraphs of about 30 px and 120 code lines of about 20 px
     #expect(s.size.height > 3200)
     let rows = pixels(s.surface).count / (s.surface.width * 4)
@@ -325,7 +363,8 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     func draw(_ refs: [NoteRef]) async throws -> [UInt8] {
       pixels(
         try await r.snapshot(
-          of: note, width: 320, height: nil, folder: cache, scale: 2, look: "warm-ink", refs: refs, priority: 0
+          of: note, width: 320, height: nil, folder: cache, scale: 2, look: "warm-ink", dark: false, refs: refs,
+          priority: 0
         ).surface)
     }
     let missing = try await draw([])
@@ -373,12 +412,13 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     }
     let file = folder.appending(path: "chart-200x100.svg")
     try Data(Self.svg.utf8).write(to: file)
-    // the board's looks are light: a dark Mac does not turn on the picture's dark rules
+    // the picture follows the board's appearance, not the Mac's: on a light board a dark Mac does not turn on its dark
+    // rules
     let appearance = NSApp.appearance
     NSApp.appearance = NSAppearance(named: .darkAqua)
     defer { NSApp.appearance = appearance }
     let r = NoteRenderer(cache: cache)
-    let s = try await r.picture(of: file, width: 400, priority: 0)
+    let s = try await r.picture(of: file, width: 400, dark: false, priority: 0)
     #expect(s.surface.width == 400 && s.surface.height == 200)
     let px = pixels(s.surface)
     /// sRGB at a point of the 200 × 100 picture
@@ -404,8 +444,20 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     // a second renderer on the same cache reads it from disk, and another width draws again
     await r.written()
     let fresh = NoteRenderer(cache: cache)
-    let again = try await fresh.picture(of: file, width: 400, priority: 0)
+    let again = try await fresh.picture(of: file, width: 400, dark: false, priority: 0)
     #expect(!fresh.webViewOpen && pixels(again.surface) == px)
-    #expect(await fresh.cachedPicture(of: file, width: 200) == nil)
+    #expect(await fresh.cachedPicture(of: file, width: 200, dark: false) == nil)
+
+    // on a dark board its dark rules apply, the rest as on a light one; kept apart from the light picture
+    #expect(await fresh.cachedPicture(of: file, width: 400, dark: true) == nil)
+    NSApp.appearance = NSAppearance(named: .aqua)
+    let dark = try await fresh.picture(of: file, width: 400, dark: true, priority: 0)
+    let dpx = pixels(dark.surface)
+    func darkRGB(_ x: Int, _ y: Int) -> [Int] {
+      let i = (y * 2 * dark.surface.width + x * 2) * 4
+      return [Int(dpx[i + 2]), Int(dpx[i + 1]), Int(dpx[i])]
+    }
+    #expect(darkRGB(20, 20).allSatisfy { $0 > 250 }, "class, dark: \(darkRGB(20, 20))")
+    #expect(darkRGB(60, 20) == Array(rgb(60, 20).prefix(3)), "variable, dark: \(darkRGB(60, 20))")
   }
 }

@@ -26,6 +26,8 @@ type Note = {
   height: number | null;
   /** The board theme's id: html[data-look] and its class, as the board's settings apply it (actions/settings.ts applyLook) */
   look: string;
+  /** Its dark variant: html[data-theme="dark"], as the board's host sets it */
+  dark: boolean;
   /** What its [[refs]] point at, as the board resolves them (CodeBoardNotes' NoteRef); one not here is not found */
   refs: { label: string; target: string | null; hit: RefTarget | RefBroken }[];
 };
@@ -174,13 +176,15 @@ function drop(id: string) {
   slots.delete(id);
 }
 
-function setLook(look: string) {
+function setLook(look: string, dark: boolean) {
   const html = document.documentElement;
-  if (html.dataset.look === look) return;
-  // every mounted Note is drawn in the page's one look
+  const theme = dark ? "dark" : "light";
+  if (html.dataset.look === look && html.dataset.theme === theme) return;
+  // every mounted Note is drawn in the page's one look and appearance
   for (const id of [...slots.keys()]) drop(id);
   html.classList.remove(`look-${html.dataset.look}`);
   html.dataset.look = look;
+  html.dataset.theme = theme;
   html.classList.add(`look-${look}`);
 }
 
@@ -189,7 +193,7 @@ window.note = {
   async mount(list: { id: string; note: Note; images: string }[]) {
     for (const { id, note: n, images } of list) {
       if (slots.has(id)) continue;
-      setLook(n.look);
+      setLook(n.look, n.dark);
       const made = cardFor(n);
       const s = newSlot(id, made.card);
       if (made.markdown)
@@ -204,8 +208,10 @@ window.note = {
     return measure(list.map((l) => l.id));
   },
   /** An image file as the board's image card shows it (Card.tsx, .imgb img): an <img> `width` px wide, as tall as its
-   * proportions make it. An SVG in an <img> sees only itself: its own styles and variables, none of the page's */
-  async image(id: string, src: string, width: number) {
+   * proportions make it, on a dark board or not. An SVG in an <img> sees only itself: its own styles and variables,
+   * none of the page's, and its prefers-color-scheme rules follow the board's appearance */
+  async image(id: string, src: string, width: number, dark: boolean) {
+    setLook(document.documentElement.dataset.look ?? "warm-ink", dark);
     if (!slots.has(id)) {
       const img = document.createElement("img");
       img.style.width = `${width}px`;

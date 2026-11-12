@@ -38,7 +38,7 @@ import CodeBoardModel
         pane.onReady = { [weak self] in self?.reveal() }
         addSubview(pane)
       }
-      let theme = Theme.named(shell.theme)
+      let theme = shell.look
       if reload || pane.board?.id != tab.board, let vault = shell.vault, let at = shell.board(tab.board) {
         pane.load(at, in: vault, theme: theme)
       } else {
@@ -99,10 +99,10 @@ private final class Pane: NSView {
   /// The theme the board is to be drawn in
   private var theme = Theme.warmInk
 
-  /// Draws the board shown in another theme, where its camera is
+  /// Draws the board shown in another theme or appearance, where its camera is
   func restyle(_ theme: Theme) {
     self.theme = theme
-    guard theme.id != canvas.currentTheme.id, board != nil else { return }
+    guard !theme.same(as: canvas.currentTheme), board != nil else { return }
     Task {
       do { try await canvas.show(theme: theme) } catch { fail(error) }
     }

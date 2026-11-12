@@ -2,7 +2,8 @@ import CodeBoardModel
 import Foundation
 
 /// What the Note page draws (`web/src/page.ts`, type `Note`). Its JSON is both the page's argument and, in the snapshot
-/// key, the description of everything the page draws: the look among it, so no picture or size is shared across looks.
+/// key, the description of everything the page draws: the look and appearance among it, so no picture or size is
+/// shared across looks or between light and dark.
 struct PageNote: Encodable {
   var text: String
   var layout: NoteLayout?
@@ -11,21 +12,24 @@ struct PageNote: Encodable {
   var height: Double?
   /// The board theme's id: the page applies the board's own stylesheet for it
   var look: String
+  /// Its dark variant: the page sets html[data-theme="dark"] and draws in a dark appearance
+  var dark: Bool
   /// What its [[refs]] point at, in the order written
   var refs: [NoteRef]
 
-  init(_ note: Note, width: Double, height: Double?, look: String, refs: [NoteRef]) {
+  init(_ note: Note, width: Double, height: Double?, look: String, dark: Bool, refs: [NoteRef]) {
     text = note.text
     layout = note.layout
     style = note.style
     self.width = width
     self.height = height
     self.look = look
+    self.dark = dark
     self.refs = refs
   }
 
   private enum Keys: String, CodingKey {
-    case text, layout, style, width, height, look, refs
+    case text, layout, style, width, height, look, dark, refs
   }
 
   func encode(to encoder: Encoder) throws {
@@ -36,6 +40,7 @@ struct PageNote: Encodable {
     try c.encode(width, forKey: .width)
     try c.encode(height, forKey: .height)
     try c.encode(look, forKey: .look)
+    try c.encode(dark, forKey: .dark)
     try c.encode(refs, forKey: .refs)
   }
 

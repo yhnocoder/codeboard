@@ -107,11 +107,22 @@ public final class CanvasView: NSView {
     try await load(board, in: vault, theme: theme, keepCamera: false)
   }
 
-  /// Draws the board shown in another theme where the camera is: what is on screen stays until every item has its
-  /// picture in the new look (a Note its paper, until the Note renderer has drawn it in that look)
+  /// Draws the board shown in another theme (or the same in the other appearance) where the camera is, once it rests:
+  /// what is on screen stays until every item has its picture in the new look (a Note its paper, until the Note
+  /// renderer has drawn it in that look)
   public func show(theme: Theme) async throws {
-    guard let (board, vault) = shown, theme.id != self.theme.id else { return }
+    await rest()
+    guard let (board, vault) = shown, !theme.same(as: self.theme) else { return }
     try await load(board, in: vault, theme: theme, keepCamera: true)
+  }
+
+  /// Waiting for the camera to come to rest
+  private var resting: [CheckedContinuation<Void, Never>] = []
+
+  /// Returns once no gesture or glide moves the camera
+  private func rest() async {
+    guard !motion.isResting else { return }
+    await withCheckedContinuation { resting.append($0) }
   }
 
   /// The theme the canvas draws in
@@ -135,7 +146,7 @@ public final class CanvasView: NSView {
       let package = vault.url(of: board.path)
       let b = try vault.board(at: board.path)
       let sizes = await CanvasView.measure(
-        Scene.measures(b, package: package, vault: vault), look: theme.id.rawValue, notes: notes)
+        Scene.measures(b, package: package, vault: vault), theme: theme, notes: notes)
       let highlighter = known ?? Highlighter()
       let scene = Scene(b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes)
       let fit = Camera.fit(scene.bounds, in: size).zoom
@@ -165,17 +176,23 @@ public final class CanvasView: NSView {
     }.value
     CanvasView.highlighter = highlighter
     guard load == loads else { return }
+    // the same board in another look: swapped in at rest, as a gesture may have started while it was drawn
+    if keepCamera {
+      await rest()
+      guard load == loads else { return }
+    }
     shown = (board, vault)
     install(scene, overviews: overviews, shadow: shadow, theme: theme, keepCamera: keepCamera)
   }
 
   /// The sizes the Note renderer gives the Notes without a stored height: from what it kept, else measured in the web
   /// view all together. A Note it could not measure is left out (`Scene` gives it a height of its own)
-  private nonisolated static func measure(_ ms: [Scene.Measure], look: String, notes: NoteRenderer) async -> [CardID:
+  private nonisolated static func measure(_ ms: [Scene.Measure], theme: Theme, notes: NoteRenderer) async -> [CardID:
     CGSize]
   {
     let requests = ms.map {
-      NoteRenderer.SizeRequest(note: $0.note, width: $0.width, folder: $0.folder, look: look, refs: $0.refs)
+      NoteRenderer.SizeRequest(
+        note: $0.note, width: $0.width, folder: $0.folder, look: theme.id.rawValue, dark: theme.dark, refs: $0.refs)
     }
     // before any picture: the board waits for these
     let sizes = (try? await notes.sizes(of: requests, priority: 1)) ?? []
@@ -563,6 +580,11 @@ public final class CanvasView: NSView {
       applyCamera()
     }
     if rested { arrive() }
+    if motion.isResting && !resting.isEmpty {
+      let waiting = resting
+      resting = []
+      for w in waiting { w.resume() }
+    }
     if motion.isResting { pump() }
     if motion.isResting && queue.isIdle && worked {
       worked = false
@@ -697,16 +719,16 @@ public final class CanvasView: NSView {
       guard let priority else {
         return await notes.cached(
           of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale, look: look,
-          refs: n.refs)
+          dark: theme.dark, refs: n.refs)
       }
       return try? await notes.snapshot(
         of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale, look: look,
-        refs: n.refs, priority: priority)
+        dark: theme.dark, refs: n.refs, priority: priority)
     case .image(let p):
       guard p.svg, let url = p.url else { return nil }
       let width = Int((item.rect.width * scale).rounded(.up))
-      guard let priority else { return await notes.cachedPicture(of: url, width: width) }
-      return try? await notes.picture(of: url, width: width, priority: priority)
+      guard let priority else { return await notes.cachedPicture(of: url, width: width, dark: theme.dark) }
+      return try? await notes.picture(of: url, width: width, dark: theme.dark, priority: priority)
     case .code, .label:
       return nil
     }

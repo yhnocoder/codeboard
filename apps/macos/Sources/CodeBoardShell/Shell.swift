@@ -1,6 +1,6 @@
+import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
-import Foundation
 import Observation
 
 /// A board tab: the board it shows and its own back / forward history, browser style. Boards are held by id, so a board
@@ -41,6 +41,8 @@ public struct ShellState: Codable, Equatable, Sendable {
   public var importing = false
   /// The look every board is drawn in; app-wide, kept by the app delegate
   public var theme: Theme.ID = .warmInk
+  /// Whether the Mac's appearance is dark: the app follows it (`follow(_:)`) and has no setting of its own
+  public private(set) var dark = false
   /// The tab row's glass, tuned by hand in GlassTuning
   var glass = TopGlass.Look()
   private var byID: [BoardID: VaultBoard] = [:]
@@ -48,6 +50,15 @@ public struct ShellState: Codable, Equatable, Sendable {
   public init() {}
 
   public var current: Tab? { tabs.first { $0.id == selected } }
+
+  /// The theme in the appearance the app shows: what boards, the board panel and its glass are drawn in
+  public var look: Theme { Theme.named(theme, dark: dark) }
+
+  /// Takes the appearance the app is shown in (NSApp's effective appearance)
+  public func follow(_ appearance: NSAppearance) {
+    let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    if dark != self.dark { self.dark = dark }
+  }
 
   public func board(_ id: BoardID) -> VaultBoard? { byID[id] }
 
