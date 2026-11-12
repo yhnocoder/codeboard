@@ -1,0 +1,36 @@
+{
+  "calls": [],
+  "doc": undefined,
+  "flags": [
+    0,
+    1,
+    1,
+    0,
+    0,
+    1,
+  ],
+  "imports": [
+    {
+      "from": true,
+      "line": 1,
+      "module": "nanovllm.engine.llm_engine",
+      "name": "LLMEngine",
+    },
+  ],
+  "lang": "python",
+  "mainBlocks": [],
+  "symbols": [
+    {
+      "defLine": 4,
+      "end": 5,
+      "kind": "class",
+      "name": "LLM",
+      "params": [],
+      "parent": undefined,
+      "qual": "LLM",
+      "sig": "class LLM(LLMEngine)",
+      "start": 4,
+    },
+  ],
+  "trailing": {},
+}

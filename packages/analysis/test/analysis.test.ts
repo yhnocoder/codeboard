@@ -1,11 +1,11 @@
-// tree-sitter 查询版分析 vs 旧的逐节点遍历（test/oracle）：结果必须逐字段一致。
-// 另外核对：按行分析 = 整文件分析裁剪；增量解析 = 重新解析。
+// The whole-file analysis of nano-vllm's Python files and of the samples below must equal the result recorded
+// in __snapshots__/analysis/ field by field (review a change there like a code change; `vitest -u` rewrites it).
+// Also: analysis by lines = the whole-file result clipped; incremental parse = fresh parse.
 import { beforeAll, describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { initAnalysis, analyze, clipAnalysis, diffEdit, TreeCache, type FileAnalysis } from "../src";
-import { analyzeOld } from "./oracle/analysis-old";
 
 const repo = fileURLToPath(new URL("../../../examples/nano-vllm", import.meta.url));
 function pyFiles(dir: string, out: string[] = []): string[] {
@@ -21,12 +21,50 @@ const PY = pyFiles(repo)
   .sort()
   .map((p) => ({ name: p.slice(repo.length + 1), lang: "python", text: readFileSync(p, "utf8") }));
 
-/** extra = symbols the node walk missed (nested struct in a struct body, definitions inside an ERROR node) */
-const CPP: { name: string; lang: string; text: string; extra?: string[] }[] = [
+const PY_EDGE = [
+  '"""Module doc."""',
+  "import os, torch.nn as nn",
+  "from .a import b as c, d",
+  "try:",
+  "    import numpy as np",
+  "except ImportError:",
+  "    np = None",
+  "@decorator(x=f(1))",
+  "class A(Base):",
+  "    '''A doc.'''",
+  "    x = [g(i) for i in range(3)]",
+  "    if True:",
+  "        def m(self, a, *args, k=1, **kw):",
+  "            return [h(j) for j in a]",
+  "    @staticmethod",
+  "    def s(*, q): return lambda: inner(q)",
+  "def outer():",
+  "    import sys",
+  "    def inner2(): pass",
+  "    for x in it(y):",
+  "        r = call('run', x)",
+  "        a, b = self.do(x).tolist()",
+  "    else:",
+  "        z()",
+  "    while w(): v()",
+  "    return (await k() for _ in z)",
+  "for i in q():",
+  "    lambda: p()",
+  "    f = lambda: [t() for _ in u]",
+  "    def d(): e()",
+  "if __name__ == '__main__':",
+  "    main()  # run",
+  "x = '中文'  # 注释",
+  "# 整行注释",
+  "s = getattr(o, 'name')",
+].join("\n");
+const PY_BROKEN = "def f(:\n    g()\nclass B\n    def h(self): i()\n";
+
+/** Nested structs in a struct body and definitions inside an ERROR node are symbols too. */
+const CPP: { name: string; lang: string; text: string }[] = [
   {
     name: "kernel.cu",
     lang: "cuda-cpp",
-    extra: ["flash::detail::Params::Inner", "flash::detail::Params::Inner::g"],
     text: `// 简单的 kernel
 #include <cuda_runtime.h>
 #include "utils.h"
@@ -109,7 +147,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   {
     name: "broken.h",
     lang: "c",
-    extra: ["f", "h"],
     text: "struct A { int x; \nvoid f( { g(); }\n#define M(x) ((x) + 1)\nint h(void) { return M(k()); }\n",
   },
 ];
@@ -121,62 +158,16 @@ const same = (a: FileAnalysis, b: FileAnalysis) => {
   expect(JSON.stringify(a)).toBe(JSON.stringify(b));
 };
 
-describe("query-based analysis matches the v0.1.5 node walk", () => {
-  it(`nano-vllm: ${PY.length} python files`, () => {
-    expect(PY.length).toBeGreaterThan(20);
-    for (const f of PY) same(analyze(f.lang, f.text), analyzeOld(f.lang, f.text));
-  });
-  it("python edge cases", () => {
-    const src = [
-      '"""Module doc."""',
-      "import os, torch.nn as nn",
-      "from .a import b as c, d",
-      "try:",
-      "    import numpy as np",
-      "except ImportError:",
-      "    np = None",
-      "@decorator(x=f(1))",
-      "class A(Base):",
-      "    '''A doc.'''",
-      "    x = [g(i) for i in range(3)]",
-      "    if True:",
-      "        def m(self, a, *args, k=1, **kw):",
-      "            return [h(j) for j in a]",
-      "    @staticmethod",
-      "    def s(*, q): return lambda: inner(q)",
-      "def outer():",
-      "    import sys",
-      "    def inner2(): pass",
-      "    for x in it(y):",
-      "        r = call('run', x)",
-      "        a, b = self.do(x).tolist()",
-      "    else:",
-      "        z()",
-      "    while w(): v()",
-      "    return (await k() for _ in z)",
-      "for i in q():",
-      "    lambda: p()",
-      "    f = lambda: [t() for _ in u]",
-      "    def d(): e()",
-      "if __name__ == '__main__':",
-      "    main()  # run",
-      "x = '中文'  # 注释",
-      "# 整行注释",
-      "s = getattr(o, 'name')",
-    ].join("\n");
-    same(analyze("python", src), analyzeOld("python", src));
-    const bad = "def f(:\n    g()\nclass B\n    def h(self): i()\n";
-    same(analyze("python", bad), analyzeOld("python", bad));
-  });
-  for (const f of CPP)
-    it(`c++ / cuda: ${f.name}`, () => {
-      const a = analyze(f.lang, f.text);
-      expect(a.calls.length).toBeGreaterThan(1);
-      expect(a.symbols.filter((s) => f.extra?.includes(s.qual)).map((s) => s.qual)).toEqual(f.extra ?? []);
-      same({ ...a, symbols: a.symbols.filter((s) => !f.extra?.includes(s.qual)) }, analyzeOld(f.lang, f.text));
-    });
-  it("unknown languages only mark blank lines", () =>
-    same(analyze("go", "func main() {}\n\n"), analyzeOld("go", "func main() {}\n\n")));
+const recorded = (name: string, a: FileAnalysis) =>
+  expect(a).toMatchFileSnapshot(`./__snapshots__/analysis/${name}.snap`);
+
+describe("analysis matches the recorded result", () => {
+  it("nano-vllm is checked out", () => expect(PY.length).toBeGreaterThan(20));
+  for (const f of PY) it(`nano-vllm: ${f.name}`, () => recorded(`nano-vllm/${f.name}`, analyze(f.lang, f.text)));
+  it("python edge cases", () => recorded("python/edge-cases.py", analyze("python", PY_EDGE)));
+  it("python with syntax errors", () => recorded("python/broken.py", analyze("python", PY_BROKEN)));
+  for (const f of CPP) it(`c++ / cuda: ${f.name}`, () => recorded(`cpp/${f.name}`, analyze(f.lang, f.text)));
+  it("unknown languages only mark blank lines", () => recorded("other/main.go", analyze("go", "func main() {}\n\n")));
 });
 
 describe("v0.2 call kinds", () => {

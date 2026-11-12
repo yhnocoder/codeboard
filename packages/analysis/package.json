@@ -7,7 +7,6 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "bench:analysis": "node test/run-ts.mjs bench-analysis",
     "stats:analysis": "node test/run-ts.mjs stats-analysis"
   },
   "devDependencies": {

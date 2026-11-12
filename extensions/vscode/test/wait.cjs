@@ -1,4 +1,4 @@
-// Waits for the VS Code e2e scripts (drive, replay, projects, release-shots, review-keys): wait for real state, never for a fixed time.
+// Waits for the VS Code e2e scripts (drive, replay, projects, release-shots): wait for real state, never for a fixed time.
 //   until(what, f, ms)   poll f until it returns something truthy (and return it); throw `until: <what>: not within <ms> ms` otherwise
 //   idle(frame)          the board in that webview frame has settled: no request waiting on the host, camera at rest, no animation,
 //                        fonts loaded, no DOM change for a moment. Needs track(page) before the board's webview was created

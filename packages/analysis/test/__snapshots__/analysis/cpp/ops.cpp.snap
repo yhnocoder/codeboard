@@ -1,0 +1,187 @@
+{
+  "calls": [
+    {
+      "args": [
+        {
+          "name": undefined,
+          "text": "x.is_cuda()",
+        },
+        {
+          "name": undefined,
+          "text": ""x must be CUDA"",
+        },
+      ],
+      "assigned": undefined,
+      "col": 2,
+      "end": 13,
+      "line": 4,
+      "loop": false,
+      "name": "TORCH_CHECK",
+      "recv": undefined,
+    },
+    {
+      "args": [],
+      "assigned": undefined,
+      "col": 16,
+      "end": 23,
+      "line": 4,
+      "loop": false,
+      "name": "is_cuda",
+      "recv": "x",
+    },
+    {
+      "args": [
+        {
+          "name": "x",
+          "text": "x",
+        },
+      ],
+      "assigned": [
+        "out",
+      ],
+      "col": 20,
+      "end": 30,
+      "line": 5,
+      "loop": false,
+      "name": "empty_like",
+      "recv": "torch",
+    },
+    {
+      "args": [
+        {
+          "name": undefined,
+          "text": "0",
+        },
+      ],
+      "assigned": undefined,
+      "col": 28,
+      "end": 32,
+      "line": 6,
+      "loop": false,
+      "name": "size",
+      "recv": "x",
+    },
+    {
+      "args": [
+        {
+          "name": undefined,
+          "text": "x[i].pow(2).mean() + eps",
+        },
+      ],
+      "assigned": undefined,
+      "col": 27,
+      "end": 32,
+      "line": 7,
+      "loop": true,
+      "name": "rsqrt",
+      "recv": "torch",
+    },
+    {
+      "args": [],
+      "assigned": undefined,
+      "col": 45,
+      "end": 49,
+      "line": 7,
+      "loop": true,
+      "name": "mean",
+      "recv": "x[i].pow(2)",
+    },
+    {
+      "args": [
+        {
+          "name": undefined,
+          "text": "2",
+        },
+      ],
+      "assigned": undefined,
+      "col": 38,
+      "end": 41,
+      "line": 7,
+      "loop": true,
+      "name": "pow",
+      "recv": "x[i]",
+    },
+    {
+      "args": [
+        {
+          "name": undefined,
+          "text": ""rms_norm"",
+        },
+        {
+          "name": undefined,
+          "text": "&rms_norm",
+        },
+        {
+          "name": undefined,
+          "text": ""RMSNorm"",
+        },
+      ],
+      "assigned": undefined,
+      "col": 4,
+      "end": 7,
+      "line": 12,
+      "loop": false,
+      "name": "def",
+      "recv": "m",
+    },
+  ],
+  "flags": [
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    1,
+  ],
+  "imports": [],
+  "lang": "cpp",
+  "mainBlocks": [],
+  "symbols": [
+    {
+      "defLine": 3,
+      "end": 9,
+      "kind": "def",
+      "name": "rms_norm",
+      "params": [
+        {
+          "kind": "pos",
+          "name": "x",
+        },
+        {
+          "kind": "pos",
+          "name": "w",
+        },
+        {
+          "kind": "pos",
+          "name": "eps",
+        },
+      ],
+      "parent": undefined,
+      "qual": "rms_norm",
+      "sig": "torch::Tensor rms_norm(torch::Tensor x, torch::Tensor w, double eps)",
+      "start": 3,
+    },
+    {
+      "defLine": 11,
+      "end": 13,
+      "kind": "def",
+      "name": "PYBIND11_MODULE",
+      "params": [],
+      "parent": undefined,
+      "qual": "PYBIND11_MODULE",
+      "sig": "PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)",
+      "start": 11,
+    },
+  ],
+  "trailing": {
+    "12": 44,
+  },
+}

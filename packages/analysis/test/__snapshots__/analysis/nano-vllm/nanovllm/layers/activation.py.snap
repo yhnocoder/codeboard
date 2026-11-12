@@ -1,0 +1,110 @@
+{
+  "calls": [
+    {
+      "args": [
+        {
+          "name": undefined,
+          "text": "2",
+        },
+        {
+          "name": undefined,
+          "text": "-1",
+        },
+      ],
+      "assigned": [
+        "x",
+        "y",
+      ],
+      "col": 17,
+      "end": 22,
+      "line": 10,
+      "loop": false,
+      "name": "chunk",
+      "recv": "x",
+    },
+    {
+      "args": [
+        {
+          "name": "x",
+          "text": "x",
+        },
+      ],
+      "assigned": undefined,
+      "col": 17,
+      "end": 21,
+      "line": 11,
+      "loop": false,
+      "name": "silu",
+      "recv": "F",
+    },
+  ],
+  "doc": undefined,
+  "flags": [
+    0,
+    0,
+    0,
+    1,
+    1,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+  ],
+  "imports": [
+    {
+      "line": 1,
+      "module": "torch",
+      "name": "torch",
+    },
+    {
+      "from": true,
+      "line": 2,
+      "module": "torch",
+      "name": "nn",
+    },
+    {
+      "line": 3,
+      "module": "torch.nn.functional",
+      "name": "F",
+    },
+  ],
+  "lang": "python",
+  "mainBlocks": [],
+  "symbols": [
+    {
+      "defLine": 6,
+      "end": 11,
+      "kind": "class",
+      "name": "SiluAndMul",
+      "params": [],
+      "parent": undefined,
+      "qual": "SiluAndMul",
+      "sig": "class SiluAndMul(nn.Module)",
+      "start": 6,
+    },
+    {
+      "defLine": 9,
+      "end": 11,
+      "kind": "def",
+      "name": "forward",
+      "params": [
+        {
+          "kind": "self",
+          "name": "self",
+        },
+        {
+          "kind": "pos",
+          "name": "x",
+        },
+      ],
+      "parent": "SiluAndMul",
+      "qual": "SiluAndMul.forward",
+      "sig": "def forward(self, x: torch.Tensor) -> torch.Tensor",
+      "start": 8,
+    },
+  ],
+  "trailing": {},
+}
