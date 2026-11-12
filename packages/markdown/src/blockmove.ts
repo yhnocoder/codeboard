@@ -29,7 +29,7 @@ function split(p: MdPart): Block[] | null {
   return starts.map((s, i) => {
     const c = counts(nodes[i]);
     const b: Block = {
-      src: p.md.slice(s, starts[i + 1] ?? p.md.length).replace(/\s+$/, ""),
+      src: p.md.slice(s, starts[i + 1] ?? p.md.length).replace(/\n\s*$/, ""),
       tables: Array.from({ length: c.t }, (_, j) => p.layout?.tables?.[t + j] ?? null),
       wrap: Array.from({ length: c.k }, (_, j) => !!p.layout?.wrap?.includes(k + j)),
     };
