@@ -7,6 +7,7 @@ import { marksInSlice } from "../src/editor/pastemarks";
 import { htmlSource } from "../src/editor/pastemarks";
 import { MathPreamble } from "../src/math";
 import { markTags } from "../src/marktag";
+import { guessLang, looksLikeCode } from "../src/editor/paste";
 
 // Notes with three ==highlights== in CJK text, one closing right before 。
 const SIMT = [
@@ -148,5 +149,20 @@ describe("<mark>x</mark> written as ==x==", () => {
       "text/html",
     ).body;
     expect(htmlSource(dom, new MathPreamble())).toBe("lit ==text== `<mark>c</mark>`");
+  });
+});
+
+describe("pasted plain text that reads as code", () => {
+  it("tells code from prose and Markdown, and guesses its language", () => {
+    const py = "def f(x):\n    # twice\n    return x * 2";
+    const ts = "const a = 1;\nfunction f() {\n  return a;\n}";
+    expect(looksLikeCode(py)).toBe(true);
+    expect(guessLang(py)).toBe("python");
+    expect(looksLikeCode(ts)).toBe(true);
+    expect(guessLang(ts)).toBe("typescript");
+    expect(looksLikeCode("Thanks for the review.\nI will fix the names tomorrow.")).toBe(false);
+    expect(looksLikeCode("one line = code;")).toBe(false);
+    expect(looksLikeCode("## Plan\n\n- return the value (a)\n- keep the class (b);")).toBe(false);
+    expect(looksLikeCode("```py\nx = 1\n```")).toBe(false);
   });
 });
