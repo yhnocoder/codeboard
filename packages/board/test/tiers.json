@@ -214,6 +214,8 @@
         "packages/markdown/src/editor/{index,icons,menu,bubble}.tsx",
         "packages/markdown/src/editor/{clipboard,codeblock,codelang,find,ghost,pairs,pastemarks,typora,inline,spans,srcdoc,srcmode,table,visible,widgets,types,ui,extensions,paste,pad,session,gaps,md,headings}.ts",
         "packages/markdown/src/ui/**",
+        "packages/markdown/src/editor/{band,gap,tablecmds,tablemove,tableview}.ts",
+        "packages/board/test/scenarios/md-bands.spec.ts",
         "packages/core/src/complete.ts",
         "packages/host/src/{deepseek,ai}.ts",
         "packages/board/test/typing-sequence.json",

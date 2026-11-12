@@ -415,8 +415,11 @@ math {
   overflow-x: auto;
   max-width: 100%;
 }
+/* cells break between words, never inside one: a table wider than the Note scrolls sideways in it */
 .md th,
 .md td {
+  overflow-wrap: normal;
+  word-break: normal;
   border: 0;
   border-right: 1px solid var(--hair);
   border-bottom: 1px solid var(--hair);
@@ -861,6 +864,7 @@ math {
   display: none;
 }
 .md-pm .tableWrapper {
+  position: relative;
   overflow-x: auto;
   margin: 4px 0;
 }
@@ -1338,50 +1342,165 @@ math {
   background: var(--hair);
   margin: 0 3px;
 }
-/* The code block pill (editor/codeblock.ts): inside the block's top-right corner, over the code (it takes no space), shown
-   on hover and while the caret is in the block; language, copy, wrap, more */
-/* --nc-pill: the page's pill colour for code blocks (the board's Warm Ink: white on the warm code background) */
-.md-pm pre.md-code > .md-cbpill {
+/* Toolbar bands of code blocks and tables (editor/band.ts): a 30px strip in the block's own colour, grown upward out of the
+   block's top edge over whatever is above it (the block takes no extra room). The band stays put; only its inner strip slides
+   (transform), clipped at the band's bottom edge, and two corner squares turn the block's own rounded top corners square so
+   band and block read as one shape. No hairline on top: one soft, wide shadow */
+.md-bands {
   position: absolute;
-  right: 8px;
-  top: 8px;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  box-sizing: border-box;
-  height: 34px;
-  padding: 3px;
-  border-radius: 10px;
-  background: var(--nc-pill, var(--surface));
-  box-shadow:
-    0 0 0 1px var(--hair),
-    0 1px 3px rgba(50, 35, 10, 0.06);
-  font: 13px / 18px var(--sys);
-  white-space: nowrap;
-  cursor: default;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: 4;
+}
+.md-band {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 30px;
+  pointer-events: none;
   user-select: none;
   -webkit-user-select: none;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity calc(var(--t, 1) * 120ms);
+  --md-band-drop: 0px;
+  --md-band-face: linear-gradient(var(--md-band-bg), var(--md-band-bg)), var(--surface);
 }
-/* .held: its menu or language list is open (a class, not :has(): a :has() rule is checked again on DOM changes across the board) */
-.md-pm pre.md-code:is(:hover, :focus-within) > .md-cbpill,
-.md-pm pre.md-code > .md-cbpill.held {
-  opacity: 1;
+.md-band-clip {
+  position: absolute;
+  inset: 0;
+  clip-path: inset(-18px -18px 0 -18px);
+}
+.md-band-slide {
+  position: absolute;
+  inset: 0;
+  transform: translateY(calc(100% + 16px));
+  transition: transform calc(var(--t, 1) * var(--md-band-out)) cubic-bezier(0.32, 0, 0.67, 0);
+}
+.md-band.on .md-band-slide {
+  transform: none;
+  transition: transform calc(var(--t, 1) * var(--md-band-in)) cubic-bezier(0.33, 1, 0.68, 1);
+}
+.md-band-face {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border-radius: var(--md-band-r) var(--md-band-r) 0 0;
+  background: var(--md-band-face);
+  box-shadow:
+    0 -1px 5px -2px rgba(50, 35, 10, 0.07),
+    0 -5px 14px -6px rgba(50, 35, 10, 0.07);
+}
+.md-band[data-over="code"] .md-band-face {
+  box-shadow:
+    0 -1px 5px -2px rgba(50, 35, 10, 0.09),
+    0 -5px 14px -6px rgba(50, 35, 10, 0.09);
+}
+.md-band.on .md-band-face {
   pointer-events: auto;
 }
-.md-pm .md-cbpill .md-lang {
+.md-band.on.through .md-band-face {
+  pointer-events: none;
+}
+/* over text, the sliver of the covered line that still shows above the band fades out instead of being cut */
+.md-band-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 10px;
+  display: none;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--surface) 0%, transparent), var(--surface));
+}
+.md-band[data-over="text"] .md-band-fade {
+  display: block;
+}
+.md-band-row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
-  max-width: 160px;
-  height: 28px;
+  height: 30px;
+  padding: 0 14px 0 var(--md-band-pl, 22px);
+  font: 12px / 16px var(--sys);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity calc(var(--t, 1) * 70ms);
+}
+.md-band.on .md-band-row {
+  opacity: 1;
+  transition: opacity calc(var(--t, 1) * 100ms) calc(var(--t, 1) * 60ms);
+}
+.md-band-cnr {
+  position: absolute;
+  top: calc(100% - var(--md-band-drop));
+  box-sizing: border-box;
+  width: var(--md-band-r);
+  height: var(--md-band-r);
+  background: var(--md-band-face);
+  opacity: 0;
+  transition: opacity calc(var(--t, 1) * 60ms) calc(var(--t, 1) * 50ms);
+}
+.md-band-cnr.l {
+  left: 0;
+}
+.md-band-cnr.r {
+  right: 0;
+}
+.md-band.on .md-band-cnr {
+  opacity: 1;
+  transition: opacity calc(var(--t, 1) * 50ms);
+}
+.md-band-sp {
+  flex: 1;
+  min-width: 8px;
+}
+.md-bb {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 24px;
   margin: 0;
-  padding: 0 8px 0 10px;
+  padding: 0;
   border: 0;
-  border-radius: 7px;
+  border-radius: 6.5px;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.md-bb + .md-bb {
+  margin-left: 1px;
+}
+.md-bb .md-ico {
+  width: 16px;
+  height: 16px;
+  --ico-w: 1.3;
+}
+.md-bb.dots .md-ico {
+  --ico-w: 2;
+}
+.md-bb:hover,
+.md-bb.on {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 6.5%, transparent);
+}
+.md-bb.done {
+  color: var(--ok, var(--accent));
+}
+.md-bb.danger:hover {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
+.md-band .md-lang {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 160px;
+  height: 22px;
+  margin: 0 0 0 -6px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
   outline: none;
   background: none;
   box-shadow: none;
@@ -1390,72 +1509,35 @@ math {
   letter-spacing: 0.01em;
   cursor: pointer;
 }
-.md-pm .md-cbpill .md-lang .md-lang-nm {
+.md-band .md-lang .md-lang-nm {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* the chevron always shown, as in the demo: the label reads as a menu even with just the caret in the block */
-.md-pm .md-cbpill .md-lang .md-lang-v {
+.md-band .md-lang .md-lang-v {
   flex: none;
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   color: var(--ink-3);
   opacity: 0.8;
 }
-.md-pm .md-cbpill .md-lang:is(:hover, [aria-expanded="true"]) {
+.md-band .md-lang:is(:hover, [aria-expanded="true"]) {
   color: var(--ink);
-  background: var(--hlrow);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
 }
-.md-pm .md-cbpill .md-lang:focus-visible {
+.md-band .md-lang:focus-visible {
   outline: 1.5px solid var(--accent);
   outline-offset: 1px;
 }
-.md-pm .md-cbsep {
-  flex: none;
-  width: 1px;
-  height: 18px;
-  margin: 0 3px;
-  background: var(--hair);
+/* a band's ⋯ menu (on the page, under its button) */
+.md-bandmenu {
+  position: fixed;
+  left: 0;
+  top: 0;
 }
-.md-pm .md-cbb {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 28px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 7px;
-  background: none;
-  color: var(--ink-2);
-  cursor: pointer;
-}
-.md-pm .md-cbb .md-ico {
-  width: 17px;
-  height: 17px;
-  --ico-w: 1.3;
-}
-.md-pm .md-cbb.dots .md-ico {
-  --ico-w: 2;
-}
-.md-pm .md-cbb:hover {
-  color: var(--ink);
-  background: var(--hlrow);
-}
-.md-pm .md-cbb.on {
-  color: var(--ink);
-  background: color-mix(in srgb, var(--ink) 9%, transparent);
-}
-.md-pm .md-cbb.done {
-  color: var(--ok, var(--accent));
-}
-.md-pm .md-cbmenu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
+.md-bandmenu .md-menu {
   min-width: 180px;
 }
-.md-pm .md-cbmenu button.danger {
+.md-bandmenu button.danger {
   color: var(--warn);
 }
 /* static render: a code block set to wrap (card data, layout.ts) */
@@ -1464,42 +1546,227 @@ math {
   white-space: pre-wrap;
   word-break: break-all;
 }
-/* Table toolbar pill (editor/table.ts): fixed on the page, just above the table's top-right corner */
-.md-tbar {
-  position: fixed;
-  z-index: 55;
-  left: 0;
-  top: 0;
+/* A table's band: the header's colour, the table's frame drawn on up around it; on the left the size (it opens the size
+   grid), on the right as many actions as fit, the rest in ⋯ */
+.md-band-table {
+  --md-band-bg: var(--hlrow);
+  --md-band-r: 6px;
+  --md-band-pl: 8px;
+}
+.md-band-table .md-band-face {
+  border: 1px solid var(--hair);
+  border-bottom: 0;
+  box-shadow:
+    0 -1px 5px -2px rgba(50, 35, 10, 0.06),
+    0 -5px 14px -6px rgba(50, 35, 10, 0.06);
+}
+.md-band-table .md-band-cnr {
+  border-top: 1px solid var(--hair);
+}
+.md-band-table .md-band-cnr.l {
+  border-left: 1px solid var(--hair);
+}
+.md-band-table .md-band-cnr.r {
+  border-right: 1px solid var(--hair);
+}
+/* a table narrower than its band's size and ⋯: the band hangs past the table's right edge, rounded there */
+.md-band-table.wide .md-band-face {
+  border-bottom-right-radius: var(--md-band-r);
+}
+.md-band-table.wide .md-band-cnr.r {
+  display: none;
+}
+.md-band-table .md-band-row {
+  padding-right: 7px;
+}
+.md-band-gap {
+  flex: none;
+  width: 6px;
+}
+.md-band-table .md-bb[hidden] {
+  display: none;
+}
+.md-tsize {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: 1px;
-  padding: 2px;
-}
-.md-tbar .md-btn.md-ib {
-  width: 26px;
+  gap: 6px;
   height: 24px;
-  padding: 0;
-  justify-content: center;
+  margin: 0;
+  padding: 0 8px 0 6px;
+  border: 0;
+  border-radius: 6.5px;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
 }
-.md-tbar .md-btn.md-ib.danger:hover {
-  color: var(--warn);
+.md-tsize .md-ico {
+  width: 14px;
+  height: 14px;
+  color: var(--ink-3);
+  --ico-w: 1.2;
+}
+.md-tsize:hover,
+.md-tsize.on {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 6.5%, transparent);
+}
+/* A table's overlay (editor/tableview.ts), inside its scrolling wrapper: the grips on the hovered row and column, and while one
+   is dragged its lifted copy, the slot it leaves (tinted) and the drop line */
+.md-tov {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: 3;
+}
+.md-tgrip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--ink-3);
+  box-shadow:
+    0 0 0 0.5px var(--hair),
+    0 1px 2px rgba(50, 35, 10, 0.13);
+  cursor: grab;
+  touch-action: none;
+  opacity: 0;
+  transform: scale(0.55);
+  pointer-events: none;
+  transition:
+    opacity calc(var(--t, 1) * 90ms) ease-out,
+    transform calc(var(--t, 1) * 90ms) ease-out;
+}
+.md-tgrip.on,
+.md-tgrip.act {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.md-tgrip svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: currentColor;
+}
+.md-tgrip:hover,
+.md-tgrip.act {
+  background: var(--accent);
+  color: color-mix(in srgb, var(--accent-ink) 92%, transparent);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.md-tgrip.act {
+  cursor: grabbing;
+}
+.md-tgrip.row {
+  width: 8px;
+  height: 16px;
+}
+.md-tgrip.col {
+  width: 16px;
+  height: 7px;
+}
+.md-tcopy {
+  position: absolute;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 0 solid var(--hair);
+  background: var(--surface);
+  white-space: pre-wrap;
+  vertical-align: top;
+}
+.md-tcopy.th {
+  background: linear-gradient(var(--hlrow), var(--hlrow)), var(--surface);
+  font-weight: 600;
+}
+.md-tcopy > p {
+  margin: 0;
+}
+.md-tghost,
+.md-thole,
+.md-tdrop,
+.md-tgone {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+.md-tghost,
+.md-tgone {
+  font-size: 0.95em;
+}
+.md-tghost {
+  z-index: 3;
+  scale: 1;
+  transition: scale calc(var(--t, 1) * 120ms) cubic-bezier(0.33, 1, 0.68, 1);
+}
+.md-tghost.lift {
+  scale: 1.015;
+}
+.md-tghost.glide {
+  transition:
+    translate calc(var(--t, 1) * var(--md-tslide)) cubic-bezier(0.33, 1, 0.68, 1),
+    scale calc(var(--t, 1) * var(--md-tslide)) cubic-bezier(0.33, 1, 0.68, 1);
+}
+.md-tg-sh {
+  position: absolute;
+  inset: 0;
+  border-radius: 5px;
+  opacity: 0;
+  transition: opacity calc(var(--t, 1) * 120ms) ease-out;
+  box-shadow:
+    0 0 0 0.5px var(--hair),
+    0 2px 5px rgba(50, 35, 10, 0.08),
+    0 12px 26px -8px rgba(50, 35, 10, 0.32);
+}
+.md-tghost.lift .md-tg-sh {
+  opacity: 1;
+}
+.md-tg-body {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0.96;
+  clip-path: inset(0 round 5px);
+}
+.md-tghost.glide .md-tg-body {
+  transition:
+    opacity calc(var(--t, 1) * var(--md-tslide)) ease-out,
+    clip-path calc(var(--t, 1) * var(--md-tslide)) ease-out;
+}
+.md-tghost.land .md-tg-body {
+  opacity: 1;
+  clip-path: inset(0 round 0);
+}
+.md-thole {
+  z-index: 2;
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+  transition: translate calc(var(--t, 1) * var(--md-tslide)) cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.md-tdrop {
+  z-index: 3;
+  min-width: 2px;
+  min-height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  transition: opacity calc(var(--t, 1) * 100ms);
+}
+.md-tdrop.out {
+  opacity: 0;
+}
+.md-tgone {
+  z-index: 2;
+  overflow: hidden;
 }
 /* --md-float-ring: a page can draw a firmer edge where its float shadow alone doesn't show (the board's dark theme) */
-.mdui.md-tbar,
 .md-gpick {
   box-shadow: var(--md-float-ring, 0 0 0 0 transparent), var(--sh-float);
-}
-.md-tbar .sep {
-  width: 1px;
-  height: 16px;
-  background: var(--hair);
-  margin: 0 3px;
-}
-.md-tcount {
-  padding: 0 4px;
-  font: 11px var(--sys);
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
 }
 .md-gpick {
   position: fixed;

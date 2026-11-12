@@ -12,6 +12,7 @@ import { EMOJI, EMOJI_NAMES } from "../emoji";
 import { ParaView, revealMeta } from "./inline";
 import { tableEditing } from "./table";
 import { CodeBlockView, codeGapClick } from "./codeblock";
+import { bandPlugin } from "./band";
 import { MathBlockView } from "./mathblock";
 import { mathHintsPlugin } from "./mathhints";
 import { imageEditing } from "./image";
@@ -55,7 +56,7 @@ export function editorExtensions(
           )
         : x.name === "codeBlock"
           ? (x as TNode).extend({
-              addProseMirrorPlugins: () => [codeGapClick()],
+              addProseMirrorPlugins: () => [codeGapClick(), bandPlugin()],
               addNodeView:
                 () =>
                 ({ node, view, getPos }) =>

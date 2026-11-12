@@ -1,6 +1,6 @@
 // ProseMirror 的文档是唯一的来源：CodeMirror 里的改动转成 ProseMirror 的改动，反过来也一样，撤销走 ProseMirror
 // （照 CodeMirror 官网 “CodeMirror in ProseMirror” 的做法）
-import type { Node as PMNode, ResolvedPos } from "@tiptap/pm/model";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import { Plugin, Selection, TextSelection } from "@tiptap/pm/state";
 import { GapCursor } from "@tiptap/pm/gapcursor";
 import { closeHistory } from "@tiptap/pm/history";
@@ -18,11 +18,10 @@ import { completionStatus } from "@codemirror/autocomplete";
 import { codeEditor, type CodeEditor, type LspHost } from "../cm/editor";
 import { mdOf } from "./md";
 import { LangBox, type CodeLang } from "./codelang";
-import { iconEl, type IconName } from "../ui/icons";
-import { kindClass, type MdClasses } from "../ui/classes";
-
-/** GapCursor.valid 是 prosemirror-gapcursor 自己的箭头键用的判断，有，只是类型里没写 */
-const gapAt = ($p: ResolvedPos) => (GapCursor as unknown as { valid($p: ResolvedPos): boolean }).valid($p);
+import { iconEl } from "../ui/icons";
+import { Band, bandButton, bandMenu } from "./band";
+import type { MdClasses } from "../ui/classes";
+import { gapAt, gapPress } from "./gap";
 
 /**
  * 点在两个代码块之间的空隙里、或者点在代码块靠那条缝的内边距上：光标停在两块中间。prosemirror-gapcursor 自己的点击只看
@@ -40,35 +39,13 @@ export const codeGapClick = () =>
             (t !== view.dom && !(t.parentElement === view.dom && t.matches("pre.md-code")))
           )
             return false;
-          const doc = view.state.doc,
-            y = e.clientY;
-          for (let i = 0, at = 0; i <= doc.childCount; at += i < doc.childCount ? doc.child(i).nodeSize : 0, i++) {
-            const before = i > 0 ? (view.nodeDOM(at - doc.child(i - 1).nodeSize) as HTMLElement | null) : null;
-            const after = i < doc.childCount ? (view.nodeDOM(at) as HTMLElement | null) : null;
-            if (!(before?.matches("pre.md-code") || after?.matches("pre.md-code"))) continue;
-            // 缝从上一块的字的下沿到下一块的字的上沿（代码块的内边距算在缝里）
-            const top = before ? edge(before, "bottom") : -Infinity,
-              bottom = after ? edge(after, "top") : Infinity;
-            if (y < top || y > bottom) continue;
-            const $p = doc.resolve(at);
-            if (!gapAt($p)) return false;
-            e.preventDefault();
-            view.dispatch(view.state.tr.setSelection(new GapCursor($p)));
-            view.focus();
-            return true;
-          }
-          return false;
+          if (!gapPress(view, e.clientY)) return false;
+          e.preventDefault();
+          return true;
         },
       },
     },
   });
-/** 一块的内容的上沿 / 下沿：代码块不算内边距，别的块就是它的边 */
-function edge(el: HTMLElement, side: "top" | "bottom") {
-  const r = el.getBoundingClientRect();
-  if (!el.matches("pre.md-code")) return r[side];
-  const cs = getComputedStyle(el);
-  return side === "top" ? r.top + parseFloat(cs.paddingTop) : r.bottom - parseFloat(cs.paddingBottom);
-}
 
 // Note 的查找（editor/find.ts）在代码块里的匹配：代码块是 CodeMirror 自己画的，匹配用它的装饰画（class 和正文里的高亮同名）
 export type Found = { from: number; to: number; cls: string };
@@ -115,9 +92,8 @@ export class CodeBlockView implements NodeView {
   updating = false;
   private found = "";
   private wrapper = new Compartment();
-  private pill: HTMLElement;
+  private band: Band;
   private wrapBtn: HTMLButtonElement;
-  private menu: HTMLElement | null = null;
   private classes?: () => MdClasses | undefined;
   constructor(
     public node: PMNode,
@@ -190,29 +166,12 @@ export class CodeBlockView implements NodeView {
       },
       back: () => this.cm.focus(),
       left: (to) => this.view.dom.dispatchEvent(new FocusEvent("blur", { relatedTarget: to })),
+      held: (on) => this.band.set("held", on),
     });
-    // The pill in the block's top-right corner (shown on hover and while the caret is in the block; it overlays the code
-    // and takes no space): language, copy, wrap, and a menu with the rest
-    this.pill = document.createElement("div");
-    this.pill.className = "md-cbpill";
-    this.pill.contentEditable = "false";
-    const btn = (icon: IconName, tip: string, run: (b: HTMLButtonElement) => void) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "md-cbb";
-      b.tabIndex = -1;
-      b.dataset.tip = tip;
-      b.setAttribute("aria-label", tip);
-      b.append(iconEl(icon));
-      b.addEventListener("mousedown", (e) => e.preventDefault());
-      b.addEventListener("pointerdown", (e) => e.stopPropagation());
-      b.addEventListener("click", (e) => {
-        e.preventDefault();
-        run(b);
-      });
-      return b;
-    };
-    const copy = btn("copy", "Copy code", (b) => {
+    // The band above the block (shown on hover and while the caret is in the block; it floats over what is above and takes
+    // no space): language, copy, wrap, and a menu with the rest
+    this.band = new Band(view, "code", { el: this.dom });
+    const copy = bandButton(iconEl("copy"), "Copy code", "copy", (b) => {
       void navigator.clipboard?.writeText(this.node.textContent).then(
         () => {
           b.classList.add("done");
@@ -227,13 +186,22 @@ export class CodeBlockView implements NodeView {
         () => {},
       );
     });
-    this.wrapBtn = btn("wrap", "Wrap lines", () => this.setAttr({ wrap: !this.node.attrs.wrap }));
-    const more = btn("dots", "More", (b) => (this.menu ? this.closeMenu() : this.openMenu(b)));
+    this.wrapBtn = bandButton(iconEl("wrap"), "Wrap lines", "wrap", () =>
+      this.setAttr({ wrap: !this.node.attrs.wrap }),
+    );
+    const more = bandButton(iconEl("dots"), "More", "more", (b) =>
+      this.closeMenu ? this.closeMenu() : this.openMenu(b),
+    );
     more.classList.add("dots");
-    const sep = document.createElement("span");
-    sep.className = "md-cbsep";
-    this.pill.append(this.langBox.label, sep, copy, this.wrapBtn, more);
-    this.dom.append(this.pill);
+    const sp = document.createElement("span");
+    sp.className = "md-band-sp";
+    this.band.row.append(this.langBox.label, sp, copy, this.wrapBtn, more);
+    this.dom.addEventListener("pointerenter", () => this.band.set("hover", true));
+    this.dom.addEventListener("pointerleave", () => this.band.set("hover", false));
+    this.dom.addEventListener("focusin", () => this.band.set("focus", true));
+    this.dom.addEventListener("focusout", (e) =>
+      this.band.set("focus", e.relatedTarget instanceof Node && this.dom.contains(e.relatedTarget)),
+    );
     this.showWrap();
   }
 
@@ -249,53 +217,23 @@ export class CodeBlockView implements NodeView {
     this.dom.classList.toggle("wrap", on);
   }
   private openMenu(anchor: HTMLElement) {
-    const m = (this.menu = document.createElement("div"));
-    m.className = `${kindClass(this.classes?.(), "menu")} open md-cbmenu`;
-    const item = (label: string, run: () => void, danger = false) => {
-      const b = document.createElement("button");
-      b.className = danger ? "danger" : "";
-      b.innerHTML = `<span class="lb"></span>`;
-      b.firstElementChild!.textContent = label;
-      b.addEventListener("mousedown", (e) => e.preventDefault());
-      b.addEventListener("click", () => {
-        this.closeMenu();
-        run();
-      });
-      m.append(b);
-    };
-    item("Convert to paragraph", () => this.toParagraphs());
-    item("Delete code block", () => this.remove(), true);
-    m.addEventListener("pointerdown", (e) => e.stopPropagation());
-    anchor.classList.add("on");
-    this.pill.classList.add("held");
-    this.pill.append(m);
-    const away = (e: Event) => {
-      if (!m.contains(e.target as Node) && e.target !== anchor && !anchor.contains(e.target as Node)) this.closeMenu();
-    };
-    // Esc closes only the menu (the code editor's own Esc would leave edit mode)
-    const esc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        this.closeMenu();
-        this.cm.focus();
-      }
-    };
-    document.addEventListener("mousedown", away, true);
-    document.addEventListener("keydown", esc, true);
-    this.offMenu = () => {
-      document.removeEventListener("mousedown", away, true);
-      document.removeEventListener("keydown", esc, true);
-      anchor.classList.remove("on");
-      this.pill.classList.remove("held");
-    };
+    this.band.set("held", true);
+    this.closeMenu = bandMenu(
+      anchor,
+      [
+        { label: "Convert to paragraph", run: () => this.toParagraphs() },
+        { label: "Delete code block", run: () => this.remove(), danger: true },
+      ],
+      this.classes?.(),
+      (refocus) => {
+        this.closeMenu = null;
+        this.band.set("held", false);
+        // Esc closes only the menu (the code editor's own Esc would leave edit mode)
+        if (refocus) this.cm.focus();
+      },
+    );
   }
-  private offMenu = () => {};
-  private closeMenu() {
-    this.menu?.remove();
-    this.menu = null;
-    this.offMenu();
-  }
+  private closeMenu: (() => void) | null = null;
   /** The code's lines become paragraphs of source text (one per line; empty lines dropped) */
   private toParagraphs() {
     const pos = this.getPos();
@@ -438,7 +376,8 @@ export class CodeBlockView implements NodeView {
     return true;
   }
   destroy() {
-    this.closeMenu();
+    this.closeMenu?.();
+    this.band.destroy();
     this.cm.destroy();
     this.langBox.destroy();
   }

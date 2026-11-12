@@ -52,6 +52,8 @@ export type LangBoxHost = {
   back: () => void;
   /** 焦点从列表直接去了编辑器外面：替编辑器发一个 blur（用的一方照常保存退出） */
   left: (to: EventTarget | null) => void;
+  /** The list is open (true) or closed: its block's toolbar stays up meanwhile */
+  held?: (on: boolean) => void;
   langs: () => readonly CodeLang[];
   classes?: () => MdClasses | undefined;
   passKeys?: PassKeys;
@@ -130,7 +132,7 @@ export class LangBox {
     });
     document.body.append(b);
     this.label.setAttribute("aria-expanded", "true");
-    this.label.closest(".md-cbpill")?.classList.add("held");
+    this.host.held?.(true);
     this.touched = false;
     this.filter(false);
     // 和别的菜单一样从 .97 放大、淡入（.ctx → .ctx.open 的过渡：先让没打开的样子排一次版）；看得见了才拿得到焦点
@@ -149,7 +151,7 @@ export class LangBox {
     this.busy = false;
     this.i = -1;
     this.label.setAttribute("aria-expanded", "false");
-    this.label.closest(".md-cbpill")?.classList.remove("held");
+    this.host.held?.(false);
   }
 
   /** typed：用户打了字（选中第一项）；否则（刚打开）选中现在的语言 */
