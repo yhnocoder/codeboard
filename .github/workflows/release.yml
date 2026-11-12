@@ -131,7 +131,7 @@ jobs:
           if [ -z "$OVSX_PAT" ]; then echo "::warning::OVSX_PAT is not set as a repository secret."; exit 0; fi
           npx -y ovsx@1.2.0 verify-pat yhnocoder
 
-  # Only the extension's releases (v*): publishing an Android viewer or Markdown release raises the same event
+  # Only the extension's releases (v*): publishing an Android viewer release raises the same event
   publish:
     if: startsWith(github.event.release.tag_name || inputs.publish_tag, 'v')
     runs-on: ubuntu-24.04
