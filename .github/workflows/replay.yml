@@ -89,6 +89,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/github-script@v8
         with:
+          retries: 3 # the API answers 503 now and then
           script: |
             const fs = require("fs");
             const A = "test-out/artifacts";

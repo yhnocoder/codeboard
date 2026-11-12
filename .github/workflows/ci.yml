@@ -166,6 +166,7 @@ jobs:
         env:
           JOBS: ${{ toJSON(needs) }}
         with:
+          retries: 3 # the API answers 503 now and then
           script: |
             const { ciReport, withSection } = await import(`${process.env.GITHUB_WORKSPACE}/tools/test/ci-report.mjs`);
             const section = ciReport({

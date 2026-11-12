@@ -162,6 +162,7 @@ jobs:
         env:
           JOBS: ${{ toJSON(needs) }}
         with:
+          retries: 3 # the API answers 503 now and then
           script: |
             const { regularReport } = await import(`${process.env.GITHUB_WORKSPACE}/tools/test/regular-report.mjs`);
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
