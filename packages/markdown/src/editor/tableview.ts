@@ -223,6 +223,13 @@ export class TableBlockView extends TableView {
       n = Math.floor((w - fixed - 2 * GAP) / BTN);
     const keep = new Set(KEEP.slice(0, Math.max(0, n)));
     for (const [a, b] of this.btns) b.hidden = !keep.has(a);
+    // a group gap with no shown button before it would widen the band past what fixed counts for
+    let shown = false;
+    for (const el of this.band.row.children as Iterable<HTMLElement>)
+      if (el.classList.contains("md-band-gap")) {
+        el.hidden = !shown;
+        shown = false;
+      } else if (el.classList.contains("md-bb") && el !== this.more) shown ||= !el.hidden;
     return fixed;
   }
   private openMenu(anchor: HTMLElement) {
