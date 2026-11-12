@@ -11,6 +11,8 @@ import { revealMeta } from "./inline";
 import { pasteSlice } from "./headings";
 import { pastedImages } from "./image";
 import { mdOf } from "./md";
+import { markTags } from "../marktag";
+import { blockInfo, flat } from "./spans";
 
 /** Markdown → editor blocks (source paragraphs) as a slice open at a paragraph on either end, so the first joins the
  *  text before the caret and the last the text after it */
@@ -37,7 +39,10 @@ export function handlePaste(e: Editor, ev: ClipboardEvent): boolean {
   const html = cd.getData("text/html");
   // only plain text (e-books, typeset formulas on web pages): "shown text + TeX" keeps only $TeX$; HTML is handled in mathInSlice
   const tex = mdOf(e.state).math;
-  const text = html || cd.getData("vscode-editor-data") ? raw : undoubleTex(raw, tex);
+  const vs = cd.getData("vscode-editor-data");
+  // <mark>x</mark> is written ==x== (code copied from VS Code stays as it is, so does a line pasted into an inline code span)
+  const plain = html || vs ? raw : undoubleTex(raw, tex),
+    text = vs || inCode(e) ? plain : markTags(plain);
   const put = (slice: Slice) => {
     e.view.dispatch(
       revealMeta(pasteSlice(e.state.tr, slice)).scrollIntoView().setMeta("paste", true).setMeta("uiEvent", "paste"),
@@ -53,7 +58,6 @@ export function handlePaste(e: Editor, ev: ClipboardEvent): boolean {
     return true;
   }
   // code copied from VS Code: indentation kept; several lines become a code block (in VS Code's language)
-  const vs = cd.getData("vscode-editor-data");
   if (vs && text) {
     let lang = "";
     try {
@@ -103,6 +107,13 @@ export function handlePaste(e: Editor, ev: ClipboardEvent): boolean {
   }
   if (own) return put(sourceSlice(e, text));
   return put(pastedMd(text) ? sourceSlice(e, texBrackets(text)) : linesSlice(e, text));
+}
+function inCode(e: Editor) {
+  const $p = e.state.selection.$from,
+    off = $p.parentOffset;
+  return flat(blockInfo($p.parent.textContent, false).spans).some(
+    (s) => s.tag?.nodeName === "code" && s.inner && off > s.inner[0] && off < s.inner[1],
+  );
 }
 function dedent(s: string) {
   const ls = s.split("\n");

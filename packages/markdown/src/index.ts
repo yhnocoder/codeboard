@@ -23,6 +23,7 @@ export {
   pickCopy,
 } from "./picture";
 export { imageCaption, setImageCaption, tableCaption, setTableCaption } from "./caption";
+export { markTags } from "./marktag";
 export {
   /** @public */
   imagePlayback,

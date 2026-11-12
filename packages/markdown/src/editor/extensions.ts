@@ -1,6 +1,6 @@
 // The editor's extensions: the shared schema's nodes with their editing views, the typed-in menus, keys, the pad paragraph
 // at the end, find, Typora-style source editing, placeholder, drag handle and AI completion
-import { Extension, type AnyExtension, type Editor, type Node as TNode, type Range } from "@tiptap/core";
+import { Extension, InputRule, type AnyExtension, type Editor, type Node as TNode, type Range } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Placeholder } from "@tiptap/extensions";
@@ -25,6 +25,7 @@ import { saveImage, uiOf } from "./ui";
 import type { MdEditorOpts, RefGroup, RefItem, RefPick } from "./types";
 import type { Md } from "../markdown";
 import { mdPlugin } from "./md";
+import { markTags } from "../marktag";
 
 export function editorExtensions(
   md: Md,
@@ -256,6 +257,26 @@ export function editorExtensions(
   });
   const Rules = Extension.create({
     name: "cbRules",
+    addInputRules: () => [
+      // the > that closes a typed <mark>x</mark>: it becomes ==x== (one undo gives back the tag as typed)
+      new InputRule({
+        find: /<mark>[^<>\n]*<\/mark>$/i,
+        handler: ({ state, range, match }) => {
+          const $f = state.doc.resolve(range.from),
+            p = $f.parent,
+            head = p.textBetween(0, $f.parentOffset, undefined, "\ufffc"),
+            tail = p.textBetween(state.doc.resolve(range.to).parentOffset, p.content.size, undefined, "\ufffc");
+          // after a ` not closed yet, the tag is most likely being typed into an inline code span
+          if (openTick(head)) return null;
+          const done = markTags(head + match[0] + tail);
+          if (!done.startsWith(head) || !done.endsWith(tail) || done.length < head.length + tail.length) return null;
+          const mid = done.slice(head.length, done.length - tail.length);
+          if (mid === match[0]) return null;
+          state.tr.insertText(mid, range.from, range.to);
+          return undefined;
+        },
+      }),
+    ],
     addKeyboardShortcuts() {
       return {
         // Shift+↵: a line break inside the paragraph or cell, written as <br> (the source shows it); a heading is one line
@@ -361,4 +382,15 @@ export function editorExtensions(
       : []),
     Ghost.configure({ complete: () => o.complete }),
   ];
+}
+
+/** text ends inside a run of backticks no later run of the same length closes */
+function openTick(text: string): boolean {
+  const runs = [...text.matchAll(/`+/g)].map((m) => m[0].length);
+  for (let i = 0; i < runs.length; i++) {
+    const j = runs.indexOf(runs[i], i + 1);
+    if (j < 0) return true;
+    i = j;
+  }
+  return false;
 }

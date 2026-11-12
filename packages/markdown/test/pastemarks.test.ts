@@ -6,6 +6,7 @@ import { mdSchema, parseMd, pastedMd, serializeMd } from "../src/schema";
 import { marksInSlice } from "../src/editor/pastemarks";
 import { htmlSource } from "../src/editor/pastemarks";
 import { MathPreamble } from "../src/math";
+import { markTags } from "../src/marktag";
 
 // Notes with three ==highlights== in CJK text, one closing right before 。
 const SIMT = [
@@ -126,5 +127,26 @@ describe("pasted HTML with literal == ~~ ---", () => {
     const box = document.createElement("div");
     box.innerHTML = "<p>a == b, x ~ y</p><p><mark>已经高亮</mark></p>";
     expect(marksInSlice(PMParser.fromSchema(schema).parseSlice(box), schema)).toBeNull();
+  });
+});
+
+describe("<mark>x</mark> written as ==x==", () => {
+  it("rewrites a plain one, moving spaces at its ends outside; code, HTML blocks, escaped ones and what == cannot say stay", () => {
+    expect(markTags("a <mark>hot</mark> b <mark> c </mark>d")).toBe("a ==hot== b  ==c== d");
+    const kept = [
+      '`<mark>c</mark>` \\<mark>esc</mark> <mark class="x">a</mark> <mark>a <b>b</b></mark> <mark></mark> <mark>a==b</mark>',
+      "```\n<mark>c</mark>\n```",
+      "para\n\n    <mark>indented</mark>",
+      "<div>\n<mark>in html</mark>\n</div>",
+    ];
+    for (const k of kept) expect(markTags(k)).toBe(k);
+    expect(markTags("- item <mark>li</mark>")).toBe("- item ==li==");
+  });
+  it("reads one left as text in pasted HTML as a highlight, not one in code", () => {
+    const dom = new DOMParser().parseFromString(
+      "<p>lit &lt;mark&gt;text&lt;/mark&gt; <code>&lt;mark&gt;c&lt;/mark&gt;</code></p>",
+      "text/html",
+    ).body;
+    expect(htmlSource(dom, new MathPreamble())).toBe("lit ==text== `<mark>c</mark>`");
   });
 });

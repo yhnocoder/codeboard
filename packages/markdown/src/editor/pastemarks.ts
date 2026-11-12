@@ -12,6 +12,7 @@ import {
 import { mdSchema, parseSource, serializeMd } from "../schema";
 import { HIDE, shifted } from "../placeholders";
 import { mathInSlice } from "./pastemath";
+import { markTags } from "../marktag";
 import type { MathPreamble } from "../math";
 
 // 藏成私用区的字（placeholders.ts 的 HIDE）：解析器当普通字，位置、长度不变，读完再换回来
@@ -56,16 +57,17 @@ function isRule(n: PMNode, schema: Schema): boolean {
   return ns?.length === 1 && ns[0].type === "horizontalRule";
 }
 
+// a <mark>x</mark> left as text is read as the ==x== it is written as
 function marksInBlock(b: PMNode, schema: Schema): PMNode {
-  if (!/==|~~/.test(b.textContent)) return b;
+  if (!/==|~~|<mark>/i.test(b.textContent)) return b;
   const out: PMNode[] = [];
   let changed = false;
   b.forEach((c) => {
-    if (!c.isText || c.marks.some((m) => m.type.spec.code) || !/==|~~/.test(c.text!)) {
+    if (!c.isText || c.marks.some((m) => m.type.spec.code) || !/==|~~|<mark>/i.test(c.text!)) {
       out.push(c);
       return;
     }
-    const ns = parseSource(hide(c.text!), true);
+    const ns = parseSource(hide(markTags(c.text!)), true);
     if (!ns?.length || ns.some((j) => j.type !== "text") || !ns.some((j) => j.marks?.length)) {
       out.push(c);
       return;

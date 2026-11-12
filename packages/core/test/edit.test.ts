@@ -306,7 +306,7 @@ describe("danglingRefs", () => {
 describe("migrateBoard", () => {
   it("refuses a board written by a newer CodeBoard instead of wiping it", () => {
     expect(() =>
-      migrateBoard({ version: 14, id: "b", name: "B", cards: [{ id: "a", kind: "code", segments: [] }] }),
+      migrateBoard({ version: 15, id: "b", name: "B", cards: [{ id: "a", kind: "code", segments: [] }] }),
     ).toThrow(/newer/);
   });
   it("v10 → v11: [[title]] references to this board's cards and Sections carry their ids; code, other boards and ids stay", () => {
@@ -394,7 +394,7 @@ describe("migrateBoard", () => {
   it("v7 → v8 upgrades shared card files too", () => {
     expect(
       loadSharedCard({ version: 7, card: { id: "s", kind: "note", md: "x", bg: false, hand: "green" }, sidenotes: [] }),
-    ).toEqual({ version: 13, card: { id: "s", kind: "note", md: "x", look: "mark", hand: "green" }, sidenotes: [] });
+    ).toEqual({ version: 14, card: { id: "s", kind: "note", md: "x", look: "mark", hand: "green" }, sidenotes: [] });
     expect(loadSharedCard({ version: 6, card: { ...code("s"), nobg: true }, sidenotes: [] }).card).toMatchObject({
       bg: false,
     });
