@@ -260,6 +260,7 @@ const OUTLIVES_BOARD: Record<string, string> = {
   "state/blocks.ts:tinted": "what that style element holds",
   "state/tilt.ts:raf": "the tilt frame loop: stops by itself once no card turns",
   "md/lazy.ts:pending": "Markdown render jobs by element: ones no longer on the page are skipped",
+  "md/lazy.ts:shownHtml": "the HTML each rendered element holds, keyed by the element (weak): it goes with the element",
   "md/lazy.ts:idleOn": "the render queue's idle loop",
   "md/lazy.ts:spent": "the render queue's frame budget",
   "md/lazy.ts:spentAt": "the render queue's frame budget: when it was last refilled",
