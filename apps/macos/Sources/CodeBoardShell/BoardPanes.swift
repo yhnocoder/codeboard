@@ -2,12 +2,6 @@ import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
 
-/// The single place a board reaches the canvas
-@MainActor func show(_ board: Board, in canvas: CanvasView) {
-  // ponytail: CanvasView has only init(frame:) yet; its show-a-board-with-a-theme call goes here when it lands
-  _ = (board, canvas)
-}
-
 /// The board panel's content below the top bar: one canvas per tab, kept while the tab lives so switching back is
 /// instant; only the selected tab's is visible
 @MainActor final class BoardPanes: NSView {
@@ -41,7 +35,7 @@ import CodeBoardModel
         addSubview(pane)
       }
       if reload || pane.board?.id != tab.board, let vault = shell.vault, let at = shell.board(tab.board) {
-        pane.load { try vault.board(at: at.path) }
+        pane.load(at, in: vault)
       }
       pane.isHidden = tab.id != shell.selected
     }
@@ -81,20 +75,26 @@ private final class Pane: NSView {
   }
 
   /// Hands the board to the canvas only when it changed, or shows why it cannot be read
-  func load(_ read: () throws -> Board) {
-    // ponytail: reads board.json on the main thread; move off it if large boards stall a tab switch
+  func load(_ at: VaultBoard, in vault: Vault) {
+    // ponytail: reads board.json on the main thread to see whether it changed (the canvas reads it again off it);
+    // move off it if large boards stall a tab switch
     do {
-      let new = try read()
+      let new = try vault.board(at: at.path)
       problem.isHidden = true
       canvas.isHidden = false
-      if new != board {
-        board = new
-        show(new, in: canvas)
+      guard new != board else { return }
+      board = new
+      Task {
+        do { try await canvas.show(at, in: vault, theme: .warmInkLight) } catch { fail(error) }
       }
     } catch {
-      problem.stringValue = String(describing: error)
-      problem.isHidden = false
-      canvas.isHidden = true
+      fail(error)
     }
+  }
+
+  private func fail(_ error: any Error) {
+    problem.stringValue = String(describing: error)
+    problem.isHidden = false
+    canvas.isHidden = true
   }
 }
