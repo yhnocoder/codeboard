@@ -177,7 +177,7 @@ test("fitContentKeyWhileEditing", async () => {
   await pg.waitForSelector('.card[data-id="f1"] .cm-content', { state: "detached", timeout: 5000 });
   await pg.keyboard.press("ControlOrMeta+z");
   await until(h, "⌘Z undoes the fit", () => h.board().place.f1.w === w0).catch(() => undefined);
-  await pg.locator('.card[data-id="f1"] .chead').click();
+  await pg.locator('.card[data-id="f1"] .chead').click({ position: { x: 16, y: 12 } }); // left: clear of its hover buttons
   await pg.mouse.move(1180, 680);
   await idle(h);
   await pg.keyboard.press("Alt+KeyF");

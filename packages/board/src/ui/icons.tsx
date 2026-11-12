@@ -30,6 +30,9 @@ const P: Record<string, string> = {
   undo: "M6 10 2 6l4-4M2 6h7.5a3.5 3.5 0 0 1 0 7H7", // undo-2
   redo: "M10 10l4-4-4-4M14 6H6.5a3.5 3.5 0 0 0 0 7H9", // redo-2
   lock: "M2.5 7H13.5A.5 .5 0 0 1 14 7.5V13.5A.5 .5 0 0 1 13.5 14H2.5A.5 .5 0 0 1 2 13.5V7.5A.5 .5 0 0 1 2.5 7zM5 7V5a3 3 0 0 1 6 0v2", // lock
+  wrap: "M2 4h12M2 8h10a2 2 0 1 1 0 4H9M11 10l-2 2 2 2M2 12h4", // wrap-text
+  splitH: "M2 2h12M2 5h8M1 8h2M5 8h2M9 8h2M13 8h2M2 11h12M2 14h8", // custom: split by headings
+  swatch: "M14 8A6 6 0 1 1 2 8A6 6 0 1 1 14 8Z", // circle-dot
   loop: "M14 8a6 6 0 1 1-6-6c1.7 0 3.3.7 4.5 1.8L14 5M14 2v3h-3", // rotate-cw
   layout: "M2.5 2H13.5A.5 .5 0 0 1 14 2.5V13.5A.5 .5 0 0 1 13.5 14H2.5A.5 .5 0 0 1 2 13.5V2.5A.5 .5 0 0 1 2.5 2zM6 2v12", // panel-left
   focus: "M10 8A2 2 0 1 1 6 8A2 2 0 1 1 10 8ZM2 5V2.5A.5 .5 0 0 1 2.5 2H5M11 2H13.5A.5 .5 0 0 1 14 2.5V5M14 11V13.5A.5 .5 0 0 1 13.5 14H11M5 14H2.5A.5 .5 0 0 1 2 13.5V11", // focus
@@ -66,6 +69,7 @@ const P: Record<string, string> = {
 /** 填色：整像素上的小方块，1px / 2px 主题都一样 */
 const F: Record<string, string> = {
   more: "M2 7h2v2H2zM7 7h2v2H7zM12 7h2v2h-2z", // ellipsis
+  swatch: "M10 8A2 2 0 1 1 6 8A2 2 0 1 1 10 8Z", // circle-dot
   dot: "M7 7h2v2H7z", // dot
   sticker: "M5 7h2v2H5zM9 7h2v2H9z", // sticker
   question: "M7 11h2v2H7z", // circle-help

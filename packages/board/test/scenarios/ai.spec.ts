@@ -140,16 +140,24 @@ async function menuOnNote(h: Host) {
   await h.page.locator(".ctx.open").first().waitFor();
   return h.page.locator(".ctx.open").last().locator("button .lb").allInnerTexts();
 }
+/** the Note menu's AI ▸ submenu: its items */
+async function aiSub(h: Host) {
+  await h.page.locator('.ctx.open button:has(.lb:text-is("AI"))').first().hover();
+  await until(h, "the AI submenu", async () => (await h.page.locator(".ctx.open").count()) > 1);
+  return h.page.locator(".ctx.open").last().locator("button .lb").allInnerTexts();
+}
 
 test("autoFocusNote", async () => {
   let release!: () => void;
   const gate = new Promise<void>((ok) => (release = ok));
   const { h, calls } = await focusHost(() => `<document>\n${MARKED}\n</document>`, { gate });
   await shoot(h, "55-autofocus-note-before.png", '.card[data-id="n1"]');
-  const items = await menuOnNote(h);
+  const top = await menuOnNote(h);
+  const items = top.includes("AI") ? await aiSub(h) : [];
   check(
-    "autoFocusNote the Note's menu has Auto Focus before Edit",
-    items.indexOf("Auto Focus") >= 0 && items.indexOf("Auto Focus") === items.indexOf("Edit") - 1,
+    "autoFocusNote the Note's menu has Auto Focus under AI, after Draw as SVG",
+    items.indexOf("Auto Focus") >= 1 && items.indexOf("Auto Focus") === items.indexOf("Draw as SVG") + 1,
+    top,
     items,
   );
   await h.page.locator(".ctx.open button", { hasText: "Auto Focus" }).first().click();
@@ -209,6 +217,7 @@ test("autoFocusRejectsAlteredReply", async () => {
     [2, "a mark inside code"],
   ] as const) {
     await menuOnNote(h);
+    await aiSub(h);
     await h.page.locator(".ctx.open button", { hasText: "Auto Focus" }).first().click();
     await until(h, `the reply with ${what} is asked for`, () => calls.length >= i);
     // the busy layer goes when the answer is in; the check and its notice follow right away

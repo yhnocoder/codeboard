@@ -25,7 +25,6 @@ import {
   K,
   fitAll,
   fitContent,
-  openCode,
   openLink,
   sectionById,
   sectionLocked,
@@ -82,7 +81,6 @@ import {
   toggleLock,
   toggleTilt,
   toggleSection,
-  toggleWrap,
   unmerge,
   toggleBg,
   arrangeItem,
@@ -91,20 +89,7 @@ import {
 } from "./edit";
 import { newFreeCode, newFreeText, newNote, newText, pasteText } from "./create";
 import { shelveSel } from "./shelf";
-import {
-  captionItems,
-  headingSplitCount,
-  openAddNote,
-  setMarkColor,
-  setMarkWeight,
-  setMarkSize,
-  setFreeTextLevel,
-  setFreeTextBold,
-  showPeek,
-  splitByHeadings,
-  tableCaptionItems,
-  turnNote,
-} from "./notes";
+import { captionItems, openAddNote, showPeek, tableCaptionItems, turnNote } from "./notes";
 import { mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
 import { canLinkList } from "@codeboard/core/commands";
 import { moveOutOfParent, setSectionColor, toggleCompare, unlinkShared } from "./edit";
@@ -123,19 +108,7 @@ import { addProc, clearRpc, legendOf, markRpc, toggleBack, toggleStart } from ".
 import { setLegendOpen } from "../state/calls";
 import { askQuestion, askQuestionOnCard } from "./questions";
 import { addVariantMenu } from "./variants";
-import {
-  LEGEND,
-  legendName,
-  HAND_COLORS,
-  HAND_WEIGHTS,
-  MARK_SIZES,
-  markSizeOf,
-  FREE_TEXT_LEVELS,
-  FREE_TEXT_FS,
-  freeTextLevelName,
-  type Link,
-  type MarkSize,
-} from "@codeboard/core";
+import { LEGEND, legendName, type Link } from "@codeboard/core";
 import { kbd } from "../keymap";
 import { drawSvgItem, imageAiItems, type ImgRef } from "./imageai";
 import { copyNoteImage } from "./imagedata";
@@ -353,29 +326,22 @@ function cardItems(id: string, x: number, y: number): Item[] {
     run: () => toggleLock([host.id]),
   };
   const tiltItem: Item = { label: "Tilt", kbd: kbd("tilt"), checked: !!host.tilt, run: () => toggleTilt([host.id]) };
-  // 每种卡同一个结构：常用操作 → Edit ▸ → Arrange ▸ → 分隔线 → Move to New Section、Delete（红）。
-  // 界面上已经有的（双击改名、⌘D、拖圆点连线）不进菜单
+  // 每种卡同一个结构：这种卡自己的几项 → Arrange ▸（含 Tilt、Lock）、Copy Path → 分隔线 → Delete（红）。
+  // 界面上已经有的（双击改名、⌘D、拖圆点连线、卡头悬停的 Fit Content / Wrap Lines / Split by Headings）和有快捷键的整理类
+  // （Move to Shelf ⌥S、Turn into Board ⌘⇧B）不进菜单
   // Copy Path：Compare 的一栏是那一栏自己（白板文件里它也是一张卡）
+  const arrange = arrangeItem(() => [host.id], [tiltItem, lockItem]);
   const pathItem: Item = { label: "Copy Path", run: () => void copyPath([id]) };
-  const tail: Item[] = [
-    tiltItem,
-    arrangeItem(() => [host.id]),
-    pathItem,
-    null,
-    ...sectionItems(),
-    turnItem(),
-    ...deleteItems(host.id),
-  ];
+  const tail: Item[] = [arrange, pathItem, null, ...deleteItems(host.id)];
+  const ai = (): Item => ({ label: "AI", sub: [drawSvgItem(id), autoFocusItem(id)] });
   // 子白板框：打开、移除框（白板还在侧栏里）、删掉那块白板
   if (c.kind === "board")
     return [
       { label: "Open", kbd: kbd("enterBoard"), run: () => enterFrame(id) },
-      { label: "Edit", sub: [lockItem] },
-      tiltItem,
-      arrangeItem(() => [host.id]),
+      null,
+      arrange,
       pathItem,
       null,
-      ...sectionItems(),
       { label: "Remove from This Board", kbd: "⌫", hint: "The board stays in the sidebar", run: deleteSel },
       { label: "Delete Board…", danger: true, run: () => void deleteFrameBoard(id) },
     ];
@@ -387,109 +353,31 @@ function cardItems(id: string, x: number, y: number): Item[] {
       ...tail,
     ];
   if (c.kind === "note") {
-    const edit: Item = {
-      label: "Edit",
-      sub: [{ label: "Text", kbd: "Double-click", run: () => setEditing({ kind: "note", id }) }, lockItem],
-    };
-    if (c.look === "mark")
-      return [
-        {
-          label: "Color",
-          sub: HAND_COLORS.map((k) => ({
-            label: k[0].toUpperCase() + k.slice(1),
-            checked: c.hand === k,
-            run: () => setMarkColor(id, k),
-          })),
-        },
-        {
-          label: "Weight",
-          sub: HAND_WEIGHTS.map((k) => ({
-            label: k[0].toUpperCase() + k.slice(1),
-            checked: (c.weight ?? "regular") === k,
-            run: () => setMarkWeight(id, k),
-          })),
-        },
-        {
-          label: "Size",
-          sub: (Object.keys(MARK_SIZES) as MarkSize[]).map((k) => ({
-            label: `${k.toUpperCase()} (${MARK_SIZES[k]}px)`,
-            checked: markSizeOf(c) === k,
-            run: () => setMarkSize(id, k),
-          })),
-        },
-        edit,
-        ...tail,
-      ];
-    // Free Text：纯文字，级别（正文、H1–H3）和粗体也在选中时的工具条上；字号拖右下角改
-    if (c.look === "freetext")
-      return [
-        {
-          label: "Level",
-          sub: FREE_TEXT_LEVELS.map((k) => ({
-            label: `${freeTextLevelName(k)} (${FREE_TEXT_FS[k]}px)`,
-            checked: (c.level ?? 0) === k,
-            run: () => setFreeTextLevel(id, k),
-          })),
-        },
-        { label: "Bold", checked: !!c.bold, run: () => setFreeTextBold(id, !c.bold) },
-        edit,
-        ...tail,
-      ];
-    // Box 不和别的互转（底色在选中时的工具条上）
-    if (c.look === "box") return [drawSvgItem(id), autoFocusItem(id), edit, ...tail];
+    // Mark 的颜色、粗细、字号，Free Text 的级别、粗体，Box 的底色都在选中时的工具条上
+    if (c.look === "mark" || c.look === "freetext") return tail;
+    if (c.look === "box") return [ai(), ...tail];
     // Text 的高度一直跟着字：Fit Content 只定宽度（不折行时多宽，太长的照样折）
     if (c.look === "text") {
       const n = naturalSize(id)?.w;
       return [
-        { label: "Turn into Note", run: () => turnNote(id, "note") },
         {
           label: "Fit Content",
           kbd: kbd("fitContent"),
           disabled: n && Math.abs(C.fitWidth(c, n) - placeOf(id).w) > 1 ? false : "Already as wide as its content",
           run: () => fitContent([id]),
         },
-        drawSvgItem(id),
-        autoFocusItem(id),
-        edit,
+        { label: "Turn into Note", run: () => turnNote(id, "note") },
+        ai(),
         ...tail,
       ];
     }
-    // Note 只定高度（宽度是折行用的，不动）：Fit Content = 回到跟着内容长高
-    const fit: Item = {
-      label: "Fit Content",
-      kbd: kbd("fitContent"),
-      disabled: placeOf(id).h ? false : "Already as tall as its content",
-      run: () => fitContent([id]),
-    };
-    const parts = headingSplitCount(id);
-    const split: Item = {
-      label: "Split by Headings",
-      hint: parts ? `${parts + 1} cards, linked by arrows` : undefined,
-      disabled: parts ? false : "No headings to split at",
-      run: () => void splitByHeadings(id),
-    };
-    return [
-      { label: "Turn into Text", run: () => turnNote(id, "text") },
-      split,
-      fit,
-      drawSvgItem(id),
-      autoFocusItem(id),
-      edit,
-      ...tail,
-    ];
+    // Note：Fit Content 和 Split by Headings 在卡头悬停出现的按钮上（NoteBody）
+    return [{ label: "Turn into Text", run: () => turnNote(id, "text") }, ai(), ...tail];
   }
   if (c.kind === "web")
     return [
       { label: "Open in Browser", kbd: "Double-click", run: () => openLink(c.url) },
       { label: "Refresh Preview", run: () => retryMeta(c.id) },
-      {
-        label: "Edit",
-        sub: [
-          { label: "Title", run: () => setEditing({ kind: "title", id: c.id }) },
-          { label: "Description", run: () => setEditing({ kind: "desc", id: c.id }) },
-          lockItem,
-        ],
-      },
       {
         label: "View",
         sub: (
@@ -502,6 +390,8 @@ function cardItems(id: string, x: number, y: number): Item[] {
           ] as const
         ).map(([s, label]) => ({ label, checked: c.style === s, run: () => setWebStyle(c.id, s) })),
       },
+      { label: "Edit Title", run: () => setEditing({ kind: "title", id: c.id }) },
+      { label: "Edit Description", run: () => setEditing({ kind: "desc", id: c.id }) },
       ...tail,
     ];
   if (c.kind === "links")
@@ -514,30 +404,13 @@ function cardItems(id: string, x: number, y: number): Item[] {
           { label: "Rich", checked: !!c.rich, run: () => setListRich(c.id, true) },
         ],
       },
-      {
-        label: "Edit",
-        sub: [
-          { label: "Title", kbd: "Double-click Title", run: () => setEditing({ kind: "title", id: c.id }) },
-          lockItem,
-        ],
-      },
+      { label: "Rename", kbd: "Double-click Title", run: () => setEditing({ kind: "title", id: c.id }) },
       ...tail,
     ];
   if (c.kind === "image")
     return [
-      { label: "Copy Image", kbd: kbd("copy"), run: () => copyCardsSel() },
-      null,
-      ...imageAiItems({ card: id }),
-      null,
-      { label: "Fit Content", kbd: kbd("fitContent"), run: () => fitContent([id]) },
-      { label: "Background", checked: !!c.bg, run: () => toggleBg(id) },
-      {
-        label: "Edit",
-        sub: [
-          { label: c.desc ? "Description" : "Add Description", run: () => setEditing({ kind: "desc", id }) },
-          lockItem,
-        ],
-      },
+      { label: c.desc ? "Edit Description" : "Add Description", run: () => setEditing({ kind: "desc", id }) },
+      { label: "AI", sub: imageAiItems({ card: id }) },
       ...tail,
     ];
   if (c.kind === "compare") {
@@ -565,17 +438,11 @@ function cardItems(id: string, x: number, y: number): Item[] {
         disabled: canWalk ? false : "No arrows go out of this card",
         run: () => startWalk(id),
       },
-      ...sectionItems(),
-      lockItem,
-      tiltItem,
-      arrangeItem(() => [host.id]),
-      pathItem,
-      null,
-      ...deleteItems(host.id),
+      ...tail,
     ];
   }
   if (!isCode(c)) return [];
-  // 代码卡（也可能是 Compare 里的一栏）。分组短一点，Hide*/Wrap 收进 View ▸
+  // 代码卡（也可能是 Compare 里的一栏）。Open in Editor 是 ↵ 和卡头的路径；Fit Content、Wrap Lines 在卡头悬停出现的按钮上（CodeHead）
   const col = f.host.id !== c.id;
   const node = flows().byId.get(c.id);
   const hasKids = flows().kids.has(c.id);
@@ -592,15 +459,12 @@ function cardItems(id: string, x: number, y: number): Item[] {
       disabled: !anyHidden,
       run: () => C.showAllLines(commandEnv, c.id),
     },
-    null,
-    { label: "Wrap Lines", kbd: kbd("wrap"), checked: !!c.wrap, run: () => toggleWrap([c.id]) },
-    ...(col ? [] : [{ label: "Background", checked: c.bg !== false, run: () => toggleBg(c.id) } as Item]),
+    ...(col ? [] : [null, { label: "Background", checked: c.bg !== false, run: () => toggleBg(c.id) } as Item]),
   ];
   // 界面上已经有的（双击标题改名、标题栏的 commit 按钮、Copy Code 图标、⌘D）不进菜单
-  const edit: Item[] = [
-    { label: c.desc ? "Description" : "Add Description", run: () => setEditing({ kind: "desc", id: c.id }) },
+  const add: Item[] = [
     {
-      label: "Add Sidenote",
+      label: "Sidenote",
       kbd: "S",
       run: () =>
         ls?.card === c.id
@@ -608,23 +472,27 @@ function cardItems(id: string, x: number, y: number): Item[] {
           : openAddNote({ card: c.id }),
     },
     {
-      label: "Ask a Question",
+      label: "Question",
       run: () =>
         ls?.card === c.id ? askQuestion({ card: ls.card, seg: ls.seg, line: ls.start }) : askQuestionOnCard(c.id),
     },
-    {
-      label: "Add Generated Code",
-      sub: genItems(ls?.card === c.id ? { card: c.id, seg: ls.seg, line: ls.start } : { card: c.id }),
-    },
-    ...(col ? [] : [lockItem]),
-    ...(!col && (c.segments.length > 1 || c.mergedFrom)
-      ? [{ label: "Unmerge", run: () => unmerge(c.id) } as Item]
-      : []),
-    null,
-    // 进程标签：自由文字；线程 / CUDA stream 用浅一点的标签
-    { label: "Process Tag…", hint: "rank 0, rank 1…N, Scheduler × TP", run: () => void addProc(c.id) },
-    { label: "Thread / Stream Tag…", run: () => void addProc(c.id, true) },
+    { label: c.desc ? "Edit Description" : "Description", run: () => setEditing({ kind: "desc", id: c.id }) },
+    // Free code 没有运行、进程：只加这三样
+    ...(free
+      ? []
+      : ([
+          {
+            label: "Generated Code",
+            sub: genItems(ls?.card === c.id ? { card: c.id, seg: ls.seg, line: ls.start } : { card: c.id }),
+          },
+          null,
+          // 进程标签：自由文字；线程 / CUDA stream 用浅一点的标签
+          { label: "Process Tag…", hint: "rank 0, rank 1…N, Scheduler × TP", run: () => void addProc(c.id) },
+          { label: "Thread / Stream Tag…", run: () => void addProc(c.id, true) },
+        ] as Item[])),
   ];
+  // Call Graph ▸ 只在这张卡在调用图里时出现（起点卡也算：要能取消）
+  const inGraph = !!node || hasKids || canWalk || !!placeOf(host.id).start;
   const flow: Item[] = [
     // 起点卡：不选卡直接 Walkthrough、调用树从这里开始
     {
@@ -648,21 +516,20 @@ function cardItems(id: string, x: number, y: number): Item[] {
     },
     { label: "Change Mark…", disabled: node ? false : "Not in a call graph", run: () => openMarkPicker(c.id) },
   ];
-  const items: Item[] = [
-    ...(free ? [] : [{ label: "Open in Editor", kbd: "↵", run: () => openCode(c.id) } as Item]),
-    ...(col
-      ? []
-      : [
-          {
-            label: "Fit Content",
-            kbd: kbd("fitContent"),
-            run: () => fitContent(sel.cards.length > 1 ? sel.cards : [c.id]),
-          } as Item,
-        ]),
-    { label: "Edit", sub: edit },
+  // Compare 里的一栏：拆开 Compare 代替删除（一栏不能单独删）
+  if (col)
+    return [
+      { label: "Add", sub: add },
+      { label: "View", sub: view },
+      pathItem,
+      null,
+      { label: "Separate", run: () => separate(host.id) },
+    ];
+  return [
+    { label: "Add", sub: add },
     { label: "View", sub: view },
     // 我的改动：同一段代码的分支 / 工作区 / 另一个 worktree / 复制的文件 / PR
-    ...(free || col || c.gen
+    ...(free || c.gen
       ? []
       : [
           {
@@ -670,14 +537,10 @@ function cardItems(id: string, x: number, y: number): Item[] {
             run: () => void addVariantMenu(c.id, x, y),
           } as Item,
         ]),
-    { label: "Call Graph", sub: flow },
-    ...(col ? [] : [tiltItem, arrangeItem(() => [host.id])]),
-    pathItem,
-    null,
-    ...(col ? [] : [...sectionItems(), turnItem()]),
-    ...deleteItems(host.id),
+    ...(c.segments.length > 1 || c.mergedFrom ? [{ label: "Unmerge", run: () => unmerge(c.id) } as Item] : []),
+    ...(inGraph ? [{ label: "Call Graph", sub: flow } as Item] : []),
+    ...tail,
   ];
-  return items;
 }
 
 /**
@@ -1054,7 +917,7 @@ const LINK_COLORS = [
   ["blue", "Blue"],
   ["green", "Green"],
 ] as const;
-const SECTION_COLORS = [
+export const SECTION_COLORS = [
   ["none", "None"],
   ["sand", "Warm Sand"],
   ["blue", "Light Blue"],
@@ -1109,23 +972,10 @@ export function sectionMenu(id: string, x: number, y: number) {
   // several selected: what applies to all of them (with cards too: the menu for several cards, as on a card)
   if (sel.cards.length) return openMenu(multiItems(), x, y);
   if (sel.sections.length > 1) return openMenu(multiSectionItems([...sel.sections]), x, y);
+  // Rename is a double-click on the title; Fit Content, Color and Lock are the title's hover buttons (canvas/Sections.tsx)
   openMenu(
     [
-      { label: "Rename", kbd: "Double-click", run: () => setEditing({ kind: "section", id }) },
       { label: s.collapsed ? "Expand" : "Collapse", run: () => toggleSection(id) },
-      {
-        label: "Fit Content",
-        kbd: kbd("fitContent"),
-        disabled: s.collapsed
-          ? "Expand the Section first"
-          : sectionLocked(s)
-            ? "The Section is locked"
-            : fitFrame(s)
-              ? false
-              : "No cards inside",
-        run: () => fitSections([id]),
-      },
-      { label: s.locked ? "Unlock" : "Lock", kbd: kbd("lock"), run: () => toggleLock([], [id]) },
       ...(s.parent
         ? [
             {
@@ -1134,10 +984,8 @@ export function sectionMenu(id: string, x: number, y: number) {
             } as Item,
           ]
         : []),
-      sectionColorItem([id]),
       { label: "Copy Path", run: () => void copyPath([id]) },
       null,
-      shelfItem(),
       { label: "Remove Section", hint: "Cards and inner sections stay", run: () => removeSections([id]) },
     ],
     x,

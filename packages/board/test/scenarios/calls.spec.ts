@@ -119,7 +119,7 @@ async function rpc(res: Record<string, unknown>) {
     [ids.run, "CUDA stream 0", true],
   ] as const) {
     await head(h, id).click({ button: "right", position: { x: 200, y: 12 } });
-    await menu(h, /^Edit/, light2 ? "Thread / Stream Tag…" : "Process Tag…");
+    await menu(h, /^Add/, light2 ? "Thread / Stream Tag…" : "Process Tag…");
     await prompt(h, t);
   }
   await until(h, "the tags are saved", () => (h.board().cards.find((c) => c.id === ids.run)?.procs?.length ?? 0) === 2);

@@ -3786,6 +3786,12 @@
 :root.look-ink-wash .slabel .scount {
   font: italic 400 13px / 32px var(--serif);
 }
+/* the title sits in a gap of the frame's top stroke; its hover buttons reach past the gap, so they lie on paper of their own */
+:root.look-ink-wash .slabel > .sacts {
+  padding-right: 4px;
+  border-radius: 6px;
+  background: var(--bg);
+}
 :root.look-ink-wash .pill,
 :root.look-ink-wash .ctx,
 :root.look-ink-wash .pop,

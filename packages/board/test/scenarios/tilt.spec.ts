@@ -69,7 +69,9 @@ test("tiltCardFromMenu", async () => {
   const pg = h.page;
   const before = await probe(h);
   check("tilt-starts-straight", before.deg === 0 && before.off < 0.75, before);
+  // a single card's Tilt is under Arrange ▸
   await pg.locator('.card[data-id="n"] .nbody').click({ button: "right" });
+  await pg.locator('.ctx:not(.closing) button[role=menuitem]:has(.lb:text-is("Arrange"))').hover();
   await pg.locator(".ctx:not(.closing) button[role=menuitem]", { hasText: /^Tilt/ }).click();
   await until(h, "the host's board has n tilted", () => h.board().cards.find((c) => c.id === "n")?.tilt === true);
   await idle(h);
@@ -85,7 +87,9 @@ test("tiltCardFromMenu", async () => {
   await shot(h, "selected");
   // the menu shows it checked; one undo step takes it off
   await pg.locator('.card[data-id="n"] .nbody').click({ button: "right" });
+  await pg.locator('.ctx:not(.closing) button[role=menuitem]:has(.lb:text-is("Arrange"))').hover();
   const item = pg.locator(".ctx:not(.closing) button[role=menuitem]", { hasText: /^Tilt/ });
+  await item.waitFor();
   check("tilt-menu-checked", (await item.locator(".ck svg").count()) === 1);
   await pg.keyboard.press("Escape");
   await pg.keyboard.press("Meta+z");

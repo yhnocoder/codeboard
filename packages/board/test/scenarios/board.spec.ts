@@ -653,7 +653,7 @@ test("submenuFlip", async () => {
   await close(h);
 });
 
-/** Code card menu: Edit ▸ Add Description enters editing, type, ⌘↵ saves; title bar has a Copy Code icon */
+/** Code card menu: Add ▸ Description enters editing, type, ⌘↵ saves; title bar has a Copy Code icon */
 test("codeDescription", async () => {
   const b = emptyBoard("b1", "desc");
   put(b, card("Scheduler.schedule"), 80, 80, 560);
@@ -662,9 +662,9 @@ test("codeDescription", async () => {
   await hd.click({ button: "right", position: { x: 200, y: 12 } });
   await h.page.locator(".ctx:not(.closing) button").first().waitFor();
   await shot(h, "board-cardmenu");
-  await h.page.locator('.ctx:not(.closing) button:has(.lb:text-is("Edit"))').hover();
-  await shot(h, "board-cardmenu-edit");
-  await h.page.locator(".ctx:not(.closing) button", { hasText: "Add Description" }).click();
+  await h.page.locator('.ctx:not(.closing) button:has(.lb:text-is("Add"))').hover();
+  await shot(h, "board-cardmenu-add");
+  await h.page.locator('.ctx:not(.closing) button:has(.lb:text-is("Description"))').click();
   await idle(h);
   const editing = await h.page.locator(".cdesc.editing").count();
   const focused = await h.page.evaluate(() => !!document.activeElement?.closest(".cdesc"));
