@@ -196,11 +196,14 @@ test("noteBlockPickUp", async () => {
   );
 });
 
-/** ⌘ over a link outlines nothing and a ⌘-click on it picks nothing up */
+/** ⌘ over a link outlines nothing and a ⌘-click on it picks nothing up, though the words beside it in the same paragraph do */
 test("noteBlockMoveLink", async () => {
   const h = await board();
   const a = await box(h, `${card("n1")} .md-pm a[href]`);
   await h.page.keyboard.down("ControlOrMeta");
+  await h.page.mouse.move(a.x - 12, a.y + 4);
+  await h.page.mouse.move(a.x - 10, a.y + 5);
+  await until(h, "the paragraph outlined", async () => (await h.page.locator(".bmv-box.is-on").count()) === 1);
   await h.page.mouse.move(a.x + 4, a.y + 4);
   await h.page.mouse.move(a.x + 6, a.y + 5);
   const outline = await h.page.locator(".bmv-box.is-on").count();
