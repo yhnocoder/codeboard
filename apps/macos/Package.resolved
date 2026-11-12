@@ -1,0 +1,41 @@
+{
+  "originHash" : "9938ce63356e859324616e65c03fbf1ef5824f14962e23b43a243481625b40e4",
+  "pins" : [
+    {
+      "identity" : "tree-sitter",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tree-sitter/tree-sitter",
+      "state" : {
+        "revision" : "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+        "version" : "0.25.10"
+      }
+    },
+    {
+      "identity" : "tree-sitter-cuda",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/yhnocoder/tree-sitter-cuda",
+      "state" : {
+        "revision" : "9bbc052820f228600f8a22cef6d3597759f49a3b",
+        "version" : "0.21.2-cb.2"
+      }
+    },
+    {
+      "identity" : "tree-sitter-python",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tree-sitter/tree-sitter-python",
+      "state" : {
+        "revision" : "293fdc02038ee2bf0e2e206711b69c90ac0d413f",
+        "version" : "0.25.0"
+      }
+    },
+    {
+      "identity" : "tree-sitter-rust",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tree-sitter/tree-sitter-rust",
+      "state" : {
+        "revision" : "261b20226c04ef601adbdf185a800512a5f66291"
+      }
+    }
+  ],
+  "version" : 3
+}

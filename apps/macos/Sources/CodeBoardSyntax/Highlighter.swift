@@ -1,5 +1,5 @@
-import CTreeSitter
 import Foundation
+import TreeSitter
 
 /// The colour classes of code: one per code colour of the board's themes (the `--k-*` variables of
 /// packages/board/src/styles.css and themes.css), named after the board's CSS classes in the comments.

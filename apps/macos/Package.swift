@@ -4,25 +4,35 @@ import PackageDescription
 let package = Package(
   name: "CodeBoard",
   platforms: [.macOS(.v27)],
+  // tree-sitter and the grammars the TypeScript side runs (@vscode/tree-sitter-wasm 0.3.1 for the runtime, Python and
+  // Rust; packages/analysis's tree-sitter-cuda for C, C++ and CUDA), so both read code with the same grammars
+  dependencies: [
+    .package(url: "https://github.com/tree-sitter/tree-sitter", exact: "0.25.10"),
+    .package(url: "https://github.com/tree-sitter/tree-sitter-python", exact: "0.25.0"),
+    // untagged: v0.24.0 and six commits
+    .package(
+      url: "https://github.com/tree-sitter/tree-sitter-rust",
+      revision: "261b20226c04ef601adbdf185a800512a5f66291"
+    ),
+    .package(url: "https://github.com/yhnocoder/tree-sitter-cuda", exact: "0.21.2-cb.2"),
+  ],
   targets: [
     .target(name: "CodeBoardModel"),
-    .target(name: "CodeBoardSyntax", dependencies: ["CTreeSitter", "CTreeSitterGrammars"]),
-    // Vendored C, built as upstream builds it (lib.c includes every other runtime file); SwiftPM's extra warning is
-    // about code that is not ours to change
     .target(
-      name: "CTreeSitter",
-      exclude: ["LICENSE", "src/unicode/ICU_SHA", "src/unicode/LICENSE", "src/unicode/README.md"],
-      sources: ["src/lib.c"],
-      cSettings: [
-        .headerSearchPath("src"), .define("_POSIX_C_SOURCE", to: "200112L"), .define("_DEFAULT_SOURCE"),
-        .define("_DARWIN_C_SOURCE"), .disableWarning("shorten-64-to-32"),
+      name: "CodeBoardSyntax",
+      dependencies: [
+        .product(name: "TreeSitter", package: "tree-sitter"),
+        .product(name: "TreeSitterPython", package: "tree-sitter-python"),
+        .product(name: "TreeSitterRust", package: "tree-sitter-rust"),
+        .product(name: "TreeSitterCUDA", package: "tree-sitter-cuda"),
+        "CTreeSitterScanners",
       ]
     ),
+    // The Python and CUDA grammars' external scanners, which their packages leave out (include/scanners.h says why)
     .target(
-      name: "CTreeSitterGrammars",
-      dependencies: ["CTreeSitter"],
-      exclude: ["python/LICENSE", "rust/LICENSE", "cuda/LICENSE"],
-      cSettings: [.disableWarning("shorten-64-to-32")]
+      name: "CTreeSitterScanners",
+      exclude: ["python/LICENSE", "cuda/LICENSE"],
+      cSettings: [.headerSearchPath("."), .disableWarning("shorten-64-to-32")]
     ),
     .target(name: "CodeBoardNotes", dependencies: ["CodeBoardModel"]),
     .target(name: "CodeBoardCanvas", dependencies: ["CodeBoardModel", "CodeBoardSyntax", "CodeBoardNotes"]),

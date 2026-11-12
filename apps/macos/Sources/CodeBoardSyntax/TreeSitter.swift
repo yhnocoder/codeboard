@@ -1,6 +1,8 @@
-import CTreeSitter
-import CTreeSitterGrammars
 import Foundation
+import TreeSitter
+import TreeSitterCUDA
+import TreeSitterPython
+import TreeSitterRust
 
 /// The tree-sitter grammars, by the language table of packages/analysis/src/langs.ts: Triton and TileLang are Python,
 /// and C, C++ and CUDA all read with the CUDA grammar (a superset of C++ with the same node names).
@@ -30,7 +32,7 @@ final class Tree {
   let raw: OpaquePointer
   var root: TSNode { ts_tree_root_node(raw) }
 
-  /// nil for an empty text, or when the grammar does not fit this runtime (a vendoring mistake): the code shows as
+  /// nil for an empty text, or when the grammar does not fit this runtime (a pin mistake): the code shows as
   /// plain text.
   init?(_ grammar: Grammar, _ text: [UInt16]) {
     let parser = ts_parser_new()
