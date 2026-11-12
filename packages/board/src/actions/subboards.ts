@@ -1,5 +1,5 @@
-import { batch } from "solid-js";
-import { cardTitle, descendants, escHtml, wouldCycle, type BoardSeal, type WalkHop } from "@codeboard/core";
+import { batch, createRoot } from "solid-js";
+import { cardTitle, descendants, wouldCycle, type BoardSeal, type WalkHop } from "@codeboard/core";
 import type { Markdown } from "@yhnocoder/markdown";
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
@@ -8,7 +8,7 @@ import { flushSave } from "../state/changes";
 import { sel, select, clearSel } from "../state/selection";
 import { toast } from "../state/toast";
 import { camRest, camTarget, camTo, fitRect, viewportCenter } from "../state/camera";
-import { iconHtml } from "../ui/icons";
+import { CrumbsNav } from "../ui/Crumbs";
 import {
   crumbs,
   frameOf,
@@ -96,10 +96,9 @@ const EASE_OUT = "cubic-bezier(.215,.61,.355,1)",
 const ZOOM = 1.03;
 /** 宿主一直没换白板也没回（出错、重载了）就把动画收回来；说了换不了时马上收（switched） */
 const GIVE_UP = 2500;
-/** 面包屑一格的左右留白（styles.css .crumbs .crumb） */
-const CRUMB_PAD = 6;
 const worldEl = () => document.querySelector<HTMLElement>(".board > .world");
-type Spot = { r: DOMRect; font: number };
+/** Where an element is on screen, its font size as drawn, and its left padding (a crumb's: the flying copy takes the same) */
+type Spot = { r: DOMRect; font: number; pad: number };
 type Transit = {
   enter: boolean;
   t0: number;
@@ -134,13 +133,17 @@ function boxHeight(el: HTMLElement, cs: CSSStyleDeclaration) {
 const spotOf = (el: HTMLElement): Spot => {
   const r = el.getBoundingClientRect(),
     cs = getComputedStyle(el);
-  return { r, font: parseFloat(cs.fontSize) * (r.height / (boxHeight(el, cs) || r.height || 1)) };
+  return {
+    r,
+    font: parseFloat(cs.fontSize) * (r.height / (boxHeight(el, cs) || r.height || 1)),
+    pad: parseFloat(cs.paddingLeft) || 0,
+  };
 };
 const titleEl = (frame: string) => document.querySelector<HTMLElement>(`${cardSel(frame)} .sbname`);
 /** 替身放在框上名字的位置时的 transform（替身的盒子在面包屑那一格上，transform-origin 左上角） */
 function onTitle(title: Spot, crumb: Spot): string {
   const k = title.font / crumb.font;
-  const dx = title.r.left - CRUMB_PAD * k - crumb.r.left,
+  const dx = title.r.left - crumb.pad * k - crumb.r.left,
     dy = title.r.top + title.r.height / 2 - crumb.r.top - (crumb.r.height * k) / 2;
   return `translate(${dx}px, ${dy}px) scale(${k})`;
 }
@@ -153,31 +156,31 @@ function ghostAt(text: string, crumb: Spot): HTMLElement {
     top: `${crumb.r.top}px`,
     height: `${crumb.r.height}px`,
     fontSize: `${crumb.font}px`,
-    padding: `0 ${CRUMB_PAD}px`,
+    padding: `0 ${crumb.pad}px`,
   });
   (document.querySelector(".app") ?? document.body).appendChild(g);
   return g;
 }
-/** 进去以后面包屑上「当前」那一格在哪：照面包屑的样子（App.tsx Crumbs）摆一个看不见的量一下 */
-function crumbSpot(names: string[], cur: string): Spot | undefined {
+/** Where the breadcrumb's current crumb will be once inside: a hidden copy of the breadcrumb the board shows (CrumbsNav),
+ *  laid out and measured */
+function crumbSpot(parents: readonly { name: string }[], cur: string): Spot | undefined {
   const app = document.querySelector(".app");
   if (!app) return undefined;
-  const nav = document.createElement("nav");
-  nav.className = "crumbs pill";
-  nav.style.cssText = "visibility: hidden; animation: none";
-  nav.innerHTML = `<button class="crumb back">${iconHtml("left", 14)}</button>${names.map((n) => `<button class="crumb">${escHtml(n)}</button><span class="csep">›</span>`).join("")}<span class="crumb cur"></span>`;
-  nav.querySelector(".cur")!.textContent = cur;
-  app.appendChild(nav);
-  const s = spotOf(nav.querySelector<HTMLElement>(".cur")!);
-  nav.remove();
-  return s;
+  return createRoot((dispose) => {
+    const nav = CrumbsNav({ parents, cur, style: "visibility: hidden; animation: none" }) as HTMLElement;
+    app.appendChild(nav);
+    const s = spotOf(nav.querySelector<HTMLElement>(".cur")!);
+    nav.remove();
+    dispose();
+    return s;
+  });
 }
 
 function morphIn(frame: string, name: string) {
   const ms = ENTER_MS * animScale(),
     world = worldEl(),
     src = titleEl(frame);
-  const to = crumbSpot([...crumbs().map((c) => c.name), state.board.name], name);
+  const to = crumbSpot([...crumbs(), { name: state.board.name }], name);
   const t: Transit = {
     enter: true,
     t0: performance.now(),

@@ -399,6 +399,7 @@
         "packages/core/src/seal.ts",
         "packages/host/src/seals.ts",
         "packages/board/src/ui/pops/seal.tsx",
+        "packages/board/src/ui/Crumbs.tsx",
         "packages/board/test/scenarios/board-marks.spec.ts",
         "packages/board/src/state/subboards.ts",
         "packages/board/src/actions/subboards.ts",

@@ -29,7 +29,7 @@ import { lineSel, setLineSel, reportSelection } from "../state/selection";
 import { StickerChip } from "../stickers/Picker";
 import { geo, setGeo } from "../state/geo";
 import { look, shape } from "../state/look";
-import { queueMeasure, observeResize, monoWidth, DED_PAD } from "../state/measure";
+import { queueMeasure, observeResize, monoWidth, DED_PAD, MONO_GUESS, TAB_SIZE } from "../state/measure";
 import {
   shown,
   notesOn,
@@ -178,7 +178,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
    */
   const codeStart = (h: Hx): { css: string; px: number } => {
     // the code font's width once the lines are laid out (measured with them, ys)
-    const ch = (srcEl && ys().length && monoWidth(srcEl)) || 7.2;
+    const ch = (srcEl && ys().length && monoWidth(srcEl)) || MONO_GUESS;
     const pad = ded() ? DED_PAD : 0;
     let stop: number | undefined, // the last tab stop a tab reached (in columns), if any
       cols = -ded(); // columns after it (or after the line's start, with the pad)
@@ -188,7 +188,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
         continue;
       }
       const x = stop === undefined ? pad / ch + cols : stop + cols;
-      stop = (Math.floor((x + 0.5) / 4) + 1) * 4;
+      stop = (Math.floor((x + 0.5) / TAB_SIZE) + 1) * TAB_SIZE;
       cols = 0;
     }
     return stop === undefined
@@ -345,7 +345,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
    *  按字数乘字宽（ch，等宽字体）算，不量 DOM */
   const flashSpan = (r: Extract<Row, { t: "line" }>) => {
     const s = segById(r.seg);
-    const t = (s?.text[r.line - s.start] ?? "").replace(/\t/g, "    ").trimEnd();
+    const t = (s?.text[r.line - s.start] ?? "").replace(/\t/g, " ".repeat(TAB_SIZE)).trimEnd();
     const lead = t.length - t.trimStart().length;
     return { "--fx": `calc(${shift()} + ${lead - 0.5}ch)`, "--fw": `${t.length - lead + 1}ch` };
   };

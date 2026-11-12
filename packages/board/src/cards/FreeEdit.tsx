@@ -7,7 +7,7 @@ import type { CodeCard, SegView } from "@codeboard/core";
 import { state } from "../state/store";
 import { loadCm, cmNow, lspHost, ghostHost, nearSeg, hostHighlight, BOARD_CLASSES } from "../cm/load";
 import type { CodeEditor } from "@yhnocoder/markdown/code-editor";
-import { lastDown } from "../state/measure";
+import { lastDown, CODE_ROW_H } from "../state/measure";
 import { takeEditEntry } from "../state/ui";
 import { useMd } from "../md/context";
 import { vscodeKey } from "../ui/vscodekeys";
@@ -114,7 +114,7 @@ export function FreeEdit(p: {
         <div class="gutter">
           <For each={seg().text}>
             {(_, i) => (
-              <span class="no" style={{ top: `calc(var(--code-pt) + ${i() * 20}px)` }}>
+              <span class="no" style={{ top: `calc(var(--code-pt) + ${i() * CODE_ROW_H}px)` }}>
                 {seg().start + i()}
               </span>
             )}

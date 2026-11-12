@@ -28,10 +28,11 @@ const svgUrl = (w: number, h: number, body: string, par = "") =>
 
 // ---------- the card paper ----------
 /** How far the paper reaches outside the card (themes.css: the card's ::before is inset by −PAPER_M) */
-const PAPER_M = 14;
+export const PAPER_M = 14;
 /** The sheet is drawn as a nine-slice border image (themes.css): corners PAPER_SLICE square, edges and middle tiled. Inside the
- *  card the slice reaches PAPER_SLICE − PAPER_M (16 px), past the torn edge's jitter and its outward fibres. themes.css uses the same number */
-const PAPER_SLICE = 30;
+ *  card the slice reaches PAPER_SLICE − PAPER_M (16 px), past the torn edge's jitter and its outward fibres. themes.css uses the same number
+ *  (css-constants.test.ts keeps them equal) */
+export const PAPER_SLICE = 30;
 /** The tiled middle of each edge and of the sheet: long enough that the repeat does not show */
 const PAPER_TILE = 240;
 const PAPER_SEEDS = 4;
@@ -118,7 +119,7 @@ export function paperSheet(dk: boolean, seed: number) {
 
 /** The paper is drawn PAPER_SCALE times its size: still crisp on a 2× screen zoomed in 150 %. themes.css slices it at
  *  PAPER_SLICE × PAPER_SCALE image px */
-const PAPER_SCALE = 3;
+export const PAPER_SCALE = 3;
 
 /**
  * The sheet as a PNG (a data URI): a bitmap, not an SVG. As an SVG border image every card's ::before redrew the vector sheet for

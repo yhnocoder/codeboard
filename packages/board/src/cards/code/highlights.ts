@@ -8,6 +8,7 @@ import { exportHidden } from "../../state/export";
 import * as act from "../../actions";
 import { notesOf } from "../../state/ui";
 import type { CodeCx } from "./cx";
+import { TAB_SIZE } from "../../state/measure";
 
 type TextNote = Extract<Sidenote, { kind: "text" }>;
 
@@ -33,12 +34,12 @@ export type Hx = {
   review: boolean;
 };
 
-/** Where a line's text starts, in columns: a space is one, a tab goes on to the next tab stop (every 4, .src tab-size) */
+/** Where a line's text starts, in columns: a space is one, a tab goes on to the next tab stop (every TAB_SIZE, .src tab-size) */
 function leadCols(t: string): number {
   let x = 0;
   for (const ch of t) {
     if (ch === " ") x++;
-    else if (ch === "\t") x = (Math.floor(x / 4) + 1) * 4;
+    else if (ch === "\t") x = (Math.floor(x / TAB_SIZE) + 1) * TAB_SIZE;
     else break;
   }
   return x;

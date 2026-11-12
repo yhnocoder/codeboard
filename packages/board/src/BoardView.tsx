@@ -19,6 +19,7 @@ import { useOverlay } from "./ui/overlay";
 import { GitHubPicker } from "./ui/GitHubPicker";
 import { MenuLayer, DialogLayer, TooltipLayer } from "./ui/Menu";
 import { Icon } from "./ui/icons";
+import { CrumbsNav } from "./ui/Crumbs";
 import { cardTitle } from "@codeboard/core";
 import * as A from "./actions";
 import { staleCount, updateAll } from "@codeboard/core/commands";
@@ -149,37 +150,9 @@ export function BoardView(p: { children?: JSX.Element }) {
   );
 }
 
-/** 子白板的面包屑：← Engine › Scheduler。点上一级回去（← 和 Esc 回上一级）。actions/subboards.ts 的 crumbSpot 照这个样子量位置 */
+/** 子白板的面包屑：点上一级回去（← 和 Esc 回上一级） */
 function Crumbs() {
-  return (
-    <nav class="crumbs pill" classList={{ morph: crumbMorph() }} aria-label="Parent boards">
-      <button
-        class="crumb back"
-        aria-label="Back"
-        data-tip="Back to the parent board"
-        data-kbd="Esc"
-        onClick={() => A.leaveBoard()}
-      >
-        <Icon name="left" size={14} />
-      </button>
-      <For each={crumbs()}>
-        {(c, i) => (
-          <>
-            <button
-              class="crumb"
-              data-tip={i() === crumbs().length - 1 ? "Back to the parent board" : undefined}
-              data-kbd={i() === crumbs().length - 1 ? "Esc" : undefined}
-              onClick={() => A.leaveBoard(i())}
-            >
-              {c.name}
-            </button>
-            <span class="csep">›</span>
-          </>
-        )}
-      </For>
-      <span class="crumb cur">{state.board.name}</span>
-    </nav>
-  );
+  return <CrumbsNav parents={crumbs()} cur={state.board.name} morph={crumbMorph()} leave={(i) => A.leaveBoard(i)} />;
 }
 
 function Banner() {
