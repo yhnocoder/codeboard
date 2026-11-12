@@ -31,6 +31,7 @@ const {
   card,
   text,
   boardHasKeyboard,
+  reloadWindow,
 } = require("./ui.cjs");
 
 const EXT = path.resolve(__dirname, "..");
@@ -317,10 +318,7 @@ module.exports = async function projectsStep({ check, OUT, WS, UD, port }) {
     check(seen, "M lists the copied board without a reload");
     if (!seen) {
       await shot(M, "projects-fail-not-listed");
-      const reloaded = M.waitForEvent("load", { timeout: 60000 });
-      await command(M, "Developer: Reload Window");
-      await reloaded;
-      await M.locator(".monaco-workbench .part.editor").waitFor({ timeout: 60000 });
+      await reloadWindow(M);
       check(await listed(M, "Engine copy", 15000), "M lists the copied board after a reload");
     }
     const mDir = boardsDir(PUD, "multi-root.code-workspace"),
