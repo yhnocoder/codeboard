@@ -220,38 +220,63 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
 }
 
 /// The glass under the tabs: blurring what is behind it in the window whether or not the window is key, whole over the
-/// bar and gone a dissolve's length below it, the material and its canvas-coloured tint along the same curve
+/// bar and gone a dissolve's length below it, the material or clear glass and its canvas-coloured tint along the same
+/// curve, built under a light and a dark appearance
 @MainActor
 @Test(
   arguments: [Theme.warmInk, .inkWash, .warmInkDark, .inkWashDark],
-  [TopGlass.Look(), TopGlass.Look(material: .hudWindow, tint: 0.3, dissolve: 30)])
+  [
+    TopGlass.Look(), TopGlass.Look(material: .hudWindow, tint: 0.3, dissolve: 30),
+    TopGlass.Look(kind: .glass, tint: 0.2, dissolve: 20),
+  ])
 func topGlassFrostsTheBarAndDissolvesBelowIt(_ theme: Theme, _ look: TopGlass.Look) throws {
   let bar: CGFloat = 36
   let d = look.dissolve
-  let glass = TopGlass(frame: NSRect(x: 0, y: 0, width: 200, height: bar + d))
+  let window = NSView(frame: NSRect(x: 0, y: 0, width: 200, height: bar + d))
+  window.appearance = NSAppearance(named: theme.dark ? .darkAqua : .aqua)
+  let glass = TopGlass(frame: window.bounds)
+  window.addSubview(glass)
   glass.theme = theme
+  glass.look = TopGlass.Look(kind: look.kind == .material ? .glass : .material)
   glass.look = look
   glass.place(bar: bar)
-  #expect(glass.blendingMode == .withinWindow && glass.state == look.state && glass.material == look.material)
-  // the material follows the window's appearance
-  #expect(glass.appearance == nil)
+  glass.layoutSubtreeIfNeeded()
+  // the effect follows the window's appearance
+  #expect(glass.appearance == nil && glass.effect.appearance == nil)
+  #expect(glass.effect.frame == glass.bounds && glass.subviews.count == 2)
 
-  // the mask as the material stretches it over the glass, y-down
-  let mask = try #require(glass.maskImage)
-  let rep = try #require(
-    NSBitmapImageRep(
-      bitmapDataPlanes: nil, pixelsWide: 10, pixelsHigh: Int(bar + d), bitsPerSample: 8, samplesPerPixel: 4,
-      hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
-  NSGraphicsContext.saveGraphicsState()
-  NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-  mask.draw(in: NSRect(x: 0, y: 0, width: 10, height: bar + d))
-  NSGraphicsContext.restoreGraphicsState()
-  func alpha(_ row: Int) -> CGFloat { rep.colorAt(x: 5, y: row)?.alphaComponent ?? -1 }
-  #expect(alpha(0) > 0.99 && alpha(Int(bar) - 1) > 0.99)
-  #expect(abs(alpha(Int(bar + d / 2)) - 0.5) < 0.15)
-  #expect(alpha(Int(bar + d) - 1) < 0.05)
+  // the effect's opacity down the glass, at fractions of its height
+  var alpha: (CGFloat) -> CGFloat
+  switch look.kind {
+  case .material:
+    let effect = try #require(glass.effect as? NSVisualEffectView)
+    #expect(effect.blendingMode == .withinWindow && effect.state == look.state && effect.material == look.material)
+    // the mask as the material stretches it over the glass, y-down
+    let mask = try #require(effect.maskImage)
+    let rep = try #require(
+      NSBitmapImageRep(
+        bitmapDataPlanes: nil, pixelsWide: 10, pixelsHigh: Int(bar + d), bitsPerSample: 8, samplesPerPixel: 4,
+        hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+    mask.draw(in: NSRect(x: 0, y: 0, width: 10, height: bar + d))
+    NSGraphicsContext.restoreGraphicsState()
+    alpha = { rep.colorAt(x: 5, y: min(Int($0 * (bar + d)), Int(bar + d) - 1))?.alphaComponent ?? -1 }
+  case .glass:
+    let effect = try #require(glass.effect as? NSGlassEffectView)
+    #expect(effect.style == .clear && effect.cornerRadius == 0)
+    // a layer mask over the glass's y-up layer: it starts at the top
+    let mask = try #require(effect.layer?.mask as? CAGradientLayer)
+    #expect(mask.frame == effect.bounds && mask.startPoint.y == 1 && mask.endPoint.y == 0)
+    let colors = try #require(mask.colors as? [CGColor]).map(\.alpha)
+    let at = try #require(mask.locations).map { CGFloat($0.doubleValue) }
+    alpha = { y in colors[at.lastIndex { $0 <= y } ?? 0] }
+  }
+  #expect(alpha(0) > 0.99 && alpha((bar - 1) / (bar + d)) > 0.99)
+  #expect(abs(alpha((bar + d / 2) / (bar + d)) - 0.5) < 0.15)
+  #expect(alpha(1) < 0.05)
 
-  let tint = try #require(glass.subviews.first?.layer as? CAGradientLayer)
+  let tint = try #require(glass.subviews.last?.layer as? CAGradientLayer)
   let colors = try #require(tint.colors as? [CGColor])
   let locations = try #require(tint.locations).map { CGFloat($0.doubleValue) }
   let top = try #require(colors.first)
@@ -275,14 +300,25 @@ func topGlassFrostsTheBarAndDissolvesBelowIt(_ theme: Theme, _ look: TopGlass.Lo
   let shell = Shell()
   let tuning = GlassTuning(shell: shell, defaults: defaults)
   #expect(shell.glass == TopGlass.Look())
-  shell.glass = tuned
-  for _ in 0..<100 where defaults.data(forKey: GlassTuning.key) == nil { await Task.yield() }
-  let relaunched = Shell()
-  _ = GlassTuning(shell: relaunched, defaults: defaults)
-  #expect(relaunched.glass == tuned)
+  for look in [tuned, TopGlass.Look(kind: .glass, tint: 0.2, dissolve: 20)] {
+    shell.glass = look
+    for _ in 0..<100
+    where defaults.data(forKey: GlassTuning.key).flatMap({ try? JSONDecoder().decode(TopGlass.Look.self, from: $0) })
+      != look
+    {
+      await Task.yield()
+    }
+    let relaunched = Shell()
+    _ = GlassTuning(shell: relaunched, defaults: defaults)
+    #expect(relaunched.glass == look)
+  }
   #expect(
-    GlassTuning.line(tuned) == "material=hudWindow tint=0.55 dissolve=18 emphasized=true state=followsWindowActiveState"
-  )
+    GlassTuning.line(tuned)
+      == "kind=material material=hudWindow tint=0.55 dissolve=18 emphasized=true state=followsWindowActiveState")
+  #expect(GlassTuning.line(TopGlass.Look(kind: .glass, tint: 0.2, dissolve: 20)) == "kind=glass tint=0.20 dissolve=20")
+  // a look stored before there were kinds is a material
+  let old = Data(#"{"material":13,"tint":0.55,"dissolve":18,"emphasized":true,"state":0}"#.utf8)
+  #expect(try JSONDecoder().decode(TopGlass.Look.self, from: old) == tuned)
 
   tuning.reset()
   #expect(shell.glass == TopGlass.Look())

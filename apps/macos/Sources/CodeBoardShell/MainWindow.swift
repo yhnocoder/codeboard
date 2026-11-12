@@ -185,9 +185,10 @@ private final class Panel: NSView {
 /// The canvas runs on under the top bar, so cards pass under the tabs: there they are seen blurred through frosted glass
 /// tinted with the canvas colour, which dissolves into the canvas over a few points below the bar so it has no edge.
 /// Core Animation blurs what is behind it on the GPU as it composites; nothing here runs per frame
-final class TopGlass: NSVisualEffectView {
+final class TopGlass: NSView {
   /// What the glass is made of; the defaults are ShellTheme's
   struct Look: Equatable, Sendable {
+    var kind = Kind.material
     var material = ShellTheme.glassMaterial
     var tint = ShellTheme.glassTint
     var dissolve = ShellTheme.glassDissolve
@@ -196,26 +197,37 @@ final class TopGlass: NSVisualEffectView {
     var state = NSVisualEffectView.State.active
   }
 
+  // ponytail: two ways of making the glass while the owner compares them in GlassTuning; keep one, drop the enum. A
+  // layer blurring what is behind it by a radius of our own was tried: background filters (CIGaussianBlur) draw nothing
+  // within the window on macOS 27, and nothing else public blurs what is behind a layer
+  enum Kind: String, Sendable {
+    /// A system material (NSVisualEffectView)
+    case material
+    /// Liquid Glass in its clear style (NSGlassEffectView)
+    case glass
+  }
+
   var theme = Theme.warmInk { didSet { retint() } }
   var look = Look() {
     didSet {
       guard look != oldValue else { return }
-      if look.dissolve != oldValue.dissolve { maskImage = TopGlass.mask(dissolve: look.dissolve) }
+      if look.kind != oldValue.kind { rebuild() }
       adopt()
       retint()
     }
   }
+  /// What blurs, by the kind: built in GlassTuning
+  private(set) var effect = NSView()
   private var bar: CGFloat = 0
   private let tint = GradientView()
 
   override init(frame: NSRect) {
     super.init(frame: frame)
-    blendingMode = .withinWindow
-    adopt()
-    maskImage = TopGlass.mask(dissolve: look.dissolve)
     tint.frame = bounds
     tint.autoresizingMask = [.width, .height]
     addSubview(tint)
+    rebuild()
+    adopt()
     retint()
   }
 
@@ -227,27 +239,37 @@ final class TopGlass: NSVisualEffectView {
   override var isFlipped: Bool { true }
   override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
+  override func layout() {
+    super.layout()
+    effect.layer?.mask?.frame = effect.bounds
+  }
+
   func place(bar: CGFloat) {
     guard bar != self.bar else { return }
     self.bar = bar
+    adopt()
     retint()
   }
 
-  private func adopt() {
-    material = look.material
-    isEmphasized = look.emphasized
-    state = look.state
+  private func rebuild() {
+    effect.removeFromSuperview()
+    effect = TopGlass.effect(look.kind)
+    effect.frame = bounds
+    effect.autoresizingMask = [.width, .height]
+    addSubview(effect, positioned: .below, relativeTo: tint)
   }
 
-  /// The material's own mask stretches its one opaque row over the bar; the tint, which it does not mask, fades along
-  /// the same curve
+  private func adopt() { TopGlass.adopt(look, on: effect, stops: TopGlass.stops(bar: bar, dissolve: look.dissolve)) }
+
+  /// The effect's mask fades it out below the bar; the tint, which it does not mask, fades along the same curve
   private func retint() {
     let stops = TopGlass.stops(bar: bar, dissolve: look.dissolve)
     tint.gradient.colors = stops.map { theme.canvas.copy(alpha: look.tint * $0.alpha) ?? theme.canvas }
     tint.gradient.locations = stops.map { NSNumber(value: Double($0.at)) }
   }
 
-  private static func mask(dissolve d: CGFloat) -> NSImage {
+  /// A material's mask: its one opaque row stretched over the bar
+  static func mask(dissolve d: CGFloat) -> NSImage {
     let stops = TopGlass.stops(bar: 1, dissolve: d)
     let img = NSImage(size: NSSize(width: 1, height: 1 + d), flipped: true) { r in
       NSGradient(
