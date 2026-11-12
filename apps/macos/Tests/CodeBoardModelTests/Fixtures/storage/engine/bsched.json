@@ -1,0 +1,11 @@
+{
+ "version": 13,
+ "id": "bsched",
+ "name": "Scheduler: prefill/decode",
+ "cards": [{ "id": "cshared", "kind": "shared" }, { "id": "cn", "kind": "note", "look": "note", "md": "Queue" }],
+ "place": { "cshared": { "x": 0, "y": 0, "w": 300 }, "cn": { "x": 400, "y": 0, "w": 200 } },
+ "links": [{ "id": "l1", "from": { "card": "cn" }, "to": { "card": "cshared" } }],
+ "sections": [],
+ "sidenotes": [],
+ "stickers": []
+}

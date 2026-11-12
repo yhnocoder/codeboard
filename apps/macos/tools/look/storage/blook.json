@@ -1,0 +1,366 @@
+{
+ "version": 13,
+ "id": "blook",
+ "name": "Look sampler",
+ "cards": [
+  {
+   "id": "ccode",
+   "kind": "code",
+   "segments": [
+    {
+     "id": "sencode",
+     "src": {
+      "kind": "repo",
+      "repo": ""
+     },
+     "path": "sampler/tokens.py",
+     "lang": "python",
+     "start": 13,
+     "end": 25,
+     "text": [
+      "    def encode(self, text: str) -> list[int]:",
+      "        # split on spaces, then look each word up",
+      "        words = text.split()",
+      "        ids = []",
+      "        for w in words:",
+      "            ids.append(self.vocab.get(w, 0))",
+      "        if not ids:",
+      "            raise ValueError(\"empty\")",
+      "        seen = set()",
+      "        for i in ids:",
+      "            seen.add(i)",
+      "        self.last = ids",
+      "        return ids"
+     ],
+     "version": {
+      "kind": "hash",
+      "hash": "4f2a"
+     },
+     "symbol": {
+      "qual": "Tokenizer.encode",
+      "kind": "function"
+     },
+     "scope": "Tokenizer",
+     "hidden": [
+      [
+       20,
+       22
+      ]
+     ],
+     "hl": [
+      [
+       15,
+       16
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cfree",
+   "kind": "code",
+   "title": "free code",
+   "segments": [
+    {
+     "id": "sfree",
+     "src": {
+      "kind": "free"
+     },
+     "path": "",
+     "lang": "python",
+     "start": 1,
+     "end": 3,
+     "text": [
+      "def add(a, b):",
+      "    s = a + b",
+      "    return s"
+     ],
+     "version": {
+      "kind": "none"
+     }
+    }
+   ]
+  },
+  {
+   "id": "cbare",
+   "kind": "code",
+   "bg": false,
+   "segments": [
+    {
+     "id": "sbare",
+     "src": {
+      "kind": "free"
+     },
+     "path": "",
+     "lang": "python",
+     "start": 1,
+     "end": 2,
+     "text": [
+      "total = sum(ids)",
+      "print(total)"
+     ],
+     "version": {
+      "kind": "none"
+     }
+    }
+   ]
+  },
+  {
+   "id": "cnote",
+   "kind": "note",
+   "look": "note",
+   "md": "# Why words\nThe vocabulary maps each word to a number."
+  },
+  {
+   "id": "ctext",
+   "kind": "note",
+   "look": "text",
+   "md": "Encode",
+   "size": "title"
+  },
+  {
+   "id": "cyellow",
+   "kind": "note",
+   "look": "box",
+   "md": "lookup",
+   "fill": "yellow"
+  },
+  {
+   "id": "cblue",
+   "kind": "note",
+   "look": "box",
+   "md": "loop",
+   "fill": "blue"
+  },
+  {
+   "id": "cgreen",
+   "kind": "note",
+   "look": "box",
+   "md": "join",
+   "fill": "green"
+  },
+  {
+   "id": "cpink",
+   "kind": "note",
+   "look": "box",
+   "md": "split",
+   "fill": "pink"
+  },
+  {
+   "id": "cpaper",
+   "kind": "note",
+   "look": "box",
+   "md": "plain",
+   "fill": "paper"
+  },
+  {
+   "id": "cmark",
+   "kind": "note",
+   "look": "mark",
+   "md": "hot path",
+   "hand": "green",
+   "weight": "bold"
+  },
+  {
+   "id": "cfreetext",
+   "kind": "note",
+   "look": "freetext",
+   "md": "Tokens",
+   "level": 1
+  },
+  {
+   "id": "cimg",
+   "kind": "image",
+   "src": "7c3e9a51d2b04f68-240x150.png",
+   "alt": "A hill",
+   "bg": true
+  },
+  {
+   "id": "cbareimg",
+   "kind": "image",
+   "src": "7c3e9a51d2b04f68-240x150.png",
+   "alt": "A hill"
+  }
+ ],
+ "place": {
+  "ccode": {
+   "x": 60,
+   "y": 80,
+   "w": 460,
+   "section": "sinput"
+  },
+  "cfree": {
+   "x": 600,
+   "y": 80,
+   "w": 300
+  },
+  "cbare": {
+   "x": 600,
+   "y": 260,
+   "w": 300
+  },
+  "cnote": {
+   "x": 980,
+   "y": 80,
+   "w": 300,
+   "h": 140
+  },
+  "ctext": {
+   "x": 980,
+   "y": 270,
+   "w": 260,
+   "h": 60
+  },
+  "cyellow": {
+   "x": 600,
+   "y": 380,
+   "w": 130,
+   "h": 60
+  },
+  "cblue": {
+   "x": 760,
+   "y": 380,
+   "w": 130,
+   "h": 60
+  },
+  "cgreen": {
+   "x": 600,
+   "y": 470,
+   "w": 130,
+   "h": 60
+  },
+  "cpink": {
+   "x": 760,
+   "y": 470,
+   "w": 130,
+   "h": 60
+  },
+  "cpaper": {
+   "x": 920,
+   "y": 470,
+   "w": 130,
+   "h": 60
+  },
+  "cmark": {
+   "x": 1100,
+   "y": 470,
+   "w": 160,
+   "h": 50
+  },
+  "cfreetext": {
+   "x": 980,
+   "y": 360,
+   "w": 200,
+   "h": 60
+  },
+  "cimg": {
+   "x": 60,
+   "y": 620,
+   "w": 240
+  },
+  "cbareimg": {
+   "x": 340,
+   "y": 620,
+   "w": 240
+  }
+ },
+ "links": [
+  {
+   "id": "lcall",
+   "from": {
+    "card": "ccode",
+    "seg": "sencode",
+    "line": 18
+   },
+   "to": {
+    "card": "cfree"
+   }
+  },
+  {
+   "id": "lnote",
+   "from": {
+    "card": "cfree"
+   },
+   "to": {
+    "card": "cnote"
+   },
+   "label": "explains"
+  },
+  {
+   "id": "ldash",
+   "from": {
+    "card": "cbare"
+   },
+   "to": {
+    "card": "ctext"
+   },
+   "style": {
+    "dash": true
+   }
+  },
+  {
+   "id": "lwide",
+   "from": {
+    "card": "ccode",
+    "seg": "sencode",
+    "line": 25
+   },
+   "to": {
+    "card": "cyellow"
+   },
+   "style": {
+    "width": 3,
+    "color": "orange",
+    "head": {
+     "start": true,
+     "end": true
+    }
+   },
+   "label": "ids"
+  },
+  {
+   "id": "lthin",
+   "from": {
+    "card": "cblue"
+   },
+   "to": {
+    "card": "cmark"
+   },
+   "style": {
+    "width": 1,
+    "color": "blue"
+   }
+  },
+  {
+   "id": "limg",
+   "from": {
+    "card": "cimg"
+   },
+   "to": {
+    "card": "cbareimg"
+   },
+   "style": {
+    "color": "green"
+   }
+  }
+ ],
+ "sections": [
+  {
+   "id": "sinput",
+   "title": "Input",
+   "x": 30,
+   "y": 30,
+   "w": 520,
+   "h": 540,
+   "color": "sand"
+  },
+  {
+   "id": "sboxes",
+   "title": "Boxes",
+   "x": 580,
+   "y": 350,
+   "w": 700,
+   "h": 200
+  }
+ ]
+}

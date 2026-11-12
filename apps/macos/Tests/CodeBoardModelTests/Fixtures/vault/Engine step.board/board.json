@@ -1,0 +1,455 @@
+{
+  "arrows": [
+    {
+      "dashed": false,
+      "endHead": true,
+      "from": {
+        "card": "cstep",
+        "line": 50,
+        "lost": false,
+        "segment": "sstep"
+      },
+      "id": "lcall",
+      "startHead": false,
+      "to": {
+        "card": "cgh",
+        "lost": false
+      },
+      "width": 2
+    },
+    {
+      "color": "red",
+      "dashed": true,
+      "endHead": false,
+      "from": {
+        "block": {
+          "hash": "1x2y3z",
+          "index": 1
+        },
+        "card": "cnote",
+        "lost": false,
+        "side": "right"
+      },
+      "id": "lstyled",
+      "label": "see",
+      "labelPosition": 0.25,
+      "startHead": true,
+      "to": {
+        "card": "cimg",
+        "lost": true,
+        "side": "left"
+      },
+      "width": 3
+    },
+    {
+      "dashed": false,
+      "endHead": true,
+      "from": {
+        "card": "cstep",
+        "lost": false
+      },
+      "id": "lshared",
+      "startHead": false,
+      "to": {
+        "card": "cshared",
+        "lost": false
+      },
+      "width": 2
+    }
+  ],
+  "cards": [
+    {
+      "content": {
+        "code": {
+          "framed": true,
+          "hide": {
+            "blankLines": false,
+            "comments": true,
+            "docstrings": false
+          },
+          "segments": [
+            {
+              "annotations": [
+                {
+                  "below": false,
+                  "color": "orange",
+                  "from": 8,
+                  "line": 50,
+                  "text": "a batch",
+                  "to": 12
+                },
+                {
+                  "below": true,
+                  "color": "blue",
+                  "from": 0,
+                  "line": 51,
+                  "text": "rpc",
+                  "to": 4
+                }
+              ],
+              "firstLine": 49,
+              "hidden": [
+                [52, 52]
+              ],
+              "highlights": [
+                [50, 51]
+              ],
+              "id": "sstep",
+              "language": "python",
+              "lines": [
+                "    def step(self):",
+                "        seqs, is_prefill = self.scheduler.schedule()",
+                "        token_ids = self.model_runner.call(\"run\", seqs, is_prefill)",
+                "        return token_ids"
+              ],
+              "scope": "LLMEngine",
+              "source": {
+                "git": {
+                  "checkout": "",
+                  "commit": "bb823b3e06983d71485a8e1f23715ebd87d98ef8",
+                  "path": "nanovllm/engine/llm_engine.py",
+                  "uncommitted": false
+                }
+              },
+              "symbol": {
+                "kind": "function",
+                "name": "LLMEngine.step"
+              }
+            }
+          ],
+          "wrap": true
+        },
+        "description": "Runs the scheduler, then the model. ![diagram](images/9e8d7c6b5a493827-1x1.png)",
+        "processes": [
+          {
+            "light": false,
+            "text": "rank 0"
+          },
+          {
+            "light": true,
+            "text": "stream 1"
+          }
+        ],
+        "title": "One engine step"
+      },
+      "id": "cstep",
+      "locked": true,
+      "section": "sec-outer",
+      "tilted": false,
+      "width": 640,
+      "x": 80,
+      "y": 80
+    },
+    {
+      "content": {
+        "code": {
+          "framed": false,
+          "hide": {
+            "blankLines": false,
+            "comments": false,
+            "docstrings": false
+          },
+          "segments": [
+            {
+              "annotations": [],
+              "firstLine": 1,
+              "hidden": [],
+              "highlights": [],
+              "id": "sgh",
+              "language": "python",
+              "lines": [
+                "from collections import deque"
+              ],
+              "source": {
+                "git": {
+                  "commit": "0123456789abcdef0123456789abcdef01234567",
+                  "path": "nanovllm/engine/scheduler.py",
+                  "repository": "https://github.com/GeeeekExplorer/nano-vllm",
+                  "uncommitted": false
+                }
+              }
+            },
+            {
+              "annotations": [],
+              "firstLine": 10,
+              "hidden": [],
+              "highlights": [],
+              "id": "spkg",
+              "language": "python",
+              "lines": [
+                "def relu(x):",
+                "    return x"
+              ],
+              "source": {
+                "package": {
+                  "name": "torch",
+                  "path": "torch/nn/functional.py",
+                  "version": "2.9.0"
+                }
+              }
+            },
+            {
+              "annotations": [],
+              "firstLine": 3,
+              "hidden": [],
+              "highlights": [],
+              "id": "shash",
+              "language": "plaintext",
+              "lines": [
+                "untracked"
+              ],
+              "source": {
+                "file": {
+                  "hash": "4f2a",
+                  "path": "third_party/kernels/notes.txt"
+                }
+              }
+            }
+          ],
+          "wrap": false
+        },
+        "processes": []
+      },
+      "height": 200,
+      "id": "cgh",
+      "locked": false,
+      "tilted": false,
+      "width": 500,
+      "x": 800,
+      "y": 80
+    },
+    {
+      "content": {
+        "code": {
+          "framed": true,
+          "hide": {
+            "blankLines": false,
+            "comments": false,
+            "docstrings": false
+          },
+          "segments": [
+            {
+              "annotations": [],
+              "firstLine": 1,
+              "hidden": [],
+              "highlights": [],
+              "id": "sfree",
+              "language": "cuda-cpp",
+              "lines": [
+                "__global__ void k() {",
+                "}"
+              ]
+            }
+          ],
+          "wrap": false
+        },
+        "processes": []
+      },
+      "id": "cfree",
+      "locked": false,
+      "tilted": false,
+      "width": 400,
+      "x": 80,
+      "y": 500
+    },
+    {
+      "content": {
+        "note": {
+          "layout": {
+            "tables": [
+              null,
+              {
+                "cols": [120, null]
+              }
+            ],
+            "wrap": [0]
+          },
+          "style": {
+            "note": {}
+          },
+          "text": "# Prefill\nThe first pass.\n\n![shot](images/5f1a2b3c4d5e6f70-1x1.png){width=50%}\n\nNot an asset: myassets/x.png"
+        },
+        "processes": []
+      },
+      "id": "cnote",
+      "locked": false,
+      "section": "sec-inner",
+      "tilted": false,
+      "width": 360,
+      "x": 800,
+      "y": 400
+    },
+    {
+      "content": {
+        "note": {
+          "style": {
+            "text": {
+              "bold": true,
+              "size": "title"
+            }
+          },
+          "text": "Decode"
+        },
+        "processes": []
+      },
+      "id": "ctext",
+      "locked": false,
+      "tilted": true,
+      "width": 300,
+      "x": 80,
+      "y": 20
+    },
+    {
+      "content": {
+        "note": {
+          "style": {
+            "box": {
+              "fill": "blue"
+            }
+          },
+          "text": "loop"
+        },
+        "processes": []
+      },
+      "id": "cbox",
+      "locked": false,
+      "tilted": false,
+      "width": 120,
+      "x": 400,
+      "y": 20
+    },
+    {
+      "content": {
+        "note": {
+          "style": {
+            "mark": {
+              "color": "green",
+              "fontSize": 24,
+              "weight": "bold"
+            }
+          },
+          "text": "hot path"
+        },
+        "processes": []
+      },
+      "id": "cmark",
+      "locked": false,
+      "tilted": false,
+      "width": 160,
+      "x": 520,
+      "y": 20
+    },
+    {
+      "content": {
+        "note": {
+          "style": {
+            "freeText": {
+              "bold": false,
+              "level": 2
+            }
+          },
+          "text": "assets/ stays as typed"
+        },
+        "processes": []
+      },
+      "id": "cfreetext",
+      "locked": false,
+      "tilted": false,
+      "width": 300,
+      "x": 700,
+      "y": 20
+    },
+    {
+      "content": {
+        "note": {
+          "style": {
+            "note": {}
+          },
+          "text": "Req"
+        },
+        "processes": []
+      },
+      "id": "cmsg",
+      "locked": false,
+      "tilted": false,
+      "width": 120,
+      "x": 1000,
+      "y": 20
+    },
+    {
+      "content": {
+        "image": {
+          "alt": "A plot",
+          "framed": true,
+          "loops": true,
+          "source": {
+            "file": "0a1b2c3d4e5f6071-1x1.png"
+          },
+          "stillFrame": 2
+        },
+        "processes": []
+      },
+      "id": "cimg",
+      "locked": false,
+      "tilted": false,
+      "width": 200.5,
+      "x": 80,
+      "y": 700
+    },
+    {
+      "content": {
+        "image": {
+          "framed": false,
+          "loops": false,
+          "source": {
+            "file": "ffffffffffffffff-1x1.png"
+          }
+        },
+        "processes": []
+      },
+      "id": "cmissing",
+      "locked": false,
+      "tilted": false,
+      "width": 100,
+      "x": 300,
+      "y": 700
+    },
+    {
+      "id": "cshared",
+      "locked": false,
+      "shared": true,
+      "tilted": true,
+      "width": 300,
+      "x": 900,
+      "y": 700
+    }
+  ],
+  "hideComments": false,
+  "id": "bflow1",
+  "sections": [
+    {
+      "collapsed": false,
+      "color": "blue",
+      "description": "Outer",
+      "height": 900,
+      "id": "sec-outer",
+      "locked": false,
+      "title": "Step",
+      "width": 1400,
+      "x": 40,
+      "y": 40
+    },
+    {
+      "collapsed": true,
+      "height": 300,
+      "id": "sec-inner",
+      "locked": true,
+      "parent": "sec-outer",
+      "title": "Prefill",
+      "width": 400,
+      "x": 780,
+      "y": 380
+    }
+  ],
+  "version": 1
+}
