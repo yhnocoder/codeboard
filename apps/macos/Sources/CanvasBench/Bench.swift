@@ -96,7 +96,8 @@ final class Meter {
 @MainActor
 final class Bench {
   enum Motion {
-    /// From zoom a to e over the seconds, by pinch steps around the view's centre
+    /// From zoom a to e over the seconds, by pinch steps around the view's centre, which is the centre of the card
+    /// nearest the board's
     case zoom(CGFloat, CGFloat, TimeInterval)
     /// Fingers at 3000 pt/s for 150 ms, then lift; the canvas glides
     case flick
@@ -185,7 +186,8 @@ final class Bench {
     let b = canvas.boardBounds
     switch Bench.script[index].1 {
     case .zoom(let a, _, _):
-      canvas.place(zoom: a, centre: CGPoint(x: b.midX, y: b.midY))
+      let mid = CGPoint(x: b.midX, y: b.midY)
+      canvas.place(zoom: a, centre: canvas.cardCentre(nearest: mid) ?? mid)
     case .flick, .pan:
       canvas.place(zoom: 1, centre: CGPoint(x: b.minX + canvas.bounds.width / 2, y: b.midY))
     }

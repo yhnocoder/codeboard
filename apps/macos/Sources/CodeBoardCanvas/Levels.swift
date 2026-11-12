@@ -69,8 +69,11 @@ struct RestPlan: Equatable {
       let shown = Levels.scale(Levels.shown(zoom), backing: backing, size: it.rect.size)
       if inNear || it.rect.intersects(far) {
         let want = Levels.scale(inNear ? Levels.held(zoom) : Levels.shown(zoom), backing: backing, size: it.rect.size)
-        // missing, or two levels above what is needed (memory)
-        if it.held < want * 0.98 || it.held > want * 2.5 {
+        // exactly the level: a higher one left by an earlier zoom costs memory and hides what a zoom-in would show
+        if it.overview >= want * 0.98 {
+          // the overview is kept anyway and is enough
+          if it.held > it.overview { dropHeld.append(i) }
+        } else if abs(it.held - want) / want >= 0.02 {
           order.append((Job(item: i, slot: .held, scale: want), d + (inView ? 0 : inNear ? 100_000 : 1_000_000)))
         }
         if inView && abs(want - shown) / shown < 0.01 {

@@ -63,6 +63,19 @@ import Testing
     let p = RestPlan(items: [item(450, 350, held: 4, rest: 0.5)], view: view, zoom: 0.25, backing: 2, pointer: nil)
     #expect(p.jobs == [.init(item: 0, slot: .held, scale: 1)])
   }
+
+  @Test func oneLevelTooMuchIsRedrawnSmallerToo() {
+    // back at 50 % after 200 %: the rule holds 100 % (scale 2), so the next zoom-in goes soft past 100 %
+    let p = RestPlan(items: [item(450, 350, held: 4)], view: view, zoom: 0.5, backing: 2, pointer: nil)
+    #expect(p.jobs.filter { $0.slot == .held } == [.init(item: 0, slot: .held, scale: 2)])
+  }
+
+  @Test func anOverviewThatIsEnoughReplacesAHigherBitmap() {
+    let small = RestPlan.Item(rect: CGRect(x: 450, y: 350, width: 100, height: 100), held: 4, rest: nil, overview: 2)
+    let p = RestPlan(items: [small], view: view, zoom: 0.25, backing: 2, pointer: nil)
+    #expect(p.dropHeld == [0])
+    #expect(p.jobs.filter { $0.slot == .held }.isEmpty)
+  }
 }
 
 @Suite struct RedrawQueueTests {

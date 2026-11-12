@@ -456,6 +456,15 @@ public final class CanvasView: NSView {
     }
   }
 
+  /// The centre of the card nearest a board point: a zoom around empty canvas would measure nothing
+  package func cardCentre(nearest p: CGPoint) -> CGPoint? {
+    func distance(_ r: CGRect) -> CGFloat {
+      hypot(max(r.minX - p.x, 0, p.x - r.maxX), max(r.minY - p.y, 0, p.y - r.maxY))
+    }
+    let cards = scene?.items.filter { if case .label = $0.drawing { false } else { true } } ?? []
+    return cards.min { distance($0.rect) < distance($1.rect) }.map { CGPoint(x: $0.rect.midX, y: $0.rect.midY) }
+  }
+
   /// Jumps to a zoom with the board point `centre` in the middle of the view, at rest
   package func place(zoom: CGFloat, centre: CGPoint) {
     let z = limits.clamp(zoom)
