@@ -257,10 +257,11 @@ export function editorExtensions(
     name: "cbRules",
     addKeyboardShortcuts() {
       return {
-        // Shift+↵: a line break inside the paragraph or cell, written as <br> (the source shows it)
+        // Shift+↵: a line break inside the paragraph or cell, written as <br> (the source shows it); a heading is one line
         "Shift-Enter": () => {
           const { $from } = this.editor.state.selection;
           if (!$from.parent.isTextblock || $from.parent.type.spec.code) return false;
+          if ($from.parent.attrs.level) return true;
           this.editor.view.dispatch(revealMeta(this.editor.state.tr.insertText("<br>")).scrollIntoView());
           return true;
         },
@@ -346,6 +347,7 @@ export function editorExtensions(
     Typora.configure({
       openMath: openMathAt,
       openLink: (e) => uiOf.get(e)?.setLink(e.getAttributes("link").href ?? ""),
+      classes: () => o.classes,
     }),
     Placeholder.configure({ placeholder: () => o.placeholder ?? "Type / for blocks", showOnlyCurrent: true }),
     ...(handle

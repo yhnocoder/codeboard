@@ -1,5 +1,6 @@
 // The editor's document ⇄ Markdown. A paragraph, heading or cell in the editor holds that line's Markdown source as plain
-// text (no marks, no inline nodes); formatting is only drawn (inline.ts). Blocks (lists, quotes, code, formulas, tables,
+// text (no marks, no inline nodes); formatting is only drawn (inline.ts). A heading is a paragraph with a level, its text
+// without the `#` marker. Blocks (lists, quotes, code, formulas, tables,
 // details…) stay nodes. Reading: parseMd makes the document and each paragraph is written back by serializeMd's rules (so,
 // as before, what is saved is normalized Markdown). Writing: the source as it is, the blocks put together as before.
 // Footnote definitions are paragraphs [^1]: … at the end (as they are written in the source)
@@ -13,7 +14,14 @@ const text = (t: string): JSONContent[] | undefined => (t ? [{ type: "text", tex
 
 /** A parsed block as the editor's: paragraphs and headings become their source */
 export function sourceBlock(n: JSONContent): JSONContent {
-  if (n.type === "paragraph" || n.type === "heading") return { type: "paragraph", content: text(inlineMd(n)) };
+  if (n.type === "paragraph") return { type: "paragraph", content: text(inlineMd(n)) };
+  // the heading's own writer, so its text is escaped as in a heading (a "- " at its start stays as it is)
+  if (n.type === "heading")
+    return {
+      type: "paragraph",
+      attrs: { level: n.attrs?.level ?? 1 },
+      content: text(inlineMd(n).replace(/^#{1,6}(?:[ \t]+|$)/, "")),
+    };
   if (CODE.has(n.type!) || !n.content) return n;
   return { ...n, content: n.content.map(sourceBlock) };
 }
@@ -46,6 +54,7 @@ export function sourceMd(doc: JSONContent): string {
   while (
     content.length &&
     content[content.length - 1].type === "paragraph" &&
+    !content[content.length - 1].attrs?.level &&
     !paraText(content[content.length - 1]).trim()
   )
     content.pop();

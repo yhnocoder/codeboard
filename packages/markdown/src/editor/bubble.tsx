@@ -137,7 +137,7 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
     if (!p.isTextblock || !$from.sameParent(e.state.selection.$to)) return null;
     const base = $from.start();
     return (
-      flat(blockInfo(p.textContent, false).spans).find(
+      flat(blockInfo(p.textContent).spans).find(
         (sp) => sp.tag?.nodeName === "a" && sp.from <= from - base && sp.to >= to - base && sp.marks.length === 2,
       ) ?? null
     );
@@ -178,7 +178,7 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
     if (!p.isTextblock) return null;
     const base = $from.start();
     return (
-      flat(blockInfo(p.textContent, false).spans).find(
+      flat(blockInfo(p.textContent).spans).find(
         (sp) => sp.atom?.type === "annot" && sp.from <= from - base && sp.to >= to - base,
       ) ?? null
     );

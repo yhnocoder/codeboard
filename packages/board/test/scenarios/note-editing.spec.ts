@@ -531,8 +531,8 @@ test("noteEditKeepsLayout", async () => {
   await close(h);
 });
 
-/** 打完 "## " 这一行马上是标题的字号、行高，"##" 也是标题的字号；接着打字时这一行、卡片的高度都不再变 */
-test("headingMarkerTypedAtHeadingSize", async () => {
+/** 打完 "## " 这一行马上是标题（h2 的字号、行高），# 不留在字里，左边留白里是级别小标；接着打字时这一行、卡片的高度都不再变 */
+test("headingTypedAtHeadingSize", async () => {
   const h = await open({ board: board([""]), light });
   await idle(h);
   await editNote(h, "n0");
@@ -540,13 +540,15 @@ test("headingMarkerTypedAtHeadingSize", async () => {
     h.page.evaluate(() => {
       const c = document.querySelector('.card[data-id="n0"]')!,
         e = c.querySelector(".md-pm")!.firstElementChild as HTMLElement;
-      // the heading's "## " is its own source text, drawn as a marker while the caret is in the line
-      const mk = e.querySelector(".md-mkh") as HTMLElement | null;
+      // the level is the block's: a chip in the padding, no characters in the text
+      const chip = e.querySelector(".md-hchip");
       return {
         tag: e.tagName,
-        fs: getComputedStyle(e).fontSize,
-        mk: mk ? getComputedStyle(mk).fontSize : "",
-        mkText: mk?.textContent ?? "",
+        chip: chip?.textContent ?? "",
+        text: [...e.childNodes]
+          .filter((n) => n !== chip)
+          .map((n) => n.textContent)
+          .join(""),
         lh: Math.round(e.getBoundingClientRect().height),
         card: Math.round(c.getBoundingClientRect().height),
       };
@@ -554,16 +556,17 @@ test("headingMarkerTypedAtHeadingSize", async () => {
   await keys(h.page, "## ");
   await idle(h);
   const space = await line();
-  await shot(h, "headingMarkerTypedAtHeadingSize-space");
+  await shot(h, "headingTypedAtHeadingSize-space");
   await keys(h.page, "Title");
   await idle(h);
   const typed = await line();
-  await shot(h, "headingMarkerTypedAtHeadingSize-typed");
+  await shot(h, "headingTypedAtHeadingSize-typed");
   check(
-    "headingMarkerTypedAtHeadingSize",
+    "headingTypedAtHeadingSize",
     space.tag === "H2" &&
-      space.mkText === "## " &&
-      space.mk === space.fs &&
+      space.chip === "H2" &&
+      space.text === "" &&
+      typed.text === "Title" &&
       typed.lh === space.lh &&
       typed.card === space.card,
     { space, typed },

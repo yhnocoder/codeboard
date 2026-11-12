@@ -337,9 +337,7 @@ function imageEnding(view: EditorView, end: number | undefined): { sp: Span; bas
   if (!p.isTextblock) return null;
   const base = $e.start(),
     off = end - base;
-  const sp =
-    flat(blockInfo(p.textContent, true).spans).find((s) => s.atom?.type === "image" && s.to === off) ??
-    flat(blockInfo(p.textContent, false).spans).find((s) => s.atom?.type === "image" && s.to === off);
+  const sp = flat(blockInfo(p.textContent).spans).find((s) => s.atom?.type === "image" && s.to === off);
   return sp?.atom?.type === "image" ? { sp, base } : null;
 }
 const imageSourceEnding = (view: EditorView, end: number | undefined): [number, number] | null => {

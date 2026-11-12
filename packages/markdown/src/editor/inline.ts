@@ -1,5 +1,5 @@
 // Paragraphs, headings and table-cell paragraphs hold their Markdown source as plain text. This plugin only draws it:
-// formatting comes from the parser (spans.ts) as decorations, and the markers (`**`, `## `, `](url)`) show only where
+// formatting comes from the parser (spans.ts) as decorations, and the markers (`**`, `](url)`) show only where
 // the caret is. Moving the caret never changes the document. The decorations stay frozen while the mouse is down, while
 // a selection is non-empty, during IME composition and for a moment after a single click (a double-click must land on
 // the same layout as the first click).
@@ -40,7 +40,6 @@ const toCaret = (view: EditorView, pos: number) => placeCaret(view, pos, revealM
 function layout(
   node: PMNode,
   pos: number,
-  cell: boolean,
   head: number | null,
   expand: number | null,
   out: Decoration[] | null,
@@ -48,7 +47,7 @@ function layout(
 ) {
   const text = node.textContent;
   if (!text) return;
-  const info = blockInfo(text, !cell),
+  const info = blockInfo(text),
     base = pos + 1,
     end = base + text.length;
   const inBlock = head !== null && head >= base && head <= end;
@@ -61,7 +60,6 @@ function layout(
     out?.push(Decoration.inline(a, b, { class: `md-mk${cls}${on ? "" : " md-hide"}` }));
     if (!on) hidden?.push([a, b, false]);
   };
-  if (info.prefix) mk(base, base + info.prefix, inBlock, " md-mkh");
   const walk = (spans: Span[], wrap: Tag[]) => {
     for (const sp of spans) {
       const from = base + sp.from,
@@ -184,9 +182,9 @@ function blocksIn(
   expand: number | null,
   out: Decoration[],
 ) {
-  doc.nodesBetween(from, to, (n, pos, parent) => {
+  doc.nodesBetween(from, to, (n, pos) => {
     if (n.isTextblock) {
-      if (isSource(n)) layout(n, pos, /cell/.test(parent?.type.spec.tableRole ?? ""), head, expand, out, null);
+      if (isSource(n)) layout(n, pos, head, expand, out, null);
       return false;
     }
     return !n.type.spec.code && !n.isAtom;
@@ -250,7 +248,7 @@ function update(prev: St, tr: Transaction, head: number | null, expand: number |
     // paragraph's node decoration (md-psized), which would be lost with the block's layout
     const end = pos + n.nodeSize;
     set = set.remove(set.find(pos, end).filter((d) => d.from >= pos && d.to <= end && d.to !== pos && d.from !== end));
-    layout(n, pos, inCell(doc, pos), head, expand, out, null);
+    layout(n, pos, head, expand, out, null);
   }
   return set.add(doc, out);
 }
@@ -398,7 +396,7 @@ function hiddenAt(state: EditorState, pos: number): Hidden[] {
   const $p = state.doc.resolve(pos),
     out: Hidden[] = [],
     st = inlineKey.getState(state)!;
-  layout($p.parent, $p.before(), inCell(state.doc, $p.before()), st.head, st.expand, null, out);
+  layout($p.parent, $p.before(), st.head, st.expand, null, out);
   return out.sort((a, b) => a[0] - b[0]);
 }
 const hi = (c: number) => c >= 0xd800 && c <= 0xdbff,
@@ -445,6 +443,28 @@ function moveH(view: EditorView, dir: number, shift: boolean): boolean {
   return true;
 }
 
+/** Spans that [x, y) of a paragraph's source only partly covers, taken in whole, so new markers never interleave with
+ *  theirs (==note with **bold==** would not parse as either) */
+function spanSafe(text: string, x: number, y: number): [number, number] {
+  if (x >= y) return [x, y];
+  const spans = flat(blockInfo(text).spans).filter((sp) => sp.atom || (sp.inner && sp.tag));
+  for (let moved = true; moved; ) {
+    moved = false;
+    for (const sp of spans) {
+      const whole = !!sp.atom && sp.atom.type !== "annot";
+      if (x > sp.from && x < sp.to && (y > sp.to || whole)) {
+        x = sp.from;
+        moved = true;
+      }
+      if (y > sp.from && y < sp.to && (x < sp.from || whole)) {
+        y = sp.to;
+        moved = true;
+      }
+    }
+  }
+  return [x, y];
+}
+
 /**
  * ⌘B and friends: add or remove the markers around the selection (the document is source, so this only inserts or
  * deletes characters). An empty selection inserts the pair and puts the caret between
@@ -456,7 +476,8 @@ export function toggleWrap(
   close = open,
 ): boolean {
   const { from, to, $from, $to } = state.selection;
-  if (!$from.sameParent($to) || !$from.parent.isTextblock || $from.parent.type.spec.code) return false;
+  if ($from.sameParent($to) && $from.parent.type.spec.code) return false;
+  if (!$from.sameParent($to) || !$from.parent.isTextblock) return wrapEach(state, dispatch, open, close);
   const base = $from.start(),
     text = $from.parent.textContent,
     a = from - base,
@@ -466,7 +487,7 @@ export function toggleWrap(
   const tr = state.tr;
   // the caret at the end of a span this pair closes (typed ⌘B, the text, ⌘B): step out over the closing marker
   if (a === b && text.slice(b, b + R) === close && b > L) {
-    const sp = flat(blockInfo(text, !inCell(state.doc, $from.before())).spans).find(
+    const sp = flat(blockInfo(text).spans).find(
       (x) =>
         x.inner?.[1] === a &&
         x.marks.some(([m0, m1]) => m0 === a && m1 === a + R) &&
@@ -486,29 +507,7 @@ export function toggleWrap(
       .delete(from, from + L)
       .setSelection(TextSelection.create(tr.doc, from, to - L - R));
   } else {
-    // spans the selection only partly covers are taken in whole, so the new markers never interleave with theirs
-    // (==note with **bold==** would not parse as either)
-    let x = a,
-      y = b;
-    if (x < y) {
-      const spans = flat(blockInfo(text, !inCell(state.doc, $from.before())).spans).filter(
-        (sp) => sp.atom || (sp.inner && sp.tag),
-      );
-      for (let moved = true; moved; ) {
-        moved = false;
-        for (const sp of spans) {
-          const whole = !!sp.atom && sp.atom.type !== "annot";
-          if (x > sp.from && x < sp.to && (y > sp.to || whole)) {
-            x = sp.from;
-            moved = true;
-          }
-          if (y > sp.from && y < sp.to && (x < sp.from || whole)) {
-            y = sp.to;
-            moved = true;
-          }
-        }
-      }
-    }
+    const [x, y] = spanSafe(text, a, b);
     const f = base + x,
       t = base + y;
     tr.insertText(close, t)
@@ -518,6 +517,59 @@ export function toggleWrap(
   dispatch?.(revealMeta(tr).scrollIntoView());
   return true;
 }
+/**
+ * A selection over several paragraphs: markers cannot span a paragraph break, so each paragraph's selected words are
+ * wrapped on their own (spaces at the ends left outside); when every part already is wrapped in the pair, all are
+ * unwrapped
+ */
+function wrapEach(
+  state: EditorState,
+  dispatch: ((tr: Transaction) => void) | undefined,
+  open: string,
+  close: string,
+): boolean {
+  const { from, to } = state.selection;
+  const parts: { base: number; text: string; x: number; y: number }[] = [];
+  state.doc.nodesBetween(from, to, (n, pos) => {
+    if (!n.isTextblock) return !n.type.spec.code && !n.isAtom;
+    if (!isSource(n)) return false;
+    const base = pos + 1,
+      text = n.textContent;
+    let x = Math.max(from, base) - base,
+      y = Math.min(to, base + text.length) - base;
+    while (x < y && /\s/.test(text[x])) x++;
+    while (y > x && /\s/.test(text[y - 1])) y--;
+    if (x < y) parts.push({ base, text, x, y });
+    return false;
+  });
+  if (!parts.length) return false;
+  const L = open.length,
+    R = close.length;
+  // where a part's markers are: each just outside it or the first / last characters it took in (-1: none)
+  const markers = (p: (typeof parts)[0]): [number, number] | null => {
+    const o = p.text.slice(p.x - L, p.x) === open ? p.x - L : p.text.slice(p.x, p.x + L) === open ? p.x : -1,
+      c = p.text.slice(p.y, p.y + R) === close ? p.y : p.text.slice(p.y - R, p.y) === close ? p.y - R : -1;
+    return o >= 0 && c > o + L ? [o, c] : null;
+  };
+  const wrapped = parts.every((p) => markers(p));
+  const tr = state.tr;
+  // from the last part back, so the earlier positions still hold
+  for (const p of [...parts].reverse()) {
+    if (wrapped) {
+      const [o, c] = markers(p)!;
+      tr.delete(p.base + c, p.base + c + R).delete(p.base + o, p.base + o + L);
+    } else {
+      const [x, y] = spanSafe(p.text, p.x, p.y);
+      tr.insertText(close, p.base + y).insertText(open, p.base + x);
+    }
+  }
+  tr.setSelection(
+    TextSelection.between(tr.doc.resolve(tr.mapping.map(from, 1)), tr.doc.resolve(tr.mapping.map(to, -1))),
+  );
+  dispatch?.(revealMeta(tr).scrollIntoView());
+  return true;
+}
+
 /** Is the selection wrapped in open…close (for the toolbar's pressed state) */
 export function isWrapped(state: EditorState, open: string, close = open): boolean {
   const { from, to, $from, $to } = state.selection;
@@ -534,7 +586,7 @@ export function isWrapped(state: EditorState, open: string, close = open): boole
   );
 }
 
-/** Paragraphs render as h1–h6 when their source starts with `#`s (never in a table cell) */
+/** Paragraphs render as h1–h6 when they have a level (never in a table cell) */
 export class ParaView {
   dom: HTMLElement;
   contentDOM: HTMLElement;
@@ -557,6 +609,6 @@ export class ParaView {
   }
 }
 export const tagOf = (n: PMNode, cell: boolean) => {
-  const l = cell ? 0 : blockInfo(n.textContent, true).level;
+  const l: number = cell ? 0 : n.attrs.level;
   return l ? `h${l}` : "p";
 };

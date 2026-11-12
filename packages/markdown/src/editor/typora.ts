@@ -3,15 +3,18 @@
 // - `> ` `- ` `1. ` `[ ] ` plus space use TipTap's own wrapping rules (and `1) ` here);
 // - on Enter, a paragraph whose whole source parses as one non-text block (code fence, rule, [toc], one-line $$m$$)
 //   becomes that block (enterBlock); `$$`, `===`, `<details>` and `|a|b|` plus Enter have their own rules.
-// Shortcuts that format (⌘B, ⌘I…) insert or remove markers around the selection; heading shortcuts edit the `#` prefix.
+// Shortcuts that format (⌘B, ⌘I…) insert or remove markers around the selection; a heading's level is its paragraph's
+// attribute (headings.ts): `#`s plus space at the start of a paragraph set it, and the heading keys change it.
 import { Extension, InputRule, wrappingInputRule, type Editor } from "@tiptap/core";
 import { NodeSelection, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { Fragment, type Node as PMNode, type ResolvedPos } from "@tiptap/pm/model";
 import { closeHistory } from "@tiptap/pm/history";
 import { parseMd } from "../schema";
 import { pairsPlugin } from "./pairs";
-import { blockInfo, spanEdgeOut } from "./spans";
+import { spanEdgeOut } from "./spans";
 import { inlinePlugin, revealMeta, toggleWrap } from "./inline";
+import { headingsPlugin, setLevel } from "./headings";
+import type { MdClasses } from "../ui/classes";
 import { sourceBlock } from "./srcdoc";
 import { IS_MAC } from "../ui/platform";
 
@@ -45,7 +48,13 @@ export function enterBlock(state: EditorState, dispatch?: (tr: Transaction) => v
   const tr = state.tr,
     $c = tr.selection.$head,
     p = $c.parent;
-  if (!tr.selection.empty || p.type.name !== "paragraph" || !p.content.size || $c.parentOffset !== p.content.size)
+  if (
+    !tr.selection.empty ||
+    p.type.name !== "paragraph" ||
+    p.attrs.level ||
+    !p.content.size ||
+    $c.parentOffset !== p.content.size
+  )
     return false;
   if ($c.depth && /cell/.test($c.node(-1).type.spec.tableRole ?? "")) return false;
   const n = soleBlock(p, state.schema);
@@ -54,20 +63,12 @@ export function enterBlock(state: EditorState, dispatch?: (tr: Transaction) => v
   return true;
 }
 
-/** Sets the heading level of the caret's paragraph by rewriting its `#` prefix (0 = plain paragraph) */
+/** Sets the heading level of the caret's paragraph (0 = plain paragraph) */
 export function setHeading(e: Editor, level: number | ((cur: number) => number)): boolean {
   const $h = e.state.selection.$head,
     p = $h.parent;
-  if (!p.isTextblock || p.type.name !== "paragraph" || ($h.depth && /cell/.test($h.node(-1).type.spec.tableRole ?? "")))
-    return false;
-  const info = blockInfo(p.textContent, true),
-    next = Math.max(0, Math.min(6, typeof level === "function" ? level(info.level) : level));
-  if (next === info.level) return true;
-  const start = $h.start(),
-    prefix = next ? `${"#".repeat(next)} ` : "";
-  const tr = e.state.tr.insertText(prefix, start, start + info.prefix);
-  e.view.dispatch(revealMeta(tr));
-  return true;
+  if (!$h.depth || p.type.name !== "paragraph") return false;
+  return setLevel(e.view, $h.before(), typeof level === "function" ? level(p.attrs.level) : level);
 }
 const listType = (e: Editor) => {
   const $h = e.state.selection.$head;
@@ -112,12 +113,13 @@ const wrap = (e: Editor, open: string, close = open) => toggleWrap(e.state, e.vi
 export const Typora = Extension.create<{
   openMath: (e: Editor, pos: number) => void;
   openLink: (e: Editor) => void;
+  classes: () => MdClasses | undefined;
 }>({
   name: "cbTypora",
   // ahead of TipTap's own rules (code block, task); ghost text still takes Tab / Esc first (1000)
   priority: 900,
   addOptions() {
-    return { openMath: () => {}, openLink: () => {} };
+    return { openMath: () => {}, openLink: () => {}, classes: () => undefined };
   },
 
   addInputRules() {
@@ -216,9 +218,27 @@ export const Typora = Extension.create<{
           i = $s.index();
         if (!i) return null;
         const prev = $s.parent.child(i - 1);
-        if (prev.type.name !== "paragraph" || !prev.content.size || blockInfo(prev.textContent).level) return null;
+        if (prev.type.name !== "paragraph" || !prev.content.size || prev.attrs.level) return null;
         const from = start - prev.nodeSize;
-        return { nodes: [para(`# ${prev.textContent}`), para("")], from, caret: (st) => st + prev.nodeSize + 3 };
+        return {
+          nodes: [prev.type.create({ ...prev.attrs, level: 1 }, prev.content), para("")],
+          from,
+          caret: (st) => st + prev.nodeSize + 1,
+        };
+      }),
+      // `#`s plus space at the start of a paragraph or heading: that level, the `#`s gone. ⌘Z right after gives back
+      // what was typed, as text; Backspace at the start of a heading makes it a paragraph (never a literal `#`)
+      new InputRule({
+        find: /^(#{1,6})\s$/,
+        handler: ({ state, range, match }) => {
+          const $f = state.doc.resolve(range.from);
+          if ($f.parent.type.name !== "paragraph" || range.from !== $f.start() || !$f.depth) return null;
+          if (/cell/.test($f.node(-1).type.spec.tableRole ?? "")) return null;
+          state.tr
+            .delete(range.from, range.to)
+            .setNodeMarkup($f.before(), undefined, { ...$f.parent.attrs, level: match[1].length });
+          return undefined;
+        },
       }),
       enterRule(/^<details>\n$/i, () => ({
         nodes: [
@@ -252,17 +272,13 @@ export const Typora = Extension.create<{
   addKeyboardShortcuts() {
     const e = this.editor;
     // Home on a paragraph's first line goes to the start of its source (the browser would stop after a hidden opening
-    // marker, so the caret's place would depend on what is hidden); on a heading to the start of its text, after the
-    // "## " (a second Home goes before it)
+    // marker, so the caret's place would depend on what is hidden)
     const home = () => {
       const sel = e.state.selection,
         $h = sel.$head,
         p = $h.parent;
-      if (!sel.empty || p.type.name !== "paragraph" || !$h.depth) return false;
-      const cell = /cell/.test($h.node(-1).type.spec.tableRole ?? "");
-      const info = cell ? { level: 0, prefix: 0 } : blockInfo(p.textContent, true),
-        to = $h.start() + (info.level ? info.prefix : 0);
-      if (info.level ? $h.parentOffset <= info.prefix : $h.parentOffset === 0) return false;
+      if (!sel.empty || p.type.name !== "paragraph" || !$h.depth || $h.parentOffset === 0) return false;
+      const to = $h.start();
       // the caret's line against the paragraph's top (the start itself may be a hidden marker, which has no place)
       const v = e.view,
         c = v.coordsAtPos(sel.head, -1),
@@ -276,7 +292,8 @@ export const Typora = Extension.create<{
       "Mod-z": () => e.commands.undoInputRule() || e.commands.undo(),
       // the keymap falls back from Shift-Mod-z to Mod-z when the key is a lowercase z: catch redo here first
       "Shift-Mod-z": () => e.commands.redo(),
-      // Enter at the edge of a span's text splits outside its markers (**bold**| then Enter, not **bold| and **)
+      // Enter at the edge of a span's text splits outside its markers (**bold**| then Enter, not **bold| and **). In a
+      // heading: at the start of its text an empty paragraph goes above it; elsewhere what follows the caret is body text
       Enter: () => {
         const sel = e.state.selection,
           $h = sel.$head,
@@ -288,7 +305,14 @@ export const Typora = Extension.create<{
           /cell/.test($h.node(-1).type.spec.tableRole ?? "")
         )
           return false;
-        const off = spanEdgeOut(p.textContent, $h.parentOffset, true);
+        const off = spanEdgeOut(p.textContent, $h.parentOffset);
+        if (p.attrs.level && p.content.size) {
+          const tr = e.state.tr;
+          if (off === 0) tr.insert($h.before(), p.type.create());
+          else tr.split($h.start() + off, 1, [{ type: p.type, attrs: { ...p.attrs, level: 0 } }]);
+          e.view.dispatch(revealMeta(tr).scrollIntoView());
+          return true;
+        }
         if (off !== $h.parentOffset)
           e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, $h.start() + off)));
         return false;
@@ -301,13 +325,9 @@ export const Typora = Extension.create<{
         if (!sel.empty) return false;
         const $h = sel.$head,
           p = $h.parent;
-        // right after a heading's "## " (or before it): one # at a time (## → # → paragraph), as in Typora
-        if (p.type.name === "paragraph" && $h.depth && !/cell/.test($h.node(-1).type.spec.tableRole ?? "")) {
-          const info = blockInfo(p.textContent, true);
-          if (info.level && ($h.parentOffset === info.prefix || $h.parentOffset === 0))
-            return setHeading(e, info.level - 1);
-        }
         if ($h.parentOffset !== 0) return false;
+        // at the start of a heading: it becomes body text, its text kept
+        if (p.type.name === "paragraph" && p.attrs.level) return setHeading(e, 0);
         if (e.commands.undoInputRule()) return true;
         // first paragraph of a list item or quote: take it out to body text
         if ($h.depth >= 2 && $h.index(-1) === 0) {
@@ -375,6 +395,6 @@ export const Typora = Extension.create<{
   },
 
   addProseMirrorPlugins() {
-    return [pairsPlugin(), inlinePlugin()];
+    return [pairsPlugin(), inlinePlugin(), headingsPlugin(this.options.classes)];
   },
 });

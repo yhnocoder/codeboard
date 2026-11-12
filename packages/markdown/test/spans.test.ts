@@ -8,13 +8,10 @@ const at = (text: string, sp: Span) => ({
   inner: sp.inner ? text.slice(sp.inner[0], sp.inner[1]) : null,
   kind: sp.atom?.type ?? sp.tag?.nodeName ?? "esc",
 });
-const all = (text: string, headings = true) => flat(blockInfo(text, headings).spans).map((sp) => at(text, sp));
+const all = (text: string) => flat(blockInfo(text).spans).map((sp) => at(text, sp));
 
 describe("decoration ranges of a paragraph's source", () => {
-  it("heading prefix, only outside table cells", () => {
-    expect(blockInfo("## T **b**")).toMatchObject({ level: 2, prefix: 3 });
-    expect(blockInfo("## T", false)).toMatchObject({ level: 0, prefix: 0 });
-    expect(blockInfo("\\## not")).toMatchObject({ level: 0 });
+  it("a # at the start is text (a heading's level is its paragraph's attribute)", () => {
     expect(all("## T **b**")).toEqual([{ text: "**b**", marks: ["**", "**"], inner: "b", kind: "strong" }]);
   });
   it("nested formatting: markers of each level, inner text", () => {

@@ -56,10 +56,7 @@ const imageSrc = (src: string) => `![](${/[\s()<>]/.test(src) ? `<${src}>` : src
 function outsideSpans(doc: PMNode, pos: number) {
   const $p = doc.resolve(pos);
   if ($p.parent.type.name !== "paragraph" || !$p.depth) return pos;
-  return (
-    $p.start() +
-    spanEdgeOut($p.parent.textContent, pos - $p.start(), !/cell/.test($p.node(-1).type.spec.tableRole ?? ""))
-  );
+  return $p.start() + spanEdgeOut($p.parent.textContent, pos - $p.start());
 }
 
 /** Inserts the saved images at `at` (or at the caret if the document changed meanwhile), as one undo step */
@@ -109,7 +106,7 @@ export const DRAGGED_OUT = "imageDraggedOut";
 const imageOnly = (p: PMNode) => {
   const t = p.textContent;
   if (!t.trim()) return false;
-  const sps = blockInfo(t, false).spans;
+  const sps = blockInfo(t).spans;
   let rest = t;
   for (const sp of [...sps].reverse())
     if (sp.atom?.type === "image" || sp.atom?.type === "br") rest = rest.slice(0, sp.from) + rest.slice(sp.to);
@@ -123,14 +120,13 @@ const imageOnly = (p: PMNode) => {
 function selectedImage(state: EditorState): { src: string; md: string } | null {
   const { $from, $to, from, to } = state.selection;
   if (!$from.sameParent($to) || $from.parent.type.name !== "paragraph") return null;
-  const text = $from.parent.textContent,
-    cell = $from.depth > 0 && /cell|header/.test($from.node(-1).type.spec.tableRole ?? "");
+  const text = $from.parent.textContent;
   let a = from - $from.start(),
     b = to - $from.start();
   const picked = text.slice(a, b);
   a += picked.length - picked.trimStart().length;
   b -= picked.length - picked.trimEnd().length;
-  const sp = flat(blockInfo(text, !cell).spans).find(
+  const sp = flat(blockInfo(text).spans).find(
     (s) => s.atom?.type === "image" && (a === b ? s.from <= a && a <= s.to : s.from === a && s.to === b),
   );
   return sp?.atom?.type === "image" && sp.atom.src ? { src: sp.atom.src, md: text.slice(sp.from, sp.to) } : null;

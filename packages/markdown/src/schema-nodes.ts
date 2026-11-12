@@ -209,8 +209,7 @@ export const DetBody = DetailsContent.extend({
 
 // 单独一行的 [toc]（不分大小写）。目录里是这篇的所有标题，跟着标题变：显示时 render.ts 填，编辑时节点视图自己填
 const TOC_RE = /^ {0,3}\[toc\][ \t]*(?:\n|$)/i;
-// the editor keeps headings as paragraphs of source ("## text", editor/srcdoc.ts): those count too (never in a table cell)
-const HEAD_SRC = /^ {0,3}(#{1,6})(?:[ \t]+|$)/;
+// the editor keeps headings as paragraphs of source with a level (editor/srcdoc.ts): those count too
 export const tocEntries = (doc: PMNode) => {
   const out: { level: number; text: string }[] = [];
   doc.descendants((n, _pos, parent) => {
@@ -219,15 +218,8 @@ export const tocEntries = (doc: PMNode) => {
       return false;
     }
     if (n.type.name === "paragraph") {
-      const m = /cell|header/.test(parent?.type.spec.tableRole ?? "") ? null : HEAD_SRC.exec(n.textContent);
-      if (m)
-        out.push({
-          level: m[1].length,
-          text: n.textContent
-            .slice(m[0].length)
-            .replace(/[ \t]+#+[ \t]*$/, "")
-            .trim(),
-        });
+      if (n.attrs.level && !/cell|header/.test(parent?.type.spec.tableRole ?? ""))
+        out.push({ level: n.attrs.level, text: n.textContent.replace(/[ \t]+#+[ \t]*$/, "").trim() });
       return false;
     }
     return n.type.name !== "toc";

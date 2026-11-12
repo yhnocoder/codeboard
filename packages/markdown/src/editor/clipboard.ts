@@ -1,7 +1,7 @@
 // What a copy puts on the clipboard: the Markdown source as text/plain, and that Markdown rendered as text/html (so a
 // paste into another app keeps the formatting). Part of one paragraph is copied with the markers of the spans it is cut
 // out of put back around it: copying "ain wor" out of ==Plain words== gives ==ain wor==, a drawn formula is whole
-import type { Slice } from "@tiptap/pm/model";
+import { Slice } from "@tiptap/pm/model";
 import type { EditorState } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { mdOf } from "./md";
@@ -12,14 +12,8 @@ import { inlineKey } from "./inline";
 
 /** text[a, b) of a paragraph's source, with the markers of the spans it cuts into balanced around it. shown: where the caret
  *  shows the source (an atom around it is shown as its source text, not drawn), relative to the paragraph */
-export function balancedSource(
-  text: string,
-  a: number,
-  b: number,
-  headings: boolean,
-  shown: number | null = null,
-): string {
-  const spans = flat(blockInfo(text, headings).spans);
+export function balancedSource(text: string, a: number, b: number, shown: number | null = null): string {
+  const spans = flat(blockInfo(text).spans);
   // a cut through a drawn atom (formula, image, ref…) takes the whole of it; through one whose source shows, the characters
   for (const sp of spans) {
     if (!sp.atom || sp.atom.type === "annot") continue;
@@ -53,25 +47,35 @@ export function balancedSource(
   return open + text.slice(A, B) + close;
 }
 
-/** The Markdown of the current selection */
+/** The Markdown of the current selection: part of a heading's text is that text, the whole of it the heading */
 function selectionMd(state: EditorState): string {
   const { from, to, $from, $to } = state.selection;
   if ($from.sameParent($to) && $from.parent.type.name === "paragraph") {
-    const p = $from.parent,
-      cell = $from.depth > 0 && /cell|header/.test($from.node(-1).type.spec.tableRole ?? "");
+    const p = $from.parent;
     const a = from - $from.start(),
       b = to - $from.start();
     const head = inlineKey.getState(state)?.head ?? null,
       shown = head === null ? null : head - $from.start();
-    if (a > 0 || b < p.content.size) return balancedSource(p.textContent, a, b, !cell, shown);
-    return p.textContent;
+    if (a > 0 || b < p.content.size) return balancedSource(p.textContent, a, b, shown);
+    return p.attrs.level ? sliceMd(state.selection.content()) : p.textContent;
   }
-  return sliceMd(state.selection.content());
+  const slice = state.selection.content(),
+    first = slice.content.firstChild;
+  // starting inside a heading's text: that text, not the heading
+  if ($from.parent.attrs.level && $from.parentOffset > 0 && first?.type === $from.parent.type)
+    return sliceMd(
+      new Slice(
+        slice.content.replaceChild(0, first.type.create({ ...first.attrs, level: 0 }, first.content)),
+        slice.openStart,
+        slice.openEnd,
+      ),
+    );
+  return sliceMd(slice);
 }
 
 function sliceMd(slice: Slice): string {
   const one = slice.content.childCount === 1 ? slice.content.firstChild! : null;
-  if (one?.isTextblock && slice.openStart > 0) return one.textContent;
+  if (one?.isTextblock && slice.openStart > 0 && !one.attrs.level) return one.textContent;
   try {
     return sourceMd({ type: "doc", content: slice.content.toJSON() ?? [] });
   } catch {

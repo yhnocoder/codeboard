@@ -4,13 +4,15 @@ import { baseExtensions, parseMd, sourceExtensions } from "../src/schema";
 import { balancedSource, clipboardText } from "../src/editor/clipboard";
 import { sourceDoc } from "../src/editor/srcdoc";
 import type { Node as PMNode } from "@tiptap/pm/model";
+import { EditorState, TextSelection } from "@tiptap/pm/state";
+import type { EditorView } from "@tiptap/pm/view";
 
 // The editor's paragraphs are their Markdown source, so a copy is the source characters selected: the markers come along
 // exactly when they are selected (they show around the caret), and what is pasted back reads as what was seen.
 const schema = getSchema(sourceExtensions),
   base = getSchema(baseExtensions);
-/** The slice of the source text `sel` (found once in the document's text) */
-function copy(md: string, sel: string) {
+/** The slice of the source text `sel` (found once in the document's text); selected: as a copy of that selection */
+function copy(md: string, sel: string, selected = false) {
   const doc = schema.nodeFromJSON(sourceDoc(md));
   let flat = "";
   const pos: number[] = [];
@@ -27,7 +29,9 @@ function copy(md: string, sel: string) {
   const from = pos[i],
     to = pos[i + sel.length - 1] + 1;
   // what ProseMirror puts on the clipboard: the selection's content, with its parents (selection.content())
-  return clipboardText(doc.slice(from, to, true));
+  if (!selected) return clipboardText(doc.slice(from, to, true));
+  const state = EditorState.create({ doc, selection: TextSelection.create(doc, from, to) });
+  return clipboardText(state.selection.content(), { state } as EditorView);
 }
 /** The formatting the pasted text reads as */
 const marksIn = (md: string) => {
@@ -68,7 +72,12 @@ describe("copying part of a formatted span", () => {
     });
   }
   it("across blocks: the blocks' Markdown", () => {
-    expect(copy("# Title\n\npara **b** end", "tlepara **b**")).toBe("tle\n\npara **b**");
+    expect(copy("# Title\n\npara **b** end", "tlepara **b**", true)).toBe("tle\n\npara **b**");
+    expect(copy("# Title\n\npara **b** end", "Titlepara **b**", true)).toBe("# Title\n\npara **b**");
+  });
+  it("a heading: all of its text is the heading, part of it just that text", () => {
+    expect(copy("## Title\n\npara", "Title", true)).toBe("## Title");
+    expect(copy("## Title\n\npara", "itl", true)).toBe("itl");
   });
 });
 
@@ -76,7 +85,7 @@ describe("copying from a source that shows", () => {
   const img = 'A ![](a.svg "Fig 5.1: memory types"){width=83%} b';
   const cut = (t: string, sel: string, shown: number | null) => {
     const i = t.indexOf(sel);
-    return balancedSource(t, i, i + sel.length, true, shown);
+    return balancedSource(t, i, i + sel.length, shown);
   };
   it("an image whose source line is open: just the characters", () => {
     expect(cut(img, "memory types", img.indexOf("types"))).toBe("memory types");

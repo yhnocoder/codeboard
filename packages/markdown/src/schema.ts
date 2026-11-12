@@ -109,7 +109,8 @@ export const baseExtensions: AnyExtension[] = [
 
 /**
  * The editor's schema: the same blocks, but paragraphs (headings and table cells included) hold Markdown source as
- * plain text, so there are no marks and no inline nodes (editor/inline.ts draws them). Footnote definitions are
+ * plain text, so there are no marks and no inline nodes (editor/inline.ts draws them). A heading is a paragraph whose
+ * level is set: its `#` marker is not part of its text. Footnote definitions are
  * paragraphs too. Layout that Markdown cannot hold lives in attributes: code block wrap, row height (column widths are
  * the cells' own colwidth); see layout.ts
  */
@@ -144,7 +145,10 @@ export const sourceExtensions: AnyExtension[] = [
   Math2,
   HtmlBlock,
   Document.extend({ content: "block+" }),
-  Paragraph.extend({ marks: "" }),
+  Paragraph.extend({
+    marks: "",
+    addAttributes: () => ({ level: { default: 0, rendered: false, keepOnSplit: false } }),
+  }),
   Code.extend({
     addAttributes() {
       return { ...this.parent?.(), wrap: { default: false, rendered: false } };
@@ -458,8 +462,15 @@ export function sourceBlocksMd(content: JSONContent[]): string {
   const prep = (ns: JSONContent[], cell: boolean): JSONContent[] =>
     ns.map((n) => {
       if (n.type === "paragraph") {
-        const t = (n.content ?? []).map((c) => c.text ?? "").join("");
-        return { ...n, content: t ? [{ type: "text", text: cell ? shieldCell(t) : shield(t) }] : undefined };
+        const t = (n.content ?? []).map((c) => c.text ?? "").join(""),
+          level: number = cell ? 0 : (n.attrs?.level ?? 0);
+        // a paragraph's text that would read back as a heading keeps being text
+        const src = cell
+          ? shieldCell(t)
+          : level
+            ? shield(`${"#".repeat(level)} ${t}`)
+            : shield(t.replace(HEAD_START, "$1\\"));
+        return { type: "paragraph", content: src ? [{ type: "text", text: src }] : undefined };
       }
       if (!n.content || mdSchema().nodes[n.type!]?.spec.code || n.type === "detailsSummary") return n;
       return { ...n, content: prep(n.content, cell || n.type === "tableCell" || n.type === "tableHeader") };
@@ -468,6 +479,7 @@ export function sourceBlocksMd(content: JSONContent[]): string {
     .replace(/^\n+/, "")
     .replace(/\s+$/, "");
 }
+const HEAD_START = /^( {0,3})(?=#{1,6}(?:[ \t]|$))/;
 const shieldCell = (t: string) =>
   shield(t.replace(/\\.|\|/g, (m) => (m === "|" ? "\\|" : m))).replace(/\|/g, (c) =>
     String.fromCharCode(SHIELD + c.charCodeAt(0)),
@@ -545,7 +557,7 @@ function mathify(ns: JSONContent[] | undefined): JSONContent[] | undefined {
 const HOLDS = new Set(["blockquote", "listItem", "taskItem", "detailsContent", "footnote"]);
 const LISTS = new Set(["bulletList", "orderedList", "taskList"]);
 const NBSP: JSONContent = { type: "htmlBlock", attrs: { raw: "&nbsp;" } };
-const isEmptyP = (n: JSONContent | undefined) => n?.type === "paragraph" && !n.content?.length;
+const isEmptyP = (n: JSONContent | undefined) => n?.type === "paragraph" && !n.content?.length && !n.attrs?.level;
 function betweenLists(ns: JSONContent[], i: number) {
   let a = i,
     b = i;

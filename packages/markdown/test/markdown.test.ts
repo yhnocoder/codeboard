@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // jsdom：静态显示整篇过 DOMPurify，happy-dom 解析时会丢掉开头的元素
-import { sourceMd } from "../src/editor/srcdoc";
+import { sourceDoc, sourceMd } from "../src/editor/srcdoc";
 import { describe, expect, it } from "vitest";
 import { parseMd, serializeMd } from "../src/schema";
 import { createMarkdown } from "../src/markdown";
@@ -281,12 +281,23 @@ describe("typed math and block source", () => {
     });
     expect(sourceMd(p("x **bo** y"))).toBe("x **bo** y");
     expect(sourceMd(p("a $x$"))).toBe("a $x$");
-    expect(sourceMd(p("### hd"))).toBe("### hd");
-    expect(parseMd(sourceMd(p("## hd"))).content![0].type).toBe("heading");
     // a broken ## stays a paragraph, its text kept
     const bad = parseMd(sourceMd(p("##hd"))).content![0];
     expect(bad.type).toBe("paragraph");
     expect(bad.content?.map((c) => c.text).join("")).toBe("##hd");
+  });
+  it("a heading is a paragraph with a level; a paragraph's text that looks like one stays text", () => {
+    const h = (level: number, text: string) => ({
+      type: "doc",
+      content: [{ type: "paragraph", attrs: { level }, content: text ? [{ type: "text", text }] : undefined }],
+    });
+    expect(sourceMd(h(3, "hd **b**"))).toBe("### hd **b**");
+    expect(parseMd(sourceMd(h(2, "hd"))).content![0]).toMatchObject({ type: "heading", attrs: { level: 2 } });
+    expect(sourceMd(h(2, ""))).toBe("##");
+    const lit = sourceMd({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "## hd" }] }] });
+    expect(lit).toBe("\\## hd");
+    expect(parseMd(lit).content![0].type).toBe("paragraph");
+    expect(sourceDoc(lit).content![0].content).toEqual([{ type: "text", text: "\\## hd" }]);
   });
   // a typed \* is written as typed (not as \\\*) and reads back as a literal *
   it("a typed backslash escape is written as typed", () => {

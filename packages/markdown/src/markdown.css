@@ -1029,8 +1029,7 @@ math {
   user-select: none;
   -webkit-user-select: none;
 }
-/* Markdown markers (editor/inline.ts): shown only around the caret, display: none elsewhere. A heading's "## " keeps the
-   heading's own font and size (as in Typora), so the line does not jump when the caret enters it */
+/* Markdown markers (editor/inline.ts): shown only around the caret, display: none elsewhere */
 .md-pm .md-mk {
   color: var(--ink-3);
   opacity: 0.75;
@@ -1040,9 +1039,61 @@ math {
   font-style: normal;
   text-decoration: none;
 }
-.md-pm .md-mk.md-mkh {
-  font: inherit;
-  opacity: 1;
+/* The caret's heading level (editor/headings.ts), in the left padding (--md-gutter, the editor's left padding: centred in
+   it). The holder has no width and sits on the heading's first baseline; the chip is its only line, so the chip's text
+   shares that baseline */
+.md-pm .md-hchip {
+  display: inline-block;
+  width: 0;
+  white-space: nowrap;
+  vertical-align: baseline;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.md-pm .md-hchip-b {
+  position: relative;
+  left: calc(var(--md-gutter, 14px) / -2 - 6.5px);
+  display: inline-block;
+  box-sizing: border-box;
+  width: 13px;
+  height: 13px;
+  border-radius: 3.5px;
+  font: 600 8.5px / 13px var(--sys);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  color: var(--ink-3);
+  text-align: center;
+  cursor: pointer;
+  transition:
+    color calc(var(--t, 1) * 90ms),
+    background-color calc(var(--t, 1) * 90ms);
+}
+.md-pm .md-hchip-b .hh {
+  letter-spacing: -0.25px;
+}
+.md-pm .md-hchip-b:is(:hover, .open) {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 8.5%, transparent);
+}
+.md-hmenubox {
+  position: fixed;
+  left: 0;
+  top: 0;
+}
+.md-hmenubox .md-hmenu {
+  min-width: 168px;
+}
+.md-hmenu button:not([data-l="0"]) .lb {
+  font-weight: 600;
+}
+.md-hmenu button[data-l="1"] .lb {
+  font-size: 15px;
+}
+.md-hmenu button[data-l="2"] .lb {
+  font-size: 14px;
+}
+.md-hmenu button[data-l="3"] .lb {
+  font-size: 13px;
 }
 .md-pm .md-hide {
   display: none;

@@ -8,6 +8,7 @@ import { htmlSource } from "./pastemarks";
 import { undoubleTex } from "../doubled";
 import { sourceDoc } from "./srcdoc";
 import { revealMeta } from "./inline";
+import { pasteSlice } from "./headings";
 import { pastedImages } from "./image";
 import { mdOf } from "./md";
 
@@ -39,15 +40,13 @@ export function handlePaste(e: Editor, ev: ClipboardEvent): boolean {
   const text = html || cd.getData("vscode-editor-data") ? raw : undoubleTex(raw, tex);
   const put = (slice: Slice) => {
     e.view.dispatch(
-      revealMeta(e.state.tr.replaceSelection(slice))
-        .scrollIntoView()
-        .setMeta("paste", true)
-        .setMeta("uiEvent", "paste"),
+      revealMeta(pasteSlice(e.state.tr, slice)).scrollIntoView().setMeta("paste", true).setMeta("uiEvent", "paste"),
     );
     return true;
   };
+  const cell = !!$f.depth && /cell/.test($f.node(-1).type.spec.tableRole ?? "");
   // a table cell holds one paragraph (GFM cannot hold more): lines joined with <br>
-  if ($f.depth && /cell/.test($f.node(-1).type.spec.tableRole ?? "") && text.includes("\n")) {
+  if (cell && text.includes("\n")) {
     e.view.dispatch(
       revealMeta(e.state.tr.insertText(text.replace(/\n$/, "").split("\n").join("<br>"))).scrollIntoView(),
     );
@@ -97,7 +96,8 @@ export function handlePaste(e: Editor, ev: ClipboardEvent): boolean {
     return md ? put(sourceSlice(e, md)) : false;
   }
   if (!text) return false;
-  if (!text.includes("\n")) {
+  // one heading line (a copied heading) is a block: into an empty paragraph it makes a heading, into text only its words go
+  if (!text.includes("\n") && (cell || !/^ {0,3}#{1,6}[ \t]+\S/.test(text))) {
     e.view.dispatch(revealMeta(e.state.tr.insertText(text)).scrollIntoView().setMeta("paste", true));
     return true;
   }
