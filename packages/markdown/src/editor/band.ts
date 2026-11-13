@@ -10,8 +10,19 @@ import { kindClass, type MdClasses } from "../ui/classes";
 import { BAND_GRACE, BAND_HIDE, BAND_SHOW } from "../ui/timing";
 
 const BAND_H = 30;
-/** How far below the box the editor sits in a band stays (a block at the very top presses its band into itself instead) */
+/** How far inside the box that clips the editor a band stays (a block at the top of a Note whose body scrolls presses its
+ *  band into itself instead) */
 const TOP_GAP = 2;
+
+/** The nearest box around el that clips what overflows it: a band may float over anything inside it, the card's own header
+ *  above a Note's first block too, rather than cover the block's first line */
+function clipBox(el: Element): Element {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const cs = getComputedStyle(p);
+    if (cs.overflowY !== "visible" || cs.overflowX !== "visible") return p;
+  }
+  return document.body;
+}
 
 type Why = "hover" | "focus" | "held";
 
@@ -83,6 +94,7 @@ export class Band {
   private on = false;
   private frozen = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
+  private clip: Element | null = null;
   constructor(
     private view: EditorView,
     private kind: "code" | "table",
@@ -148,6 +160,8 @@ export class Band {
     const layer = bandLayer(this.view);
     layer.attach();
     if (!this.root.isConnected) layer.el.append(this.root);
+    // once per showing, not per placing: whether the Note's body scrolls changes only with its size setting
+    this.clip = clipBox(layer.el);
     if (this.kind === "code") {
       // the block's own colour, corner and inset, as the page styles it: the label lines up with the code
       const cs = getComputedStyle(this.anchor.el),
@@ -176,7 +190,7 @@ export class Band {
     const r = this.anchor.rect?.() ?? el.getBoundingClientRect(),
       L = layer.getBoundingClientRect(),
       s = el.offsetWidth ? el.getBoundingClientRect().width / el.offsetWidth : 1,
-      box = (layer.offsetParent ?? document.body).getBoundingClientRect();
+      box = (this.clip ?? document.body).getBoundingClientRect();
     const x = (r.left - L.left) / s,
       y = (r.top - L.top) / s,
       top = Math.max(y - BAND_H, (box.top - L.top) / s + TOP_GAP),
