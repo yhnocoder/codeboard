@@ -21,13 +21,14 @@ public final class JSEngines: MathTypesetter, DiagramRenderer, @unchecked Sendab
     let source: String
     let fonts: [String]
     let maxWidth: Int?
+    let cornerRadius: Double
   }
 
-  public func diagram(_ source: String, fonts: [String], maxWidth: Int?) -> DiagramResult {
-    diagrams.get(DiagramKey(source: source, fonts: fonts, maxWidth: maxWidth)) {
+  public func diagram(_ source: String, fonts: [String], maxWidth: Int?, cornerRadius: Double) -> DiagramResult {
+    diagrams.get(DiagramKey(source: source, fonts: fonts, maxWidth: maxWidth, cornerRadius: cornerRadius)) {
       let e = take()
       defer { give(e) }
-      return e.mermaid(source, fonts: fonts, maxWidth: maxWidth)
+      return e.mermaid(source, fonts: fonts, maxWidth: maxWidth, cornerRadius: cornerRadius)
     }
   }
 
@@ -106,7 +107,7 @@ private final class Engine {
     context.evaluateScript(script)
   }
 
-  func mermaid(_ source: String, fonts: [String], maxWidth: Int?) -> DiagramResult {
+  func mermaid(_ source: String, fonts: [String], maxWidth: Int?, cornerRadius: Double) -> DiagramResult {
     measuring = fonts
     defer { measuring = textFont }
     let args: [Any] = [source, fonts.first ?? "sans-serif", maxWidth.map { $0 as Any } ?? NSNull()]
@@ -130,7 +131,9 @@ private final class Engine {
       if v.hasPrefix("#") { return .color(MDColor(hex: v)) }
       return .role("fg")
     }
-    guard let svg = r["svg"] as? String, let read = SVGImport.read(svg, unit: 1, paint: paint) else {
+    guard let svg = r["svg"] as? String,
+      let read = SVGImport.read(svg, unit: 1, cornerRadius: cornerRadius, paint: paint)
+    else {
       return .error("unreadable diagram output")
     }
     return .ok(width: read.box.width, height: read.box.height, paths: read.paths, texts: read.texts)

@@ -605,10 +605,13 @@ struct LayoutBuilder {
       return code(body: body, language: "mermaid", b: b, x: x, width: width, y: y)
     }
     let src = sourceText(body)
-    var result = r.diagram(src, fonts: theme.fonts.body, maxWidth: nil)
+    // pele's node corners: half the board's --md-radius (markdown.css .mmd --pele-radius)
+    let corner = m.radius / 2
+    var result = r.diagram(src, fonts: theme.fonts.body, maxWidth: nil, cornerRadius: corner)
     if case .ok(let w, _, _, _) = result, CGFloat(w) > width {
       let step = 40
-      result = r.diagram(src, fonts: theme.fonts.body, maxWidth: max(step, Int(width) / step * step))
+      result = r.diagram(
+        src, fonts: theme.fonts.body, maxWidth: max(step, Int(width) / step * step), cornerRadius: corner)
     }
     guard case .ok(let w, let h, let paths, let texts) = result else {
       return code(body: body, language: "mermaid", b: b, x: x, width: width, y: y)
@@ -622,8 +625,10 @@ struct LayoutBuilder {
   // MARK: math blocks
 
   mutating func mathBlock(_ latex: String, x: CGFloat, width: CGFloat, y: CGFloat, style: InlineStyle) -> CGFloat {
-    // .math pads 2px above and below, the formula's own display margin is 2px more (markdown.css)
-    let pad: CGFloat = 4
+    // .math pads 2px above and below and the formula's display margin is 2px more (markdown.css); half a point more
+    // stands for KaTeX's struts, which make its boxes that much taller than MathJax's on average over the look samples
+    // (the tall ones, a sum with limits or two aligned rows, by up to 3 pt; one-line ones not at all)
+    let pad: CGFloat = 4.5
     let size = style.size * 1.08
     let (body, tag) = MathTag.split(latex)
     if let tex = resources.math, case .ok(let pic) = tex.typeset(body, display: true, preamble: resources.mathPreamble)

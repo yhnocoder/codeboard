@@ -56,6 +56,8 @@ public enum NoteLooks {
       ? ["blue": c("#7fb0e0"), "purple": c("#b89be6"), "orange": c("#e3955a"), "green": c("#96c47e")]
       : ["blue": c("#3a72aa"), "purple": c("#7d55b0"), "orange": c("#c46a2a"), "green": c("#4c8a3a")]
     var metrics = MarkdownTheme.Metrics()
+    // --md-radius is the board's --r-card: Warm Ink's rounded cards, Ink Wash's nearly square sheets
+    metrics.radius = warm ? 12.5 : 2
     if !warm {
       // Ink Wash: bold at 700 with a thin stroke (themes.css), ==text== as a vermilion brush stroke
       metrics.strongWeight = 700

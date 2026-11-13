@@ -25,8 +25,9 @@ extension MarkdownResources {
 
 /// Draws Mermaid (pele in JavaScriptCore, guideline 5.8)
 public protocol DiagramRenderer: Sendable {
-  /// the diagram with its labels measured in `fonts`; maxWidth turns a too wide one vertical
-  func diagram(_ source: String, fonts: [String], maxWidth: Int?) -> DiagramResult
+  /// the diagram with its labels measured in `fonts`; maxWidth turns a too wide one vertical; nodes' corners rounded by
+  /// `cornerRadius` (pele's --_r: half the board's --md-radius)
+  func diagram(_ source: String, fonts: [String], maxWidth: Int?, cornerRadius: Double) -> DiagramResult
 }
 
 public enum DiagramResult: Sendable, Hashable {

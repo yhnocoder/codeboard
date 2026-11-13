@@ -364,9 +364,11 @@ struct InlineBuilder {
       if display, let tag, case .ok(let t) = tex.typeset(tag, display: false, preamble: resources.mathPreamble) {
         pic = MathTag.attach(t, to: pic)
       }
+      // a display formula in a line is a block with 4 px margins above and below (markdown.css .md-dmath)
+      let margin: CGFloat = display ? 4 : 0
       let a = AtomBox(
-        .math(pic, size: size), width: CGFloat(pic.width) * size, ascent: CGFloat(pic.baseline) * size,
-        descent: CGFloat(pic.height - pic.baseline) * size)
+        .math(pic, size: size), width: CGFloat(pic.width) * size, ascent: CGFloat(pic.baseline) * size + margin,
+        descent: CGFloat(pic.height - pic.baseline) * size + margin)
       // $$…$$ inside a line is a display formula centred on a line of its own (markdown.css .md-dmath)
       a.center = display
       var attrs = attributes(style)
