@@ -181,11 +181,12 @@ export function CardPeek(p: {
       for (const s of STATE_STYLES) c.style.removeProperty(s);
       for (const e of [
         c,
-        ...c.querySelectorAll<HTMLElement>("[data-id], [data-notes], [data-card], [contenteditable]"),
+        ...c.querySelectorAll<HTMLElement>("[data-id], [data-notes], [data-card], [data-spot], [contenteditable]"),
       ]) {
         e.removeAttribute("data-id");
         e.removeAttribute("data-notes");
         e.removeAttribute("data-card");
+        e.removeAttribute("data-spot");
         e.removeAttribute("contenteditable");
       }
       stage.appendChild(c);

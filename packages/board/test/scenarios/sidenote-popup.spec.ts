@@ -158,6 +158,8 @@ test("sidenoteRefPreview", async () => {
   // reference to it previews it (one near the view is gone to)
   const b = board();
   b.place.nc.x = 3000;
+  // a sidenote on the previewed card: its badge is copied into the preview, where nothing looking for badges may find it
+  b.sidenotes.push({ id: "t-nc", kind: "text", md: "on the card", at: { card: "nc" } } as never);
   const h = await open({ board: b, light, w: 1400, h: 900 });
   const pg = h.page;
   await idle(h);
@@ -179,7 +181,8 @@ test("sidenoteRefPreview", async () => {
       beside: r.left >= pop.right - 1 || r.right <= pop.left + 1,
       h: Math.round(r.height),
       // a copy of the card, which nothing looking for the board's cards finds
-      copy: !!pk.querySelector(".card") && !pk.querySelector("[data-id]"),
+      copy: !!pk.querySelector(".card") && !pk.querySelector("[data-id], [data-spot]"),
+      badges: pk.querySelectorAll(".snb").length,
       go: pk.querySelectorAll(".cpeek-go").length,
     };
   }, POP);
@@ -206,6 +209,7 @@ test("sidenoteRefPreview", async () => {
       shown.text.includes("Hands out KV cache blocks") &&
       shown.beside &&
       shown.copy &&
+      shown.badges > 0 &&
       shown.go === 1 &&
       shown.h <= 290 &&
       popAfterEsc === 1 &&
