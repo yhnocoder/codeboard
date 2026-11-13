@@ -13,6 +13,7 @@ import { parseMd } from "../schema";
 import { pairsPlugin } from "./pairs";
 import { spanEdgeOut } from "./spans";
 import { inlinePlugin, revealMeta, toggleWrap } from "./inline";
+import { imageCaretPlugin } from "./imagecaret";
 import { headingsPlugin, setLevel } from "./headings";
 import type { MdClasses } from "../ui/classes";
 import { sourceBlock } from "./srcdoc";
@@ -407,6 +408,6 @@ export const Typora = Extension.create<{
   },
 
   addProseMirrorPlugins() {
-    return [pairsPlugin(), inlinePlugin(), headingsPlugin(this.options.classes)];
+    return [pairsPlugin(), inlinePlugin(), imageCaretPlugin(), headingsPlugin(this.options.classes)];
   },
 });

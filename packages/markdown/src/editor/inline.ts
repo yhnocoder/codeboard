@@ -32,6 +32,8 @@ type Meta = { reveal?: true; blur?: true; focus?: true; expand?: number | null; 
 
 /** Input state shared by the plugin's handlers (only one editor takes input at a time) */
 const ui = { mouseDown: false, pending: false, composing: false, timer: 0 as ReturnType<typeof setTimeout> | 0 };
+/** Is an IME composing in the editor: nothing may touch the DOM it writes into */
+export const composing = () => ui.composing;
 /** The editor whose images slide (one editor is open at a time), and what was measured before the redraw (imageslide.ts) */
 let slideView: EditorView | null = null,
   slideFrom: ReturnType<typeof measureImages> | null = null;

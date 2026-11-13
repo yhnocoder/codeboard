@@ -934,6 +934,35 @@ math {
 .md-pm .md-img.below ~ :is(img.ProseMirror-separator, br.ProseMirror-trailingBreak) {
   display: none;
 }
+/* The caret beside a drawn image (editor/imagecaret.ts): the browser's own would be as tall as the image and touch it. A
+   zero-size box at the caret's place, centred on the line as the image is (so the line box does not change), draws a line
+   the height of the text's, a few pixels off the image */
+.md-pm p.md-icaretp {
+  caret-color: transparent;
+}
+.md-pm .md-icaret {
+  display: inline-block;
+  position: relative;
+  width: 0;
+  height: 0;
+  vertical-align: middle;
+}
+.md-pm.ProseMirror-focused .md-icaret::after {
+  content: "";
+  position: absolute;
+  top: -0.6em;
+  width: 1px;
+  height: 1.2em;
+  background: currentColor;
+  pointer-events: none;
+  animation: pm-blink 1.1s steps(2, start) infinite;
+}
+.md-pm .md-icaret-l::after {
+  left: 4px;
+}
+.md-pm .md-icaret-r::after {
+  right: 4px;
+}
 .md-pm .md-img[draggable="true"] {
   -webkit-user-drag: element;
   cursor: pointer;
