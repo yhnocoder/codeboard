@@ -135,7 +135,7 @@ export function handlePaste(e: Editor, ev: ClipboardEvent): boolean {
 
 /** The language of pasted plain text that is code ("" when it is code in no language the classifier names), null when it is
  *  prose: several lines the page's classifier calls code, unless Markdown's own structure (a link, a list, a quote, a table,
- *  a fence) says prose. Headings and emphasis say nothing: `# comment` and `*args` are code's too */
+ *  a fence, a formula) says prose. Headings and emphasis say nothing: `# comment` and `*args` are code's too */
 export function pastedCodeLang(text: string, classify: (text: string) => string | null): string | null {
   if (text.split("\n").filter((l) => l.trim()).length < 2) return null;
   const lang = classify(text);
@@ -150,6 +150,10 @@ function mdStructure(text: string): boolean {
   const walk = (n: JSONContent) => {
     if (/^(bulletList|orderedList|taskList|blockquote|table)$/.test(n.type ?? "")) found = true;
     if (n.marks?.some((m) => m.type === "link")) found = true;
+    // a formula: a $$ block, or a $…$ that reads as TeX (a command, a sub/superscript, a group); shell's "$a" … "$b" pairs
+    // up as $…$ too, but holds none of these
+    if (n.type === "blockMath" || (n.type === "inlineMath" && /\\[A-Za-z]|[\^_{}]/.test(String(n.attrs?.latex ?? ""))))
+      found = true;
     n.content?.forEach(walk);
   };
   walk(doc);

@@ -188,4 +188,11 @@ describe("pasted plain text that reads as code", () => {
     expect(pastedCodeLang("# a comment\ndef f(*args, **kw):\n    return g(*args)", always)).toBe("python");
     expect(pastedCodeLang("def f(x):\n    y = x\n    return y", always)).toBe("python");
   });
+  it("is prose when it holds a formula; shell variables are no formula", () => {
+    const cu = () => "cuda-cpp";
+    expect(pastedCodeLang("The offset of `threadIdx.y` is\n$\\text{threadIdx.y} \\times 4$ here.", cu)).toBe(null);
+    expect(pastedCodeLang("Global row:\n\n$$\nrow = blockIdx.y \\cdot blockDim.y + threadIdx.y\n$$", cu)).toBe(null);
+    expect(pastedCodeLang("x_i is $x_i$ and\n$a^2$ too", cu)).toBe(null);
+    expect(pastedCodeLang('echo "$HOME" "$PATH"\ncd "$a" && ls "$b"', () => "shellscript")).toBe("shellscript");
+  });
 });
