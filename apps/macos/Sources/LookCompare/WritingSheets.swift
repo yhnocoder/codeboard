@@ -2,6 +2,7 @@ import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardNotes
+import WebKit
 
 // LookCompare --writing <out folder>: Notes, Texts and Boxes written in, in each theme light and dark, at 2x, off screen
 // (a window far off every screen; Core Animation and the editor's own picture, never the screen):
@@ -126,6 +127,37 @@ enum WritingSheets {
 
     func release(_ at: CGPoint) { canvas.mouseUp(with: mouse(.leftMouseUp, at)) }
 
+    /// Writes in a card and types `text`, the editor left open
+    func writeInto(_ id: String, _ text: String) async throws {
+      canvas.beginEditing(CardID(rawValue: id))
+      let deadline = ContinuousClock.now + .seconds(60)
+      while !canvas.noteEditor.view.shown {
+        guard ContinuousClock.now < deadline else { throw NoteRenderError.page("the editor did not mount") }
+        try await Task.sleep(for: .milliseconds(5))
+      }
+      canvas.noteEditor.type(text)
+      _ = try await canvas.noteEditor.view.callAsyncJavaScript(
+        "for (let i = 0; i < 6; i++) await new Promise(r => requestAnimationFrame(r)); return 1", contentWorld: .page)
+    }
+
+    /// A picture of the canvas with the editor's web view (its card and its open menus) drawn over it where it is
+    func withEditor(_ base: CGImage) async throws -> CGImage {
+      let view = canvas.noteEditor.view
+      let c = WKSnapshotConfiguration()
+      c.afterScreenUpdates = true
+      let image = try await view.takeSnapshot(configuration: c)
+      guard let web = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+        let ctx = CGContext(
+          data: nil, width: base.width, height: base.height, bitsPerComponent: 8, bytesPerRow: 0,
+          space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue)
+      else { return base }
+      let f = canvas.convert(view.frame, from: view.superview)
+      ctx.draw(base, in: CGRect(x: 0, y: 0, width: base.width, height: base.height))
+      ctx.draw(
+        web, in: CGRect(x: f.minX * 2, y: CGFloat(base.height) - f.maxY * 2, width: f.width * 2, height: f.height * 2))
+      return ctx.makeImage() ?? base
+    }
+
     /// What the board shows now, once the canvas has the document's board and every bitmap is drawn again
     func settle() async {
       while !canvas.shownBoardMatches {
@@ -144,6 +176,24 @@ enum WritingSheets {
       return img.cropping(to: CGRect(x: o.x * 2, y: o.y * 2, width: (e.x - o.x) * 2, height: (e.y - o.y) * 2).integral)
         ?? img
     }
+  }
+
+  /// Another board in the vault, for the [[ list: 内存模型 Memory, its Note 合并访问 Coalescing in the Section 缓存
+  static func otherBoard(in vault: URL) throws {
+    let p = vault.appending(path: "内存模型 Memory.board")
+    try FileManager.default.createDirectory(at: p, withIntermediateDirectories: true)
+    let b = Board(
+      id: BoardID(rawValue: "mem"),
+      cards: [
+        Card(
+          id: CardID(rawValue: "m1"), x: 0, y: 0, width: 300, section: SectionID(rawValue: "g"),
+          content: .own(CardContent(body: .note(Note(text: "# 合并访问 Coalescing\n\nbody"))))),
+        Card(
+          id: CardID(rawValue: "m2"), x: 0, y: 300, width: 300,
+          content: .own(CardContent(body: .note(Note(text: "## Bank conflicts\n\nbody"))))),
+      ],
+      sections: [Section(id: SectionID(rawValue: "g"), title: "缓存", x: 0, y: 0, width: 400, height: 300)])
+    try b.encoded().write(to: p.appending(path: Vault.boardFileName))
   }
 
   @MainActor static func draw(out: URL) async throws {
@@ -248,6 +298,17 @@ enum WritingSheets {
       let card = r.doc.board.card(t1)
       report +=
         "\(suffix) side: wraps \(card?.textCard?.wrap ?? false) at \(card?.width ?? 0) (was \(Int(w.width)) wide)\n"
+      r.close()
+
+      // the [[ list open in the Note being written, with another board's cards
+      r = try await rig()
+      try otherBoard(in: vault)
+      try await r.writeInto("n1", " [[")
+      let list = try await r.withEditor(try r.picture())
+      let n = r.rect("n1")
+      write(
+        r.cut(list, CGRect(x: n.minX - 30, y: n.minY - 20, width: n.width + 420, height: n.height + 330)), out,
+        "refs-\(suffix)")
       r.close()
     }
     try report.write(to: out.appending(path: "report.txt"), atomically: true, encoding: .utf8)

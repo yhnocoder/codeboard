@@ -36,12 +36,17 @@ struct Editing {
   var pictured = false
 }
 
-/// The card sits this far in from the web view's top left (view points), so the editor's menus have room
-private let editorMargin: CGFloat = 220
+/// The card sits this far in from the web view's top left (view points), so the editor's menus have room: it places them
+/// inside the web view, where the web board has the whole window, so the room takes the widest (the [[ list, 372) beside
+/// a caret anywhere on the card
+private let editorMargin: CGFloat = 400
 
 extension CanvasView {
   /// One editor for the app: one card is edited at a time
   static var sharedEditor: NoteEditor?
+  /// The refs picked from the [[ list lately (board id, card id), newest first, while the app runs (the web board keeps
+  /// them per workspace)
+  static var recentRefs: [(board: String, id: String)] = []
 
   package var noteEditor: NoteEditor {
     if let e = CanvasView.sharedEditor { return e }
@@ -78,15 +83,30 @@ extension CanvasView {
       guard let self else { return }
       Task { await self.endEditing(w) }
     }
+    editor.onPicked = { group, id in
+      let b = group ?? doc.board.id.rawValue
+      CanvasView.recentRefs = Array(
+        ([(board: b, id: id)] + CanvasView.recentRefs.filter { $0.board != b || $0.id != id }).prefix(3))
+    }
     let r = scene!.items[i].rect
     let local = caret.map { CGPoint(x: $0.x - r.minX, y: $0.y - r.minY) }
     let zoom = camera.zoom
     positionEditor()
+    let listed = shown.map { (at, vault) in (doc.board, vault.url(of: at.path), vault) }
+    let recent = CanvasView.recentRefs
     Task {
       do {
+        // the [[ list: this board's cards and Sections, the vault's other boards (read off the main thread)
+        var refList: RefCandidates?
+        if let (b, package, vault) = listed {
+          refList = await Task.detached {
+            RefResolver(b, package: package, vault: vault).candidates(recent: recent)
+          }.value
+        }
+        guard editing?.id == id, editing?.ending == false else { return }
         let size = try await editor.begin(
           n.content, width: card.width, height: n.height, folder: n.folder, look: theme.id.rawValue, dark: theme.dark,
-          refs: n.refs, k: zoom, margin: editorMargin, caret: local,
+          refs: n.refs, refList: refList, k: zoom, margin: editorMargin, caret: local,
           placeholder: n.content.isText ? "Type something…" : "Type / for blocks")
         guard editing?.id == id, editing?.ending == false else { return }
         editing?.size = size

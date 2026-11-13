@@ -4,7 +4,14 @@
 // but the one being snapshotted: measuring a board is one layout pass, and a picture at another scale lays nothing out
 // again. Native drives it through window.note and hears back on the "note" message handler.
 import { createMarkdown, type Markdown, type MdLayout, type RefBroken, type RefTarget } from "@yhnocoder/markdown";
-import { type MdEditorHandle, mountEditor, warmUp } from "@yhnocoder/markdown/editor";
+import {
+  type MdEditorHandle,
+  mountEditor,
+  type RefGroup,
+  type RefItem,
+  type RefPick,
+  warmUp,
+} from "@yhnocoder/markdown/editor";
 import "@yhnocoder/markdown/katex.css";
 import "../../../../packages/board/src/fonts.css";
 import "../../../../packages/board/src/styles.css";
@@ -49,12 +56,21 @@ const refKey = (label: string, target?: string | null) => `${label}\u0000${targe
 /** A Markdown instance for one Note: its images resolve against the Note's folder, and its [[refs]] as given. Its own,
  *  not shared: an instance learns the size of each image it loads and lays the image out from that size the next time,
  *  a fraction of a pixel off the first, and the first is what a Note on the board is drawn as */
-function mdFor(images: string, refs: Note["refs"]): Markdown {
+function mdFor(images: string, refs: Note["refs"], list?: RefList | null): Markdown {
   const hits = new Map(refs.map((r) => [refKey(r.label, r.target), r.hit]));
+  // a ref picked from the [[ list while writing: what it points at, by the id written with it
+  const byTarget = new Map<string, RefTarget | RefBroken>();
+  for (const i of list?.items ?? []) byTarget.set(i.target, i.hit);
+  for (const g of list?.groups ?? []) {
+    byTarget.set(g.target, g.hit);
+    for (const i of g.items) byTarget.set(i.target, i.hit);
+  }
   // images load at once, not when scrolled to: the picture waits for every one of them
   const md = createMarkdown({
     eagerImages: true,
-    refs: { resolve: (label, target) => hits.get(refKey(label, target)) ?? null },
+    refs: {
+      resolve: (label, target) => hits.get(refKey(label, target)) ?? (target ? byTarget.get(target) : null) ?? null,
+    },
   });
   md.setAssetBase("images", images);
   return md;
@@ -260,11 +276,20 @@ window.note = {
     for (const id of ids) drop(id);
   },
 };
+/** What the [[ list offers (CodeBoardNotes' RefCandidates): each candidate with what a ref to it shows */
+type RefList = {
+  items: (RefItem & { target: string; hit: RefTarget | RefBroken })[];
+  groups: (RefGroup & { target: string; hit: RefTarget | RefBroken; items: (RefItem & { target: string; hit: RefTarget | RefBroken })[] })[];
+  recent: RefPick[];
+  foot: string;
+};
+
 /** What the editing web view posts: its card's size as it changes, and that the editor left by itself (Esc) */
 type Posted =
   | { type: "size"; width: number; height: number }
   | { type: "done"; text: string | null; layout: MdLayout | null; layoutChanged: boolean }
-  | { type: "ui"; rects: { x: number; y: number; width: number; height: number }[] };
+  | { type: "ui"; rects: { x: number; y: number; width: number; height: number }[] }
+  | { type: "picked"; group: string | null; id: string };
 const post = (m: Posted) => window.webkit?.messageHandlers.note.postMessage(m);
 
 /** The card being edited: its slot is placed `margin` px in from the page's top left, so the editor's menus have room */
@@ -333,6 +358,7 @@ const edit = {
     margin: number;
     caret: { x: number; y: number } | null;
     placeholder: string;
+    refList: RefList | null;
   }) {
     edit.clear();
     setLook(a.note.look, a.note.dark);
@@ -351,13 +377,32 @@ const edit = {
       ended: null,
       editor: undefined as unknown as MdEditorHandle,
     };
-    const md = mdFor(a.images, a.note.refs);
+    const md = mdFor(a.images, a.note.refs, a.refList);
+    const list = a.refList;
     e.editor = mountEditor(md, made.body, {
       value: a.note.text,
+      // the web board's [[ list (md/load.ts editorOpts)
+      refs: list
+        ? {
+            items: () => list.items,
+            menu: "Link to Card",
+            empty: "Nothing with that title",
+            groups: () => list.groups,
+            recent: () => list.recent,
+            here: "This board",
+            foot: () => list.foot,
+            picked: (p) => {
+              list.recent = [p, ...list.recent.filter((r) => r.group !== p.group || r.id !== p.id)].slice(0, 3);
+              post({ type: "picked", group: p.group ?? null, id: p.id });
+            },
+          }
+        : undefined,
       layout: a.note.layout,
       placeholder: a.placeholder,
       headingChip: !isText,
       scrollOwnBox: true,
+      // the board's menus, bars and buttons (cm/load.ts BOARD_CLASSES)
+      classes: { menu: "ctx", bar: "pill", button: "tbtn" },
       onDone: (v, l) => {
         const r = end(e, v, l === undefined ? e.layout : l);
         if (r) post({ type: "done", ...r });

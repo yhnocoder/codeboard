@@ -426,8 +426,8 @@ extension CanvasWritingTests {
     #expect(r.doc.undoName == "Edit Text")
   }
 
-  /// Focus leaving in the middle of an IME composition (composition started and updated, never ended): what is composed
-  /// so far is written
+  /// Focus leaving in the middle of an IME composition (started and updated when focus goes; WebKit then commits it, as it
+  /// does when a field loses focus): what is composed is written
   @Test func focusLeavingMidCompositionWritesWhatIsComposed() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }
@@ -443,10 +443,91 @@ extension CanvasWritingTests {
       pm.dispatchEvent(new CompositionEvent("compositionupdate", { bubbles: true, data: "屏障" }));
       await new Promise(r => requestAnimationFrame(() => r(1)));
       pm.blur();
+      pm.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "屏障" }));
       return 1
       """, contentWorld: .page)
     r.click(CGPoint(x: 800, y: 330))
     while r.canvas.isEditing { try await Task.sleep(for: .milliseconds(5)) }
     #expect(r.card("t1").writing == "Threads wait at the barrier屏障")
+  }
+}
+
+extension CanvasWritingTests {
+  /// What the open [[ list shows, row by row (the editor's menu in the page)
+  func refRows(_ r: Rig) async throws -> [String] {
+    let rows = try await r.canvas.noteEditor.view.callAsyncJavaScript(
+      """
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      return [...document.querySelectorAll(".md-pick .md-list .tx, .md-pick .md-gh, .md-pick .md-foot")]
+        .map(n => n.textContent.trim()).filter(Boolean)
+      """, contentWorld: .page)
+    return rows as? [String] ?? []
+  }
+
+  /// Another board in the Rig's vault: "Memory Model", a Note titled Coalescing in its Section Caches
+  func otherBoard(_ r: Rig) throws {
+    let p = r.root.appending(path: "Memory Model.board")
+    try FileManager.default.createDirectory(at: p, withIntermediateDirectories: true)
+    let b = Board(
+      id: BoardID(rawValue: "mem"),
+      cards: [
+        Card(
+          id: CardID(rawValue: "m9"), x: 0, y: 0, width: 300, section: SectionID(rawValue: "g"),
+          content: .own(CardContent(body: .note(Note(text: "# Coalescing\n\nbody")))))
+      ],
+      sections: [Section(id: SectionID(rawValue: "g"), title: "Caches", x: 0, y: 0, width: 400, height: 300)])
+    try b.encoded().write(to: p.appending(path: Vault.boardFileName))
+  }
+
+  /// [[ opens the web board's list: this board's titled cards and Sections, then the other board's cards; picking one
+  /// writes it as main does, `[[label#^id]]`, and the ref shows what it points at at once
+  @Test func doubleBracketListsTheCardsAndWritesThePickWithItsID() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    try otherBoard(r)
+    r.click(r.centre("t1"))
+    r.key(36)
+    await r.editorReady()
+    await r.type(" [[")
+    let rows = try await refRows(r)
+    for want in ["n1", "n2", "m1", "L1", "Group", "Memory Model", "Coalescing", "5 titled cards · 2 boards"] {
+      #expect(rows.contains { $0.contains(want) }, "\(want) in \(rows)")
+    }
+    #expect(!rows.contains { $0.contains("Threads wait") }, "a Text without a heading is not listed")
+    let menu = try await r.canvas.noteEditor.view.callAsyncJavaScript(
+      "return document.querySelector('.md-pick')?.className ?? null", contentWorld: .page)
+    #expect((menu as? String)?.contains("ctx") == true, "the board's menu look: \(String(describing: menu))")
+    await r.type("n2")
+    await r.type("\n")
+    // the caret away from it (beside it, the editor shows a ref's source)
+    await r.type("and on")
+    // the ref drawn in the text shows its card's title (what the list gave for it), once the editor has drawn it
+    var shown: String?
+    let deadline = ContinuousClock.now + .seconds(5)
+    while shown?.contains("n2") != true, ContinuousClock.now < deadline {
+      shown =
+        try await r.canvas.noteEditor.view.callAsyncJavaScript(
+          "await new Promise(r => requestAnimationFrame(r));"
+            + " return document.querySelector('.ProseMirror[contenteditable=true] .md-ref')?.textContent ?? null",
+          contentWorld: .page)
+        as? String
+    }
+    #expect(shown?.contains("n2") == true, "the ref shows its card: \(String(describing: shown))")
+    await r.canvas.endEditing()
+    #expect(r.card("t1").writing == "Threads wait at the barrier [[n2#^n2]] and on")
+    #expect(CanvasView.recentRefs.first.map { [$0.board, $0.id] } == ["edit-sample", "n2"])
+  }
+
+  @Test func aCardOnAnotherBoardIsWrittenWithTheBoardsName() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    try otherBoard(r)
+    r.click(r.centre("t1"))
+    r.key(36)
+    await r.editorReady()
+    await r.type(" [[Coalesc")
+    await r.type("\n")
+    await r.canvas.endEditing()
+    #expect(r.card("t1").writing == "Threads wait at the barrier [[Memory Model › Coalescing#^mem/m9]]")
   }
 }

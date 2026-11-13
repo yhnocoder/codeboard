@@ -24,6 +24,8 @@ public final class NoteEditor: NSObject {
   public var onSize: ((CGSize) -> Void)?
   /// The editor left by itself (Esc), with what was written
   public var onDone: ((Written) -> Void)?
+  /// A ref picked from the [[ list: the board it is on when that is another (nil: this one) and its id
+  public var onPicked: ((_ group: String?, _ id: String) -> Void)?
   /// Where a pasted or dropped picture is stored: the folder whose `images/` it goes into (the board's package)
   public var imagesFolder: URL?
   private let signal = EditorSignal()
@@ -55,20 +57,22 @@ public final class NoteEditor: NSObject {
   /// takes the keyboard; returns its size at 100 %
   public func begin(
     _ note: NoteBody, width: Double, height: Double?, folder: URL, look: String, dark: Bool, refs: [NoteRef] = [],
-    k: Double, margin: Double, caret: CGPoint?, placeholder: String
+    refList: RefCandidates? = nil, k: Double, margin: Double, caret: CGPoint?, placeholder: String
   ) async throws -> CGSize {
     await ready()
     view.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
     view.cardRect = .zero
     view.uiRects = []
     let json = try PageNote(note, width: width, height: height, look: look, dark: dark, refs: refs).json()
+    let list = try refList.map { String(decoding: try JSONEncoder().encode($0), as: UTF8.self) }
     let args: [String: Any] = [
       "note": json, "images": NoteRenderer.images(folder).absoluteString, "k": k, "margin": margin,
       "placeholder": placeholder, "caret": caret.map { ["x": $0.x, "y": $0.y] } ?? NSNull(),
+      "list": list ?? NSNull(),
     ]
     let r = try await view.callAsyncJavaScript(
-      "return await edit.begin({note: JSON.parse(note), images, k, margin, caret, placeholder})", arguments: args,
-      contentWorld: .page)
+      "return await edit.begin({note: JSON.parse(note), images, k, margin, caret, placeholder,"
+        + " refList: list === null ? null : JSON.parse(list)})", arguments: args, contentWorld: .page)
     guard let d = r as? [String: Any], let w = d["width"] as? Double, let h = d["height"] as? Double else {
       throw NoteRenderError.page("the editor answered \(String(describing: r))")
     }
@@ -143,6 +147,8 @@ public final class NoteEditor: NSObject {
       if let w = m["width"] as? Double, let h = m["height"] as? Double { onSize?(CGSize(width: w, height: h)) }
     case "done":
       if let w = Self.written(m) { onDone?(w) }
+    case "picked":
+      if let id = m["id"] as? String { onPicked?(m["group"] as? String, id) }
     case "ui":
       let rects = (m["rects"] as? [[String: Double]]) ?? []
       view.uiRects = rects.map {

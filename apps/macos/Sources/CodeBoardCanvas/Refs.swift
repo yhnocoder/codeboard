@@ -13,8 +13,8 @@ final class RefResolver {
   private let name: String
   private let package: URL
   private let vault: Vault
-  /// Cards with a title of their own, by id
-  typealias Titled = [(id: String, title: String)]
+  /// Cards with a title of their own, by id, with their kind and the title of the Section they are in
+  typealias Titled = [(id: String, title: String, kind: String, section: String?)]
   private var others: [(meta: VaultBoard, cards: Titled?)]?
 
   /// Between a board's name and its card's title in a label (REF_SEP)
@@ -117,6 +117,66 @@ final class RefResolver {
     return .broken(place: true, title: parts[1...].joined(separator: sep), badge: parts[0])
   }
 
+  // MARK: The [[ list
+
+  /// What the editor's [[ list offers, `recent` the refs picked lately (board id, card id), newest first
+  func candidates(recent: [(board: String, id: String)]) -> RefCandidates {
+    func clean(_ t: String) -> String { String(t.replacing(/[\[\]\n]/, with: " ").prefix(160)) }
+    var items: [RefCandidates.Item] = []
+    for c in board.cards {
+      guard let content = Scene.content(of: c, package: package, vault: vault)?.0,
+        let t = RefResolver.refTitle(content).map(trim), !t.isEmpty
+      else { continue }
+      items.append(
+        .init(
+          id: c.id.rawValue, title: clean(t), kind: RefResolver.kind(content), target: c.id.rawValue,
+          hit: .found(title: trim(title(c)), seal: nil)))
+    }
+    let titled = items.count
+    for s in board.sections where !trim(s.title).isEmpty {
+      items.append(
+        .init(
+          id: s.id.rawValue, title: clean(trim(s.title)), kind: "section", target: s.id.rawValue,
+          hit: .found(title: trim(s.title), seal: nil)))
+    }
+    var groups: [RefCandidates.Group] = []
+    var elsewhere = 0
+    for i in otherBoards().indices {
+      let meta = otherBoards()[i].meta
+      let refs = cards(i)
+      elsewhere += refs.count
+      let name = trim(meta.title)
+      guard !name.isEmpty else { continue }
+      let seal = RefResolver.seal(meta, alone: false)
+      groups.append(
+        .init(
+          id: meta.id.rawValue, title: name, label: name, target: meta.id.rawValue,
+          note: "\(refs.count) card\(refs.count == 1 ? "" : "s") · whiteboard",
+          items: refs.map { r in
+            .init(
+              id: r.id, title: r.title, kind: r.kind, label: name + RefResolver.separator + r.title, crumb: r.section,
+              target: "\(meta.id.rawValue)/\(r.id)", hit: .found(title: r.title, seal: seal))
+          }, hit: .found(title: name, seal: RefResolver.seal(meta, alone: true))))
+    }
+    let n = titled + elsewhere
+    let foot = otherBoards().isEmpty ? "" : "\(n) titled card\(n == 1 ? "" : "s") · \(otherBoards().count + 1) boards"
+    return RefCandidates(
+      items: items, groups: groups,
+      recent: recent.map { .init(group: $0.board == board.id.rawValue ? nil : $0.board, id: $0.id) }, foot: foot)
+  }
+
+  /// The kind the [[ list shows on the right (core: code for any code card, else the card's kind; a Text is a note)
+  static func kind(_ content: CardContent) -> String {
+    switch content.body {
+    case .code: "code"
+    case .note, .text: "note"
+    case .image: "image"
+    case .web: "web"
+    case .links: "links"
+    case .board: "board"
+    }
+  }
+
   private func trim(_ s: String) -> String { s.trimmingCharacters(in: .whitespacesAndNewlines) }
 
   private func otherBoards() -> [(meta: VaultBoard, cards: Titled?)] {
@@ -134,13 +194,16 @@ final class RefResolver {
     let meta = others?[i].meta
     let b = meta.flatMap { try? vault.board(at: $0.path) }
     let package = meta.map { vault.url(of: $0.path) } ?? self.package
+    let sections = Dictionary(
+      (b?.sections ?? []).map { ($0.id, trim($0.title)) }, uniquingKeysWith: { a, _ in a })
     let c: Titled =
       b?.cards.compactMap { c in
         guard let content = Scene.content(of: c, package: package, vault: vault)?.0,
           let t = RefResolver.refTitle(content)
         else { return nil }
         let clean = String(t.replacing(/[\[\]\n]/, with: " ").trimmingCharacters(in: .whitespaces).prefix(160))
-        return clean.isEmpty ? nil : (c.id.rawValue, clean)
+        let section = c.section.flatMap { sections[$0] }.flatMap { $0.isEmpty ? nil : $0 }
+        return clean.isEmpty ? nil : (c.id.rawValue, clean, RefResolver.kind(content), section)
       } ?? []
     others?[i].cards = c
     return c
