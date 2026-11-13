@@ -34,7 +34,7 @@ enum TextSheets {
     return Board(id: BoardID(rawValue: "texts"), cards: cards)
   }
 
-  static func run(out: URL) -> Never {
+  @MainActor static func run(out: URL) -> Never {
     let app = NSApplication.shared
     app.setActivationPolicy(.prohibited)
     Task { @MainActor in

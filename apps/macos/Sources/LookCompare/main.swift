@@ -23,8 +23,10 @@ struct Rects: Decodable {
 
 let args = CommandLine.arguments
 if args.count == 3, args[1] == "--texts" { TextSheets.run(out: URL(filePath: args[2])) }
+if args.count == 3, args[1] == "--edit" { EditSheets.run(out: URL(filePath: args[2])) }
 guard args.count == 3 else {
-  FileHandle.standardError.write(Data("usage: LookCompare <storage folder> <out folder> | --texts <out folder>\n".utf8))
+  FileHandle.standardError.write(
+    Data("usage: LookCompare <storage folder> <out folder> | --texts <out folder> | --edit <out folder>\n".utf8))
   exit(2)
 }
 let storage = URL(filePath: args[1])
