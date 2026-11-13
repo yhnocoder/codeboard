@@ -205,7 +205,15 @@ struct Scene: Sendable {
       let tilt = c.tilted ? Scene.tilt : 0
       let mine = ends[c.id] ?? []
       let part: Part
-      let showsOthers = { if case .board = content.body { true } else { false } }()
+      // what is drawn from other boards: a sub-board's map, the titles and seals of [[refs]]
+      let showsOthers = {
+        switch content.body {
+        case .board: true
+        case .note(let n): n.text.contains("[[")
+        case .text(let t): t.text.contains("[[")
+        default: false
+        }
+      }()
       if let p = previous?.parts[c.id], p.content == content, p.width == c.width, p.height == c.height,
         p.tilted == c.tilted, p.measured == sizes[c.id], p.ends == mine,
         !showsOthers || previous?.vaultSeen == vaultSeen
