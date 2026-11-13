@@ -134,6 +134,11 @@ import Foundation
     guard let url = file() else { return }
     if let disk = try? Data(contentsOf: url), disk != baseData || problem != nil { take(disk, from: url) }
     guard problem == nil, isDirty else { return }
+    // never a file that cannot be read back: it stays unsaved, and says why
+    if let p = board.problem() {
+      problem = "\(url.path): not saved, as it would not read back: \(p)"
+      return
+    }
     do {
       let data = try board.encoded()
       try data.write(to: url, options: .atomic)

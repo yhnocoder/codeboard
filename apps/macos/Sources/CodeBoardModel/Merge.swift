@@ -20,8 +20,36 @@ extension Board {
     out.hideComments =
       mine.hideComments == base.hideComments
       ? disk.hideComments : disk.hideComments == base.hideComments ? mine.hideComments : disk.hideComments
+    out.keepWhatIsPointedAt(base: base, mine: mine)
     out.prune()
     return out
+  }
+
+  /// A card or Section the other writer deleted that something added or changed here points at (an arrow, a sidenote,
+  /// a sticker) stays as it is here: what was added here is never dropped silently
+  private mutating func keepWhatIsPointedAt(base: Board, mine: Board) {
+    func local<T: Identifiable & Equatable>(_ now: [T], _ was: [T]) -> [T] {
+      let old = Dictionary(was.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+      return now.filter { old[$0.id] != $0 }
+    }
+    var cardIDs = Set<CardID>()
+    var sectionIDs = Set<SectionID>()
+    for a in local(mine.arrows, base.arrows) { cardIDs.formUnion([a.from.card, a.to.card]) }
+    for n in local(mine.sidenotes, base.sidenotes) {
+      switch n.anchor {
+      case .card(let c, _, _, _): cardIDs.insert(c)
+      case .section(let s): sectionIDs.insert(s)
+      case .point: break
+      }
+    }
+    for k in local(mine.stickers, base.stickers) {
+      switch k.anchor {
+      case .card(let c, _, _, _), .line(let c, _, _): cardIDs.insert(c)
+      case .canvas: break
+      }
+    }
+    for c in mine.cards where cardIDs.contains(c.id) && card(c.id) == nil { cards.append(c) }
+    for s in mine.sections where sectionIDs.contains(s.id) && section(s.id) == nil { sections.append(s) }
   }
 }
 

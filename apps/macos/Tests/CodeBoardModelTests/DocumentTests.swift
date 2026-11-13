@@ -102,4 +102,79 @@ private func n1(_ b: Board) -> Card? { b.card(CardID(rawValue: "n1")) }
     let saved = try Board(decoding: Data(contentsOf: file), file: file)
     #expect(doc.problem == nil && n1(saved)?.x == 55)
   }
+
+  // MARK: Undo and redo after a merge
+
+  private func theirs(_ file: URL, _ change: (inout Board) -> Void) throws {
+    var b = try Board(decoding: Data(contentsOf: file), file: file)
+    change(&b)
+    b.prune()
+    try b.encoded().write(to: file)
+  }
+
+  private func readsBack(_ doc: BoardDocument, _ file: URL) throws {
+    doc.flush()
+    #expect(doc.problem == nil)
+    let saved = try Board(decoding: Data(contentsOf: file), file: file)
+    #expect(saved == doc.board && saved.problem() == nil)
+  }
+
+  @Test func undoingADeleteAfterAnotherWriterDeletedWhatItsArrowPointsAtLeavesNoArrowToNothing() throws {
+    let (doc, file) = try opened()
+    // c1 goes with its arrows a1 (to n1) and a2 (to t1)
+    doc.edit("Delete") { $0.delete([.card(CardID(rawValue: "c1"))]) }
+    doc.flush()
+    // another writer deletes n1
+    try theirs(file) { $0.delete([.card(CardID(rawValue: "n1"))]) }
+    doc.diskChanged()
+    #expect(doc.history.canUndo, "the step still holds")
+    doc.undo()
+    #expect(doc.board.card(CardID(rawValue: "c1")) != nil)
+    #expect(doc.board.arrows.map(\.id.rawValue) == ["a2"], "a1 would point at n1, which is gone")
+    try readsBack(doc, file)
+  }
+
+  @Test func redoingAnArrowAfterAnotherWriterDeletedItsEndLeavesNoArrowToNothing() throws {
+    let (doc, file) = try opened()
+    let a9 = Arrow(
+      id: ArrowID(rawValue: "a9"), from: Endpoint(card: CardID(rawValue: "n2")),
+      to: Endpoint(card: CardID(rawValue: "t1")))
+    doc.edit("Connect") { $0.arrows.append(a9) }
+    doc.undo()
+    doc.flush()
+    try theirs(file) { $0.delete([.card(CardID(rawValue: "t1"))]) }
+    doc.diskChanged()
+    #expect(doc.history.canRedo)
+    doc.redo()
+    #expect(doc.board.arrows.allSatisfy { $0.id != a9.id }, "t1 is gone, so a9 goes with it")
+    try readsBack(doc, file)
+  }
+
+  @Test func whatWasAddedHereKeepsTheCardAnotherWriterDeleted() throws {
+    let (doc, file) = try opened()
+    let a9 = Arrow(
+      id: ArrowID(rawValue: "a9"), from: Endpoint(card: CardID(rawValue: "n2")),
+      to: Endpoint(card: CardID(rawValue: "t1")))
+    doc.edit("Connect") { $0.arrows.append(a9) }
+    try theirs(file) { $0.delete([.card(CardID(rawValue: "t1"))]) }
+    doc.diskChanged()
+    #expect(doc.board.card(CardID(rawValue: "t1")) != nil && doc.board.arrows.contains { $0.id == a9.id })
+    try readsBack(doc, file)
+  }
+
+  @Test func aBoardThatWouldNotReadBackIsNotWritten() throws {
+    let (doc, file) = try opened()
+    let before = try Data(contentsOf: file)
+    let dangling = Arrow(
+      id: ArrowID(rawValue: "a9"), from: Endpoint(card: CardID(rawValue: "n2")),
+      to: Endpoint(card: CardID(rawValue: "gone")))
+    doc.edit("Broken") { $0.arrows.append(dangling) }
+    doc.flush()
+    #expect(try Data(contentsOf: file) == before)
+    #expect(doc.problem?.contains("not saved") == true && doc.isDirty)
+    // fixed: saved again
+    doc.undo()
+    doc.edit("Move") { $0.move([.card(CardID(rawValue: "n1"))], dx: 3, dy: 0) }
+    try readsBack(doc, file)
+  }
 }

@@ -168,6 +168,9 @@ public struct History: Sendable {
   public mutating func undo(_ board: inout Board) -> Set<Item>? {
     guard let s = undoSteps.popLast() else { return nil }
     s.change.apply(to: &board, forward: false)
+    // what another writer deleted since may leave what this brings back pointing at nothing: it goes, as a delete
+    // would take it
+    board.prune()
     board.selfCheck()
     redoSteps.append(s)
     return s.selectionBefore
@@ -176,6 +179,9 @@ public struct History: Sendable {
   public mutating func redo(_ board: inout Board) -> Set<Item>? {
     guard let s = redoSteps.popLast() else { return nil }
     s.change.apply(to: &board, forward: true)
+    // what another writer deleted since may leave what this brings back pointing at nothing: it goes, as a delete
+    // would take it
+    board.prune()
     board.selfCheck()
     undoSteps.append(s)
     return s.selectionAfter

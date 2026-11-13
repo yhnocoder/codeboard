@@ -236,16 +236,17 @@ func editSample() -> Board {
   #expect(merged.card(cid("n1"))?.y == 110, "y: only here")
 }
 
-@Test func whatTheDiskDeletedTakesWhatHangsOnIt() {
+@Test func whatTheDiskDeletedTakesWhatHangsOnItUnlessItWasAddedHere() {
   let base = editSample()
   var mine = base
   mine.arrows.append(Arrow(id: ArrowID(rawValue: "a9"), from: Endpoint(card: cid("t1")), to: Endpoint(card: cid("n2"))))
   var disk = base
-  disk.cards.removeAll { $0.id == cid("n2") }
+  disk.cards.removeAll { $0.id == cid("n2") || $0.id == cid("c1") }
   disk.prune()
   let merged = Board.merge(base: base, mine: mine, disk: disk)
-  #expect(merged.card(cid("n2")) == nil)
-  #expect(!merged.arrows.contains { $0.id.rawValue == "a9" }, "the arrow added here to the card deleted there")
+  #expect(merged.card(cid("c1")) == nil && !merged.arrows.contains { $0.id.rawValue == "a1" }, "nothing here on c1")
+  #expect(merged.card(cid("n2")) != nil, "the arrow added here keeps the card deleted there")
+  #expect(merged.arrows.contains { $0.id.rawValue == "a9" })
   #expect(merged.problem() == nil)
 }
 
