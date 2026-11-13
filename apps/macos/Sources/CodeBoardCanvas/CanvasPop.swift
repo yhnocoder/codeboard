@@ -290,8 +290,8 @@ extension CanvasView {
 
   /// The popup's top left in the view now (besidePos, or its held offset)
   func popPosition(_ a: PopAnchor, size: CGSize) -> CGPoint {
-    let W = bounds.width
-    let H = bounds.height
+    let vw = bounds.width
+    let vh = bounds.height
     let z = camera.zoom
     let el = CGRect(origin: camera.view(a.el.origin), size: CGSize(width: a.el.width * z, height: a.el.height * z))
     if let h = popHeld {

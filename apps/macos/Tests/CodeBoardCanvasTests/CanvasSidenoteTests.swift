@@ -158,8 +158,8 @@ extension CanvasSidenoteTests {
       let a = try #require(c.popAnchor(at))
       let right = c.camera.view(CGPoint(x: a.right, y: 0)).x
       let top = c.camera.view(mark.origin).y
-      let W = c.bounds.width
-      let H = c.bounds.height
+      let vw = c.bounds.width
+      let vh = c.bounds.height
       #expect(box.width == 460 && box.height > 40)
       #expect(abs(box.minX - max(8, min(right + 12, W - 8 - box.width))) < 0.5, "\(at)")
       #expect(abs(box.minY - max(8, min(top - 6, H - 8 - box.height))) < 0.5, "\(at)")
