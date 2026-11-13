@@ -108,7 +108,7 @@ const codeFocused = async () => {
 };
 const langPicker = async () => {
   await codeFocused();
-  const l = await waitFor(() => $<HTMLElement>(`.card[data-id="${ID}"] .md-pm pre .md-lang`), "the language label");
+  const l = await waitFor(() => $<HTMLElement>(`.card[data-id="${ID}"] .md-band-code .md-lang`), "the language label");
   l.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
   l.click();
   await waitFor(() => $(".md-langbox"), "the language list");
