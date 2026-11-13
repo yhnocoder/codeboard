@@ -92,7 +92,7 @@ extension CanvasView {
     if document !== doc {
       stopObserving?()
       document = doc
-      stopObserving = doc.observe { [weak self] _ in self?.documentChanged() }
+      stopObserving = doc.observe { [weak self] in self?.documentChanged($0) }
       _ = noteEditor  // its page loads while the board does
     }
     try await load(board, in: vault, theme: theme, keepCamera: false)
@@ -106,8 +106,10 @@ extension CanvasView {
     document = nil
   }
 
-  private func documentChanged() {
+  private func documentChanged(_ change: BoardDocument.Change) {
     guard let doc = document else { return }
+    // a draft of the card being written in: the web view shows it already; its picture comes when the writing ends
+    if change == .draft { return drawChrome() }
     // only the selection changed (a marquee under way too): its rings follow at once
     if doc.board != shownBoard { refresh() } else { drawChrome() }
   }

@@ -48,14 +48,50 @@ private func text(_ b: Board, _ id: String) -> TextCard? { b.card(cid(id))?.text
   doc.select([.card(cid("n1"))])
   doc.addFresh(Board.newCard(.text(.text), id: cid("new"), x: 10, y: 20))
   #expect(doc.selection == [.card(cid("new"))] && !doc.history.canUndo)
-  doc.settleFresh(keep: false, "New Text") { _ in }
+  doc.settleWriting(keep: false, "New Text") { _ in }
   #expect(doc.board == start && !doc.history.canUndo)
 
   doc.addFresh(Board.newCard(.note, id: cid("new2"), x: 10, y: 20))
-  doc.settleFresh(keep: true, "New Note") { $0.write(cid("new2"), text: "Hello", layout: nil) }
+  doc.settleWriting(keep: true, "New Note") { $0.write(cid("new2"), text: "Hello", layout: nil) }
   #expect(doc.undoName == "New Note" && doc.history.undoSteps.count == 1)
   doc.undo()
   #expect(doc.board == start && doc.selection == [.card(cid("n1"))])
   doc.redo()
   #expect(doc.board.card(cid("new2"))?.writing == "Hello" && doc.board.card(cid("new2"))?.width == Board.newNoteWidth)
+}
+
+/// What is typed reaches the board and the disk as drafts with no undo step; the writing is one step from where it began;
+/// a step taken meanwhile (the bar's text size) is taken without the drafts, so undoing it never brings one back
+@MainActor @Test func draftsAreSavedWithNoStepAndTheWritingIsStillOneStep() throws {
+  let file = try scratch().appending(path: "board.json")
+  try editSample().encoded().write(to: file)
+  let doc = try BoardDocument { file }
+  let start = doc.board
+  let t1 = cid("t1")
+  let was = try #require(start.card(t1)?.writing)
+  doc.beginWriting(t1)
+  doc.draft { $0.write(t1, text: was + " now", layout: nil) }
+  #expect(doc.board.card(t1)?.writing == was + " now" && !doc.history.canUndo)
+  doc.flush()
+  #expect(try Board(decoding: Data(contentsOf: file), file: file).card(t1)?.writing == was + " now", "on disk")
+
+  doc.edit("Text Size") { $0.setTextSize(t1, 30) }
+  #expect(doc.board.card(t1)?.writing == was + " now" && text(doc.board, "t1")?.fontSize == 30)
+  doc.draft { $0.write(t1, text: was + " now and then", layout: nil) }
+  doc.settleWriting(keep: true, "Edit Text") { $0.write(t1, text: was + " now and then!", layout: nil) }
+  #expect(doc.history.undoSteps.map(\.name) == ["Text Size", "Edit Text"])
+  doc.undo()
+  #expect(doc.board.card(t1)?.writing == was && text(doc.board, "t1")?.fontSize == 30)
+  doc.undo()
+  #expect(doc.board == start, "the size undone, and no draft back")
+  doc.redo()
+  doc.redo()
+  #expect(doc.board.card(t1)?.writing == was + " now and then!")
+
+  // drafts taken back to what it was: no step
+  let before = doc.board
+  doc.beginWriting(t1)
+  doc.draft { $0.write(t1, text: "something else", layout: nil) }
+  doc.settleWriting(keep: true, "Edit Text") { $0.write(t1, text: was + " now and then!", layout: nil) }
+  #expect(doc.board == before && doc.history.undoSteps.count == 2)
 }

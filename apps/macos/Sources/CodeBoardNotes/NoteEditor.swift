@@ -115,6 +115,12 @@ public final class NoteEditor: NSObject {
     view.callAsyncJavaScript("edit.type(t)", arguments: ["t": text], in: nil, in: .page)
   }
 
+  /// What is written so far, the editing going on (nil once it ended)
+  public func peek() async -> Written? {
+    guard let r = try? await view.callAsyncJavaScript("return edit.peek()", contentWorld: .page) else { return nil }
+    return Self.written(r)
+  }
+
   /// Ends the editing: what was written; the content stays shown until `clear`
   public func finish() async -> Written? {
     guard let r = try? await view.callAsyncJavaScript("return edit.finish()", contentWorld: .page) else { return nil }

@@ -531,3 +531,38 @@ extension CanvasWritingTests {
     #expect(r.card("t1").writing == "Threads wait at the barrier [[Memory Model › Coalescing#^mem/m9]]")
   }
 }
+
+extension CanvasWritingTests {
+  /// What is typed reaches the board and the disk every couple of seconds while the card is written in, with no undo
+  /// step and without the canvas redrawing the card under the web view; leaving makes the whole writing one step
+  @Test func whatIsTypedIsDraftedOntoTheDiskWhileWritingAndLeavingIsStillOneStep() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    r.click(r.centre("t1"))
+    r.key(36)
+    await r.editorReady()
+    let i = try #require(r.canvas.index(of: .card(cid("t1"))))
+    let paper = r.canvas.items[i].box
+    await r.type(" now")
+    // the timer's draft
+    let deadline = ContinuousClock.now + .seconds(10)
+    while r.card("t1").writing != "Threads wait at the barrier now", ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(r.card("t1").writing == "Threads wait at the barrier now")
+    #expect(!r.doc.history.canUndo, "a draft is no step")
+    #expect(r.canvas.items[i].box === paper, "the card under the web view is not drawn again for it")
+    r.doc.flush()
+    #expect(
+      try Board(decoding: Data(contentsOf: r.file), file: r.file).card(cid("t1"))?.writing
+        == "Threads wait at the barrier now", "on disk: a crash now loses nothing typed before it")
+    await r.type(" and then")
+    await r.canvas.saveDraft()
+    #expect(r.card("t1").writing == "Threads wait at the barrier now and then")
+    await r.canvas.endEditing()
+    #expect(r.doc.history.undoSteps.map(\.name) == ["Edit Text"])
+    await r.settle()
+    r.doc.undo()
+    #expect(r.card("t1").writing == "Threads wait at the barrier", "undo goes back to before the writing")
+  }
+}

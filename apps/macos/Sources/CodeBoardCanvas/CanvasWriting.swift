@@ -34,6 +34,10 @@ struct Editing {
   var zooming = false
   /// At rest after a zoom: a picture of the card shows in the web view's place while it draws at the new zoom
   var pictured = false
+  /// What is typed reached the board as a draft at least once
+  var drafted = false
+  /// This writing, among others of the same card
+  let session = UUID()
 }
 
 /// The card sits this far in from the web view's top left (view points), so the editor's menus have room: it places them
@@ -73,6 +77,8 @@ extension CanvasView {
       let host = superview
     else { return }
     if doc.selection != [.card(id)] { doc.select([.card(id)]) }
+    // a new card's writing began when it was made
+    if !fresh { doc.beginWriting(id) }
     editing = Editing(doc: doc, id: id, fresh: fresh, card: card, shownZoom: camera.zoom)
     let editor = noteEditor
     editor.imagesFolder = n.folder
@@ -122,6 +128,7 @@ extension CanvasView {
         for k in editing?.keys ?? [] { editor.view.keyDown(with: k) }
         editing?.keys = []
         drawChrome()
+        if let session = editing?.session { keepDrafts(session) }
       } catch {
         editing = nil
         editor.view.shown = false
@@ -273,6 +280,48 @@ extension CanvasView {
     CATransaction.flush()
   }
 
+  // MARK: Drafts
+
+  /// How often what is typed reaches the board as a draft: a crash or a force quit loses at most this much
+  static let draftEvery = Duration.seconds(2)
+
+  /// Drafts what is typed every `draftEvery` while this writing goes on
+  private func keepDrafts(_ session: UUID) {
+    Task { [weak self] in
+      while true {
+        try? await Task.sleep(for: CanvasView.draftEvery)
+        guard let self, self.editing?.session == session, self.editing?.ending == false else { return }
+        await self.saveDraft()
+      }
+    }
+  }
+
+  /// What is typed so far onto the board, saved with no undo step (the writing still becomes one step when it ends);
+  /// nothing when nothing was typed. A card another writer deleted meanwhile gets none (it comes back when the writing
+  /// ends)
+  package func saveDraft() async {
+    guard let ed = editing, ed.ready, !ed.ending, let w = await noteEditor.peek(), editing?.session == ed.session,
+      editing?.ending == false, w.text != nil || w.layoutChanged || ed.drafted
+    else { return }
+    let id = ed.id
+    let original = ed.card.writing ?? ""
+    ed.doc.draft { b in
+      guard let now = b.card(id) else { return }
+      b.write(id, text: w.text ?? original, layout: w.layoutChanged ? w.layout : CanvasView.layout(of: now))
+    }
+    editing?.drafted = true
+  }
+
+  /// A Note's or Text's layout (tables, code blocks)
+  static func layout(of card: Card) -> NoteLayout? {
+    guard case .own(let c) = card.content else { return nil }
+    switch c.body {
+    case .note(let n): return n.layout
+    case .text(let t): return t.layout
+    default: return nil
+    }
+  }
+
   // MARK: Leaving
 
   /// Ends the writing: what was written becomes one undo step (a new card left empty goes with none); the web view goes
@@ -299,21 +348,22 @@ extension CanvasView {
     if ed.fresh {
       let keep = !(text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       let name = note ? "New Note" : ed.card.textCard?.look == .box ? "New Box" : "New Text"
-      doc.settleFresh(keep: keep, name) { b in
+      doc.settleWriting(keep: keep, name) { b in
         if keep, let text { b.write(id, text: text, layout: written?.layout) }
       }
-    } else if text != nil || written?.layoutChanged == true {
-      doc.edit(note ? "Edit Note" : "Edit Text") { b in
+    } else {
+      // one step from where the writing began, drafts and all; none when nothing changed
+      let drafted = editing?.drafted == true
+      doc.settleWriting(keep: true, note ? "Edit Note" : "Edit Text") { b in
+        guard text != nil || written?.layoutChanged == true || drafted else { return }
         // deleted by another writer meanwhile: back, with what was typed
         if b.card(id) == nil { b.cards.append(ed.card) }
-        guard let now = b.card(id), case .own(let c) = now.content else { return }
-        var layout: NoteLayout?
-        switch c.body {
-        case .note(let n): layout = n.layout
-        case .text(let t): layout = t.layout
-        default: break
-        }
-        b.write(id, text: text ?? now.writing ?? "", layout: written?.layoutChanged == true ? written?.layout : layout)
+        guard let now = b.card(id) else { return }
+        // typed and then taken back to what it was: what it was
+        let was = text == nil && drafted ? ed.card : now
+        b.write(
+          id, text: text ?? was.writing ?? "",
+          layout: written?.layoutChanged == true ? written?.layout : CanvasView.layout(of: was))
       }
     }
     // the card's picture under the web view before it goes

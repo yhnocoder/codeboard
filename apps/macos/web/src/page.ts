@@ -443,6 +443,17 @@ const edit = {
   type(text: string) {
     if (editing && !editing.ended) editing.editor.type(text);
   },
+  /** What is written so far, the editing going on (a draft native keeps on the board); null when it has ended */
+  peek(): Ended | null {
+    if (!editing || editing.ended) return null;
+    const e = editing;
+    const layout = e.editor.layout();
+    return {
+      text: e.editor.value(),
+      layout,
+      layoutChanged: JSON.stringify(layout ?? null) !== JSON.stringify(e.layout ?? null),
+    };
+  },
   /** Native ends the editing (a click outside): what was written, also when the editor left by itself first (focus
    *  went, and its "done" is still on the way); what is shown stays until clear */
   finish() {

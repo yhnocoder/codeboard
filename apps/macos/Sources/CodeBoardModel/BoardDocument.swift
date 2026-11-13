@@ -17,6 +17,9 @@ import Foundation
     case edit
     /// What another writer changed, merged in
     case merge
+    /// What is typed in a card being written in, so far: on the board and saved, no undo step (the writing becomes one
+    /// when it ends)
+    case draft
   }
 
   public let id: BoardID
@@ -78,40 +81,67 @@ import Foundation
       if now != selection { select(now) }
       return
     }
-    history.record(name, from: board, to: b, selection: (before, now))
+    if var w = writing {
+      // a card is being written in: the step is taken on the board without what is typed so far (its drafts), so that
+      // undoing it never brings a draft back; the writing's own step starts from after it
+      var nb = w.before
+      change(&nb)
+      history.record(name, from: w.before, to: nb, selection: (before, now))
+      w.before = nb
+      writing = w
+    } else {
+      history.record(name, from: board, to: b, selection: (before, now))
+    }
     board = b
     selection = now
     changed(.edit)
   }
 
-  // MARK: A new card not written yet
+  // MARK: Writing in a card
 
-  /// A card just made and not written yet (core CommandEnv.fresh): it is on the board, but no undo step until it is
-  /// written; left empty, it goes and leaves none
-  private var fresh: (id: CardID, before: Board, selection: Set<Item>)?
+  /// A card being written in: the board as it was when the writing began, which the one undo step the writing becomes
+  /// starts from. What is typed meanwhile reaches the board (and the disk) as drafts with no step. `isNew`: a card just
+  /// made and not written yet (core CommandEnv.fresh), which goes and leaves no step when it is left empty
+  private var writing: (id: CardID, before: Board, selection: Set<Item>, isNew: Bool)?
 
-  public var freshCard: CardID? { fresh?.id }
+  public var freshCard: CardID? { writing?.isNew == true ? writing?.id : nil }
 
-  /// Puts a new card on the board, selected, with no undo step yet
+  /// Puts a new card on the board, selected, with no undo step yet: it is being written in
   public func addFresh(_ card: Card) {
-    if fresh != nil { settleFresh(keep: false, "") { _ in } }
-    fresh = (card.id, board, selection)
+    if let w = writing { settleWriting(keep: !w.isNew, "") { _ in } }
+    writing = (card.id, board, selection, true)
     board.cards.append(card)
     selection = [.card(card.id)]
     changed(.edit)
   }
 
-  /// The new card is written (`change`): with `keep`, making it and writing it are one undo step named `name`; without,
-  /// it goes as if it had never been
-  public func settleFresh(keep: Bool, _ name: String, _ change: (inout Board) -> Void) {
-    guard let f = fresh else { return }
-    fresh = nil
+  /// A card on the board starts being written in
+  public func beginWriting(_ id: CardID) {
+    guard writing == nil else { return }
+    writing = (id, board, selection, false)
+  }
+
+  /// What is typed so far, onto the board with no undo step; saved as any change is
+  public func draft(_ change: (inout Board) -> Void) {
+    guard writing != nil else { return }
     var b = board
     change(&b)
-    if !keep { b.delete([.card(f.id)]) }
-    // left empty: the selection it took is given back
-    let now = (keep ? selection : f.selection).filter { b.has($0) }
-    if keep { history.record(name, from: f.before, to: b, selection: (f.selection, now)) }
+    guard b != board else { return }
+    board = b
+    changed(.draft)
+  }
+
+  /// The writing ends with `change`: from where it began to now is one undo step named `name` (none when that changed
+  /// nothing). A new card not kept (`keep` false) goes as if it had never been, and the selection it took is given back
+  public func settleWriting(keep: Bool, _ name: String, _ change: (inout Board) -> Void) {
+    guard let w = writing else { return }
+    writing = nil
+    var b = board
+    change(&b)
+    let dropped = w.isNew && !keep
+    if dropped { b.delete([.card(w.id)]) }
+    let now = (dropped ? w.selection : selection).filter { b.has($0) }
+    if !dropped && b != w.before { history.record(name, from: w.before, to: b, selection: (w.selection, now)) }
     guard b != board || now != selection else { return }
     board = b
     selection = now
@@ -203,8 +233,8 @@ import Foundation
     }
     problem = nil
     let merged = Board.merge(base: base, mine: board, disk: theirs)
-    // what a new card's step will start from takes in the other writer's changes too, so undoing it leaves them
-    if let f = fresh { fresh?.before = Board.merge(base: base, mine: f.before, disk: theirs) }
+    // what the writing's step will start from takes in the other writer's changes too, so undoing it leaves them
+    if let w = writing { writing?.before = Board.merge(base: base, mine: w.before, disk: theirs) }
     base = theirs
     baseData = data
     guard merged != board else { return }
