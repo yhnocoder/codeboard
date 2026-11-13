@@ -27,6 +27,7 @@ import {
   type LinkSide,
 } from "@codeboard/core";
 import { measuredHeight } from "../state/subboards";
+import { cardKindClass } from "../cardsel";
 import { useMd } from "../md/context";
 import { attachCardAnim, detachAnims } from "../md/anim";
 import { state, setSize, flows, placeOf, rectOf, twinsOf } from "../state/store";
@@ -244,12 +245,7 @@ export function CardView(p: { card: Card }) {
     return c().id !== cur;
   };
   // in classList with the rest, not in `class`: a `class` that changes is written whole and wipes what classList set
-  const kindClass = () => {
-    const k = c();
-    if (k.kind === "note")
-      return k.msg ? "note msg" : k.look === "note" ? "note" : k.look === "text" ? "text" : `text ${k.look}`;
-    return k.kind === "compare" ? "cmp" : k.kind === "code" ? "ccard" : k.kind;
-  };
+  const kindClass = () => cardKindClass(c());
   // 拖动中的卡、落点是所有卡共用的信号：直接写进 classList 的话，它们一变，241 张卡的整个 classList 都要重算一遍（松手那一帧 ~5ms）。
   // 先算成这张卡自己的真假，只有值真变了的那张卡才重算 classList
   // The selection too: a card selected or not, and alone or not (.sel.solo), changes only on the cards it is about

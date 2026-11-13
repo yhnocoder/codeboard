@@ -1,27 +1,52 @@
 // The Shelf (edit/shelf.ts): putting cards and Sections aside, taking them back where they were or where the shell drops them,
-// deleting what is on it, and what a Shelf row says about an entry
-import { removeShelfEntry, shelveItems, unshelve } from "../edit";
-import { baseName, cardTitle, domainOf, uid, type Board, type Card, type NoteLook, type ShelfEntry } from "../model";
+// deleting what is on it, the order the Shelf shows its entries in, and what an entry is called
+import { arrangeCards, removeShelfEntry, shelveItems, unshelve } from "../edit";
+import type { Rect } from "../layout";
+import {
+  baseName,
+  cardTitle,
+  domainOf,
+  uid,
+  withCols,
+  type Board,
+  type Card,
+  type NoteLook,
+  type Place,
+  type ShelfEntry,
+} from "../model";
 import type { CommandEnv } from "./env";
 
 /**
  * Move to Shelf: these cards and Sections (each Section with its cards and inner Sections) go onto the Shelf as one entry, in one
- * step. The new entry's id, or null when none of them is on the canvas
+ * step. keep(c, p) = the height the shell measured of a card to keep with it (Place.mh), so that where it returns to is known
+ * after a reload too. The new entry's id, or null when none of them is on the canvas
  */
-export function shelve(env: CommandEnv, o: { cards?: Iterable<string>; sections?: Iterable<string> }): string | null {
+export function shelve(
+  env: CommandEnv,
+  o: { cards?: Iterable<string>; sections?: Iterable<string>; keep?: (c: Card, p: Place) => number | undefined },
+): string | null {
   const id = uid("sh");
   let made = false;
   const cards = [...(o.cards ?? [])],
     sections = [...(o.sections ?? [])];
   env.edit((b) => {
-    made = !!shelveItems(b, { id, at: Date.now(), cards, sections });
+    const e = shelveItems(b, { id, at: Date.now(), cards, sections });
+    made = !!e;
+    if (e && o.keep)
+      for (const c of b.cards) {
+        const p = e.place[c.id],
+          mh = p && !p.h ? o.keep(c, p) : undefined;
+        if (mh) p.mh = mh;
+      }
   });
   return made ? id : null;
 }
 
 /**
  * Put Back (no offset: where it was) or drop an entry on the board, moved by (dx, dy), in one step. into: the Sections the shell
- * found where moved cards and outer Sections land (edit/shelf.ts unshelve). The ids that came back (cards and Sections), or null
+ * found where moved cards and outer Sections land (edit/shelf.ts unshelve). Its cards come back in front of every card on the
+ * board, so one made where they were while they were away does not cover them. The ids that came back (cards and Sections), or
+ * null
  */
 export function putBack(
   env: CommandEnv,
@@ -31,7 +56,9 @@ export function putBack(
   let out: { cards: string[]; sections: string[] } | null = null;
   env.edit((b) => {
     const e = unshelve(b, id, o);
-    if (e) out = { cards: Object.keys(e.place), sections: e.sections.map((s) => s.id) };
+    if (!e) return;
+    arrangeCards(b, withCols(b, Object.keys(e.place)), "front", () => true);
+    out = { cards: Object.keys(e.place), sections: e.sections.map((s) => s.id) };
   });
   return out;
 }
@@ -64,6 +91,25 @@ function kindOf(c: Card): string {
       return "Board";
   }
 }
+/**
+ * The order the Shelf shows its entries in: where they were on the board, as it is read. Rows from the top (an entry whose top is
+ * above the middle of a row's first entry is in that row), each from the left. box = an entry's box on the board (none: left out)
+ */
+export function shelfOrder(entries: readonly ShelfEntry[], box: (e: ShelfEntry) => Rect | undefined): ShelfEntry[] {
+  const boxed = entries.flatMap((e) => {
+    const r = box(e);
+    return r ? [{ e, r }] : [];
+  });
+  boxed.sort((p, q) => p.r.y - q.r.y || p.r.x - q.r.x);
+  const rows: { mid: number; items: typeof boxed }[] = [];
+  for (const it of boxed) {
+    const row = rows.at(-1);
+    if (row && it.r.y < row.mid) row.items.push(it);
+    else rows.push({ mid: it.r.y + it.r.h / 2, items: [it] });
+  }
+  return rows.flatMap((row) => row.items.sort((p, q) => p.r.x - q.r.x).map((it) => it.e));
+}
+
 const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 /**

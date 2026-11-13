@@ -23,8 +23,17 @@ import {
   swapCallTarget,
   type Board,
   type Card,
+  type ShelfEntry,
 } from "../src";
-import { cardToSidenote, putBack, removeFromShelf, shelfLabel, shelve, type CommandEnv } from "../src/commands";
+import {
+  cardToSidenote,
+  putBack,
+  removeFromShelf,
+  shelfLabel,
+  shelfOrder,
+  shelve,
+  type CommandEnv,
+} from "../src/commands";
 
 const note = (id: string, md = `# ${id}`): Card => ({ id, kind: "note", md, look: "note" });
 const code = (id: string, path = "nanovllm/engine/model_runner.py"): Card => ({
@@ -336,6 +345,34 @@ describe("the Shelf", () => {
       { title: "c", kind: "Note" },
       { title: "model_runner.py 1–2", kind: "Code · model_runner.py" },
     ]);
+  });
+
+  it("puts the cards back in front of the cards on the board, and keeps the heights the shell measured", () => {
+    const b = board();
+    const { env } = envOf(b);
+    b.place.c.h = 200;
+    const id = shelve(env, { cards: ["a", "c"], keep: (c) => (c.id === "a" ? 333 : 444) })!;
+    // c has a height of its own: nothing kept for it
+    expect(b.shelf![0].place.a.mh).toBe(333);
+    expect(b.shelf![0].place.c.mh).toBeUndefined();
+    putBack(env, id);
+    expect(b.cards.map((c) => c.id)).toEqual(["b", "d", "a", "c"]);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("orders the entries as the board is read: rows from the top, each from the left", () => {
+    const at = (id: string, x: number, y: number, h = 100) => ({
+      e: { id, at: 0, place: {}, sections: [], links: [], stickers: [] } as ShelfEntry,
+      r: { x, y, w: 100, h },
+    });
+    const all = [at("low", 0, 400), at("right", 500, 30), at("left", 0, 0, 200), at("next", 300, 260)];
+    const boxes = new Map(all.map((x) => [x.e, x.r]));
+    const order = shelfOrder(
+      all.map((x) => x.e),
+      (e) => boxes.get(e),
+    );
+    // right's top is above the middle of left (row 1); next's is below it, so it starts row 2
+    expect(order.map((e) => e.id)).toEqual(["left", "right", "next", "low"]);
   });
 });
 
