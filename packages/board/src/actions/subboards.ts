@@ -491,6 +491,13 @@ export function cardNear(id: string): boolean {
     dy = Math.max(0, v.y - (r.y + r.h), r.y - (v.y + v.h));
   return dx < v.w * NEAR_SCREENS && dy < v.h * NEAR_SCREENS;
 }
+/** Where a card a reference points to is when it is not drawn on this board: the other board it is on, or the sub-board (inside
+ *  one of this board's frames, all the way down) it is on; undefined for a card here, a board or a Section */
+export function cardElsewhere(to: { id: string; place?: string }): string | undefined {
+  if (to.place) return to.place !== state.board.id && to.id !== to.place ? to.place : undefined;
+  if (cardById(to.id)) return;
+  return subRefs().find((r) => r.id === to.id)?.board;
+}
 /** A click on a reference to a card near the view goes there as Go to Card does; from an editor the camera only moves and the
  *  card is pinged, so the editing and its caret go on */
 export function goToNearCard(id: string, editing: boolean) {

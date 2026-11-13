@@ -214,7 +214,7 @@ test("noteRefSectionAndBoard", async () => {
 });
 
 /** [[ lists every other board's titled cards: each board's own row heads its group (3 cards, "+ N more" expands in place), a card from
- *  another board is stored as [[Board › Title#^board/card]], its chip carries the board's name and opens that board; gone cards and boards look broken */
+ *  another board is stored as [[Board › Title#^board/card]], its chip carries the board's name and previews the card (its arrow opens that board); gone cards and boards look broken */
 /** Long titles and Section paths in the [[ list: the title gets the width first, the path takes what is left; on the selected row whatever still doesn't fit slides into view */
 test("noteRefLongTitleSlides", async () => {
   const b = emptyBoard("b1", "long refs");
@@ -329,8 +329,15 @@ test("noteRefOtherBoards", async () => {
     light,
     w: 1400,
     h: 950,
-    on: (m, reply) =>
-      m.type === "boardRefs" ? (void reply(m.req!, { boards: [kernels, pmpp], recent: [] }), true) : false,
+    on: (m, reply) => {
+      if (m.type === "boardRefs") return (void reply(m.req!, { boards: [kernels, pmpp], recent: [] }), true);
+      // a card on another board, for its preview
+      if (m.type === "subCard" && m.board === "bk" && m.card === "k0") {
+        const card = { id: "k0", kind: "note", look: "note", md: "## Flash attention\n\nTiles kept in shared memory." };
+        return (void reply(m.req!, { card, views: {}, w: 320 }), true);
+      }
+      return false;
+    },
   });
   const pg = h.page;
   const chip = (t: string) => pg.locator('.card[data-id="n2"] .nbody .md-ref', { hasText: t });
@@ -363,7 +370,16 @@ test("noteRefOtherBoards", async () => {
   check("noteRefOtherBoards badge smaller", sizes.bd / sizes.t < 0.8, sizes);
   await pg.locator('.card[data-id="n2"]').scrollIntoViewIfNeeded();
   await shot(h, "note-ref-other-boards-chip");
+  // a card on another board is previewed (further than any card here); the preview's arrow opens that board at the card
   await chip("Flash attention").click();
+  await pg.locator(".cpeek.show").waitFor();
+  const peeked = (await pg.locator(".cpeek").textContent()) ?? "";
+  const openedEarly = h.sent.some((m) => m.type === "openBoard");
+  check("noteRefOtherBoards preview", peeked.includes("Tiles kept in shared memory") && !openedEarly, {
+    peeked,
+    openedEarly,
+  });
+  await pg.locator(".cpeek.show .cpeek-go").click();
   await until(h, "the chip opens the other board at the card", () =>
     h.sent.some((m) => m.type === "openBoard" && m.id === "bk" && m.card === "k0"),
   );

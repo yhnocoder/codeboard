@@ -201,6 +201,7 @@
       "about": "Notes, sidenotes and the Markdown editor: rendering, editing, input rules, sizing, AI completions",
       "files": [
         "packages/board/src/cards/NoteBody.tsx",
+        "packages/board/src/cards/notelook.ts",
         "packages/board/src/ui/{Md,Editable}.tsx",
         "packages/board/src/ui/pops/{notes,cardpeek}.tsx",
         "packages/board/src/ui/NoteComposer.tsx",
@@ -406,7 +407,7 @@
     "subboards": {
       "about": "sub-boards: the sub-board card, entering and leaving, Turn into Board, breadcrumbs, the board tree, board Marks on refs",
       "files": [
-        "packages/board/src/cards/{BoardBody,SubPreviews}.tsx",
+        "packages/board/src/cards/{BoardBody,SubPreviews,MiniCard}.tsx",
         "packages/core/src/seal.ts",
         "packages/host/src/seals.ts",
         "packages/board/src/ui/pops/seal.tsx",
@@ -578,6 +579,7 @@
         "packages/board/src/actions/shelf.ts",
         "packages/board/src/state/shelf.ts",
         "packages/board/src/ui/ShelfPanel.tsx",
+        "packages/board/src/cards/MiniCard.tsx",
         "packages/board/test/scenarios/shelf.spec.ts"
       ],
       "scenarios": [

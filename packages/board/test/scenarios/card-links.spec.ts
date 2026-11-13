@@ -13,12 +13,17 @@
 //  cardLinkThroughLinkBox    words selected by a drag, the toolbar's Link, a copied card link pasted in the address field and
 //                            ↵: the address is written as copied (no https:// before it), and a click on the link previews
 //                            the card, with nothing sent to open in the browser
+//  refOtherBoardPreview      on the real host: a [[reference]] to a card on another board, and a link to it, preview the card
+//                            (drawn from what the host sends, with its file, line and version) without opening that board, at
+//                            rest and while editing, nothing flashing as it comes; the preview's arrow opens that board at the card
+//  refSubBoardPreview        a [[reference]] to a card inside a sub-board previews it without entering; the arrow enters
 import * as fs from "node:fs";
 import type { Page } from "@playwright/test";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import { put, shot, symCard, findSym, type Host } from "../harness";
 import { PEEK_DELAY } from "../../src/state/timing";
 import { test, open, check, light, until, idle, hold, focusSettled, hostBoards } from "../fixtures";
+import { watch } from "../watch";
 
 const NOTE = [
   "# Card links",
@@ -406,4 +411,128 @@ test("cardLinkThroughLinkBox", async () => {
     { written, md, peek: peek.slice(0, 60), opened },
   );
   await h.close();
+});
+
+/** Engine (bA) with a Note referring to a card on Kernels (bK) and to one inside its sub-board Sub (bS), shown in a frame */
+async function elsewhere(theme?: string, scale?: number) {
+  const step = nv("LLMEngine.step");
+  const K = emptyBoard("bK", "Kernels");
+  put(K, step, 60, 60);
+  const S = emptyBoard("bS", "Sub");
+  put(
+    S,
+    { id: "nS", kind: "note", look: "note", md: "## Inner\n\nDeep inside the sub-board." } as NoteCard,
+    60,
+    60,
+    320,
+  );
+  const A = emptyBoard("bA", "Engine");
+  const md = [
+    "## Reading",
+    "",
+    `The step is [[Kernels › LLMEngine.step#^bK/${step.id}]], the inner one [[Sub › Inner#^nS]].`,
+    "",
+    `Also [the step loop](.codeboard/bK.json#${step.id}).`,
+    "",
+    "last line",
+  ].join("\n");
+  put(A, { id: "nA", kind: "note", look: "note", md } as NoteCard, 80, 120, 460);
+  A.cards.push({ id: "frS", kind: "board", board: "bS" });
+  A.place.frS = { x: 640, y: 120, w: 360, h: 260 };
+  const run = await hostBoards([A, K, S], {
+    page: {
+      light: theme ? theme === "warm-ink" : light,
+      w: 1300,
+      h: 820,
+      ...(scale ? { scale } : {}),
+      ...(theme ? { settings: { theme } as never } : {}),
+    },
+  });
+  const h = await run.open("bA");
+  const pg = h.page;
+  const NA = '.card[data-id="nA"]';
+  const chip = (t: string, editing = false) =>
+    pg.locator(`${NA} ${editing ? ".md-pm" : ".nbody"} .md-ref`, { hasText: t }).first();
+  await until(h, "both references find their cards", async () =>
+    pg.evaluate(
+      (n) =>
+        [...document.querySelectorAll(`${n} .nbody .md-ref`)].filter(
+          (e) => !e.classList.contains("missing") && !e.classList.contains("gone"),
+        ).length === 2,
+      NA,
+    ),
+  );
+  await idle(h);
+  return { run, h, pg, step, NA, chip };
+}
+
+test("refOtherBoardPreview", async () => {
+  const { run, h, pg, step, NA, chip } = await elsewhere();
+  const n0 = h.sent.length;
+  await watch(h, "refOtherBoardPreview open", { ignore: [".cpeek"], frames: 16 }, () => chip("LLMEngine.step").click());
+  await pg.locator(".cpeek.show").waitFor();
+  await idle(h);
+  await shot(h, "ref-other-board-preview");
+  const shown = await pg.evaluate((n) => {
+    const pk = document.querySelector<HTMLElement>(".cpeek")!,
+      r = pk.getBoundingClientRect(),
+      note = document.querySelector(n)!.getBoundingClientRect();
+    return {
+      text: pk.textContent ?? "",
+      path: pk.querySelector(".chead .cpath")?.textContent ?? "",
+      ver: pk.querySelector(".chead .rev")?.textContent ?? "",
+      right: r.left >= note.right - 1,
+    };
+  }, NA);
+  const opened = h.sent.slice(n0).filter((m) => m.type === "openBoard" || m.type === "enterBoard").length;
+  // a second click closes it; the link to the same card previews it too, also while the Note is edited
+  await chip("LLMEngine.step").click();
+  await until(h, "a second click closes the preview", async () => (await pg.locator(".cpeek").count()) === 0);
+  const b = (await pg.locator(`${NA} .nbody p`).last().boundingBox())!;
+  await pg.mouse.dblclick(b.x + b.width - 4, b.y + b.height / 2);
+  await pg.locator(".md-pm:focus").waitFor();
+  await focusSettled(pg);
+  await pg.locator(`${NA} .md-pm a.md-cardlink`).click();
+  await pg.locator(".cpeek.show").waitFor();
+  const editing = {
+    text: (await pg.locator(".cpeek").textContent()) ?? "",
+    focused: await pg.locator(".md-pm:focus").count(),
+  };
+  // the arrow opens Kernels at the card
+  const n1 = h.sent.length;
+  await pg.locator(".cpeek.show .cpeek-go").click();
+  await until(h, "the arrow opens the other board", () =>
+    h.sent.slice(n1).some((m) => m.type === "openBoard" && m.id === "bK" && m.card === step.id),
+  );
+  await until(h, "Kernels opens", () => run.inits.some((i) => i.id === "bK"));
+  check(
+    "refOtherBoardPreview a reference to a card on another board previews it, with its file and version, opening nothing",
+    shown.text.includes("def step") && /\.py:\d+/.test(shown.path) && !!shown.ver.trim() && shown.right && opened === 0,
+    { shown: { ...shown, text: shown.text.slice(0, 80) }, opened },
+  );
+  check(
+    "refOtherBoardPreview the link previews it while the Note is edited; the arrow opens that board at the card",
+    editing.text.includes("def step") && editing.focused === 1,
+    { editing: { ...editing, text: editing.text.slice(0, 60) } },
+  );
+});
+
+test("refSubBoardPreview", async () => {
+  const { h, pg, chip } = await elsewhere();
+  const n0 = h.sent.length;
+  await watch(h, "refSubBoardPreview open", { ignore: [".cpeek"], frames: 16 }, () => chip("Inner").click());
+  await pg.locator(".cpeek.show").waitFor();
+  await idle(h);
+  const text = (await pg.locator(".cpeek").textContent()) ?? "";
+  const entered = h.sent.slice(n0).filter((m) => m.type === "enterBoard" || m.type === "openBoard").length;
+  const n1 = h.sent.length;
+  await pg.locator(".cpeek.show .cpeek-go").click();
+  await until(h, "the arrow enters the sub-board", () =>
+    h.sent.slice(n1).some((m) => m.type === "enterBoard" && m.id === "bS"),
+  );
+  check(
+    "refSubBoardPreview a reference to a card inside a sub-board previews it without entering; the arrow enters",
+    text.includes("Deep inside the sub-board") && entered === 0,
+    { text: text.slice(0, 80), entered },
+  );
 });

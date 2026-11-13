@@ -616,7 +616,8 @@ test("subboardEnterLeaveMorph", async () => {
   await page.context().close();
 });
 
-/** [[ lists cards inside sub-boards (named after the sub-board, two levels down too) but no pictures or first-line names; the link opens the card there */
+/** [[ lists cards inside sub-boards (named after the sub-board, two levels down too) but no pictures or first-line names; a click
+ *  on the link previews the card, the preview's arrow opens it there */
 test("subboardLinkPicker", async () => {
   const { M, P, S, D } = boards();
   const t = await subHost(M, [P, S, D]),
@@ -676,7 +677,11 @@ test("subboardLinkPicker", async () => {
     const chip = page.locator('.card[data-id="mNote"] .md-ref', { hasText: "深处" });
     res.resolved = await chip.evaluate((e) => !e.classList.contains("missing"));
     const n = t.inits.length;
+    // a card inside a sub-board is further than any card here: a click previews it, its arrow goes there
     await chip.click();
+    await page.locator(".cpeek.show").waitFor();
+    res.previewed = ((await page.locator(".cpeek").textContent()) ?? "").includes("深处");
+    await page.locator(".cpeek.show .cpeek-go").click();
     await until(h, "the link opens the deep board", () => t.inits.length > n && t.cur() === "bDeep");
     await until(h, "the card is selected there", () => page.locator('.card.sel[data-id="d1"]').count());
     await idle(h);
@@ -686,6 +691,7 @@ test("subboardLinkPicker", async () => {
       !(res.banned as string[]).length &&
       !(res.twice as string[]).length &&
       res.resolved &&
+      res.previewed &&
       JSON.stringify(res.crumbs) === JSON.stringify(["Main", "nano-vllm 调度器", "Deep"])
     );
   });

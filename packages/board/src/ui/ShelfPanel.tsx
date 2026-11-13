@@ -3,28 +3,14 @@
 // entry large beside the panel, with Put Back; dragged out, the entry lands where it is let go; its menu puts it back or removes
 // it; resting on it outlines on the board where it returns to. Also those outlines (in the world layer, Canvas.tsx)
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, type JSX } from "solid-js";
-import {
-  cardTitle,
-  codeGlyph,
-  isTextCard,
-  textSizeOf,
-  commonIndent,
-  escHtml,
-  mdHeading,
-  type Card,
-  type CodeCard,
-  type Rect,
-  type ShelfEntry,
-} from "@codeboard/core";
+import { type Rect, type ShelfEntry } from "@codeboard/core";
 import { shelfLabel } from "@codeboard/core/commands";
 import { state, cardById } from "../state/store";
 import { shelfHot, shelfHover, shelfOut, shelfPeek, setShelfPeek } from "../state/shelf";
 import { cam } from "../state/camera";
 import { animScale } from "../state/motion";
-import { PvContent } from "../cards/SubPreviews";
-import { boxFill, hidesHeading } from "../cards/NoteBody";
-import { attrSel, cardKindClass } from "../cardsel";
-import { MdStatic } from "./Md";
+import { MiniCard } from "../cards/MiniCard";
+import { attrSel } from "../cardsel";
 import { Icon } from "./icons";
 import { useOverlay } from "./overlay";
 import * as A from "../actions";
@@ -37,99 +23,6 @@ const relStyle = (q: Rect, box: { x: number; y: number }): JSX.CSSProperties => 
   height: `${q.h}px`,
 });
 const entryById = (id: string) => (state.board.shelf ?? []).find((x) => x.id === id);
-
-/** Lines of a code card drawn, at most (the card clips what does not fit) */
-const MINI_LINES = 60;
-
-/** A code card's lines as the board draws them (its gutter, the common indentation hidden), at most MINI_LINES */
-function MiniCode(p: { c: CodeCard }) {
-  const rows = createMemo(() => {
-    const out: { no: number; html: string; text: string }[] = [];
-    for (const s of p.c.segments) {
-      const v = state.views[s.id];
-      for (let i = 0; i < s.text.length && out.length < MINI_LINES; i++)
-        out.push({ no: s.start + i, html: v?.html[i] ?? escHtml(s.text[i]), text: s.text[i] });
-    }
-    return out;
-  });
-  const ded = () => commonIndent(rows().map((r) => r.text));
-  const digits = () => String(rows().at(-1)?.no ?? 0).length;
-  return (
-    <div class="code" style={{ "--nd": String(digits()) }}>
-      <div class="gutter">
-        <For each={rows()}>
-          {(r, i) => (
-            <span class="no" style={{ top: `calc(var(--code-pt) + ${i() * 20}px)` }}>
-              {r.no}
-            </span>
-          )}
-        </For>
-      </div>
-      <div class="src" classList={{ ded: !!ded() }} style={{ "--ded": ded() }}>
-        <For each={rows()}>{(r) => <div class="l" innerHTML={r.html || "\u200b"} />}</For>
-      </div>
-    </div>
-  );
-}
-
-/** Text and Box draw at their own size and fill, as Card.tsx sets them on the card */
-const textVars = (k: Card): JSX.CSSProperties =>
-  isTextCard(k)
-    ? { "--tfs": `${textSizeOf(k)}px`, ...(k.look === "box" ? { "--fc": `var(--bf-${boxFill(k)})` } : {}) }
-    : {};
-
-/** A card's body as the board draws it, read-only */
-function MiniBody(p: { c: Card }) {
-  return (
-    <>
-      {(() => {
-        const k = p.c;
-        if (k.kind === "note")
-          switch (k.look) {
-            case "note":
-              return (
-                <>
-                  <div class="chead">
-                    <span class="kind">¶</span>
-                    <span class="ctitle sys">{k.title || mdHeading(k.md) || "Note"}</span>
-                  </div>
-                  <MdStatic src={k.md} class={`nbody${hidesHeading(k) ? " hidehead" : ""}`} />
-                </>
-              );
-            default:
-              return <MdStatic src={k.md} class="tx tb st-body" />;
-          }
-        return (
-          <>
-            <div class="chead">
-              <Show when={k.kind === "code"}>
-                <span class="kind">{k.kind === "code" ? codeGlyph(k) : ""}</span>
-              </Show>
-              <span class="ctitle">{cardTitle(k, state.board)}</span>
-            </div>
-            <div class="carea">
-              <div class="cbody">
-                {k.kind === "code" ? (
-                  <MiniCode c={k} />
-                ) : (
-                  <PvContent
-                    data={{
-                      card: k,
-                      cols: k.kind === "compare" ? k.cols.flatMap((id) => cardById(id)?.card ?? []) : undefined,
-                      views: state.views,
-                    }}
-                    t={k.title ?? ""}
-                    lines={MINI_LINES}
-                  />
-                )}
-              </div>
-            </div>
-          </>
-        );
-      })()}
-    </>
-  );
-}
 
 /**
  * An entry's picture at board size, scaled by whoever shows it: its Sections' frames and titles, its cards (the board's own card
@@ -174,11 +67,15 @@ function MiniWorld(p: { e: ShelfEntry; box: Rect }) {
       </svg>
       <For each={lay().cards}>
         {(x) => (
-          <div class={`card ${cardKindClass(x.c)}`} style={{ ...x.style, ...textVars(x.c) }}>
-            <div class="cface">
-              <MiniBody c={x.c} />
-            </div>
-          </div>
+          <MiniCard
+            d={{
+              card: x.c,
+              cols: x.c.kind === "compare" ? x.c.cols.flatMap((id) => cardById(id)?.card ?? []) : undefined,
+              views: state.views,
+              board: state.board,
+            }}
+            style={x.style}
+          />
         )}
       </For>
       <For each={lay().sections}>

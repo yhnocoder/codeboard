@@ -2,19 +2,24 @@
 // header and first lines, scaled down to PEEK_W wide and cut at PEEK_H with a fade. It does not scroll: the card itself is one
 // click away, on the arrow inside it. Shown beside what asked for it, always on its right where one looks for it (moved in just
 // enough when the window has no room there, never to the other side); dragged by its head it stays where it is put:
-// - a click on a [[reference]] (or a link from Copy Link) to a card of this board far from the view toggles it (cardPeeks; a
-//   card near the view, actions/subboards.ts cardNear, is gone to instead): in a Text sidenote beside its popup, in a Note or
+// - a click on a [[reference]] (or a link from Copy Link) to a card of this board far from the view, or to a card on another
+//   board or inside a sub-board, toggles it (cardPeeks; a card of this board near the view, actions/subboards.ts cardNear, is
+//   gone to instead): in a Text sidenote beside its popup, in a Note or
 //   any other Markdown on a card beside that card at the reference's height (so it covers none of the text being read), also
 //   while the Note is being edited; Esc or a press anywhere else closes it. It follows its reference as the board pans and zooms;
 // - the [[ list of the sidenote input shows its highlighted card's (ui/NoteComposer.tsx): passive, no keys, no arrow.
-// It is a copy of the card's element taken once when it opens (nothing measured per frame), inert, with nothing that selectors
-// for the board's cards would find
+// A card of this board is a copy of its element taken once when it opens (nothing measured per frame), inert, with nothing that
+// selectors for the board's cards would find. A card that is not drawn here is drawn from its data (cards/MiniCard.tsx, asked of
+// the host once: state/subboards.ts subCard), and the preview shows only once it is drawn
 import { createEffect, createSignal, onCleanup, onMount, Show, untrack } from "solid-js";
 import { Portal } from "solid-js/web";
 import { computePosition, offset, shift, type VirtualElement } from "@floating-ui/dom";
 import type { RefTarget } from "@yhnocoder/markdown";
 import { cam } from "../../state/camera";
 import { cardById, hostOf } from "../../state/store";
+import { subCard } from "../../state/subboards";
+import { observeResize } from "../../state/measure";
+import { MiniCard } from "../../cards/MiniCard";
 import { CARD_STATE_CLASSES, cardSel } from "../../cardsel";
 import { useOverlay } from "../overlay";
 import * as A from "../../actions";
@@ -53,25 +58,34 @@ function besideCard(at: HTMLElement): Beside {
 }
 
 /** The preview a place shows at a time: which card, from which reference (its second click closes it), beside which box */
-type Peek = { card: string; at: HTMLElement; beside: Beside };
+type Peek = {
+  card: string;
+  /** the board the card is on when it is not drawn here (another board, a sub-board) */
+  board?: string;
+  /** the other board it is on (to.place), where its arrow opens */
+  place?: string;
+  at: HTMLElement;
+  beside: Beside;
+};
 export function cardPeeks() {
   const [peek, setPeek] = createSignal<Peek | null>(null);
   return {
     peek,
     /**
-     * A click on a reference (el) that points to `to`, a card drawn on this board: one near the view (A.cardNear) is gone to,
-     * any other opens its preview beside `beside` (by default beside the card the reference is on), or closes it when it is the
-     * one open from there. False for anything else (a Section, another board, a card inside a sub-board), which the click goes
-     * to as usual
+     * A click on a reference (el) that points to `to`, a card: one drawn on this board near the view (A.cardNear) is gone to;
+     * any other, or one on another board or inside a sub-board (further than anything here), opens its preview beside `beside`
+     * (by default beside the card the reference is on), or closes it when it is the one open from there. False for anything
+     * else (a Section, a board), which the click goes to as usual
      */
     toggle(to: RefTarget, el: HTMLElement, beside: Beside = besideCard(el)) {
-      if (to.place || !cardById(to.id) || !cardElement(to.id)) return false;
+      const board = A.cardElsewhere(to);
+      if (!board && (to.place || !cardById(to.id) || !cardElement(to.id))) return false;
       const p = peek();
       if (p?.card === to.id && p.at === el) setPeek(null);
-      else if (A.cardNear(to.id)) {
+      else if (!board && A.cardNear(to.id)) {
         setPeek(null);
         A.goToNearCard(to.id, !!el.closest(".md-pm"));
-      } else setPeek({ card: to.id, at: el, beside });
+      } else setPeek({ card: to.id, board, place: to.place, at: el, beside });
       return true;
     },
     hide: () => setPeek(null),
@@ -83,13 +97,22 @@ export type CardPeeks = ReturnType<typeof cardPeeks>;
 export function CardPeekOf(p: { peeks: CardPeeks }) {
   return (
     <Show when={p.peeks.peek()} keyed>
-      {(pk) => <CardPeek id={pk.card} at={pk.at} beside={pk.beside} peeks={p.peeks} />}
+      {(pk) => (
+        <CardPeek id={pk.card} board={pk.board} place={pk.place} at={pk.at} beside={pk.beside} peeks={p.peeks} />
+      )}
     </Show>
   );
 }
 
 /** The preview of card `id` beside `beside`; with `peeks` it is one a click opened (Esc, a press elsewhere, its arrow) */
-export function CardPeek(p: { id: string; at: HTMLElement; beside: Beside; peeks?: CardPeeks }) {
+export function CardPeek(p: {
+  id: string;
+  board?: string;
+  place?: string;
+  at: HTMLElement;
+  beside: Beside;
+  peeks?: CardPeeks;
+}) {
   let el!: HTMLDivElement, stage!: HTMLDivElement;
   const [pos, setPos] = createSignal<{ x: number; y: number } | null>(null);
   const [cut, setCut] = createSignal(false);
@@ -117,41 +140,56 @@ export function CardPeek(p: { id: string; at: HTMLElement; beside: Beside; peeks
       onCleanup(() => mo.disconnect());
     }
   }
+  /** Card element c, w × h as the board draws it, into the preview: scaled to its width, cut at PEEK_H; head = its header */
+  function lay(c: HTMLElement, w: number, h: number, head: HTMLElement | null) {
+    // no wider than the window (a narrow panel or a phone) keeps all of it, its arrow too, on screen
+    const room = Math.max(120, Math.min(PEEK_W, innerWidth - PEEK_EDGE)),
+      k = Math.min(1, room / Math.max(1, w));
+    Object.assign(c.style, {
+      left: "0px",
+      top: "0px",
+      width: `${w}px`,
+      transform: `scale(${k})`,
+      transformOrigin: "0 0",
+    });
+    stage.style.width = `${Math.ceil(w * k)}px`;
+    stage.style.height = `${Math.ceil(Math.min(h * k, PEEK_H))}px`;
+    setCut(h * k > PEEK_H + 1);
+    // the head it is dragged by: the card's header as drawn in it, with the padding above
+    setGrip(Math.min(PEEK_H, (head ? head.offsetTop + head.offsetHeight : 32) * k) + 12);
+  }
+  // a card not drawn here: drawn from its data once the host has sent it; shown once drawn (a card gone meanwhile: nothing)
+  const far = () => (p.board ? subCard(p.board, p.id) : undefined);
+  if (p.board)
+    createEffect(() => {
+      if (far() === null) peeks?.hide();
+    });
+  function drawn(c: HTMLDivElement) {
+    const w = far()?.w ?? 400;
+    const off = observeResize(c, () => {
+      lay(c, w, c.offsetHeight, c.querySelector<HTMLElement>(".chead"));
+      if (!untrack(pos)) reposition();
+    });
+    onCleanup(off);
+  }
   onMount(() => {
+    if (p.board) return;
     const src = cardElement(p.id);
     if (src) {
-      const w = src.offsetWidth,
-        h = src.offsetHeight,
-        // no wider than the window (a narrow panel or a phone) keeps all of it, its arrow too, on screen
-        room = Math.max(120, Math.min(PEEK_W, innerWidth - PEEK_EDGE)),
-        k = Math.min(1, room / Math.max(1, w));
       const c = src.cloneNode(true) as HTMLElement;
       c.classList.remove(...CARD_STATE_CLASSES);
       for (const s of STATE_STYLES) c.style.removeProperty(s);
       for (const e of [
         c,
-        ...c.querySelectorAll<HTMLElement>("[data-id], [data-notes], [data-card], [data-spot], [contenteditable]"),
+        ...c.querySelectorAll<HTMLElement>("[data-id], [data-notes], [data-card], [contenteditable]"),
       ]) {
         e.removeAttribute("data-id");
         e.removeAttribute("data-notes");
         e.removeAttribute("data-card");
-        e.removeAttribute("data-spot");
         e.removeAttribute("contenteditable");
       }
-      Object.assign(c.style, {
-        left: "0px",
-        top: "0px",
-        width: `${w}px`,
-        transform: `scale(${k})`,
-        transformOrigin: "0 0",
-      });
-      stage.style.width = `${Math.ceil(w * k)}px`;
-      stage.style.height = `${Math.ceil(Math.min(h * k, PEEK_H))}px`;
       stage.appendChild(c);
-      setCut(h * k > PEEK_H + 1);
-      // the head it is dragged by: the card's header as drawn in it, with the padding above
-      const head = src.querySelector<HTMLElement>(".chead");
-      setGrip(Math.min(PEEK_H, (head ? head.offsetTop + head.offsetHeight : 32) * k) + 12);
+      lay(c, src.offsetWidth, src.offsetHeight, src.querySelector<HTMLElement>(".chead"));
     }
     reposition();
   });
@@ -211,8 +249,21 @@ export function CardPeek(p: { id: string; at: HTMLElement; beside: Beside; peeks
         classList={{ show: !!pos(), cut: cut(), passive: !peeks }}
         style={{ left: `${pos()?.x ?? 0}px`, top: `${pos()?.y ?? 0}px` }}
         data-nodrag
+        // a press in it keeps the focus where it is: a Note being edited goes on, so its reference and the preview stay and the
+        // arrow's click lands
+        onMouseDown={(e) => e.preventDefault()}
       >
-        <div ref={stage} class="cpeek-stage" inert />
+        <div ref={stage} class="cpeek-stage" inert>
+          <Show when={far()}>
+            {(d) => (
+              <MiniCard
+                d={{ card: d().card, cols: d().cols, views: d().views }}
+                style={{ width: `${d().w ?? 400}px` }}
+                ref={drawn}
+              />
+            )}
+          </Show>
+        </div>
         <Show when={peeks && grip()}>
           <div class="cpeek-grip" style={{ height: `${grip()}px` }} onPointerDown={drag} />
         </Show>
@@ -224,7 +275,7 @@ export function CardPeek(p: { id: string; at: HTMLElement; beside: Beside; peeks
               data-tip="Go to Card"
               onClick={() => {
                 pk().hide();
-                A.openCardRef(p.id);
+                A.openCardRef(p.id, p.place);
               }}
             >
               <Icon name="arrowR" size={14} />
