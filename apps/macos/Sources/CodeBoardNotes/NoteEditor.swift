@@ -91,7 +91,12 @@ public final class NoteEditor: NSObject {
   /// canvas scales a bitmap in its place. `size`: the card at 100 %, shown at `k`
   public func snapshot(size: CGSize, k: Double) async -> NoteSnapshot? {
     let c = WKSnapshotConfiguration()
-    c.rect = view.cardRect
+    // whole pixels from its top left corner, as the renderer's pictures (a fractional rect is rounded and scaled to fit)
+    let backing = view.window?.backingScaleFactor ?? 2
+    let r = view.cardRect
+    c.rect = CGRect(
+      x: r.minX, y: r.minY, width: (r.width * backing).rounded(.up) / backing,
+      height: (r.height * backing).rounded(.up) / backing)
     c.afterScreenUpdates = false
     guard view.cardRect.width > 0, let image = try? await view.takeSnapshot(configuration: c),
       let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
