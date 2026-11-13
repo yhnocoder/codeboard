@@ -30,7 +30,7 @@ import { promptText } from "../ui/Menu";
 import { cardSel } from "../cardsel";
 import { lastDown } from "../state/measure";
 import { tune } from "../state/tune";
-import { swallowRepeats } from "../gesture";
+import { DBL_SLOP, swallowRepeats } from "../gesture";
 import { boardRef, boardTimer } from "../state/root";
 
 const subsOf = (id: string) => state.boards.find((m) => m.id === id)?.subs;
@@ -503,21 +503,33 @@ export function cardElsewhere(to: { id: string; place?: string }): string | unde
   return subRefs().find((r) => r.id === to.id)?.board;
 }
 /** A click on a reference to a card near the view goes there as Go to Card does; from an editor the camera only moves and the
- *  card is pinged, so the editing and its caret go on. At rest it goes once the double-click window is over: a second click on
- *  the reference in that time is a double-click, which opens the reference's source (interact.ts) and leaves the camera where it
- *  is, so the second press still lands on the reference */
+ *  card is pinged, so the editing and its caret go on. Either way it goes once the double-click window is over: a second click on
+ *  the reference in that time is a double-click, which opens the reference's source (interact.ts at rest, the editor's own
+ *  double-click while editing) and leaves the camera where it is, so the second press still lands on the reference */
 export function goToNearCard(id: string, editing: boolean) {
-  if (editing) {
-    void revealCard(id);
-    return clickWent();
-  }
   if (nearGoDropped.v && nearGoDropped.v === lastDown()) return;
   if (nearGo.pending && nearGoing.v === id) return nearGo.stop();
   nearGoing.v = id;
+  const gap = tune("dblClick"),
+    from = lastDown(),
+    ctl = new AbortController();
   nearGo.start(() => {
-    openCardRef(id);
+    ctl.abort();
+    if (editing) void revealCard(id);
+    else openCardRef(id);
     clickWent();
-  }, tune("dblClick"));
+  }, gap);
+  // the editor takes a double-click on a reference itself (its source) and gives the page only the first click: a second press
+  // there drops the go-to
+  window.addEventListener(
+    "pointerdown",
+    (e) => {
+      ctl.abort();
+      if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) <= DBL_SLOP) nearGo.stop();
+    },
+    { capture: true, signal: ctl.signal },
+  );
+  setTimeout(() => ctl.abort(), gap);
 }
 const nearGo = boardTimer(),
   nearGoing = boardRef("");

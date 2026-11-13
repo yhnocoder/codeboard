@@ -56,6 +56,9 @@ const CODE = Array.from({ length: 24 }, (_, i) =>
   i % 4 === 0 ? `def step_${i}(seq):` : `    total += seq.len * ${i}`,
 );
 
+/** The double-click window the reference-clicking boards set (Debug's tune at its widest) */
+const DBL_WIDE = 800;
+
 function board(): Board {
   const b = emptyBoard("b1", "links");
   const seg = {
@@ -584,7 +587,7 @@ async function clicksBoard() {
   A.cam = { x: 0, y: 0, z: 1 };
   // the double-click window at its widest (Debug's tune): a page busy beside other scenarios gets its presses later than a hand
   const run = await hostBoards([A, K, S], {
-    page: { light: true, w: 1300, h: 820, settings: { theme: "warm-ink", tune: { dblClick: 800 } } as never },
+    page: { light: true, w: 1300, h: 820, settings: { theme: "warm-ink", tune: { dblClick: DBL_WIDE } } as never },
   });
   const h = await run.open("bA");
   const pg = h.page;
@@ -739,7 +742,7 @@ test("refFastClicks", async () => {
 });
 
 test("refNearDoubleClickSource", async () => {
-  const { h, at, clicks, went, look, leave } = await clicksBoard();
+  const { h, pg, at, clicks, went, look, leave } = await clicksBoard();
   await idle(h);
   // at rest a double-click on a reference to a card near the view opens its source, as on any other: its first click waits out
   // the double-click window before going there, so the second press lands on the reference and the camera never moves
@@ -751,6 +754,21 @@ test("refNearDoubleClickSource", async () => {
   );
   await idle(h);
   const dbl = { ...(await look()), went: went(n0) };
+  await leave();
+  await idle(h);
+  // while the Note is edited the same: the first click's ping waits out the window too, so the second lands on the reference
+  const b = (await pg.locator('.card[data-id="nA"] .nbody p').last().boundingBox())!;
+  await pg.mouse.dblclick(b.x + b.width - 4, b.y + b.height / 2);
+  await pg.locator(".md-pm:focus").waitFor();
+  await focusSettled(pg);
+  const n1 = h.sent.length;
+  await clicks(await at("Scheduler.schedule"), 2);
+  await until(h, "in the editor a double-click on the near reference opens its source", async () =>
+    (await look()).caret.endsWith("[["),
+  );
+  await hold(h, DBL_WIDE, "a go-to left over from the first click would move the camera in this time");
+  await idle(h);
+  const editing = { ...(await look()), went: went(n1) };
   await leave();
   await idle(h);
   // one click still goes there, once the window is over
@@ -767,6 +785,11 @@ test("refNearDoubleClickSource", async () => {
       dbl.cards === cards &&
       !dbl.picked,
     { dbl, cam },
+  );
+  check(
+    "refNearDoubleClickSource while the Note is edited a double-click on it opens its source too, the camera where it was",
+    editing.caret.endsWith("[[") && editing.cam === cam && !editing.went.length && editing.cards === cards,
+    { editing, cam },
   );
   check(
     "refNearDoubleClickSource one click on it goes to the card, editing nothing",
