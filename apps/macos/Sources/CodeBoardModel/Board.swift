@@ -376,7 +376,7 @@ public struct Endpoint: Codable, Equatable, Sendable {
 }
 
 /// A top-level block of a Note: its index and a fingerprint of its Markdown (blockSig), so the end follows edits above it
-public struct BlockRef: Codable, Equatable, Sendable {
+public struct BlockRef: Codable, Hashable, Sendable {
   public var index: Int
   public var hash: String
 
