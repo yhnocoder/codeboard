@@ -600,3 +600,8 @@ enum Emoji {
   }()
   static func glyph(_ name: String) -> String? { table[name] }
 }
+
+/// The emoji a `:name:` shows (gemoji names, the TypeScript package's table)
+public enum MarkdownEmoji {
+  public static func glyph(_ name: String) -> String? { Emoji.glyph(name) }
+}

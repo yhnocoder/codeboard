@@ -66,6 +66,37 @@ import Testing
     #expect(MarkdownSourceOps.blockStarts(src) == nil)
   }
 
+  /// TipTap reads extra blank lines as empty paragraphs (the TypeScript parseMd results of these sources)
+  @Test func blankLinesMakeEmptyParagraphsAsTipTapReadsThem() {
+    func shape(_ bs: [MDBlock]) -> String {
+      bs.map { b -> String in
+        switch b.kind {
+        case .paragraph: b.inlineText?.string == "" ? "empty" : "paragraph"
+        case .quote(let c): "blockquote(\(shape(c).replacingOccurrences(of: " ", with: ",")))"
+        case .list(let l):
+          "list("
+            + l.items.map { "item(\(shape($0.children).replacingOccurrences(of: " ", with: ",")))" }.joined(
+              separator: ",") + ")"
+        default: "\(b.kind)"
+        }
+      }.joined(separator: " ")
+    }
+    #expect(shape(MarkdownDocument("a\n\n\n\nb").blocks) == "paragraph empty paragraph")
+    #expect(shape(MarkdownDocument("a\n\n\n\n\nb").blocks) == "paragraph empty paragraph")
+    #expect(shape(MarkdownDocument("> a\n>\n> b").blocks) == "blockquote(paragraph,paragraph)")
+    #expect(shape(MarkdownDocument("> a\n>\n>\n> b").blocks) == "blockquote(paragraph,paragraph)")
+    #expect(shape(MarkdownDocument("- a\n\n\n  b\n- c").blocks) == "list(item(paragraph,paragraph),item(paragraph))")
+    #expect(shape(MarkdownDocument("\n\n\na").blocks) == "empty paragraph")
+  }
+
+  @Test func footnoteShapesAreFoundOutsideCodeOnly() {
+    #expect(unsupported("a[^1] b"))
+    #expect(unsupported("[^note]: text"))
+    #expect(unsupported("[toc]"))
+    #expect(!unsupported("a regex `[^a-z]` in code"))
+    #expect(!unsupported("```\n[^1]: in a fence\n```"))
+  }
+
   @Test func unsupportedSyntaxShowsAsText() {
     // a one-word footnote definition reads as a link definition: still a block, shown as its source
     let d = MarkdownDocument("[^1]: 词")

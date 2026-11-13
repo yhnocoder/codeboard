@@ -5,11 +5,17 @@ import Testing
 
 /// The Swift parser against what @yhnocoder/markdown makes of the same synthetic Markdown (Fixtures, written by
 /// tools/markdown/fixtures.mjs)
-/// Syntax the TypeScript package reads and this package does not (guideline 4): footnotes, <details> and [toc] read as
-/// the text, link definitions and HTML CommonMark makes of them, so cases with them are not compared
+/// Syntax the TypeScript package reads and this package does not (guideline 4): footnote references and definitions,
+/// <details> and [toc] read as the text, link definitions and HTML CommonMark makes of them, so cases with them are not
+/// compared. The shapes are looked for outside code only: a regex like `[^a-z]` in a code span is not a footnote
 func unsupported(_ src: String) -> Bool {
-  src.contains("[^") || src.contains("<details>") || src.lowercased().contains("[toc]")
+  let text = MarkdownSourceOps.maskCode(src) as NSString
+  return footnoteRef.test(text) || footnoteDef.test(text) || details.test(text) || toc.test(text)
 }
+private let footnoteRef = JSRegex(#"\[\^[^\]\s]+\](?!:)"#, flags: "")
+private let footnoteDef = JSRegex(#"^\[\^[^\]\s]+\]:"#, flags: "m")
+private let details = JSRegex(#"^ {0,3}<details"#, flags: "im")
+private let toc = JSRegex(#"^ {0,3}\[toc\][ \t]*$"#, flags: "im")
 
 @Suite struct ParityTests {
   @Test func blockTokensMatchMarked() throws {

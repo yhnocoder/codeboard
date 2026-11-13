@@ -68,6 +68,10 @@ public struct MDBlock: Sendable, Equatable {
 public struct MDText: Sendable, Equatable {
   public var string: String
   public var offsets: [Int]
+  public init(string: String, offsets: [Int]) {
+    self.string = string
+    self.offsets = offsets
+  }
 }
 
 public struct MDList: Sendable, Equatable {
@@ -194,11 +198,26 @@ struct InlineCache: Sendable {
 struct DocumentBuilder {
   var cache: InlineCache
 
+  /// Blocks of a token list. Where TipTap reads blank lines as empty paragraphs (the top level, quotes and list items:
+  /// parseBlockChildren), they are blocks too: an empty paragraph the Note page shows as a blank line
   mutating func blocks(_ toks: [Token]) -> [MDBlock] {
     var out: [MDBlock] = []
     var prevTable: Int?
-    for t in toks {
-      if t.type == "space" { continue }
+    let nonSpace = toks.indices.filter { toks[$0].type != "space" }
+    for (i, t) in toks.enumerated() {
+      // blank lines a token took in at its end count as a space token after it (TipTap's extractAbsorbedBlankLines)
+      let next = i + 1 < toks.count ? toks[i + 1].type : nil
+      var absorbed: Mapped?
+      if t.type != "space", next != "space", let m = Self.trailingBlankLines.exec(t.raw.ns) {
+        absorbed = t.raw.dropFirst(m.range.location)
+      }
+      if t.type == "space" || absorbed != nil {
+        let raw = absorbed ?? t.raw
+        let hasPrev = nonSpace.contains { $0 < i } || absorbed != nil
+        let hasNext = nonSpace.contains { $0 > i }
+        out += emptyParagraphs(raw, between: hasPrev && hasNext)
+        if t.type == "space" { continue }
+      }
       // a "Table: …" paragraph right after a table is that table's caption (schema.ts tableCaptions)
       if t.type == "paragraph", let ti = prevTable, case .table(var table) = out[ti].kind, table.caption == nil,
         let cap = Ext.tableCaption.exec(t.text.ns)
@@ -212,9 +231,29 @@ struct DocumentBuilder {
       }
       guard let b = block(t) else { continue }
       prevTable = if case .table = b.kind { out.count } else { nil }
-      out.append(b)
+      if absorbed != nil, let last = out.last, last.inlines.isEmpty, last.range.isEmpty, case .paragraph = last.kind {
+        // the empty paragraphs of a token's own trailing blank lines come after it
+        let empties = out.reversed().prefix { $0.range.isEmpty && $0.inlineText?.string == "" }.count
+        out.insert(b, at: out.count - empties)
+      } else {
+        out.append(b)
+      }
     }
     return out
+  }
+
+  private static let trailingBlankLines = JSRegex(#"\n[^\S\n]*(?:\n[^\S\n]*)+$"#, flags: "")
+
+  /// TipTap's createImplicitEmptyParagraphsFromSpace: one empty paragraph per blank line pair in a run of blank lines, less
+  /// one between two blocks (that one is the ordinary gap)
+  private func emptyParagraphs(_ raw: Mapped, between: Bool) -> [MDBlock] {
+    let n = raw.string.components(separatedBy: "\n\n").count - 1
+    let count = max(0, n - (between ? 1 : 0))
+    guard count > 0 else { return [] }
+    let at = raw.source.lowerBound
+    return (0..<count).map { _ in
+      MDBlock(kind: .paragraph, range: at..<at, inlines: [], inlineText: MDText(string: "", offsets: [at]))
+    }
   }
 
   /// a block's source range without the line breaks after it: up to just after its last unit (a \r\n read as \n maps

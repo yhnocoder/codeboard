@@ -20,6 +20,8 @@ let package = Package(
     .target(name: "CodeBoardModel"),
     // Markdown parsed the way @yhnocoder/markdown parses it, with source ranges (docs/markdown-guideline.md 6.2)
     .target(name: "CodeBoardMarkdown"),
+    // Markdown laid out and drawn with CoreText, formulas and diagrams through JavaScriptCore (guideline 6.3)
+    .target(name: "CodeBoardMarkdownUI", dependencies: ["CodeBoardMarkdown"]),
     .target(
       name: "CodeBoardSyntax",
       dependencies: [
@@ -41,8 +43,10 @@ let package = Package(
     .target(name: "CodeBoardShell", dependencies: ["CodeBoardModel", "CodeBoardCanvas"]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
     .executableTarget(name: "CanvasBench", dependencies: ["CodeBoardCanvas", "CodeBoardNotes"]),
+    .executableTarget(name: "MarkdownLook", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI"]),
     .executableTarget(name: "LookCompare", dependencies: ["CodeBoardCanvas", "CodeBoardModel", "CodeBoardSyntax"]),
     .testTarget(name: "CodeBoardMarkdownTests", dependencies: ["CodeBoardMarkdown"], resources: [.copy("Fixtures")]),
+    .testTarget(name: "CodeBoardMarkdownUITests", dependencies: ["CodeBoardMarkdownUI"]),
     .testTarget(name: "CodeBoardModelTests", dependencies: ["CodeBoardModel"], resources: [.copy("Fixtures")]),
     .testTarget(name: "CodeBoardSyntaxTests", dependencies: ["CodeBoardSyntax"]),
     .testTarget(name: "CodeBoardNotesTests", dependencies: ["CodeBoardNotes"]),
