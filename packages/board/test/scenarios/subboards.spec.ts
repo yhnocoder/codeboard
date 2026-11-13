@@ -537,7 +537,8 @@ async function run(res: Record<string, unknown>) {
     res.entered = t.cur() === (frame as any)?.board && t.crumbs().length === 1;
     res.crumbs = await page.locator(".crumbs").textContent();
     await shotPr(h, "subboards-3-breadcrumb");
-    await page.mouse.click(700, 820, { button: "right" });
+    // right of the Scheduling Section, which the sub-board keeps around its cards: a right-click inside it opens its menu
+    await page.mouse.click(1330, 820, { button: "right" });
     await page.locator(".ctx:not(.closing) button", { hasText: "Insert Board" }).hover();
     await page.locator(".ctx:not(.closing) button", { hasText: /^Engine/ }).click();
     await page.locator(".toast").waitFor();
