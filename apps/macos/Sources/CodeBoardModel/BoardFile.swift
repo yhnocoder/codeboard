@@ -7,7 +7,10 @@ import Foundation
 public enum VaultError: Error, Equatable, CustomStringConvertible {
   case unreadable(URL, String)
   case malformed(URL, String)
-  case unsupportedVersion(URL, Int)
+  /// Written by a newer CodeBoard in a format version this one does not read
+  case newerFormat(URL, Int)
+  /// A format version from before this one, which it no longer reads
+  case olderFormat(URL, Int)
   case duplicateBoardID(BoardID, [URL])
   case badSharedCardID(String)
 
@@ -15,8 +18,12 @@ public enum VaultError: Error, Equatable, CustomStringConvertible {
     switch self {
     case .unreadable(let file, let why): "\(file.path): cannot be read: \(why)"
     case .malformed(let file, let why): "\(file.path): \(why)"
-    case .unsupportedVersion(let file, let v):
-      "\(file.path): format version \(v) is not \(Board.version), the one this app reads"
+    case .newerFormat(let file, let v):
+      "\(file.path): format version \(v), written by a newer CodeBoard; this one reads version \(Board.version). "
+        + "Update CodeBoard to open it (the file is left as it is)"
+    case .olderFormat(let file, let v):
+      "\(file.path): format version \(v), from an early build, which this one no longer reads; import the board again "
+        + "from its VS Code storage folder"
     case .duplicateBoardID(let id, let files):
       "board id \(id.rawValue) is in more than one board: \(files.map(\.path).joined(separator: ", "))"
     case .badSharedCardID(let id): "\(id) cannot name a shared card (letters, digits, - and _ only)"
@@ -247,7 +254,9 @@ func strictDecode<T: Codable>(_ type: T.Type, from data: Data, file: URL, versio
   }
   guard let object = raw as? [String: Any] else { throw VaultError.malformed(file, "not a JSON object") }
   guard let v = object["version"] as? Int else { throw VaultError.malformed(file, "no format version") }
-  guard v == version else { throw VaultError.unsupportedVersion(file, v) }
+  guard v <= version else { throw VaultError.newerFormat(file, v) }
+  // a breaking change raises the version: an upgrade step from the version before goes here (FORMAT.md, Versions)
+  guard v == version else { throw VaultError.olderFormat(file, v) }
   let value: T
   do {
     value = try JSONDecoder().decode(T.self, from: data)
@@ -259,43 +268,53 @@ func strictDecode<T: Codable>(_ type: T.Type, from data: Data, file: URL, versio
     throw VaultError.malformed(file, "\(pathText(context.codingPath)): \(context.debugDescription)")
   }
   let again = try JSONSerialization.jsonObject(with: canonicalJSON(value))
-  if let path = firstDifference(raw, again, at: "") {
-    throw VaultError.malformed(
-      file, "\(path.isEmpty ? "(root)" : path): not part of the format (unknown field or null)")
+  if let (path, what) = firstDifference(raw, again, at: "") {
+    throw VaultError.malformed(file, "\(path.isEmpty ? "(root)" : path): \(what)")
   }
   return value
 }
+
+/// What an older build says of a field or kind a newer one added (FORMAT.md, Versions): it never drops it
+let newerField =
+  "not in format \(Board.version) as this CodeBoard knows it; a newer CodeBoard may have written it. "
+  + "Update CodeBoard to open the file (it is left as it is)"
 
 private func pathText(_ path: [any CodingKey]) -> String {
   path.map { $0.intValue.map { "[\($0)]" } ?? ".\($0.stringValue)" }.joined().trimmingPrefix(".").description
 }
 
-/// The path of the first place where what was read differs from what the writer writes for it
-private func firstDifference(_ a: Any, _ b: Any, at path: String) -> String? {
+/// The path of the first place where what was read differs from what the writer writes for it, and how
+private func firstDifference(_ a: Any, _ b: Any, at path: String) -> (String, String)? {
   if let x = a as? [String: Any], let y = b as? [String: Any] {
     for key in Set(x.keys).union(y.keys).sorted() {
       let here = path.isEmpty ? key : "\(path).\(key)"
-      guard let xv = x[key], let yv = y[key] else { return here }
-      if let d = firstDifference(xv, yv, at: here) { return d }
+      switch (x[key], y[key]) {
+      case (let xv?, let yv?): if let d = firstDifference(xv, yv, at: here) { return d }
+      case (is NSNull, nil): return (here, "null, which is never written")
+      case (_?, nil): return (here, newerField)
+      default: return (here, "missing")
+      }
     }
     return nil
   }
   if let x = a as? [Any], let y = b as? [Any] {
-    guard x.count == y.count else { return path }
+    guard x.count == y.count else { return (path, "not as the writer writes it") }
     for (i, (xv, yv)) in zip(x, y).enumerated() {
       if let d = firstDifference(xv, yv, at: "\(path)[\(i)]") { return d }
     }
     return nil
   }
-  return (a as? NSObject)?.isEqual(b) == true ? nil : path
+  return (a as? NSObject)?.isEqual(b) == true ? nil : (path, "not as the writer writes it")
 }
 
 // MARK: Coding where the JSON shape is not the synthesized one
 
 /// An enum is one object with exactly one key, naming the case
 private func theCase<K: CodingKey>(of c: KeyedDecodingContainer<K>) throws -> K {
+  // a kind this build does not know is not in allKeys
   guard c.allKeys.count == 1, let key = c.allKeys.first else {
-    throw DecodingError.dataCorrupted(.init(codingPath: c.codingPath, debugDescription: "expected exactly one kind"))
+    let what = c.allKeys.isEmpty ? "no kind this CodeBoard knows: " + newerField : "more than one kind"
+    throw DecodingError.dataCorrupted(.init(codingPath: c.codingPath, debugDescription: what))
   }
   return key
 }

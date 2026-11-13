@@ -195,10 +195,17 @@ private func card(_ json: inout [String: Any], _ i: Int, _ change: (inout [Strin
 }
 
 @Test func decodingRejectsWhatTheWriterWouldNotWrite() throws {
+  let newerField =
+    "not in format 2 as this CodeBoard knows it; a newer CodeBoard may have written it. Update CodeBoard to open the "
+    + "file (it is left as it is)"
   let cases: [(String, (inout [String: Any]) -> Void)] = [
-    ("cards[1].extra: not part of the format (unknown field or null)", { j in card(&j, 1) { $0["extra"] = 1 } }),
+    ("cards[1].extra: \(newerField)", { j in card(&j, 1) { $0["extra"] = 1 } }),
     (
-      "cards[0].height: not part of the format (unknown field or null)",
+      "cards[0].content: no kind this CodeBoard knows: \(newerField)",
+      { j in card(&j, 0) { $0["content"] = ["later": [String: Any]()] } }
+    ),
+    (
+      "cards[0].height: null, which is never written",
       { j in card(&j, 0) { $0["height"] = NSNull() } }
     ),
     ("cards[1].locked: missing", { j in card(&j, 1) { $0["locked"] = nil } }),
@@ -207,8 +214,11 @@ private func card(_ json: inout [String: Any], _ i: Int, _ change: (inout [Strin
   for (message, change) in cases {
     #expect(throws: VaultError.malformed(file, message)) { try Board(decoding: try edited(change), file: file) }
   }
-  #expect(throws: VaultError.unsupportedVersion(file, 1)) {
+  #expect(throws: VaultError.olderFormat(file, 1)) {
     try Board(decoding: try edited { $0["version"] = 1 }, file: file)
+  }
+  #expect(throws: VaultError.newerFormat(file, 3)) {
+    try Board(decoding: try edited { $0["version"] = 3 }, file: file)
   }
   #expect(throws: VaultError.malformed(file, "no format version")) {
     try Board(decoding: try edited { $0["version"] = nil }, file: file)

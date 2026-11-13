@@ -8,7 +8,7 @@ folder (`storage/`) and the vault it imports to (`vault/`), byte for byte, and `
 **Status**: the canvas draws code, Notes, Texts, Boxes (Note, Text and Box through the web page in `web/`, with the board's
 own stylesheets), images, sections and arrows. Sidenotes, stickers, the shelf, web cards, link lists, sub-board cards,
 summaries and the seal are stored and round-tripped but not drawn yet. Version 1 files (step 1) are refused; vaults are
-imported again from the old boards.
+imported again from the old boards. How the format grows from here: Versions, below.
 
 ## Vault
 
@@ -61,7 +61,23 @@ error naming the file and the JSON path. So are broken references: a card twice 
 an arrow end, sidenote anchor or sticker on a card, segment or section that is not there, a section that does not exist or
 contains itself, an arrow width other than 1–3, a label position outside 0–1, a Text with a height or a font size outside
 10–240, a seal text that is not 1–5 CJK and 1–12 other characters without spaces.
-There is no compatibility code: a new version gets the importer treatment, not fallbacks.
+
+### Versions: how format 2 grows (decided)
+
+- **Additions keep the version.** A new field is optional (left out when absent, so every file written before it reads as
+  it did), and a new kind is a new case of an enum. Neither raises `version`; a field that would always be written, or a
+  change to what an existing field means, is not an addition.
+- **An older build never drops what it does not know.** It refuses the file instead, saying which field or kind and that
+  a newer CodeBoard may have written it, and asks to update CodeBoard (`cards[0].content: no kind this CodeBoard knows: …`,
+  `cards[1].extra: not in format 2 as this CodeBoard knows it; …`). It does not write a file it could not read, so the
+  newer content stays on disk as it was. A `null` is refused as never written.
+- **A breaking change raises the version**, with an upgrade step in the app from the version before (in `strictDecode`,
+  `BoardFile.swift`, the one place a file's version is checked), applied when the file is read; the file is written in
+  the new version the next time it is saved. No other code knows an older version. A newer version than the build
+  reads is refused (`newerFormat`: update CodeBoard); version 1, from step 1's builds, has no upgrade step and is refused
+  (`olderFormat`: import the board again).
+- The sidebar lists a board of another version too (its id is all the tree reads); opening it shows why it cannot be
+  read. Shared card files follow the same rules with their own `version`.
 
 Optional fields (`?`) are left out when absent. Enums are an object with exactly one key naming the case, e.g.
 `{"git": {…}}`, `{"note": {}}`: a new case (a resource source, an image from a resource) is a new key, not a format break.

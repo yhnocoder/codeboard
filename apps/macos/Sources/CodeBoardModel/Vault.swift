@@ -25,7 +25,8 @@ public struct Vault: Sendable {
     path.isEmpty ? root : root.appending(path: path)
   }
 
-  /// The whole tree; reads each board's id, not its content
+  /// The whole tree; reads each board's id, not its content. A board of another format version is listed too, and opening
+  /// it says why it cannot be read
   public func tree() throws -> VaultFolder {
     try folder(at: "", name: root.lastPathComponent)
   }
@@ -97,7 +98,6 @@ public struct Vault: Sendable {
 
   private func boardID(in file: URL) throws -> BoardID {
     struct Head: Decodable {
-      var version: Int
       var id: BoardID
     }
     let head: Head
@@ -106,9 +106,8 @@ public struct Vault: Sendable {
     } catch let e as VaultError {
       throw e
     } catch {
-      throw VaultError.malformed(file, "no format version or id")
+      throw VaultError.malformed(file, "no board id")
     }
-    guard head.version == Board.version else { throw VaultError.unsupportedVersion(file, head.version) }
     return head.id
   }
 
