@@ -56,10 +56,10 @@ struct Scene: Sendable {
   /// The tilt of a tilted card, as the board's (counter-clockwise)
   static let tilt = -1.2 * CGFloat.pi / 180
 
-  /// A Note whose size only the Note renderer knows: one without a stored height, or a Free Text
+  /// A Note whose size only the Note renderer knows: one without a stored height, or a Text or Box
   struct Measure: Sendable {
     var card: CardID
-    var note: Note
+    var note: NoteBody
     var width: Double
     /// Where its images are: the board package or the vault's shared folder
     var folder: URL
@@ -70,13 +70,16 @@ struct Scene: Sendable {
   static func measures(_ board: Board, package: URL, vault: Vault) -> [Measure] {
     let refs = RefResolver(board, package: package, vault: vault)
     return board.cards.compactMap { c in
-      guard let (content, folder) = content(of: c, package: package, vault: vault), case .note(let n) = content.body
-      else { return nil }
-      // a Free Text is as wide as its text, whatever its stored height
-      var freeText = false
-      if case .freeText = n.style { freeText = true }
-      guard c.height == nil || freeText else { return nil }
-      return Measure(card: c.id, note: n, width: c.width, folder: folder, refs: refs.refs(in: n.text))
+      guard let (content, folder) = content(of: c, package: package, vault: vault) else { return nil }
+      switch content.body {
+      case .note(let n) where c.height == nil:
+        return Measure(card: c.id, note: .note(n), width: c.width, folder: folder, refs: refs.refs(in: n.text))
+      // a Text or Box is as tall as its text, and as wide too unless it wraps
+      case .text(let t):
+        return Measure(card: c.id, note: .text(t), width: c.width, folder: folder, refs: refs.refs(in: t.text))
+      default:
+        return nil
+      }
     }
   }
 
@@ -123,8 +126,12 @@ struct Scene: Sendable {
         continue
       }
       let tilt = c.tilted ? Scene.tilt : 0
-      let (drawing, size, code) = Scene.card(
-        c, content, board: board, folder: folder, measured: sizes[c.id], theme: t, highlighter: highlighter, refs: refs)
+      // web cards, link lists and sub-boards are not drawn yet
+      guard
+        let (drawing, size, code) = Scene.card(
+          c, content, board: board, folder: folder, measured: sizes[c.id], theme: t, highlighter: highlighter,
+          refs: refs)
+      else { continue }
       let r = CGRect(origin: CGPoint(x: c.x, y: c.y), size: size)
       placed[c.id] = Placed(rect: r, code: code, tilt: tilt)
       items.append(Item(rect: r, drawing: drawing, tilt: tilt, bleed: drawing.bleed(t)))
@@ -258,7 +265,7 @@ struct Scene: Sendable {
     highlighter: Highlighter, refs: RefResolver
   ) -> (
     Drawing, CGSize, (layout: CodeLayout, top: CGFloat, segments: [SegmentID])?
-  ) {
+  )? {
     let images = folder.appending(path: Vault.imagesFolder)
     switch content.body {
     case .code(let code):
@@ -284,11 +291,19 @@ struct Scene: Sendable {
       return (.code(d), CGSize(width: c.width, height: top + body), (layout, top, code.segments.map(\.id)))
     case .note(let n):
       let title = content.title ?? heading(n.text)
-      // a Free Text is as wide as its text; a Note the renderer could not measure is shown as paper of an arbitrary height
-      var size = CGSize(width: c.width, height: c.height ?? measured?.height ?? c.width * 0.6)
-      if case .freeText = n.style, let m = measured { size.width = m.width }
+      // a Note the renderer could not measure is shown as paper of an arbitrary height
+      let size = CGSize(width: c.width, height: c.height ?? measured?.height ?? c.width * 0.6)
       let note = Drawing.Note(
-        id: c.id.rawValue, title: title, content: n, folder: folder, height: c.height, refs: refs.refs(in: n.text))
+        id: c.id.rawValue, title: title, content: .note(n), folder: folder, height: c.height,
+        refs: refs.refs(in: n.text))
+      return (.note(note), size, nil)
+    case .text(let text):
+      // as wide as its text unless it wraps at the card's width
+      var size = CGSize(width: c.width, height: measured?.height ?? c.width * 0.6)
+      if !text.wrap, let m = measured { size.width = m.width }
+      let note = Drawing.Note(
+        id: c.id.rawValue, title: nil, content: .text(text), folder: folder, height: nil,
+        refs: refs.refs(in: text.text))
       return (.note(note), size, nil)
     case .image(let img):
       var url: URL?
@@ -299,6 +314,8 @@ struct Scene: Sendable {
         id: c.id.rawValue, url: size == nil ? nil : url, fileSize: size ?? .zero, frame: (img.stillFrame ?? 1) - 1,
         framed: img.framed)
       return (.image(pic), CGSize(width: c.width, height: h), nil)
+    case .web, .links, .board:
+      return nil
     }
   }
 

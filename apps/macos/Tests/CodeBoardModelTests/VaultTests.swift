@@ -32,8 +32,8 @@ private func board(_ id: String, in package: URL) throws {
   let package = root.appending(path: "A.board")
   try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
   let file = package.appending(path: Vault.boardFileName)
-  try Data(#"{"version": 2, "id": "a"}"#.utf8).write(to: file)
-  #expect(throws: VaultError.unsupportedVersion(file, 2)) { try Vault(root: root).tree() }
+  try Data(#"{"version": 1, "id": "a"}"#.utf8).write(to: file)
+  #expect(throws: VaultError.unsupportedVersion(file, 1)) { try Vault(root: root).tree() }
 }
 
 @Test func sharedCardIDsCannotLeaveTheirFolder() throws {

@@ -29,12 +29,8 @@
     {
       "content": {
         "note": {
-          "style": {
-            "note": {}
-          },
           "text": "Queue"
-        },
-        "processes": []
+        }
       },
       "id": "cn",
       "locked": false,
@@ -47,5 +43,8 @@
   "hideComments": false,
   "id": "bsched",
   "sections": [],
-  "version": 1
+  "shelf": [],
+  "sidenotes": [],
+  "stickers": [],
+  "version": 2
 }

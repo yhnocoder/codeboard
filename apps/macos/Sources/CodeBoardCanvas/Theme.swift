@@ -114,7 +114,7 @@ public struct Theme: Sendable {
   var sectionTitle: CGColor
   /// `Frame.tray`'s inner top line; `Frame.brush`'s strokes
   var sectionEdge: CGColor
-  var boxFills: [NoteStyle.BoxFill: CGColor]
+  var boxFills: [BoxFill: CGColor]
   var boxEdge: CGColor
   /// The soft shadow under a card, CSS box-shadow layers (offset y, blur, spread, colour), on a rounded rectangle
   var shadow: [(y: CGFloat, blur: CGFloat, spread: CGFloat, color: CGColor)]
@@ -368,7 +368,7 @@ public struct Theme: Sendable {
   }
 
   /// A box Note's fills: color-mix(in srgb, surface p, colour)
-  private static func boxFills(_ surface: UInt32) -> [NoteStyle.BoxFill: CGColor] {
+  private static func boxFills(_ surface: UInt32) -> [BoxFill: CGColor] {
     func mix(_ p: CGFloat, _ other: UInt32) -> CGColor {
       let c = [16, 8, 0].map { s in
         (CGFloat(surface >> UInt32(s) & 0xff) * p + CGFloat(other >> UInt32(s) & 0xff) * (1 - p)) / 255

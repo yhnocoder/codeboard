@@ -39,3 +39,19 @@ public struct ArrowID: RawRepresentable, Hashable, Codable, Sendable {
     self.rawValue = rawValue
   }
 }
+
+public struct SidenoteID: RawRepresentable, Hashable, Codable, Sendable {
+  public let rawValue: String
+
+  public init(rawValue: String) {
+    self.rawValue = rawValue
+  }
+}
+
+public struct StickerID: RawRepresentable, Hashable, Codable, Sendable {
+  public let rawValue: String
+
+  public init(rawValue: String) {
+    self.rawValue = rawValue
+  }
+}

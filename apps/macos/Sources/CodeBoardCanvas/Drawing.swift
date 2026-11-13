@@ -35,7 +35,7 @@ enum Drawing: Sendable {
     var id: String
     /// nil: untitled, shown as "Note"
     var title: String?
-    var content: CodeBoardModel.Note
+    var content: NoteBody
     /// Where its images are: the board package or the vault's shared folder
     var folder: URL
     /// The stored height, as the renderer is asked for it; nil: as tall as its content
@@ -43,7 +43,10 @@ enum Drawing: Sendable {
     /// What its [[refs]] point at now
     var refs: [NoteRef]
 
-    var style: NoteStyle { content.style }
+    /// A Box's fill; nil for a Note or a Text
+    var boxFill: BoxFill? {
+      if case .text(let t) = content, t.look == .box { t.fill } else { nil }
+    }
   }
 
   struct Picture: Sendable {
@@ -79,7 +82,7 @@ enum Drawing: Sendable {
   var framed: Bool {
     switch self {
     case .code(let c): c.framed
-    case .note(let n): n.style == .note
+    case .note(let n): if case .note = n.content { true } else { false }
     case .image(let p): p.framed
     case .label: false
     }
@@ -90,7 +93,7 @@ enum Drawing: Sendable {
     if framed { return t.bleed }
     // a box's ring and its shadow lie outside it, and an arrow label's box's
     switch self {
-    case .note(let n): if case .box = n.style { return 3 }
+    case .note(let n): if n.boxFill != nil { return 3 }
     case .label(let l): if l.kind == .arrow && t.label == .box { return 3 }
     default: break
     }
@@ -111,7 +114,7 @@ enum Drawing: Sendable {
       Drawing.code(ctx, c, r, t)
       if c.framed { Drawing.edge(ctx, r, t) }
     case .note(let n):
-      switch n.style {
+      switch n.content {
       case .note:
         Drawing.paper(ctx, r, t, id: n.id, rule: true)
         var x = t.headerPad
@@ -124,14 +127,14 @@ enum Drawing: Sendable {
           ctx, n.title ?? "Note", t.noteTitle, n.title == nil ? t.ink3 : t.ink, x: x, midY: t.headerHeight / 2,
           width: size.width - x - t.headerPadRight)
         Drawing.edge(ctx, r, t)
-      case .box(let fill):
+      case .text(let text) where text.look == .box:
         let p = Drawing.squircle(r, t.cardRadius)
         ctx.saveGState()
         ctx.setShadow(
           offset: CGSize(width: 0, height: -1 * scale), blur: 2 * scale,
           color: CGColor(srgbRed: 50 / 255, green: 35 / 255, blue: 10 / 255, alpha: 0.06))
         ctx.addPath(p)
-        ctx.setFillColor(t.boxFills[fill] ?? t.surface)
+        ctx.setFillColor(t.boxFills[text.fill] ?? t.surface)
         ctx.fillPath()
         ctx.restoreGState()
         // a ring wholly outside the box (box-shadow 0 0 0 1.25px)
@@ -139,7 +142,7 @@ enum Drawing: Sendable {
         ctx.setStrokeColor(t.boxEdge)
         ctx.setLineWidth(1.25)
         ctx.strokePath()
-      case .text, .mark, .freeText:
+      case .text:
         break
       }
       // transparent around the content, pixel for pixel from the top left

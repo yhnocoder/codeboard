@@ -153,20 +153,18 @@ final class RefResolver {
     switch content.body {
     case .code(let code): return RefResolver.codeTitle(code)
     case .note(let n):
-      if case .freeText = n.style {
-        let t = n.text.split(separator: "\n").map { trim(String($0)) }.first { !$0.isEmpty } ?? ""
-        return t.isEmpty ? "Free Text" : t
-      }
       let t = RefResolver.firstLine(n.text)
-      if !t.isEmpty { return t }
-      switch n.style {
-      case .note: return "Note"
-      case .text: return "Text"
-      case .box: return "Box"
-      case .mark: return "Mark"
-      case .freeText: return "Free Text"
-      }
+      return t.isEmpty ? "Note" : t
+    case .text(let text):
+      let t = RefResolver.firstLine(text.text)
+      return !t.isEmpty ? t : text.look == .box ? "Box" : "Text"
     case .image(let img): return img.alt.flatMap { $0.isEmpty ? nil : $0 } ?? "Image"
+    case .web(let w):
+      if let t = w.meta?.title, !t.isEmpty { return t }
+      guard let host = URLComponents(string: w.url)?.host, !host.isEmpty else { return w.url }
+      return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    case .links: return "Link List"
+    case .board: return "Board"
     }
   }
 
@@ -175,22 +173,20 @@ final class RefResolver {
   static func refTitle(_ content: CardContent) -> String? {
     if case .image = content.body { return nil }
     if let t = content.title?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { return t }
+    let md: String
     switch content.body {
-    case .note(let n):
-      guard let head = n.text.split(separator: "\n").first(where: { !$0.allSatisfy(\.isWhitespace) }) else {
-        return nil
-      }
-      var titled = head.prefixMatch(of: /\s{0,3}#{1,6}\s/) != nil
-      if case .text(let size, _) = n.style, size == .title || size == .heading { titled = true }
-      if case .freeText = n.style { titled = true }
-      guard titled else { return nil }
-      let t = firstLine(String(head))
-      return t.isEmpty ? nil : t
-    case .code(let c):
-      return c.segments.first?.symbol == nil ? nil : codeTitle(c)
-    case .image:
-      return nil
+    case .note(let n): md = n.text
+    case .text(let t): md = t.text
+    case .code(let c): return c.segments.first?.symbol == nil ? nil : codeTitle(c)
+    // a sub-board card goes by its board's name, which the canvas does not look up yet
+    case .board: return "Board"
+    case .image, .web, .links: return nil
     }
+    guard let head = md.split(separator: "\n").first(where: { !$0.allSatisfy(\.isWhitespace) }),
+      head.prefixMatch(of: /\s{0,3}#{1,6}\s/) != nil
+    else { return nil }
+    let t = firstLine(String(head))
+    return t.isEmpty ? nil : t
   }
 
   /// core codeTitle

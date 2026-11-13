@@ -37,7 +37,7 @@ func put(_ json: Any, at url: URL) throws {
   try JSONSerialization.data(withJSONObject: json, options: [.sortedKeys]).write(to: url)
 }
 
-/// An old (version 15) board file; every card is placed unless `place` says otherwise
+/// An old board file (version 17 unless `extra` says otherwise); every card is placed unless `place` says otherwise
 func oldBoard(
   _ id: String, name: String = "Board", cards: [[String: Any]] = [], place: [String: Any]? = nil,
   links: [[String: Any]] = [], sections: [[String: Any]] = [], extra: [String: Any] = [:]
@@ -45,7 +45,7 @@ func oldBoard(
   var places: [String: Any] = [:]
   for (i, c) in cards.enumerated() { places[c["id"] as? String ?? ""] = ["x": i * 10, "y": 0, "w": 100] }
   var b: [String: Any] = [
-    "version": 15, "id": id, "name": name, "cards": cards, "place": place ?? places, "links": links,
+    "version": 17, "id": id, "name": name, "cards": cards, "place": place ?? places, "links": links,
     "sections": sections, "sidenotes": [], "stickers": [],
   ]
   b.merge(extra) { $1 }

@@ -40,14 +40,14 @@ struct ImportSummary: Equatable {
     var notes: [String] = []
     if !report.failed.isEmpty { notes.append("\(count(report.failed.count, "file")) could not be imported.") }
     let leftTotal = left.values.reduce(0, +)
-    if leftTotal > 0 { notes.append("\(count(leftTotal, "item")) left out, which this version does not show yet.") }
+    if leftTotal > 0 { notes.append("\(count(leftTotal, "item")) left out, which this version does not keep yet.") }
     subtitle = notes.joined(separator: " ")
     details =
       report.failed.map { String(describing: $0) }
       + SkipKind.allCases.compactMap { kind in left[kind].map { "\(Self.name(of: kind)): \($0)" } }
   }
 
-  /// `webCard` → "web card"
+  /// `compareCard` → "compare card"
   static func name(of kind: SkipKind) -> String {
     kind.rawValue.reduce(into: "") { out, c in out += c.isUppercase ? " " + c.lowercased() : String(c) }
   }

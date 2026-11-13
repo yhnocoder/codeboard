@@ -1,11 +1,12 @@
 import Foundation
 
-// The one-way importer from the VS Code extension's storage folder (version 15 board files, as main writes them) into a
-// vault. The only code that knows the old format. It never writes into the old folder. FORMAT.md lists what maps to what.
+// The one-way importer from the VS Code extension's storage folder (board files of version 13–17; main writes 17) into a
+// vault. With LegacyUpgrade, the only code that knows the old format: a file is brought to version 17 as the extension
+// brings it there, then mapped. It never writes into the old folder. FORMAT.md lists what maps to what.
 
 public enum LegacyImport {
-  /// The version of the old files it reads; any other is refused
-  public static let oldVersion = 15
+  /// The versions of the old files it reads; any other is refused
+  public static let versions = LegacyUpgrade.oldest...LegacyUpgrade.current
 
   /// Imports every board and shared card of the old storage folder `source` into the vault at `destination`. A file that
   /// cannot be imported is listed in the report's failures and the rest go on; a board already in the vault (found by id,
@@ -77,12 +78,12 @@ public struct ImportReport: Equatable, Sendable {
   public var failed: [LegacyImportError]
 }
 
-/// What the importer leaves out because model v1 has no place for it yet. The old files are never changed, so a later
+/// What the importer leaves out because the format has no place for it. The old files are never changed, so a later
 /// import that knows it brings it in
 public enum SkipKind: String, CaseIterable, Sendable {
-  case sidenote, sticker, shelf
-  case webCard, linksCard, compareCard, subBoardCard
-  /// A card on no canvas that is not a Compare column (a shelved card)
+  /// The Compare and its two columns
+  case compareCard
+  /// A card on no canvas and in no shelf entry that is not a Compare column
   case unplacedCard
   /// A card the board shows from the card library that is not in it, or could not be imported
   case missingSharedCard
@@ -98,11 +99,20 @@ public enum SkipKind: String, CaseIterable, Sendable {
   case messageNote
   /// Another place of the same card on the board: imported as a copy of its own
   case twin
-  case summary
+  /// A card's process tags (rank 0, Scheduler × TP)
+  case processes
   /// An arrow's call, RPC, back or generated-from mark: the arrow is imported plain
   case callMark
   /// An arrow with an end on a card that was not imported or does not exist
   case arrowWithoutEnd
+  /// A sidenote on a card, segment or section that was not imported or does not exist, or on a Variant not shown
+  case sidenoteWithoutAnchor
+  /// A sticker on a card or segment that was not imported or does not exist
+  case stickerWithoutAnchor
+  /// A sticker on an arrow: where it is drawn depends on the arrow's route, which the importer does not lay out
+  case arrowSticker
+  /// A sticker from a sticker pack, or a built-in glyph the format does not have
+  case stickerPack
   /// A section or parent that does not exist: left out
   case danglingReference
   /// An image file the board names that is not in the old assets folder; the reference is kept
@@ -129,9 +139,9 @@ public enum LegacyImportError: Error, Equatable, CustomStringConvertible {
     case .sourceInsideAppData(let url): "\(url.path) is inside the vault's own \(Vault.appDataFolder) folder"
     case .oldVersion(let url, let v):
       "\(url.path) is a version \(v) board file; open it in the VS Code extension and change anything once, so it is "
-        + "saved as version \(LegacyImport.oldVersion), then import again"
+        + "saved as version \(LegacyImport.versions.upperBound), then import again"
     case .newerVersion(let url, let v):
-      "\(url.path) is a version \(v) board file, newer than this app imports (\(LegacyImport.oldVersion))"
+      "\(url.path) is a version \(v) board file, newer than this app imports (\(LegacyImport.versions.upperBound))"
     case .malformed(let url, let why): "\(url.path): \(why)"
     case .duplicateBoardID(let url, let id, let other):
       "\(url.path) has board id \(id.rawValue), which \(other.path) has too; it was not imported"
@@ -146,7 +156,7 @@ public enum LegacyImportError: Error, Equatable, CustomStringConvertible {
 private let reserved: Set<String> = ["assets", "github", "cards", "runs"]
 
 private enum SharedState {
-  case imported(tilted: Bool, segments: Set<SegmentID>)
+  case imported(tilted: Bool, segments: Set<SegmentID>, text: Bool)
   case skipped(SkipKind)
 }
 
@@ -156,6 +166,8 @@ private struct Run {
   var entries: [ImportReport.Entry] = []
   var failed: [LegacyImportError] = []
   var shared: [String: SharedState] = [:]
+  /// The library cards upgraded to version 17, for the titles of references to them
+  var sharedJSON: [String: NSDictionary] = [:]
 
   init(source: URL, vault: Vault) {
     self.source = source
@@ -168,25 +180,41 @@ private struct Run {
       let rel = "cards/\(file.lastPathComponent)"
       do {
         guard Vault.isSafeID(id) else { throw Bad("\(id) cannot name a shared card") }
-        let o = try oldFile(file)
-        var m = Mapper()
+        let (raw, version) = try oldFile(file)
+        let upgraded = LegacyUpgrade.sharedCard(raw)
+        let o = try Obj(upgraded, path: "")
+        var m = Mapper(version: version)
         m.only(o, ["version", "card", "sidenotes"], id: id)
-        for n in try o.optObjects("sidenotes") { m.skips.add(.sidenote, try n.string("id")) }
-        guard case (let content, let tilted)? = try m.content(try o.object("card"), id: id) else {
+        let card = try o.object("card")
+        sharedJSON[id] = card.fields as NSDictionary
+        guard case (let content, let tilted)? = try m.content(card, id: id) else {
           if let kind = m.skippedKind { shared[id] = .skipped(kind) }
           entries.append(.init(source: rel, destination: nil, skipped: m.skips.list))
           continue
         }
-        let card = SharedCard(id: CardID(rawValue: id), content: content)
-        if let p = content.problem() { throw Bad(p) }
+        let cid = CardID(rawValue: id)
+        var segments = Set<SegmentID>()
+        if case .code(let code) = content.body { segments = Set(code.segments.map(\.id)) }
+        var notes: [Sidenote] = []
+        for n in try o.optObjects("sidenotes") {
+          guard let note = try m.sidenote(n) else { continue }
+          // the sidenotes in a library file travel with its card: on it, never one board's own
+          guard note.anchor.card == cid, !note.boardOnly, m.holds(note.anchor, segments: [cid: segments]) else {
+            m.skips.add(.sidenoteWithoutAnchor, note.id.rawValue)
+            continue
+          }
+          notes.append(note)
+        }
+        let sharedCard = SharedCard(id: cid, content: content, sidenotes: notes)
+        if let p = sharedCard.problem() { throw Bad(p) }
         let out = vault.sharedFolderURL.appending(path: "\(id).json")
-        try write(try card.encoded(), to: out)
+        try write(try sharedCard.encoded(), to: out)
         for name in try copyImages(m, into: vault.sharedFolderURL.appending(path: Vault.imagesFolder)) {
           m.skips.add(.missingImage, name)
         }
-        var segments = Set<SegmentID>()
-        if case .code(let code) = content.body { segments = Set(code.segments.map(\.id)) }
-        shared[id] = .imported(tilted: tilted, segments: segments)
+        var isText = false
+        if case .text = content.body { isText = true }
+        shared[id] = .imported(tilted: tilted, segments: segments, text: isText)
         let dest = "\(Vault.appDataFolder)/\(Vault.sharedFolder)/\(id).json"
         entries.append(.init(source: rel, destination: dest, skipped: m.skips.list))
       } catch let bad as Bad {
@@ -207,7 +235,10 @@ private struct Run {
     var seen: [BoardID: URL] = [:]
     for (file, group, rel) in files {
       do {
-        let o = try oldFile(file)
+        let (raw, version) = try oldFile(file)
+        let upgraded = LegacyUpgrade.board(raw)
+        LegacyUpgrade.titleRefs(upgraded, version: version, shared: sharedJSON)
+        let o = try Obj(upgraded, path: "")
         let stem = file.deletingPathExtension().lastPathComponent
         let own = try o.optString("id")
         guard let raw = [own, stem].compactMap({ $0 }).first(where: Vault.isSafeID) else {
@@ -216,7 +247,7 @@ private struct Run {
         let id = BoardID(rawValue: raw)
         if let other = seen[id] { throw LegacyImportError.duplicateBoardID(file, id, other: other) }
         seen[id] = file
-        var m = Mapper()
+        var m = Mapper(version: version)
         let board = try m.board(o, id: id, shared: shared)
         if let p = board.problem() { throw Bad(p) }
         let path: String
@@ -308,19 +339,19 @@ private func subfolders(of dir: URL) -> [URL] {
   entries(of: dir).filter(isFolder)
 }
 
-/// An old board or shared card file at the version this importer reads
-private func oldFile(_ file: URL) throws -> Obj {
+/// An old board or shared card file of a version this importer reads, as mutable JSON, and its version
+private func oldFile(_ file: URL) throws -> (NSMutableDictionary, Int) {
   let raw: Any
   do {
-    raw = try JSONSerialization.jsonObject(with: Data(contentsOf: file))
+    raw = try JSONSerialization.jsonObject(with: Data(contentsOf: file), options: [.mutableContainers])
   } catch {
     throw Bad("not JSON")
   }
-  let o = try Obj(raw, path: "")
-  let version = try o.optInt("version") ?? 1
-  if version < LegacyImport.oldVersion { throw LegacyImportError.oldVersion(file, version) }
-  if version > LegacyImport.oldVersion { throw LegacyImportError.newerVersion(file, version) }
-  return o
+  guard let o = raw as? NSMutableDictionary else { throw Bad("(root): expected an object") }
+  let version = try Obj(o, path: "").optInt("version") ?? 1
+  if version < LegacyImport.versions.lowerBound { throw LegacyImportError.oldVersion(file, version) }
+  if version > LegacyImport.versions.upperBound { throw LegacyImportError.newerVersion(file, version) }
+  return (o, version)
 }
 
 // MARK: Mapping the old content
@@ -341,6 +372,8 @@ private struct Skips {
 }
 
 private struct Mapper {
+  /// The old file's own version, before the upgrade
+  let version: Int
   var skips = Skips()
   /// Old asset file names to copy
   var images: Set<String> = []
@@ -348,6 +381,12 @@ private struct Mapper {
   var dataImages: [String: Data] = [:]
   /// Why the last content(…) gave nil
   var skippedKind: SkipKind?
+  /// The Variant each code card shows ("up": the pinned one), for its sidenotes
+  var shownVariant: [String: String] = [:]
+
+  init(version: Int) {
+    self.version = version
+  }
 
   /// Reports the fields of `o` that are not in `known`
   mutating func only(_ o: Obj, _ known: Set<String>, id: String) {
@@ -360,42 +399,51 @@ private struct Mapper {
       o,
       [
         "version", "id", "name", "cards", "place", "links", "sections", "sidenotes", "stickers", "hideAllComments",
-        "shelf",
+        "shelf", "seal",
       ], id: bid)
-    for n in try o.optObjects("sidenotes") { skips.add(.sidenote, try n.string("id")) }
-    for s in try o.optObjects("stickers") { skips.add(.sticker, try s.string("id")) }
-    for s in try o.optObjects("shelf") { skips.add(.shelf, try s.string("id")) }
 
+    let oldShelf = try o.optObjects("shelf")
     var sections = try o.objects("sections").map { try section($0) }
-    let ids = Set(sections.map(\.id))
-    for i in sections.indices {
-      if let p = sections[i].parent, !ids.contains(p) {
-        skips.add(.danglingReference, "\(sections[i].id.rawValue).parent")
-        sections[i].parent = nil
+    var shelfSections = try oldShelf.map { e in try e.objects("sections").map { try section($0) } }
+    let sectionIDs = Set(sections.map(\.id) + shelfSections.flatMap { $0.map(\.id) })
+    func dropDangling(_ list: inout [Section]) {
+      for i in list.indices {
+        if let p = list[i].parent, !sectionIDs.contains(p) {
+          skips.add(.danglingReference, "\(list[i].id.rawValue).parent")
+          list[i].parent = nil
+        }
       }
     }
+    dropDangling(&sections)
+    for i in shelfSections.indices { dropDangling(&shelfSections[i]) }
 
     let place = try o.object("place")
+    let shelfPlaces = try oldShelf.map { try $0.object("place") }
     let oldCards = try o.objects("cards")
     var columns = Set<String>()
     for c in oldCards {
       if try c.string("kind") == "compare" { columns.formUnion(try c.strings("cols")) }
+      if try c.string("kind") == "code" { shownVariant[try c.string("id")] = try c.optString("active") ?? "up" }
     }
     var cards: [Card] = []
+    var shelfCards = Array(repeating: [Card](), count: oldShelf.count)
     var codeSegments: [CardID: Set<SegmentID>] = [:]
     for c in oldCards {
       let cid = try c.string("id")
-      guard let p = try place.optObject(cid) else {
+      let entry = try shelfPlaces.firstIndex { try $0.optObject(cid) != nil }
+      guard let p = try place.optObject(cid) ?? entry.flatMap({ try shelfPlaces[$0].optObject(cid) }) else {
         skips.add(columns.contains(cid) ? .compareCard : .unplacedCard, cid)
         continue
       }
       let content: Card.Content
       var tilted = false
+      var isText = false
       if try c.string("kind") == "shared" {
         only(c, ["id", "kind"], id: cid)
         switch shared[cid] {
-        case .imported(let t, let segments)?:
+        case .imported(let t, let segments, let text)?:
           tilted = t
+          isText = text
           content = .shared
           codeSegments[CardID(rawValue: cid)] = segments
         case .skipped(let kind)?:
@@ -410,50 +458,120 @@ private struct Mapper {
         tilted = t
         content = .own(own)
         if case .code(let code) = own.body { codeSegments[CardID(rawValue: cid)] = Set(code.segments.map(\.id)) }
+        if case .text = own.body { isText = true }
       }
-      // mh is a height the board measured, written again whenever it is drawn
       only(p, ["x", "y", "w", "h", "mh", "section", "locked", "summary"], id: cid)
-      if p.has("summary") { skips.add(.summary, cid) }
       var section = try p.optString("section").map(SectionID.init(rawValue:))
-      if let s = section, !ids.contains(s) {
+      if let s = section, !sectionIDs.contains(s) {
         skips.add(.danglingReference, "\(cid).section")
         section = nil
       }
-      cards.append(
-        Card(
-          id: CardID(rawValue: cid), x: try p.double("x"), y: try p.double("y"), width: try p.double("w"),
-          height: try p.optDouble("h"), section: section, locked: try p.flag("locked"), tilted: tilted,
-          content: content))
+      var height = try p.optDouble("h")
+      // a Text or Box is as tall as its text; before 16 a library Text kept the height its board file stored, which the
+      // extension drops once it has the card's content
+      if isText && height != nil {
+        if !(content == .shared && version < 16) { skips.add(.field, "\(cid).h") }
+        height = nil
+      }
+      // on the canvas mh is a height the board measured, written again whenever it is drawn; a shelved card keeps it for
+      // its thumbnail
+      let card = Card(
+        id: CardID(rawValue: cid), x: try p.double("x"), y: try p.double("y"), width: try p.double("w"),
+        height: height, measuredHeight: entry == nil ? nil : try p.optDouble("mh"), section: section,
+        locked: try p.flag("locked"), tilted: tilted, summary: try p.optObject("summary").map { try summary($0) },
+        content: content)
+      if let entry { shelfCards[entry].append(card) } else { cards.append(card) }
+    }
+    let allCards = Set(cards.map(\.id) + shelfCards.flatMap { $0.map(\.id) })
+    let segmentsOf = { (card: CardID) -> Set<SegmentID>? in codeSegments[card] }
+
+    func arrows(_ links: [Obj]) throws -> [Arrow] {
+      var out: [Arrow] = []
+      for l in links {
+        let a = try arrow(l)
+        let ok = [a.from, a.to].allSatisfy { end in
+          guard let segments = segmentsOf(end.card) else { return end.segment == nil && allCards.contains(end.card) }
+          return end.segment.map(segments.contains) ?? true
+        }
+        if ok { out.append(a) } else { skips.add(.arrowWithoutEnd, a.id.rawValue) }
+      }
+      return out
+    }
+    func stickers(_ list: [Obj]) throws -> [Sticker] {
+      var out: [Sticker] = []
+      for k in list {
+        guard let sticker = try self.sticker(k) else { continue }
+        if let card = sticker.anchor.card {
+          var ok = allCards.contains(card)
+          if case .line(_, let seg, _) = sticker.anchor { ok = segmentsOf(card)?.contains(seg) ?? false }
+          guard ok else {
+            skips.add(.stickerWithoutAnchor, sticker.id.rawValue)
+            continue
+          }
+        }
+        out.append(sticker)
+      }
+      return out
     }
 
-    var arrows: [Arrow] = []
-    for l in try o.objects("links") {
-      let a = try arrow(l)
-      let ok = [a.from, a.to].allSatisfy { end in
-        guard let segments = codeSegments[end.card] else {
-          return end.segment == nil && cards.contains { $0.id == end.card }
-        }
-        return end.segment.map(segments.contains) ?? true
+    var notes: [Sidenote] = []
+    for n in try o.objects("sidenotes") {
+      guard let note = try sidenote(n) else { continue }
+      var ok = true
+      switch note.anchor {
+      case .card(let card, let seg, _, _):
+        ok = allCards.contains(card) && (seg.map { segmentsOf(card)?.contains($0) ?? true } ?? true)
+      case .section(let s): ok = sectionIDs.contains(s)
+      case .point: break
       }
-      if ok { arrows.append(a) } else { skips.add(.arrowWithoutEnd, a.id.rawValue) }
+      if ok { notes.append(note) } else { skips.add(.sidenoteWithoutAnchor, note.id.rawValue) }
+    }
+
+    var shelf: [ShelfEntry] = []
+    for (i, e) in oldShelf.enumerated() {
+      let eid = try e.string("id")
+      only(e, ["id", "at", "place", "sections", "links", "stickers"], id: eid)
+      shelf.append(
+        ShelfEntry(
+          id: eid, at: try e.double("at"), cards: shelfCards[i], sections: shelfSections[i],
+          arrows: try arrows(try e.objects("links")), stickers: try stickers(try e.objects("stickers"))))
     }
     return Board(
-      id: id, cards: cards, arrows: arrows, sections: sections, hideComments: try o.flag("hideAllComments"))
+      id: id, cards: cards, arrows: try arrows(try o.objects("links")), sections: sections, sidenotes: notes,
+      stickers: try stickers(try o.objects("stickers")), shelf: shelf, seal: try seal(o, id: bid),
+      hideComments: try o.flag("hideAllComments"))
   }
 
-  /// A card's content and whether it was tilted; nil (reported) for a kind model v1 does not hold
+  private mutating func seal(_ o: Obj, id: String) throws -> Seal? {
+    guard let s = try o.optObject("seal") else { return nil }
+    only(s, ["text", "color"], id: "\(id).seal")
+    var seal = Seal()
+    if let t = try s.optString("text") {
+      if Seal.isText(t) { seal.text = t } else { skips.add(.field, "\(id).seal.text") }
+    }
+    if let c = try s.optString("color") {
+      if let color = Seal.Color(rawValue: c) { seal.color = color } else { skips.add(.field, "\(id).seal.color") }
+    }
+    return seal == Seal() ? nil : seal
+  }
+
+  /// Whether a sidenote's anchor is there: its card, and its segment among that card's
+  func holds(_ a: Anchor, segments: [CardID: Set<SegmentID>]) -> Bool {
+    guard case .card(let card, let seg, _, _) = a, let segs = segments[card] else { return false }
+    return seg.map { segs.isEmpty || segs.contains($0) } ?? true
+  }
+
+  /// A card's content and whether it was tilted; nil (reported) for a kind the format does not hold
   mutating func content(_ c: Obj, id: String) throws -> (CardContent, tilted: Bool)? {
     skippedKind = nil
     let kind = try c.string("kind")
-    let outOfScope: [String: SkipKind] = [
-      "web": .webCard, "links": .linksCard, "compare": .compareCard, "board": .subBoardCard,
-    ]
-    if let k = outOfScope[kind] {
-      skips.add(k, id)
-      skippedKind = k
+    if kind == "compare" {
+      skips.add(.compareCard, id)
+      skippedKind = .compareCard
       return nil
     }
     if c.has("same") { skips.add(.twin, id) }
+    if !(try c.optObjects("procs")).isEmpty { skips.add(.processes, id) }
     let common: Set = ["id", "kind", "title", "desc", "procs", "tilt", "same"]
     let body: CardContent.Body
     switch kind {
@@ -463,24 +581,43 @@ private struct Mapper {
         c, common.union(["segments", "hide", "wrap", "bg", "members", "mergedFrom", "gen", "variants", "active"]),
         id: id)
     case "note":
-      body = .note(try note(c, id: id))
-      only(
-        c, common.union(["md", "look", "size", "bold", "fill", "hand", "weight", "level", "fs", "msg", "mdLayout"]),
-        id: id)
+      body = try note(c, id: id)
+      only(c, common.union(["md", "look", "fill", "fs", "wrap", "msg", "mdLayout"]), id: id)
     case "image":
       body = .image(try image(c))
       only(c, common.union(["src", "alt", "bg", "frame", "loop"]), id: id)
+    case "web":
+      let style = try c.optString("style") ?? "automatic"
+      guard let s = WebCard.Style(rawValue: style), style != "automatic" || !c.has("style") else {
+        throw Bad("\(c.at("style")): unknown style \(style)")
+      }
+      body = .web(
+        WebCard(url: try c.string("url"), meta: try c.optObject("meta").map { try meta($0, id: id) }, style: s))
+      only(c, common.union(["url", "meta", "style"]), id: id)
+    case "links":
+      var items: [LinkList.Item] = []
+      for item in try c.objects("items") {
+        let iid = try item.string("id")
+        only(item, ["id", "url", "title", "meta", "rich"], id: "\(id).items.\(iid)")
+        items.append(
+          LinkList.Item(
+            id: iid, url: try item.string("url"), title: try item.optString("title"),
+            meta: try item.optObject("meta").map { try meta($0, id: "\(id).items.\(iid)") },
+            rich: try item.optBool("rich")))
+      }
+      body = .links(LinkList(items: items, rich: try c.flag("rich")))
+      only(c, common.union(["items", "rich"]), id: id)
+    case "board":
+      let board = try c.string("board")
+      guard Vault.isSafeID(board) else { throw Bad("\(c.at("board")): \(board) is not a board id") }
+      body = .board(SubBoard(board: BoardID(rawValue: board)))
+      // pcols: how many columns its preview showed, a choice of the moment
+      only(c, common.union(["board"]), id: id)
     default:
       throw Bad("\(c.at("kind")): unknown card kind \(kind)")
     }
-    var processes: [ProcessTag] = []
-    for p in try c.optObjects("procs") {
-      only(p, ["text", "light"], id: "\(id).procs")
-      processes.append(ProcessTag(text: try p.string("text"), light: try p.flag("light")))
-    }
     let content = CardContent(
-      title: try c.optString("title"), description: try c.optString("desc").map { markdown($0) },
-      processes: processes, body: body)
+      title: try c.optString("title"), description: try c.optString("desc").map { markdown($0) }, body: body)
     return (content, try c.flag("tilt"))
   }
 
@@ -529,7 +666,6 @@ private struct Mapper {
       firstLine: start, lines: text, symbol: symbol, scope: try s.optString("scope"), hidden: try s.ranges("hidden"),
       highlights: try s.ranges("hl"), annotations: annotations)
   }
-
   private mutating func codeSource(_ s: Obj, id: String) throws -> CodeSource? {
     let src = try s.object("src")
     let version = try s.object("version")
@@ -572,37 +708,26 @@ private struct Mapper {
     }
   }
 
-  private mutating func note(_ c: Obj, id: String) throws -> Note {
-    let look = try c.string("look")
+  /// A Note, or a Text or Box
+  private mutating func note(_ c: Obj, id: String) throws -> CardContent.Body {
     if c.has("msg") { skips.add(.messageNote, id) }
-    let style: NoteStyle
-    let used: Set<String>
+    let text = markdown(try c.string("md"))
+    let layout = try layout(c, id: id)
+    let look = try c.string("look")
     switch look {
     case "note":
-      style = .note
-      used = []
-    case "text":
-      style = .text(size: try c.pick("size", NoteStyle.TextSize.self) ?? .body, bold: try c.flag("bold"))
-      used = ["size", "bold"]
-    case "box":
-      style = .box(fill: try c.pick("fill", NoteStyle.BoxFill.self) ?? .yellow)
-      used = ["fill"]
-    case "mark":
-      style = .mark(
-        color: try c.pick("hand", HandColor.self) ?? .blue,
-        weight: try c.pick("weight", NoteStyle.HandWeight.self) ?? .regular, fontSize: try c.optDouble("fs"))
-      used = ["hand", "weight", "fs"]
-    case "freetext":
-      style = .freeText(level: try c.optInt("level") ?? 0, bold: try c.flag("bold"), fontSize: try c.optDouble("fs"))
-      used = ["level", "bold", "fs"]
+      for key in ["fill", "fs", "wrap"] where c.has(key) { skips.add(.field, "\(id).\(key)") }
+      return .note(Note(text: text, layout: layout))
+    case "text", "box":
+      let fontSize = try c.optDouble("fs") ?? TextCard.sizes[0]
+      guard TextCard.fontSizes.contains(fontSize) else { throw Bad("\(c.at("fs")): \(fontSize) is outside 10…240") }
+      return .text(
+        TextCard(
+          text: text, look: look == "box" ? .box : .text, fill: try c.pick("fill", BoxFill.self) ?? .yellow,
+          fontSize: fontSize, wrap: try c.flag("wrap"), layout: layout))
     default:
       throw Bad("\(c.at("look")): unknown look \(look)")
     }
-    for key in ["size", "bold", "fill", "hand", "weight", "level", "fs"] where c.has(key) && !used.contains(key) {
-      skips.add(.field, "\(id).\(key)")
-    }
-    let text = try c.string("md")
-    return Note(text: look == "freetext" ? text : markdown(text), style: style, layout: try layout(c, id: id))
   }
 
   private mutating func layout(_ c: Obj, id: String) throws -> NoteLayout? {
@@ -619,22 +744,29 @@ private struct Mapper {
   }
 
   private mutating func image(_ c: Obj) throws -> ImageCard {
-    let src = try c.string("src")
-    let source: ImageSource
-    if src.hasPrefix("data:") {
-      source = .file(try dataImage(src, at: c.at("src")))
-    } else if src.hasPrefix("https://") || src.hasPrefix("http://") {
-      source = .url(src)
-    } else {
-      let name = src.hasPrefix("assets/") ? String(src.dropFirst("assets/".count)) : src
-      guard Vault.isFileName(name) else { throw Bad("\(c.at("src")): \(src) is not an image file name") }
-      images.insert(name)
-      source = .file(name)
-    }
     let frame = try c.optInt("frame")
     return ImageCard(
-      source: source, alt: try c.optString("alt"), framed: try c.flag("bg"), stillFrame: frame,
-      loops: try c.flag("loop"))
+      source: try imageSource(try c.string("src"), at: c.at("src")), alt: try c.optString("alt"),
+      framed: try c.flag("bg"), stillFrame: frame, loops: try c.flag("loop"))
+  }
+
+  /// An old image reference: an asset's file name (or assets/<file>), copied; a data: URL, made a file; or an address
+  private mutating func imageSource(_ src: String, at path: String) throws -> ImageSource {
+    if src.hasPrefix("data:") { return .file(try dataImage(src, at: path)) }
+    if src.hasPrefix("https://") || src.hasPrefix("http://") { return .url(src) }
+    let name = src.hasPrefix("assets/") ? String(src.dropFirst("assets/".count)) : src
+    guard Vault.isFileName(name) else { throw Bad("\(path): \(src) is not an image file name") }
+    images.insert(name)
+    return .file(name)
+  }
+
+  private mutating func meta(_ m: Obj, id: String) throws -> WebMeta {
+    only(m, ["title", "desc", "site", "image", "icon", "at", "failed"], id: "\(id).meta")
+    return WebMeta(
+      title: try m.optString("title"), description: try m.optString("desc"), site: try m.optString("site"),
+      image: try m.optString("image").map { try imageSource($0, at: m.at("image")) },
+      icon: try m.optString("icon").map { try imageSource($0, at: m.at("icon")) }, fetchedAt: try m.optDouble("at"),
+      failed: try m.flag("failed"))
   }
 
   /// A data: URL image becomes a file named by a fingerprint of its bytes, as the old host names assets by content
@@ -701,13 +833,128 @@ private struct Mapper {
         "id", "title", "x", "y", "w", "h", "parent", "color", "collapsed", "locked", "desc", "summary", "directSummary",
       ],
       id: id)
-    if s.has("summary") || s.has("directSummary") { skips.add(.summary, id) }
     return Section(
       id: SectionID(rawValue: id), title: try s.string("title"), x: try s.double("x"), y: try s.double("y"),
       width: try s.double("w"), height: try s.double("h"),
       parent: try s.optString("parent").map(SectionID.init(rawValue:)), color: try s.optString("color"),
       collapsed: try s.flag("collapsed"), locked: try s.flag("locked"),
-      description: try s.optString("desc").map { markdown($0) })
+      description: try s.optString("desc").map { markdown($0) },
+      summary: try s.optObject("summary").map { try summary($0) },
+      directSummary: try s.optObject("directSummary").map { try summary($0) })
+  }
+
+  private mutating func summary(_ o: Obj) throws -> Summary {
+    only(o, ["text", "title", "at", "sig", "edited", "pairs", "input"], id: "\(o.path)")
+    let pairs = try o.optObjects("pairs").map { p in
+      Summary.Pair(ai: try p.string("ai"), user: try p.string("user"), at: try p.double("at"))
+    }
+    return Summary(
+      text: try o.string("text"), title: try o.optString("title"), at: try o.double("at"), sig: try o.string("sig"),
+      edited: try o.flag("edited"), pairs: pairs, input: try o.optString("input"))
+  }
+
+  /// A sidenote; nil (reported) for one on a Variant its card does not show
+  mutating func sidenote(_ n: Obj) throws -> Sidenote? {
+    let id = try n.string("id")
+    let kind = try n.string("kind")
+    let a = try n.object("at")
+    let anchor: Anchor
+    if a.has("section") {
+      only(a, ["section"], id: "\(id).at")
+      anchor = .section(SectionID(rawValue: try a.string("section")))
+    } else if a.has("card") {
+      only(a, ["card", "seg", "lines", "block"], id: "\(id).at")
+      let lines = try a.ranges("lines", single: true).first
+      let block = try a.optObject("block").map { BlockRef(index: try $0.int("i"), hash: try $0.string("h")) }
+      anchor = .card(
+        CardID(rawValue: try a.string("card")), segment: try a.optString("seg").map(SegmentID.init(rawValue:)),
+        lines: lines, block: block)
+    } else {
+      only(a, ["x", "y"], id: "\(id).at")
+      anchor = .point(x: try a.double("x"), y: try a.double("y"))
+    }
+    if let v = try n.optString("variant"), let card = anchor.card, v != shownVariant[card.rawValue] ?? "up" {
+      skips.add(.sidenoteWithoutAnchor, id)
+      return nil
+    }
+    let why = try n.optString("why").flatMap { $0.isEmpty ? nil : $0 }
+    let body: Sidenote.Body
+    switch kind {
+    case "text":
+      only(
+        n, ["id", "kind", "at", "why", "lineRemoved", "boardOnly", "review", "variant", "md", "alwaysShow", "q"], id: id
+      )
+      var md = markdown(try n.string("md"))
+      // the old separate "why" line is the note's first line now
+      if let why { md = md.isEmpty ? why : "\(why)\n\n\(md)" }
+      let question = try n.optObject("q").map { q in
+        only(q, ["at", "done", "answers"], id: "\(id).q")
+        return Question(
+          at: try q.double("at"), done: try q.flag("done"),
+          answers: try q.optObjects("answers").map { a in
+            only(a, ["id", "md", "at"], id: "\(id).q.answers")
+            return Question.Answer(id: try a.string("id"), text: markdown(try a.string("md")), at: try a.double("at"))
+          })
+      }
+      body = .text(TextNote(text: md, alwaysShow: try n.flag("alwaysShow"), question: question))
+    case "code":
+      // a code sidenote has no text to put its "why" in: reported as a field
+      only(n, ["id", "kind", "at", "lineRemoved", "boardOnly", "review", "variant", "code"], id: id)
+      body = .code(try segment(try n.object("code")))
+    default:
+      throw Bad("\(n.at("kind")): unknown sidenote kind \(kind)")
+    }
+    return Sidenote(
+      id: SidenoteID(rawValue: id), anchor: anchor, body: body, lineRemoved: try n.flag("lineRemoved"),
+      boardOnly: try n.flag("boardOnly"), review: try n.optString("review"))
+  }
+
+  /// A sticker; nil (reported) for one on an arrow or from a sticker pack
+  private mutating func sticker(_ k: Obj) throws -> Sticker? {
+    let id = try k.string("id")
+    only(k, ["id", "icon", "color", "at"], id: id)
+    let icon = try k.object("icon")
+    let name = try icon.string("name")
+    let glyph: Sticker.Glyph
+    switch try icon.string("pack") {
+    case "builtin":
+      guard let b = BuiltinSticker(rawValue: name) else {
+        skips.add(.stickerPack, id)
+        return nil
+      }
+      glyph = .builtin(b)
+    case "emoji" where name.count == 1:
+      glyph = .emoji(name)
+    default:
+      skips.add(.stickerPack, id)
+      return nil
+    }
+    let at = try k.object("at")
+    let anchor: Sticker.Anchor
+    switch try at.string("kind") {
+    case "line":
+      only(at, ["kind", "card", "seg", "line"], id: "\(id).at")
+      anchor = .line(
+        CardID(rawValue: try at.string("card")), segment: SegmentID(rawValue: try at.string("seg")),
+        line: try at.int("line"))
+    case "canvas":
+      only(at, ["kind", "x", "y", "size", "on"], id: "\(id).at")
+      let x = try at.double("x")
+      let y = try at.double("y")
+      let size = try at.optDouble("size")
+      if let on = try at.optObject("on") {
+        guard on.has("card") else {
+          skips.add(.arrowSticker, id)
+          return nil
+        }
+        anchor = .card(CardID(rawValue: try on.string("card")), x: x, y: y, size: size)
+      } else {
+        anchor = .canvas(x: x, y: y, size: size)
+      }
+    case let kind:
+      throw Bad("\(at.at("kind")): unknown sticker place \(kind)")
+    }
+    return Sticker(id: StickerID(rawValue: id), glyph: glyph, color: try k.optString("color"), anchor: anchor)
   }
 }
 
@@ -798,10 +1045,11 @@ private struct Obj {
     }
     return s
   }
-  /// [[first, last]…]; left out: none
-  func ranges(_ key: String) throws -> [ClosedRange<Int>] {
-    try (optArray(key) ?? []).enumerated().map { i, v in
-      let here = "\(at(key))[\(i)]"
+  /// [[first, last]…]; left out: none. single: the value is one [first, last]
+  func ranges(_ key: String, single: Bool = false) throws -> [ClosedRange<Int>] {
+    let list = single ? (has(key) ? [fields[key]!] : []) : (try optArray(key) ?? [])
+    return try list.enumerated().map { i, v in
+      let here = single ? at(key) : "\(at(key))[\(i)]"
       guard let pair = v as? [Any], pair.count == 2 else { throw Bad("\(here): expected [first, last]") }
       let a = try integer(pair[0], at: here)
       let b = try integer(pair[1], at: here)

@@ -7,10 +7,8 @@ import Testing
 
 /// [[refs]] resolve as the web board resolves them (actions/common.ts resolveCardRef, md/refs.ts)
 @Suite struct RefTests {
-  func note(_ id: String, _ text: String, _ style: NoteStyle = .note) -> Card {
-    Card(
-      id: CardID(rawValue: id), x: 0, y: 0, width: 300,
-      content: .own(CardContent(body: .note(Note(text: text, style: style)))))
+  func note(_ id: String, _ text: String) -> Card {
+    Card(id: CardID(rawValue: id), x: 0, y: 0, width: 300, content: .own(CardContent(body: .note(Note(text: text)))))
   }
 
   func code(_ id: String, symbol: String) -> Card {
