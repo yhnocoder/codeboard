@@ -45,7 +45,7 @@ export function handlePaste(e: Editor, ev: ClipboardEvent): boolean {
   // code pasted from elsewhere is decided on the text as copied; prose has its <mark>x</mark> written ==x== (code copied from
   // VS Code stays as it is, so does a line pasted into an inline code span)
   const codeLang = html || vs || $f.parent.type.spec.code ? null : pastedCodeLang(plain, mdOf(e.state).codeLang),
-    text = vs || codeLang !== null || inCode(e) ? plain : markTags(plain);
+    text = vs || codeLang !== null || inCode($f.parent.textContent, $f.parentOffset) ? plain : markTags(plain);
   const put = (slice: Slice) => {
     e.view.dispatch(
       revealMeta(pasteSlice(e.state.tr, slice)).scrollIntoView().setMeta("paste", true).setMeta("uiEvent", "paste"),
@@ -159,11 +159,10 @@ function mdStructure(text: string): boolean {
   walk(doc);
   return found;
 }
-function inCode(e: Editor) {
-  const $p = e.state.selection.$from,
-    off = $p.parentOffset;
-  return flat(blockInfo($p.parent.textContent).spans).some(
-    (s) => s.tag?.nodeName === "code" && s.inner && off > s.inner[0] && off < s.inner[1],
+/** Is the caret inside an inline code span's text: right after its opening backticks and right before its closing ones count */
+export function inCode(text: string, off: number) {
+  return flat(blockInfo(text).spans).some(
+    (s) => s.tag?.nodeName === "code" && s.inner && off >= s.inner[0] && off <= s.inner[1],
   );
 }
 function dedent(s: string) {

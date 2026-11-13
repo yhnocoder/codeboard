@@ -7,7 +7,7 @@ import { marksInSlice } from "../src/editor/pastemarks";
 import { htmlSource } from "../src/editor/pastemarks";
 import { MathPreamble } from "../src/math";
 import { markTags } from "../src/marktag";
-import { pastedCodeLang } from "../src/editor/paste";
+import { inCode, pastedCodeLang } from "../src/editor/paste";
 
 // Notes with three ==highlights== in CJK text, one closing right before 。
 const SIMT = [
@@ -194,5 +194,12 @@ describe("pasted plain text that reads as code", () => {
     expect(pastedCodeLang("Global row:\n\n$$\nrow = blockIdx.y \\cdot blockDim.y + threadIdx.y\n$$", cu)).toBe(null);
     expect(pastedCodeLang("x_i is $x_i$ and\n$a^2$ too", cu)).toBe(null);
     expect(pastedCodeLang('echo "$HOME" "$PATH"\ncd "$a" && ls "$b"', () => "shellscript")).toBe("shellscript");
+  });
+});
+
+describe("a paste into an inline code span", () => {
+  it("is in the code from right after its opening backticks to right before its closing ones", () => {
+    const t = "a `code` b";
+    expect([2, 3, 5, 7, 8].map((off) => inCode(t, off))).toEqual([false, true, true, true, false]);
   });
 });
