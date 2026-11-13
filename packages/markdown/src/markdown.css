@@ -1142,6 +1142,10 @@ math {
     color calc(var(--t, 1) * 90ms),
     background-color calc(var(--t, 1) * 90ms);
 }
+/* after the text of a heading in a list item or quote (left of it are the bullet and the quote bar) */
+.md-pm .md-hchip-after .md-hchip-b {
+  left: 6px;
+}
 .md-pm .md-hchip-b .hh {
   letter-spacing: -0.25px;
 }

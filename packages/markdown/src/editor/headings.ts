@@ -134,9 +134,9 @@ function chipAt(state: EditorState): { pos: number; level: number } | null {
 
 export function headingsPlugin(classes: () => MdClasses | undefined) {
   let menu: LevelMenu | null = null;
-  const chip = (level: number) => (view: EditorView, getPos: () => number | undefined) => {
+  const chip = (level: number, after: boolean) => (view: EditorView, getPos: () => number | undefined) => {
     const w = document.createElement("span");
-    w.className = "md-hchip";
+    w.className = after ? "md-hchip md-hchip-after" : "md-hchip";
     w.contentEditable = "false";
     const b = document.createElement("span");
     b.className = "md-hchip-b";
@@ -178,10 +178,14 @@ export function headingsPlugin(classes: () => MdClasses | undefined) {
       decorations(state) {
         const at = chipAt(state);
         if (!at) return null;
+        // in a list item or a quote the space left of the heading is the bullet's or the quote bar's: the chip goes after
+        // its text there
+        const inside = state.doc.resolve(at.pos).depth > 0,
+          end = at.pos + state.doc.nodeAt(at.pos)!.nodeSize - 1;
         return DecorationSet.create(state.doc, [
-          Decoration.widget(at.pos + 1, chip(at.level), {
-            side: -1,
-            key: `hchip:${at.level}`,
+          Decoration.widget(inside ? end : at.pos + 1, chip(at.level, inside), {
+            side: inside ? 1 : -1,
+            key: `hchip:${at.level}:${inside}`,
             ignoreSelection: true,
             stopEvent: () => true,
           }),

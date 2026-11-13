@@ -286,3 +286,34 @@ test("headingLevelMenuKeepsItsHeading", async () => {
   check("headingLevelMenuKeepsItsHeading levels kept", md(h, "n0") === "# One\n\n## Two\n\npara", md(h, "n0"));
   await close(h);
 });
+
+/** A heading in a list item or a quote shows its level chip after its text: left of it are the bullet and the quote bar */
+test("headingChipClearOfContainers", async () => {
+  const h = await open({ board: board(["- ## Listed\n\n> ## Quoted"]) });
+  await idle(h);
+  const pg = h.page;
+  await editNote(h, "n0");
+  for (const [sel, word] of [
+    ["li h2", "Listed"],
+    ["blockquote h2", "Quoted"],
+  ]) {
+    await pg.locator(`.card[data-id="n0"] .md-pm ${sel}`).click();
+    await until(h, `chip in ${word}`, async () => (await pg.locator(".md-hchip-b").count()) === 1);
+    await idle(h);
+    const r = await pg.evaluate((sel) => {
+      const hd = document.querySelector(`.card[data-id="n0"] .md-pm ${sel}`)!,
+        chip = document.querySelector(".md-hchip-b")!.getBoundingClientRect(),
+        range = document.createRange();
+      range.selectNodeContents(hd);
+      const text = [...range.getClientRects()].filter((q) => q.width > 0);
+      return {
+        inside: hd.contains(document.querySelector(".md-hchip-b")),
+        chipLeft: chip.left,
+        textLeft: Math.min(...text.map((q) => q.left)),
+        textRight: Math.max(...text.map((q) => q.right)) - chip.width,
+      };
+    }, sel);
+    check(`headingChipClearOfContainers ${word}`, r.inside && r.chipLeft >= r.textRight, r);
+  }
+  await close(h);
+});
