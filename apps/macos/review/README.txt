@@ -27,3 +27,6 @@ stage3/: Notes, Texts and Boxes written in, drawn off screen at 2x with `swift r
   Box centres its lines)
 - scale: a Text | its corner dragged out, during | let go (24 px → 38 px)
 - wrap: a Text as wide as its text | its right side dragged in: it wraps there
+- refs: [[ typed at the end of the Note: the list under the caret, this board's titled cards first, then another board
+  (内存模型 Memory) as a group with its cards and the Section one is in; the count line under it. The list's glass lies
+  over the board's backdrop (the web view cannot blur the canvas under it)
