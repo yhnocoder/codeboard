@@ -343,6 +343,21 @@ test("noteBlockFloatBoardSwitch", async () => {
   );
 });
 
+/** A picked-up block whose Note goes away (deleted in another window, an undo of its making): the copy goes with it */
+test("noteBlockFloatNoteDeleted", async () => {
+  const h = await board();
+  const pre = await box(h, `${card("n1")} .md-pm > pre`);
+  await cmdClick(h, { x: pre.x + 40, y: pre.y + 12 });
+  await until(h, "it floats", async () => (await h.page.locator(".bmv-g.is-float").count()) === 1);
+  await h.page.locator(`${card("n2")} .nbody`).click({ position: { x: 20, y: 8 } });
+  await until(h, "the editor closed", async () => (await h.page.locator(`${card("n1")} .md.editing`).count()) === 0);
+  await idle(h);
+  await h.post({ type: "merged", patch: { cards: { del: ["n1"] }, place: { del: ["n1"] } } } as never);
+  await until(h, "the Note is gone", async () => (await h.page.locator(card("n1")).count()) === 0);
+  await idle(h);
+  check("noteBlockFloatNoteDeleted the copy goes", (await h.page.locator(".bmv-g").count()) === 0);
+});
+
 /** A floating block whose Note changes while it floats (another window, a sync) is found again where it now is: dropped,
  *  the right block moves */
 test("noteBlockFloatNoteChanged", async () => {

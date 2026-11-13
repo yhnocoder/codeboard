@@ -878,13 +878,16 @@ export function wireBlockMove() {
     createEffect(
       on(
         () => {
-          const d = moving(),
-            c = d?.part ? cardById(d.src)?.card : undefined;
+          const d = moving();
+          if (!d?.part) return undefined;
+          const c = cardById(d.src)?.card;
           return c?.kind === "note" ? c.md : null;
         },
         (md) => {
           const d = mv.v;
-          if (md === null || !d?.part || d.settling || edBlocks(d.src)) return;
+          if (md === undefined || !d?.part || d.settling || edBlocks(d.src)) return;
+          // its Note is gone (an undo of its making, a delete elsewhere): so is the copy
+          if (md === null) return dropMove();
           const r = findMdBlocks(md, d.part.md, d.range[0]);
           if (!r) return dropMove();
           d.range = r;
