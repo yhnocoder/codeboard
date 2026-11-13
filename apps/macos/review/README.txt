@@ -30,3 +30,6 @@ stage3/: Notes, Texts and Boxes written in, drawn off screen at 2x with `swift r
 - refs: [[ typed at the end of the Note: the list under the caret, this board's titled cards first, then another board
   (内存模型 Memory) as a group with its cards and the Section one is in; the count line under it. The list's glass lies
   over the board's backdrop (the web view cannot blur the canvas under it)
+
+stage4/: arrows and Sections, drawn off screen at 2x with `swift run -c release LookCompare --arrows <out>`, in each
+theme light and dark; report.txt lists the sheets and has the test count, the bench and the read-only check's counts.

@@ -1,0 +1,28 @@
+Stage 4: arrows and Sections
+
+Tests: 263 (swift test: 14 + 19 + 18 + 82 + 130), all passing; swift format lint --strict clean.
+
+Bench (swift run -c release CanvasBench --arrows; per drag step, ms; frames ticked by the bench):
+- a card with 20 arrows (bench-hub, 21 cards): 100%: p50 0.55, p95 0.58, max 0.79; fit (43%): p50 0.56, p95 0.70, max 0.79
+- twenty of its cards at once: 100%: p95 1.00, max 1.08; fit: p95 1.02, max 1.18
+- a Section with 20 cards and 24 arrows (bench-section): 100%: p50 0.62, p95 0.71, max 0.84; fit (53%): p50 0.64,
+  p95 0.85, max 1.11
+- every case: 0 steps over 8.3 ms, 0 rule breaks (no redraw, decode, request or bitmap swap during the gesture),
+  swap at the drop 0.5 to 1.2 ms, 0 bitmaps drawn at the swap
+
+Read-only check on a private board folder (counts only): 20 boards; 74 arrows in the files, 74 drawn (0 in a fold,
+0 with an end not drawn); 416 card moves made and undone, 148 arrow routes redone; the board file byte-identical after
+undo on 20 of 20, the encoder writes each file back unchanged on 20 of 20; 165 Sections, 80 grown round their cards
+when drawn, 0 folded.
+
+Sheets (swift run -c release LookCompare --arrows <out>, 2x, <sheet>-<theme>[-dark].png):
+- preview: a card's ports | an arrow dragged out of a card's right port, routed as it will be, the card under the
+  pointer aimed at (raised, ringed) | aimed at a line of a code card | over empty canvas (dropping there makes nothing)
+- selected: an arrow hovered | selected, with its end handles and start dot | its end dragged to a Text
+- label: a label at rest | written in place | dragged along the line
+- styles: each look a plain arrow can take: solid, dashed, 1 px, 3 px, both heads, no head, colours
+- section-draw: the Section tool's frame halfway, its hint and the tool in use | the Section made, its title written
+- section: a Section selected | a card dragged over it, tinted where it would drop
+- toolbar: the five tools, none on, Section on, Arrow on
+- menu: the arrow's menu (Line open), a label's, a Section's (Color open), two cards' (Arrange open); macOS draws
+  the real menu, which cannot be drawn off screen
