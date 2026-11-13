@@ -10,9 +10,11 @@ import Foundation
 public enum Item: Hashable, Sendable {
   case card(CardID)
   case section(SectionID)
+  case arrow(ArrowID)
 
   public var card: CardID? { if case .card(let id) = self { id } else { nil } }
   public var section: SectionID? { if case .section(let id) = self { id } else { nil } }
+  public var arrow: ArrowID? { if case .arrow(let id) = self { id } else { nil } }
 }
 
 extension Board {
@@ -39,6 +41,8 @@ extension Board {
       guard let c = card(id) else { return false }
       return c.locked || c.section.map { isLocked(section: $0) } == true
     case .section(let id): return isLocked(section: id)
+    // an arrow has no lock of its own (the web board's links have none)
+    case .arrow: return false
     }
   }
 
@@ -152,10 +156,12 @@ extension Board {
     selfCheck()
   }
 
-  /// Deletes cards and Sections, with what hangs on them: a card's arrows (on the canvas and on the shelf), sidenotes and
-  /// stickers; a Section's sidenotes. A Section's cards and inner Sections stay, in the Section it was in (core
-  /// deleteItems). Locked ones stay
+  /// Deletes cards, Sections and arrows, with what hangs on them: a card's arrows (on the canvas and on the shelf),
+  /// sidenotes and stickers; a Section's sidenotes. A Section's cards and inner Sections stay, in the Section it was in
+  /// (core deleteItems). Locked ones stay
   public mutating func delete(_ items: Set<Item>) {
+    let goneArrows = Set(items.compactMap(\.arrow))
+    arrows.removeAll { goneArrows.contains($0.id) }
     let goneCards = Set(items.compactMap(\.card).filter { card($0) != nil && !isLocked(.card($0)) })
     let goneSections = Set(items.compactMap(\.section).filter { section($0) != nil && !isLocked(section: $0) })
     // up out of the deleted Sections, to the nearest one that stays

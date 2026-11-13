@@ -371,6 +371,7 @@ extension CanvasView {
     switch item {
     case .card(let id): r = index(of: .card(id)).map { s.items[$0].rect }
     case .section(let id): r = s.frames.first { $0.id == id }?.rect
+    case .arrow: return nil
     }
     guard var rect = r else { return nil }
     if case .card(let id) = item, editing?.id == id { rect = editingRect(rect) }
@@ -417,6 +418,8 @@ extension CanvasView {
           } else {
             framed(r, zoom: z)
           }
+        // an arrow's selected look is its own (selectArrows)
+        case .arrow: break
         }
       }
       raiseText()
@@ -577,6 +580,7 @@ extension CanvasView {
     switch item {
     case .section:
       return [.left, .right, .top, .bottom, [.left, .top], [.right, .top], [.left, .bottom], [.right, .bottom]]
+    case .arrow: return []
     case .card(let id):
       guard let s = scene, let i = index(of: .card(id)), s.items[i].tilt == 0 else { return [] }
       switch s.items[i].drawing {
@@ -925,6 +929,7 @@ extension CanvasView {
     var what = Resize.What.card
     var minSize = CGSize(width: 160, height: 64)
     switch item {
+    case .arrow: return
     case .section:
       what = .section
       minSize = CGSize(width: 120, height: 80)
@@ -1041,6 +1046,7 @@ extension CanvasView {
     }
     let rounded = CGRect(x: r.minX.rounded(), y: r.minY.rounded(), width: r.width.rounded(), height: r.height.rounded())
     switch (z.item, z.what) {
+    case (.arrow, _): return
     case (.section(let id), _):
       // the cards it now covers by more than a third join it (in none or in one around it), its own it no longer
       // covers go to the Section they then lie in (board resizeSection)
@@ -1099,6 +1105,7 @@ extension CanvasView {
     case .section(let id):
       if let i = index(of: .sectionTitle(id)) { ids.append(i) }
       if let i = scene?.frames.firstIndex(where: { $0.id == id }) { fs.append(i) }
+    case .arrow: break
     }
     showScene(arrows: [], items: ids, frames: fs)
     drawChrome()
@@ -1280,6 +1287,7 @@ extension CanvasView {
     switch item {
     case .card(let id): document?.board.card(id)?.locked == true
     case .section(let id): document?.board.section(id)?.locked == true
+    case .arrow: false
     }
   }
 
