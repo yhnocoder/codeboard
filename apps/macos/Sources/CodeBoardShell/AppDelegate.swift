@@ -49,11 +49,16 @@ import CodeBoardModel
     }
   }
 
+  func applicationWillTerminate(_ notification: Notification) {
+    panes?.flush()
+  }
+
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
     true
   }
 
   private func open(_ root: URL, restoring state: ShellState?) {
+    panes?.close()
     let vault = Vault(root: root)
     shell.open(vault, restoring: state)
     watcher = VaultWatcher(root) { [weak self] in self?.readTree(reloadBoards: true) }
@@ -175,15 +180,22 @@ import CodeBoardModel
     file.addItem(withTitle: "Close Tab", action: #selector(closeTab(_:)), keyEquivalent: "w")
     file.addItem(item("Close Window", #selector(NSWindow.performClose(_:)), "w", [.command, .shift]))
 
-    // Only text is selectable (error messages, import details), so Copy and Select All are what applies
+    // The canvas answers these for the board (undo titles name the step); text fields Cut, Copy, Paste and Select All
     let edit = NSMenu(title: "Edit")
-    edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
-    edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+    edit.addItem(withTitle: "Undo", action: #selector(CanvasView.undo(_:)), keyEquivalent: "z")
+    edit.addItem(withTitle: "Redo", action: #selector(CanvasView.redo(_:)), keyEquivalent: "Z")
     edit.addItem(.separator())
     edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
     edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
     edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+    edit.addItem(withTitle: "Duplicate", action: #selector(CanvasView.duplicate(_:)), keyEquivalent: "d")
+    edit.addItem(withTitle: "Delete", action: #selector(NSText.delete(_:)), keyEquivalent: "")
     edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+    edit.addItem(.separator())
+    // not ⇧⌘] / ⇧⌘[ as in Keynote: those switch tabs here
+    edit.addItem(item("Bring to Front", #selector(CanvasView.bringToFront(_:)), "f", [.command, .option, .shift]))
+    edit.addItem(item("Send to Back", #selector(CanvasView.sendToBack(_:)), "b", [.command, .option, .shift]))
+    edit.addItem(withTitle: "Lock", action: #selector(CanvasView.lock(_:)), keyEquivalent: "l")
 
     let view = NSMenu(title: "View")
     view.addItem(item("Hide Sidebar", #selector(flipSidebar(_:)), "s", [.command, .control]))

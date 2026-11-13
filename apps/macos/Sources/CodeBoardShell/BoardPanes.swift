@@ -20,14 +20,15 @@ import CodeBoardModel
     fatalError("BoardPanes is not loaded from nibs")
   }
 
-  /// Follows the tabs: new tabs get a canvas, closed tabs lose theirs, a tab now on another board loads it.
-  /// `reload` reads every open board again (the vault changed on disk).
+  /// Follows the tabs: new tabs get a canvas, closed tabs lose theirs (their board written first), a tab now on another
+  /// board shows it. `reload`: the vault changed on disk, so every open board takes in what changed there.
   func sync(reload: Bool = false) {
     let live = Set(shell.tabs.map(\.id))
     for (id, pane) in panes where !live.contains(id) {
-      pane.removeFromSuperview()
+      pane.close()
       panes[id] = nil
     }
+    if reload { for doc in documents.values { doc.diskChanged() } }
     for tab in shell.tabs {
       let pane = panes[tab.id] ?? Pane()
       if panes[tab.id] == nil {
@@ -39,13 +40,46 @@ import CodeBoardModel
         addSubview(pane)
       }
       let theme = shell.look
-      if reload || pane.board?.id != tab.board, let vault = shell.vault, let at = shell.board(tab.board) {
-        pane.load(at, in: vault, theme: theme)
+      if let vault = shell.vault, let at = shell.board(tab.board),
+        pane.document?.id != tab.board || pane.shown?.path != at.path || pane.failed && reload
+      {
+        do {
+          pane.load(at, in: vault, theme: theme, document: try document(tab.board))
+        } catch {
+          pane.fail(error)
+        }
       } else {
         pane.restyle(theme)
       }
     }
     reveal()
+  }
+
+  /// One document per board while the app runs, whichever tabs show it, so its undo history outlives tab switches
+  private(set) var documents: [BoardID: BoardDocument] = [:]
+
+  private func document(_ id: BoardID) throws -> BoardDocument {
+    if let doc = documents[id] { return doc }
+    // ponytail: reads board.json on the main thread when a board is first opened; move off it if large boards stall
+    let doc = try BoardDocument { [weak shell] in
+      guard let shell, let vault = shell.vault, let at = shell.board(id) else { return nil }
+      return vault.url(of: at.path).appending(path: Vault.boardFileName)
+    }
+    documents[id] = doc
+    return doc
+  }
+
+  /// Writes every board with changes not yet saved (quitting, another vault)
+  func flush() {
+    for doc in documents.values { doc.flush() }
+  }
+
+  /// Another vault: what was open is written and let go
+  func close() {
+    flush()
+    documents = [:]
+    for pane in panes.values { pane.close() }
+    panes = [:]
   }
 
   private func reveal() {
@@ -60,7 +94,10 @@ import CodeBoardModel
 }
 
 private final class Pane: NSView {
-  private(set) var board: Board?
+  private(set) var document: BoardDocument?
+  /// Where the board shown is in the vault
+  private(set) var shown: VaultBoard?
+  private(set) var failed = false
   /// Whether it may come on screen: its first board is drawn or failed, or `patience` has passed, after which an empty
   /// canvas is better than a tab switch that seems ignored
   private(set) var ready = false
@@ -102,39 +139,39 @@ private final class Pane: NSView {
   /// Draws the board shown in another theme or appearance, where its camera is
   func restyle(_ theme: Theme) {
     self.theme = theme
-    guard !theme.same(as: canvas.currentTheme), board != nil else { return }
+    guard !theme.same(as: canvas.currentTheme), document != nil else { return }
     Task {
       do { try await canvas.show(theme: theme) } catch { fail(error) }
     }
   }
 
-  /// Hands the board to the canvas only when it or the theme changed, or shows why it cannot be read
-  func load(_ at: VaultBoard, in vault: Vault, theme: Theme) {
+  /// Shows an open board and edits it there
+  func load(_ at: VaultBoard, in vault: Vault, theme: Theme, document doc: BoardDocument) {
     self.theme = theme
-    // ponytail: reads board.json on the main thread to see whether it changed (the canvas reads it again off it);
-    // move off it if large boards stall a tab switch
-    do {
-      let new = try vault.board(at: at.path)
-      problem.isHidden = true
-      canvas.isHidden = false
-      guard new != board else { return restyle(theme) }
-      board = new
-      if !ready {
-        Task { [weak self] in
-          try? await Task.sleep(for: Self.patience)
-          self?.becomeReady()
-        }
+    problem.isHidden = true
+    canvas.isHidden = false
+    failed = false
+    document = doc
+    shown = at
+    if !ready {
+      Task { [weak self] in
+        try? await Task.sleep(for: Self.patience)
+        self?.becomeReady()
       }
-      Task {
-        do { try await canvas.show(at, in: vault, theme: theme) } catch { fail(error) }
-        becomeReady()
-        // the theme changed while the board was loading
-        restyle(self.theme)
-      }
-    } catch {
-      fail(error)
-      becomeReady()
     }
+    Task {
+      do { try await canvas.show(doc, at: at, in: vault, theme: theme) } catch { fail(error) }
+      becomeReady()
+      // the theme changed while the board was loading
+      restyle(self.theme)
+    }
+  }
+
+  /// Its tab closed: the board is written and the canvas lets go of it
+  func close() {
+    document?.flush()
+    canvas.leave()
+    removeFromSuperview()
   }
 
   private func becomeReady() {
@@ -143,7 +180,11 @@ private final class Pane: NSView {
     onReady?()
   }
 
-  private func fail(_ error: any Error) {
+  func fail(_ error: any Error) {
+    failed = true
+    document = nil
+    shown = nil
+    becomeReady()
     problem.stringValue = String(describing: error)
     problem.isHidden = false
     canvas.isHidden = true
