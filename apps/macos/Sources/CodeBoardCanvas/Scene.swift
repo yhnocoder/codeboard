@@ -256,7 +256,8 @@ struct Scene: Sendable {
         items.append(
           Item(
             owner: .sectionTitle(s.id),
-            rect: CGRect(x: s.x + at.x, y: s.y + at.y, width: tw, height: t.sectionTitleHeight),
+            // at the frame's top left, as it grows round its cards (Sections.tsx shownFrame)
+            rect: CGRect(x: r.minX + at.x, y: r.minY + at.y, width: tw, height: t.sectionTitleHeight),
             drawing: .label(.init(text: s.title, kind: .section, count: s.collapsed ? counts[s.id] ?? 0 : nil)),
             tilt: 0))
       }
