@@ -519,6 +519,11 @@ math {
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 11 11 5M6 5h5v5'/%3E%3C/svg%3E")
     center / contain no-repeat;
 }
+/* the whole reference is one thing to click, its seal and badge too (a page's own cursor rules for what is inside text don't
+   reach them) */
+.md-ref * {
+  cursor: inherit;
+}
 .md-ref:hover {
   box-shadow: inset 0 -1px 0 var(--k-fn);
 }
@@ -593,6 +598,12 @@ math {
 .md-ref .bd::before {
   content: "· ";
 }
+/* a reference that finds nothing does nothing when clicked outside the editor (its tooltip says why); in the editor a click opens
+   its source */
+.md-ref.missing:not(.md-atom),
+.md-ref.gone:not(.md-atom) {
+  cursor: default;
+}
 .md-ref.missing {
   color: var(--ink-3);
   box-shadow: inset 0 -1px 0 var(--hair);
@@ -619,6 +630,20 @@ math {
 }
 .md-ref.gone > .bd {
   text-decoration: line-through;
+}
+/* a link to an item (Refs.link) keeps its own text and looks a link; when the item is gone it looks as a reference that finds
+   nothing, and outside the editor a click on it does nothing */
+.md a.md-cardlink.missing {
+  color: var(--ink-3);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--ink-3) 50%, transparent);
+}
+.md a.md-cardlink.gone {
+  color: var(--warn);
+}
+.md a.md-cardlink.missing:not(.md-pm a),
+.md a.md-cardlink.gone:not(.md-pm a) {
+  cursor: default;
 }
 .md sup.fnref {
   color: var(--k-fn);

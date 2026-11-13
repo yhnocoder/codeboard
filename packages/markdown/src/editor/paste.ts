@@ -12,6 +12,7 @@ import { revealMeta } from "./inline";
 import { pasteSlice } from "./headings";
 import { pastedImages } from "./image";
 import { mdOf } from "./md";
+import { hrefSource, linkRef } from "./links";
 import { markTags } from "../marktag";
 import { blockInfo, flat } from "./spans";
 
@@ -21,6 +22,23 @@ function sourceSlice(e: Editor, md: string): Slice {
   const d = e.state.schema.nodeFromJSON(sourceDoc(md));
   const open = (n: PMNode | null) => (n?.type.name === "paragraph" ? 1 : 0);
   return new Slice(d.content, open(d.firstChild), open(d.lastChild));
+}
+/**
+ * The Markdown a pasted address makes (null: pasted as text). On words selected in one paragraph: [those words](address), with
+ * the address in <angle brackets> when it holds spaces or parentheses. On nothing, a link to an item that is there: [[its title]]
+ */
+function linkPaste(e: Editor, addr: string): string | null {
+  const refs = mdOf(e.state).refs;
+  if (!refs.link?.(addr) && !/^https?:\/\/\S+$/i.test(addr)) return null;
+  const { from, to, $from, $to } = e.state.selection;
+  if (from === to) {
+    const ref = linkRef(addr, refs);
+    return ref && `${ref} `;
+  }
+  if ($from.parent !== $to.parent || !$from.parent.isTextblock) return null;
+  const words = e.state.doc.textBetween(from, to);
+  if (!words.trim() || /[[\]\n]/.test(words)) return null;
+  return `[${words}](${hrefSource(addr)})`;
 }
 /** Plain lines, each its own paragraph (text that is not Markdown is still source: it reads back as the same text) */
 function linesSlice(e: Editor, text: string): Slice {
@@ -103,6 +121,16 @@ export function handlePaste(e: Editor, ev: ClipboardEvent): boolean {
     return md ? put(sourceSlice(e, md)) : false;
   }
   if (!text) return false;
+  // one address: on selected words a link (a web address, or a link to an item copied with the page's Copy Link); a link to an
+  // item pasted on nothing is a reference to it, as picked from the [[ list
+  const one = text.trim();
+  if (!cell && !one.includes("\n")) {
+    const link = linkPaste(e, one);
+    if (link !== null) {
+      e.view.dispatch(revealMeta(e.state.tr.insertText(link)).scrollIntoView().setMeta("paste", true));
+      return true;
+    }
+  }
   // one heading line (a copied heading) is a block: into an empty paragraph it makes a heading, into text only its words go
   if (!text.includes("\n") && (cell || !/^ {0,3}#{1,6}[ \t]+\S/.test(text))) {
     e.view.dispatch(revealMeta(e.state.tr.insertText(text)).scrollIntoView().setMeta("paste", true));

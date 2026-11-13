@@ -3237,6 +3237,18 @@ textarea {
   -webkit-mask: linear-gradient(#000 calc(100% - 48px), transparent);
   mask: linear-gradient(#000 calc(100% - 48px), transparent);
 }
+/* its head: dragged to put the preview elsewhere */
+.cpeek-grip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  cursor: grab;
+}
+.cpeek.held,
+.cpeek.held .cpeek-grip {
+  cursor: grabbing;
+}
 /* Go to Card: an arrow under the preview, at its right */
 .cpeek-go {
   display: flex;

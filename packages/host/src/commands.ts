@@ -25,7 +25,7 @@ export const COMMANDS = {
   "codeboard.exportBoards": { title: "Export Boards…" },
   "codeboard.importBoards": { title: "Import Boards…" },
   "codeboard.revealInFolder": { title: "Reveal in Folder" },
-  "codeboard.copyBoardPath": { title: "Copy Path" },
+  "codeboard.copyBoardLink": { title: "Copy Link" },
   "codeboard.renameGroup": { title: "Rename Group", icon: "edit" },
   "codeboard.deleteGroup": { title: "Delete Group", icon: "close" },
   "codeboard.addToBoard": { title: "Add to Board" },

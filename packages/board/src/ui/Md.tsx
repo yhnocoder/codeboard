@@ -24,7 +24,8 @@ export function MdStatic(p: {
   prep?: boolean;
   /** A Note's body (its card id): animated images in it are drawn as players (md/anim.ts) */
   anims?: string;
-  /** A click on a [[reference]] (el) to `to`: true when it took the click (a card's preview), else the board goes there */
+  /** A click on a [[reference]] or a link to an item (el) to `to`: true when it took the click (a card's preview), else the
+   *  board goes there */
   onRef?: (to: RefTarget, el: HTMLElement) => boolean;
 }) {
   const md = useMd();
@@ -47,10 +48,12 @@ export function MdStatic(p: {
       data-tip={p.tip}
       onClick={(e) =>
         md.click(e, p.src, {
-          openLink: A.openLink,
+          openLink: (url) => A.openMdLink(url, md),
+          // a reference, or a link to an item (Copy Link): the page's preview when it takes it; ⌘-click goes there
           openRef: (id, to) => {
-            const r = (e.target as Element).closest<HTMLElement>(".md-ref");
-            if (!(r && p.onRef?.(to, r))) openRef(id, to);
+            const r = (e.target as Element).closest<HTMLElement>(".md-ref, .md-cardlink"),
+              go = e.metaKey || e.ctrlKey;
+            if (!(r && !go && p.onRef?.(to, r))) openRef(id, to);
           },
           onToggle: p.onToggle,
         })

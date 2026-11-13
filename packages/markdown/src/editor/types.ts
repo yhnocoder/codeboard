@@ -1,5 +1,6 @@
 // The editor's public options and handle, and the [[ reference candidates the caller gives
 import type { LspHost } from "../cm/editor";
+import type { RefTarget } from "../view";
 import type { MdLayout } from "../layout";
 import type { StaticTextRange } from "../selmap";
 import type { MdClasses } from "../ui/classes";
@@ -45,6 +46,11 @@ export type MdEditorOpts = {
    *  clipboard with copyImage), null to save it as usual */
   knownImage?: KnownImage;
   openLink?: (url: string) => void;
+  /**
+   * A click on a drawn [[reference]] that resolves (el: its chip): true when the caller took it (showed what it points to), and
+   * the caret stays where it was. Not given or false: the click opens the reference's source, as a double-click always does
+   */
+  onRef?: (to: RefTarget, el: HTMLElement) => boolean;
   /** 灰字补全（宿主没有就不给） */
   complete?: (before: string, after: string) => Promise<string | null>;
   /** 代码块（CodeMirror）：行注释记号（⌘/，默认 //）、语言服务（这种语言没有就给 undefined，块拆掉时调它的 close）、

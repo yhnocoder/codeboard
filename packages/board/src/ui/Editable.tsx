@@ -1,7 +1,7 @@
 // 原地编辑的文字：平时是普通文字（或渲染后的 Markdown），进入编辑后是纯文本可编辑框（md 的是所见即所得的 Markdown 编辑器）。
 // ↵ 提交（多行时 ⌘↵），点别处提交。Esc：单行取消，多行（Note 正文）保存后退出。
 import { keepKey } from "./vscodekeys";
-import { Show, batch, createEffect, onMount, type JSX } from "solid-js";
+import { Show, batch, createEffect, on as onChange, onMount, type JSX } from "solid-js";
 import { useFinish } from "./hooks";
 import { editing, setEditing, setLiveNote, takeEditEntry, type Editing } from "../state/ui";
 import type { MdLayout } from "@yhnocoder/markdown";
@@ -18,6 +18,7 @@ import {
 } from "../md/load";
 import { sel } from "../state/selection";
 import { useMd } from "../md/context";
+import { CardPeekOf, cardPeeks, type CardPeeks } from "./pops/cardpeek";
 
 export function Editable(p: {
   class?: string;
@@ -42,30 +43,38 @@ export function Editable(p: {
     createEffect(() => {
       if (sel.cards.length === 1 && sel.cards[0] === p.id && !on()) prepareSelected(md, p.value, p.layout);
     });
+  // a click on a [[reference]] to a card previews that card beside this one, shown or being edited, as in a sidenote
+  const peeks = p.md ? cardPeeks() : undefined;
+  // the reference it came from is drawn again when the editing starts or ends
+  if (peeks) createEffect(onChange(on, () => peeks.hide(), { defer: true }));
   return (
-    <Show
-      when={on()}
-      fallback={
-        p.md ? (
-          <MdStatic
-            class={p.class}
-            style={p.style}
-            ph={p.placeholder}
-            src={p.value}
-            layout={p.layout}
-            onToggle={(v) => p.onCommit(v)}
-            prep
-            anims={p.kind === "note" ? p.id : undefined}
-          />
-        ) : (
-          <div class={p.class} style={p.style} data-ph={p.placeholder}>
-            {p.value}
-          </div>
-        )
-      }
-    >
-      {p.md ? <MdEdit {...p} /> : <PlainEdit {...p} />}
-    </Show>
+    <>
+      <Show
+        when={on()}
+        fallback={
+          p.md ? (
+            <MdStatic
+              class={p.class}
+              style={p.style}
+              ph={p.placeholder}
+              src={p.value}
+              layout={p.layout}
+              onToggle={(v) => p.onCommit(v)}
+              prep
+              anims={p.kind === "note" ? p.id : undefined}
+              onRef={peeks && ((to, el) => peeks.toggle(to, el))}
+            />
+          ) : (
+            <div class={p.class} style={p.style} data-ph={p.placeholder}>
+              {p.value}
+            </div>
+          )
+        }
+      >
+        {p.md ? <MdEdit {...p} peeks={peeks} /> : <PlainEdit {...p} />}
+      </Show>
+      <Show when={peeks}>{(pk) => <CardPeekOf peeks={pk()} />}</Show>
+    </>
   );
 }
 
@@ -134,7 +143,7 @@ function PlainEdit(p: P) {
 }
 
 /** Markdown 编辑：编辑器代码第一次用到时才加载（单独一个 chunk），加载完之前先显示静态内容 */
-function MdEdit(p: P) {
+function MdEdit(p: P & { peeks?: CardPeeks }) {
   const md = useMd();
   let el!: HTMLDivElement;
   let ed: MdEditorHandle | undefined;
@@ -179,6 +188,7 @@ function MdEdit(p: P) {
       onDone: finish,
       onSourceMode: (on) => setSourceMode(p.id, on),
       headingChip: p.headingChip,
+      onRef: (to, el) => !!p.peeks?.toggle(to, el),
       // a Note on a card grows with its text and the board moves by its camera: only a fixed-height body scrolls
       scrollOwnBox: !!el.closest(".card"),
     });

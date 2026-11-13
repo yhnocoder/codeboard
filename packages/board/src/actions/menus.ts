@@ -94,7 +94,7 @@ import { captionItems, openAddNote, showPeek, tableCaptionItems } from "./notes"
 import { mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
 import { canLinkList } from "@codeboard/core/commands";
 import { moveOutOfParent, setSectionColor, toggleCompare, unlinkShared } from "./edit";
-import { deleteEverywhere, pasteFromBoard, copyCardsSel, cutCardsSel, detachTwins, copyPath } from "./shared";
+import { deleteEverywhere, pasteFromBoard, copyCardsSel, cutCardsSel, detachTwins, copyLink } from "./shared";
 import {
   enterFrame,
   turnIntoBoard,
@@ -339,12 +339,12 @@ function kindItems(id: string, x: number, y: number): Item[] {
     run: () => toggleLock([host.id]),
   };
   const tiltItem: Item = { label: "Tilt", kbd: kbd("tilt"), checked: !!host.tilt, run: () => toggleTilt([host.id]) };
-  // 每种卡同一个结构：这种卡自己的几项 → Arrange ▸（含 Tilt、Lock）、Copy Path → 分隔线 → Delete（红）。
+  // 每种卡同一个结构：这种卡自己的几项 → Arrange ▸（含 Tilt、Lock）、Copy Link → 分隔线 → Delete（红）。
   // 界面上已经有的（双击改名、⌘D、拖圆点连线、卡头悬停的 Fit Content / Wrap Lines / Split by Headings）和有快捷键的整理类
   // （Move to Shelf ⌥S、Turn into Board ⌘⇧B）不进菜单
-  // Copy Path：Compare 的一栏是那一栏自己（白板文件里它也是一张卡）
+  // Copy Link：Compare 的一栏是那一栏自己（白板文件里它也是一张卡）
   const arrange = arrangeItem(() => [host.id], [tiltItem, lockItem]);
-  const pathItem: Item = { label: "Copy Path", run: () => void copyPath([id]) };
+  const pathItem: Item = { label: "Copy Link", run: () => void copyLink([id]) };
   const tail: Item[] = [arrange, pathItem, null, ...deleteItems(host.id)];
   const ai = (): Item => ({ label: "AI", sub: [drawSvgItem(id), autoFocusItem(id)] });
   // 子白板框：打开、移除框（白板还在侧栏里）、删掉那块白板
@@ -599,7 +599,7 @@ function multiItems(): Item[] {
       run: () => void tidyUp(),
     },
     arrangeItem(() => [...sel.cards]),
-    { label: "Copy Paths", run: () => void copyPath([...sel.cards, ...sel.sections]) },
+    { label: "Copy Links", run: () => void copyLink([...sel.cards, ...sel.sections]) },
     null,
     { label: "Cut", kbd: kbd("cut"), run: () => cutCardsSel() },
     { label: "Copy", kbd: kbd("copy"), run: () => copyCardsSel() },
@@ -932,7 +932,7 @@ function multiSectionItems(ids: string[]): Item[] {
       run: () => toggleLock([], ids),
     },
     sectionColorItem(ids),
-    { label: "Copy Paths", run: () => void copyPath(ids) },
+    { label: "Copy Links", run: () => void copyLink(ids) },
     null,
     shelfItem(),
     { label: `Remove ${ss.length} Sections`, hint: "Cards and inner sections stay", run: () => removeSections(ids) },
@@ -962,7 +962,7 @@ export function sectionMenu(id: string, x: number, y: number) {
             } as Item,
           ]
         : []),
-      { label: "Copy Path", run: () => void copyPath([id]) },
+      { label: "Copy Link", run: () => void copyLink([id]) },
       null,
       { label: "Remove Section", hint: "Cards and inner sections stay", run: () => removeSections([id]) },
     ],

@@ -35,7 +35,7 @@ export function wantBoardRefs(md: Markdown) {
 }
 /** 骨架、别的白板的卡到了以后，静态 Note 里的 [[引用]] 再认一遍（指向它们的，没到时显示成找不到） */
 export function refreshRefs(md: Markdown) {
-  for (const r of document.querySelectorAll<HTMLElement>(".md .md-ref"))
+  for (const r of document.querySelectorAll<HTMLElement>(".md .md-ref, .md .md-cardlink"))
     if (!r.closest("[contenteditable=true]")) md.paintRef(r);
 }
 /**
