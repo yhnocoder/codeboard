@@ -46,6 +46,13 @@ enum Watchdog {
       }, nil)
   }()
 
+  /// a line on stderr (unbuffered, so it is there however the process ends), on CI only
+  static func trace(_ what: String, _ function: String = #function) {
+    let env = ProcessInfo.processInfo.environment
+    guard env["CI"] == "true" || env["GITHUB_ACTIONS"] == "true" else { return }
+    say("trace \(function): \(what)\n")
+  }
+
   nonisolated(unsafe) static var seconds = 120
   nonisolated(unsafe) static var file: Int32 = -1
 

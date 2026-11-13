@@ -75,6 +75,7 @@ private func near(_ a: [Int], _ b: [Int], _ d: Int = 6) -> Bool { zip(a, b).allS
 @MainActor @Suite(.serialized, .timeLimit(.minutes(1))) struct CanvasNoteTests {
   /// Every Note is laid out and drawn before the board shows, its overview its picture at once, with no web view
   @Test func notesAreDrawnBeforeTheBoardShowsWithoutAWebView() async throws {
+    Watchdog.trace("start")
     _ = Watchdog.started
     _ = NSApplication.shared
     let root = try tempFolder("canvas-notes")
@@ -102,7 +103,9 @@ private func near(_ a: [Int], _ b: [Int], _ d: Int = 6) -> Bool { zip(a, b).allS
     try board.encoded().write(to: package.appending(path: Vault.boardFileName))
     let vault = Vault(root: root)
     let canvas = CanvasView(frame: CGRect(x: 0, y: 0, width: 800, height: 600), svgCache: cache)
+    Watchdog.trace("before show")
     try await canvas.show(VaultBoard(id: board.id, title: "B", path: "B.board"), in: vault, theme: .warmInk)
+    Watchdog.trace("shown")
     #expect(canvas.boardBounds.height > 300)
     #expect(canvas.noteProgress.overviews == 3 && canvas.noteProgress.notes == 3)
     #expect(canvas.svgWebView.made == 0 && !canvas.svgWebView.open)
@@ -111,6 +114,7 @@ private func near(_ a: [Int], _ b: [Int], _ d: Int = 6) -> Bool { zip(a, b).allS
   /// A Note's images go through the canvas's decode cache, as image cards' do: each decoded for the width it is drawn
   /// at (a tall one not under-resolved), the frame `{frame=N}` names
   @Test func noteImagesShareTheImageCardsCache() throws {
+    Watchdog.trace("start")
     let root = try tempFolder("canvas-note-images")
     defer { try? FileManager.default.removeItem(at: root) }
     let package = root.appending(path: "B.board")
@@ -162,6 +166,7 @@ private func near(_ a: [Int], _ b: [Int], _ d: Int = 6) -> Bool { zip(a, b).allS
   /// An SVG image card is rasterized (WebKit): paper until then, then the picture over it with what NSImage drew black
   /// (a CSS variable's colour)
   @Test func anSVGImageCardIsRasterized() async throws {
+    Watchdog.trace("start")
     _ = NSApplication.shared
     let root = try tempFolder("canvas-svg")
     let cache = try tempFolder("canvas-svg-cache")
@@ -183,9 +188,11 @@ private func near(_ a: [Int], _ b: [Int], _ d: Int = 6) -> Bool { zip(a, b).allS
     let paper = try #require(CanvasView.render(item, scale: 2, theme: .warmInk, images: images).surface)
     #expect(bgra(paper, 50, 50) == [0, 0, 0, 0])
     let svgs = SVGRasterizer(cache: cache)
+    Watchdog.trace("before the cached picture")
     let none = await CanvasView.drawWithSVGs(
       item, scale: 2, theme: .warmInk, images: images, svgs: svgs, priority: nil)
     #expect(none.surface == nil && svgs.pagesMade == 0)
+    Watchdog.trace("before the rasterized picture")
     let drawn = try #require(
       await CanvasView.drawWithSVGs(item, scale: 2, theme: .warmInk, images: images, svgs: svgs, priority: 0).surface)
     #expect(drawn.width == 400 && drawn.height == 200)
@@ -195,6 +202,7 @@ private func near(_ a: [Int], _ b: [Int], _ d: Int = 6) -> Bool { zip(a, b).allS
 
   /// An SVG in a Note goes the same way: rasterized at the width it is drawn, then drawn in its place
   @Test func anSVGInANoteIsRasterized() async throws {
+    Watchdog.trace("start")
     _ = NSApplication.shared
     let root = try tempFolder("canvas-note-svg")
     let cache = try tempFolder("canvas-note-svg-cache")
@@ -219,6 +227,7 @@ private func near(_ a: [Int], _ b: [Int], _ d: Int = 6) -> Bool { zip(a, b).allS
       return
     }
     #expect(item.drawing.byRenderer)
+    Watchdog.trace("before the Note's SVG")
     let drawn = try #require(
       await CanvasView.drawWithSVGs(
         item, scale: 2, theme: .warmInk, images: DecodeCache(cap: 1 << 20), svgs: SVGRasterizer(cache: cache),

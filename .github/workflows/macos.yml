@@ -35,15 +35,17 @@ jobs:
           WATCHDOG_FILE: ${{ runner.temp }}/watchdog.txt
         run: |
           swift build --build-tests
-          for s in canvasIsLayerBacked ChooseModeTests ConnectTests CloseCardsTests LabelPlacementTests CameraTests \
+          for s in notesAreDrawnBeforeTheBoardShowsWithoutAWebView noteImagesShareTheImageCardsCache \
+            anSVGImageCardIsRasterized anSVGInANoteIsRasterized \
+            canvasIsLayerBacked ChooseModeTests ConnectTests CloseCardsTests LabelPlacementTests CameraTests \
             MotionTests RestWeightTests LevelsTests RestPlanTests RedrawQueueTests NoteLevelsTests NoteSizeTests \
             CanvasNoteTests CodeLayoutTests SceneTests ByteLRUTests PrototypeMotionTests RefTests SnapshotKeyTests \
             SnapshotStoreTests RenderQueueTests SVGRasterizerTests ThemeTests SeededTests; do
             start=$(date +%s)
             code=0
-            perl -e 'alarm shift; exec @ARGV' 90 swift test --skip-build --filter "CodeBoardCanvasTests.*$s" > "$RUNNER_TEMP/suite-$s.log" 2>&1 || code=$?
+            CI=true perl -e 'alarm shift; exec @ARGV' 90 swift test --skip-build --filter "CodeBoardCanvasTests.*$s" > "$RUNNER_TEMP/suite-$s.log" 2>&1 || code=$?
             echo "=== $s: exit $code after $(( $(date +%s) - start )) s; $(grep -c 'passed after' "$RUNNER_TEMP/suite-$s.log") passed"
-            if [ $code -ne 0 ]; then tail -40 "$RUNNER_TEMP/suite-$s.log"; fi
+            if [ $code -ne 0 ]; then echo "--- its output:"; tail -60 "$RUNNER_TEMP/suite-$s.log"; fi
           done
       - run: swift test
         env:
