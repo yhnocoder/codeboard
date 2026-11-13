@@ -84,6 +84,40 @@ import Foundation
     changed(.edit)
   }
 
+  // MARK: A new card not written yet
+
+  /// A card just made and not written yet (core CommandEnv.fresh): it is on the board, but no undo step until it is
+  /// written; left empty, it goes and leaves none
+  private var fresh: (id: CardID, before: Board, selection: Set<Item>)?
+
+  public var freshCard: CardID? { fresh?.id }
+
+  /// Puts a new card on the board, selected, with no undo step yet
+  public func addFresh(_ card: Card) {
+    if fresh != nil { settleFresh(keep: false, "") { _ in } }
+    fresh = (card.id, board, selection)
+    board.cards.append(card)
+    selection = [.card(card.id)]
+    changed(.edit)
+  }
+
+  /// The new card is written (`change`): with `keep`, making it and writing it are one undo step named `name`; without,
+  /// it goes as if it had never been
+  public func settleFresh(keep: Bool, _ name: String, _ change: (inout Board) -> Void) {
+    guard let f = fresh else { return }
+    fresh = nil
+    var b = board
+    change(&b)
+    if !keep { b.delete([.card(f.id)]) }
+    // left empty: the selection it took is given back
+    let now = (keep ? selection : f.selection).filter { b.has($0) }
+    if keep { history.record(name, from: f.before, to: b, selection: (f.selection, now)) }
+    guard b != board || now != selection else { return }
+    board = b
+    selection = now
+    changed(.edit)
+  }
+
   public func select(_ items: Set<Item>) {
     selection = items.filter { board.has($0) }
     for o in observers.values { o(.edit) }
@@ -169,6 +203,8 @@ import Foundation
     }
     problem = nil
     let merged = Board.merge(base: base, mine: board, disk: theirs)
+    // what a new card's step will start from takes in the other writer's changes too, so undoing it leaves them
+    if let f = fresh { fresh?.before = Board.merge(base: base, mine: f.before, disk: theirs) }
     base = theirs
     baseData = data
     guard merged != board else { return }
