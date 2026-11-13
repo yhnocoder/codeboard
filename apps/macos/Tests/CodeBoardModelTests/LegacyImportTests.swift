@@ -4,7 +4,8 @@ import Testing
 
 /// Imports `boards` (relative path → old board) and `shared` (id → old shared card file) from a fresh storage folder
 private func importing(
-  _ boards: [String: [String: Any]], shared: [String: [String: Any]] = [:], assets: [String: Data] = [:]
+  _ boards: [String: [String: Any]], shared: [String: [String: Any]] = [:], assets: [String: Data] = [:],
+  before: (URL) throws -> Void = { _ in }
 ) throws -> (vault: Vault, report: ImportReport, source: URL) {
   let root = try scratch()
   let source = root.appending(path: "storage")
@@ -16,6 +17,7 @@ private func importing(
   }
   try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
   let vault = Vault(root: root.appending(path: "vault"))
+  try before(vault.root)
   return (vault, try LegacyImport.run(from: source, to: vault.root), source)
 }
 
@@ -467,15 +469,20 @@ private func unchanged(_ before: [String: Data], _ after: [String: Data]) -> [St
   try card.encoded().write(to: vault.sharedFolderURL.appending(path: "lib.json"))
   let report = try LegacyImport.run(from: source, to: vault.root)
   #expect(report.failed.isEmpty)
-  let copy = try vault.board(at: "Outer copy.board")
-  #expect(copy.cards[0].content == .own(CardContent(body: .board(SubBoard(board: BoardID(rawValue: "bsub-copy"))))))
+  // the board Outer shows is in Outer's folder, Outer its folder board; the copies the same, side by side
+  let copy = try vault.board(at: "Outer copy/.folder.board")
+  #expect(
+    copy.cards[0].content
+      == .own(CardContent(body: .board(SubBoard(board: BoardID(rawValue: "bsub-copy"), auto: true)))))
+  #expect(try vault.board(at: "Outer copy/Inner copy.board").id.rawValue == "bsub-copy")
   let refs = "see [[Inner#^bsub-copy]] and [[Card#^bsub-copy/x]] and [[Shared#^lib-copy]]"
   #expect(copy.cards[1].content == .own(CardContent(body: .note(Note(text: refs)))))
   let lib2 = try vault.sharedCard(CardID(rawValue: "lib-copy"))
   #expect(lib2.content.body == .note(Note(text: "mine is [[Shared#^lib-copy]]")))
   // the originals refer to the originals
-  let first = try vault.board(at: "Outer.board")
-  #expect(first.cards[0].content == .own(CardContent(body: .board(SubBoard(board: BoardID(rawValue: "bsub"))))))
+  let first = try vault.board(at: "Outer/.folder.board")
+  #expect(
+    first.cards[0].content == .own(CardContent(body: .board(SubBoard(board: BoardID(rawValue: "bsub"), auto: true)))))
 }
 
 @Test func otherVersionsAndMalformedFilesFailOneByOne() throws {
@@ -744,4 +751,63 @@ private func unchanged(_ before: [String: Data], _ after: [String: Data]) -> [St
       .variants: ["c"], .sidenoteWithoutAnchor: ["n5", "n6"], .stickerWithoutAnchor: ["k6"], .arrowSticker: ["k5"],
       .stickerPack: ["k4"], .field: ["sb.pcols", "n4.why"],
     ])
+}
+
+@Test func boardsShownByOthersGoIntoTheirFolderWhoseFolderBoardTheyAre() throws {
+  // Top shows Mid and Leaf; Mid shows Leaf and Deep; Other (later) shows Leaf too; Loop and Back show each other;
+  // a folder named Top is there already
+  let (vault, report, _) = try importing(
+    [
+      "a-top.json": oldBoard(
+        "top", name: "Top",
+        cards: [
+          ["id": "m", "kind": "board", "board": "mid"], ["id": "l", "kind": "board", "board": "leaf"], oldNote("own"),
+          ["id": "m2", "kind": "board", "board": "mid"],
+        ],
+        place: [
+          "m": ["x": 10, "y": 20, "w": 300], "l": ["x": 500, "y": 20, "w": 300], "own": ["x": 0, "y": 400, "w": 200],
+          "m2": ["x": 900, "y": 20, "w": 300],
+        ]),
+      "b-mid.json": oldBoard(
+        "mid", name: "Mid",
+        cards: [["id": "l", "kind": "board", "board": "leaf"], ["id": "d", "kind": "board", "board": "deep"]]),
+      "c-leaf.json": oldBoard("leaf", name: "Leaf"),
+      "d-deep.json": oldBoard("deep", name: "Deep 深"),
+      "e-other.json": oldBoard("other", name: "Other", cards: [["id": "l", "kind": "board", "board": "leaf"]]),
+      "f-loop.json": oldBoard("loop", name: "Loop", cards: [["id": "b", "kind": "board", "board": "back"]]),
+      "g-back.json": oldBoard("back", name: "Back", cards: [["id": "l", "kind": "board", "board": "loop"]]),
+    ],
+    before: {
+      try FileManager.default.createDirectory(at: $0.appending(path: "Top"), withIntermediateDirectories: true)
+    })
+  #expect(report.failed.isEmpty)
+  #expect(
+    report.imported.map(\.destination) == [
+      "Top 2/.folder.board", "Top 2/Mid/.folder.board", "Top 2/Leaf.board", "Top 2/Mid/Deep 深.board", "Other.board",
+      "Loop/.folder.board", "Loop/Back.board",
+    ])
+  // the folder board keeps its content and where its cards are; its cards for its own boards are automatic
+  let top = try vault.board(at: "Top 2/.folder.board")
+  #expect(top.id.rawValue == "top" && top.cards.count == 4)
+  #expect(top.cards[0].content == .own(CardContent(body: .board(SubBoard(folder: "Mid")))))
+  #expect(top.cards[0].x == 10 && top.cards[0].y == 20)
+  #expect(
+    top.cards[1].content == .own(CardContent(body: .board(SubBoard(board: BoardID(rawValue: "leaf"), auto: true)))))
+  #expect(
+    top.cards[3].content == .own(CardContent(body: .board(SubBoard(board: BoardID(rawValue: "mid"))))), "a second")
+  // Mid shows Leaf, which is Top's: a plain card; Other's too
+  let mid = try vault.board(at: "Top 2/Mid/.folder.board")
+  #expect(mid.cards[0].content == .own(CardContent(body: .board(SubBoard(board: BoardID(rawValue: "leaf"))))))
+  #expect(
+    mid.cards[1].content == .own(CardContent(body: .board(SubBoard(board: BoardID(rawValue: "deep"), auto: true)))))
+  #expect(
+    try vault.board(at: "Other.board").cards[0].content
+      == .own(CardContent(body: .board(SubBoard(board: BoardID(rawValue: "leaf"))))))
+  // the tree: titles from the folders, nothing in the folder that was there
+  let tree = try vault.tree()
+  #expect(tree.folder(at: "Top 2")?.folderBoard?.title == "Top 2" && tree.folder(at: "Top")?.allBoards.isEmpty == true)
+  #expect(tree.folder(at: "Top 2/Mid")?.folderBoard?.id.rawValue == "mid")
+  // on its folder board, what the folder has: nothing to add or take away
+  var t = top
+  #expect(!t.keepUp(with: try #require(tree.folder(at: "Top 2")).entries))
 }

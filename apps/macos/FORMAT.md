@@ -20,6 +20,7 @@ A vault is a folder of its own. Its folder tree is the sidebar's tree: real fold
     board.json
     images/<file>               images the board shows
   engine/                       a folder
+    .folder.board/              the folder's own board (a folder board), titled "engine"
     Scheduler- prefill-decode.board/
   .codeboard/                   the app's own data (Vault.appDataFolder)
     shared/<card id>.json       shared cards
@@ -30,6 +31,16 @@ A vault is a folder of its own. Its folder tree is the sidebar's tree: real fold
   `.board` is a package and is not looked into; any other folder is a folder. Files outside packages are ignored for now
   (resources come later). Sidebar order is Finder's (`localizedStandardCompare`).
 - The title lives only in the package name, so renaming in Finder renames the board; `board.json` has no title.
+- **Folder boards**: a folder (not the vault itself) may hold one board package named `.folder.board`
+  (`Vault.folderBoardName`), hidden like every dot name and read as that folder's own board. Its title is always the
+  folder's name, so renaming either is the one rename of the folder; a board package that happens to be named like its
+  folder is an ordinary board. On a folder board the app keeps one automatic sub-board card for each board and each
+  subfolder in the folder (below).
+- **Changes from the app** (`VaultFiles.swift`) are each one new name or one rename, never over anything
+  (`renamex_np` with `RENAME_EXCL`; a name the folder has already, compared as APFS does, is refused, and the sidebar
+  offers `name 2`, `name 3`…); a new package is built under a hidden name and renamed into place whole; a change of case
+  alone goes through a hidden name. Deleting moves to the system Trash (there is no trash folder in the vault), never
+  removes. Boards refer to each other by id, so a renamed or moved board keeps every ref and sub-board card to it.
 - Everything regenerable (search index, Note snapshots, overview pictures) lives in the system cache folder, never in the
   vault.
 - An image name in `images/` is a plain file name (`[A-Za-z0-9_-][A-Za-z0-9_.-]*`). A reference `images/<file>` (Markdown)
@@ -130,8 +141,15 @@ an animated image rests on; `loops`: it always plays.
 
 **links**: `items: [{id, url, title?, meta?, rich?}], rich`: a link list; an item's `rich` absent: the card's.
 
-**board**: `board: <board id>`: another board shown inside this one (a sub-board card). Its preview's column count, a choice
-of the moment, is not kept.
+**board**: `board: {board: <board id>, auto?}` or `board: {folder: <name>, auto: true}`: another board shown inside this
+one (a sub-board card), by id, or a subfolder of a folder board's folder by its name (it shows that folder's folder
+board, when it has one). `auto: true` (only written when true) marks a folder board's automatic card, which the app keeps
+in step with the folder: one for each board and subfolder in it, in sidebar order; a card for what left goes (and the
+arrows on it); one for what came goes after the last automatic card, `400 × 300`, `80` apart, in rows of four from the
+first one's left with `120` between rows (the first below what the board has, or at 0, 0); places left by cards that went
+are not filled, and the user's own content and every card's position are kept. A subfolder renamed in the app keeps its
+card; renamed in Finder it is one gone and one new. A plain card (no `auto`) is the user's own and can be on any board.
+Its preview's column count, a choice of the moment, is not kept.
 
 **Summary** (a card's, a section's `summary` and `directSummary`): `text, title?, at, sig, edited, pairs: [{ai, user, at}],
 input?`, as core `summary.ts` keeps it: `sig` a fingerprint of what it was written from (another one now: out of date),
@@ -209,7 +227,16 @@ lists each failure; the rest are imported.
 
 **Ids**: the board's own `id`, else its file name (as the old host did); cards, sections, arrows and segments keep theirs.
 
-**Placement**: a new board goes to `<group folder>/<title>.board`, top-level boards to the vault root. The group name and
+**Placement**: a new board goes to `<group folder>/<title>.board`, top-level boards to the vault root. **Folder boards
+from sub-board cards** (decided): a board whose sub-board cards show other boards of the same import becomes the folder
+board of a new folder named after it, where a board would go (`<group>/<title>/.folder.board`), with its content and card
+positions kept, and the boards it shows go into that folder; its first card for each of them becomes an automatic card.
+A board shown by several boards goes under the first of them in the old files' path order that is not inside it (no
+board goes inside itself: of two boards that show each other, the first is the folder board); the others keep a plain
+card for it. Nesting goes to any depth: a shown board that shows others is the folder board of a subfolder of its
+parent's folder, and its parent's card for it is the automatic card for that subfolder. A folder name already in its
+parent (compared as APFS does) gets ` 2`, ` 3`…; the import never puts anything into a folder that was there. A copy
+(below) gets its folder named `<title> copy`, and the boards it shows come in beside it in that folder. The group name and
 title go through `Vault.packageName`: `/ \ : * ? " < > |` become `-` (illegal on macOS, or break a clone on Windows), control
 characters go, leading dots go (they would hide the board), trailing dots and spaces go, it is cut to 200 bytes of UTF-8,
 stored precomposed (NFC), and an empty one is `Untitled`. A name already in the folder (compared without case or

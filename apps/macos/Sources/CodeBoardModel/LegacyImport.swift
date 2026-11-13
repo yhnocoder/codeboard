@@ -358,27 +358,138 @@ private struct Run {
       renames.boards[r.id] = BoardID(rawValue: copy)
     }
     try writeSharedCards()
+    var mapped: [Mapped] = []
     for (file, group, rel, o, version, id) in read {
       do {
         var m = Mapper(version: version)
         var board = try m.board(o, id: id, shared: shared)
         if let p = board.problem() { throw Bad(p) }
         board.rename(renames)
-        let folder = group.isEmpty ? "" : folderName(group)
         // already in the vault: a copy beside where a new one would go, named as the Finder names a copy
         let title = Vault.packageName(for: try o.string("name"))
-        let name = freeName(inVault[id] == nil ? title : "\(title) copy", in: folder)
-        let path = folder.isEmpty ? name : "\(folder)/\(name)"
-        for (kind, name) in try writePackage(board, m, folder: folder, name: name) { m.skips.add(kind, name) }
-        for c in board.cards where c.content == .shared { sharedShown.insert(c.id) }
-        entries.append(.init(source: rel, destination: path, copyOf: inVault[id], skipped: m.skips.list))
+        mapped.append(
+          Mapped(
+            file: file, rel: rel, group: group.isEmpty ? "" : folderName(group), board: board, mapper: m,
+            name: inVault[id] == nil ? title : "\(title) copy", copyOf: inVault[id]))
       } catch let bad as Bad {
         failed.append(.malformed(file, bad.message))
       } catch let e as LegacyImportError {
         failed.append(e)
       }
     }
+    let folders = folderBoards(&mapped)
+    for i in mapped.indices {
+      var b = mapped[i]
+      do {
+        let folder: String
+        let name: String
+        if let own = folders.own[i] {
+          (folder, name) = (own, Vault.folderBoardName)
+        } else {
+          folder = folders.parent[i].flatMap { folders.own[$0] } ?? b.group
+          name = freeName(b.name, in: folder)
+        }
+        let path = folder.isEmpty ? name : "\(folder)/\(name)"
+        for (kind, name) in try writePackage(b.board, b.mapper, folder: folder, name: name) {
+          b.mapper.skips.add(kind, name)
+        }
+        for c in b.board.cards where c.content == .shared { sharedShown.insert(c.id) }
+        entries.append(.init(source: b.rel, destination: path, copyOf: b.copyOf, skipped: b.mapper.skips.list))
+      } catch let e as LegacyImportError {
+        failed.append(e)
+      } catch {
+        failed.append(.unwritable(b.file, error.localizedDescription))
+      }
+    }
+    // a folder made for a board none of whose boards could be written
+    for f in folders.own.values.sorted(by: >) {
+      let u = vault.url(of: f)
+      if (try? FileManager.default.contentsOfDirectory(atPath: u.path))?.isEmpty == true {
+        try? FileManager.default.removeItem(at: u)
+      }
+    }
     dropUnusedCopies()
+  }
+
+  /// A board read and mapped, before it is written
+  private struct Mapped {
+    var file: URL
+    var rel: String
+    /// Its group's folder ("" at the top)
+    var group: String
+    var board: Board
+    var mapper: Mapper
+    /// Its package or folder name (a copy's with ` copy`)
+    var name: String
+    var copyOf: String?
+  }
+
+  /// The boards that other boards of this import show in their sub-board cards go into a folder named after the board
+  /// showing them, which becomes that folder's folder board, its content and card positions kept; its cards for them
+  /// become its automatic ones. A board shown by several is put under the first of them (in the old files' path order)
+  /// that is not inside it; the others keep a plain card for it. Nested to any depth (a shown board that shows others
+  /// is a folder board in its parent's folder). The folders are made here, each under a name nothing in its parent has
+  /// (`P`, `P 2`…; never into something there). Returns for each board its folder (folder boards) and its parent
+  private mutating func folderBoards(_ mapped: inout [Mapped]) -> (own: [Int: String], parent: [Int: Int]) {
+    var index: [BoardID: Int] = [:]
+    for (i, b) in mapped.enumerated() { index[b.board.id] = i }
+    func shown(_ i: Int) -> [(card: Int, board: Int)] {
+      mapped[i].board.cards.enumerated().compactMap { n, c in
+        guard case .own(let content) = c.content, case .board(let s) = content.body, let t = s.board, let j = index[t]
+        else { return nil }
+        return (n, j)
+      }
+    }
+    var parent: [Int: Int] = [:]
+    for i in mapped.indices {
+      for (_, j) in shown(i) where j != i && parent[j] == nil {
+        // never under itself
+        var up: Int? = i
+        while let u = up, u != j { up = parent[u] }
+        if up == nil { parent[j] = i }
+      }
+    }
+    // the folders, a parent's before its children's
+    func depth(_ i: Int) -> Int { parent[i].map { depth($0) + 1 } ?? 0 }
+    let owners = Set(parent.values).sorted { (depth($0), $0) < (depth($1), $1) }
+    var own: [Int: String] = [:]
+    for i in owners {
+      let into = parent[i].flatMap { own[$0] } ?? mapped[i].group
+      guard let made = makeFreeFolder(Vault.folderName(for: mapped[i].name), in: into) else { continue }
+      own[i] = made
+    }
+    // each folder board's cards for its boards become its automatic ones (the first for each)
+    for i in owners where own[i] != nil {
+      var done = Set<Int>()
+      for (n, j) in shown(i) where parent[j] == i && done.insert(j).inserted {
+        guard case .own(var content) = mapped[i].board.cards[n].content else { continue }
+        let folder = own[j].map { String($0.split(separator: "/").last ?? "") }
+        content.body = .board(folder.map { SubBoard(folder: $0) } ?? SubBoard(board: mapped[j].board.id, auto: true))
+        mapped[i].board.cards[n].content = .own(content)
+      }
+    }
+    return (own, parent.filter { own[$0.value] != nil })
+  }
+
+  /// A new folder `name` in `folder` (`name 2`, `name 3`… when something there has the name); its path, nil when it
+  /// could not be made
+  private func makeFreeFolder(_ name: String, in folder: String) -> String? {
+    let key = { (s: String) in s.precomposedStringWithCanonicalMapping.lowercased() }
+    let parent = vault.url(of: folder)
+    try? FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+    let used = Set(((try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? []).map(key))
+    var n = 1
+    while true {
+      let candidate = n == 1 ? name : "\(name) \(n)"
+      n += 1
+      guard !used.contains(key(candidate)) else { continue }
+      // made here or not at all: something that came meanwhile is never taken over
+      guard
+        (try? FileManager.default.createDirectory(
+          at: parent.appending(path: candidate), withIntermediateDirectories: false)) != nil
+      else { return nil }
+      return folder.isEmpty ? candidate : "\(folder)/\(candidate)"
+    }
   }
 
   /// A board package, built under a hidden name in its folder and moved into place whole, never over anything: a failure
@@ -1342,7 +1453,7 @@ extension CardContent {
       t.text = r.markdown(t.text)
       body = .text(t)
     case .board(let b):
-      body = .board(SubBoard(board: r.boards[b.board] ?? b.board))
+      if let id = b.board { body = .board(SubBoard(board: r.boards[id] ?? id, auto: b.auto)) }
     case .code, .image, .web, .links: break
     }
   }

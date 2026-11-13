@@ -543,12 +543,32 @@ public struct LinkList: Codable, Equatable, Sendable {
   }
 }
 
-/// Another board, drawn inside this one
-public struct SubBoard: Codable, Equatable, Sendable {
-  public var board: BoardID
+/// Another board drawn inside this one, or on a folder board one of its folder's subfolders
+public struct SubBoard: Equatable, Sendable {
+  public enum Target: Hashable, Sendable {
+    case board(BoardID)
+    /// A subfolder of the folder board's folder, by name
+    case folder(String)
+  }
 
-  public init(board: BoardID) {
-    self.board = board
+  public var target: Target
+  /// One of a folder board's own cards, one for each board and subfolder in its folder: kept in step with the folder,
+  /// never deleted on the board
+  public var auto: Bool
+
+  public init(board: BoardID, auto: Bool = false) {
+    target = .board(board)
+    self.auto = auto
+  }
+
+  public init(folder: String) {
+    target = .folder(folder)
+    auto = true
+  }
+
+  /// The board it shows, when it shows a board
+  public var board: BoardID? {
+    if case .board(let b) = target { b } else { nil }
   }
 }
 

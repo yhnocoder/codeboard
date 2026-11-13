@@ -13,6 +13,10 @@ public enum VaultError: Error, Equatable, CustomStringConvertible {
   case olderFormat(URL, Int)
   case duplicateBoardID(BoardID, [URL])
   case badSharedCardID(String)
+  /// Something of that name is already there: nothing is ever written over
+  case exists(URL)
+  /// A change of the vault's files that could not be made; nothing was changed
+  case unwritable(URL, String)
 
   public var description: String {
     switch self {
@@ -26,6 +30,8 @@ public enum VaultError: Error, Equatable, CustomStringConvertible {
         + "from its VS Code storage folder"
     case .duplicateBoardID(let id, let files):
       "board id \(id.rawValue) is in more than one board: \(files.map(\.path).joined(separator: ", "))"
+    case .exists(let url): "\(url.path): there is already something of that name"
+    case .unwritable(let url, let why): "\(url.path): \(why)"
     case .badSharedCardID(let id): "\(id) cannot name a shared card (letters, digits, - and _ only)"
     }
   }
@@ -447,6 +453,35 @@ extension CardContent: Codable {
     case .links(let links): try c.encode(links, forKey: .links)
     case .board(let board): try c.encode(board, forKey: .board)
     }
+  }
+}
+
+extension SubBoard: Codable {
+  private enum Keys: String, CodingKey {
+    case board, folder, auto
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: Keys.self)
+    let board = try c.decodeIfPresent(BoardID.self, forKey: .board)
+    let folder = try c.decodeIfPresent(String.self, forKey: .folder)
+    let auto = try c.decodeIfPresent(Bool.self, forKey: .auto) ?? false
+    switch (board, folder) {
+    case (let b?, nil): self.init(board: b, auto: auto)
+    case (nil, let f?) where auto && !f.isEmpty: self.init(folder: f)
+    default:
+      throw DecodingError.dataCorrupted(
+        .init(codingPath: c.codingPath, debugDescription: "a board card has a board, or a folder and auto"))
+    }
+  }
+
+  public func encode(to encoder: any Encoder) throws {
+    var c = encoder.container(keyedBy: Keys.self)
+    switch target {
+    case .board(let b): try c.encode(b, forKey: .board)
+    case .folder(let f): try c.encode(f, forKey: .folder)
+    }
+    if auto { try c.encode(true, forKey: .auto) }
   }
 }
 

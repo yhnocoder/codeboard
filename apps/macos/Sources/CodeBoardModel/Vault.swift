@@ -9,6 +9,8 @@ public struct Vault: Sendable {
   public static let imagesFolder = "images"
   /// In the app-data folder: `<card id>.json`, and their images in its own images folder
   public static let sharedFolder = "shared"
+  /// A folder's own board, hidden in it: its title is always the folder's name
+  public static let folderBoardName = ".folder.board"
 
   public let root: URL
 
@@ -80,6 +82,16 @@ public struct Vault: Sendable {
       throw VaultError.unreadable(dir, error.localizedDescription)
     }
     var out = VaultFolder(name: name, path: path, folders: [], boards: [])
+    // the vault itself has none
+    if !path.isEmpty {
+      let own = dir.appending(path: Vault.folderBoardName)
+      var isDir: ObjCBool = false
+      if FileManager.default.fileExists(atPath: own.path, isDirectory: &isDir), isDir.boolValue {
+        let child = "\(path)/\(Vault.folderBoardName)"
+        out.folderBoard = VaultBoard(
+          id: try boardID(in: own.appending(path: Vault.boardFileName)), title: name, path: child, isFolderBoard: true)
+      }
+    }
     for name in names.sorted(by: { $0.localizedStandardCompare($1) == .orderedAscending }) {
       let entry = dir.appending(path: name)
       var isDir: ObjCBool = false
@@ -126,9 +138,36 @@ public struct VaultFolder: Equatable, Sendable {
   public var path: String
   public var folders: [VaultFolder]
   public var boards: [VaultBoard]
+  /// Its own board (`.folder.board` in it), titled with its name
+  public var folderBoard: VaultBoard?
 
-  /// Every board in this folder and below
-  public var allBoards: [VaultBoard] { boards + folders.flatMap(\.allBoards) }
+  public init(
+    name: String, path: String, folders: [VaultFolder], boards: [VaultBoard], folderBoard: VaultBoard? = nil
+  ) {
+    self.name = name
+    self.path = path
+    self.folders = folders
+    self.boards = boards
+    self.folderBoard = folderBoard
+  }
+
+  /// Every board in this folder and below, folder boards too
+  public var allBoards: [VaultBoard] { (folderBoard.map { [$0] } ?? []) + boards + folders.flatMap(\.allBoards) }
+
+  /// Every folder in it and below, itself first
+  public var allFolders: [VaultFolder] { [self] + folders.flatMap(\.allFolders) }
+
+  /// The folder at a path in it
+  public func folder(at path: String) -> VaultFolder? { allFolders.first { $0.path == path } }
+
+  /// What is directly in it, in sidebar order: its boards, then its subfolders (what its folder board has a card for)
+  public var entries: [FolderEntry] { boards.map { .board($0.id) } + folders.map { .folder($0.name) } }
+}
+
+/// A board or a subfolder directly in a folder
+public enum FolderEntry: Hashable, Sendable {
+  case board(BoardID)
+  case folder(String)
 }
 
 public struct VaultBoard: Equatable, Sendable {
@@ -137,10 +176,18 @@ public struct VaultBoard: Equatable, Sendable {
   public var title: String
   /// Of the package, relative to the vault
   public var path: String
+  /// A folder's own board: its title is its folder's name
+  public var isFolderBoard: Bool
 
-  public init(id: BoardID, title: String, path: String) {
+  public init(id: BoardID, title: String, path: String, isFolderBoard: Bool = false) {
     self.id = id
     self.title = title
     self.path = path
+    self.isFolderBoard = isFolderBoard
+  }
+
+  /// The folder it is in, relative to the vault ("" for the vault itself); a folder board's is the folder it is of
+  public var folder: String {
+    path.split(separator: "/").dropLast().joined(separator: "/")
   }
 }
