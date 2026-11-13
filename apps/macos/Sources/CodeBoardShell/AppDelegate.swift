@@ -79,8 +79,8 @@ import CodeBoardModel
     true
   }
 
+  /// Opens a vault; what was open is closed first (`close` with the panes)
   private func open(_ root: URL, restoring state: ShellState?) {
-    panes?.close()
     let vault = Vault(root: root)
     shell.open(vault, restoring: state)
     watcher = VaultWatcher(root) { [weak self] in self?.readTree(reloadBoards: true) }
@@ -113,7 +113,13 @@ import CodeBoardModel
     guard let window else { return }
     panel.beginSheetModal(for: window) { [weak self] response in
       guard response == .OK, let url = panel.url else { return }
-      MainActor.assumeIsolated { self?.open(url, restoring: nil) }
+      MainActor.assumeIsolated {
+        Task {
+          // what is being written goes to its board before the boards are let go
+          await self?.panes?.close()
+          self?.open(url, restoring: nil)
+        }
+      }
     }
   }
 

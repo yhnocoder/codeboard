@@ -1,17 +1,21 @@
 import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
+import CodeBoardNotes
 
 /// The board panel's content below the top bar: one canvas per tab, kept while the tab lives so switching back is
 /// instant. One pane is on screen: the selected tab's once its board is drawn; until then the one before it stays, so
 /// opening a tab never passes through an empty canvas
 @MainActor final class BoardPanes: NSView {
   private let shell: Shell
-  private var panes: [Tab.ID: Pane] = [:]
+  private(set) var panes: [Tab.ID: Pane] = [:]
   private var front: Tab.ID?
+  /// The Note renderer its canvases share (nil: the app's)
+  private let notes: NoteRenderer?
 
-  init(shell: Shell) {
+  init(shell: Shell, notes: NoteRenderer? = nil) {
     self.shell = shell
+    self.notes = notes
     super.init(frame: .zero)
   }
 
@@ -20,17 +24,26 @@ import CodeBoardModel
     fatalError("BoardPanes is not loaded from nibs")
   }
 
-  /// Follows the tabs: new tabs get a canvas, closed tabs lose theirs (their board written first), a tab now on another
-  /// board shows it. `reload`: the vault changed on disk, so every open board takes in what changed there.
+  /// Follows the tabs: new tabs get a canvas, closed tabs lose theirs (what is being written in a card and then the
+  /// board written first), a tab now on another board shows it. `reload`: the vault changed on disk, so every open
+  /// board takes in what changed there.
   func sync(reload: Bool = false) {
     let live = Set(shell.tabs.map(\.id))
     for (id, pane) in panes where !live.contains(id) {
-      pane.close()
       panes[id] = nil
+      if pane.canvas.isEditing {
+        pane.isHidden = true
+        Task {
+          await pane.canvas.endEditing()
+          pane.close()
+        }
+      } else {
+        pane.close()
+      }
     }
     if reload { for doc in documents.values { doc.diskChanged() } }
     for tab in shell.tabs {
-      let pane = panes[tab.id] ?? Pane()
+      let pane = panes[tab.id] ?? Pane(notes: notes)
       if panes[tab.id] == nil {
         panes[tab.id] = pane
         pane.frame = bounds
@@ -87,8 +100,9 @@ import CodeBoardModel
 
   var isEditing: Bool { panes.values.contains { $0.canvas.isEditing } }
 
-  /// Another vault: what was open is written and let go
-  func close() {
+  /// Another vault: what is being written in a card goes to its board, then what was open is written and let go
+  func close() async {
+    await endEditing()
     flush()
     documents = [:]
     for pane in panes.values { pane.close() }
@@ -106,7 +120,7 @@ import CodeBoardModel
   }
 }
 
-private final class Pane: NSView {
+final class Pane: NSView {
   private(set) var document: BoardDocument?
   /// Where the board shown is in the vault
   private(set) var shown: VaultBoard?
@@ -116,11 +130,12 @@ private final class Pane: NSView {
   private(set) var ready = false
   var onReady: (() -> Void)?
   private static let patience = Duration.milliseconds(250)
-  let canvas = CanvasView()
+  let canvas: CanvasView
   private let toolbar = CanvasToolbar()
   private let problem = NSTextField(wrappingLabelWithString: "")
 
-  init() {
+  init(notes: NoteRenderer?) {
+    canvas = notes.map { CanvasView(frame: .zero, notes: $0) } ?? CanvasView()
     super.init(frame: .zero)
     canvas.autoresizingMask = [.width, .height]
     addSubview(canvas)
