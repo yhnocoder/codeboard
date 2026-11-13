@@ -1,5 +1,5 @@
 // Links and [[references]] in a Note, at rest and while it is edited (ui/pops/cardpeek.tsx, ui/Editable.tsx, the editor's links):
-//  noteRefPreview              a click on a reference to a card previews the card beside the Note (resting on it shows nothing),
+//  noteRefPreview              a click on a reference to a card far from the view previews the card beside the Note (resting on it shows nothing),
 //                              covering none of the Note; a second click, Esc or a click elsewhere closes it, its arrow goes to
 //                              the card; references to a Section or another board go there, with no preview
 //  noteRefPreviewWhileEditing  in the editor a click on a reference to a card previews it too and the caret stays where it was;
@@ -11,6 +11,11 @@
 //  noteRefPreviewDrag          dragged by its head the preview follows the pointer with nothing else moving or jumping, stays
 //                              open where it was put, keeps that place as the board pans, and a click elsewhere still closes it
 //  noteRefPreviewFollowsBoard  the preview stays beside its reference as the board pans; switching boards closes it
+//  noteRefNearGoesThere        a reference to a card near the view (in it, or less than a screen out: actions cardNear) goes
+//                              to the card instead: a card in view is selected with no camera move, one past the edge is
+//                              panned to with nothing jumping, and a card further than a screen is previewed as before
+//  noteRefNearWhileEditing     in the editor a click on a reference to a card near the view pans to it, the Note still being
+//                              edited with its caret where it was, and no preview
 //  noteLinkFoldedAddressClick  a click on a long address shown as its site, while editing, opens its link box: the page does not
 //                              follow the link, and no click on an element with an address reaches the window (a VS Code webview
 //                              would open it in the browser); ⌘-click opens it once
@@ -57,11 +62,11 @@ function board(id = "b1", name = "links"): Board {
     text: CODE.slice(),
     version: { kind: "none" },
   };
-  put(b, { id: "k1", kind: "code", title: "schedule", segments: [seg] } as unknown as CodeCard, 620, 60, 460);
+  put(b, { id: "k1", kind: "code", title: "schedule", segments: [seg] } as unknown as CodeCard, 3000, 60, 460);
   put(
     b,
     { id: "nc", kind: "note", look: "note", md: "## Block Manager\n\nHands out KV cache blocks." } as NoteCard,
-    620,
+    3000,
     640,
     320,
   );
@@ -160,9 +165,12 @@ test("noteRefPreview", async () => {
   await pg.locator(".cpeek.show .cpeek-go").click();
   await pg.locator('.card.sel[data-id="k1"]').waitFor();
   const afterGo = await peeks(pg);
-  await ref(pg, "Prefill stage").click();
-  await pg.locator('.sect.sel[data-sect="g1"]').waitFor();
-  const sectionPeek = await peeks(pg);
+  // Go to Card took the camera to the card, far from the Note: the Section's reference on the board as it opens
+  await h.close();
+  const h2 = await openLinks();
+  await ref(h2.page, "Prefill stage").click();
+  await h2.page.locator('.sect.sel[data-sect="g1"]').waitFor();
+  const sectionPeek = await peeks(h2.page);
   check(
     "noteRefPreview a click on a reference to a card previews it beside the Note; a click, Esc or a click elsewhere closes it",
     onHover === 0 &&
@@ -181,7 +189,7 @@ test("noteRefPreview", async () => {
     boardPeek,
     sectionPeek,
   });
-  await h.close();
+  await h2.close();
 });
 
 test("noteRefPreviewWhileEditing", async () => {
@@ -538,6 +546,115 @@ test("noteRefCursors", async () => {
     "noteRefCursors a reference shows the pointer over all of it; one that finds nothing only where a click does something",
     seal === "pointer" && card === "pointer" && broken === "default" && brokenEditing === "pointer",
     { seal, card, broken, brokenEditing },
+  );
+  await h.close();
+});
+
+/** A Note with references to a card in view, one just past the window's right edge and one further than a screen */
+function nearBoard(): Board {
+  const b = emptyBoard("b1", "near");
+  const seg = (id: string) => ({
+    id,
+    src: { kind: "free" },
+    path: "",
+    lang: "python",
+    start: 1,
+    end: 8,
+    text: CODE.slice(0, 8),
+    version: { kind: "none" },
+  });
+  const code = (id: string, title: string, x: number) =>
+    put(b, { id, kind: "code", title, segments: [seg(`s-${id}`)] } as unknown as CodeCard, x, 60, 420);
+  code("kv", "in view", 620);
+  code("kp", "past the edge", 1700);
+  code("kf", "far away", 4200);
+  put(
+    b,
+    {
+      id: "n0",
+      kind: "note",
+      look: "note",
+      md: "# Near and far\n\nSee [[in view#^kv]], [[past the edge#^kp]] and [[far away#^kf]].\n\nlast line",
+    } as NoteCard,
+    40,
+    60,
+    520,
+  );
+  b.cam = { x: 0, y: 0, z: 1 };
+  return b;
+}
+const camOf = (pg: Page) => pg.locator(".world").evaluate((e) => (e as HTMLElement).style.transform);
+const inView = (pg: Page, id: string) =>
+  pg.locator(`.card[data-id="${id}"]`).evaluate((e) => {
+    const r = e.getBoundingClientRect();
+    return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.top < innerHeight;
+  });
+
+test("noteRefNearGoesThere", async () => {
+  const h = await open({ board: nearBoard(), light, w: 1300, h: 860 });
+  const pg = h.page;
+  await idle(h);
+  const cam0 = await camOf(pg);
+  // further than a screen: the preview, the camera staying
+  await ref(pg, "far away").click();
+  await pg.locator(".cpeek.show").waitFor();
+  await idle(h);
+  const far = { cam: (await camOf(pg)) === cam0, text: (await pg.locator(".cpeek").textContent()) ?? "" };
+  await pg.keyboard.press("Escape");
+  await until(h, "Esc closes the preview", async () => (await peeks(pg)) === 0);
+  await ref(pg, "in view").click();
+  await pg.locator('.card.sel[data-id="kv"]').waitFor();
+  await idle(h);
+  const visible = { cam: (await camOf(pg)) === cam0, peeks: await peeks(pg) };
+  // past the edge: the camera pans to it, nothing jumping on the way
+  await watch(h, "noteRefNearGoesThere pan", { moves: "all", frames: 40 }, () => ref(pg, "past the edge").click());
+  await pg.locator('.card.sel[data-id="kp"]').waitFor();
+  await idle(h);
+  await shot(h, "note-ref-near-panned");
+  const panned = {
+    cam: (await camOf(pg)) !== cam0,
+    seen: await inView(pg, "kp"),
+    peeks: await peeks(pg),
+    z: h.board().cam?.z ?? null,
+  };
+  check(
+    "noteRefNearGoesThere a card in view is selected with no camera move and no preview",
+    visible.cam && visible.peeks === 0,
+    visible,
+  );
+  check(
+    "noteRefNearGoesThere a card less than a screen out is panned to and selected, no preview",
+    panned.cam && panned.seen && panned.peeks === 0,
+    panned,
+  );
+  check(
+    "noteRefNearGoesThere a card further than a screen is previewed, the camera staying",
+    far.cam && far.text.includes("far away"),
+    { cam: far.cam, text: far.text.slice(0, 60) },
+  );
+  await h.close();
+});
+
+test("noteRefNearWhileEditing", async () => {
+  const h = await open({ board: nearBoard(), light, w: 1300, h: 860 });
+  const pg = h.page;
+  await idle(h);
+  await edit(h);
+  const before = await caret(pg),
+    cam0 = await camOf(pg);
+  await ref(pg, "past the edge", true).click();
+  await until(h, "the camera pans to the card", async () => (await camOf(pg)) !== cam0);
+  await idle(h);
+  const after = {
+    caret: await caret(pg),
+    focused: await pg.locator(".md-pm:focus").count(),
+    seen: await inView(pg, "kp"),
+    peeks: await peeks(pg),
+  };
+  check(
+    "noteRefNearWhileEditing a reference to a card near the view pans there; the Note is still edited, its caret kept",
+    after.caret === before && after.focused === 1 && after.seen && after.peeks === 0,
+    { before, after },
   );
   await h.close();
 });

@@ -2,8 +2,9 @@
 // header and first lines, scaled down to PEEK_W wide and cut at PEEK_H with a fade. It does not scroll: the card itself is one
 // click away, on the arrow inside it. Shown beside what asked for it, always on its right where one looks for it (moved in just
 // enough when the window has no room there, never to the other side); dragged by its head it stays where it is put:
-// - a click on a [[reference]] to a card of this board toggles it (cardPeeks): in a Text sidenote beside its popup, in a Note
-//   or any other Markdown on a card beside that card at the reference's height (so it covers none of the text being read), also
+// - a click on a [[reference]] (or a link from Copy Link) to a card of this board far from the view toggles it (cardPeeks; a
+//   card near the view, actions/subboards.ts cardNear, is gone to instead): in a Text sidenote beside its popup, in a Note or
+//   any other Markdown on a card beside that card at the reference's height (so it covers none of the text being read), also
 //   while the Note is being edited; Esc or a press anywhere else closes it. It follows its reference as the board pans and zooms;
 // - the [[ list of the sidenote input shows its highlighted card's (ui/NoteComposer.tsx): passive, no keys, no arrow.
 // It is a copy of the card's element taken once when it opens (nothing measured per frame), inert, with nothing that selectors
@@ -58,14 +59,19 @@ export function cardPeeks() {
   return {
     peek,
     /**
-     * A click on a reference (el) that points to `to`: a card drawn on this board opens its preview beside `beside` (by default
-     * beside the card the reference is on), or closes it when it is the one open from there. False for anything else (a Section,
-     * another board, a card inside a sub-board), which the click goes to as usual
+     * A click on a reference (el) that points to `to`, a card drawn on this board: one near the view (A.cardNear) is gone to,
+     * any other opens its preview beside `beside` (by default beside the card the reference is on), or closes it when it is the
+     * one open from there. False for anything else (a Section, another board, a card inside a sub-board), which the click goes
+     * to as usual
      */
     toggle(to: RefTarget, el: HTMLElement, beside: Beside = besideCard(el)) {
       if (to.place || !cardById(to.id) || !cardElement(to.id)) return false;
       const p = peek();
-      setPeek(p?.card === to.id && p.at === el ? null : { card: to.id, at: el, beside });
+      if (p?.card === to.id && p.at === el) setPeek(null);
+      else if (A.cardNear(to.id)) {
+        setPeek(null);
+        A.goToNearCard(to.id, !!el.closest(".md-pm"));
+      } else setPeek({ card: to.id, at: el, beside });
       return true;
     },
     hide: () => setPeek(null),

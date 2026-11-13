@@ -19,6 +19,7 @@ Fixed:
 - The link box and the selection's toolbar stay under their text when the page moves the editor (a canvas panned or zoomed) instead of keeping their place in the window; the address field shows the start of the address, not its end.
 - A long address written as it is renders as its site (`github.com/…`) in the static render too, as the editor shows it, so the text keeps its height when editing starts; copying it gives the whole address.
 - References to another board show the pointer over all of their label, and a reference that finds nothing shows the arrow.
+- The link box put `https://` before any address without a scheme, so a path (`./notes.md`, `/home/…`, `~/…`, `docs/intro`) or one `refs.link` reads became a web address. Only a site written without its scheme (`example.com/…`, `www.…`) gets `https://` now; an address with spaces is written in `<angle brackets>`, and one `refs.link` reads given on nothing becomes a reference to that item, as when pasted.
 - An image the page says is off screen (`imageVisible`) whose wanted smaller copy is not made yet no longer loads the original meanwhile: it shows the smallest copy there is, or no source at all, and takes its copy on `updateImages` whether on screen or not. With `eagerImages` it fetched the full size of every image off screen.
 
 ## 0.2.0

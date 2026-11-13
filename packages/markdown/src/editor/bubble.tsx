@@ -6,7 +6,7 @@ import { createEffect, createSignal, onCleanup, Show, type Accessor } from "soli
 import { Icon, type IconName } from "./icons";
 import { isWrapped, revealMeta, toggleWrap } from "./inline";
 import { blockInfo, flat, type Span } from "./spans";
-import { linkAt as linkIn, linkText, type LinkAt } from "./links";
+import { hrefSource, linkAt as linkIn, linkHref, linkRef, linkText, type LinkAt } from "./links";
 import { movingBlocks } from "./moveblocks";
 import { escAnnot } from "../schema-marks";
 import { autoUpdate } from "@floating-ui/dom";
@@ -170,7 +170,8 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   };
   const writeLink = ({ shown, l, from, to }: LinkFor, v: string, textV?: string) => {
     const url = v.trim();
-    const href = !url || /^[a-z][\w+.-]*:/i.test(url) ? url : `https://${url}`;
+    const refs = mdOf(e.state).refs,
+      href = linkHref(url, refs);
     const st = e.state,
       tr = st.tr;
     if (l) {
@@ -184,13 +185,18 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
         ? text
         : l.bare && text === was && /^(https?:\/\/|www\.)\S+$/i.test(href)
           ? href
-          : `[${linkText(text)}](${href})`;
+          : `[${linkText(text)}](${hrefSource(href)})`;
       if (!same && src !== st.doc.textBetween(l.from, l.to)) tr.insertText(src, l.from, l.to);
     } else if (href) {
       const text = st.doc.textBetween(from, to);
-      // nothing selected (⌘K): the address itself; a web address is a link as it is (GFM), others go in <…>
+      // nothing selected (⌘K): the address itself; a web address is a link as it is (GFM), a link to an item a [[reference]]
+      // to it (as pasted), others go in <…>
       tr.insertText(
-        text ? `[${linkText(text)}](${href})` : /^(https?:\/\/|www\.)\S+$/i.test(href) ? href : `<${href}>`,
+        text
+          ? `[${linkText(text)}](${hrefSource(href)})`
+          : /^(https?:\/\/|www\.)\S+$/i.test(href)
+            ? href
+            : (linkRef(href, refs) ?? `<${href}>`),
         from,
         to,
       );

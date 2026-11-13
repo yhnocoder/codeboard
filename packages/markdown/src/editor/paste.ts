@@ -12,7 +12,7 @@ import { revealMeta } from "./inline";
 import { pasteSlice } from "./headings";
 import { pastedImages } from "./image";
 import { mdOf } from "./md";
-import { refSource } from "../schema-nodes";
+import { hrefSource, linkRef } from "./links";
 import { markTags } from "../marktag";
 import { blockInfo, flat } from "./spans";
 
@@ -28,19 +28,17 @@ function sourceSlice(e: Editor, md: string): Slice {
  * the address in <angle brackets> when it holds spaces or parentheses. On nothing, a link to an item that is there: [[its title]]
  */
 function linkPaste(e: Editor, addr: string): string | null {
-  const refs = mdOf(e.state).refs,
-    target = refs.link?.(addr) ?? null,
-    web = /^https?:\/\/\S+$/i.test(addr);
-  if (!target && !web) return null;
+  const refs = mdOf(e.state).refs;
+  if (!refs.link?.(addr) && !/^https?:\/\/\S+$/i.test(addr)) return null;
   const { from, to, $from, $to } = e.state.selection;
   if (from === to) {
-    const hit = target ? refs.resolve("", target) : null;
-    return hit && !("broken" in hit) ? `${refSource(hit.title.replace(/[[\]|]/g, " ").trim(), target!)} ` : null;
+    const ref = linkRef(addr, refs);
+    return ref && `${ref} `;
   }
   if ($from.parent !== $to.parent || !$from.parent.isTextblock) return null;
   const words = e.state.doc.textBetween(from, to);
   if (!words.trim() || /[[\]\n]/.test(words)) return null;
-  return `[${words}](${/[\s()<>]/.test(addr) ? `<${addr}>` : addr})`;
+  return `[${words}](${hrefSource(addr)})`;
 }
 /** Plain lines, each its own paragraph (text that is not Markdown is still source: it reads back as the same text) */
 function linesSlice(e: Editor, text: string): Slice {

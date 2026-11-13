@@ -7,7 +7,7 @@ import { state, cardById, hostOf, rectOf, flows } from "../state/store";
 import { flushSave } from "../state/changes";
 import { sel, select, clearSel } from "../state/selection";
 import { toast } from "../state/toast";
-import { camRest, camTarget, camTo, fitRect, viewportCenter } from "../state/camera";
+import { camRest, camTarget, camTo, fitRect, viewportCenter, worldView } from "../state/camera";
 import { CrumbsNav } from "../ui/Crumbs";
 import {
   crumbs,
@@ -20,7 +20,7 @@ import {
   setCrumbMorph,
   heightToKeep,
 } from "../state/subboards";
-import { cardLinkTarget, openLink, resolveCardRef, revealCard, selectCard } from "./common";
+import { cardLinkTarget, hostRect, openLink, resolveCardRef, revealCard, selectCard } from "./common";
 import { openPop, type At } from "../state/pop";
 import { walk, setWalk } from "../state/ui";
 import { settleHome, frames as sectionFrames } from "../state/sections";
@@ -477,6 +477,25 @@ export function openCardRef(id: string, place?: string) {
     return;
   }
   if (state.boards.some((m) => m.id === id)) send({ type: "openBoard", id });
+}
+
+/** How far from the view, in screens along each axis, a card may be for a click on a reference to it to go there; further, the
+ *  click previews it */
+const NEAR_SCREENS = 1;
+/** Card `id` (its host card) is near the view: less than NEAR_SCREENS views away across and down, or already in view */
+export function cardNear(id: string): boolean {
+  const r = hostRect(id);
+  if (!r) return false;
+  const v = worldView();
+  const dx = Math.max(0, v.x - (r.x + r.w), r.x - (v.x + v.w)),
+    dy = Math.max(0, v.y - (r.y + r.h), r.y - (v.y + v.h));
+  return dx < v.w * NEAR_SCREENS && dy < v.h * NEAR_SCREENS;
+}
+/** A click on a reference to a card near the view goes there as Go to Card does; from an editor the camera only moves and the
+ *  card is pinged, so the editing and its caret go on */
+export function goToNearCard(id: string, editing: boolean) {
+  if (editing) void revealCard(id);
+  else openCardRef(id);
 }
 
 /** An address opened from Markdown (a link's ⌘-click, the link box's Open): a link to an item (Copy Link) goes to it as Go to

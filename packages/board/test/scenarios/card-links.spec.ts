@@ -1,14 +1,18 @@
 // Links to cards (Copy Link, core cardlink.ts), put on words in a Note:
 //  cardLinkCopyAndPaste      on the real host: a card's Copy Link, words in a Note selected by a drag and the link pasted on
-//                            them, the Note left: the words stay as written and read as a link; a click previews the card
-//                            beside the Note, a second click closes it, ⌘-click goes to the card
-//  cardLinkClicks            at rest a link to a card previews it as a [[reference]] does (resting on it shows nothing), to a
-//                            Section selects the Section, to a board opens it; one whose item is gone looks as a broken
-//                            reference and a click on it does nothing; a web address still opens in the browser
+//                            them, the Note left: the words stay as written and read as a link; the card in view, a click
+//                            on the link selects it (no preview)
+//  cardLinkClicks            at rest a link to a card far from the view previews it as a [[reference]] does (resting on it
+//                            shows nothing), to a Section selects the Section, to a board opens it; one whose item is gone
+//                            looks as a broken reference and a click on it does nothing; a web address still opens in the
+//                            browser
 //  cardLinkWhileEditing      in the editor a click on a link to a card previews it and the caret stays; a link to a Section
 //                            opens its link box, whose Open goes there
 //  cardLinkPaste             in the editor a link pasted on selected words links them (spaces in the address in <brackets>,
 //                            web addresses too); a link to a card pasted on nothing is a [[reference]] to it
+//  cardLinkThroughLinkBox    words selected by a drag, the toolbar's Link, a copied card link pasted in the address field and
+//                            ↵: the address is written as copied (no https:// before it), and a click on the link previews
+//                            the card, with nothing sent to open in the browser
 import * as fs from "node:fs";
 import type { Page } from "@playwright/test";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
@@ -44,11 +48,11 @@ function board(): Board {
     text: CODE.slice(),
     version: { kind: "none" },
   };
-  put(b, { id: "k1", kind: "code", title: "schedule", segments: [seg] } as unknown as CodeCard, 620, 60, 460);
+  put(b, { id: "k1", kind: "code", title: "schedule", segments: [seg] } as unknown as CodeCard, 3000, 60, 460);
   put(
     b,
     { id: "nc", kind: "note", look: "note", md: "## Block Manager\n\nHands out KV cache blocks." } as NoteCard,
-    620,
+    3000,
     640,
     320,
   );
@@ -174,14 +178,10 @@ test("cardLinkCopyAndPaste", async () => {
   const a = pg.locator(`${NL} .nbody a.md-cardlink`);
   const shown = { text: await a.innerText(), missing: await a.evaluate((e) => e.classList.contains("missing")) };
   await a.click();
-  await pg.locator(".cpeek.show").waitFor();
-  await idle(h);
-  await shot(h, "card-link-preview");
-  const peek = (await pg.locator(".cpeek").textContent()) ?? "";
-  await a.click();
-  await until(h, "a second click closes the preview", async () => (await peeks(pg)) === 0);
-  await a.click({ modifiers: ["ControlOrMeta"] });
   await pg.locator(`.card.sel[data-id="${step.id}"]`).waitFor();
+  await idle(h);
+  await shot(h, "card-link-near");
+  const near = await peeks(pg);
   const file = run.host.store.fileOf("bLink")!;
   check(
     "cardLinkCopyAndPaste Copy Link copies the card's link; pasted on selected words it links them to the card",
@@ -192,9 +192,9 @@ test("cardLinkCopyAndPaste", async () => {
     { copy, toast, written },
   );
   check(
-    "cardLinkCopyAndPaste the link keeps its words; a click previews the card, ⌘-click goes to it",
-    shown.text === "loop" && !shown.missing && peek.includes("def step") && (await peeks(pg)) === 0,
-    { shown, peek: peek.slice(0, 80) },
+    "cardLinkCopyAndPaste the link keeps its words; the card in view, a click on it selects the card",
+    shown.text === "loop" && !shown.missing && near === 0,
+    { shown, near },
   );
 });
 
@@ -365,6 +365,45 @@ test("cardLinkPaste", async () => {
       bare === `${web}[[schedule#^k1]] ` &&
       JSON.stringify(drawn) === JSON.stringify(["line:web", "here:card", "schedule:ref"]),
     { bare, spaced, web, drawn },
+  );
+  await h.close();
+});
+
+test("cardLinkThroughLinkBox", async () => {
+  const h = await openLinks();
+  const pg = h.page;
+  await edit(h);
+  await dragOver(pg, "here");
+  await until(h, "the drag selects the word", async () => pg.evaluate(() => getSelection()?.toString() === "here"));
+  await pg.locator('.md-bubble button[data-tip="Link"]').click();
+  const field = pg.locator(".md-bubble .md-linkin");
+  await field.waitFor();
+  // what Copy Link put on the clipboard, pasted into the address field
+  await pg.keyboard.insertText(".codeboard/b1.json#k1");
+  await pg.keyboard.press("Enter");
+  await until(h, "the box closes", async () => (await pg.locator(".md-bubble .md-linkin").count()) === 0);
+  const written = await source(pg);
+  await pg.keyboard.press("Escape");
+  await until(h, "the Note is saved", () =>
+    (h.board().cards.find((c) => c.id === "n0") as NoteCard).md.includes("[here]("),
+  );
+  const md = (h.board().cards.find((c) => c.id === "n0") as NoteCard).md;
+  const n = h.sent.length;
+  const a = link(pg, "here");
+  await a.click();
+  await pg.locator(".cpeek.show").waitFor();
+  await idle(h);
+  const peek = (await pg.locator(".cpeek").textContent()) ?? "";
+  const opened = h.sent.slice(n).filter((m) => m.type === "openLink").length;
+  check(
+    "cardLinkThroughLinkBox a card link given in the link box is written as copied and previews its card",
+    written.includes("last line [here](.codeboard/b1.json#k1), end") &&
+      md.includes("[here](.codeboard/b1.json#k1)") &&
+      !md.includes("https://.codeboard") &&
+      (await a.evaluate((e) => e.classList.contains("md-cardlink") && !e.classList.contains("missing"))) &&
+      peek.includes("def step_0") &&
+      opened === 0,
+    { written, md, peek: peek.slice(0, 60), opened },
   );
   await h.close();
 });

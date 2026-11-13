@@ -3,6 +3,8 @@ import { TextSelection, type EditorState } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { blockInfo, flat, type Span } from "./spans";
+import type { Refs } from "../view";
+import { refSource } from "../schema-nodes";
 
 /** A link in the document: [from, to] its whole source, [textFrom, textTo] its text; bare: an address written as it is */
 export type LinkAt = { from: number; to: number; textFrom: number; textTo: number; url: string; bare: boolean };
@@ -69,4 +71,26 @@ export function linkText(t: string): string {
     if (depth < 0) break;
   }
   return depth === 0 ? t : t.replace(/(?<!\\)((?:\\\\)*)([[\]])/g, "$1\\$2");
+}
+
+/** A web site written without its scheme: www.x, or a host with a dot (example.com, example.com/a, x.io:8080?q) */
+const HOST = /^(?:www\.|[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?::\d+)?(?:[/?#]|$))/i;
+/**
+ * The address a link is written with, from what was typed or pasted: one with a scheme, a link to an item (refs.link: a Copy
+ * Link path) and any other path (./x, /x, ~/x, a folder/file) stay as they are; only a web site written without its scheme
+ * gets https://
+ */
+export function linkHref(url: string, refs: Refs): string {
+  const u = url.trim();
+  if (!u || /^[a-z][\w+.-]*:/i.test(u) || refs.link?.(u) || /^[./~\\]/.test(u)) return u;
+  return HOST.test(u) ? `https://${u}` : u;
+}
+/** An address as it goes in [text](…): in <angle brackets> when it holds spaces, parentheses or brackets */
+export const hrefSource = (href: string) => (/[\s()<>]/.test(href) ? `<${href}>` : href);
+/** A link to an item (refs.link) as a [[reference]] to it, for a link put on nothing; null when it is no such link or finds
+ *  nothing */
+export function linkRef(href: string, refs: Refs): string | null {
+  const target = refs.link?.(href);
+  const hit = target ? refs.resolve("", target) : null;
+  return hit && !("broken" in hit) ? refSource(hit.title.replace(/[[\]|]/g, " ").trim(), target!) : null;
 }
