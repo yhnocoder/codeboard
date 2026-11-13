@@ -1214,9 +1214,7 @@ extension CanvasView: NSMenuItemValidation {
     case #selector(bringToFront(_:)), #selector(sendToBack(_:)), #selector(tilt(_:)):
       return sel.contains { $0.card != nil }
     case #selector(lock(_:)):
-      if item.menu?.supermenu != nil || item.menu == NSApp.mainMenu?.item(withTitle: "Edit")?.submenu {
-        item.title = !sel.isEmpty && sel.allSatisfy(isOwnLock) ? "Unlock" : "Lock"
-      }
+      item.title = !sel.isEmpty && sel.allSatisfy(isOwnLock) ? "Unlock" : "Lock"
       return !sel.isEmpty
     default: return true
     }
