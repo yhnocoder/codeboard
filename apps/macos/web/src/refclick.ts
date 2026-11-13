@@ -26,9 +26,13 @@ export const liveRef = (t: EventTarget | null) =>
   (t as Element | null)?.closest?.<HTMLElement>(".md-ref:not(.missing):not(.gone)") ?? null;
 
 export function watchRefs(post: (m: RefPosted) => void) {
+  /** Stops eating what a press on a ref left: its release, and the click that comes with it in the same task */
+  let unEat: (() => void) | null = null;
   window.addEventListener(
     "mousedown",
     (e) => {
+      // what an earlier press was waiting for never came (no click after its release, or no release)
+      unEat?.();
       // a press made by the page itself (a double-click on the board opening a ref's source)
       if (!e.isTrusted || e.button !== 0 || e.shiftKey || e.altKey || e.ctrlKey) return;
       const r = liveRef(e.target);
@@ -36,13 +40,30 @@ export function watchRefs(post: (m: RefPosted) => void) {
       if (e.detail >= 2) return post({ type: "refDouble" });
       e.preventDefault();
       e.stopPropagation();
-      // the same press's release and click: nothing under it hears of it (an editor would put its caret there)
+      // the same press's release and click: nothing under it hears of it (an editor would put its caret there); a
+      // click comes in the release's task or not at all (the ref drawn again under the pointer, the pointer gone
+      // off it), and whatever comes later is not this press's
       const eat = (ev: Event) => {
         ev.preventDefault();
         ev.stopPropagation();
       };
-      window.addEventListener("mouseup", eat, { capture: true, once: true });
-      window.addEventListener("click", eat, { capture: true, once: true });
+      const up = (ev: Event) => {
+        eat(ev);
+        window.removeEventListener("mouseup", up, true);
+        setTimeout(done);
+      };
+      const click = (ev: Event) => {
+        eat(ev);
+        done();
+      };
+      const done = () => {
+        window.removeEventListener("mouseup", up, true);
+        window.removeEventListener("click", click, true);
+        unEat = null;
+      };
+      window.addEventListener("mouseup", up, true);
+      window.addEventListener("click", click, true);
+      unEat = done;
       const b = r.getBoundingClientRect();
       post({
         type: "ref",

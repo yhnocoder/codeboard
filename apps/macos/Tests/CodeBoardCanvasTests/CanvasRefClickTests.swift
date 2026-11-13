@@ -61,13 +61,17 @@ extension Rig {
 
   /// A press and release in a web view over the canvas, at a point of it (its own points), as the window delivers them
   func click(in view: NSView, at p: CGPoint, clicks: Int = 1) {
-    let w = view.convert(p, to: nil)
-    for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-      let e = NSEvent.mouseEvent(
-        with: type, location: w, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-        windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: clicks, pressure: 1)!
-      if type == .leftMouseDown { view.mouseDown(with: e) } else { view.mouseUp(with: e) }
-    }
+    mouse(.leftMouseDown, in: view, at: p, clicks: clicks)
+    mouse(.leftMouseUp, in: view, at: p, clicks: clicks)
+  }
+
+  /// A press or a release alone, in a web view over the canvas
+  func mouse(_ type: NSEvent.EventType, in view: NSView, at p: CGPoint, clicks: Int = 1) {
+    let e = NSEvent.mouseEvent(
+      with: type, location: view.convert(p, to: nil), modifierFlags: [],
+      timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+      clickCount: clicks, pressure: 1)!
+    if type == .leftMouseDown { view.mouseDown(with: e) } else { view.mouseUp(with: e) }
   }
 
   /// Frames until the camera rests
@@ -301,6 +305,36 @@ extension CanvasSidenoteTests {
       // the popup closing closes it
       c.openPop(nil)
       await r.until("closed") { c.refPeek == nil }
+    }
+
+    /// A press on a ref that no click follows (what was pressed is drawn again before the release, or the pointer
+    /// goes off it): the release is the ref's, the next click in the popup is not
+    @Test func aPressOnARefThatNoClickFollowsLeavesTheNextClickAlone() async throws {
+      let r = try await refRig()
+      defer { r.close() }
+      let c = r.canvas
+      let pop = c.sidenotePop
+      c.openPop(.spot(.card(cid("n1"))), write: true)
+      await r.until("the popup") { c.popShown != nil && pop.size.height > 0 }
+      await r.until("the input") { await pop.run("return !!document.querySelector('.ncomp-ask')") as? Bool == true }
+      var box: CGRect?
+      await r.until("its ref drawn") {
+        let d =
+          await pop.run(
+            "const r = document.querySelector('.slip .md-ref'); if (!r) return null;"
+              + " const b = r.getBoundingClientRect(); return [b.x, b.y, b.width, b.height]") as? [Double]
+        if let d { box = CGRect(x: d[0], y: d[1], width: d[2], height: d[3]) }
+        return box != nil
+      }
+      let b = try #require(box)
+      r.mouse(.leftMouseDown, in: pop.view, at: CGPoint(x: b.midX, y: b.midY))
+      await r.until("the press taken") { c.refPeek != nil }
+      // the ref drawn again under the pointer: the release is on another element, and no click comes
+      _ = await pop.run("const r = document.querySelector('.slip .md-ref'); r.replaceWith(r.cloneNode(true))")
+      r.mouse(.leftMouseUp, in: pop.view, at: CGPoint(x: b.midX, y: b.midY))
+      _ = await pop.run("return 0")
+      _ = await pop.run("pop.click('.ncomp-ask')")
+      #expect(await pop.run("return !!document.querySelector('.ncomp-ask.on')") as? Bool == true, "the ? pressed")
     }
   }
 }
