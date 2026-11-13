@@ -22,6 +22,16 @@ await build({
   logLevel: "warning",
 });
 copyFileSync(join(here, "src/page.html"), join(out, "page.html"));
+// the formula and diagram engines the native Markdown renderer runs in JavaScriptCore (CodeBoardMarkdownUI)
+await build({
+  entryPoints: [join(here, "src/engines.ts")],
+  bundle: true,
+  format: "iife",
+  target: "safari18",
+  outfile: join(out, "engines.js"),
+  minify: true,
+  logLevel: "warning",
+});
 // the board's fonts ship under the SIL Open Font License, whose text travels with them (the Mac canvas draws with them too)
 const licences = join(here, "../../../packages/board/public/fonts");
 mkdirSync(join(out, "fonts"));

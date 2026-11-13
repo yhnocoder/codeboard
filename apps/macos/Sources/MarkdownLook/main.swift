@@ -6,6 +6,7 @@ import CodeBoardMarkdownUI
 
 struct NoResources: MarkdownResources {
   let folder: URL
+  let math: MathTypesetter?
   func imageSize(_ src: String) -> CGSize? {
     guard let s = CGImageSourceCreateWithURL(folder.appending(path: src) as CFURL, nil),
       let p = CGImageSourceCopyPropertiesAtIndex(s, 0, nil) as? [CFString: Any],
@@ -31,10 +32,11 @@ let scale = CGFloat(Double(a[5])!)
 let here = URL(filePath: #filePath).deletingLastPathComponent()
 Looks.registerFonts(here.appending(path: "../../web/dist/assets").standardized)
 try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+let engines = try? JSEngines(script: here.appending(path: "../../web/dist/engines.js").standardized)
 for file in a[6...] {
   let url = URL(filePath: file)
   let src = try String(contentsOf: url, encoding: .utf8)
-  let res = NoResources(folder: url.deletingLastPathComponent())
+  let res = NoResources(folder: url.deletingLastPathComponent(), math: engines)
   let t0 = Date()
   let layout = MarkdownLayout.make(MarkdownDocument(src), width: width, theme: theme, layout: nil, resources: res)
   let t1 = Date()

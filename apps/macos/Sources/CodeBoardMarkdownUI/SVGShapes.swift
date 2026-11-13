@@ -9,10 +9,15 @@ enum SVGShapes {
 
   static func path(_ data: String) -> CGPath { paths.get(data) { parse(data) } }
 
-  static func draw(_ shapes: [MDPath], _ texts: [MDGlyphText], _ ctx: CGContext, ink: MDColor, theme: MarkdownTheme) {
+  /// draws shapes and texts whose units are `scale` points each (a formula: an em of its font size)
+  static func draw(
+    _ shapes: [MDPath], _ texts: [MDGlyphText], _ ctx: CGContext, scale: CGFloat, ink: MDColor, theme: MarkdownTheme,
+    textFont: [String]? = nil
+  ) {
     for p in shapes {
       let cg = path(p.data)
       ctx.saveGState()
+      ctx.scaleBy(x: scale, y: scale)
       ctx.concatenate(p.transform)
       if let fill = color(p.fill, ink, theme) {
         ctx.setFillColor(fill.cg)
@@ -21,15 +26,17 @@ enum SVGShapes {
       }
       if let stroke = color(p.stroke, ink, theme), p.strokeWidth > 0 {
         ctx.setStrokeColor(stroke.cg)
+        // the width is in the path's own units, which the context's transform already maps
         ctx.setLineWidth(p.strokeWidth)
         ctx.addPath(cg)
         ctx.strokePath()
       }
       ctx.restoreGState()
     }
+    // texts at their real size, not drawn tiny under a scaled context
     for t in texts {
       guard let c = color(t.fill, ink, theme) else { continue }
-      let font = FontBook.font(theme.fonts.body, size: CGFloat(t.size), weight: t.bold ? 600 : 400)
+      let font = FontBook.font(textFont ?? theme.fonts.body, size: CGFloat(t.size) * scale, weight: t.bold ? 600 : 400)
       let attr = NSAttributedString(
         string: t.text,
         attributes: [
@@ -39,7 +46,7 @@ enum SVGShapes {
       let line = CTLineCreateWithAttributedString(attr)
       ctx.saveGState()
       ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
-      ctx.textPosition = t.origin
+      ctx.textPosition = CGPoint(x: t.origin.x * scale, y: t.origin.y * scale)
       CTLineDraw(line, ctx)
       ctx.restoreGState()
     }

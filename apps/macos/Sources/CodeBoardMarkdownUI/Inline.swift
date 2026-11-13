@@ -51,6 +51,8 @@ final class AtomBox: @unchecked Sendable {
     case spacer
   }
   let content: Content
+  /// a display formula inside a line: centred on a line of its own
+  var center = false
   let width: CGFloat
   /// above and below the baseline
   let ascent: CGFloat
@@ -295,16 +297,26 @@ struct InlineBuilder {
   private mutating func mathAtom(_ latex: String, display: Bool, source: Int, _ style: InlineStyle) {
     // KaTeX draws formulas 1.08 times the text size (markdown.css .katex)
     let size = style.size * 1.08
+    let (body, tag) = MathTag.split(latex)
     if let tex = resources.math,
-      case .ok(let pic) = tex.typeset(latex, display: display, preamble: resources.mathPreamble)
+      case .ok(var pic) = tex.typeset(body, display: display, preamble: resources.mathPreamble)
     {
+      if display, let tag, case .ok(let t) = tex.typeset(tag, display: false, preamble: resources.mathPreamble) {
+        pic = MathTag.attach(t, to: pic)
+      }
       let a = AtomBox(
         .math(pic, size: size), width: CGFloat(pic.width) * size, ascent: CGFloat(pic.baseline) * size,
         descent: CGFloat(pic.height - pic.baseline) * size)
+      // $$…$$ inside a line is a display formula centred on a line of its own (markdown.css .md-dmath)
+      a.center = display
       var attrs = attributes(style)
       attrs[NSAttributedString.Key(kCTRunDelegateAttributeName as String)] = Self.delegate(a)
       attrs[Attr.atom] = a
+      if display, out.string.length > 0, !out.string.string.hasSuffix("\u{2028}") {
+        append("\u{2028}", attributes(style), source: [source])
+      }
       append("\u{FFFC}", attrs, source: [source])
+      if display { append("\u{2028}", attributes(style), source: [source]) }
       return
     }
     // no typesetter (or the formula does not typeset): its TeX, in the code font

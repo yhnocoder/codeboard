@@ -140,8 +140,7 @@ extension MarkdownLayout {
     ctx.saveGState()
     // the picture is in em with its baseline at `baseline` from the top
     ctx.translateBy(x: origin.x, y: origin.y - CGFloat(pic.baseline) * size)
-    ctx.scaleBy(x: size, y: size)
-    SVGShapes.draw(pic.paths, pic.texts, ctx, ink: color, theme: theme)
+    SVGShapes.draw(pic.paths, pic.texts, ctx, scale: size, ink: color, theme: theme, textFont: mathTextFont)
     ctx.restoreGState()
   }
 

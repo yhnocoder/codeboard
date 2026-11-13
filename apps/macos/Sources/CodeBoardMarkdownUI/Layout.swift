@@ -13,8 +13,14 @@ public final class MarkdownLayout: @unchecked Sendable {
   public let images: [MarkdownImageSlot]
   let items: [Item]
   let theme: MarkdownTheme
+  /// what text inside formulas is drawn with: what the typesetter measured it with
+  let mathTextFont: [String]?
 
-  init(size: CGSize, blockFrames: [CGRect], images: [MarkdownImageSlot], items: [Item], theme: MarkdownTheme) {
+  init(
+    size: CGSize, blockFrames: [CGRect], images: [MarkdownImageSlot], items: [Item], theme: MarkdownTheme,
+    mathTextFont: [String]?
+  ) {
+    self.mathTextFont = mathTextFont
     self.size = size
     self.blockFrames = blockFrames
     self.images = images
@@ -33,7 +39,7 @@ public final class MarkdownLayout: @unchecked Sendable {
     let w = width ?? ceil(b.widest)
     return MarkdownLayout(
       size: CGSize(width: w, height: ceil(b.bottom * 100) / 100), blockFrames: frames, images: b.images, items: b.items,
-      theme: theme)
+      theme: theme, mathTextFont: (resources.math as? JSEngines)?.textFont)
   }
 }
 
@@ -317,16 +323,18 @@ struct LayoutBuilder {
       let line = CTTypesetterCreateLine(ts, CFRange(location: start, length: len))
       var above = strutAbove
       var below = lh - strutAbove
+      var centred = center
       for run in CTLineGetGlyphRuns(line) as! [CTRun] {
         let attrs = CTRunGetAttributes(run) as NSDictionary
         if let a = attrs[Attr.atom] as? AtomBox {
           above = max(above, a.ascent)
           below = max(below, a.descent)
+          if a.center { centred = true }
         }
       }
       let lw = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil) - CTLineGetTrailingWhitespaceWidth(line))
       widest = max(widest, lw)
-      let lx = center ? x + max(0, (width - lw) / 2) : x
+      let lx = centred ? x + max(0, (width - lw) / 2) : x
       lines.append(
         .init(
           line: line, origin: CGPoint(x: lx, y: top + above), top: top, height: above + below,
@@ -503,13 +511,18 @@ struct LayoutBuilder {
     // .math pads 2px above and below, the formula's own display margin is 2px more (markdown.css)
     let pad: CGFloat = 4
     let size = style.size * 1.08
-    if let tex = resources.math, case .ok(let pic) = tex.typeset(latex, display: true, preamble: resources.mathPreamble)
+    let (body, tag) = MathTag.split(latex)
+    if let tex = resources.math, case .ok(let pic) = tex.typeset(body, display: true, preamble: resources.mathPreamble)
     {
       let w = CGFloat(pic.width) * size
       let h = CGFloat(pic.height) * size
-      let ox = x + max(0, (width - w) / 2)
-      items.append(
-        .math(pic, size: size, origin: CGPoint(x: ox, y: y + pad + CGFloat(pic.baseline) * size), color: style.color))
+      let base = y + pad + CGFloat(pic.baseline) * size
+      // centred; a tag at the right edge on the formula's baseline, as KaTeX places it
+      items.append(.math(pic, size: size, origin: CGPoint(x: x + max(0, (width - w) / 2), y: base), color: style.color))
+      if let tag, case .ok(let t) = tex.typeset(tag, display: false, preamble: resources.mathPreamble) {
+        items.append(
+          .math(t, size: size, origin: CGPoint(x: x + width - CGFloat(t.width) * size, y: base), color: style.color))
+      }
       return y + pad + h + pad
     }
     var s = style
