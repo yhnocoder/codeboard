@@ -268,7 +268,15 @@ type Posted =
 const post = (m: Posted) => window.webkit?.messageHandlers.note.postMessage(m);
 
 /** The card being edited: its slot is placed `margin` px in from the page's top left, so the editor's menus have room */
-type Editing = { slot: Slot; original: string; layout: MdLayout | null; editor: MdEditorHandle; ended: boolean };
+type Ended = { text: string | null; layout: MdLayout | null; layoutChanged: boolean };
+type Editing = {
+  slot: Slot;
+  original: string;
+  layout: MdLayout | null;
+  editor: MdEditorHandle;
+  /** What it ended with, once ended (the editor leaving by itself or native finishing it, whichever came first) */
+  ended: Ended | null;
+};
 let editing: Editing | undefined;
 const margin = () => Number(document.documentElement.dataset.margin ?? 0);
 
@@ -286,12 +294,13 @@ function keepStatic(e: Editing) {
   box.style.display = "none";
 }
 
-/** Ends the editing: what was written (null when nothing changed) and its layout; the content stays shown until clear */
-function end(e: Editing, text: string | null, layout: MdLayout | null) {
+/** Ends the editing: what was written (text null when nothing changed) and its layout; the content stays shown until
+ *  clear. Null when it had ended already */
+function end(e: Editing, text: string | null, layout: MdLayout | null): Ended | null {
   if (e.ended) return null;
-  e.ended = true;
+  e.ended = { text, layout, layoutChanged: JSON.stringify(layout ?? null) !== JSON.stringify(e.layout ?? null) };
   keepStatic(e);
-  return { text, layout, layoutChanged: JSON.stringify(layout ?? null) !== JSON.stringify(e.layout ?? null) };
+  return e.ended;
 }
 
 /** Where the editor's own menus and boxes are (page px): native lets the pointer through everywhere else outside
@@ -339,7 +348,7 @@ const edit = {
       slot: s,
       original: a.note.text,
       layout: a.note.layout,
-      ended: false,
+      ended: null,
       editor: undefined as unknown as MdEditorHandle,
     };
     const md = mdFor(a.images, a.note.refs);
@@ -389,12 +398,14 @@ const edit = {
   type(text: string) {
     if (editing && !editing.ended) editing.editor.type(text);
   },
-  /** Native ends the editing (a click outside): what was written; what is shown stays until clear */
+  /** Native ends the editing (a click outside): what was written, also when the editor left by itself first (focus
+   *  went, and its "done" is still on the way); what is shown stays until clear */
   finish() {
     if (!editing) return null;
     const e = editing;
+    if (e.ended) return e.ended;
     const r = end(e, e.editor.value(), e.editor.layout());
-    if (r) e.editor.destroy();
+    e.editor.destroy();
     return r;
   },
   /** Lets the card go, once native shows its picture */

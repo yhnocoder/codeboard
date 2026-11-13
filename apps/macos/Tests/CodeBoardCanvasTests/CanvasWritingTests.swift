@@ -376,3 +376,50 @@ extension CanvasWritingTests {
     await r.canvas.endEditing()
   }
 }
+
+extension CanvasWritingTests {
+  /// The editor leaves by itself when its web view loses focus and posts "done"; a click outside meanwhile asks it to
+  /// finish too. Whichever comes first, what was typed is written: here the "done" never reaches the canvas (it is
+  /// what arrived late and was dropped), and the click outside must still get the text
+  @Test func whatWasTypedIsWrittenWhenTheEditorLeftByItselfBeforeTheClickOutside() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    r.click(r.centre("t1"))
+    r.key(36)
+    await r.editorReady()
+    await r.type(" now")
+    let editor = r.canvas.noteEditor
+    editor.onDone = nil
+    // focus leaves the editor; it finishes on the timer after the blur
+    _ = try await editor.view.callAsyncJavaScript(
+      "document.activeElement.blur(); await new Promise(r => setTimeout(r, 20)); return 1", contentWorld: .page)
+    r.click(CGPoint(x: 800, y: 330))
+    while r.canvas.isEditing { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(r.card("t1").writing == "Threads wait at the barrier now")
+    #expect(r.doc.undoName == "Edit Text")
+  }
+
+  /// Focus leaving in the middle of an IME composition (composition started and updated, never ended): what is composed
+  /// so far is written
+  @Test func focusLeavingMidCompositionWritesWhatIsComposed() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    r.click(r.centre("t1"))
+    r.key(36)
+    await r.editorReady()
+    let editor = r.canvas.noteEditor
+    _ = try await editor.view.callAsyncJavaScript(
+      """
+      const pm = document.querySelector(".ProseMirror");
+      pm.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true, data: "" }));
+      document.execCommand("insertText", false, "屏障");
+      pm.dispatchEvent(new CompositionEvent("compositionupdate", { bubbles: true, data: "屏障" }));
+      await new Promise(r => requestAnimationFrame(() => r(1)));
+      pm.blur();
+      return 1
+      """, contentWorld: .page)
+    r.click(CGPoint(x: 800, y: 330))
+    while r.canvas.isEditing { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(r.card("t1").writing == "Threads wait at the barrier屏障")
+  }
+}
