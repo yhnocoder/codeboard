@@ -173,7 +173,7 @@ public final class NoteRenderer {
     var dark: Bool
   }
 
-  private nonisolated static func images(_ folder: URL) -> URL {
+  nonisolated static func images(_ folder: URL) -> URL {
     folder.appending(path: "images", directoryHint: .notDirectory)
   }
 

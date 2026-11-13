@@ -36,9 +36,13 @@ declare global {
   }
 }
 
-// The page only draws: mounting the editor focuses it, and a web view in the background that asks for focus takes the
-// keyboard from the window the user types in
-HTMLElement.prototype.focus = () => {};
+/** Loaded as page.html?edit: the one Note being edited, in the web view over the canvas, which takes the keyboard.
+ *  Otherwise the page only draws */
+const editMode = new URLSearchParams(location.search).has("edit");
+document.documentElement.classList.add(editMode ? "edit" : "render");
+// mounting the editor focuses it, and a web view in the background that asks for focus takes the keyboard from the
+// window the user types in
+if (!editMode) HTMLElement.prototype.focus = () => {};
 
 const refKey = (label: string, target?: string | null) => `${label}\u0000${target ?? ""}`;
 
@@ -228,4 +232,152 @@ window.note = {
     for (const id of ids) drop(id);
   },
 };
+/** What the editing web view posts: its card's size as it changes, and that the editor left by itself (Esc) */
+type Posted =
+  | { type: "size"; width: number; height: number }
+  | { type: "done"; text: string | null; layout: MdLayout | null; layoutChanged: boolean }
+  | { type: "ui"; rects: { x: number; y: number; width: number; height: number }[] };
+const post = (m: Posted) => window.webkit?.messageHandlers.note.postMessage(m);
+
+/** The card being edited: its slot is placed `margin` px in from the page's top left, so the editor's menus have room */
+type Editing = { slot: Slot; original: string; layout: MdLayout | null; editor: MdEditorHandle; ended: boolean };
+let editing: Editing | undefined;
+const margin = () => Number(document.documentElement.dataset.margin ?? 0);
+
+/** The editor's DOM as it is now, kept in its place as static content once the editor is gone: what was typed stays
+ *  on screen until native has its picture under the web view (no caret, no selection) */
+function keepStatic(e: Editing) {
+  const body = e.slot.card.querySelector<HTMLElement>(".cface > .editing");
+  const box = body?.firstElementChild as HTMLElement | null;
+  if (!body || !box) return;
+  const copy = box.cloneNode(true) as HTMLElement;
+  copy.querySelectorAll("[contenteditable]").forEach((n) => n.removeAttribute("contenteditable"));
+  copy.querySelectorAll(".ProseMirror-gapcursor, .ProseMirror-separator").forEach((n) => n.remove());
+  copy.classList.add("kept");
+  body.append(copy);
+  box.style.display = "none";
+}
+
+/** Ends the editing: what was written (null when nothing changed) and its layout; the content stays shown until clear */
+function end(e: Editing, text: string | null, layout: MdLayout | null) {
+  if (e.ended) return null;
+  e.ended = true;
+  keepStatic(e);
+  return { text, layout, layoutChanged: JSON.stringify(layout ?? null) !== JSON.stringify(e.layout ?? null) };
+}
+
+/** Where the editor's own menus and boxes are (page px): native lets the pointer through everywhere else outside
+ *  the card */
+function watchUi() {
+  let queued = false;
+  const send = () => {
+    queued = false;
+    const rects = [...document.querySelectorAll<HTMLElement>(".mdui > *, .mdui-anchor")]
+      .map((n) => n.getBoundingClientRect())
+      .filter((r) => r.width > 0 && r.height > 0)
+      .map((r) => ({ x: r.x, y: r.y, width: r.width, height: r.height }));
+    post({ type: "ui", rects });
+  };
+  new MutationObserver(() => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(send);
+  }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["style", "class"] });
+}
+if (editMode) watchUi();
+
+const edit = {
+  /** Mounts `note` in the editor, `margin` px from the page's top left, at zoom k, takes the keyboard and puts the
+   *  caret at `caret` (card px at 100 %), else at the end; resolves with its size once laid out */
+  async begin(a: {
+    note: Note;
+    images: string;
+    k: number;
+    margin: number;
+    caret: { x: number; y: number } | null;
+    placeholder: string;
+  }) {
+    edit.clear();
+    setLook(a.note.look, a.note.dark);
+    document.documentElement.dataset.margin = String(a.margin);
+    const made = cardFor(a.note);
+    const s = newSlot("edit", made.card);
+    s.slot.classList.add("shown");
+    s.slot.style.left = `${a.margin}px`;
+    s.slot.style.top = `${a.margin}px`;
+    s.slot.style.transform = a.k === 1 ? "" : `scale(${a.k})`;
+    const isText = "text" in a.note.style;
+    const e: Editing = {
+      slot: s,
+      original: a.note.text,
+      layout: a.note.layout,
+      ended: false,
+      editor: undefined as unknown as MdEditorHandle,
+    };
+    const md = mdFor(a.images, a.note.refs);
+    e.editor = mountEditor(md, made.body, {
+      value: a.note.text,
+      layout: a.note.layout,
+      placeholder: a.placeholder,
+      headingChip: !isText,
+      scrollOwnBox: true,
+      onDone: (v, l) => {
+        const r = end(e, v, l === undefined ? e.layout : l);
+        if (r) post({ type: "done", ...r });
+      },
+      saveImage: (dataUrl, name) =>
+        (window.webkit?.messageHandlers as unknown as { image: { postMessage(m: unknown): Promise<string | null> } })
+          .image.postMessage({ dataUrl, name })
+          .catch(() => null),
+    });
+    s.editor = e.editor;
+    editing = e;
+    let last = "";
+    new ResizeObserver(() => {
+      const r = made.card.getBoundingClientRect();
+      const k = Number(s.slot.dataset.k ?? 1);
+      const size = { width: r.width / k, height: r.height / k };
+      const key = `${size.width} ${size.height}`;
+      if (key === last) return;
+      last = key;
+      post({ type: "size", ...size });
+    }).observe(made.card);
+    s.slot.dataset.k = String(a.k);
+    await settled([made.card]);
+    if (a.caret) e.editor.placeCaret({ x: a.margin + a.caret.x * a.k, y: a.margin + a.caret.y * a.k });
+    else e.editor.placeCaret("end");
+    const r = made.card.getBoundingClientRect();
+    return { width: r.width / a.k, height: r.height / a.k };
+  },
+  /** The zoom it is shown at; resolves once drawn so */
+  async zoom(k: number) {
+    if (!editing) return;
+    const s = editing.slot.slot;
+    s.dataset.k = String(k);
+    s.style.transform = k === 1 ? "" : `scale(${k})`;
+    await frames();
+  },
+  /** Types text at the caret as if typed on the keyboard */
+  type(text: string) {
+    if (editing && !editing.ended) editing.editor.type(text);
+  },
+  /** Native ends the editing (a click outside): what was written; what is shown stays until clear */
+  finish() {
+    if (!editing) return null;
+    const e = editing;
+    const r = end(e, e.editor.value(), e.editor.layout());
+    if (r) e.editor.destroy();
+    return r;
+  },
+  /** Lets the card go, once native shows its picture */
+  clear() {
+    if (!editing) return;
+    const e = editing;
+    editing = undefined;
+    if (!e.ended) e.editor.destroy();
+    e.slot.editor = undefined;
+    drop("edit");
+  },
+};
+(window as unknown as { edit: typeof edit }).edit = edit;
 window.webkit?.messageHandlers.note.postMessage("ready");

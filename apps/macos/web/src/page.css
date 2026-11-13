@@ -30,7 +30,8 @@ body {
 #root .card > .cface > .chead {
   visibility: hidden;
 }
-#root .card,
-#root .card * {
+/* a snapshot has no caret; the editing web view shows it */
+.render #root .card,
+.render #root .card * {
   caret-color: transparent;
 }
