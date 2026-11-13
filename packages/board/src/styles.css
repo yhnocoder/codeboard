@@ -9214,10 +9214,18 @@ mark.wdiff {
   color: var(--accent-ink);
   z-index: 3;
 }
-/* that row already has a Highlight's count: left of the number instead, in the code's left padding, so both stay */
+/* that row already has a Highlight's count (CodeBody plusSpot): in the count's column just under it, or just over it; left of the
+   number only with counts on both sides, 1px clear of where the line's link port on the card's edge takes the pointer (its hit
+   area keeps its screen size zoomed out: --uv and --port-hit, as the port has them, state/hover.ts) */
+.gutter .lsadd.below {
+  margin-top: 18px;
+}
+.gutter .lsadd.above {
+  margin-top: -11px;
+}
 .gutter .lsadd.left {
   right: auto;
-  left: calc((var(--code-pl) - 13px) / 2);
+  left: max((var(--code-pl) - 13px) / 2, (4.5px - var(--port-hit, 0px)) * var(--uv, 1) + 0.5px);
 }
 .gutter .lsadd:hover {
   scale: 1.15;

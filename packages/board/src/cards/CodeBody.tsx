@@ -238,6 +238,15 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
     const i = rows().findIndex((r) => r.t === "line" && r.seg === ls.seg && r.line === ls.end);
     return i >= 0 ? i : undefined;
   });
+  // where the selected lines' + goes when their last row already shows a Highlight's count: under the count, or over it when the
+  // next row has a count too; with counts on both sides, left of the number, clear of the line's link port on the card's edge
+  const plusSpot = createMemo(() => {
+    const e = selEnd();
+    if (e === undefined) return undefined;
+    const counted = new Set(X.list().flatMap((h) => (h.notes.length > 0 ? [h.first] : [])));
+    if (!counted.has(e)) return undefined;
+    return !counted.has(e + 1) ? "below" : !counted.has(e - 1) ? "above" : "left";
+  });
   const leaveHx = () => {
     hovered = undefined;
     act.leaveHighlight();
@@ -499,8 +508,15 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
               <Show when={selEnd() !== undefined && ys()[selEnd()!]}>
                 <button
                   class="lsadd"
-                  classList={{ left: X.list().some((h) => h.notes.length > 0 && h.first === selEnd()) }}
-                  style={{ top: `${ys()[selEnd()!].y}px` }}
+                  classList={{
+                    below: plusSpot() === "below",
+                    above: plusSpot() === "above",
+                    left: plusSpot() === "left",
+                  }}
+                  style={{
+                    top: `${ys()[selEnd()!].y}px`,
+                    ...(plusSpot() === "left" ? portStyle(p.hostId) : undefined),
+                  }}
                   data-nodrag
                   aria-label="Add Sidenote"
                   data-tip="Add Sidenote (S)"

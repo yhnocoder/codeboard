@@ -15,8 +15,10 @@
 //                          window as the board pans and zooms; closed and opened again it is back beside the card
 //  sidenoteWholeCardPopup  the card menu's Add ▸ Sidenote opens the card's popup right of it with the input focused; ↵ adds a
 //                          whole-card sidenote; the header marker pins the popup, and its Delete removes the card's sidenotes
-//  sidenoteAddBesideCount  selected lines ending on a Highlight's count: their + sits left of the line number, both visible and
-//                          clickable (the + opens the lines' popup with the input, the count its Highlight's popup)
+//  sidenoteAddBesideCount  selected lines ending on a Highlight's count: their + sits under the count, both visible and
+//                          clickable (the + opens the lines' popup with the input, the count its Highlight's popup); under the
+//                          count, or left of the number between counts, at 100% and zoomed out, it stays clear of the counts and
+//                          of the handles on the card's left edge
 //  sidenoteStateIcons      a sidenote's state (its line removed) shows as an icon whose tooltip says it, with no words in the slip
 import type { Page } from "@playwright/test";
 import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
@@ -484,7 +486,8 @@ test("sidenoteAddBesideCount", async () => {
       !!document.elementFromPoint((b.l + b.r) / 2, (b.t + b.b) / 2)?.closest(sel);
     return {
       apart: apart(plus, count) && apart(plus, num),
-      sameRow: Math.abs(plus.t - count.t) <= 2,
+      // just under the count, in its column
+      under: plus.t >= count.b - 0.5 && plus.t - count.b <= 4 && plus.l < count.r && count.l < plus.r,
       plusHit: hit(plus, ".lsadd"),
       countHit: hit(count, ".hxm"),
     };
@@ -500,11 +503,90 @@ test("sidenoteAddBesideCount", async () => {
   await pg.locator(POP).waitFor();
   const counted = await pg.evaluate(() => document.querySelector(".pop.k-highlight .rng")?.textContent ?? "");
   check(
-    "sidenoteAddBesideCount the + and the count on one row are both shown and each takes its own click",
-    geo.apart && geo.sameRow && geo.plusHit && geo.countHit && lines === "2–3" && counted === "3–4",
+    "sidenoteAddBesideCount the + under the count on its row: both are shown and each takes its own click",
+    geo.apart && geo.under && geo.plusHit && geo.countHit && lines === "2–3" && counted === "3–4",
     { geo, lines, counted },
   );
   await h.close();
+  // at the card's vertical middle, as seen and zoomed out (where a port keeps its on-screen hit area while the card shrinks): under
+  // the count, or left of the number when the rows around have counts too, the + stays clear of the counts and of what sits on the
+  // card's left edge there, the line's link port
+  const cases = [
+    { name: "middle", spot: "below", hl: [[12, 13]] as [number, number][], from: 11 },
+    {
+      name: "between counts",
+      spot: "left",
+      hl: [
+        [11, 11],
+        [12, 12],
+        [13, 13],
+      ] as [number, number][],
+      from: 12,
+    },
+  ];
+  for (const k of cases)
+    for (const z of [1, 0.4]) {
+      const b = board();
+      const seg = (b.cards[0] as CodeCard).segments[0];
+      seg.hl = [...(seg.hl ?? []), ...k.hl];
+      for (const [i, lines] of k.hl.entries())
+        b.sidenotes.push({ id: `m${i}`, kind: "text", md: "middle", at: { card: "k1", seg: "s1", lines } });
+      b.cam = { x: 0, y: 0, z };
+      const hm = await open({ board: b, light, w: 1300, h: 900 });
+      const pm = hm.page;
+      await idle(hm);
+      await no(pm, k.from).click();
+      if (k.from !== 12) await no(pm, 12).click({ modifiers: ["Shift"] });
+      const plusEl = pm.locator(`.card[data-id="k1"] .lsadd.${k.spot}`);
+      await plusEl.waitFor();
+      // the pointer on the row's code, where its link port shows
+      const pb = (await plusEl.boundingBox())!,
+        cb = (await pm.locator('.card[data-id="k1"]').boundingBox())!;
+      await pm.mouse.move(cb.x + cb.width / 2, pb.y + pb.height / 2);
+      await idle(hm);
+      const edge = await pm.evaluate(() => {
+        const card = document.querySelector<HTMLElement>('.card[data-id="k1"]')!,
+          cr = card.getBoundingClientRect(),
+          p = card.querySelector<HTMLElement>(".lsadd")!.getBoundingClientRect();
+        const mid = (cr.top + cr.bottom) / 2;
+        // where a handle takes the pointer: a port's ::after, inset by --port-hit (negative: larger than the dot), scaled with it
+        const hitBox = (e: HTMLElement) => {
+          const r = e.getBoundingClientRect(),
+            k = r.width / (e.offsetWidth || 1),
+            inset = Number.parseFloat(getComputedStyle(e, "::after").inset) || 0,
+            hw = (e.offsetWidth / 2 - Math.min(0, inset)) * k,
+            hh = (e.offsetHeight / 2 - Math.min(0, inset)) * k,
+            cx = (r.left + r.right) / 2,
+            cy = (r.top + r.bottom) / 2;
+          return { l: cx - hw, r: cx + hw, t: cy - hh, b: cy + hh };
+        };
+        const apart = (e: { l: number; r: number; t: number; b: number }) =>
+          e.r <= p.left || p.right <= e.l || e.b <= p.top || p.bottom <= e.t;
+        const onEdge = [...card.querySelectorAll<HTMLElement>(".lport.l, .eport.l, .hw.l, .bxh")]
+          .filter((e) => getComputedStyle(e).display !== "none")
+          .map((e) => ({ cls: e.className, ...hitBox(e) }));
+        const counts = [...card.querySelectorAll<HTMLElement>(".hxm")].map((e) => {
+          const r = e.getBoundingClientRect();
+          return { l: r.left, r: r.right, t: r.top, b: r.bottom };
+        });
+        const top = document.elementFromPoint((p.left + p.right) / 2, (p.top + p.bottom) / 2);
+        return {
+          clear: onEdge.every(apart),
+          countsClear: counts.every(apart),
+          nearMiddle: Math.abs((p.top + p.bottom) / 2 - mid) <= cr.height / 6,
+          plusOnTop: !!top?.closest(".lsadd"),
+          ports: onEdge.filter((e) => e.cls.includes("lport")).length,
+          plus: { l: p.left, r: p.right, t: p.top, b: p.bottom },
+          onEdge,
+        };
+      });
+      check(
+        `sidenoteAddBesideCount ${k.name} at zoom ${z}: the + stays clear of the counts and the card's left edge handles`,
+        edge.clear && edge.countsClear && edge.nearMiddle && edge.plusOnTop && edge.ports === 1,
+        edge,
+      );
+      await hm.close();
+    }
 });
 
 test("sidenoteStateIcons", async () => {
