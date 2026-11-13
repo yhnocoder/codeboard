@@ -242,9 +242,11 @@ extension Drawing {
       let (ax, ay, bx, by) = (a.x + a.w / 2, a.y + a.h / 2, b.x + b.w / 2, b.y + b.h / 2)
       let horiz = abs(bx - ax) > abs(by - ay)
       let p1 =
-        horiz ? CGPoint(x: mx(ax < bx ? a.x + a.w : a.x), y: my(ay)) : CGPoint(x: mx(ax), y: my(ay < by ? a.y + a.h : a.y))
+        horiz
+        ? CGPoint(x: mx(ax < bx ? a.x + a.w : a.x), y: my(ay)) : CGPoint(x: mx(ax), y: my(ay < by ? a.y + a.h : a.y))
       let p2 =
-        horiz ? CGPoint(x: mx(ax < bx ? b.x : b.x + b.w), y: my(by)) : CGPoint(x: mx(bx), y: my(ay < by ? b.y : b.y + b.h))
+        horiz
+        ? CGPoint(x: mx(ax < bx ? b.x : b.x + b.w), y: my(by)) : CGPoint(x: mx(bx), y: my(ay < by ? b.y : b.y + b.h))
       let path = CGMutablePath()
       path.move(to: p1)
       if horiz {
@@ -359,7 +361,8 @@ extension Drawing {
       let maxW = ml(s.box.w) - 8
       let numW = Drawing.width(num, labCount)
       let tw = min(Drawing.width(title, labFont), max(0, maxW - 8 - 5 - numW))
-      let lab = CGRect(x: mx(s.box.x) + 4, y: my(s.box.y) - 9, width: min(maxW, 4 + tw + 5 + numW + 4), height: 14.3 + 2)
+      let lab = CGRect(
+        x: mx(s.box.x) + 4, y: my(s.box.y) - 9, width: min(maxW, 4 + tw + 5 + numW + 4), height: 14.3 + 2)
       ctx.addPath(round(lab, 4))
       ctx.setFillColor(ground.copy(alpha: 0.9) ?? ground)
       ctx.fillPath()
