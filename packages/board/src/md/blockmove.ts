@@ -27,9 +27,9 @@ import { editing, setEditing } from "../state/ui";
 import { cardById, placed, placeOf, rectOf } from "../state/store";
 import { cam } from "../state/camera";
 import { lastPointer, worldAt } from "../state/measure";
-import { boardMap, boardRef, onBoardSwitch, rooted } from "../state/root";
+import { boardMap, boardRef, boardSignal, boardTimer, rooted } from "../state/root";
 import { animScale, reduceMotion } from "../state/motion";
-import { DRAG_SLOP, track } from "../gesture";
+import { DRAG_SLOP, holdGesture, track } from "../gesture";
 import { cardSel } from "../cardsel";
 
 /** The copy over a Note: its longer side at most this many screen px */
@@ -87,9 +87,16 @@ type Move = {
   slots: Map<string, Slots | null>;
   /** the element holding the pointer while dragging (its cursor is the one shown) */
   held: Element | null;
+  /** ends the move's hold as a gesture: a board switch before it ends drops it (dropMove) */
+  done: () => void;
 };
 
 const mv = boardRef<Move | null>(null);
+/** The move as a signal, for what follows its source Note's Markdown while it floats */
+const [moving, setMoving] = boardSignal<Move | null>(null);
+const swapTimer = boardTimer(),
+  glideTimer = boardTimer(),
+  settleTimer = boardTimer();
 /** what the outline is round now */
 const hot = boardRef<{ card: string; a: number; b: number } | null>(null);
 /** ⌘ (Ctrl) is held; a press of ours whose click and mousedown are not the editor's */
@@ -376,7 +383,7 @@ function place(d: Move) {
   const over = d.over && d.drag;
   if (over !== d.g.classList.contains("is-over") && !d.g.classList.contains("is-glide")) {
     d.g.classList.add("is-swap");
-    window.setTimeout(() => d.g.classList.remove("is-swap"), 130 * animScale());
+    swapTimer.start(() => d.g.classList.remove("is-swap"), 130 * animScale());
   }
   let k: number, x: number, y: number;
   if (over) {
@@ -449,8 +456,12 @@ function clipCard(id: string, h0: number) {
       .join(", "),
     borderRadius: `0 0 ${R}px ${R}px`,
     clipPath: `inset(${R}px -${S}px -${S}px -${S}px)`,
+    // a tilted card: the strip turns with it, round the card's centre
+    rotate: ce.style.rotate,
+    transformOrigin: `${ce.offsetWidth / 2}px ${2 * R + ce.offsetHeight / 2}px`,
   });
-  ce.after(edge);
+  // in the block-move layer, not among the cards the board draws
+  (layer() ?? ce.parentElement)?.append(edge);
   const o = { duration: FLIP_MS * animScale(), easing: EASE };
   const a = ce.animate([{ clipPath: ins(H - h0) }, { clipPath: ins(H - h1) }], o);
   edge.animate([{ transform: `translateY(${h0}px)` }, { transform: `translateY(${h1}px)` }], {
@@ -550,8 +561,11 @@ function startMove(id: string, range: [number, number], float: boolean, p: { x: 
     settling: false,
     slots: new Map(),
     held: null,
+    // the move outlives the press that started it (a picked-up block floats): held until it lands or is put back
+    done: holdGesture(dropMove),
   };
   mv.v = d;
+  setMoving(d);
   clearHover();
   place(d);
   return d;
@@ -593,7 +607,7 @@ function pickUp(id: string, range: [number, number], p: { x: number; y: number }
   void d.g.offsetWidth;
   d.g.classList.add("is-glide", "is-lift", "is-float");
   place(d);
-  window.setTimeout(() => d.g.classList.remove("is-glide"), (SETTLE_MS + 20) * animScale());
+  glideTimer.start(() => d.g.classList.remove("is-glide"), (SETTLE_MS + 20) * animScale());
 }
 
 function dragTo(d: Move, x: number, y: number) {
@@ -651,11 +665,19 @@ function commit(d: Move, t: Target): number | null {
   const n = d.range[1] - d.range[0];
   const sEd = edBlocks(d.src),
     dEd = edBlocks(t.card);
-  const r = sEd?.marked() ?? d.range;
+  const r = [...(sEd?.marked() ?? d.range)] as [number, number];
   if (t.card === d.src && sEd) return sEd.move(r[0], r[1], t.idx) ? (t.idx > r[1] ? t.idx - n : t.idx) : null;
   const src = noteOf(d.src),
     dst = noteOf(t.card);
   if (!src || !dst) return null;
+  // a floating block's Note may have changed since it was picked up (an undo, a sync): its blocks are found again, or it
+  // goes back
+  if (!sEd && d.part) {
+    const at = findMdBlocks(src.md, d.part.md, r[0]);
+    if (!at) return null;
+    r[0] = at[0];
+    r[1] = at[1];
+  }
   let notes: { id: string; md: string; layout: MdPart["layout"] }[];
   if (t.card === d.src) {
     const m = moveMdBlocks(src, r[0], r[1], t.idx);
@@ -736,23 +758,30 @@ function settle(d: Move, t: Target | null) {
   d.g.classList.remove("is-lift");
   d.g.style.translate = `${d.kind === "text" ? goal.x - PX : goal.x}px ${d.kind === "text" ? goal.y - PY : goal.y}px`;
   d.g.style.scale = "1";
-  window.setTimeout(
+  settleTimer.start(
     () => {
       d.g.remove();
-      if (mv.v === d) mv.v = null;
+      end(d);
       markBlocks(dst, null, "gone");
     },
     reduceMotion() ? 0 : (SETTLE_MS + 10) * animScale(),
   );
 }
 
+function end(d: Move) {
+  d.done();
+  if (mv.v === d) {
+    mv.v = null;
+    setMoving(null);
+  }
+}
 /** Put back at once, no animation (a board switch, the source opened again) */
 function dropMove() {
   const d = mv.v;
-  mv.v = null;
   showLine(null);
   hideStatic(null);
   if (!d) return;
+  end(d);
   grabbing(d, false);
   d.g.remove();
   if (!d.settling) markBlocks(d.src, null, "dim");
@@ -825,7 +854,29 @@ function floatDown(e: PointerEvent) {
 
 /** Wires ⌘-moving blocks: the editing Note's element takes ⌘-presses before its editor, the keys put a floating block back */
 export function wireBlockMove() {
-  onBoardSwitch(dropMove);
+  // a floating block whose Note is not being edited: its blocks are found again when the Note's Markdown changes (an undo,
+  // a sync, another window), and hidden there; gone, the copy goes
+  rooted(() =>
+    createEffect(
+      on(
+        () => {
+          const d = moving(),
+            c = d?.part ? cardById(d.src)?.card : undefined;
+          return c?.kind === "note" ? c.md : null;
+        },
+        (md) => {
+          const d = mv.v;
+          if (md === null || !d?.part || d.settling || edBlocks(d.src)) return;
+          const r = findMdBlocks(md, d.part.md, d.range[0]);
+          if (!r) return dropMove();
+          d.range = r;
+          d.slots.clear();
+          hideStatic(d.src, r);
+        },
+        { defer: true },
+      ),
+    ),
+  );
   const modKey = (e: KeyboardEvent) => e.key === "Meta" || e.key === "Control";
   window.addEventListener(
     "keydown",

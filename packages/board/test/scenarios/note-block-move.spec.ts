@@ -2,7 +2,7 @@
 // selection spans moving together under one outline, ⌘-click picking blocks up beside the Note and putting them back
 import * as path from "node:path";
 import { OUT, put, type Host } from "../harness";
-import { emptyBoard, type NoteCard } from "@codeboard/core";
+import { DEFAULT_SETTINGS, emptyBoard, type NoteCard } from "@codeboard/core";
 import { test, open, check, light, until, idle } from "../fixtures";
 
 const card = (id: string) => `.card[data-id="${id}"]`;
@@ -216,5 +216,76 @@ test("noteBlockMoveLink", async () => {
     {
       outline,
     },
+  );
+});
+
+/** A picked-up block floating beside its Note goes with its board: switching to another board leaves nothing of it there (the
+ *  copy, the card's bottom edge strip, a height held on the card) */
+test("noteBlockFloatBoardSwitch", async () => {
+  const h = await board();
+  const pre = await box(h, `${card("n1")} .md-pm > pre`);
+  await cmdClick(h, { x: pre.x + 40, y: pre.y + 12 });
+  await until(h, "it floats", async () => (await h.page.locator(".bmv-g.is-float").count()) === 1);
+  const other = emptyBoard("b2", "other");
+  put(other, { id: "n1", kind: "note", md: N2, look: "note" } as NoteCard, 60, 80, 400);
+  await h.post({
+    type: "init",
+    board: other,
+    boards: [{ id: "b2", name: "other", cards: 1 }],
+    views: {},
+    stale: {},
+    host: { assetBase: "", target: true, settings: DEFAULT_SETTINGS },
+  } as never);
+  await h.page.locator(`${card("n1")} .nbody`, { hasText: "Other one." }).waitFor();
+  await idle(h);
+  const left = await h.page.evaluate(() => ({
+    copies: document.querySelectorAll(".bmv-g").length,
+    edges: document.querySelectorAll(".bmv-edge").length,
+    height: (document.querySelector(".card[data-id='n1']") as HTMLElement).style.height,
+    hidden: [...document.querySelectorAll("style")].some((s) => /display: none !important/.test(s.textContent ?? "")),
+  }));
+  check(
+    "noteBlockFloatBoardSwitch nothing of the move is left on the new board",
+    !left.copies && !left.edges && !left.height && !left.hidden,
+    left,
+  );
+});
+
+/** A floating block whose Note changes while it floats (another window, a sync) is found again where it now is: dropped,
+ *  the right block moves */
+test("noteBlockFloatNoteChanged", async () => {
+  const h = await board();
+  const pre = await box(h, `${card("n1")} .md-pm > pre`);
+  await cmdClick(h, { x: pre.x + 40, y: pre.y + 12 });
+  await until(h, "it floats", async () => (await h.page.locator(".bmv-g.is-float").count()) === 1);
+  // the editor closes (a click on the other Note): the block stays floating, found in the saved Markdown
+  await h.page.locator(`${card("n2")} .nbody`).click({ position: { x: 20, y: 8 } });
+  await until(h, "the editor closed", async () => (await h.page.locator(`${card("n1")} .md.editing`).count()) === 0);
+  await idle(h);
+  // the Note changes elsewhere: a paragraph added at its top
+  const n1 = h.board().cards.find((c) => c.id === "n1") as NoteCard;
+  await h.post({ type: "merged", patch: { cards: { set: [{ ...n1, md: `New first.\n\n${n1.md}` }] } } } as never);
+  await until(h, "the change is shown", async () =>
+    (await h.page.locator(`${card("n1")} .nbody`).innerText()).startsWith("New first."),
+  );
+  await idle(h);
+  const shown = await h.page.locator(`${card("n1")} .nbody`).innerText();
+  const fl = await box(h, ".bmv-g.is-float"),
+    o1 = await box(h, `${card("n2")} .nbody > p:nth-child(2)`);
+  await h.page.mouse.move(fl.x + 20, fl.y + 10);
+  await h.page.mouse.down();
+  await h.page.mouse.move(fl.x + 30, fl.y + 20, { steps: 2 });
+  await h.page.mouse.move(o1.x + 30, o1.y + 3, { steps: 8 });
+  await h.page.mouse.up();
+  await until(h, "moved into the other Note", () => md(h, "n2") !== N2);
+  const n1md = md(h, "n1")!;
+  check(
+    "noteBlockFloatNoteChanged the code block moved, the rest stayed",
+    md(h, "n2") === "Other one.\n\n```python\nx = 1\n```\n\nOther two." &&
+      !n1md.includes("x = 1") &&
+      n1md.includes("- a\n- b") &&
+      n1md.includes("See [the docs]") &&
+      !shown.includes("x = 1"),
+    { n1: n1md, n2: md(h, "n2"), shown },
   );
 });
