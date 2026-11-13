@@ -18,11 +18,24 @@ public struct NoteRef: Equatable, Sendable, Encodable {
     public var text: String
     public var color: String
     public var alone: Bool
+    /// The book it is in, when that is another book than the one the ref is written in: drawn as the first half
+    public var outer: Outer?
 
-    public init(text: String, color: String, alone: Bool) {
+    public struct Outer: Equatable, Sendable {
+      public var text: String
+      public var color: String
+
+      public init(text: String, color: String) {
+        self.text = text
+        self.color = color
+      }
+    }
+
+    public init(text: String, color: String, alone: Bool, outer: Outer? = nil) {
       self.text = text
       self.color = color
       self.alone = alone
+      self.outer = outer
     }
   }
 
@@ -75,6 +88,11 @@ extension NoteRef.Hit: Encodable {
         try s.encode(seal.text, forKey: Key("text"))
         try s.encode("var(--seal-\(seal.color))", forKey: Key("color"))
         if seal.alone { try s.encode(true, forKey: Key("alone")) }
+        if let o = seal.outer {
+          var oc = s.nestedContainer(keyedBy: Key.self, forKey: Key("outer"))
+          try oc.encode(o.text, forKey: Key("text"))
+          try oc.encode("var(--seal-\(o.color))", forKey: Key("color"))
+        }
       }
     case .broken(let place, let title, let badge):
       try h.encode(place ? "place" : "item", forKey: Key("broken"))

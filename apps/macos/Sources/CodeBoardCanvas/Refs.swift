@@ -16,6 +16,8 @@ final class RefResolver {
   /// Cards with a title of their own, by id, with their kind and the title of the Section they are in
   typealias Titled = [(id: String, title: String, kind: String, section: String?)]
   private var others: [(meta: VaultBoard, cards: Titled?)]?
+  /// The vault's tree, read with the other boards (for books)
+  private var tree: VaultFolder?
 
   /// Between a board's name and its card's title in a label (REF_SEP)
   static let separator = " › "
@@ -24,7 +26,10 @@ final class RefResolver {
     self.board = board
     self.package = package
     self.vault = vault
-    name = package.deletingPathExtension().lastPathComponent
+    // a folder board's title is its folder's name
+    name =
+      package.lastPathComponent == Vault.folderBoardName
+      ? package.deletingLastPathComponent().lastPathComponent : package.deletingPathExtension().lastPathComponent
   }
 
   /// The refs a Note's Markdown has, each once, in the order written, with what each points at; one that points at
@@ -78,7 +83,7 @@ final class RefResolver {
       return (.found(title: trim(s.title), seal: nil), .section(s.id))
     }
     if let b = otherBoards().first(where: { trim($0.meta.title).lowercased() == low }) {
-      return (.found(title: trim(b.meta.title), seal: RefResolver.seal(b.meta, alone: true)), .board(b.meta.id))
+      return (.found(title: trim(b.meta.title), seal: seal(b.meta, alone: true)), .board(b.meta.id))
     }
     return crossRef(l)
   }
@@ -106,7 +111,7 @@ final class RefResolver {
       if let r = cards(i).first(where: { $0.id == id }) {
         let meta = otherBoards()[i].meta
         return (
-          .found(title: r.title, seal: RefResolver.seal(meta, alone: false)),
+          .found(title: r.title, seal: seal(meta, alone: false)),
           .elsewhere(meta.id, CardID(rawValue: r.id))
         )
       }
@@ -130,7 +135,7 @@ final class RefResolver {
           cards(i).first { $0.title.lowercased() == rest.lowercased() } ?? cards(i).first { $0.id == rest }
         guard let c else { return (.broken(place: false, title: rest, badge: trim(b.title)), nil) }
         return (
-          .found(title: c.title, seal: RefResolver.seal(b, alone: false)), .elsewhere(b.id, CardID(rawValue: c.id))
+          .found(title: c.title, seal: seal(b, alone: false)), .elsewhere(b.id, CardID(rawValue: c.id))
         )
       }
       if place == trim(name).lowercased() {
@@ -171,7 +176,7 @@ final class RefResolver {
       elsewhere += refs.count
       let name = trim(meta.title)
       guard !name.isEmpty else { continue }
-      let seal = RefResolver.seal(meta, alone: false)
+      let onIt = seal(meta, alone: false)
       groups.append(
         .init(
           id: meta.id.rawValue, title: name, label: name, target: meta.id.rawValue,
@@ -179,8 +184,8 @@ final class RefResolver {
           items: refs.map { r in
             .init(
               id: r.id, title: r.title, kind: r.kind, label: name + RefResolver.separator + r.title, crumb: r.section,
-              target: "\(meta.id.rawValue)/\(r.id)", hit: .found(title: r.title, seal: seal))
-          }, hit: .found(title: name, seal: RefResolver.seal(meta, alone: true))))
+              target: "\(meta.id.rawValue)/\(r.id)", hit: .found(title: r.title, seal: onIt))
+          }, hit: .found(title: name, seal: seal(meta, alone: true))))
     }
     let n = titled + elsewhere
     let foot = otherBoards().isEmpty ? "" : "\(n) titled card\(n == 1 ? "" : "s") · \(otherBoards().count + 1) boards"
@@ -205,7 +210,8 @@ final class RefResolver {
 
   private func otherBoards() -> [(meta: VaultBoard, cards: Titled?)] {
     if let others { return others }
-    let all = ((try? vault.tree())?.allBoards ?? []).filter { $0.id != board.id }
+    tree = try? vault.tree()
+    let all = (tree?.allBoards ?? []).filter { $0.id != board.id }
     let made = all.map { (meta: $0, cards: nil as Titled?) }
     others = made
     return made
@@ -300,9 +306,16 @@ final class RefResolver {
 
   // MARK: seals (core seal.ts, CodeBoardModel Seals.swift)
 
-  /// A board's seal as a ref draws it
-  static func seal(_ b: VaultBoard, alone: Bool) -> NoteRef.Seal {
-    let s = Seal.of(id: b.id, name: b.title, seal: nil)
-    return NoteRef.Seal(text: s.text, color: s.color.rawValue, alone: alone)
+  /// Another board's seal as a ref to it (or to a card on it) draws it: in another book than this board's, that book's
+  /// seal first, as the first half; `alone`, a ref to the board itself that is a book, drawn as its seal only
+  private func seal(_ b: VaultBoard, alone: Bool) -> NoteRef.Seal {
+    _ = otherBoards()
+    let s = b.drawnSeal
+    let book = tree?.book(of: b.id) ?? b
+    let here = tree?.book(of: board.id)
+    let outer =
+      book.id == b.id || book.id == here?.id
+      ? nil : NoteRef.Seal.Outer(text: book.drawnSeal.text, color: book.drawnSeal.color.rawValue)
+    return NoteRef.Seal(text: s.text, color: s.color.rawValue, alone: alone && book.id == b.id, outer: outer)
   }
 }

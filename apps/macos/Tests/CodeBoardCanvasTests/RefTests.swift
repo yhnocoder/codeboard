@@ -42,6 +42,47 @@ import Testing
         content: .own(CardContent(body: .note(Note(text: "no heading here"))))),
     ])
 
+  /// Books: a top-level folder with a folder board is one, its seal the folder board's; any other board at the top or in
+  /// a top-level folder without one is its own. A ref into another book has that book's seal in front
+  @Test func aRefIntoAnotherBookHasThatBooksSealFirstAndOneInTheSameBookOnlyItsBoards() throws {
+    let root = FileManager.default.temporaryDirectory.appending(path: "books-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let v = Vault(root: root)
+    let id = { (s: String) in BoardID(rawValue: s) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let eng = try v.newBoard(in: "", title: "Engine", board: Board(id: id("eng")))
+    try v.newFolder(in: "", name: "调度器")
+    try v.newBoard(in: "调度器", title: "Prefill", board: Board(id: id("pre")))
+    let dec = try v.newBoard(in: "调度器", title: "Decode", board: Board(id: id("dec"), seal: Seal(text: "DC")))
+    let fb = Board(id: id("fb"), seal: Seal(text: "调度", color: .teal))
+    let folder = try v.newFolderBoard(in: "调度器")
+    try fb.encoded().write(to: v.url(of: folder.path).appending(path: Vault.boardFileName), options: .atomic)
+    try v.newFolder(in: "", name: "Misc")
+    try v.newBoard(in: "Misc", title: "Loose", board: Board(id: id("loose")))
+    func seals(from b: VaultBoard, _ text: String) throws -> [NoteRef.Seal?] {
+      RefResolver(try v.board(at: b.path), package: v.url(of: b.path), vault: v).refs(in: text).map {
+        if case .found(_, let s) = $0.hit { s } else { nil }
+      }
+    }
+    func plain(_ b: String, _ name: String, alone: Bool = false, outer: NoteRef.Seal.Outer? = nil) -> NoteRef.Seal {
+      let s = Seal.of(id: id(b), name: name, seal: nil)
+      return NoteRef.Seal(text: s.text, color: s.color.rawValue, alone: alone, outer: outer)
+    }
+    let book = NoteRef.Seal.Outer(text: "调度", color: "teal")
+    let fbSeal = NoteRef.Seal(text: "调度", color: "teal", alone: true)
+    // from a board that is its own book
+    #expect(
+      try seals(from: eng, "[[Prefill]] [[调度器]] [[Loose]] [[Decode]]") == [
+        plain("pre", "Prefill", outer: book), fbSeal, plain("loose", "Loose", alone: true),
+        NoteRef.Seal(text: "DC", color: Seal.defaultColor(id("dec")).rawValue, alone: false, outer: book),
+      ])
+    // from inside the book: the boards' own seals only; its folder board and a board of another book, alone
+    #expect(
+      try seals(from: dec, "[[Prefill]] [[调度器]] [[Engine]]") == [
+        plain("pre", "Prefill"), fbSeal, plain("eng", "Engine", alone: true),
+      ])
+  }
+
   @Test func refsResolveOnThisBoardAndOthers() throws {
     let text = """
       [[Plan#^c2]] [[plan]] [[sched.step]] [[Warps]] [[Memory Model]] [[Memory Model › coalescing]] \

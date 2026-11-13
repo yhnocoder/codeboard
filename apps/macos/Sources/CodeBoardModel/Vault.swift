@@ -88,8 +88,8 @@ public struct Vault: Sendable {
       var isDir: ObjCBool = false
       if FileManager.default.fileExists(atPath: own.path, isDirectory: &isDir), isDir.boolValue {
         let child = "\(path)/\(Vault.folderBoardName)"
-        out.folderBoard = VaultBoard(
-          id: try boardID(in: own.appending(path: Vault.boardFileName)), title: name, path: child, isFolderBoard: true)
+        let (id, seal) = try boardHead(in: own.appending(path: Vault.boardFileName))
+        out.folderBoard = VaultBoard(id: id, title: name, path: child, isFolderBoard: true, seal: seal)
       }
     }
     for name in names.sorted(by: { $0.localizedStandardCompare($1) == .orderedAscending }) {
@@ -100,7 +100,8 @@ public struct Vault: Sendable {
       if entry.pathExtension == Vault.packageExtension {
         let file = entry.appending(path: Vault.boardFileName)
         let title = entry.deletingPathExtension().lastPathComponent
-        out.boards.append(VaultBoard(id: try boardID(in: file), title: title, path: child))
+        let (id, seal) = try boardHead(in: file)
+        out.boards.append(VaultBoard(id: id, title: title, path: child, seal: seal))
       } else {
         out.folders.append(try folder(at: child, name: entry.lastPathComponent))
       }
@@ -108,9 +109,11 @@ public struct Vault: Sendable {
     return out
   }
 
-  private func boardID(in file: URL) throws -> BoardID {
+  /// A board's id and its seal, the two the tree needs from its file
+  private func boardHead(in file: URL) throws -> (BoardID, Seal?) {
     struct Head: Decodable {
       var id: BoardID
+      var seal: Seal?
     }
     let head: Head
     do {
@@ -120,7 +123,7 @@ public struct Vault: Sendable {
     } catch {
       throw VaultError.malformed(file, "no board id")
     }
-    return head.id
+    return (head.id, head.seal)
   }
 
   private func read(_ file: URL) throws -> Data {
@@ -160,6 +163,16 @@ public struct VaultFolder: Equatable, Sendable {
   /// The folder at a path in it
   public func folder(at path: String) -> VaultFolder? { allFolders.first { $0.path == path } }
 
+  /// The book a board is in (in the vault's tree): the folder board of the top-level folder it is in, when that folder
+  /// has one; else the board itself (a top-level board, or one in a top-level folder without a folder board)
+  public func book(of id: BoardID) -> VaultBoard? {
+    guard let b = allBoards.first(where: { $0.id == id }) else { return nil }
+    guard let top = b.path.split(separator: "/").first, b.path.contains("/"),
+      let f = folders.first(where: { $0.name == top }), let fb = f.folderBoard
+    else { return b }
+    return fb
+  }
+
   /// What is directly in it, in sidebar order: its boards, then its subfolders (what its folder board has a card for)
   public var entries: [FolderEntry] { boards.map { .board($0.id) } + folders.map { .folder($0.name) } }
 }
@@ -178,13 +191,19 @@ public struct VaultBoard: Equatable, Sendable {
   public var path: String
   /// A folder's own board: its title is its folder's name
   public var isFolderBoard: Bool
+  /// Its seal as the user set it (`Seal.of` gives what is drawn)
+  public var seal: Seal?
 
-  public init(id: BoardID, title: String, path: String, isFolderBoard: Bool = false) {
+  public init(id: BoardID, title: String, path: String, isFolderBoard: Bool = false, seal: Seal? = nil) {
     self.id = id
     self.title = title
     self.path = path
     self.isFolderBoard = isFolderBoard
+    self.seal = seal
   }
+
+  /// Its seal as drawn: its own, else the default from its title and id
+  public var drawnSeal: (text: String, color: Seal.Color) { Seal.of(id: id, name: title, seal: seal) }
 
   /// The folder it is in, relative to the vault ("" for the vault itself); a folder board's is the folder it is of
   public var folder: String {
