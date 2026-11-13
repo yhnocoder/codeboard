@@ -23,7 +23,7 @@
 import type { Page } from "@playwright/test";
 import { emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import { put, shot, type Host } from "../harness";
-import { NOTE_HOVER } from "../../src/state/timing";
+import { PEEK_DELAY } from "../../src/state/timing";
 import { test, open, check, light, until, idle, hold, focusSettled, pmHasSelection } from "../fixtures";
 import { watch } from "../watch";
 
@@ -117,7 +117,7 @@ test("noteRefPreview", async () => {
   const h = await openLinks();
   const pg = h.page;
   await ref(pg, "schedule").hover();
-  await hold(h, NOTE_HOVER * 3, "resting on a reference must not preview its card");
+  await hold(h, PEEK_DELAY * 2, "resting on a reference must not preview its card");
   const onHover = await peeks(pg);
   // the preview opens with nothing on the board moving or flashing
   await watch(h, "noteRefPreview open", { ignore: [".cpeek"], frames: 12 }, () => ref(pg, "schedule").click());

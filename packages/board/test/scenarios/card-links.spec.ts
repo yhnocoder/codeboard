@@ -13,7 +13,7 @@ import * as fs from "node:fs";
 import type { Page } from "@playwright/test";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import { put, shot, symCard, findSym, type Host } from "../harness";
-import { NOTE_HOVER } from "../../src/state/timing";
+import { PEEK_DELAY } from "../../src/state/timing";
 import { test, open, check, light, until, idle, hold, focusSettled, hostBoards } from "../fixtures";
 
 const NOTE = [
@@ -210,7 +210,7 @@ test("cardLinkClicks", async () => {
       ),
     );
   await link(pg, "step loop").hover();
-  await hold(h, NOTE_HOVER * 3, "resting on a link to a card must not preview it");
+  await hold(h, PEEK_DELAY * 2, "resting on a link to a card must not preview it");
   const onHover = await peeks(pg);
   await link(pg, "step loop").click();
   await pg.locator(".cpeek.show").waitFor();
