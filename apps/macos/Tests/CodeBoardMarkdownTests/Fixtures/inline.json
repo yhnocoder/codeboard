@@ -1,0 +1,3807 @@
+[
+ {
+  "src": "**bold** and *italic* and ***both***",
+  "spans": [
+   {
+    "from": 0,
+    "to": 8,
+    "marks": [
+     [
+      0,
+      2
+     ],
+     [
+      6,
+      8
+     ]
+    ],
+    "inner": [
+     2,
+     6
+    ],
+    "tag": "strong",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 13,
+    "to": 21,
+    "marks": [
+     [
+      13,
+      14
+     ],
+     [
+      20,
+      21
+     ]
+    ],
+    "inner": [
+     14,
+     20
+    ],
+    "tag": "em",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 26,
+    "to": 36,
+    "marks": [
+     [
+      26,
+      27
+     ],
+     [
+      35,
+      36
+     ]
+    ],
+    "inner": [
+     27,
+     35
+    ],
+    "tag": "em",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": [
+     {
+      "from": 27,
+      "to": 35,
+      "marks": [
+       [
+        27,
+        29
+       ],
+       [
+        33,
+        35
+       ]
+      ],
+      "inner": [
+       29,
+       33
+      ],
+      "tag": "strong",
+      "tagClass": null,
+      "href": null,
+      "atom": null,
+      "plain": false,
+      "kids": []
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "a*b*c and 2*3*4 stay text, *pre*fill is italic",
+  "spans": [
+   {
+    "from": 27,
+    "to": 32,
+    "marks": [
+     [
+      27,
+      28
+     ],
+     [
+      31,
+      32
+     ]
+    ],
+    "inner": [
+     28,
+     31
+    ],
+    "tag": "em",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "__init__ and block_manager are names, _not emphasis_",
+  "spans": []
+ },
+ {
+  "src": "**粗体**紧跟中文，*斜体*也一样",
+  "spans": [
+   {
+    "from": 0,
+    "to": 6,
+    "marks": [
+     [
+      0,
+      2
+     ],
+     [
+      4,
+      6
+     ]
+    ],
+    "inner": [
+     2,
+     4
+    ],
+    "tag": "strong",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 11,
+    "to": 15,
+    "marks": [
+     [
+      11,
+      12
+     ],
+     [
+      14,
+      15
+     ]
+    ],
+    "inner": [
+     12,
+     14
+    ],
+    "tag": "em",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "**unclosed bold and *one star",
+  "spans": []
+ },
+ {
+  "src": "***a** b*",
+  "spans": [
+   {
+    "from": 0,
+    "to": 9,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      8,
+      9
+     ]
+    ],
+    "inner": [
+     1,
+     8
+    ],
+    "tag": "em",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": [
+     {
+      "from": 1,
+      "to": 6,
+      "marks": [
+       [
+        1,
+        3
+       ],
+       [
+        4,
+        6
+       ]
+      ],
+      "inner": [
+       3,
+       4
+      ],
+      "tag": "strong",
+      "tagClass": null,
+      "href": null,
+      "atom": null,
+      "plain": false,
+      "kids": []
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "*a **b** c*",
+  "spans": [
+   {
+    "from": 0,
+    "to": 11,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      10,
+      11
+     ]
+    ],
+    "inner": [
+     1,
+     10
+    ],
+    "tag": "em",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": [
+     {
+      "from": 3,
+      "to": 8,
+      "marks": [
+       [
+        3,
+        5
+       ],
+       [
+        6,
+        8
+       ]
+      ],
+      "inner": [
+       5,
+       6
+      ],
+      "tag": "strong",
+      "tagClass": null,
+      "href": null,
+      "atom": null,
+      "plain": false,
+      "kids": []
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "**a *b* c**",
+  "spans": [
+   {
+    "from": 0,
+    "to": 11,
+    "marks": [
+     [
+      0,
+      2
+     ],
+     [
+      9,
+      11
+     ]
+    ],
+    "inner": [
+     2,
+     9
+    ],
+    "tag": "strong",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": [
+     {
+      "from": 4,
+      "to": 7,
+      "marks": [
+       [
+        4,
+        5
+       ],
+       [
+        6,
+        7
+       ]
+      ],
+      "inner": [
+       5,
+       6
+      ],
+      "tag": "em",
+      "tagClass": null,
+      "href": null,
+      "atom": null,
+      "plain": false,
+      "kids": []
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "x**y**z and x*y*z",
+  "spans": [
+   {
+    "from": 2,
+    "to": 14,
+    "marks": [
+     [
+      2,
+      3
+     ],
+     [
+      13,
+      14
+     ]
+    ],
+    "inner": [
+     3,
+     13
+    ],
+    "tag": "em",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^",
+  "spans": [
+   {
+    "from": 0,
+    "to": 10,
+    "marks": [
+     [
+      0,
+      2
+     ],
+     [
+      8,
+      10
+     ]
+    ],
+    "inner": [
+     2,
+     8
+    ],
+    "tag": "s",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 15,
+    "to": 20,
+    "marks": [
+     [
+      15,
+      16
+     ],
+     [
+      19,
+      20
+     ]
+    ],
+    "inner": [
+     16,
+     19
+    ],
+    "tag": "sub",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 25,
+    "to": 30,
+    "marks": [
+     [
+      25,
+      26
+     ],
+     [
+      29,
+      30
+     ]
+    ],
+    "inner": [
+     26,
+     29
+    ],
+    "tag": "sup",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 36,
+    "to": 39,
+    "marks": [
+     [
+      36,
+      37
+     ],
+     [
+      38,
+      39
+     ]
+    ],
+    "inner": [
+     37,
+     38
+    ],
+    "tag": "sub",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 46,
+    "to": 50,
+    "marks": [
+     [
+      46,
+      47
+     ],
+     [
+      49,
+      50
+     ]
+    ],
+    "inner": [
+     47,
+     49
+    ],
+    "tag": "sup",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "~~ not struck ~~ and ~ alone",
+  "spans": []
+ },
+ {
+  "src": "==highlight== and == not == and ==多字高亮==",
+  "spans": [
+   {
+    "from": 0,
+    "to": 13,
+    "marks": [
+     [
+      0,
+      2
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "inner": [
+     2,
+     11
+    ],
+    "tag": "mark",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 32,
+    "to": 40,
+    "marks": [
+     [
+      32,
+      34
+     ],
+     [
+      38,
+      40
+     ]
+    ],
+    "inner": [
+     34,
+     38
+    ],
+    "tag": "mark",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "a ==b== c ===d=== e",
+  "spans": [
+   {
+    "from": 2,
+    "to": 7,
+    "marks": [
+     [
+      2,
+      4
+     ],
+     [
+      5,
+      7
+     ]
+    ],
+    "inner": [
+     4,
+     5
+    ],
+    "tag": "mark",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "<u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>",
+  "spans": [
+   {
+    "from": 0,
+    "to": 16,
+    "marks": [
+     [
+      0,
+      3
+     ],
+     [
+      12,
+      16
+     ]
+    ],
+    "inner": [
+     3,
+     12
+    ],
+    "tag": "u",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 21,
+    "to": 36,
+    "marks": [
+     [
+      21,
+      26
+     ],
+     [
+      30,
+      36
+     ]
+    ],
+    "inner": [
+     26,
+     30
+    ],
+    "tag": "kbd",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 37,
+    "to": 49,
+    "marks": [
+     [
+      37,
+      42
+     ],
+     [
+      43,
+      49
+     ]
+    ],
+    "inner": [
+     42,
+     43
+    ],
+    "tag": "kbd",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "<span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>",
+  "spans": [
+   {
+    "from": 0,
+    "to": 34,
+    "marks": [
+     [
+      0,
+      34
+     ]
+    ],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "html",
+     "raw": "<span style=\"color:red\">red</span>"
+    },
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 39,
+    "to": 54,
+    "marks": [
+     [
+      39,
+      54
+     ]
+    ],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "html",
+     "raw": "<b>bold tag</b>"
+    },
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 59,
+    "to": 63,
+    "marks": [
+     [
+      59,
+      63
+     ]
+    ],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "br"
+    },
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 68,
+    "to": 73,
+    "marks": [
+     [
+      68,
+      73
+     ]
+    ],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "br"
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "vector<int> and <T> and <Foo> are words",
+  "spans": []
+ },
+ {
+  "src": "<!-- a comment --> visible after",
+  "spans": [
+   {
+    "from": 0,
+    "to": 18,
+    "marks": [
+     [
+      0,
+      18
+     ]
+    ],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": true,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "`code` and ``co`de`` and ` spaced ` and `kv_cache[i]`",
+  "spans": [
+   {
+    "from": 0,
+    "to": 6,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      5,
+      6
+     ]
+    ],
+    "inner": [
+     1,
+     5
+    ],
+    "tag": "code",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 11,
+    "to": 20,
+    "marks": [
+     [
+      11,
+      13
+     ],
+     [
+      18,
+      20
+     ]
+    ],
+    "inner": [
+     13,
+     18
+    ],
+    "tag": "code",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 25,
+    "to": 35,
+    "marks": [
+     [
+      25,
+      26
+     ],
+     [
+      34,
+      35
+     ]
+    ],
+    "inner": [
+     26,
+     34
+    ],
+    "tag": "code",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 40,
+    "to": 53,
+    "marks": [
+     [
+      40,
+      41
+     ],
+     [
+      52,
+      53
+     ]
+    ],
+    "inner": [
+     41,
+     52
+    ],
+    "tag": "code",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "`unclosed code and *star*",
+  "spans": [
+   {
+    "from": 19,
+    "to": 25,
+    "marks": [
+     [
+      19,
+      20
+     ],
+     [
+      24,
+      25
+     ]
+    ],
+    "inner": [
+     20,
+     24
+    ],
+    "tag": "em",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "``` triple ``` inline",
+  "spans": [
+   {
+    "from": 0,
+    "to": 14,
+    "marks": [
+     [
+      0,
+      3
+     ],
+     [
+      11,
+      14
+     ]
+    ],
+    "inner": [
+     3,
+     11
+    ],
+    "tag": "code",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "[link](https://example.com/a/long/url) and [label with **bold**](https://example.com)",
+  "spans": [
+   {
+    "from": 0,
+    "to": 38,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      5,
+      38
+     ]
+    ],
+    "inner": [
+     1,
+     5
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "https://example.com/a/long/url",
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 43,
+    "to": 85,
+    "marks": [
+     [
+      43,
+      44
+     ],
+     [
+      63,
+      85
+     ]
+    ],
+    "inner": [
+     44,
+     63
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "https://example.com",
+    "atom": null,
+    "plain": false,
+    "kids": [
+     {
+      "from": 55,
+      "to": 63,
+      "marks": [
+       [
+        55,
+        57
+       ],
+       [
+        61,
+        63
+       ]
+      ],
+      "inner": [
+       57,
+       61
+      ],
+      "tag": "strong",
+      "tagClass": null,
+      "href": null,
+      "atom": null,
+      "plain": false,
+      "kids": []
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "[a](<url with spaces>) and [b](url \"title\") and [c](url 'title')",
+  "spans": [
+   {
+    "from": 0,
+    "to": 22,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      2,
+      22
+     ]
+    ],
+    "inner": [
+     1,
+     2
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "url with spaces",
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 27,
+    "to": 43,
+    "marks": [
+     [
+      27,
+      28
+     ],
+     [
+      29,
+      43
+     ]
+    ],
+    "inner": [
+     28,
+     29
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "url",
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 48,
+    "to": 64,
+    "marks": [
+     [
+      48,
+      49
+     ],
+     [
+      50,
+      64
+     ]
+    ],
+    "inner": [
+     49,
+     50
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "url",
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "[nested (parens)](https://example.com/a_(b)) text",
+  "spans": [
+   {
+    "from": 0,
+    "to": 44,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      16,
+      44
+     ]
+    ],
+    "inner": [
+     1,
+     16
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "https://example.com/a_(b)",
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "<https://example.com> and <someone@example.com>",
+  "spans": [
+   {
+    "from": 0,
+    "to": 21,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      20,
+      21
+     ]
+    ],
+    "inner": [
+     1,
+     20
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "https://example.com",
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 26,
+    "to": 47,
+    "marks": [
+     [
+      26,
+      27
+     ],
+     [
+      46,
+      47
+     ]
+    ],
+    "inner": [
+     27,
+     46
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "mailto:someone@example.com",
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "https://example.com/path?x=1. and www.example.com, and a@b.com",
+  "spans": [
+   {
+    "from": 0,
+    "to": 28,
+    "marks": [],
+    "inner": [
+     0,
+     28
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "https://example.com/path?x=1",
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 34,
+    "to": 49,
+    "marks": [],
+    "inner": [
+     34,
+     49
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "http://www.example.com",
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 55,
+    "to": 62,
+    "marks": [],
+    "inner": [
+     55,
+     62
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "mailto:a@b.com",
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "[ref][label] and [label] and [label][] (no definitions)",
+  "spans": []
+ },
+ {
+  "src": "[unclosed link](https://example.com",
+  "spans": [
+   {
+    "from": 16,
+    "to": 35,
+    "marks": [],
+    "inner": [
+     16,
+     35
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "https://example.com",
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "\\[not a link\\](x) and \\*not em\\*",
+  "spans": [
+   {
+    "from": 0,
+    "to": 2,
+    "marks": [
+     [
+      0,
+      1
+     ]
+    ],
+    "inner": [
+     1,
+     2
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 12,
+    "to": 14,
+    "marks": [
+     [
+      12,
+      13
+     ]
+    ],
+    "inner": [
+     13,
+     14
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 22,
+    "to": 24,
+    "marks": [
+     [
+      22,
+      23
+     ]
+    ],
+    "inner": [
+     23,
+     24
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 30,
+    "to": 32,
+    "marks": [
+     [
+      30,
+      31
+     ]
+    ],
+    "inner": [
+     31,
+     32
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "![alt](images/a.png)",
+  "spans": [
+   {
+    "from": 0,
+    "to": 20,
+    "marks": [],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "image",
+     "src": "images/a.png",
+     "alt": "alt",
+     "title": "",
+     "width": null,
+     "frame": null,
+     "loop": false,
+     "altTo": 5,
+     "url": [
+      7,
+      19
+     ],
+     "widthAt": null,
+     "broken": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "![alt](images/a.png \"a caption with *em*\")",
+  "spans": [
+   {
+    "from": 0,
+    "to": 42,
+    "marks": [],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "image",
+     "src": "images/a.png",
+     "alt": "alt",
+     "title": "a caption with *em*",
+     "width": null,
+     "frame": null,
+     "loop": false,
+     "altTo": 5,
+     "url": [
+      7,
+      19
+     ],
+     "widthAt": null,
+     "broken": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "![alt](images/a.png){width=40%}",
+  "spans": [
+   {
+    "from": 0,
+    "to": 31,
+    "marks": [],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "image",
+     "src": "images/a.png",
+     "alt": "alt",
+     "title": "",
+     "width": 40,
+     "frame": null,
+     "loop": false,
+     "altTo": 5,
+     "url": [
+      7,
+      19
+     ],
+     "widthAt": [
+      20,
+      31
+     ],
+     "broken": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "![alt](images/a.png){width=40% frame=3 loop=true}",
+  "spans": [
+   {
+    "from": 0,
+    "to": 49,
+    "marks": [],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "image",
+     "src": "images/a.png",
+     "alt": "alt",
+     "title": "",
+     "width": 40,
+     "frame": 3,
+     "loop": true,
+     "altTo": 5,
+     "url": [
+      7,
+      19
+     ],
+     "widthAt": [
+      20,
+      49
+     ],
+     "broken": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "![alt](images/a.png){width=0%} stays text, {height=3} too",
+  "spans": [
+   {
+    "from": 0,
+    "to": 20,
+    "marks": [],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "image",
+     "src": "images/a.png",
+     "alt": "alt",
+     "title": "",
+     "width": null,
+     "frame": null,
+     "loop": false,
+     "altTo": 5,
+     "url": [
+      7,
+      19
+     ],
+     "widthAt": null,
+     "broken": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "![a b](images/has space.png) broken",
+  "spans": [
+   {
+    "from": 0,
+    "to": 28,
+    "marks": [],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "image",
+     "src": "images/has space.png",
+     "alt": "a b",
+     "title": "",
+     "width": null,
+     "frame": null,
+     "loop": false,
+     "altTo": 5,
+     "url": [
+      7,
+      17
+     ],
+     "widthAt": null,
+     "broken": true
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}",
+  "spans": [
+   {
+    "from": 5,
+    "to": 21,
+    "marks": [],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "image",
+     "src": "i.png",
+     "alt": "inline",
+     "title": "",
+     "width": null,
+     "frame": null,
+     "loop": false,
+     "altTo": 13,
+     "url": [
+      15,
+      20
+     ],
+     "widthAt": null,
+     "broken": false
+    },
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 40,
+    "to": 66,
+    "marks": [],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "image",
+     "src": "j.png",
+     "alt": "two",
+     "title": "",
+     "width": 10.5,
+     "frame": null,
+     "loop": false,
+     "altTo": 45,
+     "url": [
+      47,
+      52
+     ],
+     "widthAt": [
+      53,
+      66
+     ],
+     "broken": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "![](data:image/svg+xml,<svg></svg>)",
+  "spans": [
+   {
+    "from": 0,
+    "to": 35,
+    "marks": [],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "image",
+     "src": "data:image/svg+xml,<svg></svg>",
+     "alt": "",
+     "title": "",
+     "width": null,
+     "frame": null,
+     "loop": false,
+     "altTo": 2,
+     "url": [
+      4,
+      34
+     ],
+     "widthAt": null,
+     "broken": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "$x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big",
+  "spans": [
+   {
+    "from": 0,
+    "to": 7,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      6,
+      7
+     ]
+    ],
+    "inner": [
+     1,
+     6
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "math",
+     "latex": "x_i^2",
+     "display": false
+    },
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 12,
+    "to": 25,
+    "marks": [
+     [
+      12,
+      13
+     ],
+     [
+      24,
+      25
+     ]
+    ],
+    "inner": [
+     13,
+     24
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "math",
+     "latex": "\\frac{a}{b}",
+     "display": false
+    },
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 30,
+    "to": 42,
+    "marks": [
+     [
+      30,
+      32
+     ],
+     [
+      40,
+      42
+     ]
+    ],
+    "inner": [
+     32,
+     40
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "math",
+     "latex": "\\sum_k k",
+     "display": true
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "$5 and $10 are money, \\$x$ is not math",
+  "spans": [
+   {
+    "from": 7,
+    "to": 26,
+    "marks": [
+     [
+      7,
+      8
+     ],
+     [
+      25,
+      26
+     ]
+    ],
+    "inner": [
+     8,
+     25
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "math",
+     "latex": "10 are money, \\x",
+     "display": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "a $ b $ c and $x$y and $x$5",
+  "spans": [
+   {
+    "from": 14,
+    "to": 17,
+    "marks": [
+     [
+      14,
+      15
+     ],
+     [
+      16,
+      17
+     ]
+    ],
+    "inner": [
+     15,
+     16
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "math",
+     "latex": "x",
+     "display": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "$\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$",
+  "spans": [
+   {
+    "from": 0,
+    "to": 15,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      14,
+      15
+     ]
+    ],
+    "inner": [
+     1,
+     14
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "math",
+     "latex": "\\text{含中文的文字}",
+     "display": false
+    },
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 20,
+    "to": 47,
+    "marks": [
+     [
+      20,
+      21
+     ],
+     [
+      46,
+      47
+     ]
+    ],
+    "inner": [
+     21,
+     46
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "math",
+     "latex": "\\operatorname{softmax}(x)",
+     "display": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "price \\$5 and $\\$ inside$",
+  "spans": [
+   {
+    "from": 6,
+    "to": 8,
+    "marks": [
+     [
+      6,
+      7
+     ]
+    ],
+    "inner": [
+     7,
+     8
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 14,
+    "to": 25,
+    "marks": [
+     [
+      14,
+      15
+     ],
+     [
+      24,
+      25
+     ]
+    ],
+    "inner": [
+     15,
+     24
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "math",
+     "latex": "\\ inside",
+     "display": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "**bold $x$ math** and *$y$*",
+  "spans": [
+   {
+    "from": 0,
+    "to": 17,
+    "marks": [
+     [
+      0,
+      2
+     ],
+     [
+      15,
+      17
+     ]
+    ],
+    "inner": [
+     2,
+     15
+    ],
+    "tag": "strong",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": [
+     {
+      "from": 7,
+      "to": 10,
+      "marks": [
+       [
+        7,
+        8
+       ],
+       [
+        9,
+        10
+       ]
+      ],
+      "inner": [
+       8,
+       9
+      ],
+      "tag": null,
+      "tagClass": null,
+      "href": null,
+      "atom": {
+       "type": "math",
+       "latex": "x",
+       "display": false
+      },
+      "plain": false,
+      "kids": []
+     }
+    ]
+   },
+   {
+    "from": 22,
+    "to": 27,
+    "marks": [
+     [
+      22,
+      23
+     ],
+     [
+      26,
+      27
+     ]
+    ],
+    "inner": [
+     23,
+     26
+    ],
+    "tag": "em",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": [
+     {
+      "from": 23,
+      "to": 26,
+      "marks": [
+       [
+        23,
+        24
+       ],
+       [
+        25,
+        26
+       ]
+      ],
+      "inner": [
+       24,
+       25
+      ],
+      "tag": null,
+      "tagClass": null,
+      "href": null,
+      "atom": {
+       "type": "math",
+       "latex": "y",
+       "display": false
+      },
+      "plain": false,
+      "kids": []
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "[[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]",
+  "spans": [
+   {
+    "from": 0,
+    "to": 13,
+    "marks": [
+     [
+      0,
+      2
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "inner": [
+     2,
+     11
+    ],
+    "tag": "span",
+    "tagClass": "md-refsrc",
+    "href": null,
+    "atom": {
+     "type": "ref",
+     "label": "Some note"
+    },
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 18,
+    "to": 31,
+    "marks": [
+     [
+      18,
+      20
+     ],
+     [
+      22,
+      31
+     ]
+    ],
+    "inner": [
+     20,
+     22
+    ],
+    "tag": "span",
+    "tagClass": "md-refsrc",
+    "href": null,
+    "atom": {
+     "type": "ref",
+     "label": "标题",
+     "target": "abc-1"
+    },
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 36,
+    "to": 57,
+    "marks": [
+     [
+      36,
+      38
+     ],
+     [
+      48,
+      57
+     ]
+    ],
+    "inner": [
+     38,
+     48
+    ],
+    "tag": "span",
+    "tagClass": "md-refsrc",
+    "href": null,
+    "atom": {
+     "type": "ref",
+     "label": "board/card",
+     "target": "x1/y2"
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "[[]] and [[ ]] and [[a\nb]]",
+  "spans": []
+ },
+ {
+  "src": ":smile: and :+1: and :not_an_emoji: and 1:100:",
+  "spans": [
+   {
+    "from": 0,
+    "to": 7,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      6,
+      7
+     ]
+    ],
+    "inner": [
+     1,
+     6
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "emoji",
+     "name": "smile"
+    },
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 12,
+    "to": 16,
+    "marks": [
+     [
+      12,
+      13
+     ],
+     [
+      15,
+      16
+     ]
+    ],
+    "inner": [
+     13,
+     15
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "emoji",
+     "name": "+1"
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "{字|注释} and {text|note|purple below} and {a|b|green}",
+  "spans": [
+   {
+    "from": 0,
+    "to": 6,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      2,
+      6
+     ]
+    ],
+    "inner": [
+     1,
+     2
+    ],
+    "tag": "span",
+    "tagClass": "md-annotsrc",
+    "href": null,
+    "atom": {
+     "type": "annot",
+     "note": "注释",
+     "color": "blue",
+     "below": false,
+     "text": "字"
+    },
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 11,
+    "to": 35,
+    "marks": [
+     [
+      11,
+      12
+     ],
+     [
+      16,
+      35
+     ]
+    ],
+    "inner": [
+     12,
+     16
+    ],
+    "tag": "span",
+    "tagClass": "md-annotsrc",
+    "href": null,
+    "atom": {
+     "type": "annot",
+     "note": "note",
+     "color": "purple",
+     "below": true,
+     "text": "text"
+    },
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 40,
+    "to": 51,
+    "marks": [
+     [
+      40,
+      41
+     ],
+     [
+      42,
+      51
+     ]
+    ],
+    "inner": [
+     41,
+     42
+    ],
+    "tag": "span",
+    "tagClass": "md-annotsrc",
+    "href": null,
+    "atom": {
+     "type": "annot",
+     "note": "b",
+     "color": "green",
+     "below": false,
+     "text": "a"
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "{\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|",
+  "spans": [
+   {
+    "from": 0,
+    "to": 9,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      6,
+      9
+     ]
+    ],
+    "inner": [
+     1,
+     6
+    ],
+    "tag": "span",
+    "tagClass": "md-annotsrc",
+    "href": null,
+    "atom": {
+     "type": "annot",
+     "note": "n",
+     "color": "blue",
+     "below": false,
+     "text": "\\{x\\}"
+    },
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 14,
+    "to": 37,
+    "marks": [
+     [
+      14,
+      15
+     ],
+     [
+      28,
+      37
+     ]
+    ],
+    "inner": [
+     15,
+     28
+    ],
+    "tag": "span",
+    "tagClass": "md-annotsrc",
+    "href": null,
+    "atom": {
+     "type": "annot",
+     "note": "formula",
+     "color": "blue",
+     "below": false,
+     "text": "$\\frac{a}{b}$"
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "line one  \nline two\\\nline three",
+  "spans": [
+   {
+    "from": 8,
+    "to": 11,
+    "marks": [
+     [
+      8,
+      11
+     ]
+    ],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "br"
+    },
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 19,
+    "to": 21,
+    "marks": [
+     [
+      19,
+      21
+     ]
+    ],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "br"
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "hard<br>break",
+  "spans": [
+   {
+    "from": 4,
+    "to": 8,
+    "marks": [
+     [
+      4,
+      8
+     ]
+    ],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "br"
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "\\# not heading \\- not list \\> not quote",
+  "spans": [
+   {
+    "from": 0,
+    "to": 2,
+    "marks": [
+     [
+      0,
+      1
+     ]
+    ],
+    "inner": [
+     1,
+     2
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 15,
+    "to": 17,
+    "marks": [
+     [
+      15,
+      16
+     ]
+    ],
+    "inner": [
+     16,
+     17
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 27,
+    "to": 29,
+    "marks": [
+     [
+      27,
+      28
+     ]
+    ],
+    "inner": [
+     28,
+     29
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "tab\there and trailing spaces   ",
+  "spans": []
+ },
+ {
+  "src": "emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**",
+  "spans": [
+   {
+    "from": 26,
+    "to": 38,
+    "marks": [
+     [
+      26,
+      28
+     ],
+     [
+      36,
+      38
+     ]
+    ],
+    "inner": [
+     28,
+     36
+    ],
+    "tag": "strong",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "",
+  "spans": []
+ },
+ {
+  "src": "Title",
+  "spans": []
+ },
+ {
+  "src": "Some **bold** text",
+  "spans": [
+   {
+    "from": 5,
+    "to": 13,
+    "marks": [
+     [
+      5,
+      7
+     ],
+     [
+      11,
+      13
+     ]
+    ],
+    "inner": [
+     7,
+     11
+    ],
+    "tag": "strong",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "Some ",
+  "spans": []
+ },
+ {
+  "src": "bold",
+  "spans": []
+ },
+ {
+  "src": " text",
+  "spans": []
+ },
+ {
+  "src": "First paragraph\nstill first.",
+  "spans": []
+ },
+ {
+  "src": "a",
+  "spans": []
+ },
+ {
+  "src": "b",
+  "spans": []
+ },
+ {
+  "src": "quote",
+  "spans": []
+ },
+ {
+  "src": "![](assets/a.png){width=40%}",
+  "spans": [
+   {
+    "from": 0,
+    "to": 28,
+    "marks": [],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "image",
+     "src": "assets/a.png",
+     "alt": "",
+     "title": "",
+     "width": 40,
+     "frame": null,
+     "loop": false,
+     "altTo": 2,
+     "url": [
+      4,
+      16
+     ],
+     "widthAt": [
+      17,
+      28
+     ],
+     "broken": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "last",
+  "spans": []
+ },
+ {
+  "src": "just text",
+  "spans": []
+ },
+ {
+  "src": "Heading",
+  "spans": []
+ },
+ {
+  "src": "Heading with # inside",
+  "spans": []
+ },
+ {
+  "src": "#not heading\n####### seven",
+  "spans": []
+ },
+ {
+  "src": "Setext",
+  "spans": []
+ },
+ {
+  "src": "Setext two",
+  "spans": []
+ },
+ {
+  "src": "para",
+  "spans": []
+ },
+ {
+  "src": "heading interrupts",
+  "spans": []
+ },
+ {
+  "src": "para again",
+  "spans": []
+ },
+ {
+  "src": "nested",
+  "spans": []
+ },
+ {
+  "src": "deeper",
+  "spans": []
+ },
+ {
+  "src": "c",
+  "spans": []
+ },
+ {
+  "src": "one",
+  "spans": []
+ },
+ {
+  "src": "two",
+  "spans": []
+ },
+ {
+  "src": "three",
+  "spans": []
+ },
+ {
+  "src": "four",
+  "spans": []
+ },
+ {
+  "src": "b loose",
+  "spans": []
+ },
+ {
+  "src": "todo",
+  "spans": []
+ },
+ {
+  "src": "done",
+  "spans": []
+ },
+ {
+  "src": "done too",
+  "spans": []
+ },
+ {
+  "src": "task",
+  "spans": []
+ },
+ {
+  "src": "second",
+  "spans": []
+ },
+ {
+  "src": "nested task",
+  "spans": []
+ },
+ {
+  "src": "nested done",
+  "spans": []
+ },
+ {
+  "src": "next",
+  "spans": []
+ },
+ {
+  "src": "continuation paragraph",
+  "spans": []
+ },
+ {
+  "src": "mixed task",
+  "spans": []
+ },
+ {
+  "src": "empty first",
+  "spans": []
+ },
+ {
+  "src": "star",
+  "spans": []
+ },
+ {
+  "src": "plus",
+  "spans": []
+ },
+ {
+  "src": "dash",
+  "spans": []
+ },
+ {
+  "src": "ordered",
+  "spans": []
+ },
+ {
+  "src": "bullet",
+  "spans": []
+ },
+ {
+  "src": "item",
+  "spans": []
+ },
+ {
+  "src": "item\nlazy continuation",
+  "spans": []
+ },
+ {
+  "src": "quote line one\nquote line two\nlazy line",
+  "spans": []
+ },
+ {
+  "src": "second quote",
+  "spans": []
+ },
+ {
+  "src": "heading in quote",
+  "spans": []
+ },
+ {
+  "src": "list in quote",
+  "spans": []
+ },
+ {
+  "src": "more",
+  "spans": []
+ },
+ {
+  "src": "para in quote",
+  "spans": []
+ },
+ {
+  "src": "deepest",
+  "spans": []
+ },
+ {
+  "src": "after",
+  "spans": []
+ },
+ {
+  "src": "para\n    not code (lazy)",
+  "spans": []
+ },
+ {
+  "src": "1",
+  "spans": []
+ },
+ {
+  "src": "2",
+  "spans": []
+ },
+ {
+  "src": "3",
+  "spans": []
+ },
+ {
+  "src": "4",
+  "spans": []
+ },
+ {
+  "src": "5",
+  "spans": []
+ },
+ {
+  "src": "阶段 **Stage**",
+  "spans": [
+   {
+    "from": 3,
+    "to": 12,
+    "marks": [
+     [
+      3,
+      5
+     ],
+     [
+      10,
+      12
+     ]
+    ],
+    "inner": [
+     5,
+     10
+    ],
+    "tag": "strong",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "做什么",
+  "spans": []
+ },
+ {
+  "src": "耗时 `ms`",
+  "spans": [
+   {
+    "from": 3,
+    "to": 7,
+    "marks": [
+     [
+      3,
+      4
+     ],
+     [
+      6,
+      7
+     ]
+    ],
+    "inner": [
+     4,
+     6
+    ],
+    "tag": "code",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "prefill",
+  "spans": []
+ },
+ {
+  "src": "一次处理整段提示，==所有 token== 并行",
+  "spans": [
+   {
+    "from": 9,
+    "to": 21,
+    "marks": [
+     [
+      9,
+      11
+     ],
+     [
+      19,
+      21
+     ]
+    ],
+    "inner": [
+     11,
+     19
+    ],
+    "tag": "mark",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "12.5",
+  "spans": []
+ },
+ {
+  "src": "Table: the stages",
+  "spans": []
+ },
+ {
+  "src": "a `x|y`",
+  "spans": [
+   {
+    "from": 2,
+    "to": 7,
+    "marks": [
+     [
+      2,
+      3
+     ],
+     [
+      6,
+      7
+     ]
+    ],
+    "inner": [
+     3,
+     6
+    ],
+    "tag": "code",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "`p|q`",
+  "spans": [
+   {
+    "from": 0,
+    "to": 5,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      4,
+      5
+     ]
+    ],
+    "inner": [
+     1,
+     4
+    ],
+    "tag": "code",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "| escaped",
+  "spans": []
+ },
+ {
+  "src": "only header",
+  "spans": []
+ },
+ {
+  "src": "|\n \na",
+  "spans": []
+ },
+ {
+  "src": "mismatch",
+  "spans": []
+ },
+ {
+  "src": "text before",
+  "spans": []
+ },
+ {
+  "src": "$$ inline $$ text after",
+  "spans": [
+   {
+    "from": 0,
+    "to": 12,
+    "marks": [
+     [
+      0,
+      2
+     ],
+     [
+      10,
+      12
+     ]
+    ],
+    "inner": [
+     2,
+     10
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "math",
+     "latex": "inline",
+     "display": true
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": " text after",
+  "spans": []
+ },
+ {
+  "src": "body",
+  "spans": []
+ },
+ {
+  "src": "<Foo>\nnot html\n</Foo>",
+  "spans": []
+ },
+ {
+  "src": "[label] reference",
+  "spans": []
+ },
+ {
+  "src": "label",
+  "spans": []
+ },
+ {
+  "src": " reference",
+  "spans": []
+ },
+ {
+  "src": "text",
+  "spans": []
+ },
+ {
+  "src": "para\n[def]: in paragraph",
+  "spans": []
+ },
+ {
+  "src": "![](images/a.png)",
+  "spans": [
+   {
+    "from": 0,
+    "to": 17,
+    "marks": [],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "image",
+     "src": "images/a.png",
+     "alt": "",
+     "title": "",
+     "width": null,
+     "frame": null,
+     "loop": false,
+     "altTo": 2,
+     "url": [
+      4,
+      16
+     ],
+     "widthAt": null,
+     "broken": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "![b](images/b.png \"caption\"){width=50%}",
+  "spans": [
+   {
+    "from": 0,
+    "to": 39,
+    "marks": [],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "image",
+     "src": "images/b.png",
+     "alt": "b",
+     "title": "caption",
+     "width": 50,
+     "frame": null,
+     "loop": false,
+     "altTo": 3,
+     "url": [
+      5,
+      17
+     ],
+     "widthAt": [
+      28,
+      39
+     ],
+     "broken": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "line one  \nline two",
+  "spans": [
+   {
+    "from": 8,
+    "to": 11,
+    "marks": [
+     [
+      8,
+      11
+     ]
+    ],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "br"
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "line one",
+  "spans": []
+ },
+ {
+  "src": "line two",
+  "spans": []
+ },
+ {
+  "src": "line three\\\nline four",
+  "spans": [
+   {
+    "from": 10,
+    "to": 12,
+    "marks": [
+     [
+      10,
+      12
+     ]
+    ],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "br"
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "line three",
+  "spans": []
+ },
+ {
+  "src": "line four",
+  "spans": []
+ },
+ {
+  "src": "Table: not after table",
+  "spans": []
+ },
+ {
+  "src": "标题一",
+  "spans": []
+ },
+ {
+  "src": "调度器把请求分成批次，每个批次在显存里保留键值缓存，预填充和解码要分开处理，注意力按块计算，这一段说明原因。",
+  "spans": []
+ },
+ {
+  "src": "The scheduler splits requests",
+  "spans": []
+ },
+ {
+  "src": "The scheduler splits requests, each block holds 256 tokens, prefill runs before decode, see the notes.",
+  "spans": []
+ },
+ {
+  "src": "调度器把请求分成批次",
+  "spans": []
+ },
+ {
+  "src": "each block holds 256 tokens",
+  "spans": []
+ },
+ {
+  "src": "预填充和解码要分开处理",
+  "spans": []
+ },
+ {
+  "src": "**prefill runs before decode**",
+  "spans": [
+   {
+    "from": 0,
+    "to": 30,
+    "marks": [
+     [
+      0,
+      2
+     ],
+     [
+      28,
+      30
+     ]
+    ],
+    "inner": [
+     2,
+     28
+    ],
+    "tag": "strong",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "prefill runs before decode",
+  "spans": []
+ },
+ {
+  "src": "empty first line item",
+  "spans": []
+ },
+ {
+  "src": "- ",
+  "spans": []
+ },
+ {
+  "src": "spaced empty",
+  "spans": []
+ },
+ {
+  "src": "ten",
+  "spans": []
+ },
+ {
+  "src": "eleven",
+  "spans": []
+ },
+ {
+  "src": "leading blank lines",
+  "spans": []
+ },
+ {
+  "src": "trailing spaces   ",
+  "spans": []
+ },
+ {
+  "src": " and ",
+  "spans": []
+ },
+ {
+  "src": "italic",
+  "spans": []
+ },
+ {
+  "src": "both",
+  "spans": []
+ },
+ {
+  "src": "head",
+  "spans": []
+ },
+ {
+  "src": "x",
+  "spans": []
+ },
+ {
+  "src": "a*b*c and 2*3*4 stay text, ",
+  "spans": []
+ },
+ {
+  "src": "pre",
+  "spans": []
+ },
+ {
+  "src": "fill is italic",
+  "spans": []
+ },
+ {
+  "src": "粗体",
+  "spans": []
+ },
+ {
+  "src": "紧跟中文，",
+  "spans": []
+ },
+ {
+  "src": "斜体",
+  "spans": []
+ },
+ {
+  "src": "也一样",
+  "spans": []
+ },
+ {
+  "src": " b",
+  "spans": []
+ },
+ {
+  "src": "a ",
+  "spans": []
+ },
+ {
+  "src": " c",
+  "spans": []
+ },
+ {
+  "src": "x*",
+  "spans": []
+ },
+ {
+  "src": "y**z and x",
+  "spans": []
+ },
+ {
+  "src": "y*z",
+  "spans": []
+ },
+ {
+  "src": "struck",
+  "spans": []
+ },
+ {
+  "src": "sub",
+  "spans": []
+ },
+ {
+  "src": "sup",
+  "spans": []
+ },
+ {
+  "src": " and H",
+  "spans": []
+ },
+ {
+  "src": "O and 2",
+  "spans": []
+ },
+ {
+  "src": "10",
+  "spans": []
+ },
+ {
+  "src": "highlight",
+  "spans": []
+ },
+ {
+  "src": " and == not == and ",
+  "spans": []
+ },
+ {
+  "src": "多字高亮",
+  "spans": []
+ },
+ {
+  "src": " c ===d=== e",
+  "spans": []
+ },
+ {
+  "src": "underline",
+  "spans": []
+ },
+ {
+  "src": "Ctrl",
+  "spans": []
+ },
+ {
+  "src": "+",
+  "spans": []
+ },
+ {
+  "src": "C",
+  "spans": []
+ },
+ {
+  "src": " visible after",
+  "spans": []
+ },
+ {
+  "src": "`unclosed code and ",
+  "spans": []
+ },
+ {
+  "src": " inline",
+  "spans": []
+ },
+ {
+  "src": "link",
+  "spans": []
+ },
+ {
+  "src": "label with ",
+  "spans": []
+ },
+ {
+  "src": "nested (parens)",
+  "spans": []
+ },
+ {
+  "src": "https://example.com",
+  "spans": [
+   {
+    "from": 0,
+    "to": 19,
+    "marks": [],
+    "inner": [
+     0,
+     19
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "https://example.com",
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "someone@example.com",
+  "spans": [
+   {
+    "from": 0,
+    "to": 19,
+    "marks": [],
+    "inner": [
+     0,
+     19
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "mailto:someone@example.com",
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "https://example.com/path?x=1",
+  "spans": [
+   {
+    "from": 0,
+    "to": 28,
+    "marks": [],
+    "inner": [
+     0,
+     28
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "https://example.com/path?x=1",
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": ". and ",
+  "spans": []
+ },
+ {
+  "src": "www.example.com",
+  "spans": [
+   {
+    "from": 0,
+    "to": 15,
+    "marks": [],
+    "inner": [
+     0,
+     15
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "http://www.example.com",
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": ", and ",
+  "spans": []
+ },
+ {
+  "src": "a@b.com",
+  "spans": [
+   {
+    "from": 0,
+    "to": 7,
+    "marks": [],
+    "inner": [
+     0,
+     7
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "mailto:a@b.com",
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "[unclosed link](",
+  "spans": []
+ },
+ {
+  "src": "not a link",
+  "spans": []
+ },
+ {
+  "src": "(x) and ",
+  "spans": []
+ },
+ {
+  "src": "not em",
+  "spans": []
+ },
+ {
+  "src": "alt",
+  "spans": []
+ },
+ {
+  "src": "{width=0%} stays text, {height=3} too",
+  "spans": []
+ },
+ {
+  "src": " broken",
+  "spans": []
+ },
+ {
+  "src": "text ",
+  "spans": []
+ },
+ {
+  "src": "inline",
+  "spans": []
+ },
+ {
+  "src": " in the middle and ",
+  "spans": []
+ },
+ {
+  "src": " inline big",
+  "spans": []
+ },
+ {
+  "src": "$5 and $10 are money, ",
+  "spans": []
+ },
+ {
+  "src": "x$ is not math",
+  "spans": []
+ },
+ {
+  "src": "a $ b $ c and ",
+  "spans": []
+ },
+ {
+  "src": "y and $x$5",
+  "spans": []
+ },
+ {
+  "src": "调度 Scheduler",
+  "spans": []
+ },
+ {
+  "src": "调度器把请求分成批次，**每个批次在显存里保留键值缓存**，然后调用 `Scheduler.step()`。The scheduler splits requests into batches; see [notes](https://example.com/n).",
+  "spans": [
+   {
+    "from": 11,
+    "to": 29,
+    "marks": [
+     [
+      11,
+      13
+     ],
+     [
+      27,
+      29
+     ]
+    ],
+    "inner": [
+     13,
+     27
+    ],
+    "tag": "strong",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 35,
+    "to": 53,
+    "marks": [
+     [
+      35,
+      36
+     ],
+     [
+      52,
+      53
+     ]
+    ],
+    "inner": [
+     36,
+     52
+    ],
+    "tag": "code",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 102,
+    "to": 132,
+    "marks": [
+     [
+      102,
+      103
+     ],
+     [
+      108,
+      132
+     ]
+    ],
+    "inner": [
+     103,
+     108
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "https://example.com/n",
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "调度器把请求分成批次，",
+  "spans": []
+ },
+ {
+  "src": "每个批次在显存里保留键值缓存",
+  "spans": []
+ },
+ {
+  "src": "，然后调用 ",
+  "spans": []
+ },
+ {
+  "src": "。The scheduler splits requests into batches; see ",
+  "spans": []
+ },
+ {
+  "src": "notes",
+  "spans": []
+ },
+ {
+  "src": ".",
+  "spans": []
+ },
+ {
+  "src": "公式",
+  "spans": []
+ },
+ {
+  "src": "块公式：",
+  "spans": []
+ },
+ {
+  "src": "行内 $x_i^2$ 和 ==高亮== 和 {注|note}。",
+  "spans": [
+   {
+    "from": 3,
+    "to": 10,
+    "marks": [
+     [
+      3,
+      4
+     ],
+     [
+      9,
+      10
+     ]
+    ],
+    "inner": [
+     4,
+     9
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "math",
+     "latex": "x_i^2",
+     "display": false
+    },
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 13,
+    "to": 19,
+    "marks": [
+     [
+      13,
+      15
+     ],
+     [
+      17,
+      19
+     ]
+    ],
+    "inner": [
+     15,
+     17
+    ],
+    "tag": "mark",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   },
+   {
+    "from": 22,
+    "to": 30,
+    "marks": [
+     [
+      22,
+      23
+     ],
+     [
+      24,
+      30
+     ]
+    ],
+    "inner": [
+     23,
+     24
+    ],
+    "tag": "span",
+    "tagClass": "md-annotsrc",
+    "href": null,
+    "atom": {
+     "type": "annot",
+     "note": "note",
+     "color": "blue",
+     "below": false,
+     "text": "注"
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "行内 ",
+  "spans": []
+ },
+ {
+  "src": " 和 ",
+  "spans": []
+ },
+ {
+  "src": "高亮",
+  "spans": []
+ },
+ {
+  "src": "注",
+  "spans": []
+ },
+ {
+  "src": "。",
+  "spans": []
+ },
+ {
+  "src": "注意力按块计算",
+  "spans": []
+ },
+ {
+  "src": "see the notes",
+  "spans": []
+ },
+ {
+  "src": "这一段说明原因",
+  "spans": []
+ }
+]

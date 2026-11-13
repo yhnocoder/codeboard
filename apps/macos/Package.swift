@@ -18,6 +18,8 @@ let package = Package(
   ],
   targets: [
     .target(name: "CodeBoardModel"),
+    // Markdown parsed the way @yhnocoder/markdown parses it, with source ranges (docs/markdown-guideline.md 6.2)
+    .target(name: "CodeBoardMarkdown"),
     .target(
       name: "CodeBoardSyntax",
       dependencies: [
@@ -40,6 +42,7 @@ let package = Package(
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
     .executableTarget(name: "CanvasBench", dependencies: ["CodeBoardCanvas", "CodeBoardNotes"]),
     .executableTarget(name: "LookCompare", dependencies: ["CodeBoardCanvas", "CodeBoardModel", "CodeBoardSyntax"]),
+    .testTarget(name: "CodeBoardMarkdownTests", dependencies: ["CodeBoardMarkdown"], resources: [.copy("Fixtures")]),
     .testTarget(name: "CodeBoardModelTests", dependencies: ["CodeBoardModel"], resources: [.copy("Fixtures")]),
     .testTarget(name: "CodeBoardSyntaxTests", dependencies: ["CodeBoardSyntax"]),
     .testTarget(name: "CodeBoardNotesTests", dependencies: ["CodeBoardNotes"]),

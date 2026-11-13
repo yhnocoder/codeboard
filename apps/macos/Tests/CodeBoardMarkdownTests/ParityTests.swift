@@ -1,0 +1,70 @@
+import Foundation
+import Testing
+
+@testable import CodeBoardMarkdown
+
+/// The Swift parser against what @yhnocoder/markdown makes of the same synthetic Markdown (Fixtures, written by
+/// tools/markdown/fixtures.mjs)
+@Suite struct ParityTests {
+  @Test func blockTokensMatchMarked() throws {
+    var failures: [String] = []
+    for c in try JSON.load("blocks").array {
+      let src = c["src"].string!
+      // <details> is not supported (guideline 4): it stays the HTML block CommonMark reads
+      if src.hasPrefix("<details>") { continue }
+      let mine = JSON.array(BlockLexer.lex(src).map(fixtureJSON))
+      if let d = mine.firstDifference(c["tokens"]) { failures.append("\(src.debugDescription): \(d)") }
+    }
+    #expect(failures.isEmpty, "\(failures.count) differ:\n\(failures.prefix(25).joined(separator: "\n"))")
+  }
+
+  @Test func blockStartsMatch() throws {
+    var failures: [String] = []
+    for c in try JSON.load("blocks").array {
+      let src = c["src"].string!
+      if src.hasPrefix("<details>") { continue }
+      let theirs = c["starts"].ints
+      let mine = MarkdownSourceOps.blockStarts(src)
+      if mine != theirs {
+        failures.append("\(src.debugDescription): \(String(describing: mine)) vs \(String(describing: theirs))")
+      }
+    }
+    #expect(failures.isEmpty, "\(failures.count) differ:\n\(failures.prefix(25).joined(separator: "\n"))")
+  }
+
+  @Test func blockMovesMatch() throws {
+    func part(_ j: JSON) -> String? { j["md"].string }
+    var failures: [String] = []
+    for c in try JSON.load("blockmove").array {
+      let p = MarkdownSourceOps.Part(source: c["src"].string!)
+      let cut = c["cut"].ints!
+      let mv = c["move"]["blocks"].ints!
+      let to = c["move"]["to"].ints.map { _ in 0 } ?? 0
+      _ = to
+      let mine = MarkdownSourceOps.cutBlocks(p, cut.first!..<(cut.last! + 1))
+      if mine?.rest.source != part(c["cutResult"]["rest"]) || mine?.cut.source != part(c["cutResult"]["part"]) {
+        failures.append("cut \(c["src"]): \(String(describing: mine))")
+      }
+      let target: Int = { if case .number(let n) = c["move"]["to"] { return Int(n) } else { return 0 } }()
+      let moved = MarkdownSourceOps.moveBlocks(p, mv.first!..<(mv.last! + 1), to: target)
+      if moved?.source != part(c["moveResult"]) {
+        failures.append("move \(c["src"]): \(String(describing: moved?.source))")
+      }
+      let ins = MarkdownSourceOps.insertBlocks(p, .init(source: "inserted **block**\n\n- x"), at: 1)
+      if ins?.source != part(c["insertResult"]) {
+        failures.append("insert \(c["src"]): \(String(describing: ins?.source))")
+      }
+    }
+    #expect(failures.isEmpty, "\(failures.count) differ:\n\(failures.joined(separator: "\n"))")
+  }
+
+  @Test func inlineSpansMatchTheEditor() throws {
+    var failures: [String] = []
+    for c in try JSON.load("inline").array {
+      let src = c["src"].string!
+      let mine = JSON.array(Spans.of(src).map(fixtureJSON))
+      if let d = mine.firstDifference(c["spans"]) { failures.append("\(src.debugDescription): \(d)") }
+    }
+    #expect(failures.isEmpty, "\(failures.count) differ:\n\(failures.prefix(25).joined(separator: "\n"))")
+  }
+}

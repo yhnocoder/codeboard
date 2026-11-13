@@ -1,0 +1,6637 @@
+[
+ {
+  "src": "# Title\n\nSome **bold** text\n",
+  "starts": [
+   0,
+   9
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "# Title\n\n",
+    "depth": 1,
+    "text": "Title"
+   },
+   {
+    "type": "paragraph",
+    "raw": "Some **bold** text\n",
+    "text": "Some **bold** text"
+   }
+  ]
+ },
+ {
+  "src": "# Title\n\nFirst paragraph\nstill first.\n\n- a\n- b\n\n```py\nx = 1\n```\n\n$$\nx^2\n$$\n\n> quote\n\n![](assets/a.png){width=40%}\n\nlast",
+  "starts": [
+   0,
+   9,
+   39,
+   48,
+   65,
+   76,
+   85,
+   115
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "# Title\n\n",
+    "depth": 1,
+    "text": "Title"
+   },
+   {
+    "type": "paragraph",
+    "raw": "First paragraph\nstill first.",
+    "text": "First paragraph\nstill first."
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "list",
+    "raw": "- a\n- b",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- a\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "a",
+        "text": "a"
+       }
+      ]
+     },
+     {
+      "raw": "- b",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "b",
+        "text": "b"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "code",
+    "raw": "```py\nx = 1\n```",
+    "lang": "py",
+    "text": "x = 1"
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "blockMath",
+    "raw": "$$\nx^2\n$$\n\n",
+    "latex": "x^2"
+   },
+   {
+    "type": "blockquote",
+    "raw": "> quote",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "quote",
+      "text": "quote"
+     }
+    ]
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "paragraph",
+    "raw": "![](assets/a.png){width=40%}",
+    "text": "![](assets/a.png){width=40%}"
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "paragraph",
+    "raw": "last",
+    "text": "last"
+   }
+  ]
+ },
+ {
+  "src": "just text",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "just text",
+    "text": "just text"
+   }
+  ]
+ },
+ {
+  "src": "",
+  "starts": [],
+  "tokens": []
+ },
+ {
+  "src": "a\n\n\n\n\nb",
+  "starts": null,
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "a",
+    "text": "a"
+   },
+   {
+    "type": "space",
+    "raw": "\n\n\n\n\n"
+   },
+   {
+    "type": "paragraph",
+    "raw": "b",
+    "text": "b"
+   }
+  ]
+ },
+ {
+  "src": "a\n\nb",
+  "starts": [
+   0,
+   3
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "a",
+    "text": "a"
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "paragraph",
+    "raw": "b",
+    "text": "b"
+   }
+  ]
+ },
+ {
+  "src": "## Heading ##\n### Heading with # inside\n#not heading\n####### seven",
+  "starts": [
+   0,
+   14,
+   40
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## Heading ##\n",
+    "depth": 2,
+    "text": "Heading"
+   },
+   {
+    "type": "heading",
+    "raw": "### Heading with # inside\n",
+    "depth": 3,
+    "text": "Heading with # inside"
+   },
+   {
+    "type": "paragraph",
+    "raw": "#not heading\n####### seven",
+    "text": "#not heading\n####### seven"
+   }
+  ]
+ },
+ {
+  "src": "Setext\n===\n\nSetext two\n---\n",
+  "starts": [
+   0,
+   12
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "Setext\n===\n\n",
+    "depth": 1,
+    "text": "Setext"
+   },
+   {
+    "type": "heading",
+    "raw": "Setext two\n---\n",
+    "depth": 2,
+    "text": "Setext two"
+   }
+  ]
+ },
+ {
+  "src": "para\n# heading interrupts\npara again",
+  "starts": [
+   0,
+   5,
+   26
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "para\n",
+    "text": "para"
+   },
+   {
+    "type": "heading",
+    "raw": "# heading interrupts\n",
+    "depth": 1,
+    "text": "heading interrupts"
+   },
+   {
+    "type": "paragraph",
+    "raw": "para again",
+    "text": "para again"
+   }
+  ]
+ },
+ {
+  "src": "- a\n- b\n  - nested\n    - deeper\n- c",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- a\n- b\n  - nested\n    - deeper\n- c",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- a\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "a",
+        "text": "a"
+       }
+      ]
+     },
+     {
+      "raw": "- b\n  - nested\n    - deeper\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "b\n",
+        "text": "b"
+       },
+       {
+        "type": "list",
+        "raw": "- nested\n  - deeper",
+        "ordered": false,
+        "start": null,
+        "loose": false,
+        "items": [
+         {
+          "raw": "- nested\n  - deeper",
+          "task": false,
+          "checked": null,
+          "tokens": [
+           {
+            "type": "text",
+            "raw": "nested\n",
+            "text": "nested"
+           },
+           {
+            "type": "list",
+            "raw": "- deeper",
+            "ordered": false,
+            "start": null,
+            "loose": false,
+            "items": [
+             {
+              "raw": "- deeper",
+              "task": false,
+              "checked": null,
+              "tokens": [
+               {
+                "type": "text",
+                "raw": "deeper",
+                "text": "deeper"
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "raw": "- c",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "c",
+        "text": "c"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. one\n2. two\n3. three",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. one\n2. two\n3. three",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. one\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "one",
+        "text": "one"
+       }
+      ]
+     },
+     {
+      "raw": "2. two\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "two",
+        "text": "two"
+       }
+      ]
+     },
+     {
+      "raw": "3. three",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "three",
+        "text": "three"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "3) three\n4) four",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "3) three\n4) four",
+    "ordered": true,
+    "start": 3,
+    "loose": false,
+    "items": [
+     {
+      "raw": "3) three\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "three",
+        "text": "three"
+       }
+      ]
+     },
+     {
+      "raw": "4) four",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "four",
+        "text": "four"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "- a\n\n- b loose\n\n- c",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- a\n\n- b loose\n\n- c",
+    "ordered": false,
+    "start": null,
+    "loose": true,
+    "items": [
+     {
+      "raw": "- a\n\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "paragraph",
+        "raw": "a\n",
+        "text": "a"
+       }
+      ]
+     },
+     {
+      "raw": "- b loose\n\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "paragraph",
+        "raw": "b loose\n",
+        "text": "b loose"
+       }
+      ]
+     },
+     {
+      "raw": "- c",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "paragraph",
+        "raw": "c",
+        "text": "c"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "- [ ] todo\n- [x] done\n- [X] done too",
+  "starts": null,
+  "tokens": [
+   {
+    "type": "taskList",
+    "raw": "- [ ] todo\n- [x] done\n- [X] done too\n",
+    "items": [
+     {
+      "text": "todo",
+      "checked": false,
+      "nested": []
+     },
+     {
+      "text": "done",
+      "checked": true,
+      "nested": []
+     },
+     {
+      "text": "done too",
+      "checked": true,
+      "nested": []
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "- [ ] task\n  - [ ] nested task\n  - [x] nested done\n- [ ] second",
+  "starts": null,
+  "tokens": [
+   {
+    "type": "taskList",
+    "raw": "- [ ] task\n  - [ ] nested task\n  - [x] nested done\n- [ ] second\n",
+    "items": [
+     {
+      "text": "task",
+      "checked": false,
+      "nested": [
+       {
+        "type": "taskList",
+        "raw": "- [ ] nested task\n- [x] nested done\n",
+        "items": [
+         {
+          "text": "nested task",
+          "checked": false,
+          "nested": []
+         },
+         {
+          "text": "nested done",
+          "checked": true,
+          "nested": []
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "text": "second",
+      "checked": false,
+      "nested": []
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "- [ ] task\n\n  continuation paragraph\n- [ ] next",
+  "starts": null,
+  "tokens": [
+   {
+    "type": "taskList",
+    "raw": "- [ ] task\n\n  continuation paragraph\n- [ ] next\n",
+    "items": [
+     {
+      "text": "task",
+      "checked": false,
+      "nested": [
+       {
+        "type": "space",
+        "raw": "\n"
+       },
+       {
+        "type": "paragraph",
+        "raw": "continuation paragraph",
+        "text": "continuation paragraph"
+       }
+      ]
+     },
+     {
+      "text": "next",
+      "checked": false,
+      "nested": []
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "- a\n- [ ] mixed task\n- b",
+  "starts": null,
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- a\n- [ ] mixed task\n- b",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- a\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "a",
+        "text": "a"
+       }
+      ]
+     },
+     {
+      "raw": "- [ ] mixed task\n",
+      "task": true,
+      "checked": false,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "mixed task",
+        "text": "mixed task"
+       }
+      ]
+     },
+     {
+      "raw": "- b",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "b",
+        "text": "b"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "- [ ]\n- [x] empty first",
+  "starts": null,
+  "tokens": [
+   {
+    "type": "taskList",
+    "raw": "- [ ]\n- [x] empty first\n",
+    "items": [
+     {
+      "text": "",
+      "checked": false,
+      "nested": []
+     },
+     {
+      "text": "empty first",
+      "checked": true,
+      "nested": []
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "* star\n+ plus\n- dash",
+  "starts": [
+   0,
+   7,
+   14
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "* star\n",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "* star",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "star",
+        "text": "star"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "list",
+    "raw": "+ plus\n",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "+ plus",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "plus",
+        "text": "plus"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "list",
+    "raw": "- dash",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- dash",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "dash",
+        "text": "dash"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. ordered\n- bullet",
+  "starts": [
+   0,
+   11
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. ordered\n",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. ordered",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "ordered",
+        "text": "ordered"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "list",
+    "raw": "- bullet",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- bullet",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "bullet",
+        "text": "bullet"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "- item\n\n      indented code in item\n- next",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- item\n\n      indented code in item\n- next",
+    "ordered": false,
+    "start": null,
+    "loose": true,
+    "items": [
+     {
+      "raw": "- item\n\n      indented code in item\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "paragraph",
+        "raw": "item",
+        "text": "item"
+       },
+       {
+        "type": "space",
+        "raw": "\n\n"
+       },
+       {
+        "type": "code",
+        "raw": "    indented code in item",
+        "lang": null,
+        "text": "indented code in item"
+       }
+      ]
+     },
+     {
+      "raw": "- next",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "paragraph",
+        "raw": "next",
+        "text": "next"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "- item\nlazy continuation\n- next",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- item\nlazy continuation\n- next",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- item\nlazy continuation\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "item\nlazy continuation",
+        "text": "item\nlazy continuation"
+       }
+      ]
+     },
+     {
+      "raw": "- next",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "next",
+        "text": "next"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> quote line one\n> quote line two\nlazy line\n\n> second quote",
+  "starts": [
+   0,
+   45
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> quote line one\n> quote line two\nlazy line",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "quote line one\nquote line two\nlazy line",
+      "text": "quote line one\nquote line two\nlazy line"
+     }
+    ]
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "blockquote",
+    "raw": "> second quote",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "second quote",
+      "text": "second quote"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> # heading in quote\n> - list in quote\n> - more\n>\n> para in quote",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> # heading in quote\n> - list in quote\n> - more\n>\n> para in quote",
+    "tokens": [
+     {
+      "type": "heading",
+      "raw": "# heading in quote\n",
+      "depth": 1,
+      "text": "heading in quote"
+     },
+     {
+      "type": "list",
+      "raw": "- list in quote\n- more",
+      "ordered": false,
+      "start": null,
+      "loose": false,
+      "items": [
+       {
+        "raw": "- list in quote\n",
+        "task": false,
+        "checked": null,
+        "tokens": [
+         {
+          "type": "text",
+          "raw": "list in quote",
+          "text": "list in quote"
+         }
+        ]
+       },
+       {
+        "raw": "- more",
+        "task": false,
+        "checked": null,
+        "tokens": [
+         {
+          "type": "text",
+          "raw": "more",
+          "text": "more"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "space",
+      "raw": "\n\n"
+     },
+     {
+      "type": "paragraph",
+      "raw": "para in quote",
+      "text": "para in quote"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> nested\n>> deeper\n>>> deepest",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> nested\n>> deeper\n>>> deepest",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "nested\n",
+      "text": "nested"
+     },
+     {
+      "type": "blockquote",
+      "raw": "> deeper\n>> deepest",
+      "tokens": [
+       {
+        "type": "paragraph",
+        "raw": "deeper\n",
+        "text": "deeper"
+       },
+       {
+        "type": "blockquote",
+        "raw": "> deepest",
+        "tokens": [
+         {
+          "type": "paragraph",
+          "raw": "deepest",
+          "text": "deepest"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> - a\n- b",
+  "starts": [
+   0,
+   6
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> - a\n",
+    "tokens": [
+     {
+      "type": "list",
+      "raw": "- a",
+      "ordered": false,
+      "start": null,
+      "loose": false,
+      "items": [
+       {
+        "raw": "- a",
+        "task": false,
+        "checked": null,
+        "tokens": [
+         {
+          "type": "text",
+          "raw": "a",
+          "text": "a"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "list",
+    "raw": "- b",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- b",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "b",
+        "text": "b"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "```\nplain fence\n```",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "code",
+    "raw": "```\nplain fence\n```",
+    "lang": "",
+    "text": "plain fence"
+   }
+  ]
+ },
+ {
+  "src": "~~~ts\nconst x = 1;\n~~~",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "code",
+    "raw": "~~~ts\nconst x = 1;\n~~~",
+    "lang": "ts",
+    "text": "const x = 1;"
+   }
+  ]
+ },
+ {
+  "src": "````md\n```inner```\n````",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "code",
+    "raw": "````md\n```inner```\n````",
+    "lang": "md",
+    "text": "```inner```"
+   }
+  ]
+ },
+ {
+  "src": "```python title\ndef f():\n    pass\n```\nafter",
+  "starts": [
+   0,
+   38
+  ],
+  "tokens": [
+   {
+    "type": "code",
+    "raw": "```python title\ndef f():\n    pass\n```\n",
+    "lang": "python title",
+    "text": "def f():\n    pass"
+   },
+   {
+    "type": "paragraph",
+    "raw": "after",
+    "text": "after"
+   }
+  ]
+ },
+ {
+  "src": "  ```\n  indented fence\n   more\n  ```",
+  "starts": null,
+  "tokens": [
+   {
+    "type": "code",
+    "raw": "  ```\n  indented fence\n   more\n  ```",
+    "lang": "",
+    "text": "indented fence\n more"
+   }
+  ]
+ },
+ {
+  "src": "```\nunclosed fence\nstill code",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "code",
+    "raw": "```\nunclosed fence\nstill code",
+    "lang": "",
+    "text": "unclosed fence\nstill code"
+   }
+  ]
+ },
+ {
+  "src": "    indented code\n    more code\n\npara",
+  "starts": [
+   0,
+   33
+  ],
+  "tokens": [
+   {
+    "type": "code",
+    "raw": "    indented code\n    more code\n\n",
+    "lang": null,
+    "text": "indented code\nmore code"
+   },
+   {
+    "type": "paragraph",
+    "raw": "para",
+    "text": "para"
+   }
+  ]
+ },
+ {
+  "src": "para\n    not code (lazy)",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "para\n    not code (lazy)",
+    "text": "para\n    not code (lazy)"
+   }
+  ]
+ },
+ {
+  "src": "---\n***\n___\n- - -",
+  "starts": [
+   0,
+   4,
+   8,
+   12
+  ],
+  "tokens": [
+   {
+    "type": "hr",
+    "raw": "---\n"
+   },
+   {
+    "type": "hr",
+    "raw": "***\n"
+   },
+   {
+    "type": "hr",
+    "raw": "___\n"
+   },
+   {
+    "type": "hr",
+    "raw": "- - -"
+   }
+  ]
+ },
+ {
+  "src": "| a | b | c |\n|---|:---:|--:|\n| 1 | 2 | 3 |\n| 4 | 5 |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| a | b | c |\n|---|:---:|--:|\n| 1 | 2 | 3 |\n| 4 | 5 |",
+    "align": [
+     null,
+     "center",
+     "right"
+    ],
+    "header": [
+     "a",
+     "b",
+     "c"
+    ],
+    "rows": [
+     [
+      "1",
+      "2",
+      "3"
+     ],
+     [
+      "4",
+      "5",
+      ""
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| 阶段 **Stage** | 做什么 | 耗时 `ms` |\n| --- | --- | --- |\n| prefill | 一次处理整段提示，==所有 token== 并行 | 12.5 |\n\nTable: the stages",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| 阶段 **Stage** | 做什么 | 耗时 `ms` |\n| --- | --- | --- |\n| prefill | 一次处理整段提示，==所有 token== 并行 | 12.5 |\n\n",
+    "align": [
+     null,
+     null,
+     null
+    ],
+    "header": [
+     "阶段 **Stage**",
+     "做什么",
+     "耗时 `ms`"
+    ],
+    "rows": [
+     [
+      "prefill",
+      "一次处理整段提示，==所有 token== 并行",
+      "12.5"
+     ]
+    ]
+   },
+   {
+    "type": "paragraph",
+    "raw": "Table: the stages",
+    "text": "Table: the stages"
+   }
+  ]
+ },
+ {
+  "src": "| a `x|y` | b |\n|---|---|\n| `p|q` | \\| escaped |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| a `x|y` | b |\n|---|---|\n| `p|q` | \\| escaped |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "a `x|y`",
+     "b"
+    ],
+    "rows": [
+     [
+      "`p|q`",
+      "| escaped"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "a | b\n--|--\n1 | 2",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "a | b\n--|--\n1 | 2",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "a",
+     "b"
+    ],
+    "rows": [
+     [
+      "1",
+      "2"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| only header |\n|---|",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| only header |\n|---|",
+    "align": [
+     null
+    ],
+    "header": [
+     "only header"
+    ],
+    "rows": []
+   }
+  ]
+ },
+ {
+  "src": "| a | b |\n|---|\n| mismatch |",
+  "starts": null,
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "|\n \na",
+    "text": "|\n \na"
+   },
+   {
+    "type": "table",
+    "raw": " | b |\n|---|\n| mismatch |",
+    "align": [
+     null
+    ],
+    "header": [
+     "b"
+    ],
+    "rows": [
+     [
+      "mismatch"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "text before\n| a | b |\n|---|---|\n| 1 | 2 |",
+  "starts": [
+   0,
+   12
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "text before\n",
+    "text": "text before"
+   },
+   {
+    "type": "table",
+    "raw": "| a | b |\n|---|---|\n| 1 | 2 |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "a",
+     "b"
+    ],
+    "rows": [
+     [
+      "1",
+      "2"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "$$x^2$$",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockMath",
+    "raw": "$$x^2$$",
+    "latex": "x^2"
+   }
+  ]
+ },
+ {
+  "src": "$$\n\\begin{aligned} a &= b \\\\ c &= d \\end{aligned}\n$$",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockMath",
+    "raw": "$$\n\\begin{aligned} a &= b \\\\ c &= d \\end{aligned}\n$$",
+    "latex": "\\begin{aligned} a &= b \\\\ c &= d \\end{aligned}"
+   }
+  ]
+ },
+ {
+  "src": "para\n$$\ny\n$$\nafter",
+  "starts": [
+   0,
+   5,
+   13
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "para\n",
+    "text": "para"
+   },
+   {
+    "type": "blockMath",
+    "raw": "$$\ny\n$$\n",
+    "latex": "y"
+   },
+   {
+    "type": "paragraph",
+    "raw": "after",
+    "text": "after"
+   }
+  ]
+ },
+ {
+  "src": "$$ inline $$ text after",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "$$ inline $$ text after",
+    "text": "$$ inline $$ text after"
+   }
+  ]
+ },
+ {
+  "src": "<div>\nhtml block\n</div>\n\npara",
+  "starts": [
+   0,
+   25
+  ],
+  "tokens": [
+   {
+    "type": "html",
+    "raw": "<div>\nhtml block\n</div>\n\n"
+   },
+   {
+    "type": "paragraph",
+    "raw": "para",
+    "text": "para"
+   }
+  ]
+ },
+ {
+  "src": "<!-- comment block -->\n\npara",
+  "starts": [
+   0,
+   24
+  ],
+  "tokens": [
+   {
+    "type": "html",
+    "raw": "<!-- comment block -->\n\n"
+   },
+   {
+    "type": "paragraph",
+    "raw": "para",
+    "text": "para"
+   }
+  ]
+ },
+ {
+  "src": "<details>\n<summary>s</summary>\nbody\n</details>",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "details",
+    "raw": "<details>\n<summary>s</summary>\nbody\n</details>"
+   }
+  ]
+ },
+ {
+  "src": "<Foo>\nnot html\n</Foo>",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "<Foo>\nnot html\n</Foo>",
+    "text": "<Foo>\nnot html\n</Foo>"
+   }
+  ]
+ },
+ {
+  "src": "[label]: https://example.com\n\n[label] reference",
+  "starts": null,
+  "tokens": [
+   {
+    "type": "def",
+    "raw": "[label]: https://example.com\n\n"
+   },
+   {
+    "type": "paragraph",
+    "raw": "[label] reference",
+    "text": "[label] reference"
+   }
+  ]
+ },
+ {
+  "src": "[a]: x\n[a]: y\n\ntext",
+  "starts": null,
+  "tokens": [
+   {
+    "type": "def",
+    "raw": "[a]: x\n"
+   },
+   {
+    "type": "paragraph",
+    "raw": "text",
+    "text": "text"
+   }
+  ]
+ },
+ {
+  "src": "para\n[def]: in paragraph",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "para\n[def]: in paragraph",
+    "text": "para\n[def]: in paragraph"
+   }
+  ]
+ },
+ {
+  "src": "![](images/a.png)\n\n![b](images/b.png \"caption\"){width=50%}",
+  "starts": [
+   0,
+   19
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "![](images/a.png)",
+    "text": "![](images/a.png)"
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "paragraph",
+    "raw": "![b](images/b.png \"caption\"){width=50%}",
+    "text": "![b](images/b.png \"caption\"){width=50%}"
+   }
+  ]
+ },
+ {
+  "src": "line one  \nline two\n\nline three\\\nline four",
+  "starts": [
+   0,
+   21
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "line one  \nline two",
+    "text": "line one  \nline two"
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "paragraph",
+    "raw": "line three\\\nline four",
+    "text": "line three\\\nline four"
+   }
+  ]
+ },
+ {
+  "src": "Table: not after table",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "Table: not after table",
+    "text": "Table: not after table"
+   }
+  ]
+ },
+ {
+  "src": "# 标题一\n\n调度器把请求分成批次，每个批次在显存里保留键值缓存，预填充和解码要分开处理，注意力按块计算，这一段说明原因。\n\n## The scheduler splits requests\n\nThe scheduler splits requests, each block holds 256 tokens, prefill runs before decode, see the notes.",
+  "starts": [
+   0,
+   7,
+   63,
+   97
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "# 标题一\n\n",
+    "depth": 1,
+    "text": "标题一"
+   },
+   {
+    "type": "paragraph",
+    "raw": "调度器把请求分成批次，每个批次在显存里保留键值缓存，预填充和解码要分开处理，注意力按块计算，这一段说明原因。",
+    "text": "调度器把请求分成批次，每个批次在显存里保留键值缓存，预填充和解码要分开处理，注意力按块计算，这一段说明原因。"
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "heading",
+    "raw": "## The scheduler splits requests\n\n",
+    "depth": 2,
+    "text": "The scheduler splits requests"
+   },
+   {
+    "type": "paragraph",
+    "raw": "The scheduler splits requests, each block holds 256 tokens, prefill runs before decode, see the notes.",
+    "text": "The scheduler splits requests, each block holds 256 tokens, prefill runs before decode, see the notes."
+   }
+  ]
+ },
+ {
+  "src": "- 调度器把请求分成批次\n- each block holds 256 tokens\n\n1. 预填充和解码要分开处理\n2. **prefill runs before decode**",
+  "starts": [
+   0,
+   44
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- 调度器把请求分成批次\n- each block holds 256 tokens",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- 调度器把请求分成批次\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "调度器把请求分成批次",
+        "text": "调度器把请求分成批次"
+       }
+      ]
+     },
+     {
+      "raw": "- each block holds 256 tokens",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "each block holds 256 tokens",
+        "text": "each block holds 256 tokens"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "list",
+    "raw": "1. 预填充和解码要分开处理\n2. **prefill runs before decode**",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. 预填充和解码要分开处理\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "预填充和解码要分开处理",
+        "text": "预填充和解码要分开处理"
+       }
+      ]
+     },
+     {
+      "raw": "2. **prefill runs before decode**",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "**prefill runs before decode**",
+        "text": "**prefill runs before decode**"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "\t- tab indented\n\t\t- deeper tab",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "code",
+    "raw": "\t- tab indented\n\t\t- deeper tab",
+    "lang": null,
+    "text": "- tab indented\n\t- deeper tab"
+   }
+  ]
+ },
+ {
+  "src": "-\n  empty first line item",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "-\n  empty first line item",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "-\n  empty first line item",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "space",
+        "raw": "\n"
+       },
+       {
+        "type": "text",
+        "raw": "empty first line item",
+        "text": "empty first line item"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "- \n- spaced empty",
+  "starts": [
+   0,
+   3
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "- \n",
+    "text": "- "
+   },
+   {
+    "type": "list",
+    "raw": "- spaced empty",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- spaced empty",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "spaced empty",
+        "text": "spaced empty"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1.\n2.\n3. last",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1.\n2.\n3. last",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1.\n",
+      "task": false,
+      "checked": null,
+      "tokens": []
+     },
+     {
+      "raw": "2.\n",
+      "task": false,
+      "checked": null,
+      "tokens": []
+     },
+     {
+      "raw": "3. last",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "last",
+        "text": "last"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "10. ten\n11. eleven",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "10. ten\n11. eleven",
+    "ordered": true,
+    "start": 10,
+    "loose": false,
+    "items": [
+     {
+      "raw": "10. ten\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "ten",
+        "text": "ten"
+       }
+      ]
+     },
+     {
+      "raw": "11. eleven",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "eleven",
+        "text": "eleven"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> ```\n> code in quote\n> ```",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> ```\n> code in quote\n> ```",
+    "tokens": [
+     {
+      "type": "code",
+      "raw": "```\ncode in quote\n```",
+      "lang": "",
+      "text": "code in quote"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "para\n\n\n",
+  "starts": null,
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "para",
+    "text": "para"
+   },
+   {
+    "type": "space",
+    "raw": "\n\n\n"
+   }
+  ]
+ },
+ {
+  "src": "\n\nleading blank lines",
+  "starts": null,
+  "tokens": [
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "paragraph",
+    "raw": "leading blank lines",
+    "text": "leading blank lines"
+   }
+  ]
+ },
+ {
+  "src": "trailing spaces   \n\n",
+  "starts": null,
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "trailing spaces   ",
+    "text": "trailing spaces   "
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   }
+  ]
+ },
+ {
+  "src": "**bold** and *italic* and ***both***\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "**bold** and *italic* and ***both***\n",
+    "text": "**bold** and *italic* and ***both***"
+   }
+  ]
+ },
+ {
+  "src": "## **bold** and *italic* and ***both***",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## **bold** and *italic* and ***both***",
+    "depth": 2,
+    "text": "**bold** and *italic* and ***both***"
+   }
+  ]
+ },
+ {
+  "src": "- **bold** and *italic* and ***both***\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- **bold** and *italic* and ***both***\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- **bold** and *italic* and ***both***\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "**bold** and *italic* and ***both***",
+        "text": "**bold** and *italic* and ***both***"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> **bold** and *italic* and ***both***",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> **bold** and *italic* and ***both***",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "**bold** and *italic* and ***both***",
+      "text": "**bold** and *italic* and ***both***"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | **bold** and *italic* and ***both*** |\n|---|---|\n| **bold** and *italic* and ***both*** | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | **bold** and *italic* and ***both*** |\n|---|---|\n| **bold** and *italic* and ***both*** | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "**bold** and *italic* and ***both***"
+    ],
+    "rows": [
+     [
+      "**bold** and *italic* and ***both***",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "a*b*c and 2*3*4 stay text, *pre*fill is italic\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "a*b*c and 2*3*4 stay text, *pre*fill is italic\n",
+    "text": "a*b*c and 2*3*4 stay text, *pre*fill is italic"
+   }
+  ]
+ },
+ {
+  "src": "## a*b*c and 2*3*4 stay text, *pre*fill is italic",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## a*b*c and 2*3*4 stay text, *pre*fill is italic",
+    "depth": 2,
+    "text": "a*b*c and 2*3*4 stay text, *pre*fill is italic"
+   }
+  ]
+ },
+ {
+  "src": "- a*b*c and 2*3*4 stay text, *pre*fill is italic\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- a*b*c and 2*3*4 stay text, *pre*fill is italic\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- a*b*c and 2*3*4 stay text, *pre*fill is italic\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "a*b*c and 2*3*4 stay text, *pre*fill is italic",
+        "text": "a*b*c and 2*3*4 stay text, *pre*fill is italic"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> a*b*c and 2*3*4 stay text, *pre*fill is italic",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> a*b*c and 2*3*4 stay text, *pre*fill is italic",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "a*b*c and 2*3*4 stay text, *pre*fill is italic",
+      "text": "a*b*c and 2*3*4 stay text, *pre*fill is italic"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | a*b*c and 2*3*4 stay text, *pre*fill is italic |\n|---|---|\n| a*b*c and 2*3*4 stay text, *pre*fill is italic | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | a*b*c and 2*3*4 stay text, *pre*fill is italic |\n|---|---|\n| a*b*c and 2*3*4 stay text, *pre*fill is italic | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "a*b*c and 2*3*4 stay text, *pre*fill is italic"
+    ],
+    "rows": [
+     [
+      "a*b*c and 2*3*4 stay text, *pre*fill is italic",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "__init__ and block_manager are names, _not emphasis_\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "__init__ and block_manager are names, _not emphasis_\n",
+    "text": "__init__ and block_manager are names, _not emphasis_"
+   }
+  ]
+ },
+ {
+  "src": "## __init__ and block_manager are names, _not emphasis_",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## __init__ and block_manager are names, _not emphasis_",
+    "depth": 2,
+    "text": "__init__ and block_manager are names, _not emphasis_"
+   }
+  ]
+ },
+ {
+  "src": "- __init__ and block_manager are names, _not emphasis_\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- __init__ and block_manager are names, _not emphasis_\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- __init__ and block_manager are names, _not emphasis_\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "__init__ and block_manager are names, _not emphasis_",
+        "text": "__init__ and block_manager are names, _not emphasis_"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> __init__ and block_manager are names, _not emphasis_",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> __init__ and block_manager are names, _not emphasis_",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "__init__ and block_manager are names, _not emphasis_",
+      "text": "__init__ and block_manager are names, _not emphasis_"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | __init__ and block_manager are names, _not emphasis_ |\n|---|---|\n| __init__ and block_manager are names, _not emphasis_ | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | __init__ and block_manager are names, _not emphasis_ |\n|---|---|\n| __init__ and block_manager are names, _not emphasis_ | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "__init__ and block_manager are names, _not emphasis_"
+    ],
+    "rows": [
+     [
+      "__init__ and block_manager are names, _not emphasis_",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "**粗体**紧跟中文，*斜体*也一样\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "**粗体**紧跟中文，*斜体*也一样\n",
+    "text": "**粗体**紧跟中文，*斜体*也一样"
+   }
+  ]
+ },
+ {
+  "src": "## **粗体**紧跟中文，*斜体*也一样",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## **粗体**紧跟中文，*斜体*也一样",
+    "depth": 2,
+    "text": "**粗体**紧跟中文，*斜体*也一样"
+   }
+  ]
+ },
+ {
+  "src": "- **粗体**紧跟中文，*斜体*也一样\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- **粗体**紧跟中文，*斜体*也一样\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- **粗体**紧跟中文，*斜体*也一样\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "**粗体**紧跟中文，*斜体*也一样",
+        "text": "**粗体**紧跟中文，*斜体*也一样"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> **粗体**紧跟中文，*斜体*也一样",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> **粗体**紧跟中文，*斜体*也一样",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "**粗体**紧跟中文，*斜体*也一样",
+      "text": "**粗体**紧跟中文，*斜体*也一样"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | **粗体**紧跟中文，*斜体*也一样 |\n|---|---|\n| **粗体**紧跟中文，*斜体*也一样 | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | **粗体**紧跟中文，*斜体*也一样 |\n|---|---|\n| **粗体**紧跟中文，*斜体*也一样 | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "**粗体**紧跟中文，*斜体*也一样"
+    ],
+    "rows": [
+     [
+      "**粗体**紧跟中文，*斜体*也一样",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "**unclosed bold and *one star\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "**unclosed bold and *one star\n",
+    "text": "**unclosed bold and *one star"
+   }
+  ]
+ },
+ {
+  "src": "## **unclosed bold and *one star",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## **unclosed bold and *one star",
+    "depth": 2,
+    "text": "**unclosed bold and *one star"
+   }
+  ]
+ },
+ {
+  "src": "- **unclosed bold and *one star\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- **unclosed bold and *one star\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- **unclosed bold and *one star\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "**unclosed bold and *one star",
+        "text": "**unclosed bold and *one star"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> **unclosed bold and *one star",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> **unclosed bold and *one star",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "**unclosed bold and *one star",
+      "text": "**unclosed bold and *one star"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | **unclosed bold and *one star |\n|---|---|\n| **unclosed bold and *one star | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | **unclosed bold and *one star |\n|---|---|\n| **unclosed bold and *one star | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "**unclosed bold and *one star"
+    ],
+    "rows": [
+     [
+      "**unclosed bold and *one star",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "***a** b*\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "***a** b*\n",
+    "text": "***a** b*"
+   }
+  ]
+ },
+ {
+  "src": "## ***a** b*",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## ***a** b*",
+    "depth": 2,
+    "text": "***a** b*"
+   }
+  ]
+ },
+ {
+  "src": "- ***a** b*\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- ***a** b*\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- ***a** b*\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "***a** b*",
+        "text": "***a** b*"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> ***a** b*",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> ***a** b*",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "***a** b*",
+      "text": "***a** b*"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | ***a** b* |\n|---|---|\n| ***a** b* | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | ***a** b* |\n|---|---|\n| ***a** b* | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "***a** b*"
+    ],
+    "rows": [
+     [
+      "***a** b*",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "*a **b** c*\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "*a **b** c*\n",
+    "text": "*a **b** c*"
+   }
+  ]
+ },
+ {
+  "src": "## *a **b** c*",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## *a **b** c*",
+    "depth": 2,
+    "text": "*a **b** c*"
+   }
+  ]
+ },
+ {
+  "src": "- *a **b** c*\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- *a **b** c*\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- *a **b** c*\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "*a **b** c*",
+        "text": "*a **b** c*"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> *a **b** c*",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> *a **b** c*",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "*a **b** c*",
+      "text": "*a **b** c*"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | *a **b** c* |\n|---|---|\n| *a **b** c* | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | *a **b** c* |\n|---|---|\n| *a **b** c* | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "*a **b** c*"
+    ],
+    "rows": [
+     [
+      "*a **b** c*",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "**a *b* c**\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "**a *b* c**\n",
+    "text": "**a *b* c**"
+   }
+  ]
+ },
+ {
+  "src": "## **a *b* c**",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## **a *b* c**",
+    "depth": 2,
+    "text": "**a *b* c**"
+   }
+  ]
+ },
+ {
+  "src": "- **a *b* c**\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- **a *b* c**\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- **a *b* c**\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "**a *b* c**",
+        "text": "**a *b* c**"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> **a *b* c**",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> **a *b* c**",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "**a *b* c**",
+      "text": "**a *b* c**"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | **a *b* c** |\n|---|---|\n| **a *b* c** | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | **a *b* c** |\n|---|---|\n| **a *b* c** | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "**a *b* c**"
+    ],
+    "rows": [
+     [
+      "**a *b* c**",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "x**y**z and x*y*z\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "x**y**z and x*y*z\n",
+    "text": "x**y**z and x*y*z"
+   }
+  ]
+ },
+ {
+  "src": "## x**y**z and x*y*z",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## x**y**z and x*y*z",
+    "depth": 2,
+    "text": "x**y**z and x*y*z"
+   }
+  ]
+ },
+ {
+  "src": "- x**y**z and x*y*z\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- x**y**z and x*y*z\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- x**y**z and x*y*z\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "x**y**z and x*y*z",
+        "text": "x**y**z and x*y*z"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> x**y**z and x*y*z",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> x**y**z and x*y*z",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "x**y**z and x*y*z",
+      "text": "x**y**z and x*y*z"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | x**y**z and x*y*z |\n|---|---|\n| x**y**z and x*y*z | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | x**y**z and x*y*z |\n|---|---|\n| x**y**z and x*y*z | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "x**y**z and x*y*z"
+    ],
+    "rows": [
+     [
+      "x**y**z and x*y*z",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^\n",
+    "text": "~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^"
+   }
+  ]
+ },
+ {
+  "src": "## ~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## ~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^",
+    "depth": 2,
+    "text": "~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^"
+   }
+  ]
+ },
+ {
+  "src": "- ~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- ~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- ~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^",
+        "text": "~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> ~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> ~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^",
+      "text": "~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | ~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^ |\n|---|---|\n| ~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^ | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | ~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^ |\n|---|---|\n| ~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^ | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^"
+    ],
+    "rows": [
+     [
+      "~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "~~ not struck ~~ and ~ alone\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "~~ not struck ~~ and ~ alone\n",
+    "text": "~~ not struck ~~ and ~ alone"
+   }
+  ]
+ },
+ {
+  "src": "## ~~ not struck ~~ and ~ alone",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## ~~ not struck ~~ and ~ alone",
+    "depth": 2,
+    "text": "~~ not struck ~~ and ~ alone"
+   }
+  ]
+ },
+ {
+  "src": "- ~~ not struck ~~ and ~ alone\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- ~~ not struck ~~ and ~ alone\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- ~~ not struck ~~ and ~ alone\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "~~ not struck ~~ and ~ alone",
+        "text": "~~ not struck ~~ and ~ alone"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> ~~ not struck ~~ and ~ alone",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> ~~ not struck ~~ and ~ alone",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "~~ not struck ~~ and ~ alone",
+      "text": "~~ not struck ~~ and ~ alone"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | ~~ not struck ~~ and ~ alone |\n|---|---|\n| ~~ not struck ~~ and ~ alone | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | ~~ not struck ~~ and ~ alone |\n|---|---|\n| ~~ not struck ~~ and ~ alone | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "~~ not struck ~~ and ~ alone"
+    ],
+    "rows": [
+     [
+      "~~ not struck ~~ and ~ alone",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "==highlight== and == not == and ==多字高亮==\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "==highlight== and == not == and ==多字高亮==\n",
+    "text": "==highlight== and == not == and ==多字高亮=="
+   }
+  ]
+ },
+ {
+  "src": "## ==highlight== and == not == and ==多字高亮==",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## ==highlight== and == not == and ==多字高亮==",
+    "depth": 2,
+    "text": "==highlight== and == not == and ==多字高亮=="
+   }
+  ]
+ },
+ {
+  "src": "- ==highlight== and == not == and ==多字高亮==\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- ==highlight== and == not == and ==多字高亮==\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- ==highlight== and == not == and ==多字高亮==\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "==highlight== and == not == and ==多字高亮==",
+        "text": "==highlight== and == not == and ==多字高亮=="
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> ==highlight== and == not == and ==多字高亮==",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> ==highlight== and == not == and ==多字高亮==",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "==highlight== and == not == and ==多字高亮==",
+      "text": "==highlight== and == not == and ==多字高亮=="
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | ==highlight== and == not == and ==多字高亮== |\n|---|---|\n| ==highlight== and == not == and ==多字高亮== | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | ==highlight== and == not == and ==多字高亮== |\n|---|---|\n| ==highlight== and == not == and ==多字高亮== | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "==highlight== and == not == and ==多字高亮=="
+    ],
+    "rows": [
+     [
+      "==highlight== and == not == and ==多字高亮==",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "a ==b== c ===d=== e\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "a ==b== c ===d=== e\n",
+    "text": "a ==b== c ===d=== e"
+   }
+  ]
+ },
+ {
+  "src": "## a ==b== c ===d=== e",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## a ==b== c ===d=== e",
+    "depth": 2,
+    "text": "a ==b== c ===d=== e"
+   }
+  ]
+ },
+ {
+  "src": "- a ==b== c ===d=== e\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- a ==b== c ===d=== e\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- a ==b== c ===d=== e\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "a ==b== c ===d=== e",
+        "text": "a ==b== c ===d=== e"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> a ==b== c ===d=== e",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> a ==b== c ===d=== e",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "a ==b== c ===d=== e",
+      "text": "a ==b== c ===d=== e"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | a ==b== c ===d=== e |\n|---|---|\n| a ==b== c ===d=== e | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | a ==b== c ===d=== e |\n|---|---|\n| a ==b== c ===d=== e | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "a ==b== c ===d=== e"
+    ],
+    "rows": [
+     [
+      "a ==b== c ===d=== e",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "<u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "<u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>\n",
+    "text": "<u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>"
+   }
+  ]
+ },
+ {
+  "src": "## <u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## <u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>",
+    "depth": 2,
+    "text": "<u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>"
+   }
+  ]
+ },
+ {
+  "src": "- <u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- <u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- <u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "<u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>",
+        "text": "<u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> <u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> <u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "<u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>",
+      "text": "<u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | <u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd> |\n|---|---|\n| <u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd> | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | <u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd> |\n|---|---|\n| <u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd> | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "<u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>"
+    ],
+    "rows": [
+     [
+      "<u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "<span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "<span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>\n",
+    "text": "<span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>"
+   }
+  ]
+ },
+ {
+  "src": "## <span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## <span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>",
+    "depth": 2,
+    "text": "<span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>"
+   }
+  ]
+ },
+ {
+  "src": "- <span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- <span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- <span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "<span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>",
+        "text": "<span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> <span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> <span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "<span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>",
+      "text": "<span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | <span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/> |\n|---|---|\n| <span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/> | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | <span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/> |\n|---|---|\n| <span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/> | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "<span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>"
+    ],
+    "rows": [
+     [
+      "<span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "vector<int> and <T> and <Foo> are words\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "vector<int> and <T> and <Foo> are words\n",
+    "text": "vector<int> and <T> and <Foo> are words"
+   }
+  ]
+ },
+ {
+  "src": "## vector<int> and <T> and <Foo> are words",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## vector<int> and <T> and <Foo> are words",
+    "depth": 2,
+    "text": "vector<int> and <T> and <Foo> are words"
+   }
+  ]
+ },
+ {
+  "src": "- vector<int> and <T> and <Foo> are words\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- vector<int> and <T> and <Foo> are words\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- vector<int> and <T> and <Foo> are words\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "vector<int> and <T> and <Foo> are words",
+        "text": "vector<int> and <T> and <Foo> are words"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> vector<int> and <T> and <Foo> are words",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> vector<int> and <T> and <Foo> are words",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "vector<int> and <T> and <Foo> are words",
+      "text": "vector<int> and <T> and <Foo> are words"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | vector<int> and <T> and <Foo> are words |\n|---|---|\n| vector<int> and <T> and <Foo> are words | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | vector<int> and <T> and <Foo> are words |\n|---|---|\n| vector<int> and <T> and <Foo> are words | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "vector<int> and <T> and <Foo> are words"
+    ],
+    "rows": [
+     [
+      "vector<int> and <T> and <Foo> are words",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "<!-- a comment --> visible after\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "html",
+    "raw": "<!-- a comment --> visible after\n"
+   }
+  ]
+ },
+ {
+  "src": "## <!-- a comment --> visible after",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## <!-- a comment --> visible after",
+    "depth": 2,
+    "text": "<!-- a comment --> visible after"
+   }
+  ]
+ },
+ {
+  "src": "- <!-- a comment --> visible after\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- <!-- a comment --> visible after\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- <!-- a comment --> visible after\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "html",
+        "raw": "<!-- a comment --> visible after"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> <!-- a comment --> visible after",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> <!-- a comment --> visible after",
+    "tokens": [
+     {
+      "type": "html",
+      "raw": "<!-- a comment --> visible after"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | <!-- a comment --> visible after |\n|---|---|\n| <!-- a comment --> visible after | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | <!-- a comment --> visible after |\n|---|---|\n| <!-- a comment --> visible after | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "<!-- a comment --> visible after"
+    ],
+    "rows": [
+     [
+      "<!-- a comment --> visible after",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "`code` and ``co`de`` and ` spaced ` and `kv_cache[i]`\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "`code` and ``co`de`` and ` spaced ` and `kv_cache[i]`\n",
+    "text": "`code` and ``co`de`` and ` spaced ` and `kv_cache[i]`"
+   }
+  ]
+ },
+ {
+  "src": "## `code` and ``co`de`` and ` spaced ` and `kv_cache[i]`",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## `code` and ``co`de`` and ` spaced ` and `kv_cache[i]`",
+    "depth": 2,
+    "text": "`code` and ``co`de`` and ` spaced ` and `kv_cache[i]`"
+   }
+  ]
+ },
+ {
+  "src": "- `code` and ``co`de`` and ` spaced ` and `kv_cache[i]`\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- `code` and ``co`de`` and ` spaced ` and `kv_cache[i]`\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- `code` and ``co`de`` and ` spaced ` and `kv_cache[i]`\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "`code` and ``co`de`` and ` spaced ` and `kv_cache[i]`",
+        "text": "`code` and ``co`de`` and ` spaced ` and `kv_cache[i]`"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> `code` and ``co`de`` and ` spaced ` and `kv_cache[i]`",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> `code` and ``co`de`` and ` spaced ` and `kv_cache[i]`",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "`code` and ``co`de`` and ` spaced ` and `kv_cache[i]`",
+      "text": "`code` and ``co`de`` and ` spaced ` and `kv_cache[i]`"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | `code` and ``co`de`` and ` spaced ` and `kv_cache[i]` |\n|---|---|\n| `code` and ``co`de`` and ` spaced ` and `kv_cache[i]` | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | `code` and ``co`de`` and ` spaced ` and `kv_cache[i]` |\n|---|---|\n| `code` and ``co`de`` and ` spaced ` and `kv_cache[i]` | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "`code` and ``co`de`` and ` spaced ` and `kv_cache[i]`"
+    ],
+    "rows": [
+     [
+      "`code` and ``co`de`` and ` spaced ` and `kv_cache[i]`",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "`unclosed code and *star*\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "`unclosed code and *star*\n",
+    "text": "`unclosed code and *star*"
+   }
+  ]
+ },
+ {
+  "src": "## `unclosed code and *star*",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## `unclosed code and *star*",
+    "depth": 2,
+    "text": "`unclosed code and *star*"
+   }
+  ]
+ },
+ {
+  "src": "- `unclosed code and *star*\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- `unclosed code and *star*\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- `unclosed code and *star*\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "`unclosed code and *star*",
+        "text": "`unclosed code and *star*"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> `unclosed code and *star*",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> `unclosed code and *star*",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "`unclosed code and *star*",
+      "text": "`unclosed code and *star*"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | `unclosed code and *star* |\n|---|---|\n| `unclosed code and *star* | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | `unclosed code and *star* |\n|---|---|\n| `unclosed code and *star* | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "`unclosed code and *star*"
+    ],
+    "rows": [
+     [
+      "`unclosed code and *star*",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "``` triple ``` inline\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "``` triple ``` inline\n",
+    "text": "``` triple ``` inline"
+   }
+  ]
+ },
+ {
+  "src": "## ``` triple ``` inline",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## ``` triple ``` inline",
+    "depth": 2,
+    "text": "``` triple ``` inline"
+   }
+  ]
+ },
+ {
+  "src": "- ``` triple ``` inline\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- ``` triple ``` inline\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- ``` triple ``` inline\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "``` triple ``` inline",
+        "text": "``` triple ``` inline"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> ``` triple ``` inline",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> ``` triple ``` inline",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "``` triple ``` inline",
+      "text": "``` triple ``` inline"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | ``` triple ``` inline |\n|---|---|\n| ``` triple ``` inline | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | ``` triple ``` inline |\n|---|---|\n| ``` triple ``` inline | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "``` triple ``` inline"
+    ],
+    "rows": [
+     [
+      "``` triple ``` inline",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "[link](https://example.com/a/long/url) and [label with **bold**](https://example.com)\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "[link](https://example.com/a/long/url) and [label with **bold**](https://example.com)\n",
+    "text": "[link](https://example.com/a/long/url) and [label with **bold**](https://example.com)"
+   }
+  ]
+ },
+ {
+  "src": "## [link](https://example.com/a/long/url) and [label with **bold**](https://example.com)",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## [link](https://example.com/a/long/url) and [label with **bold**](https://example.com)",
+    "depth": 2,
+    "text": "[link](https://example.com/a/long/url) and [label with **bold**](https://example.com)"
+   }
+  ]
+ },
+ {
+  "src": "- [link](https://example.com/a/long/url) and [label with **bold**](https://example.com)\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- [link](https://example.com/a/long/url) and [label with **bold**](https://example.com)\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- [link](https://example.com/a/long/url) and [label with **bold**](https://example.com)\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "[link](https://example.com/a/long/url) and [label with **bold**](https://example.com)",
+        "text": "[link](https://example.com/a/long/url) and [label with **bold**](https://example.com)"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> [link](https://example.com/a/long/url) and [label with **bold**](https://example.com)",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> [link](https://example.com/a/long/url) and [label with **bold**](https://example.com)",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "[link](https://example.com/a/long/url) and [label with **bold**](https://example.com)",
+      "text": "[link](https://example.com/a/long/url) and [label with **bold**](https://example.com)"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | [link](https://example.com/a/long/url) and [label with **bold**](https://example.com) |\n|---|---|\n| [link](https://example.com/a/long/url) and [label with **bold**](https://example.com) | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | [link](https://example.com/a/long/url) and [label with **bold**](https://example.com) |\n|---|---|\n| [link](https://example.com/a/long/url) and [label with **bold**](https://example.com) | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "[link](https://example.com/a/long/url) and [label with **bold**](https://example.com)"
+    ],
+    "rows": [
+     [
+      "[link](https://example.com/a/long/url) and [label with **bold**](https://example.com)",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "[a](<url with spaces>) and [b](url \"title\") and [c](url 'title')\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "[a](<url with spaces>) and [b](url \"title\") and [c](url 'title')\n",
+    "text": "[a](<url with spaces>) and [b](url \"title\") and [c](url 'title')"
+   }
+  ]
+ },
+ {
+  "src": "## [a](<url with spaces>) and [b](url \"title\") and [c](url 'title')",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## [a](<url with spaces>) and [b](url \"title\") and [c](url 'title')",
+    "depth": 2,
+    "text": "[a](<url with spaces>) and [b](url \"title\") and [c](url 'title')"
+   }
+  ]
+ },
+ {
+  "src": "- [a](<url with spaces>) and [b](url \"title\") and [c](url 'title')\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- [a](<url with spaces>) and [b](url \"title\") and [c](url 'title')\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- [a](<url with spaces>) and [b](url \"title\") and [c](url 'title')\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "[a](<url with spaces>) and [b](url \"title\") and [c](url 'title')",
+        "text": "[a](<url with spaces>) and [b](url \"title\") and [c](url 'title')"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> [a](<url with spaces>) and [b](url \"title\") and [c](url 'title')",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> [a](<url with spaces>) and [b](url \"title\") and [c](url 'title')",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "[a](<url with spaces>) and [b](url \"title\") and [c](url 'title')",
+      "text": "[a](<url with spaces>) and [b](url \"title\") and [c](url 'title')"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | [a](<url with spaces>) and [b](url \"title\") and [c](url 'title') |\n|---|---|\n| [a](<url with spaces>) and [b](url \"title\") and [c](url 'title') | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | [a](<url with spaces>) and [b](url \"title\") and [c](url 'title') |\n|---|---|\n| [a](<url with spaces>) and [b](url \"title\") and [c](url 'title') | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "[a](<url with spaces>) and [b](url \"title\") and [c](url 'title')"
+    ],
+    "rows": [
+     [
+      "[a](<url with spaces>) and [b](url \"title\") and [c](url 'title')",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "[nested (parens)](https://example.com/a_(b)) text\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "[nested (parens)](https://example.com/a_(b)) text\n",
+    "text": "[nested (parens)](https://example.com/a_(b)) text"
+   }
+  ]
+ },
+ {
+  "src": "## [nested (parens)](https://example.com/a_(b)) text",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## [nested (parens)](https://example.com/a_(b)) text",
+    "depth": 2,
+    "text": "[nested (parens)](https://example.com/a_(b)) text"
+   }
+  ]
+ },
+ {
+  "src": "- [nested (parens)](https://example.com/a_(b)) text\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- [nested (parens)](https://example.com/a_(b)) text\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- [nested (parens)](https://example.com/a_(b)) text\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "[nested (parens)](https://example.com/a_(b)) text",
+        "text": "[nested (parens)](https://example.com/a_(b)) text"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> [nested (parens)](https://example.com/a_(b)) text",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> [nested (parens)](https://example.com/a_(b)) text",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "[nested (parens)](https://example.com/a_(b)) text",
+      "text": "[nested (parens)](https://example.com/a_(b)) text"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | [nested (parens)](https://example.com/a_(b)) text |\n|---|---|\n| [nested (parens)](https://example.com/a_(b)) text | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | [nested (parens)](https://example.com/a_(b)) text |\n|---|---|\n| [nested (parens)](https://example.com/a_(b)) text | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "[nested (parens)](https://example.com/a_(b)) text"
+    ],
+    "rows": [
+     [
+      "[nested (parens)](https://example.com/a_(b)) text",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "<https://example.com> and <someone@example.com>\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "<https://example.com> and <someone@example.com>\n",
+    "text": "<https://example.com> and <someone@example.com>"
+   }
+  ]
+ },
+ {
+  "src": "## <https://example.com> and <someone@example.com>",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## <https://example.com> and <someone@example.com>",
+    "depth": 2,
+    "text": "<https://example.com> and <someone@example.com>"
+   }
+  ]
+ },
+ {
+  "src": "- <https://example.com> and <someone@example.com>\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- <https://example.com> and <someone@example.com>\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- <https://example.com> and <someone@example.com>\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "<https://example.com> and <someone@example.com>",
+        "text": "<https://example.com> and <someone@example.com>"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> <https://example.com> and <someone@example.com>",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> <https://example.com> and <someone@example.com>",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "<https://example.com> and <someone@example.com>",
+      "text": "<https://example.com> and <someone@example.com>"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | <https://example.com> and <someone@example.com> |\n|---|---|\n| <https://example.com> and <someone@example.com> | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | <https://example.com> and <someone@example.com> |\n|---|---|\n| <https://example.com> and <someone@example.com> | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "<https://example.com> and <someone@example.com>"
+    ],
+    "rows": [
+     [
+      "<https://example.com> and <someone@example.com>",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "https://example.com/path?x=1. and www.example.com, and a@b.com\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "https://example.com/path?x=1. and www.example.com, and a@b.com\n",
+    "text": "https://example.com/path?x=1. and www.example.com, and a@b.com"
+   }
+  ]
+ },
+ {
+  "src": "## https://example.com/path?x=1. and www.example.com, and a@b.com",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## https://example.com/path?x=1. and www.example.com, and a@b.com",
+    "depth": 2,
+    "text": "https://example.com/path?x=1. and www.example.com, and a@b.com"
+   }
+  ]
+ },
+ {
+  "src": "- https://example.com/path?x=1. and www.example.com, and a@b.com\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- https://example.com/path?x=1. and www.example.com, and a@b.com\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- https://example.com/path?x=1. and www.example.com, and a@b.com\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "https://example.com/path?x=1. and www.example.com, and a@b.com",
+        "text": "https://example.com/path?x=1. and www.example.com, and a@b.com"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> https://example.com/path?x=1. and www.example.com, and a@b.com",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> https://example.com/path?x=1. and www.example.com, and a@b.com",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "https://example.com/path?x=1. and www.example.com, and a@b.com",
+      "text": "https://example.com/path?x=1. and www.example.com, and a@b.com"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | https://example.com/path?x=1. and www.example.com, and a@b.com |\n|---|---|\n| https://example.com/path?x=1. and www.example.com, and a@b.com | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | https://example.com/path?x=1. and www.example.com, and a@b.com |\n|---|---|\n| https://example.com/path?x=1. and www.example.com, and a@b.com | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "https://example.com/path?x=1. and www.example.com, and a@b.com"
+    ],
+    "rows": [
+     [
+      "https://example.com/path?x=1. and www.example.com, and a@b.com",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "[ref][label] and [label] and [label][] (no definitions)\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "[ref][label] and [label] and [label][] (no definitions)\n",
+    "text": "[ref][label] and [label] and [label][] (no definitions)"
+   }
+  ]
+ },
+ {
+  "src": "## [ref][label] and [label] and [label][] (no definitions)",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## [ref][label] and [label] and [label][] (no definitions)",
+    "depth": 2,
+    "text": "[ref][label] and [label] and [label][] (no definitions)"
+   }
+  ]
+ },
+ {
+  "src": "- [ref][label] and [label] and [label][] (no definitions)\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- [ref][label] and [label] and [label][] (no definitions)\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- [ref][label] and [label] and [label][] (no definitions)\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "[ref][label] and [label] and [label][] (no definitions)",
+        "text": "[ref][label] and [label] and [label][] (no definitions)"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> [ref][label] and [label] and [label][] (no definitions)",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> [ref][label] and [label] and [label][] (no definitions)",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "[ref][label] and [label] and [label][] (no definitions)",
+      "text": "[ref][label] and [label] and [label][] (no definitions)"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | [ref][label] and [label] and [label][] (no definitions) |\n|---|---|\n| [ref][label] and [label] and [label][] (no definitions) | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | [ref][label] and [label] and [label][] (no definitions) |\n|---|---|\n| [ref][label] and [label] and [label][] (no definitions) | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "[ref][label] and [label] and [label][] (no definitions)"
+    ],
+    "rows": [
+     [
+      "[ref][label] and [label] and [label][] (no definitions)",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "[unclosed link](https://example.com\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "[unclosed link](https://example.com\n",
+    "text": "[unclosed link](https://example.com"
+   }
+  ]
+ },
+ {
+  "src": "## [unclosed link](https://example.com",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## [unclosed link](https://example.com",
+    "depth": 2,
+    "text": "[unclosed link](https://example.com"
+   }
+  ]
+ },
+ {
+  "src": "- [unclosed link](https://example.com\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- [unclosed link](https://example.com\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- [unclosed link](https://example.com\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "[unclosed link](https://example.com",
+        "text": "[unclosed link](https://example.com"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> [unclosed link](https://example.com",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> [unclosed link](https://example.com",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "[unclosed link](https://example.com",
+      "text": "[unclosed link](https://example.com"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | [unclosed link](https://example.com |\n|---|---|\n| [unclosed link](https://example.com | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | [unclosed link](https://example.com |\n|---|---|\n| [unclosed link](https://example.com | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "[unclosed link](https://example.com"
+    ],
+    "rows": [
+     [
+      "[unclosed link](https://example.com",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "\\[not a link\\](x) and \\*not em\\*\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "\\[not a link\\](x) and \\*not em\\*\n",
+    "text": "\\[not a link\\](x) and \\*not em\\*"
+   }
+  ]
+ },
+ {
+  "src": "## \\[not a link\\](x) and \\*not em\\*",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## \\[not a link\\](x) and \\*not em\\*",
+    "depth": 2,
+    "text": "\\[not a link\\](x) and \\*not em\\*"
+   }
+  ]
+ },
+ {
+  "src": "- \\[not a link\\](x) and \\*not em\\*\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- \\[not a link\\](x) and \\*not em\\*\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- \\[not a link\\](x) and \\*not em\\*\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "\\[not a link\\](x) and \\*not em\\*",
+        "text": "\\[not a link\\](x) and \\*not em\\*"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> \\[not a link\\](x) and \\*not em\\*",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> \\[not a link\\](x) and \\*not em\\*",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "\\[not a link\\](x) and \\*not em\\*",
+      "text": "\\[not a link\\](x) and \\*not em\\*"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | \\[not a link\\](x) and \\*not em\\* |\n|---|---|\n| \\[not a link\\](x) and \\*not em\\* | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | \\[not a link\\](x) and \\*not em\\* |\n|---|---|\n| \\[not a link\\](x) and \\*not em\\* | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "\\[not a link\\](x) and \\*not em\\*"
+    ],
+    "rows": [
+     [
+      "\\[not a link\\](x) and \\*not em\\*",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "![alt](images/a.png)\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "![alt](images/a.png)\n",
+    "text": "![alt](images/a.png)"
+   }
+  ]
+ },
+ {
+  "src": "## ![alt](images/a.png)",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## ![alt](images/a.png)",
+    "depth": 2,
+    "text": "![alt](images/a.png)"
+   }
+  ]
+ },
+ {
+  "src": "- ![alt](images/a.png)\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- ![alt](images/a.png)\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- ![alt](images/a.png)\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "![alt](images/a.png)",
+        "text": "![alt](images/a.png)"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> ![alt](images/a.png)",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> ![alt](images/a.png)",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "![alt](images/a.png)",
+      "text": "![alt](images/a.png)"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | ![alt](images/a.png) |\n|---|---|\n| ![alt](images/a.png) | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | ![alt](images/a.png) |\n|---|---|\n| ![alt](images/a.png) | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "![alt](images/a.png)"
+    ],
+    "rows": [
+     [
+      "![alt](images/a.png)",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "![alt](images/a.png \"a caption with *em*\")\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "![alt](images/a.png \"a caption with *em*\")\n",
+    "text": "![alt](images/a.png \"a caption with *em*\")"
+   }
+  ]
+ },
+ {
+  "src": "## ![alt](images/a.png \"a caption with *em*\")",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## ![alt](images/a.png \"a caption with *em*\")",
+    "depth": 2,
+    "text": "![alt](images/a.png \"a caption with *em*\")"
+   }
+  ]
+ },
+ {
+  "src": "- ![alt](images/a.png \"a caption with *em*\")\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- ![alt](images/a.png \"a caption with *em*\")\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- ![alt](images/a.png \"a caption with *em*\")\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "![alt](images/a.png \"a caption with *em*\")",
+        "text": "![alt](images/a.png \"a caption with *em*\")"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> ![alt](images/a.png \"a caption with *em*\")",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> ![alt](images/a.png \"a caption with *em*\")",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "![alt](images/a.png \"a caption with *em*\")",
+      "text": "![alt](images/a.png \"a caption with *em*\")"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | ![alt](images/a.png \"a caption with *em*\") |\n|---|---|\n| ![alt](images/a.png \"a caption with *em*\") | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | ![alt](images/a.png \"a caption with *em*\") |\n|---|---|\n| ![alt](images/a.png \"a caption with *em*\") | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "![alt](images/a.png \"a caption with *em*\")"
+    ],
+    "rows": [
+     [
+      "![alt](images/a.png \"a caption with *em*\")",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "![alt](images/a.png){width=40%}\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "![alt](images/a.png){width=40%}\n",
+    "text": "![alt](images/a.png){width=40%}"
+   }
+  ]
+ },
+ {
+  "src": "## ![alt](images/a.png){width=40%}",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## ![alt](images/a.png){width=40%}",
+    "depth": 2,
+    "text": "![alt](images/a.png){width=40%}"
+   }
+  ]
+ },
+ {
+  "src": "- ![alt](images/a.png){width=40%}\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- ![alt](images/a.png){width=40%}\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- ![alt](images/a.png){width=40%}\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "![alt](images/a.png){width=40%}",
+        "text": "![alt](images/a.png){width=40%}"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> ![alt](images/a.png){width=40%}",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> ![alt](images/a.png){width=40%}",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "![alt](images/a.png){width=40%}",
+      "text": "![alt](images/a.png){width=40%}"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | ![alt](images/a.png){width=40%} |\n|---|---|\n| ![alt](images/a.png){width=40%} | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | ![alt](images/a.png){width=40%} |\n|---|---|\n| ![alt](images/a.png){width=40%} | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "![alt](images/a.png){width=40%}"
+    ],
+    "rows": [
+     [
+      "![alt](images/a.png){width=40%}",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "![alt](images/a.png){width=40% frame=3 loop=true}\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "![alt](images/a.png){width=40% frame=3 loop=true}\n",
+    "text": "![alt](images/a.png){width=40% frame=3 loop=true}"
+   }
+  ]
+ },
+ {
+  "src": "## ![alt](images/a.png){width=40% frame=3 loop=true}",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## ![alt](images/a.png){width=40% frame=3 loop=true}",
+    "depth": 2,
+    "text": "![alt](images/a.png){width=40% frame=3 loop=true}"
+   }
+  ]
+ },
+ {
+  "src": "- ![alt](images/a.png){width=40% frame=3 loop=true}\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- ![alt](images/a.png){width=40% frame=3 loop=true}\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- ![alt](images/a.png){width=40% frame=3 loop=true}\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "![alt](images/a.png){width=40% frame=3 loop=true}",
+        "text": "![alt](images/a.png){width=40% frame=3 loop=true}"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> ![alt](images/a.png){width=40% frame=3 loop=true}",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> ![alt](images/a.png){width=40% frame=3 loop=true}",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "![alt](images/a.png){width=40% frame=3 loop=true}",
+      "text": "![alt](images/a.png){width=40% frame=3 loop=true}"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | ![alt](images/a.png){width=40% frame=3 loop=true} |\n|---|---|\n| ![alt](images/a.png){width=40% frame=3 loop=true} | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | ![alt](images/a.png){width=40% frame=3 loop=true} |\n|---|---|\n| ![alt](images/a.png){width=40% frame=3 loop=true} | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "![alt](images/a.png){width=40% frame=3 loop=true}"
+    ],
+    "rows": [
+     [
+      "![alt](images/a.png){width=40% frame=3 loop=true}",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "![alt](images/a.png){width=0%} stays text, {height=3} too\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "![alt](images/a.png){width=0%} stays text, {height=3} too\n",
+    "text": "![alt](images/a.png){width=0%} stays text, {height=3} too"
+   }
+  ]
+ },
+ {
+  "src": "## ![alt](images/a.png){width=0%} stays text, {height=3} too",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## ![alt](images/a.png){width=0%} stays text, {height=3} too",
+    "depth": 2,
+    "text": "![alt](images/a.png){width=0%} stays text, {height=3} too"
+   }
+  ]
+ },
+ {
+  "src": "- ![alt](images/a.png){width=0%} stays text, {height=3} too\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- ![alt](images/a.png){width=0%} stays text, {height=3} too\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- ![alt](images/a.png){width=0%} stays text, {height=3} too\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "![alt](images/a.png){width=0%} stays text, {height=3} too",
+        "text": "![alt](images/a.png){width=0%} stays text, {height=3} too"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> ![alt](images/a.png){width=0%} stays text, {height=3} too",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> ![alt](images/a.png){width=0%} stays text, {height=3} too",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "![alt](images/a.png){width=0%} stays text, {height=3} too",
+      "text": "![alt](images/a.png){width=0%} stays text, {height=3} too"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | ![alt](images/a.png){width=0%} stays text, {height=3} too |\n|---|---|\n| ![alt](images/a.png){width=0%} stays text, {height=3} too | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | ![alt](images/a.png){width=0%} stays text, {height=3} too |\n|---|---|\n| ![alt](images/a.png){width=0%} stays text, {height=3} too | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "![alt](images/a.png){width=0%} stays text, {height=3} too"
+    ],
+    "rows": [
+     [
+      "![alt](images/a.png){width=0%} stays text, {height=3} too",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "![a b](images/has space.png) broken\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "![a b](images/has space.png) broken\n",
+    "text": "![a b](images/has space.png) broken"
+   }
+  ]
+ },
+ {
+  "src": "## ![a b](images/has space.png) broken",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## ![a b](images/has space.png) broken",
+    "depth": 2,
+    "text": "![a b](images/has space.png) broken"
+   }
+  ]
+ },
+ {
+  "src": "- ![a b](images/has space.png) broken\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- ![a b](images/has space.png) broken\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- ![a b](images/has space.png) broken\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "![a b](images/has space.png) broken",
+        "text": "![a b](images/has space.png) broken"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> ![a b](images/has space.png) broken",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> ![a b](images/has space.png) broken",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "![a b](images/has space.png) broken",
+      "text": "![a b](images/has space.png) broken"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | ![a b](images/has space.png) broken |\n|---|---|\n| ![a b](images/has space.png) broken | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | ![a b](images/has space.png) broken |\n|---|---|\n| ![a b](images/has space.png) broken | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "![a b](images/has space.png) broken"
+    ],
+    "rows": [
+     [
+      "![a b](images/has space.png) broken",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}\n",
+    "text": "text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}"
+   }
+  ]
+ },
+ {
+  "src": "## text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}",
+    "depth": 2,
+    "text": "text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}"
+   }
+  ]
+ },
+ {
+  "src": "- text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}",
+        "text": "text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}",
+      "text": "text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | text ![inline](i.png) in the middle and ![two](j.png){width=10.5%} |\n|---|---|\n| text ![inline](i.png) in the middle and ![two](j.png){width=10.5%} | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | text ![inline](i.png) in the middle and ![two](j.png){width=10.5%} |\n|---|---|\n| text ![inline](i.png) in the middle and ![two](j.png){width=10.5%} | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}"
+    ],
+    "rows": [
+     [
+      "text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "![](data:image/svg+xml,<svg></svg>)\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "![](data:image/svg+xml,<svg></svg>)\n",
+    "text": "![](data:image/svg+xml,<svg></svg>)"
+   }
+  ]
+ },
+ {
+  "src": "## ![](data:image/svg+xml,<svg></svg>)",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## ![](data:image/svg+xml,<svg></svg>)",
+    "depth": 2,
+    "text": "![](data:image/svg+xml,<svg></svg>)"
+   }
+  ]
+ },
+ {
+  "src": "- ![](data:image/svg+xml,<svg></svg>)\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- ![](data:image/svg+xml,<svg></svg>)\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- ![](data:image/svg+xml,<svg></svg>)\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "![](data:image/svg+xml,<svg></svg>)",
+        "text": "![](data:image/svg+xml,<svg></svg>)"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> ![](data:image/svg+xml,<svg></svg>)",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> ![](data:image/svg+xml,<svg></svg>)",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "![](data:image/svg+xml,<svg></svg>)",
+      "text": "![](data:image/svg+xml,<svg></svg>)"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | ![](data:image/svg+xml,<svg></svg>) |\n|---|---|\n| ![](data:image/svg+xml,<svg></svg>) | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | ![](data:image/svg+xml,<svg></svg>) |\n|---|---|\n| ![](data:image/svg+xml,<svg></svg>) | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "![](data:image/svg+xml,<svg></svg>)"
+    ],
+    "rows": [
+     [
+      "![](data:image/svg+xml,<svg></svg>)",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "$x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "$x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big\n",
+    "text": "$x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big"
+   }
+  ]
+ },
+ {
+  "src": "## $x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## $x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big",
+    "depth": 2,
+    "text": "$x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big"
+   }
+  ]
+ },
+ {
+  "src": "- $x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- $x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- $x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "$x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big",
+        "text": "$x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> $x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> $x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "$x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big",
+      "text": "$x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | $x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big |\n|---|---|\n| $x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | $x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big |\n|---|---|\n| $x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "$x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big"
+    ],
+    "rows": [
+     [
+      "$x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "$5 and $10 are money, \\$x$ is not math\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "$5 and $10 are money, \\$x$ is not math\n",
+    "text": "$5 and $10 are money, \\$x$ is not math"
+   }
+  ]
+ },
+ {
+  "src": "## $5 and $10 are money, \\$x$ is not math",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## $5 and $10 are money, \\$x$ is not math",
+    "depth": 2,
+    "text": "$5 and $10 are money, \\$x$ is not math"
+   }
+  ]
+ },
+ {
+  "src": "- $5 and $10 are money, \\$x$ is not math\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- $5 and $10 are money, \\$x$ is not math\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- $5 and $10 are money, \\$x$ is not math\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "$5 and $10 are money, \\$x$ is not math",
+        "text": "$5 and $10 are money, \\$x$ is not math"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> $5 and $10 are money, \\$x$ is not math",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> $5 and $10 are money, \\$x$ is not math",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "$5 and $10 are money, \\$x$ is not math",
+      "text": "$5 and $10 are money, \\$x$ is not math"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | $5 and $10 are money, \\$x$ is not math |\n|---|---|\n| $5 and $10 are money, \\$x$ is not math | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | $5 and $10 are money, \\$x$ is not math |\n|---|---|\n| $5 and $10 are money, \\$x$ is not math | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "$5 and $10 are money, \\$x$ is not math"
+    ],
+    "rows": [
+     [
+      "$5 and $10 are money, \\$x$ is not math",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "a $ b $ c and $x$y and $x$5\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "a $ b $ c and $x$y and $x$5\n",
+    "text": "a $ b $ c and $x$y and $x$5"
+   }
+  ]
+ },
+ {
+  "src": "## a $ b $ c and $x$y and $x$5",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## a $ b $ c and $x$y and $x$5",
+    "depth": 2,
+    "text": "a $ b $ c and $x$y and $x$5"
+   }
+  ]
+ },
+ {
+  "src": "- a $ b $ c and $x$y and $x$5\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- a $ b $ c and $x$y and $x$5\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- a $ b $ c and $x$y and $x$5\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "a $ b $ c and $x$y and $x$5",
+        "text": "a $ b $ c and $x$y and $x$5"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> a $ b $ c and $x$y and $x$5",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> a $ b $ c and $x$y and $x$5",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "a $ b $ c and $x$y and $x$5",
+      "text": "a $ b $ c and $x$y and $x$5"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | a $ b $ c and $x$y and $x$5 |\n|---|---|\n| a $ b $ c and $x$y and $x$5 | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | a $ b $ c and $x$y and $x$5 |\n|---|---|\n| a $ b $ c and $x$y and $x$5 | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "a $ b $ c and $x$y and $x$5"
+    ],
+    "rows": [
+     [
+      "a $ b $ c and $x$y and $x$5",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "$\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "$\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$\n",
+    "text": "$\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$"
+   }
+  ]
+ },
+ {
+  "src": "## $\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## $\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$",
+    "depth": 2,
+    "text": "$\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$"
+   }
+  ]
+ },
+ {
+  "src": "- $\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- $\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- $\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "$\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$",
+        "text": "$\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> $\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> $\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "$\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$",
+      "text": "$\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | $\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$ |\n|---|---|\n| $\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$ | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | $\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$ |\n|---|---|\n| $\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$ | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "$\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$"
+    ],
+    "rows": [
+     [
+      "$\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "# 调度 Scheduler\n\n调度器把请求分成批次，**每个批次在显存里保留键值缓存**，然后调用 `Scheduler.step()`。The scheduler splits requests into batches; see [notes](https://example.com/n).\n\n## 公式\n\n块公式：\n\n$$\nE = mc^2 \\tag{1}\n$$\n\n行内 $x_i^2$ 和 ==高亮== 和 {注|note}。\n\n- [ ] 注意力按块计算\n\n- [x] see the notes\n\n\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n\n\n> 这一段说明原因\n\n\n\n```cuda\n__global__ void k() {}\n```",
+  "starts": null,
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "# 调度 Scheduler\n\n",
+    "depth": 1,
+    "text": "调度 Scheduler"
+   },
+   {
+    "type": "paragraph",
+    "raw": "调度器把请求分成批次，**每个批次在显存里保留键值缓存**，然后调用 `Scheduler.step()`。The scheduler splits requests into batches; see [notes](https://example.com/n).",
+    "text": "调度器把请求分成批次，**每个批次在显存里保留键值缓存**，然后调用 `Scheduler.step()`。The scheduler splits requests into batches; see [notes](https://example.com/n)."
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "heading",
+    "raw": "## 公式\n\n",
+    "depth": 2,
+    "text": "公式"
+   },
+   {
+    "type": "paragraph",
+    "raw": "块公式：",
+    "text": "块公式："
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "blockMath",
+    "raw": "$$\nE = mc^2 \\tag{1}\n$$\n\n",
+    "latex": "E = mc^2 \\tag{1}"
+   },
+   {
+    "type": "paragraph",
+    "raw": "行内 $x_i^2$ 和 ==高亮== 和 {注|note}。",
+    "text": "行内 $x_i^2$ 和 ==高亮== 和 {注|note}。"
+   },
+   {
+    "type": "taskList",
+    "raw": "\n\n- [ ] 注意力按块计算\n",
+    "items": [
+     {
+      "text": "注意力按块计算",
+      "checked": false,
+      "nested": []
+     }
+    ]
+   },
+   {
+    "type": "taskList",
+    "raw": "\n- [x] see the notes\n",
+    "items": [
+     {
+      "text": "see the notes",
+      "checked": true,
+      "nested": []
+     }
+    ]
+   },
+   {
+    "type": "space",
+    "raw": "\n\n\n"
+   },
+   {
+    "type": "table",
+    "raw": "| a | b |\n|---|---|\n| 1 | 2 |\n\n\n\n",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "a",
+     "b"
+    ],
+    "rows": [
+     [
+      "1",
+      "2"
+     ]
+    ]
+   },
+   {
+    "type": "blockquote",
+    "raw": "> 这一段说明原因",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "这一段说明原因",
+      "text": "这一段说明原因"
+     }
+    ]
+   },
+   {
+    "type": "space",
+    "raw": "\n\n\n\n"
+   },
+   {
+    "type": "code",
+    "raw": "```cuda\n__global__ void k() {}\n```",
+    "lang": "cuda",
+    "text": "__global__ void k() {}"
+   }
+  ]
+ }
+]

@@ -270,7 +270,10 @@ public struct MDBlock: Sendable, Equatable {
   public var range: Range<Int>
   /// 段落、标题里的行内结构；别的块为空
   public var inlines: [MDInline]
+  /// 段落、标题的行内文字和它每个 UTF-16 单元在源码里的位置（引用块、列表项里的续行跳过了行首记号）
+  public var inlineText: MDText?
 }
+public struct MDText: Sendable, Equatable { public var string: String; public var offsets: [Int] }
 
 public struct MDList: Sendable, Equatable {
   public enum Marker: Sendable, Equatable { case bullet(Character), ordered(start: Int, delimiter: Character), task }
@@ -292,13 +295,15 @@ public struct MDTable: Sendable, Equatable {
   /// 紧跟着的 "Table: …" 行
   public var caption: MDCell?
 }
-public struct MDCell: Sendable, Equatable { public var range: Range<Int>; public var inlines: [MDInline] }
+public struct MDCell: Sendable, Equatable { public var range: Range<Int>; public var inlines: [MDInline]; public var text: MDText }
 
 /// 行内结构，对应 TS 的 Span（editor/spans.ts）：markers 是光标不在时隐藏的记号，inner 是画成格式的那部分
 public struct MDInline: Sendable, Equatable {
   public enum Kind: Sendable, Equatable {
     case text
     case strong, emphasis, strike, highlight, underline, code
+    /// <kbd>、~下标~、^上标^：TS 版也画
+    case kbd, `subscript`, superscript
     case link(url: String)
     case autolink(url: String)
     /// 画成一个整体、光标一步跨过的东西
@@ -329,24 +334,28 @@ public struct MDImage: Sendable, Equatable {
   public var loops: Bool
   public var url: Range<Int>
   public var attributes: Range<Int>?
+  /// CommonMark 不认的地址（有空格等）：画成失效的图片，不加载
+  public var broken: Bool
 }
 
 /// 表格的列宽和行高、哪些代码块折行，按位置对应（@yhnocoder/markdown 的 MdLayout）
 public struct MDLayoutInfo: Sendable, Equatable, Codable {
-  public struct Table: Sendable, Equatable, Codable { public var cols: [Double]?; public var rows: [Double]? }
+  /// 和 TS 的 TableLayout 一样，单个列宽、行高可以是 null（自动）
+  public struct Table: Sendable, Equatable, Codable { public var cols: [Double?]?; public var rows: [Double?]? }
   public var tables: [Table?]?
   public var wrap: [Int]?
 }
 ```
 
-源码层面的操作。结果必须和 TS 版同名函数的一样。白板自己的规则（箭头端点用的 `blockSig`、卡头标题用的 `mdHeading`）不在组件里，由宿主用 `blockStarts` 和 `MarkdownDocument` 自己实现：
+源码层面的操作。结果必须和 TS 版同名函数的一样；TS 版在原地改写读回不对时会整篇按 `serializeMd` 重写，原生版这时原样返回源码，不做规范化（第 5.9 节）。`setTableCaption` 只写、改、删 "Table: …" 那一行，不像 TS 版那样把表格所在的整块重写一遍。白板自己的规则（箭头端点用的 `blockSig`、卡头标题用的 `mdHeading`）不在组件里，由宿主用 `blockStarts` 和 `MarkdownDocument` 自己实现：
 
 ```swift
 public enum MarkdownSourceOps {
-  /// TS: mdBlockStarts
-  public static func blockStarts(_ source: String) -> [Int]
+  /// TS: mdBlockStarts。块和源码对不上时（有 \r、多余空行读成空段落、混着任务项的列表被 TipTap 拆开）和 TS 一样给 nil
+  public static func blockStarts(_ source: String) -> [Int]?
   public static func refs(_ source: String) -> [(label: String, target: String?, range: Range<Int>)]
-  public static func toggleTask(_ source: String, nth: Int) -> String
+  /// 没有第 nth 个任务时 nil（TS 给 null）
+  public static func toggleTask(_ source: String, nth: Int) -> String?
   public static func setImagePlayback(_ source: String, src: String, nth: Int, frame: Int?, loops: Bool) -> String
   public static func setImageWidth(_ source: String, src: String, nth: Int, width: Double?) -> String
   public static func setImageCaption(_ source: String, src: String, nth: Int, caption: String) -> String
@@ -358,10 +367,11 @@ public enum MarkdownSourceOps {
 
   /// 一段 Markdown 加上它的布局信息
   public struct Part: Sendable, Equatable { public var source: String; public var layout: MDLayoutInfo? }
-  /// TS: cutMdBlocks、insertMdBlocks、moveMdBlocks（blockmove.ts）
-  public static func cutBlocks(_ text: Part, _ indices: IndexSet) -> (rest: Part, cut: [Part])
-  public static func insertBlocks(_ text: Part, _ blocks: [Part], at index: Int) -> Part
-  public static func moveBlocks(_ text: Part, _ indices: IndexSet, to index: Int) -> Part
+  /// TS: cutMdBlocks、insertMdBlocks、moveMdBlocks（blockmove.ts）。拆不开（blockStarts 是 nil）或位置不对时 nil。
+  /// 另有和 TS 一一对应的按区间的版本：cutBlocks(_:_: Range<Int>)、insertBlocks(_:_: Part, at:)、moveBlocks(_:_: Range<Int>, to:)
+  public static func cutBlocks(_ text: Part, _ indices: IndexSet) -> (rest: Part, cut: [Part])?
+  public static func insertBlocks(_ text: Part, _ blocks: [Part], at index: Int) -> Part?
+  public static func moveBlocks(_ text: Part, _ indices: IndexSet, to index: Int) -> Part?
 }
 ```
 
