@@ -193,6 +193,23 @@ cards.push({
 cards.push({ id: "img1", kind: "image", src: "a.png", loop: false, alt: "An image" });
 cards.push({ id: "web1", kind: "web", url: "https://www.example.org/page", meta: { title: "" } });
 cards.push({ id: "web2", kind: "web", url: "not a url", meta: { title: "Example <mark>t</mark>" } });
+// web cards titled by their address (model.ts domainOf, new URL(url).hostname): case, user info and ports, schemes
+// without a host, IDNA, and addresses new URL refuses
+const webURLs = [
+  "HTTPS://WWW.Example.COM/x",
+  "http://user:pw@Host.Example:8080/p?q#f",
+  "mailto:someone@example.org",
+  "foo://Bar.Example/x",
+  "file:///tmp/x",
+  "https://Bücher.Example/",
+  "http://",
+  "  https://www.trim.example  ",
+  "https:\\\\back.example\\x",
+  "https://a%2Eb.example/",
+  "https://exa mple.com/",
+  "http://[::1]:80/",
+];
+webURLs.forEach((url, i) => cards.push({ id: `webu${i}`, kind: "web", url }));
 cards.push({ id: "links1", kind: "links", items: [{ id: "i1", url: "https://example.org" }] });
 cards.push({ id: "sub1", kind: "board", board: "bother", pcols: 1 });
 cards.push({ id: "sub2", kind: "board", board: "bother", pcols: 2 });
@@ -238,6 +255,7 @@ const board = (version) => ({
     { id: "n14", kind: "text", at: { card: "code2", seg: "s3", lines: [6, 6] }, md: "upstream", variant: "up" },
     { id: "n15", kind: "code", at: { card: "c1" }, code: { id: "s9", src: { kind: "free" }, path: "", start: 1, end: 1, text: ["z"], version: { kind: "none" } } },
     { id: "n16", kind: "text", at: { card: "code1", seg: "s1", lines: [12, 12] }, md: "local", boardOnly: true },
+    ...webURLs.map((_, i) => ({ id: `nw${i}`, kind: "card", at: { card: "c1" }, card: `webu${i}` })),
     { id: "n17", kind: "text", at: { card: "c1" }, md: "x", q: { at: 5, done: false } },
   ],
   stickers: [

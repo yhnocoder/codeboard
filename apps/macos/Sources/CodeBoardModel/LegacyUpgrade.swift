@@ -369,8 +369,9 @@ enum LegacyUpgrade {
     case "image": return truthy(c["alt"]) ? str(c["alt"]) : "Image"
     case "web":
       if let t = str(obj(c["meta"])?["title"]), !t.isEmpty { return t }
+      // model.ts domainOf: new URL(url).hostname without www., the address itself when it does not parse
       let url = str(c["url"]) ?? ""
-      guard let host = URLComponents(string: url)?.host, !host.isEmpty else { return url }
+      guard let host = JSURL.hostname(url) else { return url }
       return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     case "links": return "Link List"
     case "compare":

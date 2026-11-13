@@ -96,3 +96,16 @@ private func difference(_ a: Any?, _ b: Any?, at path: String = "") -> String? {
   #expect(LegacyUpgrade.refSource(" [a]\nb ", "c1") == "[[a  b#^c1]]")
   #expect(LegacyUpgrade.refSource("", "c1") == "[[Card#^c1]]")
 }
+
+@Test func hostnamesAsJavaScriptsURLGivesThem() {
+  // what node's new URL(s).hostname gives (nil: it throws)
+  let cases: [(String, String?)] = [
+    ("HTTPS://WWW.Example.COM/x", "www.example.com"), ("http://user:pw@Host.Example:8080/p?q#f", "host.example"),
+    ("mailto:someone@example.org", ""), ("foo://Bar.Example/x", "Bar.Example"), ("file:///tmp/x", ""),
+    ("file://Srv/x", "srv"), ("https://Bücher.Example/", "xn--bcher-kva.example"), ("http://", nil),
+    ("  https://www.trim.example  ", "www.trim.example"), ("https:\\\\back.example\\x", "back.example"),
+    ("https://a%2Eb.example/", "a.b.example"), ("https://exa mple.com/", nil), ("http://[::1]:80/", "[::1]"),
+    ("not a url", nil), ("https://例え.テスト/", "xn--r8jz45g.xn--zckzah"),
+  ]
+  for (url, host) in cases { #expect(JSURL.hostname(url) == host, "\(url)") }
+}
