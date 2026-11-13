@@ -118,8 +118,6 @@ function grabbing(d: Move, on: boolean) {
 /** What is under the pointer beneath the block-move layer */
 /** The key that picks up blocks: ⌘ on a Mac (Ctrl-click there is the context menu), Ctrl elsewhere */
 const modHeld = (e: MouseEvent | KeyboardEvent) => (IS_MAC ? e.metaKey : e.ctrlKey);
-/** Where a press with that key is not for moving blocks: a link opens, a code block's editor adds a cursor */
-const NOT_BLOCKS = "a[href], .cm-editor";
 const under = (e: PointerEvent) =>
   document.elementsFromPoint(e.clientX, e.clientY).find((x) => !view.lay?.contains(x)) ?? null;
 const cardEl = (id: string) => document.querySelector<HTMLElement>(cardSel(id));
@@ -514,7 +512,7 @@ function clearHover() {
 /** ⌘ held over a block of the Note being edited: one outline round the blocks a press would take */
 function hover(id: string, t: EventTarget | null) {
   const ed = edBlocks(id);
-  if (!keys.v.mod || !ed || mv.v || !(t instanceof Element) || t.closest(NOT_BLOCKS)) return clearHover();
+  if (!keys.v.mod || !ed || mv.v || !(t instanceof Element) || t.closest("a[href]")) return clearHover();
   const els = ed.els(),
     i = els.findIndex((e) => e.contains(t));
   if (i < 0) return clearHover();
@@ -802,7 +800,7 @@ const back = () => {
 /** A press with ⌘ on a block of the Note being edited: a drag moves it, a click picks it up */
 function blockDown(id: string, e: PointerEvent, t = e.target as Element | null) {
   if (e.button !== 0 || !modHeld(e) || mv.v || !t) return clearHover();
-  if (t.closest(NOT_BLOCKS)) return;
+  if (t.closest("a[href]")) return;
   const ed = edBlocks(id);
   const i = ed ? ed.els().findIndex((x) => x.contains(t)) : -1;
   if (!ed || i < 0) return;

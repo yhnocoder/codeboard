@@ -13,7 +13,7 @@ import {
   type ViewUpdate,
   type KeyBinding,
 } from "@codemirror/view";
-import { Compartment, StateEffect, StateField } from "@codemirror/state";
+import { Compartment, EditorState as CmState, StateEffect, StateField } from "@codemirror/state";
 import { completionStatus } from "@codemirror/autocomplete";
 import { codeEditor, type CodeEditor, type LspHost } from "../cm/editor";
 import { mdOf } from "./md";
@@ -145,7 +145,13 @@ export class CodeBlockView implements NodeView {
       },
       onUpdate: (u) => this.forward(u),
       className: "cbcm-md",
-      extensions: [foundField, this.wrapper.of(node.attrs.wrap ? CmView.lineWrapping : [])],
+      extensions: [
+        foundField,
+        this.wrapper.of(node.attrs.wrap ? CmView.lineWrapping : []),
+        // one caret: ⌘ (Ctrl) with a press is the board's, for moving the whole block, never another cursor
+        CmState.allowMultipleSelections.of(false),
+        CmView.clickAddsSelectionRange.of(() => false),
+      ],
     });
     this.cm.view.dom.addEventListener("pointerdown", (e) => {
       if (host.stopPointerDown?.()) e.stopPropagation();

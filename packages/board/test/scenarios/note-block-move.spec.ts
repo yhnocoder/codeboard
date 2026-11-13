@@ -219,27 +219,43 @@ test("noteBlockMoveLink", async () => {
   );
 });
 
-/** ⌘ (Ctrl) with the pointer inside a code block's editor: that press is CodeMirror's (another cursor), so nothing is outlined
- *  or picked up there and the code editor gets the click */
-test("noteBlockModClickInCode", async () => {
+/** A code block is a block like any other while ⌘ (Ctrl) is held, on its code text too: the hover outlines it, ⌘-click picks it
+ *  up without adding a cursor, ⌘-drag from the text moves it into the other Note; a plain click there places one caret */
+test("noteBlockModOnCodeText", async () => {
   const h = await board();
-  const c = await box(h, `${card("n1")} .md-pm .cm-editor .cm-line`);
-  await h.page.keyboard.down("ControlOrMeta");
-  await h.page.mouse.move(c.x + 10, c.y + 4);
-  await h.page.mouse.move(c.x + 14, c.y + 5);
-  await idle(h);
-  const outline = await h.page.locator(".bmv-box.is-on").count();
+  /** The selection ranges of the code block's own editor (none: no code editor shown) */
+  const ranges = () =>
+    h.page.evaluate(() => {
+      const c = document.querySelector('.card[data-id="n1"] .md-pm .cm-content') as unknown as {
+        cmTile?: { view?: { state: { selection: { ranges: unknown[] } } } };
+      } | null;
+      return c?.cmTile?.view?.state.selection.ranges.length ?? 0;
+    });
+  const line = () => box(h, `${card("n1")} .md-pm .cm-editor .cm-line`);
+  let c = await line();
   await h.page.mouse.click(c.x + 14, c.y + 5);
-  await h.page.keyboard.up("ControlOrMeta");
   await idle(h);
+  check("noteBlockModOnCodeText a plain click places one caret", (await ranges()) === 1, await ranges());
+  await h.page.keyboard.down("ControlOrMeta");
+  await h.page.mouse.move(c.x + 20, c.y + 4);
+  await h.page.mouse.move(c.x + 24, c.y + 5);
+  await until(h, "the code block outlined", async () => (await h.page.locator(".bmv-box.is-on").count()) === 1);
+  await h.page.mouse.click(c.x + 24, c.y + 5);
+  await h.page.keyboard.up("ControlOrMeta");
+  await until(h, "it floats", async () => (await h.page.locator(".bmv-g.is-float").count()) === 1);
+  check("noteBlockModOnCodeText ⌘-click picks it up, no second cursor", (await ranges()) <= 1, await ranges());
+  await h.page.keyboard.press("Escape");
+  await until(h, "put back", async () => (await h.page.locator(".bmv-g").count()) === 0);
+  check("noteBlockModOnCodeText put back with one caret at most", (await ranges()) <= 1, await ranges());
+  c = await line();
+  const o2 = await box(h, `${card("n2")} .nbody > p:nth-child(2)`);
+  const release = await cmdDrag(h, { x: c.x + 24, y: c.y + 5 }, { x: o2.x + 40, y: o2.y + 3 });
+  await release();
+  await until(h, "moved into the other Note", () => md(h, "n2")?.includes("x = 1"));
   check(
-    "noteBlockModClickInCode nothing outlined or picked up",
-    outline === 0 && (await h.page.locator(".bmv-g").count()) === 0,
-    { outline },
-  );
-  check(
-    "noteBlockModClickInCode the code editor has the click",
-    (await h.page.locator(".cm-editor.cm-focused").count()) === 1,
+    "noteBlockModOnCodeText ⌘-drag from the code text moves it",
+    md(h, "n2") === "Other one.\n\n```python\nx = 1\n```\n\nOther two." && !md(h, "n1")!.includes("x = 1"),
+    { n1: md(h, "n1"), n2: md(h, "n2") },
   );
 });
 
