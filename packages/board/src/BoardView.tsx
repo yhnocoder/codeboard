@@ -29,13 +29,13 @@ import { flows, cardById } from "./state/store";
 import { MarkView } from "./cards/CodeHead";
 import { crumbs, crumbMorph, walkBack } from "./state/subboards";
 import { LegendPanel, CallTreePanel, RunPanel } from "./ui/CallPanels";
-import { QuestionsPanel, WelcomeHint } from "./ui/QuestionsPanel";
+import { WelcomeHint } from "./ui/QuestionList";
 import { ShelfPanel } from "./ui/ShelfPanel";
 import { shelfOpen } from "./state/shelf";
 import { ExportDialog } from "./ui/ExportDialog";
 import { ghPicker } from "./state/web";
 import { stickerPick } from "./state/stickers";
-import { questionsOpen, welcome } from "./state/questions";
+import { welcome } from "./state/questions";
 import { exportOpen } from "./state/export";
 import { legendOpen, runState, treeOpen } from "./state/calls";
 import { useMd } from "./md/context";
@@ -110,9 +110,6 @@ export function BoardView(p: { children?: JSX.Element }) {
       </Show>
       <Show when={runState()}>
         <RunPanel />
-      </Show>
-      <Show when={questionsOpen()}>
-        <QuestionsPanel />
       </Show>
       <Show when={shelfOpen()}>
         <ShelfPanel />

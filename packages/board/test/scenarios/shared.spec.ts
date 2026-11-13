@@ -51,6 +51,8 @@ const cardEl = (h: Host, title: string) =>
   h.page.locator(".card", {
     has: h.page.locator(".chead .ctitle", { hasText: new RegExp(`^${title.replace(/\./g, "\\.")}$`) }),
   });
+/** A card's whole-card sidenote badge, past its right edge */
+const sideBadge = (h: Host, title: string) => cardEl(h, title).locator(".snspots > .snb.side").first();
 /** Both boards have settled (the host relays changes from one to the other) */
 const both = async (a: Host, m: Host) => {
   await idle(a);
@@ -149,16 +151,16 @@ test("sharedcards", async () => {
   await until(m, "the sidenote is saved on MoE", () =>
     t.store.peek("bM")!.sidenotes.some((n) => n.kind === "text" && n.md === "Added on MoE."),
   );
-  await cardEl(a, "Scheduler.schedule").locator(".chead .mk").waitFor();
+  await sideBadge(a, "Scheduler.schedule").waitFor();
   await both(a, m); // relayed to Attention
   res.noteOnA = (await t.store.load("bA"))!.sidenotes.some((n) => n.kind === "text" && n.md === "Added on MoE.");
-  res.noteOnAPage = await cardEl(a, "Scheduler.schedule").locator(".chead .mk").textContent();
+  res.noteOnAPage = await sideBadge(a, "Scheduler.schedule").textContent();
 
   // 5. Board-only from the sidenote's context menu: it leaves Attention
   await m.page.keyboard.press("Escape"); // the input, kept for the next sidenote
   await m.page.keyboard.press("Escape"); // the popup
   await expect(m.page.locator(".pop.k-notes")).toHaveCount(0);
-  await cardEl(m, "Scheduler.schedule").locator(".chead .mk").click();
+  await sideBadge(m, "Scheduler.schedule").click();
   await m.page.locator(".pop.k-notes .slip").first().click({ button: "right" });
   await m.page.locator(".ctx:not(.closing) button").first().waitFor();
   await idle(m);
@@ -366,7 +368,19 @@ test("sharedHighlightBoardOnly", async () => {
   };
 
   // Attention removes the shared Highlight, with its note
-  await no(a, L + 4).hover();
+  const key = await cardEl(a, "Scheduler.schedule")
+    .locator(".hxm")
+    .evaluateAll(
+      (els, l) =>
+        els
+          .map((e) => e.getAttribute("data-hl") ?? "")
+          .find((k) => {
+            const [a0, z] = k.split(":").pop()!.split("-").map(Number);
+            return a0 <= l && l <= z;
+          }),
+      L + 4,
+    );
+  await cardEl(a, "Scheduler.schedule").locator(`.hxm[data-hl="${key}"]`).click();
   await a.page.locator(".pop.k-highlight").waitFor();
   await a.page.locator('.pop.k-highlight [aria-label="Remove Highlight"]').click();
   await until(

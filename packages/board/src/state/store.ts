@@ -45,7 +45,7 @@ export const setLoaded = (on: boolean) => setState("loaded", on);
 const [shared, setShared] = boardStore<Record<string, SharedInfo>>(() => ({}));
 export { shared };
 export const setSharedInfo = (cards: Record<string, SharedInfo>) => setShared(reconcile(cards));
-export const sharedOn = (id: string) => shared[id]?.boards.length ?? 0;
+export const sharedOn = (id: string | undefined) => (id === undefined ? 0 : (shared[id]?.boards.length ?? 0));
 
 /** 只读卡的 id / 段、线的两端和 Call 标记、born / marks：拖动卡片不会让它重算 */
 export const flows = rooted(() => createMemo(() => computeFlows(state.board)));

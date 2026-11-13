@@ -15,7 +15,7 @@ import { startDraw, modeIs } from "./state/mode";
 import { THEMES, EXPERIMENTAL_THEMES } from "@codeboard/core";
 import * as A from "./actions";
 import { look, shape, traffic, setTraffic } from "./state/look";
-import { questionsOpen } from "./state/questions";
+import { QuestionList } from "./ui/QuestionList";
 import { legendOpen, setLegendOpen, setTreeOpen, treeOpen } from "./state/calls";
 import { shelfHot, shelfOpen } from "./state/shelf";
 
@@ -203,7 +203,6 @@ function Toolbar() {
           hint: "A .codeboard file to import into another project",
           run: () => A.exportBoards(),
         },
-        { label: "Questions", checked: questionsOpen(), run: () => A.toggleQuestions() },
         null,
         // 运行时：跑一次入口，给 Call 箭头挂上 observed 证据和实参
         {
@@ -268,6 +267,7 @@ function Toolbar() {
         <Show when={narrow()}>
           <span class="sep" />
           <Zoom />
+          <QuestionList />
         </Show>
         <Show when={shape().glide}>
           <span ref={setPillEl} class="tpill" aria-hidden="true" />
@@ -349,15 +349,6 @@ function Dock() {
         </button>
         <button
           class="ib"
-          aria-label="Questions"
-          aria-pressed={questionsOpen()}
-          data-tip="Questions on All Boards"
-          onClick={() => A.toggleQuestions()}
-        >
-          <Icon name="question" />
-        </button>
-        <button
-          class="ib"
           aria-label="Arrow Legend"
           aria-pressed={legendOpen()}
           data-tip="Arrow Legend"
@@ -367,6 +358,7 @@ function Dock() {
         </button>
         <span class="sep" />
         <Zoom />
+        <QuestionList />
       </div>
     </div>
   );

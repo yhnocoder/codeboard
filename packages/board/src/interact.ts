@@ -17,7 +17,6 @@ import {
   type Section,
   type FrameEdge,
   dragFrameEdge,
-  type Anchor,
   type End,
   type LinkSide,
 } from "@codeboard/core";
@@ -81,7 +80,6 @@ import {
   connectFrom,
   modeIs,
   idle,
-  takePick,
   endDraw,
   cancelMode,
   placing,
@@ -228,14 +226,6 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   if (e.button !== 0) return;
   if (t.closest(CARD_CONTROL)) return;
   if (connectFrom()) return finishConnect(e, id);
-  if (modeIs("pick")) {
-    e.preventDefault();
-    e.stopPropagation();
-    const cb = takePick();
-    const colEl = t.closest("[data-col]") as HTMLElement | null;
-    cb?.(colEl?.dataset.col ?? id);
-    return;
-  }
   const f = cardById(id);
   if (!f) return;
   const colEl = t.closest("[data-col]") as HTMLElement | null;
@@ -458,7 +448,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
       const at = rowAnchor(row, uid);
       clearTimeout(mergeT);
       mergeTgt = undefined;
-      drop = at ? { kind: "line", card: at.card, seg: at.seg, line: at.lines![0] } : null;
+      drop = at ? { kind: "line", card: at.card, seg: at.seg, line: at.lines[0] } : null;
     } else {
       clearTimeout(mergeT);
       mergeTgt = undefined;
@@ -590,7 +580,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   );
 }
 
-function rowAnchor(row: HTMLElement, hostId: string): Anchor | null {
+function rowAnchor(row: HTMLElement, hostId: string): { card: string; seg: string; lines: [number, number] } | null {
   const colEl = row.closest("[data-col]") as HTMLElement | null;
   const cid = colEl?.dataset.col ?? hostId;
   const g = geo[cid];
@@ -618,7 +608,9 @@ export function cardContextMenu(e: MouseEvent, id: string, md: Markdown) {
   if (table !== null) return A.noteTableMenu(id, table, e.clientX, e.clientY);
   if (t.closest("[contenteditable], input, textarea")) return;
   const colEl = t.closest("[data-col]") as HTMLElement | null;
-  A.cardMenu(colEl?.dataset.col ?? id, e.clientX, e.clientY);
+  // on a Note's body: the block under the pointer is where its Add Sidenote attaches
+  const aim = t.closest(".nbody") ? A.spotAim(e.clientX, e.clientY) : null;
+  A.cardMenu(colEl?.dataset.col ?? id, e.clientX, e.clientY, aim?.card === id ? aim.block : undefined);
 }
 /** 放大到这张卡 100%：左上角对齐（卡比视野窄就水平居中） */
 function zoomToCard(id: string) {
@@ -957,7 +949,7 @@ export function linkPortDown(e: PointerEvent, from: End, sx: number, sy: number,
         const colEl = under?.closest("[data-col]") as HTMLElement | null;
         aim = !at && !under?.closest(".chead") ? aimBlock(ce.dataset.id!, ev.clientY) : null;
         to = at
-          ? { card: at.card, seg: at.seg, line: at.lines![0] }
+          ? { card: at.card, seg: at.seg, line: at.lines[0] }
           : aim
             ? { card: aim.card, block: aim.ref }
             : { card: colEl?.dataset.col ?? ce.dataset.id! };

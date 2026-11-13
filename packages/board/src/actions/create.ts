@@ -404,8 +404,8 @@ export function splitSnippet(id: string, merge: boolean) {
 }
 
 /**
- * 新建的 Note / Text / Code / 问题第一次编辑结束时还是空的：直接消失，不进撤销。
- * 写了内容的在 setNoteText / setFreeCode / setQuestionText 里结算；这里兜住“什么都没改”（Editable 不提交）的情况。启动时接一次
+ * 新建的 Note / Text / Code 第一次编辑结束时还是空的：直接消失，不进撤销。
+ * 写了内容的在 setNoteText / setFreeCode 里结算；这里兜住“什么都没改”（Editable 不提交）的情况。启动时接一次
  */
 export const wireFreshCards = () =>
   rooted(() => {
@@ -415,7 +415,7 @@ export const wireFreshCards = () =>
       const p = prev;
       prev = cur;
       if (!p || p === cur || !isFresh(p)) return;
-      // the editor closing may still write it first (setNoteText / setFreeCode / setQuestionText settle it then)
+      // the editor closing may still write it first (setNoteText / setFreeCode settle it then)
       queueMicrotask(() => C.settleUnwritten(commandEnv, p));
     });
   });

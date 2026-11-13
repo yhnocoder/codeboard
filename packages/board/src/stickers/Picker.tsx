@@ -1,10 +1,10 @@
 // 白板上的贴纸：每张卡、每条线只读 state/stickers 里自己那一组
 import { keepKey } from "../ui/vscodekeys";
 import { createMemo, createSignal, For, Show, onCleanup } from "solid-js";
-import { firstLine, type IconRef, type Sticker } from "@codeboard/core";
+import { type IconRef, type Sticker } from "@codeboard/core";
 import { linkCurve } from "../canvas/routes";
 import { bezAt } from "@codeboard/core/canvas";
-import { BUILTIN, EMOJI, STICKER_COLORS, Glyph, GlyphPlay, packs } from "./glyphs";
+import { PICKED_BUILTIN, EMOJI, STICKER_COLORS, Glyph, GlyphPlay, packs } from "./glyphs";
 import { pickSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
 import {
   stickerPick,
@@ -23,7 +23,6 @@ import { nearView } from "../state/cull";
 import { send } from "../host";
 import { cam, camMoving } from "../state/camera";
 import { summaryLevel } from "../state/summary";
-import { shownIcon, stickerClick } from "../actions/questions";
 import { useOverlay } from "../ui/overlay";
 import { followPointer } from "../gesture";
 
@@ -44,7 +43,7 @@ export function StickerPicker() {
     const s = q().trim().toLowerCase();
     const t = tab();
     let all: { icon: IconRef; label: string }[];
-    if (t === "builtin") all = BUILTIN.map((b) => ({ icon: { pack: "builtin", name: b.name }, label: b.label }));
+    if (t === "builtin") all = PICKED_BUILTIN.map((b) => ({ icon: { pack: "builtin", name: b.name }, label: b.label }));
     else if (t === "emoji") all = EMOJI.map((e) => ({ icon: { pack: "emoji", name: e }, label: e }));
     else
       all = (packs()?.find((p) => p.id === t)?.icons ?? []).map((i) => ({
@@ -189,7 +188,7 @@ function FreeSticker(p: { s: Sticker; x: number; y: number; card?: string }) {
   return (
     <div
       class="stk canvas"
-      classList={{ q: !!p.s.q, done: !!p.s.q?.done, sel: sel(), bound: !!at().on }}
+      classList={{ sel: sel(), bound: !!at().on }}
       data-sticker={p.s.id}
       data-tip={stickerLabel(p.s.icon)}
       style={{
@@ -200,11 +199,10 @@ function FreeSticker(p: { s: Sticker; x: number; y: number; card?: string }) {
         "--s": `${size()}px`,
       }}
       onPointerDown={(e) => stickerDown(e, p.s.id)}
-      onClick={(e) => stickerClick(p.s.id, e.currentTarget)}
       onContextMenu={menuAt(p.s.id)}
     >
       <GlyphPlay.Provider value={play}>
-        <Glyph icon={shownIcon(p.s).icon} color={shownIcon(p.s).color} size={size()} />
+        <Glyph icon={p.s.icon} color={p.s.color} size={size()} />
       </GlyphPlay.Provider>
       <Show when={sel()}>
         <span
@@ -226,18 +224,15 @@ export function StickerChip(p: { s: Sticker; size: number }) {
   return (
     <span
       class="stk"
-      classList={{ sel: isSelSticker(p.s.id), q: !!p.s.q, done: !!p.s.q?.done }}
+      classList={{ sel: isSelSticker(p.s.id) }}
       data-sticker={p.s.id}
-      data-tip={p.s.q?.md ? firstLine(p.s.q.md) : stickerLabel(p.s.icon)}
+      data-tip={stickerLabel(p.s.icon)}
       onPointerDown={(e) => stickerDown(e, p.s.id)}
-      onClick={(e) => {
-        e.stopPropagation();
-        stickerClick(p.s.id, e.currentTarget);
-      }}
+      onClick={(e) => e.stopPropagation()}
       onContextMenu={menuAt(p.s.id)}
     >
       <GlyphPlay.Provider value={play}>
-        <Glyph icon={shownIcon(p.s).icon} color={shownIcon(p.s).color} size={p.size} />
+        <Glyph icon={p.s.icon} color={p.s.color} size={p.size} />
       </GlyphPlay.Provider>
     </span>
   );

@@ -4,7 +4,19 @@
 import type { BoundVal, CallAlt } from "@codeboard/analysis/basics";
 import { allLinks, removeCards, removeLinks, removeSidenotes, replaceCards } from "./refs";
 import { onHighlight } from "./highlights";
-import { clone, withCols, uid, type Board, type Card, type End, type Link, type Place, type Sidenote } from "../model";
+import {
+  clone,
+  onCard,
+  withCols,
+  uid,
+  type Board,
+  type Card,
+  type CardAnchor,
+  type End,
+  type Link,
+  type Place,
+  type Sidenote,
+} from "../model";
 import { eachMarkdown, retargetRefs } from "../mdrefs";
 
 /**
@@ -48,12 +60,20 @@ export function sidenoteCard(n: Sidenote, id = uid("c")): Card {
     ? { id, kind: "code", segments: [{ ...clone(n.code), id: uid("s") }], desc: n.why }
     : { id, kind: "note", md: n.md, look: "note" };
 }
-/** Place on Board 在白板上的改动（新卡 card 已经放上白板）：Sidenote 去掉，从它挂的那一行连一条箭头到新卡 */
+/**
+ * Place on Board 在白板上的改动（新卡 card 已经放上白板）：Sidenote 去掉，从它挂的那一行（或那一段、那张卡）连一条箭头到新卡。
+ * 挂在 Section 上、白板上的没有可连的卡，只放卡
+ */
 export function sidenoteToCard(b: Board, id: string, card: string): void {
   const n = b.sidenotes.find((k) => k.id === id);
   if (!n) return;
   removeSidenotes(b, [id]);
-  b.links.push({ id: uid("l"), from: { card: n.at.card, seg: n.at.seg, line: n.at.lines?.[0] }, to: { card } });
+  const at = n.at;
+  if (at.card === undefined) return;
+  const from: End = at.block
+    ? { card: at.card, block: { ...at.block } }
+    : { card: at.card, seg: at.seg, line: at.lines?.[0] };
+  b.links.push({ id: uid("l"), from, to: { card } });
 }
 
 /** 放到白板上的一张卡：内容、摆放（Compare 的栏没有）、跟着它来的 Sidenote */
@@ -101,12 +121,13 @@ export function placeCards(
     }
     const nids = new Set(b.sidenotes.map((n) => n.id));
     for (const n of it.sidenotes ?? []) {
-      if (n.at.card !== it.card.id) continue;
+      if (!onCard(n.at) || n.at.card !== it.card.id) continue;
       const m = clone(n);
       if (o.copy) m.id = uid("n");
       else if (nids.has(m.id)) continue;
-      m.at = { ...m.at, card: c.id, seg: m.at.seg && own[m.at.seg] };
-      if (!m.at.seg) delete m.at.seg;
+      const at: CardAnchor = { ...n.at, card: c.id, seg: n.at.seg && own[n.at.seg] };
+      if (!at.seg) delete at.seg;
+      m.at = at;
       b.sidenotes.push(m);
     }
   }
@@ -142,8 +163,10 @@ export function placeCards(
   if (o.copy) {
     const fix = (md: string) => retargetRefs(md, cards);
     const made = new Set(Object.values(cards));
-    eachMarkdown({ cards: b.cards.filter((c) => made.has(c.id)), sidenotes: [], stickers: [] }, fix);
-    for (const n of b.sidenotes) if (made.has(n.at.card) && n.kind === "text") n.md = fix(n.md);
+    eachMarkdown(
+      { cards: b.cards.filter((c) => made.has(c.id)), sidenotes: b.sidenotes.filter((n) => made.has(n.at.card ?? "")) },
+      fix,
+    );
   }
   return { cards, segs };
 }
@@ -219,6 +242,8 @@ export function removeSections(b: Board, ids: Iterable<string>): void {
       }
   }
   b.sections = b.sections.filter((s) => !gone.has(s.id));
+  // the sidenotes on a Section go with it
+  b.sidenotes = b.sidenotes.filter((n) => n.at.section === undefined || !gone.has(n.at.section));
 }
 
 /** 改叠放顺序（b.cards 的顺序就是叠放顺序）。front / back = 最上 / 最下；forward / backward = 越过一张 overlaps 说跟它们重叠的卡 */

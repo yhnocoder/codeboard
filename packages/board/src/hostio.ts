@@ -23,7 +23,7 @@ import { applyMathPreamble } from "./md/math";
 import { preloadEditor } from "./md/load";
 import { putBoardRefs, refreshRefs } from "./md/refs";
 import { preloadCm } from "./cm/load";
-import { questionsOpen, setWelcome } from "./state/questions";
+import { listOpen, setWelcome } from "./state/questions";
 import { toggleZoomLog } from "./state/zoomlog";
 import { drawnPng } from "./actions/imagedata";
 
@@ -76,7 +76,7 @@ function handle(m: HostToBoard, md: Markdown) {
         setCrumbs(m.crumbs ?? []);
         setWelcome(m.welcome ?? null);
       });
-      if (questionsOpen()) A.refreshQuestions();
+      if (listOpen()) A.refreshQuestions();
       // after the batch: the zoom is held to the floor this board's effects have just set (state/summary.ts); in the same task, so
       // nothing is drawn at the last board's zoom
       placeCam(b.cam.x, b.cam.y, b.cam.z);
@@ -166,12 +166,12 @@ function handle(m: HostToBoard, md: Markdown) {
       if (!f) break;
       select({ cards: [f.host.id] });
       if (m.lines && m.seg) setLineSel({ card: m.card, seg: m.seg, start: m.lines[0], end: m.lines[1] });
-      const sticker = m.sticker;
-      void A.revealCard(m.card).then(() => {
-        if (sticker) A.openQuestion(sticker);
-      });
+      void A.revealCard(m.card);
       break;
     }
+    case "showQuestion":
+      void A.goToQuestion(m.note);
+      break;
     case "key":
       runKey(A, m.action);
       break;

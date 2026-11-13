@@ -47,7 +47,6 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   const mixed = () => mixedVersions(c());
   const multi = () => c().segments.length > 1;
   const free = () => s0()?.src.kind === "free";
-  const notes = createMemo(() => notesOf(c().id).filter((n) => !n.at.lines));
   // 有 Variant 时版本按钮说的是上游（显示的可能是我的分支）
   const onVar = () => onVariant(c());
   const up0 = () => (onVar() ? upstreamSegs(c())[0] : s0());
@@ -190,18 +189,6 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       <Show when={review()}>
         <span class="rvdot" data-tip="A sidenote's line changed in the new version: check it" />
       </Show>
-      <Show when={act.openQuestionsOn(c().id)}>
-        {(n) => (
-          <button
-            class="qcount"
-            data-tip="Open questions on this card"
-            data-nodrag
-            onClick={() => act.openQuestionsOf(c().id)}
-          >
-            ? {n()}
-          </button>
-        )}
-      </Show>
       <Show when={onBoards() > 1}>
         <button
           class="shb"
@@ -223,19 +210,6 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
           <span class="rw">
             <span class="rl">← {linkedIn()}</span>
           </span>
-        </button>
-      </Show>
-      <Show when={notes().length}>
-        <button
-          class="mk inline"
-          data-notes={notes()
-            .map((n) => n.id)
-            .join(",")}
-          data-nodrag
-          onPointerEnter={(e) => act.hoverMarker(e.currentTarget, c().id)}
-          onClick={() => act.pinMarker(c().id)}
-        >
-          {notes().length}
         </button>
       </Show>
       <Show when={c().gen}>

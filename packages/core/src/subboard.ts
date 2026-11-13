@@ -10,13 +10,14 @@ import {
   uid,
   versionLabel,
   withCols,
+  freeAt,
   type Board,
   type BoardCard,
   type Card,
   type NoteLook,
   type Place,
 } from "./model";
-import { cardsToFrame, removeCards, removeSections, removeStickers, renumberBorn } from "./edit";
+import { cardsToFrame, removeCards, removeSections, removeSidenotes, removeStickers, renumberBorn } from "./edit";
 import { bounds, estSize, sectionFrames, type Rect } from "./layout";
 import type { Crumb } from "./protocol";
 
@@ -426,6 +427,11 @@ export function extractBoard(
     child,
     child.stickers.filter((k) => k.at.kind === "canvas" && !k.at.on).map((k) => k.id),
   ); // 画布上没绑东西的留在父白板
+  // so do the free sidenotes
+  removeSidenotes(
+    child,
+    child.sidenotes.filter((n) => freeAt(n.at)).map((n) => n.id),
+  );
   for (const p of Object.values(child.place)) {
     p.x += dx;
     p.y += dy;

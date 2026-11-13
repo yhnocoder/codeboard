@@ -10,6 +10,7 @@ import { guides, sizeHint, marquee, dragging, carried, dropTarget, walk, editing
 import { CardView } from "../cards/Card";
 import { SubPreviews } from "../cards/SubPreviews";
 import { CanvasStickers } from "../stickers/Picker";
+import { FreeSpots } from "../ui/SnBadge";
 import { trackLinks, BlockPorts } from "./Links";
 import { Traffic } from "./Traffic";
 import { AltBoxes } from "./Labels";
@@ -186,6 +187,7 @@ export function Canvas() {
           <Traffic ways={links.ways} />
           <links.Layer ports />
           <CanvasStickers />
+          <FreeSpots />
           <SectionLabels />
           {/* 灰色备选：在所有卡上面、浮上来的线下面 */}
           <div class="alts">

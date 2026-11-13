@@ -326,9 +326,6 @@ const OUTLIVES_BOARD: Record<string, string> = {
   "state/stickers.ts:stickerColor": "the sticker picker's last colour, kept for the next sticker on any board",
   "state/export.ts:exportBusy": "an export under way, which sets it back when it ends (a switch fails its asks)",
   "state/export.ts:exportHidden": "an export under way, which sets it back when it ends",
-  "state/questions.ts:questionsOpen":
-    "the questions panel: it lists every board's questions and stays open when one of them opens another board",
-  "state/questions.ts:qTab": "the questions panel's tab",
   // set from each board's init
   "state/questions.ts:welcome": "the open questions the host counts for this board",
   "state/subboards.ts:crumbs": "the breadcrumbs",

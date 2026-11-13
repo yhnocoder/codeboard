@@ -21,6 +21,7 @@ import {
   type CodeCard,
   type Row,
   type Segment,
+  questionOpen,
   type SegView,
 } from "@codeboard/core";
 import { escapeRegExp, F_COMMENT } from "@codeboard/analysis/basics";
@@ -52,9 +53,18 @@ import { hxClasses, useHighlights, type Hx } from "./code/highlights";
 import { MdStatic } from "../ui/Md";
 import { Icon } from "../ui/icons";
 import { CardPeekOf, cardPeeks } from "../ui/pops/cardpeek";
+import { badgeHit } from "../ui/SnBadge";
 import { AnnotRail, useAnnots } from "./code/Annots";
 import { GapRow } from "./code/GapRow";
 import { freeEditBlur } from "./code/freeblur";
+
+/** A gutter badge (a Highlight's count, or the amber ? of an open question on it) on a row: drawn 13 world px (styles.css), its
+ *  invisible hit area at least HIT px on screen (ui/SnBadge.tsx badgeHit) and no taller than a line, so neighbouring lines'
+ *  badges keep their own */
+const gutterBadge = (r: { y: number; h: number }) => {
+  const hit = badgeHit();
+  return { top: `${r.y}px`, "--hit": `${hit}px`, "--hit-h": `${Math.min(hit, Math.max(17, Math.min(r.h, 20)))}px` };
+};
 
 /** How far a Highlight's band (and its bracket, one more) and a Line Selection sit inside their rows at a run's first and last line:
  *  adjacent runs read apart with no space added between lines */
@@ -151,16 +161,10 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
   );
   const X = useHighlights(cx);
   const M = useLineMarks(cx, () => new Set(X.list().flatMap((h) => (h.notes.length ? [h.first] : []))));
-  /** The Highlight the pointer is on (its gutter area, a number, its marker) */
-  let hovered: string | undefined;
-  /** Each Highlight's elements, kept while its key stays (only?: drawn only for those); the one the pointer is on going (its
-   *  lines changed under it) counts as the pointer leaving it, as no pointerleave comes from an element taken away */
+  /** Each Highlight's elements, kept while its key stays (only?: drawn only for those) */
   const eachHx = (draw: (h: () => Hx) => JSX.Element, only?: (h: Hx) => boolean) => (
     <For each={X.keys()}>
       {(k) => {
-        onCleanup(() => {
-          if (hovered === k) leaveHx();
-        });
         const h = () => {
           const x = X.byKey().get(k);
           return x && (!only || only(x)) ? x : undefined;
@@ -219,11 +223,6 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
       z = ys()[x.last];
     return { top: `${a.y + HX_INSET}px`, height: `${Math.max(0, z.y + z.h - a.y - 2 * HX_INSET)}px` };
   };
-  const hoverHx = (e: PointerEvent, h: Hx | undefined) => {
-    if (!h || e.buttons) return;
-    hovered = h.key;
-    act.hoverHighlight(c().id, h.seg, h.lines);
-  };
   /** The Highlight whose Always Show notes go under row i */
   const notesAfter = (i: number) => {
     const h = X.endRow().get(i);
@@ -247,10 +246,6 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
     if (!counted.has(e)) return undefined;
     return !counted.has(e + 1) ? "below" : !counted.has(e - 1) ? "above" : "left";
   });
-  const leaveHx = () => {
-    hovered = undefined;
-    act.leaveHighlight();
-  };
   /** The last row of a Highlight with no Always Show notes under it: the Highlight ends there */
   const endsAt = (i: number) => {
     const h = X.endRow().get(i);
@@ -439,8 +434,6 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
                       top: `${ys()[h().first].y}px`,
                       height: `${ys()[h().last].y + ys()[h().last].h - ys()[h().first].y}px`,
                     }}
-                    onPointerEnter={(e) => hoverHx(e, h())}
-                    onPointerLeave={leaveHx}
                     onClick={(e) => {
                       e.stopPropagation();
                       act.pinHighlight(c().id, h().seg, h().lines);
@@ -464,12 +457,8 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
                         }}
                         style={{ top: `${ys()[i()].y}px` }}
                         data-nodrag
-                        onPointerEnter={(e) => hoverHx(e, X.byRow().get(i()))}
                         onPointerMove={(e) => H.hoverNo(e, i())}
-                        onPointerLeave={() => {
-                          H.onLeave();
-                          if (X.byRow().get(i())) leaveHx();
-                        }}
+                        onPointerLeave={() => H.onLeave()}
                         onClick={(e) => clickNo(l(), e)}
                         onContextMenu={(e) => lineCtx(l(), e)}
                       >
@@ -484,22 +473,19 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
                   <Show when={ys()[h().first]}>
                     <button
                       class="hxm"
-                      classList={{ on: X.open().has(h().key), rv: h().review }}
+                      classList={{ on: X.open().has(h().key), rv: h().review, ask: h().notes.some(questionOpen) }}
                       data-hl={h().key}
                       data-notes={h()
                         .notes.map((n) => n.id)
                         .join(",")}
-                      style={{ top: `${ys()[h().first].y}px` }}
+                      style={gutterBadge(ys()[h().first])}
                       data-nodrag
-                      data-tip={`${h().notes.length} note${h().notes.length > 1 ? "s" : ""}`}
-                      onPointerEnter={(e) => hoverHx(e, h())}
-                      onPointerLeave={leaveHx}
                       onClick={(e) => {
                         e.stopPropagation();
                         act.pinHighlight(c().id, h().seg, h().lines);
                       }}
                     >
-                      {h().notes.length}
+                      {h().notes.some(questionOpen) ? "?" : h().notes.length}
                     </button>
                   </Show>
                 ),
@@ -519,7 +505,6 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
                   }}
                   data-nodrag
                   aria-label="Add Sidenote"
-                  data-tip="Add Sidenote (S)"
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();

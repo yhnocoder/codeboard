@@ -177,8 +177,8 @@ test("imageAiMenus", async () => {
   const bg0 = await state("Remove Background"),
     think0 = await state("Think First (slower)");
   check(
-    "imageAiMenus image card menu: Add Description, AI ▸; no Copy Image, Fit Content or Background",
-    top.slice(0, 2).join("|") === "Add Description|AI" &&
+    "imageAiMenus image card menu: Add Sidenote, Add Description, AI ▸; no Copy Image, Fit Content or Background",
+    top.slice(0, 3).join("|") === "Add Sidenote|Add Description|AI" &&
       !top.some((l) => /^(Copy Image|Fit Content|Background)$/.test(l)),
     top,
   );

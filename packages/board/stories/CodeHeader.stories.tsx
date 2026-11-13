@@ -102,17 +102,16 @@ function headCard(b: Board, g: Group, id: string, a: Args, at: { x: number; y: n
       review: "f64d821",
     });
   for (let i = 0; i < a.questions; i++)
-    b.stickers.push({
+    b.sidenotes.push({
       id: `${id}-q${i}`,
-      icon: { pack: "builtin", name: "question" },
-      at: { kind: "line", card: id, seg: s.id, line: s.start + i },
-      q: {
-        md: [
-          "为什么抢占最后进来的请求？",
-          "block_table 清空后 prefix cache 还在吗？",
-          "status 改回 WAITING 之后谁来重新调度？",
-        ][i % 3],
-      },
+      kind: "text",
+      at: { card: id, seg: s.id, lines: [s.start + i, s.start + i] },
+      md: [
+        "为什么抢占最后进来的请求？",
+        "block_table 清空后 prefix cache 还在吗？",
+        "status 改回 WAITING 之后谁来重新调度？",
+      ][i % 3],
+      q: { at: Date.UTC(2026, 9, 20 + i) },
     });
   const info: SharedInfo | undefined =
     a.boards > 1 || a.linkedIn
@@ -193,7 +192,7 @@ const CELLS: [string, Partial<Args>][] = [
   ["Process tags · thread / stream tag", { procs: "rank 0, Scheduler × TP", thread: "CUDA stream 0" }],
   ["START · locked", { start: true, locked: true }],
   ["Sidenotes on the card · review dot", { notes: 2, review: true }],
-  ["Open questions (? 2)", { questions: 2 }],
+  ["Open questions on two lines", { questions: 2 }],
   [
     "Description under the header",
     { desc: "**preempt**：block 不够时由 `schedule` 调用，把最后进来的请求踢回等待队列。" },
@@ -268,7 +267,7 @@ const meta = {
     locked: { control: "boolean" },
     notes: { control: { type: "range", min: 0, max: 3 }, description: "Sidenotes on the whole card" },
     review: { control: "boolean", description: "A sidenote's line changed in the new version" },
-    questions: { control: { type: "range", min: 0, max: 3 }, description: "Open questions (? stickers) on the card" },
+    questions: { control: { type: "range", min: 0, max: 3 }, description: "Open questions on the card's lines" },
     desc: { control: "text", description: "Description under the header (Markdown)" },
     selected: { control: "boolean" },
     w: { control: { type: "range", min: 200, max: 800, step: 10 }, description: "Width" },

@@ -4,10 +4,11 @@
 // ↵ picks from it), ⇧↵ is a line break. The same field edits a Text sidenote in place.
 // In the input, ↵ adds the Text sidenote and the popup takes the next one (added); Esc, a click elsewhere or the popup closing
 // adds what is written; nothing written, the input just goes (close). The icon at its right end turns it into a function search
-// for a Code sidenote (↑↓, ↵ adds it), and back
+// for a Code sidenote (↑↓, ↵ adds it), and back; the ? beside it makes what is written a question (core SidenoteQuestion). As the
+// row under a question (reply) it is the same input without either icon, and what is written is an answer
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { Anchor, SearchItem } from "@codeboard/core";
-import { cardById } from "../state/store";
+import { cardById, state } from "../state/store";
 import { useMd } from "../md/context";
 import { editorNow, editorOpts, loadEditor, type MdEditorHandle } from "../md/load";
 import * as A from "../actions";
@@ -102,14 +103,28 @@ export type ComposeMode = "text" | "code";
 /** How long a search waits for more typing */
 const SEARCH_WAIT = 120;
 
+/** Whether what a new sidenote goes on is still there: the card or the Section (a point on the canvas always is) */
+const anchorLive = (at: Anchor) =>
+  at.card !== undefined
+    ? !!cardById(at.card)
+    : at.section === undefined || state.board.sections.some((s) => s.id === at.section);
+
+/**
+ * added: ↵ added one (asked: as a question). ask: it starts as a question. reply: it is the input of an answer, which it hands
+ * over (nothing written: nothing)
+ */
 export function NoteComposer(p: {
   at: Anchor;
   mode: ComposeMode;
-  added: (mode: ComposeMode) => void;
+  added: (mode: ComposeMode, asked: boolean) => void;
   close: () => void;
+  ask?: boolean;
+  reply?: (md: string) => void;
 }) {
   let box!: HTMLDivElement;
   const [mode, setMode] = createSignal<ComposeMode>(p.mode);
+  const [ask, setAsk] = createSignal(!!p.ask && !p.reply);
+  const asking = () => ask() && mode() === "text";
   const [q, setQ] = createSignal("");
   const [res, setRes] = createSignal<SearchItem[]>([]);
   const { i, setI, key } = useListNav(() => res().length);
@@ -126,15 +141,16 @@ export function NoteComposer(p: {
   const addText = (v: string | null) => {
     const t = v?.trim();
     // the card can be gone (deleted, the board switched) by the time an input taken away adds what it had
-    if (!t || !cardById(p.at.card)) return false;
-    A.addSidenote({ kind: "text", md: t, at: p.at });
+    if (!t || !anchorLive(p.at)) return false;
+    if (p.reply) p.reply(t);
+    else A.addSidenote({ kind: "text", md: t, at: p.at, ...(asking() ? { q: { at: Date.now() } } : {}) });
     return true;
   };
   /** Done writing: what is written is added; next (↵) keeps writing in a new input, else the input goes */
   const finish = (v: string | null, next: boolean) => {
     if (over) return;
     over = true;
-    if (addText(v) && next) p.added("text");
+    if (addText(v) && next) p.added("text", asking());
     else p.close();
   };
   const pick = async () => {
@@ -142,11 +158,13 @@ export function NoteComposer(p: {
     if (!it || over) return;
     if (!(await A.addCodeSidenote(p.at, it)) || over) return;
     over = true;
-    p.added("code");
+    p.added("code", false);
   };
   const toggleCode = () => {
-    if (mode() === "text") setMode("code");
-    else {
+    if (mode() === "text") {
+      setAsk(false);
+      setMode("code");
+    } else {
       setQ("");
       setRes([]);
       setMode("text");
@@ -162,7 +180,12 @@ export function NoteComposer(p: {
       onDblClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.stopPropagation()}
     >
-      <div class="ncomp-box">
+      <div class="ncomp-box" classList={{ ask: asking(), answer: !!p.reply }}>
+        <Show when={asking()}>
+          <span class="ncomp-q" aria-hidden="true">
+            ?
+          </span>
+        </Show>
         <Show
           when={mode() === "code"}
           fallback={
@@ -205,17 +228,33 @@ export function NoteComposer(p: {
             }}
           />
         </Show>
-        {/* takes no focus: pressing it keeps the caret where it is */}
-        <button
-          class="ib ncomp-kind"
-          classList={{ on: mode() === "code" }}
-          aria-label={mode() === "code" ? "Text" : "Code"}
-          data-tip={mode() === "code" ? "Text" : "Code"}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={toggleCode}
-        >
-          <Icon name="code" size={14} />
-        </button>
+        {/* take no focus: pressing one keeps the caret where it is */}
+        <Show when={!p.reply}>
+          <button
+            class="ib ncomp-kind ncomp-ask"
+            classList={{ on: asking() }}
+            aria-label="Question"
+            aria-pressed={asking()}
+            data-tip={asking() ? "Sidenote" : "Question"}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              if (mode() === "code") toggleCode();
+              setAsk(!asking());
+            }}
+          >
+            <Icon name="question" size={14} />
+          </button>
+          <button
+            class="ib ncomp-kind"
+            classList={{ on: mode() === "code" }}
+            aria-label={mode() === "code" ? "Text" : "Code"}
+            data-tip={mode() === "code" ? "Text" : "Code"}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={toggleCode}
+          >
+            <Icon name="code" size={14} />
+          </button>
+        </Show>
       </div>
       <Show when={mode() === "code" && res().length}>
         <div class="sres" onMouseDown={(e) => e.preventDefault()}>

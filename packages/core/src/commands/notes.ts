@@ -11,8 +11,12 @@ import {
   findCard,
   isCode,
   uid,
+  freeAt,
+  inSpot,
   type Anchor,
   type Board,
+  type CardAnchor,
+  type FreeAnchor,
   type Card,
   type NoteCard,
   type NoteLook,
@@ -26,6 +30,7 @@ import {
   imageIntoNote,
   dropOwnHighlight,
   fixHighlights,
+  moveFreeNotes,
   onHighlight,
   removeSidenotes,
   sidenoteCard,
@@ -150,7 +155,7 @@ export function addSidenotes(env: CommandEnv, list: NewSidenote[], fit?: FitMeas
   // a Highlight takes no room; an Always Show one shows under its lines: a fitted card stays fitted
   keepFitted(
     env,
-    sns.filter(shownUnder).map((n) => n.at.card),
+    sns.filter(shownUnder).flatMap((n) => n.at.card ?? []),
     fit,
     change,
   );
@@ -187,14 +192,73 @@ export function deleteSidenote(env: CommandEnv, id: string, fit?: FitMeasure) {
   else env.edit(change);
 }
 
-/** A card's whole-card sidenotes deleted in one step (they take no room on it); how many went */
-export function deleteCardSidenotes(env: CommandEnv, card: string): number {
+/** The sidenotes at a spot (a whole card, a Note's block, a Section, a point: spotKey) deleted in one step (they take no room on a
+ *  card); how many went */
+export function deleteSpotSidenotes(env: CommandEnv, spot: Anchor): number {
   const ids = env
     .board()
-    .sidenotes.filter((n) => n.at.card === card && !n.at.lines)
+    .sidenotes.filter((n) => inSpot(n, spot))
     .map((n) => n.id);
   if (ids.length) env.edit((b) => removeSidenotes(b, ids));
   return ids.length;
+}
+
+/** The text sidenote `id` if it is a question */
+const questionIn = (b: Board, id: string) => {
+  const n = b.sidenotes.find((k) => k.id === id);
+  return n?.kind === "text" && n.q ? n : undefined;
+};
+
+/** A question resolved, or opened again: only the user does this (an answer leaves it open) */
+export function setQuestionDone(env: CommandEnv, id: string, done: boolean) {
+  const n0 = questionIn(env.board(), id);
+  if (!n0 || !!n0.q!.done === done) return;
+  env.edit((b) => {
+    const q = questionIn(b, id)?.q;
+    if (!q) return;
+    if (done) q.done = true;
+    else delete q.done;
+  });
+}
+
+/** An answer written under a question, its newest; the question stays as it was (open). The answer's id, none when it is empty */
+export function addAnswer(env: CommandEnv, id: string, md: string): string | undefined {
+  const text = md.trim();
+  if (!questionIn(env.board(), id) || !text) return undefined;
+  const a = { id: uid("a"), md: text, at: Date.now() };
+  env.edit((b) => {
+    const q = questionIn(b, id)?.q;
+    if (q) (q.answers ??= []).push(a);
+  });
+  return a.id;
+}
+
+/** An answer's Markdown written; written empty it goes. Unchanged: no step */
+export function writeAnswer(env: CommandEnv, id: string, answer: string, md: string) {
+  const a0 = questionIn(env.board(), id)?.q?.answers?.find((a) => a.id === answer);
+  const text = md.trim();
+  if (!a0 || a0.md === text) return;
+  env.edit((b) => {
+    const q = questionIn(b, id)?.q;
+    const a = q?.answers?.find((x) => x.id === answer);
+    if (!q?.answers || !a) return;
+    if (text) a.md = text;
+    else {
+      q.answers.splice(q.answers.indexOf(a), 1);
+      if (!q.answers.length) delete q.answers;
+    }
+  });
+}
+
+/**
+ * The free sidenotes at a point moved: to another point, or dropped onto a card or a Note's block, where they then are. Only free
+ * ones move (one on a card or a Section stays where it is)
+ */
+export function moveFreeSidenotes(env: CommandEnv, ids: readonly string[], to: FreeAnchor | CardAnchor) {
+  const want = new Set(ids);
+  const moving = env.board().sidenotes.filter((n) => want.has(n.id) && freeAt(n.at));
+  if (!moving.length || (freeAt(to) && moving.every((n) => freeAt(n.at) && n.at.x === to.x && n.at.y === to.y))) return;
+  env.edit((b) => moveFreeNotes(b, want, to));
 }
 
 /** An image replaced by the one stored at `src`: an image card's (note left out), or the one at `note` in a Note's Markdown */
@@ -303,7 +367,7 @@ export function setBoxFill(env: CommandEnv, id: string, fill: BoxFill) {
 /** A Text sidenote's Always Show */
 export function toggleAlwaysShow(env: CommandEnv, id: string, fit?: FitMeasure) {
   const n0 = env.board().sidenotes.find((k) => k.id === id);
-  if (n0?.kind !== "text") return;
+  if (n0?.kind !== "text" || n0.at.card === undefined) return;
   // shown under its lines or not: a card fitted to its content grows or shrinks with it (keepFitted)
   keepFitted(env, n0.at.card, fit, (b) => {
     const n = b.sidenotes.find((k) => k.id === id);
@@ -320,7 +384,7 @@ export function toggleBoardOnly(env: CommandEnv, id: string) {
     // going along with the card again: its lines become (or join) one of the card's Highlights. Made board-only, it takes the
     // card's Highlight it was the only note on, with exactly its lines, along (dropOwnHighlight); one the card shows anyway
     // (others' notes on it, or wider) stays
-    if (!n.boardOnly) fixHighlights(b, [n.at.card]);
+    if (!n.boardOnly) fixHighlights(b, n.at.card === undefined ? [] : [n.at.card]);
     else dropOwnHighlight(b, n);
   });
 }

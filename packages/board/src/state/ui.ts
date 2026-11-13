@@ -38,16 +38,34 @@ const notesIndex = rooted(() =>
   createMemo(() => {
     const m = new Map<string, Sidenote[]>();
     for (const n of state.board.sidenotes) {
+      const card = n.at.card;
+      if (card === undefined) continue;
       // 「只在某个 Variant」：卡显示着那个 Variant 才算
-      if (n.variant && !noteShown(n, state.board.cards.find((c) => c.id === n.at.card) as CodeCard | undefined))
-        continue;
-      const a = m.get(n.at.card);
-      a ? a.push(n) : m.set(n.at.card, [n]);
+      if (n.variant && !noteShown(n, state.board.cards.find((c) => c.id === card) as CodeCard | undefined)) continue;
+      const a = m.get(card);
+      a ? a.push(n) : m.set(card, [n]);
     }
     return m;
   }),
 );
 export const notesOf = (id: string): Sidenote[] => notesIndex().get(id) ?? [];
+// The sidenotes not on a card: Section id → those on it, and the free ones on the canvas
+const offCards = rooted(() =>
+  createMemo(() => {
+    const sections = new Map<string, Sidenote[]>(),
+      free: Sidenote[] = [];
+    for (const n of state.board.sidenotes) {
+      const s = n.at.section;
+      if (s !== undefined) {
+        const a = sections.get(s);
+        a ? a.push(n) : sections.set(s, [n]);
+      } else if (n.at.card === undefined) free.push(n);
+    }
+    return { sections, free };
+  }),
+);
+export const sectionNotes = (id: string): Sidenote[] => offCards().sections.get(id) ?? [];
+export const freeNotes = (): Sidenote[] => offCards().free;
 
 // 闪一下的行："card:seg:line"
 const [flashRows, setFlashRows] = boardSignal<Set<string>>(new Set());
@@ -73,18 +91,7 @@ export const ping = (id: string) => setPingCard({ id, n: ++pingN });
 export type AnnotDraft = { card: string; seg: string; line: number; from: number; to: number };
 export type Editing =
   | {
-      kind:
-        | "title"
-        | "desc"
-        | "note"
-        | "label"
-        | "section"
-        | "free"
-        | "board"
-        | "sidenote"
-        | "gen"
-        | "question"
-        | "vnote";
+      kind: "title" | "desc" | "note" | "label" | "section" | "free" | "board" | "sidenote" | "gen" | "vnote";
       id: string;
     }
   /** draft：新加的一条标注（id 是 "draft"），写了字才进白板；离开编辑它就没了 */

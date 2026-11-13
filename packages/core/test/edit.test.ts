@@ -40,7 +40,6 @@ import {
   type CodeCard,
   type NoteCard,
   type Sidenote,
-  type Sticker,
   plainRefs,
   type Link,
   type Segment,
@@ -353,7 +352,7 @@ describe("migrateBoard", () => {
     ]);
     expect(n.desc).toBe("[[Allocate#^a]]");
     expect(b.sidenotes[0]).toMatchObject({ md: "[[Prefill stage#^g]]" });
-    expect(b.stickers[0].q?.md).toBe("why [[allocate#^a]]?");
+    expect(b.sidenotes[1]).toMatchObject({ md: "why [[allocate#^a]]?", at: { x: 16, y: 16 }, q: { at: 0 } });
     expect(upgraded(structuredClone(b))).toEqual(b); // v11 is read as is
   });
   it("plainRefs writes references without ids, by the target's current name", () => {
@@ -400,7 +399,7 @@ describe("migrateBoard", () => {
     expect(
       loadSharedCard({ version: 7, card: { id: "s", kind: "note", md: "x", bg: false, hand: "green" }, sidenotes: [] }),
     ).toEqual({
-      version: 16,
+      version: 17,
       card: { id: "s", kind: "note", md: "x", look: "text", wrap: true, fs: 18 },
       sidenotes: [],
     });
@@ -607,15 +606,14 @@ describe("renumberBorn", () => {
 
 describe("guard: reference upkeep only in core/src/edit/", () => {
   // 删卡、删线、换卡、删 Section / Sidenote / Sticker、改叠放顺序都得走 edit/ 里的操作（removeCards、replaceCards、removeSections、arrangeCards……），
-  // 它们一起维护指着这些东西的引用（Link 两端、Sidenote、贴纸、问题的解答、Compare 的栏、创建顺序、调用图标记）。
+  // 它们一起维护指着这些东西的引用（Link 两端、Sidenote、贴纸、Compare 的栏、创建顺序、调用图标记）。
   // 规则按「改动的形状」查，不按写法：在 core、白板、宿主、插件四处源码里（去掉整行注释后，跨行匹配）找
   //   1. 整个换掉一类东西：x.cards / links / sections / sidenotes / stickers / place = …（含 filter 之后的临时变量再赋回去、换顺序），x["links"] = …，
   //      Object.assign(x.place, …) / Object.assign(x, { links: … })
   //   2. 原地删、原地换顺序：x.<集合>.splice / pop / shift / sort / reverse / fill / copyWithin(…)，x.<集合>.length = …；删摆放：delete x.place[…]
   //   3. 换 Link 的一端到另一张卡：x.to / x.from = { card … }，x.to.card = …（Sidenote、贴纸的 at.card / on.card 也算）
-  //   4. 问题的解答：x.answer = …，delete x.answer，x.q = { … answer … }
-  //   5. Compare 的栏：x.cols = …，x.cols[i] = …，x.cols.splice(…)
-  //   6. 创建顺序、调用图标记：x.born / x.marks（[…]）= / ??= …，delete x.born / x.marks（[…]）
+  //   4. Compare 的栏：x.cols = …，x.cols[i] = …，x.cols.splice(…)
+  //   5. 创建顺序、调用图标记：x.born / x.marks（[…]）= / ??= …，delete x.born / x.marks（[…]）
   // 不拦：push / unshift（加新东西不会让别的引用悬空；新东西自己的引用由每次 mutate 之后的 danglingRefs 自检、harness 守着），
   // 同一个 id 原地换内容（b.cards[i] = …），以及改单个对象别的字段。
   // 不查的文件：edit/ 下的（引用维护）、migrate.ts（旧文件升级）。别处合理的、不是在维护引用的写法逐行列在 ALLOW 里，写明理由
@@ -646,13 +644,6 @@ describe("guard: reference upkeep only in core/src/edit/", () => {
     ],
     ["core/src/patch.ts", "out.place = Object.fromEntries(", "mergeFile: three-way merge of whole files, item by item"],
     ["core/src/patch.ts", "p.place = {", "diffBoards builds a patch object, not a board"],
-    ["core/src/questions.ts", "it.answer = a.card.id;", "a row of the derived questions list, not a board sticker"],
-    ["core/src/commands/stickers.ts", "delete q.answer;", "the user reopens a question: that is the edit itself"],
-    [
-      "core/src/commands/stickers.ts",
-      's.q = { ...(s.q ?? { md: "" }), done: true, answer: card }',
-      "the user links the answer card: that is the edit itself",
-    ],
     [
       "core/src/commands/calls.ts",
       "delete b.marks[graphId];",
@@ -686,9 +677,6 @@ describe("guard: reference upkeep only in core/src/edit/", () => {
     new RegExp(`Object\\.assign\\(\\s*[\\w$.]+\\s*,\\s*\\{[^}]*\\b(?:${LISTS}|place)\\s*:`, "g"),
     /\.(?:to|from)\s*=\s*\{(?:[^{}]|\{[^{}]*\})*?\bcard\b/g,
     /\.(?:to|from|at|on)\s*\.\s*card\s*=(?![=>])/g,
-    /\.answer\s*=(?![=>])/g,
-    /\bdelete\s+[\w$.?]*\.answer\b/g,
-    /\.q\s*=\s*\{(?:[^{}]|\{[^{}]*\})*?\banswer\b/g,
     new RegExp(`\\.cols\\s*(?:\\[[^\\]]*\\]\\s*)?=(?![=>])|\\.cols\\s*\\.\\s*(?:${SPLICE})\\s*\\(`, "g"),
     /\.(?:born|marks)\s*(?:\[[^\]]*\]\s*)?(?:\?\?)?=(?![=>])/g,
     /\bdelete\s+[\w$.]*\.(?:born|marks)\b/g,
@@ -752,10 +740,9 @@ describe("guard: reference upkeep only in core/src/edit/", () => {
         '  .splice(i, 1); b["links"] = []; Object.assign(b, { sections: [] });',
         "l.to = { card: newId }; l.from = {",
         "  ...l.from, card: x }; n.at.card = y; k.at.on.card = z;",
-        's.q.answer = id; delete k.q.answer; s.q = { ...(s.q ?? { md: "" }), answer: id };',
         "c.cols = [a, b]; c.cols[0] = a; c.cols.reverse();",
         "b.born = {}; b.born[id] = 3; delete b.marks[id]; (b.marks ??= {})[g] = m;",
-        "l.to.line = 3; l.from.seg = s; s.from = side; if (k.q.answer === id) {} const x = { answer: 1 };",
+        "l.to.line = 3; l.from.seg = s; s.from = side;",
       ].join("\n"),
     );
     expect(hits.map((h) => h.at.split(":")[1]).sort((a, b) => +a - +b)).toEqual([
@@ -780,10 +767,7 @@ describe("guard: reference upkeep only in core/src/edit/", () => {
       "16",
       "16",
       "16",
-      "17",
-      "17",
-      "17",
-      "17",
+      "16",
     ]);
   });
   it("no hand-made card copies or merges in packages/board/src: new ids for a copied card come from placeCards / unlinkCard", () => {
@@ -1215,19 +1199,20 @@ describe("board action edits (core edit)", () => {
       "[[Baz]] and `[[foo]]` and [[foo#^a]]\n\n```\n[[foo]]\n```\n\n~~~py\nx = [[foo]]\n~~~\nafter [[Baz]]",
     );
   });
-  it("renameTitleRefs follows a rename into questions, on the canvas and on the Shelf", () => {
+  it("renameTitleRefs follows a rename into questions and their answers", () => {
     const b = base([code("a")]);
-    const q = (id: string, md: string): Sticker => ({
-      id,
-      icon: { pack: "builtin", name: "question" },
-      at: { kind: "canvas", x: 0, y: 0 },
-      q: { md, at: 0 },
-    });
-    b.stickers = [q("k1", "why does [[foo]] call `[[foo]]`?")];
-    b.shelf = [{ id: "e", at: 0, place: {}, sections: [], links: [], stickers: [q("k2", "[[FOO]]")] }];
+    b.sidenotes = [
+      {
+        id: "q",
+        kind: "text",
+        md: "why does [[foo]] call `[[foo]]`?",
+        at: { x: 0, y: 0 },
+        q: { at: 0, answers: [{ id: "a1", md: "[[FOO]]", at: 1 }] },
+      },
+    ];
     renameTitleRefs(b, "foo", "Baz");
-    expect(b.stickers[0].q!.md).toBe("why does [[Baz]] call `[[foo]]`?");
-    expect(b.shelf[0].stickers[0].q!.md).toBe("[[Baz]]");
+    const n = b.sidenotes[0];
+    expect(n.kind === "text" && [n.md, n.q?.answers?.[0].md]).toEqual(["why does [[Baz]] call `[[foo]]`?", "[[Baz]]"]);
   });
 });
 

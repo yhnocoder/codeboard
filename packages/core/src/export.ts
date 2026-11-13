@@ -7,10 +7,9 @@ import {
   firstLine,
   colsOf,
   hostOf,
-  stickerWhere,
   domainOf,
   findCard,
-  isQuestion,
+  questionOf,
   rpcText,
   versionLabel,
   type Board,
@@ -165,6 +164,26 @@ function noteMd(b: Board, n: Sidenote, links?: Record<string, string>): string {
   }
 }
 
+/** A question sidenote as a checklist item (ticked when resolved), its answers under it */
+function questionMd(n: Sidenote): string[] {
+  if (n.kind !== "text" || !n.q) return [];
+  const at = n.at.lines
+    ? n.at.lines[0] === n.at.lines[1]
+      ? ` (line ${n.at.lines[0]})`
+      : ` (lines ${n.at.lines[0]}–${n.at.lines[1]})`
+    : "";
+  const indent = (r: string) => (r.trim() ? `  ${r}` : "");
+  const [first, ...rest] = (localImages(n.md.trim()) || "(no text)").split("\n");
+  return [
+    `- [${n.q.done ? "x" : " "}] **Question**${at}: ${first}`,
+    ...rest.map(indent),
+    ...(n.q.answers ?? []).flatMap((a) => {
+      const [f, ...more] = localImages(a.md.trim()).split("\n");
+      return [`  - ${f}`, ...more.map((r) => indent(indent(r)))];
+    }),
+  ];
+}
+
 /** 一条出去的箭头：→ 目标 · 第几行 · 调用 / RPC / 标签 */
 function arrowMd(b: Board, l: Link, o: MdOpts): string {
   const to = findCard(b, l.to.card)?.card;
@@ -241,21 +260,13 @@ export function boardMarkdown(b: Board, o: MdOpts): string {
     if (c.desc?.trim()) out.push(c.desc.trim(), "");
     const body = bodyMd(b, c, o);
     if (body.length) out.push(...body, "");
-    for (const n of b.sidenotes)
-      if (ids.includes(n.at.card) && (o.boardOnly || !n.boardOnly)) out.push(noteMd(b, n, o.links), "");
+    const mine = b.sidenotes.filter(
+      (n) => n.at.card !== undefined && ids.includes(n.at.card) && (o.boardOnly || !n.boardOnly),
+    );
+    for (const n of mine) if (!questionOf(n)) out.push(noteMd(b, n, o.links), "");
     if (o.questions) {
-      const qs = b.stickers.filter((s) => {
-        const c = stickerWhere(b, s).card;
-        return isQuestion(s) && c !== undefined && ids.includes(c);
-      });
-      for (const s of qs) {
-        const line = s.at.kind === "line" ? ` (line ${s.at.line})` : "";
-        const [first, ...rest] = (s.q?.md.trim() || "(no text)").split("\n");
-        out.push(
-          `- [${s.q?.done ? "x" : " "}] **Question**${line}: ${first}`,
-          ...rest.map((r) => (r.trim() ? `  ${r}` : "")),
-        );
-      }
+      const qs = mine.filter((n) => questionOf(n));
+      for (const n of qs) out.push(...questionMd(n));
       if (qs.length) out.push("");
     }
     const outs = b.links

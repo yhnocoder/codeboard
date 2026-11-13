@@ -22,6 +22,7 @@ import { observeResize } from "../state/measure";
 import { cam } from "../state/camera";
 import { shape } from "../state/look";
 import { brushFrame, titleWidth, setTitleWidth } from "../state/inkframe";
+import { SectionSpot } from "../ui/SnBadge";
 import { Editable } from "../ui/Editable";
 import { Icon } from "../ui/icons";
 import { KIND_ICON } from "../cards/BoardBody";
@@ -326,6 +327,7 @@ export function SectionLabels() {
                 value={s.title}
                 onCommit={(v) => A.renameSection(s.id, v)}
               />
+              <SectionSpot section={s.id} />
               <Show when={shut()}>
                 <span class="scount">
                   · {n()} card{n() === 1 ? "" : "s"}

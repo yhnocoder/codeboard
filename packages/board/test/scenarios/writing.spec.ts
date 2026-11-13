@@ -166,7 +166,7 @@ test("boxFillEditAndToolbars", async () => {
     await idle(h);
     return m;
   };
-  const SHORT = "AI|Arrange|Copy Link|Delete";
+  const SHORT = "Add Sidenote|AI|Arrange|Copy Link|Delete";
   const boxMenu = await menu("box");
   check("boxMenu the short menu", boxMenu.join("|") === SHORT, boxMenu);
 

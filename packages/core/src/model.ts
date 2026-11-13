@@ -9,7 +9,7 @@ import type { BoundVal, CallAlt, Var } from "@codeboard/analysis/basics";
 import { fnv } from "@codeboard/analysis/basics";
 import type { SealColor } from "./seal";
 
-export const BOARD_VERSION = 16;
+export const BOARD_VERSION = 17;
 
 /** 一段代码钉在哪个版本上 */
 export type Version =
@@ -429,8 +429,23 @@ export type Section = {
   directSummary?: Summary;
 };
 
-/** 挂在哪：整张卡、一行或几行 */
-export type Anchor = { card: string; seg?: string; lines?: [number, number] };
+/**
+ * Where a sidenote is: on a card (the whole card, lines of a code card's segment, or a Note's block, as an arrow's end on one,
+ * End.block), on a Section, or free on the canvas at a point (world coordinates). The fields the others have are `never` on each,
+ * so `at.card` reads as "the card it is on, if any"
+ */
+export type Anchor = CardAnchor | SectionAnchor | FreeAnchor;
+export type CardAnchor = { card: string; seg?: string; lines?: [number, number]; block?: BlockRef; section?: never };
+export type SectionAnchor = { section: string; card?: never; seg?: never; lines?: never; block?: never };
+export type FreeAnchor = {
+  x: number;
+  y: number;
+  card?: never;
+  seg?: never;
+  lines?: never;
+  block?: never;
+  section?: never;
+};
 
 export type Sidenote = {
   id: string;
@@ -442,8 +457,41 @@ export type Sidenote = {
   variant?: string; // 只在卡的这个 Variant 上显示；行号按那个 Variant 的代码算。没有 = 跟着卡，所有 Variant 都显示
 } & (
   | { kind: "code"; code: Segment } // 仓库里或仓库外的代码（钉版本），或没有来源的 Free code
-  | { kind: "text"; md: string; alwaysShow?: boolean } // Markdown：链接、指着别的卡的 [[引用]] 都写在里面
+  | { kind: "text"; md: string; alwaysShow?: boolean; q?: SidenoteQuestion } // Markdown：链接、指着别的卡的 [[引用]] 都写在里面
 );
+
+/**
+ * A Text sidenote that asks: at = when it was asked (the question list puts the newest first); done = resolved (only the user's
+ * check sets it; an answer does not); answers = the replies under it, oldest first, Markdown with [[refs]] like the question
+ */
+export type SidenoteQuestion = { at: number; done?: true; answers?: SidenoteAnswer[] };
+export type SidenoteAnswer = { id: string; md: string; at: number };
+/** A sidenote's anchor when it is on a card */
+export const onCard = (a: Anchor): a is CardAnchor => a.card !== undefined;
+/** A sidenote free on the canvas */
+export const freeAt = (a: Anchor): a is FreeAnchor => a.card === undefined && a.section === undefined;
+/**
+ * Where a sidenote's badge sits, as a key: a Section, a Note's block, a whole card, or a point on the canvas. Lines have none: they
+ * are a code card's Highlight, which keys them by its own range
+ */
+export function spotKey(a: Anchor): string {
+  if (a.section !== undefined) return `s:${a.section}`;
+  if (a.card === undefined) return `f:${a.x},${a.y}`;
+  return a.block ? `b:${a.card}:${a.block.i}:${a.block.h}` : `c:${a.card}`;
+}
+/** The spot a sidenote's badge sits at: its anchor without lines (a sidenote on lines has none) */
+export function spotOf(a: Anchor): Anchor | undefined {
+  if (a.lines) return undefined;
+  if (a.section !== undefined) return { section: a.section };
+  if (a.card === undefined) return { x: a.x, y: a.y };
+  return a.block ? { card: a.card, block: { ...a.block } } : { card: a.card };
+}
+/** A sidenote shown at this spot (one not on lines) */
+export const inSpot = (n: Pick<Sidenote, "at">, spot: Anchor) => !n.at.lines && spotKey(n.at) === spotKey(spot);
+/** A question still open */
+export const questionOpen = (n: Sidenote) => n.kind === "text" && !!n.q && !n.q.done;
+/** The question a sidenote is, if it is one */
+export const questionOf = (n: Sidenote | undefined) => (n?.kind === "text" ? n.q : undefined);
 
 /** A sidenote not added yet: one of its kinds, with no id */
 export type NewSidenote = Sidenote extends infer S ? (S extends Sidenote ? Omit<S, "id"> : never) : never;
@@ -460,23 +508,16 @@ export type StickerAt =
   | { kind: "line"; card: string; seg: string; line: number }
   | { kind: "canvas"; x: number; y: number; size?: number; on?: StickerOn };
 
-/**
- * 疑问：「?」贴纸上写的问题。md = 问题（Markdown）；done = 已解决（贴纸画成 ✓）；answer = 解答它的卡（Note 或别的卡）；at = 提问时间。
- */
-export type Question = { md: string; done?: true; answer?: string; at?: number };
-export type Sticker = { id: string; icon: IconRef; color?: string; at: StickerAt; q?: Question };
+export type Sticker = { id: string; icon: IconRef; color?: string; at: StickerAt };
 /** 卡右上角的贴纸位置（相对卡左上角，i = 那一排里的第几个）：Update 后行没了的贴纸挪到这里 */
 export const cornerAt = (w: number, i = 0) => ({ x: w - 56 - i * 25, y: -11, size: 22 });
-/** 内置的「?」贴纸，或写了问题的贴纸 */
-export const isQuestion = (s: Pick<Sticker, "icon" | "q">) =>
-  !!s.q || (s.icon.pack === "builtin" && s.icon.name === "question");
 
 export type Camera = { x: number; y: number; z: number };
 /** 新白板、这台机器上还没看过的白板的镜头 */
 export const homeCam = (): Camera => ({ x: 80, y: 80, z: 1 });
 
 export type Board = {
-  version: 16;
+  version: 17;
   id: string;
   name: string;
   /** 镜头：不写进白板文件（光是平移、缩放就改了文件，项目里用 git 管白板时全是噪音），每台机器各记各的（宿主的工作区状态，按白板 id） */
@@ -546,7 +587,7 @@ export type BoardFile = Omit<Board, "cards" | "cam"> & { cards: (Card | SharedRe
 /** 一张共享卡的内容：卡本身 + 跟着它走的 Sidenote（挂在它上面、不是 boardOnly） */
 export type SharedCard = { card: Card; sidenotes: Sidenote[] };
 /** 卡库里的文件 cards/<id>.json。写盘时按项（卡、每条 Sidenote）和磁盘上的合并（storage/boards.ts merged） */
-export type SharedCardFile = SharedCard & { version: 16 };
+export type SharedCardFile = SharedCard & { version: 17 };
 
 /** subs = 这块白板上嵌着的子白板（去重，按出现的先后；侧栏按它缩进成树） */
 export type BoardMeta = {

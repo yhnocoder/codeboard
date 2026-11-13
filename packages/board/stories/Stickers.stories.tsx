@@ -16,7 +16,6 @@ type Args = {
   size: number;
   where: Where;
   selected: boolean;
-  question: "none" | "open" | "done";
 };
 
 const iconOf = (name: string): IconRef =>
@@ -48,8 +47,6 @@ function playground(a: Args): Scene {
     } as StickerAt,
   }[a.where];
   const s: Sticker = { id: "k", icon: iconOf(a.icon), at, ...(a.color ? { color: a.color } : {}) };
-  if (a.question !== "none")
-    s.q = { md: "为什么抢占的是**最后**进来的请求？", ...(a.question === "done" ? { done: true } : {}) };
   b.stickers.push(s);
   return { board: b, after: a.selected ? pick("k") : undefined };
 }
@@ -68,7 +65,7 @@ function overview(): Scene {
   );
   g.caption("Sizes 16 · 24 · 32 · 48 · 72 · 120", 40, 280, 400);
   [16, 24, 32, 48, 72, 120].reduce((x, s, i) => {
-    free(`sz-${i}`, { pack: "builtin", name: "question" }, x, 280, s);
+    free(`sz-${i}`, { pack: "builtin", name: "star" }, x, 280, s);
     return x + s + 20;
   }, 40);
   g.caption("Emoji", 40, 460, 400);
@@ -78,9 +75,6 @@ function overview(): Scene {
   g.caption("Folder pack: PNG · PNG · GIF (animated) · APNG (animated) · missing icon", 40, 620, 600);
   BITMAPS.forEach((n, i) => free(`bm-${n}`, { pack: PACK, name: n }, 40 + i * 90, 620, 64));
   free("bm-missing", { pack: PACK, name: "gone" }, 400, 636, 36);
-  g.caption("Questions: open · answered", 560, 620, 300);
-  free("q-open", { pack: "builtin", name: "question" }, 560, 630, 40, { q: { md: "为什么先 prefill？" } });
-  free("q-done", { pack: "builtin", name: "question" }, 640, 630, 40, { q: { md: "block 多大？", done: true } });
   // 跟着卡、行、箭头走的
   g.caption("On a card · its corner · code lines (one shares a line with a sidenote) · on an arrow", 960, 40, 700);
   const c = g.put(codeCard("st-c", "preempt"), { x: 960, y: 80, w: 460 });
@@ -117,12 +111,6 @@ function overview(): Scene {
     icon: { pack: "builtin", name: "todo-text" },
     at: { kind: "line", card: c.id, seg: s0.id, line: s0.start + 3 },
   });
-  add({
-    id: "line-q",
-    icon: { pack: "builtin", name: "question" },
-    at: { kind: "line", card: c.id, seg: s0.id, line: s0.start + 2 },
-    q: { md: "is_prefill 为什么要重置？" },
-  });
   b.sidenotes.push({
     id: "sn",
     kind: "text",
@@ -145,7 +133,7 @@ const meta = {
     usePacks();
     return <Stage scene={() => playground(a)} globals={ctx.globals as Globals} />;
   },
-  args: { icon: "star", color: "", size: 48, where: "canvas", selected: false, question: "none" },
+  args: { icon: "star", color: "", size: 48, where: "canvas", selected: false },
   argTypes: {
     icon: {
       control: "select",
@@ -165,11 +153,6 @@ const meta = {
     selected: {
       control: "boolean",
       description: "Selected: grip; bound ones also outline their card or tether to the arrow",
-    },
-    question: {
-      control: "inline-radio",
-      options: ["none", "open", "done"],
-      description: "A question written on the sticker",
     },
   },
 } satisfies Meta<Args>;
@@ -195,8 +178,6 @@ export const SelectedOnArrow: Story = {
   args: { where: "on an arrow", selected: true, icon: "hourglass", size: 36 },
 };
 export const OnCodeLine: Story = { name: "On a Code Line", args: { where: "code line", icon: "bug" } };
-export const Question: Story = { args: { question: "open", icon: "question" } };
-export const Answered: Story = { args: { question: "done", icon: "question" } };
 
 // 选图标面板：工具栏的 Sticker 按钮开在它上方（fixed，按屏幕坐标）
 type Tab = "Built-in" | "Party" | "Emoji";

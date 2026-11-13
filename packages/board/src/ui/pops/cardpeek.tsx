@@ -4,8 +4,7 @@
 // enough when the window has no room there, never to the other side); dragged by its head it stays where it is put:
 // - a click on a [[reference]] to a card of this board toggles it (cardPeeks): in a Text sidenote beside its popup, in a Note
 //   or any other Markdown on a card beside that card at the reference's height (so it covers none of the text being read), also
-//   while the Note is being edited; Esc or a press anywhere else closes it, and while it shows, an unpinned sidenote popup it
-//   came from stays (actions/notes.ts scheduleHideNotes). It follows its reference as the board pans and zooms;
+//   while the Note is being edited; Esc or a press anywhere else closes it. It follows its reference as the board pans and zooms;
 // - the [[ list of the sidenote input shows its highlighted card's (ui/NoteComposer.tsx): passive, no keys, no arrow.
 // It is a copy of the card's element taken once when it opens (nothing measured per frame), inert, with nothing that selectors
 // for the board's cards would find
@@ -101,8 +100,6 @@ export function CardPeek(p: { id: string; at: HTMLElement; beside: Beside; peeks
       outside: true,
       grab: true,
     });
-    // closed with the pointer elsewhere: an unpinned popup it kept open goes too
-    onCleanup(() => A.scheduleHideNotes());
     // its reference drawn again (a double-click opened its source in the editor, the text around it was edited): nothing to
     // point at any more
     const root = p.at.closest(".md");
@@ -127,11 +124,12 @@ export function CardPeek(p: { id: string; at: HTMLElement; beside: Beside; peeks
       for (const s of STATE_STYLES) c.style.removeProperty(s);
       for (const e of [
         c,
-        ...c.querySelectorAll<HTMLElement>("[data-id], [data-notes], [data-card], [contenteditable]"),
+        ...c.querySelectorAll<HTMLElement>("[data-id], [data-notes], [data-card], [data-spot], [contenteditable]"),
       ]) {
         e.removeAttribute("data-id");
         e.removeAttribute("data-notes");
         e.removeAttribute("data-card");
+        e.removeAttribute("data-spot");
         e.removeAttribute("contenteditable");
       }
       Object.assign(c.style, {
@@ -207,7 +205,6 @@ export function CardPeek(p: { id: string; at: HTMLElement; beside: Beside; peeks
         classList={{ show: !!pos(), cut: cut(), passive: !peeks }}
         style={{ left: `${pos()?.x ?? 0}px`, top: `${pos()?.y ?? 0}px` }}
         data-nodrag
-        onPointerEnter={() => A.cancelHideNotes()}
       >
         <div ref={stage} class="cpeek-stage" inert />
         <Show when={peeks && grip()}>

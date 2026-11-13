@@ -183,12 +183,12 @@ test("notes", async () => {
       shown.bold === "bounded",
     { md: note?.md, shown },
   );
-  await h.page.locator(".card .hxm").first().hover();
-  await h.page.locator(".pop.k-highlight").waitFor(); // shows 120 ms after the hover
+  await h.page.locator(".card .hxm").first().click();
+  await h.page.locator(".pop.k-highlight").waitFor();
   await shot(h, "notes-05-hover");
   const hover = await h.page.locator(".pop.k-highlight").textContent();
   check(
-    "notes hovering the line mark shows the Sidenote",
+    "notes a click on the line mark shows the Sidenote",
     /Prefill admits waiting seqs until the token budget runs out\./.test(hover ?? ""),
     { hover },
   );

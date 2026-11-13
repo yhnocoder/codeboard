@@ -229,11 +229,12 @@ test("lineSelectionStaysOnItsBoard", async () => {
   n = t.inits.length;
   await page.locator(".crumbs .crumb", { hasText: "Parent" }).click();
   await switched(t, n, "the breadcrumb goes back to Parent");
+  // nothing selected on Parent: S writes a free sidenote, not one on the Child's lines
   await page.keyboard.press("s");
-  await expect(page.locator(".toast")).toContainText("Select lines in a card first");
+  await page.locator(".pop.k-notes .ncomp").waitFor();
   check(
     "lineSelectionStaysOnItsBoard",
-    (await page.locator(".pop.k-highlight .ncomp, .pop.k-notes .ncomp").count()) === 0,
+    (await page.locator(".pop.k-highlight").count()) === 0,
     "no Add Sidenote for the sub-board's card",
   );
   await h.page.context().close();

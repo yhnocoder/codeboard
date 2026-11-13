@@ -191,7 +191,7 @@ describe("loadBoardFile", () => {
       ],
       edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call" }],
     });
-    expect(v1.version).toBe(16);
+    expect(v1.version).toBe(17);
     const col = (id: string) => ({ id, kind: "code", x: 5, y: 6, w: 300, segments: [seg(`s${id}`)] });
     const v2 = loadBoardFile({
       version: 2,

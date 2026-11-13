@@ -1,7 +1,6 @@
-import { isQuestion, type IconRef, type Sticker, type StickerAt } from "@codeboard/core";
+import type { IconRef, Sticker, StickerAt } from "@codeboard/core";
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
-import { openQuestion, setAnswered, linkAnswer, setStickerDragged } from "./questions";
 import { state, rectOf } from "../state/store";
 import { live } from "../state/changes";
 import { toast } from "../state/toast";
@@ -58,10 +57,7 @@ export function placeStickerAt(e: PointerEvent): boolean {
       e.altKey ? null : targetAt(e.clientX, e.clientY),
     );
   }
-  // 「?」贴纸：放下就写问题
-  const { id, q } = C.addSticker(commandEnv, p.icon, at, { pick: p.color, def: defaultColor(p.icon) });
-  setSelSticker(id);
-  if (q) requestAnimationFrame(() => openQuestion(id, undefined, true));
+  setSelSticker(C.addSticker(commandEnv, p.icon, at, { pick: p.color, def: defaultColor(p.icon) }));
   return true;
 }
 
@@ -191,22 +187,7 @@ export function stickerMenu(id: string, x: number, y: number) {
   const s = state.board.stickers.find((k) => k.id === id);
   if (!s) return;
   setSelSticker(id);
-  const qi: Item[] = isQuestion(s)
-    ? [
-        {
-          label: s.q?.md ? "Edit Question" : "Write Question",
-          kbd: "Click",
-          run: () => openQuestion(id, undefined, true),
-        },
-        s.q?.done
-          ? { label: "Reopen", run: () => setAnswered(id, false) }
-          : { label: "Mark Answered", run: () => setAnswered(id, true) },
-        { label: "Link Answer…", hint: "The card or Note that answers it", run: () => linkAnswer(id) },
-        null,
-      ]
-    : [];
   const items: Item[] = [
-    ...qi,
     ...(s.icon.pack === "emoji"
       ? []
       : [
@@ -272,7 +253,6 @@ export function stickerDown(e: PointerEvent, id: string, resize = false) {
   const g = undoGesture();
   let moved = false,
     shown: ReturnType<typeof shownCards> | undefined;
-  setStickerDragged(false);
   track(
     e,
     (ev) => {
@@ -311,7 +291,6 @@ export function stickerDown(e: PointerEvent, id: string, resize = false) {
           if (k) k.at = at;
         });
       }
-      setStickerDragged(moved); // 拖过的不算点一下（不打开问题）
       setBindHot(null);
       g.end();
     },

@@ -5,16 +5,17 @@
 //                          nothing); a second click, Esc or a click elsewhere closes it, the popup staying; its arrow goes to the card
 //  sidenoteAddFromPlus     the + at the bottom turns into the input: ↵ adds and keeps a clear, focused input, ⇧↵ breaks the line,
 //                          Esc empty gives the + back; what is written is added by a click elsewhere and by Close
-//  sidenotePinNoFlash      a click on the count of a Highlight whose popup the hover opened pins that popup: it neither
-//                          disappears for a frame nor fades in again
+//  sidenoteOpenNoFlash     a click on a Highlight's count opens its popup, which stays when the pointer leaves; a second click
+//                          closes it, nothing else on the board flashing
 //  sidenoteCodeCap         a Code sidenote longer than 8 lines is cut there; a click shows it all, another cuts it again
 //  sidenoteCodeFitsSlip    a Code sidenote with a long name, path and line stays inside its slip: the line scrolls in the code,
 //                          the name and path are cut with an ellipsis, the version stays whole at the right; its head starts
 //                          where a Text sidenote's text does
 //  sidenotePopupDrag       the popup follows its card as the board pans; dragged by its title bar it stays where it was put in the
 //                          window as the board pans and zooms; closed and opened again it is back beside the card
-//  sidenoteWholeCardPopup  the card menu's Add ▸ Sidenote opens the card's popup right of it with the input focused; ↵ adds a
-//                          whole-card sidenote; the header marker pins the popup, and its Delete removes the card's sidenotes
+//  sidenoteWholeCardPopup  the card menu's first item, Add Sidenote, opens the card's popup right of it with the input focused;
+//                          ↵ adds a whole-card sidenote; the badge past the card's edge opens the popup, and its Delete removes
+//                          the card's sidenotes
 //  sidenoteAddBesideCount  selected lines ending on a Highlight's count: their + sits under the count, both visible and
 //                          clickable (the + opens the lines' popup with the input, the count its Highlight's popup); under the
 //                          count, or left of the number between counts, at 100% and zoomed out, it stays clear of the counts and
@@ -23,7 +24,7 @@
 import type { Page } from "@playwright/test";
 import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
 import { put, shot, type Host } from "../harness";
-import { NOTE_HOVER } from "../../src/state/timing";
+import { TIP_DELAY } from "../../src/state/timing";
 import { test, open, check, light, expect, until, idle, hold } from "../fixtures";
 import { watch } from "../watch";
 
@@ -89,7 +90,8 @@ const rect = (pg: Page, sel: string) =>
   });
 /** Opens the 3–4 Highlight's popup, pinned */
 async function openPinned(h: Host) {
-  await marker(h.page).click();
+  // a click on the count toggles its popup: only when it is not open already
+  if (!(await h.page.locator(POP).count())) await marker(h.page).click();
   await h.page.locator(POP).waitFor();
   await idle(h);
 }
@@ -145,7 +147,7 @@ test("sidenoteRefPreview", async () => {
   const ref = pg.locator(`${POP} .slip .md-ref`).first();
   const peeks = () => pg.locator(".cpeek").count();
   await ref.hover();
-  await hold(h, NOTE_HOVER * 3, "resting on a reference must not preview its card");
+  await hold(h, TIP_DELAY * 2, "resting on a reference must not preview its card");
   const onHover = await peeks();
   await ref.click();
   await pg.locator(".cpeek.show").waitFor();
@@ -252,21 +254,25 @@ test("sidenoteAddFromPlus", async () => {
   await h.close();
 });
 
-test("sidenotePinNoFlash", async () => {
+test("sidenoteOpenNoFlash", async () => {
   const h = await open({ board: board(), light, w: 1300, h: 900 });
   const pg = h.page;
   await idle(h);
-  await marker(pg).hover();
+  await marker(pg).click();
   await pg.locator(POP).waitFor();
   await idle(h);
   const id = await pg.locator(POP).getAttribute("data-pop");
-  await watch(h, "sidenotePinNoFlash", { keep: [POP], chrome: [POP], frames: 14 }, () => marker(pg).click());
   await pg.mouse.move(1250, 860);
-  await hold(h, NOTE_HOVER * 4, "a pinned popup stays after the pointer leaves");
+  await hold(h, TIP_DELAY * 2, "a popup a click opened stays after the pointer leaves");
+  const kept = (await pg.locator(POP).getAttribute("data-pop")) === id && (await pg.locator(POP).count()) === 1;
+  // a second click closes it, with nothing else on the board flashing or moving
+  await watch(h, "sidenoteOpenNoFlash", { keep: ['.card[data-id="k1"]'], ignore: [POP], frames: 14 }, () =>
+    marker(pg).click(),
+  );
   check(
-    "sidenotePinNoFlash pinning keeps the same popup, which stays when the pointer leaves",
-    (await pg.locator(POP).getAttribute("data-pop")) === id && (await pg.locator(POP).count()) === 1,
-    { id },
+    "sidenoteOpenNoFlash a click on the count opens the popup, which stays when the pointer leaves; another click closes it",
+    kept && (await pg.locator(POP).count()) === 0,
+    { id, kept },
   );
   await h.close();
 });
@@ -391,15 +397,15 @@ test("sidenotePopupDrag", async () => {
   await idle(h);
   const p2 = await pop();
   const moved = Math.abs(p2.x - p1.x - 120) <= 2 && Math.abs(p2.y - p1.y - 160) <= 2;
-  // then pans and zooms leave it where it was put
+  // then it keeps that offset from its lines as the board pans, a dashed line back to them
   await pg.mouse.move(1000, 820);
-  await pg.mouse.wheel(0, 120);
-  await idle(h);
-  await pg.keyboard.press("ControlOrMeta+Minus");
+  await pg.mouse.wheel(0, -120);
   await idle(h);
   const p3 = await pop(),
     c3 = await card();
-  const fixed = p3.x === p2.x && p3.y === p2.y && (c3.y !== c1.y || c3.r !== c1.r);
+  const line = await pg.locator(".popline").count();
+  const kept =
+    c3.y !== c1.y && Math.abs(p3.y - p2.y - (c3.y - c1.y)) <= 2 && Math.abs(p3.x - p2.x - (c3.x - c1.x)) <= 2;
   // closed and opened again: back beside the card
   await pg.keyboard.press("Escape");
   await expect(pg.locator(POP)).toHaveCount(0);
@@ -408,9 +414,9 @@ test("sidenotePopupDrag", async () => {
     c4 = await card();
   const back = p4.x >= c4.r && p4.x - c4.r <= 20;
   check(
-    "sidenotePopupDrag the popup goes with its card until dragged; then it stays put in the window; reopened, it is beside the card",
-    followed && moved && fixed && back,
-    { p0, c0, p1, c1, p2, p3, c3, p4, c4 },
+    "sidenotePopupDrag the popup goes with its card; dragged, it keeps its offset from its lines with a dashed line back to them; reopened, it is beside the card",
+    followed && moved && kept && line === 1 && back,
+    { p0, c0, p1, c1, p2, p3, c3, line, p4, c4 },
   );
   await h.close();
 });
@@ -421,9 +427,8 @@ test("sidenoteWholeCardPopup", async () => {
   await idle(h);
   await pg.locator('.card[data-id="k1"] .chead .ctitle').click({ button: "right" });
   await pg.locator(".ctx.open").first().waitFor();
-  await pg.locator('.ctx.open button:has(.lb:text-is("Add"))').first().hover();
-  await until(h, "the Add submenu", async () => (await pg.locator(".ctx.open").count()) > 1);
-  await pg.locator('.ctx.open button:has(.lb:text-is("Sidenote"))').last().click();
+  const items = await pg.locator(".ctx.open button .lb").allTextContents();
+  await pg.locator('.ctx.open button:has(.lb:text-is("Add Sidenote"))').first().click();
   const W = ".pop.k-notes";
   await typing(pg, W).waitFor();
   await pg.keyboard.type("The whole function");
@@ -446,21 +451,23 @@ test("sidenoteWholeCardPopup", async () => {
   await pg.locator(`${W} button.add`).waitFor();
   await pg.keyboard.press("Escape");
   await expect(pg.locator(W)).toHaveCount(0);
-  await pg.locator('.card[data-id="k1"] .chead .mk').click();
+  await pg.locator('.snb[data-spot="c:k1"]').click();
   await pg.locator(W).waitFor();
   await pg.locator(`${W} .hh button`).first().click();
   await until(h, "Delete removes the card's sidenotes", () => !h.board().sidenotes.some((x) => !x.at.lines));
   await expect(pg.locator(W)).toHaveCount(0);
   check(
-    "sidenoteWholeCardPopup Add ▸ Sidenote opens the card's popup beside it, input focused; Delete and Close in its title bar",
+    "sidenoteWholeCardPopup Add Sidenote, the card menu's first item, opens the card's popup beside it, input focused; Delete and Close in its title bar",
     !n.at.lines &&
       !n.at.seg &&
       p.x >= c.r &&
       chrome.bar.join("|") === "Delete Sidenotes|Close" &&
+      items[0] === "Add Sidenote" &&
+      !items.includes("Sidenote") &&
       chrome.slips === 1 &&
       chrome.tools === 1 &&
       h.board().sidenotes.length === 2,
-    { n, p, c, chrome },
+    { n, p, c, chrome, items },
   );
   await h.close();
 });
@@ -597,7 +604,7 @@ test("sidenoteStateIcons", async () => {
   const h = await open({ board: b, light, w: 1300, h: 900 });
   const pg = h.page;
   await idle(h);
-  await pg.locator('.card[data-id="k1"] .chead .mk').click();
+  await pg.locator('.snb[data-spot="c:k1"]').click();
   await pg.locator(".pop.k-notes .slip").waitFor();
   await idle(h);
   await shot(h, "sidenote-state-icons");

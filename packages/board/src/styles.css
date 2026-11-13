@@ -392,8 +392,8 @@ textarea {
 .board:is([data-mode="pan"], [data-mode="space"]) * {
   cursor: grab !important;
 }
-.board:is([data-mode="connect"], [data-mode="pick"]),
-.board:is([data-mode="connect"], [data-mode="pick"]) * {
+.board[data-mode="connect"],
+.board[data-mode="connect"] * {
   cursor: crosshair !important;
 }
 .world {
@@ -1306,24 +1306,6 @@ textarea {
   top: -1px;
   border-top: 1px dashed var(--ink-3);
   opacity: 0.7;
-}
-.mk {
-  position: absolute;
-  left: calc(var(--gutter) - 18px);
-  width: 14px;
-  height: 14px;
-  margin-top: 3px;
-  border-radius: 5px;
-  background: var(--mark);
-  color: var(--mark-ink);
-  font: 600 9px / 14px var(--sys);
-  text-align: center;
-  z-index: 2;
-}
-.mk:hover,
-.mk.on {
-  background: var(--accent);
-  color: var(--accent-ink);
 }
 .rowbgs {
   position: absolute;
@@ -3453,10 +3435,6 @@ textarea.fld {
   background: var(--warn);
   flex: none;
 }
-.mk.rv {
-  background: var(--warn);
-  color: #fff;
-}
 .sn-why.review {
   display: flex;
   align-items: center;
@@ -3566,8 +3544,7 @@ kbd {
 .cdesc p,
 .tx p,
 .sn-text p,
-.pdesc p,
-.k-question .qtext p {
+.pdesc p {
   margin: 0;
 }
 .cdesc h1,
@@ -3813,11 +3790,6 @@ kbd {
 .chead .lang:hover {
   color: var(--ink);
   background: var(--hlrow);
-}
-.mk.inline {
-  position: static;
-  margin: 0;
-  flex: none;
 }
 /* 选中单张代码卡时浮在卡片上方的小工具条：不改变卡片高度，不挤压下面的卡 */
 .cmiss {
@@ -7181,114 +7153,6 @@ mark.wdiff {
   background: var(--row);
 }
 
-.chead .qcount {
-  font: 600 10.5px / 16px var(--sys);
-  color: #7a4d00;
-  background: #fdf0d5;
-  border: 0;
-  border-radius: 11px;
-  padding: 0 7px;
-  cursor: pointer;
-  white-space: nowrap;
-  flex: none;
-}
-:root[data-theme="dark"] .chead .qcount,
-.vscode-dark .chead .qcount {
-  color: #f3c46b;
-  background: color-mix(in srgb, #d08a12 24%, transparent);
-}
-.pop.k-question {
-  width: 380px;
-}
-.k-question .qbody {
-  padding: 10px 12px 8px;
-  max-height: 50vh;
-  overflow: auto;
-}
-.k-question .qtext {
-  font-size: 12.5px;
-  line-height: 1.6;
-  min-height: 1.6em;
-}
-.k-question .qtext:empty::before,
-.k-question .qtext[data-ph]:not(.editing):empty::before {
-  content: attr(data-ph);
-  color: var(--ink-3);
-}
-/* 编辑框：内边距画在框里（负外边距抵掉，字不跳），至少两行高，随内容长 */
-.k-question .qtext.editing {
-  outline: none;
-  border-radius: 8.5px;
-  box-shadow: inset 0 0 0 1.5px var(--accent);
-  padding: 6px 8px;
-  margin: -6px -8px;
-  min-height: calc(3.2em + 12px);
-}
-.k-question .qans {
-  padding: 2px 12px 6px;
-  font-size: 11.5px;
-  color: var(--ink-3);
-}
-/* 脚注一行放不下时提示换到按钮上面，按钮成组靠右，自己从不折行 */
-.k-question .qacts {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px 8px;
-  padding: 8px 10px 10px 12px;
-  border-top: 1px solid var(--line);
-}
-.k-question .qbtns {
-  display: flex;
-  gap: 6px;
-  margin-left: auto;
-}
-.k-question .qacts .tbtn {
-  height: 24px;
-  font-size: 11.5px;
-  padding: 0 8px;
-  white-space: nowrap;
-  flex: none;
-  box-shadow: inset 0 0 0 1px var(--hair);
-}
-.k-question .qacts .tbtn.pri {
-  background: var(--accent);
-  color: var(--accent-ink);
-  box-shadow: none;
-}
-.k-question .qhint {
-  font-size: 11px;
-  color: var(--ink-3);
-  white-space: nowrap;
-}
-.cpanel.qpanel {
-  right: 12px;
-  top: 12px;
-  width: 340px;
-  max-height: min(70vh, 640px);
-}
-.cpanel.ctree ~ .cpanel.qpanel {
-  right: 324px;
-}
-.qtabs {
-  display: inline-flex;
-  gap: 3px;
-  margin-left: 4px;
-}
-.qtabs button {
-  font: 10.5px / 18px var(--sys);
-  color: var(--ink-2);
-  border-radius: 5.5px;
-  padding: 0 6px;
-  box-shadow: inset 0 0 0 1px var(--hair);
-  background: none;
-}
-.qtabs button.on {
-  background: var(--ink-2);
-  color: var(--surface);
-  box-shadow: none;
-}
 /* The Shelf (ui/ShelfPanel.tsx, actions/shelf.ts): the dock button and its count, the panel beside the other right-side panels, its
    thumbnails, the large picture of one beside the panel, the outlines on the board of where an entry lands or returns to, the
    copies that fly in */
@@ -7339,12 +7203,6 @@ mark.wdiff {
 }
 .cpanel.ctree ~ .cpanel.shelf {
   right: 324px;
-}
-.cpanel.qpanel ~ .cpanel.shelf {
-  right: 364px;
-}
-.cpanel.ctree ~ .cpanel.qpanel ~ .cpanel.shelf {
-  right: 676px;
 }
 .cpanel.shelf.hot {
   outline-color: var(--accent);
@@ -7489,76 +7347,6 @@ mark.wdiff {
 .shelf-ghost {
   pointer-events: none;
   transition: none;
-}
-.qrows {
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  padding-bottom: 2px;
-}
-.qg {
-  padding: 6px 8px 2px;
-  font: 600 11px var(--sys);
-  color: var(--ink-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.qg small {
-  font-weight: 400;
-  color: var(--ink-3);
-}
-.qrow {
-  display: grid;
-  grid-template-columns: 14px 1fr;
-  column-gap: 6px;
-  align-items: baseline;
-  border: 0;
-  background: none;
-  text-align: left;
-  padding: 3px 8px 3px 14px;
-  border-radius: 7px;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--ink);
-  cursor: pointer;
-}
-.qrow .glyph {
-  align-self: start;
-  margin-top: 2px;
-}
-.qrow:hover {
-  background: var(--row);
-}
-.qrow.done .qt {
-  color: var(--ink-3);
-}
-.qrow .qt {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-.qrow .qw {
-  grid-column: 2;
-  font: 10.5px var(--mono);
-  color: var(--ink-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.qfoot {
-  display: flex;
-  gap: 4px;
-  padding: 4px 4px 0;
-  border-top: 1px solid var(--line);
-  margin-top: 2px;
-}
-.qfoot .tbtn {
-  height: 24px;
-  font-size: 11.5px;
-  padding: 0 8px;
 }
 .welcome {
   position: absolute;
@@ -9107,4 +8895,540 @@ mark.wdiff {
 .gutter .lsadd:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: 1px;
+}
+
+/* Questions (Sidenote.q): amber while open. Not --warn, which some themes make red and which a sidenote to check (review) uses */
+:root {
+  --ask: #c48a1f;
+  --ask-ink: #fff;
+  --ask-tint: color-mix(in srgb, var(--ask) 9%, var(--surface));
+  --ask-line: color-mix(in srgb, var(--ask) 34%, transparent);
+}
+:root[data-theme="dark"] {
+  --ask: #e0b055;
+  --ask-ink: #1d1c1a;
+  --ask-tint: color-mix(in srgb, var(--ask) 10%, var(--surface));
+}
+/* a Highlight with an open question on it: an amber ? in place of its count */
+.hx-band .hxm.ask {
+  background: var(--ask);
+  color: var(--ask-ink);
+  font-weight: 700;
+}
+.hx-band .hxm.ask:is(.on, :hover) {
+  background: color-mix(in srgb, var(--ask) 82%, var(--ink));
+  color: var(--ask-ink);
+}
+.hx-bracket .hxm.ask {
+  color: var(--ask);
+  font-weight: 700;
+}
+/* a whole card's sidenotes: the same popup as a Highlight's */
+.pop.k-notes {
+  width: 460px;
+  max-height: min(560px, 100vh - 16px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0;
+}
+.hxpop .hh .ttl {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 11.5px var(--mono);
+  color: var(--ink-2);
+}
+/* a question: its mark at its left; open, a warm tint */
+.hxpop .slip.ask {
+  padding-left: 32px;
+  gap: 6px;
+}
+.hxpop .slip.ask.open {
+  background: var(--ask-tint);
+  box-shadow: 0 0 0 1px var(--ask-line);
+}
+.hxpop .qbody {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.hxpop .qm {
+  position: absolute;
+  left: -24px;
+  top: 1.5px;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--ask);
+  color: var(--ask-ink);
+  font: 700 11px / 1 var(--sys);
+}
+.hxpop .slip.done .qm {
+  background: none;
+  color: var(--ink-3);
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+/* the question's tools show over its own text only, an answer's over the answer */
+.hxpop .qbody > .kt,
+.hxpop .ans > .kt {
+  top: -4px;
+  right: -6px;
+}
+.hxpop .qbody:is(:hover, :focus-within) > .kt,
+.hxpop .ans:is(:hover, :focus-within) > .kt {
+  opacity: 1;
+}
+.hxpop .qbody:has(.sn-edit) > .kt {
+  display: none;
+}
+/* answers: under the question, indented as replies */
+.hxpop .ans {
+  position: relative;
+  margin-left: 2px;
+  padding: 1px 0 1px 11px;
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ink) 14%, transparent);
+  min-width: 0;
+}
+.hxpop .slip.open .ans {
+  box-shadow: inset 2px 0 0 var(--ask-line);
+}
+/* the row to answer an open question: the same icon-only row as the + at the bottom, thinner, where an answer would go */
+.hxpop .reply {
+  display: flex;
+  align-items: center;
+  margin-left: 2px;
+  padding: 2px 9px;
+  height: 22px;
+  color: color-mix(in srgb, var(--ask) 75%, var(--ink-3));
+  border: 1px dashed var(--ask-line);
+  border-radius: 7px;
+  background: none;
+  cursor: pointer;
+}
+.hxpop .reply:hover {
+  color: var(--ask);
+  border-color: var(--ask);
+  background: color-mix(in srgb, var(--ask) 7%, transparent);
+}
+.hxpop .ans-in {
+  margin-left: 2px;
+}
+/* the input as a question: an amber frame and the ? at its left */
+.ncomp-box.ask {
+  border-color: var(--ask);
+  background: var(--ask-tint);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ask) 16%, transparent);
+}
+.ncomp-q {
+  flex: none;
+  align-self: flex-start;
+  margin: 4px 6px 0 -3px;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--ask);
+  color: var(--ask-ink);
+  font: 700 11px / 1 var(--sys);
+}
+.ncomp-box > .ncomp-ask.on {
+  color: var(--ask);
+  background: color-mix(in srgb, var(--ask) 14%, transparent);
+}
+.ncomp-box.answer {
+  border-color: var(--ask-line);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ask) 10%, transparent);
+}
+/* a sidenote the question list went to: one soft pulse */
+.hxpop .slip.flash {
+  animation: slip-flash calc(var(--t, 1) * 1100ms) var(--out);
+}
+@keyframes slip-flash {
+  0%,
+  35% {
+    box-shadow:
+      0 0 0 2px var(--ask),
+      0 0 0 6px color-mix(in srgb, var(--ask) 22%, transparent);
+  }
+}
+/* This board's questions (ui/QuestionList.tsx): an amber ? and how many are open; it opens their list under it */
+.qlist {
+  position: relative;
+  font: 12.5px / 1.45 var(--sys);
+  color: var(--ink);
+}
+.qlist-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px 0 4px;
+  border: 0;
+  border-radius: 999px;
+  corner-shape: round;
+  background: color-mix(in srgb, var(--ask) 14%, transparent);
+  color: color-mix(in srgb, var(--ask) 80%, var(--ink));
+  font: 600 12px / 1 var(--sys);
+  cursor: pointer;
+}
+.qlist-btn:hover,
+.qlist-btn.on {
+  background: color-mix(in srgb, var(--ask) 24%, transparent);
+}
+.qlist-btn.none {
+  background: var(--hlrow);
+  color: var(--ink-3);
+}
+.qlist-q {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--ask);
+  color: var(--ask-ink);
+  font: 700 11px / 1 var(--sys);
+}
+.qlist-btn.none .qlist-q {
+  background: var(--ink-3);
+}
+.qlist-pop {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  right: -6px;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  max-height: min(420px, 100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 1px var(--hair),
+    var(--sh-float);
+  padding: 4px 6px 6px;
+}
+.qlist-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0 4px;
+}
+/* whose questions: a field with this board's name, the boards matching what is typed offered under it */
+.qlist-pick {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.qlist-pick input {
+  width: 100%;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 46px 0 9px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--hlrow);
+  box-shadow: inset 0 0 0 1px var(--hair);
+  color: var(--ink);
+  font: 600 12.5px / 28px var(--sys);
+  outline: none;
+}
+.qlist-pick input:focus {
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 60%, transparent);
+  background: var(--surface);
+}
+.qlist-pick :is(.qlist-clear, .qlist-open) {
+  position: absolute;
+  top: 4px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.qlist-pick .qlist-clear {
+  right: 24px;
+}
+.qlist-pick .qlist-open {
+  right: 4px;
+}
+.qlist-pick :is(.qlist-clear, .qlist-open):hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+.qlist-pick.open .qlist-open {
+  rotate: 180deg;
+}
+.qlist-boards {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  display: grid;
+  padding: 4px;
+  background: var(--surface);
+  border-radius: 9px;
+  box-shadow:
+    0 0 0 1px var(--hair),
+    var(--sh-float);
+}
+.qlist-board {
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  text-align: left;
+  color: var(--ink);
+  font: 12.5px / 1.4 var(--sys);
+  cursor: pointer;
+}
+.qlist-board:hover {
+  background: var(--hlrow);
+}
+.qlist-board.cur {
+  font-weight: 600;
+}
+.qlist-group {
+  padding: 8px 8px 2px;
+  color: var(--ink-3);
+  font: 600 11px / 1.4 var(--sys);
+}
+.qlist-group:first-child {
+  padding-top: 2px;
+}
+.qlist-head .ib {
+  width: 24px;
+  height: 24px;
+  color: var(--ink-3);
+  border-radius: 6px;
+}
+.qlist-head .ib:hover {
+  color: var(--ink);
+  background: var(--hlrow);
+}
+.qlist-head .ib.on {
+  color: var(--ask);
+  background: color-mix(in srgb, var(--ask) 12%, transparent);
+}
+.qlist-rows {
+  display: grid;
+  gap: 2px;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.qlist-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.qlist-row:hover {
+  background: var(--hlrow);
+}
+.qlist-row .qm {
+  flex: none;
+  margin-top: 1.5px;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--ask);
+  color: var(--ask-ink);
+  font: 700 11px / 1 var(--sys);
+}
+.qlist-row.done .qm {
+  background: none;
+  color: var(--ink-3);
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+.qlist-row.done .qlist-l {
+  color: var(--ink-2);
+}
+.qlist-t {
+  display: grid;
+  min-width: 0;
+}
+.qlist-l {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qlist-w {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 10.5px / 1.5 var(--mono);
+  color: var(--ink-3);
+}
+
+/* the toolbar's questions button sits among its icon buttons */
+.pill .qlist {
+  display: flex;
+  align-items: center;
+}
+.pill .qlist-btn {
+  margin: 0 2px;
+}
+/* a spot's sidenote badge (ui/SnBadge.tsx): the count, or the amber ? while a question there is open. One round badge everywhere,
+   14 world px across like the rest of the card; its hit area (--hit world px, at least 18 px on screen: badgeHit) is invisible */
+.snb {
+  position: absolute;
+  z-index: 5;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--mark);
+  color: var(--mark-ink);
+  font: 600 9px / 14px var(--sys);
+  text-align: center;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.snb::before {
+  content: "";
+  position: absolute;
+  inset: calc((14px - var(--hit, 18px)) / 2);
+  min-width: var(--hit, 18px);
+  border-radius: 999px;
+}
+.snb:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.snb.ask {
+  background: var(--ask);
+  color: var(--ask-ink);
+}
+.snb.ask:hover {
+  background: color-mix(in srgb, var(--ask) 82%, var(--ink));
+}
+/* a card's badges, its block tint and the drop outline: over the card, past its right edge (positions inline, SnBadge.tsx) */
+.snspots {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.card.lift .snspots .snb {
+  visibility: hidden;
+}
+.sntint {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.snaim {
+  position: absolute;
+  inset: -4px;
+  border-radius: calc(var(--r-card, 10px) + 4px);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+/* a Section's: after its title */
+.slabel .snb.insect {
+  position: relative;
+  flex: none;
+  margin-left: 6px;
+  align-self: center;
+}
+/* free on the canvas: centred on its point; dragged to move, dropped onto a card or a Note's block to sit there */
+.freespots {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.snb.free {
+  translate: -50% -50%;
+  box-shadow: 0 1px 4px -1px rgba(0, 0, 0, 0.25);
+  cursor: grab;
+  touch-action: none;
+}
+.snb.free:active {
+  cursor: grabbing;
+}
+.snb.free.none {
+  background: var(--surface);
+  box-shadow:
+    0 0 0 1.5px var(--ask),
+    0 2px 6px -1px rgba(0, 0, 0, 0.2);
+}
+.snb.free.moving {
+  z-index: 40;
+  cursor: grabbing;
+  scale: 1.1;
+}
+/* a popup dragged away from its badge: a thin line back to it */
+.popline {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 34;
+  pointer-events: none;
+  overflow: visible;
+}
+.popline line {
+  stroke: color-mix(in srgb, var(--ink) 35%, transparent);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.popline circle {
+  fill: color-mix(in srgb, var(--ink) 45%, transparent);
+}
+/* a gutter badge's hit area (a Highlight's count, the selected lines' +): invisible, --hit world px wide (at least 18 px on screen,
+   cards/CodeBody.tsx gutterBadge) and --hit-h tall, no taller than a line so neighbouring lines' badges keep their own; it grows
+   rightward from the badge's left edge, so zoomed out it does not cover the line numbers left of it */
+.hxm::before {
+  content: "";
+  position: absolute;
+  top: calc((13px - var(--hit-h, 17px)) / 2);
+  height: var(--hit-h, 17px);
+  left: 0;
+  width: max(100%, var(--hit, 18px));
+  border-radius: 999px;
+}
+/* zoomed out, a Highlight's badge stays clickable above the shield over the lines; the rest of the gutter stays behind it */
+.world.greek .card:not(.editing) .cbody .gutter {
+  z-index: 4;
+  pointer-events: none;
+}
+.world.greek .card:not(.editing) .cbody .gutter .hxm {
+  pointer-events: auto;
+}
+.bbar .qlist-btn {
+  margin: 0;
+  padding: 0 6px 0 3px;
+  gap: 3px;
 }
