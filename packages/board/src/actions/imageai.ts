@@ -602,6 +602,7 @@ export function imageAiItems(ref: ImgRef): Item[] {
   const s = state.host.settings;
   return [
     ...extract,
+    null,
     { label: "Convert to SVG", disabled: web, run: () => void convertToSvg(ref) },
     {
       label: "Remove Background",

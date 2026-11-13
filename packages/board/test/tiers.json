@@ -304,6 +304,7 @@
       "about": "Sections (frames): drawing, membership, folding, Fit Content",
       "files": [
         "packages/board/src/canvas/Sections.tsx",
+        "packages/board/src/canvas/SectionTools.tsx",
         "packages/board/src/state/sections.ts",
         "packages/board/src/state/fold.ts",
         "packages/core/src/layout.ts",
@@ -437,7 +438,7 @@
         "packages/host/src/meaning.ts",
         "packages/host/src/searchtrace.ts",
         "packages/host/src/preview.ts",
-        "packages/board/test/scenarios/{dialogs,keyboard-focus,header,multi-select}.spec.ts"
+        "packages/board/test/scenarios/{dialogs,keyboard-focus,header,multi-select,card-menus}.spec.ts"
       ],
       "scenarios": [
         "palette",
@@ -470,8 +471,8 @@
       "about": "images: Image cards, images in Notes (paste, drop, resize), SVG, the asset store, the DeepSeek image tools (Extract Text, Convert to SVG, Modify SVG, Paste Image Text, Draw as SVG)",
       "files": [
         "packages/board/src/md/{images,copies}.ts",
-        "packages/board/src/md/{anim,animsvg}.ts",
-        "packages/board/src/ui/AnimStrip.tsx",
+        "packages/board/src/md/{anim,animsvg,svgframes}.ts",
+        "packages/board/src/ui/AnimBar.tsx",
         "packages/board/src/notedrop.ts",
         "packages/board/src/actions/{imagedata,imageai}.ts",
         "packages/markdown/src/{image,picture}.ts",

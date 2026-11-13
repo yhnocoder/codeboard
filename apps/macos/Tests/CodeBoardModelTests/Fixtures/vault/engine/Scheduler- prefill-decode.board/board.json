@@ -1,0 +1,51 @@
+{
+  "arrows": [
+    {
+      "dashed": false,
+      "endHead": true,
+      "from": {
+        "card": "cn",
+        "lost": false
+      },
+      "id": "l1",
+      "startHead": false,
+      "to": {
+        "card": "cshared",
+        "lost": false
+      },
+      "width": 2
+    }
+  ],
+  "cards": [
+    {
+      "id": "cshared",
+      "locked": false,
+      "shared": true,
+      "tilted": true,
+      "width": 300,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "content": {
+        "note": {
+          "style": {
+            "note": {}
+          },
+          "text": "Queue"
+        },
+        "processes": []
+      },
+      "id": "cn",
+      "locked": false,
+      "tilted": false,
+      "width": 200,
+      "x": 400,
+      "y": 0
+    }
+  ],
+  "hideComments": false,
+  "id": "bsched",
+  "sections": [],
+  "version": 1
+}

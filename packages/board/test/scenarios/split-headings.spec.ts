@@ -1,8 +1,8 @@
-// Split by Headings (Note right-click): the first heading's level L decides; every heading of level ≤ L+1 starts a new Note
+// Split by Headings (the Note header's hover button): the first heading's level L decides; every heading of level ≤ L+1 starts a new Note
 // titled by it, deeper ones stay in their card, the text before the first heading stays in the Note. Arrows go parent → child
 // (solid), the cards sit in a tree going down without covering other cards, and the whole split is one undo step.
-//   splitByHeadingsMakesTree    menu item → five Notes, arrows, layout, ⌘Z back to the one Note
-//   splitByHeadingsDisabled     a Note without headings (or only headings in code) has the item greyed out
+//   splitByHeadingsMakesTree    hover button → five Notes, arrows, layout, ⌘Z back to the one Note
+//   splitByHeadingsDisabled     a Note without headings (or only headings in code) has the button greyed out, and clicking it does nothing
 //   splitByHeadingsSameLevel    a Note that starts with ## and has another ## later: the Note keeps the first section, the second one shows up under it
 import { emptyBoard, mdHeading, type Board, type NoteCard } from "@codeboard/core";
 import { shot, type Host } from "../harness";
@@ -53,12 +53,14 @@ function splitBoard(): Board {
   return b;
 }
 const notes = (h: Host) => h.board().cards.filter((c): c is NoteCard => c.kind === "note");
-const openMenu = async (h: Host, id: string) => {
-  await h.page.locator(`.card[data-id="${id}"] .nbody`).click({ button: "right", position: { x: 40, y: 12 } });
-  await h.page.locator(".ctx:not(.closing) button").first().waitFor();
+/** the pointer over the Note: its header's hover buttons show */
+const hoverNote = async (h: Host, id: string) => {
+  await h.page.locator(`.card[data-id="${id}"] .nbody`).hover({ position: { x: 40, y: 12 } });
   await idle(h);
 };
-const item = (h: Host) => h.page.locator(".ctx:not(.closing) button", { hasText: "Split by Headings" });
+const item = (h: Host, id: string) =>
+  h.page.locator(`.card[data-id="${id}"] .chead .ib[aria-label="Split by Headings"]`);
+const disabled = async (h: Host, id: string) => (await item(h, id).getAttribute("aria-disabled")) === "true";
 /** Every card's box on screen, by id */
 const boxes = (h: Host) =>
   h.page.locator(".card").evaluateAll((els) =>
@@ -71,9 +73,12 @@ const boxes = (h: Host) =>
 test("splitByHeadingsMakesTree", async () => {
   const h = await open({ board: splitBoard(), light, w: 1500, h: 1100 });
   const pg = h.page;
-  await openMenu(h, "n");
-  check("splitByHeadingsMakesTree menu item enabled", (await item(h).count()) === 1 && !(await item(h).isDisabled()));
-  await item(h).click();
+  await hoverNote(h, "n");
+  check(
+    "splitByHeadingsMakesTree hover button enabled",
+    (await item(h, "n").count()) === 1 && !(await disabled(h, "n")),
+  );
+  await item(h, "n").click();
   await until(h, "the split is saved", () => notes(h).length === 8);
   await idle(h);
   await shot(h, "split-headings-result");
@@ -164,12 +169,13 @@ test("splitByHeadingsMakesTree", async () => {
 
 test("splitByHeadingsDisabled", async () => {
   const h = await open({ board: splitBoard(), light, w: 1500, h: 1100 });
-  await openMenu(h, "plain");
+  await hoverNote(h, "plain");
   check(
     "splitByHeadingsDisabled greyed out without headings",
-    (await item(h).count()) === 1 && (await item(h).isDisabled()),
+    (await item(h, "plain").count()) === 1 && (await disabled(h, "plain")),
   );
-  await h.page.keyboard.press("Escape");
+  await item(h, "plain").click({ force: true }); // aria-disabled: Playwright would wait for it to be enabled
+  await idle(h);
   check("splitByHeadingsDisabled nothing split", notes(h).length === 3);
 });
 
@@ -198,8 +204,8 @@ test("splitByHeadingsSameLevel", async () => {
   b.place.n = { x: 200, y: 60, w: 360 };
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light, w: 1200, h: 1000 });
-  await openMenu(h, "n");
-  await item(h).click();
+  await hoverNote(h, "n");
+  await item(h, "n").click();
   await until(h, "the split is saved", () => notes(h).length === 2);
   await idle(h);
   await shot(h, "split-headings-same-level");

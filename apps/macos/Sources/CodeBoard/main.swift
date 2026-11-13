@@ -1,0 +1,3 @@
+import CodeBoardShell
+
+runApp()

@@ -1069,7 +1069,7 @@ test("noteEditKeepsHeightWithHeaderFolded", async () => {
       const st = await pg.evaluate((id) => {
         const card = document.querySelector(`.card[data-id="${id}"]`)!,
           head = card.querySelector(".chead")!,
-          ib = head.querySelector<HTMLElement>(".ib")!,
+          ib = head.querySelector<HTMLElement>(".ib.cmenu")!,
           r = ib.getBoundingClientRect();
         const hd = card.querySelector<HTMLElement>(".md-pm > :is(h1, h3)");
         return {

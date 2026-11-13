@@ -28,6 +28,7 @@ import { KIND_ICON } from "../cards/BoardBody";
 import { sectionLabelDown, sectionEdgeDown } from "../interact";
 import * as A from "../actions";
 import { SECTION_PEEK_OUT } from "../state/timing";
+import { SectionTools, sectionToolsInMenu } from "./SectionTools";
 
 /** a resize handle on each side and each corner of an open frame (styles.css .sedge) */
 const FRAME_EDGES: FrameEdge[] = ["n", "s", "e", "w", "nw", "ne", "sw", "se"];
@@ -212,10 +213,17 @@ export function SectionLabels() {
         const [peek, setPeek] = createSignal<0 | 1 | 2>(0);
         let t: ReturnType<typeof setTimeout> | undefined;
         const enter = () => {
+          setHot(true);
           clearTimeout(t);
           if (s.collapsed && peek() !== 1) t = setTimeout(() => setPeek(1), peek() ? 0 : PEEK_DELAY);
         };
+        // Color's five swatches, opened by its hover button; they fold away again when the pointer leaves the title
+        const [swatches, setSwatches] = createSignal(false);
+        // the pointer is over the title: only then (or selected) do its buttons work out whether Fit Content can do anything
+        const [hot, setHot] = createSignal(false);
         const leave = () => {
+          setHot(false);
+          setSwatches(false);
           clearTimeout(t);
           if (peek() !== 1) return setPeek(0);
           setPeek(2);
@@ -326,11 +334,31 @@ export function SectionLabels() {
               <Show when={s.collapsed && peek() && n() > 0}>
                 <Peek id={s.id} out={peek() === 2} />
               </Show>
+              <SectionActs
+                s={s}
+                live={hot() || sel.sections.includes(s.id)}
+                swatches={swatches()}
+                setSwatches={setSwatches}
+              />
             </div>
           </Show>
         );
       }}
     </For>
+  );
+}
+
+/**
+ * The title's hover buttons: Fit Content, Color (which opens the five swatches to its right) and Lock. They sit just past the
+ * title, out of its layout (absolute), so showing them never changes the title's size: nothing is measured again (Ink Wash's
+ * gap in the brush stroke, a collapsed frame) and only their own opacity changes on hover (styles.css .sacts). While the
+ * Section's context menu shows the same row at its top, they stay hidden
+ */
+function SectionActs(p: { s: Section; live: boolean; swatches: boolean; setSwatches: (v: boolean) => void }) {
+  return (
+    <span class="sacts" classList={{ off: sectionToolsInMenu() === p.s.id }} data-export="strip">
+      <SectionTools s={p.s} live={p.live} swatches={p.swatches} setSwatches={p.setSwatches} />
+    </span>
   );
 }
 

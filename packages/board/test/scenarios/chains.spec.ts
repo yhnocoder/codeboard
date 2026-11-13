@@ -367,11 +367,13 @@ async function crosslang(res: Record<string, unknown>) {
   const kb = (await kLine.boundingBox())!;
   await page.mouse.click(kb.x + kb.width - 30, kb.y + kb.height / 2, { button: "right" });
   await page.locator(".ctx:not(.closing) button").first().waitFor();
-  // the line menu when the right-click lands on the selected line, else the card menu's Edit ▸
-  if (!(await page.locator(".ctx:not(.closing) button", { hasText: "Add Generated Code" }).count())) {
-    await page.locator(".ctx:not(.closing) button", { hasText: /^Edit/ }).hover();
+  // the line menu (Add Generated Code ▸) when the right-click lands on the selected line, else the card menu's Add ▸ Generated Code ▸
+  const lineItem = page.locator(".ctx:not(.closing) button", { hasText: "Add Generated Code" });
+  if (await lineItem.count()) await lineItem.hover();
+  else {
+    await page.locator('.ctx:not(.closing) button:has(.lb:text-is("Add"))').hover();
+    await page.locator('.ctx:not(.closing) button:has(.lb:text-is("Generated Code"))').hover();
   }
-  await page.locator(".ctx:not(.closing) button", { hasText: "Add Generated Code" }).hover();
   await page.locator(".ctx:not(.closing) button", { hasText: "Paste from Clipboard" }).click();
   await until(h, "the generated card is saved", () => h.board().cards.some((c) => c.kind === "code" && c.gen));
   await idle(h);

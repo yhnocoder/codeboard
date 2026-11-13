@@ -1,0 +1,32 @@
+name: macOS
+# The native Mac app (apps/macos): build, unit tests and swift-format's lint. It targets the latest macOS only, so it
+# needs the image with Xcode 27 (a preview image on GitHub for now); the newest Xcode on it is selected, which is the
+# toolchain the app is developed with.
+on:
+  pull_request:
+    paths: ["apps/macos/**", ".github/workflows/macos.yml"]
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: macos-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+jobs:
+  app:
+    runs-on: xcode-27
+    timeout-minutes: 15
+    defaults:
+      run: { working-directory: apps/macos }
+    steps:
+      - uses: actions/checkout@v6
+      # the page that draws Notes (apps/macos/web, over the Markdown package's build); the Notes tests render through it
+      - uses: ./.github/actions/setup
+        with:
+          build: npm run build -w @yhnocoder/markdown && node apps/macos/web/build.mjs
+      - name: Select the newest Xcode
+        run: |
+          sudo xcode-select -s "$(find /Applications -maxdepth 1 -type d -name 'Xcode_*.app' | sort -V | tail -1)"
+          swift --version
+      - run: swift build
+      - run: swift test
+      - run: swift format lint --strict -r Sources Tests Package.swift

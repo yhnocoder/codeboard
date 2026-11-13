@@ -116,6 +116,24 @@ export const ICONS = {
   undo: ["M6 10 2 6l4-4M2 6h7.5a3.5 3.5 0 0 1 0 7H7", "", "undo-2"],
   redo: ["M10 10l4-4-4-4M14 6H6.5a3.5 3.5 0 0 0 0 7H9", "", "redo-2"],
   lock: [rect(2, 7, 14, 14, R) + "M5 7V5a3 3 0 0 1 6 0v2", "", "lock"],
+  wrap: ["M2 4h12M2 8h10a2 2 0 1 1 0 4H9M11 10l-2 2 2 2M2 12h4", "", "wrap-text"],
+  // two heading blocks with a dashed cut between them (Split by Headings)
+  splitH: ["M2 2h12M2 5h8M1 8h2M5 8h2M9 8h2M13 8h2M2 11h12M2 14h8", "", "custom: split by headings"],
+  // the bucket is Lucide's tilted square snapped to 45° edges through whole points, the liquid line on y 8, the drop's sides
+  // and bottom on whole tangents
+  paint: [
+    poly(
+      [
+        [12, 7],
+        [7, 2],
+        [1, 8, 1],
+        [6, 13, 1],
+      ],
+      true,
+    ) + "M2 1l4 4M2 8h9M15 13.5a1.5 1.5 0 1 1-3 0c0-1.2 1.28-1.8 1.5-3 .22 1.2 1.5 1.8 1.5 3z",
+    "",
+    "paint-bucket",
+  ],
   loop: ["M14 8a6 6 0 1 1-6-6c1.7 0 3.3.7 4.5 1.8L14 5M14 2v3h-3", "", "rotate-cw"],
   layout: [rect(2, 2, 14, 14, R) + "M6 2v12", "", "panel-left"],
   focus: [circle(8, 8, 2) + corners(), "", "focus"],

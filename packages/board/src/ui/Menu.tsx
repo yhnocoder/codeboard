@@ -1,4 +1,15 @@
-import { createRoot, createSignal, For, Show, onCleanup, onMount, createEffect, createMemo, on } from "solid-js";
+import {
+  createRoot,
+  createSignal,
+  For,
+  Show,
+  onCleanup,
+  onMount,
+  createEffect,
+  createMemo,
+  on,
+  type JSX,
+} from "solid-js";
 import { Icon } from "./icons";
 import { place, virtual, scrollIntoBox } from "@yhnocoder/markdown/ui";
 import { useOverlay } from "./overlay";
@@ -20,8 +31,11 @@ export type Item = {
   head?: true;
   keep?: true;
   inset?: true;
+  row?: () => JSX.Element;
 } | null; // 分隔线。head = 不能点的小标题（共享卡：「… · on 2 boards」）。
 // keep = 勾选项点了只切换、菜单不关（Convert to SVG 下面的选项）；inset = 缩进一级，表示它属于上面那一项
+// row = a row of the menu's own buttons instead of an item (a Section's Fit Content / Color / Lock): label names the group,
+// the arrow keys pass over it and using its buttons leaves the menu open
 
 type MenuState = { items: Item[]; x: number; y: number; n: number; up?: boolean };
 const [menu, setMenu] = createSignal<MenuState | null>(null);
@@ -124,7 +138,7 @@ function MenuList(p: {
   const [hov, setHov] = createSignal<number | null>(null);
   const hot = () => kbAt() ?? hov() ?? subOf()?.i ?? null;
   let pill: HTMLSpanElement | undefined;
-  const live = (it: Item) => !!it && !it.head && !it.disabled;
+  const live = (it: Item) => !!it && !it.head && !it.row && !it.disabled;
   /** The safe triangle: while a submenu is open and the pointer heads for it (inside the triangle from where it just was to the
    *  submenu's near edge), the items it crosses on the way do not take over; the last one does once it turns away or rests
    *  MENU_AIM ms */
@@ -155,7 +169,7 @@ function MenuList(p: {
     clearTimeout(aimT);
     const it = p.items[i];
     if (!it) return;
-    setHov(it.disabled ? null : i);
+    setHov(it.disabled || it.row ? null : i);
     if (it.sub && !it.disabled) openSub(i, false);
     else setSubOf(null);
   };
@@ -279,6 +293,10 @@ function MenuList(p: {
           {(it, i) =>
             it?.head ? (
               <div class="mh">{it.label}</div>
+            ) : it?.row ? (
+              <div class="mrow" role="group" aria-label={it.label} onPointerEnter={() => hoverItem(i())}>
+                {it.row()}
+              </div>
             ) : it ? (
               <button
                 ref={(b) => (btns[i()] = b)}

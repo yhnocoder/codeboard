@@ -1,0 +1,30 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="board/board.css">
+<style>
+html, body { margin: 0; height: 100%; overflow: hidden; } #root { position: fixed; inset: 0; }
+/* the Mac canvas draws a Note's frame and the Note page its content: only the frame is compared */
+.card .nbody, .card .tx { visibility: hidden; }
+/* calls found by the host's language analysis, which the Mac model does not have yet */
+.card .call { background: none !important; border: 0 !important; text-decoration: none !important; padding-bottom: 0 !important; }
+</style>
+</head>
+<body class="vscode-light"><div id="root"></div>
+<script type="module">
+// The look comparison's reference page (reference.ts drives it): the built board as a still picture, given the host's
+// recorded messages, as packages/tiles/page/render.html does
+import { boot } from "./board/boot.js";
+let listener = () => {};
+window.__deliver = (msgs) => {
+  for (const m of msgs) listener(m);
+};
+window.__board = boot(
+  {
+    listen: (fn) => (listener = fn),
+    post: (m) => {
+      if ("req" in m) queueMicrotask(() => listener({ type: "reply", req: m.req, data: null }));
+    },
+  },
+  { selfCheck: false, still: true },
+);
+</script></body></html>

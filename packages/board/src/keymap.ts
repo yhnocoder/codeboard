@@ -199,7 +199,7 @@ const KEYMAP: Bind[] = [
   { id: "zoomIn", keys: ["mod+=", "mod++"], show: "⌘+", label: "Zoom In", group: "View", run: () => zoomAt(1.25) },
   { id: "zoomOut", keys: ["mod+-"], show: "⌘−", label: "Zoom Out", group: "View", run: () => zoomAt(0.8) },
   { id: "zoomGesture", show: "⌘ + scroll / pinch", label: "Zoom", group: "View" },
-  // a selected animated image in a Note (md/anim.ts) takes Space and ← → before panning and nudging
+  // a selected animated image (md/anim.ts) takes Space, ← → and Home / End before panning and nudging
   {
     id: "animPlay",
     keys: [" "],
@@ -222,6 +222,24 @@ const KEYMAP: Bind[] = [
     run: () => selectedAnim()!.step(-1),
   },
   { id: "animNext", keys: ["ArrowRight"], when: () => !!selectedAnim(), run: () => selectedAnim()!.step(1) },
+  {
+    id: "animFirst",
+    keys: ["Home"],
+    show: "Home End",
+    label: "First / last frame of the selected animated image",
+    group: "Cards",
+    when: () => !!selectedAnim(),
+    run: () => selectedAnim()!.seek(0),
+  },
+  {
+    id: "animLast",
+    keys: ["End"],
+    when: () => !!selectedAnim(),
+    run: () => {
+      const p = selectedAnim()!;
+      p.seek(p.count() - 1);
+    },
+  },
   {
     id: "pan",
     keys: [" "],

@@ -205,7 +205,7 @@ const armed = boardRef<{ id: string; kind: "note" | "free"; x: number; y: number
 export function cardClick(e: MouseEvent, id: string) {
   const a = armed.v;
   armed.v = null;
-  // a click on an animated image in the one selected Note selects the image (its filmstrip), not the text: no editing yet
+  // a click on an animated image in the one selected Note selects the image (its keys and bar stay), not the text: no editing yet
   const anim = playerAt(e.target as Element);
   if (anim && anim.key.card === id && !e.shiftKey && !e.metaKey && !e.ctrlKey && !justDragged()) {
     if (isSel(id) && sel.cards.length === 1 && editing()?.id !== id) selectAnim(anim);
@@ -1199,6 +1199,10 @@ export function canvasContextMenu(e: MouseEvent, md: Markdown) {
   if (lk) return A.linkMenu(lk.dataset.link!, e.clientX, e.clientY);
   const sl = t.closest("[data-sect]") as HTMLElement | null;
   if (sl) return A.sectionMenu(sl.dataset.sect!, e.clientX, e.clientY);
+  // a Section's blank inside is that Section (the innermost one), as for a ⌘-drag there
+  const w = worldOf(e);
+  const s = deepestAt(frames(), w.x, w.y, hiddenSections());
+  if (s) return A.sectionMenu(s.id, e.clientX, e.clientY);
   A.canvasMenu(md, e.clientX, e.clientY);
 }
 
