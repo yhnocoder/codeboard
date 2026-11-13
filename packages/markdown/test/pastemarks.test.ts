@@ -7,7 +7,7 @@ import { marksInSlice } from "../src/editor/pastemarks";
 import { htmlSource } from "../src/editor/pastemarks";
 import { MathPreamble } from "../src/math";
 import { markTags } from "../src/marktag";
-import { guessLang, looksLikeCode } from "../src/editor/paste";
+import { pastedCodeLang } from "../src/editor/paste";
 
 // Notes with three ==highlights== in CJK text, one closing right before 。
 const SIMT = [
@@ -143,6 +143,26 @@ describe("<mark>x</mark> written as ==x==", () => {
     for (const k of kept) expect(markTags(k)).toBe(k);
     expect(markTags("- item <mark>li</mark>")).toBe("- item ==li==");
   });
+  it("keeps code fenced inside a list item or a quote, and what follows it, as written", () => {
+    const li = "- ```\n  <mark>x</mark>\n  ```\n\nafter <mark>y</mark>";
+    expect(markTags(li)).toBe("- ```\n  <mark>x</mark>\n  ```\n\nafter ==y==");
+    const q = "> ```\n> <mark>x</mark>\n> ```\n\n<mark>y</mark>";
+    expect(markTags(q)).toBe("> ```\n> <mark>x</mark>\n> ```\n\n==y==");
+  });
+  it("leaves a <mark> right after a rewritten one, and one in a formula, as written", () => {
+    expect(markTags("<mark>a</mark><mark>b</mark>")).toBe("==a==<mark>b</mark>");
+    expect(markTags("$<mark>a</mark>$ and $$<mark>b</mark>$$ but <mark>c</mark>")).toBe(
+      "$<mark>a</mark>$ and $$<mark>b</mark>$$ but ==c==",
+    );
+    expect(markTags("costs $5 and <mark>c</mark>")).toBe("costs $5 and ==c==");
+  });
+  it("takes linear time over a long run of backslashes", () => {
+    const s = `${"\\".repeat(200_000)}<mark>x</mark>`;
+    const t0 = process.cpuUsage();
+    markTags(s);
+    const u = process.cpuUsage(t0);
+    expect((u.user + u.system) / 1000).toBeLessThan(500);
+  });
   it("reads one left as text in pasted HTML as a highlight, not one in code", () => {
     const dom = new DOMParser().parseFromString(
       "<p>lit &lt;mark&gt;text&lt;/mark&gt; <code>&lt;mark&gt;c&lt;/mark&gt;</code></p>",
@@ -153,16 +173,19 @@ describe("<mark>x</mark> written as ==x==", () => {
 });
 
 describe("pasted plain text that reads as code", () => {
-  it("tells code from prose and Markdown, and guesses its language", () => {
-    const py = "def f(x):\n    # twice\n    return x * 2";
-    const ts = "const a = 1;\nfunction f() {\n  return a;\n}";
-    expect(looksLikeCode(py)).toBe(true);
-    expect(guessLang(py)).toBe("python");
-    expect(looksLikeCode(ts)).toBe(true);
-    expect(guessLang(ts)).toBe("typescript");
-    expect(looksLikeCode("Thanks for the review.\nI will fix the names tomorrow.")).toBe(false);
-    expect(looksLikeCode("one line = code;")).toBe(false);
-    expect(looksLikeCode("## Plan\n\n- return the value (a)\n- keep the class (b);")).toBe(false);
-    expect(looksLikeCode("```py\nx = 1\n```")).toBe(false);
+  const always = () => "python",
+    never = () => null;
+  it("is code when the page's classifier says so, over several lines", () => {
+    expect(pastedCodeLang("def f(x):\n    # twice\n    return x * 2", always)).toBe("python");
+    expect(pastedCodeLang("def f(x):\n    return x", never)).toBe(null);
+    expect(pastedCodeLang("one line = code;", always)).toBe(null);
+  });
+  it("is prose when Markdown's own structure says so; headings and emphasis do not", () => {
+    expect(pastedCodeLang("## Plan\nWe return early.\nOtherwise see [the docs](https://x).", always)).toBe(null);
+    expect(pastedCodeLang("## Plan\n\n- return the value (a)\n- keep the class (b);", always)).toBe(null);
+    expect(pastedCodeLang("> quoted\n> twice", always)).toBe(null);
+    expect(pastedCodeLang("```py\nx = 1\n```", always)).toBe(null);
+    expect(pastedCodeLang("# a comment\ndef f(*args, **kw):\n    return g(*args)", always)).toBe("python");
+    expect(pastedCodeLang("def f(x):\n    y = x\n    return y", always)).toBe("python");
   });
 });

@@ -105,7 +105,8 @@ function v12to13(b: any) {
 
 function markCard(c: any) {
   if (typeof c.desc === "string") c.desc = markTags(c.desc);
-  if (c.kind === "note" && typeof c.md === "string") c.md = markTags(c.md);
+  // a Free Text's md is plain text, not Markdown
+  if (c.kind === "note" && c.look !== "freetext" && typeof c.md === "string") c.md = markTags(c.md);
   for (const m of c.mergedFrom ?? []) if (m?.card) markCard(m.card);
 }
 function markNote(n: any) {
@@ -113,10 +114,10 @@ function markNote(n: any) {
 }
 /**
  * 13 → 14 in one piece of Markdown: `<mark>x</mark>` (no attributes, on one line, nothing nested) → `==x==`, spaces at its ends
- * moved outside, as the editor does with a typed or pasted one. Code (fenced, indented, inline) and HTML blocks stay as written,
+ * moved outside, as the editor does with a typed or pasted one. Code (fenced, indented, inline), formulas and HTML blocks stay as written,
  * so does a `<mark>` the == form cannot say the same way (== in it or touching it, an escaped one)
  */
-export function markTags(md: string): string {
+function markTags(md: string): string {
   if (!/<mark>/i.test(md)) return md;
   const out: string[] = [];
   let run: string[] = [],
@@ -131,10 +132,12 @@ export function markTags(md: string): string {
     out.push(l);
   };
   for (const l of md.split("\n")) {
-    const f = /^ {0,3}(`{3,}|~{3,})/.exec(l);
+    // a fence may stand in a list item or a quote: its container's markers and indent come first
+    const inner = l.replace(CONTAINER, ""),
+      f = /^(`{3,}|~{3,})/.exec(inner);
     if (fence) {
       fixed(l);
-      if (new RegExp(`^ {0,3}${fence[0]}{${fence.length},}\\s*$`).test(l)) fence = "";
+      if (new RegExp(`^${fence[0]}{${fence.length},}\\s*$`).test(inner)) fence = "";
     } else if (f) {
       fence = f[1];
       fixed(l);
@@ -150,30 +153,68 @@ export function markTags(md: string): string {
   flush();
   return out.join("\n");
 }
-/** Lines of text (no code or HTML blocks): inline code spans skipped */
+/** A line's list and quote markers and its indent */
+const CONTAINER = /^(?:\s*(?:>|[-+*](?=\s)|\d{1,9}[.)](?=\s)))*\s*/;
+
+/** Lines of text (no code or HTML blocks): inline code spans and formulas skipped */
 function markText(src: string): string {
   let out = "",
-    i = 0;
+    i = 0,
+    // where the last rewritten <mark> ended: one right after it stays as written (==a====b== would read as one run)
+    last = -1;
+  const marks = (from: number, to: number) =>
+    src
+      .slice(from, to)
+      .replace(/(?<!\\)(\\*)<mark>([^<>\n]*)<\/mark>/gi, (whole, esc: string, x: string, at: number) => {
+        const t = x.trim(),
+          abs = from + at,
+          before = src[abs - 1 + esc.length] ?? "",
+          after = src[abs + whole.length] ?? "";
+        if (
+          esc.length % 2 ||
+          !t ||
+          t.includes("==") ||
+          /^=|[=\\]$/.test(t) ||
+          before === "=" ||
+          after === "=" ||
+          abs === last
+        )
+          return whole;
+        last = abs + whole.length;
+        return `${esc}${x.slice(0, x.length - x.trimStart().length)}==${t}==${x.slice(x.trimEnd().length)}`;
+      });
   while (i < src.length) {
-    const tick = src.indexOf("`", i),
-      end = tick < 0 ? src.length : tick;
-    out += src.slice(i, end).replace(/(\\*)<mark>([^<>\n]*)<\/mark>/gi, (whole, esc: string, x: string, at: number) => {
-      const t = x.trim(),
-        abs = i + at,
-        before = src[abs - 1 + esc.length] ?? "",
-        after = src[abs + whole.length] ?? "";
-      if (esc.length % 2 || !t || t.includes("==") || /^=|[=\\]$/.test(t) || before === "=" || after === "=")
-        return whole;
-      return `${esc}${x.slice(0, x.length - x.trimStart().length)}==${t}==${x.slice(x.trimEnd().length)}`;
-    });
-    if (tick < 0) break;
-    const n = /^`+/.exec(src.slice(tick))![0].length,
-      close = new RegExp(`(?<!\`)\`{${n}}(?!\`)`).exec(src.slice(tick + n));
-    const stop = close ? tick + n + close.index + n : tick + n;
-    out += src.slice(tick, stop);
-    i = stop;
+    const at = skipAt(src, i);
+    if (!at) {
+      out += marks(i, src.length);
+      break;
+    }
+    out += marks(i, at[0]) + src.slice(at[0], at[1]);
+    i = at[1];
   }
   return out;
+}
+/** The next inline code span or formula from i on, as [start, end]: none when there is no ` or unescaped $ left */
+function skipAt(src: string, i: number): [number, number] | null {
+  const re = /`+|(?<!\\)\$\$?/g;
+  re.lastIndex = i;
+  for (let m = re.exec(src); m; m = re.exec(src)) {
+    const s = m.index,
+      d = m[0];
+    if (d[0] === "`") {
+      const close = new RegExp(`(?<!\`)\`{${d.length}}(?!\`)`).exec(src.slice(s + d.length));
+      return [s, close ? s + d.length + close.index + d.length : s + d.length];
+    }
+    // a formula ends at the same $ or $$ before a blank line; an unclosed $ is a dollar sign
+    const rest = src.slice(s + d.length),
+      para = rest.search(/\n\s*\n/),
+      close = new RegExp(`(?<!\\\\)${d === "$$" ? "\\$\\$" : "\\$(?!\\$)"}`).exec(
+        para < 0 ? rest : rest.slice(0, para),
+      );
+    if (close) return [s, s + d.length + close.index + d.length];
+    re.lastIndex = s + d.length;
+  }
+  return null;
 }
 
 /** 第 11 版 → 第 12 版的一张卡：从前的 Free Text（主题的标题样式，默认 40px = H1 的预设字号）→ H1 */

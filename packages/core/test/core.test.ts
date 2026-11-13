@@ -380,6 +380,11 @@ describe("paste", () => {
     ];
     for (const [code, lang] of cases) expect([code, guessLang(code)]).toEqual([code, lang]);
   });
+  it("reads prose with a heading and a link, as pasted from a chat or a README, as no code", () => {
+    expect(
+      guessLang("## Plan\nWe return early when the cache is cold (rare).\nOtherwise see [the docs](https://x)."),
+    ).toBe(null);
+  });
 });
 
 describe("migrateBoard", () => {

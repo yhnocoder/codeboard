@@ -1,6 +1,6 @@
 // Pasting into the editor: everything is written as Markdown source (code from VS Code as a code block, HTML read with the
 // full schema, plain lines as paragraphs, into a table cell joined with <br>)
-import type { Editor } from "@tiptap/core";
+import type { Editor, JSONContent } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import { closeHistory } from "@tiptap/pm/history";
 import { Fragment, Slice, type Node as PMNode } from "@tiptap/pm/model";
@@ -41,9 +41,11 @@ export function handlePaste(e: Editor, ev: ClipboardEvent): boolean {
   // only plain text (e-books, typeset formulas on web pages): "shown text + TeX" keeps only $TeX$; HTML is handled in mathInSlice
   const tex = mdOf(e.state).math;
   const vs = cd.getData("vscode-editor-data");
-  // <mark>x</mark> is written ==x== (code copied from VS Code stays as it is, so does a line pasted into an inline code span)
-  const plain = html || vs ? raw : undoubleTex(raw, tex),
-    text = vs || inCode(e) ? plain : markTags(plain);
+  const plain = html || vs ? raw : undoubleTex(raw, tex);
+  // code pasted from elsewhere is decided on the text as copied; prose has its <mark>x</mark> written ==x== (code copied from
+  // VS Code stays as it is, so does a line pasted into an inline code span)
+  const codeLang = html || vs || $f.parent.type.spec.code ? null : pastedCodeLang(plain, mdOf(e.state).codeLang),
+    text = vs || codeLang !== null || inCode(e) ? plain : markTags(plain);
   const put = (slice: Slice) => {
     e.view.dispatch(
       revealMeta(pasteSlice(e.state.tr, slice)).scrollIntoView().setMeta("paste", true).setMeta("uiEvent", "paste"),
@@ -108,7 +110,7 @@ export function handlePaste(e: Editor, ev: ClipboardEvent): boolean {
   }
   if (own) return put(sourceSlice(e, text));
   const lines = pastedMd(text) ? sourceSlice(e, texBrackets(text)) : linesSlice(e, text);
-  if (!looksLikeCode(text)) return put(lines);
+  if (codeLang === null) return put(lines);
   // Code from elsewhere (a terminal, a chat, a web page): one code block. Pasted in two steps, the lines as before and then the
   // block in their place, so one undo turns the block back into the lines and a second takes the paste away
   const from = e.state.selection.from,
@@ -119,7 +121,7 @@ export function handlePaste(e: Editor, ev: ClipboardEvent): boolean {
   const tr = e.state.tr;
   tr.setSelection(TextSelection.create(tr.doc, first.mapping.map(from, -1), e.state.selection.to));
   const code = dedent(text.replace(/^\n+|\s+$/g, ""));
-  tr.replaceSelectionWith(e.schema.nodes.codeBlock.create({ language: guessLang(code) }, e.schema.text(code)), false);
+  tr.replaceSelectionWith(e.schema.nodes.codeBlock.create({ language: codeLang || null }, e.schema.text(code)), false);
   // the caret after the block (a paragraph added when there is none), so typing goes on outside the code
   const $e = tr.selection.$from;
   if ($e.parent.type.spec.code || !$e.parent.isTextblock) {
@@ -131,28 +133,27 @@ export function handlePaste(e: Editor, ev: ClipboardEvent): boolean {
   return true;
 }
 
-/** Several lines of plain text that read as code rather than prose: indented lines, assignments, comments, keywords, brackets
- *  (three of these five). Markdown's own structure (a list, a fence) is prose */
-export function looksLikeCode(t: string): boolean {
-  const ls = t.split("\n").filter((l) => l.trim());
-  if (ls.length < 2 || ls.some((l) => /^ {0,3}(```|~~~)/.test(l))) return false;
-  if (ls.filter((l) => /^\s*([-+*]|\d+[.)])\s+\S/.test(l)).length > 1) return false;
-  const sig = [
-    ls.some((l) => /^(\t| {2,})\S/.test(l)),
-    ls.some((l) => /[=(;{:]\s*$|^\s*[A-Za-z_][\w.[\]]*\s*[-+*/]?=\s*\S/.test(l)),
-    ls.some((l) => /^\s*(#|\/\/)/.test(l)),
-    ls.some((l) => /\b(def|import|const|let|return|class|function|fn|elif|print|True|False|None|null|void)\b/.test(l)),
-    ls.filter((l) => /[()[\]{};]/.test(l)).length >= 2,
-  ];
-  return sig.filter(Boolean).length >= 3;
+/** The language of pasted plain text that is code ("" when it is code in no language the classifier names), null when it is
+ *  prose: several lines the page's classifier calls code, unless Markdown's own structure (a link, a list, a quote, a table,
+ *  a fence) says prose. Headings and emphasis say nothing: `# comment` and `*args` are code's too */
+export function pastedCodeLang(text: string, classify: (text: string) => string | null): string | null {
+  if (text.split("\n").filter((l) => l.trim()).length < 2) return null;
+  const lang = classify(text);
+  if (lang === null || mdStructure(text)) return null;
+  return lang;
 }
-/** The code block's language for pasted code; null when nothing gives it away */
-export function guessLang(t: string): string | null {
-  if (/#include|std::|__global__/.test(t)) return "cpp";
-  if (/\bdef |\bimport \w|print\(|\bTrue\b|\bFalse\b|\bNone\b|^\s*#/m.test(t)) return "python";
-  if (/\b(const|let|function)\b|=>/.test(t)) return "typescript";
-  if (/^\s*(\$ |npm |pip |cd |git )/m.test(t)) return "bash";
-  return null;
+function mdStructure(text: string): boolean {
+  if (/^ {0,3}(```|~~~)/m.test(text)) return true;
+  const doc = pastedMd(text);
+  if (!doc) return false;
+  let found = false;
+  const walk = (n: JSONContent) => {
+    if (/^(bulletList|orderedList|taskList|blockquote|table)$/.test(n.type ?? "")) found = true;
+    if (n.marks?.some((m) => m.type === "link")) found = true;
+    n.content?.forEach(walk);
+  };
+  walk(doc);
+  return found;
 }
 function inCode(e: Editor) {
   const $p = e.state.selection.$from,

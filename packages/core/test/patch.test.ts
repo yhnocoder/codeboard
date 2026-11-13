@@ -299,6 +299,21 @@ describe("board format v14: <mark> becomes ==", () => {
     b.cards[0].md = "<mark>first</mark> words\n\n- item <mark>li</mark>";
     expect((upgraded(b).cards[0] as any).md).toBe("==first== words\n\n- item ==li==");
   });
+  it("v13 → v14 keeps code fenced in a list item, a <mark> right after another and one in a formula as written", () => {
+    const b = board() as any;
+    b.version = 13;
+    b.cards[0].md = "- ```\n  <mark>x</mark>\n  ```\n\n<mark>a</mark><mark>b</mark> $<mark>m</mark>$ <mark>c</mark>";
+    expect((upgraded(b).cards[0] as any).md).toBe(
+      "- ```\n  <mark>x</mark>\n  ```\n\n==a==<mark>b</mark> $<mark>m</mark>$ ==c==",
+    );
+  });
+  it("v13 → v14 leaves a Free Text's plain text alone", () => {
+    const b = board() as any;
+    b.version = 13;
+    b.cards[0].look = "freetext";
+    b.cards[0].md = "<mark>as typed</mark>";
+    expect((upgraded(b).cards[0] as any).md).toBe("<mark>as typed</mark>");
+  });
   it("a v14 board's <mark> is left as written", () => {
     const b = board();
     (b.cards[0] as any).md = "<mark>a</mark>";
