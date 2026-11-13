@@ -1,7 +1,17 @@
 // → v16: the old Text, Free Text, Mark and Box become a Text or a Box (Markdown at a size of their own), as close to the
 // pixels they had as the new looks allow; shared cards' library files and the places boards keep of them too
 import { describe, expect, it } from "vitest";
-import { checkBoard, emptyBoard, loadSharedCard, migrateBoard, readBoardFile, type Board, type NoteCard } from "../src";
+import {
+  cardTitle,
+  checkBoard,
+  emptyBoard,
+  loadSharedCard,
+  mapRefs,
+  migrateBoard,
+  readBoardFile,
+  type Board,
+  type NoteCard,
+} from "../src";
 
 const v13 = (cards: object[], place: Record<string, object> = {}, more: object = {}) => ({
   ...emptyBoard("b", "B"),
@@ -133,6 +143,64 @@ describe("a Free Text becomes a Text as wide as its text", () => {
   it("one from before levels (always a heading) is H1 at 40 px", () => {
     const old = { ...v13([note("f", { look: "freetext", md: "Scheduler" })]), version: 11 };
     expect(cardsOf(migrateBoard(old)).f).toEqual({ id: "f", kind: "note", look: "text", md: "# Scheduler", fs: 22 });
+  });
+});
+
+describe("with the v15 Sidenote step before it", () => {
+  const seg = {
+    id: "sk",
+    src: { kind: "repo", repo: "" },
+    path: "a.py",
+    lang: "python",
+    start: 1,
+    end: 3,
+    text: ["a", "b", "c"],
+    version: { kind: "git", commit: "c0ffee" },
+    hl: [[2, 2]],
+  };
+  const at = { card: "k", seg: "sk", lines: [2, 2] };
+
+  it("a literal [[ in a Free Text stays text, not a reference, and its title reads as typed", () => {
+    const b = migrateBoard(v13([note("f", { look: "freetext", md: "see [[Scheduler]] and [docs](u) & a*b*" })]));
+    const f = cardsOf(b).f;
+    const refs: string[] = [];
+    mapRefs(f.md, (r) => void refs.push(r.label));
+    expect(f.md).toBe("see \\[\\[Scheduler\\]\\] and \\[docs\\](u) & a\\*b\\*");
+    expect(refs).toEqual([]);
+    expect(cardTitle(f)).toBe("see [[Scheduler]] and [docs](u) & a*b*");
+    valid(b);
+  });
+
+  it("a Card sidenote on a Free Text or a Mark becomes a Text sidenote with a [[reference]] to the Text it became", () => {
+    const b = migrateBoard(
+      v13(
+        [
+          { id: "k", kind: "code", segments: [seg] },
+          note("f", { look: "freetext", level: 1, md: "Attention" }),
+          note("m", { look: "mark", md: "picks **this**" }),
+        ],
+        {},
+        {
+          sidenotes: [
+            { id: "s1", kind: "card", card: "f", at },
+            { id: "s2", kind: "card", card: "m", at },
+          ],
+        },
+      ),
+    );
+    const by = cardsOf(b);
+    expect(by.f).toMatchObject({ look: "text", md: "# Attention" });
+    expect(by.m).toMatchObject({ look: "text", md: "picks **this**" });
+    expect(b.sidenotes.map((n) => (n.kind === "text" ? [n.md, n.boardOnly] : n.kind))).toEqual([
+      ["[[Attention#^f]]", true],
+      ["[[picks this#^m]]", true],
+    ]);
+    expect([cardTitle(by.f), cardTitle(by.m)]).toEqual(["Attention", "picks this"]);
+    valid(b);
+  });
+
+  it("an empty Free Text stays empty", () => {
+    expect(cardsOf(migrateBoard(v13([note("e", { look: "freetext", md: "  \n " })]))).e.md).toBe("");
   });
 });
 

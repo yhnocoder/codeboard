@@ -143,6 +143,7 @@ const BLOCK_START = /^\s*(?:#|>|[-+*]\s|\d+[.)]|```|~~~|\||\$\$|!\[)/;
  * space between them), a blank line an empty one, what Markdown would read as markup escaped, the spaces it would fold kept
  */
 function plainToMarkdown(text: string, heading: number, bold: boolean): string {
+  if (!text.trim()) return "";
   return text
     .replace(/\s+$/, "")
     .split("\n")

@@ -679,6 +679,9 @@ export const firstLine = (md: string) =>
         .replace(/!\[([^\]\n]*)\]\([^)\n]*\)/g, "$1")
         .replace(/^[#>\-*\s]+/, "")
         .replace(/\*\*|`/g, "")
+        .replace(/\\([!-/:-@[-`{-~])/g, "$1")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
         .trim(),
     )
     .find(Boolean) ?? "";
