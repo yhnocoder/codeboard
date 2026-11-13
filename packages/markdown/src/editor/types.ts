@@ -29,6 +29,9 @@ export type MdEditorOpts = {
     here?: string;
     foot?: () => string;
     picked?: (p: RefPick) => void;
+    /** The list's highlighted candidate changed (row = its element in the list), or the list closed (null, null): the caller can
+     *  show what it points to beside the list */
+    showing?: (p: RefPick | null, row: HTMLElement | null) => void;
   };
   /** 存图（粘贴、拖进来、/Image）：回写进 Markdown 的地址，null = 不插（存不了，用的一方自己提示）；不给就把 data: 地址原样写进去 */
   saveImage?: SaveImage;

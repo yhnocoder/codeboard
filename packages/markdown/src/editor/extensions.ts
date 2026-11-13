@@ -113,6 +113,7 @@ export function editorExtensions(
       title: c.title,
       hint: c.kind,
       key: `${g?.id ?? ""}/${c.id}`,
+      pick: { group: g?.id, id: c.id },
       run: insert(c.label ?? c.title, c.target, { group: g?.id, id: c.id }),
       ...more,
     });
