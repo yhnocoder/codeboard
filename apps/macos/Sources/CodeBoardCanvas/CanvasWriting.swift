@@ -40,7 +40,7 @@ extension CanvasView {
   /// One editor for the app: one card is edited at a time
   static var sharedEditor: NoteEditor?
 
-  var noteEditor: NoteEditor {
+  package var noteEditor: NoteEditor {
     if let e = CanvasView.sharedEditor { return e }
     let e = NoteEditor()
     CanvasView.sharedEditor = e
@@ -333,5 +333,50 @@ extension CanvasView {
     let v = camera.visible(bounds.size)
     let w = if case .note = kind { Board.newNoteWidth } else { Board.newTextWidth }
     Task { await create(kind, at: CGPoint(x: v.midX - w / 2, y: v.midY - 40)) }
+  }
+}
+
+// MARK: Review pictures
+
+extension CanvasView {
+  /// LookCompare: a card as the canvas shows it at rest (its bitmap at the zoom shown, after `drawAll`) and while it is
+  /// written in (the paper the canvas shows then, with the editor's own picture of its text), in device pixels; the
+  /// editing is left as it was found (nothing typed, nothing written)
+  package func writingPictures(_ id: CardID) async -> (rest: CGImage, editing: CGImage)? {
+    // what it holds (its own sharp bitmap or the overview, whichever is finer), at that scale
+    guard let i = index(of: .card(id)), let surface = items[i].held.contents as? IOSurface,
+      let rest = Self.image(surface)
+    else { return nil }
+    let scale = items[i].heldScale
+    beginEditing(id)
+    while editing?.ready == false { try? await Task.sleep(for: .milliseconds(5)) }
+    var picture: CGImage?
+    if let ed = editing, let size = ed.size, let s = scene,
+      let snap = await noteEditor.snapshot(size: size, k: camera.zoom),
+      abs(Double(snap.surface.width) - Double(size.width * scale).rounded(.up)) <= 1
+    {
+      var it = s.items[i]
+      it.rect = editingRect(it.rect)
+      picture = CanvasView.compose(it, snap, scale: scale, theme: theme, images: images)
+        .flatMap(Self.image)
+    }
+    await endEditing()
+    return picture.map { (rest, $0) }
+  }
+
+  /// Whether the scene shows the document's board (LookCompare waits for it)
+  package var shownBoardMatches: Bool { document.map { $0.board == shownBoard } ?? true }
+
+  /// The pixels of a surface the canvas drew
+  package static func image(_ s: IOSurface) -> CGImage? {
+    s.lock(options: .readOnly, seed: nil)
+    defer { s.unlock(options: .readOnly, seed: nil) }
+    guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+      let ctx = CGContext(
+        data: s.baseAddress, width: s.width, height: s.height, bitsPerComponent: 8, bytesPerRow: s.bytesPerRow,
+        space: space,
+        bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+    else { return nil }
+    return ctx.makeImage()
   }
 }

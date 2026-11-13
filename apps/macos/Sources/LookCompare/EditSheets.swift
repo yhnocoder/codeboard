@@ -175,8 +175,24 @@ enum EditSheets {
   // MARK: Drawing
 
   /// A layer tree drawn by Core Animation at 1x (no screen)
-  @MainActor static func render(_ layer: CALayer, size: CGSize) throws -> CGImage {
-    let (w, h) = (Int(size.width), Int(size.height))
+  @MainActor static func render(_ layer: CALayer, size: CGSize, scale: CGFloat = 1) throws -> CGImage {
+    let (w, h) = (Int(size.width * scale), Int(size.height * scale))
+    // drawn larger: the layer scaled, its anchor put where it lands in the larger picture
+    let (transform, position) = (layer.transform, layer.position)
+    defer {
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      layer.transform = transform
+      layer.position = position
+      CATransaction.commit()
+    }
+    if scale != 1 {
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      layer.transform = CATransform3DMakeScale(scale, scale, 1)
+      layer.position = CGPoint(x: layer.anchorPoint.x * CGFloat(w), y: layer.anchorPoint.y * CGFloat(h))
+      CATransaction.commit()
+    }
     guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else {
       throw CocoaError(.featureUnsupported)
     }
@@ -189,7 +205,7 @@ enum EditSheets {
     let r = CARenderer(
       mtlTexture: texture, options: [kCARendererMetalCommandQueue: queue, kCARendererColorSpace: space])
     r.layer = layer
-    r.bounds = CGRect(origin: .zero, size: size)
+    r.bounds = CGRect(x: 0, y: 0, width: w, height: h)
     // the renderer sees only committed layers
     CATransaction.flush()
     r.beginFrame(atTime: CACurrentMediaTime(), timeStamp: nil)
