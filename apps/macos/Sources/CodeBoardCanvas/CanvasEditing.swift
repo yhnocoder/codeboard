@@ -78,8 +78,7 @@ struct Resize {
   var fontSize: Double?
 }
 
-/// A handle's side in view points, and how near the pointer must be to take it
-private let handleSize: CGFloat = 7
+/// How near a Text's handle the pointer must be to take it (view points)
 private let handleReach: CGFloat = 6
 /// How far the pointer moves before a press becomes a drag (view points)
 private let dragSlop: CGFloat = 3
@@ -390,7 +389,9 @@ extension CanvasView {
           let it = index(of: .card(id)).map { scene!.items[$0] }
           var text = false
           if case .note(let n)? = it?.drawing { text = n.content.isText }
-          if theme.id == .inkWash && !text {
+          if text {
+            outline(r, box: isBox(id), tilt: it?.tilt ?? 0, zoom: z)
+          } else if theme.id == .inkWash {
             chrome.addSublayer(seal(on: r, tilt: it?.tilt ?? 0))
           } else {
             ring(r, tilt: it?.tilt ?? 0, zoom: z)
@@ -408,15 +409,16 @@ extension CanvasView {
       case .move?, .nudge?, .marquee?: return
       default: break
       }
-      for (_, p) in handles(of: item) {
+      // only a Text's and a Box's handles show (styles.css .hw, .mkgrip); every other kind is resized by its edges,
+      // which only the pointer's shape tells
+      guard case .card(let id) = item, isText(id) else { return }
+      for (_, r) in textHandles(id) {
         let l = CAShapeLayer()
-        let side = handleSize / z
-        l.path = CGPath(
-          roundedRect: CGRect(x: p.x - side / 2, y: p.y - side / 2, width: side, height: side),
-          cornerWidth: 1.5 / z, cornerHeight: 1.5 / z, transform: nil)
-        l.fillColor = CGColor(gray: 1, alpha: 1)
+        let radius = r.height > 12 ? 4.0 : 3.0
+        l.path = CGPath(roundedRect: r, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        l.fillColor = theme.surface
         l.strokeColor = accent
-        l.lineWidth = 1 / z
+        l.lineWidth = 1.5
         chrome.addSublayer(l)
       }
     }
@@ -510,43 +512,143 @@ extension CanvasView {
     chrome.addSublayer(box)
   }
 
-  /// The handles an item has, where they are on the board: a code card, Note or Section by its sides and corners, a
-  /// Text or Box by its side edges (the width it wraps at) and its corner (its text size), an image by its side and corner
-  /// (its height follows)
-  func handles(of item: Item) -> [(Resize.Edges, CGPoint)] {
-    guard let r = liveRect(item) else { return [] }
-    let mids: [(Resize.Edges, CGPoint)] = [
-      (.left, CGPoint(x: r.minX, y: r.midY)), (.right, CGPoint(x: r.maxX, y: r.midY)),
+  /// A Text or a Box
+  func isText(_ id: CardID) -> Bool {
+    guard let i = index(of: .card(id)), case .note(let n) = scene!.items[i].drawing else { return false }
+    return n.content.isText
+  }
+
+  func isBox(_ id: CardID) -> Bool {
+    guard let i = index(of: .card(id)), case .note(let n) = scene!.items[i].drawing, case .text(let t) = n.content
+    else { return false }
+    return t.look == .box
+  }
+
+  /// A selected Text's or Box's frame (styles.css .card.text.sel): a 1.5 point line of the accent, 2 out from a Text
+  /// (3 from a Box), round as the card's corners
+  private func outline(_ r: CGRect, box: Bool, tilt: CGFloat, zoom z: CGFloat) {
+    let gap: CGFloat = box ? 3 : 2
+    let w = 1.5 / z
+    let o = r.insetBy(dx: -gap - w / 2, dy: -gap - w / 2)
+    let l = CAShapeLayer()
+    l.bounds = CGRect(origin: .zero, size: o.size)
+    l.position = CGPoint(x: o.midX, y: o.midY)
+    let radius = (box ? theme.cardRadius : 5.5) + gap + w / 2
+    l.path = CGPath(roundedRect: l.bounds, cornerWidth: radius, cornerHeight: radius, transform: nil)
+    l.fillColor = nil
+    l.strokeColor = theme.accent
+    l.lineWidth = w
+    if tilt != 0 { l.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
+    chrome.addSublayer(l)
+  }
+
+  /// A Text's or Box's handles where they are drawn (board units): a pill on each side edge for the width it wraps at,
+  /// a small square past the bottom right corner for its text size
+  func textHandles(_ id: CardID) -> [(Resize.Edges, CGRect)] {
+    guard let r = liveRect(.card(id)) else { return [] }
+    return [
+      (.left, CGRect(x: r.minX - 8, y: r.midY - 7, width: 8, height: 14)),
+      (.right, CGRect(x: r.maxX, y: r.midY - 7, width: 8, height: 14)),
+      ([.right, .bottom], CGRect(x: r.maxX - 1, y: r.maxY - 1, width: 10, height: 10)),
     ]
-    let corner: (Resize.Edges, CGPoint) = ([.right, .bottom], CGPoint(x: r.maxX, y: r.maxY))
+  }
+
+  /// The edges an item is resized by: a Section by every side and corner, a code card or Note by its sides, its bottom
+  /// and its bottom right corner, an image by its right side and that corner (its height follows), a Text or Box by its
+  /// side handles and corner; none when tilted
+  func resizeEdges(_ item: Item) -> [Resize.Edges] {
     switch item {
     case .section:
-      return mids + [
-        (.top, CGPoint(x: r.midX, y: r.minY)), (.bottom, CGPoint(x: r.midX, y: r.maxY)),
-        (Resize.Edges([.left, .top]), CGPoint(x: r.minX, y: r.minY)),
-        (Resize.Edges([.right, .top]), CGPoint(x: r.maxX, y: r.minY)),
-        (Resize.Edges([.left, .bottom]), CGPoint(x: r.minX, y: r.maxY)), corner,
-      ]
+      return [.left, .right, .top, .bottom, [.left, .top], [.right, .top], [.left, .bottom], [.right, .bottom]]
     case .card(let id):
       guard let s = scene, let i = index(of: .card(id)), s.items[i].tilt == 0 else { return [] }
       switch s.items[i].drawing {
-      case .note(let n) where n.content.isText: return mids + [corner]
-      case .image: return [(.right, CGPoint(x: r.maxX, y: r.midY)), corner]
-      case .code, .note: return mids + [(.bottom, CGPoint(x: r.midX, y: r.maxY)), corner]
+      case .note(let n) where n.content.isText: return [.left, .right, [.right, .bottom]]
+      case .image: return [.right, [.right, .bottom]]
+      case .code, .note: return [.left, .right, .bottom, [.right, .bottom]]
       default: return []
       }
     }
   }
 
-  /// The handle of the lone selected item under a view point
+  /// The edge of `item` under a view point: a Text's or Box's handles; any other kind's edges, a band 4 board units
+  /// either side of each (never under 4 view points), its corners 14 units square (never under 8 points)
+  func edge(of item: Item, at v: CGPoint) -> Resize.Edges? {
+    guard let r = liveRect(item) else { return nil }
+    let z = camera.zoom
+    if case .card(let id) = item, isText(id) {
+      for (e, h) in textHandles(id) {
+        let q = CGRect(origin: camera.view(h.origin), size: CGSize(width: h.width * z, height: h.height * z))
+        if q.insetBy(dx: -handleReach / 2, dy: -handleReach / 2).contains(v) { return e }
+      }
+      return nil
+    }
+    let edges = resizeEdges(item)
+    let o = camera.view(r.origin)
+    let view = CGRect(origin: o, size: CGSize(width: r.width * z, height: r.height * z))
+    let band = max(4 * z, 4)
+    let corner = max(7 * z, 8)
+    for e in edges where e.rawValue.nonzeroBitCount == 2 {
+      let p = CGPoint(x: e.contains(.left) ? view.minX : view.maxX, y: e.contains(.top) ? view.minY : view.maxY)
+      if abs(v.x - p.x) <= corner && abs(v.y - p.y) <= corner { return e }
+    }
+    let alongY = v.y > view.minY + corner && v.y < view.maxY - corner
+    let alongX = v.x > view.minX + corner && v.x < view.maxX - corner
+    if edges.contains(.left), alongY, abs(v.x - view.minX) <= band { return .left }
+    if edges.contains(.right), alongY, abs(v.x - view.maxX) <= band { return .right }
+    if edges.contains(.top), alongX, abs(v.y - view.minY) <= band { return .top }
+    if edges.contains(.bottom), alongX, abs(v.y - view.maxY) <= band { return .bottom }
+    return nil
+  }
+
+  /// The edge under a view point that a press would resize: the lone selected item's, else a card's under the pointer
+  /// (as the web board's corner grip shows on any card); never a locked one's
   func hitHandle(_ v: CGPoint) -> (Item, Resize.Edges)? {
-    guard let doc = document, doc.selection.count == 1, let item = doc.selection.first, !doc.board.isLocked(item)
-    else { return nil }
-    for (edges, p) in handles(of: item) {
-      let q = camera.view(p)
-      if abs(q.x - v.x) <= handleReach && abs(q.y - v.y) <= handleReach { return (item, edges) }
+    guard let doc = document else { return nil }
+    if doc.selection.count == 1, let item = doc.selection.first, !doc.board.isLocked(item),
+      let e = edge(of: item, at: v)
+    {
+      return (item, e)
+    }
+    let p = camera.board(v)
+    for it in scene?.items[(scene?.cardsFrom ?? 0)..<(scene?.labelsFrom ?? 0)].reversed() ?? [] {
+      guard case .card(let id)? = it.owner, it.rect.insetBy(dx: -8 / camera.zoom, dy: -8 / camera.zoom).contains(p)
+      else { continue }
+      // its corner only: a press by any other edge of a card not selected moves it
+      guard !isText(id), !doc.board.isLocked(.card(id)), let e = edge(of: .card(id), at: v), e == [.right, .bottom]
+      else { return nil }
+      return (.card(id), e)
     }
     return nil
+  }
+
+  /// The pointer's shape over an edge: what dragging it does
+  func resizeCursor(_ e: Resize.Edges) -> NSCursor {
+    let position: NSCursor.FrameResizePosition =
+      switch e {
+      case .left: .left
+      case .right: .right
+      case .top: .top
+      case .bottom: .bottom
+      case [.left, .top]: .topLeft
+      case [.right, .top]: .topRight
+      case [.left, .bottom]: .bottomLeft
+      default: .bottomRight
+      }
+    return NSCursor.frameResize(position: position, directions: .all)
+  }
+
+  public override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    for t in trackingAreas where t.owner === self { removeTrackingArea(t) }
+    addTrackingArea(
+      NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self))
+  }
+
+  public override func mouseMoved(with e: NSEvent) {
+    guard gesture == nil else { return }
+    let v = convert(e.locationInWindow, from: nil)
+    if let (_, edge) = hitHandle(v) { resizeCursor(edge).set() } else { NSCursor.arrow.set() }
   }
 
   // MARK: Pointer

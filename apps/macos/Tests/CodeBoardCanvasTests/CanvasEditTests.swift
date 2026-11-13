@@ -198,8 +198,8 @@ private func png(_ url: URL) throws {
     #expect(c.hitHandle(CGPoint(x: corner.x + 5, y: corner.y - 5))?.1 == [.right, .bottom])
     #expect(c.hitHandle(CGPoint(x: corner.x + 9, y: corner.y)) == nil)
     // a Text has its side edges and its corner; an image its right edge and corner
-    #expect(Set(c.handles(of: .card(cid("t1"))).map(\.0.rawValue)) == [1, 2, 10])
-    #expect(Set(c.handles(of: .card(cid("i1"))).map(\.0.rawValue)) == [2, 10])
+    #expect(Set(c.resizeEdges(.card(cid("t1"))).map(\.rawValue)) == [1, 2, 10])
+    #expect(Set(c.resizeEdges(.card(cid("i1"))).map(\.rawValue)) == [2, 10])
     // a locked card has none
     r.doc.select([.card(cid("L1"))])
     #expect(c.hitHandle(c.camera.view(CGPoint(x: 1140, y: 660))) == nil)
@@ -284,7 +284,7 @@ private func png(_ url: URL) throws {
     // the drag out takes it out
     await r.settle()
     // by a corner m1 does not cover
-    r.drag(CGPoint(x: 295, y: 650), CGPoint(x: 1595, y: 650))
+    r.drag(CGPoint(x: 270, y: 650), CGPoint(x: 1570, y: 650))
     #expect(r.card("n1").section == nil)
   }
 
