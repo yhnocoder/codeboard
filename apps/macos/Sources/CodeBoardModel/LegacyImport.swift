@@ -884,11 +884,24 @@ private struct Mapper {
     return name
   }
 
-  /// Old Markdown names images assets/<file>; in a vault they are in the images folder beside the JSON
+  /// Old Markdown names images assets/<file>; in a vault they are in the images folder beside the JSON. Only where
+  /// Markdown reads an address: an image's or link's destination (`](assets/…`, `](<assets/…`) and a link reference
+  /// definition (`[x]: assets/…`), outside code; the same words in prose or code are the user's text
   private mutating func markdown(_ md: String) -> String {
-    md.replacing(/(^|[^\w\/.-])assets\/([\w-][\w.-]*)/.anchorsMatchLineEndings()) { m in
-      images.insert(String(m.2))
-      return "\(m.1)\(Vault.imagesFolder)/\(m.2)"
+    guard md.contains("assets/") else { return md }
+    let name = "[A-Za-z0-9_-][A-Za-z0-9_.-]*"
+    let at = [
+      try! Regex("(\\]\\(\\s*<?)assets/(\(name))"),
+      try! Regex("(^ {0,3}\\[[^\\]\\n]+\\]:[ \\t]*\\n?[ \\t]*<?)assets/(\(name))").anchorsMatchLineEndings(),
+    ]
+    return LegacyUpgrade.mapProse(md) { prose in
+      at.reduce(prose) { text, r in
+        text.replacing(r) { m in
+          let file = String(m.output[2].substring ?? "")
+          images.insert(file)
+          return "\(m.output[1].substring ?? "")\(Vault.imagesFolder)/\(file)"
+        }
+      }
     }
   }
 

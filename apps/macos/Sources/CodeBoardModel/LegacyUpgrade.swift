@@ -499,6 +499,46 @@ enum LegacyUpgrade {
     return out + src.substring(from: i)
   }
 
+  /// `md` with `f` applied to its prose: fenced code blocks and inline code spans stay as written
+  static func mapProse(_ md: String, _ f: (String) -> String) -> String {
+    var out: [String] = []
+    var fence = ""
+    var run: [String] = []
+    func flush() {
+      if !run.isEmpty { out.append(proseSpans(run.joined(separator: "\n"), f)) }
+      run = []
+    }
+    for l in md.components(separatedBy: "\n") {
+      if !fence.isEmpty {
+        out.append(l)
+        if fenceCloses(l, fence) { fence = "" }
+      } else if let m = re("^ {0,3}(`{3,}|~{3,})").exec(l) {
+        flush()
+        fence = m[1]
+        out.append(l)
+      } else {
+        run.append(l)
+      }
+    }
+    flush()
+    return out.joined(separator: "\n")
+  }
+
+  private static func proseSpans(_ text: String, _ f: (String) -> String) -> String {
+    let src = text as NSString
+    var out = ""
+    var i = 0
+    while i < src.length {
+      let tick = src.range(of: "`", options: .literal, range: NSRange(location: i, length: src.length - i)).location
+      if tick == NSNotFound { break }
+      let end = codeSpanEnd(src, tick)
+      out += f(src.substring(with: NSRange(location: i, length: tick - i)))
+      out += src.substring(with: NSRange(location: tick, length: end - tick))
+      i = end
+    }
+    return out + f(src.substring(from: i))
+  }
+
   /// Where an inline code span opened at `tick` ends (after its closing run), or just after its opening run if none
   private static func codeSpanEnd(_ src: NSString, _ tick: Int) -> Int {
     let n = re("^`+").exec(src.substring(from: tick))![0].utf16.count

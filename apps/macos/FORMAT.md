@@ -236,7 +236,7 @@ files that are not in the vault yet; a file that is there is never written, what
 | `src` repo / external + version git | `git`, no repository, `checkout` = `repo` / `root` |
 | any `src` + version pkg | `package` |
 | `src` repo / external + version hash or none | `file`, path joined to `repo` / `root`, the hash |
-| note `look: note`, `md mdLayout` | `note {text, layout}` (`assets/<f>` → `images/<f>`) |
+| note `look: note`, `md mdLayout` | `note {text, layout}` (image and link addresses `assets/<f>` → `images/<f>`) |
 | note `look: text / box`, `md fill fs wrap mdLayout` | `text {text, look, fill (absent: yellow), fontSize (absent: 20), wrap, layout}` |
 | image `src` file name (or `assets/<f>`) | `{file}`, the file copied from `assets/` |
 | image `src` data: URL (PNG, JPEG, GIF, WebP, SVG) | a file named by the FNV-1a 64 of its bytes, `{file}` |
@@ -261,8 +261,11 @@ files that are not in the vault yet; a file that is there is never written, what
 | `seal{text color}` | `seal` |
 
 `assets/<f>` in Markdown (`description`, Note and Text text, section description, sidenote text and answers) becomes
-`images/<f>` and the file is copied into that board's `images/` (a shared card's into `.codeboard/shared/images/`). An
-image used by two boards is stored twice (decided).
+`images/<f>` only where Markdown reads an address: an image's or link's destination (`![…](assets/<f>`, `](<assets/<f>`)
+and a link reference definition (`[x]: assets/<f>`), outside fenced code and inline code. The same words in prose or code
+are the user's text and stay as written, and so does raw HTML (`<img src>`), whose address the Markdown package does not
+resolve. The files named that way are copied into that board's `images/` (a shared card's into
+`.codeboard/shared/images/`). An image used by two boards is stored twice (decided).
 
 Dropped without a report, because it is not the user's content: `place[id].mh` of a card on the canvas (a height the board
 measured; it is written again on every draw), `place` entries of cards that do not exist, and the height a library Text or

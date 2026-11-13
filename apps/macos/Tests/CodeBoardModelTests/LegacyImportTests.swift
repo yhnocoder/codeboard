@@ -205,6 +205,37 @@ private func fixtureVaultCopy() throws -> URL {
   #expect(cards[3] == .image(ImageCard(source: .url("https://example.com/p.png"))))
 }
 
+@Test func onlyImageAndLinkAddressesAreRewritten() throws {
+  let md = [
+    "![a](assets/one.png) [link](assets/two.png \"t\") ![b]( <assets/one.png> ){width=50%}",
+    "[ref]: assets/three.png",
+    "the folder assets/one.png and `![c](assets/four.png)` stay, as does ``x](assets/four.png``",
+    "```md",
+    "![d](assets/four.png)",
+    "[r]: assets/four.png",
+    "```",
+    "<img src=\"assets/four.png\">",
+  ].joined(separator: "\n")
+  let files = ["one.png", "two.png", "three.png", "four.png"]
+  let (vault, report, _) = try importing(
+    ["a.json": oldBoard("a", name: "A", cards: [oldNote("n", md)])],
+    assets: Dictionary(uniqueKeysWithValues: files.map { ($0, Data($0.utf8)) }))
+  #expect(report.failed.isEmpty)
+  let want = [
+    "![a](images/one.png) [link](images/two.png \"t\") ![b]( <images/one.png> ){width=50%}",
+    "[ref]: images/three.png",
+    "the folder assets/one.png and `![c](assets/four.png)` stay, as does ``x](assets/four.png``",
+    "```md",
+    "![d](assets/four.png)",
+    "[r]: assets/four.png",
+    "```",
+    "<img src=\"assets/four.png\">",
+  ].joined(separator: "\n")
+  #expect(try vault.board(at: "A.board").cards[0].content == .own(CardContent(body: .note(Note(text: want)))))
+  let copied = try FileManager.default.contentsOfDirectory(atPath: vault.url(of: "A.board/images").path).sorted()
+  #expect(copied == ["one.png", "three.png", "two.png"], "only what the Markdown shows or links to")
+}
+
 @Test func sharedCardsGoToTheAppDataFolderAndBoardsReferToThem() throws {
   let shared: [String: Any] = [
     "version": 17, "card": oldNote("s1", "shared ![](assets/s.png)"),
