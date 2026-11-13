@@ -206,7 +206,8 @@ extension Rig {
   }
 }
 
-@MainActor @Suite(.serialized) struct WritingBarTests {
+// in the one serialized suite: the app has one editor, which these share
+extension CanvasWritingTests {
   /// The middle of a button of the bar over a card (board units)
   func button(_ r: Rig, _ id: String, _ b: BarButton) throws -> CGPoint {
     let t = try #require(r.card(id).textCard)
@@ -284,5 +285,39 @@ extension Rig {
     r.doc.undo()
     r.doc.undo()
     #expect(r.card("b1").textCard?.fill == .yellow && r.card("b1").x == 500 && r.card("b1").y == 200)
+  }
+}
+
+extension CanvasWritingTests {
+  @Test func theToolbarShowsNoteTextAndBoxAndMakesThemInTheViewsMiddle() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    let bar = CanvasToolbar(frame: CGRect(x: 0, y: 0, width: 300, height: 100))
+    #expect(bar.tools == [.note, .text, .box])
+    // the web board's sizes: Warm Ink 4 + 3 × 30 + 2 × 2 + 4 wide, 36 tall; Ink Wash 22 + 3 × 30 + 2 + 34, 46
+    #expect(bar.barSize == CGSize(width: 102, height: 36))
+    bar.theme = .inkWash
+    #expect(bar.barSize == CGSize(width: 148, height: 46))
+    var used: [Tool] = []
+    bar.onTool = {
+      used.append($0)
+      r.canvas.use($0)
+    }
+    let host = NSView(frame: bar.frame)
+    host.addSubview(bar)
+    let p = bar.convert(CGPoint(x: bar.buttonRects()[2].midX, y: bar.buttonRects()[2].midY), to: nil)
+    for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+      bar.perform(
+        type == .leftMouseDown ? #selector(NSView.mouseDown(with:)) : #selector(NSView.mouseUp(with:)),
+        with: NSEvent.mouseEvent(
+          with: type, location: p, modifierFlags: [], timestamp: 1, windowNumber: 0, context: nil, eventNumber: 0,
+          clickCount: 1, pressure: 1))
+    }
+    #expect(used == [.box])
+    await r.editorReady()
+    let id = try #require(r.canvas.editing?.id)
+    #expect(r.card(id.rawValue).textCard?.look == .box)
+    await r.canvas.endEditing()
+    #expect(r.doc.board.card(id) == nil, "left empty, it goes")
   }
 }

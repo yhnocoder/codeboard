@@ -160,39 +160,7 @@ enum WritingBar {
     ctx.scaleBy(x: scale, y: -scale)
     ctx.translateBy(x: margin, y: margin)
     let bar = CGRect(x: 0, y: 0, width: l.width, height: height)
-    let shape = CGPath(roundedRect: bar, cornerWidth: look.radius, cornerHeight: look.radius, transform: nil)
-    // the shadows, only outside (the glass is see-through in Warm Ink)
-    ctx.saveGState()
-    ctx.beginTransparencyLayer(auxiliaryInfo: nil)
-    let away = l.width + 4 * margin
-    for s in look.shadows {
-      ctx.saveGState()
-      // CoreGraphics offsets shadows in device space (y up)
-      ctx.setShadow(offset: CGSize(width: -away * scale, height: -s.y * scale), blur: s.blur * scale, color: s.color)
-      let r = bar.insetBy(dx: -s.spread, dy: -s.spread).offsetBy(dx: away, dy: 0)
-      let k = max(0, look.radius + s.spread)
-      ctx.addPath(
-        CGPath(roundedRect: r, cornerWidth: min(k, r.width / 2), cornerHeight: min(k, r.height / 2), transform: nil))
-      ctx.setFillColor(CGColor(gray: 0, alpha: 1))
-      ctx.fillPath()
-      ctx.restoreGState()
-    }
-    ctx.setBlendMode(.clear)
-    ctx.addPath(shape)
-    ctx.fillPath()
-    ctx.endTransparencyLayer()
-    ctx.restoreGState()
-    ctx.addPath(shape)
-    ctx.setFillColor(look.glass)
-    ctx.fillPath()
-    // a 0.5 hairline around it (box-shadow 0 0 0 0.5px)
-    let ringShape = CGPath(
-      roundedRect: bar.insetBy(dx: -0.25, dy: -0.25), cornerWidth: look.radius + 0.25, cornerHeight: look.radius + 0.25,
-      transform: nil)
-    ctx.addPath(ringShape)
-    ctx.setStrokeColor(look.ring)
-    ctx.setLineWidth(0.5)
-    ctx.strokePath()
+    float(bar, radius: look.radius, look: look, glass: look.glass, scale: scale, in: ctx)
     for s in l.seps {
       ctx.setFillColor(look.sep)
       ctx.fill(s)
@@ -221,6 +189,42 @@ enum WritingBar {
       }
     }
     return ctx.makeImage()
+  }
+
+  /// A floating panel (`.pill`): its CSS shadows only outside it (its glass may be see-through), its glass and a 0.5
+  /// hairline around it; `scale`: device pixels per unit, as CoreGraphics offsets shadows in device space (y up)
+  static func float(_ bar: CGRect, radius: CGFloat, look: BarLook, glass: CGColor, scale: CGFloat, in ctx: CGContext) {
+    let shape = CGPath(roundedRect: bar, cornerWidth: radius, cornerHeight: radius, transform: nil)
+    ctx.saveGState()
+    ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+    // each shadow's shape is drawn this far to the side and its shadow moved back: only the shadow lands
+    let away = bar.maxX + 200
+    for s in look.shadows {
+      ctx.saveGState()
+      ctx.setShadow(offset: CGSize(width: -away * scale, height: -s.y * scale), blur: s.blur * scale, color: s.color)
+      let r = bar.insetBy(dx: -s.spread, dy: -s.spread).offsetBy(dx: away, dy: 0)
+      let k = max(0, radius + s.spread)
+      ctx.addPath(
+        CGPath(roundedRect: r, cornerWidth: min(k, r.width / 2), cornerHeight: min(k, r.height / 2), transform: nil))
+      ctx.setFillColor(CGColor(gray: 0, alpha: 1))
+      ctx.fillPath()
+      ctx.restoreGState()
+    }
+    ctx.setBlendMode(.clear)
+    ctx.addPath(shape)
+    ctx.fillPath()
+    ctx.endTransparencyLayer()
+    ctx.restoreGState()
+    ctx.addPath(shape)
+    ctx.setFillColor(glass)
+    ctx.fillPath()
+    ctx.addPath(
+      CGPath(
+        roundedRect: bar.insetBy(dx: -0.25, dy: -0.25), cornerWidth: radius + 0.25, cornerHeight: radius + 0.25,
+        transform: nil))
+    ctx.setStrokeColor(look.ring)
+    ctx.setLineWidth(0.5)
+    ctx.strokePath()
   }
 
   /// Whether a button shows lit: the size the text is at (none at a size of its own), its look, a Box's fill

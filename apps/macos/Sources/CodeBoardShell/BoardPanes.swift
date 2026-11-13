@@ -117,12 +117,21 @@ private final class Pane: NSView {
   var onReady: (() -> Void)?
   private static let patience = Duration.milliseconds(250)
   let canvas = CanvasView()
+  private let toolbar = CanvasToolbar()
   private let problem = NSTextField(wrappingLabelWithString: "")
 
   init() {
     super.init(frame: .zero)
     canvas.autoresizingMask = [.width, .height]
     addSubview(canvas)
+    // the bottom toolbar, 12 above the bottom edge (its view has room for its shadow around it)
+    toolbar.translatesAutoresizingMaskIntoConstraints = false
+    toolbar.onTool = { [weak self] in self?.canvas.use($0) }
+    addSubview(toolbar)
+    NSLayoutConstraint.activate([
+      toolbar.centerXAnchor.constraint(equalTo: centerXAnchor),
+      toolbar.bottomAnchor.constraint(equalTo: bottomAnchor, constant: CanvasToolbar.margin - 12),
+    ])
     problem.textColor = .secondaryLabelColor
     problem.alignment = .center
     problem.isSelectable = true
@@ -152,6 +161,7 @@ private final class Pane: NSView {
   /// Draws the board shown in another theme or appearance, where its camera is
   func restyle(_ theme: Theme) {
     self.theme = theme
+    toolbar.theme = theme
     guard !theme.same(as: canvas.currentTheme), document != nil else { return }
     Task {
       do { try await canvas.show(theme: theme) } catch { fail(error) }
@@ -161,6 +171,8 @@ private final class Pane: NSView {
   /// Shows an open board and edits it there
   func load(_ at: VaultBoard, in vault: Vault, theme: Theme, document doc: BoardDocument) {
     self.theme = theme
+    toolbar.theme = theme
+    toolbar.isHidden = false
     problem.isHidden = true
     canvas.isHidden = false
     failed = false
@@ -201,5 +213,6 @@ private final class Pane: NSView {
     problem.stringValue = String(describing: error)
     problem.isHidden = false
     canvas.isHidden = true
+    toolbar.isHidden = true
   }
 }
