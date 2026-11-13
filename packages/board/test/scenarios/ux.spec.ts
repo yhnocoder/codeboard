@@ -320,7 +320,7 @@ async function readableNote(res: Record<string, unknown>) {
   const b = emptyBoard("bR", "read");
   const step = nv("LLMEngine.step");
   put(b, step, 80, 80, 560);
-  b.cards.push({ id: "t1", kind: "note", md: "far away text", look: "text", size: "body" });
+  b.cards.push({ id: "t1", kind: "note", md: "far away text", look: "text" });
   b.place.t1 = { x: 1400, y: 900, w: 320 };
   b.cam = { x: 40, y: 40, z: 0.48 };
   const h = await open({ board: b, w: 1200, h: 800 }),
@@ -391,7 +391,7 @@ async function turnName(res: Record<string, unknown>) {
     note = "nT";
   put(b, can, 80, 60, 480);
   put(b, sch, 700, 300, 560);
-  b.cards.push({ id: note, kind: "note", md: "aside", look: "note", size: "body" });
+  b.cards.push({ id: note, kind: "note", md: "aside", look: "note" });
   b.place[note] = { x: 700, y: 10, w: 200 };
   b.links.push({
     id: "lT",

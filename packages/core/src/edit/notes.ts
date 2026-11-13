@@ -1,7 +1,7 @@
-// Note changes: an image into a Note, Note ↔ Text, [[title]] references following a rename, Split by Headings.
+// Note changes: an image into a Note, [[title]] references following a rename, Split by Headings.
 // Pure functions that change the board passed in (the board calls them inside a mutate).
 import { removeCards } from "./refs";
-import { mdHeading, uid, type Board } from "../model";
+import { uid, type Board } from "../model";
 import { eachMarkdown, mapRefs } from "../mdrefs";
 import { estSize, type Rect } from "../layout";
 import { headingTree, splitHeadings } from "../split";
@@ -25,37 +25,6 @@ export function imageIntoNote(b: Board, imageId: string, noteId: string, src: st
   note.md = [head, block, tail].filter(Boolean).join("\n\n");
   removeCards(b, [imageId]);
   return true;
-}
-
-// Note 的字在标题栏（36，含下边线）下面、内边距 10 / 14；Text 的内边距 2 / 4
-const NOTE_PAD_X = 14 - 4,
-  NOTE_HEAD = 36 + 10 - 2;
-/**
- * Note ↔ Text（只有这两种互转）。看到的就是全部：Note 卡头的名字（改过的名字）变成 Text 正文的第一行 # 标题；
- * Text 开头的 # 标题本来就显示在 Note 的卡头上（mdHeading），所以 Turn into Note 不用搬字，来回转看起来不变。
- * 卡挪一下：标题落在原来卡头那一行，没有标题时正文留在原地。高度回到跟着内容（Text 没有改高度的把手）
- */
-export function turnNoteInto(b: Board, id: string, look: "note" | "text"): void {
-  const n = b.cards.find((c) => c.id === id);
-  if (n?.kind !== "note" || n.look === look || (n.look !== "note" && n.look !== "text")) return;
-  if (look === "text" && n.title) {
-    if (mdHeading(n.md) !== n.title) n.md = n.md.trim() ? `# ${n.title}\n\n${n.md}` : `# ${n.title}`;
-    delete n.title;
-  }
-  if (look === "note") {
-    delete n.size;
-    delete n.bold;
-  }
-  const headed = !!(n.title || mdHeading(n.md));
-  n.look = look;
-  const p = b.place[id];
-  if (!p) return;
-  const s = look === "text" ? 1 : -1,
-    dy = headed ? 4 : NOTE_HEAD;
-  p.x += s * NOTE_PAD_X;
-  p.y += s * dy;
-  p.w -= s * 2 * NOTE_PAD_X;
-  delete p.h;
 }
 
 /**

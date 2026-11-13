@@ -1,27 +1,15 @@
-// 箭头（界面上叫 Arrow）：种类、样式、标签、走线、手绘线、正在连的线。线的几何、图层都在 canvas/Links.tsx，这里只喂白板数据
+// 箭头（界面上叫 Arrow）：种类、样式、标签、走线、正在连的线。线的几何、图层都在 canvas/Links.tsx，这里只喂白板数据
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import {
-  HAND_COLORS,
   type Board,
   type CodeCard,
   type CallMark,
   type End,
-  type HandColor,
   type Link,
   type LinkSide,
   type LinkStyle,
 } from "@codeboard/core";
-import {
-  Stage,
-  scene,
-  codeCard,
-  noteCard,
-  textCard,
-  markCard,
-  type Globals,
-  type Group,
-  type Scene,
-} from "./support/board";
+import { Stage, scene, codeCard, noteCard, textCard, type Globals, type Group, type Scene } from "./support/board";
 import { waitFor, hover, forceHover, el, $ } from "./support/play";
 import { arrow, ln, whole, LINK_COLORS } from "./support/canvas";
 import { setEditing, setRubber, setDropTarget, setDragLink } from "../src/state/ui";
@@ -49,7 +37,6 @@ type Args = {
   sideFrom: Side;
   sideTo: Side;
   state: "normal" | "hover" | "selected" | "dragging";
-  hand: HandColor;
   what: "line port" | "call" | "connect mode";
   which: "plain (+ Call)" | "call (+ arguments)";
 };
@@ -377,25 +364,6 @@ function routing(): Scene {
   return { board: b };
 }
 
-function handDrawn(a: Args): Scene {
-  const { board: b, at } = scene("Hand-drawn arrows");
-  const g = at(0, 0);
-  const c = g.put(codeCard("hd-code", "allocate"), { x: 520, y: 80, w: 520 });
-  const words = ["assert not seq.block_table", "ref_count += 1", "free_block_ids.remove", "_allocate_block"];
-  const text = ["先确认还没分配过", "前缀命中：共享这个 block", "从空闲表里拿走", "没命中的才新分配"];
-  HAND_COLORS.forEach((k, i) => {
-    g.caption(k, 40, 60 + i * 130, 200);
-    const m = g.put(markCard(`hd-${k}`, text[i], k), { x: 40, y: 60 + i * 130, w: 260 });
-    arrow(b, `hd${i}`, whole(m), ln(c, words[i]), i === 3 ? { style: { head: { start: true, end: true } } } : {});
-  });
-  // 从 Mark 到卡、到另一张 Mark：都是手绘线，颜色跟出发的 Mark
-  const m2 = g.put(markCard("hd-free", "注意：引用计数共享", a.hand), { x: 1300, y: 40, w: 220 });
-  const n = g.put(noteCard("hd-note", "**prefix caching**：相同前缀的 block 只存一份"), { x: 1300, y: 380, w: 260 });
-  arrow(b, "hdn", whole(m2), whole(n));
-  arrow(b, "hdc", whole(m2), whole(c), { label: "和左边一起看" });
-  return { board: b };
-}
-
 function drawing(a: Args): Scene {
   const { board: b, put } = scene("Drawing an arrow");
   const src = put(codeCard("dr-src", "preempt"), { x: 40, y: 80, w: 420 });
@@ -459,7 +427,6 @@ const meta = {
     sideFrom: "auto",
     sideTo: "auto",
     state: "normal",
-    hand: "purple",
     what: "line port",
     which: "plain (+ Call)",
   },
@@ -500,7 +467,6 @@ const meta = {
     },
     sideTo: { control: "select", options: ["auto", "left", "right", "top", "bottom"] },
     state: { control: "inline-radio", options: ["normal", "hover", "selected", "dragging"] },
-    hand: { table: { disable: true } },
     what: { table: { disable: true } },
     which: { table: { disable: true } },
   },
@@ -524,14 +490,6 @@ export const Labels: Story = {
 export const Routing: Story = {
   render: (_, ctx) => <Stage scene={routing} globals={ctx.globals as Globals} />,
   argTypes: noArgs,
-};
-export const HandDrawn: Story = {
-  name: "Hand-drawn (from a Mark)",
-  render: (a, ctx) => <Stage scene={() => handDrawn(a)} globals={ctx.globals as Globals} />,
-  argTypes: {
-    ...noArgs,
-    hand: { control: "inline-radio", options: [...HAND_COLORS], description: "Colour of the Mark on the right" },
-  },
 };
 export const Drawing: Story = {
   name: "Drawing (rubber band)",

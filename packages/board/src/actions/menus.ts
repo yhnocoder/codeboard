@@ -26,7 +26,6 @@ import { SECTION_COLORS, SectionMenuRow } from "../canvas/SectionTools";
 import {
   K,
   fitAll,
-  fitContent,
   openLink,
   sectionById,
   sectionLocked,
@@ -35,7 +34,7 @@ import {
   selectCard,
   resolveCardRef,
 } from "./common";
-import { boardOffset, naturalSize } from "../state/measure";
+import { boardOffset } from "../state/measure";
 import {
   addLink,
   callOn,
@@ -89,9 +88,9 @@ import {
   fitSections,
   tidyUp,
 } from "./edit";
-import { newFreeCode, newFreeText, newNote, newText, pasteText } from "./create";
+import { newFreeCode, newNote, newText, pasteText } from "./create";
 import { shelveSel } from "./shelf";
-import { captionItems, openAddNote, showPeek, tableCaptionItems, turnNote } from "./notes";
+import { captionItems, openAddNote, showPeek, tableCaptionItems } from "./notes";
 import { mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
 import { canLinkList } from "@codeboard/core/commands";
 import { moveOutOfParent, setSectionColor, toggleCompare, unlinkShared } from "./edit";
@@ -354,28 +353,9 @@ function cardItems(id: string, x: number, y: number): Item[] {
       { label: "Start Card", checked: !!placeOf(id).start, run: () => toggleStart(id) },
       ...tail,
     ];
-  if (c.kind === "note") {
-    // Mark 的颜色、粗细、字号，Free Text 的级别、粗体，Box 的底色都在选中时的工具条上
-    if (c.look === "mark" || c.look === "freetext") return tail;
-    if (c.look === "box") return [ai(), ...tail];
-    // Text 的高度一直跟着字：Fit Content 只定宽度（不折行时多宽，太长的照样折）
-    if (c.look === "text") {
-      const n = naturalSize(id)?.w;
-      return [
-        {
-          label: "Fit Content",
-          kbd: kbd("fitContent"),
-          disabled: n && Math.abs(C.fitWidth(c, n) - placeOf(id).w) > 1 ? false : "Already as wide as its content",
-          run: () => fitContent([id]),
-        },
-        { label: "Turn into Note", run: () => turnNote(id, "note") },
-        ai(),
-        ...tail,
-      ];
-    }
-    // Note：Fit Content 和 Split by Headings 在卡头悬停出现的按钮上（NoteBody）
-    return [{ label: "Turn into Text", run: () => turnNote(id, "text") }, ai(), ...tail];
-  }
+  // Note: Fit Content and Split by Headings are on its header's hover buttons (NoteBody); a Text's or Box's size, look and fill on
+  // its toolbar
+  if (c.kind === "note") return [ai(), ...tail];
   if (c.kind === "web")
     return [
       { label: "Open in Browser", kbd: "Double-click", run: () => openLink(c.url) },
@@ -640,7 +620,6 @@ export function canvasMenu(md: Markdown, x: number, y: number) {
   openMenu(
     [
       { label: "New Text", kbd: kbd("newText"), run: () => newText(w) },
-      { label: "New Free Text", run: () => newFreeText(w) },
       { label: "New Note", kbd: kbd("newNote"), run: () => newNote(w) },
       { label: "New Code", run: () => newFreeCode(w) },
       { label: "Add Function…", kbd: kbd("search"), run: () => setPaletteOpen({ mode: "code" }) },

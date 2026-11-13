@@ -1,6 +1,6 @@
 // 各张卡的 Overview 摆法：卡的 story 和 Overview/All 共用，All 把它们放在同一块白板上
-import { HAND_COLORS, type HandColor, type Stale } from "@codeboard/core";
-import { noteCard, codeCard, markCard, annotAt, type Group } from "./board";
+import { TEXT_SIZES, type HandColor, type Stale, type TextSize } from "@codeboard/core";
+import { noteCard, codeCard, textCard, annotAt, type Group } from "./board";
 
 export const SHORT = "KV cache 按 block 分配，一个 block 256 个 token。";
 export const LONG = [
@@ -86,22 +86,21 @@ export function codeGroup(g: Group, a: { w: number; annot: string; annotColor: H
   return { stale: { [stale.segments[0].id]: changed }, sel: "c-sel" };
 }
 
-export function markGroup(g: Group, a: { color: HandColor; w: number }, o: { editing: boolean }) {
+export function textGroup(g: Group, a: { w: number }, o: { editing: boolean }) {
   const { put, caption } = g;
-  HAND_COLORS.forEach((k, i) => {
-    caption(k[0].toUpperCase() + k.slice(1), 40 + i * 220, 40, 200);
-    put(markCard(`m-${k}`, ONE, k), { x: 40 + i * 220, y: 40, w: 200 });
+  (Object.keys(TEXT_SIZES) as TextSize[]).forEach((k, i) => {
+    caption(k.toUpperCase(), 40 + i * 220, 40, 200);
+    put(textCard(`t-${k}`, ONE, k === "s" ? {} : { fs: TEXT_SIZES[k] }), { x: 40 + i * 220, y: 40, w: 200 });
   });
-  caption("One line (wide)", 40, 200, 400);
-  put(markCard("m-wide", MANY, a.color), { x: 40, y: 200, w: 620 });
-  caption("Wrapped (narrow)", 700, 200);
-  put(markCard("m-narrow", MANY, a.color), { x: 700, y: 200, w: a.w });
-  // 选中时颜色条在卡上方，名字再往上让开
-  caption("Selected (toolbar, handle)", 40, 384);
-  put(markCard("m-sel", ONE, a.color), { x: 40, y: 420, w: 220 });
+  caption("One line (as wide as its text)", 40, 200, 400);
+  put(textCard("t-wide", MANY), { x: 40, y: 200, w: 620 });
+  caption("Wrapped (width set)", 700, 200);
+  put(textCard("t-narrow", MANY, { wrap: true }), { x: 700, y: 200, w: a.w });
+  caption("Selected (toolbar, handles)", 40, 384);
+  put(textCard("t-sel", ONE), { x: 40, y: 420, w: 220 });
   if (o.editing) {
     caption("Editing", 420, 420);
-    put(markCard("m-edit", ONE, a.color), { x: 420, y: 420, w: 220 });
+    put(textCard("t-edit", ONE), { x: 420, y: 420, w: 220 });
   }
-  return { sel: "m-sel", editing: o.editing ? "m-edit" : undefined };
+  return { sel: "t-sel", editing: o.editing ? "t-edit" : undefined };
 }

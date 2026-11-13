@@ -23,7 +23,7 @@ const svg = (w: number, h: number, c: string) =>
 
 /**
  * Main holds two sub-boards: Parallel (four sections of notes, an image, ungrouped notes) and Scheduler (code cards in two sections,
- * a handwritten Mark). Scheduler itself holds a Deep board, so [[ can list a card two levels down
+ * a Text). Scheduler itself holds a Deep board, so [[ can list a card two levels down
  */
 export function boards() {
   const P = emptyBoard("bPar", "异构数据并行计算");
@@ -94,7 +94,7 @@ export function boards() {
     put(S, c, x, y, 520);
     S.place[c.id].section = sec;
   }
-  S.cards.push(note("sMark", "待查：preempt 之后前缀缓存还能命中吗？", { look: "mark", hand: "orange" }));
+  S.cards.push(note("sMark", "待查：preempt 之后前缀缓存还能命中吗？", { look: "text", wrap: true, fs: 18 }));
   S.place.sMark = { x: 700, y: 520, w: 220, section: "sch" };
   S.cards.push(note("sNote", "## 抢占\n显存不够就把最后一个踢回 waiting"));
   S.place.sNote = { x: 700, y: 700, w: 260, section: "sch" };
@@ -835,11 +835,11 @@ test("subboardMap", async () => {
     const f = document.querySelector('.card[data-id="fSch"]')!;
     return {
       codeHead: f.querySelectorAll(".skel .k-code .hd").length,
-      mark: f.querySelectorAll('.skel [data-sub="sMark"] .bar.mk').length,
+      text: f.querySelectorAll('.skel [data-sub="sMark"] .bar').length,
       nested: f.querySelectorAll(".skel .k-board").length,
     };
   });
-  check("subboardMap-kinds", sch.codeHead === 6 && sch.mark > 0 && sch.nested === 1, sch);
+  check("subboardMap-kinds", sch.codeHead === 6 && sch.text > 0 && sch.nested === 1, sch);
   // hover a block: its title in a tooltip under it
   const c = await center(h, '.card[data-id="fPar"] .skel [data-sub="p9"] .hit');
   await page.mouse.move(c.x, c.y);
@@ -887,7 +887,8 @@ test("subboardMapRealSizes", async () => {
     id: "rText",
     kind: "note",
     look: "text",
-    size: "body",
+    wrap: true,
+    fs: 13.5,
     md: "本章讨论 GPU 的片上内存架构，并开始研究如何组织和放置数据，使大量线程能够高效访问它们。".repeat(4),
   } as NoteCard);
   B.place.rText = { x: 360, y: 560, w: 380 };

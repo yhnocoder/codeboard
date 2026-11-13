@@ -115,12 +115,13 @@ export const Typora = Extension.create<{
   openMath: (e: Editor, pos: number) => void;
   openLink: (e: Editor) => void;
   classes: () => MdClasses | undefined;
+  headingChip: () => boolean;
 }>({
   name: "cbTypora",
   // ahead of TipTap's own rules (code block, task); ghost text still takes Tab / Esc first (1000)
   priority: 900,
   addOptions() {
-    return { openMath: () => {}, openLink: () => {}, classes: () => undefined };
+    return { openMath: () => {}, openLink: () => {}, classes: () => undefined, headingChip: () => true };
   },
 
   addInputRules() {
@@ -408,6 +409,11 @@ export const Typora = Extension.create<{
   },
 
   addProseMirrorPlugins() {
-    return [pairsPlugin(), inlinePlugin(), imageCaretPlugin(), headingsPlugin(this.options.classes)];
+    return [
+      pairsPlugin(),
+      inlinePlugin(),
+      imageCaretPlugin(),
+      headingsPlugin(this.options.classes, this.options.headingChip),
+    ];
   },
 });

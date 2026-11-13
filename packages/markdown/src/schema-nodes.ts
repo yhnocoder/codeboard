@@ -129,6 +129,14 @@ export const Code = CodeBlock.extend({
     };
   },
   renderHTML: ({ node }) => ["pre", { class: "md-code", "data-lang": node.attrs.language || null }, ["code", 0]],
+  // every code token marked makes is a code block: TipTap's own reader drops a fence indented by 1–3 spaces (its raw
+  // starts with the spaces, not ```), which CommonMark allows. CommonMark takes up to that indent off each content line;
+  // marked does so for ``` but not for ~~~, so a ~~~ fence's indent is taken off here
+  parseMarkdown: (token, h) => {
+    const n = /^( {1,3})~/.exec(token.raw ?? "")?.[1].length ?? 0;
+    const text = n ? (token.text ?? "").replace(new RegExp(`^ {1,${n}}`, "gm"), "") : token.text;
+    return h.createNode("codeBlock", { language: token.lang || null }, text ? [h.createTextNode(text)] : []);
+  },
   renderMarkdown: (n, h) => {
     const body = n.content ? h.renderChildren(n.content) : "";
     const run = Math.max(2, ...[...body.matchAll(/^ {0,3}(`{3,})/gm)].map((m) => m[1].length));
@@ -401,13 +409,17 @@ export const FnRef = FootnoteReference.extend({
   },
 });
 export const FnDef: AnyExtension = Footnote.extend({
+  // its source as written: a definition nothing refers to is kept as it is (parseMd)
+  addAttributes() {
+    return { ...this.parent?.(), raw: { default: null, rendered: false } };
+  },
   // 定义的 id 只给原版的锚点链接用（引用不再是链接）：不画
   renderHTML: () => ["li", 0],
   markdownTokenName: "footnoteDef",
   parseMarkdown: (t, h) =>
     h.createNode(
       "footnote",
-      { "data-id": `fn-${t.label}`, id: `fn:${t.label}` },
+      { "data-id": `fn-${t.label}`, id: `fn:${t.label}`, raw: t.raw },
       t.tokens?.length ? h.parseChildren(t.tokens) : [h.createNode("paragraph", {}, [])],
     ),
   renderMarkdown: undefined,
@@ -417,7 +429,7 @@ export const FnDef: AnyExtension = Footnote.extend({
     start: lineStart(/\n\[\^[^\]\s]+\]:/),
     tokenize: (src, _t, lx) => {
       // 第一行冒号后面的字，加上后面缩进的续行
-      const m = /^\[\^([^\]\s]+)\]:[ \t]*([^\n]*(?:\n(?:(?: {2,}|\t)[^\n]*|[ \t]*(?=\n(?: {2,}|\t))))*)(?:\n|$)/.exec(
+      const m = /^\[\^([^\]\s]+)\]:[ \t]*([^\n]*(?:\n(?:(?: {2,}|\t)[^\n]*|[ \t]*(?=\n(?: {2,}|\t))))*)(?:\n+|$)/.exec(
         src,
       );
       if (!m) return;
@@ -425,6 +437,21 @@ export const FnDef: AnyExtension = Footnote.extend({
       return { type: "footnoteDef", raw: m[0], label: m[1], tokens: lx.blockTokens(body) };
     },
   },
+});
+/**
+ * Link reference definitions ([label]: url "title") and footnote definitions nothing refers to: read and written as they
+ * are written, drawn as nothing. A run of them without a blank line between is one block (schema.ts refDefsTokenizer)
+ */
+export const RefDefs = Node.create({
+  name: "refDefs",
+  group: "block",
+  atom: true,
+  addAttributes: () => ({ raw: { default: "", rendered: false } }),
+  parseHTML: () => [{ tag: "div[data-refdefs]" }],
+  renderHTML: () => ["div", { "data-refdefs": "", hidden: "" }],
+  markdownTokenName: "refDefs",
+  parseMarkdown: (t) => ({ type: "refDefs", attrs: { raw: t.raw } }),
+  renderMarkdown: (n) => String(n.attrs?.raw ?? "").replace(/\n+$/, ""),
 });
 export const FnList = Footnotes.extend({
   markdownTokenName: "footnotes",

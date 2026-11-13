@@ -1,16 +1,18 @@
 // 不固定的同时只开一个；⌘ + 悬停 / Pin 固定后变成独立的一个，可以开好几个对照着看。
 import { boardSignal } from "./root";
-import type { Anchor, DiffData, PeekDef, Commit, Segment, CallSpan, ImplPick, NameHit, HlRange } from "@codeboard/core";
+import type { DiffData, PeekDef, Commit, Segment, CallSpan, ImplPick, NameHit, HlRange } from "@codeboard/core";
 
 /** 浮层挂在哪：一个元素（跟着它走，镜头动也跟），或一个屏幕坐标。
- *  prefer "range": el is a Highlight's gutter area (.hxhit, data-in = how far right of the gutter its code starts, px): the popup goes
- *  under its lines, lined up with its code, or above them when there is no room */
-export type At = { el?: Element; x?: number; y?: number; prefer?: "below" | "right" | "above" | "range" };
+ *  prefer "beside": el is a card or something on its lines (a Highlight's .hxhit, a selected line's number): the popup goes right of
+ *  the card, its top at el's, or over the card when the window has no room on its right */
+export type At = { el?: Element; x?: number; y?: number; prefer?: "below" | "right" | "above" | "beside" };
 
 export type Pop =
-  | { kind: "notes"; card: string; ids: string[]; title: string; sel?: string }
-  /** A Highlight (lines of a code card's segment) and the sidenotes on it */
-  | { kind: "highlight"; card: string; seg: string; lines: HlRange }
+  /** A card's whole-card sidenotes; write: opened to write a new one (its input ready) */
+  | { kind: "notes"; card: string; write?: true }
+  /** A Highlight (lines of a code card's segment) and the sidenotes on it, or lines with no Highlight yet that one is being written
+   *  on. write: opened to write a sidenote on these lines (inside `lines`), its input ready */
+  | { kind: "highlight"; card: string; seg: string; lines: HlRange; write?: HlRange }
   | {
       kind: "peek";
       card: string;
@@ -20,7 +22,6 @@ export type Pop =
       trail?: PeekDef[];
       data?: PeekDef | { none: string; word: string } | { pick: PeekDef[] };
     }
-  | { kind: "addNote"; at: Anchor; tab: "code" | "paste" | "text" | "link" | "card"; editing?: string }
   | { kind: "diff"; card: string; seg: string; data?: DiffData; error?: string }
   | { kind: "pick"; title: string; items: { label: string; detail: string; run: () => void }[] }
   | { kind: "commits"; card: string; seg: Segment; list?: Commit[] }

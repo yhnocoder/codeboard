@@ -191,13 +191,6 @@ describe("export", () => {
     expect(boardMarkdown(b, { order: ["Scheduler.schedule"], boardOnly: true })).toContain("private");
   });
 
-  it("writes a Free Text as plain text: its first line is the section title, the rest escaped paragraphs", () => {
-    const b = board("b", "ft", [
-      { id: "f", kind: "note", look: "freetext", md: "  # Scheduler *loop*\n\nprefill_batch [1]\nthen decode", fs: 60 },
-    ]);
-    const md = boardMarkdown(b, { order: ["f"] });
-    expect(md).toContain("## # Scheduler *loop*\n\nprefill\\_batch \\[1\\]\n\nthen decode\n");
-  });
   it("keeps a Note image's caption in the placeholder and drops its width", () => {
     const b = board("b", "imgs", [
       note("n", 'x\n\n![warp](assets/a-1x1.png "Fig. 1: \\"if\\" paths"){width=40%}\n\n![](assets/b-1x1.png)'),

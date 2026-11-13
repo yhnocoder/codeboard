@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { Stage, scene, type Globals, type Scene } from "./support/board";
-import { noteGroup, codeGroup, markGroup, TITLED, ONE } from "./support/groups";
-import { noteCard, textCard, markCard } from "./support/board";
+import { noteGroup, codeGroup, textGroup, TITLED, ONE } from "./support/groups";
+import { noteCard, textCard, boxCard } from "./support/board";
 import { fn } from "./support/code";
 import { arrow, ln, whole } from "./support/canvas";
 import { IMAGES, imageCard, webCard, linksCard } from "./support/cards";
@@ -12,8 +12,8 @@ function all(): Scene {
   const { board, at } = scene("Overview");
   const n = noteGroup(at(0, 0), { w: 300, h: 260 });
   const c = codeGroup(at(1160, 0), { w: 460, annot: "KV cache blocks", annotColor: "purple" });
-  // 白板上同一时刻只有一张卡在编辑：留 Note 的，Mark 的编辑状态看 Cards/Mark 的 Editing
-  const m = markGroup(at(0, 840), { color: "blue", w: 220 }, { editing: false });
+  // 白板上同一时刻只有一张卡在编辑：留 Note 的，Text 的编辑状态看 Cards/Text 的 Editing
+  const m = textGroup(at(0, 840), { w: 220 }, { editing: false });
   // 三组各选一张：跨组的多选和多选工具栏一起看
   return { board, stale: c.stale, sel: [n.sel, c.sel, m.sel], editing: n.editing };
 }
@@ -27,7 +27,7 @@ export default meta;
 export const All: StoryObj<typeof meta> = {};
 
 // 每种卡被指着时的样子，放在同一块白板上（CSS :hover，story 的 globals.pseudo 摆出来，全部卡一起悬停）：
-// Note / Code / Image 浮出连线的点和右下角的弧、Text 的虚线框、Mark 的淡虚线框、无背景的代码卡的细边框和卡头、Web 卡右上角的 ↗ ⋯、
+// Note / Code / Image 浮出连线的点和右下角的弧、Text 和 Box 的虚线框、无背景的代码卡的细边框和卡头、Web 卡右上角的 ↗ ⋯、
 // Link List 被指着的那一行（⋮⋮ 和工具）、Text 选中时的工具条按钮。
 // 悬停也有 JS 的部分：指针下那张卡的箭头会浮到所有卡的上面，这是 hoverCard() 的信号（state/hover.ts）、不是 CSS，所以 after 里把它设成 h-a。
 // 名字（caption）也是 Text 卡，不跟着悬停
@@ -38,8 +38,8 @@ function hover(): Scene {
   caption("Text: selected (toolbar button) and not (dashed frame)", 40, 250, 340);
   put(textCard("h-text", "Scheduler：先 prefill，再 decode"), { x: 40, y: 330, w: 300 });
   put(textCard("h-text2", "BlockManager：分配、释放"), { x: 40, y: 400, w: 300 });
-  caption("Mark", 40, 480, 200);
-  put(markCard("h-mark", ONE, "blue"), { x: 40, y: 480, w: 220 });
+  caption("Box", 40, 480, 200);
+  put(boxCard("h-box", ONE), { x: 40, y: 480, w: 220 });
   caption("Image", 40, 580, 200);
   put(imageCard("h-img", IMAGES.wide, { bg: true }), { x: 40, y: 580, w: 300 });
   caption("Code (arrow floats to the top)", 420, 70, 400);

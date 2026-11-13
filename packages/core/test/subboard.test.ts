@@ -117,11 +117,11 @@ describe("sub-board skeleton", () => {
     expect(subBoardsOf(b)).toEqual(["C"]);
   });
 
-  it("gives the map what it draws: the look of frameless notes, pictures and their names (alt, else the caption right below)", () => {
+  it("gives the map what it draws: whether a note is a Text or a Box, pictures and their names (alt, else the caption right below)", () => {
     const b = board("M", [[note("n"), 500, 0]]);
     b.cards.push(
       { id: "tx", kind: "note", md: "Heading words", look: "text" },
-      { id: "h", kind: "note", md: "check\nthis", look: "mark", hand: "orange" },
+      { id: "h", kind: "note", md: "check\n\nthis", look: "box" },
       { id: "i", kind: "image", src: "pic-120x80.png" },
       { id: "cap", kind: "note", md: "BLUR_SIZE = 1", look: "text" },
       { id: "alt", kind: "image", src: "a.png", alt: "Grid of blocks" },
@@ -138,7 +138,7 @@ describe("sub-board skeleton", () => {
     const by = Object.fromEntries(skeletonOf(b).cards.map((c) => [c.id, c]));
     expect(by.n.lk).toBeUndefined();
     expect(by.tx).toMatchObject({ lk: "text", t: "Heading words" });
-    expect(by.h).toMatchObject({ lk: "mark", t: "check this" });
+    expect(by.h).toMatchObject({ lk: "box", t: "check" });
     expect(by.i).toMatchObject({ img: "pic-120x80.png", t: "BLUR_SIZE = 1" });
     expect(by.alt.t).toBe("Grid of blocks");
     expect(by.far.t).toBe("");
@@ -184,7 +184,8 @@ describe("sub-board skeleton", () => {
       { id: "fd", t: "Deep", k: "board" },
       { id: "deep", t: "deep", k: "note", via: [{ f: "fd", b: "D", n: "Deep" }] },
     ]);
-    expect(refTitle({ id: "x", kind: "note", md: "big words", look: "text", size: "title" })).toBe("big words");
+    expect(refTitle({ id: "x", kind: "note", md: "# big words", look: "text" })).toBe("big words");
+    expect(refTitle({ id: "x", kind: "note", md: "big words", look: "text" })).toBeUndefined();
     expect(refTitle({ id: "x", kind: "note", md: "1. 增加 shape(圆角矩形、圆形等)", look: "note" })).toBeUndefined();
   });
 });

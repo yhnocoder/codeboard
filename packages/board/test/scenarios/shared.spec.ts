@@ -143,10 +143,9 @@ test("sharedcards", async () => {
     .locator(".chead")
     .click({ position: { x: 80, y: 10 } });
   await m.page.keyboard.press("s");
-  await m.page.locator(".pop button", { hasText: /^Text$/ }).click();
-  await m.page.locator(".pop :focus").waitFor();
+  await m.page.locator(".pop.k-notes .ncomp .md-pm:focus").waitFor();
   await m.page.keyboard.type("Added on MoE.");
-  await m.page.locator(".pop button", { hasText: /^Add$/ }).click();
+  await m.page.keyboard.press("Enter");
   await until(m, "the sidenote is saved on MoE", () =>
     t.store.peek("bM")!.sidenotes.some((n) => n.kind === "text" && n.md === "Added on MoE."),
   );
@@ -156,8 +155,11 @@ test("sharedcards", async () => {
   res.noteOnAPage = await cardEl(a, "Scheduler.schedule").locator(".chead .mk").textContent();
 
   // 5. Board-only from the sidenote's context menu: it leaves Attention
+  await m.page.keyboard.press("Escape"); // the input, kept for the next sidenote
+  await m.page.keyboard.press("Escape"); // the popup
+  await expect(m.page.locator(".pop.k-notes")).toHaveCount(0);
   await cardEl(m, "Scheduler.schedule").locator(".chead .mk").click();
-  await m.page.locator(".pop.k-notes .sn-item").first().click({ button: "right" });
+  await m.page.locator(".pop.k-notes .slip").first().click({ button: "right" });
   await m.page.locator(".ctx:not(.closing) button").first().waitFor();
   await idle(m);
   res.noteMenu = await m.page.locator(".ctx:not(.closing) button").allTextContents();
@@ -180,6 +182,9 @@ test("sharedcards", async () => {
 
   // 6. Update on a shared card asks for the scope first; Update on All Boards moves Attention's arrow too and marks the sidenote for review
   await m.post({ type: "stale", stale: { [s0.id]: { state: "changed", hiddenOnly: false, head: "f64d8210" } } } as any);
+  // the pointer comes onto the card first: its header makes room for the hover tools then, so nothing slides under the pointer
+  await cardEl(m, "Scheduler.schedule").locator(".chead .ctitle").hover();
+  await idle(m);
   await cardEl(m, "Scheduler.schedule").locator(".chead .rev.new").click();
   await m.page.locator(".diffpop .db button.def").click(); // the diff comes with the host's reply
   await m.page.locator(".dialog").waitFor();
@@ -336,14 +341,15 @@ test("sharedHighlightBoardOnly", async () => {
   await no(m, L + 6).click();
   await no(m, L + 9).click({ modifiers: ["Shift"] });
   await m.page.keyboard.press("s");
-  await m.page.locator(".pop button", { hasText: /^Text$/ }).click();
-  await m.page.locator(".pop :focus").waitFor();
+  await m.page.locator(".pop.k-highlight .ncomp .md-pm:focus").waitFor();
   await m.page.keyboard.type("Only on MoE.");
-  await m.page.locator(".pop button", { hasText: /^Add$/ }).click();
+  await m.page.keyboard.press("Enter");
   await until(m, "the note is saved on MoE", () =>
     t.store.peek("bM")!.sidenotes.some((n) => n.kind === "text" && n.md === "Only on MoE."),
   );
-  await m.page.keyboard.press("Escape");
+  await m.page.keyboard.press("Escape"); // the input, kept for the next sidenote
+  await m.page.keyboard.press("Escape"); // the popup
+  await expect(m.page.locator(".pop.k-highlight")).toHaveCount(0);
   await marker(m, L + 6, L + 9).click();
   await m.page.locator('.pop.k-highlight .slip button[aria-label="Board-only"]').click();
   await until(m, "the note is board-only", () =>

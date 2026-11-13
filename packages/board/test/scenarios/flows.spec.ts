@@ -139,12 +139,10 @@ test("notes", async () => {
     .click({ modifiers: ["Shift"] });
   await shot(h, "notes-01-lines");
   await h.page.keyboard.press("s");
-  await h.page.locator(".pop button", { hasText: /^Text$/ }).waitFor();
+  await h.page.locator(".pop.k-highlight .ncomp .md-pm:focus").waitFor();
   await shot(h, "notes-02-add");
-  await h.page.locator(".pop button", { hasText: /^Text$/ }).click();
-  await h.page.locator(".pop textarea, .pop [contenteditable]").first().click();
   await h.page.keyboard.type("Prefill admits waiting seqs until the token budget runs out.");
-  await h.page.locator(".pop button", { hasText: /^Add$/ }).click();
+  await h.page.keyboard.press("Enter");
   await until(h, "the sidenote is added", () => h.board().sidenotes.length);
   const sn = h.board().sidenotes as any[];
   check(
@@ -157,6 +155,11 @@ test("notes", async () => {
     { sn, lines },
   );
   await shot(h, "notes-03-done");
+  // the input stays for the next one: Esc on it empty puts the + back, and Esc again closes the popup
+  await h.page.keyboard.press("Escape");
+  await h.page.locator(".pop.k-highlight button.add").waitFor();
+  await h.page.keyboard.press("Escape");
+  await expect(h.page.locator(".pop.k-highlight")).toHaveCount(0);
   await h.page.mouse.move(1300, 800);
   await h.page.keyboard.press("n");
   await h.page.locator(".md-pm:focus").waitFor();
@@ -1705,7 +1708,7 @@ test("themes", async () => {
     md: "# Why chunked prefill\nKeeps memory **bounded**: prefill admits waiting seqs until the `max_num_batched_tokens` budget runs out.",
     look: "note",
   };
-  const title = { id: "t1", kind: "note" as const, md: "Engine loop", look: "text", size: "title" as const };
+  const title = { id: "t1", kind: "note" as const, md: "# Engine loop", look: "text", wrap: true as const, fs: 14.5 };
   b.cards.push(note, title);
   b.place[note.id] = { x: 110, y: 520, w: 360, section: "sec1" };
   b.place[title.id] = { x: 70, y: 70, w: 300 };

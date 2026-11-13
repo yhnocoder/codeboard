@@ -9,14 +9,14 @@ import type { BoundVal, CallAlt, Var } from "@codeboard/analysis/basics";
 import { fnv } from "@codeboard/analysis/basics";
 import type { SealColor } from "./seal";
 
-export const BOARD_VERSION = 14;
+export const BOARD_VERSION = 16;
 
 /** 一段代码钉在哪个版本上 */
 export type Version =
   | { kind: "git"; commit: string; uncommitted?: boolean } // git 仓库里的文件
   | { kind: "pkg"; name: string; version: string } // pip / conda 装的包，读 dist-info
   | { kind: "hash"; hash: string } // 都不是：内容指纹
-  | { kind: "none" }; // Free code、Paste：没有版本
+  | { kind: "none" }; // Free code：没有版本
 
 /** 代码从哪来 */
 export type Source =
@@ -150,44 +150,26 @@ export const viewKeyOf = (c: Pick<CodeCard, "active">, sid: string, vid: string)
   activeOf(c) === vid ? sid : viewKey(sid, vid);
 
 /**
- * 写在白板上的字的五种样子：Note = 卡片（卡框、「¶ 标题」栏）；Text、Box、Mark、Free Text 没有卡框。
- * Free Text（freetext）是直接写在白板上的字：纯文字（md 里存的就是字本身，不按 Markdown 读，只有换行），字号随意拖；
- * 级别（NoteCard.level：H1、H2、H3，没有 = 正文）取主题的标题 / 正文样式，选一级时字号回到那一级的预设（FREE_TEXT_FS）。
- * 只有 Note ↔ Text 能互转（turnNoteInto），Box、Mark、Free Text 不和别的互转
+ * A Note is a card: a frame, a header, a fixed width and the board's Note text size. Text and Box are one card in two looks,
+ * switched from its toolbar: words written straight on the board (Text) or on a coloured, rounded box (Box). Both are Markdown at
+ * the card's own text size (NoteCard.fs, which their headings and code scale with), as tall as their content, and as wide as their
+ * text until a side edge is dragged (NoteCard.wrap). Notes and Text / Box do not turn into each other
  */
-export const NOTE_LOOKS = ["note", "text", "box", "mark", "freetext"] as const;
+export const NOTE_LOOKS = ["note", "text", "box"] as const;
 export type NoteLook = (typeof NOTE_LOOKS)[number];
-/** Mark 的三种粗细：没有 = regular */
-export const HAND_WEIGHTS = ["light", "regular", "bold"] as const;
-export type HandWeight = (typeof HAND_WEIGHTS)[number];
-/** 每种粗细的 font-weight：手写的拉丁字母（Shantell Sans，300–800 连续可调）三档都有；中文（悠哉）只带了 Regular 和 Bold，Light 用 Regular */
-export const HAND_WEIGHT_CSS: Record<HandWeight, number> = { light: 300, regular: 400, bold: 700 };
-/**
- * 拖角改字号的（Mark、Free Text）：没存字号（NoteCard.fs）时的字号，和拖出来的上下限（px）。
- * 拖角是整体缩放：字号和宽度按同一个比例变，折行的地方不变
- */
-export const TEXT_FS = { mark: 18, freetext: 40, min: 10, max: 240 } as const;
-/** Free Text 的级别：H1、H2、H3；0 = 正文（plain，新建的 Free Text） */
-export const FREE_TEXT_LEVELS = [0, 1, 2, 3] as const;
-export type FreeTextLevel = (typeof FREE_TEXT_LEVELS)[number];
-/** 一级 Free Text 在菜单、工具条上的名字 */
-export const freeTextLevelName = (k: FreeTextLevel) => (k ? `Heading ${k}` : "Plain");
-/** 每一级 Free Text 没存字号（fs）时的字号（px）：H1 是从前所有 Free Text 的字号（TEXT_FS.freetext），H2、H3、正文依次小一档 */
-export const FREE_TEXT_FS: Record<FreeTextLevel, number> = { 0: 20, 1: TEXT_FS.freetext, 2: 30, 3: 24 };
-/** 拖角改字号的那几种 */
-export const scalesText = (c: Card | undefined): c is NoteCard & { look: "mark" | "freetext" } =>
-  c?.kind === "note" && (c.look === "mark" || c.look === "freetext");
-/** 一张 Mark / Free Text 没存字号时的字号：Mark 的统一字号，Free Text 它那一级的 */
-export const baseTextSize = (c: NoteCard & { look: "mark" | "freetext" }) =>
-  c.look === "freetext" ? FREE_TEXT_FS[c.level ?? 0] : TEXT_FS.mark;
-/** 一张 Mark / Free Text 现在的字号 */
-export const textSizeOf = (c: NoteCard & { look: "mark" | "freetext" }) => c.fs ?? baseTextSize(c);
-/** Mark 工具条上直接选的四档字号（px）。S 就是新 Mark 的默认字号，没改过字号的 Mark 亮着 S */
-export const MARK_SIZES = { s: TEXT_FS.mark, m: 24, l: 32, xl: 48 } as const;
-export type MarkSize = keyof typeof MARK_SIZES;
-/** 一张 Mark 的字号是哪一档；拖角拖出来的、不在四档上的字号没有档 */
-export const markSizeOf = (c: NoteCard): MarkSize | undefined =>
-  (Object.keys(MARK_SIZES) as MarkSize[]).find((k) => MARK_SIZES[k] === (c.fs ?? TEXT_FS.mark));
+/** A Text or Box */
+export const isTextCard = (c: Card | undefined): c is NoteCard & { look: "text" | "box" } =>
+  c?.kind === "note" && c.look !== "note";
+/** The text sizes picked on a Text's or Box's toolbar (px); S is a new one's, so one with no fs stored shows S */
+export const TEXT_SIZES = { s: 20, m: 24, l: 30, xl: 40 } as const;
+export type TextSize = keyof typeof TEXT_SIZES;
+/** How small and large dragging a Text's or Box's corner takes its text (px) */
+export const TEXT_FS = { min: 10, max: 240 } as const;
+/** A Text's or Box's text size */
+export const textSizeOf = (c: NoteCard) => c.fs ?? TEXT_SIZES.s;
+/** The size a Text's or Box's text is at, when it is one of the four; a size dragged by the corner off them has none */
+export const textSizeName = (c: NoteCard): TextSize | undefined =>
+  (Object.keys(TEXT_SIZES) as TextSize[]).find((k) => TEXT_SIZES[k] === textSizeOf(c));
 /**
  * 拖角缩放：从 fs0、宽 w0 起按 f 倍缩放后的字号和宽度。字号取整（半像素）、夹在上下限里，宽度按字号真正变了的比例跟着变，
  * 所以拖到头以后字和宽度一起停下
@@ -196,7 +178,7 @@ export function scaleText(fs0: number, w0: number, f: number): { fs: number; w: 
   const fs = Math.min(TEXT_FS.max, Math.max(TEXT_FS.min, Math.round(fs0 * f * 2) / 2));
   return { fs, w: Math.max(1, Math.round((w0 * fs) / fs0)) };
 }
-/** Box 的底色：新 Box 是第一个（黄色） */
+/** A Box's fills: a new Box takes the first (yellow) */
 export const BOX_FILLS = ["yellow", "paper", "blue", "green", "pink"] as const;
 export type BoxFill = (typeof BOX_FILLS)[number];
 
@@ -204,18 +186,12 @@ export type NoteCard = CardBase & {
   kind: "note";
   md: string;
   look: NoteLook;
-  size?: "title" | "heading" | "body"; // Text 的字号
-  bold?: boolean;
-  /** Box 的底色（只有 Box 有） */
+  /** A Box's fill; on a Text, the one it had as a Box, which it takes again when it turns back into one (none: yellow) */
   fill?: BoxFill;
-  /** Mark 的颜色（只有 Mark 有）：手写字、统一字号；从它出发的箭头画成这个颜色的手绘线 */
-  hand?: HandColor;
-  /** Mark 的粗细（只有 Mark 有；没有 = regular）：拉丁字母和中文手写体一起变 */
-  weight?: Exclude<HandWeight, "regular">;
-  /** Free Text 的级别（只有 Free Text 有）：1–3 = H1–H3，取主题的标题样式；没有 = 正文 */
-  level?: Exclude<FreeTextLevel, 0>;
-  /** Mark、Free Text 拖角拖出来的字号（px）；没有 = 这种（Free Text：这一级）的默认字号（baseTextSize） */
+  /** A Text's or Box's text size (px); none = S (TEXT_SIZES.s) */
   fs?: number;
+  /** A Text or Box whose width was set by dragging a side edge: it wraps at its stored width; none = as wide as its text */
+  wrap?: true;
   /** 消息卡：跨进程时夹在发送点和接收处之间的消息类型（md = 类型名，where = 定义在哪，如 io_struct.py） */
   msg?: { where?: string };
   /** Layout Markdown cannot hold: table column widths and row heights, wrapped code blocks (by position: nth table,
@@ -226,8 +202,6 @@ export type NoteLayout = {
   tables?: ({ cols?: (number | null)[]; rows?: (number | null)[] } | null)[];
   wrap?: number[];
 };
-/** 没有卡框、字直接写在画布上的（Text、Box、Mark、Free Text） */
-export const frameless = (c: Card | undefined): c is NoteCard => c?.kind === "note" && c.look !== "note";
 /** 图片：默认无背景（只显示图片本身），bg = 有卡片外框 */
 export type ImageCard = CardBase & {
   kind: "image";
@@ -467,12 +441,12 @@ export type Sidenote = {
   review?: string; // Update 时挂着的行变了：新版本的标签（如 9f3e2a1）；Highlight 合并让它的行变宽了：WIDENED。琥珀色提醒复查；用户看过就去掉
   variant?: string; // 只在卡的这个 Variant 上显示；行号按那个 Variant 的代码算。没有 = 跟着卡，所有 Variant 都显示
 } & (
-  | { kind: "code"; code: Segment } // 仓库里或仓库外的代码，钉版本
-  | { kind: "paste"; text: string; lang: string; url?: string }
-  | { kind: "text"; md: string; alwaysShow?: boolean }
-  | { kind: "link"; url: string; title?: string }
-  | { kind: "card"; card: string }
+  | { kind: "code"; code: Segment } // 仓库里或仓库外的代码（钉版本），或没有来源的 Free code
+  | { kind: "text"; md: string; alwaysShow?: boolean } // Markdown：链接、指着别的卡的 [[引用]] 都写在里面
 );
+
+/** A sidenote not added yet: one of its kinds, with no id */
+export type NewSidenote = Sidenote extends infer S ? (S extends Sidenote ? Omit<S, "id"> : never) : never;
 
 /** 图标：包名 + 图标名。builtin = 内置的十几个；emoji = 系统 emoji（name 就是那个字符）；其余是 Sticker Packs 目录里的包 */
 export type IconRef = { pack: string; name: string };
@@ -502,7 +476,7 @@ export type Camera = { x: number; y: number; z: number };
 export const homeCam = (): Camera => ({ x: 80, y: 80, z: 1 });
 
 export type Board = {
-  version: 14;
+  version: 16;
   id: string;
   name: string;
   /** 镜头：不写进白板文件（光是平移、缩放就改了文件，项目里用 git 管白板时全是噪音），每台机器各记各的（宿主的工作区状态，按白板 id） */
@@ -534,12 +508,13 @@ export type Board = {
 };
 /**
  * One entry on a board's Shelf: what was put aside together (cards, a Section with its cards and inner Sections, a multi-selection).
- * place = the shelved cards (canvas hosts: a Compare, not its columns) and where they were; their content stays in Board.cards (a
- * shared card keeps its library copy, twins stay the same) and their sidenotes in Board.sidenotes, but with no Place they are off
- * the canvas, out of search, Walkthrough, the call tree and summaries. sections = the shelved Sections as they were (outermost
- * first; a parent or a card's place.section outside the entry is kept up to date and dropped on return when it is gone). links =
- * every arrow that touches a shelved card: those inside travel with it, those to the rest of the board are hidden until it comes
- * back. stickers = the stickers on the shelved cards and on those arrows. at = when it was shelved (ms)
+ * place = the shelved cards (canvas hosts: a Compare, not its columns) and where they were, with the height the board measured
+ * (Place.mh); their content stays in Board.cards (a shared card keeps its library copy, twins stay the same) and their sidenotes in
+ * Board.sidenotes, but with no Place they are off the canvas, out of Walkthrough, the call tree, summaries and the search of other
+ * boards (their own board's search finds them: picking one takes its entry back out). sections = the shelved Sections as they were
+ * (outermost first; a parent or a card's place.section outside the entry is kept up to date and dropped on return when it is
+ * gone). links = every arrow that touches a shelved card: those inside travel with it, those to the rest of the board are hidden
+ * until it comes back. stickers = the stickers on the shelved cards and on those arrows. at = when it was shelved (ms)
  */
 export type ShelfEntry = {
   id: string;
@@ -568,10 +543,10 @@ export const legendName = (b: Pick<Board, "legend">, k: LegendKey) =>
 export type SharedRef = { id: string; kind: "shared" };
 /** 白板文件：cards 里可以有共享卡的引用，读进来后由宿主换成内容；没有镜头（见 Board.cam） */
 export type BoardFile = Omit<Board, "cards" | "cam"> & { cards: (Card | SharedRef)[] };
-/** 一张共享卡的内容：卡本身 + 跟着它走的 Sidenote（挂在它上面、不是 boardOnly、不是 kind card） */
+/** 一张共享卡的内容：卡本身 + 跟着它走的 Sidenote（挂在它上面、不是 boardOnly） */
 export type SharedCard = { card: Card; sidenotes: Sidenote[] };
 /** 卡库里的文件 cards/<id>.json。写盘时按项（卡、每条 Sidenote）和磁盘上的合并（storage/boards.ts merged） */
-export type SharedCardFile = SharedCard & { version: 14 };
+export type SharedCardFile = SharedCard & { version: 16 };
 
 /** subs = 这块白板上嵌着的子白板（去重，按出现的先后；侧栏按它缩进成树） */
 export type BoardMeta = {
@@ -615,8 +590,6 @@ const LOOK_NAME: Record<NoteLook, string> = {
   note: "Note",
   text: "Text",
   box: "Box",
-  mark: "Mark",
-  freetext: "Free Text",
 };
 
 export function cardTitle(c: Card, b?: Pick<Board, "cards">): string {
@@ -625,14 +598,13 @@ export function cardTitle(c: Card, b?: Pick<Board, "cards">): string {
     case "code":
       return codeTitle(c);
     case "note":
-      // a Free Text is plain text: its first line as written
-      return (c.look === "freetext" ? plainFirstLine(c.md) : firstLine(c.md)) || LOOK_NAME[c.look];
+      return firstLine(c.md) || LOOK_NAME[c.look];
     case "image":
       return c.alt || "Image";
     case "web":
       return c.meta?.title || domainOf(c.url);
     case "links":
-      return "Links";
+      return "Link List";
     case "compare":
       return `Compare · ${b ? compareName(c, b) : ""}`;
     case "board":
@@ -708,14 +680,11 @@ export const firstLine = (md: string) =>
         .replace(/!\[([^\]\n]*)\]\([^)\n]*\)/g, "$1")
         .replace(/^[#>\-*\s]+/, "")
         .replace(/\*\*|`/g, "")
+        .replace(/\\([!-/:-@[-`{-~])/g, "$1")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
         .trim(),
     )
-    .find(Boolean) ?? "";
-/** 纯文字（Free Text）的第一行非空的字，原样 */
-const plainFirstLine = (text: string) =>
-  text
-    .split("\n")
-    .map((l) => l.trim())
     .find(Boolean) ?? "";
 /** 深拷贝。白板在 mutate 里传进来的是 store 的代理，structuredClone 拷不了，所以走 JSON（白板数据本来就是 JSON） */
 export const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
@@ -829,11 +798,11 @@ export function noteSegment(b: Pick<Board, "cards">, n: Pick<Sidenote, "at" | "v
 /** Sidenote.review when its lines grew because the Highlight it is on merged with another (edit/highlights.ts) */
 export const WIDENED = "widened";
 /**
- * A sidenote this board keeps for itself: board-only, or a Card sidenote (the card it points to is on this board only). It does not
- * go along with a shared card, and neither does its Highlight: its lines are a Highlight on this board only (shownRanges), never
- * written into the segment's own Highlights (Segment.hl, which a shared card carries to every board)
+ * A sidenote this board keeps for itself (board-only). It does not go along with a shared card, and neither does its Highlight: its
+ * lines are a Highlight on this board only (shownRanges), never written into the segment's own Highlights (Segment.hl, which a
+ * shared card carries to every board)
  */
-export const localNote = (n: Pick<Sidenote, "boardOnly" | "kind">) => !!n.boardOnly || n.kind === "card";
+export const localNote = (n: Pick<Sidenote, "boardOnly">) => !!n.boardOnly;
 /** Lines a..z inside range r */
 export const within = (l: readonly number[], r: readonly number[]) => l[0] >= r[0] && l[1] <= r[1];
 /** The line sidenotes counted on a segment (noteSegment) */

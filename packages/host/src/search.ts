@@ -46,7 +46,8 @@ export async function search(
     for (const board of boards) {
       const refs = store.refsOf(board.id);
       let flows: ReturnType<typeof computeFlows> | undefined;
-      const off = shelvedCards(board); // on the Shelf: kept, but not found
+      // on the Shelf: found only from its own board, where picking it takes it back out; elsewhere kept, but not found
+      const off = board.id === here ? new Set<string>() : shelvedCards(board);
       board.cards.forEach((c) => {
         if (off.has(c.id)) return;
         if (compareColumn(board, c)) return;
@@ -76,7 +77,7 @@ export async function search(
       });
       for (const n of board.sidenotes ?? []) {
         if (off.has(n.at.card)) continue;
-        if (refs.has(n.at.card) && !n.boardOnly && n.kind !== "card") {
+        if (refs.has(n.at.card) && !n.boardOnly) {
           if (seenNotes.has(n.id)) continue;
           seenNotes.add(n.id);
         }

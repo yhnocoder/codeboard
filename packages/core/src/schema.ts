@@ -6,21 +6,17 @@ import * as v from "valibot";
 import {
   BOARD_VERSION,
   BOX_FILLS,
-  FREE_TEXT_LEVELS,
   HAND_COLORS,
-  HAND_WEIGHTS,
   NOTE_LOOKS,
   TEXT_FS,
   type Board,
   type BoardFile,
   type BoardSeal,
   type Camera,
-  type FreeTextLevel,
-  type HandWeight,
   type SharedCardFile,
 } from "./model";
 import { SEAL_COLORS, sealTextOk } from "./seal";
-import { fileCamera, migrateBoard, migrateSharedCard, sharedTextHeights } from "./migrate";
+import { fileCamera, migrateBoard, migrateSharedCard, sharedCardRefs, sharedTextHeights } from "./migrate";
 
 const str = v.string(),
   num = v.number(),
@@ -34,10 +30,6 @@ const NoteLayout = obj({
   tables: opt(v.array(v.nullable(obj({ cols: cellSizes, rows: cellSizes })))),
   wrap: opt(v.array(v.number())),
 });
-
-/** A Mark's weight and a Free Text's level are stored only when they are not the default (regular, plain) */
-const STORED_WEIGHTS = HAND_WEIGHTS.filter((w): w is Exclude<HandWeight, "regular"> => w !== "regular");
-const STORED_LEVELS = FREE_TEXT_LEVELS.filter((k): k is Exclude<FreeTextLevel, 0> => k !== 0);
 
 const Version = v.variant("kind", [
   obj({ kind: v.literal("git"), commit: str, uncommitted: opt(bool) }),
@@ -152,13 +144,9 @@ const Card = v.variant("kind", [
     kind: v.literal("note"),
     md: str,
     look: v.picklist(NOTE_LOOKS),
-    size: opt(v.picklist(["title", "heading", "body"])),
-    bold: opt(bool),
     fill: opt(v.picklist(BOX_FILLS)),
-    hand: opt(v.picklist(HAND_COLORS)),
-    weight: opt(v.picklist(STORED_WEIGHTS)),
-    level: opt(v.picklist(STORED_LEVELS)),
     fs: opt(v.pipe(num, v.minValue(TEXT_FS.min), v.maxValue(TEXT_FS.max))),
+    wrap: opt(yes),
     msg: opt(obj({ where: opt(str) })),
     mdLayout: opt(NoteLayout),
   }),
@@ -292,10 +280,7 @@ const noteBase = {
 };
 const Sidenote = v.variant("kind", [
   obj({ ...noteBase, kind: v.literal("code"), code: Segment }),
-  obj({ ...noteBase, kind: v.literal("paste"), text: str, lang: str, url: opt(str) }),
   obj({ ...noteBase, kind: v.literal("text"), md: str, alwaysShow: opt(bool) }),
-  obj({ ...noteBase, kind: v.literal("link"), url: str, title: opt(str) }),
-  obj({ ...noteBase, kind: v.literal("card"), card: str }),
 ]);
 
 const Sticker = obj({
@@ -395,7 +380,12 @@ export function loadBoardFile(raw: unknown): BoardFile {
  * runs on the board once it has put them in
  */
 export function readBoardFile(raw: unknown): { file: BoardFile; cam?: Camera; inflated?: (b: Board) => void } {
-  return { file: loadBoardFile(raw), cam: fileCamera(raw), inflated: sharedTextHeights(raw) };
+  const steps = [sharedTextHeights(raw), sharedCardRefs(raw)].filter((f) => !!f);
+  return {
+    file: loadBoardFile(raw),
+    cam: fileCamera(raw),
+    inflated: steps.length ? (b) => steps.forEach((f) => f(b)) : undefined,
+  };
 }
 
 /** 卡库里的文件 cards/<id>.json → 校验过的共享卡 */

@@ -69,6 +69,23 @@ export function bounds(rs: Rect[]): Rect | null {
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
+/**
+ * How far to move r (screen px) so that it is seen in `area`: nothing when it is wholly inside already. Otherwise, on each axis it
+ * sticks out on, the least move that leaves `margin` between it and the area's edges (less margin when only that much fits; larger
+ * than the area: its left or top at the margin)
+ */
+export function nudgeInto(r: Rect, area: Rect, margin: number): { dx: number; dy: number } {
+  const inside = r.x >= area.x && r.y >= area.y && r.x + r.w <= area.x + area.w && r.y + r.h <= area.y + area.h;
+  if (inside) return { dx: 0, dy: 0 };
+  const axis = (lo: number, size: number, from: number, span: number) => {
+    if (lo >= from && lo + size <= from + span) return 0;
+    if (size > span) return from + margin - lo;
+    const m = Math.min(margin, (span - size) / 2);
+    return lo < from + m ? from + m - lo : from + span - m - (lo + size);
+  };
+  return { dx: axis(r.x, r.w, area.x, area.w), dy: axis(r.y, r.h, area.y, area.h) };
+}
+
 /** 从 (x, y) 附近找一块不和别的卡重叠的地方：先往下，再往右，螺旋式扩大 */
 export function findFree(want: Rect, others: Rect[], gap = GAP): { x: number; y: number } {
   const free = (x: number, y: number) => !others.some((o) => overlaps({ x, y, w: want.w, h: want.h }, o, gap));

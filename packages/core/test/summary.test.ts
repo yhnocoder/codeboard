@@ -14,7 +14,6 @@ import {
   summaryRequest,
   summarySig,
   summaryInput,
-  keepsLook,
   summarySources,
   putSummary,
   cardKey,
@@ -135,13 +134,13 @@ describe("summary columns", () => {
 });
 
 /** A board: Section s (top level, a collapsed Section t inside: s is still innermost, with t's cards) with two Notes, a loose
- *  Note, a Mark, a Free Text and a sub-board frame */
+ *  Note, a Box, a Text and a sub-board frame */
 function board(): Board {
   const b = emptyBoard("b", "t");
   const note = (id: string, md: string, look: NoteCard["look"] = "note"): NoteCard => ({ id, kind: "note", md, look });
   b.cards.push(note("n1", "# 吞吐\n多核路线保住串行速度"), note("n2", "# 延迟\nGPU 用大量小算术单元"));
-  b.cards.push(note("n3", "# 松散的卡\n一句话"), note("m", "看这里", "mark"));
-  b.cards.push({ id: "f", kind: "board", board: "sub" }, note("ft", "随手写的一行", "freetext"));
+  b.cards.push(note("n3", "# 松散的卡\n一句话"), note("m", "看这里", "box"));
+  b.cards.push({ id: "f", kind: "board", board: "sub" }, note("ft", "随手写的一行", "text"));
   b.sections.push({ id: "s", title: "异构并行", x: 0, y: 0, w: 900, h: 500 });
   b.sections.push({ id: "t", title: "子", x: 20, y: 20, w: 300, h: 300, parent: "s", collapsed: true });
   b.place = {
@@ -160,15 +159,14 @@ const rects = (b: Board) => (id: string) => {
 };
 
 describe("what a board summarizes", () => {
-  it("summarizes innermost open Sections and loose cards, not collapsed Sections, sub-board frames, Marks or Free Text", () => {
+  it("summarizes innermost open Sections and loose cards, not collapsed Sections, sub-board frames, Text or Boxes", () => {
     const b = board();
     const frames = new Map(b.sections.map((s) => [s.id, { x: s.x, y: s.y, w: s.w, h: s.h }]));
     const input = summarySources(b, rects(b), frames);
     expect(input.items.map((i) => i.key).sort()).toEqual(["card:n3", "sec:s"]);
-    // the frame and the Free Text stay on the summary level as they are (obstacles); a Mark hides with the cards
+    // the frame, the Box and the Text stay on the summary level as they are (obstacles)
     const r = rects(b);
-    expect(input.keep).toEqual([r("f"), r("ft")]);
-    expect(keepsLook(b.cards.find((c) => c.id === "m")!)).toBe(false);
+    expect(input.keep).toEqual([r("m"), r("f"), r("ft")]);
   });
   it("makes a Section pending when its card count or a card title changes, not when a card's body changes", () => {
     const b = board();

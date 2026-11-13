@@ -643,6 +643,7 @@
   --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 1px var(--ink), 6px 6px 0 rgba(22, 22, 22, 0.06);
   --sh-float: 0 0 0 1px var(--rule);
+  --sh-pop: var(--sh-float);
   --r-card: 0px;
   --display: var(--head-font);
   --label-font: var(--mono);
@@ -701,6 +702,7 @@
   --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 1px var(--ink), 6px 6px 0 rgba(0, 0, 0, 0.5);
   --sh-float: 0 0 0 1px var(--rule);
+  --sh-pop: var(--sh-float);
   --r-card: 0px;
   --display: var(--head-font);
   --label-font: var(--mono);
@@ -765,6 +767,7 @@
   --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 2px var(--rule), 8px 8px 0 2px var(--rule);
   --sh-float: 0 0 0 2px var(--rule), 4px 4px 0 2px var(--rule);
+  --sh-pop: var(--sh-float);
   --r-card: 0px;
   --display: var(--sys);
   --label-font: var(--sys);
@@ -825,6 +828,7 @@
   --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 2px var(--rule), 8px 8px 0 2px #0e0b08;
   --sh-float: 0 0 0 2px var(--rule), 4px 4px 0 2px #0e0b08;
+  --sh-pop: var(--sh-float);
   --r-card: 0px;
   --display: var(--sys);
   --label-font: var(--sys);
@@ -889,6 +893,7 @@
   --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 0.5px var(--hair), 0 14px 28px -14px rgba(25, 23, 20, 0.35);
   --sh-float: 0 0 0 0.5px var(--hair), 0 1px 0 var(--hair);
+  --sh-pop: var(--sh-float);
   --r-card: 0px;
   --display: var(--serif);
   --label-font: var(--serif);
@@ -947,6 +952,7 @@
   --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 0.5px var(--hair), 0 14px 28px -14px rgba(0, 0, 0, 0.7);
   --sh-float: 0 0 0 0.5px var(--hair), 0 1px 0 var(--hair);
+  --sh-pop: var(--sh-float);
   --r-card: 0px;
   --display: var(--serif);
   --label-font: var(--serif);
@@ -1008,6 +1014,7 @@
   --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 1px var(--rule), 0 18px 36px -18px rgba(19, 55, 43, 0.35);
   --sh-float: 0 0 0 1px var(--rule);
+  --sh-pop: var(--sh-float);
   --r-card: 0px;
   --display: var(--serif);
   --label-font: var(--serif);
@@ -1064,6 +1071,7 @@
   --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 1px var(--rule), 0 18px 36px -18px rgba(0, 0, 0, 0.7);
   --sh-float: 0 0 0 1px var(--rule);
+  --sh-pop: var(--sh-float);
   --r-card: 0px;
   --display: var(--serif);
   --label-font: var(--serif);
@@ -1628,10 +1636,6 @@
   text-transform: uppercase;
   color: var(--ink-3);
 }
-:root.look-soft-light .tx.st-title {
-  font-weight: 300;
-  font-size: 30px;
-}
 :root.look-soft-light .edge {
   stroke: color-mix(in srgb, var(--edge) 85%, transparent);
 }
@@ -1931,19 +1935,9 @@
   text-decoration: underline 1.5px var(--ink);
   text-underline-offset: 3px;
 } /* 图纸上不涂荧光笔：==高亮== 是一道墨线 */
-:root.look-drafting .tx.st-title {
-  font: 600 24px / 1.25 var(--head-font);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-:root.look-drafting .tx.st-heading {
-  font: 600 15px / 1.4 var(--head-font);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
 :root.look-drafting .tx.st-body {
-  font: 12.5px / 1.728 var(--mono);
-} /* 和 Note 正文同一种字：同样的字体、字号和中文后备字体 */
+  font-family: var(--mono);
+} /* 和 Note 正文同一种字体和中文后备字体；字号是 Text 自己的 */
 :root.look-drafting .sect {
   border-radius: 0;
 }
@@ -2363,10 +2357,6 @@
   font-weight: 600;
   letter-spacing: 0.02em;
 }
-:root.look-colorful .tx.st-title {
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
 :root.look-colorful .edge:not([class*="lc-"]),
 :root.look-colorful .ahead:not([class*="lc-"]) {
   stroke: var(--rule);
@@ -2737,9 +2727,6 @@
   letter-spacing: -0.01em;
   margin-bottom: 6px;
 }
-:root.look-newspaper .tx.st-title {
-  font: 700 30px / 1.15 var(--serif);
-}
 :root.look-newspaper .tx.st-body {
   font-family: var(--serif);
 }
@@ -3098,10 +3085,6 @@
   letter-spacing: 0.02em;
   text-align: center;
   margin-bottom: 6px;
-}
-:root.look-poster .tx.st-title {
-  font: 400 28px / 1.2 var(--serif);
-  letter-spacing: 0.08em;
 }
 :root.look-poster .sect {
   border-radius: 0;
@@ -3691,10 +3674,6 @@
 :root.look-ink-wash[data-theme="dark"] :is(.card.note, .inote, .slip) .nbody {
   --ink-2: var(--ink);
   color: var(--ink);
-}
-:root.look-ink-wash .tx.st-title {
-  font: 400 30px / 1.2 var(--serif);
-  letter-spacing: 0.02em;
 }
 /* Sections (#137): no border or tray; the frame is four dry brush strokes (state/inkframe.ts, an SVG in the frame,
    canvas/Sections.tsx), its colour the SVG's currentColor. The title is written in running script (Zhi Mang Xing,
@@ -4660,28 +4639,4 @@
   --stk-fg: #fff;
   --stk-ring: #fff;
   --stk-rw: 1.6;
-}
-
-/* 手绘线（从 Mark 出发的箭头）：每个主题都是 Mark 的颜色、实线、圆头；第二笔淡一些（@codeboard/core/canvas hand.ts）。写在所有主题后面，主题的线样式不碰它 */
-:root .edge.hand:not(.rubber),
-:root .ahead.hand {
-  stroke: var(--hc);
-  stroke-width: calc(1.6px * var(--lw, 1));
-  stroke-dasharray: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  fill: none;
-}
-:root .edge.hand.p2 {
-  stroke-width: calc(1.1px * var(--lw, 1));
-  opacity: 0.5;
-  pointer-events: none;
-}
-:root .edge.hand.on:not(.p2),
-:root .ahead.hand.on {
-  stroke-width: calc(2.4px * var(--lw, 1));
-}
-:root .edge.hand.lost,
-:root .ahead.hand.lost {
-  stroke: var(--lk-lost, #d64545);
 }

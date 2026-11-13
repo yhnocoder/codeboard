@@ -1,4 +1,4 @@
-import { cardTitle, isCode, segOf, bounds, type Card, type Section, type Rect } from "@codeboard/core";
+import { cardTitle, isCode, isTextCard, segOf, bounds, type Card, type Section, type Rect } from "@codeboard/core";
 import { state, cardById, hostOf, rectOf, placeOf, placed, flows } from "../state/store";
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
@@ -335,10 +335,12 @@ export function openWorktreeDiff(id: string) {
 }
 
 /** Fit Content：宽 = 最长行，高 = 所有可见行；多选时各自适配。
- *  高度不存（Note、代码卡和新卡一样跟着内容：加行变高、删行变矮），只有代码比没存高度时的上限（CODE_MAX）还高的代码卡存下内容区的高度 */
+ *  高度不存（Note、代码卡和新卡一样跟着内容：加行变高、删行变矮），只有代码比没存高度时的上限（CODE_MAX）还高的代码卡存下内容区的高度。
+ *  Text 和 Box 没有 Fit Content：它们本来就跟着字 */
 export function fitContent(ids: string[]) {
   const sz = new Map<string, { w?: number; h: number; body?: number; chrome: number }>();
   for (const id of ids) {
+    if (isTextCard(cardById(id)?.host)) continue;
     const h = cardById(id)?.host.id;
     const n = h && naturalSize(h);
     if (h && n) sz.set(h, { w: n.w, h: n.h, body: n.body, chrome: 0 });

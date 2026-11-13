@@ -1,11 +1,10 @@
 import { batch } from "solid-js";
 import {
   findCard,
-  frameless,
-  scalesText,
+  isTextCard,
   scaleText,
   textSizeOf,
-  baseTextSize,
+  TEXT_SIZES,
   isCode,
   snapMove,
   snapResize,
@@ -147,7 +146,7 @@ export function isDbl(key: string, e: { clientX: number; clientY: number }) {
 }
 
 /**
- * 只选着这一张时单击正文就进编辑，光标放在点的地方：Note 的 .nbody、Text / Box / Mark 的 .tx、手写代码卡的 .src。
+ * 只选着这一张时单击正文就进编辑，光标放在点的地方：Note 的 .nbody、Text / Box 的 .tx、手写代码卡的 .src。
  * 卡比内容高时正文下面、旁边的空白（.cface 自己）也算 Note 的正文：光标放到最近的地方，下面就是最后。
  * 正文里自己管点击的东西（引用、任务勾选框、折叠块的标题）不算；链接、按钮在 CARD_CONTROL 里，按下就不归卡
  */
@@ -242,7 +241,7 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   const colEl = t.closest("[data-col]") as HTMLElement | null;
   const target = colEl?.dataset.col ?? id;
   const c = f.card;
-  const isText = frameless(c);
+  const isText = isTextCard(c);
   const inHead = !!t.closest("[data-drag]");
   const inBody = !isText && !inHead;
   // 只选着这一张时，按在内容上是选字（原生文本选择）；没选中或选着好几张时，按在内容上和按卡头一样拖卡，
@@ -490,11 +489,17 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
         }
       }
     });
-    // 松手后会在哪个 Section（和下面松手时同一个算法）：先预演出来，要进的 Section 亮起来；合并 / 变 Sidenote 时不算
+    // 松手后会在哪个 Section（和下面松手时同一个算法）：先预演出来，要进的 Section 亮起来；合并 / 变 Sidenote 时不算。
+    // Over the Shelf they leave their Sections, which keep the frames they will have once the cards are shelved
     setMovingHome(
-      drop || shelf
+      drop
         ? null
-        : new Map(items.map((it) => [it.id, homeFor(fr, { ...it.r, x: it.r.x + dx, y: it.r.y + dy })?.id])),
+        : new Map(
+            items.map((it) => [
+              it.id,
+              shelf ? undefined : homeFor(fr, { ...it.r, x: it.r.x + dx, y: it.r.y + dy })?.id,
+            ]),
+          ),
     );
   };
   track(
@@ -647,8 +652,8 @@ export function cardDblClick(e: MouseEvent, id: string) {
   const c = cardById(id)?.card,
     ed = editing();
   if (ed?.id === id && (ed.kind === "note" || ed.kind === "free")) return; // 双击的第一下已经进了编辑（单击选中的卡），第二下落在编辑器里
-  // Text / Box / Mark 的双击在第二下按下时就进了
-  const kind = c && !(c.kind === "note" && c.look !== "note") ? clickEditKind(c, t) : null;
+  // Text / Box 的双击在第二下按下时就进了
+  const kind = c && !isTextCard(c) ? clickEditKind(c, t) : null;
   if (kind) {
     e.preventDefault();
     clickEdit(kind, id, { x: e.clientX, y: e.clientY });
@@ -673,14 +678,14 @@ export function resizeDown(
   const { end, moving, drop } = undoGesture([c.id]);
   const sx = e.clientX,
     sy = e.clientY;
-  const text = frameless(c),
-    box = c.kind === "note" && c.look === "box";
-  // 最矮 = 头部 + 一行；拉到内容本来的高度附近就回到自动高度（Box 的高度就是框的大小，一直存着）
-  const nat = box ? undefined : naturalSize(c.id, "now");
+  // a Text or Box: its side edges give it the width it wraps at, never narrower than its longest word
+  const text = isTextCard(c);
+  // 最矮 = 头部 + 一行；拉到内容本来的高度附近就回到自动高度
+  const nat = text ? undefined : naturalSize(c.id, "now");
   // 子白板的框：最小也放得下几块地图和右上角的按钮
   const frame = c.kind === "board";
-  const minW = box ? 60 : text ? 80 : frame ? 200 : 160,
-    minH = box ? 32 : frame ? 130 : nat ? Math.min(nat.minH, 100) : 64;
+  const minW = text ? leastWidth(c.id) : frame ? 200 : 160,
+    minH = frame ? 130 : nat ? Math.min(nat.minH, 100) : 64;
   const hx = c.kind === "code" ? chromeOf(c.id) : 0; // 代码卡存内容区高度：减掉卡头 / 底栏
   // 图片卡的高度跟着图片的宽高比（不存）：拖角只改宽度，往下拖按卡现在的比例折成宽度
   const image = c.kind === "image",
@@ -710,7 +715,7 @@ export function resizeDown(
       let hint: string | null = null;
       if (!(ev.metaKey || ev.ctrlKey) && !edges.left && !edges.top) {
         const sn = snapResize({ x, y: r0.y, w, h }, { right: edges.right, bottom }, targets, tune("snap") / z);
-        w = sn.w;
+        w = Math.max(minW, sn.w);
         h = sn.h;
         setGuides(sn.guides.filter(() => !sn.same));
         if (sn.same === "w") hint = `same width · ${Math.round(w)}`;
@@ -721,7 +726,9 @@ export function resizeDown(
       // 代码比没存高度时的上限（CODE_MAX）还高的代码卡没有这样的自动高度（会一下缩到上限）：一直存着拖出来的高度
       const auto = bottom && nat && (nat.body === undefined || nat.body <= CODE_MAX) && Math.abs(h - nat.h) < 8 / z;
       live((b) => {
-        const k = hostPlace(b, id)!;
+        const k = hostPlace(b, id)!,
+          t = findCard(b, id)?.card;
+        if (isTextCard(t)) t.wrap = true;
         k.w = Math.round(w);
         k.x = Math.round(x);
         if (edges.top) k.y = Math.round(y);
@@ -738,8 +745,19 @@ export function resizeDown(
   );
 }
 
+/** A Text's or Box's width at its longest word (or picture): as narrow as a side edge takes it, measured at once */
+function leastWidth(id: string): number {
+  const el = document.querySelector<HTMLElement>(cardSel(id));
+  if (!el) return 40;
+  const w = el.style.width;
+  el.style.width = "min-content";
+  const least = el.offsetWidth;
+  el.style.width = w;
+  return least;
+}
+
 /**
- * Mark / Free Text 右下角的小方块：整体缩放，字号（NoteCard.fs，真的 font-size，放大了也清楚）和宽度按同一个比例变，折行的地方不变。
+ * Text / Box 右下角的小方块：整体缩放，字号（NoteCard.fs，真的 font-size，放大了也清楚）和宽度按同一个比例变，折行的地方不变。
  * 比例 = 指针在卡的对角线方向上走了多远（左上角不动）；上下限在 core 的 scaleText。整个拖动是一步撤销
  */
 export function scaleDown(e: PointerEvent, id: string) {
@@ -747,7 +765,7 @@ export function scaleDown(e: PointerEvent, id: string) {
   e.preventDefault();
   e.stopPropagation();
   const f = cardById(id);
-  if (!f || !scalesText(f.card) || A.isLocked(id)) return;
+  if (!f || !isTextCard(f.card) || A.isLocked(id)) return;
   A.selectCard(id);
   const r0 = rectOf(f.host),
     fs0 = textSizeOf(f.card),
@@ -771,8 +789,9 @@ export function scaleDown(e: PointerEvent, id: string) {
       live((b) => {
         const c = findCard(b, id)?.card,
           p = hostPlace(b, id);
-        if (!scalesText(c) || !p) return;
-        c.fs = fs === baseTextSize(c) ? undefined : fs;
+        if (!isTextCard(c) || !p) return;
+        if (fs === TEXT_SIZES.s) delete c.fs;
+        else c.fs = fs;
         p.w = w;
       });
     },

@@ -117,6 +117,7 @@ export function editorExtensions(
       title: c.title,
       hint: c.kind,
       key: `${g?.id ?? ""}/${c.id}`,
+      pick: { group: g?.id, id: c.id },
       run: insert(c.label ?? c.title, c.target, { group: g?.id, id: c.id }),
       ...more,
     });
@@ -378,6 +379,7 @@ export function editorExtensions(
         if (ui) openLinkBox(e.view, ui.setLink);
       },
       classes: () => o.classes,
+      headingChip: () => o.headingChip !== false,
     }),
     Placeholder.configure({ placeholder: () => o.placeholder ?? "Type / for blocks", showOnlyCurrent: true }),
     ...(handle

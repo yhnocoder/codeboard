@@ -60,21 +60,6 @@ function Toolbar() {
       { up: true },
     );
   };
-  // 写在白板上、没有卡框的四种：和 Code 一样只开菜单
-  const writeMenu = (el: HTMLElement) => {
-    const [x, y] = at(el);
-    openMenu(
-      [
-        { label: "New Text", kbd: kbd("newText"), run: () => A.newText() },
-        { label: "New Box", kbd: kbd("newBox"), run: () => A.newBox() },
-        { label: "New Mark", kbd: kbd("newMark"), run: () => A.newMark() },
-        { label: "New Free Text", run: () => A.newFreeText() },
-      ],
-      x,
-      y,
-      { up: true },
-    );
-  };
   // 图：选一张图，或把剪贴板里的图直接读成 Note（不留图片卡），或照一句描述让 AI 画一张 SVG
   const imageMenu = (el: HTMLElement) => {
     const [x, y] = at(el);
@@ -110,7 +95,8 @@ function Toolbar() {
     foldRun?: () => void;
   }[] = [
     { icon: "note", label: "Note", kbd: kbd("newNote"), run: () => A.newNote() },
-    { icon: "text", label: "Text", tip: "New Text, New Box, New Mark", more: true, run: writeMenu },
+    { icon: "text", label: "Text", kbd: kbd("newText"), run: () => A.newText() },
+    { icon: "box", label: "Box", kbd: kbd("newBox"), run: () => A.newBox() },
     { icon: "code", label: "Code", tip: "New Code, From GitHub, Add Function", more: true, run: codeMenu },
     {
       icon: "image",

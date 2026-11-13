@@ -22,7 +22,7 @@ import type { Crumb } from "./protocol";
 
 /**
  * 骨架里的一张卡：框（相对骨架左上角，子白板的坐标）、种类、名字（悬停时的提示；图片是 alt 或正下方的图注，没有就空）。
- * lk = 没有卡框的 Note 的样子（Text 画成一道线，Box 只有边框，Mark 是几道手写色的线）；si = 所在 Section 在 secs 里的下标；
+ * lk = Text 或 Box（Text 画成几道线，Box 只有边框）；si = 所在 Section 在 secs 里的下标；
  * img = 图片（assets/ 下的文件名或小的 data: URL）
  */
 export type SkelCard = {
@@ -111,7 +111,7 @@ function rectOf(c: Card, p: Place): Rect {
 }
 
 /**
- * [[ 引用能用的标题：自己起的名字、Note 第一行是标题（# 开头，或标题 / 小标题字号的 Text）、按符号命名的代码卡、子白板。
+ * [[ 引用能用的标题：自己起的名字、Note、Text、Box 第一行是 # 标题、按符号命名的代码卡、子白板。
  * 图片和名字只是正文第一行的卡没有（undefined）
  */
 export function refTitle(c: Card, nameOf: (board: string) => string | undefined = () => undefined): string | undefined {
@@ -121,12 +121,7 @@ export function refTitle(c: Card, nameOf: (board: string) => string | undefined 
   switch (c.kind) {
     case "note": {
       const head = c.md.split("\n").find((l) => l.trim());
-      return head &&
-        (/^\s{0,3}#{1,6}\s/.test(head) ||
-          (c.look === "text" && (c.size === "title" || c.size === "heading")) ||
-          c.look === "freetext")
-        ? firstLine(head) || undefined
-        : undefined;
+      return head && /^\s{0,3}#{1,6}\s/.test(head) ? firstLine(head) || undefined : undefined;
     }
     case "code":
       return c.segments[0]?.symbol ? cardTitle(c) : undefined;
@@ -224,12 +219,7 @@ export function skeletonOf(b: Board, peek: (id: string) => Board | undefined = (
 
 function titleOf(c: Card, b: Board, nameOf: (id: string) => string | undefined): string {
   if (c.kind === "board") return c.title || nameOf(c.board) || "Board";
-  if (c.kind === "note")
-    return (
-      (c.look === "mark"
-        ? textLines(c.md).join(" ").slice(0, 160)
-        : (c.title || firstLine(c.md) || "Note").slice(0, 80)) || "Mark"
-    );
+  if (c.kind === "note") return (c.title || firstLine(c.md) || "Note").slice(0, 80);
   return cardTitle(c, b).slice(0, 120);
 }
 

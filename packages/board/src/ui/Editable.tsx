@@ -32,6 +32,8 @@ export function Editable(p: {
   /** layout is given only when the edit changed it (null = all automatic again) */
   onCommit: (v: string, layout?: MdLayout | null) => void;
   style?: JSX.CSSProperties | string;
+  /** Markdown only: the editor's chip that shows and changes a heading's level (on unless false) */
+  headingChip?: boolean;
 }) {
   const md = useMd();
   const on = () => editing()?.kind === p.kind && editing()?.id === p.id;
@@ -176,6 +178,7 @@ function MdEdit(p: P) {
       placeholder: p.placeholder ?? NOTE_PLACEHOLDER,
       onDone: finish,
       onSourceMode: (on) => setSourceMode(p.id, on),
+      headingChip: p.headingChip,
       // a Note on a card grows with its text and the board moves by its camera: only a fixed-height body scrolls
       scrollOwnBox: !!el.closest(".card"),
     });

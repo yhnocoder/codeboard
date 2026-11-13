@@ -247,7 +247,8 @@ test("editorKeysReachVsCode", async () => {
   await close(h);
 });
 
-/** Sidenote 的字：Esc、点到外面都保存（和 Note、问题一样）；字删光了保存就删掉这条；Add Sidenote 的 Text 页 Esc 也加上 */
+/** Sidenote 的字在原地用和底部输入框同一个 Markdown 编辑器改：↵、点到外面保存，⇧↵ 换行，Esc 放弃；字删光了保存就删掉这条；
+ *  popup 底部输入框里 Esc 把写好的加上 */
 test("sidenoteTextEditSaves", async () => {
   const b = board();
   const C = b.cards[0] as CodeCard,
@@ -271,13 +272,20 @@ test("sidenoteTextEditSaves", async () => {
   const openEdit = async () => {
     await h.page.locator(".hxm").first().click();
     await h.page.locator('.pop.k-highlight .slip button[aria-label="Edit"]').first().click();
-    await h.page.locator(".sn-edit textarea:focus").waitFor();
+    await h.page.locator(".sn-edit .md-pm:focus").waitFor();
     return JSON.stringify(texts());
   };
-  let before = await openEdit();
-  await keys(h.page, " +esc{Escape}");
-  await saved("Esc saves the sidenote", before);
-  const afterEsc = texts();
+  const chrome = await (async () => {
+    await openEdit();
+    return h.page.evaluate(() => ({
+      buttons: document.querySelectorAll(".sn-edit button").length,
+      words: (document.querySelector(".sn-edit")?.textContent ?? "").trim(),
+    }));
+  })();
+  let before = JSON.stringify(texts());
+  await keys(h.page, " +enter{Enter}");
+  await saved("↵ saves the sidenote", before);
+  const afterEnter = texts();
   await h.page.keyboard.press("Escape");
   await idle(h);
   before = await openEdit();
@@ -287,33 +295,43 @@ test("sidenoteTextEditSaves", async () => {
   const afterClick = texts();
   await h.page.keyboard.press("Escape");
   await idle(h);
-  // Cancel must not save: it is the trigger, so once the board is idle whatever it sends has reached the host
+  // Esc must not save: it is the trigger, so once the board is idle whatever it sends has reached the host
   await openEdit();
-  await keys(h.page, " +cancel");
-  await h.page.locator(".sn-edit button", { hasText: "Cancel" }).click();
+  await keys(h.page, " +esc{Escape}");
+  await expect(h.page.locator(".sn-edit")).toHaveCount(0);
   await idle(h);
-  const afterCancel = texts();
-  // Highlight 弹窗的 + Add Note → Add Sidenote 的 Text：写了字按 Esc
+  const afterEsc = texts();
+  await h.page.keyboard.press("Escape");
+  await idle(h);
+  before = await openEdit();
+  await keys(h.page, "{Shift+Enter}two{Enter}");
+  await saved("⇧↵ breaks the line, ↵ saves", before);
+  const afterBreak = texts();
+  // Highlight 弹窗底部的 +：输入框里写了字按 Esc
   await h.page.keyboard.press("Escape");
   await idle(h);
   await h.page.locator(".hxm").first().click();
-  await h.page.locator(".pop.k-highlight button.add").click(); // opens Add Sidenote on its Text tab
-  await h.page.locator(".addnote textarea:focus").waitFor();
+  await h.page.locator(".pop.k-highlight button.add").click();
+  await h.page.locator(".pop.k-highlight .ncomp .md-pm:focus").waitFor();
   before = JSON.stringify(texts());
   await keys(h.page, "added by esc{Escape}");
   await saved("Esc adds the text sidenote", before);
   const afterAdd = texts();
   before = await openEdit();
-  await keys(h.page, "{ControlOrMeta+a}{Backspace}{ControlOrMeta+Enter}");
+  await keys(h.page, "{ControlOrMeta+a}{Backspace}{Enter}");
   await saved("saving an emptied sidenote deletes it", before);
   const afterClear = texts();
   const ok =
-    JSON.stringify(afterEsc) === '["original +esc"]' &&
-    JSON.stringify(afterClick) === '["original +esc +click"]' &&
-    JSON.stringify(afterCancel) === '["original +esc +click"]' &&
-    JSON.stringify(afterAdd) === '["original +esc +click","added by esc"]' &&
+    chrome.buttons === 0 &&
+    chrome.words === "original" &&
+    JSON.stringify(afterEnter) === '["original +enter"]' &&
+    JSON.stringify(afterClick) === '["original +enter +click"]' &&
+    JSON.stringify(afterEsc) === '["original +enter +click"]' &&
+    /^original \+enter \+click(<br>|\s*\\?\n)two$/.test(afterBreak[0] ?? "") &&
+    afterAdd.length === 2 &&
+    afterAdd[1] === "added by esc" &&
     JSON.stringify(afterClear) === '["added by esc"]';
-  check("sidenoteTextEditSaves", ok, { afterEsc, afterClick, afterCancel, afterAdd, afterClear });
+  check("sidenoteTextEditSaves", ok, { chrome, afterEnter, afterClick, afterEsc, afterBreak, afterAdd, afterClear });
   await close(h);
 });
 

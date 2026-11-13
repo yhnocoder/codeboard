@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dragFrameEdge, sectionFit, SECTION_MIN, SECTION_PAD } from "../src";
+import { dragFrameEdge, nudgeInto, sectionFit, SECTION_MIN, SECTION_PAD } from "../src";
 
 describe("sectionFit", () => {
   it("wraps the inner rects with the Section padding, rounded outward", () => {
@@ -39,5 +39,22 @@ describe("dragFrameEdge", () => {
       h: SECTION_MIN.h,
     });
     expect(dragFrameEdge(f, "se", -1000, -1000)).toEqual({ x: 100, y: 200, w: SECTION_MIN.w, h: SECTION_MIN.h });
+  });
+});
+
+describe("nudgeInto", () => {
+  const area = { x: 0, y: 0, w: 1000, h: 600 };
+  it("leaves what is wholly inside where it is, even right at the edge", () => {
+    expect(nudgeInto({ x: 0, y: 590, w: 200, h: 10 }, area, 24)).toEqual({ dx: 0, dy: 0 });
+  });
+  it("moves only the axis it sticks out on, by the least that leaves the margin", () => {
+    expect(nudgeInto({ x: 900, y: 10, w: 200, h: 100 }, area, 24)).toEqual({ dx: -124, dy: 0 });
+    expect(nudgeInto({ x: 10, y: -50, w: 200, h: 100 }, area, 24)).toEqual({ dx: 0, dy: 74 });
+  });
+  it("shares what room there is when the whole margin does not fit", () => {
+    expect(nudgeInto({ x: 1100, y: 0, w: 980, h: 100 }, area, 24)).toEqual({ dx: -1090, dy: 0 });
+  });
+  it("puts what is larger than the area at the margin from its left and top", () => {
+    expect(nudgeInto({ x: 300, y: 200, w: 1500, h: 900 }, area, 24)).toEqual({ dx: -276, dy: -176 });
   });
 });

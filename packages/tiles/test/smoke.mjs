@@ -15,7 +15,7 @@ const dir = path.join(tmp, ".codeboard");
 fs.mkdirSync(path.join(dir, "assets"), { recursive: true });
 
 const board = (id, name, cards, place, sections = []) => ({
-  version: 14,
+  version: 15,
   id,
   name,
   cam: { x: 0, y: 0, z: 1 },

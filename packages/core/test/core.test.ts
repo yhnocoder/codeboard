@@ -22,6 +22,12 @@ import {
   guessLang,
   noteCodeLang,
   migrateBoard,
+  loadSharedCard,
+  readBoardFile,
+  inflate,
+  danglingRefs,
+  shownRanges,
+  BOARD_VERSION,
   mergeOverlapping,
   sortSegments,
   emptyBoard,
@@ -430,7 +436,7 @@ describe("migrateBoard", () => {
       ],
       edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call" }],
     });
-    expect(b.version).toBe(14);
+    expect(b.version).toBe(16);
     expect(b.links[0].call).toEqual({ name: "f", col: 0 });
     const c = b.cards[0] as CodeCard;
     expect(c.segments[0]).toMatchObject({ path: "a.py", start: 1, end: 2, hl: [[2, 2]], symbol: { qual: "f" } });
@@ -547,7 +553,7 @@ describe("migrateBoard", () => {
       place: { a: { x: 0, y: 0, w: 400, h: 300 }, z: { x: 0, y: 0, w: 400 }, n: { x: 0, y: 0, w: 300, h: 120 } },
     };
     const b = migrateBoard(structuredClone(raw));
-    expect(b.version).toBe(14);
+    expect(b.version).toBe(16);
     expect(b.place.a.h).toBe(264);
     expect(b.place.z.h).toBeUndefined();
     expect(b.place.n.h).toBe(120);
@@ -555,7 +561,7 @@ describe("migrateBoard", () => {
     expect(migrateBoard(structuredClone(b))).toEqual(b); // v8 is read as is
     expect(estSize(b.cards[0] as CodeCard, b.place.a).h).toBe(300); // estimates still count the header
   });
-  it("v9 → v10: a Text card's fixed height is dropped, a Note's and a Box's stay", () => {
+  it("v9 → v10: a Text card's fixed height is dropped, a Note's stays (and on to v16, a Box's goes too)", () => {
     const raw = {
       version: 9,
       id: "b",
@@ -572,10 +578,10 @@ describe("migrateBoard", () => {
       place: { t: { x: 0, y: 0, w: 300, h: 40 }, n: { x: 0, y: 0, w: 300, h: 120 }, x: { x: 0, y: 0, w: 300, h: 200 } },
     };
     const b = migrateBoard(structuredClone(raw));
-    expect(b.version).toBe(14);
+    expect(b.version).toBe(16);
     expect(b.place.t).toEqual({ x: 0, y: 0, w: 300 });
     expect(b.place.n.h).toBe(120);
-    expect(b.place.x.h).toBe(200);
+    expect(b.place.x).toEqual({ x: 0, y: 0, w: 300 });
     expect(migrateBoard(structuredClone(b))).toEqual(b);
   });
   it("v4 → v5: call links become Call-marked arrows, plain links keep their look", () => {
@@ -627,7 +633,7 @@ describe("migrateBoard", () => {
       ],
     };
     const b = upgraded(structuredClone(raw));
-    expect(b.version).toBe(14);
+    expect(b.version).toBe(16);
     expect(b.links).toEqual([
       {
         id: "c",
@@ -727,6 +733,172 @@ describe("migrateBoard", () => {
     expect(b.stickers[0].q).toEqual({ md: "" });
   });
   it("refuses a board written by a newer CodeBoard", () => {
-    expect(() => migrateBoard({ version: 15, id: "b", name: "x", cards: [] })).toThrow(/newer/);
+    expect(() => migrateBoard({ version: BOARD_VERSION + 1, id: "b", name: "x", cards: [] })).toThrow(/newer/);
+  });
+});
+
+describe("old sidenote kinds migrate to Text and Code", () => {
+  const seg = (id: string) => ({
+    id,
+    src: { kind: "repo", repo: "" },
+    path: "a.py",
+    lang: "python",
+    start: 1,
+    end: 3,
+    text: ["a", "b", "c"],
+    version: { kind: "git", commit: "c0ffee" },
+  });
+  const v13 = (sidenotes: unknown[]) => ({
+    version: 13,
+    id: "b",
+    name: "B",
+    cards: [
+      { id: "k", kind: "code", segments: [{ ...seg("sk"), hl: [[2, 2]] }] },
+      { id: "n", kind: "note", look: "note", md: "# Why *this*\n\nbody" },
+    ],
+    place: { k: { x: 0, y: 0, w: 400 }, n: { x: 500, y: 0, w: 300 } },
+    links: [],
+    sections: [],
+    sidenotes,
+    stickers: [],
+  });
+  const at = { card: "k", seg: "sk", lines: [2, 2] };
+
+  it("a Link becomes a Text sidenote with the link, its title written as plain text", () => {
+    const b = upgraded(
+      v13([
+        {
+          id: "l1",
+          kind: "link",
+          at,
+          url: "https://arxiv.org/abs/2309.06180",
+          title: "Paged *Attention* [vLLM]",
+          why: "w",
+        },
+        { id: "l2", kind: "link", at: { card: "k" }, url: "https://x.y/a b(c)" },
+      ]),
+    );
+    expect(b.version).toBe(BOARD_VERSION);
+    expect(b.sidenotes).toEqual([
+      {
+        id: "l1",
+        kind: "text",
+        at,
+        md: "[Paged \\*Attention\\* \\[vLLM\\]](https://arxiv.org/abs/2309.06180)",
+        why: "w",
+      },
+      { id: "l2", kind: "text", at: { card: "k" }, md: "[https://x.y/a b(c)](<https://x.y/a b(c)>)" },
+    ]);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("a Paste becomes a Code sidenote of Free code: its text, language and source address", () => {
+    const b = upgraded(
+      v13([{ id: "p1", kind: "paste", at, text: "x = 1\ny = 2", lang: "python", url: "https://gist.github.com/z" }]),
+    );
+    const n = b.sidenotes[0];
+    expect(n.kind).toBe("code");
+    if (n.kind !== "code") return;
+    expect({ ...n.code, id: "" }).toEqual({
+      id: "",
+      src: { kind: "free", url: "https://gist.github.com/z" },
+      path: "",
+      lang: "python",
+      start: 1,
+      end: 2,
+      text: ["x = 1", "y = 2"],
+      version: { kind: "none" },
+    });
+    expect(n.at).toEqual(at);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("a Card sidenote becomes a board-only Text sidenote with a reference to that card; its lines stay this board's Highlight", () => {
+    const b = upgraded(
+      v13([
+        { id: "c1", kind: "card", at: { card: "k", seg: "sk", lines: [3, 3] }, card: "n" },
+        { id: "c2", kind: "card", at: { card: "k" }, card: "k", boardOnly: true },
+      ]),
+    );
+    expect(b.sidenotes).toEqual([
+      { id: "c1", kind: "text", at: { card: "k", seg: "sk", lines: [3, 3] }, md: "[[Why *this*#^n]]", boardOnly: true },
+      { id: "c2", kind: "text", at: { card: "k" }, md: "[[a.py 1–3#^k]]", boardOnly: true },
+    ]);
+    // the card's own Highlights are untouched: line 3 is shown from the board-only sidenote
+    const s = (b.cards[0] as CodeCard).segments[0];
+    expect(s.hl).toEqual([[2, 2]]);
+    expect(shownRanges(b, s)).toEqual([
+      [2, 2],
+      [3, 3],
+    ]);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("a Card sidenote from before Highlights were ranges takes no Highlight into the card either", () => {
+    const raw = {
+      ...v13([{ id: "c1", kind: "card", at: { card: "k", seg: "sk", lines: [3, 3] }, card: "n" }]),
+      version: 12,
+    };
+    (raw.cards[0] as { segments: { hl: unknown }[] }).segments[0].hl = [2];
+    const b = upgraded(raw);
+    expect((b.cards[0] as CodeCard).segments[0].hl).toEqual([[2, 2]]);
+    expect(b.sidenotes[0]).toMatchObject({ kind: "text", boardOnly: true, at: { lines: [3, 3] } });
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("a file that already writes <mark> as ==…== still has its old sidenote kinds turned into Text and Code", () => {
+    const b = upgraded({
+      ...v13([{ id: "l1", kind: "link", at, url: "https://z", title: "<mark>hot</mark>" }]),
+      version: 14,
+    });
+    expect(b.sidenotes).toEqual([{ id: "l1", kind: "text", at, md: "[\\<mark\\>hot\\</mark\\>](https://z)" }]);
+  });
+
+  it("a Card sidenote's reference to a Note whose title holds <mark> ends up with no <mark> left", () => {
+    const raw = v13([{ id: "c1", kind: "card", at: { card: "k" }, card: "n" }]);
+    (raw.cards[1] as { md: string }).md = "# The <mark>hot</mark> path\n\nbody";
+    const b = upgraded(raw);
+    const md = (b.sidenotes[0] as { md: string }).md;
+    expect(md).toMatch(/#\^n\]\]$/);
+    expect(md).not.toMatch(/<mark>/);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("a Card sidenote pointing at a card from the card library gets that card's title once Storage has put it in", () => {
+    const raw = v13([{ id: "lib", kind: "card", at, card: "s", why: "see" }]);
+    raw.cards.push({ id: "s", kind: "shared" } as never);
+    (raw.place as Record<string, unknown>).s = { x: 0, y: 500, w: 300 };
+    const sc = loadSharedCard({
+      version: 13,
+      card: { id: "s", kind: "note", look: "note", md: "## Block table lookup\n\nbody" },
+      sidenotes: [{ id: "own", kind: "card", at: { card: "s" }, card: "n" }],
+    });
+    const { file, inflated } = readBoardFile(raw);
+    const { board } = inflate(file, { x: 0, y: 0, z: 1 }, () => structuredClone(sc));
+    inflated?.(board);
+    const md = (id: string) => {
+      const n = board.sidenotes.find((x) => x.id === id)!;
+      return n.kind === "text" ? n.md : n.kind;
+    };
+    // the board's own one, and the one the library card carried, which pointed at this board's Note
+    expect(md("lib")).toBe("[[Block table lookup#^s]]");
+    expect(md("own")).toBe("[[Why *this*#^n]]");
+    expect(danglingRefs(board)).toEqual([]);
+  });
+
+  it("a shared card's library file: its Link and Paste sidenotes are upgraded too", () => {
+    const sc = loadSharedCard({
+      version: 13,
+      card: { id: "k", kind: "code", segments: [seg("sk")] },
+      sidenotes: [
+        { id: "l", kind: "link", at: { card: "k" }, url: "https://z" },
+        { id: "p", kind: "paste", at: { card: "k" }, text: "q", lang: "rust" },
+      ],
+    });
+    expect(sc.version).toBe(BOARD_VERSION);
+    expect(sc.sidenotes.map((n) => [n.kind, n.kind === "text" ? n.md : n.code.text])).toEqual([
+      ["text", "[https://z](https://z)"],
+      ["code", ["q"]],
+    ]);
   });
 });

@@ -26,7 +26,6 @@ const P: Record<string, string> = {
   text: "M8 3v10M6 13h4M3 5V3.5A.5 .5 0 0 1 3.5 3H12.5A.5 .5 0 0 1 13 3.5V5", // type
   mark: "M10.5 2.5l2.5 2.5L7 11H4.5V8.5zM2 14c1.3-.8 2.7-.8 4 0s2.7.8 4 0 2.7-.8 4 0", // pen with a squiggle
   box: "M4 4H12A2 2 0 0 1 14 6V10A2 2 0 0 1 12 12H4A2 2 0 0 1 2 10V6A2 2 0 0 1 4 4z", // rectangle-horizontal
-  freetext: "M4 8h8M4 13V3M12 13V3", // heading
   undo: "M6 10 2 6l4-4M2 6h7.5a3.5 3.5 0 0 1 0 7H7", // undo-2
   redo: "M10 10l4-4-4-4M14 6H6.5a3.5 3.5 0 0 0 0 7H9", // redo-2
   lock: "M2.5 7H13.5A.5 .5 0 0 1 14 7.5V13.5A.5 .5 0 0 1 13.5 14H2.5A.5 .5 0 0 1 2 13.5V7.5A.5 .5 0 0 1 2.5 7zM5 7V5a3 3 0 0 1 6 0v2", // lock

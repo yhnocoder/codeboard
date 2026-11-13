@@ -1,5 +1,5 @@
 import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, on } from "solid-js";
-import { bounds, keepsLook, twinContent, type AlignOp } from "@codeboard/core";
+import { bounds, unsummarized, twinContent, type AlignOp } from "@codeboard/core";
 import { state, rectOf, cardById, hostOf, placed, placeOf } from "../state/store";
 import { sel } from "../state/selection";
 import { cam, setViewport, viewTracked, camMoving, stillZ, camTarget, camTo, fitRect } from "../state/camera";
@@ -42,8 +42,8 @@ export function Canvas() {
   let el!: HTMLDivElement, world!: HTMLDivElement;
   trackOffscreen();
   const links = trackLinks();
-  const faded = createMemo(() => placed().filter((c) => !keepsLook(c)));
-  const kept = createMemo(() => placed().filter(keepsLook));
+  const faded = createMemo(() => placed().filter((c) => !unsummarized(c)));
+  const kept = createMemo(() => placed().filter(unsummarized));
   trackSkeletons();
   // 开始写 Note / Text 时字太小（缩得很小时按 N、双击）：镜头放大到看得清（最多 100%），卡放得下就整张放进来。退出编辑不缩回去
   createEffect(
@@ -247,7 +247,7 @@ export function Canvas() {
         <Show when={cardsGone()}>
           <div class="cshield" style={extentBox()} />
         </Show>
-        {/* sub-board frames and Free Text: never summarized, they stay as they are over the summary level (Marks go with the cards) */}
+        {/* sub-board frames, Text and Box: never summarized, they stay as they are over the summary level */}
         <div class="lay keeplay">
           <For each={kept()}>{(c) => <CardView card={c} />}</For>
         </div>

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { Stage, scene, noteCard, codeCard, markCard, textCard, type Globals, type Scene } from "./support/board";
+import { Stage, scene, noteCard, codeCard, textCard, type Globals, type Scene } from "./support/board";
 import { waitFor, $ } from "./support/play";
 import { arrow, whole, ln, section } from "./support/canvas";
 import { setMarquee } from "../src/state/ui";
@@ -59,13 +59,13 @@ function scattered(a: Args): Scene {
   };
 }
 
-/** 卡、箭头、Section、Mark、Text 一起选中 */
+/** 卡、箭头、Section、Text 一起选中 */
 function mixed(): Scene {
   const { board: b, put } = scene("Mixed selection");
   const c = put(codeCard("c", "preempt"), { x: 60, y: 120, w: 440 });
   const d = put(codeCard("d", "deallocate"), { x: 660, y: 200, w: 440 });
   arrow(b, "L", ln(c, "deallocate("), whole(d), { call: { name: "deallocate", col: 27 } });
-  const m = put(markCard("m", "抢占：block 全部还回去", "orange"), { x: 80, y: 360, w: 280 });
+  const m = put(textCard("m", "抢占：block 全部还回去"), { x: 80, y: 360, w: 280 });
   const t = put(textCard("t", "Preemption"), { x: 60, y: 40, w: 300 });
   const n = put(noteCard("n", "被抢占的请求回到等待队列最前面"), { x: 700, y: 520, w: 260 });
   section(b, { id: "s", title: "Block Manager", x: 640, y: 160, w: 480, h: 500, color: "blue" }, [d.id, n.id]);

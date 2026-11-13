@@ -35,6 +35,10 @@ describe("marks on a static selection", () => {
     expect(staticMarkActive(md, rangeOf(md, "brave").r, "bold")).toBe(true);
     expect(toggle(md, "brave charlie", "bold")).toBe("alpha **brave charlie**");
   });
+  it("keeps an indented code fence in another block as it is written", () => {
+    const md = "alpha brave\n\n  ```py\n  x = 1\n  ```";
+    expect(toggle(md, "brave", "bold")).toBe("alpha **brave**\n\n  ```py\n  x = 1\n  ```");
+  });
   it("leaves the spaces at either end outside the marks", () => {
     expect(toggle("alpha brave charlie", " brave ", "highlight")).toBe("alpha ==brave== charlie");
   });

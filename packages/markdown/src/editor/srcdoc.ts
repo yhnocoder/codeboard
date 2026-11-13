@@ -3,7 +3,8 @@
 // without the `#` marker. Blocks (lists, quotes, code, formulas, tables,
 // details…) stay nodes. Reading: parseMd makes the document and each paragraph is written back by serializeMd's rules (so,
 // as before, what is saved is normalized Markdown). Writing: the source as it is, the blocks put together as before.
-// Footnote definitions are paragraphs [^1]: … at the end (as they are written in the source)
+// Footnote definitions are paragraphs [^1]: … at the end (as they are written in the source). Link reference definitions,
+// and footnote definitions nothing refers to, are paragraphs of their source where they are
 import type { JSONContent } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { blocksMd, inlineMd, parseMd, sourceBlocksMd } from "../schema";
@@ -22,15 +23,21 @@ export function sourceBlock(n: JSONContent): JSONContent {
       attrs: { level: n.attrs?.level ?? 1 },
       content: text(inlineMd(n).replace(/^#{1,6}(?:[ \t]+|$)/, "")),
     };
+  // definitions kept as written are their source, like a paragraph
+  if (n.type === "refDefs") return { type: "paragraph", content: text(n.attrs?.raw ?? "") };
   if (CODE.has(n.type!) || !n.content) return n;
   return { ...n, content: n.content.map(sourceBlock) };
 }
 
-/** Footnote definitions: [^k]: text (continuation lines indented four spaces, as serializeMd writes them); empty ones are left out */
+/**
+ * Footnote definitions: [^k]: text, k the number parseMd gave it (continuation lines indented four spaces, as serializeMd
+ * writes them); empty ones are left out
+ */
 function defs(fns: JSONContent): JSONContent[] {
-  return (fns.content ?? []).flatMap((f, i) => {
+  return (fns.content ?? []).flatMap((f) => {
     const body = blocksMd(f.content ?? []);
-    return body ? [{ type: "paragraph", content: text(`[^${i + 1}]: ${body.replace(/\n/g, "\n    ")}`) }] : [];
+    const k = String(f.attrs?.id ?? "").replace(/^fn:/, "");
+    return body ? [{ type: "paragraph", content: text(`[^${k}]: ${body.replace(/\n/g, "\n    ")}`) }] : [];
   });
 }
 
@@ -46,9 +53,14 @@ export function sourceDoc(md: string, layout?: MdLayout | null): JSONContent {
   return layout ? withLayout(doc, layout) : doc;
 }
 
-const DEF = /^\[\^[^\]\s]+\]:/;
+const DEF = /^\[\^([^\]\s]+)\]:/;
+const REF = /\[\^([^\]\s]+)\](?!:)/g;
 const paraText = (n: JSONContent) => (n.content ?? []).map((c) => c.text ?? "").join("");
-/** The editor's document JSON → Markdown. Footnote definitions at the end are one per line (as serializeMd writes them) */
+const allText = (n: JSONContent): string => n.text ?? (n.content ?? []).map(allText).join("\n");
+/**
+ * The editor's document JSON → Markdown. Footnote definitions at the end are one per line (as serializeMd writes them);
+ * one nothing refers to is a definition kept as written, a block of its own
+ */
 export function sourceMd(doc: JSONContent): string {
   const content = [...(doc.content ?? [])];
   while (
@@ -58,8 +70,9 @@ export function sourceMd(doc: JSONContent): string {
     !paraText(content[content.length - 1]).trim()
   )
     content.pop();
+  const refs = new Set([...allText(doc).matchAll(REF)].map((m) => m[1]));
   let k = content.length;
-  while (k > 0 && content[k - 1].type === "paragraph" && DEF.test(paraText(content[k - 1]))) k--;
+  while (k > 0 && content[k - 1].type === "paragraph" && refs.has(DEF.exec(paraText(content[k - 1]))?.[1] ?? "")) k--;
   const body = sourceBlocksMd(content.slice(0, k)),
     tail = content.slice(k).map(paraText);
   return tail.length ? `${body ? `${body}\n\n` : ""}${tail.join("\n")}` : body;
