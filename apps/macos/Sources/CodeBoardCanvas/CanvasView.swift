@@ -147,6 +147,19 @@ public final class CanvasView: NSView {
   let popLine = CAShapeLayer()
   /// The popup's showing and updating, one after another
   var popTask: Task<Void, Never>?
+  /// The open questions the toolbar was told of; the question list open, under the toolbar button at that rect, with
+  /// the other boards' questions it lists
+  var shownQuestions = -1
+  package var listShown = false
+  var listButton = CGRect.zero
+  var listOthers: [(VaultBoard, [QuestionListView.Shown.Item])] = []
+  /// How many of this board's questions are open, as it changes (the toolbar's ?); the list opened or closed
+  public var onQuestions: ((Int) -> Void)?
+  public var onListOpen: ((Bool) -> Void)?
+  /// A question on another board picked in the list: that board is to open and go to it
+  public var onOpenBoard: ((BoardID, SidenoteID) -> Void)?
+  /// The zoom as the camera moves (the toolbar's figure)
+  public var onZoom: ((CGFloat) -> Void)?
   /// Lines selected by their numbers in a code card
   package var lineSel: Lines?
   /// A free marker pressed (its index in `marks`), where, and whether it has moved; what it would land on, tinted
@@ -486,6 +499,8 @@ public final class CanvasView: NSView {
     if openPop != nil, !keepCamera { openPop(nil) }
     placeMarks()
     if openPop != nil { refreshPop() }
+    if listShown, !keepCamera { closeQuestionList() }
+    questionsChanged()
     drawChrome()
   }
 
@@ -611,6 +626,7 @@ public final class CanvasView: NSView {
       if chrome.sublayers?.isEmpty == false { drawChrome() }
       if editing != nil { cameraMovedWhileEditing() }
       if popShown != nil { positionPop() }
+      onZoom?(camera.zoom)
       // a label or title being written is kept when the camera moves
       if inPlace != nil { endInPlace(commit: true) }
       // a zoom (not a pan) away from the rest zoom: the held bitmaps take over, with mipmaps

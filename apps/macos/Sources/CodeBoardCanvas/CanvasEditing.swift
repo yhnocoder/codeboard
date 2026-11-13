@@ -302,6 +302,7 @@ extension CanvasView {
     hoveredMark = nil
     placeMarks()
     if openPop != nil { refreshPop() }
+    questionsChanged()
     // a swap made here otherwise reaches the screen a frame later than the layers it replaces go
     CATransaction.flush()
     arrive()

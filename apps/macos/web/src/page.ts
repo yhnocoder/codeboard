@@ -26,6 +26,7 @@ import "@yhnocoder/markdown/style.css";
 import "../../../../packages/board/src/themes.css";
 import "./page.css";
 import { pop } from "./pop";
+import { type QData, qlist } from "./qlist";
 
 /** CodeBoardNotes' PageNote, as JSON */
 type Note = {
@@ -536,5 +537,10 @@ const edit = {
 if (popMode) {
   pop.start({ mdFor, setLook });
   (window as unknown as { pop: typeof pop }).pop = pop;
+  (window as unknown as { qlist: unknown }).qlist = {
+    show: (d: QData, left: number, top: number, max: number) => qlist.show(d, left, top, max, setLook),
+    update: qlist.update,
+    clear: qlist.clear,
+  };
 }
 window.webkit?.messageHandlers.note.postMessage("ready");

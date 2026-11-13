@@ -41,6 +41,21 @@ public enum Tool: CaseIterable, Sendable {
 @MainActor
 public final class CanvasToolbar: NSView {
   public var onTool: ((Tool) -> Void)?
+  /// The zoom figure clicked (Zoom to 100%), the questions button clicked
+  public var onZoom100: (() -> Void)?
+  public var onQuestions: (() -> Void)?
+  /// The zoom shown after the tools (Chrome.tsx Zoom's figure), as a whole percentage
+  public var zoom: CGFloat = 1 {
+    didSet { if Self.percent(zoom) != Self.percent(oldValue) { draw() } }
+  }
+  /// How many of this board's questions are open: the button after the zoom shows while there are any, or while its
+  /// list is open (ui/QuestionList.tsx)
+  public var questions = 0 {
+    didSet { if questions != oldValue { restyle() } }
+  }
+  public var listOpen = false {
+    didSet { if listOpen != oldValue { restyle() } }
+  }
   public private(set) var tools: [Tool] = Tool.made
   public var theme: Theme = .warmInk {
     didSet { if !theme.same(as: oldValue) { restyle() } }
@@ -87,8 +102,54 @@ public final class CanvasToolbar: NSView {
   /// The bar's own size (without the room around it)
   var barSize: CGSize {
     let n = CGFloat(tools.count)
+    let more = extrasWidth
     return theme.id == .inkWash
-      ? CGSize(width: 22 + n * 30 + (n - 1) * 1 + 34, height: 46) : CGSize(width: 8 + n * 30 + (n - 1) * 2, height: 36)
+      ? CGSize(width: 22 + n * 30 + (n - 1) * 1 + more + 34, height: 46)
+      : CGSize(width: 8 + n * 30 + (n - 1) * 2 + more, height: 36)
+  }
+
+  static func percent(_ z: CGFloat) -> String { "\(Int((z * 100).rounded()))%" }
+  static let zoomFont = Font.board("JetBrainsMono-400-600", size: 11.5, weight: 400) ?? Font.mono(11.5, .regular)
+  static let countFont = Font(NSFont.systemFont(ofSize: 12, weight: .semibold))
+  static let askFont = Font(NSFont.systemFont(ofSize: 11, weight: .bold))
+
+  /// The questions button's rect in this view, while it shows
+  public var questionsRect: CGRect? { extraRects().questions }
+
+  /// Whether the questions button shows
+  var showsQuestions: Bool { questions > 0 || listOpen }
+
+  /// The questions button's width (.qlist-btn: 4 + the 16 ? + 5 + the count + 8)
+  var questionsWidth: CGFloat { 33 + Drawing.width("\(questions)", Self.countFont).rounded(.up) }
+
+  /// What follows the tools: a separator (.sep, 0.5 wide with 4 each side), the zoom figure (44 wide), and the
+  /// questions button after another separator (2 each side)
+  private var extrasWidth: CGFloat {
+    let gap: CGFloat = theme.id == .inkWash ? 1 : 2
+    var w = gap + 8.5 + gap + 44
+    if showsQuestions { w += gap + 8.5 + gap + 2 + questionsWidth + 2 }
+    return w
+  }
+
+  /// Where the separators, the zoom figure and the questions button are in the view
+  func extraRects() -> (seps: [CGRect], zoom: CGRect, questions: CGRect?) {
+    let b = barRect
+    let gap: CGFloat = theme.id == .inkWash ? 1 : 2
+    let last = buttonRects().last ?? CGRect(x: b.minX, y: b.minY, width: 0, height: 0)
+    let mid = last.midY
+    var x = last.maxX + gap
+    var seps = [CGRect(x: x + 4, y: mid - 8, width: 0.5, height: 16)]
+    x += 8.5 + gap
+    let zoom = CGRect(x: x, y: mid - 9.5, width: 44, height: 19)
+    x += 44
+    var q: CGRect?
+    if showsQuestions {
+      x += gap
+      seps.append(CGRect(x: x + 4, y: mid - 8, width: 0.5, height: 16))
+      x += 8.5 + gap + 2
+      q = CGRect(x: x, y: mid - 12, width: questionsWidth, height: 24)
+    }
+    return (seps, zoom, q)
   }
 
   public override var intrinsicContentSize: NSSize {
@@ -139,8 +200,27 @@ public final class CanvasToolbar: NSView {
     face.contentsScale = scale
     face.contents = Self.image(
       size: bounds.size, bar: barRect, buttons: buttonRects(), tools: tools, theme: theme, hover: hover,
-      pressed: pressed, active: active.flatMap { tools.firstIndex(of: $0) }, scale: scale)
+      pressed: pressed, active: active.flatMap { tools.firstIndex(of: $0) }, scale: scale, extras: extrasDrawn)
     CATransaction.commit()
+  }
+
+  /// What `image` draws after the tools
+  var extrasDrawn: Extras {
+    let r = extraRects()
+    return Extras(
+      seps: r.seps, zoom: r.zoom, zoomText: Self.percent(zoom), zoomLit: hover == -1, questions: r.questions,
+      count: questions, questionsLit: hover == -2 || listOpen, none: questions == 0)
+  }
+
+  struct Extras {
+    var seps: [CGRect]
+    var zoom: CGRect
+    var zoomText: String
+    var zoomLit: Bool
+    var questions: CGRect?
+    var count: Int
+    var questionsLit: Bool
+    var none: Bool
   }
 
   // MARK: Drawing
@@ -150,14 +230,14 @@ public final class CanvasToolbar: NSView {
     let size = intrinsicContentSize
     return Self.image(
       size: size, bar: barRect, buttons: buttonRects(), tools: tools, theme: theme, hover: nil, pressed: nil,
-      active: active.flatMap { tools.firstIndex(of: $0) }, scale: scale)
+      active: active.flatMap { tools.firstIndex(of: $0) }, scale: scale, extras: extrasDrawn)
   }
 
   /// The toolbar as one bitmap: its shadow and glass tint (Warm Ink) or its stroke of ink and brush (Ink Wash), and
   /// its buttons
   static func image(
     size: CGSize, bar: CGRect, buttons: [CGRect], tools: [Tool], theme: Theme, hover: Int?, pressed: Int?,
-    active: Int? = nil, scale: CGFloat
+    active: Int? = nil, scale: CGFloat, extras: Extras? = nil
   ) -> CGImage? {
     let w = Int((size.width * scale).rounded(.up))
     let h = Int((size.height * scale).rounded(.up))
@@ -233,7 +313,39 @@ public final class CanvasToolbar: NSView {
         Icons.stroke(icon, at: CGPoint(x: r.minX + 7, y: r.minY + 6), color: color, in: ctx)
       }
     }
+    if let e = extras { drawExtras(e, theme: theme, look: look, in: ctx) }
     return ctx.makeImage()
+  }
+
+  /// The separators, the zoom figure (.zoom: 11.5 mono in --ink-2, the row tint hovered) and the questions button
+  /// (.qlist-btn: the amber at 14 % under an amber ? and the count; 24 % hovered or open; greyed with none open)
+  static func drawExtras(_ e: Extras, theme t: Theme, look: BarLook, in ctx: CGContext) {
+    for s in e.seps {
+      ctx.setFillColor(look.sep)
+      ctx.fill(s)
+    }
+    if e.zoomLit {
+      ctx.addPath(CGPath(roundedRect: e.zoom, cornerWidth: 7, cornerHeight: 7, transform: nil))
+      ctx.setFillColor(t.hlrow)
+      ctx.fillPath()
+    }
+    let zw = Drawing.width(e.zoomText, zoomFont)
+    Drawing.text(
+      ctx, e.zoomText, zoomFont, look.ink2, x: e.zoom.midX - zw / 2, midY: e.zoom.midY, width: .infinity)
+    guard let q = e.questions else { return }
+    let bg =
+      e.none ? t.hlrow : t.ask.copy(alpha: e.questionsLit ? 0.24 : 0.14) ?? t.ask
+    ctx.addPath(CGPath(roundedRect: q, cornerWidth: q.height / 2, cornerHeight: q.height / 2, transform: nil))
+    ctx.setFillColor(bg)
+    ctx.fillPath()
+    let dot = CGRect(x: q.minX + 4, y: q.midY - 8, width: 16, height: 16)
+    ctx.addEllipse(in: dot)
+    ctx.setFillColor(e.none ? t.ink3 : t.ask)
+    ctx.fillPath()
+    let qw = Drawing.width("?", askFont)
+    Drawing.text(ctx, "?", askFont, t.askInk, x: dot.midX - qw / 2, midY: dot.midY, width: .infinity)
+    let ink = e.none ? t.ink3 : CanvasView.mix(t.ask, 0.8, t.ink)
+    Drawing.text(ctx, "\(e.count)", countFont, ink, x: dot.maxX + 5, midY: q.midY, width: .infinity)
   }
 
   /// Ink Wash's bar: one pale stroke of ink over a veil of paper, its edges rising and falling a little, a round darker
@@ -357,7 +469,14 @@ public final class CanvasToolbar: NSView {
         owner: self))
   }
 
-  func button(at p: CGPoint) -> Int? { buttonRects().firstIndex { $0.contains(p) } }
+  /// The tool under a point; -1: the zoom figure, -2: the questions button
+  func button(at p: CGPoint) -> Int? {
+    if let i = buttonRects().firstIndex(where: { $0.contains(p) }) { return i }
+    let e = extraRects()
+    if e.zoom.contains(p) { return -1 }
+    if let q = e.questions, q.contains(p) { return -2 }
+    return nil
+  }
 
   public override func mouseMoved(with e: NSEvent) { hover = button(at: convert(e.locationInWindow, from: nil)) }
   public override func mouseExited(with e: NSEvent) { hover = nil }
@@ -367,7 +486,11 @@ public final class CanvasToolbar: NSView {
     let at = button(at: convert(e.locationInWindow, from: nil))
     defer { pressed = nil }
     guard let at, at == pressed else { return }
-    onTool?(tools[at])
+    switch at {
+    case -1: onZoom100?()
+    case -2: onQuestions?()
+    default: onTool?(tools[at])
+    }
   }
 
   public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }

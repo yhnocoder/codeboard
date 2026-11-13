@@ -81,7 +81,7 @@ extension Board {
   }
 
   /// A code card's own segment (a shared card's lines are in its shared file, not here)
-  func segment(_ card: CardID, _ seg: SegmentID) -> Segment? {
+  public func segment(_ card: CardID, _ seg: SegmentID) -> Segment? {
     guard case .own(let c)? = self.card(card)?.content, case .code(let code) = c.body else { return nil }
     return code.segments.first { $0.id == seg }
   }

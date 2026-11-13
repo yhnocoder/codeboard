@@ -127,6 +127,8 @@ public struct Theme: Sendable {
   var ask = CGColor(srgbRed: 0xc4 / 255, green: 0x8a / 255, blue: 0x1f / 255, alpha: 1)
   var askInk = CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
   var accentInk = CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
+  /// A row's hover tint (--hlrow)
+  var hlrow = CGColor(srgbRed: 60 / 255, green: 45 / 255, blue: 20 / 255, alpha: 0.07)
 
   var code: Font
   var codeComment: Font
@@ -289,6 +291,7 @@ public struct Theme: Sendable {
     t.mark = rgb(0x1d1c1a)
     t.markInk = rgb(0xfdfdfb)
     t.accentInk = rgb(0xfdfdfb)
+    t.hlrow = rgb(0x1d1c1a, 0.06)
     return t
   }()
 
@@ -302,6 +305,7 @@ public struct Theme: Sendable {
     t.ask = rgb(0xe0b055)
     t.askInk = rgb(0x1d1c1a)
     t.accentInk = rgb(0x1d1c1a)
+    t.hlrow = rgb(0xfff0dc, 0.07)
     t.canvas = rgb(0x191816)
     t.surface = rgb(surface)
     t.head = rgb(0x2a2926)
@@ -351,6 +355,7 @@ public struct Theme: Sendable {
     t.ask = rgb(0xe0b055)
     t.askInk = rgb(0x1d1c1a)
     t.accentInk = rgb(0x131312)
+    t.hlrow = rgb(0xe9e5da, 0.07)
     t.canvas = rgb(0x131312)
     t.backdrop = "ink-dark"
     // the deckled sheet's paper (ink.ts), a shade off --surface, which box Notes mix their fills with

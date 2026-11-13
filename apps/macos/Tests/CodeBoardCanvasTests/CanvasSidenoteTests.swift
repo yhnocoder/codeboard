@@ -384,3 +384,67 @@ extension CanvasSidenoteTests {
     #expect(c.openPop == .spot(.point(x: 340, y: 700)))
   }
 }
+
+extension CanvasSidenoteTests {
+  @Test func theToolbarShowsTheZoomAndWhileQuestionsAreOpenTheirCount() {
+    let bar = CanvasToolbar(frame: CGRect(x: 0, y: 0, width: 600, height: 120))
+    #expect(bar.questionsRect == nil, "no question open: no button")
+    let plain = bar.intrinsicContentSize.width
+    bar.questions = 3
+    let q = try? #require(bar.questionsRect)
+    #expect(bar.intrinsicContentSize.width > plain && q?.height == 24)
+    #expect(bar.button(at: CGPoint(x: q!.midX, y: q!.midY)) == -2)
+    let zoom = bar.extraRects().zoom
+    #expect(bar.button(at: CGPoint(x: zoom.midX, y: zoom.midY)) == -1 && zoom.width == 44)
+    // after the last tool, the zoom figure, then the questions at the far right
+    #expect(zoom.minX > bar.buttonRects().last!.maxX && q!.minX > zoom.maxX && q!.maxX < bar.barRect.maxX)
+    bar.questions = 0
+    #expect(bar.questionsRect == nil)
+  }
+
+  @Test func theQuestionListListsThisAndOtherBoardsQuestionsAndARowGoesToItsPopup() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(path: "questions-\(UUID().uuidString)")
+    // another board with a question of its own
+    var other = Board(id: BoardID(rawValue: "other"), cards: [])
+    other.sidenotes = [
+      Sidenote(
+        id: nid("oq"), anchor: .point(x: 0, y: 0),
+        body: .text(TextNote(text: "另一块白板的问题", question: Question(at: 5))))
+    ]
+    let package = root.appending(path: "other.board")
+    try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
+    try other.encoded().write(to: package.appending(path: Vault.boardFileName))
+    let r = try await Rig(sidenoteBoard(question: true), zoom: 1, root: root)
+    defer { r.close() }
+    let c = r.canvas
+    var counts: [Int] = []
+    c.onQuestions = { counts.append($0) }
+    c.questionsChanged()
+    #expect(c.openQuestions == 1)
+    let list = c.questionList
+    c.toggleQuestionList(under: CGRect(x: 600, y: 650, width: 40, height: 24))
+    await r.until("the list shows") { list.view.alphaValue == 1 }
+    // this board's, newest first; emptied, every board's, grouped
+    #expect(await list.run("return document.querySelectorAll('.qlist-row').length") as? Int == 1)
+    #expect(await list.run("return document.querySelector('.qlist-l').textContent") as? String == "整张卡")
+    #expect(await list.run("return document.querySelector('.qlist-w').textContent") as? String == "调度 Scheduling")
+    _ = await list.run("document.querySelector('.qlist-clear').click()")
+    #expect(await list.run("return document.querySelectorAll('.qlist-row').length") as? Int == 2)
+    #expect(await list.run("return document.querySelectorAll('.qlist-group').length") as? Int == 2)
+    // its bottom right 12 over the button, 6 right of it
+    let box = list.view.convert(list.view.listRect, to: c)
+    #expect(abs(box.maxY - (650 - 12)) < 0.5 && abs(box.maxX - 646) < 0.5)
+    // another board's row: that board is to open
+    var asked: (BoardID, SidenoteID)?
+    c.onOpenBoard = { asked = ($0, $1) }
+    _ = await list.run("document.querySelector('.qlist-row[data-q=\"oq\"]').click()")
+    await r.until("its board asked for") { asked != nil }
+    #expect(asked?.0 == BoardID(rawValue: "other") && asked?.1 == nid("oq") && !c.listShown)
+    // this board's: its popup, the question shown
+    c.toggleQuestionList(under: CGRect(x: 600, y: 650, width: 40, height: 24))
+    await r.until("the list shows") { list.view.alphaValue == 1 }
+    _ = await list.run("document.querySelector('.qlist-row').click()")
+    await opened(r, .spot(.card(cid("n1"))))
+    #expect(!c.listShown)
+  }
+}

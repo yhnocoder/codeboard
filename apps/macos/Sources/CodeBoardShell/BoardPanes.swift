@@ -50,6 +50,7 @@ import CodeBoardNotes
         pane.autoresizingMask = [.width, .height]
         pane.isHidden = true
         pane.onReady = { [weak self] in self?.reveal() }
+        pane.onOpenBoard = { [weak self] in self?.shell.show($0) }
         addSubview(pane)
       }
       let theme = shell.look
@@ -132,6 +133,9 @@ final class Pane: NSView {
   private static let patience = Duration.milliseconds(250)
   let canvas: CanvasView
   private let toolbar = CanvasToolbar()
+  /// Another board to open in this tab (a question on it was picked), and the question to go to once it shows
+  var onOpenBoard: ((BoardID) -> Void)?
+  private var pendingQuestion: SidenoteID?
   private let problem = NSTextField(wrappingLabelWithString: "")
 
   init(notes: NoteRenderer?) {
@@ -143,6 +147,19 @@ final class Pane: NSView {
     toolbar.translatesAutoresizingMaskIntoConstraints = false
     toolbar.onTool = { [weak self] in self?.canvas.use($0) }
     canvas.onMode = { [weak self] in self?.toolbar.active = $0 }
+    // the zoom figure and the questions after the tools
+    toolbar.onZoom100 = { [weak self] in self?.canvas.zoomTo100() }
+    toolbar.onQuestions = { [weak self] in
+      guard let self, let r = toolbar.questionsRect else { return }
+      canvas.toggleQuestionList(under: toolbar.convert(r, to: canvas))
+    }
+    canvas.onZoom = { [weak self] in self?.toolbar.zoom = $0 }
+    canvas.onQuestions = { [weak self] in self?.toolbar.questions = $0 }
+    canvas.onListOpen = { [weak self] in self?.toolbar.listOpen = $0 }
+    canvas.onOpenBoard = { [weak self] board, question in
+      self?.pendingQuestion = question
+      self?.onOpenBoard?(board)
+    }
     addSubview(toolbar)
     NSLayoutConstraint.activate([
       toolbar.centerXAnchor.constraint(equalTo: centerXAnchor),
@@ -203,6 +220,10 @@ final class Pane: NSView {
     Task {
       do { try await canvas.show(doc, at: at, in: vault, theme: theme) } catch { fail(error) }
       becomeReady()
+      if let q = pendingQuestion, document === doc {
+        pendingQuestion = nil
+        canvas.showQuestion(q)
+      }
       // the theme changed while the board was loading
       restyle(self.theme)
     }

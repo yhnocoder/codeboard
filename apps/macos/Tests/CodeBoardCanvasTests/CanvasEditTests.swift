@@ -93,6 +93,7 @@ private func png(_ url: URL) throws {
     window.contentView = host
     canvas.noteEditor.drawOffScreen()
     canvas.sidenotePop.drawOffScreen()
+    canvas.questionList.drawOffScreen()
     // far off screen: the web view runs its animation frames only in a window that is ordered in
     window.orderFrontRegardless()
     try await canvas.show(
