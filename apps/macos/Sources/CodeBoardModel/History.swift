@@ -14,7 +14,8 @@ extension ShelfEntry: Identifiable {}
 
 /// The items of one list that changed, before and after (nil: not there), and its order before and after when that
 /// changed
-struct ListChange<T: Identifiable & Equatable & Sendable>: Equatable, Sendable where T.ID: Hashable & Sendable {
+struct ListChange<T: Identifiable & Equatable & Sendable & Codable>: Equatable, Sendable
+where T.ID: Hashable & Sendable {
   var before: [T.ID: T] = [:]
   var after: [T.ID: T] = [:]
   var touched: [T.ID] = []
@@ -44,11 +45,15 @@ struct ListChange<T: Identifiable & Equatable & Sendable>: Equatable, Sendable w
 
   var isEmpty: Bool { touched.isEmpty && orderBefore == nil }
 
-  /// The list with this change applied (forward) or taken back; items it does not touch stay where they are
-  func apply(to list: [T], forward: Bool) -> [T] {
+  /// The list with this change applied (forward) or taken back. An item it changed on both sides gets back only the
+  /// fields it changed (another writer may have changed others meanwhile); items it does not touch stay where they are
+  func apply(to list: [T], forward: Bool) -> [T] where T: Codable {
     let want = forward ? after : before
+    let was = forward ? before : after
     var out = list.filter { x in !touched.contains(x.id) || want[x.id] != nil }
-    for (i, x) in out.enumerated() where touched.contains(x.id) { out[i] = want[x.id]! }
+    for (i, x) in out.enumerated() where touched.contains(x.id) {
+      out[i] = was[x.id].map { mergeFields($0, x, want[x.id]!) } ?? want[x.id]!
+    }
     let have = Set(out.map(\.id))
     for id in touched where !have.contains(id) { if let x = want[id] { out.append(x) } }
     guard let order = forward ? orderAfter : orderBefore else { return out }
@@ -61,11 +66,16 @@ struct ListChange<T: Identifiable & Equatable & Sendable>: Equatable, Sendable w
     }.map(\.element)
   }
 
-  /// Whether `list` is as this change left it (forward) or found it: then it can be taken back (or done again)
-  func holds(on list: [T], forward: Bool) -> Bool {
+  /// Whether `list` is as this change left it (forward) or found it, in what it changed: then it can be taken back (or
+  /// done again). Of an item it changed on both sides only the fields it changed count
+  func holds(on list: [T], forward: Bool) -> Bool where T: Codable {
     let want = forward ? after : before
+    let was = forward ? before : after
     let now = Dictionary(list.map { ($0.id, $0) }, uniquingKeysWith: { x, _ in x })
-    return touched.allSatisfy { now[$0] == want[$0] }
+    return touched.allSatisfy { id in
+      guard let w = want[id], let x = was[id], let n = now[id] else { return now[id] == want[id] }
+      return fieldsHold(n, from: x, to: w)
+    }
   }
 }
 

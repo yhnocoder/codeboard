@@ -50,21 +50,29 @@ func mergeList<T: Identifiable & Codable & Equatable>(_ base: [T], _ mine: [T], 
   return order.compactMap { id in seen.insert(id).inserted ? merged[id] : nil }
 }
 
+/// A value's fields, as its JSON object
+private func fields<T: Encodable>(_ v: T?) -> [String: Any] {
+  guard let v, let data = try? JSONEncoder().encode(v) else { return [:] }
+  return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+}
+
+private func same(_ a: Any?, _ b: Any?) -> Bool {
+  switch (a, b) {
+  case (nil, nil): true
+  case (let x?, let y?): (x as? NSObject)?.isEqual(y) == true
+  default: false
+  }
+}
+
+/// Whether `now` has, in every field that differs between `from` and `to`, the value of `to`
+func fieldsHold<T: Codable>(_ now: T, from: T, to: T) -> Bool {
+  let (n, f, t) = (fields(now), fields(from), fields(to))
+  return Set(f.keys).union(t.keys).allSatisfy { k in same(f[k], t[k]) || same(n[k], t[k]) }
+}
+
 /// An item both sides changed: each field from the side that changed it; where both did, the disk's
 func mergeFields<T: Codable>(_ base: T?, _ mine: T, _ disk: T) -> T {
-  let encoder = JSONEncoder()
-  encoder.outputFormatting = .sortedKeys
-  func object(_ v: T?) -> [String: Any] {
-    guard let v, let data = try? encoder.encode(v) else { return [:] }
-    return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
-  }
-  func same(_ a: Any?, _ b: Any?) -> Bool {
-    switch (a, b) {
-    case (nil, nil): true
-    case (let x?, let y?): (x as? NSObject)?.isEqual(y) == true
-    default: false
-    }
-  }
+  let object = { (v: T?) in fields(v) }
   let (b, m, d) = (object(base), object(mine), object(disk))
   var out = m
   for key in Set(b.keys).union(m.keys).union(d.keys) {
