@@ -129,6 +129,14 @@ export const Code = CodeBlock.extend({
     };
   },
   renderHTML: ({ node }) => ["pre", { class: "md-code", "data-lang": node.attrs.language || null }, ["code", 0]],
+  // every code token marked makes is a code block: TipTap's own reader drops a fence indented by 1–3 spaces (its raw
+  // starts with the spaces, not ```), which CommonMark allows. CommonMark takes up to that indent off each content line;
+  // marked does so for ``` but not for ~~~, so a ~~~ fence's indent is taken off here
+  parseMarkdown: (token, h) => {
+    const n = /^( {1,3})~/.exec(token.raw ?? "")?.[1].length ?? 0;
+    const text = n ? (token.text ?? "").replace(new RegExp(`^ {1,${n}}`, "gm"), "") : token.text;
+    return h.createNode("codeBlock", { language: token.lang || null }, text ? [h.createTextNode(text)] : []);
+  },
   renderMarkdown: (n, h) => {
     const body = n.content ? h.renderChildren(n.content) : "";
     const run = Math.max(2, ...[...body.matchAll(/^ {0,3}(`{3,})/gm)].map((m) => m[1].length));
