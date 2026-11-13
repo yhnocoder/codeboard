@@ -151,6 +151,21 @@ test("noteCaretBesideImage", async () => {
   await until(h, "the drawn caret goes", async () => (await card.locator(".md-pm .md-icaret").count()) === 0);
   await pg.keyboard.press("ArrowLeft");
   await card.locator(".md-pm .md-icaret-l").waitFor({ state: "attached" });
+  // an IME starting to compose there: the browser's own caret is back at once, before any composed character
+  const atStart = await pg.evaluate(() => {
+    const pm = document.querySelector(".md-pm")!;
+    pm.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true, data: "" }));
+    const p = [...pm.querySelectorAll("p")].find((x) => x.textContent?.includes("inline here"))!;
+    const r = { drawn: pm.querySelectorAll(".md-icaret").length, color: getComputedStyle(p).caretColor };
+    pm.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "" }));
+    return r;
+  });
+  check(
+    "noteCaretBesideImage composition start shows the browser's caret",
+    atStart.drawn === 0 && atStart.color !== "rgba(0, 0, 0, 0)",
+    atStart,
+  );
+  await card.locator(".md-pm .md-icaret-l").waitFor({ state: "attached" });
   // an IME composing right after the image: the text goes where the caret is
   const cdp = await pg.context().newCDPSession(pg);
   await cdp.send("Input.imeSetComposition", { text: "字", selectionStart: 1, selectionEnd: 1 });

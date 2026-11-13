@@ -53,8 +53,20 @@ export function imageCaretPlugin() {
     state: {
       init: (_c, st) => decorate(st),
       apply: (tr, prev, old, st) =>
-        !tr.docChanged && tr.selection.eq(old.selection) && !tr.getMeta(inlineKey) ? prev : decorate(st),
+        !tr.docChanged && tr.selection.eq(old.selection) && !tr.getMeta(inlineKey) && !tr.getMeta(key)
+          ? prev
+          : decorate(st),
     },
-    props: { decorations: (st) => key.getState(st) },
+    props: {
+      decorations: (st) => key.getState(st),
+      handleDOMEvents: {
+        // an IME starts writing at the caret: the browser's own caret comes back before the first composed character, not
+        // with it (the inline plugin, before this one, has marked the composition by now)
+        compositionstart: (view) => {
+          if (key.getState(view.state) !== DecorationSet.empty) view.dispatch(view.state.tr.setMeta(key, true));
+          return false;
+        },
+      },
+    },
   });
 }
