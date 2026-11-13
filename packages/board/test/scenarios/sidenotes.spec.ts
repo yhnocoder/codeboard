@@ -217,10 +217,10 @@ test("sidenoteAlwaysShowResize", async () => {
 test("sidenotePopupBesideCard", async () => {
   const res: Record<string, unknown> = {};
   let ok = true;
-  // a card with room on its right, and one too wide for the popup to fit beside it
+  // a card with room on its right, and one too wide for the popup to fit beside it in the window
   for (const [where, w] of [
     ["beside", 560],
-    ["over", 1060],
+    ["wide", 1060],
   ] as const) {
     const h = await open({ board: board(w), light, w: 1200, h: 900, settings: { theme: "warm-ink" } as never });
     await setWarmInk(h);
@@ -231,24 +231,43 @@ test("sidenotePopupBesideCard", async () => {
     const r = await pg.evaluate(() => {
       const p = document.querySelector<HTMLElement>(".pop.k-highlight")!.getBoundingClientRect();
       const c = document.querySelector<HTMLElement>('.card[data-id="k1"]')!.getBoundingClientRect();
+      const m = document
+        .querySelector<HTMLElement>('.card[data-id="k1"] .hxm[data-hl="k1:s1:7-8"]')!
+        .getBoundingClientRect();
       const l = document.querySelectorAll<HTMLElement>('.card[data-id="k1"] .src > .l')[6].getBoundingClientRect();
+      const apart = (a: DOMRect, b: DOMRect) =>
+        a.right <= b.left + 0.5 || b.right <= a.left + 0.5 || a.bottom <= b.top + 0.5 || b.bottom <= a.top + 0.5;
       return {
-        pop: { left: Math.round(p.left), right: Math.round(p.right), top: Math.round(p.top) },
-        card: Math.round(c.right),
+        pop: {
+          left: Math.round(p.left),
+          right: Math.round(p.right),
+          top: Math.round(p.top),
+          bottom: Math.round(p.bottom),
+        },
+        card: {
+          left: Math.round(c.left),
+          right: Math.round(c.right),
+          top: Math.round(c.top),
+          bottom: Math.round(c.bottom),
+        },
         line: Math.round(l.top),
         outside: p.left >= c.right,
+        clear: apart(p, c) && apart(p, m),
         aligned: Math.abs(p.top - l.top) <= 12,
         inWindow: p.left >= 0 && p.right <= innerWidth && p.top >= 0 && p.bottom <= innerHeight,
         tips: document.querySelectorAll(".pop.k-highlight .nbody[data-tip]").length,
       };
     });
     if (where === "beside") await save(h, "sidenotes-popup-beside", '.card[data-id="k1"], .pop.k-highlight');
+    else await save(h, "sidenotes-popup-wide");
     res[where] = r;
-    ok &&= r.aligned && r.inWindow && r.outside === (where === "beside") && r.tips === 0;
+    // with room: right of the card, its top at the lines; without: still clear of the card and its count (another side, or the
+    // board slid a little to make room), in the window
+    ok &&= r.clear && r.inWindow && r.tips === 0 && (where === "beside" ? r.outside && r.aligned : true);
     await h.close();
   }
   check(
-    "sidenotePopupBesideCard the popup is right of the card, its top at the lines; with no room there it covers the card, in the window",
+    "sidenotePopupBesideCard the popup is right of the card, its top at the lines; with no room there it still covers neither the card nor its count, in the window",
     ok,
     res,
   );

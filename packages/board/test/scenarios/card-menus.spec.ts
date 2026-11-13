@@ -388,7 +388,7 @@ test("sectionMenuRow", async () => {
     );
   check(
     "sectionMenuRow the row first, a separator, then the items",
-    layout.join("|") === "row:Fit Content/Color/Lock|—|Collapse|Copy Path|—|Remove Section",
+    layout.join("|") === "row:Fit Content/Color/Lock|—|Add Sidenote|Collapse|Copy Path|—|Remove Section",
     layout,
   );
   const fit = await btn(pg, menu, "Fit Content"),
@@ -517,35 +517,36 @@ test("cardMenusLeaveMovedItems", async () => {
     );
   }
   check(
-    "cardMenusLeaveMovedItems code card: Add, View, Add Variant…, then the tail",
-    menus.code.join("|") === "Add|View|Add Variant…|Arrange|Copy Path|Delete",
+    "cardMenusLeaveMovedItems code card: Add Sidenote, Add, View, Add Variant…, then the tail",
+    menus.code.join("|") === "Add Sidenote|Add|View|Add Variant…|Arrange|Copy Path|Delete",
     menus.code,
   );
   check(
-    "cardMenusLeaveMovedItems Free code: Add, View, the tail",
-    menus.free.join("|") === "Add|View|Arrange|Copy Path|Delete",
+    "cardMenusLeaveMovedItems Free code: Add Sidenote, Add, View, the tail",
+    menus.free.join("|") === "Add Sidenote|Add|View|Arrange|Copy Path|Delete",
     menus.free,
   );
   check(
-    "cardMenusLeaveMovedItems Note, Text and Box: AI, the tail",
-    [menus.note, menus.text, menus.box].every((m) => m.join("|") === "AI|Arrange|Copy Path|Delete"),
+    "cardMenusLeaveMovedItems Note, Text and Box: Add Sidenote, AI, the tail",
+    [menus.note, menus.text, menus.box].every((m) => m.join("|") === "Add Sidenote|AI|Arrange|Copy Path|Delete"),
     menus.note,
     menus.text,
     menus.box,
   );
   check(
-    "cardMenusLeaveMovedItems image: Add Description, AI, the tail",
-    menus.image.join("|") === "Add Description|AI|Arrange|Copy Path|Delete",
+    "cardMenusLeaveMovedItems image: Add Sidenote, Add Description, AI, the tail",
+    menus.image.join("|") === "Add Sidenote|Add Description|AI|Arrange|Copy Path|Delete",
     menus.image,
   );
   check(
-    "cardMenusLeaveMovedItems web: Open, Refresh, View, Edit Title, Edit Description, the tail",
-    menus.web.join("|") === "Open in Browser|Refresh Preview|View|Edit Title|Edit Description|Arrange|Copy Path|Delete",
+    "cardMenusLeaveMovedItems web: Add Sidenote, Open, Refresh, View, Edit Title, Edit Description, the tail",
+    menus.web.join("|") ===
+      "Add Sidenote|Open in Browser|Refresh Preview|View|Edit Title|Edit Description|Arrange|Copy Path|Delete",
     menus.web,
   );
   check(
-    "cardMenusLeaveMovedItems links: Open All, View, Rename, the tail",
-    menus.links.join("|") === "Open All in Browser|View|Rename|Arrange|Copy Path|Delete",
+    "cardMenusLeaveMovedItems links: Add Sidenote, Open All, View, Rename, the tail",
+    menus.links.join("|") === "Add Sidenote|Open All in Browser|View|Rename|Arrange|Copy Path|Delete",
     menus.links,
   );
   // the code card's submenus
@@ -558,7 +559,7 @@ test("cardMenusLeaveMovedItems", async () => {
   await closeMenu(h);
   check(
     "cardMenusLeaveMovedItems code card Add ▸",
-    add.join("|") === "Sidenote|Question|Description|Generated Code|Process Tag…|Thread / Stream Tag…",
+    add.join("|") === "Description|Generated Code|Process Tag…|Thread / Stream Tag…",
     add,
   );
   check(
@@ -566,13 +567,13 @@ test("cardMenusLeaveMovedItems", async () => {
     view.join("|") === "Hide Blank Lines|Hide Comments|Hide Docstrings|Show All Hidden Lines|Background",
     view,
   );
-  // the Section: Collapse, Copy Path, Remove Section
+  // the Section: Add Sidenote, Collapse, Copy Path, Remove Section
   await away(h);
   const sect = await menuOf(h, '.slabel[data-sect="S"] .sname');
   await closeMenu(h);
   check(
-    "cardMenusLeaveMovedItems Section: Collapse, Copy Path, Remove Section",
-    sect.join("|") === "Collapse|Copy Path|Remove Section",
+    "cardMenusLeaveMovedItems Section: Add Sidenote, Collapse, Copy Path, Remove Section",
+    sect.join("|") === "Add Sidenote|Collapse|Copy Path|Remove Section",
     sect,
   );
   await h.close();
@@ -590,7 +591,7 @@ test("sectionBlankRightClickOpensSectionMenu", async () => {
   const row = await pg.locator(".ctx.open .mrow").count();
   check(
     "sectionBlankRightClickOpensSectionMenu the Section's menu, with its row",
-    inside.join("|") === "Collapse|Copy Path|Remove Section" && row === 1,
+    inside.join("|") === "Add Sidenote|Collapse|Copy Path|Remove Section" && row === 1,
     { inside, row },
   );
   await closeMenu(h);
