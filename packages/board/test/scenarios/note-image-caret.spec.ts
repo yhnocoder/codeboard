@@ -169,3 +169,42 @@ test("noteCaretBesideImage", async () => {
     (h.board().cards.find((c) => c.id === "n0") as NoteCard).md.includes(`${INLINE}字 inline`),
   );
 });
+
+/** An IME typing on a selected image writes after the image, as a typed character does: its first key (Process, 229) does
+ *  not let the composition replace the image */
+test("noteImeOnSelectedImage", async () => {
+  const b = emptyBoard("b1", "ime on image");
+  put(
+    b,
+    { id: "n0", kind: "note", md: `See ${INLINE} inline here.\n\nEnd text.`, look: "note" } as NoteCard,
+    60,
+    60,
+    520,
+  );
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 760, h: 500 });
+  const pg = h.page,
+    card = pg.locator('.card[data-id="n0"]');
+  await idle(h);
+  await card.locator(".nbody p").last().dblclick();
+  await card.locator(".md-pm:focus").waitFor();
+  await idle(h);
+  await card.locator(".md-pm .md-img img").first().click();
+  await card.locator(".md-pm .md-img.md-picked").waitFor();
+  await idle(h);
+  const cdp = await pg.context().newCDPSession(pg);
+  await cdp.send("Input.dispatchKeyEvent", {
+    type: "rawKeyDown",
+    key: "Process",
+    code: "KeyZ",
+    windowsVirtualKeyCode: 229,
+  });
+  await cdp.send("Input.imeSetComposition", { text: "字", selectionStart: 1, selectionEnd: 1 });
+  await cdp.send("Input.insertText", { text: "字" });
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "z", code: "KeyZ", windowsVirtualKeyCode: 90 });
+  await idle(h);
+  await pg.keyboard.press("Escape");
+  const md = () => (h.board().cards.find((c) => c.id === "n0") as NoteCard).md;
+  await until(h, "Esc saves the Note", () => md().includes("字"));
+  check("noteImeOnSelectedImage text after the image", md().startsWith(`See ${INLINE}字 inline here.`), md());
+});

@@ -556,7 +556,14 @@ export function inlinePlugin() {
           clearTimeout(ui.timer);
           reveal(view);
         }
-        if (e.isComposing || e.keyCode === 229) return false;
+        if (e.isComposing || e.keyCode === 229) {
+          // an IME's first key (Process) on a selected image: what it writes goes after the image, as a typed character
+          // does, not over it
+          const pick = ui.composing ? null : pickedImage(view.state);
+          if (pick)
+            view.dispatch(revealMeta(view.state.tr.setSelection(TextSelection.create(view.state.doc, pick[1]))));
+          return false;
+        }
         // a key before the focus handler's timer has run (typed at once after the editor got focus, on a busy page): the
         // editor has the keyboard, so the markers follow the caret from this key on. Otherwise they stay hidden, and the
         // browser puts what is typed after a hidden closing ** before it, into the bold
