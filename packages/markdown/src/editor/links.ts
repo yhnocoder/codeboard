@@ -72,3 +72,13 @@ export function openLinkBox(view: EditorView, setLink: (v: string | null) => voi
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, l.textFrom, l.textTo)));
   setLink(l?.url ?? "");
 }
+
+/** A link's text as written between [ and ]: brackets that do not pair up are escaped, or the first ] would end the text */
+export function linkText(t: string): string {
+  let depth = 0;
+  for (const m of t.matchAll(/(?<!\\)(?:\\\\)*([[\]])/g)) {
+    depth += m[1] === "[" ? 1 : -1;
+    if (depth < 0) break;
+  }
+  return depth === 0 ? t : t.replace(/(?<!\\)((?:\\\\)*)([[\]])/g, "$1\\$2");
+}

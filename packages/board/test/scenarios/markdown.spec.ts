@@ -2163,3 +2163,53 @@ test("noteLinkBox", async () => {
   const saved = (h.board().cards[0] as NoteCard).md;
   check("noteLinkBox saved", saved === `see the scheduler here\n\nbare ${BARE} end\n\nlast line`, saved);
 });
+
+/** The link box opened on a link and left with nothing changed in it (a click elsewhere in the Note, or Enter) writes nothing:
+ *  the box shows the address as read (no title, mailto: before an e-mail address), and the source stays as it was */
+test("noteLinkBoxLeftUnchanged", async () => {
+  const LINES = ['a [t](https://x.com/p "the title") b', "c [mail](a@b.com) d", "e https://x.com/q f"];
+  const MD = `${LINES.join("\n\n")}\n\nlast line`;
+  const b = emptyBoard("b1", "links");
+  put(b, { id: "n0", kind: "note", md: MD, look: "note" } as NoteCard, 60, 80, 560);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, w: 900, h: 600 });
+  const pg = h.page;
+  await idle(h);
+  const src = () =>
+    pg
+      .locator(".md-pm")
+      .evaluate((e) => ((e as any).editor.state.doc.content.content as any[]).map((p) => p.textContent as string));
+  await pg.locator('.card[data-id="n0"] .nbody p').last().dblclick();
+  await pg.locator(".md-pm:focus").waitFor();
+  await focusSettled(pg);
+  const res: Record<string, unknown> = {};
+  for (const [i, text] of [
+    [0, "t"],
+    [1, "mail"],
+    [2, "x.com"],
+  ] as const) {
+    for (const leave of ["click", "Enter"] as const) {
+      await pg.keyboard.press("ControlOrMeta+End");
+      await pmHasSelection(pg);
+      await idle(h);
+      await pg.locator(".md-pm p").nth(i).locator("a", { hasText: text }).click();
+      await pg.locator(".md-bubble .md-linkbox").waitFor({ timeout: 5000 });
+      // a paragraph the box (under the link) does not cover, at its first word
+      if (leave === "click")
+        await pg
+          .locator(".md-pm p")
+          .nth(i === 0 ? 3 : 0)
+          .click({ position: { x: 3, y: 6 } });
+      else await pg.keyboard.press("Enter");
+      await pg.locator(".md-bubble .md-linkbox").waitFor({ state: "detached", timeout: 5000 });
+      await idle(h);
+      res[`${i} ${leave}`] = (await src())[i];
+    }
+  }
+  check(
+    "noteLinkBoxLeftUnchanged the links keep their source",
+    Object.entries(res).every(([k, v]) => v === LINES[+k.split(" ")[0]]),
+    res,
+  );
+  await close(h);
+});

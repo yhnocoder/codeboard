@@ -6,7 +6,7 @@ import { createEffect, createSignal, onCleanup, Show, type Accessor } from "soli
 import { Icon, type IconName } from "./icons";
 import { isWrapped, revealMeta, toggleWrap } from "./inline";
 import { blockInfo, flat, type Span } from "./spans";
-import { linkAt as linkIn } from "./links";
+import { linkAt as linkIn, linkText } from "./links";
 import { movingBlocks } from "./moveblocks";
 import { escAnnot } from "../schema-marks";
 import { place, virtual } from "../ui/place";
@@ -142,7 +142,8 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   const linkAt = () => linkIn(e.state);
   /** Write the link back: its address (empty: the text stays, unlinked) and, for one being edited, its text */
   const applyLink = (v: string, stay = true, textV?: string) => {
-    if (link() === null || busy) return;
+    const shown = link();
+    if (shown === null || busy) return;
     const url = v.trim();
     busy = true; // focus below fires blur synchronously: do not insert twice
     if (stay) e.view.focus();
@@ -156,18 +157,21 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
     if (l) {
       const was = st.doc.textBetween(l.textFrom, l.textTo),
         text = textV?.trim() || was;
+      // the box shows the address as read (www.x as http://www.x, a@b as mailto:a@b, a title left out): a link whose fields
+      // were not changed keeps its source as written
+      const same = url === shown.trim() && text === was;
       // a bare address whose text was not changed stays bare when it can (GFM reads a web address as a link)
       const src = !href
         ? text
         : l.bare && text === was && /^(https?:\/\/|www\.)\S+$/i.test(href)
           ? href
-          : `[${text}](${href})`;
-      if (src !== st.doc.textBetween(l.from, l.to)) tr.insertText(src, l.from, l.to);
+          : `[${linkText(text)}](${href})`;
+      if (!same && src !== st.doc.textBetween(l.from, l.to)) tr.insertText(src, l.from, l.to);
     } else if (href) {
       const text = st.doc.textBetween(from, to);
       // nothing selected (⌘K): the address itself; a web address is a link as it is (GFM), others go in <…>
       tr.insertText(
-        text ? `[${text}](${href})` : /^(https?:\/\/|www\.)\S+$/i.test(href) ? href : `<${href}>`,
+        text ? `[${linkText(text)}](${href})` : /^(https?:\/\/|www\.)\S+$/i.test(href) ? href : `<${href}>`,
         from,
         to,
       );
@@ -187,7 +191,7 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
       ev.preventDefault();
       applyLink(urlIn?.value ?? "", true, textIn?.value);
     }
-    if (ev.key === "Escape") {
+    if (ev.key === "Escape" && !ev.isComposing) {
       ev.preventDefault();
       e.view.focus();
       setLink(null);
