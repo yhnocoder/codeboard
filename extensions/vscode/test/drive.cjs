@@ -1281,12 +1281,11 @@ async function notepasteStep(page) {
   await page.keyboard.press("Escape");
 }
 
-// Text and Box: the toolbar's Text and Box make one each to type in; the Box selected alone shows its bar (sizes, Text or Box, five
-// fills), and the bar's Text turns it into a Text in place. E2E_ONLY=textbox runs only this step
+// Text and Box: the toolbar's Text makes a Text to type in, R at an empty spot a Box there; the Box selected alone shows its bar (sizes,
+// Text or Box, five fills), and the bar's Text turns it into a Text in place. E2E_ONLY=textbox runs only this step
 async function textboxStep(page) {
   const f = await newBoard(page, "Text Box E2E");
-  const make = async (label, text) => {
-    await f.locator(`.bbar button[aria-label="${label}"]`).first().click();
+  const write = async (text) => {
     await f.locator(".card .md-pm").waitFor();
     await focusSettled(f);
     await page.keyboard.type(text);
@@ -1294,12 +1293,31 @@ async function textboxStep(page) {
     await f.locator(".card .md-pm").waitFor({ state: "detached" });
     await idle(f);
   };
-  await make("Text", "Prefill runs once, then decode");
-  await make("Box", "Scheduler keeps the batch");
+  await f.locator('.bbar button[aria-label="Text"]').first().click();
+  await write("Prefill runs once, then decode");
+  // the toolbar puts a new card at the view's centre, where the Text is: the Box goes at the pointer, on empty board
+  const fb = await (await f.frameElement()).boundingBox(),
+    sp = await emptySpot(f);
+  await page.mouse.click(fb.x + sp.x, fb.y + sp.y);
+  await until("the board has the keyboard", () => boardHasKeyboard(f));
+  await page.keyboard.press("r");
+  await write("Scheduler keeps the batch");
   const box = f.locator(".card.box");
   check(
     (await f.locator(".card.text:not(.box)").count()) === 1 && (await box.count()) === 1,
-    "textbox: the toolbar's Text and Box make a Text and a Box",
+    "textbox: the toolbar's Text and the R key make a Text and a Box",
+  );
+  const rects = await f.evaluate(() =>
+    [...document.querySelectorAll(".card")].map((e) => {
+      const r = e.getBoundingClientRect();
+      return { l: r.left, t: r.top, r: r.right, b: r.bottom };
+    }),
+  );
+  check(
+    rects.length === 2 &&
+      (rects[0].r <= rects[1].l || rects[1].r <= rects[0].l || rects[0].b <= rects[1].t || rects[1].b <= rects[0].t),
+    "textbox: the Text and the Box do not overlap",
+    rects,
   );
   // a click on a card selected alone would start writing in it
   if (!(await box.evaluate((e) => e.classList.contains("sel") && e.classList.contains("solo"))))
