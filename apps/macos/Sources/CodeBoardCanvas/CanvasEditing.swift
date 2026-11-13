@@ -1534,6 +1534,12 @@ extension CanvasView {
       doc.select([.arrow(id)])
       return arrowMenu(id)
     }
+    // a ref to another board: that board's seal
+    if let r = refAt(p), let b = refBoard(r.box) {
+      let m = NSMenu()
+      m.addItem(menuItem("Edit Mark…") { [weak self] in self?.editSeal(b, at: r) })
+      return m
+    }
     let under = hitCard(p).map(Item.card) ?? hitSectionTitle(p).map(Item.section) ?? deepestSection(p).map(Item.section)
     if let under, !doc.selection.contains(under) { doc.select([under]) } else if under == nil { doc.select([]) }
     // Sections and no cards: their own menus

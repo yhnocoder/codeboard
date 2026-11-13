@@ -2,6 +2,7 @@ import AppKit
 import CodeBoardModel
 import CodeBoardNotes
 import CodeBoardSyntax
+import SwiftUI
 
 // Clicks on [[refs]] (the web board's ui/Md.tsx openRef, ui/pops/cardpeek.tsx, actions/subboards.ts openCardRef,
 // cardNear, goToNearCard, goAfterDblClick): in a Note, Text or Box at rest, in the one being written in, in the sidenote
@@ -553,5 +554,42 @@ package final class RefPeek: NSView {
   package override func resetCursorRects() {
     addCursorRect(
       CGRect(x: Self.margin, y: Self.margin, width: boxSize.width, height: gripHeight), cursor: .openHand)
+  }
+}
+
+extension CanvasView {
+  // MARK: Edit Mark… on a ref
+
+  /// The other board a ref drawn here points at or into
+  func refBoard(_ box: NoteRefBox) -> VaultBoard? {
+    guard let doc = document, let (vb, vault) = shown else { return nil }
+    let resolver = RefResolver(doc.board, package: vault.url(of: vb.path), vault: vault)
+    let b: BoardID
+    switch resolver.locate(box.ref, target: box.target) {
+    case .board(let id)?, .elsewhere(let id, _)?: b = id
+    default: return nil
+    }
+    return resolver.vaultTree()?.allBoards.first { $0.id == b && $0.id != vb.id }
+  }
+
+  /// The seal popover beside the ref, never over it
+  func editSeal(_ b: VaultBoard, at r: (card: CardID, box: NoteRefBox)) {
+    sealPopover?.close()
+    let pop = NSPopover()
+    pop.behavior = .transient
+    let tree = shown.flatMap { try? $0.vault.tree() }
+    pop.contentViewController = NSHostingController(
+      rootView: SealEditor(
+        id: b.id, name: b.title, seal: b.seal, clash: { t, c in tree?.sealClash(b.id, t, c)?.title },
+        apply: { [weak self] seal, done in self?.onSetSeal?(b.id, seal, done) },
+        dismiss: { [weak self, weak pop] in
+          pop?.close()
+          if self?.sealPopover === pop { self?.sealPopover = nil }
+        }))
+    sealPopover = pop
+    let br = boardRect(r.box, on: r.card)
+    let a = camera.view(br.origin)
+    let z = camera.view(CGPoint(x: br.maxX, y: br.maxY))
+    pop.show(relativeTo: CGRect(x: a.x, y: a.y, width: z.x - a.x, height: z.y - a.y), of: self, preferredEdge: .maxY)
   }
 }

@@ -181,6 +181,14 @@ public struct VaultFolder: Equatable, Sendable {
     return fb
   }
 
+  /// Another board in the same book drawn with this seal (the first, in tree order)
+  public func sealClash(_ id: BoardID, _ text: String, _ color: Seal.Color) -> VaultBoard? {
+    guard let book = book(of: id)?.id else { return nil }
+    return allBoards.first { b in
+      b.id != id && book == self.book(of: b.id)?.id && b.drawnSeal.text == text && b.drawnSeal.color == color
+    }
+  }
+
   /// What is directly in it, in sidebar order: its boards, then its subfolders (what its folder board has a card for)
   public var entries: [FolderEntry] { boards.map { .board($0.id) } + folders.map { .folder($0.name) } }
 }

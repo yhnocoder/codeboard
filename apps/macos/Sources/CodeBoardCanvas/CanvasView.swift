@@ -47,6 +47,12 @@ public final class CanvasView: NSView {
   public var arriving: Camera?
   /// This canvas changed the vault's files (a board made or renamed): the shell reads the tree again
   public var onVaultChanged: (() -> Void)?
+  /// A board's seal set from a ref's Edit Mark… (nil: the default); `done`: its popover closed
+  public var onSetSeal: ((BoardID, Seal?, _ done: Bool) -> Void)?
+  /// A board or folder from the sidebar let go on this folder board: its path, where on the board
+  public var onVaultDrop: ((String, CGPoint) -> Void)?
+  /// The Edit Mark… popover open over a ref
+  var sealPopover: NSPopover?
   /// Bumped when the vault changes on disk, which sub-board cards show
   var vaultSeen = 0
   /// Where the view is now
@@ -224,6 +230,7 @@ public final class CanvasView: NSView {
     self.notes = notes
     super.init(frame: frame)
     CanvasView.all.add(self)
+    registerForDraggedTypes([.string])
     // layer-hosting: the canvas owns its layer tree, y-down like the board
     let root = CALayer()
     root.isGeometryFlipped = true
