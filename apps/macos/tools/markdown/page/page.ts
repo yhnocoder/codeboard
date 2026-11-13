@@ -18,10 +18,8 @@ type Note = {
   layout: MdLayout | null;
   style:
     | { note: Record<string, never> }
-    | { text: { size: "title" | "heading" | "body"; bold: boolean } }
-    | { box: { fill: string } }
-    | { mark: { color: string; weight: "light" | "regular" | "bold"; fontSize?: number } }
-    | { freeText: { level: number; bold: boolean; fontSize?: number } };
+    | { text: { fontSize?: number; wrap: boolean } }
+    | { box: { fill: string; fontSize?: number; wrap: boolean } };
   width: number;
   height: number | null;
   /** The board theme's id: html[data-look] and its class, as the board's settings apply it (actions/settings.ts applyLook) */
@@ -94,8 +92,6 @@ const slots = new Map<string, Slot>();
 let shown: Slot | undefined;
 const frames = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
-const HAND_WEIGHT = { light: 300, regular: 400, bold: 700 };
-const FREE_TEXT_SIZE = [20, 40, 30, 24];
 /** The card and body classes Card.tsx and NoteBody.tsx give each style, with the variables they set on the card */
 function cardFor(n: Note): { card: HTMLDivElement; body: HTMLDivElement; markdown: boolean } {
   const c = document.createElement("div");
@@ -103,8 +99,8 @@ function cardFor(n: Note): { card: HTMLDivElement; body: HTMLDivElement; markdow
   const body = document.createElement("div");
   face.className = "cface";
   c.append(face);
-  let markdown = true;
   const s = n.style;
+  let wrap = true;
   if ("note" in s) {
     c.className = "card note";
     // the header keeps its height (the canvas draws the header itself)
@@ -112,35 +108,25 @@ function cardFor(n: Note): { card: HTMLDivElement; body: HTMLDivElement; markdow
     head.className = "chead";
     face.append(head);
     body.className = "nbody";
-  } else if ("text" in s) {
-    c.className = "card text";
-    body.className = `tx st-${s.text.size}`;
-    if (s.text.bold) body.style.fontWeight = "650";
-  } else if ("box" in s) {
-    c.className = "card text box";
-    c.style.setProperty("--fc", `var(--bf-${s.box.fill})`);
-    body.className = "tx bx";
-  } else if ("mark" in s) {
-    c.className = "card text mark";
-    c.style.setProperty("--hc", `var(--hd-${s.mark.color})`);
-    c.style.setProperty("--hw", String(HAND_WEIGHT[s.mark.weight]));
-    c.style.setProperty("--tfs", `${s.mark.fontSize ?? 18}px`);
-    body.className = "tx hand";
   } else {
-    const { level, bold, fontSize } = s.freeText;
-    c.className = "card text freetext";
-    c.style.setProperty("--tfs", `${fontSize ?? FREE_TEXT_SIZE[level]}px`);
-    body.className = `tx ft ft-l${level} ${level === 3 ? "st-heading" : level ? "st-title" : "st-body"}${bold ? " ftb" : ""}`;
-    markdown = false;
+    // a Text or a Box: Markdown at the card's own size (--tfs), as wide as its text unless it wraps (.wrapw)
+    const t = "text" in s ? s.text : s.box;
+    c.className = "text" in s ? "card text" : "card text box";
+    if ("box" in s) c.style.setProperty("--fc", `var(--bf-${s.box.fill})`);
+    c.style.setProperty("--tfs", `${t.fontSize ?? 20}px`);
+    wrap = t.wrap;
+    if (wrap) c.classList.add("wrapw");
+    body.className = "tx tb st-body";
   }
   // the classes of a card being edited: this picture is the editor's
   c.classList.add("editing");
-  if (n.height === null) c.classList.add("autoh");
-  else c.style.setProperty("box" in s ? "min-height" : "height", `${n.height}px`);
-  if (!("freeText" in s)) c.style.width = `${n.width}px`;
+  if (n.height === null || !("note" in s)) c.classList.add("autoh");
+  else c.style.setProperty("height", `${n.height}px`);
+  if (wrap) c.style.width = `${n.width}px`;
   body.classList.add("editing");
-  if (markdown) body.classList.add("md");
+  body.classList.add("md");
   face.append(body);
+  const markdown = true;
   return { card: c, body, markdown };
 }
 

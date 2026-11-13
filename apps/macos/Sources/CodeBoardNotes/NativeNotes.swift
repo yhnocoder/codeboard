@@ -99,15 +99,17 @@ public enum NativeNotes {
       folder: env.folder, refs: env.refs)
     let make = {
       let card = NoteLooks.card(note.style, look: look, dark: dark)
-      let layout: MarkdownLayout
-      if card.plain {
-        layout = .plain(note.text, theme: card.theme)
-      } else {
-        let inner = CGFloat(width) - card.padding[1] - card.padding[3]
-        layout = MarkdownLayout.make(
-          MarkdownDocument(note.text), width: max(1, inner), theme: card.theme, layout: note.layout.map(Self.info),
-          resources: NoteResources(env: env, math: math))
+      let document = MarkdownDocument(note.text)
+      let info = note.layout.map(Self.info)
+      let resources = NoteResources(env: env, math: math)
+      var inner = max(1, CGFloat(width) - card.padding[1] - card.padding[3])
+      if card.natural {
+        // as wide as its widest line: measured, then laid out at that width (centred lines and a code block's band
+        // take the width they are given)
+        let widest = MarkdownLayout.make(document, width: nil, theme: card.theme, layout: info, resources: resources)
+        inner = max(1, widest.size.width)
       }
+      let layout = MarkdownLayout.make(document, width: inner, theme: card.theme, layout: info, resources: resources)
       return NoteBody(layout: layout, card: card, folder: env.folder)
     }
     return useCache ? cache.get(key, make) : make()
@@ -116,7 +118,6 @@ public enum NativeNotes {
   /// A formula or a diagram anywhere in Markdown: `$`, `\(`, `\[` or a mermaid fence. A Note without any never starts
   /// the engines
   static func needsEngines(_ note: Note) -> Bool {
-    if case .freeText = note.style { return false }
     let t = note.text
     return t.contains("$") || t.contains("\\(") || t.contains("\\[") || t.contains("mermaid")
   }
@@ -227,17 +228,13 @@ public final class NoteBody: Sendable {
     self.folder = folder
   }
 
-  /// The card's size at 100 % for a card `width` wide: as tall as its content (`height` nil, or a Box shorter than its
-  /// content), a Free Text as wide as its text
+  /// The card's size at 100 % for a card `width` wide: as tall as its content (a Note with no stored `height`, a Text or
+  /// Box always), a Text or Box that does not wrap as wide as its text
   public func size(width: Double, height: Double?) -> CGSize {
     let p = card.padding
-    let w = card.plain ? layout.size.width + p[1] + p[3] : CGFloat(width)
-    let content = (card.header + p[0] + max(layout.size.height, card.minContent) + p[2]).rounded(.up)
-    if let height {
-      // a Box's height is its least (min-height); the others' is fixed
-      return CGSize(width: w, height: card.middle ? max(CGFloat(height), content) : CGFloat(height))
-    }
-    return CGSize(width: w, height: content)
+    let w = card.natural ? layout.size.width + p[1] + p[3] : CGFloat(width)
+    if let height, card.fixedHeight { return CGSize(width: w, height: CGFloat(height)) }
+    return CGSize(width: w, height: (card.header + p[0] + max(layout.size.height, card.minContent) + p[2]).rounded(.up))
   }
 
   /// An image of the Note: the file, which frame from 0 (an animated image's still: `{frame=N}` counts from 1), and its
@@ -267,8 +264,7 @@ public final class NoteBody: Sendable {
     let inner = CGRect(
       x: p[3], y: card.header + p[0], width: size.width - p[1] - p[3],
       height: max(0, size.height - card.header - p[0] - p[2]))
-    var top = inner.minY
-    if card.middle { top += max(0, (inner.height - max(layout.size.height, card.minContent)) / 2) }
+    let top = inner.minY
     ctx.saveGState()
     // what does not fit the card's height is cut at its padding; sideways a line may reach into the padding
     ctx.clip(to: CGRect(x: 0, y: inner.minY, width: size.width, height: inner.height))

@@ -63,8 +63,8 @@ enum Synthetic {
       parts.append(prose[(i + 1) % 3])
       let style: NoteStyle =
         switch i % 10 {
-        case 7: .text(size: .body, bold: false)
-        case 8: .mark(color: .blue, weight: .regular, fontSize: nil)
+        case 7: .text(fontSize: 13.5, wrap: true)
+        case 8: .box(fill: .blue, fontSize: 16, wrap: true)
         default: .note
         }
       cards.append(
@@ -75,13 +75,15 @@ enum Synthetic {
     cards.append(
       Card(
         id: CardID(rawValue: "box"), x: 0, y: -160, width: 220, height: 80,
-        content: .own(CardContent(body: .note(Note(text: "A **box** of words", style: .box(fill: .yellow)))))))
+        content: .own(
+          CardContent(
+            body: .note(Note(text: "A **box** of words", style: .box(fill: .yellow, fontSize: nil, wrap: false)))))))
     cards.append(
       Card(
         id: CardID(rawValue: "free"), x: 300, y: -160, width: 50,
         content: .own(
           CardContent(
-            body: .note(Note(text: "Synthetic board", style: .freeText(level: 1, bold: false, fontSize: nil)))))))
+            body: .note(Note(text: "# Synthetic board", style: .text(fontSize: 22, wrap: false)))))))
     return cards
   }
 

@@ -296,7 +296,7 @@ struct Scene: Sendable {
       let body = try NativeNotes.body(
         n, width: c.width, look: t.id.rawValue, dark: t.dark,
         env: env(folder: folder, refs: refs.refs(in: n.text), highlighter: highlighter))
-      // as tall as its content without a stored height, a Free Text as wide as its text
+      // as tall as its content without a stored height (a Text or Box always), as wide as its text when it does not wrap
       let size = body.size(width: c.width, height: c.height)
       return (.note(Drawing.Note(id: c.id.rawValue, title: title, content: n, body: body)), size, nil)
     case .image(let img):

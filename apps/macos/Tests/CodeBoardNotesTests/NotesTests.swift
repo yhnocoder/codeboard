@@ -41,8 +41,8 @@ private let env = NoteEnv(folder: URL(filePath: "/nonexistent"))
       ```
       """, style: .note)
 
-  /// Each style's card at 100 %: a Note's header and padding, a Text as tall as its type, a Box at least its stored
-  /// height and its text in the middle, a Free Text as wide as its text, never wrapped
+  /// Each style's card at 100 %: a Note's header and padding and its stored height; a Text or Box as tall as its text at
+  /// its size, as wide as its text unless it wraps
   @Test func everyStyleHasItsCard() throws {
     let note = try NativeNotes.body(Self.note, width: 320, look: "warm-ink", dark: false, env: env)
     let s = note.size(width: 320, height: nil)
@@ -51,43 +51,44 @@ private let env = NoteEnv(folder: URL(filePath: "/nonexistent"))
 
     let words = "One line of words"
     var heights: [CGFloat] = []
-    for size in [NoteStyle.TextSize.title, .heading, .body] {
+    for size in [13.5, 20, 40] {
       let b = try NativeNotes.body(
-        Note(text: words, style: .text(size: size, bold: false)), width: 300, look: "warm-ink", dark: false, env: env)
-      heights.append(b.size(width: 300, height: nil).height)
+        Note(text: words, style: .text(fontSize: size, wrap: true)), width: 600, look: "warm-ink", dark: false, env: env
+      )
+      heights.append(b.size(width: 600, height: nil).height)
     }
-    // one line each, at least the editor's 1.6 em (26, 16, 13.5), and 2 above and below: the web board's 45.59, 29.59,
-    // 25.59 rounded up
-    #expect(heights == [46, 30, 26])
+    // one line each at 1.6 em, and 2 above and below (.card.text padding): the web board's 25.6, 36, 68 rounded up
+    #expect(heights == [26, 36, 68])
 
+    // as wide as its text when it does not wrap, whatever width is stored; at the stored width when it does
+    let long = "A line of words much longer than fifty points"
+    let natural = try NativeNotes.body(
+      Note(text: long, style: .text(fontSize: nil, wrap: false)), width: 50, look: "warm-ink", dark: false, env: env)
+    #expect(natural.size(width: 50, height: nil).width > 300)
+    let wrapped = try NativeNotes.body(
+      Note(text: long, style: .text(fontSize: nil, wrap: true)), width: 120, look: "warm-ink", dark: false, env: env)
+    let ws = wrapped.size(width: 120, height: nil)
+    #expect(ws.width == 120 && ws.height > 100)
+
+    // a Box is as tall as its text, a stored height or not (8 + 32 + 8)
     let box = try NativeNotes.body(
-      Note(text: words, style: .box(fill: .yellow)), width: 200, look: "warm-ink", dark: false, env: env)
-    #expect(box.size(width: 200, height: 80) == CGSize(width: 200, height: 80))
-    #expect(box.size(width: 200, height: 10).height > 30)
-
-    let free = try NativeNotes.body(
-      Note(text: "A line\nand a much longer second line", style: .freeText(level: 1, bold: false, fontSize: nil)),
-      width: 50, look: "warm-ink", dark: false, env: env)
-    let fs = free.size(width: 50, height: nil)
-    // two lines of 40 × 1.25, as wide as the longer one
-    #expect(fs.height == 104 && fs.width > 400)
-    // markdown is not read in a Free Text
-    let starred = try NativeNotes.body(
-      Note(text: "**not bold**", style: .freeText(level: 0, bold: false, fontSize: nil)), width: 50, look: "warm-ink",
+      Note(text: words, style: .box(fill: .yellow, fontSize: nil, wrap: true)), width: 200, look: "warm-ink",
       dark: false, env: env)
-    let plain = try NativeNotes.body(
-      Note(text: "not bold", style: .freeText(level: 0, bold: false, fontSize: nil)), width: 50, look: "warm-ink",
-      dark: false, env: env)
-    #expect(starred.size(width: 50, height: nil).width > plain.size(width: 50, height: nil).width + 10)
+    #expect(box.size(width: 200, height: 80) == CGSize(width: 200, height: 48))
+    #expect(box.size(width: 200, height: nil) == CGSize(width: 200, height: 48))
   }
 
-  /// A Mark writes in its colour and the hand font, a heading in it in the board's ink
-  @Test func aMarkWritesInItsColour() throws {
-    let card = NoteLooks.card(.mark(color: .orange, weight: .bold, fontSize: 24), look: "warm-ink", dark: false)
-    #expect(card.theme.colors.ink == MDColor(hex: "#c46a2a"))
-    #expect(card.theme.colors.heading == MDColor(hex: "#211f1b"))
-    #expect(card.theme.metrics.bodySize == 24 && card.theme.metrics.bodyWeight == 700)
-    #expect(card.theme.fonts.body.first == "Shantell Sans Light")
+  /// A Text's or Box's Markdown is at its own size, its code at 0.82 em in the plain code band, its lines centred in a Box
+  @Test func aTextIsMarkdownAtItsOwnSize() {
+    let text = NoteLooks.card(.text(fontSize: 30, wrap: false), look: "warm-ink", dark: false)
+    #expect(text.theme.metrics.bodySize == 30 && text.theme.metrics.lineHeight == 1.6)
+    #expect(text.theme.metrics.codeSize == 0.82 * 30 && text.theme.metrics.inlineCodeSize == 0.82)
+    #expect(text.theme.metrics.codePadding == [6, 8] && text.theme.metrics.codeRadius == 7)
+    #expect(text.padding == [2, 4, 2, 4] && text.natural && !text.fixedHeight && !text.theme.metrics.center)
+    let box = NoteLooks.card(.box(fill: .blue, fontSize: nil, wrap: true), look: "ink-wash", dark: true)
+    #expect(box.theme.metrics.bodySize == 20 && box.theme.metrics.center)
+    #expect(box.padding == [8, 14, 8, 14] && !box.natural)
+    #expect(NoteLooks.card(.note, look: "warm-ink", dark: false).fixedHeight)
   }
 
   /// The engines the app carries, found as the app finds them, typeset a formula; a Note with one lays it out
@@ -111,7 +112,6 @@ private let env = NoteEnv(folder: URL(filePath: "/nonexistent"))
     #expect(NativeNotes.needsEngines(Note(text: "costs $5", style: .note)))
     #expect(NativeNotes.needsEngines(Note(text: "```mermaid\ngraph TD\n```", style: .note)))
     #expect(!NativeNotes.needsEngines(Note(text: "plain words", style: .note)))
-    #expect(!NativeNotes.needsEngines(Note(text: "$x$", style: .freeText(level: 0, bold: false, fontSize: nil))))
   }
 
   /// The least recently used layouts go first, a tenth of the bound at a time

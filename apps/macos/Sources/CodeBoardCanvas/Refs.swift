@@ -153,18 +153,12 @@ final class RefResolver {
     switch content.body {
     case .code(let code): return RefResolver.codeTitle(code)
     case .note(let n):
-      if case .freeText = n.style {
-        let t = n.text.split(separator: "\n").map { trim(String($0)) }.first { !$0.isEmpty } ?? ""
-        return t.isEmpty ? "Free Text" : t
-      }
       let t = RefResolver.firstLine(n.text)
       if !t.isEmpty { return t }
       switch n.style {
       case .note: return "Note"
       case .text: return "Text"
       case .box: return "Box"
-      case .mark: return "Mark"
-      case .freeText: return "Free Text"
       }
     case .image(let img): return img.alt.flatMap { $0.isEmpty ? nil : $0 } ?? "Image"
     }
@@ -180,10 +174,7 @@ final class RefResolver {
       guard let head = n.text.split(separator: "\n").first(where: { !$0.allSatisfy(\.isWhitespace) }) else {
         return nil
       }
-      var titled = head.prefixMatch(of: /\s{0,3}#{1,6}\s/) != nil
-      if case .text(let size, _) = n.style, size == .title || size == .heading { titled = true }
-      if case .freeText = n.style { titled = true }
-      guard titled else { return nil }
+      guard head.prefixMatch(of: /\s{0,3}#{1,6}\s/) != nil else { return nil }
       let t = firstLine(String(head))
       return t.isEmpty ? nil : t
     case .code(let c):

@@ -28,8 +28,9 @@ private func everything() -> Board {
           Segment(id: SegmentID(rawValue: "s4"), source: nil, language: "c", firstLine: 1, lines: []),
         ], hide: HideFlags(comments: true, docstrings: true, blankLines: true), wrap: true, framed: false)))
   let notes: [NoteStyle] = [
-    .note, .text(size: .title, bold: true), .box(fill: .pink), .mark(color: .orange, weight: .bold, fontSize: 30),
-    .freeText(level: 1, bold: false, fontSize: nil),
+    .note, .text(fontSize: nil, wrap: false), .text(fontSize: 30, wrap: true),
+    .box(fill: .pink, fontSize: nil, wrap: true),
+    .box(fill: .green, fontSize: 13.5, wrap: false),
   ]
   var cards = [
     Card(
@@ -165,9 +166,9 @@ private func card(_ json: inout [String: Any], _ i: Int, _ change: (inout [Strin
   #expect(
     try problem {
       $0.cards[4].content = .own(
-        CardContent(body: .note(Note(text: "", style: .freeText(level: 4, bold: false, fontSize: nil)))))
+        CardContent(body: .note(Note(text: "", style: .text(fontSize: 300, wrap: false)))))
     }
-      == .malformed(file, "card n0: free text level 4"))
+      == .malformed(file, "card n0: font size 300.0 is outside 10…240"))
 }
 
 @Test func enumsAreOneObjectWithOneKey() throws {

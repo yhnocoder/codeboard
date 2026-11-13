@@ -128,85 +128,85 @@ public enum NoteLooks {
     return .init(plain: plain, kinds: k.mapValues(c), italicComments: !warm, keywordWeight: warm ? nil : 600)
   }
 
+  /// --hlrow: the faint band behind code in a Text or Box (and inline code everywhere)
+  static func hlrow(warm: Bool, dark: Bool) -> MDColor {
+    switch (warm, dark) {
+    case (true, false): MDColor(60 / 255, 45 / 255, 20 / 255, 0.07)
+    case (true, true): MDColor(1, 240 / 255, 220 / 255, 0.07)
+    case (false, false): MDColor(29 / 255, 28 / 255, 26 / 255, 0.06)
+    case (false, true): MDColor(233 / 255, 229 / 255, 218 / 255, 0.07)
+    }
+  }
+
+  /// The canvas's code colours (--k-kw, --k-fn, --k-str, --k-com, --k-num, --k-self, --k-p), which a Text's or Box's code
+  /// block takes; an operator is a keyword's colour
+  static func boardCode(warm: Bool, dark: Bool, plain: MDColor) -> MarkdownTheme.CodeColors {
+    let v: [String]
+    switch (warm, dark) {
+    case (true, false): v = ["#9a3f22", "#2e5d86", "#4a7536", "#9a958a", "#8a6416", "#7a4f9a", "#6f6a62"]
+    case (true, true): v = ["#e59572", "#86b4de", "#a3c98c", "#7d786e", "#d9b36a", "#c8a3e6", "#a39e93"]
+    case (false, false): v = ["#1d1c1a", "#2d5b70", "#9a5a2c", "#9a958b", "#9a5a2c", "#4c4943", "#9a958b"]
+    case (false, true): v = ["#e9e5da", "#8fb7c9", "#d39a6c", "#6e6a62", "#d39a6c", "#b9b4a8", "#8a857c"]
+    }
+    let c = v.map { MDColor(hex: $0) }
+    let kinds: [MarkdownTokenKind: MDColor] = [
+      .keyword: c[0], .operator: c[0], .function: c[1], .string: c[2], .comment: c[3], .number: c[4],
+      .receiver: c[5], .punctuation: c[6],
+    ]
+    return .init(plain: plain, kinds: kinds, italicComments: !warm, keywordWeight: warm ? nil : 600)
+  }
+
   /// How a card style sets its text: the theme it is laid out in, where the text sits in the card (the header the canvas
-  /// draws, the padding: top, right, bottom, left), whether it is Markdown, and whether it is centred down a taller box
+  /// draws, the padding: top, right, bottom, left), whether it is as wide as its text, and whether it keeps a stored height
   public struct Card: Sendable, Hashable {
     public var theme: MarkdownTheme
     public var header: CGFloat
     public var padding: [CGFloat]
-    /// a Free Text: the text as written, not Markdown, as wide as its widest line
-    public var plain: Bool
-    /// a Box: its text in the middle of a box taller than it
-    public var middle: Bool
-    /// the least height of its content: a line of the text's size (the editor's 1.6em, a Free Text's 1.4em)
+    /// a Text or Box that does not wrap: as wide as its widest line (styles.css .card.text:not(.wrapw), max-content)
+    public var natural: Bool
+    /// a Note: a stored height is its height; a Text's or Box's height always follows its text
+    public var fixedHeight: Bool
+    /// the least height of its content: a line of the text's size (the editor's 1.6em)
     public var minContent: CGFloat
   }
 
-  /// the levels of a Free Text: body, H1, H2, H3, and each one's default size
-  static let freeTextSizes: [Double] = [20, 40, 30, 24]
-  static let handWeights: [NoteStyle.HandWeight: Double] = [.light: 300, .regular: 400, .bold: 700]
-
-  /// The card a style draws (styles.css .card.note / .text / .box / .mark / .freetext and their .tx type, themes.css)
+  /// The card a style draws (styles.css .card.note, and .card.text .tx.tb for a Text or Box: Markdown at the card's own
+  /// size --tfs, headings 1.8 / 1.35 / 1.1 em, code 0.82 em; themes.css for the look's fonts)
   public static func card(_ style: NoteStyle, look: String, dark: Bool) -> Card {
     var t = theme(look, dark: dark)
     let warm = look == "warm-ink"
     let sys = warm ? Self.sys : Self.serif
-    // .tx h1 is --display, the others --note-h (the body's family in Ink Wash)
-    let textHeadings = [display] + Array(repeating: warm ? Self.sys : display, count: 5)
-    func type(_ families: [String], _ size: Double, _ lineHeight: Double, _ weight: Double, tracking: Double = 0) {
-      t.fonts.body = families
-      t.fonts.headings = textHeadings
-      t.metrics.bodySize = size
-      t.metrics.lineHeight = lineHeight
-      t.metrics.bodyWeight = weight
-      t.metrics.tracking = tracking
-      // inline code is 11px whatever the text's size (.tx code)
-      t.metrics.inlineCodeSize = 11 / size
-    }
-    /// .st-title: Warm Ink's semibold serif, Ink Wash's regular one spaced out
-    func title(_ size: Double, weight: Double? = nil) {
-      if warm {
-        type(display, size, 1.25, weight ?? 600, tracking: -0.01 * size)
-      } else {
-        type(display, size, 1.2, weight ?? 400, tracking: 0.02 * size)
-      }
-    }
-    let text: [CGFloat] = [2, 4, 2, 4]
-    /// the editor's least height: one line of the text's size at 1.6 (.md-pm)
-    func line(_ t: MarkdownTheme) -> CGFloat { 1.6 * t.metrics.bodySize }
     switch style {
     case .note:
-      return Card(theme: t, header: 36, padding: [10, 14, 12, 14], plain: false, middle: false, minContent: 1.6 * 13.5)
-    case .text(let size, let bold):
-      switch size {
-      // .st-title: 26px in Warm Ink, 30px in Ink Wash
-      case .title: title(warm ? 26 : 30)
-      case .heading: type(sys, 16, 1.4, 600)
-      case .body: type(sys, 13.5, 1.6, bold ? 650 : 400)
-      }
-      if bold && size != .body { t.metrics.bodyWeight = 650 }
-      return Card(theme: t, header: 0, padding: text, plain: false, middle: false, minContent: line(t))
-    case .box:
-      type(sys, 13.5, 1.45, 500)
-      t.metrics.center = true
-      return Card(theme: t, header: 0, padding: [8, 14, 8, 14], plain: false, middle: true, minContent: line(t))
-    case .mark(let color, let weight, let fontSize):
-      let w = handWeights[weight] ?? 400
-      type(hand, fontSize ?? 18, 1.3, w)
-      // a heading takes the Mark's weight, in the board's ink
-      t.metrics.headingWeight = w
-      t.colors.heading = t.colors.ink
-      t.colors.ink = t.marks.annotations[color.rawValue] ?? t.colors.ink
-      return Card(theme: t, header: 0, padding: text, plain: false, middle: false, minContent: line(t))
-    case .freeText(let level, let bold, let fontSize):
-      let l = min(3, max(0, level))
-      let size = fontSize ?? freeTextSizes[l]
-      switch l {
-      case 1, 2: title(size, weight: bold ? 700 : nil)
-      case 3: type(sys, size, 1.4, bold ? 700 : 600)
-      default: type(sys, size, 1.6, bold ? 700 : 400)
-      }
-      return Card(theme: t, header: 0, padding: text, plain: true, middle: false, minContent: 1.4 * size)
+      return Card(
+        theme: t, header: 36, padding: [10, 14, 12, 14], natural: false, fixedHeight: true, minContent: 1.6 * 13.5)
+    case .text, .box:
+      let size = style.textSize ?? NoteStyle.defaultTextSize
+      // .tx.st-body at --tfs: the look's body family, 1.6, regular; .tx h1 is --display, the others --note-h (the
+      // body's family in Ink Wash)
+      t.fonts.body = sys
+      t.fonts.headings = [display] + Array(repeating: warm ? Self.sys : display, count: 5)
+      t.metrics.bodySize = size
+      t.metrics.lineHeight = 1.6
+      t.metrics.bodyWeight = 400
+      t.metrics.tracking = 0
+      // :root .card.text .tx.tb :is(code, pre) { font-size: 0.82em }; a code block is the plain .tx pre (padding 6px 8px,
+      // radius 7, margin 4px 0, line-height 1.5, --hlrow) in the canvas's code colours (--k-*), not a Note's panel
+      t.metrics.inlineCodeSize = 0.82
+      t.metrics.codeSize = 0.82 * size
+      t.metrics.codeLineHeight = 1.5
+      t.metrics.codePadding = [6, 8]
+      t.metrics.codeRadius = 7
+      t.metrics.codeMargin = 4
+      t.colors.codeBlock = hlrow(warm: warm, dark: dark)
+      t.code = boardCode(warm: warm, dark: dark, plain: t.colors.ink)
+      let box: Bool
+      if case .box = style { box = true } else { box = false }
+      // .card.text.box .tx.tb { text-align: center } (lists, code, tables and quotes stay left)
+      t.metrics.center = box
+      return Card(
+        theme: t, header: 0, padding: box ? [8, 14, 8, 14] : [2, 4, 2, 4], natural: !style.wraps, fixedHeight: false,
+        minContent: 1.6 * size)
     }
   }
 }

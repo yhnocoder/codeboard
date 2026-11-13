@@ -51,13 +51,14 @@ private func near(_ a: [Int], _ b: [Int], _ d: Int = 6) -> Bool { zip(a, b).allS
       content: .own(CardContent(body: .note(Note(text: text, style: style)))))
   }
 
-  /// A Note without a stored height is as tall as its content, with one as tall as that; a Free Text as wide as its text
-  @Test func aNoteIsAsTallAsItsContentAndAFreeTextAsWideAsItsText() throws {
+  /// A Note without a stored height is as tall as its content, with one as tall as that; a Text that does not wrap as
+  /// wide as its text (S: 20 at 1.6, 2 above and below)
+  @Test func aNoteIsAsTallAsItsContentAndATextAsWideAsItsText() throws {
     _ = Watchdog.started
     let long = (1...12).map { "Step \($0) of the plan." }.joined(separator: "\n\n")
     let cards = [
       note("auto"), note("long", text: long), note("fixed", height: 120),
-      note("free", .freeText(level: 0, bold: false, fontSize: nil), text: "Hi"),
+      note("text", .text(fontSize: nil, wrap: false), text: "Hi"),
     ]
     let board = Board(id: BoardID(rawValue: "b"), cards: cards)
     let s = try Scene(
@@ -90,12 +91,11 @@ private func near(_ a: [Int], _ b: [Int], _ d: Int = 6) -> Bool { zip(a, b).allS
         Card(id: CardID(rawValue: "tall"), x: 0, y: 0, width: 300, content: .own(CardContent(body: .note(tall)))),
         Card(
           id: CardID(rawValue: "box"), x: 400, y: 0, width: 200, height: 80,
-          content: .own(CardContent(body: .note(Note(text: "A box", style: .box(fill: .yellow)))))),
-        Card(
-          id: CardID(rawValue: "mark"), x: 700, y: 0, width: 200,
           content: .own(
-            CardContent(body: .note(Note(text: "a mark", style: .mark(color: .blue, weight: .regular, fontSize: nil)))))
-        ),
+            CardContent(body: .note(Note(text: "A box", style: .box(fill: .yellow, fontSize: nil, wrap: true)))))),
+        Card(
+          id: CardID(rawValue: "text"), x: 700, y: 0, width: 200,
+          content: .own(CardContent(body: .note(Note(text: "a text", style: .text(fontSize: 24, wrap: false)))))),
       ])
     let package = root.appending(path: "B.board")
     try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)

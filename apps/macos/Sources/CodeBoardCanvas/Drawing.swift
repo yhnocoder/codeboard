@@ -123,7 +123,7 @@ enum Drawing: Sendable {
           ctx, n.title ?? "Note", t.noteTitle, n.title == nil ? t.ink3 : t.ink, x: x, midY: t.headerHeight / 2,
           width: size.width - x - t.headerPadRight)
         Drawing.edge(ctx, r, t)
-      case .box(let fill):
+      case .box(let fill, _, _):
         let p = Drawing.squircle(r, t.cardRadius)
         ctx.saveGState()
         ctx.setShadow(
@@ -138,7 +138,7 @@ enum Drawing: Sendable {
         ctx.setStrokeColor(t.boxEdge)
         ctx.setLineWidth(1.25)
         ctx.strokePath()
-      case .text, .mark, .freeText:
+      case .text:
         break
       }
       n.body.draw(in: ctx, size: size, scale: scale) { img, width in

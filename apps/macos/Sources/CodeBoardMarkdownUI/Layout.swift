@@ -28,7 +28,8 @@ public final class MarkdownLayout: @unchecked Sendable {
     self.theme = theme
   }
 
-  /// Lays the document out `width` points wide (nil: no wrapping, as wide as its widest line)
+  /// Lays the document out `width` points wide (nil: as wide as its widest paragraph line or code line, max-content;
+  /// tables, formulas, diagrams and images do not widen it)
   public static func make(
     _ document: MarkdownDocument, width: CGFloat?, theme: MarkdownTheme, layout: MDLayoutInfo?,
     resources: MarkdownResources
@@ -41,31 +42,6 @@ public final class MarkdownLayout: @unchecked Sendable {
       size: CGSize(width: w, height: ceil(b.bottom * 100) / 100), blockFrames: frames, images: b.images, items: b.items,
       theme: theme, mathTextFont: (resources.math as? JSEngines)?.textFont)
   }
-}
-
-extension MarkdownLayout {
-  /// Text as written, not read as Markdown (a Free Text): in the body style, lines broken only where the text breaks them
-  /// (white-space: pre), as wide as its widest line
-  public static func plain(_ text: String, theme: MarkdownTheme) -> MarkdownLayout {
-    var b = LayoutBuilder(theme: theme, resources: PlainResources(), info: nil, width: 100_000)
-    let style = b.bodyStyle
-    var ib = InlineBuilder(theme: theme, resources: PlainResources(), imageCounts: [:], bodyWidth: 100_000)
-    let d = ib.build(MDText(string: text, offsets: Array(0...text.utf16.count)), [], style)
-    let tb = b.setText(
-      d, x: 0, width: 100_000, y: 0, style: style, lineHeight: CGFloat(theme.metrics.lineHeight), wrap: false)
-    b.items.append(.text(tb))
-    let w = tb.lines.map { CGFloat(CTLineGetTypographicBounds($0.line, nil, nil, nil)) }.max() ?? 0
-    return MarkdownLayout(
-      size: CGSize(width: ceil(w * 100) / 100, height: ceil(tb.frame.height * 100) / 100), blockFrames: [], images: [],
-      items: b.items, theme: theme, mathTextFont: nil)
-  }
-}
-
-private struct PlainResources: MarkdownResources {
-  func imageSize(_ src: String) -> CGSize? { nil }
-  func ref(label: String, target: String?) -> MarkdownRefHit? { nil }
-  func highlight(lines: [String], language: String) -> [[MarkdownToken]]? { nil }
-  var mathPreamble: String { "" }
 }
 
 /// Where a point lands
@@ -154,10 +130,13 @@ final class TextBlock {
   let display: DisplayText
   let lines: [Line]
   let frame: CGRect
-  init(display: DisplayText, lines: [Line], frame: CGRect) {
+  /// its widest line's width, trailing spaces left out (what it would take without wrapping, max-content)
+  let widest: CGFloat
+  init(display: DisplayText, lines: [Line], frame: CGRect, widest: CGFloat = 0) {
     self.display = display
     self.lines = lines
     self.frame = frame
+    self.widest = widest
   }
 }
 
@@ -275,7 +254,7 @@ struct LayoutBuilder {
       let centred = alone || images.contains { $0.width != nil }
       return paragraph(
         t, b.inlines, x: x, width: width, y: y, style: style, lineHeight: CGFloat(m.lineHeight),
-        center: centred || m.center)
+        center: centred || (m.center && nesting == 0))
     case .heading(let level):
       guard let t = b.inlineText else { return y }
       let l = min(5, max(0, level - 1))
@@ -286,7 +265,8 @@ struct LayoutBuilder {
       if l == 0 { s.kern = s.size * CGFloat(m.h1Tracking) }
       if let c = theme.colors.heading { s.color = c }
       return paragraph(
-        t, b.inlines, x: x, width: width, y: y, style: s, lineHeight: CGFloat(m.headingLineHeights[l]), center: m.center
+        t, b.inlines, x: x, width: width, y: y, style: s, lineHeight: CGFloat(m.headingLineHeights[l]),
+        center: m.center && nesting == 0
       )
     case .quote(let children):
       var s = style
@@ -340,6 +320,7 @@ struct LayoutBuilder {
     let d = ib.build(text, inlines, style)
     imageCounts = ib.imageCounts
     let tb = setText(d, x: x, width: width, y: y, style: style, lineHeight: lineHeight, center: center)
+    widest = max(widest, x + tb.widest)
     items.append(.text(tb))
     atoms(tb)
     return tb.frame.maxY
@@ -400,7 +381,9 @@ struct LayoutBuilder {
       top += above + below
       start += len
     }
-    return TextBlock(display: d, lines: lines, frame: CGRect(x: x, y: y, width: wrap ? width : widest, height: top - y))
+    return TextBlock(
+      display: d, lines: lines, frame: CGRect(x: x, y: y, width: wrap ? width : widest, height: top - y), widest: widest
+    )
   }
 
   /// images and formulas of a text block, placed where their characters are
@@ -585,6 +568,7 @@ struct LayoutBuilder {
       d.string = attr
       style.color = theme.code.plain
       let tb = setText(d, x: x + ph, width: width - 2 * ph, y: yy, style: style, lineHeight: lh, wrap: wraps)
+      widest = max(widest, x + 2 * ph + tb.widest)
       inner.append(.text(tb))
       yy = tb.frame.maxY
     }

@@ -62,19 +62,13 @@ enum JSONValue: Decodable {
 
 func style(_ s: [String: [String: JSONValue]]) -> NoteStyle {
   guard let (kind, f) = s.first else { return .note }
+  let size = f["fontSize"]?.number
+  let wrap = f["wrap"]?.bool ?? false
   switch kind {
-  case "text":
-    return .text(
-      size: NoteStyle.TextSize(rawValue: f["size"]?.string ?? "body") ?? .body, bold: f["bold"]?.bool ?? false)
-  case "box": return .box(fill: NoteStyle.BoxFill(rawValue: f["fill"]?.string ?? "yellow") ?? .yellow)
-  case "mark":
-    return .mark(
-      color: HandColor(rawValue: f["color"]?.string ?? "blue") ?? .blue,
-      weight: NoteStyle.HandWeight(rawValue: f["weight"]?.string ?? "regular") ?? .regular,
-      fontSize: f["fontSize"]?.number)
-  case "freeText":
-    return .freeText(
-      level: Int(f["level"]?.number ?? 0), bold: f["bold"]?.bool ?? false, fontSize: f["fontSize"]?.number)
+  case "text": return .text(fontSize: size, wrap: wrap)
+  case "box":
+    let fill = NoteStyle.BoxFill(rawValue: f["fill"]?.string ?? "yellow") ?? .yellow
+    return .box(fill: fill, fontSize: size, wrap: wrap)
   default: return .note
   }
 }

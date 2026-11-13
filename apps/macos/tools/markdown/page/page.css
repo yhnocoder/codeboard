@@ -7,7 +7,7 @@ body {
 :root {
   --t: 0;
 }
-/* Every slot is laid out as the page's top left corner, as wide as its card wants (a Free Text as its text, whatever
+/* Every slot is laid out as the page's top left corner, as wide as its card wants (a Text that does not wrap as its text, whatever
    the window's width); only the one shown is drawn */
 #root > .slot {
   position: absolute;
