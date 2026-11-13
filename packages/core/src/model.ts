@@ -604,7 +604,7 @@ export function cardTitle(c: Card, b?: Pick<Board, "cards">): string {
     case "web":
       return c.meta?.title || domainOf(c.url);
     case "links":
-      return "Links";
+      return "Link List";
     case "compare":
       return `Compare · ${b ? compareName(c, b) : ""}`;
     case "board":
