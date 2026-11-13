@@ -43,13 +43,7 @@ struct BoxText {
   }
 
   func draw(at o: CGPoint, _ ctx: CGContext) {
-    for l in lines {
-      ctx.saveGState()
-      ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
-      ctx.textPosition = CGPoint(x: o.x + l.origin.x, y: o.y + l.origin.y)
-      CTLineDraw(l.line, ctx)
-      ctx.restoreGState()
-    }
+    for l in lines { drawLine(l.line, at: CGPoint(x: o.x + l.origin.x, y: o.y + l.origin.y), ctx) }
   }
 }
 

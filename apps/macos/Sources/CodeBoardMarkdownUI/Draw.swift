@@ -160,26 +160,7 @@ extension MarkdownLayout {
   private func drawText(_ t: TextBlock, _ ctx: CGContext, _ clip: CGRect) {
     for l in t.lines where l.top < clip.maxY && l.top + l.height > clip.minY {
       decorations(l, ctx, under: true)
-      ctx.saveGState()
-      ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
-      ctx.textPosition = l.origin
-      let runs = CTLineGetGlyphRuns(l.line) as! [CTRun]
-      let slant = runs.map { run -> CGFloat in
-        let f = (CTRunGetAttributes(run) as NSDictionary)[kCTFontAttributeName] as! CTFont
-        return CTFontGetMatrix(f).c
-      }
-      if slant.allSatisfy({ $0 == 0 }) {
-        CTLineDraw(l.line, ctx)
-      } else {
-        // a synthetic oblique (FontBook.slant) is in its font's matrix, which CTLineDraw leaves out: those runs are
-        // drawn with the skew in the text matrix
-        for (run, c) in zip(runs, slant) {
-          ctx.textMatrix = CGAffineTransform(a: 1, b: 0, c: c, d: -1, tx: 0, ty: 0)
-          ctx.textPosition = l.origin
-          CTRunDraw(run, ctx, CFRange())
-        }
-      }
-      ctx.restoreGState()
+      drawLine(l.line, at: l.origin, ctx)
       decorations(l, ctx, under: false)
     }
   }
@@ -323,5 +304,26 @@ extension MarkdownLayout {
     }
     let map = t.display.toSource
     return .text(offset: i < map.count ? map[i] : t.display.endSource)
+  }
+}
+
+/// A line of text at `origin` (its baseline's left) in a y-down context. A synthetic oblique (FontBook.slant) is in its
+/// font's matrix, which CTLineDraw leaves out: a line with one is drawn run by run, those with the skew in the text
+/// matrix
+func drawLine(_ line: CTLine, at origin: CGPoint, _ ctx: CGContext) {
+  ctx.saveGState()
+  defer { ctx.restoreGState() }
+  ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+  ctx.textPosition = origin
+  let runs = CTLineGetGlyphRuns(line) as! [CTRun]
+  let slant = runs.map { run -> CGFloat in
+    let f = (CTRunGetAttributes(run) as NSDictionary)[kCTFontAttributeName] as! CTFont
+    return CTFontGetMatrix(f).c
+  }
+  guard slant.contains(where: { $0 != 0 }) else { return CTLineDraw(line, ctx) }
+  for (run, c) in zip(runs, slant) {
+    ctx.textMatrix = CGAffineTransform(a: 1, b: 0, c: c, d: -1, tx: 0, ty: 0)
+    ctx.textPosition = origin
+    CTRunDraw(run, ctx, CFRange())
   }
 }
