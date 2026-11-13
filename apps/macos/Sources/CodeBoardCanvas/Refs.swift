@@ -12,7 +12,7 @@ final class RefResolver {
   /// This board's title (its package's name)
   private let name: String
   private let package: URL
-  private let vault: Vault
+  let vault: Vault
   /// Cards with a title of their own, by id, with their kind and the title of the Section they are in
   typealias Titled = [(id: String, title: String, kind: String, section: String?)]
   private var others: [(meta: VaultBoard, cards: Titled?)]?
@@ -215,6 +215,12 @@ final class RefResolver {
     let made = all.map { (meta: $0, cards: nil as Titled?) }
     others = made
     return made
+  }
+
+  /// The vault's tree, read once (with the other boards)
+  func vaultTree() -> VaultFolder? {
+    _ = otherBoards()
+    return tree
   }
 
   /// Another board's cards that have a title of their own (boardRefsOf), read once

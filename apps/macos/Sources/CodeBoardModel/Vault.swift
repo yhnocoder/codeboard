@@ -27,6 +27,14 @@ public struct Vault: Sendable {
     path.isEmpty ? root : root.appending(path: path)
   }
 
+  /// A URL in the vault as a path relative to it; nil outside it
+  public func path(of url: URL) -> String? {
+    let r = root.standardizedFileURL.path
+    let u = url.standardizedFileURL.path
+    if u == r { return "" }
+    return u.hasPrefix(r + "/") ? String(u.dropFirst(r.count + 1)) : nil
+  }
+
   /// The whole tree; reads each board's id, not its content. A board of another format version is listed too, and opening
   /// it says why it cannot be read
   public func tree() throws -> VaultFolder {

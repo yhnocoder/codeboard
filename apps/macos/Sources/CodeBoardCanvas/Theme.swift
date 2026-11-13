@@ -173,6 +173,12 @@ public struct Theme: Sendable {
   /// A stroked (dashed) arrow's width at the default weight (2), board units
   var arrowWidth: CGFloat
   var metrics: CodeMetrics
+  /// A sub-board card's name and card count above it (.sbname, .sbmeta: 25, bold and medium, -0.015em), and its map's
+  /// Section names and counts (.sblab: 11, semibold and medium)
+  var subName = Font(NSFont.systemFont(ofSize: 25, weight: .bold)).tracked(-0.375)
+  var subCount = Font(NSFont.systemFont(ofSize: 25, weight: .medium)).tracked(-0.375)
+  var subLabel = Font(NSFont.systemFont(ofSize: 11, weight: .semibold))
+  var subLabelCount = Font(NSFont.systemFont(ofSize: 11, weight: .medium))
 
   /// What a framed item draws past its rect on each side: a deckled sheet's paper, a sheet's hairline ring (CSS
   /// 0 0 0 0.5px), which a bitmap of the rect alone would cut off along its sides and keep only round the corners
@@ -288,6 +294,10 @@ public struct Theme: Sendable {
       sectionTitleAt: CGPoint(x: 24, y: -17), sectionTitleHeight: 32, foldedTitleAt: CGPoint(x: 14, y: 4),
       arrowWidth: 2,
       metrics: CodeMetrics(charWidth: code.advance))
+    t.subName = serif(25, 600).tracked(-0.375)
+    t.subCount = serif(25, 500).tracked(-0.375)
+    t.subLabel = serif(11, 600)
+    t.subLabelCount = serif(11, 500)
     t.mark = rgb(0x1d1c1a)
     t.markInk = rgb(0xfdfdfb)
     t.accentInk = rgb(0xfdfdfb)

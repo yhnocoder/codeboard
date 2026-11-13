@@ -509,7 +509,35 @@ struct Scene: Sendable {
         id: c.id.rawValue, url: size == nil ? nil : url, fileSize: size ?? .zero, frame: (img.stillFrame ?? 1) - 1,
         framed: img.framed)
       return (.image(pic), CGSize(width: c.width, height: h), nil)
-    case .web, .links, .board:
+    case .board(let s):
+      let tree = refs.vaultTree()
+      var name = content.title ?? ""
+      var map: Skeleton?
+      var count: Int?
+      switch s.target {
+      case .board(let id):
+        if let vb = tree?.allBoards.first(where: { $0.id == id }) {
+          if name.isEmpty { name = vb.title }
+          map = Skeletons.shared.of(vb, vault: refs.vault)
+        } else if name.isEmpty {
+          name = "Board not found"
+        }
+      case .folder(let f):
+        // a subfolder of the folder this folder board is of: its folder board's map, else how much is in it
+        if name.isEmpty { name = f }
+        let here = refs.vault.path(of: folder)
+        let path = (here?.split(separator: "/").dropLast().joined(separator: "/")).map { $0.isEmpty ? f : "\($0)/\(f)" }
+        if let sub = path.flatMap({ tree?.folder(at: $0) }) {
+          if let fb = sub.folderBoard {
+            map = Skeletons.shared.of(fb, vault: refs.vault)
+          } else {
+            count = sub.entries.count
+          }
+        }
+      }
+      let d = Drawing.SubBoard(id: c.id.rawValue, name: name, map: map, count: count)
+      return (.board(d), CGSize(width: c.width, height: c.height ?? Drawing.subHeight), nil)
+    case .web, .links:
       return nil
     }
   }

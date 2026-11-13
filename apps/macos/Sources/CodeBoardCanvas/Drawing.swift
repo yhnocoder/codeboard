@@ -13,6 +13,8 @@ enum Drawing: Sendable {
   case note(Note)
   case image(Picture)
   case label(Label)
+  /// A sub-board card (SubBoardMap.swift)
+  case board(SubBoard)
 
   struct Code: Sendable {
     /// The card's id: picks its paper
@@ -86,7 +88,7 @@ enum Drawing: Sendable {
     switch self {
     case .note: true
     case .image(let p): p.svg
-    case .code, .label: false
+    case .code, .label, .board: false
     }
   }
 
@@ -95,12 +97,15 @@ enum Drawing: Sendable {
     case .code(let c): c.framed
     case .note(let n): if case .note = n.content { true } else { false }
     case .image(let p): p.framed
+    case .board: true
     case .label: false
     }
   }
 
   /// How far it draws past its rect on each side
   func bleed(_ t: Theme) -> CGFloat {
+    // its name and count above it
+    if case .board = self { return Drawing.subHead + 2 }
     if framed { return t.bleed }
     // a box's ring and its shadow lie outside it, and an arrow label's box's
     switch self {
@@ -192,6 +197,8 @@ enum Drawing: Sendable {
       }
       ctx.restoreGState()
       if p.framed { Drawing.edge(ctx, r, t) }
+    case .board(let b):
+      decodes += Drawing.subBoard(ctx, b, r, t, scale: scale)
     case .label(let l):
       switch (l.kind, t.label) {
       case (.arrow, .box):

@@ -924,7 +924,7 @@ public final class CanvasView: NSView {
       let width = Int((item.rect.width * scale).rounded(.up))
       guard let priority else { return await notes.cachedPicture(of: url, width: width, dark: theme.dark) }
       return try? await notes.picture(of: url, width: width, dark: theme.dark, priority: priority)
-    case .code, .label:
+    case .code, .label, .board:
       return nil
     }
   }

@@ -95,6 +95,7 @@ package enum Picture {
       case .code(let c): cards[c.id] = it.rect
       case .note(let n): cards[n.id] = it.rect
       case .image(let p): cards[p.id] = it.rect
+      case .board(let b): cards[b.id] = it.rect
       case .label: break
       }
     }
@@ -116,6 +117,7 @@ package enum Picture {
       case .code(let c): cards[c.id] = it.rect
       case .note(let n): cards[n.id] = it.rect
       case .image(let p): cards[p.id] = it.rect
+      case .board(let b): cards[b.id] = it.rect
       case .label: break
       }
       guard it.drawing.byRenderer else { continue }

@@ -353,7 +353,15 @@ extension CanvasView {
   func hitCard(_ p: CGPoint) -> CardID? {
     guard let s = scene else { return nil }
     for it in s.items[s.cardsFrom..<s.labelsFrom].reversed() {
-      if case .card(let id)? = it.owner, it.rect.contains(p) { return id }
+      guard case .card(let id)? = it.owner else { continue }
+      if it.rect.contains(p) { return id }
+      // a sub-board card's name and count above it are the card's
+      if case .board = it.drawing,
+        CGRect(x: it.rect.minX, y: it.rect.minY - Drawing.subHead, width: it.rect.width, height: Drawing.subHead - 12)
+          .contains(p)
+      {
+        return id
+      }
     }
     return nil
   }
@@ -642,7 +650,7 @@ extension CanvasView {
       switch s.items[i].drawing {
       case .note(let n) where n.content.isText: return [.left, .right, [.right, .bottom]]
       case .image: return [.right, [.right, .bottom]]
-      case .code, .note: return [.left, .right, .bottom, [.right, .bottom]]
+      case .code, .note, .board: return [.left, .right, .bottom, [.right, .bottom]]
       default: return []
       }
     }
