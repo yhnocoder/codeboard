@@ -95,7 +95,8 @@ async function openPinned(h: Host) {
 }
 
 test("sidenoteRefInsert", async () => {
-  const h = await open({ board: board(), light, w: 1300, h: 900 });
+  // wide enough for the preview on the list's right (the side it always takes)
+  const h = await open({ board: board(), light, w: 1400, h: 900 });
   const pg = h.page;
   await idle(h);
   await no(pg, 8).click();
@@ -136,7 +137,8 @@ test("sidenoteRefInsert", async () => {
 });
 
 test("sidenoteRefPreview", async () => {
-  const h = await open({ board: board(), light, w: 1300, h: 900 });
+  // wide enough for the preview on the popup's right (the side it always takes)
+  const h = await open({ board: board(), light, w: 1400, h: 900 });
   const pg = h.page;
   await idle(h);
   await openPinned(h);

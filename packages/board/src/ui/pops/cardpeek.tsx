@@ -1,6 +1,7 @@
 // A card's preview in place: the beginning of a card as the board draws it (same look, the code and Notes as they are now), its
 // header and first lines, scaled down to PEEK_W wide and cut at PEEK_H with a fade. It does not scroll: the card itself is one
-// click away, on the arrow inside it. Shown beside what asked for it:
+// click away, on the arrow inside it. Shown beside what asked for it, always on its right where one looks for it (moved in just
+// enough when the window has no room there, never to the other side); dragged by its head it stays where it is put:
 // - a click on a [[reference]] to a card of this board toggles it (cardPeeks): in a Text sidenote beside its popup, in a Note
 //   or any other Markdown on a card beside that card at the reference's height (so it covers none of the text being read), also
 //   while the Note is being edited; Esc or a press anywhere else closes it, and while it shows, an unpinned sidenote popup it
@@ -10,15 +11,15 @@
 // for the board's cards would find
 import { createEffect, createSignal, onCleanup, onMount, Show, untrack } from "solid-js";
 import { Portal } from "solid-js/web";
-import type { VirtualElement } from "@floating-ui/dom";
+import { computePosition, offset, shift, type VirtualElement } from "@floating-ui/dom";
 import type { RefTarget } from "@yhnocoder/markdown";
-import { place } from "@yhnocoder/markdown/ui";
 import { cam } from "../../state/camera";
 import { cardById, hostOf } from "../../state/store";
 import { CARD_STATE_CLASSES, cardSel } from "../../cardsel";
 import { useOverlay } from "../overlay";
 import * as A from "../../actions";
 import { Icon } from "../icons";
+import { track } from "../../gesture";
 
 /** About twelve code lines under the card's header */
 const PEEK_W = 520,
@@ -35,8 +36,8 @@ export const cardElement = (id: string) =>
 
 type Beside = Element | VirtualElement;
 /**
- * What a reference's preview is placed beside: the card the reference is on, at the reference's height (right of it, or left
- * without room), so the preview leaves the card's text readable; a reference on no card, the reference itself
+ * What a reference's preview is placed beside: the card the reference is on, at the reference's height (right of it), so the
+ * preview leaves the card's text readable; a reference on no card, the reference itself
  */
 function besideCard(at: HTMLElement): Beside {
   const card = at.closest(".card");
@@ -87,6 +88,9 @@ export function CardPeek(p: { id: string; at: HTMLElement; beside: Beside; peeks
   let el!: HTMLDivElement, stage!: HTMLDivElement;
   const [pos, setPos] = createSignal<{ x: number; y: number } | null>(null);
   const [cut, setCut] = createSignal(false);
+  // dragged by its head: where it was put, from its reference's top left (it goes along as the board pans and zooms)
+  const [put, setPut] = createSignal<{ x: number; y: number } | null>(null);
+  const [grip, setGrip] = createSignal(0);
   const peeks = p.peeks;
   if (peeks) {
     // Esc closes the preview first (a popup under it stays, a Note being edited goes on), also with the caret in an editor; a
@@ -141,6 +145,9 @@ export function CardPeek(p: { id: string; at: HTMLElement; beside: Beside; peeks
       stage.style.height = `${Math.ceil(Math.min(h * k, PEEK_H))}px`;
       stage.appendChild(c);
       setCut(h * k > PEEK_H + 1);
+      // the head it is dragged by: the card's header as drawn in it, with the padding above
+      const head = src.querySelector<HTMLElement>(".chead");
+      setGrip(Math.min(PEEK_H, (head ? head.offsetTop + head.offsetHeight : 32) * k) + 12);
     }
     reposition();
   });
@@ -148,10 +155,42 @@ export function CardPeek(p: { id: string; at: HTMLElement; beside: Beside; peeks
   function reposition() {
     // its reference is gone (the Note it is in started or stopped editing, the text around it changed): nothing to point at
     if (!p.at.isConnected) return peeks?.hide();
-    const k = ++n;
-    void place(el, p.beside, "right-start", { gap: 10, strategy: "fixed" }).then((r) => {
+    const k = ++n,
+      at = untrack(put);
+    if (at) {
+      const r = p.at.getBoundingClientRect();
+      return setPos({ x: r.left + at.x, y: r.top + at.y });
+    }
+    void computePosition(p.beside, el, {
+      placement: "right-start",
+      strategy: "fixed",
+      middleware: [offset(10), shift({ padding: 8, crossAxis: true })],
+    }).then((r) => {
       if (k === n) setPos({ x: r.x, y: r.y });
     });
+  }
+  function drag(e: PointerEvent) {
+    const from = untrack(pos);
+    if (e.button !== 0 || !from) return;
+    e.preventDefault();
+    e.stopPropagation();
+    n++; // a placing still on its way lands nowhere
+    const sx = e.clientX,
+      sy = e.clientY;
+    el.classList.add("held");
+    track(
+      e,
+      (ev) => {
+        const x = from.x + ev.clientX - sx,
+          y = from.y + ev.clientY - sy,
+          r = p.at.getBoundingClientRect();
+        setPut({ x: x - r.left, y: y - r.top });
+        setPos({ x, y });
+      },
+      () => el.classList.remove("held"),
+      0,
+      () => el.classList.remove("held"),
+    );
   }
   // beside its reference as the camera moves
   createEffect(() => {
@@ -171,6 +210,9 @@ export function CardPeek(p: { id: string; at: HTMLElement; beside: Beside; peeks
         onPointerEnter={() => A.cancelHideNotes()}
       >
         <div ref={stage} class="cpeek-stage" inert />
+        <Show when={peeks && grip()}>
+          <div class="cpeek-grip" style={{ height: `${grip()}px` }} onPointerDown={drag} />
+        </Show>
         <Show when={peeks}>
           {(pk) => (
             <button

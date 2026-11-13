@@ -6,6 +6,10 @@
 //                              Esc closes the preview and the editing goes on; a double-click opens the reference's source, and so
 //                              does a click on a reference to a Section
 //  noteRefPreviewNarrowWindow  in a window narrower than the preview it is made smaller, so all of it and its arrow are on screen
+//  noteRefPreviewKeepsSide     a Note by the window's right edge: the preview stays on its right, moved in just enough to fit the
+//                              window, never to the other side
+//  noteRefPreviewDrag          dragged by its head the preview follows the pointer with nothing else moving or jumping, stays
+//                              open where it was put, keeps that place as the board pans, and a click elsewhere still closes it
 //  noteRefPreviewFollowsBoard  the preview stays beside its reference as the board pans; switching boards closes it
 //  noteLinkFoldedAddressClick  a click on a long address shown as its site, while editing, opens its link box: the page does not
 //                              follow the link, and no click on an element with an address reaches the window (a VS Code webview
@@ -67,9 +71,9 @@ function board(id = "b1", name = "links"): Board {
   return b;
 }
 
-async function openLinks(w = 1300, z = 1): Promise<Host> {
+async function openLinks(w = 1300, z = 1, x = 0): Promise<Host> {
   const b = board();
-  b.cam = { x: 0, y: 0, z };
+  b.cam = { x, y: 0, z };
   const h = await open({ board: b, light, w, h: 860 });
   await h.post({
     type: "boards",
@@ -244,10 +248,87 @@ test("noteRefPreviewNarrowWindow", async () => {
   await shot(h, "note-ref-preview-narrow");
   const r = await rect(pg, ".cpeek"),
     go = await rect(pg, ".cpeek .cpeek-go");
+  const chip = await rect(pg, `${N} .nbody .md-ref`);
   check(
-    "noteRefPreviewNarrowWindow the preview fits a narrow window, its arrow on screen",
-    r.x >= 0 && r.r <= 420 && go.r <= 420,
-    { r, go },
+    "noteRefPreviewNarrowWindow the preview fits a narrow window, its arrow on screen, at its reference's height",
+    r.x >= 0 && r.r <= 420 && go.x >= 0 && go.r <= 420 && Math.abs(r.y - chip.y) < 24,
+    { r, go, chip },
+  );
+  await h.close();
+});
+
+test("noteRefPreviewKeepsSide", async () => {
+  // the Note from 740 to 1260 in a window 1300 wide: no room on its right, plenty on its left
+  const h = await openLinks(1300, 1, 700);
+  const pg = h.page;
+  await ref(pg, "schedule").click();
+  await pg.locator(".cpeek.show").waitFor();
+  await idle(h);
+  await shot(h, "note-ref-preview-keeps-side");
+  const r = await rect(pg, ".cpeek"),
+    go = await rect(pg, ".cpeek .cpeek-go"),
+    note = await rect(pg, N),
+    chip = await rect(pg, `${N} .nbody .md-ref`);
+  check(
+    "noteRefPreviewKeepsSide the preview stays on the Note's right, moved in to fit the window, its arrow on screen",
+    r.x >= note.x && r.r <= 1300 - 7 && go.r <= 1300 && Math.abs(r.y - chip.y) < 24,
+    { r, go, note, chip },
+  );
+  await h.close();
+});
+
+test("noteRefPreviewDrag", async () => {
+  const h = await openLinks();
+  const pg = h.page;
+  await ref(pg, "schedule").click();
+  await pg.locator(".cpeek.show").waitFor();
+  await idle(h);
+  const before = await rect(pg, ".cpeek"),
+    grip = (await pg.locator(".cpeek .cpeek-grip").boundingBox())!,
+    x = grip.x + grip.width / 2,
+    y = grip.y + grip.height / 2;
+  await pg.mouse.move(x, y);
+  const peek = [/^chrome:\.cpeek#/];
+  await watch(
+    h,
+    "noteRefPreviewDrag move",
+    { chrome: [".cpeek"], free: peek, keep: [".cpeek"], frames: 12 },
+    async () => {
+      await pg.mouse.down();
+      for (let i = 1; i <= 4; i++) await pg.mouse.move(x + i * 20, y + i * 15);
+    },
+  );
+  await watch(h, "noteRefPreviewDrag drop", { chrome: [".cpeek"], keep: [".cpeek"], frames: 16 }, () => pg.mouse.up());
+  await idle(h);
+  await shot(h, "note-ref-preview-dragged");
+  const after = await rect(pg, ".cpeek"),
+    open1 = await peeks(pg),
+    place = h.board().place.n0;
+  const off = async () => {
+    const p = await rect(pg, ".cpeek"),
+      c = await rect(pg, `${N} .nbody .md-ref`);
+    return { dx: p.x - c.x, dy: p.y - c.y };
+  };
+  const a = await off();
+  await pg.mouse.move(900, 780);
+  await pg.mouse.wheel(40, 90);
+  await idle(h);
+  const b = await off();
+  await pg.mouse.click(400, 800);
+  await until(h, "a click elsewhere closes the dragged preview", async () => (await peeks(pg)) === 0);
+  check(
+    "noteRefPreviewDrag the preview goes with the pointer, stays open where it was put, the Note stays",
+    Math.abs(after.x - before.x - 80) <= 1 &&
+      Math.abs(after.y - before.y - 60) <= 1 &&
+      open1 === 1 &&
+      place.x === 40 &&
+      place.y === 60,
+    { before, after, open1, place },
+  );
+  check(
+    "noteRefPreviewDrag the dragged preview keeps its place by its reference as the board pans",
+    Math.abs(a.dx - b.dx) <= 1 && Math.abs(a.dy - b.dy) <= 1,
+    { a, b },
   );
   await h.close();
 });
