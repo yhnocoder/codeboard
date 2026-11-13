@@ -44,6 +44,11 @@ describe("static selection → document range", () => {
     expect(mapped("- one\n- two words\n\n```\nlet code = 1\n```", "words")).toBe("words");
     expect(mapped("- one\n\n```\nlet code = 1\n```", "code")).toBe("code");
   });
+  it("a word after a long address shown as its site: the address counts as written", () => {
+    expect(mapped("see https://github.com/GeeeekExplorer/nano-vllm/blob/main/README.md then target", "target")).toBe(
+      "target",
+    );
+  });
   it("a range across two paragraphs", () => {
     const { root, doc } = setup("first para\n\nsecond para");
     const a = select(root, "para", 0),

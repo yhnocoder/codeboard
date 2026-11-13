@@ -42,18 +42,6 @@ const linkOf = (sp: Span, base: number): LinkAt | null =>
       }
     : null;
 
-/** A web address too long to read at a glance shows as its site and an ellipsis */
-export const LONG_URL = 40;
-export function shortUrl(u: string): string {
-  try {
-    const x = new URL(/^www\./i.test(u) ? `https://${u}` : u);
-    const rest = x.pathname.length > 1 || x.search || x.hash;
-    return x.host.replace(/^www\./, "") + (rest ? "/…" : "");
-  } catch {
-    return u.length > 24 ? `${u.slice(0, 22)}…` : u;
-  }
-}
-
 /** The link at pos (a click there), if any */
 export function linkAtPos(state: EditorState, pos: number): LinkAt | null {
   const $p = state.doc.resolve(pos);

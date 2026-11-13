@@ -95,7 +95,8 @@ export function texForCopy(root: ParentNode) {
     k.textContent = d ? `$$${k.dataset.latex}$$` : `$${k.dataset.latex}$`;
   }
 }
-/** A copy from the static render: a selection that cuts into a formula takes all of it, and every formula goes as its TeX */
+/** A copy from the static render: a selection that cuts into a formula takes all of it, every formula goes as its TeX and a
+ *  folded address (url.ts) as written */
 export function copyTex(e: ClipboardEvent) {
   const sel = getSelection(),
     el = e.currentTarget as HTMLElement;
@@ -107,8 +108,9 @@ export function copyTex(e: ClipboardEvent) {
   if (a && el.contains(a)) r.setStartBefore(a);
   if (b && el.contains(b)) r.setEndAfter(b);
   const frag = r.cloneContents();
-  if (!frag.querySelector(".katex[data-latex]")) return;
+  if (!frag.querySelector(".katex[data-latex], .md-short")) return;
   texForCopy(frag);
+  for (const s of frag.querySelectorAll<HTMLElement>(".md-short")) s.textContent = s.dataset.src ?? s.textContent;
   const box = document.createElement("div");
   box.append(frag);
   e.clipboardData.setData("text/html", box.innerHTML);

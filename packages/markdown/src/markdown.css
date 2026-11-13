@@ -519,6 +519,11 @@ math {
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 11 11 5M6 5h5v5'/%3E%3C/svg%3E")
     center / contain no-repeat;
 }
+/* the whole reference is one thing to click, its seal and badge too (a page's own cursor rules for what is inside text don't
+   reach them) */
+.md-ref * {
+  cursor: inherit;
+}
 .md-ref:hover {
   box-shadow: inset 0 -1px 0 var(--k-fn);
 }
@@ -592,6 +597,12 @@ math {
 }
 .md-ref .bd::before {
   content: "· ";
+}
+/* a reference that finds nothing does nothing when clicked outside the editor (its tooltip says why); in the editor a click opens
+   its source */
+.md-ref.missing:not(.md-atom),
+.md-ref.gone:not(.md-atom) {
+  cursor: default;
 }
 .md-ref.missing {
   color: var(--ink-3);

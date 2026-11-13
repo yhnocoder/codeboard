@@ -5,11 +5,18 @@
 Added (nothing to change when upgrading):
 
 - New `refs.showing(pick, row)` option on `mountEditor`: told which candidate the `[[` menu highlights (its `RefPick` and its row in the list) each time that changes, and `(null, null)` when the menu closes, so the page can show what it points to beside the list.
+- New `onRef(to, el)` option on `mountEditor`: a click on a drawn `[[reference]]` that resolves goes to it first; returning `true` keeps the caret where it was (the page showed what the reference points to), otherwise the click opens the reference's source as before. A double-click always opens the source.
 - New `headingChip` option on `mountEditor`: `false` leaves out the chip that shows and changes the level of the heading the caret is in (on by default).
 - New `eagerImages` option on `createMarkdown`: every image is loaded at once and drawn only decoded (no `loading="lazy"`, `decoding="sync"`; by default images stay lazy and async). For a page whose images come into view by a transform, such as a canvas zoomed out, where a lazy image is not loaded yet and an async one is drawn as nothing for a few frames while it decodes.
 
 Fixed:
 
+- A press on a link in the editor held as long as a hand holds a click (from about 40 ms) put the caret into the link instead of opening its box: the browser had already moved the caret there by the time the click came.
+- A click on a long address shown as its site in the editor (`github.com/…`) followed the link in the page itself; a click on any link in the editor no longer reaches the page's own navigation or a listener further up that opens addresses.
+- After a change in the link box, a click elsewhere in the text wrote the change but left the caret in the link instead of where the click was.
+- The link box and the selection's toolbar stay under their text when the page moves the editor (a canvas panned or zoomed) instead of keeping their place in the window; the address field shows the start of the address, not its end.
+- A long address written as it is renders as its site (`github.com/…`) in the static render too, as the editor shows it, so the text keeps its height when editing starts; copying it gives the whole address.
+- References to another board show the pointer over all of their label, and a reference that finds nothing shows the arrow.
 - An image the page says is off screen (`imageVisible`) whose wanted smaller copy is not made yet no longer loads the original meanwhile: it shows the smallest copy there is, or no source at all, and takes its copy on `updateImages` whether on screen or not. With `eagerImages` it fetched the full size of every image off screen.
 
 ## 0.2.0

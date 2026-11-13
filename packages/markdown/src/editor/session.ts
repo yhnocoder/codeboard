@@ -54,6 +54,9 @@ function makeInst(md: Md, dragHandle = false): Inst {
     handle.setAttribute("data-tip", "Drag to move");
   }
   const inst: Inst = { editor: undefined as unknown as Editor, box, dragHandle, sess: null };
+  // where the caret was when the button went down: by the click, the browser's own caret placement for a press held a moment
+  // (a hand's ~100 ms) has already moved it into the link that was pressed
+  let headAtDown = -1;
   // 扩展里读到的选项都转到当前这次编辑上
   const o = new Proxy({} as MdEditorOpts, {
     get: (_t, k) => (inst.sess?.o as Record<string | symbol, unknown> | undefined)?.[k],
@@ -73,6 +76,22 @@ function makeInst(md: Md, dragHandle = false): Inst {
     editorProps: {
       attributes: { class: "md-pm", spellcheck: "false" },
       handlePaste: (_v, ev) => (inst.sess ? handlePaste(inst.editor, ev) : false),
+      handleDOMEvents: {
+        mousedown: (v) => {
+          headAtDown = v.state.selection.head;
+          return false;
+        },
+        // a click on a link is the editor's (its box, or openLink with ⌘): never the page's own navigation, which a folded
+        // address (a non-editable element) would follow, nor a listener further up that opens anything with an href (a VS
+        // Code webview opens such a click in the browser)
+        click: (_v, ev) => {
+          if ((ev.target as Element).closest?.("a[href]")) {
+            ev.preventDefault();
+            ev.stopPropagation();
+          }
+          return false;
+        },
+      },
       clipboardTextSerializer: clipboardText,
       clipboardSerializer: clipboardHtml(() => inst.editor.view) as unknown as DOMSerializer,
       // scrollOwnBox: the caret is brought into view only inside the nearest scrolling box (a fixed-height body scrolls with
@@ -102,8 +121,7 @@ function makeInst(md: Md, dragHandle = false): Inst {
           l = linkAtPos(v.state, pos),
           chip = !!t.closest?.(".md-urlchip");
         if (!ui || !l || !(chip || a || t.closest?.("a.md-link"))) return false;
-        const { head } = v.state.selection;
-        if (!chip && head >= l.from && head <= l.to) return false;
+        if (!chip && headAtDown >= l.from && headAtDown <= l.to) return false;
         openLinkBox(v, ui.setLink, l);
         return true;
       },

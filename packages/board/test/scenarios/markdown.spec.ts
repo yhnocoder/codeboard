@@ -141,7 +141,7 @@ async function renderIn(themes: string[]) {
       r.text2 === "Reading notes";
     await saveShot(h, `md-${theme}-${light ? "light" : "dark"}`);
     check(`markdownRender ${theme}`, ok, r);
-    // 静态勾选框：改原文；点链接：交给宿主；点引用：选中那张卡
+    // 静态勾选框：改原文；点链接：交给宿主；点引用：预览那张卡，预览的箭头选中它
     await h.page.locator('.card[data-id="n1"] li[data-type=taskItem] input').first().click();
     await until(
       h,
@@ -152,8 +152,10 @@ async function renderIn(themes: string[]) {
     await h.page.locator('.card[data-id="n1"] a.md-link').first().click();
     await until(h, "the link goes to the host", () => h.sent.some((m) => m.type === "openLink"));
     const opened = h.sent.some((m) => m.type === "openLink");
+    // a click on a reference to a card previews it; the preview's arrow goes there
     await h.page.locator('.card[data-id="n1"] .md-ref').first().click();
-    await until(h, "the chip selects a card", () => h.page.locator(".card.sel").count());
+    await h.page.locator(".cpeek.show .cpeek-go").click();
+    await until(h, "the chip's preview selects a card", () => h.page.locator(".card.sel").count());
     await idle(h);
     const selId = await h.page.locator(".card.sel").evaluateAll((es) => es.map((e) => (e as HTMLElement).dataset.id));
     check(

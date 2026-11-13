@@ -22,9 +22,13 @@ import {
   bareLink,
   type CaptionHit,
 } from "./widgets";
-import { bareSpan, LONG_URL, shortUrl } from "./links";
+import { bareSpan } from "./links";
+import { LONG_URL, shortUrl } from "../url";
 import { measureImages, slideImages } from "./imageslide";
 import { inlineKey, type InlineState } from "./inlinekey";
+import { mdOf } from "./md";
+import { uiOf } from "./ui";
+import type { Editor } from "@tiptap/core";
 
 type Tag = NonNullable<Span["tag"]>;
 
@@ -103,7 +107,7 @@ function layout(
           out?.push(
             Decoration.widget(
               from,
-              atomWidget(a, raw, (f) => f + caretIn(sp), toCaret, wrap, imageClick),
+              atomWidget(a, raw, (f) => f + caretIn(sp), toCaret, wrap, imageClick, refClick),
               {
                 side: 1,
                 key: `${a.type}:${raw}:${wrap.map((t) => t.nodeName).join()}`,
@@ -253,6 +257,15 @@ function openImage(view: EditorView, r: [number, number], cap: CaptionHit | null
   const tr = view.state.tr.setSelection(TextSelection.create(doc, r[0] + at));
   view.dispatch(tr.setMeta(inlineKey, { open: r[0], reveal: true } satisfies Meta).scrollIntoView());
   view.focus();
+}
+/** A click on a drawn [[reference]] that resolves: to the caller (MdEditorOpts.onRef) */
+function refClick(view: EditorView, el: HTMLElement): boolean {
+  const ed = (view.dom as HTMLElement & { editor?: Editor }).editor,
+    on = ed && uiOf.get(ed)?.opts.onRef,
+    r = el.closest<HTMLElement>(".md-ref") ?? el.querySelector<HTMLElement>(".md-ref");
+  if (!on || !r) return false;
+  const hit = mdOf(view.state).refs.resolve(r.dataset.ref ?? "", r.dataset.target || undefined);
+  return !!hit && !("broken" in hit) && on(hit, r);
 }
 /** A press on a drawn image: the first selects it, the next (or a double-click) opens its source */
 function imageClick(view: EditorView, from: number, open: boolean, cap: CaptionHit | null) {

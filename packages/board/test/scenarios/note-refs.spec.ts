@@ -78,8 +78,9 @@ test("noteRefFollowsCardRename", async () => {
     { look, md: noteMd(h.board(), "n") },
   );
   await shot(h, "note-ref-rename-after");
-  // 点它还是带到那张卡
+  // 点它还是预览那张卡，预览的箭头带到那张卡
   await chip(pg, "n").click();
+  await pg.locator(".cpeek.show .cpeek-go").click();
   await until(h, "the reference selects the card", () => pg.locator('.card.sel[data-id="a"]').count());
   await close(h);
 });

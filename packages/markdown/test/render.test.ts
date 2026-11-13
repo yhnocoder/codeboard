@@ -36,6 +36,13 @@ describe("static render = editor HTML", () => {
     expect(h).toContain('<div class="mmd" data-src="graph TD">');
     expect(h).toContain('<nav data-type="toc" class="md-toc"><div class="l2">H</div></nav>');
   });
+  it("a long address written as it is shows as its site, as the editor shows it away from the caret", () => {
+    const url = "https://github.com/GeeeekExplorer/nano-vllm/blob/main/README.md",
+      h = createMarkdown().render(`bare ${url} and [named](${url}) and https://x.io/a`);
+    expect(h).toContain(`<span class="md-short" data-src="${url}">github.com/…</span>`);
+    expect(h).toContain(">named</a>");
+    expect(h).toContain(">https://x.io/a</a>");
+  });
 });
 
 describe("code blocks take the host's highlighting", () => {

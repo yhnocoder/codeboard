@@ -139,7 +139,7 @@ export class Md implements Markdown {
   isCached = (src: string) => this.cache.has(src);
 
   hydrate(el: HTMLElement, html: string) {
-    if (html.includes("data-latex") && !this.copying.has(el)) {
+    if ((html.includes("data-latex") || html.includes("md-short")) && !this.copying.has(el)) {
       this.copying.add(el);
       el.addEventListener("copy", copyTex);
     }
