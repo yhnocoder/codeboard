@@ -40,6 +40,7 @@ import CodeBoardModel
     let (window, panes) = makeMainWindow(shell: shell)
     self.window = window
     self.panes = panes
+    panes.onVaultChanged = { [weak self] in self?.readTree(reloadBoards: true) }
     window.title = shell.vault?.root.lastPathComponent ?? "CodeBoard"
     window.makeKeyAndOrderFront(nil)
     NSApp.activate()

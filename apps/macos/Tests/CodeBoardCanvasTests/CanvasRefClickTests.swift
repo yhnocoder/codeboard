@@ -30,7 +30,7 @@ private func refBoard() -> Board {
     ])
 }
 
-private func otherBoard(_ root: URL) throws {
+private func writeOtherBoard(_ root: URL) throws {
   let p = root.appending(path: "Memory Model.board")
   try FileManager.default.createDirectory(at: p, withIntermediateDirectories: true)
   let b = Board(
@@ -45,7 +45,7 @@ private func otherBoard(_ root: URL) throws {
 
 @MainActor func refRig() async throws -> Rig {
   let root = FileManager.default.temporaryDirectory.appending(path: "canvas-refs-\(UUID().uuidString)")
-  try otherBoard(root)
+  try writeOtherBoard(root)
   let r = try await Rig(refBoard(), zoom: 1, root: root)
   r.canvas.refWait = .milliseconds(60)
   return r
@@ -178,6 +178,35 @@ extension CanvasWritingTests {
       #expect(r.canvas.refPeek?.cut == false, "a short card whole")
       try #require(r.canvas.refPeek).onGo?()
       #expect(opened?.0 == BoardID(rawValue: "mem") && opened?.1 == .card(cid("m9")))
+    }
+
+    /// A card on a board a sub-board card here shows is on this board for the rule: near, its block in the map is gone
+    /// to and flashed, the sub-board card selected; far, previewed
+    @Test func aCardInASubBoardShownHereIsGoneToWhenNearAndPreviewedWhenFar() async throws {
+      let root = FileManager.default.temporaryDirectory.appending(path: "canvas-refs-\(UUID().uuidString)")
+      try writeOtherBoard(root)
+      var b = refBoard()
+      b.cards.append(
+        Card(
+          id: cid("sb"), x: 500, y: 100, width: 400, height: 320,
+          content: .own(CardContent(body: .board(SubBoard(board: BoardID(rawValue: "mem")))))))
+      let r = try await Rig(b, zoom: 1, root: root)
+      r.canvas.refWait = .milliseconds(60)
+      defer { r.close() }
+      var opened: BoardID?
+      r.canvas.onOpenBoard = { b, _ in opened = b }
+      let other = try #require(await r.refBox("Memory Model"))
+      r.click(CGPoint(x: other.midX, y: other.midY))
+      await r.until("gone to") { r.doc.selection == [.card(cid("sb"))] }
+      #expect(r.canvas.flashed == cid("sb") && r.canvas.refPeek == nil && opened == nil)
+      let ring = try #require(r.canvas.flashRing?.0)
+      #expect(ring.frame.width < 400 && ring.frame.minX > 500 - 20, "the block's ring, inside the card")
+      // far away now: previewed
+      r.doc.edit("Move") { $0.move([.card(cid("sb"))], dx: 9000, dy: 9000) }
+      await r.until("moved") { r.canvas.scene?.placed[cid("sb")]?.rect.minX == 9500 }
+      r.click(CGPoint(x: other.midX, y: other.midY))
+      await r.until("the preview drawn") { r.canvas.refPeek?.ready == true }
+      #expect(r.canvas.refPeek?.board == BoardID(rawValue: "mem") && opened == nil)
     }
 
     @Test func aSectionIsFramedAndSelected() async throws {

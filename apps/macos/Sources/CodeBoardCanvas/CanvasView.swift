@@ -45,6 +45,10 @@ public final class CanvasView: NSView {
   var camera = Camera(origin: .zero, zoom: 1)
   /// Where the next board shown is shown from (back to a board: where it was), instead of all of it in view
   public var arriving: Camera?
+  /// This canvas changed the vault's files (a board made or renamed): the shell reads the tree again
+  public var onVaultChanged: (() -> Void)?
+  /// Bumped when the vault changes on disk, which sub-board cards show
+  var vaultSeen = 0
   /// Where the view is now
   public var currentCamera: Camera { camera }
   var limits = ZoomLimits(fit: 1)

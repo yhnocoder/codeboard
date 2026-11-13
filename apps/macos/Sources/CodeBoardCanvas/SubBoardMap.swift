@@ -25,6 +25,7 @@ struct Skeleton: Sendable, Equatable {
       case web, links, board
     }
 
+    var id: CardID
     var box: Box
     var kind: Kind
     /// The Section it is in (an index into `secs`)
@@ -78,7 +79,7 @@ struct Skeleton: Sendable, Equatable {
       }
       let box = Box(x: c.x, y: c.y, w: c.width, h: c.height ?? c.measuredHeight ?? guess)
       rects[c.id] = box
-      cards.append(Card(box: box, kind: kind, section: c.section.flatMap { secIndex[$0] }))
+      cards.append(Card(id: c.id, box: box, kind: kind, section: c.section.flatMap { secIndex[$0] }))
     }
     // a Section's frame: its own and its cards' and inner Sections', each padded (core sectionFrames)
     var children: [SectionID: [SectionID]] = [:]
@@ -158,6 +159,8 @@ extension Drawing {
   /// A sub-board card's own: what it shows and how it says so
   struct SubBoard: Sendable {
     var id: String
+    /// The board it shows (a subfolder's: its folder board's), when there is one
+    var board: BoardID?
     /// Above it (its own title, else the board's name)
     var name: String
     /// nil: the board it points at is not there
@@ -168,6 +171,14 @@ extension Drawing {
 
   /// A sub-board card's height when it has none of its own (FRAME_H)
   static let subHeight: CGFloat = 320
+
+  /// Where a card of the board a sub-board card shows is drawn in its map, in the sub-board card's rect `r`
+  static func block(_ c: CardID, in map: Skeleton, _ r: CGRect) -> CGRect? {
+    guard let b = map.cards.first(where: { $0.id == c })?.box else { return nil }
+    let f = Skeleton.fit(w: map.w, h: map.h, frameW: r.width, frameH: r.height)
+    return CGRect(
+      x: r.minX + f.ox + b.x * f.s, y: r.minY + f.oy + b.y * f.s, width: max(1, b.w * f.s), height: max(1, b.h * f.s))
+  }
 
   /// Room above the card for its name and count (.sbhead: a 30 high line 16 above it)
   static let subHead: CGFloat = 46

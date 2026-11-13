@@ -138,6 +138,7 @@ extension CanvasView {
     let (theme, notes, images, backing) = (self.theme, self.notes, self.images, self.backing)
     let known = measured
     let fit = fitZoom
+    let seen = vaultSeen
     let zoom = camera.zoom
     let view = camera.visible(bounds.size)
     let highlighter = CanvasView.highlighter
@@ -157,7 +158,7 @@ extension CanvasView {
         sizes.merge(await CanvasView.measure(todo, theme: theme, notes: notes)) { a, _ in a }
         let s = Scene(
           board, package: package, vault: vault, theme: theme, highlighter: highlighter ?? Highlighter(), sizes: sizes,
-          reusing: old)
+          reusing: old, vaultSeen: seen)
         var before: [Scene.Owner: Scene.Item] = [:]
         for it in old.items { if let o = it.owner { before[o] = it } }
         var fresh: [Int: Fresh] = [:]

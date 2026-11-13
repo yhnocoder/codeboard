@@ -27,6 +27,8 @@ struct InPlace {
   enum What: Equatable {
     case label(ArrowID)
     case title(SectionID)
+    /// The name of the board a sub-board card shows, above it (its package is renamed)
+    case board(CardID, VaultBoard)
   }
 
   var what: What
@@ -216,10 +218,11 @@ extension CanvasView {
     switch w {
     case .label(let id): index(of: .arrowLabel(id))
     case .title(let id): index(of: .sectionTitle(id))
+    case .board: nil
     }
   }
 
-  private func writeInPlace(_ what: InPlace.What, _ text: String, at: CGPoint, select item: Item) {
+  func writeInPlace(_ what: InPlace.What, _ text: String, at: CGPoint, select item: Item) {
     guard let doc = document, let host = superview else { return }
     endInPlace(commit: true)
     if doc.selection != [item] { doc.select([item]) }
@@ -236,6 +239,7 @@ extension CanvasView {
     field.usesSingleLineMode = true
     field.cell?.isScrollable = true
     field.placeholderString = label ? "Label" : Board.untitledSection
+    if case .board = what { field.placeholderString = text }
     field.textColor = NSColor(cgColor: label ? (theme.label == .box ? theme.ink : theme.ink2) : theme.sectionTitle)
     field.wantsLayer = true
     field.delegate = self
@@ -256,7 +260,8 @@ extension CanvasView {
     guard let ip = inPlace, let host = superview else { return }
     let z = camera.zoom
     let label = { if case .label = ip.what { true } else { false } }()
-    let font = label ? theme.arrowLabel : theme.sectionTitleFont
+    let named = { if case .board = ip.what { true } else { false } }()
+    let font = label ? theme.arrowLabel : named ? theme.subName : theme.sectionTitleFont
     ip.field.font = CTFontCreateCopyWithAttributes(font.ct, CTFontGetSize(font.ct) * z, nil, nil) as NSFont
     let text = ip.field.stringValue.isEmpty ? (ip.field.placeholderString ?? "") : ip.field.stringValue
     let v = camera.view(ip.at)
@@ -266,6 +271,9 @@ extension CanvasView {
       let w = max(60, Drawing.width(text, font) + pad + 4) * z
       let h = 22 * z
       r = CGRect(x: v.x - w / 2, y: v.y - h / 2, width: w, height: h)
+    } else if named {
+      // the name's line above the card (.sbhead)
+      r = CGRect(x: v.x - 4 * z, y: v.y, width: (max(160, Drawing.width(text, font) + 24)) * z, height: 30 * z)
     } else {
       // a tray's label has 6 before its text
       let x: CGFloat = theme.frame == .tray ? 6 : 0
@@ -295,6 +303,17 @@ extension CanvasView {
     ip.field.isEditable = false
     var change: ((inout Board) -> Void)?
     var name = ""
+    // a board's name: its package renamed (blank or unchanged: as it was)
+    if case .board(_, let at) = ip.what {
+      ip.field.removeFromSuperview()
+      drawChrome()
+      if commit, !text.isEmpty, text != ip.before, let (_, vault) = shown {
+        _ = try? vault.rename(board: at, to: text)
+        vaultChanged()
+        onVaultChanged?()
+      }
+      return
+    }
     if commit, let doc = document, text != ip.before {
       switch ip.what {
       case .label(let id) where doc.board.arrow(id) != nil:

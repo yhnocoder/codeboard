@@ -10,6 +10,8 @@ import CodeBoardNotes
   private let shell: Shell
   private(set) var panes: [Tab.ID: Pane] = [:]
   private var front: Tab.ID?
+  /// A canvas changed the vault's files (a board made or renamed there)
+  var onVaultChanged: (() -> Void)?
   /// The Note renderer its canvases share (nil: the app's)
   private let notes: NoteRenderer?
 
@@ -45,7 +47,10 @@ import CodeBoardNotes
         pane.close()
       }
     }
-    if reload { for doc in documents.values { doc.diskChanged() } }
+    if reload {
+      for doc in documents.values { doc.diskChanged() }
+      for pane in panes.values where pane.document != nil { pane.canvas.vaultChanged() }
+    }
     for tab in shell.tabs {
       let pane = panes[tab.id] ?? Pane(notes: notes)
       if panes[tab.id] == nil {
@@ -55,6 +60,7 @@ import CodeBoardNotes
         pane.isHidden = true
         pane.onReady = { [weak self] in self?.reveal() }
         pane.onOpenBoard = { [weak self] in self?.shell.show($0) }
+        pane.canvas.onVaultChanged = { [weak self] in self?.onVaultChanged?() }
         addSubview(pane)
       }
       let theme = shell.look

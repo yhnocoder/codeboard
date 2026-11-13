@@ -71,7 +71,9 @@ extension CanvasView {
     if !go {
       switch place {
       case .card(let c) where !cardNear(c): return openRefPeek(key: key, at: at, card: c, on: nil)
-      case .elsewhere(let b, let c): return openRefPeek(key: key, at: at, card: c, on: b)
+      // a card in a sub-board shown here is on this board for the rule: near, gone to; far, previewed
+      case .elsewhere(let b, let c) where !(inSubBoard(b, c).map { rectNear($0.block) } ?? false):
+        return openRefPeek(key: key, at: at, card: c, on: b)
       default: break
       }
     }
@@ -115,7 +117,15 @@ extension CanvasView {
       motion.fly(to: fitRect(r, maxZoom: 1.4))
       moved()
     case .board(let b): onOpenBoard?(b, nil)
-    case .elsewhere(let b, let c): onOpenBoard?(b, .card(c))
+    case .elsewhere(let b, let c):
+      // in a sub-board shown here: its block in the map, the sub-board card selected
+      guard let (frame, block) = inSubBoard(b, c) else {
+        onOpenBoard?(b, .card(c))
+        return
+      }
+      if !writing { doc.select([.card(frame)]) }
+      reveal(block)
+      flash(block, tilt: 0, radius: 2.5, id: frame)
     }
   }
 
@@ -142,6 +152,11 @@ extension CanvasView {
   /// A card is near the view: less than a view away across and down, or in it
   func cardNear(_ c: CardID) -> Bool {
     guard let r = scene?.items.first(where: { $0.owner == .card(c) })?.rect else { return false }
+    return rectNear(r)
+  }
+
+  /// Within one view of the view in each direction
+  func rectNear(_ r: CGRect) -> Bool {
     let v = safeView
     let dx = max(0, v.minX - r.maxX, r.minX - v.maxX)
     let dy = max(0, v.minY - r.maxY, r.minY - v.maxY)
@@ -180,12 +195,15 @@ extension CanvasView {
   /// The card flashes once (styles.css .card.ping: a ring of the accent at 45 % spreading 14 out and fading, 700 ms)
   func flash(_ c: CardID) {
     guard let it = scene?.items.first(where: { $0.owner == .card(c) }) else { return }
-    let r = it.rect
+    flash(it.rect, tilt: it.tilt, radius: theme.cardRadius, id: c)
+  }
+
+  /// A rect of the board flashes as a card does (a card's block in a sub-board's map; `id`: the card it is in)
+  func flash(_ r: CGRect, tilt: CGFloat, radius: CGFloat, id c: CardID) {
     let ring = CAShapeLayer()
     ring.frame = r.insetBy(dx: -20, dy: -20)
-    if it.tilt != 0 { ring.setAffineTransform(CGAffineTransform(rotationAngle: it.tilt)) }
+    if tilt != 0 { ring.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
     let inner = CGRect(x: 20, y: 20, width: r.width, height: r.height)
-    let radius = theme.cardRadius
     func band(_ s: CGFloat) -> CGPath {
       let p = CGMutablePath()
       let o = inner.insetBy(dx: -s, dy: -s)

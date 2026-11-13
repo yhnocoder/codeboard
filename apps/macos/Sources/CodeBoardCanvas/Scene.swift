@@ -67,6 +67,8 @@ struct Scene: Sendable {
   /// Section titles, cards from `cardsFrom` on, then arrow labels from `labelsFrom` on. Drawn as the web board layers
   /// them: section titles, the arrows, their labels, then the cards over all of them
   var items: [Item] = []
+  /// Which state of the vault its sub-board cards were drawn from (they show other boards)
+  var vaultSeen = 0
   var cardsFrom = 0
   var labelsFrom = 0
   var frames: [Frame] = []
@@ -153,8 +155,9 @@ struct Scene: Sendable {
   init(
     _ board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter,
     sizes: [CardID: NoteMetrics] = [:],
-    reusing previous: Scene? = nil
+    reusing previous: Scene? = nil, vaultSeen: Int = 0
   ) {
+    self.vaultSeen = vaultSeen
     // what a folded Section hides: the cards and Sections inside it (the outermost folded one around each)
     let byID = Dictionary(board.sections.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     func foldedAround(_ id: SectionID?) -> SectionID? {
@@ -202,8 +205,10 @@ struct Scene: Sendable {
       let tilt = c.tilted ? Scene.tilt : 0
       let mine = ends[c.id] ?? []
       let part: Part
+      let showsOthers = { if case .board = content.body { true } else { false } }()
       if let p = previous?.parts[c.id], p.content == content, p.width == c.width, p.height == c.height,
-        p.tilted == c.tilted, p.measured == sizes[c.id], p.ends == mine
+        p.tilted == c.tilted, p.measured == sizes[c.id], p.ends == mine,
+        !showsOthers || previous?.vaultSeen == vaultSeen
       {
         part = p
         reused.insert(c.id)
@@ -514,11 +519,13 @@ struct Scene: Sendable {
       var name = content.title ?? ""
       var map: Skeleton?
       var count: Int?
+      var shows: BoardID?
       switch s.target {
       case .board(let id):
         if let vb = tree?.allBoards.first(where: { $0.id == id }) {
           if name.isEmpty { name = vb.title }
           map = Skeletons.shared.of(vb, vault: refs.vault)
+          shows = id
         } else if name.isEmpty {
           name = "Board not found"
         }
@@ -530,12 +537,13 @@ struct Scene: Sendable {
         if let sub = path.flatMap({ tree?.folder(at: $0) }) {
           if let fb = sub.folderBoard {
             map = Skeletons.shared.of(fb, vault: refs.vault)
+            shows = fb.id
           } else {
             count = sub.entries.count
           }
         }
       }
-      let d = Drawing.SubBoard(id: c.id.rawValue, name: name, map: map, count: count)
+      let d = Drawing.SubBoard(id: c.id.rawValue, board: shows, name: name, map: map, count: count)
       return (.board(d), CGSize(width: c.width, height: c.height ?? Drawing.subHeight), nil)
     case .web, .links:
       return nil
