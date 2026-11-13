@@ -1,0 +1,11 @@
+Stage 5 review fixes: clicks on [[refs]], and the Ink Wash toolbar's brush. Made-up content only.
+
+Sheets (LookCompare --refs, off screen, 2x; Warm Ink and Ink Wash, light and dark):
+  near-*.png     before the click | after: glided to the card, selected, the flash held at 1/8 of its 700 ms
+  preview-*.png  a far card's preview beside its Note at the ref's height | a card on another board previewed
+  edge-*.png     the preview pulled in 8 from the view's right edge
+  toolbar-ink-wash-dark-main-and-mac.png  main (top, Chromium) and the Mac app (bottom): the brush is main's, same place
+
+Not on these sheets: the sidenote popup's preview (beside the popup) and the editor's click (camera and flash only) are
+covered by tests, not drawn here. Dragging the preview by its header is tested only as frame math (no pointer drag in
+the sheets).

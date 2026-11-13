@@ -37,3 +37,13 @@ theme light and dark; report.txt lists the sheets and has the test count, the be
 stage5/: sidenotes and questions, drawn off screen at 2x with `swift run -c release LookCompare --sidenotes <out>`
 (MAIN_POPS=<folder> adds the side-by-side with main's popup), in each theme light and dark; report.txt lists the sheets
 and has the test count, the read-only check's counts and the deviations from main.
+
+stage5b/: clicks on [[refs]], drawn off screen at 2x with `swift run LookCompare --refs <out>`, in each theme light and
+dark (<sheet>-<theme>[-dark].png); report.txt has what each shows:
+- near: a Note whose ref points at a card near the view | clicked: the camera glided until the card is in view, the
+  card selected, its flash held an eighth of the way through
+- preview: a far code card previewed beside the Note at the ref's height (cut at 280 with a fade, the arrow under it) |
+  a card on another board previewed
+- edge: no room on the Note's right: the preview pulled in to 8 from the view's edge
+- toolbar-ink-wash-dark-main-and-mac.png: main's Ink Wash dark toolbar (Storybook ui-toolbar--wide, Chromium, top) and
+  the Mac app's (bottom): the brush at the end of the stroke is main's (.bbar .pill::after), in the same place
