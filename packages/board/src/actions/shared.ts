@@ -38,11 +38,18 @@ import { copyPicture, fingerprint, imageDataUrl, knownPicture } from "./imagedat
  */
 export async function copyLink(items?: string[]) {
   flushSave(); // 刚建的卡宿主那边也有了
+  let failed = "";
   const text = await ask("copyLink", { items }).then(
     (v) => v ?? null,
-    (e) => (switched(e) ? undefined : null),
+    (e) => {
+      if (switched(e)) return undefined;
+      failed = e instanceof Error ? e.message : String(e);
+      return null;
+    },
   );
   if (text === undefined) return;
+  // only a null reply means the board has no file yet; a failed request says what failed
+  if (failed) return toast(`Can't copy the link: ${failed}`);
   if (!text) return toast("Can't copy the link: the board isn't saved yet");
   const n = text.split("\n").length;
   toast(n > 1 ? `Copied ${n} links` : "Copied link");
