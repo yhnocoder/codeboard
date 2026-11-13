@@ -80,7 +80,7 @@ export function createHistory(doc: Doc, hooks: Hooks, ports: HistoryPorts) {
     try {
       doc.write((b) => {
         fn(b);
-        upkeep.run(b);
+        upkeep.run(b, true);
         stamp(b, doc.raw);
       });
     } catch (e) {

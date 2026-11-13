@@ -129,8 +129,43 @@ describe("Note block ends (rebaseBlocks)", () => {
       m = b.cards.find((c) => c.id === "m") as Card & { md: string };
     n.md = [...OLD.slice(0, 2), ...OLD.slice(3)].join("\n\n");
     m.md = ["other", ROOF].join("\n\n");
-    up.run(b);
+    up.run(b, true);
     expect(b.links[0].to).toEqual({ card: "m", block: { i: 1, h: blockSig(ROOF) } });
+  });
+
+  it("does not take an arrow end to another Note that already had a block like the deleted one, nor on a sync", () => {
+    const up = upkeeper(
+      (v) => v,
+      (md) => md.split(/\n{2,}/),
+    );
+    const at = (b: ReturnType<typeof board>) => b.links[0].to;
+    // the other Note had the same text before the step: no block arrived there
+    const b = board([{ id: "l", from: { card: "x" }, to: { card: "n", block: ref(OLD, 2) } }]);
+    b.cards.push(note("x", ["far"]));
+    b.place.x = { x: 800, y: 0, w: 300 };
+    const m = b.cards.find((c) => c.id === "m") as Card & { md: string },
+      n = b.cards.find((c) => c.id === "n") as Card & { md: string };
+    m.md = ["other", OLD[2]].join("\n\n");
+    up.run(b);
+    n.md = [...OLD.slice(0, 2), ...OLD.slice(3)].join("\n\n");
+    m.md = ["other edited", OLD[2]].join("\n\n");
+    up.run(b, true);
+    expect(at(b).card).toBe("n");
+    // a sync from the host that changes two Notes is no move between them
+    const c = board([{ id: "l", from: { card: "x" }, to: { card: "n", block: ref(OLD, 2) } }]);
+    c.cards.push(note("x", ["far"]));
+    c.place.x = { x: 800, y: 0, w: 300 };
+    const up2 = upkeeper(
+      (v) => v,
+      (md) => md.split(/\n{2,}/),
+    );
+    up2.run(c);
+    (c.cards.find((k) => k.id === "n") as Card & { md: string }).md = [...OLD.slice(0, 2), ...OLD.slice(3)].join(
+      "\n\n",
+    );
+    (c.cards.find((k) => k.id === "m") as Card & { md: string }).md = ["other", OLD[2]].join("\n\n");
+    up2.run(c);
+    expect(at(c).card).toBe("n");
   });
 
   it("follows the block on an arrow hidden on the Shelf, and drops a hidden arrow left with both ends on one card", () => {
