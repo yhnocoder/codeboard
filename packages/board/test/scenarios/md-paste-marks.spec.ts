@@ -328,6 +328,26 @@ test("pasteCodeAsBlock", async () => {
     !prose.some((l) => l.startsWith("codeBlock")) && prose.includes("paragraph=I will fix the names tomorrow."),
     prose,
   );
+  // prose with a heading and a link, as pasted from a chat or a README, stays prose
+  await pg.keyboard.press("ControlOrMeta+z");
+  await paste("## Plan\nWe return early when the cache is cold (rare).\nOtherwise see [the docs](https://x).");
+  const readme = await blocks();
+  check(
+    "pasteCodeAsBlock Markdown with a heading and a link stays prose",
+    !readme.some((l) => l.startsWith("codeBlock")),
+    readme,
+  );
+  // a <mark> in pasted code is code, kept as copied
+  await pg.keyboard.press("ControlOrMeta+z");
+  const MARKED = 'const el = document.body;\nel.innerHTML = "<mark>hi</mark>";\nconsole.log(el);';
+  await paste(MARKED);
+  const marked = await blocks();
+  check(
+    "pasteCodeAsBlock a <mark> in code stays as copied",
+    marked.some((l) => l.startsWith("codeBlock") && l.endsWith(`=${MARKED}`)),
+    marked,
+  );
+  await pg.keyboard.press("ControlOrMeta+z");
   await pg.keyboard.press("ControlOrMeta+z");
   await paste(CODE);
   const was = md(h, "n0");
