@@ -9,6 +9,7 @@ import Testing
 @testable import CodeBoardCanvas
 
 @Test @MainActor func canvasIsLayerBacked() {
+  _ = Watchdog.started
   #expect(CanvasView(frame: .zero).layer != nil)
 }
 
