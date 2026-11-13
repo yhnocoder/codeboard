@@ -120,7 +120,10 @@ describe("Note block ends (rebaseBlocks)", () => {
     const b = board([{ id: "l", from: { card: "x" }, to: { card: "n", block: ref(OLD, 2) } }]);
     b.cards.push(note("x", ["far"]));
     b.place.x = { x: 800, y: 0, w: 300 };
-    const up = upkeeper((v) => v, (md) => md.split(/\n{2,}/));
+    const up = upkeeper(
+      (v) => v,
+      (md) => md.split(/\n{2,}/),
+    );
     up.run(b);
     const n = b.cards.find((c) => c.id === "n") as Card & { md: string },
       m = b.cards.find((c) => c.id === "m") as Card & { md: string };
