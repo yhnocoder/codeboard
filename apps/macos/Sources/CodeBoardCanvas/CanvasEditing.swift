@@ -299,6 +299,8 @@ extension CanvasView {
     if let ip = inPlace, let li = inPlaceItem(ip.what) {
       withoutAnimation { items[li].box.isHidden = true }
     }
+    hoveredMark = nil
+    placeMarks()
     // a swap made here otherwise reaches the screen a frame later than the layers it replaces go
     CATransaction.flush()
     arrive()
@@ -720,6 +722,13 @@ extension CanvasView {
   public override func mouseMoved(with e: NSEvent) {
     guard gesture == nil else { return }
     let v = convert(e.locationInWindow, from: nil)
+    let mark = markAt(camera.board(v))
+    hoverMark(mark)
+    if mark != nil {
+      NSCursor.pointingHand.set()
+      hover(nil)
+      return
+    }
     hoverPorts(at: v)
     let port = hitPort(v) != nil || hitEndHandle(v) != nil
     let arrow = hitHandle(v) == nil && !port ? arrowAt(camera.board(v)) : nil
@@ -737,6 +746,7 @@ extension CanvasView {
 
   public override func mouseExited(with e: NSEvent) {
     hover(nil)
+    hoverMark(nil)
     guard gesture == nil, hoveredCard != nil else { return }
     hoveredCard = nil
     hoveredLine = nil
@@ -759,6 +769,11 @@ extension CanvasView {
     }
     if let b = barButton(at: p) {
       if e.clickCount == 1 { press(b) }
+      return
+    }
+    // a sidenote marker: its popup opens, or closes when it is open
+    if let i = markAt(p) {
+      if e.clickCount == 1 { togglePop(marks[i].at) }
       return
     }
     if e.clickCount >= 2 {

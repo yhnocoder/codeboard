@@ -82,6 +82,10 @@ struct Scene: Sendable {
   var parts: [CardID: Part] = [:]
   /// The cards whose drawing came from the scene before, unchanged
   var reused: Set<CardID> = []
+  /// The sidenotes shown: the board's own, then those that travel with its shared cards (in their files)
+  var notes: [Sidenote] = []
+  /// Of `notes`, the ones in shared cards' files (shown, not changed: this board writes only its own file)
+  var sharedNotes: Set<SidenoteID> = []
 
   /// A card's drawing and what it was made from: the next scene reuses it while these are the same
   struct Part: Sendable {
@@ -162,6 +166,7 @@ struct Scene: Sendable {
       return out
     }
     let refs = RefResolver(board, package: package, vault: vault)
+    notes = board.sidenotes
     var ends: [CardID: [Endpoint]] = [:]
     for a in board.arrows {
       ends[a.from.card, default: []].append(a.from)
@@ -175,9 +180,21 @@ struct Scene: Sendable {
         hiddenIn[c.id] = f
         continue
       }
-      guard let (content, folder) = Scene.content(of: c, package: package, vault: vault) else {
+      guard var (content, folder) = Scene.content(of: c, package: package, vault: vault) else {
         missing.append(c.id)
         continue
+      }
+      if case .shared = c.content, let s = try? vault.sharedCard(c.id) {
+        notes += s.sidenotes
+        sharedNotes.formUnion(s.sidenotes.map(\.id))
+      }
+      // the Highlights the board shows: the segment's own and this board's own sidenotes' lines (core shownRanges)
+      if case .code(var code) = content.body {
+        for i in code.segments.indices {
+          let s = code.segments[i]
+          code.segments[i].highlights = board.highlights(c.id, s.id, own: s.highlights)
+        }
+        content.body = .code(code)
       }
       let tilt = c.tilted ? Scene.tilt : 0
       let mine = ends[c.id] ?? []

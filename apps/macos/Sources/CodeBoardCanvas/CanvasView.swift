@@ -122,6 +122,17 @@ public final class CanvasView: NSView {
   var toastShown = 0
   /// The Sections a drag would drop cards into, tinted under the cards
   let dropLayer = CALayer()
+  /// Sidenote markers free on the board (a card's and a Section's are in their own layers)
+  let freeMarks = CALayer()
+  /// The sidenote markers shown, their layers in the same order, and the zoom they were placed at
+  var marks: [Mark] = []
+  var markLayers: [CALayer] = []
+  var marksZoom: CGFloat = 0
+  var hoveredMark: Int?
+  /// The sidenote popup open, by what it shows
+  var openPop: PopAt?
+  /// A sidenote popup opened or closed (tests)
+  package var onPop: ((PopAt?) -> Void)?
   /// The selected and hovered arrows in the accent: over the arrows, under their labels
   let litArrows = CALayer()
   var dropLit: Set<SectionID> = []
@@ -162,8 +173,10 @@ public final class CanvasView: NSView {
     root.backgroundColor = theme.canvas
     layer = root
     wantsLayer = true
-    for l in [world, sections, dropLayer, below, arrows, litArrows, above, cards, chrome] { l.anchorPoint = .zero }
-    for l in [sections, dropLayer, below, arrows, litArrows, above, cards, chrome] { world.addSublayer(l) }
+    for l in [world, sections, dropLayer, below, arrows, litArrows, above, cards, freeMarks, chrome] {
+      l.anchorPoint = .zero
+    }
+    for l in [sections, dropLayer, below, arrows, litArrows, above, cards, freeMarks, chrome] { world.addSublayer(l) }
     backdrop.anchorPoint = .zero
     root.addSublayer(backdrop)
     root.addSublayer(world)
@@ -446,8 +459,10 @@ public final class CanvasView: NSView {
     if !keepCamera { camera = fit }
     motion = Motion()
     restZoom = nil
+    hoveredMark = nil
     applyCamera()
     arrive()
+    placeMarks()
     drawChrome()
   }
 
@@ -737,6 +752,8 @@ public final class CanvasView: NSView {
       for (i, l) in items.enumerated() { l.held.minificationFilter = linear.contains(i) ? .linear : .trilinear }
     }
     restZoom = camera.zoom
+    // the markers' strip and hit areas follow the zoom at rest
+    if marksZoom != camera.zoom { placeMarks() }
     // the card being written in keeps its paper: the editor draws its text
     let writing = editingIndex
     queue.replace(with: plan.jobs.filter { $0.item != writing })

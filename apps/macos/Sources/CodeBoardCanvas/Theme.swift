@@ -121,6 +121,12 @@ public struct Theme: Sendable {
   var shadowRadius: CGFloat
   /// Code colours (`--k-*`); plain code is `ink`
   var syntax: [TokenClass: CGColor]
+  /// A sidenote marker (--mark, --mark-ink), one with an open question (--ask, --ask-ink), and text on the accent
+  var mark = CGColor(srgbRed: 0x3b / 255, green: 0x38 / 255, blue: 0x33 / 255, alpha: 1)
+  var markInk = CGColor(srgbRed: 0xf6 / 255, green: 0xf4 / 255, blue: 0xef / 255, alpha: 1)
+  var ask = CGColor(srgbRed: 0xc4 / 255, green: 0x8a / 255, blue: 0x1f / 255, alpha: 1)
+  var askInk = CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
+  var accentInk = CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
 
   var code: Font
   var codeComment: Font
@@ -241,7 +247,7 @@ public struct Theme: Sendable {
     }
     let italic = Font.board("SourceSerif4-400i", size: 12, weight: nil, opticalSize: true) ?? serif(12, 400)
     let code = Font.board("JetBrainsMono-400-600", size: 11, weight: 400) ?? Font.mono(11, .regular)
-    return Theme(
+    var t = Theme(
       id: .inkWash, name: "Ink Wash",
       canvas: rgb(0xf6f5f1), backdrop: "ink-light", surface: rgb(surface), head: rgb(0, 0), ink: rgb(0x1d1c1a),
       ink2: rgb(0x4c4943), ink3: rgb(0x9a958b), accent: rgb(0xb8321f), line: rgb(0x1d1c1a, 0.08),
@@ -280,6 +286,10 @@ public struct Theme: Sendable {
       sectionTitleAt: CGPoint(x: 24, y: -17), sectionTitleHeight: 32, foldedTitleAt: CGPoint(x: 14, y: 4),
       arrowWidth: 2,
       metrics: CodeMetrics(charWidth: code.advance))
+    t.mark = rgb(0x1d1c1a)
+    t.markInk = rgb(0xfdfdfb)
+    t.accentInk = rgb(0xfdfdfb)
+    return t
   }()
 
   /// :root[data-theme="dark"] in styles.css; the card's edge and shadow are its --wi-ring and --wi-soft
@@ -287,6 +297,11 @@ public struct Theme: Sendable {
     var t = warmInk
     let surface: UInt32 = 0x252422
     t.dark = true
+    t.mark = rgb(0xd9d4ca)
+    t.markInk = rgb(0x1d1c1a)
+    t.ask = rgb(0xe0b055)
+    t.askInk = rgb(0x1d1c1a)
+    t.accentInk = rgb(0x1d1c1a)
     t.canvas = rgb(0x191816)
     t.surface = rgb(surface)
     t.head = rgb(0x2a2926)
@@ -331,6 +346,11 @@ public struct Theme: Sendable {
   public static let inkWashDark: Theme = {
     var t = inkWash
     t.dark = true
+    t.mark = rgb(0xe9e5da)
+    t.markInk = rgb(0x131312)
+    t.ask = rgb(0xe0b055)
+    t.askInk = rgb(0x1d1c1a)
+    t.accentInk = rgb(0x131312)
     t.canvas = rgb(0x131312)
     t.backdrop = "ink-dark"
     // the deckled sheet's paper (ink.ts), a shade off --surface, which box Notes mix their fills with

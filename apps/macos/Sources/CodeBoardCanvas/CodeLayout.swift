@@ -129,6 +129,11 @@ struct CodeLayout: Equatable, Sendable {
     }
   }
 
+  /// The row of a segment's line (its first, when it wraps), when it is shown
+  func row(segment: Int, line: Int) -> Placed? {
+    rows.first { if case .line(let s, let n?, _, _) = $0.row { s == segment && n == line } else { false } }
+  }
+
   /// The middle of the row of a segment's line, when it is shown
   func lineY(segment: Int, line: Int) -> CGFloat? {
     for p in rows {
