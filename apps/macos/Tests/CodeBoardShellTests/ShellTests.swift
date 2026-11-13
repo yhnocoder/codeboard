@@ -155,18 +155,23 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
     #expect(t.tabs.isEmpty && t.selected == nil)
   }
 
-  @Test func importSummaryCountsBoardsCardsFailuresAndLeftOut() {
+  @Test func importSummaryCountsBoardsCardsCopiesFailuresAndLeftOut() {
     let report = ImportReport(
       imported: [
         .init(source: "a.json", destination: "A.board", skipped: [.init(kind: .compareCard, ids: ["x", "y"])]),
         .init(source: "g/b.json", destination: "g/B.board", skipped: [.init(kind: .arrowSticker, ids: ["s"])]),
         .init(source: "cards/c.json", destination: ".codeboard/shared/c.json", skipped: []),
+        .init(source: "h.json", destination: "H copy.board", copyOf: "H.board", skipped: []),
       ],
       failed: [.malformed(URL(filePath: "/old/z.json"), "bad")])
     let summary = ImportSummary(report)
-    #expect(summary.title == "Imported 2 boards and 1 shared card")
-    #expect(summary.subtitle == "1 file could not be imported. 3 items left out, which this version does not keep yet.")
-    #expect(summary.details == ["/old/z.json: bad", "compare card: 2", "arrow sticker: 1"])
+    #expect(summary.title == "Imported 3 boards and 1 shared card")
+    #expect(
+      summary.subtitle
+        == "1 of them was in the vault already and came in as a copy, leaving what is there as it is. 1 file could not "
+        + "be imported. 3 items left out, which this version does not keep yet.")
+    #expect(
+      summary.details == ["/old/z.json: bad", "H copy.board: a copy of H.board", "compare card: 2", "arrow sticker: 1"])
   }
 
   @Test func theBoardPanelTakesTheCanvasThemesBackground() {

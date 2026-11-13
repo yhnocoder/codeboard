@@ -9,8 +9,9 @@ public enum LegacyImport {
   public static let versions = LegacyUpgrade.oldest...LegacyUpgrade.current
 
   /// Imports every board and shared card of the old storage folder `source` into the vault at `destination`. A file that
-  /// cannot be imported is listed in the report's failures and the rest go on; a board already in the vault (found by id,
-  /// wherever it is now) is written again in place, so running it twice gives the same files
+  /// cannot be imported is listed in the report's failures and the rest go on. It never writes over a file in the vault: a
+  /// board already there (found by id, wherever it is now) comes in as a copy, under a new id, and so does a shared card
+  /// whose file there has other content
   public static func run(from source: URL, to destination: URL) throws -> ImportReport {
     try checkPlaces(source: source, destination: destination)
     let fm = FileManager.default
@@ -28,9 +29,11 @@ public enum LegacyImport {
     }
     var run = Run(source: source, vault: vault)
     try run.sharedCards()
+    // the library cards are written with the boards' copies known, as a copy's Markdown may refer to them
     try run.boards(inVault: inVault)
     return ImportReport(
-      imported: run.entries.sorted { $0.source < $1.source }, failed: run.failed)
+      imported: run.entries.sorted { $0.source < $1.source },
+      failed: run.failed.sorted { String(describing: $0) < String(describing: $1) })
   }
 
   /// The vault is a folder of its own: not the old storage folder or inside it, and the old folder not its app-data folder
@@ -63,7 +66,17 @@ public struct ImportReport: Equatable, Sendable {
     public var source: String
     /// What it became, relative to the vault; nil: nothing (a shared card of a kind not imported yet)
     public var destination: String?
+    /// It was in the vault already (a board by id, a shared card with other content): the file there, relative to the
+    /// vault, which the import left as it was; `destination` is the copy
+    public var copyOf: String?
     public var skipped: [Skipped]
+
+    public init(source: String, destination: String?, copyOf: String? = nil, skipped: [Skipped]) {
+      self.source = source
+      self.destination = destination
+      self.copyOf = copyOf
+      self.skipped = skipped
+    }
   }
 
   public struct Skipped: Equatable, Sendable {
@@ -75,6 +88,7 @@ public struct ImportReport: Equatable, Sendable {
 
   /// Sorted by source
   public var imported: [Entry]
+  /// Sorted by what they say, which starts with the file
   public var failed: [LegacyImportError]
 }
 
@@ -117,6 +131,9 @@ public enum SkipKind: String, CaseIterable, Sendable {
   case danglingReference
   /// An image file the board names that is not in the old assets folder; the reference is kept
   case missingImage
+  /// An image of a shared card whose name the vault's shared images folder already has for other bytes: that file is left
+  /// as it is, and the card shows it
+  case imageNameTaken
   /// Any other field: known ones the model does not hold yet, and unknown ones
   case field
 }
@@ -174,6 +191,9 @@ private struct Run {
     self.vault = vault
   }
 
+  /// Each library card read and mapped, not written yet (`write` decides where it goes)
+  private var cards: [(file: URL, rel: String, card: SharedCard, mapper: Mapper)] = []
+
   mutating func sharedCards() throws {
     for file in jsonFiles(in: source.appending(path: "cards")) {
       let id = file.deletingPathExtension().lastPathComponent
@@ -207,16 +227,10 @@ private struct Run {
         }
         let sharedCard = SharedCard(id: cid, content: content, sidenotes: notes)
         if let p = sharedCard.problem() { throw Bad(p) }
-        let out = vault.sharedFolderURL.appending(path: "\(id).json")
-        try write(try sharedCard.encoded(), to: out)
-        for name in try copyImages(m, into: vault.sharedFolderURL.appending(path: Vault.imagesFolder)) {
-          m.skips.add(.missingImage, name)
-        }
         var isText = false
         if case .text = content.body { isText = true }
         shared[id] = .imported(tilted: tilted, segments: segments, text: isText)
-        let dest = "\(Vault.appDataFolder)/\(Vault.sharedFolder)/\(id).json"
-        entries.append(.init(source: rel, destination: dest, skipped: m.skips.list))
+        cards.append((file, rel, sharedCard, m))
       } catch let bad as Bad {
         failed.append(.malformed(file, bad.message))
       } catch let e as LegacyImportError {
@@ -225,6 +239,50 @@ private struct Run {
     }
   }
 
+  /// The library cards written: a card whose file is not in the vault yet under its own id; one whose file is there with
+  /// the same bytes is left as it is and used; one whose file is there with other content (the user changed it, or the
+  /// old one changed) becomes a copy under a new id, which the boards of this import show instead
+  private mutating func writeSharedCards() throws {
+    var taken = Set(cards.map(\.card.id.rawValue))
+    for (_, _, card, _) in cards {
+      let file = sharedFile(card.id.rawValue)
+      guard let there = try? Data(contentsOf: file), there != (try card.encoded()) else { continue }
+      let copy = copyID(card.id.rawValue) { taken.contains($0) || exists(sharedFile($0)) }
+      taken.insert(copy)
+      renames.cards[card.id] = CardID(rawValue: copy)
+    }
+    for (_, rel, card, m) in cards {
+      var m = m
+      do {
+        let dest: String
+        var copyOf: String?
+        if let new = renames.cards[card.id] {
+          var c = card
+          c.rename(renames)
+          let out = sharedFile(new.rawValue)
+          try write(try c.encoded(), to: out)
+          dest = sharedPath(new.rawValue)
+          copyOf = sharedPath(card.id.rawValue)
+        } else {
+          let out = sharedFile(card.id.rawValue)
+          if !exists(out) { try write(try card.encoded(), to: out) }
+          dest = sharedPath(card.id.rawValue)
+        }
+        let images = vault.sharedFolderURL.appending(path: Vault.imagesFolder)
+        for (kind, name) in try copyImages(m, into: images) { m.skips.add(kind, name) }
+        entries.append(.init(source: rel, destination: dest, copyOf: copyOf, skipped: m.skips.list))
+      } catch let e as LegacyImportError {
+        failed.append(e)
+      }
+    }
+  }
+
+  private func sharedFile(_ id: String) -> URL { vault.sharedFolderURL.appending(path: "\(id).json") }
+  private func sharedPath(_ id: String) -> String { "\(Vault.appDataFolder)/\(Vault.sharedFolder)/\(id).json" }
+
+  /// What this import renames: shared cards and boards that became copies
+  private var renames = Renames()
+
   mutating func boards(inVault: [BoardID: String]) throws {
     var files = jsonFiles(in: source).map { (file: $0, group: "", rel: $0.lastPathComponent) }
     for dir in subfolders(of: source) where !reserved.contains(dir.lastPathComponent) {
@@ -232,6 +290,8 @@ private struct Run {
       files += jsonFiles(in: dir).map { (file: $0, group: group, rel: "\(group)/\($0.lastPathComponent)") }
     }
     files.sort { $0.rel < $1.rel }
+    // first every board's id, so a board already in the vault gets its copy's id before anything refers to it
+    var read: [(file: URL, group: String, rel: String, o: Obj, version: Int, id: BoardID)] = []
     var seen: [BoardID: URL] = [:]
     for (file, group, rel) in files {
       do {
@@ -247,23 +307,37 @@ private struct Run {
         let id = BoardID(rawValue: raw)
         if let other = seen[id] { throw LegacyImportError.duplicateBoardID(file, id, other: other) }
         seen[id] = file
+        read.append((file, group, rel, o, version, id))
+      } catch let bad as Bad {
+        failed.append(.malformed(file, bad.message))
+      } catch let e as LegacyImportError {
+        failed.append(e)
+      }
+    }
+    var taken = Set(inVault.keys.map(\.rawValue)).union(seen.keys.map(\.rawValue))
+    for r in read where inVault[r.id] != nil {
+      let copy = copyID(r.id.rawValue) { taken.contains($0) }
+      taken.insert(copy)
+      renames.boards[r.id] = BoardID(rawValue: copy)
+    }
+    try writeSharedCards()
+    for (file, group, rel, o, version, id) in read {
+      do {
         var m = Mapper(version: version)
-        let board = try m.board(o, id: id, shared: shared)
+        var board = try m.board(o, id: id, shared: shared)
         if let p = board.problem() { throw Bad(p) }
-        let path: String
-        if let existing = inVault[id] {
-          path = existing
-        } else {
-          let folder = group.isEmpty ? "" : folderName(group)
-          let name = freeName(Vault.packageName(for: try o.string("name")), in: folder)
-          path = folder.isEmpty ? name : "\(folder)/\(name)"
-        }
+        board.rename(renames)
+        let folder = group.isEmpty ? "" : folderName(group)
+        // already in the vault: a copy beside where a new one would go, named as the Finder names a copy
+        let title = Vault.packageName(for: try o.string("name"))
+        let name = freeName(inVault[id] == nil ? title : "\(title) copy", in: folder)
+        let path = folder.isEmpty ? name : "\(folder)/\(name)"
         let package = vault.url(of: path)
         try write(try board.encoded(), to: package.appending(path: Vault.boardFileName))
-        for name in try copyImages(m, into: package.appending(path: Vault.imagesFolder)) {
-          m.skips.add(.missingImage, name)
+        for (kind, name) in try copyImages(m, into: package.appending(path: Vault.imagesFolder)) {
+          m.skips.add(kind, name)
         }
-        entries.append(.init(source: rel, destination: path, skipped: m.skips.list))
+        entries.append(.init(source: rel, destination: path, copyOf: inVault[id], skipped: m.skips.list))
       } catch let bad as Bad {
         failed.append(.malformed(file, bad.message))
       } catch let e as LegacyImportError {
@@ -271,6 +345,19 @@ private struct Run {
       }
     }
   }
+
+  /// `<id>-copy`, then `<id>-copy-2`, `-3`…: the first that is not taken
+  private func copyID(_ id: String, taken: (String) -> Bool) -> String {
+    let stem = String(id.prefix(80 - "-copy-9999".count))
+    var n = 1
+    while true {
+      let c = n == 1 ? "\(stem)-copy" : "\(stem)-copy-\(n)"
+      if !taken(c) { return c }
+      n += 1
+    }
+  }
+
+  private func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
 
   /// A group's folder name, never taken for a board package
   private func folderName(_ group: String) -> String {
@@ -292,29 +379,38 @@ private struct Run {
     return candidate
   }
 
-  /// Copies the images `m` found; returns the ones not in the old assets folder
-  private func copyImages(_ m: Mapper, into folder: URL) throws -> [String] {
+  /// Copies the images `m` found; returns what was left out: the ones not in the old assets folder, and (in the shared
+  /// images folder, which every shared card's images share) a name already used there for other bytes, which is left as it
+  /// is
+  private func copyImages(_ m: Mapper, into folder: URL) throws -> [(SkipKind, String)] {
     let assets = source.appending(path: "assets")
-    var missing: [String] = []
+    var out: [(SkipKind, String)] = []
+    var found: [(String, Data)] = []
     for name in m.images.sorted() {
       guard let data = try? Data(contentsOf: assets.appending(path: name)) else {
-        missing.append(name)
+        out.append((.missingImage, name))
         continue
       }
-      try write(data, to: folder.appending(path: name))
+      found.append((name, data))
     }
-    for (name, data) in m.dataImages.sorted(by: { $0.key < $1.key }) {
-      try write(data, to: folder.appending(path: name))
+    found += m.dataImages.sorted(by: { $0.key < $1.key })
+    for (name, data) in found {
+      let url = folder.appending(path: name)
+      if let there = try? Data(contentsOf: url) {
+        if there != data { out.append((.imageNameTaken, name)) }
+        continue
+      }
+      try write(data, to: url)
     }
-    return missing
+    return out
   }
 
-  /// Written only when it differs, so a re-import leaves unchanged files alone
+  /// Writes a file that is not there yet: an import never writes over a file in the vault
   private func write(_ data: Data, to url: URL) throws {
-    if (try? Data(contentsOf: url)) == data { return }
+    guard !exists(url) else { throw LegacyImportError.unwritable(url, "it is already in the vault") }
     do {
       try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-      try data.write(to: url, options: .atomic)
+      try data.write(to: url, options: .withoutOverwriting)
     } catch {
       throw LegacyImportError.unwritable(url, error.localizedDescription)
     }
@@ -1063,6 +1159,119 @@ private struct Obj {
       if v is NSNull { return nil }
       guard let n = v as? NSNumber, !isBool(n) else { throw Bad("\(at(key)): expected numbers or null") }
       return n.doubleValue
+    }
+  }
+}
+
+// MARK: Copies
+
+/// The ids an import gives what became a copy: shared cards and boards already in the vault. Everything this import writes
+/// refers to the copies, so what came in together stays together
+private struct Renames {
+  var cards: [CardID: CardID] = [:]
+  var boards: [BoardID: BoardID] = [:]
+
+  func card(_ id: CardID) -> CardID { cards[id] ?? id }
+
+  /// [[label#^target]] refs to a renamed card or board (`card`, `board`, `board/card`) point at the copy
+  func markdown(_ md: String) -> String {
+    guard !cards.isEmpty || !boards.isEmpty else { return md }
+    return LegacyUpgrade.mapRefs(md) { label, target in
+      guard let target else { return nil }
+      let parts = target.split(separator: "/").map(String.init)
+      let new: String
+      if parts.count == 2 {
+        let b = boards[BoardID(rawValue: parts[0])]?.rawValue ?? parts[0]
+        new = "\(b)/\(cards[CardID(rawValue: parts[1])]?.rawValue ?? parts[1])"
+      } else {
+        new = cards[CardID(rawValue: target)]?.rawValue ?? boards[BoardID(rawValue: target)]?.rawValue ?? target
+      }
+      return new == target ? nil : "[[\(label)#^\(new)]]"
+    }
+  }
+}
+
+extension Board {
+  fileprivate mutating func rename(_ r: Renames) {
+    id = r.boards[id] ?? id
+    for i in cards.indices { cards[i].rename(r) }
+    for i in arrows.indices { arrows[i].rename(r) }
+    for i in sections.indices { sections[i].description = sections[i].description.map(r.markdown) }
+    for i in sidenotes.indices { sidenotes[i].rename(r) }
+    for i in stickers.indices { stickers[i].rename(r) }
+    for e in shelf.indices {
+      for i in shelf[e].cards.indices { shelf[e].cards[i].rename(r) }
+      for i in shelf[e].sections.indices {
+        shelf[e].sections[i].description = shelf[e].sections[i].description.map(r.markdown)
+      }
+      for i in shelf[e].arrows.indices { shelf[e].arrows[i].rename(r) }
+      for i in shelf[e].stickers.indices { shelf[e].stickers[i].rename(r) }
+    }
+  }
+}
+
+extension SharedCard {
+  fileprivate mutating func rename(_ r: Renames) {
+    id = r.card(id)
+    content.rename(r)
+    for i in sidenotes.indices { sidenotes[i].rename(r) }
+  }
+}
+
+extension Card {
+  fileprivate mutating func rename(_ r: Renames) {
+    id = r.card(id)
+    if case .own(var c) = content {
+      c.rename(r)
+      content = .own(c)
+    }
+  }
+}
+
+extension CardContent {
+  fileprivate mutating func rename(_ r: Renames) {
+    description = description.map(r.markdown)
+    switch body {
+    case .note(var n):
+      n.text = r.markdown(n.text)
+      body = .note(n)
+    case .text(var t):
+      t.text = r.markdown(t.text)
+      body = .text(t)
+    case .board(let b):
+      body = .board(SubBoard(board: r.boards[b.board] ?? b.board))
+    case .code, .image, .web, .links: break
+    }
+  }
+}
+
+extension Arrow {
+  fileprivate mutating func rename(_ r: Renames) {
+    from.card = r.card(from.card)
+    to.card = r.card(to.card)
+  }
+}
+
+extension Sidenote {
+  fileprivate mutating func rename(_ r: Renames) {
+    if case .card(let c, let s, let l, let b) = anchor { anchor = .card(r.card(c), segment: s, lines: l, block: b) }
+    if case .text(var t) = body {
+      t.text = r.markdown(t.text)
+      if var q = t.question {
+        for i in q.answers.indices { q.answers[i].text = r.markdown(q.answers[i].text) }
+        t.question = q
+      }
+      body = .text(t)
+    }
+  }
+}
+
+extension Sticker {
+  fileprivate mutating func rename(_ r: Renames) {
+    switch anchor {
+    case .canvas: break
+    case .card(let c, let x, let y, let size): anchor = .card(r.card(c), x: x, y: y, size: size)
+    case .line(let c, let s, let l): anchor = .line(r.card(c), segment: s, line: l)
     }
   }
 }

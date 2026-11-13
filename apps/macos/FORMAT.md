@@ -200,10 +200,23 @@ stored precomposed (NFC), and an empty one is `Untitled`. A name already in the 
 normalisation, as APFS does) gets ` 2`, ` 3`… in the order of the old files' paths. A group folder name ending in `.board`
 gets a `-`.
 
-**Re-import**: a board whose id is already in the vault is written in place, wherever the user moved or renamed its
-package; a shared card by its file name. Files are only written when their bytes differ. Same input and same vault give
-byte-identical files. Re-import replaces the board's content (fine while the app only views; see open questions). Boards
-deleted in VS Code stay in the vault; images no longer used stay in `images/`.
+**Importing again never overwrites** (decided: a board is imported once and never overwritten). The import writes only
+files that are not in the vault yet; a file that is there is never written, whatever its content:
+
+- A board whose id is already in the vault (wherever the user moved or renamed its package) comes in as a copy: the id
+  `<id>-copy` (then `-copy-2`, `-copy-3`… the first not in the vault), the package named as the Finder names a copy,
+  `<title> copy.board`, then `<title> copy 2.board`…, where a new board would go (its group folder).
+- A shared card whose file is there with the same bytes is used as it is. One whose file there has other content (the
+  user changed it, or the old card changed) comes in as a copy under `<id>-copy` (and so on), with its sidenotes on it.
+- What came in together refers to the copies: every board of the import shows the copied shared card (its placed card
+  takes the new id, and its arrows, sidenotes and stickers follow), a sub-board card shows the copy of a board that was
+  copied, and `[[…#^<id>]]` refs in the imported Markdown (`card`, `board`, `board/card`) to a renamed card or board
+  point at the copy. The files that were there keep referring to what they referred to.
+- An image is copied only where no file of that name is: a copy's package is new, so its images are its own; in
+  `.codeboard/shared/images/`, which all shared cards share, a name already there with other bytes is left as it is
+  (`imageNameTaken`; the old host names images by their content, so this means a changed file).
+- The report lists each copy with the file it is a copy of (`copyOf`). Same input and same vault give the same files;
+  images no longer used stay in `images/`, and boards deleted in VS Code stay in the vault.
 
 **Mapping**:
 
@@ -271,7 +284,8 @@ holds more. Kinds:
   exist: left out)
 - `arrowSticker`: a sticker on an arrow (where it is drawn depends on the arrow's route, which the importer does not lay
   out), `stickerPack`: a sticker from a sticker pack or a built-in glyph the format does not have
-- `missingImage`: named but not in `assets/` (the reference is kept)
+- `missingImage`: named but not in `assets/` (the reference is kept); `imageNameTaken`: a shared card's image whose name
+  the vault's shared images already have for other bytes (left as it is)
 - `field` (`<owner id>.<field>`): any other field, known or unknown: e.g. `born`, `seq`, `marks`, `legend`, `hideNumbers`
   (it hides the call graph marks, which are not drawn; line numbers are always drawn), `place.collapsed`, `place.start`,
   `segment.keep`, `keepOld`, free code's `url` and `langPicked`, a sub-board's `pcols`, a code sidenote's `why`, a Note's

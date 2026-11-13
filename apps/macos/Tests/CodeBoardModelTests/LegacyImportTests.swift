@@ -341,34 +341,110 @@ private func fixtureVaultCopy() throws -> URL {
   #expect(long.utf8.count <= 200 && long.allSatisfy { $0 == "长" })
 }
 
-@Test func reimportIsByteIdentical() throws {
-  let source = try fixtureStorage()
-  let dst = try scratch().appending(path: "vault")
-  let first = try LegacyImport.run(from: source, to: dst)
-  let after = try files(under: dst)
-  let second = try LegacyImport.run(from: source, to: dst)
-  #expect(try files(under: dst) == after)
-  #expect(second == first)
+/// The first import's files, as the user may have changed them since, byte for byte
+private func unchanged(_ before: [String: Data], _ after: [String: Data]) -> [String] {
+  before.keys.sorted().filter { after[$0] != before[$0] }
 }
 
-@Test func reimportFindsARenamedAndMovedBoardByID() throws {
+@Test func importingTwiceLeavesTheFirstImportAloneAndMakesCopies() throws {
+  let source = try fixtureStorage()
+  let dst = try scratch().appending(path: "vault")
+  _ = try LegacyImport.run(from: source, to: dst)
+  let first = try files(under: dst)
+  let second = try LegacyImport.run(from: source, to: dst)
+  #expect(second.failed.isEmpty)
+  #expect(unchanged(first, try files(under: dst)).isEmpty)
+  // the boards came in as copies beside where they were; the shared card, the same as the vault's, is used as it is
+  #expect(
+    second.imported.map { [$0.source, $0.destination ?? "-", $0.copyOf ?? "-"] } == [
+      ["bflow1.json", "Engine step copy.board", "Engine step.board"],
+      ["cards/cshared.json", ".codeboard/shared/cshared.json", "-"],
+      [
+        "engine/bsched.json", "engine/Scheduler- prefill-decode copy.board",
+        "engine/Scheduler- prefill-decode.board",
+      ],
+    ])
+  let vault = Vault(root: dst)
+  let original = try vault.board(at: "Engine step.board")
+  let copy = try vault.board(at: "Engine step copy.board")
+  #expect(copy.id.rawValue == "bflow1-copy")
+  var same = copy
+  same.id = original.id
+  #expect(same == original, "a copy of the same old board is the same board under another id")
+  // a third import: copy 2, with its own id
+  let third = try LegacyImport.run(from: source, to: dst)
+  #expect(third.imported.first?.destination == "Engine step copy 2.board")
+  #expect(try vault.board(at: "Engine step copy 2.board").id.rawValue == "bflow1-copy-2")
+  #expect(try vault.tree().allBoards.count == 6)
+}
+
+@Test func importingAgainAfterTheUserChangedTheVaultChangesNothingOfIt() throws {
   let source = try fixtureStorage()
   let dst = try scratch().appending(path: "vault")
   _ = try LegacyImport.run(from: source, to: dst)
   let fm = FileManager.default
+  // the user moves and renames a board, edits it and the shared card, and deletes an image
   try fm.createDirectory(at: dst.appending(path: "Mine/Deep"), withIntermediateDirectories: true)
   try fm.moveItem(at: dst.appending(path: "Engine step.board"), to: dst.appending(path: "Mine/Deep/Renamed.board"))
-  // the old board changes in VS Code meanwhile
-  let file = source.appending(path: "bflow1.json")
-  var old = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
-  old["hideAllComments"] = true
-  try put(old, at: file)
-  let report = try LegacyImport.run(from: source, to: dst)
-  #expect(report.imported.first { $0.source == "bflow1.json" }?.destination == "Mine/Deep/Renamed.board")
-  #expect(!fm.fileExists(atPath: dst.appending(path: "Engine step.board").path))
   let vault = Vault(root: dst)
-  #expect(try vault.board(at: "Mine/Deep/Renamed.board").hideComments)
-  #expect(try vault.tree().allBoards.count == 2)
+  var edited = try vault.board(at: "Mine/Deep/Renamed.board")
+  edited.hideComments.toggle()
+  try edited.encoded().write(to: dst.appending(path: "Mine/Deep/Renamed.board/board.json"))
+  var card = try vault.sharedCard(CardID(rawValue: "cshared"))
+  card.content.title = "Changed here"
+  try card.encoded().write(to: vault.sharedFolderURL.appending(path: "cshared.json"))
+  try fm.removeItem(at: dst.appending(path: "Mine/Deep/Renamed.board/images/0a1b2c3d4e5f6071-1x1.png"))
+  let before = try files(under: dst)
+
+  let report = try LegacyImport.run(from: source, to: dst)
+  #expect(report.failed.isEmpty)
+  #expect(unchanged(before, try files(under: dst)).isEmpty)
+  #expect(!fm.fileExists(atPath: dst.appending(path: "Mine/Deep/Renamed.board/images/0a1b2c3d4e5f6071-1x1.png").path))
+  #expect(
+    report.imported.map { [$0.source, $0.destination ?? "-", $0.copyOf ?? "-"] } == [
+      ["bflow1.json", "Engine step copy.board", "Mine/Deep/Renamed.board"],
+      ["cards/cshared.json", ".codeboard/shared/cshared-copy.json", ".codeboard/shared/cshared.json"],
+      [
+        "engine/bsched.json", "engine/Scheduler- prefill-decode copy.board",
+        "engine/Scheduler- prefill-decode.board",
+      ],
+    ])
+  // the shared card the user changed stays theirs; the copies show the incoming one, under its new id
+  let copied = try vault.sharedCard(CardID(rawValue: "cshared-copy"))
+  #expect(copied.content.title == nil && copied.sidenotes.map(\.anchor.card) == [CardID(rawValue: "cshared-copy")])
+  for path in ["Engine step copy.board", "engine/Scheduler- prefill-decode copy.board"] {
+    let b = try vault.board(at: path)
+    #expect(b.cards.contains { $0.id.rawValue == "cshared-copy" && $0.content == .shared })
+    #expect(!b.cards.contains { $0.id.rawValue == "cshared" })
+  }
+  #expect(try vault.board(at: "engine/Scheduler- prefill-decode.board").cards.contains { $0.id.rawValue == "cshared" })
+}
+
+@Test func whatCameInTogetherRefersToTheCopies() throws {
+  let sub = oldBoard("bsub", name: "Inner")
+  let outer = oldBoard(
+    "bout", name: "Outer",
+    cards: [
+      ["id": "s", "kind": "board", "board": "bsub"],
+      oldNote("n").merging(["md": "see [[Inner#^bsub]] and [[Card#^bsub/x]] and [[Shared#^lib]]"]) { $1 },
+      ["id": "lib", "kind": "shared"],
+    ])
+  let lib = ["version": 17, "card": oldNote("lib").merging(["md": "mine is [[Shared#^lib]]"]) { $1 }] as [String: Any]
+  let (vault, _, source) = try importing(["a.json": sub, "b.json": outer], shared: ["lib": lib])
+  var card = try vault.sharedCard(CardID(rawValue: "lib"))
+  card.content.title = "Edited"
+  try card.encoded().write(to: vault.sharedFolderURL.appending(path: "lib.json"))
+  let report = try LegacyImport.run(from: source, to: vault.root)
+  #expect(report.failed.isEmpty)
+  let copy = try vault.board(at: "Outer copy.board")
+  #expect(copy.cards[0].content == .own(CardContent(body: .board(SubBoard(board: BoardID(rawValue: "bsub-copy"))))))
+  let refs = "see [[Inner#^bsub-copy]] and [[Card#^bsub-copy/x]] and [[Shared#^lib-copy]]"
+  #expect(copy.cards[1].content == .own(CardContent(body: .note(Note(text: refs)))))
+  let lib2 = try vault.sharedCard(CardID(rawValue: "lib-copy"))
+  #expect(lib2.content.body == .note(Note(text: "mine is [[Shared#^lib-copy]]")))
+  // the originals refer to the originals
+  let first = try vault.board(at: "Outer.board")
+  #expect(first.cards[0].content == .own(CardContent(body: .board(SubBoard(board: BoardID(rawValue: "bsub"))))))
 }
 
 @Test func otherVersionsAndMalformedFilesFailOneByOne() throws {
