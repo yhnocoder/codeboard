@@ -141,8 +141,10 @@ async function measure(ids: string[]): Promise<Record<string, Size>> {
   const complete = await settled(there.map(([, s]) => s.card));
   const out: Record<string, Size> = {};
   there.forEach(([id, s], i) => {
+    // at 100 %: a Note last shown for a picture is still under its zoom
+    const k = Number(s.slot.dataset.k ?? 1);
     const r = s.card.getBoundingClientRect();
-    out[id] = { width: r.width, height: r.height, complete: complete[i] };
+    out[id] = { width: r.width / k, height: r.height / k, complete: complete[i] };
   });
   return out;
 }
@@ -244,10 +246,13 @@ window.note = {
     if (shown && shown !== s) {
       shown.slot.classList.remove("shown");
       shown.slot.style.transform = "";
+      delete shown.slot.dataset.k;
     }
     shown = s;
     s.slot.classList.add("shown");
     s.slot.style.transform = k === 1 ? "" : `scale(${k})`;
+    // what is measured of it is divided by it (measure, first): sizes and places are at 100 %
+    s.slot.dataset.k = String(k);
     return (await settled([s.card], true))[0];
   },
   /** Lets these go */

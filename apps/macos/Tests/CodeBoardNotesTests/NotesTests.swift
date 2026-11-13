@@ -204,6 +204,29 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
         ```
         """))
 
+  @Test func aNoteDrawnAtAScaleIsStillMeasuredAt100Percent() async throws {
+    _ = NSApplication.shared
+    let page = NoteRenderer.bundledPage.appending(path: "page.html").path(percentEncoded: false)
+    try #require(FileManager.default.fileExists(atPath: page), "build the Note page first: node web/build.mjs")
+    let cache = try tempFolder()
+    let folder = try tempFolder()
+    defer {
+      try? FileManager.default.removeItem(at: cache)
+      try? FileManager.default.removeItem(at: folder)
+    }
+    let box = NoteBody.text(TextCard(text: "Check the bounds", look: .box, wrap: true))
+    let req = NoteRenderer.SizeRequest(note: box, width: 180, folder: folder, look: "warm-ink", dark: false)
+    let r = NoteRenderer(cache: cache)
+    let plain = try #require(try await r.firstGlyphs(of: [req])[0])
+    // its picture drawn finer than the page's backing scale leaves it shown under a CSS scale there: what is measured
+    // of it is still at 100 %
+    _ = try await r.snapshot(
+      of: box, width: 180, height: nil, folder: folder, scale: 4, look: "warm-ink", dark: false, priority: 0)
+    let after = try #require(try await r.firstGlyphs(of: [req])[0])
+    #expect(after.size == plain.size)
+    #expect(after.first == plain.first)
+  }
+
   @Test func drawsAtEachScaleThenReadsFromDisk() async throws {
     _ = NSApplication.shared
     let page = NoteRenderer.bundledPage.appending(path: "page.html").path(percentEncoded: false)
