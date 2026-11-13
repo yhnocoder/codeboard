@@ -18,6 +18,17 @@ enum FontBook {
   static func forget() {
     cache.removeAll()
     metrics.removeAll()
+    families.withLock { $0 = nil }
+  }
+
+  /// The font families this Mac has now (installed, or registered by this process); never a downloadable one not yet
+  /// downloaded. Read once, again after fonts are registered
+  private static let families = Mutex<Set<String>?>(nil)
+  static func installed(_ family: String) -> Bool {
+    families.withLock { f in
+      if f == nil { f = Set((CTFontManagerCopyAvailableFontFamilyNames() as? [String]) ?? []) }
+      return f!.contains(family)
+    }
   }
 
   /// Families cut into several files by character (as the web loads them with unicode-range), each weight's files
@@ -83,11 +94,10 @@ enum FontBook {
       let f = NSFont.monospacedSystemFont(ofSize: size, weight: NSFont.Weight(CGFloat(trait(weight))))
       return CTFontCopyFontDescriptor(f as CTFont)
     }
-    let attrs: [CFString: Any] = [kCTFontFamilyNameAttribute: name]
-    let d = CTFontDescriptorCreateWithAttributes(attrs as CFDictionary)
-    // is the family there at all?
-    guard CTFontDescriptorCreateMatchingFontDescriptor(d, nil) != nil else { return nil }
-    return d
+    // only a family this Mac has: matching one it does not (a downloadable system font such as Kaiti SC, not yet
+    // downloaded) makes CoreText download it there and then, waiting on the download, which may never finish
+    guard installed(name) else { return nil }
+    return CTFontDescriptorCreateWithAttributes([kCTFontFamilyNameAttribute: name] as CFDictionary)
   }
 
   private static func make(_ k: Key) -> CTFont {

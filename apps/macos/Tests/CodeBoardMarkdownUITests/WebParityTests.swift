@@ -100,3 +100,28 @@ import Testing
     #expect(abs(f.midX - 166) < 1, "\(f)")
   }
 }
+
+/// A theme whose named fonts the machine does not have falls back at once to the system font (no download of a
+/// downloadable system font, no wait): a family CoreText would never find exercises the same path on every machine as
+/// a downloadable one absent on the runner
+@Suite(.timeLimit(.minutes(1))) struct MissingFontTests {
+  @Test func anAbsentFamilyIsNotMatched() {
+    #expect(!FontBook.installed("Totally Missing Family 12345"))
+    let font = FontBook.font(["Totally Missing Family 12345", "Another Absent One"], size: 13.5)
+    // the system font (or its own fallback) stood in, not the missing family
+    #expect(!(CTFontCopyFamilyName(font) as String).contains("Missing"))
+  }
+
+  @Test func aThemeWithMissingFontsStillLaysOut() {
+    var t = testTheme
+    t.fonts.body = ["Totally Missing Family 12345", "Another Absent One"]
+    t.fonts.headings = Array(repeating: t.fonts.body, count: 6)
+    t.fonts.mono = ["No Such Mono"]
+    t.fonts.hand = ["No Such Hand", "No Such CJK"]
+    // Chinese (a fallback), bold, a heading, code, a Mark's hand font: every path that asks for a family
+    let l = MarkdownLayout.make(
+      MarkdownDocument("# 标题\n\n正文 **bold** `code` and 中文 text"), width: 300, theme: t, layout: nil,
+      resources: TestResources())
+    #expect(!l.items.isEmpty)
+  }
+}
