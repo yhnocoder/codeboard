@@ -219,6 +219,30 @@ test("noteBlockMoveLink", async () => {
   );
 });
 
+/** ⌘ (Ctrl) with the pointer inside a code block's editor: that press is CodeMirror's (another cursor), so nothing is outlined
+ *  or picked up there and the code editor gets the click */
+test("noteBlockModClickInCode", async () => {
+  const h = await board();
+  const c = await box(h, `${card("n1")} .md-pm .cm-editor .cm-line`);
+  await h.page.keyboard.down("ControlOrMeta");
+  await h.page.mouse.move(c.x + 10, c.y + 4);
+  await h.page.mouse.move(c.x + 14, c.y + 5);
+  await idle(h);
+  const outline = await h.page.locator(".bmv-box.is-on").count();
+  await h.page.mouse.click(c.x + 14, c.y + 5);
+  await h.page.keyboard.up("ControlOrMeta");
+  await idle(h);
+  check(
+    "noteBlockModClickInCode nothing outlined or picked up",
+    outline === 0 && (await h.page.locator(".bmv-g").count()) === 0,
+    { outline },
+  );
+  check(
+    "noteBlockModClickInCode the code editor has the click",
+    (await h.page.locator(".cm-editor.cm-focused").count()) === 1,
+  );
+});
+
 /** A picked-up block floating beside its Note goes with its board: switching to another board leaves nothing of it there (the
  *  copy, the card's bottom edge strip, a height held on the card) */
 test("noteBlockFloatBoardSwitch", async () => {

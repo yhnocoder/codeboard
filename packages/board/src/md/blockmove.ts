@@ -21,6 +21,7 @@ import {
   type MdPart,
 } from "@yhnocoder/markdown";
 import type { MdBlocks } from "@yhnocoder/markdown/editor";
+import { IS_MAC } from "@yhnocoder/markdown/ui";
 import { editorOf } from "./load";
 import { commandEnv } from "../actions/env";
 import { editing, setEditing } from "../state/ui";
@@ -115,6 +116,10 @@ function grabbing(d: Move, on: boolean) {
   if (!on) d.held = null;
 }
 /** What is under the pointer beneath the block-move layer */
+/** The key that picks up blocks: ⌘ on a Mac (Ctrl-click there is the context menu), Ctrl elsewhere */
+const modHeld = (e: MouseEvent | KeyboardEvent) => (IS_MAC ? e.metaKey : e.ctrlKey);
+/** Where a press with that key is not for moving blocks: a link opens, a code block's editor adds a cursor */
+const NOT_BLOCKS = "a[href], .cm-editor";
 const under = (e: PointerEvent) =>
   document.elementsFromPoint(e.clientX, e.clientY).find((x) => !view.lay?.contains(x)) ?? null;
 const cardEl = (id: string) => document.querySelector<HTMLElement>(cardSel(id));
@@ -137,7 +142,7 @@ function layer(): HTMLElement | null {
   const box = (view.box = document.createElement("div"));
   box.className = "bmv-box";
   box.addEventListener("pointermove", (e) => {
-    keys.v.mod = e.metaKey || e.ctrlKey;
+    keys.v.mod = modHeld(e);
     if (hot.v) hover(hot.v.card, under(e));
   });
   box.addEventListener("pointerleave", (e) => {
@@ -509,7 +514,7 @@ function clearHover() {
 /** ⌘ held over a block of the Note being edited: one outline round the blocks a press would take */
 function hover(id: string, t: EventTarget | null) {
   const ed = edBlocks(id);
-  if (!keys.v.mod || !ed || mv.v || !(t instanceof Element) || t.closest("a[href]")) return clearHover();
+  if (!keys.v.mod || !ed || mv.v || !(t instanceof Element) || t.closest(NOT_BLOCKS)) return clearHover();
   const els = ed.els(),
     i = els.findIndex((e) => e.contains(t));
   if (i < 0) return clearHover();
@@ -794,8 +799,8 @@ const back = () => {
 
 /** A press with ⌘ on a block of the Note being edited: a drag moves it, a click picks it up */
 function blockDown(id: string, e: PointerEvent, t = e.target as Element | null) {
-  if (e.button !== 0 || !(e.metaKey || e.ctrlKey) || mv.v || !t) return clearHover();
-  if (t.closest("a[href]")) return;
+  if (e.button !== 0 || !modHeld(e) || mv.v || !t) return clearHover();
+  if (t.closest(NOT_BLOCKS)) return;
   const ed = edBlocks(id);
   const i = ed ? ed.els().findIndex((x) => x.contains(t)) : -1;
   if (!ed || i < 0) return;
@@ -834,7 +839,7 @@ function floatDown(e: PointerEvent) {
   e.preventDefault();
   e.stopPropagation();
   keys.v.eatClick = true;
-  if (e.metaKey || e.ctrlKey) return back();
+  if (modHeld(e)) return back();
   const p0 = worldAt({ x: e.clientX, y: e.clientY });
   track(
     e,
@@ -877,7 +882,7 @@ export function wireBlockMove() {
       ),
     ),
   );
-  const modKey = (e: KeyboardEvent) => e.key === "Meta" || e.key === "Control";
+  const modKey = (e: KeyboardEvent) => e.key === (IS_MAC ? "Meta" : "Control");
   window.addEventListener(
     "keydown",
     (e) => {
@@ -890,7 +895,7 @@ export function wireBlockMove() {
       }
       const d = mv.v;
       if (!d || d.settling) return;
-      const z = (e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "z";
+      const z = modHeld(e) && !e.altKey && e.key.toLowerCase() === "z";
       if (e.key !== "Escape" && !z) return;
       // nothing was written yet: Esc and ⌘Z put it back without an undo step; ⇧⌘Z does nothing
       e.preventDefault();
@@ -954,7 +959,7 @@ export function wireBlockMove() {
         ce.addEventListener(
           "pointermove",
           (e) => {
-            keys.v.mod = e.metaKey || e.ctrlKey;
+            keys.v.mod = modHeld(e);
             hover(id, e.target);
           },
           { signal: ctl.signal, passive: true },
