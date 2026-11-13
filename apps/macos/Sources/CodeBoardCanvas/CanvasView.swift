@@ -99,6 +99,14 @@ public final class CanvasView: NSView {
   let marquee = CAShapeLayer()
   /// The arrows' layers, as `scene.arrows`
   var arrowGroups: [[CALayer]] = []
+  /// Arrows routed again while their cards move, by index in `scene.arrows`
+  var routedArrows: [Int: Scene.Arrow] = [:]
+  /// The arrow under the pointer, drawn as selected
+  var hoveredArrow: ArrowID?
+  /// The label being written, where its centre is on the board, and a written one's field until the board shows it
+  var labelEditing: LabelEditing?
+  var labelCentre = CGPoint.zero
+  var closingLabel: NSTextField?
   /// The zoom that fits the board, which overviews are drawn for
   var fitZoom: CGFloat = 1
   /// The framed cards' shadow, made once per theme
@@ -384,9 +392,13 @@ public final class CanvasView: NSView {
     _ s: Scene, overviews: [Overview], shadow: (IOSurface, margin: CGFloat)?, theme: Theme, keepCamera: Bool
   ) {
     cancelRedraws()
+    endLabelEditing(commit: true)
+    labelShown()
     self.theme = theme
     cardShadow = shadow
     scene = s
+    routedArrows = [:]
+    hoveredArrow = nil
     withoutAnimation {
       layer?.backgroundColor = theme.canvas
       backdropImage = theme.backdrop.flatMap(Backdrop.image)
@@ -538,6 +550,8 @@ public final class CanvasView: NSView {
       world.sublayerTransform = m
       if chrome.sublayers?.isEmpty == false { drawChrome() }
       if editing != nil { cameraMovedWhileEditing() }
+      // a label being written is kept when the camera moves
+      if labelEditing != nil { endLabelEditing(commit: true) }
       // a zoom (not a pan) away from the rest zoom: the held bitmaps take over, with mipmaps
       if let z = restZoom, z != camera.zoom {
         restZoom = nil

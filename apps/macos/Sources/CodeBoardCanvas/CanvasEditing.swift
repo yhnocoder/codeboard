@@ -23,6 +23,8 @@ struct Gesture {
     case nudge(Move)
     /// Pressed on something that cannot move (locked): nothing happens until the release
     case still
+    /// An arrow's label dragged along its line
+    case label(LabelDrag)
   }
 
   var kind: Kind
@@ -260,6 +262,13 @@ extension CanvasView {
     }
     scene = s
     items = next
+    routedArrows = [:]
+    if let h = hoveredArrow, !s.arrows.contains(where: { $0.id == h }) { hoveredArrow = nil }
+    labelShown()
+    // the label being written stays hidden under its field
+    if let le = labelEditing, let li = index(of: .arrowLabel(le.id)) {
+      withoutAnimation { items[li].box.isHidden = true }
+    }
     // a swap made here otherwise reaches the screen a frame later than the layers it replaces go
     CATransaction.flush()
     arrive()
@@ -398,6 +407,7 @@ extension CanvasView {
     let accent = theme.accent
     withoutAnimation {
       chrome.sublayers = nil
+      drawArrowChrome()
       for item in doc.selection {
         guard let r = liveRect(item) else { continue }
         switch item {
@@ -665,14 +675,25 @@ extension CanvasView {
     super.updateTrackingAreas()
     for t in trackingAreas where t.owner === self { removeTrackingArea(t) }
     addTrackingArea(
-      NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self))
+      NSTrackingArea(
+        rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
   }
 
   public override func mouseMoved(with e: NSEvent) {
     guard gesture == nil else { return }
     let v = convert(e.locationInWindow, from: nil)
-    if let (_, edge) = hitHandle(v) { resizeCursor(edge).set() } else { NSCursor.arrow.set() }
+    let arrow = hitHandle(v) == nil ? arrowAt(camera.board(v)) : nil
+    if let (_, edge) = hitHandle(v) {
+      resizeCursor(edge).set()
+    } else if arrow != nil {
+      NSCursor.pointingHand.set()
+    } else {
+      NSCursor.arrow.set()
+    }
+    hover(arrow)
   }
+
+  public override func mouseExited(with e: NSEvent) { hover(nil) }
 
   // MARK: Pointer
 
@@ -698,8 +719,13 @@ extension CanvasView {
     }
     let toggle = !e.modifierFlags.isDisjoint(with: [.shift, .command])
     var item: Item?
-    if let id = hitCard(p) {
+    if let id = hitArrowLabel(p) {
+      item = .arrow(id)
+    } else if let id = hitCard(p) {
       item = .card(id)
+    } else if let id = hitArrow(p) {
+      // a line is drawn over the Section titles, under the cards
+      item = .arrow(id)
     } else if let id = hitSectionTitle(p) {
       item = .section(id)
     } else if e.modifierFlags.contains(.command), let id = deepestSection(p) {
@@ -723,6 +749,18 @@ extension CanvasView {
     switch g.kind {
     case .press(let item, let toggle, _, _):
       guard hypot(v.x - g.startView.x, v.y - g.startView.y) >= dragSlop else { return }
+      if case .arrow(let id)? = item {
+        // its label slides along it; the line itself stays where its cards are
+        if hitArrowLabel(g.start) == id, let d = startLabelDrag(id, at: g.start) {
+          g.kind = .label(d)
+          gesture = g
+          mouseDragged(with: e)
+        } else {
+          g.kind = .still
+          gesture = g
+        }
+        return
+      }
       if item != nil {
         guard let m = makeMove(doc.selection) else {
           g.kind = .still
@@ -764,6 +802,11 @@ extension CanvasView {
       g.kind = .resize(z)
       gesture = g
       showResize(z)
+    case .label(var d):
+      d.t = CanvasView.dragT(d, p)
+      g.kind = .label(d)
+      gesture = g
+      showLabelDrag(d)
     case .nudge, .still:
       break
     }
@@ -794,6 +837,8 @@ extension CanvasView {
       drawChrome()
     case .resize(let z):
       commitResize(z)
+    case .label(let d):
+      commitLabelDrag(d)
     case .nudge, .still:
       gesture = nil
     }
@@ -856,6 +901,7 @@ extension CanvasView {
       let a = s.arrowModels[i]
       guard let from = placed(a.from.card), let to = placed(a.to.card) else { continue }
       let (arrow, label) = Scene.route(a, from: from, to: to, theme: theme)
+      routedArrows[i] = arrow
       let ls = CanvasView.arrowLayers(arrow, theme)
       let old = arrowGroups[i]
       if let first = old.first {
@@ -1137,6 +1183,8 @@ extension CanvasView {
     case 36, 76:  // Return writes in the one Note, Text or Box selected
       if doc.selection.count == 1, let id = doc.selection.first?.card, isWriting(id) {
         beginEditing(id)
+      } else if doc.selection.count == 1, let id = doc.selection.first?.arrow {
+        editLabel(id)
       } else {
         super.keyDown(with: e)
       }
@@ -1301,6 +1349,15 @@ extension CanvasView {
     guard let doc = document, gesture == nil else { return nil }
     // it acts on what is under the pointer, selected first when it is not
     let p = camera.board(convert(e.locationInWindow, from: nil))
+    // an arrow's or its label's own menu, for it alone (menus.ts linkMenu, labelMenu)
+    if let id = hitArrowLabel(p) {
+      doc.select([.arrow(id)])
+      return labelMenu(id)
+    }
+    if hitCard(p) == nil, let id = hitArrow(p) {
+      doc.select([.arrow(id)])
+      return arrowMenu(id)
+    }
     let under = hitCard(p).map(Item.card) ?? hitSectionTitle(p).map(Item.section) ?? deepestSection(p).map(Item.section)
     if let under, !doc.selection.contains(under) { doc.select([under]) } else if under == nil { doc.select([]) }
     let menu = NSMenu()
@@ -1330,6 +1387,7 @@ extension CanvasView {
     } else if sel.count == 1 {
       add(locked ? "Unlock" : "Lock", #selector(lock(_:)))
     } else {
+      menu.addItem(menuItem("Connect with Arrow", enabled: cards.count == 2) { [weak self] in self?.connectSelected() })
       add(locked ? "Unlock" : "Lock", #selector(lock(_:)))
       if !cards.isEmpty {
         add("Tilt", #selector(tilt(_:)))

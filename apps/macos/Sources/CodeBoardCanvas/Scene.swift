@@ -54,6 +54,14 @@ struct Scene: Sendable {
     var headStroke: CGFloat
     /// The dry brush's hairlines
     var dry: Outline?
+    /// The line itself (its middle), which the pointer finds it by
+    var line: Outline
+    /// The cubic Bézier [start, c1, c2, end] its label rides on
+    var pts: [CGPoint]
+    /// Where its label sits by default (the middle)
+    var mid: CGPoint
+    /// Its stroke weight factor (0.6, 1, 1.6 for widths 1, 2, 3)
+    var k: CGFloat
   }
 
   /// Section titles, cards from `cardsFrom` on, then arrow labels from `labelsFrom` on. Drawn as the web board layers
@@ -375,7 +383,7 @@ struct Scene: Sendable {
       id: a.id, from: a.from.card, to: a.to.card, fill: Outline(fill), color: color, stroke: stroke,
       width: t.arrowWidth * k, heads: Outline(heads),
       headColor: headColor,
-      headStroke: headStroke, dry: dry)
+      headStroke: headStroke, dry: dry, line: Outline(path(shape.path)), pts: shape.pts, mid: shape.mid, k: k)
   }
 
   static func path(_ ops: [PathOp]) -> CGPath {

@@ -410,6 +410,8 @@ extension CanvasView {
   /// (Canvas.tsx: its first line under the pointer)
   func doubleClick(at p: CGPoint) {
     guard let doc = document else { return }
+    // on an arrow or its label: its label is written
+    if let id = arrowAt(p) { return editLabel(id) }
     if let id = hitCard(p) {
       guard isWriting(id) else { return }
       Task {
