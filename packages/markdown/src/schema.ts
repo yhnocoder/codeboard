@@ -8,7 +8,14 @@ import Strike from "@tiptap/extension-strike";
 import Document from "@tiptap/extension-document";
 import Paragraph from "@tiptap/extension-paragraph";
 import { MarkdownManager } from "@tiptap/markdown";
-import { Marked, Tokenizer, type MarkedExtension, type marked } from "marked";
+import {
+  Marked,
+  Tokenizer,
+  type MarkedExtension,
+  type TokenizerExtension,
+  type TokenizerThis,
+  type marked,
+} from "marked";
 import { TableRow } from "@tiptap/extension-table";
 import { bracketDelims, dollarBrackets } from "./brackets";
 import {
@@ -34,6 +41,7 @@ import {
   Math2,
   Ordered,
   Para,
+  RefDefs,
   Task,
   Tasks,
   TABLE_CAPTION,
@@ -104,6 +112,7 @@ export const baseExtensions: AnyExtension[] = [
   FnList,
   FnDef,
   FnRef,
+  RefDefs,
   HtmlInline,
   HtmlBlock,
 ];
@@ -171,6 +180,29 @@ export const sourceExtensions: AnyExtension[] = [
   Cell,
 ];
 
+/**
+ * A run of link reference definitions, up to a blank line, as one token (one block, as mdBlockStarts counts them), so they
+ * are kept as written (RefDefs). Each still defines its label as marked's own def does (the first one of a label counts)
+ */
+const refDefsTokenizer: TokenizerExtension = {
+  name: "refDefs",
+  level: "block",
+  tokenizer(this: TokenizerThis, src: string) {
+    // the lexer's own tokenizer, which knows the rules (marked does not expose it in its types)
+    const tokenizer = (this.lexer as unknown as { tokenizer: Tokenizer }).tokenizer,
+      { links } = this.lexer.tokens;
+    let raw = "";
+    while (!FN_DEF.test(src.slice(raw.length))) {
+      const t = Tokenizer.prototype.def.call(tokenizer, src.slice(raw.length));
+      if (!t) break;
+      links[t.tag] ??= { href: t.href, title: t.title };
+      raw += t.raw;
+      if (/\n\s*\n$/.test(t.raw) || !t.raw.endsWith("\n")) break;
+    }
+    return raw ? { type: "refDefs", raw } : undefined;
+  },
+};
+const FN_DEF = /^ {0,3}\[\^[^\]\s]+\]:/;
 const mm = new MarkdownManager({
   marked: (() => {
     const m = new Marked();
@@ -199,6 +231,7 @@ const mm = new MarkdownManager({
         },
       } as MarkedExtension["tokenizer"],
     });
+    m.use({ extensions: [refDefsTokenizer] });
     // MarkdownManager is typed for the marked module; it only calls what an instance has too (lexer, parser, use)
     return m as unknown as typeof marked;
   })(),
@@ -252,32 +285,79 @@ export function parseMd(src: string): JSONContent {
       .replace(/\r\n?/g, "\n")
       .replace(/(\]\([^)\n]*\)|<[^>\s]*>)|\\([\\$])/g, (m, url, c) => (!url && c === "$" ? ESC_DOLLAR : m)),
   );
-  const defs = new Map<string, JSONContent>();
-  const rest: JSONContent[] = [];
-  for (const n of doc.content ?? [])
-    if (n.type === "footnote") defs.set(n.attrs?.["data-id"], n);
-    else rest.push(n);
   const refs: string[] = [];
-  walk(rest, (n) => {
+  walk(doc.content, (n) => {
     if (n.type === "footnoteReference" && !refs.includes(n.attrs?.["data-id"])) refs.push(n.attrs?.["data-id"]);
   });
+  // a definition nothing refers to (another one of its label came first, or there is no reference) stays where it is, as
+  // written (RefDefs)
+  const defs = new Map<string, JSONContent>();
+  const rest = joinDefs(
+    (doc.content ?? []).flatMap((n) => {
+      if (n.type !== "footnote") return [n];
+      const id = n.attrs?.["data-id"];
+      if (!refs.includes(id) || defs.has(id)) return [{ type: "refDefs", attrs: { raw: n.attrs?.raw ?? "" } }];
+      defs.set(id, n);
+      return [];
+    }),
+  );
   if (refs.length) {
+    const num = fnNumbers(refs, rest);
     walk(rest, (n) => {
       if (n.type === "footnoteReference")
-        n.attrs = { ...n.attrs, referenceNumber: String(refs.indexOf(n.attrs?.["data-id"]) + 1) };
+        n.attrs = { ...n.attrs, referenceNumber: String(num.get(n.attrs?.["data-id"])) };
     });
     rest.push({
       type: "footnotes",
-      content: refs.map((id, i) => ({
+      content: refs.map((id) => ({
         type: "footnote",
         content: defs.get(id)?.content ?? [{ type: "paragraph" }],
-        attrs: { "data-id": id, id: `fn:${i + 1}` },
+        attrs: { "data-id": id, id: `fn:${num.get(id)}` },
       })),
     });
   }
   if (!rest.length) rest.push({ type: "paragraph" });
   return { type: "doc", content: tableCaptions(unDollar(mathify(rest)!)) };
 }
+/**
+ * Definitions kept as written that follow each other with no blank line between are one block (as they were written);
+ * the line breaks after the last one are not part of it
+ */
+function joinDefs(ns: JSONContent[]): JSONContent[] {
+  const out: JSONContent[] = [];
+  for (const n of ns) {
+    const prev = out[out.length - 1],
+      raw = n.attrs?.raw ?? "";
+    if (
+      n.type === "refDefs" &&
+      prev?.type === "refDefs" &&
+      !/\n\s*\n$/.test(prev.attrs!.raw) &&
+      prev.attrs!.raw.endsWith("\n")
+    )
+      out[out.length - 1] = { ...prev, attrs: { raw: prev.attrs!.raw + raw } };
+    else out.push(n.content && n.type !== "paragraph" ? { ...n, content: joinDefs(n.content) } : n);
+  }
+  return out.map((n) => (n.type === "refDefs" ? { ...n, attrs: { raw: n.attrs!.raw.replace(/\s+$/, "") } } : n));
+}
+/**
+ * Footnotes are numbered in the order they are first referred to, skipping the numbers that definitions kept as written
+ * already use (two definitions of one label would leave one of them unreachable)
+ */
+function fnNumbers(ids: string[], content: JSONContent[]): Map<string, number> {
+  const taken = new Set<string>();
+  walk(content, (n) => {
+    if (n.type === "refDefs") for (const m of String(n.attrs?.raw).matchAll(FN_LABEL)) taken.add(m[1]);
+  });
+  const num = new Map<string, number>();
+  let k = 0;
+  for (const id of ids) {
+    do k++;
+    while (taken.has(String(k)));
+    num.set(id, k);
+  }
+  return num;
+}
+const FN_LABEL = /^ {0,3}\[\^([^\]\s]+)\]:/gm;
 /**
  * A paragraph "Table: …" right after a table becomes that table's caption (TABLE_CAPTION), at any depth. In a tight list item
  * the line comes as loose inline nodes, its text as written (not read for marks): that text is kept as it is
@@ -413,11 +493,12 @@ export function serializeMd(doc: JSONContent): string {
   const fi = content.findIndex((n) => n.type === "footnotes");
   const fns = fi >= 0 ? content.splice(fi, 1)[0] : undefined;
   // 脚注按引用出现的顺序重新编号
-  const num = new Map<string, number>();
+  const ids: string[] = [];
   walk(content, (n) => {
     const id = n.attrs?.["data-id"];
-    if (n.type === "footnoteReference" && !num.has(id)) num.set(id, num.size + 1);
+    if (n.type === "footnoteReference" && !ids.includes(id)) ids.push(id);
   });
+  const num = fnNumbers(ids, content);
   const renumber = (ns: JSONContent[]): JSONContent[] =>
     ns.map((n) => {
       const k = n.type === "footnoteReference" ? num.get(n.attrs?.["data-id"]) : undefined;
@@ -508,10 +589,31 @@ export type InlineToken = {
   title?: string | null;
   [k: string]: unknown;
 };
-let lexer: { inlineTokens(src: string): InlineToken[] } | undefined;
-/** 一段行内原文按解析器分词（和 parseMd 读一段时是同一套规则）：编辑器照它画格式 */
-export function inlineTokens(src: string): InlineToken[] {
-  lexer ??= (mm as unknown as { createLexer(): { inlineTokens(src: string): InlineToken[] } }).createLexer();
+type LinkMap = Record<string, { href: string; title?: string | null }>;
+type Lexer = { inlineTokens(src: string): InlineToken[]; lex(src: string): unknown; tokens: { links: LinkMap } };
+const newLexer = () => (mm as unknown as { createLexer(): Lexer }).createLexer();
+let lexer: Lexer | undefined;
+/** The link reference definitions of a document, by label; key: the same for the same definitions ("" when none) */
+export type RefLinks = { key: string; map: LinkMap };
+export const NO_LINKS: RefLinks = { key: "", map: {} };
+const DEF_LINE = /^ {0,3}\[(?!\^)[^\]\n]+\]:/m;
+/** Can this paragraph source define a link label (a cheap test before refLinks reads it) */
+export const mayDefine = (src: string) => DEF_LINE.test(src);
+/** The link reference definitions in these paragraph sources (the first one of a label counts, as in parseMd) */
+export function refLinks(sources: Iterable<string>): RefLinks {
+  const map: LinkMap = Object.create(null);
+  for (const src of sources) {
+    if (!mayDefine(src)) continue;
+    const lx = newLexer();
+    lx.lex(src);
+    for (const [k, v] of Object.entries(lx.tokens.links)) map[k] ??= { href: v.href, title: v.title ?? null };
+  }
+  return Object.keys(map).length ? { key: JSON.stringify(map), map } : NO_LINKS;
+}
+/** 一段行内原文按解析器分词（和 parseMd 读一段时是同一套规则）：编辑器照它画格式；links：文档里的链接定义，[text][label] 照它们读 */
+export function inlineTokens(src: string, links = NO_LINKS): InlineToken[] {
+  lexer ??= newLexer();
+  lexer.tokens.links = links.map;
   return lexer.inlineTokens(src);
 }
 

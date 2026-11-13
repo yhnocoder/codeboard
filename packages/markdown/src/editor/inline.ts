@@ -8,6 +8,7 @@ import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { REVEAL_AFTER_CLICK } from "../ui/timing";
 import { blockInfo, flat, type Span } from "./spans";
+import { mayDefine, refLinks, type RefLinks } from "../schema";
 import {
   atomWidget,
   DRAG_START,
@@ -61,10 +62,11 @@ function layout(
   open: number | null,
   out: Decoration[] | null,
   hidden: Hidden[] | null,
+  links: RefLinks,
 ) {
   const text = node.textContent;
   if (!text) return;
-  const info = blockInfo(text),
+  const info = blockInfo(text, links),
     base = pos + 1,
     end = base + text.length;
   const inBlock = head !== null && head >= base && head <= end;
@@ -358,19 +360,32 @@ function blocksIn(
   head: number | null,
   expand: number | null,
   out: Decoration[],
+  links: RefLinks,
 ) {
   doc.nodesBetween(from, to, (n, pos, parent) => {
     if (n.isTextblock) {
-      if (isSource(n)) layout(n, pos, parent === doc, head, expand, null, out, null);
+      if (isSource(n)) layout(n, pos, parent === doc, head, expand, null, out, null, links);
       return false;
     }
     return !n.type.spec.code && !n.isAtom;
   });
 }
-function build(doc: PMNode, head: number | null, expand: number | null) {
+function build(doc: PMNode, head: number | null, expand: number | null, links: RefLinks) {
   const out: Decoration[] = [];
-  blocksIn(doc, 0, doc.content.size, head, expand, out);
+  blocksIn(doc, 0, doc.content.size, head, expand, out, links);
   return DecorationSet.create(doc, out);
+}
+/** The link definitions of the document's source paragraphs */
+function docLinks(doc: PMNode): RefLinks {
+  const srcs: string[] = [];
+  doc.descendants((n) => {
+    if (n.isTextblock) {
+      if (isSource(n)) srcs.push(n.textContent);
+      return false;
+    }
+    return !n.type.spec.code && !n.isAtom;
+  });
+  return refLinks(srcs);
 }
 /** The source paragraph that contains pos: [start, end] of its node, or null */
 function blockAt(doc: PMNode, pos: number | null): [number, number] | null {
@@ -390,7 +405,7 @@ function update(
   expand: number | null,
   open: number | null,
   doc: PMNode,
-): DecorationSet {
+): Pick<InlineState, "decos" | "links"> {
   let set = tr.docChanged ? prev.decos.map(tr.mapping, doc) : prev.decos;
   const dirty: [number, number][] = [];
   if (tr.docChanged) {
@@ -413,7 +428,7 @@ function update(
       if (b) dirty.push(b);
     }
   }
-  if (!dirty.length) return set;
+  if (!dirty.length) return { decos: set, links: prev.links };
   const blocks = new Map<number, PMNode>(),
     size = doc.content.size;
   for (const [a0, b0] of dirty) {
@@ -427,15 +442,22 @@ function update(
       return !n.type.spec.code && !n.isAtom;
     });
   }
+  // definitions are read again only in a document that has some, or when a changed paragraph may be one; when they change,
+  // every [text][label] may read differently
+  let links = prev.links;
+  if (tr.docChanged && (links.key || [...blocks.values()].some((n) => mayDefine(n.textContent)))) {
+    links = docLinks(doc);
+    if (links.key !== prev.links.key) return { decos: build(doc, head, expand, links), links };
+  }
   const out: Decoration[] = [];
   for (const [pos, n] of blocks) {
     // only this block's own decorations: find() also returns the ones that touch its edges, such as the previous or next
     // paragraph's node decoration (md-psized), which would be lost with the block's layout
     const end = pos + n.nodeSize;
     set = set.remove(set.find(pos, end).filter((d) => d.from >= pos && d.to <= end && d.to !== pos && d.from !== end));
-    layout(n, pos, doc.resolve(pos).depth === 0, head, expand, open, out, null);
+    layout(n, pos, doc.resolve(pos).depth === 0, head, expand, open, out, null, links);
   }
-  return set.add(doc, out);
+  return { decos: set.add(doc, out), links };
 }
 
 /** Has the caret settled, so that markers may follow it */
@@ -449,14 +471,18 @@ export function inlinePlugin() {
   return new Plugin<InlineState>({
     key: inlineKey,
     state: {
-      init: (_c, st) => ({
-        head: null,
-        focused: false,
-        expand: null,
-        open: null,
-        picked: null,
-        decos: build(st.doc, null, null),
-      }),
+      init: (_c, st) => {
+        const links = docLinks(st.doc);
+        return {
+          head: null,
+          focused: false,
+          expand: null,
+          open: null,
+          picked: null,
+          links,
+          decos: build(st.doc, null, null, links),
+        };
+      },
       apply(tr, prev, _old, st) {
         const meta = (tr.getMeta(inlineKey) ?? {}) as Meta;
         const focused = meta.blur ? false : meta.focus || meta.reveal ? true : prev.focused;
@@ -508,7 +534,7 @@ export function inlinePlugin() {
             .filter((p): p is number => p !== undefined && /!\[/.test(st.doc.nodeAt(p)?.textContent ?? ""));
           if (blocks.length) slideFrom = measureImages(slideView, [...new Set(blocks)]);
         }
-        return { head, focused, expand, open, picked, decos: update(prev, tr, head, expand, open, st.doc) };
+        return { head, focused, expand, open, picked, ...update(prev, tr, head, expand, open, st.doc) };
       },
     },
     props: {
@@ -615,7 +641,7 @@ function hiddenAt(state: EditorState, pos: number): Hidden[] {
   const $p = state.doc.resolve(pos),
     out: Hidden[] = [],
     st = inlineKey.getState(state)!;
-  layout($p.parent, $p.before(), false, st.head, st.expand, st.open, null, out);
+  layout($p.parent, $p.before(), false, st.head, st.expand, st.open, null, out, st.links);
   return out.sort((a, b) => a[0] - b[0]);
 }
 const hi = (c: number) => c >= 0xd800 && c <= 0xdbff,

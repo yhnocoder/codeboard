@@ -2,7 +2,7 @@
 // paragraph's attribute, never characters of its source): the parser (schema.ts inlineTokens, the same rules
 // parseMd reads it with) splits it into tokens, and for each: where it is in the source, which characters are markers, and how
 // the text inside is drawn. Only the look; the document is never changed (the decorations are in inline.ts)
-import { TEXT_MATH, inlineTokens, type InlineToken } from "../schema";
+import { mayDefine, NO_LINKS, TEXT_MATH, inlineTokens, type InlineToken, type RefLinks } from "../schema";
 import { ESC_DOLLAR } from "../placeholders";
 import { imageAttrsEnd } from "../imageattrs";
 import { capped } from "../cache";
@@ -59,23 +59,28 @@ const TAGS: Record<string, string> = {
 };
 const cache = new Map<string, BlockInfo>();
 const MAX = 2000;
-/** The look of one paragraph's source */
-export function blockInfo(text: string): BlockInfo {
-  let info = cache.get(text);
+/**
+ * The look of one paragraph's source; links: the document's link definitions, which [text][label] links use (not in the
+ * definitions themselves, whose labels would read as links)
+ */
+export function blockInfo(text: string, links = NO_LINKS): BlockInfo {
+  if (links.key && (!text.includes("[") || mayDefine(text))) links = NO_LINKS;
+  const key = links.key ? `${text}\0${links.key}` : text;
+  let info = cache.get(key);
   if (info) return info;
-  info = { spans: inlineSpans(text) };
-  capped(cache, MAX, text, info);
+  info = { spans: inlineSpans(text, links) };
+  capped(cache, MAX, key, info);
   return info;
 }
 
 /** The inline content of text, as spans */
-function inlineSpans(body: string): Span[] {
+function inlineSpans(body: string, links: RefLinks): Span[] {
   if (!body) return [];
   // an escaped \$ becomes a placeholder as in parseMd (the parser can't tell \$ from $); still two characters, so offsets hold
   const src = body.replace(/\\\$/g, `\\${ESC_DOLLAR}`);
   let toks: InlineToken[];
   try {
-    toks = inlineTokens(src);
+    toks = inlineTokens(src, links);
   } catch {
     return [];
   }
