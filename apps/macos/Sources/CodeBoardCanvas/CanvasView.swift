@@ -107,10 +107,22 @@ public final class CanvasView: NSView {
   var hoveredCard: CardID?
   var hoveredLine: Endpoint?
   var hoveredPort: Port?
-  /// The label being written, where its centre is on the board, and a written one's field until the board shows it
-  var labelEditing: LabelEditing?
-  var labelCentre = CGPoint.zero
-  var closingLabel: NSTextField?
+  /// The label or title being written in place, and a written one's field until the board shows what it says
+  var inPlace: InPlace?
+  var closingField: NSTextField?
+  /// The mode the board is in (the toolbar's Arrow or Section), shown as the toolbar's tool in use
+  var mode: CanvasMode? {
+    didSet { if mode != oldValue { onMode?(activeTool) } }
+  }
+  /// Told the toolbar's tool in use when it changes
+  public var onMode: ((Tool?) -> Void)?
+  /// A short line over the bottom of the board, in the view's units
+  let toastLayer = CALayer()
+  package var toastText: String?
+  var toastShown = 0
+  /// The Sections a drag would drop cards into, tinted under the cards
+  let dropLayer = CALayer()
+  var dropLit: Set<SectionID> = []
   /// The zoom that fits the board, which overviews are drawn for
   var fitZoom: CGFloat = 1
   /// The framed cards' shadow, made once per theme
@@ -148,13 +160,15 @@ public final class CanvasView: NSView {
     root.backgroundColor = theme.canvas
     layer = root
     wantsLayer = true
-    for l in [world, sections, below, arrows, above, cards, chrome] { l.anchorPoint = .zero }
-    for l in [sections, below, arrows, above, cards, chrome] { world.addSublayer(l) }
+    for l in [world, sections, dropLayer, below, arrows, above, cards, chrome] { l.anchorPoint = .zero }
+    for l in [sections, dropLayer, below, arrows, above, cards, chrome] { world.addSublayer(l) }
     backdrop.anchorPoint = .zero
     root.addSublayer(backdrop)
     root.addSublayer(world)
     marquee.fillColor = nil
     root.addSublayer(marquee)
+    toastLayer.isHidden = true
+    root.addSublayer(toastLayer)
   }
 
   @available(*, unavailable)
@@ -396,19 +410,21 @@ public final class CanvasView: NSView {
     _ s: Scene, overviews: [Overview], shadow: (IOSurface, margin: CGFloat)?, theme: Theme, keepCamera: Bool
   ) {
     cancelRedraws()
-    endLabelEditing(commit: true)
-    labelShown()
+    endInPlace(commit: true)
+    fieldShown()
     self.theme = theme
     cardShadow = shadow
     scene = s
     routedArrows = [:]
     hoveredArrow = nil
+    mode = nil
+    dropLit = []
     withoutAnimation {
       layer?.backgroundColor = theme.canvas
       backdropImage = theme.backdrop.flatMap(Backdrop.image)
       backdrop.contents = backdropImage
       placeBackdrop()
-      for l in [sections, below, arrows, above, cards] { l.sublayers = nil }
+      for l in [sections, dropLayer, below, arrows, above, cards] { l.sublayers = nil }
       for f in s.frames { sections.addSublayer(CanvasView.frameLayer(f, theme)) }
       items = s.items.enumerated().map { i, it in
         ItemLayers(it, overview: overviews[i], shadow: it.drawing.framed ? shadow : nil)
@@ -554,8 +570,8 @@ public final class CanvasView: NSView {
       world.sublayerTransform = m
       if chrome.sublayers?.isEmpty == false { drawChrome() }
       if editing != nil { cameraMovedWhileEditing() }
-      // a label being written is kept when the camera moves
-      if labelEditing != nil { endLabelEditing(commit: true) }
+      // a label or title being written is kept when the camera moves
+      if inPlace != nil { endInPlace(commit: true) }
       // a zoom (not a pan) away from the rest zoom: the held bitmaps take over, with mipmaps
       if let z = restZoom, z != camera.zoom {
         restZoom = nil

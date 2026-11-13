@@ -27,6 +27,8 @@ struct Gesture {
     case label(LabelDrag)
     /// An arrow drawn from a port, or an end of the selected one moved
     case connect(Connect)
+    /// A Section's frame dragged out (the toolbar's Section)
+    case draw
   }
 
   var kind: Kind
@@ -105,6 +107,7 @@ extension CanvasView {
   /// Stops showing the document (its tab closed)
   public func leave() {
     dropEditing()
+    mode = nil
     stopObserving?()
     stopObserving = nil
     document = nil
@@ -230,6 +233,12 @@ extension CanvasView {
     for (i, l) in items.enumerated() { if let o = old.items[i].owner { byOwner[o] = l } }
     let shadow = cardShadow
     var next: [ItemLayers] = []
+    // where the frames and titles are shown now, to ease from
+    var shownFrames: [SectionID: CGRect] = [:]
+    for (i, l) in (sections.sublayers ?? []).enumerated() where i < old.frames.count {
+      shownFrames[old.frames[i].id] = l.frame
+    }
+    var movedTitles: [(CALayer, CGPoint)] = []
     withoutAnimation {
       for (i, it) in s.items.enumerated() {
         if let f = fresh[i] {
@@ -243,7 +252,9 @@ extension CanvasView {
         } else if let o = it.owner, let l = byOwner[o] {
           l.box.zPosition = 0
           l.box.setAffineTransform(it.tilt == 0 ? .identity : CGAffineTransform(rotationAngle: it.tilt))
-          l.box.position = CGPoint(x: it.rect.midX, y: it.rect.midY)
+          let to = CGPoint(x: it.rect.midX, y: it.rect.midY)
+          if case .sectionTitle = o, l.box.position != to { movedTitles.append((l.box, l.box.position)) }
+          l.box.position = to
           next.append(l)
         }
       }
@@ -255,6 +266,8 @@ extension CanvasView {
       }
       sections.sublayers = nil
       for f in s.frames { sections.addSublayer(CanvasView.frameLayer(f, theme)) }
+      dropLayer.sublayers = nil
+      dropLit = []
       arrows.sublayers = nil
       arrowGroups = s.arrows.map { a in
         let ls = CanvasView.arrowLayers(a, theme)
@@ -264,16 +277,26 @@ extension CanvasView {
     }
     scene = s
     items = next
+    easeFrames(from: shownFrames, in: s)
+    for (l, from) in movedTitles {
+      let a = CASpringAnimation(keyPath: "position")
+      a.stiffness = 2500
+      a.damping = 100
+      a.fromValue = NSValue(point: from)
+      a.toValue = NSValue(point: l.position)
+      a.duration = a.settlingDuration
+      l.add(a, forKey: "ease")
+    }
     routedArrows = [:]
     if let h = hoveredArrow, !s.arrows.contains(where: { $0.id == h }) { hoveredArrow = nil }
-    labelShown()
+    fieldShown()
     if let h = hoveredCard, index(of: .card(h)) == nil {
       hoveredCard = nil
       hoveredLine = nil
       hoveredPort = nil
     }
-    // the label being written stays hidden under its field
-    if let le = labelEditing, let li = index(of: .arrowLabel(le.id)) {
+    // what is being written stays hidden under its field
+    if let ip = inPlace, let li = inPlaceItem(ip.what) {
       withoutAnimation { items[li].box.isHidden = true }
     }
     // a swap made here otherwise reaches the screen a frame later than the layers it replaces go
@@ -698,7 +721,7 @@ extension CanvasView {
     hoverPorts(at: v)
     let port = hitPort(v) != nil || hitEndHandle(v) != nil
     let arrow = hitHandle(v) == nil && !port ? arrowAt(camera.board(v)) : nil
-    if port {
+    if port || mode != nil {
       NSCursor.crosshair.set()
     } else if let (_, edge) = hitHandle(v) {
       resizeCursor(edge).set()
@@ -728,6 +751,10 @@ extension CanvasView {
     guard let doc = document, scene != nil, gesture == nil else { return }
     let v = convert(e.locationInWindow, from: nil)
     let p = camera.board(v)
+    if case .connect(let from)? = mode {
+      finishConnect(from: from, at: p)
+      return
+    }
     if let b = barButton(at: p) {
       if e.clickCount == 1 { press(b) }
       return
@@ -764,6 +791,11 @@ extension CanvasView {
     } else if e.modifierFlags.contains(.command), let id = deepestSection(p) {
       // ⌘ on a Section's blank inside grabs it, as its title does
       item = .section(id)
+    }
+    // the toolbar's Section: a frame dragged out on the canvas
+    if item == nil, mode == .drawSection {
+      gesture = Gesture(kind: .draw, startView: v, start: p)
+      return
     }
     let inside = item == nil ? deepestSection(p) : nil
     let was = item.map(doc.selection.contains) ?? false
@@ -845,6 +877,8 @@ extension CanvasView {
       g.kind = .label(d)
       gesture = g
       showLabelDrag(d)
+    case .draw:
+      showDraw(from: g.startView, to: v)
     case .connect(var c):
       // a press that has not moved yet draws nothing
       guard hypot(v.x - g.startView.x, v.y - g.startView.y) >= dragSlop || c.pointer != g.start else { return }
@@ -886,6 +920,10 @@ extension CanvasView {
       commitLabelDrag(d)
     case .connect(let c):
       commitConnect(c)
+    case .draw:
+      let v = convert(e.locationInWindow, from: nil)
+      commitDraw(
+        from: g.start, to: camera.board(v), moved: hypot(v.x - g.startView.x, v.y - g.startView.y) >= dragSlop)
     case .nudge, .still:
       gesture = nil
     }
@@ -938,6 +976,7 @@ extension CanvasView {
         return p
       }
     }
+    showDrop(m)
     drawChrome()
   }
 
@@ -987,6 +1026,7 @@ extension CanvasView {
   /// Section in the one its title is in (board dragGroup)
   func commitMove(_ m: Move, name: String = "Move") {
     gesture = nil
+    clearDrop()
     guard let doc = document, let s = scene else { return }
     let dx = m.d.dx.rounded()
     let dy = m.d.dy.rounded()
@@ -1237,7 +1277,8 @@ extension CanvasView {
       }
     case 51, 117:  // ⌫ ⌦
       delete(nil)
-    case 53:  // Esc
+    case 53:  // Esc: the mode, else the selection
+      if cancelMode() { return }
       if gesture == nil { doc.select([]) }
     case 123, 124, 125, 126:
       nudge(e)
@@ -1407,6 +1448,11 @@ extension CanvasView {
     }
     let under = hitCard(p).map(Item.card) ?? hitSectionTitle(p).map(Item.section) ?? deepestSection(p).map(Item.section)
     if let under, !doc.selection.contains(under) { doc.select([under]) } else if under == nil { doc.select([]) }
+    // Sections and no cards: their own menus
+    let secs = doc.selection.compactMap(\.section)
+    if !secs.isEmpty, secs.count == doc.selection.count {
+      return secs.count == 1 ? sectionMenu(secs[0]) : sectionsMenu(secs.sorted { $0.rawValue < $1.rawValue })
+    }
     let menu = NSMenu()
     func add(_ title: String, _ action: Selector, to m: NSMenu = menu) {
       let i = NSMenuItem(title: title, action: action, keyEquivalent: "")
@@ -1435,6 +1481,7 @@ extension CanvasView {
       add(locked ? "Unlock" : "Lock", #selector(lock(_:)))
     } else {
       menu.addItem(menuItem("Connect with Arrow", enabled: cards.count == 2) { [weak self] in self?.connectSelected() })
+      menu.addItem(menuItem("Move to New Section") { [weak self] in self?.moveToNewSection() })
       add(locked ? "Unlock" : "Lock", #selector(lock(_:)))
       if !cards.isEmpty {
         add("Tilt", #selector(tilt(_:)))

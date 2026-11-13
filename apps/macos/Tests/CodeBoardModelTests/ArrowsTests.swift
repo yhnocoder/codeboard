@@ -105,3 +105,14 @@ private func aid(_ s: String) -> ArrowID { ArrowID(rawValue: s) }
   b.moveOutOfParent(gid("g2"))
   #expect(b.section(gid("g2"))?.parent == nil)
 }
+
+@Test func aSectionMovedTakesItsCardsLockedOnesTooAsTheWebBoardDoes() {
+  var b = editSample()
+  b.setLocked([.card(cid("n2"))], true)
+  b.move([.section(gid("g1"))], dx: 10, dy: 20)
+  #expect(b.card(cid("n2"))?.x == 510 && b.card(cid("n2"))?.y == 120, "a locked card in a moved Section goes with it")
+  #expect(b.card(cid("n1"))?.x == 60 && b.section(gid("g2"))?.x == 410)
+  // on its own it stays
+  b.move([.card(cid("n2"))], dx: 10, dy: 0)
+  #expect(b.card(cid("n2"))?.x == 510)
+}

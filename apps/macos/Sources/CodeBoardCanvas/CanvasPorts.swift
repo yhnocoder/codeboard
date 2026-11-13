@@ -130,7 +130,7 @@ extension CanvasView {
   /// The hovered card's ports, over everything (z-index 4): the card's paper ringed in the line colour, in the accent under
   /// the pointer
   func drawPorts() {
-    guard gesture == nil, labelEditing == nil, editing == nil, let id = hoveredCard else { return }
+    guard gesture == nil, inPlace == nil, editing == nil, let id = hoveredCard else { return }
     let rad = portRadius
     for port in ports(of: id, line: hoveredLine) {
       let l = CAShapeLayer()

@@ -418,7 +418,10 @@ extension CanvasView {
         await endEditing()
         beginEditing(id, at: p)
       }
-    } else if hitSectionTitle(p) == nil {
+    } else if let id = hitSectionTitle(p) {
+      // its title is written where it is
+      if !doc.board.isLocked(section: id) { editTitle(id) }
+    } else {
       if !doc.selection.isEmpty { doc.select([]) }
       Task { await create(.text(.text), at: CGPoint(x: p.x, y: p.y - 12)) }
     }

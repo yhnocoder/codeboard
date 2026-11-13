@@ -471,13 +471,18 @@ private func png(_ url: URL) throws {
     r.drag(n1, CGPoint(x: 340, y: 40))
     r.key(51)
     #expect(r.card("n1").x == 0)
-    // several: Connect with Arrow, Lock, Tilt, Arrange, then Cut, Copy, Duplicate, Delete
+    // several: Connect with Arrow, Move to New Section, Lock, Tilt, Arrange, then Cut, Copy, Duplicate, Delete
     r.doc.select([.card(cid("t1")), .card(cid("b1"))])
     #expect(
       titles(r.canvas.menu(for: r.mouse(.rightMouseDown, r.centre("t1"))))
-        == ["Connect with Arrow", "Lock", "Tilt", "Arrange", "-", "Cut", "Copy", "Duplicate", "Delete"])
+        == [
+          "Connect with Arrow", "Move to New Section", "Lock", "Tilt", "Arrange", "-", "Cut", "Copy", "Duplicate",
+          "Delete",
+        ])
     // a Section's
-    #expect(titles(r.canvas.menu(for: r.mouse(.rightMouseDown, CGPoint(x: 450, y: 750)))) == ["Lock", "-", "Delete"])
+    #expect(
+      titles(r.canvas.menu(for: r.mouse(.rightMouseDown, CGPoint(x: 450, y: 750))))
+        == ["Fit Content", "Color", "Lock", "-", "Remove Section"])
     #expect(r.doc.undoName == "Lock" && r.doc.history.undoSteps.count == 4)
   }
 

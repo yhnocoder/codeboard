@@ -22,12 +22,19 @@ struct LabelDrag {
   var t: CGFloat?
 }
 
-/// The label being written
-struct LabelEditing {
-  var id: ArrowID
+/// An arrow's label or a Section's title being written in place
+struct InPlace {
+  enum What: Equatable {
+    case label(ArrowID)
+    case title(SectionID)
+  }
+
+  var what: What
   var field: NSTextField
   /// What it said before
   var before: String
+  /// Where it is on the board: a label's centre, a title's top left
+  var at: CGPoint
 }
 
 /// A menu item's action as a closure (an item keeps it as its represented object)
@@ -173,38 +180,59 @@ extension CanvasView {
     drawChrome()
   }
 
-  // MARK: Labels
+  // MARK: Writing in place
 
   /// Writes the arrow's label in place, where its label is (the middle of its line when it has none): Return and a click
   /// elsewhere keep it, Esc leaves it as it was, blank removes it (Labels.tsx, Editable.tsx)
   func editLabel(_ id: ArrowID) {
-    guard let doc = document, let i = arrowIndex(id), let a = liveArrow(i), let host = superview,
-      let arrow = doc.board.arrow(id)
-    else { return }
-    endLabelEditing(commit: true)
-    if doc.selection != [.arrow(id)] { doc.select([.arrow(id)]) }
-    let li = index(of: .arrowLabel(id))
-    let centre = li.map { items[$0].box.position } ?? a.mid
-    let field = NSTextField(string: arrow.label ?? "")
-    field.cell = MiddleCell(textCell: arrow.label ?? "")
+    guard let doc = document, let i = arrowIndex(id), let a = liveArrow(i), let arrow = doc.board.arrow(id) else {
+      return
+    }
+    let centre = index(of: .arrowLabel(id)).map { items[$0].box.position } ?? a.mid
+    writeInPlace(.label(id), arrow.label ?? "", at: centre, select: .arrow(id))
+  }
+
+  /// Writes a Section's title where it is, all of it selected; blank is "Untitled Section" (Sections.tsx, its .slabel)
+  func editTitle(_ id: SectionID) {
+    guard let doc = document, let s = doc.board.section(id), let f = scene?.frames.first(where: { $0.id == id }) else {
+      return
+    }
+    let at = s.collapsed ? theme.foldedTitleAt : theme.sectionTitleAt
+    writeInPlace(.title(id), s.title, at: CGPoint(x: f.rect.minX + at.x, y: f.rect.minY + at.y), select: .section(id))
+  }
+
+  /// The item a field stands in for
+  func inPlaceItem(_ w: InPlace.What) -> Int? {
+    switch w {
+    case .label(let id): index(of: .arrowLabel(id))
+    case .title(let id): index(of: .sectionTitle(id))
+    }
+  }
+
+  private func writeInPlace(_ what: InPlace.What, _ text: String, at: CGPoint, select item: Item) {
+    guard let doc = document, let host = superview else { return }
+    endInPlace(commit: true)
+    if doc.selection != [item] { doc.select([item]) }
+    let label = { if case .label = what { true } else { false } }()
+    let field = NSTextField(string: text)
+    field.cell = MiddleCell(textCell: text)
     field.isEditable = true
     field.isSelectable = true
     field.isBordered = false
     field.isBezeled = false
     field.drawsBackground = false
     field.focusRingType = .none
-    field.alignment = .center
+    field.alignment = label ? .center : .left
     field.usesSingleLineMode = true
     field.cell?.isScrollable = true
-    field.placeholderString = "Label"
-    field.textColor = NSColor(cgColor: theme.label == .box ? theme.ink : theme.ink2)
+    field.placeholderString = label ? "Label" : Board.untitledSection
+    field.textColor = NSColor(cgColor: label ? (theme.label == .box ? theme.ink : theme.ink2) : theme.sectionTitle)
     field.wantsLayer = true
     field.delegate = self
-    labelEditing = LabelEditing(id: id, field: field, before: arrow.label ?? "")
-    labelCentre = centre
+    inPlace = InPlace(what: what, field: field, before: text, at: at)
     withoutAnimation {
-      if let li { items[li].box.isHidden = true }
-      placeLabelField()
+      if let i = inPlaceItem(what) { items[i].box.isHidden = true }
+      placeField()
     }
     host.addSubview(field, positioned: .above, relativeTo: self)
     window?.makeFirstResponder(field)
@@ -212,51 +240,77 @@ extension CanvasView {
     drawChrome()
   }
 
-  /// The field where the label is, as wide as its text (60 at least, .vlabel), at the zoom shown
-  func placeLabelField() {
-    guard let le = labelEditing, let host = superview else { return }
+  /// The field where its text is drawn, as wide as its text, at the zoom shown: a label's box (60 at least, .vlabel), a
+  /// title's line
+  func placeField() {
+    guard let ip = inPlace, let host = superview else { return }
     let z = camera.zoom
-    let font = CTFontCreateCopyWithAttributes(theme.arrowLabel.ct, CTFontGetSize(theme.arrowLabel.ct) * z, nil, nil)
-    le.field.font = font as NSFont
-    let text = le.field.stringValue.isEmpty ? "Label" : le.field.stringValue
-    let pad: CGFloat = theme.label == .box ? 13 : 33
-    let w = max(60, Drawing.width(text, theme.arrowLabel) + pad + 4) * z
-    let h = 22 * z
-    let c = camera.view(labelCentre)
-    le.field.frame = convert(CGRect(x: c.x - w / 2, y: c.y - h / 2, width: w, height: h), to: host)
-    let l = le.field.layer
-    l?.backgroundColor = theme.label == .box ? theme.surface : theme.canvas
-    l?.cornerRadius = theme.labelRadius * z
-    l?.borderColor = theme.label == .box ? theme.accent : nil
-    l?.borderWidth = theme.label == .box ? 1.5 * z : 0
+    let label = { if case .label = ip.what { true } else { false } }()
+    let font = label ? theme.arrowLabel : theme.sectionTitleFont
+    ip.field.font = CTFontCreateCopyWithAttributes(font.ct, CTFontGetSize(font.ct) * z, nil, nil) as NSFont
+    let text = ip.field.stringValue.isEmpty ? (ip.field.placeholderString ?? "") : ip.field.stringValue
+    let v = camera.view(ip.at)
+    let r: CGRect
+    if label {
+      let pad: CGFloat = theme.label == .box ? 13 : 33
+      let w = max(60, Drawing.width(text, font) + pad + 4) * z
+      let h = 22 * z
+      r = CGRect(x: v.x - w / 2, y: v.y - h / 2, width: w, height: h)
+    } else {
+      // a tray's label has 6 before its text
+      let x: CGFloat = theme.frame == .tray ? 6 : 0
+      r = CGRect(
+        x: v.x, y: v.y, width: (max(80, Drawing.width(text, font) + 2 * x + 12)) * z,
+        height: theme.sectionTitleHeight * z)
+    }
+    ip.field.frame = convert(r, to: host)
+    let l = ip.field.layer
+    let boxed = !label || theme.label == .box
+    l?.backgroundColor = boxed ? theme.surface : theme.canvas
+    l?.cornerRadius = (label ? theme.labelRadius : min(theme.sectionRadius, 6)) * z
+    l?.borderColor = boxed ? theme.accent : nil
+    l?.borderWidth = boxed ? 1.5 * z : 0
   }
 
-  /// Leaves the label being written: kept (`commit`) or as it was. A changed label's field stays until the board drawn
-  /// with it is on screen, so nothing is blank for a frame
-  func endLabelEditing(commit: Bool) {
-    guard let le = labelEditing else { return }
-    labelEditing = nil
-    le.field.delegate = nil
-    let text = le.field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-    if window?.firstResponder === le.field.currentEditor() || window?.firstResponder === le.field {
+  /// Leaves what is being written: kept (`commit`) or as it was. A changed one's field stays until the board drawn with
+  /// it is on screen, so nothing is blank for a frame
+  func endInPlace(commit: Bool) {
+    guard let ip = inPlace else { return }
+    inPlace = nil
+    ip.field.delegate = nil
+    let text = ip.field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    if window?.firstResponder === ip.field.currentEditor() || window?.firstResponder === ip.field {
       window?.makeFirstResponder(self)
     }
-    le.field.isEditable = false
-    guard commit, let doc = document, doc.board.arrow(le.id) != nil, text != le.before else {
-      le.field.removeFromSuperview()
-      if let li = index(of: .arrowLabel(le.id)) { withoutAnimation { items[li].box.isHidden = false } }
+    ip.field.isEditable = false
+    var change: ((inout Board) -> Void)?
+    var name = ""
+    if commit, let doc = document, text != ip.before {
+      switch ip.what {
+      case .label(let id) where doc.board.arrow(id) != nil:
+        name = text.isEmpty ? "Delete Label" : "Label"
+        change = { $0.setArrowLabel(id, text) }
+      case .title(let id) where doc.board.section(id) != nil && !(text.isEmpty && ip.before == Board.untitledSection):
+        name = "Rename Section"
+        change = { $0.renameSection(id, text) }
+      default: break
+      }
+    }
+    guard let change, let doc = document else {
+      ip.field.removeFromSuperview()
+      if let i = inPlaceItem(ip.what) { withoutAnimation { items[i].box.isHidden = false } }
       drawChrome()
       return
     }
-    closingLabel?.removeFromSuperview()
-    closingLabel = le.field
-    doc.edit(text.isEmpty ? "Delete Label" : "Label") { $0.setArrowLabel(le.id, text) }
+    closingField?.removeFromSuperview()
+    closingField = ip.field
+    doc.edit(name, change)
   }
 
-  /// The board drawn with the label written is on screen: its field goes
-  func labelShown() {
-    closingLabel?.removeFromSuperview()
-    closingLabel = nil
+  /// The board drawn with what was written is on screen: its field goes
+  func fieldShown() {
+    closingField?.removeFromSuperview()
+    closingField = nil
   }
 
   // MARK: Dragging a label
@@ -427,20 +481,20 @@ extension CanvasView {
 
 extension CanvasView: NSTextFieldDelegate {
   public func controlTextDidChange(_ n: Notification) {
-    withoutAnimation { placeLabelField() }
+    withoutAnimation { placeField() }
   }
 
   public func controlTextDidEndEditing(_ n: Notification) {
-    endLabelEditing(commit: true)
+    endInPlace(commit: true)
   }
 
   public func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
     switch sel {
     case #selector(NSResponder.cancelOperation(_:)):
-      endLabelEditing(commit: false)
+      endInPlace(commit: false)
       return true
     case #selector(NSResponder.insertNewline(_:)):
-      endLabelEditing(commit: true)
+      endInPlace(commit: true)
       return true
     default:
       return false

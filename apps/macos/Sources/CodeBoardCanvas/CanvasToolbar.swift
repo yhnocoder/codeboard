@@ -11,7 +11,7 @@ public enum Tool: CaseIterable, Sendable {
   case note, text, box, image, web, section, arrow, sticker
 
   /// What can be made from the Mac app's toolbar now
-  public static let made: [Tool] = [.note, .text, .box]
+  public static let made: [Tool] = [.note, .text, .box, .section, .arrow]
 
   var name: String {
     switch self {
@@ -31,6 +31,8 @@ public enum Tool: CaseIterable, Sendable {
     case .note: Icons.note()
     case .text: Icons.text()
     case .box: Icons.box()
+    case .section: Icons.section()
+    case .arrow: Icons.arrowLink()
     default: nil
     }
   }
@@ -48,6 +50,18 @@ public final class CanvasToolbar: NSView {
   }
   private var pressed: Int? {
     didSet { if pressed != oldValue { draw() } }
+  }
+  /// The tool in use (drawing a Section, connecting): Warm Ink's soft pill under it and its icon in the accent, Ink Wash's
+  /// small vermilion dot under it (themes.css .tpill, .tbtn.on::after); it fades in and out
+  public var active: Tool? {
+    didSet {
+      guard active != oldValue else { return }
+      let t = CATransition()
+      t.type = .fade
+      t.duration = 0.14
+      face.add(t, forKey: "active")
+      draw()
+    }
   }
   /// The board blurred under the glass (Warm Ink's backdrop-filter)
   private let glass = NSVisualEffectView()
@@ -125,7 +139,7 @@ public final class CanvasToolbar: NSView {
     face.contentsScale = scale
     face.contents = Self.image(
       size: bounds.size, bar: barRect, buttons: buttonRects(), tools: tools, theme: theme, hover: hover,
-      pressed: pressed, scale: scale)
+      pressed: pressed, active: active.flatMap { tools.firstIndex(of: $0) }, scale: scale)
     CATransaction.commit()
   }
 
@@ -135,7 +149,7 @@ public final class CanvasToolbar: NSView {
   /// its buttons
   static func image(
     size: CGSize, bar: CGRect, buttons: [CGRect], tools: [Tool], theme: Theme, hover: Int?, pressed: Int?,
-    scale: CGFloat
+    active: Int? = nil, scale: CGFloat
   ) -> CGImage? {
     let w = Int((size.width * scale).rounded(.up))
     let h = Int((size.height * scale).rounded(.up))
@@ -169,6 +183,21 @@ public final class CanvasToolbar: NSView {
     }
     for (i, r) in buttons.enumerated() {
       let lit = hover == i || pressed == i
+      if active == i {
+        if theme.id == .inkWash {
+          ctx.addEllipse(in: CGRect(x: r.midX - 2, y: r.maxY + 1 - 4, width: 4, height: 4))
+          ctx.setFillColor(theme.accent)
+          ctx.fillPath()
+        } else {
+          let pill =
+            theme.dark
+            ? CGColor(srgbRed: 1, green: 240 / 255, blue: 220 / 255, alpha: 0.09)
+            : CGColor(srgbRed: 60 / 255, green: 45 / 255, blue: 20 / 255, alpha: 0.075)
+          ctx.addPath(CGPath(roundedRect: r, cornerWidth: 8.5, cornerHeight: 8.5, transform: nil))
+          ctx.setFillColor(pill)
+          ctx.fillPath()
+        }
+      }
       if lit {
         if theme.id == .inkWash {
           // a small blot of ink spreading under the icon
@@ -191,7 +220,7 @@ public final class CanvasToolbar: NSView {
           ctx.fillPath()
         }
       }
-      let color = theme.id == .inkWash || lit ? ink : look.ink2
+      let color = active == i && theme.id != .inkWash ? theme.accent : theme.id == .inkWash || lit ? ink : look.ink2
       if let icon = tools[i].icon {
         Icons.stroke(icon, at: CGPoint(x: r.minX + 7, y: r.minY + 6), color: color, in: ctx)
       }
@@ -343,6 +372,8 @@ extension CanvasView {
     case .note: createInView(.note)
     case .text: createInView(.text(.text))
     case .box: createInView(.text(.box))
+    case .section: useSection()
+    case .arrow: useArrow()
     default: break
     }
   }

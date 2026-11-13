@@ -142,6 +142,7 @@ final class Pane: NSView {
     // the bottom toolbar, 12 above the bottom edge (its view has room for its shadow around it)
     toolbar.translatesAutoresizingMaskIntoConstraints = false
     toolbar.onTool = { [weak self] in self?.canvas.use($0) }
+    canvas.onMode = { [weak self] in self?.toolbar.active = $0 }
     addSubview(toolbar)
     NSLayoutConstraint.activate([
       toolbar.centerXAnchor.constraint(equalTo: centerXAnchor),

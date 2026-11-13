@@ -105,7 +105,7 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     r.send(r.mouse(.leftMouseUp, mid))
     r.send(r.mouse(.leftMouseDown, mid, clicks: 2))
     r.send(r.mouse(.leftMouseUp, mid, clicks: 2))
-    let field = try #require(r.canvas.labelEditing?.field)
+    let field = try #require(r.canvas.inPlace?.field)
     #expect(field.superview != nil && field.stringValue.isEmpty && field.placeholderString == "Label")
     // where the label goes: the middle of the line
     let c = field.superview!.convert(CGPoint(x: field.frame.midX, y: field.frame.midY), to: r.canvas)
@@ -113,15 +113,15 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     field.stringValue = "  等待 waits "
     _ = r.canvas.control(field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))
     #expect(r.doc.board.arrows[0].label == "等待 waits" && r.doc.history.undoSteps.count == 1)
-    #expect(r.canvas.labelEditing == nil)
-    #expect(r.canvas.closingLabel === field, "the field stays until the label is drawn")
+    #expect(r.canvas.inPlace == nil)
+    #expect(r.canvas.closingField === field, "the field stays until the label is drawn")
     await r.settle()
-    #expect(r.canvas.closingLabel == nil && field.superview == nil)
+    #expect(r.canvas.closingField == nil && field.superview == nil)
     let li = try #require(r.canvas.index(of: .arrowLabel(aid("a1"))))
     #expect(!r.canvas.items[li].box.isHidden)
     // Return on the selected arrow writes it again; Esc leaves it as it was
     r.key(36)
-    let again = try #require(r.canvas.labelEditing?.field)
+    let again = try #require(r.canvas.inPlace?.field)
     #expect(again.stringValue == "等待 waits" && r.canvas.items[li].box.isHidden, "its label hides under the field")
     again.stringValue = "something else"
     _ = r.canvas.control(again, textView: NSTextView(), doCommandBy: #selector(NSResponder.cancelOperation(_:)))
@@ -129,14 +129,14 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     #expect(!r.canvas.items[li].box.isHidden && again.superview == nil)
     // a camera move keeps what is written
     r.key(36)
-    r.canvas.labelEditing?.field.stringValue = "调用"
+    r.canvas.inPlace?.field.stringValue = "调用"
     r.canvas.scroll(by: CGVector(dx: 30, dy: 0), at: 1, began: true, ended: true)
     #expect(r.doc.board.arrows[0].label == "调用")
     await r.settle()
     // blank: no label
     r.key(36)
-    r.canvas.labelEditing?.field.stringValue = "   "
-    r.canvas.endLabelEditing(commit: true)
+    r.canvas.inPlace?.field.stringValue = "   "
+    r.canvas.endInPlace(commit: true)
     #expect(r.doc.board.arrows[0].label == nil && r.doc.undoName == "Delete Label")
     await r.settle()
     #expect(r.canvas.index(of: .arrowLabel(aid("a1"))) == nil)
@@ -205,8 +205,8 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     #expect(r.canvas.scene?.arrows.first?.stroke != nil, "drawn dashed")
     // the label from the menu
     fire(r.canvas.arrowMenu(aid("a1")), "Add Label")
-    #expect(r.canvas.labelEditing?.id == aid("a1"))
-    r.canvas.endLabelEditing(commit: false)
+    #expect(r.canvas.inPlace?.what == .label(aid("a1")))
+    r.canvas.endInPlace(commit: false)
     // two cards selected: an arrow from the one on the left (or above, as here) to the other
     r.doc.select([.card(cid("n2")), .card(cid("n3"))])
     let several = r.canvas.menu(for: r.mouse(.rightMouseDown, r.centre("n3")))

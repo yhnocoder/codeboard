@@ -501,7 +501,7 @@ enum Drawing: Sendable {
   }
 
   /// One line of text with its middle at midY, cut with an ellipsis to `width`
-  private static func text(
+  static func text(
     _ ctx: CGContext, _ s: String, _ font: Font, _ color: CGColor, x: CGFloat, midY: CGFloat, width w: CGFloat
   ) {
     guard !s.isEmpty, w > 0 else { return }

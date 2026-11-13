@@ -76,6 +76,34 @@ enum Icons {
     return p
   }
 
+  /// icons.tsx section (a folder)
+  static func section() -> CGPath {
+    let p = CGMutablePath()
+    p.move(to: CGPoint(x: 2.5, y: 3))
+    p.addLine(to: CGPoint(x: 7, y: 3))
+    p.addLine(to: CGPoint(x: 8.5, y: 5))
+    p.addArc(tangent1End: CGPoint(x: 14, y: 5), tangent2End: CGPoint(x: 14, y: 13), radius: 0.5)
+    p.addArc(tangent1End: CGPoint(x: 14, y: 13), tangent2End: CGPoint(x: 2, y: 13), radius: 0.5)
+    p.addArc(tangent1End: CGPoint(x: 2, y: 13), tangent2End: CGPoint(x: 2, y: 3), radius: 0.5)
+    p.addArc(tangent1End: CGPoint(x: 2, y: 3), tangent2End: CGPoint(x: 7, y: 3), radius: 0.5)
+    p.closeSubpath()
+    return p
+  }
+
+  /// icons.tsx arrowLink: a ring with a bent arrow
+  static func arrowLink() -> CGPath {
+    let p = CGMutablePath()
+    p.addEllipse(in: CGRect(x: 2, y: 10, width: 4, height: 4))
+    p.move(to: CGPoint(x: 4, y: 10))
+    p.addLine(to: CGPoint(x: 4, y: 9))
+    p.addArc(tangent1End: CGPoint(x: 4, y: 4), tangent2End: CGPoint(x: 9, y: 4), radius: 5)
+    p.addLine(to: CGPoint(x: 14, y: 4))
+    p.move(to: CGPoint(x: 11, y: 1))
+    p.addLine(to: CGPoint(x: 14, y: 4))
+    p.addLine(to: CGPoint(x: 11, y: 7))
+    return p
+  }
+
   static func box() -> CGPath {
     CGPath(roundedRect: CGRect(x: 2, y: 4, width: 12, height: 8), cornerWidth: 2, cornerHeight: 2, transform: nil)
   }
