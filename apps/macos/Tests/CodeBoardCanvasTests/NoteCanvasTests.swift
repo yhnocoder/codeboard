@@ -32,7 +32,8 @@ import Testing
       CardID(rawValue: "free"): CGSize(width: 87, height: 24),
     ]
     let s = Scene(
-      board, package: package, vault: vault, theme: .warmInk, highlighter: Highlighter(), sizes: sizes)
+      board, package: package, vault: vault, theme: .warmInk, highlighter: Highlighter(),
+      sizes: sizes.mapValues { NoteMetrics(size: $0) })
     #expect(
       s.items.map(\.rect.size) == [
         CGSize(width: 300, height: 333), CGSize(width: 300, height: 120), CGSize(width: 87, height: 24),
@@ -82,7 +83,8 @@ import Testing
     let renderer = NoteRenderer(cache: cache)
     let sizes = [CardID(rawValue: "tall"): CGSize(width: 300, height: bounds.height)]
     let scene = Scene(
-      board, package: package, vault: vault, theme: .warmInk, highlighter: Highlighter(), sizes: sizes)
+      board, package: package, vault: vault, theme: .warmInk, highlighter: Highlighter(),
+      sizes: sizes.mapValues { NoteMetrics(size: $0) })
     let images = DecodeCache(cap: 1 << 20)
     let composed = try #require(
       await CanvasView.drawNote(

@@ -68,7 +68,7 @@ public final class CanvasView: NSView {
   /// The board the scene was made from
   var shownBoard: Board?
   /// What the Note renderer measured, by card, with what it measured: a later scene measures only what changed
-  var measured: [CardID: (note: NoteBody, width: Double, size: CGSize)] = [:]
+  var measured: [CardID: (note: NoteBody, width: Double, size: NoteMetrics)] = [:]
   /// The pointer or key gesture under way; while one runs nothing is redrawn or swapped
   var gesture: Gesture? {
     didSet { if oldValue == nil && gesture != nil { gestureStarts += 1 } }
@@ -278,15 +278,15 @@ public final class CanvasView: NSView {
   /// The sizes the Note renderer gives the Notes without a stored height: from what it kept, else measured in the web
   /// view all together. A Note it could not measure is left out (`Scene` gives it a height of its own)
   nonisolated static func measure(_ ms: [Scene.Measure], theme: Theme, notes: NoteRenderer) async -> [CardID:
-    CGSize]
+    NoteMetrics]
   {
     let requests = ms.map {
       NoteRenderer.SizeRequest(
         note: $0.note, width: $0.width, folder: $0.folder, look: theme.id.rawValue, dark: theme.dark, refs: $0.refs)
     }
     // before any picture: the board waits for these
-    let sizes = (try? await notes.sizes(of: requests, priority: 1)) ?? []
-    var out: [CardID: CGSize] = [:]
+    let sizes = (try? await notes.metrics(of: requests, priority: 1)) ?? []
+    var out: [CardID: NoteMetrics] = [:]
     for (m, s) in zip(ms, sizes) { out[m.card] = s }
     return out
   }

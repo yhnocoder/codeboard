@@ -85,7 +85,7 @@ package enum Picture {
   /// `rect` of the board (board units) at `scale` pixels per unit, the theme's backdrop covering it when asked; sizes: what
   /// the Note renderer would measure of Notes (as `Scene` takes it). Also returns where each card is
   package static func draw(
-    board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter, sizes: [CardID: CGSize],
+    board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter, sizes: [CardID: NoteMetrics],
     rect: CGRect, scale: CGFloat, backdrop: Bool
   ) -> (image: CGImage?, cards: [String: CGRect]) {
     let scene = Scene(board, package: package, vault: vault, theme: t, highlighter: highlighter, sizes: sizes)

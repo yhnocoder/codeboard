@@ -1,5 +1,6 @@
 import CodeBoardCanvas
 import CodeBoardModel
+import CodeBoardNotes
 import CodeBoardSyntax
 import CoreGraphics
 import Foundation
@@ -115,8 +116,8 @@ for theme in Theme.all.flatMap({ [$0, Theme.named($0.id, dark: true)] }) {
     continue
   }
   // what the Note page measures, as the web board measured it
-  var sizes: [CardID: CGSize] = [:]
-  for (id, r) in rects.rects { sizes[CardID(rawValue: id)] = CGSize(width: r.w, height: r.h) }
+  var sizes: [CardID: NoteMetrics] = [:]
+  for (id, r) in rects.rects { sizes[CardID(rawValue: id)] = NoteMetrics(size: CGSize(width: r.w, height: r.h)) }
   func picture(_ rect: CGRect, scale: CGFloat, backdrop: Bool) -> (image: CGImage?, cards: [String: CGRect]) {
     Picture.draw(
       board: board, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes, rect: rect,

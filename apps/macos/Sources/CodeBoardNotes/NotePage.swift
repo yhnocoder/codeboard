@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardModel
 import WebKit
 
 /// The Note page in its one web view. WebKit paints, and runs the animation frames the page waits for, only while it
@@ -63,7 +64,7 @@ final class NotePage {
   /// Mounts the Notes not mounted yet (`id`: what the Note draws, its images included), all in the board theme `look`
   /// and appearance, in one layout pass, and returns every one's size at 100 % and whether every image came in
   func mount(_ notes: [(id: String, json: String, images: URL)], look: String, dark: Bool) async throws -> [String: (
-    size: CGSize, complete: Bool
+    size: CGSize, complete: Bool, blocks: [NoteBlock]?
   )] {
     await signal.ready()
     adopt(look: look, dark: dark)
@@ -148,17 +149,24 @@ final class NotePage {
     used.append(id)
   }
 
-  private func call(_ js: String, _ args: [String: Any]) async throws -> [String: (size: CGSize, complete: Bool)] {
+  private func call(_ js: String, _ args: [String: Any]) async throws -> [String: (
+    size: CGSize, complete: Bool, blocks: [NoteBlock]?
+  )] {
     let r = try await view.callAsyncJavaScript(js, arguments: args, contentWorld: .page)
     guard let d = r as? [String: Any] else { throw NoteRenderError.page("the page answered \(String(describing: r))") }
     return try d.mapValues(Self.size)
   }
 
-  private static func size(_ r: Any?) throws -> (size: CGSize, complete: Bool) {
+  private static func size(_ r: Any?) throws -> (size: CGSize, complete: Bool, blocks: [NoteBlock]?) {
     guard let d = r as? [String: Any], let w = d["width"] as? Double, let h = d["height"] as? Double else {
       throw NoteRenderError.page("the page answered \(String(describing: r))")
     }
-    return (CGSize(width: w, height: h), d["complete"] as? Bool ?? false)
+    let blocks = (d["blocks"] as? [[String: Any]])?.compactMap { b -> NoteBlock? in
+      guard let t = b["text"] as? String, let y = b["y"] as? Double, let h = b["h"] as? Double
+      else { return nil }
+      return NoteBlock(sig: BlockRef.sig(t), y: y, h: h, line: b["line"] as? Double ?? h)
+    }
+    return (CGSize(width: w, height: h), d["complete"] as? Bool ?? false, blocks)
   }
 
   /// A mounted Note as `scale` device pixels per CSS px, covering whole pixels from its top left corner, and whether

@@ -89,7 +89,7 @@ struct Scene: Sendable {
     var width: Double
     var height: Double?
     var tilted: Bool
-    var measured: CGSize?
+    var measured: NoteMetrics?
     /// The arrow ends on it (a code card marks the lines they start from)
     var ends: [Endpoint]
     var drawing: Drawing
@@ -100,7 +100,8 @@ struct Scene: Sendable {
   /// The tilt of a tilted card, as the board's (counter-clockwise)
   static let tilt = -1.2 * CGFloat.pi / 180
 
-  /// A Note whose size only the Note renderer knows: one without a stored height, or a Text or Box
+  /// A Note whose size only the Note renderer knows: one without a stored height, or a Text or Box; or a Note with a
+  /// stored height that something is anchored to a block of (its blocks are measured)
   struct Measure: Sendable {
     var card: CardID
     var note: NoteBody
@@ -113,10 +114,15 @@ struct Scene: Sendable {
   /// The Notes the renderer must measure before the scene can be made
   static func measures(_ board: Board, package: URL, vault: Vault) -> [Measure] {
     let refs = RefResolver(board, package: package, vault: vault)
+    var onBlocks = Set<CardID>()
+    for a in board.arrows {
+      for e in [a.from, a.to] where e.block != nil { onBlocks.insert(e.card) }
+    }
+    for n in board.sidenotes { if case .card(let c, _, _, .some) = n.anchor { onBlocks.insert(c) } }
     return board.cards.compactMap { c in
       guard let (content, folder) = content(of: c, package: package, vault: vault) else { return nil }
       switch content.body {
-      case .note(let n) where c.height == nil:
+      case .note(let n) where c.height == nil || onBlocks.contains(c.id):
         return Measure(card: c.id, note: .note(n), width: c.width, folder: folder, refs: refs.refs(in: n.text))
       // a Text or Box is as tall as its text, and as wide too unless it wraps
       case .text(let t):
@@ -138,7 +144,8 @@ struct Scene: Sendable {
   /// Off the main thread: code is highlighted here, once, and kept with its item for every redraw. `sizes`: what the
   /// Note renderer measured of each Note in `measures`
   init(
-    _ board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter, sizes: [CardID: CGSize] = [:],
+    _ board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter,
+    sizes: [CardID: NoteMetrics] = [:],
     reusing previous: Scene? = nil
   ) {
     // what a folded Section hides: the cards and Sections inside it (the outermost folded one around each)
@@ -184,7 +191,7 @@ struct Scene: Sendable {
         // web cards, link lists and sub-boards are not drawn yet
         guard
           let (drawing, size, code) = Scene.card(
-            c, content, board: board, folder: folder, measured: sizes[c.id], theme: t, highlighter: highlighter,
+            c, content, board: board, folder: folder, measured: sizes[c.id]?.size, theme: t, highlighter: highlighter,
             refs: refs)
         else { continue }
         part = Part(
@@ -193,7 +200,7 @@ struct Scene: Sendable {
       }
       parts[c.id] = part
       let r = CGRect(origin: CGPoint(x: c.x, y: c.y), size: part.size)
-      placed[c.id] = Placed(rect: r, code: part.code, tilt: tilt)
+      placed[c.id] = Placed(rect: r, code: part.code, tilt: tilt, blocks: part.measured?.blocks)
       cardItems.append(
         Item(owner: .card(c.id), rect: r, drawing: part.drawing, tilt: tilt, bleed: part.drawing.bleed(t)))
       if let s = c.section { members[s, default: []].append(r) }
@@ -287,7 +294,8 @@ struct Scene: Sendable {
   /// An arrow between two placed cards, and its label's item when it has one
   static func route(_ a: CodeBoardModel.Arrow, from: Placed, to: Placed, theme t: Theme) -> (Arrow, Item?) {
     func end(_ e: Endpoint, _ p: Placed) -> CGFloat {
-      // a line's row; a hidden line, a Note block (not laid out yet) or the card itself: the header row
+      // a line's row; a Note block's middle; a hidden line, a block not measured or the card itself: the header row
+      if !e.lost, let b = e.block, !p.folded, let y = p.blockY(b, header: t.headerHeight) { return y }
       if !e.lost, let l = e.line, let c = p.code, let si = e.segment.flatMap({ c.segments.firstIndex(of: $0) }),
         let y = c.layout.lineY(segment: si, line: l)
       {
@@ -407,6 +415,16 @@ struct Scene: Sendable {
     var tilt: CGFloat
     /// A folded Section's title bar standing in for a card folded away in it: arrows meet it at its middle
     var folded = false
+    /// A Note's blocks as laid out, from its top
+    var blocks: [NoteBlock]?
+
+    /// The middle of a Note block's band in board units, kept inside the card below its header (the board's blockY);
+    /// nil when it is not measured or not there
+    func blockY(_ ref: BlockRef, header: CGFloat) -> CGFloat? {
+      guard let bs = blocks, let k = ref.at(bs.map(\.sig)), bs[k].h > 0 else { return nil }
+      let y = CGFloat(bs[k].y + bs[k].h / 2)
+      return rect.minY + min(max(y, header), max(header, rect.height - 8))
+    }
   }
 
   /// A card's or an inner Section's frame with the room a Section keeps around it (core SECTION_PAD)

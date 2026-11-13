@@ -143,7 +143,7 @@ extension CanvasView {
       let r = await Task.detached(priority: .userInitiated) {
         let package = vault.url(of: vb.path)
         let ms = Scene.measures(board, package: package, vault: vault)
-        var sizes: [CardID: CGSize] = [:]
+        var sizes: [CardID: NoteMetrics] = [:]
         var todo: [Scene.Measure] = []
         for m in ms {
           if let k = known[m.card], k.note == m.note, k.width == m.width {
@@ -1225,7 +1225,7 @@ extension CanvasView {
           height = rounded.height - (c.framed ? theme.headerHeight : 0)
         default:
           // near the height its content takes: as tall as its content again (board resizeDown)
-          let natural = measured[id]?.size.height
+          let natural = measured[id]?.size.size.height
           height = natural.map { abs(rounded.height - $0) < 8 / camera.zoom } == true ? nil : rounded.height
         }
       }

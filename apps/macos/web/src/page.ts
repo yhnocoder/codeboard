@@ -92,7 +92,8 @@ function mdFor(images: string, refs: Note["refs"], list?: RefList | null): Markd
 warmUp(mdFor("", []));
 
 /** A mounted Note (or image): its slot is laid out as the page's top left corner, hidden unless it is the one shown */
-type Slot = { slot: HTMLDivElement; card: HTMLElement; editor?: MdEditorHandle };
+/** md: a Note's Markdown, whose blocks are measured with it */
+type Slot = { slot: HTMLDivElement; card: HTMLElement; editor?: MdEditorHandle; md?: string };
 const root = document.getElementById("root") as HTMLDivElement;
 const slots = new Map<string, Slot>();
 let shown: Slot | undefined;
@@ -159,7 +160,35 @@ async function settled(els: HTMLElement[], laidOut = false): Promise<boolean[]> 
   return loaded;
 }
 
-type Size = { width: number; height: number; complete: boolean };
+/** A Note block where it is in its card at 100 % (the board's state/blocks.ts readBlocks): its fingerprint's text is
+ *  the block's Markdown, y and h from the card's top, line the height of its first line */
+type Block = { text: string; y: number; h: number; line: number };
+type Size = { width: number; height: number; complete: boolean; blocks: Block[] | null };
+
+/** A Note's top-level blocks on the page, matched one for one with its Markdown's (the board's noteDom); null when they
+ *  do not match (footnotes, raw HTML) */
+function blocksOf(s: Slot, k: number): Block[] | null {
+  if (s.md === undefined) return null;
+  const pm = s.card.querySelector<HTMLElement>(".md-pm");
+  const md = noteBlocks(s.md);
+  if (!pm || !md?.length) return null;
+  // the empty paragraph the editor keeps at the end for the caret is no block of the Markdown
+  let kids = ([...pm.children] as HTMLElement[]).filter((e) => !e.classList.contains("md-pad"));
+  if (md.length !== kids.length) kids = kids.filter((e) => e.tagName !== "P" || e.textContent || e.querySelector("img"));
+  if (md.length !== kids.length) return null;
+  const top = s.card.getBoundingClientRect().top;
+  return kids.map((e, i) => {
+    const r = e.getBoundingClientRect();
+    const cs = getComputedStyle(e);
+    const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5 || 20;
+    return {
+      text: md[i],
+      y: (r.top - top) / k,
+      h: r.height / k,
+      line: Math.min(e.offsetHeight, lh + (parseFloat(cs.paddingTop) || 0)),
+    };
+  });
+}
 
 /** The cards' sizes in CSS px, once everything is in, and whether every image came in */
 async function measure(ids: string[]): Promise<Record<string, Size>> {
@@ -173,7 +202,7 @@ async function measure(ids: string[]): Promise<Record<string, Size>> {
     // at 100 %: a Note last shown for a picture is still under its zoom
     const k = Number(s.slot.dataset.k ?? 1);
     const r = s.card.getBoundingClientRect();
-    out[id] = { width: r.width / k, height: r.height / k, complete: complete[i] };
+    out[id] = { width: r.width / k, height: r.height / k, complete: complete[i], blocks: blocksOf(s, k) };
   });
   return out;
 }
@@ -217,6 +246,7 @@ window.note = {
       setLook(n.look, n.dark);
       const made = cardFor(n);
       const s = newSlot(id, made.card);
+      if ("note" in n.style) s.md = n.text;
       s.editor = mountEditor(mdFor(images, n.refs), made.body, {
         value: n.text,
         layout: n.layout,

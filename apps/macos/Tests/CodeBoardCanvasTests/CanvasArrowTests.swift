@@ -51,6 +51,35 @@ private func fire(_ m: NSMenu?, _ path: String...) {
 }
 
 @MainActor @Suite(.serialized) struct CanvasArrowTests {
+  @Test(arguments: [nil, 400] as [Double?])
+  func anArrowOnANotesBlockMeetsTheNoteAtThatBlock(height: Double?) async throws {
+    let text = "# 调度 Scheduling\n\nRequests wait in the queue until a slot is free.\n\n- 每一步取一批\n- 再算一步\n\n结尾 the end"
+    let blocks = [
+      "# 调度 Scheduling", "Requests wait in the queue until a slot is free.", "- 每一步取一批\n- 再算一步", "结尾 the end",
+    ]
+    let to = { (i: Int) in Endpoint(card: cid("n1"), block: BlockRef(index: i, hash: BlockRef.sig(blocks[i]))) }
+    let board = Board(
+      id: BoardID(rawValue: "blocks"),
+      cards: [
+        Card(
+          id: cid("n1"), x: 0, y: 0, width: 300, height: height,
+          content: .own(CardContent(body: .note(Note(text: text))))),
+        Card(id: cid("n2"), x: 600, y: 0, width: 240, content: .own(CardContent(body: .note(Note(text: "Other"))))),
+      ],
+      arrows: [
+        Arrow(id: aid("b0"), from: Endpoint(card: cid("n2")), to: to(0)),
+        Arrow(id: aid("b2"), from: Endpoint(card: cid("n2")), to: to(2)),
+        Arrow(id: aid("b3"), from: Endpoint(card: cid("n2")), to: to(3)),
+        Arrow(id: aid("w"), from: Endpoint(card: cid("n2")), to: Endpoint(card: cid("n1"))),
+      ])
+    let r = try await Rig(board, zoom: 1)
+    defer { r.close() }
+    let y = { (a: String) in r.canvas.arrowPoints(aid(a))?.end.y ?? -1 }
+    let card = r.rect("n1")
+    // the whole card at its header; each block lower than the one before it, inside the card
+    #expect(y("w") < y("b0") && y("b0") < y("b2") && y("b2") < y("b3") && y("b3") < card.maxY)
+  }
+
   @Test(arguments: [1, 0.5] as [CGFloat])
   func anArrowIsFoundByItsLineWithinSixPointsAndDrawnInTheAccentWhenSelectedOrHovered(zoom: CGFloat) async throws {
     let r = try await Rig(arrows(), zoom: zoom)

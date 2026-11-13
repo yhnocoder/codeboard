@@ -227,6 +227,35 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     #expect(after.first == plain.first)
   }
 
+  @Test func aNotesBlocksAreMeasuredWithItsSizeAndKeptWithIt() async throws {
+    _ = NSApplication.shared
+    let cache = try tempFolder()
+    let folder = try tempFolder()
+    defer {
+      try? FileManager.default.removeItem(at: cache)
+      try? FileManager.default.removeItem(at: folder)
+    }
+    let text = "调度 Scheduling\n\nRequests wait in the queue.\n\n- 每一步取一批\n- 再算一步"
+    let req = NoteRenderer.SizeRequest(
+      note: .note(Note(text: text)), width: 300, folder: folder, look: "warm-ink", dark: false)
+    let r = NoteRenderer(cache: cache)
+    let m = try #require(try await r.metrics(of: [req], priority: 0)[0])
+    let blocks = try #require(m.blocks)
+    #expect(
+      blocks.map(\.sig) == ["调度 Scheduling", "Requests wait in the queue.", "- 每一步取一批\n- 再算一步"].map(BlockRef.sig))
+    #expect(zip(blocks, blocks.dropFirst()).allSatisfy { $0.y + $0.h <= $1.y + 0.5 }, "one under another")
+    #expect(blocks.allSatisfy { $0.h > 0 && $0.line > 0 && $0.line <= $0.h + 0.5 && $0.y + $0.h <= m.size.height })
+    // a Text has no blocks
+    let t = NoteRenderer.SizeRequest(
+      note: .text(TextCard(text: text)), width: 300, folder: folder, look: "warm-ink", dark: false)
+    #expect(try await r.metrics(of: [t], priority: 0)[0]?.blocks == nil)
+    // read back from the disk cache, without the web view
+    await r.written()
+    let fresh = NoteRenderer(cache: cache)
+    #expect(try await fresh.metrics(of: [req], priority: 0)[0] == m)
+    #expect(!fresh.webViewOpen)
+  }
+
   @Test func drawsAtEachScaleThenReadsFromDisk() async throws {
     _ = NSApplication.shared
     let page = NoteRenderer.bundledPage.appending(path: "page.html").path(percentEncoded: false)

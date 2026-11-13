@@ -39,7 +39,8 @@ let package = Package(
     .target(name: "CodeBoardShell", dependencies: ["CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes"]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
     .executableTarget(name: "CanvasBench", dependencies: ["CodeBoardCanvas", "CodeBoardNotes"]),
-    .executableTarget(name: "LookCompare", dependencies: ["CodeBoardCanvas", "CodeBoardModel", "CodeBoardSyntax"]),
+    .executableTarget(
+      name: "LookCompare", dependencies: ["CodeBoardCanvas", "CodeBoardModel", "CodeBoardNotes", "CodeBoardSyntax"]),
     .testTarget(name: "CodeBoardModelTests", dependencies: ["CodeBoardModel"], resources: [.copy("Fixtures")]),
     .testTarget(name: "CodeBoardSyntaxTests", dependencies: ["CodeBoardSyntax"]),
     .testTarget(name: "CodeBoardNotesTests", dependencies: ["CodeBoardNotes"]),

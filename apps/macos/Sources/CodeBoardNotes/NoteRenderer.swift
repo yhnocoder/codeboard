@@ -123,10 +123,15 @@ public final class NoteRenderer {
   }
 
   /// The size at 100 % of each Note (a Free Text: as wide as its text too), in order: what `snapshot` with no height
-  /// gives as its size, without drawing it; nil for one that could not be measured. Those not kept with the snapshots
-  /// are measured in the web view together, in one turn, and stay mounted there for their pictures
+  /// gives as its size, without drawing it; nil for one that could not be measured
   public func sizes(of notes: [SizeRequest], priority: Int) async throws -> [CGSize?] {
-    var out = [CGSize?](repeating: nil, count: notes.count)
+    try await metrics(of: notes, priority: priority).map { $0?.size }
+  }
+
+  /// What `sizes` gives, with each Note's blocks as laid out. Those not kept with the snapshots are measured in the web
+  /// view together, in one turn, and stay mounted there for their pictures
+  public func metrics(of notes: [SizeRequest], priority: Int) async throws -> [NoteMetrics?] {
+    var out = [NoteMetrics?](repeating: nil, count: notes.count)
     var missing: [(i: Int, key: SnapshotKey, json: String, images: URL, look: Look)] = []
     for (i, n) in notes.enumerated() {
       guard
@@ -142,7 +147,7 @@ public final class NoteRenderer {
     }
     guard !missing.isEmpty else { return out }
     try await takeTurn(priority: priority)
-    var shown: [String: (size: CGSize, complete: Bool)] = [:]
+    var shown: [String: (size: CGSize, complete: Bool, blocks: [NoteBlock]?)] = [:]
     do {
       let p = try page ?? NotePage(page: pageFolder)
       page = p
@@ -157,12 +162,13 @@ public final class NoteRenderer {
       throw error
     }
     endTurn()
-    var keep: [(SnapshotKey, CGSize)] = []
+    var keep: [(SnapshotKey, NoteMetrics)] = []
     for m in missing {
       guard let s = shown[m.key.hex] else { continue }
-      out[m.i] = s.size
+      let metrics = NoteMetrics(size: s.size, blocks: s.blocks)
+      out[m.i] = metrics
       // measured without an image that did not come in: too small, so not kept
-      if s.complete { keep.append((m.key, s.size)) }
+      if s.complete { keep.append((m.key, metrics)) }
     }
     keepSizes(keep)
     return out
@@ -208,7 +214,7 @@ public final class NoteRenderer {
   @concurrent
   private static func lookUpSize(
     store: SnapshotStore, build: String, note: String, markdown: String, folder: URL
-  ) async -> (SnapshotKey, CGSize?) {
+  ) async -> (SnapshotKey, NoteMetrics?) {
     let key = SnapshotKey(
       build: build, system: ProcessInfo.processInfo.operatingSystemVersionString, note: note, scale: 0,
       images: SnapshotKey.imageStamps(in: markdown, folder: folder))
@@ -216,7 +222,7 @@ public final class NoteRenderer {
   }
 
   /// Written after the measuring is done, off the path to the screen
-  private func keepSizes(_ sizes: [(SnapshotKey, CGSize)]) {
+  private func keepSizes(_ sizes: [(SnapshotKey, NoteMetrics)]) {
     guard !sizes.isEmpty else { return }
     let store = self.store
     writes.async {
