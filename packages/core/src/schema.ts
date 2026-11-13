@@ -20,7 +20,7 @@ import {
   type SharedCardFile,
 } from "./model";
 import { SEAL_COLORS, sealTextOk } from "./seal";
-import { fileCamera, migrateBoard, migrateSharedCard, sharedTextHeights } from "./migrate";
+import { fileCamera, migrateBoard, migrateSharedCard, sharedCardRefs, sharedTextHeights } from "./migrate";
 
 const str = v.string(),
   num = v.number(),
@@ -392,7 +392,12 @@ export function loadBoardFile(raw: unknown): BoardFile {
  * runs on the board once it has put them in
  */
 export function readBoardFile(raw: unknown): { file: BoardFile; cam?: Camera; inflated?: (b: Board) => void } {
-  return { file: loadBoardFile(raw), cam: fileCamera(raw), inflated: sharedTextHeights(raw) };
+  const steps = [sharedTextHeights(raw), sharedCardRefs(raw)].filter((f) => !!f);
+  return {
+    file: loadBoardFile(raw),
+    cam: fileCamera(raw),
+    inflated: steps.length ? (b) => steps.forEach((f) => f(b)) : undefined,
+  };
 }
 
 /** 卡库里的文件 cards/<id>.json → 校验过的共享卡 */

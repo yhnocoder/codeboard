@@ -19,7 +19,7 @@ import {
   type Sticker,
   cardTitle,
 } from "./model";
-import { eachMarkdown, mapRefs, refSource } from "./mdrefs";
+import { eachMarkdown, mapRefs, refSource, UNTITLED_REF } from "./mdrefs";
 import { fixHighlights } from "./edit/highlights";
 
 /** 读进来的白板文件（第 1–15 版）→ 第 15 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
@@ -331,6 +331,26 @@ export function sharedTextHeights(raw: any): ((b: Board) => void) | undefined {
   return (b) => {
     for (const c of b.cards)
       if (ids.has(c.id) && c.kind === "note" && c.look === "text" && b.place[c.id]) delete b.place[c.id].h;
+  };
+}
+
+/**
+ * 14 → 15 for Card sidenotes that pointed at a card from the card library (or that a library card carried): the board file holds
+ * only the shared card's id, so migrateBoard wrote the reference with the placeholder label. Once Storage has put the shared
+ * cards in, the label becomes the card's title, as writing the reference in the editor would have made it (schema.ts readBoardFile)
+ */
+export function sharedCardRefs(raw: any): ((b: Board) => void) | undefined {
+  if (!(raw?.version < 15) || !Array.isArray(raw.cards) || !raw.cards.some((c: any) => c?.kind === "shared"))
+    return undefined;
+  return (b) => {
+    for (const n of b.sidenotes) {
+      if (n.kind !== "text") continue;
+      n.md = mapRefs(n.md, (r) => {
+        if (r.label !== UNTITLED_REF || !r.target) return undefined;
+        const c = b.cards.find((k) => k.id === r.target);
+        return c ? refSource(cardTitle(c, b), c.id) : undefined;
+      });
+    }
   };
 }
 

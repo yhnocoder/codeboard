@@ -23,6 +23,8 @@ import {
   noteCodeLang,
   migrateBoard,
   loadSharedCard,
+  readBoardFile,
+  inflate,
   danglingRefs,
   shownRanges,
   BOARD_VERSION,
@@ -860,6 +862,28 @@ describe("old sidenote kinds migrate to Text and Code", () => {
     expect(md).toMatch(/#\^n\]\]$/);
     expect(md).not.toMatch(/<mark>/);
     expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("a Card sidenote pointing at a card from the card library gets that card's title once Storage has put it in", () => {
+    const raw = v13([{ id: "lib", kind: "card", at, card: "s", why: "see" }]);
+    raw.cards.push({ id: "s", kind: "shared" } as never);
+    (raw.place as Record<string, unknown>).s = { x: 0, y: 500, w: 300 };
+    const sc = loadSharedCard({
+      version: 13,
+      card: { id: "s", kind: "note", look: "note", md: "## Block table lookup\n\nbody" },
+      sidenotes: [{ id: "own", kind: "card", at: { card: "s" }, card: "n" }],
+    });
+    const { file, inflated } = readBoardFile(raw);
+    const { board } = inflate(file, { x: 0, y: 0, z: 1 }, () => structuredClone(sc));
+    inflated?.(board);
+    const md = (id: string) => {
+      const n = board.sidenotes.find((x) => x.id === id)!;
+      return n.kind === "text" ? n.md : n.kind;
+    };
+    // the board's own one, and the one the library card carried, which pointed at this board's Note
+    expect(md("lib")).toBe("[[Block table lookup#^s]]");
+    expect(md("own")).toBe("[[Why *this*#^n]]");
+    expect(danglingRefs(board)).toEqual([]);
   });
 
   it("a shared card's library file: its Link and Paste sidenotes are upgraded too", () => {

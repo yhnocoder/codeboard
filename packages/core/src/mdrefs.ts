@@ -106,8 +106,11 @@ export const plainRefs = (md: string, title: (target: string) => string | undefi
     r.target ? `[[${(title(r.target) ?? r.label).replace(/[[\]\n]/g, " ").trim() || r.label}]]` : undefined,
   );
 
+/** What a reference to a card with no title is written as */
+export const UNTITLED_REF = "Card";
 /** A reference to `id` as the [[ list writes it, with `label` (its title now) as its text */
-export const refSource = (label: string, id: string) => `[[${label.replace(/[[\]\n]/g, " ").trim() || "Card"}#^${id}]]`;
+export const refSource = (label: string, id: string) =>
+  `[[${label.replace(/[[\]\n]/g, " ").trim() || UNTITLED_REF}#^${id}]]`;
 
 /** 目标换了 id 的（复制出来的副本）：[[标题#^旧]] → [[标题#^新]] */
 export const retargetRefs = (md: string, ids: Record<string, string>) =>
