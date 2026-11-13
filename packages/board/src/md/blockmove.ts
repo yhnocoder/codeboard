@@ -115,9 +115,9 @@ function grabbing(d: Move, on: boolean) {
   d.held?.classList.toggle("bmv-grabbing", on);
   if (!on) d.held = null;
 }
-/** What is under the pointer beneath the block-move layer */
 /** The key that picks up blocks: ⌘ on a Mac (Ctrl-click there is the context menu), Ctrl elsewhere */
 const modHeld = (e: MouseEvent | KeyboardEvent) => (IS_MAC ? e.metaKey : e.ctrlKey);
+/** What is under the pointer beneath the block-move layer */
 const under = (e: PointerEvent) =>
   document.elementsFromPoint(e.clientX, e.clientY).find((x) => !view.lay?.contains(x)) ?? null;
 const cardEl = (id: string) => document.querySelector<HTMLElement>(cardSel(id));
