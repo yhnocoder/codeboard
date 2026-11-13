@@ -307,6 +307,14 @@ describe("board format v14: <mark> becomes ==", () => {
       "- ```\n  <mark>x</mark>\n  ```\n\n==a==<mark>b</mark> $<mark>m</mark>$ ==c==",
     );
   });
+  it("v13 → v14 keeps a Markdown sample inside a fence as code, a list-item or indented fence in it too", () => {
+    const b = board() as any;
+    b.version = 13;
+    b.cards[0].md = "```md\n- ```\n  <mark>x</mark>\n    ```\n<mark>y</mark>\n```\n\nafter <mark>z</mark>";
+    expect((upgraded(b).cards[0] as any).md).toBe(
+      "```md\n- ```\n  <mark>x</mark>\n    ```\n<mark>y</mark>\n```\n\nafter ==z==",
+    );
+  });
   it("v13 → v14 leaves a Free Text's plain text alone", () => {
     const b = board() as any;
     b.version = 13;

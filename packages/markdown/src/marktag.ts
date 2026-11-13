@@ -10,6 +10,7 @@ export function markTags(md: string): string {
   const out: string[] = [];
   let run: string[] = [],
     fence = "",
+    cont = "",
     html = false;
   const flush = () => {
     if (run.length) out.push(markText(run.join("\n")));
@@ -20,14 +21,20 @@ export function markTags(md: string): string {
     out.push(l);
   };
   for (const l of md.split("\n")) {
+    // inside a fence only its own container's prefix comes off a line (a "- ```" or an indented ``` there is code); a line
+    // without that prefix ends the container, and the fence with it
+    if (fence && (l.startsWith(cont) || !l.trim())) {
+      fixed(l);
+      if (new RegExp(`^ {0,3}${fence[0]}{${fence.length},}\\s*$`).test(l.slice(cont.length))) fence = "";
+      continue;
+    }
+    fence = "";
     // a fence may stand in a list item or a quote: its container's markers and indent come first
     const inner = l.replace(CONTAINER, ""),
       f = /^(`{3,}|~{3,})/.exec(inner);
-    if (fence) {
-      fixed(l);
-      if (new RegExp(`^${fence[0]}{${fence.length},}\\s*$`).test(inner)) fence = "";
-    } else if (f) {
+    if (f) {
       fence = f[1];
+      cont = contOf(l.slice(0, l.length - inner.length));
       fixed(l);
     } else if (html) {
       fixed(l);
@@ -43,6 +50,9 @@ export function markTags(md: string): string {
 }
 /** A line's list and quote markers and its indent */
 const CONTAINER = /^(?:\s*(?:>|[-+*](?=\s)|\d{1,9}[.)](?=\s)))*\s*/;
+/** What the lines inside a fence opened after this prefix start with: its quote markers (list markers and indents trimmed:
+ *  up to 3 spaces before a closing fence are allowed anyway, and a fence kept open longer only leaves a <mark> as it is) */
+const contOf = (prefix: string) => prefix.replace(/[-+*]|\d{1,9}[.)]/g, (m) => " ".repeat(m.length)).trimEnd();
 
 /** Lines of text (no code or HTML blocks): inline code spans and formulas skipped */
 function markText(src: string): string {
