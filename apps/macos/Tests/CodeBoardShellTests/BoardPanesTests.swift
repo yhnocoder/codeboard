@@ -2,6 +2,7 @@ import CodeBoardModel
 import Foundation
 import Testing
 
+@testable import CodeBoardCanvas
 @testable import CodeBoardShell
 
 // The open boards behind the tabs: one document per board, kept across tab switches, written when its tab closes, and
@@ -62,5 +63,66 @@ import Testing
         Arrow(id: ArrowID(rawValue: "a"), from: Endpoint(card: card), to: Endpoint(card: CardID(rawValue: "gone"))))
     }
     #expect(panes.flush().map(\.title) == ["B"])
+  }
+
+  /// Until `f` holds, the main actor free meanwhile (boards load in tasks)
+  func until(_ what: String, _ f: () -> Bool) async {
+    let deadline = ContinuousClock.now + .seconds(20)
+    while !f() {
+      if ContinuousClock.now > deadline {
+        Issue.record("\(what): not within 20 s")
+        return
+      }
+      try? await Task.sleep(for: .milliseconds(5))
+    }
+  }
+
+  @Test func aSubBoardCardOpensItsBoardInTheTabAndBackReturnsWhereTheViewWas() async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appending(path: "panes-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: root) }
+    let vault = Vault(root: root)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let a = BoardID(rawValue: "a")
+    let b = BoardID(rawValue: "b")
+    let frame = CardID(rawValue: "f")
+    try vault.newBoard(in: "", title: "里面 Inner", board: Board(id: b))
+    try vault.newBoard(
+      in: "", title: "Outer",
+      board: Board(
+        id: a,
+        cards: [
+          Card(id: frame, x: 0, y: 0, width: 400, content: .own(CardContent(body: .board(SubBoard(board: b))))),
+          Card(
+            id: CardID(rawValue: "n"), x: 2000, y: 900, width: 200, height: 100,
+            content: .own(CardContent(body: .note(Note(text: "far"))))),
+        ]))
+    let shell = Shell()
+    shell.open(vault, restoring: nil)
+    shell.apply(.success(try vault.tree()))
+    let panes = BoardPanes(shell: shell)
+    panes.frame = CGRect(x: 0, y: 0, width: 1000, height: 700)
+    shell.show(a)
+    panes.sync()
+    let tab = try #require(shell.selected)
+    let pane = try #require(panes.panes[tab])
+    pane.canvas.onOpenBoard = { id, _ in
+      shell.show(id)
+      panes.sync()
+    }
+    await until("Outer shown") { pane.canvas.scene != nil && pane.document?.id == a }
+    pane.canvas.place(zoom: 0.62, centre: CGPoint(x: 333, y: 211))
+    let was = pane.canvas.currentCamera
+    // a double-click on the card: its board, in this tab
+    #expect(pane.canvas.openSubBoard(frame))
+    await until("Inner shown") { pane.document?.id == b && pane.canvas.shown?.board.id == b }
+    #expect(shell.current?.board == b && shell.tabs.count == 1)
+    #expect(shell.current?.back == [Tab.Visit(board: a, camera: was)])
+    // back (⌘[): Outer again, where its view was
+    shell.goBack()
+    panes.sync()
+    await until("Outer again") { pane.canvas.shown?.board.id == a }
+    #expect(pane.canvas.currentCamera == was)
+    #expect(shell.current?.forward.map(\.board) == [b])
   }
 }

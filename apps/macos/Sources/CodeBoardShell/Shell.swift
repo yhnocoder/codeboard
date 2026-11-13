@@ -3,13 +3,25 @@ import CodeBoardCanvas
 import CodeBoardModel
 import Observation
 
-/// A board tab: the board it shows and its own back / forward history, browser style. Boards are held by id, so a board
-/// renamed or moved on disk stays in its tab.
+/// A board tab: the board it shows and its own back / forward history, browser style, each board in it with where its
+/// view was. Boards are held by id, so a board renamed or moved on disk stays in its tab.
 public struct Tab: Codable, Equatable, Identifiable, Sendable {
   public let id: UUID
   public var board: BoardID
-  public var back: [BoardID] = []
-  public var forward: [BoardID] = []
+  public var back: [Visit] = []
+  public var forward: [Visit] = []
+  /// Where the board is to be shown from when it is next loaded (gone back or forward to it); nil: all of it in view
+  public var arriving: Camera?
+
+  public struct Visit: Codable, Equatable, Sendable {
+    public var board: BoardID
+    public var camera: Camera?
+
+    public init(board: BoardID, camera: Camera? = nil) {
+      self.board = board
+      self.camera = camera
+    }
+  }
 
   public init(board: BoardID) {
     id = UUID()
@@ -44,6 +56,8 @@ public struct ShellState: Codable, Equatable, Sendable {
   /// Whether the Mac's appearance is dark: the app follows it (`follow(_:)`) and has no setting of its own
   public private(set) var dark = false
   private var byID: [BoardID: VaultBoard] = [:]
+  /// Where the selected tab's view is (the board panel's canvas)
+  public var cameraNow: (() -> Camera?)?
 
   public init() {}
 
@@ -95,8 +109,8 @@ public struct ShellState: Codable, Equatable, Sendable {
       byID = Dictionary(tree.allBoards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
       for tab in tabs where byID[tab.board] == nil { close(tab.id) }
       for i in tabs.indices {
-        tabs[i].back.removeAll { byID[$0] == nil }
-        tabs[i].forward.removeAll { byID[$0] == nil }
+        tabs[i].back.removeAll { byID[$0.board] == nil }
+        tabs[i].forward.removeAll { byID[$0.board] == nil }
       }
     }
   }
@@ -110,9 +124,15 @@ public struct ShellState: Codable, Equatable, Sendable {
       return
     }
     guard tabs[i].board != board else { return }
-    tabs[i].back.append(tabs[i].board)
+    tabs[i].back.append(Tab.Visit(board: tabs[i].board, camera: cameraNow?()))
     tabs[i].forward = []
     tabs[i].board = board
+    tabs[i].arriving = nil
+  }
+
+  /// The camera a tab's board was to be shown from has been used
+  public func arrived(_ tab: Tab.ID) {
+    if let i = tabs.firstIndex(where: { $0.id == tab }), tabs[i].arriving != nil { tabs[i].arriving = nil }
   }
 
   public func select(_ tab: Tab.ID) {
@@ -142,14 +162,16 @@ public struct ShellState: Codable, Equatable, Sendable {
 
   public func goBack() {
     guard let i = currentIndex, let to = tabs[i].back.popLast() else { return }
-    tabs[i].forward.append(tabs[i].board)
-    tabs[i].board = to
+    tabs[i].forward.append(Tab.Visit(board: tabs[i].board, camera: cameraNow?()))
+    tabs[i].board = to.board
+    tabs[i].arriving = to.camera
   }
 
   public func goForward() {
     guard let i = currentIndex, let to = tabs[i].forward.popLast() else { return }
-    tabs[i].back.append(tabs[i].board)
-    tabs[i].board = to
+    tabs[i].back.append(Tab.Visit(board: tabs[i].board, camera: cameraNow?()))
+    tabs[i].board = to.board
+    tabs[i].arriving = to.camera
   }
 
   private var currentIndex: Int? { tabs.firstIndex { $0.id == selected } }

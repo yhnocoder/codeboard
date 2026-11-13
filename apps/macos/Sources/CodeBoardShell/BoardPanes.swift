@@ -17,6 +17,10 @@ import CodeBoardNotes
     self.shell = shell
     self.notes = notes
     super.init(frame: .zero)
+    shell.cameraNow = { [weak self] in
+      guard let self, let t = self.shell.selected, let p = self.panes[t], p.document != nil else { return nil }
+      return p.canvas.currentCamera
+    }
   }
 
   @available(*, unavailable)
@@ -58,6 +62,8 @@ import CodeBoardNotes
         pane.document?.id != tab.board || pane.shown?.path != at.path || pane.failed && reload
       {
         do {
+          pane.canvas.arriving = tab.arriving
+          shell.arrived(tab.id)
           pane.load(at, in: vault, theme: theme, document: try document(tab.board))
         } catch {
           pane.fail(error)

@@ -2,9 +2,14 @@ import CoreGraphics
 
 /// What the view shows: the board point at the view's top-left corner and the zoom (view points per board unit). View
 /// and board are both y-down.
-struct Camera: Equatable {
-  var origin: CGPoint
-  var zoom: CGFloat
+public struct Camera: Equatable, Codable, Sendable {
+  public var origin: CGPoint
+  public var zoom: CGFloat
+
+  public init(origin: CGPoint, zoom: CGFloat) {
+    self.origin = origin
+    self.zoom = zoom
+  }
 
   func board(_ p: CGPoint) -> CGPoint {
     CGPoint(x: origin.x + p.x / zoom, y: origin.y + p.y / zoom)

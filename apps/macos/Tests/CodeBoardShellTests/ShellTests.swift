@@ -42,7 +42,7 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
     s.show(id("b"))
     #expect(s.tabs.count == 1)
     #expect(s.current?.board == id("b"))
-    #expect(s.current?.back == [id("a")])
+    #expect(s.current?.back.map(\.board) == [id("a")])
     s.goBack()
     #expect(s.current?.board == id("a"))
     #expect(s.canGoForward && !s.canGoBack)
@@ -51,7 +51,7 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
     s.goBack()
     s.show(id("c"))
     #expect(!s.canGoForward)
-    #expect(s.current?.back == [id("a")])
+    #expect(s.current?.back.map(\.board) == [id("a")])
   }
 
   @Test func aNewTabOpensAfterTheCurrentOneAndIsSelected() {
@@ -62,7 +62,7 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
     s.show(id("c"), newTab: true)
     #expect(s.tabs.map(\.board) == [id("a"), id("c"), id("b")])
     #expect(s.current?.board == id("c"))
-    #expect(s.current?.back == [])
+    #expect(s.current?.back.map(\.board) == [])
   }
 
   @Test func closingSelectsTheRightNeighbourThenTheLeft() {

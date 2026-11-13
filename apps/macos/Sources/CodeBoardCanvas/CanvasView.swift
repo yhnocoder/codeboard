@@ -43,6 +43,10 @@ public final class CanvasView: NSView {
   let above = CALayer()
   let cards = CALayer()
   var camera = Camera(origin: .zero, zoom: 1)
+  /// Where the next board shown is shown from (back to a board: where it was), instead of all of it in view
+  public var arriving: Camera?
+  /// Where the view is now
+  public var currentCamera: Camera { camera }
   var limits = ZoomLimits(fit: 1)
   var motion = Motion()
   var queue = RedrawQueue<IOSurface>()
@@ -506,7 +510,10 @@ public final class CanvasView: NSView {
     let fit = Camera.fit(s.bounds, in: bounds.isEmpty ? CGSize(width: 1440, height: 900) : bounds.size)
     fitZoom = fit.zoom
     limits = ZoomLimits(fit: fit.zoom)
-    if !keepCamera { camera = fit }
+    if !keepCamera {
+      camera = arriving ?? fit
+      arriving = nil
+    }
     motion = Motion()
     restZoom = nil
     hoveredMark = nil
