@@ -216,6 +216,7 @@ extension CanvasView {
   /// now), changed ones come with their bitmaps drawn, frames and arrows are made again
   private func reinstall(_ s: Scene, fresh: [Int: Fresh]) {
     guard let old = scene else { return }
+    let started = CACurrentMediaTime()
     cancelRedraws()
     var byOwner: [Scene.Owner: ItemLayers] = [:]
     for (i, l) in items.enumerated() { if let o = old.items[i].owner { byOwner[o] = l } }
@@ -256,7 +257,22 @@ extension CanvasView {
     CATransaction.flush()
     arrive()
     drawChrome()
+    lastInstall = (CACurrentMediaTime() - started, fresh.count)
   }
+
+  // MARK: Measuring (CanvasBench)
+
+  /// The cards drawn, in drawing order, where they are
+  package var cardRects: [(id: CardID, rect: CGRect)] {
+    scene?.items.compactMap { it in if case .card(let id)? = it.owner { (id, it.rect) } else { nil } } ?? []
+  }
+
+  package func sectionTitle(_ id: SectionID) -> CGRect? {
+    scene?.items.first { $0.owner == .sectionTitle(id) }?.rect
+  }
+
+  /// A board point in the view
+  package func viewPoint(_ p: CGPoint) -> CGPoint { camera.view(p) }
 
   // MARK: Hit testing
 

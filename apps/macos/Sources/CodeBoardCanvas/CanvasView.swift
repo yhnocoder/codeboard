@@ -74,6 +74,8 @@ public final class CanvasView: NSView {
   /// The board changed during a gesture: the scene follows once it ends
   var pendingRefresh = false
   var refreshes = 0
+  /// How long the last refresh's swap took on the main thread, and how many items it drew anew
+  package var lastInstall: (seconds: Double, drawn: Int) = (0, 0)
   /// The latest refresh (tests wait for it)
   package var refreshing: Task<Void, Never>?
   /// Selection rings, handles: over the cards, in board units
