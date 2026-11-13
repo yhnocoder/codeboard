@@ -202,7 +202,10 @@ function MdEdit(p: P & { peeks?: CardPeeks }) {
       const spot = entry.spot;
       if (spot === "end") h.placeCaret("end");
       // pressed on an image: that image selected
-      else if (!h.pickImage(entry.at) && (!spot || !h.placeCaret({ visible: spot.char, after: spot.after })))
+      else if (
+        !h.pickImage(entry.at) &&
+        (!spot || !h.placeCaret({ visible: spot.char, after: spot.after, open: spot.open }))
+      )
         h.placeCaret(entry.at);
     } else if (entry && h.selectVisible(entry.range))
       // 编辑器拿到焦点（mountEditor 放进了微任务）以后，和在编辑器里按这个键一样走它的键表；键表没接（不会发生）就直接删
@@ -243,7 +246,7 @@ function MdEdit(p: P & { peeks?: CardPeeks }) {
     >
       {now ? null : (
         <>
-          <MdStatic src={p.value} class="md-loading" />
+          <MdStatic src={p.value} class="md-loading" inert />
           <div
             ref={early}
             class="md-early"

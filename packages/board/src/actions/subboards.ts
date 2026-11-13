@@ -28,6 +28,9 @@ import { animScale } from "../state/motion";
 import { ask, send } from "../host";
 import { promptText } from "../ui/Menu";
 import { cardSel } from "../cardsel";
+import { lastDown } from "../state/measure";
+import { tune } from "../state/tune";
+import { swallowRepeats } from "../gesture";
 
 const subsOf = (id: string) => state.boards.find((m) => m.id === id)?.subs;
 const nameOf = (id: string) => state.boards.find((m) => m.id === id)?.name ?? "Board";
@@ -503,6 +506,17 @@ export function cardElsewhere(to: { id: string; place?: string }): string | unde
 export function goToNearCard(id: string, editing: boolean) {
   if (editing) void revealCard(id);
   else openCardRef(id);
+  clickWent();
+}
+/** openCardRef from a click (a reference ⌘-clicked, the preview's arrow) */
+export function clickToCardRef(id: string, place?: string) {
+  openCardRef(id, place);
+  clickWent();
+}
+/** The click just pressed moved the board under the pointer: the rest of a double or triple click lands on nothing */
+function clickWent() {
+  const d = lastDown();
+  if (d) swallowRepeats(d, tune("dblClick"));
 }
 
 /** An address opened from Markdown (a link's ⌘-click, the link box's Open): a link to an item (Copy Link) goes to it as Go to

@@ -28,7 +28,7 @@
 import type { Page } from "@playwright/test";
 import { emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import { put, shot, type Host } from "../harness";
-import { PEEK_DELAY } from "../../src/state/timing";
+import { DBL_CLICK, PEEK_DELAY } from "../../src/state/timing";
 import { test, open, check, light, until, idle, hold, focusSettled, pmHasSelection } from "../fixtures";
 import { watch } from "../watch";
 
@@ -144,8 +144,10 @@ test("noteRefPreview", async () => {
       go: pk.querySelectorAll(".cpeek-go").length,
     };
   }, N);
+  await hold(h, DBL_CLICK, "a second click right after would be a double-click, which opens the reference's source");
   await ref(pg, "schedule").click();
   await until(h, "a second click closes the preview", async () => (await peeks(pg)) === 0);
+  await hold(h, DBL_CLICK, "a third click right after would be a double-click, which opens the reference's source");
   await ref(pg, "schedule").click();
   await pg.locator(".cpeek.show").waitFor();
   await pg.keyboard.press("Escape");

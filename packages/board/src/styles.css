@@ -2943,6 +2943,12 @@ textarea {
   font: 10.5px var(--mono);
   opacity: 0.6;
 }
+/* a tip that is an address (a link's in a Note, ui/Md.tsx): wrapped anywhere, never wider than the window */
+.tip.long {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: min(480px, calc(100vw - 16px));
+}
 .toast {
   position: absolute;
   left: 50%;
@@ -3176,6 +3182,28 @@ textarea {
 }
 .cand.on {
   box-shadow: inset 2px 0 0 var(--accent);
+}
+/* The Note editor's lists ([[ references, the / menu, : emoji: @yhnocoder/markdown's .md-pick, with the board's .ctx look) mark
+   their rows as ⌘K's list and the sidenote input's results do (.cand): the row the keys are on is a band of --hlrow with the
+   accent's bar, its words as they are; the row under the pointer the band alone. Not a context menu's row (a solid accent, or
+   Warm Ink's band that slides between rows, which these lists do not have: its hover took every colour off the row the keys
+   were on and left that row's grey words in the accent's ink) */
+:root .md-menu.md-pick.ctx .md-list button:not([disabled]) {
+  background: none;
+  color: var(--ink);
+  box-shadow: none;
+}
+:root .md-menu.md-pick.ctx .md-list button:not([disabled]):is(:hover, .sel) {
+  background: var(--hlrow);
+}
+:root .md-menu.md-pick.ctx .md-list button.sel {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+:root .md-menu.md-pick.ctx .md-list button.more {
+  color: var(--ink-2);
+}
+:root .md-menu.md-pick.ctx .md-list button :is(small, .bc) {
+  color: var(--ink-3);
 }
 .empty {
   padding: 14px 12px;
