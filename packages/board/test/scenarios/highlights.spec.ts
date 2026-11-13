@@ -236,7 +236,10 @@ test("highlightClickGutter", async () => {
   await pg.locator(".pop.k-highlight").waitFor();
   await no(pg, 2).click({ button: "right" });
   await until(h, "the popup closes as the menu opens", async () => (await pops()) === 0 && (await menus()) === 1);
-  check("highlightClickGutter a right-click on a Highlight's numbers shows only the menu", true);
+  check(
+    "highlightClickGutter a right-click on a Highlight's numbers shows only the menu",
+    (await pops()) === 0 && (await menus()) === 1,
+  );
   await h.close();
 });
 

@@ -106,4 +106,13 @@ describe("question stickers become question sidenotes (16 → 17)", () => {
     expect(f.stickers).toEqual([]);
     expect(f.shelf?.[0].stickers).toEqual([]);
   });
+
+  it("one whose card is gone keeps its text, free on the canvas at its point", () => {
+    const raw: any = v16();
+    raw.stickers = [
+      { id: "q6", icon: Q, at: { kind: "canvas", x: 40, y: 60, size: 20, on: { card: "gone" } }, q: { md: "lost?" } },
+    ];
+    const f = migrateBoard(raw);
+    expect(f.sidenotes).toEqual([{ id: "q6", kind: "text", md: "lost?", at: { x: 50, y: 70 }, q: { at: 0 } }]);
+  });
 });

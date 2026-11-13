@@ -88,7 +88,7 @@ const oldQuestion = (k: any) => !!k?.q || (k?.icon?.pack === "builtin" && k.icon
 
 /**
  * 16 → 17: each question sticker becomes a question sidenote where it was: on its line (or the line its arrow leaves), on the
- * whole card it was on, else free on the canvas at its point; with its text, done state and the card that answered it as its one
+ * whole card it was on, else (its card gone too) free on the canvas at its point; with its text, done state and the card that answered it as its one
  * answer (a [[reference]] to that card). Stickers belong to the board, so one on a library card stays on this board (Board-only).
  * Those in a Shelf entry were on its shelved cards and become theirs. The lines they go on become a Highlight, as adding one would
  */
@@ -109,7 +109,7 @@ function questionStickers(b: any) {
         n.at = w.seg && w.line !== undefined ? { card: w.card, seg: w.seg, lines: [w.line, w.line] } : { card: w.card };
         if (shared.has(w.card)) n.boardOnly = true;
         else if (n.at.lines) lines.add(w.card);
-      } else if (k.at?.kind === "canvas" && !k.at.on) {
+      } else if (k.at?.kind === "canvas" && Number.isFinite(k.at.x) && Number.isFinite(k.at.y)) {
         // a free badge is centred on its point; the sticker was drawn from its top left
         const half = (k.at.size ?? STICKER_SIZE) / 2;
         n.at = { x: Math.round(k.at.x + half), y: Math.round(k.at.y + half) };
