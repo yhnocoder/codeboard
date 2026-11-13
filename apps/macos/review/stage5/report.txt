@@ -1,0 +1,25 @@
+Stage 5: sidenotes and questions. Made-up content (Chinese and English); every picture drawn off screen, at 2x.
+
+Sheets (<sheet>-<theme>[-dark].png, Warm Ink and Ink Wash, light and dark):
+- markers: every kind of anchor on one board: a Highlight's count in code line numbers (12, an open question: amber ?),
+  a whole Note (past its right edge, level with its header, ?), a Note's block (level with the block's first line), a
+  Text (16 from its top), a Section (after its title), a free one on the board | the same board at 40 %
+- popups: the popup of lines (12–13, a plain entry, an open question with its answer and reply row, a resolved one),
+  of a whole card, of a Note's block (the block tinted), of a Section, of a free marker; each right of what it is on,
+  its top 6 above the marker's
+- place: no room on the right: over the card, inside the window, same side | dragged by its title bar, the dashed line
+  back to its marker
+- composer: the bottom row as + | the input (the Notes' editor) with `[[调` typed: the reference list under it
+- questions: lines' popup | its reply row writing an answer | a new input with the ? toggle on (the question mark at its
+  left, the warm fill)
+- code: a code sidenote of 12 lines cut at 8 with a fade | opened by a click
+- list: the toolbar (zoom figure, then the amber ? with 2) and its list open on this board | emptied: every board, by board
+- beside-main (warm-ink light, ink-wash dark): main's popup drawn in Chromium from the Storybook story
+  cards-sidenote-pops--whole-card (its element) | the Mac popup with the same card and sidenote (its box). Same size
+  (460 × 119), same typesetting; about 1 px apart vertically in the title and the text.
+
+Tests: 296 (model 102, canvas 142, notes 19, shell 19, syntax 14), all passing; swift format lint --strict clean.
+Read-only check on the persona boards (imported from the old boards into a temporary vault, counts only):
+20 boards; sidenotes in file / drawn: whole card 5/5, Note block 0/0, lines 17/17, Section 0/0, free 0/0; questions
+open 4, resolved 1; 20 popups opened and closed with nothing typed, each showing as many entries as its marker says;
+board.json byte-identical on all 20 boards, no undo step.

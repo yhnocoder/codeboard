@@ -33,3 +33,7 @@ stage3/: Notes, Texts and Boxes written in, drawn off screen at 2x with `swift r
 
 stage4/: arrows and Sections, drawn off screen at 2x with `swift run -c release LookCompare --arrows <out>`, in each
 theme light and dark; report.txt lists the sheets and has the test count, the bench and the read-only check's counts.
+
+stage5/: sidenotes and questions, drawn off screen at 2x with `swift run -c release LookCompare --sidenotes <out>`
+(MAIN_POPS=<folder> adds the side-by-side with main's popup), in each theme light and dark; report.txt lists the sheets
+and has the test count, the read-only check's counts and the deviations from main.
