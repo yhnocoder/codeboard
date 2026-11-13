@@ -75,7 +75,7 @@ export function keepMergedVariant(env: CommandEnv, id: string, vid: string, tip:
 export function toggleVariantOnly(env: CommandEnv, noteId: string) {
   env.edit((b) => {
     const n = b.sidenotes.find((k) => k.id === noteId);
-    const c = n && (findCard(b, n.at.card)?.card as CodeCard | undefined);
+    const c = n?.at.card !== undefined ? (findCard(b, n.at.card)?.card as CodeCard | undefined) : undefined;
     if (!n || !c?.variants?.length) return;
     if (n.variant) delete n.variant;
     else n.variant = activeOf(c);

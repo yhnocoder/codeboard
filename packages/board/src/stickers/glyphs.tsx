@@ -24,8 +24,11 @@ export const BUILTIN: Builtin[] = [
   { name: "todo-text", label: "TODO", color: "#8B6FD6", text: "TODO" },
 ];
 const byName = new Map(BUILTIN.map((b) => [b.name, b]));
+/** The built-ins the sticker picker offers: not the ?, which call graphs still use as a mark (ui/pops/chains.tsx), since a question
+ *  is a sidenote now */
+export const PICKED_BUILTIN = BUILTIN.filter((b) => b.name !== "question");
 
-export const EMOJI = "⭐ ❓ ❗ ✅ 🚩 ⚡ 🐞 📌 ❤️ ⏳ ⚠️ 💡 🔥 👀 🤔 🧪 🧠 🚀 🐢 🔒 📝 🎯 🧩 🔍 📊 🧮 🛠️ 🗑️ ✨ 🎉 😵 🙃".split(" ");
+export const EMOJI = "⭐ ❗ ✅ 🚩 ⚡ 🐞 📌 ❤️ ⏳ ⚠️ 💡 🔥 👀 🤔 🧪 🧠 🚀 🐢 🔒 📝 🎯 🧩 🔍 📊 🧮 🛠️ 🗑️ ✨ 🎉 😵 🙃".split(" ");
 /** The colours a sticker can take, in the order the picker and the menu show them, each with its name in the menu */
 export const STICKER_PALETTE = [
   { name: "Gold", color: "#E3A132" },

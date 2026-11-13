@@ -70,9 +70,10 @@ export function mergeCodeCards(
   // (another Variant than the shown one) keeps its text on the whole card
   const shown = new Map(orig.map((c) => [c.id, activeOf(c)]));
   for (const n of b.sidenotes) {
-    const v = shown.get(n.at.card);
-    if (v === undefined || n.variant === undefined) continue;
-    if (n.variant !== v) n.at = { card: n.at.card };
+    const card = n.at.card;
+    const v = card === undefined ? undefined : shown.get(card);
+    if (card === undefined || v === undefined || n.variant === undefined) continue;
+    if (n.variant !== v) n.at = { card };
     delete n.variant;
   }
   const w = Math.max(560, ...orig.map((c) => b.place[c.id]?.w ?? 560)); // 先量宽度，再删原来的摆放

@@ -6,7 +6,7 @@ import { NotesPop, HighlightPop } from "./notes";
 import { PeekPop } from "./peek";
 import { DiffPop, ThreePop, CommitsPop } from "./versions";
 import { VarsPop, MarkPop, ImplsPop, ValsPop, NamesPop, RpcPop } from "./chains";
-import { QuestionPop, BoardsPop, PickPop, ModifySvgPop } from "./misc";
+import { BoardsPop, PickPop, ModifySvgPop } from "./misc";
 import { SealPop } from "./seal";
 
 export const POPS: { [K in Pop["kind"]]: Component<PopProps<K>> } = {
@@ -24,7 +24,6 @@ export const POPS: { [K in Pop["kind"]]: Component<PopProps<K>> } = {
   names: NamesPop,
   rpc: RpcPop,
   three: ThreePop,
-  question: QuestionPop,
   modifySvg: ModifySvgPop,
   seal: SealPop,
 };

@@ -9,7 +9,7 @@ import {
   type Storage,
   type TreeNode,
 } from "@codeboard/host";
-import { firstLine, type QuestionItem } from "@codeboard/core";
+import { questionLine, questionWhere, type QuestionItem } from "@codeboard/core";
 
 type BNode = TreeNode;
 
@@ -170,21 +170,23 @@ export class QuestionsTree implements vscode.TreeDataProvider<QNode> {
       return it;
     }
     const q = n.q;
-    const it = new vscode.TreeItem(firstLine(q.md) || "(no text)", vscode.TreeItemCollapsibleState.None);
-    it.id = `q:${q.board}:${q.sticker}`;
-    it.description = [q.title, q.file && `${q.file}${q.line !== undefined ? `:${q.line}` : ""}`]
-      .filter(Boolean)
-      .join(" · ");
+    const it = new vscode.TreeItem(questionLine(q), vscode.TreeItemCollapsibleState.None);
+    it.id = `q:${q.board}:${q.note}`;
+    it.description = questionWhere(q);
     it.iconPath = new vscode.ThemeIcon(
       q.done ? "pass" : "question",
       new vscode.ThemeColor(q.done ? "charts.green" : "charts.orange"),
     );
     it.tooltip = new vscode.MarkdownString(
-      [q.md || "(no text)", q.done ? `*Answered${q.answerTitle ? ` by “${q.answerTitle}”` : ""}*` : ""]
+      [
+        q.md || "(no text)",
+        q.answers ? `*${q.answers} answer${q.answers > 1 ? "s" : ""}*` : "",
+        q.done ? "*Resolved*" : "",
+      ]
         .filter(Boolean)
         .join("\n\n"),
     );
-    it.command = { command: "codeboard.openQuestion", title: "Open", arguments: [q.board, q.card, q.line, q.sticker] };
+    it.command = { command: "codeboard.openQuestion", title: "Open", arguments: [q.board, q.note] };
     return it;
   }
 }

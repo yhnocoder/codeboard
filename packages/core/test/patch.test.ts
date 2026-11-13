@@ -206,7 +206,7 @@ describe("board format v6 and v7", () => {
     expect(b.cards[1].desc).toBe("cost $O(n)$");
     expect((b.cards[3] as any).mergedFrom[0].card.desc).toBe("$y$");
     expect((b.sidenotes[0] as any).md).toBe("$z$");
-    expect(b.stickers[0].q!.md).toBe("why $k$?");
+    expect((b.sidenotes.find((n) => n.id === "q") as any).md).toBe("why $k$?");
     expect((b.cards[2] as any).md).toBe(oldMath(6).cards[2].md);
     // once: the upgraded board is read as is
     expect(upgraded(structuredClone(b))).toEqual(b);
@@ -284,8 +284,10 @@ describe("board format v14: <mark> becomes ==", () => {
     expect(b.cards[1].desc).toBe("d ==x==");
     expect(b.cards[3].mergedFrom[0].card.desc).toBe("==y==");
     expect(b.sidenotes[0].md).toBe("==z==");
-    expect(b.stickers[0].q.md).toBe("why ==k==?");
-    expect(b.shelf[0].stickers[0].q.md).toBe("==w==");
+    // the question stickers are question sidenotes by now (16 → 17), the one on the Shelf too
+    const md = (id: string) => b.sidenotes.find((n: any) => n.id === id).md;
+    expect([md("q"), md("q2")]).toEqual(["why ==k==?", "==w=="]);
+    expect(b.shelf[0].stickers).toEqual([]);
     expect(b.cards[2].md).toBe(old().cards[2].md);
     expect(upgraded(structuredClone(b))).toEqual(b);
   });

@@ -132,7 +132,7 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
     openStickerDir: () => openStickerDir(cx),
     copyDiagnostics: (p) => copyDiagnostics(cx, prompts(cx, p), p.board),
     log: (_p, m) => cx.log(m.level, m.text),
-    openBoard: (_p, m) => openOnBoard(cx, panels, m.id, m.card, m.line, m.sticker),
+    openBoard: (_p, m) => openOnBoard(cx, panels, m.id, m.card, m.line, m.question),
     copyCards: async (p, m) => {
       panels.clip = { board: p.id, cards: m.cards, text: m.text, pic: m.pic };
       // 别的窗口（别的项目）也能贴：记进全局存储目录
@@ -494,16 +494,17 @@ async function resolveTyped(cx: HostContext, p: BoardPanel, text: string): Promi
   return null;
 }
 
-/** 打开一块白板，选中那张卡（和那一行：别的白板上连进来的箭头从哪一行出发、问题贴在哪一行）；sticker = 再打开那个问题 */
+/** 打开一块白板，选中那张卡（和那一行：别的白板上连进来的箭头从哪一行出发）；question = 换成去这个问题那里，打开它 */
 export async function openOnBoard(
   cx: HostContext,
   panels: BoardHost,
   id: string,
   card?: string,
   line?: number,
-  sticker?: string,
+  question?: string,
 ) {
   const np = await panels.show(id);
+  if (np && question) return np.post({ type: "showQuestion", note: question });
   if (!np || !card) return;
   const c = np.board && findCard(np.board, card)?.card;
   const seg =
@@ -512,7 +513,6 @@ export async function openOnBoard(
     type: "reveal",
     card,
     ...(seg ? { seg: seg.id, lines: [line!, line!] as [number, number] } : {}),
-    ...(sticker ? { sticker } : {}),
   });
 }
 

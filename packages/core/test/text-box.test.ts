@@ -278,7 +278,7 @@ describe("shared cards", () => {
   it("a library file's card is upgraded, and a board's height for a shared Box goes once the card is in", () => {
     const sc = loadSharedCard({ version: 13, card: note("x", { look: "box", fill: "pink" }), sidenotes: [] });
     expect(sc).toEqual({
-      version: 16,
+      version: 17,
       card: { id: "x", kind: "note", look: "box", fill: "pink", md: "x", wrap: true, fs: 13.5 },
       sidenotes: [],
     });

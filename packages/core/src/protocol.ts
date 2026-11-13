@@ -381,8 +381,10 @@ export type HostToBoard =
   | { type: "appendSegment"; card: string; seg: Segment; view: SegView }
   /** 编辑器 ⌥S：作为 Sidenote 挂到白板上选中的行 */
   | { type: "addSidenote"; seg: Segment; view?: SegView }
-  /** sticker：顺带打开这个问题（Questions 面板点进来的） */
-  | { type: "reveal"; card: string; seg?: string; lines?: [number, number]; sticker?: string }
+  | { type: "reveal"; card: string; seg?: string; lines?: [number, number] }
+  /** A question sidenote picked in a list of another board's questions (the board's question list, the sidebar): the camera goes
+   *  to it and its popup opens */
+  | { type: "showQuestion"; note: string }
   | { type: "key"; action: KeyAction }
   /** 侧栏 / 命令面板改了白板名 */
   | { type: "rename"; name: string }
@@ -510,7 +512,8 @@ export type BoardToHost =
   | { type: "copyDiagnostics" }
   /** 白板里的错误 / 日志：写进 Output 面板的 CodeBoard 频道，Copy Diagnostics 会带上 */
   | { type: "log"; level: "info" | "warn" | "error"; text: string }
-  | { type: "openBoard"; id: string; card?: string; line?: number; sticker?: string }
+  /** question: a question sidenote on it to show (showQuestion) */
+  | { type: "openBoard"; id: string; card?: string; line?: number; question?: string }
   /**
    * ⌘C 复制了这些卡（text = 写进剪贴板的文字）：宿主记下来，贴到别的白板时用。
    * rich = 白板自己写剪贴板（图片，或文字 + 图片），宿主不再写文字盖掉它；写不了时白板再发 copyImage / copyText。

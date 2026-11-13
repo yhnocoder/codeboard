@@ -1,18 +1,19 @@
 // 不固定的同时只开一个；⌘ + 悬停 / Pin 固定后变成独立的一个，可以开好几个对照着看。
 import { boardSignal } from "./root";
-import type { DiffData, PeekDef, Commit, Segment, CallSpan, ImplPick, NameHit, HlRange } from "@codeboard/core";
+import type { Anchor, DiffData, PeekDef, Commit, Segment, CallSpan, ImplPick, NameHit, HlRange } from "@codeboard/core";
 
 /** 浮层挂在哪：一个元素（跟着它走，镜头动也跟），或一个屏幕坐标。
- *  prefer "beside": el is a card or something on its lines (a Highlight's .hxhit, a selected line's number): the popup goes right of
- *  the card, its top at el's, or over the card when the window has no room on its right */
+ *  prefer "beside": a sidenote popup by what it is on (el: a Highlight's .hxhit, a selected line's number, a badge, a card, a
+ *  Note's block, a Section's title): beside the card or Section, never over it or its badge (ui/pops/index.tsx besidePos) */
 export type At = { el?: Element; x?: number; y?: number; prefer?: "below" | "right" | "above" | "beside" };
 
 export type Pop =
-  /** A card's whole-card sidenotes; write: opened to write a new one (its input ready) */
-  | { kind: "notes"; card: string; write?: true }
+  /** The sidenotes at a spot (core spotKey: a whole card, a Note's block, a Section, a point on the canvas). write: opened to write
+   *  a new one, its input ready (ask: as a question); focus: a sidenote of it to show (the question list went to it) */
+  | ({ kind: "notes"; spot: Anchor } & OpenFor)
   /** A Highlight (lines of a code card's segment) and the sidenotes on it, or lines with no Highlight yet that one is being written
    *  on. write: opened to write a sidenote on these lines (inside `lines`), its input ready */
-  | { kind: "highlight"; card: string; seg: string; lines: HlRange; write?: HlRange }
+  | ({ kind: "highlight"; card: string; seg: string; lines: HlRange; write?: HlRange } & Omit<OpenFor, "write">)
   | {
       kind: "peek";
       card: string;
@@ -37,14 +38,15 @@ export type Pop =
   | { kind: "names"; data: NamesPop }
   /** RPC 箭头的属性：机制、消息名、一对多、消息卡、↩ back to */
   | { kind: "rpc"; link: string }
-  /** 「?」贴纸上的问题 */
-  | { kind: "question"; sticker: string }
   /** 三方对照：原版 / 我的 / 上游最新 */
   | { kind: "three"; card: string }
   /** Modify SVG…：写一句怎么改（图片卡，或 Note 里的一张 SVG，见 actions/imageai.ts） */
   | { kind: "modifySvg"; ref: { card: string; note?: string } }
   /** Edit Mark…：一块白板（board）的印章 */
   | { kind: "seal"; board: string };
+
+/** What a sidenote popup was opened for, besides showing them: to write (as a question: ask), or to show one (focus) */
+export type OpenFor = { write?: true; ask?: true; focus?: string };
 
 export type ImplPop = {
   card: string;

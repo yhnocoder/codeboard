@@ -15,6 +15,9 @@ import {
   sameRange,
   shownRanges,
   within,
+  freeAt,
+  spotKey,
+  spotOf,
 } from "@codeboard/core";
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
@@ -26,7 +29,7 @@ import { editing, liveNoteMd, setEditing } from "../state/ui";
 import { cardsMeasured } from "../state/measure";
 import { fitMeasure } from "./fit";
 import { noteImageOf } from "./imagedata";
-import { menuOpen, promptText, type Item } from "../ui/Menu";
+import { promptText, type Item } from "../ui/Menu";
 import {
   imageCaption,
   setImageCaption,
@@ -36,7 +39,7 @@ import {
   type ImagePlayback,
 } from "@yhnocoder/markdown";
 import { noteImageAt, type ImgRef } from "./imageai";
-import { openPop, closePop, pops, updatePop, pinPop } from "../state/pop";
+import { openPop, closePop, pops, updatePop, pinPop, type OpenFor } from "../state/pop";
 import { ask, switched } from "../host";
 import { addCards } from "./create";
 import { removedNotes } from "./edit";
@@ -46,105 +49,55 @@ import { hostRect, popCard } from "./common";
 import { lastPointer } from "../state/measure";
 import { attrSel, cardSel } from "../cardsel";
 import { boardTimer } from "../state/root";
-import { NOTE_HOVER, NOTE_LEAVE } from "../state/timing";
+import { cam, camRest, camTarget, ensureVisible, toWorld, viewTracked } from "../state/camera";
+import { aimBlock, blockBandNow, hoverBlock, noteBlockOf } from "../state/blocks";
+import type { SpotAim } from "../ui/SnBadge";
 
-const hoverT = boardTimer(),
-  leaveT = boardTimer();
-/** The pointer came onto a card's whole-card sidenote marker: after the hover delay its popup opens right of the card */
-export function hoverMarker(el: Element, card: string) {
-  leaveT.stop();
-  hoverT.start(() => showNotes(card, false), NOTE_HOVER);
-  el.addEventListener(
-    "pointerleave",
-    () => {
-      hoverT.stop();
-      scheduleHideNotes();
-    },
-    { once: true },
-  );
-}
-/** An unpinned sidenote popup closes a while after the pointer left it, unless the pointer is back on it or a card preview it
- *  opened is showing */
-export function scheduleHideNotes() {
-  leaveT.start(() => {
-    const p = pops().find((q) => !q.pinned && (q.pop.kind === "notes" || q.pop.kind === "highlight"));
-    if (p && !document.querySelector(`.pop[data-pop="${p.id}"]:hover, .cpeek`)) closePop(p.id);
-  }, NOTE_LEAVE);
-}
-export const cancelHideNotes = () => leaveT.stop();
-/** A click on a card's whole-card sidenote marker: their popup opens and stays */
-export const pinMarker = (card: string) => showNotes(card, true);
-function showNotes(card: string, pin: boolean, write?: true) {
-  const same = pops().find((p) => p.pop.kind === "notes" && p.pop.card === card);
-  if (same && !write) {
-    if (pin && !same.pinned) pinPop(same.id);
-    return;
-  }
-  // asked to write: a new one, its input ready
-  if (same) closePop(same.id);
-  const el = document.querySelector(cardSel(hostOf(card)));
-  if (!el) return;
-  const id = openPop({ kind: "notes", card, write }, { el, prefer: "beside" });
-  if (pin) pinPop(id);
+/** A click on a sidenote badge: the popup of its spot opens and stays, or closes when it is open */
+export function pinMarker(el: Element, spot: Anchor) {
+  const key = spotKey(spot);
+  const same = pops().find((p) => p.pop.kind === "notes" && spotKey(p.pop.spot) === key);
+  if (same) return closePop(same.id);
+  openSpot(spot, {}, el);
 }
 
-/**
- * The pointer came onto a Highlight's gutter area (its line numbers, its marker): after the hover delay its popup opens right of
- * the card, at its lines. It closes a while after the pointer leaves (leaveHighlight), unless the pointer went into the popup
- */
-export function hoverHighlight(card: string, seg: string, lines: HlRange) {
-  leaveT.stop();
-  // a context menu open: the gutter under it opens nothing
-  if (menuOpen()) return hoverT.stop();
-  hoverT.start(() => showHighlight(card, seg, lines, false), NOTE_HOVER);
-}
-/** A context menu opens on a code card's lines: only the menu shows. A Highlight popup waiting to open does not, one open closes */
+/** A context menu opens on a code card's lines: only the menu shows; a Highlight popup open closes */
 export function menuOverHighlights() {
-  hoverT.stop();
   for (const p of pops()) if (p.pop.kind === "highlight") closePop(p.id);
 }
-/** The pointer left a Highlight's gutter area, or the element it was on went (the Highlight changed under it) */
-export function leaveHighlight() {
-  hoverT.stop();
-  scheduleHideNotes();
-}
-/** A click on a Highlight's gutter area or marker: its popup opens and stays */
-export const pinHighlight = (card: string, seg: string, lines: HlRange) => showHighlight(card, seg, lines, true);
-/** The key a Highlight's gutter area (.hxhit) carries in data-hl: where its popup finds it */
-export const highlightKey = (card: string, seg: string, lines: HlRange) => `${card}:${seg}:${lines[0]}-${lines[1]}`;
-function showHighlight(card: string, seg: string, lines: HlRange, pin: boolean) {
-  if (!pin && menuOpen()) return;
+/** A click on a Highlight's gutter area or marker: its popup opens and stays, or closes when it is open */
+export function pinHighlight(card: string, seg: string, lines: HlRange) {
   const same = pops().find(
     (p) => p.pop.kind === "highlight" && p.pop.card === card && p.pop.seg === seg && sameRange(p.pop.lines, lines),
   );
-  if (same) {
-    if (pin && !same.pinned) pinPop(same.id);
-    return;
-  }
+  if (same) return closePop(same.id);
   const el = document.querySelector(`.hxhit${attrSel("data-hl", highlightKey(card, seg, lines))}`);
-  if (!el) return;
-  const id = openPop({ kind: "highlight", card, seg, lines: [lines[0], lines[1]] }, { el, prefer: "beside" });
-  if (pin) pinPop(id);
+  if (el) pinPop(openPop({ kind: "highlight", card, seg, lines: [lines[0], lines[1]] }, { el, prefer: "beside" }));
 }
+/** The key a Highlight's gutter area (.hxhit) carries in data-hl: where its popup finds it */
+export const highlightKey = (card: string, seg: string, lines: HlRange) => `${card}:${seg}:${lines[0]}-${lines[1]}`;
 /** Remove Highlight (its popup): the lines and the sidenotes on them, one undo step */
 export function removeHighlight(card: string, seg: string, lines: HlRange) {
   removedNotes(C.removeHighlight(commandEnv, card, seg, lines, fitMeasure));
 }
-/** Delete in a card's whole-card sidenote popup: those sidenotes, one undo step */
-export function deleteCardNotes(card: string) {
-  removedNotes(C.deleteCardSidenotes(commandEnv, card), "card");
+/** Delete in a spot's sidenote popup (a whole card, a Note's block, a Section, a point): those sidenotes, one undo step */
+export function deleteSpotNotes(spot: Anchor) {
+  removedNotes(C.deleteSpotSidenotes(commandEnv, spot), "card");
 }
 
 /**
  * Add Sidenote: the popup of what it goes on, pinned, its input ready. On lines: the popup of the Highlight they are in (of the
- * lines alone when they are in none yet); on a whole card: the card's sidenote popup
+ * lines alone when they are in none yet); elsewhere (a whole card, a Note's block, a Section, a point on the canvas) the popup of
+ * that spot. ask: the input starts as a question
  */
-export function openAddNote(at: Anchor) {
-  if (!at.seg || !at.lines) return showNotes(at.card, true, true);
+export function openAddNote(at: Anchor, o: { ask?: boolean } = {}) {
+  const ask = o.ask ? { ask: true as const } : {};
+  if (at.card === undefined || !at.seg || !at.lines) {
+    openSpot(at, { write: true, ...ask });
+    return;
+  }
   const write: HlRange = [at.lines[0], at.lines[1]];
-  const c = cardById(at.card)?.card,
-    s = isCode(c) ? segOf(c, at.seg) : undefined;
-  const hl = (s && shownRanges(state.board, s).find((r) => within(write, r))) ?? write;
+  const hl = highlightOf(at.card, at.seg, write);
   const same = pops().find(
     (p) => p.pop.kind === "highlight" && p.pop.card === at.card && p.pop.seg === at.seg && sameRange(p.pop.lines, hl),
   );
@@ -154,17 +107,128 @@ export function openAddNote(at: Anchor) {
     document.querySelector(`${cardSel(at.card)} .gutter .no.sel`) ??
     document.querySelector(cardSel(hostOf(at.card)));
   const id = openPop(
-    { kind: "highlight", card: at.card, seg: at.seg, lines: [hl[0], hl[1]], write },
+    { kind: "highlight", card: at.card, seg: at.seg, lines: [hl[0], hl[1]], write, ...ask },
     el ? { el, prefer: "beside" } : lastPointer(),
   );
   pinPop(id);
 }
-/** @public run from the key table (keymap.ts) */
+/** The Highlight shown on a segment that holds these lines, else the lines themselves */
+function highlightOf(card: string, seg: string, lines: HlRange): HlRange {
+  const c = cardById(card)?.card,
+    s = isCode(c) ? segOf(c, seg) : undefined;
+  return (s && shownRanges(state.board, s).find((r) => within(lines, r))) ?? lines;
+}
+/** The pinned popup of the sidenotes at a spot, beside what shows it: its badge, else the block, the Section's title, the card, or
+ *  (a free spot with no badge yet) the point */
+function openSpot(spot: Anchor, o: OpenFor, el?: Element) {
+  const at = spotOf(spot);
+  if (!at) return;
+  const key = spotKey(at);
+  const same = pops().find((p) => p.pop.kind === "notes" && spotKey(p.pop.spot) === key);
+  if (same) closePop(same.id);
+  const near =
+    el ??
+    document.querySelector(`[data-spot]${attrSel("data-spot", key)}`) ??
+    (at.card !== undefined && at.block ? noteBlockOf(at.card, at.block)?.el : undefined) ??
+    (at.section !== undefined ? document.querySelector(`.slabel${attrSel("data-sect", at.section)}`) : undefined) ??
+    (at.card !== undefined ? document.querySelector(cardSel(hostOf(at.card))) : undefined);
+  const f = freeAt(at) ? at : undefined;
+  pinPop(
+    openPop(
+      { kind: "notes", spot: at, ...o },
+      near ? { el: near, prefer: "beside" } : f ? toScreen(f.x, f.y) : lastPointer(),
+    ),
+  );
+}
+/** World point → where it is on screen */
+const toScreen = (x: number, y: number) => ({ x: x * cam.z + cam.x, y: y * cam.z + cam.y });
+/** A question resolved (true) or open again; only the user's check does this */
+export const setQuestionDone = (id: string, done: boolean) => C.setQuestionDone(commandEnv, id, done);
+/** A reply under a question; returns its id */
+export const addAnswer = (id: string, md: string) => C.addAnswer(commandEnv, id, md);
+/** An answer's Markdown; written empty it goes */
+export const writeAnswer = (id: string, answer: string, md: string) => C.writeAnswer(commandEnv, id, answer, md);
+/** A question picked in the question list: the camera goes to where it is, and its popup opens there with the question shown */
+export async function goToQuestion(id: string) {
+  const n = state.board.sidenotes.find((k) => k.id === id);
+  if (!n) return;
+  for (const q of pops()) if (q.pop.kind === "notes" || q.pop.kind === "highlight") closePop(q.id);
+  const at = n.at;
+  const sec = at.section !== undefined ? state.board.sections.find((x) => x.id === at.section) : undefined;
+  const r =
+    at.card !== undefined
+      ? hostRect(at.card)
+      : sec
+        ? { x: sec.x, y: sec.y, w: sec.w, h: Math.min(sec.h, 120) }
+        : freeAt(at)
+          ? { x: at.x - 20, y: at.y - 20, w: 40, h: 40 }
+          : undefined;
+  if (r) {
+    const z = camTarget().z;
+    // room on its right for the popup; a narrow window has none, the popup goes where it fits there anyway
+    const room = viewTracked().w < 700 ? 0 : 500;
+    ensureVisible(r, { x: r.x + r.w, y: r.y, w: room / z, h: Math.min(r.h, 320 / z) });
+    await camRest();
+  }
+  if (at.card !== undefined && at.seg && at.lines) {
+    const hl = highlightOf(at.card, at.seg, at.lines);
+    const el = document.querySelector(`.hxhit${attrSel("data-hl", highlightKey(at.card, at.seg, hl))}`);
+    if (!el) return;
+    pinPop(
+      openPop(
+        { kind: "highlight", card: at.card, seg: at.seg, lines: [hl[0], hl[1]], focus: id },
+        { el, prefer: "beside" },
+      ),
+    );
+  } else openSpot(at, { focus: id });
+}
+/**
+ * Add Sidenote from the keyboard (S): on the lines selected; on the one card selected (a Note: the block the pointer is on, its two
+ * dots showing, else the whole Note); on the one Section selected; else free on the canvas where the pointer is
+ * @public run from the key table (keymap.ts)
+ */
 export function addSidenoteUI() {
   const ls = lineSel();
-  if (ls) openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] });
-  else if (sel.cards.length === 1) openAddNote({ card: sel.cards[0] });
-  else toast("Select lines in a card first");
+  if (ls) return openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] });
+  if (sel.cards.length === 1) {
+    const id = sel.cards[0],
+      h = hoverBlock();
+    return openAddNote(h?.card === id ? { card: id, block: { ...h.ref } } : { card: id });
+  }
+  if (sel.sections.length === 1 && !sel.cards.length) return openAddNote({ section: sel.sections[0] });
+  const p = lastPointer(),
+    w = toWorld(p.x, p.y);
+  openAddNote({ x: Math.round(w.x), y: Math.round(w.y) });
+}
+/** A free badge starts moving: a popup open on a free spot closes (its spot is about to change) */
+export function freeDragStart() {
+  for (const q of pops()) if (q.pop.kind === "notes" && freeAt(q.pop.spot)) closePop(q.id);
+}
+/** What a free badge dragged to this point would sit on: a card under it, or the block of a Note's body under it (with where that
+ *  block is in the card, for its tint); null over the canvas */
+export function spotAim(clientX: number, clientY: number): SpotAim | null {
+  const under = document.elementsFromPoint(clientX, clientY).filter((e) => !e.closest(".snb, .pop"));
+  const card = under.map((e) => e.closest<HTMLElement>(".card[data-id]")).find(Boolean);
+  const id = card?.dataset.id;
+  if (!card || !id) return null;
+  if (under.some((e) => e.closest(".nbody") && e.closest(".card") === card)) {
+    const a = aimBlock(id, clientY);
+    if (a) return { card: id, block: { ...a.ref }, band: blockBandNow(a) };
+  }
+  return { card: id };
+}
+/** A free sidenote's badge dragged: to another point, or dropped onto a card or a Note's block (aim, spotAim), where it then sits */
+export function dropFreeNotes(ids: string[], aim: SpotAim | null, worldX: number, worldY: number) {
+  freeDragStart();
+  C.moveFreeSidenotes(
+    commandEnv,
+    ids,
+    aim
+      ? aim.block
+        ? { card: aim.card, block: aim.block }
+        : { card: aim.card }
+      : { x: Math.round(worldX), y: Math.round(worldY) },
+  );
 }
 export function addSidenote(n: NewSidenote, view?: SegView) {
   if (n.kind === "code" && view) putViews({ [n.code.id]: view });
@@ -195,7 +259,7 @@ export const deleteSidenote = (id: string) => C.deleteSidenote(commandEnv, id, f
 /** Place on Board：Sidenote 变成卡，放在源卡旁边，自动连一条箭头（从原来挂的那一行连出） */
 export function placeSidenote(id: string) {
   const n = state.board.sidenotes.find((k) => k.id === id);
-  if (!n) return;
+  if (n?.at.card === undefined) return;
   const r = hostRect(n.at.card);
   if (!r) return;
   // 放卡、去掉 Sidenote、连箭头是同一步（一次撤销）

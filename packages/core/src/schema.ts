@@ -271,7 +271,11 @@ const Section = obj({
 
 const noteBase = {
   id: str,
-  at: obj({ card: str, seg: opt(str), lines: opt(v.tuple([num, num])) }),
+  at: v.union([
+    obj({ card: str, seg: opt(str), lines: opt(v.tuple([num, num])), block: opt(obj({ i: num, h: str })) }),
+    obj({ section: str }),
+    obj({ x: num, y: num }),
+  ]),
   why: opt(str),
   lineRemoved: opt(bool),
   boardOnly: opt(yes),
@@ -280,7 +284,13 @@ const noteBase = {
 };
 const Sidenote = v.variant("kind", [
   obj({ ...noteBase, kind: v.literal("code"), code: Segment }),
-  obj({ ...noteBase, kind: v.literal("text"), md: str, alwaysShow: opt(bool) }),
+  obj({
+    ...noteBase,
+    kind: v.literal("text"),
+    md: str,
+    alwaysShow: opt(bool),
+    q: opt(obj({ at: num, done: opt(yes), answers: opt(v.array(obj({ id: str, md: str, at: num }))) })),
+  }),
 ]);
 
 const Sticker = obj({
@@ -297,7 +307,6 @@ const Sticker = obj({
       on: opt(v.union([obj({ card: str }), obj({ link: str, t: num })])),
     }),
   ]),
-  q: opt(obj({ md: str, done: opt(yes), answer: opt(str), at: opt(num) })),
 });
 
 /** 白板的印章（seal.ts）：字过不了 sealTextOk、颜色不认得的白板不收 */

@@ -176,28 +176,16 @@ async function undoAfterPeek(res: Record<string, unknown>) {
   return res.typed === true && res.inChild === true && res.back === true && res.undone === true && res.redone === true;
 }
 
-/** Right-click a code line and pick a line-menu item (under Edit when it isn't on the first level) */
+/** Right-click a code line and pick a line-menu item */
 async function lineMenu(h: Host, card: string, line: number, label: string) {
   const page = h.page;
   const l = page.locator(`.card[data-id="${card}"] .gutter .no`, { hasText: new RegExp(`^${line}$`) }).first();
-  await l.evaluate((el) => (el as HTMLElement).click());
-  await expect(
-    page.locator(`.card[data-id="${card}"] .gutter .no.sel`, { hasText: new RegExp(`^${line}$`) }),
-  ).toHaveCount(1);
-  const b = (await l.boundingBox())!;
-  await page.mouse.click(b.x + b.width + 260, b.y + b.height / 2, { button: "right" });
-  await page.locator(".ctx:not(.closing) button").first().waitFor();
-  // the line menu has it; the card menu (the right-click missed the line) has it under Add ▸ without "Ask a"
-  if (await page.locator(".ctx:not(.closing) button", { hasText: label }).count())
-    await page.locator(".ctx:not(.closing) button", { hasText: label }).first().click();
-  else {
-    await page.locator('.ctx:not(.closing) button:has(.lb:text-is("Add"))').hover();
-    await page.locator(`.ctx:not(.closing) button:has(.lb:text-is("${label.replace(/^Ask a /, "")}"))`).click();
-  }
+  await l.click({ button: "right" });
+  await page.locator(".ctx:not(.closing) button", { has: page.locator(`.lb:text-is("${label}")`) }).click();
 }
 
-/** Ask a Question, then close it without writing anything: no question is left behind and nothing goes on the undo stack.
- *  A written question is one undo step (asking + text together) */
+/** Add Sidenote on a line, made a question (the ? in its input), then closed without writing anything: no sidenote is left behind
+ *  and nothing goes on the undo stack. A written question is one undo step */
 async function emptyQuestion(res: Record<string, unknown>) {
   const b: Board = emptyBoard("bEq", "Questions");
   const step = nv("LLMEngine.step");
@@ -205,36 +193,39 @@ async function emptyQuestion(res: Record<string, unknown>) {
   const h = await open({ board: b }),
     page = h.page;
   const line = step.segments[0].start + 2;
-  const editor = page.locator(".pop.k-question .ProseMirror");
-  await lineMenu(h, step.id, line, "Ask a Question");
-  await editor.waitFor();
-  res.editor = await editor.count();
+  const input = page.locator(".pop.k-highlight .ncomp .md-pm:focus");
+  const ask = page.locator('.pop.k-highlight .ncomp-ask[aria-label="Question"]');
+  await lineMenu(h, step.id, line, "Add Sidenote");
+  await input.waitFor();
+  await ask.click();
+  res.asking = await page.locator(".pop.k-highlight .ncomp-box.ask").count();
   await page.keyboard.press("Escape");
   await idle(h);
-  // the empty question must not stay: closing it is the trigger, so the board is idle once whatever it does is sent
   await page.mouse.click(1000, 700);
   await idle(h);
-  res.emptyLeft = h.board().stickers.length;
-  res.emptyShown = await page.locator("[data-sticker]").count();
-  await lineMenu(h, step.id, line, "Ask a Question");
-  await page.locator(".pop.k-question .ProseMirror:focus").waitFor();
+  res.emptyLeft = h.board().sidenotes.length;
+  res.emptyShown = await page.locator('.card .hxm[data-notes]:not([data-notes=""])').count();
+  await lineMenu(h, step.id, line, "Add Sidenote");
+  await input.waitFor();
+  await ask.click();
   await page.keyboard.type("why?");
+  await page.keyboard.press("Enter");
+  await until(h, "the written question is saved", () => h.board().sidenotes.length);
+  await idle(h);
+  res.written = h.board().sidenotes.map((n) => (n.kind === "text" && n.q ? n.md : null));
   await page.keyboard.press("Escape");
-  await idle(h);
   await page.mouse.click(1000, 700);
-  await until(h, "the written question is saved", () => h.board().stickers.length);
   await idle(h);
-  res.written = h.board().stickers.map((s) => s.q?.md);
-  await page.keyboard.press("Meta+z");
-  await until(h, "undo removes the question", () => !h.board().stickers.length);
-  res.afterUndo = h.board().stickers.length;
+  await page.keyboard.press("ControlOrMeta+z");
+  await until(h, "undo removes the question", () => !h.board().sidenotes.length);
+  res.afterUndo = h.board().sidenotes.length;
   // nothing else is on the undo stack: a second undo changes nothing
-  await page.keyboard.press("Meta+z");
+  await page.keyboard.press("ControlOrMeta+z");
   await idle(h);
-  res.afterSecondUndo = h.board().stickers.length;
+  res.afterSecondUndo = h.board().sidenotes.length;
   await page.context().close();
   return (
-    res.editor === 1 &&
+    res.asking === 1 &&
     res.emptyLeft === 0 &&
     res.emptyShown === 0 &&
     JSON.stringify(res.written) === '["why?"]' &&

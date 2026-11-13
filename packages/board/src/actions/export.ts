@@ -7,7 +7,8 @@ import {
   cardTitle,
   exportOrder,
   findCard,
-  isQuestion,
+  questionOf,
+  questionOpen,
   plainRefs,
   startCards,
   walkOrder,
@@ -131,7 +132,8 @@ function segsOf(b: Board, id: string): Segment[] {
     const x = b.cards.find((q) => q.id === k);
     if (x?.kind === "code") out.push(...x.segments);
   }
-  for (const n of b.sidenotes) if (ids.includes(n.at.card) && n.kind === "code") out.push(n.code);
+  for (const n of b.sidenotes)
+    if (n.at.card !== undefined && ids.includes(n.at.card) && n.kind === "code") out.push(n.code);
   return out;
 }
 
@@ -386,8 +388,12 @@ function noteHtml(md: Markdown, n: Sidenote): string {
     ? `<div class="xv-w">${n.at.lines[0] === n.at.lines[1] ? `line ${n.at.lines[0]}` : `lines ${n.at.lines[0]}–${n.at.lines[1]}`}${n.why ? ` · ${escHtml(n.why)}` : ""}</div>`
     : "";
   switch (n.kind) {
-    case "text":
-      return `${where}<div class="md">${md.render(namedRefs(md, n.md))}</div>`;
+    case "text": {
+      const text = `<div class="md">${md.render(namedRefs(md, n.md || "(no text)"))}</div>`;
+      if (!n.q) return `${where}${text}`;
+      const answers = (n.q.answers ?? []).map((a) => `<div class="md">${md.render(namedRefs(md, a.md))}</div>`);
+      return `${where}<div class="xv-w">${n.q.done ? "Resolved question" : "Question"}</div>${[text, ...answers].join("<hr>")}`;
+    }
     case "code": {
       const from =
         n.code.src.kind === "free"
@@ -409,18 +415,19 @@ async function snapshotHtml(
   const whole = o.scope === "board";
   // 放进一个不显示的文档里再改 <img> 的地址：这个页面里的克隆一改 src 就会去加载（cbres: 加载不了，控制台报错）
   // Board-only 的 Sidenote 不带出去：克隆时代码卡就画成没有它们的样子（行号、底色条、标记跟着排好）
-  const hidden = new Set(o.boardOnly ? [] : b.sidenotes.filter((n) => n.boardOnly).map((n) => n.id));
+  // and questions only when asked for
+  const hidden = new Set(
+    b.sidenotes.filter((n) => (!o.boardOnly && n.boardOnly) || (!o.questions && questionOf(n))).map((n) => n.id),
+  );
   const world = document.implementation
     .createHTMLDocument("")
     .adoptNode(await cloneForExport(b, scopeOf(o), order, hidden));
-  // 贴纸：问题不带出去时删掉；画布上没绑东西的只在整块导出时留
-  const qs = new Set(b.stickers.filter((s) => isQuestion(s)).map((s) => s.id));
+  // 贴纸、画布上的 Sidenote：画布上没绑东西的只在整块导出时留
   world.querySelectorAll<HTMLElement>("[data-sticker]").forEach((el) => {
-    const id = el.dataset.sticker!,
-      s = b.stickers.find((k) => k.id === id);
-    if ((!o.questions && qs.has(id)) || (!whole && s?.at.kind === "canvas" && !s.at.on)) el.remove();
+    const s = b.stickers.find((k) => k.id === el.dataset.sticker);
+    if (!whole && s?.at.kind === "canvas" && !s.at.on) el.remove();
   });
-  if (!o.questions) world.querySelectorAll(".qcount").forEach((el) => el.remove());
+  if (!whole) world.querySelectorAll(".snb.free").forEach((el) => el.remove());
   world.querySelectorAll(".lstks:empty").forEach((el) => el.remove());
   // 卡头的标记（整张卡的 Sidenote）里去掉，全去掉了就删标记；还剩的一直显示的整条删，空了的那组也删
   world.querySelectorAll<HTMLElement>("[data-notes]").forEach((el) => {
@@ -430,7 +437,12 @@ async function snapshotHtml(
       return;
     }
     el.dataset.notes = ids.join(",");
-    if (/^\d+$/.test(el.textContent ?? "")) el.textContent = String(ids.length);
+    // a badge shows how many, or ? while a question there is open
+    const ask = ids.some((id) => questionOpen(b.sidenotes.find((n) => n.id === id)!));
+    if (el.classList.contains("snb")) {
+      el.classList.toggle("ask", ask);
+      el.textContent = ask ? "?" : String(ids.length);
+    } else if (/^\d+$/.test(el.textContent ?? "")) el.textContent = String(ids.length);
   });
   world.querySelectorAll<HTMLElement>("[data-note]").forEach((el) => {
     if (hidden.has(el.dataset.note!)) el.remove();
@@ -453,14 +465,8 @@ async function snapshotHtml(
   const box = bounds(rs) ?? { x: 0, y: 0, w: 800, h: 600 };
   const notes: Record<string, string> = {};
   for (const n of b.sidenotes)
-    if (keep.has(hostOf(n.at.card)) && !hidden.has(n.id)) notes[n.id] = imgRefs(noteHtml(md, n));
-  const questions: Record<string, string> = {};
-  if (o.questions)
-    for (const s of b.stickers)
-      if (qs.has(s.id))
-        questions[s.id] = imgRefs(
-          `<div class="xv-w">${s.q?.done ? "Answered" : "Question"}</div><div class="md">${md.render(namedRefs(md, s.q?.md || "(no text)"))}</div>`,
-        );
+    if ((n.at.card !== undefined ? keep.has(hostOf(n.at.card)) : whole) && !hidden.has(n.id))
+      notes[n.id] = imgRefs(noteHtml(md, n));
   const cardLinks: Record<string, string> = {};
   for (const id of order) {
     const c = b.cards.find((k) => k.id === id);
@@ -496,7 +502,6 @@ async function snapshotHtml(
       r: rectOf(id),
     })),
     notes,
-    questions,
     links: cardLinks,
     info: `Read-only${commit ? ` · ${commit}` : ""} · exported ${new Date().toISOString().slice(0, 10)}`,
   };

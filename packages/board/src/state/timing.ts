@@ -61,10 +61,6 @@ export const TIP_WARM = 800;
 export const SECTION_FIT = 320;
 /** Commits for the version menu: if they arrive within this long the menu opens with them, else it opens loading (actions/versions.ts) */
 export const COMMITS_WAIT = 250;
-/** Resting the pointer on a sidenote marker or a Highlight's line numbers opens its popup after this long (actions/notes.ts) */
-export const NOTE_HOVER = 120;
-/** …and the popup closes this long after the pointer leaves the marker, unless it is on the popup by then (actions/notes.ts) */
-export const NOTE_LEAVE = 260;
 /** A code line stays hovered this long after the pointer leaves it (cards/CodeBody.tsx) */
 export const ROW_LEAVE = 200;
 /** Resting the pointer on a Web card shows its page preview after this long (cards/WebBody.tsx) */

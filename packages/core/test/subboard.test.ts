@@ -254,12 +254,6 @@ describe("Turn into Board", () => {
 
 describe("Turn into Board: references that cross the selection", () => {
   const star = { pack: "builtin", name: "star" } as const;
-  const q = (id: string, at: Board["stickers"][number]["at"], answer: string): Board["stickers"][number] => ({
-    id,
-    icon: { pack: "builtin", name: "question" },
-    at,
-    q: { md: "why?", answer },
-  });
   const setup = () => {
     const p = board("E", [
       [code("a"), 0, 0],
@@ -271,19 +265,23 @@ describe("Turn into Board: references that cross the selection", () => {
   };
   const rects = (p: Board) => (id: string) => ({ ...p.place[id], h: 300 });
 
-  it("a question whose answer moved keeps the question and drops the answer on the side that lost the card", () => {
+  it("sidenotes go with their cards and Sections; free ones and the Sections that stay keep theirs on the parent", () => {
     const p = setup();
-    p.stickers.push(
-      q("qp", { kind: "canvas", x: 0, y: 0 }, "a"), // stays on the parent; its answer moves
-      q("qc", { kind: "line", card: "b", seg: "sb", line: 1 }, "out"), // moves; its answer stays
-      q("qin", { kind: "line", card: "a", seg: "sa", line: 1 }, "b"), // moves with its answer
+    p.sections.push(
+      { id: "SA", title: "A", x: -20, y: -20, w: 500, h: 400 },
+      { id: "SO", title: "O", x: 0, y: 880, w: 9, h: 9 },
+    );
+    p.place.a.section = "SA";
+    p.place.out.section = "SO";
+    p.sidenotes.push(
+      { id: "na", kind: "text", md: "a", at: { card: "a" } },
+      { id: "nsa", kind: "text", md: "sa", at: { section: "SA" } },
+      { id: "nso", kind: "text", md: "so", at: { section: "SO" }, q: { at: 1 } },
+      { id: "nf", kind: "text", md: "free", at: { x: 5, y: 5 } },
     );
     const r = extractBoard(p, ["a", "b"], rects(p), { id: "S", name: "S", frame: "fr" })!;
-    expect(p.stickers.map((k) => [k.id, k.q?.answer])).toEqual([["qp", undefined]]);
-    expect(r.child.stickers.map((k) => [k.id, k.q?.answer])).toEqual([
-      ["qc", undefined],
-      ["qin", "b"],
-    ]);
+    expect(p.sidenotes.map((n) => n.id)).toEqual(["nso", "nf"]);
+    expect(r.child.sidenotes.map((n) => n.id)).toEqual(["na", "nsa"]);
     expect(danglingRefs(p)).toEqual([]);
     expect(danglingRefs(r.child)).toEqual([]);
   });

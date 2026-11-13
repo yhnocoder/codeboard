@@ -1,4 +1,5 @@
-//  qpop     — the question popover in every theme, light and dark: the placeholder is not clipped, the buttons never wrap
+//  qpop     — the question popup in every theme, light and dark: the ? left of the question, its answer under it and the row to
+//             answer under that, nothing sticking out
 //  dataclass — nano-vllm utils/context.py: a fields-only @dataclass class card shows its code (decorator + fields), not an empty member list
 //  segsep   — multi-segment cards show every segment boundary (⋯ N lines / a divider); a class card merges into one, segments by line
 //  varmenu  — Add Variant menu: a long worktree path does not wrap "Other Worktree", it is cut with an ellipsis
@@ -10,7 +11,7 @@ import { DEFAULT_SETTINGS, THEMES, emptyBoard, type CodeCard } from "@codeboard/
 import { shot, put, symCard, findSym, files, ready, OUT, REPO, type Host } from "../harness";
 import { analyze } from "@codeboard/analysis";
 import { uid, type Segment } from "@codeboard/core";
-import { test, open, verdict, expect, until, idle, check } from "../fixtures";
+import { test, open, verdict, expect, until, idle } from "../fixtures";
 
 async function shotTo(h: Host, name: string) {
   await shot(h, name);
@@ -31,55 +32,6 @@ const lineOf = (c: CodeCard, re: RegExp) => {
 
 test("qpop", () => verdict("qpop", qpop));
 
-/** The question's text starts right at the top of its box: no browser paragraph margin above it, while editing (the placeholder)
- *  and when shown */
-test("questionTextNoTopGap", async () => {
-  const b = emptyBoard("bQ", "q");
-  const alloc = nv("BlockManager.allocate");
-  put(b, alloc, 60, 80, 640);
-  const L = alloc.segments[0].start + 3;
-  b.stickers.push(
-    {
-      id: "kQ",
-      icon: { pack: "builtin", name: "question" },
-      at: { kind: "line", card: alloc.id, seg: alloc.segments[0].id, line: L },
-      q: { md: "" },
-    },
-    {
-      id: "kW",
-      icon: { pack: "builtin", name: "question" },
-      at: { kind: "line", card: alloc.id, seg: alloc.segments[0].id, line: L + 4 },
-      q: { md: "Why here?\n\nSecond paragraph." },
-    },
-  );
-  const h = await open({ board: b, light: true, w: 1300, h: 800, settings: { theme: "warm-ink" } as never }),
-    page = h.page;
-  // gap between the text box's content edge and its first line
-  const gap = () =>
-    page.evaluate(() => {
-      const q = document.querySelector<HTMLElement>(".pop.k-question .qtext")!,
-        p = q.querySelector("p")!;
-      return +(
-        p.getBoundingClientRect().top -
-        q.getBoundingClientRect().top -
-        parseFloat(getComputedStyle(q).paddingTop)
-      ).toFixed(1);
-    });
-  await page.locator('[data-sticker="kW"]').first().click();
-  await page.locator(".pop.k-question .qtext p").first().waitFor();
-  await idle(h);
-  const shown = await gap();
-  await page.keyboard.press("Escape");
-  await idle(h);
-  await page.locator('[data-sticker="kQ"]').first().click();
-  await page.locator(".pop.k-question .qbody").dblclick();
-  await page.locator(".pop.k-question .ProseMirror:focus").waitFor();
-  await idle(h);
-  const editing = await gap();
-  await shot(h, "questionTextNoTopGap");
-  check("questionTextNoTopGap", Math.abs(shown) <= 0.5 && Math.abs(editing) <= 0.5, { shown, editing });
-});
-
 test("dataclass", () => verdict("dataclass", dataclass));
 
 test("varmenu", () => verdict("varmenu", varmenu));
@@ -96,46 +48,23 @@ const setTheme = async (h: Host, theme: string, light: boolean) => {
   await idle(h);
 };
 
-/** The open question popover: is anything clipped or wrapped? */
+/** The open question's popup: does anything stick out of it, wrap where it should not, or cover the text? */
 const measure = (h: Host) =>
   h.page.evaluate(() => {
-    const pop = document.querySelector(".pop.k-question") as HTMLElement;
-    const body = pop.querySelector(".qbody") as HTMLElement;
-    const p = pop.querySelector(".qtext p") as HTMLElement | null;
-    const ph = p?.getAttribute("data-placeholder") ?? "";
-    const cs = p && getComputedStyle(p, "::before");
-    // how many lines the placeholder needs at this width (measured with its own font)
-    const ctx = document.createElement("canvas").getContext("2d")!;
-    if (cs) ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-    const lh = cs ? parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5 : 0;
-    const need = p ? Math.ceil(ctx.measureText(ph).width / p.clientWidth) : 0;
+    const pop = document.querySelector(".pop.k-highlight") as HTMLElement;
     const pr = pop.getBoundingClientRect();
-    // text lines of an element: distinct tops of its text's client rects
-    const lines = (el: Element) => {
-      const r = document.createRange();
-      r.selectNodeContents(el);
-      return new Set([...r.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top))).size;
-    };
-    const btns = [...pop.querySelectorAll(".qacts .tbtn")].map((b) => {
-      const r = b.getBoundingClientRect();
-      return {
-        t: b.textContent,
-        h: Math.round(r.height),
-        one: lines(b) === 1 && b.scrollWidth <= b.clientWidth + 1,
-        inside: r.right <= pr.right + 0.5,
-      };
-    });
-    const hintEl = pop.querySelector(".qhint");
-    const hint = hintEl?.getBoundingClientRect();
+    const r = (sel: string) => pop.querySelector(sel)?.getBoundingClientRect();
+    const qm = r(".slip.ask .qm"),
+      text = r(".slip.ask .qbody .nbody"),
+      ans = r(".slip.ask .ans .nbody"),
+      reply = r(".slip.ask .reply");
+    const inside = (x?: DOMRect) => !!x && x.left >= pr.left - 0.5 && x.right <= pr.right + 0.5 && x.width > 0;
     return {
-      need,
-      pH: p ? Math.round(p.getBoundingClientRect().height) : 0,
-      lh: Math.round(lh),
-      phFits: !!p && p.getBoundingClientRect().height >= need * lh - 2,
-      bodyClips: body.scrollHeight > body.clientHeight + 1,
-      btns,
-      hintInside: !!hint && hint.right <= pr.right + 0.5 && hint.left >= pr.left && lines(hintEl!) === 1,
-      popW: Math.round(pr.width),
+      mark: inside(qm) && !!qm && !!text && qm.right <= text.left && Math.abs(qm.top - text.top) < 8,
+      answer: inside(ans) && !!ans && !!text && ans.top >= text.bottom - 0.5,
+      reply: inside(reply) && !!reply && !!ans && reply.top >= ans.bottom - 0.5,
+      clips: pop.scrollWidth > pop.clientWidth + 1,
+      w: Math.round(pr.width),
     };
   });
 
@@ -144,48 +73,41 @@ async function qpop(res: Record<string, unknown>) {
   const alloc = nv("BlockManager.allocate");
   put(b, alloc, 60, 80, 640);
   const L = lineOf(alloc, /compute_hash/);
-  b.stickers.push({
-    id: "kQ",
-    icon: { pack: "builtin", name: "question" },
-    at: { kind: "line", card: alloc.id, seg: alloc.segments[0].id, line: L },
-    q: { md: "" },
+  alloc.segments[0].hl = [[L, L]];
+  b.sidenotes.push({
+    id: "q1",
+    kind: "text",
+    md: "Why does the hash chain include the previous block's h? $h_i = f(h_{i-1})$",
+    at: { card: alloc.id, seg: alloc.segments[0].id, lines: [L, L] },
+    q: {
+      at: 1,
+      answers: [
+        { id: "a1", md: "A prefix only counts whole: one block that differs and nothing after it hits.", at: 2 },
+      ],
+    },
   });
   const h = await open({ board: b, light: true, w: 1300, h: 800, settings: { theme: "drafting" } as never }),
     page = h.page;
   await page.keyboard.press("Shift+Digit1");
   await idle(h);
-  // open the question and start editing it (empty: the placeholder shows)
-  await page.locator(`[data-sticker="kQ"]`).first().click();
-  await page.locator(".pop.k-question .qbody").dblclick();
-  await page.locator(".pop.k-question .ProseMirror:focus").waitFor();
+  await page.locator(`.card[data-id="${alloc.id}"] .hxm`).first().click();
+  await page.locator(".pop.k-highlight .slip.ask").waitFor();
   await idle(h);
-  res.editing = await page.locator(".pop.k-question .ProseMirror").count();
   const bad: unknown[] = [];
   for (const light of [true, false])
     for (const [theme] of THEMES) {
       await setTheme(h, theme, light);
       const m = await measure(h);
-      if (!m.phFits || m.bodyClips || !m.btns.every((x) => x.one && x.inside) || !m.hintInside)
-        bad.push({ theme, light, ...m });
+      if (!m.mark || !m.answer || !m.reply || m.clips) bad.push({ theme, light, ...m });
       if (light && (theme === "drafting" || theme === "warm-ink")) await shotPopover(h, `fixq-qpop-${theme}`);
     }
   res.bad = bad;
-  // with text: the box grows with the content, the footer still fits
-  await setTheme(h, "drafting", true);
-  await page.keyboard.type(
-    "Why does the hash chain include the previous block's h? $h_i = f(h_{i-1})$ and what if two prefixes share a block?",
-  );
-  await expect(page.locator(".pop.k-question .ProseMirror")).toContainText("share a block?");
-  await idle(h);
-  const t = await measure(h);
-  res.typed = { bodyClips: t.bodyClips, btns: t.btns.map((x) => x.h) };
-  await shotPopover(h, "fixq-qpop-drafting-typed");
   await page.context().close();
-  return res.editing === 1 && bad.length === 0 && !t.bodyClips;
+  return bad.length === 0;
 }
 async function shotPopover(h: Host, name: string) {
   await idle(h);
-  const r = await h.page.locator(".pop.k-question").boundingBox();
+  const r = await h.page.locator(".pop.k-highlight").boundingBox();
   if (!r) return shotTo(h, name);
   await h.page.screenshot({
     path: path.join(OUT, `${name}.png`),

@@ -1,7 +1,7 @@
-// Note changes: an image into a Note, [[title]] references following a rename, Split by Headings.
+// Note changes: an image into a Note, [[title]] references following a rename, Split by Headings, free sidenotes moved.
 // Pure functions that change the board passed in (the board calls them inside a mutate).
 import { removeCards } from "./refs";
-import { uid, type Board } from "../model";
+import { freeAt, uid, type Board, type CardAnchor, type FreeAnchor } from "../model";
 import { eachMarkdown, mapRefs } from "../mdrefs";
 import { estSize, type Rect } from "../layout";
 import { headingTree, splitHeadings } from "../split";
@@ -69,4 +69,16 @@ export function splitNoteByHeadings(
     b.links.push({ id: uid("l"), from: { card: q.parent < 0 ? id : ids[q.parent] }, to: { card: ids[i] } });
   });
   return ids;
+}
+
+/** Free sidenotes moved: to another point, or onto a card or a Note's block, which they are then on. Ones not free stay */
+export function moveFreeNotes(b: Board, ids: Iterable<string>, to: FreeAnchor | CardAnchor): void {
+  const want = new Set(ids);
+  for (const n of b.sidenotes)
+    if (want.has(n.id) && freeAt(n.at))
+      n.at = freeAt(to)
+        ? { x: Math.round(to.x), y: Math.round(to.y) }
+        : to.block
+          ? { card: to.card, block: { ...to.block } }
+          : { card: to.card };
 }

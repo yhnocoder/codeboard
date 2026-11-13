@@ -436,7 +436,7 @@ describe("migrateBoard", () => {
       ],
       edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call" }],
     });
-    expect(b.version).toBe(16);
+    expect(b.version).toBe(17);
     expect(b.links[0].call).toEqual({ name: "f", col: 0 });
     const c = b.cards[0] as CodeCard;
     expect(c.segments[0]).toMatchObject({ path: "a.py", start: 1, end: 2, hl: [[2, 2]], symbol: { qual: "f" } });
@@ -553,7 +553,7 @@ describe("migrateBoard", () => {
       place: { a: { x: 0, y: 0, w: 400, h: 300 }, z: { x: 0, y: 0, w: 400 }, n: { x: 0, y: 0, w: 300, h: 120 } },
     };
     const b = migrateBoard(structuredClone(raw));
-    expect(b.version).toBe(16);
+    expect(b.version).toBe(17);
     expect(b.place.a.h).toBe(264);
     expect(b.place.z.h).toBeUndefined();
     expect(b.place.n.h).toBe(120);
@@ -578,7 +578,7 @@ describe("migrateBoard", () => {
       place: { t: { x: 0, y: 0, w: 300, h: 40 }, n: { x: 0, y: 0, w: 300, h: 120 }, x: { x: 0, y: 0, w: 300, h: 200 } },
     };
     const b = migrateBoard(structuredClone(raw));
-    expect(b.version).toBe(16);
+    expect(b.version).toBe(17);
     expect(b.place.t).toEqual({ x: 0, y: 0, w: 300 });
     expect(b.place.n.h).toBe(120);
     expect(b.place.x).toEqual({ x: 0, y: 0, w: 300 });
@@ -633,7 +633,7 @@ describe("migrateBoard", () => {
       ],
     };
     const b = upgraded(structuredClone(raw));
-    expect(b.version).toBe(16);
+    expect(b.version).toBe(17);
     expect(b.links).toEqual([
       {
         id: "c",
@@ -717,7 +717,6 @@ describe("migrateBoard", () => {
         id: `k${i}`,
         icon: { pack: "builtin", name: "star" },
         at: { kind: "card", card: "a" },
-        q: { md: "", done: false },
       })),
     };
     const b = upgraded(raw);
@@ -730,7 +729,6 @@ describe("migrateBoard", () => {
       { kind: "canvas", x: 344, y: -11, size: 22, on: { card: "a" } },
       { kind: "canvas", x: 319, y: -11, size: 22, on: { card: "a" } },
     ]);
-    expect(b.stickers[0].q).toEqual({ md: "" });
   });
   it("refuses a board written by a newer CodeBoard", () => {
     expect(() => migrateBoard({ version: BOARD_VERSION + 1, id: "b", name: "x", cards: [] })).toThrow(/newer/);
