@@ -15,3 +15,15 @@ stage2/: the canvas while editing a board of made-up content, drawn off screen b
 - marquee: the rubber band halfway, what it touches selected as it goes
 - menu: the context menus' items as the canvas builds them for one card (Arrange open), two cards and a Section; macOS
   draws the real menu, which cannot be drawn off screen
+
+stage3/: Notes, Texts and Boxes written in, drawn off screen at 2x with `swift run -c release LookCompare --writing
+<out>`, in each theme light and dark (<sheet>-<theme>[-dark].png); report.txt has the counts:
+- writing: each card (a Note, a Text as wide as its text, a Text that wraps, a Box) at rest | while written in (the
+  paper the canvas shows then, with the editor's own picture of the text) | the pixels that differ in magenta. 0 differ
+  in all 16. The editor's picture has no caret. The texts end in words: entering puts the caret at the end, as on the
+  web board, and a formula under the caret opens its source there, as on the web board
+- bar: the bar over a Text at S, M, L, XL and at 27 px (none lit), and over a Box with each fill chosen
+- switch: a Text that wraps | the Box it became | both at half strength (the first line, size and line breaks stay; a
+  Box centres its lines)
+- scale: a Text | its corner dragged out, during | let go (24 px → 38 px)
+- wrap: a Text as wide as its text | its right side dragged in: it wraps there

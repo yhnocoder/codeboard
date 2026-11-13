@@ -1,0 +1,24 @@
+warm-ink n1: 682×421 px, 0 px differ
+warm-ink t1: 633×85 px, 0 px differ
+warm-ink t2: 600×200 px, 0 px differ
+warm-ink b1: 492×256 px, 0 px differ
+warm-ink corner: font size 24 → 38.0
+warm-ink side: wraps true at 170.0 (was 316 wide)
+warm-ink-dark n1: 682×421 px, 0 px differ
+warm-ink-dark t1: 633×85 px, 0 px differ
+warm-ink-dark t2: 600×200 px, 0 px differ
+warm-ink-dark b1: 492×256 px, 0 px differ
+warm-ink-dark corner: font size 24 → 38.0
+warm-ink-dark side: wraps true at 170.0 (was 316 wide)
+ink-wash n1: 736×475 px, 0 px differ
+ink-wash t1: 637×85 px, 0 px differ
+ink-wash t2: 600×200 px, 0 px differ
+ink-wash b1: 492×256 px, 0 px differ
+ink-wash corner: font size 24 → 38.0
+ink-wash side: wraps true at 171.0 (was 318 wide)
+ink-wash-dark n1: 736×475 px, 0 px differ
+ink-wash-dark t1: 637×85 px, 0 px differ
+ink-wash-dark t2: 600×200 px, 0 px differ
+ink-wash-dark b1: 492×256 px, 0 px differ
+ink-wash-dark corner: font size 24 → 38.0
+ink-wash-dark side: wraps true at 171.0 (was 318 wide)
