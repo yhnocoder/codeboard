@@ -3,7 +3,14 @@
 // what editing it shows. Many Notes stay mounted at once, each in a slot of its own at the page's top left, all hidden
 // but the one being snapshotted: measuring a board is one layout pass, and a picture at another scale lays nothing out
 // again. Native drives it through window.note and hears back on the "note" message handler.
-import { createMarkdown, type Markdown, type MdLayout, type RefBroken, type RefTarget } from "@yhnocoder/markdown";
+import {
+  createMarkdown,
+  mdBlockStarts,
+  type Markdown,
+  type MdLayout,
+  type RefBroken,
+  type RefTarget,
+} from "@yhnocoder/markdown";
 import {
   type MdEditorHandle,
   mountEditor,
@@ -50,6 +57,12 @@ document.documentElement.classList.add(editMode ? "edit" : "render");
 // mounting the editor focuses it, and a web view in the background that asks for focus takes the keyboard from the
 // window the user types in
 if (!editMode) HTMLElement.prototype.focus = () => {};
+
+/** A Note's top-level blocks, each one's Markdown (the board's md/blocks.ts noteBlocks); null when it cannot be split */
+function noteBlocks(md: string): string[] | null {
+  const st = mdBlockStarts(md);
+  return st ? st.map((s, i) => md.slice(s, st[i + 1] ?? md.length).trim()) : null;
+}
 
 const refKey = (label: string, target?: string | null) => `${label}\u0000${target ?? ""}`;
 
@@ -287,13 +300,19 @@ type RefList = {
 /** What the editing web view posts: its card's size as it changes, and that the editor left by itself (Esc) */
 type Posted =
   | { type: "size"; width: number; height: number }
-  | { type: "done"; text: string | null; layout: MdLayout | null; layoutChanged: boolean }
+  | ({ type: "done" } & Ended)
   | { type: "ui"; rects: { x: number; y: number; width: number; height: number }[] }
   | { type: "picked"; group: string | null; id: string };
 const post = (m: Posted) => window.webkit?.messageHandlers.note.postMessage(m);
 
 /** The card being edited: its slot is placed `margin` px in from the page's top left, so the editor's menus have room */
-type Ended = { text: string | null; layout: MdLayout | null; layoutChanged: boolean };
+/** blocks: the Note's blocks when the editing began and now (as noteBlocks), for what is on them to follow them */
+type Ended = {
+  text: string | null;
+  layout: MdLayout | null;
+  layoutChanged: boolean;
+  blocks: { was: string[] | null; now: string[] | null } | null;
+};
 type Editing = {
   slot: Slot;
   original: string;
@@ -323,7 +342,12 @@ function keepStatic(e: Editing) {
  *  clear. Null when it had ended already */
 function end(e: Editing, text: string | null, layout: MdLayout | null): Ended | null {
   if (e.ended) return null;
-  e.ended = { text, layout, layoutChanged: JSON.stringify(layout ?? null) !== JSON.stringify(e.layout ?? null) };
+  e.ended = {
+    text,
+    layout,
+    layoutChanged: JSON.stringify(layout ?? null) !== JSON.stringify(e.layout ?? null),
+    blocks: text === null ? null : { was: noteBlocks(e.original), now: noteBlocks(text) },
+  };
   keepStatic(e);
   return e.ended;
 }
@@ -452,6 +476,7 @@ const edit = {
       text: e.editor.value(),
       layout,
       layoutChanged: JSON.stringify(layout ?? null) !== JSON.stringify(e.layout ?? null),
+      blocks: null,
     };
   },
   /** Native ends the editing (a click outside): what was written, also when the editor left by itself first (focus

@@ -366,6 +366,8 @@ extension CanvasView {
         b.write(
           id, text: text ?? was.writing ?? "",
           layout: written?.layoutChanged == true ? written?.layout : CanvasView.layout(of: was))
+        // what is on its blocks follows them, in the same step (drafts left the refs as they were)
+        if text != nil, let blocks = written?.blocks { b.rebaseBlocks(id, old: blocks.was, now: blocks.now) }
       }
     }
     // the card's picture under the web view before it goes

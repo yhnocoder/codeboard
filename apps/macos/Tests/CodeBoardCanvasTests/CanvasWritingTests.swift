@@ -80,6 +80,32 @@ extension Rig {
     #expect(!r.doc.history.canUndo, "one step for the whole session")
   }
 
+  @Test func anArrowOnANotesBlockFollowsItWhenTheWritingEndsAndUndoPutsItBack() async throws {
+    let text = "# 调度 Scheduling\n\nRequests wait in the queue.\n\n每一步取一批"
+    let last = BlockRef(index: 2, hash: BlockRef.sig("每一步取一批"))
+    let board = Board(
+      id: BoardID(rawValue: "blocks"),
+      cards: [
+        Card(id: cid("n1"), x: 0, y: 0, width: 300, content: .own(CardContent(body: .note(Note(text: text))))),
+        Card(id: cid("n2"), x: 500, y: 0, width: 240, content: .own(CardContent(body: .note(Note(text: "Other"))))),
+      ],
+      arrows: [
+        Arrow(id: ArrowID(rawValue: "a1"), from: Endpoint(card: cid("n2")), to: Endpoint(card: cid("n1"), block: last))
+      ])
+    let r = try await Rig(board, zoom: 1)
+    defer { r.close() }
+    r.click(r.centre("n1"))
+    r.key(36)
+    await r.editorReady()
+    await r.type("，再算")
+    await r.canvas.endEditing()
+    #expect(r.doc.board.arrows[0].to.block == BlockRef(index: 2, hash: BlockRef.sig("每一步取一批，再算")))
+    #expect(r.doc.undoName == "Edit Note")
+    await r.settle()
+    r.doc.undo()
+    #expect(r.doc.board.arrows[0].to.block == last)
+  }
+
   @Test func keysPressedWhileTheEditorMountsReachIt() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }

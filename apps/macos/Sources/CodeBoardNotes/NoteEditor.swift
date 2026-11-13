@@ -17,6 +17,9 @@ public final class NoteEditor: NSObject {
     public var text: String?
     public var layout: NoteLayout?
     public var layoutChanged: Bool
+    /// The Note's blocks when the writing began and now, as the page splits them (nil: it could not), when the text
+    /// changed: what is on a block follows it
+    public var blocks: (was: [String]?, now: [String]?)?
   }
 
   public let view: EditorWebView
@@ -140,7 +143,9 @@ public final class NoteEditor: NSObject {
     if let l = d["layout"], !(l is NSNull), let data = try? JSONSerialization.data(withJSONObject: l) {
       layout = try? JSONDecoder().decode(NoteLayout.self, from: data)
     }
-    return Written(text: d["text"] as? String, layout: layout, layoutChanged: d["layoutChanged"] as? Bool ?? false)
+    let blocks = (d["blocks"] as? [String: Any]).map { ($0["was"] as? [String], $0["now"] as? [String]) }
+    return Written(
+      text: d["text"] as? String, layout: layout, layoutChanged: d["layoutChanged"] as? Bool ?? false, blocks: blocks)
   }
 
   fileprivate func received(_ body: Any) {
