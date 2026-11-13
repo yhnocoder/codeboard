@@ -122,6 +122,12 @@ test("fitContentKeyWhileEditing", async () => {
   await pg.waitForSelector('.card[data-id="n1"] .md-pm', { timeout: 5000 });
   await focusSettled(pg);
   await pg.keyboard.press("ControlOrMeta+End");
+  await until(h, "the caret reaches the Note's end", () =>
+    pg.evaluate(() => {
+      const pm = (document.querySelector(".md-pm") as any)?.editor;
+      return !!pm && pm.state.selection.empty && pm.state.selection.from === pm.state.doc.content.size - 1;
+    }),
+  );
   const c0 = await caret(h);
   await macAltF(h);
   await until(h, "⌥F fits the Note", () => h.board().place.n1.h === undefined).catch(() => undefined);
