@@ -107,7 +107,8 @@ extension CanvasView {
 
   private func documentChanged() {
     guard let doc = document else { return }
-    if doc.board != shownBoard { refresh() } else if gesture == nil { drawChrome() }
+    // only the selection changed (a marquee under way too): its rings follow at once
+    if doc.board != shownBoard { refresh() } else { drawChrome() }
   }
 
   /// Makes the scene again from the document's board: drawings that did not change are reused with their bitmaps; what
@@ -233,6 +234,7 @@ extension CanvasView {
           }
           next.append(l)
         } else if let o = it.owner, let l = byOwner[o] {
+          l.box.zPosition = 0
           l.box.setAffineTransform(it.tilt == 0 ? .identity : CGAffineTransform(rotationAngle: it.tilt))
           l.box.position = CGPoint(x: it.rect.midX, y: it.rect.midY)
           next.append(l)
@@ -273,6 +275,19 @@ extension CanvasView {
 
   /// A board point in the view
   package func viewPoint(_ p: CGPoint) -> CGPoint { camera.view(p) }
+
+  /// Every item drawn again now at the zoom shown, Notes asked of the renderer (LookCompare: pictures without the
+  /// display link, which a window off screen never gets)
+  package func drawAll() async {
+    guard let s = scene else { return }
+    let (fit, zoom, view) = (fitZoom, camera.zoom, camera.visible(bounds.size))
+    var fresh: [Int: Fresh] = [:]
+    for (i, it) in s.items.enumerated() {
+      fresh[i] = await CanvasView.draw(
+        it, fit: fit, zoom: zoom, view: view, backing: backing, theme: theme, images: images, notes: notes)
+    }
+    reinstall(s, fresh: fresh)
+  }
 
   // MARK: Hit testing
 
@@ -372,36 +387,20 @@ extension CanvasView {
         guard let r = liveRect(item) else { continue }
         switch item {
         case .card(let id):
-          let tilt = index(of: .card(id)).map { scene!.items[$0].tilt } ?? 0
-          let radius = theme.cardRadius
-          for (width, alpha) in [(4.5, 0.16), (1.5, 1.0)] as [(CGFloat, CGFloat)] {
-            let l = CAShapeLayer()
-            let out = width / 2 / z + (width == 4.5 ? 0 : 0)
-            let ring = r.insetBy(dx: -out, dy: -out)
-            l.bounds = CGRect(origin: .zero, size: ring.size)
-            l.position = CGPoint(x: ring.midX, y: ring.midY)
-            l.path = CGPath(
-              roundedRect: l.bounds, cornerWidth: radius + out, cornerHeight: radius + out, transform: nil)
-            l.fillColor = nil
-            l.strokeColor = accent.copy(alpha: alpha)
-            l.lineWidth = width / z
-            if tilt != 0 { l.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
-            chrome.addSublayer(l)
+          let it = index(of: .card(id)).map { scene!.items[$0] }
+          var text = false
+          if case .note(let n)? = it?.drawing { text = n.content.isText }
+          if theme.id == .inkWash && !text {
+            chrome.addSublayer(seal(on: r, tilt: it?.tilt ?? 0))
+          } else {
+            ring(r, tilt: it?.tilt ?? 0, zoom: z)
           }
-        case .section:
-          let wash = CAShapeLayer()
-          wash.path = Drawing.squircle(r, theme.sectionRadius)
-          wash.fillColor = accent.copy(alpha: 0.07)
-          wash.strokeColor = accent
-          wash.lineWidth = 1 / z
-          let halo = CAShapeLayer()
-          let out = 1.5 / z
-          halo.path = Drawing.squircle(r.insetBy(dx: -out, dy: -out), theme.sectionRadius + out)
-          halo.fillColor = nil
-          halo.strokeColor = accent.copy(alpha: 0.18)
-          halo.lineWidth = 3 / z
-          chrome.addSublayer(halo)
-          chrome.addSublayer(wash)
+        case .section(let id):
+          if theme.id == .inkWash, let f = scene?.frames.first(where: { $0.id == id }), let strokes = f.strokes {
+            brushed(r, strokes: strokes.cg)
+          } else {
+            framed(r, zoom: z)
+          }
         }
       }
       guard doc.selection.count == 1, let item = doc.selection.first, !doc.board.isLocked(item) else { return }
@@ -421,6 +420,94 @@ extension CanvasView {
         chrome.addSublayer(l)
       }
     }
+  }
+
+  /// A selected card's ring (styles.css .card.sel): 1.5 view points of the accent over a 4.5 point halo of it at 16 %
+  private func ring(_ r: CGRect, tilt: CGFloat, zoom z: CGFloat) {
+    for (width, alpha) in [(4.5, 0.16), (1.5, 1.0)] as [(CGFloat, CGFloat)] {
+      let l = CAShapeLayer()
+      let out = width / 2 / z
+      let ring = r.insetBy(dx: -out, dy: -out)
+      l.bounds = CGRect(origin: .zero, size: ring.size)
+      l.position = CGPoint(x: ring.midX, y: ring.midY)
+      let radius = theme.cardRadius + out
+      l.path = CGPath(roundedRect: l.bounds, cornerWidth: radius, cornerHeight: radius, transform: nil)
+      l.fillColor = nil
+      l.strokeColor = theme.accent.copy(alpha: alpha)
+      l.lineWidth = width / z
+      if tilt != 0 { l.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
+      chrome.addSublayer(l)
+    }
+  }
+
+  /// Ink Wash's selected card (themes.css #128): a small vermilion seal 选 over its top right corner, 24 board units
+  /// square, its middle 7 out and 5 up from the corner, turned 6 degrees; no ring
+  private func seal(on r: CGRect, tilt: CGFloat) -> CALayer {
+    let box = CALayer()
+    box.bounds = CGRect(x: 0, y: 0, width: r.width, height: r.height)
+    box.position = CGPoint(x: r.midX, y: r.midY)
+    if tilt != 0 { box.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
+    let stamp = CALayer()
+    stamp.bounds = CGRect(x: 0, y: 0, width: 24, height: 24)
+    stamp.position = CGPoint(x: r.width + 7, y: -5)
+    stamp.setAffineTransform(CGAffineTransform(rotationAngle: -6 * .pi / 180))
+    stamp.backgroundColor = theme.surface.copy(alpha: 0.6)
+    stamp.borderColor = theme.accent
+    stamp.borderWidth = 1.6
+    stamp.cornerRadius = 2
+    stamp.opacity = 0.92
+    let font = CTFontCreateWithName("STSongti-SC-Bold" as CFString, 14, nil)
+    let line = CTFontGetAscent(font) + CTFontGetDescent(font)
+    let glyph = CATextLayer()
+    glyph.frame = CGRect(x: 0, y: (24 - line) / 2, width: 24, height: line)
+    glyph.string = NSAttributedString(string: "选", attributes: [.font: font, .foregroundColor: theme.accent])
+    glyph.alignmentMode = .center
+    glyph.contentsScale = backing * max(1, camera.zoom)
+    stamp.addSublayer(glyph)
+    box.addSublayer(stamp)
+    return box
+  }
+
+  /// A selected Section (styles.css .sect.sel): the accent edge, a 3 point halo of it at 18 % and a 7 % wash
+  private func framed(_ r: CGRect, zoom z: CGFloat) {
+    let wash = CAShapeLayer()
+    wash.path = Drawing.squircle(r, theme.sectionRadius)
+    wash.fillColor = theme.accent.copy(alpha: 0.07)
+    wash.strokeColor = theme.accent
+    wash.lineWidth = 1 / z
+    let halo = CAShapeLayer()
+    let out = 1.5 / z
+    halo.path = Drawing.squircle(r.insetBy(dx: -out, dy: -out), theme.sectionRadius + out)
+    halo.fillColor = nil
+    halo.strokeColor = theme.accent.copy(alpha: 0.18)
+    halo.lineWidth = 3 / z
+    chrome.addSublayer(halo)
+    chrome.addSublayer(wash)
+  }
+
+  /// Ink Wash's selected Section (themes.css .sect.sel): its brush stroke in vermilion, a second stroke 5 down and
+  /// right at 42 %, a faint vermilion wash inside
+  private func brushed(_ r: CGRect, strokes: CGPath) {
+    let box = CALayer()
+    box.frame = r
+    let wash = CALayer()
+    wash.frame = box.bounds
+    wash.backgroundColor = theme.accent.copy(alpha: theme.dark ? 0.07 : 0.045)
+    box.addSublayer(wash)
+    let echo = CAShapeLayer()
+    echo.path = strokes
+    echo.fillColor = theme.accent
+    echo.opacity = 0.42
+    echo.position = CGPoint(x: 5, y: 5)
+    echo.anchorPoint = .zero
+    box.addSublayer(echo)
+    let brush = CAShapeLayer()
+    brush.path = strokes
+    brush.fillColor = theme.accent.copy(alpha: 0.85)
+    brush.anchorPoint = .zero
+    brush.position = .zero
+    box.addSublayer(brush)
+    chrome.addSublayer(box)
   }
 
   /// The handles an item has, where they are on the board: a code card, Note or Section by its sides and corners, a
@@ -610,6 +697,8 @@ extension CanvasView {
       for i in m.items {
         let r = s.items[i].rect
         items[i].box.position = CGPoint(x: r.midX + m.d.dx, y: r.midY + m.d.dy)
+        // picked up: over every card it passes (the web board's .lift)
+        items[i].box.zPosition = 1
       }
       let frameLayers = sections.sublayers ?? []
       for i in m.frames where i < frameLayers.count {
@@ -652,6 +741,7 @@ extension CanvasView {
     withoutAnimation {
       for i in ids {
         items[i].box.position = CGPoint(x: s.items[i].rect.midX, y: s.items[i].rect.midY)
+        items[i].box.zPosition = 0
         items[i].box.setAffineTransform(
           s.items[i].tilt == 0 ? .identity : CGAffineTransform(rotationAngle: s.items[i].tilt))
       }
