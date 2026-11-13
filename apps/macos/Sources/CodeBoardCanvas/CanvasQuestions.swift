@@ -39,9 +39,9 @@ extension CanvasView {
   ) -> [QuestionListView.Shown.Item] {
     notes.compactMap { n in
       guard case .text(let t) = n.body, let q = t.question else { return nil }
-      var where_ = ""
+      var place = ""
       switch n.anchor {
-      case .section(let s): where_ = b.section(s)?.title ?? ""
+      case .section(let s): place = b.section(s)?.title ?? ""
       case .card(let c, let seg, let lines, _):
         guard let card = b.card(c) else { break }
         let name = title(card)
@@ -50,18 +50,18 @@ extension CanvasView {
             lines.lowerBound == lines.upperBound ? "\(lines.lowerBound)" : "\(lines.lowerBound)–\(lines.upperBound)"
           let path = b.segment(c, seg).flatMap(CodeLayout.path)
           if let file = path?.split(separator: "/").last {
-            where_ = "\(file):\(ln)"
+            place = "\(file):\(ln)"
           } else {
-            where_ = "\(name.isEmpty ? "" : "\(name) · ")line\(lines.count == 1 ? "" : "s") \(ln)"
+            place = "\(name.isEmpty ? "" : "\(name) · ")line\(lines.count == 1 ? "" : "s") \(ln)"
           }
         } else {
-          where_ = name
+          place = name
         }
       case .point: break
       }
       let line = RefResolver.firstLine(t.text)
       return .init(
-        board: board.id.rawValue, note: n.id.rawValue, line: line.isEmpty ? "(no text)" : line, where: where_,
+        board: board.id.rawValue, note: n.id.rawValue, line: line.isEmpty ? "(no text)" : line, where: place,
         done: q.done, at: q.at)
     }
   }
