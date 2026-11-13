@@ -218,10 +218,69 @@ struct InlineBuilder {
     append("\u{FFFC}", attrs, source: [source])
   }
 
+  /// Characters from `start` on that the system font hands to a fallback, set in that fallback by name, as the browser
+  /// sets them: CoreText's own fallback under the system font carries its tracking (Chinese 13.77 wide at 13.5, where
+  /// the page's are 13.5) and draws emoji in the UI variant of Apple Color Emoji (an advance of 19 at 13.5, the page's
+  /// is 17)
+  private mutating func fallbackFonts(from start: Int) {
+    let key = NSAttributedString.Key(kCTFontAttributeName as String)
+    let length = out.string.length - start
+    guard length > 0, let font = out.string.attribute(key, at: start, effectiveRange: nil) else { return }
+    let primary = CTFontCopyPostScriptName(font as! CTFont) as String
+    guard primary.hasPrefix(".SF") else { return }
+    // the fonts the typesetter picks for this text, each run's set again by its name
+    let piece = out.string.attributedSubstring(from: NSRange(location: start, length: length))
+    for run in CTLineGetGlyphRuns(CTLineCreateWithAttributedString(piece)) as! [CTRun] {
+      let f = (CTRunGetAttributes(run) as NSDictionary)[kCTFontAttributeName] as! CTFont
+      let name = CTFontCopyPostScriptName(f) as String
+      guard name != primary, !name.hasPrefix(".SF") else { continue }
+      let r = CTRunGetStringRange(run)
+      let range = NSRange(location: start + r.location, length: r.length)
+      var m = CTFontGetMatrix(f)
+      if name.hasPrefix(".AppleColorEmoji") || name == "AppleColorEmoji" {
+        // Chrome draws an emoji as tall as the font size on an advance of 1.26 em; CoreText's picture is 1.26 em tall
+        // on 1.33 em: smaller by 1.26, each spaced out to the browser's advance (measured: CoreText rounds it)
+        let size = CTFontGetSize(f)
+        let emoji = CTFontCreateWithName("AppleColorEmoji" as CFString, size / 1.26, &m)
+        out.string.addAttribute(key, value: emoji, range: range)
+        let ns = out.string.string as NSString
+        var at = range.location
+        while at < NSMaxRange(range) {
+          let c = ns.rangeOfComposedCharacterSequence(at: at)
+          at = NSMaxRange(c)
+          let one = CTLineCreateWithAttributedString(
+            NSAttributedString(string: ns.substring(with: c), attributes: [key: emoji]))
+          let w = CGFloat(CTLineGetTypographicBounds(one, nil, nil, nil))
+          out.string.addAttribute(
+            NSAttributedString.Key(kCTKernAttributeName as String), value: size * 17 / 13.5 - w, range: c)
+        }
+        continue
+      }
+      out.string.addAttribute(key, value: CTFontCreateWithName(name as CFString, CTFontGetSize(f), &m), range: range)
+    }
+  }
+
   private mutating func plain(_ u: [UInt16], _ offsets: [Int], _ r: Range<Int>, _ s: InlineStyle) {
     if r.isEmpty { return }
     let str = String(decoding: u[r], as: UTF16.self)
-    append(str, attributes(s), source: Array(offsets[r]))
+    let start = out.string.length
+    let attrs = attributes(s)
+    append(str, attrs, source: Array(offsets[r]))
+    fallbackFonts(from: start)
+    guard s.italic, let font = attrs[NSAttributedString.Key(kCTFontAttributeName as String)] else { return }
+    // italic text the italic face cannot draw (Chinese) falls back to a font with no italic: slanted, as Chrome
+    // synthesizes oblique for it
+    let ns = str as NSString
+    var i = 0
+    while i < ns.length {
+      let c = ns.rangeOfComposedCharacterSequence(at: i)
+      if let slanted = FontBook.slantedFallback(font as! CTFont, ns, c) {
+        out.string.addAttribute(
+          NSAttributedString.Key(kCTFontAttributeName as String), value: slanted,
+          range: NSRange(location: start + c.location, length: c.length))
+      }
+      i = NSMaxRange(c)
+    }
   }
 
   private mutating func append(_ str: String, _ attrs: [NSAttributedString.Key: Any], source: [Int]) {
@@ -266,7 +325,9 @@ struct InlineBuilder {
     let source = offsets[min(r.lowerBound, offsets.count - 1)]
     switch atom {
     case .emoji(let name):
+      let start = out.string.length
       append(Emoji.glyph(name) ?? ":\(name):", attributes(style), source: [source])
+      fallbackFonts(from: start)
     case .lineBreak:
       append("\u{2028}", attributes(style), source: [source])
     case .html(let raw):

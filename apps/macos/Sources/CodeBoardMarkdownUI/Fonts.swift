@@ -103,12 +103,33 @@ enum FontBook {
     // the face (italic), then the fallbacks, then the axes, in that order: a copy made after the axes are set looks the
     // instance up by its name (which carries the axis values), finds nothing and comes out as Helvetica
     var font = face(CTFontCreateWithFontDescriptor(first, k.size, nil), k)
+    // italic asked of a face that has none (the hand font): slanted as Chrome synthesizes oblique, 14°. Text a fallback
+    // draws (Chinese) is slanted where it is set (InlineBuilder): a matrix on a cascade entry is not used
     let rest = Array(descs.dropFirst())
+    if k.italic && !CTFontGetSymbolicTraits(font).contains(.traitItalic) {
+      var m = slant
+      font = CTFontCreateWithFontDescriptor(CTFontCopyFontDescriptor(font), k.size, &m)
+    }
     if !rest.isEmpty {
       font = CTFontCreateCopyWithAttributes(
         font, k.size, nil, CTFontDescriptorCreateWithAttributes([kCTFontCascadeListAttribute: rest] as CFDictionary))
     }
     return axes(font, k)
+  }
+
+  /// Chrome's synthetic oblique: x skewed by tan 14° of y
+  static let slant = CGAffineTransform(a: 1, b: 0, c: 0.25, d: 1, tx: 0, ty: 0)
+
+  /// The font CoreText falls back to for the characters of `r` in `s` that `f` lacks, slanted when it has no italic
+  /// of its own (nil: `f` draws them)
+  static func slantedFallback(_ f: CTFont, _ s: NSString, _ r: NSRange) -> CTFont? {
+    let fb = CTFontCreateForString(f, s, CFRange(location: r.location, length: r.length))
+    guard CTFontCopyPostScriptName(fb) as String != CTFontCopyPostScriptName(f) as String,
+      !CTFontGetSymbolicTraits(fb).contains(.traitItalic)
+    else { return nil }
+    // by name: a fallback under the system font carries its tracking (InlineBuilder.fallbackFonts)
+    var m = slant
+    return CTFontCreateWithName(CTFontCopyPostScriptName(fb), CTFontGetSize(fb), &m)
   }
 
   /// the italic face, when asked for: a separate file for the board's fonts, so the family is asked for it by trait

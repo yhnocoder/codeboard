@@ -30,6 +30,8 @@ type Note = {
   dark: boolean;
   /** What its [[refs]] point at, as the board resolves them (CodeBoardNotes' NoteRef); one not here is not found */
   refs: { label: string; target: string | null; hit: RefTarget | RefBroken }[];
+  /** drawn by the static render (render + hydrate) instead of the editor: Mermaid, which the editor shows as source */
+  static?: boolean;
 };
 
 declare global {
@@ -220,7 +222,12 @@ window.note = {
       setLook(n.look, n.dark);
       const made = cardFor(n);
       const s = newSlot(id, made.card);
-      if (made.markdown)
+      if (made.markdown && n.static) {
+        const md = mdFor(images, n.refs);
+        const html = md.render(n.text);
+        made.body.innerHTML = html;
+        md.hydrate(made.body, html);
+      } else if (made.markdown)
         s.editor = mountEditor(mdFor(images, n.refs), made.body, {
           value: n.text,
           layout: n.layout,

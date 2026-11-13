@@ -102,10 +102,14 @@ final class SVGImport: NSObject, XMLParserDelegate {
       result.paths.append(MDPath(data: d, transform: full, fill: fill, stroke: stroke, strokeWidth: sw))
     case "line":
       let n = { (k: String) in Double(a[k] ?? "0") ?? 0 }
+      // MathJax's table rules (an array's | and \hline) take their width from its stylesheet, 70 units, not from the
+      // stroke-width of 0 its root group sets
+      let cls = a["class"] ?? ""
+      let width = cls.hasPrefix("mjx-") && a["stroke-width"] == nil ? 70 : sw
       result.paths.append(
         MDPath(
-          data: "M\(n("x1")) \(n("y1"))L\(n("x2")) \(n("y2"))", transform: full, fill: .none, stroke: stroke,
-          strokeWidth: sw))
+          data: "M\(n("x1")) \(n("y1"))L\(n("x2")) \(n("y2"))", transform: full, fill: .none,
+          stroke: cls.hasPrefix("mjx-") && stroke == .none ? .ink : stroke, strokeWidth: width))
     case "text":
       let x = Double(a["x"] ?? "0") ?? 0
       let y = Double(a["y"] ?? "0") ?? 0

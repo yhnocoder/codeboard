@@ -217,7 +217,9 @@ struct LayoutBuilder {
       return (CGFloat(mm[0]), CGFloat(mm[1]))
     case .list: return (CGFloat(m.listMargin), CGFloat(m.listMargin))
     case .quote: return (CGFloat(m.quoteMargin), CGFloat(m.quoteMargin))
-    case .code, .mermaid: return (CGFloat(m.codeMargin), CGFloat(m.codeMargin))
+    case .code: return (CGFloat(m.codeMargin), CGFloat(m.codeMargin))
+    // a drawn diagram's margin (.mmd); one shown as its source is a code block
+    case .mermaid: return resources.diagrams == nil ? (CGFloat(m.codeMargin), CGFloat(m.codeMargin)) : (4, 4)
     case .table: return (CGFloat(m.tableMargin), CGFloat(m.tableMargin))
     case .rule: return (CGFloat(m.ruleMargin), CGFloat(m.ruleMargin))
     default: return (0, 0)
@@ -347,7 +349,7 @@ struct LayoutBuilder {
   /// font's ascent; an atom taller than that makes its line taller
   func setText(
     _ d: DisplayText, x: CGFloat, width: CGFloat, y: CGFloat, style: InlineStyle, lineHeight: CGFloat,
-    center: Bool = false, wrap: Bool = true
+    center: Bool = false, right: Bool = false, wrap: Bool = true
   ) -> TextBlock {
     let strut = FontBook.font(style.families, size: style.size, weight: style.weight, italic: style.italic)
     let lh = lineHeight * style.size
@@ -390,7 +392,7 @@ struct LayoutBuilder {
       }
       let lw = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil) - CTLineGetTrailingWhitespaceWidth(line))
       widest = max(widest, lw)
-      let lx = centred ? x + max(0, (width - lw) / 2) : x
+      let lx = centred ? x + max(0, (width - lw) / 2) : right ? x + max(0, width - lw) : x
       lines.append(
         .init(
           line: line, origin: CGPoint(x: lx, y: top + above), top: top, height: above + below,
@@ -611,7 +613,8 @@ struct LayoutBuilder {
     guard case .ok(let w, let h, let paths, let texts) = result else {
       return code(body: body, language: "mermaid", b: b, x: x, width: width, y: y)
     }
-    let frame = CGRect(x: x, y: y, width: CGFloat(w), height: CGFloat(h))
+    // centred in the body (.mmd.ok: flex, justify-content: center)
+    let frame = CGRect(x: x + max(0, (width - CGFloat(w)) / 2), y: y, width: CGFloat(w), height: CGFloat(h))
     items.append(.clip(CGRect(x: x, y: y, width: width, height: frame.height), [.diagram(paths, texts, frame)]))
     return frame.maxY
   }
@@ -713,7 +716,11 @@ struct LayoutBuilder {
       var blocks: [TextBlock] = []
       for c in 0..<cols {
         let d = c < row.count ? row[c] : DisplayText()
-        let tb = setText(d, x: cx + ph, width: widths[c], y: yy + pv, style: styleFor(r), lineHeight: lh)
+        // each column's alignment (:-- :-: --:), its header too (td and th take the align attribute)
+        let align = c < t.align.count ? t.align[c] : .none
+        let tb = setText(
+          d, x: cx + ph, width: widths[c], y: yy + pv, style: styleFor(r), lineHeight: lh, center: align == .center,
+          right: align == .right)
         blocks.append(tb)
         rowH = max(rowH, tb.frame.height + 2 * pv)
         cx += widths[c] + pad

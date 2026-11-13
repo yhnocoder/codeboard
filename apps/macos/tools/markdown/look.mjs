@@ -9,7 +9,7 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import sharp from "sharp";
 import { launch } from "../../../../tools/test/chromium.mjs";
 import { buildPage } from "./page/build.mjs";
@@ -65,8 +65,46 @@ for (const { look, dark } of looks) {
       window.noteTokens = t;
     }, tokens);
     const images = pathToFileURL(path.join(samples, "images")).href;
-    const note = { text: job.text, layout: null, style: job.style, width: job.width, height: job.height, look, dark, refs: webRefs };
+    // a diagram through the static render: the editor shows Mermaid as source
+    const note = {
+      text: job.text,
+      layout: null,
+      style: job.style,
+      width: job.width,
+      height: job.height,
+      look,
+      dark,
+      refs: webRefs,
+      static: job.text.includes("```mermaid"),
+    };
     await page.evaluate(([note, images]) => window.note.mount([{ id: "n", note, images }]), [note, images]);
+    if (note.static) await page.waitForFunction(() => !document.querySelector(".mmd") || document.querySelector(".mmd svg"));
+    // an animated image stands still on the frame {frame=N} names, as the board makes it (the package leaves that to
+    // the page): the frame decoded from the file and shown in its place
+    for (const { src, frame } of await page.$$eval("img[data-frame]", (els) =>
+      els.map((e) => ({ src: e.currentSrc || e.src, frame: Number(e.dataset.frame) })),
+    )) {
+      if (!src.startsWith("file:") || !(frame > 1)) continue;
+      const bytes = fs.readFileSync(fileURLToPath(src)).toString("base64");
+      const type = `image/${path.extname(fileURLToPath(src)).slice(1).replace("jpg", "jpeg")}`;
+      await page.evaluate(
+        async ([src, bytes, type, frame]) => {
+          const data = Uint8Array.from(atob(bytes), (c) => c.charCodeAt(0));
+          const { image } = await new ImageDecoder({ data, type }).decode({ frameIndex: frame - 1 });
+          const c = document.createElement("canvas");
+          c.width = image.displayWidth;
+          c.height = image.displayHeight;
+          c.getContext("2d").drawImage(image, 0, 0);
+          const url = c.toDataURL();
+          for (const img of document.querySelectorAll("img[data-frame]"))
+            if ((img.currentSrc || img.src) === src) {
+              img.src = url;
+              await img.decode();
+            }
+        },
+        [src, bytes, type, frame],
+      );
+    }
     await page.evaluate(() => window.note.show("n", 1));
     // code colours come in after the first paint
     await page.waitForTimeout(300);
