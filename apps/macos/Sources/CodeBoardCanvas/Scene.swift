@@ -126,8 +126,11 @@ struct Scene: Sendable {
     return board.cards.compactMap { c in
       guard let (content, folder) = content(of: c, package: package, vault: vault) else { return nil }
       switch content.body {
-      case .note(let n) where c.height == nil || onBlocks.contains(c.id):
-        return Measure(card: c.id, note: .note(n), width: c.width, folder: folder, refs: refs.refs(in: n.text))
+      // a Note with a height of its own is measured for its blocks, and for where its [[refs]] are (their clicks)
+      case .note(let n):
+        let r = refs.refs(in: n.text)
+        guard c.height == nil || onBlocks.contains(c.id) || !r.isEmpty else { return nil }
+        return Measure(card: c.id, note: .note(n), width: c.width, folder: folder, refs: r)
       // a Text or Box is as tall as its text, and as wide too unless it wraps
       case .text(let t):
         return Measure(card: c.id, note: .text(t), width: c.width, folder: folder, refs: refs.refs(in: t.text))
@@ -217,7 +220,8 @@ struct Scene: Sendable {
       }
       parts[c.id] = part
       let r = CGRect(origin: CGPoint(x: c.x, y: c.y), size: part.size)
-      placed[c.id] = Placed(rect: r, code: part.code, tilt: tilt, blocks: part.measured?.blocks)
+      placed[c.id] = Placed(
+        rect: r, code: part.code, tilt: tilt, blocks: part.measured?.blocks, refs: part.measured?.refs ?? [])
       cardItems.append(
         Item(owner: .card(c.id), rect: r, drawing: part.drawing, tilt: tilt, bleed: part.drawing.bleed(t)))
       if let s = c.section { members[s, default: []].append(r) }
@@ -434,6 +438,8 @@ struct Scene: Sendable {
     var folded = false
     /// A Note's blocks as laid out, from its top
     var blocks: [NoteBlock]?
+    /// Where its drawn [[refs]] are, from its top left
+    var refs: [NoteRefBox] = []
 
     /// The middle of a Note block's band in board units, kept inside the card below its header (the board's blockY);
     /// nil when it is not measured or not there

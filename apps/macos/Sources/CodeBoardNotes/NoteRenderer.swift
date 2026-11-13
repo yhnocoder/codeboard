@@ -147,7 +147,7 @@ public final class NoteRenderer {
     }
     guard !missing.isEmpty else { return out }
     try await takeTurn(priority: priority)
-    var shown: [String: (size: CGSize, complete: Bool, blocks: [NoteBlock]?)] = [:]
+    var shown: [String: NotePage.Measured] = [:]
     do {
       let p = try page ?? NotePage(page: pageFolder)
       page = p
@@ -165,7 +165,7 @@ public final class NoteRenderer {
     var keep: [(SnapshotKey, NoteMetrics)] = []
     for m in missing {
       guard let s = shown[m.key.hex] else { continue }
-      let metrics = NoteMetrics(size: s.size, blocks: s.blocks)
+      let metrics = NoteMetrics(size: s.size, blocks: s.blocks, refs: s.refs)
       out[m.i] = metrics
       // measured without an image that did not come in: too small, so not kept
       if s.complete { keep.append((m.key, metrics)) }

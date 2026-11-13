@@ -1,3 +1,5 @@
+import CoreGraphics
+
 /// A [[ref]] in a Note and what it points at now, as the web board resolves it: the canvas works it out from the board
 /// and the vault, the page only draws it (the Markdown package's `refs.resolve`, `paintRef`). A ref the canvas found
 /// nothing for is left out and drawn as not found.
@@ -157,5 +159,35 @@ public struct RefCandidates: Encodable, Equatable, Sendable {
     self.groups = groups
     self.recent = recent
     self.foot = foot
+  }
+}
+
+/// A press on a drawn [[ref]] in a web view (refclick.ts): its label and the id written with it, its box in the web
+/// view's points, whether ⌘ was held
+public struct RefPress: Equatable, Sendable {
+  public var ref: String
+  public var target: String?
+  public var rect: CGRect
+  public var go: Bool
+  /// In an editor (not a sidenote's text shown): its caret stays, nothing is selected
+  public var writing: Bool
+
+  public init(ref: String, target: String?, rect: CGRect, go: Bool = false, writing: Bool = true) {
+    self.ref = ref
+    self.target = target
+    self.rect = rect
+    self.go = go
+    self.writing = writing
+  }
+
+  init?(_ m: [String: Any]) {
+    guard let ref = m["ref"] as? String else { return nil }
+    self.ref = ref
+    target = m["target"] as? String
+    rect = CGRect(
+      x: m["x"] as? Double ?? 0, y: m["y"] as? Double ?? 0, width: m["width"] as? Double ?? 0,
+      height: m["height"] as? Double ?? 0)
+    go = m["go"] as? Bool ?? false
+    writing = m["writing"] as? Bool ?? true
   }
 }

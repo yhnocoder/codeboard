@@ -29,6 +29,11 @@ public final class NoteEditor: NSObject {
   public var onDone: ((Written) -> Void)?
   /// A ref picked from the [[ list: the board it is on when that is another (nil: this one) and its id
   public var onPicked: ((_ group: String?, _ id: String) -> Void)?
+  /// A press on a drawn [[ref]] (its label and the id written with it, its box in the web view, ⌘ held), or the second
+  /// press of a double-click on one (nil), which opens its source
+  public var onRef: ((RefPress?) -> Void)?
+  /// A press anywhere else in it
+  public var onElsewhere: (() -> Void)?
   /// Where a pasted or dropped picture is stored: the folder whose `images/` it goes into (the board's package)
   public var imagesFolder: URL?
   private let signal = EditorSignal()
@@ -60,7 +65,8 @@ public final class NoteEditor: NSObject {
   /// takes the keyboard; returns its size at 100 %
   public func begin(
     _ note: NoteBody, width: Double, height: Double?, folder: URL, look: String, dark: Bool, refs: [NoteRef] = [],
-    refList: RefCandidates? = nil, k: Double, margin: Double, caret: CGPoint?, placeholder: String
+    refList: RefCandidates? = nil, k: Double, margin: Double, caret: CGPoint?, open: Bool = false,
+    placeholder: String
   ) async throws -> CGSize {
     await ready()
     view.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
@@ -71,10 +77,10 @@ public final class NoteEditor: NSObject {
     let args: [String: Any] = [
       "note": json, "images": NoteRenderer.images(folder).absoluteString, "k": k, "margin": margin,
       "placeholder": placeholder, "caret": caret.map { ["x": $0.x, "y": $0.y] } ?? NSNull(),
-      "list": list ?? NSNull(),
+      "list": list ?? NSNull(), "open": open,
     ]
     let r = try await view.callAsyncJavaScript(
-      "return await edit.begin({note: JSON.parse(note), images, k, margin, caret, placeholder,"
+      "return await edit.begin({note: JSON.parse(note), images, k, margin, caret, open, placeholder,"
         + " refList: list === null ? null : JSON.parse(list)})", arguments: args, contentWorld: .page)
     guard let d = r as? [String: Any], let w = d["width"] as? Double, let h = d["height"] as? Double else {
       throw NoteRenderError.page("the editor answered \(String(describing: r))")
@@ -160,6 +166,9 @@ public final class NoteEditor: NSObject {
       if let w = Self.written(m) { onDone?(w) }
     case "picked":
       if let id = m["id"] as? String { onPicked?(m["group"] as? String, id) }
+    case "ref": if let p = RefPress(m) { onRef?(p) }
+    case "refDouble": onRef?(nil)
+    case "elsewhere": onElsewhere?()
     case "ui":
       let rects = (m["rects"] as? [[String: Double]]) ?? []
       view.uiRects = rects.map {
@@ -233,6 +242,14 @@ public final class EditorWebView: WKWebView {
   public var shown: Bool {
     get { alphaValue > 0 }
     set { alphaValue = newValue ? 1 : 0 }
+  }
+
+  /// Esc: true when something over the canvas took it (a ref's preview closed), and the editor goes on
+  package var escape: (() -> Bool)?
+
+  public override func keyDown(with e: NSEvent) {
+    if e.keyCode == 53, escape?() == true { return }
+    super.keyDown(with: e)
   }
 
   public override func hitTest(_ point: NSPoint) -> NSView? {

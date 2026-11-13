@@ -46,39 +46,57 @@ final class RefResolver {
     return out
   }
 
+  /// Where a ref goes when clicked
+  enum Place: Equatable {
+    case card(CardID)
+    case section(SectionID)
+    case board(BoardID)
+    /// A card on another board
+    case elsewhere(BoardID, CardID)
+  }
+
   /// By the id the [[ menu wrote first, then the label: a card's id, a card's title, a Section's, another board's name,
   /// then a card on another board
-  func resolve(_ label: String, target: String?) -> NoteRef.Hit? {
+  func resolve(_ label: String, target: String?) -> NoteRef.Hit? { find(label, target: target)?.hit }
+
+  /// Where a ref resolved as `resolve` does goes; nil for one that points at nothing
+  func locate(_ label: String, target: String?) -> Place? { find(label, target: target)?.place }
+
+  private func find(_ label: String, target: String?) -> (hit: NoteRef.Hit, place: Place?)? {
     if let target, let hit = byID(label, target) { return hit }
     let l = label.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !l.isEmpty else { return nil }
-    if let c = board.cards.first(where: { $0.id.rawValue == l }) { return .found(title: title(c), seal: nil) }
+    if let c = board.cards.first(where: { $0.id.rawValue == l }) {
+      return (.found(title: title(c), seal: nil), .card(c.id))
+    }
     let low = l.lowercased()
     for c in board.cards {
       let t = title(c).trimmingCharacters(in: .whitespacesAndNewlines)
-      if t.lowercased() == low { return .found(title: t, seal: nil) }
+      if t.lowercased() == low { return (.found(title: t, seal: nil), .card(c.id)) }
     }
     if let s = board.sections.first(where: { trim($0.title).lowercased() == low }) {
-      return .found(title: trim(s.title), seal: nil)
+      return (.found(title: trim(s.title), seal: nil), .section(s.id))
     }
     if let b = otherBoards().first(where: { trim($0.meta.title).lowercased() == low }) {
-      return .found(title: trim(b.meta.title), seal: RefResolver.seal(b.meta, alone: true))
+      return (.found(title: trim(b.meta.title), seal: RefResolver.seal(b.meta, alone: true)), .board(b.meta.id))
     }
     return crossRef(l)
   }
 
-  private func byID(_ label: String, _ target: String) -> NoteRef.Hit? {
+  private func byID(_ label: String, _ target: String) -> (hit: NoteRef.Hit, place: Place?)? {
     let parts = target.split(separator: "/", maxSplits: 1).map(String.init)
     let on = parts.count == 2 ? parts[0] : nil
     let id = parts.count == 2 ? parts[1] : target
     if on == nil || on == board.id.rawValue {
-      if let c = board.cards.first(where: { $0.id.rawValue == id }) { return .found(title: trim(title(c)), seal: nil) }
+      if let c = board.cards.first(where: { $0.id.rawValue == id }) {
+        return (.found(title: trim(title(c)), seal: nil), .card(c.id))
+      }
       if on == nil {
         if let s = board.sections.first(where: { $0.id.rawValue == id }) {
-          return .found(title: trim(s.title).isEmpty ? label : trim(s.title), seal: nil)
+          return (.found(title: trim(s.title).isEmpty ? label : trim(s.title), seal: nil), .section(s.id))
         }
         if let b = otherBoards().first(where: { $0.meta.id.rawValue == id }) {
-          return .found(title: trim(b.meta.title).isEmpty ? label : trim(b.meta.title), seal: nil)
+          return (.found(title: trim(b.meta.title).isEmpty ? label : trim(b.meta.title), seal: nil), .board(b.meta.id))
         }
       }
     }
@@ -86,16 +104,20 @@ final class RefResolver {
     let boards = otherBoards().indices.filter { on == nil || otherBoards()[$0].meta.id.rawValue == on }
     for i in boards {
       if let r = cards(i).first(where: { $0.id == id }) {
-        return .found(title: r.title, seal: RefResolver.seal(otherBoards()[i].meta, alone: false))
+        let meta = otherBoards()[i].meta
+        return (
+          .found(title: r.title, seal: RefResolver.seal(meta, alone: false)),
+          .elsewhere(meta.id, CardID(rawValue: r.id))
+        )
       }
     }
     guard on != nil, let i = boards.first else { return nil }
     let last = label.components(separatedBy: "›").last.map(trim) ?? ""
-    return .broken(place: false, title: last.isEmpty ? label : last, badge: trim(otherBoards()[i].meta.title))
+    return (.broken(place: false, title: last.isEmpty ? label : last, badge: trim(otherBoards()[i].meta.title)), nil)
   }
 
   /// `[[Board › … › Card]]`: the longest board name first
-  private func crossRef(_ label: String) -> NoteRef.Hit? {
+  private func crossRef(_ label: String) -> (hit: NoteRef.Hit, place: Place?)? {
     let parts = label.components(separatedBy: "›").map(trim)
     guard parts.count >= 2, !parts.contains(where: \.isEmpty) else { return nil }
     let sep = RefResolver.separator
@@ -106,15 +128,17 @@ final class RefResolver {
         let b = otherBoards()[i].meta
         let c =
           cards(i).first { $0.title.lowercased() == rest.lowercased() } ?? cards(i).first { $0.id == rest }
-        guard let c else { return .broken(place: false, title: rest, badge: trim(b.title)) }
-        return .found(title: c.title, seal: RefResolver.seal(b, alone: false))
+        guard let c else { return (.broken(place: false, title: rest, badge: trim(b.title)), nil) }
+        return (
+          .found(title: c.title, seal: RefResolver.seal(b, alone: false)), .elsewhere(b.id, CardID(rawValue: c.id))
+        )
       }
       if place == trim(name).lowercased() {
-        if let hit = resolve(rest, target: nil), case .found = hit { return hit }
-        return .broken(place: false, title: rest, badge: trim(name))
+        if let hit = find(rest, target: nil), case .found = hit.hit { return hit }
+        return (.broken(place: false, title: rest, badge: trim(name)), nil)
       }
     }
-    return .broken(place: true, title: parts[1...].joined(separator: sep), badge: parts[0])
+    return (.broken(place: true, title: parts[1...].joined(separator: sep), badge: parts[0]), nil)
   }
 
   // MARK: The [[ list

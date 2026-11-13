@@ -26,6 +26,7 @@ import "@yhnocoder/markdown/style.css";
 import "../../../../packages/board/src/themes.css";
 import "./page.css";
 import { pop } from "./pop";
+import { openRefAt, watchRefs } from "./refclick";
 import { type QData, qlist } from "./qlist";
 
 /** CodeBoardNotes' PageNote, as JSON */
@@ -73,20 +74,30 @@ const refKey = (label: string, target?: string | null) => `${label}\u0000${targe
 /** A Markdown instance for one Note: its images resolve against the Note's folder, and its [[refs]] as given. Its own,
  *  not shared: an instance learns the size of each image it loads and lays the image out from that size the next time,
  *  a fraction of a pixel off the first, and the first is what a Note on the board is drawn as */
-function mdFor(images: string, refs: Note["refs"], list?: RefList | null): Markdown {
+function mdFor(images: string, refs: Note["refs"], list?: () => RefList | null): Markdown {
   const hits = new Map(refs.map((r) => [refKey(r.label, r.target), r.hit]));
-  // a ref picked from the [[ list while writing: what it points at, by the id written with it
+  // a ref picked from the [[ list while writing: what it points at, by the id written with it; the list can come after
+  // the refs were drawn (the popup's), which are then drawn again (pop.ts)
+  let from: RefList | null | undefined;
   const byTarget = new Map<string, RefTarget | RefBroken>();
-  for (const i of list?.items ?? []) byTarget.set(i.target, i.hit);
-  for (const g of list?.groups ?? []) {
-    byTarget.set(g.target, g.hit);
-    for (const i of g.items) byTarget.set(i.target, i.hit);
-  }
+  const picked = (target: string) => {
+    const l = list?.() ?? null;
+    if (l !== from) {
+      from = l;
+      byTarget.clear();
+      for (const i of l?.items ?? []) byTarget.set(i.target, i.hit);
+      for (const g of l?.groups ?? []) {
+        byTarget.set(g.target, g.hit);
+        for (const i of g.items) byTarget.set(i.target, i.hit);
+      }
+    }
+    return byTarget.get(target);
+  };
   // images load at once, not when scrolled to: the picture waits for every one of them
   const md = createMarkdown({
     eagerImages: true,
     refs: {
-      resolve: (label, target) => hits.get(refKey(label, target)) ?? (target ? byTarget.get(target) : null) ?? null,
+      resolve: (label, target) => hits.get(refKey(label, target)) ?? (target ? picked(target) : null) ?? null,
     },
   });
   md.setAssetBase("images", images);
@@ -167,7 +178,24 @@ async function settled(els: HTMLElement[], laidOut = false): Promise<boolean[]> 
 /** A Note block where it is in its card at 100 % (the board's state/blocks.ts readBlocks): its fingerprint's text is
  *  the block's Markdown, y and h from the card's top, line the height of its first line */
 type Block = { text: string; y: number; h: number; line: number };
-type Size = { width: number; height: number; complete: boolean; blocks: Block[] | null };
+/** A drawn [[ref]] that points at something: its label and id as written, a box of it (one per line it wraps over) from
+ *  the card's top left at 100 % */
+type RefBox = { ref: string; target: string | null; x: number; y: number; w: number; h: number };
+type Size = { width: number; height: number; complete: boolean; blocks: Block[] | null; refs: RefBox[] };
+
+function refBoxes(s: Slot, k: number): RefBox[] {
+  const top = s.card.getBoundingClientRect();
+  return [...s.card.querySelectorAll<HTMLElement>(".md-ref:not(.missing):not(.gone)")].flatMap((r) =>
+    [...r.getClientRects()].map((b) => ({
+      ref: r.dataset.ref ?? "",
+      target: r.dataset.target || null,
+      x: (b.left - top.left) / k,
+      y: (b.top - top.top) / k,
+      w: b.width / k,
+      h: b.height / k,
+    })),
+  );
+}
 
 /** A Note's top-level blocks on the page, matched one for one with its Markdown's (the board's noteDom); null when they
  *  do not match (footnotes, raw HTML) */
@@ -206,7 +234,13 @@ async function measure(ids: string[]): Promise<Record<string, Size>> {
     // at 100 %: a Note last shown for a picture is still under its zoom
     const k = Number(s.slot.dataset.k ?? 1);
     const r = s.card.getBoundingClientRect();
-    out[id] = { width: r.width / k, height: r.height / k, complete: complete[i], blocks: blocksOf(s, k) };
+    out[id] = {
+      width: r.width / k,
+      height: r.height / k,
+      complete: complete[i],
+      blocks: blocksOf(s, k),
+      refs: refBoxes(s, k),
+    };
   });
   return out;
 }
@@ -415,6 +449,8 @@ const edit = {
     k: number;
     margin: number;
     caret: { x: number; y: number } | null;
+    /** The press was a double-click on the ref drawn at the caret: its source opens */
+    open: boolean;
     placeholder: string;
     refList: RefList | null;
   }) {
@@ -435,7 +471,7 @@ const edit = {
       ended: null,
       editor: undefined as unknown as MdEditorHandle,
     };
-    const md = mdFor(a.images, a.note.refs, a.refList);
+    const md = mdFor(a.images, a.note.refs, () => a.refList);
     const list = a.refList;
     e.editor = mountEditor(md, made.body, {
       value: a.note.text,
@@ -484,8 +520,12 @@ const edit = {
     }).observe(made.card);
     s.slot.dataset.k = String(a.k);
     await settled([made.card]);
-    if (a.caret) e.editor.placeCaret({ x: a.margin + a.caret.x * a.k, y: a.margin + a.caret.y * a.k });
-    else e.editor.placeCaret("end");
+    if (a.caret) {
+      const x = a.margin + a.caret.x * a.k,
+        y = a.margin + a.caret.y * a.k;
+      e.editor.placeCaret({ x, y });
+      if (a.open) openRefAt(x, y);
+    } else e.editor.placeCaret("end");
     const r = made.card.getBoundingClientRect();
     return { width: r.width / a.k, height: r.height / a.k };
   },
@@ -543,4 +583,5 @@ if (popMode) {
     clear: qlist.clear,
   };
 }
+if (editMode || popMode) watchRefs((m) => window.webkit?.messageHandlers.note.postMessage(m));
 window.webkit?.messageHandlers.note.postMessage("ready");

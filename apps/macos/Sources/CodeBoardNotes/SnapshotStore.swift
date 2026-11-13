@@ -38,23 +38,25 @@ final class SnapshotStore: Sendable {
     try put(data, as: key)
   }
 
-  /// A measured size, with the blocks measured with it (a snapshot's file has its size only)
+  /// A measured size, with the blocks and refs measured with it (a snapshot's file has its size only)
   func readSize(_ key: SnapshotKey) -> NoteMetrics? {
     let url = file(key)
     guard let data = try? Data(contentsOf: url), let size = Self.size(data) else { return nil }
-    let blocks =
+    let extra =
       data.count > Self.headerSize && Self.u32(data, 4) == 0
-      ? try? JSONDecoder().decode([NoteBlock].self, from: data.subdata(in: Self.headerSize..<data.count)) : nil
+      ? try? JSONDecoder().decode(MeasuredExtra.self, from: data.subdata(in: Self.headerSize..<data.count)) : nil
     let now = Date()
     try? FileManager.default.setAttributes([.modificationDate: now], ofItemAtPath: url.path(percentEncoded: false))
     withIndex { $0.touch(key.hex, at: now) }
-    return NoteMetrics(size: size, blocks: blocks)
+    return NoteMetrics(size: size, blocks: extra?.blocks, refs: extra?.refs ?? [])
   }
 
-  /// A measured size: the header with no pixels, then its blocks as JSON when it has them
+  /// A measured size: the header with no pixels, then its blocks and refs as JSON when it has them
   func writeSize(_ m: NoteMetrics, as key: SnapshotKey) throws {
     var data = Self.header(width: 0, height: 0, row: 0, size: m.size)
-    if let blocks = m.blocks { data.append(try JSONEncoder().encode(blocks)) }
+    if m.blocks != nil || !m.refs.isEmpty {
+      data.append(try JSONEncoder().encode(MeasuredExtra(blocks: m.blocks, refs: m.refs.isEmpty ? nil : m.refs)))
+    }
     try put(data, as: key)
   }
 

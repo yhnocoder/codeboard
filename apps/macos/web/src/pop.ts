@@ -201,9 +201,12 @@ function writingChanged() {
 }
 
 type Deps = {
-  mdFor: (images: string, refs: Ref[], list?: RefList | null) => Markdown;
+  mdFor: (images: string, refs: Ref[], list?: () => RefList | null) => Markdown;
   setLook: (look: string, dark: boolean) => void;
 };
+
+/** The [[ list as native last gave it */
+const listNow = () => shown?.data.refList ?? null;
 
 /** The popup and what it was built from */
 type Shown = {
@@ -548,12 +551,14 @@ export const pop = {
     if (shown && shown.data.key === d.key) {
       shown.data = d;
       // the refs it resolves may have changed: a new instance for what is drawn from now on
-      shown.md = deps.mdFor(d.images, d.refs, d.refList);
+      shown.md = deps.mdFor(d.images, d.refs, listNow);
       const h = headOf(d);
       shown.head.replaceWith(h);
       shown.head = h;
       shown.frame.style.top = `${top}px`;
       sync(shown);
+      // refs written before the [[ list came (picked from it, or typed) are drawn as they resolve now
+      for (const r of shown.frame.querySelectorAll<HTMLElement>(".md-ref")) shown.md.paintRef(r);
       return size();
     }
     endFields();
@@ -570,7 +575,7 @@ export const pop = {
     document.body.append(frame);
     const s: Shown = {
       data: d,
-      md: deps.mdFor(d.images, d.refs, d.refList),
+      md: deps.mdFor(d.images, d.refs, listNow),
       frame,
       tray,
       head,
