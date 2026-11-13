@@ -321,3 +321,58 @@ extension CanvasWritingTests {
     #expect(r.doc.board.card(id) == nil, "left empty, it goes")
   }
 }
+
+extension CanvasWritingTests {
+  @Test func zoomingWhileWritingScalesAPictureOfItThenShowsTheEditorAtTheNewZoom() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    r.click(r.centre("t1"))
+    r.key(36)
+    await r.editorReady()
+    await r.type(" now")
+    let editor = r.canvas.noteEditor
+    let i = try #require(r.canvas.index(of: .card(cid("t1"))))
+    let paper = r.canvas.items[i].box
+    // a pinch: the editor goes out of sight once the canvas holds a picture of what it showed
+    r.canvas.pinch(by: 1.25, around: CGPoint(x: 500, y: 350), at: 1, began: true, ended: false)
+    #expect(r.canvas.editing?.zooming == true)
+    let deadline = ContinuousClock.now + .seconds(10)
+    while editor.view.shown, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(!editor.view.shown)
+    #expect(r.canvas.items[i].box !== paper, "the card shows the picture")
+    r.canvas.pinch(by: 1, around: CGPoint(x: 500, y: 350), at: 1.05, began: false, ended: true)
+    await r.idle()
+    while r.canvas.editing?.zooming == true, ContinuousClock.now < deadline {
+      r.tick()
+      try await Task.sleep(for: .milliseconds(5))
+    }
+    #expect(r.canvas.editing?.zooming == false)
+    #expect(r.canvas.editing?.shownZoom == r.canvas.camera.zoom)
+    #expect(editor.view.shown)
+    // the web view's card lies on the card at the new zoom
+    let card = editor.view.convert(editor.view.cardRect, to: r.canvas)
+    let at = r.canvas.camera.view(r.rect("t1").origin)
+    #expect(abs(card.minX - at.x) < 0.5 && abs(card.minY - at.y) < 0.5)
+    #expect(abs(card.width - r.rect("t1").width * r.canvas.camera.zoom) < 1.5)
+    await r.canvas.endEditing()
+    #expect(r.card("t1").writing == "Threads wait at the barrier now", "what was typed survives the zoom")
+  }
+
+  @Test func aPictureGivenToTheEditorGoesIntoTheBoardsImages() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    r.doubleClick(CGPoint(x: 40, y: 40))
+    await r.editorReady()
+    // the editor's saveImage, as a paste or a drop calls it
+    let png = try Data(contentsOf: r.file.deletingLastPathComponent().appending(path: "images/p.png"))
+    let address =
+      try await r.canvas.noteEditor.view.callAsyncJavaScript(
+        "return await window.webkit.messageHandlers.image.postMessage({dataUrl: u, name: 'p.png'})",
+        arguments: ["u": "data:image/png;base64," + png.base64EncodedString()], contentWorld: .page) as? String
+    let name = try #require(address)
+    #expect(name.hasPrefix("images/") && name.hasSuffix("-400x200.png"))
+    let stored = r.file.deletingLastPathComponent().appending(path: name)
+    #expect(try Data(contentsOf: stored) == png)
+    await r.canvas.endEditing()
+  }
+}
