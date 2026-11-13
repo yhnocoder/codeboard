@@ -431,12 +431,14 @@ extension CanvasView {
   func drawChrome() {
     guard let doc = document, scene != nil else {
       chrome.sublayers = nil
+      litArrows.sublayers = nil
       return
     }
     let z = camera.zoom
     let accent = theme.accent
     withoutAnimation {
       chrome.sublayers = nil
+      litArrows.sublayers = nil
       drawArrowChrome()
       for item in doc.selection {
         guard let r = liveRect(item) else { continue }

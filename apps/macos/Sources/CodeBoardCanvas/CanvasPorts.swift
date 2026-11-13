@@ -15,6 +15,8 @@ struct Port: Equatable {
   var side: Endpoint.Side
   /// Its centre (board units)
   var at: CGPoint
+  /// An arrow already meets the card there: not drawn until the pointer is on it, still taken (.eport.land)
+  var landed = false
 }
 
 /// An arrow being drawn from a port, or one end of an arrow being moved
@@ -38,8 +40,8 @@ private let linePortsBelow: CGFloat = 0.5
 extension CanvasView {
   // MARK: Ports
 
-  /// The ports of a card: its sides (not a Text's), and a code card's line under the pointer at each end. The side an
-  /// arrow already meets is left out (.eport.land)
+  /// The ports of a card: its sides (not a Text's), and a code card's line under the pointer at each end. A side an
+  /// arrow already meets is marked (.eport.land)
   func ports(of id: CardID, line: Endpoint?) -> [Port] {
     guard let s = scene, let i = index(of: .card(id)) else { return [] }
     let r = s.items[i].rect
@@ -54,8 +56,9 @@ extension CanvasView {
         guard let a = liveArrow(k) else { return [] }
         return (a.from == id ? [a.pts[0]] : []) + (a.to == id ? [a.pts[3]] : [])
       }
-      for (side, at) in sides where !landed.contains(where: { hypot($0.x - at.x, $0.y - at.y) < 2 }) {
-        out.append(Port(end: Endpoint(card: id), side: side, at: at))
+      for (side, at) in sides {
+        let land = landed.contains { hypot($0.x - at.x, $0.y - at.y) < 2 }
+        out.append(Port(end: Endpoint(card: id), side: side, at: at, landed: land))
       }
     }
     if let line, let y = lineMiddle(line), camera.zoom >= linePortsBelow {
@@ -132,12 +135,12 @@ extension CanvasView {
   func drawPorts() {
     guard gesture == nil, inPlace == nil, editing == nil, let id = hoveredCard else { return }
     let rad = portRadius
-    for port in ports(of: id, line: hoveredLine) {
+    for port in ports(of: id, line: hoveredLine) where !port.landed || port == hoveredPort {
       let l = CAShapeLayer()
       l.path = CGPath(
         ellipseIn: CGRect(x: port.at.x - rad, y: port.at.y - rad, width: 2 * rad, height: 2 * rad), transform: nil)
       l.fillColor = port == hoveredPort ? theme.accent : theme.surface
-      l.strokeColor = theme.arrow
+      l.strokeColor = port == hoveredPort ? theme.accent : theme.arrow
       l.lineWidth = 1.5 * rad / 4.5
       chrome.addSublayer(l)
     }
@@ -189,7 +192,10 @@ extension CanvasView {
   /// A drag from an end of the selected arrow moves that end; the arrow's own line hides meanwhile
   func startMoveEnd(_ end: Board.End, of id: ArrowID, at p: CGPoint) -> Connect? {
     guard let a = document?.board.arrow(id), let i = arrowIndex(id) else { return nil }
-    withoutAnimation { for l in arrowGroups[i] { l.isHidden = true } }
+    withoutAnimation {
+      for l in arrowGroups[i] { l.isHidden = true }
+      if let li = index(of: .arrowLabel(id)) { items[li].box.isHidden = true }
+    }
     return Connect(fixed: end == .to ? a.from : a.to, moving: end, arrow: id, pointer: p)
   }
 
@@ -293,7 +299,12 @@ extension CanvasView {
   func commitConnect(_ c: Connect) {
     gesture = nil
     aim(nil, from: c.target?.card, at: c.pointer)
-    if let id = c.arrow, let i = arrowIndex(id) { withoutAnimation { for l in arrowGroups[i] { l.isHidden = false } } }
+    if let id = c.arrow, let i = arrowIndex(id) {
+      withoutAnimation {
+        for l in arrowGroups[i] { l.isHidden = false }
+        if let li = index(of: .arrowLabel(id)) { items[li].box.isHidden = false }
+      }
+    }
     defer { drawChrome() }
     guard let doc = document, let t = c.target else { return }
     if let id = c.arrow {

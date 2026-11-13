@@ -100,7 +100,7 @@ extension CanvasView {
         ? CGColor(srgbRed: 29 / 255, green: 28 / 255, blue: 26 / 255, alpha: 1)
         : CGColor(srgbRed: 246 / 255, green: 244 / 255, blue: 239 / 255, alpha: 1)
     let accent = theme.accent
-    let image = Raster.surface(size: size, scale: scale) { ctx in
+    let image = CanvasView.picture(size: size, scale: scale) { ctx in
       let r = CGRect(origin: .zero, size: size)
       ctx.addPath(CGPath(roundedRect: r, cornerWidth: ink ? 2 : 11, cornerHeight: ink ? 2 : 11, transform: nil))
       ctx.setFillColor(bg)
@@ -144,6 +144,22 @@ extension CanvasView {
       guard let self, self.toastShown == n else { return }
       self.hideToast()
     }
+  }
+
+  /// A CGImage drawn y-down at a scale
+  static func picture(size: CGSize, scale: CGFloat, _ draw: (CGContext) -> Void) -> CGImage? {
+    let w = Int((size.width * scale).rounded(.up))
+    let h = Int((size.height * scale).rounded(.up))
+    guard w > 0, h > 0,
+      let ctx = CGContext(
+        data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue)
+    else { return nil }
+    ctx.translateBy(x: 0, y: CGFloat(h))
+    ctx.scaleBy(x: scale, y: -scale)
+    ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+    draw(ctx)
+    return ctx.makeImage()
   }
 
   func hideToast() {

@@ -63,6 +63,15 @@ extension CanvasView {
 
   func arrowIndex(_ id: ArrowID) -> Int? { scene?.arrows.firstIndex { $0.id == id } }
 
+  /// Where an arrow is drawn: its start, the middle of its line and its end (LookCompare)
+  package func arrowPoints(_ id: ArrowID) -> (start: CGPoint, mid: CGPoint, end: CGPoint)? {
+    guard let i = arrowIndex(id), let a = liveArrow(i) else { return nil }
+    return (a.pts[0], a.mid, a.pts[3])
+  }
+
+  /// A code line's middle on the board (LookCompare)
+  package func lineCentre(_ e: Endpoint) -> CGFloat? { lineMiddle(e) }
+
   /// The arrow whose label is at a board point (labels are over the cards)
   func hitArrowLabel(_ p: CGPoint) -> ArrowID? {
     guard let s = scene else { return nil }
@@ -99,7 +108,7 @@ extension CanvasView {
   /// outline stroked 0.45 wider, a dashed one 0.45 wider; its start dot (.port) on it, and its label's box ringed
   func arrowChrome(_ i: Int, labelRing: Bool) {
     guard let a = liveArrow(i) else { return }
-    accentArrow(a)
+    accentArrow(a, into: litArrows)
     // the label's box: a 1.5 ring of the accent (.vchips.on .vcard)
     guard labelRing, theme.label == .box, let li = index(of: .arrowLabel(a.id)), !items[li].box.isHidden else { return }
     let r = items[li].box.frame
@@ -112,7 +121,8 @@ extension CanvasView {
   }
 
   /// An arrow's line and heads in the accent, its start dot on it
-  func accentArrow(_ a: Scene.Arrow) {
+  func accentArrow(_ a: Scene.Arrow, into parent: CALayer? = nil) {
+    let chrome = parent ?? self.chrome
     let accent = theme.accent
     if !a.fill.isEmpty {
       let l = CAShapeLayer()

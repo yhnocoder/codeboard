@@ -64,14 +64,17 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     // within reach of its start but on its card: the card's
     let onCard = CGPoint(x: a.pts[0].x - 2, y: a.pts[0].y)
     #expect(r.canvas.hitArrow(onCard) == aid("a1") && r.canvas.arrowAt(onCard) == nil)
-    let before = r.canvas.chrome.sublayers?.count ?? 0
+    let before = r.canvas.litArrows.sublayers?.count ?? 0
     r.canvas.mouseMoved(with: r.mouse(.mouseMoved, mid))
     #expect(r.canvas.hoveredArrow == aid("a1"))
     let accent = r.canvas.currentTheme.accent
-    let lit = { (r.canvas.chrome.sublayers ?? []).contains { ($0 as? CAShapeLayer)?.fillColor == accent } }
+    // over the arrows, under their labels
+    let world = r.canvas.world.sublayers ?? []
+    #expect(world.firstIndex(of: r.canvas.litArrows)! < world.firstIndex(of: r.canvas.above)!)
+    let lit = { (r.canvas.litArrows.sublayers ?? []).contains { ($0 as? CAShapeLayer)?.fillColor == accent } }
     #expect(lit(), "hovered: in the accent")
     r.canvas.mouseMoved(with: r.mouse(.mouseMoved, CGPoint(x: 400, y: 400)))
-    #expect(r.canvas.hoveredArrow == nil && (r.canvas.chrome.sublayers?.count ?? 0) == before)
+    #expect(r.canvas.hoveredArrow == nil && (r.canvas.litArrows.sublayers?.count ?? 0) == before)
     r.click(mid)
     #expect(r.doc.selection == [.arrow(aid("a1"))])
     #expect(lit())
@@ -87,7 +90,7 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     // ⇧: the card joins the selection, the arrow stays in it
     r.drag(r.centre("n2"), CGPoint(x: r.centre("n2").x, y: r.centre("n2").y + 200), .shift) {
       r.tick()
-      moving = (r.canvas.chrome.sublayers?.first as? CAShapeLayer)?.path?.boundingBoxOfPath
+      moving = (r.canvas.litArrows.sublayers?.first as? CAShapeLayer)?.path?.boundingBoxOfPath
       #expect(r.breaks == breaks)
     }
     #expect(moving.map { $0.maxY > 150 } == true, "the accent line went down with the card")
@@ -250,6 +253,14 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     #expect(a.from == Endpoint(card: cid("n1"), side: .right) && a.to == Endpoint(card: cid("n2")))
     #expect(r.doc.selection == [.card(cid("n2"))] && r.doc.history.undoSteps.count == 1 && r.doc.undoName == "Arrow")
     #expect(target.affineTransform().a == 1 && target.sublayers?.contains { $0.name == "aim" } == false)
+    await r.settle()
+    // the side the arrow meets shows no port, yet one drawn from there is a new arrow, the first left as it was
+    r.canvas.mouseMoved(with: r.mouse(.mouseMoved, r.centre("n1")))
+    #expect(dots() == 3)
+    r.drag(right.at, r.centre("n3"))
+    #expect(r.doc.board.arrows.count == 2 && r.doc.board.arrows[0] == a)
+    #expect(r.doc.board.arrows[1].from == Endpoint(card: cid("n1"), side: .right))
+    r.doc.undo()
     await r.settle()
     // let go on the canvas: nothing
     r.canvas.mouseMoved(with: r.mouse(.mouseMoved, r.centre("n1")))

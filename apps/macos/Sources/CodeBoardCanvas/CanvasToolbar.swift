@@ -145,6 +145,14 @@ public final class CanvasToolbar: NSView {
 
   // MARK: Drawing
 
+  /// The bar as drawn now, at its intrinsic size (LookCompare: Warm Ink's blur under it is the window's, not drawn here)
+  package func picture(scale: CGFloat) -> CGImage? {
+    let size = intrinsicContentSize
+    return Self.image(
+      size: size, bar: barRect, buttons: buttonRects(), tools: tools, theme: theme, hover: nil, pressed: nil,
+      active: active.flatMap { tools.firstIndex(of: $0) }, scale: scale)
+  }
+
   /// The toolbar as one bitmap: its shadow and glass tint (Warm Ink) or its stroke of ink and brush (Ink Wash), and
   /// its buttons
   static func image(

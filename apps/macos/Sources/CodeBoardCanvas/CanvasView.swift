@@ -122,6 +122,8 @@ public final class CanvasView: NSView {
   var toastShown = 0
   /// The Sections a drag would drop cards into, tinted under the cards
   let dropLayer = CALayer()
+  /// The selected and hovered arrows in the accent: over the arrows, under their labels
+  let litArrows = CALayer()
   var dropLit: Set<SectionID> = []
   /// The zoom that fits the board, which overviews are drawn for
   var fitZoom: CGFloat = 1
@@ -160,8 +162,8 @@ public final class CanvasView: NSView {
     root.backgroundColor = theme.canvas
     layer = root
     wantsLayer = true
-    for l in [world, sections, dropLayer, below, arrows, above, cards, chrome] { l.anchorPoint = .zero }
-    for l in [sections, dropLayer, below, arrows, above, cards, chrome] { world.addSublayer(l) }
+    for l in [world, sections, dropLayer, below, arrows, litArrows, above, cards, chrome] { l.anchorPoint = .zero }
+    for l in [sections, dropLayer, below, arrows, litArrows, above, cards, chrome] { world.addSublayer(l) }
     backdrop.anchorPoint = .zero
     root.addSublayer(backdrop)
     root.addSublayer(world)
