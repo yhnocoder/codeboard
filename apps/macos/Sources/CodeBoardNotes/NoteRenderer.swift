@@ -59,6 +59,9 @@ public final class NoteRenderer {
     of note: Note, width: Double, height: Double?, folder: URL, scale: Double, look: String, dark: Bool,
     refs: [NoteRef] = [], priority: Int
   ) async throws -> NoteSnapshot {
+    if NativeNotes.draws(note) {
+      return try await Self.native(note, width, height, folder, scale, look, dark, refs)
+    }
     let json = try PageNote(note, width: width, height: height, look: look, dark: dark, refs: refs).json()
     let (key, mount, cached) = await Self.lookUp(
       store: store, build: build, note: json, markdown: note.text, folder: folder, scale: scale)
@@ -95,6 +98,7 @@ public final class NoteRenderer {
     of note: Note, width: Double, height: Double?, folder: URL, scale: Double, look: String, dark: Bool,
     refs: [NoteRef] = []
   ) async -> NoteSnapshot? {
+    if NativeNotes.draws(note) { return try? await Self.native(note, width, height, folder, scale, look, dark, refs) }
     guard let json = try? PageNote(note, width: width, height: height, look: look, dark: dark, refs: refs).json() else {
       return nil
     }
@@ -129,6 +133,13 @@ public final class NoteRenderer {
     var out = [CGSize?](repeating: nil, count: notes.count)
     var missing: [(i: Int, key: SnapshotKey, json: String, images: URL, look: Look)] = []
     for (i, n) in notes.enumerated() {
+      if NativeNotes.draws(n.note) {
+        out[i] = await Task.detached(priority: .userInitiated) {
+          NativeNotes.size(
+            n.note, width: n.width, height: nil, folder: n.folder, look: n.look, dark: n.dark, refs: n.refs)
+        }.value
+        continue
+      }
       guard
         let json = try? PageNote(n.note, width: n.width, height: nil, look: n.look, dark: n.dark, refs: n.refs).json()
       else { continue }
@@ -166,6 +177,20 @@ public final class NoteRenderer {
     }
     keepSizes(keep)
     return out
+  }
+
+  /// a Markdown Note drawn natively, off the main thread (never through the web view or the disk cache: drawing it is
+  /// quicker than reading it back)
+  private nonisolated static func native(
+    _ note: Note, _ width: Double, _ height: Double?, _ folder: URL, _ scale: Double, _ look: String, _ dark: Bool,
+    _ refs: [NoteRef]
+  ) async throws -> NoteSnapshot {
+    let shot = await Task.detached(priority: .userInitiated) {
+      NativeNotes.snapshot(
+        note, width: width, height: height, folder: folder, scale: scale, look: look, dark: dark, refs: refs)
+    }.value
+    guard let shot else { throw NoteRenderError.page("could not draw the Note natively") }
+    return shot
   }
 
   private struct Look: Hashable {

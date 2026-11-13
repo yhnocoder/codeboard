@@ -244,8 +244,8 @@ public enum NoteStyle: Equatable, Sendable {
 }
 
 /// By position: the nth table, the nth code block
-public struct NoteLayout: Codable, Equatable, Sendable {
-  public struct Table: Codable, Equatable, Sendable {
+public struct NoteLayout: Codable, Hashable, Sendable {
+  public struct Table: Codable, Hashable, Sendable {
     public var cols: [Double?]?
     public var rows: [Double?]?
 

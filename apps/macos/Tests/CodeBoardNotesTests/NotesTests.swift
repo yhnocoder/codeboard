@@ -205,11 +205,12 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
           return model(batch)
       ```
       """, style: .note)
+  /// the same text as a frameless Text card, which the web page still draws
+  static let textCard = Note(text: note.text, style: .text(size: .body, bold: false))
 
-  @Test func drawsAtEachScaleThenReadsFromDisk() async throws {
-    _ = NSApplication.shared
-    let page = NoteRenderer.bundledPage.appending(path: "page.html").path(percentEncoded: false)
-    try #require(FileManager.default.fileExists(atPath: page), "build the Note page first: node web/build.mjs")
+  /// A Markdown Note is drawn natively: no web view, nothing on disk, the same pixels from another renderer, its size
+  /// the same at every scale, and the look and appearance of the board
+  @Test func markdownNotesDrawNatively() async throws {
     let cache = try tempFolder()
     let folder = try tempFolder()
     defer {
@@ -232,23 +233,23 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     }
     #expect(sizes.allSatisfy { $0 == sizes[0] })
     #expect(sizes[0].width == 320 && sizes[0].height > 200)
-    #expect(r.webViewOpen)
-
+    #expect(!r.webViewOpen)
+    let measured = try await r.sizes(
+      of: [.init(note: Self.note, width: 320, folder: folder, look: "warm-ink", dark: false)], priority: 0)
+    #expect(measured == [sizes[0]])
+    #expect(!r.webViewOpen)
     await r.written()
-    let fresh = NoteRenderer(cache: cache)
-    let again = try await fresh.snapshot(
-      of: Self.note, width: 320, height: nil, folder: folder, scale: 2, look: "warm-ink", dark: false, priority: 0)
-    #expect(!fresh.webViewOpen)
-    #expect(again.size == sizes[0])
-    #expect(pixels(again.surface) == atTwo)
+    #expect(((try? FileManager.default.contentsOfDirectory(atPath: cache.path(percentEncoded: false))) ?? []).isEmpty)
 
-    // the page takes the board's look: Ink Wash sets the title in its serif, not Warm Ink's sans
+    let fresh = NoteRenderer(cache: cache)
+    let again = try #require(
+      await fresh.cached(
+        of: Self.note, width: 320, height: nil, folder: folder, scale: 2, look: "warm-ink", dark: false))
+    #expect(again.size == sizes[0] && pixels(again.surface) == atTwo)
+
     let wash = try await r.snapshot(
       of: Self.note, width: 320, height: nil, folder: folder, scale: 2, look: "ink-wash", dark: false, priority: 0)
     #expect(pixels(wash.surface) != atTwo)
-
-    // and its appearance: the same Note on a dark board, its text light, at the size it has on a light one; kept apart
-    // from the light picture on disk, both there at once
     let dark = try await r.snapshot(
       of: Self.note, width: 320, height: nil, folder: folder, scale: 2, look: "warm-ink", dark: true, priority: 0)
     #expect(dark.size == sizes[0] && pixels(dark.surface) != atTwo)
@@ -266,12 +267,81 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
       let darkInk = solid.count { $0 < 90 }
       #expect(onDark ? light > 50 && darkInk == 0 : darkInk > 50 && light == 0, "dark: \(onDark): \(light) \(darkInk)")
     }
+    // a fixed height clips the content: the card is that tall
+    let fixed = try await r.snapshot(
+      of: Self.note, width: 300, height: 120, folder: folder, scale: 2, look: "warm-ink", dark: false, priority: 0)
+    #expect(fixed.size == CGSize(width: 300, height: 120) && fixed.surface.height == 240)
+  }
+
+  @Test func webNotesDrawAtEachScaleThenReadFromDisk() async throws {
+    _ = NSApplication.shared
+    let page = NoteRenderer.bundledPage.appending(path: "page.html").path(percentEncoded: false)
+    try #require(FileManager.default.fileExists(atPath: page), "build the Note page first: node web/build.mjs")
+    let cache = try tempFolder()
+    let folder = try tempFolder()
+    defer {
+      try? FileManager.default.removeItem(at: cache)
+      try? FileManager.default.removeItem(at: folder)
+    }
+    let r = NoteRenderer(cache: cache)
+    var sizes: [CGSize] = []
+    var atTwo: [UInt8] = []
+    for scale in [1.0, 2, 4] {
+      let s = try await r.snapshot(
+        of: Self.textCard, width: 320, height: nil, folder: folder, scale: scale, look: "warm-ink", dark: false,
+        priority: 0
+      )
+      sizes.append(s.size)
+      if scale == 2 { atTwo = pixels(s.surface) }
+      #expect(s.surface.width == Int((s.size.width * scale).rounded(.up)))
+      #expect(s.surface.height == Int((s.size.height * scale).rounded(.up)))
+      let opaque = pixels(s.surface).enumerated().filter { $0.offset % 4 == 3 && $0.element > 0 }.count
+      #expect(opaque > s.surface.width * s.surface.height / 50, "drawn pixels at \(scale)")
+    }
+    #expect(sizes.allSatisfy { $0 == sizes[0] })
+    #expect(sizes[0].width == 320 && sizes[0].height > 200)
+    #expect(r.webViewOpen)
+
+    await r.written()
+    let fresh = NoteRenderer(cache: cache)
+    let again = try await fresh.snapshot(
+      of: Self.textCard, width: 320, height: nil, folder: folder, scale: 2, look: "warm-ink", dark: false, priority: 0)
+    #expect(!fresh.webViewOpen)
+    #expect(again.size == sizes[0])
+    #expect(pixels(again.surface) == atTwo)
+
+    // the page takes the board's look: Ink Wash sets the title in its serif, not Warm Ink's sans
+    let wash = try await r.snapshot(
+      of: Self.textCard, width: 320, height: nil, folder: folder, scale: 2, look: "ink-wash", dark: false, priority: 0)
+    #expect(pixels(wash.surface) != atTwo)
+
+    // and its appearance: the same Note on a dark board, its text light, at the size it has on a light one; kept apart
+    // from the light picture on disk, both there at once
+    let dark = try await r.snapshot(
+      of: Self.textCard, width: 320, height: nil, folder: folder, scale: 2, look: "warm-ink", dark: true, priority: 0)
+    #expect(dark.size == sizes[0] && pixels(dark.surface) != atTwo)
+    // words alone: dark ink on a light board, light ink on a dark one
+    let words = Note(text: "Plain words on a card, and nothing else.", style: .text(size: .body, bold: false))
+    for onDark in [false, true] {
+      let px = pixels(
+        try await r.snapshot(
+          of: words, width: 320, height: nil, folder: folder, scale: 2, look: "warm-ink", dark: onDark, priority: 0
+        ).surface)
+      let solid = stride(from: 0, to: px.count, by: 4).filter { px[$0 + 3] > 200 }.map {
+        Int(px[$0 + 1]) * 255 / Int(px[$0 + 3])
+      }
+      let light = solid.count { $0 > 180 }
+      let darkInk = solid.count { $0 < 90 }
+      #expect(onDark ? light > 50 && darkInk == 0 : darkInk > 50 && light == 0, "dark: \(onDark): \(light) \(darkInk)")
+    }
     await r.written()
     let both = NoteRenderer(cache: cache)
     let darkAgain = try #require(
-      await both.cached(of: Self.note, width: 320, height: nil, folder: folder, scale: 2, look: "warm-ink", dark: true))
+      await both.cached(
+        of: Self.textCard, width: 320, height: nil, folder: folder, scale: 2, look: "warm-ink", dark: true))
     let lightAgain = try #require(
-      await both.cached(of: Self.note, width: 320, height: nil, folder: folder, scale: 2, look: "warm-ink", dark: false)
+      await both.cached(
+        of: Self.textCard, width: 320, height: nil, folder: folder, scale: 2, look: "warm-ink", dark: false)
     )
     #expect(pixels(darkAgain.surface) == pixels(dark.surface) && pixels(lightAgain.surface) == atTwo)
   }

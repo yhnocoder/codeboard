@@ -2,16 +2,16 @@ import AppKit
 import CodeBoardMarkdownUI
 import CoreText
 
-/// The board's looks as MarkdownThemes, with the values the Note page computes (tools/markdown/styles.mjs); the canvas
-/// will make these from its own Theme
-enum Looks {
+/// The board's looks (Warm Ink, Ink Wash, light and dark) as MarkdownThemes, with the values the Note page computes for
+/// them (tools/markdown/styles.mjs reads them off the page)
+public enum NoteLooks {
   static let sys = ["-apple-system", "PingFang SC"]
   static let serif = ["Source Serif 4", "Songti SC"]
   static let mono = ["JetBrains Mono", "SF Mono", "Menlo"]
   // the variable font names its family after its default instance
   static let hand = ["Shantell Sans Light", "Kaiti SC"]
 
-  static func theme(_ look: String, dark: Bool) -> MarkdownTheme {
+  public static func theme(_ look: String, dark: Bool) -> MarkdownTheme {
     let c: (String) -> MDColor = { MDColor(hex: $0) }
     let rgba: (Double, Double, Double, Double) -> MDColor = { MDColor($0 / 255, $1 / 255, $2 / 255, $3) }
     let warm = look == "warm-ink"
@@ -78,13 +78,4 @@ enum Looks {
       metrics: metrics)
   }
 
-  /// the board's font files, from the Note page build (apps/macos/web/dist/assets), for this process. Registered by URL,
-  /// which is synchronous: CTFontManagerRegisterFontDescriptors finishes later, and a layout made before then falls back
-  /// to other fonts
-  static func registerFonts(_ folder: URL) {
-    let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
-    for f in files where f.pathExtension == "woff2" && !f.lastPathComponent.hasPrefix("KaTeX") {
-      CTFontManagerRegisterFontsForURL(f as CFURL, .process, nil)
-    }
-  }
 }

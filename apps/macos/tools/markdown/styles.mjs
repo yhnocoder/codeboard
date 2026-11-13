@@ -27,6 +27,8 @@ const SAMPLE = [
 const PROBES = {
   root: ".md-pm",
   body: ".nbody",
+  card: "#root .card",
+  head: "#root .card .chead",
   h1: ".md-pm > h1",
   h2: ".md-pm > h2",
   h3: ".md-pm > h3",

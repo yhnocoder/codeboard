@@ -68,12 +68,13 @@ import Testing
     let at = VaultBoard(id: board.id, title: "B", path: "B.board")
     let frame = CGRect(x: 0, y: 0, width: 800, height: 600)
 
-    // measured before it is shown: the tall Note's height is its content's, no more than paper so far
+    // measured before it is shown: the tall Note's height is its content's; it is drawn natively, so its overview is
+    // its picture at once, while the box (the web page's) is only paper so far
     let first = CanvasView(frame: frame, noteCache: cache)
     try await first.show(at, in: vault, theme: .warmInk)
     let bounds = first.boardBounds
     #expect(bounds.height > 300)
-    #expect(first.noteProgress.overviews == 0 && first.noteProgress.notes == 2)
+    #expect(first.noteProgress.overviews == 1 && first.noteProgress.notes == 2)
 
     // a level's bitmap: the paper with the picture over it, much more ink than the paper alone
     let renderer = NoteRenderer(cache: cache)

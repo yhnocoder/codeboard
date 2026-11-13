@@ -3,6 +3,7 @@
 import AppKit
 import CodeBoardMarkdown
 import CodeBoardMarkdownUI
+import CodeBoardNotes
 
 struct NoResources: MarkdownResources {
   let folder: URL
@@ -28,10 +29,15 @@ guard a.count >= 7 else {
 }
 let out = URL(filePath: a[1])
 let width = CGFloat(Double(a[2])!)
-let theme = Looks.theme(a[3], dark: a[4] == "1")
+let theme = NoteLooks.theme(a[3], dark: a[4] == "1")
 let scale = CGFloat(Double(a[5])!)
 let here = URL(filePath: #filePath).deletingLastPathComponent()
-Looks.registerFonts(here.appending(path: "../../web/dist/assets").standardized)
+for f
+  in (try? FileManager.default.contentsOfDirectory(
+    at: here.appending(path: "../../web/dist/assets").standardized, includingPropertiesForKeys: nil)) ?? []
+where f.pathExtension == "woff2" && !f.lastPathComponent.hasPrefix("KaTeX") {
+  CTFontManagerRegisterFontsForURL(f as CFURL, .process, nil)
+}
 try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
 let engines = try? JSEngines(script: here.appending(path: "../../web/dist/engines.js").standardized)
 for file in a[6...] {

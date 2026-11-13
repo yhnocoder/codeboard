@@ -38,12 +38,13 @@ let package = Package(
       exclude: ["python/LICENSE"],
       cSettings: [.headerSearchPath("."), .disableWarning("shorten-64-to-32")]
     ),
-    .target(name: "CodeBoardNotes", dependencies: ["CodeBoardModel"]),
+    .target(name: "CodeBoardNotes", dependencies: ["CodeBoardModel", "CodeBoardMarkdown", "CodeBoardMarkdownUI"]),
     .target(name: "CodeBoardCanvas", dependencies: ["CodeBoardModel", "CodeBoardSyntax", "CodeBoardNotes"]),
     .target(name: "CodeBoardShell", dependencies: ["CodeBoardModel", "CodeBoardCanvas"]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
     .executableTarget(name: "CanvasBench", dependencies: ["CodeBoardCanvas", "CodeBoardNotes"]),
-    .executableTarget(name: "MarkdownLook", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI"]),
+    .executableTarget(
+      name: "MarkdownLook", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeBoardNotes"]),
     .executableTarget(name: "LookCompare", dependencies: ["CodeBoardCanvas", "CodeBoardModel", "CodeBoardSyntax"]),
     .testTarget(name: "CodeBoardMarkdownTests", dependencies: ["CodeBoardMarkdown"], resources: [.copy("Fixtures")]),
     .testTarget(name: "CodeBoardMarkdownUITests", dependencies: ["CodeBoardMarkdownUI"]),
