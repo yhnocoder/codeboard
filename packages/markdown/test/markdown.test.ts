@@ -586,6 +586,33 @@ describe("a paragraph that is only an image", () => {
   });
 });
 
+describe("a code fence indented by 1–3 spaces", () => {
+  const code = (lang: string | null, text: string) => ({
+    type: "doc",
+    content: [{ type: "codeBlock", attrs: { language: lang }, content: [{ type: "text", text }] }],
+  });
+  it("reads as the same code block as an unindented one, the fence's indent taken off its lines", () => {
+    for (const pad of [" ", "  ", "   "]) {
+      expect(parseMd(`${pad}\`\`\`py\n${pad}x = 1\n${pad}  y\n${pad}\`\`\``), `${pad.length} spaces`).toEqual(
+        code("py", "x = 1\n  y"),
+      );
+      expect(parseMd(`${pad}~~~py\n${pad}x = 1\n${pad}  y\n${pad}~~~`), `${pad.length} spaces`).toEqual(
+        code("py", "x = 1\n  y"),
+      );
+    }
+    // a line indented less than the fence loses only what it has
+    expect(parseMd("   ~~~\n x\n   ~~~")).toEqual(code(null, "x"));
+  });
+  it("is shown, between paragraphs too", () => {
+    const html = markdown.render("before\n\n  ```py\n  x = 1\n  ```\n\nafter");
+    expect(html).toContain("x = 1");
+    expect(html).toMatch(/<pre[^>]*data-lang="py"/);
+  });
+  it("opens in the editor as a code block", () => {
+    expect(sourceDoc("  ```\n  x\n  ```").content).toEqual(code(null, "x").content);
+  });
+});
+
 describe("text at the start of a line that reads as a block", () => {
   const para = (...cs: JSONContent[]): JSONContent => ({ type: "doc", content: [{ type: "paragraph", content: cs }] });
   const text = (t: string): JSONContent => ({ type: "text", text: t });

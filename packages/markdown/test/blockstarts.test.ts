@@ -27,6 +27,14 @@ describe("mdBlockStarts", () => {
     expect(mdBlockStarts("a[^1]\n\n[^1]: note")).toBeNull();
     expect(mdBlockStarts("a\r\n\r\nb")).toBeNull();
   });
+  it("a code fence indented by 1–3 spaces is a block of its own", () => {
+    expect(blocksAt("a\n\n  ```\n  x\n  ```\n\n   ~~~\n   y\n   ~~~\n\nb")).toEqual([
+      "a",
+      "  ```\n  x\n  ```",
+      "   ~~~\n   y\n   ~~~",
+      "b",
+    ]);
+  });
   it("one paragraph, and an empty Note", () => {
     expect(mdBlockStarts("just text")).toEqual([0]);
     expect(mdBlockStarts("")).toEqual([]);
