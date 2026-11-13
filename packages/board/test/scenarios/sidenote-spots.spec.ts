@@ -259,3 +259,66 @@ test("sidenoteSpotFree", async () => {
   );
   await h.close();
 });
+
+// Every sidenote popup moves by its title bar, a title or none (a free sidenote's), with real mouse drags: on a whole card, on lines
+// (a question there), on a Note's block, on a Section and free on the canvas; dragged, it keeps a dashed line back to its badge
+test("sidenotePopupDragEveryAnchor", async () => {
+  const b = board();
+  const k1 = b.cards[0] as CodeCard;
+  k1.segments[0].hl = [[6, 6]];
+  const sig = blockSig("Second paragraph: the KV cache.");
+  b.sidenotes.push(
+    { id: "a", kind: "text", md: "on the card", at: { card: "k1" } },
+    { id: "q", kind: "text", md: "why line 6?", at: { card: "k1", seg: "s1", lines: [6, 6] }, q: { at: 1 } },
+    { id: "c", kind: "text", md: "on the block", at: { card: "nc", block: { i: 1, h: sig } } },
+    { id: "d", kind: "text", md: "on the Section", at: { section: "sec" } },
+    { id: "e", kind: "text", md: "free", at: { x: 1100, y: 640 } },
+  );
+  const h = await open({ board: b, light, w: 1300, h: 860 });
+  const pg = h.page;
+  await idle(h);
+  const cases: [string, string][] = [
+    ["card", '.snb[data-spot="c:k1"]'],
+    ["lines", '.card[data-id="k1"] .hxm'],
+    ["block", `.snb[data-spot="b:nc:1:${sig}"]`],
+    ["section", '.snb[data-spot="s:sec"]'],
+    ["free", ".snb.free"],
+  ];
+  const res: Record<string, unknown> = {};
+  let ok = true;
+  for (const [name, badge] of cases) {
+    await pg.locator(badge).first().click();
+    const pop = pg.locator(".pop:is(.k-notes, .k-highlight)");
+    await pop.waitFor();
+    await idle(h);
+    const p0 = await box(pg, ".pop:is(.k-notes, .k-highlight)");
+    // the empty middle of the title bar, whatever the title
+    const g = await box(pg, ".pop:is(.k-notes, .k-highlight) .hh .grow");
+    const sx = (g.x + g.r) / 2,
+      sy = (g.y + g.b) / 2;
+    await pg.mouse.move(sx, sy);
+    await pg.mouse.down();
+    for (let i = 1; i <= 6; i++) await pg.mouse.move(sx - i * 20, sy + i * 15);
+    await pg.mouse.up();
+    await idle(h);
+    const p1 = await box(pg, ".pop:is(.k-notes, .k-highlight)");
+    const r = {
+      dx: Math.round(p1.x - p0.x),
+      dy: Math.round(p1.y - p0.y),
+      line: await pg.locator(".popline").count(),
+      title: (await pg.locator(".pop .hh .ttl, .pop .hh .rng").allTextContents()).join(" "),
+    };
+    res[name] = r;
+    ok &&= Math.abs(r.dx + 120) <= 2 && Math.abs(r.dy - 90) <= 2 && r.line === 1;
+    if (name === "free") await shot(h, "sidenotePopupDragEveryAnchor-free");
+    await pg.locator('.pop [aria-label="Close"]').first().click();
+    await expect(pop).toHaveCount(0);
+    await idle(h);
+  }
+  check(
+    "sidenotePopupDragEveryAnchor each popup moves with its title bar, a dashed line back to what it is on",
+    ok,
+    res,
+  );
+  await h.close();
+});

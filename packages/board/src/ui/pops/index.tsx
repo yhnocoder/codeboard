@@ -4,7 +4,7 @@ import { Dynamic } from "solid-js/web";
 import { autoUpdate } from "@floating-ui/dom";
 import { spotKey, within, type Anchor } from "@codeboard/core";
 import { hostOf } from "../../state/store";
-import { cam, camTarget, camTo } from "../../state/camera";
+import { cam } from "../../state/camera";
 import { noteBlockOf } from "../../state/blocks";
 import { pops, closeAllPops, pinPop, type PopInst, type Pop } from "../../state/pop";
 import * as A from "../../actions";
@@ -40,132 +40,28 @@ export function Popovers() {
   );
 }
 
-type Box = { left: number; top: number; right: number; bottom: number };
-const unite = (a: Box, b: Box): Box => ({
-  left: Math.min(a.left, b.left),
-  top: Math.min(a.top, b.top),
-  right: Math.max(a.right, b.right),
-  bottom: Math.max(a.bottom, b.bottom),
-});
-/** What a popup of sidenotes belongs to, on screen, which it never covers: the card (with the badge past its edge), else the
- *  Section's frame and title, else the free badge alone. A Section's frame can be bigger than the window: its title then */
-function owners(pop: Pop, el: Element): Box[] {
-  const mk =
-    pop.kind === "notes" ? document.querySelector(`[data-spot]${attrSel("data-spot", spotKey(pop.spot))}`) : null;
-  const badge =
-    mk && mk !== el ? unite(el.getBoundingClientRect(), mk.getBoundingClientRect()) : el.getBoundingClientRect();
-  const card = el.closest(".card");
-  if (card) return [unite(card.getBoundingClientRect(), badge)];
-  if (pop.kind === "notes" && pop.spot.section !== undefined) {
-    const sel = attrSel("data-sect", pop.spot.section);
-    const frame = document.querySelector(`.sect${sel}`),
-      label = document.querySelector(`.slabel${sel}`);
-    const title = label ? unite(label.getBoundingClientRect(), badge) : badge;
-    return frame ? [unite(frame.getBoundingClientRect(), title), title] : [title];
-  }
-  return [badge];
-}
 const GAP = 12,
   PAD = 8;
 /**
- * Beside what the popup belongs to (owners): of right, left, below and above, the side with room that covers the least of the
- * other cards (the first of them when that is a tie), its top at the badge. A popup placed already keeps its side (`keep`) while
- * that has room, and when it grows past that room once something in it has been written in, a pinned one moves the board just
- * enough (`grow`), so it does not jump to another side under the caret. When no side has room, a pinned popup moves the board just enough for the right or left
- * side to fit (once: `pan`); otherwise it takes the side with the most room, as close as it can without covering the badge
+ * One predictable place, whatever is around: right of what the popup belongs to (the card, with the badges past its right edge; a
+ * Section's title with its badge; a free badge), its top at `el`'s (the lines, the block, the badge); with no room on the right it
+ * goes over the card, in the window. Nothing is avoided and the board does not move for it
  */
-type Side = "right" | "left" | "below" | "above";
-function besidePos(
-  pop: Pop,
-  el: Element,
-  box: HTMLElement,
-  pan: ((dx: number, dy: number) => void) | null,
-  keep?: Side,
-  grow?: (dx: number, dy: number) => void,
-): { x: number; y: number; side?: Side } {
+function besidePos(el: Element, box: HTMLElement): { x: number; y: number } {
   const W = document.documentElement.clientWidth,
     H = document.documentElement.clientHeight,
-    w = box.offsetWidth,
-    h = box.offsetHeight,
     b = el.getBoundingClientRect();
-  const yBy = (top: number) => Math.max(PAD, Math.min(top - 6, H - PAD - h));
-  const xBy = (left: number) => Math.max(PAD, Math.min(left - 20, W - PAD - w));
-  const all = owners(pop, el);
-  // of the sides with room, the one that covers the least of the other cards in view; a Section's title or a free badge, which
-  // are small and there to be clicked, count as much as a card
-  const mine = el.closest(".card");
-  const others = [...document.querySelectorAll(".world :is(.card, .slabel, .snb.free)")].flatMap((c) => {
-    const r = c.getBoundingClientRect();
-    if (c === mine || c.contains(el) || c === el || r.right < 0 || r.left > W || r.bottom < 0 || r.top > H) return [];
-    return [{ r, k: c.classList.contains("card") ? 1 : 40 }];
-  });
-  const covers = (x: number, y: number) =>
-    others.reduce(
-      (s, { r, k }) =>
-        s +
-        k *
-          Math.max(0, Math.min(x + w, r.right) - Math.max(x, r.left)) *
-          Math.max(0, Math.min(y + h, r.bottom) - Math.max(y, r.top)),
-      0,
-    );
-  const at = (R: Box, side: Side) =>
-    side === "right"
-      ? { x: R.right + GAP, y: yBy(b.top), side, short: R.right + GAP + w - (W - PAD) }
-      : side === "left"
-        ? { x: R.left - GAP - w, y: yBy(b.top), side, short: PAD - (R.left - GAP - w) }
-        : side === "below"
-          ? { x: xBy(b.left), y: R.bottom + GAP, side, short: R.bottom + GAP + h - (H - PAD) }
-          : { x: xBy(b.left), y: R.top - GAP - h, side, short: PAD - (R.top - GAP - h) };
-  if (keep) {
-    const c = at(all[0], keep);
-    if (c.short <= 0) return c;
-    if (grow && (keep === "above" || keep === "below") && all[0].bottom - all[0].top + 2 * GAP + h <= H - 2 * PAD) {
-      const d = keep === "above" ? c.short : -c.short;
-      grow(0, d);
-      return { ...c, y: c.y + d };
-    }
-    if (grow && (keep === "left" || keep === "right")) {
-      const d = keep === "left" ? c.short : -c.short;
-      grow(d, 0);
-      return { ...c, x: c.x + d };
-    }
-  }
-  for (const R of all) {
-    const sides = (["right", "left", "below", "above"] as const).map((k) => at(R, k)).filter((c) => c.short <= 0);
-    if (!sides.length) continue;
-    let best = sides[0],
-      least = covers(best.x, best.y);
-    for (const c of sides.slice(1)) {
-      const k = covers(c.x, c.y);
-      if (k < least) {
-        best = c;
-        least = k;
-      }
-    }
-    return best;
-  }
-  const R = all[0];
-  if (pan && R.right - R.left + 2 * GAP + w <= W - 2 * PAD) {
-    const toRight = R.right + GAP + w - (W - PAD),
-      toLeft = PAD - (R.left - GAP - w);
-    if (toRight <= toLeft) {
-      pan(-toRight, 0);
-      return { x: R.right + GAP - toRight, y: yBy(b.top) };
-    }
-    pan(toLeft, 0);
-    return { x: R.left - GAP - w + toLeft, y: yBy(b.top) };
-  }
-  if (pan && R.bottom - R.top + 2 * GAP + h <= H - 2 * PAD) {
-    const down = R.bottom + GAP + h - (H - PAD);
-    pan(0, -down);
-    return { x: xBy(b.left), y: R.bottom + GAP - down };
-  }
-  // no room anywhere: the side with the most room, never over the badge
-  const right = W - R.right,
-    left = R.left;
-  const x = right >= left ? W - PAD - w : PAD;
-  const y = x < b.right + GAP && x + w > b.left - GAP ? (b.top > H / 2 ? b.top - GAP - h : b.bottom + GAP) : yBy(b.top);
-  return { x, y: Math.max(PAD, Math.min(y, H - PAD - h)) };
+  const card = el.closest(".card");
+  let right = (card ?? el).getBoundingClientRect().right;
+  // its badges sit past its right edge: right of them, so they stay where they are clicked
+  if (card)
+    for (const m of card.querySelectorAll(".snspots .snb")) right = Math.max(right, m.getBoundingClientRect().right);
+  // a Section's badge sits in its title: right of the title
+  const label = el.closest(".slabel");
+  if (label) right = Math.max(right, label.getBoundingClientRect().right);
+  const x = Math.max(PAD, Math.min(right + GAP, W - PAD - box.offsetWidth));
+  const y = Math.max(PAD, Math.min(b.top - 6, H - PAD - box.offsetHeight));
+  return { x, y };
 }
 
 /** How much of a dragged popup stays in the window, so its title bar can be taken again */
@@ -204,34 +100,7 @@ function PopFrame(p: { inst: PopInst }) {
   const [held, setHeld] = createSignal<{ x: number; y: number; z: number } | null>(null);
   const [line, setLine] = createSignal<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   let last: { x: number; y: number } | undefined,
-    side: Side | undefined,
-    tall = 0,
-    growTo: { x: number; y: number } | undefined,
-    wrote = false,
-    n = 0,
-    panned = false;
-  const panBy = (dx: number, dy: number) => {
-    panned = true;
-    const c = camTarget();
-    camTo(c.x + dx, c.y + dy, c.z, true);
-  };
-  // from where the board is now, not where it is going: this runs on every frame of that move, measuring what is still short
-  const growBy = (dx: number, dy: number) => {
-    growTo = { x: cam.x + dx, y: cam.y + dy };
-    camTo(growTo.x, growTo.y, camTarget().z, true);
-  };
-  // it grew once something in it has been written in (or the board is still moving to make the room it grew into, nothing else
-  // having moved it since)
-  const growing = () => {
-    const grew = el.offsetHeight > tall;
-    tall = el.offsetHeight;
-    if (!(wrote ||= el.contains(document.activeElement))) return false;
-    const t = camTarget();
-    return (
-      grew ||
-      (!!growTo && Math.abs(t.x - growTo.x) < 1 && Math.abs(t.y - growTo.y) < 1 && (t.x !== cam.x || t.y !== cam.y))
-    );
-  };
+    n = 0;
   const followHeld = (h: { x: number; y: number; z: number }) => {
     const a = p.inst.at.el?.isConnected ? p.inst.at.el.getBoundingClientRect() : null;
     if (!a) return;
@@ -265,7 +134,6 @@ function PopFrame(p: { inst: PopInst }) {
       if (to && to !== at.el) {
         at.el = to;
         at.prefer = "beside";
-        side = undefined;
         setAnchor(to);
       }
     }
@@ -278,16 +146,7 @@ function PopFrame(p: { inst: PopInst }) {
     if (at.el && !at.el.isConnected && last) return;
     const k = ++n;
     if (at.el?.isConnected && at.prefer === "beside") {
-      const r = besidePos(
-        p.inst.pop,
-        at.el,
-        el,
-        p.inst.pinned && !panned ? panBy : null,
-        side,
-        p.inst.pinned && growing() ? growBy : undefined,
-      );
-      side = r.side;
-      setPos((last = { x: r.x, y: r.y }));
+      setPos((last = besidePos(at.el, el)));
       return;
     }
     // 贴着锚点元素：下方 / 右侧 / 上方，放不下翻到另一边；没有元素就放在点 (x, y)
@@ -310,7 +169,6 @@ function PopFrame(p: { inst: PopInst }) {
     void cam.x;
     void cam.y;
     void cam.z;
-    void p.inst.pinned;
     reposition();
   });
   /** A press on its title bar ([data-grip], not on a button there): a drag moves it there in the window, and pins it */

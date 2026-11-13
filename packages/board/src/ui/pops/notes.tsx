@@ -186,15 +186,14 @@ function SidenotePop(p: {
     <div class="hxpop" classList={hxClasses(state.host.settings.highlightLook)}>
       <div class="hh" data-grip>
         {p.title}
-        {/* beside the title, away from Close; shown while the pointer is on the title bar */}
+        <span class="grow" />
         <Show when={p.remove}>
           {(r) => (
-            <button class="ib hrm" aria-label={r().label} data-tip={r().tip} onClick={() => r().run()}>
+            <button class="ib" aria-label={r().label} data-tip={r().tip} onClick={() => r().run()}>
               <Icon name="trash" size={14} />
             </button>
           )}
         </Show>
-        <span class="grow" />
         <button class="ib" aria-label="Close" data-tip="Close" onClick={() => closePop(p.inst.id)}>
           <Icon name="close" size={13} />
         </button>

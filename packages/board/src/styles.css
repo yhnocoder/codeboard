@@ -9395,15 +9395,6 @@ mark.wdiff {
 .popline circle {
   fill: color-mix(in srgb, var(--ink) 45%, transparent);
 }
-/* Remove Highlight sits by the popup's title, away from Close, and shows while the header is hovered */
-.hxpop .hh .hrm {
-  opacity: 0;
-  transition: opacity 0.12s;
-}
-.hxpop .hh:hover .hrm,
-.hxpop .hh .hrm:focus-visible {
-  opacity: 1;
-}
 /* a gutter badge's hit area (a Highlight's count, the selected lines' +): invisible, --hit world px wide (at least 18 px on screen,
    cards/CodeBody.tsx gutterBadge) and --hit-h tall, no taller than a line so neighbouring lines' badges keep their own; it grows
    rightward from the badge's left edge, so zoomed out it does not cover the line numbers left of it */
