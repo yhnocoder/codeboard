@@ -231,6 +231,12 @@ files that are not in the vault yet; a file that is there is never written, what
 - An image is copied only where no file of that name is: a copy's package is new, so its images are its own; in
   `.codeboard/shared/images/`, which all shared cards share, a name already there with other bytes is left as it is
   (`imageNameTaken`; the old host names images by their content, so this means a changed file).
+- Nothing partial: a board package is built under a hidden name (`.<name>.import-<uuid>`) in its folder and renamed into
+  place whole, never over anything (`renamex_np` with `RENAME_EXCL`); a shared card file or image is written to a hidden
+  file beside it and renamed the same way. A board whose write fails leaves nothing of it (nor a group folder made for
+  it) and is listed as failed; a shared card whose write fails leaves nothing either, and the boards that show it list
+  it as `missingSharedCard`; a shared card copied for this import's boards that none of them was written with is taken
+  away again with the images it alone brought.
 - The report lists each copy with the file it is a copy of (`copyOf`). Same input and same vault give the same files;
   images no longer used stay in `images/`, and boards deleted in VS Code stay in the vault.
 

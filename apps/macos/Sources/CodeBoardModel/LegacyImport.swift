@@ -5,6 +5,9 @@ import Foundation
 // brings it there, then mapped. It never writes into the old folder. FORMAT.md lists what maps to what.
 
 public enum LegacyImport {
+  /// Tests: a write (a file, or a folder made) to a place for which it gives true fails, as a full disk would
+  @TaskLocal static var failing: (@Sendable (URL) -> Bool)?
+
   /// The versions of the old files it reads; any other is refused
   public static let versions = LegacyUpgrade.oldest...LegacyUpgrade.current
 
@@ -253,27 +256,61 @@ private struct Run {
     }
     for (_, rel, card, m) in cards {
       var m = m
+      // what this card's write made, taken away again when it fails
+      var made: [URL] = []
       do {
+        let images = vault.sharedFolderURL.appending(path: Vault.imagesFolder)
+        let (skips, madeImages) = try copyImages(m, into: images)
+        made += madeImages
+        for (kind, name) in skips { m.skips.add(kind, name) }
         let dest: String
         var copyOf: String?
         if let new = renames.cards[card.id] {
           var c = card
           c.rename(renames)
-          let out = sharedFile(new.rawValue)
-          try write(try c.encoded(), to: out)
+          made.append(try place(try c.encoded(), at: sharedFile(new.rawValue)))
           dest = sharedPath(new.rawValue)
           copyOf = sharedPath(card.id.rawValue)
         } else {
           let out = sharedFile(card.id.rawValue)
-          if !exists(out) { try write(try card.encoded(), to: out) }
+          if !exists(out) { made.append(try place(try card.encoded(), at: out)) }
           dest = sharedPath(card.id.rawValue)
         }
-        let images = vault.sharedFolderURL.appending(path: Vault.imagesFolder)
-        for (kind, name) in try copyImages(m, into: images) { m.skips.add(kind, name) }
+        sharedMade[renames.card(card.id)] = (made, m.images.union(m.dataImages.keys))
         entries.append(.init(source: rel, destination: dest, copyOf: copyOf, skipped: m.skips.list))
       } catch let e as LegacyImportError {
+        for u in made { try? FileManager.default.removeItem(at: u) }
+        // the boards show it as a shared card that could not be imported
+        shared[card.id.rawValue] = nil
+        renames.cards[card.id] = nil
         failed.append(e)
       }
+    }
+  }
+
+  /// What each shared card this import wrote made (its file, its images new to the vault) and the image names it shows
+  private var sharedMade: [CardID: (files: [URL], images: Set<String>)] = [:]
+  /// The shared cards the boards written show
+  private var sharedShown = Set<CardID>()
+
+  /// A shared card copied for this import's boards that none of them was written with is taken away again, with the
+  /// images it alone brought
+  private mutating func dropUnusedCopies() {
+    for (old, new) in renames.cards where !sharedShown.contains(new) {
+      guard let made = sharedMade[new] else { continue }
+      let copies = Set(renames.cards.values)
+      let kept = sharedMade.filter { $0.key != new && (sharedShown.contains($0.key) || !copies.contains($0.key)) }
+      let needed = kept.values.reduce(into: Set<String>()) { $0.formUnion($1.images) }
+      for u in made.files
+      where
+        !(u.deletingLastPathComponent().lastPathComponent == Vault.imagesFolder
+        && needed.contains(u.lastPathComponent))
+      {
+        try? FileManager.default.removeItem(at: u)
+      }
+      sharedMade[new] = nil
+      let (was, copy) = (sharedPath(old.rawValue), sharedPath(new.rawValue))
+      entries.removeAll { $0.copyOf == was && $0.destination == copy }
     }
   }
 
@@ -332,17 +369,37 @@ private struct Run {
         let title = Vault.packageName(for: try o.string("name"))
         let name = freeName(inVault[id] == nil ? title : "\(title) copy", in: folder)
         let path = folder.isEmpty ? name : "\(folder)/\(name)"
-        let package = vault.url(of: path)
-        try write(try board.encoded(), to: package.appending(path: Vault.boardFileName))
-        for (kind, name) in try copyImages(m, into: package.appending(path: Vault.imagesFolder)) {
-          m.skips.add(kind, name)
-        }
+        for (kind, name) in try writePackage(board, m, folder: folder, name: name) { m.skips.add(kind, name) }
+        for c in board.cards where c.content == .shared { sharedShown.insert(c.id) }
         entries.append(.init(source: rel, destination: path, copyOf: inVault[id], skipped: m.skips.list))
       } catch let bad as Bad {
         failed.append(.malformed(file, bad.message))
       } catch let e as LegacyImportError {
         failed.append(e)
       }
+    }
+    dropUnusedCopies()
+  }
+
+  /// A board package, built under a hidden name in its folder and moved into place whole, never over anything: a failure
+  /// halfway leaves nothing of it (nor the group folder, when it made it). Returns what was left out of its images
+  private func writePackage(_ board: Board, _ m: Mapper, folder: String, name: String) throws -> [(SkipKind, String)] {
+    let fm = FileManager.default
+    let parent = vault.url(of: folder)
+    let madeFolder = !exists(parent)
+    let building = parent.appending(path: ".\(name).import-\(UUID().uuidString)")
+    do {
+      try makeFolder(building)
+      try place(try board.encoded(), at: building.appending(path: Vault.boardFileName))
+      let (skips, _) = try copyImages(m, into: building.appending(path: Vault.imagesFolder))
+      try rename(building, to: parent.appending(path: name))
+      return skips
+    } catch {
+      try? fm.removeItem(at: building)
+      if madeFolder, (try? fm.contentsOfDirectory(atPath: parent.path))?.isEmpty == true {
+        try? fm.removeItem(at: parent)
+      }
+      throw error
     }
   }
 
@@ -379,10 +436,9 @@ private struct Run {
     return candidate
   }
 
-  /// Copies the images `m` found; returns what was left out: the ones not in the old assets folder, and (in the shared
-  /// images folder, which every shared card's images share) a name already used there for other bytes, which is left as it
-  /// is
-  private func copyImages(_ m: Mapper, into folder: URL) throws -> [(SkipKind, String)] {
+  /// Copies the images `m` found where no file of that name is; returns what was left out (the ones not in the old
+  /// assets folder; a name already there for other bytes, left as it is) and the files it made
+  private func copyImages(_ m: Mapper, into folder: URL) throws -> (skipped: [(SkipKind, String)], made: [URL]) {
     let assets = source.appending(path: "assets")
     var out: [(SkipKind, String)] = []
     var found: [(String, Data)] = []
@@ -394,23 +450,57 @@ private struct Run {
       found.append((name, data))
     }
     found += m.dataImages.sorted(by: { $0.key < $1.key })
-    for (name, data) in found {
-      let url = folder.appending(path: name)
-      if let there = try? Data(contentsOf: url) {
-        if there != data { out.append((.imageNameTaken, name)) }
-        continue
+    var made: [URL] = []
+    do {
+      for (name, data) in found {
+        let url = folder.appending(path: name)
+        if let there = try? Data(contentsOf: url) {
+          if there != data { out.append((.imageNameTaken, name)) }
+          continue
+        }
+        made.append(try place(data, at: url))
       }
-      try write(data, to: url)
+    } catch {
+      for u in made { try? FileManager.default.removeItem(at: u) }
+      throw error
     }
-    return out
+    return (out, made)
   }
 
-  /// Writes a file that is not there yet: an import never writes over a file in the vault
-  private func write(_ data: Data, to url: URL) throws {
-    guard !exists(url) else { throw LegacyImportError.unwritable(url, "it is already in the vault") }
+  /// Writes a file that is not there yet, whole or not at all: into a hidden file beside it, then renamed to its name
+  /// only if nothing has that name (an import never writes over a file in the vault). Returns the file
+  @discardableResult
+  private func place(_ data: Data, at url: URL) throws -> URL {
+    try makeFolder(url.deletingLastPathComponent())
+    let temp = url.deletingLastPathComponent().appending(path: ".\(url.lastPathComponent).import-\(UUID().uuidString)")
     do {
-      try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-      try data.write(to: url, options: .withoutOverwriting)
+      if LegacyImport.failing?(url) == true { throw CocoaError(.fileWriteUnknown) }
+      try data.write(to: temp, options: .withoutOverwriting)
+    } catch {
+      try? FileManager.default.removeItem(at: temp)
+      throw LegacyImportError.unwritable(url, error.localizedDescription)
+    }
+    do {
+      try rename(temp, to: url)
+    } catch {
+      try? FileManager.default.removeItem(at: temp)
+      throw error
+    }
+    return url
+  }
+
+  /// Renames a file or folder to a name nothing has (RENAME_EXCL): never over anything
+  private func rename(_ from: URL, to: URL) throws {
+    guard renamex_np(from.path, to.path, UInt32(RENAME_EXCL)) == 0 else {
+      let why = errno == EEXIST ? "it is already in the vault" : String(cString: strerror(errno))
+      throw LegacyImportError.unwritable(to, why)
+    }
+  }
+
+  private func makeFolder(_ url: URL) throws {
+    do {
+      if LegacyImport.failing?(url) == true { throw CocoaError(.fileWriteNoPermission) }
+      try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     } catch {
       throw LegacyImportError.unwritable(url, error.localizedDescription)
     }
