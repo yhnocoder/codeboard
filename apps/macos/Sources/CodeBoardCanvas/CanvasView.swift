@@ -4,6 +4,12 @@ import CodeBoardNotes
 import CodeBoardSyntax
 import QuartzCore
 
+/// What to go to on a board once it is shown: a question (the question list), a card (a ref to it)
+public enum Arrival: Equatable, Sendable {
+  case question(SidenoteID)
+  case card(CardID)
+}
+
 /// One board, read-only, panned and zoomed. While a gesture runs (its glide and rubber band included) Core Animation
 /// only moves and scales the bitmaps the items already have; at rest they are redrawn at fixed levels (`Levels`,
 /// `RestPlan`), off the main thread, and swapped in a few per frame (`RedrawQueue`). A Note's bitmap at each level is
@@ -157,7 +163,19 @@ public final class CanvasView: NSView {
   public var onQuestions: ((Int) -> Void)?
   public var onListOpen: ((Bool) -> Void)?
   /// A question on another board picked in the list: that board is to open and go to it
-  public var onOpenBoard: ((BoardID, SidenoteID) -> Void)?
+  /// Another board to open, and what to go to on it once shown
+  public var onOpenBoard: ((BoardID, Arrival?) -> Void)?
+  /// A ref clicked: what goes there once the double-click time is over
+  var refGo: Task<Void, Never>?
+  /// How long a click on a ref waits for a second (tests shorten it)
+  package var refWait = Duration.milliseconds(Int(NSEvent.doubleClickInterval * 1000))
+  /// The preview a ref's click opened
+  package var refPeek: RefPeek?
+  /// A press on a ref of a card at rest, clicked when let go where it was pressed
+  var refPress: (card: CardID, box: NoteRefBox)?
+  /// The card last flashed (tests), its ring and how it is drawn some way out
+  package var flashed: CardID?
+  var flashRing: (CAShapeLayer, (CGFloat) -> CGPath)?
   /// The zoom as the camera moves (the toolbar's figure)
   public var onZoom: ((CGFloat) -> Void)?
   /// Lines selected by their numbers in a code card
@@ -626,6 +644,7 @@ public final class CanvasView: NSView {
       if chrome.sublayers?.isEmpty == false { drawChrome() }
       if editing != nil { cameraMovedWhileEditing() }
       if popShown != nil { positionPop() }
+      if refPeek != nil { placeRefPeek() }
       onZoom?(camera.zoom)
       // a label or title being written is kept when the camera moves
       if inPlace != nil { endInPlace(commit: true) }

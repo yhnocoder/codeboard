@@ -106,6 +106,8 @@ extension CanvasView {
 
   /// Stops showing the document (its tab closed)
   public func leave() {
+    closeRefPeek()
+    cancelRefGo()
     dropEditing()
     mode = nil
     stopObserving?()
@@ -788,7 +790,24 @@ extension CanvasView {
     }
     // a press anywhere else on the board closes it (what is being written in it is added)
     if openPop != nil { openPop(nil) }
+    // a ref's preview closes, but on the press on its ref (which closes it too, as its second click)
+    refPress = e.clickCount == 1 ? refAt(p) : nil
+    if let peek = refPeek,
+      !(refPress.map { peek.key == refKey(.card($0.card, boardRect($0.box, on: $0.card)), $0.box) } ?? false)
+    {
+      closeRefPeek()
+    }
     if e.clickCount >= 2 {
+      // the second press of a double-click on a ref: what its first click began is dropped; its source opens
+      cancelRefGo()
+      if let r = refAt(p), isWriting(r.card), let doc = document, !doc.board.isLocked(.card(r.card)) {
+        let at = boardRect(r.box, on: r.card)
+        Task {
+          await endEditing()
+          beginEditing(r.card, at: CGPoint(x: at.midX, y: at.midY), openRef: true)
+        }
+        return
+      }
       // a double-click on a Text's edge or corner does nothing (no Fit Content)
       if hitHandle(v) == nil { doubleClick(at: p) }
       return
@@ -944,6 +963,13 @@ extension CanvasView {
     switch g.kind {
     case .press(let item, let toggle, let was, let inside):
       gesture = nil
+      // a click on a ref
+      if let r = refPress {
+        refPress = nil
+        refClicked(
+          .card(r.card, boardRect(r.box, on: r.card)), r.box.ref, r.box.target, go: e.modifierFlags.contains(.command),
+          writing: false)
+      }
       if let item {
         if toggle && was {
           doc.select(doc.selection.subtracting([item]))
@@ -1325,7 +1351,8 @@ extension CanvasView {
       }
     case 51, 117:  // ⌫ ⌦
       delete(nil)
-    case 53:  // Esc: the mode, else the popup, else the selection
+    case 53:  // Esc: a ref's preview, the mode, else the popup, else the selection
+      if refPeek != nil { return closeRefPeek() }
       if cancelMode() { return }
       if openPop != nil { return openPop(nil) }
       if lineSel != nil { return clearLineSel() }

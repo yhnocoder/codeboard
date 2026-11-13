@@ -133,9 +133,9 @@ final class Pane: NSView {
   private static let patience = Duration.milliseconds(250)
   let canvas: CanvasView
   private let toolbar = CanvasToolbar()
-  /// Another board to open in this tab (a question on it was picked), and the question to go to once it shows
+  /// Another board to open in this tab (a question on it was picked, a ref to it clicked), and what to go to once it shows
   var onOpenBoard: ((BoardID) -> Void)?
-  private var pendingQuestion: SidenoteID?
+  private var pending: Arrival?
   private let problem = NSTextField(wrappingLabelWithString: "")
 
   init(notes: NoteRenderer?) {
@@ -156,8 +156,8 @@ final class Pane: NSView {
     canvas.onZoom = { [weak self] in self?.toolbar.zoom = $0 }
     canvas.onQuestions = { [weak self] in self?.toolbar.questions = $0 }
     canvas.onListOpen = { [weak self] in self?.toolbar.listOpen = $0 }
-    canvas.onOpenBoard = { [weak self] board, question in
-      self?.pendingQuestion = question
+    canvas.onOpenBoard = { [weak self] board, arrival in
+      self?.pending = arrival
       self?.onOpenBoard?(board)
     }
     addSubview(toolbar)
@@ -220,9 +220,12 @@ final class Pane: NSView {
     Task {
       do { try await canvas.show(doc, at: at, in: vault, theme: theme) } catch { fail(error) }
       becomeReady()
-      if let q = pendingQuestion, document === doc {
-        pendingQuestion = nil
-        canvas.showQuestion(q)
+      if let a = pending, document === doc {
+        pending = nil
+        switch a {
+        case .question(let q): canvas.showQuestion(q)
+        case .card(let c): canvas.arrive(at: c)
+        }
       }
       // the theme changed while the board was loading
       restyle(self.theme)

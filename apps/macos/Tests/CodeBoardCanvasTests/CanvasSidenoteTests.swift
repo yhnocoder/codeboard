@@ -435,11 +435,11 @@ extension CanvasSidenoteTests {
     let box = list.view.convert(list.view.listRect, to: c)
     #expect(abs(box.maxY - (650 - 12)) < 0.5 && abs(box.maxX - 646) < 0.5)
     // another board's row: that board is to open
-    var asked: (BoardID, SidenoteID)?
+    var asked: (BoardID, Arrival?)?
     c.onOpenBoard = { asked = ($0, $1) }
     _ = await list.run("document.querySelector('.qlist-row[data-q=\"oq\"]').click()")
     await r.until("its board asked for") { asked != nil }
-    #expect(asked?.0 == BoardID(rawValue: "other") && asked?.1 == nid("oq") && !c.listShown)
+    #expect(asked?.0 == BoardID(rawValue: "other") && asked?.1 == .question(nid("oq")) && !c.listShown)
     // this board's: its popup, the question shown
     c.toggleQuestionList(under: CGRect(x: 600, y: 650, width: 40, height: 24))
     await r.until("the list shows") { list.view.alphaValue == 1 }
@@ -466,5 +466,13 @@ extension CanvasSidenoteTests {
       await pop.run("return document.querySelector('.md-pick')?.textContent ?? ''") as? String ?? "" != ""
     }
     #expect((await pop.run("return document.querySelector('.md-pick').textContent") as? String)?.contains("调度") == true)
+    // picked, the ref is drawn as what it points at at once (the list came after the input was made)
+    _ = await pop.run("pop.press(k)", ["k": "Enter"])
+    _ = await pop.run("pop.type(t)", ["t": " 好"])
+    await r.until("the picked ref drawn as found") {
+      await pop.run(
+        "const r = document.querySelector('.ncomp .md-ref'); return !!r && !r.classList.contains('missing')"
+          + " && r.textContent.includes('调度')") as? Bool == true
+    }
   }
 }

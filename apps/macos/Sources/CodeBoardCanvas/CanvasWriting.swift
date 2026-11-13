@@ -70,7 +70,8 @@ extension CanvasView {
   // MARK: Entering
 
   /// Starts writing in a card, the caret where `caret` is on the board (nil: at the end)
-  public func beginEditing(_ id: CardID, at caret: CGPoint? = nil, fresh: Bool = false) {
+  /// `openRef`: the caret is on a ref, whose source opens (a double-click on it)
+  public func beginEditing(_ id: CardID, at caret: CGPoint? = nil, fresh: Bool = false, openRef: Bool = false) {
     guard let doc = document, editing == nil, gesture == nil, let card = doc.board.card(id), isWriting(id),
       fresh || !doc.board.isLocked(.card(id)), let i = index(of: .card(id)),
       case .note(let n) = scene!.items[i].drawing,
@@ -89,6 +90,10 @@ extension CanvasView {
       guard let self else { return }
       Task { await self.endEditing(w) }
     }
+    editor.onRef = { [weak self] in self?.refPressed($0, inPopup: false) }
+    editor.onElsewhere = { [weak self] in self?.closeRefPeek() }
+    editor.view.escape = { [weak self] in self?.escapePeek() ?? false }
+    closeRefPeek()
     editor.onPicked = { group, id in
       let b = group ?? doc.board.id.rawValue
       CanvasView.recentRefs = Array(
@@ -112,7 +117,7 @@ extension CanvasView {
         guard editing?.id == id, editing?.ending == false else { return }
         let size = try await editor.begin(
           n.content, width: card.width, height: n.height, folder: n.folder, look: theme.id.rawValue, dark: theme.dark,
-          refs: n.refs, refList: refList, k: zoom, margin: editorMargin, caret: local,
+          refs: n.refs, refList: refList, k: zoom, margin: editorMargin, caret: local, open: openRef,
           placeholder: n.content.isText ? "Type something…" : "Type / for blocks")
         guard editing?.id == id, editing?.ending == false else { return }
         editing?.size = size
@@ -339,6 +344,8 @@ extension CanvasView {
 
   private func finishEditing(_ given: NoteEditor.Written?) async {
     guard let ed = editing else { return }
+    // its refs are drawn anew
+    if case .card(let c, _)? = refPeek?.at, c == ed.id { closeRefPeek() }
     let doc = ed.doc
     editing?.ending = true
     let editor = noteEditor

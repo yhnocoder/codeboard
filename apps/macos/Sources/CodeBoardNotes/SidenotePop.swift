@@ -105,6 +105,10 @@ public final class SidenotePop: NSObject {
     case remove
     case close
     case picked(group: String?, id: String)
+    /// A press on a drawn [[ref]]; nil: the second press of a double-click on one
+    case ref(RefPress?)
+    /// A press anywhere else in it
+    case elsewhere
   }
 
   /// The room around the popup in the web view: its shadow's on every side, and the [[ list's below it (or above,
@@ -244,6 +248,9 @@ public final class SidenotePop: NSObject {
     case "remove": onAction?(.remove)
     case "close": onAction?(.close)
     case "picked": onAction?(.picked(group: m["group"] as? String, id: s("id")))
+    case "ref": RefPress(m).map { onAction?(.ref($0)) }
+    case "refDouble": onAction?(.ref(nil))
+    case "elsewhere": onAction?(.elsewhere)
     default: break
     }
   }
@@ -256,6 +263,13 @@ public final class PopWebView: WKWebView {
   package var popRect = CGRect.zero
   package var uiRects: [CGRect] = []
   package let grip = GripView()
+  /// Esc: true when something over the canvas took it (a ref's preview closed), and the popup stays
+  package var escape: (() -> Bool)?
+
+  public override func keyDown(with e: NSEvent) {
+    if e.keyCode == 53, escape?() == true { return }
+    super.keyDown(with: e)
+  }
 
   public override init(frame: CGRect, configuration: WKWebViewConfiguration) {
     super.init(frame: frame, configuration: configuration)

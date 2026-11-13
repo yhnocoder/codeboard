@@ -135,7 +135,11 @@ extension CanvasView {
   func pickQuestion(_ board: String, _ note: String) {
     closeQuestionList()
     let id = SidenoteID(rawValue: note)
-    if board == document?.board.id.rawValue { showQuestion(id) } else { onOpenBoard?(BoardID(rawValue: board), id) }
+    if board == document?.board.id.rawValue {
+      showQuestion(id)
+    } else {
+      onOpenBoard?(BoardID(rawValue: board), .question(id))
+    }
   }
 
   /// The camera to a question (what it is on in view, with room on its right for the popup), and its popup open there

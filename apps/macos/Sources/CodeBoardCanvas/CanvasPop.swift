@@ -64,10 +64,12 @@ extension CanvasView {
       pop.clear()
       popShown = nil
       withoutAnimation { popLine.isHidden = true }
+      if case .popup? = refPeek?.at { closeRefPeek() }
     }
     guard let at, openPop == at, let host = superview else { return }
     if pop.view.superview !== host { host.addSubview(pop.view, positioned: .above, relativeTo: self) }
     pop.onAction = { [weak self] in self?.popAction($0) }
+    pop.view.escape = { [weak self] in self?.escapePeek() ?? false }
     pop.onSize = { [weak self] _ in self?.positionPop() }
     pop.onWriting = { [weak self] on in if !on { self?.refreshPop() } }
     pop.onDrag = { [weak self] d, ended in self?.dragPop(d, ended: ended) }
@@ -396,6 +398,8 @@ extension CanvasView {
       let b = group ?? doc.board.id.rawValue
       CanvasView.recentRefs = Array(
         ([(board: b, id: card)] + CanvasView.recentRefs.filter { $0.board != b || $0.id != card }).prefix(3))
+    case .ref(let p): refPressed(p, inPopup: true)
+    case .elsewhere: closeRefPeek()
     }
   }
 

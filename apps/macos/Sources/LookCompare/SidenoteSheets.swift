@@ -102,20 +102,21 @@ enum SidenoteSheets {
 
     init(
       root: URL, notes: NoteRenderer, theme: Theme, zoom: CGFloat = 1, board: Board = SidenoteSheets.board(),
+      others: [(String, Board)] = [("Other", SidenoteSheets.other())], size: CGSize = SidenoteSheets.size,
       centre: CGPoint
     ) async throws {
       let fm = FileManager.default
       try? fm.removeItem(at: root)
-      for (name, b) in [("Sheet", board), ("Other", SidenoteSheets.other())] {
+      for (name, b) in [("Sheet", board)] + others {
         let package = root.appending(path: "\(name).board")
         try fm.createDirectory(at: package.appending(path: Vault.imagesFolder), withIntermediateDirectories: true)
         try b.encoded().write(to: package.appending(path: Vault.boardFileName))
       }
       let file = root.appending(path: "Sheet.board").appending(path: Vault.boardFileName)
       doc = try BoardDocument { file }
-      canvas = CanvasView(frame: CGRect(origin: .zero, size: SidenoteSheets.size), notes: notes)
+      canvas = CanvasView(frame: CGRect(origin: .zero, size: size), notes: notes)
       window = NSWindow(
-        contentRect: CGRect(origin: CGPoint(x: -30000, y: -30000), size: SidenoteSheets.size), styleMask: [.titled],
+        contentRect: CGRect(origin: CGPoint(x: -30000, y: -30000), size: size), styleMask: [.titled],
         backing: .buffered, defer: false)
       window.isReleasedWhenClosed = false
       let host = NSView(frame: canvas.frame)
