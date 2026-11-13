@@ -25,6 +25,7 @@ import "../../../../packages/board/src/styles.css";
 import "@yhnocoder/markdown/style.css";
 import "../../../../packages/board/src/themes.css";
 import "./page.css";
+import { pop } from "./pop";
 
 /** CodeBoardNotes' PageNote, as JSON */
 type Note = {
@@ -53,10 +54,12 @@ declare global {
 /** Loaded as page.html?edit: the one Note being edited, in the web view over the canvas, which takes the keyboard.
  *  Otherwise the page only draws */
 const editMode = new URLSearchParams(location.search).has("edit");
-document.documentElement.classList.add(editMode ? "edit" : "render");
+/** Loaded as page.html?pop: the sidenote popup (pop.ts), in a web view of its own over the canvas */
+const popMode = new URLSearchParams(location.search).has("pop");
+document.documentElement.classList.add(editMode ? "edit" : popMode ? "popup" : "render");
 // mounting the editor focuses it, and a web view in the background that asks for focus takes the keyboard from the
 // window the user types in
-if (!editMode) HTMLElement.prototype.focus = () => {};
+if (!editMode && !popMode) HTMLElement.prototype.focus = () => {};
 
 /** A Note's top-level blocks, each one's Markdown (the board's md/blocks.ts noteBlocks); null when it cannot be split */
 function noteBlocks(md: string): string[] | null {
@@ -530,4 +533,8 @@ const edit = {
   },
 };
 (window as unknown as { edit: typeof edit }).edit = edit;
+if (popMode) {
+  pop.start({ mdFor, setLook });
+  (window as unknown as { pop: typeof pop }).pop = pop;
+}
 window.webkit?.messageHandlers.note.postMessage("ready");

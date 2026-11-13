@@ -533,7 +533,7 @@ struct Scene: Sendable {
   }
 
   /// A segment's version as its header's chip shows it (core model.ts versionLabel, short)
-  private static func version(_ s: Segment) -> String? {
+  static func version(_ s: Segment) -> String? {
     switch s.source {
     case .git(_, let commit, _, _, _): String(commit.prefix(7))
     case .package(let name, let version, _): "\(name) \(version)"

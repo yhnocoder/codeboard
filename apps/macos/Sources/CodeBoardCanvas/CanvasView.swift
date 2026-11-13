@@ -133,6 +133,20 @@ public final class CanvasView: NSView {
   var openPop: PopAt?
   /// A sidenote popup opened or closed (tests)
   package var onPop: ((PopAt?) -> Void)?
+  /// What the popup web view shows (kept until it lets it go: what a closing ends is still added there), the key it
+  /// shows it under, and the [[ list for its inputs
+  var popShown: PopAt?
+  var popKey = ""
+  var popRefList: RefCandidates?
+  /// Dragged away: its top left from its marker's, in board units
+  package var popHeld: CGVector?
+  /// Its top left in the view now, and where a drag of it began
+  package var popAt = CGPoint.zero
+  var popDragFrom: CGPoint?
+  /// The dashed line back to the marker of a popup dragged away, in the view's units
+  let popLine = CAShapeLayer()
+  /// The popup's showing and updating, one after another
+  var popTask: Task<Void, Never>?
   /// The selected and hovered arrows in the accent: over the arrows, under their labels
   let litArrows = CALayer()
   var dropLit: Set<SectionID> = []
@@ -462,7 +476,11 @@ public final class CanvasView: NSView {
     hoveredMark = nil
     applyCamera()
     arrive()
+    stylePopLine()
+    // another board: its popup goes; the same one drawn again (another theme): it follows
+    if openPop != nil, !keepCamera { openPop(nil) }
     placeMarks()
+    if openPop != nil { refreshPop() }
     drawChrome()
   }
 
@@ -587,6 +605,7 @@ public final class CanvasView: NSView {
       world.sublayerTransform = m
       if chrome.sublayers?.isEmpty == false { drawChrome() }
       if editing != nil { cameraMovedWhileEditing() }
+      if popShown != nil { positionPop() }
       // a label or title being written is kept when the camera moves
       if inPlace != nil { endInPlace(commit: true) }
       // a zoom (not a pan) away from the rest zoom: the held bitmaps take over, with mipmaps

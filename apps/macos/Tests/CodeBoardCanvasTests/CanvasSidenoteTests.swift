@@ -118,3 +118,180 @@ func sidenoteBoard(question: Bool = false) -> Board {
     #expect(r.doc.selection.isEmpty, "a marker click selects nothing")
   }
 }
+
+extension CanvasSidenoteTests {
+  /// The popup's box in the canvas's points, as its web view shows it
+  func popBox(_ c: CanvasView) -> CGRect {
+    let p = c.sidenotePop
+    return p.view.convert(CGRect(origin: p.origin, size: p.size), to: c)
+  }
+
+  /// A marker's place on the board
+  func onBoard(_ c: CanvasView, _ m: Mark) -> CGRect {
+    guard let o = m.owner, let r = c.scene?.items.first(where: { $0.owner == o })?.rect else { return m.frame }
+    return m.frame.offsetBy(dx: r.minX, dy: r.minY)
+  }
+
+  func opened(_ r: Rig, _ at: PopAt) async {
+    await r.until("the popup shows") { r.canvas.popShown == at && r.canvas.sidenotePop.view.alphaValue == 1 }
+    await r.canvas.popTask?.value
+  }
+
+  @Test(arguments: [0.5, 1, 2] as [CGFloat])
+  func aPopupSitsRightOfItsCardTopAtItsMarkerAndCoversTheCardWhenThereIsNoRoom(zoom: CGFloat) async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: zoom)
+    defer { r.close() }
+    let c = r.canvas
+    let start = r.bytes
+    // each anchor kind: right of the card with its markers (or the Section's title, the free marker), its top 6 above
+    // the marker's, in the window
+    for at: PopAt in [
+      .spot(.card(cid("n1"))), .spot(.block(cid("n1"), BlockRef(index: 2, hash: BlockRef.sig(noteBlocks[2])))),
+      .lines(Lines(card: cid("c1"), segment: s1, range: 12...13)), .spot(.section(SectionID(rawValue: "g1"))),
+      .spot(.point(x: 300, y: 600)),
+    ] {
+      let m = try #require(c.marks.first { $0.at == at })
+      let mark = onBoard(c, m)
+      r.click(CGPoint(x: mark.midX, y: mark.midY))
+      await opened(r, at)
+      let box = popBox(c)
+      let a = try #require(c.popAnchor(at))
+      let right = c.camera.view(CGPoint(x: a.right, y: 0)).x
+      let top = c.camera.view(mark.origin).y
+      let W = c.bounds.width
+      let H = c.bounds.height
+      #expect(box.width == 460 && box.height > 40)
+      #expect(abs(box.minX - max(8, min(right + 12, W - 8 - box.width))) < 0.5, "\(at)")
+      #expect(abs(box.minY - max(8, min(top - 6, H - 8 - box.height))) < 0.5, "\(at)")
+      // it takes the pointer on itself only
+      let inside = c.convert(CGPoint(x: box.midX, y: box.midY), to: c.superview)
+      let outside = c.convert(CGPoint(x: box.minX - 30, y: box.midY), to: c.superview)
+      #expect(c.sidenotePop.view.hitTest(inside) != nil && c.sidenotePop.view.hitTest(outside) == nil)
+      r.click(CGPoint(x: mark.midX, y: mark.midY))
+      await r.until("it closes") { c.popShown == nil }
+    }
+    // no room on its right: over the card, inside the window, the same side
+    let n1 = r.rect("n1")
+    c.place(zoom: zoom, centre: CGPoint(x: n1.maxX - 100 / zoom, y: n1.midY))
+    await r.idle()
+    let m = try #require(c.marks.first { $0.at == .spot(.card(cid("n1"))) })
+    r.click(CGPoint(x: onBoard(c, m).midX, y: onBoard(c, m).midY))
+    await opened(r, .spot(.card(cid("n1"))))
+    let box = popBox(c)
+    #expect(abs(box.maxX - (c.bounds.width - 8)) < 0.5 && box.minX < c.camera.view(n1.origin).x + n1.width * zoom)
+    r.key(53)
+    await r.until("Esc closes it") { c.popShown == nil }
+    // opened and closed with nothing written: the board is as it was
+    #expect(r.bytes == start && !r.doc.history.canUndo)
+  }
+
+  @Test func aDraggedPopupKeepsItsOffsetFromItsMarkerAsTheCameraMovesWithADashedLineBack() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let at = PopAt.spot(.card(cid("n1")))
+    let m = try #require(c.marks.first { $0.at == at })
+    r.click(CGPoint(x: onBoard(c, m).midX, y: onBoard(c, m).midY))
+    await opened(r, at)
+    let was = popBox(c).origin
+    // dragged by its title bar
+    let grip = c.sidenotePop.view.grip
+    #expect(grip.frame.height >= 30 && grip.frame.width > 300, "the title bar but its buttons")
+    let g = grip.convert(CGPoint(x: 40, y: 10), to: nil)
+    func ev(_ t: NSEvent.EventType, _ d: CGPoint) -> NSEvent {
+      NSEvent.mouseEvent(
+        with: t, location: CGPoint(x: g.x + d.x, y: g.y - d.y), modifierFlags: [], timestamp: 1,
+        windowNumber: r.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+    }
+    #expect(c.sidenotePop.view.hitTest(grip.convert(CGPoint(x: 40, y: 10), to: c.sidenotePop.view.superview)) === grip)
+    grip.mouseDown(with: ev(.leftMouseDown, .zero))
+    for i in 1...6 { grip.mouseDragged(with: ev(.leftMouseDragged, CGPoint(x: -40 * i, y: 30 * i))) }
+    grip.mouseUp(with: ev(.leftMouseUp, CGPoint(x: -240, y: 180)))
+    #expect(abs(popBox(c).minX - (was.x - 240)) < 0.5 && abs(popBox(c).minY - (was.y + 180)) < 0.5)
+    #expect(c.popHeld != nil && !c.popLine.isHidden)
+    await r.idle()
+    // pans and a pinch: it keeps its offset from the marker, scaled with the zoom; only its view moves
+    let breaks = r.breaks
+    let held = try #require(c.popHeld)
+    func expectHeld() {
+      let mk = c.camera.view(onBoard(c, c.marks.first { $0.at == at }!).origin)
+      let z = c.camera.zoom
+      #expect(abs(popBox(c).minX - (mk.x + held.dx * z)) < 0.5 && abs(popBox(c).minY - (mk.y + held.dy * z)) < 0.5)
+    }
+    for _ in 0..<4 {
+      let e = try #require(
+        CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: -12, wheel2: 8, wheel3: 0))
+      c.scrollWheel(with: try #require(NSEvent(cgEvent: e)))
+      r.tick()
+      expectHeld()
+    }
+    c.pinch(by: 1.1, around: CGPoint(x: 300, y: 300), at: 1, began: true, ended: false)
+    r.tick()
+    expectHeld()
+    c.pinch(by: 1.1, around: CGPoint(x: 300, y: 300), at: 1.016, began: false, ended: false)
+    r.tick()
+    expectHeld()
+    #expect(r.breaks == breaks, "a camera move only moves the popup's web view")
+    c.pinch(by: 1, around: CGPoint(x: 300, y: 300), at: 1.032, began: false, ended: true)
+    await r.idle()
+    // closed and opened again: in its place again, no line
+    r.key(53)
+    await r.until("closed") { c.popShown == nil }
+    let m2 = try #require(c.marks.first { $0.at == at })
+    r.click(CGPoint(x: onBoard(c, m2).midX, y: onBoard(c, m2).midY))
+    await opened(r, at)
+    #expect(c.popHeld == nil && c.popLine.isHidden)
+  }
+
+  @Test func writtenInThePopupASidenoteOrQuestionIsAddedAndTheInputStaysForTheNext() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let pop = c.sidenotePop
+    let at = PopAt.spot(.card(cid("t1")))
+    c.openPop(at, write: true)
+    await opened(r, at)
+    await r.until("the input is ready") {
+      await pop.run("return !!document.querySelector('.ProseMirror')") as? Bool == true
+    }
+    _ = await pop.run("pop.type(t)", ["t": "第二条 sidenote"])
+    _ = await pop.run("pop.press('Enter')")
+    await r.until("added") { r.doc.board.sidenotes(at: .card(cid("t1"))).count == 2 }
+    #expect(r.doc.board.sidenotes(at: .card(cid("t1"))).last?.body == .text(TextNote(text: "第二条 sidenote")))
+    // in place, and the next one is written in a new input
+    await r.until("shown") { await pop.run("return document.querySelectorAll('.slip').length") as? Int == 2 }
+    #expect(await pop.run("return !!document.querySelector('.ncomp .ProseMirror')") as? Bool == true)
+    // the ? makes it a question; after ↵ the row is the + again
+    _ = await pop.run("pop.click('.ncomp-ask')")
+    _ = await pop.run("pop.type(t)", ["t": "为什么等?"])
+    _ = await pop.run("pop.press('Enter')")
+    await r.until("asked") { r.doc.board.sidenotes(at: .card(cid("t1"))).count == 3 }
+    #expect(r.doc.board.sidenotes(at: .card(cid("t1"))).last?.isOpenQuestion == true)
+    await r.until("the + again") { await pop.run("return !!document.querySelector('.tray > .add')") as? Bool == true }
+    await r.settle()
+    // its marker is a ? now
+    #expect(c.marks.first { $0.at == at }?.ask == true)
+    // answered under the question, then resolved by its tick
+    await r.until("its reply row") { await pop.run("return pop.click('.reply')") as? Bool == true }
+    await r.until("the answer's input") {
+      await pop.run("return !!document.querySelector('.ans-in .ProseMirror')") as? Bool == true
+    }
+    _ = await pop.run("pop.type(t)", ["t": "因为 [[备注"])
+    await r.until("the [[ list") { !pop.view.uiRects.isEmpty }
+    _ = await pop.run("pop.press('Escape')")
+    _ = await pop.run("pop.press('Escape')")
+    await r.until("answered") { r.doc.board.sidenotes(at: .card(cid("t1"))).last?.question?.answers.count == 1 }
+    let q = try #require(r.doc.board.sidenotes(at: .card(cid("t1"))).last)
+    await r.until("its tick") {
+      await pop.run("return !!document.querySelector('.slip.ask.open .kt button')") as? Bool == true
+    }
+    _ = await pop.run("pop.click('.slip.ask.open .kt button')")
+    await r.until("resolved") { r.doc.board.sidenote(q.id)?.question?.done == true }
+    await r.until("drawn resolved") {
+      await pop.run("return document.querySelectorAll('.slip.ask.done').length") as? Int == 1
+    }
+    #expect(await pop.run("return document.querySelectorAll('.reply').length") as? Int == 0)
+    // one step each, undone in turn
+    #expect(r.doc.history.undoSteps.map(\.name) == ["Add Sidenote", "Add Question", "Answer", "Resolve"])
+  }
+}

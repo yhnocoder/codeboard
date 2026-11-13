@@ -92,6 +92,7 @@ private func png(_ url: URL) throws {
     host.addSubview(canvas)
     window.contentView = host
     canvas.noteEditor.drawOffScreen()
+    canvas.sidenotePop.drawOffScreen()
     // far off screen: the web view runs its animation frames only in a window that is ordered in
     window.orderFrontRegardless()
     try await canvas.show(
@@ -187,6 +188,19 @@ private func png(_ url: URL) throws {
       }
       tick()
       try? await Task.sleep(for: .milliseconds(2))
+    }
+  }
+
+  /// Once `f` holds, frames ticking meanwhile (what the web views do comes back on its own time)
+  func until(_ what: String, _ f: () async -> Bool) async {
+    let deadline = ContinuousClock.now + .seconds(20)
+    while await !f() {
+      if ContinuousClock.now > deadline {
+        Issue.record("\(what): not within 20 s")
+        return
+      }
+      tick()
+      try? await Task.sleep(for: .milliseconds(5))
     }
   }
 

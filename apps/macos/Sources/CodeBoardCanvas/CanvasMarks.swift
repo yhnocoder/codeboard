@@ -179,7 +179,13 @@ extension CanvasView {
         (m.owner.flatMap { boxes[$0] } ?? freeMarks).addSublayer(l)
         return l
       }
+      for (l, box) in popTintLayers(boxes: boxes) {
+        box.addSublayer(l)
+        markLayers.append(l)
+      }
     }
+    // a popup goes with its marker
+    if popShown != nil { positionPop() }
   }
 
   /// A marker's layer: its round badge, the count or ? on it
@@ -284,11 +290,4 @@ extension CanvasView {
     openPop(openPop == at ? nil : at)
   }
 
-  /// The popup shown for `at`, or none
-  func openPop(_ at: PopAt?) {
-    guard openPop != at else { return }
-    openPop = at
-    placeMarks()
-    onPop?(at)
-  }
 }

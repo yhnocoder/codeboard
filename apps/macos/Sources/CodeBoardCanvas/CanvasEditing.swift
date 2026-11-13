@@ -301,6 +301,7 @@ extension CanvasView {
     }
     hoveredMark = nil
     placeMarks()
+    if openPop != nil { refreshPop() }
     // a swap made here otherwise reaches the screen a frame later than the layers it replaces go
     CATransaction.flush()
     arrive()
@@ -776,6 +777,8 @@ extension CanvasView {
       if e.clickCount == 1 { togglePop(marks[i].at) }
       return
     }
+    // a press anywhere else on the board closes it (what is being written in it is added)
+    if openPop != nil { openPop(nil) }
     if e.clickCount >= 2 {
       // a double-click on a Text's edge or corner does nothing (no Fit Content)
       if hitHandle(v) == nil { doubleClick(at: p) }
@@ -1294,8 +1297,9 @@ extension CanvasView {
       }
     case 51, 117:  // ⌫ ⌦
       delete(nil)
-    case 53:  // Esc: the mode, else the selection
+    case 53:  // Esc: the mode, else the popup, else the selection
       if cancelMode() { return }
+      if openPop != nil { return openPop(nil) }
       if gesture == nil { doc.select([]) }
     case 123, 124, 125, 126:
       nudge(e)

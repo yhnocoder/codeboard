@@ -210,7 +210,7 @@ final class RefResolver {
   }
 
   /// A card's title as the web board shows it in a ref (core cardTitle)
-  private func title(_ c: Card) -> String {
+  func title(_ c: Card) -> String {
     guard let content = Scene.content(of: c, package: package, vault: vault)?.0 else { return "" }
     if let t = content.title, !t.isEmpty { return t }
     switch content.body {
