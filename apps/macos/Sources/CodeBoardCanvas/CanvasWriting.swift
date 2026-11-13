@@ -298,16 +298,18 @@ extension CanvasView {
 
   /// What is typed so far onto the board, saved with no undo step (the writing still becomes one step when it ends);
   /// nothing when nothing was typed. A card another writer deleted meanwhile gets none (it comes back when the writing
-  /// ends)
+  /// ends). Never a blank text: writing one deletes the card with what points at it, which only the end of the writing
+  /// may do; the board keeps the last draft (or what the card had) until there is text again
   package func saveDraft() async {
     guard let ed = editing, ed.ready, !ed.ending, let w = await noteEditor.peek(), editing?.session == ed.session,
       editing?.ending == false, w.text != nil || w.layoutChanged || ed.drafted
     else { return }
     let id = ed.id
-    let original = ed.card.writing ?? ""
+    let text = w.text ?? ed.card.writing ?? ""
+    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
     ed.doc.draft { b in
       guard let now = b.card(id) else { return }
-      b.write(id, text: w.text ?? original, layout: w.layoutChanged ? w.layout : CanvasView.layout(of: now))
+      b.write(id, text: text, layout: w.layoutChanged ? w.layout : CanvasView.layout(of: now))
     }
     editing?.drafted = true
   }

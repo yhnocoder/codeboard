@@ -566,3 +566,67 @@ extension CanvasWritingTests {
     #expect(r.card("t1").writing == "Threads wait at the barrier", "undo goes back to before the writing")
   }
 }
+
+extension CanvasWritingTests {
+  /// Selects everything in the editor and deletes it, as ⌘A ⌫ does
+  func emptyEditor(_ r: Rig) async throws {
+    _ = try await r.canvas.noteEditor.view.callAsyncJavaScript(
+      """
+      document.execCommand("selectAll");
+      document.execCommand("delete");
+      await new Promise(r => requestAnimationFrame(r));
+      return 1
+      """, contentWorld: .page)
+  }
+
+  /// A Text with an arrow to it, emptied while written in (⌘A ⌫, then a pause past a draft): the draft does not take it off the board, nor
+  /// the arrow to it, on the board or on disk; typed in again and left, it has the new text and its arrow
+  @Test func aDraftOfAnEmptiedCardKeepsTheCardAndWhatPointsAtIt() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    r.doc.edit("Arrow") {
+      $0.arrows.append(
+        Arrow(id: ArrowID(rawValue: "a9"), from: Endpoint(card: cid("n1")), to: Endpoint(card: cid("t1"))))
+    }
+    await r.settle()
+    r.click(r.centre("t1"))
+    r.key(36)
+    await r.editorReady()
+    try await emptyEditor(r)
+    let emptied = await r.canvas.noteEditor.peek()
+    #expect(
+      emptied?.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true,
+      "blank: \(String(describing: emptied?.text))")
+    await r.canvas.saveDraft()
+    #expect(r.doc.board.card(cid("t1")) != nil && r.doc.board.arrows.contains { $0.id.rawValue == "a9" })
+    r.doc.flush()
+    let disk = try Board(decoding: Data(contentsOf: r.file), file: r.file)
+    #expect(disk.card(cid("t1")) != nil && disk.arrows.contains { $0.id.rawValue == "a9" }, "on disk")
+    #expect(disk.brokenReference == nil)
+    await r.type("Again")
+    await r.canvas.saveDraft()
+    #expect(r.card("t1").writing == "Again")
+    await r.canvas.endEditing()
+    #expect(r.card("t1").writing == "Again" && r.doc.board.arrows.contains { $0.id.rawValue == "a9" })
+    #expect(r.doc.history.undoSteps.map(\.name) == ["Arrow", "Edit Text"])
+  }
+
+  /// A new Text typed in, emptied and drafted, then typed in again: it stays on the board throughout and is one step
+  @Test func aDraftOfAnEmptiedNewCardKeepsIt() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    r.doubleClick(CGPoint(x: 800, y: 330))
+    await r.editorReady()
+    let id = try #require(r.canvas.editing?.id)
+    await r.type("abc")
+    await r.canvas.saveDraft()
+    #expect(r.doc.board.card(id)?.writing == "abc")
+    try await emptyEditor(r)
+    await r.canvas.saveDraft()
+    #expect(r.doc.board.card(id)?.writing == "abc", "the last draft stays")
+    await r.type("x")
+    await r.canvas.endEditing()
+    #expect(r.doc.board.card(id)?.writing == "x")
+    #expect(r.doc.history.undoSteps.map(\.name) == ["New Text"])
+  }
+}

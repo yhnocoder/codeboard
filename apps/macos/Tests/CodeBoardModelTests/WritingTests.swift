@@ -95,3 +95,28 @@ private func text(_ b: Board, _ id: String) -> TextCard? { b.card(cid(id))?.text
   doc.settleWriting(keep: true, "Edit Text") { $0.write(t1, text: was + " now and then!", layout: nil) }
   #expect(doc.board == before && doc.history.undoSteps.count == 2)
 }
+
+/// A draft never takes the card being written in off the board (a blank text would), and a merge while drafts are on the
+/// board keeps the card and what the other writer did
+@MainActor @Test func aDraftNeverDeletesTheCardAndAMergeMeanwhileKeepsBoth() throws {
+  let file = try scratch().appending(path: "board.json")
+  try editSample().encoded().write(to: file)
+  let doc = try BoardDocument { file }
+  let t1 = cid("t1")
+  doc.beginWriting(t1)
+  doc.draft { $0.write(t1, text: "  ", layout: nil) }
+  #expect(doc.board.card(t1) != nil && doc.board.arrows.contains { $0.to.card == t1 })
+  doc.draft { $0.write(t1, text: "typed", layout: nil) }
+  // another writer moves it meanwhile
+  var theirs = try Board(decoding: Data(contentsOf: file), file: file)
+  theirs.move([.card(t1)], dx: 0, dy: 40)
+  try theirs.encoded().write(to: file)
+  doc.diskChanged()
+  #expect(doc.board.card(t1)?.writing == "typed" && doc.board.card(t1)?.y == theirs.card(t1)?.y)
+  doc.flush()
+  let disk = try Board(decoding: Data(contentsOf: file), file: file)
+  #expect(disk.card(t1)?.writing == "typed" && disk.brokenReference == nil)
+  doc.settleWriting(keep: true, "Edit Text") { $0.write(t1, text: "typed!", layout: nil) }
+  doc.undo()
+  #expect(doc.board.card(t1)?.y == theirs.card(t1)?.y && doc.board.card(t1)?.writing == editSample().card(t1)?.writing)
+}

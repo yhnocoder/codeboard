@@ -121,12 +121,13 @@ import Foundation
     writing = (id, board, selection, false)
   }
 
-  /// What is typed so far, onto the board with no undo step; saved as any change is
+  /// What is typed so far, onto the board with no undo step; saved as any change is. A draft never takes the card
+  /// being written in off the board (with what points at it): only the end of the writing may
   public func draft(_ change: (inout Board) -> Void) {
-    guard writing != nil else { return }
+    guard let w = writing else { return }
     var b = board
     change(&b)
-    guard b != board else { return }
+    guard b != board, board.card(w.id) == nil || b.card(w.id) != nil else { return }
     board = b
     changed(.draft)
   }
