@@ -1,5 +1,5 @@
 import type { Page } from "playwright-core";
-import { put, shot, type Host } from "../harness";
+import { OUT, put, shot, type Host } from "../harness";
 import { emptyBoard, type NoteCard } from "@codeboard/core";
 import { BAND_GRACE } from "@yhnocoder/markdown/ui";
 import { test, open, check, light, until, idle, hold, focusSettled, pmHasSelection } from "../fixtures";
@@ -430,5 +430,83 @@ test("noteTableDropThenEsc", async () => {
   const saved = md(h, "n0");
   const rows = saved.split("\n").filter((l) => l.startsWith("| "));
   check("noteTableDropThenEsc the dropped row is saved", rows.at(-1)?.includes("alpha") === true, saved);
+  await close(h);
+});
+
+/** The band of a Note's first block (a table, a code block) rises over the card's header instead of covering the block's
+ *  first row, but no higher than the card's own edge (the board marks the card as the band's limit); where it lies over the
+ *  header, its empty part lets presses through to the header (the title, its buttons, the strip the card is dragged by) */
+test("noteFirstBlockBandOverHeader", async () => {
+  const h = await open({
+    board: board([
+      { md: "| a | b |\n| - | - |\n| 1 | 2 |\n\ny", w: 400 },
+      { md: "```python\nx = 1\n```\n\ny", w: 400 },
+    ]),
+    light: true,
+    scale: 2,
+    w: 1100,
+    h: 420,
+    settings: { theme: "warm-ink" } as never,
+  });
+  const pg = h.page;
+  await idle(h);
+  const shots: string[] = [];
+  for (const [id, kind, first] of [
+    ["n0", "table", "table"],
+    ["n1", "code", "pre"],
+  ] as const) {
+    await editNote(h, id);
+    if (kind === "table") await intoCell(h, id, "1");
+    else
+      await pg
+        .locator(`${card(id)} .md-pm .cm-line`)
+        .first()
+        .click();
+    const band = `${card(id)} .md-band-${kind}`;
+    await pg.locator(`${band}.on`).waitFor();
+    await idle(h);
+    const r = await pg.evaluate(
+      ([c, band, first]) => {
+        const box = (e: Element) => e.getBoundingClientRect();
+        const cd = box(document.querySelector(c)!),
+          head = box(document.querySelector(`${c} .chead`)!),
+          face = box(document.querySelector(`${band} .md-band-face`)!),
+          block = box(document.querySelector(`${c} .md-pm ${first}`)!);
+        const x = face.left + 6,
+          y = Math.max(face.top, cd.top) + 3;
+        const hit = document.elementFromPoint(x, y);
+        return {
+          cardTop: cd.top,
+          headBottom: head.bottom,
+          faceTop: face.top,
+          faceBottom: face.bottom,
+          blockTop: block.top,
+          hitInBand: !!hit?.closest(".md-band"),
+          hitInHead: !!hit?.closest(".chead"),
+          pressAt: y < head.bottom,
+        };
+      },
+      [card(id), band, first] as const,
+    );
+    check(
+      `noteFirstBlockBandOverHeader ${kind} rises over the header, within the card`,
+      r.faceTop < r.headBottom && r.faceTop >= r.cardTop - 0.5 && r.faceBottom <= r.blockTop + 1,
+      r,
+    );
+    check(
+      `noteFirstBlockBandOverHeader ${kind} its empty part lets presses through to the header`,
+      r.pressAt && !r.hitInBand && r.hitInHead,
+      r,
+    );
+    const c = (await pg.locator(card(id)).boundingBox())!;
+    const file = `first-block-band-${kind}.png`;
+    await pg.screenshot({
+      path: `${OUT}/${file}`,
+      clip: { x: c.x - 16, y: c.y - 16, width: c.width + 32, height: Math.min(c.height, 200) + 32 },
+      animations: "disabled",
+    });
+    shots.push(file);
+    await exitEdit(h);
+  }
   await close(h);
 });

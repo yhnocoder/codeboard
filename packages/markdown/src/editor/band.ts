@@ -14,14 +14,15 @@ const BAND_H = 30;
  *  band into itself instead) */
 const TOP_GAP = 2;
 
-/** The nearest box around el that clips what overflows it: a band may float over anything inside it, the card's own header
- *  above a Note's first block too, rather than cover the block's first line */
-function clipBox(el: Element): Element {
+/** The box a band stays inside: the nearest one around el that clips what overflows it, or, before that, the one the page
+ *  marks with data-md-band-limit (a card whose header a Note's first block's band may float over, rather than cover the
+ *  block's first line); without either, the editor's own box */
+function clipBox(el: Element, editor: Element): Element {
   for (let p = el.parentElement; p; p = p.parentElement) {
     const cs = getComputedStyle(p);
-    if (cs.overflowY !== "visible" || cs.overflowX !== "visible") return p;
+    if (cs.overflowY !== "visible" || cs.overflowX !== "visible" || p.hasAttribute("data-md-band-limit")) return p;
   }
-  return document.body;
+  return editor;
 }
 
 type Why = "hover" | "focus" | "held";
@@ -161,7 +162,7 @@ export class Band {
     layer.attach();
     if (!this.root.isConnected) layer.el.append(this.root);
     // once per showing, not per placing: whether the Note's body scrolls changes only with its size setting
-    this.clip = clipBox(layer.el);
+    this.clip = clipBox(layer.el, this.view.dom);
     if (this.kind === "code") {
       // the block's own colour, corner and inset, as the page styles it: the label lines up with the code
       const cs = getComputedStyle(this.anchor.el),
@@ -203,6 +204,9 @@ export class Band {
     st.width = `${Math.max(w, need)}px`;
     this.root.classList.toggle("wide", need > w);
     st.setProperty("--md-band-drop", `${drop}px`);
+    // risen above the editor into the page's own (a card's header: its title, buttons, the strip it is dragged by): the
+    // band's empty part lets presses through to them there; its controls still take theirs
+    this.root.toggleAttribute("data-raised", top < (this.view.dom.getBoundingClientRect().top - L.top) / s - 0.5);
     this.root.dataset.over = !prev || drop > 0.5 ? "none" : prev.matches("pre.md-code") ? "code" : "text";
   }
   destroy() {

@@ -1472,8 +1472,11 @@ math {
 .md-band.on .md-band-face {
   pointer-events: auto;
 }
-.md-band.on.through .md-band-face {
+.md-band.on:is(.through, [data-raised]) .md-band-face {
   pointer-events: none;
+}
+.md-band.on[data-raised] .md-band-row > * {
+  pointer-events: auto;
 }
 /* over text, the sliver of the covered line that still shows above the band fades out instead of being cut */
 .md-band-fade {
