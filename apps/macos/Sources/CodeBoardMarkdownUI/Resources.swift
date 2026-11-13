@@ -14,10 +14,25 @@ public protocol MarkdownResources: Sendable {
   var mathPreamble: String { get }
   /// Formulas: nil draws each formula as its TeX in the code font
   var math: MathTypesetter? { get }
+  /// Mermaid diagrams: nil shows their source as a code block
+  var diagrams: DiagramRenderer? { get }
 }
 
 extension MarkdownResources {
   public var math: MathTypesetter? { nil }
+  public var diagrams: DiagramRenderer? { nil }
+}
+
+/// Draws Mermaid (pele in JavaScriptCore, guideline 5.8)
+public protocol DiagramRenderer: Sendable {
+  /// the diagram with its labels measured in `fonts`; maxWidth turns a too wide one vertical
+  func diagram(_ source: String, fonts: [String], maxWidth: Int?) -> DiagramResult
+}
+
+public enum DiagramResult: Sendable, Hashable {
+  /// width and height in points; paths and texts in points from its top left
+  case ok(width: Double, height: Double, paths: [MDPath], texts: [MDGlyphText])
+  case error(String)
 }
 
 /// A code token's colour class, one to one with CodeBoardSyntax's TokenClass
@@ -125,15 +140,19 @@ public struct MDGlyphText: Sendable, Hashable {
   public var size: Double
   public var fill: MDPath.Paint
   public var bold: Bool
-  public init(text: String, origin: CGPoint, size: Double, fill: MDPath.Paint, bold: Bool = false) {
+  /// where the origin is along the text: 0 its start, 0.5 its middle (text-anchor: middle), 1 its end
+  public var anchor: Double
+  public init(text: String, origin: CGPoint, size: Double, fill: MDPath.Paint, bold: Bool = false, anchor: Double = 0) {
     self.text = text
     self.origin = origin
     self.size = size
     self.fill = fill
     self.bold = bold
+    self.anchor = anchor
   }
   public static func == (a: MDGlyphText, b: MDGlyphText) -> Bool {
     a.text == b.text && a.origin == b.origin && a.size == b.size && a.fill == b.fill && a.bold == b.bold
+      && a.anchor == b.anchor
   }
   public func hash(into h: inout Hasher) {
     h.combine(text)

@@ -44,9 +44,10 @@ enum SVGShapes {
           NSAttributedString.Key(kCTForegroundColorAttributeName as String): c.cg,
         ])
       let line = CTLineCreateWithAttributedString(attr)
+      let w = t.anchor == 0 ? 0 : CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil)) * CGFloat(t.anchor)
       ctx.saveGState()
       ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
-      ctx.textPosition = CGPoint(x: t.origin.x * scale, y: t.origin.y * scale)
+      ctx.textPosition = CGPoint(x: t.origin.x * scale - w, y: t.origin.y * scale)
       CTLineDraw(line, ctx)
       ctx.restoreGState()
     }
@@ -60,7 +61,9 @@ enum SVGShapes {
     case .role(let role):
       guard let d = theme.diagrams else { return ink }
       switch role {
-      case "background": return d.background
+      case "background", "bg": return d.background
+      case "fg": return d.foreground
+      case "surfaceAlt": return d.surfaceAlt
       case "foreground": return d.foreground
       case "muted": return d.muted
       case "line": return d.line

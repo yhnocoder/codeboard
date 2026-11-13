@@ -81,6 +81,8 @@ enum Item {
   /// items drawn clipped to a rect (a code block or table wider than the body)
   case clip(CGRect, [Item])
   case image(MarkdownImageSlot)
+  /// a Mermaid diagram's shapes and labels, in points from the frame's top left
+  case diagram([MDPath], [MDGlyphText], CGRect)
   /// a [[reference]], its baseline starting at the point
   case ref(RefBox, CGPoint)
   /// a list bullet: 0 a disc, 1 a ring, 2 a square
@@ -95,6 +97,7 @@ enum Item {
       CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x), height: abs(a.y - b.y)).insetBy(dx: -w, dy: -w)
     case .image(let s): s.frame
     case .bullet(let r, _, _): r
+    case .diagram(_, _, let r): r
     case .ref(let b, let o): CGRect(x: o.x, y: o.y - b.ascent, width: b.width, height: b.ascent + b.descent)
     case .math(let p, let size, let o, _):
       CGRect(
@@ -246,7 +249,7 @@ struct LayoutBuilder {
     case .code(let language, let body):
       return code(body: body, language: language, b: b, x: x, width: width, y: y)
     case .mermaid(let body):
-      return code(body: body, language: "mermaid", b: b, x: x, width: width, y: y)
+      return diagram(body: body, b: b, x: x, width: width, y: y)
     case .math(let latex):
       return mathBlock(latex, x: x, width: width, y: y, style: style)
     case .table(let t):
@@ -485,6 +488,10 @@ struct LayoutBuilder {
         string: line,
         attributes: InlineBuilder(theme: theme, resources: resources, imageCounts: [:], bodyWidth: width).attributes(
           style))
+      // code blocks keep the code font's ligatures, as the page's code editor draws them (prose turns them off)
+      attr.addAttribute(
+        NSAttributedString.Key(kCTLigatureAttributeName as String), value: 1,
+        range: NSRange(location: 0, length: attr.length))
       for t in tokens?[safe: i] ?? [] {
         guard let c = theme.code.kinds[t.kind], t.columns.upperBound <= attr.length else { continue }
         attr.addAttribute(
@@ -503,6 +510,28 @@ struct LayoutBuilder {
     items.append(.fill(box, radius: CGFloat(m.codeRadius), theme.colors.codeBlock))
     items.append(.clip(box.insetBy(dx: ph / 2, dy: 0), inner))
     return y + h
+  }
+
+  // MARK: diagrams
+
+  /// a Mermaid diagram: drawn at its own size, or, wider than the body, with a width limit in 40 px steps that turns it
+  /// vertical (diagram.ts); its source as a code block when it does not draw
+  mutating func diagram(body: Range<Int>, b: MDBlock, x: CGFloat, width: CGFloat, y: CGFloat) -> CGFloat {
+    guard let r = resources.diagrams else {
+      return code(body: body, language: "mermaid", b: b, x: x, width: width, y: y)
+    }
+    let src = sourceText(body)
+    var result = r.diagram(src, fonts: theme.fonts.body, maxWidth: nil)
+    if case .ok(let w, _, _, _) = result, CGFloat(w) > width {
+      let step = 40
+      result = r.diagram(src, fonts: theme.fonts.body, maxWidth: max(step, Int(width) / step * step))
+    }
+    guard case .ok(let w, let h, let paths, let texts) = result else {
+      return code(body: body, language: "mermaid", b: b, x: x, width: width, y: y)
+    }
+    let frame = CGRect(x: x, y: y, width: CGFloat(w), height: CGFloat(h))
+    items.append(.clip(CGRect(x: x, y: y, width: width, height: frame.height), [.diagram(paths, texts, frame)]))
+    return frame.maxY
   }
 
   // MARK: math blocks

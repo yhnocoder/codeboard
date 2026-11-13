@@ -7,6 +7,7 @@ import CodeBoardMarkdownUI
 struct NoResources: MarkdownResources {
   let folder: URL
   let math: MathTypesetter?
+  var diagrams: DiagramRenderer? { math as? DiagramRenderer }
   func imageSize(_ src: String) -> CGSize? {
     guard let s = CGImageSourceCreateWithURL(folder.appending(path: src) as CFURL, nil),
       let p = CGImageSourceCopyPropertiesAtIndex(s, 0, nil) as? [CFString: Any],

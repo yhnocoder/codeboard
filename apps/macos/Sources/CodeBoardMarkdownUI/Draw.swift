@@ -63,6 +63,11 @@ extension MarkdownLayout {
         ctx.restoreGState()
       case .image(let slot):
         drawImage(slot, image(slot), ctx)
+      case .diagram(let paths, let texts, let r):
+        ctx.saveGState()
+        ctx.translateBy(x: r.minX, y: r.minY)
+        SVGShapes.draw(paths, texts, ctx, scale: 1, ink: theme.colors.ink, theme: theme)
+        ctx.restoreGState()
       case .ref(let box, let o):
         box.draw(at: o, ctx)
       case .bullet(let r, let kind, let c):

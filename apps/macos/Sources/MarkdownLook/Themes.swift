@@ -62,8 +62,17 @@ enum Looks {
       warm
       ? .init(highlight: hl, annotations: annots)
       : .init(highlight: colors.accent.alpha(0.55), highlightStyle: .brush(height: 0.42), annotations: annots)
+    // markdown.css .mmd: pele's colours from the theme (surfaces are the ink mixed into the paper)
+    func mix(_ k: Double) -> MDColor {
+      let a = colors.ink
+      let b = colors.surface
+      return MDColor(b.r + (a.r - b.r) * k, b.g + (a.g - b.g) * k, b.b + (a.b - b.b) * k, 1)
+    }
+    let diagrams = MarkdownTheme.DiagramColors(
+      background: colors.surface, foreground: colors.ink, muted: colors.ink2, line: colors.ink2, surface: mix(0.05),
+      surfaceAlt: mix(0.1), border: mix(0.2), accent: colors.accent, series: [])
     return MarkdownTheme(
-      colors: colors, code: .init(plain: colors.ink), marks: marks,
+      colors: colors, code: .init(plain: colors.ink), marks: marks, diagrams: diagrams,
       fonts: .init(body: body, mono: mono, headings: headings, hand: hand),
       metrics: metrics)
   }

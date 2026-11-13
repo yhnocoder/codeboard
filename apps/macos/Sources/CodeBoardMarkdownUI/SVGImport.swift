@@ -17,16 +17,23 @@ final class SVGImport: NSObject, XMLParserDelegate {
     [(transform: CGAffineTransform, fill: MDPath.Paint, stroke: MDPath.Paint, strokeWidth: Double, size: Double)] = []
   private var root = CGAffineTransform.identity
   private var unit: CGFloat = 1
-  private var text: (origin: CGPoint, size: Double, fill: MDPath.Paint, bold: Bool)?
+  private var text: (origin: CGPoint, size: Double, fill: MDPath.Paint, bold: Bool, anchor: Double)?
+  /// text-anchor inherited from groups
+  private var anchors: [String] = []
   private var textChars = ""
   private let paint: (String) -> MDPath.Paint
+  /// what a radius written as a CSS variable resolves to
+  var cornerRadius: Double = 4
 
   /// paint: how a fill or stroke value reads ("currentColor", "var(--pele-line)", "#abc", "none")
   init(paint: @escaping (String) -> MDPath.Paint) { self.paint = paint }
 
-  static func read(_ svg: String, unit: CGFloat, paint: @escaping (String) -> MDPath.Paint) -> Result? {
+  static func read(_ svg: String, unit: CGFloat, cornerRadius: Double = 4, paint: @escaping (String) -> MDPath.Paint)
+    -> Result?
+  {
     let me = SVGImport(paint: paint)
     me.unit = unit
+    me.cornerRadius = cornerRadius
     let p = XMLParser(data: Data(svg.utf8))
     p.delegate = me
     guard p.parse() else { return nil }
@@ -37,12 +44,14 @@ final class SVGImport: NSObject, XMLParserDelegate {
     _ parser: XMLParser, didStartElement name: String, namespaceURI: String?, qualifiedName: String?,
     attributes a: [String: String]
   ) {
-    let parent = stack.last ?? (.identity, .ink, .none, 0, 16)
+    // SVG's defaults: black fill (the ink), no stroke, a stroke 1 wide when there is one, 16px text
+    let parent = stack.last ?? (.identity, .ink, .none, 1, 16)
     var t = parent.transform
     if let tr = a["transform"] { t = Self.transform(tr).concatenating(t) }
     var fill = a["fill"].map(paint) ?? parent.fill
     var stroke = a["stroke"].map(paint) ?? parent.stroke
     var sw = a["stroke-width"].flatMap { Double($0.replacingOccurrences(of: "px", with: "")) } ?? parent.strokeWidth
+    var rxStyle: Double?
     if let style = a["style"] {
       for decl in style.split(separator: ";") {
         let kv = decl.split(separator: ":", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
@@ -51,12 +60,14 @@ final class SVGImport: NSObject, XMLParserDelegate {
         case "fill": fill = paint(kv[1])
         case "stroke": stroke = paint(kv[1])
         case "stroke-width": sw = Double(kv[1].replacingOccurrences(of: "px", with: "")) ?? sw
+        case "rx": rxStyle = Double(kv[1].replacingOccurrences(of: "px", with: ""))
         default: break
         }
       }
     }
     let size = a["font-size"].flatMap { Double($0.replacingOccurrences(of: "px", with: "")) } ?? parent.size
     stack.append((t, fill, stroke, sw, size))
+    anchors.append(a["text-anchor"] ?? anchors.last ?? "")
     let full = t.concatenating(root)
     switch name {
     case "svg" where stack.count == 1:
@@ -75,7 +86,8 @@ final class SVGImport: NSObject, XMLParserDelegate {
     case "rect":
       let n = { (k: String) in CGFloat(Double(a[k] ?? "0") ?? 0) }
       let (x, y, w, h) = (n("x"), n("y"), n("width"), n("height"))
-      let rx = n("rx")
+      // pele sets the radius through style (rx: var(--_r)): the board's, half --md-radius
+      let rx = a["rx"] != nil ? n("rx") : CGFloat(rxStyle ?? (a["style"]?.contains("rx:") == true ? cornerRadius : 0))
       let d =
         rx > 0
         ? Self.roundedRect(x, y, w, h, rx)
@@ -100,10 +112,10 @@ final class SVGImport: NSObject, XMLParserDelegate {
       let o = CGPoint(x: x, y: y).applying(full)
       // the text's size in picture units: its font size through the transform's scale
       let scale = sqrt(abs(full.a * full.d - full.b * full.c))
-      text = (
-        o, size * Double(scale), fill,
-        (a["font-weight"] ?? "").hasPrefix("bold") || Int(a["font-weight"] ?? "") ?? 0 >= 600
-      )
+      let bold = (a["font-weight"] ?? "").hasPrefix("bold") || Int(a["font-weight"] ?? "") ?? 0 >= 600
+      let anchors: [String: Double] = ["middle": 0.5, "end": 1.0]
+      let anchor: Double = anchors[a["text-anchor"] ?? self.anchors.last ?? ""] ?? 0
+      text = (o, size * Double(scale), fill, bold, anchor)
       textChars = ""
     default:
       break
@@ -117,11 +129,13 @@ final class SVGImport: NSObject, XMLParserDelegate {
   func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName: String?) {
     if name == "text", let t = text {
       if !textChars.isEmpty {
-        result.texts.append(MDGlyphText(text: textChars, origin: t.origin, size: t.size, fill: t.fill, bold: t.bold))
+        result.texts.append(
+          MDGlyphText(text: textChars, origin: t.origin, size: t.size, fill: t.fill, bold: t.bold, anchor: t.anchor))
       }
       text = nil
     }
     stack.removeLast()
+    anchors.removeLast()
   }
 
   static func roundedRect(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, _ r0: CGFloat) -> String {

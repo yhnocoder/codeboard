@@ -69,8 +69,47 @@ struct MathTests {
   }
 }
 
+@Suite(.enabled(if: engines != nil, "needs apps/macos/web/dist/engines.js"))
+struct DiagramTests {
+  /// a flowchart drawn by pele, its colours the theme's roles, its labels native text; a diagram wider than the body is
+  /// laid out again within it
+  @Test func drawsAFlowchartWithinTheBody() {
+    _ = boardFonts
+    let src = "```mermaid\nflowchart LR\n  A[请求进入] --> B{有空闲块?}\n  B -->|是| C[Prefill]\n  B -->|否| D[等待队列]\n```"
+    let l = MarkdownLayout.make(
+      MarkdownDocument(src), width: 332, theme: testTheme, layout: nil, resources: MathResources(math: engines))
+    var frames: [CGRect] = []
+    for item in l.items {
+      if case .clip(_, let inner) = item {
+        for i in inner {
+          if case .diagram(let paths, let texts, let r) = i {
+            frames.append(r)
+            #expect(!paths.isEmpty && texts.count >= 4)
+          }
+        }
+      }
+    }
+    #expect(frames.count == 1)
+    #expect(frames[0].width <= 332)
+  }
+
+  @Test func aDiagramThatDoesNotDrawShowsItsSource() {
+    let l = MarkdownLayout.make(
+      MarkdownDocument("```mermaid\nnot a diagram ((\n```"), width: 332, theme: testTheme, layout: nil,
+      resources: MathResources(math: engines))
+    let texts = l.items.flatMap { item -> [String] in
+      if case .clip(_, let inner) = item {
+        return inner.compactMap { if case .text(let t) = $0 { return t.display.string.string } else { return nil } }
+      }
+      return []
+    }
+    #expect(texts.joined().contains("not a diagram"))
+  }
+}
+
 struct MathResources: MarkdownResources {
   let math: MathTypesetter?
+  var diagrams: DiagramRenderer? { math as? DiagramRenderer }
   func imageSize(_ src: String) -> CGSize? { nil }
   func ref(label: String, target: String?) -> MarkdownRefHit? { nil }
   func highlight(lines: [String], language: String) -> [[MarkdownToken]]? { nil }
