@@ -3305,10 +3305,20 @@ textarea {
   display: flex;
   gap: 6px;
   align-items: center;
-  padding: 7px 12px 2px;
+  min-width: 0;
+  padding: 0 0 2px;
   font: 11px var(--mono);
   color: var(--ink-3);
   white-space: nowrap;
+}
+/* the name and the place give way, cut with an ellipsis, so the version stays whole at the right */
+.sn-head > :not(.rev, .grow) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sn-head > span:not(.rev, .grow) {
+  flex-shrink: 4;
 }
 .sn-head b {
   font-weight: 500;
@@ -9023,6 +9033,8 @@ mark.wdiff {
   border-radius: 9px;
   padding: 7px 10px 9px;
   display: grid;
+  /* minmax(0, …): an auto column would grow to a Code sidenote's longest line and push it past the slip; the code scrolls instead */
+  grid-template-columns: minmax(0, 1fr);
   gap: 3px;
   min-width: 0;
 }

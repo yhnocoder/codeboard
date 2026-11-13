@@ -8,6 +8,9 @@
 //  sidenotePinNoFlash      a click on the count of a Highlight whose popup the hover opened pins that popup: it neither
 //                          disappears for a frame nor fades in again
 //  sidenoteCodeCap         a Code sidenote longer than 8 lines is cut there; a click shows it all, another cuts it again
+//  sidenoteCodeFitsSlip    a Code sidenote with a long name, path and line stays inside its slip: the line scrolls in the code,
+//                          the name and path are cut with an ellipsis, the version stays whole at the right; its head starts
+//                          where a Text sidenote's text does
 //  sidenotePopupDrag       the popup follows its card as the board pans; dragged by its title bar it stays where it was put in the
 //                          window as the board pans and zooms; closed and opened again it is back beside the card
 //  sidenoteWholeCardPopup  the card menu's Add ▸ Sidenote opens the card's popup right of it with the input focused; ↵ adds a
@@ -292,6 +295,69 @@ test("sidenoteCodeCap", async () => {
       again.cut &&
       again.h === cut.h,
     { cut, opened, again },
+  );
+  await h.close();
+});
+
+test("sidenoteCodeFitsSlip", async () => {
+  const b = board();
+  const c1 = b.sidenotes.find((n) => n.id === "c1")!;
+  if (c1.kind !== "code") throw new Error("c1 is a Code sidenote");
+  c1.code = {
+    ...c1.code,
+    src: { kind: "repo", repo: "" },
+    path: "nanovllm/engine/a_rather_long_module_name_for_the_block_manager.py",
+    symbol: { qual: "BlockManagerWithAVeryLongName.allocate_blocks_for_sequence", kind: "function" },
+    version: { kind: "git", commit: "bb823b3c0ffee" },
+    text: [
+      "def allocate_blocks_for_sequence(self, seq: Sequence, num_cached_blocks: int, prefix_hash: int, *, strict: bool = True):",
+      ...LONG.slice(1),
+    ],
+  };
+  const h = await open({ board: b, light, w: 1300, h: 900 });
+  const pg = h.page;
+  await idle(h);
+  await openPinned(h);
+  const fit = await pg.evaluate((sel) => {
+    const slips = [...document.querySelectorAll<HTMLElement>(`${sel} .slip`)];
+    const code = slips.find((e) => e.querySelector(".sn-code"))!,
+      text = slips.find((e) => e.querySelector(".sb.nbody"))!;
+    const box = code.getBoundingClientRect();
+    // what lies inside the code's own scroll box is in view only as far as that box shows it
+    const over = [...code.querySelectorAll<HTMLElement>("*")]
+      .filter((e) => !e.closest(".pcode") || e.classList.contains("pcode"))
+      .filter((e) => e.getBoundingClientRect().right > box.right + 0.5)
+      .map((e) => e.className || e.tagName);
+    const pre = code.querySelector<HTMLElement>(".pcode")!,
+      head = code.querySelector<HTMLElement>(".sn-head")!,
+      name = head.querySelector<HTMLElement>("b")!,
+      rev = head.querySelector<HTMLElement>(".rev")!;
+    // where the words start: the head's name and the text's first block
+    const r = rev.getBoundingClientRect(),
+      hr = name.getBoundingClientRect(),
+      tb = text.querySelector<HTMLElement>(".sb.nbody > *")!.getBoundingClientRect(),
+      tr = text.getBoundingClientRect();
+    return {
+      over,
+      scrolls: pre.scrollWidth > pre.clientWidth,
+      cut: name.scrollWidth > name.clientWidth && getComputedStyle(name).textOverflow === "ellipsis",
+      rev: { text: rev.textContent, whole: rev.scrollWidth <= rev.clientWidth, right: box.right - r.right, w: r.width },
+      left: { head: Math.round(hr.left - box.left), text: Math.round(tb.left - tr.left) },
+      top: { head: Math.round(hr.top - box.top), text: Math.round(tb.top - tr.top) },
+    };
+  }, POP);
+  check(
+    "sidenoteCodeFitsSlip nothing in a Code sidenote runs past its slip; the version stays whole, the head lines up with Text ones",
+    fit.over.length === 0 &&
+      fit.scrolls &&
+      fit.cut &&
+      fit.rev.whole &&
+      fit.rev.w > 20 &&
+      fit.rev.right >= 0 &&
+      fit.rev.right <= 12 &&
+      Math.abs(fit.left.head - fit.left.text) <= 1 &&
+      Math.abs(fit.top.head - fit.top.text) <= 2,
+    fit,
   );
   await h.close();
 });
