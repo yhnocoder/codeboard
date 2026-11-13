@@ -1281,6 +1281,42 @@ async function notepasteStep(page) {
   await page.keyboard.press("Escape");
 }
 
+// Text and Box: the toolbar's Text and Box make one each to type in; the Box selected alone shows its bar (sizes, Text or Box, five
+// fills), and the bar's Text turns it into a Text in place. E2E_ONLY=textbox runs only this step
+async function textboxStep(page) {
+  const f = await newBoard(page, "Text Box E2E");
+  const make = async (label, text) => {
+    await f.locator(`.bbar button[aria-label="${label}"]`).first().click();
+    await f.locator(".card .md-pm").waitFor();
+    await focusSettled(f);
+    await page.keyboard.type(text);
+    await page.keyboard.press("Escape");
+    await f.locator(".card .md-pm").waitFor({ state: "detached" });
+    await idle(f);
+  };
+  await make("Text", "Prefill runs once, then decode");
+  await make("Box", "Scheduler keeps the batch");
+  const box = f.locator(".card.box");
+  check(
+    (await f.locator(".card.text:not(.box)").count()) === 1 && (await box.count()) === 1,
+    "textbox: the toolbar's Text and Box make a Text and a Box",
+  );
+  // a click on a card selected alone would start writing in it
+  if (!(await box.evaluate((e) => e.classList.contains("sel") && e.classList.contains("solo"))))
+    await box.locator(":scope > .cface > .tx").click();
+  const bar = f.locator(".card .ttb.tbar");
+  await bar.waitFor();
+  check((await bar.locator(".bdot").count()) === 5, "textbox: the selected Box's bar has its five fills");
+  await shot(page, "23a-textbox-box-selected");
+  await bar.locator('.hlook[aria-label="Text"]').click();
+  const look = await soon(() =>
+    (boardJson()?.cards ?? []).some((c) => c.md === "Scheduler keeps the batch" && c.look === "text"),
+  );
+  check(look && (await f.locator(".card.box").count()) === 0, "textbox: the bar's Text turns the Box into a Text");
+  await shot(page, "23b-textbox-box-to-text");
+  await page.keyboard.press("Escape");
+}
+
 // Images in Notes: a PNG pasted from the clipboard while editing a Note is saved by the host as a file under <storageDir>/assets/,
 // the Markdown references assets/<file>, and the board shows it through the webview's resource address in display mode.
 // The paste is a synthetic ClipboardEvent carrying the image file (what a screenshot on the clipboard gives the webview; xvfb has no
@@ -1638,13 +1674,14 @@ const finish = async (browser, errors) => {
     close: closeStep,
     noteimage: noteimageStep,
     notepaste: notepasteStep,
+    textbox: textboxStep,
     stickerfolder: stickerfolderStep,
     notesettings: notesettingsStep,
     projects: projectsStep,
   };
   // Part 3 holds the slow steps (each 20 s or more on its own board); codeedit reloads the window, so it goes last
   const PARTS = {
-    2: "capture,addsel,cardfocus,keyscope,close,notepaste,projects,winzoom",
+    2: "capture,addsel,cardfocus,keyscope,close,notepaste,textbox,projects,winzoom",
     3: "export,variants,noteimage,stickerfolder,notesettings,codeedit",
   };
   // E2E_FLOW=<file.cjs> runs a flow of your own after the E2E_ONLY steps (or alone): the file exports async (page, t) => { … }, t holds

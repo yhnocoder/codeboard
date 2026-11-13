@@ -52,7 +52,8 @@ export function NoteBody(p: { card: NoteCard }) {
   return (
     <Switch
       fallback={
-        // Text and Box: the same Markdown at the card's own size (--tfs on the card), its headings and code scaled with it
+        // Text and Box: the same Markdown at the card's own size (--tfs on the card), its headings and code scaled with it; they
+        // have no heading levels to set, so the editor shows no level chip
         <Editable
           class="tx tb st-body"
           kind="note"
@@ -62,6 +63,7 @@ export function NoteBody(p: { card: NoteCard }) {
           multiline
           md
           placeholder="Type something…"
+          headingChip={false}
           onCommit={(v, l) => A.setNoteText(c().id, v, l)}
         />
       }

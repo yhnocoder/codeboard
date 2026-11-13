@@ -8,7 +8,8 @@
 //   textBoxEdgeWraps         a side edge sets the width it wraps at, not past its longest word; double-clicking an edge and Fit Content
 //                            do nothing
 //   textBoxCreateAndEmptyGoes  a double-click on empty board makes a Text to type in; a new Text or Box left empty goes with no undo step
-//   textBoxCommonContent     words, bold, inline code, a formula, a list and headings at the card's size, in a Text and a Box
+//   textBoxCommonContent     words, bold, inline code, a formula, a list and headings at the card's size, in a Text and a Box;
+//                            editing a heading in them shows no level chip (a Note's does)
 import { shot, put, type Host } from "../harness";
 import { DEFAULT_SETTINGS, emptyBoard, migrateBoard, type Board, type NoteCard } from "@codeboard/core";
 import { test, open, check, light, until, idle } from "../fixtures";
@@ -364,6 +365,7 @@ test("textBoxCommonContent", async () => {
   const b = board("content");
   put(b, note("t", md, { fs: 30 }), 60, 40, 300);
   put(b, note("x", md, { look: "box", fill: "blue", fs: 30 }), 520, 40, 300);
+  put(b, note("n", "body\n\n## Note head", { look: "note" }), 60, 560, 300);
   const h = await open({ board: b, light, w: 1000, h: 760, settings: { theme: "warm-ink" } as never });
   const read = (id: string) =>
     h.page.evaluate((sel) => {
@@ -414,5 +416,31 @@ test("textBoxCommonContent", async () => {
     }
     await shot(h, `text-box-content-${theme}`);
   }
+  // the caret in a heading: a Note's editor shows the level chip beside it, a Text's and a Box's do not (they set no levels)
+  const chips: Record<string, { inHeading: boolean; chips: number }> = {};
+  for (const id of ["n", "t", "x"]) {
+    const head = `${card(id)} ${id === "n" ? "h2" : "h1"}`;
+    if (id !== "n") await select(h, id);
+    else await h.page.locator(head).click();
+    await h.page.locator(head).click();
+    await h.page.locator(`${card(id)} .md-pm`).waitFor();
+    await idle(h);
+    chips[id] = await h.page.evaluate((sel) => {
+      const a = document.getSelection()?.anchorNode;
+      const el = a instanceof Element ? a : a?.parentElement;
+      return {
+        inHeading: !!el?.closest(`${sel} .md-pm :is(h1, h2)`),
+        chips: document.querySelectorAll(`${sel} .md-hchip`).length,
+      };
+    }, card(id));
+    await h.page.keyboard.press("Escape");
+    await h.page.locator(`${card(id)} .md-pm`).waitFor({ state: "detached" });
+    await idle(h);
+  }
+  check(
+    "textBoxContent editing a heading shows no level chip in a Text or a Box, as a Note does",
+    Object.values(chips).every((c) => c.inHeading) && chips.n.chips === 1 && chips.t.chips === 0 && chips.x.chips === 0,
+    chips,
+  );
   await h.close();
 });
