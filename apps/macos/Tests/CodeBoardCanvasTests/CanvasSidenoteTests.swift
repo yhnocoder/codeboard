@@ -448,3 +448,23 @@ extension CanvasSidenoteTests {
     #expect(!c.listShown)
   }
 }
+
+extension CanvasSidenoteTests {
+  @Test func theInputOpenedAtOnceOffersTheReferenceListOnceItsCandidatesCome() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let pop = c.sidenotePop
+    let at = PopAt.spot(.card(cid("t1")))
+    c.openPop(at, write: true)
+    await opened(r, at)
+    await r.until("its input") {
+      await pop.run("return !!document.querySelector('.ncomp .ProseMirror')") as? Bool == true
+    }
+    _ = await pop.run("pop.type(t)", ["t": "见 [[调"])
+    await r.until("the [[ list with this board's Note") {
+      await pop.run("return document.querySelector('.md-pick')?.textContent ?? ''") as? String ?? "" != ""
+    }
+    #expect((await pop.run("return document.querySelector('.md-pick').textContent") as? String)?.contains("调度") == true)
+  }
+}

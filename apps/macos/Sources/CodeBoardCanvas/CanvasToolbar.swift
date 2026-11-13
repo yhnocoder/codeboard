@@ -320,6 +320,8 @@ public final class CanvasToolbar: NSView {
   /// The separators, the zoom figure (.zoom: 11.5 mono in --ink-2, the row tint hovered) and the questions button
   /// (.qlist-btn: the amber at 14 % under an amber ? and the count; 24 % hovered or open; greyed with none open)
   static func drawExtras(_ e: Extras, theme t: Theme, look: BarLook, in ctx: CGContext) {
+    // the bitmap is drawn y-down: its text upright
+    ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
     for s in e.seps {
       ctx.setFillColor(look.sep)
       ctx.fill(s)

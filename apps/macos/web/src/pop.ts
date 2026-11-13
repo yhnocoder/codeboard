@@ -128,7 +128,7 @@ type FieldEnd = "enter" | "esc" | "done";
 type Field = { finish: () => void };
 function field(
   md: Markdown,
-  list: RefList | null,
+  refList: () => RefList | null,
   value: string,
   end: (how: FieldEnd, v: string) => void,
 ): { host: HTMLDivElement; field: Field } {
@@ -157,21 +157,21 @@ function field(
       scrollOwnBox: true,
       onDone: () => stop("done"),
       // the web board's [[ list (md/load.ts editorOpts)
-      refs: list
-        ? {
-            items: () => list.items,
-            menu: "Link to Card",
-            empty: "Nothing with that title",
-            groups: () => list.groups,
-            recent: () => list.recent,
-            here: "This board",
-            foot: () => list.foot,
-            picked: (p) => {
-              list.recent = [p, ...list.recent.filter((r) => r.group !== p.group || r.id !== p.id)].slice(0, 3);
-              post({ type: "picked", group: p.group ?? null, id: p.id });
-            },
-          }
-        : undefined,
+      // what it offers is read when it opens: the candidates come once the popup is open
+      refs: {
+        items: () => refList()?.items ?? [],
+        menu: "Link to Card",
+        empty: "Nothing with that title",
+        groups: () => refList()?.groups ?? [],
+        recent: () => refList()?.recent ?? [],
+        here: "This board",
+        foot: () => refList()?.foot ?? "",
+        picked: (p) => {
+          const list = refList();
+          if (list) list.recent = [p, ...list.recent.filter((r) => r.group !== p.group || r.id !== p.id)].slice(0, 3);
+          post({ type: "picked", group: p.group ?? null, id: p.id });
+        },
+      },
       classes: { menu: "ctx", bar: "pill", button: "tbtn" },
     });
     ed.placeCaret("end");
@@ -270,7 +270,7 @@ function slip(s: Shown, n: PopNote): HTMLElement {
   const edit = () => {
     if (n.fixed) return;
     s.editing.add(n.id);
-    const { host } = field(s.md, s.data.refList, n.md, (how, v) => {
+    const { host } = field(s.md, () => s.data.refList, n.md, (how, v) => {
       s.editing.delete(n.id);
       if (how !== "esc" && v.trim() !== n.md) post({ type: "write", id: n.id, text: v.trim() });
       redraw(s, n.id);
@@ -329,7 +329,7 @@ function answer(s: Shown, n: Extract<PopNote, { kind: "text" }>, a: Answer): HTM
   const edit = () => {
     if (n.fixed) return;
     s.editing.add(n.id);
-    const { host } = field(s.md, s.data.refList, a.md, (how, v) => {
+    const { host } = field(s.md, () => s.data.refList, a.md, (how, v) => {
       s.editing.delete(n.id);
       if (how !== "esc" && v.trim() !== a.md) post({ type: "writeAnswer", id: n.id, answer: a.id, text: v.trim() });
       redraw(s, n.id);
@@ -400,7 +400,7 @@ function composer(
     toggle?.setAttribute("aria-pressed", String(asking));
     if (toggle) toggle.dataset.tip = asking ? "Sidenote" : "Question";
   };
-  const { host } = field(s.md, s.data.refList, "", (how, v) => {
+  const { host } = field(s.md, () => s.data.refList, "", (how, v) => {
     const t = v.trim();
     if (t) {
       if (o.reply) o.reply(t);
