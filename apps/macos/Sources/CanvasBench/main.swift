@@ -11,6 +11,8 @@ import CodeBoardModel
 //   --memory see MemoryRun
 //   --notes  no window: how long each Note takes to lay out and draw, per look (NoteTimes), and the process's warm-up
 //            (--no-warm-up: none, so the first board's layouts pay for it)
+//   --open   no window: each board opened in a 1440 × 900 canvas at 2x, until it is shown (every item drawn at the
+//            level the fitted view needs), then its SVGs rasterized; WebKit processes started and memory after each
 //        CanvasBench --make-synthetic <folder>   writes the synthetic vault (Synthetic) there
 // SVG pictures are cached in a new temporary folder, never in the app's cache: every run draws its SVGs anew
 
@@ -100,6 +102,7 @@ if let i = args.firstIndex(of: "--make-synthetic"), i + 1 < args.count {
 }
 let hud = args.contains("--hud")
 let notesOnly = args.contains("--notes")
+let openOnly = args.contains("--open")
 let noWarmUp = args.contains("--no-warm-up")
 let bench = args.contains("--bench")
 var memory: URL?
@@ -121,7 +124,8 @@ do {
   exit(1)
 }
 let named = args.dropFirst().compactMap { a in all.first { $0.id.rawValue == a || $0.title == a } }
-let chosen = memory != nil ? named : args.count > 1 ? Array(named.prefix(1)) : bench ? all : Array(all.prefix(1))
+let chosen =
+  memory != nil || openOnly ? named : args.count > 1 ? Array(named.prefix(1)) : bench ? all : Array(all.prefix(1))
 guard !chosen.isEmpty else {
   FileHandle.standardError.write(Data("no such board in \(folder)\n".utf8))
   exit(1)
@@ -157,6 +161,48 @@ if notesOnly {
 // the WebKit processes already running, before the canvas starts its own
 _ = webKitFootprint()
 let app = NSApplication.shared
+if openOnly {
+  app.setActivationPolicy(.accessory)
+  Task { @MainActor in
+    var out: [[String: Any]] = []
+    let cache = FileManager.default.temporaryDirectory.appending(path: "canvasbench-svgs-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: cache) }
+    // as the app does at launch
+    let w = Date()
+    if !noWarmUp { await Task.detached { CanvasView.warmUp() }.value }
+    out.append(["warm_up_ms": (Date().timeIntervalSince(w) * 10_000).rounded() / 10])
+    // each board opened, then opened again in a new canvas (its Notes' layouts cached, its SVGs on disk)
+    for b in chosen + chosen {
+      _ = malloc_zone_pressure_relief(nil, 0)
+      let before = footprint()
+      let c = CanvasView(frame: CGRect(x: 0, y: 0, width: 1440, height: 900), svgCache: cache)
+      let t = Date()
+      do { try await c.show(b, in: vault, theme: .warmInk) } catch { print("\(b.title): \(error)") }
+      let shown = Date().timeIntervalSince(t) * 1000
+      let p = c.noteProgress
+      var o: [String: Any] = [
+        "board": b.title, "shown_ms": (shown * 10).rounded() / 10, "notes_and_svgs": p.notes,
+        "overviews_drawn": p.overviews, "webkit_processes": webKitStarted(), "web_views_made": c.svgWebView.made,
+        "footprint_growth_mb": Double(footprint() - before) / 1e6,
+      ]
+      let t2 = Date()
+      let r = await c.rasterizeSVGs()
+      if r.items > 0 {
+        o["svg_items"] = r.items
+        o["svgs_drawn"] = r.drawn
+        o["svgs_ms"] = (Date().timeIntervalSince(t2) * 10_000).rounded() / 10
+        o["webkit_processes_after_svgs"] = webKitStarted()
+        o["webkit_footprint_mb"] = Double(webKitFootprint()) / 1e6
+        o["footprint_growth_after_svgs_mb"] = Double(footprint() - before) / 1e6
+      }
+      out.append(o)
+    }
+    let data = try JSONSerialization.data(withJSONObject: out, options: [.sortedKeys, .prettyPrinted])
+    print(String(decoding: data, as: UTF8.self))
+    exit(0)
+  }
+  app.run()
+}
 app.setActivationPolicy(.regular)
 let delegate = App(vault: vault, boards: chosen, hud: hud, bench: bench, memory: memory)
 app.delegate = delegate

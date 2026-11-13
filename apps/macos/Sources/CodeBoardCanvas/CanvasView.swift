@@ -752,6 +752,20 @@ public final class CanvasView: NSView {
 
   /// The Notes (and SVG images) in view, those of them showing a picture and those showing it at display resolution;
   /// those whose overview is their picture, of all of them
+  /// Draws every item with an SVG in it at its overview scale through the rasterizer now (CanvasBench): how many there
+  /// were and how many came out
+  package func rasterizeSVGs() async -> (items: Int, drawn: Int) {
+    guard let scene else { return (0, 0) }
+    var drawn = 0
+    let todo = zip(scene.items, items).filter { $0.0.drawing.byRenderer }
+    for (it, l) in todo {
+      let r = await CanvasView.drawWithSVGs(
+        it, scale: l.overviewScale, theme: theme, images: images, svgs: svgs, priority: 0)
+      if r.surface != nil { drawn += 1 }
+    }
+    return (todo.count, drawn)
+  }
+
   /// Whether the SVG rasterizer's web view is open, and how many it has made
   package var svgWebView: (open: Bool, made: Int) { (svgs.webViewOpen, svgs.pagesMade) }
 

@@ -437,8 +437,11 @@ private func webKitProcesses() -> Set<pid_t> {
     })
 }
 
-/// The footprint of the WebKit processes (web content, networking, GPU) started since the bench began: the Note
-/// renderer's, as nothing else here starts one
+/// The footprint of the WebKit processes (web content, networking, GPU) started since the bench began: the SVG
+/// rasterizer's, as nothing else here starts one
 func webKitFootprint() -> Int {
   webKitProcesses().subtracting(webKitBefore).reduce(0) { $0 + footprint($1) }
 }
+
+/// How many WebKit processes were started since the bench began
+func webKitStarted() -> Int { webKitProcesses().subtracting(webKitBefore).count }
