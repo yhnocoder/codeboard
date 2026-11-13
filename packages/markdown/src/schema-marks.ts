@@ -190,8 +190,20 @@ export const Sub = tagMark("subscript", "sub", SUB_RE);
 export const Sup = tagMark("superscript", "sup", SUP_RE);
 export const InlineCode = CodeMark;
 // 链接：文字就是网址的写回裸网址（自动链接），不写成 [url](url)
+// 引用式的 [text][label]、[text][]、[text] 照原样写回（ref 是文字后面的那一截），定义另外原样留着（RefDefs）
 export const Lnk = Link.extend({
+  addAttributes() {
+    return { ...this.parent?.(), ref: { default: null, rendered: false } };
+  },
+  parseMarkdown(t, h) {
+    const kids = t.tokens ?? [],
+      text = kids.map((k) => k.raw).join(""),
+      raw = String(t.raw ?? "");
+    const ref = raw.startsWith(`[${text}]`) && !raw.startsWith(`[${text}](`) ? raw.slice(text.length + 2) : null;
+    return h.applyMark("link", h.parseInline(kids), { href: t.href, title: t.title || null, ref });
+  },
   renderMarkdown(n, h, c) {
+    if (typeof n.attrs?.ref === "string") return `[${h.renderChildren(n)}]${n.attrs.ref}`;
     const href = n.attrs?.href ?? "";
     if (unshield(c.meta?.markText ?? "") === href && /^https?:\/\/\S+$/.test(href)) return h.renderChildren(n);
     return this.parent?.(n, h, c) ?? "";

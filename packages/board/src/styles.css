@@ -6352,7 +6352,7 @@ mark.wdiff {
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
   mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
 }
-:is(.sbpv, .spk-card) .pmd {
+:is(.sbpv, .shmini) .pmd {
   --md-fs: 12.5px;
   --md-h1: 1.25em;
   --md-h2: 1.15em;
@@ -6367,13 +6367,13 @@ mark.wdiff {
 .sbpv.k-compare .pb {
   background: var(--head);
 }
-:is(.sbpv, .spk-card) .pcode {
+:is(.sbpv, .shmini) .pcode {
   margin: 0;
   font: 11px / 1.55 var(--mono);
   color: var(--ink);
   white-space: pre;
 }
-:is(.sbpv, .spk-card) .pcol {
+:is(.sbpv, .shmini) .pcol {
   font: 600 10.5px / 1.6 var(--sys);
   color: var(--ink-3);
 }
@@ -6382,31 +6382,31 @@ mark.wdiff {
   max-height: none;
   background: #fff;
 }
-:is(.sbpv, .spk-card) .pimg {
+:is(.sbpv, .shmini) .pimg {
   display: block;
   width: 100%;
   height: 150px;
   object-fit: contain;
 }
-:is(.sbpv, .spk-card) .cap {
+:is(.sbpv, .shmini) .cap {
   padding: 6px 11px 8px;
   font: 11.5px / 1.4 var(--sys);
   color: var(--ink-2);
   background: var(--surface);
   border-top: 0.5px solid var(--line);
 }
-:is(.sbpv, .spk-card) .pweb b {
+:is(.sbpv, .shmini) .pweb b {
   display: block;
   color: var(--ink);
   font-weight: 600;
 }
-:is(.sbpv, .spk-card) .pweb p {
+:is(.sbpv, .shmini) .pweb p {
   margin: 2px 0;
 }
-:is(.sbpv, .spk-card) .pweb small {
+:is(.sbpv, .shmini) .pweb small {
   color: var(--ink-3);
 }
-:is(.sbpv, .spk-card) .plinks {
+:is(.sbpv, .shmini) .plinks {
   margin: 0;
   padding-left: 16px;
 }
@@ -7277,8 +7277,9 @@ mark.wdiff {
   color: var(--surface);
   box-shadow: none;
 }
-/* The Shelf (ui/ShelfPanel.tsx, actions/shelf.ts): the dock button and its count, the panel beside the other right-side panels,
-   the outline of a row dragged out onto the board, the copies that fly into the dock button */
+/* The Shelf (ui/ShelfPanel.tsx, actions/shelf.ts): the dock button and its count, the panel beside the other right-side panels, its
+   thumbnails, the large picture of one beside the panel, the outlines on the board of where an entry lands or returns to, the
+   copies that fly in */
 .dock .shelf-btn {
   position: relative;
   transition:
@@ -7337,187 +7338,141 @@ mark.wdiff {
   outline-color: var(--accent);
 }
 .srows {
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 2px 4px 4px;
-}
-.srow {
-  flex: none;
-  display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 8px;
-  border-radius: 8px;
-  background: var(--surface);
-  box-shadow: inset 0 0 0 1px var(--hair);
-  cursor: grab;
+  gap: 8px;
+  padding: 2px 4px 6px;
+}
+/* a thumbnail: the entry drawn at board size with the board's own card and Section classes, scaled down (.shmini) */
+.shthumb {
+  position: relative;
+  flex: none;
+  overflow: hidden;
+  border-radius: 7px;
+  background: var(--canvas);
+  box-shadow:
+    0 0 0 1px var(--hair),
+    0 1px 3px rgb(0 0 0 / 0.08);
+  cursor: pointer;
   user-select: none;
   touch-action: none;
   transition:
-    background 0.1s,
+    box-shadow calc(var(--t) * 120ms) var(--out),
     opacity calc(var(--t) * 120ms);
 }
-.srow:hover {
-  background: var(--row);
+.shthumb:hover {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--ink) 30%, transparent),
+    0 2px 8px rgb(0 0 0 / 0.12);
 }
-.srow.lift {
-  opacity: 0.4;
+.shthumb.on {
+  box-shadow:
+    0 0 0 1.5px var(--accent),
+    0 2px 8px rgb(0 0 0 / 0.12);
 }
-.sthumb {
-  flex: none;
-  border-radius: 5px;
-  background: var(--bg);
-  box-shadow: inset 0 0 0 1px var(--hair);
+.shthumb.lift {
+  opacity: 0.35;
 }
-.sthumb .ts {
-  fill: none;
-  stroke: var(--ink-3);
-  stroke-width: 0.8;
+.shmini {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
 }
-.sthumb .tc {
-  fill: var(--surface);
-  stroke: var(--ink-3);
-  stroke-width: 0.6;
+.shmini .card {
+  transition: none;
 }
-.sthumb .tl {
-  fill: none;
-  stroke: var(--ink-3);
-  stroke-width: 1;
-  stroke-linecap: round;
-}
-.sthumb .tl.code {
-  stroke: var(--accent);
-  opacity: 0.75;
-}
-.smeta {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.smeta .stt {
-  font: 600 12px / 16px var(--sys);
-  color: var(--ink);
-  white-space: nowrap;
+.shmini .card .cface,
+.shmini .card .cbody {
   overflow: hidden;
-  text-overflow: ellipsis;
 }
-.smeta .skind {
-  font: 10.5px / 14px var(--sys);
-  color: var(--ink-3);
+.shmini .card .cface {
+  flex: 1;
+  min-height: 0;
 }
-.srow .sback {
-  flex: none;
-  height: 22px;
-  padding: 0 7px;
-  font-size: 11px;
-  box-shadow: inset 0 0 0 1px var(--hair);
+.shmini .pcode {
+  max-height: none;
+  overflow: hidden;
+  padding: 6px 12px 8px;
+  font: 12px / 19px var(--mono);
 }
-/* Resting on a Shelf row: the entry as it was on the board, scaled down, beside the panel (ShelfPeek). The world inside is drawn at
-   board size and scaled, so cards keep their proportions */
+.shmini .card.image .pimg {
+  height: auto;
+  max-height: 100%;
+}
+.shlinks {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+}
+.shlinks line {
+  stroke: color-mix(in srgb, var(--ink) 38%, transparent);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+/* a thumbnail clicked: the same picture larger, beside the panel, with Put Back */
 .shelf-peek {
   position: absolute;
   z-index: 22;
   display: block;
   box-sizing: content-box;
-  padding: 10px;
-  pointer-events: none;
+  padding: 12px;
   overflow: hidden;
+  background: var(--canvas);
   animation: popin calc(var(--t) * 120ms) var(--out);
 }
-.spk-world {
-  position: relative;
-  transform-origin: 0 0;
+.shelf-peek > .shmini {
+  left: 12px;
+  top: 12px;
 }
-.spk-sec {
+.shelf-peek .spk-back {
   position: absolute;
-  box-sizing: border-box;
-  border-radius: 14px;
-  border: 1.5px solid var(--line);
-  background: color-mix(in srgb, var(--ink-3) 5%, transparent);
-}
-.spk-sec > span {
-  position: absolute;
-  left: 14px;
-  top: 8px;
-  font: 600 15px / 20px var(--sys);
-  color: var(--ink-2);
-}
-.spk-card {
-  position: absolute;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: 10px;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
   background: var(--surface);
   box-shadow:
     0 0 0 1px var(--hair),
-    0 2px 6px rgb(0 0 0 / 0.06);
+    0 1px 3px rgb(0 0 0 / 0.1);
 }
-.spk-h {
-  flex: none;
-  padding: 8px 12px;
-  font: 600 13px / 18px var(--sys);
-  color: var(--ink);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  border-bottom: 0.5px solid var(--line);
-}
-.spk-b {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  padding: 8px 12px;
-  font: 13px / 1.6 var(--sys);
-  color: var(--ink-2);
-}
-.spk-card:is(.k-code, .k-compare) .spk-b {
-  background: var(--head);
-}
-.spk-card .pcode {
-  max-height: none;
-  overflow: hidden;
-  font-size: 12.5px;
-}
-.spk-card.k-image .spk-b {
-  padding: 0;
-}
-.spk-card.k-image .pimg {
-  height: 100%;
-}
-.cpanel.shelf .cpf {
-  padding: 6px 10px 2px;
-}
+/* the outline of an entry on the board: its outer edge is an outline (not a border), so its cards' and frames' boxes sit exactly
+   where they land */
 .shelf-outline {
   position: absolute;
   z-index: 30;
-  box-sizing: border-box;
   pointer-events: none;
-  border: var(--ow, 1.5px) dashed var(--accent);
+  outline: var(--ow, 1.5px) dashed var(--accent);
   border-radius: 10px;
   background: color-mix(in srgb, var(--accent) 6%, transparent);
-}
-.shelf-outline .sol {
-  position: absolute;
-  left: 10px;
-  bottom: 100%;
-  margin-bottom: 4px;
-  font: 600 12px / 18px var(--sys);
-  color: var(--accent);
-  white-space: nowrap;
-  transform-origin: 0 100%;
-  scale: var(--os, 1);
 }
 .shelf-outline :is(.sos, .soc) {
   position: absolute;
   box-sizing: border-box;
   border: var(--ow, 1px) dashed color-mix(in srgb, var(--accent) 60%, transparent);
   border-radius: 8px;
+}
+/* where the thumbnail the pointer rests on returns to: each card and frame, faint */
+.shelf-outline.home {
+  outline: none;
+  background: none;
+  animation: fadein calc(var(--t) * 140ms) var(--out);
+}
+.shelf-outline.home :is(.sos, .soc) {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+/* the copies flying into the open panel, over it (actions/shelf.ts liftOver) */
+.shelf-fly {
+  position: fixed;
+  z-index: 23;
+  overflow: clip;
+  pointer-events: none;
 }
 .shelf-ghost {
   pointer-events: none;

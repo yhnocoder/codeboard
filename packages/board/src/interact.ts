@@ -489,11 +489,17 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
         }
       }
     });
-    // 松手后会在哪个 Section（和下面松手时同一个算法）：先预演出来，要进的 Section 亮起来；合并 / 变 Sidenote 时不算
+    // 松手后会在哪个 Section（和下面松手时同一个算法）：先预演出来，要进的 Section 亮起来；合并 / 变 Sidenote 时不算。
+    // Over the Shelf they leave their Sections, which keep the frames they will have once the cards are shelved
     setMovingHome(
-      drop || shelf
+      drop
         ? null
-        : new Map(items.map((it) => [it.id, homeFor(fr, { ...it.r, x: it.r.x + dx, y: it.r.y + dy })?.id])),
+        : new Map(
+            items.map((it) => [
+              it.id,
+              shelf ? undefined : homeFor(fr, { ...it.r, x: it.r.x + dx, y: it.r.y + dy })?.id,
+            ]),
+          ),
     );
   };
   track(

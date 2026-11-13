@@ -226,6 +226,11 @@ function contentHtml(n: PMNode, cx: Cx | null): string {
         ? specHtml(["p", { class: "md-psized" }, 0], contentHtml(c, cx))
         : nodeHtml(c, cx);
     if (!h) return; // nothing drawn (an HTML comment, footnotes without text): not an element between its neighbours
+    // definitions are hidden, but still an element (a top-level block, as mdBlockStarts counts): spaced as if not there
+    if (c.type.name === "refDefs") {
+      s += h;
+      return;
+    }
     const kind = htmlGapKind(h),
       cls = cx && gapClass(prev, kind);
     s += cls ? withClass(h, cls) : h;

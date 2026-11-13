@@ -567,7 +567,7 @@
       ]
     },
     "shelf": {
-      "about": "The Shelf: putting cards and Sections aside per board, the dock button and panel, taking entries back",
+      "about": "The Shelf: putting cards and Sections aside per board, the dock button and the panel of thumbnails, taking entries back",
       "files": [
         "packages/core/src/edit/shelf.ts",
         "packages/core/src/commands/shelf.ts",
@@ -576,7 +576,15 @@
         "packages/board/src/ui/ShelfPanel.tsx",
         "packages/board/test/scenarios/shelf.spec.ts"
       ],
-      "scenarios": ["shelfMenuPutBack", "shelfDragRowOut", "shelfDragOntoDock", "shelfArrows", "shelfRowPreview"]
+      "scenarios": [
+        "shelfMenuPutBack",
+        "shelfDragThumbOut",
+        "shelfDragOntoDock",
+        "shelfArrows",
+        "shelfPeek",
+        "shelfHoverOutline",
+        "shelfSearchSection"
+      ]
     }
   }
 }
