@@ -290,6 +290,27 @@ describe("moving blocks between Notes", () => {
   });
 });
 
+describe("moving blocks into a new Note", () => {
+  it("blocks dropped into a new Note with nothing written yet settle it in the move's one step", () => {
+    const { b, env, log } = setup([note("a", "A\n\nB")]);
+    const id = C.newWriting(env, "note", "", { at: () => ({ x: 0, y: 400 }), settle: noSettle });
+    expect(log.edits).toBe(0);
+    C.moveNoteBlocks(env, [
+      { id: "a", md: "A", layout: null },
+      { id, md: "B", layout: null },
+    ]);
+    expect(log.edits).toBe(1);
+    expect(env.fresh.is(id)).toBe(false);
+    expect(b.cards).toMatchObject([
+      { id: "a", md: "A" },
+      { id, md: "B" },
+    ]);
+    // the editor closing afterwards finds nothing left to settle
+    C.settleUnwritten(env, id);
+    expect(log.edits).toBe(1);
+  });
+});
+
 describe("new cards and questions with nothing written yet", () => {
   it("a new Note is no undo step until written; written empty it goes as if it never was", () => {
     const { b, env, log } = setup();
