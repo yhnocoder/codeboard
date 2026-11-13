@@ -140,12 +140,53 @@ export const blocks = [
 ];
 
 // combinations: every inline text in a paragraph, a heading, a list item, a quote and a table cell
-for (const t of inline.slice(0, 40)) {
+for (const t of inline) {
   if (!t) continue;
   const oneLine = t.replace(/\n/g, " ");
-  blocks.push(`${t}\n`, `## ${oneLine}`, `- ${oneLine}\n- second`, `> ${oneLine}`);
-  if (!oneLine.includes("|")) blocks.push(`| head | ${oneLine} |\n|---|---|\n| ${oneLine} | x |`);
+  blocks.push(`${t}\n`, `## ${oneLine}`, `- ${oneLine}\n- second`, `> ${oneLine}`, `1. first\n2. ${oneLine}`);
+  // a | in a cell has to be written \| (GFM splits cells on it)
+  const cell = oneLine.replace(/\\\|/g, "\\\\|").replace(/(?<!\\)\|/g, "\\|");
+  blocks.push(`| head | ${cell} |\n|---|---|\n| ${cell} | x |`);
 }
+blocks.push(
+  // escaped pipes inside cells: an annotation, math and a reference
+  "| a | b |\n|---|---|\n| {字\\|注} | $a\\|b$ |\n| [[ref]] | [[标题#^id]] |",
+  "| {text\\|note\\|green} | `x\\|y` |\n|---|---|\n| ==h== | :smile: |",
+  // line endings TS normalizes
+  "# Title\r\n\r\npara one\r\nstill one\r\n\r\n- a\r\n- b\r\n",
+  "a\rb\r\rc",
+  "> quote\r\n> more\r\n\r\n```\r\ncode\r\n```",
+  // HTML entities
+  "&amp; &lt; &nbsp; &#x4e2d; and &copy; in text",
+  "# &lt;Title&gt;\n\n- &amp;item",
+  // footnotes and toc are unsupported: plain text, and the one-word definition still shows
+  "[^1]: 词",
+  "text with a note[^1]\n\n[^1]: the note",
+  "[toc]\n\n# heading",
+  "[^1]\n\n[toc] inline",
+  // mermaid
+  "```mermaid\ngraph TD\n  A[开始] --> B{判断}\n  B -->|是| C\n```",
+  // images in links, lists, quotes and cells
+  "[![logo](images/logo.png)](https://example.com)",
+  "[text ![i](a.png){width=20%} more](https://example.com)",
+  "- item ![i](images/a.png){width=40%}\n- ![only](images/b.png){width=30% loop=true}",
+  "> ![q](images/q.png){width=50%}\n> caption line",
+  "| img | x |\n|---|---|\n| ![c](images/c.png){width=10%} | y |",
+  // containers holding blocks
+  "- item\n\n  ```py\n  code in item\n  ```\n- next",
+  "- item\n\n  $$\n  x^2\n  $$\n- next",
+  "- item\n  1. sub one\n  2. sub two\n- next",
+  "- item\n  - [ ] sub task\n  - [x] sub done\n- next",
+  "- item\n   ```\n   indented fence in item\n   ```",
+  "> ```js\n> code in quote\n> ```\n> after",
+  "> $$\n> y\n> $$",
+  "> 1. ordered in quote\n>    1. nested ordered",
+  "> - [ ] task in quote\n> - [x] done in quote",
+  "1. one\n   - [ ] task under ordered\n2. two",
+  // math across a soft break
+  "inline $a +\nb$ across lines",
+  "$x\ny$ and $p\n\nq$ not across paragraphs",
+);
 // a long mixed note
 blocks.push(
   [
@@ -173,4 +214,10 @@ export const moves = [
   { src: "1. a\n2. b\n\n- x\n\n1. c", cut: [1], move: { blocks: [1], to: 0 } },
   { src: "# h\n\ntext\n\n```\ncode\n```\n\n| a |\n|---|\n| 1 |", cut: [2, 3], move: { blocks: [3], to: 1 } },
   { src: "para one\n\n$$\nx\n$$\n\npara two", cut: [1], move: { blocks: [0, 1], to: 3 } },
+  { src: "a\n\n> quote\n> more\n\nb", cut: [1], move: { blocks: [1], to: 0 } },
+  { src: "a\n\n- [ ] t1\n- [x] t2\n\nb", cut: [1], move: { blocks: [1], to: 3 } },
+  { src: "a\n\n| x | y |\n|---|---|\n| 1 | 2 |\n\nTable: cap\n\nb", cut: [1], move: { blocks: [1], to: 0 } },
+  { src: "a\n\n- x\n  - y\n    - z\n- w\n\nb", cut: [1], move: { blocks: [1], to: 3 } },
+  { src: "a\n\nb\n\nc", cut: [0, 1], move: { blocks: [0], to: 3 } },
+  { src: "- a\n\n# h\n\n- b", cut: [1], move: { blocks: [0], to: 3 } },
 ];

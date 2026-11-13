@@ -2094,6 +2094,47 @@
   ]
  },
  {
+  "src": "1. first\n2. **bold** and *italic* and ***both***",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. **bold** and *italic* and ***both***",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. **bold** and *italic* and ***both***",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "**bold** and *italic* and ***both***",
+        "text": "**bold** and *italic* and ***both***"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | **bold** and *italic* and ***both*** |\n|---|---|\n| **bold** and *italic* and ***both*** | x |",
   "starts": [
    0
@@ -2201,6 +2242,47 @@
       "type": "paragraph",
       "raw": "a*b*c and 2*3*4 stay text, *pre*fill is italic",
       "text": "a*b*c and 2*3*4 stay text, *pre*fill is italic"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. a*b*c and 2*3*4 stay text, *pre*fill is italic",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. a*b*c and 2*3*4 stay text, *pre*fill is italic",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. a*b*c and 2*3*4 stay text, *pre*fill is italic",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "a*b*c and 2*3*4 stay text, *pre*fill is italic",
+        "text": "a*b*c and 2*3*4 stay text, *pre*fill is italic"
+       }
+      ]
      }
     ]
    }
@@ -2320,6 +2402,47 @@
   ]
  },
  {
+  "src": "1. first\n2. __init__ and block_manager are names, _not emphasis_",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. __init__ and block_manager are names, _not emphasis_",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. __init__ and block_manager are names, _not emphasis_",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "__init__ and block_manager are names, _not emphasis_",
+        "text": "__init__ and block_manager are names, _not emphasis_"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | __init__ and block_manager are names, _not emphasis_ |\n|---|---|\n| __init__ and block_manager are names, _not emphasis_ | x |",
   "starts": [
    0
@@ -2427,6 +2550,47 @@
       "type": "paragraph",
       "raw": "**粗体**紧跟中文，*斜体*也一样",
       "text": "**粗体**紧跟中文，*斜体*也一样"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. **粗体**紧跟中文，*斜体*也一样",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. **粗体**紧跟中文，*斜体*也一样",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. **粗体**紧跟中文，*斜体*也一样",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "**粗体**紧跟中文，*斜体*也一样",
+        "text": "**粗体**紧跟中文，*斜体*也一样"
+       }
+      ]
      }
     ]
    }
@@ -2546,6 +2710,47 @@
   ]
  },
  {
+  "src": "1. first\n2. **unclosed bold and *one star",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. **unclosed bold and *one star",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. **unclosed bold and *one star",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "**unclosed bold and *one star",
+        "text": "**unclosed bold and *one star"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | **unclosed bold and *one star |\n|---|---|\n| **unclosed bold and *one star | x |",
   "starts": [
    0
@@ -2653,6 +2858,47 @@
       "type": "paragraph",
       "raw": "***a** b*",
       "text": "***a** b*"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. ***a** b*",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. ***a** b*",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. ***a** b*",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "***a** b*",
+        "text": "***a** b*"
+       }
+      ]
      }
     ]
    }
@@ -2772,6 +3018,47 @@
   ]
  },
  {
+  "src": "1. first\n2. *a **b** c*",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. *a **b** c*",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. *a **b** c*",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "*a **b** c*",
+        "text": "*a **b** c*"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | *a **b** c* |\n|---|---|\n| *a **b** c* | x |",
   "starts": [
    0
@@ -2879,6 +3166,47 @@
       "type": "paragraph",
       "raw": "**a *b* c**",
       "text": "**a *b* c**"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. **a *b* c**",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. **a *b* c**",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. **a *b* c**",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "**a *b* c**",
+        "text": "**a *b* c**"
+       }
+      ]
      }
     ]
    }
@@ -2998,6 +3326,47 @@
   ]
  },
  {
+  "src": "1. first\n2. x**y**z and x*y*z",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. x**y**z and x*y*z",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. x**y**z and x*y*z",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "x**y**z and x*y*z",
+        "text": "x**y**z and x*y*z"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | x**y**z and x*y*z |\n|---|---|\n| x**y**z and x*y*z | x |",
   "starts": [
    0
@@ -3105,6 +3474,47 @@
       "type": "paragraph",
       "raw": "~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^",
       "text": "~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. ~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. ~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. ~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^",
+        "text": "~~struck~~ and ~sub~ and ^sup^ and H~2~O and 2^10^"
+       }
+      ]
      }
     ]
    }
@@ -3224,6 +3634,47 @@
   ]
  },
  {
+  "src": "1. first\n2. ~~ not struck ~~ and ~ alone",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. ~~ not struck ~~ and ~ alone",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. ~~ not struck ~~ and ~ alone",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "~~ not struck ~~ and ~ alone",
+        "text": "~~ not struck ~~ and ~ alone"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | ~~ not struck ~~ and ~ alone |\n|---|---|\n| ~~ not struck ~~ and ~ alone | x |",
   "starts": [
    0
@@ -3331,6 +3782,47 @@
       "type": "paragraph",
       "raw": "==highlight== and == not == and ==多字高亮==",
       "text": "==highlight== and == not == and ==多字高亮=="
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. ==highlight== and == not == and ==多字高亮==",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. ==highlight== and == not == and ==多字高亮==",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. ==highlight== and == not == and ==多字高亮==",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "==highlight== and == not == and ==多字高亮==",
+        "text": "==highlight== and == not == and ==多字高亮=="
+       }
+      ]
      }
     ]
    }
@@ -3450,6 +3942,47 @@
   ]
  },
  {
+  "src": "1. first\n2. a ==b== c ===d=== e",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. a ==b== c ===d=== e",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. a ==b== c ===d=== e",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "a ==b== c ===d=== e",
+        "text": "a ==b== c ===d=== e"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | a ==b== c ===d=== e |\n|---|---|\n| a ==b== c ===d=== e | x |",
   "starts": [
    0
@@ -3557,6 +4090,47 @@
       "type": "paragraph",
       "raw": "<u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>",
       "text": "<u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. <u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. <u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. <u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "<u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>",
+        "text": "<u>underline</u> and <kbd>Ctrl</kbd>+<kbd>C</kbd>"
+       }
+      ]
      }
     ]
    }
@@ -3676,6 +4250,47 @@
   ]
  },
  {
+  "src": "1. first\n2. <span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. <span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. <span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "<span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>",
+        "text": "<span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/>"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | <span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/> |\n|---|---|\n| <span style=\"color:red\">red</span> and <b>bold tag</b> and <br> and <br/> | x |",
   "starts": [
    0
@@ -3789,6 +4404,47 @@
   ]
  },
  {
+  "src": "1. first\n2. vector<int> and <T> and <Foo> are words",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. vector<int> and <T> and <Foo> are words",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. vector<int> and <T> and <Foo> are words",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "vector<int> and <T> and <Foo> are words",
+        "text": "vector<int> and <T> and <Foo> are words"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | vector<int> and <T> and <Foo> are words |\n|---|---|\n| vector<int> and <T> and <Foo> are words | x |",
   "starts": [
    0
@@ -3893,6 +4549,46 @@
      {
       "type": "html",
       "raw": "<!-- a comment --> visible after"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. <!-- a comment --> visible after",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. <!-- a comment --> visible after",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. <!-- a comment --> visible after",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "html",
+        "raw": "<!-- a comment --> visible after"
+       }
+      ]
      }
     ]
    }
@@ -4012,6 +4708,47 @@
   ]
  },
  {
+  "src": "1. first\n2. `code` and ``co`de`` and ` spaced ` and `kv_cache[i]`",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. `code` and ``co`de`` and ` spaced ` and `kv_cache[i]`",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. `code` and ``co`de`` and ` spaced ` and `kv_cache[i]`",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "`code` and ``co`de`` and ` spaced ` and `kv_cache[i]`",
+        "text": "`code` and ``co`de`` and ` spaced ` and `kv_cache[i]`"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | `code` and ``co`de`` and ` spaced ` and `kv_cache[i]` |\n|---|---|\n| `code` and ``co`de`` and ` spaced ` and `kv_cache[i]` | x |",
   "starts": [
    0
@@ -4119,6 +4856,47 @@
       "type": "paragraph",
       "raw": "`unclosed code and *star*",
       "text": "`unclosed code and *star*"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. `unclosed code and *star*",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. `unclosed code and *star*",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. `unclosed code and *star*",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "`unclosed code and *star*",
+        "text": "`unclosed code and *star*"
+       }
+      ]
      }
     ]
    }
@@ -4238,6 +5016,47 @@
   ]
  },
  {
+  "src": "1. first\n2. ``` triple ``` inline",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. ``` triple ``` inline",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. ``` triple ``` inline",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "``` triple ``` inline",
+        "text": "``` triple ``` inline"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | ``` triple ``` inline |\n|---|---|\n| ``` triple ``` inline | x |",
   "starts": [
    0
@@ -4345,6 +5164,47 @@
       "type": "paragraph",
       "raw": "[link](https://example.com/a/long/url) and [label with **bold**](https://example.com)",
       "text": "[link](https://example.com/a/long/url) and [label with **bold**](https://example.com)"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. [link](https://example.com/a/long/url) and [label with **bold**](https://example.com)",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. [link](https://example.com/a/long/url) and [label with **bold**](https://example.com)",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. [link](https://example.com/a/long/url) and [label with **bold**](https://example.com)",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "[link](https://example.com/a/long/url) and [label with **bold**](https://example.com)",
+        "text": "[link](https://example.com/a/long/url) and [label with **bold**](https://example.com)"
+       }
+      ]
      }
     ]
    }
@@ -4464,6 +5324,47 @@
   ]
  },
  {
+  "src": "1. first\n2. [a](<url with spaces>) and [b](url \"title\") and [c](url 'title')",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. [a](<url with spaces>) and [b](url \"title\") and [c](url 'title')",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. [a](<url with spaces>) and [b](url \"title\") and [c](url 'title')",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "[a](<url with spaces>) and [b](url \"title\") and [c](url 'title')",
+        "text": "[a](<url with spaces>) and [b](url \"title\") and [c](url 'title')"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | [a](<url with spaces>) and [b](url \"title\") and [c](url 'title') |\n|---|---|\n| [a](<url with spaces>) and [b](url \"title\") and [c](url 'title') | x |",
   "starts": [
    0
@@ -4571,6 +5472,47 @@
       "type": "paragraph",
       "raw": "[nested (parens)](https://example.com/a_(b)) text",
       "text": "[nested (parens)](https://example.com/a_(b)) text"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. [nested (parens)](https://example.com/a_(b)) text",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. [nested (parens)](https://example.com/a_(b)) text",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. [nested (parens)](https://example.com/a_(b)) text",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "[nested (parens)](https://example.com/a_(b)) text",
+        "text": "[nested (parens)](https://example.com/a_(b)) text"
+       }
+      ]
      }
     ]
    }
@@ -4690,6 +5632,47 @@
   ]
  },
  {
+  "src": "1. first\n2. <https://example.com> and <someone@example.com>",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. <https://example.com> and <someone@example.com>",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. <https://example.com> and <someone@example.com>",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "<https://example.com> and <someone@example.com>",
+        "text": "<https://example.com> and <someone@example.com>"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | <https://example.com> and <someone@example.com> |\n|---|---|\n| <https://example.com> and <someone@example.com> | x |",
   "starts": [
    0
@@ -4797,6 +5780,47 @@
       "type": "paragraph",
       "raw": "https://example.com/path?x=1. and www.example.com, and a@b.com",
       "text": "https://example.com/path?x=1. and www.example.com, and a@b.com"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. https://example.com/path?x=1. and www.example.com, and a@b.com",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. https://example.com/path?x=1. and www.example.com, and a@b.com",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. https://example.com/path?x=1. and www.example.com, and a@b.com",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "https://example.com/path?x=1. and www.example.com, and a@b.com",
+        "text": "https://example.com/path?x=1. and www.example.com, and a@b.com"
+       }
+      ]
      }
     ]
    }
@@ -4916,6 +5940,47 @@
   ]
  },
  {
+  "src": "1. first\n2. [ref][label] and [label] and [label][] (no definitions)",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. [ref][label] and [label] and [label][] (no definitions)",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. [ref][label] and [label] and [label][] (no definitions)",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "[ref][label] and [label] and [label][] (no definitions)",
+        "text": "[ref][label] and [label] and [label][] (no definitions)"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | [ref][label] and [label] and [label][] (no definitions) |\n|---|---|\n| [ref][label] and [label] and [label][] (no definitions) | x |",
   "starts": [
    0
@@ -5023,6 +6088,47 @@
       "type": "paragraph",
       "raw": "[unclosed link](https://example.com",
       "text": "[unclosed link](https://example.com"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. [unclosed link](https://example.com",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. [unclosed link](https://example.com",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. [unclosed link](https://example.com",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "[unclosed link](https://example.com",
+        "text": "[unclosed link](https://example.com"
+       }
+      ]
      }
     ]
    }
@@ -5142,6 +6248,47 @@
   ]
  },
  {
+  "src": "1. first\n2. \\[not a link\\](x) and \\*not em\\*",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. \\[not a link\\](x) and \\*not em\\*",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. \\[not a link\\](x) and \\*not em\\*",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "\\[not a link\\](x) and \\*not em\\*",
+        "text": "\\[not a link\\](x) and \\*not em\\*"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | \\[not a link\\](x) and \\*not em\\* |\n|---|---|\n| \\[not a link\\](x) and \\*not em\\* | x |",
   "starts": [
    0
@@ -5249,6 +6396,47 @@
       "type": "paragraph",
       "raw": "![alt](images/a.png)",
       "text": "![alt](images/a.png)"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. ![alt](images/a.png)",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. ![alt](images/a.png)",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. ![alt](images/a.png)",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "![alt](images/a.png)",
+        "text": "![alt](images/a.png)"
+       }
+      ]
      }
     ]
    }
@@ -5368,6 +6556,47 @@
   ]
  },
  {
+  "src": "1. first\n2. ![alt](images/a.png \"a caption with *em*\")",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. ![alt](images/a.png \"a caption with *em*\")",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. ![alt](images/a.png \"a caption with *em*\")",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "![alt](images/a.png \"a caption with *em*\")",
+        "text": "![alt](images/a.png \"a caption with *em*\")"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | ![alt](images/a.png \"a caption with *em*\") |\n|---|---|\n| ![alt](images/a.png \"a caption with *em*\") | x |",
   "starts": [
    0
@@ -5475,6 +6704,47 @@
       "type": "paragraph",
       "raw": "![alt](images/a.png){width=40%}",
       "text": "![alt](images/a.png){width=40%}"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. ![alt](images/a.png){width=40%}",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. ![alt](images/a.png){width=40%}",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. ![alt](images/a.png){width=40%}",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "![alt](images/a.png){width=40%}",
+        "text": "![alt](images/a.png){width=40%}"
+       }
+      ]
      }
     ]
    }
@@ -5594,6 +6864,47 @@
   ]
  },
  {
+  "src": "1. first\n2. ![alt](images/a.png){width=40% frame=3 loop=true}",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. ![alt](images/a.png){width=40% frame=3 loop=true}",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. ![alt](images/a.png){width=40% frame=3 loop=true}",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "![alt](images/a.png){width=40% frame=3 loop=true}",
+        "text": "![alt](images/a.png){width=40% frame=3 loop=true}"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | ![alt](images/a.png){width=40% frame=3 loop=true} |\n|---|---|\n| ![alt](images/a.png){width=40% frame=3 loop=true} | x |",
   "starts": [
    0
@@ -5701,6 +7012,47 @@
       "type": "paragraph",
       "raw": "![alt](images/a.png){width=0%} stays text, {height=3} too",
       "text": "![alt](images/a.png){width=0%} stays text, {height=3} too"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. ![alt](images/a.png){width=0%} stays text, {height=3} too",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. ![alt](images/a.png){width=0%} stays text, {height=3} too",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. ![alt](images/a.png){width=0%} stays text, {height=3} too",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "![alt](images/a.png){width=0%} stays text, {height=3} too",
+        "text": "![alt](images/a.png){width=0%} stays text, {height=3} too"
+       }
+      ]
      }
     ]
    }
@@ -5820,6 +7172,47 @@
   ]
  },
  {
+  "src": "1. first\n2. ![a b](images/has space.png) broken",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. ![a b](images/has space.png) broken",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. ![a b](images/has space.png) broken",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "![a b](images/has space.png) broken",
+        "text": "![a b](images/has space.png) broken"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | ![a b](images/has space.png) broken |\n|---|---|\n| ![a b](images/has space.png) broken | x |",
   "starts": [
    0
@@ -5927,6 +7320,47 @@
       "type": "paragraph",
       "raw": "text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}",
       "text": "text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}",
+        "text": "text ![inline](i.png) in the middle and ![two](j.png){width=10.5%}"
+       }
+      ]
      }
     ]
    }
@@ -6046,6 +7480,47 @@
   ]
  },
  {
+  "src": "1. first\n2. ![](data:image/svg+xml,<svg></svg>)",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. ![](data:image/svg+xml,<svg></svg>)",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. ![](data:image/svg+xml,<svg></svg>)",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "![](data:image/svg+xml,<svg></svg>)",
+        "text": "![](data:image/svg+xml,<svg></svg>)"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | ![](data:image/svg+xml,<svg></svg>) |\n|---|---|\n| ![](data:image/svg+xml,<svg></svg>) | x |",
   "starts": [
    0
@@ -6153,6 +7628,47 @@
       "type": "paragraph",
       "raw": "$x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big",
       "text": "$x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. $x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. $x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. $x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "$x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big",
+        "text": "$x_i^2$ and $\\frac{a}{b}$ and $$\\sum_k k$$ inline big"
+       }
+      ]
      }
     ]
    }
@@ -6272,6 +7788,47 @@
   ]
  },
  {
+  "src": "1. first\n2. $5 and $10 are money, \\$x$ is not math",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. $5 and $10 are money, \\$x$ is not math",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. $5 and $10 are money, \\$x$ is not math",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "$5 and $10 are money, \\$x$ is not math",
+        "text": "$5 and $10 are money, \\$x$ is not math"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | $5 and $10 are money, \\$x$ is not math |\n|---|---|\n| $5 and $10 are money, \\$x$ is not math | x |",
   "starts": [
    0
@@ -6379,6 +7936,47 @@
       "type": "paragraph",
       "raw": "a $ b $ c and $x$y and $x$5",
       "text": "a $ b $ c and $x$y and $x$5"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. a $ b $ c and $x$y and $x$5",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. a $ b $ c and $x$y and $x$5",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. a $ b $ c and $x$y and $x$5",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "a $ b $ c and $x$y and $x$5",
+        "text": "a $ b $ c and $x$y and $x$5"
+       }
+      ]
      }
     ]
    }
@@ -6498,6 +8096,47 @@
   ]
  },
  {
+  "src": "1. first\n2. $\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. $\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. $\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "$\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$",
+        "text": "$\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
   "src": "| head | $\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$ |\n|---|---|\n| $\\text{含中文的文字}$ and $\\operatorname{softmax}(x)$ | x |",
   "starts": [
    0
@@ -6520,6 +8159,2746 @@
       "x"
      ]
     ]
+   }
+  ]
+ },
+ {
+  "src": "price \\$5 and $\\$ inside$\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "price \\$5 and $\\$ inside$\n",
+    "text": "price \\$5 and $\\$ inside$"
+   }
+  ]
+ },
+ {
+  "src": "## price \\$5 and $\\$ inside$",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## price \\$5 and $\\$ inside$",
+    "depth": 2,
+    "text": "price \\$5 and $\\$ inside$"
+   }
+  ]
+ },
+ {
+  "src": "- price \\$5 and $\\$ inside$\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- price \\$5 and $\\$ inside$\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- price \\$5 and $\\$ inside$\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "price \\$5 and $\\$ inside$",
+        "text": "price \\$5 and $\\$ inside$"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> price \\$5 and $\\$ inside$",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> price \\$5 and $\\$ inside$",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "price \\$5 and $\\$ inside$",
+      "text": "price \\$5 and $\\$ inside$"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. price \\$5 and $\\$ inside$",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. price \\$5 and $\\$ inside$",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. price \\$5 and $\\$ inside$",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "price \\$5 and $\\$ inside$",
+        "text": "price \\$5 and $\\$ inside$"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | price \\$5 and $\\$ inside$ |\n|---|---|\n| price \\$5 and $\\$ inside$ | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | price \\$5 and $\\$ inside$ |\n|---|---|\n| price \\$5 and $\\$ inside$ | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "price \\$5 and $\\$ inside$"
+    ],
+    "rows": [
+     [
+      "price \\$5 and $\\$ inside$",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "**bold $x$ math** and *$y$*\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "**bold $x$ math** and *$y$*\n",
+    "text": "**bold $x$ math** and *$y$*"
+   }
+  ]
+ },
+ {
+  "src": "## **bold $x$ math** and *$y$*",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## **bold $x$ math** and *$y$*",
+    "depth": 2,
+    "text": "**bold $x$ math** and *$y$*"
+   }
+  ]
+ },
+ {
+  "src": "- **bold $x$ math** and *$y$*\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- **bold $x$ math** and *$y$*\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- **bold $x$ math** and *$y$*\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "**bold $x$ math** and *$y$*",
+        "text": "**bold $x$ math** and *$y$*"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> **bold $x$ math** and *$y$*",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> **bold $x$ math** and *$y$*",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "**bold $x$ math** and *$y$*",
+      "text": "**bold $x$ math** and *$y$*"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. **bold $x$ math** and *$y$*",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. **bold $x$ math** and *$y$*",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. **bold $x$ math** and *$y$*",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "**bold $x$ math** and *$y$*",
+        "text": "**bold $x$ math** and *$y$*"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | **bold $x$ math** and *$y$* |\n|---|---|\n| **bold $x$ math** and *$y$* | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | **bold $x$ math** and *$y$* |\n|---|---|\n| **bold $x$ math** and *$y$* | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "**bold $x$ math** and *$y$*"
+    ],
+    "rows": [
+     [
+      "**bold $x$ math** and *$y$*",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "[[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "[[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]\n",
+    "text": "[[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]"
+   }
+  ]
+ },
+ {
+  "src": "## [[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## [[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]",
+    "depth": 2,
+    "text": "[[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]"
+   }
+  ]
+ },
+ {
+  "src": "- [[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- [[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- [[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "[[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]",
+        "text": "[[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> [[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> [[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "[[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]",
+      "text": "[[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. [[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. [[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. [[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "[[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]",
+        "text": "[[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | [[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]] |\n|---|---|\n| [[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]] | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | [[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]] |\n|---|---|\n| [[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]] | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "[[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]"
+    ],
+    "rows": [
+     [
+      "[[Some note]] and [[标题#^abc-1]] and [[board/card#^x1/y2]]",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "[[]] and [[ ]] and [[a\nb]]\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "[[]] and [[ ]] and [[a\nb]]\n",
+    "text": "[[]] and [[ ]] and [[a\nb]]"
+   }
+  ]
+ },
+ {
+  "src": "## [[]] and [[ ]] and [[a b]]",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## [[]] and [[ ]] and [[a b]]",
+    "depth": 2,
+    "text": "[[]] and [[ ]] and [[a b]]"
+   }
+  ]
+ },
+ {
+  "src": "- [[]] and [[ ]] and [[a b]]\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- [[]] and [[ ]] and [[a b]]\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- [[]] and [[ ]] and [[a b]]\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "[[]] and [[ ]] and [[a b]]",
+        "text": "[[]] and [[ ]] and [[a b]]"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> [[]] and [[ ]] and [[a b]]",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> [[]] and [[ ]] and [[a b]]",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "[[]] and [[ ]] and [[a b]]",
+      "text": "[[]] and [[ ]] and [[a b]]"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. [[]] and [[ ]] and [[a b]]",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. [[]] and [[ ]] and [[a b]]",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. [[]] and [[ ]] and [[a b]]",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "[[]] and [[ ]] and [[a b]]",
+        "text": "[[]] and [[ ]] and [[a b]]"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | [[]] and [[ ]] and [[a b]] |\n|---|---|\n| [[]] and [[ ]] and [[a b]] | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | [[]] and [[ ]] and [[a b]] |\n|---|---|\n| [[]] and [[ ]] and [[a b]] | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "[[]] and [[ ]] and [[a b]]"
+    ],
+    "rows": [
+     [
+      "[[]] and [[ ]] and [[a b]]",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": ":smile: and :+1: and :not_an_emoji: and 1:100:\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": ":smile: and :+1: and :not_an_emoji: and 1:100:\n",
+    "text": ":smile: and :+1: and :not_an_emoji: and 1:100:"
+   }
+  ]
+ },
+ {
+  "src": "## :smile: and :+1: and :not_an_emoji: and 1:100:",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## :smile: and :+1: and :not_an_emoji: and 1:100:",
+    "depth": 2,
+    "text": ":smile: and :+1: and :not_an_emoji: and 1:100:"
+   }
+  ]
+ },
+ {
+  "src": "- :smile: and :+1: and :not_an_emoji: and 1:100:\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- :smile: and :+1: and :not_an_emoji: and 1:100:\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- :smile: and :+1: and :not_an_emoji: and 1:100:\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": ":smile: and :+1: and :not_an_emoji: and 1:100:",
+        "text": ":smile: and :+1: and :not_an_emoji: and 1:100:"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> :smile: and :+1: and :not_an_emoji: and 1:100:",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> :smile: and :+1: and :not_an_emoji: and 1:100:",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": ":smile: and :+1: and :not_an_emoji: and 1:100:",
+      "text": ":smile: and :+1: and :not_an_emoji: and 1:100:"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. :smile: and :+1: and :not_an_emoji: and 1:100:",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. :smile: and :+1: and :not_an_emoji: and 1:100:",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. :smile: and :+1: and :not_an_emoji: and 1:100:",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": ":smile: and :+1: and :not_an_emoji: and 1:100:",
+        "text": ":smile: and :+1: and :not_an_emoji: and 1:100:"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | :smile: and :+1: and :not_an_emoji: and 1:100: |\n|---|---|\n| :smile: and :+1: and :not_an_emoji: and 1:100: | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | :smile: and :+1: and :not_an_emoji: and 1:100: |\n|---|---|\n| :smile: and :+1: and :not_an_emoji: and 1:100: | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     ":smile: and :+1: and :not_an_emoji: and 1:100:"
+    ],
+    "rows": [
+     [
+      ":smile: and :+1: and :not_an_emoji: and 1:100:",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "{字|注释} and {text|note|purple below} and {a|b|green}\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "{字|注释} and {text|note|purple below} and {a|b|green}\n",
+    "text": "{字|注释} and {text|note|purple below} and {a|b|green}"
+   }
+  ]
+ },
+ {
+  "src": "## {字|注释} and {text|note|purple below} and {a|b|green}",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## {字|注释} and {text|note|purple below} and {a|b|green}",
+    "depth": 2,
+    "text": "{字|注释} and {text|note|purple below} and {a|b|green}"
+   }
+  ]
+ },
+ {
+  "src": "- {字|注释} and {text|note|purple below} and {a|b|green}\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- {字|注释} and {text|note|purple below} and {a|b|green}\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- {字|注释} and {text|note|purple below} and {a|b|green}\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "{字|注释} and {text|note|purple below} and {a|b|green}",
+        "text": "{字|注释} and {text|note|purple below} and {a|b|green}"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> {字|注释} and {text|note|purple below} and {a|b|green}",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> {字|注释} and {text|note|purple below} and {a|b|green}",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "{字|注释} and {text|note|purple below} and {a|b|green}",
+      "text": "{字|注释} and {text|note|purple below} and {a|b|green}"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. {字|注释} and {text|note|purple below} and {a|b|green}",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. {字|注释} and {text|note|purple below} and {a|b|green}",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. {字|注释} and {text|note|purple below} and {a|b|green}",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "{字|注释} and {text|note|purple below} and {a|b|green}",
+        "text": "{字|注释} and {text|note|purple below} and {a|b|green}"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | {字\\|注释} and {text\\|note\\|purple below} and {a\\|b\\|green} |\n|---|---|\n| {字\\|注释} and {text\\|note\\|purple below} and {a\\|b\\|green} | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | {字\\|注释} and {text\\|note\\|purple below} and {a\\|b\\|green} |\n|---|---|\n| {字\\|注释} and {text\\|note\\|purple below} and {a\\|b\\|green} | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "{字|注释} and {text|note|purple below} and {a|b|green}"
+    ],
+    "rows": [
+     [
+      "{字|注释} and {text|note|purple below} and {a|b|green}",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "{\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "{\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|\n",
+    "text": "{\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|"
+   }
+  ]
+ },
+ {
+  "src": "## {\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## {\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|",
+    "depth": 2,
+    "text": "{\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|"
+   }
+  ]
+ },
+ {
+  "src": "- {\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- {\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- {\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "{\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|",
+        "text": "{\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> {\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> {\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "{\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|",
+      "text": "{\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. {\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. {\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. {\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "{\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|",
+        "text": "{\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | {\\{x\\}\\|n} and {$\\frac{a}{b}$\\|formula} and {broken\\| |\n|---|---|\n| {\\{x\\}\\|n} and {$\\frac{a}{b}$\\|formula} and {broken\\| | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | {\\{x\\}\\|n} and {$\\frac{a}{b}$\\|formula} and {broken\\| |\n|---|---|\n| {\\{x\\}\\|n} and {$\\frac{a}{b}$\\|formula} and {broken\\| | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "{\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|"
+    ],
+    "rows": [
+     [
+      "{\\{x\\}|n} and {$\\frac{a}{b}$|formula} and {broken|",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "line one  \nline two\\\nline three\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "line one  \nline two\\\nline three\n",
+    "text": "line one  \nline two\\\nline three"
+   }
+  ]
+ },
+ {
+  "src": "## line one   line two\\ line three",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## line one   line two\\ line three",
+    "depth": 2,
+    "text": "line one   line two\\ line three"
+   }
+  ]
+ },
+ {
+  "src": "- line one   line two\\ line three\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- line one   line two\\ line three\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- line one   line two\\ line three\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "line one   line two\\ line three",
+        "text": "line one   line two\\ line three"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> line one   line two\\ line three",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> line one   line two\\ line three",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "line one   line two\\ line three",
+      "text": "line one   line two\\ line three"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. line one   line two\\ line three",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. line one   line two\\ line three",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. line one   line two\\ line three",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "line one   line two\\ line three",
+        "text": "line one   line two\\ line three"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | line one   line two\\ line three |\n|---|---|\n| line one   line two\\ line three | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | line one   line two\\ line three |\n|---|---|\n| line one   line two\\ line three | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "line one   line two\\ line three"
+    ],
+    "rows": [
+     [
+      "line one   line two\\ line three",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "hard<br>break\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "hard<br>break\n",
+    "text": "hard<br>break"
+   }
+  ]
+ },
+ {
+  "src": "## hard<br>break",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## hard<br>break",
+    "depth": 2,
+    "text": "hard<br>break"
+   }
+  ]
+ },
+ {
+  "src": "- hard<br>break\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- hard<br>break\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- hard<br>break\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "hard<br>break",
+        "text": "hard<br>break"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> hard<br>break",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> hard<br>break",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "hard<br>break",
+      "text": "hard<br>break"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. hard<br>break",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. hard<br>break",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. hard<br>break",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "hard<br>break",
+        "text": "hard<br>break"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | hard<br>break |\n|---|---|\n| hard<br>break | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | hard<br>break |\n|---|---|\n| hard<br>break | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "hard<br>break"
+    ],
+    "rows": [
+     [
+      "hard<br>break",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "\\# not heading \\- not list \\> not quote\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "\\# not heading \\- not list \\> not quote\n",
+    "text": "\\# not heading \\- not list \\> not quote"
+   }
+  ]
+ },
+ {
+  "src": "## \\# not heading \\- not list \\> not quote",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## \\# not heading \\- not list \\> not quote",
+    "depth": 2,
+    "text": "\\# not heading \\- not list \\> not quote"
+   }
+  ]
+ },
+ {
+  "src": "- \\# not heading \\- not list \\> not quote\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- \\# not heading \\- not list \\> not quote\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- \\# not heading \\- not list \\> not quote\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "\\# not heading \\- not list \\> not quote",
+        "text": "\\# not heading \\- not list \\> not quote"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> \\# not heading \\- not list \\> not quote",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> \\# not heading \\- not list \\> not quote",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "\\# not heading \\- not list \\> not quote",
+      "text": "\\# not heading \\- not list \\> not quote"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. \\# not heading \\- not list \\> not quote",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. \\# not heading \\- not list \\> not quote",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. \\# not heading \\- not list \\> not quote",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "\\# not heading \\- not list \\> not quote",
+        "text": "\\# not heading \\- not list \\> not quote"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | \\# not heading \\- not list \\> not quote |\n|---|---|\n| \\# not heading \\- not list \\> not quote | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | \\# not heading \\- not list \\> not quote |\n|---|---|\n| \\# not heading \\- not list \\> not quote | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "\\# not heading \\- not list \\> not quote"
+    ],
+    "rows": [
+     [
+      "\\# not heading \\- not list \\> not quote",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "tab\there and trailing spaces   \n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "tab\there and trailing spaces   \n",
+    "text": "tab\there and trailing spaces   "
+   }
+  ]
+ },
+ {
+  "src": "## tab\there and trailing spaces   ",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## tab\there and trailing spaces   ",
+    "depth": 2,
+    "text": "tab\there and trailing spaces"
+   }
+  ]
+ },
+ {
+  "src": "- tab\there and trailing spaces   \n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- tab\there and trailing spaces   \n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- tab\there and trailing spaces   \n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "tab   here and trailing spaces   ",
+        "text": "tab   here and trailing spaces   "
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> tab\there and trailing spaces   ",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> tab\there and trailing spaces   ",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "tab\there and trailing spaces   ",
+      "text": "tab\there and trailing spaces   "
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. tab\there and trailing spaces   ",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. tab\there and trailing spaces",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. tab\there and trailing spaces",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "tab  here and trailing spaces",
+        "text": "tab  here and trailing spaces"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "space",
+    "raw": "   "
+   }
+  ]
+ },
+ {
+  "src": "| head | tab\there and trailing spaces    |\n|---|---|\n| tab\there and trailing spaces    | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | tab\there and trailing spaces    |\n|---|---|\n| tab\there and trailing spaces    | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "tab\there and trailing spaces"
+    ],
+    "rows": [
+     [
+      "tab\there and trailing spaces",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**\n",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**\n",
+    "text": "emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**"
+   }
+  ]
+ },
+ {
+  "src": "## emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "## emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**",
+    "depth": 2,
+    "text": "emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**"
+   }
+  ]
+ },
+ {
+  "src": "- emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**\n- second",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**\n- second",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**",
+        "text": "emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**"
+       }
+      ]
+     },
+     {
+      "raw": "- second",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "second",
+        "text": "second"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**",
+      "text": "emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. first\n2. emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. first\n2. emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. first\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "first",
+        "text": "first"
+       }
+      ]
+     },
+     {
+      "raw": "2. emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**",
+        "text": "emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| head | emoji 😀 and 𝕏 surrogate **𝕏bold𝕏** |\n|---|---|\n| emoji 😀 and 𝕏 surrogate **𝕏bold𝕏** | x |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| head | emoji 😀 and 𝕏 surrogate **𝕏bold𝕏** |\n|---|---|\n| emoji 😀 and 𝕏 surrogate **𝕏bold𝕏** | x |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "head",
+     "emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**"
+    ],
+    "rows": [
+     [
+      "emoji 😀 and 𝕏 surrogate **𝕏bold𝕏**",
+      "x"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| a | b |\n|---|---|\n| {字\\|注} | $a\\|b$ |\n| [[ref]] | [[标题#^id]] |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| a | b |\n|---|---|\n| {字\\|注} | $a\\|b$ |\n| [[ref]] | [[标题#^id]] |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "a",
+     "b"
+    ],
+    "rows": [
+     [
+      "{字|注}",
+      "$a|b$"
+     ],
+     [
+      "[[ref]]",
+      "[[标题#^id]]"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| {text\\|note\\|green} | `x\\|y` |\n|---|---|\n| ==h== | :smile: |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| {text\\|note\\|green} | `x\\|y` |\n|---|---|\n| ==h== | :smile: |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "{text|note|green}",
+     "`x|y`"
+    ],
+    "rows": [
+     [
+      "==h==",
+      ":smile:"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "# Title\r\n\r\npara one\r\nstill one\r\n\r\n- a\r\n- b\r\n",
+  "starts": null,
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "# Title\n\n",
+    "depth": 1,
+    "text": "Title"
+   },
+   {
+    "type": "paragraph",
+    "raw": "para one\nstill one",
+    "text": "para one\nstill one"
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "list",
+    "raw": "- a\n- b\n",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- a\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "a",
+        "text": "a"
+       }
+      ]
+     },
+     {
+      "raw": "- b",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "b",
+        "text": "b"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "a\rb\r\rc",
+  "starts": null,
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "a\nb",
+    "text": "a\nb"
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "paragraph",
+    "raw": "c",
+    "text": "c"
+   }
+  ]
+ },
+ {
+  "src": "> quote\r\n> more\r\n\r\n```\r\ncode\r\n```",
+  "starts": null,
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> quote\n> more",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "quote\nmore",
+      "text": "quote\nmore"
+     }
+    ]
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "code",
+    "raw": "```\ncode\n```",
+    "lang": "",
+    "text": "code"
+   }
+  ]
+ },
+ {
+  "src": "&amp; &lt; &nbsp; &#x4e2d; and &copy; in text",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "&amp; &lt; &nbsp; &#x4e2d; and &copy; in text",
+    "text": "&amp; &lt; &nbsp; &#x4e2d; and &copy; in text"
+   }
+  ]
+ },
+ {
+  "src": "# &lt;Title&gt;\n\n- &amp;item",
+  "starts": [
+   0,
+   17
+  ],
+  "tokens": [
+   {
+    "type": "heading",
+    "raw": "# &lt;Title&gt;\n\n",
+    "depth": 1,
+    "text": "&lt;Title&gt;"
+   },
+   {
+    "type": "list",
+    "raw": "- &amp;item",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- &amp;item",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "&amp;item",
+        "text": "&amp;item"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "[^1]: 词",
+  "starts": null,
+  "tokens": [
+   {
+    "type": "footnoteDef",
+    "raw": "[^1]: 词"
+   }
+  ]
+ },
+ {
+  "src": "text with a note[^1]\n\n[^1]: the note",
+  "starts": null,
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "text with a note[^1]",
+    "text": "text with a note[^1]"
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "footnoteDef",
+    "raw": "[^1]: the note"
+   }
+  ]
+ },
+ {
+  "src": "[toc]\n\n# heading",
+  "starts": [
+   0,
+   7
+  ],
+  "tokens": [
+   {
+    "type": "toc",
+    "raw": "[toc]\n\n"
+   },
+   {
+    "type": "heading",
+    "raw": "# heading",
+    "depth": 1,
+    "text": "heading"
+   }
+  ]
+ },
+ {
+  "src": "[^1]\n\n[toc] inline",
+  "starts": [
+   0,
+   6
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "[^1]",
+    "text": "[^1]"
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "paragraph",
+    "raw": "[toc] inline",
+    "text": "[toc] inline"
+   }
+  ]
+ },
+ {
+  "src": "```mermaid\ngraph TD\n  A[开始] --> B{判断}\n  B -->|是| C\n```",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "code",
+    "raw": "```mermaid\ngraph TD\n  A[开始] --> B{判断}\n  B -->|是| C\n```",
+    "lang": "mermaid",
+    "text": "graph TD\n  A[开始] --> B{判断}\n  B -->|是| C"
+   }
+  ]
+ },
+ {
+  "src": "[![logo](images/logo.png)](https://example.com)",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "[![logo](images/logo.png)](https://example.com)",
+    "text": "[![logo](images/logo.png)](https://example.com)"
+   }
+  ]
+ },
+ {
+  "src": "[text ![i](a.png){width=20%} more](https://example.com)",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "[text ![i](a.png){width=20%} more](https://example.com)",
+    "text": "[text ![i](a.png){width=20%} more](https://example.com)"
+   }
+  ]
+ },
+ {
+  "src": "- item ![i](images/a.png){width=40%}\n- ![only](images/b.png){width=30% loop=true}",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- item ![i](images/a.png){width=40%}\n- ![only](images/b.png){width=30% loop=true}",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- item ![i](images/a.png){width=40%}\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "item ![i](images/a.png){width=40%}",
+        "text": "item ![i](images/a.png){width=40%}"
+       }
+      ]
+     },
+     {
+      "raw": "- ![only](images/b.png){width=30% loop=true}",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "![only](images/b.png){width=30% loop=true}",
+        "text": "![only](images/b.png){width=30% loop=true}"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> ![q](images/q.png){width=50%}\n> caption line",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> ![q](images/q.png){width=50%}\n> caption line",
+    "tokens": [
+     {
+      "type": "paragraph",
+      "raw": "![q](images/q.png){width=50%}\ncaption line",
+      "text": "![q](images/q.png){width=50%}\ncaption line"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "| img | x |\n|---|---|\n| ![c](images/c.png){width=10%} | y |",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "table",
+    "raw": "| img | x |\n|---|---|\n| ![c](images/c.png){width=10%} | y |",
+    "align": [
+     null,
+     null
+    ],
+    "header": [
+     "img",
+     "x"
+    ],
+    "rows": [
+     [
+      "![c](images/c.png){width=10%}",
+      "y"
+     ]
+    ]
+   }
+  ]
+ },
+ {
+  "src": "- item\n\n  ```py\n  code in item\n  ```\n- next",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- item\n\n  ```py\n  code in item\n  ```\n- next",
+    "ordered": false,
+    "start": null,
+    "loose": true,
+    "items": [
+     {
+      "raw": "- item\n\n  ```py\n  code in item\n  ```\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "paragraph",
+        "raw": "item",
+        "text": "item"
+       },
+       {
+        "type": "space",
+        "raw": "\n\n"
+       },
+       {
+        "type": "code",
+        "raw": "```py\ncode in item\n```",
+        "lang": "py",
+        "text": "code in item"
+       }
+      ]
+     },
+     {
+      "raw": "- next",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "paragraph",
+        "raw": "next",
+        "text": "next"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "- item\n\n  $$\n  x^2\n  $$\n- next",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- item\n\n  $$\n  x^2\n  $$\n- next",
+    "ordered": false,
+    "start": null,
+    "loose": true,
+    "items": [
+     {
+      "raw": "- item\n\n  $$\n  x^2\n  $$\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "paragraph",
+        "raw": "item",
+        "text": "item"
+       },
+       {
+        "type": "space",
+        "raw": "\n\n"
+       },
+       {
+        "type": "blockMath",
+        "raw": "$$\nx^2\n$$",
+        "latex": "x^2"
+       }
+      ]
+     },
+     {
+      "raw": "- next",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "paragraph",
+        "raw": "next",
+        "text": "next"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "- item\n  1. sub one\n  2. sub two\n- next",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- item\n  1. sub one\n  2. sub two\n- next",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- item\n  1. sub one\n  2. sub two\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "item\n",
+        "text": "item"
+       },
+       {
+        "type": "list",
+        "raw": "1. sub one\n2. sub two",
+        "ordered": true,
+        "start": 1,
+        "loose": false,
+        "items": [
+         {
+          "raw": "1. sub one\n",
+          "task": false,
+          "checked": null,
+          "tokens": [
+           {
+            "type": "text",
+            "raw": "sub one",
+            "text": "sub one"
+           }
+          ]
+         },
+         {
+          "raw": "2. sub two",
+          "task": false,
+          "checked": null,
+          "tokens": [
+           {
+            "type": "text",
+            "raw": "sub two",
+            "text": "sub two"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "raw": "- next",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "next",
+        "text": "next"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "- item\n  - [ ] sub task\n  - [x] sub done\n- next",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- item\n  - [ ] sub task\n  - [x] sub done\n- next",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- item\n  - [ ] sub task\n  - [x] sub done\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "item",
+        "text": "item"
+       },
+       {
+        "type": "taskList",
+        "raw": "\n- [ ] sub task\n- [x] sub done\n",
+        "items": [
+         {
+          "text": "sub task",
+          "checked": false,
+          "nested": []
+         },
+         {
+          "text": "sub done",
+          "checked": true,
+          "nested": []
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "raw": "- next",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "next",
+        "text": "next"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "- item\n   ```\n   indented fence in item\n   ```",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- item\n   ```\n   indented fence in item\n   ```",
+    "ordered": false,
+    "start": null,
+    "loose": false,
+    "items": [
+     {
+      "raw": "- item\n   ```\n   indented fence in item\n   ```",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "item\n",
+        "text": "item"
+       },
+       {
+        "type": "code",
+        "raw": " ```\n indented fence in item\n ```",
+        "lang": "",
+        "text": "indented fence in item"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> ```js\n> code in quote\n> ```\n> after",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> ```js\n> code in quote\n> ```\n> after",
+    "tokens": [
+     {
+      "type": "code",
+      "raw": "```js\ncode in quote\n```\n",
+      "lang": "js",
+      "text": "code in quote"
+     },
+     {
+      "type": "paragraph",
+      "raw": "after",
+      "text": "after"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> $$\n> y\n> $$",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> $$\n> y\n> $$",
+    "tokens": [
+     {
+      "type": "blockMath",
+      "raw": "$$\ny\n$$",
+      "latex": "y"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> 1. ordered in quote\n>    1. nested ordered",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> 1. ordered in quote\n>    1. nested ordered",
+    "tokens": [
+     {
+      "type": "list",
+      "raw": "1. ordered in quote\n   1. nested ordered",
+      "ordered": true,
+      "start": 1,
+      "loose": false,
+      "items": [
+       {
+        "raw": "1. ordered in quote\n   1. nested ordered",
+        "task": false,
+        "checked": null,
+        "tokens": [
+         {
+          "type": "text",
+          "raw": "ordered in quote\n",
+          "text": "ordered in quote"
+         },
+         {
+          "type": "list",
+          "raw": "1. nested ordered",
+          "ordered": true,
+          "start": 1,
+          "loose": false,
+          "items": [
+           {
+            "raw": "1. nested ordered",
+            "task": false,
+            "checked": null,
+            "tokens": [
+             {
+              "type": "text",
+              "raw": "nested ordered",
+              "text": "nested ordered"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "> - [ ] task in quote\n> - [x] done in quote",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> - [ ] task in quote\n> - [x] done in quote",
+    "tokens": [
+     {
+      "type": "taskList",
+      "raw": "- [ ] task in quote\n- [x] done in quote\n",
+      "items": [
+       {
+        "text": "task in quote",
+        "checked": false,
+        "nested": []
+       },
+       {
+        "text": "done in quote",
+        "checked": true,
+        "nested": []
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "1. one\n   - [ ] task under ordered\n2. two",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "1. one\n   - [ ] task under ordered\n2. two",
+    "ordered": true,
+    "start": 1,
+    "loose": false,
+    "items": [
+     {
+      "raw": "1. one\n   - [ ] task under ordered\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "one",
+        "text": "one"
+       },
+       {
+        "type": "taskList",
+        "raw": "\n- [ ] task under ordered\n",
+        "items": [
+         {
+          "text": "task under ordered",
+          "checked": false,
+          "nested": []
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "raw": "2. two",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "two",
+        "text": "two"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "inline $a +\nb$ across lines",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "inline $a +\nb$ across lines",
+    "text": "inline $a +\nb$ across lines"
+   }
+  ]
+ },
+ {
+  "src": "$x\ny$ and $p\n\nq$ not across paragraphs",
+  "starts": [
+   0,
+   14
+  ],
+  "tokens": [
+   {
+    "type": "paragraph",
+    "raw": "$x\ny$ and $p",
+    "text": "$x\ny$ and $p"
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "paragraph",
+    "raw": "q$ not across paragraphs",
+    "text": "q$ not across paragraphs"
    }
   ]
  },

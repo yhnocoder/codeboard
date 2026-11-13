@@ -5,13 +5,18 @@ import Testing
 
 /// The Swift parser against what @yhnocoder/markdown makes of the same synthetic Markdown (Fixtures, written by
 /// tools/markdown/fixtures.mjs)
+/// Syntax the TypeScript package reads and this package does not (guideline 4): footnotes, <details> and [toc] read as
+/// the text, link definitions and HTML CommonMark makes of them, so cases with them are not compared
+func unsupported(_ src: String) -> Bool {
+  src.contains("[^") || src.contains("<details>") || src.lowercased().contains("[toc]")
+}
+
 @Suite struct ParityTests {
   @Test func blockTokensMatchMarked() throws {
     var failures: [String] = []
     for c in try JSON.load("blocks").array {
       let src = c["src"].string!
-      // <details> is not supported (guideline 4): it stays the HTML block CommonMark reads
-      if src.hasPrefix("<details>") { continue }
+      if unsupported(src) { continue }
       let mine = JSON.array(BlockLexer.lex(src).map(fixtureJSON))
       if let d = mine.firstDifference(c["tokens"]) { failures.append("\(src.debugDescription): \(d)") }
     }
@@ -22,7 +27,7 @@ import Testing
     var failures: [String] = []
     for c in try JSON.load("blocks").array {
       let src = c["src"].string!
-      if src.hasPrefix("<details>") { continue }
+      if unsupported(src) { continue }
       let theirs = c["starts"].ints
       let mine = MarkdownSourceOps.blockStarts(src)
       if mine != theirs {
@@ -39,8 +44,6 @@ import Testing
       let p = MarkdownSourceOps.Part(source: c["src"].string!)
       let cut = c["cut"].ints!
       let mv = c["move"]["blocks"].ints!
-      let to = c["move"]["to"].ints.map { _ in 0 } ?? 0
-      _ = to
       let mine = MarkdownSourceOps.cutBlocks(p, cut.first!..<(cut.last! + 1))
       if mine?.rest.source != part(c["cutResult"]["rest"]) || mine?.cut.source != part(c["cutResult"]["part"]) {
         failures.append("cut \(c["src"]): \(String(describing: mine))")
@@ -62,6 +65,7 @@ import Testing
     var failures: [String] = []
     for c in try JSON.load("inline").array {
       let src = c["src"].string!
+      if unsupported(src) { continue }
       let mine = JSON.array(Spans.of(src).map(fixtureJSON))
       if let d = mine.firstDifference(c["spans"]) { failures.append("\(src.debugDescription): \(d)") }
     }

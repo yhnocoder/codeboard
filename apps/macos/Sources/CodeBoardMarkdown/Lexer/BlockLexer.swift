@@ -12,9 +12,13 @@ struct BlockLexer {
 
   static func lex(_ source: String) -> [Token] {
     var lx = BlockLexer()
-    // marked turns \r\n and \r into \n first; the package does the same before parsing (offsets assume none are left)
-    return lx.blockTokens(Mapped(source), [])
+    // marked reads \r\n and \r as \n; the mapped text keeps pointing at the original source
+    var text = Mapped(source)
+    if source.utf16.contains(0x0D) { text = text.replacing(carriageReturn, template: "\n") }
+    return lx.blockTokens(text, [])
   }
+
+  private static let carriageReturn = JSRegex(#"\r\n|\r"#, flags: "g")
 
   mutating func blockTokens(_ input: Mapped, _ start: [Token], lastParagraphClipped clippedIn: Bool = false) -> [Token]
   {

@@ -150,5 +150,186 @@
    "md": "para one\n\ninserted **block**\n\n- x\n\n$$\nx\n$$\n\npara two",
    "layout": null
   }
+ },
+ {
+  "src": "a\n\n> quote\n> more\n\nb",
+  "cut": [
+   1
+  ],
+  "move": {
+   "blocks": [
+    1
+   ],
+   "to": 0
+  },
+  "cutResult": {
+   "rest": {
+    "md": "a\n\nb",
+    "layout": null
+   },
+   "part": {
+    "md": "> quote\n> more",
+    "layout": null
+   }
+  },
+  "moveResult": {
+   "md": "> quote\n> more\n\na\n\nb",
+   "layout": null
+  },
+  "insertResult": {
+   "md": "a\n\ninserted **block**\n\n- x\n\n> quote\n> more\n\nb",
+   "layout": null
+  }
+ },
+ {
+  "src": "a\n\n- [ ] t1\n- [x] t2\n\nb",
+  "cut": [
+   1
+  ],
+  "move": {
+   "blocks": [
+    1
+   ],
+   "to": 3
+  },
+  "cutResult": {
+   "rest": {
+    "md": "a\n\nb",
+    "layout": null
+   },
+   "part": {
+    "md": "\n\n- [ ] t1\n- [x] t2",
+    "layout": null
+   }
+  },
+  "moveResult": {
+   "md": "a\n\nb\n\n\n\n- [ ] t1\n- [x] t2",
+   "layout": null
+  },
+  "insertResult": {
+   "md": "a\n\ninserted **block**\n\n- x\n\n\n\n- [ ] t1\n- [x] t2\n\nb",
+   "layout": null
+  }
+ },
+ {
+  "src": "a\n\n| x | y |\n|---|---|\n| 1 | 2 |\n\nTable: cap\n\nb",
+  "cut": [
+   1
+  ],
+  "move": {
+   "blocks": [
+    1
+   ],
+   "to": 0
+  },
+  "cutResult": {
+   "rest": {
+    "md": "a\n\nb",
+    "layout": null
+   },
+   "part": {
+    "md": "| x | y |\n|---|---|\n| 1 | 2 |\n\nTable: cap",
+    "layout": null
+   }
+  },
+  "moveResult": {
+   "md": "| x | y |\n|---|---|\n| 1 | 2 |\n\nTable: cap\n\na\n\nb",
+   "layout": null
+  },
+  "insertResult": {
+   "md": "a\n\ninserted **block**\n\n- x\n\n| x | y |\n|---|---|\n| 1 | 2 |\n\nTable: cap\n\nb",
+   "layout": null
+  }
+ },
+ {
+  "src": "a\n\n- x\n  - y\n    - z\n- w\n\nb",
+  "cut": [
+   1
+  ],
+  "move": {
+   "blocks": [
+    1
+   ],
+   "to": 3
+  },
+  "cutResult": {
+   "rest": {
+    "md": "a\n\nb",
+    "layout": null
+   },
+   "part": {
+    "md": "- x\n  - y\n    - z\n- w",
+    "layout": null
+   }
+  },
+  "moveResult": {
+   "md": "a\n\nb\n\n- x\n  - y\n    - z\n- w",
+   "layout": null
+  },
+  "insertResult": {
+   "md": "a\n\ninserted **block**\n\n- x\n\n* x\n  - y\n    - z\n* w\n\nb",
+   "layout": null
+  }
+ },
+ {
+  "src": "a\n\nb\n\nc",
+  "cut": [
+   0,
+   1
+  ],
+  "move": {
+   "blocks": [
+    0
+   ],
+   "to": 3
+  },
+  "cutResult": {
+   "rest": {
+    "md": "c",
+    "layout": null
+   },
+   "part": {
+    "md": "a\n\nb",
+    "layout": null
+   }
+  },
+  "moveResult": {
+   "md": "b\n\nc\n\na",
+   "layout": null
+  },
+  "insertResult": {
+   "md": "a\n\ninserted **block**\n\n- x\n\nb\n\nc",
+   "layout": null
+  }
+ },
+ {
+  "src": "- a\n\n# h\n\n- b",
+  "cut": [
+   1
+  ],
+  "move": {
+   "blocks": [
+    0
+   ],
+   "to": 3
+  },
+  "cutResult": {
+   "rest": {
+    "md": "- a\n\n* b",
+    "layout": null
+   },
+   "part": {
+    "md": "# h",
+    "layout": null
+   }
+  },
+  "moveResult": {
+   "md": "# h\n\n- b\n\n* a",
+   "layout": null
+  },
+  "insertResult": {
+   "md": "- a\n\ninserted **block**\n\n- x\n\n# h\n\n- b",
+   "layout": null
+  }
  }
 ]

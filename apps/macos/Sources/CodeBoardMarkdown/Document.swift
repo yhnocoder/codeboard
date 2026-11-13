@@ -206,7 +206,7 @@ struct DocumentBuilder {
         let text = t.text.dropFirst(cap.range.length)
         table.caption = cell(text)
         out[ti].kind = .table(table)
-        out[ti].range = out[ti].range.lowerBound..<t.raw.trimmingEnd(0x0A).source.upperBound
+        out[ti].range = out[ti].range.lowerBound..<range(t.raw).upperBound
         prevTable = nil
         continue
       }
@@ -217,10 +217,9 @@ struct DocumentBuilder {
     return out
   }
 
-  private func range(_ m: Mapped) -> Range<Int> {
-    let t = m.trimmingEnd(0x0A)
-    return t.isEmpty ? m.source.lowerBound..<m.source.lowerBound : t.source
-  }
+  /// a block's source range without the line breaks after it: up to just after its last unit (a \r\n read as \n maps
+  /// its \n to the \n, so the end of the mapping would take the \r in)
+  private func range(_ m: Mapped) -> Range<Int> { span(m.trimmingEnd(0x0A)) }
 
   mutating func block(_ t: Token) -> MDBlock? {
     let r = range(t.raw)

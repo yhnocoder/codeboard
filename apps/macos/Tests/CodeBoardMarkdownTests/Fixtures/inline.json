@@ -3265,6 +3265,10 @@
   "spans": []
  },
  {
+  "src": "first",
+  "spans": []
+ },
+ {
   "src": "head",
   "spans": []
  },
@@ -3570,6 +3574,885 @@
  },
  {
   "src": "y and $x$5",
+  "spans": []
+ },
+ {
+  "src": "price ",
+  "spans": []
+ },
+ {
+  "src": "5 and ",
+  "spans": []
+ },
+ {
+  "src": " inside$",
+  "spans": []
+ },
+ {
+  "src": "bold ",
+  "spans": []
+ },
+ {
+  "src": " math",
+  "spans": []
+ },
+ {
+  "src": "[[]] and [[ ]] and [[a b]]",
+  "spans": [
+   {
+    "from": 19,
+    "to": 26,
+    "marks": [
+     [
+      19,
+      21
+     ],
+     [
+      24,
+      26
+     ]
+    ],
+    "inner": [
+     21,
+     24
+    ],
+    "tag": "span",
+    "tagClass": "md-refsrc",
+    "href": null,
+    "atom": {
+     "type": "ref",
+     "label": "a b"
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "[[]] and [[ ]] and ",
+  "spans": []
+ },
+ {
+  "src": " and :not_an_emoji: and 1:100:",
+  "spans": []
+ },
+ {
+  "src": "字",
+  "spans": []
+ },
+ {
+  "src": "{x}",
+  "spans": []
+ },
+ {
+  "src": " and {broken|",
+  "spans": []
+ },
+ {
+  "src": "line one   line two\\ line three",
+  "spans": []
+ },
+ {
+  "src": "hard",
+  "spans": []
+ },
+ {
+  "src": "break",
+  "spans": []
+ },
+ {
+  "src": " not heading ",
+  "spans": []
+ },
+ {
+  "src": " not list ",
+  "spans": []
+ },
+ {
+  "src": " not quote",
+  "spans": []
+ },
+ {
+  "src": "tab\there and trailing spaces",
+  "spans": []
+ },
+ {
+  "src": "tab   here and trailing spaces   ",
+  "spans": []
+ },
+ {
+  "src": "tab  here and trailing spaces",
+  "spans": []
+ },
+ {
+  "src": "emoji 😀 and 𝕏 surrogate ",
+  "spans": []
+ },
+ {
+  "src": "𝕏bold𝕏",
+  "spans": []
+ },
+ {
+  "src": "{字|注}",
+  "spans": [
+   {
+    "from": 0,
+    "to": 5,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      2,
+      5
+     ]
+    ],
+    "inner": [
+     1,
+     2
+    ],
+    "tag": "span",
+    "tagClass": "md-annotsrc",
+    "href": null,
+    "atom": {
+     "type": "annot",
+     "note": "注",
+     "color": "blue",
+     "below": false,
+     "text": "字"
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "$a|b$",
+  "spans": [
+   {
+    "from": 0,
+    "to": 5,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      4,
+      5
+     ]
+    ],
+    "inner": [
+     1,
+     4
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "math",
+     "latex": "a|b",
+     "display": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "[[ref]]",
+  "spans": [
+   {
+    "from": 0,
+    "to": 7,
+    "marks": [
+     [
+      0,
+      2
+     ],
+     [
+      5,
+      7
+     ]
+    ],
+    "inner": [
+     2,
+     5
+    ],
+    "tag": "span",
+    "tagClass": "md-refsrc",
+    "href": null,
+    "atom": {
+     "type": "ref",
+     "label": "ref"
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "[[标题#^id]]",
+  "spans": [
+   {
+    "from": 0,
+    "to": 10,
+    "marks": [
+     [
+      0,
+      2
+     ],
+     [
+      4,
+      10
+     ]
+    ],
+    "inner": [
+     2,
+     4
+    ],
+    "tag": "span",
+    "tagClass": "md-refsrc",
+    "href": null,
+    "atom": {
+     "type": "ref",
+     "label": "标题",
+     "target": "id"
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "{text|note|green}",
+  "spans": [
+   {
+    "from": 0,
+    "to": 17,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      5,
+      17
+     ]
+    ],
+    "inner": [
+     1,
+     5
+    ],
+    "tag": "span",
+    "tagClass": "md-annotsrc",
+    "href": null,
+    "atom": {
+     "type": "annot",
+     "note": "note",
+     "color": "green",
+     "below": false,
+     "text": "text"
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "`x|y`",
+  "spans": [
+   {
+    "from": 0,
+    "to": 5,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      4,
+      5
+     ]
+    ],
+    "inner": [
+     1,
+     4
+    ],
+    "tag": "code",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "==h==",
+  "spans": [
+   {
+    "from": 0,
+    "to": 5,
+    "marks": [
+     [
+      0,
+      2
+     ],
+     [
+      3,
+      5
+     ]
+    ],
+    "inner": [
+     2,
+     3
+    ],
+    "tag": "mark",
+    "tagClass": null,
+    "href": null,
+    "atom": null,
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": ":smile:",
+  "spans": [
+   {
+    "from": 0,
+    "to": 7,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      6,
+      7
+     ]
+    ],
+    "inner": [
+     1,
+     6
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "emoji",
+     "name": "smile"
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "para one\nstill one",
+  "spans": []
+ },
+ {
+  "src": "a\nb",
+  "spans": []
+ },
+ {
+  "src": "quote\nmore",
+  "spans": []
+ },
+ {
+  "src": "&amp; &lt; &nbsp; &#x4e2d; and &copy; in text",
+  "spans": []
+ },
+ {
+  "src": "&lt;Title&gt;",
+  "spans": []
+ },
+ {
+  "src": "&amp;item",
+  "spans": []
+ },
+ {
+  "src": "词",
+  "spans": []
+ },
+ {
+  "src": "text with a note[^1]",
+  "spans": [
+   {
+    "from": 16,
+    "to": 20,
+    "marks": [
+     [
+      16,
+      20
+     ]
+    ],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "fn",
+     "label": "1"
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "text with a note",
+  "spans": []
+ },
+ {
+  "src": "the note",
+  "spans": []
+ },
+ {
+  "src": "heading",
+  "spans": []
+ },
+ {
+  "src": "[^1]",
+  "spans": [
+   {
+    "from": 0,
+    "to": 4,
+    "marks": [
+     [
+      0,
+      4
+     ]
+    ],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "fn",
+     "label": "1"
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "[toc] inline",
+  "spans": []
+ },
+ {
+  "src": "[![logo](images/logo.png)](https://example.com)",
+  "spans": [
+   {
+    "from": 0,
+    "to": 47,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      25,
+      47
+     ]
+    ],
+    "inner": [
+     1,
+     25
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "https://example.com",
+    "atom": null,
+    "plain": false,
+    "kids": [
+     {
+      "from": 1,
+      "to": 25,
+      "marks": [],
+      "inner": null,
+      "tag": null,
+      "tagClass": null,
+      "href": null,
+      "atom": {
+       "type": "image",
+       "src": "images/logo.png",
+       "alt": "logo",
+       "title": "",
+       "width": null,
+       "frame": null,
+       "loop": false,
+       "altTo": 7,
+       "url": [
+        9,
+        24
+       ],
+       "widthAt": null,
+       "broken": false
+      },
+      "plain": false,
+      "kids": []
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "logo",
+  "spans": []
+ },
+ {
+  "src": "[text ![i](a.png){width=20%} more](https://example.com)",
+  "spans": [
+   {
+    "from": 0,
+    "to": 55,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      33,
+      55
+     ]
+    ],
+    "inner": [
+     1,
+     33
+    ],
+    "tag": "a",
+    "tagClass": "md-link",
+    "href": "https://example.com",
+    "atom": null,
+    "plain": false,
+    "kids": [
+     {
+      "from": 6,
+      "to": 28,
+      "marks": [],
+      "inner": null,
+      "tag": null,
+      "tagClass": null,
+      "href": null,
+      "atom": {
+       "type": "image",
+       "src": "a.png",
+       "alt": "i",
+       "title": "",
+       "width": 20,
+       "frame": null,
+       "loop": false,
+       "altTo": 9,
+       "url": [
+        11,
+        16
+       ],
+       "widthAt": [
+        17,
+        28
+       ],
+       "broken": false
+      },
+      "plain": false,
+      "kids": []
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "i",
+  "spans": []
+ },
+ {
+  "src": " more",
+  "spans": []
+ },
+ {
+  "src": "item ![i](images/a.png){width=40%}",
+  "spans": [
+   {
+    "from": 5,
+    "to": 34,
+    "marks": [],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "image",
+     "src": "images/a.png",
+     "alt": "i",
+     "title": "",
+     "width": 40,
+     "frame": null,
+     "loop": false,
+     "altTo": 8,
+     "url": [
+      10,
+      22
+     ],
+     "widthAt": [
+      23,
+      34
+     ],
+     "broken": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "item ",
+  "spans": []
+ },
+ {
+  "src": "![only](images/b.png){width=30% loop=true}",
+  "spans": [
+   {
+    "from": 0,
+    "to": 42,
+    "marks": [],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "image",
+     "src": "images/b.png",
+     "alt": "only",
+     "title": "",
+     "width": 30,
+     "frame": null,
+     "loop": true,
+     "altTo": 6,
+     "url": [
+      8,
+      20
+     ],
+     "widthAt": [
+      21,
+      42
+     ],
+     "broken": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "only",
+  "spans": []
+ },
+ {
+  "src": "![q](images/q.png){width=50%}\ncaption line",
+  "spans": [
+   {
+    "from": 0,
+    "to": 29,
+    "marks": [],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "image",
+     "src": "images/q.png",
+     "alt": "q",
+     "title": "",
+     "width": 50,
+     "frame": null,
+     "loop": false,
+     "altTo": 3,
+     "url": [
+      5,
+      17
+     ],
+     "widthAt": [
+      18,
+      29
+     ],
+     "broken": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "q",
+  "spans": []
+ },
+ {
+  "src": "\ncaption line",
+  "spans": []
+ },
+ {
+  "src": "img",
+  "spans": []
+ },
+ {
+  "src": "![c](images/c.png){width=10%}",
+  "spans": [
+   {
+    "from": 0,
+    "to": 29,
+    "marks": [],
+    "inner": null,
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "image",
+     "src": "images/c.png",
+     "alt": "c",
+     "title": "",
+     "width": 10,
+     "frame": null,
+     "loop": false,
+     "altTo": 3,
+     "url": [
+      5,
+      17
+     ],
+     "widthAt": [
+      18,
+      29
+     ],
+     "broken": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "y",
+  "spans": []
+ },
+ {
+  "src": "sub one",
+  "spans": []
+ },
+ {
+  "src": "sub two",
+  "spans": []
+ },
+ {
+  "src": "sub task",
+  "spans": []
+ },
+ {
+  "src": "sub done",
+  "spans": []
+ },
+ {
+  "src": "ordered in quote",
+  "spans": []
+ },
+ {
+  "src": "nested ordered",
+  "spans": []
+ },
+ {
+  "src": "task in quote",
+  "spans": []
+ },
+ {
+  "src": "done in quote",
+  "spans": []
+ },
+ {
+  "src": "task under ordered",
+  "spans": []
+ },
+ {
+  "src": "inline $a +\nb$ across lines",
+  "spans": [
+   {
+    "from": 7,
+    "to": 14,
+    "marks": [
+     [
+      7,
+      8
+     ],
+     [
+      13,
+      14
+     ]
+    ],
+    "inner": [
+     8,
+     13
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "math",
+     "latex": "a +\nb",
+     "display": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": "inline ",
+  "spans": []
+ },
+ {
+  "src": " across lines",
+  "spans": []
+ },
+ {
+  "src": "$x\ny$ and $p",
+  "spans": [
+   {
+    "from": 0,
+    "to": 5,
+    "marks": [
+     [
+      0,
+      1
+     ],
+     [
+      4,
+      5
+     ]
+    ],
+    "inner": [
+     1,
+     4
+    ],
+    "tag": null,
+    "tagClass": null,
+    "href": null,
+    "atom": {
+     "type": "math",
+     "latex": "x\ny",
+     "display": false
+    },
+    "plain": false,
+    "kids": []
+   }
+  ]
+ },
+ {
+  "src": " and $p",
+  "spans": []
+ },
+ {
+  "src": "q$ not across paragraphs",
   "spans": []
  },
  {

@@ -57,6 +57,23 @@ import Testing
     #expect(strong.inner.map { text(src, $0) } == "b\n> c")
   }
 
+  @Test func lineEndingsAreReadAsMarkedReadsThemAndRangesStayInTheSource() throws {
+    let src = "# Title\r\n\r\npara **b**\r\nstill\r\n\r\n- a\r- b"
+    let d = MarkdownDocument(src)
+    #expect(d.blocks.map { text(src, $0.range) } == ["# Title", "para **b**\r\nstill", "- a\r- b"])
+    let strong = try #require(d.blocks[1].inlines.first)
+    #expect(text(src, strong.range) == "**b**")
+    #expect(MarkdownSourceOps.blockStarts(src) == nil)
+  }
+
+  @Test func unsupportedSyntaxShowsAsText() {
+    // a one-word footnote definition reads as a link definition: still a block, shown as its source
+    let d = MarkdownDocument("[^1]: 词")
+    #expect(d.blocks.count == 1 && d.blocks[0].inlines.isEmpty && d.blocks[0].inlineText?.string == "[^1]: 词")
+    #expect(MarkdownDocument("[toc]").blocks.first?.kind == .paragraph)
+    #expect(MarkdownDocument("a[^1] b").blocks.first?.inlines.isEmpty == true)
+  }
+
   @Test func atomsAndLinks() throws {
     let src = "x $a^2$ ![i](p.png \"cap\"){width=40%} [[R#^id]] [t](https://u) <https://v> :smile: {w|n|green below}"
     let d = MarkdownDocument(src)
