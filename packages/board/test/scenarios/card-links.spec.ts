@@ -22,8 +22,9 @@
 //                            while the Note is edited the same
 //  refFastClicks             four fast clicks on such a reference open its source and nothing else (no board opened or entered,
 //                            no card added); three fast clicks on the preview's arrow go to the card once
-//  refNearDoubleClickSource  at rest a double-click on a reference to a card near the view opens its source with the camera
-//                            where it was (one click goes there once the double-click window is over)
+//  refNearDoubleClickSource  a double-click on a reference to a card near the view (or to a Section) opens its source with the
+//                            camera where it was, at rest and while editing (one click goes there once the double-click
+//                            window is over)
 //  refNearFastClicks         four fast clicks on a reference to a card near the view open its source: the camera stays and no
 //                            click lands on the board's empty space (whose double-click adds a card)
 //  refWhileEditorLoads       a click on a reference in the text a Note shows while its editor's code loads opens nothing
@@ -579,9 +580,12 @@ async function clicksBoard() {
     "",
     `The step is [[Kernels › LLMEngine.step#^bK/${step.id}]], the inner one [[Sub › Inner#^nS]], near [[here#^${near.id}]], far [[there#^${far.id}]].`,
     "",
+    "The stage is [[Stage#^gA]].",
+    "",
     "last line",
   ].join("\n");
   put(A, { id: "nA", kind: "note", look: "note", md } as NoteCard, 80, 120, 460);
+  A.sections.push({ id: "gA", title: "Stage", x: 1500, y: 300, w: 300, h: 240 });
   A.cards.push({ id: "frS", kind: "board", board: "bS" });
   A.place.frS = { x: 640, y: 120, w: 360, h: 260 };
   A.cam = { x: 0, y: 0, z: 1 };
@@ -597,7 +601,7 @@ async function clicksBoard() {
       (n) =>
         [...document.querySelectorAll(`${n} .nbody .md-ref`)].filter(
           (e) => !e.classList.contains("missing") && !e.classList.contains("gone"),
-        ).length === 4,
+        ).length === 5,
       NA,
     ),
   );
@@ -756,6 +760,16 @@ test("refNearDoubleClickSource", async () => {
   const dbl = { ...(await look()), went: went(n0) };
   await leave();
   await idle(h);
+  // a reference to a Section, which a click goes to at once otherwise: the same
+  await clicks(await at("Stage"), 2);
+  await until(h, "a double-click on the Section's reference opens its source", async () =>
+    (await look()).caret.endsWith("[["),
+  );
+  await hold(h, DBL_WIDE, "a go-to left over from the first click would move the camera in this time");
+  await idle(h);
+  const section = await look();
+  await leave();
+  await idle(h);
   // while the Note is edited the same: the first click's ping waits out the window too, so the second lands on the reference
   const b = (await pg.locator('.card[data-id="nA"] .nbody p').last().boundingBox())!;
   await pg.mouse.dblclick(b.x + b.width - 4, b.y + b.height / 2);
@@ -785,6 +799,11 @@ test("refNearDoubleClickSource", async () => {
       dbl.cards === cards &&
       !dbl.picked,
     { dbl, cam },
+  );
+  check(
+    "refNearDoubleClickSource at rest a double-click on a reference to a Section opens its source too, the camera where it was",
+    section.caret.endsWith("[[") && section.cam === cam && section.cards === cards,
+    { section, cam },
   );
   check(
     "refNearDoubleClickSource while the Note is edited a double-click on it opens its source too, the camera where it was",

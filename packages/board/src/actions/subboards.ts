@@ -507,6 +507,14 @@ export function cardElsewhere(to: { id: string; place?: string }): string | unde
  *  the reference in that time is a double-click, which opens the reference's source (interact.ts at rest, the editor's own
  *  double-click while editing) and leaves the camera where it is, so the second press still lands on the reference */
 export function goToNearCard(id: string, editing: boolean) {
+  goAfterDblClick(id, () => (editing ? void revealCard(id) : openCardRef(id)));
+}
+/** A click on a reference that goes somewhere at once (a Section, a board, an item the page does not preview): there as Go to
+ *  Card goes, once the double-click window is over, as goToNearCard */
+export function goToRefAfterDblClick(id: string, place?: string) {
+  goAfterDblClick(id, () => openCardRef(id, place));
+}
+function goAfterDblClick(id: string, go: () => void) {
   if (nearGoDropped.v && nearGoDropped.v === lastDown()) return;
   if (nearGo.pending && nearGoing.v === id) return nearGo.stop();
   nearGoing.v = id;
@@ -515,8 +523,7 @@ export function goToNearCard(id: string, editing: boolean) {
     ctl = new AbortController();
   nearGo.start(() => {
     ctl.abort();
-    if (editing) void revealCard(id);
-    else openCardRef(id);
+    go();
     clickWent();
   }, gap);
   // the editor takes a double-click on a reference itself (its source) and gives the page only the first click: a second press

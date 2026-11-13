@@ -54,11 +54,14 @@ export function MdStatic(p: {
         !p.inert &&
         md.click(e, p.src, {
           openLink: (url) => A.openMdLink(url, md),
-          // a reference, or a link to an item (Copy Link): the page's preview when it takes it; ⌘-click goes there
+          // a reference, or a link to an item (Copy Link): the page's preview when it takes it, else there once the double-click
+          // window is over (its double-click opens the source); ⌘-click goes there at once
           openRef: (id, to) => {
             const r = (e.target as Element).closest<HTMLElement>(".md-ref, .md-cardlink"),
               go = e.metaKey || e.ctrlKey;
-            if (!(r && !go && p.onRef?.(to, r))) openRef(id, to);
+            if (r && !go) {
+              if (!p.onRef?.(to, r)) A.goToRefAfterDblClick(id, to.place);
+            } else openRef(id, to);
           },
           onToggle: p.onToggle,
         })
