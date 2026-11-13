@@ -86,6 +86,9 @@
     0 1px 1px rgba(50, 35, 10, 0.04), 0 3px 8px -2px rgba(50, 35, 10, 0.06), 0 18px 36px -14px rgba(50, 35, 10, 0.16);
   --sh-lift: 0 0 0 0.5px var(--hair), 0 4px 10px -2px rgba(50, 35, 10, 0.1), 0 30px 60px -18px rgba(50, 35, 10, 0.3);
   --sh-float: 0 0 0 0.5px var(--hair), 0 2px 6px -1px rgba(50, 35, 10, 0.08), 0 10px 28px -8px rgba(50, 35, 10, 0.18);
+  /* a panel that stands on its shadow alone, no hairline (the sidenote popups); a look drawn with flat rules sets its own */
+  --sh-pop:
+    0 1px 2px rgba(50, 35, 10, 0.09), 0 8px 18px -6px rgba(50, 35, 10, 0.14), 0 24px 48px -16px rgba(50, 35, 10, 0.24);
   /* Warm Ink's own structure rules (themes.css, :root.look-warm-ink) draw with these; other looks never read them.
      The card: a crisp edge (hairline, a 1px inner highlight on top, a 1.5px warm dark edge at the bottom) over a soft layered
      shadow; the arrows' warm ink; the frosted toolbar and menu; the sliding pill under the hovered row / active tool; the sweep
@@ -195,6 +198,7 @@
   --sh-soft: 0 1px 1px rgba(0, 0, 0, 0.25), 0 3px 8px -2px rgba(0, 0, 0, 0.3), 0 18px 36px -14px rgba(0, 0, 0, 0.55);
   --sh-lift: 0 0 0 0.5px var(--hair), 0 4px 10px -2px rgba(0, 0, 0, 0.4), 0 30px 60px -18px rgba(0, 0, 0, 0.75);
   --sh-float: 0 0 0 0.5px var(--hair), 0 2px 6px -1px rgba(0, 0, 0, 0.35), 0 10px 28px -8px rgba(0, 0, 0, 0.55);
+  --sh-pop: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 18px -6px rgba(0, 0, 0, 0.45), 0 24px 48px -16px rgba(0, 0, 0, 0.6);
   --wi-ring: 0 0 0 0.5px var(--hair), inset 0 1px 0 rgba(255, 245, 230, 0.13), inset 0 -1.5px 0 rgba(0, 0, 0, 0.35);
   --wi-soft:
     0 0.5px 1px rgba(0, 0, 0, 0.22), 0 2px 5px -1px rgba(0, 0, 0, 0.2), 0 10px 22px -10px rgba(0, 0, 0, 0.3),
@@ -8980,6 +8984,13 @@ mark.wdiff {
   overscroll-behavior: contain;
   padding: 0;
 }
+/* no frame: the panel stands on its shadow (--sh-pop) with a faint edge in the Highlight's colour, pinned or not. :root to
+   outweigh a look's own .pop shadow (themes.css) and .pop.pinned's accent ring */
+:root .pop:is(.k-highlight, .k-notes) {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent),
+    var(--sh-pop);
+}
 .hxpop .hh {
   position: sticky;
   top: 0;
@@ -8989,7 +9000,7 @@ mark.wdiff {
   align-items: center;
   gap: 8px;
   min-height: 34px;
-  padding: 5px 10px 3px 12px;
+  padding: 5px 10px 3px 14px;
   font: 600 12px var(--sys);
   color: var(--ink-2);
   cursor: grab;
@@ -9023,30 +9034,37 @@ mark.wdiff {
 }
 .hxpop .tray {
   display: grid;
-  gap: 6px;
-  padding: 2px 8px 8px;
+  padding: 0 14px 10px;
 }
+/* the slips are rows, not boxes: a hairline between two */
 .hxpop .slip {
   position: relative;
-  background: color-mix(in srgb, var(--ink) 2.5%, transparent);
-  box-shadow: 0 0 0 1px var(--hair);
-  border-radius: 9px;
-  padding: 7px 10px 9px;
+  padding: 10px 0 11px;
   display: grid;
   /* minmax(0, …): an auto column would grow to a Code sidenote's longest line and push it past the slip; the code scrolls instead */
   grid-template-columns: minmax(0, 1fr);
   gap: 3px;
   min-width: 0;
 }
-.hxpop.hx-band .slip.always {
-  background: color-mix(in srgb, var(--accent) 6%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+.hxpop .slip + .slip {
+  box-shadow: 0 -1px 0 var(--line);
+}
+/* an Always Show one: a stroke in the Highlight's colour down its left, as its lines have in the code */
+.hxpop .slip.always {
+  --rail: color-mix(in srgb, var(--accent) 45%, transparent);
+  padding-left: 10px;
+  box-shadow: inset 2px 0 0 var(--rail);
 }
 .hxpop.hx-bracket .slip.always {
+  --rail: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+.hxpop .slip + .slip.always {
   box-shadow:
-    inset 2px 0 0 color-mix(in srgb, var(--accent) 70%, transparent),
-    0 0 0 1px var(--hair);
-  border-radius: 3px 9px 9px 3px;
+    inset 2px 0 0 var(--rail),
+    0 -1px 0 var(--line);
+}
+.hxpop .tray > :is(.add, .ncomp) {
+  margin-top: 6px;
 }
 /* a slip's tools take no room: over its top right corner while it is hovered or holds the focus (not while it is edited). They
    stay in the layout, see-through, so Tab still reaches them */

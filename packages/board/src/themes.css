@@ -643,6 +643,7 @@
   --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 1px var(--ink), 6px 6px 0 rgba(22, 22, 22, 0.06);
   --sh-float: 0 0 0 1px var(--rule);
+  --sh-pop: var(--sh-float);
   --r-card: 0px;
   --display: var(--head-font);
   --label-font: var(--mono);
@@ -701,6 +702,7 @@
   --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 1px var(--ink), 6px 6px 0 rgba(0, 0, 0, 0.5);
   --sh-float: 0 0 0 1px var(--rule);
+  --sh-pop: var(--sh-float);
   --r-card: 0px;
   --display: var(--head-font);
   --label-font: var(--mono);
@@ -765,6 +767,7 @@
   --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 2px var(--rule), 8px 8px 0 2px var(--rule);
   --sh-float: 0 0 0 2px var(--rule), 4px 4px 0 2px var(--rule);
+  --sh-pop: var(--sh-float);
   --r-card: 0px;
   --display: var(--sys);
   --label-font: var(--sys);
@@ -825,6 +828,7 @@
   --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 2px var(--rule), 8px 8px 0 2px #0e0b08;
   --sh-float: 0 0 0 2px var(--rule), 4px 4px 0 2px #0e0b08;
+  --sh-pop: var(--sh-float);
   --r-card: 0px;
   --display: var(--sys);
   --label-font: var(--sys);
@@ -889,6 +893,7 @@
   --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 0.5px var(--hair), 0 14px 28px -14px rgba(25, 23, 20, 0.35);
   --sh-float: 0 0 0 0.5px var(--hair), 0 1px 0 var(--hair);
+  --sh-pop: var(--sh-float);
   --r-card: 0px;
   --display: var(--serif);
   --label-font: var(--serif);
@@ -947,6 +952,7 @@
   --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 0.5px var(--hair), 0 14px 28px -14px rgba(0, 0, 0, 0.7);
   --sh-float: 0 0 0 0.5px var(--hair), 0 1px 0 var(--hair);
+  --sh-pop: var(--sh-float);
   --r-card: 0px;
   --display: var(--serif);
   --label-font: var(--serif);
@@ -1008,6 +1014,7 @@
   --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 1px var(--rule), 0 18px 36px -18px rgba(19, 55, 43, 0.35);
   --sh-float: 0 0 0 1px var(--rule);
+  --sh-pop: var(--sh-float);
   --r-card: 0px;
   --display: var(--serif);
   --label-font: var(--serif);
@@ -1064,6 +1071,7 @@
   --sh-soft: 0 0 transparent;
   --sh-lift: 0 0 0 1px var(--rule), 0 18px 36px -18px rgba(0, 0, 0, 0.7);
   --sh-float: 0 0 0 1px var(--rule);
+  --sh-pop: var(--sh-float);
   --r-card: 0px;
   --display: var(--serif);
   --label-font: var(--serif);
