@@ -31,6 +31,16 @@ describe("moving Markdown blocks", () => {
     expect(moveMdBlocks({ md, layout: null }, 2, 3, 0)?.md).toBe("C\n\nA\n\nB\n\nD");
     expect(moveMdBlocks({ md, layout: null }, 1, 2, 2)).toBeNull();
   });
+  it("keeps a list put next to a list of its kind a list of its own, so the block count holds", () => {
+    const md = "- a\n- b\n\nP\n\n- c";
+    const cut = cutMdBlocks({ md, layout: null }, 1, 2)!;
+    expect(cut.rest.md).toBe("- a\n- b\n\n* c");
+    expect(moveMdBlocks({ md, layout: null }, 2, 3, 1)?.md).toBe("- a\n- b\n\n* c\n\nP");
+    expect(insertMdBlocks({ md: "1. x", layout: null }, 1, { md: "1. y\n2. z", layout: null })?.md).toBe(
+      "1. x\n\n1) y\n2) z",
+    );
+    expect(insertMdBlocks({ md: "- x", layout: null }, 1, { md: "1. y", layout: null })?.md).toBe("- x\n\n1. y");
+  });
   it("finds blocks by what they say, however they are written, nearest to a hint", () => {
     expect(findMdBlocks("A\n\n* x\n* y\n\nB\n\n- x\n- y", "- x\n- y", 3)).toEqual([3, 4]);
     expect(findMdBlocks("A\n\n* x\n* y\n\nB\n\n- x\n- y", "- x\n- y", 0)).toEqual([1, 2]);

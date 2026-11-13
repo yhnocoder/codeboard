@@ -1,6 +1,7 @@
 // Moving whole top-level blocks (as mdBlockStarts splits them) out of one Markdown text and into another, with the layout
 // (table sizes, code wrap: by position, layout.ts) moving with its tables and code blocks. Untouched blocks keep their source
-// as written; blocks are joined by a blank line
+// as written; blocks are joined by a blank line (a list put after a list of its kind changes its markers, or the two would
+// read as one)
 import type { JSONContent } from "@tiptap/core";
 import { mdBlockStarts, parseMd } from "./schema";
 import type { MdLayout, TableLayout } from "./layout";
@@ -39,6 +40,22 @@ function split(p: MdPart): Block[] | null {
   });
 }
 
+/** Top-level blocks Markdown reads in a text */
+const blockCount = (md: string) => parseMd(md).content?.length ?? 0;
+/**
+ * b's source written so that it stays its own block after a: a list right after a list of the same kind would continue it
+ * (one list, the block indexes after it off by one), so b's item markers change to the other bullet (- *) or delimiter (. ))
+ */
+function apart(a: string, b: string): string {
+  const m = /^( {0,3})([-*+]|\d{1,9}[.)])[ \t]/.exec(b);
+  if (!m || blockCount(`${a}\n\n${b}`) === blockCount(a) + blockCount(b)) return b;
+  const ind = m[1],
+    other = (k: string) =>
+      k === "-" ? "*" : k === "*" || k === "+" ? "-" : k.endsWith(".") ? `${k.slice(0, -1)})` : `${k.slice(0, -1)}.`;
+  const re = new RegExp(`^${ind}([-*+]|\\d{1,9}[.)])(?=[ \\t])`, "gm");
+  return b.replace(re, (_, k: string) => `${ind}${other(k)}`);
+}
+
 function join(bs: Block[]): MdPart {
   const tables = bs.flatMap((b) => b.tables),
     wrap = bs.flatMap((b) => b.wrap).flatMap((w, i) => (w ? [i] : []));
@@ -46,11 +63,10 @@ function join(bs: Block[]): MdPart {
   const layout: MdLayout = {};
   if (tables.length) layout.tables = tables;
   if (wrap.length) layout.wrap = wrap;
+  const srcs = bs.map((b) => b.src).filter(Boolean);
+  for (let i = 1; i < srcs.length; i++) srcs[i] = apart(srcs[i - 1], srcs[i]);
   return {
-    md: bs
-      .map((b) => b.src)
-      .filter(Boolean)
-      .join("\n\n"),
+    md: srcs.join("\n\n"),
     layout: layout.tables || layout.wrap ? layout : null,
   };
 }
