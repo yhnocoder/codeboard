@@ -55,6 +55,16 @@ describe("source document round trips", () => {
     ])
       expect(sourceMd(schema.nodeFromJSON(sourceDoc(md)).toJSON())).toBe(serializeMd(parseMd(md)));
   });
+  it("a heading's text ending in # keeps it", () => {
+    for (const text of ["Issue #", "C #", "###"]) {
+      const md = sourceMd({
+        type: "doc",
+        content: [{ type: "paragraph", attrs: { level: 2 }, content: [{ type: "text", text }] }],
+      });
+      expect(sourceDoc(md).content![0].content![0].text, md).toBe(text);
+      expect(markdown.render(md), md).toContain(`${text}</h2>`);
+    }
+  });
   it("a hard break is written as <br>, which renders the same", () => {
     const md = sourceMd(sourceDoc("a  \nb"));
     expect(md).toBe("a<br>b");

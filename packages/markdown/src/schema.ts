@@ -480,7 +480,7 @@ export function sourceBlocksMd(content: JSONContent[]): string {
         const src = cell
           ? shieldCell(t)
           : level
-            ? shield(`${"#".repeat(level)} ${t}`)
+            ? shield(`${"#".repeat(level)} ${t.replace(CLOSING_HASHES, "$1\\$2")}`)
             : shield(t.replace(HEAD_START, "$1\\"));
         return { type: "paragraph", content: src ? [{ type: "text", text: src }] : undefined };
       }
@@ -492,6 +492,8 @@ export function sourceBlocksMd(content: JSONContent[]): string {
     .replace(/\s+$/, "");
 }
 const HEAD_START = /^( {0,3})(?=#{1,6}(?:[ \t]|$))/;
+/** A heading's text ending in a run of # after a space (or made of one): read back, that run would be its closing sequence */
+const CLOSING_HASHES = /(^|[ \t])(#+[ \t]*)$/;
 const shieldCell = (t: string) =>
   shield(t.replace(/\\.|\|/g, (m) => (m === "|" ? "\\|" : m))).replace(/\|/g, (c) =>
     String.fromCharCode(SHIELD + c.charCodeAt(0)),
