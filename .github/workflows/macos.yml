@@ -28,35 +28,15 @@ jobs:
           sudo xcode-select -s "$(find /Applications -maxdepth 1 -type d -name 'Xcode_*.app' | sort -V | tail -1)"
           swift --version
       - run: swift build
-      # TEMPORARY diagnostics for the canvas tests' hang on the runner (PR #214): each suite alone under a hard kill
-      # after 90 s, so the log names the one that stalls; removed once the cause is fixed
-      - name: Canvas test suites one by one (diagnostic)
-        env:
-          WATCHDOG_FILE: ${{ runner.temp }}/watchdog.txt
-        run: |
-          swift build --build-tests
-          for s in notesAreDrawnBeforeTheBoardShowsWithoutAWebView noteImagesShareTheImageCardsCache \
-            anSVGImageCardIsRasterized anSVGInANoteIsRasterized \
-            canvasIsLayerBacked ChooseModeTests ConnectTests CloseCardsTests LabelPlacementTests CameraTests \
-            MotionTests RestWeightTests LevelsTests RestPlanTests RedrawQueueTests NoteLevelsTests NoteSizeTests \
-            CanvasNoteTests CodeLayoutTests SceneTests ByteLRUTests PrototypeMotionTests RefTests SnapshotKeyTests \
-            SnapshotStoreTests RenderQueueTests SVGRasterizerTests ThemeTests SeededTests; do
-            start=$(date +%s)
-            code=0
-            CI=true perl -e 'alarm shift; exec @ARGV' 90 swift test --skip-build --filter "CodeBoardCanvasTests.*$s" > "$RUNNER_TEMP/suite-$s.log" 2>&1 || code=$?
-            echo "=== $s: exit $code after $(( $(date +%s) - start )) s; $(grep -c 'passed after' "$RUNNER_TEMP/suite-$s.log") passed"
-            if [ $code -ne 0 ]; then echo "--- its output:"; tail -60 "$RUNNER_TEMP/suite-$s.log"; fi
-          done
       - run: swift test
         env:
+          # the watchdog dumps every thread's stack to this file if the tests hang (CodeBoardCanvasTests/Watchdog.swift)
           WATCHDOG_FILE: ${{ runner.temp }}/watchdog.txt
-      - name: Upload the watchdog's output and the suites' logs (diagnostic)
-        if: always()
+      - name: Upload the watchdog's thread dump if the tests hung
+        if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: canvas-test-diagnostics
-          path: |
-            ${{ runner.temp }}/watchdog.txt
-            ${{ runner.temp }}/suite-*.log
+          name: canvas-test-watchdog
+          path: ${{ runner.temp }}/watchdog.txt
           if-no-files-found: ignore
       - run: swift format lint --strict -r Sources Tests Package.swift

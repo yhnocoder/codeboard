@@ -135,12 +135,7 @@ public final class CanvasView: NSView {
     _ = BoardFonts.complete
   }
 
-  /// TEMPORARY (the canvas tests' hang on CI, PR #214): where `load` has got to; tests set it
-  nonisolated(unsafe) package static var trace: (@Sendable (String) -> Void)?
-
   private func load(_ board: VaultBoard, in vault: Vault, theme: Theme, keepCamera: Bool) async throws {
-    let trace = CanvasView.trace
-    trace?("load: start")
     // before its first board the canvas is its colour in the look it will show
     if scene == nil {
       self.theme = theme
@@ -154,17 +149,12 @@ public final class CanvasView: NSView {
     let images = self.images
     let known = CanvasView.highlighter
     let svgs = self.svgs
-    trace?("load: before the detached task")
     let (scene, overviews, shadow, highlighter) = try await Task.detached(priority: .userInitiated) {
-      trace?("load: detached task started")
       let package = vault.url(of: board.path)
       let b = try vault.board(at: board.path)
       let highlighter = known ?? Highlighter()
-      trace?("load: highlighter")
       Scene.layOutNotes(b, package: package, vault: vault, theme: theme, highlighter: highlighter)
-      trace?("load: laid out")
       let scene = try Scene(b, package: package, vault: vault, theme: theme, highlighter: highlighter)
-      trace?("load: scene")
       let fit = Camera.fit(scene.bounds, in: size).zoom
       let overviews = await withTaskGroup(of: (Int, Overview).self) { g in
         for (i, it) in scene.items.enumerated() {
@@ -183,19 +173,13 @@ public final class CanvasView: NSView {
           }
         }
         var out = [Overview](repeating: (nil, 1, .drawn), count: scene.items.count)
-        for await (i, o) in g {
-          out[i] = o
-          trace?("load: overview \(i)")
-        }
+        for await (i, o) in g { out[i] = o }
         return out
       }
-      trace?("load: overviews")
       // drawn here once, so installing it on the main thread finds it ready
       _ = theme.backdrop.flatMap(Backdrop.image)
-      trace?("load: backdrop")
       return (scene, overviews, CanvasView.shadow(theme), highlighter)
     }.value
-    trace?("load: back on the main actor")
     CanvasView.highlighter = highlighter
     guard load == loads else { return }
     // the same board in another look: swapped in at rest, as a gesture may have started while it was drawn
@@ -205,7 +189,6 @@ public final class CanvasView: NSView {
     }
     shown = (board, vault)
     install(scene, overviews: overviews, shadow: shadow, theme: theme, keepCamera: keepCamera)
-    trace?("load: installed")
   }
 
   // MARK: Layers
