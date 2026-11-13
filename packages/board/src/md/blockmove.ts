@@ -378,12 +378,12 @@ function makeCopy(id: string, els: HTMLElement[], float: boolean, grabY: number)
   return { g, sheet, kind, x, y, w, h };
 }
 
-/** Draws the copy where the move says: over a Note a thumbnail at the pointer's lower right, else where it was grabbed */
 /** The copy's scale off any Note: a floating copy the board has since been zoomed in on is shown smaller, so it still fits
  *  beside its Note on screen */
 const restK = (d: Move) =>
   (d.float ? Math.min(1, (FLOAT_FIT * window.innerHeight) / (cam.z * d.h)) : 1) * (d.drag ? 1.012 : 1);
 
+/** Draws the copy where the move says: over a Note a thumbnail at the pointer's lower right, else where it was grabbed */
 function place(d: Move) {
   const over = d.over && d.drag;
   if (over !== d.g.classList.contains("is-over") && !d.g.classList.contains("is-glide")) {
@@ -861,6 +861,19 @@ function floatDown(e: PointerEvent) {
 
 /** Wires ⌘-moving blocks: the editing Note's element takes ⌘-presses before its editor, the keys put a floating block back */
 export function wireBlockMove() {
+  // a floating copy is scaled for the zoom (restK): drawn again as the board is zoomed, not only when next grabbed
+  rooted(() =>
+    createEffect(
+      on(
+        () => (moving() ? cam.z : null),
+        () => {
+          const d = mv.v;
+          if (d?.float && !d.drag && !d.settling) place(d);
+        },
+        { defer: true },
+      ),
+    ),
+  );
   // a floating block whose Note is not being edited: its blocks are found again when the Note's Markdown changes (an undo,
   // a sync, another window), and hidden there; gone, the copy goes
   rooted(() =>

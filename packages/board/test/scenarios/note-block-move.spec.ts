@@ -271,6 +271,30 @@ test("noteBlockMoveKeepsSourceAsWritten", async () => {
   );
 });
 
+/** A floating copy fits beside its Note on screen at any zoom: zooming the board in shrinks it as it goes, not only when it is
+ *  next grabbed */
+test("noteBlockFloatRescalesOnZoom", async () => {
+  const h = await board();
+  await h.page.keyboard.press("ControlOrMeta+a");
+  const p = await box(h, `${card("n1")} .md-pm > p:not(.md-pad) >> nth=0`);
+  await cmdClick(h, { x: p.x + 20, y: p.y + 6 });
+  await until(h, "it floats", async () => (await h.page.locator(".bmv-g.is-float").count()) === 1);
+  const fit = 0.6 * 560;
+  const tall = async () => (await box(h, ".bmv-g.is-float")).height;
+  const before = await tall();
+  await h.page.mouse.move(700, 450);
+  await h.page.keyboard.down("Control");
+  for (let i = 0; i < 12; i++) {
+    await h.page.mouse.wheel(0, -120);
+    await idle(h);
+  }
+  await h.page.keyboard.up("Control");
+  await idle(h);
+  const after = await tall(),
+    k = await h.page.locator(".bmv-g.is-float").evaluate((e) => Number((e as HTMLElement).style.scale || 1));
+  check("noteBlockFloatRescalesOnZoom fits on screen", k < 1 && after <= fit + 2, { before, after, k, fit });
+});
+
 /** A picked-up block floating beside its Note goes with its board: switching to another board leaves nothing of it there (the
  *  copy, the card's bottom edge strip, a height held on the card) */
 test("noteBlockFloatBoardSwitch", async () => {
