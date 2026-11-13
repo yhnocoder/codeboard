@@ -38,7 +38,8 @@ for (const { look, dark } of looks) {
     await page.goto(pathToFileURL(path.join(mac, "web/dist/page.html")).href);
     await page.waitForFunction(() => window.note);
     const text = fs.readFileSync(f, "utf8");
-    const images = pathToFileURL(path.dirname(f)).href;
+    // the page serves addresses under images/ from this folder (Markdown.setAssetBase("images", …))
+    const images = pathToFileURL(path.join(path.dirname(f), "images")).href;
     await page.evaluate(
       ([text, look, dark, images]) =>
         window.note.mount([

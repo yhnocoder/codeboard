@@ -50,7 +50,12 @@ for file in a[6...] {
   ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
   ctx.translateBy(x: 0, y: CGFloat(h))
   ctx.scaleBy(x: scale, y: -scale)
-  layout.draw(in: ctx, scale: scale, clip: CGRect(origin: .zero, size: layout.size)) { _ in nil }
+  let folder = url.deletingLastPathComponent()
+  layout.draw(in: ctx, scale: scale, clip: CGRect(origin: .zero, size: layout.size)) { slot in
+    CGImageSourceCreateWithURL(folder.appending(path: slot.src) as CFURL, nil).flatMap {
+      CGImageSourceCreateImageAtIndex($0, 0, nil)
+    }
+  }
   let t2 = Date()
   let png = out.appending(path: url.deletingPathExtension().lastPathComponent + ".png")
   let dest = CGImageDestinationCreateWithURL(png as CFURL, "public.png" as CFString, 1, nil)!

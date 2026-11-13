@@ -8,7 +8,8 @@ enum Looks {
   static let sys = ["-apple-system", "PingFang SC"]
   static let serif = ["Source Serif 4", "Songti SC"]
   static let mono = ["JetBrains Mono", "SF Mono", "Menlo"]
-  static let hand = ["Shantell Sans", "Kaiti SC"]
+  // the variable font names its family after its default instance
+  static let hand = ["Shantell Sans Light", "Kaiti SC"]
 
   static func theme(_ look: String, dark: Bool) -> MarkdownTheme {
     let c: (String) -> MDColor = { MDColor(hex: $0) }

@@ -81,6 +81,10 @@ enum Item {
   /// items drawn clipped to a rect (a code block or table wider than the body)
   case clip(CGRect, [Item])
   case image(MarkdownImageSlot)
+  /// an image's caption, or a broken image's box, in the figure's frame
+  case figure(FigureBox, CGRect)
+  /// {text|note}, its top left at the point
+  case annot(AnnotBox, CGPoint)
   /// a Mermaid diagram's shapes and labels, in points from the frame's top left
   case diagram([MDPath], [MDGlyphText], CGRect)
   /// a [[reference]], its baseline starting at the point
@@ -98,6 +102,11 @@ enum Item {
     case .image(let s): s.frame
     case .bullet(let r, _, _): r
     case .diagram(_, _, let r): r
+    case .figure(let f, let r):
+      CGRect(
+        x: r.minX + min(0, f.captionX), y: r.minY, width: max(r.width, f.caption?.size.width ?? 0), height: r.height)
+    case .annot(let b, let o):
+      CGRect(x: o.x - b.note.size.width, y: o.y, width: b.width + 2 * b.note.size.width, height: b.height)
     case .ref(let b, let o): CGRect(x: o.x, y: o.y - b.ascent, width: b.width, height: b.ascent + b.descent)
     case .math(let p, let size, let o, _):
       CGRect(
@@ -143,6 +152,8 @@ struct LayoutBuilder {
   var tableIndex = 0
   var codeIndex = 0
   var taskIndex = 0
+  /// how deep in quotes and list items the block being laid out is
+  var nesting = 0
   var m: MarkdownTheme.Metrics { theme.metrics }
 
   init(theme: MarkdownTheme, resources: MarkdownResources, info: MDLayoutInfo?, width: CGFloat) {
@@ -217,16 +228,17 @@ struct LayoutBuilder {
     switch b.kind {
     case .paragraph:
       guard let t = b.inlineText else { return y }
-      // a paragraph that is only an image is centred
+      // centred (render.ts md-psized): a paragraph with a narrowed image anywhere, one that is only an image at the top
+      let images = b.inlines.compactMap { i -> MDImage? in
+        if case .atom(.image(let img)) = i.kind { return img }
+        return nil
+      }
       let alone =
-        b.inlines.count == 1
-        && {
-          if case .atom(.image) = b.inlines[0].kind { return true }
-          return false
-        }()
+        nesting == 0 && images.count == 1 && b.inlines.count == 1
         && t.string.trimmingCharacters(in: .whitespaces).utf16.count == b.inlines[0].range.count
+      let centred = alone || images.contains { $0.width != nil }
       return paragraph(
-        t, b.inlines, x: x, width: width, y: y, style: style, lineHeight: CGFloat(m.lineHeight), center: alone)
+        t, b.inlines, x: x, width: width, y: y, style: style, lineHeight: CGFloat(m.lineHeight), center: centred)
     case .heading(let level):
       guard let t = b.inlineText else { return y }
       let l = min(5, max(0, level - 1))
@@ -241,7 +253,9 @@ struct LayoutBuilder {
       // the bar is the quote's left border; its padding comes after it
       let bar = CGFloat(m.quoteBar)
       let pad = CGFloat(m.quotePadding) + bar
+      nesting += 1
       let (_, end) = stack(children, x: x + pad, width: width - pad, y: y, style: s)
+      nesting -= 1
       items.append(.fill(CGRect(x: x, y: y, width: bar, height: end - y), radius: 0, theme.colors.hair))
       return end
     case .list(let list):
@@ -360,12 +374,24 @@ struct LayoutBuilder {
         case .math(let pic, let size):
           let color = (attrs[kCTForegroundColorAttributeName] as! CGColor)
           items.append(.math(pic, size: size, origin: CGPoint(x: x, y: l.origin.y), color: Self.mdColor(color)))
-        case .image(let src, let nth, let size, let broken, let frame, let loops):
+        case .image(let src, let nth, let figure, let broken, let frame, let loops):
+          // the box is centred on the baseline less half an x-height (vertical-align: middle)
           let mid = (a.ascent - a.descent) / 2
-          let r = CGRect(x: x, y: l.origin.y - mid - size.height / 2, width: size.width, height: size.height)
+          let top = l.origin.y - mid - figure.height / 2
+          if let label = figure.broken {
+            _ = label
+            items.append(.figure(figure, CGRect(x: x, y: top, width: figure.width, height: figure.height)))
+            break
+          }
+          let r = CGRect(x: x, y: top, width: figure.image.width, height: figure.image.height)
           let slot = MarkdownImageSlot(src: src, nth: nth, frame: r, stillFrame: frame, loops: loops, broken: broken)
           images.append(slot)
           items.append(.image(slot))
+          if figure.caption != nil {
+            items.append(.figure(figure, CGRect(x: x, y: top, width: figure.width, height: figure.height)))
+          }
+        case .annot(let box):
+          items.append(.annot(box, CGPoint(x: x, y: l.origin.y - box.baseline)))
         case .ref(let box):
           items.append(.ref(box, CGPoint(x: x, y: l.origin.y)))
         case .spacer:
@@ -386,6 +412,8 @@ struct LayoutBuilder {
   mutating func list(_ list: MDList, x: CGFloat, width: CGFloat, y y0: CGFloat, style: InlineStyle, depth: Int = 0)
     -> CGFloat
   {
+    nesting += 1
+    defer { nesting -= 1 }
     var y = y0
     let task = {
       if case .task = list.marker { return true }

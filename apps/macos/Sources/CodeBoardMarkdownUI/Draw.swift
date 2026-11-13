@@ -63,6 +63,14 @@ extension MarkdownLayout {
         ctx.restoreGState()
       case .image(let slot):
         drawImage(slot, image(slot), ctx)
+      case .figure(let f, let r):
+        if f.broken != nil {
+          f.drawBroken(r, ink3: theme.colors.ink3, hair: theme.colors.hair, ctx)
+        } else if let cap = f.caption {
+          cap.draw(at: CGPoint(x: r.minX + f.captionX, y: r.minY + f.captionTop), ctx)
+        }
+      case .annot(let box, let o):
+        box.draw(at: o, ctx)
       case .diagram(let paths, let texts, let r):
         ctx.saveGState()
         ctx.translateBy(x: r.minX, y: r.minY)

@@ -46,7 +46,8 @@ enum Attr {
 final class AtomBox: @unchecked Sendable {
   enum Content {
     case math(MathPicture, size: CGFloat)
-    case image(src: String, nth: Int, size: CGSize, broken: Bool, frame: Int?, loops: Bool)
+    case image(src: String, nth: Int, figure: FigureBox, broken: Bool, frame: Int?, loops: Bool)
+    case annot(AnnotBox)
     case ref(RefBox)
     case spacer
   }
@@ -280,13 +281,8 @@ struct InlineBuilder {
       let start = out.string.length
       append("\u{FFFC}", attrs, source: [source])
       out.refs.append((NSRange(location: start, length: 1), label, target))
-    case .annotation:
-      // the annotated text shows; its note is drawn above it by the line layout
-      var s = style
-      if case .annotation(_, _, let color, _) = atom {
-        s.underline = theme.marks.annotations[color] ?? theme.colors.link
-      }
-      if let inner { emit(u, offsets, inner, i.children, s) }
+    case .annotation(_, let note, let color, let below):
+      annotAtom(i, u, offsets, inner, note: note, color: color, below: below, source: source, style)
     case .math(let latex, let display):
       mathAtom(latex, display: display, source: source, style)
     case .image(let img):
@@ -330,24 +326,93 @@ struct InlineBuilder {
   private mutating func imageAtom(_ img: MDImage, source: Int, _ style: InlineStyle) {
     let nth = imageCounts[img.src, default: 0]
     imageCounts[img.src] = nth + 1
+    let m = theme.metrics
     let natural = img.broken ? nil : resources.imageSize(img.src)
-    var size: CGSize
+    let figure: FigureBox
     if let n = natural, n.width > 0, n.height > 0 {
-      var w = img.width.map { CGFloat($0) * bodyWidth } ?? n.width
-      w = min(w, bodyWidth)
-      size = CGSize(width: w, height: w * n.height / n.width)
+      // a CSS px is a point: the image at its own size, at most the body's width; {width=N%} a share of the body
+      let w = min(img.width.map { CGFloat($0) * bodyWidth } ?? n.width, bodyWidth)
+      let size = CGSize(width: w, height: (w * n.height / n.width).rounded())
+      let cap = img.caption.trimmingCharacters(in: .whitespacesAndNewlines)
+      if cap.isEmpty {
+        figure = FigureBox(image: size, caption: nil, captionX: 0, captionGap: (0, 0))
+      } else {
+        // the caption is inline Markdown at 0.76em in the second ink, centred, as wide as the image (the body when the
+        // image is narrowed)
+        var cs = style
+        cs.size = style.size * CGFloat(m.captionSize)
+        cs.color = theme.colors.ink2
+        cs.weight = 400
+        let capWidth = img.width == nil ? w : bodyWidth
+        var sub = InlineBuilder(theme: theme, resources: resources, imageCounts: [:], bodyWidth: capWidth)
+        let doc = MarkdownDocument(cap)
+        let d: DisplayText
+        if let b = doc.blocks.first, let t = b.inlineText {
+          d = sub.build(t, b.inlines, cs)
+        } else {
+          d = sub.build(MDText(string: cap, offsets: Array(repeating: 0, count: cap.utf16.count + 1)), [], cs)
+        }
+        let strut = FontBook.font(cs.families, size: cs.size, weight: cs.weight)
+        let text = BoxText(
+          d.string, width: capWidth, lineHeight: cs.size * CGFloat(m.captionLineHeight), strut: strut, center: true)
+        figure = FigureBox(
+          image: size, caption: text, captionX: (w - capWidth) / 2,
+          captionGap: (CGFloat(m.captionMargin[0]), CGFloat(m.captionMargin[1])))
+      }
     } else {
-      // a broken image: a quiet fixed-size box
-      size = CGSize(width: min(bodyWidth, 160), height: 28)
+      // an image there is nothing to show for: a quiet line naming it, the alt text or else the address
+      var ls = style
+      ls.families = theme.fonts.body
+      ls.size = 11.5
+      ls.weight = 400
+      ls.color = theme.colors.ink3
+      // image.ts missingImage: "Image failed to load · " and the alt text, or else the address
+      let name = "Image failed to load · " + (img.alt.isEmpty ? img.src : img.alt)
+      let label = NSAttributedString(string: name, attributes: attributes(ls))
+      let strut = FontBook.font(ls.families, size: 11.5)
+      figure = FigureBox(brokenLabel: BoxText(label, width: nil, lineHeight: 11.5 * 1.5, strut: strut, center: false))
     }
-    let m = CGFloat(theme.metrics.imageMargin)
-    // vertical-align: middle with 4px margins: centred on the baseline plus half an x-height
+    // inline-block, vertical-align: middle, 4px margins: centred on the baseline plus half an x-height
+    let margin = natural == nil ? 0 : CGFloat(m.imageMargin)
     let font = FontBook.font(style.families, size: style.size, weight: style.weight)
     let mid = CTFontGetXHeight(font) / 2
-    let half = size.height / 2 + m
+    let half = figure.height / 2 + margin
     let a = AtomBox(
-      .image(src: img.src, nth: nth, size: size, broken: natural == nil, frame: img.frame, loops: img.loops),
-      width: size.width, ascent: half + mid, descent: max(0, half - mid))
+      .image(src: img.src, nth: nth, figure: figure, broken: natural == nil, frame: img.frame, loops: img.loops),
+      width: figure.width, ascent: half + mid, descent: max(0, half - mid))
+    var attrs = attributes(style)
+    attrs[NSAttributedString.Key(kCTRunDelegateAttributeName as String)] = Self.delegate(a)
+    attrs[Attr.atom] = a
+    append("\u{FFFC}", attrs, source: [source])
+  }
+
+  /// {text|note}: an inline block, the annotated text on one line under (over) a rail with the note
+  private mutating func annotAtom(
+    _ i: MDInline, _ u: [UInt16], _ offsets: [Int], _ inner: Range<Int>?, note: String, color: String, below: Bool,
+    source: Int, _ style: InlineStyle
+  ) {
+    let c = theme.marks.annotations[color] ?? theme.colors.link
+    var sub = InlineBuilder(theme: theme, resources: resources, imageCounts: imageCounts, bodyWidth: bodyWidth)
+    sub.out = DisplayText()
+    if let inner { sub.emit(u, offsets, inner, i.children, style) }
+    imageCounts = sub.imageCounts
+    let strut = FontBook.font(style.families, size: style.size, weight: style.weight)
+    let lh = CGFloat(theme.metrics.lineHeight) * style.size
+    let text = BoxText(sub.out.string, width: nil, lineHeight: lh, strut: strut, center: false)
+    // the note: 1.1em of the hand font, line height 1.15, in the annotation's colour
+    var ns = style
+    ns.families = theme.fonts.hand.isEmpty ? theme.fonts.body : theme.fonts.hand
+    ns.size = style.size * 1.1
+    ns.weight = 400
+    ns.italic = false
+    ns.color = c
+    let noteFont = FontBook.font(ns.families, size: ns.size)
+    let noteText = BoxText(
+      NSAttributedString(string: note, attributes: attributes(ns)), width: nil, lineHeight: ns.size * 1.15,
+      strut: noteFont,
+      center: false)
+    let box = AnnotBox(text: text, note: noteText, color: c, below: below, fontSize: style.size)
+    let a = AtomBox(.annot(box), width: box.width, ascent: box.baseline, descent: box.height - box.baseline)
     var attrs = attributes(style)
     attrs[NSAttributedString.Key(kCTRunDelegateAttributeName as String)] = Self.delegate(a)
     attrs[Attr.atom] = a
