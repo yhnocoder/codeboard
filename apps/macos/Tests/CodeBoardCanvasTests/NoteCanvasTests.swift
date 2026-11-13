@@ -104,6 +104,7 @@ private func near(_ a: [Int], _ b: [Int], _ d: Int = 6) -> Bool { zip(a, b).allS
     let vault = Vault(root: root)
     let canvas = CanvasView(frame: CGRect(x: 0, y: 0, width: 800, height: 600), svgCache: cache)
     Watchdog.trace("before show")
+    CanvasView.trace = { Watchdog.trace($0, "load") }
     try await canvas.show(VaultBoard(id: board.id, title: "B", path: "B.board"), in: vault, theme: .warmInk)
     Watchdog.trace("shown")
     #expect(canvas.boardBounds.height > 300)

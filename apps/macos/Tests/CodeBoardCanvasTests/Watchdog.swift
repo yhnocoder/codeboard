@@ -33,18 +33,50 @@ enum Watchdog {
         var count: mach_msg_type_number_t = 0
         if task_threads(mach_task_self_, &threads, &count) == KERN_SUCCESS, let threads {
           let me = pthread_mach_thread_np(pthread_self())
+          Watchdog.say("\(count) threads\n")
           for i in 0..<Int(count) where threads[i] != me {
-            if let p = pthread_from_mach_thread_np(threads[i]) {
-              pthread_kill(p, SIGUSR2)
-              var pause = timespec(tv_sec: 0, tv_nsec: 100_000_000)
-              nanosleep(&pause, nil)
-            }
+            Watchdog.stack(threads[i])
           }
         }
         Watchdog.say("\nWatchdog: ending the test process\n")
         exit(70)
       }, nil)
   }()
+
+  /// Every frame of a thread of this process: suspended, its registers read, its frame-pointer chain followed (arm64
+  /// keeps frame pointers), each return address named with dladdr, then resumed
+  static func stack(_ t: thread_act_t) {
+    var state = arm_thread_state64_t()
+    var n = mach_msg_type_number_t(MemoryLayout<arm_thread_state64_t>.size / MemoryLayout<UInt32>.size)
+    guard thread_suspend(t) == KERN_SUCCESS else { return }
+    defer { thread_resume(t) }
+    let r = withUnsafeMutablePointer(to: &state) {
+      $0.withMemoryRebound(to: natural_t.self, capacity: Int(n)) { thread_get_state(t, ARM_THREAD_STATE64, $0, &n) }
+    }
+    guard r == KERN_SUCCESS else { return }
+    var lines = "\n--- mach thread \(t) ---\n"
+    func name(_ pc: UInt64) -> String {
+      var info = Dl_info()
+      guard pc != 0, dladdr(UnsafeRawPointer(bitPattern: UInt(pc)), &info) != 0 else { return String(pc, radix: 16) }
+      let image = info.dli_fname.map { String(cString: $0).split(separator: "/").last.map(String.init) ?? "" } ?? ""
+      let symbol = info.dli_sname.map { String(cString: $0) } ?? "?"
+      return "\(image) \(symbol)"
+    }
+    // pc and lr, then the saved return addresses up the frame chain (pointer authentication bits stripped)
+    let strip: (UInt64) -> UInt64 = { $0 & 0x0000_007F_FFFF_FFFF }
+    lines += "  " + name(strip(state.__pc)) + "\n  " + name(strip(state.__lr)) + "\n"
+    var fp = strip(state.__fp)
+    for _ in 0..<48 where fp != 0 && fp % 8 == 0 {
+      guard let frame = UnsafePointer<UInt64>(bitPattern: UInt(fp)) else { break }
+      let next = strip(frame[0])
+      let ret = strip(frame[1])
+      if ret == 0 { break }
+      lines += "  " + name(ret) + "\n"
+      if next <= fp { break }
+      fp = next
+    }
+    say(lines)
+  }
 
   /// a line on stderr (unbuffered, so it is there however the process ends), on CI only
   static func trace(_ what: String, _ function: String = #function) {

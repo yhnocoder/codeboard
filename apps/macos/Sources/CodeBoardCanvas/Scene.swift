@@ -66,9 +66,12 @@ struct Scene: Sendable {
       else { return nil }
       return (c, n, env(folder: folder, refs: refs.refs(in: n.text), highlighter: highlighter))
     }
+    let trace = CanvasView.trace
     DispatchQueue.concurrentPerform(iterations: notes.count) { i in
       let (c, n, env) = notes[i]
+      trace?("layOutNotes: \(c.id.rawValue) start")
       _ = try? NativeNotes.body(n, width: c.width, look: t.id.rawValue, dark: t.dark, env: env)
+      trace?("layOutNotes: \(c.id.rawValue) done")
     }
   }
 
