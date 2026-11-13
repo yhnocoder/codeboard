@@ -9,7 +9,7 @@ import { closeHistory } from "@tiptap/pm/history";
 import { place } from "../ui/place";
 import { kindClass, type MdClasses } from "../ui/classes";
 import { IS_MAC } from "../ui/platform";
-import { inlineKey } from "./inline";
+import { inlineKey } from "./inlinekey";
 
 const MAX_LEVEL = 6;
 const inCell = (state: EditorState, pos: number) =>

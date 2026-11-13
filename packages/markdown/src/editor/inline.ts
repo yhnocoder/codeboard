@@ -3,15 +3,7 @@
 // the caret is. Moving the caret never changes the document. The decorations stay frozen while the mouse is down, while
 // a selection is non-empty, during IME composition and for a moment after a single click (a double-click must land on
 // the same layout as the first click).
-import {
-  NodeSelection,
-  Plugin,
-  PluginKey,
-  Selection,
-  TextSelection,
-  type EditorState,
-  type Transaction,
-} from "@tiptap/pm/state";
+import { NodeSelection, Plugin, Selection, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { REVEAL_AFTER_CLICK } from "../ui/timing";
@@ -32,20 +24,11 @@ import {
 } from "./widgets";
 import { bareSpan, LONG_URL, shortUrl } from "./links";
 import { measureImages, slideImages } from "./imageslide";
+import { inlineKey, type InlineState } from "./inlinekey";
 
 type Tag = NonNullable<Span["tag"]>;
 
-/** open: the image whose source is open (where it starts); picked: the selected image (its source selected exactly) */
-type St = {
-  head: number | null;
-  focused: boolean;
-  expand: number | null;
-  open: number | null;
-  picked: number | null;
-  decos: DecorationSet;
-};
 type Meta = { reveal?: true; blur?: true; focus?: true; expand?: number | null; open?: number | null };
-export const inlineKey = new PluginKey<St>("cbInline");
 
 /** Input state shared by the plugin's handlers (only one editor takes input at a time) */
 const ui = { mouseDown: false, pending: false, composing: false, timer: 0 as ReturnType<typeof setTimeout> | 0 };
@@ -399,7 +382,7 @@ function blockAt(doc: PMNode, pos: number | null): [number, number] | null {
  * same per keystroke as a short one
  */
 function update(
-  prev: St,
+  prev: InlineState,
   tr: Transaction,
   head: number | null,
   expand: number | null,
@@ -461,7 +444,7 @@ function reveal(view: EditorView) {
 }
 
 export function inlinePlugin() {
-  return new Plugin<St>({
+  return new Plugin<InlineState>({
     key: inlineKey,
     state: {
       init: (_c, st) => ({

@@ -8,7 +8,7 @@ import { mdOf } from "./md";
 import { texForCopy } from "../view";
 import { sourceMd } from "./srcdoc";
 import { blockInfo, flat } from "./spans";
-import { inlineKey } from "./inline";
+import { inlineKey } from "./inlinekey";
 
 /** text[a, b) of a paragraph's source, with the markers of the spans it cuts into balanced around it. shown: where the caret
  *  shows the source (an atom around it is shown as its source text, not drawn), relative to the paragraph */

@@ -5,6 +5,7 @@ import { Mapping } from "@tiptap/pm/transform";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
 import { blockInfo, flat, spanEdgeOut } from "./spans";
+import { inlineKey } from "./inlinekey";
 
 /** 存一张图（data: URL、文件名）→ 写进 Markdown 的地址；null = 不插（存不了时用的一方自己提示） */
 export type SaveImage = (dataUrl: string, name: string) => Promise<string | null>;
@@ -113,13 +114,18 @@ const imageOnly = (p: PMNode) => {
   return !rest.trim();
 };
 
-/** The image the caret alone stands for: the caret inside its open source (a selected image copies as its Markdown) */
+/** The image the caret alone stands for: the caret in its open source, at its ends too (a selected image copies as its
+ *  Markdown; beside a closed image the caret stands for nothing) */
 function caretImage(state: EditorState): { src: string; md: string } | null {
   const { $head, empty } = state.selection;
   if (!empty || $head.parent.type.name !== "paragraph") return null;
   const text = $head.parent.textContent,
-    a = $head.parentOffset;
-  const sp = flat(blockInfo(text).spans).find((s) => s.atom?.type === "image" && s.from < a && a < s.to);
+    a = $head.parentOffset,
+    base = $head.start(),
+    open = inlineKey.getState(state)?.open ?? null;
+  const sp = flat(blockInfo(text).spans).find(
+    (s) => s.atom?.type === "image" && (open === base + s.from ? s.from <= a && a <= s.to : s.from < a && a < s.to),
+  );
   return sp?.atom?.type === "image" && sp.atom.src ? { src: sp.atom.src, md: text.slice(sp.from, sp.to) } : null;
 }
 
