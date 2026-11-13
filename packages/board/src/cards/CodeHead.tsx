@@ -232,18 +232,8 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
             .map((n) => n.id)
             .join(",")}
           data-nodrag
-          onPointerEnter={(e) =>
-            act.hoverMarker(
-              e.currentTarget,
-              notes().map((n) => n.id),
-            )
-          }
-          onClick={(e) =>
-            act.pinMarker(
-              e.currentTarget,
-              notes().map((n) => n.id),
-            )
-          }
+          onPointerEnter={(e) => act.hoverMarker(e.currentTarget, c().id)}
+          onClick={() => act.pinMarker(c().id)}
         >
           {notes().length}
         </button>

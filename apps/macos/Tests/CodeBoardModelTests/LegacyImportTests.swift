@@ -183,7 +183,7 @@ private func fixtureVaultCopy() throws -> URL {
 
 @Test func sharedCardsGoToTheAppDataFolderAndBoardsReferToThem() throws {
   let shared: [String: Any] = [
-    "version": 13, "card": oldNote("s1", "shared ![](assets/s.png)"), "sidenotes": [],
+    "version": 15, "card": oldNote("s1", "shared ![](assets/s.png)"), "sidenotes": [],
   ]
   let ref: [String: Any] = ["id": "s1", "kind": "shared"]
   let (vault, report, _) = try importing(
@@ -342,9 +342,9 @@ private func fixtureVaultCopy() throws -> URL {
 @Test func otherVersionsAndMalformedFilesFailOneByOne() throws {
   let (vault, report, source) = try importing([
     "good.json": oldBoard("good"),
-    "v12.json": ["version": 12, "name": "Old", "cards": []],
+    "v14.json": ["version": 14, "name": "Old", "cards": []],
     "v1.json": ["name": "Oldest", "cards": []],
-    "v14.json": ["version": 14, "name": "Newer"],
+    "v16.json": ["version": 16, "name": "Newer"],
     "broken.json": oldBoard("br", cards: [oldNote("n").merging(["md": 5]) { $1 }]),
     "badlines.json": oldBoard(
       "bl",
@@ -370,10 +370,10 @@ private func fixtureVaultCopy() throws -> URL {
       .malformed(file("broken.json"), "cards[0].md: expected a string"),
       .malformed(file("garbage.json"), "not JSON"),
       .oldVersion(file("v1.json"), 1),
-      .oldVersion(file("v12.json"), 12),
-      .newerVersion(file("v14.json"), 14),
+      .oldVersion(file("v14.json"), 14),
+      .newerVersion(file("v16.json"), 16),
     ])
-  #expect(LegacyImportError.oldVersion(file("v12.json"), 12).description.contains("VS Code extension"))
+  #expect(LegacyImportError.oldVersion(file("v14.json"), 14).description.contains("VS Code extension"))
 }
 
 @Test func duplicateBoardIDsImportTheFirstOnly() throws {

@@ -76,7 +76,7 @@ export async function search(
       });
       for (const n of board.sidenotes ?? []) {
         if (off.has(n.at.card)) continue;
-        if (refs.has(n.at.card) && !n.boardOnly && n.kind !== "card") {
+        if (refs.has(n.at.card) && !n.boardOnly) {
           if (seenNotes.has(n.id)) continue;
           seenNotes.add(n.id);
         }

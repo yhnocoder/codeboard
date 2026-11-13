@@ -203,6 +203,7 @@
         "packages/board/src/cards/NoteBody.tsx",
         "packages/board/src/ui/{Md,Editable}.tsx",
         "packages/board/src/ui/pops/{notes,cardpeek}.tsx",
+        "packages/board/src/ui/NoteComposer.tsx",
         "packages/board/src/md/{lazy,load,refs,context}.ts",
         "packages/board/src/actions/notes.ts",
         "packages/core/src/commands/notes.ts",
@@ -231,6 +232,7 @@
         "packages/board/src/ui/StaticFormat.tsx",
         "packages/board/test/scenarios/static-format.spec.ts",
         "packages/board/test/scenarios/sidenotes.spec.ts",
+        "packages/board/test/scenarios/sidenote-popup.spec.ts",
         "packages/board/test/scenarios/highlights.spec.ts"
       ],
       "scenarios": [

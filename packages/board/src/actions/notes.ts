@@ -1,11 +1,11 @@
 import { unwrap } from "solid-js/store";
 import {
   isCode,
-  cardTitle,
   segOf,
   splitHeadings,
   NEW_CARD_W,
-  type Sidenote,
+  type NewSidenote,
+  type SearchItem,
   type SegView,
   type Anchor,
   type BoxFill,
@@ -15,6 +15,8 @@ import {
   type FreeTextLevel,
   type HlRange,
   sameRange,
+  shownRanges,
+  within,
 } from "@codeboard/core";
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
@@ -37,12 +39,12 @@ import {
 } from "@yhnocoder/markdown";
 import { noteImageAt, type ImgRef } from "./imageai";
 import { openPop, closePop, pops, updatePop, pinPop } from "../state/pop";
-import { ask } from "../host";
+import { ask, switched } from "../host";
 import { addCards } from "./create";
 import { removedNotes } from "./edit";
 import { requestViews, putViews } from "../state/views";
 import { tune } from "../state/tune";
-import { hostRect, popCard, revealCard } from "./common";
+import { hostRect, popCard } from "./common";
 import { lastPointer } from "../state/measure";
 import { attrSel, cardSel } from "../cardsel";
 import { boardTimer } from "../state/root";
@@ -50,9 +52,10 @@ import { NOTE_HOVER, NOTE_LEAVE } from "../state/timing";
 
 const hoverT = boardTimer(),
   leaveT = boardTimer();
-export function hoverMarker(el: Element, ids: string[]) {
+/** The pointer came onto a card's whole-card sidenote marker: after the hover delay its popup opens right of the card */
+export function hoverMarker(el: Element, card: string) {
   leaveT.stop();
-  hoverT.start(() => showNotes(el, ids, false), NOTE_HOVER);
+  hoverT.start(() => showNotes(card, false), NOTE_HOVER);
   el.addEventListener(
     "pointerleave",
     () => {
@@ -62,43 +65,34 @@ export function hoverMarker(el: Element, ids: string[]) {
     { once: true },
   );
 }
+/** An unpinned sidenote popup closes a while after the pointer left it, unless the pointer is back on it or a card preview it
+ *  opened is showing */
 export function scheduleHideNotes() {
   leaveT.start(() => {
     const p = pops().find((q) => !q.pinned && (q.pop.kind === "notes" || q.pop.kind === "highlight"));
-    if (p && !document.querySelector(`.pop[data-pop="${p.id}"]:hover`)) closePop(p.id);
+    if (p && !document.querySelector(`.pop[data-pop="${p.id}"]:hover, .cpeek`)) closePop(p.id);
   }, NOTE_LEAVE);
 }
 export const cancelHideNotes = () => leaveT.stop();
-export function pinMarker(el: Element, ids: string[]) {
-  showNotes(el, ids, true);
-}
-function showNotes(el: Element, ids: string[], pin: boolean) {
-  const n0 = state.board.sidenotes.find((n) => n.id === ids[0]);
-  if (!n0) return;
-  const same = pops().find((p) => p.pop.kind === "notes" && p.pop.ids.join() === ids.join());
-  if (same) {
+/** A click on a card's whole-card sidenote marker: their popup opens and stays */
+export const pinMarker = (card: string) => showNotes(card, true);
+function showNotes(card: string, pin: boolean, write?: true) {
+  const same = pops().find((p) => p.pop.kind === "notes" && p.pop.card === card);
+  if (same && !write) {
     if (pin && !same.pinned) pinPop(same.id);
     return;
   }
-  const f = cardById(n0.at.card);
-  const where = n0.at.lines
-    ? n0.at.lines[0] === n0.at.lines[1]
-      ? `line ${n0.at.lines[0]}`
-      : `lines ${n0.at.lines[0]}–${n0.at.lines[1]}`
-    : f
-      ? cardTitle(f.card)
-      : "card";
-  const id = openPop(
-    { kind: "notes", card: n0.at.card, ids, title: `Sidenotes · ${where}`, sel: ids[0] },
-    // 整张卡的 Sidenote（卡头的标记）：放在右边；行上的在 Highlight 的弹窗里（showHighlight）
-    { el, prefer: "right" },
-  );
+  // asked to write: a new one, its input ready
+  if (same) closePop(same.id);
+  const el = document.querySelector(cardSel(hostOf(card)));
+  if (!el) return;
+  const id = openPop({ kind: "notes", card, write }, { el, prefer: "beside" });
   if (pin) pinPop(id);
 }
 
 /**
- * The pointer came onto a Highlight's gutter area (its line numbers, its marker): after the hover delay its popup opens under its
- * lines. It closes a while after the pointer leaves (leaveHighlight), unless the pointer went into the popup
+ * The pointer came onto a Highlight's gutter area (its line numbers, its marker): after the hover delay its popup opens right of
+ * the card, at its lines. It closes a while after the pointer leaves (leaveHighlight), unless the pointer went into the popup
  */
 export function hoverHighlight(card: string, seg: string, lines: HlRange) {
   leaveT.stop();
@@ -131,22 +125,41 @@ function showHighlight(card: string, seg: string, lines: HlRange, pin: boolean) 
   }
   const el = document.querySelector(`.hxhit${attrSel("data-hl", highlightKey(card, seg, lines))}`);
   if (!el) return;
-  const id = openPop({ kind: "highlight", card, seg, lines: [lines[0], lines[1]] }, { el, prefer: "range" });
+  const id = openPop({ kind: "highlight", card, seg, lines: [lines[0], lines[1]] }, { el, prefer: "beside" });
   if (pin) pinPop(id);
 }
 /** Remove Highlight (its popup): the lines and the sidenotes on them, one undo step */
 export function removeHighlight(card: string, seg: string, lines: HlRange) {
   removedNotes(C.removeHighlight(commandEnv, card, seg, lines, fitMeasure));
 }
+/** Delete in a card's whole-card sidenote popup: those sidenotes, one undo step */
+export function deleteCardNotes(card: string) {
+  removedNotes(C.deleteCardSidenotes(commandEnv, card), "card");
+}
 
-export function openAddNote(at: Anchor, tab: "code" | "paste" | "text" | "link" | "card" = "code") {
-  const host = hostOf(at.card);
+/**
+ * Add Sidenote: the popup of what it goes on, pinned, its input ready. On lines: the popup of the Highlight they are in (of the
+ * lines alone when they are in none yet); on a whole card: the card's sidenote popup
+ */
+export function openAddNote(at: Anchor) {
+  if (!at.seg || !at.lines) return showNotes(at.card, true, true);
+  const write: HlRange = [at.lines[0], at.lines[1]];
+  const c = cardById(at.card)?.card,
+    s = isCode(c) ? segOf(c, at.seg) : undefined;
+  const hl = (s && shownRanges(state.board, s).find((r) => within(write, r))) ?? write;
+  const same = pops().find(
+    (p) => p.pop.kind === "highlight" && p.pop.card === at.card && p.pop.seg === at.seg && sameRange(p.pop.lines, hl),
+  );
+  if (same) closePop(same.id);
   const el =
-    (at.lines &&
-      at.seg &&
-      document.querySelector(`.hxhit${attrSel("data-hl", highlightKey(at.card, at.seg, at.lines))}`)) ||
-    document.querySelector(`${cardSel(host)}`);
-  openPop({ kind: "addNote", at, tab }, el ? { el, prefer: "right" } : lastPointer());
+    document.querySelector(`.hxhit${attrSel("data-hl", highlightKey(at.card, at.seg, hl))}`) ??
+    document.querySelector(`${cardSel(at.card)} .gutter .no.sel`) ??
+    document.querySelector(cardSel(hostOf(at.card)));
+  const id = openPop(
+    { kind: "highlight", card: at.card, seg: at.seg, lines: [hl[0], hl[1]], write },
+    el ? { el, prefer: "beside" } : lastPointer(),
+  );
+  pinPop(id);
 }
 /** @public run from the key table (keymap.ts) */
 export function addSidenoteUI() {
@@ -155,13 +168,28 @@ export function addSidenoteUI() {
   else if (sel.cards.length === 1) openAddNote({ card: sel.cards[0] });
   else toast("Select lines in a card first");
 }
-export function addSidenote(n: Omit<Sidenote, "id">, view?: SegView) {
-  const sn = n as Sidenote;
-  if (sn.kind === "code" && view) putViews({ [sn.code.id]: view });
+export function addSidenote(n: NewSidenote, view?: SegView) {
+  if (n.kind === "code" && view) putViews({ [n.code.id]: view });
   return C.addSidenotes(commandEnv, [n], fitMeasure)[0];
 }
+/** A Code sidenote at `at` of the code a search found (item): false when it could not be read (said) or the board switched */
+export async function addCodeSidenote(at: Anchor, item: SearchItem): Promise<boolean> {
+  const r = await ask("searchPick", { item, alt: true }).then(
+    (v) => v ?? null,
+    (e) => (switched(e) ? undefined : null),
+  );
+  if (r === undefined) return false;
+  const c = r?.card;
+  if (!c || !isCode(c)) {
+    toast("Could not read that code");
+    return false;
+  }
+  const seg = c.segments[0];
+  addSidenote({ kind: "code", code: seg, at }, r.views[seg.id]);
+  return true;
+}
 /** 一次加好几条（一个撤销步骤），返回新 id */
-export const addSidenotes = (list: Omit<Sidenote, "id">[]) => C.addSidenotes(commandEnv, list, fitMeasure);
+export const addSidenotes = (list: NewSidenote[]) => C.addSidenotes(commandEnv, list, fitMeasure);
 /** A Text sidenote's Markdown; written empty it goes */
 export const writeSidenote = (id: string, md: string) => C.writeSidenote(commandEnv, id, md, fitMeasure);
 export const toggleAlwaysShow = (id: string) => C.toggleAlwaysShow(commandEnv, id, fitMeasure);
@@ -170,7 +198,6 @@ export const deleteSidenote = (id: string) => C.deleteSidenote(commandEnv, id, f
 export function placeSidenote(id: string) {
   const n = state.board.sidenotes.find((k) => k.id === id);
   if (!n) return;
-  if (n.kind === "card") return revealCard(n.card);
   const r = hostRect(n.at.card);
   if (!r) return;
   // 放卡、去掉 Sidenote、连箭头是同一步（一次撤销）
@@ -179,7 +206,13 @@ export function placeSidenote(id: string) {
     if (n.kind === "code" && isCode(card) && state.views[n.code.id])
       views[card.segments[0].id] = state.views[n.code.id];
     addCards(
-      [{ card, views, w: card.kind === "note" || n.kind === "paste" ? NEW_CARD_W : card.kind === "web" ? 300 : 480 }],
+      [
+        {
+          card,
+          views,
+          w: card.kind === "note" || (isCode(card) && card.segments[0].src.kind === "free") ? NEW_CARD_W : 480,
+        },
+      ],
       { at: { x: r.x + r.w + 48, y: r.y + 20 }, also },
     );
   });

@@ -241,7 +241,7 @@ async function altB(page, title, keys = "Alt+b") {
   );
   return f;
 }
-/** A Sidenote on lines a..b of a code card: S, the Text tab, type, Add */
+/** A Sidenote on lines a..b of a code card: S, type, ↵, then the popup closed */
 async function sidenote(page, f, c, a, b, words) {
   await c.locator(".no").nth(a).click();
   await c
@@ -249,10 +249,11 @@ async function sidenote(page, f, c, a, b, words) {
     .nth(b)
     .click({ modifiers: ["Shift"] });
   await page.keyboard.press("s");
-  await f.locator(".pop button", { hasText: /^Text$/ }).click();
   await until("the Sidenote's text field has the keyboard", () => typingIn(f, ".pop"));
   await page.keyboard.type(words);
-  await f.locator(".pop button", { hasText: /^Add$/ }).click();
+  await page.keyboard.press("Enter"); // adds it; the input stays for the next one
+  await page.keyboard.press("Escape"); // the empty input
+  await page.keyboard.press("Escape"); // the popup
 }
 /** The text the system clipboard holds, read in the board's webview (which has the keyboard): what ⌘V there will paste */
 const clipboard = (f) => f.evaluate(() => navigator.clipboard.readText());

@@ -17,7 +17,7 @@ export const allStickers = (b: Pick<Board, "stickers" | "shelf">): Sticker[] => 
 ];
 
 /**
- * 删掉这些卡（Compare 连同两栏）和它们的摆放，以及连着它们的 Link、挂在它们上面或指向它们的 Sidenote、贴在它们上面的 Sticker。
+ * 删掉这些卡（Compare 连同两栏）和它们的摆放，以及连着它们的 Link、挂在它们上面的 Sidenote、贴在它们上面的 Sticker。
  * On the Shelf too: a shelved card's place, the hidden arrows to a deleted card; an entry left empty goes
  */
 export function removeCards(b: Board, ids: Iterable<string>): void {
@@ -27,7 +27,7 @@ export function removeCards(b: Board, ids: Iterable<string>): void {
   const keep = (l: Link) => !gone.has(l.from.card) && !gone.has(l.to.card);
   const onLine = (k: Sticker) => k.at.kind !== "line" || !gone.has(k.at.card);
   b.links = b.links.filter(keep);
-  b.sidenotes = b.sidenotes.filter((n) => !gone.has(n.at.card) && !(n.kind === "card" && gone.has(n.card)));
+  b.sidenotes = b.sidenotes.filter((n) => !gone.has(n.at.card));
   b.stickers = b.stickers.filter(onLine);
   for (const e of b.shelf ?? []) {
     for (const id of gone) delete e.place[id];
@@ -62,9 +62,7 @@ export function pruneRefs(b: Board): void {
   );
   removeSidenotes(
     b,
-    b.sidenotes
-      .filter((n) => !segOk(n.at.card, n.at.seg) || (n.kind === "card" && !cards.has(n.card)))
-      .map((n) => n.id),
+    b.sidenotes.filter((n) => !segOk(n.at.card, n.at.seg)).map((n) => n.id),
   );
   removeStickers(
     b,
@@ -119,7 +117,7 @@ export function stampBorn(b: Board): void {
   }
 }
 
-/** 卡换个 id：摆放、Link 两端、Sidenote（挂在上面的和指向它的）、Sticker、Compare 的栏、创建顺序、调用图标记都跟着换 */
+/** 卡换个 id：摆放、Link 两端、挂在上面的 Sidenote、Sticker、Compare 的栏、创建顺序、调用图标记都跟着换 */
 export function renameCard(b: Board, from: string, to: string): void {
   const r = (id: string) => (id === from ? to : id);
   for (const c of b.cards) {
@@ -135,10 +133,7 @@ export function renameCard(b: Board, from: string, to: string): void {
     l.from.card = r(l.from.card);
     l.to.card = r(l.to.card);
   }
-  for (const n of b.sidenotes) {
-    n.at.card = r(n.at.card);
-    if (n.kind === "card") n.card = r(n.card);
-  }
+  for (const n of b.sidenotes) n.at.card = r(n.at.card);
   for (const k of allStickers(b)) {
     const at = k.at;
     if (at.kind === "line") at.card = r(at.card);
@@ -192,7 +187,7 @@ function pruneStickers(b: Board): void {
 export type Retarget = (at: { card: string; seg?: string; line?: number }) => { card: string; seg?: string };
 
 /**
- * 一批卡被别的卡替换（合并、拆开、拆 Compare）：指着它们的 Link 两端、Sidenote（挂在上面的和 kind card 指向它的）、
+ * 一批卡被别的卡替换（合并、拆开、拆 Compare）：指着它们的 Link 两端、挂在上面的 Sidenote、
  * Sticker（行上的、绑在卡上的）都按 to 搬过去。搬完两端落在同一张卡上的 Link 删掉，绑着它的 Sticker 一起删。
  * 删卡本身由调用方做（replaceCards / removeCards）；这里只管引用，任何换卡的操作都应该走这里，而不是各自改一遍。
  */
@@ -220,7 +215,6 @@ export function retargetCards(b: Board, ids: Iterable<string>, to: Retarget): vo
       n.at = { card: o.card, seg: o.seg, lines: o.seg ? n.at.lines : undefined };
       hosts.add(o.card);
     }
-    if (n.kind === "card" && gone.has(n.card)) n.card = to({ card: n.card }).card;
   }
   for (const k of allStickers(b)) {
     const at = k.at;

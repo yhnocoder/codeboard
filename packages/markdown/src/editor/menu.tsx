@@ -3,12 +3,13 @@ import type { Editor, Range } from "@tiptap/core";
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from "@tiptap/suggestion";
 import { NodeSelection, PluginKey, TextSelection, type Plugin } from "@tiptap/pm/state";
 import { render } from "solid-js/web";
-import { createEffect, For, Show } from "solid-js";
+import { createEffect, For, onCleanup, Show } from "solid-js";
 import { kindClass } from "../ui/classes";
 import { insertImageUrl } from "./image";
 import { revealMeta } from "./inline";
 import { setHeading } from "./typora";
 import { saveImage, uiOf, type Ui } from "./ui";
+import type { RefPick } from "./types";
 
 /**
  * 菜单的一项。crumb = 标题后面的灰色小字；cls = 样子（brow：别处那一组的组头，child：组里的，more：「N more」）；
@@ -19,6 +20,8 @@ export type MenuItem = {
   hint?: string;
   key: string;
   run: (e: Editor, r: Range) => void;
+  /** A [[ candidate: what it points to */
+  pick?: RefPick;
   ref?: true;
   crumb?: string;
   cls?: "brow" | "child" | "more";
@@ -332,6 +335,20 @@ function MenuView(p: { ui: Ui; pick: (it: MenuItem) => void }) {
             }
           });
         });
+        // the highlighted candidate, for the caller to show what it points to beside the list
+        const showing = p.ui.opts.refs?.showing;
+        if (showing) {
+          createEffect(() => {
+            const cur = m(),
+              it = cur.kind === "ref" ? cur.items[cur.i] : undefined;
+            queueMicrotask(() => {
+              if (!list.isConnected) return;
+              const row = it?.pick ? list.querySelectorAll<HTMLElement>(":scope > button")[cur.i] : undefined;
+              showing(row && it?.pick ? it.pick : null, row ?? null);
+            });
+          });
+          onCleanup(() => showing(null, null));
+        }
         return (
           <div
             class={`${kindClass(p.ui.opts.classes, "menu")} open md-pick`}

@@ -70,11 +70,13 @@ export function hideLines(ls: LineSel) {
   window.getSelection()?.removeAllRanges();
   setLineSel(null);
 }
-/** Sidenotes that went with a removed Highlight: said, with an Undo of that step only (off once another step came after it) */
-export function removedNotes(n: number) {
+/** Sidenotes that went with a removed Highlight (or a card's, deleted together): said, with an Undo of that step only (off once
+ *  another step came after it) */
+export function removedNotes(n: number, of: "highlight" | "card" = "highlight") {
   if (!n) return;
   const step = lastStep();
-  toast(`Removed the Highlight and its ${n} note${n > 1 ? "s" : ""}`, [
+  const notes = `${n} note${n > 1 ? "s" : ""}`;
+  toast(of === "card" ? `Deleted the card's ${notes}` : `Removed the Highlight and its ${notes}`, [
     { label: "Undo", run: () => void undoStep(step), off: () => !stepIsLatest(step) },
   ]);
 }

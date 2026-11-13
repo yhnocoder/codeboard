@@ -62,26 +62,12 @@ export function sidenoteMarkdown(n: Sidenote): string {
       return n.md;
     case "code":
       return fence(n.code.lang, n.code.text.join("\n"));
-    case "paste":
-      return fence(n.lang, n.text);
-    case "link":
-      return `[${n.title || n.url}](${n.url})`;
-    default:
-      return "";
   }
 }
 
 /** A sidenote's text, as both searches read it */
 export function sidenoteText(n: Sidenote): string {
-  return n.kind === "text"
-    ? n.md
-    : n.kind === "code"
-      ? n.code.text.join("\n")
-      : n.kind === "paste"
-        ? n.text
-        : n.kind === "link"
-          ? `${n.title ?? ""} ${n.url}`
-          : "";
+  return n.kind === "text" ? n.md : n.code.text.join("\n");
 }
 
 /** A code card shown only as a column of a Compare (not placed on its own): searches find the Compare, not it */

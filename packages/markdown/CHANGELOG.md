@@ -4,6 +4,7 @@
 
 Added (nothing to change when upgrading):
 
+- New `refs.showing(pick, row)` option on `mountEditor`: told which candidate the `[[` menu highlights (its `RefPick` and its row in the list) each time that changes, and `(null, null)` when the menu closes, so the page can show what it points to beside the list.
 - New `eagerImages` option on `createMarkdown`: every image is loaded at once and drawn only decoded (no `loading="lazy"`, `decoding="sync"`; by default images stay lazy and async). For a page whose images come into view by a transform, such as a canvas zoomed out, where a lazy image is not loaded yet and an async one is drawn as nothing for a few frames while it decodes.
 
 Fixed:

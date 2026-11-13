@@ -1,63 +1,77 @@
-// A Card sidenote's preview (the eye on its row in the Sidenotes popover): resting the pointer on the eye shows, beside the popover, a
-// read-only copy of that card as the board draws it (same look, the code and Notes as they are now), scaled down to PEEK_W wide and
-// clipped at PEEK_H. It is a copy of the card's element taken once when it opens (nothing measured per frame), inert, with nothing
-// that selectors for the board's cards would find. Timing as the tips: TIP_DELAY the first time, then at once (ui/Menu.tsx)
+// A card's preview in place: the beginning of a card as the board draws it (same look, the code and Notes as they are now), its
+// header and first lines, scaled down to PEEK_W wide and cut at PEEK_H with a fade. It does not scroll: the card itself is one
+// click away, on the arrow inside it. Shown beside what asked for it:
+// - a click on a [[reference]] to a card of this board, in a Text sidenote, toggles it (cardPeeks); Esc or a press anywhere else
+//   closes it, and while it shows, an unpinned sidenote popup it came from stays (actions/notes.ts scheduleHideNotes);
+// - the [[ list of the sidenote input shows its highlighted card's (ui/NoteComposer.tsx): passive, no keys, no arrow.
+// It is a copy of the card's element taken once when it opens (nothing measured per frame), inert, with nothing that selectors
+// for the board's cards would find
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { cardTitle, type Card } from "@codeboard/core";
+import type { RefTarget } from "@yhnocoder/markdown";
 import { place } from "@yhnocoder/markdown/ui";
 import { cardById, hostOf } from "../../state/store";
-import { TIP_DELAY, TIP_WARM } from "../../state/timing";
 import { CARD_STATE_CLASSES, cardSel } from "../../cardsel";
-import { MdStatic } from "../Md";
+import { useOverlay } from "../overlay";
+import * as A from "../../actions";
+import { Icon } from "../icons";
 
-const PEEK_W = 420,
-  PEEK_H = 360;
+/** About twelve code lines under the card's header */
+const PEEK_W = 520,
+  PEEK_H = 280;
 
 /** What a card's inline style gets from its animations and tilt, not its look */
 const STATE_STYLES = ["rotate", "transform", "translate", "scale", "transform-origin", "opacity", "transition"];
 
-const noteOf = (c: Card) => (c.kind === "note" ? c : undefined);
+/** Card `id`'s element on this board, when it is drawn (a Compare's column: the Compare) */
+export const cardElement = (id: string) =>
+  document.querySelector<HTMLElement>(cardSel(id)) ?? document.querySelector<HTMLElement>(cardSel(hostOf(id)));
 
-/** The previews of one Sidenotes popover: which card is shown, from which eye */
+/** The preview a place shows at a time: which card, from which reference (its second click closes it), beside which box */
+type Peek = { card: string; at: HTMLElement; beside: Element };
 export function cardPeeks() {
-  const [peek, setPeek] = createSignal<{ card: string; at: HTMLElement } | null>(null);
-  let t: number | undefined,
-    warmUntil = 0;
-  const hide = () => {
-    clearTimeout(t);
-    if (peek()) warmUntil = performance.now() + TIP_WARM;
-    setPeek(null);
-  };
-  onCleanup(() => clearTimeout(t));
+  const [peek, setPeek] = createSignal<Peek | null>(null);
   return {
     peek,
-    /** The pointer is on a card's eye */
-    on(card: string, at: HTMLElement) {
-      clearTimeout(t);
-      if (peek() || performance.now() < warmUntil) setPeek({ card, at });
-      else t = window.setTimeout(() => setPeek({ card, at }), TIP_DELAY);
+    /**
+     * A click on a reference (el) that points to `to`: a card drawn on this board opens its preview beside `beside`, or closes it
+     * when it is the one open from there. False for anything else (a Section, another board), which the click goes to as usual
+     */
+    toggle(to: RefTarget, el: HTMLElement, beside: Element = el) {
+      if (to.place || !cardById(to.id) || !cardElement(to.id)) return false;
+      const p = peek();
+      setPeek(p?.card === to.id && p.at === el ? null : { card: to.id, at: el, beside });
+      return true;
     },
-    /** The pointer left an eye or the preview: hidden unless it went from one to the other */
-    off(e: PointerEvent) {
-      if ((e.relatedTarget as Element | null)?.closest?.(".cpeek, .sn-peek")) return;
-      hide();
-    },
-    hide,
+    hide: () => setPeek(null),
   };
 }
 export type CardPeeks = ReturnType<typeof cardPeeks>;
 
-/** The preview of card `id`, beside the popover that holds `at` */
-export function CardPeek(p: { id: string; at: HTMLElement; peeks: CardPeeks }) {
+/** The previews of `peeks`, where they are shown */
+export function CardPeekOf(p: { peeks: CardPeeks }) {
+  return (
+    <Show when={p.peeks.peek()} keyed>
+      {(pk) => <CardPeek id={pk.card} at={pk.at} beside={pk.beside} peeks={p.peeks} />}
+    </Show>
+  );
+}
+
+/** The preview of card `id` beside `beside`; with `peeks` it is one a click opened (Esc, a press elsewhere, its arrow) */
+export function CardPeek(p: { id: string; at: HTMLElement; beside: Element; peeks?: CardPeeks }) {
   let el!: HTMLDivElement, stage!: HTMLDivElement;
   const [pos, setPos] = createSignal<{ x: number; y: number } | null>(null);
-  const [copied, setCopied] = createSignal(false);
   const [cut, setCut] = createSignal(false);
-  const card = () => cardById(p.id)?.card;
+  const peeks = p.peeks;
+  if (peeks) {
+    // Esc closes the preview first (a popup under it stays); a press anywhere but the preview and the reference that opened it
+    // (its second click toggles it) closes it
+    useOverlay({ close: () => peeks.hide(), inside: (t) => el.contains(t) || p.at.contains(t), outside: true });
+    // closed with the pointer elsewhere: an unpinned popup it kept open goes too
+    onCleanup(() => A.scheduleHideNotes());
+  }
   onMount(() => {
-    const src =
-      document.querySelector<HTMLElement>(cardSel(p.id)) ?? document.querySelector<HTMLElement>(cardSel(hostOf(p.id)));
+    const src = cardElement(p.id);
     if (src) {
       const w = src.offsetWidth,
         h = src.offsetHeight,
@@ -85,28 +99,33 @@ export function CardPeek(p: { id: string; at: HTMLElement; peeks: CardPeeks }) {
       stage.style.height = `${Math.ceil(Math.min(h * k, PEEK_H))}px`;
       stage.appendChild(c);
       setCut(h * k > PEEK_H + 1);
-      setCopied(true);
     }
-    const pop = p.at.closest<HTMLElement>(".pop") ?? p.at;
-    void place(el, pop, "right-start", { gap: 10, strategy: "fixed" }).then((r) => setPos({ x: r.x, y: r.y }));
+    void place(el, p.beside, "right-start", { gap: 10, strategy: "fixed" }).then((r) => setPos({ x: r.x, y: r.y }));
   });
   return (
-    <Portal mount={p.at.closest(".pop")?.parentElement ?? undefined}>
+    <Portal mount={p.beside.closest(".app") ?? document.querySelector(".app") ?? undefined}>
       <div
         ref={el}
         class="cpeek"
-        classList={{ show: !!pos(), cut: cut() }}
+        classList={{ show: !!pos(), cut: cut(), passive: !peeks }}
         style={{ left: `${pos()?.x ?? 0}px`, top: `${pos()?.y ?? 0}px` }}
         data-nodrag
-        onPointerLeave={(e) => p.peeks.off(e)}
+        onPointerEnter={() => A.cancelHideNotes()}
       >
         <div ref={stage} class="cpeek-stage" inert />
-        <Show when={!copied() && card()}>
-          {(c) => (
-            <div class="cpeek-alt">
-              <b>{cardTitle(c())}</b>
-              <Show when={noteOf(c())}>{(n) => <MdStatic src={n().md} />}</Show>
-            </div>
+        <Show when={peeks}>
+          {(pk) => (
+            <button
+              class="ib cpeek-go"
+              aria-label="Go to Card"
+              data-tip="Go to Card"
+              onClick={() => {
+                pk().hide();
+                A.openCardRef(p.id);
+              }}
+            >
+              <Icon name="arrowR" size={14} />
+            </button>
           )}
         </Show>
       </div>

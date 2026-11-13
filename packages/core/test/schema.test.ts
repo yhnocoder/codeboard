@@ -95,10 +95,7 @@ function full() {
       at: { card: "c", seg: "s1", lines: [1, 2] },
       code: { ...seg("x"), src: { kind: "external", root: "/usr/lib" }, version: { kind: "hash", hash: "abcd" } },
     },
-    { id: "s2", kind: "paste", at: { card: "c" }, text: "x", lang: "python" },
-    { id: "s3", kind: "text", at: { card: "c" }, md: "x", alwaysShow: true },
-    { id: "s4", kind: "link", at: { card: "c" }, url: "https://z" },
-    { id: "s5", kind: "card", at: { card: "c" }, card: "n", lineRemoved: true },
+    { id: "s3", kind: "text", at: { card: "c" }, md: "x", alwaysShow: true, lineRemoved: true },
   );
   b.stickers.push(
     { id: "k1", icon: { pack: "builtin", name: "star" }, at: { kind: "line", card: "c", seg: "s1", line: 2 } },
@@ -191,7 +188,7 @@ describe("loadBoardFile", () => {
       ],
       edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call" }],
     });
-    expect(v1.version).toBe(14);
+    expect(v1.version).toBe(15);
     const col = (id: string) => ({ id, kind: "code", x: 5, y: 6, w: 300, segments: [seg(`s${id}`)] });
     const v2 = loadBoardFile({
       version: 2,

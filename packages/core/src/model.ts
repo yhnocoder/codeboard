@@ -9,14 +9,14 @@ import type { BoundVal, CallAlt, Var } from "@codeboard/analysis/basics";
 import { fnv } from "@codeboard/analysis/basics";
 import type { SealColor } from "./seal";
 
-export const BOARD_VERSION = 14;
+export const BOARD_VERSION = 15;
 
 /** 一段代码钉在哪个版本上 */
 export type Version =
   | { kind: "git"; commit: string; uncommitted?: boolean } // git 仓库里的文件
   | { kind: "pkg"; name: string; version: string } // pip / conda 装的包，读 dist-info
   | { kind: "hash"; hash: string } // 都不是：内容指纹
-  | { kind: "none" }; // Free code、Paste：没有版本
+  | { kind: "none" }; // Free code：没有版本
 
 /** 代码从哪来 */
 export type Source =
@@ -467,12 +467,12 @@ export type Sidenote = {
   review?: string; // Update 时挂着的行变了：新版本的标签（如 9f3e2a1）；Highlight 合并让它的行变宽了：WIDENED。琥珀色提醒复查；用户看过就去掉
   variant?: string; // 只在卡的这个 Variant 上显示；行号按那个 Variant 的代码算。没有 = 跟着卡，所有 Variant 都显示
 } & (
-  | { kind: "code"; code: Segment } // 仓库里或仓库外的代码，钉版本
-  | { kind: "paste"; text: string; lang: string; url?: string }
-  | { kind: "text"; md: string; alwaysShow?: boolean }
-  | { kind: "link"; url: string; title?: string }
-  | { kind: "card"; card: string }
+  | { kind: "code"; code: Segment } // 仓库里或仓库外的代码（钉版本），或没有来源的 Free code
+  | { kind: "text"; md: string; alwaysShow?: boolean } // Markdown：链接、指着别的卡的 [[引用]] 都写在里面
 );
+
+/** A sidenote not added yet: one of its kinds, with no id */
+export type NewSidenote = Sidenote extends infer S ? (S extends Sidenote ? Omit<S, "id"> : never) : never;
 
 /** 图标：包名 + 图标名。builtin = 内置的十几个；emoji = 系统 emoji（name 就是那个字符）；其余是 Sticker Packs 目录里的包 */
 export type IconRef = { pack: string; name: string };
@@ -502,7 +502,7 @@ export type Camera = { x: number; y: number; z: number };
 export const homeCam = (): Camera => ({ x: 80, y: 80, z: 1 });
 
 export type Board = {
-  version: 14;
+  version: 15;
   id: string;
   name: string;
   /** 镜头：不写进白板文件（光是平移、缩放就改了文件，项目里用 git 管白板时全是噪音），每台机器各记各的（宿主的工作区状态，按白板 id） */
@@ -568,10 +568,10 @@ export const legendName = (b: Pick<Board, "legend">, k: LegendKey) =>
 export type SharedRef = { id: string; kind: "shared" };
 /** 白板文件：cards 里可以有共享卡的引用，读进来后由宿主换成内容；没有镜头（见 Board.cam） */
 export type BoardFile = Omit<Board, "cards" | "cam"> & { cards: (Card | SharedRef)[] };
-/** 一张共享卡的内容：卡本身 + 跟着它走的 Sidenote（挂在它上面、不是 boardOnly、不是 kind card） */
+/** 一张共享卡的内容：卡本身 + 跟着它走的 Sidenote（挂在它上面、不是 boardOnly） */
 export type SharedCard = { card: Card; sidenotes: Sidenote[] };
 /** 卡库里的文件 cards/<id>.json。写盘时按项（卡、每条 Sidenote）和磁盘上的合并（storage/boards.ts merged） */
-export type SharedCardFile = SharedCard & { version: 14 };
+export type SharedCardFile = SharedCard & { version: 15 };
 
 /** subs = 这块白板上嵌着的子白板（去重，按出现的先后；侧栏按它缩进成树） */
 export type BoardMeta = {
@@ -829,11 +829,11 @@ export function noteSegment(b: Pick<Board, "cards">, n: Pick<Sidenote, "at" | "v
 /** Sidenote.review when its lines grew because the Highlight it is on merged with another (edit/highlights.ts) */
 export const WIDENED = "widened";
 /**
- * A sidenote this board keeps for itself: board-only, or a Card sidenote (the card it points to is on this board only). It does not
- * go along with a shared card, and neither does its Highlight: its lines are a Highlight on this board only (shownRanges), never
- * written into the segment's own Highlights (Segment.hl, which a shared card carries to every board)
+ * A sidenote this board keeps for itself (board-only). It does not go along with a shared card, and neither does its Highlight: its
+ * lines are a Highlight on this board only (shownRanges), never written into the segment's own Highlights (Segment.hl, which a
+ * shared card carries to every board)
  */
-export const localNote = (n: Pick<Sidenote, "boardOnly" | "kind">) => !!n.boardOnly || n.kind === "card";
+export const localNote = (n: Pick<Sidenote, "boardOnly">) => !!n.boardOnly;
 /** Lines a..z inside range r */
 export const within = (l: readonly number[], r: readonly number[]) => l[0] >= r[0] && l[1] <= r[1];
 /** The line sidenotes counted on a segment (noteSegment) */

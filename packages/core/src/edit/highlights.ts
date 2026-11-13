@@ -1,6 +1,6 @@
 // Highlights and the sidenotes on them. A segment's own Highlights (Segment.hl, which a shared card carries to every board) never
 // overlap and lie inside the segment; a sidenote on lines that goes along with the card is on one of them, with exactly its lines.
-// A local sidenote (board-only, or a Card sidenote: localNote) is a Highlight of its own on this board: its lines are never written
+// A local sidenote (board-only: localNote) is a Highlight of its own on this board: its lines are never written
 // into Segment.hl, so no other board's Highlight depends on it and nothing another board does to Segment.hl takes it away; the board
 // shows the union of both (shownRanges). Every change that adds, removes or moves a Highlight or a line sidenote keeps this here.
 // Pure functions that change the board passed in (the board calls them inside a mutate).

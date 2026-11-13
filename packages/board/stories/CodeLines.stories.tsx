@@ -155,9 +155,8 @@ const CELLS: Record<State, Cell> = {
         {
           id: `${id}-2`,
           at: { card: id, seg: s.id, lines: [77, 77] },
-          kind: "link",
-          url: "https://github.com/GeeeekExplorer/nano-vllm",
-          title: "nano-vllm",
+          kind: "text",
+          md: "[nano-vllm](https://github.com/GeeeekExplorer/nano-vllm)",
         },
         {
           id: `${id}-3`,
