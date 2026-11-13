@@ -10,6 +10,8 @@ import CodeBoardModel
 //            gets no frames
 //   --memory see MemoryRun
 //   --drag   see DragBench: drags on a copy of each board named (every board when none is), in a window never on screen
+//   --arrows the same drags on two boards made for it (ArrowBoards): a card with twenty arrows, a Section of twenty
+//            cards with their arrows; no vault folder
 // Note snapshots are cached in a new temporary folder, never in the app's cache: every run draws its Notes anew
 
 @MainActor
@@ -120,13 +122,24 @@ final class App: NSObject, NSApplicationDelegate {
 var args = Array(CommandLine.arguments.dropFirst())
 let hud = args.contains("--hud")
 let bench = args.contains("--bench")
-let drag = args.contains("--drag")
+let arrows = args.contains("--arrows")
+let drag = arrows || args.contains("--drag")
 var memory: URL?
 if let i = args.firstIndex(of: "--memory"), i + 1 < args.count {
   memory = URL(filePath: args[i + 1])
   args.removeSubrange(i...i + 1)
 }
 args.removeAll { $0.hasPrefix("-") }
+if arrows {
+  let root = FileManager.default.temporaryDirectory.appending(path: "canvasbench-arrows-\(UUID().uuidString)")
+  args = [root.path(percentEncoded: false)]
+  do {
+    _ = try ArrowBoards.make(in: root)
+  } catch {
+    FileHandle.standardError.write(Data("\(error)\n".utf8))
+    exit(1)
+  }
+}
 guard let folder = args.first else {
   FileHandle.standardError.write(Data("usage: CanvasBench <vault folder> [board id or title] [--hud] [--bench]\n".utf8))
   exit(2)
