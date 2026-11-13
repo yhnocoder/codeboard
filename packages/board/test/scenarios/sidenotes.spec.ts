@@ -305,13 +305,12 @@ test("sidenoteAlwaysShowRefits", async () => {
   await pg.locator('.card[data-id="k1"] .hxm[data-hl="k1:s1:16-16"]').click();
   await until(h, "the Highlight popover is open", () => pg.locator(".pop.k-highlight").count());
   await pg.locator('.pop.k-highlight .slip button[aria-label="Edit"]').click();
-  const ta = pg.locator(".pop.k-highlight .sn-edit textarea");
-  await ta.waitFor();
+  await pg.locator(".pop.k-highlight .sn-edit .md-pm:focus").waitFor();
   await pg.keyboard.press("ControlOrMeta+End");
   await pg.keyboard.insertText(
     " 每个阶段结束时，所有线程都要等其他线程用完共享内存里的这一块 tile，才能开始加载下一块。",
   );
-  await pg.keyboard.press("Escape");
+  await pg.keyboard.press("Enter");
   await until(h, "the longer text is saved", () => (h.board().sidenotes[0] as { md: string }).md.includes("下一块"));
   await pg.keyboard.press("Escape");
   await idle(h);

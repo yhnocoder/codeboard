@@ -102,7 +102,7 @@ const slipTools = async () => forceHover(await waitFor(() => $(".pop.k-highlight
 const editText = async () => {
   const b = await waitFor(() => $<HTMLButtonElement>('.pop.k-highlight .slip button[aria-label="Edit"]'), "Edit");
   b.click();
-  await waitFor(() => $(".sn-edit textarea"), "the sidenote editor");
+  await waitFor(() => $(".sn-edit .md-pm"), "the sidenote editor");
   await frames();
 };
 const previewRef = async () => {

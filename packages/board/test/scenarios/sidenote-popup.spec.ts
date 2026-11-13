@@ -12,9 +12,12 @@
 //                          window as the board pans and zooms; closed and opened again it is back beside the card
 //  sidenoteWholeCardPopup  the card menu's Add ▸ Sidenote opens the card's popup right of it with the input focused; ↵ adds a
 //                          whole-card sidenote; the header marker pins the popup, and its Delete removes the card's sidenotes
+//  sidenoteAddBesideCount  selected lines ending on a Highlight's count: their + sits left of the line number, both visible and
+//                          clickable (the + opens the lines' popup with the input, the count its Highlight's popup)
+//  sidenoteStateIcons      a sidenote's state (its line removed) shows as an icon whose tooltip says it, with no words in the slip
 import type { Page } from "@playwright/test";
 import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
-import { put, type Host } from "../harness";
+import { put, shot, type Host } from "../harness";
 import { NOTE_HOVER } from "../../src/state/timing";
 import { test, open, check, light, expect, until, idle, hold } from "../fixtures";
 import { watch } from "../watch";
@@ -388,6 +391,80 @@ test("sidenoteWholeCardPopup", async () => {
       chrome.tools === 1 &&
       h.board().sidenotes.length === 2,
     { n, p, c, chrome },
+  );
+  await h.close();
+});
+
+test("sidenoteAddBesideCount", async () => {
+  const h = await open({ board: board(), light, w: 1300, h: 900 });
+  const pg = h.page;
+  await idle(h);
+  // lines 2–3: their last line is where the 3–4 Highlight's count is
+  await no(pg, 2).click();
+  await no(pg, 3).click({ modifiers: ["Shift"] });
+  const plus = pg.locator('.card[data-id="k1"] .lsadd');
+  await plus.waitFor();
+  await idle(h);
+  const geo = await pg.evaluate(() => {
+    const box = (sel: string) => {
+      const r = document.querySelector<HTMLElement>(sel)!.getBoundingClientRect();
+      return { l: r.left, r: r.right, t: r.top, b: r.bottom };
+    };
+    const plus = box('.card[data-id="k1"] .lsadd'),
+      count = box('.card[data-id="k1"] .hxm[data-hl="k1:s1:3-4"]'),
+      num = box('.card[data-id="k1"] .gutter .no[data-r="2"]');
+    const apart = (a: typeof plus, b: typeof plus) => a.r <= b.l || b.r <= a.l || a.b <= b.t || b.b <= a.t;
+    const hit = (b: typeof plus, sel: string) =>
+      !!document.elementFromPoint((b.l + b.r) / 2, (b.t + b.b) / 2)?.closest(sel);
+    return {
+      apart: apart(plus, count) && apart(plus, num),
+      sameRow: Math.abs(plus.t - count.t) <= 2,
+      plusHit: hit(plus, ".lsadd"),
+      countHit: hit(count, ".hxm"),
+    };
+  });
+  await shot(h, "sidenote-add-beside-count");
+  await plus.click();
+  await typing(pg).waitFor();
+  const lines = await pg.evaluate(() => document.querySelector(".pop.k-highlight .rng")?.textContent ?? "");
+  await pg.keyboard.press("Escape");
+  await pg.keyboard.press("Escape");
+  await expect(pg.locator(POP)).toHaveCount(0);
+  await marker(pg).click();
+  await pg.locator(POP).waitFor();
+  const counted = await pg.evaluate(() => document.querySelector(".pop.k-highlight .rng")?.textContent ?? "");
+  check(
+    "sidenoteAddBesideCount the + and the count on one row are both shown and each takes its own click",
+    geo.apart && geo.sameRow && geo.plusHit && geo.countHit && lines === "2–3" && counted === "3–4",
+    { geo, lines, counted },
+  );
+  await h.close();
+});
+
+test("sidenoteStateIcons", async () => {
+  const b = board();
+  b.sidenotes.push({ id: "w1", kind: "text", md: "Was on a removed line", at: { card: "k1" }, lineRemoved: true });
+  const h = await open({ board: b, light, w: 1300, h: 900 });
+  const pg = h.page;
+  await idle(h);
+  await pg.locator('.card[data-id="k1"] .chead .mk').click();
+  await pg.locator(".pop.k-notes .slip").waitFor();
+  await idle(h);
+  await shot(h, "sidenote-state-icons");
+  const slip = await pg.evaluate(() => {
+    const s = document.querySelector(".pop.k-notes .slip")!;
+    const f = s.querySelector<HTMLElement>(".sn-flag");
+    return {
+      text: (s.textContent ?? "").trim(),
+      label: f?.getAttribute("aria-label") ?? "",
+      tip: f?.dataset.tip ?? "",
+      warn: !!f?.classList.contains("warn"),
+    };
+  });
+  check(
+    "sidenoteStateIcons a removed line is an icon with a tooltip, no words",
+    slip.text === "Was on a removed line" && /removed/i.test(slip.label) && slip.tip === slip.label && slip.warn,
+    slip,
   );
   await h.close();
 });

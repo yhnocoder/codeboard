@@ -2,7 +2,6 @@
 // (NotesPop), one look. Each sidenote is a slip whose tools float over its top right while it is hovered; at the bottom a + turns
 // into the input for a new one (ui/NoteComposer.tsx). A click on a [[reference]] to a card in a Text sidenote previews that card
 // beside the popup (cardpeek.tsx)
-import { keepKey } from "../vscodekeys";
 import { For, Show, Switch, Match, createSignal, createEffect, type JSX } from "solid-js";
 import {
   cardTitle,
@@ -26,11 +25,10 @@ import { boardSignal } from "../../state/root";
 import * as A from "../../actions";
 import { notesOf } from "../../state/ui";
 import { hxClasses } from "../../cards/code/highlights";
-import { useFinish } from "../hooks";
 import { Icon } from "../icons";
 import { MdStatic } from "../Md";
 import { openMenu, type Item } from "../Menu";
-import { NoteComposer, type ComposeMode } from "../NoteComposer";
+import { NoteComposer, SnField, type ComposeMode } from "../NoteComposer";
 import { Code, type PopProps } from "./common";
 import { CardPeekOf, cardPeeks, type CardPeeks } from "./cardpeek";
 
@@ -286,9 +284,6 @@ function NoteItem(p: { n: Sidenote; peeks: CardPeeks }) {
       <Show when={n().why}>
         <div class="sn-why">{n().why}</div>
       </Show>
-      <Show when={n().lineRemoved}>
-        <div class="sn-why warn">Line removed in the new version · attached to the whole card</div>
-      </Show>
       <Show when={n().review}>
         <div class="sn-why review">
           <span>
@@ -301,11 +296,18 @@ function NoteItem(p: { n: Sidenote; peeks: CardPeeks }) {
           </button>
         </div>
       </Show>
-      <Show when={n().boardOnly && sharedOn(n().at.card) > 1}>
-        <div class="sn-tag">Board-only · not shown on the other boards</div>
-      </Show>
-      <Show when={n().variant}>
-        <div class="sn-tag">Only in variant {A.variantName(n().at.card, n().variant!) ?? ""}</div>
+      <Show when={n().lineRemoved || (n().boardOnly && sharedOn(n().at.card) > 1) || n().variant}>
+        <div class="sn-flags">
+          <Show when={n().lineRemoved}>
+            <Flag icon="minus" tip="Its line was removed in the new version: on the whole card" warn />
+          </Show>
+          <Show when={n().boardOnly && sharedOn(n().at.card) > 1}>
+            <Flag icon="lock" tip="Board-only" />
+          </Show>
+          <Show when={n().variant}>
+            <Flag icon="swap" tip={`Only in variant ${A.variantName(n().at.card, n().variant!) ?? ""}`} />
+          </Show>
+        </div>
       </Show>
     </>
   );
@@ -401,8 +403,16 @@ function noteMenu(n: Sidenote, x: number, y: number) {
     y,
   );
 }
-// 旁注原地编辑：多行、自动增高，和 Note 卡一样是 Markdown + 公式，下面实时预览。
-// 和 Note、问题的编辑一样，Esc、⌘↵、点到外面都是保存（Cancel 才是放弃）。字删光了保存就是删掉这条：Text sidenote 就是那段字，加的时候也不让加空的
+/** A sidenote's state as an icon, said by its tooltip */
+function Flag(p: { icon: Parameters<typeof Icon>[0]["name"]; tip: string; warn?: boolean }) {
+  return (
+    <span class="sn-flag" classList={{ warn: p.warn }} role="img" aria-label={p.tip} data-tip={p.tip}>
+      <Icon name={p.icon} size={12} />
+    </span>
+  );
+}
+// A Text sidenote edited in place, in the same field as the popup's input (ui/NoteComposer.tsx SnField): ↵ or a click elsewhere
+// saves, Esc puts it back as it was. Saved empty, it goes
 const [snEditing, setSnEditing] = boardSignal<string | null>(null);
 function editText(n: Sidenote) {
   if (n.kind !== "text") return;
@@ -419,60 +429,23 @@ function editText(n: Sidenote) {
   setSnEditing(n.id);
 }
 function SidenoteEditor(p: { n: Extract<Sidenote, { kind: "text" }> }) {
-  let box!: HTMLDivElement;
-  const [v, setV] = createSignal(p.n.md);
-  const grow = (el: HTMLTextAreaElement) => {
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
+  const save = (v: string | null) => {
+    if (v !== null) A.writeSidenote(p.n.id, v.trim());
   };
-  const { finish } = useFinish(
-    (save: boolean) => {
-      setSnEditing(null);
-      if (save) A.writeSidenote(p.n.id, v().trim());
-    },
-    (f) => f(true),
-  ); // 弹窗被关掉了（点了白板）
   return (
-    <div ref={box} class="sn-edit" data-nodrag>
-      <textarea
-        spellcheck={false}
-        value={v()}
-        ref={(el) =>
-          queueMicrotask(() => {
-            el.focus();
-            el.setSelectionRange(el.value.length, el.value.length);
-            grow(el);
-          })
-        }
-        onInput={(e) => {
-          setV(e.currentTarget.value);
-          grow(e.currentTarget);
+    <div class="sn-edit" data-nodrag>
+      <SnField
+        value={p.n.md}
+        end={(how, v) => {
+          setSnEditing(null);
+          if (how !== "esc") save(v);
         }}
-        onBlur={(e) => {
-          if (!(e.relatedTarget instanceof Node && box.contains(e.relatedTarget))) finish(true);
-        }}
-        onKeyDown={(e) => {
-          keepKey(e);
-          if (e.key === "Escape" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) {
-            e.preventDefault();
-            finish(true);
-          }
+        // its popup closed (a click on the board)
+        gone={(v) => {
+          setSnEditing(null);
+          save(v);
         }}
       />
-      <Show when={v().trim()}>
-        <MdStatic class="sn-text sn-prev" src={v()} />
-      </Show>
-      {/* 按钮不拿焦点：点的时候字框不失焦 */}
-      <div class="sn-eacts" onMouseDown={(e) => e.preventDefault()}>
-        <span>Markdown and $math$ · {A.K.mod}↵ or click outside to save</span>
-        <span class="grow" />
-        <button class="tbtn" onClick={() => finish(false)}>
-          Cancel
-        </button>
-        <button class="tbtn pri" onClick={() => finish(true)}>
-          Save
-        </button>
-      </div>
     </div>
   );
 }

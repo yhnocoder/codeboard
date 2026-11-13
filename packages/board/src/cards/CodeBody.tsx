@@ -499,6 +499,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
               <Show when={selEnd() !== undefined && ys()[selEnd()!]}>
                 <button
                   class="lsadd"
+                  classList={{ left: X.list().some((h) => h.notes.length > 0 && h.first === selEnd()) }}
                   style={{ top: `${ys()[selEnd()!].y}px` }}
                   data-nodrag
                   aria-label="Add Sidenote"

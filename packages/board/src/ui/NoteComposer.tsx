@@ -1,8 +1,10 @@
-// The input for a new sidenote, at the bottom of a sidenote popup (ui/pops/notes.tsx). It is the Notes' own Markdown editor
-// (md/load.ts editorOpts), so `[[` opens the board's reference list as in a Note, and the list's highlighted card shows its
-// beginning beside it (cardpeek.tsx). ↵ adds the Text sidenote and the popup takes the next one (added); ⇧↵ is a line break, and
-// with a list open ↵ picks from it. Esc, a click elsewhere or the popup closing adds what is written; nothing written, the input
-// just goes (close). The icon at its right end turns it into a function search for a Code sidenote (↑↓, ↵ adds it), and back
+// A sidenote's text field (SnField) and the input for a new sidenote (NoteComposer), at the bottom of a sidenote popup
+// (ui/pops/notes.tsx). The field is the Notes' own Markdown editor (md/load.ts editorOpts), so `[[` opens the board's reference
+// list as in a Note, and the list's highlighted card shows its beginning beside it (cardpeek.tsx); ↵ ends it (with a list open
+// ↵ picks from it), ⇧↵ is a line break. The same field edits a Text sidenote in place.
+// In the input, ↵ adds the Text sidenote and the popup takes the next one (added); Esc, a click elsewhere or the popup closing
+// adds what is written; nothing written, the input just goes (close). The icon at its right end turns it into a function search
+// for a Code sidenote (↑↓, ↵ adds it), and back
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { Anchor, SearchItem } from "@codeboard/core";
 import { cardById } from "../state/store";
@@ -13,6 +15,87 @@ import { useDebouncedAsk, useListNav } from "./hooks";
 import { keepKey } from "./vscodekeys";
 import { Icon } from "./icons";
 import { CardPeek, cardElement } from "./pops/cardpeek";
+
+/** How a field ended, with its text: ↵, Esc, or the editor ended itself (⌘↵, the focus went elsewhere) */
+export type FieldEnd = "enter" | "esc" | "done";
+
+/**
+ * A sidenote's Markdown text, edited: `end` once with how it ended and the text (null: as it was); taken away before that (its
+ * popup closed, the board switched), `gone` with the text
+ */
+export function SnField(p: {
+  value: string;
+  end: (how: FieldEnd, v: string | null) => void;
+  gone: (v: string | null) => void;
+}) {
+  const md = useMd();
+  // the card the [[ list highlights, and its row
+  const [shown, setShown] = createSignal<{ id: string; row: HTMLElement } | null>(null);
+  let ed: MdEditorHandle | undefined,
+    over = false;
+  const end = (how: FieldEnd) => {
+    if (over) return;
+    over = true;
+    const v = ed ? ed.value() : null;
+    const e = ed;
+    ed = undefined;
+    setShown(null);
+    e?.destroy();
+    p.end(how, v);
+  };
+  onCleanup(() => {
+    if (over) return;
+    over = true;
+    const v = ed ? ed.value() : null;
+    ed?.destroy();
+    p.gone(v);
+  });
+  const mount = (host: HTMLDivElement) => {
+    const go = (m: NonNullable<ReturnType<typeof editorNow>>) => {
+      if (over || !host.isConnected || ed) return;
+      const o = editorOpts(md);
+      ed = m.mountEditor(md, host, {
+        ...o,
+        refs: o.refs && {
+          ...o.refs,
+          showing: (pk, row) => setShown(pk && !pk.group && row && cardElement(pk.id) ? { id: pk.id, row } : null),
+        },
+        value: p.value,
+        placeholder: "",
+        scrollOwnBox: true,
+        onDone: () => end("done"),
+      });
+      // a sidenote edited goes on from its end
+      if (p.value) ed.placeCaret("end");
+    };
+    // once the field is on the page (a ref runs before it is)
+    const now = editorNow();
+    if (now) queueMicrotask(() => go(now));
+    else void loadEditor().then(go);
+    // ↵ and Esc end it before the editor takes them (a new paragraph; Esc would end it as done); a list open in it ([[, /, :) or
+    // a code block takes them
+    host.addEventListener(
+      "keydown",
+      (e) => {
+        const enter = e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey;
+        if ((!enter && e.key !== "Escape") || e.isComposing) return;
+        if (document.querySelector(".mdui-anchor .md-pick") || (e.target as Element).closest?.(".cm-editor")) return;
+        e.preventDefault();
+        e.stopPropagation();
+        end(enter ? "enter" : "esc");
+      },
+      true,
+    );
+  };
+  return (
+    <>
+      <div ref={mount} class="nbody md editing" />
+      <Show when={shown()} keyed>
+        {(s) => <CardPeek id={s.id} at={s.row} beside={s.row.closest(".md-pick") ?? s.row} />}
+      </Show>
+    </>
+  );
+}
 
 export type ComposeMode = "text" | "code";
 
@@ -25,16 +108,12 @@ export function NoteComposer(p: {
   added: (mode: ComposeMode) => void;
   close: () => void;
 }) {
-  const md = useMd();
   let box!: HTMLDivElement;
   const [mode, setMode] = createSignal<ComposeMode>(p.mode);
   const [q, setQ] = createSignal("");
   const [res, setRes] = createSignal<SearchItem[]>([]);
   const { i, setI, key } = useListNav(() => res().length);
-  // the card the [[ list highlights, and its row
-  const [shown, setShown] = createSignal<{ id: string; row: HTMLElement } | null>(null);
-  let ed: MdEditorHandle | undefined,
-    over = false;
+  let over = false;
   useDebouncedAsk(
     () => (mode() === "code" ? q().trim() : ""),
     (s) => (s ? A.searchCodeForNote(s) : Promise.resolve([])),
@@ -44,71 +123,19 @@ export function NoteComposer(p: {
     },
     (s) => (s ? SEARCH_WAIT : 0),
   );
-  const addText = (v: string | null | undefined) => {
+  const addText = (v: string | null) => {
     const t = v?.trim();
     // the card can be gone (deleted, the board switched) by the time an input taken away adds what it had
     if (!t || !cardById(p.at.card)) return false;
     A.addSidenote({ kind: "text", md: t, at: p.at });
     return true;
   };
-  const dropEditor = () => {
-    const e = ed;
-    ed = undefined;
-    setShown(null);
-    e?.destroy();
-  };
   /** Done writing: what is written is added; next (↵) keeps writing in a new input, else the input goes */
-  const finish = (v: string | null | undefined, next: boolean) => {
+  const finish = (v: string | null, next: boolean) => {
     if (over) return;
     over = true;
-    dropEditor();
     if (addText(v) && next) p.added("text");
     else p.close();
-  };
-  // taken away unfinished (its popup closed, the board switched): what is written is added
-  onCleanup(() => {
-    if (over) return;
-    over = true;
-    const v = ed?.value();
-    dropEditor();
-    addText(v);
-  });
-  const mountText = (host: HTMLDivElement) => {
-    const go = (m: NonNullable<ReturnType<typeof editorNow>>) => {
-      if (over || mode() !== "text" || !host.isConnected || ed) return;
-      const o = editorOpts(md);
-      ed = m.mountEditor(md, host, {
-        ...o,
-        refs: o.refs && {
-          ...o.refs,
-          showing: (pk, row) => setShown(pk && !pk.group && row && cardElement(pk.id) ? { id: pk.id, row } : null),
-        },
-        value: "",
-        placeholder: "",
-        scrollOwnBox: true,
-        // the editor ended itself: Esc, ⌘↵, or the focus went elsewhere
-        onDone: (v) => {
-          ed = undefined;
-          finish(v, false);
-        },
-      });
-    };
-    // once the input is on the page (a ref runs before it is)
-    const now = editorNow();
-    if (now) queueMicrotask(() => go(now));
-    else void loadEditor().then(go);
-    // ↵ adds the sidenote, before the editor makes it a new paragraph; a list open in it ([[, /, :) or a code block takes it
-    host.addEventListener(
-      "keydown",
-      (e) => {
-        if (e.key !== "Enter" || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
-        if (document.querySelector(".mdui-anchor .md-pick") || (e.target as Element).closest?.(".cm-editor")) return;
-        e.preventDefault();
-        e.stopPropagation();
-        finish(ed?.value(), true);
-      },
-      true,
-    );
   };
   const pick = async () => {
     const it = res()[i()];
@@ -118,10 +145,8 @@ export function NoteComposer(p: {
     p.added("code");
   };
   const toggleCode = () => {
-    if (mode() === "text") {
-      dropEditor();
-      setMode("code");
-    } else {
+    if (mode() === "text") setMode("code");
+    else {
       setQ("");
       setRes([]);
       setMode("text");
@@ -142,7 +167,17 @@ export function NoteComposer(p: {
           when={mode() === "code"}
           fallback={
             <div class="ncomp-text">
-              <div ref={mountText} class="nbody md editing" />
+              <SnField
+                value=""
+                end={(how, v) => finish(v, how === "enter")}
+                gone={(v) => {
+                  // taken away unfinished (its popup closed, the board switched): what is written is added; not when it
+                  // turned into the code search
+                  if (over || mode() !== "text") return;
+                  over = true;
+                  addText(v);
+                }}
+              />
             </div>
           }
         >
@@ -204,9 +239,6 @@ export function NoteComposer(p: {
             )}
           </For>
         </div>
-      </Show>
-      <Show when={shown()} keyed>
-        {(s) => <CardPeek id={s.id} at={s.row} beside={s.row.closest(".md-pick") ?? s.row} />}
       </Show>
     </div>
   );
