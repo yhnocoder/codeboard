@@ -4,7 +4,7 @@ import type { ResolvedPos } from "@tiptap/pm/model";
 import { GapCursor } from "@tiptap/pm/gapcursor";
 import type { EditorView } from "@tiptap/pm/view";
 
-/** GapCursor.valid 是 prosemirror-gapcursor 自己的箭头键用的判断，有，只是类型里没写 */
+/** GapCursor.valid: the check prosemirror-gapcursor's own arrow keys use; it exists, only its type does not declare it */
 export const gapAt = ($p: ResolvedPos) => (GapCursor as unknown as { valid($p: ResolvedPos): boolean }).valid($p);
 
 /** A gap cursor at height y when y is between two blocks one of which is a code block (its padding counts as gap); false
@@ -15,7 +15,7 @@ export function gapPress(view: EditorView, y: number): boolean {
     const before = i > 0 ? (view.nodeDOM(at - doc.child(i - 1).nodeSize) as HTMLElement | null) : null;
     const after = i < doc.childCount ? (view.nodeDOM(at) as HTMLElement | null) : null;
     if (!(before?.matches("pre.md-code") || after?.matches("pre.md-code"))) continue;
-    // 缝从上一块的字的下沿到下一块的字的上沿（代码块的内边距算在缝里）
+    // the gap runs from the bottom of the block above's text to the top of the block below's (a code block's padding is in it)
     const top = before ? edge(before, "bottom") : -Infinity,
       bottom = after ? edge(after, "top") : Infinity;
     if (y < top || y > bottom) continue;
@@ -27,7 +27,7 @@ export function gapPress(view: EditorView, y: number): boolean {
   }
   return false;
 }
-/** 一块的内容的上沿 / 下沿：代码块不算内边距，别的块就是它的边 */
+/** The top / bottom of a block's content: a code block's without its padding, any other block's own edge */
 function edge(el: HTMLElement, side: "top" | "bottom") {
   const r = el.getBoundingClientRect();
   if (!el.matches("pre.md-code")) return r[side];

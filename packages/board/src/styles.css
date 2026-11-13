@@ -38,7 +38,6 @@
   --doom-ink: #b23a22;
   /* a Note's code blocks (Warm Ink only, the demo's colours; other looks reset these below and use their --k-* colours) */
   --nc-bg: #f5f3ef;
-  --nc-pill: #ffffff;
   --nc-kw: #1f6fa8;
   --nc-fn: #d03b5c;
   --nc-num: #a3166b;
@@ -160,7 +159,6 @@
   --doom-ink: #f08a74;
   --md-float-ring: 0 0 0 1px rgba(255, 240, 220, 0.15);
   --nc-bg: #2b2a27;
-  --nc-pill: #34332f;
   --nc-kw: #7db4e4;
   --nc-fn: #f07c95;
   --nc-num: #e08cc0;
@@ -215,7 +213,6 @@
 [data-look]:not([data-look="warm-ink"]) {
   --sect-sel: initial;
   --nc-bg: initial;
-  --nc-pill: initial;
   --nc-kw: initial;
   --nc-fn: initial;
   --nc-num: initial;
