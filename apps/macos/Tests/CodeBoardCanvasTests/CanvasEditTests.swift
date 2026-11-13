@@ -97,6 +97,8 @@ private func png(_ url: URL) throws {
     try await canvas.show(
       doc, at: VaultBoard(id: board.id, title: "B", path: name), in: Vault(root: root), theme: .warmInk)
     canvas.place(zoom: zoom, centre: CGPoint(x: 550, y: 400))
+    // from rest: a test's gestures start with no redraw of the setup's under way, as a person's do on a board drawn
+    await idle()
   }
 
   func close() {
@@ -175,6 +177,22 @@ private func png(_ url: URL) throws {
     }
   }
 
+  /// Once the canvas is at rest with no redraw queued or running: what a gesture after this counts is its own
+  func idle() async {
+    let deadline = ContinuousClock.now + .seconds(60)
+    while !(canvas.queue.isIdle && canvas.tasks.isEmpty && canvas.motion.isResting) {
+      if ContinuousClock.now > deadline {
+        Issue.record("the canvas did not come to rest")
+        return
+      }
+      tick()
+      try? await Task.sleep(for: .milliseconds(2))
+    }
+  }
+
+  /// A frame, as the display link gives one (it does not run while the display sleeps)
+  func tick() { canvas.tick(at: CACurrentMediaTime()) }
+
   func card(_ id: String) -> Card { doc.board.card(cid(id))! }
   /// Where the scene draws a card
   func rect(_ id: String) -> CGRect { canvas.scene!.items[canvas.index(of: .card(cid(id)))!].rect }
@@ -246,6 +264,21 @@ private func png(_ url: URL) throws {
     r.drag(CGPoint(x: 480, y: -20), CGPoint(x: 510, y: 210), .shift)
     #expect(r.doc.selection == [.section(gid("g1")), .card(cid("m1")), .card(cid("t1")), .card(cid("b1"))])
     #expect(r.canvas.marquee.path == nil, "gone once released")
+  }
+
+  @Test func redrawsCancelledWithoutAGestureAreNoBreak() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    await r.idle()
+    // redraws under way at another zoom, then the camera placed again (no gesture): they are cancelled and finish late
+    for _ in 0..<5 {
+      r.canvas.place(zoom: 0.7, centre: CGPoint(x: 550, y: 400))
+      r.tick()
+      #expect(!r.canvas.tasks.isEmpty, "redraws started")
+      r.canvas.place(zoom: 1.4, centre: CGPoint(x: 550, y: 400))
+      await r.idle()
+    }
+    #expect(r.breaks == 0, "work a placement cancelled is not work during a gesture")
   }
 
   @Test(arguments: [1, 0.5] as [CGFloat])

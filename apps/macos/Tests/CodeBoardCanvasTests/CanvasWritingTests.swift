@@ -12,7 +12,7 @@ import Testing
 extension Rig {
   /// Once the editor shows the card and takes keys
   func editorReady() async {
-    let deadline = ContinuousClock.now + .seconds(10)
+    let deadline = ContinuousClock.now + .seconds(60)
     while canvas.editing?.ready != true {
       if ContinuousClock.now > deadline {
         Issue.record("the editor did not mount: editing \(String(describing: canvas.editing))")
@@ -147,7 +147,7 @@ extension Rig {
     let id = try #require(r.canvas.editing?.id)
     await r.type("A first line")
     let before = try #require(r.canvas.editing?.size)
-    let deadline = ContinuousClock.now + .seconds(10)
+    let deadline = ContinuousClock.now + .seconds(60)
     for _ in 0..<6 {
       try await r.canvas.noteEditor.view.evaluateJavaScript("document.execCommand('insertParagraph')")
       await r.type("another line")

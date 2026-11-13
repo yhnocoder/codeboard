@@ -70,7 +70,12 @@ public final class CanvasView: NSView {
   /// What the Note renderer measured, by card, with what it measured: a later scene measures only what changed
   var measured: [CardID: (note: NoteBody, width: Double, size: CGSize)] = [:]
   /// The pointer or key gesture under way; while one runs nothing is redrawn or swapped
-  var gesture: Gesture?
+  var gesture: Gesture? {
+    didSet { if oldValue == nil && gesture != nil { gestureStarts += 1 } }
+  }
+  /// Gestures begun, pointer, key or camera: a redraw that ends cancelled counts against the gesture rule only when one
+  /// began while it ran (one cancelled by anything else, a camera placed or a tab hidden, ran into no gesture)
+  var gestureStarts = 0
   /// The board changed during a gesture: the scene follows once it ends
   var pendingRefresh = false
   var refreshes = 0
@@ -618,6 +623,7 @@ public final class CanvasView: NSView {
 
   /// Input moved the camera: rest work is cancelled
   func moved() {
+    gestureStarts += 1
     if !queue.isIdle || !tasks.isEmpty { cancelRedraws() }
     applyCamera()
     link?.isPaused = false
@@ -632,8 +638,13 @@ public final class CanvasView: NSView {
 
   @objc private func step(_ l: CADisplayLink) {
     onFrame?(l)
+    tick(at: l.timestamp)
+  }
+
+  /// One frame's work (the display link's; tests drive it themselves where the display sleeps and the link does not run)
+  package func tick(at time: CFTimeInterval) {
     var cam = camera
-    let rested = motion.step(at: l.timestamp, camera: &cam)
+    let rested = motion.step(at: time, camera: &cam)
     if cam != camera {
       camera = cam
       applyCamera()
@@ -650,7 +661,7 @@ public final class CanvasView: NSView {
       // decoding and drawing free large blocks that the allocator would otherwise keep, counted in the footprint
       DispatchQueue.global(qos: .utility).async { _ = malloc_zone_pressure_relief(nil, 0) }
     }
-    if motion.isResting && queue.isIdle && onFrame == nil && gesture == nil { l.isPaused = true }
+    if motion.isResting && queue.isIdle && onFrame == nil && gesture == nil { link?.isPaused = true }
   }
 
   /// At rest: what each item should hold now, within what the other canvases leave of the budget
@@ -704,6 +715,7 @@ public final class CanvasView: NSView {
       let images = self.images
       let id = nextTask
       nextTask += 1
+      let epoch = gestureStarts
       if job.note {
         let notes = self.notes
         let priority = nextNote
@@ -712,13 +724,14 @@ public final class CanvasView: NSView {
           let r = await CanvasView.drawNote(
             item, scale: job.scale, theme: theme, images: images, notes: notes, priority: priority)
           await self?.finished(
-            job, generation: generation, surface: r.surface, decodes: 0, overlapped: r.late, task: id)
+            job, generation: generation, surface: r.surface, decodes: 0, cancelled: r.late, epoch: epoch, task: id)
         }
       } else {
         tasks[id] = Task.detached(priority: .userInitiated) { [weak self] in
           let r = CanvasView.render(item, scale: job.scale, theme: theme, images: images)
           await self?.finished(
-            job, generation: generation, surface: r.surface, decodes: r.decodes, overlapped: Task.isCancelled, task: id)
+            job, generation: generation, surface: r.surface, decodes: r.decodes, cancelled: Task.isCancelled,
+            epoch: epoch, task: id)
         }
       }
     }
@@ -736,14 +749,14 @@ public final class CanvasView: NSView {
     CATransaction.flush()
   }
 
-  /// overlapped: a gesture started while it ran (its result is dropped); counted against the gesture rule, as the work
-  /// may have run on into the gesture
+  /// cancelled: it was cancelled while it drew (its result is dropped); counted against the gesture rule when a gesture
+  /// began since it started (`epoch`), as the work ran on into the gesture
   func finished(
-    _ job: RestPlan.Job, generation: Int, surface s: IOSurface?, decodes: Int, overlapped: Bool, task: Int
+    _ job: RestPlan.Job, generation: Int, surface s: IOSurface?, decodes: Int, cancelled: Bool, epoch: Int, task: Int
   ) {
     tasks[task] = nil
     queue.finish(job, generation: generation, payload: s, pixels: s.map { $0.width * $0.height } ?? 0)
-    if overlapped {
+    if cancelled && gestureStarts != epoch {
       ruleBreaks.redraws += 1
       ruleBreaks.decodes += decodes
     }
