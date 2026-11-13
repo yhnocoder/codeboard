@@ -578,7 +578,9 @@ extension CanvasView {
   /// side handles and corner; none when tilted
   func resizeEdges(_ item: Item) -> [Resize.Edges] {
     switch item {
-    case .section:
+    case .section(let id):
+      // folded: no handles (only its title shows)
+      if document?.board.section(id)?.collapsed == true { return [] }
       return [.left, .right, .top, .bottom, [.left, .top], [.right, .top], [.left, .bottom], [.right, .bottom]]
     case .arrow: return []
     case .card(let id):

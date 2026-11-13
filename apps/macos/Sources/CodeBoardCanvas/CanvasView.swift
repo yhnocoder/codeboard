@@ -442,17 +442,18 @@ public final class CanvasView: NSView {
       l.addSublayer(brush)
       return l
     }
-    // the web's squircle corners, which Core Animation's own corner curves are not
+    // the web's squircle corners, which Core Animation's own corner curves are not; folded, min(13.5, 10) (.sect.shut)
     let r = CGRect(origin: .zero, size: f.rect.size)
+    let radius = f.folded ? min(t.sectionRadius, 10) : t.sectionRadius
     let tray = CAShapeLayer()
     tray.frame = f.rect
-    tray.path = Drawing.squircle(r, t.sectionRadius)
+    tray.path = Drawing.squircle(r, radius)
     tray.fillColor = f.fill
     let top = CAShapeLayer()
-    top.path = Shadow.innerTop(r.size, radius: t.sectionRadius)
+    top.path = Shadow.innerTop(r.size, radius: radius)
     top.fillColor = t.sectionEdge
     let edge = CAShapeLayer()
-    edge.path = Drawing.squircle(r.insetBy(dx: 0.25, dy: 0.25), t.sectionRadius - 0.25)
+    edge.path = Drawing.squircle(r.insetBy(dx: 0.25, dy: 0.25), radius - 0.25)
     edge.fillColor = nil
     edge.strokeColor = t.hair
     edge.lineWidth = 0.5

@@ -68,7 +68,18 @@ enum Drawing: Sendable {
 
     var text: String
     var kind: Kind
+    /// A folded Section's: how many cards are in it ("Title · N cards", then the chevron)
+    var count: Int? = nil
   }
+
+  /// A folded Section's title: `.slabel.collapsed` (its padding, the title, "· N cards" 5 after it, the chevron 16
+  /// wide, 2 between each)
+  static func foldedTitleWidth(_ title: String, count: Int, _ t: Theme) -> CGFloat {
+    let pad: CGFloat = t.frame == .tray ? 8 : 2
+    return pad + width(title, t.sectionTitleFont) + 2 + 5 + width(foldedCount(count), t.sectionCount) + 2 + 16
+  }
+
+  static func foldedCount(_ n: Int) -> String { "· \(n) card\(n == 1 ? "" : "s")" }
 
   /// Its picture comes from the Note renderer: until then it shows its paper
   var byRenderer: Bool {
@@ -213,8 +224,32 @@ enum Drawing: Sendable {
         Drawing.text(ctx, l.text, t.arrowLabel, t.ink2, x: 16, midY: size.height / 2, width: size.width - 32)
       case (.section, _):
         let x: CGFloat = t.frame == .tray ? 6 : 0
-        Drawing.text(
-          ctx, l.text, t.sectionTitleFont, t.sectionTitle, x: x, midY: size.height / 2, width: size.width - x)
+        guard let n = l.count else {
+          Drawing.text(
+            ctx, l.text, t.sectionTitleFont, t.sectionTitle, x: x, midY: size.height / 2, width: size.width - x)
+          break
+        }
+        // folded: the title, its card count, the chevron pointing right
+        let tw = Drawing.width(l.text, t.sectionTitleFont)
+        Drawing.text(ctx, l.text, t.sectionTitleFont, t.sectionTitle, x: x, midY: size.height / 2, width: tw)
+        let count = Drawing.foldedCount(n)
+        let cx = x + tw + 2 + 5
+        let cw = Drawing.width(count, t.sectionCount)
+        Drawing.text(ctx, count, t.sectionCount, t.ink3, x: cx, midY: size.height / 2, width: cw)
+        // icons.tsx chevR (M6 12l4-4-4-4) at 10 px in a 16 px box, its stroke 2 of 16
+        let k: CGFloat = 10 / 16
+        let ox = cx + cw + 2 + 3
+        let oy = size.height / 2 - 5
+        let chev = CGMutablePath()
+        chev.move(to: CGPoint(x: ox + 6 * k, y: oy + 12 * k))
+        chev.addLine(to: CGPoint(x: ox + 10 * k, y: oy + 8 * k))
+        chev.addLine(to: CGPoint(x: ox + 6 * k, y: oy + 4 * k))
+        ctx.addPath(chev)
+        ctx.setStrokeColor(t.ink3)
+        ctx.setLineWidth(2 * k)
+        ctx.setLineCap(.round)
+        ctx.setLineJoin(.round)
+        ctx.strokePath()
       }
     }
     return decodes

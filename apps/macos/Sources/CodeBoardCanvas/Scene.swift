@@ -33,6 +33,8 @@ struct Scene: Sendable {
     var fill: CGColor
     /// `Theme.Frame.brush`'s strokes, filled, in the Section's units
     var strokes: Outline?
+    /// Folded: only its title bar, with a smaller corner
+    var folded = false
   }
 
   /// An arrow as filled and stroked paths in board units
@@ -131,37 +133,33 @@ struct Scene: Sendable {
     _ board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter, sizes: [CardID: CGSize] = [:],
     reusing previous: Scene? = nil
   ) {
-    for s in board.sections {
-      let r = CGRect(x: s.x, y: s.y, width: s.width, height: s.height)
-      // the title's room: a tray's label has 6 before its text and 2 after, a brush title 2 after
-      let titleWidth = s.title.isEmpty ? 0 : Drawing.width(s.title, t.sectionTitleFont) + (t.frame == .tray ? 8 : 2)
-      let strokes: Outline? =
-        switch t.frame {
-        case .tray: nil
-        // the gap is the title label's width, its collapse chevron (16, shown on hover) and the gap before it included
-        case .brush: Outline(InkFrame.path(id: s.id.rawValue, size: r.size, gap: max(40, titleWidth + 18)))
-        }
-      frames.append(
-        Frame(id: s.id, rect: r, fill: s.color.flatMap { t.sectionColors[$0] } ?? t.sectionFill, strokes: strokes))
-      bounds = bounds.union(r)
-      if !s.title.isEmpty {
-        items.append(
-          Item(
-            owner: .sectionTitle(s.id),
-            rect: CGRect(
-              x: s.x + t.sectionTitleAt.x, y: s.y + t.sectionTitleAt.y, width: titleWidth, height: t.sectionTitleHeight),
-            drawing: .label(.init(text: s.title, kind: .section)),
-            tilt: 0))
+    // what a folded Section hides: the cards and Sections inside it (the outermost folded one around each)
+    let byID = Dictionary(board.sections.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    func foldedAround(_ id: SectionID?) -> SectionID? {
+      var at = id
+      var out: SectionID?
+      var n = 0
+      while let s = at.flatMap({ byID[$0] }), n < 64 {
+        if s.collapsed { out = s.id }
+        at = s.parent
+        n += 1
       }
+      return out
     }
-    cardsFrom = items.count
     let refs = RefResolver(board, package: package, vault: vault)
     var ends: [CardID: [Endpoint]] = [:]
     for a in board.arrows {
       ends[a.from.card, default: []].append(a.from)
       ends[a.to.card, default: []].append(a.to)
     }
+    var cardItems: [Item] = []
+    var hiddenIn: [CardID: SectionID] = [:]
+    var members: [SectionID: [CGRect]] = [:]
     for c in board.cards {
+      if let f = foldedAround(c.section) {
+        hiddenIn[c.id] = f
+        continue
+      }
       guard let (content, folder) = Scene.content(of: c, package: package, vault: vault) else {
         missing.append(c.id)
         continue
@@ -188,11 +186,86 @@ struct Scene: Sendable {
       parts[c.id] = part
       let r = CGRect(origin: CGPoint(x: c.x, y: c.y), size: part.size)
       placed[c.id] = Placed(rect: r, code: part.code, tilt: tilt)
-      items.append(Item(owner: .card(c.id), rect: r, drawing: part.drawing, tilt: tilt, bleed: part.drawing.bleed(t)))
+      cardItems.append(
+        Item(owner: .card(c.id), rect: r, drawing: part.drawing, tilt: tilt, bleed: part.drawing.bleed(t)))
+      if let s = c.section { members[s, default: []].append(r) }
       bounds = bounds.union(r)
     }
+    // a Section's frame: its own ∪ its cards and the Sections in it, each with room around it (core sectionFrame); a
+    // folded one just holds its title, "Title · N cards" and the chevron
+    var children: [SectionID: [SectionID]] = [:]
+    for s in board.sections { if let p = s.parent { children[p, default: []].append(s.id) } }
+    var counts: [SectionID: Int] = [:]
+    for c in board.cards {
+      var at = c.section
+      var seen = Set<SectionID>()
+      while let s = at, seen.insert(s).inserted {
+        counts[s, default: 0] += 1
+        at = byID[s]?.parent
+      }
+    }
+    func titleWidth(_ s: Section) -> CGFloat {
+      if s.collapsed { return Drawing.foldedTitleWidth(s.title, count: counts[s.id] ?? 0, t) }
+      // a tray's label has 6 before its text and 2 after, a brush title 2 after
+      return s.title.isEmpty ? 0 : Drawing.width(s.title, t.sectionTitleFont) + (t.frame == .tray ? 8 : 2)
+    }
+    var frameOf: [SectionID: CGRect] = [:]
+    var visiting = Set<SectionID>()
+    func frame(_ id: SectionID) -> CGRect {
+      if let f = frameOf[id] { return f }
+      guard let s = byID[id] else { return .null }
+      var r: CGRect
+      if s.collapsed {
+        r = CGRect(
+          x: s.x, y: s.y, width: (t.foldedTitleAt.x + titleWidth(s) + 8).rounded(.up),
+          height: 2 * t.foldedTitleAt.y + t.sectionTitleHeight)
+      } else {
+        r = CGRect(x: s.x, y: s.y, width: s.width, height: s.height)
+        visiting.insert(id)
+        for m in members[id] ?? [] { r = r.union(Scene.padded(m)) }
+        for c in children[id] ?? [] where !visiting.contains(c) { r = r.union(Scene.padded(frame(c))) }
+        visiting.remove(id)
+      }
+      frameOf[id] = r
+      return r
+    }
+    for s in board.sections where foldedAround(s.parent) == nil {
+      let r = frame(s.id)
+      let tw = titleWidth(s)
+      let strokes: Outline? =
+        switch t.frame {
+        case .tray: nil
+        // the gap is the title label's width, its collapse chevron (16, shown on hover) and the gap before it included
+        case .brush: Outline(InkFrame.path(id: s.id.rawValue, size: r.size, gap: max(40, tw + 18)))
+        }
+      frames.append(
+        Frame(
+          id: s.id, rect: r, fill: s.color.flatMap { t.sectionColors[$0] } ?? t.sectionFill, strokes: strokes,
+          folded: s.collapsed))
+      bounds = bounds.union(r)
+      if !s.title.isEmpty || s.collapsed {
+        let at = s.collapsed ? t.foldedTitleAt : t.sectionTitleAt
+        items.append(
+          Item(
+            owner: .sectionTitle(s.id),
+            rect: CGRect(x: s.x + at.x, y: s.y + at.y, width: tw, height: t.sectionTitleHeight),
+            drawing: .label(.init(text: s.title, kind: .section, count: s.collapsed ? counts[s.id] ?? 0 : nil)),
+            tilt: 0))
+      }
+    }
+    cardsFrom = items.count
+    items += cardItems
     labelsFrom = items.count
-    for a in board.arrows {
+    // a card folded away: its arrows meet its outermost folded Section's title bar, at the middle of its height; an
+    // arrow with both ends folded into the same one is not drawn
+    for (id, f) in hiddenIn {
+      let r = frame(f)
+      if !r.isNull { placed[id] = Placed(rect: r, code: nil, tilt: 0, folded: true) }
+    }
+    for var a in board.arrows {
+      if let f = hiddenIn[a.from.card], f == hiddenIn[a.to.card] { continue }
+      if hiddenIn[a.from.card] != nil { a.from = Endpoint(card: a.from.card, side: a.from.side) }
+      if hiddenIn[a.to.card] != nil { a.to = Endpoint(card: a.to.card, side: a.to.side) }
       guard let from = placed[a.from.card], let to = placed[a.to.card] else { continue }
       let (arrow, label) = Scene.route(a, from: from, to: to, theme: t)
       arrows.append(arrow)
@@ -211,7 +284,7 @@ struct Scene: Sendable {
       {
         return p.rect.minY + c.top + y
       }
-      return p.rect.minY + t.headerHeight / 2
+      return p.folded ? p.rect.midY : p.rect.minY + t.headerHeight / 2
     }
     let lineA = a.from.line != nil || a.from.block != nil
     let lineB = a.to.line != nil || a.to.block != nil
@@ -323,6 +396,13 @@ struct Scene: Sendable {
     var rect: CGRect
     var code: (layout: CodeLayout, top: CGFloat, segments: [SegmentID])?
     var tilt: CGFloat
+    /// A folded Section's title bar standing in for a card folded away in it: arrows meet it at its middle
+    var folded = false
+  }
+
+  /// A card's or an inner Section's frame with the room a Section keeps around it (core SECTION_PAD)
+  static func padded(_ r: CGRect) -> CGRect {
+    CGRect(x: r.minX - 22, y: r.minY - 34, width: r.width + 44, height: r.height + 56)
   }
 
   private static func card(

@@ -138,6 +138,8 @@ public struct Theme: Sendable {
   var smallStrong: Font
   var linkedIn: Font
   var sectionTitleFont: Font
+  /// A folded Section's "· N cards"
+  var sectionCount: Font
   var arrowLabel: Font
 
   var paper: Paper
@@ -158,6 +160,8 @@ public struct Theme: Sendable {
   /// A Section title's top left from the Section's, and its height
   var sectionTitleAt: CGPoint
   var sectionTitleHeight: CGFloat
+  /// A folded Section's title's top left: its bar is this much round the title
+  var foldedTitleAt: CGPoint
   /// A stroked (dashed) arrow's width at the default weight (2), board units
   var arrowWidth: CGFloat
   var metrics: CodeMetrics
@@ -218,13 +222,14 @@ public struct Theme: Sendable {
       kindGlyphMono: Font.board("JetBrainsMono-400-600", size: 11, weight: 600) ?? Font.mono(11, .semibold),
       noteTitle: sys(12, .medium), small: sys(11, .regular), smallStrong: sys(11, .medium),
       linkedIn: Font.board("JetBrainsMono-400-600", size: 11, weight: 400) ?? Font.mono(11, .regular),
-      sectionTitleFont: sys(12.5, .semibold),
+      sectionTitleFont: sys(12.5, .semibold), sectionCount: sys(12.5, .regular),
       arrowLabel: sys(11.5, .medium),
       paper: .sheet, header: .band, arrowLine: .taper(start: 2.5, end: 0.9), arrowHead: .dart, frame: .tray,
       label: .box,
       cardRadius: 12.5, sectionRadius: 13.5, labelRadius: 8.5, headerHeight: 36, headerPad: 10, headerPadRight: 6,
       headerGap: 7,
-      sectionTitleAt: CGPoint(x: 16, y: 6), sectionTitleHeight: 22, arrowWidth: 1.25,
+      sectionTitleAt: CGPoint(x: 16, y: 6), sectionTitleHeight: 22, foldedTitleAt: CGPoint(x: 16, y: 6),
+      arrowWidth: 1.25,
       metrics: CodeMetrics(charWidth: code.advance))
   }()
 
@@ -268,10 +273,12 @@ public struct Theme: Sendable {
       linkedIn: code,
       sectionTitleFont: Font.board("ZhiMangXing-latin", size: 25, weight: nil, cascade: "ZhiMangXing-")
         ?? Font(NSFont(name: "Xingkai SC", size: 25) ?? NSFont.systemFont(ofSize: 25)),
+      sectionCount: Font.board("SourceSerif4-400i", size: 13, weight: nil, opticalSize: true) ?? serif(13, 400),
       arrowLabel: italic,
       paper: .deckle, header: .wash, arrowLine: .brush(half: 1.5), arrowHead: .dot, frame: .brush, label: .halo,
       cardRadius: 2, sectionRadius: 2, labelRadius: 0, headerHeight: 36, headerPad: 14, headerPadRight: 8, headerGap: 9,
-      sectionTitleAt: CGPoint(x: 24, y: -17), sectionTitleHeight: 32, arrowWidth: 2,
+      sectionTitleAt: CGPoint(x: 24, y: -17), sectionTitleHeight: 32, foldedTitleAt: CGPoint(x: 14, y: 4),
+      arrowWidth: 2,
       metrics: CodeMetrics(charWidth: code.advance))
   }()
 
