@@ -469,8 +469,8 @@ private func png(_ url: URL) throws {
     let n1 = CGPoint(x: 40, y: 40)
     let menu = r.canvas.menu(for: r.mouse(.rightMouseDown, n1))
     #expect(r.doc.selection == [.card(cid("n1"))], "right-click selects what is under it")
-    #expect(titles(menu) == ["Arrange", "-", "Delete"])
-    #expect(titles(menu?.items.first?.submenu) == ["Bring to Front", "Send to Back", "-", "Tilt", "Lock"])
+    #expect(titles(menu) == ["Add Sidenote", "-", "Arrange", "-", "Delete"])
+    #expect(titles(menu?.items[2].submenu) == ["Bring to Front", "Send to Back", "-", "Tilt", "Lock"])
     r.canvas.bringToFront(nil)
     #expect(r.doc.board.cards.last?.id == cid("n1"))
     r.canvas.sendToBack(nil)
@@ -479,7 +479,7 @@ private func png(_ url: URL) throws {
     #expect(r.card("n1").tilted)
     r.canvas.lock(nil)
     #expect(r.card("n1").locked)
-    #expect(titles(r.canvas.menu(for: r.mouse(.rightMouseDown, n1))?.items.first?.submenu).last == "Unlock")
+    #expect(titles(r.canvas.menu(for: r.mouse(.rightMouseDown, n1))?.items[2].submenu).last == "Unlock")
     // locked: it does not move, and ⌫ leaves it
     await r.settle()
     r.drag(n1, CGPoint(x: 340, y: 40))
@@ -496,7 +496,7 @@ private func png(_ url: URL) throws {
     // a Section's
     #expect(
       titles(r.canvas.menu(for: r.mouse(.rightMouseDown, CGPoint(x: 450, y: 750))))
-        == ["Fit Content", "Color", "Lock", "-", "Remove Section"])
+        == ["Add Sidenote", "-", "Fit Content", "Color", "Lock", "-", "Remove Section"])
     #expect(r.doc.undoName == "Lock" && r.doc.history.undoSteps.count == 4)
   }
 

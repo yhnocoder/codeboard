@@ -295,3 +295,92 @@ extension CanvasSidenoteTests {
     #expect(r.doc.history.undoSteps.map(\.name) == ["Add Sidenote", "Add Question", "Answer", "Resolve"])
   }
 }
+
+extension CanvasSidenoteTests {
+  @Test func linesSelectedByTheirNumbersShowAPlusThatOpensTheirPopupToWriteOnThem() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let c1 = r.rect("c1")
+    let code = try #require(c.scene?.placed[cid("c1")]?.code)
+    func number(_ line: Int) throws -> CGPoint {
+      let row = try #require(code.layout.row(segment: 0, line: line))
+      return CGPoint(x: c1.minX + code.layout.gutter - 12, y: c1.minY + code.top + row.y + row.height / 2)
+    }
+    r.click(try number(10))
+    r.click(try number(11), [.shift])
+    #expect(c.lineSel == Lines(card: cid("c1"), segment: s1, range: 10...11) && r.doc.selection == [.card(cid("c1"))])
+    // the + by the last line's number; the run tinted
+    let plus = try #require(c.marks.first { $0.add })
+    let row = try #require(code.layout.row(segment: 0, line: 11))
+    #expect(abs(plus.frame.minY - (code.top + row.y + 3.5)) < 0.01 && plus.frame.maxX == code.layout.gutter - 6)
+    // a card's menu starts with Add Sidenote, on the lines selected
+    let menu = try #require(c.menu(for: r.mouse(.rightMouseDown, try number(10))))
+    #expect(menu.items.first?.title == "Add Sidenote" && c.lineSel?.range == 10...11)
+    r.click(CGPoint(x: onBoard(c, plus).midX, y: onBoard(c, plus).midY))
+    let at = PopAt.lines(Lines(card: cid("c1"), segment: s1, range: 10...11))
+    await opened(r, at)
+    let pop = c.sidenotePop
+    await r.until("its input") {
+      await pop.run("return !!document.querySelector('.ncomp .ProseMirror')") as? Bool == true
+    }
+    #expect(await pop.run("return document.querySelector('.hh .rng').textContent") as? String == "10–11")
+    _ = await pop.run("pop.type(t)", ["t": "两行"])
+    _ = await pop.run("pop.press('Enter')")
+    await r.until("on them, a Highlight made") {
+      r.doc.board.sidenotes.contains { $0.body == .text(TextNote(text: "两行")) }
+    }
+    #expect(r.doc.board.highlights(cid("c1"), s1) == [10...11, 12...13] && c.lineSel == nil)
+  }
+
+  @Test func theBoardsMenuAndSPutAFreeSidenoteOrOneOnTheSectionSelected() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let start = r.bytes
+    let p = CGPoint(x: 300, y: 900)
+    let menu = try #require(c.menu(for: r.mouse(.rightMouseDown, p)))
+    #expect(menu.items.map(\.title) == ["Add Sidenote"])
+    let item = try #require(menu.items.first)
+    _ = (item.target as? NSObject)?.perform(item.action, with: item)
+    await opened(r, .spot(.point(x: 300, y: 900)))
+    // an empty ring where it goes, its popup beside it
+    let ring = try #require(c.marks.first { $0.at == .spot(.point(x: 300, y: 900)) })
+    #expect(ring.notes.isEmpty && onBoard(c, ring).midX == 300)
+    // nothing written: it goes, the board as it was
+    r.key(53)
+    await r.until("gone") { c.popShown == nil }
+    #expect(!c.marks.contains { $0.at == .spot(.point(x: 300, y: 900)) } && r.bytes == start)
+    // S on the one Section selected: its popup
+    r.doc.select([.section(SectionID(rawValue: "g1"))])
+    r.key(1)
+    await opened(r, .spot(.section(SectionID(rawValue: "g1"))))
+  }
+
+  @Test func aFreeMarkerDraggedOntoANotesBlockGoesOnItAndOntoTheBoardMovesThere() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let free = try #require(c.marks.first { $0.at == .spot(.point(x: 300, y: 600)) })
+    let block = try #require(c.scene?.placed[cid("n1")]?.blocks?[1])
+    let n1 = r.rect("n1")
+    let target = CGPoint(x: n1.midX, y: n1.minY + block.y + block.h / 2)
+    r.drag(CGPoint(x: onBoard(c, free).midX, y: onBoard(c, free).midY), target) {
+      #expect(c.dropAim != nil, "the block it would go on is tinted")
+    }
+    #expect(c.dropAim == nil)
+    #expect(
+      r.doc.board.sidenote(SidenoteID(rawValue: "f1"))?.anchor
+        == .card(cid("n1"), block: BlockRef(index: 1, hash: block.sig)))
+    r.doc.undo()
+    await r.settle()
+    let again = try #require(c.marks.first { $0.at == .spot(.point(x: 300, y: 600)) })
+    r.drag(CGPoint(x: onBoard(c, again).midX, y: onBoard(c, again).midY), CGPoint(x: 340.4, y: 700))
+    #expect(r.doc.board.sidenote(SidenoteID(rawValue: "f1"))?.anchor == .point(x: 340, y: 700))
+    // a click (no move) opens its popup
+    await r.settle()
+    let moved = try #require(c.marks.first { $0.at == .spot(.point(x: 340, y: 700)) })
+    r.click(CGPoint(x: onBoard(c, moved).midX, y: onBoard(c, moved).midY))
+    #expect(c.openPop == .spot(.point(x: 340, y: 700)))
+  }
+}

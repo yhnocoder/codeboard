@@ -27,6 +27,8 @@ struct Mark {
   /// Where it takes the pointer, on the board
   var hit: CGRect
   var gutter: Bool
+  /// The selected lines' + (Add Sidenote), where their Highlight's count would be
+  var add = false
 }
 
 extension CanvasView {
@@ -148,7 +150,30 @@ extension CanvasView {
         }
       }
     }
+    if let l = lineSel, let add = lineAddMark(l, taken: out) { out.append(add) }
     return out
+  }
+
+  /// The selected lines' +: in the line numbers by their last line, under that line's Highlight count when it has one
+  /// (CodeBody plusSpot, .lsadd.below)
+  func lineAddMark(_ l: Lines, taken: [Mark]) -> Mark? {
+    guard let scene, let code = scene.placed[l.card]?.code, !(scene.placed[l.card]?.folded ?? true),
+      let r = scene.items.first(where: { $0.owner == .card(l.card) })?.rect,
+      case .code(let card)? = scene.parts[l.card]?.content.body,
+      let si = card.segments.firstIndex(where: { $0.id == l.segment }),
+      let row = code.layout.row(segment: si, line: l.range.upperBound)
+    else { return nil }
+    let s = Self.gutterMarkSize
+    var frame = CGRect(x: code.layout.gutter - 6 - s, y: code.top + row.y + 3.5, width: s, height: s)
+    if taken.contains(where: { $0.owner == .card(l.card) && $0.gutter && $0.frame.intersects(frame) }) {
+      frame.origin.y = code.top + row.y + 18
+    }
+    let onBoard = frame.offsetBy(dx: r.minX, dy: r.minY)
+    let hh = min(markHit, max(17, min(row.height, 20)))
+    return Mark(
+      at: .lines(l), notes: [], ask: false, owner: .card(l.card), frame: frame,
+      hit: CGRect(x: onBoard.minX, y: onBoard.midY - hh / 2, width: max(onBoard.width, markHit), height: hh),
+      gutter: true, add: true)
   }
 
   /// Whether a card of this content draws a header its whole-card marker sits level with (else 16 from its top)
@@ -179,7 +204,7 @@ extension CanvasView {
         (m.owner.flatMap { boxes[$0] } ?? freeMarks).addSublayer(l)
         return l
       }
-      for (l, box) in popTintLayers(boxes: boxes) {
+      for (l, box) in popTintLayers(boxes: boxes) + lineSelLayers(boxes: boxes) {
         box.addSublayer(l)
         markLayers.append(l)
       }
@@ -200,6 +225,7 @@ extension CanvasView {
 
   func paintMark(_ l: CALayer, _ m: Mark, hovered: Bool) {
     let t = theme
+    if m.add { return paintAdd(l, hovered: hovered) }
     let open = openPop == m.at
     let text = m.ask ? "?" : m.notes.isEmpty ? "" : "\(m.notes.count)"
     var bg: CGColor
@@ -252,6 +278,28 @@ extension CanvasView {
         let w = Drawing.width(text, font)
         Drawing.text(ctx, text, font, ink, x: (size.width - w) / 2, midY: size.height / 2, width: .infinity)
       }
+    l.contentsScale = scale
+  }
+
+  /// The selected lines' +: a thin + the size of the line numbers, quieter than a count (.gutter .lsadd: --ink-3, the
+  /// accent hovered)
+  func paintAdd(_ l: CALayer, hovered: Bool) {
+    let ink = hovered ? theme.accent : theme.ink3
+    let size = l.bounds.size
+    let scale = backing * max(1, camera.zoom)
+    l.backgroundColor = nil
+    l.contents = CanvasView.picture(size: size, scale: scale) { ctx in
+      ctx.setStrokeColor(ink)
+      ctx.setLineWidth(1.5 * 11 / 16)
+      ctx.setLineCap(.round)
+      let c = CGPoint(x: size.width / 2, y: size.height / 2)
+      let h = 11 * 5 / 16.0
+      ctx.move(to: CGPoint(x: c.x - h, y: c.y))
+      ctx.addLine(to: CGPoint(x: c.x + h, y: c.y))
+      ctx.move(to: CGPoint(x: c.x, y: c.y - h))
+      ctx.addLine(to: CGPoint(x: c.x, y: c.y + h))
+      ctx.strokePath()
+    }
     l.contentsScale = scale
   }
 

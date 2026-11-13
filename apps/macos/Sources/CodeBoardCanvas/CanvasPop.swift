@@ -368,6 +368,8 @@ extension CanvasView {
     switch a {
     case .add(let text, let ask):
       let n = id(Board.newID("n"))
+      // the lines selected it was written on are done with
+      if case .lines = at { lineSel = nil }
       doc.edit(ask ? "Add Question" : "Add Sidenote") {
         _ = $0.addSidenote(n, text: text, at: Self.anchor(at), question: ask ? now : nil)
       }

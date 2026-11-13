@@ -774,7 +774,15 @@ extension CanvasView {
     }
     // a sidenote marker: its popup opens, or closes when it is open
     if let i = markAt(p) {
-      if e.clickCount == 1 { togglePop(marks[i].at) }
+      guard e.clickCount == 1 else { return }
+      if marks[i].add {
+        openAddNote(marks[i].at)
+      } else if case .spot(.point) = marks[i].at {
+        // a free one is dragged, or clicked when it does not move
+        markDrag = (i, v, false)
+      } else {
+        togglePop(marks[i].at)
+      }
       return
     }
     // a press anywhere else on the board closes it (what is being written in it is added)
@@ -790,6 +798,9 @@ extension CanvasView {
       drawChrome()
       return
     }
+    // a code card's line numbers select lines
+    if e.clickCount == 1, selectLine(at: p, extend: e.modifierFlags.contains(.shift)) { return }
+    clearLineSel()
     if let (item, edges) = hitHandle(v) {
       startResize(item, edges, at: v, p)
       return
@@ -828,6 +839,13 @@ extension CanvasView {
   }
 
   public override func mouseDragged(with e: NSEvent) {
+    if let d = markDrag {
+      let v = convert(e.locationInWindow, from: nil)
+      guard d.moved || hypot(v.x - d.from.x, v.y - d.from.y) >= dragSlop else { return }
+      markDrag?.moved = true
+      dragMark(d.index, to: camera.board(v))
+      return
+    }
     guard var g = gesture, let doc = document else { return }
     let v = convert(e.locationInWindow, from: nil)
     let p = camera.board(v)
@@ -912,6 +930,15 @@ extension CanvasView {
   }
 
   public override func mouseUp(with e: NSEvent) {
+    if let d = markDrag {
+      markDrag = nil
+      if d.moved {
+        dropMark(d.index, at: camera.board(convert(e.locationInWindow, from: nil)))
+      } else if d.index < marks.count {
+        togglePop(marks[d.index].at)
+      }
+      return
+    }
     guard let g = gesture, let doc = document else { return }
     switch g.kind {
     case .press(let item, let toggle, let was, let inside):
@@ -1300,7 +1327,10 @@ extension CanvasView {
     case 53:  // Esc: the mode, else the popup, else the selection
       if cancelMode() { return }
       if openPop != nil { return openPop(nil) }
+      if lineSel != nil { return clearLineSel() }
       if gesture == nil { doc.select([]) }
+    case 1 where e.modifierFlags.intersection([.command, .control, .option]).isEmpty:  // S: Add Sidenote
+      addSidenoteFromKey()
     case 123, 124, 125, 126:
       nudge(e)
     default:
@@ -1474,6 +1504,8 @@ extension CanvasView {
     if !secs.isEmpty, secs.count == doc.selection.count {
       return secs.count == 1 ? sectionMenu(secs[0]) : sectionsMenu(secs.sorted { $0.rawValue < $1.rawValue })
     }
+    // a right-click on a code line selects it (kept when it is in the lines selected): Add Sidenote goes on them
+    if case .card(let c)? = under, doc.selection == [under!] { lineForMenu(at: p, of: c) } else { clearLineSel() }
     let menu = NSMenu()
     func add(_ title: String, _ action: Selector, to m: NSMenu = menu) {
       let i = NSMenuItem(title: title, action: action, keyEquivalent: "")
@@ -1485,9 +1517,17 @@ extension CanvasView {
     let locked = !sel.isEmpty && sel.allSatisfy(isOwnLock)
     let tilted = !cards.isEmpty && cards.allSatisfy { doc.board.card($0)?.tilted == true }
     if sel.isEmpty {
-      guard pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)) != nil else { return nil }
-      add("Paste", #selector(paste(_:)))
+      // free on the board, where it was asked
+      menu.addItem(addNoteItem(.spot(.point(x: p.x.rounded(), y: p.y.rounded()))))
+      if pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)) != nil {
+        add("Paste", #selector(paste(_:)))
+      }
       return menu
+    }
+    // one card: its menu starts with Add Sidenote
+    if sel.count == 1, case .card(let c)? = sel.first {
+      menu.addItem(addNoteItem(card: c, at: p))
+      menu.addItem(.separator())
     }
     let arrange = NSMenu()
     add("Bring to Front", #selector(bringToFront(_:)), to: arrange)

@@ -147,6 +147,11 @@ public final class CanvasView: NSView {
   let popLine = CAShapeLayer()
   /// The popup's showing and updating, one after another
   var popTask: Task<Void, Never>?
+  /// Lines selected by their numbers in a code card
+  package var lineSel: Lines?
+  /// A free marker pressed (its index in `marks`), where, and whether it has moved; what it would land on, tinted
+  var markDrag: (index: Int, from: CGPoint, moved: Bool)?
+  var dropAim: CALayer?
   /// The selected and hovered arrows in the accent: over the arrows, under their labels
   let litArrows = CALayer()
   var dropLit: Set<SectionID> = []

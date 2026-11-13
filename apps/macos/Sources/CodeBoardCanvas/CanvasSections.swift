@@ -301,6 +301,8 @@ extension CanvasView {
   func sectionMenu(_ id: SectionID) -> NSMenu? {
     guard let doc = document, let s = doc.board.section(id) else { return nil }
     let m = NSMenu()
+    m.addItem(addNoteItem(.spot(.section(id))))
+    m.addItem(.separator())
     m.addItem(menuItem("Fit Content", enabled: !fittable([id]).isEmpty) { [weak self] in self?.fitContent([id]) })
     m.addItem(colorItem([id]))
     let lock = NSMenuItem(title: s.locked ? "Unlock" : "Lock", action: #selector(lock(_:)), keyEquivalent: "")
