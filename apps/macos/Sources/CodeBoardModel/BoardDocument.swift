@@ -114,6 +114,17 @@ import Foundation
     scheduleSave()
   }
 
+  /// A change shown and saved while it is being made (a seal typed in its popover): no undo step, and none dropped,
+  /// since it is put back before the one step it ends in
+  public func preview(_ change: (inout Board) -> Void) {
+    var b = board
+    change(&b)
+    guard b != board else { return }
+    board = b
+    for o in observers.values { o(.merge) }
+    scheduleSave()
+  }
+
   // MARK: Writing in a card
 
   /// A card being written in: the board as it was when the writing began, which the one undo step the writing becomes

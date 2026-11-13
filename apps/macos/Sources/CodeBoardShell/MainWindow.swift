@@ -50,6 +50,7 @@ private final class RootView: NSView {
   private let shell: Shell
   private let sidebar: NSView
   private let controls: NSView
+  private let edge: SidebarEdge
   private var shownLaidOut: Bool?
 
   init(shell: Shell) {
@@ -57,11 +58,13 @@ private final class RootView: NSView {
     panel = Panel(shell: shell)
     sidebar = ChromeHost(rootView: Sidebar(shell: shell))
     controls = ChromeHost(rootView: TitleControls(shell: shell))
+    edge = SidebarEdge(shell: shell)
     super.init(frame: .zero)
-    for view in [sidebar, panel, controls] { addSubview(view) }
+    for view in [sidebar, panel, controls, edge] { addSubview(view) }
     track { [weak self] in
       guard let self else { return }
       _ = shell.sidebarShown
+      _ = shell.sidebarWidth
       needsLayout = true
     }
   }
@@ -90,7 +93,7 @@ private final class RootView: NSView {
 
   private func place(shown: Bool) {
     let inset = ShellTheme.inset
-    let width = ShellTheme.sidebarWidth
+    let width = shell.sidebarWidth
     // The title line runs through the traffic lights' centre
     var line: CGFloat = 26
     var lightsEnd: CGFloat = 70
@@ -104,12 +107,44 @@ private final class RootView: NSView {
     let top = line + 22
     sidebar.frame = NSRect(x: shown ? 0 : -width, y: top, width: width, height: bounds.height - top)
     sidebar.alphaValue = shown ? 1 : 0
+    edge.frame = NSRect(x: width - 3, y: top, width: 6, height: bounds.height - top)
+    edge.isHidden = !shown
     let x = shown ? width : inset
     panel.frame = NSRect(x: x, y: inset, width: bounds.width - x - inset, height: bounds.height - 2 * inset)
     panel.barHeight = 2 * (line - inset)
     panel.tabsLeading = shown ? inset : controls.frame.maxX + inset - x
     panel.layoutSubtreeIfNeeded()
   }
+}
+
+/// The sidebar's right edge: dragged, it sets the sidebar's width
+private final class SidebarEdge: NSView {
+  private let shell: Shell
+  private var from: (x: CGFloat, width: CGFloat)?
+
+  init(shell: Shell) {
+    self.shell = shell
+    super.init(frame: .zero)
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) {
+    fatalError("SidebarEdge is not loaded from nibs")
+  }
+
+  override var mouseDownCanMoveWindow: Bool { false }
+
+  override func resetCursorRects() { addCursorRect(bounds, cursor: .columnResize) }
+
+  override func mouseDown(with event: NSEvent) { from = (event.locationInWindow.x, shell.sidebarWidth) }
+
+  override func mouseDragged(with event: NSEvent) {
+    guard let from else { return }
+    let w = from.width + event.locationInWindow.x - from.x
+    shell.sidebarWidth = min(max(w.rounded(), Shell.sidebarWidths.lowerBound), Shell.sidebarWidths.upperBound)
+  }
+
+  override func mouseUp(with event: NSEvent) { from = nil }
 }
 
 /// The floating board panel: one canvas-coloured surface (top bar, canvases, empty and error states alike), the tabs

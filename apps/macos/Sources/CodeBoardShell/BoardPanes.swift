@@ -23,6 +23,55 @@ import CodeBoardNotes
       guard let self, let t = self.shell.selected, let p = self.panes[t], p.document != nil else { return nil }
       return p.canvas.currentCamera
     }
+    shell.beforeFiles = { [weak self] in self?.flush() }
+    shell.afterFiles = { [weak self] in self?.sync(reload: true) }
+    shell.setSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }
+    shell.folderRenamed = { [weak self] parent, old, new in
+      guard let self, let fb = self.shell.tree?.folder(at: parent)?.folderBoard, let doc = try? self.document(fb.id)
+      else { return }
+      doc.sync { $0.renameFolderCard(old, to: new) }
+      doc.flush()
+    }
+  }
+
+  /// A board or folder from the sidebar let go on an open folder board: its card where it was let go, then the move
+  /// (when the move cannot be made, the card goes with the next upkeep)
+  func vaultDrop(_ path: String, at p: CGPoint, on id: BoardID) {
+    guard let fb = shell.board(id), fb.isFolderBoard, let doc = documents[id], let tree = shell.tree else { return }
+    let entry: FolderEntry
+    if let b = tree.allBoards.first(where: { $0.path == path }) {
+      entry = .board(b.id)
+    } else if tree.folder(at: path) != nil, let name = path.split(separator: "/").last {
+      entry = .folder(String(name))
+    } else {
+      return
+    }
+    doc.sync {
+      $0.placeAutoCard(for: entry, x: p.x - Board.autoWidth / 2, y: p.y - Board.autoHeight / 2)
+    }
+    shell.move(path, into: fb.folder)
+  }
+
+  /// Where each board whose seal is being edited began
+  private var sealBefore: [BoardID: Seal?] = [:]
+
+  /// A board's seal set at once, written, and shown everywhere (the sidebar, every ref to it); once done, all that
+  /// changed while editing is one undo step on that board, none when it ends where it began
+  func setSeal(_ id: BoardID, _ seal: Seal?, done: Bool) {
+    guard let vault = shell.vault, let doc = try? document(id) else { return }
+    let from = sealBefore[id] ?? doc.board.seal
+    if done {
+      sealBefore[id] = nil
+      doc.preview { $0.seal = from }
+      if seal != from { doc.edit("Edit Mark") { $0.seal = seal } }
+    } else {
+      sealBefore[id] = from
+      doc.preview { $0.seal = seal }
+    }
+    doc.flush()
+    // ponytail: the whole tree is read again on each change typed; keep the seals in memory if large vaults lag
+    shell.apply(Result { try vault.tree() })
+    sync(reload: true)
   }
 
   @available(*, unavailable)
@@ -61,6 +110,11 @@ import CodeBoardNotes
         pane.onReady = { [weak self] in self?.reveal() }
         pane.onOpenBoard = { [weak self] in self?.shell.show($0) }
         pane.canvas.onVaultChanged = { [weak self] in self?.onVaultChanged?() }
+        pane.canvas.onSetSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }
+        pane.canvas.onVaultDrop = { [weak self, weak pane] path, p in
+          guard let self, let id = pane?.document?.id else { return }
+          self.vaultDrop(path, at: p, on: id)
+        }
         addSubview(pane)
       }
       let theme = shell.look

@@ -36,6 +36,8 @@ public struct ShellState: Codable, Equatable, Sendable {
   public var selected: Tab.ID?
   public var expanded: Set<String>
   public var sidebarShown: Bool
+  /// nil in what was saved before the sidebar could be resized
+  public var sidebarWidth: Double?
 }
 
 /// The app's state: the open vault and its tree, the tabs, the sidebar. Views derive from it; disk access happens outside
@@ -50,6 +52,9 @@ public struct ShellState: Codable, Equatable, Sendable {
   /// Folder paths shown open in the sidebar
   public var expanded: Set<String> = []
   public var sidebarShown = true
+  /// Dragged at its edge, kept with the state
+  public var sidebarWidth: CGFloat = 244
+  public static let sidebarWidths: ClosedRange<CGFloat> = 180...480
   public var importing = false
   /// The look every board is drawn in; app-wide, kept by the app delegate
   public var theme: Theme.ID = .warmInk
@@ -58,6 +63,25 @@ public struct ShellState: Codable, Equatable, Sendable {
   private var byID: [BoardID: VaultBoard] = [:]
   /// Where the selected tab's view is (the board panel's canvas)
   public var cameraNow: (() -> Camera?)?
+  /// Before the vault's files change from the sidebar: what open boards have not written yet is written
+  public var beforeFiles: (() -> Void)?
+  /// After they changed (the tree read again): open boards take it in
+  public var afterFiles: (() -> Void)?
+  /// A board's seal set from the sidebar or a ref (nil: the default); `done`: the popover closed, the last change is the
+  /// one that counts (one undo step on an open board)
+  public var setSeal: ((BoardID, Seal?, _ done: Bool) -> Void)?
+  /// A subfolder renamed in the sidebar, before the tree is read again: its parent's folder board keeps its card where
+  /// it was (the parent folder's path, the old name, the new)
+  public var folderRenamed: ((String, String, String) -> Void)?
+  /// What is being renamed in the sidebar: a board by id, a folder by path
+  public var renaming: Renaming?
+  /// The board whose seal is being edited, and where its popover is anchored
+  public var sealEditing: BoardID?
+
+  public enum Renaming: Equatable, Sendable {
+    case board(BoardID)
+    case folder(String)
+  }
 
   public init() {}
 
@@ -94,7 +118,9 @@ public struct ShellState: Codable, Equatable, Sendable {
 
   public var state: ShellState? {
     vault.map {
-      ShellState(vault: $0.root.path, tabs: tabs, selected: selected, expanded: expanded, sidebarShown: sidebarShown)
+      ShellState(
+        vault: $0.root.path, tabs: tabs, selected: selected, expanded: expanded, sidebarShown: sidebarShown,
+        sidebarWidth: Double(sidebarWidth))
     }
   }
 

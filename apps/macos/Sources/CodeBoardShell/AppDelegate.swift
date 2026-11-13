@@ -31,7 +31,12 @@ import CodeBoardModel
     let saved = UserDefaults.standard.data(forKey: Self.stateKey).flatMap {
       try? JSONDecoder().decode(ShellState.self, from: $0)
     }
-    if let saved { shell.sidebarShown = saved.sidebarShown }
+    if let saved {
+      shell.sidebarShown = saved.sidebarShown
+      if let w = saved.sidebarWidth {
+        shell.sidebarWidth = min(max(w, Shell.sidebarWidths.lowerBound), Shell.sidebarWidths.upperBound)
+      }
+    }
     if let id = UserDefaults.standard.string(forKey: Self.themeKey).flatMap(Theme.ID.init) { shell.theme = id }
     appearance = follow(NSApp, into: shell)
     if let saved, FileManager.default.fileExists(atPath: saved.vault) {
