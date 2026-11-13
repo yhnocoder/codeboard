@@ -6,6 +6,8 @@ import { mdSchema, parseMd, pastedMd, serializeMd } from "../src/schema";
 import { marksInSlice } from "../src/editor/pastemarks";
 import { htmlSource } from "../src/editor/pastemarks";
 import { MathPreamble } from "../src/math";
+import { markTags } from "../src/marktag";
+import { inCode, pastedCodeLang } from "../src/editor/paste";
 
 // Notes with three ==highlights== in CJK text, one closing right before 。
 const SIMT = [
@@ -126,5 +128,89 @@ describe("pasted HTML with literal == ~~ ---", () => {
     const box = document.createElement("div");
     box.innerHTML = "<p>a == b, x ~ y</p><p><mark>已经高亮</mark></p>";
     expect(marksInSlice(PMParser.fromSchema(schema).parseSlice(box), schema)).toBeNull();
+  });
+});
+
+describe("<mark>x</mark> written as ==x==", () => {
+  it("rewrites a plain one, moving spaces at its ends outside; code, HTML blocks, escaped ones and what == cannot say stay", () => {
+    expect(markTags("a <mark>hot</mark> b <mark> c </mark>d")).toBe("a ==hot== b  ==c== d");
+    const kept = [
+      '`<mark>c</mark>` \\<mark>esc</mark> <mark class="x">a</mark> <mark>a <b>b</b></mark> <mark></mark> <mark>a==b</mark>',
+      "```\n<mark>c</mark>\n```",
+      "para\n\n    <mark>indented</mark>",
+      "<div>\n<mark>in html</mark>\n</div>",
+    ];
+    for (const k of kept) expect(markTags(k)).toBe(k);
+    expect(markTags("- item <mark>li</mark>")).toBe("- item ==li==");
+  });
+  it("keeps code fenced inside a list item or a quote, and what follows it, as written", () => {
+    const li = "- ```\n  <mark>x</mark>\n  ```\n\nafter <mark>y</mark>";
+    expect(markTags(li)).toBe("- ```\n  <mark>x</mark>\n  ```\n\nafter ==y==");
+    const q = "> ```\n> <mark>x</mark>\n> ```\n\n<mark>y</mark>";
+    expect(markTags(q)).toBe("> ```\n> <mark>x</mark>\n> ```\n\n==y==");
+  });
+  it("keeps a Markdown sample inside a fence as code: its own list-item or indented fence does not close it", () => {
+    const sample = "```md\n- ```\n  <mark>x</mark>\n    ```\n<mark>y</mark>\n```\n\nafter <mark>z</mark>";
+    expect(markTags(sample)).toBe("```md\n- ```\n  <mark>x</mark>\n    ```\n<mark>y</mark>\n```\n\nafter ==z==");
+    const q = "> ```\n> > ```\n> <mark>x</mark>\n> ```\n\n<mark>y</mark>";
+    expect(markTags(q)).toBe("> ```\n> > ```\n> <mark>x</mark>\n> ```\n\n==y==");
+  });
+  it("leaves a <mark> right after a rewritten one, and one in a formula, as written", () => {
+    expect(markTags("<mark>a</mark><mark>b</mark>")).toBe("==a==<mark>b</mark>");
+    expect(markTags("$<mark>a</mark>$ and $$<mark>b</mark>$$ but <mark>c</mark>")).toBe(
+      "$<mark>a</mark>$ and $$<mark>b</mark>$$ but ==c==",
+    );
+    expect(markTags("costs $5 and <mark>c</mark>")).toBe("costs $5 and ==c==");
+  });
+  it("takes linear time over a long run of backslashes", () => {
+    const s = `${"\\".repeat(200_000)}<mark>x</mark>`;
+    const t0 = process.cpuUsage();
+    markTags(s);
+    const u = process.cpuUsage(t0);
+    expect((u.user + u.system) / 1000).toBeLessThan(500);
+  });
+  it("reads one left as text in pasted HTML as a highlight, not one in code", () => {
+    const dom = new DOMParser().parseFromString(
+      "<p>lit &lt;mark&gt;text&lt;/mark&gt; <code>&lt;mark&gt;c&lt;/mark&gt;</code></p>",
+      "text/html",
+    ).body;
+    expect(htmlSource(dom, new MathPreamble())).toBe("lit ==text== `<mark>c</mark>`");
+  });
+});
+
+describe("pasted plain text that reads as code", () => {
+  const always = () => "python",
+    never = () => null;
+  it("is code when the page's classifier says so, over several lines", () => {
+    expect(pastedCodeLang("def f(x):\n    # twice\n    return x * 2", always)).toBe("python");
+    expect(pastedCodeLang("def f(x):\n    return x", never)).toBe(null);
+    expect(pastedCodeLang("one line = code;", always)).toBe(null);
+  });
+  it("is prose when Markdown's own structure says so; headings and emphasis do not", () => {
+    expect(pastedCodeLang("## Plan\nWe return early.\nOtherwise see [the docs](https://x).", always)).toBe(null);
+    expect(pastedCodeLang("## Plan\n\n- return the value (a)\n- keep the class (b);", always)).toBe(null);
+    expect(pastedCodeLang("> quoted\n> twice", always)).toBe(null);
+    expect(pastedCodeLang("```py\nx = 1\n```", always)).toBe(null);
+    expect(pastedCodeLang("# a comment\ndef f(*args, **kw):\n    return g(*args)", always)).toBe("python");
+    expect(pastedCodeLang("def f(x):\n    y = x\n    return y", always)).toBe("python");
+  });
+  it("takes a bare address or an index-and-call for code's, not for a Markdown link", () => {
+    expect(pastedCodeLang('# fetch\nurl = "https://x.com/a"\nr = get(url)', always)).toBe("python");
+    expect(pastedCodeLang("y = fs[i](x)\nz = fs[j](y)", always)).toBe("python");
+    expect(pastedCodeLang('see [the docs](./docs.md "Docs")\nand more', always)).toBe(null);
+  });
+  it("is prose when it holds a formula; shell variables are no formula", () => {
+    const cu = () => "cuda-cpp";
+    expect(pastedCodeLang("The offset of `threadIdx.y` is\n$\\text{threadIdx.y} \\times 4$ here.", cu)).toBe(null);
+    expect(pastedCodeLang("Global row:\n\n$$\nrow = blockIdx.y \\cdot blockDim.y + threadIdx.y\n$$", cu)).toBe(null);
+    expect(pastedCodeLang("x_i is $x_i$ and\n$a^2$ too", cu)).toBe(null);
+    expect(pastedCodeLang('echo "$HOME" "$PATH"\ncd "$a" && ls "$b"', () => "shellscript")).toBe("shellscript");
+  });
+});
+
+describe("a paste into an inline code span", () => {
+  it("is in the code from right after its opening backticks to right before its closing ones", () => {
+    const t = "a `code` b";
+    expect([2, 3, 5, 7, 8].map((off) => inCode(t, off))).toEqual([false, true, true, true, false]);
   });
 });

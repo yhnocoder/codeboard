@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // jsdom：静态显示整篇过 DOMPurify，happy-dom 解析时会丢掉开头的元素
-import { sourceMd } from "../src/editor/srcdoc";
+import { sourceDoc, sourceMd } from "../src/editor/srcdoc";
 import { describe, expect, it } from "vitest";
 import { parseMd, serializeMd } from "../src/schema";
 import { createMarkdown } from "../src/markdown";
@@ -281,12 +281,23 @@ describe("typed math and block source", () => {
     });
     expect(sourceMd(p("x **bo** y"))).toBe("x **bo** y");
     expect(sourceMd(p("a $x$"))).toBe("a $x$");
-    expect(sourceMd(p("### hd"))).toBe("### hd");
-    expect(parseMd(sourceMd(p("## hd"))).content![0].type).toBe("heading");
     // a broken ## stays a paragraph, its text kept
     const bad = parseMd(sourceMd(p("##hd"))).content![0];
     expect(bad.type).toBe("paragraph");
     expect(bad.content?.map((c) => c.text).join("")).toBe("##hd");
+  });
+  it("a heading is a paragraph with a level; a paragraph's text that looks like one stays text", () => {
+    const h = (level: number, text: string) => ({
+      type: "doc",
+      content: [{ type: "paragraph", attrs: { level }, content: text ? [{ type: "text", text }] : undefined }],
+    });
+    expect(sourceMd(h(3, "hd **b**"))).toBe("### hd **b**");
+    expect(parseMd(sourceMd(h(2, "hd"))).content![0]).toMatchObject({ type: "heading", attrs: { level: 2 } });
+    expect(sourceMd(h(2, ""))).toBe("##");
+    const lit = sourceMd({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "## hd" }] }] });
+    expect(lit).toBe("\\## hd");
+    expect(parseMd(lit).content![0].type).toBe("paragraph");
+    expect(sourceDoc(lit).content![0].content).toEqual([{ type: "text", text: "\\## hd" }]);
   });
   // a typed \* is written as typed (not as \\\*) and reads back as a literal *
   it("a typed backslash escape is written as typed", () => {
@@ -747,5 +758,39 @@ describe("annotations {text|note}", () => {
     const d = annots(s);
     expect(d).toEqual([{ text: "x", note: "y", color: "blue", below: false }]);
     expect(annots(rt(s))).toEqual(d);
+  });
+});
+
+describe("names and expressions in prose", () => {
+  const lines = [
+    "use snake_case_name, __init__ and a*b*c here",
+    "2*3*4 and f(x)*2* stay as written",
+    "vector<int> v; template <T> and </Foo> x",
+  ];
+  it("draws * inside a name or an expression and a tag HTML has no element for as written", () => {
+    const h = markdown.render(lines.join("\n\n"));
+    expect(h).not.toMatch(/<em>|<strong>/);
+    expect(h).toContain("a*b*c");
+    expect(h).toContain("2*3*4 and f(x)*2*");
+    expect(h).toContain("vector&lt;int&gt; v; template &lt;T&gt; and &lt;/Foo&gt; x");
+  });
+  it("keeps emphasis between words, after CJK text, with spaces inside and on the start of a word, and real HTML tags", () => {
+    const h = markdown.render("*em*, **strong**, 中文**粗体**, *a * b*, *pre*fill and <kbd>K</kbd> <span>s</span>");
+    expect(h).toContain("<em>em</em>");
+    expect(h).toContain("<strong>strong</strong>");
+    expect(h).toContain("中文<strong>粗体</strong>");
+    expect(h).toContain("<em>a * b</em>");
+    expect(h).toContain("<em>pre</em>fill");
+    expect(h).toContain("<kbd>K</kbd>");
+    expect(h).toMatch(/<span[^>]*>s<\/span>/);
+  });
+  it("writes them back as they were typed", () => {
+    for (const l of lines) {
+      expect(serializeMd(parseMd(l))).toBe(l);
+      expect(sourceMd(sourceDoc(l))).toBe(l);
+    }
+    // * that still pairs is escaped when it is text
+    expect(serializeMd(parseMd("a \\*b\\* c"))).toBe("a \\*b\\* c");
+    expect(serializeMd(parseMd("\\<div>"))).toBe("\\<div>");
   });
 });

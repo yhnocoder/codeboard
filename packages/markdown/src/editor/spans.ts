@@ -1,4 +1,5 @@
-// How the editor draws one paragraph's source (paragraph, heading, cell): the parser (schema.ts inlineTokens, the same rules
+// How the editor draws one paragraph's source (a heading's text and a cell are paragraphs too; a heading's level is the
+// paragraph's attribute, never characters of its source): the parser (schema.ts inlineTokens, the same rules
 // parseMd reads it with) splits it into tokens, and for each: where it is in the source, which characters are markers, and how
 // the text inside is drawn. Only the look; the document is never changed (the decorations are in inline.ts)
 import { TEXT_MATH, inlineTokens, type InlineToken } from "../schema";
@@ -43,7 +44,7 @@ export type Span = {
   plain?: true;
   kids: Span[];
 };
-export type BlockInfo = { level: number; prefix: number; spans: Span[] };
+export type BlockInfo = { spans: Span[] };
 
 const TAGS: Record<string, string> = {
   strong: "strong",
@@ -56,25 +57,19 @@ const TAGS: Record<string, string> = {
   x_subscript: "sub",
   x_superscript: "sup",
 };
-const HEAD = /^ {0,3}(#{1,6})(?:[ \t]+|$)/;
-
 const cache = new Map<string, BlockInfo>();
 const MAX = 2000;
-/** The look of one paragraph's source; headings: whether it can be a heading (cells cannot) */
-export function blockInfo(text: string, headings = true): BlockInfo {
-  const key = (headings ? "h" : "c") + text;
-  let info = cache.get(key);
+/** The look of one paragraph's source */
+export function blockInfo(text: string): BlockInfo {
+  let info = cache.get(text);
   if (info) return info;
-  const h = headings ? HEAD.exec(text) : null;
-  const prefix = h ? h[0].length : 0;
-  info = { level: h ? h[1].length : 0, prefix, spans: inlineSpans(text, prefix) };
-  capped(cache, MAX, key, info);
+  info = { spans: inlineSpans(text) };
+  capped(cache, MAX, text, info);
   return info;
 }
 
-/** The inline content of text from at on, as spans (before at is a heading's "## ") */
-function inlineSpans(text: string, at = 0): Span[] {
-  const body = text.slice(at);
+/** The inline content of text, as spans */
+function inlineSpans(body: string): Span[] {
   if (!body) return [];
   // an escaped \$ becomes a placeholder as in parseMd (the parser can't tell \$ from $); still two characters, so offsets hold
   const src = body.replace(/\\\$/g, `\\${ESC_DOLLAR}`);
@@ -85,7 +80,7 @@ function inlineSpans(text: string, at = 0): Span[] {
     return [];
   }
   const out: Span[] = [];
-  walk(toks, src, at, out);
+  walk(toks, src, 0, out);
   return out;
 }
 
@@ -313,8 +308,8 @@ export function flat(spans: Span[], out: Span[] = []): Span[] {
 /** An offset at the edge of a span's text (right after the opening ** or right before the closing **) moved outside its
  *  markers, innermost span first (so ***x*** steps out of both): what is inserted or split there goes next to the bold
  *  words, not into them */
-export function spanEdgeOut(text: string, off: number, headings: boolean): number {
-  const spans = flat(blockInfo(text, headings).spans)
+export function spanEdgeOut(text: string, off: number): number {
+  const spans = flat(blockInfo(text).spans)
     .filter((sp) => !sp.atom && sp.inner && sp.tag)
     .reverse();
   for (const sp of spans) {

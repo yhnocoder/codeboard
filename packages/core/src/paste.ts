@@ -95,21 +95,35 @@ const isSvgMarkup = (text: string) => SVG_DOC.test(text);
  *  （Triton、TileLang 归 python，由 pythonDialect 单独标出）。按行打分：花括号、分号结尾这类家族共有的特征记在 c 里，
  *  算出是这一家之后，再按各语言自己的特征（std::、fn、func、=>、: number …）分给具体的语言 */
 export function guessLang(text: string): string | null {
+  return classify(text, false);
+}
+/**
+ * Pasted into a Note's text: is it code, and in which language. Stricter than guessLang, which the canvas uses on text that
+ * makes a card either way: no one- or two-line guess from a bracket or an =, and a line that ends as a sentence or a bare
+ * colon is no code line, so prose with a parenthesis or a line starting "for" stays prose
+ */
+export function noteCodeLang(text: string): string | null {
+  return classify(text, true);
+}
+function classify(text: string, strict: boolean): string | null {
   const lines = text.split(/\r?\n/).filter((l) => l.trim());
   if (!lines.length) return null;
   const score = { py: 0, c: 0, cu: 0, sh: 0 };
   const fam = { cpp: 0, c: 0, javascript: 0, typescript: 0, rust: 0, go: 0 };
   for (const l of lines) {
     const s = l.trim();
+    // strict (a Note's text): a line ending as a sentence ends is prose, whatever word it starts with
+    if (strict && /[.!?。！？]$/.test(s) && !/\.\.\.$/.test(s)) continue;
     const braced = /[;{}]\s*(\/\/.*)?$/.test(s);
-    if (
-      (/^(def|class|import|from|return|if|elif|for|while|with|async|await|yield|raise|try|except|@)\b/.test(s) &&
-        !braced) ||
-      /:\s*(#.*)?$/.test(s)
-    )
-      score.py++;
+    const pyHead = /^(def|class|import|from|return|if|elif|for|while|with|async|await|yield|raise|try|except|@)\b/.test(
+      s,
+    );
+    // strict: a colon at the end says code only on a line that has code's brackets or = ("Two things to note:" is prose)
+    if ((pyHead && !braced) || (/:\s*(#.*)?$/.test(s) && (!strict || /[([=]/.test(s)))) score.py++;
     if (/\b(self|None|True|False|lambda|elif)\b/.test(s) || (/^\w+(\s*,\s*\w+)*\s*=\s*\S/.test(s) && !braced))
       score.py += 0.5;
+    // strict: an assignment of a string, a number, a bracket or a call is a whole code line
+    if (strict && !braced && /^\w+(\s*,\s*\w+)*\s*=\s*(["'\d[({]|[\w.]+\()/.test(s)) score.py += 0.5;
     const cLike =
       braced ||
       /^#(include|define|pragma|if|endif)/.test(s) ||
@@ -171,7 +185,7 @@ export function guessLang(text: string): string | null {
   // 一半以上的行有代码特征才算代码
   if (best < Math.max(1, n * 0.4)) {
     // 单行赋值 / 调用也算
-    if (n > 2 || !/[=()[\]]/.test(text) || /[一-鿿]/.test(text)) return null;
+    if (strict || n > 2 || !/[=()[\]]/.test(text) || /[一-鿿]/.test(text)) return null;
   }
   if (score.sh > score.py && score.sh > score.c + score.cu) return "shellscript";
   if (score.cu > 0) return "cuda-cpp";

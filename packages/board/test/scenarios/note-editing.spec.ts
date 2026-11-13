@@ -549,8 +549,8 @@ test("noteEditKeepsLayout", async () => {
   await close(h);
 });
 
-/** 打完 "## " 这一行马上是标题的字号、行高，"##" 也是标题的字号；接着打字时这一行、卡片的高度都不再变 */
-test("headingMarkerTypedAtHeadingSize", async () => {
+/** 打完 "## " 这一行马上是标题（h2 的字号、行高），# 不留在字里，左边留白里是级别小标；接着打字时这一行、卡片的高度都不再变 */
+test("headingTypedAtHeadingSize", async () => {
   const h = await open({ board: board([""]), light });
   await idle(h);
   await editNote(h, "n0");
@@ -558,13 +558,15 @@ test("headingMarkerTypedAtHeadingSize", async () => {
     h.page.evaluate(() => {
       const c = document.querySelector('.card[data-id="n0"]')!,
         e = c.querySelector(".md-pm")!.firstElementChild as HTMLElement;
-      // the heading's "## " is its own source text, drawn as a marker while the caret is in the line
-      const mk = e.querySelector(".md-mkh") as HTMLElement | null;
+      // the level is the block's: a chip in the padding, no characters in the text
+      const chip = e.querySelector(".md-hchip");
       return {
         tag: e.tagName,
-        fs: getComputedStyle(e).fontSize,
-        mk: mk ? getComputedStyle(mk).fontSize : "",
-        mkText: mk?.textContent ?? "",
+        chip: chip?.textContent ?? "",
+        text: [...e.childNodes]
+          .filter((n) => n !== chip)
+          .map((n) => n.textContent)
+          .join(""),
         lh: Math.round(e.getBoundingClientRect().height),
         card: Math.round(c.getBoundingClientRect().height),
       };
@@ -572,16 +574,17 @@ test("headingMarkerTypedAtHeadingSize", async () => {
   await keys(h.page, "## ");
   await idle(h);
   const space = await line();
-  await shot(h, "headingMarkerTypedAtHeadingSize-space");
+  await shot(h, "headingTypedAtHeadingSize-space");
   await keys(h.page, "Title");
   await idle(h);
   const typed = await line();
-  await shot(h, "headingMarkerTypedAtHeadingSize-typed");
+  await shot(h, "headingTypedAtHeadingSize-typed");
   check(
-    "headingMarkerTypedAtHeadingSize",
+    "headingTypedAtHeadingSize",
     space.tag === "H2" &&
-      space.mkText === "## " &&
-      space.mk === space.fs &&
+      space.chip === "H2" &&
+      space.text === "" &&
+      typed.text === "Title" &&
       typed.lh === space.lh &&
       typed.card === space.card,
     { space, typed },
@@ -1351,7 +1354,7 @@ test("noteCodeBlockLanguageRecolor", async () => {
   await idle(h);
   const pg = h.page,
     n0 = '.card[data-id="n0"]';
-  const label = pg.locator(`${n0} .md-pm pre .md-lang`),
+  const label = pg.locator(`${n0} .md-band-code .md-lang`),
     filter = pg.locator(".md-langbox .md-langq");
   const coms = () => pg.locator(`${n0} .md-pm pre .cm-content .com`).count();
   await editNote(h, "n0");
@@ -1390,7 +1393,7 @@ test("noteCodeBlockLanguagePicker", async () => {
   const pg = h.page,
     n0 = '.card[data-id="n0"]';
   const pre = pg.locator(`${n0} .md-pm pre`),
-    label = pg.locator(`${n0} .md-pm pre .md-lang`);
+    label = pg.locator(`${n0} .md-band-code .md-lang`);
   const list = pg.locator(".md-langbox .md-lo"),
     filter = pg.locator(".md-langbox .md-langq");
   const kws = () => pg.locator(`${n0} .md-pm pre .cm-content .kw`).count();
@@ -1399,9 +1402,11 @@ test("noteCodeBlockLanguagePicker", async () => {
       .locator(sel)
       .first()
       .evaluate((e, k) => getComputedStyle(e).getPropertyValue(k), k);
-  // the label is the first item of the block's pill (language, copy, wrap, menu), which shows while wanted
-  const opacity = () => style(`${n0} .md-pm pre .md-cbpill`, "opacity");
-  const chevron = () => style(`${n0} .md-pm pre .md-lang .md-lang-v`, "opacity");
+  // the label is the first item of the block's band (language, copy, wrap, menu), which shows while wanted
+  const opacity = async () =>
+    (await pg.locator(`${n0} .md-band-code.on`).count()) &&
+    (await style(`${n0} .md-band-code .md-band-row`, "opacity"));
+  const chevron = () => style(`${n0} .md-band-code .md-lang .md-lang-v`, "opacity");
   const name = () => label.innerText();
   const inCode = () => pg.evaluate(() => !!document.activeElement?.closest(".cm-content"));
   /** 这张 Note 的截图，鼠标留在原处（悬停的样子） */
@@ -1423,11 +1428,12 @@ test("noteCodeBlockLanguagePicker", async () => {
   await until(h, "the language label shows while the caret is in the block", async () => (await opacity()) === "1");
   await idle(h);
   res.plain = { name: await name(), kw: await kws(), chevron: await chevron() };
-  // the pill in the top-right corner (8px in, the label 3px further in), the label in it plain 13px text: no background, border, shadow
-  const [lr, pr, pl] = [
+  // the label at the band's left, its text in line with the code's (6px of the label's own padding), above the block; plain
+  // 12px text: no background, border, shadow
+  const [lr, pr, cl] = [
     (await label.boundingBox())!,
     (await pre.boundingBox())!,
-    (await pg.locator(`${n0} .md-pm pre .md-cbpill`).boundingBox())!,
+    (await pg.locator(`${n0} .md-pm pre .cm-line`).first().boundingBox())!,
   ];
   const look = await label.evaluate((e) => {
     const s = getComputedStyle(e);
@@ -1438,15 +1444,15 @@ test("noteCodeBlockLanguagePicker", async () => {
       font: s.fontSize,
     };
   });
-  res.place = { right: +(pr.x + pr.width - pl.x - pl.width).toFixed(1), top: +(lr.y - pr.y).toFixed(1), ...look };
+  res.place = { left: +(lr.x + 6 - cl.x).toFixed(1), above: +(pr.y - lr.y - lr.height).toFixed(1), ...look };
   check(
-    "noteCodeBlockLanguagePicker label at the top right, plain text",
-    Math.abs((res.place as any).right - 8) <= 1 &&
-      Math.abs((res.place as any).top - 11) <= 1 &&
+    "noteCodeBlockLanguagePicker label above the block, in line with the code, plain text",
+    Math.abs((res.place as any).left) <= 1.5 &&
+      (res.place as any).above >= 0 &&
       look.bg === "rgba(0, 0, 0, 0)" &&
       /^0px/.test(look.border) &&
       look.shadow === "none" &&
-      look.font === "13px",
+      look.font === "12px",
     res.place,
   );
   await snap("rest");
@@ -1506,7 +1512,7 @@ test("noteCodeBlockLanguagePicker", async () => {
   // 光标离开这一块、鼠标也不在上面：不显示
   await pg.mouse.move(5, 5);
   await keys(pg, "{ArrowDown}{ArrowDown}{ArrowDown}");
-  await until(h, "the language label hides when the caret leaves the block", async () => (await opacity()) === "0");
+  await until(h, "the language label hides when the caret leaves the block", async () => !(await opacity()));
   await exitEdit(h);
   await idle(h);
   res.saved = md(h, "n0");
@@ -1546,7 +1552,7 @@ test("noteLanguagePickerOpenWhenBoardChanges", async () => {
   const pg = h.page;
   await editNote(h, "n0");
   await pg.locator('.card[data-id="n0"] .md-pm pre .cm-content').click();
-  await pg.locator('.card[data-id="n0"] .md-pm pre .md-lang').click();
+  await pg.locator('.card[data-id="n0"] .md-band-code .md-lang').click();
   await expect(pg.locator(".md-langbox .md-langq")).toBeFocused();
   const b2 = emptyBoard("b2", "other");
   put(b2, { id: "m0", kind: "note", md: "second", look: "note" } as NoteCard, 60, 60, 520);

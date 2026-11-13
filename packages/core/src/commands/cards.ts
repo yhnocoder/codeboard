@@ -118,6 +118,34 @@ export function writeNote(env: CommandEnv, id: string, md: string, layout?: Note
 }
 
 /**
+ * Blocks moved out of one Note into another (or within one): each Note's new Markdown and layout (null = all automatic), written
+ * in one step, so one undo puts both back. A Note left empty goes away, in the same step. A new Note with nothing written yet
+ * (env.fresh) that blocks went into is settled by the move: one step adds it with them, and an undo takes both away
+ */
+export function moveNoteBlocks(env: CommandEnv, notes: { id: string; md: string; layout: NoteLayout | null }[]) {
+  const write = (b: Board) => {
+    for (const n of notes) {
+      const c = findCard(b, n.id)?.card;
+      if (c?.kind !== "note") continue;
+      if (!noteKept(c, n.md)) {
+        removeCards(b, [n.id]);
+        continue;
+      }
+      c.md = n.md;
+      c.mdLayout = n.layout ?? undefined;
+    }
+  };
+  const fresh = notes.filter((n) => env.fresh.is(n.id));
+  // a fresh Note the move leaves empty goes as if it never was; the others are written in the step
+  for (const n of fresh) if (!noteKept(findCard(env.board(), n.id)?.card, n.md)) env.fresh.settle(n.id, false);
+  const kept = fresh.filter((n) => env.fresh.is(n.id));
+  if (kept.length) {
+    for (const n of kept.slice(1)) env.fresh.settle(n.id, true);
+    env.fresh.settle(kept[0].id, true, write);
+  } else env.edit(write);
+}
+
+/**
  * The first edit of a new card or question ended without anything written through writeNote, writeFreeCode or writeQuestion
  * (the editor closed unchanged): it stays when it has content after all (text that reached it another way), else it goes
  */

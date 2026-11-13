@@ -250,7 +250,8 @@ test("markdownInputRules", async () => {
       dom: count(".md-pm strong"),
       domOk: (n) => n === 0,
     },
-    { name: "undo heading rule", seq: "# {ControlOrMeta+z}x", md: "x" },
+    // ⌘Z right after "# " made a heading: the typed "# " back as text (written escaped, so it stays text)
+    { name: "undo heading rule", seq: "# {ControlOrMeta+z}x", md: "\\# x" },
     // 写回成 \$a$；再读进来时字里的 $a$ 会变成公式
     {
       name: "undo math rule",
@@ -275,16 +276,9 @@ test("markdownInputRules", async () => {
       dom: count(".md-pm pre"),
       domOk: (n) => n === 0,
     },
-    // 标题行首退格：变回段落
+    // 标题行首退格：变回段落，字留着（级别是块的属性，没有 # 可退）
     // Home 之后要等 ProseMirror 收到 selectionchange 再按 Backspace（keys 里等），不然 Backspace 按的还是行尾的光标
-    // 一次退一个 #：## → # → 普通段落（Typora 一样）
-    { name: "heading backspace one level", seq: "## h", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "# h" },
-    {
-      name: "heading backspace to paragraph",
-      seq: "## h",
-      after: (pg) => keys(pg, "{Home}{Backspace}{Backspace}"),
-      md: "h",
-    },
+    { name: "heading backspace to paragraph", seq: "## h", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "h" },
     {
       name: "task toggle",
       seq: "- [ ] t",
@@ -307,13 +301,15 @@ test("markdownInputRules", async () => {
       dom: marks,
       domOk: (v) => JSON.stringify(v) === '["**","**"]',
     },
-    { name: "markers heading", seq: "## hd", md: "## hd", dom: marks, domOk: (v) => JSON.stringify(v) === '["## "]' },
+    // a heading's level is not characters of its text: no marker shows
+    { name: "markers heading", seq: "## hd", md: "## hd", dom: marks, domOk: (v) => JSON.stringify(v) === "[]" },
     {
       name: "markers link",
       seq: "[t](https://q.r){ArrowLeft}",
       md: "[t](https://q.r)",
       dom: marks,
-      domOk: (v) => JSON.stringify(v) === '["[","](https://q.r)"]',
+      // the address stays folded to its site (a chip) while the caret is in the link's text
+      domOk: (v) => JSON.stringify(v) === '["[","]"]',
     },
     {
       name: "source bold to italic",
@@ -322,16 +318,23 @@ test("markdownInputRules", async () => {
       dom: count(".md-pm em"),
       domOk: (n) => n === 1,
     },
+    // #s plus space at the start of a heading's text: that level
     {
-      name: "source heading level",
-      seq: "## hd{Home}{ArrowLeft}#{End}",
+      name: "heading relevel",
+      seq: "## hd{Home}### {End}",
       md: "### hd",
       dom: count(".md-pm h3"),
       domOk: (n) => n === 1,
     },
+    // the address is edited in the link's box (⌘K in the link): → steps over the folded address in one go
     {
       name: "source link url",
-      seq: "[t](https://q.r) z{Home}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}s{End}",
+      seq: "[t](https://q.r) z{Home}{ArrowRight}{ArrowRight}{ControlOrMeta+k}",
+      after: async (pg) => {
+        await pg.waitForSelector(".md-linkbox");
+        await pg.keyboard.type("https://qs.r");
+        await pg.keyboard.press("Enter");
+      },
       md: "[t](https://qs.r) z",
     },
     // 原文里改了一下又离开（收回去了）：一次 ⌘Z 回到改之前，格式照旧

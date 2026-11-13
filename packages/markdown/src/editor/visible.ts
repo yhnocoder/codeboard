@@ -1,5 +1,5 @@
 // The editor counterpart of selmap's docRange. The editor holds Markdown source, so its characters are counted as the
-// static render shows them: markers and heading prefixes don't count, a drawn atom (math, image, ref, footnote, <br>,
+// static render shows them: markers don't count, a drawn atom (math, image, ref, footnote, <br>,
 // inline HTML) is one character, an annotation counts its text, HTML comments are skipped (the static render drops
 // them). A key pressed on a selection in the static render then lands on the same characters in the editor.
 import type { Node as PMNode } from "@tiptap/pm/model";
@@ -9,11 +9,10 @@ import { blockInfo, type Span } from "./spans";
 const LEAF_CHAR = "￼";
 type Ch = { from: number; to: number; c: string };
 
-function sourceChars(text: string, base: number, cell: boolean, out: Ch[]) {
-  const info = blockInfo(text, !cell);
+function sourceChars(text: string, base: number, out: Ch[]) {
+  const info = blockInfo(text);
   const skip = new Uint8Array(text.length);
   const kill = (a: number, b: number) => skip.fill(1, a, b);
-  kill(0, info.prefix);
   const atoms: [number, number][] = [];
   const walk = (spans: Span[]) => {
     for (const sp of spans) {
@@ -50,11 +49,10 @@ function sourceChars(text: string, base: number, cell: boolean, out: Ch[]) {
 /** Where a range counted on the static render (staticTextRange) lies in the editor's document; null when the text differs */
 export function visibleRange(doc: PMNode, r: StaticTextRange): { from: number; to: number } | null {
   const chars: Ch[] = [];
-  doc.descendants((n, pos, parent) => {
+  doc.descendants((n, pos) => {
     if (n.isTextblock) {
       const text = n.textContent;
-      if (n.type.name === "paragraph")
-        sourceChars(text, pos + 1, /cell/.test(parent?.type.spec.tableRole ?? ""), chars);
+      if (n.type.name === "paragraph") sourceChars(text, pos + 1, chars);
       else for (let i = 0; i < text.length; i++) chars.push({ from: pos + 1 + i, to: pos + 2 + i, c: text[i] });
       return false;
     }

@@ -20,6 +20,7 @@ import {
   parseGithubUrl,
   classifyPaste,
   guessLang,
+  noteCodeLang,
   migrateBoard,
   loadSharedCard,
   danglingRefs,
@@ -384,6 +385,27 @@ describe("paste", () => {
     ];
     for (const [code, lang] of cases) expect([code, guessLang(code)]).toEqual([code, lang]);
   });
+  it("reads prose with a heading and a link, as pasted from a chat or a README, as no code", () => {
+    expect(
+      guessLang("## Plan\nWe return early when the cache is cold (rare).\nOtherwise see [the docs](https://x)."),
+    ).toBe(null);
+  });
+  it("for a Note's text, takes two-line prose with a bracket, a colon or a leading for/if as no code", () => {
+    for (const prose of [
+      "Thanks (really)!\nSee you tomorrow.",
+      "## Plan\nWe return early when the cache is cold (rare).",
+      "Two things to note:\nthe cache and the queue.",
+      "for the record, it works.\nif not, tell me.",
+      "a = b, as said\nthen we go on",
+    ])
+      expect([prose, noteCodeLang(prose)]).toEqual([prose, null]);
+  });
+  it("for a Note's text, still reads code as code, a URL in it too", () => {
+    expect(noteCodeLang("def f(x):\n    return x")).toBe("python");
+    expect(noteCodeLang('# fetch\nurl = "https://x.com/a"\nr = get(url)')).toBe("python");
+    expect(noteCodeLang("int main() {\n  return 0;\n}")).not.toBe(null);
+    expect(noteCodeLang("__global__ void k(float* x) {\n  int i = threadIdx.x;\n}")).toBe("cuda-cpp");
+  });
 });
 
 describe("migrateBoard", () => {
@@ -412,7 +434,7 @@ describe("migrateBoard", () => {
       ],
       edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call" }],
     });
-    expect(b.version).toBe(14);
+    expect(b.version).toBe(15);
     expect(b.links[0].call).toEqual({ name: "f", col: 0 });
     const c = b.cards[0] as CodeCard;
     expect(c.segments[0]).toMatchObject({ path: "a.py", start: 1, end: 2, hl: [[2, 2]], symbol: { qual: "f" } });
@@ -529,7 +551,7 @@ describe("migrateBoard", () => {
       place: { a: { x: 0, y: 0, w: 400, h: 300 }, z: { x: 0, y: 0, w: 400 }, n: { x: 0, y: 0, w: 300, h: 120 } },
     };
     const b = migrateBoard(structuredClone(raw));
-    expect(b.version).toBe(14);
+    expect(b.version).toBe(15);
     expect(b.place.a.h).toBe(264);
     expect(b.place.z.h).toBeUndefined();
     expect(b.place.n.h).toBe(120);
@@ -554,7 +576,7 @@ describe("migrateBoard", () => {
       place: { t: { x: 0, y: 0, w: 300, h: 40 }, n: { x: 0, y: 0, w: 300, h: 120 }, x: { x: 0, y: 0, w: 300, h: 200 } },
     };
     const b = migrateBoard(structuredClone(raw));
-    expect(b.version).toBe(14);
+    expect(b.version).toBe(15);
     expect(b.place.t).toEqual({ x: 0, y: 0, w: 300 });
     expect(b.place.n.h).toBe(120);
     expect(b.place.x.h).toBe(200);
@@ -609,7 +631,7 @@ describe("migrateBoard", () => {
       ],
     };
     const b = upgraded(structuredClone(raw));
-    expect(b.version).toBe(14);
+    expect(b.version).toBe(15);
     expect(b.links).toEqual([
       {
         id: "c",
@@ -713,7 +735,7 @@ describe("migrateBoard", () => {
   });
 });
 
-describe("v13 → v14 sidenotes: only Text and Code", () => {
+describe("old sidenote kinds migrate to Text and Code", () => {
   const seg = (id: string) => ({
     id,
     src: { kind: "repo", repo: "" },
@@ -810,7 +832,7 @@ describe("v13 → v14 sidenotes: only Text and Code", () => {
     expect(danglingRefs(b)).toEqual([]);
   });
 
-  it("a v12 Card sidenote takes no Highlight into the card either (the v14 step runs before the v13 one)", () => {
+  it("a Card sidenote from before Highlights were ranges takes no Highlight into the card either", () => {
     const raw = {
       ...v13([{ id: "c1", kind: "card", at: { card: "k", seg: "sk", lines: [3, 3] }, card: "n" }]),
       version: 12,
@@ -819,6 +841,24 @@ describe("v13 → v14 sidenotes: only Text and Code", () => {
     const b = upgraded(raw);
     expect((b.cards[0] as CodeCard).segments[0].hl).toEqual([[2, 2]]);
     expect(b.sidenotes[0]).toMatchObject({ kind: "text", boardOnly: true, at: { lines: [3, 3] } });
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("a file that already writes <mark> as ==…== still has its old sidenote kinds turned into Text and Code", () => {
+    const b = upgraded({
+      ...v13([{ id: "l1", kind: "link", at, url: "https://z", title: "<mark>hot</mark>" }]),
+      version: 14,
+    });
+    expect(b.sidenotes).toEqual([{ id: "l1", kind: "text", at, md: "[\\<mark\\>hot\\</mark\\>](https://z)" }]);
+  });
+
+  it("a Card sidenote's reference to a Note whose title holds <mark> ends up with no <mark> left", () => {
+    const raw = v13([{ id: "c1", kind: "card", at: { card: "k" }, card: "n" }]);
+    (raw.cards[1] as { md: string }).md = "# The <mark>hot</mark> path\n\nbody";
+    const b = upgraded(raw);
+    const md = (b.sidenotes[0] as { md: string }).md;
+    expect(md).toMatch(/#\^n\]\]$/);
+    expect(md).not.toMatch(/<mark>/);
     expect(danglingRefs(b)).toEqual([]);
   });
 

@@ -8,3 +8,11 @@ export const REVEAL_AFTER_CLICK = 450;
 export const IMAGE_SETTLE = 400;
 /** How long an image takes to slide, and its source line to fade in, when the caret opens or closes the image's source */
 export const IMAGE_SLIDE = 150;
+/** A code block's or table's toolbar band grows out of the block's top edge in this long */
+export const BAND_SHOW = 140;
+/** …and sinks back in this long */
+export const BAND_HIDE = 110;
+/** How long a band waits before it hides, so the pointer crossing from the block onto its band does not flicker it */
+export const BAND_GRACE = 80;
+/** A table's rows or columns sliding aside during a drag, the dragged one gliding into its place, inserts and deletes */
+export const TABLE_SLIDE = 160;

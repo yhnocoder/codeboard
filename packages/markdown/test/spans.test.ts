@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { blockInfo, flat, type Span } from "../src/editor/spans";
+import { shortUrl } from "../src/editor/links";
 
 // What the editor draws for a paragraph's source: where each span is, which characters are its markers, the text inside
 const at = (text: string, sp: Span) => ({
@@ -8,13 +9,10 @@ const at = (text: string, sp: Span) => ({
   inner: sp.inner ? text.slice(sp.inner[0], sp.inner[1]) : null,
   kind: sp.atom?.type ?? sp.tag?.nodeName ?? "esc",
 });
-const all = (text: string, headings = true) => flat(blockInfo(text, headings).spans).map((sp) => at(text, sp));
+const all = (text: string) => flat(blockInfo(text).spans).map((sp) => at(text, sp));
 
 describe("decoration ranges of a paragraph's source", () => {
-  it("heading prefix, only outside table cells", () => {
-    expect(blockInfo("## T **b**")).toMatchObject({ level: 2, prefix: 3 });
-    expect(blockInfo("## T", false)).toMatchObject({ level: 0, prefix: 0 });
-    expect(blockInfo("\\## not")).toMatchObject({ level: 0 });
+  it("a # at the start is text (a heading's level is its paragraph's attribute)", () => {
     expect(all("## T **b**")).toEqual([{ text: "**b**", marks: ["**", "**"], inner: "b", kind: "strong" }]);
   });
   it("nested formatting: markers of each level, inner text", () => {
@@ -85,5 +83,14 @@ describe("decoration ranges of a paragraph's source", () => {
     expect(all("中文**粗体**中文")[0]).toMatchObject({ kind: "strong", inner: "粗体" });
     const c = flat(blockInfo("a <!-- n --> b").spans)[0];
     expect(c.plain).toBe(true);
+  });
+});
+
+describe("folded link addresses", () => {
+  it("shows a web address as its site, and an ellipsis when it goes on", () => {
+    expect(shortUrl("https://github.com/a/b/blob/main/x.py")).toBe("github.com/…");
+    expect(shortUrl("https://www.example.org/")).toBe("example.org");
+    expect(shortUrl("www.example.org/docs?q=1")).toBe("example.org/…");
+    expect(shortUrl("not a url but quite a long piece of text")).toBe("not a url but quite a …");
   });
 });

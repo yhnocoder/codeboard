@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyPatch,
+  BOARD_VERSION,
   deflate,
   emptyBoard,
   homeCam,
@@ -67,7 +68,7 @@ describe("applyPatch", () => {
     expect(b.name).toBe("New");
     expect(b.hideNumbers).toBeUndefined();
     expect(b.id).toBe("b");
-    expect(b.version).toBe(14);
+    expect(b.version).toBe(BOARD_VERSION);
     expect(b.cam).toEqual({ x: 1, y: 2, z: 3 });
     expect(b.cards.length).toBe(3);
   });
@@ -200,7 +201,7 @@ describe("board format v6 and v7", () => {
   };
   it("v6 → v7: an old board's \\$a\\$ becomes math once; code, half-escaped and unsure text stay as written", () => {
     const b = upgraded(oldMath(6));
-    expect(b.version).toBe(14);
+    expect(b.version).toBe(BOARD_VERSION);
     expect((b.cards[0] as any).md).toBe("a $x^2$ b, $\\frac{a}{b}$ and ${n}$");
     expect(b.cards[1].desc).toBe("cost $O(n)$");
     expect((b.cards[3] as any).mergedFrom[0].card.desc).toBe("$y$");
@@ -230,11 +231,110 @@ describe("board format v6 and v7", () => {
       card: { ...note("s", "\\$a\\$"), desc: "\\$d\\$" },
       sidenotes: [text("n", "s", { md: "\\$t\\$" } as any)],
     });
-    expect(sc.version).toBe(14);
+    expect(sc.version).toBe(BOARD_VERSION);
     expect(sc.card).toMatchObject({ md: "$a$", desc: "$d$" });
     expect((sc.sidenotes[0] as any).md).toBe("$t$");
     expect((loadSharedCard({ version: 8, card: note("s", "\\$a\\$"), sidenotes: [] }).card as any).md).toBe("\\$a\\$");
-    expect(() => loadSharedCard({ version: 15, card: note("s"), sidenotes: [] })).toThrow(/newer/);
+    expect(() => loadSharedCard({ version: BOARD_VERSION + 1, card: note("s"), sidenotes: [] })).toThrow(/newer/);
+  });
+});
+
+describe("board format v14: <mark> becomes ==", () => {
+  const sticker = (id: string, md: string) => ({
+    id,
+    icon: { pack: "builtin", name: "question" },
+    at: { kind: "canvas", x: 0, y: 0 },
+    q: { md },
+  });
+  const old = () => {
+    const b = board() as any;
+    b.version = 13;
+    b.cards[0].md = "a <mark>hot</mark> b, <mark> spaced </mark>, <MARK>caps</MARK>";
+    b.cards[1].desc = "d <mark>x</mark>";
+    b.cards.push({
+      id: "m",
+      kind: "code",
+      segments: [],
+      mergedFrom: [
+        { card: { id: "o", kind: "code", segments: [], desc: "<mark>y</mark>" }, place: { x: 0, y: 0, w: 1 } },
+      ],
+    });
+    b.place.m = { x: 0, y: 0, w: 100 };
+    b.sidenotes[0].md = "<mark>z</mark>";
+    b.stickers.push(sticker("q", "why <mark>k</mark>?"));
+    b.shelf = [{ id: "s", at: 0, place: {}, sections: [], links: [], stickers: [sticker("q2", "<mark>w</mark>")] }];
+    b.cards[2].md = [
+      '`<mark>a</mark>` code, \\<mark>esc</mark>, <mark class="x">attr</mark>, <mark>a <b>b</b></mark>, <mark></mark>, =<mark>e</mark>, <mark>a==b</mark>',
+      "```",
+      "<mark>c</mark>",
+      "```",
+      "",
+      "    <mark>indented</mark>",
+      "",
+      "<div>",
+      "<mark>in html</mark>",
+      "</div>",
+    ].join("\n");
+    return b;
+  };
+  it("v13 → v14 rewrites <mark>x</mark> as ==x== once, everywhere Markdown is kept; code, HTML blocks and what == cannot say stay as written", () => {
+    const b = upgraded(old()) as any;
+    expect(b.version).toBe(BOARD_VERSION);
+    expect(b.cards[0].md).toBe("a ==hot== b,  ==spaced== , ==caps==");
+    expect(b.cards[1].desc).toBe("d ==x==");
+    expect(b.cards[3].mergedFrom[0].card.desc).toBe("==y==");
+    expect(b.sidenotes[0].md).toBe("==z==");
+    expect(b.stickers[0].q.md).toBe("why ==k==?");
+    expect(b.shelf[0].stickers[0].q.md).toBe("==w==");
+    expect(b.cards[2].md).toBe(old().cards[2].md);
+    expect(upgraded(structuredClone(b))).toEqual(b);
+  });
+  it("a <mark> line that starts a paragraph is text, not an HTML block", () => {
+    const b = board() as any;
+    b.version = 13;
+    b.cards[0].md = "<mark>first</mark> words\n\n- item <mark>li</mark>";
+    expect((upgraded(b).cards[0] as any).md).toBe("==first== words\n\n- item ==li==");
+  });
+  it("v13 → v14 keeps code fenced in a list item, a <mark> right after another and one in a formula as written", () => {
+    const b = board() as any;
+    b.version = 13;
+    b.cards[0].md = "- ```\n  <mark>x</mark>\n  ```\n\n<mark>a</mark><mark>b</mark> $<mark>m</mark>$ <mark>c</mark>";
+    expect((upgraded(b).cards[0] as any).md).toBe(
+      "- ```\n  <mark>x</mark>\n  ```\n\n==a==<mark>b</mark> $<mark>m</mark>$ ==c==",
+    );
+  });
+  it("v13 → v14 keeps a Markdown sample inside a fence as code, a list-item or indented fence in it too", () => {
+    const b = board() as any;
+    b.version = 13;
+    b.cards[0].md = "```md\n- ```\n  <mark>x</mark>\n    ```\n<mark>y</mark>\n```\n\nafter <mark>z</mark>";
+    expect((upgraded(b).cards[0] as any).md).toBe(
+      "```md\n- ```\n  <mark>x</mark>\n    ```\n<mark>y</mark>\n```\n\nafter ==z==",
+    );
+  });
+  it("v13 → v14 leaves a Free Text's plain text alone", () => {
+    const b = board() as any;
+    b.version = 13;
+    b.cards[0].look = "freetext";
+    b.cards[0].md = "<mark>as typed</mark>";
+    expect((upgraded(b).cards[0] as any).md).toBe("<mark>as typed</mark>");
+  });
+  it("a v14 board's <mark> is left as written", () => {
+    const b = board();
+    (b.cards[0] as any).md = "<mark>a</mark>";
+    expect((upgraded(structuredClone(b)).cards[0] as any).md).toBe("<mark>a</mark>");
+  });
+  it("v13 → v14 upgrades shared card files (the card and its travelling sidenotes)", () => {
+    const sc = loadSharedCard({
+      version: 13,
+      card: { ...note("s", "<mark>a</mark>"), desc: "<mark>d</mark>" },
+      sidenotes: [text("n", "s", { md: "<mark>t</mark>" } as any)],
+    });
+    expect(sc.version).toBe(BOARD_VERSION);
+    expect(sc.card).toMatchObject({ md: "==a==", desc: "==d==" });
+    expect((sc.sidenotes[0] as any).md).toBe("==t==");
+    expect((loadSharedCard({ version: 14, card: note("s", "<mark>a</mark>"), sidenotes: [] }).card as any).md).toBe(
+      "<mark>a</mark>",
+    );
   });
 });
 

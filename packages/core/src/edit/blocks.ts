@@ -83,7 +83,7 @@ export function blockMap(old: readonly string[], now: readonly string[]): number
 /**
  * Note card 的 Markdown 改了（old → now，白板拆好的块原文；拆不开时 null）：连着它某一块的箭头端点跟着那一块走（blockMap），
  * 那一块删掉了就退到整张卡。端点的指纹和 old 里那一块对不上的（连的时候 Note 正开着编辑器、按编辑器里的字连的）直接按指纹在 now 里找。
- * moved：这次改动里新出现的 Note（Split by Headings 拆出来的）和它们的块：删掉的块原样到了那里，端点跟着搬过去
+ * moved：这次改动里新出现的 Note（Split by Headings 拆出来的）和别的改了的 Note（块被搬过去的）和它们的块：删掉的块原样到了那里，端点跟着搬过去
  */
 export function rebaseBlocks(
   b: Board,
@@ -101,7 +101,9 @@ export function rebaseBlocks(
   const away = new Set<Link>();
   for (const { l, e } of ends) {
     const ref = e.block!;
-    const k = map && old && blockSig(old[ref.i] ?? "") === ref.h ? map[ref.i] : blockAt(ref, sigs);
+    // a block moved within the Note is a removal and an addition to the diff: it is found again by its fingerprint
+    let k = map && old && blockSig(old[ref.i] ?? "") === ref.h ? map[ref.i] : -1;
+    if (k < 0) k = blockAt(ref, sigs);
     if (k >= 0 && now) {
       e.block = { i: k, h: sigs[k] };
       continue;

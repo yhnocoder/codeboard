@@ -233,13 +233,13 @@ describe("board storage", () => {
     expect(cams.get(b.id)).toEqual({ x: -300, y: 40, z: 1.5 });
     // An edit together with a camera move: the file gets the edit, still no camera
     await patchNow(store, b.id, { cam: { x: 0, y: 0, z: 2 }, head: { name: "Renamed", born: {}, seq: 0 } });
-    expect(JSON.parse(fs.files.get(file)!.data as string)).toMatchObject({ version: 14, name: "Renamed" });
+    expect(JSON.parse(fs.files.get(file)!.data as string)).toMatchObject({ version: 15, name: "Renamed" });
     expect(JSON.parse(fs.files.get(file)!.data as string)).not.toHaveProperty("cam");
     // Another window (same machine) reads the board with this machine's camera; a board never seen here starts at the default
     const other = new Storage(fs, { dir: () => ROOT, cams: { get: (id) => cams.get(id), set: () => undefined } });
     expect((await other.load(b.id))!.cam).toEqual({ x: 0, y: 0, z: 2 });
     fs.put(`${ROOT}/fresh.json`, {
-      version: 13,
+      version: 15,
       id: "fresh",
       name: "F",
       cards: [],
@@ -258,7 +258,7 @@ describe("board storage", () => {
     expect((await store.load("old"))!.cam).toEqual({ x: 7, y: 8, z: 0.5 });
     await patchNow(store, "old", { head: { name: "Edited", born: {}, seq: 0 } });
     const f = JSON.parse(fs.files.get(`${ROOT}/old.json`)!.data as string);
-    expect(f.version).toBe(14);
+    expect(f.version).toBe(15);
     expect(f).not.toHaveProperty("cam");
     expect(cams.get("old")).toEqual({ x: 7, y: 8, z: 0.5 });
   });
@@ -566,7 +566,7 @@ describe("card library (shared cards)", () => {
     expect(file(fs, "A").cards).toEqual([{ id: "s", kind: "shared" }, note("la")]);
     expect(file(fs, "A").sidenotes.map((n: any) => n.id)).toEqual(["n2"]);
     const c = card(fs, "s");
-    expect(c).toMatchObject({ version: 14, card: note("s") });
+    expect(c).toMatchObject({ version: 15, card: note("s") });
     expect(c.rev).toBeUndefined();
     expect(c.sidenotes.map((n: any) => n.id)).toEqual(["n1"]);
     // Loading inflates

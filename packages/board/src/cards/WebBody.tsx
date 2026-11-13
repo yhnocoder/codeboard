@@ -148,7 +148,7 @@ function Bookmark(p: {
           </Show>
           <div class="wsite" data-tip={p.url}>
             <Fav meta={p.meta} url={p.url} />
-            <span>{site()}</span>
+            <span class="wsn">{site()}</span>
           </div>
         </Show>
       </div>

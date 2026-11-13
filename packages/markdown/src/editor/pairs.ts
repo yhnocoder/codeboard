@@ -6,7 +6,7 @@ import { blockInfo, flat } from "./spans";
 const inCodeSpan = (state: EditorState, pos: number) => {
   const $p = state.doc.resolve(pos),
     off = $p.parentOffset;
-  return flat(blockInfo($p.parent.textContent, false).spans).some(
+  return flat(blockInfo($p.parent.textContent).spans).some(
     (s) => s.tag?.nodeName === "code" && s.inner && off > s.inner[0] && off < s.inner[1],
   );
 };

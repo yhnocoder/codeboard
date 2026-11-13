@@ -44,6 +44,9 @@ export type MarkdownOptions = {
   measure?: Measure;
   /** The page's hold on AI completions (createGhostHold from @yhnocoder/markdown/ui); default: its own */
   ghosts?: GhostHold;
+  /** Plain text pasted into the editor that is code: the code block's language for it (null: it is prose). Without it, only
+   *  code copied from VS Code becomes a code block */
+  codeLang?: (text: string) => string | null;
 };
 
 /** A configured Markdown renderer: made by createMarkdown, passed to the editor (mountEditor) */
@@ -94,6 +97,7 @@ export class Md implements Markdown {
   readonly passKeys: PassKeys | undefined;
   readonly measure: Measure;
   readonly ghosts: GhostHold;
+  readonly codeLang: (text: string) => string | null;
   /** The editor entry's kept editor (editor/session.ts), built for this instance */
   editorPool: unknown;
   private cache = new Map<string, string>();
@@ -109,6 +113,7 @@ export class Md implements Markdown {
     this.passKeys = o.passKeys;
     this.measure = o.measure ?? createMeasure();
     this.ghosts = o.ghosts ?? createGhostHold();
+    this.codeLang = o.codeLang ?? (() => null);
     this.annots = new AnnotFit(this.measure);
     // 解析换了全部重画；一张图学到了大小，带着它的那几篇重画（下次画时先留好位置）
     this.images = new Images(

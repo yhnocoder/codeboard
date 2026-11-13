@@ -17,5 +17,5 @@ export {
 } from "./ghost";
 export { scrollIntoBox } from "./reveal";
 export { IS_MAC } from "./platform";
-export { TOOLBAR_SETTLE } from "./timing";
+export { TOOLBAR_SETTLE, BAND_GRACE } from "./timing";
 export { Icon, type IconName } from "../editor/icons";

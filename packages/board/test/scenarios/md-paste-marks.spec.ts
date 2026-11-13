@@ -156,3 +156,203 @@ test("pasteHighlightMarks", async () => {
   await idle(h);
   await pg.screenshot({ path: path.join(OUT, "md-paste-marks-warm-ink.png") });
 });
+
+/** ==x== is the one way a highlight is written: a typed <mark>x</mark> turns into it as its > is typed (one undo gives the tag
+ *  back), and so does one pasted as text, as HTML text or onto the board as a new Note; code keeps its <mark> */
+test("markTagBecomesHighlight", async () => {
+  const b = emptyBoard("b1", "mark tags");
+  const ids = ["typed", "plain", "html"];
+  ids.forEach((id, i) => put(b, { id, kind: "note", md: id, look: "note" } as NoteCard, 40 + i * 420, 40, 380));
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 1300, h: 800, scale: 2, settings: { theme: "warm-ink" } as any });
+  const pg = h.page;
+  await idle(h);
+  const edit = async (id: string) => {
+    await pg.locator(`${card(id)} .nbody`).dblclick();
+    await pg.waitForSelector(`${card(id)} .md-pm`, { timeout: 5000 });
+    await focusSettled(pg);
+    await pg.keyboard.press("ControlOrMeta+End");
+    await pmHasSelection(pg);
+  };
+  const text = (id: string) =>
+    pg.locator(`${card(id)} .md-pm`).evaluate((e) => (e as any).editor.state.doc.textContent);
+  const save = async (id: string) => {
+    const was = md(h, id);
+    await pg.keyboard.press("Escape");
+    await until(h, "Esc saves the Note", () => md(h, id) !== was);
+    await pg.waitForSelector(`${card(id)} .md-pm`, { state: "detached", timeout: 5000 });
+    return md(h, id);
+  };
+  const paste = (d: Record<string, string>) =>
+    pg.evaluate((d) => {
+      const dt = new DataTransfer();
+      for (const [k, v] of Object.entries(d)) dt.setData(k, v);
+      document.activeElement!.dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }),
+      );
+    }, d);
+
+  await edit("typed");
+  await pg.keyboard.type(" a <mark>hot</mark>");
+  check(
+    "markTagBecomesHighlight typed tag becomes ==",
+    (await text("typed")) === "typed a ==hot==",
+    await text("typed"),
+  );
+  await pg.keyboard.press("ControlOrMeta+z");
+  check(
+    "markTagBecomesHighlight one undo gives the typed tag back",
+    (await text("typed")) === "typed a <mark>hot</mark>",
+    await text("typed"),
+  );
+  // typed again, the closing > turns it into == once more
+  await pg.keyboard.press("Backspace");
+  await pg.keyboard.type(">");
+  await pg.keyboard.type(" `<mark>c</mark>`");
+  await pg.screenshot({ path: path.join(OUT, "mark-tag-typed-warm-ink.png") });
+  const typed = await save("typed");
+  check("markTagBecomesHighlight typed saved", typed === "typed a ==hot== `<mark>c</mark>`", typed);
+
+  await edit("plain");
+  await paste({ "text/plain": "\n\nfirst <mark>one</mark>\n\nsecond `<mark>code</mark>` and <mark> two </mark>end" });
+  const plain = await save("plain");
+  check(
+    "markTagBecomesHighlight pasted text saved",
+    plain === "plain\n\nfirst ==one==\n\nsecond `<mark>code</mark>` and  ==two== end",
+    plain,
+  );
+
+  await edit("html");
+  await paste({
+    "text/html":
+      "<p>el <mark>em</mark></p><p>lit &lt;mark&gt;text&lt;/mark&gt; <code>&lt;mark&gt;c&lt;/mark&gt;</code></p>",
+    "text/plain": "el em\n\nlit <mark>text</mark> <mark>c</mark>",
+  });
+  const html = await save("html");
+  check(
+    "markTagBecomesHighlight pasted HTML saved",
+    html.includes("el ==em==") && html.includes("lit ==text== `<mark>c</mark>`") && !/<mark>(?!c)/.test(html),
+    html,
+  );
+
+  await idle(h);
+  await pg.mouse.move(600, 600);
+  await pg.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.setData("text/plain", "Reading notes\n\nthe <mark>main</mark> point");
+    window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  const made = await until(h, "⌘V on the board adds a card", () =>
+    h.board().cards.find((c) => !ids.includes(c.id)),
+  ).catch(() => undefined);
+  check(
+    "markTagBecomesHighlight ⌘V on the board makes a Note with ==",
+    made?.kind === "note" && (made as NoteCard).md === "Reading notes\n\nthe ==main== point",
+    made,
+  );
+  await idle(h);
+  await pg.mouse.move(2, 2);
+  await pg.screenshot({ path: path.join(OUT, "mark-tag-saved-warm-ink.png") });
+});
+
+/** Several lines of code pasted as plain text (from a terminal, a chat, a web page) become one code block in the language they
+ *  read as; one undo turns the block back into the pasted lines, a second takes the paste away. Prose stays paragraphs */
+test("pasteCodeAsBlock", async () => {
+  const CODE = [
+    "def allocate(self, seq):",
+    "    # take free blocks for the sequence",
+    "    blocks = self.free[: seq.n]",
+    "    return blocks",
+  ].join("\n");
+  const b = emptyBoard("b1", "paste code");
+  put(b, { id: "n0", kind: "note", md: "intro", look: "note" } as NoteCard, 40, 40, 560);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 900, h: 700, scale: 2, settings: { theme: "warm-ink" } as any });
+  const pg = h.page;
+  await idle(h);
+  await pg.locator(`${card("n0")} .nbody`).dblclick();
+  await pg.waitForSelector(`${card("n0")} .md-pm`, { timeout: 5000 });
+  await focusSettled(pg);
+  await pg.keyboard.press("ControlOrMeta+End");
+  await pmHasSelection(pg);
+  await pg.keyboard.press("Enter");
+  await pmHasSelection(pg);
+  const blocks = () =>
+    pg
+      .locator(`${card("n0")} .md-pm`)
+      .evaluate((e) =>
+        ((e as any).editor.state.doc.toJSON().content as any[]).map(
+          (n) =>
+            `${n.type}${n.attrs?.language ? `:${n.attrs.language}` : ""}=${(n.content ?? []).map((c: any) => c.text ?? "").join("")}`,
+        ),
+      );
+  const paste = (t: string) =>
+    pg.evaluate((t) => {
+      const dt = new DataTransfer();
+      dt.setData("text/plain", t);
+      document.activeElement!.dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }),
+      );
+    }, t);
+  await paste(`${CODE}\n`);
+  const pasted = await blocks();
+  check(
+    "pasteCodeAsBlock one code block",
+    JSON.stringify(pasted) === JSON.stringify(["paragraph=intro", `codeBlock:python=${CODE}`, "paragraph="]),
+    pasted,
+  );
+  await idle(h);
+  await pg.screenshot({ path: path.join(OUT, "paste-code-block-warm-ink.png") });
+  await pg.keyboard.press("ControlOrMeta+z");
+  const lines = await blocks();
+  check(
+    "pasteCodeAsBlock one undo gives the pasted lines",
+    !lines.some((l) => l.startsWith("codeBlock")) &&
+      lines[0] === "paragraph=intro" &&
+      CODE.split("\n").every((l) => lines.includes(`paragraph=${l}`)),
+    lines,
+  );
+  await idle(h);
+  await pg.screenshot({ path: path.join(OUT, "paste-code-undone-to-lines-warm-ink.png") });
+  await pg.keyboard.press("ControlOrMeta+z");
+  const gone = await blocks();
+  check(
+    "pasteCodeAsBlock a second undo takes the paste away",
+    JSON.stringify(gone) === JSON.stringify(["paragraph=intro", "paragraph="]),
+    gone,
+  );
+  await paste("Thanks for the review.\nI will fix the names tomorrow.");
+  const prose = await blocks();
+  check(
+    "pasteCodeAsBlock prose stays paragraphs",
+    !prose.some((l) => l.startsWith("codeBlock")) && prose.includes("paragraph=I will fix the names tomorrow."),
+    prose,
+  );
+  // prose with a heading and a link, as pasted from a chat or a README, stays prose
+  await pg.keyboard.press("ControlOrMeta+z");
+  await paste("## Plan\nWe return early when the cache is cold (rare).\nOtherwise see [the docs](https://x).");
+  const readme = await blocks();
+  check(
+    "pasteCodeAsBlock Markdown with a heading and a link stays prose",
+    !readme.some((l) => l.startsWith("codeBlock")),
+    readme,
+  );
+  // a <mark> in pasted code is code, kept as copied
+  await pg.keyboard.press("ControlOrMeta+z");
+  const MARKED = 'const el = document.body;\nel.innerHTML = "<mark>hi</mark>";\nconsole.log(el);';
+  await paste(MARKED);
+  const marked = await blocks();
+  check(
+    "pasteCodeAsBlock a <mark> in code stays as copied",
+    marked.some((l) => l.startsWith("codeBlock") && l.endsWith(`=${MARKED}`)),
+    marked,
+  );
+  await pg.keyboard.press("ControlOrMeta+z");
+  await pg.keyboard.press("ControlOrMeta+z");
+  await paste(CODE);
+  const was = md(h, "n0");
+  await pg.keyboard.press("Escape");
+  await until(h, "Esc saves the Note", () => md(h, "n0") !== was);
+  const saved = md(h, "n0");
+  check("pasteCodeAsBlock saved as a fenced block", saved === `intro\n\n\`\`\`python\n${CODE}\n\`\`\``, saved);
+});

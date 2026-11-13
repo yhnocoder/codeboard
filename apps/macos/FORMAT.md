@@ -121,7 +121,7 @@ has a card with `shared: true` and the same id.
 `LegacyImport.run(from: <old storage folder>, to: <vault>)` → `ImportReport`. The only code that knows the old format.
 
 **Source**: the VS Code extension's storage folder (`.codeboard/` in a project, or its own `boards/`). It reads only
-version 14 files, which is what main writes today (`BOARD_VERSION` in `packages/core/src/model.ts`). An older file is
+version 15 files, which is what main writes today (`BOARD_VERSION` in `packages/core/src/model.ts`). An older file is
 refused, asking the user to open the board in the VS Code extension and change anything once: the extension upgrades files
 when it reads them but writes them only when it saves. A newer one is refused as newer. Layout read: `*.json` at the top and
 one level of group folders, `cards/<id>.json` the shared-card library, `assets/` the images; `.trash/`, `runs/`, `github/`

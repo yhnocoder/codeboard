@@ -125,7 +125,7 @@
     "a → x [<a>t</a>](https://a)",
     ". → x [<a>t</a>](https://a.)",
     "b → x [<a>t</a>](https://a.b)",
-    ") → x [<a>t</a>](https://a.b)",
+    ") → x [<a>t</a>]a.b",
     "  → x <a>t</a> ",
     "y → x <a>t</a> y"
   ],

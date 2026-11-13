@@ -57,10 +57,55 @@ function soon(el: HTMLElement, lead: ScreenBox) {
 }
 /** A Note in view still waits for its Markdown (still.ts: a still picture is taken only once there is none) */
 export const mdPendingInView = () => [...pending.values()].some((j) => j.el.isConnected && inView(j.el));
+/** The HTML each element was last painted with (not the placeholder): a repaint keeps the blocks that did not change */
+const shownHtml = new WeakMap<HTMLElement, string>();
+const nodesOf = (h: string) => {
+  const t = document.createElement("template");
+  t.innerHTML = h;
+  return [...t.content.childNodes];
+};
+const keyOf = (n: Node) => (n instanceof Element ? n.outerHTML : `${n.nodeType}:${n.nodeValue}`);
+/**
+ * Puts h into el in place of was (what el was painted with), keeping el's top-level nodes whose HTML is the same in the same
+ * order: moving or editing one block of a long Note then builds, styles and lays out only that block, not the whole Note
+ * again. False when el no longer holds was's blocks (then it is painted afresh)
+ */
+function repaint(el: HTMLElement, was: string, h: string): boolean {
+  const old = nodesOf(was),
+    now = el.childNodes;
+  if (old.length !== now.length) return false;
+  const free = new Map<string, number[]>();
+  old.forEach((n, i) => {
+    const k = keyOf(n);
+    const q = free.get(k);
+    if (q) q.push(i);
+    else free.set(k, [i]);
+  });
+  const mine = [...now],
+    keep = new Set<Node>();
+  let last = -1;
+  const next = nodesOf(h).map((n) => {
+    const q = free.get(keyOf(n));
+    while (q?.length && q[0] <= last) q.shift();
+    const i = q?.shift();
+    if (i === undefined) return n;
+    last = i;
+    keep.add(mine[i]);
+    return mine[i];
+  });
+  for (const n of mine) if (!keep.has(n)) n.remove();
+  let at = el.firstChild;
+  for (const n of next)
+    if (n === at) at = at.nextSibling;
+    else el.insertBefore(n, at);
+  return true;
+}
 function paint(j: Job) {
   const h = j.inline ? j.md.renderInline(j.src) : j.md.render(j.src);
+  const was = shownHtml.get(j.el);
+  if (was !== h && !(was !== undefined && repaint(j.el, was, h))) j.el.innerHTML = h;
+  shownHtml.set(j.el, h);
   j.el.classList.remove("md-pend");
-  j.el.innerHTML = h;
   j.md.hydrate(j.el, h);
   // table widths, row heights and code wrap are card data, not Markdown: put onto the shared cached HTML here
   if (!j.inline) applyMdLayout(j.el, j.layout);
@@ -174,6 +219,7 @@ export function mdInto(
     // 占位：原文撑出差不多的高度，但藏着
     el.classList.add("md-pend");
     el.innerHTML = `<p>${escHtml(src)}</p>`;
+    shownHtml.delete(el);
     pending.set(el, j);
     schedule();
     return;

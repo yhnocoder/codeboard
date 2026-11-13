@@ -1392,9 +1392,9 @@ const ISSUES: Record<string, [string, (i: I) => boolean][]> = {
     ["key-code-typora", md("`word` here")],
     ["key-strike-tiptap", md("~~word~~ here")],
   ],
-  // 标题一次退一个 #（## → # → 段落，Typora 一样）
+  // a heading's level is its block's: Backspace at its start makes it body text at once (headingKeysKeepBlock)
   "#16 Backspace at the start reverts": [
-    ["backspace-heading-start", md("# Head")],
+    ["backspace-heading-start", md("Head")],
     ["backspace-list-start", md("item")],
     ["backspace-quote-start", md("quote")],
   ],

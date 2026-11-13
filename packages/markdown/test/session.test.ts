@@ -65,23 +65,21 @@ describe("an editor prepared before its session", () => {
 
   it("gives the code block's language list the page's menu class", () => {
     const { host } = edit();
-    host.querySelector<HTMLElement>(".md-code .md-lang")!.click();
+    host.querySelector(".md-code")!.dispatchEvent(new Event("pointerenter"));
+    host.querySelector<HTMLElement>(".md-band-code .md-lang")!.click();
     expect(document.querySelector(".md-langbox .md-menu")!.className).toContain("page-menu");
   });
 
-  it("gives the table bar the page's bar and button classes", () => {
-    // jsdom lays nothing out: the bar comes up only over a table that is on the page
-    vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockReturnValue(document.body);
-    const { editor } = edit();
+  it("gives the table band's menu the page's menu class", () => {
+    const { host, editor } = edit();
     let cell = 0;
     editor.state.doc.descendants((n, pos) => {
       if (!cell && n.type.name === "tableCell") cell = pos + 2;
     });
     editor.view.focus();
     editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, cell)));
-    const bar = document.querySelector(".md-tbar")!;
-    expect(bar.className).toContain("page-bar");
-    expect(bar.querySelector("[data-act=delTable]")!.className).toBe("md-btn page-btn md-ib danger");
+    host.querySelector<HTMLElement>(".md-band-table.on [data-act=more]")!.click();
+    expect(document.querySelector(".md-bandmenu > div")!.className).toContain("page-menu");
   });
 });
 

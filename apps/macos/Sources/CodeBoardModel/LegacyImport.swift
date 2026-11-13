@@ -1,11 +1,11 @@
 import Foundation
 
-// The one-way importer from the VS Code extension's storage folder (version 14 board files, as main writes them) into a
+// The one-way importer from the VS Code extension's storage folder (version 15 board files, as main writes them) into a
 // vault. The only code that knows the old format. It never writes into the old folder. FORMAT.md lists what maps to what.
 
 public enum LegacyImport {
   /// The version of the old files it reads; any other is refused
-  public static let oldVersion = 14
+  public static let oldVersion = 15
 
   /// Imports every board and shared card of the old storage folder `source` into the vault at `destination`. A file that
   /// cannot be imported is listed in the report's failures and the rest go on; a board already in the vault (found by id,
