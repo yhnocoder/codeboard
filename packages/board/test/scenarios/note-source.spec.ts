@@ -262,17 +262,20 @@ test("noteCodeBlockPill", async () => {
   await pg.locator(`${card("n0")} .md-pm:focus`).waitFor();
   const block = `${card("n0")} .md-pm .md-code`;
   await pg.locator(block).hover();
-  const pill = `${block} .md-cbpill`;
-  await pg.locator(pill).waitFor({ state: "visible" });
-  const tips = await pg.locator(`${pill} .md-cbb`).evaluateAll((bs) => bs.map((b) => b.getAttribute("data-tip")));
+  const pill = `${card("n0")} .md-band-code`;
+  await pg.locator(`${pill}.on`).waitFor();
+  const tips = await pg.locator(`${pill} .md-bb`).evaluateAll((bs) => bs.map((b) => b.getAttribute("data-tip")));
   const lang = (await pg.locator(pill).innerText()).trim();
-  // the demo's look: a 12px-round panel, 18 / 22px around 12.5px code on 1.7 lines, a 34px pill with a hair line after the language
+  // the demo's look: a 12px-round panel, 18 / 22px around 12.5px code on 1.7 lines, a 30px band above it with the language
   // and its ▾ always shown; in Warm Ink the demo's colours for numbers, called builtins and operators, with a call's arguments
   // in plain ink (the board's code cards keep their colours)
   await until(h, "the code is coloured", async () => (await pg.locator(`${block} .cm-content .num`).count()) > 0);
+  const band = await pg.locator(pill).evaluate((p) => ({
+    h: Math.round(p.getBoundingClientRect().height),
+    chevron: getComputedStyle(p.querySelector(".md-lang-v")!).opacity,
+  }));
   const look = await pg.locator(block).evaluate((e) => {
     const s = getComputedStyle(e),
-      p = e.querySelector(".md-cbpill")!,
       num = e.querySelector(".cm-content .num");
     const color = (sel: string, text: string) => {
       const t = [...e.querySelectorAll(`.cm-content ${sel}`)].find((x) => x.textContent?.trim() === text);
@@ -284,21 +287,18 @@ test("noteCodeBlockPill", async () => {
       pad: `${s.paddingTop} ${s.paddingLeft}`,
       font: s.fontSize,
       lh: s.lineHeight,
-      pill: Math.round(p.getBoundingClientRect().height),
-      sep: !!p.querySelector(".md-lang + .md-cbsep"),
       num: num ? getComputedStyle(num).color : null,
       builtin: color(".fn", "min"),
       op: color(".op", "//"),
       argsAsMarks: plain,
-      chevron: getComputedStyle(p.querySelector(".md-lang-v")!).opacity,
     };
   });
   const h0 = await pg.locator(block).evaluate((e) => e.getBoundingClientRect().height);
-  await pg.locator(`${pill} .md-cbb[data-tip="Wrap lines"]`).click();
+  await pg.locator(`${pill} .md-bb[data-tip="Wrap lines"]`).click();
   await until(
     h,
     "wrap turns on",
-    async () => (await pg.locator(`${pill} .md-cbb.on[data-tip="Wrap lines"]`).count()) === 1,
+    async () => (await pg.locator(`${pill} .md-bb.on[data-tip="Wrap lines"]`).count()) === 1,
   );
   const h1 = await pg.locator(block).evaluate((e) => e.getBoundingClientRect().height);
   await shot(h, "noteCodeBlockPill-wrap");
@@ -310,9 +310,9 @@ test("noteCodeBlockPill", async () => {
   await pg.locator(`${card("n1")} .nbody`).dblclick();
   await pg.locator(`${card("n1")} .md-pm`).waitFor();
   await pg.locator(`${card("n1")} .md-code`).hover();
-  await pg.locator(`${card("n1")} .md-cbb[data-tip="More"]`).click();
-  const items = await pg.locator(".md-cbmenu button").allInnerTexts();
-  await pg.locator(".md-cbmenu button", { hasText: "Convert to paragraph" }).click();
+  await pg.locator(`${card("n1")} .md-band-code .md-bb[data-tip="More"]`).click();
+  const items = await pg.locator(".md-bandmenu button").allInnerTexts();
+  await pg.locator(".md-bandmenu button", { hasText: "Convert to paragraph" }).click();
   await until(
     h,
     "the block became paragraphs",
@@ -325,14 +325,13 @@ test("noteCodeBlockPill", async () => {
       look.pad === "18px 22px" &&
       look.font === "12.5px" &&
       Math.abs(parseFloat(look.lh) - 21.25) < 0.5 &&
-      look.pill === 34 &&
-      look.sep &&
+      band.h === 30 &&
       look.num === (light ? "rgb(163, 22, 107)" : "rgb(224, 140, 192)") &&
       look.builtin === (light ? "rgb(208, 59, 92)" : "rgb(240, 124, 149)") &&
       look.op === (light ? "rgb(154, 106, 44)" : "rgb(214, 168, 106)") &&
       look.argsAsMarks === 0 &&
-      look.chevron === "0.8",
-    look,
+      band.chevron === "0.8",
+    { ...look, band },
   );
   check(
     "noteCodeBlockPill pill",
@@ -366,37 +365,45 @@ async function intoCell(h: Host, id: string, text: string) {
   await key(h.page, "End");
 }
 
-/** The table bar above the table's top-right corner: rows, columns, alignment written as :-: and --:, and the size grid whose
- *  shrink preview marks the cells that would go in red */
+/** A table action from its band, or from the band's ⋯ menu when the band is too narrow to show it */
+async function tableAct(pg: Page, id: string, act: string) {
+  const band = pg.locator(`${card(id)} .md-band-table`),
+    b = band.locator(`[data-act="${act}"]`);
+  if (await b.isVisible()) return b.click();
+  const tip = (await b.getAttribute("data-tip"))!;
+  await band.locator('[data-act="more"]').click();
+  await pg.locator(".md-bandmenu button", { hasText: tip }).click();
+}
+
+/** The table's band, attached above the table and as wide as it: rows, columns, alignment written as :-: and --:, and the size
+ *  grid whose shrink preview marks the cells that would go in red */
 test("noteTableToolbar", async () => {
-  // the Note on the right: the bar (wider than this small table) has room to end at the table's right edge
   const h = await open({ board: board(["other note", `Before\n\n${TABLE}\n\nAfter`]), light });
   const pg = h.page;
   await idle(h);
   await editNote(h, "n1");
   await intoCell(h, "n1", "5");
-  const bar = pg.locator(".md-tbar");
-  await bar.waitFor({ state: "visible" });
+  const bar = pg.locator(`${card("n1")} .md-band-table`);
+  await pg.locator(`${card("n1")} .md-band-table.on`).waitFor();
+  await idle(h);
   const pos = await pg.evaluate(() => {
-    const b = document.querySelector(".md-tbar")!.getBoundingClientRect(),
+    const b = document.querySelector(".md-band-table .md-band-face")!.getBoundingClientRect(),
       t = document.querySelector(".md-pm table")!.getBoundingClientRect();
-    const right = Math.min(t.right, document.querySelector(".md-pm")!.getBoundingClientRect().right);
     return {
-      above: b.bottom <= t.top + 1,
-      right: Math.abs(b.right - right) <= 2,
+      above: Math.abs(b.bottom - t.top) <= 1,
+      // as wide as the table, or wider when the table is too narrow even for the size and ⋯
+      width: Math.abs(b.left - t.left) <= 1 && b.width >= t.width - 1 && b.width < t.width + 120,
       bar: [b.left, b.right, b.width],
       table: [t.left, t.right],
     };
   });
-  const count0 = (await pg.locator(".md-tbar .md-tcount").innerText()).trim();
-  await bar.locator('[data-act="colRight"]').click();
-  await bar.locator('[data-act="rowBelow"]').click();
-  await bar.locator('[data-act="center"]').click();
+  const count0 = (await bar.locator(".md-tcount").innerText()).trim();
+  await tableAct(pg, "n1", "colRight");
+  await tableAct(pg, "n1", "rowBelow");
+  await intoCell(h, "n1", "5");
+  await tableAct(pg, "n1", "center");
   const grown = await cellText(pg, "n1");
   await shot(h, "noteTableToolbar-bar");
-  // its edge shows on a dark Note too: a 1px ring under the float shadow (the shadow's own .5px hair is lost there)
-  const ring = await bar.evaluate((b) => getComputedStyle(b).boxShadow);
-  check("noteTableToolbar outline visible", light || /^rgba\(255, 240, 220, 0\.15\) 0px 0px 0px 1px/.test(ring), ring);
   // the grid: pointing at 2 × 2 marks the cells with content outside it
   await bar.locator('[data-act="grid"]').click();
   await pg.locator(".md-gpick").waitFor({ state: "visible" });
@@ -429,7 +436,7 @@ test("noteTableToolbar", async () => {
   const small = await cellText(pg, "n1");
   await exitEdit(h);
   const saved = md(h, "n1");
-  check("noteTableToolbar placed above the top-right corner", pos.above && pos.right && count0 === "3×3", {
+  check("noteTableToolbar attached above the table, as wide as it", pos.above && pos.width && count0 === "3×3", {
     pos,
     count0,
   });
@@ -482,7 +489,7 @@ test("noteTableShortcuts", async () => {
   await intoCell(h, "n0", "6");
   await pg.keyboard.press("Shift+Enter");
   await pg.keyboard.type("two");
-  await pg.locator('.md-tbar [data-act="center"]').click();
+  await tableAct(pg, "n0", "center");
   await shot(h, "noteTableShortcuts");
   await exitEdit(h);
   const saved = md(h, "n0"),
@@ -670,7 +677,7 @@ test("noteImageFold", async () => {
   // the drawn image (offline here: its failed-to-load placeholder, which opens the source the same way)
   const img = pg.locator(`${card("n0")} .md-pm .md-img:not(.below)`);
   await img.waitFor();
-  await img.click();
+  await img.dblclick();
   await until(
     h,
     "the source opens with the image under it",
@@ -1293,24 +1300,24 @@ test("noteEscClosesPopupOnly", async () => {
   const editing = () => pg.locator(`${card("n0")} .md-pm`).count();
   const res: Record<string, unknown> = {};
   await intoCell(h, "n0", "5");
-  await pg.locator('.md-tbar [data-act="grid"]').click();
+  await pg.locator(`${card("n0")} .md-band-table [data-act="grid"]`).click();
   await pg.locator(".md-gpick").waitFor({ state: "visible" });
   await pg.keyboard.press("Escape");
   await idle(h);
   res.grid = { open: await pg.locator(".md-gpick").count(), editing: await editing() };
   const block = `${card("n0")} .md-pm .md-code`;
   await pg.locator(`${block} .cm-content`).click();
-  await pg.locator(`${block} .md-lang`).click();
+  await pg.locator(`${card("n0")} .md-band-code .md-lang`).click();
   await pg.locator(".md-langbox .md-langq").waitFor();
   await pg.keyboard.press("Escape");
   await idle(h);
   res.lang = { open: await pg.locator(".md-langbox").count(), editing: await editing() };
   await pg.locator(block).hover();
-  await pg.locator(`${block} .md-cbb[data-tip="More"]`).click();
-  await pg.locator(".md-cbmenu").waitFor();
+  await pg.locator(`${card("n0")} .md-band-code .md-bb[data-tip="More"]`).click();
+  await pg.locator(".md-bandmenu").waitFor();
   await pg.keyboard.press("Escape");
   await idle(h);
-  res.more = { open: await pg.locator(".md-cbmenu").count(), editing: await editing() };
+  res.more = { open: await pg.locator(".md-bandmenu").count(), editing: await editing() };
   await pg.keyboard.press("Escape");
   await idle(h);
   res.after = await editing();

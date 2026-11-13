@@ -22,7 +22,9 @@ export {
   /** @public */
   pickCopy,
 } from "./picture";
+export { cutMdBlocks, insertMdBlocks, moveMdBlocks, findMdBlocks, type MdPart } from "./blockmove";
 export { imageCaption, setImageCaption, tableCaption, setTableCaption } from "./caption";
+export { markTags } from "./marktag";
 export {
   /** @public */
   imagePlayback,

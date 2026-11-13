@@ -267,6 +267,50 @@ describe("code card rules", () => {
   });
 });
 
+describe("moving blocks between Notes", () => {
+  it("writes both Notes and their layouts in one step; a Note left empty goes in that step", () => {
+    const { b, env, log } = setup([note("a", "A\n\nB"), note("c", "C"), note("e", "E")]);
+    C.moveNoteBlocks(env, [
+      { id: "a", md: "A", layout: null },
+      { id: "c", md: "B\n\nC", layout: { wrap: [0] } },
+    ]);
+    expect(log.edits).toBe(1);
+    expect(b.cards).toMatchObject([
+      { id: "a", md: "A" },
+      { id: "c", md: "B\n\nC", mdLayout: { wrap: [0] } },
+      { id: "e" },
+    ]);
+    C.moveNoteBlocks(env, [
+      { id: "e", md: "", layout: null },
+      { id: "a", md: "A\n\nE", layout: null },
+    ]);
+    expect(log.edits).toBe(2);
+    expect(b.cards.map((c) => c.id)).toEqual(["a", "c"]);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+});
+
+describe("moving blocks into a new Note", () => {
+  it("blocks dropped into a new Note with nothing written yet settle it in the move's one step", () => {
+    const { b, env, log } = setup([note("a", "A\n\nB")]);
+    const id = C.newWriting(env, "note", "", { at: () => ({ x: 0, y: 400 }), settle: noSettle });
+    expect(log.edits).toBe(0);
+    C.moveNoteBlocks(env, [
+      { id: "a", md: "A", layout: null },
+      { id, md: "B", layout: null },
+    ]);
+    expect(log.edits).toBe(1);
+    expect(env.fresh.is(id)).toBe(false);
+    expect(b.cards).toMatchObject([
+      { id: "a", md: "A" },
+      { id, md: "B" },
+    ]);
+    // the editor closing afterwards finds nothing left to settle
+    C.settleUnwritten(env, id);
+    expect(log.edits).toBe(1);
+  });
+});
+
 describe("new cards and questions with nothing written yet", () => {
   it("a new Note is no undo step until written; written empty it goes as if it never was", () => {
     const { b, env, log } = setup();

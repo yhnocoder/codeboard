@@ -1,0 +1,189 @@
+/* Moving a Note's blocks with ⌘ held (md/blockmove.ts). All in the world layer .bmv-lay, in world px; --ik undoes the zoom (and the
+   copy's own scale) for lines that stay one screen width */
+@property --ik {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 1;
+}
+.bmv-lay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: 40;
+  pointer-events: none;
+}
+.bmv-grabbing.bmv-grabbing {
+  cursor: grabbing !important;
+}
+.bmv-box {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: none;
+  border-radius: 3px;
+  outline: calc(1.5px * var(--ik, 1)) solid color-mix(in srgb, var(--accent) 28%, transparent);
+  outline-offset: calc(3px * var(--ik, 1));
+}
+.bmv-box.is-on,
+.bmv-box.bmv-grabbing {
+  display: block;
+  pointer-events: auto;
+  cursor: grab;
+}
+/* while its blocks are dragged the outline only holds the pointer, for the cursor */
+.bmv-box.bmv-grabbing:not(.is-on) {
+  outline-color: transparent;
+}
+.bmv-line {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  opacity: 0;
+  transition:
+    transform 0.12s cubic-bezier(0.33, 1, 0.68, 1),
+    opacity 0.1s;
+}
+.bmv-line.is-on {
+  opacity: 1;
+}
+.bmv-line.is-jump {
+  transition: opacity 0.1s;
+}
+
+.bmv-g {
+  position: absolute;
+  padding: 0;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  /* always set, though only a floating copy takes the pointer: cursor is inherited, and switching it with is-float would
+     restyle every node of the copy */
+  cursor: grab;
+  transition: scale 0.12s cubic-bezier(0.33, 1, 0.68, 1);
+}
+.bmv-g.is-float {
+  pointer-events: auto;
+}
+.bmv-g.is-glide {
+  transition:
+    translate 0.2s cubic-bezier(0.33, 1, 0.68, 1),
+    scale 0.2s cubic-bezier(0.33, 1, 0.68, 1);
+}
+.bmv-g.is-swap {
+  transition:
+    translate 0.12s cubic-bezier(0.33, 1, 0.68, 1),
+    scale 0.12s cubic-bezier(0.33, 1, 0.68, 1);
+}
+.bmv-sh {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--mr);
+  opacity: 0;
+  transition: opacity 0.16s ease-out;
+  box-shadow:
+    0 0 0 0.5px rgba(60, 45, 20, 0.18),
+    0 3px 8px rgba(50, 35, 10, 0.08),
+    0 18px 40px -12px rgba(50, 35, 10, 0.3);
+}
+.bmv-g.is-lift .bmv-sh {
+  opacity: 1;
+}
+/* the copy carries its Note's classes for the theme's Note styles; as a card it is only a sheet the size of the blocks */
+.bmv-g > .bmv-copy.bmv-copy {
+  position: relative;
+  left: 0;
+  top: 0;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  border-radius: var(--mr);
+  box-shadow: none;
+  filter: none;
+  transform: none;
+  transition: none;
+  animation: none;
+  outline: none;
+}
+.bmv-g > .bmv-copy::before,
+.bmv-g > .bmv-copy::after {
+  display: none;
+}
+.bmv-g > .bmv-copy > .cface {
+  padding: 0;
+  margin: 0;
+}
+.bmv-g > .bmv-copy > .cface > .md.md {
+  margin: 0;
+  padding: 0;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+.bmv-g.k-text {
+  --mr: 9px;
+}
+.bmv-g.k-text > .bmv-copy > .cface > .md.md {
+  padding: 8px 12px;
+}
+.bmv-g.k-code {
+  --mr: 12px;
+}
+.bmv-g.k-table {
+  --mr: 10px;
+}
+.bmv-g.k-img {
+  --mr: 6px;
+}
+.bmv-g:is(.k-code, .k-table, .k-img) > .bmv-copy {
+  border-color: transparent;
+}
+.bmv-g:is(.k-code, .k-table):not(.is-over) > .bmv-copy {
+  background: none;
+}
+/* over a Note: a small opaque thumbnail; its edge and shadow keep their screen size */
+.bmv-g.is-over .bmv-sh {
+  opacity: 1;
+  border-radius: calc(6px * var(--ik));
+  box-shadow:
+    0 0 0 calc(0.75px * var(--ik)) rgba(60, 45, 20, 0.3),
+    0 calc(3px * var(--ik)) calc(10px * var(--ik)) rgba(50, 35, 10, 0.16);
+}
+.bmv-g.is-over > .bmv-copy {
+  overflow: hidden;
+  border-radius: calc(6px * var(--ik));
+}
+.bmv-g.is-over.k-code > .bmv-copy pre {
+  border-radius: 0;
+}
+
+/* the strip that carries a Note's bottom edge and shadow while its height slides (clipCard) */
+.bmv-edge {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* a copy cut to a readable window (makeCopy): its cut edges fade out; the shadow stops where the fade begins */
+.bmv-g.is-cut > .bmv-copy.bmv-copy {
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 56px), transparent);
+}
+.bmv-g.is-cut.cut-top > .bmv-copy.bmv-copy {
+  mask-image: linear-gradient(to bottom, transparent, #000 40px, #000 calc(100% - 56px), transparent);
+}
+.bmv-g.is-cut:not(.is-over) .bmv-sh {
+  bottom: 56px;
+}
+.bmv-g.is-cut.cut-top:not(.is-over) .bmv-sh {
+  top: 40px;
+}
+.bmv-g.is-cut.is-over > .bmv-copy.bmv-copy {
+  mask-image: none;
+}

@@ -10,6 +10,8 @@ import { clipboardHtml, clipboardText } from "./clipboard";
 import { sourceDoc, sourceMd } from "./srcdoc";
 import { editorExtensions } from "./extensions";
 import { handlePaste } from "./paste";
+import { linkAtPos, openLinkBox } from "./links";
+import { uiOf } from "./ui";
 import { bodyEnd, padEnd } from "./pad";
 import type { MdEditorOpts } from "./types";
 import { coreOf, type Markdown, type Md } from "../markdown";
@@ -85,14 +87,25 @@ function makeInst(md: Md, dragHandle = false): Inst {
         }
         return true;
       },
-      handleClick: (_v, _pos, ev) => {
-        const a = (ev.target as HTMLElement).closest?.("a[href]") as HTMLAnchorElement | null;
+      handleClick: (v, pos, ev) => {
+        const t = ev.target as HTMLElement,
+          a = t.closest?.("a[href]") as HTMLAnchorElement | null;
         if (a && (ev.metaKey || ev.ctrlKey)) {
           ev.preventDefault();
           o.openLink?.(a.getAttribute("href")!);
           return true;
         }
-        return false;
+        // a plain click on a link the caret is not in, or on the folded address of the one it is in: the link's box (its text
+        // and address, open, remove); a click in a link the caret is already in places the caret as usual
+        if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || ev.detail > 1) return false;
+        const ui = uiOf.get(inst.editor),
+          l = linkAtPos(v.state, pos),
+          chip = !!t.closest?.(".md-urlchip");
+        if (!ui || !l || !(chip || a || t.closest?.("a.md-link"))) return false;
+        const { head } = v.state.selection;
+        if (!chip && head >= l.from && head <= l.to) return false;
+        openLinkBox(v, ui.setLink, l);
+        return true;
       },
     },
     onTransaction: ({ transaction }) => inst.sess?.onTx(transaction),

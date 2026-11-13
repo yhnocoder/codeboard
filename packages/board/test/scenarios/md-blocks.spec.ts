@@ -278,44 +278,54 @@ test("codeBlockGapCursor", async () => {
   });
 });
 
-/** The code block's pill (language, copy, wrap, menu) floats over the block's top-right corner, opaque, and only while it is
- *  wanted: hovering the block or the caret in it. Otherwise it is invisible and lets clicks through to the code under it */
+/** The code block's toolbar (language, copy, wrap, menu) is a band grown out of the block's top edge, opaque, over what is
+ *  above it: it never covers the block's own code, and it is there only while wanted (hovering the block or the caret in it) */
 test("codeBlockLabelClear", async () => {
   const h = await open({ board: board([{ id: "n1", md: TWO_CODE, w: 400 }]), light, w: 900, h: 600 });
   const pg = h.page;
   await idle(h);
   await edit(h, "n1", { x: 20, y: 6 });
   const pres = `${card("n1")} .md-pm pre.md-code`;
-  /** per block: pill shown (opacity), takes clicks, its background is opaque, and it lies inside the block's top-right corner */
+  /** per block, its band (found where it sits: on the block's top edge, as wide as the block): shown and settled, takes
+   *  clicks, opaque, and clear of the block's first line of code */
   const pills = () =>
     pg.locator(pres).evaluateAll((ps) =>
       ps.map((p) => {
-        const pill = p.querySelector(".md-cbpill") as HTMLElement,
-          cs = getComputedStyle(pill),
-          r = pill.getBoundingClientRect(),
-          b = p.getBoundingClientRect();
+        const b = p.getBoundingClientRect(),
+          band = [...document.querySelectorAll<HTMLElement>(".md-band-code")].find((x) => {
+            const r = x.getBoundingClientRect();
+            return Math.abs(r.left - b.left) < 1 && Math.abs(r.width - b.width) < 1 && Math.abs(r.bottom - b.top) < 1;
+          });
+        if (!band) return { shown: false, clicks: false, opaque: false, corner: false };
+        const face = band.querySelector(".md-band-face")!,
+          fr = face.getBoundingClientRect(),
+          cs = getComputedStyle(face),
+          line = p.querySelector(".cm-line")!.getBoundingClientRect();
         return {
-          shown: Number(cs.opacity) > 0.95,
+          shown: band.classList.contains("on") && Math.abs(fr.bottom - b.top) < 1,
           clicks: cs.pointerEvents !== "none",
           opaque: !/rgba\(.*, 0(\.\d+)?\)$|transparent/.test(cs.backgroundColor),
-          corner: r.right <= b.right && r.top >= b.top && r.right > b.right - 20,
+          corner: fr.bottom <= line.top,
         };
       }),
     );
-  // the caret in the first paragraph, the mouse away: no pill
+  // the caret in the first paragraph, the mouse away: no band
   await pg.mouse.move(5, 5);
+  await until(h, "no band", async () => (await pills()).every((x) => !x.shown));
   await idle(h);
   const away = await pills();
-  // at the start of the code: the pill sits over the top-right corner of the block's first line
+  // the caret at the start of the second block's code: its band, above its first line
   await pg
     .locator(`${pres} .cm-content`)
     .last()
     .click({ position: { x: 2, y: 4 } });
   await pg.keyboard.press("End");
   await pg.mouse.move(5, 5);
+  await until(h, "the caret's block has its band", async () => (await pills())[1].shown);
   await idle(h);
   const focused = await pills();
   await pg.locator(pres).first().hover();
+  await until(h, "the hovered block has its band", async () => (await pills())[0].shown);
   await idle(h);
   const hovered = await pills();
   await shot(h, "n1", "08-label-hover", true);

@@ -149,8 +149,8 @@
   flex: none;
   max-width: 40%;
 }
-.card.web:hover .wbm.wcompact .wsite > span,
-.card.web.sel .wbm.wcompact .wsite > span {
+.card.web:hover .wbm.wcompact .wsite > .wsn,
+.card.web.sel .wbm.wcompact .wsite > .wsn {
   visibility: hidden;
 }
 /* 什么都没抓到：域名首字母 + 域名 + 路径（按字符断行，最多两行） */

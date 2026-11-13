@@ -122,13 +122,14 @@ const srcHighlight = ViewPlugin.fromClass(
           b.add(line.from, line.to, MARK);
           continue;
         }
-        const info = blockInfo(t, true);
-        if (info.prefix) {
-          out.push([0, info.prefix, MARK]);
-          if (t.length > info.prefix) out.push([info.prefix, t.length, HEAD]);
+        const info = blockInfo(t),
+          prefix = /^ {0,3}#{1,6}(?:[ \t]+|$)/.exec(t)?.[0].length ?? 0;
+        if (prefix) {
+          out.push([0, prefix, MARK]);
+          if (t.length > prefix) out.push([prefix, t.length, HEAD]);
         }
         const lead = /^(\s*(?:>\s?)*)(?:[-*+]|\d+[.)])\s(?:\[[ xX]\]\s)?|^\s*(?:>\s?)+/.exec(t);
-        if (!info.prefix && lead) out.push([0, lead[0].length, MARK]);
+        if (!prefix && lead) out.push([0, lead[0].length, MARK]);
         for (const sp of flat(info.spans)) {
           if (sp.atom?.type === "math") {
             out.push([sp.from, sp.to, MATH]);

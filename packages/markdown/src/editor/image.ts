@@ -5,6 +5,7 @@ import { Mapping } from "@tiptap/pm/transform";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
 import { blockInfo, flat, spanEdgeOut } from "./spans";
+import { inlineKey } from "./inlinekey";
 
 /** 存一张图（data: URL、文件名）→ 写进 Markdown 的地址；null = 不插（存不了时用的一方自己提示） */
 export type SaveImage = (dataUrl: string, name: string) => Promise<string | null>;
@@ -56,10 +57,7 @@ const imageSrc = (src: string) => `![](${/[\s()<>]/.test(src) ? `<${src}>` : src
 function outsideSpans(doc: PMNode, pos: number) {
   const $p = doc.resolve(pos);
   if ($p.parent.type.name !== "paragraph" || !$p.depth) return pos;
-  return (
-    $p.start() +
-    spanEdgeOut($p.parent.textContent, pos - $p.start(), !/cell/.test($p.node(-1).type.spec.tableRole ?? ""))
-  );
+  return $p.start() + spanEdgeOut($p.parent.textContent, pos - $p.start());
 }
 
 /** Inserts the saved images at `at` (or at the caret if the document changed meanwhile), as one undo step */
@@ -109,29 +107,24 @@ export const DRAGGED_OUT = "imageDraggedOut";
 const imageOnly = (p: PMNode) => {
   const t = p.textContent;
   if (!t.trim()) return false;
-  const sps = blockInfo(t, false).spans;
+  const sps = blockInfo(t).spans;
   let rest = t;
   for (const sp of [...sps].reverse())
     if (sp.atom?.type === "image" || sp.atom?.type === "br") rest = rest.slice(0, sp.from) + rest.slice(sp.to);
   return !rest.trim();
 };
 
-/**
- * The image the selection stands for: the caret in its source (the image is drawn selected, with its grips) or exactly its
- * source selected (spaces around it aside)
- */
-function selectedImage(state: EditorState): { src: string; md: string } | null {
-  const { $from, $to, from, to } = state.selection;
-  if (!$from.sameParent($to) || $from.parent.type.name !== "paragraph") return null;
-  const text = $from.parent.textContent,
-    cell = $from.depth > 0 && /cell|header/.test($from.node(-1).type.spec.tableRole ?? "");
-  let a = from - $from.start(),
-    b = to - $from.start();
-  const picked = text.slice(a, b);
-  a += picked.length - picked.trimStart().length;
-  b -= picked.length - picked.trimEnd().length;
-  const sp = flat(blockInfo(text, !cell).spans).find(
-    (s) => s.atom?.type === "image" && (a === b ? s.from <= a && a <= s.to : s.from === a && s.to === b),
+/** The image the caret alone stands for: the caret in its open source, at its ends too (a selected image copies as its
+ *  Markdown; beside a closed image the caret stands for nothing) */
+function caretImage(state: EditorState): { src: string; md: string } | null {
+  const { $head, empty } = state.selection;
+  if (!empty || $head.parent.type.name !== "paragraph") return null;
+  const text = $head.parent.textContent,
+    a = $head.parentOffset,
+    base = $head.start(),
+    open = inlineKey.getState(state)?.open ?? null;
+  const sp = flat(blockInfo(text).spans).find(
+    (s) => s.atom?.type === "image" && (open === base + s.from ? s.from <= a && a <= s.to : s.from < a && a < s.to),
   );
   return sp?.atom?.type === "image" && sp.atom.src ? { src: sp.atom.src, md: text.slice(sp.from, sp.to) } : null;
 }
@@ -181,13 +174,13 @@ export function imageEditing(
             handleDOMEvents: {
               // the caret alone in an image's source copies nothing by default: saying so before the copy lets it happen
               beforecopy: (view: EditorView, ev: Event) => {
-                if (copy() && view.state.selection.empty && selectedImage(view.state)) ev.preventDefault();
+                if (copy() && caretImage(view.state)) ev.preventDefault();
                 return false;
               },
               copy: (view: EditorView, ev: ClipboardEvent) => {
                 // a selection over the source is text the writer picked (copyInsideShownSource); the caret alone is the picture
                 const c = copy(),
-                  img = c && view.state.selection.empty && selectedImage(view.state);
+                  img = c && caretImage(view.state);
                 if (!img) return false;
                 // the picture alone (an app given text as well pastes the text); a paste of it back is the Markdown (knownImage)
                 ev.preventDefault();

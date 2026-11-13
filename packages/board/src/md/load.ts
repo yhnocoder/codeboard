@@ -83,6 +83,8 @@ export function setCurrentEditor(id: string, ed: MdEditorHandle | null) {
     if (srcNote() === id) setSrcNote(null);
   }
 }
+/** The editor of the Note being edited, when that Note is id */
+export const editorOf = (id: string) => (current?.id === id ? current.ed : null);
 export const sourceModeOf = (id: string) => srcNote() === id;
 export const setSourceMode = (id: string, on: boolean) => setSrcNote(on ? id : srcNote() === id ? null : srcNote());
 export function toggleNoteSource(id: string) {

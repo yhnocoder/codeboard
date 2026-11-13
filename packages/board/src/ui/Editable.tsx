@@ -188,7 +188,9 @@ function MdEdit(p: P) {
       // the last block; beside → the nearest place inside the content
       const spot = entry.spot;
       if (spot === "end") h.placeCaret("end");
-      else if (!spot || !h.placeCaret({ visible: spot.char, after: spot.after })) h.placeCaret(entry.at);
+      // pressed on an image: that image selected
+      else if (!h.pickImage(entry.at) && (!spot || !h.placeCaret({ visible: spot.char, after: spot.after })))
+        h.placeCaret(entry.at);
     } else if (entry && h.selectVisible(entry.range))
       // 编辑器拿到焦点（mountEditor 放进了微任务）以后，和在编辑器里按这个键一样走它的键表；键表没接（不会发生）就直接删
       queueMicrotask(() => h.press(entry.key));

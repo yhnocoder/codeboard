@@ -196,14 +196,14 @@ test("copiedImagesArePictures", async () => {
   const isPicture = (c: Awaited<ReturnType<typeof nextCopy>>) =>
     c.types.join() === "image/png" && c.png?.w === 240 && c.png?.h === 160 && c.text === "";
 
-  // a Note being edited: a click on the image puts the caret in its source (the image shows selected); ⌘C copies the image
+  // a Note being edited: a double-click on the image opens its source with the caret in it; ⌘C copies the image
   await cardEl(h, "n1")
     .locator(".nbody")
     .dblclick({ position: { x: 200, y: 10 } });
   await cardEl(h, "n1").locator(".md-pm:focus").waitFor();
   const inEditor = cardEl(h, "n1").locator(".md-pm img:not(.ProseMirror-separator)").first();
   await inEditor.evaluate((i) => (i as HTMLImageElement).decode());
-  await inEditor.click();
+  await inEditor.dblclick();
   await idle(h);
   const caret = await pg.evaluate(() => {
     const s = getSelection()!;
@@ -234,7 +234,9 @@ test("copiedImagesArePictures", async () => {
     selCopy.types.includes("text/plain") && selCopy.text === "![](assets/card.png)" && !selCopy.png,
     { picked, selCopy },
   );
-  // the caret back in the source: the picture again, for the paste below
+  // the source selected whole is the image selected: Enter opens its source again, End puts the caret at its end, the
+  // picture again, for the paste below
+  await pg.keyboard.press("Enter");
   await pg.keyboard.press("End");
   await pmHasSelection(pg);
   await clear(h);

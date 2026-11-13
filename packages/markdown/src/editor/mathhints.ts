@@ -695,7 +695,7 @@ function inlineMathAt(state: EditorState): Region | null {
   const base = $h.start(),
     off = $h.parentOffset;
   const text = p.textContent;
-  for (const r of flat(blockInfo(text, false).spans)) {
+  for (const r of flat(blockInfo(text).spans)) {
     if (r.atom?.type !== "math" || off < r.from || off > r.to) continue;
     const d = r.marks[0] ? r.marks[0][1] - r.marks[0][0] : 1;
     const a = r.from + d,
@@ -704,7 +704,7 @@ function inlineMathAt(state: EditorState): Region | null {
     return { from: base + a, to: base + b, text: text.slice(a, b), caret: off - a, d };
   }
   // 还没打完的：光标前有落单的 $（成对的、代码里的、转义的不算）
-  const codes = flat(blockInfo(text, false).spans).filter((sp) => sp.tag?.nodeName === "code");
+  const codes = flat(blockInfo(text).spans).filter((sp) => sp.tag?.nodeName === "code");
   const inCode = (i: number) => codes.some((sp) => i >= sp.from && i < sp.to);
   const before = p.textBetween(0, off, undefined, "\ufffc");
   let open = -1,

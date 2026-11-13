@@ -16,7 +16,7 @@ const docOf = (md: string) => schema.nodeFromJSON(sourceDoc(md));
 describe("balancedSource: part of a paragraph with the markers of the spans it cuts into", () => {
   const cut = (text: string, sel: string) => {
     const a = text.indexOf(sel);
-    return balancedSource(text, a, a + sel.length, true);
+    return balancedSource(text, a, a + sel.length);
   };
   it("inside one span: its markers around the part", () => {
     expect(cut("==Plain words== here", "ain wor")).toBe("==ain wor==");
@@ -32,7 +32,7 @@ describe("balancedSource: part of a paragraph with the markers of the spans it c
   });
   it("a cut through a drawn formula takes all of it", () => {
     const t = "==aa $x^2$ bb== end";
-    expect(balancedSource(t, t.indexOf("a $x"), t.indexOf("^2"), true)).toBe("==a $x^2$==");
+    expect(balancedSource(t, t.indexOf("a $x"), t.indexOf("^2"))).toBe("==a $x^2$==");
   });
   it("the whole span selected: unchanged", () => {
     expect(cut("a **bold** b", "**bold**")).toBe("**bold**");
@@ -70,6 +70,23 @@ describe("toggleWrap: markers around the selection", () => {
   it("already wrapped: unwraps", () => {
     expect(run("a ==note== here", "note", "==")).toEqual({ text: "a note here", sel: "note" });
   });
+  it("across paragraphs: each paragraph's part on its own, and back", () => {
+    const across = (md: string, a: string, b: string) => {
+      let state = EditorState.create({ doc: docOf(md) });
+      const text = (n: number) => state.doc.child(n).textContent;
+      const from = 1 + text(0).indexOf(a),
+        to = 1 + state.doc.child(0).nodeSize + text(1).indexOf(b) + b.length;
+      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, from, to)));
+      toggleWrap(state, (tr) => (state = state.apply(tr)), "**");
+      const once = [text(0), text(1)];
+      toggleWrap(state, (tr) => (state = state.apply(tr)), "**");
+      return [once, [text(0), text(1)]];
+    };
+    expect(across("one two \n\nthree four", "two", "three")).toEqual([
+      ["one **two** ", "**three** four"],
+      ["one two ", "three four"],
+    ]);
+  });
 });
 
 describe("visibleRange: a range counted on the static render, in the editor's source", () => {
@@ -96,7 +113,7 @@ describe("visibleRange: a range counted on the static render, in the editor's so
 describe("spanEdgeOut: an offset at the edge of a span's text goes outside its markers", () => {
   const out = (text: string, at: string, after = true) => {
     const i = text.indexOf(at) + (after ? at.length : 0);
-    return text.slice(0, spanEdgeOut(text, i, true));
+    return text.slice(0, spanEdgeOut(text, i));
   };
   it("before the closing markers: after them", () => {
     expect(out("**Prefill, then decode.**", "decode.")).toBe("**Prefill, then decode.**");

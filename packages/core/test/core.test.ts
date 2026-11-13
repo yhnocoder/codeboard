@@ -20,6 +20,7 @@ import {
   parseGithubUrl,
   classifyPaste,
   guessLang,
+  noteCodeLang,
   migrateBoard,
   mergeOverlapping,
   sortSegments,
@@ -380,6 +381,27 @@ describe("paste", () => {
     ];
     for (const [code, lang] of cases) expect([code, guessLang(code)]).toEqual([code, lang]);
   });
+  it("reads prose with a heading and a link, as pasted from a chat or a README, as no code", () => {
+    expect(
+      guessLang("## Plan\nWe return early when the cache is cold (rare).\nOtherwise see [the docs](https://x)."),
+    ).toBe(null);
+  });
+  it("for a Note's text, takes two-line prose with a bracket, a colon or a leading for/if as no code", () => {
+    for (const prose of [
+      "Thanks (really)!\nSee you tomorrow.",
+      "## Plan\nWe return early when the cache is cold (rare).",
+      "Two things to note:\nthe cache and the queue.",
+      "for the record, it works.\nif not, tell me.",
+      "a = b, as said\nthen we go on",
+    ])
+      expect([prose, noteCodeLang(prose)]).toEqual([prose, null]);
+  });
+  it("for a Note's text, still reads code as code, a URL in it too", () => {
+    expect(noteCodeLang("def f(x):\n    return x")).toBe("python");
+    expect(noteCodeLang('# fetch\nurl = "https://x.com/a"\nr = get(url)')).toBe("python");
+    expect(noteCodeLang("int main() {\n  return 0;\n}")).not.toBe(null);
+    expect(noteCodeLang("__global__ void k(float* x) {\n  int i = threadIdx.x;\n}")).toBe("cuda-cpp");
+  });
 });
 
 describe("migrateBoard", () => {
@@ -408,7 +430,7 @@ describe("migrateBoard", () => {
       ],
       edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call" }],
     });
-    expect(b.version).toBe(13);
+    expect(b.version).toBe(14);
     expect(b.links[0].call).toEqual({ name: "f", col: 0 });
     const c = b.cards[0] as CodeCard;
     expect(c.segments[0]).toMatchObject({ path: "a.py", start: 1, end: 2, hl: [[2, 2]], symbol: { qual: "f" } });
@@ -525,7 +547,7 @@ describe("migrateBoard", () => {
       place: { a: { x: 0, y: 0, w: 400, h: 300 }, z: { x: 0, y: 0, w: 400 }, n: { x: 0, y: 0, w: 300, h: 120 } },
     };
     const b = migrateBoard(structuredClone(raw));
-    expect(b.version).toBe(13);
+    expect(b.version).toBe(14);
     expect(b.place.a.h).toBe(264);
     expect(b.place.z.h).toBeUndefined();
     expect(b.place.n.h).toBe(120);
@@ -550,7 +572,7 @@ describe("migrateBoard", () => {
       place: { t: { x: 0, y: 0, w: 300, h: 40 }, n: { x: 0, y: 0, w: 300, h: 120 }, x: { x: 0, y: 0, w: 300, h: 200 } },
     };
     const b = migrateBoard(structuredClone(raw));
-    expect(b.version).toBe(13);
+    expect(b.version).toBe(14);
     expect(b.place.t).toEqual({ x: 0, y: 0, w: 300 });
     expect(b.place.n.h).toBe(120);
     expect(b.place.x.h).toBe(200);
@@ -605,7 +627,7 @@ describe("migrateBoard", () => {
       ],
     };
     const b = upgraded(structuredClone(raw));
-    expect(b.version).toBe(13);
+    expect(b.version).toBe(14);
     expect(b.links).toEqual([
       {
         id: "c",
@@ -705,6 +727,6 @@ describe("migrateBoard", () => {
     expect(b.stickers[0].q).toEqual({ md: "" });
   });
   it("refuses a board written by a newer CodeBoard", () => {
-    expect(() => migrateBoard({ version: 14, id: "b", name: "x", cards: [] })).toThrow(/newer/);
+    expect(() => migrateBoard({ version: 15, id: "b", name: "x", cards: [] })).toThrow(/newer/);
   });
 });

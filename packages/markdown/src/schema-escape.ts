@@ -1,6 +1,6 @@
 // Escaping text written back as Markdown: the characters, and the line starts that would be read as blocks
 import type { JSONContent } from "@tiptap/core";
-import { EMOJI_AT, isEmoji, mathAt } from "./schema-nodes";
+import { EMOJI_AT, isEmoji, mathAt, notHtmlTag } from "./schema-nodes";
 import { annotAt, HL_RE, SUP_RE } from "./schema-marks";
 import { ESC_DOLLAR } from "./placeholders";
 
@@ -13,6 +13,21 @@ const PUNCT = /[!-/:-@[-`{-~]/;
  */
 const LINE_START =
   /^ {0,3}(?:\d{1,9}(?=[.)](?:[ \t]|$))|(?=#{1,6}(?:[ \t]|$)|>|[-+*](?:[ \t]|$)|([-*_])[ \t]*(?:\1[ \t]*){2,}$|[-=]+[ \t]*$|\[toc\][ \t]*$))/gim;
+/** What * may not open right after: inside a name or an expression (a*b*c) it is not emphasis */
+export const WORD_END = /[A-Za-z0-9_)]/;
+/** Whether the run of * at i could open emphasis, and whether it could close it */
+function starSides(s: string, i: number): { open: boolean; close: boolean } {
+  let a = i,
+    b = i;
+  while (s[a - 1] === "*") a--;
+  while (s[b + 1] === "*") b++;
+  const prev = s[a - 1] ?? "",
+    next = s[b + 1] ?? "";
+  return {
+    open: !!next && !/\s/.test(next) && !WORD_END.test(prev),
+    close: !!prev && !/\s/.test(prev),
+  };
+}
 const ESC = "\u0001"; // 行首要转义的位置先放个记号，escText 把它和后面那个字写成 \X
 export function escText(s: string): string {
   // * ~ ` 一段里只有一个时配不成对，不用转义；两边都是空白的 * ~ 也不会成强调（a * b）。_ 不当强调（解析时关掉了），不转义
@@ -23,7 +38,10 @@ export function escText(s: string): string {
       if (s[i] === c && !(/\s/.test(s[i - 1] ?? " ") && /\s/.test(s[i + 1] ?? " "))) n++;
     return n > 1;
   };
-  const star = pairs("*"),
+  // * pairs only when one that can open comes before one that can close
+  const sides = Array.from({ length: s.length }, (_x, i) => (s[i] === "*" ? starSides(s, i) : null)),
+    opener = sides.findIndex((x) => x?.open),
+    star = opener >= 0 && sides.some((x, i) => i > opener && x?.close),
     tilde = pairs("~"),
     tick = pairs("`");
   const dollars = openingDollars(s);
@@ -44,8 +62,10 @@ export function escText(s: string): string {
         out += tick ? "\\`" : c;
         break;
       case "*":
+        out += star && (sides[i]!.open || sides[i]!.close) ? "\\*" : c;
+        break;
       case "~":
-        out += (c === "*" ? star : tilde) && !(/\s/.test(prev || " ") && /\s/.test(next || " ")) ? `\\${c}` : c;
+        out += tilde && !(/\s/.test(prev || " ") && /\s/.test(next || " ")) ? "\\~" : c;
         break;
       case "[":
         out += next === "[" || next === "^" || /^[^\]]*\]\s*[(\[]/.test(s.slice(i + 1)) ? "\\[" : c;
@@ -54,7 +74,7 @@ export function escText(s: string): string {
         out += dollars.has(i) ? "\\$" : c;
         break;
       case "<":
-        out += /[A-Za-z/!?]/.test(next) ? "\\<" : c;
+        out += /[A-Za-z/!?]/.test(next) && !notHtmlTag(s.slice(i)) ? "\\<" : c;
         break;
       // 字面的 ^2^、==x==：会被读成上标、高亮的才转义
       case "^":

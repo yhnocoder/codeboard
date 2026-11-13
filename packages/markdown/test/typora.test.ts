@@ -25,8 +25,8 @@ const run = (s: EditorState, cmd: typeof undo) => {
   return out;
 };
 /** What a paragraph's source draws: tag names and atom types, in order */
-const drawn = (text: string, headings = true) =>
-  flat(blockInfo(text, headings).spans).map((sp: Span) => sp.atom?.type ?? sp.tag?.nodeName ?? "esc");
+const drawn = (text: string) =>
+  flat(blockInfo(text).spans).map((sp: Span) => sp.atom?.type ?? sp.tag?.nodeName ?? "esc");
 const innerOf = (text: string, sp: Span) => (sp.inner ? text.slice(sp.inner[0], sp.inner[1]) : "");
 const TAG: Record<string, string> = {
   bold: "strong",
@@ -249,7 +249,7 @@ describe("typing: the source is what was typed, the parser decides what it draws
         .insertText("$$y$$", cell + 2),
     );
     expect(enterBlock(s)).toBe(false);
-    expect(drawn(s.selection.$head.parent.textContent, false)).toEqual(["math"]);
+    expect(drawn(s.selection.$head.parent.textContent)).toEqual(["math"]);
     expect(mdOf(s)).toBe("| a     |\n| ----- |\n| $$y$$ |");
   });
 });

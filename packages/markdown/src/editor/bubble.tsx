@@ -6,6 +6,8 @@ import { createEffect, createSignal, onCleanup, Show, type Accessor } from "soli
 import { Icon, type IconName } from "./icons";
 import { isWrapped, revealMeta, toggleWrap } from "./inline";
 import { blockInfo, flat, type Span } from "./spans";
+import { linkAt as linkIn, linkText } from "./links";
+import { movingBlocks } from "./moveblocks";
 import { escAnnot } from "../schema-marks";
 import { place, virtual } from "../ui/place";
 import { TOOLBAR_SETTLE } from "../ui/timing";
@@ -25,7 +27,7 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   const want = () => {
     p.tick();
     const s = e.state.selection;
-    if (s.empty || !(s instanceof TextSelection) || !e.isFocused || p.ui.menu()) return false;
+    if (s.empty || !(s instanceof TextSelection) || !e.isFocused || p.ui.menu() || movingBlocks(e.state)) return false;
     return !s.$from.parent.type.spec.code && s.$from.parent.inlineContent;
   };
   // 不是一选就出：选区停住 TOOLBAR_SETTLE 后才出（拖选、⇧方向键扩选的途中不闪），按着鼠标时不算停住；
@@ -92,10 +94,16 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
     }
     queueMicrotask(() => {
       if (el)
-        void place(el, virtual({ x: r.left, y: r.top, width: r.width, height: r.height }), "top", {
-          gap: 8,
-          pad: 6,
-        }).then(({ x, y }) => {
+        // the link box opens under the link, where the eye already is, and leaves the lines above it readable
+        void place(
+          el,
+          virtual({ x: r.left, y: r.top, width: r.width, height: r.height }),
+          link() !== null ? "bottom-start" : "top",
+          {
+            gap: 8,
+            pad: 6,
+          },
+        ).then(({ x, y }) => {
           el.style.left = `${x}px`;
           el.style.top = `${y}px`;
         });
@@ -130,20 +138,12 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
       e.view.focus();
     },
   });
-  /** The [text](url) around the selection, if any */
-  const linkAt = (): Span | null => {
-    const { from, to, $from } = e.state.selection,
-      p = $from.parent;
-    if (!p.isTextblock || !$from.sameParent(e.state.selection.$to)) return null;
-    const base = $from.start();
-    return (
-      flat(blockInfo(p.textContent, false).spans).find(
-        (sp) => sp.tag?.nodeName === "a" && sp.from <= from - base && sp.to >= to - base && sp.marks.length === 2,
-      ) ?? null
-    );
-  };
-  const applyLink = (v: string, stay = true) => {
-    if (link() === null || busy) return;
+  /** The link the selection is in, if any */
+  const linkAt = () => linkIn(e.state);
+  /** Write the link back: its address (empty: the text stays, unlinked) and, for one being edited, its text */
+  const applyLink = (v: string, stay = true, textV?: string) => {
+    const shown = link();
+    if (shown === null || busy) return;
     const url = v.trim();
     busy = true; // focus below fires blur synchronously: do not insert twice
     if (stay) e.view.focus();
@@ -151,25 +151,51 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
     busy = false;
     const href = !url || /^[a-z][\w+.-]*:/i.test(url) ? url : `https://${url}`;
     const st = e.state,
-      { from, to, $from } = st.selection,
-      base = $from.start(),
-      sp = linkAt(),
+      { from, to } = st.selection,
+      l = linkAt(),
       tr = st.tr;
-    if (sp) {
-      // change the address of the link the selection is in; an empty address unlinks it (keeps the text)
-      const text = $from.parent.textContent.slice(sp.inner![0], sp.inner![1]);
-      tr.insertText(href ? `[${text}](${href})` : text, base + sp.from, base + sp.to);
+    if (l) {
+      const was = st.doc.textBetween(l.textFrom, l.textTo),
+        text = textV?.trim() || was;
+      // the box shows the address as read (www.x as http://www.x, a@b as mailto:a@b, a title left out): a link whose fields
+      // were not changed keeps its source as written
+      const same = url === shown.trim() && text === was;
+      // a bare address whose text was not changed stays bare when it can (GFM reads a web address as a link)
+      const src = !href
+        ? text
+        : l.bare && text === was && /^(https?:\/\/|www\.)\S+$/i.test(href)
+          ? href
+          : `[${linkText(text)}](${href})`;
+      if (!same && src !== st.doc.textBetween(l.from, l.to)) tr.insertText(src, l.from, l.to);
     } else if (href) {
       const text = st.doc.textBetween(from, to);
       // nothing selected (⌘K): the address itself; a web address is a link as it is (GFM), others go in <…>
       tr.insertText(
-        text ? `[${text}](${href})` : /^(https?:\/\/|www\.)\S+$/i.test(href) ? href : `<${href}>`,
+        text ? `[${linkText(text)}](${href})` : /^(https?:\/\/|www\.)\S+$/i.test(href) ? href : `<${href}>`,
         from,
         to,
       );
     }
     if (tr.docChanged) e.view.dispatch(revealMeta(tr));
     if (!stay) e.view.dom.dispatchEvent(new FocusEvent("blur")); // clicked outside: save and leave as usual
+  };
+  let textIn: HTMLInputElement | undefined, urlIn: HTMLInputElement | undefined;
+  /** Leaving the link's box for somewhere else: what it holds is written back (not when moving between its own fields) */
+  const leaveLink = (ev: FocusEvent) => {
+    if (link() === null || (ev.relatedTarget instanceof Node && el.contains(ev.relatedTarget))) return;
+    applyLink(urlIn?.value ?? "", isInside(e, ev.relatedTarget), textIn?.value);
+  };
+  const linkKey = (ev: KeyboardEvent) => {
+    keepKey(ev, mdOf(e.state).passKeys);
+    if (ev.key === "Enter" && !ev.isComposing) {
+      ev.preventDefault();
+      applyLink(urlIn?.value ?? "", true, textIn?.value);
+    }
+    if (ev.key === "Escape" && !ev.isComposing) {
+      ev.preventDefault();
+      e.view.focus();
+      setLink(null);
+    }
   };
   /** The {text|note} the selection is in, if any */
   const annotAtSel = (): Span | null => {
@@ -178,7 +204,7 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
     if (!p.isTextblock) return null;
     const base = $from.start();
     return (
-      flat(blockInfo(p.textContent, false).spans).find(
+      flat(blockInfo(p.textContent).spans).find(
         (sp) => sp.atom?.type === "annot" && sp.from <= from - base && sp.to >= to - base,
       ) ?? null
     );
@@ -281,11 +307,7 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
                 tip: "Link",
                 kbd: `${mod}K`,
                 on: () => !!linkAt(),
-                run: () => {
-                  const sp = linkAt(),
-                    m = sp && /\]\((\S*)/.exec(e.state.selection.$from.parent.textContent.slice(sp.from, sp.to));
-                  setLink(m?.[1] ?? "");
-                },
+                run: () => setLink(linkAt()?.url ?? ""),
               })}
               {B({ icon: "math", tip: "Inline Math", ...W("$") })}
               {B({ icon: "annot", tip: "Handwritten Note", on: () => !!annotAtSel(), run: openAnnot })}
@@ -295,33 +317,78 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
           <Show
             when={annot() !== null}
             fallback={
-              <input
-                class="md-linkin"
-                placeholder="Paste or type a link…"
-                value={link() ?? ""}
-                spellcheck={false}
-                ref={(i) =>
-                  queueMicrotask(() => {
-                    i.focus();
-                    i.select();
-                  })
+              <Show
+                when={!!linkAt()}
+                fallback={
+                  <input
+                    class="md-linkin"
+                    placeholder="Paste or type a link…"
+                    value={link() ?? ""}
+                    spellcheck={false}
+                    ref={(i) => {
+                      urlIn = i;
+                      textIn = undefined;
+                      queueMicrotask(() => {
+                        i.focus();
+                        i.select();
+                      });
+                    }}
+                    onKeyDown={linkKey}
+                    onBlur={leaveLink}
+                  />
                 }
-                onKeyDown={(ev) => {
-                  keepKey(ev, mdOf(e.state).passKeys);
-                  if (ev.key === "Enter") {
-                    ev.preventDefault();
-                    applyLink(ev.currentTarget.value);
-                  }
-                  if (ev.key === "Escape") {
-                    ev.preventDefault();
-                    e.view.focus();
-                    setLink(null);
-                  }
-                }}
-                onBlur={(ev) => {
-                  if (link() !== null) applyLink(ev.currentTarget.value, isInside(e, ev.relatedTarget));
-                }}
-              />
+              >
+                <div class="md-linkbox">
+                  <input
+                    class="md-linkin md-linktext"
+                    placeholder="Text"
+                    aria-label="Link text"
+                    value={(() => {
+                      const l = linkAt();
+                      return l ? e.state.doc.textBetween(l.textFrom, l.textTo) : "";
+                    })()}
+                    spellcheck={false}
+                    ref={(i) => (textIn = i)}
+                    onKeyDown={linkKey}
+                    onBlur={leaveLink}
+                  />
+                  <input
+                    class="md-linkin"
+                    placeholder="Paste or type a link…"
+                    aria-label="Link address"
+                    value={link() ?? ""}
+                    spellcheck={false}
+                    ref={(i) => {
+                      urlIn = i;
+                      queueMicrotask(() => {
+                        i.focus();
+                        i.select();
+                      });
+                    }}
+                    onKeyDown={linkKey}
+                    onBlur={leaveLink}
+                  />
+                  <div class="md-linkacts">
+                    <button
+                      class={`${kindClass(p.ui.opts.classes, "button")} md-linkbtn`}
+                      onClick={() => {
+                        const u = urlIn?.value.trim();
+                        e.view.focus();
+                        setLink(null);
+                        if (u) p.ui.opts.openLink?.(u);
+                      }}
+                    >
+                      Open
+                    </button>
+                    <button
+                      class={`${kindClass(p.ui.opts.classes, "button")} md-linkbtn`}
+                      onClick={() => applyLink("", true, textIn?.value)}
+                    >
+                      Remove Link
+                    </button>
+                  </div>
+                </div>
+              </Show>
             }
           >
             <input

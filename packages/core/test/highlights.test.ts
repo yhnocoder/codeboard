@@ -65,7 +65,7 @@ function v12(cards: unknown[], sidenotes: unknown[] = []) {
 describe("v12 → v13 Highlights", () => {
   it("turns highlighted lines into their consecutive runs, in any order and with repeats", () => {
     const b = loadBoardFile(v12([code("k", [9, 3, 4, 5, 5, 12, 10])]));
-    expect(b.version).toBe(13);
+    expect(b.version).toBe(14);
     expect((b.cards[0] as CodeCard).segments[0].hl).toEqual([
       [3, 5],
       [9, 10],
@@ -113,7 +113,7 @@ describe("v12 → v13 Highlights", () => {
 
   it("upgrades a shared card's library file; a board's board-only sidenote on it stays a Highlight of its own", () => {
     const sc = loadSharedCard({ version: 12, card: code("k", [2, 3]), sidenotes: [note("a", "k", [3, 5])] });
-    expect(sc.version).toBe(13);
+    expect(sc.version).toBe(14);
     expect((sc.card as CodeCard).segments[0].hl).toEqual([[2, 5]]);
     expect(sc.sidenotes?.[0].at.lines).toEqual([2, 5]);
 

@@ -9,7 +9,7 @@ import type { BoundVal, CallAlt, Var } from "@codeboard/analysis/basics";
 import { fnv } from "@codeboard/analysis/basics";
 import type { SealColor } from "./seal";
 
-export const BOARD_VERSION = 13;
+export const BOARD_VERSION = 14;
 
 /** 一段代码钉在哪个版本上 */
 export type Version =
@@ -502,7 +502,7 @@ export type Camera = { x: number; y: number; z: number };
 export const homeCam = (): Camera => ({ x: 80, y: 80, z: 1 });
 
 export type Board = {
-  version: 13;
+  version: 14;
   id: string;
   name: string;
   /** 镜头：不写进白板文件（光是平移、缩放就改了文件，项目里用 git 管白板时全是噪音），每台机器各记各的（宿主的工作区状态，按白板 id） */
@@ -571,7 +571,7 @@ export type BoardFile = Omit<Board, "cards" | "cam"> & { cards: (Card | SharedRe
 /** 一张共享卡的内容：卡本身 + 跟着它走的 Sidenote（挂在它上面、不是 boardOnly、不是 kind card） */
 export type SharedCard = { card: Card; sidenotes: Sidenote[] };
 /** 卡库里的文件 cards/<id>.json。写盘时按项（卡、每条 Sidenote）和磁盘上的合并（storage/boards.ts merged） */
-export type SharedCardFile = SharedCard & { version: 13 };
+export type SharedCardFile = SharedCard & { version: 14 };
 
 /** subs = 这块白板上嵌着的子白板（去重，按出现的先后；侧栏按它缩进成树） */
 export type BoardMeta = {

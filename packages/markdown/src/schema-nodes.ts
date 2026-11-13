@@ -209,8 +209,7 @@ export const DetBody = DetailsContent.extend({
 
 // 单独一行的 [toc]（不分大小写）。目录里是这篇的所有标题，跟着标题变：显示时 render.ts 填，编辑时节点视图自己填
 const TOC_RE = /^ {0,3}\[toc\][ \t]*(?:\n|$)/i;
-// the editor keeps headings as paragraphs of source ("## text", editor/srcdoc.ts): those count too (never in a table cell)
-const HEAD_SRC = /^ {0,3}(#{1,6})(?:[ \t]+|$)/;
+// the editor keeps headings as paragraphs of source with a level (editor/srcdoc.ts): those count too
 export const tocEntries = (doc: PMNode) => {
   const out: { level: number; text: string }[] = [];
   doc.descendants((n, _pos, parent) => {
@@ -219,15 +218,8 @@ export const tocEntries = (doc: PMNode) => {
       return false;
     }
     if (n.type.name === "paragraph") {
-      const m = /cell|header/.test(parent?.type.spec.tableRole ?? "") ? null : HEAD_SRC.exec(n.textContent);
-      if (m)
-        out.push({
-          level: m[1].length,
-          text: n.textContent
-            .slice(m[0].length)
-            .replace(/[ \t]+#+[ \t]*$/, "")
-            .trim(),
-        });
+      if (n.attrs.level && !/cell|header/.test(parent?.type.spec.tableRole ?? ""))
+        out.push({ level: n.attrs.level, text: n.textContent.replace(/[ \t]+#+[ \t]*$/, "").trim() });
       return false;
     }
     return n.type.name !== "toc";
@@ -549,11 +541,28 @@ const htmlNode = (name: "htmlInline" | "htmlBlock", tag: "span" | "div") =>
 // 一个标签（属性照 CommonMark 的写法）、一段注释
 const TAG =
   /^(?:<!--[\s\S]*?-->|<\/?([A-Za-z][\w-]*)(?:\s+[^\s"'>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*\/?>)/;
+// HTML's own element names: vector<int>, <T>, <Foo> in prose are words (generics, placeholders), shown as written, not tags
+const HTML_NAMES = new Set(
+  (
+    "a abbr address area article aside audio b base bdi bdo blockquote body br button canvas caption center cite code col " +
+    "colgroup data datalist dd del details dfn dialog div dl dt em embed fieldset figcaption figure font footer form h1 h2 h3 " +
+    "h4 h5 h6 head header hgroup hr html i iframe img input ins kbd label legend li link main map mark math menu meta meter nav " +
+    "noscript object ol optgroup option output p param picture pre progress q rp rt ruby s samp script search section select " +
+    "slot small source span strike strong style sub summary sup svg table tbody td template textarea tfoot th thead time title " +
+    "tr track tt u ul var video wbr"
+  ).split(" "),
+);
+/** src starts with an opening or closing tag of a name HTML does not have */
+export const notHtmlTag = (src: string) => {
+  const m = /^ {0,3}<\/?([A-Za-z][\w-]*)/.exec(src);
+  return !!m && !HTML_NAMES.has(m[1].toLowerCase());
+};
 /** 行内的 HTML 从开头认一段：开头标签连同配对的结尾标签（中间同名的嵌套也算上）是一段，别的一个标签、一段注释自己是一段。配好对的 <u>…</u>、<kbd>…</kbd> 是格式，不归这里 */
 function htmlInlineAt(src: string): string | undefined {
   const m = TAG.exec(src);
   if (!m) return;
   const name = m[1]?.toLowerCase();
+  if (name && !HTML_NAMES.has(name)) return;
   if ((name === "u" || name === "kbd") && new RegExp(`^<${name}>[\\s\\S]+?</${name}>`).test(src)) return;
   if (!name || m[0].startsWith("</") || m[0].endsWith("/>")) return m[0];
   const re = new RegExp(`<(/?)${name}\\b[^>]*>`, "gi");

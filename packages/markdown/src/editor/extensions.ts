@@ -1,6 +1,6 @@
 // The editor's extensions: the shared schema's nodes with their editing views, the typed-in menus, keys, the pad paragraph
 // at the end, find, Typora-style source editing, placeholder, drag handle and AI completion
-import { Extension, type AnyExtension, type Editor, type Node as TNode, type Range } from "@tiptap/core";
+import { Extension, InputRule, type AnyExtension, type Editor, type Node as TNode, type Range } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Placeholder } from "@tiptap/extensions";
@@ -12,6 +12,7 @@ import { EMOJI, EMOJI_NAMES } from "../emoji";
 import { ParaView, revealMeta } from "./inline";
 import { tableEditing } from "./table";
 import { CodeBlockView, codeGapClick } from "./codeblock";
+import { bandPlugin } from "./band";
 import { MathBlockView } from "./mathblock";
 import { mathHintsPlugin } from "./mathhints";
 import { imageEditing } from "./image";
@@ -24,6 +25,9 @@ import { saveImage, uiOf } from "./ui";
 import type { MdEditorOpts, RefGroup, RefItem, RefPick } from "./types";
 import type { Md } from "../markdown";
 import { mdPlugin } from "./md";
+import { markTags } from "../marktag";
+import { openLinkBox } from "./links";
+import { MoveBlocks } from "./moveblocks";
 
 export function editorExtensions(
   md: Md,
@@ -255,12 +259,33 @@ export function editorExtensions(
   });
   const Rules = Extension.create({
     name: "cbRules",
+    addInputRules: () => [
+      // the > that closes a typed <mark>x</mark>: it becomes ==x== (one undo gives back the tag as typed)
+      new InputRule({
+        find: /<mark>[^<>\n]*<\/mark>$/i,
+        handler: ({ state, range, match }) => {
+          const $f = state.doc.resolve(range.from),
+            p = $f.parent,
+            head = p.textBetween(0, $f.parentOffset, undefined, "\ufffc"),
+            tail = p.textBetween(state.doc.resolve(range.to).parentOffset, p.content.size, undefined, "\ufffc");
+          // after a ` not closed yet, the tag is most likely being typed into an inline code span
+          if (openTick(head)) return null;
+          const done = markTags(head + match[0] + tail);
+          if (!done.startsWith(head) || !done.endsWith(tail) || done.length < head.length + tail.length) return null;
+          const mid = done.slice(head.length, done.length - tail.length);
+          if (mid === match[0]) return null;
+          state.tr.insertText(mid, range.from, range.to);
+          return undefined;
+        },
+      }),
+    ],
     addKeyboardShortcuts() {
       return {
-        // Shift+↵: a line break inside the paragraph or cell, written as <br> (the source shows it)
+        // Shift+↵: a line break inside the paragraph or cell, written as <br> (the source shows it); a heading is one line
         "Shift-Enter": () => {
           const { $from } = this.editor.state.selection;
           if (!$from.parent.isTextblock || $from.parent.type.spec.code) return false;
+          if ($from.parent.attrs.level) return true;
           this.editor.view.dispatch(revealMeta(this.editor.state.tr.insertText("<br>")).scrollIntoView());
           return true;
         },
@@ -311,6 +336,8 @@ export function editorExtensions(
     ],
   });
   const Gaps = Extension.create({ name: "cbGaps", addProseMirrorPlugins: () => [gapsPlugin()] });
+  // the code blocks' and the tables' bands follow their blocks: one layer for both, whichever node types the editor has
+  const Bands = Extension.create({ name: "cbBands", addProseMirrorPlugins: () => [bandPlugin()] });
   // 行内公式的补全、预览：抢在列表、灰字、Esc 退出前面拿 ↑↓ 回车 Tab Esc
   const MathHintsExt = Extension.create({
     name: "cbMathHints",
@@ -342,10 +369,15 @@ export function editorExtensions(
     Last,
     Tail,
     Gaps,
+    Bands,
     FindExt(() => uiOf.get(ed())?.closeFind() ?? false),
     Typora.configure({
       openMath: openMathAt,
-      openLink: (e) => uiOf.get(e)?.setLink(e.getAttributes("link").href ?? ""),
+      openLink: (e) => {
+        const ui = uiOf.get(e);
+        if (ui) openLinkBox(e.view, ui.setLink);
+      },
+      classes: () => o.classes,
     }),
     Placeholder.configure({ placeholder: () => o.placeholder ?? "Type / for blocks", showOnlyCurrent: true }),
     ...(handle
@@ -357,5 +389,17 @@ export function editorExtensions(
         ]
       : []),
     Ghost.configure({ complete: () => o.complete }),
+    MoveBlocks,
   ];
+}
+
+/** text ends inside a run of backticks no later run of the same length closes */
+function openTick(text: string): boolean {
+  const runs = [...text.matchAll(/`+/g)].map((m) => m[0].length);
+  for (let i = 0; i < runs.length; i++) {
+    const j = runs.indexOf(runs[i], i + 1);
+    if (j < 0) return true;
+    i = j;
+  }
+  return false;
 }

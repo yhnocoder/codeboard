@@ -14,6 +14,7 @@ import { IMAGE_SETTLE } from "../ui/timing";
 import { blockInfo, flat, type Atom, type Span } from "./spans";
 import { checkMath, problemBox } from "./mathhints";
 import { DRAGGED_OUT } from "./image";
+import { measureImages, slideImages } from "./imageslide";
 
 type Tag = NonNullable<Span["tag"]>;
 
@@ -51,17 +52,23 @@ function staticInline(raw: string, md: Md): string {
   return h.startsWith("<p>") && h.endsWith("</p>") ? h.slice(3, -4) : h;
 }
 
+/** What a press on a drawn image does: open its source (a second click, or a click on an image already selected), else select
+ *  it. cap: where in its caption it was clicked (the rendered caption's text and the offset in it), for the caret in the source */
+export type ImageClick = (view: EditorView, from: number, open: boolean, cap: CaptionHit | null) => void;
+export type CaptionHit = { text: string; at: number };
+
 /**
  * The drawn form of a hidden atom, at the start of its source. A press puts the caret into the source (caret(from)),
- * which then shows; the image can also be dragged, which moves its source.
+ * which then shows; an image is selected or opened (onImage) and can also be dragged, which moves its source.
+ * wrap: the formatting the atom sits in, outermost first (a widget is not inside the inline decorations around it)
  */
-/** wrap: the formatting the atom sits in, outermost first (a widget is not inside the inline decorations around it) */
 export function atomWidget(
   a: Atom,
   raw: string,
   caret: (from: number) => number,
   onCaret: (view: EditorView, pos: number) => void,
   wrap: Tag[] = [],
+  onImage?: ImageClick,
 ): ToDOM {
   return (view, getPos) => {
     const md = mdOf(view.state);
@@ -74,7 +81,8 @@ export function atomWidget(
       renderTex(el, a.latex, a.display, md.math);
     } else if (a.type === "image") {
       let dragged: [number, number] | null = null;
-      el = imageEl(a, false, md);
+      const img = imageEl(a, false, md);
+      el = img;
       el.draggable = true;
       el.addEventListener("dragstart", (ev) => {
         const from = getPos();
@@ -82,16 +90,37 @@ export function atomWidget(
         const to = from + raw.length,
           st = view.state;
         dragged = [from, to];
-        view.dispatch(st.tr.setSelection(TextSelection.create(st.doc, from, to)));
+        view.dispatch(st.tr.setSelection(TextSelection.create(st.doc, from, to)).setMeta(DRAG_START, true));
         view.dragging = { slice: view.state.doc.slice(from, to), move: true };
         ev.dataTransfer.effectAllowed = "copyMove";
         ev.dataTransfer.setData("text/plain", raw);
         carryImage(ev.dataTransfer, a);
-        ev.dataTransfer.setDragImage(el.querySelector("img") ?? el, 0, 0);
+        ev.dataTransfer.setDragImage(img.querySelector("img") ?? img, 0, 0);
       });
       el.addEventListener("dragend", (ev) => {
         dragEnd(view, ev, dragged);
         dragged = null;
+      });
+      const frame = img.querySelector<HTMLElement>(".md-imgframe");
+      if (frame)
+        for (const side of [-1, 1]) {
+          const g = span(`md-imgrip ${side < 0 ? "l" : "r"}`);
+          g.setAttribute("data-tip", "Drag to resize");
+          g.addEventListener("pointerdown", (ev) => resize(ev, g, side, img, frame, view, getPos, a.width));
+          frame.parentElement!.append(g);
+        }
+      imageViews.set(el, getPos);
+      // the press may change the selection before the click (the browser's own), so whether it was selected is read here
+      let picked = false;
+      el.addEventListener("mousedown", () => {
+        picked = img.classList.contains("md-picked");
+      });
+      el.addEventListener("click", (ev) => {
+        if (ev.button !== 0 || (ev.target as Element).closest(".md-imgrip")) return;
+        ev.preventDefault();
+        const from = getPos(),
+          cap = (ev.target as Element).closest<HTMLElement>(".md-cap");
+        if (from != null) onImage?.(view, from, picked || ev.detail >= 2, cap ? captionHit(cap, ev) : null);
       });
     } else if (a.type === "br") {
       el = span("md-br");
@@ -112,9 +141,8 @@ export function atomWidget(
         el = only;
       }
     }
-    // The image waits for the click (a press may start a drag); the rest answer the press
-    if (a.type !== "br") {
-      el.addEventListener(a.type === "image" ? "click" : "mousedown", (ev) => {
+    if (a.type !== "br" && a.type !== "image") {
+      el.addEventListener("mousedown", (ev) => {
         if (ev.button !== 0) return;
         ev.preventDefault();
         const from = getPos();
@@ -131,6 +159,31 @@ export function atomWidget(
     }
     return out;
   };
+}
+
+/** Transaction meta: the selection of an image's source that a drag of the image starts with (ProseMirror's drop moves the
+ *  selection): not a selected image, the image being dragged stays as it is drawn */
+export const DRAG_START = "imageDragStart";
+
+/** The drawn images (not the copies under an open source) and where each one's source starts: the editor marks the selected one */
+export const imageViews = new WeakMap<Element, () => number | undefined>();
+
+/** The character of the caption under the pointer: the offset in the caption's rendered text */
+function captionHit(cap: HTMLElement, ev: MouseEvent): CaptionHit | null {
+  let node: Node | null = null,
+    off = 0;
+  if (document.caretPositionFromPoint) {
+    const p = document.caretPositionFromPoint(ev.clientX, ev.clientY);
+    if (p) ({ offsetNode: node, offset: off } = p);
+  } else {
+    const r = document.caretRangeFromPoint?.(ev.clientX, ev.clientY);
+    if (r) ({ startContainer: node, startOffset: off } = r);
+  }
+  if (!node || !cap.contains(node)) return null;
+  const r = document.createRange();
+  r.setStart(cap, 0);
+  r.setEnd(node, off);
+  return { text: cap.textContent ?? "", at: r.toString().length };
 }
 
 /**
@@ -161,9 +214,12 @@ function carryImage(dt: DataTransfer, a: Extract<Atom, { type: "image" }>) {
   dt.setData(IMAGE_DRAG_TYPE, JSON.stringify(d));
 }
 
-const MIN_W = 24; // narrowest an image can be dragged to, in px
+/** Narrowest an image can be dragged to, in px; closer than SNAP px to its natural size or the full width, it takes that size */
+const MIN_W = 48,
+  SNAP = 8;
 
-/** An image as drawn: `below` is the copy under the source while the caret is in it, the one with the resize grips */
+/** An image as drawn: `below` is the copy under the source while the source is open. The picture sits in a frame (the
+ *  selection ring, and what a resize scales), the frame in a box that also holds the resize grips, the caption after the box */
 function imageEl(a: Extract<Atom, { type: "image" }>, below: boolean, md: Md): HTMLElement {
   const el = span(`md-img${below ? " below" : ""}`),
     images = md.images;
@@ -181,7 +237,11 @@ function imageEl(a: Extract<Atom, { type: "image" }>, below: boolean, md: Md): H
   // the source shown, as in the static render (picture.ts): the document keeps the address as written
   images.watch(img);
   if (!below && img.src) images.sawLoad(img.getAttribute("src")!);
-  el.append(img);
+  const box = span("md-imgbox"),
+    frame = span("md-imgframe");
+  frame.append(img);
+  box.append(frame);
+  el.append(box);
   if (images.failedBefore(img.getAttribute("src"))) images.fail(img);
   else
     img.addEventListener("error", () => {
@@ -201,7 +261,7 @@ function imageEl(a: Extract<Atom, { type: "image" }>, below: boolean, md: Md): H
   return el;
 }
 
-/** The image under its source; dragging a grip rewrites the {width=N%} after it in one undo step */
+/** The image under its open source: it can be dragged, which moves its source */
 export function imageBelow(a: Extract<Atom, { type: "image" }>): ToDOM {
   return (view, getPos) => {
     const md = mdOf(view.state),
@@ -212,9 +272,9 @@ export function imageBelow(a: Extract<Atom, { type: "image" }>): ToDOM {
     el.addEventListener("mousedown", (ev) => {
       if (ev.target !== img) ev.preventDefault();
     });
-    const frame = span("md-imgframe");
-    // an address that failed before is its placeholder already: nothing to size
-    if (!img) return el;
+    const frame = el.querySelector<HTMLElement>(".md-imgframe");
+    // an address that failed before is its placeholder already
+    if (!img || !frame) return el;
     const src = img.getAttribute("src");
     // addresses already shown under a source load at once (editing the alt text or width rebuilds the widget)
     if (src && !images.loadedBefore(src)) {
@@ -226,16 +286,15 @@ export function imageBelow(a: Extract<Atom, { type: "image" }>): ToDOM {
         }
       }, IMAGE_SETTLE);
     }
-    // dragging the image moves its source, as it does before the source is opened
     let dragged: [number, number] | null = null;
     frame.draggable = true;
     frame.addEventListener("dragstart", (ev) => {
-      const at = imageSourceEnding(view, getPos());
+      const at = imageSource(view, getPos(), "end");
       if (!at || !ev.dataTransfer) return;
       dragged = at;
       const st = view.state,
         raw = st.doc.textBetween(at[0], at[1]);
-      view.dispatch(st.tr.setSelection(TextSelection.create(st.doc, at[0], at[1])));
+      view.dispatch(st.tr.setSelection(TextSelection.create(st.doc, at[0], at[1])).setMeta(DRAG_START, true));
       view.dragging = { slice: view.state.doc.slice(at[0], at[1]), move: true };
       ev.dataTransfer.effectAllowed = "copyMove";
       ev.dataTransfer.setData("text/plain", raw);
@@ -246,29 +305,21 @@ export function imageBelow(a: Extract<Atom, { type: "image" }>): ToDOM {
       dragEnd(view, ev, dragged);
       dragged = null;
     });
-    // the selected image: a frame on the image itself (not around its caption), the grips on the frame's sides
-    img.replaceWith(frame);
-    frame.append(img);
-    for (const side of [-1, 1]) {
-      const g = span(`md-imgrip ${side < 0 ? "l" : "r"}`);
-      g.setAttribute("data-tip", "Drag to resize · Double-click for full width");
-      g.addEventListener("pointerdown", (ev) => grip(ev, g, side, el, view, getPos, a.width));
-      g.addEventListener("dblclick", (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        setWidth(view, getPos(), null);
-      });
-      frame.append(g);
-    }
     return el;
   };
 }
 
-function grip(
+/**
+ * Dragging a grip of the selected image: only the frame scales (a transform, nothing below moves or lays out again), the grips
+ * following it; on release the width is written once ({width=N%}, of the body's width) and what follows slides to its new place.
+ * The natural size (no width written) and the full width catch the drag
+ */
+function resize(
   e: PointerEvent,
   g: HTMLElement,
   side: number,
   el: HTMLElement,
+  frame: HTMLElement,
   view: EditorView,
   getPos: () => number | undefined,
   w0pct: number | null,
@@ -280,45 +331,56 @@ function grip(
     cs = getComputedStyle(box),
     r = box.getBoundingClientRect();
   const k = box.offsetWidth ? r.width / box.offsetWidth : 1;
-  const full = (box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) * k;
-  if (!(full > 0)) return;
-  const w0 = el.getBoundingClientRect().width,
+  const full = (box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) * k,
+    f = frame.getBoundingClientRect(),
+    img = frame.querySelector("img");
+  if (!(full > 0) || !(f.width > 0) || !img) return;
+  const w0 = f.width,
+    h0 = f.height,
     x0 = e.clientX,
-    min = Math.min(100, ((MIN_W * k) / full) * 100);
-  let w: number | null = w0pct,
-    frame = 0,
+    natural = (Number(img.getAttribute("width")) || img.naturalWidth) * k,
+    nat = natural > 0 ? Math.min(full, natural) : w0,
+    min = Math.min(w0, MIN_W * k);
+  let tw = w0,
+    raf = 0,
     moved = false;
   g.setPointerCapture(e.pointerId);
   el.classList.add("resizing");
   const ghosts = mdOf(view.state).ghosts;
   ghosts.hold(true);
   const show = () => {
-    el.style.width = w ? `${w}%` : "";
-    el.style.setProperty("--f", w ? String(w / 100) : "");
-    el.classList.toggle("sized", !!w);
+    const s = tw / w0;
+    frame.style.transform = s === 1 ? "" : `scale(${s})`;
+    el.style.setProperty("--gx", `${((s - 1) * w0) / 2 / k}px`);
+    el.style.setProperty("--gy", `${((s - 1) * h0) / 2 / k}px`);
   };
   const move = (ev: PointerEvent) => {
     moved ||= ev.clientX !== x0;
     if (!moved) return;
-    const p = Math.min(100, Math.max(min, ((w0 + 2 * side * (ev.clientX - x0)) / full) * 100));
-    w = p >= 99.5 ? null : Math.round(p);
-    if (!frame)
-      frame = requestAnimationFrame(() => {
-        frame = 0;
+    tw = Math.min(full, Math.max(min, w0 + 2 * side * (ev.clientX - x0)));
+    for (const t of [nat, full]) if (Math.abs(tw - t) < SNAP) tw = t;
+    if (!raf)
+      raf = requestAnimationFrame(() => {
+        raf = 0;
         show();
       });
   };
   const up = () => {
     for (const t of ["pointermove", "pointerup", "pointercancel", "lostpointercapture"])
       g.removeEventListener(t, t === "pointermove" ? (move as EventListener) : up);
-    cancelAnimationFrame(frame);
-    el.classList.remove("resizing");
+    cancelAnimationFrame(raf);
     ghosts.hold(false);
-    if (moved && w !== w0pct) setWidth(view, getPos(), w);
-    else {
-      w = w0pct;
+    const w = Math.abs(tw - nat) < 0.5 ? null : Math.min(100, Math.round((tw / full) * 100)),
+      from = getPos();
+    if (!moved || w === w0pct || from == null) {
+      tw = w0;
       show();
+      el.classList.remove("resizing");
+      return;
     }
+    const before = measureImages(view, [view.state.doc.resolve(from).before()]);
+    setWidth(view, from, w);
+    slideImages(view, before);
   };
   g.addEventListener("pointermove", move);
   for (const t of ["pointerup", "pointercancel", "lostpointercapture"]) g.addEventListener(t, up);
@@ -329,27 +391,26 @@ function blockOf(el: HTMLElement): HTMLElement {
   return p;
 }
 
-/** The image whose source ends at `end` (the below widget sits there): its span and where its paragraph's text starts */
-function imageEnding(view: EditorView, end: number | undefined): { sp: Span; base: number } | null {
-  if (end == null) return null;
-  const $e = view.state.doc.resolve(end),
+/** The image whose source starts or ends (edge) at pos: its span and where its paragraph's text starts */
+function imageAt(view: EditorView, pos: number | undefined, edge: "start" | "end"): { sp: Span; base: number } | null {
+  if (pos == null) return null;
+  const $e = view.state.doc.resolve(pos),
     p = $e.parent;
   if (!p.isTextblock) return null;
   const base = $e.start(),
-    off = end - base;
-  const sp =
-    flat(blockInfo(p.textContent, true).spans).find((s) => s.atom?.type === "image" && s.to === off) ??
-    flat(blockInfo(p.textContent, false).spans).find((s) => s.atom?.type === "image" && s.to === off);
+    off = pos - base;
+  const hit = (s: Span) => s.atom?.type === "image" && (edge === "start" ? s.from : s.to) === off;
+  const sp = flat(blockInfo(p.textContent).spans).find(hit);
   return sp?.atom?.type === "image" ? { sp, base } : null;
 }
-const imageSourceEnding = (view: EditorView, end: number | undefined): [number, number] | null => {
-  const r = imageEnding(view, end);
+const imageSource = (view: EditorView, pos: number | undefined, edge: "start" | "end"): [number, number] | null => {
+  const r = imageAt(view, pos, edge);
   return r ? [r.base + r.sp.from, r.base + r.sp.to] : null;
 };
 
-/** Rewrites the width in the attribute block of the image whose source ends at `end` (its other attributes stay) */
-function setWidth(view: EditorView, end: number | undefined, w: number | null) {
-  const r = imageEnding(view, end);
+/** Rewrites the width in the attribute block of the image whose source starts at `from` (its other attributes stay) */
+function setWidth(view: EditorView, from: number, w: number | null) {
+  const r = imageAt(view, from, "start");
   if (!r) return;
   const { sp, base } = r;
   if (sp.atom?.type !== "image") return;
@@ -361,7 +422,8 @@ function setWidth(view: EditorView, end: number | undefined, w: number | null) {
     else tr.delete(base + at[0], base + at[1]);
   } else if (text) tr.insertText(text, base + sp.to);
   else return;
-  view.dispatch(tr);
+  // insertText collapses a selection: the image stays selected
+  view.dispatch(tr.setSelection(view.state.selection.map(tr.doc, tr.mapping)));
   view.dispatch(closeHistory(view.state.tr));
 }
 
@@ -377,6 +439,26 @@ export const ellipsis = () => {
 };
 const CHEV = (down: boolean) =>
   `<svg viewBox="0 0 12 12" aria-hidden="true"><path d="${down ? "M3 4.5l3 3 3-3" : "M3 7.5l3-3 3 3"}"/></svg>`;
+/** A link's folded address beside its text: its site; a click on it opens the link's box (session.ts) */
+export const urlChip =
+  (short: string): ToDOM =>
+  () => {
+    const e = span("md-urlchip");
+    e.textContent = short;
+    e.setAttribute("data-tip", "Edit Link");
+    return e;
+  };
+/** A long address written as it is, away from the caret: its site, drawn as the link it is */
+export const bareLink =
+  (url: string, short: string): ToDOM =>
+  () => {
+    const e = document.createElement("a");
+    e.className = "md-link md-bare";
+    e.contentEditable = "false";
+    e.setAttribute("href", url);
+    e.textContent = short;
+    return e;
+  };
 /** Expand / collapse a folded address */
 export function foldButton(expanded: boolean, toggle: (view: EditorView) => void): ToDOM {
   return (view) => {

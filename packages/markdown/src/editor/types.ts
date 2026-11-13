@@ -5,6 +5,7 @@ import type { StaticTextRange } from "../selmap";
 import type { MdClasses } from "../ui/classes";
 import type { CodeLang } from "./codelang";
 import type { CopyImage, KnownImage, SaveImage } from "./image";
+import type { MdBlocks } from "./moveblocks";
 
 export type MdEditorOpts = {
   value: string;
@@ -73,6 +74,8 @@ export type MdEditorHandle = {
    * False when the characters are not in the document
    */
   placeCaret(at: "end" | { visible: StaticTextRange; after?: boolean } | { x: number; y: number }): boolean;
+  /** Select the image drawn at a point on the page (the press that started the editing was on it); false when none is there */
+  pickImage(at: { x: number; y: number }): boolean;
   /** Select characters counted as the static render shows them (staticTextRange); false when they are not in the document */
   selectVisible(r: StaticTextRange): boolean;
   /** Press a key as if typed in the editor (its key bindings run); a key nothing handles deletes the selection */
@@ -84,6 +87,8 @@ export type MdEditorHandle = {
   type(text: string): void;
   /** Switch the whole Note between rich editing and its Markdown source (⌘/) */
   toggleSource(): void;
+  /** Whole top-level blocks, for moving them (null in Markdown source mode) */
+  blocks(): MdBlocks | null;
 };
 /**
  * [[ 的一个候选：label = 写进 [[…]] 的（不给就是 title），crumb = 标在标题后面的小字（白板：所在的 Section），

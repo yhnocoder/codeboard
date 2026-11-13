@@ -289,6 +289,8 @@ export function CardView(p: { card: Card }) {
         ref={mount}
         class="card"
         data-id={c().id}
+        // a toolbar band of a Note's first block may rise over the card's header, up to the card's edge (markdown band.ts)
+        data-md-band-limit=""
         data-fc={c().kind === "code" ? fileHue((c() as CodeCard).segments[0]?.path) : undefined}
         style={style()}
         classList={{
