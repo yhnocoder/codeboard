@@ -1,5 +1,5 @@
 // 右键菜单和卡头 ⋯ 菜单：play 里像用户一样右键 / 点 ⋯ / 悬停打开二级菜单。菜单是整页一个（ui/Menu.tsx 的模块级 signal），
-// 所以每个菜单一个 story；Overview 是一块摆着所有能开菜单的东西的白板，开着代码卡的菜单和它的 Edit ▸
+// 所以每个菜单一个 story；Overview 是一块摆着所有能开菜单的东西的白板，开着代码卡的菜单和它的 Add ▸
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { BoardCard, CompareCard, ImageCard, LinksCard, NoteCard, WebCard } from "@codeboard/core";
 import {
@@ -161,7 +161,7 @@ const open =
 export const Overview: Story = {
   play: open(async () => {
     await cardMenu("code");
-    await menuItem("Edit", { sub: true });
+    await menuItem("Add", { sub: true });
   }),
 };
 
@@ -194,22 +194,17 @@ export const NoteFits: Story = {
   play: open(() => cardMenu("note")),
 };
 export const NoteLocked: Story = {
-  name: "Note · Locked (Edit ▸)",
+  name: "Note · Locked (Arrange ▸)",
   args: { locked: true },
   play: open(async () => {
     await cardMenu("note");
-    await menuItem("Edit", { sub: true });
+    await menuItem("Arrange", { sub: true });
   }),
 };
 export const Text: Story = { play: open(() => rightClick(".card[data-id=text]")) };
 export const Box: Story = { play: open(() => rightClick(".card[data-id=box]")) };
-export const Mark: Story = {
-  name: "Mark · Color ▸",
-  play: open(async () => {
-    await rightClick(".card[data-id=mark]");
-    await menuItem("Color", { sub: true });
-  }),
-};
+// a Mark's colour, weight and size are on its toolbar: its menu is the tail alone
+export const Mark: Story = { play: open(() => rightClick(".card[data-id=mark]")) };
 export const Message: Story = { play: open(() => rightClick(".card[data-id=msg]")) };
 export const Code: Story = { play: open(() => cardMenu("code")) };
 export const CodeView: Story = {
@@ -219,25 +214,11 @@ export const CodeView: Story = {
     await menuItem("View", { sub: true });
   }),
 };
-export const CodeCallGraph: Story = {
-  name: "Code · Call Graph ▸ (Disabled Items)",
-  play: open(async () => {
-    await cardMenu("code");
-    await menuItem("Call Graph", { sub: true });
-  }),
-};
 export const CodeArrange: Story = {
   name: "Code · Arrange ▸",
   play: open(async () => {
     await cardMenu("code");
     await menuItem("Arrange", { sub: true });
-  }),
-};
-export const CodeSections: Story = {
-  name: "Code · Move to Section ▸",
-  play: open(async () => {
-    await cardMenu("code");
-    await menuItem("Move to Section", { sub: true });
   }),
 };
 export const CodeShared: Story = {
@@ -318,11 +299,8 @@ export const ArrowLabel: Story = {
 };
 export const Section: Story = { play: open(() => rightClick('.slabel[data-sect="s1"]')) };
 export const SectionNested: Story = {
-  name: "Section · Nested · Color ▸",
-  play: open(async () => {
-    await rightClick('.slabel[data-sect="s2"]');
-    await menuItem("Color", { sub: true });
-  }),
+  name: "Section · Nested",
+  play: open(() => rightClick('.slabel[data-sect="s2"]')),
 };
 // ↓ 选第一项、→ 打开二级菜单并选上它的第一项：选中的样子和悬停一样（.kb）
 export const Keyboard: Story = {
@@ -341,7 +319,7 @@ export const Hover: Story = {
   name: "Hover: Menu Item",
   play: open(async () => {
     await cardMenu("code");
-    await forceHover(await menuButton("Open in Editor"));
+    await forceHover(await menuButton("Copy Path"));
   }),
 };
 export const HoverDanger: Story = {
@@ -355,7 +333,7 @@ export const HoverSub: Story = {
   name: "Hover: Sub-menu Item",
   play: open(async () => {
     await cardMenu("code");
-    await menuItem("Edit", { sub: true });
+    await menuItem("Arrange", { sub: true });
     await forceHover(await menuButton("Lock", 1));
   }),
 };
