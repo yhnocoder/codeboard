@@ -100,10 +100,13 @@ enum SidenoteSheets {
     let window: NSWindow
     let doc: BoardDocument
 
-    init(root: URL, notes: NoteRenderer, theme: Theme, zoom: CGFloat = 1, centre: CGPoint) async throws {
+    init(
+      root: URL, notes: NoteRenderer, theme: Theme, zoom: CGFloat = 1, board: Board = SidenoteSheets.board(),
+      centre: CGPoint
+    ) async throws {
       let fm = FileManager.default
       try? fm.removeItem(at: root)
-      for (name, b) in [("Sheet", SidenoteSheets.board()), ("Other", SidenoteSheets.other())] {
+      for (name, b) in [("Sheet", board), ("Other", SidenoteSheets.other())] {
         let package = root.appending(path: "\(name).board")
         try fm.createDirectory(at: package.appending(path: Vault.imagesFolder), withIntermediateDirectories: true)
         try b.encoded().write(to: package.appending(path: Vault.boardFileName))
@@ -331,6 +334,33 @@ enum SidenoteSheets {
       cuts.append(try ArrowSheets.withBar(try await r.picture(), bar))
       r.close()
       write(try WritingSheets.column(cuts, theme: theme), out, "list-\(suffix)")
+
+      // beside main's popup drawn in Chromium (the Storybook story cards-sidenote-pops--whole-card, its element alone):
+      // the same card and sidenote, the popup's box alone
+      let scheme = theme.dark ? "dark" : "light"
+      if let dir = ProcessInfo.processInfo.environment["MAIN_POPS"],
+        let main = NSImage(contentsOfFile: "\(dir)/main-\(theme.id.rawValue)-\(scheme).png")?
+          .cgImage(forProposedRect: nil, context: nil, hints: nil)
+      {
+        let seg = Segment(
+          id: s1, source: .file(path: "engine/scheduler.py", hash: nil), language: "python", firstLine: 25,
+          lines: ["def schedule(self):", "    return self.step()"],
+          symbol: Symbol(name: "Scheduler.schedule", kind: .function))
+        let b = Board(
+          id: BoardID(rawValue: "compare"),
+          cards: [
+            Card(
+              id: id("h"), x: 0, y: 0, width: 360, content: .own(CardContent(body: .code(CodeCard(segments: [seg])))))
+          ],
+          sidenotes: [
+            Sidenote(id: nid("c"), anchor: .card(id("h")), body: .text(TextNote(text: "整张卡：调度一步，先 prefill 再 decode")))
+          ])
+        r = try await Rig(root: vault, notes: notes, theme: theme, board: b, centre: CGPoint(x: 500, y: 200))
+        await r.open(.spot(.card(id("h"))))
+        let mac = r.cut(try await r.picture(), r.canvas.popBox ?? .zero)
+        r.close()
+        write(try WritingSheets.row([main, mac], theme: theme), out, "beside-main-\(suffix)")
+      }
     }
   }
 

@@ -363,6 +363,26 @@ enum WritingSheets {
     return ctx.makeImage()!
   }
 
+  /// Pictures side by side, 24 apart, their tops level
+  static func row(_ images: [CGImage], theme: Theme) throws -> CGImage {
+    let gap = 24
+    let w = images.reduce(gap) { $0 + $1.width + gap }
+    let h = (images.map(\.height).max() ?? 0) + 2 * gap
+    guard
+      let ctx = CGContext(
+        data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+    else { throw CocoaError(.featureUnsupported) }
+    ctx.setFillColor(theme.dark ? CGColor(gray: 0.08, alpha: 1) : CGColor(gray: 0.82, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+    var x = gap
+    for img in images {
+      ctx.draw(img, in: CGRect(x: x, y: h - gap - img.height, width: img.width, height: img.height))
+      x += img.width + gap
+    }
+    return ctx.makeImage()!
+  }
+
   /// Pictures one under another, 24 apart
   static func column(_ images: [CGImage], theme: Theme) throws -> CGImage {
     let gap = 24
