@@ -1,159 +1,251 @@
-// The Shelf panel (the dock's Shelf button; actions/shelf.ts): one row per entry, newest first, with a small picture of it, what it
-// is and when it was shelved. A row is dragged out onto the board, or Put Back where it was; its menu removes it. Also the dashed
-// outline that follows the pointer while a row is dragged over the board (in the world layer, Canvas.tsx). Resting the pointer on a
-// row shows the entry beside the panel as it was on the board: its Sections and its cards with their content, scaled down
-import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
-import { cardTitle, type Rect, type ShelfEntry } from "@codeboard/core";
+// The Shelf panel (the dock's Shelf button; actions/shelf.ts): one thumbnail per entry, in the order the entries were on the
+// board, each a picture of its Sections, cards and the arrows among them as the board draws them. A thumbnail clicked shows its
+// entry large beside the panel, with Put Back; dragged out, the entry lands where it is let go; its menu puts it back or removes
+// it; resting on it outlines on the board where it returns to. Also those outlines (in the world layer, Canvas.tsx)
+import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, type JSX } from "solid-js";
+import {
+  cardTitle,
+  codeGlyph,
+  commonIndent,
+  escHtml,
+  mdHeading,
+  type Card,
+  type CodeCard,
+  type Rect,
+  type ShelfEntry,
+} from "@codeboard/core";
 import { shelfLabel } from "@codeboard/core/commands";
 import { state, cardById } from "../state/store";
-import { shelfHot, shelfOut } from "../state/shelf";
+import { shelfHot, shelfHover, shelfOut, shelfPeek, setShelfPeek } from "../state/shelf";
 import { cam } from "../state/camera";
-import { TIP_DELAY, TIP_WARM } from "../state/timing";
+import { animScale } from "../state/motion";
 import { PvContent } from "../cards/SubPreviews";
+import { hidesHeading } from "../cards/NoteBody";
+import { attrSel, cardKindClass } from "../cardsel";
+import { MdStatic } from "./Md";
 import { Icon } from "./icons";
+import { useOverlay } from "./overlay";
 import * as A from "../actions";
 
-/** When an entry was shelved, as its row says it: today, yesterday, Nov 3 */
-function whenOf(at: number): string {
-  const d = new Date(at),
-    now = new Date();
-  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const days = Math.round((day(now) - day(d)) / 864e5);
-  if (days <= 0) return "today";
-  if (days === 1) return "yesterday";
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    ...(d.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
-  });
-}
-
-const TW = 64,
-  TH = 46,
-  PAD = 5;
-type Box = { x: number; y: number; w: number; h: number };
-/** The row's picture: the entry's Sections (outlines) and cards (filled) as laid out, fitted in; a single card: a card glyph */
-function Thumb(p: { e: ShelfEntry }) {
-  const shape = createMemo((): { glyph?: "code" | "text"; sections: Box[]; cards: Box[] } => {
-    const r = A.entryRects(p.e);
-    const box = A.entryBox(p.e);
-    if (!box) return { sections: [], cards: [] };
-    if (!r.sections.length && r.cards.length === 1) {
-      const kind = cardById(r.cards[0].id)?.card.kind;
-      return { glyph: kind === "code" || kind === "compare" ? "code" : "text", sections: [], cards: [] };
-    }
-    const k = Math.min((TW - 2 * PAD) / box.w, (TH - 2 * PAD) / box.h);
-    const ox = (TW - box.w * k) / 2,
-      oy = (TH - box.h * k) / 2;
-    const at = (q: Box): Box => ({
-      x: +(ox + (q.x - box.x) * k).toFixed(1),
-      y: +(oy + (q.y - box.y) * k).toFixed(1),
-      w: +Math.max(2, q.w * k).toFixed(1),
-      h: +Math.max(2, q.h * k).toFixed(1),
-    });
-    return { sections: r.sections.map(at), cards: r.cards.map(at) };
-  });
-  return (
-    <svg class="sthumb" viewBox={`0 0 ${TW} ${TH}`} width={TW} height={TH} aria-hidden="true">
-      <Show when={shape().glyph}>
-        {(g) => (
-          <>
-            <rect class="tc" x="14" y="7" width="36" height="32" rx="2.5" />
-            <path
-              class={g() === "code" ? "tl code" : "tl"}
-              d={g() === "code" ? "M19 15h14M22 20h20M22 25h16M19 30h10" : "M19 15h20M19 21h26M19 26h22M19 31h14"}
-            />
-          </>
-        )}
-      </Show>
-      <For each={shape().sections}>{(r) => <rect class="ts" x={r.x} y={r.y} width={r.w} height={r.h} rx="2" />}</For>
-      <For each={shape().cards}>{(r) => <rect class="tc" x={r.x} y={r.y} width={r.w} height={r.h} rx="1.5" />}</For>
-    </svg>
-  );
-}
-
-/** The largest the preview of an entry gets on screen, and the most it is scaled (a single card: about as the board shows it) */
-const PEEK_W = 560,
-  PEEK_H = 460,
-  PEEK_MAX = 0.8;
-/** Lines of a code card drawn, at most (its card clips what does not fit) */
-const PEEK_LINES = 80;
-
-/** Where the preview of the entry under the pointer goes: beside the panel (right = from the right of the panel's parent),
- *  level with its row (top; room = the parent's height), measured once when it opens */
-type PeekAt = { id: string; right: number; top: number; room: number };
-
 /** Where q is inside box, as a style */
-const relStyle = (q: Rect, box: { x: number; y: number }) => ({
+const relStyle = (q: Rect, box: { x: number; y: number }): JSX.CSSProperties => ({
   left: `${q.x - box.x}px`,
   top: `${q.y - box.y}px`,
   width: `${q.w}px`,
   height: `${q.h}px`,
 });
+const entryById = (id: string) => (state.board.shelf ?? []).find((x) => x.id === id);
 
-/** An entry as it was on the board, scaled down: its Sections' frames with their titles, its cards with their content */
-function ShelfPeek(p: { at: PeekAt }) {
-  const e = createMemo(() => (state.board.shelf ?? []).find((x) => x.id === p.at.id));
+/** Lines of a code card drawn, at most (the card clips what does not fit) */
+const MINI_LINES = 60;
+
+/** A code card's lines as the board draws them (its gutter, the common indentation hidden), at most MINI_LINES */
+function MiniCode(p: { c: CodeCard }) {
+  const rows = createMemo(() => {
+    const out: { no: number; html: string; text: string }[] = [];
+    for (const s of p.c.segments) {
+      const v = state.views[s.id];
+      for (let i = 0; i < s.text.length && out.length < MINI_LINES; i++)
+        out.push({ no: s.start + i, html: v?.html[i] ?? escHtml(s.text[i]), text: s.text[i] });
+    }
+    return out;
+  });
+  const ded = () => commonIndent(rows().map((r) => r.text));
+  const digits = () => String(rows().at(-1)?.no ?? 0).length;
+  return (
+    <div class="code" style={{ "--nd": String(digits()) }}>
+      <div class="gutter">
+        <For each={rows()}>
+          {(r, i) => (
+            <span class="no" style={{ top: `calc(var(--code-pt) + ${i() * 20}px)` }}>
+              {r.no}
+            </span>
+          )}
+        </For>
+      </div>
+      <div class="src" classList={{ ded: !!ded() }} style={{ "--ded": ded() }}>
+        <For each={rows()}>{(r) => <div class="l" innerHTML={r.html || "\u200b"} />}</For>
+      </div>
+    </div>
+  );
+}
+
+/** A card's body as the board draws it, read-only */
+function MiniBody(p: { c: Card }) {
+  return (
+    <>
+      {(() => {
+        const k = p.c;
+        if (k.kind === "note")
+          switch (k.look) {
+            case "note":
+              return (
+                <>
+                  <div class="chead">
+                    <span class="kind">¶</span>
+                    <span class="ctitle sys">{k.title || mdHeading(k.md) || "Note"}</span>
+                  </div>
+                  <MdStatic src={k.md} class={`nbody${hidesHeading(k) ? " hidehead" : ""}`} />
+                </>
+              );
+            case "freetext":
+              return <div class={`tx ft ft-l${k.level ?? 0}`}>{k.md}</div>;
+            case "mark":
+              return <MdStatic src={k.md} class="tx hand" />;
+            case "box":
+              return <MdStatic src={k.md} class="tx bx" />;
+            default:
+              return <MdStatic src={k.md} class={`tx st-${k.size ?? "body"}`} />;
+          }
+        return (
+          <>
+            <div class="chead">
+              <Show when={k.kind === "code"}>
+                <span class="kind">{k.kind === "code" ? codeGlyph(k) : ""}</span>
+              </Show>
+              <span class="ctitle">{cardTitle(k, state.board)}</span>
+            </div>
+            <div class="carea">
+              <div class="cbody">
+                {k.kind === "code" ? (
+                  <MiniCode c={k} />
+                ) : (
+                  <PvContent
+                    data={{
+                      card: k,
+                      cols: k.kind === "compare" ? k.cols.flatMap((id) => cardById(id)?.card ?? []) : undefined,
+                      views: state.views,
+                    }}
+                    t={k.title ?? ""}
+                    lines={MINI_LINES}
+                  />
+                )}
+              </div>
+            </div>
+          </>
+        );
+      })()}
+    </>
+  );
+}
+
+/**
+ * An entry's picture at board size, scaled by whoever shows it: its Sections' frames and titles, its cards (the board's own card
+ * classes, so each theme draws them as on the board) and the arrows among them, straight
+ */
+function MiniWorld(p: { e: ShelfEntry; box: Rect }) {
   const lay = createMemo(() => {
-    const en = e();
-    const box = en && A.entryBox(en);
-    if (!en || !box) return null;
-    const k = Math.min(PEEK_MAX, PEEK_W / box.w, PEEK_H / box.h);
-    const rel = (q: Rect) => relStyle(q, box);
-    const r = A.entryRects(en);
+    const r = A.entryRects(p.e);
+    const at = new Map(r.cards.map((c) => [c.id, c]));
+    const hostOf = (id: string) => at.get(id) ?? at.get(cardById(id)?.host.id ?? "");
+    const lines = p.e.links.flatMap((l) => {
+      const a = hostOf(l.from.card),
+        b = hostOf(l.to.card);
+      if (!a || !b || a === b) return [];
+      // from edge to edge, on the line between the two centers
+      const ca = { x: a.x + a.w / 2, y: a.y + a.h / 2 },
+        cb = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+      const dx = cb.x - ca.x,
+        dy = cb.y - ca.y;
+      const edge = (q: Rect, c: { x: number; y: number }, sx: number, sy: number) => {
+        const t = Math.min(sx ? q.w / 2 / Math.abs(sx) : Infinity, sy ? q.h / 2 / Math.abs(sy) : Infinity);
+        return { x: c.x + sx * t - p.box.x, y: c.y + sy * t - p.box.y };
+      };
+      return [{ a: edge(a, ca, dx, dy), b: edge(b, cb, -dx, -dy) }];
+    });
     return {
-      box,
-      k,
-      sections: en.sections.map((s) => ({ title: s.title, color: s.color, style: rel(s) })),
+      sections: p.e.sections.map((s) => ({ s, style: relStyle(s, p.box) })),
       cards: r.cards.flatMap((q) => {
         const c = cardById(q.id)?.card;
-        return c ? [{ c, style: rel(q) }] : [];
+        return c ? [{ c, style: relStyle(q, p.box) }] : [];
       }),
+      lines,
     };
   });
   return (
-    <Show when={lay()}>
-      {(l) => {
-        const h = () => l().box.h * l().k;
+    <>
+      <For each={lay().sections}>
+        {(x) => <div class={`sect${x.s.color ? ` c-${x.s.color}` : ""}`} style={x.style} />}
+      </For>
+      <svg class="shlinks" width={p.box.w} height={p.box.h} aria-hidden="true">
+        <For each={lay().lines}>{(l) => <line x1={l.a.x} y1={l.a.y} x2={l.b.x} y2={l.b.y} />}</For>
+      </svg>
+      <For each={lay().cards}>
+        {(x) => (
+          <div class={`card ${cardKindClass(x.c)}`} style={x.style}>
+            <div class="cface">
+              <MiniBody c={x.c} />
+            </div>
+          </div>
+        )}
+      </For>
+      <For each={lay().sections}>
+        {(x) => (
+          <div
+            class={`slabel${x.s.color ? ` c-${x.s.color}` : ""}`}
+            style={{ left: `${x.s.x - p.box.x}px`, top: `${x.s.y - p.box.y}px` }}
+          >
+            <div class="sname">{x.s.title}</div>
+          </div>
+        )}
+      </For>
+    </>
+  );
+}
+
+/** A thumbnail's width, the room around its picture (px) and the most a picture is scaled (a small card stays a thumbnail) */
+const THUMB_W = 276,
+  THUMB_PAD = 8,
+  THUMB_MAX = 0.6;
+/** A thumbnail's size for an entry box and how its picture sits in it (scale k, top left ox, oy): as wide as the panel's list,
+ *  as tall as the entry's shape says, within limits */
+function thumbFit(box: Rect) {
+  const w = THUMB_W,
+    inner = w - 2 * THUMB_PAD;
+  const fit = Math.min(THUMB_MAX, inner / box.w);
+  const h = Math.round(Math.min(w * 0.75, Math.max(w * 0.3, 2 * THUMB_PAD + box.h * fit)));
+  const k = Math.min(fit, (h - 2 * THUMB_PAD) / box.h);
+  return { w, h, k, ox: (w - box.w * k) / 2, oy: (h - box.h * k) / 2 };
+}
+
+function Thumb(p: { id: string }) {
+  const e = createMemo(() => entryById(p.id));
+  const box = createMemo(() => {
+    const en = e();
+    return en && A.entryBox(en);
+  });
+  return (
+    <Show when={e() && box() && { e: e()!, box: box()! }}>
+      {(x) => {
+        const f = () => thumbFit(x().box);
+        const label = () => {
+          const l = shelfLabel(state.board, x().e);
+          return `${l.title}, ${l.kind}`;
+        };
         return (
           <div
-            class="shelf-peek pill"
-            style={{
-              right: `${p.at.right}px`,
-              top: `${Math.max(8, Math.min(p.at.top, p.at.room - h() - 28))}px`,
-              width: `${l().box.w * l().k}px`,
-              height: `${h()}px`,
-            }}
+            class="shthumb"
+            classList={{ lift: !!shelfOut()?.at && shelfOut()?.id === p.id, on: shelfPeek() === p.id }}
+            data-entry={p.id}
+            role="button"
+            aria-label={label()}
+            aria-expanded={shelfPeek() === p.id}
+            style={{ width: `${f().w}px`, height: `${f().h}px` }}
+            onPointerEnter={() => A.hoverThumb(p.id)}
+            onPointerLeave={() => A.leaveThumb(p.id)}
+            onPointerDown={(ev) => A.shelfThumbDown(ev, p.id)}
+            onContextMenu={(ev) => A.shelfThumbMenu(ev, p.id)}
           >
             <div
-              class="spk-world"
-              style={{ width: `${l().box.w}px`, height: `${l().box.h}px`, transform: `scale(${l().k})` }}
+              class="shmini"
+              inert
+              style={{
+                width: `${x().box.w}px`,
+                height: `${x().box.h}px`,
+                transform: `translate(${f().ox}px, ${f().oy}px) scale(${f().k})`,
+              }}
             >
-              <For each={l().sections}>
-                {(s) => (
-                  <div class="spk-sec" data-color={s.color} style={s.style}>
-                    <span>{s.title}</span>
-                  </div>
-                )}
-              </For>
-              <For each={l().cards}>
-                {(q) => (
-                  <div class={`spk-card k-${q.c.kind}`} style={q.style}>
-                    <div class="spk-h">{cardTitle(q.c, state.board)}</div>
-                    <div class="spk-b">
-                      <PvContent
-                        data={{
-                          card: q.c,
-                          cols: q.c.kind === "compare" ? q.c.cols.flatMap((id) => cardById(id)?.card ?? []) : undefined,
-                          views: state.views,
-                        }}
-                        t={q.c.title ?? ""}
-                        lines={PEEK_LINES}
-                      />
-                    </div>
-                  </div>
-                )}
-              </For>
+              <MiniWorld e={x().e} box={x().box} />
             </div>
           </div>
         );
@@ -162,41 +254,139 @@ function ShelfPeek(p: { at: PeekAt }) {
   );
 }
 
+/** The largest the large picture gets on screen, and the most it is scaled (a single card: about as the board shows it) */
+const PEEK_W = 560,
+  PEEK_H = 460,
+  PEEK_MAX = 0.8;
+/** The large picture's padding, its gap to the panel and to the edges of the window and the toolbars (px) */
+const PEEK_PAD = 12,
+  PEEK_GAP = 10,
+  PEEK_EDGE = 8;
+
+/**
+ * Where the large picture of a box this size goes (in the panel's parent) and its scale: left of the panel, level with the
+ * thumbnail, or under the panel when there is more room there (a narrow window); never over the panel or the toolbars at the foot
+ */
+function peekSpot(panel: HTMLElement, id: string, box: Rect): { left: number; top: number; k: number } {
+  const par = (panel.offsetParent as HTMLElement | null) ?? document.body;
+  const pr = par.getBoundingClientRect(),
+    r = panel.getBoundingClientRect();
+  const thumb = panel.querySelector(`.shthumb${attrSel("data-entry", id)}`)?.getBoundingClientRect();
+  let foot = pr.bottom;
+  for (const bar of document.querySelectorAll(".over.bbar > .pill, .over.dock > .pill")) {
+    const q = bar.getBoundingClientRect();
+    if (q.height > 0) foot = Math.min(foot, q.top);
+  }
+  const fit = (w: number, h: number) =>
+    Math.min(PEEK_MAX, PEEK_W / box.w, PEEK_H / box.h, (w - 2 * PEEK_PAD) / box.w, (h - 2 * PEEK_PAD) / box.h);
+  const left = { l: pr.left + PEEK_EDGE, r: r.left - PEEK_GAP, t: pr.top + PEEK_EDGE, b: foot - PEEK_GAP };
+  const under = { l: pr.left + PEEK_EDGE, r: r.right, t: r.bottom + PEEK_GAP, b: foot - PEEK_GAP };
+  const kl = fit(left.r - left.l, left.b - left.t),
+    ku = fit(under.r - under.l, under.b - under.t);
+  const a = kl >= ku ? left : under,
+    k = Math.max(0.01, kl, ku);
+  const w = box.w * k + 2 * PEEK_PAD,
+    h = box.h * k + 2 * PEEK_PAD;
+  const want = a === left ? (thumb?.top ?? r.top) : a.t;
+  return { left: a.r - w - pr.left, top: Math.max(a.t, Math.min(want, a.b - h)) - pr.top, k };
+}
+
+/**
+ * The entry whose thumbnail was clicked, large, beside the panel: the same picture (it cannot be used), and one button that puts
+ * the entry back where it was. Esc, a click elsewhere or a second click on the thumbnail closes it
+ */
+function ShelfPeek(p: { id: string; panel: HTMLElement }) {
+  const e = createMemo(() => entryById(p.id));
+  const box = createMemo(() => {
+    const en = e();
+    return en && A.entryBox(en);
+  });
+  useOverlay({
+    close: () => setShelfPeek(null),
+    inside: (t) => !!t.closest(".shelf-peek") || !!t.closest(`.shthumb${attrSel("data-entry", p.id)}`),
+    outside: true,
+  });
+  // placed again when the window or the panel changes size
+  const [tick, setTick] = createSignal(0);
+  const again = () => setTick((n) => n + 1);
+  const ro = new ResizeObserver(again);
+  ro.observe(p.panel);
+  window.addEventListener("resize", again);
+  onCleanup(() => {
+    ro.disconnect();
+    window.removeEventListener("resize", again);
+  });
+  return (
+    <Show when={e() && box() && { e: e()!, box: box()! }}>
+      {(x) => {
+        const spot = createMemo(() => {
+          tick();
+          return peekSpot(p.panel, p.id, x().box);
+        });
+        return (
+          <div
+            class="shelf-peek pill"
+            data-entry={p.id}
+            style={{
+              left: `${spot().left}px`,
+              top: `${spot().top}px`,
+              width: `${x().box.w * spot().k}px`,
+              height: `${x().box.h * spot().k}px`,
+            }}
+          >
+            <div
+              class="shmini"
+              inert
+              style={{ width: `${x().box.w}px`, height: `${x().box.h}px`, transform: `scale(${spot().k})` }}
+            >
+              <MiniWorld e={x().e} box={x().box} />
+            </div>
+            <button class="ib spk-back" aria-label="Put Back" data-tip="Put Back" onClick={() => A.putBack(p.id)}>
+              <Icon name="place" />
+            </button>
+          </div>
+        );
+      }}
+    </Show>
+  );
+}
+
+/** How long the thumbnails that stay take to slide to their new places when the order changes (ms) */
+const SLIDE_MS = 260;
+
 export function ShelfPanel() {
-  const rows = createMemo(() => [...(state.board.shelf ?? [])].reverse());
-  let panel!: HTMLDivElement;
-  const [peek, setPeek] = createSignal<PeekAt | null>(null);
-  let t: ReturnType<typeof setTimeout> | undefined,
-    warmUntil = 0;
-  const hide = () => {
-    clearTimeout(t);
-    if (peek()) warmUntil = performance.now() + TIP_WARM;
-    setPeek(null);
-  };
-  const show = (id: string, row: HTMLElement) => {
-    clearTimeout(t);
-    const open = () => {
-      const par = (panel.offsetParent as HTMLElement | null) ?? document.body;
-      const pr = par.getBoundingClientRect(),
-        r = panel.getBoundingClientRect();
-      setPeek({ id, right: pr.right - r.left + 10, top: row.getBoundingClientRect().top - pr.top, room: pr.height });
-    };
-    if (peek() || performance.now() < warmUntil) open();
-    else t = setTimeout(open, TIP_DELAY);
-  };
-  // dragging a row out: no preview over the board
-  createEffect(() => {
-    if (shelfOut()) hide();
+  const order = createMemo(() => A.shelfInOrder().map((e) => e.id), [], {
+    equals: (a, b) => a.length === b.length && a.every((x, i) => x === b[i]),
   });
-  // put back or removed: its preview goes with it
+  let panel!: HTMLDivElement, list!: HTMLDivElement;
+  // put back, removed or undone: its large picture goes with it
   createEffect(() => {
-    const at = peek();
-    if (at && !rows().some((e) => e.id === at.id)) hide();
+    const id = shelfPeek();
+    if (id && !order().includes(id)) setShelfPeek(null);
   });
-  onCleanup(() => clearTimeout(t));
+  // the order changed (an entry came, went or moved): the thumbnails that stay slide from where they were, so none jumps
+  let tops = new Map<string, number>();
+  createEffect(
+    on(order, () => {
+      const els = [...list.querySelectorAll<HTMLElement>(".shthumb[data-entry]")];
+      const now = new Map(els.map((el) => [el.dataset.entry!, el.offsetTop]));
+      for (const el of els) {
+        const was = tops.get(el.dataset.entry!),
+          top = now.get(el.dataset.entry!)!;
+        if (was !== undefined && was !== top)
+          el.animate([{ translate: `0 ${was - top}px` }, { translate: "0 0" }], {
+            duration: SLIDE_MS * animScale(),
+            easing: "cubic-bezier(.2,.7,.25,1)",
+          });
+      }
+      tops = now;
+    }),
+  );
   return (
     <>
-      <Show when={peek()}>{(at) => <ShelfPeek at={at()} />}</Show>
+      <Show when={shelfPeek()} keyed>
+        {(id) => <ShelfPeek id={id} panel={panel} />}
+      </Show>
       <div
         ref={panel}
         class="cpanel shelf pill"
@@ -206,76 +396,53 @@ export function ShelfPanel() {
       >
         <div class="cph">
           <b>Shelf</b>
-          <Show when={rows().length}>
-            <small>{rows().length}</small>
+          <Show when={order().length}>
+            <small>{order().length}</small>
           </Show>
           <span class="grow" />
           <button class="ib" aria-label="Close Shelf" onClick={() => A.toggleShelf(false)}>
             <Icon name="close" size={13} />
           </button>
         </div>
-        <div class="srows">
+        <div ref={list} class="srows">
           <For
-            each={rows()}
+            each={order()}
             fallback={
               <div class="empty sm">
                 Nothing on the Shelf. Right-click a card or Section → Move to Shelf, or drag it onto the Shelf button.
               </div>
             }
           >
-            {(e) => {
-              const label = createMemo(() => shelfLabel(state.board, e));
-              return (
-                <div
-                  class="srow"
-                  classList={{ lift: shelfOut()?.id === e.id && !!shelfOut()?.at }}
-                  data-entry={e.id}
-                  onPointerEnter={(ev) => show(e.id, ev.currentTarget)}
-                  onPointerLeave={hide}
-                  onPointerDown={(ev) => {
-                    hide();
-                    A.shelfRowDown(ev, e.id);
-                  }}
-                  onContextMenu={(ev) => A.shelfRowMenu(ev, e.id)}
-                >
-                  <Thumb e={e} />
-                  <div class="smeta">
-                    <div class="stt">{label().title}</div>
-                    <div class="skind">
-                      {label().kind} · {whenOf(e.at)}
-                    </div>
-                  </div>
-                  <button class="tbtn sback" onClick={() => A.putBack(e.id)}>
-                    Put Back
-                  </button>
-                </div>
-              );
-            }}
+            {(id) => <Thumb id={id} />}
           </For>
         </div>
-        <Show when={rows().length}>
-          <div class="cpf">Drag onto the board, or Put Back where it was.</div>
-        </Show>
       </div>
     </>
   );
 }
 
-/** The dashed outline of the entry being dragged out, where it will land (world coordinates; in the world layer) */
+/**
+ * The outline of an entry on the board: dashed where a thumbnail dragged out will land, or where the entry of the thumbnail the
+ * pointer rests on returns to, while some of that is in the part of the board that is seen (world coordinates; in the world layer)
+ */
 export function ShelfOutline() {
   const out = createMemo(() => {
-    const o = shelfOut();
-    const e = o?.at && (state.board.shelf ?? []).find((x) => x.id === o.id);
+    const o = shelfOut(),
+      hover = shelfHover();
+    const id = o ? (o.at ? o.id : null) : hover?.id;
+    const e = id ? entryById(id) : undefined;
     const box = e && A.entryBox(e);
-    if (!o?.at || !e || !box) return null;
+    if (!e || !box) return null;
+    if (!o && hover && !A.partSeen(box, hover.seen)) return null;
     const r = A.entryRects(e);
-    const rel = (q: Rect) => relStyle(q, box);
     return {
-      at: o.at,
+      home: !o,
+      at: o?.at ?? { x: box.x, y: box.y },
       box,
-      title: shelfLabel(state.board, e).title,
-      sections: r.sections.map(rel),
-      cards: r.cards.map(rel),
+      parts: [
+        ...r.sections.map((s) => ({ s: true, style: relStyle(s, box) })),
+        ...r.cards.map((c) => ({ s: false, style: relStyle(c, box) })),
+      ],
     };
   });
   return (
@@ -283,18 +450,16 @@ export function ShelfOutline() {
       {(o) => (
         <div
           class="shelf-outline"
+          classList={{ home: o().home }}
           style={{
             left: `${o().at.x}px`,
             top: `${o().at.y}px`,
             width: `${o().box.w}px`,
             height: `${o().box.h}px`,
             "--ow": `${1.5 / cam.z}px`,
-            "--os": String(1 / cam.z),
           }}
         >
-          <span class="sol">{o().title}</span>
-          <For each={o().sections}>{(s) => <div class="sos" style={s} />}</For>
-          <For each={o().cards}>{(s) => <div class="soc" style={s} />}</For>
+          <For each={o().parts}>{(q) => <div class={q.s ? "sos" : "soc"} style={q.style} />}</For>
         </div>
       )}
     </Show>
