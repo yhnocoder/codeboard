@@ -31,8 +31,12 @@ extension Board {
     return true
   }
 
-  /// The same card at the same line (or both whole): no arrow between them
-  static func samePlace(_ a: Endpoint, _ b: Endpoint) -> Bool { a.card == b.card && a.line == b.line }
+  /// The same card at the same place (the same line of the same segment, the same Note block, or both whole): no arrow
+  /// between them. The web board compares the line only (core addLink), so two segments' same line number, or two
+  /// blocks of one Note, would count as one place there
+  static func samePlace(_ a: Endpoint, _ b: Endpoint) -> Bool {
+    a.card == b.card && a.line == b.line && (a.line == nil || a.segment == b.segment) && a.block == b.block
+  }
 
   /// One end of an arrow moved to another card, line or Note block; its side chosen when drawn again. False when it
   /// would point at the same place as its other end

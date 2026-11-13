@@ -28,6 +28,17 @@ private func aid(_ s: String) -> ArrowID { ArrowID(rawValue: s) }
   #expect(b.brokenReference == nil)
 }
 
+@Test func twoSegmentsSameLineNumberAndTwoBlocksOfANoteAreTwoPlaces() {
+  let seg = { (s: String, n: Int) in Endpoint(card: cid("c1"), segment: SegmentID(rawValue: s), line: n) }
+  #expect(!Board.samePlace(seg("s1", 4), seg("s2", 4)), "the same line number in two segments")
+  #expect(Board.samePlace(seg("s1", 4), seg("s1", 4)))
+  let block = { (i: Int, h: String) in Endpoint(card: cid("n1"), block: BlockRef(index: i, hash: h)) }
+  #expect(!Board.samePlace(block(0, "a"), block(1, "b")), "two blocks of one Note")
+  #expect(!Board.samePlace(block(0, "a"), Endpoint(card: cid("n1"))), "a block and the whole Note")
+  #expect(Board.samePlace(block(1, "b"), block(1, "b")))
+  #expect(Board.samePlace(Endpoint(card: cid("n1"), side: .left), Endpoint(card: cid("n1"), side: .right)))
+}
+
 @Test func anEndMovesToAnotherPlaceAndChoosesItsSideAgain() {
   var b = editSample()
   b.setArrowSide(aid("a1"), .to, .left)
