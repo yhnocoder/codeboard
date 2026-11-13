@@ -213,6 +213,29 @@ window.note = {
   },
   /** Measures again after the view grew: code blocks draw only the lines in view, so a card can grow with it */
   measure,
+  /** Where each mounted card's first glyph is, from its top left at 100 % (null: no text), as the board measures it
+   *  when a Text becomes a Box (notes.ts setTextLook: that glyph stays where it was) */
+  first(ids: string[]) {
+    const out: Record<string, { x: number; y: number } | null> = {};
+    for (const id of ids) {
+      const s = slots.get(id);
+      if (!s) continue;
+      const k = Number(s.slot.dataset.k ?? 1);
+      const c = s.card.getBoundingClientRect();
+      const walk = document.createTreeWalker(s.card, NodeFilter.SHOW_TEXT);
+      const range = document.createRange();
+      out[id] = null;
+      for (let n = walk.nextNode() as Text | null; n && !out[id]; n = walk.nextNode() as Text | null) {
+        const i = n.data.search(/\S/);
+        if (i < 0) continue;
+        range.setStart(n, i);
+        range.setEnd(n, i + 1);
+        const b = range.getBoundingClientRect();
+        out[id] = { x: (b.left - c.left) / k, y: (b.top - c.top) / k };
+      }
+    }
+    return out;
+  },
   /** Shows that Note alone, at a zoom as the editor is shown at one: its 100 % layout under a CSS transform, so no line
    * breaks move. Resolves once its images are decoded again (a hidden image's pixels may have been let go) */
   async show(id: string, k: number) {

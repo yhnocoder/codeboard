@@ -205,3 +205,84 @@ extension Rig {
     #expect(r.card("b1").writing == "Check the bounds!")
   }
 }
+
+@MainActor @Suite(.serialized) struct WritingBarTests {
+  /// The middle of a button of the bar over a card (board units)
+  func button(_ r: Rig, _ id: String, _ b: BarButton) throws -> CGPoint {
+    let t = try #require(r.card(id).textCard)
+    let bar = try #require(r.canvas.barRect(cid(id), t))
+    let at = try #require(WritingBar.layout(box: t.look == .box).buttons.first { $0.0 == b }?.1)
+    return CGPoint(x: bar.minX + at.midX, y: bar.minY + at.midY)
+  }
+
+  @Test(arguments: [1, 0.5] as [CGFloat])
+  func theBarSizesATextOneStepEach(zoom: CGFloat) async throws {
+    let r = try await Rig(zoom: zoom)
+    defer { r.close() }
+    r.click(r.centre("t1"))
+    #expect(r.canvas.barCard?.0 == cid("t1"))
+    #expect(r.canvas.chrome.sublayers?.contains { $0.contents != nil } == true, "the bar is drawn")
+    // over its neighbours while selected alone
+    let i = try #require(r.canvas.index(of: .card(cid("t1"))))
+    #expect(r.canvas.items[i].box.zPosition > 0)
+    r.click(try button(r, "t1", .size(30)))
+    #expect(r.card("t1").textCard?.fontSize == 30)
+    #expect(r.doc.undoName == "Text Size" && r.doc.history.undoSteps.count == 1)
+    // a Text that wraps keeps its line breaks: its width scales with it
+    #expect(r.card("t1").width == (220.0 * 30 / 20).rounded())
+    // the lit one does nothing
+    r.click(try button(r, "t1", .size(30)))
+    #expect(r.doc.history.undoSteps.count == 1)
+    // another card selected: it goes back among them
+    r.click(r.centre("b1"))
+    await r.settle()
+    let j = try #require(r.canvas.index(of: .card(cid("t1"))))
+    #expect(r.canvas.items[j].box.zPosition == 0)
+    // none while written in
+    r.key(36)
+    await r.editorReady()
+    #expect(r.canvas.barCard == nil)
+    await r.canvas.endEditing()
+  }
+
+  @Test func aBoxTakesItsFillsAndTextAndBoxKeepTheFirstLetterInPlace() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    r.click(r.centre("b1"))
+    r.click(try button(r, "b1", .fill(.blue)))
+    #expect(r.card("b1").textCard?.fill == .blue && r.doc.undoName == "Fill")
+    await r.settle()
+    // where its first letter is on the board, as the Note page lays it out
+    func first(_ id: String) async throws -> CGPoint {
+      let c = r.card(id)
+      let t = try #require(c.textCard)
+      let folder = r.file.deletingLastPathComponent()
+      let m = try await Rig.notes.firstGlyphs(of: [
+        .init(note: .text(t), width: c.width, folder: folder, look: "warm-ink", dark: false)
+      ])
+      let p = try #require(m[0]?.first)
+      return CGPoint(x: c.x + p.x, y: c.y + p.y)
+    }
+    let before = try await first("b1")
+    let fs = r.card("b1").textCard?.fontSize
+    r.click(try button(r, "b1", .look(.text)))
+    while r.card("b1").textCard?.look != .text { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(r.doc.undoName == "Text")
+    let after = try await first("b1")
+    #expect(abs(after.x - before.x) < 0.5 && abs(after.y - before.y) < 0.5, "\(before) → \(after)")
+    #expect(r.card("b1").textCard?.fontSize == fs)
+    #expect(r.card("b1").width == 160, "a Box's sides are 20 wider")
+    #expect(r.card("b1").textCard?.fill == .blue, "a Text keeps the fill it had")
+    await r.settle()
+    // back: the fill it had, the letter where it was
+    r.click(try button(r, "b1", .look(.box)))
+    while r.card("b1").textCard?.look != .box { try await Task.sleep(for: .milliseconds(5)) }
+    let back = try await first("b1")
+    #expect(abs(back.x - before.x) < 0.5 && abs(back.y - before.y) < 0.5)
+    #expect(r.card("b1").textCard?.fill == .blue && r.card("b1").width == 180)
+    r.doc.undo()
+    r.doc.undo()
+    r.doc.undo()
+    #expect(r.card("b1").textCard?.fill == .yellow && r.card("b1").x == 500 && r.card("b1").y == 200)
+  }
+}

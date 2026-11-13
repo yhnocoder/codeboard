@@ -241,6 +241,8 @@ extension CanvasView {
           next.append(l)
         }
       }
+      // every layer is at zPosition 0 again
+      raised = nil
       for l in [below, cards, above] { l.sublayers = nil }
       for (i, l) in next.enumerated() {
         (i < s.cardsFrom ? below : i < s.labelsFrom ? cards : above).addSublayer(l.box)
@@ -415,6 +417,8 @@ extension CanvasView {
           }
         }
       }
+      raiseText()
+      if let bar = barLayer() { chrome.addSublayer(bar) }
       guard doc.selection.count == 1, let item = doc.selection.first, !doc.board.isLocked(item) else { return }
       switch gesture?.kind {
       case .move?, .nudge?, .marquee?: return
@@ -671,8 +675,13 @@ extension CanvasView {
     guard let doc = document, scene != nil, gesture == nil else { return }
     let v = convert(e.locationInWindow, from: nil)
     let p = camera.board(v)
+    if let b = barButton(at: p) {
+      if e.clickCount == 1 { press(b) }
+      return
+    }
     if e.clickCount >= 2 {
-      doubleClick(at: p)
+      // a double-click on a Text's edge or corner does nothing (no Fit Content)
+      if hitHandle(v) == nil { doubleClick(at: p) }
       return
     }
     if let (item, edges) = hitHandle(v) {

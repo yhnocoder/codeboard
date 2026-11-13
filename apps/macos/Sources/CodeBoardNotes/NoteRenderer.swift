@@ -168,6 +168,32 @@ public final class NoteRenderer {
     return out
   }
 
+  /// Each Note's size at 100 % and where its first glyph is from its top left (nil when it has none), measured now: what
+  /// a Text keeps in place when it becomes a Box (the board measures it the same way, notes.ts setTextLook)
+  public func firstGlyphs(of notes: [SizeRequest]) async throws -> [(size: CGSize, first: CGPoint?)?] {
+    try await takeTurn(priority: 0)
+    defer { endTurn() }
+    var out = [(size: CGSize, first: CGPoint?)?](repeating: nil, count: notes.count)
+    do {
+      let p = try page ?? NotePage(page: pageFolder)
+      page = p
+      for (i, n) in notes.enumerated() {
+        guard
+          let json = try? PageNote(n.note, width: n.width, height: nil, look: n.look, dark: n.dark, refs: n.refs).json()
+        else { continue }
+        let (key, _) = await Self.lookUpSize(
+          store: store, build: build, note: json, markdown: n.note.markdown, folder: n.folder)
+        let sizes = try await p.mount([(key.hex, json, Self.images(n.folder))], look: n.look, dark: n.dark)
+        let firsts = try await p.firstGlyphs([key.hex])
+        if let s = sizes[key.hex] { out[i] = (s.size, firsts[key.hex]) }
+      }
+    } catch {
+      page = nil
+      throw error
+    }
+    return out
+  }
+
   private struct Look: Hashable {
     var id: String
     var dark: Bool

@@ -86,6 +86,16 @@ final class NotePage {
     return r
   }
 
+  /// Where each mounted Note's first glyph is from its top left at 100 % (nil: it has no text)
+  func firstGlyphs(_ ids: [String]) async throws -> [String: CGPoint] {
+    let r = try await view.callAsyncJavaScript("return note.first(ids)", arguments: ["ids": ids], contentWorld: .page)
+    guard let d = r as? [String: Any] else { return [:] }
+    return d.compactMapValues { v in
+      guard let p = v as? [String: Double], let x = p["x"], let y = p["y"] else { return nil }
+      return CGPoint(x: x, y: y)
+    }
+  }
+
   /// An image file as an image card shows it, `width` pixels wide at the window's backing scale (`stamp`: the file's
   /// size and time, so a file replaced under its name is shown again), and whether it came in. Mounted only for this
   func picture(of file: URL, stamp: String, width: Int, dark: Bool) async throws -> (NoteSnapshot, complete: Bool) {

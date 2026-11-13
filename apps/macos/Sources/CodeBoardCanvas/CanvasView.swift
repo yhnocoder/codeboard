@@ -85,6 +85,10 @@ public final class CanvasView: NSView {
   var editing: Editing?
   var editingOriginal: ItemLayers?
   var editingEnds: Task<Void, Never>?
+  /// The floating bar's bitmap and what it shows
+  var barImage: (key: String, image: CGImage)?
+  /// The Text or Box raised over its neighbours (its item index)
+  var raised: Int?
   /// The latest refresh (tests wait for it)
   package var refreshing: Task<Void, Never>?
   /// Selection rings, handles: over the cards, in board units
