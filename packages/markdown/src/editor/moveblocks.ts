@@ -6,6 +6,7 @@ import { Fragment, type Node as PMNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey, Selection, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { MdPart } from "../blockmove";
+import { parseMd } from "../schema";
 import { layoutOf, sourceDoc, sourceMd } from "./srcdoc";
 
 /** How marked blocks look: dim = a faint placeholder, away = taken out (the Note closes up), gone = kept in place but unseen */
@@ -28,6 +29,9 @@ export type MdBlocks = {
   part(from: number, to: number): MdPart;
   /** The document as Markdown with part put before block at; nothing changes in the editor */
   withInserted(at: number, part: MdPart): MdPart;
+  /** Does the editor hold exactly this saved text, block for block (nothing typed since): then the caller may cut and insert
+   *  in the saved Markdown itself, which keeps the untouched blocks as they were written */
+  holds(saved: MdPart): boolean;
 };
 
 type Mark = { from: number; to: number; how: BlockMark } | null;
@@ -186,6 +190,15 @@ export function mdBlocks(ed: Editor): MdBlocks {
       add.forEach((n) => out.push(n));
       out.push(...ns.slice(before));
       return partOf(ed, out);
+    },
+    holds(saved) {
+      const now = partOf(ed, nodes()),
+        was = sourceDoc(saved.md, saved.layout);
+      return (
+        now.md === sourceMd(was) &&
+        JSON.stringify(now.layout) === JSON.stringify(layoutOf(ed.schema.nodeFromJSON(was))) &&
+        all().length === (parseMd(saved.md).content?.length ?? 0)
+      );
     },
   };
 }

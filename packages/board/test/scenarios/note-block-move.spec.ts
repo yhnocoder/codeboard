@@ -243,6 +243,34 @@ test("noteBlockModClickInCode", async () => {
   );
 });
 
+/** Blocks moved out of a Note whose editor is open with nothing typed in it: the blocks left behind keep their source as
+ *  written (a setext heading stays one), as a move out of a Note not being edited does */
+test("noteBlockMoveKeepsSourceAsWritten", async () => {
+  const n1 = "Title\n=====\n\nPara one.\n\nPara *two*.";
+  const b = emptyBoard("b1", "block moves");
+  put(b, { id: "n1", kind: "note", md: n1, look: "note" } as NoteCard, 60, 80, 400);
+  put(b, { id: "n2", kind: "note", md: N2, look: "note" } as NoteCard, 560, 80, 300);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, w: 1000, h: 560 });
+  await idle(h);
+  await h.page
+    .locator(`${card("n1")} .nbody p`)
+    .last()
+    .dblclick();
+  await h.page.waitForSelector(`${card("n1")} .md-pm`);
+  await idle(h);
+  const p = await box(h, `${card("n1")} .md-pm > p:not(.md-pad) >> nth=0`),
+    o2 = await box(h, `${card("n2")} .nbody > p:nth-child(2)`);
+  const release = await cmdDrag(h, { x: p.x + 30, y: p.y + 6 }, { x: o2.x + 40, y: o2.y + 3 });
+  await release();
+  await until(h, "both Notes written", () => md(h, "n2") !== N2);
+  check(
+    "noteBlockMoveKeepsSourceAsWritten",
+    md(h, "n1") === "Title\n=====\n\nPara *two*." && md(h, "n2") === "Other one.\n\nPara one.\n\nOther two.",
+    { n1: md(h, "n1"), n2: md(h, "n2") },
+  );
+});
+
 /** A picked-up block floating beside its Note goes with its board: switching to another board leaves nothing of it there (the
  *  copy, the card's bottom edge strip, a height held on the card) */
 test("noteBlockFloatBoardSwitch", async () => {

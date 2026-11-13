@@ -689,8 +689,10 @@ function commit(d: Move, t: Target): number | null {
     if (!m) return null;
     notes = [{ id: d.src, ...m }];
   } else {
-    const cut = sEd ? sEd.cut(r[0], r[1]) : cutMdBlocks(src, r[0], r[1]);
-    const into = cut && (dEd ? dEd.withInserted(t.idx, cut.part) : insertMdBlocks(dst, t.idx, cut.part));
+    // an open editor with nothing typed in it is its saved text: that is cut, so the blocks not moved stay as written
+    const cut = sEd && !sEd.holds(src) ? sEd.cut(r[0], r[1]) : cutMdBlocks(src, r[0], r[1]);
+    const into =
+      cut && (dEd && !dEd.holds(dst) ? dEd.withInserted(t.idx, cut.part) : insertMdBlocks(dst, t.idx, cut.part));
     if (!cut || !into) return null;
     notes = [
       { id: d.src, ...cut.rest },
