@@ -197,7 +197,7 @@ if openOnly {
       }
       out.append(o)
     }
-    let data = try JSONSerialization.data(withJSONObject: out, options: [.sortedKeys, .prettyPrinted])
+    let data = (try? JSONSerialization.data(withJSONObject: out, options: [.sortedKeys, .prettyPrinted])) ?? Data()
     print(String(decoding: data, as: UTF8.self))
     exit(0)
   }
