@@ -3298,12 +3298,6 @@ textarea {
   font: 11.5px var(--mono);
   color: var(--ink);
 }
-.sn-item {
-  border-bottom: 1px solid var(--line);
-}
-.sn-item:last-of-type {
-  border-bottom: 0;
-}
 .sn-head {
   display: flex;
   gap: 6px;
@@ -3317,8 +3311,8 @@ textarea {
   font-weight: 500;
   color: var(--ink);
 }
-/* A Card sidenote's preview (ui/pops/cardpeek.tsx): a copy of the card as the board draws it, scaled to fit, beside the popover.
-   Hidden until placed; clipped at the bottom with a fade when the card is taller than the preview */
+/* A card's preview (ui/pops/cardpeek.tsx): a copy of the card as the board draws it, scaled to fit, beside what opened it.
+   Hidden until placed; cut at the bottom with a fade when the card is taller than the preview */
 .cpeek {
   position: fixed;
   z-index: 36;
@@ -3342,14 +3336,17 @@ textarea {
   display: none;
 }
 .cpeek.cut .cpeek-stage {
-  -webkit-mask: linear-gradient(#000 calc(100% - 28px), transparent);
-  mask: linear-gradient(#000 calc(100% - 28px), transparent);
+  -webkit-mask: linear-gradient(#000 calc(100% - 48px), transparent);
+  mask: linear-gradient(#000 calc(100% - 48px), transparent);
 }
-.cpeek-alt {
-  max-width: 360px;
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: var(--ink);
+/* Go to Card: an arrow under the preview, at its right */
+.cpeek-go {
+  display: flex;
+  margin: 6px -4px -4px auto;
+}
+/* the [[ list's preview: nothing to press in it */
+.cpeek.passive {
+  pointer-events: none;
 }
 .sn-text {
   padding: 4px 12px 8px;
@@ -3362,26 +3359,6 @@ textarea {
   display: flex;
   gap: 4px;
   padding: 0 10px 8px;
-}
-.tabs {
-  display: flex;
-  gap: 2px;
-  padding: 6px 8px 0;
-  border-bottom: 1px solid var(--line);
-}
-.tab {
-  padding: 5px 9px 6px;
-  font-size: 12px;
-  color: var(--ink-2);
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-}
-.tab.on {
-  color: var(--ink);
-  border-color: var(--accent);
-}
-.tab[disabled] {
-  opacity: 0.4;
 }
 .fld {
   width: 100%;
@@ -4761,7 +4738,7 @@ mark.wdiff {
   padding: 2px 8px 4px;
 }
 .palette .cand .kind,
-.addnote .cand .kind {
+.ncomp .cand .kind {
   font: italic 600 12px / 1 var(--serif);
   color: var(--ink-3);
   width: 14px;
@@ -4995,16 +4972,6 @@ mark.wdiff {
 .pcode .pl .t {
   padding-right: 12px;
 }
-.k-notes {
-  width: 460px;
-}
-.sn-list {
-  max-height: 360px;
-  overflow: auto;
-}
-.sn-item.on {
-  box-shadow: inset 2px 0 0 var(--accent);
-}
 .sn-why {
   padding: 0 12px 8px;
   font-size: 12px;
@@ -5052,17 +5019,6 @@ mark.wdiff {
 .k-peek {
   width: 520px;
 }
-.addnote {
-  width: 420px;
-}
-.addnote .tabs {
-  align-items: center;
-}
-.addnote .where {
-  font: 11px var(--mono);
-  color: var(--ink-3);
-  padding-right: 4px;
-}
 .an-body {
   padding: 8px 10px;
   display: flex;
@@ -5088,7 +5044,6 @@ mark.wdiff {
   width: auto;
   padding: 3px 6px;
 }
-.addnote .db,
 .diffpop .db {
   padding: 8px 10px;
   border-top: 1px solid var(--line);
@@ -9008,20 +8963,32 @@ mark.wdiff {
   color: color-mix(in srgb, var(--accent) 70%, var(--ink)) !important;
 }
 
-/* a Highlight's popup: slips on a tray, the Always Show ones last */
-.pop.k-highlight {
+/* a sidenote popup (ui/pops/notes.tsx): a Highlight's or a card's whole-card ones, slips on a tray, the Always Show ones last.
+   The tray scrolls under its title bar, which is where it is dragged (PopFrame, [data-grip]) */
+.pop:is(.k-highlight, .k-notes) {
   width: 460px;
-  max-height: 560px;
+  max-height: min(560px, 100vh - 16px);
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 0;
 }
 .hxpop .hh {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 10px 5px 12px;
+  min-height: 34px;
+  padding: 5px 10px 3px 12px;
   font: 600 12px var(--sys);
   color: var(--ink-2);
+  cursor: grab;
+  user-select: none;
+}
+.pop.held .hxpop .hh:active {
+  cursor: grabbing;
 }
 .hxpop .grow {
   flex: 1;
@@ -9029,6 +8996,9 @@ mark.wdiff {
 .hxpop .rng {
   font: 600 11px var(--mono);
   color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .hxpop.hx-band .rng {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
@@ -9049,6 +9019,7 @@ mark.wdiff {
   padding: 2px 8px 8px;
 }
 .hxpop .slip {
+  position: relative;
   background: color-mix(in srgb, var(--ink) 2.5%, transparent);
   box-shadow: 0 0 0 1px var(--hair);
   border-radius: 9px;
@@ -9067,22 +9038,29 @@ mark.wdiff {
     0 0 0 1px var(--hair);
   border-radius: 3px 9px 9px 3px;
 }
+/* a slip's tools take no room: over its top right corner while it is hovered or holds the focus (not while it is edited). They
+   stay in the layout, see-through, so Tab still reaches them */
 .hxpop .kt {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 1;
   display: flex;
+  opacity: 0;
   align-items: center;
-  gap: 2px;
-  font: 600 10px var(--sys);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  min-height: 20px;
+  gap: 1px;
+  padding: 1px;
+  border-radius: 7px;
+  background: var(--surface);
+  box-shadow:
+    0 0 0 1px var(--hair),
+    0 2px 6px -2px rgba(0, 0, 0, 0.18);
 }
-.hxpop .kt .tag {
-  margin-right: 6px;
+.hxpop .slip:is(:hover, :focus-within) > .kt {
+  opacity: 1;
 }
-.hxpop .kt .as {
-  color: var(--accent);
-  letter-spacing: 0.04em;
+.hxpop .slip:has(.sn-edit) > .kt {
+  display: none;
 }
 .hxpop .kt .ib {
   width: 22px;
@@ -9110,27 +9088,11 @@ mark.wdiff {
 :root.look-ink-wash .hxpop .sb.nbody {
   font-family: var(--serif);
 }
-.hxpop .lk {
-  display: grid;
-  gap: 1px;
-}
-.hxpop .lk a {
-  color: var(--k-fn);
-  text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--k-fn) 40%, transparent);
-  text-underline-offset: 3px;
-  font-size: 13px;
-  cursor: pointer;
-}
-.hxpop .lk span {
-  font: 11px var(--mono);
-  color: var(--ink-3);
-}
 .hxpop .add {
-  text-align: center;
-  font: 500 12px var(--sys);
+  display: grid;
+  place-items: center;
   color: var(--ink-3);
-  padding: 6px;
+  padding: 5px;
   border: 1px dashed var(--hair);
   border-radius: 9px;
   background: none;
@@ -9138,4 +9100,110 @@ mark.wdiff {
 .hxpop .add:hover {
   color: var(--accent);
   border-color: var(--accent);
+}
+/* a Code sidenote's code past 8 lines (notes.tsx SnCode): cut there, fading out; a click opens it all or cuts it again */
+.sn-code.long {
+  cursor: pointer;
+}
+.sn-code.long > .pcode {
+  max-height: none;
+}
+.sn-code.cut > .pcode {
+  max-height: calc(8 * 19px + 5px);
+  overflow-y: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent);
+}
+
+/* the input for a new sidenote (ui/NoteComposer.tsx), at the bottom of the popup. The text is the Notes' editor; the switch to
+   a code search sits at its right end */
+.ncomp {
+  font: 12.5px / 1.5 var(--sys);
+  color: var(--ink);
+  cursor: auto;
+}
+.ncomp-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 8.5px;
+  padding: 2px 2px 2px 8px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.ncomp-box input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: 12px / 1.55 var(--mono);
+  color: var(--ink);
+  padding: 3px 0;
+  user-select: text;
+}
+.ncomp-text {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  user-select: text;
+}
+.ncomp-text > .nbody {
+  --md-fs: 12.5px;
+  font: var(--md-fs) / 1.6 var(--sys);
+  min-height: 1.6em;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+:root.look-ink-wash .ncomp-text > .nbody {
+  font-family: var(--serif);
+}
+/* the box around it is the input's frame: no second one, as a Note's editor in its card */
+.ncomp-text > .nbody.editing {
+  box-shadow: none;
+  background: none;
+  border-radius: 0;
+}
+.ncomp-lead {
+  flex: none;
+  margin: 5px 2px 0 -2px;
+  color: var(--ink-3);
+}
+.ncomp-box > .ncomp-kind {
+  width: 22px;
+  height: 22px;
+}
+.ncomp-box > .ncomp-kind.on {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.ncomp .sres {
+  margin-top: 5px;
+  padding: 3px;
+  background: var(--surface);
+  border-radius: 8.5px;
+  box-shadow:
+    0 0 0 1px var(--hair),
+    var(--sh-float);
+}
+/* the selected lines' Add Sidenote button, where a Highlight's count would be */
+.gutter .lsadd {
+  position: absolute;
+  cursor: pointer;
+  border: 0;
+  right: 6px;
+  width: 13px;
+  height: 13px;
+  margin-top: 3.5px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  z-index: 3;
+}
+.gutter .lsadd:hover {
+  scale: 1.15;
 }

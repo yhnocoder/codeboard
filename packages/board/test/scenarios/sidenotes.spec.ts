@@ -5,10 +5,8 @@
 //                               than the cap, so its height is stored) ends right under its last line, no scrollbar (Warm Ink)
 //  sidenoteAlwaysShowResize     dragging the corner of that card down and up: its height follows the pointer, it never drops to the
 //                               cap for cards without a stored height
-//  sidenotePopoverBelowLines    clicking a gutter marker opens the Highlight popover below the lines it marks (not over them); near the
-//                               bottom of the window, above them. Its text has no "Double-click to edit" tip
-//  sidenoteCardPreview          a Card sidenote's eye in the popover: resting on it shows, beside the popover, a copy of that Note card as
-//                               the board draws it, with its text; leaving the eye hides it
+//  sidenotePopupBesideCard      clicking a gutter marker opens the Highlight popup right of the card, its top level with the lines;
+//                               a card too wide for it to fit there: over the card, inside the window. Its text has no tip
 //  sidenoteAlwaysShowRefits     a card fitted to its content (⌥F; taller than the cap, so its height is stored) grows and shrinks with
 //                               its sidenote as Always Show is turned off and on in the popover, and as the shown sidenote's text is
 //                               edited: it still ends right under its last line, no scrollbar; each is one undo step. A card with a
@@ -216,103 +214,43 @@ test("sidenoteAlwaysShowResize", async () => {
   check("sidenoteAlwaysShowResize the card's height follows the dragged corner", bad.length === 0, { h0, bad });
 });
 
-test("sidenotePopoverBelowLines", async () => {
+test("sidenotePopupBesideCard", async () => {
   const res: Record<string, unknown> = {};
   let ok = true;
-  // near the top of the window (room below the lines) and with lines 7–8 near its bottom (no room below)
-  for (const [where, y] of [
-    ["top", 40],
-    ["bottom", 640],
+  // a card with room on its right, and one too wide for the popup to fit beside it
+  for (const [where, w] of [
+    ["beside", 560],
+    ["over", 1060],
   ] as const) {
-    const h = await open({ board: board(560, y), light, w: 1200, h: 900, settings: { theme: "warm-ink" } as never });
+    const h = await open({ board: board(w), light, w: 1200, h: 900, settings: { theme: "warm-ink" } as never });
     await setWarmInk(h);
     const pg = h.page;
     await pg.locator('.card[data-id="k1"] .hxm[data-hl="k1:s1:7-8"]').click();
-    await until(h, "the Highlight popover is open", () => pg.locator(".pop.k-highlight").count());
+    await until(h, "the Highlight popup is open", () => pg.locator(".pop.k-highlight").count());
     await idle(h);
     const r = await pg.evaluate(() => {
       const p = document.querySelector<HTMLElement>(".pop.k-highlight")!.getBoundingClientRect();
-      const ls = [...document.querySelectorAll<HTMLElement>('.card[data-id="k1"] .src > .l')];
-      const lines = [ls[6], ls[7]].map((l) => l.getBoundingClientRect());
-      const hit = lines.some((l) => l.top < p.bottom && l.bottom > p.top && l.left < p.right && l.right > p.left);
+      const c = document.querySelector<HTMLElement>('.card[data-id="k1"]')!.getBoundingClientRect();
+      const l = document.querySelectorAll<HTMLElement>('.card[data-id="k1"] .src > .l')[6].getBoundingClientRect();
       return {
-        pop: { top: Math.round(p.top), bottom: Math.round(p.bottom), left: Math.round(p.left) },
-        lines: lines.map((l) => ({ top: Math.round(l.top), bottom: Math.round(l.bottom) })),
-        hit,
-        below: p.top >= lines[1].bottom,
-        above: p.bottom <= lines[0].top,
-        inWindow: p.top >= 0 && p.bottom <= innerHeight,
+        pop: { left: Math.round(p.left), right: Math.round(p.right), top: Math.round(p.top) },
+        card: Math.round(c.right),
+        line: Math.round(l.top),
+        outside: p.left >= c.right,
+        aligned: Math.abs(p.top - l.top) <= 12,
+        inWindow: p.left >= 0 && p.right <= innerWidth && p.top >= 0 && p.bottom <= innerHeight,
         tips: document.querySelectorAll(".pop.k-highlight .nbody[data-tip]").length,
       };
     });
-    if (where === "top") await save(h, "sidenotes-popover-below");
+    if (where === "beside") await save(h, "sidenotes-popup-beside", '.card[data-id="k1"], .pop.k-highlight');
     res[where] = r;
-    ok &&= !r.hit && r.inWindow && (where === "top" ? r.below : r.above) && r.tips === 0;
+    ok &&= r.aligned && r.inWindow && r.outside === (where === "beside") && r.tips === 0;
     await h.close();
   }
   check(
-    "sidenotePopoverBelowLines the popover leaves the marked lines visible: below them, above near the bottom",
+    "sidenotePopupBesideCard the popup is right of the card, its top at the lines; with no room there it covers the card, in the window",
     ok,
     res,
-  );
-});
-
-test("sidenoteCardPreview", async () => {
-  const b = board(560);
-  put(
-    b,
-    {
-      id: "nc",
-      kind: "note",
-      look: "note",
-      md: "## 声明变量所处的内存\n\n把 `Mds` 和 `Nds` 声明为 shared memory 数组。",
-    } as never,
-    700,
-    40,
-    360,
-  );
-  (b.cards[0] as CodeCard).segments[0].hl!.unshift([4, 4]);
-  b.sidenotes.push({ id: "n3", kind: "card", card: "nc", at: { card: "k1", seg: "s1", lines: [4, 4] } });
-  const h = await open({ board: b, light, w: 1400, h: 900, settings: { theme: "warm-ink" } as never });
-  await setWarmInk(h);
-  const pg = h.page;
-  await pg.locator('.card[data-id="k1"] .hxm[data-hl="k1:s1:4-4"]').click();
-  await until(h, "the Highlight popover is open", () => pg.locator(".pop.k-highlight").count());
-  await idle(h);
-  const eye = pg.locator(".pop.k-highlight .sn-peek");
-  if ((await eye.count()) !== 1) {
-    check("sidenoteCardPreview the Card sidenote has a preview eye", false);
-    return;
-  }
-  await eye.hover();
-  await pg.locator(".cpeek.show").waitFor({ timeout: 5000 });
-  await idle(h);
-  const shown = await pg.evaluate(() => {
-    const pk = document.querySelector<HTMLElement>(".cpeek")!,
-      pop = document.querySelector<HTMLElement>(".pop.k-highlight")!.getBoundingClientRect(),
-      r = pk.getBoundingClientRect();
-    return {
-      text: pk.textContent ?? "",
-      // a copy of the card as the board draws it, which nothing looking for the board's cards finds
-      card: !!pk.querySelector(".card .nbody") && !pk.querySelector("[data-id]"),
-      w: Math.round(r.width),
-      h: Math.round(r.height),
-      beside: r.left >= pop.right || r.right <= pop.left,
-      cards: document.querySelectorAll('.card[data-id="nc"]').length,
-    };
-  });
-  await save(h, "sidenotes-card-preview", ".pop.k-highlight, .cpeek");
-  await pg.mouse.move(20, 880);
-  await until(h, "the preview is gone", async () => (await pg.locator(".cpeek").count()) === 0);
-  check(
-    "sidenoteCardPreview resting on the eye shows the card beside the popover, leaving hides it",
-    shown.text.includes("shared memory") &&
-      shown.card &&
-      shown.beside &&
-      shown.cards === 1 &&
-      shown.w <= 444 &&
-      shown.h <= 384,
-    shown,
   );
 });
 

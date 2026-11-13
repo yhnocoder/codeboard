@@ -388,16 +388,13 @@ function noteHtml(md: Markdown, n: Sidenote): string {
   switch (n.kind) {
     case "text":
       return `${where}<div class="md">${md.render(namedRefs(md, n.md))}</div>`;
-    case "link":
-      return `${where}<a href="${escHtml(n.url)}" target="_blank" rel="noopener">${escHtml(n.title || n.url)}</a>`;
-    case "card": {
-      const c = findCard(state.board, n.card)?.card;
-      return `${where}See “${escHtml(c ? cardTitle(c, state.board) : n.card)}”`;
+    case "code": {
+      const from =
+        n.code.src.kind === "free"
+          ? ""
+          : `<div class="xv-w">${escHtml(n.code.path)}:${n.code.start}–${n.code.end}</div>`;
+      return `${where}${from}<pre>${escHtml(n.code.text.join("\n"))}</pre>`;
     }
-    case "paste":
-      return `${where}<pre>${escHtml(n.text)}</pre>`;
-    case "code":
-      return `${where}<div class="xv-w">${escHtml(n.code.path)}:${n.code.start}–${n.code.end}</div><pre>${escHtml(n.code.text.join("\n"))}</pre>`;
   }
 }
 

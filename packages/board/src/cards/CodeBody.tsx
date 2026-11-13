@@ -50,6 +50,8 @@ import { useLineHover } from "./code/hover";
 import { useLineMarks } from "./code/marks";
 import { hxClasses, useHighlights, type Hx } from "./code/highlights";
 import { MdStatic } from "../ui/Md";
+import { Icon } from "../ui/icons";
+import { CardPeekOf, cardPeeks } from "../ui/pops/cardpeek";
 import { AnnotRail, useAnnots } from "./code/Annots";
 import { GapRow } from "./code/GapRow";
 import { freeEditBlur } from "./code/freeblur";
@@ -171,12 +173,12 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
   const hlLook = () => state.host.settings.highlightLook;
   const bracket = () => hlLook() === "bracket" || hlLook() === "bracket-hand";
   /**
-   * Where a Highlight's code starts right of the gutter (its notes start there, and its popup), as CSS (exact, in the code font's
-   * ch) and in px. A dedented line starts DED_PAD left of its hidden indent (text-indent); a tab goes on to the next tab stop at
-   * least half a column on (CSS Text), and tab stops count from the line's own left edge (every 4 columns, .src tab-size), not
-   * from where the text-indent puts it. The code font's measured width only decides which tab stop a tab reaches
+   * Where a Highlight's code starts right of the gutter (its notes start there), as CSS (exact, in the code font's ch). A
+   * dedented line starts DED_PAD left of its hidden indent (text-indent); a tab goes on to the next tab stop at least half a
+   * column on (CSS Text), and tab stops count from the line's own left edge (every 4 columns, .src tab-size), not from where the
+   * text-indent puts it. The code font's measured width only decides which tab stop a tab reaches
    */
-  const codeStart = (h: Hx): { css: string; px: number } => {
+  const codeStart = (h: Hx): string => {
     // the code font's width once the lines are laid out (measured with them, ys)
     const ch = (srcEl && ys().length && monoWidth(srcEl)) || MONO_GUESS;
     const pad = ded() ? DED_PAD : 0;
@@ -191,11 +193,8 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
       stop = (Math.floor((x + 0.5) / TAB_SIZE) + 1) * TAB_SIZE;
       cols = 0;
     }
-    return stop === undefined
-      ? { css: `calc(${pad}px + ${cols}ch)`, px: pad + cols * ch }
-      : { css: `${stop + cols}ch`, px: (stop + cols) * ch };
+    return stop === undefined ? `calc(${pad}px + ${cols}ch)` : `${stop + cols}ch`;
   };
-  const codeAt = (h: Hx) => Math.max(0, codeStart(h).px);
   const bandStyle = (h: Hx) => {
     const a = ys()[h.first],
       z = ys()[h.last];
@@ -230,6 +229,15 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
     const h = X.endRow().get(i);
     return h?.always.length ? h : undefined;
   };
+  // a click on a [[reference]] to a card in an Always Show note: that card's preview beside the reference
+  const refPeeks = cardPeeks();
+  /** The row of the selected lines' last line on this card: their Add Sidenote button sits there */
+  const selEnd = createMemo(() => {
+    const ls = lineSel();
+    if (!ls || ls.card !== c().id) return undefined;
+    const i = rows().findIndex((r) => r.t === "line" && r.seg === ls.seg && r.line === ls.end);
+    return i >= 0 ? i : undefined;
+  });
   const leaveHx = () => {
     hovered = undefined;
     act.leaveHighlight();
@@ -411,13 +419,12 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
             onCopy={(e) => copyCode(cx, e)}
           >
             <div class="gutter">
-              {/* a Highlight's gutter area (its line numbers and the marker column): hovering it opens its popup, under the numbers */}
+              {/* a Highlight's gutter area (its line numbers and the marker column): hovering it opens its popup, right of the card */}
               {eachHx((h) => (
                 <Show when={ys()[h().first] && ys()[h().last]}>
                   <div
                     class="hxhit"
                     data-hl={h().key}
-                    data-in={codeAt(h())}
                     data-nodrag
                     style={{
                       top: `${ys()[h().first].y}px`,
@@ -489,6 +496,23 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
                 ),
                 (h) => h.notes.length > 0,
               )}
+              <Show when={selEnd() !== undefined && ys()[selEnd()!]}>
+                <button
+                  class="lsadd"
+                  style={{ top: `${ys()[selEnd()!].y}px` }}
+                  data-nodrag
+                  aria-label="Add Sidenote"
+                  data-tip="Add Sidenote (S)"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const ls = lineSel();
+                    if (ls) act.openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] });
+                  }}
+                >
+                  <Icon name="plus" size={9} />
+                </button>
+              </Show>
               <For each={M.vrows()}>
                 {(x) => (
                   <Show when={ys()[x.i]}>
@@ -656,12 +680,17 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
                         <div
                           class="inotes hx-end"
                           data-hxe={h().key}
-                          style={{ "--hx-in": `max(0px, ${codeStart(h()).css})` }}
+                          style={{ "--hx-in": `max(0px, ${codeStart(h())})` }}
                         >
                           <For each={h().always}>
                             {(n) => (
                               <div class="inote" data-note={n.id}>
-                                <MdStatic class="nbody" src={n.md} onToggle={(v) => act.writeSidenote(n.id, v)} />
+                                <MdStatic
+                                  class="nbody"
+                                  src={n.md}
+                                  onToggle={(v) => act.writeSidenote(n.id, v)}
+                                  onRef={(to, el) => refPeeks.toggle(to, el)}
+                                />
                               </div>
                             )}
                           </For>
@@ -675,6 +704,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
           </div>
         </Show>
       </div>
+      <CardPeekOf peeks={refPeeks} />
     </>
   );
 }

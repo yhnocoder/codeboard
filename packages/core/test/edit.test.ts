@@ -68,7 +68,7 @@ const call = (from: string, to: string, line = 1): Extract<Link, { gen?: undefin
 const compare = (id: string, a: string, b: string): Card => ({ id, kind: "compare", cols: [a, b] });
 
 describe("removeCards", () => {
-  it("takes links, sidenotes on the card and Card sidenotes pointing at it", () => {
+  it("takes links and the sidenotes on the card; a reference to it in a sidenote stays (it shows as gone)", () => {
     const b: Board = {
       ...emptyBoard("b", "B"),
       cards: [code("a"), code("b"), code("p"), code("q"), compare("k", "p", "q")],
@@ -76,7 +76,7 @@ describe("removeCards", () => {
       links: [call("a", "b"), call("p", "a")],
       sidenotes: [
         { id: "n1", at: { card: "b" }, kind: "text", md: "on b" },
-        { id: "n2", at: { card: "a" }, kind: "card", card: "b" },
+        { id: "n2", at: { card: "a" }, kind: "text", md: "see [[B#^b]]" },
         { id: "n3", at: { card: "a" }, kind: "text", md: "stays" },
         { id: "n4", at: { card: "q" }, kind: "text", md: "on a Compare column" },
       ],
@@ -88,7 +88,7 @@ describe("removeCards", () => {
     removeCards(b, ["b", "k"]);
     expect(b.cards.map((c) => c.id)).toEqual(["a"]);
     expect(b.links).toEqual([]);
-    expect(b.sidenotes.map((n) => n.id)).toEqual(["n3"]);
+    expect(b.sidenotes.map((n) => n.id)).toEqual(["n2", "n3"]);
     expect(Object.keys(b.place)).toEqual(["a"]);
     expect(b.stickers.map((k) => k.id)).toEqual(["k2"]);
   });
@@ -237,7 +237,7 @@ describe("retargetCards", () => {
     links: [call("a", "b"), call("c", "a")],
     sidenotes: [
       { id: "n1", at: { card: "a", seg: "sa", lines: [1, 1] }, kind: "text", md: "on a line" },
-      { id: "n2", at: { card: "c" }, kind: "card", card: "b" },
+      { id: "n2", at: { card: "c" }, kind: "text", md: "on c" },
     ],
     stickers: [
       { id: "k1", icon: star, at: { kind: "line", card: "a", seg: "sa", line: 1 } },
@@ -247,7 +247,7 @@ describe("retargetCards", () => {
     ],
   });
 
-  it("moves link ends, every sidenote kind and every sticker kind to the new card (merge a+b → m)", () => {
+  it("moves link ends, the sidenotes on the cards and every sticker kind to the new card (merge a+b → m)", () => {
     const b = board();
     b.cards.push({ id: "m", kind: "code", segments: [seg("sm", 1, ["pass"])] });
     retargetCards(b, ["a", "b"], (at) => ({ card: "m", seg: at.seg ? "sm" : undefined }));
@@ -255,7 +255,7 @@ describe("retargetCards", () => {
     // a→b became m→m and is dropped, together with the sticker bound to it
     expect(b.links.map((l) => [l.from.card, l.to.card])).toEqual([["c", "m"]]);
     expect(b.sidenotes[0].at).toEqual({ card: "m", seg: "sm", lines: [1, 1] });
-    expect(b.sidenotes[1]).toMatchObject({ kind: "card", card: "m" });
+    expect(b.sidenotes[1].at).toEqual({ card: "c" });
     expect(b.stickers.map((k) => k.at)).toEqual([
       { kind: "line", card: "m", seg: "sm", line: 1 },
       { kind: "canvas", x: 0, y: 0, on: { card: "m" } },
@@ -306,7 +306,7 @@ describe("danglingRefs", () => {
 describe("migrateBoard", () => {
   it("refuses a board written by a newer CodeBoard instead of wiping it", () => {
     expect(() =>
-      migrateBoard({ version: 14, id: "b", name: "B", cards: [{ id: "a", kind: "code", segments: [] }] }),
+      migrateBoard({ version: 15, id: "b", name: "B", cards: [{ id: "a", kind: "code", segments: [] }] }),
     ).toThrow(/newer/);
   });
   it("v10 → v11: [[title]] references to this board's cards and Sections carry their ids; code, other boards and ids stay", () => {
@@ -394,7 +394,7 @@ describe("migrateBoard", () => {
   it("v7 → v8 upgrades shared card files too", () => {
     expect(
       loadSharedCard({ version: 7, card: { id: "s", kind: "note", md: "x", bg: false, hand: "green" }, sidenotes: [] }),
-    ).toEqual({ version: 13, card: { id: "s", kind: "note", md: "x", look: "mark", hand: "green" }, sidenotes: [] });
+    ).toEqual({ version: 14, card: { id: "s", kind: "note", md: "x", look: "mark", hand: "green" }, sidenotes: [] });
     expect(loadSharedCard({ version: 6, card: { ...code("s"), nobg: true }, sidenotes: [] }).card).toMatchObject({
       bg: false,
     });
@@ -1005,7 +1005,7 @@ describe("card copies, unlink, merge and unmerge (core edit, D2)", () => {
 
 describe("placing a sidenote on the board", () => {
   const at = { card: "a", seg: "sa", lines: [2, 2] as [number, number] };
-  it("makes the matching card: code, paste, text, link; a Card sidenote has none", () => {
+  it("makes the matching card: code (Free code too), text", () => {
     const c = sidenoteCard(
       { id: "n", at, kind: "code", code: seg("s1", 5, ["x = 1"]), why: "because" },
       "c1",
@@ -1017,14 +1017,13 @@ describe("placing a sidenote on the board", () => {
       ["x = 1"],
       false,
     ]);
-    const p = sidenoteCard({
-      id: "n",
-      at,
-      kind: "paste",
-      text: "a\nb",
-      lang: "python",
-      url: "https://x.y",
-    }) as CodeCard;
+    const free = {
+      ...seg("s2", 1, ["a", "b"]),
+      src: { kind: "free", url: "https://x.y" },
+      path: "",
+      version: { kind: "none" },
+    };
+    const p = sidenoteCard({ id: "n", at, kind: "code", code: free as Segment }) as CodeCard;
     expect([p.segments[0].src, p.segments[0].start, p.segments[0].end, p.segments[0].text]).toEqual([
       { kind: "free", url: "https://x.y" },
       1,
@@ -1037,12 +1036,6 @@ describe("placing a sidenote on the board", () => {
       md: "hi",
       look: "note",
     });
-    expect(sidenoteCard({ id: "n", at, kind: "link", url: "https://x.y", title: "T" })).toMatchObject({
-      kind: "web",
-      url: "https://x.y",
-      meta: { title: "T" },
-    });
-    expect(sidenoteCard({ id: "n", at, kind: "card", card: "b" })).toBeNull();
   });
   it("swaps the sidenote for an arrow from its line to the new card", () => {
     const b: Board = {

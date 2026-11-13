@@ -67,7 +67,7 @@ describe("applyPatch", () => {
     expect(b.name).toBe("New");
     expect(b.hideNumbers).toBeUndefined();
     expect(b.id).toBe("b");
-    expect(b.version).toBe(13);
+    expect(b.version).toBe(14);
     expect(b.cam).toEqual({ x: 1, y: 2, z: 3 });
     expect(b.cards.length).toBe(3);
   });
@@ -90,15 +90,10 @@ describe("applyPatch", () => {
 describe("shared cards: inflate / deflate / putShared", () => {
   it("deflate turns shared cards into refs in place and takes their travelling sidenotes; inflate puts them back", () => {
     const b = board();
-    b.sidenotes.push(text("n3", "b", { boardOnly: true }), {
-      id: "n4",
-      kind: "card",
-      card: "c",
-      at: { card: "b" },
-    } as Sidenote);
+    b.sidenotes.push(text("n3", "b", { boardOnly: true }), text("n4", "c"));
     const { file, shared } = deflate(b, new Set(["b"]));
     expect(file.cards.map((c) => c.kind)).toEqual(["note", "shared", "note"]);
-    expect(file.sidenotes.map((n) => n.id)).toEqual(["n1", "n3", "n4"]); // board-only and card-kind sidenotes stay on the board
+    expect(file.sidenotes.map((n) => n.id)).toEqual(["n1", "n3", "n4"]); // board-only ones and those on other cards stay on the board
     expect(shared).toEqual([{ card: b.cards[1], sidenotes: [b.sidenotes[1]] }]);
     expect(() => upgraded(structuredClone(file))).toThrow(); // a board with refs is not a full board
     const f = loadBoardFile(JSON.parse(JSON.stringify(file)));
@@ -205,7 +200,7 @@ describe("board format v6 and v7", () => {
   };
   it("v6 → v7: an old board's \\$a\\$ becomes math once; code, half-escaped and unsure text stay as written", () => {
     const b = upgraded(oldMath(6));
-    expect(b.version).toBe(13);
+    expect(b.version).toBe(14);
     expect((b.cards[0] as any).md).toBe("a $x^2$ b, $\\frac{a}{b}$ and ${n}$");
     expect(b.cards[1].desc).toBe("cost $O(n)$");
     expect((b.cards[3] as any).mergedFrom[0].card.desc).toBe("$y$");
@@ -235,11 +230,11 @@ describe("board format v6 and v7", () => {
       card: { ...note("s", "\\$a\\$"), desc: "\\$d\\$" },
       sidenotes: [text("n", "s", { md: "\\$t\\$" } as any)],
     });
-    expect(sc.version).toBe(13);
+    expect(sc.version).toBe(14);
     expect(sc.card).toMatchObject({ md: "$a$", desc: "$d$" });
     expect((sc.sidenotes[0] as any).md).toBe("$t$");
     expect((loadSharedCard({ version: 8, card: note("s", "\\$a\\$"), sidenotes: [] }).card as any).md).toBe("\\$a\\$");
-    expect(() => loadSharedCard({ version: 14, card: note("s"), sidenotes: [] })).toThrow(/newer/);
+    expect(() => loadSharedCard({ version: 15, card: note("s"), sidenotes: [] })).toThrow(/newer/);
   });
 });
 

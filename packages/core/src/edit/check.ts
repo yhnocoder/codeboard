@@ -55,7 +55,6 @@ export function danglingRefs(b: Board): string[] {
   }
   for (const n of b.sidenotes) {
     if (!segOk(n.at.card, n.at.seg)) out.push(`sidenote ${n.id} on missing ${n.at.card}`);
-    if (n.kind === "card" && !cards.has(n.card)) out.push(`sidenote ${n.id} points to missing ${n.card}`);
     if (n.variant) {
       const c = cards.get(n.at.card);
       if (c && !(c.kind === "code" && c.variants?.some((v) => v.id === n.variant)))

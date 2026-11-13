@@ -1,4 +1,4 @@
-// 旧白板文件 → 当前版本（第 13 版）。项目里唯一的兼容代码：旧版本的结构、缺省的字段、手改出来的 null 都在这里补成
+// 旧白板文件 → 当前版本（第 14 版）。项目里唯一的兼容代码：旧版本的结构、缺省的字段、手改出来的 null 都在这里补成
 // 和 model.ts 的类型一模一样，读进来之后的代码只认当前结构。schema.ts 校验的是这里的结果。
 import {
   BOARD_VERSION,
@@ -19,10 +19,10 @@ import {
   type Sticker,
   cardTitle,
 } from "./model";
-import { eachMarkdown, mapRefs } from "./mdrefs";
+import { eachMarkdown, mapRefs, refSource } from "./mdrefs";
 import { fixHighlights } from "./edit/highlights";
 
-/** 读进来的白板文件（第 1–13 版）→ 第 13 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
+/** 读进来的白板文件（第 1–14 版）→ 第 14 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
 export function migrateBoard(raw: any): BoardFile {
   // 更新的版本写的文件：读不懂就别碰（当第 1 版迁移会丢掉所有卡，下次自动保存把空白板写回去）
   if (typeof raw?.version === "number" && raw.version > BOARD_VERSION)
@@ -48,6 +48,9 @@ export function migrateBoard(raw: any): BoardFile {
   // 第 9 版 → 第 10 版：Text 卡不再有拖出来的高度（只能拖宽度），旧文件里留着的 h 删掉
   if (from < 10)
     for (const c of b.cards) if (c.kind === "note" && c.look === "text" && b.place[c.id]) delete b.place[c.id].h;
+  // 第 13 版 → 第 14 版：Sidenote 只剩文字和代码两种（v13to14Note）。放在 v12to13 前面：那里的 fixHighlights 要把从前的 Card
+  // sidenote 认成这块白板自己的（变成 boardOnly 以后才认得出）
+  if (from < 14) b.sidenotes = b.sidenotes.map((n: any) => v13to14Note(n, (id) => boardCardTitle(b, id)));
   b.version = BOARD_VERSION;
   normalize(b);
   // 第 10 版 → 第 11 版：[[引用]] 带上目标的 id（[[标题#^id]]），改名不再断开
@@ -57,6 +60,54 @@ export function migrateBoard(raw: any): BoardFile {
   // 第 12 版 → 第 13 版：Highlight 从一行行的行号变成几段行（能挂 Sidenote），见 v12to13
   if (from < 13) v12to13(b);
   return b;
+}
+
+/** The title of card `id` as the board file has it (a shared card's content is in the card library: none) */
+function boardCardTitle(b: any, id: string): string | undefined {
+  const c = b.cards.find((k: any) => k.id === id);
+  return c && c.kind !== "shared" ? cardTitle(c, b as Board) : undefined;
+}
+
+/** A link's title as Markdown text: the characters that would start a mark, a formula or a link written literally */
+const mdText = (s: string) => s.replace(/[\\`*_[\]<>$~=^]/g, (c) => `\\${c}`);
+
+/**
+ * 第 13 版 → 第 14 版的一条 Sidenote：只剩文字和代码。Link → 写着这个链接的文字；Paste → 没有固定来源的代码（Free code 的段，和
+ * Place on Board 把它放成卡时一样）；Card（指着这块白板上的另一张卡）→ 写着指向那张卡的 [[引用]] 的文字，只留在这块白板
+ * （boardOnly：那张卡只在这块白板上，它的 Highlight 本来就只是这块白板的，见 localNote）。why 照旧留在 Sidenote 上
+ */
+function v13to14Note(n: any, title: (id: string) => string | undefined): any {
+  const { kind, ...base } = n;
+  switch (kind) {
+    case "link": {
+      const { url, title: t, ...rest } = base;
+      const u = String(url ?? "");
+      const dest = /[\s()]/.test(u) ? `<${u}>` : u;
+      return { ...rest, kind: "text", md: `[${mdText(t || u)}](${dest})` };
+    }
+    case "paste": {
+      const { text, lang, url, ...rest } = base;
+      const lines = String(text ?? "").split("\n");
+      const src: Segment["src"] = url ? { kind: "free", url } : { kind: "free" };
+      const code: Segment = {
+        id: uid("s"),
+        src,
+        path: "",
+        lang: typeof lang === "string" && lang ? lang : "plaintext",
+        start: 1,
+        end: lines.length,
+        text: lines,
+        version: { kind: "none" },
+      };
+      return { ...rest, kind: "code", code };
+    }
+    case "card": {
+      const { card, ...rest } = base;
+      return { ...rest, kind: "text", md: refSource(title(card) ?? "", card), boardOnly: true };
+    }
+    default:
+      return n;
+  }
 }
 
 /** A segment's v12 highlighted lines (any order, repeats) → v13 Highlights: the maximal runs of consecutive lines */
@@ -87,8 +138,8 @@ function runsInCard(c: any) {
  * 第 12 版 → 第 13 版：a Highlight is a range of lines that can carry notes. Highlighted lines become their consecutive runs; every
  * sidenote on lines gets a Highlight of its lines; Highlights that then overlap or nest merge into their union, and the sidenotes on
  * them take the merged lines (fixHighlights, the same upkeep a version update uses). Code sidenotes' segments only get the runs.
- * A shared card's content is in its library file (migrateSharedCard). Board-only and Card sidenotes are Highlights of their own
- * (localNote), so the ones a board keeps on a shared card need nothing from the card
+ * A shared card's content is in its library file (migrateSharedCard). Board-only sidenotes (the old Card sidenotes are by now, see
+ * v13to14Note) are Highlights of their own (localNote), so the ones a board keeps on a shared card need nothing from the card
  */
 function v12to13(b: any) {
   for (const c of b.cards) runsInCard(c);
@@ -173,6 +224,9 @@ export function migrateSharedCard(raw: any): SharedCardFile {
       if (n?.kind === "code" && n.code) runsInCard({ kind: "code", segments: [n.code] });
     fixHighlights({ cards: [sc.card], sidenotes: sc.sidenotes ?? [] }, undefined, { review: false });
   }
+  // 第 14 版：Sidenote 只剩文字和代码（v13to14Note）；跟着共享卡走的从来不会是 Card sidenote（它们只留在自己的白板上）
+  if (sc?.version >= 6 && sc.version < 14)
+    sc.sidenotes = (sc.sidenotes ?? []).map((n: any) => v13to14Note(n, () => undefined));
   if (sc?.version >= 6 && sc.version < BOARD_VERSION) sc.version = BOARD_VERSION;
   if (sc?.card) normCard(sc.card);
   for (const n of sc?.sidenotes ?? []) normNote(n);

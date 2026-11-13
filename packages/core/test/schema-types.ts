@@ -147,10 +147,7 @@ export const cards: AllTrue<EachKind<Exclude<Card, CodeCard>, Out["cards"][numbe
 };
 export const sidenotes: AllTrue<EachKind<Sidenote, SNote>> = {
   code: true,
-  paste: true,
   text: true,
-  link: true,
-  card: true,
 };
 export const variantFroms: AllTrue<EachKind<VariantFrom, VOut["from"]>> = {
   upstream: true,

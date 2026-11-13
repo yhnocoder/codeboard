@@ -42,41 +42,11 @@ export function swapCallTarget(
   return { kept };
 }
 
-/**
- * Place on Board 的那张卡：Code / Paste → 代码卡，Text → Note，Link → 网页卡（「为什么相关」变成卡的说明）。
- * Card sidenote 指着的是白板上已有的卡，没有新卡
- */
-export function sidenoteCard(n: Sidenote, id = uid("c")): Card | null {
-  switch (n.kind) {
-    case "code":
-      return { id, kind: "code", segments: [{ ...clone(n.code), id: uid("s") }], desc: n.why };
-    case "paste": {
-      const text = n.text.split("\n");
-      return {
-        id,
-        kind: "code",
-        segments: [
-          {
-            id: uid("s"),
-            src: { kind: "free", url: n.url },
-            path: "",
-            lang: n.lang,
-            start: 1,
-            end: text.length,
-            text,
-            version: { kind: "none" },
-          },
-        ],
-        desc: n.why,
-      };
-    }
-    case "text":
-      return { id, kind: "note", md: n.md, look: "note" };
-    case "link":
-      return { id, kind: "web", url: n.url, meta: n.title ? { title: n.title } : undefined, desc: n.why };
-    case "card":
-      return null;
-  }
+/** Place on Board 的那张卡：Code → 代码卡（「为什么相关」变成卡的说明），Text → Note */
+export function sidenoteCard(n: Sidenote, id = uid("c")): Card {
+  return n.kind === "code"
+    ? { id, kind: "code", segments: [{ ...clone(n.code), id: uid("s") }], desc: n.why }
+    : { id, kind: "note", md: n.md, look: "note" };
 }
 /** Place on Board 在白板上的改动（新卡 card 已经放上白板）：Sidenote 去掉，从它挂的那一行连一条箭头到新卡 */
 export function sidenoteToCard(b: Board, id: string, card: string): void {
@@ -131,7 +101,7 @@ export function placeCards(
     }
     const nids = new Set(b.sidenotes.map((n) => n.id));
     for (const n of it.sidenotes ?? []) {
-      if (n.kind === "card" || n.at.card !== it.card.id) continue; // 指着别的卡的 Sidenote 不带（那张卡不在这块白板上）
+      if (n.at.card !== it.card.id) continue;
       const m = clone(n);
       if (o.copy) m.id = uid("n");
       else if (nids.has(m.id)) continue;
@@ -326,9 +296,9 @@ export function joinLinks(b: Board, first: string, second: string, mid: string):
   removeCards(b, [mid]);
 }
 
-/** 卡变成 Sidenote n：卡连同它的箭头一起删掉；n 是 kind card（指着这张卡）时卡留着 */
-export function cardIntoSidenote(b: Board, cardId: string, n: Sidenote): void {
+/** 卡变成 Sidenote n：卡连同它的箭头一起删掉；keep（n 只是指着这张卡）时卡留着 */
+export function cardIntoSidenote(b: Board, cardId: string, n: Sidenote, keep = false): void {
   b.sidenotes.push(n);
   onHighlight(b, n);
-  if (n.kind !== "card") removeCards(b, [cardId]);
+  if (!keep) removeCards(b, [cardId]);
 }

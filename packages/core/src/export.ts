@@ -160,16 +160,6 @@ function noteMd(b: Board, n: Sidenote, links?: Record<string, string>): string {
   switch (n.kind) {
     case "text":
       return quote(`${head}\n\n${localImages(n.md.trim())}`);
-    case "link":
-      return quote(`${head}: [${n.title || domainOf(n.url)}](${n.url})`);
-    case "card": {
-      const c = findCard(b, n.card)?.card;
-      return quote(`${head}: see “${c ? cardTitle(c, b) : n.card}”`);
-    }
-    case "paste": {
-      const f = fence(n.text);
-      return quote(`${head}${n.url ? ` · ${n.url}` : ""}\n\n${f}${mdLang(n.lang)}\n${n.text}\n${f}`);
-    }
     case "code":
       return quote([head, "", ...segMd(n.code, links?.[n.code.id])].join("\n"));
   }

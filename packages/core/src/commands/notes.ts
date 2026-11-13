@@ -11,6 +11,7 @@ import {
   type BoxFill,
   type HandColor,
   type HandWeight,
+  cardTitle,
   findCard,
   isCode,
   uid,
@@ -19,6 +20,7 @@ import {
   type Card,
   type NoteCard,
   type NoteLook,
+  type NewSidenote,
   type Sidenote,
 } from "../model";
 import { NEW_CARD_W, type Rect } from "../layout";
@@ -35,12 +37,13 @@ import {
   splitNoteByHeadings,
   turnNoteInto,
 } from "../edit";
+import { refSource } from "../mdrefs";
 import type { CommandEnv } from "./env";
 import { keepFitted, shownUnder, type FitMeasure } from "./fit";
 
 /**
  * Place on Board: a sidenote becomes a card, with an arrow from the line it was on, in one step. add = the shell puts the card on
- * the board where it wants, with `also` in the same step. The card, or null for a sidenote that is a card already
+ * the board where it wants, with `also` in the same step. The card, or null when the sidenote is gone
  */
 export function sidenoteOnBoard(
   env: CommandEnv,
@@ -48,16 +51,16 @@ export function sidenoteOnBoard(
   add: (card: Card, n: Sidenote, also: (b: Board) => void) => void,
 ): Card | null {
   const n = env.board().sidenotes.find((k) => k.id === noteId);
-  if (!n || n.kind === "card") return null;
+  if (!n) return null;
   const card = sidenoteCard(n);
-  if (!card) return null;
   add(card, n, (b) => sidenoteToCard(b, noteId, card.id));
   return card;
 }
 
 /**
  * A card dropped on a line becomes a sidenote there: a Note a Text sidenote, a one-segment code card a Code sidenote; a code card
- * with several segments stays and gets a Card sidenote pointing at it. The arrows on the card go with it (asked first)
+ * with several segments stays and gets a Text sidenote with a [[reference]] to it, kept on this board only (the card is on this
+ * board). The arrows on the card go with it (asked first)
  */
 export async function cardToSidenote(env: CommandEnv, cardId: string, at: Anchor): Promise<boolean> {
   const b = env.board();
@@ -73,16 +76,16 @@ export async function cardToSidenote(env: CommandEnv, cardId: string, at: Anchor
     if (ok !== 0) return false;
   }
   const id = uid("n");
-  const n: Sidenote | null =
-    isCode(c) && c.segments.length > 1
-      ? { id, at, kind: "card", card: cardId }
-      : c.kind === "note"
-        ? { id, at, kind: "text", md: c.md }
-        : isCode(c)
-          ? { id, at, kind: "code", code: structuredClone(c.segments[0]), why: c.desc }
-          : null;
+  const keep = isCode(c) && c.segments.length > 1;
+  const n: Sidenote | null = keep
+    ? { id, at, kind: "text", md: refSource(cardTitle(c, b), cardId), boardOnly: true }
+    : c.kind === "note"
+      ? { id, at, kind: "text", md: c.md }
+      : isCode(c)
+        ? { id, at, kind: "code", code: structuredClone(c.segments[0]), why: c.desc }
+        : null;
   if (!n) return false;
-  return env.edit((d) => cardIntoSidenote(d, cardId, n));
+  return env.edit((d) => cardIntoSidenote(d, cardId, n, keep));
 }
 
 /** An image card dropped on a Note: the image (already stored at `src`) goes into its Markdown at character `at` (a block start;
@@ -159,7 +162,7 @@ export function newWriting(
  * Add sidenotes in one step; their new ids, in order. One on lines goes on the Highlight of those lines, made when there is none;
  * lines that overlap Highlights grow them into one, with the sidenotes on them (addHighlight)
  */
-export function addSidenotes(env: CommandEnv, list: Omit<Sidenote, "id">[], fit?: FitMeasure): string[] {
+export function addSidenotes(env: CommandEnv, list: NewSidenote[], fit?: FitMeasure): string[] {
   const sns = list.map((n) => ({ ...n, id: uid("n") }) as Sidenote);
   const change = (b: Board) => {
     b.sidenotes.push(...sns);
@@ -203,6 +206,16 @@ export function deleteSidenote(env: CommandEnv, id: string, fit?: FitMeasure) {
   const card = shownIn(env, id);
   if (card) keepFitted(env, card, fit, change);
   else env.edit(change);
+}
+
+/** A card's whole-card sidenotes deleted in one step (they take no room on it); how many went */
+export function deleteCardSidenotes(env: CommandEnv, card: string): number {
+  const ids = env
+    .board()
+    .sidenotes.filter((n) => n.at.card === card && !n.at.lines)
+    .map((n) => n.id);
+  if (ids.length) env.edit((b) => removeSidenotes(b, ids));
+  return ids.length;
 }
 
 /** An image replaced by the one stored at `src`: an image card's (note left out), or the one at `note` in a Note's Markdown */

@@ -106,6 +106,9 @@ export const plainRefs = (md: string, title: (target: string) => string | undefi
     r.target ? `[[${(title(r.target) ?? r.label).replace(/[[\]\n]/g, " ").trim() || r.label}]]` : undefined,
   );
 
+/** A reference to `id` as the [[ list writes it, with `label` (its title now) as its text */
+export const refSource = (label: string, id: string) => `[[${label.replace(/[[\]\n]/g, " ").trim() || "Card"}#^${id}]]`;
+
 /** 目标换了 id 的（复制出来的副本）：[[标题#^旧]] → [[标题#^新]] */
 export const retargetRefs = (md: string, ids: Record<string, string>) =>
   mapRefs(md, (r) => (r.target && Object.hasOwn(ids, r.target) ? `[[${r.label}#^${ids[r.target]}]]` : undefined));

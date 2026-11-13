@@ -233,7 +233,7 @@ test("lineSelectionStaysOnItsBoard", async () => {
   await expect(page.locator(".toast")).toContainText("Select lines in a card first");
   check(
     "lineSelectionStaysOnItsBoard",
-    (await page.locator(".pop.k-addNote").count()) === 0,
+    (await page.locator(".pop.k-highlight .ncomp, .pop.k-notes .ncomp").count()) === 0,
     "no Add Sidenote for the sub-board's card",
   );
   await h.page.context().close();

@@ -247,7 +247,7 @@ test("editorKeysReachVsCode", async () => {
   await close(h);
 });
 
-/** Sidenote 的字：Esc、点到外面都保存（和 Note、问题一样）；字删光了保存就删掉这条；Add Sidenote 的 Text 页 Esc 也加上 */
+/** Sidenote 的字：Esc、点到外面都保存（和 Note、问题一样）；字删光了保存就删掉这条；popup 底部输入框里 Esc 也加上 */
 test("sidenoteTextEditSaves", async () => {
   const b = board();
   const C = b.cards[0] as CodeCard,
@@ -293,12 +293,12 @@ test("sidenoteTextEditSaves", async () => {
   await h.page.locator(".sn-edit button", { hasText: "Cancel" }).click();
   await idle(h);
   const afterCancel = texts();
-  // Highlight 弹窗的 + Add Note → Add Sidenote 的 Text：写了字按 Esc
+  // Highlight 弹窗底部的 +：输入框里写了字按 Esc
   await h.page.keyboard.press("Escape");
   await idle(h);
   await h.page.locator(".hxm").first().click();
-  await h.page.locator(".pop.k-highlight button.add").click(); // opens Add Sidenote on its Text tab
-  await h.page.locator(".addnote textarea:focus").waitFor();
+  await h.page.locator(".pop.k-highlight button.add").click();
+  await h.page.locator(".pop.k-highlight .ncomp .md-pm:focus").waitFor();
   before = JSON.stringify(texts());
   await keys(h.page, "added by esc{Escape}");
   await saved("Esc adds the text sidenote", before);

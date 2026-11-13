@@ -378,12 +378,13 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
         ]),
       );
     await page.keyboard.press("s");
-    await f.locator(".pop button", { hasText: /^Text$/ }).click();
     await until("the Sidenote's text field has the keyboard", () => typingIn(f, ".pop"));
     await page.keyboard.type("Prefill first, then decode.");
     await page.keyboard.press("Shift+Enter");
     await page.keyboard.type("Cost: $O(n^2)$ per step");
-    await f.locator(".pop button", { hasText: /^Add$/ }).click();
+    await page.keyboard.press("Enter"); // adds it; the input stays for the next one
+    await page.keyboard.press("Escape"); // the empty input
+    await page.keyboard.press("Escape"); // the popup
     const b = await waitJson((b) => b.sidenotes?.length === 1);
     check(
       b?.sidenotes?.length === 1 && /O\(n\^2\)/.test(b.sidenotes[0].md ?? b.sidenotes[0].text ?? ""),
@@ -773,10 +774,11 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
       await nos[1].click();
       await nos[2].click({ modifiers: ["Shift"] });
       await page.keyboard.press("s");
-      await f.locator(".pop button", { hasText: /^Text$/ }).click();
       await until("the Sidenote's text field has the keyboard", () => typingIn(f, ".pop"));
       await page.keyboard.type(t);
-      await f.locator(".pop button", { hasText: /^Add$/ }).click();
+      await page.keyboard.press("Enter"); // adds it; the input stays for the next one
+      await page.keyboard.press("Escape"); // the empty input
+      await page.keyboard.press("Escape"); // the popup
       await waitJson((b) => (b.sidenotes?.length ?? 0) >= n00 + k + 1);
       await idle(f);
     }

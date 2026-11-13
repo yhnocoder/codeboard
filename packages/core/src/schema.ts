@@ -292,10 +292,7 @@ const noteBase = {
 };
 const Sidenote = v.variant("kind", [
   obj({ ...noteBase, kind: v.literal("code"), code: Segment }),
-  obj({ ...noteBase, kind: v.literal("paste"), text: str, lang: str, url: opt(str) }),
   obj({ ...noteBase, kind: v.literal("text"), md: str, alwaysShow: opt(bool) }),
-  obj({ ...noteBase, kind: v.literal("link"), url: str, title: opt(str) }),
-  obj({ ...noteBase, kind: v.literal("card"), card: str }),
 ]);
 
 const Sticker = obj({

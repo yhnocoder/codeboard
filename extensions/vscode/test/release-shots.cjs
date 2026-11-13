@@ -241,10 +241,11 @@ const leaveNote = async (page, f) => {
     .nth(6)
     .click({ modifiers: ["Shift"] });
   await page.keyboard.press("s");
-  await f.locator(".pop button", { hasText: /^Text$/ }).click();
   await until("the Sidenote's text field has the keyboard", () => typingIn(f, ".pop"));
   await page.keyboard.type("Prefill admits waiting sequences until the token budget runs out.");
-  await f.locator(".pop button", { hasText: /^Add$/ }).click();
+  await page.keyboard.press("Enter"); // adds it; the input stays for the next one
+  await page.keyboard.press("Escape"); // the empty input
+  await page.keyboard.press("Escape"); // the popup
   check(await soon(() => sch.locator(".hxm").count(), Boolean, 5000), "Sidenote added");
   await page.keyboard.press("Escape");
   await blank(f);
