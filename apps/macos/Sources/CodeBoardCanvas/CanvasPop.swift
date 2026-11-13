@@ -10,10 +10,10 @@ import CodeBoardSyntax
 // moves for it. Dragged by its title bar it keeps its offset from its marker as the camera moves, with a thin dashed line
 // back to it; closed and opened again it is in its place again. A camera move only moves the web view.
 
-private let GAP: CGFloat = 12
-private let PAD: CGFloat = 8
+private let popGap: CGFloat = 12
+private let popPad: CGFloat = 8
 /// How much of a dragged popup stays in the window, so its title bar can be taken again
-private let KEEP_IN: CGFloat = 40
+private let keepIn: CGFloat = 40
 
 /// What the popup is placed by: the element it is beside (the marker, else the lines, the block, the card) and the
 /// right edge it goes right of, on the board
@@ -298,14 +298,15 @@ extension CanvasView {
       var p = CGPoint(x: el.minX + h.dx * z, y: el.minY + h.dy * z)
       // kept in the window while what it is on is
       if el.intersects(bounds) {
-        p.x = min(max(p.x, PAD), max(PAD, W - PAD - size.width))
-        p.y = min(max(p.y, PAD), max(PAD, H - PAD - size.height))
+        p.x = min(max(p.x, popPad), max(popPad, vw - popPad - size.width))
+        p.y = min(max(p.y, popPad), max(popPad, vh - popPad - size.height))
       }
       return p
     }
     let right = camera.view(CGPoint(x: a.right, y: 0)).x
     return CGPoint(
-      x: max(PAD, min(right + GAP, W - PAD - size.width)), y: max(PAD, min(el.minY - 6, H - PAD - size.height)))
+      x: max(popPad, min(right + popGap, vw - popPad - size.width)),
+      y: max(popPad, min(el.minY - 6, vh - popPad - size.height)))
   }
 
   /// The web view where the popup goes now, and the dashed line back to its marker when dragged away
@@ -342,8 +343,8 @@ extension CanvasView {
     let size = sidenotePop.size
     let from = popDragFrom ?? popAt
     popDragFrom = ended ? nil : from
-    let x = min(max(from.x + d.width, KEEP_IN - size.width), bounds.width - KEEP_IN)
-    let y = min(max(from.y + d.height, 0), bounds.height - KEEP_IN)
+    let x = min(max(from.x + d.width, keepIn - size.width), bounds.width - keepIn)
+    let y = min(max(from.y + d.height, 0), bounds.height - keepIn)
     let o = camera.view(a.el.origin)
     let z = camera.zoom
     popHeld = CGVector(dx: (x - o.x) / z, dy: (y - o.y) / z)

@@ -161,8 +161,8 @@ extension CanvasSidenoteTests {
       let vw = c.bounds.width
       let vh = c.bounds.height
       #expect(box.width == 460 && box.height > 40)
-      #expect(abs(box.minX - max(8, min(right + 12, W - 8 - box.width))) < 0.5, "\(at)")
-      #expect(abs(box.minY - max(8, min(top - 6, H - 8 - box.height))) < 0.5, "\(at)")
+      #expect(abs(box.minX - max(8, min(right + 12, vw - 8 - box.width))) < 0.5, "\(at)")
+      #expect(abs(box.minY - max(8, min(top - 6, vh - 8 - box.height))) < 0.5, "\(at)")
       // it takes the pointer on itself only
       let inside = c.convert(CGPoint(x: box.midX, y: box.midY), to: c.superview)
       let outside = c.convert(CGPoint(x: box.minX - 30, y: box.midY), to: c.superview)
