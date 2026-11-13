@@ -149,6 +149,12 @@ describe("<mark>x</mark> written as ==x==", () => {
     const q = "> ```\n> <mark>x</mark>\n> ```\n\n<mark>y</mark>";
     expect(markTags(q)).toBe("> ```\n> <mark>x</mark>\n> ```\n\n==y==");
   });
+  it("keeps a Markdown sample inside a fence as code: its own list-item or indented fence does not close it", () => {
+    const sample = "```md\n- ```\n  <mark>x</mark>\n    ```\n<mark>y</mark>\n```\n\nafter <mark>z</mark>";
+    expect(markTags(sample)).toBe("```md\n- ```\n  <mark>x</mark>\n    ```\n<mark>y</mark>\n```\n\nafter ==z==");
+    const q = "> ```\n> > ```\n> <mark>x</mark>\n> ```\n\n<mark>y</mark>";
+    expect(markTags(q)).toBe("> ```\n> > ```\n> <mark>x</mark>\n> ```\n\n==y==");
+  });
   it("leaves a <mark> right after a rewritten one, and one in a formula, as written", () => {
     expect(markTags("<mark>a</mark><mark>b</mark>")).toBe("==a==<mark>b</mark>");
     expect(markTags("$<mark>a</mark>$ and $$<mark>b</mark>$$ but <mark>c</mark>")).toBe(
@@ -187,6 +193,11 @@ describe("pasted plain text that reads as code", () => {
     expect(pastedCodeLang("```py\nx = 1\n```", always)).toBe(null);
     expect(pastedCodeLang("# a comment\ndef f(*args, **kw):\n    return g(*args)", always)).toBe("python");
     expect(pastedCodeLang("def f(x):\n    y = x\n    return y", always)).toBe("python");
+  });
+  it("takes a bare address or an index-and-call for code's, not for a Markdown link", () => {
+    expect(pastedCodeLang('# fetch\nurl = "https://x.com/a"\nr = get(url)', always)).toBe("python");
+    expect(pastedCodeLang("y = fs[i](x)\nz = fs[j](y)", always)).toBe("python");
+    expect(pastedCodeLang('see [the docs](./docs.md "Docs")\nand more', always)).toBe(null);
   });
   it("is prose when it holds a formula; shell variables are no formula", () => {
     const cu = () => "cuda-cpp";

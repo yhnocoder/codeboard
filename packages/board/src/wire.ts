@@ -4,7 +4,7 @@
 import { createEffect, on, untrack } from "solid-js";
 import { createMarkdown, type Markdown } from "@yhnocoder/markdown";
 import { langId, langInfo } from "@codeboard/analysis/langs";
-import { guessLang } from "@codeboard/core";
+import { noteCodeLang } from "@codeboard/core";
 import { onHost } from "./hostio";
 import { installKeys } from "./interact";
 import { connectHost, followHostTheme, type Transport } from "./host";
@@ -60,9 +60,10 @@ export function wireBoard(t: Transport, o: BoardOptions): Markdown {
     // a zoom or a pan brings images into view by the camera's transform: loaded at once and drawn only decoded, never drawn as
     // nothing until a lazy load or an async decode lands (cards/Card.tsx draws Image cards the same way)
     eagerImages: true,
-    // pasted code is told from prose as on the canvas (core's classifier), its language written as a fence names it
+    // pasted code is told from prose by core's classifier (its strict entry for Note text), its language written as a fence
+    // names it
     codeLang: (text) => {
-      const l = guessLang(text);
+      const l = noteCodeLang(text);
       return l === null ? null : (langInfo(l)?.md ?? l);
     },
   });

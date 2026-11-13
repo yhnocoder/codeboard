@@ -144,12 +144,14 @@ export function pastedCodeLang(text: string, classify: (text: string) => string 
 }
 function mdStructure(text: string): boolean {
   if (/^ {0,3}(```|~~~)/m.test(text)) return true;
+  // a link written [text](address) and not right after a name (fs[i](x) is an index and a call); a bare address
+  // (url = "https://…") is code's as much as prose's
+  if (/(^|[^\w\])])\[[^\]\n]+\]\((?:[a-z][\w+.-]*:|\.{0,2}\/|#)[^)\s]*(?:\s+"[^"]*")?\)/im.test(text)) return true;
   const doc = pastedMd(text);
   if (!doc) return false;
   let found = false;
   const walk = (n: JSONContent) => {
     if (/^(bulletList|orderedList|taskList|blockquote|table)$/.test(n.type ?? "")) found = true;
-    if (n.marks?.some((m) => m.type === "link")) found = true;
     // a formula: a $$ block, or a $…$ that reads as TeX (a command, a sub/superscript, a group); shell's "$a" … "$b" pairs
     // up as $…$ too, but holds none of these
     if (n.type === "blockMath" || (n.type === "inlineMath" && /\\[A-Za-z]|[\^_{}]/.test(String(n.attrs?.latex ?? ""))))

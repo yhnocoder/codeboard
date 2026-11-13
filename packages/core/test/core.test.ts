@@ -20,6 +20,7 @@ import {
   parseGithubUrl,
   classifyPaste,
   guessLang,
+  noteCodeLang,
   migrateBoard,
   mergeOverlapping,
   sortSegments,
@@ -384,6 +385,22 @@ describe("paste", () => {
     expect(
       guessLang("## Plan\nWe return early when the cache is cold (rare).\nOtherwise see [the docs](https://x)."),
     ).toBe(null);
+  });
+  it("for a Note's text, takes two-line prose with a bracket, a colon or a leading for/if as no code", () => {
+    for (const prose of [
+      "Thanks (really)!\nSee you tomorrow.",
+      "## Plan\nWe return early when the cache is cold (rare).",
+      "Two things to note:\nthe cache and the queue.",
+      "for the record, it works.\nif not, tell me.",
+      "a = b, as said\nthen we go on",
+    ])
+      expect([prose, noteCodeLang(prose)]).toEqual([prose, null]);
+  });
+  it("for a Note's text, still reads code as code, a URL in it too", () => {
+    expect(noteCodeLang("def f(x):\n    return x")).toBe("python");
+    expect(noteCodeLang('# fetch\nurl = "https://x.com/a"\nr = get(url)')).toBe("python");
+    expect(noteCodeLang("int main() {\n  return 0;\n}")).not.toBe(null);
+    expect(noteCodeLang("__global__ void k(float* x) {\n  int i = threadIdx.x;\n}")).toBe("cuda-cpp");
   });
 });
 
