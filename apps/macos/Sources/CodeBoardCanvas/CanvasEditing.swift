@@ -1560,6 +1560,15 @@ extension CanvasView {
       }
       return menu
     }
+    // a folder board's automatic card: Open and Arrange ▸ (it goes only with its board or folder)
+    if sel.count == 1, case .card(let c)? = sel.first, doc.board.isAuto(c) {
+      menu.addItem(menuItem("Open") { [weak self] in self?.openSubBoard(c) })
+      let arrange = NSMenu()
+      add("Bring to Front", #selector(bringToFront(_:)), to: arrange)
+      add("Send to Back", #selector(sendToBack(_:)), to: arrange)
+      menu.addItem(withTitle: "Arrange", action: nil, keyEquivalent: "").submenu = arrange
+      return menu
+    }
     // one card: its menu starts with Add Sidenote
     if sel.count == 1, case .card(let c)? = sel.first {
       menu.addItem(addNoteItem(card: c, at: p))

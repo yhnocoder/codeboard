@@ -48,6 +48,16 @@ extension Board {
     for c in cards where ids.contains(c.id) {
       var copy = c
       if c.section.map(secs.contains) != true { copy.section = nil }
+      // a copy of an automatic card is a plain one (a subfolder's has no plain form, and is not copied)
+      if case .own(var content) = c.content, case .board(var s) = content.body, s.auto {
+        guard s.board != nil else {
+          ids.remove(c.id)
+          continue
+        }
+        s.auto = false
+        content.body = .board(s)
+        copy.content = .own(content)
+      }
       if case .shared = c.content {
         guard let sc = shared(c.id) else {
           ids.remove(c.id)

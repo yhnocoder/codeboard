@@ -125,4 +125,48 @@ import Testing
     #expect(pane.canvas.currentCamera == was)
     #expect(shell.current?.forward.map(\.board) == [b])
   }
+
+  @Test func anOpenFolderBoardKeepsACardForEachBoardAndSubfolderAndTheyCannotBeDeleted() async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appending(path: "panes-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: root) }
+    let vault = Vault(root: root)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    try vault.newFolder(in: "", name: "调度")
+    let step = try vault.newBoard(in: "调度", title: "Step")
+    let fb = try vault.newFolderBoard(in: "调度")
+    let shell = Shell()
+    shell.open(vault, restoring: nil)
+    shell.apply(.success(try vault.tree()))
+    let panes = BoardPanes(shell: shell)
+    shell.show(fb.id)
+    panes.sync()
+    let doc = try #require(panes.documents[fb.id])
+    #expect(doc.board.autoCards.map(\.target) == [.board(step.id)])
+    #expect(doc.history.undoSteps.isEmpty, "no undo step")
+    // a board and a subfolder come: their cards after the first; the user's own Note stays
+    doc.edit("Add") {
+      $0.cards.append(
+        Card(
+          id: CardID(rawValue: "mine"), x: -500, y: 0, width: 200,
+          content: .own(CardContent(body: .note(Note(text: "mine"))))))
+    }
+    let more = try vault.newBoard(in: "调度", title: "Prefill")
+    try vault.newFolder(in: "调度", name: "Kernels")
+    shell.apply(.success(try vault.tree()))
+    panes.sync(reload: true)
+    #expect(Set(doc.board.autoCards.map(\.target)) == [.board(step.id), .board(more.id), .folder("Kernels")])
+    #expect(doc.board.card(CardID(rawValue: "mine")) != nil)
+    // deleting them on the board does nothing; the board moved out: its card goes
+    let auto = Set(doc.board.autoCards.map { Item.card($0.card.id) })
+    doc.edit("Delete") { $0.delete(auto) }
+    #expect(doc.board.autoCards.count == 3)
+    try vault.move(more.path, into: "")
+    shell.apply(.success(try vault.tree()))
+    panes.sync(reload: true)
+    #expect(Set(doc.board.autoCards.map(\.target)) == [.board(step.id), .folder("Kernels")])
+    // written to its file
+    panes.flush()
+    #expect(try vault.board(at: fb.path).autoCards.count == 2)
+  }
 }

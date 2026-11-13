@@ -72,7 +72,17 @@ import CodeBoardNotes
         pane.restyle(theme)
       }
     }
+    keepFolderBoardsUp()
     reveal()
+  }
+
+  /// Each open folder board keeps one automatic card for each board and subfolder in its folder (no undo step)
+  private func keepFolderBoardsUp() {
+    guard let tree = shell.tree else { return }
+    for (id, doc) in documents {
+      guard let at = shell.board(id), at.isFolderBoard, let folder = tree.folder(at: at.folder) else { continue }
+      doc.sync { $0.keepUp(with: folder.entries) }
+    }
   }
 
   /// One document per board while the app runs, whichever tabs show it, so its undo history outlives tab switches

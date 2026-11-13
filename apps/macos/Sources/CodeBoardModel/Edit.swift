@@ -162,7 +162,8 @@ extension Board {
   public mutating func delete(_ items: Set<Item>) {
     let goneArrows = Set(items.compactMap(\.arrow))
     arrows.removeAll { goneArrows.contains($0.id) }
-    let goneCards = Set(items.compactMap(\.card).filter { card($0) != nil && !isLocked(.card($0)) })
+    // a folder board's automatic cards go only with what they are for
+    let goneCards = Set(items.compactMap(\.card).filter { card($0) != nil && !isLocked(.card($0)) && !isAuto($0) })
     let goneSections = Set(items.compactMap(\.section).filter { section($0) != nil && !isLocked(section: $0) })
     // up out of the deleted Sections, to the nearest one that stays
     func up(_ id: SectionID?) -> SectionID? {

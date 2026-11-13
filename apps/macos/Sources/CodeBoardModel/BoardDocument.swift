@@ -97,6 +97,23 @@ import Foundation
     changed(.edit)
   }
 
+  /// A change the app makes by itself (a folder board's automatic cards kept in step with its folder): on the board and
+  /// saved, no undo step, as another writer's change is; the steps it breaks are dropped
+  public func sync(_ change: (inout Board) -> Void) {
+    var b = board
+    change(&b)
+    guard b != board else { return }
+    if var w = writing {
+      change(&w.before)
+      writing = w
+    }
+    board = b
+    history.keep(holdingOn: b)
+    selection = selection.filter { b.has($0) }
+    for o in observers.values { o(.merge) }
+    scheduleSave()
+  }
+
   // MARK: Writing in a card
 
   /// A card being written in: the board as it was when the writing began, which the one undo step the writing becomes

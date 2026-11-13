@@ -20,6 +20,12 @@ extension Board {
     }
   }
 
+  /// Whether a card is a folder board's automatic card
+  public func isAuto(_ id: CardID) -> Bool {
+    guard case .own(let c)? = card(id)?.content, case .board(let s) = c.body else { return false }
+    return s.auto
+  }
+
   /// The folder board's automatic cards made to match its folder (`entries`, in sidebar order): one goes for what left,
   /// one comes for what came, after the last automatic card (gaps left by those gone are not filled). The user's own
   /// cards, Sections, arrows and where every card is are kept. Whether it changed anything
