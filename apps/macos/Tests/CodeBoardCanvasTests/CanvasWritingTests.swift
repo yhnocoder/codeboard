@@ -323,25 +323,51 @@ extension CanvasWritingTests {
 }
 
 extension CanvasWritingTests {
-  @Test func zoomingWhileWritingScalesAPictureOfItThenShowsTheEditorAtTheNewZoom() async throws {
+  /// A pinch while writing: the web view stays, its layer scaled over the card as the camera zooms, with nothing drawn,
+  /// asked for or swapped in until the gesture ends (frames ticking as the display link gives them); at rest the editor
+  /// shows itself at the new zoom, and what was typed survives
+  @Test func zoomingWhileWritingScalesTheEditorsLayerThenShowsItAtTheNewZoomAtRest() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }
     r.click(r.centre("t1"))
     r.key(36)
     await r.editorReady()
     await r.type(" now")
+    await r.idle()
     let editor = r.canvas.noteEditor
     let i = try #require(r.canvas.index(of: .card(cid("t1"))))
     let paper = r.canvas.items[i].box
-    // a pinch: the editor goes out of sight once the canvas holds a picture of what it showed
-    r.canvas.pinch(by: 1.25, around: CGPoint(x: 500, y: 350), at: 1, began: true, ended: false)
+    let before = r.breaks
+    let host = try #require(editor.view.superview)
+    let margin = editor.view.cardRect.minX
+    let around = CGPoint(x: 500, y: 350)
+    var t: TimeInterval = 1
+    r.canvas.pinch(by: 1.05, around: around, at: t, began: true, ended: false)
+    for _ in 0..<12 {
+      t += 1.0 / 120
+      r.canvas.pinch(by: 1.02, around: around, at: t, began: false, ended: false)
+      r.canvas.tick(at: t)
+      #expect(editor.view.shown, "the web view stays")
+      #expect(r.canvas.items[i].box === paper, "no picture swapped in")
+      // its layer covers the card where the camera shows it now
+      let z = r.canvas.camera.zoom
+      let k = try #require(r.canvas.editing?.shownZoom)
+      let o = r.canvas.camera.view(r.rect("t1").origin)
+      let size = try #require(r.canvas.editing?.size)
+      let card = r.canvas.convert(CGRect(x: o.x, y: o.y, width: size.width * z, height: size.height * z), to: host)
+      let f = z / k
+      let want = card.insetBy(dx: -margin * f, dy: -margin * f)
+      let got = try #require(editor.view.layer?.frame)
+      #expect(
+        abs(got.minX - want.minX) < 0.5 && abs(got.minY - want.minY) < 0.5 && abs(got.width - want.width) < 0.5,
+        "layer \(got) over \(want)")
+    }
     #expect(r.canvas.editing?.zooming == true)
-    let deadline = ContinuousClock.now + .seconds(10)
-    while editor.view.shown, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
-    #expect(!editor.view.shown)
-    #expect(r.canvas.items[i].box !== paper, "the card shows the picture")
-    r.canvas.pinch(by: 1, around: CGPoint(x: 500, y: 350), at: 1.05, began: false, ended: true)
+    #expect(r.breaks == before, "nothing drawn, decoded, asked for or swapped during the gesture")
+    t += 1.0 / 120
+    r.canvas.pinch(by: 1, around: around, at: t, began: false, ended: true)
     await r.idle()
+    let deadline = ContinuousClock.now + .seconds(20)
     while r.canvas.editing?.zooming == true, ContinuousClock.now < deadline {
       r.tick()
       try await Task.sleep(for: .milliseconds(5))
@@ -349,6 +375,7 @@ extension CanvasWritingTests {
     #expect(r.canvas.editing?.zooming == false)
     #expect(r.canvas.editing?.shownZoom == r.canvas.camera.zoom)
     #expect(editor.view.shown)
+    #expect(editor.view.layer?.affineTransform() == .identity)
     // the web view's card lies on the card at the new zoom
     let card = editor.view.convert(editor.view.cardRect, to: r.canvas)
     let at = r.canvas.camera.view(r.rect("t1").origin)

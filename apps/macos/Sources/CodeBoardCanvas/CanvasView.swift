@@ -84,6 +84,8 @@ public final class CanvasView: NSView {
   /// The card being written in, and the layers it had before (shown again when nothing was written)
   var editing: Editing?
   var editingOriginal: ItemLayers?
+  /// The editor showing itself at rest at a new zoom
+  var editingRests: Task<Void, Never>?
   var editingEnds: Task<Void, Never>?
   /// The floating bar's bitmap and what it shows
   var barImage: (key: String, image: CGImage)?

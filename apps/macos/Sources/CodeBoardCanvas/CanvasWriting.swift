@@ -30,7 +30,10 @@ struct Editing {
   var ending = false
   /// The zoom the editor shows; another (a zoom gesture) shows the canvas's bitmap of what it shows instead
   var shownZoom: CGFloat = 1
+  /// A zoom moved the camera from `shownZoom`, and the editor has not shown itself at rest at the new zoom yet
   var zooming = false
+  /// At rest after a zoom: a picture of the card shows in the web view's place while it draws at the new zoom
+  var pictured = false
 }
 
 /// The card sits this far in from the web view's top left (view points), so the editor's menus have room
@@ -136,6 +139,7 @@ extension CanvasView {
   /// The web view over the card, the card `editorMargin` in from its top left
   func positionEditor() {
     guard let ed = editing, let i = editingIndex, let host = noteEditor.view.superview else { return }
+    if ed.zooming && !ed.pictured { return scaleEditor() }
     let r = editingRect(scene!.items[i].rect)
     let z = camera.zoom
     let o = camera.view(r.origin)
@@ -169,25 +173,61 @@ extension CanvasView {
 
   // MARK: Zooming while writing
 
-  /// A zoom gesture: the canvas scales a bitmap of what the editor shows in its place, the web view out of sight; at
-  /// rest the editor is shown at the new zoom again. A pan only moves the web view with the card
+  /// A zoom gesture: the web view keeps what it drew at the zoom it shows and its layer scales that to the camera's zoom
+  /// over the card, as the canvas scales the other cards' bitmaps (nothing new is drawn, asked for or swapped in). At
+  /// rest the editor shows itself at the new zoom. A pan only moves the web view with the card
   func cameraMovedWhileEditing() {
     guard let ed = editing, ed.ready, !ed.ending else { return }
-    if camera.zoom == ed.shownZoom || ed.zooming {
-      if !ed.zooming { positionEditor() }
-      return
-    }
-    editing?.zooming = true
-    guard let size = ed.size, let i = editingIndex else { return }
+    if camera.zoom != ed.shownZoom { editing?.zooming = true }
+    positionEditor()
+  }
+
+  /// The web view at its size for `shownZoom`, its card's top left on the card's, its layer scaled to the camera's zoom
+  /// about that corner
+  private func scaleEditor() {
+    guard let ed = editing, let i = editingIndex, let host = noteEditor.view.superview,
+      let layer = noteEditor.view.layer
+    else { return }
+    let r = editingRect(scene!.items[i].rect)
     let k = ed.shownZoom
+    let o = camera.view(r.origin)
+    let card = CGRect(x: o.x, y: o.y, width: r.width * k, height: r.height * k)
+    let frame = convert(card.insetBy(dx: -editorMargin, dy: -editorMargin), to: host)
+    withoutAnimation {
+      layer.setAffineTransform(.identity)
+      if noteEditor.view.frame != frame { noteEditor.view.frame = frame }
+      // about the card's top left, in the host's (its layer's) coordinates
+      let corner = convert(o, to: host)
+      let a = layer.position
+      let f = camera.zoom / k
+      layer.setAffineTransform(
+        CGAffineTransform(a: f, b: 0, c: 0, d: f, tx: (1 - f) * (corner.x - a.x), ty: (1 - f) * (corner.y - a.y)))
+    }
+    if let size = ed.size { noteEditor.place(size: size, k: k, margin: editorMargin) }
+  }
+
+  /// At rest after a zoom: a picture of what the editor shows takes its place while it draws itself at the zoom now
+  /// shown (a picture at rest, never during the gesture), then the editor over the card's paper again
+  func restAfterEditingZoom() {
+    guard let ed = editing, ed.zooming, !ed.ending, editingRests == nil else { return }
+    editingRests = Task {
+      await restEditor()
+      editingRests = nil
+    }
+  }
+
+  private func restEditor() async {
     let editor = noteEditor
-    Task {
-      guard let snap = await editor.snapshot(size: size, k: k), editing?.zooming == true, let s = scene,
-        editingIndex == i
+    let atRest = { [unowned self] in
+      motion.isResting && gesture == nil && editing?.zooming == true && editing?.ending == false
+    }
+    if editing?.pictured == false {
+      guard let ed = editing, let size = ed.size, let i = editingIndex,
+        let snap = await editor.snapshot(size: size, k: ed.shownZoom), atRest(), let s = scene, editingIndex == i
       else { return }
       var it = s.items[i]
       it.rect = editingRect(it.rect)
-      let scale = k * backing
+      let scale = ed.shownZoom * backing
       guard let surface = CanvasView.compose(it, snap, scale: scale, theme: theme, images: images) else { return }
       withoutAnimation {
         let l = ItemLayers(it, overview: (surface, scale, .drawn), shadow: it.drawing.framed ? cardShadow : nil)
@@ -195,27 +235,22 @@ extension CanvasView {
         items[i].box.superlayer?.replaceSublayer(items[i].box, with: l.box)
         items[i] = l
         editor.view.shown = false
+        editor.view.layer?.setAffineTransform(.identity)
       }
+      editing?.pictured = true
     }
-  }
-
-  /// At rest after a zoom: the editor at the zoom shown, over the card's paper again
-  func restAfterEditingZoom() {
-    guard let ed = editing, ed.zooming, !ed.ending else { return }
     let z = camera.zoom
-    let editor = noteEditor
-    Task {
-      await editor.zoom(z)
-      guard editing?.zooming == true, camera.zoom == z else { return }
-      editing?.zooming = false
-      editing?.shownZoom = z
-      withoutAnimation {
-        showPaper()
-        positionEditor()
-        editor.view.shown = true
-      }
-      CATransaction.flush()
+    await editor.zoom(z)
+    guard atRest(), camera.zoom == z else { return }
+    editing?.zooming = false
+    editing?.pictured = false
+    editing?.shownZoom = z
+    withoutAnimation {
+      showPaper()
+      positionEditor()
+      editor.view.shown = true
     }
+    CATransaction.flush()
   }
 
   // MARK: Leaving
@@ -279,7 +314,10 @@ extension CanvasView {
         items[i] = original
       }
     }
-    withoutAnimation { editor.view.shown = false }
+    withoutAnimation {
+      editor.view.shown = false
+      editor.view.layer?.setAffineTransform(.identity)
+    }
     CATransaction.flush()
     editor.clear()
     editingOriginal = nil
