@@ -7,12 +7,12 @@ import UniformTypeIdentifiers
 @testable import CodeBoardCanvas
 
 // Editing on the real canvas, driven by mouse and key events made in this process for a window of its own (never
-// ordered on screen, so nothing reaches the screen, the pointer or another app), at two zooms. The events go straight
+// on screen: far off it, so nothing reaches the screen, the pointer or another app), at two zooms. The events go straight
 // to the canvas's handlers, as the window would deliver them: a window off screen is never key, and NSWindow drops the
 // first click on a window that is not. The Note page renders
 // the Texts and Boxes, so these need the built page (node web/build.mjs) and a login session, as CanvasNoteTests.
 
-private func cid(_ s: String) -> CardID { CardID(rawValue: s) }
+func cid(_ s: String) -> CardID { CardID(rawValue: s) }
 private func gid(_ s: String) -> SectionID { SectionID(rawValue: s) }
 
 /// Two overlapping Notes, a Text, a Box, an image, a Section with a Note in it, a locked Note and an arrow
@@ -84,9 +84,16 @@ private func png(_ url: URL) throws {
     canvas = CanvasView(frame: CGRect(x: 0, y: 0, width: 1000, height: 700), notes: Rig.notes)
     if let pasteboard { canvas.pasteboard = pasteboard }
     window = NSWindow(
-      contentRect: CGRect(x: 0, y: 0, width: 1000, height: 700), styleMask: [.titled], backing: .buffered, defer: false)
+      contentRect: CGRect(x: -30000, y: -30000, width: 1000, height: 700), styleMask: [.titled], backing: .buffered,
+      defer: false)
     window.isReleasedWhenClosed = false
-    window.contentView = canvas
+    // the canvas in a view of its own, as in a tab: the editor's web view goes over it there
+    let host = NSView(frame: canvas.frame)
+    host.addSubview(canvas)
+    window.contentView = host
+    canvas.noteEditor.drawOffScreen()
+    // far off screen: the web view runs its animation frames only in a window that is ordered in
+    window.orderFrontRegardless()
     try await canvas.show(
       doc, at: VaultBoard(id: board.id, title: "B", path: name), in: Vault(root: root), theme: .warmInk)
     canvas.place(zoom: zoom, centre: CGPoint(x: 550, y: 400))

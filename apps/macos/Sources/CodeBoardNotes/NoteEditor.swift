@@ -35,7 +35,7 @@ public final class NoteEditor: NSObject {
     config.userContentController.add(signal, name: "note")
     config.userContentController.addScriptMessageHandler(ImageSaver(self), contentWorld: .page, name: "image")
     view.setValue(false, forKey: "drawsBackground")
-    view.isHidden = true
+    view.shown = false
     signal.editor = self
     var url = page.appending(path: "page.html")
     url.append(queryItems: [URLQueryItem(name: "edit", value: nil)])
@@ -85,6 +85,20 @@ public final class NoteEditor: NSObject {
   /// Shown at zoom `k`; returns once drawn so
   public func zoom(_ k: Double) async {
     _ = try? await view.callAsyncJavaScript("await edit.zoom(k)", arguments: ["k": k], contentWorld: .page)
+  }
+
+  /// What the card shows now (its content, over nothing), as the canvas's bitmap of it: for a zoom, during which the
+  /// canvas scales a bitmap in its place. `size`: the card at 100 %, shown at `k`
+  public func snapshot(size: CGSize, k: Double) async -> NoteSnapshot? {
+    let c = WKSnapshotConfiguration()
+    c.rect = view.cardRect
+    c.afterScreenUpdates = false
+    guard view.cardRect.width > 0, let image = try? await view.takeSnapshot(configuration: c),
+      let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+      let surface = NoteSnapshot.makeSurface(width: cg.width, height: cg.height)
+    else { return nil }
+    NoteSnapshot.draw(cg, into: surface)
+    return NoteSnapshot(surface: surface, size: size)
   }
 
   /// Text typed before the editor was there (keys pressed while it mounted)
@@ -189,11 +203,18 @@ public final class NoteEditor: NSObject {
 /// The editing web view: takes the keyboard; lets the pointer through outside its card and the editor's menus
 public final class EditorWebView: WKWebView {
   /// The card and the editor's open menus, in the view's points (top left origin)
-  var cardRect = CGRect.zero
-  var uiRects: [CGRect] = []
+  package var cardRect = CGRect.zero
+  package var uiRects: [CGRect] = []
+
+  /// Shown or not; one out of sight still lays out and draws (a hidden web view runs no animation frames, which the
+  /// editor waits on while it mounts)
+  public var shown: Bool {
+    get { alphaValue > 0 }
+    set { alphaValue = newValue ? 1 : 0 }
+  }
 
   public override func hitTest(_ point: NSPoint) -> NSView? {
-    guard let sv = superview else { return nil }
+    guard shown, let sv = superview else { return nil }
     let p = convert(point, from: sv)
     // a WKWebView is flipped
     let inside = cardRect.insetBy(dx: -6, dy: -6).contains(p) || uiRects.contains { $0.contains(p) }

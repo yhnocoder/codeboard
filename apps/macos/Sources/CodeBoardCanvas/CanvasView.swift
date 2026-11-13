@@ -76,6 +76,10 @@ public final class CanvasView: NSView {
   var refreshes = 0
   /// How long the last refresh's swap took on the main thread, and how many items it drew anew
   package var lastInstall: (seconds: Double, drawn: Int) = (0, 0)
+  /// The card being written in, and the layers it had before (shown again when nothing was written)
+  var editing: Editing?
+  var editingOriginal: ItemLayers?
+  var editingEnds: Task<Void, Never>?
   /// The latest refresh (tests wait for it)
   package var refreshing: Task<Void, Never>?
   /// Selection rings, handles: over the cards, in board units
@@ -521,6 +525,7 @@ public final class CanvasView: NSView {
     withoutAnimation {
       world.sublayerTransform = m
       if chrome.sublayers?.isEmpty == false { drawChrome() }
+      if editing != nil { cameraMovedWhileEditing() }
       // a zoom (not a pan) away from the rest zoom: the held bitmaps take over, with mipmaps
       if let z = restZoom, z != camera.zoom {
         restZoom = nil
@@ -557,6 +562,7 @@ public final class CanvasView: NSView {
   public override func viewDidHide() {
     super.viewDidHide()
     cancelRedraws()
+    dropEditing()
   }
 
   public override func viewDidUnhide() {
@@ -677,7 +683,10 @@ public final class CanvasView: NSView {
       for (i, l) in items.enumerated() { l.held.minificationFilter = linear.contains(i) ? .linear : .trilinear }
     }
     restZoom = camera.zoom
-    queue.replace(with: plan.jobs)
+    // the card being written in keeps its paper: the editor draws its text
+    let writing = editingIndex
+    queue.replace(with: plan.jobs.filter { $0.item != writing })
+    restAfterEditingZoom()
     link?.isPaused = false
   }
 
@@ -713,7 +722,8 @@ public final class CanvasView: NSView {
         }
       }
     }
-    let swaps = queue.takeSwaps()
+    let writing = editingIndex
+    let swaps = queue.takeSwaps().filter { $0.job.item != writing }
     guard !swaps.isEmpty else { return }
     if !motion.isResting || gesture != nil {
       ruleBreaks.swaps += swaps.count

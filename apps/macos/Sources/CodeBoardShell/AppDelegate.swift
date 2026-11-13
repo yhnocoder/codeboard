@@ -51,6 +51,18 @@ import CodeBoardModel
 
   /// Every board is written first; when one cannot be, quitting would lose its changes, so it asks
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    // a card being written in: what was typed goes to its board first
+    if let panes, panes.isEditing {
+      Task {
+        await panes.endEditing()
+        NSApp.reply(toApplicationShouldTerminate: self.writeAll() == .terminateNow)
+      }
+      return .terminateLater
+    }
+    return writeAll()
+  }
+
+  private func writeAll() -> NSApplication.TerminateReply {
     let unsaved = panes?.flush() ?? []
     guard !unsaved.isEmpty else { return .terminateNow }
     let alert = NSAlert()

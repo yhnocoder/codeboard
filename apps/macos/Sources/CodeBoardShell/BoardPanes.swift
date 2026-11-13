@@ -80,6 +80,13 @@ import CodeBoardModel
     return unsaved.sorted { $0.title < $1.title }
   }
 
+  /// Ends the writing in any card, what was typed written to its board (quitting)
+  func endEditing() async {
+    for pane in panes.values { await pane.canvas.endEditing() }
+  }
+
+  var isEditing: Bool { panes.values.contains { $0.canvas.isEditing } }
+
   /// Another vault: what was open is written and let go
   func close() {
     flush()
@@ -109,7 +116,7 @@ private final class Pane: NSView {
   private(set) var ready = false
   var onReady: (() -> Void)?
   private static let patience = Duration.milliseconds(250)
-  private let canvas = CanvasView()
+  let canvas = CanvasView()
   private let problem = NSTextField(wrappingLabelWithString: "")
 
   init() {

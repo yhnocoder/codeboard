@@ -93,12 +93,14 @@ extension CanvasView {
       stopObserving?()
       document = doc
       stopObserving = doc.observe { [weak self] _ in self?.documentChanged() }
+      _ = noteEditor  // its page loads while the board does
     }
     try await load(board, in: vault, theme: theme, keepCamera: false)
   }
 
   /// Stops showing the document (its tab closed)
   public func leave() {
+    dropEditing()
     stopObserving?()
     stopObserving = nil
     document = nil
@@ -259,6 +261,14 @@ extension CanvasView {
     arrive()
     drawChrome()
     lastInstall = (CACurrentMediaTime() - started, fresh.count)
+    // another writer changed the board while a card is written in: it keeps its paper, the web view its place
+    if editing?.ready == true, editing?.ending == false, editing?.zooming == false {
+      editingOriginal = nil
+      withoutAnimation {
+        showPaper()
+        positionEditor()
+      }
+    }
   }
 
   // MARK: Measuring (CanvasBench)
@@ -359,6 +369,7 @@ extension CanvasView {
     case .section(let id): r = s.frames.first { $0.id == id }?.rect
     }
     guard var rect = r else { return nil }
+    if case .card(let id) = item, editing?.id == id { rect = editingRect(rect) }
     switch gesture?.kind {
     case .move(let m)?, .nudge(let m)?:
       if let id = item.card, m.cards.contains(id) { rect = rect.offsetBy(dx: m.d.dx, dy: m.d.dy) }
@@ -654,10 +665,16 @@ extension CanvasView {
   // MARK: Pointer
 
   public override func mouseDown(with e: NSEvent) {
+    // a click outside the card being written in (on it, the web view takes it) ends the writing
+    if editing != nil { Task { await endEditing() } }
     window?.makeFirstResponder(self)
-    guard let doc = document, scene != nil, gesture == nil, e.clickCount < 2 else { return }
+    guard let doc = document, scene != nil, gesture == nil else { return }
     let v = convert(e.locationInWindow, from: nil)
     let p = camera.board(v)
+    if e.clickCount >= 2 {
+      doubleClick(at: p)
+      return
+    }
     if let (item, edges) = hitHandle(v) {
       startResize(item, edges, at: v, p)
       return
@@ -1091,7 +1108,18 @@ extension CanvasView {
 
   public override func keyDown(with e: NSEvent) {
     guard let doc = document else { return super.keyDown(with: e) }
+    if editing != nil {
+      // the editor is mounting: its keys wait for it (Esc leaves)
+      if e.keyCode == 53 { Task { await endEditing() } } else { editing?.keys.append(e) }
+      return
+    }
     switch e.keyCode {
+    case 36, 76:  // Return writes in the one Note, Text or Box selected
+      if doc.selection.count == 1, let id = doc.selection.first?.card, isWriting(id) {
+        beginEditing(id)
+      } else {
+        super.keyDown(with: e)
+      }
     case 51, 117:  // ⌫ ⌦
       delete(nil)
     case 53:  // Esc
@@ -1305,10 +1333,10 @@ extension CanvasView: NSMenuItemValidation {
     switch item.action {
     case #selector(undo(_:)):
       item.title = doc.undoName.map { "Undo \($0)" } ?? "Undo"
-      return doc.history.canUndo && gesture == nil
+      return doc.history.canUndo && gesture == nil && editing == nil
     case #selector(redo(_:)):
       item.title = doc.redoName.map { "Redo \($0)" } ?? "Redo"
-      return doc.history.canRedo && gesture == nil
+      return doc.history.canRedo && gesture == nil && editing == nil
     case #selector(copy(_:)), #selector(duplicate(_:)): return !sel.isEmpty
     case #selector(cut(_:)), #selector(delete(_:)): return sel.contains { !doc.board.isLocked($0) }
     case #selector(paste(_:)):
