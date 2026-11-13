@@ -53,7 +53,14 @@ import Testing
 
     // quitting writes what is not saved yet
     doc.edit("Lock") { $0.setLocked([.card(card)], true) }
-    panes.flush()
+    #expect(panes.flush().isEmpty)
     #expect(try Board(decoding: Data(contentsOf: file), file: file).card(card)?.locked == true)
+
+    // a board that would not read back is not written, and flush names it (quitting asks first)
+    doc.edit("Broken") {
+      $0.arrows.append(
+        Arrow(id: ArrowID(rawValue: "a"), from: Endpoint(card: card), to: Endpoint(card: CardID(rawValue: "gone"))))
+    }
+    #expect(panes.flush().map(\.title) == ["B"])
   }
 }

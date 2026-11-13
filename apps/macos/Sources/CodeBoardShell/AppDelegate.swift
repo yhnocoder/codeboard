@@ -49,8 +49,18 @@ import CodeBoardModel
     }
   }
 
-  func applicationWillTerminate(_ notification: Notification) {
-    panes?.flush()
+  /// Every board is written first; when one cannot be, quitting would lose its changes, so it asks
+  func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    let unsaved = panes?.flush() ?? []
+    guard !unsaved.isEmpty else { return .terminateNow }
+    let alert = NSAlert()
+    alert.messageText =
+      unsaved.count == 1
+      ? "Changes to “\(unsaved[0].title)” could not be saved" : "Changes to \(unsaved.count) boards could not be saved"
+    alert.informativeText = unsaved.map { "\($0.title): \($0.why)" }.joined(separator: "\n\n")
+    alert.addButton(withTitle: "Cancel")
+    alert.addButton(withTitle: "Quit Anyway")
+    return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

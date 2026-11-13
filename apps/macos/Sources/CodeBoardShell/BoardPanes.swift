@@ -69,9 +69,15 @@ import CodeBoardModel
     return doc
   }
 
-  /// Writes every board with changes not yet saved (quitting, another vault)
-  func flush() {
-    for doc in documents.values { doc.flush() }
+  /// Writes every board with changes not yet saved (quitting, another vault); returns the boards whose changes could
+  /// not be written, by title, with why
+  @discardableResult func flush() -> [(title: String, why: String)] {
+    var unsaved: [(title: String, why: String)] = []
+    for (id, doc) in documents {
+      doc.flush()
+      if doc.isDirty, let why = doc.problem { unsaved.append((shell.board(id)?.title ?? id.rawValue, why)) }
+    }
+    return unsaved.sorted { $0.title < $1.title }
   }
 
   /// Another vault: what was open is written and let go
