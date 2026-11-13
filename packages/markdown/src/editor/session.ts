@@ -12,6 +12,8 @@ import { editorExtensions } from "./extensions";
 import { handlePaste } from "./paste";
 import { linkAtPos, openLinkBox } from "./links";
 import { uiOf } from "./ui";
+import { mdOf } from "./md";
+import type { EditorView } from "@tiptap/pm/view";
 import { bodyEnd, padEnd } from "./pad";
 import type { MdEditorOpts } from "./types";
 import { coreOf, type Markdown, type Md } from "../markdown";
@@ -54,6 +56,20 @@ function makeInst(md: Md, dragHandle = false): Inst {
     handle.setAttribute("data-tip", "Drag to move");
   }
   const inst: Inst = { editor: undefined as unknown as Editor, box, dragHandle, sess: null };
+  // A press on a link to an item (a card link, view.ts cardLinkLook) the caret is not in: as on a reference (widgets.ts), the
+  // page may take it (onRef: the card's preview) and the caret stays where it was; otherwise it is a link's click (its box)
+  const cardLinkPress = (v: EditorView, ev: MouseEvent) => {
+    const a = (ev.target as Element).closest?.<HTMLElement>("a.md-cardlink[data-target]");
+    if (!a || ev.button !== 0 || ev.detail > 1 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || !o.onRef)
+      return false;
+    const l = linkAtPos(v.state, v.posAtDOM(a, 0)),
+      head = v.state.selection.head;
+    if (!l || (head >= l.from && head <= l.to)) return false;
+    const hit = mdOf(v.state).refs.resolve("", a.dataset.target);
+    if (!hit || "broken" in hit || !o.onRef(hit, a)) return false;
+    ev.preventDefault();
+    return true;
+  };
   // where the caret was when the button went down: by the click, the browser's own caret placement for a press held a moment
   // (a hand's ~100 ms) has already moved it into the link that was pressed
   let headAtDown = -1;
@@ -77,9 +93,9 @@ function makeInst(md: Md, dragHandle = false): Inst {
       attributes: { class: "md-pm", spellcheck: "false" },
       handlePaste: (_v, ev) => (inst.sess ? handlePaste(inst.editor, ev) : false),
       handleDOMEvents: {
-        mousedown: (v) => {
+        mousedown: (v, ev) => {
           headAtDown = v.state.selection.head;
-          return false;
+          return cardLinkPress(v, ev);
         },
         // a click on a link is the editor's (its box, or openLink with ⌘): never the page's own navigation, which a folded
         // address (a non-editable element) would follow, nor a listener further up that opens anything with an href (a VS

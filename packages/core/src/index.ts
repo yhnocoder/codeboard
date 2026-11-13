@@ -17,6 +17,7 @@ export * from "./paste";
 export * from "./web";
 export * from "./lines";
 export * from "./linklabel";
+export * from "./cardlink";
 export * from "./chip";
 export * from "./run";
 export * from "./questions";

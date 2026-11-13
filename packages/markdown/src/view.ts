@@ -11,8 +11,16 @@ export type RefSeal = { text: string; color: string; outer?: { text: string; col
 export type RefTarget = { id: string; title: string; badge?: string; seal?: RefSeal; hint?: string; place?: string };
 /** 认得出指的是哪儿、但已经找不到了：item = 那里已经没有这一项（灰、划掉），place = 那个地方本身没了（警告色）。why = 悬停的提示 */
 export type RefBroken = { broken: "item" | "place"; title: string; badge?: string; why?: string };
-/** [[标题]] 怎么找目标：target = 从 [[ 列表选的时候带上的目标 id（[[标题#^id]]，见 schema-nodes.ts WikiRef），先按它找；missing：找不到时的提示 */
-export type Refs = { resolve: (label: string, target?: string) => RefTarget | RefBroken | null; missing?: string };
+/**
+ * [[标题]] 怎么找目标：target = 从 [[ 列表选的时候带上的目标 id（[[标题#^id]]，见 schema-nodes.ts WikiRef），先按它找；missing：找不到时的提示。
+ * link：一个链接的地址指的是一项（页面自己的 Copy Link 复制的）时，它代表的 target（同 [[标题#^target]]），别的地址给 null。这样的链接
+ * 保留自己的字，画成找到 / 找不到的样子，点它和点引用一样（openRef）
+ */
+export type Refs = {
+  resolve: (label: string, target?: string) => RefTarget | RefBroken | null;
+  missing?: string;
+  link?: (href: string) => string | null;
+};
 const MISSING = "Nothing with this title";
 
 /** 上次画成什么样（一样就不重画，静态 Note 里的引用每次别处的数据到了都会再认一遍） */
@@ -56,6 +64,33 @@ export function paintRef(r: HTMLElement, refs: Refs) {
   b.className = "bd";
   b.textContent = hit.badge;
   r.replaceChildren(a, b);
+}
+
+/** A link whose address names an item (Refs.link): the target, its classes (md-cardlink, and missing / gone as a reference's)
+ *  and its hint; null for any other link */
+export function cardLinkLook(href: string, refs: Refs): { target: string; class: string; title?: string } | null {
+  const target = href ? refs.link?.(href) : null;
+  if (!target) return null;
+  const hit = refs.resolve("", target),
+    broken = hit && "broken" in hit ? hit.broken : undefined;
+  const cls = `md-cardlink${!hit || broken === "item" ? " missing" : broken === "place" ? " gone" : ""}`;
+  const title = !hit
+    ? refs.missing || MISSING
+    : broken
+      ? ((hit as RefBroken).why ?? refs.missing ?? MISSING)
+      : (hit as RefTarget).hint;
+  return { target, class: cls, title };
+}
+/** A rendered link (a.md-link) drawn as what its address names, when that is an item: true when it is one */
+export function paintLink(a: HTMLElement, refs: Refs): boolean {
+  const look = cardLinkLook(a.dataset.href ?? "", refs);
+  a.classList.remove("md-cardlink", "missing", "gone");
+  if (!look) return false;
+  a.classList.add(...look.class.split(" "));
+  a.dataset.target = look.target;
+  if (look.title) a.title = look.title;
+  else a.removeAttribute("title");
+  return true;
 }
 
 /** 印章：一个圆角框；有 outer 时分成两半，前一半是外面那一处的（描边、浅底），后一半是这一处的（实心）。
@@ -138,7 +173,13 @@ export function mdClick(e: MouseEvent, src: string, o: ClickOpts, refs: Refs): b
   if (a?.dataset.href) {
     e.preventDefault();
     e.stopPropagation();
-    o.openLink(a.dataset.href);
+    // a link to an item: as a reference to it (nothing when that is gone)
+    const target = refs.link?.(a.dataset.href);
+    if (!target) o.openLink(a.dataset.href);
+    else {
+      const hit = refs.resolve("", target);
+      if (hit && !("broken" in hit)) o.openRef(hit.id, hit);
+    }
     return true;
   }
   const r = t.closest?.(".md-ref") as HTMLElement | null;

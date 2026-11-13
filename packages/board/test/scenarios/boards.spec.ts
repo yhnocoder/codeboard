@@ -23,7 +23,7 @@ test("undoafterpeek", () => verdict("undo-history-survives-a-visit-to-a-sub-boar
 
 test("undoturnintoboard", () => verdict("undoing-turn-into-board-removes-the-new-board", undoTurnIntoBoard));
 
-test("copyPathPointsIntoBoardFile", copyPathPointsIntoBoardFile);
+test("copyLinkPointsIntoBoardFile", copyLinkPointsIntoBoardFile);
 
 test("deletedparentcrumb", () => verdict("a-deleted-parent-board-leaves-the-breadcrumbs", deletedParentCrumb));
 
@@ -349,11 +349,11 @@ async function changesReachHostTime(res: Record<string, unknown>) {
 }
 
 /**
- * Copy Path (#126) on the real host: a card's menu, a Section's, two cards selected, a shared card and the board's ⋯ menu each put
+ * Copy Link (#126) on the real host: a card's menu, a Section's, two cards selected, a shared card and the board's ⋯ menu each put
  * <file>#<id> (the board: just the file) on the clipboard, with a toast. Every line names a file that exists and holds that id, as
  * Claude Code in a terminal would open and grep it: the board's JSON, and the card library's file for the shared card
  */
-async function copyPathPointsIntoBoardFile() {
+async function copyLinkPointsIntoBoardFile() {
   const B = emptyBoard("bPath", "Attention");
   const step = nv("LLMEngine.step");
   put(B, step, 80, 120);
@@ -372,38 +372,39 @@ async function copyPathPointsIntoBoardFile() {
   const pick = async (label: string) => {
     const n = copied.length;
     await pg.locator(".ctx:not(.closing) button", { hasText: new RegExp(`^${label}$`) }).click();
-    return until(h, `${label} copies a path`, () => copied[n]);
+    return until(h, `${label} copies a link`, () => copied[n]);
   };
   const toast = () => pg.locator(".toast").last().innerText();
 
   await pg.locator(`.card[data-id="${step.id}"] .chead`).click({ button: "right", position: { x: 200, y: 12 } });
-  await pg.locator(".ctx:not(.closing) button", { hasText: /^Copy Path$/ }).waitFor();
-  await shot(h, "126-copy-path");
-  const card = await pick("Copy Path");
+  await pg.locator(".ctx:not(.closing) button", { hasText: /^Copy Link$/ }).waitFor();
+  await shot(h, "126-copy-link");
+  const card = await pick("Copy Link");
   const file = run.host.store.fileOf("bPath")!;
   check("card-path", card === `${file}#${step.id}`, card, file);
-  check("card-path-toast", (await toast()).includes("Copied path"), await toast());
+  check("card-link-toast", (await toast()).includes("Copied link"), await toast());
   await pg.keyboard.press("Escape");
 
   await pg.locator('.slabel[data-sect="sPath"]').click({ button: "right" });
-  const sect = await pick("Copy Path");
+  const sect = await pick("Copy Link");
   check("section-path", sect === `${file}#sPath`, sect);
   await pg.keyboard.press("Escape");
 
   await pg.locator('.card[data-id="nPath"]').click();
   await pg.locator(`.card[data-id="${step.id}"] .chead`).click({ modifiers: ["Shift"], position: { x: 200, y: 12 } });
   await pg.locator('.card[data-id="nPath"]').click({ button: "right" });
-  const two = await pick("Copy Paths");
+  const two = await pick("Copy Links");
+  check("multi-path-toast", (await toast()).includes("Copied 2 links"), await toast());
   check("multi-path", two === `${file}#nPath\n${file}#${step.id}` || two === `${file}#${step.id}\n${file}#nPath`, two);
   await pg.keyboard.press("Escape");
   await pg.mouse.click(1200, 780);
 
   await pg.locator('.card[data-id="nShared"]').click({ button: "right" });
-  const shared = await pick("Copy Path");
+  const shared = await pick("Copy Link");
   check("shared-path", shared === `${path.join(path.dirname(file), "cards", "nShared.json")}#nShared`, shared);
 
   await pg.locator('.bbar button[aria-label="More"]').click();
-  const board = await pick("Copy Path");
+  const board = await pick("Copy Link");
   check("board-path", board === file, board);
 
   for (const line of [card, sect, ...two.split("\n"), shared, board]) {

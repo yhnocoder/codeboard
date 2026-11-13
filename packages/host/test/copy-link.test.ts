@@ -1,10 +1,10 @@
-// Copy Path: where a board, a card and a Section are on disk, as Claude Code in a terminal would open and grep them
+// Copy Link: where a board, a card and a Section are on disk, as Claude Code in a terminal would open and grep them
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { emptyBoard, type Board } from "@codeboard/core";
+import { emptyBoard, parseCardLink, type Board } from "@codeboard/core";
 import { BoardPlace } from "../src/storage/place";
-import { itemPaths } from "../src/paths";
+import { itemLinks } from "../src/paths";
 import { HostContext } from "../src/context";
 import { nodeWorkspace } from "./node-workspace";
 import { tempRepo } from "./helpers";
@@ -45,20 +45,27 @@ function boards(): Board[] {
   return [A, S];
 }
 
-describe("copy path", () => {
+describe("copy link", () => {
   it("gives the file relative to the workspace folder, with the id that is in that file", async () => {
     const t = setup(true);
     for (const b of boards()) await t.store.save(b);
     await t.store.share("bA", ["sh"]);
     await t.store.flush();
-    expect(await itemPaths(t.cx, t.store, "bA")).toBe(".codeboard/bA.json");
-    const text = await itemPaths(t.cx, t.store, "bA", ["n1", "s1", "sh", "fr"]);
+    expect(await itemLinks(t.cx, t.store, "bA")).toBe(".codeboard/bA.json");
+    const text = await itemLinks(t.cx, t.store, "bA", ["n1", "s1", "sh", "fr"]);
     // the shared card's content is in the card library; a sub-board's frame points at that board's own file
     expect(text).toBe(
       [".codeboard/bA.json#n1", ".codeboard/bA.json#s1", ".codeboard/cards/sh.json#sh", ".codeboard/bSub.json"].join(
         "\n",
       ),
     );
+    // read back in a Note: each line names its board and item
+    expect(text!.split("\n").map(parseCardLink)).toEqual([
+      { board: "bA", item: "n1" },
+      { board: "bA", item: "s1" },
+      { item: "sh" },
+      { board: "bSub" },
+    ]);
     for (const line of text!.split("\n")) {
       const [file, id] = line.split("#");
       const body = fs.readFileSync(path.join(t.repo, file), "utf8");
@@ -66,7 +73,7 @@ describe("copy path", () => {
     }
     // the file is named by the board's id: renaming the board keeps the path
     await t.store.rename("bA", "Attention, renamed");
-    expect(await itemPaths(t.cx, t.store, "bA", ["n1"])).toBe(".codeboard/bA.json#n1");
+    expect(await itemLinks(t.cx, t.store, "bA", ["n1"])).toBe(".codeboard/bA.json#n1");
     t.dispose();
   });
 
@@ -74,8 +81,8 @@ describe("copy path", () => {
     const t = setup(false);
     for (const b of boards()) await t.store.save(b);
     await t.store.flush();
-    expect(await itemPaths(t.cx, t.store, "bA", ["n1"])).toBe(`${path.join(t.wsDir, "boards", "bA.json")}#n1`);
-    expect(await itemPaths(t.cx, t.store, "nope")).toBe(null);
+    expect(await itemLinks(t.cx, t.store, "bA", ["n1"])).toBe(`${path.join(t.wsDir, "boards", "bA.json")}#n1`);
+    expect(await itemLinks(t.cx, t.store, "nope")).toBe(null);
     t.dispose();
   });
 });

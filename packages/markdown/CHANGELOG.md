@@ -5,6 +5,8 @@
 Added (nothing to change when upgrading):
 
 - New `refs.showing(pick, row)` option on `mountEditor`: told which candidate the `[[` menu highlights (its `RefPick` and its row in the list) each time that changes, and `(null, null)` when the menu closes, so the page can show what it points to beside the list.
+- New `refs.link(href)` option on `createMarkdown`: a link whose address names one of your items (the `target` it returns) keeps its own text, is drawn found or not as a reference is (`a.md-cardlink`, `missing` or `gone`), and is clicked as a reference is (`openRef`, `onRef`).
+- In the editor, an address (a web address, or one `refs.link` reads) pasted on words selected in one paragraph makes them a link to it, and one `refs.link` reads pasted on nothing is written as a reference to that item.
 - New `onRef(to, el)` option on `mountEditor`: a click on a drawn `[[reference]]` that resolves goes to it first; returning `true` keeps the caret where it was (the page showed what the reference points to), otherwise the click opens the reference's source as before. A double-click always opens the source.
 - New `headingChip` option on `mountEditor`: `false` leaves out the chip that shows and changes the level of the heading the caret is in (on by default).
 - New `eagerImages` option on `createMarkdown`: every image is loaded at once and drawn only decoded (no `loading="lazy"`, `decoding="sync"`; by default images stay lazy and async). For a page whose images come into view by a transform, such as a canvas zoomed out, where a lazy image is not loaded yet and an async one is drawn as nothing for a few frames while it decodes.

@@ -140,8 +140,8 @@
         "category": "CodeBoard"
       },
       {
-        "command": "codeboard.copyBoardPath",
-        "title": "Copy Path",
+        "command": "codeboard.copyBoardLink",
+        "title": "Copy Link",
         "category": "CodeBoard"
       },
       {
@@ -419,7 +419,7 @@
           "group": "3_misc@1"
         },
         {
-          "command": "codeboard.copyBoardPath",
+          "command": "codeboard.copyBoardLink",
           "when": "view == codeboard.boards && viewItem == board",
           "group": "3_misc@2"
         },
@@ -491,7 +491,7 @@
           "when": "false"
         },
         {
-          "command": "codeboard.copyBoardPath",
+          "command": "codeboard.copyBoardLink",
           "when": "false"
         },
         {

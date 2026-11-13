@@ -578,8 +578,8 @@ export type BoardToHost =
   /** A picture the webview could not put on the clipboard itself (why: its error): the host puts the PNG (a data: URL) on the
    *  OS clipboard, alone, or the text when the editor can't */
   | { type: "copyImage"; png: string; text: string; why: string }
-  /** Copy Path：这些卡 / Section（不给 = 这块白板）在磁盘上的路径（<白板文件>#<id>，一行一个），宿主写进剪贴板。回写进去的文字（白板还没存下时回 null） */
-  | { type: "copyPath"; req: number; items?: string[] }
+  /** Copy Link：这些卡 / Section（不给 = 这块白板）在磁盘上的路径（<白板文件>#<id>，一行一个），宿主写进剪贴板。回写进去的文字（白板还没存下时回 null） */
+  | { type: "copyLink"; req: number; items?: string[] }
   /** 图片的 AI 操作（DeepSeek 看图）：宿主拿着密钥去问，回模型的原话或失败的原因（ImageAiResult）。job = 白板给的号，取消用 */
   | { type: "imageAi"; req: number; job: number; op: ImageAiOp }
   /** 取消还在等的 imageAi（卡上的 Cancel、Esc）：宿主中止请求，那个请求回 { fail: "canceled" } */
@@ -804,7 +804,7 @@ type Replies = {
   questions: QuestionItem[];
   permalinks: Record<string, string>;
   exportFile: boolean;
-  copyPath: string | null;
+  copyLink: string | null;
   variantSources: VariantSources;
   addVariant: NewVariant | null;
 };

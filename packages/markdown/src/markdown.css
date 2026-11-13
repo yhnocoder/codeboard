@@ -631,6 +631,20 @@ math {
 .md-ref.gone > .bd {
   text-decoration: line-through;
 }
+/* a link to an item (Refs.link) keeps its own text and looks a link; when the item is gone it looks as a reference that finds
+   nothing, and outside the editor a click on it does nothing */
+.md a.md-cardlink.missing {
+  color: var(--ink-3);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--ink-3) 50%, transparent);
+}
+.md a.md-cardlink.gone {
+  color: var(--warn);
+}
+.md a.md-cardlink.missing:not(.md-pm a),
+.md a.md-cardlink.gone:not(.md-pm a) {
+  cursor: default;
+}
 .md sup.fnref {
   color: var(--k-fn);
   font-size: 0.75em;

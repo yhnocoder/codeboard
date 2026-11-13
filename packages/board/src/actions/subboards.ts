@@ -20,7 +20,7 @@ import {
   setCrumbMorph,
   heightToKeep,
 } from "../state/subboards";
-import { resolveCardRef, revealCard, selectCard } from "./common";
+import { cardLinkTarget, openLink, resolveCardRef, revealCard, selectCard } from "./common";
 import { openPop, type At } from "../state/pop";
 import { walk, setWalk } from "../state/ui";
 import { settleHome, frames as sectionFrames } from "../state/sections";
@@ -477,6 +477,15 @@ export function openCardRef(id: string, place?: string) {
     return;
   }
   if (state.boards.some((m) => m.id === id)) send({ type: "openBoard", id });
+}
+
+/** An address opened from Markdown (a link's ⌘-click, the link box's Open): a link to an item (Copy Link) goes to it as Go to
+ *  Card does (nothing when it is gone); any other address opens in the browser */
+export function openMdLink(url: string, md: Markdown) {
+  const t = cardLinkTarget(url);
+  if (!t) return openLink(url);
+  const hit = resolveCardRef("", md, t);
+  if (hit && !("broken" in hit)) openCardRef(hit.id, hit.place);
 }
 
 /** The board a [[ref]] drawn with a seal points into: the other board (or sub-board) its card is on, or that board itself */

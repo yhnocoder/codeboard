@@ -206,6 +206,11 @@ export const Lnk = Link.extend({
     if (typeof n.attrs?.ref === "string") return `[${h.renderChildren(n)}]${n.attrs.ref}`;
     const href = n.attrs?.href ?? "";
     if (unshield(c.meta?.markText ?? "") === href && /^https?:\/\/\S+$/.test(href)) return h.renderChildren(n);
+    // an address with spaces (a file path, a link to a card) reads back only in <angle brackets>
+    if (/[\s<>]/.test(href)) {
+      const title = n.attrs?.title ? ` "${String(n.attrs.title).replace(/"/g, '\\"')}"` : "";
+      return `[${h.renderChildren(n)}](<${href.replace(/[<>]/g, encodeURI)}>${title})`;
+    }
     return this.parent?.(n, h, c) ?? "";
   },
 }).configure({

@@ -307,7 +307,7 @@ export const Hover: Story = {
   name: "Hover: Menu Item",
   play: open(async () => {
     await cardMenu("code");
-    await forceHover(await menuButton("Copy Path"));
+    await forceHover(await menuButton("Copy Link"));
   }),
 };
 export const HoverDanger: Story = {
