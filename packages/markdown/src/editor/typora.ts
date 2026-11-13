@@ -307,9 +307,21 @@ export const Typora = Extension.create<{
           return false;
         const off = spanEdgeOut(p.textContent, $h.parentOffset);
         if (p.attrs.level && p.content.size) {
+          // a heading in a list item: a new item, as for any line of the list
+          const item = $h.depth >= 2 ? $h.node(-1).type.name : "";
+          if (off !== 0 && (item === "listItem" || item === "taskItem")) {
+            if (off !== $h.parentOffset)
+              e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, $h.start() + off)));
+            return e.commands.splitListItem(item);
+          }
           const tr = e.state.tr;
           if (off === 0) tr.insert($h.before(), p.type.create());
-          else tr.split($h.start() + off, 1, [{ type: p.type, attrs: { ...p.attrs, level: 0 } }]);
+          else {
+            const at = $h.start() + off;
+            tr.split(at, 1, [{ type: p.type, attrs: { ...p.attrs, level: 0 } }]);
+            // the split is after the caret when it stood inside closing markers (**Title|**): typing goes on below
+            tr.setSelection(TextSelection.create(tr.doc, at + 2));
+          }
           e.view.dispatch(revealMeta(tr).scrollIntoView());
           return true;
         }
