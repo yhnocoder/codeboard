@@ -1,0 +1,1867 @@
+{
+ "defaultText": [
+  {
+   "name": "",
+   "text": ""
+  },
+  {
+   "name": "   ",
+   "text": ""
+  },
+  {
+   "name": "Scheduler",
+   "text": "Scheduler"
+  },
+  {
+   "name": "scheduler",
+   "text": "scheduler"
+  },
+  {
+   "name": "Memory Model",
+   "text": "MM"
+  },
+  {
+   "name": "The Art of Computer Programming",
+   "text": "ACP"
+  },
+  {
+   "name": "and of the",
+   "text": "AOT"
+  },
+  {
+   "name": "CUDA Graphs",
+   "text": "CUDAG"
+  },
+  {
+   "name": "LLM inference on GPUs",
+   "text": "LLMIG"
+  },
+  {
+   "name": "KV-cache layout",
+   "text": "KVCL"
+  },
+  {
+   "name": "warp – level — primitives",
+   "text": "WLP"
+  },
+  {
+   "name": "调度",
+   "text": "调度"
+  },
+  {
+   "name": "调度器的设计与实现细节",
+   "text": "调度器的设"
+  },
+  {
+   "name": "显存 Memory",
+   "text": "显M"
+  },
+  {
+   "name": "Prefill 预填 Decode",
+   "text": "P预D"
+  },
+  {
+   "name": "ひらがな カタカナ",
+   "text": "ひカ"
+  },
+  {
+   "name": "한국어 노트",
+   "text": "한노"
+  },
+  {
+   "name": "a",
+   "text": "a"
+  },
+  {
+   "name": "über die Brücke",
+   "text": "ÜDB"
+  },
+  {
+   "name": "éclair Été",
+   "text": "ÉÉ"
+  },
+  {
+   "name": "x86 SIMD",
+   "text": "XSIMD"
+  },
+  {
+   "name": "  leading and trailing  ",
+   "text": "LT"
+  },
+  {
+   "name": "tabs\tand\nnewlines here",
+   "text": "TNH"
+  },
+  {
+   "name": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+   "text": "ABCDEFGHIJKL"
+  },
+  {
+   "name": "one two three four five six seven eight nine ten eleven twelve thirteen fourteen",
+   "text": "OTTFFSSENTET"
+  },
+  {
+   "name": "😀 Emoji board",
+   "text": "😀EB"
+  },
+  {
+   "name": "C++ templates",
+   "text": "CT"
+  },
+  {
+   "name": "Ⅻ roman",
+   "text": "ⅫR"
+  },
+  {
+   "name": "İstanbul notes",
+   "text": "İN"
+  },
+  {
+   "name": "ǆungla words",
+   "text": "ǄW"
+  }
+ ],
+ "clean": [
+  {
+   "text": "",
+   "clean": "",
+   "ok": false
+  },
+  {
+   "text": "   ",
+   "clean": "",
+   "ok": false
+  },
+  {
+   "text": "Scheduler",
+   "clean": "Scheduler",
+   "ok": true
+  },
+  {
+   "text": "scheduler",
+   "clean": "scheduler",
+   "ok": true
+  },
+  {
+   "text": "Memory Model",
+   "clean": "MemoryModel",
+   "ok": false
+  },
+  {
+   "text": "The Art of Computer Programming",
+   "clean": "TheArtofComp",
+   "ok": false
+  },
+  {
+   "text": "and of the",
+   "clean": "andofthe",
+   "ok": false
+  },
+  {
+   "text": "CUDA Graphs",
+   "clean": "CUDAGraphs",
+   "ok": false
+  },
+  {
+   "text": "LLM inference on GPUs",
+   "clean": "LLMinference",
+   "ok": false
+  },
+  {
+   "text": "KV-cache layout",
+   "clean": "KV-cachelayo",
+   "ok": false
+  },
+  {
+   "text": "warp – level — primitives",
+   "clean": "warp–level—p",
+   "ok": false
+  },
+  {
+   "text": "调度",
+   "clean": "调度",
+   "ok": true
+  },
+  {
+   "text": "调度器的设计与实现细节",
+   "clean": "调度器的设",
+   "ok": false
+  },
+  {
+   "text": "显存 Memory",
+   "clean": "显存Memory",
+   "ok": false
+  },
+  {
+   "text": "Prefill 预填 Decode",
+   "clean": "Prefill预填Decod",
+   "ok": false
+  },
+  {
+   "text": "ひらがな カタカナ",
+   "clean": "ひらがなカ",
+   "ok": false
+  },
+  {
+   "text": "한국어 노트",
+   "clean": "한국어노트",
+   "ok": false
+  },
+  {
+   "text": "a",
+   "clean": "a",
+   "ok": true
+  },
+  {
+   "text": "über die Brücke",
+   "clean": "überdieBrück",
+   "ok": false
+  },
+  {
+   "text": "éclair Été",
+   "clean": "éclairÉté",
+   "ok": false
+  },
+  {
+   "text": "x86 SIMD",
+   "clean": "x86SIMD",
+   "ok": false
+  },
+  {
+   "text": "  leading and trailing  ",
+   "clean": "leadingandtr",
+   "ok": false
+  },
+  {
+   "text": "tabs\tand\nnewlines here",
+   "clean": "tabsandnewli",
+   "ok": false
+  },
+  {
+   "text": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+   "clean": "ABCDEFGHIJKL",
+   "ok": false
+  },
+  {
+   "text": "one two three four five six seven eight nine ten eleven twelve thirteen fourteen",
+   "clean": "onetwothreef",
+   "ok": false
+  },
+  {
+   "text": "😀 Emoji board",
+   "clean": "😀Emojiboard",
+   "ok": false
+  },
+  {
+   "text": "C++ templates",
+   "clean": "C++templates",
+   "ok": false
+  },
+  {
+   "text": "Ⅻ roman",
+   "clean": "Ⅻroman",
+   "ok": false
+  },
+  {
+   "text": "İstanbul notes",
+   "clean": "İstanbulnote",
+   "ok": false
+  },
+  {
+   "text": "ǆungla words",
+   "clean": "ǆunglawords",
+   "ok": false
+  },
+  {
+   "text": "",
+   "clean": "",
+   "ok": false
+  },
+  {
+   "text": "  ",
+   "clean": "",
+   "ok": false
+  },
+  {
+   "text": "SP",
+   "clean": "SP",
+   "ok": true
+  },
+  {
+   "text": "s p",
+   "clean": "sp",
+   "ok": false
+  },
+  {
+   "text": "调度器的设计与实现细节",
+   "clean": "调度器的设",
+   "ok": false
+  },
+  {
+   "text": "ABCDEFGHIJKLMNOP",
+   "clean": "ABCDEFGHIJKL",
+   "ok": false
+  },
+  {
+   "text": "a b\tc",
+   "clean": "abc",
+   "ok": false
+  },
+  {
+   "text": "中文Mixed很多字符呀呀",
+   "clean": "中文Mixed很多字",
+   "ok": false
+  },
+  {
+   "text": "é ü",
+   "clean": "éü",
+   "ok": false
+  },
+  {
+   "text": "😀😀",
+   "clean": "😀😀",
+   "ok": true
+  }
+ ],
+ "color": [
+  {
+   "id": "b1",
+   "color": "ink"
+  },
+  {
+   "id": "board-0001",
+   "color": "plum"
+  },
+  {
+   "id": "sched",
+   "color": "vermilion"
+  },
+  {
+   "id": "mem",
+   "color": "rose"
+  },
+  {
+   "id": "x",
+   "color": "graphite"
+  },
+  {
+   "id": "",
+   "color": "plum"
+  },
+  {
+   "id": "调度",
+   "color": "ink"
+  },
+  {
+   "id": "a/b",
+   "color": "amber"
+  },
+  {
+   "id": "0c9f3e2a-77aa-4f1e-9b0c-123456789abc",
+   "color": "amber"
+  },
+  {
+   "id": "zz",
+   "color": "plum"
+  },
+  {
+   "id": "id-0-0",
+   "color": "vermilion"
+  },
+  {
+   "id": "id-1-63z",
+   "color": "ink"
+  },
+  {
+   "id": "id-2-c7y",
+   "color": "teal"
+  },
+  {
+   "id": "id-3-ibx",
+   "color": "ink"
+  },
+  {
+   "id": "id-4-ofw",
+   "color": "rose"
+  },
+  {
+   "id": "id-5-ujv",
+   "color": "ink"
+  },
+  {
+   "id": "id-6-10nu",
+   "color": "rose"
+  },
+  {
+   "id": "id-7-16rt",
+   "color": "olive"
+  },
+  {
+   "id": "id-8-1cvs",
+   "color": "teal"
+  },
+  {
+   "id": "id-9-1izr",
+   "color": "graphite"
+  },
+  {
+   "id": "id-10-1p3q",
+   "color": "vermilion"
+  },
+  {
+   "id": "id-11-1v7p",
+   "color": "ink"
+  },
+  {
+   "id": "id-12-21bo",
+   "color": "plum"
+  },
+  {
+   "id": "id-13-27fn",
+   "color": "plum"
+  },
+  {
+   "id": "id-14-2djm",
+   "color": "olive"
+  },
+  {
+   "id": "id-15-2jnl",
+   "color": "rose"
+  },
+  {
+   "id": "id-16-2prk",
+   "color": "rose"
+  },
+  {
+   "id": "id-17-2vvj",
+   "color": "rose"
+  },
+  {
+   "id": "id-18-31zi",
+   "color": "ink"
+  },
+  {
+   "id": "id-19-383h",
+   "color": "ink"
+  },
+  {
+   "id": "id-20-3e7g",
+   "color": "olive"
+  },
+  {
+   "id": "id-21-3kbf",
+   "color": "graphite"
+  },
+  {
+   "id": "id-22-3qfe",
+   "color": "teal"
+  },
+  {
+   "id": "id-23-3wjd",
+   "color": "teal"
+  },
+  {
+   "id": "id-24-42nc",
+   "color": "amber"
+  },
+  {
+   "id": "id-25-48rb",
+   "color": "plum"
+  },
+  {
+   "id": "id-26-4eva",
+   "color": "vermilion"
+  },
+  {
+   "id": "id-27-4kz9",
+   "color": "graphite"
+  },
+  {
+   "id": "id-28-4r38",
+   "color": "amber"
+  },
+  {
+   "id": "id-29-4x77",
+   "color": "graphite"
+  },
+  {
+   "id": "id-30-53b6",
+   "color": "graphite"
+  },
+  {
+   "id": "id-31-59f5",
+   "color": "plum"
+  },
+  {
+   "id": "id-32-5fj4",
+   "color": "ink"
+  },
+  {
+   "id": "id-33-5ln3",
+   "color": "olive"
+  },
+  {
+   "id": "id-34-5rr2",
+   "color": "vermilion"
+  },
+  {
+   "id": "id-35-5xv1",
+   "color": "rose"
+  },
+  {
+   "id": "id-36-63z0",
+   "color": "vermilion"
+  },
+  {
+   "id": "id-37-6a2z",
+   "color": "plum"
+  },
+  {
+   "id": "id-38-6g6y",
+   "color": "amber"
+  },
+  {
+   "id": "id-39-6max",
+   "color": "rose"
+  }
+ ],
+ "sealOf": [
+  {
+   "id": "b1",
+   "name": "",
+   "seal": null,
+   "out": {
+    "text": "·",
+    "color": "ink"
+   }
+  },
+  {
+   "id": "b1",
+   "name": "",
+   "seal": {
+    "text": "ZZ"
+   },
+   "out": {
+    "text": "ZZ",
+    "color": "ink"
+   }
+  },
+  {
+   "id": "b1",
+   "name": "",
+   "seal": {
+    "color": "teal"
+   },
+   "out": {
+    "text": "·",
+    "color": "teal"
+   }
+  },
+  {
+   "id": "b1",
+   "name": "",
+   "seal": {
+    "text": "",
+    "color": "ink"
+   },
+   "out": {
+    "text": "·",
+    "color": "ink"
+   }
+  },
+  {
+   "id": "board-0001",
+   "name": "   ",
+   "seal": null,
+   "out": {
+    "text": "·",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "board-0001",
+   "name": "   ",
+   "seal": {
+    "text": "ZZ"
+   },
+   "out": {
+    "text": "ZZ",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "board-0001",
+   "name": "   ",
+   "seal": {
+    "color": "teal"
+   },
+   "out": {
+    "text": "·",
+    "color": "teal"
+   }
+  },
+  {
+   "id": "board-0001",
+   "name": "   ",
+   "seal": {
+    "text": "",
+    "color": "ink"
+   },
+   "out": {
+    "text": "·",
+    "color": "ink"
+   }
+  },
+  {
+   "id": "sched",
+   "name": "Scheduler",
+   "seal": null,
+   "out": {
+    "text": "Scheduler",
+    "color": "vermilion"
+   }
+  },
+  {
+   "id": "sched",
+   "name": "Scheduler",
+   "seal": {
+    "text": "ZZ"
+   },
+   "out": {
+    "text": "ZZ",
+    "color": "vermilion"
+   }
+  },
+  {
+   "id": "sched",
+   "name": "Scheduler",
+   "seal": {
+    "color": "teal"
+   },
+   "out": {
+    "text": "Scheduler",
+    "color": "teal"
+   }
+  },
+  {
+   "id": "sched",
+   "name": "Scheduler",
+   "seal": {
+    "text": "",
+    "color": "ink"
+   },
+   "out": {
+    "text": "Scheduler",
+    "color": "ink"
+   }
+  },
+  {
+   "id": "mem",
+   "name": "scheduler",
+   "seal": null,
+   "out": {
+    "text": "scheduler",
+    "color": "rose"
+   }
+  },
+  {
+   "id": "mem",
+   "name": "scheduler",
+   "seal": {
+    "text": "ZZ"
+   },
+   "out": {
+    "text": "ZZ",
+    "color": "rose"
+   }
+  },
+  {
+   "id": "mem",
+   "name": "scheduler",
+   "seal": {
+    "color": "teal"
+   },
+   "out": {
+    "text": "scheduler",
+    "color": "teal"
+   }
+  },
+  {
+   "id": "mem",
+   "name": "scheduler",
+   "seal": {
+    "text": "",
+    "color": "ink"
+   },
+   "out": {
+    "text": "scheduler",
+    "color": "ink"
+   }
+  },
+  {
+   "id": "x",
+   "name": "Memory Model",
+   "seal": null,
+   "out": {
+    "text": "MM",
+    "color": "graphite"
+   }
+  },
+  {
+   "id": "x",
+   "name": "Memory Model",
+   "seal": {
+    "text": "ZZ"
+   },
+   "out": {
+    "text": "ZZ",
+    "color": "graphite"
+   }
+  },
+  {
+   "id": "x",
+   "name": "Memory Model",
+   "seal": {
+    "color": "teal"
+   },
+   "out": {
+    "text": "MM",
+    "color": "teal"
+   }
+  },
+  {
+   "id": "x",
+   "name": "Memory Model",
+   "seal": {
+    "text": "",
+    "color": "ink"
+   },
+   "out": {
+    "text": "MM",
+    "color": "ink"
+   }
+  },
+  {
+   "id": "",
+   "name": "The Art of Computer Programming",
+   "seal": null,
+   "out": {
+    "text": "ACP",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "",
+   "name": "The Art of Computer Programming",
+   "seal": {
+    "text": "ZZ"
+   },
+   "out": {
+    "text": "ZZ",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "",
+   "name": "The Art of Computer Programming",
+   "seal": {
+    "color": "teal"
+   },
+   "out": {
+    "text": "ACP",
+    "color": "teal"
+   }
+  },
+  {
+   "id": "",
+   "name": "The Art of Computer Programming",
+   "seal": {
+    "text": "",
+    "color": "ink"
+   },
+   "out": {
+    "text": "ACP",
+    "color": "ink"
+   }
+  },
+  {
+   "id": "调度",
+   "name": "and of the",
+   "seal": null,
+   "out": {
+    "text": "AOT",
+    "color": "ink"
+   }
+  },
+  {
+   "id": "调度",
+   "name": "and of the",
+   "seal": {
+    "text": "ZZ"
+   },
+   "out": {
+    "text": "ZZ",
+    "color": "ink"
+   }
+  },
+  {
+   "id": "调度",
+   "name": "and of the",
+   "seal": {
+    "color": "teal"
+   },
+   "out": {
+    "text": "AOT",
+    "color": "teal"
+   }
+  },
+  {
+   "id": "调度",
+   "name": "and of the",
+   "seal": {
+    "text": "",
+    "color": "ink"
+   },
+   "out": {
+    "text": "AOT",
+    "color": "ink"
+   }
+  },
+  {
+   "id": "a/b",
+   "name": "CUDA Graphs",
+   "seal": null,
+   "out": {
+    "text": "CUDAG",
+    "color": "amber"
+   }
+  },
+  {
+   "id": "a/b",
+   "name": "CUDA Graphs",
+   "seal": {
+    "text": "ZZ"
+   },
+   "out": {
+    "text": "ZZ",
+    "color": "amber"
+   }
+  },
+  {
+   "id": "a/b",
+   "name": "CUDA Graphs",
+   "seal": {
+    "color": "teal"
+   },
+   "out": {
+    "text": "CUDAG",
+    "color": "teal"
+   }
+  },
+  {
+   "id": "a/b",
+   "name": "CUDA Graphs",
+   "seal": {
+    "text": "",
+    "color": "ink"
+   },
+   "out": {
+    "text": "CUDAG",
+    "color": "ink"
+   }
+  },
+  {
+   "id": "0c9f3e2a-77aa-4f1e-9b0c-123456789abc",
+   "name": "LLM inference on GPUs",
+   "seal": null,
+   "out": {
+    "text": "LLMIG",
+    "color": "amber"
+   }
+  },
+  {
+   "id": "0c9f3e2a-77aa-4f1e-9b0c-123456789abc",
+   "name": "LLM inference on GPUs",
+   "seal": {
+    "text": "ZZ"
+   },
+   "out": {
+    "text": "ZZ",
+    "color": "amber"
+   }
+  },
+  {
+   "id": "0c9f3e2a-77aa-4f1e-9b0c-123456789abc",
+   "name": "LLM inference on GPUs",
+   "seal": {
+    "color": "teal"
+   },
+   "out": {
+    "text": "LLMIG",
+    "color": "teal"
+   }
+  },
+  {
+   "id": "0c9f3e2a-77aa-4f1e-9b0c-123456789abc",
+   "name": "LLM inference on GPUs",
+   "seal": {
+    "text": "",
+    "color": "ink"
+   },
+   "out": {
+    "text": "LLMIG",
+    "color": "ink"
+   }
+  },
+  {
+   "id": "zz",
+   "name": "KV-cache layout",
+   "seal": null,
+   "out": {
+    "text": "KVCL",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "zz",
+   "name": "KV-cache layout",
+   "seal": {
+    "text": "ZZ"
+   },
+   "out": {
+    "text": "ZZ",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "zz",
+   "name": "KV-cache layout",
+   "seal": {
+    "color": "teal"
+   },
+   "out": {
+    "text": "KVCL",
+    "color": "teal"
+   }
+  },
+  {
+   "id": "zz",
+   "name": "KV-cache layout",
+   "seal": {
+    "text": "",
+    "color": "ink"
+   },
+   "out": {
+    "text": "KVCL",
+    "color": "ink"
+   }
+  },
+  {
+   "id": "id-0-0",
+   "name": "warp – level — primitives",
+   "seal": null,
+   "out": {
+    "text": "WLP",
+    "color": "vermilion"
+   }
+  },
+  {
+   "id": "id-0-0",
+   "name": "warp – level — primitives",
+   "seal": {
+    "text": "ZZ"
+   },
+   "out": {
+    "text": "ZZ",
+    "color": "vermilion"
+   }
+  },
+  {
+   "id": "id-0-0",
+   "name": "warp – level — primitives",
+   "seal": {
+    "color": "teal"
+   },
+   "out": {
+    "text": "WLP",
+    "color": "teal"
+   }
+  },
+  {
+   "id": "id-0-0",
+   "name": "warp – level — primitives",
+   "seal": {
+    "text": "",
+    "color": "ink"
+   },
+   "out": {
+    "text": "WLP",
+    "color": "ink"
+   }
+  },
+  {
+   "id": "id-1-63z",
+   "name": "调度",
+   "seal": null,
+   "out": {
+    "text": "调度",
+    "color": "ink"
+   }
+  },
+  {
+   "id": "id-1-63z",
+   "name": "调度",
+   "seal": {
+    "text": "ZZ"
+   },
+   "out": {
+    "text": "ZZ",
+    "color": "ink"
+   }
+  },
+  {
+   "id": "id-1-63z",
+   "name": "调度",
+   "seal": {
+    "color": "teal"
+   },
+   "out": {
+    "text": "调度",
+    "color": "teal"
+   }
+  },
+  {
+   "id": "id-1-63z",
+   "name": "调度",
+   "seal": {
+    "text": "",
+    "color": "ink"
+   },
+   "out": {
+    "text": "调度",
+    "color": "ink"
+   }
+  }
+ ],
+ "keep": [
+  {
+   "id": "b1",
+   "name": "",
+   "text": "",
+   "color": "ink",
+   "out": null
+  },
+  {
+   "id": "b1",
+   "name": "",
+   "text": "",
+   "color": "plum",
+   "out": {
+    "color": "plum"
+   }
+  },
+  {
+   "id": "b1",
+   "name": "",
+   "text": "",
+   "color": "ink",
+   "out": null
+  },
+  {
+   "id": "b1",
+   "name": "",
+   "text": "",
+   "color": "plum",
+   "out": {
+    "color": "plum"
+   }
+  },
+  {
+   "id": "b1",
+   "name": "",
+   "text": "NEW",
+   "color": "ink",
+   "out": {
+    "text": "NEW"
+   }
+  },
+  {
+   "id": "b1",
+   "name": "",
+   "text": "NEW",
+   "color": "plum",
+   "out": {
+    "text": "NEW",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "b1",
+   "name": "",
+   "text": "调 度",
+   "color": "ink",
+   "out": {
+    "text": "调度"
+   }
+  },
+  {
+   "id": "b1",
+   "name": "",
+   "text": "调 度",
+   "color": "plum",
+   "out": {
+    "text": "调度",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "board-0001",
+   "name": "   ",
+   "text": "",
+   "color": "plum",
+   "out": null
+  },
+  {
+   "id": "board-0001",
+   "name": "   ",
+   "text": "",
+   "color": "plum",
+   "out": null
+  },
+  {
+   "id": "board-0001",
+   "name": "   ",
+   "text": "",
+   "color": "plum",
+   "out": null
+  },
+  {
+   "id": "board-0001",
+   "name": "   ",
+   "text": "",
+   "color": "plum",
+   "out": null
+  },
+  {
+   "id": "board-0001",
+   "name": "   ",
+   "text": "NEW",
+   "color": "plum",
+   "out": {
+    "text": "NEW"
+   }
+  },
+  {
+   "id": "board-0001",
+   "name": "   ",
+   "text": "NEW",
+   "color": "plum",
+   "out": {
+    "text": "NEW"
+   }
+  },
+  {
+   "id": "board-0001",
+   "name": "   ",
+   "text": "调 度",
+   "color": "plum",
+   "out": {
+    "text": "调度"
+   }
+  },
+  {
+   "id": "board-0001",
+   "name": "   ",
+   "text": "调 度",
+   "color": "plum",
+   "out": {
+    "text": "调度"
+   }
+  },
+  {
+   "id": "sched",
+   "name": "Scheduler",
+   "text": "",
+   "color": "vermilion",
+   "out": null
+  },
+  {
+   "id": "sched",
+   "name": "Scheduler",
+   "text": "",
+   "color": "plum",
+   "out": {
+    "color": "plum"
+   }
+  },
+  {
+   "id": "sched",
+   "name": "Scheduler",
+   "text": "Scheduler",
+   "color": "vermilion",
+   "out": null
+  },
+  {
+   "id": "sched",
+   "name": "Scheduler",
+   "text": "Scheduler",
+   "color": "plum",
+   "out": {
+    "color": "plum"
+   }
+  },
+  {
+   "id": "sched",
+   "name": "Scheduler",
+   "text": "NEW",
+   "color": "vermilion",
+   "out": {
+    "text": "NEW"
+   }
+  },
+  {
+   "id": "sched",
+   "name": "Scheduler",
+   "text": "NEW",
+   "color": "plum",
+   "out": {
+    "text": "NEW",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "sched",
+   "name": "Scheduler",
+   "text": "调 度",
+   "color": "vermilion",
+   "out": {
+    "text": "调度"
+   }
+  },
+  {
+   "id": "sched",
+   "name": "Scheduler",
+   "text": "调 度",
+   "color": "plum",
+   "out": {
+    "text": "调度",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "mem",
+   "name": "scheduler",
+   "text": "",
+   "color": "rose",
+   "out": null
+  },
+  {
+   "id": "mem",
+   "name": "scheduler",
+   "text": "",
+   "color": "plum",
+   "out": {
+    "color": "plum"
+   }
+  },
+  {
+   "id": "mem",
+   "name": "scheduler",
+   "text": "scheduler",
+   "color": "rose",
+   "out": null
+  },
+  {
+   "id": "mem",
+   "name": "scheduler",
+   "text": "scheduler",
+   "color": "plum",
+   "out": {
+    "color": "plum"
+   }
+  },
+  {
+   "id": "mem",
+   "name": "scheduler",
+   "text": "NEW",
+   "color": "rose",
+   "out": {
+    "text": "NEW"
+   }
+  },
+  {
+   "id": "mem",
+   "name": "scheduler",
+   "text": "NEW",
+   "color": "plum",
+   "out": {
+    "text": "NEW",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "mem",
+   "name": "scheduler",
+   "text": "调 度",
+   "color": "rose",
+   "out": {
+    "text": "调度"
+   }
+  },
+  {
+   "id": "mem",
+   "name": "scheduler",
+   "text": "调 度",
+   "color": "plum",
+   "out": {
+    "text": "调度",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "x",
+   "name": "Memory Model",
+   "text": "",
+   "color": "graphite",
+   "out": null
+  },
+  {
+   "id": "x",
+   "name": "Memory Model",
+   "text": "",
+   "color": "plum",
+   "out": {
+    "color": "plum"
+   }
+  },
+  {
+   "id": "x",
+   "name": "Memory Model",
+   "text": "MM",
+   "color": "graphite",
+   "out": null
+  },
+  {
+   "id": "x",
+   "name": "Memory Model",
+   "text": "MM",
+   "color": "plum",
+   "out": {
+    "color": "plum"
+   }
+  },
+  {
+   "id": "x",
+   "name": "Memory Model",
+   "text": "NEW",
+   "color": "graphite",
+   "out": {
+    "text": "NEW"
+   }
+  },
+  {
+   "id": "x",
+   "name": "Memory Model",
+   "text": "NEW",
+   "color": "plum",
+   "out": {
+    "text": "NEW",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "x",
+   "name": "Memory Model",
+   "text": "调 度",
+   "color": "graphite",
+   "out": {
+    "text": "调度"
+   }
+  },
+  {
+   "id": "x",
+   "name": "Memory Model",
+   "text": "调 度",
+   "color": "plum",
+   "out": {
+    "text": "调度",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "",
+   "name": "The Art of Computer Programming",
+   "text": "",
+   "color": "plum",
+   "out": null
+  },
+  {
+   "id": "",
+   "name": "The Art of Computer Programming",
+   "text": "",
+   "color": "plum",
+   "out": null
+  },
+  {
+   "id": "",
+   "name": "The Art of Computer Programming",
+   "text": "ACP",
+   "color": "plum",
+   "out": null
+  },
+  {
+   "id": "",
+   "name": "The Art of Computer Programming",
+   "text": "ACP",
+   "color": "plum",
+   "out": null
+  },
+  {
+   "id": "",
+   "name": "The Art of Computer Programming",
+   "text": "NEW",
+   "color": "plum",
+   "out": {
+    "text": "NEW"
+   }
+  },
+  {
+   "id": "",
+   "name": "The Art of Computer Programming",
+   "text": "NEW",
+   "color": "plum",
+   "out": {
+    "text": "NEW"
+   }
+  },
+  {
+   "id": "",
+   "name": "The Art of Computer Programming",
+   "text": "调 度",
+   "color": "plum",
+   "out": {
+    "text": "调度"
+   }
+  },
+  {
+   "id": "",
+   "name": "The Art of Computer Programming",
+   "text": "调 度",
+   "color": "plum",
+   "out": {
+    "text": "调度"
+   }
+  },
+  {
+   "id": "调度",
+   "name": "and of the",
+   "text": "",
+   "color": "ink",
+   "out": null
+  },
+  {
+   "id": "调度",
+   "name": "and of the",
+   "text": "",
+   "color": "plum",
+   "out": {
+    "color": "plum"
+   }
+  },
+  {
+   "id": "调度",
+   "name": "and of the",
+   "text": "AOT",
+   "color": "ink",
+   "out": null
+  },
+  {
+   "id": "调度",
+   "name": "and of the",
+   "text": "AOT",
+   "color": "plum",
+   "out": {
+    "color": "plum"
+   }
+  },
+  {
+   "id": "调度",
+   "name": "and of the",
+   "text": "NEW",
+   "color": "ink",
+   "out": {
+    "text": "NEW"
+   }
+  },
+  {
+   "id": "调度",
+   "name": "and of the",
+   "text": "NEW",
+   "color": "plum",
+   "out": {
+    "text": "NEW",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "调度",
+   "name": "and of the",
+   "text": "调 度",
+   "color": "ink",
+   "out": {
+    "text": "调度"
+   }
+  },
+  {
+   "id": "调度",
+   "name": "and of the",
+   "text": "调 度",
+   "color": "plum",
+   "out": {
+    "text": "调度",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "a/b",
+   "name": "CUDA Graphs",
+   "text": "",
+   "color": "amber",
+   "out": null
+  },
+  {
+   "id": "a/b",
+   "name": "CUDA Graphs",
+   "text": "",
+   "color": "plum",
+   "out": {
+    "color": "plum"
+   }
+  },
+  {
+   "id": "a/b",
+   "name": "CUDA Graphs",
+   "text": "CUDAG",
+   "color": "amber",
+   "out": null
+  },
+  {
+   "id": "a/b",
+   "name": "CUDA Graphs",
+   "text": "CUDAG",
+   "color": "plum",
+   "out": {
+    "color": "plum"
+   }
+  },
+  {
+   "id": "a/b",
+   "name": "CUDA Graphs",
+   "text": "NEW",
+   "color": "amber",
+   "out": {
+    "text": "NEW"
+   }
+  },
+  {
+   "id": "a/b",
+   "name": "CUDA Graphs",
+   "text": "NEW",
+   "color": "plum",
+   "out": {
+    "text": "NEW",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "a/b",
+   "name": "CUDA Graphs",
+   "text": "调 度",
+   "color": "amber",
+   "out": {
+    "text": "调度"
+   }
+  },
+  {
+   "id": "a/b",
+   "name": "CUDA Graphs",
+   "text": "调 度",
+   "color": "plum",
+   "out": {
+    "text": "调度",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "0c9f3e2a-77aa-4f1e-9b0c-123456789abc",
+   "name": "LLM inference on GPUs",
+   "text": "",
+   "color": "amber",
+   "out": null
+  },
+  {
+   "id": "0c9f3e2a-77aa-4f1e-9b0c-123456789abc",
+   "name": "LLM inference on GPUs",
+   "text": "",
+   "color": "plum",
+   "out": {
+    "color": "plum"
+   }
+  },
+  {
+   "id": "0c9f3e2a-77aa-4f1e-9b0c-123456789abc",
+   "name": "LLM inference on GPUs",
+   "text": "LLMIG",
+   "color": "amber",
+   "out": null
+  },
+  {
+   "id": "0c9f3e2a-77aa-4f1e-9b0c-123456789abc",
+   "name": "LLM inference on GPUs",
+   "text": "LLMIG",
+   "color": "plum",
+   "out": {
+    "color": "plum"
+   }
+  },
+  {
+   "id": "0c9f3e2a-77aa-4f1e-9b0c-123456789abc",
+   "name": "LLM inference on GPUs",
+   "text": "NEW",
+   "color": "amber",
+   "out": {
+    "text": "NEW"
+   }
+  },
+  {
+   "id": "0c9f3e2a-77aa-4f1e-9b0c-123456789abc",
+   "name": "LLM inference on GPUs",
+   "text": "NEW",
+   "color": "plum",
+   "out": {
+    "text": "NEW",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "0c9f3e2a-77aa-4f1e-9b0c-123456789abc",
+   "name": "LLM inference on GPUs",
+   "text": "调 度",
+   "color": "amber",
+   "out": {
+    "text": "调度"
+   }
+  },
+  {
+   "id": "0c9f3e2a-77aa-4f1e-9b0c-123456789abc",
+   "name": "LLM inference on GPUs",
+   "text": "调 度",
+   "color": "plum",
+   "out": {
+    "text": "调度",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "zz",
+   "name": "KV-cache layout",
+   "text": "",
+   "color": "plum",
+   "out": null
+  },
+  {
+   "id": "zz",
+   "name": "KV-cache layout",
+   "text": "",
+   "color": "plum",
+   "out": null
+  },
+  {
+   "id": "zz",
+   "name": "KV-cache layout",
+   "text": "KVCL",
+   "color": "plum",
+   "out": null
+  },
+  {
+   "id": "zz",
+   "name": "KV-cache layout",
+   "text": "KVCL",
+   "color": "plum",
+   "out": null
+  },
+  {
+   "id": "zz",
+   "name": "KV-cache layout",
+   "text": "NEW",
+   "color": "plum",
+   "out": {
+    "text": "NEW"
+   }
+  },
+  {
+   "id": "zz",
+   "name": "KV-cache layout",
+   "text": "NEW",
+   "color": "plum",
+   "out": {
+    "text": "NEW"
+   }
+  },
+  {
+   "id": "zz",
+   "name": "KV-cache layout",
+   "text": "调 度",
+   "color": "plum",
+   "out": {
+    "text": "调度"
+   }
+  },
+  {
+   "id": "zz",
+   "name": "KV-cache layout",
+   "text": "调 度",
+   "color": "plum",
+   "out": {
+    "text": "调度"
+   }
+  },
+  {
+   "id": "id-0-0",
+   "name": "warp – level — primitives",
+   "text": "",
+   "color": "vermilion",
+   "out": null
+  },
+  {
+   "id": "id-0-0",
+   "name": "warp – level — primitives",
+   "text": "",
+   "color": "plum",
+   "out": {
+    "color": "plum"
+   }
+  },
+  {
+   "id": "id-0-0",
+   "name": "warp – level — primitives",
+   "text": "WLP",
+   "color": "vermilion",
+   "out": null
+  },
+  {
+   "id": "id-0-0",
+   "name": "warp – level — primitives",
+   "text": "WLP",
+   "color": "plum",
+   "out": {
+    "color": "plum"
+   }
+  },
+  {
+   "id": "id-0-0",
+   "name": "warp – level — primitives",
+   "text": "NEW",
+   "color": "vermilion",
+   "out": {
+    "text": "NEW"
+   }
+  },
+  {
+   "id": "id-0-0",
+   "name": "warp – level — primitives",
+   "text": "NEW",
+   "color": "plum",
+   "out": {
+    "text": "NEW",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "id-0-0",
+   "name": "warp – level — primitives",
+   "text": "调 度",
+   "color": "vermilion",
+   "out": {
+    "text": "调度"
+   }
+  },
+  {
+   "id": "id-0-0",
+   "name": "warp – level — primitives",
+   "text": "调 度",
+   "color": "plum",
+   "out": {
+    "text": "调度",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "id-1-63z",
+   "name": "调度",
+   "text": "",
+   "color": "ink",
+   "out": null
+  },
+  {
+   "id": "id-1-63z",
+   "name": "调度",
+   "text": "",
+   "color": "plum",
+   "out": {
+    "color": "plum"
+   }
+  },
+  {
+   "id": "id-1-63z",
+   "name": "调度",
+   "text": "调度",
+   "color": "ink",
+   "out": null
+  },
+  {
+   "id": "id-1-63z",
+   "name": "调度",
+   "text": "调度",
+   "color": "plum",
+   "out": {
+    "color": "plum"
+   }
+  },
+  {
+   "id": "id-1-63z",
+   "name": "调度",
+   "text": "NEW",
+   "color": "ink",
+   "out": {
+    "text": "NEW"
+   }
+  },
+  {
+   "id": "id-1-63z",
+   "name": "调度",
+   "text": "NEW",
+   "color": "plum",
+   "out": {
+    "text": "NEW",
+    "color": "plum"
+   }
+  },
+  {
+   "id": "id-1-63z",
+   "name": "调度",
+   "text": "调 度",
+   "color": "ink",
+   "out": null
+  },
+  {
+   "id": "id-1-63z",
+   "name": "调度",
+   "text": "调 度",
+   "color": "plum",
+   "out": {
+    "color": "plum"
+   }
+  }
+ ]
+}

@@ -54,7 +54,7 @@ import Testing
     let (v, package) = try vault(here, other: other)
     defer { try? FileManager.default.removeItem(at: v.root) }
     let refs = RefResolver(here, package: package, vault: v).refs(in: text)
-    let seal = NoteRef.Seal(text: "MM", color: RefResolver.sealColor("mem"), alone: false)
+    let seal = NoteRef.Seal(text: "MM", color: Seal.defaultColor(BoardID(rawValue: "mem")).rawValue, alone: false)
     var alone = seal
     alone.alone = true
     #expect(
@@ -85,14 +85,6 @@ import Testing
     #expect(try refs([note("c1", text), note("c2", "# Plan"), note("c3", "# Other, edited")]) == base)
     #expect(try refs([note("c1", text), note("c2", "# Plan v2"), note("c3", "# Other")]) != base)
     #expect(try refs([note("c1", text), note("c3", "# Other")]).isEmpty)
-  }
-
-  @Test func sealsAreTheBoardsDefaults() {
-    #expect(RefResolver.sealText("Memory Model") == "MM")
-    #expect(RefResolver.sealText("Large language models for CUDA") == "LLMCUDA")
-    #expect(RefResolver.sealText("Convolution") == "Convolution")
-    #expect(RefResolver.sealText("并行 计算 模式 与 优化 方法 总结") == "并计模与优")
-    #expect(RefResolver.sealColors.contains(RefResolver.sealColor("anything")))
   }
 
   /// The [[ list as the web board builds it (md/load.ts refCandidates, md/refs.ts refGroups, core boardRefsOf): this
@@ -131,7 +123,7 @@ import Testing
     #expect(g.items.first?.label == "Memory Model › Coalescing")
     #expect(g.items.first?.target == "mem/m1")
     #expect(g.items.first?.crumb == "Caches")
-    let seal = NoteRef.Seal(text: "MM", color: RefResolver.sealColor("mem"), alone: false)
+    let seal = NoteRef.Seal(text: "MM", color: Seal.defaultColor(BoardID(rawValue: "mem")).rawValue, alone: false)
     #expect(g.items.first?.hit == .found(title: "Coalescing", seal: seal))
     var alone = seal
     alone.alone = true

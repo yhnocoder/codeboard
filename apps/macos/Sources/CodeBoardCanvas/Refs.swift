@@ -298,50 +298,11 @@ final class RefResolver {
     return ""
   }
 
-  // MARK: seals (core seal.ts): boards keep no seal of their own in the vault, so each has its default
+  // MARK: seals (core seal.ts, CodeBoardModel Seals.swift)
 
-  static let sealColors = ["vermilion", "amber", "olive", "teal", "ink", "plum", "rose", "graphite"]
-  private static let stop: Set<String> = ["and", "of", "the", "a", "an", "for", "to", "in", "on", "with"]
-
-  /// A board has no sub-boards in the vault, so each is its own book: its seal alone
+  /// A board's seal as a ref draws it
   static func seal(_ b: VaultBoard, alone: Bool) -> NoteRef.Seal {
-    let text = sealText(b.title.trimmingCharacters(in: .whitespacesAndNewlines))
-    return NoteRef.Seal(text: text.isEmpty ? "·" : text, color: sealColor(b.id.rawValue), alone: alone)
-  }
-
-  /// The initials of the name's words (and/of/the… skipped, all-caps words whole), or its one word
-  static func sealText(_ name: String) -> String {
-    let words = name.split(whereSeparator: { $0.isWhitespace || "-–—".contains($0) }).map(String.init)
-    guard words.count > 1 else { return cleanSealText(words.first ?? "") }
-    let content = words.filter { !stop.contains($0.lowercased()) }
-    return cleanSealText(
-      (content.isEmpty ? words : content).map { w in
-        w.wholeMatch(of: /\p{Lu}{2,}/) != nil ? w : w.unicodeScalars.first.map { String($0).uppercased() } ?? ""
-      }.joined())
-  }
-
-  /// No white space, at most 5 CJK characters and 12 others
-  static func cleanSealText(_ text: String) -> String {
-    var cjk = 0
-    var other = 0
-    var out = ""
-    for ch in text.unicodeScalars where !ch.properties.isWhitespace {
-      if String(ch).wholeMatch(of: /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/) != nil {
-        guard cjk < 5 else { continue }
-        cjk += 1
-      } else {
-        guard other < 12 else { continue }
-        other += 1
-      }
-      out.unicodeScalars.append(ch)
-    }
-    return out
-  }
-
-  /// FNV-1a of the board id's UTF-16 units into the seal colours
-  static func sealColor(_ id: String) -> String {
-    var h: UInt32 = 0x811c_9dc5
-    for u in id.utf16 { h = (h ^ UInt32(u)) &* 0x0100_0193 }
-    return sealColors[Int(h % UInt32(sealColors.count))]
+    let s = Seal.of(id: b.id, name: b.title, seal: nil)
+    return NoteRef.Seal(text: s.text, color: s.color.rawValue, alone: alone)
   }
 }

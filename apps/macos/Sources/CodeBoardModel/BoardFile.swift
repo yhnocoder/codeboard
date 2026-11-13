@@ -112,18 +112,6 @@ extension Board {
   }
 }
 
-extension Seal {
-  /// No spaces; at most 5 CJK and 12 other characters (core seal.ts sealTextOk)
-  static func isText(_ text: String) -> Bool {
-    guard !text.isEmpty, !text.contains(where: \.isWhitespace) else { return false }
-    let cjk = text.unicodeScalars.count { s in
-      s.properties.isIdeographic || (0x3040...0x30FF).contains(s.value) || (0xAC00...0xD7AF).contains(s.value)
-        || (0x1100...0x11FF).contains(s.value) || (0x3130...0x318F).contains(s.value)
-    }
-    return cjk <= 5 && text.unicodeScalars.count - cjk <= 12
-  }
-}
-
 extension Sidenote {
   func problem() -> String? {
     if case .code(let s) = body, s.firstLine < 1 { return "its code starts at line \(s.firstLine)" }
