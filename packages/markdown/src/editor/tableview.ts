@@ -228,7 +228,8 @@ export class TableBlockView extends TableView {
       b.setAttribute("aria-pressed", String(al === a));
     }
   }
-  /** As many actions as the band has room for, by KEEP; the rest are in ⋯ */
+  /** As many actions as the band has room for, by KEEP; the rest are in ⋯. The band's least width is the table's
+   *  (--md-table-min, markdown.css), so it is never wider than a table that has room for that width */
   private fit(w: number) {
     const fixed = PAD + this.size.offsetWidth + SP + GAP + BTN,
       n = Math.floor((w - fixed - 2 * GAP) / BTN);
@@ -241,7 +242,8 @@ export class TableBlockView extends TableView {
         el.hidden = !shown;
         shown = false;
       } else if (el.classList.contains("md-bb") && el !== this.more) shown ||= !el.hidden;
-    return fixed;
+    const least = Number.parseFloat(getComputedStyle(this.band.row).getPropertyValue("--md-table-min")) || 0;
+    return Math.max(fixed, least);
   }
   private openMenu(anchor: HTMLElement) {
     const items: BandMenuItem[] = GROUPS.flat()

@@ -282,11 +282,16 @@ describe("table captions (a Table: line after the table)", () => {
     d.innerHTML = markdown.render(`Intro\n\n${T}\n\nTable: Sizes of $M$`);
     const fig = d.querySelector(".md-tfig")!;
     expect(fig.classList.contains("md-gap")).toBe(true);
-    expect(fig.firstElementChild!.tagName).toBe("TABLE");
+    // the table in its scrolling wrapper, as the editor draws it
+    expect(fig.firstElementChild!.className).toBe("tableWrapper");
+    expect(fig.firstElementChild!.firstElementChild!.tagName).toBe("TABLE");
     expect(fig.lastElementChild!.className).toBe("md-cap");
     expect(fig.lastElementChild!.querySelectorAll(".katex").length).toBe(1);
     d.innerHTML = markdown.render(T);
     expect(d.querySelector(".md-tfig")).toBeNull();
+    expect(d.firstElementChild!.className).toBe("tableWrapper");
+    d.innerHTML = markdown.render(`Intro\n\n${T}`);
+    expect(d.querySelector(".tableWrapper")!.classList.contains("md-gap")).toBe(true);
   });
   it("sets, changes and removes the caption of the nth table, rewriting only the block it is in", () => {
     const md = `# *T*\n\n- list\n\n  ${T.replace(/\n/g, "\n  ")}\n\n${T}\n\nTable: old\n\nend   *x*`;

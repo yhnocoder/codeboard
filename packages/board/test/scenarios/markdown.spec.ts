@@ -1942,7 +1942,8 @@ test("noteTableRoundedCorners", async () => {
         collapse: s.borderCollapse,
         spacing: s.borderSpacing,
         frame: s.borderTopWidth,
-        scroll: s.overflowX,
+        // the wrapper scrolls a wide table, in the static render and the editor alike
+        scroll: getComputedStyle(t.parentElement!).overflowX,
         inner: cs(head[0]).borderRightWidth,
         below: cs(head[0]).borderBottomWidth,
         top: cs(head[0]).borderTopWidth,
@@ -1975,7 +1976,11 @@ test("noteTableRoundedCorners", async () => {
   await idle(h);
   const ed = await look('.card[data-id="nb"] .md-pm table');
   await shot(h, "note-table-rounded-editor");
-  check("table-rounded", want(stat) && want(ed) && stat.scroll === "auto", JSON.stringify({ stat, ed }));
+  check(
+    "table-rounded",
+    want(stat) && want(ed) && stat.scroll === "auto" && ed.scroll === "auto",
+    JSON.stringify({ stat, ed }),
+  );
   // read-only and editing: the same table width and column widths, with and without user column widths
   const widths = (sel: string) =>
     h.page.evaluate((sel) => {

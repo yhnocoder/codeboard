@@ -30,6 +30,11 @@ math {
   scrollbar-color: var(--hair) transparent;
   overscroll-behavior-x: contain;
 }
+/* The least width of a table, and so the narrowest its toolbar band gets (editor/tableview.ts): a band is never wider than
+   its table. The static render and the editor use it alike */
+:where(.md, .md-bands) {
+  --md-table-min: 128px;
+}
 /* 连字和编辑器里一样关掉（ProseMirror 要关，不然光标落不进连字中间）：进编辑时字形不变 */
 .md {
   font-variant-ligatures: none;
@@ -274,13 +279,10 @@ math {
 .md .md-tfig {
   margin: 4px 0;
 }
-.md .md-tfig > table {
-  margin: 0 auto;
-}
-.md-pm .md-tfig > .tableWrapper {
+.md .md-tfig > .tableWrapper {
   margin: 0;
 }
-.md-pm .md-tfig > .tableWrapper > table {
+.md .md-tfig > .tableWrapper > table {
   margin: 0 auto;
 }
 .md kbd {
@@ -400,20 +402,25 @@ math {
   transform: translateY(-1px) rotate(-45deg);
 }
 /* Rounded tables: the table draws the outer frame (6px corners), cells only their right and bottom lines (none on the last
-   column / row). Static render: the table is a block that scrolls sideways, as wide as its content, and clips the cells to
-   its corners; in the editor the .tableWrapper scrolls and the corner cells take the inner radius (header background) */
+   column / row), the corner cells take the inner radius (header background). The .tableWrapper around it (the static
+   render's and the editor's alike) scrolls it sideways when it is wider than the Note. It is at least --md-table-min wide
+   (a narrower card: as wide as the card), its columns stretched in proportion; the width a table's own style gives (column
+   sizes dragged, the editor's and layout.ts's) counts when it is wider. Over that inline style, hence !important */
+/* as little weight as the table had here before it had a wrapper: a page's own first-block or gap margins win over it */
+.md :where(.tableWrapper) {
+  position: relative;
+  overflow-x: auto;
+  margin: 4px 0;
+}
 .md table {
   border-collapse: separate;
   border-spacing: 0;
   border: 1px solid var(--hair);
   border-radius: 6px;
   box-sizing: border-box;
-  margin: 4px 0;
+  margin: 0;
   font-size: 0.95em;
-  display: block;
-  width: fit-content;
-  overflow-x: auto;
-  max-width: 100%;
+  min-width: min(var(--md-table-min), 100%) !important;
 }
 /* cells break between words, never inside one: a table wider than the Note scrolls sideways in it */
 .md th,
@@ -862,15 +869,6 @@ math {
 }
 .md-pm [data-type="details"]:not(.is-open) [data-type="detailsContent"] {
   display: none;
-}
-.md-pm .tableWrapper {
-  position: relative;
-  overflow-x: auto;
-  margin: 4px 0;
-}
-.md-pm .tableWrapper table {
-  display: table;
-  margin: 0;
 }
 .md-pm .selectedCell {
   background: color-mix(in srgb, var(--accent) 14%, transparent);

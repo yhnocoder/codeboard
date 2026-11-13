@@ -510,3 +510,101 @@ test("noteFirstBlockBandOverHeader", async () => {
   }
   await close(h);
 });
+
+/** A table is at least as wide as its band at its narrowest (one CSS length, --md-table-min): a tiny table at rest and in the
+ *  editor has the same box, at least that wide, its columns stretched in proportion, and its band's right edge never passes
+ *  the table's. Column sizes a user dragged that add up to less scale up; a wider table is as it was; in a list item or a
+ *  quote the same; in a card narrower than that the table is as wide as the card and scrolls in it */
+test("noteTableMinWidth", async () => {
+  const tiny = "| a | bb |\n| - | - |\n| 1 | 22 |";
+  const wide = "| name | kind | size |\n| - | - | - |\n| alpha | the first one | 12 kB |";
+  const b = emptyBoard("b1", "table min width");
+  const notes: [string, string, number, NoteCard["mdLayout"]?][] = [
+    ["t", `${tiny}\n\nafter`, 360],
+    ["s", `${tiny}\n\nafter`, 360, { tables: [{ cols: [30, 30] }] }],
+    ["l", `- item\n\n  ${tiny.replace(/\n/g, "\n  ")}\n\n> ${tiny.replace(/\n/g, "\n> ")}\n\nafter`, 360],
+    ["w", `${wide}\n\nafter`, 360],
+    ["n", `${tiny}\n\nafter`, 120],
+  ];
+  notes.forEach(([id, md, w, mdLayout], i) =>
+    put(
+      b,
+      { id, kind: "note", md, look: "note", mdLayout } as NoteCard,
+      40 + (i % 3) * 420,
+      60 + Math.floor(i / 3) * 300,
+      w,
+    ),
+  );
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, scale: 2, w: 1300, h: 700, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  await idle(h);
+  const least = await pg.evaluate(() =>
+    Number.parseFloat(getComputedStyle(document.querySelector(".md")!).getPropertyValue("--md-table-min")),
+  );
+  /** Each table of a card: its box, its columns' widths, its wrapper's width and whether that scrolls */
+  const tables = (id: string) =>
+    pg.locator(`${card(id)} table`).evaluateAll((ts) =>
+      ts.map((t) => {
+        const r = t.getBoundingClientRect(),
+          w = t.parentElement!;
+        return {
+          x: Math.round(r.x * 10) / 10,
+          y: Math.round(r.y * 10) / 10,
+          w: Math.round(r.width * 10) / 10,
+          h: Math.round(r.height * 10) / 10,
+          cols: [...(t as HTMLTableElement).rows[0].cells].map((c) => Math.round(c.getBoundingClientRect().width)),
+          wrap: Math.round(w.getBoundingClientRect().width),
+          scrolls: w.scrollWidth > w.clientWidth,
+        };
+      }),
+    );
+  const rest: Record<string, Awaited<ReturnType<typeof tables>>> = {};
+  for (const [id] of notes) rest[id] = await tables(id);
+  check("noteTableMinWidth a tiny table is at least the least width", rest.t[0].w >= least - 0.5, { least, t: rest.t });
+  check(
+    "noteTableMinWidth its columns stretch in proportion",
+    rest.t[0].cols[1] > rest.t[0].cols[0] && rest.t[0].cols[0] + rest.t[0].cols[1] >= least - 3,
+    rest.t,
+  );
+  check("noteTableMinWidth dragged sizes adding up to less scale up", rest.s[0].w >= least - 0.5, rest.s);
+  check(
+    "noteTableMinWidth in a list item and a quote too",
+    rest.l.length === 2 && rest.l.every((t) => t.w >= least - 0.5),
+    rest.l,
+  );
+  check("noteTableMinWidth a wider table is as it was", rest.w[0].w > least + 20, rest.w);
+  check(
+    "noteTableMinWidth in a narrow card as wide as the card, scrolling in it",
+    rest.n[0].w <= rest.n[0].wrap + 0.5 && rest.n[0].wrap < least,
+    rest.n,
+  );
+  const c = (await pg.locator(card("t")).boundingBox())!,
+    clip = { x: c.x - 12, y: c.y - 12, width: c.width + 24, height: c.height + 24 };
+  await pg.screenshot({ path: `${OUT}/table-min-width-rest.png`, clip, animations: "disabled" });
+  // entering edit moves nothing; the band, up on the table, ends where the table does
+  await editNote(h, "t");
+  await intoCell(h, "t", "1");
+  const band = `${card("t")} .md-band-table`;
+  await pg.locator(`${band}.on`).waitFor();
+  await idle(h);
+  const edit = await tables("t");
+  const face = await pg.locator(`${band} .md-band-face`).boundingBox();
+  check(
+    "noteTableMinWidth the same box at rest and in the editor",
+    ["x", "y", "w", "h"].every(
+      (k) =>
+        Math.abs((edit[0] as never as Record<string, number>)[k] - (rest.t[0] as never as Record<string, number>)[k]) <
+        0.6,
+    ),
+    { rest: rest.t, edit },
+  );
+  check(
+    "noteTableMinWidth the band ends where the table does",
+    !!face && face.x + face.width <= edit[0].x + edit[0].w + 0.6 && !(await pg.locator(`${band}.wide`).count()),
+    { face, table: edit[0] },
+  );
+  await pg.screenshot({ path: `${OUT}/table-min-width-edit.png`, clip, animations: "disabled" });
+  await exitEdit(h);
+  await close(h);
+});

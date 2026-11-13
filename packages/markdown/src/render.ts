@@ -96,12 +96,12 @@ const DISPLAY: Record<string, (n: PMNode, cx: Cx) => string | undefined> = {
         )
       : specHtml(["img", a], "");
   },
-  // a table's caption ("Table: …" after it) under it, laid out like an image's (markdown.css .md-tfig)
+  // in a wrapper that scrolls it sideways, as the editor draws it (so it has the same box in both); its caption ("Table: …"
+  // after it) under it, laid out like an image's (markdown.css .md-tfig)
   table: (n, cx) => {
-    const cap = captionOf(n.attrs.caption);
-    return cap
-      ? `<div class="md-tfig">${specHtml(n.type.spec.toDOM!(n), contentHtml(n, cx))}<div class="md-cap">${captionInner(cap, cx)}</div></div>`
-      : undefined;
+    const cap = captionOf(n.attrs.caption),
+      t = `<div class="tableWrapper">${specHtml(n.type.spec.toDOM!(n), contentHtml(n, cx))}</div>`;
+    return cap ? `<div class="md-tfig">${t}<div class="md-cap">${captionInner(cap, cx)}</div></div>` : t;
   },
   // 一条定义都还没写（只有正文里的 [^1]）：不画空的脚注列表
   footnotes: (n) =>
