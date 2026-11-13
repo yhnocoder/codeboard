@@ -150,7 +150,10 @@ test("noteRefFollowsBoardRename", async () => {
   check("noteRefFollowsBoardRename the note is not rewritten", noteMd(h.board(), "n") === picked, {
     md: noteMd(h.board(), "n"),
   });
+  // a click previews the card; the preview's arrow opens the renamed board at it
   await chip(pg, "n").click();
+  await pg.locator(".cpeek.show").waitFor();
+  await pg.locator(".cpeek.show .cpeek-go").click();
   await until(h, "the reference opens the renamed board at the card", () => run.page("bk"));
   await run.close();
 });
