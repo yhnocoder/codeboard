@@ -1260,11 +1260,11 @@ test("copyPartialMarkBalanced", async () => {
       [pm, paras] as const,
       { timeout: 5000 },
     );
-    // 光标处的记号装饰不算：只看格式元素和里面的字（公式写成 $latex$）
+    // 光标处的记号装饰、链接后面折起来的地址不算：只看格式元素和里面的字（公式写成 $latex$）
     const pasted = await pg.evaluate((root) => {
       const ps = document.querySelector(root)!.querySelectorAll(":scope > p"),
         p = ps[ps.length - 1].cloneNode(true) as Element;
-      p.querySelectorAll(".md-mk, .md-hide").forEach((m) => m.remove());
+      p.querySelectorAll(".md-mk, .md-hide, .md-urlchip").forEach((m) => m.remove());
       // the editor draws a span in pieces (the formula is a widget in its own <mark>): one element per run of the same tag
       for (let k = p.firstChild; k; k = k.nextSibling) {
         while (k instanceof Element && k.nextSibling instanceof Element && k.nextSibling.tagName === k.tagName) {
