@@ -3,7 +3,7 @@
 //                                the line without switching, draining once let go; pushed through, the mist covers the board, the
 //                                card level is swapped for the summaries in one frame under it (no half-faded frame) with the seal
 //                                stamped, and the mist clears; one column per top-level Section and loose card, anchored at its
-//                                top-left; a Mark goes with the cards, a Free Text stays as it is, at its own size; the zoom stops at
+//                                top-left; a Text and a Box stay as they are, at their own size; the zoom stops at
 //                                the board's minimum; a push during the switch is held at the cut and the switch finishes first
 //   summaryWrittenAndEdited      on the real host with a fake DeepSeek: opening the board asks nothing, ↻ writes one item (as
 //                                long as its content asks, no layout numbers); a click edits a body in place (Enter saves, marked edited, kept as a pair
@@ -19,8 +19,8 @@
 //                                overview: two lines on top, one deeper, the deeper header under the outer one), its direct cards
 //                                one column with the AI's title, a Section with one child only a kick line above the child's title;
 //                                nothing overlaps at rest; ↻ on a middle header asks the AI for its overview from its children
-//   summaryFramesOnlyBoard       a board of sub-board frames, Free Text headings and Marks, nothing to summarize: zoomed out past the
-//                                cut the Marks hide all the same, and the frames and Free Text look as they do at 100 %, only scaled
+//   summaryFramesOnlyBoard       a board of sub-board frames, a Text heading and a Box, nothing to summarize: zoomed out past the
+//                                cut the frames, the Text and the Box look as they do at 100 %, only scaled
 //   summarySwitchWhole           a slow pinch out through the detent and back, sampled every frame: no card in view is ever blank
 //                                while the card level shows, the card level is never taken out of the tree (its opacity alone
 //                                hides it), the swap happens in one frame, with the summary columns complete and the mist covering
@@ -46,7 +46,7 @@ import { fakeDeepseek } from "../deepseek";
 
 const note = (id: string, md: string, look: NoteCard["look"] = "note"): NoteCard => ({ id, kind: "note", md, look });
 
-/** Three Sections of three Notes in a row (wide enough that the summary level is reachable), a loose Note, a Mark and a Free Text */
+/** Three Sections of three Notes in a row (wide enough that the summary level is reachable), a loose Note, a Box and a Text */
 function bigBoard(id: string, z: number, written: boolean): Board {
   const b = emptyBoard(id, "summaries");
   const titles = ["异构并行计算", "内存层次", "线程调度"];
@@ -63,8 +63,8 @@ function bigBoard(id: string, z: number, written: boolean): Board {
     }
   });
   put(b, note("loose", "# 本章导读\n\n这一章从 CPU 和 GPU 的设计取舍讲起。"), 80, 1800, 900);
-  put(b, note("mark", "看这里", "mark"), 2700, 1800, 300);
-  put(b, note("ft", "随手写的一行", "freetext"), 4000, 1800, 600);
+  put(b, note("bx", "看这里", "box"), 2700, 1800, 300);
+  put(b, note("ft", "随手写的一行", "text"), 4000, 1800, 600);
   if (written) {
     for (const k of ["sec:s0", "sec:s1", "sec:s2", "card:loose"])
       putSummary(b, k, {
@@ -182,9 +182,9 @@ test("summaryDetentSwitch", async () => {
     (await opacity(h, ".cardlay")) === 1 && (await h.page.locator(".sumlay").count()) === 0,
   );
   check(
-    "summaryDetentSwitch a Free Text is in the layer that never fades, a Mark in the card layer",
+    "summaryDetentSwitch a Text and a Box are in the layer that never fades",
     (await h.page.locator('.keeplay .card[data-id="ft"]').count()) === 1 &&
-      (await h.page.locator('.cardlay .card[data-id="mark"]').count()) === 1,
+      (await h.page.locator('.keeplay .card[data-id="bx"]').count()) === 1,
   );
   // from just above the cut, a step that would cross it stops at it and pushes half-way (deltaY 30 is a zoom of e^-0.3; a push
   // is through at e^0.6): the mist is up by half its height, the line half full, no seal, the cards still there
@@ -230,7 +230,7 @@ test("summaryDetentSwitch", async () => {
     .locator(".sumcol")
     .evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.sum).sort());
   check(
-    "summaryDetentSwitch one column per Section and loose card, none for the Mark or the Free Text",
+    "summaryDetentSwitch one column per Section and loose card, none for the Text or the Box",
     keys.join() === "card:loose,sec:s0,sec:s1,sec:s2",
     keys,
   );
@@ -249,9 +249,9 @@ test("summaryDetentSwitch", async () => {
   const ft = h.page.locator('.card[data-id="ft"]');
   await idle(h);
   check(
-    "summaryDetentSwitch the Mark is hidden, the Free Text keeps its look and its own size",
+    "summaryDetentSwitch the Text and the Box keep their look and their own size",
     (await opacity(h, ".cardlay")) === FADED &&
-      (await h.page.locator('.card[data-id="mark"]').count()) === 1 &&
+      (await h.page.locator('.card[data-id="bx"]').isVisible()) &&
       (await ft.isVisible()) &&
       (await h.page.locator(".keeplay").evaluate((e) => getComputedStyle(e).opacity)) === "1" &&
       (await ft.evaluate((e) => e.querySelector(".tx")?.textContent === "随手写的一行")),
@@ -525,8 +525,8 @@ test("summaryFramesOnlyBoard", async () => {
     M.cards.push({ id: `f${i}`, kind: "board", board: k.id });
     M.place[`f${i}`] = { x: 80 + (i % 2) * 1500, y: 400 + Math.floor(i / 2) * 1100, w: 1200, h: 800 };
   });
-  put(M, note("ft", "# Basic Concepts", "freetext"), 80, 80, 900);
-  put(M, note("mk", "Parallel Pattern", "mark"), 1580, 120, 500);
+  put(M, note("ft", "# Basic Concepts", "text"), 80, 80, 900);
+  put(M, note("mk", "Parallel Pattern", "box"), 1580, 120, 500);
   M.cam = { x: 20, y: 20, z: 0.6 };
   const run = await hostBoards([M, ...kids], {
     page: { light: true, w: 1280, h: 800, settings: { theme: "warm-ink" } },
@@ -534,7 +534,7 @@ test("summaryFramesOnlyBoard", async () => {
   const h = await run.open("bFrames");
   await until(h, "the frames draw their boards", () => h.page.locator(".card.board .skel [data-sub]").count());
   await idle(h);
-  /** What a frame and the Free Text show, independent of the zoom */
+  /** What a frame, the Text and the Box show, independent of the zoom */
   const looks = () =>
     h.page.evaluate(() => {
       const one = (id: string) => {
@@ -550,11 +550,11 @@ test("summaryFramesOnlyBoard", async () => {
           aspect: +(r.width / r.height).toFixed(2),
         };
       };
-      return { f0: one("f0"), f3: one("f3"), ft: one("ft") };
+      return { f0: one("f0"), f3: one("f3"), ft: one("ft"), mk: one("mk") };
     });
   const near = await looks();
   check(
-    "summaryFramesOnlyBoard at 60 % the frames show their names and counts, the Mark shows",
+    "summaryFramesOnlyBoard at 60 % the frames show their names and counts, the Box shows",
     near.f0.count === "4" && !near.f0.cut && (await h.page.locator('.card[data-id="mk"]').isVisible()),
     near,
   );
@@ -563,15 +563,15 @@ test("summaryFramesOnlyBoard", async () => {
   await idle(h);
   const far = await looks();
   check(
-    "summaryFramesOnlyBoard past the cut a board with nothing to summarize hides its Marks too",
+    "summaryFramesOnlyBoard past the cut the card level fades, the Box stays",
     (await opacity(h, ".cardlay")) === FADED &&
-      (await h.page.locator('.card[data-id="mk"]').count()) === 1 &&
+      (await h.page.locator('.card[data-id="mk"]').isVisible()) &&
       (await zoomOf(h)) < 0.3,
     { z: await zoomOf(h), cardlay: await opacity(h, ".cardlay") },
   );
   check(
-    "summaryFramesOnlyBoard the frames and the Free Text look as at 60 %, only scaled: no map look, names whole, counts kept",
-    JSON.stringify(far) === JSON.stringify(near) && far.f0.lod === "" && far.ft.lod === "",
+    "summaryFramesOnlyBoard the frames, the Text and the Box look as at 60 %, only scaled: no map look, names whole, counts kept",
+    JSON.stringify(far) === JSON.stringify(near) && far.f0.lod === "" && far.ft.lod === "" && far.mk.lod === "",
     { near, far },
   );
   await h.close();

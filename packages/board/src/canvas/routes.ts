@@ -37,7 +37,6 @@ import {
   type Mode,
   type Side,
   type Shape,
-  handLine,
 } from "@codeboard/core/canvas";
 import { carAt, type CarPose } from "./city";
 import { tiltOf } from "../state/tilt";
@@ -260,19 +259,11 @@ export type Geo = {
   port?: { x: number; y: number };
   port2?: { x: number; y: number };
   pts: number[];
-  /** 手绘线（从 Mark 出发）：第二笔；head / tail 是手绘的箭头 path */
-  d2?: string;
 };
 
-/** 从 Mark 出发的箭头画成手绘线：返回 Mark 的颜色，别的箭头 undefined */
-export function handOf(L: Pick<Link, "from">) {
-  const c = cardById(L.from.card)?.card;
-  return c?.kind === "note" && c.look === "mark" ? c.hand : undefined;
-}
-
-/** 实线：材质可以把它画成一块填充的形状（look.ts 的 stroke：毛笔、收细的线）。手绘线、虚线、点线（Generated）、点划线（RPC）、
+/** 实线：材质可以把它画成一块填充的形状（look.ts 的 stroke：毛笔、收细的线）。虚线、点线（Generated）、点划线（RPC）、
  *  手动补的 Call 箭头照旧描边 */
-export const solidLine = (L: Link) => !handOf(L) && !(L.style?.dash || L.gen || L.rpc || L.call?.ev?.kind === "manual");
+export const solidLine = (L: Link) => !(L.style?.dash || L.gen || L.rpc || L.call?.ev?.kind === "manual");
 
 export const headScale = (L: Link) => (L.style?.width === 1 ? 0.85 : L.style?.width === 3 ? 1.25 : 1);
 /** 合并点离终点多远 */
@@ -288,18 +279,6 @@ export function geoFrom(L: Link, bs: Base, p: Anchor, q: Anchor, merged: boolean
   const hd = headOf(L),
     hk = shape().head,
     s = headScale(L);
-  // 手绘线：照曲线走（制图、City 的直角折线也一样），画的时候再抖；线头不画圆点（Mark 没有框）
-  if (handOf(L) && bs.kind !== "gutter") {
-    const sh =
-      bs.kind === "self"
-        ? selfArc(p, q, "curve")
-        : connect(p, q, "curve", undefined, {
-            a: bs.a.pill ? undefined : bs.a.outer,
-            b: bs.b.pill ? undefined : bs.b.outer,
-          });
-    const h = handLine(L.id, sh.pts, hd.end, hd.start, s);
-    return { d: h.d, d2: h.d2, head: h.head, tail: h.tail, mx: sh.mx, my: sh.my, pts: sh.pts };
-  }
   const route = shape().route;
   let sh: Shape;
   if (bs.kind === "gutter") {
@@ -450,7 +429,7 @@ export function makeRoute(L: Link): Route {
   const sig = createMemo(() => {
     const bs = base(),
       s = sides();
-    if (!bs || !s || bs.kind !== "normal" || handOf(L)) return ""; // 手绘线各画各的
+    if (!bs || !s || bs.kind !== "normal") return "";
     return `${s.split("|")[1]}|${headOf(L).end ? 1 : 0}`;
   });
   return { L, base, sides, ends, rest, sig };

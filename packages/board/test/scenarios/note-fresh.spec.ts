@@ -149,8 +149,8 @@ test("newTextReachesHostWhenShown", async () => {
   );
 });
 
-/** Every new card starts 381 board px wide: Note, Text, Box, Mark and Free code alike (Box keeps its 60 px height). Each is made at
- *  the pointer with its key or the toolbar menu, written in and closed with Esc */
+/** A new Note and Free code card start 381 board px wide; a new Text or Box is as wide as its text. Each is made at the pointer with
+ *  its key or the toolbar menu, written in and closed with Esc */
 test("newCardsDefaultWidths", async () => {
   const h = await open({
     board: emptyBoard("b1", "widths"),
@@ -174,7 +174,9 @@ test("newCardsDefaultWidths", async () => {
     await until(h, `the new ${what} reaches the host`, () => h.board().cards.length > n);
     await idle(h);
     const c = h.board().cards[h.board().cards.length - 1];
-    return h.board().place[c.id].w;
+    return c.kind === "note" && c.look !== "note"
+      ? await pg.locator(`.card[data-id="${c.id}"]`).evaluate((e) => (e as HTMLElement).offsetWidth)
+      : h.board().place[c.id].w;
   };
   const key = (x: number, y: number, k: string) => async () => {
     await pg.mouse.click(x, y);
@@ -189,17 +191,12 @@ test("newCardsDefaultWidths", async () => {
     note: await made("Note", key(80, 120, "n"), "A new note, wide enough for a sentence or two"),
     text: await made("Text", key(80, 480, "t"), "A new text"),
     box: await made("Box", key(1300, 120, "r"), "Box"),
-    mark: await made("Mark", key(1300, 300, "m"), "Mark"),
     code: await made("Free code", menu("Code", "New Code"), "def step(self):\n    return self.scheduler.schedule()"),
   };
   await pg.mouse.click(1700, 950);
   await idle(h);
   await pg.screenshot({ path: path.join(OUT, "new-card-widths.png") });
-  check(
-    "newCardsDefaultWidths",
-    Object.values(w).every((x) => x === 381),
-    w,
-  );
+  check("newCardsDefaultWidths", w.note === 381 && w.code === 381 && w.text < 200 && w.box < 120, w);
 });
 
 /** "n" and typing straight on, on a fresh board: the keys typed while the Note's editor is still loading (its code is fetched on

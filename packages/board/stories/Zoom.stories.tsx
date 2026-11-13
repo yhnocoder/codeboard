@@ -1,7 +1,7 @@
 // The board at several zooms: cards look the same at every zoom, only scaled, down to the summary level (state/summary.ts),
 // which replaces them below the board's cut. The toolbar's zoom has only 100 / 60 / 30: the zoom argument sets the camera directly
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { Stage, scene, codeCard, noteCard, markCard, textCard, type Globals, type Scene } from "./support/board";
+import { Stage, scene, codeCard, noteCard, textCard, type Globals, type Scene } from "./support/board";
 import { LONG } from "./support/groups";
 import { arrow, ln, whole, section, usePacks, PACK } from "./support/canvas";
 
@@ -20,7 +20,7 @@ function board(): Scene {
   arrow(b, "z3", ln(sch, "self.preempt(seq)"), whole(pr), { call: { name: "preempt", col: 25, loop: true } });
   arrow(b, "z4", ln(pr, "deallocate("), ln(de, "for block_id"), { label: "释放" });
   put(noteCard("z-n", LONG), { x: 40, y: 440, w: 520, h: 360 });
-  const m = put(markCard("z-m", "抢占最后进来的", "orange"), { x: 1520, y: 1040, w: 280 });
+  const m = put(textCard("z-m", "抢占最后进来的"), { x: 1520, y: 1040, w: 280 });
   arrow(b, "z5", whole(m), whole(pr));
   put(noteCard("z-short", "**prefix caching**：按 hash 复用"), { x: 40, y: 860, w: 360 });
   section(b, { id: "z-s", title: "Block Manager", x: 1460, y: 60, w: 1020, h: 900, color: "blue" }, [

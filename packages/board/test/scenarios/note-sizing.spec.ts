@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import { OUT, type Host } from "../harness";
-import { DEFAULT_SETTINGS, THEMES, emptyBoard, migrateBoard, type Board, type NoteCard } from "@codeboard/core";
+import { emptyBoard, migrateBoard, type Board, type NoteCard } from "@codeboard/core";
 import { test, open, check, light, until, idle, hold } from "../fixtures";
 
 const LONG = [
@@ -152,7 +152,7 @@ test("noteGhostStaysInCard", async () => {
 });
 
 /** Fit Content is a hover button in a Note's header; it grows the card to its content, animated, in one undo step. A Text has no height to fit:
- *  an old board's (v9) Text with a fixed height loads without it (its Fit Content fits the width: textCardFitContent) */
+ *  an old board's (v9) Text with a fixed height loads without it */
 test("noteTextFitContent", async () => {
   const old = board([
     { md: LONG, h: 150 },
@@ -214,118 +214,6 @@ test("noteTextFitContent", async () => {
     placeH(h, "n1") === undefined && tx.bottom <= tc.bottom + 0.5,
     { h: placeH(h, "n1"), tc, tx },
   );
-});
-
-/** A Text's Fit Content makes it as wide as its longest line (no wider than 720), its height follows the text; in the menu,
- *  on a double-click of a width handle and with ⌥F, in every theme, one undo step each; the menu greys it out once it fits */
-test("textCardFitContent", async () => {
-  const b = emptyBoard("b1", "text fit");
-  const texts: [string, string, number, number][] = [
-    ["t0", "Prefill first\n\nthen decode", 60, 400],
-    ["t1", "The scheduler moves a sequence from waiting to running once its KV blocks fit.", 260, 120],
-    [
-      "t2",
-      "Each decode step appends one token per running sequence and may preempt the newest one. ".repeat(4),
-      520,
-      300,
-    ],
-  ];
-  for (const [id, md, y, w] of texts) {
-    b.cards.push({ id, kind: "note", md, look: "text", size: "body" } as NoteCard);
-    b.place[id] = { x: 60, y, w };
-  }
-  b.cam = { x: 0, y: 0, z: 1 };
-  const h = await open({ board: b, light, w: 1100, h: 800, scale: 2, settings: { theme: "warm-ink" } });
-  const pg = h.page;
-  await idle(h);
-  const placeW = (id: string) => h.board().place[id]?.w;
-  // the card as drawn, and as it would be with nothing wrapped: the same height means no line wraps any more
-  const fits = (id: string) =>
-    pg.evaluate((sel) => {
-      const el = document.querySelector<HTMLElement>(sel)!;
-      const h = el.offsetHeight,
-        w = el.offsetWidth,
-        sw = el.style.width;
-      el.style.width = "max-content";
-      const one = { h: el.offsetHeight, w: el.offsetWidth };
-      el.style.width = sw;
-      return { h, w, one };
-    }, card(id));
-  // a second click on a selected Text starts editing it (and ⌘Z would then undo typing): start from nothing selected
-  const select = async (id: string) => {
-    await pg.mouse.click(900, 150);
-    await pg.locator(`${card(id)} .tx`).click();
-    await idle(h);
-  };
-  const menu = async (id: string) => {
-    await pg.locator(`${card(id)} .tx`).click({ button: "right" });
-    await pg.waitForSelector(".ctx:not(.closing)", { timeout: 3000 });
-    return pg.locator(".ctx:not(.closing) button", { hasText: "Fit Content" });
-  };
-
-  await select("t1");
-  await cardShot(h, "t1", "text-fit-before");
-  await pg.keyboard.press("Escape");
-
-  // the menu: t0 narrows to its longest line
-  const item = await menu("t0");
-  check("textCardFitContent menu has Fit Content", (await item.count()) === 1 && (await item.isEnabled()));
-  if (!(await item.count())) return;
-  await item.click();
-  await idle(h);
-  let m = await fits("t0");
-  check("textCardFitContent menu fits width", placeW("t0")! < 200 && m.h === m.one.h && Math.abs(m.w - m.one.w) <= 1, {
-    w: placeW("t0"),
-    m,
-  });
-  check("textCardFitContent height follows text", h.board().place.t0?.h === undefined, { h: h.board().place.t0?.h });
-  const again = await menu("t0");
-  check("textCardFitContent menu greyed once it fits", (await again.count()) === 1 && !(await again.isEnabled()));
-  await pg.keyboard.press("Escape");
-  await pg.keyboard.press("ControlOrMeta+z");
-  await idle(h);
-  check("textCardFitContent menu one undo step", placeW("t0") === 400, { w: placeW("t0") });
-
-  // double-click a width handle: t1 widens until its sentence is one line
-  await select("t1");
-  const h1 = (await fits("t1")).h;
-  await pg.locator(`${card("t1")} .hw.r`).dblclick();
-  await idle(h);
-  m = await fits("t1");
-  check("textCardFitContent handle fits width", placeW("t1")! > 120 && m.h === m.one.h && m.h < h1, {
-    w: placeW("t1"),
-    m,
-    h1,
-  });
-  await cardShot(h, "t1", "text-fit-after");
-  await pg.keyboard.press("ControlOrMeta+z");
-  await idle(h);
-  check("textCardFitContent handle one undo step", placeW("t1") === 120, { w: placeW("t1") });
-
-  // ⌥F: a long paragraph stops at 720 and keeps wrapping
-  await select("t2");
-  await pg.keyboard.press("Alt+KeyF");
-  await idle(h);
-  check("textCardFitContent long text capped", placeW("t2") === 720, { w: placeW("t2") });
-  await pg.keyboard.press("ControlOrMeta+z");
-  await idle(h);
-
-  // every theme: the fitted width leaves no line wrapped
-  const bad: unknown[] = [];
-  for (const [theme] of THEMES) {
-    await h.post({ type: "host", host: { settings: { ...DEFAULT_SETTINGS, aiProvider: "off", theme } } as never });
-    await idle(h);
-    await select("t1");
-    await pg.keyboard.press("Alt+KeyF");
-    await idle(h);
-    m = await fits("t1");
-    if (!(placeW("t1")! > 120 && m.h === m.one.h && Math.abs(m.w - m.one.w) <= 1))
-      bad.push({ theme, w: placeW("t1"), m });
-    await pg.keyboard.press("ControlOrMeta+z");
-    await idle(h);
-    if (placeW("t1") !== 120) bad.push({ theme, undo: placeW("t1") });
-  }
-  check("textCardFitContent every theme", bad.length === 0, bad);
 });
 
 /** Moving or resizing a card hides a ghost completion that is showing, and none appears until the gesture ends */

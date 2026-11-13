@@ -772,7 +772,7 @@ test("softLightNoteBodyWeight", async () => {
     md: "在 **thread block cluster** 层次，CUDA 通过 Cooperative Groups API 提供 cluster 范围同步机制。The grid waits at the barrier.",
   } as any);
   b.place.n1 = { x: 60, y: 60, w: 476 };
-  b.cards.push({ id: "t1", kind: "note", look: "text", size: "body", md: "Text 卡的正文 · body text" } as any);
+  b.cards.push({ id: "t1", kind: "note", look: "text", md: "Text 卡的正文 · body text" } as any);
   b.place.t1 = { x: 60, y: 300, w: 544 };
   b.cam = { x: 0, y: 0, z: 1 };
   const weights = () =>
@@ -808,8 +808,7 @@ test("softLightNoteBodyWeight", async () => {
   });
 });
 
-/** Drafting: a Text card's body is in the same font as a Note's body (DM Mono at the same size, with the same CJK fallback), not
- *  a bigger one with another fallback */
+/** Drafting: a Text card's body is in the same font as a Note's body (DM Mono, with the same CJK fallback), at the Text's own size */
 test("draftingTextMatchesNoteFont", async () => {
   const b = emptyBoard("b1", "drafting fonts");
   b.cards.push({ id: "n1", kind: "note", look: "note", md: "draft 模式下的高亮换一个色，现在太不搭调了" } as any);
@@ -818,7 +817,8 @@ test("draftingTextMatchesNoteFont", async () => {
     id: "t1",
     kind: "note",
     look: "text",
-    size: "body",
+    wrap: true,
+    fs: 13.5,
     md: "draft 模式的 text 的字体和 note 完全不一样",
   } as any);
   b.place.t1 = { x: 60, y: 220, w: 381 };
@@ -833,7 +833,7 @@ test("draftingTextMatchesNoteFont", async () => {
     return { note: cs('.card[data-id="n1"] .nbody p'), text: cs('.card[data-id="t1"] .tx p') };
   });
   await h.page.screenshot({ path: path.join(OUT, "drafting-text-font.png") });
-  check("draftingTextMatchesNoteFont", f.note.family === f.text.family && f.note.size === f.text.size, f);
+  check("draftingTextMatchesNoteFont", f.note.family === f.text.family && f.text.size === "13.5px", f);
 });
 
 /** Drafting: a selected card is marked by its dark outline and the dashed frame around it, with no "SELECTED" label above it */
@@ -1074,7 +1074,8 @@ test("themesKeepCardHeights", async () => {
     id: "t1",
     kind: "note",
     look: "text",
-    size: "body",
+    wrap: true,
+    fs: 13.5,
     md: "本章讨论 GPU 的片上内存架构，以及如何组织和放置数据，使大量线程能够高效访问。",
   } as any);
   b.place.t1 = { x: 40, y: 600, w: 380 };

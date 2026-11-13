@@ -311,12 +311,12 @@ describe("board format v14: <mark> becomes ==", () => {
       "```md\n- ```\n  <mark>x</mark>\n    ```\n<mark>y</mark>\n```\n\nafter ==z==",
     );
   });
-  it("v13 → v14 leaves a Free Text's plain text alone", () => {
+  it("v13 → v14 leaves a Free Text's plain text alone; the v16 step makes it a Text that shows it as typed", () => {
     const b = board() as any;
     b.version = 13;
     b.cards[0].look = "freetext";
     b.cards[0].md = "<mark>as typed</mark>";
-    expect((upgraded(b).cards[0] as any).md).toBe("<mark>as typed</mark>");
+    expect(upgraded(b).cards[0]).toMatchObject({ look: "text", md: "\\<mark>as typed\\</mark>" });
   });
   it("a v14 board's <mark> is left as written", () => {
     const b = board();

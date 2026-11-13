@@ -49,7 +49,6 @@ import {
   endRect,
   subEnd,
   type Geo,
-  handOf,
   headScale,
   solidLine,
   STUB,
@@ -64,10 +63,10 @@ import {
 import { linkVisible } from "../state/sections";
 
 /** 箭头（或 City 的车）：同一份几何画成 path，或车的三条 path（见 Traffic.tsx） */
-function Head(p: { cls: string; d: string | CarPose; road?: Road; hand?: boolean }) {
+function Head(p: { cls: string; d: string | CarPose; road?: Road }) {
   return (
     <>
-      {shape().head === "car" && !p.hand ? (
+      {shape().head === "car" ? (
         <Car cls={p.cls} at={p.d as CarPose} road={p.road} />
       ) : (
         <path class={p.cls} d={p.d as string} />
@@ -526,10 +525,9 @@ function linkDom(
   });
   // 证据（manual 虚线、observed 绿）、Generated from（点线）：同一层，只换样式
   // RPC（跨进程）：点划线；↩ back to：淡一点
-  const hand = createMemo(() => handOf(L));
   const style = createMemo(
     () =>
-      `${hand() ? ` hand hc-${hand()}` : colorCls(L)}${widthCls(L)}${L.call?.ev ? ` ev-${L.call.ev.kind}` : ""}${L.gen ? " gen" : ""}${L.rpc ? " rpc" : ""}${L.back ? " back" : ""}`,
+      `${colorCls(L)}${widthCls(L)}${L.call?.ev ? ` ev-${L.call.ev.kind}` : ""}${L.gen ? " gen" : ""}${L.rpc ? " rpc" : ""}${L.back ? " back" : ""}`,
   );
   const gutter = createMemo(() => r.base()?.kind === "gutter");
   const road: Road = L.call ? "main" : "street";
@@ -538,16 +536,15 @@ function linkDom(
       `edge${L.call ? "" : " plain"}${L.style?.dash ? " dashed" : ""}${style()}${L.lost ? " lost" : ""}${gutter() ? " cmpline" : ""}${on() ? " on" : ""}`,
   );
   const headCls = createMemo(
-    () => `ahead end ${hand() ? "chevron" : shape().head}${style()}${L.lost?.to ? " lost" : ""}${on() ? " on" : ""}`,
+    () => `ahead end ${shape().head}${style()}${L.lost?.to ? " lost" : ""}${on() ? " on" : ""}`,
   );
   const tailCls = createMemo(
-    () =>
-      `ahead start ${hand() ? "chevron" : shape().head}${style()}${L.lost?.from ? " lost" : ""}${on() ? " on" : ""}`,
+    () => `ahead start ${shape().head}${style()}${L.lost?.from ? " lost" : ""}${on() ? " on" : ""}`,
   );
   const portCls = createMemo(() => `port fc-${toHue()}${L.lost?.from ? " lost" : ""}`);
   // 实线画成一块填充的形状（look.ts 的 stroke），描边的那条 .edge 留着（几何、导出照旧）但不画：
   // brush（Ink Wash）= 毛笔笔画的轮廓 + 三道飞白；taper（Warm Ink）= 起点粗、往箭头收细的线。
-  // 虚线、点线、点划线、对照线、手绘线照旧描边。只在这条线的几何变了时重算
+  // 虚线、点线、点划线、对照线照旧描边。只在这条线的几何变了时重算
   // 正在从起点画出来的线（drawIn，Warm Ink 顺着箭头出来的新卡）：只画到那里，箭头（tip）跟着画到的那一头走，最后三成里淡入
   const brush = createMemo((): { d: string; fb?: string; tip?: string; tipO?: number } | null => {
     const gg = g(),
@@ -588,17 +585,14 @@ function linkDom(
               </>
             )}
           </Show>
-          <Show when={g()!.d2}>
-            <path class={`${cls()} p2`} d={g()!.d2} />
-          </Show>
-          <Show when={city() && !gutter() && !hand()}>
+          <Show when={city() && !gutter()}>
             <Lane d={g()!.d} road={road} s={headScale(L)} start={!!g()!.tail} end={!!g()!.head} />
           </Show>
           <Show when={g()!.head && !brush()?.tip}>
-            <Head cls={headCls()} d={g()!.head!} road={road} hand={!!hand()} />
+            <Head cls={headCls()} d={g()!.head!} road={road} />
           </Show>
           <Show when={g()!.tail}>
-            <Head cls={tailCls()} d={g()!.tail!} road={road} hand={!!hand()} />
+            <Head cls={tailCls()} d={g()!.tail!} road={road} />
           </Show>
           <path
             class="lhit"
@@ -649,14 +643,14 @@ function linkDom(
   ) as SVGGElement;
   const casing = (
     <g>
-      <Show when={city() && !gutter() && !hand() && g()}>
+      <Show when={city() && !gutter() && g()}>
         {(gg) => <path class={`casing${L.call ? "" : " plain"}${widthCls(L)}`} d={gg().d} />}
       </Show>
     </g>
   ) as SVGGElement;
   const kerb = (
     <g>
-      <Show when={city() && L.call && !gutter() && !hand() && g()}>
+      <Show when={city() && L.call && !gutter() && g()}>
         {(gg) => <path class={`kerb${widthCls(L)}`} d={gg().d} />}
       </Show>
     </g>

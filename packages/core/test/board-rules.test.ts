@@ -3,15 +3,11 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SETTINGS,
-  MARK_SIZES,
   TEXT_FS,
-  FREE_TEXT_FS,
-  migrateBoard,
-  migrateSharedCard,
-  markSizeOf,
-  cardTitle,
+  TEXT_SIZES,
+  isTextCard,
   scaleText,
-  scalesText,
+  textSizeName,
   textSizeOf,
   danglingRefs,
   emptyBoard,
@@ -20,6 +16,7 @@ import {
   type Board,
   type Card,
   type CodeCard,
+  type NoteCard,
   type Segment,
 } from "../src";
 import * as C from "../src/commands";
@@ -325,174 +322,102 @@ describe("new cards and questions with nothing written yet", () => {
     expect(danglingRefs(b)).toEqual([]);
   });
 
-  it("a Box is a step right away, a Text is body-sized and a Mark takes the colour of the last Mark", () => {
+  it("a new Text or Box is fresh until written, as wide as its text (its width only places it), with no size or fill of its own", () => {
     const { b, env, log } = setup();
     const at = () => ({ x: 10.4, y: 20.6 });
+    const t = C.newWriting(env, "text", "", { at, settle: noSettle });
     const box = C.newWriting(env, "box", "", { at, settle: noSettle });
-    expect(log.edits).toBe(1);
-    expect(b.place[box]).toEqual({ x: 10, y: 21, w: expect.any(Number), h: 60 });
-    expect(b.cards[0]).toMatchObject({ look: "box", fill: "yellow" });
-    const t = C.newWriting(env, "text", "x", { at, settle: noSettle });
-    expect(b.cards.find((c) => c.id === t)).toMatchObject({ size: "body" });
-    const m1 = C.newWriting(env, "mark", "", { at, settle: noSettle });
-    expect(b.cards.find((c) => c.id === m1)).toMatchObject({ hand: "blue" });
-    const k = b.cards.find((c) => c.id === m1)!;
-    if (k.kind === "note") k.hand = "orange";
-    const m2 = C.newWriting(env, "mark", "", { at, settle: noSettle });
-    expect(b.cards.find((c) => c.id === m2)).toMatchObject({ hand: "orange" });
-  });
-
-  it("a new Free Text is plain text at its look's default size, fresh until written, and goes written empty", () => {
-    const { b, env, log } = setup();
-    const at = () => ({ x: 0, y: 0 });
-    const kept = C.newWriting(env, "freetext", "", { at, settle: noSettle });
-    const gone = C.newWriting(env, "freetext", "", { at, settle: noSettle });
     expect(log.edits).toBe(0);
-    C.writeNote(env, kept, "Scheduler\n**not bold**");
-    C.writeNote(env, gone, " \n ");
+    C.writeNote(env, t, "Scheduler");
+    C.writeNote(env, box, " ");
     expect(log.edits).toBe(1);
-    expect(b.cards).toEqual([{ id: kept, kind: "note", look: "freetext", md: "Scheduler\n**not bold**" }]);
-    // its title is its first line as written (no Markdown read out of it)
-    expect(cardTitle(b.cards[0], b)).toBe("Scheduler");
+    expect(JSON.parse(JSON.stringify(b.cards))).toEqual([{ id: t, kind: "note", md: "Scheduler", look: "text" }]);
+    expect(b.place[t]).toEqual({ x: 10, y: 21, w: 200 });
+    expect(textSizeOf(b.cards[0] as NoteCard)).toBe(TEXT_SIZES.s);
     expect(danglingRefs(b)).toEqual([]);
   });
 
-  it("a Mark's weight is one step, regular is not written, and only a Mark takes one", () => {
+  it("a Text's or Box's size from its toolbar is one step; S is not written; a width it wraps at scales with the text", () => {
     const { b, env, log } = setup([
-      { id: "m", kind: "note", md: "x", look: "mark", hand: "blue" },
       { id: "t", kind: "note", md: "x", look: "text" },
+      { id: "x", kind: "note", md: "x", look: "box", wrap: true, fs: 30 },
+      note("n", "x"),
     ]);
-    C.setMarkWeight(env, "m", "bold");
-    expect(b.cards[0]).toMatchObject({ weight: "bold" });
-    C.setMarkWeight(env, "m", "bold");
+    const card = (id: string) => b.cards.find((c) => c.id === id) as NoteCard;
+    expect(TEXT_SIZES).toEqual({ s: 20, m: 24, l: 30, xl: 40 });
+    expect([textSizeName(card("t")), textSizeName(card("x"))]).toEqual(["s", "l"]);
+    C.setTextSize(env, "t", "s");
+    expect(log.edits).toBe(0);
+    C.setTextSize(env, "t", "xl");
+    expect(card("t").fs).toBe(40);
+    // as wide as its text: its stored width only places it and stays
+    expect(b.place.t.w).toBe(400);
+    C.setTextSize(env, "x", "m");
+    expect(b.place.x.w).toBe(Math.round((400 * 24) / 30));
+    C.setTextSize(env, "x", "s");
+    expect(card("x")).not.toHaveProperty("fs");
+    // a size dragged off the four has none
+    card("t").fs = 27.5;
+    expect(textSizeName(card("t"))).toBeUndefined();
+    // a Note has no size of its own
+    C.setTextSize(env, "n", "xl");
+    expect(card("n")).not.toHaveProperty("fs");
+    expect(log.edits).toBe(3);
+  });
+
+  it("Text ↔ Box is one step that moves the card where the shell measured; a Box takes the fill it had, a Note none", () => {
+    const { b, env, log } = setup([
+      { id: "t", kind: "note", md: "x", look: "text", fill: "blue", wrap: true, fs: 24 },
+      { id: "u", kind: "note", md: "x", look: "text" },
+      note("n", "x"),
+    ]);
+    C.setTextLook(env, "t", "box", { x: -10, y: -6.333, w: 420 });
     expect(log.edits).toBe(1);
-    C.setMarkWeight(env, "m", "light");
-    C.setMarkWeight(env, "m", "regular");
     expect(JSON.parse(JSON.stringify(b.cards[0]))).toEqual({
-      id: "m",
+      id: "t",
       kind: "note",
       md: "x",
-      look: "mark",
-      hand: "blue",
+      look: "box",
+      fill: "blue",
+      wrap: true,
+      fs: 24,
     });
-    C.setMarkWeight(env, "t", "bold");
-    expect(b.cards[1]).not.toHaveProperty("weight");
-    expect(log.edits).toBe(3);
-  });
-
-  it("a Mark's size from its toolbar is one step that scales its width with it; S is the default and is not written", () => {
-    const { b, env, log } = setup([
-      { id: "m", kind: "note", md: "x", look: "mark", hand: "blue" },
-      { id: "t", kind: "note", md: "x", look: "freetext", fs: 30 },
-    ]);
-    const m = () => b.cards[0] as Extract<Card, { kind: "note" }> & { look: "mark" };
-    expect(MARK_SIZES).toEqual({ s: TEXT_FS.mark, m: 24, l: 32, xl: 48 });
-    expect(markSizeOf(m())).toBe("s");
-    C.setMarkSize(env, "m", "s");
-    expect(log.edits).toBe(0);
-    C.setMarkSize(env, "m", "xl");
-    expect(log.edits).toBe(1);
-    expect(m().fs).toBe(48);
-    expect(markSizeOf(m())).toBe("xl");
-    // the width follows as a corner drag's does, so the Mark wraps where it did
-    expect(b.place.m.w).toBe(Math.round((400 * 48) / TEXT_FS.mark));
-    C.setMarkSize(env, "m", "m");
-    expect(m().fs).toBe(24);
-    expect(b.place.m.w).toBe(Math.round((1067 * 24) / 48));
-    // a size dragged off the steps has none
-    m().fs = 27.5;
-    expect(markSizeOf(m())).toBeUndefined();
-    C.setMarkSize(env, "m", "s");
-    expect(JSON.parse(JSON.stringify(m()))).toEqual({ id: "m", kind: "note", md: "x", look: "mark", hand: "blue" });
-    // only a Mark takes one
-    C.setMarkSize(env, "t", "xl");
-    expect(b.cards[1]).toMatchObject({ fs: 30 });
-    expect(log.edits).toBe(3);
-  });
-
-  it("a Free Text's level is one step back at the level's preset size (width scaled with it); plain is the default and not written", () => {
-    const { b, env, log } = setup([
-      { id: "t", kind: "note", md: "x", look: "freetext" },
-      { id: "m", kind: "note", md: "x", look: "mark", hand: "blue" },
-    ]);
-    const t = () => b.cards[0] as Extract<Card, { kind: "note" }> & { look: "freetext" };
-    expect(FREE_TEXT_FS).toEqual({ 0: 20, 1: TEXT_FS.freetext, 2: 30, 3: 24 });
-    expect(textSizeOf(t())).toBe(20);
-    C.setFreeTextLevel(env, "t", 0);
-    expect(log.edits).toBe(0);
-    C.setFreeTextLevel(env, "t", 1);
-    expect(log.edits).toBe(1);
-    expect(t().level).toBe(1);
-    expect(textSizeOf(t())).toBe(40);
-    expect(b.place.t.w).toBe(Math.round((400 * 40) / 20));
-    // a dragged size goes back to the level's preset, even at the same level
-    t().fs = 64;
-    C.setFreeTextLevel(env, "t", 1);
-    expect(t()).not.toHaveProperty("fs");
-    C.setFreeTextLevel(env, "t", 3);
-    expect(textSizeOf(t())).toBe(24);
-    C.setFreeTextLevel(env, "t", 0);
-    expect(JSON.parse(JSON.stringify(t()))).toEqual({ id: "t", kind: "note", md: "x", look: "freetext" });
-    // bold: written only when on; only a Free Text takes either
-    C.setFreeTextBold(env, "t", false);
+    expect(b.place.t).toEqual({ x: -10, y: -6.33, w: 420 });
+    // the same look again changes nothing; with nothing measured the card stays put
+    C.setTextLook(env, "t", "box");
+    C.setTextLook(env, "u", "box");
+    expect(b.cards[1]).toMatchObject({ look: "box" });
+    expect(b.cards[1]).not.toHaveProperty("fill");
+    expect(b.place.u).toEqual({ x: 500, y: 0, w: 400 });
+    C.setTextLook(env, "n", "text");
+    expect(b.cards[2]).toMatchObject({ look: "note" });
+    C.setBoxFill(env, "t", "pink");
+    C.setTextLook(env, "t", "text");
+    expect(b.cards[0]).toMatchObject({ look: "text", fill: "pink" });
     expect(log.edits).toBe(4);
-    C.setFreeTextBold(env, "t", true);
-    expect(t().bold).toBe(true);
-    C.setFreeTextBold(env, "t", false);
-    expect(t()).not.toHaveProperty("bold");
-    C.setFreeTextLevel(env, "m", 2);
-    C.setFreeTextBold(env, "m", true);
-    expect(b.cards[1]).not.toHaveProperty("level");
-    expect(b.cards[1]).not.toHaveProperty("bold");
-    expect(log.edits).toBe(6);
   });
 
-  it("an old board's Free Text (always a heading) opens as H1, its look and size kept; a shared one too", () => {
-    const old = {
-      ...emptyBoard("b", "old"),
-      version: 11,
-      cards: [
-        { id: "f", kind: "note", md: "Scheduler", look: "freetext" },
-        { id: "g", kind: "note", md: "Big", look: "freetext", fs: 64 },
-        { id: "m", kind: "note", md: "x", look: "mark", hand: "blue" },
-      ],
-      place: { f: { x: 0, y: 0, w: 200 }, g: { x: 0, y: 100, w: 200 }, m: { x: 0, y: 200, w: 200 } },
-    };
-    const b = migrateBoard(old);
-    expect(b.cards.map((c) => (c.kind === "note" ? [c.level, c.fs] : []))).toEqual([
-      [1, undefined],
-      [1, 64],
-      [undefined, undefined],
-    ]);
-    expect(textSizeOf(b.cards[0] as Extract<Card, { kind: "note" }> & { look: "freetext" })).toBe(TEXT_FS.freetext);
-    const sc = migrateSharedCard({
-      version: 11,
-      card: { id: "f", kind: "note", md: "x", look: "freetext" },
-      sidenotes: [],
-    });
-    expect(sc.card).toMatchObject({ level: 1 });
-  });
-
-  it("dragging a Mark's or Free Text's corner scales its text size and width together, within the limits", () => {
+  it("dragging a Text's or Box's corner scales its text size and width together, within the limits", () => {
     expect(scaleText(18, 200, 2)).toEqual({ fs: 36, w: 400 });
     expect(scaleText(18, 200, 1.31)).toEqual({ fs: 23.5, w: 261 });
     // past a limit the size stops, and the width stops with it
     expect(scaleText(18, 200, 0.1)).toEqual({ fs: TEXT_FS.min, w: Math.round((200 * TEXT_FS.min) / 18) });
     expect(scaleText(40, 300, 100)).toEqual({ fs: TEXT_FS.max, w: Math.round((300 * TEXT_FS.max) / 40) });
-    const mark = { id: "m", kind: "note", md: "x", look: "mark" } as const,
-      ft = { id: "f", kind: "note", md: "x", look: "freetext" } as const;
-    // a Free Text with no size of its own is at its level's (plain: 20px, H1: 40px)
-    expect([textSizeOf(mark), textSizeOf(ft), textSizeOf({ ...ft, level: 1 }), textSizeOf({ ...ft, fs: 72 })]).toEqual([
-      18, 20, 40, 72,
+    const t = { id: "t", kind: "note", md: "x", look: "text" } as const;
+    expect([textSizeOf(t), textSizeOf({ ...t, look: "box", fs: 72 })]).toEqual([20, 72]);
+    expect([isTextCard(t), isTextCard({ ...t, look: "box" }), isTextCard({ ...t, look: "note" })]).toEqual([
+      true,
+      true,
+      false,
     ]);
-    expect([scalesText(mark), scalesText(ft), scalesText({ ...mark, look: "text" })]).toEqual([true, true, false]);
   });
 
-  it("a Note written empty goes, in the same step, while an empty Box stays", () => {
-    const { b, env } = setup([note("n", "x"), { id: "x", kind: "note", md: "x", look: "box" }]);
+  it("a Note, Text or Box written empty goes, in the same step", () => {
+    const { b, env, log } = setup([note("n", "x"), { id: "x", kind: "note", md: "x", look: "box" }, note("k", "x")]);
     C.writeNote(env, "n", "");
     C.writeNote(env, "x", "");
-    expect(b.cards.map((c) => c.id)).toEqual(["x"]);
+    expect(b.cards.map((c) => c.id)).toEqual(["k"]);
+    expect(log.edits).toBe(2);
   });
 
   it("a new card or question closed without writing goes when still empty, and stays when it has content after all", () => {
@@ -827,20 +752,17 @@ describe("Sections and places", () => {
     ]);
   });
 
-  it("Fit Content of a Text keeps its width between 80 and 720 and its height following the text", () => {
-    const { b, env } = setup([note("s", "x"), note("l", "x")]);
-    for (const id of ["s", "l"]) Object.assign(b.cards.find((c) => c.id === id)!, { look: "text" });
-    C.fitCardSizes(
-      env,
-      new Map([
-        ["s", { w: 30, h: 20, chrome: 0 }],
-        ["l", { w: 3000, h: 20, chrome: 0 }],
-      ]),
-      460,
-    );
-    expect(["s", "l"].map((id) => [b.place[id].w, b.place[id].h])).toEqual([
-      [80, undefined],
-      [720, undefined],
+  it("Fit Content leaves a Text and a Box as they are: they always fit their content", () => {
+    const { b, env } = setup([note("s", "x"), note("l", "x"), note("n", "x")]);
+    Object.assign(b.cards[0], { look: "text", wrap: true });
+    Object.assign(b.cards[1], { look: "box" });
+    b.place.n.h = 300;
+    const sizes = new Map(["s", "l", "n"].map((id) => [id, { w: 3000, h: 20, chrome: 0 }]));
+    C.fitCardSizes(env, sizes, 460);
+    expect(["s", "l", "n"].map((id) => [b.place[id].w, b.place[id].h])).toEqual([
+      [400, undefined],
+      [400, undefined],
+      [1600, undefined],
     ]);
   });
 

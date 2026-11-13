@@ -74,8 +74,6 @@ function board(): Board {
 function kinds(): Board {
   const b = board();
   put(b, { id: "t1", kind: "note", md: "A Text", look: "text" } as NoteCard, 1100, 60, 200);
-  put(b, { id: "ft", kind: "note", md: "Free", look: "freetext", level: 1 } as NoteCard, 1100, 140, 200);
-  put(b, { id: "mk", kind: "note", md: "a mark", look: "mark", hand: "blue" } as NoteCard, 1100, 240, 160);
   put(b, { id: "bx", kind: "note", md: "Box", look: "box", fill: "yellow" } as NoteCard, 1100, 300, 140);
   put(b, { id: "im", kind: "image", src: SVG } as ImageCard, 1100, 380, 200);
   put(b, { id: "wb", kind: "web", url: "https://example.com/a" } as WebCard, 1100, 540, 300);
@@ -497,8 +495,6 @@ test("cardMenusLeaveMovedItems", async () => {
     ["free", `${card("f1")} .chead .ctitle`],
     ["note", `${card("n1")} .chead .ctitle`],
     ["text", `${card("t1")} .tx`],
-    ["freetext", `${card("ft")} .tx`],
-    ["mark", `${card("mk")} .tx`],
     ["box", `${card("bx")} .tx`],
     ["image", `${card("im")} .imgb`],
     ["web", card("wb")],
@@ -510,7 +506,7 @@ test("cardMenusLeaveMovedItems", async () => {
     const arrange = menus[k].includes("Arrange") ? await sub(h, "Arrange") : [];
     await closeMenu(h);
     const gone = menus[k].filter(
-      (l) => (GONE.includes(l) && !(k === "links" && l === "Rename")) || (k !== "text" && l === "Fit Content"),
+      (l) => (GONE.includes(l) && !(k === "links" && l === "Rename")) || l === "Fit Content",
     );
     check(`cardMenusLeaveMovedItems ${k}: none of the moved items`, gone.length === 0, gone, menus[k]);
     check(
@@ -531,20 +527,11 @@ test("cardMenusLeaveMovedItems", async () => {
     menus.free,
   );
   check(
-    "cardMenusLeaveMovedItems Note: Turn into Text, AI, the tail",
-    menus.note.join("|") === "Turn into Text|AI|Arrange|Copy Path|Delete",
+    "cardMenusLeaveMovedItems Note, Text and Box: AI, the tail",
+    [menus.note, menus.text, menus.box].every((m) => m.join("|") === "AI|Arrange|Copy Path|Delete"),
     menus.note,
-  );
-  check(
-    "cardMenusLeaveMovedItems Text: Fit Content, Turn into Note, AI, the tail",
-    menus.text.join("|") === "Fit Content|Turn into Note|AI|Arrange|Copy Path|Delete",
     menus.text,
-  );
-  check(
-    "cardMenusLeaveMovedItems Free Text and Mark: the tail only",
-    menus.freetext.join("|") === "Arrange|Copy Path|Delete" && menus.mark.join("|") === "Arrange|Copy Path|Delete",
-    menus.freetext,
-    menus.mark,
+    menus.box,
   );
   check(
     "cardMenusLeaveMovedItems image: Add Description, AI, the tail",

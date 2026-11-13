@@ -35,8 +35,6 @@ import {
   swapCallTarget,
   renumberBorn,
   loadSharedCard,
-  turnNoteInto,
-  cardTitle,
   type Board,
   type Card,
   type CodeCard,
@@ -388,8 +386,9 @@ describe("migrateBoard", () => {
     });
     const by = Object.fromEntries(b.cards.map((c) => [c.id, c]));
     expect(by.n).toEqual({ id: "n", kind: "note", md: "x", look: "note" });
-    expect(by.t).toEqual({ id: "t", kind: "note", md: "x", look: "text", size: "title", bold: true });
-    expect(by.m).toEqual({ id: "m", kind: "note", md: "x", look: "mark", hand: "orange" });
+    // and on to v16's Text: a title as a # heading at the size that keeps its pixels, a Mark at its size
+    expect(by.t).toEqual({ id: "t", kind: "note", md: "# x", look: "text", wrap: true, fs: 14.5 });
+    expect(by.m).toEqual({ id: "m", kind: "note", md: "x", look: "text", wrap: true, fs: 18 });
     expect(by.nh).toEqual({ id: "nh", kind: "note", md: "x", look: "note" }); // a Note never showed its hand color
     expect(by.bare).toMatchObject({ look: "text" });
     expect(by.c).toMatchObject({ bg: false });
@@ -400,48 +399,14 @@ describe("migrateBoard", () => {
   it("v7 → v8 upgrades shared card files too", () => {
     expect(
       loadSharedCard({ version: 7, card: { id: "s", kind: "note", md: "x", bg: false, hand: "green" }, sidenotes: [] }),
-    ).toEqual({ version: 15, card: { id: "s", kind: "note", md: "x", look: "mark", hand: "green" }, sidenotes: [] });
+    ).toEqual({
+      version: 16,
+      card: { id: "s", kind: "note", md: "x", look: "text", wrap: true, fs: 18 },
+      sidenotes: [],
+    });
     expect(loadSharedCard({ version: 6, card: { ...code("s"), nobg: true }, sidenotes: [] }).card).toMatchObject({
       bg: false,
     });
-  });
-});
-
-describe("turnNoteInto (Note ↔ Text)", () => {
-  const board = (card: Card) => ({
-    ...emptyBoard("b", "B"),
-    cards: [card],
-    place: { [card.id]: { x: 100, y: 100, w: 280, h: 200 } },
-  });
-  it("puts a renamed Note's title on the text's first line as a heading, and back in the header on the way back", () => {
-    const b = board({ id: "n", kind: "note", md: "body **bold**\n\n- item", look: "note", title: "Scheduler" });
-    turnNoteInto(b, "n", "text");
-    expect(b.cards[0]).toEqual({ id: "n", kind: "note", md: "# Scheduler\n\nbody **bold**\n\n- item", look: "text" });
-    expect(b.place.n).toEqual({ x: 110, y: 104, w: 260 });
-    turnNoteInto(b, "n", "note");
-    expect(b.cards[0]).toMatchObject({ look: "note", md: "# Scheduler\n\nbody **bold**\n\n- item" });
-    expect(cardTitle(b.cards[0])).toBe("Scheduler"); // the header shows the heading (mdHeading), the body hides it
-    expect(b.place.n).toEqual({ x: 100, y: 100, w: 280 });
-  });
-  it("keeps a heading that already is the title, and an untitled note's words in place", () => {
-    const h = board({ id: "n", kind: "note", md: "# Plan\nstep", look: "note", title: "Plan" });
-    turnNoteInto(h, "n", "text");
-    expect(h.cards[0]).toMatchObject({ md: "# Plan\nstep", look: "text" });
-    const u = board({ id: "u", kind: "note", md: "just words", look: "note" });
-    turnNoteInto(u, "u", "text");
-    expect(u.cards[0]).toEqual({ id: "u", kind: "note", md: "just words", look: "text" });
-    expect(u.place.u).toEqual({ x: 110, y: 144, w: 260 });
-  });
-  it("drops Text-only styling on the way to a Note and never converts a Box or a Mark", () => {
-    const t = board({ id: "t", kind: "note", md: "big", look: "text", size: "title", bold: true });
-    turnNoteInto(t, "t", "note");
-    expect(t.cards[0]).toEqual({ id: "t", kind: "note", md: "big", look: "note" });
-    for (const look of ["box", "mark"] as const) {
-      const b = board({ id: "x", kind: "note", md: "# hi", look });
-      turnNoteInto(b, "x", "note");
-      turnNoteInto(b, "x", "text");
-      expect(b.cards[0]).toMatchObject({ look, md: "# hi" });
-    }
   });
 });
 

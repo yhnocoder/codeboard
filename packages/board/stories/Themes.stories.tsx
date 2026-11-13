@@ -2,7 +2,7 @@
 // Section、贴纸、手绘线。主题用工具栏的 Theme 换；下面每个主题也各有一个小样，直接翻着看
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { THEMES, cornerAt, type ThemeId } from "@codeboard/core";
-import { Stage, scene, codeCard, noteCard, markCard, textCard, type Globals, type Scene } from "./support/board";
+import { Stage, scene, codeCard, noteCard, textCard, type Globals, type Scene } from "./support/board";
 import { arrow, ln, whole, section } from "./support/canvas";
 import { setTraffic } from "../src/state/look";
 
@@ -30,7 +30,7 @@ function board(a: Args): Scene {
   });
   arrow(b, "p1", ln(ca, "compute_hash"), whole(n), { label: "hash 链" });
   arrow(b, "p2", ln(al, "compute_hash"), whole(n));
-  const m = put(markCard("t-m", "这里决定抢不抢占", "purple"), { x: 160, y: 520, w: 260 });
+  const m = put(textCard("t-m", "这里决定抢不抢占"), { x: 160, y: 520, w: 260 });
   arrow(b, "h1", whole(m), ln(step, "postprocess"));
   const pr = put(codeCard("t-pr", "preempt"), { x: 1420, y: 680, w: 440 });
   section(b, { id: "t-s", title: "Block Manager", x: 1400, y: 40, w: 480, h: 480, color: "blue" }, [ca.id, al.id]);

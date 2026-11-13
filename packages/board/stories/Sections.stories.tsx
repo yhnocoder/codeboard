@@ -1,16 +1,6 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { Section } from "@codeboard/core";
-import {
-  Stage,
-  scene,
-  codeCard,
-  noteCard,
-  textCard,
-  markCard,
-  type Globals,
-  type Group,
-  type Scene,
-} from "./support/board";
+import { Stage, scene, codeCard, noteCard, textCard, type Globals, type Group, type Scene } from "./support/board";
 import { waitFor, hover, $ } from "./support/play";
 import { arrow, ln, section, whole, SECTION_COLORS } from "./support/canvas";
 import { setEditing, setDragging } from "../src/state/ui";
@@ -128,7 +118,7 @@ function overview(): Scene {
     [g.put(textCard("nest-t", "schedule → preempt"), { x: 50, y: 680, w: 200 }).id],
   );
   section(b, { id: "nest-c", title: "Block Manager", parent: mid.id, x: 300, y: 670, w: 340, h: 200, color: "green" }, [
-    g.put(markCard("nest-m", "block 不够时抢占", "orange"), { x: 330, y: 720, w: 260 }).id,
+    g.put(textCard("nest-m", "block 不够时抢占"), { x: 330, y: 720, w: 260 }).id,
   ]);
   const src = g.put(codeCard("col-src", "preempt"), { x: 820, y: 400, w: 420 });
   group(

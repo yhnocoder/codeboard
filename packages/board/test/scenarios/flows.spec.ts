@@ -1708,7 +1708,7 @@ test("themes", async () => {
     md: "# Why chunked prefill\nKeeps memory **bounded**: prefill admits waiting seqs until the `max_num_batched_tokens` budget runs out.",
     look: "note",
   };
-  const title = { id: "t1", kind: "note" as const, md: "Engine loop", look: "text", size: "title" as const };
+  const title = { id: "t1", kind: "note" as const, md: "# Engine loop", look: "text", wrap: true as const, fs: 14.5 };
   b.cards.push(note, title);
   b.place[note.id] = { x: 110, y: 520, w: 360, section: "sec1" };
   b.place[title.id] = { x: 70, y: 70, w: 300 };

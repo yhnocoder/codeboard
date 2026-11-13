@@ -1,4 +1,4 @@
-// 旧白板文件 → 当前版本（第 15 版）。项目里唯一的兼容代码：旧版本的结构、缺省的字段、手改出来的 null 都在这里补成
+// 旧白板文件 → 当前版本（第 16 版）。项目里唯一的兼容代码：旧版本的结构、缺省的字段、手改出来的 null 都在这里补成
 // 和 model.ts 的类型一模一样，读进来之后的代码只认当前结构。schema.ts 校验的是这里的结果。
 import {
   BOARD_VERSION,
@@ -18,11 +18,14 @@ import {
   type Sidenote,
   type Sticker,
   cardTitle,
+  isTextCard,
+  TEXT_FS,
+  TEXT_SIZES,
 } from "./model";
 import { eachMarkdown, mapRefs, refSource, UNTITLED_REF } from "./mdrefs";
 import { fixHighlights } from "./edit/highlights";
 
-/** 读进来的白板文件（第 1–15 版）→ 第 15 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
+/** 读进来的白板文件（第 1–16 版）→ 第 16 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
 export function migrateBoard(raw: any): BoardFile {
   // 更新的版本写的文件：读不懂就别碰（当第 1 版迁移会丢掉所有卡，下次自动保存把空白板写回去）
   if (typeof raw?.version === "number" && raw.version > BOARD_VERSION)
@@ -66,6 +69,11 @@ export function migrateBoard(raw: any): BoardFile {
     for (const n of b.sidenotes) markNote(n);
     for (const k of [...b.stickers, ...(b.shelf ?? []).flatMap((e: any) => e.stickers ?? [])])
       if (typeof k?.q?.md === "string") k.q.md = markTags(k.q.md);
+  }
+  // → 第 16 版：Text、Mark、Free Text 和 Box 成了一种卡的两个样子（Text、Box），见 textAndBox
+  if (from < 16) {
+    const places = [b.place, ...(b.shelf ?? []).map((e: { place: Record<string, Place> }) => e.place)];
+    for (const c of b.cards) if (c.kind !== "shared") textAndBox(c, places);
   }
   return b;
 }
@@ -116,6 +124,103 @@ function textOrCodeNote(n: any, title: (id: string) => string | undefined): any 
     default:
       return n;
   }
+}
+
+/** Warm Ink's sizes of the old Text's three levels (px) */
+const OLD_TEXT_PX = { title: 26, heading: 16, body: 13.5 } as const;
+/** An old Free Text's size at each level (0 = plain, 1–3 = H1–H3) when it stored none (px) */
+const OLD_FREE_PX = [20, 40, 30, 24];
+/** An old Mark's size when it stored none, and an old Box's (px) */
+const OLD_MARK_PX = 18,
+  OLD_BOX_PX = 13.5;
+/** How much larger than a Text's own size its # and ## headings are (styles.css .tx h1, .tx h2) */
+const HEADING_SCALE = [1, 1.8, 1.35];
+/** A line Markdown reads as the start of a block (heading, quote, list, rule, fence, table, math, image) */
+const BLOCK_START = /^\s*(?:#|>|[-+*]\s|\d+[.)]|```|~~~|\||\$\$|!\[)/;
+
+/**
+ * An old Free Text's plain text as Markdown that shows the same: each line a paragraph of its own (a Text's paragraphs have no
+ * space between them), a blank line an empty one, what Markdown would read as markup escaped, the spaces it would fold kept
+ */
+function plainToMarkdown(text: string, heading: number, bold: boolean): string {
+  return text
+    .replace(/\s+$/, "")
+    .split("\n")
+    .map((line) => {
+      const body = line.trimEnd();
+      if (!body.trim()) return "&nbsp;";
+      const lead = body.length - body.trimStart().length;
+      let md = escapePlain(body.trimStart()).replace(/ {2,}/g, (m) => ` ${"\u00a0".repeat(m.length - 1)}`);
+      if (bold) md = `**${md}**`;
+      md = "\u00a0".repeat(lead) + md;
+      return heading ? `${"#".repeat(heading)} ${md}` : md;
+    })
+    .join("\n\n");
+}
+/** Plain text escaped where Markdown (with the board's own marks: math, highlights, superscripts, notes, emoji) reads markup */
+function escapePlain(s: string): string {
+  const out = s
+    .replace(/[\\`*_~$[\]<^{|]/g, "\\$&")
+    .replace(/==/g, "\\==")
+    .replace(/&(?=#?\w+;)/g, "&amp;")
+    .replace(/:(?=[\w+-]+:)/g, "\\:");
+  return out
+    .replace(/^#/, "\\#")
+    .replace(/^[-+>]/, "\\$&")
+    .replace(/^(\d+)([.)])/, "$1\\$2");
+}
+/**
+ * The old Text's Markdown at a title or heading level: one plain line per paragraph becomes # (title) or ## (heading) at the size
+ * that keeps its pixels, which also keeps the theme's heading weight, and bold plain lines become **bold**; anything else stays
+ * as written at the level's size. The text size it takes
+ */
+function oldTextLevel(c: any): number {
+  const px = OLD_TEXT_PX[c.size as keyof typeof OLD_TEXT_PX] ?? OLD_TEXT_PX.body,
+    heading = c.size === "title" ? 1 : c.size === "heading" ? 2 : 0;
+  const paras = c.md.trim() ? c.md.trim().split(/\n\s*\n/) : [];
+  const plain = paras.length > 0 && paras.every((p: string) => !p.includes("\n") && !BLOCK_START.test(p));
+  if (heading && plain) {
+    c.md = paras.map((p: string) => `${"#".repeat(heading)} ${p.trim()}`).join("\n\n");
+    return px / HEADING_SCALE[heading];
+  }
+  // bold around text with its own * marks would nest them into something else
+  if (c.bold && plain && !c.md.includes("*")) c.md = paras.map((p: string) => `**${p.trim()}**`).join("\n\n");
+  return px;
+}
+
+/**
+ * → v16: a Note's other looks become a Text or a Box, Markdown at a size of their own, as close to the pixels they had as the new
+ * looks allow. The old Text (title, heading or body, bold) keeps its Markdown, its levels as headings (oldTextLevel), and its
+ * width. A Free Text's plain text becomes Markdown (plainToMarkdown), H1 and H2 # headings and H3 ##, as wide as its text as it
+ * was. A Mark is a Text at its size and width; its colour and weight go. A Box keeps its fill and width, and its height, which was
+ * the least it was, goes: a Box is as tall as its text. places = the board's places and its Shelf's
+ */
+function textAndBox(c: any, places: Record<string, Place>[]) {
+  if (c?.kind !== "note") return;
+  let fs: number | undefined;
+  if (c.look === "text") {
+    fs = oldTextLevel(c);
+    c.wrap = true;
+  } else if (c.look === "freetext") {
+    const level = c.level ?? 0,
+      heading = level === 3 ? 2 : level ? 1 : 0;
+    c.md = plainToMarkdown(c.md, heading, !!c.bold);
+    fs = (c.fs ?? OLD_FREE_PX[level]) / HEADING_SCALE[heading];
+    c.look = "text";
+    delete c.mdLayout;
+  } else if (c.look === "mark") {
+    fs = c.fs ?? OLD_MARK_PX;
+    c.look = "text";
+    c.wrap = true;
+  } else if (c.look === "box") {
+    fs = OLD_BOX_PX;
+    c.wrap = true;
+    for (const p of places) if (p[c.id]) delete p[c.id].h;
+  }
+  for (const k of ["size", "bold", "hand", "weight", "level", "fs"]) delete c[k];
+  if (fs === undefined) return;
+  const size = Math.min(TEXT_FS.max, Math.max(TEXT_FS.min, Math.round(fs * 2) / 2));
+  if (size !== TEXT_SIZES.s) c.fs = size;
 }
 
 /** A segment's v12 highlighted lines (any order, repeats) → v13 Highlights: the maximal runs of consecutive lines */
@@ -280,8 +385,8 @@ function skipAt(src: string, i: number): [number, number] | null {
 }
 
 /** 第 11 版 → 第 12 版的一张卡：从前的 Free Text（主题的标题样式，默认 40px = H1 的预设字号）→ H1 */
-function v11to12Card(c: Card) {
-  if (c.kind === "note" && c.look === "freetext") c.level ??= 1;
+function v11to12Card(c: any) {
+  if (c?.kind === "note" && c.look === "freetext") c.level ??= 1;
 }
 
 /**
@@ -293,9 +398,8 @@ function v10to11(b: BoardFile) {
   const ids = new Map<string, string>();
   for (const c of b.cards) {
     if (c.kind === "shared" || !b.place[c.id]) continue;
-    const t = cardTitle(c, b as Board)
-      .trim()
-      .toLowerCase();
+    // a Mark or Free Text with no text has no default title in this version's cardTitle
+    const t = (cardTitle(c, b as Board) ?? "").trim().toLowerCase();
     if (t && !ids.has(t)) ids.set(t, c.id);
   }
   for (const s of b.sections) {
@@ -321,16 +425,17 @@ export function fileCamera(raw: any): Camera | undefined {
 }
 
 /**
- * v9 → v10 for Text cards from the card library: the board file keeps their place but not their look (that is in cards/<id>.json),
- * so migrateBoard cannot tell them apart. Their fixed heights go once Storage has put the shared cards in (schema.ts readBoardFile)
+ * v9 → v10 and → v16 for Text and Box cards from the card library: the board file keeps their place but not their look (that is
+ * in cards/<id>.json), so migrateBoard cannot tell them apart. Their fixed heights (an old Text's, an old Box's least height) go
+ * once Storage has put the shared cards in (schema.ts readBoardFile)
  */
 export function sharedTextHeights(raw: any): ((b: Board) => void) | undefined {
-  if (!(raw?.version >= 6 && raw.version < 10) || !Array.isArray(raw.cards)) return undefined;
+  if (!(raw?.version >= 6 && raw.version < 16) || !Array.isArray(raw.cards)) return undefined;
   const ids = new Set<string>(raw.cards.filter((c: any) => c?.kind === "shared").map((c: any) => c.id));
   if (!ids.size) return undefined;
   return (b) => {
-    for (const c of b.cards)
-      if (ids.has(c.id) && c.kind === "note" && c.look === "text" && b.place[c.id]) delete b.place[c.id].h;
+    const places = [b.place, ...(b.shelf ?? []).map((e) => e.place)];
+    for (const c of b.cards) if (ids.has(c.id) && isTextCard(c)) for (const p of places) if (p[c.id]) delete p[c.id].h;
   };
 }
 
@@ -384,6 +489,8 @@ export function migrateSharedCard(raw: any): SharedCardFile {
   // (those stay on their own board)
   if (sc?.version >= 6 && sc.version < 15)
     sc.sidenotes = (sc.sidenotes ?? []).map((n: any) => textOrCodeNote(n, () => undefined));
+  // 第 16 版：Text 和 Box（textAndBox；摆放在白板文件里，sharedTextHeights）
+  if (sc?.version >= 6 && sc.version < 16 && sc.card) textAndBox(sc.card, []);
   if (sc?.version >= 6 && sc.version < BOARD_VERSION) sc.version = BOARD_VERSION;
   if (sc?.card) normCard(sc.card);
   for (const n of sc?.sidenotes ?? []) normNote(n);

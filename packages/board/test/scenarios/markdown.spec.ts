@@ -62,7 +62,8 @@ export function mdBoard(): { b: Board; note: NoteCard; text: NoteCard } {
     kind: "note",
     md: "# Reading notes\nTwo lines, old style\n- a list\n- with block_manager",
     look: "text",
-    size: "body",
+    wrap: true,
+    fs: 13.5,
   };
   put(b, text, 60, 900, 360);
   b.sidenotes.push({ id: "sn1", at: { card: sch.id }, kind: "text", md: "Sidenote with $x^2$ and **bold**" } as any);

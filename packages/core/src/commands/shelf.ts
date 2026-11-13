@@ -42,7 +42,7 @@ export function removeFromShelf(env: CommandEnv, id: string): boolean {
   return env.edit((b) => removeShelfEntry(b, id));
 }
 
-const LOOK: Record<NoteLook, string> = { note: "Note", text: "Text", box: "Box", mark: "Mark", freetext: "Free Text" };
+const LOOK: Record<NoteLook, string> = { note: "Note", text: "Text", box: "Box" };
 /** A card's kind as a Shelf row writes it: Note, Code · model_runner.py, Web · github.com… */
 function kindOf(c: Card): string {
   switch (c.kind) {
