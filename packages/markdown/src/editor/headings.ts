@@ -41,7 +41,8 @@ export function pasteSlice(tr: Transaction, slice: Slice): Transaction {
   return tr;
 }
 
-const key = new PluginKey("cbHeadings");
+/** The plugin's state: the position of the heading whose level menu is open, mapped through every change */
+const key = new PluginKey<number | null>("cbHeadings");
 const KEY_HINT = IS_MAC ? "⌘" : "Ctrl+";
 
 class LevelMenu {
@@ -108,7 +109,7 @@ class LevelMenu {
     e.stopPropagation();
     this.close();
   };
-  /** the heading moved (typing elsewhere, undo): the menu follows it, or closes once it is gone */
+  /** the heading moved (typing elsewhere, undo): the menu follows it; null: it closes */
   map(state: EditorState, pos: number | null) {
     if (pos === null || state.doc.nodeAt(pos)?.type.name !== "paragraph") this.close();
     else this.pos = pos;
@@ -153,6 +154,7 @@ export function headingsPlugin(classes: () => MdClasses | undefined) {
       const p = getPos();
       if (p === undefined) return;
       const pos = view.state.doc.resolve(p).before();
+      view.dispatch(view.state.tr.setMeta(key, pos));
       menu = new LevelMenu(view, pos, b, classes(), () => {
         menu = null;
       });
@@ -160,8 +162,18 @@ export function headingsPlugin(classes: () => MdClasses | undefined) {
     w.append(b);
     return w;
   };
-  return new Plugin({
+  return new Plugin<number | null>({
     key,
+    state: {
+      init: () => null,
+      apply(tr, prev) {
+        const set = tr.getMeta(key) as number | undefined;
+        if (set !== undefined) return set;
+        if (prev === null || !tr.docChanged) return prev;
+        const r = tr.mapping.mapResult(prev, 1);
+        return r.deleted ? null : r.pos;
+      },
+    },
     props: {
       decorations(state) {
         const at = chipAt(state);
@@ -177,7 +189,11 @@ export function headingsPlugin(classes: () => MdClasses | undefined) {
       },
     },
     view: () => ({
-      update: (v) => menu?.map(v.state, chipAt(v.state)?.pos ?? null),
+      // the menu is for the heading it was opened on: once the caret is in another one, or the heading is gone, it closes
+      update: (v) => {
+        const pos = key.getState(v.state) ?? null;
+        menu?.map(v.state, pos !== null && chipAt(v.state)?.pos === pos ? pos : null);
+      },
       destroy: () => menu?.close(),
     }),
   });

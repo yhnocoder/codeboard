@@ -262,3 +262,27 @@ test("headingLevelChip", async () => {
   check("headingLevelChip text level", md(h, "n0") === "intro\n\nHead!\n\npara", { md: md(h, "n0") });
   await close(h);
 });
+
+/** The level menu is for the heading it was opened on: when the caret goes to another heading while it is open, it closes
+ *  rather than setting that other heading's level */
+test("headingLevelMenuKeepsItsHeading", async () => {
+  const h = await open({ board: board(["# One\n\n## Two\n\npara"]) });
+  await idle(h);
+  const pg = h.page,
+    items = pg.locator(".md-hmenu button");
+  await editNote(h, "n0", "p");
+  await pg.locator('.card[data-id="n0"] .md-pm h1').click();
+  await until(h, "chip shown", async () => (await pg.locator(".md-hchip-b").count()) === 1);
+  await pg.locator(".md-hchip-b").click();
+  await until(h, "level menu", async () => (await items.count()) === 7);
+  await pg.keyboard.press("ArrowDown");
+  await until(h, "the caret in Two", async () => (await pg.locator(".md-hchip-b").textContent()) === "H2");
+  await idle(h);
+  const left = await pg.locator(".md-hmenu").count();
+  if (left) await items.filter({ hasText: "Heading 4" }).click();
+  await exitEdit(h);
+  await idle(h);
+  check("headingLevelMenuKeepsItsHeading closes", left === 0, { left, md: md(h, "n0") });
+  check("headingLevelMenuKeepsItsHeading levels kept", md(h, "n0") === "# One\n\n## Two\n\npara", md(h, "n0"));
+  await close(h);
+});
