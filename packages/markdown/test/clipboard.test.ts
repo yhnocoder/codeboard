@@ -79,6 +79,10 @@ describe("copying part of a formatted span", () => {
     expect(copy("## Title\n\npara", "Title", true)).toBe("## Title");
     expect(copy("## Title\n\npara", "itl", true)).toBe("itl");
   });
+  it("a whole heading in a list item or a quote: the heading, not its container", () => {
+    expect(copy("- ## Listed\n- b", "Listed", true)).toBe("## Listed");
+    expect(copy("> ## Quoted\n>\n> c", "Quoted", true)).toBe("## Quoted");
+  });
 });
 
 describe("copying from a source that shows", () => {

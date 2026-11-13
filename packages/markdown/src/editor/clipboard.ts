@@ -57,7 +57,8 @@ function selectionMd(state: EditorState): string {
     const head = inlineKey.getState(state)?.head ?? null,
       shown = head === null ? null : head - $from.start();
     if (a > 0 || b < p.content.size) return balancedSource(p.textContent, a, b, shown);
-    return p.attrs.level ? sliceMd(state.selection.content()) : p.textContent;
+    // the heading alone, not the list item or quote it stands in (the selection's slice keeps those open around it)
+    return p.attrs.level ? sourceMd({ type: "doc", content: [p.toJSON()] }) : p.textContent;
   }
   const slice = state.selection.content(),
     first = slice.content.firstChild;
