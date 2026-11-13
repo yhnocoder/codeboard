@@ -126,9 +126,9 @@ struct Skeleton: Sendable, Equatable {
 
   /// The map's scale and its top left in a frame W × H, centred (core mapFit: 14 round it, 20 at the top for the
   /// Sections' names, never larger than half size)
-  static func fit(w: Double, h: Double, W: Double, H: Double) -> (s: Double, ox: Double, oy: Double) {
-    let s = max(1e-4, min(0.5, (W - 28) / w, (H - 20 - 14) / h))
-    return (s, (W - w * s) / 2, 20 + (H - 20 - 14 - h * s) / 2)
+  static func fit(w: Double, h: Double, frameW: Double, frameH: Double) -> (s: Double, ox: Double, oy: Double) {
+    let s = max(1e-4, min(0.5, (frameW - 28) / w, (frameH - 20 - 14) / h))
+    return (s, (frameW - w * s) / 2, 20 + (frameH - 20 - 14 - h * s) / 2)
   }
 }
 
@@ -214,11 +214,11 @@ extension Drawing {
     ctx.saveGState()
     ctx.addPath(outline)
     ctx.clip()
-    let f = Skeleton.fit(w: sk.w, h: sk.h, W: r.width, H: r.height)
-    let X = { (v: Double) in r.minX + f.ox + v * f.s }
-    let Y = { (v: Double) in r.minY + f.oy + v * f.s }
-    let L = { (v: Double) in v * f.s }
-    func rect(_ b: Skeleton.Box) -> CGRect { CGRect(x: X(b.x), y: Y(b.y), width: L(b.w), height: L(b.h)) }
+    let f = Skeleton.fit(w: sk.w, h: sk.h, frameW: r.width, frameH: r.height)
+    let mx = { (v: Double) in r.minX + f.ox + v * f.s }
+    let my = { (v: Double) in r.minY + f.oy + v * f.s }
+    let ml = { (v: Double) in v * f.s }
+    func rect(_ b: Skeleton.Box) -> CGRect { CGRect(x: mx(b.x), y: my(b.y), width: ml(b.w), height: ml(b.h)) }
     func round(_ r: CGRect, _ k: CGFloat) -> CGPath {
       CGPath(roundedRect: r, cornerWidth: min(k, r.width / 2), cornerHeight: min(k, r.height / 2), transform: nil)
     }
@@ -242,9 +242,9 @@ extension Drawing {
       let (ax, ay, bx, by) = (a.x + a.w / 2, a.y + a.h / 2, b.x + b.w / 2, b.y + b.h / 2)
       let horiz = abs(bx - ax) > abs(by - ay)
       let p1 =
-        horiz ? CGPoint(x: X(ax < bx ? a.x + a.w : a.x), y: Y(ay)) : CGPoint(x: X(ax), y: Y(ay < by ? a.y + a.h : a.y))
+        horiz ? CGPoint(x: mx(ax < bx ? a.x + a.w : a.x), y: my(ay)) : CGPoint(x: mx(ax), y: my(ay < by ? a.y + a.h : a.y))
       let p2 =
-        horiz ? CGPoint(x: X(ax < bx ? b.x : b.x + b.w), y: Y(by)) : CGPoint(x: X(bx), y: Y(ay < by ? b.y : b.y + b.h))
+        horiz ? CGPoint(x: mx(ax < bx ? b.x : b.x + b.w), y: my(by)) : CGPoint(x: mx(bx), y: my(ay < by ? b.y : b.y + b.h))
       let path = CGMutablePath()
       path.move(to: p1)
       if horiz {
@@ -267,10 +267,10 @@ extension Drawing {
       ctx.fillPath()
     }
     for c in sk.cards {
-      let x = X(c.box.x)
-      let y = Y(c.box.y)
-      let w = max(1, L(c.box.w))
-      let h = max(1, L(c.box.h))
+      let x = mx(c.box.x)
+      let y = my(c.box.y)
+      let w = max(1, ml(c.box.w))
+      let h = max(1, ml(c.box.h))
       let box = CGRect(x: x, y: y, width: w, height: h)
       switch c.kind {
       case .image(let url):
@@ -353,13 +353,13 @@ extension Drawing {
     for c in sk.cards { if let s = c.section { inSec[s, default: 0] += 1 } }
     let labFont = t.subLabel
     let labCount = t.subLabelCount
-    for (i, s) in sk.secs.enumerated() where L(s.box.w) >= 36 {
+    for (i, s) in sk.secs.enumerated() where ml(s.box.w) >= 36 {
       let title = s.title.isEmpty ? "Section" : s.title
       let num = "\(inSec[i] ?? 0)"
-      let maxW = L(s.box.w) - 8
+      let maxW = ml(s.box.w) - 8
       let numW = Drawing.width(num, labCount)
       let tw = min(Drawing.width(title, labFont), max(0, maxW - 8 - 5 - numW))
-      let lab = CGRect(x: X(s.box.x) + 4, y: Y(s.box.y) - 9, width: min(maxW, 4 + tw + 5 + numW + 4), height: 14.3 + 2)
+      let lab = CGRect(x: mx(s.box.x) + 4, y: my(s.box.y) - 9, width: min(maxW, 4 + tw + 5 + numW + 4), height: 14.3 + 2)
       ctx.addPath(round(lab, 4))
       ctx.setFillColor(ground.copy(alpha: 0.9) ?? ground)
       ctx.fillPath()
