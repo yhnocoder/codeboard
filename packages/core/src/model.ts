@@ -508,12 +508,13 @@ export type Board = {
 };
 /**
  * One entry on a board's Shelf: what was put aside together (cards, a Section with its cards and inner Sections, a multi-selection).
- * place = the shelved cards (canvas hosts: a Compare, not its columns) and where they were; their content stays in Board.cards (a
- * shared card keeps its library copy, twins stay the same) and their sidenotes in Board.sidenotes, but with no Place they are off
- * the canvas, out of search, Walkthrough, the call tree and summaries. sections = the shelved Sections as they were (outermost
- * first; a parent or a card's place.section outside the entry is kept up to date and dropped on return when it is gone). links =
- * every arrow that touches a shelved card: those inside travel with it, those to the rest of the board are hidden until it comes
- * back. stickers = the stickers on the shelved cards and on those arrows. at = when it was shelved (ms)
+ * place = the shelved cards (canvas hosts: a Compare, not its columns) and where they were, with the height the board measured
+ * (Place.mh); their content stays in Board.cards (a shared card keeps its library copy, twins stay the same) and their sidenotes in
+ * Board.sidenotes, but with no Place they are off the canvas, out of Walkthrough, the call tree, summaries and the search of other
+ * boards (their own board's search finds them: picking one takes its entry back out). sections = the shelved Sections as they were
+ * (outermost first; a parent or a card's place.section outside the entry is kept up to date and dropped on return when it is
+ * gone). links = every arrow that touches a shelved card: those inside travel with it, those to the rest of the board are hidden
+ * until it comes back. stickers = the stickers on the shelved cards and on those arrows. at = when it was shelved (ms)
  */
 export type ShelfEntry = {
   id: string;
@@ -603,7 +604,7 @@ export function cardTitle(c: Card, b?: Pick<Board, "cards">): string {
     case "web":
       return c.meta?.title || domainOf(c.url);
     case "links":
-      return "Links";
+      return "Link List";
     case "compare":
       return `Compare · ${b ? compareName(c, b) : ""}`;
     case "board":

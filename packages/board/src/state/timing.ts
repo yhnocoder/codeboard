@@ -54,8 +54,8 @@ export const GHOST_OUT = 200;
 export const GHOST_DISPERSE = 300;
 /** Resting the pointer on something with a tip (data-tip) shows the tip after this long; right after a tip was shown, at once (ui/Menu.tsx) */
 export const TIP_DELAY = 500;
-/** "Right after": a tip, a card's preview in a Sidenotes popover or a shelf entry's preview shows at once this long after the
- *  last one went away (ui/Menu.tsx, ui/pops/cardpeek.tsx, ui/ShelfPanel.tsx) */
+/** "Right after": a tip or a card's preview in a Sidenotes popover shows at once this long after the last one went away
+ *  (ui/Menu.tsx, ui/pops/cardpeek.tsx) */
 export const TIP_WARM = 800;
 /** Fit to Content on a Section: its frame glides (styles.css .sect.fit, 260 ms) and the glide class comes off after this long (actions/edit.ts) */
 export const SECTION_FIT = 320;

@@ -7,7 +7,7 @@ import { Icon } from "./icons";
 import { Overlay, useOverlay } from "./overlay";
 import { useListNav, useDebouncedAsk } from "./hooks";
 import { For, Show, createSignal, createEffect, onMount, createMemo, onCleanup } from "solid-js";
-import type { MeaningResult, SearchGroup, SearchItem } from "@codeboard/core";
+import { shelvedCards, type MeaningResult, type SearchGroup, type SearchItem } from "@codeboard/core";
 import { state } from "../state/store";
 import { select } from "../state/selection";
 import { toast } from "../state/toast";
@@ -219,6 +219,7 @@ export function Palette() {
     }
     if (it.kind === "card" || it.kind === "sidenote") {
       if (it.board === state.board.id) {
+        if (A.takeOutCard(it.card)) return;
         select({ cards: [it.card] });
         A.revealCard(it.card);
       } else send({ type: "openBoard", id: it.board, card: it.card });
@@ -300,8 +301,15 @@ export function Palette() {
       else if (it) run(it, e.altKey);
     }
   };
+  /** A card of this board that is on the Shelf: picked, its entry comes back (actions/shelf.ts takeOutCard) */
+  const shelved = (it: SearchItem) =>
+    (it.kind === "card" || it.kind === "sidenote") &&
+    it.board === state.board.id &&
+    shelvedCards(state.board).has(it.card);
   const icon = (it: SearchItem) =>
-    it.kind === "symbol" ? (
+    shelved(it) ? (
+      <Icon name="shelf" size={13} />
+    ) : it.kind === "symbol" ? (
       it.glyph
     ) : it.kind === "file" ? (
       "▤"
