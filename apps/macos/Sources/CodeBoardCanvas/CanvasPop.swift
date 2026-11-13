@@ -437,3 +437,33 @@ extension CanvasView {
     }
   }
 }
+
+extension CanvasView {
+  /// Where the marker for `at` is on the board (review sheets)
+  package func markCentre(_ at: PopAt) -> CGPoint? {
+    guard let m = marks.first(where: { $0.at == at }) else { return nil }
+    var f = m.frame
+    if let o = m.owner, let r = scene?.items.first(where: { $0.owner == o })?.rect {
+      f = f.offsetBy(dx: r.minX, dy: r.minY)
+    }
+    return CGPoint(x: f.midX, y: f.midY)
+  }
+
+  /// The popup for `at` opened (write: its input ready), or closed (review sheets)
+  package func showPop(_ at: PopAt?, write: Bool = false, ask: Bool = false) { openPop(at, write: write, ask: ask) }
+
+  package var popShownAt: PopAt? { popShown }
+
+  /// The popup dragged by its title bar by `d` (review sheets)
+  package func dragPopBy(_ d: CGSize) {
+    dragPop(d, ended: false)
+    dragPop(d, ended: true)
+  }
+
+  /// The popup's box and the list's box in this view, while shown
+  package var popBox: CGRect? {
+    let p = sidenotePop
+    guard popShown != nil, let sv = p.view.superview else { return nil }
+    return convert(p.view.convert(CGRect(origin: p.origin, size: p.size), to: sv), from: sv)
+  }
+}

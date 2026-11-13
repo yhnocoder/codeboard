@@ -27,6 +27,7 @@ if args.count == 3, args[1] == "--texts" { TextSheets.run(out: URL(filePath: arg
 if args.count == 3, args[1] == "--edit" { EditSheets.run(out: URL(filePath: args[2])) }
 if args.count == 3, args[1] == "--writing" { WritingSheets.run(out: URL(filePath: args[2])) }
 if args.count == 3, args[1] == "--arrows" { ArrowSheets.run(out: URL(filePath: args[2])) }
+if args.count == 3, args[1] == "--sidenotes" { SidenoteSheets.run(out: URL(filePath: args[2])) }
 guard args.count == 3 else {
   FileHandle.standardError.write(
     Data(
