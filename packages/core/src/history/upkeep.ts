@@ -30,8 +30,9 @@ export function upkeeper(raw: Raw, noteBlocks: NoteBlocks) {
 
 /**
  * Arrow ends on a block of a Note whose Markdown changed follow that block. seen = each Note's Markdown last time; nothing is kept
- * while no arrow on the board ends on a block (nothing to follow). Notes new this time (Split by Headings made them) go to
- * rebaseBlocks: a block deleted here that arrived there takes its arrow ends along
+ * while no arrow on the board ends on a block (nothing to follow). Notes new this time (Split by Headings made them) and the
+ * other Notes changed in the same step (blocks moved between Notes) go to rebaseBlocks: a block deleted here that arrived
+ * there takes its arrow ends along
  */
 function followBlocks(b: Board, seen: Map<string, string>, raw: Raw, noteBlocks: NoteBlocks): void {
   const rb = raw(b);
@@ -47,7 +48,8 @@ function followBlocks(b: Board, seen: Map<string, string>, raw: Raw, noteBlocks:
   const first = !seen.size,
     now = new Map<string, string>(),
     fresh: { card: string; blocks: string[] }[] = [],
-    changed: [string, string, string][] = [];
+    changed: [string, string, string][] = [],
+    edited: { card: string; blocks: string[] }[] = [];
   for (const c of rb.cards) {
     if (c.kind !== "note") continue;
     now.set(c.id, c.md);
@@ -60,9 +62,20 @@ function followBlocks(b: Board, seen: Map<string, string>, raw: Raw, noteBlocks:
             return noteBlocks(c.md) ?? [];
           },
         });
-    } else if (was !== c.md && on.has(c.id)) changed.push([c.id, was, c.md]);
+    } else if (was !== c.md) {
+      if (on.has(c.id)) changed.push([c.id, was, c.md]);
+      const md = c.md;
+      edited.push({
+        card: c.id,
+        get blocks() {
+          return noteBlocks(md) ?? [];
+        },
+      });
+    }
   }
-  for (const [id, was, md] of changed) rebaseBlocks(b, id, noteBlocks(was), noteBlocks(md), fresh);
+  // a block can go to a Note made now or to another Note changed in the same step (blocks moved from one Note to another)
+  for (const [id, was, md] of changed)
+    rebaseBlocks(b, id, noteBlocks(was), noteBlocks(md), [...fresh, ...edited.filter((e) => e.card !== id)]);
   seen.clear();
   for (const [k, v] of now) seen.set(k, v);
 }
