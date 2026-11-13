@@ -92,6 +92,20 @@ extension CanvasView {
   /// outline stroked 0.45 wider, a dashed one 0.45 wider; its start dot (.port) on it, and its label's box ringed
   func arrowChrome(_ i: Int, labelRing: Bool) {
     guard let a = liveArrow(i) else { return }
+    accentArrow(a)
+    // the label's box: a 1.5 ring of the accent (.vchips.on .vcard)
+    guard labelRing, theme.label == .box, let li = index(of: .arrowLabel(a.id)), !items[li].box.isHidden else { return }
+    let r = items[li].box.frame
+    let ring = CAShapeLayer()
+    ring.path = Drawing.squircle(r.insetBy(dx: -0.75, dy: -0.75), theme.labelRadius + 0.75)
+    ring.fillColor = nil
+    ring.strokeColor = theme.accent
+    ring.lineWidth = 1.5
+    chrome.addSublayer(ring)
+  }
+
+  /// An arrow's line and heads in the accent, its start dot on it
+  func accentArrow(_ a: Scene.Arrow) {
     let accent = theme.accent
     if !a.fill.isEmpty {
       let l = CAShapeLayer()
@@ -138,15 +152,6 @@ extension CanvasView {
     dot.strokeColor = a.color
     dot.lineWidth = theme.arrowWidth
     chrome.addSublayer(dot)
-    // the label's box: a 1.5 ring of the accent (.vchips.on .vcard)
-    guard labelRing, theme.label == .box, let li = index(of: .arrowLabel(a.id)), !items[li].box.isHidden else { return }
-    let r = items[li].box.frame
-    let ring = CAShapeLayer()
-    ring.path = Drawing.squircle(r.insetBy(dx: -0.75, dy: -0.75), theme.labelRadius + 0.75)
-    ring.fillColor = nil
-    ring.strokeColor = accent
-    ring.lineWidth = 1.5
-    chrome.addSublayer(ring)
   }
 
   /// The arrows to draw in the accent: the selected ones and the one under the pointer
@@ -154,6 +159,8 @@ extension CanvasView {
     guard let doc = document, let s = scene else { return }
     var on = Set(doc.selection.compactMap(\.arrow))
     if let h = hoveredArrow { on.insert(h) }
+    // the one whose end is being moved is drawn where the end goes
+    if let id = connecting?.arrow { on.remove(id) }
     for (i, a) in s.arrows.enumerated() where on.contains(a.id) {
       arrowChrome(i, labelRing: doc.selection.contains(.arrow(a.id)))
     }

@@ -103,6 +103,10 @@ public final class CanvasView: NSView {
   var routedArrows: [Int: Scene.Arrow] = [:]
   /// The arrow under the pointer, drawn as selected
   var hoveredArrow: ArrowID?
+  /// The card under the pointer, which shows its ports, the code line under it and the port under it
+  var hoveredCard: CardID?
+  var hoveredLine: Endpoint?
+  var hoveredPort: Port?
   /// The label being written, where its centre is on the board, and a written one's field until the board shows it
   var labelEditing: LabelEditing?
   var labelCentre = CGPoint.zero

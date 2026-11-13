@@ -10,17 +10,26 @@ import Testing
 
 private func aid(_ s: String) -> ArrowID { ArrowID(rawValue: s) }
 
-/// Two Notes side by side with an arrow between them, a third under them
-private func arrows(label: String? = nil) -> Board {
+/// Two Notes side by side with an arrow between them, a third under them; with `more`, a Text and a code card under them
+/// and no arrow
+private func arrows(label: String? = nil, more: Bool = false) -> Board {
   func note(_ id: String, x: Double, y: Double) -> Card {
     Card(
       id: cid(id), x: x, y: y, width: 240, height: 160,
       content: .own(CardContent(body: .note(Note(text: "# \(id)\n\n线程在屏障处等待。")))))
   }
+  let seg = Segment(
+    id: SegmentID(rawValue: "s1"), source: nil, language: "python", firstLine: 1,
+    lines: ["def wait(barrier):", "    barrier.arrive()", "    return barrier.done"])
+  let extra = [
+    Card(id: cid("t1"), x: 0, y: 800, width: 200, content: .own(CardContent(body: .text(TextCard(text: "备注 a note"))))),
+    Card(id: cid("c1"), x: 700, y: 800, width: 320, content: .own(CardContent(body: .code(CodeCard(segments: [seg]))))),
+  ]
   return Board(
     id: BoardID(rawValue: "arrows"),
-    cards: [note("n1", x: 0, y: 0), note("n2", x: 700, y: 0), note("n3", x: 300, y: 500)],
-    arrows: [Arrow(id: aid("a1"), from: Endpoint(card: cid("n1")), to: Endpoint(card: cid("n2")), label: label)])
+    cards: [note("n1", x: 0, y: 0), note("n2", x: 700, y: 0), note("n3", x: 300, y: 500)] + (more ? extra : []),
+    arrows: more
+      ? [] : [Arrow(id: aid("a1"), from: Endpoint(card: cid("n1")), to: Endpoint(card: cid("n2")), label: label)])
 }
 
 private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorItem ? "-" : $0.title } ?? [] }
@@ -210,5 +219,85 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     r.doc.select([.card(cid("n1")), .card(cid("n2")), .card(cid("n3"))])
     let three = r.canvas.menu(for: r.mouse(.rightMouseDown, r.centre("n3")))
     #expect(three?.items.first?.title == "Connect with Arrow" && three?.items.first?.action == nil)
+  }
+
+  @Test(arguments: [1, 0.5] as [CGFloat])
+  func aCardsPortDrawsAnArrowToTheCardOrLineLetGoOnAndNothingOnTheCanvas(zoom: CGFloat) async throws {
+    let r = try await Rig(arrows(more: true), zoom: zoom)
+    defer { r.close() }
+    let surface = r.canvas.currentTheme.surface
+    let dots = { (r.canvas.chrome.sublayers ?? []).filter { ($0 as? CAShapeLayer)?.fillColor == surface }.count }
+    // the card under the pointer shows a port on each side; a Text none
+    r.canvas.mouseMoved(with: r.mouse(.mouseMoved, r.centre("n1")))
+    #expect(r.canvas.hoveredCard == cid("n1") && dots() == 4)
+    r.canvas.mouseMoved(with: r.mouse(.mouseMoved, r.centre("t1")))
+    #expect(r.canvas.hoveredCard == cid("t1") && dots() == 0)
+    r.canvas.mouseMoved(with: r.mouse(.mouseMoved, r.centre("n1")))
+    let right = try #require(r.canvas.ports(of: cid("n1"), line: nil).first { $0.side == .right })
+    #expect(right.at == CGPoint(x: 240, y: r.canvas.currentTheme.headerHeight / 2))
+    // dragged to n2: the preview is routed to it, n2 grows and shows as selected; only layers change meanwhile
+    let breaks = r.breaks
+    let target = r.canvas.items[try #require(r.canvas.index(of: .card(cid("n2"))))].box
+    r.drag(right.at, r.centre("n2")) {
+      r.tick()
+      #expect(r.canvas.connecting?.target == Endpoint(card: cid("n2")))
+      #expect(abs(target.affineTransform().a - 1.03) < 0.001 && target.sublayers?.contains { $0.name == "aim" } == true)
+      let accent = r.canvas.currentTheme.accent
+      #expect((r.canvas.chrome.sublayers ?? []).contains { ($0 as? CAShapeLayer)?.fillColor == accent })
+      #expect(r.breaks == breaks)
+    }
+    let a = try #require(r.doc.board.arrows.first)
+    #expect(a.from == Endpoint(card: cid("n1"), side: .right) && a.to == Endpoint(card: cid("n2")))
+    #expect(r.doc.selection == [.card(cid("n2"))] && r.doc.history.undoSteps.count == 1 && r.doc.undoName == "Arrow")
+    #expect(target.affineTransform().a == 1 && target.sublayers?.contains { $0.name == "aim" } == false)
+    await r.settle()
+    // let go on the canvas: nothing
+    r.canvas.mouseMoved(with: r.mouse(.mouseMoved, r.centre("n1")))
+    let bottom = try #require(r.canvas.ports(of: cid("n1"), line: nil).first { $0.side == .bottom })
+    r.drag(bottom.at, CGPoint(x: 400, y: 330))
+    #expect(r.doc.board.arrows.count == 1 && r.doc.history.undoSteps.count == 1)
+    // to a code line: the line is the end
+    let l2 = Endpoint(card: cid("c1"), segment: SegmentID(rawValue: "s1"), line: 2)
+    let y2 = try #require(r.canvas.lineMiddle(l2))
+    r.canvas.mouseMoved(with: r.mouse(.mouseMoved, r.centre("n1")))
+    r.drag(bottom.at, CGPoint(x: 800, y: y2))
+    #expect(r.doc.board.arrows.last?.to == l2 && r.doc.board.arrows.last?.from.side == .bottom)
+    await r.settle()
+    // from a code line's port: the line under the pointer shows one at each end
+    let l1 = Endpoint(card: cid("c1"), segment: SegmentID(rawValue: "s1"), line: 1)
+    let y1 = try #require(r.canvas.lineMiddle(l1))
+    r.canvas.mouseMoved(with: r.mouse(.mouseMoved, CGPoint(x: 800, y: y1)))
+    #expect(r.canvas.hoveredLine == l1)
+    let lineLeft = try #require(r.canvas.ports(of: cid("c1"), line: l1).first { $0.end == l1 && $0.side == .left })
+    r.drag(lineLeft.at, r.centre("n3"))
+    let fromLine = try #require(r.doc.board.arrows.last)
+    #expect(fromLine.from == Endpoint(card: cid("c1"), segment: SegmentID(rawValue: "s1"), line: 1, side: .left))
+    #expect(fromLine.to == Endpoint(card: cid("n3")) && r.doc.board.arrows.count == 3)
+    #expect(r.doc.history.undoSteps.count == 3)
+  }
+
+  @Test func theSelectedArrowsEndsMoveToAnotherCardAsOneStepButNotOntoItsOtherEnd() async throws {
+    let r = try await Rig(arrows(), zoom: 1)
+    defer { r.close() }
+    r.click(try #require(r.canvas.scene?.arrows.first?.mid))
+    let ends = r.canvas.endHandles()
+    #expect(ends.count == 2)
+    let to = try #require(ends.first { $0.0 == .to }?.1)
+    let breaks = r.breaks
+    let line = r.canvas.arrowGroups[0]
+    r.drag(to, r.centre("n3")) {
+      r.tick()
+      #expect(line.allSatisfy { $0.isHidden }, "the arrow is drawn where its end goes")
+      #expect(r.breaks == breaks)
+    }
+    #expect(r.doc.board.arrows[0].to == Endpoint(card: cid("n3")) && r.doc.board.arrows[0].from.card == cid("n1"))
+    #expect(r.doc.selection == [.arrow(aid("a1"))] && r.doc.history.undoSteps.count == 1)
+    await r.settle()
+    // its start onto its end's card, or onto the canvas: no change
+    let from = try #require(r.canvas.endHandles().first { $0.0 == .from }?.1)
+    r.drag(from, r.centre("n3"))
+    r.drag(from, CGPoint(x: 500, y: 300))
+    #expect(r.doc.board.arrows[0].from.card == cid("n1") && r.doc.history.undoSteps.count == 1)
+    #expect(r.canvas.arrowGroups[0].allSatisfy { !$0.isHidden })
   }
 }

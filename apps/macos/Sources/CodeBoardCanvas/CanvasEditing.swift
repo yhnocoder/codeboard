@@ -25,6 +25,8 @@ struct Gesture {
     case still
     /// An arrow's label dragged along its line
     case label(LabelDrag)
+    /// An arrow drawn from a port, or an end of the selected one moved
+    case connect(Connect)
   }
 
   var kind: Kind
@@ -265,6 +267,11 @@ extension CanvasView {
     routedArrows = [:]
     if let h = hoveredArrow, !s.arrows.contains(where: { $0.id == h }) { hoveredArrow = nil }
     labelShown()
+    if let h = hoveredCard, index(of: .card(h)) == nil {
+      hoveredCard = nil
+      hoveredLine = nil
+      hoveredPort = nil
+    }
     // the label being written stays hidden under its field
     if let le = labelEditing, let li = index(of: .arrowLabel(le.id)) {
       withoutAnimation { items[li].box.isHidden = true }
@@ -412,16 +419,7 @@ extension CanvasView {
         guard let r = liveRect(item) else { continue }
         switch item {
         case .card(let id):
-          let it = index(of: .card(id)).map { scene!.items[$0] }
-          var text = false
-          if case .note(let n)? = it?.drawing { text = n.content.isText }
-          if text {
-            outline(r, box: isBox(id), tilt: it?.tilt ?? 0, zoom: z)
-          } else if theme.id == .inkWash {
-            chrome.addSublayer(seal(on: r, tilt: it?.tilt ?? 0))
-          } else {
-            ring(r, tilt: it?.tilt ?? 0, zoom: z)
-          }
+          selectedLook(id, r, tilt: index(of: .card(id)).map { scene!.items[$0].tilt } ?? 0, into: chrome)
         case .section(let id):
           if theme.id == .inkWash, let f = scene?.frames.first(where: { $0.id == id }), let strokes = f.strokes {
             brushed(r, strokes: strokes.cg)
@@ -434,6 +432,9 @@ extension CanvasView {
       }
       raiseText()
       if let bar = barLayer() { chrome.addSublayer(bar) }
+      drawPorts()
+      drawEndHandles()
+      drawConnect()
       guard doc.selection.count == 1, let item = doc.selection.first, !doc.board.isLocked(item) else { return }
       switch gesture?.kind {
       case .move?, .nudge?, .marquee?: return
@@ -454,8 +455,20 @@ extension CanvasView {
     }
   }
 
+  /// A selected card's look at `r` in `parent`: a Text's or Box's outline, Ink Wash's seal, else the ring
+  func selectedLook(_ id: CardID, _ r: CGRect, tilt: CGFloat, into parent: CALayer) {
+    let z = camera.zoom
+    if isText(id) {
+      outline(r, box: isBox(id), tilt: tilt, zoom: z, into: parent)
+    } else if theme.id == .inkWash {
+      parent.addSublayer(seal(on: r, tilt: tilt))
+    } else {
+      ring(r, tilt: tilt, zoom: z, into: parent)
+    }
+  }
+
   /// A selected card's ring (styles.css .card.sel): 1.5 view points of the accent over a 4.5 point halo of it at 16 %
-  private func ring(_ r: CGRect, tilt: CGFloat, zoom z: CGFloat) {
+  private func ring(_ r: CGRect, tilt: CGFloat, zoom z: CGFloat, into parent: CALayer) {
     for (width, alpha) in [(4.5, 0.16), (1.5, 1.0)] as [(CGFloat, CGFloat)] {
       let l = CAShapeLayer()
       let out = width / 2 / z
@@ -468,7 +481,7 @@ extension CanvasView {
       l.strokeColor = theme.accent.copy(alpha: alpha)
       l.lineWidth = width / z
       if tilt != 0 { l.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
-      chrome.addSublayer(l)
+      parent.addSublayer(l)
     }
   }
 
@@ -556,7 +569,7 @@ extension CanvasView {
 
   /// A selected Text's or Box's frame (styles.css .card.text.sel): a 1.5 point line of the accent, 2 out from a Text
   /// (3 from a Box), round as the card's corners
-  private func outline(_ r: CGRect, box: Bool, tilt: CGFloat, zoom z: CGFloat) {
+  private func outline(_ r: CGRect, box: Bool, tilt: CGFloat, zoom z: CGFloat, into parent: CALayer) {
     let gap: CGFloat = box ? 3 : 2
     let w = 1.5 / z
     let o = r.insetBy(dx: -gap - w / 2, dy: -gap - w / 2)
@@ -569,7 +582,7 @@ extension CanvasView {
     l.strokeColor = theme.accent
     l.lineWidth = w
     if tilt != 0 { l.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
-    chrome.addSublayer(l)
+    parent.addSublayer(l)
   }
 
   /// A Text's or Box's handles where they are drawn (board units): a pill on each side edge for the width it wraps at,
@@ -682,8 +695,12 @@ extension CanvasView {
   public override func mouseMoved(with e: NSEvent) {
     guard gesture == nil else { return }
     let v = convert(e.locationInWindow, from: nil)
-    let arrow = hitHandle(v) == nil ? arrowAt(camera.board(v)) : nil
-    if let (_, edge) = hitHandle(v) {
+    hoverPorts(at: v)
+    let port = hitPort(v) != nil || hitEndHandle(v) != nil
+    let arrow = hitHandle(v) == nil && !port ? arrowAt(camera.board(v)) : nil
+    if port {
+      NSCursor.crosshair.set()
+    } else if let (_, edge) = hitHandle(v) {
       resizeCursor(edge).set()
     } else if arrow != nil {
       NSCursor.pointingHand.set()
@@ -693,7 +710,14 @@ extension CanvasView {
     hover(arrow)
   }
 
-  public override func mouseExited(with e: NSEvent) { hover(nil) }
+  public override func mouseExited(with e: NSEvent) {
+    hover(nil)
+    guard gesture == nil, hoveredCard != nil else { return }
+    hoveredCard = nil
+    hoveredLine = nil
+    hoveredPort = nil
+    drawChrome()
+  }
 
   // MARK: Pointer
 
@@ -713,13 +737,22 @@ extension CanvasView {
       if hitHandle(v) == nil { doubleClick(at: p) }
       return
     }
+    // a port: an arrow is drawn out of it
+    if let port = hitPort(v) {
+      startConnect(from: port, at: v)
+      drawChrome()
+      return
+    }
     if let (item, edges) = hitHandle(v) {
       startResize(item, edges, at: v, p)
       return
     }
     let toggle = !e.modifierFlags.isDisjoint(with: [.shift, .command])
     var item: Item?
-    if let id = hitArrowLabel(p) {
+    if hitEndHandle(v) != nil, let id = doc.selection.first?.arrow {
+      // the selected arrow's end
+      item = .arrow(id)
+    } else if let id = hitArrowLabel(p) {
       item = .arrow(id)
     } else if let id = hitCard(p) {
       item = .card(id)
@@ -750,8 +783,13 @@ extension CanvasView {
     case .press(let item, let toggle, _, _):
       guard hypot(v.x - g.startView.x, v.y - g.startView.y) >= dragSlop else { return }
       if case .arrow(let id)? = item {
-        // its label slides along it; the line itself stays where its cards are
-        if hitArrowLabel(g.start) == id, let d = startLabelDrag(id, at: g.start) {
+        // an end of the selected arrow moves to another card or line; its label slides along it; the line itself stays
+        // where its cards are
+        if let end = hitEndHandle(g.startView), let c = startMoveEnd(end, of: id, at: g.start) {
+          g.kind = .connect(c)
+          gesture = g
+          mouseDragged(with: e)
+        } else if hitArrowLabel(g.start) == id, let d = startLabelDrag(id, at: g.start) {
           g.kind = .label(d)
           gesture = g
           mouseDragged(with: e)
@@ -807,6 +845,13 @@ extension CanvasView {
       g.kind = .label(d)
       gesture = g
       showLabelDrag(d)
+    case .connect(var c):
+      // a press that has not moved yet draws nothing
+      guard hypot(v.x - g.startView.x, v.y - g.startView.y) >= dragSlop || c.pointer != g.start else { return }
+      dragConnect(&c, to: p)
+      g.kind = .connect(c)
+      gesture = g
+      drawChrome()
     case .nudge, .still:
       break
     }
@@ -839,6 +884,8 @@ extension CanvasView {
       commitResize(z)
     case .label(let d):
       commitLabelDrag(d)
+    case .connect(let c):
+      commitConnect(c)
     case .nudge, .still:
       gesture = nil
     }
