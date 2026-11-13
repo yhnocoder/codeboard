@@ -7,7 +7,15 @@ import Foundation
 /// Everything the canvas shows of one board, worked out once when it opens: the items that get bitmaps (cards, section
 /// titles, arrow labels), the section frames and the arrows. Board units, y-down.
 struct Scene: Sendable {
+  /// What an item draws, to find it again in the next scene
+  enum Owner: Hashable, Sendable {
+    case card(CardID)
+    case sectionTitle(SectionID)
+    case arrowLabel(ArrowID)
+  }
+
   struct Item: Sendable {
+    var owner: Owner?
     var rect: CGRect
     var drawing: Drawing
     /// Radians, about the centre
@@ -20,6 +28,7 @@ struct Scene: Sendable {
   }
 
   struct Frame: Sendable {
+    var id: SectionID
     var rect: CGRect
     var fill: CGColor
     /// `Theme.Frame.brush`'s strokes, filled, in the Section's units
@@ -28,6 +37,9 @@ struct Scene: Sendable {
 
   /// An arrow as filled and stroked paths in board units
   struct Arrow: Sendable {
+    var id: ArrowID
+    var from: CardID
+    var to: CardID
     /// The line's outline and its heads, filled
     var fill: Outline
     var color: CGColor
@@ -52,6 +64,28 @@ struct Scene: Sendable {
   var bounds = CGRect.null
   /// Shared cards whose file could not be read: left out
   var missing: [CardID] = []
+  /// Where each card drawn is, for its arrows
+  var placed: [CardID: Placed] = [:]
+  /// The arrows drawn, as the board has them, in the order of `arrows`
+  var arrowModels: [CodeBoardModel.Arrow] = []
+  /// Each card's drawing and what it was made from, for the next scene to reuse
+  var parts: [CardID: Part] = [:]
+  /// The cards whose drawing came from the scene before, unchanged
+  var reused: Set<CardID> = []
+
+  /// A card's drawing and what it was made from: the next scene reuses it while these are the same
+  struct Part: Sendable {
+    var content: CardContent
+    var width: Double
+    var height: Double?
+    var tilted: Bool
+    var measured: CGSize?
+    /// The arrow ends on it (a code card marks the lines they start from)
+    var ends: [Endpoint]
+    var drawing: Drawing
+    var size: CGSize
+    var code: (layout: CodeLayout, top: CGFloat, segments: [SegmentID])?
+  }
 
   /// The tilt of a tilted card, as the board's (counter-clockwise)
   static let tilt = -1.2 * CGFloat.pi / 180
@@ -94,7 +128,8 @@ struct Scene: Sendable {
   /// Off the main thread: code is highlighted here, once, and kept with its item for every redraw. `sizes`: what the
   /// Note renderer measured of each Note in `measures`
   init(
-    _ board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter, sizes: [CardID: CGSize] = [:]
+    _ board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter, sizes: [CardID: CGSize] = [:],
+    reusing previous: Scene? = nil
   ) {
     for s in board.sections {
       let r = CGRect(x: s.x, y: s.y, width: s.width, height: s.height)
@@ -106,11 +141,13 @@ struct Scene: Sendable {
         // the gap is the title label's width, its collapse chevron (16, shown on hover) and the gap before it included
         case .brush: Outline(InkFrame.path(id: s.id.rawValue, size: r.size, gap: max(40, titleWidth + 18)))
         }
-      frames.append(Frame(rect: r, fill: s.color.flatMap { t.sectionColors[$0] } ?? t.sectionFill, strokes: strokes))
+      frames.append(
+        Frame(id: s.id, rect: r, fill: s.color.flatMap { t.sectionColors[$0] } ?? t.sectionFill, strokes: strokes))
       bounds = bounds.union(r)
       if !s.title.isEmpty {
         items.append(
           Item(
+            owner: .sectionTitle(s.id),
             rect: CGRect(
               x: s.x + t.sectionTitleAt.x, y: s.y + t.sectionTitleAt.y, width: titleWidth, height: t.sectionTitleHeight),
             drawing: .label(.init(text: s.title, kind: .section)),
@@ -119,79 +156,106 @@ struct Scene: Sendable {
     }
     cardsFrom = items.count
     let refs = RefResolver(board, package: package, vault: vault)
-    var placed: [CardID: Placed] = [:]
+    var ends: [CardID: [Endpoint]] = [:]
+    for a in board.arrows {
+      ends[a.from.card, default: []].append(a.from)
+      ends[a.to.card, default: []].append(a.to)
+    }
     for c in board.cards {
       guard let (content, folder) = Scene.content(of: c, package: package, vault: vault) else {
         missing.append(c.id)
         continue
       }
       let tilt = c.tilted ? Scene.tilt : 0
-      // web cards, link lists and sub-boards are not drawn yet
-      guard
-        let (drawing, size, code) = Scene.card(
-          c, content, board: board, folder: folder, measured: sizes[c.id], theme: t, highlighter: highlighter,
-          refs: refs)
-      else { continue }
-      let r = CGRect(origin: CGPoint(x: c.x, y: c.y), size: size)
-      placed[c.id] = Placed(rect: r, code: code, tilt: tilt)
-      items.append(Item(rect: r, drawing: drawing, tilt: tilt, bleed: drawing.bleed(t)))
+      let mine = ends[c.id] ?? []
+      let part: Part
+      if let p = previous?.parts[c.id], p.content == content, p.width == c.width, p.height == c.height,
+        p.tilted == c.tilted, p.measured == sizes[c.id], p.ends == mine
+      {
+        part = p
+        reused.insert(c.id)
+      } else {
+        // web cards, link lists and sub-boards are not drawn yet
+        guard
+          let (drawing, size, code) = Scene.card(
+            c, content, board: board, folder: folder, measured: sizes[c.id], theme: t, highlighter: highlighter,
+            refs: refs)
+        else { continue }
+        part = Part(
+          content: content, width: c.width, height: c.height, tilted: c.tilted, measured: sizes[c.id], ends: mine,
+          drawing: drawing, size: size, code: code)
+      }
+      parts[c.id] = part
+      let r = CGRect(origin: CGPoint(x: c.x, y: c.y), size: part.size)
+      placed[c.id] = Placed(rect: r, code: part.code, tilt: tilt)
+      items.append(Item(owner: .card(c.id), rect: r, drawing: part.drawing, tilt: tilt, bleed: part.drawing.bleed(t)))
       bounds = bounds.union(r)
     }
     labelsFrom = items.count
     for a in board.arrows {
       guard let from = placed[a.from.card], let to = placed[a.to.card] else { continue }
-      func end(_ e: Endpoint, _ p: Placed) -> CGFloat {
-        // a line's row; a hidden line, a Note block (not laid out yet) or the card itself: the header row
-        if !e.lost, let l = e.line, let c = p.code, let si = e.segment.flatMap({ c.segments.firstIndex(of: $0) }),
-          let y = c.layout.lineY(segment: si, line: l)
-        {
-          return p.rect.minY + c.top + y
-        }
-        return p.rect.minY + t.headerHeight / 2
-      }
-      let lineA = a.from.line != nil || a.from.block != nil
-      let lineB = a.to.line != nil || a.to.block != nil
-      func pinned(_ e: Endpoint, _ line: Bool) -> ArrowRoute.Side? {
-        e.side.flatMap { s in !line || s == .left || s == .right ? ArrowRoute.Side(rawValue: s.rawValue) : nil }
-      }
-      let ua = pinned(a.from, lineA)
-      let ub = pinned(a.to, lineB)
-      let shape: ArrowShape
-      if a.from.card == a.to.card {
-        let s = ua ?? .right
-        let p = ArrowRoute.anchor(from.rect, s, rowY: end(a.from, from))
-        let q = ArrowRoute.anchor(to.rect, ub ?? s, rowY: end(a.to, to))
-        shape = ArrowRoute.selfArc(ArrowRoute.turn(p, from.rect, from.tilt), ArrowRoute.turn(q, to.rect, to.tilt))
-      } else {
-        let auto = ArrowRoute.sides(
-          ArrowRoute.chooseMode(from.rect, to.rect, cards: !lineA && !lineB, prev: nil, buffer: ArrowRoute.sideBuffer))
-        let p = ArrowRoute.anchor(from.rect, ua ?? auto.0, rowY: end(a.from, from))
-        let q = ArrowRoute.anchor(to.rect, ub ?? auto.1, rowY: end(a.to, to))
-        shape = ArrowRoute.connect(
-          ArrowRoute.turn(p, from.rect, from.tilt), ArrowRoute.turn(q, to.rect, to.tilt), a: from.rect, b: to.rect)
-      }
-      let headScale: CGFloat = a.width == 1 ? 0.85 : a.width == 3 ? 1.25 : 1
-      let k: CGFloat = a.width == 1 ? 0.6 : a.width == 3 ? 1.6 : 1
-      let base = a.from.lost || a.to.lost ? t.arrowLost : a.color.flatMap { t.arrowColors[$0] } ?? t.arrow
-      arrows.append(Scene.arrow(a, shape, base: base, k: k, headScale: headScale, theme: t))
-      if let label = a.label, !label.isEmpty {
-        let box =
-          switch t.label {
-          case .box: CGSize(width: Drawing.width(label, t.arrowLabel) + 13, height: 22)
-          case .halo: CGSize(width: Drawing.width(label, t.arrowLabel) + 33, height: 22)
-          }
-        let at =
-          a.labelPosition.map {
-            ArrowRoute.bezAt(shape.pts, ArrowRoute.placeT(shape.pts, $0, box, [from.rect, to.rect]))
-          } ?? shape.mid
-        let drawing = Drawing.label(.init(text: label, kind: .arrow))
-        items.append(
-          Item(
-            rect: CGRect(x: at.x - box.width / 2, y: at.y - box.height / 2, width: box.width, height: box.height),
-            drawing: drawing, tilt: 0, bleed: drawing.bleed(t)))
-      }
+      let (arrow, label) = Scene.route(a, from: from, to: to, theme: t)
+      arrows.append(arrow)
+      arrowModels.append(a)
+      if let label { items.append(label) }
     }
     if bounds.isNull { bounds = CGRect(x: 0, y: 0, width: 800, height: 600) }
+  }
+
+  /// An arrow between two placed cards, and its label's item when it has one
+  static func route(_ a: CodeBoardModel.Arrow, from: Placed, to: Placed, theme t: Theme) -> (Arrow, Item?) {
+    func end(_ e: Endpoint, _ p: Placed) -> CGFloat {
+      // a line's row; a hidden line, a Note block (not laid out yet) or the card itself: the header row
+      if !e.lost, let l = e.line, let c = p.code, let si = e.segment.flatMap({ c.segments.firstIndex(of: $0) }),
+        let y = c.layout.lineY(segment: si, line: l)
+      {
+        return p.rect.minY + c.top + y
+      }
+      return p.rect.minY + t.headerHeight / 2
+    }
+    let lineA = a.from.line != nil || a.from.block != nil
+    let lineB = a.to.line != nil || a.to.block != nil
+    func pinned(_ e: Endpoint, _ line: Bool) -> ArrowRoute.Side? {
+      e.side.flatMap { s in !line || s == .left || s == .right ? ArrowRoute.Side(rawValue: s.rawValue) : nil }
+    }
+    let ua = pinned(a.from, lineA)
+    let ub = pinned(a.to, lineB)
+    let shape: ArrowShape
+    if a.from.card == a.to.card {
+      let s = ua ?? .right
+      let p = ArrowRoute.anchor(from.rect, s, rowY: end(a.from, from))
+      let q = ArrowRoute.anchor(to.rect, ub ?? s, rowY: end(a.to, to))
+      shape = ArrowRoute.selfArc(ArrowRoute.turn(p, from.rect, from.tilt), ArrowRoute.turn(q, to.rect, to.tilt))
+    } else {
+      let auto = ArrowRoute.sides(
+        ArrowRoute.chooseMode(from.rect, to.rect, cards: !lineA && !lineB, prev: nil, buffer: ArrowRoute.sideBuffer))
+      let p = ArrowRoute.anchor(from.rect, ua ?? auto.0, rowY: end(a.from, from))
+      let q = ArrowRoute.anchor(to.rect, ub ?? auto.1, rowY: end(a.to, to))
+      shape = ArrowRoute.connect(
+        ArrowRoute.turn(p, from.rect, from.tilt), ArrowRoute.turn(q, to.rect, to.tilt), a: from.rect, b: to.rect)
+    }
+    let headScale: CGFloat = a.width == 1 ? 0.85 : a.width == 3 ? 1.25 : 1
+    let k: CGFloat = a.width == 1 ? 0.6 : a.width == 3 ? 1.6 : 1
+    let base = a.from.lost || a.to.lost ? t.arrowLost : a.color.flatMap { t.arrowColors[$0] } ?? t.arrow
+    let arrow = Scene.arrow(a, shape, base: base, k: k, headScale: headScale, theme: t)
+    guard let label = a.label, !label.isEmpty else { return (arrow, nil) }
+    let box =
+      switch t.label {
+      case .box: CGSize(width: Drawing.width(label, t.arrowLabel) + 13, height: 22)
+      case .halo: CGSize(width: Drawing.width(label, t.arrowLabel) + 33, height: 22)
+      }
+    let at =
+      a.labelPosition.map {
+        ArrowRoute.bezAt(shape.pts, ArrowRoute.placeT(shape.pts, $0, box, [from.rect, to.rect]))
+      } ?? shape.mid
+    let drawing = Drawing.label(.init(text: label, kind: .arrow))
+    return (
+      arrow,
+      Item(
+        owner: .arrowLabel(a.id),
+        rect: CGRect(x: at.x - box.width / 2, y: at.y - box.height / 2, width: box.width, height: box.height),
+        drawing: drawing, tilt: 0, bleed: drawing.bleed(t))
+    )
   }
 
   /// The arrow in the theme's strokes: a solid line as a filled outline (tapered or brushed), a dashed one stroked
@@ -235,7 +299,8 @@ struct Scene: Sendable {
       headStroke = t.arrowWidth * k
     }
     return Arrow(
-      fill: Outline(fill), color: color, stroke: stroke, width: t.arrowWidth * k, heads: Outline(heads),
+      id: a.id, from: a.from.card, to: a.to.card, fill: Outline(fill), color: color, stroke: stroke,
+      width: t.arrowWidth * k, heads: Outline(heads),
       headColor: headColor,
       headStroke: headStroke, dry: dry)
   }
@@ -254,7 +319,7 @@ struct Scene: Sendable {
   }
 
   /// A card where arrows can find its lines
-  private struct Placed {
+  struct Placed: Sendable {
     var rect: CGRect
     var code: (layout: CodeLayout, top: CGFloat, segments: [SegmentID])?
     var tilt: CGFloat

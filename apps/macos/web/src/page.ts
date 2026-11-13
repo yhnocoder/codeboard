@@ -90,7 +90,8 @@ function cardFor(n: Note): { card: HTMLDivElement; body: HTMLDivElement } {
     if (t.look === "box") c.style.setProperty("--fc", `var(--bf-${t.fill})`);
     if (t.wrap) {
       c.classList.add("wrapw");
-      c.style.width = `${n.width}px`;
+      // width 0: as narrow as its longest word goes (the board's leastWidth, interact.ts), what a side edge stops at
+      c.style.width = n.width ? `${n.width}px` : "min-content";
     }
     body.className = "tx tb st-body";
   }

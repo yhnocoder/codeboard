@@ -10,6 +10,10 @@ struct Camera: Equatable {
     CGPoint(x: origin.x + p.x / zoom, y: origin.y + p.y / zoom)
   }
 
+  func view(_ p: CGPoint) -> CGPoint {
+    CGPoint(x: (p.x - origin.x) * zoom, y: (p.y - origin.y) * zoom)
+  }
+
   func visible(_ size: CGSize) -> CGRect {
     CGRect(origin: origin, size: CGSize(width: size.width / zoom, height: size.height / zoom))
   }

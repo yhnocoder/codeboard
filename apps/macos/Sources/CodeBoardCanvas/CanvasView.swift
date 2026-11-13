@@ -13,53 +13,88 @@ import QuartzCore
 /// (`BudgetShare`): only the canvas on screen draws, and a hidden one keeps its overviews.
 public final class CanvasView: NSView {
   /// The design allows one snapshot web view in the app, so every canvas shares one renderer
-  private static let sharedNotes = NoteRenderer()
+  static let sharedNotes = NoteRenderer()
   /// Pictures decoded for drawing, by file: one cache for every canvas, as tabs often show the same images
-  private static let sharedImages = DecodeCache(cap: 128 << 20)
+  static let sharedImages = DecodeCache(cap: 128 << 20)
   /// Every canvas alive, for the one budget they share
-  private static let all = NSHashTable<CanvasView>.weakObjects()
-  private static var clock = 0
+  static let all = NSHashTable<CanvasView>.weakObjects()
+  static var clock = 0
   /// When it was last on screen and at rest (the clock's time)
-  private var shownAt = 0
-  private let notes: NoteRenderer
-  private var theme = Theme.warmInk
+  var shownAt = 0
+  let notes: NoteRenderer
+  var theme = Theme.warmInk
   /// The board shown, to show again in another theme
-  private var shown: (board: VaultBoard, vault: Vault)?
-  private var scene: Scene?
-  private var items: [ItemLayers] = []
-  private let world = CALayer()
+  var shown: (board: VaultBoard, vault: Vault)?
+  var scene: Scene?
+  var items: [ItemLayers] = []
+  let world = CALayer()
   /// The theme's picture behind the board, fixed to the view
-  private let backdrop = CALayer()
-  private var backdropImage: CGImage?
-  private let sections = CALayer()
-  private let below = CALayer()
-  private let arrows = CALayer()
-  private let above = CALayer()
-  private let cards = CALayer()
-  private var camera = Camera(origin: .zero, zoom: 1)
-  private var limits = ZoomLimits(fit: 1)
-  private var motion = Motion()
-  private var queue = RedrawQueue<IOSurface>()
+  let backdrop = CALayer()
+  var backdropImage: CGImage?
+  let sections = CALayer()
+  let below = CALayer()
+  let arrows = CALayer()
+  let above = CALayer()
+  let cards = CALayer()
+  var camera = Camera(origin: .zero, zoom: 1)
+  var limits = ZoomLimits(fit: 1)
+  var motion = Motion()
+  var queue = RedrawQueue<IOSurface>()
   /// Rest bitmaps are drawn for this zoom; nil once a zoom has cleared them
-  private var restZoom: CGFloat?
-  private var tasks: [Int: Task<Void, Never>] = [:]
-  private var nextTask = 0
+  var restZoom: CGFloat?
+  var tasks: [Int: Task<Void, Never>] = [:]
+  var nextTask = 0
   /// Notes' renderer priority: plan order, nearest the view's centre and the pointer first
-  private var nextNote = 0
-  private var loads = 0
+  var nextNote = 0
+  var loads = 0
   /// Rest work was started since the queue was last idle
-  private var worked = false
-  private var link: CADisplayLink?
-  private let images = CanvasView.sharedImages
+  var worked = false
+  var link: CADisplayLink?
+  let images = CanvasView.sharedImages
   /// Made by the first board shown, off the main thread (compiling its queries takes tens of milliseconds and as many
   /// megabytes), and kept for every canvas
-  private static var highlighter: Highlighter?
+  static var highlighter: Highlighter?
 
   /// Called at the start of every display-link frame, before the canvas moves (CanvasBench drives and measures from it).
   /// While set, the display link never pauses
   package var onFrame: ((CADisplayLink) -> Void)? {
     didSet { link?.isPaused = false }
   }
+  // MARK: Editing state (CanvasEditing.swift)
+
+  /// The open board this canvas edits; nil: it only shows a board read from the vault
+  var document: BoardDocument?
+  var stopObserving: (() -> Void)?
+  /// The board the scene was made from
+  var shownBoard: Board?
+  /// What the Note renderer measured, by card, with what it measured: a later scene measures only what changed
+  var measured: [CardID: (note: NoteBody, width: Double, size: CGSize)] = [:]
+  /// The pointer or key gesture under way; while one runs nothing is redrawn or swapped
+  var gesture: Gesture?
+  /// The board changed during a gesture: the scene follows once it ends
+  var pendingRefresh = false
+  var refreshes = 0
+  /// The latest refresh (tests wait for it)
+  package var refreshing: Task<Void, Never>?
+  /// Selection rings, handles: over the cards, in board units
+  let chrome = CALayer()
+  /// The rubber band, in the view's units
+  let marquee = CAShapeLayer()
+  /// The arrows' layers, as `scene.arrows`
+  var arrowGroups: [[CALayer]] = []
+  /// The zoom that fits the board, which overviews are drawn for
+  var fitZoom: CGFloat = 1
+  /// The framed cards' shadow, made once per theme
+  var cardShadow: (IOSurface, margin: CGFloat)?
+  /// Where Copy writes and Paste reads; tests give their own
+  package var pasteboard = NSPasteboard.general
+  /// Each Text's narrowest width (its longest word), once measured
+  var leastWidths: [CardID: CGFloat] = [:]
+  /// Arrow keys held for the nudge under way
+  var nudging: Set<UInt16> = []
+  /// Where the last paste went, to step the next one on
+  var lastPaste: (clip: Data, dx: Double, dy: Double)?
+
   /// Work begun while a gesture was active; the gesture rule says all stay 0
   package private(set) var ruleBreaks = (redraws: 0, decodes: 0, swaps: 0, noteRequests: 0, noteSwaps: 0)
 
@@ -84,11 +119,13 @@ public final class CanvasView: NSView {
     root.backgroundColor = theme.canvas
     layer = root
     wantsLayer = true
-    for l in [world, sections, below, arrows, above, cards] { l.anchorPoint = .zero }
-    for l in [sections, below, arrows, above, cards] { world.addSublayer(l) }
+    for l in [world, sections, below, arrows, above, cards, chrome] { l.anchorPoint = .zero }
+    for l in [sections, below, arrows, above, cards, chrome] { world.addSublayer(l) }
     backdrop.anchorPoint = .zero
     root.addSublayer(backdrop)
     root.addSublayer(world)
+    marquee.fillColor = nil
+    root.addSublayer(marquee)
   }
 
   @available(*, unavailable)
@@ -117,10 +154,10 @@ public final class CanvasView: NSView {
   }
 
   /// Waiting for the camera to come to rest
-  private var resting: [CheckedContinuation<Void, Never>] = []
+  var resting: [CheckedContinuation<Void, Never>] = []
 
   /// Returns once no gesture or glide moves the camera
-  private func rest() async {
+  func rest() async {
     guard !motion.isResting else { return }
     await withCheckedContinuation { resting.append($0) }
   }
@@ -128,13 +165,15 @@ public final class CanvasView: NSView {
   /// The theme the canvas draws in
   public var currentTheme: Theme { theme }
 
-  private func load(_ board: VaultBoard, in vault: Vault, theme: Theme, keepCamera: Bool) async throws {
+  func load(_ board: VaultBoard, in vault: Vault, theme: Theme, keepCamera: Bool) async throws {
     // before its first board the canvas is its colour in the look it will show
     if scene == nil {
       self.theme = theme
       layer?.backgroundColor = theme.canvas
     }
     loads += 1
+    // a refresh under way is of what this load replaces
+    refreshes += 1
     let load = loads
     let size =
       bounds.isEmpty ? (window?.screen ?? NSScreen.main)?.frame.size ?? CGSize(width: 1440, height: 900) : bounds.size
@@ -142,11 +181,14 @@ public final class CanvasView: NSView {
     let images = self.images
     let known = CanvasView.highlighter
     let notes = self.notes
-    let (scene, overviews, shadow, highlighter) = try await Task.detached(priority: .userInitiated) {
+    let open = document?.board
+    let (scene, overviews, shadow, highlighter, b, measures, sizes) = try await Task.detached(
+      priority: .userInitiated
+    ) {
       let package = vault.url(of: board.path)
-      let b = try vault.board(at: board.path)
-      let sizes = await CanvasView.measure(
-        Scene.measures(b, package: package, vault: vault), theme: theme, notes: notes)
+      let b = try open ?? vault.board(at: board.path)
+      let measures = Scene.measures(b, package: package, vault: vault)
+      let sizes = await CanvasView.measure(measures, theme: theme, notes: notes)
       let highlighter = known ?? Highlighter()
       let scene = Scene(b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes)
       let fit = Camera.fit(scene.bounds, in: size).zoom
@@ -172,10 +214,13 @@ public final class CanvasView: NSView {
       }
       // drawn here once, so installing it on the main thread finds it ready
       _ = theme.backdrop.flatMap(Backdrop.image)
-      return (scene, overviews, CanvasView.shadow(theme), highlighter)
+      return (scene, overviews, CanvasView.shadow(theme), highlighter, b, measures, sizes)
     }.value
     CanvasView.highlighter = highlighter
     guard load == loads else { return }
+    shownBoard = b
+    measured = [:]
+    for m in measures { if let size = sizes[m.card] { measured[m.card] = (m.note, m.width, size) } }
     // the same board in another look: swapped in at rest, as a gesture may have started while it was drawn
     if keepCamera {
       await rest()
@@ -318,11 +363,12 @@ public final class CanvasView: NSView {
     }
   }
 
-  private func install(
+  func install(
     _ s: Scene, overviews: [Overview], shadow: (IOSurface, margin: CGFloat)?, theme: Theme, keepCamera: Bool
   ) {
     cancelRedraws()
     self.theme = theme
+    cardShadow = shadow
     scene = s
     withoutAnimation {
       layer?.backgroundColor = theme.canvas
@@ -337,17 +383,21 @@ public final class CanvasView: NSView {
       for (i, l) in items.enumerated() {
         (i < s.cardsFrom ? below : i < s.labelsFrom ? cards : above).addSublayer(l.box)
       }
-      for a in s.arrows {
-        for l in CanvasView.arrowLayers(a, theme) { arrows.addSublayer(l) }
+      arrowGroups = s.arrows.map { a in
+        let ls = CanvasView.arrowLayers(a, theme)
+        for l in ls { arrows.addSublayer(l) }
+        return ls
       }
     }
     let fit = Camera.fit(s.bounds, in: bounds.isEmpty ? CGSize(width: 1440, height: 900) : bounds.size)
+    fitZoom = fit.zoom
     limits = ZoomLimits(fit: fit.zoom)
     if !keepCamera { camera = fit }
     motion = Motion()
     restZoom = nil
     applyCamera()
     arrive()
+    drawChrome()
   }
 
   /// The soft shadow under a framed card, nine-sliced onto every one: only the shadow, the card's own area left clear
@@ -364,7 +414,7 @@ public final class CanvasView: NSView {
   }
 
   /// A Section's frame: a tray (fill, hairline, light inner top line) or the fill under its brush strokes
-  private static func frameLayer(_ f: Scene.Frame, _ t: Theme) -> CALayer {
+  static func frameLayer(_ f: Scene.Frame, _ t: Theme) -> CALayer {
     let l = CALayer()
     l.frame = f.rect
     l.backgroundColor = f.fill
@@ -396,7 +446,7 @@ public final class CanvasView: NSView {
 
   /// An arrow's layers: the filled line and heads, a dashed line, the dry brush. Core Animation scales filled paths as
   /// cheaply as stroked ones: each is one path rasterised by the render server at the zoom shown
-  private static func arrowLayers(_ a: Scene.Arrow, _ t: Theme) -> [CALayer] {
+  static func arrowLayers(_ a: Scene.Arrow, _ t: Theme) -> [CALayer] {
     var out: [CALayer] = []
     if !a.fill.isEmpty {
       let l = CAShapeLayer()
@@ -435,7 +485,7 @@ public final class CanvasView: NSView {
     return out
   }
 
-  private func placeBackdrop() {
+  func placeBackdrop() {
     guard let img = backdropImage, !bounds.isEmpty else { return }
     backdrop.frame = CanvasView.backdropFrame(img, in: bounds.size)
   }
@@ -449,18 +499,18 @@ public final class CanvasView: NSView {
       x: (view.width - size.width) / 2, y: view.height - size.height, width: size.width, height: size.height)
   }
 
-  private func withoutAnimation(_ f: () -> Void) {
+  func withoutAnimation(_ f: () -> Void) {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     f()
     CATransaction.commit()
   }
 
-  private var backing: CGFloat { window?.backingScaleFactor ?? 2 }
+  var backing: CGFloat { window?.backingScaleFactor ?? 2 }
 
   // MARK: Camera
 
-  private func applyCamera() {
+  func applyCamera() {
     var m = CATransform3DIdentity
     m.m11 = camera.zoom
     m.m22 = camera.zoom
@@ -468,6 +518,7 @@ public final class CanvasView: NSView {
     m.m42 = -camera.origin.y * camera.zoom
     withoutAnimation {
       world.sublayerTransform = m
+      if chrome.sublayers?.isEmpty == false { drawChrome() }
       // a zoom (not a pan) away from the rest zoom: the held bitmaps take over, with mipmaps
       if let z = restZoom, z != camera.zoom {
         restZoom = nil
@@ -498,7 +549,7 @@ public final class CanvasView: NSView {
   }
 
   /// On screen: in a window, neither it nor a view it is in hidden. Only then does it draw
-  private var onScreen: Bool { window != nil && !isHiddenOrHasHiddenAncestor }
+  var onScreen: Bool { window != nil && !isHiddenOrHasHiddenAncestor }
 
   /// Hidden (its tab is not the one shown): what it was drawing is dropped, what it has stays
   public override func viewDidHide() {
@@ -558,13 +609,13 @@ public final class CanvasView: NSView {
   }
 
   /// Input moved the camera: rest work is cancelled
-  private func moved() {
+  func moved() {
     if !queue.isIdle || !tasks.isEmpty { cancelRedraws() }
     applyCamera()
     link?.isPaused = false
   }
 
-  private func cancelRedraws() {
+  func cancelRedraws() {
     queue.cancel()
     for t in tasks.values { t.cancel() }
   }
@@ -585,17 +636,17 @@ public final class CanvasView: NSView {
       resting = []
       for w in waiting { w.resume() }
     }
-    if motion.isResting { pump() }
+    if motion.isResting && gesture == nil { pump() }
     if motion.isResting && queue.isIdle && worked {
       worked = false
       // decoding and drawing free large blocks that the allocator would otherwise keep, counted in the footprint
       DispatchQueue.global(qos: .utility).async { _ = malloc_zone_pressure_relief(nil, 0) }
     }
-    if motion.isResting && queue.isIdle && onFrame == nil { l.isPaused = true }
+    if motion.isResting && queue.isIdle && onFrame == nil && gesture == nil { l.isPaused = true }
   }
 
   /// At rest: what each item should hold now, within what the other canvases leave of the budget
-  private func arrive() {
+  func arrive() {
     guard scene != nil, onScreen else { return }
     CanvasView.clock += 1
     shownAt = CanvasView.clock
@@ -629,11 +680,11 @@ public final class CanvasView: NSView {
   }
 
   /// Each frame at rest: start redraws up to the limit, swap in finished ones within the frame's budget
-  private func pump() {
+  func pump() {
     guard let scene else { return }
     for (job, generation) in queue.start() {
       worked = true
-      if !motion.isResting {
+      if !motion.isResting || gesture != nil {
         ruleBreaks.redraws += 1
         if job.note { ruleBreaks.noteRequests += 1 }
       }
@@ -662,7 +713,7 @@ public final class CanvasView: NSView {
     }
     let swaps = queue.takeSwaps()
     guard !swaps.isEmpty else { return }
-    if !motion.isResting {
+    if !motion.isResting || gesture != nil {
       ruleBreaks.swaps += swaps.count
       ruleBreaks.noteSwaps += swaps.count { $0.job.note }
     }
@@ -675,7 +726,7 @@ public final class CanvasView: NSView {
 
   /// overlapped: a gesture started while it ran (its result is dropped); counted against the gesture rule, as the work
   /// may have run on into the gesture
-  private func finished(
+  func finished(
     _ job: RestPlan.Job, generation: Int, surface s: IOSurface?, decodes: Int, overlapped: Bool, task: Int
   ) {
     tasks[task] = nil
@@ -688,7 +739,7 @@ public final class CanvasView: NSView {
   }
 
   /// The first picture of a Note fades in over its paper
-  private static func fadeIn(_ l: CALayer) {
+  static func fadeIn(_ l: CALayer) {
     let t = CATransition()
     t.type = .fade
     t.duration = 0.15
