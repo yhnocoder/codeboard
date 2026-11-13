@@ -59,7 +59,7 @@ export function editorExtensions(
           )
         : x.name === "codeBlock"
           ? (x as TNode).extend({
-              addProseMirrorPlugins: () => [codeGapClick(), bandPlugin()],
+              addProseMirrorPlugins: () => [codeGapClick()],
               addNodeView:
                 () =>
                 ({ node, view, getPos }) =>
@@ -336,6 +336,8 @@ export function editorExtensions(
     ],
   });
   const Gaps = Extension.create({ name: "cbGaps", addProseMirrorPlugins: () => [gapsPlugin()] });
+  // the code blocks' and the tables' bands follow their blocks: one layer for both, whichever node types the editor has
+  const Bands = Extension.create({ name: "cbBands", addProseMirrorPlugins: () => [bandPlugin()] });
   // 行内公式的补全、预览：抢在列表、灰字、Esc 退出前面拿 ↑↓ 回车 Tab Esc
   const MathHintsExt = Extension.create({
     name: "cbMathHints",
@@ -367,6 +369,7 @@ export function editorExtensions(
     Last,
     Tail,
     Gaps,
+    Bands,
     FindExt(() => uiOf.get(ed())?.closeFind() ?? false),
     Typora.configure({
       openMath: openMathAt,

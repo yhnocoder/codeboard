@@ -207,7 +207,7 @@ export class Band {
   }
   destroy() {
     clearTimeout(this.timer);
-    bandLayer(this.view).shown.delete(this);
+    layers.get(this.view)?.shown.delete(this);
     this.root.remove();
   }
 }

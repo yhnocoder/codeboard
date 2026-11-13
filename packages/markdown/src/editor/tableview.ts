@@ -52,10 +52,12 @@ const GROUPS: Act[][] = [
 ];
 /** Which actions stay on a band too narrow for all of them, the most used first */
 const KEEP = ["rowBelow", "colRight", "left", "center", "right", "rowAbove", "colLeft", "delRow", "delCol"];
-/** A band button and the 1px between two; a group gap; the band row's own padding */
+/** A band button and the 1px between two; a group gap; the band row's own padding; the least room between the size and
+ *  the actions (.md-band-sp's min-width) */
 const BTN = 27,
   GAP = 6,
-  PAD = 15;
+  PAD = 15,
+  SP = 8;
 const SLIDE_EASE = "cubic-bezier(0.2, 0.7, 0.3, 1)";
 const K = (s: string) =>
   IS_MAC ? s : s.replace(/⌘/g, "Ctrl+").replace(/⇧/g, "Shift+").replace(/⌫/g, "Backspace").replace(/↵/g, "Enter");
@@ -103,6 +105,12 @@ export class TableBlockView extends TableView {
   private gripC: HTMLDivElement;
   private hovered: { r: number; c: number; cell: Element } | null = null;
   private drag: Drag | null = null;
+  /** the dropped drag's copy gliding into its slot (the move is already made): its pieces go when the timer ends */
+  private landing: ReturnType<typeof setTimeout> | undefined;
+  /** the drag's own listeners, removed at its end or when the table goes */
+  private unlisten: (() => void) | null = null;
+  /** the board's completions are held from a drag's lift until its copy has landed */
+  private holding = false;
   private anims = new Map<Element, Animation>();
   constructor(
     node: PMNode,
@@ -197,7 +205,10 @@ export class TableBlockView extends TableView {
     }
   }
   update(node: PMNode) {
+    const old = this.node;
     if (captionOf(node.attrs.caption) !== this.cap || !super.update(node)) return false;
+    // the table changed under a drag (an undo, a key): the dragged row or column and its slots are measured on the old one
+    if (this.drag && this.landing === undefined && !node.eq(old)) this.abort();
     this.sync();
     return true;
   }
@@ -219,7 +230,7 @@ export class TableBlockView extends TableView {
   }
   /** As many actions as the band has room for, by KEEP; the rest are in ⋯ */
   private fit(w: number) {
-    const fixed = PAD + this.size.offsetWidth + GAP + BTN,
+    const fixed = PAD + this.size.offsetWidth + SP + GAP + BTN,
       n = Math.floor((w - fixed - 2 * GAP) / BTN);
     const keep = new Set(KEEP.slice(0, Math.max(0, n)));
     for (const [a, b] of this.btns) b.hidden = !keep.has(a);
@@ -424,12 +435,16 @@ export class TableBlockView extends TableView {
       ev.stopPropagation();
       end(true);
     };
-    const end = (back: boolean) => {
+    this.unlisten = () => {
+      this.unlisten = null;
       g.removeEventListener("pointermove", move);
       for (const t of ["pointerup", "pointercancel", "lostpointercapture"]) g.removeEventListener(t, up);
       window.removeEventListener("keydown", esc, true);
       if (g.hasPointerCapture(e.pointerId)) g.releasePointerCapture(e.pointerId);
       g.classList.remove("act");
+    };
+    const end = (back: boolean) => {
+      this.unlisten?.();
       this.drop(back);
     };
     g.addEventListener("pointermove", move);
@@ -441,6 +456,7 @@ export class TableBlockView extends TableView {
     d.live = true;
     this.band.freeze(true);
     mdOf(this.view.state).ghosts.hold(true);
+    this.holding = true;
     const w = this.wrap.getBoundingClientRect(),
       sl = this.wrap.scrollLeft,
       st = this.wrap.scrollTop,
@@ -534,8 +550,8 @@ export class TableBlockView extends TableView {
       this.anims.set(c, a);
     }
   }
-  /** Release (or Esc): the copy glides into its slot (or home), then the move is made in one step and the copy goes in the
-   *  same frame. A press without a drag selects the row or column */
+  /** Release (or Esc): the move is made at once, in one step, and the copy glides onto its slot (or home), covering the row
+   *  or column already there until it lands. A press without a drag selects the row or column */
   private drop(back: boolean) {
     const d = this.drag;
     if (!d) return;
@@ -556,10 +572,8 @@ export class TableBlockView extends TableView {
     d.ghost.classList.add("glide", "land");
     this.place(d, d.slot);
     d.line.classList.add("out");
-    setTimeout(() => this.commit(d), TABLE_SLIDE + 10);
-  }
-  private commit(d: Drag) {
-    this.drag = null;
+    this.landing = setTimeout(() => this.land(), TABLE_SLIDE + 10);
+    // made now, not when the copy lands: an Esc or an edit within the glide sees the table as dropped
     const pos = this.pos();
     if (d.t !== d.idx && pos !== null && this.node.childCount) {
       const st = this.view.state;
@@ -571,13 +585,33 @@ export class TableBlockView extends TableView {
         ),
       );
     }
+    // the cells are drawn in their new places now: the slides that held them there go
     for (const a of this.anims.values()) a.cancel();
     this.anims.clear();
-    d.ghost.remove();
-    d.hole.remove();
-    d.line.remove();
-    mdOf(this.view.state).ghosts.hold(false);
+  }
+  /** The copy has landed: its pieces go, the band and the completions are free again, the grips come back on the next hover */
+  private land() {
+    const d = this.drag;
+    this.landing = undefined;
+    this.drag = null;
+    this.hovered = null;
+    d?.ghost.remove();
+    d?.hole.remove();
+    d?.line.remove();
+    this.release();
     this.band.freeze(false);
+  }
+  /** A drag dropped without a move (its table changed under it) */
+  private abort() {
+    this.unlisten?.();
+    for (const a of this.anims.values()) a.cancel();
+    this.anims.clear();
+    this.land();
+  }
+  private release() {
+    if (!this.holding) return;
+    this.holding = false;
+    mdOf(this.view.state).ghosts.hold(false);
   }
   private select(kind: "row" | "col", i: number) {
     const pos = this.pos();
@@ -597,7 +631,10 @@ export class TableBlockView extends TableView {
     this.closeMenu?.();
     this.pick?.close(false);
     for (const a of this.anims.values()) a.cancel();
-    if (this.drag?.live) mdOf(this.view.state).ghosts.hold(false);
+    clearTimeout(this.landing);
+    this.landing = undefined;
+    this.unlisten?.();
+    this.release();
     this.drag = null;
     this.band.destroy();
   }

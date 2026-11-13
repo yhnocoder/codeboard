@@ -237,16 +237,18 @@ test("noteTableBandOverflow", async () => {
     await pg.locator(`${band}.on`).waitFor();
     await idle(h);
     const st = await bandState(pg, band);
+    const fits = await pg.locator(`${band} .md-band-row`).evaluate((r) => r.scrollWidth <= r.clientWidth);
     await pg.locator(`${band} [data-act="more"]`).click();
     const items = (await pg.locator(".md-bandmenu button").allInnerTexts()).map((t) => t.trim());
     await shot(h, `noteTableBandOverflow-${id}`);
     await pg.keyboard.press("Escape");
     await pg.locator(".md-bandmenu").waitFor({ state: "detached" });
-    res[id] = { shown: st.shown, items };
+    res[id] = { shown: st.shown, items, fits };
     await exitEdit(h);
   }
-  const narrow = res.n0 as { shown: string[]; items: string[] },
-    full = res.n1 as { shown: string[]; items: string[] };
+  const narrow = res.n0 as { shown: string[]; items: string[]; fits: boolean },
+    full = res.n1 as { shown: string[]; items: string[]; fits: boolean };
+  check("noteTableBandOverflow what is shown fits on the band", narrow.fits && full.fits, res);
   check(
     "noteTableBandOverflow narrow",
     narrow.shown[0] === "grid" &&
@@ -361,5 +363,72 @@ test("noteTableInsertSlides", async () => {
     rowOut.includes("td:transform") && rowOut.includes("div.md-tgone:opacity"),
     rowOut,
   );
+  await close(h);
+});
+
+/** The size grid of a table the pointer is over while the caret is in another table resizes the hovered one, and the caret
+ *  goes into it; the other table is left as it was */
+test("noteTableSizeGridOnHoveredTable", async () => {
+  const two = `${TABLE}\n\nbetween\n\n| x | y |\n| - | - |\n| 1 | 2 |`;
+  const h = await open({ board: board([{ md: two, w: 560 }]), light });
+  const pg = h.page;
+  await idle(h);
+  await editNote(h, "n0");
+  await intoCell(h, "n0", "gamma");
+  const second = pg.locator(`${card("n0")} .md-pm .tableWrapper`).nth(1);
+  await second.locator("td", { hasText: /^2$/ }).hover();
+  const band = pg.locator(`${card("n0")} .md-band-table.on`).filter({ hasText: "2×2" });
+  await band.waitFor();
+  await band.locator('[data-act="grid"]').click();
+  await pg.locator(".md-gpick").waitFor();
+  await pg.locator(".md-gpick [data-r]").fill("4");
+  await pg.locator(".md-gpick [data-c]").fill("3");
+  await pg.locator(".md-gpick .md-gp-apply").click();
+  await until(h, "the hovered table is 4×3", async () => (await second.locator("tr").count()) === 4);
+  await idle(h);
+  const res = {
+    first: await cellText(pg, "n0"),
+    second: await second.locator("tr").evaluateAll((rs) => rs.map((r) => r.children.length)),
+    caretIn: await pg.evaluate(() => {
+      const s = getSelection()!,
+        t = s.anchorNode?.parentElement?.closest(".tableWrapper");
+      return t ? [...document.querySelectorAll(".md-pm .tableWrapper")].indexOf(t) : -1;
+    }),
+  };
+  check(
+    "noteTableSizeGridOnHoveredTable the hovered table is resized, the caret goes into it",
+    JSON.stringify(res.second) === "[3,3,3,3]" &&
+      res.caretIn === 1 &&
+      res.first.slice(0, 4).join("|") === "name,kind,size|alpha,first,12|beta,second,7|gamma,spare,128",
+    res,
+  );
+  await close(h);
+});
+
+/** Esc right after a row is dropped, while its copy still glides into place, ends editing with the move kept: it is made at
+ *  the drop */
+test("noteTableDropThenEsc", async () => {
+  const h = await open({ board: board([{ md: `Pools:\n\n${TABLE}\n\nafter`, w: 560 }]), light });
+  const pg = h.page;
+  await idle(h);
+  await editNote(h, "n0");
+  await intoCell(h, "n0", "alpha");
+  await pg.locator(`${card("n0")} .md-pm td`, { hasText: /^first$/ }).hover();
+  const grip = pg.locator(`${card("n0")} .md-tgrip.row.on`);
+  await grip.waitFor();
+  const g = (await grip.boundingBox())!,
+    gamma = (await pg.locator(`${card("n0")} .md-pm td`, { hasText: /^gamma$/ }).boundingBox())!;
+  await pg.mouse.move(g.x + 4, g.y + 8);
+  await pg.mouse.down();
+  await pg.mouse.move(g.x + 4, g.y + 20, { steps: 3 });
+  await pg.mouse.move(g.x + 4, gamma.y + gamma.height, { steps: 6 });
+  await pg.locator(`${card("n0")} .md-tghost`).waitFor();
+  await pg.mouse.up();
+  await pg.keyboard.press("Escape");
+  await until(h, "Esc ends editing", async () => (await pg.locator(".md-pm").count()) === 0);
+  await idle(h);
+  const saved = md(h, "n0");
+  const rows = saved.split("\n").filter((l) => l.startsWith("| "));
+  check("noteTableDropThenEsc the dropped row is saved", rows.at(-1)?.includes("alpha") === true, saved);
   await close(h);
 });

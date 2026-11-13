@@ -74,7 +74,8 @@ export function resizeTable(view: EditorView, pos: number, R: number, C: number)
     table = state.doc.nodeAt(pos)!,
     map = TableMap.get(table),
     s = state.schema;
-  const $cell = isInTable(state) ? selectionCell(state) : null;
+  // the caret's cell keeps the caret only when it is in this table (the size grid opens on a hovered table too)
+  const $cell = isInTable(state) && tablePos(state) === pos ? selectionCell(state) : null;
   const at = $cell ? map.findCell($cell.pos - pos - 1) : { top: 0, left: 0 };
   const colCell = (c: number) => (c < map.width ? table.nodeAt(map.map[c]) : null);
   const rows: PMNode[] = [];
