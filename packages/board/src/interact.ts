@@ -259,6 +259,7 @@ export function cardPointerDown(e: PointerEvent, id: string) {
     const ref = t.closest<HTMLElement>(".nbody .md-ref");
     if (ref && isDbl(`r${id}`, e) && solo && editing()?.id !== id) {
       e.preventDefault();
+      A.refDoubled();
       return clickEdit("note", id, { x: e.clientX, y: e.clientY }, false, ref);
     }
     const second = !!editKind && isDbl(`e${id}`, e);

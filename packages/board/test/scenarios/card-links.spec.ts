@@ -22,8 +22,10 @@
 //                            while the Note is edited the same
 //  refFastClicks             four fast clicks on such a reference open its source and nothing else (no board opened or entered,
 //                            no card added); three fast clicks on the preview's arrow go to the card once
-//  refNearFastClicks         four fast clicks on a reference to a card near the view go there once: the clicks after the first
-//                            do not land on what the camera put under the pointer (the board's empty space adds a card)
+//  refNearDoubleClickSource  at rest a double-click on a reference to a card near the view opens its source with the camera
+//                            where it was (one click goes there once the double-click window is over)
+//  refNearFastClicks         four fast clicks on a reference to a card near the view open its source: the camera stays and no
+//                            click lands on the board's empty space (whose double-click adds a card)
 //  refWhileEditorLoads       a click on a reference in the text a Note shows while its editor's code loads opens nothing
 //  noteLinkTip               resting on a link in a Note shows its whole address (a long one drawn as its site too) as the
 //                            board's tips do, after the tip delay, nothing flashing; leaving it or the wheel hides it; a link to a
@@ -736,18 +738,56 @@ test("refFastClicks", async () => {
   );
 });
 
+test("refNearDoubleClickSource", async () => {
+  const { h, at, clicks, went, look, leave } = await clicksBoard();
+  await idle(h);
+  // at rest a double-click on a reference to a card near the view opens its source, as on any other: its first click waits out
+  // the double-click window before going there, so the second press lands on the reference and the camera never moves
+  const { cam, cards } = await look();
+  const n0 = h.sent.length;
+  await clicks(await at("Scheduler.schedule"), 2);
+  await until(h, "a double-click on the near reference opens its source", async () =>
+    (await look()).caret.endsWith("[["),
+  );
+  await idle(h);
+  const dbl = { ...(await look()), went: went(n0) };
+  await leave();
+  await idle(h);
+  // one click still goes there, once the window is over
+  await clicks(await at("Scheduler.schedule"), 1);
+  await until(h, "one click on the near reference goes to its card", async () => (await look()).cam !== cam);
+  await idle(h);
+  const one = await look();
+  check(
+    "refNearDoubleClickSource at rest a double-click on a reference to a card near the view opens its source, the caret after [[, and the camera stays where it was",
+    dbl.editing &&
+      dbl.caret.endsWith("[[") &&
+      dbl.cam === cam &&
+      !dbl.went.length &&
+      dbl.cards === cards &&
+      !dbl.picked,
+    { dbl, cam },
+  );
+  check(
+    "refNearDoubleClickSource one click on it goes to the card, editing nothing",
+    one.cam !== cam && !one.editing && one.cards === cards,
+    one,
+  );
+});
+
 test("refNearFastClicks", async () => {
   const { h, at, clicks, look } = await clicksBoard();
   await idle(h);
-  // a card near the view: the first click goes there; the clicks after it land on nothing, not on what the camera put there
-  // (the board's empty space, whose double-click adds a card)
+  // four fast clicks on a reference to a card near the view: the first two are a double-click, which opens its source; the camera
+  // does not move, and no click lands on the board's empty space (whose double-click adds a card)
   const { cam, cards } = await look();
   const most = await clicks(await at("Scheduler.schedule"), 4, 4);
+  await until(h, "the editor opens the reference's source", async () => (await look()).open > 0);
   await idle(h);
   const near = { ...(await look()), most };
   check(
-    "refNearFastClicks four fast clicks on a reference to a card near the view go there once: no card added, nothing edited",
-    near.cam !== cam && near.most === cards && near.cards === cards && !near.editing,
+    "refNearFastClicks four fast clicks on a reference to a card near the view open its source: the camera stays, no card added",
+    near.cam === cam && near.most === cards && near.cards === cards && near.editing && near.open > 0,
     { near, cam },
   );
 });
