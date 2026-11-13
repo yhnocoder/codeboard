@@ -1,5 +1,5 @@
 import { shot, symCard, findSym, put, type Host } from "../harness";
-import { cornerAt, emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
+import { cornerAt, emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard } from "@codeboard/core";
 import { test, open, check, light, expect, until, idle, hold } from "../fixtures";
 import { DBL_CLICK, LINK_LEAVE, LIVE_DELAY, SNAP_SPEED, SNAP_SETTLE } from "../../src/state/timing";
 
@@ -578,57 +578,6 @@ test("childArrowAnchor", async () => {
   await shot(h2, "board-side-2");
   await close(h2);
   check("call-side", auto > 1000 && user < 100, JSON.stringify({ auto, user }));
-});
-
-/** Turn into Text / Turn into Note on a Note without a title: the words stay where they are, same size and wrap width */
-test("noteTurnIntoTextKeepsWordsInPlace", async () => {
-  const b = emptyBoard("b1", "notebg");
-  b.cards.push({ id: "n1", kind: "note", md: "Hello\n$a$\n\n$$aaa$$", look: "note" });
-  b.place.n1 = { x: 120, y: 120, w: 300 };
-  const h = await open({ board: b, light, w: 900, h: 600 });
-  const first = () =>
-    h.page.evaluate(() => {
-      const c = document.querySelector('.card[data-id="n1"]')!;
-      const t = c.querySelector(".nbody, .tx")!;
-      const r = document.createRange();
-      r.selectNodeContents(t);
-      const q = r.getClientRects()[0];
-      const f = getComputedStyle(t).fontSize;
-      const cs = getComputedStyle(t);
-      return {
-        x: Math.round(q.left),
-        y: Math.round(q.top),
-        f,
-        w: Math.round(t.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)),
-      };
-    });
-  const turn = async (to: string) => {
-    const box = (await h.page.locator('.card[data-id="n1"]').boundingBox())!;
-    await h.page.mouse.click(box.x + 100, box.y + box.height - 12, { button: "right" });
-    await h.page.locator(".ctx:not(.closing) button", { hasText: to }).click();
-    await idle(h);
-    await h.page.mouse.click(10, 500);
-    await idle(h);
-  };
-  const a = await first();
-  await shot(h, "board-notebg-1");
-  await turn("Turn into Text");
-  const c = await first();
-  await shot(h, "board-notebg-2");
-  const same = (p: typeof a, q: typeof a) =>
-    Math.abs(p.x - q.x) <= 1 && Math.abs(p.y - q.y) <= 1 && p.f === q.f && Math.abs(p.w - q.w) <= 1;
-  check(
-    "noteTurnIntoTextKeepsWordsInPlace text",
-    h.board().cards[0].kind === "note" && (h.board().cards[0] as NoteCard).look === "text" && same(a, c),
-    { a, c },
-  );
-  await turn("Turn into Note");
-  const d = await first();
-  check("noteTurnIntoTextKeepsWordsInPlace back", (h.board().cards[0] as NoteCard).look === "note" && same(a, d), {
-    a,
-    d,
-  });
-  await close(h);
 });
 
 /** Card menu submenu opened near the right edge: flips left without covering the parent menu */

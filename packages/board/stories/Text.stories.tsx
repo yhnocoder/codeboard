@@ -1,13 +1,13 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import type { NoteCard } from "@codeboard/core";
-import { Stage, scene, type Globals, type Scene } from "./support/board";
+import { TEXT_SIZES, type NoteCard, type TextSize } from "@codeboard/core";
+import { Stage, scene, textCard, type Globals, type Scene } from "./support/board";
 import { themes } from "./support/themes";
 
-type Size = NonNullable<NoteCard["size"]>;
 type Args = {
   md: string;
-  size: Size;
-  bold: boolean;
+  size: TextSize;
+  look: "text" | "box";
+  wrap: boolean;
   w: number;
   state: "normal" | "selected" | "editing";
   locked: boolean;
@@ -16,25 +16,26 @@ type Args = {
 
 const ONE = "Scheduler：先 prefill，再 decode";
 const PARA = "prefill 的 token 多，一步算得满；decode 每个请求只有一个 token，攒多一点再算更划算。";
-const MDTEXT = "# Reading notes\nTwo lines, old style\n- a list\n- with **block_manager**";
+const MDTEXT = "# Reading notes\n\nA paragraph with **bold**, `block_manager` and $O(n)$.\n\n- a list\n- of two";
 
-const text = (id: string, md: string, size: Size, o: Partial<NoteCard> = {}): NoteCard => ({
-  id,
-  kind: "note",
-  md,
-  look: "text",
-  size,
-  ...o,
-});
+const text = (id: string, md: string, size: TextSize, o: Partial<NoteCard> = {}): NoteCard =>
+  textCard(id, md, { ...(size === "s" ? {} : { fs: TEXT_SIZES[size] }), ...o });
 
 function single(a: Args): Scene {
   const { board, put } = scene("Text");
-  put(text("t1", a.md, a.size, a.bold ? { bold: true } : {}), {
-    x: 40,
-    y: 80,
-    w: a.w,
-    ...(a.locked ? { locked: true } : {}),
-  });
+  put(
+    text("t1", a.md, a.size, {
+      look: a.look,
+      ...(a.look === "box" ? { fill: "yellow" } : {}),
+      ...(a.wrap ? { wrap: true } : {}),
+    }),
+    {
+      x: 40,
+      y: 80,
+      w: a.w,
+      ...(a.locked ? { locked: true } : {}),
+    },
+  );
   return {
     board,
     sel: a.state === "selected" ? ["t1"] : undefined,
@@ -45,37 +46,37 @@ function single(a: Args): Scene {
 
 function overview(): Scene {
   const { board, put, caption } = scene("Text overview");
-  const sizes: Size[] = ["title", "heading", "body"];
-  sizes.forEach((s, i) => {
-    caption(`${s[0].toUpperCase()}${s.slice(1)}`, 40, 40 + i * 110);
+  (Object.keys(TEXT_SIZES) as TextSize[]).forEach((s, i) => {
+    caption(s.toUpperCase(), 40, 40 + i * 110);
     put(text(`t-${s}`, ONE, s), { x: 40, y: 40 + i * 110, w: 520 });
-    caption(`${s[0].toUpperCase()}${s.slice(1)}, bold`, 620, 40 + i * 110);
-    put(text(`t-${s}-b`, ONE, s, { bold: true }), { x: 620, y: 40 + i * 110, w: 520 });
+    caption(`${s.toUpperCase()}, Box`, 720, 40 + i * 110);
+    put(text(`t-${s}-b`, ONE, s, { look: "box", fill: "blue" }), { x: 720, y: 40 + i * 110, w: 520 });
   });
-  caption("Wrapped (narrow)", 40, 400);
-  put(text("t-wrap", PARA, "body"), { x: 40, y: 400, w: 220 });
-  caption("Markdown in a Text", 320, 400);
-  put(text("t-md", MDTEXT, "body"), { x: 320, y: 400, w: 300 });
-  caption("Empty (placeholder)", 680, 400);
-  put(text("t-empty", "", "body"), { x: 680, y: 400, w: 220 });
-  caption("Locked", 960, 400);
-  put(text("t-lock", ONE, "heading"), { x: 960, y: 400, w: 300, locked: true });
-  caption("Selected (side handles, no toolbar)", 40, 640);
-  put(text("t-sel", ONE, "heading"), { x: 40, y: 660, w: 420 });
-  caption("Editing", 620, 640);
-  put(text("t-edit", PARA, "body"), { x: 620, y: 640, w: 420 });
+  caption("Width set: the text wraps", 40, 520);
+  put(text("t-wrap", PARA, "s", { wrap: true }), { x: 40, y: 520, w: 260 });
+  caption("Markdown in a Text", 360, 520);
+  put(text("t-md", MDTEXT, "s"), { x: 360, y: 520, w: 300 });
+  caption("Empty (placeholder)", 760, 520);
+  put(text("t-empty", "", "s"), { x: 760, y: 520, w: 220 });
+  caption("Locked", 1040, 520);
+  put(text("t-lock", ONE, "m"), { x: 1040, y: 520, w: 300, locked: true });
+  caption("Selected (sizes and looks)", 40, 800);
+  put(text("t-sel", ONE, "m"), { x: 40, y: 820, w: 420 });
+  caption("Editing", 720, 800);
+  put(text("t-edit", PARA, "s", { wrap: true }), { x: 720, y: 800, w: 420 });
   return { board, sel: ["t-sel"], editing: "t-edit" };
 }
 
 const meta = {
   title: "Cards/Text",
   render: (a, ctx) => <Stage scene={() => single(a)} globals={ctx.globals as Globals} />,
-  args: { md: ONE, size: "body", bold: false, w: 420, state: "normal", locked: false, lod: "toolbar" },
+  args: { md: ONE, size: "s", look: "text", wrap: false, w: 420, state: "normal", locked: false, lod: "toolbar" },
   argTypes: {
     md: { control: "text", description: "Markdown" },
-    size: { control: "inline-radio", options: ["title", "heading", "body"], description: "Text size" },
-    bold: { control: "boolean" },
-    w: { control: { type: "range", min: 80, max: 900, step: 10 }, description: "Width (the text wraps)" },
+    size: { control: "inline-radio", options: Object.keys(TEXT_SIZES), description: "Text size" },
+    look: { control: "inline-radio", options: ["text", "box"] },
+    wrap: { control: "boolean", description: "Width set by a side edge: the text wraps at it" },
+    w: { control: { type: "range", min: 80, max: 900, step: 10 }, description: "Width (used when wrap is on)" },
     state: { control: "inline-radio", options: ["normal", "selected", "editing"] },
     locked: { control: "boolean" },
     lod: { control: "inline-radio", options: ["toolbar", "map"], description: "toolbar: the Zoom global; map: 20%" },
@@ -87,25 +88,26 @@ type Story = StoryObj<typeof meta>;
 export const Overview: Story = {
   render: (_, ctx) => <Stage scene={overview} globals={ctx.globals as Globals} />,
   argTypes: Object.fromEntries(
-    ["md", "size", "bold", "w", "state", "locked", "lod"].map((k) => [k, { table: { disable: true } }]),
+    ["md", "size", "look", "wrap", "w", "state", "locked", "lod"].map((k) => [k, { table: { disable: true } }]),
   ),
 };
 export const Themes: Story = themes("markdown-text");
-export const Title: Story = { args: { size: "title" } };
-export const Heading: Story = { args: { size: "heading" } };
-export const Body: Story = {};
-export const Bold: Story = { args: { size: "heading", bold: true } };
-export const Wrapped: Story = { args: { md: PARA, w: 220 } };
-export const MarkdownText: Story = { name: "Markdown in a Text", args: { md: MDTEXT, w: 300 } };
+export const Small: Story = {};
+export const Medium: Story = { args: { size: "m" } };
+export const Large: Story = { args: { size: "l" } };
+export const ExtraLarge: Story = { name: "XL", args: { size: "xl" } };
+export const Wrapped: Story = { args: { md: PARA, w: 220, wrap: true } };
+export const MarkdownText: Story = { name: "Markdown in a Text", args: { md: MDTEXT } };
 export const Empty: Story = { name: "Empty (placeholder)", args: { md: "" } };
 export const EmptyEditing: Story = { name: "Empty, Editing", args: { md: "", state: "editing" } };
-export const Selected: Story = { args: { size: "heading", state: "selected" } };
-export const Editing: Story = { args: { md: PARA, state: "editing" } };
-export const Locked: Story = { args: { size: "heading", locked: true, state: "selected" } };
-export const Map: Story = { name: "Map Level (20%)", args: { size: "title", lod: "map" } };
+export const Selected: Story = { args: { size: "m", state: "selected" } };
+export const SelectedBox: Story = { name: "Selected Box (fill dots)", args: { look: "box", state: "selected" } };
+export const Editing: Story = { args: { md: PARA, state: "editing", wrap: true } };
+export const Locked: Story = { args: { size: "m", locked: true, state: "selected" } };
+export const Map: Story = { name: "Map Level (20%)", args: { size: "xl", lod: "map" } };
 // 悬停（CSS :hover，story 的 globals.pseudo 摆出来）：Text 没有框，悬停时才出一圈虚线框
 export const Hover: Story = {
   name: "Hover (dashed frame)",
-  args: { size: "heading" },
+  args: { size: "m" },
   globals: { pseudo: { hover: [".card"] } },
 };

@@ -1,16 +1,12 @@
-// Notes and sidenotes: new Notes, Text, Marks, Boxes and Free Text, sidenotes added and sidenote ↔ card, images in a Note,
-// Note ↔ Text, Split by Headings, a Mark's colour, weight and size, a Free Text's level and bold
+// Notes and sidenotes: new Notes, Text and Boxes, sidenotes added and sidenote ↔ card, images in a Note, Split by Headings,
+// a Text's or Box's size, look (Text ↔ Box) and a Box's fill
 import {
-  BOX_FILLS,
-  FREE_TEXT_FS,
-  type FreeTextLevel,
-  MARK_SIZES,
-  type MarkSize,
+  isTextCard,
   scaleText,
-  TEXT_FS,
+  textSizeOf,
+  TEXT_SIZES,
   type BoxFill,
-  type HandColor,
-  type HandWeight,
+  type TextSize,
   cardTitle,
   findCard,
   isCode,
@@ -35,7 +31,6 @@ import {
   sidenoteCard,
   sidenoteToCard,
   splitNoteByHeadings,
-  turnNoteInto,
 } from "../edit";
 import { refSource } from "../mdrefs";
 import type { CommandEnv } from "./env";
@@ -99,11 +94,6 @@ export function putImageInNote(env: CommandEnv, imageId: string, noteId: string,
   );
 }
 
-/** Note ↔ Text */
-export function turnNote(env: CommandEnv, id: string, look: "note" | "text") {
-  env.edit((b) => turnNoteInto(b, id, look));
-}
-
 /**
  * Split by Headings: each heading's part becomes a Note below, linked from the one above it. heights = what the shell measured
  * (the cut Note and each part) for placing them; others = the cards around, kept clear of. The new cards' ids
@@ -121,39 +111,28 @@ export function splitByHeadings(
     : null;
 }
 
-/** About how wide a new Free Text's first words are, to centre it where it goes */
-const FREE_TEXT_W = 200;
+/** About how wide a new Text's first words are, to centre it where it goes (it is as wide as its text, styles.css) */
+const NEW_TEXT_W = 200;
 /**
- * A new Note, Text, Mark, Box or Free Text with `text`: a Text is body-sized, a Box gets the first fill and a fixed height, a Mark
- * the colour of the last Mark on the board (blue for the first), a Free Text is plain (no level) at its level's text size (kept without fs).
- * Written empty (a Box aside) it is fresh (env.fresh): no undo step until
- * something is written. at(size) = where it goes, for its size (the shell's layout); settle(b, id) files it in the Section it
- * landed in. Its id
+ * A new Note, Text or Box with `text`. Written empty it is fresh (env.fresh): no undo step until something is written, and gone if
+ * nothing is. at(size) = where it goes, for its size (the shell's layout); settle(b, id) files it in the Section it landed in. Its id
  */
 export function newWriting(
   env: CommandEnv,
   look: NoteLook,
   text: string,
-  o: { at: (size: { w: number; h?: number }) => { x: number; y: number }; settle: (b: Board, id: string) => void },
+  o: { at: (size: { w: number }) => { x: number; y: number }; settle: (b: Board, id: string) => void },
 ): string {
-  // a Free Text is as wide as its text (styles.css): its stored width only places it
-  const w = look === "freetext" ? FREE_TEXT_W : NEW_CARD_W,
-    h = look === "box" ? 60 : undefined;
-  const p = o.at({ w, h });
+  const w = look === "note" ? NEW_CARD_W : NEW_TEXT_W;
+  const p = o.at({ w });
   const id = uid("n");
   const card: NoteCard = { id, kind: "note", md: text, look };
-  if (look === "text") card.size = "body";
-  if (look === "box") card.fill = BOX_FILLS[0];
-  if (look === "mark") {
-    const last = [...env.board().cards].reverse().find((c) => c.kind === "note" && c.look === "mark");
-    card.hand = (last?.kind === "note" && last.hand) || "blue";
-  }
   const add = (b: Board) => {
     b.cards.push(card);
-    b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w, ...(h ? { h } : {}) };
+    b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w };
     o.settle(b, id);
   };
-  if (text || look === "box") env.edit(add);
+  if (text) env.edit(add);
   else env.fresh.add(id, add);
   return id;
 }
@@ -271,73 +250,47 @@ export function setNoteMarkdown(env: CommandEnv, id: string, md: string) {
   });
 }
 
-/** A Mark's colour (its arrows follow it) */
-export function setMarkColor(env: CommandEnv, id: string, hand: HandColor) {
-  env.edit((b) => {
-    const c = findCard(b, id)?.card;
-    if (c?.kind === "note" && c.look === "mark") c.hand = hand;
-  });
-}
-
-/** A Mark's weight (Light, Regular, Bold): the Latin and the Chinese handwriting both follow it */
-export function setMarkWeight(env: CommandEnv, id: string, weight: HandWeight) {
+/** A Text's or Box's size picked on its toolbar (S, M, L, XL). One that wraps at a width it was given scales that width with
+ *  its text, as dragging its corner does, so it wraps where it did */
+export function setTextSize(env: CommandEnv, id: string, size: TextSize) {
   const c0 = findCard(env.board(), id)?.card;
-  if (c0?.kind !== "note" || c0.look !== "mark" || (c0.weight ?? "regular") === weight) return;
-  env.edit((b) => {
-    const c = findCard(b, id)?.card;
-    if (c?.kind === "note" && c.look === "mark") c.weight = weight === "regular" ? undefined : weight;
-  });
-}
-
-/** A Mark's size picked on its toolbar (S, M, L, XL): scaled as dragging its corner does, text size and width together, so it
- *  wraps where it did */
-export function setMarkSize(env: CommandEnv, id: string, size: MarkSize) {
-  const c0 = findCard(env.board(), id)?.card;
-  if (c0?.kind !== "note" || c0.look !== "mark") return;
-  const fs0 = c0.fs ?? TEXT_FS.mark,
-    to = MARK_SIZES[size];
+  if (!isTextCard(c0)) return;
+  const fs0 = textSizeOf(c0),
+    to = TEXT_SIZES[size];
   if (fs0 === to) return;
   env.edit((b) => {
     const f = findCard(b, id),
       c = f?.card,
       p = f && b.place[f.host.id];
-    if (c?.kind !== "note" || c.look !== "mark") return;
-    c.fs = to === TEXT_FS.mark ? undefined : to;
-    if (p) p.w = scaleText(fs0, p.w, to / fs0).w;
+    if (!isTextCard(c)) return;
+    if (to === TEXT_SIZES.s) delete c.fs;
+    else c.fs = to;
+    if (p && c.wrap) p.w = scaleText(fs0, p.w, to / fs0).w;
   });
 }
 
-/** A Free Text's level (plain = 0, H1–H3): the theme's body or heading style, and the text size back at that level's preset (scaled
- *  as dragging its corner does, so it wraps where it did) */
-export function setFreeTextLevel(env: CommandEnv, id: string, level: FreeTextLevel) {
+/**
+ * A Text turned into a Box or a Box into a Text, in one step. A Box takes the fill it had before (yellow the first time). at = where
+ * the card goes and its width in the other look, so its text stays where it is (the shell measures it); none = it stays put
+ */
+export function setTextLook(
+  env: CommandEnv,
+  id: string,
+  look: "text" | "box",
+  at?: { x: number; y: number; w: number },
+) {
   const c0 = findCard(env.board(), id)?.card;
-  if (c0?.kind !== "note" || c0.look !== "freetext") return;
-  const fs0 = c0.fs ?? FREE_TEXT_FS[c0.level ?? 0],
-    to = FREE_TEXT_FS[level];
-  if ((c0.level ?? 0) === level && fs0 === to) return;
+  if (!isTextCard(c0) || c0.look === look) return;
   env.edit((b) => {
     const f = findCard(b, id),
       c = f?.card,
       p = f && b.place[f.host.id];
-    if (c?.kind !== "note" || c.look !== "freetext") return;
-    if (level) c.level = level;
-    else delete c.level;
-    delete c.fs;
-    if (p) p.w = scaleText(fs0, p.w, to / fs0).w;
+    if (!isTextCard(c)) return;
+    c.look = look;
+    if (p && at) Object.assign(p, { x: hundredths(at.x), y: hundredths(at.y), w: hundredths(at.w) });
   });
 }
-
-/** A Free Text set bold or not */
-export function setFreeTextBold(env: CommandEnv, id: string, bold: boolean) {
-  const c0 = findCard(env.board(), id)?.card;
-  if (c0?.kind !== "note" || c0.look !== "freetext" || !!c0.bold === bold) return;
-  env.edit((b) => {
-    const c = findCard(b, id)?.card;
-    if (c?.kind !== "note" || c.look !== "freetext") return;
-    if (bold) c.bold = true;
-    else delete c.bold;
-  });
-}
+const hundredths = (v: number) => Math.round(v * 100) / 100;
 
 /** A Box's fill */
 export function setBoxFill(env: CommandEnv, id: string, fill: BoxFill) {

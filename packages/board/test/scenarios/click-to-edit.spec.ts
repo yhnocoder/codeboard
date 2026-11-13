@@ -236,7 +236,7 @@ const LOOKS: [id: string, look: NoteCard["look"], md: string, word: string, want
   ["dn", "note", "foxtrot golf hotel", "golf", "foxtrot Zgolf hotel"],
   ["dt", "text", "india juliet kilo", "juliet", "india Zjuliet kilo"],
   ["db", "box", "mike november", "november", "mike Znovember"],
-  ["dm", "mark", "oscar papa", "papa", "oscar Zpapa"],
+  ["dw", "text", "oscar papa quebec romeo", "quebec", "oscar papa Zquebec romeo"],
 ];
 function dblBoard(): Board {
   const b = emptyBoard("b1", "double click to edit");
@@ -249,7 +249,7 @@ function dblBoard(): Board {
         md,
         look,
         ...(look === "box" ? { fill: "yellow" } : {}),
-        ...(look === "mark" ? { hand: "blue" } : {}),
+        ...(id === "dw" ? { wrap: true, fs: 30 } : {}),
       } as NoteCard,
       80 + (i % 2) * 460,
       80 + Math.floor(i / 2) * 220,

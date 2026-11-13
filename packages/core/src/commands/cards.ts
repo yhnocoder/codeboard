@@ -98,8 +98,8 @@ export function renameCard(env: CommandEnv, id: string, v: string) {
   });
 }
 
-/** A Note, Text or Mark written empty goes away; an empty Box is still a box */
-const noteKept = (c: Card | undefined, md: string) => !!md.trim() || (c?.kind === "note" && c.look === "box");
+/** A Note, Text or Box written empty goes away */
+const noteKept = (md: string) => !!md.trim();
 /**
  * Write a Note's Markdown, and the layout its editor changed (table widths, row heights, code wrap; null = all automatic again,
  * left out = unchanged). Written empty it goes away (noteKept), in the same step; a new one written empty goes as if it never
@@ -109,11 +109,11 @@ export function writeNote(env: CommandEnv, id: string, md: string, layout?: Note
   const write = (b: Board) => {
     const c = findCard(b, id)?.card;
     if (c?.kind !== "note") return;
-    if (!noteKept(c, md)) return removeCards(b, [id]);
+    if (!noteKept(md)) return removeCards(b, [id]);
     c.md = md;
     if (layout !== undefined) (c as NoteCard).mdLayout = layout ?? undefined;
   };
-  if (env.fresh.is(id)) env.fresh.settle(id, noteKept(findCard(env.board(), id)?.card, md), write);
+  if (env.fresh.is(id)) env.fresh.settle(id, noteKept(md), write);
   else env.edit(write);
 }
 
@@ -127,7 +127,7 @@ export function moveNoteBlocks(env: CommandEnv, notes: { id: string; md: string;
     for (const n of notes) {
       const c = findCard(b, n.id)?.card;
       if (c?.kind !== "note") continue;
-      if (!noteKept(c, n.md)) {
+      if (!noteKept(n.md)) {
         removeCards(b, [n.id]);
         continue;
       }
@@ -137,7 +137,7 @@ export function moveNoteBlocks(env: CommandEnv, notes: { id: string; md: string;
   };
   const fresh = notes.filter((n) => env.fresh.is(n.id));
   // a fresh Note the move leaves empty goes as if it never was; the others are written in the step
-  for (const n of fresh) if (!noteKept(findCard(env.board(), n.id)?.card, n.md)) env.fresh.settle(n.id, false);
+  for (const n of fresh) if (!noteKept(n.md)) env.fresh.settle(n.id, false);
   const kept = fresh.filter((n) => env.fresh.is(n.id));
   if (kept.length) {
     for (const n of kept.slice(1)) env.fresh.settle(n.id, true);

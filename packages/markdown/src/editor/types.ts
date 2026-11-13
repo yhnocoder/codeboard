@@ -57,6 +57,9 @@ export type MdEditorOpts = {
   };
   /** 块左边的拖动把手（⋮⋮，拖着移动整块）。默认没有 */
   dragHandle?: boolean;
+  /** The chip beside the heading the caret is in, which shows its level and opens a menu to change it (headings.ts). On by
+   *  default; false for text whose headings are not set by level */
+  headingChip?: boolean;
   /**
    * The editor sits where nothing around it should scroll (a card on a canvas that moves by its camera): keeping the caret in
    * view scrolls only the nearest scrolling box around the text, never further ancestors or the page. By default the browser

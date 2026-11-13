@@ -132,7 +132,8 @@ function chipAt(state: EditorState): { pos: number; level: number } | null {
   return { pos: $h.before(), level: $h.parent.attrs.level };
 }
 
-export function headingsPlugin(classes: () => MdClasses | undefined) {
+/** shown: whether this editing session has the chip at all (MdEditorOpts.headingChip) */
+export function headingsPlugin(classes: () => MdClasses | undefined, shown: () => boolean) {
   let menu: LevelMenu | null = null;
   const chip = (level: number, after: boolean) => (view: EditorView, getPos: () => number | undefined) => {
     const w = document.createElement("span");
@@ -176,7 +177,7 @@ export function headingsPlugin(classes: () => MdClasses | undefined) {
     },
     props: {
       decorations(state) {
-        const at = chipAt(state);
+        const at = shown() ? chipAt(state) : null;
         if (!at) return null;
         // in a list item or a quote the space left of the heading is the bullet's or the quote bar's: the chip goes after
         // its text there

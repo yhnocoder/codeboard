@@ -9,11 +9,9 @@ import {
   type SegView,
   type Anchor,
   type BoxFill,
-  type HandColor,
-  type HandWeight,
-  type MarkSize,
-  type FreeTextLevel,
+  type TextSize,
   type HlRange,
+  isTextCard,
   sameRange,
   shownRanges,
   within,
@@ -270,15 +268,71 @@ export async function showPeek(
   }
 }
 
-/** Mark 的颜色（它的箭头跟着变） */
-export const setMarkColor = (id: string, hand: HandColor) => C.setMarkColor(commandEnv, id, hand);
-export const setMarkWeight = (id: string, weight: HandWeight) => C.setMarkWeight(commandEnv, id, weight);
-export const setMarkSize = (id: string, size: MarkSize) => C.setMarkSize(commandEnv, id, size);
-export const setFreeTextLevel = (id: string, level: FreeTextLevel) => C.setFreeTextLevel(commandEnv, id, level);
-export const setFreeTextBold = (id: string, bold: boolean) => C.setFreeTextBold(commandEnv, id, bold);
 export const setBoxFill = (id: string, fill: BoxFill) => C.setBoxFill(commandEnv, id, fill);
+export const setTextSize = (id: string, size: TextSize) => C.setTextSize(commandEnv, id, size);
 
-export const turnNote = (id: string, look: "note" | "text") => C.turnNote(commandEnv, id, look);
+/** Text ↔ Box: the text stays where it is on the board (its first line, its size, where it wraps); only the box around it comes
+ *  or goes */
+export function setTextLook(id: string, look: "text" | "box") {
+  const c = cardById(id)?.card,
+    el = document.querySelector<HTMLElement>(cardSel(id));
+  if (!isTextCard(c) || c.look === look) return;
+  C.setTextLook(commandEnv, id, look, el ? keptAt(el, id, look, !!c.wrap) : undefined);
+}
+/**
+ * Where a Text or Box goes in the other look, and how wide it is, for its first line to stay where it is: the card is laid out once
+ * more in that look, as a hidden copy beside it, and its first character found in both. One that wraps keeps the width its text
+ * wraps at; a Box centres its lines, so the first line's place in it depends on the others
+ */
+function keptAt(el: HTMLElement, id: string, look: "text" | "box", wrap: boolean) {
+  const p = placeOf(id),
+    twin = el.cloneNode(true) as HTMLElement;
+  twin.removeAttribute("data-id");
+  twin.classList.toggle("box", look === "box");
+  twin.style.visibility = "hidden";
+  el.after(twin);
+  try {
+    const sides = (e: HTMLElement) => {
+      const s = getComputedStyle(e);
+      return ["paddingLeft", "paddingRight", "borderLeftWidth", "borderRightWidth"].reduce(
+        (n, k) => n + parseFloat(s[k as "paddingLeft"]),
+        0,
+      );
+    };
+    const w = wrap ? el.offsetWidth - sides(el) + sides(twin) : p.w;
+    if (wrap) twin.style.width = `${w}px`;
+    const a = firstGlyph(el),
+      b = firstGlyph(twin);
+    if (!a || !b) return undefined;
+    const ra = el.getBoundingClientRect(),
+      rb = twin.getBoundingClientRect(),
+      k = el.offsetWidth / ra.width || 1;
+    return {
+      x: p.x + (a.left - ra.left - (b.left - rb.left)) * k,
+      y: p.y + (a.top - ra.top - (b.top - rb.top)) * k,
+      w,
+    };
+  } finally {
+    twin.remove();
+  }
+}
+/** The box of the first character a card's text shows (screen pixels); its text's own box when it shows no characters (only an
+ *  image) */
+function firstGlyph(card: HTMLElement): DOMRect | null {
+  const body = card.querySelector<HTMLElement>(":scope > .cface > .tx");
+  if (!body) return null;
+  const walk = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode() as Text | null; n; n = walk.nextNode() as Text | null) {
+    const at = n.data.search(/\S/);
+    if (at < 0) continue;
+    const r = document.createRange();
+    r.setStart(n, at);
+    r.setEnd(n, at + 1);
+    const box = r.getClientRects()[0];
+    if (box) return box;
+  }
+  return body.getBoundingClientRect();
+}
 
 /** Split by Headings 能拆成几张卡（0 = 没有可拆的标题，菜单项灰掉） */
 export function headingSplitCount(id: string): number {

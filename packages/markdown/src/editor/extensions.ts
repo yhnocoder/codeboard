@@ -379,6 +379,7 @@ export function editorExtensions(
         if (ui) openLinkBox(e.view, ui.setLink);
       },
       classes: () => o.classes,
+      headingChip: () => o.headingChip !== false,
     }),
     Placeholder.configure({ placeholder: () => o.placeholder ?? "Type / for blocks", showOnlyCurrent: true }),
     ...(handle

@@ -35,7 +35,7 @@ function full() {
   };
   b.cards.push(
     { ...code, mergedFrom: [{ card: { ...code, id: "old" }, place: { x: 0, y: 0, w: 300 } }] },
-    { id: "n", kind: "note", md: "# hi", look: "text", size: "title", bold: true },
+    { id: "n", kind: "note", md: "# hi", look: "text", fs: 14.5 },
     { id: "i", kind: "image", src: "a.png", bg: true },
     { id: "w", kind: "web", url: "https://x.org", meta: { title: "X", at: 1, failed: false }, style: "side" },
     { id: "l", kind: "links", items: [{ id: "i1", url: "https://y.org", rich: true }] },
@@ -52,8 +52,8 @@ function full() {
     },
     { id: "q", kind: "code", segments: [{ ...seg("s3"), src: { kind: "free" }, version: { kind: "none" } }] },
     { id: "k", kind: "compare", cols: ["p", "q"], swap: true },
-    { id: "m", kind: "note", md: "先挑", look: "mark", hand: "green", weight: "bold", fs: 27.5 },
-    { id: "f", kind: "note", md: "Scheduler\nprefill", look: "freetext", fs: 64 },
+    { id: "m", kind: "note", md: "先挑", look: "text", wrap: true, fs: 27.5 },
+    { id: "f", kind: "note", md: "Scheduler\n\nprefill", look: "box", fill: "green", wrap: true },
   );
   b.place = {
     c: { x: 1, y: 2, w: 400, h: 90, section: "g", locked: true, collapsed: true },
@@ -143,7 +143,7 @@ describe("checkBoard", () => {
     g.links[0].call = { col: 1 };
     expect(() => checkBoard(g)).toThrow(/links\.0\.call\.name/);
   });
-  it("refuses a Mark or Free Text size outside the limits and a weight it does not know", () => {
+  it("refuses a Text or Box size outside the limits, a wrap that is not true and a look it does not know", () => {
     const at = (b: any) => b.cards.findIndex((c: { id: string }) => c.id === "m");
     const a: any = full();
     a.cards[at(a)].fs = 2;
@@ -152,8 +152,11 @@ describe("checkBoard", () => {
     b.cards[at(b)].fs = 1000;
     expect(() => checkBoard(b)).toThrow(/fs/);
     const c: any = full();
-    c.cards[at(c)].weight = "heavy";
-    expect(() => checkBoard(c)).toThrow(new RegExp(`cards\\.${at(c)}\\.weight`));
+    c.cards[at(c)].wrap = false;
+    expect(() => checkBoard(c)).toThrow(new RegExp(`cards\\.${at(c)}\\.wrap`));
+    const d: any = full();
+    d.cards[at(d)].look = "mark";
+    expect(() => checkBoard(d)).toThrow(new RegExp(`cards\\.${at(d)}\\.look`));
   });
 });
 
@@ -188,7 +191,7 @@ describe("loadBoardFile", () => {
       ],
       edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call" }],
     });
-    expect(v1.version).toBe(15);
+    expect(v1.version).toBe(16);
     const col = (id: string) => ({ id, kind: "code", x: 5, y: 6, w: 300, segments: [seg(`s${id}`)] });
     const v2 = loadBoardFile({
       version: 2,

@@ -178,7 +178,7 @@ export function scene(name: string) {
     return c;
   };
   const caption = (text: string, x: number, y: number, w = 280) =>
-    put(textCard(`cap-${board.cards.length}`, text), { x, y: y - 34, w });
+    put(textCard(`cap-${board.cards.length}`, text, { wrap: true, fs: 13.5 }), { x, y: y - 34, w });
   // 几组卡摆在同一块白板上：每组按自己的坐标写，放的时候整体平移
   const at = (dx: number, dy: number) => ({
     put: <C extends Card>(c: C, p: Parameters<typeof put>[1]) => put(c, { ...p, x: p.x + dx, y: p.y + dy }),
@@ -195,13 +195,12 @@ export const noteCard = (id: string, md: string, title?: string): NoteCard => ({
   look: "note",
   ...(title ? { title } : {}),
 });
-export const textCard = (id: string, md: string): NoteCard => ({ id, kind: "note", md, look: "text", size: "body" });
-export const markCard = (id: string, md: string, hand: HandColor): NoteCard => ({
+export const textCard = (id: string, md: string, o: Partial<NoteCard> = {}): NoteCard => ({
   id,
   kind: "note",
   md,
-  look: "mark",
-  hand,
+  look: "text",
+  ...o,
 });
 export const boxCard = (id: string, md: string, fill: BoxFill = "yellow"): NoteCard => ({
   id,

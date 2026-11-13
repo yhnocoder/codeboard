@@ -57,7 +57,7 @@
   --lk-blue: #3a72aa;
   --lk-green: #4c8a3a;
   --guide: #2f7de1;
-  /* 手写的 Mark 卡、标注和它们的箭头：四种颜色（主题不另配，亮暗各一份）和手写字体 */
+  /* 代码上手写的标注：四种颜色（主题不另配，亮暗各一份）和手写字体 */
   --hd-blue: #3a72aa;
   --hd-purple: #7d55b0;
   --hd-orange: #c46a2a;
@@ -1567,19 +1567,9 @@ textarea {
   min-height: 1.4em;
   color: var(--ink);
 }
-.tx.st-title {
-  font: 600 26px / 1.25 var(--display);
-  letter-spacing: -0.01em;
-}
-.tx.st-heading {
-  font: 600 16px / 1.4 var(--sys);
-}
 .tx.st-body {
   font: 13.5px / 1.6 var(--sys);
   color: var(--ink);
-}
-.tx.bold {
-  font-weight: 700;
 }
 .tx[contenteditable] {
   cursor: text;
@@ -1627,38 +1617,37 @@ textarea {
   white-space: nowrap;
   width: max-content;
 }
-/* Mark（标注卡）：手写字、统一字号、一种颜色、没有框；选中时虚线框和右下角调宽度的小方块，上方四个颜色点 */
-.hc-blue {
-  --hc: var(--hd-blue);
+/* Text 和 Box：同一种卡的两个样子。内容是 Markdown，字号是卡上的 --tfs（S M L XL 或拖角缩放到的任意大小），标题按它成比例
+   （# 1.8 倍、## 1.35 倍，和 Note 一样），行内代码也跟着它。宽度跟着字，拖过左右边（.wrapw）就按存的宽度折行；永远不比最长的
+   一个词窄，词不从中间拆开；高度永远跟着内容 */
+:root .card.text .tx.tb {
+  font-size: var(--tfs, 20px);
+  --md-fs: 1em;
+  white-space: normal;
 }
-.hc-purple {
-  --hc: var(--hd-purple);
+.card.text:not(.wrapw) {
+  width: max-content;
 }
-.hc-orange {
-  --hc: var(--hd-orange);
+.card.text {
+  min-width: min-content;
 }
-.hc-green {
-  --hc: var(--hd-green);
+:root .card.text :is(.tx.tb, .tx.tb *) {
+  word-break: normal;
+  overflow-wrap: break-word;
 }
-/* 字号（--tfs）、粗细（--hw）写在卡上（Card.tsx）：拖右下角缩放的是真的字号 */
-.card.mark .tx.hand {
-  font: var(--hw, 400) var(--tfs, 18px) / 1.3 var(--hand);
-  color: var(--hc);
+:root .card.text .tx.tb :is(code, pre) {
+  font-size: 0.82em;
 }
-.card.mark .tx.hand :is(p, li) {
-  margin: 0;
+:root .card.text .tx.tb :is(p, ul, ol, blockquote, pre, table, h1, h2, h3, h4, h5, h6):first-child {
+  margin-top: 0;
 }
-/* a heading written in a Mark ("# Basic Concepts") takes the Mark's weight too: the toolbar's Light / Regular / Bold is the
-   weight of everything the Mark says, never the Markdown heading's own 600 */
-.card.mark .tx.hand :is(h1, h2, h3, h4, h5, h6) {
-  font-weight: inherit;
+:root .card.text .tx.tb :is(p, ul, ol, blockquote, pre, table, h1, h2, h3, h4, h5, h6):last-child {
+  margin-bottom: 0;
 }
-.card.mark:hover {
-  outline-color: color-mix(in srgb, var(--hc) 60%, transparent);
-}
-.card.mark.sel {
-  outline: 1px dashed var(--hc);
-  outline-offset: 4px;
+/* 左右两边只改折行的宽度：矮一点，一行字的卡上也和右下角缩放字号的小方块分得开 */
+.card.text .hw {
+  height: 14px;
+  margin-top: -7px;
 }
 .mkgrip {
   position: absolute;
@@ -1668,100 +1657,59 @@ textarea {
   height: 10px;
   border-radius: 3px;
   background: var(--surface);
-  box-shadow: 0 0 0 1.5px var(--hc);
+  box-shadow: 0 0 0 1.5px var(--accent);
   cursor: nwse-resize;
   display: none;
 }
-.card.mark.sel .mkgrip,
-.card.freetext.sel .mkgrip {
+.card.text.sel .mkgrip {
   display: block;
 }
-/* Mark 的左右两边只改宽度：矮一点，一行字的 Mark 上也和右下角缩放的小方块分得开 */
-.card.mark .hw {
-  height: 14px;
-  margin-top: -7px;
-  box-shadow: 0 0 0 1.5px var(--hc);
+/* 单独选中时浮到相邻的卡之上，浮条不会被旁边的卡盖住 */
+.card.text.sel.solo:not(.editing) {
+  z-index: 7;
 }
-.card.freetext .mkgrip {
-  box-shadow: 0 0 0 1.5px var(--accent);
+.card.text.sel.solo:not(.editing) .ttb {
+  display: inline-flex;
 }
-/* Mark 的粗细：颜色点后面一道竖线，三个手写的 a；再一道竖线，字号 S、M、L、XL（和 a 一个样子，字小一点，XL 也放得下） */
-.ttb:is(.hdots, .ftbar) .hsep {
+/* 浮条：S M L XL | Text Box（| 五个底色点）。按钮一个样子（24 × 20，圆角 5），没有分段控件的托盘；Text 和 Box 上在同一个位置 */
+.card .ttb.pill.tbar {
+  gap: 4px;
+  padding: 5px 6px;
+  align-items: center;
+  top: -46px;
+}
+.tbar .hsep {
   align-self: stretch;
   width: 1px;
   margin: 1px 2px;
   background: var(--hair);
 }
-.hwt,
 .hsz {
-  min-width: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
   height: 20px;
   padding: 0 3px;
   border: 0;
   border-radius: 5px;
   background: none;
   color: var(--ink-2);
-  font-family: var(--hand);
-  font-size: 16px;
-  line-height: 1;
+  font: 600 12px / 1 var(--sys);
   cursor: default;
 }
-.hsz {
-  font-size: 13px;
-}
-.hwt:hover,
 .hsz:hover {
   color: var(--ink);
 }
-.hwt.on,
 .hsz.on {
   color: var(--ink);
   background: var(--hlrow);
 }
-/* Free Text：直接写在白板上的字，纯文字、没有框。级别取 Text 的样式（每个主题自己的字体、粗细、字距）：H1、H2 是 .st-title，
-   H3 是 .st-heading，正文（没有级别）是 .st-body；字号是卡上的 --tfs（拖右下角缩放，选一级回到那一级的预设）；宽度跟着字，
-   只在打的换行处换行 */
-.card.text.freetext {
-  width: max-content;
-}
-:root .card.text.freetext .tx.ft {
-  font-size: var(--tfs, 40px);
-  white-space: pre;
-  min-width: 1ch;
-}
-/* Bold (its toolbar's B): over every theme's own weight for the level */
-:root .card.text.freetext .tx.ft.ftb {
-  font-weight: 700;
-}
-/* the newspaper's titles are 700 already: bold goes one step further */
-:root.look-newspaper .card.text.freetext .tx.ft.ftb.st-title {
-  font-weight: 900;
-}
-/* the level buttons (Aa, H1–H3) and B: in the board's own type, not the Mark's handwriting */
-.ftbar .hsz {
-  font: 600 12px / 1 var(--sys);
-}
-.ftbar .ftbold {
-  font-weight: 800;
-}
-.hdot {
+/* 选中的那个点的环伸出 4px、旁边的点的晕 2px：点和点之间留得比两者加起来宽（#116） */
+.tbar .bdot {
   width: 16px;
   height: 16px;
-  border-radius: 50%;
-  corner-shape: round;
-  padding: 0;
-  border: 0;
-  background: var(--hc);
-  box-shadow: 0 0 0 2px var(--glass);
-  cursor: default;
-}
-.hdot.on {
-  box-shadow:
-    0 0 0 2px var(--glass),
-    0 0 0 3.5px var(--ink);
-}
-.card.text.sel.solo:not(.editing) .ttb {
-  display: inline-flex;
+  margin: 0 2px;
 }
 /* Box：没有卡框的圆角框，有底色，字居中；选中时上方是底色点、四角改大小。带着 .text（主题给卡片加的框、阴影都不碰它），这里再把框画回来 */
 .card.text.box {
@@ -1789,63 +1737,14 @@ textarea {
   outline: 1.5px solid var(--accent);
   outline-offset: 3px;
 }
-.card.text.box .tx.bx {
+.card.text.box .tx.tb {
   text-align: center;
-  font: 500 13.5px / 1.45 var(--sys);
 }
-.card.text.box .tx.bx.md:not(.editing):empty::before {
-  content: none;
+.card.text.box .tx.tb :is(ul, ol, pre, table, blockquote) {
+  text-align: left;
 }
 .card.text.box > .cface > .eport {
   display: block;
-}
-.card.text.box .ttb {
-  left: 50%;
-  top: -56px;
-  translate: -50% 0;
-}
-.bxh {
-  position: absolute;
-  width: 9px;
-  height: 9px;
-  border-radius: 2.5px;
-  background: var(--surface);
-  box-shadow: 0 0 0 1.5px var(--accent);
-  display: none;
-  z-index: 5;
-}
-.card.box.sel.solo:not(.editing) .bxh {
-  display: block;
-}
-.bxh-nw {
-  left: -8px;
-  top: -8px;
-  cursor: nwse-resize;
-}
-.bxh-ne {
-  right: -8px;
-  top: -8px;
-  cursor: nesw-resize;
-}
-.bxh-sw {
-  left: -8px;
-  bottom: -8px;
-  cursor: nesw-resize;
-}
-.bxh-se {
-  right: -8px;
-  bottom: -8px;
-  cursor: nwse-resize;
-}
-/* The colour strips (Box fills, Mark colours): a swatch's selected ring reaches 4px out and a neighbour's halo 2px, so the gap is wider
-   than both and the padding holds the ring inside the strip. Specific enough to win over the themes' own .pill padding and gap
-   (soft-light, drafting and colorful set them, which let the ring spill over the neighbour and out of the strip) */
-.card .ttb.pill:is(.bdots, .hdots) {
-  gap: 8px;
-  padding: 8px 10px;
-}
-.card .ttb.pill.hdots {
-  top: -50px; /* the taller strip keeps its distance above the card */
 }
 .bdot {
   width: 18px;
@@ -6131,9 +6030,6 @@ mark.wdiff {
 .sbmap .l-text .bar.t {
   fill: color-mix(in srgb, var(--ink) 55%, transparent);
 }
-.sbmap .bar.mk {
-  fill: color-mix(in srgb, var(--hd-blue, var(--k-fn)) 70%, transparent);
-}
 .sbmap .k-code .bar,
 .sbmap .k-compare .bar {
   fill: color-mix(in srgb, var(--k-fn) 30%, transparent);
@@ -8435,8 +8331,8 @@ mark.wdiff {
   content: attr(data-n);
 }
 
-/* Zoomed-out summaries (#130; canvas/Summaries.tsx, state/summary.ts). The card level (Marks included), the cards that stay as
-   they are (sub-board frames, Free Text) and the summaries are three layers; the switch swaps only the card and summary
+/* Zoomed-out summaries (#130; canvas/Summaries.tsx, state/summary.ts). The card level, the cards that stay as
+   they are (sub-board frames, Text and Box) and the summaries are three layers; the switch swaps only the card and summary
    layers' own opacity, in one frame under the detent's mist (.cutmist). The board's one summary font size --S and padding --P
    come from its layout; --sum-iz (1 / zoom) keeps the ↻ mark 20 screen px */
 .lay {

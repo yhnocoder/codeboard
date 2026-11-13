@@ -2,17 +2,7 @@
 // 所以每个菜单一个 story；Overview 是一块摆着所有能开菜单的东西的白板，开着代码卡的菜单和它的 Add ▸
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { BoardCard, CompareCard, ImageCard, LinksCard, NoteCard, WebCard } from "@codeboard/core";
-import {
-  Stage,
-  scene,
-  noteCard,
-  codeCard,
-  markCard,
-  textCard,
-  boxCard,
-  type Globals,
-  type Scene,
-} from "./support/board";
+import { Stage, scene, noteCard, codeCard, textCard, boxCard, type Globals, type Scene } from "./support/board";
 import { settled, rightClick, rightClickLink, key, el, forceHover } from "./support/play";
 import { SHORT, ONE } from "./support/groups";
 import { cardMenu, menuItem, menuButton, menu } from "./support/ui";
@@ -60,9 +50,9 @@ function board(a: Args): Scene {
   caption("Text", 40, 290);
   put(textCard("text", "Block Manager"), { x: 40, y: 290, w: 140 });
   caption("Box", 200, 290);
-  put(boxCard("box", "Model Runner"), { x: 200, y: 300, w: 130, h: 56 });
-  caption("Mark", 60, 490);
-  put(markCard("mark", ONE, "orange"), { x: 60, y: 490, w: 200 });
+  put(boxCard("box", "Model Runner"), { x: 200, y: 300, w: 130 });
+  caption("Text (XL)", 60, 490);
+  put(textCard("big", ONE, { fs: 40 }), { x: 60, y: 490, w: 200 });
   caption("Message", 60, 630);
   put(msg, { x: 60, y: 630, w: 220 });
   caption("Code", 380, 70);
@@ -84,7 +74,7 @@ function board(a: Args): Scene {
     {
       id: "L2",
       from: { card: "text" },
-      to: { card: "mark" },
+      to: { card: "big" },
       label: "先排 prefill",
       at: 0.3,
       style: { dash: true, color: "orange" },
@@ -92,10 +82,10 @@ function board(a: Args): Scene {
   );
   board.sections.push(
     { id: "s1", title: "Scheduler", x: 20, y: 0, w: 940, h: 820, color: "sand" },
-    { id: "s2", title: "Mark 和 Message", parent: "s1", x: 40, y: 410, w: 300, h: 310, color: "blue" },
+    { id: "s2", title: "Text 和 Message", parent: "s1", x: 40, y: 410, w: 300, h: 310, color: "blue" },
   );
   for (const id of ["note", "text", "box", "code", "cmp"]) board.place[id].section = "s1";
-  for (const id of ["mark", "msg"]) board.place[id].section = "s2";
+  for (const id of ["big", "msg"]) board.place[id].section = "s2";
   return { board };
 }
 
@@ -203,8 +193,6 @@ export const NoteLocked: Story = {
 };
 export const Text: Story = { play: open(() => rightClick(".card[data-id=text]")) };
 export const Box: Story = { play: open(() => rightClick(".card[data-id=box]")) };
-// a Mark's colour, weight and size are on its toolbar: its menu is the tail alone
-export const Mark: Story = { play: open(() => rightClick(".card[data-id=mark]")) };
 export const Message: Story = { play: open(() => rightClick(".card[data-id=msg]")) };
 export const Code: Story = { play: open(() => cardMenu("code")) };
 export const CodeView: Story = {

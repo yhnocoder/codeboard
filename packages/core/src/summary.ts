@@ -8,6 +8,7 @@
 import {
   baseName,
   cardTitle,
+  isTextCard,
   type Board,
   type Card,
   type Place,
@@ -84,11 +85,9 @@ const parseKey = (key: string): { sec?: string; card?: string; own?: string } =>
         ? { own: key.slice(4) }
         : {};
 
-/** A card that is never summarized, alone or in its Section's summary: sub-board frames, Marks and Free Text */
-export const unsummarized = (c: Card) =>
-  c.kind === "board" || (c.kind === "note" && (c.look === "mark" || c.look === "freetext"));
-/** An unsummarized card that stays at the summary level as it is (sub-board frames, Free Text at its own size); Marks hide */
-export const keepsLook = (c: Card) => c.kind === "board" || (c.kind === "note" && c.look === "freetext");
+/** A card that is never summarized, alone or in its Section's summary, and stays at the summary level as it is: sub-board frames,
+ *  Text and Box (at their own size) */
+export const unsummarized = (c: Card) => c.kind === "board" || isTextCard(c);
 
 /**
  * A card with no title of its own to show at the summary level: a Note with no heading, an image with no alt text. Its first
@@ -181,8 +180,8 @@ export type SumInput = { items: SumSource[]; keep: Rect[] };
 
 /**
  * What a board summarizes (sectionPlan): its innermost open Sections (with the cards of their collapsed ones), a header for each
- * Section with child Sections and one item for its direct cards, and the cards in no Section, except sub-board frames, Marks and
- * Free Text (unsummarized; the frames and Free Text stay, as obstacles: keep). rect = a placed card's box, frames = the
+ * Section with child Sections and one item for its direct cards, and the cards in no Section, except sub-board frames, Text and Box
+ * (unsummarized; they stay, as obstacles: keep). rect = a placed card's box, frames = the
  * Sections' frames
  */
 export function summarySources(b: Board, rect: (id: string) => Rect | undefined, frames: Map<string, Rect>): SumInput {
@@ -237,7 +236,7 @@ export function summarySources(b: Board, rect: (id: string) => Rect | undefined,
       r = p && rect(c.id);
     if (!r) continue;
     if (unsummarized(c)) {
-      if (keepsLook(c)) keep.push(r);
+      keep.push(r);
       continue;
     }
     if (homeOf(b, p)) continue;

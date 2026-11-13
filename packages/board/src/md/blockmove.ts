@@ -124,7 +124,7 @@ const cardEl = (id: string) => document.querySelector<HTMLElement>(cardSel(id));
 const bodyOf = (ce: HTMLElement) => ce.querySelector<HTMLElement>(":scope > .cface > .md");
 const isNote = (id: string) => {
   const c = cardById(id)?.card;
-  return c?.kind === "note" && c.look !== "freetext" && !placeOf(id).locked;
+  return c?.kind === "note" && !placeOf(id).locked;
 };
 const edBlocks = (id: string): MdBlocks | null => editorOf(id)?.blocks() ?? null;
 

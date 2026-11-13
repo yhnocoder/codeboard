@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { CARD_STATE_CLASSES } from "../../src/cardsel";
 
 /** Classes from what the card is, which a copy keeps */
-const LOOK = ["locked", "autoh", "nobg", "lost", "gen"];
+const LOOK = ["locked", "autoh", "nobg", "lost", "gen", "wrapw"];
 
 const card = readFileSync(new URL("../../src/cards/Card.tsx", import.meta.url), "utf8");
 

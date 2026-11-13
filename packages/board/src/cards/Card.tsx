@@ -2,8 +2,6 @@ import { send } from "../host";
 import {
   createMemo,
   Show,
-  Switch,
-  Match,
   onCleanup,
   createEffect,
   createRenderEffect,
@@ -15,10 +13,8 @@ import {
 import { Dynamic } from "solid-js/web";
 import {
   cardTitle,
-  frameless,
-  scalesText,
+  isTextCard,
   textSizeOf,
-  HAND_WEIGHT_CSS,
   versionLabel,
   mixedVersions,
   activeOf,
@@ -158,31 +154,25 @@ export function CardView(p: { card: Card }) {
   const pop = () => popIn()[c().id];
   const grow = () => sizeIn()[c().id]; // Fit Content 后从旧的大小变过去（actions/common.ts growFrom）
   const pl = () => placeOf(c().id);
-  const textFits = () => c().kind === "note" && (c() as NoteCard).look === "text";
   const style = (): JSX.CSSProperties => {
     const s: JSX.CSSProperties = { left: `${pl().x}px`, top: `${pl().y}px`, width: `${pl().w}px` };
     // 代码卡的高度给内容区（.carea），卡头 / 底栏按主题撑开。
-    // Note / Text：没存高度 = 跟着内容（删了字变矮、写多了变高）；存了高度 = 用户拖出来的固定高度，
-    // 内容更高时在正文里滚（styles.css，边上渐隐），更矮时下面留空，直到 Fit Content 回到跟着内容
-    // Box：存的高度是框的大小，字写多了框跟着长高
+    // Note：没存高度 = 跟着内容（删了字变矮、写多了变高）；存了高度 = 用户拖出来的固定高度，
+    // 内容更高时在正文里滚（styles.css，边上渐隐），更矮时下面留空，直到 Fit Content 回到跟着内容。Text 和 Box 一直跟着内容
     const k = c();
-    if (pl().h && k.kind !== "code") s[k.kind === "note" && k.look === "box" ? "min-height" : "height"] = `${pl().h}px`;
+    if (pl().h && k.kind !== "code") s.height = `${pl().h}px`;
     const g = grow();
     if (g) {
       s.width = `${g.w}px`;
       if (c().kind !== "code") s.height = `${g.h}px`;
     }
-    // Mark 的颜色、Box 的底色：写成变量，不进 class（class 一变，classList 管的 sel 等会被冲掉）
-    if (k.kind === "note" && k.look === "mark") {
-      (s as Record<string, string>)["--hc"] = `var(--hd-${k.hand ?? "blue"})`;
-      if (k.weight) (s as Record<string, string>)["--hw"] = String(HAND_WEIGHT_CSS[k.weight]);
-    }
-    // Mark / Free Text 的字号（拖角缩放）：真的字号，不是 transform，放大了字照样清楚。Free Text 的宽度跟着字（styles.css）
-    if (scalesText(k)) {
+    // Text / Box 的字号（拖角缩放）：真的字号，不是 transform，放大了字照样清楚。宽度跟着字，拖过左右边以后按存的宽度折行
+    // （styles.css .wrapw）。Box 的底色写成变量，不进 class（class 一变，classList 管的 sel 等会被冲掉）
+    if (isTextCard(k)) {
       (s as Record<string, string>)["--tfs"] = `${textSizeOf(k)}px`;
-      if (k.look === "freetext" && !g) delete s.width;
+      if (!k.wrap && !g) delete s.width;
+      if (k.look === "box") (s as Record<string, string>)["--fc"] = `var(--bf-${boxFill(k)})`;
     }
-    if (k.kind === "note" && k.look === "box") (s as Record<string, string>)["--fc"] = `var(--bf-${boxFill(k)})`;
     // 斜贴：绕卡的中心转（箭头的端点按同一个中心转，Links.tsx）
     const a = tiltOf(k.id);
     if (a) Object.assign(s, { rotate: `${a}deg`, "transform-origin": "50% 50%", "--aim-t": "0px, 0px" });
@@ -297,6 +287,7 @@ export function CardView(p: { card: Card }) {
           [kindClass()]: true,
           sel: selected(),
           solo: solo(),
+          wrapw: isTextCard(c()) && !!(c() as NoteCard).wrap,
           lift: lift(),
           landing: land(),
           carry: carry(),
@@ -354,7 +345,7 @@ export function CardView(p: { card: Card }) {
               />
             )}
           </For>
-          <Show when={frameless(c())}>
+          <Show when={isTextCard(c())}>
             <WritingToolbar card={c() as NoteCard} />
           </Show>
           <Show when={aiJobOn(c().id)} keyed>
@@ -362,7 +353,7 @@ export function CardView(p: { card: Card }) {
           </Show>
           <Show when={!pl().locked}>
             <Show
-              when={frameless(c())}
+              when={isTextCard(c())}
               fallback={
                 <>
                   <div
@@ -392,63 +383,25 @@ export function CardView(p: { card: Card }) {
                 </>
               }
             >
-              {/* Text、Mark：左右两边只改宽度（字跟着折行），Text 的双击是 Fit Content（Mark 的宽度跟着字号缩放走）。Mark、Free Text：右下角一个小方块整体缩放，字号和宽度一起变 */}
-              <Show when={(c() as NoteCard).look === "text" || (c() as NoteCard).look === "mark"}>
-                <span
-                  class="hw l"
-                  data-nodrag
-                  data-export="strip"
-                  data-tip={textFits() ? "Drag to resize · Double-click to fit content" : "Drag to resize"}
-                  onPointerDown={(e) => resizeDown(e, c().id, { left: true })}
-                  onDblClick={(e) => {
-                    e.stopPropagation();
-                    if (textFits()) act.fitContent([c().id]);
-                  }}
-                />
-                <span
-                  class="hw r"
-                  data-nodrag
-                  data-export="strip"
-                  data-tip={textFits() ? "Drag to resize · Double-click to fit content" : "Drag to resize"}
-                  onPointerDown={(e) => resizeDown(e, c().id, { right: true })}
-                  onDblClick={(e) => {
-                    e.stopPropagation();
-                    if (textFits()) act.fitContent([c().id]);
-                  }}
-                />
-              </Show>
-              <Switch>
-                <Match when={scalesText(c())}>
+              {/* Text、Box：左右两边定折行的宽度（双击没有作用），右下角的小方块整体缩放，字号和宽度一起变 */}
+              <For each={["l", "r"] as const}>
+                {(side) => (
                   <span
-                    class="mkgrip"
+                    class={`hw ${side}`}
                     data-nodrag
                     data-export="strip"
-                    data-tip="Drag to resize the text"
-                    onPointerDown={(e) => scaleDown(e, c().id)}
+                    data-tip="Drag to set the width it wraps at"
+                    onPointerDown={(e) => resizeDown(e, c().id, side === "l" ? { left: true } : { right: true })}
                   />
-                </Match>
-                <Match when={(c() as NoteCard).look === "box"}>
-                  <For
-                    each={
-                      [
-                        ["nw", { top: true, left: true }],
-                        ["ne", { top: true, right: true }],
-                        ["sw", { bottom: true, left: true }],
-                        ["se", { bottom: true, right: true }],
-                      ] as const
-                    }
-                  >
-                    {([k, edges]) => (
-                      <span
-                        class={`bxh bxh-${k}`}
-                        data-nodrag
-                        data-export="strip"
-                        onPointerDown={(e) => resizeDown(e, c().id, edges)}
-                      />
-                    )}
-                  </For>
-                </Match>
-              </Switch>
+                )}
+              </For>
+              <span
+                class="mkgrip"
+                data-nodrag
+                data-export="strip"
+                data-tip="Drag to resize the text"
+                onPointerDown={(e) => scaleDown(e, c().id)}
+              />
             </Show>
           </Show>
         </div>

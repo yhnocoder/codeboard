@@ -2,7 +2,6 @@
 // a variable missing on the first paint, an export without it): each pair is kept equal here, reading the stylesheet as text
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { emptyBoard, turnNoteInto, type Board } from "@codeboard/core";
 import { CODE_ROW_H, TAB_SIZE } from "../../src/state/measure";
 import { PAPER_M, PAPER_SCALE, PAPER_SLICE } from "../../src/state/ink";
 
@@ -59,27 +58,6 @@ describe("Ink Wash card paper", () => {
   it("slices the sheet at PAPER_SLICE, in the PNG's pixels (PAPER_SCALE times) and on screen", () => {
     const m = /var\(--deckle\)\s+([\d.]+)\s+fill\s*\/\s*([\d.]+)px\b/.exec(paper["border-image"]);
     expect(m && [+m[1], +m[2]]).toEqual([PAPER_SLICE * PAPER_SCALE, PAPER_SLICE]);
-  });
-});
-
-describe("Note ↔ Text keeps the words in place", () => {
-  /** Where an untitled Note's place moves when it turns into a Text (core's turnNoteInto) */
-  function moved(): { dx: number; dy: number } {
-    const b: Board = {
-      ...emptyBoard("b", "B"),
-      cards: [{ id: "n", kind: "note", md: "words", look: "note" }],
-      place: { n: { x: 100, y: 100, w: 280 } },
-    };
-    turnNoteInto(b, "n", "text");
-    return { dx: b.place.n.x - 100, dy: b.place.n.y - 100 };
-  }
-
-  it("moves by the Note's padding less the Text's, and under the Note's header", () => {
-    const note = rule(styles, ".card.note .nbody").padding.split(/\s+/).map(px),
-      text = rule(styles, ".card.text").padding.split(/\s+/).map(px),
-      head = px(rule(styles, ".chead").height);
-    // padding: top, right / left (Note: top x bottom; Text: y x)
-    expect(moved()).toEqual({ dx: note[1] - text[1], dy: head + note[0] - text[0] });
   });
 });
 
