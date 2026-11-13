@@ -63,9 +63,9 @@ import Testing
     }
   }
 
-  @Test func theFontsTheLooksUseAreInTheNotePageBuild() throws {
-    let assets = NoteRenderer.bundledPage.appending(path: "assets").path(percentEncoded: false)
-    try #require(FileManager.default.fileExists(atPath: assets), "build the Note page first: node web/build.mjs")
+  @Test func theFontsTheLooksUseAreInTheAssetsBuild() throws {
+    let assets = NativeNotes.assets.appending(path: "assets").path(percentEncoded: false)
+    try #require(FileManager.default.fileExists(atPath: assets), "build the assets first: node web/build.mjs")
     #expect(BoardFonts.complete)
     // the board's own faces, not a system fallback
     let names = Theme.all.map { CTFontCopyPostScriptName($0.code.ct) as String }

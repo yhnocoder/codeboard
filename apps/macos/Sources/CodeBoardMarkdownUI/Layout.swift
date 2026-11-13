@@ -43,6 +43,31 @@ public final class MarkdownLayout: @unchecked Sendable {
   }
 }
 
+extension MarkdownLayout {
+  /// Text as written, not read as Markdown (a Free Text): in the body style, lines broken only where the text breaks them
+  /// (white-space: pre), as wide as its widest line
+  public static func plain(_ text: String, theme: MarkdownTheme) -> MarkdownLayout {
+    var b = LayoutBuilder(theme: theme, resources: PlainResources(), info: nil, width: 100_000)
+    let style = b.bodyStyle
+    var ib = InlineBuilder(theme: theme, resources: PlainResources(), imageCounts: [:], bodyWidth: 100_000)
+    let d = ib.build(MDText(string: text, offsets: Array(0...text.utf16.count)), [], style)
+    let tb = b.setText(
+      d, x: 0, width: 100_000, y: 0, style: style, lineHeight: CGFloat(theme.metrics.lineHeight), wrap: false)
+    b.items.append(.text(tb))
+    let w = tb.lines.map { CGFloat(CTLineGetTypographicBounds($0.line, nil, nil, nil)) }.max() ?? 0
+    return MarkdownLayout(
+      size: CGSize(width: ceil(w * 100) / 100, height: ceil(tb.frame.height * 100) / 100), blockFrames: [], images: [],
+      items: b.items, theme: theme, mathTextFont: nil)
+  }
+}
+
+private struct PlainResources: MarkdownResources {
+  func imageSize(_ src: String) -> CGSize? { nil }
+  func ref(label: String, target: String?) -> MarkdownRefHit? { nil }
+  func highlight(lines: [String], language: String) -> [[MarkdownToken]]? { nil }
+  var mathPreamble: String { "" }
+}
+
 /// Where a point lands
 public enum MarkdownHit: Sendable, Equatable {
   case text(offset: Int)
@@ -164,7 +189,9 @@ struct LayoutBuilder {
   }
 
   var bodyStyle: InlineStyle {
-    InlineStyle(families: theme.fonts.body, size: m.em(1), weight: 400, color: theme.colors.ink)
+    InlineStyle(
+      families: theme.fonts.body, size: m.em(1), weight: m.bodyWeight, color: theme.colors.ink,
+      kern: CGFloat(m.tracking))
   }
 
   mutating func top(_ blocks: [MDBlock]) -> [CGRect] {
@@ -212,8 +239,15 @@ struct LayoutBuilder {
         let (_, mb) = margins(p)
         let pk = gapKind(p)
         let k = gapKind(b)
-        let paragraphGap = (pk == .p && k != .none) || (pk == .block && k == .p) ? m.em(m.paragraphGap) : 0
-        y += max(mb, mt, paragraphGap)
+        if pk == .p && k == .block {
+          // .md-gap on a block after a paragraph: its top margin is the gap, half an em of its own text (a code
+          // block's is the code's), in place of its own margin
+          let em = { if case .code = b.kind { CGFloat(m.codeSize) } else { m.em(1) } }()
+          y += max(mb, em * CGFloat(m.paragraphGap))
+        } else {
+          let paragraphGap = (pk == .p && k == .p) || (pk == .block && k == .p) ? m.em(m.paragraphGap) : 0
+          y += max(mb, mt, paragraphGap)
+        }
       }
       let top = y
       y = block(b, x: x, width: width, y: y, style: style)
@@ -238,7 +272,8 @@ struct LayoutBuilder {
         && t.string.trimmingCharacters(in: .whitespaces).utf16.count == b.inlines[0].range.count
       let centred = alone || images.contains { $0.width != nil }
       return paragraph(
-        t, b.inlines, x: x, width: width, y: y, style: style, lineHeight: CGFloat(m.lineHeight), center: centred)
+        t, b.inlines, x: x, width: width, y: y, style: style, lineHeight: CGFloat(m.lineHeight),
+        center: centred || m.center)
     case .heading(let level):
       guard let t = b.inlineText else { return y }
       let l = min(5, max(0, level - 1))
@@ -246,7 +281,11 @@ struct LayoutBuilder {
       s.families = theme.fonts.headings[min(l, theme.fonts.headings.count - 1)]
       s.size = m.em(m.headingSizes[l])
       s.weight = m.headingWeight
-      return paragraph(t, b.inlines, x: x, width: width, y: y, style: s, lineHeight: CGFloat(m.headingLineHeights[l]))
+      if l == 0 { s.kern = s.size * CGFloat(m.h1Tracking) }
+      if let c = theme.colors.heading { s.color = c }
+      return paragraph(
+        t, b.inlines, x: x, width: width, y: y, style: s, lineHeight: CGFloat(m.headingLineHeights[l]), center: m.center
+      )
     case .quote(let children):
       var s = style
       s.color = theme.colors.ink2
@@ -508,6 +547,10 @@ struct LayoutBuilder {
     let tokens = language.flatMap { resources.highlight(lines: lines, language: $0) }
     var style = InlineStyle(
       families: theme.fonts.mono, size: CGFloat(m.codeSize), weight: 400, color: theme.code.plain, mono: true)
+    let italic = FontBook.font(theme.fonts.mono, size: CGFloat(m.codeSize), weight: 400, italic: true)
+    let keyword = theme.code.keywordWeight.map {
+      FontBook.font(theme.fonts.mono, size: CGFloat(m.codeSize), weight: $0)
+    }
     let lh = CGFloat(m.codeLineHeight)
     var yy = y + pv
     var inner: [Item] = []
@@ -525,6 +568,16 @@ struct LayoutBuilder {
         attr.addAttribute(
           NSAttributedString.Key(kCTForegroundColorAttributeName as String), value: c.cg,
           range: NSRange(location: t.columns.lowerBound, length: t.columns.count))
+        if let keyword, t.kind == .keyword || t.kind == .operator {
+          attr.addAttribute(
+            NSAttributedString.Key(kCTFontAttributeName as String), value: keyword,
+            range: NSRange(location: t.columns.lowerBound, length: t.columns.count))
+        }
+        if t.kind == .comment && theme.code.italicComments {
+          attr.addAttribute(
+            NSAttributedString.Key(kCTFontAttributeName as String), value: italic,
+            range: NSRange(location: t.columns.lowerBound, length: t.columns.count))
+        }
       }
       var d = DisplayText()
       d.string = attr
@@ -536,7 +589,8 @@ struct LayoutBuilder {
     let h = yy + pv - y
     let box = CGRect(x: x, y: y, width: width, height: h)
     items.append(.fill(box, radius: CGFloat(m.codeRadius), theme.colors.codeBlock))
-    items.append(.clip(box.insetBy(dx: ph / 2, dy: 0), inner))
+    // a long line is cut at the block's edge (overflow: hidden on the padding box)
+    items.append(.clip(box, inner))
     return y + h
   }
 

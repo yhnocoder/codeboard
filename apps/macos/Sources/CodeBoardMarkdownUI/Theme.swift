@@ -47,10 +47,13 @@ public struct MarkdownTheme: Sendable, Hashable {
     public var warn: MDColor
     /// --k-fn: links and references
     public var link: MDColor
+    /// headings, when not the text's own ink (a Mark writes in its colour, its headings stay in the board's ink)
+    public var heading: MDColor?
     public init(
       ink: MDColor, ink2: MDColor, ink3: MDColor, surface: MDColor, fill: MDColor, codeBlock: MDColor, hair: MDColor,
-      line: MDColor, accent: MDColor, accentInk: MDColor, warn: MDColor, link: MDColor
+      line: MDColor, accent: MDColor, accentInk: MDColor, warn: MDColor, link: MDColor, heading: MDColor? = nil
     ) {
+      self.heading = heading
       self.ink = ink
       self.ink2 = ink2
       self.ink3 = ink3
@@ -70,9 +73,18 @@ public struct MarkdownTheme: Sendable, Hashable {
   public struct CodeColors: Sendable, Hashable {
     public var plain: MDColor
     public var kinds: [MarkdownTokenKind: MDColor]
-    public init(plain: MDColor, kinds: [MarkdownTokenKind: MDColor] = [:]) {
+    /// comments in the code font's italic
+    public var italicComments: Bool
+    /// keywords and operators at this weight (--kw-w); nil: the code's own
+    public var keywordWeight: Double?
+    public init(
+      plain: MDColor, kinds: [MarkdownTokenKind: MDColor] = [:], italicComments: Bool = false,
+      keywordWeight: Double? = nil
+    ) {
       self.plain = plain
       self.kinds = kinds
+      self.italicComments = italicComments
+      self.keywordWeight = keywordWeight
     }
   }
 
@@ -142,12 +154,20 @@ public struct MarkdownTheme: Sendable, Hashable {
     public var bodySize: Double = 13.5
     /// line-height of body text, as a multiple of its size
     public var lineHeight: Double = 1.6
+    /// font-weight of body text
+    public var bodyWeight: Double = 400
+    /// letter-spacing of all text, px (CSS inherits it as a length: headings get the body's, h1 sets its own)
+    public var tracking: Double = 0
+    /// h1's letter-spacing, em of its size
+    public var h1Tracking: Double = -0.01
+    /// text-align: center (a Box): paragraphs and headings centred, each line on its own
+    public var center = false
     /// --md-h1 … --md-h6, em
     public var headingSizes: [Double] = [1.8, 1.35, 1.1, 1, 1, 1]
     /// line-height of each heading level
     public var headingLineHeights: [Double] = [1.25, 1.3, 1.4, 1.4, 1.4, 1.4]
     /// margin-top and margin-bottom of each heading level, px
-    public var headingMargins: [[Double]] = [[0, 6], [4, 4], [2, 4], [2, 2], [2, 2], [2, 2]]
+    public var headingMargins: [[Double]] = [[4, 6], [4, 4], [2, 4], [2, 2], [2, 2], [2, 2]]
     /// font-weight of headings and of strong
     public var headingWeight: Double = 600
     public var strongWeight: Double = 650

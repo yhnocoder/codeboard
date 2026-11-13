@@ -13,3 +13,15 @@ $$
 $$
 
 Inline big $$\int_0^1 f(t)\,dt$$ in a line, and $\mathsf{KV}$, $\mathrm{d}x$, $\texttt{block\_size}$, $a \mathbin{\oplus} b$.
+
+$$
+\begin{equation} \operatorname{attn}(Q, K, V) = \operatorname{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right) V \tag{2} \end{equation}
+$$
+
+$$
+\begin{align*} x &= \bigl( a + b \bigr)^2 \\ &\le \sum_{i} \alpha_i \beta_i \end{align*}
+$$
+
+$$
+\left[ \begin{array}{cc|c} 1 & 2 & 3 \\ \gamma & \delta & \text{中文} \end{array} \right]
+$$

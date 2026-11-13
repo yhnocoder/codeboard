@@ -6,8 +6,9 @@ import IOSurface
 
 /// What one item's bitmap shows. Drawn off the main thread at any scale: a producer gets the item's size, a scale and
 /// the theme and draws into a context whose origin is the item's top left; it may draw `bleed(theme)` past each side
-/// (paper, rings), and the bitmap has room for that. The Note renderer is the other producer: a Note's content and an SVG
-/// picture are its pictures, drawn over the paper drawn here (`picture`, `CanvasView.compose`).
+/// (paper, rings), and the bitmap has room for that. A Note's content is drawn here too (CodeBoardNotes), its images from
+/// the same decode cache as image cards; an SVG (an image card's or a Note's) is rasterized by `SVGRasterizer` first and
+/// handed in.
 enum Drawing: Sendable {
   case code(Code)
   case note(Note)
@@ -36,12 +37,8 @@ enum Drawing: Sendable {
     /// nil: untitled, shown as "Note"
     var title: String?
     var content: CodeBoardModel.Note
-    /// Where its images are: the board package or the vault's shared folder
-    var folder: URL
-    /// The stored height, as the renderer is asked for it; nil: as tall as its content
-    var height: Double?
-    /// What its [[refs]] point at now
-    var refs: [NoteRef]
+    /// Its content laid out for the card
+    var body: NoteBody
 
     var style: NoteStyle { content.style }
   }
@@ -54,7 +51,7 @@ enum Drawing: Sendable {
     var frame: Int
     var framed: Bool
 
-    /// Drawn by the Note renderer (WebKit), as the web board's <img> draws it
+    /// Rasterized by `SVGRasterizer` (WebKit), as the web board's <img> draws it
     var svg: Bool { url?.pathExtension.lowercased() == "svg" }
   }
 
@@ -67,10 +64,10 @@ enum Drawing: Sendable {
     var kind: Kind
   }
 
-  /// Its picture comes from the Note renderer: until then it shows its paper
+  /// It needs an SVG rasterized before it can be drawn whole: until then it shows its paper (a Note: without that image)
   var byRenderer: Bool {
     switch self {
-    case .note: true
+    case .note(let n): n.body.images.contains(where: \.svg)
     case .image(let p): p.svg
     case .code, .label: false
     }
@@ -97,10 +94,12 @@ enum Drawing: Sendable {
     return 0
   }
 
-  /// Draws the item in board units, y-down from its top-left, with the Note renderer's `picture` at `scale` when it is
-  /// drawn by it (without one: its paper). Returns how many pictures had to be decoded
+  /// Draws the item in board units, y-down from its top-left, at `scale`: an SVG image card with its rasterized `picture`
+  /// (without one: its paper), a Note with its SVG images from `svgs` (by file; one not there leaves its place empty).
+  /// Returns how many pictures had to be decoded
   func draw(
-    in ctx: CGContext, size: CGSize, scale: CGFloat, theme t: Theme, images: DecodeCache, picture: IOSurface? = nil
+    in ctx: CGContext, size: CGSize, scale: CGFloat, theme t: Theme, images: DecodeCache, picture: IOSurface? = nil,
+    svgs: [URL: CGImage] = [:]
   ) -> Int {
     let r = CGRect(origin: .zero, size: size)
     ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
@@ -142,10 +141,13 @@ enum Drawing: Sendable {
       case .text, .mark, .freeText:
         break
       }
-      // transparent around the content, pixel for pixel from the top left
-      if let px = picture {
-        Raster.draw(
-          px, in: CGRect(x: 0, y: 0, width: CGFloat(px.width) / scale, height: CGFloat(px.height) / scale), of: ctx)
+      n.body.draw(in: ctx, size: size, scale: scale) { img, width in
+        if img.svg { return svgs[img.url] }
+        // a gesture started: no decode
+        guard !Task.isCancelled, let fileSize = DecodeCache.pixelSize(img.url) else { return nil }
+        let got = images.image(img.url, frame: img.frame, width: width, fileSize: fileSize)
+        if got.decoded { decodes += 1 }
+        return got.image
       }
     case .image(let p):
       if p.framed { Drawing.paper(ctx, r, t, id: p.id, rule: nil) }

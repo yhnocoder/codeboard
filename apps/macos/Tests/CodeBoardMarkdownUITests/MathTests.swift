@@ -4,7 +4,7 @@ import Testing
 
 @testable import CodeBoardMarkdownUI
 
-/// the formula engine over the Note page build's engines.js (node apps/macos/web/build.mjs makes it)
+/// the formula engine over the assets build's engines.js (node apps/macos/web/build.mjs makes it)
 let engines: JSEngines? = {
   let url = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../web/dist/engines.js")
     .standardized

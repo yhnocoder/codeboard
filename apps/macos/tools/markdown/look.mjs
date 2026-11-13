@@ -1,61 +1,83 @@
-// The Markdown look comparison: each Markdown file drawn by the Note page (the web editor, headless Chromium) and by the
-// native renderer (swift run MarkdownLook), side by side with their difference, per theme and appearance. Output in
-// apps/macos/.build-look/markdown/<look>[-dark]/<name>.png (web | native | difference). Build the page first
-// (npm run build -w @yhnocoder/markdown && node apps/macos/web/build.mjs), then:
-//   node apps/macos/tools/markdown/look.mjs [files.md…]   (default: tools/markdown/look/*.md)
+// The Note look comparison: each card drawn by the web board (the reference page, page/: the web editor in headless
+// Chromium) and by the app's own Note path (swift run MarkdownLook: CodeBoardNotes over CodeBoardMarkdownUI), side by
+// side with their difference, per theme and appearance. The cards: every look/*.md as a Note 360 wide, and the styled
+// cards of look/cards.json (Text, Box, Mark, Free Text); [[refs]] resolve as look/refs.json says; code is coloured by
+// the app's highlighter on both sides. Output in apps/macos/.build-look/markdown/<look>[-dark]/<name>.png (web | native
+// | difference). Build the Markdown package first (npm run build -w @yhnocoder/markdown; the reference page is built
+// here), then:
+//   node apps/macos/tools/markdown/look.mjs [names…]   (default: all)
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import sharp from "sharp";
 import { launch } from "../../../../tools/test/chromium.mjs";
+import { buildPage } from "./page/build.mjs";
 
 const here = import.meta.dirname;
 const mac = path.resolve(here, "../..");
+const samples = path.join(here, "look");
 const out = path.join(mac, ".build-look/markdown");
-const WIDTH = 332; // a 360 px Note's body (its padding 14 px a side)
 const SCALE = 2;
-const files = process.argv.slice(2).length
-  ? process.argv.slice(2)
-  : fs.readdirSync(path.join(here, "look")).filter((f) => f.endsWith(".md")).map((f) => path.join(here, "look", f));
+const only = new Set(process.argv.slice(2));
+const refs = JSON.parse(fs.readFileSync(path.join(samples, "refs.json"), "utf8"));
+const jobs = [
+  ...fs
+    .readdirSync(samples)
+    .filter((f) => f.endsWith(".md"))
+    .map((f) => ({
+      name: path.basename(f, ".md"),
+      text: fs.readFileSync(path.join(samples, f), "utf8"),
+      style: { note: {} },
+      width: 360,
+    })),
+  ...JSON.parse(fs.readFileSync(path.join(samples, "cards.json"), "utf8")),
+]
+  .filter((j) => !only.size || only.has(j.name))
+  .map((j) => ({ height: null, ...j, folder: samples, refs }));
 const looks = ["warm-ink", "ink-wash"].flatMap((look) => [false, true].map((dark) => ({ look, dark })));
 
 execFileSync("swift", ["build", "-c", "release", "--product", "MarkdownLook"], { cwd: mac, stdio: "inherit" });
 const bin = path.join(mac, ".build/release/MarkdownLook");
-
+const pageHtml = await buildPage();
 const browser = await launch();
+fs.mkdirSync(out, { recursive: true });
+fs.writeFileSync(path.join(out, "jobs.json"), JSON.stringify(jobs));
+/** the web board's ref hits: a found one's seal colour is the board's variable */
+const webRefs = refs.map((r) => ({
+  ...r,
+  hit: r.hit.broken
+    ? r.hit
+    : { id: "", title: r.hit.title, ...(r.hit.seal && { seal: { ...r.hit.seal, color: `var(--seal-${r.hit.seal.color})` } }) },
+}));
 for (const { look, dark } of looks) {
   const dir = path.join(out, `${look}${dark ? "-dark" : ""}`);
   fs.mkdirSync(path.join(dir, "web"), { recursive: true });
-  // native
-  execFileSync(bin, [path.join(dir, "native"), String(WIDTH), look, dark ? "1" : "0", String(SCALE), ...files], {
+  execFileSync(bin, [path.join(out, "jobs.json"), path.join(dir, "native"), look, dark ? "1" : "0", String(SCALE)], {
     stdio: "inherit",
   });
-  // web: one page per file, the Note's content only (its paper is the canvas's)
-  for (const f of files) {
-    const name = path.basename(f, ".md");
-    const page = await browser.newPage({ viewport: { width: 800, height: 2000 }, deviceScaleFactor: SCALE });
-    await page.goto(pathToFileURL(path.join(mac, "web/dist/page.html")).href);
+  const tokens = JSON.parse(fs.readFileSync(path.join(dir, "native", "tokens.json"), "utf8"));
+  for (const job of jobs) {
+    const page = await browser.newPage({ viewport: { width: 1200, height: 3000 }, deviceScaleFactor: SCALE });
+    await page.goto(pathToFileURL(pageHtml).href);
     await page.waitForFunction(() => window.note);
-    const text = fs.readFileSync(f, "utf8");
-    // the page serves addresses under images/ from this folder (Markdown.setAssetBase("images", …))
-    const images = pathToFileURL(path.join(path.dirname(f), "images")).href;
-    await page.evaluate(
-      ([text, look, dark, images]) =>
-        window.note.mount([
-          { id: "n", note: { text, layout: null, style: { note: {} }, width: 360, height: null, look, dark, refs: [] }, images },
-        ]),
-      [text, look, dark, images],
-    );
+    await page.evaluate((t) => {
+      window.noteTokens = t;
+    }, tokens);
+    const images = pathToFileURL(path.join(samples, "images")).href;
+    const note = { text: job.text, layout: null, style: job.style, width: job.width, height: job.height, look, dark, refs: webRefs };
+    await page.evaluate(([note, images]) => window.note.mount([{ id: "n", note, images }]), [note, images]);
     await page.evaluate(() => window.note.show("n", 1));
-    const el = await page.$(".md-pm");
+    // code colours come in after the first paint
+    await page.waitForTimeout(300);
     const bg = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--surface"));
     await page.evaluate((bg) => {
       document.body.style.background = bg;
     }, bg);
-    await el.screenshot({ path: path.join(dir, "web", `${name}.png`) });
+    const card = await page.$("#root > .slot.shown .card");
+    await card.screenshot({ path: path.join(dir, "web", `${job.name}.png`) });
     await page.close();
-    await sheet(path.join(dir, "web", `${name}.png`), path.join(dir, "native", `${name}.png`), path.join(dir, `${name}.png`));
+    await sheet(path.join(dir, "web", `${job.name}.png`), path.join(dir, "native", `${job.name}.png`), path.join(dir, `${job.name}.png`));
   }
 }
 await browser.close();

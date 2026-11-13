@@ -2,7 +2,7 @@ import CoreGraphics
 import CoreText
 import Foundation
 
-/// A [[reference]] as the Note page draws it (markdown.css .md-ref): an inline block 1.32em tall with a line along its
+/// A [[reference]] as the web board draws it (markdown.css .md-ref): an inline block 1.32em tall with a line along its
 /// bottom; before the title an arrow, or the target's seal, or ⚠ when its place is gone; after it a badge
 final class RefBox: @unchecked Sendable {
   enum Mark {
@@ -16,6 +16,8 @@ final class RefBox: @unchecked Sendable {
   let color: MDColor
   let lineColor: MDColor?
   let strike: MDColor?
+  /// the badge struck through (the board it names is gone: .md-ref.gone > .bd)
+  let badgeStruck: Bool
   let fontSize: CGFloat
   let width: CGFloat
   let ascent: CGFloat
@@ -74,6 +76,7 @@ final class RefBox: @unchecked Sendable {
     self.color = color
     lineColor = line
     self.strike = strike
+    if case .broken(true, _, _) = hit { badgeStruck = true } else { badgeStruck = false }
     self.mark = mark
     let font = FontBook.font(style.families, size: size, weight: style.weight, italic: style.italic)
     let attrs: [NSAttributedString.Key: Any] = [
@@ -175,7 +178,18 @@ final class RefBox: @unchecked Sendable {
         ctx.strokePath()
       }
     }
-    if let b = badge { line(b, CGPoint(x: o.x + badgeX, y: o.y), ctx) }
+    if let b = badge {
+      line(b, CGPoint(x: o.x + badgeX, y: o.y), ctx)
+      if badgeStruck {
+        let w = CGFloat(CTLineGetTypographicBounds(b, nil, nil, nil))
+        ctx.setStrokeColor(color.alpha(0.62).cg)
+        ctx.setLineWidth(1)
+        let y = o.y - size * 0.74 * 0.28
+        ctx.move(to: CGPoint(x: o.x + badgeX, y: y))
+        ctx.addLine(to: CGPoint(x: o.x + badgeX + w, y: y))
+        ctx.strokePath()
+      }
+    }
   }
 
   private func line(_ l: CTLine, _ at: CGPoint, _ ctx: CGContext) {

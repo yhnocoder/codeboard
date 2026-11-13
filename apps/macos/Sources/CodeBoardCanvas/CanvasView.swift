@@ -6,14 +6,14 @@ import QuartzCore
 
 /// One board, read-only, panned and zoomed. While a gesture runs (its glide and rubber band included) Core Animation
 /// only moves and scales the bitmaps the items already have; at rest they are redrawn at fixed levels (`Levels`,
-/// `RestPlan`), off the main thread, and swapped in a few per frame (`RedrawQueue`). A Note's bitmap at each level is
-/// its paper drawn here with the Note renderer's picture over it, so Notes go through the same levels, queue and
-/// budgets; until its first picture comes in a Note shows its paper (`NoteFace`). An SVG picture is drawn by the Note
-/// renderer too (WebKit draws it as the web board does), and goes the same way. Every canvas shares one bitmap budget
-/// (`BudgetShare`): only the canvas on screen draws, and a hidden one keeps its overviews.
+/// `RestPlan`), off the main thread, and swapped in a few per frame (`RedrawQueue`). Notes are drawn like every other
+/// card (CodeBoardNotes lays them out natively). An SVG, on an image card or in a Note, is rasterized by `SVGRasterizer`
+/// (WebKit draws it as the web board does) and goes through the same levels, queue and budgets; until its first picture
+/// comes in the item shows its paper (`NoteFace`). Every canvas shares one bitmap budget (`BudgetShare`): only the canvas
+/// on screen draws, and a hidden one keeps its overviews.
 public final class CanvasView: NSView {
-  /// The design allows one snapshot web view in the app, so every canvas shares one renderer
-  private static let sharedNotes = NoteRenderer()
+  /// The design allows one web view in the app, so every canvas shares one SVG rasterizer
+  private static let sharedSVGs = SVGRasterizer()
   /// Pictures decoded for drawing, by file: one cache for every canvas, as tabs often show the same images
   private static let sharedImages = DecodeCache(cap: 128 << 20)
   /// Every canvas alive, for the one budget they share
@@ -21,7 +21,7 @@ public final class CanvasView: NSView {
   private static var clock = 0
   /// When it was last on screen and at rest (the clock's time)
   private var shownAt = 0
-  private let notes: NoteRenderer
+  private let svgs: SVGRasterizer
   private var theme = Theme.warmInk
   /// The board shown, to show again in another theme
   private var shown: (board: VaultBoard, vault: Vault)?
@@ -64,17 +64,17 @@ public final class CanvasView: NSView {
   package private(set) var ruleBreaks = (redraws: 0, decodes: 0, swaps: 0, noteRequests: 0, noteSwaps: 0)
 
   public convenience override init(frame: NSRect) {
-    self.init(frame: frame, notes: CanvasView.sharedNotes)
+    self.init(frame: frame, svgs: CanvasView.sharedSVGs)
   }
 
-  /// With a Note renderer of its own, its snapshots cached in `noteCache` (CanvasBench and tests: not the app's cache)
-  package convenience init(frame: NSRect, noteCache: URL) {
-    self.init(frame: frame, notes: NoteRenderer(cache: noteCache))
+  /// With an SVG rasterizer of its own, its pictures cached in `svgCache` (CanvasBench and tests: not the app's cache)
+  package convenience init(frame: NSRect, svgCache: URL) {
+    self.init(frame: frame, svgs: SVGRasterizer(cache: svgCache))
   }
 
-  /// With that Note renderer (CanvasBench: one for several canvases, as the app's)
-  package init(frame: NSRect, notes: NoteRenderer) {
-    self.notes = notes
+  /// With that SVG rasterizer (CanvasBench: one for several canvases, as the app's)
+  package init(frame: NSRect, svgs: SVGRasterizer) {
+    self.svgs = svgs
     super.init(frame: frame)
     CanvasView.all.add(self)
     // layer-hosting: the canvas owns its layer tree, y-down like the board
@@ -100,9 +100,9 @@ public final class CanvasView: NSView {
   public override var acceptsFirstResponder: Bool { true }
 
   /// Shows a board of the vault, fitted to the view. Returns once every item is on screen (each at least as its
-  /// overview bitmap, so nothing is ever blank); a later call supersedes an earlier one still loading. Notes without a
-  /// stored height are measured first (the renderer keeps what it measured with its snapshots), so no card moves once
-  /// shown; a Note's overview is its picture when the snapshot cache has it, else its paper.
+  /// overview bitmap, so nothing is ever blank); a later call supersedes an earlier one still loading. Notes are laid out
+  /// first, so no card moves once shown; an SVG's overview is its picture when the SVG cache has it, else its paper.
+  /// Throws when a Note needs the formula engines and the app has none that work
   public func show(_ board: VaultBoard, in vault: Vault, theme: Theme) async throws {
     try await load(board, in: vault, theme: theme, keepCamera: false)
   }
@@ -128,6 +128,13 @@ public final class CanvasView: NSView {
   /// The theme the canvas draws in
   public var currentTheme: Theme { theme }
 
+  /// Registers the board's fonts and lays a sample Note out in each look, so the first board opened does not pay for it;
+  /// at launch, off the main thread
+  public nonisolated static func warmUp() {
+    NativeNotes.warmUp()
+    _ = BoardFonts.complete
+  }
+
   private func load(_ board: VaultBoard, in vault: Vault, theme: Theme, keepCamera: Bool) async throws {
     // before its first board the canvas is its colour in the look it will show
     if scene == nil {
@@ -141,14 +148,13 @@ public final class CanvasView: NSView {
     let backing = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
     let images = self.images
     let known = CanvasView.highlighter
-    let notes = self.notes
+    let svgs = self.svgs
     let (scene, overviews, shadow, highlighter) = try await Task.detached(priority: .userInitiated) {
       let package = vault.url(of: board.path)
       let b = try vault.board(at: board.path)
-      let sizes = await CanvasView.measure(
-        Scene.measures(b, package: package, vault: vault), theme: theme, notes: notes)
       let highlighter = known ?? Highlighter()
-      let scene = Scene(b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes)
+      Scene.layOutNotes(b, package: package, vault: vault, theme: theme, highlighter: highlighter)
+      let scene = try Scene(b, package: package, vault: vault, theme: theme, highlighter: highlighter)
       let fit = Camera.fit(scene.bounds, in: size).zoom
       let overviews = await withTaskGroup(of: (Int, Overview).self) { g in
         for (i, it) in scene.items.enumerated() {
@@ -158,9 +164,9 @@ public final class CanvasView: NSView {
               return (i, (CanvasView.render(it, scale: s, theme: theme, images: images).surface, s, .drawn))
             }
             let s = Levels.noteOverview(fit, backing: backing, size: it.bitmapSize)
-            if let snap = await CanvasView.picture(it, scale: s, theme: theme, notes: notes, priority: nil),
-              let drawn = CanvasView.compose(it, snap, scale: s, theme: theme, images: images)
-            {
+            if let drawn = await CanvasView.drawWithSVGs(
+              it, scale: s, theme: theme, images: images, svgs: svgs, priority: nil
+            ).surface {
               return (i, (drawn, s, .drawn))
             }
             return (i, (CanvasView.render(it, scale: s, theme: theme, images: images).surface, s, .paper))
@@ -185,22 +191,6 @@ public final class CanvasView: NSView {
     install(scene, overviews: overviews, shadow: shadow, theme: theme, keepCamera: keepCamera)
   }
 
-  /// The sizes the Note renderer gives the Notes without a stored height: from what it kept, else measured in the web
-  /// view all together. A Note it could not measure is left out (`Scene` gives it a height of its own)
-  private nonisolated static func measure(_ ms: [Scene.Measure], theme: Theme, notes: NoteRenderer) async -> [CardID:
-    CGSize]
-  {
-    let requests = ms.map {
-      NoteRenderer.SizeRequest(
-        note: $0.note, width: $0.width, folder: $0.folder, look: theme.id.rawValue, dark: theme.dark, refs: $0.refs)
-    }
-    // before any picture: the board waits for these
-    let sizes = (try? await notes.sizes(of: requests, priority: 1)) ?? []
-    var out: [CardID: CGSize] = [:]
-    for (m, s) in zip(ms, sizes) { out[m.card] = s }
-    return out
-  }
-
   // MARK: Layers
 
   /// An item's overview bitmap, its scale, and whether a Note's is its picture or its paper
@@ -217,7 +207,10 @@ public final class CanvasView: NSView {
     var heldSurface: IOSurface?
     var heldScale: CGFloat
     var restScale: CGFloat?
+    /// Its picture waits for an SVG to be rasterized
     let note: Bool
+    /// A Note card (what `noteProgress` counts)
+    let isNote: Bool
     var face: NoteFace
     let bleed: CGFloat
 
@@ -227,6 +220,7 @@ public final class CanvasView: NSView {
       bleed = item.bleed
       face = o.face
       note = item.drawing.byRenderer
+      if case .note = item.drawing { isNote = true } else { isNote = false }
       heldScale = o.scale
       let r = item.rect
       box.bounds = CGRect(origin: .zero, size: r.size)
@@ -643,12 +637,12 @@ public final class CanvasView: NSView {
       let id = nextTask
       nextTask += 1
       if job.note {
-        let notes = self.notes
+        let svgs = self.svgs
         let priority = nextNote
         nextNote -= 1
         tasks[id] = Task.detached(priority: .userInitiated) { [weak self] in
-          let r = await CanvasView.drawNote(
-            item, scale: job.scale, theme: theme, images: images, notes: notes, priority: priority)
+          let r = await CanvasView.drawWithSVGs(
+            item, scale: job.scale, theme: theme, images: images, svgs: svgs, priority: priority)
           await self?.finished(
             job, generation: generation, surface: r.surface, decodes: 0, overlapped: r.late, task: id)
         }
@@ -695,52 +689,42 @@ public final class CanvasView: NSView {
     l.add(t, forKey: "picture")
   }
 
-  /// The bitmap at a scale of an item the Note renderer draws (a Note, an SVG picture): its picture over its paper. No
-  /// bitmap when cancelled (a gesture started: a picture the web view was drawing still finishes, into the renderer's
-  /// cache) or when the renderer failed. late: cancelled while the paper was being drawn under the picture
-  nonisolated static func drawNote(
-    _ item: Scene.Item, scale: CGFloat, theme: Theme, images: DecodeCache, notes: NoteRenderer, priority: Int
+  /// The bitmap at a scale of an item with SVGs in it (an SVG image card, a Note with SVG images): the SVGs rasterized
+  /// first, then the item drawn with them. With no priority only from the SVG cache, nil when one is not there. No bitmap
+  /// when cancelled (a gesture started: a picture the web view was drawing still finishes, into the cache) or when an
+  /// SVG could not be drawn. late: cancelled while the item was being drawn
+  nonisolated static func drawWithSVGs(
+    _ item: Scene.Item, scale: CGFloat, theme: Theme, images: DecodeCache, svgs: SVGRasterizer, priority: Int?
   ) async -> (surface: IOSurface?, late: Bool) {
-    guard !Task.isCancelled,
-      let snap = await picture(item, scale: scale, theme: theme, notes: notes, priority: priority),
-      !Task.isCancelled
-    else { return (nil, false) }
-    let s = compose(item, snap, scale: scale, theme: theme, images: images)
-    return Task.isCancelled ? (nil, true) : (s, false)
-  }
-
-  /// The Note renderer's picture of an item it draws, at a scale; with no priority only from its disk cache
-  nonisolated static func picture(
-    _ item: Scene.Item, scale: CGFloat, theme: Theme, notes: NoteRenderer, priority: Int?
-  ) async -> NoteSnapshot? {
-    switch item.drawing {
-    case .note(let n):
-      let look = theme.id.rawValue
-      guard let priority else {
-        return await notes.cached(
-          of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale, look: look,
-          dark: theme.dark, refs: n.refs)
-      }
-      return try? await notes.snapshot(
-        of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale, look: look,
-        dark: theme.dark, refs: n.refs, priority: priority)
-    case .image(let p):
-      guard p.svg, let url = p.url else { return nil }
-      let width = Int((item.rect.width * scale).rounded(.up))
-      guard let priority else { return await notes.cachedPicture(of: url, width: width, dark: theme.dark) }
-      return try? await notes.picture(of: url, width: width, dark: theme.dark, priority: priority)
-    case .code, .label:
-      return nil
+    func get(_ url: URL, _ width: Int) async -> SVGPicture? {
+      guard let priority else { return await svgs.cachedPicture(of: url, width: width, dark: theme.dark) }
+      return try? await svgs.picture(of: url, width: width, dark: theme.dark, priority: priority)
     }
-  }
-
-  /// The paper the canvas draws for the card, with the renderer's picture over it
-  nonisolated static func compose(
-    _ item: Scene.Item, _ snap: NoteSnapshot, scale: CGFloat, theme: Theme, images: DecodeCache
-  ) -> IOSurface? {
-    Raster.surface(size: item.rect.size, scale: scale, bleed: item.bleed) { ctx in
-      _ = item.drawing.draw(
-        in: ctx, size: item.rect.size, scale: scale, theme: theme, images: images, picture: snap.surface)
+    switch item.drawing {
+    case .image(let p):
+      guard p.svg, let url = p.url, !Task.isCancelled,
+        let pic = await get(url, Int((item.rect.width * scale).rounded(.up))), !Task.isCancelled
+      else { return (nil, false) }
+      let s = Raster.surface(size: item.rect.size, scale: scale, bleed: item.bleed) { ctx in
+        _ = item.drawing.draw(
+          in: ctx, size: item.rect.size, scale: scale, theme: theme, images: images, picture: pic.surface)
+      }
+      return Task.isCancelled ? (nil, true) : (s, false)
+    case .note(let n):
+      var drawn: [URL: CGImage] = [:]
+      for img in n.body.images where img.svg && drawn[img.url] == nil {
+        guard !Task.isCancelled, let pic = await get(img.url, img.pixelWidth(at: scale)), let cg = pic.image else {
+          return (nil, false)
+        }
+        drawn[img.url] = cg
+      }
+      guard !Task.isCancelled else { return (nil, false) }
+      let s = Raster.surface(size: item.rect.size, scale: scale, bleed: item.bleed) { ctx in
+        _ = item.drawing.draw(in: ctx, size: item.rect.size, scale: scale, theme: theme, images: images, svgs: drawn)
+      }
+      return Task.isCancelled ? (nil, true) : (s, false)
+    case .code, .label:
+      return (nil, false)
     }
   }
 
@@ -766,13 +750,16 @@ public final class CanvasView: NSView {
   package var bitmapBytes: Int { items.reduce(0) { $0 + $1.bytes } }
   package var decodedBytes: Int { images.bytes }
 
-  /// The Notes in view, those of them showing a picture and those showing it at display resolution; Notes whose
-  /// overview is their picture, of all Notes
+  /// The Notes (and SVG images) in view, those of them showing a picture and those showing it at display resolution;
+  /// those whose overview is their picture, of all of them
+  /// Whether the SVG rasterizer's web view is open, and how many it has made
+  package var svgWebView: (open: Bool, made: Int) { (svgs.webViewOpen, svgs.pagesMade) }
+
   package var noteProgress: (inView: Int, present: Int, sharp: Int, overviews: Int, notes: Int) {
     let view = camera.visible(bounds.size)
     let z = min(camera.zoom, limits.max)
     var p = (inView: 0, present: 0, sharp: 0, overviews: 0, notes: 0)
-    for l in items where l.note {
+    for l in items where l.note || l.isNote {
       p.notes += 1
       if !l.face.paperOverview { p.overviews += 1 }
       let r = l.bitmapFrame

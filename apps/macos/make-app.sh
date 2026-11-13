@@ -24,10 +24,11 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST
-# Notes are drawn by the web page in web/ (the Markdown package's editor): built here and carried in the bundle
-(cd ../.. && npm run build -w @yhnocoder/markdown && node apps/macos/web/build.mjs)
+# the formula and diagram engines, the board's fonts and backdrops and the SVG page (web/build.mjs): built here and
+# carried in the bundle
+(cd ../.. && node apps/macos/web/build.mjs)
 mkdir -p "$app/Contents/Resources"
-cp -R web/dist "$app/Contents/Resources/NotePage"
+cp -R web/dist "$app/Contents/Resources/Assets"
 plutil -lint -s "$app/Contents/Info.plist"
 codesign --force --sign - "$app"
 echo "built $(pwd)/$app"

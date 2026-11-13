@@ -1,12 +1,11 @@
 import CoreGraphics
 import IOSurface
 
-/// A Note drawn at one scale: `surface` is BGRA, premultiplied, sRGB, `ceil(size × scale)` pixels, the Note's top left
-/// corner at its top left pixel; `size` is the card's size at 100 % in points (its content's height when the request gave
-/// none; a Free Text's width is its text's)
-public struct NoteSnapshot: Sendable {
-  public let surface: IOSurface
-  public let size: CGSize
+/// An SVG file rasterized: `surface` is BGRA, premultiplied, sRGB, the picture's top left corner at its top left pixel;
+/// `size` is its size in CSS px at the width asked for
+struct SVGPicture: Sendable {
+  let surface: IOSurface
+  let size: CGSize
 
   /// `bytesPerRow`: a row length IOSurface gave a surface of this width before (nil: its own choice)
   static func makeSurface(width: Int, height: Int, bytesPerRow: Int? = nil) -> IOSurface? {
@@ -19,6 +18,22 @@ public struct NoteSnapshot: Sendable {
       IOSurfaceSetValue(s as IOSurfaceRef, kIOSurfaceColorSpace, space)
     }
     return s
+  }
+
+  /// The surface's pixels as an image (a copy: the surface may be reused)
+  var image: CGImage? {
+    surface.lock(options: .readOnly, seed: nil)
+    defer { surface.unlock(options: .readOnly, seed: nil) }
+    let data = Data(bytes: surface.baseAddress, count: surface.bytesPerRow * surface.height)
+    guard let provider = CGDataProvider(data: data as CFData), let space = CGColorSpace(name: CGColorSpace.sRGB) else {
+      return nil
+    }
+    return CGImage(
+      width: surface.width, height: surface.height, bitsPerComponent: 8, bitsPerPixel: 32,
+      bytesPerRow: surface.bytesPerRow, space: space,
+      bitmapInfo: CGBitmapInfo(
+        rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
+      provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
   }
 
   static func draw(_ image: CGImage, into s: IOSurface) {
@@ -35,8 +50,8 @@ public struct NoteSnapshot: Sendable {
   }
 }
 
-public enum NoteRenderError: Error {
-  /// No built Note page (page.html) in this folder: `node apps/macos/web/build.mjs`
+enum SVGError: Error {
+  /// No built svg.html in the app's assets: `node apps/macos/web/build.mjs`
   case pageMissing(URL)
   case page(String)
 }

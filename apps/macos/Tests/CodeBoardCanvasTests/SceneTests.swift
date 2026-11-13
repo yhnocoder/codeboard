@@ -129,7 +129,7 @@ private func segment(_ id: String, path: String? = "src/engine.py", first: Int, 
   }
 
   func scene(_ b: Board) -> Scene {
-    Scene(
+    try! Scene(
       b, package: URL(filePath: "/nonexistent-vault/B.board"), vault: vault, theme: .warmInk,
       highlighter: highlighter)
   }

@@ -12,7 +12,7 @@ extension MarkdownLayout {
     // glyph positions stay the same at every scale (experiment 1): no snapping glyph origins to device pixels
     ctx.setShouldSubpixelQuantizeFonts(false)
     ctx.setAllowsFontSubpixelQuantization(false)
-    // no stem darkening: the Note page's text is not smoothed either, and smoothed text reads a weight heavier
+    // no stem darkening: the web board's text is not smoothed either, and smoothed text reads a weight heavier
     ctx.setShouldSmoothFonts(false)
     ctx.clip(to: clip)
     draw(items, ctx, clip, image)

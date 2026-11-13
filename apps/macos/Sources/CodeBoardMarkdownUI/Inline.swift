@@ -19,6 +19,8 @@ struct InlineStyle {
   var box: InlineBox?
   /// sub (-1) or sup (+1)
   var shift = 0
+  /// letter-spacing, points
+  var kern: CGFloat = 0
 }
 
 /// A box drawn behind inline code or kbd
@@ -247,6 +249,7 @@ struct InlineBuilder {
       a[NSAttributedString.Key(kCTStrokeColorAttributeName as String)] = s.color.cg
     }
     if let b = s.box { a[Attr.box] = b }
+    if s.kern != 0 { a[NSAttributedString.Key(kCTKernAttributeName as String)] = s.kern }
     if s.shift != 0 {
       // drawn with a flipped text matrix: a positive offset goes down there, so a superscript's is negative
       a[NSAttributedString.Key(kCTBaselineOffsetAttributeName as String)] = -CGFloat(s.shift) * s.size * 0.45

@@ -172,7 +172,7 @@ final class Bench {
 
   private let canvas: CanvasView
   private let meter: Meter
-  private let noteCache: URL
+  private let svgCache: URL
   private var index = 0
   /// The segments run up to here, then the reopen, then the rest
   private var stop = Bench.script.firstIndex { if case .cold = $0.1 { true } else { false } } ?? Bench.script.count
@@ -189,10 +189,10 @@ final class Bench {
   private var opening = Open()
   private var webkitPeak = 0
 
-  init(_ canvas: CanvasView, meter: Meter, noteCache: URL) {
+  init(_ canvas: CanvasView, meter: Meter, svgCache: URL) {
     self.canvas = canvas
     self.meter = meter
-    self.noteCache = noteCache
+    self.svgCache = svgCache
   }
 
   /// Opens the board (its Notes never drawn before, as the snapshot cache is the bench's own), runs the segments on it,
@@ -288,7 +288,7 @@ final class Bench {
     case .flick, .pan, .awayAndBack:
       canvas.place(zoom: 1, centre: CGPoint(x: b.minX + canvas.bounds.width / 2, y: b.midY))
     case .cold(let z):
-      for f in (try? FileManager.default.contentsOfDirectory(at: noteCache, includingPropertiesForKeys: nil)) ?? [] {
+      for f in (try? FileManager.default.contentsOfDirectory(at: svgCache, includingPropertiesForKeys: nil)) ?? [] {
         try? FileManager.default.removeItem(at: f)
       }
       canvas.dropSharp()

@@ -44,13 +44,14 @@ let package = Package(
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
     .executableTarget(name: "CanvasBench", dependencies: ["CodeBoardCanvas", "CodeBoardNotes"]),
     .executableTarget(
-      name: "MarkdownLook", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeBoardNotes"]),
+      name: "MarkdownLook",
+      dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeBoardModel", "CodeBoardNotes", "CodeBoardSyntax"]),
     .executableTarget(name: "LookCompare", dependencies: ["CodeBoardCanvas", "CodeBoardModel", "CodeBoardSyntax"]),
     .testTarget(name: "CodeBoardMarkdownTests", dependencies: ["CodeBoardMarkdown"], resources: [.copy("Fixtures")]),
     .testTarget(name: "CodeBoardMarkdownUITests", dependencies: ["CodeBoardMarkdownUI"]),
     .testTarget(name: "CodeBoardModelTests", dependencies: ["CodeBoardModel"], resources: [.copy("Fixtures")]),
     .testTarget(name: "CodeBoardSyntaxTests", dependencies: ["CodeBoardSyntax"]),
-    .testTarget(name: "CodeBoardNotesTests", dependencies: ["CodeBoardNotes"]),
+    .testTarget(name: "CodeBoardNotesTests", dependencies: ["CodeBoardNotes", "CodeBoardMarkdownUI"]),
     .testTarget(name: "CodeBoardCanvasTests", dependencies: ["CodeBoardCanvas"]),
     .testTarget(name: "CodeBoardShellTests", dependencies: ["CodeBoardShell"]),
   ]

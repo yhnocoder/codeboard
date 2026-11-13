@@ -1,15 +1,15 @@
-// The Note page of the Mac app: Notes on cards laid out as the VS Code board lays them out (the board's own
-// stylesheets, in the board theme the canvas draws), drawn by the Markdown package's editor, so a snapshot of one is
-// what editing it shows. Many Notes stay mounted at once, each in a slot of its own at the page's top left, all hidden
-// but the one being snapshotted: measuring a board is one layout pass, and a picture at another scale lays nothing out
-// again. Native drives it through window.note and hears back on the "note" message handler.
+// The look tools' reference (tools/markdown: styles.mjs, look.mjs): Notes drawn as the web board draws them, on cards
+// laid out as the VS Code board lays them out (the board's own stylesheets, in the board theme asked for), by the
+// Markdown package's editor. The Mac app draws Notes natively; this page is what they are compared with. Many Notes
+// stay mounted at once, each in a slot of its own at the page's top left, all hidden but the one shown. Built by
+// build.mjs next to it into apps/macos/.build-look/page.
 import { createMarkdown, type Markdown, type MdLayout, type RefBroken, type RefTarget } from "@yhnocoder/markdown";
 import { type MdEditorHandle, mountEditor, warmUp } from "@yhnocoder/markdown/editor";
 import "@yhnocoder/markdown/katex.css";
-import "../../../../packages/board/src/fonts.css";
-import "../../../../packages/board/src/styles.css";
+import "../../../../../packages/board/src/fonts.css";
+import "../../../../../packages/board/src/styles.css";
 import "@yhnocoder/markdown/style.css";
-import "../../../../packages/board/src/themes.css";
+import "../../../../../packages/board/src/themes.css";
 import "./page.css";
 
 /** CodeBoardNotes' PageNote, as JSON */
@@ -35,8 +35,31 @@ type Note = {
 declare global {
   interface Window {
     note: unknown;
+    /** code colours, as the Mac app's highlighter gave them: "language\0code" → each line's [from, to, class] */
+    noteTokens?: Record<string, [string, string, string][][]>;
     webkit?: { messageHandlers: { note: { postMessage(m: unknown): void } } };
   }
+}
+
+const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+/** Code coloured as the Mac app colours it (window.noteTokens), in the board's token classes (.kw, .fn, .str…) */
+async function highlight(text: string, lang: string): Promise<string | null> {
+  const lines = window.noteTokens?.[`${lang}\u0000${text}`];
+  if (!lines) return null;
+  return text
+    .split("\n")
+    .map((line, i) => {
+      let html = "";
+      let at = 0;
+      for (const [a, b, cls] of lines[i] ?? []) {
+        const from = Number(a);
+        const to = Number(b);
+        html += escape(line.slice(at, from)) + `<span class="${cls}">${escape(line.slice(from, to))}</span>`;
+        at = to;
+      }
+      return html + escape(line.slice(at));
+    })
+    .join("\n");
 }
 
 // The page only draws: mounting the editor focuses it, and a web view in the background that asks for focus takes the
@@ -53,6 +76,7 @@ function mdFor(images: string, refs: Note["refs"]): Markdown {
   // images load at once, not when scrolled to: the picture waits for every one of them
   const md = createMarkdown({
     eagerImages: true,
+    highlight,
     refs: { resolve: (label, target) => hits.get(refKey(label, target)) ?? null },
   });
   md.setAssetBase("images", images);
@@ -206,22 +230,6 @@ window.note = {
       else made.body.textContent = n.text;
     }
     return measure(list.map((l) => l.id));
-  },
-  /** An image file as the board's image card shows it (Card.tsx, .imgb img): an <img> `width` px wide, as tall as its
-   * proportions make it, on a dark board or not. An SVG in an <img> sees only itself: its own styles and variables,
-   * none of the page's, and its prefers-color-scheme rules follow the board's appearance */
-  async image(id: string, src: string, width: number, dark: boolean) {
-    setLook(document.documentElement.dataset.look ?? "warm-ink", dark);
-    if (!slots.has(id)) {
-      const img = document.createElement("img");
-      img.style.width = `${width}px`;
-      img.style.display = "block";
-      img.src = src;
-      const card = document.createElement("div");
-      card.append(img);
-      newSlot(id, card);
-    }
-    return (await measure([id]))[id];
   },
   /** Measures again after the view grew: code blocks draw only the lines in view, so a card can grow with it */
   measure,

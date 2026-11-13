@@ -200,7 +200,7 @@ public struct Annotation: Codable, Equatable, Sendable {
   }
 }
 
-public enum HandColor: String, Codable, Sendable {
+public enum HandColor: String, Codable, Hashable, Sendable {
   case blue, purple, orange, green
 }
 
@@ -220,7 +220,7 @@ public struct Note: Codable, Equatable, Sendable {
 
 /// How a Note is drawn. The old Text, Box, Mark and Free Text cards are Notes drawn their way, so they can later become
 /// Note looks or annotations without a new card kind
-public enum NoteStyle: Equatable, Sendable {
+public enum NoteStyle: Hashable, Sendable {
   public enum TextSize: String, Codable, Sendable {
     case title, heading, body
   }

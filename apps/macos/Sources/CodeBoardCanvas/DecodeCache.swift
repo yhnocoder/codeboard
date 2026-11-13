@@ -36,7 +36,8 @@ struct ByteLRU<Key: Hashable> {
 }
 
 /// Pictures decoded for drawing into item bitmaps, at a power-of-two width of at least what is asked (up to the file's
-/// own pixels), kept within a byte cap. Raster formats only: an SVG is drawn by the Note renderer. Safe from any thread; a decode runs on the caller's thread, outside the lock.
+/// own pixels), kept within a byte cap, for image cards and the images in Notes alike. Raster formats only: an SVG is
+/// rasterized by `SVGRasterizer`. Safe from any thread; a decode runs on the caller's thread, outside the lock.
 final class DecodeCache: Sendable {
   struct Key: Hashable {
     var url: URL
@@ -54,6 +55,11 @@ final class DecodeCache: Sendable {
   init(cap: Int) { state = Mutex(State(lru: ByteLRU(cap: cap))) }
 
   var bytes: Int { state.withLock { $0.lru.bytes } }
+
+  /// What it holds: each picture's key and its pixel size (tests)
+  var held: [(Key, CGSize)] {
+    state.withLock { s in s.images.map { ($0.key, CGSize(width: $0.value.width, height: $0.value.height)) } }
+  }
 
   /// `frame` from 0 (an animated image's rest frame). decoded: whether this call had to decode
   func image(_ url: URL, frame: Int, width: Int, fileSize: CGSize) -> (image: CGImage?, decoded: Bool) {

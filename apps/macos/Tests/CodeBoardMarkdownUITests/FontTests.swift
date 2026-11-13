@@ -4,7 +4,7 @@ import Testing
 
 @testable import CodeBoardMarkdownUI
 
-/// The board's fonts from the Note page build, registered once for these tests
+/// The board's fonts from the assets build, registered once for these tests
 let boardFonts: Void = {
   let folder = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../web/dist/assets")
     .standardized
@@ -31,8 +31,8 @@ let boardFonts: Void = {
   }
 
   /// Chrome's line box: rounded hhea ascent and descent (CoreText's for the system font), half the leading floored;
-  /// these are the baselines the Note page measures (tools/markdown/styles.mjs)
-  @Test func baselinesLandWhereTheNotePagePutsThem() {
+  /// these are the baselines the web board measures (tools/markdown/styles.mjs)
+  @Test func baselinesLandWhereTheWebBoardPutsThem() {
     _ = boardFonts
     let sys = ["-apple-system"]
     #expect(FontBook.baseline(FontBook.font(sys, size: 13.5), lineHeight: 21.6) == 15)

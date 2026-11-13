@@ -1,10 +1,12 @@
-// Measures how the Note page (apps/macos/web, the Markdown package's editor with the board's stylesheets) draws each kind
-// of Markdown element, in each theme, light and dark: computed font, size, weight, line height, colours, margins,
-// paddings, borders, and each element's box. The native renderer's MarkdownTheme defaults and the board's theme mapping
-// are read off this. Build the page first (npm run build -w @yhnocoder/markdown && node apps/macos/web/build.mjs), then:
+// Measures how the web board draws each kind of Markdown element (the reference page, page/: the Markdown package's
+// editor with the board's stylesheets), in each theme, light and dark: computed font, size, weight, line height,
+// colours, margins, paddings, borders, and each element's box. The native renderer's MarkdownTheme defaults and the
+// board's theme mapping are read off this. Build the Markdown package first (npm run build -w @yhnocoder/markdown; the
+// reference page is built here), then:
 //   node apps/macos/tools/markdown/styles.mjs [--theme warm-ink] [--dark] > styles.json
 import { pathToFileURL } from "node:url";
 import { launch } from "../../../../tools/test/chromium.mjs";
+import { buildPage } from "./page/build.mjs";
 
 const SAMPLE = [
   "# Heading one",
@@ -68,12 +70,13 @@ const only = args.includes("--theme") ? args[args.indexOf("--theme") + 1] : null
 const themes = ["warm-ink", "ink-wash"].filter((t) => !only || t === only);
 const darks = args.includes("--dark") ? [true] : [false, true];
 
+const pageHtml = await buildPage();
 const browser = await launch();
 const out = {};
 for (const look of themes)
   for (const dark of darks) {
     const page = await browser.newPage({ viewport: { width: 800, height: 1400 } });
-    await page.goto(pathToFileURL(new URL("../../web/dist/page.html", import.meta.url).pathname).href);
+    await page.goto(pathToFileURL(pageHtml).href);
     await page.waitForFunction(() => window.note);
     await page.evaluate(
       ([text, look, dark]) =>

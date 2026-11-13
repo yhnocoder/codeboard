@@ -9,7 +9,7 @@ import CodeBoardModel
 //            again, prints one JSON object per board on stdout and quits. The window floats on top: a covered window
 //            gets no frames
 //   --memory see MemoryRun
-// Note snapshots are cached in a new temporary folder, never in the app's cache: every run draws its Notes anew
+// SVG pictures are cached in a new temporary folder, never in the app's cache: every run draws its SVGs anew
 
 @MainActor
 final class App: NSObject, NSApplicationDelegate {
@@ -20,7 +20,7 @@ final class App: NSObject, NSApplicationDelegate {
   let memory: URL?
   var window: NSWindow?
   var meter: Meter?
-  var noteCache: URL?
+  var svgCache: URL?
 
   init(vault: Vault, boards: [VaultBoard], hud: Bool, bench: Bool, memory: URL?) {
     self.vault = vault
@@ -35,9 +35,9 @@ final class App: NSObject, NSApplicationDelegate {
     let w = NSWindow(
       contentRect: screen.insetBy(dx: 40, dy: 30), styleMask: [.titled, .closable, .resizable, .miniaturizable],
       backing: .buffered, defer: false)
-    let cache = FileManager.default.temporaryDirectory.appending(path: "canvasbench-notes-\(UUID().uuidString)")
-    noteCache = cache
-    let canvas = CanvasView(frame: w.contentLayoutRect, noteCache: cache)
+    let cache = FileManager.default.temporaryDirectory.appending(path: "canvasbench-svgs-\(UUID().uuidString)")
+    svgCache = cache
+    let canvas = CanvasView(frame: w.contentLayoutRect, svgCache: cache)
     canvas.autoresizingMask = [.width, .height]
     let root = NSView(frame: w.contentLayoutRect)
     root.addSubview(canvas)
@@ -70,7 +70,7 @@ final class App: NSObject, NSApplicationDelegate {
         w.title = b.title
         do {
           if bench {
-            print(try await Bench(canvas, meter: meter, noteCache: cache).run(b, in: vault))
+            print(try await Bench(canvas, meter: meter, svgCache: cache).run(b, in: vault))
           } else {
             try await canvas.show(b, in: vault, theme: .warmInk)
           }
@@ -85,7 +85,7 @@ final class App: NSObject, NSApplicationDelegate {
   func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
 
   func applicationWillTerminate(_ n: Notification) {
-    if let noteCache { try? FileManager.default.removeItem(at: noteCache) }
+    if let svgCache { try? FileManager.default.removeItem(at: svgCache) }
   }
 }
 

@@ -1,5 +1,6 @@
 import AppKit
 import CoreText
+import Synchronization
 
 /// CTFonts for CSS font lists, sizes, weights and styles: the first family that exists draws, the others are its fallback
 /// (kCTFontCascadeListAttribute, so Chinese falls back the way the web page's does). Made once per key, shared by threads.
@@ -12,6 +13,42 @@ enum FontBook {
   }
 
   private static let cache = Cache<Key, CTFont>()
+
+  /// Families cut into several files by character (as the web loads them with unicode-range), each weight's files
+  private static let chunked = Chunked()
+
+  /// immutable descriptors behind a lock (CoreText allows any thread to read them, though the SDK does not mark them
+  /// Sendable)
+  private final class Chunked: @unchecked Sendable {
+    private var sets: [String: [Double: [CTFontDescriptor]]] = [:]
+    private let lock = NSLock()
+    func set(_ family: String, _ s: [Double: [CTFontDescriptor]]) { lock.withLock { sets[family] = s } }
+    func get(_ family: String) -> [Double: [CTFontDescriptor]]? { lock.withLock { sets[family] } }
+  }
+
+  /// Weight ranges as @font-face declares them for a variable font (its file may hold more): what is asked for outside
+  /// it is drawn at its nearest end, as the browser does
+  private static let ranges = Mutex<[String: ClosedRange<Double>]>([:])
+  static func setRange(_ family: String, _ r: ClosedRange<Double>) { ranges.withLock { $0[family] = r } }
+
+  static func addChunked(_ family: String, weights: [Double: [URL]]) {
+    let sets = weights.mapValues { files in
+      files.flatMap { (CTFontManagerCreateFontDescriptorsFromURL($0 as CFURL) as? [CTFontDescriptor]) ?? [] }
+    }
+    chunked.set(family, sets)
+  }
+
+  /// A chunked family's files for a weight as CSS matches it: from 600 up the nearest at or above it, else the nearest
+  /// at or below it (a Light asks for 300 and takes the 400 there is)
+  private static func chunks(_ family: String, weight: Double) -> [CTFontDescriptor]? {
+    guard let sets = chunked.get(family), !sets.isEmpty else { return nil }
+    let ws = sets.keys.sorted()
+    let w =
+      weight >= 600
+      ? ws.first { $0 >= weight } ?? ws.last!
+      : ws.last { $0 <= max(weight, 400) } ?? ws.first!
+    return sets[w]
+  }
 
   static func font(_ families: [String], size: CGFloat, weight: Double = 400, italic: Bool = false) -> CTFont {
     let key = Key(families: families, size: size, weight: weight, italic: italic)
@@ -50,7 +87,11 @@ enum FontBook {
   private static func make(_ k: Key) -> CTFont {
     var descs: [CTFontDescriptor] = []
     for f in k.families {
-      if let d = descriptor(f, size: k.size, weight: k.weight, italic: k.italic) { descs.append(d) }
+      if let set = chunks(f, weight: k.weight) {
+        descs += set
+      } else if let d = descriptor(f, size: k.size, weight: k.weight, italic: k.italic) {
+        descs.append(d)
+      }
     }
     guard let first = descs.first else { return CTFontCreateUIFontForLanguage(.system, k.size, nil)! }
     // the face (italic), then the fallbacks, then the axes, in that order: a copy made after the axes are set looks the
@@ -87,9 +128,21 @@ enum FontBook {
     let ids = Set(axes.compactMap { $0[kCTFontVariationAxisIdentifierKey] as? Int })
     let wght = 0x7767_6874
     let opsz = 0x6F70_737A
+    /// a value within the axis's range, as the browser clamps it (Source Serif's 700 is its 600)
+    func clamped(_ id: Int, _ v: Double) -> Double {
+      guard let a = axes.first(where: { $0[kCTFontVariationAxisIdentifierKey] as? Int == id }),
+        let lo = a[kCTFontVariationAxisMinimumValueKey] as? Double,
+        let hi = a[kCTFontVariationAxisMaximumValueKey] as? Double
+      else { return v }
+      return min(max(v, lo), hi)
+    }
     var variation: [Int: Double] = [:]
-    if ids.contains(wght) { variation[wght] = k.weight }
-    if ids.contains(opsz) { variation[opsz] = Double(k.size) }
+    let family = CTFontCopyFamilyName(f) as String
+    let declared = ranges.withLock { $0[family] }
+    if ids.contains(wght) {
+      variation[wght] = clamped(wght, declared.map { min(max(k.weight, $0.lowerBound), $0.upperBound) } ?? k.weight)
+    }
+    if ids.contains(opsz) { variation[opsz] = clamped(opsz, Double(k.size)) }
     if !variation.isEmpty {
       return CTFontCreateCopyWithAttributes(
         f, k.size, nil, CTFontDescriptorCreateWithAttributes([kCTFontVariationAttribute: variation] as CFDictionary))
@@ -102,7 +155,7 @@ enum FontBook {
 
   /// The ascent and descent a CSS line box uses, as Chrome on the Mac reads them: a font file's hhea values (CoreText
   /// reports the typo ones for some, Source Serif's 0.77 em instead of hhea's 1.04), the system font's as CoreText gives
-  /// them, both rounded to whole pixels. With these the baseline lands where the Note page puts it
+  /// them, both rounded to whole pixels. With these the baseline lands where the web board puts it
   static func ascentDescent(_ f: CTFont) -> (CGFloat, CGFloat) {
     metrics.get(FontID(f)) {
       let size = CTFontGetSize(f)
@@ -134,6 +187,21 @@ enum FontBook {
       name = CTFontCopyPostScriptName(f) as String
       size = CTFontGetSize(f)
     }
+  }
+}
+
+/// The fonts the Markdown is drawn with, beyond the system's
+public enum MarkdownFonts {
+  /// A family cut into files by character, as the web loads it (unicode-range): every file of the weight drawn with is
+  /// in the cascade, in order, so each character is found in whichever file has it. Register it before laying out
+  public static func addChunkedFamily(_ family: String, weights: [Double: [URL]]) {
+    FontBook.addChunked(family, weights: weights)
+  }
+
+  /// The weights a variable font's @font-face declares (font-weight: 400 600): weights outside are drawn at its nearest
+  /// end, as the browser does, though the file may go further
+  public static func declareWeights(_ family: String, _ range: ClosedRange<Double>) {
+    FontBook.setRange(family, range)
   }
 }
 

@@ -1,4 +1,5 @@
 import CodeBoardModel
+import CodeBoardNotes
 import CoreGraphics
 import Foundation
 import Metal
@@ -44,11 +45,10 @@ import Testing
   func aSheetsEdgeIsEvenAllRound(zoom: CGFloat, level: CGFloat) throws {
     let t = Theme.warmInk
     let card = CGSize(width: 200, height: 100)
-    let item = Scene.Item(
-      rect: CGRect(origin: .zero, size: card),
-      drawing: .note(.init(id: "n", title: "Plan", content: Note(text: ""), folder: URL(filePath: "/"), refs: [])),
-      tilt: 0,
-      bleed: Drawing.note(.init(id: "n", content: Note(text: ""), folder: URL(filePath: "/"), refs: [])).bleed(t))
+    let body = try NativeNotes.body(
+      Note(text: ""), width: 200, look: "warm-ink", dark: false, env: NoteEnv(folder: URL(filePath: "/")))
+    let note = Drawing.note(.init(id: "n", title: "Plan", content: Note(text: ""), body: body))
+    let item = Scene.Item(rect: CGRect(origin: .zero, size: card), drawing: note, tilt: 0, bleed: note.bleed(t))
     let bitmap = try #require(CanvasView.render(item, scale: level, theme: t, images: DecodeCache(cap: 1)).surface)
     let l = CanvasView.ItemLayers(item, overview: (bitmap, level, .drawn), shadow: CanvasView.shadow(t))
     let s = zoom * 2

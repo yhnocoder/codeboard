@@ -4,166 +4,288 @@ import CodeBoardModel
 import CoreGraphics
 import CoreText
 import Foundation
-import IOSurface
-import ImageIO
+import Synchronization
 
-/// Notes drawn natively (CodeBoardMarkdownUI, CoreText) instead of through the web page: the same card geometry the
-/// page lays a Note out in (a 36pt header the canvas draws, the body padded 10 14 12 14), laid out once at 100 % and
-/// drawn at any scale, off the main thread, without a web process.
+/// Notes of every style laid out and drawn natively (CodeBoardMarkdownUI, CoreText): laid out once at 100 % for a card
+/// width, look and appearance, drawn at any scale on any thread. What a Note needs from the board comes in through
+/// `NoteEnv`: the canvas sizes, decodes and caches images (one image pipeline for Notes and image cards) and highlights
+/// code.
 public enum NativeNotes {
-  /// the Note card's header height and its body's padding (top, right, bottom, left), as the page computes them
-  /// (tools/markdown/styles.mjs: .card .chead, .nbody)
-  static let header: CGFloat = 36
-  static let padding = (top: CGFloat(10), right: CGFloat(14), bottom: CGFloat(12), left: CGFloat(14))
+  /// What the app carries besides its code: Contents/Resources/Assets in the app, else `web/dist` in this package's
+  /// source tree (`swift run`, `swift test`; built by `node web/build.mjs`)
+  public static var assets: URL {
+    if let r = Bundle.main.resourceURL?.appending(path: "Assets"),
+      FileManager.default.fileExists(atPath: r.appending(path: "build-id").path(percentEncoded: false))
+    {
+      return r
+    }
+    return URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../web/dist").standardized
+  }
 
-  /// whether this Note is drawn natively: a Markdown Note card (the other card styles still go through the page)
-  public static func draws(_ note: Note) -> Bool { note.style == .note }
-
-  /// the board's fonts (the Note page build's woff2 files), registered for this process once; synchronous, so a layout
-  /// made right after uses them
+  /// The board's fonts, registered for this process once; synchronous, so a layout made right after uses them. Yozai,
+  /// the Chinese handwriting, comes in chunks of characters that all carry one name: registered as a chunked family, not
+  /// one by one (CoreText would use one chunk). Zhi Mang Xing is the canvas's own (section titles)
   static let fonts: Void = {
-    let folder = NoteRenderer.bundledPage.appending(path: "assets")
-    for f in (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
-    where f.pathExtension == "woff2" && !f.lastPathComponent.hasPrefix("KaTeX") {
-      CTFontManagerRegisterFontsForURL(f as CFURL, .process, nil)
+    let folder = assets.appending(path: "assets")
+    var yozai: [Double: [URL]] = [:]
+    for f in ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
+      .sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) where f.pathExtension == "woff2"
+    {
+      let name = f.lastPathComponent
+      if name.hasPrefix("Yozai-") {
+        yozai[name.hasPrefix("Yozai-700-") ? 700 : 400, default: []].append(f)
+      } else if !name.hasPrefix("ZhiMangXing-") {
+        CTFontManagerRegisterFontsForURL(f as CFURL, .process, nil)
+        // a variable font's file is named after the weights its @font-face declares: <Family>-400-600-<hash>
+        if let m = name.wholeMatch(of: /.+-(\d{3})-(\d{3})-[0-9A-F]+\.woff2/), let lo = Double(m.1),
+          let hi = Double(m.2),
+          let d = (CTFontManagerCreateFontDescriptorsFromURL(f as CFURL) as? [CTFontDescriptor])?.first,
+          let family = CTFontDescriptorCopyAttribute(d, kCTFontFamilyNameAttribute) as? String
+        {
+          MarkdownFonts.declareWeights(family, lo...hi)
+        }
+      }
+    }
+    MarkdownFonts.addChunkedFamily("Yozai", weights: yozai)
+  }()
+
+  /// The formula and diagram engines (engines.js in JavaScriptCore), loaded on the first Note that may need them. A
+  /// build without them, or with ones that do not start, is an error, never formulas quietly shown as source
+  public static func engines() throws(NoteError) -> JSEngines {
+    try loadedEngines.get()
+  }
+  private static let loadedEngines: Result<JSEngines, NoteError> = {
+    let file = assets.appending(path: "engines.js")
+    guard FileManager.default.fileExists(atPath: file.path(percentEncoded: false)) else {
+      return .failure(.enginesMissing(file))
+    }
+    do {
+      return .success(try JSEngines(script: file))
+    } catch {
+      return .failure(.engines("\(error)"))
     }
   }()
 
-  /// formulas and diagrams, shared by every Note
-  static let engines: JSEngines? = try? JSEngines(script: NoteRenderer.bundledPage.appending(path: "engines.js"))
-
-  private static let layouts = LayoutCache()
-
-  /// the Note's layout on a card `width` wide
-  static func layout(
-    _ note: Note, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef]
-  ) -> MarkdownLayout {
+  /// Registers the fonts and lays out a sample Note in each look once, so the first board does not pay for warming up
+  /// the fonts and the layout code; for launch, off the main thread
+  public static func warmUp() {
     _ = fonts
-    let key = LayoutKey(
-      text: note.text, layout: note.layout, width: width, folder: folder, look: look, dark: dark, refs: refs)
-    return layouts.get(key) {
-      let body = CGFloat(width) - padding.left - padding.right
-      return MarkdownLayout.make(
-        MarkdownDocument(note.text), width: max(1, body), theme: NoteLooks.theme(look, dark: dark),
-        layout: note.layout.map(Self.info), resources: NoteResources(folder: folder, refs: refs, math: engines))
+    let sample = Note(text: "# Title\n\nText with **bold**, *italics*, `code` and 中文.\n\n- one\n\n```py\nx = 1\n```")
+    for look in ["warm-ink", "ink-wash"] {
+      _ = try? body(sample, width: 320, look: look, dark: false, env: NoteEnv(folder: URL(filePath: "/")), cache: false)
     }
   }
+
+  private static let cache = LayoutCache(capacity: 2000)
+
+  /// The Note on a card `width` wide, laid out (from the cache when this Note was laid out so before). Throws only when it
+  /// may hold formulas or diagrams and the engines cannot be had
+  public static func body(
+    _ note: Note, width: Double, look: String, dark: Bool, env: NoteEnv, cache useCache: Bool = true
+  ) throws(NoteError) -> NoteBody {
+    _ = fonts
+    let math = needsEngines(note) ? try engines() : nil
+    let key = LayoutKey(
+      text: note.text, style: note.style, layout: note.layout, width: width, look: look, dark: dark,
+      folder: env.folder, refs: env.refs)
+    let make = {
+      let card = NoteLooks.card(note.style, look: look, dark: dark)
+      let layout: MarkdownLayout
+      if card.plain {
+        layout = .plain(note.text, theme: card.theme)
+      } else {
+        let inner = CGFloat(width) - card.padding[1] - card.padding[3]
+        layout = MarkdownLayout.make(
+          MarkdownDocument(note.text), width: max(1, inner), theme: card.theme, layout: note.layout.map(Self.info),
+          resources: NoteResources(env: env, math: math))
+      }
+      return NoteBody(layout: layout, card: card, folder: env.folder)
+    }
+    return useCache ? cache.get(key, make) : make()
+  }
+
+  /// A formula or a diagram anywhere in Markdown: `$`, `\(`, `\[` or a mermaid fence. A Note without any never starts
+  /// the engines
+  static func needsEngines(_ note: Note) -> Bool {
+    if case .freeText = note.style { return false }
+    let t = note.text
+    return t.contains("$") || t.contains("\\(") || t.contains("\\[") || t.contains("mermaid")
+  }
+
+  /// A code fence's language as the code highlighter (CodeBoardSyntax) names its grammars; nil: not coloured
+  public static func grammar(fence: String) -> String? { fenceLanguages[fence.lowercased()] }
+  static let fenceLanguages: [String: String] = [
+    "python": "python", "py": "python", "python3": "python", "triton": "triton", "tilelang": "tilelang",
+    "c": "c", "h": "c", "cpp": "cpp", "c++": "cpp", "cc": "cpp", "cxx": "cpp", "hpp": "cpp", "cuda": "cuda-cpp",
+    "cu": "cuda-cpp", "cuh": "cuda-cpp", "cuda-cpp": "cuda-cpp", "rust": "rust", "rs": "rust",
+  ]
 
   static func info(_ l: NoteLayout) -> MDLayoutInfo {
     MDLayoutInfo(tables: l.tables?.map { $0.map { MDLayoutInfo.Table(cols: $0.cols, rows: $0.rows) } }, wrap: l.wrap)
   }
 
-  /// the card's size at 100 %: as tall as its content when `height` is nil
-  public static func size(
-    _ note: Note, width: Double, height: Double?, folder: URL, look: String, dark: Bool, refs: [NoteRef]
-  ) -> CGSize {
-    if let height { return CGSize(width: width, height: height) }
-    let l = layout(note, width: width, folder: folder, look: look, dark: dark, refs: refs)
-    return CGSize(width: width, height: (header + padding.top + l.size.height + padding.bottom).rounded(.up))
-  }
-
-  /// the Note drawn at `scale` into a surface laid out as the page's snapshots are (BGRA, the card's top left at the top
-  /// left pixel, transparent where the canvas draws the paper)
-  public static func snapshot(
-    _ note: Note, width: Double, height: Double?, folder: URL, scale: Double, look: String, dark: Bool, refs: [NoteRef]
-  ) -> NoteSnapshot? {
-    let l = layout(note, width: width, folder: folder, look: look, dark: dark, refs: refs)
-    let size = Self.size(note, width: width, height: height, folder: folder, look: look, dark: dark, refs: refs)
-    let s = CGFloat(scale)
-    let w = Int((size.width * s).rounded(.up))
-    let h = Int((size.height * s).rounded(.up))
-    guard w > 0, h > 0, let surface = NoteSnapshot.makeSurface(width: w, height: h) else { return nil }
-    surface.lock(options: [], seed: nil)
-    defer { surface.unlock(options: [], seed: nil) }
-    guard let space = CGColorSpace(name: CGColorSpace.sRGB),
-      let ctx = CGContext(
-        data: surface.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: surface.bytesPerRow,
-        space: space,
-        bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
-    else { return nil }
-    ctx.clear(CGRect(x: 0, y: 0, width: w, height: h))
-    // y down, in points, the body's content box at the origin
-    ctx.translateBy(x: 0, y: CGFloat(h))
-    ctx.scaleBy(x: s, y: -s)
-    ctx.translateBy(x: padding.left, y: header + padding.top)
-    let visible = CGRect(
-      x: 0, y: 0, width: l.size.width, height: max(0, size.height - header - padding.top - padding.bottom))
-    ctx.clip(to: visible.insetBy(dx: -padding.left, dy: 0))
-    l.draw(in: ctx, scale: s, clip: visible.insetBy(dx: -padding.left, dy: -1)) { slot in
-      decode(folder.appending(path: slot.src), pixelWidth: slot.pixelWidth(at: s))
-    }
-    return NoteSnapshot(surface: surface, size: size)
-  }
-
-  /// an image decoded at the width it is drawn (ImageIO's thumbnail: never larger than needed)
-  static func decode(_ url: URL, pixelWidth: Int) -> CGImage? {
-    guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-    let opts: [CFString: Any] = [
-      kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
-      kCGImageSourceThumbnailMaxPixelSize: max(1, pixelWidth * 2), kCGImageSourceShouldCacheImmediately: true,
-    ]
-    return CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary)
-  }
+  /// How many layouts the cache holds now (tests)
+  static var cached: Int { cache.count }
 
   struct LayoutKey: Hashable {
     let text: String
+    let style: NoteStyle
     let layout: NoteLayout?
     let width: Double
-    let folder: URL
     let look: String
     let dark: Bool
-    let refs: [String]
-    init(text: String, layout: NoteLayout?, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef]) {
-      self.text = text
-      self.layout = layout
-      self.width = width
-      self.folder = folder
-      self.look = look
-      self.dark = dark
-      self.refs = refs.map { "\($0.label)\u{0}\($0.target ?? "")\u{0}\($0.hit)" }
-    }
+    let folder: URL
+    let refs: [NoteRef]
   }
 
-  final class LayoutCache: @unchecked Sendable {
-    private var store: [LayoutKey: MarkdownLayout] = [:]
-    private let lock = NSLock()
-    func get(_ k: LayoutKey, _ make: () -> MarkdownLayout) -> MarkdownLayout {
-      lock.lock()
-      if let v = store[k] {
-        lock.unlock()
-        return v
+  /// Layouts by least recent use. A layout holds its lines, glyph runs and formula paths: a few kB for a short Note, a
+  /// few hundred for a long one with formulas. The bound covers the largest boards' Notes twice over (a board and the
+  /// same board in the other appearance) with room for a few more boards, at a few tens of MB at most
+  final class LayoutCache: Sendable {
+    private struct State {
+      var store: [LayoutKey: (body: NoteBody, used: UInt64)] = [:]
+      var clock: UInt64 = 0
+    }
+    private let state = Mutex(State())
+    let capacity: Int
+
+    init(capacity: Int) { self.capacity = capacity }
+
+    var count: Int { state.withLock { $0.store.count } }
+
+    func get(_ k: LayoutKey, _ make: () -> NoteBody) -> NoteBody {
+      let hit = state.withLock { s -> NoteBody? in
+        guard let v = s.store[k] else { return nil }
+        s.clock += 1
+        s.store[k] = (v.body, s.clock)
+        return v.body
       }
-      lock.unlock()
+      if let hit { return hit }
       let v = make()
-      lock.lock()
-      if store.count > 400 { store.removeAll(keepingCapacity: true) }
-      store[k] = v
-      lock.unlock()
+      state.withLock { s in
+        s.clock += 1
+        s.store[k] = (v, s.clock)
+        guard s.store.count > capacity else { return }
+        // over the bound: the least recently used tenth goes at once, so this sort runs once per that many layouts
+        let old = s.store.sorted { $0.value.used < $1.value.used }.prefix(max(1, capacity / 10))
+        for (key, _) in old { s.store[key] = nil }
+      }
       return v
     }
   }
 }
 
-/// What a Note's Markdown needs from the board: image sizes from the files' headers (never decoded here), its [[refs]]
-/// as the canvas resolved them, the formula and diagram engines
-struct NoteResources: MarkdownResources {
+public enum NoteError: Error, Equatable {
+  /// No engines.js in the app's assets: `node apps/macos/web/build.mjs`
+  case enginesMissing(URL)
+  /// engines.js is there but does not start
+  case engines(String)
+}
+
+/// What a Note's content needs from the board, given by the canvas
+public struct NoteEnv: Sendable {
+  /// where its images are: the board package or the vault's shared folder
+  public var folder: URL
+  /// its [[refs]] as the canvas resolved them
+  public var refs: [NoteRef]
+  /// an image file's size in pixels, from its name or header (never decoded here)
+  public var imageSize: @Sendable (URL) -> CGSize?
+  /// code colouring: each line's tokens
+  public var highlight: @Sendable (_ lines: [String], _ language: String) -> [[MarkdownToken]]?
+
+  public init(
+    folder: URL, refs: [NoteRef] = [], imageSize: @escaping @Sendable (URL) -> CGSize? = { _ in nil },
+    highlight: @escaping @Sendable ([String], String) -> [[MarkdownToken]]? = { _, _ in nil }
+  ) {
+    self.folder = folder
+    self.refs = refs
+    self.imageSize = imageSize
+    self.highlight = highlight
+  }
+}
+
+/// A Note laid out for a card: its content and where it sits in the card
+public final class NoteBody: Sendable {
+  public let layout: MarkdownLayout
+  public let card: NoteLooks.Card
   let folder: URL
-  let refs: [NoteRef]
+
+  init(layout: MarkdownLayout, card: NoteLooks.Card, folder: URL) {
+    self.layout = layout
+    self.card = card
+    self.folder = folder
+  }
+
+  /// The card's size at 100 % for a card `width` wide: as tall as its content (`height` nil, or a Box shorter than its
+  /// content), a Free Text as wide as its text
+  public func size(width: Double, height: Double?) -> CGSize {
+    let p = card.padding
+    let w = card.plain ? layout.size.width + p[1] + p[3] : CGFloat(width)
+    let content = (card.header + p[0] + max(layout.size.height, card.minContent) + p[2]).rounded(.up)
+    if let height {
+      // a Box's height is its least (min-height); the others' is fixed
+      return CGSize(width: w, height: card.middle ? max(CGFloat(height), content) : CGFloat(height))
+    }
+    return CGSize(width: w, height: content)
+  }
+
+  /// An image of the Note: the file, which frame from 0 (an animated image's still: `{frame=N}` counts from 1), and its
+  /// place in the layout
+  public struct Image: Sendable, Hashable {
+    public var url: URL
+    public var frame: Int
+    public var rect: CGRect
+    public var svg: Bool { url.pathExtension.lowercased() == "svg" }
+    /// how many pixels wide it is drawn at a scale
+    public func pixelWidth(at scale: CGFloat) -> Int { Int((rect.width * scale).rounded(.up)) }
+  }
+
+  /// The images it draws (not the broken ones: their box is drawn without a file)
+  public var images: [Image] {
+    layout.images.filter { !$0.broken && !$0.src.contains("://") }.map {
+      Image(url: folder.appending(path: $0.src), frame: max(0, ($0.stillFrame ?? 1) - 1), rect: $0.frame)
+    }
+  }
+
+  /// Draws the content into a card `size` big at 100 %, in board units y-down from the card's top left, at `scale` device
+  /// pixels a unit; `image` gives each image decoded for its width at that scale (nil: its place stays empty)
+  public func draw(
+    in ctx: CGContext, size: CGSize, scale: CGFloat, image: (Image, _ pixelWidth: Int) -> CGImage?
+  ) {
+    let p = card.padding
+    let inner = CGRect(
+      x: p[3], y: card.header + p[0], width: size.width - p[1] - p[3],
+      height: max(0, size.height - card.header - p[0] - p[2]))
+    var top = inner.minY
+    if card.middle { top += max(0, (inner.height - max(layout.size.height, card.minContent)) / 2) }
+    ctx.saveGState()
+    // what does not fit the card's height is cut at its padding; sideways a line may reach into the padding
+    ctx.clip(to: CGRect(x: 0, y: inner.minY, width: size.width, height: inner.height))
+    ctx.translateBy(x: inner.minX, y: top)
+    let visible = CGRect(x: -p[3], y: -1, width: size.width, height: inner.height + 2)
+    let folder = self.folder
+    layout.draw(in: ctx, scale: scale, clip: visible) { slot in
+      let img = Image(
+        url: folder.appending(path: slot.src), frame: max(0, (slot.stillFrame ?? 1) - 1), rect: slot.frame)
+      return image(img, slot.pixelWidth(at: scale))
+    }
+    ctx.restoreGState()
+  }
+}
+
+/// A Note's resources from the board's `NoteEnv` and the engines
+struct NoteResources: MarkdownResources {
+  let env: NoteEnv
   let math: MathTypesetter?
   var diagrams: DiagramRenderer? { math as? DiagramRenderer }
 
   func imageSize(_ src: String) -> CGSize? {
-    guard !src.contains("://"), let s = CGImageSourceCreateWithURL(folder.appending(path: src) as CFURL, nil),
-      let p = CGImageSourceCopyPropertiesAtIndex(s, 0, nil) as? [CFString: Any],
-      var w = p[kCGImagePropertyPixelWidth] as? Int, var h = p[kCGImagePropertyPixelHeight] as? Int
-    else { return nil }
-    // EXIF orientations 5–8 turn the picture a quarter
-    if let o = p[kCGImagePropertyOrientation] as? Int, o >= 5 { swap(&w, &h) }
-    return CGSize(width: w, height: h)
+    guard !src.contains("://") else { return nil }
+    return env.imageSize(env.folder.appending(path: src))
   }
 
   func ref(label: String, target: String?) -> MarkdownRefHit? {
-    guard let r = refs.first(where: { $0.label == label && $0.target == target }) else { return nil }
+    guard let r = env.refs.first(where: { $0.label == label && $0.target == target }) else { return nil }
     switch r.hit {
     case .found(let title, let seal):
       return .found(title: title, seal: seal.map { MarkdownSeal(text: $0.text, color: $0.color, alone: $0.alone) })
@@ -172,6 +294,6 @@ struct NoteResources: MarkdownResources {
     }
   }
 
-  func highlight(lines: [String], language: String) -> [[MarkdownToken]]? { nil }
+  func highlight(lines: [String], language: String) -> [[MarkdownToken]]? { env.highlight(lines, language) }
   var mathPreamble: String { "" }
 }

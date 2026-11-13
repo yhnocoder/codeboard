@@ -199,7 +199,7 @@ struct DocumentBuilder {
   var cache: InlineCache
 
   /// Blocks of a token list. Where TipTap reads blank lines as empty paragraphs (the top level, quotes and list items:
-  /// parseBlockChildren), they are blocks too: an empty paragraph the Note page shows as a blank line
+  /// parseBlockChildren), they are blocks too: an empty paragraph the web board shows as a blank line
   mutating func blocks(_ toks: [Token]) -> [MDBlock] {
     var out: [MDBlock] = []
     var prevTable: Int?
