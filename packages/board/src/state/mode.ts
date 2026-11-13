@@ -12,8 +12,6 @@ export type Mode =
   | { kind: "place"; icon: IconRef; color?: string }
   /** 工具栏 Arrow / 手动补 Call 箭头：点下一张卡连上 */
   | { kind: "connect"; from: ConnectFrom }
-  /** 点一张卡交给 then（Card sidenote、Link Answer） */
-  | { kind: "pick"; then: (id: string) => void }
   /** 工具栏 Section：在画布上拖出一个框 */
   | { kind: "draw" };
 export type ModeKind = Mode["kind"];
@@ -40,14 +38,6 @@ export function startDraw() {
 export function endDraw() {
   if (modeIs("draw")) idle();
   if (toastMsg()?.text === DRAW_HINT) setToastMsg(null);
-}
-
-export const pickCardThen = (then: (id: string) => void) => setMode({ kind: "pick", then });
-/** 点一张卡：交出回调，回到 idle */
-export function takePick(): ((id: string) => void) | null {
-  const m = modeIs("pick");
-  if (m) idle();
-  return m?.then ?? null;
 }
 
 /** Esc：取消正在进行的模式；没有模式时返回 false */

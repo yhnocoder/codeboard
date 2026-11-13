@@ -317,6 +317,9 @@ test("sidenoteTextEditSaves", async () => {
   await keys(h.page, "added by esc{Escape}");
   await saved("Esc adds the text sidenote", before);
   const afterAdd = texts();
+  // a click on the badge closes its open popup: close it first
+  await h.page.keyboard.press("Escape");
+  await idle(h);
   before = await openEdit();
   await keys(h.page, "{ControlOrMeta+a}{Backspace}{Enter}");
   await saved("saving an emptied sidenote deletes it", before);

@@ -58,6 +58,7 @@ import { CompareBody } from "./CompareBody";
 import { NoteBody, WritingToolbar, boxFill } from "./NoteBody";
 import { WebBody, LinksBody } from "./WebBody";
 import { BoardBody } from "./BoardBody";
+import { CardSpots } from "../ui/SnBadge";
 import { Editable } from "../ui/Editable";
 import { below } from "../ui/Menu";
 import * as act from "../actions";
@@ -324,6 +325,7 @@ export function CardView(p: { card: Card }) {
           }}
         >
           <Dynamic component={BODIES[c().kind] as Component<{ card: Card }>} card={c()} />
+          <CardSpots card={c().id} />
           {/* 拖动时由 .board.dragging 藏起来（CSS），不在每次拖动开始和结束时把几百张卡的圆点拆掉又建回来 */}
           <For each={["t", "r", "b", "l"] as const}>
             {(side) => (

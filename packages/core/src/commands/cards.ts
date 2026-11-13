@@ -146,17 +146,14 @@ export function moveNoteBlocks(env: CommandEnv, notes: { id: string; md: string;
 }
 
 /**
- * The first edit of a new card or question ended without anything written through writeNote, writeFreeCode or writeQuestion
+ * The first edit of a new card ended without anything written through writeNote or writeFreeCode
  * (the editor closed unchanged): it stays when it has content after all (text that reached it another way), else it goes
  */
 export function settleUnwritten(env: CommandEnv, id: string) {
   if (!env.fresh.is(id)) return;
   const b = env.board();
-  const c = findCard(b, id)?.card,
-    q = b.stickers.find((s) => s.id === id)?.q;
-  const empty = q
-    ? !q.md.trim()
-    : !c || (c.kind === "note" ? !c.md.trim() : isCode(c) ? !c.segments[0]?.text.join("").trim() : false);
+  const c = findCard(b, id)?.card;
+  const empty = !c || (c.kind === "note" ? !c.md.trim() : isCode(c) ? !c.segments[0]?.text.join("").trim() : false);
   env.fresh.settle(id, !empty);
 }
 

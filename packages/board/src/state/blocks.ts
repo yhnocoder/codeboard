@@ -2,7 +2,7 @@
 // 拖箭头时指着哪一块（块之间的空隙、上下内边距算最近的那块，只有卡头算整张卡），以及落点和起点那两块的淡色底。
 // 块和 Markdown 对不上（有脚注、HTML 注释、还没渲染完）时这张 Note 只能整张连
 import { createEffect, createMemo, onCleanup } from "solid-js";
-import { blockSig, blockAt, type BlockRef } from "@codeboard/core";
+import { blockSig, blockAt, blockMap, type BlockRef } from "@codeboard/core";
 import { noteBlocks } from "../md/blocks";
 import { state, cardById, onBoard } from "./store";
 import { editing, liveNoteMd, dragging } from "./ui";
@@ -12,8 +12,19 @@ import { boardSignal, boardStore, boardTimer, rooted } from "./root";
 import { BLOCK_LEAVE } from "./timing";
 import { cardSel } from "../cardsel";
 
-/** 一张 Note 里每块的位置（相对卡片顶部、未减滚动，和代码卡的 CardGeo 一样）；sigs = 量的那份 Markdown 每块的指纹（编辑中是编辑器里的字） */
-type BlockGeo = { ys: number[]; hs: number[]; top: number; bottom: number; scroll: number; sigs: string[] };
+/** 一张 Note 里每块的位置（相对卡片顶部、未减滚动，和代码卡的 CardGeo 一样）；sigs = 量的那份 Markdown 每块的指纹（编辑中是编辑器里的字）；
+ *  saved / moved: while the editor holds unsaved text, the saved text's fingerprints and where each saved block is now (blockMap) */
+type BlockGeo = {
+  ys: number[];
+  hs: number[];
+  ls: number[];
+  top: number;
+  bottom: number;
+  scroll: number;
+  sigs: string[];
+  saved?: string[];
+  moved?: number[];
+};
 const [bgeo, setBgeo] = boardStore<Record<string, BlockGeo | undefined>>(() => ({}), onBoard);
 
 /** el 在 root 里的 y（按排版，不受缩放、斜贴影响）；root 要在 el 的 offsetParent 链上（.nbody 是 position: relative） */
@@ -24,7 +35,14 @@ function offIn(el: HTMLElement, root: HTMLElement): number {
   return y;
 }
 
-type NoteDom = { card: HTMLElement; body: HTMLElement; kids: HTMLElement[]; blocks: string[]; editor: boolean };
+type NoteDom = {
+  card: HTMLElement;
+  body: HTMLElement;
+  kids: HTMLElement[];
+  blocks: string[];
+  editor: boolean;
+  saved: string;
+};
 /** Note 的正文和里面一块一块的顶层元素；编辑器开着时是编辑器里的、按编辑器里眼前的字拆。对不上时 null */
 function noteDom(id: string): NoteDom | null {
   const c = cardById(id)?.card;
@@ -38,13 +56,33 @@ function noteDom(id: string): NoteDom | null {
   const md = (editor && liveNoteMd(id)) || c.md;
   if (editor && !pm) return null;
   // 编辑器末尾那个只为放光标的空段（.md-pad）不是 Markdown 里的块
-  const kids = ([...(pm ?? body).children] as HTMLElement[]).filter((k) => !k.classList.contains("md-pad"));
+  let kids = ([...(pm ?? body).children] as HTMLElement[]).filter((k) => !k.classList.contains("md-pad"));
   const blocks = noteBlocks(md);
-  return blocks && blocks.length && blocks.length === kids.length ? { card, body, kids, blocks, editor } : null;
+  // an empty paragraph in the editor (Enter just pressed) is no block of the Markdown
+  if (pm && blocks && blocks.length !== kids.length)
+    kids = kids.filter((k) => k.tagName !== "P" || k.textContent || k.querySelector("img"));
+  return blocks && blocks.length && blocks.length === kids.length
+    ? { card, body, kids, blocks, editor, saved: c.md }
+    : null;
 }
 /** 第 k 块的中线，相对卡片顶部（未减滚动） */
 const midOf = (d: NoteDom, k: number) =>
   offIn(d.body, d.card) + d.body.clientTop + offIn(d.kids[k], d.body) + d.kids[k].offsetHeight / 2;
+
+/** How tall a block's first line is: its line height, less what its own top padding adds (a code block's) */
+function firstLine(el: HTMLElement): number {
+  const cs = getComputedStyle(el),
+    lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5 || 20;
+  return Math.min(el.offsetHeight, lh + parseFloat(cs.paddingTop || "0"));
+}
+
+/** The fingerprints of what is on the page, and while the editor holds unsaved text the saved text's and where each saved block is now */
+function blockSigs(d: NoteDom): Pick<BlockGeo, "sigs" | "saved" | "moved"> {
+  const sigs = d.blocks.map(blockSig);
+  const was = d.editor ? noteBlocks(d.saved) : null;
+  if (!was || (was.length === d.blocks.length && was.every((b, k) => b === d.blocks[k]))) return { sigs };
+  return { sigs, saved: was.map(blockSig), moved: blockMap(was, d.blocks) };
+}
 
 function readBlocks(id: string): () => void {
   const d = noteDom(id);
@@ -53,10 +91,11 @@ function readBlocks(id: string): () => void {
   const g: BlockGeo = {
     ys: d.kids.map((k) => top + offIn(k, d.body)),
     hs: d.kids.map((k) => k.offsetHeight),
+    ls: d.kids.map(firstLine),
     top,
     bottom: top + d.body.clientHeight,
     scroll: d.body.scrollTop,
-    sigs: d.blocks.map(blockSig),
+    ...blockSigs(d),
   };
   return () => setBgeo(id, g);
 }
@@ -70,6 +109,26 @@ export function blockY(id: string, ref: BlockRef): number | null {
   return Math.min(Math.max(g.ys[k] + g.hs[k] / 2 - g.scroll, g.top), g.bottom);
 }
 
+/** A sidenote's block in what is measured: by its fingerprint; while the Note is being edited, where its saved block is now (as
+ *  the Note's upkeep will move it when the edit is saved, core rebaseBlocks), else at its index */
+const noteBlockAt = (ref: BlockRef, g: Pick<BlockGeo, "sigs" | "saved" | "moved">) => {
+  const k = blockAt(ref, g.sigs);
+  if (k >= 0) return k;
+  const was = g.saved && g.moved ? blockAt(ref, g.saved) : -1;
+  if (was >= 0) return g.moved![was];
+  return ref.i < g.sigs.length ? ref.i : -1;
+};
+
+/** A sidenote's block in the card: its top and height (from the card's top, less the scroll, the top kept inside the body's
+ *  visible part), and the height of its first line; null when it is not measured or not there */
+export function blockBand(id: string, ref: BlockRef): { top: number; h: number; line: number } | null {
+  const g = bgeo[id];
+  if (!g) return null;
+  const k = noteBlockAt(ref, g);
+  if (k < 0 || !g.hs[k]) return null;
+  return { top: Math.min(Math.max(g.ys[k] - g.scroll, g.top), g.bottom), h: g.hs[k], line: g.ls[k] };
+}
+
 /** 有箭头连着某一块的卡 */
 const anchored = rooted(() =>
   createMemo(
@@ -79,6 +138,7 @@ const anchored = rooted(() =>
         if (l.from.block) s.add(l.from.card);
         if (l.to.block) s.add(l.to.card);
       }
+      for (const n of state.board.sidenotes) if (n.at.block) s.add(n.at.card);
       return s;
     },
     new Set<string>(),
@@ -98,6 +158,8 @@ export function trackBlocks(id: () => string, md: () => string) {
     let body: HTMLElement | null = null;
     const later = () => queueMeasure(`blocks:${cid}`, () => readBlocks(cid));
     const mo = new MutationObserver(() => watch());
+    // text typed into a block that keeps its size (an empty paragraph written into) changes what the blocks are: measure again
+    const typed = new MutationObserver(later);
     // 滚动只改 scroll（块的位置不随滚动变），和代码卡一样
     const onScroll = (e: Event) => {
       if (body && e.target === body && bgeo[cid]) setBgeo(cid, "scroll", body.scrollTop);
@@ -106,6 +168,7 @@ export function trackBlocks(id: () => string, md: () => string) {
       for (const f of unobs) f();
       unobs = [];
       mo.disconnect();
+      typed.disconnect();
       const face = document.querySelector<HTMLElement>(`${cardSel(cid)} > .cface`);
       body = face?.querySelector<HTMLElement>(":scope > .nbody") ?? null;
       if (!face || !body) return later();
@@ -114,6 +177,7 @@ export function trackBlocks(id: () => string, md: () => string) {
       // 编辑器还没挂上（先显示着静态内容）：等它出来；挂上以后只看它的顶层块
       mo.observe(body, { childList: true, subtree: !pm && body.classList.contains("editing") });
       if (pm) mo.observe(pm, { childList: true });
+      if (pm) typed.observe(pm, { subtree: true, childList: true, characterData: true });
       for (const el of [body, ...(pm ?? body).children]) unobs.push(observeResize(el, later));
       later();
     }
@@ -127,6 +191,7 @@ export function trackBlocks(id: () => string, md: () => string) {
     onCleanup(() => {
       for (const f of unobs) f();
       mo.disconnect();
+      typed.disconnect();
       document.removeEventListener("scroll", onScroll, { capture: true });
       setBgeo(cid, undefined);
     });
@@ -203,6 +268,19 @@ export function aimBlock(id: string, y: number): BlockAim | null {
 export function blockOf(id: string, ref: BlockRef): BlockAim | null {
   const d = noteDom(id);
   const k = d ? blockAt(ref, d.blocks.map(blockSig)) : -1;
+  return d && k >= 0 ? { card: id, k, ref, el: d.kids[k], editor: d.editor } : null;
+}
+/** Where a block is in its card, read from the page (layout pixels from the card's top, less the scroll): for a block not measured
+ *  by trackBlocks (no sidenote or arrow on it yet) */
+export function blockBandNow(a: BlockAim): { top: number; h: number; line: number } {
+  const card = a.el.closest<HTMLElement>(".card")!,
+    body = a.el.closest<HTMLElement>(".nbody");
+  return { top: offIn(a.el, card) - (body?.scrollTop ?? 0), h: a.el.offsetHeight, line: firstLine(a.el) };
+}
+/** A sidenote's block on the page (found as noteBlockAt finds it) */
+export function noteBlockOf(id: string, ref: BlockRef): BlockAim | null {
+  const d = noteDom(id);
+  const k = d ? noteBlockAt(ref, blockSigs(d)) : -1;
   return d && k >= 0 ? { card: id, k, ref, el: d.kids[k], editor: d.editor } : null;
 }
 

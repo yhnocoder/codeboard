@@ -268,7 +268,7 @@ async function lineMenu(res: Record<string, unknown>) {
   res.code = {
     sel: await selNos(h),
     hide: m1.some((t) => /Hide Lines/.test(t)),
-    ask: m1.some((t) => /Ask a Question/.test(t)),
+    ask: m1.some((t) => /Add Sidenote/.test(t)) && !m1.some((t) => /Ask a Question/.test(t)),
     card: m1.some((t) => /^Card/.test(t)),
   };
   await page.locator(".ctx.open button", { hasText: /^Card/ }).hover();

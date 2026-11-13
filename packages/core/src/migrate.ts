@@ -1,4 +1,4 @@
-// 旧白板文件 → 当前版本（第 16 版）。项目里唯一的兼容代码：旧版本的结构、缺省的字段、手改出来的 null 都在这里补成
+// 旧白板文件 → 当前版本（第 17 版）。项目里唯一的兼容代码：旧版本的结构、缺省的字段、手改出来的 null 都在这里补成
 // 和 model.ts 的类型一模一样，读进来之后的代码只认当前结构。schema.ts 校验的是这里的结果。
 import {
   BOARD_VERSION,
@@ -18,6 +18,7 @@ import {
   type Sidenote,
   type Sticker,
   cardTitle,
+  stickerWhere,
   isTextCard,
   TEXT_FS,
   TEXT_SIZES,
@@ -25,7 +26,7 @@ import {
 import { eachMarkdown, mapRefs, refSource, UNTITLED_REF } from "./mdrefs";
 import { fixHighlights } from "./edit/highlights";
 
-/** 读进来的白板文件（第 1–16 版）→ 第 16 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
+/** 读进来的白板文件（第 1–17 版）→ 第 17 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
 export function migrateBoard(raw: any): BoardFile {
   // 更新的版本写的文件：读不懂就别碰（当第 1 版迁移会丢掉所有卡，下次自动保存把空白板写回去）
   if (typeof raw?.version === "number" && raw.version > BOARD_VERSION)
@@ -75,7 +76,50 @@ export function migrateBoard(raw: any): BoardFile {
     const places = [b.place, ...(b.shelf ?? []).map((e: { place: Record<string, Place> }) => e.place)];
     for (const c of b.cards) if (c.kind !== "shared") textAndBox(c, places);
   }
+  // 16 → 17: questions are sidenotes, a sticker only a mark (questionStickers)
+  if (from < 17) questionStickers(b);
   return b;
+}
+
+/** How big a canvas sticker is drawn when it stores no size (board stickers/Picker.tsx) */
+const STICKER_SIZE = 32;
+/** An old question sticker: the builtin "?" one, or one with a question written on it */
+const oldQuestion = (k: any) => !!k?.q || (k?.icon?.pack === "builtin" && k.icon.name === "question");
+
+/**
+ * 16 → 17: each question sticker becomes a question sidenote where it was: on its line (or the line its arrow leaves), on the
+ * whole card it was on, else free on the canvas at its point; with its text, done state and the card that answered it as its one
+ * answer (a [[reference]] to that card). Stickers belong to the board, so one on a library card stays on this board (Board-only).
+ * Those in a Shelf entry were on its shelved cards and become theirs. The lines they go on become a Highlight, as adding one would
+ */
+function questionStickers(b: any) {
+  const shared = new Set<string>(b.cards.filter((c: any) => c.kind === "shared").map((c: any) => c.id));
+  const has = (id: string) => b.cards.some((c: any) => c.id === id);
+  const lines = new Set<string>();
+  const turn = (list: any[], links: any[]) =>
+    list.filter((k) => {
+      if (!oldQuestion(k)) return true;
+      const w = stickerWhere({ links }, k as Sticker);
+      const q = k.q ?? {};
+      const n: any = { id: k.id, kind: "text", md: typeof q.md === "string" ? q.md : "", q: { at: q.at ?? 0 } };
+      if (q.done) n.q.done = true;
+      if (typeof q.answer === "string" && has(q.answer))
+        n.q.answers = [{ id: uid("a"), md: refSource(boardCardTitle(b, q.answer) ?? "", q.answer), at: q.at ?? 0 }];
+      if (w.card && has(w.card)) {
+        n.at = w.seg && w.line !== undefined ? { card: w.card, seg: w.seg, lines: [w.line, w.line] } : { card: w.card };
+        if (shared.has(w.card)) n.boardOnly = true;
+        else if (n.at.lines) lines.add(w.card);
+      } else if (k.at?.kind === "canvas" && !k.at.on) {
+        // a free badge is centred on its point; the sticker was drawn from its top left
+        const half = (k.at.size ?? STICKER_SIZE) / 2;
+        n.at = { x: Math.round(k.at.x + half), y: Math.round(k.at.y + half) };
+      } else return false;
+      b.sidenotes.push(n);
+      return false;
+    });
+  b.stickers = turn(b.stickers, b.links);
+  for (const e of b.shelf ?? []) e.stickers = turn(e.stickers ?? [], [...b.links, ...(e.links ?? [])]);
+  if (lines.size) fixHighlights(b, lines, { review: false });
 }
 
 /** The title of card `id` as the board file has it (a shared card's content is in the card library: none) */
@@ -409,12 +453,15 @@ function v10to11(b: BoardFile) {
   }
   if (!ids.size) return;
   const byId = new Set(b.cards.map((c) => c.id));
-  eachMarkdown(b, (md) =>
+  const fix = (md: string) =>
     mapRefs(md, (r) => {
       const id = !r.target && !byId.has(r.label) ? ids.get(r.label.toLowerCase()) : undefined;
       return id ? `[[${r.label}#^${id}]]` : undefined;
-    }),
-  );
+    });
+  eachMarkdown(b, fix);
+  // the questions on stickers of that time (sidenotes since 17, questionStickers)
+  for (const k of [...b.stickers, ...(b.shelf ?? []).flatMap((e) => e.stickers)] as any[])
+    if (typeof k.q?.md === "string") k.q.md = fix(k.q.md);
 }
 
 /** 第 9 版以前的白板文件里存着的镜头：这台机器上还没记过这块白板的镜头时，宿主拿它当起点（见 schema.ts readBoardFile） */
@@ -441,21 +488,26 @@ export function sharedTextHeights(raw: any): ((b: Board) => void) | undefined {
 }
 
 /**
- * 14 → 15 for Card sidenotes that pointed at a card from the card library (or that a library card carried): the board file holds
- * only the shared card's id, so migrateBoard wrote the reference with the placeholder label. Once Storage has put the shared
+ * 14 → 15 for Card sidenotes that pointed at a card from the card library (or that a library card carried), and 16 → 17 for the
+ * answers made from question stickers answered by one: the board file holds only the shared card's id, so migrateBoard wrote the
+ * reference with the placeholder label. Once Storage has put the shared
  * cards in, the label becomes the card's title, as writing the reference in the editor would have made it (schema.ts readBoardFile)
  */
 export function sharedCardRefs(raw: any): ((b: Board) => void) | undefined {
-  if (!(raw?.version < 15) || !Array.isArray(raw.cards) || !raw.cards.some((c: any) => c?.kind === "shared"))
+  if (!(raw?.version < 17) || !Array.isArray(raw.cards) || !raw.cards.some((c: any) => c?.kind === "shared"))
     return undefined;
   return (b) => {
-    for (const n of b.sidenotes) {
-      if (n.kind !== "text") continue;
-      n.md = mapRefs(n.md, (r) => {
+    const titled = (md: string) =>
+      mapRefs(md, (r) => {
         if (r.label !== UNTITLED_REF || !r.target) return undefined;
         const c = b.cards.find((k) => k.id === r.target);
         return c ? refSource(cardTitle(c, b), c.id) : undefined;
       });
+    for (const n of b.sidenotes) {
+      if (n.kind !== "text") continue;
+      // 14 → 15's Card sidenotes; 16 → 17's answers, a reference to the card that answered a question sticker
+      if (raw.version < 15) n.md = titled(n.md);
+      for (const a of n.q?.answers ?? []) a.md = titled(a.md);
     }
   };
 }
@@ -559,7 +611,7 @@ function normalize(b: any) {
   b.links.forEach(normLink);
   b.sidenotes.forEach(normNote);
   cornerStickers(b);
-  for (const k of b.stickers as Sticker[]) dropFalse(k.q, ["done"]);
+  for (const k of b.stickers) dropFalse(k.q, ["done"]);
 }
 
 /** 旧的「贴在卡片角上」（at.kind card，右上角一排）→ 绑在卡上的贴纸，摆在原来那一排的位置 */

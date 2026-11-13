@@ -402,7 +402,7 @@ async function projectDocs(store: Storage, here?: string, draw?: (svg: string) =
       });
     }
     for (const n of board.sidenotes ?? []) {
-      if (off.has(n.at.card)) continue;
+      if (n.at.card === undefined || off.has(n.at.card)) continue;
       const text = sidenoteText(n);
       if (!text.trim()) continue;
       const id = `sidenote:${n.id}`;

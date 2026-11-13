@@ -76,7 +76,7 @@ export async function search(
         scored.push({ s: s + 30 + (board.id === here ? 5 : 0), item });
       });
       for (const n of board.sidenotes ?? []) {
-        if (off.has(n.at.card)) continue;
+        if (n.at.card === undefined || off.has(n.at.card)) continue;
         if (refs.has(n.at.card) && !n.boardOnly) {
           if (seenNotes.has(n.id)) continue;
           seenNotes.add(n.id);

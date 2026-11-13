@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { emptyBoard, type BoardToHost, type CodeCard } from "@codeboard/core";
+import { emptyBoard, type CodeCard, type Sidenote } from "@codeboard/core";
 import { shot, put, symCard, findSym, OUT, type Host } from "../harness";
-import { test, open, check, light, verdict, expect, until, idle, hostBoards } from "../fixtures";
+import { test, open, check, light, verdict, until, idle, hostBoards } from "../fixtures";
 import type { Page } from "@playwright/test";
 
 async function shotPr(h: Host, name: string) {
@@ -46,51 +46,54 @@ const lineOf = (c: CodeCard, re: RegExp) => {
   const s = c.segments[0];
   return s.start + s.text.findIndex((t) => re.test(t));
 };
+/** A question sidenote on one line of a code card, its line a Highlight as adding it there makes it */
+const lineQuestion = (id: string, c: CodeCard, re: RegExp, md: string, q: Record<string, unknown> = {}): Sidenote => {
+  const s = c.segments[0],
+    l = lineOf(c, re);
+  (s.hl ??= []).push([l, l]);
+  return { id, kind: "text", md, at: { card: c.id, seg: s.id, lines: [l, l] }, q: { at: 1, ...q } } as Sidenote;
+};
 
 test("questions", () => verdict("questions", questions));
 
-// Going to a question far away: the popover opens once the camera has arrived, also when the flight is slow (slow motion makes it
-// several seconds), so it sits next to the sticker and not where the sticker was mid-flight; a question already in view opens at once
+// Going to a question far away from the question list: its popup opens once the camera has arrived, also when the flight is slow
+// (slow motion makes it several seconds), so it sits next to its badge and not where the badge was mid-flight; a question already in
+// view opens at once; the host showing it (a row on another board's list) does the same
 test("questionOpensAfterFlight", async () => {
   const b = emptyBoard("bF", "flight");
   const near = nv("Scheduler.schedule"),
     far = nv("BlockManager.allocate");
   put(b, near, 60, 80, 640);
   put(b, far, 5200, 3400, 640);
-  const line = lineOf(far, /compute_hash/);
-  b.stickers.push({
-    id: "kF",
-    icon: { pack: "builtin", name: "question" },
-    at: { kind: "line", card: far.id, seg: far.segments[0].id, line },
-    q: { md: "far away question" },
-  });
+  b.sidenotes.push(lineQuestion("kF", far, /compute_hash/, "far away question"));
   b.cam = { x: 0, y: 0, z: 1 };
   const run = await hostBoards([b], {
     page: { light, w: 1400, h: 900, settings: { tune: { animSpeed: 40 } } as never },
   });
   const h = await run.open(b.id);
   const pg = h.page;
-  /** The world's transform when the question popover appeared */
+  const POP = '.pop .slip[data-note="kF"]';
+  /** The world's transform when the question's popup appeared */
   const watchPop = () =>
-    pg.evaluate(() => {
+    pg.evaluate((sel) => {
       const w = window as unknown as { __popAt?: string | null };
       w.__popAt = null;
       const world = () => (document.querySelector(".world") as HTMLElement).style.transform;
       const mo = new MutationObserver(() => {
-        if (document.querySelector(".pop.k-question")) {
+        if (document.querySelector(sel)) {
           w.__popAt = world();
           mo.disconnect();
         }
       });
       mo.observe(document.body, { childList: true, subtree: true });
       return world();
-    });
+    }, POP);
   const popAt = () => pg.evaluate(() => (window as unknown as { __popAt?: string | null }).__popAt);
   const world = () => pg.evaluate(() => (document.querySelector(".world") as HTMLElement).style.transform);
-  const nextToSticker = () =>
-    pg.evaluate(() => {
-      const p = document.querySelector(".pop.k-question")!.getBoundingClientRect(),
-        s = document.querySelector('[data-sticker="kF"]')!.getBoundingClientRect();
+  const nextToBadge = () =>
+    pg.evaluate((id) => {
+      const p = document.querySelector(".pop.k-highlight")!.getBoundingClientRect(),
+        s = document.querySelector(`.card[data-id="${id}"] .hxm`)!.getBoundingClientRect();
       return (
         Math.min(
           Math.abs(p.left - s.right),
@@ -99,40 +102,40 @@ test("questionOpensAfterFlight", async () => {
           Math.abs(p.bottom - s.top),
         ) < 40
       );
-    });
-
-  await pg.locator('.dock [aria-label="Questions"]').click();
-  await pg.locator(".qpanel .qrow").first().waitFor();
-  await idle(h);
-  // from the Questions panel: the camera flies to the far card
+    }, far.id);
+  const fromList = async () => {
+    await pg.locator(".qlist-btn").click();
+    await pg.locator('.qlist-row[data-q="kF"]').waitFor();
+    await idle(h);
+    await pg.locator('.qlist-row[data-q="kF"]').click();
+  };
+  // from the question list: the camera flies to the far card
   const before = await watchPop();
-  await pg.locator(".qpanel .qrow", { hasText: "far away question" }).click();
-  await pg.locator(".pop.k-question .qtext").waitFor({ timeout: 15000 });
+  await fromList();
+  await pg.locator(POP).waitFor({ timeout: 15000 });
   await idle(h, 15000);
-  const panel = { before, popAt: await popAt(), after: await world(), next: await nextToSticker() };
+  const list = { before, popAt: await popAt(), after: await world(), next: await nextToBadge() };
   await shot(h, "questions-after-flight");
-  // the question is in view now: clicking the row again opens it without moving the camera
+  // the question is in view now: its row again opens it without moving the camera
   await pg.keyboard.press("Escape");
   await idle(h);
-  const still = await watchPop();
-  await pg.locator(".qpanel .qrow", { hasText: "far away question" }).click();
-  await pg.locator(".pop.k-question .qtext").waitFor();
-  const inView = { before: still, popAt: await popAt() };
-  // the host reveals it (from another board's Questions panel), after panning far away from it
+  const inPlace = await watchPop();
+  await fromList();
+  await pg.locator(POP).waitFor();
+  const inView = { before: inPlace, popAt: await popAt() };
+  // the host shows it (a row on another board's list), after panning far away from it
   await pg.keyboard.press("Escape");
-  await idle(h);
-  await pg.locator('.qpanel [aria-label="Close Questions"]').click();
   await idle(h);
   await pg.mouse.move(700, 450);
   await pg.mouse.wheel(-6000, -4000);
   await idle(h);
   const home = await watchPop();
-  await run.tell({ type: "openBoard", id: b.id, card: far.id, line, sticker: "kF" });
-  await pg.locator(".pop.k-question .qtext").waitFor({ timeout: 15000 });
+  await run.tell({ type: "openBoard", id: b.id, question: "kF" });
+  await pg.locator(POP).waitFor({ timeout: 15000 });
   await idle(h, 15000);
-  const host = { before: home, popAt: await popAt(), after: await world(), next: await nextToSticker() };
-  const r = { panel, inView, host };
-  check("questionOpensAfterFlight-panel", panel.before !== panel.after && panel.popAt === panel.after && panel.next, r);
+  const host = { before: home, popAt: await popAt(), after: await world(), next: await nextToBadge() };
+  const r = { list, inView, host };
+  check("questionOpensAfterFlight-list", list.before !== list.after && list.popAt === list.after && list.next, r);
   check("questionOpensAfterFlight-inView", inView.popAt === inView.before, r);
   check("questionOpensAfterFlight-host", host.before !== host.after && host.popAt === host.after && host.next, r);
   await h.page.context().close();
@@ -142,147 +145,131 @@ test("export", () => verdict("export", exportScenario));
 
 test("settingsPage", () => verdict("settingsPage", settings));
 
-/** Right-click a code line and pick a line-menu item */
+/** Right-click a code line's number and pick a line-menu item */
 async function lineMenu(h: Host, card: string, line: number, label: string) {
   const page = h.page;
-  await page
-    .locator(`.card[data-id="${card}"] .gutter .no`, { hasText: new RegExp(`^${line}$`) })
-    .first()
-    .evaluate((el) => (el as HTMLElement).click());
-  await expect(
-    page.locator(`.card[data-id="${card}"] .gutter .no.sel`, { hasText: new RegExp(`^${line}$`) }),
-  ).toHaveCount(1);
   const l = page.locator(`.card[data-id="${card}"] .gutter .no`, { hasText: new RegExp(`^${line}$`) }).first();
-  const b = (await l.boundingBox())!;
-  await page.mouse.click(b.x + b.width + 260, b.y + b.height / 2, { button: "right" });
-  await page.locator(".ctx:not(.closing) button").first().waitFor();
-  // the line menu has it; the card menu (the right-click missed the line) has it under Add ▸ without "Ask a"
-  if (await page.locator(".ctx:not(.closing) button", { hasText: label }).count())
-    await page.locator(".ctx:not(.closing) button", { hasText: label }).first().click();
-  else {
-    await page.locator('.ctx:not(.closing) button:has(.lb:text-is("Add"))').hover();
-    await page.locator(`.ctx:not(.closing) button:has(.lb:text-is("${label.replace(/^Ask a /, "")}"))`).click();
-  }
+  await l.click({ button: "right" });
+  await page.locator(".ctx:not(.closing) button", { has: page.locator(`.lb:text-is("${label}")`) }).click();
 }
 
+/** A question asked on a line (the ? in the sidenote input), answered, resolved and reopened, its answer edited away; the question
+ *  list with this board's, every board's (grouped) and the resolved ones; a row on another board; the welcome back hint */
 async function questions(res: Record<string, unknown>) {
   const b = emptyBoard("bQ", "nano-vllm · Scheduler");
   const alloc = nv("BlockManager.allocate");
   put(b, alloc, 60, 80, 640);
-  const note = {
-    id: "nAns",
-    kind: "note" as const,
-    md: "**prefix caching 是一条链**\n\n每块的 hash 带上前一块的 h：block_manager 只认整条前缀，中间一块不同后面全不命中。",
-    look: "note",
-  };
-  b.cards.push(note);
-  b.place[note.id] = { x: 760, y: 80, w: 360 };
   // the project's other boards, in the host's storage: two open questions on ModelRunner, a resolved one on DeepEP
   const mr = emptyBoard("bMR", "nano-vllm · ModelRunner");
   const cap = nv("ModelRunner.capture_cudagraph"),
     pre = nv("ModelRunner.prepare_prefill");
   put(mr, cap, 60, 80, 640);
   put(mr, pre, 760, 80, 640);
-  const ask = (id: string, c: CodeCard, re: RegExp, md: string) => ({
-    id,
-    icon: { pack: "builtin" as const, name: "question" },
-    at: { kind: "line" as const, card: c.id, seg: c.segments[0].id, line: lineOf(c, re) },
-    q: { md },
-  });
-  mr.stickers.push(
-    ask("k1", cap, /def capture_cudagraph/, "CUDA graph 为什么只在 decode 用？"),
-    ask("k2", pre, /cu_seqlens_q/, "prepare_prefill 里 cu_seqlens 是什么 shape？"),
+  mr.sidenotes.push(
+    lineQuestion("k1", cap, /def capture_cudagraph/, "CUDA graph 为什么只在 decode 用？", { at: 10 }),
+    lineQuestion("k2", pre, /cu_seqlens_q/, "prepare_prefill 里 cu_seqlens 是什么 shape？", { at: 20 }),
   );
   const ep = emptyBoard("bEP", "DeepEP");
   ep.cards.push({ id: "c3", kind: "note", md: "**intranode::dispatch**", look: "note" });
   ep.place.c3 = { x: 60, y: 80, w: 360 };
-  ep.stickers.push({
+  ep.sidenotes.push({
     id: "k3",
-    icon: { pack: "builtin", name: "question" },
-    at: { kind: "canvas", x: 380, y: 90, on: { card: "c3" } },
-    q: { md: "sm_id % 2 决定 sender，为什么？", done: true },
+    kind: "text",
+    md: "sm_id % 2 决定 sender，为什么？",
+    at: { card: "c3" },
+    q: { at: 5, done: true },
   });
   const run = await hostBoards([b, mr, ep], { page: { light, w: 1500, h: 900 } });
   const h = await run.open(b.id),
     page = h.page;
   await page.keyboard.press("Shift+Digit1");
   await idle(h);
-  const L1 = lineOf(alloc, /compute_hash/),
-    L2 = lineOf(alloc, /block_id in self\.used_block_ids/);
-  // 1. Right-click a line → Ask a Question: ? sticker on the line, the Markdown editor opens in the popover
-  await lineMenu(h, alloc.id, L1, "Ask a Question");
-  await page.locator(".pop.k-question .ProseMirror:focus").waitFor();
+  const L1 = lineOf(alloc, /compute_hash/);
+  const pop = page.locator(".pop.k-highlight");
+  const qn = () => h.board().sidenotes.find((n) => n.kind === "text" && n.q);
+  const q = () => {
+    const n = qn();
+    return n?.kind === "text" ? n.q : undefined;
+  };
+  res.noList = await page.locator(".qlist-btn").count();
+  // 1. Right-click a line → Add Sidenote, the ? in its input makes it a question; ↵ asks it: the input folds to its +, question mode off
+  await lineMenu(h, alloc.id, L1, "Add Sidenote");
+  await pop.locator(".ncomp .md-pm:focus").waitFor();
+  await pop.locator('.ncomp-ask[aria-label="Question"]').click();
+  await page.keyboard.type("为什么 hash 要把前一块的 h 也算进去？");
+  await shotPr(h, "questions-1-ask");
+  await page.keyboard.press("Enter");
+  await until(h, "the question is saved", () => qn());
   await idle(h);
-  res.editor = await page.locator(".pop.k-question .ProseMirror").count();
-  await page.keyboard.type("为什么 hash 要把前一块的 h 也算进去？`block_manager` 里 $h_i = f(h_{i-1})$");
-  await shotPr(h, "questions-1-edit");
-  await page.keyboard.press("Escape");
-  await until(h, "the first question is saved", () => h.board().stickers.some((s) => s.q?.md), 6000);
-  await idle(h);
-  const q1 = h.board().stickers.find((s) => s.q?.md)!;
-  res.q1 = q1 && { at: q1.at, md: q1.q?.md };
-  // 2. A second question on another line
-  await page.keyboard.press("Escape");
-  await idle(h);
-  await lineMenu(h, alloc.id, L2, "Ask a Question");
-  await page.locator(".pop.k-question .ProseMirror:focus").waitFor();
-  await page.keyboard.type("ref_count 什么时候减到 0？");
-  await page.keyboard.press("Escape");
-  await until(h, "the second question is saved", () => h.board().stickers.filter((s) => s.q?.md).length === 2, 6000);
-  await idle(h);
-  res.headCount = await page.locator(`.card[data-id="${alloc.id}"] .qcount`).textContent();
-  // 3. Link Answer… → click the Note: resolved, the sticker becomes ✓
+  const n = qn()!;
+  res.asked = { at: n.at, md: n.kind === "text" && n.md, q: !!q() };
+  res.folded = { composer: await pop.locator(".ncomp").count(), add: await pop.locator(".tray .add").count() };
+  await pop.locator(".tray .add").click();
+  res.askOff = await pop.locator('.ncomp-ask[aria-label="Question"]').getAttribute("aria-pressed");
   await page.keyboard.press("Escape");
   await idle(h);
-  await page.locator(`[data-sticker="${q1.id}"]`).first().click();
-  await page.locator(".pop.k-question button", { hasText: "Link Answer…" }).click();
+  res.badge = await page.locator(`.card[data-id="${alloc.id}"] .hxm.ask`).textContent();
+  res.listCount = await page.locator(".qlist-btn .qlist-n").textContent();
+  // 2. Answer it in the reply row
+  const slip = page.locator(`.slip[data-note="${n.id}"]`);
+  await slip.locator(".reply").click();
+  await slip.locator(".ans-in .md-pm:focus").waitFor();
+  await page.keyboard.type("整条前缀一起认：见 block_manager");
+  await page.keyboard.press("Enter");
+  await until(h, "the answer is saved", () => q()?.answers?.length === 1);
   await idle(h);
-  await page.locator(`.card[data-id="${note.id}"]`).click({ position: { x: 180, y: 60 } });
-  await until(h, "the linked answer is saved", () => h.board().stickers.find((s) => s.id === q1.id)?.q?.done);
+  await shotPr(h, "questions-2-answered");
+  // 3. Resolve: a grey ✓, no reply row, no ? on the line; the ✓ again reopens it
+  await slip.hover();
+  await slip.locator('.qbody [aria-label="Resolve"]').click();
+  await until(h, "the question is resolved", () => q()?.done);
   await idle(h);
-  const r1 = h.board().stickers.find((s) => s.id === q1.id)?.q;
-  res.answered = r1 && { done: r1.done, answer: r1.answer };
-  res.check = await page
-    .locator(`[data-sticker="${q1.id}"] .glyph`)
-    .first()
-    .evaluate((el) => el.querySelector("path")?.getAttribute("d") ?? "");
-  res.ansText = await page.locator(".pop.k-question .qans").textContent();
-  res.headCount2 = await page.locator(`.card[data-id="${alloc.id}"] .qcount`).textContent();
-  await shotPr(h, "questions-2-resolved");
-  // 4. Questions panel: this board (live) + the host's other boards; Open / All
+  res.resolved = {
+    mark: await slip.locator(".qm").getAttribute("aria-label"),
+    reply: await slip.locator(".reply").count(),
+    ask: await page.locator(`.card[data-id="${alloc.id}"] .hxm.ask`).count(),
+    list: await page.locator(".qlist-btn").count(),
+  };
+  await slip.hover();
+  await slip.locator('.qbody [aria-label="Reopen"]').click();
+  await until(h, "the question is open again", () => q() && !q()!.done);
+  await idle(h);
+  res.reopened = { reply: await slip.locator(".reply").count(), ask: await page.locator(".hxm.ask").count() };
+  // 4. The answer edited in place: written empty it goes
+  const ans = slip.locator(".ans").first();
+  await ans.hover();
+  await ans.locator('[aria-label="Edit Answer"]').click();
+  await ans.locator(".md-pm:focus").waitFor();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Enter");
+  await until(h, "the emptied answer is deleted", () => !q()?.answers?.length);
+  await idle(h);
   await page.keyboard.press("Escape");
   await idle(h);
-  await page.locator('.dock [aria-label="Questions"]').click();
-  await page.locator(".qpanel .qrow").first().waitFor();
+  // 5. The question list: this board's; emptied field, every board's, grouped; the resolved ones too
+  await page.locator(".qlist-btn").click();
+  await page.locator(".qlist-row").first().waitFor();
   await idle(h); // the other boards come with the host's reply
-  res.openRows = await page.locator(".qpanel .qrow").count();
-  res.groups = await page.locator(".qpanel .qg").allTextContents();
-  await shotPr(h, "questions-3-panel");
-  await page.locator(".qpanel .qtabs button", { hasText: "All" }).click();
+  res.field = await page.locator('.qlist-pick input[aria-label="Board"]').inputValue();
+  res.mine = await page.locator(".qlist-row").count();
+  await page.locator(".qlist-clear").click();
   await idle(h);
-  res.allRows = await page.locator(".qpanel .qrow").count();
-  // 5. Click a row on another board → host opens that board at the line, with the question
-  await page.locator(".qpanel .qrow", { hasText: "cu_seqlens" }).click();
+  res.groups = await page.locator(".qlist-group").allTextContents();
+  res.allOpen = await page.locator(".qlist-row").count();
+  res.order = await page.locator(".qlist-row .qlist-l").allTextContents();
+  res.where = await page.locator('.qlist-row[data-q="k2"] .qlist-w').textContent();
+  await shotPr(h, "questions-3-list");
+  await page.locator('.qlist-pop [aria-label="Show Resolved"]').click();
+  await idle(h);
+  res.withResolved = await page.locator(".qlist-row").count();
+  res.groupsResolved = await page.locator(".qlist-group").allTextContents();
+  // 6. A row on another board: the host opens that board at the question
+  await page.locator('.qlist-row[data-q="k2"]').click();
   await until(h, "the row asks the host to open its board", () => h.sent.some((m) => m.type === "openBoard"));
   res.openBoard = h.sent.filter((m) => m.type === "openBoard").at(-1);
-  // a row on this board → select the card and open the question
-  await page.locator(".qpanel .qrow", { hasText: "ref_count" }).click();
-  await page.locator(".pop.k-question .qtext").waitFor();
-  await idle(h);
-  res.popFromPanel = await page.locator(".pop.k-question .qtext").textContent();
-  // 6. Copy as List: a Markdown checklist, identifiers not escaped
-  await page.locator(".qpanel .qtabs button", { hasText: "Open" }).click();
-  await idle(h);
-  await page.locator(".qpanel button", { hasText: "Copy as List" }).click();
-  await until(h, "Copy as List sends the text to the host", () => h.sent.some((m) => m.type === "copyText"));
-  const copied =
-    (h.sent.filter((m) => m.type === "copyText").at(-1) as Extract<BoardToHost, { type: "copyText" }> | undefined)
-      ?.text ?? "";
-  res.copied = copied;
+  res.listClosed = await page.locator(".qlist-pop").count();
   // 7. Welcome back: the host says this board was last opened 5 days ago
-  await page.locator('.qpanel [aria-label="Close Questions"]').click();
-  await idle(h);
-  // back five days later: the window reloads the board, and the host's init says when it was last opened
   const opened = run.host.hub.globalState.get<Record<string, number>>("codeboard.opened") ?? {};
   await run.host.hub.globalState.set("codeboard.opened", { ...opened, bQ: Date.now() - 5 * 864e5 - 6e4 });
   await page.reload();
@@ -292,30 +279,34 @@ async function questions(res: Record<string, unknown>) {
   await shotPr(h, "questions-4-welcome");
   await page.locator(".welcome button", { hasText: "Show" }).click();
   await idle(h);
-  res.welcomePanel = await page.locator(".qpanel").count();
+  res.welcomeList = await page.locator(".qlist-pop").count();
+  const asked = res.asked as { at: { lines?: number[] }; md: string; q: boolean };
   const ok =
-    res.editor === 1 &&
-    (res.q1 as { md?: string })?.md?.startsWith("为什么 hash") &&
-    (res.q1 as { at: { kind: string; line: number } }).at.kind === "line" &&
-    (res.q1 as { at: { line: number } }).at.line === L1 &&
-    res.headCount === "? 2" &&
-    (res.answered as { done?: boolean; answer?: string })?.done === true &&
-    (res.answered as { answer?: string }).answer === note.id &&
-    String(res.check).startsWith("M16.125") &&
-    String(res.ansText).includes("prefix caching") &&
-    res.headCount2 === "? 1" &&
-    res.openRows === 3 &&
-    res.allRows === 5 &&
-    (res.openBoard as { id?: string; sticker?: string })?.id === "bMR" &&
-    (res.openBoard as { sticker?: string }).sticker === "k2" &&
-    res.popFromPanel === "ref_count 什么时候减到 0？" &&
-    copied.includes(`- [ ] [BlockManager.allocate] ref_count 什么时候减到 0？ (block_manager.py:${L2})`) &&
-    copied.includes("## DeepEP") === false &&
-    copied.includes("## nano-vllm · ModelRunner") &&
-    !copied.includes("\\_") &&
+    res.noList === 0 &&
+    asked.q &&
+    asked.md.startsWith("为什么 hash") &&
+    JSON.stringify(asked.at.lines) === JSON.stringify([L1, L1]) &&
+    JSON.stringify(res.folded) === '{"composer":0,"add":1}' &&
+    res.askOff === "false" &&
+    res.badge === "?" &&
+    res.listCount === "1" &&
+    JSON.stringify(res.resolved) === '{"mark":"Resolved","reply":0,"ask":0,"list":0}' &&
+    JSON.stringify(res.reopened) === '{"reply":1,"ask":1}' &&
+    res.field === "nano-vllm · Scheduler" &&
+    res.mine === 1 &&
+    JSON.stringify(res.groups) === JSON.stringify(["nano-vllm · Scheduler", "nano-vllm · ModelRunner"]) &&
+    res.allOpen === 3 &&
+    JSON.stringify((res.order as string[]).slice(1)) ===
+      JSON.stringify(["prepare_prefill 里 cu_seqlens 是什么 shape？", "CUDA graph 为什么只在 decode 用？"]) &&
+    String(res.where).includes("model_runner.py:") &&
+    res.withResolved === 4 &&
+    (res.groupsResolved as string[]).includes("DeepEP") &&
+    (res.openBoard as { id?: string; question?: string })?.id === "bMR" &&
+    (res.openBoard as { question?: string }).question === "k2" &&
+    res.listClosed === 0 &&
     String(res.welcome).includes("5 days ago") &&
     String(res.welcome).includes("1 open question") &&
-    res.welcomePanel === 1;
+    res.welcomeList === 1;
   await page.context().close();
   return !!ok;
 }
@@ -370,12 +361,7 @@ function schedBoard() {
     md: "PRIVATE draft: ask Linda",
     boardOnly: true,
   });
-  b.stickers.push({
-    id: "kQ",
-    icon: { pack: "builtin", name: "question" },
-    at: { kind: "line", card: can.id, seg: can.segments[0].id, line: lineOf(can, /compute_hash/) },
-    q: { md: "为什么 hash 要把前一块的 h 也算进去？" },
-  });
+  b.sidenotes.push(lineQuestion("kQ", can, /compute_hash/, "为什么 hash 要把前一块的 h 也算进去？"));
   return { b, ids: { sch: sch.id, can: can.id, alloc: alloc.id, note: note.id } };
 }
 

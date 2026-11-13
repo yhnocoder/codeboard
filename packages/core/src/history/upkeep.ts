@@ -30,8 +30,8 @@ export function upkeeper(raw: Raw, noteBlocks: NoteBlocks) {
 }
 
 /**
- * Arrow ends on a block of a Note whose Markdown changed follow that block. seen = each Note's Markdown last time; nothing is kept
- * while no arrow on the board ends on a block (nothing to follow). Notes new this time (Split by Headings made them) and the
+ * Arrow ends and sidenotes on a block of a Note whose Markdown changed follow that block. seen = each Note's Markdown last time;
+ * nothing is kept while no arrow or sidenote on the board is on a block (nothing to follow). Notes new this time (Split by Headings made them) and the
  * other Notes a user's edit changed in the same step (blocks moved between Notes) go to rebaseBlocks: a block deleted here that
  * arrived there takes its arrow ends along. Only blocks new in that other Note count as arrived: a "---" or a heading it already
  * had is not where a deleted one went
@@ -43,6 +43,7 @@ function followBlocks(b: Board, seen: Map<string, string>, raw: Raw, noteBlocks:
     if (l.from.block) on.add(l.from.card);
     if (l.to.block) on.add(l.to.card);
   }
+  for (const n of rb.sidenotes) if (n.at.block) on.add(n.at.card);
   if (!on.size) {
     seen.clear();
     return;

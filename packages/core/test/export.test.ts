@@ -4,6 +4,7 @@ import {
   boardQuestions,
   collectQuestions,
   questionsMarkdown,
+  questionWhere,
   exportOrder,
   boardMarkdown,
   githubPermalink,
@@ -16,7 +17,6 @@ import {
   type Card,
   type CodeCard,
 } from "../src";
-import { upgraded } from "./upgrade";
 
 const code = (id: string, path: string, text: string[], start = 10): CodeCard => ({
   id,
@@ -46,63 +46,59 @@ function board(id: string, name: string, cards: Card[], at: Record<string, [numb
 }
 
 describe("questions", () => {
-  it("lists ? stickers with their card, line and answer; resolved ones are done; schema keeps them", () => {
+  it("lists question sidenotes newest first, with their card, lines or Section; follows a renamed card", () => {
     const b = board("b", "nano-vllm · Scheduler", [
       code("BlockManager.allocate", "nanovllm/engine/block_manager.py", ["a", "b", "c"], 59),
       note("n", "prefix caching 是一条链"),
     ]);
-    b.stickers.push(
-      {
-        id: "q1",
-        icon: { pack: "builtin", name: "question" },
-        at: { kind: "line", card: "BlockManager.allocate", seg: "sBlockManager.allocate", line: 61 },
-        q: { md: "为什么 hash 要把前一块的 h 也算进去？" },
-      },
+    b.sections.push({ id: "S", title: "Prefill", x: 0, y: 0, w: 10, h: 10 });
+    const at = { card: "BlockManager.allocate", seg: "sBlockManager.allocate", lines: [61, 61] as [number, number] };
+    b.sidenotes.push(
+      { id: "q1", kind: "text", md: "为什么 hash 要把前一块的 h 也算进去？", at, q: { at: 1 } },
       {
         id: "q2",
-        icon: { pack: "builtin", name: "question" },
-        at: { kind: "line", card: "BlockManager.allocate", seg: "sBlockManager.allocate", line: 60 },
-        q: { md: "cache_miss?", done: true, answer: "n" },
+        kind: "text",
+        md: "cache_miss?",
+        at,
+        q: { at: 3, done: true, answers: [{ id: "a", md: "x", at: 4 }] },
       },
-      { id: "s", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 0, y: 0, on: { card: "n" } } },
-      { id: "q3", icon: { pack: "builtin", name: "question" }, at: { kind: "canvas", x: 0, y: 0 } },
+      { id: "q3", kind: "text", md: "free?", at: { x: 0, y: 0 }, q: { at: 2 } },
+      { id: "q4", kind: "text", md: "this stage?", at: { section: "S" }, q: { at: 0 } },
+      { id: "n1", kind: "text", md: "not a question", at: { card: "n" } },
     );
-    const qs = boardQuestions(upgraded(structuredClone(b)));
-    expect(qs.map((q) => [q.sticker, q.line, q.done])).toEqual([
-      ["q2", 60, true],
-      ["q1", 61, false],
-      ["q3", undefined, false],
+    const qs = boardQuestions(b);
+    expect(qs.map((q) => [q.note, q.lines?.[0], q.done, q.answers])).toEqual([
+      ["q2", 61, true, 1],
+      ["q3", undefined, false, 0],
+      ["q1", 61, false, 0],
+      ["q4", undefined, false, 0],
     ]);
-    expect(qs[0]).toMatchObject({
-      file: "block_manager.py",
-      title: "BlockManager.allocate",
-      answerTitle: "prefix caching 是一条链",
-    });
-    // 解答它的卡删了：问题还在，只是不再挂着
-    removeCards(b, ["n"]);
-    expect(b.stickers.find((s) => s.id === "q2")?.q).toEqual({ md: "cache_miss?", done: true });
+    expect(qs[0]).toMatchObject({ file: "block_manager.py", title: "BlockManager.allocate" });
+    expect(qs[3]).toMatchObject({ section: "S", title: "Prefill" });
+    expect(questionWhere(qs[0])).toBe("block_manager.py:61");
+    expect(questionWhere(qs[3])).toBe("Prefill");
     renameCard(b, "BlockManager.allocate", "c2");
     expect(boardQuestions(b)[0].card).toBe("c2");
+    removeCards(b, ["c2"]);
+    expect(boardQuestions(b).map((q) => q.note)).toEqual(["q3", "q4"]);
   });
 
-  it("counts a sticker on a shared card once across boards, and writes a checklist without escaping identifiers", () => {
-    const mk = (id: string, name: string) => {
+  it("lists a question that goes along with a shared card once across boards, and writes a checklist without escaping identifiers", () => {
+    const mk = (id: string, name: string, note: string) => {
       const b = board(id, name, [code("r", "a/block_manager.py", ["x"], 61)]);
-      b.stickers.push({
-        id: "q",
-        icon: { pack: "builtin", name: "question" },
-        at: { kind: "line", card: "r", seg: "sr", line: 61 },
-        q: { md: "why block_manager.allocate?\nsecond line" },
+      b.sidenotes.push({
+        id: note,
+        kind: "text",
+        md: "why block_manager.allocate?\nsecond line",
+        at: { card: "r", seg: "sr", lines: [61, 61] },
+        q: { at: 1 },
       });
       return b;
     };
-    const A = mk("A", "Attention"),
-      M = mk("M", "MoE"),
-      C = mk("C", "Copy");
     const all = collectQuestions([
-      { id: "A", board: A, refs: new Set(["r"]) },
-      { id: "M", board: M, refs: new Set(["r"]) },
-      { id: "C", board: C },
+      { id: "A", board: mk("A", "Attention", "q") },
+      { id: "M", board: mk("M", "MoE", "q") },
+      { id: "C", board: mk("C", "Copy", "q2") },
     ]);
     expect(all.map((q) => q.board)).toEqual(["A", "C"]);
     const md = questionsMarkdown(all);
@@ -149,11 +145,12 @@ describe("export", () => {
       md: "先 prefill 再 decode",
     });
     b.sidenotes.push({ id: "sn2", kind: "text", at: { card: sch.id }, md: "private", boardOnly: true });
-    b.stickers.push({
+    b.sidenotes.push({
       id: "q",
-      icon: { pack: "builtin", name: "question" },
-      at: { kind: "line", card: can.id, seg: can.segments[0].id, line: 41 },
-      q: { md: "why >=?" },
+      kind: "text",
+      at: { card: can.id, seg: can.segments[0].id, lines: [41, 41] },
+      md: "why >=?",
+      q: { at: 1, answers: [{ id: "a", md: "free ids", at: 2 }] },
     });
     b.sections.push({ id: "S", title: "S", x: -20, y: 400, w: 600, h: 300 });
     b.place.n.section = "S";
@@ -187,7 +184,7 @@ describe("export", () => {
     expect(md).not.toContain("private");
     expect(md).not.toContain("why >=?");
     const all = boardMarkdown(b, { order: ["BlockManager.can_allocate"], questions: true, boardOnly: true });
-    expect(all).toContain("- [ ] **Question** (line 41): why >=?");
+    expect(all).toContain("- [ ] **Question** (line 41): why >=?\n  - free ids");
     expect(boardMarkdown(b, { order: ["Scheduler.schedule"], boardOnly: true })).toContain("private");
   });
 

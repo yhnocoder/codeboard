@@ -58,7 +58,7 @@ function richBoard(): Board {
   });
   b.stickers.push({
     id: "k2",
-    icon: { pack: "builtin", name: "question" },
+    icon: { pack: "builtin", name: "exclaim" },
     at: { kind: "line", card: step.id, seg: s0.id, line: l1 + 2 },
   });
   b.stickers.push({

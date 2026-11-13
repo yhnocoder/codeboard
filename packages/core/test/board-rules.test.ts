@@ -9,10 +9,12 @@ import {
   scaleText,
   textSizeName,
   textSizeOf,
+  blockSig,
   danglingRefs,
   emptyBoard,
   removeCards,
   removeStickers,
+  type Anchor,
   type Board,
   type Card,
   type CodeCard,
@@ -420,16 +422,14 @@ describe("new cards and questions with nothing written yet", () => {
     expect(log.edits).toBe(2);
   });
 
-  it("a new card or question closed without writing goes when still empty, and stays when it has content after all", () => {
+  it("a new card closed without writing goes when still empty, and stays when it has content after all", () => {
     const { b, env, log } = setup();
     const empty = C.newWriting(env, "note", "", { at: () => ({ x: 0, y: 0 }), settle: noSettle });
     const filled = C.newWriting(env, "note", "", { at: () => ({ x: 0, y: 0 }), settle: noSettle });
     const n = b.cards.find((c) => c.id === filled)!;
     if (n.kind === "note") n.md = "pasted";
-    const q = C.newQuestion(env, { pack: "builtin", name: "question" }, { kind: "canvas", x: 0, y: 0, size: 32 });
-    for (const id of [empty, filled, q]) C.settleUnwritten(env, id);
+    for (const id of [empty, filled]) C.settleUnwritten(env, id);
     expect(b.cards.map((c) => c.id)).toEqual([filled]);
-    expect(b.stickers).toEqual([]);
     expect(log.edits).toBe(1);
     // settled already: nothing more happens
     C.settleUnwritten(env, filled);
@@ -445,45 +445,83 @@ describe("new cards and questions with nothing written yet", () => {
     expect(b.cards.map((c) => c.id)).toEqual(["d"]);
     expect(log.edits).toBe(1);
   });
-
-  it("a question written empty is never asked; a written one is trimmed", () => {
-    const { b, env } = setup();
-    const at = { kind: "canvas", x: 0, y: 0, size: 32 } as const;
-    const icon = { pack: "builtin", name: "question" };
-    const a = C.newQuestion(env, icon, at);
-    const q = C.newQuestion(env, icon, at);
-    C.writeQuestion(env, a, " ");
-    C.writeQuestion(env, q, " Why? ");
-    expect(b.stickers).toMatchObject([{ id: q, q: { md: "Why?" } }]);
-  });
 });
 
-describe("stickers and questions", () => {
+describe("stickers", () => {
   it("a sticker keeps no colour that is its icon's own", () => {
     const { b, env } = setup();
     const at = { kind: "canvas", x: 0, y: 0, size: 32 } as const;
     const s = C.addSticker(env, { pack: "builtin", name: "star" }, at, { pick: "gold", def: "gold" });
-    expect(s.q).toBe(false);
     expect(b.stickers[0].color).toBeUndefined();
-    C.setStickerColor(env, s.id, "orange", "gold");
+    C.setStickerColor(env, s, "orange", "gold");
     expect(b.stickers[0].color).toBe("orange");
-    C.setStickerColor(env, s.id, "gold", "gold");
+    C.setStickerColor(env, s, "gold", "gold");
     expect(b.stickers[0].color).toBeUndefined();
   });
+});
 
-  it("reopening a question drops its linked answer", () => {
-    const { b, env } = setup([note("n", "because")]);
-    const s = C.addSticker(
-      env,
-      { pack: "builtin", name: "question" },
-      { kind: "line", card: "n", seg: "", line: 1 },
-      {},
-    );
-    expect(s.q).toBe(true);
-    C.linkAnswer(env, s.id, "n");
-    expect(b.stickers[0].q).toMatchObject({ done: true, answer: "n" });
-    C.setAnswered(env, s.id, false);
-    expect(b.stickers[0].q).toEqual({ md: "", at: expect.any(Number) });
+describe("question sidenotes", () => {
+  const ask = (env: ReturnType<typeof setup>["env"], at: Anchor) =>
+    C.addSidenotes(env, [{ kind: "text", md: "Why?", at, q: { at: 5 } }])[0];
+
+  it("an answer leaves the question open; only the check resolves it, and opens it again", () => {
+    const { b, env, log } = setup([note("n", "because")]);
+    const id = ask(env, { card: "n" });
+    const a = C.addAnswer(env, id, "  See [[n]]  ")!;
+    expect(C.addAnswer(env, id, "  ")).toBeUndefined();
+    const q = () => (b.sidenotes[0].kind === "text" ? b.sidenotes[0].q : undefined);
+    expect(q()).toEqual({ at: 5, answers: [{ id: a, md: "See [[n]]", at: expect.any(Number) }] });
+    C.setQuestionDone(env, id, true);
+    expect(q()?.done).toBe(true);
+    const steps = log.edits;
+    C.setQuestionDone(env, id, true);
+    expect(log.edits).toBe(steps);
+    C.setQuestionDone(env, id, false);
+    expect(q()?.done).toBeUndefined();
+    expect(q()?.answers).toHaveLength(1);
+  });
+
+  it("an answer is edited in place, unchanged it is no step, written empty it goes", () => {
+    const { b, env, log } = setup([note("n", "because")]);
+    const id = ask(env, { card: "n" });
+    const a = C.addAnswer(env, id, "first")!;
+    const steps = log.edits;
+    C.writeAnswer(env, id, a, "first");
+    expect(log.edits).toBe(steps);
+    C.writeAnswer(env, id, a, " second ");
+    const q = () => (b.sidenotes[0].kind === "text" ? b.sidenotes[0].q : undefined);
+    expect(q()?.answers?.[0].md).toBe("second");
+    C.writeAnswer(env, id, a, "");
+    expect(q()).toEqual({ at: 5 });
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("a free sidenote moves to another point, or onto a card or a Note's block; one on a card stays", () => {
+    const { b, env } = setup([note("n", "# A\n\nB")]);
+    const [f, c] = C.addSidenotes(env, [
+      { kind: "text", md: "free", at: { x: 10, y: 20 } },
+      { kind: "text", md: "card", at: { card: "n" } },
+    ]);
+    C.moveFreeSidenotes(env, [f, c], { x: 30.4, y: 40.6 });
+    expect(b.sidenotes.map((n) => n.at)).toEqual([{ x: 30, y: 41 }, { card: "n" }]);
+    const block = { i: 1, h: blockSig("B") };
+    C.moveFreeSidenotes(env, [f], { card: "n", block });
+    expect(b.sidenotes[0].at).toEqual({ card: "n", block });
+    C.moveFreeSidenotes(env, [f], { x: 0, y: 0 });
+    expect(b.sidenotes[0].at).toEqual({ card: "n", block });
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("deletes the sidenotes at one spot and leaves the others", () => {
+    const { b, env } = setup([note("n", "# A\n\nB")]);
+    const block = { i: 1, h: blockSig("B") };
+    C.addSidenotes(env, [
+      { kind: "text", md: "whole", at: { card: "n" } },
+      { kind: "text", md: "block", at: { card: "n", block } },
+      { kind: "text", md: "block 2", at: { card: "n", block } },
+    ]);
+    expect(C.deleteSpotSidenotes(env, { card: "n", block })).toBe(2);
+    expect(b.sidenotes.map((n) => (n.kind === "text" ? n.md : ""))).toEqual(["whole"]);
   });
 });
 

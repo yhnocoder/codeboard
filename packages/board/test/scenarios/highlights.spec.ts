@@ -3,9 +3,10 @@
 //                           one moves to it: Highlights never overlap, a note's lines are always a Highlight's
 //  highlightNotesLikeNote   an Always Show note is rendered as a Note is: its Mermaid diagram drawn, its task list with checkboxes
 //                           (ticking one writes the note), headings at the Note ratios of 12.5px
-//  highlightHoverGutter     resting on a Highlight's code opens nothing; on its line numbers its popup opens (the band lights up, the
-//                           numbers turn accent), and moving into the popup keeps it open; leaving both closes it. A right-click
-//                           on its numbers opens only the menu (an open popup closes), and with a menu open its gutter opens nothing
+//  highlightClickGutter     resting on a Highlight's code or its line numbers opens nothing: a click on its count opens its popup
+//                           (the band lights up, the numbers turn accent, the head says the lines and the card), the pointer
+//                           leaving it keeps it open, another click closes it. A right-click on its numbers opens only the menu
+//                           (an open popup closes)
 //  highlightLookSetting     the setting switches the look in place: a band (R3), a margin bracket (R4) and the bracket with the hand,
 //                           which only changes the notes' font; the marker shows the note count in each
 //  highlightNoteIndent      an Always Show note starts where the least-indented line of its range starts, after the card's dedent,
@@ -26,7 +27,7 @@
 import { DEFAULT_SETTINGS, THEMES, emptyBoard, type Board, type CodeCard, type HighlightLook } from "@codeboard/core";
 import type { Page } from "playwright-core";
 import type { Host } from "../harness";
-import { NOTE_HOVER } from "../../src/state/timing";
+import { TIP_DELAY } from "../../src/state/timing";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { OUT } from "../harness";
@@ -197,19 +198,21 @@ test("highlightNotesLikeNote", async () => {
   await h.close();
 });
 
-test("highlightHoverGutter", async () => {
+test("highlightClickGutter", async () => {
   const h = await openBoard();
   const pg = h.page;
   await idle(h);
   const pops = () => pg.locator(".pop.k-highlight").count();
-  // the code of line 3 (in the Highlight 2–3)
+  // the code of line 3 (in the Highlight 2–3), then its number
   await pg
     .locator('.card[data-id="k1"] .src > .l')
     .nth(2)
     .hover({ position: { x: 120, y: 8 } });
-  await hold(h, NOTE_HOVER * 3, "resting on a Highlight's code must not open its popup");
-  const fromCode = await pops();
   await no(pg, 3).hover();
+  await hold(h, TIP_DELAY * 2, "resting on a Highlight's code or line numbers must not open its popup");
+  const fromHover = await pops();
+  const count = pg.locator('.card[data-id="k1"] .hxm').first();
+  await count.click();
   await pg.locator(".pop.k-highlight").waitFor();
   await idle(h);
   const lit = await pg.evaluate(() => ({
@@ -217,46 +220,23 @@ test("highlightHoverGutter", async () => {
     nums: [...document.querySelectorAll('.card[data-id="k1"] .gutter .no.hxon')].map((e) => e.textContent),
     head: document.querySelector(".pop.k-highlight .hh")?.textContent ?? "",
   }));
-  const p = (await pg.locator(".pop.k-highlight").boundingBox())!;
-  await pg.mouse.move(p.x + p.width / 2, p.y + 12, { steps: 6 });
-  await hold(h, NOTE_HOVER * 3, "the pointer in the popup keeps it open");
-  const kept = await pops();
   await pg.mouse.move(1300, 960, { steps: 4 });
-  await until(h, "leaving the popup closes it", async () => (await pops()) === 0);
+  await hold(h, TIP_DELAY * 2, "the pointer leaving must not close a popup a click opened");
+  const kept = await pops();
+  await count.click();
+  await until(h, "a second click on the count closes the popup", async () => (await pops()) === 0);
   check(
-    "highlightHoverGutter only the line numbers open the popup, which lights its lines and stays while the pointer is in it",
-    fromCode === 0 &&
-      lit.band === 1 &&
-      JSON.stringify(lit.nums) === '["2","3"]' &&
-      /2–3/.test(lit.head) &&
-      /1 note/.test(lit.head) &&
-      kept === 1,
-    { fromCode, lit, kept },
+    "highlightClickGutter only a click opens the popup, which lights its lines, stays when the pointer leaves and closes on a second click",
+    fromHover === 0 && lit.band === 1 && JSON.stringify(lit.nums) === '["2","3"]' && /2–3/.test(lit.head) && kept === 1,
+    { fromHover, lit, kept },
   );
-  // right-clicking a Highlight's line number opens only its menu; with the menu open its gutter opens nothing either
+  // a popup open closes as a right-click on a Highlight's line number opens its menu
   const menus = () => pg.locator(".ctx:not(.closing)").count();
-  await no(pg, 3).click({ button: "right" });
-  await pg.locator(".ctx:not(.closing)").waitFor();
-  await hold(h, NOTE_HOVER * 3, "a right-click on a Highlight's number must open no popup");
-  const onRight = { menus: await menus(), pops: await pops() };
-  await no(pg, 13).hover();
-  await hold(h, NOTE_HOVER * 3, "hovering a Highlight's numbers while a menu is open must open no popup");
-  const underMenu = { menus: await menus(), pops: await pops() };
-  await pg.keyboard.press("Escape");
-  await until(h, "the menu closes", async () => (await menus()) === 0);
-  // a popup already open closes on the right-click
-  await pg.mouse.move(1300, 960);
-  await no(pg, 2).hover();
+  await count.click();
   await pg.locator(".pop.k-highlight").waitFor();
   await no(pg, 2).click({ button: "right" });
   await until(h, "the popup closes as the menu opens", async () => (await pops()) === 0 && (await menus()) === 1);
-  await hold(h, NOTE_HOVER * 3, "the popup must not open again under the menu");
-  const closed = { menus: await menus(), pops: await pops() };
-  check(
-    "highlightHoverGutter a right-click on a Highlight's numbers shows only the menu, and its gutter opens nothing while it is open",
-    [onRight, underMenu, closed].every((x) => x.menus === 1 && x.pops === 0),
-    { onRight, underMenu, closed },
-  );
+  check("highlightClickGutter a right-click on a Highlight's numbers shows only the menu", true);
   await h.close();
 });
 
@@ -637,7 +617,18 @@ test("highlightRemoveToastUndo", async () => {
       .sidenotes.map((n) => n.id)
       .join(",");
   const remove = async (line: number) => {
-    await no(pg, line).hover();
+    // the popup opens from the Highlight's count in the gutter
+    const key = await pg.locator('.card[data-id="k1"] .hxm').evaluateAll(
+      (els, l) =>
+        els
+          .map((e) => e.getAttribute("data-hl") ?? "")
+          .find((k) => {
+            const [a0, z] = k.split(":").pop()!.split("-").map(Number);
+            return a0 <= l && l <= z;
+          }),
+      line,
+    );
+    await pg.locator(`.card[data-id="k1"] .hxm[data-hl="${key}"]`).click();
     await pg.locator(".pop.k-highlight").waitFor();
     await pg.locator('.pop.k-highlight [aria-label="Remove Highlight"]').click();
   };

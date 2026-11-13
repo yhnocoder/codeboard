@@ -204,6 +204,7 @@
         "packages/board/src/ui/{Md,Editable}.tsx",
         "packages/board/src/ui/pops/{notes,cardpeek}.tsx",
         "packages/board/src/ui/NoteComposer.tsx",
+        "packages/board/src/ui/SnBadge.tsx",
         "packages/board/src/md/{lazy,load,refs,context}.ts",
         "packages/board/src/actions/notes.ts",
         "packages/core/src/commands/notes.ts",
@@ -233,13 +234,15 @@
         "packages/board/test/scenarios/static-format.spec.ts",
         "packages/board/test/scenarios/sidenotes.spec.ts",
         "packages/board/test/scenarios/sidenote-popup.spec.ts",
+        "packages/board/test/scenarios/sidenote-spots.spec.ts",
         "packages/board/test/scenarios/highlights.spec.ts"
       ],
       "scenarios": [
         "notes",
         "markdownRender",
         "markdownEdit",
-        "highlightHoverGutter",
+        "highlightClickGutter",
+        "sidenoteSpotCard",
         "noteEditKeepsLayout",
         "headingTypedAtHeadingSize",
         "sidenoteTextEditSaves",
@@ -324,13 +327,13 @@
       ]
     },
     "stickers": {
-      "about": "stickers (built-in, packs, bitmaps) and the questions they carry",
+      "about": "stickers (built-in, packs, bitmaps), and questions (question sidenotes) and their list",
       "files": [
         "packages/board/src/stickers/**",
         "packages/board/src/state/{stickers,questions}.ts",
         "packages/board/src/actions/{stickers,questions}.ts",
         "packages/core/src/commands/stickers.ts",
-        "packages/board/src/ui/QuestionsPanel.tsx",
+        "packages/board/src/ui/QuestionList.tsx",
         "packages/core/src/questions.ts",
         "packages/host/src/stickers.ts",
         "packages/board/test/scenarios/{bitmap-stickers,questions,sticker-drag}.spec.ts"

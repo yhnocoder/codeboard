@@ -30,7 +30,6 @@ import { setCam } from "../../src/state/camera";
 import { setStickerColor } from "../../src/state/stickers";
 import { setFetchingKeys } from "../../src/state/web";
 import { setExportBusy } from "../../src/state/export";
-import { setQuestionsOpen, setQTab } from "../../src/state/questions";
 import { closeOverlays } from "../../src/ui/overlay";
 import { VIEWS, fromHost, useReplies, type Replies } from "./host";
 import code from "../fixtures/code.json";
@@ -66,13 +65,11 @@ const ASSETS = "sb-assets";
 
 /**
  * 白板的界面状态是整页一份（模块级的 signal）：Storybook 换 story 不重新载入页面。这块白板的状态 init 自己会清（boardSignal），
- * 跨白板留着的（设置页、问题面板、toast、贴纸颜色、导出中）要在这里清
+ * 跨白板留着的（设置页、toast、贴纸颜色、导出中）要在这里清
  */
 function resetChrome() {
   setSettingsOpen(false);
   setExportBusy(false);
-  setQuestionsOpen(false);
-  setQTab("open");
   setToastMsg(null);
   setStickerColor(undefined);
 }

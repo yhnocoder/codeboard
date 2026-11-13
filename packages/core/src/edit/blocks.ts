@@ -1,8 +1,8 @@
-// Arrow ends on a Note's block follow that block when the Note is rewritten: blocks are matched by kind and likeness.
+// Arrow ends and sidenotes on a Note's block follow that block when the Note is rewritten: blocks are matched by kind and likeness.
 // Pure functions that change the board passed in (the board calls them inside a mutate).
 import { allLinks, removeLinks } from "./refs";
 import { diffArrays } from "diff";
-import { blockAt, blockSig, type Board, type Link } from "../model";
+import { blockAt, blockSig, type BlockRef, type Board, type Link } from "../model";
 
 /** 一块 Markdown 大致是哪一类：一换一的改写只在同类之间直接配上 */
 function blockKind(src: string): string {
@@ -92,14 +92,18 @@ export function rebaseBlocks(
   now: readonly string[] | null,
   moved: readonly { card: string; blocks: readonly string[] }[] = [],
 ): void {
-  const ends = allLinks(b).flatMap((l) =>
+  const ends: { l?: Link; e: { card: string; block?: BlockRef } }[] = allLinks(b).flatMap((l) =>
     [l.from, l.to].filter((e) => e.card === card && e.block).map((e) => ({ l, e })),
   );
-  if (!ends.length) return;
+  // sidenotes on one of its blocks follow it the same way; each gets an anchor of its own to move (a copy, written back below)
+  const notes = b.sidenotes.flatMap((n) =>
+    n.at.card === card && n.at.block ? [{ n, e: { card, block: n.at.block } as (typeof ends)[number]["e"] }] : [],
+  );
+  if (!ends.length && !notes.length) return;
   const map = old && now ? blockMap(old, now) : null;
   const sigs = now?.map(blockSig) ?? [];
   const away = new Set<Link>();
-  for (const { l, e } of ends) {
+  for (const { l, e } of [...ends, ...notes.map(({ e }) => ({ l: undefined, e }))]) {
     const ref = e.block!;
     // a block moved within the Note is a removal and an addition to the diff: it is found again by its fingerprint
     let k = map && old && blockSig(old[ref.i] ?? "") === ref.h ? map[ref.i] : -1;
@@ -114,9 +118,10 @@ export function rebaseBlocks(
     if (to) {
       e.card = to.card;
       e.block = { i: to.i, h: ref.h };
-      away.add(l);
+      if (l) away.add(l);
     } else delete e.block;
   }
+  for (const { n, e } of notes) n.at = e.block ? { card: e.card, block: e.block } : { card: e.card };
   // 搬过去以后两端落在同一张卡上的箭头删掉（和换卡时一样）
   const same = [...away].filter((l) => l.from.card === l.to.card).map((l) => l.id);
   if (same.length) removeLinks(b, same);

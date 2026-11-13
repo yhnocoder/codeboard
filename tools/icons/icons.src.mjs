@@ -245,6 +245,8 @@ export const ICONS = {
   // New Arrow (bottom toolbar): an arrow leaving a card, a small ring, and bending towards another (not the chain "link",
   // which reads as a URL). The bend is a 5 radius quarter arc with its tangent points on whole coordinates
   arrowLink: [circle(4, 12, 2) + "M4 10V9a5 5 0 0 1 5-5h5M11 1l3 3-3 3", "", "custom: ring with a bent arrow"],
+  // Answer a question sidenote: a line going down and turning right into an arrow, as a reply sits under what it answers
+  reply: ["M10 7l3 3-3 3M3 3v4a3 3 0 0 0 3 3h7", "", "corner-down-right"],
   // 圆圈里一个问号（circle-help），点是填色的小方块
   question: [circle(8, 8, 6) + "M6.5 6.5a1.5 1.5 0 0 1 3 0c0 1-1.5 1.5-1.5 2.5", "M7 11h2v2H7z", "circle-help"],
   // The Shelf (dock): a box with its lid and a handle slot (archive). Lid 2..5, body down to 14, the slot 3 below the lid

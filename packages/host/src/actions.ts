@@ -409,8 +409,8 @@ export function makeActions(cx: HostContext, panels: BoardHost, store: Storage, 
       if (r === "Open JSON") await cx.ws.editor.open(file);
       else if (r === "Reveal in Folder") await ui().revealInOS(file);
     },
-    "codeboard.openQuestion": (board: string, card?: string, line?: number, sticker?: string) =>
-      openOnBoard(cx, panels, board, card, line, sticker),
+    "codeboard.openQuestion": (board: string, question: string) =>
+      openOnBoard(cx, panels, board, undefined, undefined, question),
     "codeboard.openGithubFile": (abs: string) => cx.ws.editor.open(abs, { readonly: true }),
     "codeboard.openBoardToSide": async (a?: unknown) => {
       const id = boardArg(a);

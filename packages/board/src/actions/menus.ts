@@ -107,9 +107,8 @@ import {
 } from "./subboards";
 import { addProc, clearRpc, legendOf, markRpc, toggleBack, toggleStart } from "./calls";
 import { setLegendOpen } from "../state/calls";
-import { askQuestion, askQuestionOnCard } from "./questions";
 import { addVariantMenu } from "./variants";
-import { LEGEND, legendName, type Link } from "@codeboard/core";
+import { LEGEND, legendName, type Anchor, type BlockRef, type Link } from "@codeboard/core";
 import { kbd } from "../keymap";
 import { drawSvgItem, imageAiItems, type ImgRef } from "./imageai";
 import { copyNoteImage } from "./imagedata";
@@ -220,8 +219,6 @@ function lineItems(ls: LineSel): Item[] {
       kbd: "S",
       run: () => openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] }),
     },
-    // 疑问：在第一行贴「?」并直接写问题
-    { label: "Ask a Question", run: () => askQuestion({ card: ls.card, seg: ls.seg, line: ls.start }) },
     // 生成的代码 / 编译产物：钉在一次运行上，点线连回这一行
     { label: "Add Generated Code", sub: genItems({ card: ls.card, seg: ls.seg, line: ls.start }) },
   ];
@@ -241,7 +238,7 @@ export function lineMenu(ls: LineSel, x: number, y: number, annotate?: () => voi
         : []),
       ...lineItems(ls),
       null,
-      { label: "Card", sub: cardItems(ls.card, x, y) },
+      { label: "Card", sub: kindItems(ls.card, x, y) },
     ],
     x,
     y,
@@ -309,12 +306,27 @@ export function noteTextMenu(id: string, text: string, x: number, y: number, tab
   );
 }
 
-export function cardMenu(id: string, x: number, y: number) {
-  const items = cardItems(id, x, y);
+/** block: the Note's block the menu was asked on (a right-click on its body), where Add Sidenote attaches */
+export function cardMenu(id: string, x: number, y: number, block?: BlockRef) {
+  const items = cardItems(id, x, y, block);
   if (items.length) openMenu(items, x, y);
 }
+/** Every kind of card's menu starts with Add Sidenote: on the selected lines of this card, else on the Note's block (block), else on
+ *  the whole card. Not with more than one thing selected, where the menu is about all of them */
+function cardItems(id: string, x: number, y: number, block?: BlockRef): Item[] {
+  const items = kindItems(id, x, y);
+  if (!items.length || sel.cards.length + sel.sections.length > 1) return items;
+  const ls = lineSel();
+  const at: Anchor =
+    ls?.card === id
+      ? { card: id, seg: ls.seg, lines: [ls.start, ls.end] }
+      : block
+        ? { card: id, block: { ...block } }
+        : { card: id };
+  return [{ label: "Add Sidenote", kbd: "S", run: () => openAddNote(at) }, null, ...items];
+}
 /** 卡片菜单的项（行菜单里的 Card ▸ 也用它）；x、y：再弹出的子菜单（Add Variant…）的位置 */
-function cardItems(id: string, x: number, y: number): Item[] {
+function kindItems(id: string, x: number, y: number): Item[] {
   const f = cardById(id);
   if (!f) return [];
   if (!isSel(f.host.id)) selectCard(id);
@@ -445,19 +457,6 @@ function cardItems(id: string, x: number, y: number): Item[] {
   ];
   // 界面上已经有的（双击标题改名、标题栏的 commit 按钮、Copy Code 图标、⌘D）不进菜单
   const add: Item[] = [
-    {
-      label: "Sidenote",
-      kbd: "S",
-      run: () =>
-        ls?.card === c.id
-          ? openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] })
-          : openAddNote({ card: c.id }),
-    },
-    {
-      label: "Question",
-      run: () =>
-        ls?.card === c.id ? askQuestion({ card: ls.card, seg: ls.seg, line: ls.start }) : askQuestionOnCard(c.id),
-    },
     { label: c.desc ? "Edit Description" : "Description", run: () => setEditing({ kind: "desc", id: c.id }) },
     // Free code 没有运行、进程：只加这三样
     ...(free
@@ -623,6 +622,7 @@ export function canvasMenu(md: Markdown, x: number, y: number) {
       { label: "New Note", kbd: kbd("newNote"), run: () => newNote(w) },
       { label: "New Code", run: () => newFreeCode(w) },
       { label: "Add Function…", kbd: kbd("search"), run: () => setPaletteOpen({ mode: "code" }) },
+      { label: "Add Sidenote", kbd: "S", run: () => openAddNote({ x: Math.round(w.x), y: Math.round(w.y) }) },
       // 复制的是别的白板上的卡：默认贴成共享卡（设置里可以换），⌥ 是另一种
       ...(state.host.clip && state.host.clip.board !== state.board.id
         ? ([
@@ -952,6 +952,7 @@ export function sectionMenu(id: string, x: number, y: number) {
     [
       { label: "Section", row: () => createComponent(SectionMenuRow, { id }) },
       null,
+      { label: "Add Sidenote", kbd: "S", run: () => openAddNote({ section: id }) },
       { label: s.collapsed ? "Expand" : "Collapse", run: () => toggleSection(id) },
       ...(s.parent
         ? [

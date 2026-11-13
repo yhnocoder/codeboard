@@ -5,7 +5,6 @@ export type ViewerData = {
   box: Rect;
   walk: { id: string; title: string; mark: string; r: Rect }[];
   notes: Record<string, string>;
-  questions: Record<string, string>;
   links: Record<string, string>;
   info: string;
 };
@@ -126,8 +125,7 @@ function start(d: ViewerData) {
   };
   board.addEventListener("pointerover", (e) => {
     const t = e.target as HTMLElement;
-    const mk = t.closest<HTMLElement>("[data-notes]"),
-      st = t.closest<HTMLElement>("[data-sticker]");
+    const mk = t.closest<HTMLElement>("[data-notes]");
     if (mk) {
       const h = mk.dataset
         .notes!.split(",")
@@ -135,10 +133,10 @@ function start(d: ViewerData) {
         .filter(Boolean)
         .join("<hr>");
       if (h) show(mk, h);
-    } else if (st && d.questions[st.dataset.sticker!]) show(st, d.questions[st.dataset.sticker!]);
+    }
   });
   board.addEventListener("pointerout", (e) => {
-    if ((e.target as HTMLElement).closest("[data-notes], [data-sticker]"))
+    if ((e.target as HTMLElement).closest("[data-notes]"))
       hideT = window.setTimeout(() => {
         tip.hidden = true;
       }, 200);

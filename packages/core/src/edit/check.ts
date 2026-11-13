@@ -54,11 +54,32 @@ export function danglingRefs(b: Board): string[] {
     if (l.gen && extra.length) out.push(`generated-from link ${l.id} also has ${extra.join(", ")}`);
   }
   for (const n of b.sidenotes) {
-    if (!segOk(n.at.card, n.at.seg)) out.push(`sidenote ${n.id} on missing ${n.at.card}`);
+    const at = n.at;
+    if (n.kind === "text" && n.q?.answers?.some((a) => !a.id || !a.md.trim()))
+      out.push(`question ${n.id} has an answer with no id or text`);
+    if (at.section !== undefined) {
+      if (!sections.has(at.section)) out.push(`sidenote ${n.id} on missing section ${at.section}`);
+      if (n.variant || n.boardOnly) out.push(`sidenote ${n.id} on section ${at.section} is Board-only or in a variant`);
+      continue;
+    }
+    if (at.card === undefined) {
+      if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) out.push(`free sidenote ${n.id} at no point`);
+      if (n.variant || n.boardOnly) out.push(`free sidenote ${n.id} is Board-only or in a variant`);
+      continue;
+    }
+    if (!segOk(at.card, at.seg)) out.push(`sidenote ${n.id} on missing ${at.card}`);
+    // a Note's block, as an arrow's end on one: only on a Note, never with lines
+    if (at.block) {
+      if (cards.get(at.card)?.kind !== "note")
+        out.push(`sidenote ${n.id} on a block of ${at.card}, which is not a Note`);
+      if (at.seg !== undefined || at.lines) out.push(`sidenote ${n.id} on both a block and lines of ${at.card}`);
+      if (!Number.isInteger(at.block.i) || at.block.i < 0 || !at.block.h)
+        out.push(`sidenote ${n.id} on bad block ${JSON.stringify(at.block)} of ${at.card}`);
+    }
     if (n.variant) {
-      const c = cards.get(n.at.card);
+      const c = cards.get(at.card);
       if (c && !(c.kind === "code" && c.variants?.some((v) => v.id === n.variant)))
-        out.push(`sidenote ${n.id} on missing variant ${n.variant} of ${n.at.card}`);
+        out.push(`sidenote ${n.id} on missing variant ${n.variant} of ${at.card}`);
     }
     // a sidenote on lines lies in its segment; one that goes along with the card is on the segment's Highlight with exactly those
     // lines, a local one is a Highlight of its own (edit/highlights.ts)
@@ -90,8 +111,6 @@ export function danglingRefs(b: Board): string[] {
     const m = stickerRef(k, ls);
     if (m) out.push(`sticker ${k.id} on missing ${m}`);
   }
-  for (const [k] of stickers)
-    if (k.q?.answer && !cards.has(k.q.answer)) out.push(`question ${k.id} answered by missing ${k.q.answer}`);
   for (const c of b.cards)
     if (c.kind === "compare")
       for (const k of c.cols) if (!cards.has(k)) out.push(`compare ${c.id} column missing ${k}`);

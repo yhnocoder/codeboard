@@ -53,6 +53,32 @@ describe("Note block ends (rebaseBlocks)", () => {
     expect(b.links[0].to.block).toEqual({ i: 2, h: blockSig(re) });
   });
 
+  it("moves a sidenote on a block along with the block, and to the whole card when the block goes", () => {
+    const b = board([]);
+    b.sidenotes = [{ id: "s", kind: "text", md: "?", at: { card: "n", block: ref(OLD, 2) }, q: { at: 1 } }];
+    const re = `${ROOF}两条线的交点叫 ridge point。`;
+    const now = [OLD[0], "新插入的一段。", OLD[1], re, ...OLD.slice(3)];
+    rebaseBlocks(b, "n", OLD, now);
+    expect(b.sidenotes[0].at).toEqual({ card: "n", block: { i: 3, h: blockSig(re) } });
+    rebaseBlocks(b, "n", now, [...now.slice(0, 3), ...now.slice(4)]);
+    expect(b.sidenotes[0].at).toEqual({ card: "n" });
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("a sidenote on a block follows an edit through the board's upkeep, with no arrow on the Note", () => {
+    const b = board([]);
+    b.sidenotes = [{ id: "s", kind: "text", md: "x", at: { card: "n", block: ref(OLD, 2) } }];
+    const up = upkeeper(
+      (v) => v,
+      (md) => md.split(/\n{2,}/),
+    );
+    up.run(b);
+    const n = b.cards[0];
+    if (n.kind === "note") n.md = [OLD[0], "新插入的一段。", ...OLD.slice(1)].join("\n\n");
+    up.run(b, true);
+    expect(b.sidenotes[0].at).toEqual({ card: "n", block: { i: 3, h: blockSig(ROOF) } });
+  });
+
   it("insert above and rewrite in one edit: the block goes to the rewrite that reads most like it", () => {
     const b = board([arrow(2)]);
     const re = `${ROOF}两条线的交点叫 ridge point。`;

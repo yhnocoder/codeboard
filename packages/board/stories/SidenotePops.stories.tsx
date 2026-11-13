@@ -1,7 +1,7 @@
 // The sidenote popups (ui/pops/notes.tsx): a Highlight's (its lines) and a card's whole-card ones, one look. Each sidenote a slip
 // (Text with a [[reference]], Code past 8 lines cut, Free code; with "why", a version to review, a removed line, Board-only), the
 // + at the bottom and its input (ui/NoteComposer.tsx), Text editing in place, and a reference's card preview. The popups are
-// opened by state/pop's openPop, as a click on a Highlight's count or a card's marker does
+// opened by state/pop's openPop, as a click on a Highlight's line numbers or a card's badge does
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { HlRange, Segment, Sidenote } from "@codeboard/core";
 import { Stage, scene, codeCard, type Globals, type Scene } from "./support/board";
@@ -91,7 +91,7 @@ const openLines = (seg: string, write?: HlRange) =>
     ),
   );
 const openCard = (write?: true) =>
-  pinPop(openPop({ kind: "notes", card: HOST, write }, { el: card(), prefer: "beside" }));
+  pinPop(openPop({ kind: "notes", spot: { card: HOST }, write }, { el: card(), prefer: "beside" }));
 
 const lines = (a: Args) => base(a, (seg) => openLines(seg));
 const wholeCard = (a: Args) => base(a, () => openCard());

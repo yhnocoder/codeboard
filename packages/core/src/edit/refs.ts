@@ -27,14 +27,13 @@ export function removeCards(b: Board, ids: Iterable<string>): void {
   const keep = (l: Link) => !gone.has(l.from.card) && !gone.has(l.to.card);
   const onLine = (k: Sticker) => k.at.kind !== "line" || !gone.has(k.at.card);
   b.links = b.links.filter(keep);
-  b.sidenotes = b.sidenotes.filter((n) => !gone.has(n.at.card));
+  b.sidenotes = b.sidenotes.filter((n) => n.at.card === undefined || !gone.has(n.at.card));
   b.stickers = b.stickers.filter(onLine);
   for (const e of b.shelf ?? []) {
     for (const id of gone) delete e.place[id];
     e.links = e.links.filter(keep);
     e.stickers = e.stickers.filter(onLine);
   }
-  for (const k of allStickers(b)) if (k.q?.answer && gone.has(k.q.answer)) delete k.q.answer; // 解答它的卡删了：问题还在
   forget(b, gone);
   pruneStickers(b);
   tidyShelf(b);
@@ -62,7 +61,7 @@ export function pruneRefs(b: Board): void {
   );
   removeSidenotes(
     b,
-    b.sidenotes.filter((n) => !segOk(n.at.card, n.at.seg)).map((n) => n.id),
+    b.sidenotes.filter((n) => (n.at.card !== undefined ? !segOk(n.at.card, n.at.seg) : false)).map((n) => n.id),
   );
   removeStickers(
     b,
@@ -75,7 +74,6 @@ export function pruneRefs(b: Board): void {
     for (const id of Object.keys(e.place)) if (!cards.has(id) || b.place[id]) delete e.place[id];
   }
   pruneStickers(b);
-  for (const k of allStickers(b)) if (k.q?.answer && !cards.has(k.q.answer)) delete k.q.answer;
   const gone = new Set(
     [...Object.keys(b.place), ...Object.keys(b.marks ?? {}), ...Object.keys(b.born ?? {})].filter(
       (id) => !cards.has(id),
@@ -89,6 +87,10 @@ export function pruneRefs(b: Board): void {
     if (s.parent && !secs.has(s.parent)) delete s.parent;
   for (const p of [...Object.values(b.place), ...shelf.flatMap((e) => Object.values(e.place))])
     if (p.section && !secs.has(p.section)) delete p.section;
+  removeSidenotes(
+    b,
+    b.sidenotes.filter((n) => n.at.section !== undefined && !secs.has(n.at.section)).map((n) => n.id),
+  );
   tidyShelf(b);
 }
 
@@ -133,12 +135,11 @@ export function renameCard(b: Board, from: string, to: string): void {
     l.from.card = r(l.from.card);
     l.to.card = r(l.to.card);
   }
-  for (const n of b.sidenotes) n.at.card = r(n.at.card);
+  for (const n of b.sidenotes) if (n.at.card !== undefined) n.at.card = r(n.at.card);
   for (const k of allStickers(b)) {
     const at = k.at;
     if (at.kind === "line") at.card = r(at.card);
     else if (at.on && "card" in at.on) at.on.card = r(at.on.card);
-    if (k.q?.answer) k.q.answer = r(k.q.answer);
   }
   for (const m of [b.born, b.marks] as (Record<string, unknown> | undefined)[])
     if (m && from in m) {
@@ -210,9 +211,10 @@ export function retargetCards(b: Board, ids: Iterable<string>, to: Retarget): vo
   for (const e of b.shelf ?? []) e.links = e.links.filter(looped);
   const hosts = new Set<string>();
   for (const n of b.sidenotes) {
-    if (gone.has(n.at.card)) {
+    if (n.at.card !== undefined && gone.has(n.at.card)) {
+      // a Note's block is the old card's: on the card that takes over, the sidenote is on the whole card
       const o = to({ card: n.at.card, seg: n.at.seg, line: n.at.lines?.[0] });
-      n.at = { card: o.card, seg: o.seg, lines: o.seg ? n.at.lines : undefined };
+      n.at = o.seg && n.at.lines ? { card: o.card, seg: o.seg, lines: n.at.lines } : { card: o.card };
       hosts.add(o.card);
     }
   }

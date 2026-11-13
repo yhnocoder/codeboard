@@ -554,7 +554,7 @@ export class Storage {
     const cur = new Map(e.board.sidenotes.map((n) => [n.id, n]));
     /** 这条 Sidenote（宿主这边的或发来的）跟着哪张共享卡 */
     const cardOf = (...ns: (Board["sidenotes"][number] | undefined)[]) =>
-      ns.find((n) => n && e.refs.has(n.at.card) && travels(n, n.at.card))?.at.card;
+      ns.find((n) => n?.at.card !== undefined && e.refs.has(n.at.card) && travels(n, n.at.card))?.at.card;
     const keep = (id: string, n?: Board["sidenotes"][number]) => {
       const card = cardOf(cur.get(id), n);
       if (!card || !other(id)) return true;
