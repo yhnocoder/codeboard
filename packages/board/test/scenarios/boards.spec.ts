@@ -365,7 +365,12 @@ async function copyLinkPointsIntoBoardFile() {
     await pg.locator(".ctx:not(.closing) button", { hasText: new RegExp(`^${label}$`) }).click();
     return until(h, `${label} copies a link`, () => copied[n]);
   };
-  const toast = () => pg.locator(".toast").last().innerText();
+  // the host writes the clipboard before it answers, and the board shows its toast on the answer: wait for that toast (the one
+  // before may still be showing)
+  const toast = async (says: string) => {
+    await until(h, `the toast says ${says}`, async () => (await pg.locator(".toast", { hasText: says }).count()) > 0);
+    return pg.locator(".toast", { hasText: says }).last().innerText();
+  };
 
   await pg.locator(`.card[data-id="${step.id}"] .chead`).click({ button: "right", position: { x: 200, y: 12 } });
   await pg.locator(".ctx:not(.closing) button", { hasText: /^Copy Link$/ }).waitFor();
@@ -373,7 +378,8 @@ async function copyLinkPointsIntoBoardFile() {
   const card = await pick("Copy Link");
   const file = run.host.store.fileOf("bPath")!;
   check("card-path", card === `${file}#${step.id}`, card, file);
-  check("card-link-toast", (await toast()).includes("Copied link"), await toast());
+  const t1 = await toast("Copied link");
+  check("card-link-toast", t1.includes("Copied link"), t1);
   await pg.keyboard.press("Escape");
 
   await pg.locator('.slabel[data-sect="sPath"]').click({ button: "right" });
@@ -385,7 +391,8 @@ async function copyLinkPointsIntoBoardFile() {
   await pg.locator(`.card[data-id="${step.id}"] .chead`).click({ modifiers: ["Shift"], position: { x: 200, y: 12 } });
   await pg.locator('.card[data-id="nPath"]').click({ button: "right" });
   const two = await pick("Copy Links");
-  check("multi-path-toast", (await toast()).includes("Copied 2 links"), await toast());
+  const t2 = await toast("Copied 2 links");
+  check("multi-path-toast", t2.includes("Copied 2 links"), t2);
   check("multi-path", two === `${file}#nPath\n${file}#${step.id}` || two === `${file}#${step.id}\n${file}#nPath`, two);
   await pg.keyboard.press("Escape");
   await pg.mouse.click(1200, 780);
