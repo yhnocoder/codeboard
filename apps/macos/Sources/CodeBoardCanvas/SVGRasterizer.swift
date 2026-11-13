@@ -14,6 +14,8 @@ package final class SVGRasterizer {
   }
 
   private let assets: URL
+  /// how long WebKit may take over each step of a picture before it fails (and the page is closed)
+  private let limit: Duration
   private let build: String
   private let store: SnapshotStore
   private var page: SVGPage?
@@ -35,8 +37,9 @@ package final class SVGRasterizer {
   /// Whether the web view is open now (it costs a web process)
   package var webViewOpen: Bool { page != nil }
 
-  package init(assets: URL = NativeNotes.assets, cache: URL = defaultCache) {
+  package init(assets: URL = NativeNotes.assets, cache: URL = defaultCache, limit: Duration = .seconds(10)) {
     self.assets = assets
+    self.limit = limit
     build = (try? String(contentsOf: assets.appending(path: "build-id"), encoding: .utf8)) ?? ""
     store = SnapshotStore(folder: cache, limit: 256 << 20)
   }
@@ -53,7 +56,9 @@ package final class SVGRasterizer {
       page = p
       drawn = try await p.picture(of: file, stamp: stamp, width: width, dark: dark)
     } catch {
-      // a page that failed once (a script error, its web process gone) is not trusted with the next picture
+      // a page that failed once (a script error, its web process gone, a step that never came back) is not trusted
+      // with the next picture
+      page?.close()
       page = nil
       endTurn()
       throw error
@@ -75,7 +80,7 @@ package final class SVGRasterizer {
 
   private func makePage() throws -> SVGPage {
     pagesMade += 1
-    return try SVGPage(assets: assets)
+    return try SVGPage(assets: assets, limit: limit)
   }
 
   @concurrent

@@ -5,13 +5,15 @@ import Testing
 @testable import CodeBoardMarkdownUI
 
 /// The board's fonts from the assets build, registered once for these tests
+/// (registered through FontBook: a font another test looked up before is looked up again)
 let boardFonts: Void = {
   let folder = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../web/dist/assets")
     .standardized
-  for f in (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
-  where f.pathExtension == "woff2" && !f.lastPathComponent.hasPrefix("KaTeX") {
-    CTFontManagerRegisterFontsForURL(f as CFURL, .process, nil)
-  }
+  MarkdownFonts.register(
+    ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []).filter {
+      $0.pathExtension == "woff2" && !$0.lastPathComponent.hasPrefix("Yozai-")
+        && !$0.lastPathComponent.hasPrefix("ZhiMangXing-")
+    })
 }()
 
 @Suite struct FontTests {

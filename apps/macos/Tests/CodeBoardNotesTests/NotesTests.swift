@@ -24,7 +24,8 @@ private func pixels(_ body: NoteBody, size: CGSize, scale: CGFloat) -> [UInt8] {
 
 private let env = NoteEnv(folder: URL(filePath: "/nonexistent"))
 
-@Suite struct NativeNotesTests {
+/// each test has a minute: a layout that hangs (the engines, the fonts) fails its test by name
+@Suite(.timeLimit(.minutes(1))) struct NativeNotesTests {
   static let note = Note(
     text: """
       # Plan

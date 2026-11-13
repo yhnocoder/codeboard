@@ -148,7 +148,33 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
 }
 
 /// The SVG page in a real web view: needs the assets build (node web/build.mjs) and a login session with a screen
-@MainActor @Suite(.serialized) struct SVGRasterizerTests {
+@MainActor @Suite(.serialized, .timeLimit(.minutes(1))) struct SVGRasterizerTests {
+  /// A page that never answers fails the picture within the limit, loudly, and its web view is closed: an SVG that
+  /// cannot be drawn never holds the canvas up
+  @Test func aPageThatNeverAnswersFailsInTime() async throws {
+    _ = NSApplication.shared
+    let assets = try tempFolder()
+    let cache = try tempFolder()
+    let folder = try tempFolder()
+    defer {
+      for f in [assets, cache, folder] { try? FileManager.default.removeItem(at: f) }
+    }
+    try Data("<!doctype html><p>never ready</p>".utf8).write(to: assets.appending(path: "svg.html"))
+    try Data("test".utf8).write(to: assets.appending(path: "build-id"))
+    let file = folder.appending(path: "bars.svg")
+    try Data(Self.svg.utf8).write(to: file)
+    let r = SVGRasterizer(assets: assets, cache: cache, limit: .milliseconds(500))
+    let start = ContinuousClock.now
+    await #expect(throws: SVGError.timedOut("the SVG page did not load")) {
+      _ = try await r.picture(of: file, width: 200, dark: false, priority: 0)
+    }
+    #expect(ContinuousClock.now - start < .seconds(5))
+    #expect(!r.webViewOpen && r.pagesMade == 1)
+    // the next picture tries a new page, and fails as quickly
+    await #expect(throws: SVGError.self) { _ = try await r.picture(of: file, width: 200, dark: false, priority: 0) }
+    #expect(r.pagesMade == 2)
+  }
+
   /// What NSImage draws wrong (black, or nothing): a <style> with classes and a dark-mode rule, CSS variables defined
   /// and missing (the fallback), currentColor, a gradient, text in a font family
   static let svg = """

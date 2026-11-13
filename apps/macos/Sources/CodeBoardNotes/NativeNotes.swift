@@ -11,31 +11,38 @@ import Synchronization
 /// `NoteEnv`: the canvas sizes, decodes and caches images (one image pipeline for Notes and image cards) and highlights
 /// code.
 public enum NativeNotes {
-  /// What the app carries besides its code: Contents/Resources/Assets in the app, else `web/dist` in this package's
-  /// source tree (`swift run`, `swift test`; built by `node web/build.mjs`)
+  /// What the app carries besides its code: Contents/Resources/Assets in the app (make-app.sh copies web/dist there).
+  /// Outside an app bundle, which is only `swift run` and `swift test`, web/dist of the source tree this was built from
+  /// (#filePath: a path on the building machine, so only for running in place); an app without its assets finds none,
+  /// and its fonts and engines report that (`NoteError`)
   public static var assets: URL {
-    if let r = Bundle.main.resourceURL?.appending(path: "Assets"),
-      FileManager.default.fileExists(atPath: r.appending(path: "build-id").path(percentEncoded: false))
-    {
-      return r
-    }
+    let bundle = Bundle.main.bundleURL
+    if bundle.pathExtension == "app" { return bundle.appending(path: "Contents/Resources/Assets") }
     return URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../web/dist").standardized
   }
 
   /// The board's fonts, registered for this process once; synchronous, so a layout made right after uses them. Yozai,
   /// the Chinese handwriting, comes in chunks of characters that all carry one name: registered as a chunked family, not
-  /// one by one (CoreText would use one chunk). Zhi Mang Xing is the canvas's own (section titles)
-  static let fonts: Void = {
+  /// one by one (CoreText would use one chunk). Zhi Mang Xing is the canvas's own (section titles). A build without its
+  /// fonts is an error, never text quietly drawn in fallback fonts
+  static let fonts: Result<Void, NoteError> = {
     let folder = assets.appending(path: "assets")
+    let all =
+      ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
+      .filter { $0.pathExtension == "woff2" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    // the faces every look draws text with
+    for needed in ["SourceSerif4-400-600-", "JetBrainsMono-400-600-", "ShantellSans-300-800-", "Yozai-400-00-"]
+    where !all.contains(where: { $0.lastPathComponent.hasPrefix(needed) }) {
+      return .failure(.fontsMissing(folder))
+    }
     var yozai: [Double: [URL]] = [:]
-    for f in ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
-      .sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) where f.pathExtension == "woff2"
-    {
+    var files: [URL] = []
+    for f in all {
       let name = f.lastPathComponent
       if name.hasPrefix("Yozai-") {
         yozai[name.hasPrefix("Yozai-700-") ? 700 : 400, default: []].append(f)
       } else if !name.hasPrefix("ZhiMangXing-") {
-        CTFontManagerRegisterFontsForURL(f as CFURL, .process, nil)
+        files.append(f)
         // a variable font's file is named after the weights its @font-face declares: <Family>-400-600-<hash>
         if let m = name.wholeMatch(of: /.+-(\d{3})-(\d{3})-[0-9A-F]+\.woff2/), let lo = Double(m.1),
           let hi = Double(m.2),
@@ -47,6 +54,8 @@ public enum NativeNotes {
       }
     }
     MarkdownFonts.addChunkedFamily("Yozai", weights: yozai)
+    MarkdownFonts.register(files)
+    return .success(())
   }()
 
   /// The formula and diagram engines (engines.js in JavaScriptCore), loaded on the first Note that may need them. A
@@ -69,7 +78,7 @@ public enum NativeNotes {
   /// Registers the fonts and lays out a sample Note in each look once, so the first board does not pay for warming up
   /// the fonts and the layout code; for launch, off the main thread
   public static func warmUp() {
-    _ = fonts
+    guard (try? fonts.get()) != nil else { return }
     let sample = Note(text: "# Title\n\nText with **bold**, *italics*, `code` and 中文.\n\n- one\n\n```py\nx = 1\n```")
     for look in ["warm-ink", "ink-wash"] {
       _ = try? body(sample, width: 320, look: look, dark: false, env: NoteEnv(folder: URL(filePath: "/")), cache: false)
@@ -83,7 +92,7 @@ public enum NativeNotes {
   public static func body(
     _ note: Note, width: Double, look: String, dark: Bool, env: NoteEnv, cache useCache: Bool = true
   ) throws(NoteError) -> NoteBody {
-    _ = fonts
+    try fonts.get()
     let math = needsEngines(note) ? try engines() : nil
     let key = LayoutKey(
       text: note.text, style: note.style, layout: note.layout, width: width, look: look, dark: dark,
@@ -176,6 +185,8 @@ public enum NativeNotes {
 }
 
 public enum NoteError: Error, Equatable {
+  /// The board's fonts are not in the app's assets: `node apps/macos/web/build.mjs`
+  case fontsMissing(URL)
   /// No engines.js in the app's assets: `node apps/macos/web/build.mjs`
   case enginesMissing(URL)
   /// engines.js is there but does not start

@@ -11,8 +11,14 @@ let engines: JSEngines? = {
   return try? JSEngines(script: url)
 }()
 
-@Suite(.enabled(if: engines != nil, "needs apps/macos/web/dist/engines.js"))
+/// Never skipped when the engines are missing: a build without them fails here. Each test has a minute: an engine that
+/// hangs fails its test by name
+@Suite(.timeLimit(.minutes(1)))
 struct MathTests {
+  @Test func theEnginesAreBuilt() throws {
+    try #require(engines != nil, "build the assets: node apps/macos/web/build.mjs")
+  }
+
   /// guideline 4: what the boards use, and a preamble
   @Test func typesetsWhatTheBoardsUse() {
     let formulas = [
@@ -69,7 +75,7 @@ struct MathTests {
   }
 }
 
-@Suite(.enabled(if: engines != nil, "needs apps/macos/web/dist/engines.js"))
+@Suite(.timeLimit(.minutes(1)))
 struct DiagramTests {
   /// a flowchart drawn by pele, its colours the theme's roles, its labels native text; a diagram wider than the body is
   /// laid out again within it

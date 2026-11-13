@@ -50,8 +50,10 @@ struct SVGPicture: Sendable {
   }
 }
 
-enum SVGError: Error {
+enum SVGError: Error, Equatable {
   /// No built svg.html in the app's assets: `node apps/macos/web/build.mjs`
   case pageMissing(URL)
   case page(String)
+  /// WebKit did not answer in time (the page did not load, the script or the snapshot never came back)
+  case timedOut(String)
 }

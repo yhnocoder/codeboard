@@ -53,6 +53,7 @@ private func near(_ a: [Int], _ b: [Int], _ d: Int = 6) -> Bool { zip(a, b).allS
 
   /// A Note without a stored height is as tall as its content, with one as tall as that; a Free Text as wide as its text
   @Test func aNoteIsAsTallAsItsContentAndAFreeTextAsWideAsItsText() throws {
+    _ = Watchdog.started
     let long = (1...12).map { "Step \($0) of the plan." }.joined(separator: "\n\n")
     let cards = [
       note("auto"), note("long", text: long), note("fixed", height: 120),
@@ -70,9 +71,11 @@ private func near(_ a: [Int], _ b: [Int], _ d: Int = 6) -> Bool { zip(a, b).allS
   }
 }
 
-@MainActor @Suite(.serialized) struct CanvasNoteTests {
+/// each test has a minute: an SVG or a layout that hangs fails its test by name
+@MainActor @Suite(.serialized, .timeLimit(.minutes(1))) struct CanvasNoteTests {
   /// Every Note is laid out and drawn before the board shows, its overview its picture at once, with no web view
   @Test func notesAreDrawnBeforeTheBoardShowsWithoutAWebView() async throws {
+    _ = Watchdog.started
     _ = NSApplication.shared
     let root = try tempFolder("canvas-notes")
     let cache = try tempFolder("canvas-notes-svgs")

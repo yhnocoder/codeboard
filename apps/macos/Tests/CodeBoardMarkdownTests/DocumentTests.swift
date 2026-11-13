@@ -152,14 +152,14 @@ import Testing
   }
 
   /// guideline 8.7: an edit and its undo give back the same document; reparse always equals a fresh parse
+  /// Each block fixture edited at a third and two thirds in (fixed places, so a failure repeats): each insertion parses
+  /// as a fresh document would, and taking it out again gives back the document it was
   @Test func reparseEqualsAFreshParse() throws {
-    var rng = SystemRandomNumberGenerator()
     for c in try JSON.load("blocks").array {
       let src = c["src"].string!
       let doc = MarkdownDocument(src)
       let len = (src as NSString).length
-      for _ in 0..<4 {
-        let at = len == 0 ? 0 : Int.random(in: 0...len, using: &rng)
+      for at in Set([len / 3, 2 * len / 3]) {
         for ins in ["x", "*", "\n", "| ", "$"] {
           let edited = doc.reparse(replacing: at..<at, with: ins)
           #expect(edited == MarkdownDocument(edited.source), "\(src.debugDescription) +\(ins.debugDescription)@\(at)")

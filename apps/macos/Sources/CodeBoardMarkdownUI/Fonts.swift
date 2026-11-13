@@ -14,6 +14,12 @@ enum FontBook {
 
   private static let cache = Cache<Key, CTFont>()
 
+  /// fonts looked up so far, and their metrics, are looked up again (new fonts were registered)
+  static func forget() {
+    cache.removeAll()
+    metrics.removeAll()
+  }
+
   /// Families cut into several files by character (as the web loads them with unicode-range), each weight's files
   private static let chunked = Chunked()
 
@@ -192,6 +198,13 @@ enum FontBook {
 
 /// The fonts the Markdown is drawn with, beyond the system's
 public enum MarkdownFonts {
+  /// Registers font files for this process (synchronously: a layout made right after uses them) and forgets every font
+  /// looked up before, which may have fallen back for want of them
+  public static func register(_ files: [URL]) {
+    for f in files { CTFontManagerRegisterFontsForURL(f as CFURL, .process, nil) }
+    FontBook.forget()
+  }
+
   /// A family cut into files by character, as the web loads it (unicode-range): every file of the weight drawn with is
   /// in the cascade, in order, so each character is found in whichever file has it. Register it before laying out
   public static func addChunkedFamily(_ family: String, weights: [Double: [URL]]) {
@@ -211,6 +224,11 @@ final class Cache<K: Hashable, V>: @unchecked Sendable {
   private let lock = NSLock()
   private let limit: Int
   init(limit: Int = 2000) { self.limit = limit }
+  func removeAll() {
+    lock.lock()
+    store.removeAll()
+    lock.unlock()
+  }
   func get(_ k: K, _ make: () -> V) -> V {
     lock.lock()
     if let v = store[k] {

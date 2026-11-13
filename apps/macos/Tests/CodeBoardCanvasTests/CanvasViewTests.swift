@@ -43,6 +43,7 @@ import Testing
   /// ring off along the sides), at each level and at a zoom between them
   @Test(arguments: [(0.5, 1), (1, 2), (2, 4), (0.7, 2), (1.37, 4)] as [(CGFloat, CGFloat)])
   func aSheetsEdgeIsEvenAllRound(zoom: CGFloat, level: CGFloat) throws {
+    _ = Watchdog.started
     let t = Theme.warmInk
     let card = CGSize(width: 200, height: 100)
     let body = try NativeNotes.body(
