@@ -6,6 +6,8 @@ import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, type 
 import {
   cardTitle,
   codeGlyph,
+  isTextCard,
+  textSizeOf,
   commonIndent,
   escHtml,
   mdHeading,
@@ -20,7 +22,7 @@ import { shelfHot, shelfHover, shelfOut, shelfPeek, setShelfPeek } from "../stat
 import { cam } from "../state/camera";
 import { animScale } from "../state/motion";
 import { PvContent } from "../cards/SubPreviews";
-import { hidesHeading } from "../cards/NoteBody";
+import { boxFill, hidesHeading } from "../cards/NoteBody";
 import { attrSel, cardKindClass } from "../cardsel";
 import { MdStatic } from "./Md";
 import { Icon } from "./icons";
@@ -70,6 +72,12 @@ function MiniCode(p: { c: CodeCard }) {
   );
 }
 
+/** Text and Box draw at their own size and fill, as Card.tsx sets them on the card */
+const textVars = (k: Card): JSX.CSSProperties =>
+  isTextCard(k)
+    ? { "--tfs": `${textSizeOf(k)}px`, ...(k.look === "box" ? { "--fc": `var(--bf-${boxFill(k)})` } : {}) }
+    : {};
+
 /** A card's body as the board draws it, read-only */
 function MiniBody(p: { c: Card }) {
   return (
@@ -88,14 +96,8 @@ function MiniBody(p: { c: Card }) {
                   <MdStatic src={k.md} class={`nbody${hidesHeading(k) ? " hidehead" : ""}`} />
                 </>
               );
-            case "freetext":
-              return <div class={`tx ft ft-l${k.level ?? 0}`}>{k.md}</div>;
-            case "mark":
-              return <MdStatic src={k.md} class="tx hand" />;
-            case "box":
-              return <MdStatic src={k.md} class="tx bx" />;
             default:
-              return <MdStatic src={k.md} class={`tx st-${k.size ?? "body"}`} />;
+              return <MdStatic src={k.md} class="tx tb st-body" />;
           }
         return (
           <>
@@ -172,7 +174,7 @@ function MiniWorld(p: { e: ShelfEntry; box: Rect }) {
       </svg>
       <For each={lay().cards}>
         {(x) => (
-          <div class={`card ${cardKindClass(x.c)}`} style={x.style}>
+          <div class={`card ${cardKindClass(x.c)}`} style={{ ...x.style, ...textVars(x.c) }}>
             <div class="cface">
               <MiniBody c={x.c} />
             </div>
