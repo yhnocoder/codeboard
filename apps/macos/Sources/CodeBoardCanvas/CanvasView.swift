@@ -187,7 +187,7 @@ public final class CanvasView: NSView {
 
   /// The sizes the Note renderer gives the Notes without a stored height: from what it kept, else measured in the web
   /// view all together. A Note it could not measure is left out (`Scene` gives it a height of its own)
-  private nonisolated static func measure(_ ms: [Scene.Measure], theme: Theme, notes: NoteRenderer) async -> [CardID:
+  nonisolated static func measure(_ ms: [Scene.Measure], theme: Theme, notes: NoteRenderer) async -> [CardID:
     CGSize]
   {
     let requests = ms.map {

@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 // imported into a vault, drawn by the canvas's drawing code at the same rects and zooms as the web board's pictures in
 // <out>/<theme>/ (and <theme>-dark/), and each pair written side by side with their difference.
 //   swift run -c release LookCompare <storage folder> <out folder>
+//   swift run -c release LookCompare --texts <out folder>   (Texts.swift)
 
 struct Rects: Decodable {
   struct R: Decodable {
@@ -21,8 +22,9 @@ struct Rects: Decodable {
 }
 
 let args = CommandLine.arguments
+if args.count == 3, args[1] == "--texts" { TextSheets.run(out: URL(filePath: args[2])) }
 guard args.count == 3 else {
-  FileHandle.standardError.write(Data("usage: LookCompare <storage folder> <out folder>\n".utf8))
+  FileHandle.standardError.write(Data("usage: LookCompare <storage folder> <out folder> | --texts <out folder>\n".utf8))
   exit(2)
 }
 let storage = URL(filePath: args[1])
