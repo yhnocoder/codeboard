@@ -9049,20 +9049,6 @@ mark.wdiff {
 .hxpop .slip + .slip {
   box-shadow: 0 -1px 0 var(--line);
 }
-/* an Always Show one: a stroke in the Highlight's colour down its left, as its lines have in the code */
-.hxpop .slip.always {
-  --rail: color-mix(in srgb, var(--accent) 45%, transparent);
-  padding-left: 10px;
-  box-shadow: inset 2px 0 0 var(--rail);
-}
-.hxpop.hx-bracket .slip.always {
-  --rail: color-mix(in srgb, var(--accent) 70%, transparent);
-}
-.hxpop .slip + .slip.always {
-  box-shadow:
-    inset 2px 0 0 var(--rail),
-    0 -1px 0 var(--line);
-}
 .hxpop .tray > :is(.add, .ncomp) {
   margin-top: 6px;
 }
@@ -9228,9 +9214,15 @@ mark.wdiff {
   display: grid;
   place-items: center;
   border-radius: 999px;
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: none;
+  color: var(--ink-3);
   z-index: 3;
+}
+/* a thin + the size of the line numbers, quieter than a Highlight's count beside it */
+.gutter .lsadd .ico {
+  width: 11px;
+  height: 11px;
+  --ico-w: 1.5;
 }
 /* that row already has a Highlight's count (CodeBody plusSpot): in the count's column just under it, or just over it; left of the
    number only with counts on both sides, 1px clear of where the line's link port on the card's edge takes the pointer (its hit
@@ -9246,5 +9238,10 @@ mark.wdiff {
   left: max((var(--code-pl) - 13px) / 2, (4.5px - var(--port-hit, 0px)) * var(--uv, 1) + 0.5px);
 }
 .gutter .lsadd:hover {
-  scale: 1.15;
+  color: var(--ink);
+  background: var(--hlrow);
+}
+.gutter .lsadd:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
 }

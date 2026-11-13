@@ -527,7 +527,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; dim?: () => boolea
                     if (ls) act.openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] });
                   }}
                 >
-                  <Icon name="plus" size={9} />
+                  <Icon name="plus" size={11} />
                 </button>
               </Show>
               <For each={M.vrows()}>
