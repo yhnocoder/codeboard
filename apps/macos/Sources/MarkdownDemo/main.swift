@@ -12,8 +12,26 @@ import ImageIO
 
 /// Images next to the file, formulas and diagrams through the engines, code coloured by the app's highlighter
 /// (CodeBoardSyntax); no references
+/// Pictures pasted or dropped into the demo: kept in memory under the address written for them (the demo never writes a
+/// file)
+final class Pasted: @unchecked Sendable {
+  private let lock = NSLock()
+  private var pictures: [String: CGImage] = [:]
+  func add(_ data: Data) -> String? {
+    guard let s = CGImageSourceCreateWithData(data as CFData, nil), let i = CGImageSourceCreateImageAtIndex(s, 0, nil)
+    else { return nil }
+    return lock.withLock {
+      let name = "pasted/\(pictures.count + 1).png"
+      pictures[name] = i
+      return name
+    }
+  }
+  func picture(_ src: String) -> CGImage? { lock.withLock { pictures[src] } }
+}
+
 struct FileResources: MarkdownResources {
   let folder: URL
+  let pasted: Pasted
   let math: MathTypesetter?
   let highlighter = Highlighter()
   /// a fence's language as the highlighter names its grammars
@@ -28,6 +46,7 @@ struct FileResources: MarkdownResources {
   ]
   var diagrams: DiagramRenderer? { math as? DiagramRenderer }
   func imageSize(_ src: String) -> CGSize? {
+    if let p = pasted.picture(src) { return CGSize(width: p.width, height: p.height) }
     guard !src.contains("://"), let s = CGImageSourceCreateWithURL(folder.appending(path: src) as CFURL, nil),
       let p = CGImageSourceCopyPropertiesAtIndex(s, 0, nil) as? [CFString: Any],
       let w = p[kCGImagePropertyPixelWidth] as? Int, let h = p[kCGImagePropertyPixelHeight] as? Int
@@ -151,7 +170,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     self.folder = folder
     self.cardWidth = cardWidth
     try MarkdownAssets.fonts.get()
-    resources = FileResources(folder: folder, math: try MarkdownAssets.engines())
+    resources = FileResources(folder: folder, pasted: Pasted(), math: try MarkdownAssets.engines())
   }
 
   func applicationDidFinishLaunching(_ n: Notification) {
@@ -189,7 +208,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     guard let t = try? String(contentsOf: url, encoding: .utf8) else { return false }
     text = t
     folder = url.deletingLastPathComponent()
-    resources = FileResources(folder: folder, math: resources.math)
+    resources = FileResources(folder: folder, pasted: resources.pasted, math: resources.math)
     live = LiveHighlight(resources)
     images = [:]
     editor?.removeFromSuperview()
@@ -262,7 +281,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   }
 
   func image(_ slot: MarkdownImageSlot) -> CGImage? {
-    if let i = images[slot.src] { return i }
+    if let i = images[slot.src] ?? resources.pasted.picture(slot.src) { return i }
     guard !slot.src.contains("://"),
       let s = CGImageSourceCreateWithURL(folder.appending(path: slot.src) as CFURL, nil),
       let i = CGImageSourceCreateImageAtIndex(s, max(0, (slot.stillFrame ?? 1) - 1), nil)
@@ -279,6 +298,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   }
   func editorWantsToEnd(_ e: MarkdownEditorView) { e.isEditing = false }
   func editorDidBegin(_ e: MarkdownEditorView) {}
+  func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String? { resources.pasted.add(data) }
 
   // MARK: controls
 

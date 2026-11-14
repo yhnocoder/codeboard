@@ -193,3 +193,28 @@ import Testing
     #expect(kept == nil && l.info == nil)
   }
 }
+
+@Suite struct LayoutInfoUndoTests {
+  @Test func sizesAndWrapsAreUndoSteps() {
+    _ = boardFonts
+    let src = "| a | b |\n|---|---|\n| 1 | 2 |\n\n```\nx\n```"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let e = EditorCore(layout: l)
+    e.select(MDSelection(2))
+    var kept: MDLayoutInfo? = MDLayoutInfo()
+    e.onLayoutInfo = { kept = $0 }
+    e.setTableSize(0, cols: [80, nil], rows: nil, done: false)
+    e.setTableSize(0, cols: [90, nil], rows: nil, done: false)
+    e.setTableSize(0, cols: [100, nil], rows: nil, done: true)
+    e.setWrap(true, of: e.codeBlock(at: 33)!)
+    #expect(kept?.wrap == [0] && kept?.tables?.first??.cols == [100, nil])
+    e.undo()
+    #expect(kept?.wrap == nil && kept?.tables?.first??.cols == [100, nil])
+    // the whole drag is one step, back to no sizes at all
+    e.undo()
+    #expect(kept == nil && l.info == nil)
+    e.redo()
+    #expect(l.info?.tables?.first??.cols == [100, nil])
+    #expect(e.source == src)
+  }
+}

@@ -12,6 +12,12 @@ public protocol MarkdownEditorDelegate: AnyObject {
   func editorWantsToEnd(_ e: MarkdownEditorView)
   /// a click on the static picture started editing
   func editorDidBegin(_ e: MarkdownEditorView)
+  /// a picture pasted or dropped into the text: the host saves it and gives the address to write, or nil to leave it out
+  func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String?
+}
+
+extension MarkdownEditorDelegate {
+  public func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String? { nil }
 }
 
 /// The editor as an NSView: a thin adapter that hands keys and the mouse to `EditorCore` and draws what it holds, with
@@ -85,6 +91,7 @@ public final class MarkdownEditorView: NSView {
     addSubview(preview)
     band.isHidden = true
     addSubview(band)
+    registerForDraggedTypes([.fileURL, .png, .tiff])
     band.onPart = { [weak self] id, v, r in self?.bandPart(id, v, r) }
     updateTrackingAreas()
     core.onLayout = { [weak self] in
@@ -166,11 +173,7 @@ public final class MarkdownEditorView: NSView {
     for r in core.selectionRects where r.intersects(clip) { ctx.fill(r) }
     // a selected image: its ring and the two handles at its bottom corners; while one is dragged, the size it will get
     if isEditing, let box = imageBox {
-      let ring =
-        (resizing.map { r in
-          CGRect(
-            x: box.midX - r.width / 2, y: box.minY, width: r.width, height: box.height * r.width / max(1, box.width))
-        } ?? box).insetBy(dx: -2, dy: -2)
+      let ring = box.insetBy(dx: -2, dy: -2)
       ctx.setStrokeColor(caretColor.cgColor)
       ctx.setLineWidth(2 / zoom * (window?.backingScaleFactor ?? 2) / 2)
       ctx.stroke(ring)
@@ -261,6 +264,75 @@ public final class MarkdownEditorView: NSView {
     ctx.setAllowsFontSubpixelQuantization(false)
     core.layout.draw(in: ctx, scale: scale, clip: r, image: image)
     return ctx.makeImage()
+  }
+
+  // MARK: pictures in and out
+
+  /// the selected image's picture as PNG data (the host's decoded picture of it)
+  func selectedImagePNG() -> Data? {
+    guard let (range, _) = core.selectedImage, let atom = core.layout.rects(forAtom: range),
+      let slot = core.layout.images.first(where: { $0.frame.intersects(atom) }), let pic = image(slot)
+    else { return nil }
+    return NSBitmapImageRep(cgImage: pic).representation(using: .png, properties: [:])
+  }
+
+  /// Pictures from a pasteboard (image data, or image files) saved through the host and written at the selection as
+  /// ![](address), one undo step for all; whether there were any
+  @discardableResult
+  func insertImages(from pb: NSPasteboard, at point: CGPoint? = nil) -> Bool {
+    var items: [(Data, String)] = []
+    let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+    for u in urls where ["png", "jpg", "jpeg", "gif", "webp", "svg"].contains(u.pathExtension.lowercased()) {
+      if let d = try? Data(contentsOf: u) { items.append((d, u.lastPathComponent)) }
+    }
+    if items.isEmpty, pb.string(forType: .string) == nil {
+      if let d = pb.data(forType: .png) {
+        items.append((d, "pasted.png"))
+      } else if let d = pb.data(forType: .tiff),
+        let png = NSBitmapImageRep(data: d)?.representation(using: .png, properties: [:])
+      {
+        items.append((png, "pasted.png"))
+      }
+    }
+    guard !items.isEmpty, let delegate else { return false }
+    let written = items.compactMap { d, name in delegate.editor(self, saveImage: d, name: name).map { "![](\($0))" } }
+    guard !written.isEmpty else { return true }
+    begin()
+    if let point { core.select(MDSelection(core.layout.caret(at: point).offset)) }
+    let r = core.selection.range
+    let text = written.joined(separator: " ")
+    core.apply(
+      MDEdit(
+        range: r, replacement: text, selection: MDSelection(r.lowerBound + (text as NSString).length), undo: .command))
+    note(.pasted(text, rule: "pictures saved by the host"))
+    changed()
+    return true
+  }
+
+  /// Drags the selected image out: its Markdown and its picture go with the drag; a move that ends outside this editor
+  /// takes its source out, one undo step (editor/widgets.ts dragstart / dragEnd)
+  private func dragImageOut(_ e: NSEvent) {
+    guard let (range, _) = core.selectedImage, let box = imageBox else { return }
+    let item = NSPasteboardItem()
+    item.setString(
+      (core.source as NSString).substring(with: NSRange(location: range.lowerBound, length: range.count)),
+      forType: .string)
+    let png = selectedImagePNG()
+    if let png { item.setData(png, forType: .png) }
+    let drag = NSDraggingItem(pasteboardWriter: item)
+    let frame = CGRect(x: box.minX * zoom, y: box.minY * zoom, width: box.width * zoom, height: box.height * zoom)
+    drag.setDraggingFrame(frame, contents: png.flatMap { NSImage(data: $0) })
+    draggedImage = range
+    beginDraggingSession(with: [drag], event: e, source: self)
+  }
+
+  public override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+    isEditing && sender.draggingSource as? MarkdownEditorView !== self ? .copy : []
+  }
+
+  public override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+    let p = convert(sender.draggingLocation, from: nil)
+    return insertImages(from: sender.draggingPasteboard, at: CGPoint(x: p.x / zoom, y: p.y / zoom))
   }
 
   // MARK: a code block's band
@@ -466,6 +538,11 @@ public final class MarkdownEditorView: NSView {
       changed()
       return
     }
+    // a press on a selected image's picture may start dragging it out
+    if let box = imageBox, box.contains(at), e.clickCount == 1 {
+      imageDragFrom = at
+      return
+    }
     // a press on a column's right edge or a row's bottom edge: its width or height (layout info, editor/table.ts)
     if let g = tableGrips, let index = core.tableIndex(at: core.selection.head),
       g.box.insetBy(dx: -4, dy: -4).contains(at)
@@ -543,6 +620,11 @@ public final class MarkdownEditorView: NSView {
     ]
   }
 
+  /// a press on the selected image, before it has moved far enough to drag it out
+  private var imageDragFrom: CGPoint?
+  /// the source of an image being dragged out
+  var draggedImage: Range<Int>?
+
   /// a table row or column being moved by its grip
   private var tableDrag: TableDrag?
   /// a column's right edge or a row's bottom edge being dragged: which, where the drag began, its size then
@@ -576,6 +658,13 @@ public final class MarkdownEditorView: NSView {
   private var pressed: (at: CGPoint, dragged: Bool)?
 
   public override func mouseDragged(with e: NSEvent) {
+    if let from = imageDragFrom {
+      let p = convert(e.locationInWindow, from: nil)
+      guard hypot(p.x / zoom - from.x, p.y / zoom - from.y) * zoom > 4 else { return }
+      imageDragFrom = nil
+      dragImageOut(e)
+      return
+    }
     if let t = tableSize {
       let p = convert(e.locationInWindow, from: nil)
       let at = t.column ? p.x / zoom : p.y / zoom
@@ -604,8 +693,11 @@ public final class MarkdownEditorView: NSView {
       let dx = (p.x / zoom - r.start.x) * (r.left ? -1 : 1)
       // both sides move: twice the pointer's way; at least 48 points, on an 8-point grid
       let w = min(core.layout.width, max(48, ((r.from + 2 * dx) / 8).rounded() * 8))
+      guard w != r.width else { return }
       resizing?.width = w
-      needsDisplay = true
+      // the picture scales under the handle and the text below follows, every frame; written on release
+      core.previewImageWidth(Double(w / core.layout.width))
+      changed()
       return
     }
     if !isEditing, let (start, _) = pressed {
@@ -625,6 +717,12 @@ public final class MarkdownEditorView: NSView {
   }
 
   public override func mouseUp(with e: NSEvent) {
+    if imageDragFrom != nil {
+      // a click on the image already selected: its source opens (editor/widgets.ts)
+      imageDragFrom = nil
+      if core.openImage() { changed() }
+      return
+    }
     if let t = tableSize {
       tableSize = nil
       let info = core.layout.info?.tables?[safe: t.index] ?? nil
@@ -649,8 +747,9 @@ public final class MarkdownEditorView: NSView {
     }
     if let r = resizing {
       resizing = nil
+      core.endImagePreview()
       // one write on release: the width as a share of the body
-      core.setImageWidth(Double(r.width / core.layout.width))
+      if r.width != r.from { core.setImageWidth(Double(r.width / core.layout.width)) }
       changed()
       return
     }
@@ -804,9 +903,16 @@ public final class MarkdownEditorView: NSView {
   @objc public func copy(_ sender: Any?) {
     begin()
     guard let t = core.copy() else { return }
-    NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(t, forType: .string)
-    note(.copied([("public.utf8-plain-text", t)]))
+    let pb = NSPasteboard.general
+    pb.clearContents()
+    pb.setString(t, forType: .string)
+    var types = [("public.utf8-plain-text", t)]
+    // a selected image: its picture too, as the web's ⌘C copies the picture itself (editor/image.ts copyImage)
+    if let png = selectedImagePNG() {
+      pb.setData(png, forType: .png)
+      types.append(("public.png", "\(png.count) bytes"))
+    }
+    note(.copied(types))
   }
   @objc public func cut(_ sender: Any?) {
     begin()
@@ -817,6 +923,8 @@ public final class MarkdownEditorView: NSView {
     changed()
   }
   @objc public func paste(_ sender: Any?) {
+    // a picture (or picture files) on the pasteboard: saved by the host, written as images
+    if isEditing, insertImages(from: NSPasteboard.general) { return }
     guard isEditing, let t = NSPasteboard.general.string(forType: .string) else { return }
     core.paste(t)
     changed()
@@ -945,5 +1053,20 @@ extension MarkdownEditorView: @preconcurrency NSTextInputClient {
     guard let w = window else { return NSNotFound }
     let p = convert(w.convertPoint(fromScreen: point), from: nil)
     return core.layout.caret(at: CGPoint(x: p.x / zoom, y: p.y / zoom)).offset
+  }
+}
+
+extension MarkdownEditorView: NSDraggingSource {
+  public func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext)
+    -> NSDragOperation
+  {
+    context == .outsideApplication ? .copy : [.copy, .move]
+  }
+
+  public func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+    defer { draggedImage = nil }
+    guard operation == .move, let r = draggedImage, core.selectedImage?.range == r else { return }
+    core.apply(MDEdit(range: r, replacement: "", selection: MDSelection(r.lowerBound), undo: .command))
+    changed()
   }
 }

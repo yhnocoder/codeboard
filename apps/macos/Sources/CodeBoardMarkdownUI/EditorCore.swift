@@ -38,6 +38,8 @@ public final class EditorCore {
     var after: MDSelection
     var kind: MDUndoKind
     var time: Double
+    /// a change of the layout info (a table's sizes, a code block's wrap) instead of edits: before and after
+    var info: (MDLayoutInfo?, MDLayoutInfo?)?
   }
   private var undoSteps: [Step] = []
   private var redoSteps: [Step] = []
@@ -241,9 +243,27 @@ public final class EditorCore {
     var wrap = Set(info.wrap ?? [])
     if on { wrap.insert(block.index) } else { wrap.remove(block.index) }
     info.wrap = wrap.isEmpty ? nil : wrap.sorted()
-    layout.setInfo(info.tables == nil && info.wrap == nil ? nil : info)
+    let before = layout.info
+    setInfo(info.tables == nil && info.wrap == nil ? nil : info)
+    record(info: before)
+  }
+
+  /// lays the info out and hands it to the host
+  private func setInfo(_ i: MDLayoutInfo?) {
+    layout.setInfo(i)
     onLayoutInfo?(layout.info)
   }
+
+  /// a layout info change as an undo step of its own
+  private func record(info before: MDLayoutInfo?) {
+    guard before != layout.info else { return }
+    undoSteps.append(
+      Step(edits: [], before: selection, after: selection, kind: .command, time: clock(), info: (before, layout.info)))
+    redoSteps = []
+    joinable = false
+  }
+  /// the info before a size drag began
+  private var infoBeforeDrag: MDLayoutInfo??
 
   /// Which table of the Note the caret's is (the layout info's tables list counts them so)
   public func tableIndex(at offset: Int) -> Int? {
@@ -275,8 +295,13 @@ public final class EditorCore {
     tables[index] = cols == nil && rows == nil ? nil : t
     while let last = tables.last, last == nil { tables.removeLast() }
     info.tables = tables.isEmpty ? nil : tables
+    if infoBeforeDrag == nil { infoBeforeDrag = .some(layout.info) }
     layout.setInfo(info.tables == nil && info.wrap == nil ? nil : info)
-    if done { onLayoutInfo?(layout.info) }
+    if done {
+      onLayoutInfo?(layout.info)
+      record(info: infoBeforeDrag ?? nil)
+      infoBeforeDrag = nil
+    }
   }
 
   /// the layout info changed (a wrap toggled): for the host to keep
@@ -327,6 +352,42 @@ public final class EditorCore {
           anchor: range.lowerBound, head: range.upperBound + (e.range.lowerBound <= range.upperBound ? grow : 0)),
         undo: .command))
   }
+
+  /// where an image's caption (its title) starts in its source
+  func captionStart(_ r: Range<Int>) -> Int? {
+    let ns = source as NSString
+    let text = ns.substring(with: NSRange(location: r.lowerBound, length: r.count)) as NSString
+    let close = text.range(of: "](")
+    guard close.location != NSNotFound else { return nil }
+    let quote = text.range(
+      of: "\"", range: NSRange(location: NSMaxRange(close), length: text.length - NSMaxRange(close)))
+    return quote.location == NSNotFound ? nil : r.lowerBound + quote.location + 1
+  }
+
+  /// While a handle is dragged: the selected image laid out at `share` of the body's width (the layout's text only; the
+  /// source is written once, on release, by setImageWidth), the text below following it
+  public func previewImageWidth(_ share: Double) {
+    guard let (range, img) = selectedImage else { return }
+    let want = MarkdownSourceOps.setImageWidth(source, src: img.src, nth: nth(of: range, src: img.src), width: share)
+    let shown = layout.document.source
+    guard want != shown, let e = Self.diff(shown, want) else { return }
+    let next = layout.document.reparse(replacing: e.range, with: e.replacement)
+    layout.update(
+      to: next, replacing: e.range, delta: (e.replacement as NSString).length - e.range.count, head: layout.head)
+    previewing = true
+  }
+
+  /// the layout shows the source again (before the width is written)
+  public func endImagePreview() {
+    guard previewing, let e = Self.diff(layout.document.source, source) else {
+      previewing = false
+      return
+    }
+    previewing = false
+    layout.update(
+      to: document, replacing: e.range, delta: (e.replacement as NSString).length - e.range.count, head: layout.head)
+  }
+  private var previewing = false
 
   /// the one replacement that turns a into b: what they share at their start and end left out
   static func diff(_ a: String, _ b: String) -> (range: Range<Int>, replacement: String)? {
@@ -431,6 +492,12 @@ public final class EditorCore {
     endLone()
     guard canUndo, let step = undoSteps.popLast() else { return }
     observer?(.undo)
+    if let (before, _) = step.info {
+      setInfo(before)
+      redoSteps.append(step)
+      joinable = false
+      return
+    }
     for e in step.edits.reversed() {
       let end = e.range.lowerBound + (e.new as NSString).length
       edit(e.range.lowerBound..<end, e.old, select: step.before)
@@ -444,6 +511,12 @@ public final class EditorCore {
     endLone()
     guard canRedo, let step = redoSteps.popLast() else { return }
     observer?(.redo)
+    if let (_, after) = step.info {
+      setInfo(after)
+      undoSteps.append(step)
+      joinable = false
+      return
+    }
     for e in step.edits { edit(e.range, e.new, select: step.after) }
     undoSteps.append(step)
     joinable = false
@@ -638,8 +711,15 @@ public final class EditorCore {
       case .atom(let a) = i.kind
     {
       mouse = nil
-      if case .image = a {
-        place(MDSelection(anchor: r.lowerBound, head: r.upperBound))
+      if case .image(let img) = a {
+        // a press on its caption opens its source in the caption (editor/inline.ts openImage with a caption hit); a
+        // press on the picture selects it
+        let pic = layout.images.first { $0.frame.contains(p) }
+        if pic == nil, !img.caption.isEmpty, let q = captionStart(r) {
+          place(MDSelection(q))
+        } else {
+          place(MDSelection(anchor: r.lowerBound, head: r.upperBound))
+        }
       } else {
         place(MDSelection(MarkdownEditing.caretIn(i)))
       }
