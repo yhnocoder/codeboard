@@ -94,7 +94,8 @@ import CodeBoardModel
     if let panes, panes.isEditing {
       Task {
         await panes.endEditing()
-        NSApp.reply(toApplicationShouldTerminate: self.writeAll() == .terminateNow)
+        // else the question answers it
+        if self.writeAll() == .terminateNow { NSApp.reply(toApplicationShouldTerminate: true) }
       }
       return .terminateLater
     }
@@ -104,6 +105,14 @@ import CodeBoardModel
   private func writeAll() -> NSApplication.TerminateReply {
     let unsaved = panes?.flush() ?? []
     guard !unsaved.isEmpty else { return .terminateNow }
+    Self.askToQuit(unsaved, on: window) { NSApp.reply(toApplicationShouldTerminate: $0) }
+    return .terminateLater
+  }
+
+  /// Changes that could not be written: Cancel or Quit Anyway, in a sheet on the window (the app's other windows go on)
+  static func askToQuit(
+    _ unsaved: [(title: String, why: String)], on window: NSWindow?, reply: @escaping @MainActor (Bool) -> Void
+  ) {
     let alert = NSAlert()
     alert.messageText =
       unsaved.count == 1
@@ -111,7 +120,8 @@ import CodeBoardModel
     alert.informativeText = unsaved.map { "\($0.title): \($0.why)" }.joined(separator: "\n\n")
     alert.addButton(withTitle: "Cancel")
     alert.addButton(withTitle: "Quit Anyway")
-    return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
+    guard let window else { return reply(alert.runModal() == .alertSecondButtonReturn) }
+    alert.beginSheetModal(for: window) { reply($0 == .alertSecondButtonReturn) }
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

@@ -59,24 +59,20 @@ extension CanvasView {
   func cardMenu(_ c: CardID, at p: CGPoint) -> NSMenu {
     let m = NSMenu()
     let arrange = arrangeItem([c], tiltAndLock: true)
-    // a folder board's automatic card (the app's own): Open and Arrange ▸ (it goes only with its board or folder)
-    if document?.board.isAuto(c) == true, !isGone(c) {
-      m.addItem(menuItem("Open") { [weak self] in self?.openSubBoard(c) })
-      m.addItem(arrange)
-      return m
-    }
     m.addItem(addNoteItem(card: c, at: p))
     m.addItem(.separator())
-    if case .board? = scene?.parts[c]?.content.body {
+    if case .board(let s)? = scene?.parts[c]?.content.body {
       m.addItem(key(menuItem("Open") { [weak self] in self?.openSubBoard(c) }, "\r", .command))
       m.addItem(.separator())
       m.addItem(arrange)
       m.addItem(copyPathItem([c.rawValue]))
+      // a folder board's automatic card follows its folder: no Remove from This Board while what it shows is there
+      // (FORMAT.md, board); a subfolder's card has no board of its own to delete (the sidebar's Delete Folder)
+      let auto = document?.board.isAuto(c) == true && !isGone(c)
+      guard !auto || s.board != nil else { return m }
       m.addItem(.separator())
-      m.addItem(key(action("Remove from This Board", #selector(delete(_:))), "\u{8}"))
-      if case .board(let s)? = scene?.parts[c]?.content.body, case .board(let id) = s.target {
-        m.addItem(menuItem("Delete Board…") { [weak self] in self?.deleteBoard(id) })
-      }
+      if !auto { m.addItem(key(action("Remove from This Board", #selector(delete(_:))), "\u{8}")) }
+      if let id = s.board { m.addItem(menuItem("Delete Board…") { [weak self] in self?.deleteBoard(id) }) }
       return m
     }
     for i in webMenuItems(c) + linksMenuItems(c) + codeMenuItems(c) { m.addItem(i) }

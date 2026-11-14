@@ -19,12 +19,14 @@ import Testing
       .compactMap(\.action)
   }
 
-  /// The toolbar's ⋯ sends Rename Board… and Edit Mark… up the responder chain: the app answers them
-  @Test func theAppAnswersRenameBoardAndEditMark() {
+  /// The toolbar's ⋯ sends Rename Board…, Edit Mark…, Settings… and Theme ▸ up the responder chain: the app answers
+  /// them (MenuWalkTests counts them on)
+  @Test func theAppAnswersTheToolbarsMoreMenu() {
     _ = NSApplication.shared
     let app = AppDelegate()
-    #expect(
-      app.responds(to: #selector(AppDelegate.renameBoard(_:))) && app.responds(to: #selector(AppDelegate.editMark(_:))))
+    for s in ["renameBoard:", "editMark:", "showSettings:", "chooseTheme:"] {
+      #expect(app.responds(to: Selector((s))), "\(s)")
+    }
   }
 
   @Test func lockIsCommandShiftL() {
