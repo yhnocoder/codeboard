@@ -126,13 +126,25 @@ extension NSApplication {
   @objc func accOrderFrontCharacterPalette(_ sender: Any?) { log("character palette asked for (not shown)") }
 }
 
-nonisolated(unsafe) let cursorNames: [(NSCursor, String)] = [
-  (.arrow, "arrow"), (.pointingHand, "pointingHand"), (.openHand, "openHand"), (.closedHand, "closedHand"),
-  (.iBeam, "iBeam"), (.crosshair, "crosshair"), (.resizeLeftRight, "resizeLeftRight"), (.resizeUpDown, "resizeUpDown"),
-  (.operationNotAllowed, "notAllowed"), (.dragCopy, "dragCopy"), (.dragLink, "dragLink"),
-  (.contextualMenu, "contextMenu"),
-  (.disappearingItem, "disappearing"), (.iBeamCursorForVerticalLayout, "iBeamVertical"),
-]
+/// Made when a cursor is named, not at launch: read before NSApplication is made, `NSCursor.arrow` came back empty, and
+/// every arrow the app set was named custom(28x40)
+nonisolated var cursorNames: [(NSCursor, String)] {
+  [
+    (.arrow, "arrow"), (.pointingHand, "pointingHand"), (.openHand, "openHand"), (.closedHand, "closedHand"),
+    (.iBeam, "iBeam"), (.crosshair, "crosshair"), (.resizeLeftRight, "resizeLeftRight"),
+    (.resizeUpDown, "resizeUpDown"),
+    (.operationNotAllowed, "notAllowed"), (.dragCopy, "dragCopy"), (.dragLink, "dragLink"),
+    (.contextualMenu, "contextMenu"),
+    (.disappearingItem, "disappearing"), (.iBeamCursorForVerticalLayout, "iBeamVertical"),
+    (.columnResize, "columnResize"),
+  ]
+    + ([
+      ("left", .left), ("right", .right), ("top", .top), ("bottom", .bottom), ("topLeft", .topLeft),
+      ("topRight", .topRight), ("bottomLeft", .bottomLeft), ("bottomRight", .bottomRight),
+    ] as [(String, NSCursor.FrameResizePosition)]).map {
+      (NSCursor.frameResize(position: $0.1, directions: .all), "frameResize(\($0.0))")
+    }
+}
 func nameOf(_ c: NSCursor) -> String {
   if let n = cursorNames.first(where: { $0.0 == c })?.1 { return n }
   return "custom(\(Int(c.image.size.width))x\(Int(c.image.size.height)))"
