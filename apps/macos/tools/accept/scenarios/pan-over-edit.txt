@@ -1,4 +1,5 @@
 # 编辑一张卡时，从卡外开始的双指平移经过这张卡不能停（VS Code：手势从哪开始就归谁）
+# known: 编辑中从卡外开始的平移碰到这张卡就停（#221 在修）
 zoom 1
 center @cnote+150,60
 dbl @cnote+150,70
@@ -10,4 +11,6 @@ wait 300
 scroll -300 0 30
 wait 600
 stop
+# 卡整张滑过了指针，没有停在指针下
+expect cnote.right < pointer.x
 key esc

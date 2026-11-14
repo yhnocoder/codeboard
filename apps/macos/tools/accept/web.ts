@@ -151,6 +151,7 @@ async function run(line: string): Promise<string> {
       return r ? `${r.left.toFixed(1)} ${r.top.toFixed(1)} ${r.width.toFixed(1)} ${r.height.toFixed(1)}` : "none";
     }, a[1]);
     case "hit": return await hitAt(pos.x, pos.y);
+    case "pointer": return `${pos.x.toFixed(1)} ${pos.y.toFixed(1)}`;
     case "menu": await page.mouse.down({ button: "right" }); await page.mouse.up({ button: "right" }); await sleep(200);
       return await page.evaluate(() => [...document.querySelectorAll(".menu, [role=menu]")].map((m) => (m as HTMLElement).innerText).join("\n----\n"));
     case "rec": times = ""; recDir = path.join(out, a[1]); fs.rmSync(recDir, { recursive: true, force: true }); fs.mkdirSync(recDir, { recursive: true }); frame = 0;

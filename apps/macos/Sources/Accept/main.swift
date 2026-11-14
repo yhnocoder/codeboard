@@ -8,7 +8,6 @@
 // virtual pointer, and the app is told it is active with its window key. Text arrives as an input method commits it
 // (insertText / setMarkedText on the first responder), never through the system's input method.
 import AppKit
-import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardShell
 import ObjectiveC
@@ -245,9 +244,30 @@ swizzle(
   var rec: Recorder?
 
   var win: NSWindow? { gMain }
-  var canvas: CanvasView? {
-    func find(_ v: NSView) -> CanvasView? { (v as? CanvasView) ?? v.subviews.lazy.compactMap(find).first }
+  var canvas: NSView? {
+    func find(_ v: NSView) -> NSView? {
+      String(describing: Swift.type(of: v)) == "CanvasView" ? v : v.subviews.lazy.compactMap(find).first
+    }
     return win?.contentView.flatMap(find)
+  }
+  /// The canvas's camera, read from its stored property `camera` (a board point at the view's top-left and a zoom:
+  /// three doubles), so the driver needs nothing public from the app and works on any version of it
+  func camera(_ c: NSView) -> (origin: CGPoint, zoom: CGFloat)? {
+    var cls: AnyClass? = object_getClass(c)
+    while let k = cls {
+      var n: UInt32 = 0
+      if let ivars = class_copyIvarList(k, &n) {
+        defer { free(ivars) }
+        for i in 0..<Int(n) where ivar_getName(ivars[i]).map({ String(cString: $0) }) == "camera" {
+          let raw = Unmanaged.passUnretained(c).toOpaque() + ivar_getOffset(ivars[i])
+          let v = raw.assumingMemoryBound(to: Double.self)
+          guard v[2] > 0.001, v[2] < 100 else { return nil }  // not a camera after all
+          return (CGPoint(x: v[0], y: v[1]), v[2])
+        }
+      }
+      cls = class_getSuperclass(k)
+    }
+    return nil
   }
   /// A screen point in the main window's content coordinates (what move and click take)
   func local(_ p: NSPoint) -> String {
@@ -273,7 +293,7 @@ swizzle(
     guard let root = w.contentView?.superview else { return }
     let base = class_getMethodImplementation(NSView.self, #selector(NSView.acceptsFirstMouse(for:)))
     var cls: AnyClass? =
-      root.hitTest(root.superview?.convert(w.convertPoint(fromScreen: p), from: nil) ?? .zero)
+      root.hitTest(root.superview?.convert(w.convertPoint(fromScreen: p), from: nil) ?? w.convertPoint(fromScreen: p))
       .map { object_getClass($0) } ?? nil
     while let c = cls, c != NSView.self {
       let sel = #selector(NSView.acceptsFirstMouse(for:))
@@ -718,16 +738,33 @@ swizzle(
     case "menu": contextMenu()
     case "pick": pick(String(line.dropFirst(5)))
     case "hit": return hitInfo(vPointer)
+    // ax id: where the canvas's accessibility element with this identifier (a card or Section, when the app exposes
+    // them) is now, in board units: x y width height
+    case "ax":
+      guard let c = canvas, let cam = camera(c), let w = win else { return "none" }
+      func find(_ e: Any) -> NSAccessibilityProtocol? {
+        guard let el = e as? NSAccessibilityProtocol else { return nil }
+        if el.accessibilityIdentifier() == a[1] { return el }
+        for k in el.accessibilityChildren() ?? [] { if let f = find(k) { return f } }
+        return nil
+      }
+      guard let el = (c.accessibilityChildren() ?? []).lazy.compactMap(find).first else { return "none" }
+      let r = c.convert(w.convertFromScreen(el.accessibilityFrame()), from: nil)  // the canvas is y-down
+      return String(
+        format: "%.1f %.1f %.1f %.1f", cam.origin.x + r.minX / cam.zoom, cam.origin.y + r.minY / cam.zoom,
+        r.width / cam.zoom, r.height / cam.zoom)
+    case "pointer":  // where the pointer is, in board units
+      guard let c = canvas, let cam = camera(c), let w = win else { return "none" }
+      let v = c.convert(w.convertPoint(fromScreen: vPointer), from: nil)
+      return String(format: "%.1f %.1f", cam.origin.x + v.x / cam.zoom, cam.origin.y + v.y / cam.zoom)
     case "where":  // where bx by: the board point's place in the window (what move and click take), from the camera
-      guard let c = canvas, let w = win, let cv = w.contentView else { return "no canvas" }
-      let cam = c.currentCamera
+      guard let c = canvas, let cam = camera(c), let w = win, let cv = w.contentView else { return "no canvas" }
       let vp = NSPoint(x: (d(1) - cam.origin.x) * cam.zoom, y: (d(2) - cam.origin.y) * cam.zoom)
       let p = cv.convert(c.convert(vp, to: nil), from: nil)
       return String(format: "%.1f %.1f", p.x, p.y)
     // the camera (the board point at the canvas's top-left, the zoom), then the canvas's middle in the window
     case "cam":
-      guard let c = canvas else { return "no canvas" }
-      let cam = c.currentCamera
+      guard let c = canvas, let cam = camera(c) else { return "no canvas" }
       guard let cv = win?.contentView else { return "no window" }
       let mid = cv.convert(c.convert(NSPoint(x: c.bounds.midX, y: c.bounds.midY), to: nil), from: nil)
       return String(format: "%.2f %.2f %.4f %.1f %.1f", cam.origin.x, cam.origin.y, cam.zoom, mid.x, mid.y)
