@@ -107,17 +107,78 @@ private func freeBoard() -> Board {
         ?? ""
     }
     Pinyin.windows.insert(r.window.windowNumber)
-    // the test input method misses the first key now and then: it goes past the input context and is written as typed
-    await withKnownIssue("the first key sometimes passes the test input method", isIntermittent: true) {
-      r.press("ni")
-      await r.until("composing") { await last().hasSuffix("ni") }
-      r.press("\u{1b}")
-      // a key after it, with nothing composed: once it is written, whatever the Esc did has happened
-      r.press("1")
-      await r.until("1 written") { await last().hasSuffix("1") }
-      #expect(c.isEditing, "the Esc cancelled the composition only")
-      #expect(await last() == "    return run(ids)1", "nothing of the composition kept")
+    await r.typeInTurn("ni")
+    await r.until("composing") { await last().hasSuffix("ni") }
+    r.press("\u{1b}")
+    // a key after it, with nothing composed: once it is written, whatever the Esc did has happened
+    r.press("1")
+    await r.until("1 written") { await last().hasSuffix("1") }
+    #expect(c.isEditing, "the Esc cancelled the composition only")
+    let got = await last()
+    #expect(got == "    return run(ids)1", "nothing of the composition kept: \(got)")
+  }
+
+  /// "ni" and Space typed at once after the double-click on code, before the editor is there: they go through the input
+  /// method too, so 你 is written (CanvasIMETests.pinyinTypedAtOnceAfterTheDoubleClickIsComposed)
+  @Test func pinyinTypedAtOnceAfterTheDoubleClickOnCodeIsComposed() async throws {
+    Pinyin.install()
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer {
+      Pinyin.windows.remove(r.window.windowNumber)
+      r.close()
     }
+    let c = r.canvas
+    let card = r.rect("f")
+    let code = try #require(c.scene?.placed[cid("f")]?.code)
+    let row = try #require(code.layout.row(segment: 0, line: 3))
+    Pinyin.windows.insert(r.window.windowNumber)
+    r.doubleClick(CGPoint(x: card.maxX - 10, y: card.minY + code.top + row.y + row.height / 2))
+    r.press("ni ")
+    await r.editorReady()
+    await r.until("the keys handed over") { c.noteEditor.view.held == nil }
+    r.press("\u{1b}")
+    await r.until("left") { !c.isEditing }
+    let lines = r.doc.board.segment(cid("f"), s1)?.lines ?? []
+    #expect(lines.last == "    return run(ids)你", "\(lines)")
+  }
+
+  /// Code through an input method: "ni", Space and at once ⌘↵ or Esc leave with 你 written (as
+  /// CanvasIMETests.anEscAtOnceAfterTheCommitLeavesWithTheText: CodeMirror's rule for the key that commits a
+  /// composition takes the Space, not them)
+  @Test(arguments: [53, 36] as [UInt16])
+  func aKeyAtOnceAfterTheCommitInCodeIsTaken(key: UInt16) async throws {
+    Pinyin.install()
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer {
+      Pinyin.windows.remove(r.window.windowNumber)
+      r.close()
+    }
+    let c = r.canvas
+    let card = r.rect("f")
+    let code = try #require(c.scene?.placed[cid("f")]?.code)
+    let row = try #require(code.layout.row(segment: 0, line: 3))
+    r.doubleClick(CGPoint(x: card.maxX - 10, y: card.minY + code.top + row.y + row.height / 2))
+    await r.editorReady()
+    Pinyin.windows.insert(r.window.windowNumber)
+    await r.typeInTurn("ni ")
+    // the key as soon as 你 is there to see (CodeMirror reads the commit from the page just after the composition ends)
+    await r.until("你 written") {
+      (try? await c.noteEditor.view.callAsyncJavaScript(
+        "return [...document.querySelectorAll('.cm-line')].at(-1)?.textContent ?? ''", contentWorld: .page) as? String)?
+        .hasSuffix("你") == true
+    }
+    let flags: NSEvent.ModifierFlags = key == 36 ? .command : []
+    let chars = key == 36 ? "\r" : "\u{1b}"
+    for t in [NSEvent.EventType.keyDown, .keyUp] {
+      r.window.sendEvent(
+        NSEvent.keyEvent(
+          with: t, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+          windowNumber: r.window.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
+          isARepeat: false, keyCode: key)!)
+    }
+    await r.until("left") { !c.isEditing }
+    let lines = r.doc.board.segment(cid("f"), s1)?.lines ?? []
+    #expect(lines.last == "    return run(ids)你", "\(lines)")
   }
 
   @Test func keysTypedAtOnceAfterTheDoubleClickAreAllWritten() async throws {
