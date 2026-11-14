@@ -351,6 +351,25 @@ swizzle(
 
 /// A stored property of `x` (and of what that one holds…), optionals unwrapped, by reflection: the driver needs nothing
 /// public from the app
+/// Where the canvas draws a sidenote's marker or a sticker, board units ("x y w h"; none): it has no accessibility
+/// element for them yet, so this reads its own layout (the markers it hit-tests, `marks`; the stickers', `stickerSpots`)
+@MainActor func spot(_ c: NSView, _ id: String) -> String {
+  let fmt = { (r: CGRect) in String(format: "%.1f %.1f %.1f %.1f", r.minX, r.minY, r.width, r.height) }
+  for m in field(c, "marks") as? [Any] ?? [] {
+    guard (field(m, "notes") as? [SidenoteID])?.contains(where: { $0.rawValue == id }) == true,
+      let hit = field(m, "hit") as? CGRect
+    else { continue }
+    // the hit area is the badge grown to a size the pointer can take, around its middle; the badge is 14 across, 13 in a
+    // code card's line numbers (CanvasView.markSize, gutterMarkSize)
+    let size: CGFloat = (field(m, "gutter") as? Bool) == true ? 13 : 14
+    return fmt(CGRect(x: hit.midX - size / 2, y: hit.midY - size / 2, width: size, height: size))
+  }
+  for s in field(c, "stickerSpots") as? [Any] ?? [] {
+    if (field(s, "id") as? StickerID)?.rawValue == id, let r = field(s, "board") as? CGRect { return fmt(r) }
+  }
+  return "none"
+}
+
 func field(_ x: Any, _ path: String...) -> Any? {
   var at: Any? = x
   for label in path {
@@ -984,7 +1003,7 @@ func strings(_ x: Any) -> [String] {
         for k in el.accessibilityChildren() ?? [] { if let f = find(k) { return f } }
         return nil
       }
-      guard let el = (c.accessibilityChildren() ?? []).lazy.compactMap(find).first else { return "none" }
+      guard let el = (c.accessibilityChildren() ?? []).lazy.compactMap(find).first else { return spot(c, a[1]) }
       let r = c.convert(w.convertFromScreen(el.accessibilityFrame()), from: nil)  // the canvas is y-down
       return String(
         format: "%.1f %.1f %.1f %.1f", cam.origin.x + r.minX / cam.zoom, cam.origin.y + r.minY / cam.zoom,

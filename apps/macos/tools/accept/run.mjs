@@ -22,14 +22,19 @@ const opt = (k) => (argv.includes(k) ? argv[argv.indexOf(k) + 1] : undefined);
 const only = opt("--only");
 const valued = ["--only", "--storage", "--theme", "--scale"];
 const scenarios = argv.filter((a, i) => !a.startsWith("--") && !valued.includes(argv[i - 1]));
-// the storage folder: --storage, else the one the scenarios name in a "# storage: <folder>" line (relative to this
-// folder: storage-two), else storage/. Scenarios run together share one, so they must name the same
-const declared = [...new Set(scenarios.map((f) => /^# storage: *(\S+)/m.exec(fs.readFileSync(f, "utf8"))?.[1] ?? "storage"))];
-if (!opt("--storage") && declared.length > 1) throw new Error(`these scenarios need different storage folders (${declared.join(", ")}): run them apart`);
-const storage = path.resolve(opt("--storage") ?? path.join(here, declared[0] ?? "storage"));
+// what a scenario needs, named in its own lines so nobody has to remember the flags: "# storage: <folder>" (relative to
+// this folder: storage-two; else storage/) and "# theme: <theme>" (ink-wash; else the default). The flags win; scenarios
+// run together share one of each, so they must name the same
+function declared(key, flag, fallback) {
+  const v = [...new Set(scenarios.map((f) => new RegExp(`^# ${key}: *(\\S+)`, "m").exec(fs.readFileSync(f, "utf8"))?.[1] ?? fallback))];
+  if (!opt(flag) && v.length > 1) throw new Error(`these scenarios need different ${key}s (${v.map((x) => x ?? "default").join(", ")}): run them apart`);
+  return opt(flag) ?? v[0];
+}
+const storage = path.resolve(opt("--storage") ?? path.join(here, declared("storage", "--storage", "storage") ?? "storage"));
+const theme = declared("theme", "--theme", undefined);
 // the look under test and the pixels per point of recordings and shots, the same on both sides
 const lookEnv = {
-  ...(opt("--theme") ? { ACCEPT_THEME: opt("--theme") } : {}),
+  ...(theme ? { ACCEPT_THEME: theme } : {}),
   ...(argv.includes("--dark") ? { ACCEPT_DARK: "1" } : {}),
   ACCEPT_SCALE: opt("--scale") ?? "1",
 };

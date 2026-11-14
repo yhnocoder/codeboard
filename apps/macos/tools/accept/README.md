@@ -70,7 +70,7 @@ node apps/macos/tools/accept/run.mjs --stop                  # 关掉留着的�
 - 值：数字、文字、另一个对象（`expect sboxes.bottom >= cyellow.bottom`）、`was`、`was+N`、`was-N`（`mark` 时这个对象的值）。
 
 判不了的记为 `n/a`，不算失败但会列出来：网页没有 `section`；Mac 的 `section` 从 app 存下的白板文件读，按住按钮时还没存。Mac 的卡和 Section 的位置大小读 app 的辅助功能元素（identifier 是 id，frame 是现在画在哪；驱动的 `ax <id>`），拖动过程中也判得了；读不到时退回白板文件。
-`scenarios/two/` 里的场景要两块白板，只跑 Mac：`--storage apps/macos/tools/accept/storage-two --only mac`（`storage-two/`：First 和 Second 两块白板摆着同一张共享卡 `cshared`，带一张图和一条跟着卡走的 Sidenote）：`shared-edit`（共享卡在一块白板上改了，另一块上也变）、`shared-paste`（别的白板上复制的卡贴过来就是同一张卡）、`camera-reopen`（换到别的白板再回来，镜头还在原处）。`twin-follows`（⌘D 的副本在小条上选 Reference，改副本原卡跟着变）两边都跑。
+场景自己写明要什么，不用记参数：`# storage: storage-two`（这个文件夹下的 storage 文件夹，默认 `storage/`）、`# theme: ink-wash`（默认 Warm Ink）；命令行的 `--storage`、`--theme` 优先，一起跑的场景要的必须一样。`scenarios/two/` 里的场景要两块白板（自己写着 `# storage: storage-two`），只跑 Mac：`--only mac`（`storage-two/`：First 和 Second 两块白板摆着同一张共享卡 `cshared`，带一张图和一条跟着卡走的 Sidenote；First 上还有一张子白板卡 `csub`，显示第三块白板 Third，导入后 First 成了文件夹白板、Third 在它的文件夹里）：`shared-edit`（共享卡在一块白板上改了，另一块上也变）、`shared-paste`（别的白板上复制的卡贴过来就是同一张卡）、`camera-reopen`（换到别的白板再回来，镜头还在原处）。`twin-follows`（⌘D 的副本在小条上选 Reference，改副本原卡跟着变）两边都跑。
 
 Mac 这边复制粘贴用的是这个进程自己的私有剪贴板，碰不到用 Mac 的人的剪贴板。网页那边不转发按键：VS Code 先拦下 ⌘D 这些键再转回给白板，这里白板自己接。
 
@@ -97,7 +97,7 @@ Mac 这边是 `Accept` target（`apps/macos/Sources/Accept/main.swift`）：它�
 - 查焦点为什么丢了：`ACCEPT_TRACE_RESPONDER=1` 让日志记下每次换 first responder、是谁要求的（调用栈前几层）。`ACCEPT_TRACE_SCROLL=1` 记下每个滚动事件落到哪个视图。
 - 驱动自己的时钟不受 App Nap 影响，屏幕关着时等待和动作的时长照常。
 - 悬停提示（tooltip）、系统菜单的外观录不到：菜单只读出文字；Mac 的自定义光标只写出名字和大小，看不到样子。
-- `@id` 指得到卡、Section、箭头标签、Sidenote 标记和 Sticker；后三样 Mac 读不到辅助功能元素，借网页那边画在哪（两边都跑时才行）。
+- `@id` 指得到卡、Section、箭头标签、Sidenote 标记和 Sticker。Sidenote 标记和 Sticker 在 Mac 上没有辅助功能元素，驱动读画布自己的布局（命中测试用的 `marks`、`stickerSpots`），只跑 Mac 也行；箭头标签借网页那边画在哪（两边都跑时才行）。
 - 响应时间的比较是粗的（缩成 160 × 104 再比），闪烁的光标不算变化；只出现一个光标的变化（比如网页上点进摘要正文）量不出来，用 `focus` 判。
 - 机器负载高时慢：一条场景两边约 5 分钟。看外观时用带目标的 `shot` 只剪需要的一块，别读整张并排图（费 token）。
 - 一行命令最多等 30 秒加它自己要的时长（`wait`、`move`…），超了这一行失败并写明。app 崩溃时（例如抛了 NSException）这一边立即失败，写出原因（stdout 里的那一行），后面的行不再跑。

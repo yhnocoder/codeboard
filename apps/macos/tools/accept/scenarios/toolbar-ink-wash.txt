@@ -1,4 +1,5 @@
 # Row 15, Ink Wash (run with --theme ink-wash): what the bar and the dock hold stays on the stroke's solid body; the board under each stroke is blurred (main's backdrop-filter in --ink-bar-mask), so a Section's line does not show through; the brush rests across the bar's right end; the Shelf is a button of the dock's stroke
+# theme: ink-wash
 zoom 1
 expect ui.more.right <= ui.barink.right
 expect ui.shelf.x >= ui.dockink.x
