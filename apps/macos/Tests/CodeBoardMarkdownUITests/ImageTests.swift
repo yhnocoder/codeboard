@@ -122,3 +122,36 @@ import Testing
     #expect(e.selection == MDSelection(14))
   }
 }
+
+@MainActor @Suite struct ImageOpenTests {
+  @Test func theOpenSourceKeepsThePictureUnderIt() {
+    _ = boardFonts
+    let src = "![pic](a.png)\n\nafter"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: ImageTests.Sized())
+    let e = EditorCore(layout: l, caret: 17)
+    let closed = l.images[0].frame
+    e.select(MDSelection(3))
+    #expect(!l.pieces[0].opened.isEmpty)
+    // the picture still drawn, below the source line now
+    #expect(l.images.count == 1 && l.images[0].frame.minY > closed.minY, "\(closed) \(l.images[0].frame) \(l.size)")
+    // its source walked through character by character; the caret never inside the picture
+    e.move(.character, forward: true, extend: false)
+    #expect(e.selection == MDSelection(4))
+  }
+}
+
+@MainActor @Suite struct ImageSlideTests {
+  @Test func theCaretMovingThePictureSlidesItAndAnEditDoesNot() {
+    _ = boardFonts
+    let src = "![pic](a.png)\n\nafter"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: ImageTests.Sized())
+    let v = MarkdownEditorView(layout: l, caret: 17)
+    v.selection = MDSelection(17)
+    #expect(v.slidingImages == 0)
+    v.selection = MDSelection(3)
+    #expect(v.slidingImages == 1)
+    v.core.insert("x")
+    v.selection = v.selection
+    #expect(v.slidingImages == 0)
+  }
+}

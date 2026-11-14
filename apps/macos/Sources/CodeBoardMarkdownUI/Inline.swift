@@ -273,6 +273,15 @@ struct InlineBuilder {
       s.italic = false
     }
     marked(i, u, offsets, r, inner, style, s)
+    // an image's source open: the picture stays, under it (editor/widgets.ts imageBelow), on a line of its own; its
+    // place is the source's end, so the caret never stands in it
+    if case .image(let img) = atom {
+      let end = offsets[min(r.upperBound, offsets.count - 1)]
+      append("\u{2028}", attributes(style), source: [end], end: end)
+      atomEnd = end
+      imageAtom(img, source: end, style)
+      atomEnd = nil
+    }
   }
 
   private mutating func emitInner(

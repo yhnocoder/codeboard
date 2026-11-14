@@ -69,6 +69,11 @@ public final class MarkdownEditorView: NSView {
   let linkBox = LinkBox()
   let headingChip = HeadingChip()
   let findBar = FindBar()
+  /// pictures sliding to where the caret's moving put them (IMAGE_SLIDE): from, to, since; and where each was
+  private var slides: [String: (from: CGRect, to: CGRect, since: CFTimeInterval)] = [:]
+  private var imageFrames: [String: CGRect] = [:]
+  private var framesAt = -1
+  private var slideLink: CADisplayLink?
   /// the find bar's matches and which one is current
   private(set) var matches: [Range<Int>] = []
   private(set) var currentMatch = -1
@@ -231,7 +236,26 @@ public final class MarkdownEditorView: NSView {
       ctx.setFillColor(core.layout.theme.marks.highlight.alpha(i == currentMatch ? 1 : 0.55).cg)
       for r in core.rects(for: m) where r.intersects(clip) { ctx.fill(r) }
     }
-    core.layout.draw(in: ctx, scale: scale, clip: clip, image: image)
+    let now = CACurrentMediaTime()
+    let sliding = slides
+    core.layout.draw(in: ctx, scale: scale, clip: clip) { [image] slot in
+      sliding["\(slot.src)#\(slot.nth)"] == nil ? image(slot) : nil
+    }
+    // a sliding picture at its place now, eased
+    for slot in core.layout.images {
+      guard let sl = sliding["\(slot.src)#\(slot.nth)"], let pic = image(slot) else { continue }
+      let k = min(1, (now - sl.since) / MarkdownTiming.imageSlide)
+      let e = 1 - pow(1 - k, 3)
+      let r = CGRect(
+        x: sl.from.minX + (sl.to.minX - sl.from.minX) * e, y: sl.from.minY + (sl.to.minY - sl.from.minY) * e,
+        width: sl.from.width + (sl.to.width - sl.from.width) * e,
+        height: sl.from.height + (sl.to.height - sl.from.height) * e)
+      ctx.saveGState()
+      ctx.translateBy(x: r.minX, y: r.maxY)
+      ctx.scaleBy(x: 1, y: -1)
+      ctx.draw(pic, in: CGRect(origin: .zero, size: r.size))
+      ctx.restoreGState()
+    }
     // the selection over the text: under it, a code block's or a table header's fill would hide it. Translucent, so the
     // text reads through; in the static picture too (a selection made there before editing)
     ctx.setFillColor(selectionColor.cgColor)
@@ -299,6 +323,7 @@ public final class MarkdownEditorView: NSView {
     resize()
     if frame.size != before { delegate?.editor(self, didResize: core.layout.size) }
     restartBlink()
+    slideImages()
     showHeadingChip()
     scheduleToolbar()
     showMenu()
@@ -652,6 +677,44 @@ public final class MarkdownEditorView: NSView {
     refind(go: !all)
     changed()
   }
+
+  // MARK: pictures sliding
+
+  /// A picture the caret's moving put elsewhere (its source opened or closed, no edit made) slides there over
+  /// IMAGE_SLIDE instead of jumping (editor/imageslide.ts); an edit moves pictures at once
+  private func slideImages() {
+    var now: [String: CGRect] = [:]
+    for slot in core.layout.images { now["\(slot.src)#\(slot.nth)"] = slot.frame }
+    if framesAt == core.revision {
+      let t = CACurrentMediaTime()
+      for (k, to) in now {
+        guard let from = imageFrames[k], from != to else { continue }
+        slides[k] = (from, to, t)
+      }
+    } else {
+      slides = [:]
+    }
+    imageFrames = now
+    framesAt = core.revision
+    if !slides.isEmpty, slideLink == nil {
+      let link = displayLink(target: self, selector: #selector(slideFrame(_:)))
+      link.add(to: .main, forMode: .common)
+      slideLink = link
+    }
+  }
+
+  @objc private func slideFrame(_ link: CADisplayLink) {
+    let t = link.targetTimestamp
+    slides = slides.filter { t - $0.value.since < MarkdownTiming.imageSlide }
+    needsDisplay = true
+    if slides.isEmpty {
+      slideLink?.invalidate()
+      slideLink = nil
+    }
+  }
+
+  /// the pictures sliding now (tests)
+  var slidingImages: Int { slides.count }
 
   // MARK: typed menus
 

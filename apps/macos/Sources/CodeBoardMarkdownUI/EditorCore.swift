@@ -53,6 +53,8 @@ public final class EditorCore {
   public var onChange: ((String) -> Void)?
   /// the layout changed by itself (a code block's colours came): redraw
   public var onLayout: (() -> Void)?
+  /// counts the edits made: what changed between two looks at the layout, a key or only the caret
+  public private(set) var revision = 0
   /// what the core does, for an inspector (EditorEvent); nil costs nothing
   public var observer: ((EditorEvent) -> Void)?
 
@@ -512,6 +514,7 @@ public final class EditorCore {
   /// replaces source text and shows the result; what it replaced
   @discardableResult
   private func edit(_ r: Range<Int>, _ text: String, select s: MDSelection) -> String {
+    revision += 1
     let ns = document.source as NSString
     let old = ns.substring(with: NSRange(location: r.lowerBound, length: r.count))
     // paired closers move with the edit; one it touches is no longer the editor's
