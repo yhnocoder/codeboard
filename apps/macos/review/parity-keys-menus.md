@@ -72,7 +72,7 @@ already in front, Backward and Back when at the back), `-`, Tilt ⌥⇧T (checke
 | Web | Open in Browser, Refresh Preview, View ▸ (Auto, Image on Top, Image on Side, No Image, Compact), Edit Title, Edit Description | same |
 | Link List | Open All in Browser, View ▸ (Compact, Rich), Rename | same |
 | Code | Add ▸ (Description), View ▸ (Hide Blank Lines, Hide Comments, Hide Docstrings, Show All Hidden Lines, `-`, Background) | View ▸ same (comments and docstrings are hidden once the language analysis comes); gap: Description |
-| Sub-board | Open ⌘↵, `-`, Arrange ▸, Copy Path, `-`, Remove from This Board ⌫, Delete Board… | same; gap: Delete Board… (needs the shell's delete) |
+| Sub-board | Open ⌘↵, `-`, Arrange ▸, Copy Path, `-`, Remove from This Board ⌫, Delete Board… | same; Delete Board… asks main's question (a sheet: Delete / Cancel), then the board goes to the Trash as the sidebar's Delete sends it and its cards here go |
 | A folder board's own card (app only) | — | Open, Arrange ▸ |
 | Linked card (on 2+ boards) | “title · on N boards”, Remove from This Board ⌫, Delete Everywhere… ⌘⌫, `-`, Unlink (Make This a Copy) | gap: linked cards |
 

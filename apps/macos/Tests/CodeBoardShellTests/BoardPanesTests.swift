@@ -358,4 +358,68 @@ import Testing
     #expect(docB.board.cards.count == 2 && docB.board.cards[1].id != c && !docB.board.cards[1].isShared)
     #expect(pane.canvas.toastText == "Pasted a copy from Alpha")
   }
+
+  /// A sub-board card's Delete Board… asks first as main does (host handlers.ts deleteBoardAsked): only Delete sends
+  /// the board to the trash, as the sidebar's Delete does
+  @Test func deleteBoardAsksAsMainDoesThenTrashesTheBoard() async throws {
+    let fm = FileManager.default
+    let base = fm.temporaryDirectory.appending(path: "delete-board-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: base) }
+    let root = base.appending(path: "vault")
+    let trash = base.appending(path: "Trash")
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    try fm.createDirectory(at: trash, withIntermediateDirectories: true)
+    let vault = Vault(root: root)
+    let parent = try vault.newBoard(in: "", title: "Parent")
+    let child = try vault.newBoard(in: "", title: "Child")
+    func write(_ vb: VaultBoard, _ cards: [Card]) throws {
+      let file = vault.url(of: vb.path).appending(path: Vault.boardFileName)
+      var b = try vault.board(at: vb.path)
+      b.cards = cards
+      try b.encoded().write(to: file)
+    }
+    let note = { (id: String) in
+      Card(id: CardID(rawValue: id), x: 0, y: 0, width: 200, content: .own(CardContent(body: .note(Note(text: id)))))
+    }
+    try write(child, [note("a"), note("b")])
+    try write(
+      parent,
+      [
+        Card(
+          id: CardID(rawValue: "sub"), x: 0, y: 0, width: 300, height: 200,
+          content: .own(CardContent(body: .board(SubBoard(board: child.id)))))
+      ])
+    let shell = Shell()
+    shell.open(vault, restoring: nil)
+    shell.apply(.success(try vault.tree()))
+    shell.trasher = { url in
+      let to = trash.appending(path: url.lastPathComponent)
+      try FileManager.default.moveItem(at: url, to: to)
+      return to
+    }
+    let panes = BoardPanes(shell: shell)
+    shell.show(parent.id)
+    panes.sync()
+    let canvas = try #require(panes.panes.values.first?.canvas)
+    var asked: [[String]] = []
+    var answer = false
+    panes.confirm = { alert, _ in
+      asked.append([alert.messageText, alert.informativeText] + alert.buttons.map(\.title))
+      return answer
+    }
+    let ask = try #require(canvas.onDeleteBoard)
+    #expect(await ask(child.id) == false)
+    #expect(
+      asked == [
+        [
+          "Delete board “Child”?", "2 cards and their links will be removed. Your code is not affected.", "Delete",
+          "Cancel",
+        ]
+      ])
+    #expect(fm.fileExists(atPath: vault.url(of: child.path).path), "Cancel: the board stays")
+    answer = true
+    #expect(await ask(child.id) == true)
+    #expect(
+      !fm.fileExists(atPath: vault.url(of: child.path).path) && fm.fileExists(atPath: trash.path + "/Child.board"))
+  }
 }
