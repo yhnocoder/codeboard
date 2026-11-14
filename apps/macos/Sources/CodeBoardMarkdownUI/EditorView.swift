@@ -179,7 +179,15 @@ public final class MarkdownEditorView: NSView {
         ctx.fill(h)
       }
     }
-    if isEditing, blinkOn, window?.firstResponder === self, let c = core.caretRect {
+    if let g = tableGrips, tableDrag == nil {
+      ctx.setFillColor(core.layout.theme.colors.ink3.alpha(0.5).cg)
+      for r in g.rows.dropFirst() { ctx.fill(rowGrip(r)) }
+      for c in g.cols { ctx.fill(colGrip(c)) }
+    }
+    if let d = tableDrag {
+      d.draw(in: ctx, paper: core.layout.theme.colors.surface.cg, ring: caretColor.cgColor)
+    }
+    if isEditing, blinkOn, window?.firstResponder === self, let c = core.caretRect, tableDrag == nil {
       // two device pixels wide whatever the zoom, on the caret's line
       let w = 2 / scale
       ctx.setFillColor(caretColor.cgColor)
@@ -225,6 +233,34 @@ public final class MarkdownEditorView: NSView {
       scrollToVisible(
         CGRect(x: c.minX * zoom, y: c.minY * zoom, width: max(1, c.width * zoom), height: c.height * zoom))
     }
+  }
+
+  /// the slides of a table drag, one step a frame
+  @objc private func dragFrame(_ link: CADisplayLink) {
+    guard let d = tableDrag else { return }
+    _ = d.tick(link.targetTimestamp)
+    setNeedsDisplay(d.table.insetBy(dx: -20, dy: -40).applying(CGAffineTransform(scaleX: zoom, y: zoom)))
+  }
+
+  /// a picture of part of the layout at the screen's scale, for a drag to move around
+  func snapshot(_ r: CGRect) -> CGImage? {
+    let scale = zoom * (window?.backingScaleFactor ?? 2)
+    let w = Int((r.width * scale).rounded(.up))
+    let h = Int((r.height * scale).rounded(.up))
+    guard w > 0, h > 0,
+      let ctx = CGContext(
+        data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+    else { return nil }
+    ctx.translateBy(x: 0, y: CGFloat(h))
+    ctx.scaleBy(x: scale, y: -scale)
+    ctx.translateBy(x: -r.minX, y: -r.minY)
+    ctx.setFillColor(core.layout.theme.colors.surface.cg)
+    ctx.fill(r)
+    ctx.setShouldSubpixelQuantizeFonts(false)
+    ctx.setAllowsFontSubpixelQuantization(false)
+    core.layout.draw(in: ctx, scale: scale, clip: r, image: image)
+    return ctx.makeImage()
   }
 
   // MARK: a code block's band
@@ -366,6 +402,15 @@ public final class MarkdownEditorView: NSView {
   public override func mouseMoved(with e: NSEvent) {
     let p = convert(e.locationInWindow, from: nil)
     let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
+    if let g = tableGrips, g.box.insetBy(dx: -4, dy: -4).contains(at) {
+      if g.cols.contains(where: { abs($0.maxX - at.x) <= 3 }) {
+        NSCursor.resizeLeftRight.set()
+      } else if g.rows.contains(where: { abs($0.maxY - at.y) <= 3 }) {
+        NSCursor.resizeUpDown.set()
+      } else {
+        NSCursor.iBeam.set()
+      }
+    }
     var over: EditorCore.CodeBlock?
     if isEditing, band.isHidden || !band.frame.contains(p) {
       let c = core.layout.caret(at: at)
@@ -421,6 +466,37 @@ public final class MarkdownEditorView: NSView {
       changed()
       return
     }
+    // a press on a column's right edge or a row's bottom edge: its width or height (layout info, editor/table.ts)
+    if let g = tableGrips, let index = core.tableIndex(at: core.selection.head),
+      g.box.insetBy(dx: -4, dy: -4).contains(at)
+    {
+      let col = g.cols.indices.first { abs(g.cols[$0].maxX - at.x) <= 3 }
+      let row = col == nil ? g.rows.indices.first { abs(g.rows[$0].maxY - at.y) <= 3 } : nil
+      if col != nil || row != nil {
+        let given = core.layout.info?.tables?[safe: index] ?? nil
+        let cols = given?.cols ?? Array(repeating: nil, count: g.cols.count)
+        let rows = given?.rows ?? Array(repeating: nil, count: g.rows.count)
+        tableSize =
+          col.map { (true, $0, at.x, g.cols[$0].width, index, cols, rows) }
+          ?? (false, row!, at.y, g.rows[row!].height, index, cols, rows)
+        return
+      }
+    }
+    // a press on a table's row or column grip: moving it
+    if let g = tableGrips {
+      let row = g.rows.indices.dropFirst().first { rowGrip(g.rows[$0]).insetBy(dx: -4, dy: -3).contains(at) }
+      let col = g.cols.indices.first { colGrip(g.cols[$0]).insetBy(dx: -3, dy: -4).contains(at) }
+      if row != nil || col != nil, let pic = snapshot(g.box) {
+        tableDrag = TableDrag(
+          axis: row != nil ? .row : .column, from: row ?? col!, boxes: row != nil ? g.rows : g.cols, table: g.box,
+          picture: pic, start: row != nil ? at.y : at.x)
+        let link = displayLink(target: self, selector: #selector(dragFrame(_:)))
+        link.add(to: .main, forMode: .common)
+        dragLink = link
+        needsDisplay = true
+        return
+      }
+    }
     // a press on a selected image's handle: resizing it, symmetrically about its centre (editor/image.ts); a double-click
     // on a handle gives it back its full width
     if let box = imageBox,
@@ -467,6 +543,30 @@ public final class MarkdownEditorView: NSView {
     ]
   }
 
+  /// a table row or column being moved by its grip
+  private var tableDrag: TableDrag?
+  /// a column's right edge or a row's bottom edge being dragged: which, where the drag began, its size then
+  private var tableSize:
+    (column: Bool, k: Int, start: CGFloat, from: CGFloat, index: Int, cols: [Double?], rows: [Double?])?
+  private var dragLink: CADisplayLink?
+
+  /// The caret's table's rows and columns as boxes, and the grips: a short bar at each row's left edge and over each
+  /// column's top edge (editor/tableview.ts)
+  private var tableGrips: (table: MDTable, rows: [CGRect], cols: [CGRect], box: CGRect)? {
+    guard isEditing, core.marked == nil, let p = MarkdownEditing.tablePlace(at: core.selection.head, in: core.document)
+    else { return nil }
+    let cells = core.layout.cellBoxes(of: p.table)
+    guard let head = cells.first, !head.isEmpty else { return nil }
+    let rows = cells.map { r in r.dropFirst().reduce(r.first ?? .zero) { $0.union($1) } }
+    let cols = (0..<head.count).map { c in cells.compactMap { $0[safe: c] }.dropFirst().reduce(head[c]) { $0.union($1) }
+    }
+    let box = rows.dropFirst().reduce(rows[0]) { $0.union($1) }
+    return (p.table, rows, cols, box)
+  }
+
+  private func rowGrip(_ r: CGRect) -> CGRect { CGRect(x: r.minX + 1, y: r.midY - 7, width: 4, height: 14) }
+  private func colGrip(_ r: CGRect) -> CGRect { CGRect(x: r.midX - 7, y: r.minY + 1, width: 14, height: 4) }
+
   /// a handle being dragged: the image's width as it will be (the layout's points), and where the drag began
   private var resizing: (width: CGFloat, start: CGPoint, from: CGFloat, left: Bool)?
 
@@ -476,6 +576,29 @@ public final class MarkdownEditorView: NSView {
   private var pressed: (at: CGPoint, dragged: Bool)?
 
   public override func mouseDragged(with e: NSEvent) {
+    if let t = tableSize {
+      let p = convert(e.locationInWindow, from: nil)
+      let at = t.column ? p.x / zoom : p.y / zoom
+      let size = Double(max(t.column ? 25 : 16, t.from + at - t.start).rounded())
+      var cols = t.cols
+      var rows = t.rows
+      if t.column {
+        while cols.count <= t.k { cols.append(nil) }
+        cols[t.k] = size
+      } else {
+        while rows.count <= t.k { rows.append(nil) }
+        rows[t.k] = size
+      }
+      core.setTableSize(t.index, cols: cols, rows: rows, done: false)
+      changed()
+      return
+    }
+    if let d = tableDrag {
+      let p = convert(e.locationInWindow, from: nil)
+      d.move(to: d.axis == .row ? p.y / zoom : p.x / zoom)
+      setNeedsDisplay(d.table.insetBy(dx: -20, dy: -40).applying(CGAffineTransform(scaleX: zoom, y: zoom)))
+      return
+    }
     if let r = resizing {
       let p = convert(e.locationInWindow, from: nil)
       let dx = (p.x / zoom - r.start.x) * (r.left ? -1 : 1)
@@ -502,6 +625,28 @@ public final class MarkdownEditorView: NSView {
   }
 
   public override func mouseUp(with e: NSEvent) {
+    if let t = tableSize {
+      tableSize = nil
+      let info = core.layout.info?.tables?[safe: t.index] ?? nil
+      core.setTableSize(t.index, cols: info?.cols, rows: info?.rows, done: true)
+      changed()
+      return
+    }
+    if let d = tableDrag {
+      tableDrag = nil
+      dragLink?.invalidate()
+      dragLink = nil
+      if d.to != d.from {
+        let state = MDEditState(source: core.source, selection: core.selection)
+        let edit =
+          d.axis == .row
+          ? MarkdownEditing.tableMove(row: d.from, to: d.to, in: state, document: core.document)
+          : MarkdownEditing.tableMove(column: d.from, to: d.to, in: state, document: core.document)
+        if let edit { core.apply(edit) }
+      }
+      changed()
+      return
+    }
     if let r = resizing {
       resizing = nil
       // one write on release: the width as a share of the body

@@ -245,6 +245,40 @@ public final class EditorCore {
     onLayoutInfo?(layout.info)
   }
 
+  /// Which table of the Note the caret's is (the layout info's tables list counts them so)
+  public func tableIndex(at offset: Int) -> Int? {
+    guard let p = MarkdownEditing.tablePlace(at: offset, in: document) else { return nil }
+    var n = 0
+    var found: Int?
+    func walk(_ b: MDBlock) {
+      guard found == nil else { return }
+      switch b.kind {
+      case .table:
+        if b.range == p.block { found = n }
+        n += 1
+      case .quote(let children): for c in children { walk(c) }
+      case .list(let l): for item in l.items { for c in item.children { walk(c) } }
+      default: break
+      }
+    }
+    for b in document.blocks { walk(b) }
+    return found
+  }
+
+  /// A table's column widths and row heights (points, nil: as the text needs), kept in the layout info, never in the
+  /// Markdown; `done` false while a drag goes on (laid out, not yet handed to the host)
+  public func setTableSize(_ index: Int, cols: [Double?]?, rows: [Double?]?, done: Bool) {
+    var info = layout.info ?? MDLayoutInfo()
+    var tables = info.tables ?? []
+    while tables.count <= index { tables.append(nil) }
+    let t = MDLayoutInfo.Table(cols: cols, rows: rows)
+    tables[index] = cols == nil && rows == nil ? nil : t
+    while let last = tables.last, last == nil { tables.removeLast() }
+    info.tables = tables.isEmpty ? nil : tables
+    layout.setInfo(info.tables == nil && info.wrap == nil ? nil : info)
+    if done { onLayoutInfo?(layout.info) }
+  }
+
   /// the layout info changed (a wrap toggled): for the host to keep
   public var onLayoutInfo: ((MDLayoutInfo?) -> Void)?
 

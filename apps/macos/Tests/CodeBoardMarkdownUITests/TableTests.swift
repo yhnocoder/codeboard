@@ -1,3 +1,4 @@
+import AppKit
 import CodeBoardMarkdown
 import Foundation
 import Testing
@@ -139,5 +140,56 @@ import Testing
       column: 0, to: 1, in: MDEditState(source: e.source, selection: e.selection), document: e.document)!
     e.apply(c)
     #expect(e.source == "| b | a |\n|---|:--|\n| 2 | 1 |\n| 4 | 3 |\n| 6 | 5 |")
+  }
+}
+
+@MainActor @Suite struct TableDragTests {
+  @Test func theDraggedRowLandsWhereThePointerIsAndTheOthersSlide() {
+    _ = boardFonts
+    let src = "| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n| 5 | 6 |"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    guard case .table(let t) = l.document.blocks[0].kind else { return }
+    let cells = l.cellBoxes(of: t)
+    #expect(cells.count == 4 && cells.allSatisfy { $0.count == 2 && $0.allSatisfy { $0.width > 0 } })
+    let rows = cells.map { $0[0].union($0[1]) }
+    // rows one under another
+    #expect(zip(rows, rows.dropFirst()).allSatisfy { $0.maxY <= $1.minY + 1 })
+    let pic = CGContext(
+      data: nil, width: 10, height: 10, bitsPerComponent: 8, bytesPerRow: 0,
+      space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+      .makeImage()!
+    let box = rows.dropFirst().reduce(rows[0]) { $0.union($1) }
+    let d = TableDrag(axis: .row, from: 1, boxes: rows, table: box, picture: pic, start: rows[1].midY)
+    d.move(to: rows[3].midY)
+    #expect(d.to == 3)
+    // the rows it passed slide up by its height, eased over TABLE_SLIDE
+    #expect(d.tick(CACurrentMediaTime()))
+    #expect(!d.tick(CACurrentMediaTime() + MarkdownTiming.tableSlide + 0.01))
+    // never above the header
+    d.move(to: rows[0].minY - 50)
+    #expect(d.to == 1)
+  }
+}
+
+@Suite struct TableSizeTests {
+  @Test func columnWidthsAndRowHeightsGoIntoTheLayoutInfo() {
+    _ = boardFonts
+    let src = "Text\n\n| a | b |\n|---|---|\n| 1 | 2 |"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let e = EditorCore(layout: l)
+    e.select(MDSelection(8))
+    #expect(e.tableIndex(at: 8) == 0)
+    guard case .table(let t) = e.document.blocks[1].kind else { return }
+    let before = l.cellBoxes(of: t)[0][0].width
+    var kept: MDLayoutInfo?
+    e.onLayoutInfo = { kept = $0 }
+    e.setTableSize(0, cols: [120, nil], rows: nil, done: false)
+    #expect(kept == nil)
+    #expect(abs(l.cellBoxes(of: t)[0][0].width - 120) < 1.5 && before != 120)
+    e.setTableSize(0, cols: [120, nil], rows: [nil, 60], done: true)
+    #expect(kept?.tables?.first??.cols == [120, nil] && kept?.tables?.first??.rows == [nil, 60])
+    #expect(e.source == src)
+    e.setTableSize(0, cols: nil, rows: nil, done: true)
+    #expect(kept == nil && l.info == nil)
   }
 }

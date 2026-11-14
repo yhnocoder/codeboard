@@ -320,3 +320,24 @@ extension BlockLayout {
     return lo
   }
 }
+
+extension BlockLayout {
+  /// The boxes of a table's cells by row and column, in the layout's points: each cell's text box grown by the cell
+  /// padding (what a row or column grip and a drag move)
+  public func cellBoxes(of table: MDTable) -> [[CGRect]] {
+    let m = theme.metrics
+    let pv = CGFloat(m.cellPadding[0])
+    let ph = CGFloat(m.cellPadding[1])
+    guard let first = table.rows.first?.first, let i = pieceIndex(first.text.offsets[0]) else { return [] }
+    let d = shifts[i]
+    let texts = pieces[i].layout.caretTexts
+    return table.rows.map { row in
+      row.map { cell in
+        let q = cell.text.offsets[0] - d
+        guard let t = texts.first(where: { $0.holds(q) && $0.sourceStart == q }) ?? texts.first(where: { $0.holds(q) })
+        else { return .zero }
+        return t.frame.offsetBy(dx: 0, dy: tops[i]).insetBy(dx: -ph, dy: -pv)
+      }
+    }
+  }
+}
