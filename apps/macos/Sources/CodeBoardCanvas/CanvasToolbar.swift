@@ -81,7 +81,10 @@ public final class CanvasToolbar: NSView {
   }
   /// The board blurred under the glass (Warm Ink's backdrop-filter)
   private let glass = NSVisualEffectView()
-  private let face = CALayer()
+  /// The tools, in a view of their own after the glass: a window puts a subview's layer over layers added to the view's
+  /// own, so drawn there they would sit under the glass
+  private let faceView = LayerView()
+  private var face: CALayer { faceView.layer! }
   /// Room around the bar in the view for its shadow and Ink Wash's brush
   public static let margin: CGFloat = 32
 
@@ -93,7 +96,8 @@ public final class CanvasToolbar: NSView {
     glass.state = .active
     glass.wantsLayer = true
     addSubview(glass)
-    layer?.addSublayer(face)
+    faceView.wantsLayer = true
+    addSubview(faceView)
     restyle()
   }
 
@@ -200,7 +204,7 @@ public final class CanvasToolbar: NSView {
     let scale = window?.backingScaleFactor ?? 2
     CATransaction.begin()
     CATransaction.setDisableActions(true)
-    face.frame = bounds
+    faceView.frame = bounds
     face.contentsScale = scale
     face.contents = Self.image(
       size: bounds.size, bar: barRect, buttons: buttonRects(), tools: tools, theme: theme, hover: hover,
@@ -514,4 +518,11 @@ extension CanvasView {
     default: break
     }
   }
+}
+
+/// A view that only shows the contents set on its layer: AppKit never draws into it
+final class LayerView: NSView {
+  override var wantsUpdateLayer: Bool { true }
+  override func updateLayer() {}
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
