@@ -1,0 +1,14 @@
+# ⌥F Fit Content on cards (keymap.ts fitContent): the card under the pointer, not selected, fits its content: a short code card goes to the narrowest width, a Note's fixed height goes
+zoom 1
+# the board takes the keys: a click on empty board between the code cards
+click @cfree+-40,40
+move @cfree+150,40 400
+key alt+f
+wait 600
+expect cfree.w = 240
+center @cnote
+move @cnote+150,60 400
+key alt+f
+wait 800
+expect cnote.h != 140
+shot fit

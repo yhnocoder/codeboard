@@ -28,7 +28,7 @@ The app: `Sources/CodeBoardCanvas/CanvasKeys.swift` (`boardKey`, reached from `k
 | ⌘[ / ⌘] | (main: Bring Forward / Send Backward; NOT DO) | Back / Forward (View menu) |
 | ⌘= ⌘+ / ⌘- | Zoom in ×1.25 / out ×0.8 about the middle, eased | same |
 | Space (animated image selected), ← →, Home End | Play / pause, previous / next frame, first / last frame | gap: animated images do not play yet |
-| Space + drag | Pan | gap: two fingers pan; Space is not held |
+| Space + drag | Pan | same (on cards and Sections too; it glides on when let go, as two fingers do) |
 | ⌘A | Select All | same (Edit menu) |
 | ↵ (one arrow only) | Edit its label | same |
 | ↵ (cards) | The first card selected opens: code in the editor (at the lines selected), a Note written in, a Web card's page, a sub-board entered | same for Notes, Texts, Boxes, Web cards and sub-boards; gap: code has no editor to open in |
@@ -42,7 +42,7 @@ The app: `Sources/CodeBoardCanvas/CanvasKeys.swift` (`boardKey`, reached from `k
 | ⌘B, ⇧⌘H | Bold / Highlight the text selected in a Note at rest | gap: no static text selection |
 | ⇧⌘L | Lock / Unlock | same (Edit menu) |
 | ⇧⌘B | Turn into Board: no card selected says “Select the cards to turn into a board first”; else asks the name, makes it | same, the name written in place over the new card (no dialog) |
-| ⌥F | Fit Content: the Note or Free code being written, else the card under the pointer, the cards selected, else the Sections selected | Sections selected; gap: cards (no card Fit Content yet) |
+| ⌥F | Fit Content: the Note or Free code being written, else the card under the pointer, the cards selected, else the Sections selected | same for the card under the pointer, the cards selected and the Sections selected; gap: the Note or Free code being written (its editor keeps ⌥F), and the size eases on the web board but changes at once here |
 | ⌥T | Tidy Up (2+ cards or Sections) | gap: the layout (core/tidy.ts, ELK) is not ported |
 | ⌥⇧T | Tilt the cards selected | same |
 | ⌥S | Move to Shelf | same |

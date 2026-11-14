@@ -62,6 +62,83 @@ private func keysBoard() -> Board {
     return r
   }
 
+  /// ⌥F Fit Content on cards (keymap.ts fitContent, actions/common.ts fitContent, core fitCardSizes): the card under the
+  /// pointer, else the cards selected. A code card as wide as its longest line (240 to 1600), its height stored only when
+  /// its code is taller than the 460 a card grows to by itself; a Note's and a Web card's height follows their content
+  /// again; a Text is left as it is. One undo step
+  @Test func optionFFitsTheCardUnderThePointerElseTheSelectedCardsToTheirContent() async throws {
+    let long = String(repeating: "x", count: 100)
+    let seg = Segment(
+      id: SegmentID(rawValue: "s2"), source: nil, language: "python", firstLine: 1,
+      lines: ["def f():"] + (1...39).map { "    v\($0) = \(long)" })
+    var b = keysBoard()
+    b.cards[0].height = 400
+    b.cards.append(
+      Card(
+        id: cid("c2"), x: 0, y: 800, width: 300, height: 200,
+        content: .own(CardContent(title: "Long", body: .code(CodeCard(segments: [seg]))))))
+    b.cards.append(
+      Card(id: cid("t1"), x: 900, y: 0, width: 200, content: .own(CardContent(body: .text(TextCard(text: "Hi"))))))
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    r.window.makeFirstResponder(r.canvas)
+    let c = r.canvas
+    let m = c.theme.metrics
+    func card(_ id: String) -> Card? { r.doc.board.card(cid(id)) }
+    // under the pointer, not selected: the short code card, at the narrowest width, as tall as its code
+    r.canvas.pointerInWindow = r.at(r.centre("c1"))
+    r.key(3, .option)
+    #expect(card("c1")?.width == 240 && card("c1")?.height == nil)
+    #expect(r.doc.history.undoSteps.last?.name == "Fit Content")
+    // the pointer off the board: the selection. The long code: its longest line after the line numbers; taller than
+    // 460, its height kept
+    r.canvas.pointerInWindow = CGPoint(x: -100, y: -100)
+    r.doc.select([.card(cid("c2")), .card(cid("n1")), .card(cid("w1")), .card(cid("t1"))])
+    let textBefore = card("t1")
+    r.key(3, .option)
+    let gutter = m.padLeft + 2 * m.charWidth + m.numberGap
+    let w = (gutter + CGFloat(long.count + 10) * m.charWidth + m.padRight).rounded(.up)
+    #expect(card("c2")?.width == Double(w))
+    #expect(card("c2")?.height == Double(m.padTop + 40 * m.row + m.padBottom))
+    #expect(card("n1")?.height == nil && card("n1")?.width == 240 && card("w1")?.height == nil)
+    #expect(card("t1") == textBefore)
+  }
+
+  /// Space + drag pans (keymap.ts pan, interact.ts startPan): pressed on a card too, the board follows the pointer and
+  /// glides on as two fingers' do once let go; nothing is selected, moved or recorded. With Space up a drag is the
+  /// board's again
+  @Test func spaceAndDragPansEvenOverACard() async throws {
+    let r = try await rig()
+    defer { r.close() }
+    let c = r.canvas
+    // view points: the camera moves under the pointer, so the board points under it change
+    func drag(_ type: NSEvent.EventType, _ v: CGPoint) {
+      r.send(
+        NSEvent.mouseEvent(
+          with: type, location: c.convert(v, to: nil), modifierFlags: [], timestamp: r.next(0.016),
+          windowNumber: r.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
+    }
+    let start = c.camera.view(r.centre("n1"))
+    let before = c.camera.origin
+    let steps = r.doc.history.undoSteps.count
+    r.key(49, up: false)
+    drag(.leftMouseDown, start)
+    for i in 1...8 { drag(.leftMouseDragged, CGPoint(x: start.x + 12.5 * CGFloat(i), y: start.y + 5 * CGFloat(i))) }
+    #expect(abs(c.camera.origin.x - (before.x - 100)) < 1e-6 && abs(c.camera.origin.y - (before.y - 40)) < 1e-6)
+    drag(.leftMouseUp, CGPoint(x: start.x + 100, y: start.y + 40))
+    await r.until("the glide ends") { c.motion.isResting }
+    #expect(c.camera.origin.x < before.x - 100, "it glides on")
+    #expect(r.doc.selection.isEmpty && r.rect("n1").origin == .zero && r.doc.history.undoSteps.count == steps)
+    // Space up: a drag on the empty board draws a marquee, the camera stays
+    r.keyUp(49)
+    let after = c.camera.origin
+    let empty = c.camera.view(CGPoint(x: 300, y: 250))
+    drag(.leftMouseDown, empty)
+    drag(.leftMouseDragged, CGPoint(x: empty.x + 60, y: empty.y + 60))
+    drag(.leftMouseUp, CGPoint(x: empty.x + 60, y: empty.y + 60))
+    #expect(c.camera.origin == after)
+  }
+
   /// N, T, R: a new Note, Text, Box with its top left at the pointer (keymap.ts newNote, newText, newBox)
   @Test func nTAndRMakeANoteATextAndABoxAtThePointer() async throws {
     let r = try await rig()

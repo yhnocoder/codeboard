@@ -24,6 +24,7 @@ extension CanvasView {
     case (.command, 18): zoom(by: 1 / zoomTarget.zoom)
     case (.command, 24), ([.command, .shift], 24): zoom(by: 1.25)
     case (.command, 27): zoom(by: 0.8)
+    case ([], 49): holdSpace(e)
     case ([], 36), ([], 76):
       // Return: an arrow alone, its label; else the first card selected opens
       if doc.selection.count == 1, let a = doc.selection.first?.arrow { editLabel(a) } else { return open(cards) }
@@ -84,11 +85,58 @@ extension CanvasView {
     if gesture == nil { document?.select([]) }
   }
 
-  /// ⌥F (keymap.ts fitContent): the Sections selected fit what is in them
+  /// ⌥F (keymap.ts fitContent): the card under the pointer, else the cards selected fit their content; else the
+  /// Sections selected fit what is in them
   private func fitContentKey() {
-    let ids = document?.selection.compactMap(\.section) ?? []
-    let fit = fittable(ids)
+    guard let doc = document else { return }
+    if let p = pointerOnBoard, let id = hitCard(p) { return fitCards([id]) }
+    let cards = doc.selection.compactMap(\.card)
+    if !cards.isEmpty { return fitCards(cards) }
+    let fit = fittable(doc.selection.compactMap(\.section))
     if !fit.isEmpty { fitContent(fit) }
+  }
+
+  /// Fit Content of cards (actions/common.ts fitContent, core fitCardSizes): a code card as wide as its longest line
+  /// shown (240 to 1600), its height stored only when its code is taller than a card grows to by itself; an image as
+  /// wide as its picture; a Note's and a Web card's height follows their content. Text, Box and sub-board cards are as
+  /// they are. One step
+  func fitCards(_ ids: [CardID]) {
+    guard let doc = document, let s = scene else { return }
+    let m = theme.metrics
+    var sizes: [(CardID, width: Double, height: Double?)] = []
+    for id in ids {
+      guard let c = doc.board.card(id), let body = s.parts[id]?.content.body else { continue }
+      switch body {
+      case .code(let code):
+        // laid out without wrapping: its longest line
+        let wide = CodeLayout(code, width: 1_000_000, metrics: m)
+        var longest = 12
+        for p in wide.rows {
+          if case .line(_, _, let text, _) = p.row {
+            longest = max(longest, text.count - text.reversed().prefix(while: \.isWhitespace).count)
+          }
+        }
+        let w = min(
+          1600, max(240, (wide.gutter + wide.shift + CGFloat(longest) * m.charWidth + m.padRight).rounded(.up)))
+        let h = CodeLayout(code, width: w, metrics: m).height
+        sizes.append((id, Double(w), h > m.maxAutoHeight ? Double(h) : nil))
+      case .image(let img):
+        guard case .file(let f) = img.source, let folder = imagesFolder,
+          let px = DecodeCache.pixelSize(folder.appending(path: f))
+        else { continue }
+        sizes.append((id, Double(min(1600, max(240, px.width))), nil))
+      case .note, .web: sizes.append((id, c.width, nil))
+      default: continue
+      }
+    }
+    let change = sizes.filter { id, w, h in doc.board.card(id).map { $0.width != w || $0.height != h } ?? false }
+    guard !change.isEmpty else { return }
+    doc.edit("Fit Content") { b in
+      for (id, w, h) in change {
+        guard let c = b.card(id) else { continue }
+        b.resize(id, x: c.x, y: c.y, width: w, height: h)
+      }
+    }
   }
 
   /// ⌥Z, Wrap Lines (commands/code.ts toggleWrap): the code cards selected wrap, or all stop when all do
@@ -145,5 +193,50 @@ extension CanvasView {
     guard let first = rs.first else { return fitAll() }
     motion.fly(to: fitRect(rs.dropFirst().reduce(first) { $0.union($1) }, maxZoom: 1.4))
     moved()
+  }
+}
+
+// MARK: Space + drag (keymap.ts pan, interact.ts startPan)
+
+extension CanvasView {
+  /// Space held: a drag anywhere on the board, cards and Sections too, pans it
+  func holdSpace(_ e: NSEvent) {
+    guard !e.isARepeat else { return }
+    spaceHeld = true
+    if spacePan == nil { NSCursor.openHand.set() }
+  }
+
+  func releaseSpace() {
+    spaceHeld = false
+    if spacePan == nil { NSCursor.arrow.set() }
+  }
+
+  @objc func windowResignedKey() { releaseSpace() }
+
+  /// A press with Space held starts a pan: the board follows the pointer as it does two fingers, and glides on from
+  /// how fast it went when let go
+  func spacePanDown(_ e: NSEvent) -> Bool {
+    guard spaceHeld, document != nil else { return false }
+    spacePan = convert(e.locationInWindow, from: nil)
+    NSCursor.closedHand.set()
+    scroll(by: .zero, at: e.timestamp, began: true, ended: false)
+    return true
+  }
+
+  func spacePanDragged(_ e: NSEvent) -> Bool {
+    guard let last = spacePan else { return false }
+    let v = convert(e.locationInWindow, from: nil)
+    spacePan = v
+    scroll(by: CGVector(dx: v.x - last.x, dy: v.y - last.y), at: e.timestamp, began: false, ended: false)
+    return true
+  }
+
+  func spacePanUp(_ e: NSEvent) -> Bool {
+    guard spacePan != nil else { return false }
+    _ = spacePanDragged(e)
+    spacePan = nil
+    scroll(by: .zero, at: e.timestamp, began: false, ended: true)
+    (spaceHeld ? NSCursor.openHand : NSCursor.arrow).set()
+    return true
   }
 }
