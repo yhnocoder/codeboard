@@ -153,6 +153,8 @@ private enum GapKind { case p, block, none }
 /// not draw (a diagram being typed is mostly not one)
 final class LayoutMemo: @unchecked Sendable {
   var diagrams: [Int: DiagramResult] = [:]
+  /// an open formula block's last formula that typeset, by where its block starts
+  var maths: [Int: MathPicture] = [:]
 }
 
 struct LayoutBuilder {
@@ -674,15 +676,29 @@ struct LayoutBuilder {
 
   // MARK: math blocks
 
-  mutating func mathBlock(_ latex: String, x: CGFloat, width: CGFloat, y: CGFloat, style: InlineStyle) -> CGFloat {
+  /// `keep`: an open block's place, whose last formula that typeset stays (faded) while its TeX does not
+  mutating func mathBlock(
+    _ latex: String, x: CGFloat, width: CGFloat, y: CGFloat, style: InlineStyle, keep: Int? = nil
+  ) -> CGFloat {
     // .math pads 2px above and below and the formula's display margin is 2px more (markdown.css); half a point more
     // stands for KaTeX's struts, which make its boxes that much taller than MathJax's on average over the look samples
     // (the tall ones, a sum with limits or two aligned rows, by up to 3 pt; one-line ones not at all)
     let pad: CGFloat = 4.5
     let size = style.size * 1.08
     let (body, tag) = MathTag.split(latex)
-    if let tex = resources.math, case .ok(let pic) = tex.typeset(body, display: true, preamble: resources.mathPreamble)
-    {
+    var result = resources.math.map { $0.typeset(body, display: true, preamble: resources.mathPreamble) }
+    var faded = false
+    if let keep {
+      if case .ok(let pic) = result {
+        memo?.maths[keep] = pic
+      } else if let last = memo?.maths[keep] {
+        result = .ok(last)
+        faded = true
+      }
+    }
+    if let tex = resources.math, case .ok(let pic) = result {
+      var style = style
+      if faded { style.color = style.color.alpha(0.4) }
       let w = CGFloat(pic.width) * size
       let h = CGFloat(pic.height) * size
       let base = y + pad + CGFloat(pic.baseline) * size
@@ -719,7 +735,7 @@ struct LayoutBuilder {
     let text = MDText(string: sourceText(body), offsets: Array(body.lowerBound...body.upperBound))
     let top = paragraph(
       text, [], x: x + pad, width: width - 2 * pad, y: y + pad, style: s, lineHeight: CGFloat(m.lineHeight))
-    let end = mathBlock(latex, x: x, width: width, y: top, style: style)
+    let end = mathBlock(latex, x: x, width: width, y: top, style: style, keep: b.range.lowerBound)
     items.append(.stroke(CGRect(x: x, y: y, width: width, height: end - y), radius: 6, theme.colors.hair, width: 1))
     return end
   }

@@ -15,6 +15,8 @@ final class MathPreview: NSView {
   private var problem: MDMathProblem?
   /// a command name is being typed at the caret: no error for it yet, the last picture stays
   private var typing = false
+  /// only the reason (an open formula block draws its formula itself, in place)
+  private var errorOnly = false
   /// a fix pressed: the range of the TeX and what to write there
   var onFix: (Range<Int>, String) -> Void = { _, _ in }
   private var preamble = ""
@@ -31,8 +33,9 @@ final class MathPreview: NSView {
   /// Shows the formula with TeX `latex` under `anchor`, typesetting it unless it is what is shown; nil hides the bubble
   func show(
     _ f: (latex: String, display: Bool)?, under anchor: CGRect, theme: MarkdownTheme, resources: MarkdownResources,
-    caret: Int? = nil
+    caret: Int? = nil, errorOnly: Bool = false
   ) {
+    self.errorOnly = errorOnly
     guard let f, let math = resources.math else {
       latex = nil
       picture = nil
@@ -114,20 +117,20 @@ final class MathPreview: NSView {
   }
 
   private func place() {
-    guard picture != nil || (error != nil && !typing) else {
+    guard (picture != nil && !errorOnly) || (error != nil && !typing) else {
       isHidden = true
       return
     }
     var w: CGFloat = 0
     var h: CGFloat = 0
-    if let p = picture {
+    if let p = picture, !errorOnly {
       w = CGFloat(p.width) * size
       h = CGFloat(p.height) * size
     }
     if let e = errorText {
       let b = e.boundingRect(with: CGSize(width: 320, height: 200), options: [.usesLineFragmentOrigin])
       w = max(w, ceil(b.width))
-      h += ceil(b.height) + (picture == nil ? 0 : 4)
+      h += ceil(b.height) + (picture == nil || errorOnly ? 0 : 4)
     }
     frame = CGRect(x: anchor.minX - pad, y: anchor.maxY + 6, width: w + 2 * pad, height: h + 2 * pad)
     isHidden = false
@@ -146,7 +149,7 @@ final class MathPreview: NSView {
     ctx.setLineWidth(1)
     ctx.strokePath()
     var y = pad
-    if let p = picture {
+    if let p = picture, !errorOnly {
       ctx.saveGState()
       // the last good picture, faded while the TeX does not typeset
       if error != nil { ctx.setAlpha(0.4) }
@@ -178,6 +181,9 @@ final class MathPreview: NSView {
     else { return }
     onFix(range, t)
   }
+
+  /// where in its TeX the shown problem is, when known (the editor marks it in the source)
+  var problemAt: Int? { error != nil && !typing && !isHidden ? problem?.at : nil }
 
   /// what it shows (tests)
   var shown: (latex: String?, picture: Bool, error: String?) { (latex, picture != nil, error) }

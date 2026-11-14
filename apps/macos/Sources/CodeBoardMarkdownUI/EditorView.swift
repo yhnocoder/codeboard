@@ -384,6 +384,7 @@ public final class MarkdownEditorView: NSView {
       ctx.restoreGState()
     }
     drawTableFlip(ctx)
+    drawMathProblem(ctx)
     // the selection over the text: under it, a code block's or a table header's fill would hide it. Translucent, so the
     // text reads through; in the static picture too (a selection made there before editing)
     // (a selected image's source is selected underneath: no selection colour on it or its caption)
@@ -1494,9 +1495,65 @@ public final class MarkdownEditorView: NSView {
     hints.show(items, token: (from, t.query), under: caret, theme: core.layout.theme, resources: core.layout.resources)
   }
 
+  /// where the previewed formula's TeX starts in the source
+  private var previewStart = 0
+
+  /// a red wave under the character a formula's problem is at, in its open source (mathhints.ts marks it)
+  private func drawMathProblem(_ ctx: CGContext) {
+    guard let at = preview.problemAt else { return }
+    let q = previewStart + at
+    let len = (core.source as NSString).length
+    guard
+      let r = core.rects(for: max(0, min(q, len - 1))..<min(len, max(q, 0) + 1)).first
+        ?? core.layout.caretRect(MDCaret(q))
+    else { return }
+    let y = r.maxY - 1
+    let path = CGMutablePath()
+    path.move(to: CGPoint(x: r.minX - 1, y: y))
+    var x = r.minX - 1
+    var up = true
+    while x < max(r.maxX, r.minX + 4) + 1 {
+      x += 2
+      path.addLine(to: CGPoint(x: x, y: up ? y - 1.5 : y))
+      up.toggle()
+    }
+    ctx.saveGState()
+    ctx.addPath(path)
+    ctx.setStrokeColor(CGColor(srgbRed: 0.85, green: 0.25, blue: 0.2, alpha: 0.9))
+    ctx.setLineWidth(1)
+    ctx.strokePath()
+    ctx.restoreGState()
+  }
+
   /// the preview of the formula the caret is in, under its source
   private func showPreview() {
     let l = core.layout
+    // an open formula block draws its formula in place: the bubble under it only says why it does not typeset
+    if isEditing, core.selection.isEmpty, let h = l.head, h == core.selection.head,
+      let bi = MarkdownEditing.blockHolding(h, in: l.document), case .math = l.document.blocks[bi].kind
+    {
+      let b = l.document.blocks[bi]
+      let body = MarkdownEditing.mathBody(b, core.source as NSString)
+      let tex = (core.source as NSString).substring(with: NSRange(location: body.lowerBound, length: body.count))
+      let frame = l.blockFrames[bi]
+      previewStart = body.lowerBound
+      preview.onFix = { [weak self] range, text in
+        guard let self else { return }
+        self.begin()
+        let r = (body.lowerBound + range.lowerBound)..<(body.lowerBound + range.upperBound)
+        self.core.apply(
+          MDEdit(
+            range: r, replacement: text, selection: MDSelection(r.lowerBound + (text as NSString).length),
+            undo: .command))
+        self.changed()
+      }
+      preview.show(
+        (tex, true),
+        under: CGRect(
+          x: frame.minX * zoom + 8, y: frame.minY * zoom, width: frame.width * zoom, height: frame.height * zoom),
+        theme: l.theme, resources: l.resources, caret: h - body.lowerBound, errorOnly: true)
+      return
+    }
     guard isEditing, core.selection.isEmpty, let h = l.head, h == core.selection.head,
       let f = MarkdownEditing.formula(at: h, in: l.document)
     else {
@@ -1510,6 +1567,7 @@ public final class MarkdownEditorView: NSView {
     let ns = core.source as NSString
     let inside = ns.range(of: f.latex, range: NSRange(location: f.range.lowerBound, length: f.range.count))
     let start = inside.location == NSNotFound ? f.range.lowerBound : inside.location
+    previewStart = start
     preview.onFix = { [weak self] range, text in
       guard let self else { return }
       self.begin()

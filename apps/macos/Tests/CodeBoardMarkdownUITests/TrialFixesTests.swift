@@ -111,11 +111,31 @@ import Testing
     #expect(v.preview.shown.error != nil)
     v.preview.onFix(4..<4, "}")
     #expect(v.core.source == "Sum $x^{2}$ here.")
+    // where the problem is: the extra brace's place in the TeX, marked in the source
+    let x = try view("Sum $x}+1$ here.", caret: 7, math: true)
+    x.selection = MDSelection(7)
+    for _ in 0..<200 where x.preview.shown.error == nil { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(x.preview.problemAt == 1)
     // typing \fra: no error shown for it
     let w = try view("Sum $\\fra$ here.", caret: 9, math: true)
     w.selection = MDSelection(9)
     for _ in 0..<200 where w.preview.shown.error == nil { try await Task.sleep(for: .milliseconds(5)) }
     #expect(w.preview.isHidden || w.preview.shown.picture)
+  }
+
+  /// an open formula block that does not typeset keeps its last formula (faded) and says why under it
+  @Test func aBrokenFormulaBlockKeepsItsFormulaAndSaysWhy() async throws {
+    let src = "Text\n\n$$\nx+1\n$$"
+    let v = try view(src, caret: 10, math: true)
+    v.selection = MDSelection(10)
+    func formulas() -> Int {
+      v.core.layout.pieces.flatMap { $0.layout.items }.filter { if case .math = $0 { true } else { false } }.count
+    }
+    #expect(formulas() == 1)
+    v.insertText("}", replacementRange: NSRange(location: NSNotFound, length: 0))
+    #expect(formulas() == 1)
+    for _ in 0..<200 where v.preview.shown.error == nil { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(v.preview.shown.error != nil && !v.preview.isHidden)
   }
 
   @Test func aNewLayoutKeepsTheSelectionAndTheUndoHistory() throws {
