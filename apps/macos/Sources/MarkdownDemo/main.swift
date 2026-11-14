@@ -174,6 +174,9 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   }
 
   func applicationDidFinishLaunching(_ n: Notification) {
+    // warm up off the main thread, as a host does at launch
+    let math = resources.math
+    DispatchQueue.global(qos: .userInitiated).async { MarkdownAssets.warmUp(math: math) }
     window = NSWindow(
       contentRect: CGRect(x: 0, y: 0, width: cardWidth + 160 + 340, height: 820),
       styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)

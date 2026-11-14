@@ -1,3 +1,5 @@
+import CodeBoardMarkdown
+import CoreGraphics
 import CoreText
 import Foundation
 
@@ -78,4 +80,59 @@ public enum MarkdownAssetError: Error, Equatable {
   case enginesMissing(URL)
   /// engines.js is there but does not start
   case engines(String)
+}
+
+extension MarkdownAssets {
+  /// Lays out and draws a sample with every kind of block once in each look, so the first Note a host shows does not pay
+  /// for CoreText's, the fonts' and the formula engine's first use (the web page warms its editor up the same way while it
+  /// loads). For a host's launch, off the main thread; `math` the engines when the host has them
+  public static func warmUp(math: MathTypesetter?) {
+    guard (try? fonts.get()) != nil else { return }
+    struct Sample: MarkdownResources {
+      let math: MathTypesetter?
+      var diagrams: DiagramRenderer? { math as? DiagramRenderer }
+      func imageSize(_ src: String) -> CGSize? { CGSize(width: 800, height: 450) }
+      func ref(label: String, target: String?) -> MarkdownRefHit? { nil }
+      func highlight(lines: [String], language: String) -> [[MarkdownToken]]? { nil }
+      var mathPreamble: String { "" }
+    }
+    let text = """
+      # Title
+
+      Text with **bold**, *italics*, `code`, ==marks==, [a link](https://example.com) and 中文混排，一段文字。
+
+      - one
+      - [x] two
+
+      > a quote
+
+      | a | b |
+      |---|---|
+      | 1 | 2 |
+
+      ```py
+      x = 1
+      ```
+
+      $$
+      x^2 + \\frac{1}{2}
+      $$
+
+      Inline $E = mc^2$ and ![p](p.png "caption").
+      """
+    let resources = Sample(math: math)
+    for look in ["warm-ink", "ink-wash"] {
+      for dark in [false, true] {
+        let card = MarkdownLooks.card(.note, look: look, dark: dark)
+        let l = BlockLayout(MarkdownDocument(text), width: 330, theme: card.theme, layout: nil, resources: resources)
+        guard
+          let ctx = CGContext(
+            data: nil, width: 660, height: max(1, Int(l.size.height * 2)), bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { continue }
+        ctx.scaleBy(x: 2, y: 2)
+        l.draw(in: ctx, scale: 2, clip: CGRect(origin: .zero, size: l.size)) { _ in nil }
+      }
+    }
+  }
 }

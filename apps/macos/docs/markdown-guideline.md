@@ -701,7 +701,7 @@ public protocol MarkdownEditorDelegate: AnyObject {
 - [ ] 粘贴：VS Code 的代码成代码块、HTML 转换、散落记号和公式恢复、格子里换行成 `<br>`；复制同时给 text/html，部分选中的格式保留记号（3i）
 - [ ] 末尾是代码、公式、表格块时补一个不保存的空段落；静态显示里的选区映射进编辑器（3i）
 - [ ] ⌘ 整块移动、引用和卡片链接的激活（3j，接口见 6.4）
-- [ ] 第一张 Note 的首次显示比网页版慢（129 ms 对 54 ms），要做到更快（性能）
+- [x] 第一张 Note 的首次显示：启动时预热（`MarkdownAssets.warmUp`）之后 7 ms，网页版 54 ms（性能）
 - 不做：AI 补全（第 3.2 节）
 
 ## 7. 技术方向

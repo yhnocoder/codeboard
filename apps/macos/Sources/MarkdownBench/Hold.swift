@@ -43,11 +43,13 @@ enum Hold {
     return kept.layouts
   }
 
-  /// From a cold process: fonts and engines, then one Note shown (laid out and drawn at 2x), then all forty at once
+  /// From a cold process: fonts, engines and the warm-up, then one Note shown (laid out and drawn at 2x), then all forty at once
   static func first() throws -> [String: Double] {
     let t0 = Date()
     try MarkdownAssets.fonts.get()
     let resources = BenchResources(math: try MarkdownAssets.engines())
+    // as a host starts: the warm-up (the web page warms its editor up while it loads, which its start counts too)
+    MarkdownAssets.warmUp(math: resources.math)
     let t1 = Date()
     let notes = SyntheticNotes.all()
     _ = laidOut(resources: resources, notes: [notes[0]])
