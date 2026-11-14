@@ -1,0 +1,152 @@
+[
+ {
+  "name": "r01-first-card.png",
+  "status": "same",
+  "ratio": 0.0012
+ },
+ {
+  "name": "r02-expand.png",
+  "status": "same",
+  "ratio": 0.0012
+ },
+ {
+  "name": "r03-arrow-right.png",
+  "status": "same",
+  "ratio": 0.0012
+ },
+ {
+  "name": "r05-section.png",
+  "status": "same",
+  "ratio": 0.0012
+ },
+ {
+  "name": "r06-sidenote.png",
+  "status": "changed",
+  "ratio": 0.0053
+ },
+ {
+  "name": "r07-sticker.png",
+  "status": "same",
+  "ratio": 0.0023
+ },
+ {
+  "name": "r08-new-cards.png",
+  "status": "changed",
+  "ratio": 0.0233
+ },
+ {
+  "name": "r09-menu-edges.png",
+  "status": "changed",
+  "ratio": 0.0246
+ },
+ {
+  "name": "r10-version.png",
+  "status": "same",
+  "ratio": 0.0012
+ },
+ {
+  "name": "r11a-zoom-min.png",
+  "status": "changed",
+  "ratio": 0.0079
+ },
+ {
+  "name": "r11b-zoom-fit.png",
+  "status": "changed",
+  "ratio": 0.0234
+ },
+ {
+  "name": "r11c-zoom-max.png",
+  "status": "same",
+  "ratio": 0.0019
+ },
+ {
+  "name": "r12-undo-redo.png",
+  "status": "changed",
+  "ratio": 0.0219
+ },
+ {
+  "name": "r13-reopen.png",
+  "status": "changed",
+  "ratio": 0.0218
+ },
+ {
+  "name": "r14-theme-01-warm-ink.png",
+  "status": "changed",
+  "ratio": 0.0219
+ },
+ {
+  "name": "r14-theme-02-graphite.png",
+  "status": "changed",
+  "ratio": 0.0215
+ },
+ {
+  "name": "r14-theme-03-soft-light.png",
+  "status": "changed",
+  "ratio": 0.0196
+ },
+ {
+  "name": "r14-theme-04-drafting.png",
+  "status": "changed",
+  "ratio": 0.0258
+ },
+ {
+  "name": "r14-theme-05-colorful.png",
+  "status": "changed",
+  "ratio": 0.0452
+ },
+ {
+  "name": "r14-theme-06-newspaper.png",
+  "status": "changed",
+  "ratio": 0.0307
+ },
+ {
+  "name": "r14-theme-07-poster.png",
+  "status": "changed",
+  "ratio": 0.0435
+ },
+ {
+  "name": "r14-theme-08-classic.png",
+  "status": "changed",
+  "ratio": 0.0251
+ },
+ {
+  "name": "r14-theme-09-ink-wash.png",
+  "status": "changed",
+  "ratio": 0.027
+ },
+ {
+  "name": "r14-theme-10-city.png",
+  "status": "changed",
+  "ratio": 0.0366
+ },
+ {
+  "name": "r14-themes.png",
+  "status": "changed",
+  "ratio": 0.0223
+ },
+ {
+  "name": "r15-paste-near.png",
+  "status": "changed",
+  "ratio": 0.0223
+ },
+ {
+  "name": "r16-expand-in-view.png",
+  "status": "same",
+  "ratio": 0.0012
+ },
+ {
+  "name": "r17-popup-anchor.png",
+  "status": "changed",
+  "ratio": 0.0444
+ },
+ {
+  "name": "r18-drag-body.png",
+  "status": "changed",
+  "ratio": 0.0125
+ },
+ {
+  "name": "r19-menu-items.png",
+  "status": "changed",
+  "ratio": 0.054
+ }
+]
