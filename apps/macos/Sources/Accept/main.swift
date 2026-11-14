@@ -6,7 +6,8 @@
 // What the window server does for a real pointer and cannot happen here is done by the driver: tracking areas are told
 // about entering, leaving and moving (as AppKit does for their owners), NSEvent.mouseLocation and friends report the
 // virtual pointer, and the app is told it is active with its window key. Text arrives as an input method commits it
-// (insertText / setMarkedText on the first responder), never through the system's input method.
+// (insertText / setMarkedText on the first responder; `ime` from inside the keys' handling, as an input method does),
+// never through the system's input method.
 import AppKit
 import CodeBoardModel
 import CodeBoardShell
@@ -205,6 +206,27 @@ where env["ACCEPT_TRACE_SCROLL"] != nil {
   }
   class_replaceMethod(
     cls, #selector(NSView.scrollWheel(with:)), imp_implementationWithBlock(block), method_getTypeEncoding(m))
+}
+// The scripted input method (`ime`): what the input method does with the next key down that reaches a text input
+// context, on that context's client. A real input method makes these calls from inside the key's handling: WebKit hands
+// a key to the input method through interpretKeyEvents, so handleEvent: (WebViewImpl::interpretKeyEvent; only a few
+// Korean and Vietnamese input methods go another way, inputMethodUsesCorrectKeyEventOrder), and the page sees the key
+// with the composition. Called on their own, the calls come with no key: ProseMirror then swallows the next key within
+// half a second as the one that confirmed the composition (inOrNearComposition).
+nonisolated(unsafe) var imeStep: ((NSTextInputClient) -> Void)?
+func imeTakes(_ ctx: AnyObject, _ e: NSEvent) -> Bool {
+  guard e.type == .keyDown, let step = imeStep, let client = (ctx as? NSTextInputContext)?.client else { return false }
+  imeStep = nil
+  step(client)
+  return true
+}
+if let m = class_getInstanceMethod(NSTextInputContext.self, #selector(NSTextInputContext.handleEvent(_:))) {
+  typealias Imp = @convention(c) (AnyObject, Selector, NSEvent) -> Bool
+  let orig = unsafeBitCast(method_getImplementation(m), to: Imp.self)
+  let block: @convention(block) (AnyObject, NSEvent) -> Bool = { ctx, e in
+    imeTakes(ctx, e) || orig(ctx, #selector(NSTextInputContext.handleEvent(_:)), e)
+  }
+  method_setImplementation(m, imp_implementationWithBlock(block))
 }
 swizzle(NSApplication.self, #selector(getter: NSApplication.isActive), #selector(NSApplication.accIsActive))
 swizzle(NSApplication.self, #selector(getter: NSApplication.keyWindow), #selector(NSApplication.accKeyWindow))
@@ -573,6 +595,7 @@ swizzle(
     let chars = Self.specials[k] ?? k
     let shown = f.contains(.shift) && chars.count == 1 && chars.first!.isLetter ? chars.uppercased() : chars
     vFlags = f
+    log("key down \(spec) at \(local(vPointer))")
     for down in [true, false] {
       // from a CGEvent, as the window server makes them (WebKit passes on only such key events)
       let cg = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)!
@@ -637,18 +660,28 @@ swizzle(
     }
   }
 
+  /// Pinyin as an input method types it: each composing step comes with a letter key, the last (the picked
+  /// candidate) with the space that picks it, the input method's calls made from inside each key's handling
   func ime(_ steps: [String]) async {
-    guard let c = client else {
+    guard client != nil else {
       log("ime: no text client")
       return
     }
+    let none = NSRange(location: NSNotFound, length: 0)
     for s in steps.dropLast() {
-      c.setMarkedText(
-        s, selectedRange: NSRange(location: (s as NSString).length, length: 0),
-        replacementRange: NSRange(location: NSNotFound, length: 0))
-      try? await Task.sleep(for: .milliseconds(120))
+      imeStep = {
+        $0.setMarkedText(s, selectedRange: NSRange(location: (s as NSString).length, length: 0), replacementRange: none)
+      }
+      await key(s.last.map { Self.codes[String($0).lowercased()] != nil ? String($0).lowercased() : "a" } ?? "a")
+      try? await Task.sleep(for: .milliseconds(80))
     }
-    c.insertText(steps.last ?? "", replacementRange: NSRange(location: NSNotFound, length: 0))
+    let last = steps.last ?? ""
+    imeStep = { $0.insertText(last, replacementRange: none) }
+    await key("space")
+    if imeStep != nil {
+      imeStep = nil
+      log("ime: no key reached a text input context")
+    }
   }
 
   func hitInfo(_ p: NSPoint) -> String {
@@ -898,7 +931,7 @@ nonisolated(unsafe) let createImage: CreateImage = {
   let dir: URL
   var timer: Timer?
   var frame = 0
-  var times = ""  // each frame's time, as the log's
+  var times = ""  // each frame's time, as the log's, and where the pointer is
   let io = DispatchQueue(label: "rec")
   weak var driver: Driver?
 
@@ -918,6 +951,7 @@ nonisolated(unsafe) let createImage: CreateImage = {
   }
 
   var inFlight = 0
+  var lags: [Double] = []
   var done = false
   let capture = DispatchQueue(label: "capture", attributes: .concurrent)
 
@@ -926,15 +960,21 @@ nonisolated(unsafe) let createImage: CreateImage = {
   @objc func step() {
     guard inFlight < 40, let windows = Recorder.windows() else { return }
     inFlight += 1
+    // a frame's time is when it was taken, not when the window server handed it over (up to a second or more later,
+    // and not in order): answer times are read from these
+    let t = ProcessInfo.processInfo.systemUptime
+    // and where the drawn pointer is in it (points from its top left), so that comparing frames can leave it out
+    let at = String(format: "%.3f %.0f %.0f", t, vPointer.x - windows.main.minX, windows.main.maxY - vPointer.y)
     capture.async {
       let img = Recorder.compose(windows)
-      let t = ProcessInfo.processInfo.systemUptime
+      let lag = ProcessInfo.processInfo.systemUptime - t
       DispatchQueue.main.async {
         MainActor.assumeIsolated {
           self.inFlight -= 1
+          self.lags.append(lag)
           guard let img, !self.done else { return }
           let url = self.dir.appending(path: String(format: "f%05d.png", self.frame))
-          self.times += String(format: "%.3f\n", t)
+          self.times += at + "\n"
           self.frame += 1
           self.io.async { Recorder.write(img, to: url) }
         }
@@ -951,6 +991,13 @@ nonisolated(unsafe) let createImage: CreateImage = {
     done = true
     io.sync {}
     try? times.write(to: dir.appending(path: "times.txt"), atomically: true, encoding: .utf8)
+    let l = lags.sorted()
+    if !l.isEmpty {
+      log(
+        String(
+          format: "recorded %d frames, each handed over %.0f ms (median) to %.0f ms (max) after it was taken", frame,
+          l[l.count / 2] * 1000, l.last! * 1000))
+    }
     return frame
   }
 

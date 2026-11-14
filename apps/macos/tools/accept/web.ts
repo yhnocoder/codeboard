@@ -54,7 +54,7 @@ let recDir: string | undefined, frame = 0, times = "";
 cdp.on("Page.screencastFrame", async (f: any) => {
   await cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {});
   if (!recDir) return;
-  times += `${now()}\n`;
+  times += `${now()} ${pos.x.toFixed(0)} ${pos.y.toFixed(0)}\n`;
   fs.writeFileSync(path.join(recDir, `f${String(frame++).padStart(5, "0")}.png`), Buffer.from(f.data, "base64"));
 });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -129,7 +129,7 @@ async function run(line: string): Promise<string> {
       for (let i = 0; i < steps; i++) { await hold(["Control"], () => page.mouse.wheel(0, -per * 100)); await sleep(8); }
       break;
     }
-    case "key": { const p = a[1].split("+"); const k = p.pop()!; await page.keyboard.press([...mods(p.join("+")), keyName[k] ?? k].join("+")); break; }
+    case "key": { log(`key down ${a[1]} at ${pos.x.toFixed(0)},${pos.y.toFixed(0)}`); const p = a[1].split("+"); const k = p.pop()!; await page.keyboard.press([...mods(p.join("+")), keyName[k] ?? k].join("+")); break; }
     case "type": for (const ch of line.slice(5).replace(/\\n/g, "\n")) { if (ch === "\n") await page.keyboard.press("Enter"); else await page.keyboard.insertText(ch); await sleep(35); } break;
     case "ime": {
       const parts = line.slice(4).split("|");
