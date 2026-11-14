@@ -62,6 +62,41 @@ private func keysBoard() -> Board {
     return r
   }
 
+  /// Space + drag pans (keymap.ts pan, interact.ts startPan): pressed on a card too, the board follows the pointer and
+  /// glides on as two fingers' do once let go; nothing is selected, moved or recorded. With Space up a drag is the
+  /// board's again
+  @Test func spaceAndDragPansEvenOverACard() async throws {
+    let r = try await rig()
+    defer { r.close() }
+    let c = r.canvas
+    // view points: the camera moves under the pointer, so the board points under it change
+    func drag(_ type: NSEvent.EventType, _ v: CGPoint) {
+      r.send(
+        NSEvent.mouseEvent(
+          with: type, location: c.convert(v, to: nil), modifierFlags: [], timestamp: r.next(0.016),
+          windowNumber: r.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
+    }
+    let start = c.camera.view(r.centre("n1"))
+    let before = c.camera.origin
+    let steps = r.doc.history.undoSteps.count
+    r.key(49, up: false)
+    drag(.leftMouseDown, start)
+    for i in 1...8 { drag(.leftMouseDragged, CGPoint(x: start.x + 12.5 * CGFloat(i), y: start.y + 5 * CGFloat(i))) }
+    #expect(abs(c.camera.origin.x - (before.x - 100)) < 1e-6 && abs(c.camera.origin.y - (before.y - 40)) < 1e-6)
+    drag(.leftMouseUp, CGPoint(x: start.x + 100, y: start.y + 40))
+    await r.until("the glide ends") { c.motion.isResting }
+    #expect(c.camera.origin.x < before.x - 100, "it glides on")
+    #expect(r.doc.selection.isEmpty && r.rect("n1").origin == .zero && r.doc.history.undoSteps.count == steps)
+    // Space up: a drag on the empty board draws a marquee, the camera stays
+    r.keyUp(49)
+    let after = c.camera.origin
+    let empty = c.camera.view(CGPoint(x: 300, y: 250))
+    drag(.leftMouseDown, empty)
+    drag(.leftMouseDragged, CGPoint(x: empty.x + 60, y: empty.y + 60))
+    drag(.leftMouseUp, CGPoint(x: empty.x + 60, y: empty.y + 60))
+    #expect(c.camera.origin == after)
+  }
+
   /// N, T, R: a new Note, Text, Box with its top left at the pointer (keymap.ts newNote, newText, newBox)
   @Test func nTAndRMakeANoteATextAndABoxAtThePointer() async throws {
     let r = try await rig()

@@ -775,6 +775,7 @@ extension CanvasView {
 
   public override func mouseMoved(with e: NSEvent) {
     guard gesture == nil else { return }
+    if spaceHeld { return NSCursor.openHand.set() }
     let v = convert(e.locationInWindow, from: nil)
     if levels.level == .summaries {
       let p = camera.board(v)
@@ -844,6 +845,7 @@ extension CanvasView {
   // MARK: Pointer
 
   public override func mouseDown(with e: NSEvent) {
+    if spacePanDown(e) { return }
     // a click outside the card being written in (on it, the web view takes it) ends the writing
     if editing != nil { Task { await endEditing() } }
     window?.makeFirstResponder(self)
@@ -966,6 +968,7 @@ extension CanvasView {
   }
 
   public override func mouseDragged(with e: NSEvent) {
+    if spacePanDragged(e) { return }
     if let d = markDrag {
       let v = convert(e.locationInWindow, from: nil)
       guard d.moved || hypot(v.x - d.from.x, v.y - d.from.y) >= dragSlop else { return }
@@ -1070,6 +1073,7 @@ extension CanvasView {
   }
 
   public override func mouseUp(with e: NSEvent) {
+    if spacePanUp(e) { return }
     if releaseSummary(at: convert(e.locationInWindow, from: nil)) { return }
     if let d = markDrag {
       markDrag = nil
@@ -1487,6 +1491,7 @@ extension CanvasView {
   }
 
   public override func keyUp(with e: NSEvent) {
+    if e.keyCode == 49 { return releaseSpace() }
     guard nudging.remove(e.keyCode) != nil else { return super.keyUp(with: e) }
     if nudging.isEmpty, case .nudge(let m)? = gesture?.kind { commitMove(m) }
   }

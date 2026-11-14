@@ -24,6 +24,7 @@ extension CanvasView {
     case (.command, 18): zoom(by: 1 / zoomTarget.zoom)
     case (.command, 24), ([.command, .shift], 24): zoom(by: 1.25)
     case (.command, 27): zoom(by: 0.8)
+    case ([], 49): holdSpace(e)
     case ([], 36), ([], 76):
       // Return: an arrow alone, its label; else the first card selected opens
       if doc.selection.count == 1, let a = doc.selection.first?.arrow { editLabel(a) } else { return open(cards) }
@@ -145,5 +146,50 @@ extension CanvasView {
     guard let first = rs.first else { return fitAll() }
     motion.fly(to: fitRect(rs.dropFirst().reduce(first) { $0.union($1) }, maxZoom: 1.4))
     moved()
+  }
+}
+
+// MARK: Space + drag (keymap.ts pan, interact.ts startPan)
+
+extension CanvasView {
+  /// Space held: a drag anywhere on the board, cards and Sections too, pans it
+  func holdSpace(_ e: NSEvent) {
+    guard !e.isARepeat else { return }
+    spaceHeld = true
+    if spacePan == nil { NSCursor.openHand.set() }
+  }
+
+  func releaseSpace() {
+    spaceHeld = false
+    if spacePan == nil { NSCursor.arrow.set() }
+  }
+
+  @objc func windowResignedKey() { releaseSpace() }
+
+  /// A press with Space held starts a pan: the board follows the pointer as it does two fingers, and glides on from
+  /// how fast it went when let go
+  func spacePanDown(_ e: NSEvent) -> Bool {
+    guard spaceHeld, document != nil else { return false }
+    spacePan = convert(e.locationInWindow, from: nil)
+    NSCursor.closedHand.set()
+    scroll(by: .zero, at: e.timestamp, began: true, ended: false)
+    return true
+  }
+
+  func spacePanDragged(_ e: NSEvent) -> Bool {
+    guard let last = spacePan else { return false }
+    let v = convert(e.locationInWindow, from: nil)
+    spacePan = v
+    scroll(by: CGVector(dx: v.x - last.x, dy: v.y - last.y), at: e.timestamp, began: false, ended: false)
+    return true
+  }
+
+  func spacePanUp(_ e: NSEvent) -> Bool {
+    guard spacePan != nil else { return false }
+    _ = spacePanDragged(e)
+    spacePan = nil
+    scroll(by: .zero, at: e.timestamp, began: false, ended: true)
+    (spaceHeld ? NSCursor.openHand : NSCursor.arrow).set()
+    return true
   }
 }

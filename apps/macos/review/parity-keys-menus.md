@@ -28,7 +28,7 @@ The app: `Sources/CodeBoardCanvas/CanvasKeys.swift` (`boardKey`, reached from `k
 | ⌘[ / ⌘] | (main: Bring Forward / Send Backward; NOT DO) | Back / Forward (View menu) |
 | ⌘= ⌘+ / ⌘- | Zoom in ×1.25 / out ×0.8 about the middle, eased | same |
 | Space (animated image selected), ← →, Home End | Play / pause, previous / next frame, first / last frame | gap: animated images do not play yet |
-| Space + drag | Pan | gap: two fingers pan; Space is not held |
+| Space + drag | Pan | same (on cards and Sections too; it glides on when let go, as two fingers do) |
 | ⌘A | Select All | same (Edit menu) |
 | ↵ (one arrow only) | Edit its label | same |
 | ↵ (cards) | The first card selected opens: code in the editor (at the lines selected), a Note written in, a Web card's page, a sub-board entered | same for Notes, Texts, Boxes, Web cards and sub-boards; gap: code has no editor to open in |

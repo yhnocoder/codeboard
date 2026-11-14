@@ -219,6 +219,9 @@ public final class CanvasView: NSView {
   /// outline of where a hovered entry returns and of one dragged out (board units)
   package let dock = CanvasDock(theme: .warmInk)
   package var shelfPanel: ShelfPanel?
+  /// Space held, and where the pointer was last in a drag it pans (CanvasKeys)
+  var spaceHeld = false
+  var spacePan: CGPoint?
   package var shelfPreview: ShelfPreview?
   package var previewing: String?
   package var shelfPictures: [String: (key: ShelfPictureKey, image: CGImage)] = [:]
@@ -850,6 +853,10 @@ public final class CanvasView: NSView {
 
   public override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
+    // Space let go while another window had the keys: its key up never comes here
+    NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(windowResignedKey), name: NSWindow.didResignKeyNotification, object: window)
     link?.invalidate()
     link = nil
     watchWheel()
