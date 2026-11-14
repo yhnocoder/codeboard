@@ -383,7 +383,8 @@ async function shotPair(out, name, have) {
 }
 
 /** Per side: each command's time, what each press landed on, and for recorded commands how long the window took to
- *  answer (first frame that changed after the command ended, a key's after it started) and to settle (no change for 300 ms) */
+ *  answer (first frame that changed after the command ended; a key's from when it started; a click's from its first
+ *  press, against the window just before it) and to settle (no change for 300 ms) */
 async function report(d, out) {
   const rows = [];
   const lines = d.lines().filter(Boolean).map((l) => {
@@ -429,18 +430,27 @@ async function report(d, out) {
     let answer = "";
     if (/^(click|dbl|up|key|keys|type|ime|drag|menu)\b/.test(done[2])) {
       // keys count from when they start: the Mac side spends ~90 ms sending a key's down and up, and the editor answers
-      // within that, before the command ends (a pointer command's press comes at its end, after the move there)
-      const from = /^(key|keys|type|ime)\b/.test(done[2]) && start ? start.t : l.t;
-      const at = frames.findIndex((f) => f.t >= from);
-      if (at > 0) {
+      // within that, before the command ends. A click or double click counts from its first press, against the window
+      // just before it (the move there done), leaving out what is drawn while the button is held (the press mark):
+      // the app may answer the first click of a double click already. A drag counts from its end
+      const presses = start ? lines.filter((x) => x.t >= start.t && x.t <= l.t && x.text.startsWith("press ")) : [];
+      const pointer = /^(click|dbl)\b/.test(done[2]) && presses.length > 0;
+      const from = /^(key|keys|type|ime)\b/.test(done[2]) && start ? start.t : pointer ? presses[0].t : l.t;
+      const held = (t) => pointer && presses.some((p) => t >= p.t && t <= p.t + 0.1);
+      const at = frames.findIndex((f) => f.t >= from && !held(f.t));
+      const before = pointer ? frames.findLastIndex((f) => f.t < from) : at - 1;
+      if (at > 0 && before >= 0) {
         let first, last;
+        let prev = before;
         // (Chromium sends a frame only when the picture changed; the Mac recorder sends every frame)
         for (let i = at; i < frames.length && frames[i].t - from < 3; i++) {
+          if (held(frames[i].t)) continue;
           if (last !== undefined && frames[i].t - last > 0.3) break;
-          if (await differ(frames[i - 1].file, frames[i].file)) {
+          if (await differ(frames[prev].file, frames[i].file)) {
             first ??= frames[i].t;
             last = frames[i].t;
           }
+          prev = i;
         }
         answer = first === undefined ? "  no change within 3 s" : `  answered ${((first - from) * 1000).toFixed(0)} ms, settled ${((last - from) * 1000).toFixed(0)} ms`;
       }
