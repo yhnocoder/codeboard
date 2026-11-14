@@ -600,20 +600,37 @@ swizzle(
     request.usesLanguageCorrection = false
     do { try VNImageRequestHandler(cgImage: part).perform([request]) } catch { return "text recognition: \(error)" }
     var read: [String] = []
+    // Vision writes CJK-style punctuation (（）：，) where the page has ASCII and is unsure of case, and its best guess
+    // is not always right ("secona"): every candidate is searched, folded the same way as the words sought
+    let sought = Self.fold(text)
     for o in request.results ?? [] {
-      guard let c = o.topCandidates(1).first else { continue }
-      read.append(c.string)
-      guard let r = c.string.range(of: text), let found = try? c.boundingBox(for: r)?.boundingBox else { continue }
-      // normalized, bottom-left origin in the crop
-      let nx = mode == "before" ? found.minX : mode == "after" ? found.maxX : found.midX
-      let ix = crop.minX + nx * crop.width
-      let iy = crop.minY + (1 - found.midY) * crop.height
-      let p = NSPoint(x: w.frame.minX + ix / sx, y: w.frame.maxY - iy / sy)
-      guard let cv = w.contentView else { return "no content view" }
-      let l = cv.convert(w.convertPoint(fromScreen: p), from: nil)
-      return String(format: "%.1f %.1f", l.x, l.y)
+      let candidates = o.topCandidates(5)
+      if let c = candidates.first { read.append(c.string) }
+      for c in candidates {
+        let folded = Self.fold(c.string)
+        guard let f = folded.range(of: sought) else { continue }
+        // the folded string has the original's characters one for one
+        let lo = c.string.index(
+          c.string.startIndex, offsetBy: folded.distance(from: folded.startIndex, to: f.lowerBound))
+        let hi = c.string.index(lo, offsetBy: folded.distance(from: f.lowerBound, to: f.upperBound))
+        guard let found = try? c.boundingBox(for: lo..<hi)?.boundingBox else { continue }
+        // normalized, bottom-left origin in the crop
+        let nx = mode == "before" ? found.minX : mode == "after" ? found.maxX : found.midX
+        let ix = crop.minX + nx * crop.width
+        let iy = crop.minY + (1 - found.midY) * crop.height
+        let p = NSPoint(x: w.frame.minX + ix / sx, y: w.frame.maxY - iy / sy)
+        guard let cv = w.contentView else { return "no content view" }
+        let l = cv.convert(w.convertPoint(fromScreen: p), from: nil)
+        return String(format: "%.1f %.1f", l.x, l.y)
+      }
     }
     return "not found; read: \(read.joined(separator: " | "))"
+  }
+
+  /// Full-width punctuation as ASCII and letters in lower case, one character for each character
+  static func fold(_ s: String) -> String {
+    let wide: [Character: Character] = ["（": "(", "）": ")", "：": ":", "，": ",", "；": ";", "！": "!", "？": "?"]
+    return String(s.map { ch in wide[ch] ?? (ch.isASCII ? Character(ch.lowercased()) : ch) })
   }
 
   /// Where the caret is, as the text input system sees it in any editor (the native Note editor, a web view): its
@@ -657,12 +674,12 @@ swizzle(
       let code = Self.codes[c.lowercased()] ?? (c == " " ? 49 : 0)
       let f: NSEvent.ModifierFlags = ch.isUppercase ? [.shift] : []
       for t in [NSEvent.EventType.keyDown, .keyUp] {
-        NSApp.postEvent(
+        // to the window, as key() sends keys without ⌘: NSApp has no key window of its own to hand them to
+        w.sendEvent(
           NSEvent.keyEvent(
             with: t, location: .zero, modifierFlags: f, timestamp: ProcessInfo.processInfo.systemUptime,
             windowNumber: w.windowNumber, context: nil, characters: c, charactersIgnoringModifiers: c.lowercased(),
-            isARepeat: false, keyCode: code)!, atStart: false)
-        _ = w
+            isARepeat: false, keyCode: code)!)
         try? await Task.sleep(for: .milliseconds(30))
       }
     }
