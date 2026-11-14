@@ -137,18 +137,62 @@ private func walkBoard() -> Board {
     }
     #expect(Set(menus.map(\.0)).count == 18, "every menu built: \(menus.map(\.0))")
     for i in items where !i.titled { Issue.record("no title: \(i.path)") }
-    for i in items where !i.on && Self.mainOff[i.path] == nil {
-      if i.path == "canvas › Paste" {
-        // main's is always on: it reads the clipboard when chosen and pastes text as a Note; ours pastes only clips and
-        // web addresses, so with nothing of those it is off
-        withKnownIssue("Paste is off with no clip or web address on the clipboard; main pastes text as a Note") {
-          Issue.record("off where main is on: \(i.path)")
-        }
-      } else {
-        Issue.record("off where main is on: \(i.path)")
-      }
-    }
+    for i in items where !i.on && Self.mainOff[i.path] == nil { Issue.record("off where main is on: \(i.path)") }
     // main's off items are all here and off
     for (p, line) in Self.mainOff { #expect(items.contains { $0.path == p && !$0.on }, "\(p) (main's \(line))") }
+  }
+}
+
+/// Plain text pasted (create.ts pasteText, newWriting): a Note of it, 381 wide, its top left where the board's menu was
+/// asked, or under the pointer for ⌘V, else 40 above the middle of the view; one step, selected. Only the test's
+/// pasteboard is ever written
+@MainActor @Suite(.serialized) struct PasteTextTests {
+  func note(_ r: Rig) -> (Card, String)? {
+    guard let id = r.doc.selection.first?.card, let c = r.doc.board.card(id), case .own(let k) = c.content,
+      case .note(let n) = k.body
+    else { return nil }
+    return (c, n.text)
+  }
+
+  @Test func plainTextPastesAsANoteWhereMainPutsIt() async throws {
+    let board = NSPasteboard(name: NSPasteboard.Name("paste-\(UUID().uuidString)"))
+    board.clearContents()
+    let r = try await Rig(zoom: 1, pasteboard: board)
+    defer { r.close() }
+    let c = r.canvas
+    let empty = CGPoint(x: 1300, y: 600)
+    // the board's Paste is on with nothing to paste, as main's; choosing it then makes nothing
+    let m = try #require(c.menu(for: r.mouse(.rightMouseDown, empty)))
+    let paste = try #require(m.item(withTitle: "Paste"))
+    #expect(paste.action != nil && paste.keyEquivalent == "v" && paste.keyEquivalentModifierMask == .command)
+    let cards = r.doc.board.cards.count
+    try #require(paste.representedObject as? MenuAction).run()
+    #expect(r.doc.board.cards.count == cards && !r.doc.history.canUndo)
+    // from the board's menu: where it was asked
+    board.clearContents()
+    board.setString("A thought\n\nwith more", forType: .string)
+    let at = CGPoint(x: 1300.4, y: 600.6)
+    try #require(c.menu(for: r.mouse(.rightMouseDown, at))?.item(withTitle: "Paste")?.representedObject as? MenuAction)
+      .run()
+    let (n1, t1) = try #require(note(r))
+    #expect(t1 == "A thought\n\nwith more" && n1.x == 1300 && n1.y == 601 && n1.width == Board.newNoteWidth)
+    #expect(r.doc.undoName == "Paste" && r.doc.history.undoSteps.count == 1)
+    // ⌘V with the pointer on the board: under it
+    c.mouseMoved(with: r.mouse(.mouseMoved, CGPoint(x: 1500, y: 100)))
+    c.paste(nil)
+    let (n2, _) = try #require(note(r))
+    #expect(n2.id != n1.id && n2.x == 1500 && n2.y == 100)
+    // with the pointer away: 40 above the middle of the view
+    c.pointerInWindow = nil
+    c.paste(nil)
+    let (n3, _) = try #require(note(r))
+    let v = c.camera.visible(c.bounds.size)
+    #expect(n3.x == (v.midX - Board.newNoteWidth / 2).rounded() && n3.y == (v.midY - 40).rounded())
+    // only white space: nothing
+    board.clearContents()
+    board.setString(" \n\t", forType: .string)
+    let now = r.doc.board.cards.count
+    c.paste(nil)
+    #expect(r.doc.board.cards.count == now)
   }
 }

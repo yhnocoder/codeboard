@@ -30,6 +30,23 @@ extension CanvasView {
 
   /// A link alone (or several, one per line) pasted: a Web card (a Link List) in the middle of the view, selected, one
   /// step; its page is read now. False when the pasteboard holds no link
+  /// Plain text: a Note of it, its top left at `p` (the board menu's point), else under the pointer (⌘V), else 40
+  /// above the middle of the view (create.ts pasteText, newWriting); whether there was text
+  func pasteNote(at p: CGPoint?) -> Bool {
+    guard let doc = document, let s = pasteboard.string(forType: .string),
+      !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else { return false }
+    let v = camera.visible(bounds.size)
+    let at =
+      p ?? pointerInWindow.map { camera.board(convert($0, from: nil)) }
+      ?? CGPoint(x: v.midX - Board.newNoteWidth / 2, y: v.midY - 40)
+    let id = CardID(rawValue: Board.newID("card-"))
+    var card = Board.newCard(.note, id: id, x: at.x.rounded(), y: at.y.rounded())
+    card.content = .own(CardContent(body: .note(Note(text: s))))
+    doc.edit("Paste", selection: [.card(id)]) { $0.cards.append(card) }
+    return true
+  }
+
   func pasteLinks() -> Bool {
     guard let doc = document, let s = pasteboard.string(forType: .string) else { return false }
     let lines = s.split(whereSeparator: \.isNewline).map(String.init).filter {

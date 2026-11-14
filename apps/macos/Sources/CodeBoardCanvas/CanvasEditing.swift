@@ -1608,14 +1608,15 @@ extension CanvasView {
   /// Pastes what was copied: on the board it was copied from, copies beside it (each paste a step further) with the chip
   /// that makes them References; from another board, the same cards, shared by both (main's paste onto another board),
   /// once there: they are selected. In the middle of the view when what was copied is not in view
-  @objc public func paste(_ sender: Any?) { paste(asCopy: false) }
+  @objc public func paste(_ sender: Any?) { paste(asCopy: false, at: nil) }
 
   /// ⌥⌘V: cards copied on another board come as copies of their own (keymap.ts pasteOther)
-  @objc public func pasteAsCopy(_ sender: Any?) { paste(asCopy: true) }
+  @objc public func pasteAsCopy(_ sender: Any?) { paste(asCopy: true, at: nil) }
 
-  private func paste(asCopy: Bool) {
+  /// `at`: where the board's menu was asked, for a Note of plain text
+  func paste(asCopy: Bool, at: CGPoint?) {
     if gesture == nil, pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)) == nil,
-      pasteLinks()
+      pasteLinks() || pasteNote(at: at)
     {
       return
     }
@@ -1723,9 +1724,7 @@ extension CanvasView: NSMenuItemValidation {
     case #selector(cut(_:)), #selector(delete(_:)): return sel.contains { !doc.board.isLocked($0) }
     case #selector(paste(_:)), #selector(pasteAsCopy(_:)):
       return pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)) != nil
-        || pasteboard.string(forType: .string).map { s in
-          s.split(whereSeparator: \.isNewline).allSatisfy { webAddress(String($0)) != nil } && !s.isEmpty
-        } == true
+        || pasteboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     case #selector(bringToFront(_:)), #selector(sendToBack(_:)), #selector(tilt(_:)):
       return sel.contains { $0.card != nil }
     case #selector(lock(_:)):
