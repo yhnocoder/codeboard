@@ -809,7 +809,17 @@ swizzle(
     case "pick": pick(String(line.dropFirst(5)))
     case "find":  // find x0 y0 x1 y1 before|mid|after words: where those words are on screen inside that box
       let box = CGRect(x: d(1), y: d(2), width: d(3) - d(1), height: d(4) - d(2))
-      return a.count > 6 ? find(box, a[5], a[6...].joined(separator: " ")) : "find x0 y0 x1 y1 mode words"
+      guard a.count > 6 else { return "find x0 y0 x1 y1 mode words" }
+      // looked at again a moment later, as a person would: one picture can catch the window mid-change (a Note's
+      // editor taking over from the canvas's drawing)
+      var r = ""
+      for i in 0..<4 {
+        if i > 0 { try? await Task.sleep(for: .milliseconds(250)) }
+        r = find(box, a[5], a[6...].joined(separator: " "))
+        if !r.hasPrefix("not found") { break }
+        log("find: \(r)")
+      }
+      return r
     case "caret": return await caret()
     case "hit": return hitInfo(vPointer)
     case "where":  // where bx by: the board point's place in the window (what move and click take), from the camera
