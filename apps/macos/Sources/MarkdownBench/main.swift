@@ -4,6 +4,12 @@ import Foundation
 //   MarkdownBench --editor               what a key costs while a 1200-paragraph Note is edited (EditorBench)
 //   MarkdownBench --notes                the synthetic Notes laid out and drawn, per look (NotesBench)
 //   MarkdownBench --write-notes <folder> writes the synthetic Notes and their pictures there (for the web side)
+//   MarkdownBench --write-editor-note <file>  writes --editor's 1200-paragraph Note there (for the web side)
+//   MarkdownBench --hold notes|editor    the forty Notes laid out and drawn at 2x (or the 1200-paragraph Note open for
+//                                        editing, its view drawn), kept; prints "ready" and waits for stdin to close, so
+//                                        a script can read the process's memory as it shows them
+//   MarkdownBench --first                time until the forty Notes are first laid out and drawn, from a cold process
+//                                        (fonts and engines loaded on the way), one Note alone, then all of them
 let args = Array(CommandLine.arguments.dropFirst())
 if args.contains("--editor") {
   try EditorBench.run()
@@ -15,6 +21,18 @@ if args.contains("--editor") {
 } else if let i = args.firstIndex(of: "--write-notes"), i + 1 < args.count {
   try SyntheticNotes.write(to: URL(filePath: args[i + 1]))
   print("wrote \(args[i + 1])")
+} else if let i = args.firstIndex(of: "--write-editor-note"), i + 1 < args.count {
+  try EditorBench.document(definitions: false).write(to: URL(filePath: args[i + 1]), atomically: true, encoding: .utf8)
+  print("wrote \(args[i + 1])")
+} else if let i = args.firstIndex(of: "--hold"), i + 1 < args.count {
+  let kept = try Hold.make(args[i + 1])
+  print("ready")
+  fflush(stdout)
+  while readLine() != nil {}
+  withExtendedLifetime(kept) {}
+} else if args.contains("--first") {
+  let out = try Hold.first()
+  print(String(decoding: try JSONSerialization.data(withJSONObject: out, options: [.sortedKeys]), as: UTF8.self))
 } else {
   FileHandle.standardError.write(Data("usage: MarkdownBench --editor | --notes | --write-notes <folder>\n".utf8))
   exit(2)

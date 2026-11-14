@@ -71,7 +71,20 @@ enum SyntheticNotes {
   static func write(to folder: URL) throws {
     let fm = FileManager.default
     try fm.createDirectory(at: folder.appending(path: "images"), withIntermediateDirectories: true)
-    for n in all() { try n.text.write(to: folder.appending(path: n.name + ".md"), atomically: true, encoding: .utf8) }
+    var list: [[String: Any]] = []
+    for n in all() {
+      try n.text.write(to: folder.appending(path: n.name + ".md"), atomically: true, encoding: .utf8)
+      // the card style as board.json writes it
+      let style: [String: Any] =
+        switch n.style {
+        case .note: ["note": [String: Any]()]
+        case .text(let size, let wrap): ["text": ["fontSize": size, "wrap": wrap]]
+        case .box(let size, let wrap): ["box": ["fill": "blue", "fontSize": size, "wrap": wrap]]
+        }
+      list.append(["name": n.name, "style": style])
+    }
+    try JSONSerialization.data(withJSONObject: list, options: [.prettyPrinted]).write(
+      to: folder.appending(path: "notes.json"))
     for (i, p) in pictures.enumerated() {
       let w = Int(p.size.width)
       let h = Int(p.size.height)
@@ -158,17 +171,19 @@ enum NotesBench {
     return out
   }
 
-  static func draw(_ l: BlockLayout, scale: CGFloat) -> Double {
+  static func draw(_ l: BlockLayout, scale: CGFloat, clip: CGRect? = nil) -> Double {
     autoreleasepool {
       let a = Date()
+      let area = clip ?? CGRect(origin: .zero, size: l.size)
       let ctx = CGContext(
-        data: nil, width: Int((l.size.width * scale).rounded(.up)),
-        height: max(1, Int((l.size.height * scale).rounded(.up))),
+        data: nil, width: Int((area.width * scale).rounded(.up)),
+        height: max(1, Int((area.height * scale).rounded(.up))),
         bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
-      ctx.translateBy(x: 0, y: l.size.height * scale)
+      ctx.translateBy(x: 0, y: area.height * scale)
       ctx.scaleBy(x: scale, y: -scale)
-      l.draw(in: ctx, scale: scale, clip: CGRect(origin: .zero, size: l.size)) { _ in nil }
+      ctx.translateBy(x: -area.minX, y: -area.minY)
+      l.draw(in: ctx, scale: scale, clip: area) { _ in nil }
       return Date().timeIntervalSince(a) * 1000
     }
   }
