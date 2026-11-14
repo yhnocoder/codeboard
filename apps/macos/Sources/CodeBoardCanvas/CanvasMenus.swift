@@ -354,12 +354,13 @@ extension CanvasView {
     let back = atEdge(set, top: false)
     var items = [
       key(
-        menuItem("Bring to Front", enabled: !front) { [weak self] in self?.arrange(set, .front) }, "]",
-        [.command, .shift]),
+        menuItem("Bring to Front", enabled: !front) { [weak self] in self?.arrange(set, .front) }, "f",
+        [.command, .option, .shift]),
       menuItem("Bring Forward", enabled: !front) { [weak self] in self?.arrange(set, .forward) },
       menuItem("Send Backward", enabled: !back) { [weak self] in self?.arrange(set, .backward) },
       key(
-        menuItem("Send to Back", enabled: !back) { [weak self] in self?.arrange(set, .back) }, "[", [.command, .shift]),
+        menuItem("Send to Back", enabled: !back) { [weak self] in self?.arrange(set, .back) }, "b",
+        [.command, .option, .shift]),
     ]
     if tiltAndLock, let doc = document {
       let tilt = key(action("Tilt", #selector(tilt(_:))), "t", [.option, .shift])

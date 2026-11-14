@@ -269,9 +269,9 @@ import CodeBoardModel
     edit.addItem(withTitle: "Delete", action: #selector(NSText.delete(_:)), keyEquivalent: "")
     edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
     edit.addItem(.separator())
-    // ⇧⌘] / ⇧⌘[ bring the selected cards to the front or send them back (the canvas takes them first), else switch tabs
-    edit.addItem(withTitle: "Bring to Front", action: #selector(CanvasView.bringToFront(_:)), keyEquivalent: "")
-    edit.addItem(withTitle: "Send to Back", action: #selector(CanvasView.sendToBack(_:)), keyEquivalent: "")
+    // not ⇧⌘] / ⇧⌘[ as on the web board: those are the system's tab keys, here as everywhere
+    edit.addItem(item("Bring to Front", #selector(CanvasView.bringToFront(_:)), "f", [.command, .option, .shift]))
+    edit.addItem(item("Send to Back", #selector(CanvasView.sendToBack(_:)), "b", [.command, .option, .shift]))
     edit.addItem(item("Lock", #selector(CanvasView.lock(_:)), "l", [.command, .shift]))
 
     let view = NSMenu(title: "View")

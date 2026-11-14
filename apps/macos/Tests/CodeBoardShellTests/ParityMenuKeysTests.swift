@@ -38,11 +38,10 @@ import Testing
     #expect(actions("Z", .command) == [#selector(CanvasView.redo(_:))])
   }
 
-  /// The board's order keys are ⇧⌘] and ⇧⌘[ with cards selected (the canvas takes them before the menu), the tabs'
-  /// otherwise; no other keys of the app's own
-  @Test func noOrderKeysOfTheAppsOwn() {
-    #expect(actions("f", [.command, .option, .shift]).isEmpty)
-    #expect(actions("b", [.command, .option, .shift]).isEmpty)
+  /// Bring to Front and Send to Back are ⌥⇧⌘F and ⌥⇧⌘B; ⇧⌘] and ⇧⌘[ only switch tabs (NOT DO: main's order keys)
+  @Test func orderKeysAreTheAppsOwnAndBracketsSwitchTabs() {
+    #expect(actions("f", [.command, .option, .shift]) == [#selector(CanvasView.bringToFront(_:))])
+    #expect(actions("b", [.command, .option, .shift]) == [#selector(CanvasView.sendToBack(_:))])
     #expect(actions("]", [.command, .shift]) == [#selector(AppDelegate.showNextTab(_:))])
     #expect(actions("[", [.command, .shift]) == [#selector(AppDelegate.showPreviousTab(_:))])
   }

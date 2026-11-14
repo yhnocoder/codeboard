@@ -135,17 +135,17 @@ private func keysBoard() -> Board {
     #expect(flyTarget(r).map { $0.board(mid) } == r.canvas.camera.board(mid))
   }
 
-  /// ⇧⌘] and ⇧⌘[ bring the cards selected to the front and send them to the back; with none selected the keys are
-  /// not the board's (the tabs take them)
-  @Test func shiftCommandBracketsBringToFrontAndSendToBack() async throws {
+  /// ⇧⌘] and ⇧⌘[ are the tabs' always, cards selected or not (NOT DO: main's Bring to Front / Send to Back on them):
+  /// the canvas never takes them, the order stays
+  @Test func shiftCommandBracketsAreAlwaysTheTabs() async throws {
     let r = try await rig()
     defer { r.close() }
+    let order = r.doc.board.cards.map(\.id)
     #expect(!pressed(r, 30, "}", [.command, .shift]))
     r.doc.select([.card(cid("n1"))])
-    #expect(pressed(r, 30, "}", [.command, .shift]))
-    #expect(r.doc.board.cards.last?.id == cid("n1"))
-    #expect(pressed(r, 33, "{", [.command, .shift]))
-    #expect(r.doc.board.cards.first?.id == cid("n1"))
+    #expect(!pressed(r, 30, "}", [.command, .shift]))
+    #expect(!pressed(r, 33, "{", [.command, .shift]))
+    #expect(r.doc.board.cards.map(\.id) == order)
   }
 
   /// ⌥⇧T tilts the cards selected; ⌥Z wraps a code card's lines and unwraps them
