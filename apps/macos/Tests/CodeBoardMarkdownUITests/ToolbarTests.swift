@@ -57,3 +57,25 @@ import Testing
     #expect(v.headingChip.isHidden)
   }
 }
+
+@MainActor @Suite struct FindTests {
+  @Test func findStepsAndReplaces() {
+    _ = boardFonts
+    let src = "one two One three one"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 0)
+    v.findBar.query.stringValue = "one"
+    v.refind(go: true)
+    #expect(v.matches.count == 3 && v.selection.range == 0..<3)
+    v.stepMatch(true)
+    #expect(v.selection.range == 8..<11)
+    v.findBar.caseSensitive = true
+    v.refind(go: false)
+    #expect(v.matches.count == 2)
+    v.findBar.replacement.stringValue = "1"
+    v.replaceMatch(all: true)
+    #expect(v.core.source == "1 two One three 1")
+    v.core.undo()
+    #expect(v.core.source == src)
+  }
+}

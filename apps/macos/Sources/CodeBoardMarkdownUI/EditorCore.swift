@@ -514,6 +514,39 @@ public final class EditorCore {
     return old
   }
 
+  /// Several edits as one undo step (replace all): applied from the last to the first, so each range is still where it
+  /// was found; the selection after them
+  public func applyAll(_ edits: [MDEdit], select after: MDSelection) {
+    guard !edits.isEmpty else { return }
+    endLone()
+    let before = selection
+    var made: [(range: Range<Int>, old: String, new: String)] = []
+    for e in edits.sorted(by: { $0.range.lowerBound > $1.range.lowerBound }) {
+      let old = edit(e.range, e.replacement, select: after)
+      made.append((e.range, old, e.replacement))
+    }
+    undoSteps.append(Step(edits: made, before: before, after: after, kind: .command, time: clock()))
+    redoSteps = []
+    joinable = false
+    place(after)
+  }
+
+  /// Every place a text occurs in the source, case-sensitively or not (the find bar's matches)
+  public func find(_ query: String, caseSensitive: Bool) -> [Range<Int>] {
+    guard !query.isEmpty else { return [] }
+    let ns = source as NSString
+    var out: [Range<Int>] = []
+    var at = 0
+    let options: NSString.CompareOptions = caseSensitive ? [] : [.caseInsensitive]
+    while at < ns.length {
+      let r = ns.range(of: query, options: options, range: NSRange(location: at, length: ns.length - at))
+      guard r.location != NSNotFound else { break }
+      out.append(r.location..<NSMaxRange(r))
+      at = NSMaxRange(r)
+    }
+    return out
+  }
+
   public var canUndo: Bool { !undoSteps.isEmpty && marked == nil }
   public var canRedo: Bool { !redoSteps.isEmpty && marked == nil }
 

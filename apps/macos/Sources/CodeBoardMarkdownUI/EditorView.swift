@@ -68,6 +68,10 @@ public final class MarkdownEditorView: NSView {
   let toolbar = SelectionToolbar()
   let linkBox = LinkBox()
   let headingChip = HeadingChip()
+  let findBar = FindBar()
+  /// the find bar's matches and which one is current
+  private(set) var matches: [Range<Int>] = []
+  private(set) var currentMatch = -1
   let typedMenu = MenuList()
   /// the [[ menu's candidates, by the row id they were shown under
   private var refRows: [String: MarkdownRefCandidate] = [:]
@@ -115,6 +119,16 @@ public final class MarkdownEditorView: NSView {
     addSubview(linkBox)
     headingChip.isHidden = true
     addSubview(headingChip)
+    addSubview(findBar)
+    findBar.onChange = { [weak self] in self?.refind(go: true) }
+    findBar.onStep = { [weak self] on in self?.stepMatch(on) }
+    findBar.onReplace = { [weak self] all in self?.replaceMatch(all: all) }
+    findBar.onClose = { [weak self] in
+      guard let self else { return }
+      self.matches = []
+      self.needsDisplay = true
+      self.window?.makeFirstResponder(self)
+    }
     headingChip.onPick = { [weak self] n in
       guard let self else { return }
       self.core.command(.heading(n))
@@ -212,6 +226,11 @@ public final class MarkdownEditorView: NSView {
     // the glyphs' positions must not depend on the scale (guideline 3.4)
     ctx.setShouldSubpixelQuantizeFonts(false)
     ctx.setAllowsFontSubpixelQuantization(false)
+    // the find bar's matches, under the text, the current one stronger
+    for (i, m) in matches.enumerated() {
+      ctx.setFillColor(core.layout.theme.marks.highlight.alpha(i == currentMatch ? 1 : 0.55).cg)
+      for r in core.rects(for: m) where r.intersects(clip) { ctx.fill(r) }
+    }
     core.layout.draw(in: ctx, scale: scale, clip: clip, image: image)
     // the selection over the text: under it, a code block's or a table header's fill would hide it. Translucent, so the
     // text reads through; in the static picture too (a selection made there before editing)
@@ -572,6 +591,70 @@ public final class MarkdownEditorView: NSView {
     // its first baseline: the caret box at the heading's start runs from the font's ascent above it to its descent below,
     // the descent about a fifth of the whole
     headingChip.place(baseline: (box.maxY - box.height * 0.22) * zoom, left: box.minX * zoom)
+  }
+
+  // MARK: find and replace
+
+  /// ⌘F and ⌥⌘F: the bar, its query the selection's text when it has one on one line
+  func openFind(replace: Bool) {
+    let s = core.selection.range
+    if !s.isEmpty, s.count < 200 {
+      let t = (core.source as NSString).substring(with: NSRange(location: s.lowerBound, length: s.count))
+      if !t.contains("\n") { findBar.query.stringValue = t }
+    }
+    findBar.show(replace: replace, theme: core.layout.theme, in: visibleRect)
+    refind(go: false)
+  }
+
+  /// the matches again (the query, the case switch or the text changed); `go` selects the first at or after the caret
+  func refind(go: Bool) {
+    matches = core.find(findBar.query.stringValue, caseSensitive: findBar.caseSensitive)
+    let head = core.selection.range.lowerBound
+    currentMatch = matches.isEmpty ? -1 : (matches.firstIndex { $0.lowerBound >= head } ?? 0)
+    findBar.count.stringValue =
+      matches.isEmpty ? (findBar.query.stringValue.isEmpty ? "" : "0") : "\(currentMatch + 1)/\(matches.count)"
+    if go, currentMatch >= 0 { selectMatch() }
+    needsDisplay = true
+  }
+
+  private func selectMatch() {
+    let m = matches[currentMatch]
+    core.select(MDSelection(anchor: m.lowerBound, head: m.upperBound))
+    findBar.count.stringValue = "\(currentMatch + 1)/\(matches.count)"
+    if let r = core.rects(for: m).first {
+      scrollToVisible(CGRect(x: r.minX * zoom, y: r.minY * zoom, width: r.width * zoom, height: r.height * zoom))
+    }
+    needsDisplay = true
+  }
+
+  /// ↵ / ⇧↵ in the bar
+  func stepMatch(_ on: Bool) {
+    guard !matches.isEmpty else { return }
+    currentMatch = (currentMatch + (on ? 1 : -1) + matches.count) % matches.count
+    selectMatch()
+  }
+
+  /// ↵ in the replacement: the current match replaced and the next one selected; ⌘↵: all of them, one undo step
+  func replaceMatch(all: Bool) {
+    guard !matches.isEmpty else { return }
+    let with = findBar.replacement.stringValue
+    begin()
+    if all {
+      let n = matches.count
+      core.applyAll(
+        matches.map { MDEdit(range: $0, replacement: with, selection: MDSelection($0.lowerBound), undo: .command) },
+        select: MDSelection(matches[0].lowerBound))
+      note(.key("replace all", did: "\(n) replaced"))
+    } else {
+      let m = matches[max(0, currentMatch)]
+      core.apply(
+        MDEdit(
+          range: m, replacement: with, selection: MDSelection(m.lowerBound + (with as NSString).length), undo: .command)
+      )
+      note(.key("replace", did: "at \(m.lowerBound)"))
+    }
+    refind(go: !all)
+    changed()
   }
 
   // MARK: typed menus
@@ -1068,6 +1151,10 @@ public final class MarkdownEditorView: NSView {
         case 11: .insertMathBlock  // B
         default: nil
         }
+      if letter == 3, !flags.contains(.shift) {
+        openFind(replace: true)
+        return true
+      }
       guard let c, !flags.contains(.shift) else { return super.performKeyEquivalent(with: e) }
       begin()
       core.command(c)
@@ -1078,6 +1165,10 @@ public final class MarkdownEditorView: NSView {
     if !flags.contains(.shift), key == "]" || key == "[" {
       begin()
       if core.command(key == "]" ? .indent : .outdent) { changed() }
+      return true
+    }
+    if key == "f", !flags.contains(.shift) {
+      openFind(replace: flags.contains(.option))
       return true
     }
     if !flags.contains(.shift), key == "d" {
