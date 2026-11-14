@@ -38,6 +38,27 @@ extension Rig {
     #expect(s.accessibilityLabel() == "Group" && s.accessibilityRoleDescription() == "Section")
   }
 
+  /// An arrow's label is an element under the arrow's id, where the label is drawn, also while its card is dragged; an
+  /// arrow with no label has none
+  @Test func anArrowsLabelIsAnElementWhereItIsDrawn() async throws {
+    var b = sample()
+    b.arrows[0].label = "calls"
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    let (e, at) = try #require(r.element("a1"))
+    let li = try #require(r.canvas.index(of: .arrowLabel(ArrowID(rawValue: "a1"))))
+    let drawn = try #require(r.canvas.scene?.items[li].rect)
+    #expect(near(at, drawn), "\(at) for \(drawn)")
+    #expect(e.accessibilityRoleDescription() == "label" && e.accessibilityLabel() == "calls")
+    // m1 (its other end) dragged: the label moves with its arrow, and so does its element
+    r.drag(r.centre("m1"), CGPoint(x: r.centre("m1").x + 120, y: r.centre("m1").y)) {
+      let now = r.element("a1")?.1 ?? .null
+      #expect(abs(now.midX - at.midX) > 10, "mid-drag the element moved: \(now) from \(at)")
+    }
+    r.doc.edit("Label") { $0.arrows[0].label = nil }
+    #expect(r.element("a1") == nil, "no label, no element")
+  }
+
   @Test func aDraggedCardsElementIsWhereTheCardIsNow() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }

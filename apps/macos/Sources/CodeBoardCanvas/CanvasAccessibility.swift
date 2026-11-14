@@ -1,7 +1,7 @@
 import AppKit
 import CodeBoardModel
 
-// The cards and Sections as accessibility elements, for VoiceOver and the acceptance driver: the identifier is the id,
+// The cards, Sections and arrow labels as accessibility elements, for VoiceOver and the acceptance driver: the identifier is the id,
 // the frame where it is drawn now (its layer as on screen, so mid-drag and mid-animation too), read only when asked:
 // nothing is kept up to date while a gesture runs.
 
@@ -19,6 +19,7 @@ import CodeBoardModel
     switch item {
     case .card(let id): setAccessibilityIdentifier(id.rawValue)
     case .section(let id): setAccessibilityIdentifier(id.rawValue)
+    case .arrow(let id): setAccessibilityIdentifier(id.rawValue)
     default: break
     }
   }
@@ -26,7 +27,11 @@ import CodeBoardModel
   override func accessibilityFrame() -> NSRect { canvas?.screenFrame(of: item) ?? .zero }
   override func accessibilityLabel() -> String? { canvas?.spokenName(of: item) }
   override func accessibilityRoleDescription() -> String? {
-    if case .section = item { "Section" } else { "card" }
+    switch item {
+    case .section: "Section"
+    case .arrow: "label"
+    default: "card"
+    }
   }
 }
 
@@ -39,6 +44,12 @@ extension CanvasView {
     guard let s = scene else { return chromeElements() }
     var want: [Item] = s.frames.map { .section($0.id) }
     for it in s.items { if case .card(let id)? = it.owner { want.append(.card(id)) } }
+    // an arrow's label, when it has one: under the arrow's id
+    for it in s.items {
+      if case .arrowLabel(let id)? = it.owner, document?.board.arrow(id)?.label?.isEmpty == false {
+        want.append(.arrow(id))
+      }
+    }
     var kept: [Item: BoardElement] = [:]
     let out: [Any] = want.map { i in
       let e = axElements[i] ?? BoardElement(i, in: self)
@@ -69,6 +80,7 @@ extension CanvasView {
   private func drawnLayer(_ item: Item) -> CALayer? {
     switch item {
     case .card(let id): return index(of: .card(id)).map { items[$0].box }
+    case .arrow(let id): return index(of: .arrowLabel(id)).map { items[$0].box }
     case .section(let id):
       guard let i = scene?.frames.firstIndex(where: { $0.id == id }), let ls = sections.sublayers, i < ls.count
       else { return nil }
@@ -81,6 +93,7 @@ extension CanvasView {
     guard let b = document?.board else { return nil }
     switch item {
     case .section(let id): return b.section(id)?.title
+    case .arrow(let id): return b.arrow(id)?.label
     case .card(let id):
       guard let c = b.card(id) else { return nil }
       if case .own(let k) = c.content, let t = k.title { return t }

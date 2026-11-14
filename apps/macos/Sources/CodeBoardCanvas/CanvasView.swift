@@ -848,7 +848,10 @@ public final class CanvasView: NSView {
 
   public override func setFrameSize(_ newSize: NSSize) {
     let unsized = bounds.isEmpty
+    let same = frame.size == newSize
     super.setFrameSize(newSize)
+    // a layout pass that changes no size (the window runs one after each committed transaction) changes nothing
+    guard !same else { return }
     withoutAnimation { placeBackdrop() }
     placeShelf()
     guard let scene, newSize.width > 0, newSize.height > 0 else { return }
