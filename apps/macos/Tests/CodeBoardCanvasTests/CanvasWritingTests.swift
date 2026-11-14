@@ -679,7 +679,8 @@ extension CanvasWritingTests {
     defer { r.close() }
     r.doubleClick(CGPoint(x: 800, y: 330))
     r.press("hi a")
-    await r.editorReady()
+    // the moment the editor takes the keyboard, before what was typed meanwhile reaches it (a slow machine's case)
+    while r.window.firstResponder !== r.canvas.noteEditor.view { await Task.yield() }
     let id = try #require(r.canvas.editing?.id)
     r.press("b\u{1b}")
     await r.until("left") { !r.canvas.isEditing }

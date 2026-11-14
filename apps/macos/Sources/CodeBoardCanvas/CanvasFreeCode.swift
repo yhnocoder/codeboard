@@ -68,11 +68,13 @@ extension CanvasView {
           editor.view.shown = true
         }
         window?.makeFirstResponder(editor.view)
-        // what was typed meanwhile, in order; keys typed during it wait behind it
-        while let keys = editing?.keys, !keys.isEmpty, editing?.ending == false {
+        // what was typed meanwhile, in order, then what reached the editor while it mounted; keys typed during it
+        // wait behind it
+        repeat {
+          let keys = editing?.keys ?? []
           editing?.keys = []
           await editor.replay(keys)
-        }
+        } while editing?.keys.isEmpty == false && editing?.ending == false
         drawChrome()
       } catch {
         editing = nil

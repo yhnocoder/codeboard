@@ -143,11 +143,13 @@ extension CanvasView {
           editor.view.shown = true
         }
         window?.makeFirstResponder(editor.view)
-        // what was typed meanwhile, in order; keys typed during it wait behind it
-        while let keys = editing?.keys, !keys.isEmpty, editing?.ending == false {
+        // what was typed meanwhile, in order, then what reached the editor while it mounted; keys typed during it
+        // wait behind it
+        repeat {
+          let keys = editing?.keys ?? []
           editing?.keys = []
           await editor.replay(keys)
-        }
+        } while editing?.keys.isEmpty == false && editing?.ending == false
         drawChrome()
         if let session = editing?.session { keepDrafts(session) }
       } catch {
@@ -465,6 +467,8 @@ extension CanvasView {
       }
       CATransaction.flush()
       editor.clear()
+      // left before what it held was handed over
+      editor.view.held = nil
     }
     editingOriginal = nil
     editing = nil

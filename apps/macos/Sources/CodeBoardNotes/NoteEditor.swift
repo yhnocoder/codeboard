@@ -73,6 +73,9 @@ public final class NoteEditor: NSObject {
     refList: RefCandidates? = nil, k: Double, margin: Double, caret: CGPoint?, open: Bool = false,
     placeholder: String, hideHead: Bool = false
   ) async throws -> CGSize {
+    // the page focuses what it mounts, which gives the view the keyboard before it is shown: keys typed from then on
+    // wait for `replay`, behind those typed before
+    view.held = []
     await ready()
     view.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
     view.cardRect = .zero
@@ -104,6 +107,7 @@ public final class NoteEditor: NSObject {
     _ lines: [String], language: String, start: Int, wrap: Bool, width: Double, top: Double, look: String, dark: Bool,
     k: Double, margin: Double, caret: CGPoint?
   ) async throws -> CGSize {
+    view.held = []
     await ready()
     view.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
     view.cardRect = .zero
@@ -129,10 +133,13 @@ public final class NoteEditor: NSObject {
   /// key through the input method first, so a key that skips that, Esc or ⌘↵, would overtake it); keys typed meanwhile
   /// wait behind them
   public func replay(_ keys: [NSEvent]) async {
-    guard !keys.isEmpty else { return }
-    var seen = (try? await view.callAsyncJavaScript("return edit.keysSeen()", contentWorld: .page) as? Int) ?? 0
-    var queue = keys
+    var queue = keys + (view.held ?? [])
     view.held = []
+    guard !queue.isEmpty else {
+      view.held = nil
+      return
+    }
+    var seen = (try? await view.callAsyncJavaScript("return edit.keysSeen()", contentWorld: .page) as? Int) ?? 0
     while !queue.isEmpty {
       view.deliver(queue.removeFirst())
       seen += 1
