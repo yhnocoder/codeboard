@@ -874,9 +874,12 @@ extension CanvasView {
     guard let doc = document, scene != nil, gesture == nil else { return }
     let v = convert(e.locationInWindow, from: nil)
     let p = camera.board(v)
-    // the chip's buttons; a press anywhere else closes it
+    // the chip's buttons; a press anywhere else closes it. A button acts on the release over it (main's .tbtn)
     if let on = chipButton(at: p) {
-      if let b = on, e.clickCount == 1 { pasteAs(b == .reference) }
+      if let b = on {
+        chipPressed = b
+        drawChrome()
+      }
       return
     }
     closeChip()
@@ -1007,6 +1010,7 @@ extension CanvasView {
 
   public override func mouseDragged(with e: NSEvent) {
     if spacePanDragged(e) { return }
+    if chipPressed != nil { return hoverChip(at: camera.board(convert(e.locationInWindow, from: nil))) }
     if let d = markDrag {
       let v = convert(e.locationInWindow, from: nil)
       guard d.moved || hypot(v.x - d.from.x, v.y - d.from.y) >= dragSlop else { return }
@@ -1112,6 +1116,13 @@ extension CanvasView {
 
   public override func mouseUp(with e: NSEvent) {
     if spacePanUp(e) { return }
+    if let b = chipPressed {
+      chipPressed = nil
+      if chipButton(at: camera.board(convert(e.locationInWindow, from: nil))) == .some(b) {
+        pasteAs(b == .reference)
+      }
+      return drawChrome()
+    }
     if releaseSummary(at: convert(e.locationInWindow, from: nil)) { return }
     if let d = markDrag {
       markDrag = nil

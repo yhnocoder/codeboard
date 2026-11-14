@@ -328,6 +328,8 @@ public final class CanvasView: NSView {
   var pasteChip: PasteChip?
   var chipTimer: Task<Void, Never>?
   var chipHovered: ChipButton?
+  /// The chip's button pressed, until the release (it acts if let go over it)
+  var chipPressed: ChipButton?
   var chipInside = false
   var choosingChip = false
   /// How long the chip stays once the pointer is not over it (timing.ts PASTE_CHIP_IDLE)
