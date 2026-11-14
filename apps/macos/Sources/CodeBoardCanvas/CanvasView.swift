@@ -534,19 +534,19 @@ public final class CanvasView: NSView {
       let fades = job.note && face.picture(overview: job.slot == .overview)
       switch job.slot {
       case .held:
+        if fades { CanvasView.fadeIn(held, over: held.contents) }
         held.contents = s
         heldSurface = s
         heldScale = job.scale
-        if fades { CanvasView.fadeIn(held) }
       case .rest:
+        if fades { CanvasView.fadeIn(rest, over: rest.contents) }
         rest.contents = s
         restScale = job.scale
-        if fades { CanvasView.fadeIn(rest) }
       case .overview:
         overview = s
         if heldSurface == nil {
+          if fades { CanvasView.fadeIn(held, over: held.contents) }
           held.contents = s
-          if fades { CanvasView.fadeIn(held) }
         }
       }
       coverHeld()
@@ -1054,12 +1054,29 @@ public final class CanvasView: NSView {
     wake()
   }
 
-  /// The first picture of a Note fades in over its paper
-  static func fadeIn(_ l: CALayer) {
-    let t = CATransition()
-    t.type = .fade
-    t.duration = 0.15
-    l.add(t, forKey: "picture")
+  /// Fades the picture about to be set on `l` in over what it shows now (`old`), which stays under it until the fade is
+  /// done: a crossfade would fade the old one out meanwhile, and halfway through the board would show through the card
+  static func fadeIn(_ l: CALayer, over old: Any?) {
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    var under: CALayer?
+    if let old, let parent = l.superlayer {
+      let u = CALayer()
+      u.frame = l.frame
+      u.contents = old
+      u.contentsGravity = l.contentsGravity
+      u.magnificationFilter = l.magnificationFilter
+      u.minificationFilter = l.minificationFilter
+      parent.insertSublayer(u, below: l)
+      under = u
+    }
+    CATransaction.setCompletionBlock { under?.removeFromSuperlayer() }
+    let a = CABasicAnimation(keyPath: "opacity")
+    a.fromValue = 0
+    a.toValue = 1
+    a.duration = 0.15
+    l.add(a, forKey: "picture")
+    CATransaction.commit()
   }
 
   /// The bitmap at a scale of an item the Note renderer draws (a Note, an SVG picture): its picture over its paper. No
