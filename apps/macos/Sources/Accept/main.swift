@@ -760,6 +760,24 @@ swizzle(
       return String(
         format: "%.1f %.1f %.1f %.1f", cam.origin.x + r.minX / cam.zoom, cam.origin.y + r.minY / cam.zoom,
         r.width / cam.zoom, r.height / cam.zoom)
+    // ui name: a part of the board's chrome (the toolbar, the dock and their parts) where the app's accessibility
+    // element with identifier "ui-<name>" is, in points from the canvas's top left: x y width height ("none": not there)
+    case "ui":
+      guard let c = canvas, let w = win, let root = w.contentView else { return "none" }
+      let want = "ui-\(a[1])"
+      func find(_ e: Any) -> NSAccessibilityProtocol? {
+        guard let el = e as? NSAccessibilityProtocol else { return nil }
+        if el.accessibilityIdentifier() == want { return el }
+        for k in el.accessibilityChildren() ?? [] { if let f = find(k) { return f } }
+        return nil
+      }
+      func walk(_ v: NSView) -> NSAccessibilityProtocol? {
+        if v.isHidden { return nil }
+        return find(v) ?? v.subviews.lazy.compactMap(walk).first
+      }
+      guard let el = walk(root) else { return "none" }
+      let r = c.convert(w.convertFromScreen(el.accessibilityFrame()), from: nil)  // the canvas is y-down
+      return String(format: "%.1f %.1f %.1f %.1f", r.minX, r.minY, r.width, r.height)
     case "origin":  // the content view's top-left in the window's picture (points): shots are of the whole window
       guard let w = win, let cv = w.contentView else { return "0 0" }
       return String(format: "%.1f %.1f", cv.frame.minX, w.frame.height - cv.frame.maxY)

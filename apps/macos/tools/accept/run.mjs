@@ -260,7 +260,8 @@ async function centerOn(d, target) {
 
 // ---- expectations: `expect <subject> <op> <value>`, checked on each side as the scenario runs
 //   subjects: <id>.x|y|w|h|right|bottom|section (board units; a card or Section), cam.x|y|zoom, pointer.x|y (board
-//   units), press (what the last
+//   units), ui.<part>.x|y|w|h|right|bottom (the toolbar, the dock and their parts, in points from the board's top
+//   left), press (what the last
 //   press landed on), answer (ms from the last input's end to the first change on screen; needs a running `rec`)
 //   ops: = != < <= > >= ~ (within 2) has lacks; values: a number, a word, another subject (`<id>.bottom`), was, was+N,
 //   was-N (the subject at `mark`)
@@ -303,6 +304,14 @@ async function subject(d, subj) {
       [x, y] = [(x - ox) / z, (y - oy) / z];
     }
     return { x, y }[field];
+  }
+  // ui.<part>.x|y|w|h|right|bottom: the chrome, in points from the board's top left (window units, not board units)
+  if (id === "ui") {
+    const [, part, f] = subj.split(".");
+    const r = await d.send(`ui ${part}`);
+    if (r === "none" || r === undefined) return "missing";
+    const [x, y, w, h] = r.split(" ").map(Number);
+    return { x, y, w, h, right: x + w, bottom: y + h }[f];
   }
   if (id === "cam") {
     const [x, y, zoom] = await cam(d);
@@ -535,7 +544,7 @@ for (const file of scenarios) {
               if (arg === "answer") return answers.push({ d, n, cmd, op, want, upto: d.lines().length });
               const got = await subject(d, arg);
               const base = /^was([+-][\d.]+)?$/.exec(want);
-              const isSubj = /^[\w-]+\.(x|y|w|h|right|bottom|zoom)$/.test(want);
+              const isSubj = /^(ui\.)?[\w-]+\.(x|y|w|h|right|bottom|zoom)$/.test(want);
               const before = base ? ` (was ${shown(was[d.side][arg])})` : "";
               const other = isSubj ? await subject(d, want) : undefined;
               const v = base ? String(Number(was[d.side][arg]) + Number(base[1] ?? 0)) : isSubj ? other : want;

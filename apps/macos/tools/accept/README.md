@@ -61,7 +61,7 @@ node apps/macos/tools/accept/run.mjs --stop                  # 关掉留着的�
 
 `expect <对象> <比较> <值>`，每一边按自己当时的状态判：
 
-- 对象：`<id>.x|y|w|h|right|bottom`（卡或 Section 的位置大小，白板单位）、`<id>.section`（所在的 Section，没有是 `none`）、`cam.x|y|zoom`、`pointer.x|y`（指针在白板上的位置）、`press`（最后一次按下落在的视图链或元素链）、`answer`（上一个点击、按键、拖动、滚动结束后多少毫秒画面开始变，要在 `rec` 中）。
+- 对象：`<id>.x|y|w|h|right|bottom`（卡或 Section 的位置大小，白板单位）、`ui.<部件>.x|y|w|h|right|bottom`（工具栏和右下角那组的部件，从白板左上角起的屏幕点：`bar`、`more`、`barink`（Ink Wash 那一笔的实心部分；别的主题是整条）、`barblur`（底下模糊的范围，没有时宽 0）、`brush`、`dock`、`dockink`、`dockblur`、`shelf`、`zoomout`、`zoom`、`zoomin`、`fit`、`questions`；Mac 由 app 的辅助功能元素 `ui-<部件>` 给出）、`<id>.section`（所在的 Section，没有是 `none`）、`cam.x|y|zoom`、`pointer.x|y`（指针在白板上的位置）、`press`（最后一次按下落在的视图链或元素链）、`answer`（上一个点击、按键、拖动、滚动结束后多少毫秒画面开始变，要在 `rec` 中）。
 - 比较：`=` `!=` `<` `<=` `>` `>=` `~`（差不超过 2）`has` `lacks`（文字包含）。
 - 值：数字、文字、另一个对象（`expect sboxes.bottom >= cyellow.bottom`）、`was`、`was+N`、`was-N`（`mark` 时这个对象的值）。
 

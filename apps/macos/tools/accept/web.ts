@@ -165,6 +165,55 @@ async function run(line: string): Promise<string> {
       const r = els.map((e) => e.getBoundingClientRect()).sort((a, b) => b.width * b.height - a.width * a.height)[0];
       return r ? `${r.left.toFixed(1)} ${r.top.toFixed(1)} ${r.width.toFixed(1)} ${r.height.toFixed(1)}` : "none";
     }, a[1]);
+    case "ui": return await page.evaluate((name) => {
+      // a part of the chrome (Chrome.tsx), in px from the board's top left: x y width height
+      const board = document.querySelector(".world")?.parentElement?.getBoundingClientRect();
+      const pill = (g: string) => document.querySelector<HTMLElement>(`.${g} > .pill`);
+      const at = (r: { left: number; top: number; width: number; height: number } | undefined) =>
+        r && board ? `${(r.left - board.left).toFixed(1)} ${(r.top - board.top).toFixed(1)} ${r.width.toFixed(1)} ${r.height.toFixed(1)}` : "none";
+      const box = (sel: string) => document.querySelector(sel)?.getBoundingClientRect();
+      const group = (n: string) => (n.startsWith("bar") ? "bbar" : "dock");
+      switch (name) {
+        case "bar": case "dock": return at(pill(group(name))?.getBoundingClientRect());
+        // the stroke's solid body (state/ink.ts barSvg: 14 to 372 of 400, stretched over the pill) under Ink Wash's
+        // --ink-bar; the pill itself where the pill is its own background
+        case "barink": case "dockink": {
+          const p = pill(group(name));
+          if (!p) return "none";
+          const r = p.getBoundingClientRect();
+          const ink = getComputedStyle(p, "::before").backgroundImage.includes("svg");
+          return at(ink ? { left: r.left + (r.width * 14) / 400, top: r.top, width: (r.width * 358) / 400, height: r.height } : r);
+        }
+        // where the board under it is blurred: the pill (its ::before in Ink Wash), or no width
+        case "barblur": case "dockblur": {
+          const p = pill(group(name));
+          if (!p) return "none";
+          const r = p.getBoundingClientRect();
+          const f = (st: CSSStyleDeclaration) => st.backdropFilter && st.backdropFilter !== "none";
+          return f(getComputedStyle(p)) || f(getComputedStyle(p, "::before")) ? at(r) : at({ left: r.left, top: r.top, width: 0, height: 0 });
+        }
+        // the brush resting on the bar (.bbar .pill::after): its box turned by its rotate, about its middle
+        case "brush": {
+          const p = pill("bbar");
+          if (!p) return "none";
+          const st = getComputedStyle(p, "::after");
+          if (st.content === "none" || st.backgroundImage === "none") return "none";
+          const r = p.getBoundingClientRect(), w = parseFloat(st.width), h = parseFloat(st.height);
+          const cx = r.right - parseFloat(st.right) - w / 2, cy = r.top + parseFloat(st.top) + h / 2;
+          const a = (parseFloat(st.rotate) || 0) * (Math.PI / 180);
+          const bw = Math.abs(w * Math.cos(a)) + Math.abs(h * Math.sin(a)), bh = Math.abs(w * Math.sin(a)) + Math.abs(h * Math.cos(a));
+          return at({ left: cx - bw / 2, top: cy - bh / 2, width: bw, height: bh });
+        }
+        case "more": return at(box('.bbar [aria-label="More"]'));
+        case "shelf": return at(box(".dock .shelf-btn"));
+        case "zoomout": return at(box('.dock [aria-label="Zoom Out"]'));
+        case "zoom": return at(box(".dock .zoom"));
+        case "zoomin": return at(box('.dock [aria-label="Zoom In"]'));
+        case "fit": return at(box('.dock [aria-label="Fit to Window"]'));
+        case "questions": return at(box(".dock .qlist-btn"));
+      }
+      return "none";
+    }, a[1]);
     case "hit": return await hitAt(pos.x, pos.y);
     case "pointer": return `${pos.x.toFixed(1)} ${pos.y.toFixed(1)}`;
     case "origin": return "0 0";
