@@ -679,9 +679,12 @@ extension CanvasView {
     guard let r = liveRect(item) else { return nil }
     let z = camera.zoom
     if case .card(let id) = item, isText(id) {
+      let card = CGRect(origin: camera.view(r.origin), size: CGSize(width: r.width * z, height: r.height * z))
       for (e, h) in textHandles(id) {
         let q = CGRect(origin: camera.view(h.origin), size: CGSize(width: h.width * z, height: h.height * z))
-        if q.insetBy(dx: -handleReach / 2, dy: -handleReach / 2).contains(v) { return e }
+        // the side grips lie wholly outside the card (.hw at -8): a press on the card itself, its edge too, drags it
+        let side = e == .left || e == .right
+        if q.insetBy(dx: -handleReach / 2, dy: -handleReach / 2).contains(v), !(side && card.contains(v)) { return e }
       }
       return nil
     }

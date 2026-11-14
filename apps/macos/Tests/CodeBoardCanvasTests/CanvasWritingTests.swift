@@ -656,4 +656,27 @@ extension CanvasWritingTests {
     #expect(r.doc.board.card(id)?.writing == "x")
     #expect(r.doc.history.undoSteps.map(\.name) == ["New Text"])
   }
+
+  /// A new Text left with Esc and pressed on its own left edge (where its double-click put it, under the pointer): the
+  /// card is dragged, as on the board, whose width grips lie wholly outside the card
+  @Test func aNewTextPressedOnItsEdgeIsDragged() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    r.doubleClick(CGPoint(x: 800, y: 330))
+    await r.editorReady()
+    let id = try #require(c.editing?.id)
+    await r.type("第一条想法")
+    _ = try await c.noteEditor.view.callAsyncJavaScript(
+      "document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))",
+      contentWorld: .page)
+    await r.until("left") { !c.isEditing }
+    #expect(r.doc.selection == [.card(id)])
+    let before = r.rect(id.rawValue)
+    r.drag(CGPoint(x: before.minX, y: before.midY), CGPoint(x: before.minX - 200, y: before.midY - 100))
+    await r.settle()
+    let after = r.rect(id.rawValue)
+    #expect(after.minX == before.minX - 200 && after.minY == before.minY - 100 && after.width == before.width)
+    #expect(r.doc.history.undoSteps.map(\.name) == ["New Text", "Move"])
+  }
 }
