@@ -4,13 +4,13 @@ center @cfree
 mark
 rec edit
 dbl @cfree+120,72
-expect press has CanvasView
-expect answer < 500
+mac: expect press has CanvasView
+mac: expect answer < 500
 type x = 1
 key return
 type y = 2
 wait 300
-expect answer < 500
+mac: expect answer < 500
 shot typed
 key esc
 wait 200

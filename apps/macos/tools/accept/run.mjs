@@ -122,10 +122,11 @@ class Driver {
     if (this.side !== "mac") return;
     await this.send("warp 700 500");
     for (let i = 0; ; i++) {
-      if (i % 10 === 0) await this.send("click 90 91");
+      // (a click now and then has done nothing: then Return on the selected row, then a double-click)
+      if (i % 10 === 0) await this.send(["click 90 91", "key return", "dbl 90 91"][(i / 10) % 3]);
       await this.send("wait 300");
       if ((await this.send("cam")) !== "no canvas") break;
-      if (i === 50) throw new Error("mac: the board did not open (log.txt)");
+      if (i === 90) throw new Error(`mac: the board did not open (${this.dir}/log.txt)`);
     }
     for (const c of ["wait 500", "focus", "move 700 650 200"]) await this.send(c);
   }
@@ -232,12 +233,22 @@ async function idOf(d, id) {
   if (!made.length) throw new Error(`${d.side}: no new card`);
   return made[made.length - 1];
 }
-async function point(d, tok) {
+async function point(d, tok, onBoard = false) {
   // @row:<title>: the Mac app's sidebar row of that board
   if (tok.startsWith("@row:")) {
     const r = await d.send(`row ${tok.slice(5)}`);
     if (r === "none") throw new Error(`${d.side}: no sidebar row ${tok.slice(5)}`);
     return r;
+  }
+  // @ui.<part>[:anchor][+dx,dy]: a part of the chrome (the ui subjects), its centre by default, offsets in points
+  const u = /^@ui\.(\w+)(?::(tl|tr|bl|br|c|t|b|l|r))?(?:\+(-?[\d.]+),(-?[\d.]+))?$/.exec(tok);
+  if (u) {
+    const r = await d.send(`ui ${u[1]}`);
+    if (!/^-?[\d.]+ /.test(r)) throw new Error(`${d.side}: no ${u[1]} in the chrome (${r})`);
+    const [x, y, w, h] = r.split(" ").map(Number);
+    const [cx, cy] = (await d.send("canvas")).split(" ").map(Number);
+    const fx = { tl: 0, l: 0, bl: 0, tr: 1, r: 1, br: 1 }[u[2]] ?? 0.5, fy = { tl: 0, t: 0, tr: 0, bl: 1, b: 1, br: 1 }[u[2]] ?? 0.5;
+    return `${(cx + x + w * fx + Number(u[3] ?? 0)).toFixed(1)} ${(cy + y + h * fy + Number(u[4] ?? 0)).toFixed(1)}`;
   }
   const m = /^@([\w-]+)(?::(tl|tr|bl|br|c|t|b|l|r))?(?:\+(-?[\d.]+),(-?[\d.]+))?$/.exec(tok);
   if (!m) throw new Error(`not a target: ${tok}`);
@@ -264,11 +275,18 @@ async function point(d, tok) {
   if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error(`${d.side}: ${tok} gives no point (${id}: ${JSON.stringify(g)})`);
   const w = await d.send(`where ${x} ${y}`);
   if (!/^-?[\d.]+ -?[\d.]+$/.test(w)) throw new Error(`${d.side}: ${tok} is not on the window (${w})`);
+  // a target off the board (on the Mac app's sidebar, outside the window) would press something else
+  if (!onBoard) return w;
+  const [px, py] = w.split(" ").map(Number);
+  const [cx, cy, cw, ch] = (await d.send("canvas")).split(" ").map(Number);
+  if (!(px >= cx && py >= cy && px <= cx + cw && py <= cy + ch))
+    throw new Error(`${d.side}: ${tok} is at ${px},${py} in the window, off the board (${cx},${cy} ${cw}×${ch}): center on it first`);
   return w;
 }
 async function resolve(d, line) {
   const out = [];
-  for (const tok of line.split(" ")) out.push(tok.startsWith("@") ? await point(d, tok) : tok);
+  // (a target a command presses or moves to must be on the board; plain x y can be anywhere in the window)
+  for (const tok of line.split(" ")) out.push(tok.startsWith("@") ? await point(d, tok, true) : tok);
   return out.join(" ");
 }
 async function cam(d) {
@@ -314,7 +332,7 @@ async function centerOn(d, target) {
 //   subjects: <id>.x|y|w|h|right|bottom|section (board units; a card or Section), cam.x|y|zoom, pointer.x|y (board
 //   units), ui.<part>.x|y|w|h|right|bottom (the toolbar, the dock and their parts, in points from the board's top
 //   left), press (what the last
-//   press landed on), answer (ms from the last input reaching the app to the first change on screen, the drawn
+//   press landed on), focus (where keys go now), hover (the card whose ports show), answer (ms from the last input reaching the app to the first change on screen, the drawn
 //   pointer left out; needs a running `rec`)
 //   ops: = != < <= > >= ~ (within 2) has lacks; values: a number, a word, another subject (`<id>.bottom`), was, was+N,
 //   was-N (the subject at `mark`)
@@ -322,6 +340,9 @@ async function centerOn(d, target) {
 // they are read from its saved board file, so while a button is held they are not checkable there.
 /** A card's or Section's place in board units as this side has it now: x y w h right bottom (and section on the Mac);
  *  undefined while a button is held on the Mac without accessibility elements, "missing" when there is no such item */
+const linkIds = () => new Set((storageBoard().links ?? []).map((l) => l.id));
+const storageBoard = () =>
+  JSON.parse(fs.readFileSync(path.join(storage, fs.readdirSync(storage).find((f) => f.endsWith(".json"))), "utf8"));
 async function geom(d, id, needSection = false, aim = false) {
   let g;
   const live = d.side === "mac" && !needSection ? await d.send(`ax ${id}`) : "none";
@@ -332,6 +353,13 @@ async function geom(d, id, needSection = false, aim = false) {
     // aiming (a target to move to) takes the file as it is, even mid-drag; checking waits for the app to save
     if (d.held && !aim) return undefined;
     const c = (aim ? await macBoard(d) : await macSaved(d))[id];
+    if (!c && linkIds().has(id)) {
+      // an arrow's label: the app does not say where it draws it; the web board's is at the same board point
+      const web = running.find((x) => x.side === "web");
+      const wg = web ? await geom(web, id) : undefined;
+      if (typeof wg !== "object") throw new Error(`mac: where the label of ${id} is is not known here (run both sides)`);
+      return wg;
+    }
     if (!c) return "missing";
     g = { x: c.x, y: c.y, w: c.width, h: c.height ?? undefined, section: c.section ?? c.parent ?? "none" };
   } else {
@@ -348,6 +376,17 @@ async function geom(d, id, needSection = false, aim = false) {
 }
 async function subject(d, subj) {
   const [id, field] = subj.split(".");
+  // focus: what keys go to now (the Mac's first responder, e.g. OnBoardField's NSTextView; the page's focused element)
+  if (subj === "focus") {
+    const r = await d.send("focused");
+    return r || "none";
+  }
+  // hover: the card whose ports show (the Mac app's hovered card, from its CanvasTrace; the web board's ports)
+  if (subj === "hover") {
+    if (d.side === "web") return d.send("hovered");
+    const r = await d.send("trace");
+    return r.startsWith("{") ? (JSON.parse(r).hovered ?? "none") : r;
+  }
   if (subj === "press") return d.lines().filter((l) => / press /.test(` ${l}`)).pop()?.replace(/^\S+ /, "") ?? "none";
   if (id === "pointer") {
     let [x, y] = (await d.send("pointer")).split(" ").map(Number);
@@ -442,7 +481,7 @@ function framesOf(d) {
   return frames.sort((a, b) => a.t - b.t);
 }
 const small = new Map();
-const SW = 160, SH = 104;
+const SW = 160, SH = 104; // (coarse on purpose: a blinking caret is not a change)
 const pixels = async (f) => {
   if (!small.has(f)) {
     const img = sharp(f);
@@ -614,7 +653,7 @@ for (const file of scenarios) {
             if (verb === "center") return centerOn(d, arg);
             if (verb === "locate") {
               // where things are now, once, instead of trying targets: id, board rect, window rect
-              const board = JSON.parse(fs.readFileSync(path.join(storage, fs.readdirSync(storage).find((f) => f.endsWith(".json"))), "utf8"));
+              const board = storageBoard();
               const ids = cmd.split(" ").slice(1).length ? cmd.split(" ").slice(1) : [...(board.sections ?? []), ...(board.cards ?? [])].map((c) => c.id);
               const rows = [];
               for (const id of ids) {

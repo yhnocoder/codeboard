@@ -1,6 +1,6 @@
 # 指针慢慢经过每种卡的卡头和 Section 标题：悬停时出现什么（按钮、光标、提示）
 zoom 1
-center @cfree+150,40
+center @cfree+110,40
 rec hover
 move @ccode+230,12 600
 wait 700

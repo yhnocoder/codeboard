@@ -9,6 +9,7 @@
 // (insertText / setMarkedText on the first responder; `ime` from inside the keys' handling, as an input method does),
 // never through the system's input method.
 import AppKit
+import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardShell
 import ObjectiveC
@@ -28,6 +29,9 @@ let winSize = NSSize(width: Double(env["ACCEPT_W"] ?? "1200") ?? 1200, height: D
 
 /// Recordings and shots at this many pixels per point (2: the detail of a Retina screen)
 let shotScale = CGFloat(Double(env["ACCEPT_SCALE"] ?? "1") ?? 1)
+/// Now, as an event's timestamp: a CGEvent made here carries none (0), and the app reads speeds and pauses from event
+/// times (a scroll's glide: fingers that stopped before lifting do not glide)
+func now() -> CGEventTimestamp { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
 nonisolated(unsafe) var vPointer = NSPoint(x: 0, y: 0)  // screen coordinates, as NSEvent.mouseLocation
 nonisolated(unsafe) var vButtons = 0
 nonisolated(unsafe) var vFlags: NSEvent.ModifierFlags = []
@@ -208,7 +212,7 @@ where env["ACCEPT_TRACE_SCROLL"] != nil {
   let orig = unsafeBitCast(method_getImplementation(m), to: Imp.self)
   let block: @convention(block) (AnyObject, NSEvent) -> Void = { obj, e in
     log(
-      "scroll -> \(name) (\(Swift.type(of: obj))) phase \(e.phase.rawValue) momentum \(e.momentumPhase.rawValue) dx \(e.scrollingDeltaX)"
+      "scroll -> \(name) (\(Swift.type(of: obj))) phase \(e.phase.rawValue) momentum \(e.momentumPhase.rawValue) dx \(e.scrollingDeltaX) t \(e.timestamp)"
     )
     orig(obj, #selector(NSView.scrollWheel(with:)), e)
   }
@@ -233,6 +237,34 @@ if let m = class_getInstanceMethod(NSTextInputContext.self, #selector(NSTextInpu
   let orig = unsafeBitCast(method_getImplementation(m), to: Imp.self)
   let block: @convention(block) (AnyObject, NSEvent) -> Bool = { ctx, e in
     imeTakes(ctx, e) || orig(ctx, #selector(NSTextInputContext.handleEvent(_:)), e)
+  }
+  method_setImplementation(m, imp_implementationWithBlock(block))
+}
+// ACCEPT_TRACE_RESPONDER: every change of first responder, what asked for it and whether it took
+if env["ACCEPT_TRACE_RESPONDER"] != nil,
+  let m = class_getInstanceMethod(NSWindow.self, #selector(NSWindow.makeFirstResponder(_:)))
+{
+  typealias Imp = @convention(c) (AnyObject, Selector, NSResponder?) -> Bool
+  let orig = unsafeBitCast(method_getImplementation(m), to: Imp.self)
+  let block: @convention(block) (AnyObject, NSResponder?) -> Bool = { w, r in
+    let ok = orig(w, #selector(NSWindow.makeFirstResponder(_:)), r)
+    let by = Thread.callStackSymbols.dropFirst(2).prefix(8).map { $0.split(separator: " ", maxSplits: 3).last ?? "" }
+    log(
+      "first responder -> \(r.map { String(describing: type(of: $0)) } ?? "nil") \(ok ? "taken" : "refused"), now \(String(describing: (w as? NSWindow)?.firstResponder.map { type(of: $0) })) by \(by.joined(separator: " < "))"
+    )
+    return ok
+  }
+  method_setImplementation(m, imp_implementationWithBlock(block))
+}
+// With the display asleep or the session locked the display link stops, and with it all the app moves by frames (a
+// glide, a fly, the cross-fade to the summaries): the driver then steps the canvas's link itself (Driver.frames), and the
+// link tells the time it is now
+nonisolated(unsafe) var steppingLink = false
+if let m = class_getInstanceMethod(CADisplayLink.self, #selector(getter: CADisplayLink.timestamp)) {
+  typealias Imp = @convention(c) (AnyObject, Selector) -> CFTimeInterval
+  let orig = unsafeBitCast(method_getImplementation(m), to: Imp.self)
+  let block: @convention(block) (AnyObject) -> CFTimeInterval = { l in
+    steppingLink ? CACurrentMediaTime() : orig(l, #selector(getter: CADisplayLink.timestamp))
   }
   method_setImplementation(m, imp_implementationWithBlock(block))
 }
@@ -508,13 +540,20 @@ func strings(_ x: Any) -> [String] {
   /// A two-finger swipe: began, changed…, ended, then the momentum the trackpad sends after the fingers lift
   func scroll(dx: Double, dy: Double, steps: Int, cmd: Bool, still: Bool = false) async {
     let glide = cmd || still ? 0 : 24
+    // `still` goes no faster than 2000 points a second, under the app's speed curve (Motion.shaped: 1:1 up to 2500), so
+    // it moves exactly dx, dy; a faster swipe is compressed as the app means it to be
+    let pace = still ? max(0.008, hypot(dx, dy) / Double(steps) / 2000) : 0.008
     var mx = dx / Double(steps)
     var my = dy / Double(steps)
     for i in 0...(steps + 1 + glide) {
       var phase: Int64 = i == 0 ? 1 : (i == steps + 1 ? 4 : 2)  // began, changed, ended
       var momentum: Int64 = 0
-      var ddx = (i == 0 || i == steps + 1) ? 0 : dx / Double(steps)
-      var ddy = (i == 0 || i == steps + 1) ? 0 : dy / Double(steps)
+      // whole points per step (AppKit reads the wheel's integer fields), the remainder carried: they add up to dx, dy
+      let part = { (v: Double) in
+        (v * Double(i) / Double(steps)).rounded() - (v * Double(i - 1) / Double(steps)).rounded()
+      }
+      var ddx = (i == 0 || i == steps + 1) ? 0 : part(dx)
+      var ddy = (i == 0 || i == steps + 1) ? 0 : part(dy)
       if i > steps + 1 {
         phase = 0
         momentum = i == steps + 2 ? 1 : (i == steps + 1 + glide ? 3 : 2)  // begin, continue, end
@@ -547,13 +586,14 @@ func strings(_ x: Any) -> [String] {
         cg.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(w.windowNumber))
       }
       cg.flags = CGEventFlags(rawValue: UInt64(cmd ? NSEvent.ModifierFlags.command.rawValue : vFlags.rawValue))
+      cg.timestamp = now()
       guard let e = NSEvent(cgEvent: cg) else { return }
       if e.window == nil, let w = window(at: vPointer) {
         w.sendEvent(e)  // routed by the window as AppKit does
       } else {
         NSApp.postEvent(e, atStart: false)
       }
-      try? await Task.sleep(for: .milliseconds(8))
+      try? await Task.sleep(for: .seconds(pace))
       // views moved under the still pointer: AppKit tells tracking areas it entered or left them
       refreshAreas()
       track(dragging: false, moved: false)
@@ -566,9 +606,13 @@ func strings(_ x: Any) -> [String] {
     for i in 0...(steps + 1) {
       let phase: Int64 = i == 0 ? 1 : (i == steps + 1 ? 4 : 2)
       guard let cg = CGEvent(source: nil) else { return }
+      cg.timestamp = now()
       cg.type = CGEventType(rawValue: 29)!  // NSEventTypeGesture
       let h = NSScreen.screens[0].frame.height
-      cg.location = CGPoint(x: vPointer.x, y: h - vPointer.y)
+      // as a scroll's: the event has no window, so its location is read as the window's own (the screen point here
+      // put the zoom's anchor a window origin away from the pointer, and the board under it drifted)
+      let wp = window(at: vPointer)?.convertPoint(fromScreen: vPointer) ?? vPointer
+      cg.location = CGPoint(x: wp.x, y: h - wp.y)
       cg.setIntegerValueField(CGEventField(rawValue: 110)!, value: 8)  // kIOHIDEventTypeZoom
       cg.setIntegerValueField(CGEventField(rawValue: 132)!, value: phase)
       cg.setDoubleValueField(CGEventField(rawValue: 113)!, value: (i == 0 || i == steps + 1) ? 0 : per)
@@ -634,6 +678,7 @@ func strings(_ x: Any) -> [String] {
     for down in [true, false] {
       // from a CGEvent, as the window server makes them (WebKit passes on only such key events)
       let cg = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)!
+      cg.timestamp = now()
       cg.flags = CGEventFlags(rawValue: UInt64(f.rawValue))
       let u = Array((f.contains(.command) ? chars : shown).utf16)
       cg.keyboardSetUnicodeString(stringLength: u.count, unicodeString: u)
@@ -860,6 +905,21 @@ func strings(_ x: Any) -> [String] {
       let vp = NSPoint(x: (d(1) - cam.origin.x) * cam.zoom, y: (d(2) - cam.origin.y) * cam.zoom)
       let p = cv.convert(c.convert(vp, to: nil), from: nil)
       return String(format: "%.1f %.1f", p.x, p.y)
+    case "trace":  // what the canvas shows now, as the app reports it (CanvasTrace): hovered card, editing, selection…
+      guard let c = canvas as? CanvasView, let d = try? JSONEncoder().encode(c.trace) else { return "no canvas" }
+      return String(decoding: d, as: UTF8.self)
+    case "focused":  // where keys go: the first responder and the views it is in
+      var chain: [String] = []
+      var r = (gKey ?? win)?.firstResponder
+      while let x = r, chain.count < 4 {
+        chain.append(String(describing: Swift.type(of: x)))
+        r = (x as? NSView)?.superview
+      }
+      return chain.joined(separator: " < ")
+    case "canvas":  // where the canvas is in the window: x y width height (targets outside it are refused)
+      guard let c = canvas, let w = win, let cv = w.contentView else { return "no canvas" }
+      let r = cv.convert(c.convert(c.bounds, to: nil), from: nil)
+      return String(format: "%.1f %.1f %.1f %.1f", r.minX, r.minY, r.width, r.height)
     // the camera (the board point at the canvas's top-left, the zoom), then the canvas's middle in the window
     case "cam":
       guard let c = canvas, let cam = camera(c) else { return "no canvas" }
@@ -1176,6 +1236,21 @@ nonisolated(unsafe) let createImage: CreateImage = {
 }
 
 let driver = Driver()
+// the canvas's frames while the display sleeps (see steppingLink), 60 a second
+var screenAsleep = screenOff()
+Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in MainActor.assumeIsolated { screenAsleep = screenOff() }
+}
+let frames = Timer(timeInterval: 1.0 / 60, repeats: true) { _ in
+  MainActor.assumeIsolated {
+    guard screenAsleep, let c = driver.canvas, let iv = class_getInstanceVariable(type(of: c), "link"),
+      let link = object_getIvar(c, iv) as? CADisplayLink, !link.isPaused
+    else { return }
+    steppingLink = true
+    c.perform(NSSelectorFromString("step:"), with: link)
+    steppingLink = false
+  }
+}
+RunLoop.main.add(frames, forMode: .common)
 // commands arrive one per line through a FIFO, from any number of writers in turn
 _ = Thread {
   while true {
