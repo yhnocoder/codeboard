@@ -26,6 +26,9 @@ public struct MDTextRun: Sendable, Equatable {
     case inline
     /// code or a block shown as written: every character is a place
     case plain
+    /// the place beside a block with no text next to it (a code block, a table, a formula block at the Note's start or
+    /// end, or two of them in a row: editor/gap.ts): one place, the block's edge
+    case gap
   }
   public var kind: Kind
   /// each UTF-16 unit's source offset, then the end
@@ -66,7 +69,38 @@ extension MarkdownEditing {
   public static func runs(of block: MDBlock, in document: MarkdownDocument) -> [MDTextRun] {
     var out: [MDTextRun] = []
     collect(block, document.source as NSString, &out)
+    // the gaps beside a top-level block that holds no text where nothing with text is next to it
+    if isSolid(block), let i = document.blocks.firstIndex(where: { $0.range == block.range && $0.kind == block.kind }) {
+      let before = i > 0 ? document.blocks[i - 1] : nil
+      let after = i + 1 < document.blocks.count ? document.blocks[i + 1] : nil
+      // between two such blocks one gap: the first one's after it
+      if before == nil {
+        out.insert(MDTextRun(kind: .gap, offsets: [block.range.lowerBound], string: "", inlines: []), at: 0)
+      }
+      if after.map(isSolid) ?? true {
+        out.append(MDTextRun(kind: .gap, offsets: [block.range.upperBound], string: "", inlines: []))
+      }
+    }
     return out
+  }
+
+  /// a block the caret cannot stand beside in text: code, a diagram, a table, a formula block, a rule
+  static func isSolid(_ b: MDBlock) -> Bool {
+    switch b.kind {
+    case .code, .mermaid, .table, .math, .rule: true
+    default: false
+    }
+  }
+
+  /// Whether a caret place is a gap beside a block (editor/gap.ts), and on which side: before it (true) or after it
+  public static func gap(at offset: Int, in document: MarkdownDocument) -> (block: Int, before: Bool)? {
+    guard let r = run(at: offset, in: document), r.kind == .gap, r.first == offset,
+      let i = document.blocks.firstIndex(where: { $0.range.lowerBound == offset || $0.range.upperBound == offset })
+    else { return nil }
+    let b = document.blocks[i]
+    if b.range.lowerBound == offset, isSolid(b) { return (i, true) }
+    if let j = document.blocks.lastIndex(where: { $0.range.upperBound == offset && isSolid($0) }) { return (j, false) }
+    return nil
   }
 
   private static func collect(_ b: MDBlock, _ ns: NSString, _ out: inout [MDTextRun]) {

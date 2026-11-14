@@ -98,6 +98,14 @@ extension MarkdownEditing {
     let ns = state.source as NSString
     switch key {
     case .text(let s):
+      // at a gap beside a block: a new paragraph there with what is typed
+      if sel.isEmpty, let g = gap(at: sel.head, in: document) {
+        let q = sel.head
+        let n = (s as NSString).length
+        return g.before
+          ? MDEdit(range: q..<q, replacement: s + "\n\n", selection: MDSelection(q + n))
+          : MDEdit(range: q..<q, replacement: "\n\n" + s, selection: MDSelection(q + 2 + n))
+      }
       return paired(s, state, document) ?? insert(s, replacing: sel.range)
     case .shiftEnter:
       // a line break inside the paragraph or cell, written as <br> (the source shows it); a heading is one line
@@ -192,6 +200,12 @@ extension MarkdownEditing {
 
   private static func enter(_ sel: MDSelection, _ ns: NSString, _ d: MarkdownDocument) -> MDEdit? {
     let q = sel.range.lowerBound
+    // at a gap: an empty paragraph there, the caret in it
+    if sel.isEmpty, let g = gap(at: q, in: d) {
+      return g.before
+        ? MDEdit(range: q..<q, replacement: "\n\n", selection: MDSelection(q))
+        : MDEdit(range: q..<q, replacement: "\n\n\n\n", selection: MDSelection(q + 2))
+    }
     let r = sel.range
     let c = context(at: q, in: d)
     let lineStart = ns.lineRange(for: NSRange(location: q, length: 0)).location

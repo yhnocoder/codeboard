@@ -133,3 +133,25 @@ import Testing
     #expect(v.core.codeBlock(at: 2) == nil)
   }
 }
+
+/// The gap beside a block with no text next to it (editor/gap.ts)
+@Suite struct GapTests {
+  @Test func theCaretStandsBesideACodeBlockAndTypingMakesAParagraph() {
+    _ = boardFonts
+    let src = "```\nx\n```"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let e = EditorCore(layout: l, caret: 4)
+    e.move(.character, forward: false, extend: false)
+    #expect(e.selection == MDSelection(0))
+    // drawn across the block, above it
+    let c = e.caretRect!
+    #expect(c.height == 0 && c.width == 300 && c.minY < l.blockFrames[0].minY)
+    e.insert("a")
+    #expect(e.source == "a\n\n```\nx\n```")
+    e.undo()
+    e.move(.document, forward: true, extend: false)
+    #expect(e.selection == MDSelection(9))
+    e.key(.enter)
+    #expect(e.source == "```\nx\n```\n\n\n\n")
+  }
+}

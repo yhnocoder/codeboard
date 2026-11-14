@@ -78,7 +78,10 @@ import Testing
   @Test func codeAndCellsAreRunsToo() {
     let src = "```py\nx = 1\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |"
     let d = MarkdownDocument(src)
-    let runs = d.blocks.flatMap { MarkdownEditing.runs(of: $0, in: d) }
+    let all = d.blocks.flatMap { MarkdownEditing.runs(of: $0, in: d) }
+    // a code block at the start, a table after it, at the end: gaps before, between (one) and after (editor/gap.ts)
+    #expect(all.filter { $0.kind == .gap }.map(\.first) == [0, 15, 46])
+    let runs = all.filter { $0.kind != .gap }
     let ns = src as NSString
     #expect(
       runs.map { ns.substring(with: NSRange(location: $0.first, length: $0.last - $0.first)) } == [

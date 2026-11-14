@@ -138,6 +138,12 @@ extension BlockLayout {
 
   /// Where the caret is drawn
   public func caretRect(_ c: MDCaret) -> CGRect? {
+    // a gap's caret: a line across the block's width, just outside its edge (editor/gap.ts)
+    if let g = MarkdownEditing.gap(at: c.offset, in: document), g.block < pieces.count {
+      let top = tops[g.block]
+      let y = g.before ? top - 3 : top + pieces[g.block].height + 3
+      return CGRect(x: 0, y: y, width: width, height: 0)
+    }
     guard let s = spot(c.offset) else { return nil }
     let j = s.text.displayIndex(c.offset - s.shift)
     let k = s.text.lineIndex(j, upstream: c.upstream)
@@ -147,6 +153,22 @@ extension BlockLayout {
   /// The caret place a point is nearest (a click): the nearest line of text in the nearest block that has text
   public func caret(at p: CGPoint) -> MDCaret {
     guard !pieces.isEmpty else { return MDCaret(0) }
+    // above or below a block in the space between blocks: its gap, when it has one there
+    let k = min(firstPieceIndex(atOrBelow: p.y), pieces.count - 1)
+    let b = document.blocks[k]
+    if p.y < tops[k] {
+      if k == 0, MarkdownEditing.gap(at: b.range.lowerBound, in: document)?.before == true {
+        return MDCaret(b.range.lowerBound)
+      }
+      if k > 0, let above = document.blocks[k - 1].range.upperBound as Int?,
+        MarkdownEditing.gap(at: above, in: document)?.before == false
+      {
+        return MDCaret(above)
+      }
+    }
+    if p.y > tops[k] + pieces[k].height, MarkdownEditing.gap(at: b.range.upperBound, in: document)?.before == false {
+      return MDCaret(b.range.upperBound)
+    }
     var i = min(firstPieceIndex(atOrBelow: p.y), pieces.count - 1)
     // a block without text (a rule, a formula block): the nearest one with text, looking down then up
     var probe = i

@@ -257,10 +257,14 @@ public final class MarkdownEditorView: NSView {
     }
     if isEditing, blinkOn, alwaysShowsCaret || window?.firstResponder === self, let c = core.caretRect, tableDrag == nil
     {
-      // two device pixels wide whatever the zoom, on the caret's line
+      // two device pixels wide whatever the zoom, on the caret's line; a gap's caret lies across the block
       let w = 2 / scale
       ctx.setFillColor(caretColor.cgColor)
-      ctx.fill(CGRect(x: c.minX - w / 2, y: c.minY, width: w, height: c.height))
+      if c.height == 0 {
+        ctx.fill(CGRect(x: c.minX, y: c.minY - w / 2, width: c.width, height: w))
+      } else {
+        ctx.fill(CGRect(x: c.minX - w / 2, y: c.minY, width: w, height: c.height))
+      }
     }
     ctx.restoreGState()
   }
