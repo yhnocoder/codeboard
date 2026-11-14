@@ -1,0 +1,21 @@
+# 在代码块里改一行、换行缩进，看代码块的工具条怎么出现、会不会挡字；再从代码块里出来到后面的段落
+zoom 1
+center @ncode
+dbl @ncode"After the code"
+wait 600
+click @ncode"(batch)">
+wait 300
+rec code
+shot band
+key return
+keys x = 1
+caret
+key down
+key down
+caret
+wait 400
+stop
+shot code
+key esc
+wait 500
+source @ncode

@@ -1,0 +1,15 @@
+# 按住 ⌘ 把一个列表项整块拖到最后：拖的过程中看得到要放到哪里，松开后顺序对、没丢字；再 ⌘Z 回去
+zoom 1
+center @nprose
+dbl @nprose"scheduler runs"
+wait 600
+rec move
+drag @nprose"预填充一次" @nprose"second"+0,20 900 cmd
+wait 600
+shot moved
+key cmd+z
+wait 500
+stop
+key esc
+wait 500
+source @nprose

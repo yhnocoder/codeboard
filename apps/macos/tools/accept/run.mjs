@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The acceptance runner (README.md): runs scenario files on the Mac app and on the web board VS Code shows, side by side,
 // with a hand's pointer, and writes recordings, screenshots and a report to apps/macos/.build-accept/<scenario>/.
-//   node apps/macos/tools/accept/run.mjs <scenario.txt>… [--only mac|web] [--storage <folder>] [--skip-build]
+//   node apps/macos/tools/accept/run.mjs <scenario.txt>… [--only mac|web] [--storage <folder>] [--web <checkout>] [--skip-build]
 import { execFileSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -17,11 +17,19 @@ const argv = process.argv.slice(2);
 const opt = (k) => (argv.includes(k) ? argv[argv.indexOf(k) + 1] : undefined);
 const only = opt("--only");
 const storage = path.resolve(opt("--storage") ?? path.join(mac, "tools/look/storage"));
-const scenarios = argv.filter((a, i) => !a.startsWith("--") && !["--only", "--storage"].includes(argv[i - 1]));
+const scenarios = argv.filter((a, i) => !a.startsWith("--") && !["--only", "--storage", "--web"].includes(argv[i - 1]));
+// --web <checkout>: the web side draws that checkout's board (a worktree of the latest main: the VS Code version to beat)
+const webRepo = path.resolve(opt("--web") ?? repo);
 const sides = only ? [only] : ["mac", "web"];
 const run = (cmd, a, cwd = repo) => execFileSync(cmd, a, { cwd, stdio: "inherit" });
+// the Command Line Tools have no SwiftUI macro plugin (the app's @State does not compile): use Xcode's toolchain when
+// xcode-select points there and Xcode is installed
+if (!process.env.DEVELOPER_DIR && fs.existsSync("/Applications/Xcode.app")) {
+  const dev = execFileSync("xcode-select", ["-p"]).toString().trim();
+  if (dev.startsWith("/Library/Developer/CommandLineTools")) process.env.DEVELOPER_DIR = "/Applications/Xcode.app/Contents/Developer";
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-if (!scenarios.length) throw new Error("usage: run.mjs <scenario.txt>… [--only mac|web] [--storage <folder>] [--skip-build]");
+if (!scenarios.length) throw new Error("usage: run.mjs <scenario.txt>… [--only mac|web] [--storage <folder>] [--web <checkout>] [--skip-build]");
 
 // ---- build: the driver app (its own name and bundle id, never the app in use) and the web side
 fs.mkdirSync(outRoot, { recursive: true });
@@ -30,8 +38,8 @@ const webBundle = path.join(outRoot, "web.mjs");
 // --skip-build skips the web builds (the board, the Note page); the driver is always built (swift build is incremental)
 const skip = argv.includes("--skip-build");
 if (!skip && sides.includes("web")) {
-  run("npm", ["run", "build", "-w", "@yhnocoder/markdown"]);
-  run("npm", ["run", "build", "-w", "@codeboard/board"]);
+  run("npm", ["run", "build", "-w", "@yhnocoder/markdown"], webRepo);
+  run("npm", ["run", "build", "-w", "@codeboard/board"], webRepo);
 }
 if (sides.includes("mac")) {
   if (!skip) run("node", ["apps/macos/web/build.mjs"]);
@@ -77,7 +85,7 @@ class Driver {
     fs.rmSync(this.dir, { recursive: true, force: true });
     fs.mkdirSync(this.dir, { recursive: true });
     execFileSync("mkfifo", [path.join(this.dir, "cmd")]);
-    const env = { ...process.env, ACCEPT_OUT: this.dir, ACCEPT_FIFO: path.join(this.dir, "cmd"), ACCEPT_REPO: repo };
+    const env = { ...process.env, ACCEPT_OUT: this.dir, ACCEPT_FIFO: path.join(this.dir, "cmd"), ACCEPT_REPO: repo, ACCEPT_WEB: webRepo };
     const outFd = fs.openSync(path.join(this.dir, "stdout.txt"), "w");
     if (this.side === "mac") {
       // a vault of its own, imported from the storage folder; the app's own defaults start empty
@@ -130,7 +138,7 @@ class Driver {
     const re = new RegExp(`^\\S+ done ${n} `);
     for (let t = 0; t < 120000; t += 20) {
       const l = this.lines().find((x) => re.test(x));
-      if (l) return l.includes(" -> ") ? l.slice(l.indexOf(" -> ") + 4) : "";
+      if (l) return l.includes(" -> ") ? l.slice(l.indexOf(" -> ") + 4).replace(/\\(\\|n)/g, (_, c) => (c === "n" ? "\n" : "\\")) : "";
       if (this.proc.exitCode !== null) throw new Error(`${this.side} driver exited: see ${this.dir}/stdout.txt`);
       await sleep(20);
     }
@@ -148,12 +156,41 @@ class Driver {
 // ---- targets: @id is a card or Section on the board as each side has it now, at the middle of its top strip;
 // @id+dx,dy is that many board units from its top-left corner. The web board says where its element is; the Mac app's
 // place comes from its vault's board file and its camera.
+function macBoardFile(d) {
+  const f = fs.readdirSync(d.vault, { recursive: true }).find((f) => String(f).endsWith("board.json"));
+  return path.join(d.vault, String(f));
+}
 function macBoard(d) {
-  const dir = fs.readdirSync(d.vault, { recursive: true }).find((f) => String(f).endsWith("board.json"));
-  const b = JSON.parse(fs.readFileSync(path.join(d.vault, String(dir)), "utf8"));
+  const b = JSON.parse(fs.readFileSync(macBoardFile(d), "utf8"));
   return Object.fromEntries([...(b.sections ?? []), ...(b.cards ?? [])].map((c) => [c.id, c]));
 }
+/** A card's or Section's box in the Mac window (content coordinates), from the vault and the camera; a card without a
+ *  stored height reaches to the window's bottom */
+async function macBox(d, c) {
+  const [x0, y0] = (await d.send(`where ${c.x} ${c.y}`)).split(" ").map(Number);
+  const [x1, y1] = (await d.send(`where ${c.x + c.width} ${c.y + (c.height ?? c.measuredHeight ?? 1e5)}`)).split(" ").map(Number);
+  return [x0, y0, x1, Math.min(y1, 5000)];
+}
+// @id"words" (the middle of those words in that card), @id"words"< (just before them), @id"words"> (just after): found
+// on screen as a person reads them (the web side in the rendered page, the Mac side by text recognition on the window),
+// so a scenario aims at text, whatever each side's layout. A trailing +dx,dy moves that many points from there (a grip
+// beside a table row, the line under a heading)
+const TOKEN = /@[\w-]+"[^"]*"[<>]?(?:\+-?[\d.]+,-?[\d.]+)?|\S+/g;
 async function point(d, tok) {
+  const t = /^@([\w-]+)"([^"]*)"([<>]?)(?:\+(-?[\d.]+),(-?[\d.]+))?$/.exec(tok);
+  if (t) {
+    const mode = t[3] === "<" ? "before" : t[3] === ">" ? "after" : "mid";
+    let r;
+    if (d.side === "web") r = await d.send(`find ${t[1]} ${mode} ${t[2]}`);
+    else {
+      const c = macBoard(d)[t[1]];
+      if (!c) throw new Error(`mac: no card ${t[1]}`);
+      r = await d.send(`find ${(await macBox(d, c)).map((v) => v.toFixed(1)).join(" ")} ${mode} ${t[2]}`);
+    }
+    if (!/^-?[\d.]+ -?[\d.]+$/.test(r)) throw new Error(`${d.side}: "${t[2]}" in ${t[1]}: ${r}`);
+    const [x, y] = r.split(" ").map(Number);
+    return `${(x + Number(t[4] ?? 0)).toFixed(1)} ${(y + Number(t[5] ?? 0)).toFixed(1)}`;
+  }
   const m = /^@([\w-]+)(?:\+(-?[\d.]+),(-?[\d.]+))?$/.exec(tok);
   if (!m) throw new Error(`not a target: ${tok}`);
   if (d.side === "web") {
@@ -170,9 +207,21 @@ async function point(d, tok) {
   return d.send(`where ${c.x + dx} ${c.y + dy}`);
 }
 async function resolve(d, line) {
+  // what is typed is text, not targets
+  if (/^(type|keys|ime) /.test(line)) return line;
   const out = [];
-  for (const tok of line.split(" ")) out.push(tok.startsWith("@") ? await point(d, tok) : tok);
+  for (const tok of line.match(TOKEN) ?? []) out.push(tok.startsWith("@") ? await point(d, tok) : tok);
   return out.join(" ");
+}
+/** source @id: a Note's Markdown as each side saved it (the Mac app in its vault, the web board in its last patch) */
+async function source(d, id) {
+  if (d.side === "web") return d.send(`source ${id}`);
+  const c = macBoard(d)[id];
+  if (!c) return "none";
+  const content = c.shared
+    ? JSON.parse(fs.readFileSync(path.join(d.vault, ".codeboard/shared", `${id}.json`), "utf8")).content
+    : c.content;
+  return content?.note?.text ?? content?.text?.text ?? "none";
 }
 const cam = async (d) => (await d.send("cam")).split(" ").map(Number);
 /** the middle of the canvas (beside the Mac app's sidebar) */
@@ -214,10 +263,14 @@ const fpsOf = (dir) => {
   const t = fs.readFileSync(path.join(dir, "times.txt"), "utf8").split("\n").filter(Boolean).map(Number);
   return t.length > 1 ? (t.length - 1) / (t[t.length - 1] - t[0]) : 30;
 };
+// an ffmpeg built without freetype (Homebrew's) has no drawtext: the sides go unlabelled (Mac is always on the left)
+let drawtext;
 function sideBySide(out, name, have) {
+  drawtext ??= / drawtext /.test(execFileSync("ffmpeg", ["-hide_banner", "-filters"]).toString());
   const font = "/System/Library/Fonts/Helvetica.ttc";
-  const label = (i, side) =>
-    `[${i}]scale=-2:720,fps=30,drawtext=fontfile=${font}:text=${side === "mac" ? "Mac" : "VS Code"}:x=12:y=h-36:fontsize=24:fontcolor=red,tpad=stop_mode=clone:stop_duration=3[v${i}]`;
+  const text = (side) =>
+    drawtext ? `,drawtext=fontfile=${font}:text=${side === "mac" ? "Mac" : "VS Code"}:x=12:y=h-36:fontsize=24:fontcolor=red` : "";
+  const label = (i, side) => `[${i}]scale=-2:720,fps=30${text(side)},tpad=stop_mode=clone:stop_duration=3[v${i}]`;
   const ins = have.flatMap((s) => ["-framerate", fpsOf(path.join(out, s, name)).toFixed(2), "-i", path.join(out, s, name, "f%05d.png")]);
   const f = have.map((s, i) => label(i, s)).join(";");
   const stack = have.length > 1 ? `;[v0][v1]hstack=2:shortest=1,pad=ceil(iw/2)*2:ceil(ih/2)*2[o]` : ";[v0]pad=ceil(iw/2)*2:ceil(ih/2)*2[o]";
@@ -236,7 +289,7 @@ async function shotPair(out, name, have) {
 }
 
 /** Per side: each command's time, what each press landed on, and for recorded commands how long the window took to
- *  answer (first frame that changed after the command ended) and to settle (no change for 300 ms) */
+ *  answer (first frame that changed after the command ended, a key's after it started) and to settle (no change for 300 ms) */
 async function report(d, out) {
   const rows = [];
   const lines = d.lines().filter(Boolean).map((l) => {
@@ -249,13 +302,27 @@ async function report(d, out) {
     const times = fs.readFileSync(path.join(d.dir, r, "times.txt"), "utf8").split("\n").filter(Boolean).map(Number);
     times.forEach((t, i) => frames.push({ t, file: path.join(d.dir, r, `f${String(i).padStart(5, "0")}.png`) }));
   }
-  const small = new Map();
-  const pixels = async (f) => small.get(f) ?? small.set(f, await sharp(f).resize(160, 104, { fit: "fill" }).raw().toBuffer()).get(f);
+  const small = new Map(); // the last few frames read
+  const pixels = async (f) => {
+    if (small.has(f)) return small.get(f);
+    if (small.size > 8) small.delete(small.keys().next().value);
+    return small.set(f, await sharp(f).removeAlpha().raw().toBuffer()).get(f);
+  };
+  // full size: a thumbnail averages away a faint change over a whole card (a Note's editing ring giving way to the
+  // selection's). A caret blinking is no answer: a change that fits in one caret (at most 3 px wide and 24 px tall);
+  // a caret that moves (off here, on there) is
   const differ = async (a, b) => {
     const [x, y] = await Promise.all([pixels(a), pixels(b)]);
-    let n = 0;
-    for (let i = 0; i < x.length; i++) if (Math.abs(x[i] - y[i]) > 24) n++;
-    return n > 3;
+    if (x.length !== y.length) return true;
+    const { width } = await sharp(a).metadata();
+    let n = 0, x0 = Infinity, x1 = -1, y0 = Infinity, y1 = -1;
+    for (let i = 0; i < x.length; i += 3) {
+      if (Math.abs(x[i] - y[i]) <= 24 && Math.abs(x[i + 1] - y[i + 1]) <= 24 && Math.abs(x[i + 2] - y[i + 2]) <= 24) continue;
+      n++;
+      const px = (i / 3) % width, py = Math.floor(i / 3 / width);
+      x0 = Math.min(x0, px), x1 = Math.max(x1, px), y0 = Math.min(y0, py), y1 = Math.max(y1, py);
+    }
+    return n > 3 && (x1 - x0 >= 3 || y1 - y0 >= 24);
   };
   const inputs = { move: 0, click: 0, dbl: 0, drag: 0, down: 0, key: 0, type: 0, scroll: 0, pinch: 0, menu: 0 };
   for (const l of lines) {
@@ -266,19 +333,22 @@ async function report(d, out) {
     if (!done || /^(cam|rect|where|hit)\b/.test(done[2])) continue;
     const start = lines.find((x) => x.text.startsWith(`start ${done[1]} `));
     let answer = "";
-    if (/^(click|dbl|up|key|type|drag|menu)\b/.test(done[2])) {
-      const at = frames.findIndex((f) => f.t >= l.t);
+    if (/^(click|dbl|up|key|keys|type|ime|drag|menu)\b/.test(done[2])) {
+      // keys count from when they start: the Mac side spends ~90 ms sending a key's down and up, and the editor answers
+      // within that, before the command ends (a pointer command's press comes at its end, after the move there)
+      const from = /^(key|keys|type|ime)\b/.test(done[2]) && start ? start.t : l.t;
+      const at = frames.findIndex((f) => f.t >= from);
       if (at > 0) {
         let first, last;
         // (Chromium sends a frame only when the picture changed; the Mac recorder sends every frame)
-        for (let i = at; i < frames.length && frames[i].t - l.t < 3; i++) {
+        for (let i = at; i < frames.length && frames[i].t - from < 3; i++) {
           if (last !== undefined && frames[i].t - last > 0.3) break;
           if (await differ(frames[i - 1].file, frames[i].file)) {
             first ??= frames[i].t;
             last = frames[i].t;
           }
         }
-        answer = first === undefined ? "  no change within 3 s" : `  answered ${((first - l.t) * 1000).toFixed(0)} ms, settled ${((last - l.t) * 1000).toFixed(0)} ms`;
+        answer = first === undefined ? "  no change within 3 s" : `  answered ${((first - from) * 1000).toFixed(0)} ms, settled ${((last - from) * 1000).toFixed(0)} ms`;
       }
     }
     rows.push(`${((l.t - (start?.t ?? l.t)) * 1000).toFixed(0).padStart(6)} ms  ${done[2]}${answer}`);
@@ -304,16 +374,28 @@ for (const file of scenarios) {
       const [verb, arg] = cmd.split(" ");
       if (verb === "rec") recs.add(arg);
       if (verb === "shot") shots.add(arg);
+      const sources = {};
       await Promise.all(
         drivers
           .filter((d) => !m || m[1] === d.side)
           .map(async (d) => {
             if (verb === "zoom") return zoomTo(d, Number(arg));
             if (verb === "center") return centerOn(d, arg);
+            if (verb === "source") {
+              const md = await source(d, arg.slice(1));
+              sources[d.side] = md;
+              fs.appendFileSync(path.join(out, `results-${d.side}.txt`), `${cmd}\n${md}\n\n`);
+              return;
+            }
             const r = await d.send(await resolve(d, cmd));
             if (r) fs.appendFileSync(path.join(out, `results-${d.side}.txt`), `${cmd}\n${r}\n\n`);
           }),
       );
+      if (verb === "source" && sides.length > 1)
+        fs.appendFileSync(
+          path.join(out, "sources.txt"),
+          `${cmd}: ${sources.mac === sources.web ? "same" : `DIFFERENT\n--- mac\n${sources.mac}\n--- web\n${sources.web}`}\n`,
+        );
     }
   } finally {
     await Promise.all(drivers.map((d) => d.stop()));

@@ -12,6 +12,7 @@ import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardShell
 import ObjectiveC
+import Vision
 import WebKit
 
 setbuf(stdout, nil)
@@ -272,9 +273,8 @@ swizzle(
   func acceptFirstMouse(at p: NSPoint, in w: NSWindow) {
     guard let root = w.contentView?.superview else { return }
     let base = class_getMethodImplementation(NSView.self, #selector(NSView.acceptsFirstMouse(for:)))
-    var cls: AnyClass? =
-      root.hitTest(root.superview?.convert(w.convertPoint(fromScreen: p), from: nil) ?? .zero)
-      .map { object_getClass($0) } ?? nil
+    // the frame view has no superview: it hit-tests in window coordinates
+    var cls: AnyClass? = root.hitTest(w.convertPoint(fromScreen: p)).map { object_getClass($0) } ?? nil
     while let c = cls, c != NSView.self {
       let sel = #selector(NSView.acceptsFirstMouse(for:))
       if !firstMouse.contains(ObjectIdentifier(c)), let m = class_getInstanceMethod(c, sel),
@@ -331,21 +331,25 @@ swizzle(
     }
     for (id, a) in inside where now[id] == nil {
       inside[id] = nil
-      if a.options.contains(.mouseEnteredAndExited), let o = a.owner as? NSResponder {
-        o.mouseExited(with: ev(.mouseExited, nil))
-      }
+      if a.options.contains(.mouseEnteredAndExited) { tell(a.owner, "mouseExited:", ev(.mouseExited, nil)) }
     }
     for (id, (a, v)) in now where inside[id] == nil {
       inside[id] = a
-      if a.options.contains(.mouseEnteredAndExited), let o = a.owner as? NSResponder {
-        o.mouseEntered(with: ev(.mouseEntered, v))
-      }
+      if a.options.contains(.mouseEnteredAndExited) { tell(a.owner, "mouseEntered:", ev(.mouseEntered, v)) }
     }
     if !dragging && moved {
       for (_, (a, v)) in now where a.options.contains(.mouseMoved) {
-        (a.owner as? NSResponder)?.mouseMoved(with: ev(.mouseMoved, v))
+        tell(a.owner, "mouseMoved:", ev(.mouseMoved, v))
       }
     }
+  }
+
+  /// A tracking area's owner told what AppKit would tell it. Owners need not be responders: a WKWebView's is an
+  /// NSObject of WebKit's (its mouse tracking observer), and that is the only way its page hears the pointer move
+  func tell(_ owner: Any?, _ name: String, _ e: NSEvent) {
+    let sel = NSSelectorFromString(name)
+    guard let o = owner as? NSObject, o.responds(to: sel) else { return }
+    o.perform(sel, with: e)
   }
 
   func step(to p: NSPoint) {
@@ -567,6 +571,96 @@ swizzle(
     vFlags = []
   }
 
+  /// What type and keys take: \\n is Return and \\s a space (a scenario line's trailing spaces are trimmed)
+  func typed(_ s: Substring) -> String {
+    s.replacingOccurrences(of: "\\n", with: "\n").replacingOccurrences(of: "\\s", with: " ")
+  }
+
+  /// Words as a person reads them: the main window's picture read by text recognition inside a box (content
+  /// coordinates), and the point just before, in the middle of or just after the first match, so a scenario aims at
+  /// text whatever the layout. Only what is drawn counts (hidden markers are not there to find)
+  func find(_ box: CGRect, _ mode: String, _ text: String) -> String {
+    guard let w = win else { return "no window" }
+    // at the window's own resolution (the recorder's 1x is too coarse to read small text)
+    let shot =
+      Recorder.layers
+      ? Recorder.drawn(w) : createImage(.null, 1 << 3, UInt32(w.windowNumber), 1 << 0)?.takeRetainedValue()
+    guard let img = shot else { return "no picture of the window" }
+    let sx = CGFloat(img.width) / w.frame.width
+    let sy = CGFloat(img.height) / w.frame.height
+    // content coordinates to the picture's pixels (top-left origin) and back
+    func pixel(_ x: Double, _ y: Double) -> CGPoint {
+      let p = screen(x, y)
+      return CGPoint(x: (p.x - w.frame.minX) * sx, y: (w.frame.maxY - p.y) * sy)
+    }
+    let a = pixel(box.minX, box.minY)
+    let b = pixel(box.maxX, box.maxY)
+    let crop = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y)).integral
+      .intersection(CGRect(x: 0, y: 0, width: img.width, height: img.height))
+    guard !crop.isEmpty, let part = img.cropping(to: crop) else { return "box off the window" }
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .accurate
+    request.recognitionLanguages = ["zh-Hans", "en-US"]
+    request.usesLanguageCorrection = false
+    do { try VNImageRequestHandler(cgImage: part).perform([request]) } catch { return "text recognition: \(error)" }
+    var read: [String] = []
+    // Vision writes CJK-style punctuation (（）：，) where the page has ASCII and is unsure of case, and its best guess
+    // is not always right ("secona"): every candidate is searched, folded the same way as the words sought
+    let sought = Self.fold(text)
+    for o in request.results ?? [] {
+      let candidates = o.topCandidates(5)
+      if let c = candidates.first { read.append(c.string) }
+      for c in candidates {
+        let folded = Self.fold(c.string)
+        guard let f = folded.range(of: sought) else { continue }
+        // the folded string has the original's characters one for one
+        let lo = c.string.index(
+          c.string.startIndex, offsetBy: folded.distance(from: folded.startIndex, to: f.lowerBound))
+        let hi = c.string.index(lo, offsetBy: folded.distance(from: f.lowerBound, to: f.upperBound))
+        guard let found = try? c.boundingBox(for: lo..<hi)?.boundingBox else { continue }
+        // normalized, bottom-left origin in the crop
+        let nx = mode == "before" ? found.minX : mode == "after" ? found.maxX : found.midX
+        let ix = crop.minX + nx * crop.width
+        let iy = crop.minY + (1 - found.midY) * crop.height
+        let p = NSPoint(x: w.frame.minX + ix / sx, y: w.frame.maxY - iy / sy)
+        guard let cv = w.contentView else { return "no content view" }
+        let l = cv.convert(w.convertPoint(fromScreen: p), from: nil)
+        return String(format: "%.1f %.1f", l.x, l.y)
+      }
+    }
+    return "not found; read: \(read.joined(separator: " | "))"
+  }
+
+  /// Full-width punctuation as ASCII and letters in lower case, one character for each character
+  static func fold(_ s: String) -> String {
+    let wide: [Character: Character] = ["（": "(", "）": ")", "：": ":", "，": ",", "；": ";", "！": "!", "？": "?"]
+    return String(s.map { ch in wide[ch] ?? (ch.isASCII ? Character(ch.lowercased()) : ch) })
+  }
+
+  /// Where the caret is, as the text input system sees it in any editor (the native Note editor, a web view): its
+  /// place in content coordinates and height, then twelve characters on each side with the selection in brackets,
+  /// "x y h <height> | <before>[<selected>]<after>", line breaks as ⏎ (the web side answers in the same shape).
+  /// A WKWebView answers the synchronous calls with nothing (NSNotFound): it is an asynchronous text input client
+  /// (AppKit's NSTextInputClient_Async), so it is asked the same three questions that way
+  func caret() async -> String {
+    guard let c = client else { return "no text client" }
+    let input = TextInput(c)
+    let sel = await input.selectedRange()
+    guard sel.location != NSNotFound else { return "no selection" }
+    func text(_ r: NSRange) async -> String {
+      guard r.length > 0 else { return "" }
+      return (await input.text(r) ?? "").replacingOccurrences(of: "\n", with: "⏎")
+    }
+    let lo = max(0, sel.location - 12)
+    let before = await text(NSRange(location: lo, length: sel.location - lo))
+    let after = await text(NSRange(location: sel.location + sel.length, length: 12))
+    let selected = await text(sel)
+    let r = await input.rect(NSRange(location: sel.location, length: 0))
+    guard let w = win, let cv = w.contentView else { return "no window" }
+    let top = cv.convert(w.convertPoint(fromScreen: NSPoint(x: r.minX, y: r.maxY)), from: nil)
+    return String(format: "%.1f %.1f h %.0f | ", top.x, top.y, r.height) + "\(before)[\(selected)]\(after)"
+  }
+
   var client: NSTextInputClient? {
     let r = (gKey ?? win)?.firstResponder
     return r as? NSTextInputClient
@@ -584,12 +678,12 @@ swizzle(
       let code = Self.codes[c.lowercased()] ?? (c == " " ? 49 : 0)
       let f: NSEvent.ModifierFlags = ch.isUppercase ? [.shift] : []
       for t in [NSEvent.EventType.keyDown, .keyUp] {
-        NSApp.postEvent(
+        // to the window, as key() sends keys without ⌘: NSApp has no key window of its own to hand them to
+        w.sendEvent(
           NSEvent.keyEvent(
             with: t, location: .zero, modifierFlags: f, timestamp: ProcessInfo.processInfo.systemUptime,
             windowNumber: w.windowNumber, context: nil, characters: c, charactersIgnoringModifiers: c.lowercased(),
-            isARepeat: false, keyCode: code)!, atStart: false)
-        _ = w
+            isARepeat: false, keyCode: code)!)
         try? await Task.sleep(for: .milliseconds(30))
       }
     }
@@ -711,12 +805,26 @@ swizzle(
       await pinch(total: d(1), steps: Int(d(2, 12)))
     case "key": await key(a[1])
     case "mods": vFlags = mods(a.count > 1 ? a[1] : "")
-    case "type": await type(String(line.dropFirst(5)).replacingOccurrences(of: "\\n", with: "\n"))
-    case "keys": await keys(String(line.dropFirst(5)).replacingOccurrences(of: "\\n", with: "\n"))
+    case "type": await type(typed(line.dropFirst(5)))
+    case "keys": await keys(typed(line.dropFirst(5)))
     case "ime": await ime(String(line.dropFirst(4)).split(separator: "|").map(String.init))
     case "wait": try? await Task.sleep(for: .milliseconds(Int(d(1, 200))))
     case "menu": contextMenu()
     case "pick": pick(String(line.dropFirst(5)))
+    case "find":  // find x0 y0 x1 y1 before|mid|after words: where those words are on screen inside that box
+      let box = CGRect(x: d(1), y: d(2), width: d(3) - d(1), height: d(4) - d(2))
+      guard a.count > 6 else { return "find x0 y0 x1 y1 mode words" }
+      // looked at again a moment later, as a person would: one picture can catch the window mid-change (a Note's
+      // editor taking over from the canvas's drawing)
+      var r = ""
+      for i in 0..<4 {
+        if i > 0 { try? await Task.sleep(for: .milliseconds(250)) }
+        r = find(box, a[5], a[6...].joined(separator: " "))
+        if !r.hasPrefix("not found") { break }
+        log("find: \(r)")
+      }
+      return r
+    case "caret": return await caret()
     case "hit": return hitInfo(vPointer)
     case "where":  // where bx by: the board point's place in the window (what move and click take), from the camera
       guard let c = canvas, let w = win, let cv = w.contentView else { return "no canvas" }
@@ -814,7 +922,9 @@ swizzle(
         n += 1
         log("start \(n) \(l)")
         let r = await run(l)
-        log("done \(n) \(l)\(r.isEmpty ? "" : " -> " + r)")
+        // one log line per result: line breaks escaped (run.mjs undoes it)
+        let one = r.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\n", with: "\\n")
+        log("done \(n) \(l)\(r.isEmpty ? "" : " -> " + one)")
       }
       running = false
     }
@@ -1027,3 +1137,63 @@ func screenState() -> String {
 }
 log("driver ready, fifo \(fifoPath), \(screenState())")
 runApp()
+
+/// The three questions caret asks a text input client: synchronously when it answers that way (an NSTextView), else
+/// through the asynchronous calls a WKWebView answers (selectedRangeWithCompletionHandler: and the like, which
+/// AppKit's text input context itself uses for it)
+@MainActor
+struct TextInput {
+  let client: NSTextInputClient
+  init(_ c: NSTextInputClient) { client = c }
+
+  private var object: NSObject? { client as? NSObject }
+  private func async(_ name: String) -> IMP? {
+    let s = NSSelectorFromString(name)
+    guard let o = object, o.responds(to: s) else { return nil }
+    return o.method(for: s)
+  }
+
+  func selectedRange() async -> NSRange {
+    let sync = client.selectedRange()
+    guard sync.location == NSNotFound, let o = object, let imp = async("selectedRangeWithCompletionHandler:") else {
+      return sync
+    }
+    typealias F = @convention(c) (NSObject, Selector, @escaping @convention(block) (NSRange) -> Void) -> Void
+    let f = unsafeBitCast(imp, to: F.self)
+    return await withCheckedContinuation { k in
+      f(o, NSSelectorFromString("selectedRangeWithCompletionHandler:")) { k.resume(returning: $0) }
+    }
+  }
+
+  func text(_ r: NSRange) async -> String? {
+    guard let o = object, let imp = async("attributedSubstringForProposedRange:completionHandler:") else {
+      var actual = NSRange()
+      return client.attributedSubstring(forProposedRange: r, actualRange: &actual)?.string
+    }
+    typealias F =
+      @convention(c) (
+        NSObject, Selector, NSRange, @escaping @convention(block) (NSAttributedString?, NSRange) -> Void
+      ) -> Void
+    let f = unsafeBitCast(imp, to: F.self)
+    return await withCheckedContinuation { k in
+      f(o, NSSelectorFromString("attributedSubstringForProposedRange:completionHandler:"), r) { s, _ in
+        k.resume(returning: s?.string)
+      }
+    }
+  }
+
+  func rect(_ r: NSRange) async -> NSRect {
+    guard let o = object, let imp = async("firstRectForCharacterRange:completionHandler:") else {
+      var actual = NSRange()
+      return client.firstRect(forCharacterRange: r, actualRange: &actual)
+    }
+    typealias F =
+      @convention(c) (NSObject, Selector, NSRange, @escaping @convention(block) (NSRect, NSRange) -> Void) -> Void
+    let f = unsafeBitCast(imp, to: F.self)
+    return await withCheckedContinuation { k in
+      f(o, NSSelectorFromString("firstRectForCharacterRange:completionHandler:"), r) { rect, _ in
+        k.resume(returning: rect)
+      }
+    }
+  }
+}

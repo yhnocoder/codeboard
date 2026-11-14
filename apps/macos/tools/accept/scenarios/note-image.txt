@@ -1,0 +1,20 @@
+# 点一下 Note 里的图片选中它，拖右边的把手把它缩窄：选中框、把手和缩放过程都顺手
+zoom 1
+center @nimage
+dbl @nimage"Text after"
+wait 600
+rec image
+click @nimage"A picture"+0,60
+wait 400
+shot selected
+move @nimage"一张图"+107,-87 400
+wait 300
+shot grip
+drag @nimage"一张图"+107,-87 @nimage"一张图"+30,-87 800
+wait 500
+shot narrowed
+wait 400
+stop
+key esc
+wait 500
+source @nimage

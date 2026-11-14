@@ -1,0 +1,20 @@
+# 把 Note 里一段正文改成二级标题：点进那段字的开头，打 "## "，标题出现、字不跳；再 ⌘Z 撤回。看录像里光标和字的位置，results 里两边光标前后的字
+zoom 1
+center @nprose
+rec heading
+dbl @nprose"scheduler runs"
+wait 600
+click @nprose"The scheduler"<
+wait 300
+caret
+keys ##\s
+wait 500
+caret
+shot heading
+key cmd+z
+wait 500
+caret
+key esc
+wait 600
+stop
+source @nprose

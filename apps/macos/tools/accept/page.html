@@ -15,12 +15,15 @@ html, body { margin: 0; height: 100%; overflow: hidden; } #root { position: fixe
 import { boot } from "./board/boot.js";
 let listener = () => {};
 window.__posted = [];
+// each card's Markdown as last sent to the host, for the runner's source command
+window.__saved = {};
 window.__deliver = (msgs) => { for (const m of msgs) listener(m); };
 window.__board = boot(
   {
     listen: (fn) => (listener = fn),
     post: (m) => {
       window.__posted.push(m);
+      if (m.type === "patch") for (const c of m.patch.cards?.set ?? []) if (typeof (c.md ?? c.text) === "string") window.__saved[c.id] = c.md ?? c.text;
       if ("req" in m) queueMicrotask(() => listener({ type: "reply", req: m.req, data: null }));
     },
   },
