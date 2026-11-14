@@ -423,6 +423,7 @@ extension CanvasView {
     if let id = arrowAt(p) { return editLabel(id) }
     if let id = hitCard(p) {
       if openSubBoard(id) { return }
+      if openPage(at: p) { return }
       guard isWriting(id) else { return }
       Task {
         await endEditing()

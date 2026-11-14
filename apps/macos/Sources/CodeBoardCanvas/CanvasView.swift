@@ -163,6 +163,15 @@ public final class CanvasView: NSView {
   package var shelfHovered: String?
   let shelfHome = CALayer()
   let shelfDrag = CALayer()
+  /// How a Web card's page is read and opened (tests give their own: never the network or a browser)
+  package var fetchPage: WebFetch = WebFetcher.live
+  package var openURL: (URL) -> Void = { NSWorkspace.shared.open($0) }
+  /// The pages being read now, by card ("card/row" for a list's row), and their tasks
+  package var webFetching: Set<String> = []
+  package var webTasks: [String: Task<Void, Never>] = [:]
+  /// A dragged row's place in its list, and its label by the pointer
+  let rowLine = CALayer()
+  let rowGhost = CALayer()
   /// The sidenote markers shown, their layers in the same order, and the zoom they were placed at
   var marks: [Mark] = []
   var markLayers: [CALayer] = []
@@ -980,7 +989,7 @@ public final class CanvasView: NSView {
       let width = Int((item.rect.width * scale).rounded(.up))
       guard let priority else { return await notes.cachedPicture(of: url, width: width, dark: theme.dark) }
       return try? await notes.picture(of: url, width: width, dark: theme.dark, priority: priority)
-    case .code, .label, .board:
+    case .code, .label, .board, .web, .links:
       return nil
     }
   }

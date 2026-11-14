@@ -15,6 +15,9 @@ enum Drawing: Sendable {
   case label(Label)
   /// A sub-board card (SubBoardMap.swift)
   case board(SubBoard)
+  /// A Web card and a Link List (WebDrawing.swift)
+  case web(Web)
+  case links(Links)
 
   struct Code: Sendable {
     /// The card's id: picks its paper
@@ -88,7 +91,7 @@ enum Drawing: Sendable {
     switch self {
     case .note: true
     case .image(let p): p.svg
-    case .code, .label, .board: false
+    case .code, .label, .board, .web, .links: false
     }
   }
 
@@ -97,7 +100,7 @@ enum Drawing: Sendable {
     case .code(let c): c.framed
     case .note(let n): if case .note = n.content { true } else { false }
     case .image(let p): p.framed
-    case .board: true
+    case .board, .web, .links: true
     case .label: false
     }
   }
@@ -199,6 +202,10 @@ enum Drawing: Sendable {
       if p.framed { Drawing.edge(ctx, r, t) }
     case .board(let b):
       decodes += Drawing.subBoard(ctx, b, r, t, scale: scale)
+    case .web(let w):
+      decodes += Drawing.web(ctx, w, r, t, images: images, scale: scale)
+    case .links(let l):
+      decodes += Drawing.links(ctx, l, r, t, images: images, scale: scale)
     case .label(let l):
       switch (l.kind, t.label) {
       case (.arrow, .box):
@@ -324,7 +331,7 @@ enum Drawing: Sendable {
   }
 
   /// `Paper.sheet`'s card edge: a hairline, a light line inside the top and a warm one inside the bottom
-  private static func edge(_ ctx: CGContext, _ r: CGRect, _ t: Theme) {
+  static func edge(_ ctx: CGContext, _ r: CGRect, _ t: Theme) {
     guard t.paper == .sheet else { return }
     let p = squircle(r, t.cardRadius)
     // the two lines through strips along the top and bottom, where they are

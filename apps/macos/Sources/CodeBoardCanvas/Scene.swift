@@ -88,6 +88,8 @@ struct Scene: Sendable {
   var notes: [Sidenote] = []
   /// Of `notes`, the ones in shared cards' files (shown, not changed: this board writes only its own file)
   var sharedNotes: Set<SidenoteID> = []
+  /// The Web cards and Link Lists whose pages are being read now (Fetching preview…)
+  var fetching: Set<CardID> = []
 
   /// A card's drawing and what it was made from: the next scene reuses it while these are the same
   struct Part: Sendable {
@@ -155,9 +157,10 @@ struct Scene: Sendable {
   init(
     _ board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter,
     sizes: [CardID: NoteMetrics] = [:],
-    reusing previous: Scene? = nil, vaultSeen: Int = 0
+    reusing previous: Scene? = nil, vaultSeen: Int = 0, fetching: Set<CardID> = []
   ) {
     self.vaultSeen = vaultSeen
+    self.fetching = fetching
     // what a folded Section hides: the cards and Sections inside it (the outermost folded one around each)
     let byID = Dictionary(board.sections.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     func foldedAround(_ id: SectionID?) -> SectionID? {
@@ -216,16 +219,16 @@ struct Scene: Sendable {
       }()
       if let p = previous?.parts[c.id], p.content == content, p.width == c.width, p.height == c.height,
         p.tilted == c.tilted, p.measured == sizes[c.id], p.ends == mine,
-        !showsOthers || previous?.vaultSeen == vaultSeen
+        !showsOthers || previous?.vaultSeen == vaultSeen,
+        previous?.fetching.contains(c.id) == fetching.contains(c.id)
       {
         part = p
         reused.insert(c.id)
       } else {
-        // web cards, link lists and sub-boards are not drawn yet
         guard
           let (drawing, size, code) = Scene.card(
             c, content, board: board, folder: folder, measured: sizes[c.id]?.size, theme: t, highlighter: highlighter,
-            refs: refs)
+            refs: refs, fetching: fetching.contains(c.id))
         else { continue }
         part = Part(
           content: content, width: c.width, height: c.height, tilted: c.tilted, measured: sizes[c.id], ends: mine,
@@ -470,7 +473,7 @@ struct Scene: Sendable {
 
   private static func card(
     _ c: Card, _ content: CardContent, board: Board, folder: URL, measured: CGSize?, theme t: Theme,
-    highlighter: Highlighter, refs: RefResolver
+    highlighter: Highlighter, refs: RefResolver, fetching: Bool = false
   ) -> (
     Drawing, CGSize, (layout: CodeLayout, top: CGFloat, segments: [SegmentID])?
   )? {
@@ -558,9 +561,35 @@ struct Scene: Sendable {
       }
       let d = Drawing.SubBoard(id: c.id.rawValue, board: shows, name: name, map: map, count: count, gone: gone)
       return (.board(d), CGSize(width: c.width, height: c.height ?? Drawing.subHeight), nil)
-    case .web, .links:
-      return nil
+    case .web(let w):
+      let page = Scene.page(w.url, title: content.title, desc: content.description, w.meta, images: images)
+      let d = Drawing.Web(id: c.id.rawValue, page: page, style: w.style, loading: fetching && page.none)
+      let h = WebLayout.of(page, style: w.style, width: c.width, small: false, loading: d.loading, t).height
+      return (.web(d), CGSize(width: c.width, height: c.height ?? h), nil)
+    case .links(let l):
+      let rows = l.items.map { it in
+        Drawing.Links.Row(
+          id: it.id, page: Scene.page(it.url, title: it.title, desc: nil, it.meta, images: images), rich: l.isRich(it))
+      }
+      let d = Drawing.Links(id: c.id.rawValue, title: content.title ?? "Link List", rows: rows)
+      let h = LinksLayout.of(d, width: c.width, t).height
+      return (.links(d), CGSize(width: c.width, height: c.height ?? h), nil)
     }
+  }
+
+  /// A page as its card draws it: the title and description written over the page's, its pictures where they are
+  static func page(_ url: String, title: String?, desc: String?, _ m: WebMeta?, images: URL) -> Drawing.Page {
+    func file(_ s: ImageSource?) -> (URL, CGSize)? {
+      guard case .file(let f)? = s else { return nil }
+      let u = images.appending(path: f)
+      return DecodeCache.pixelSize(u).map { (u, $0) }
+    }
+    let img = file(m?.image)
+    let icon = file(m?.icon)
+    func text(_ s: String?) -> String? { s.flatMap { $0.isEmpty ? nil : $0 } }
+    return Drawing.Page(
+      url: url, title: text(title) ?? text(m?.title), desc: text(desc) ?? text(m?.description), site: m?.site,
+      image: img?.0, imageSize: img?.1 ?? .zero, icon: icon?.0, iconSize: icon?.1 ?? .zero)
   }
 
   private static func file(_ path: String) -> String { path.split(separator: "/").last.map(String.init) ?? path }

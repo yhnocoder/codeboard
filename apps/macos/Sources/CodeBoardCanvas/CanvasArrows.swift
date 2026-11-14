@@ -29,6 +29,8 @@ struct InPlace {
     case title(SectionID)
     /// The name of the board a sub-board card shows, above it (its package is renamed)
     case board(CardID, VaultBoard)
+    /// A Web card's title or description, a Link List's name, one of its rows' titles (CanvasWeb.swift)
+    case web(CardID, WebText)
   }
 
   var what: What
@@ -37,6 +39,9 @@ struct InPlace {
   var before: String
   /// Where it is on the board: a label's centre, a title's top left
   var at: CGPoint
+  /// A Web card's or Link List's text: the box it is written in (board units) and its font
+  var box: CGRect? = nil
+  var font: Font? = nil
 }
 
 /// A menu item's action as a closure (an item keeps it as its represented object)
@@ -218,11 +223,14 @@ extension CanvasView {
     switch w {
     case .label(let id): index(of: .arrowLabel(id))
     case .title(let id): index(of: .sectionTitle(id))
-    case .board: nil
+    case .board, .web: nil
     }
   }
 
-  func writeInPlace(_ what: InPlace.What, _ text: String, at: CGPoint, select item: Item) {
+  func writeInPlace(
+    _ what: InPlace.What, _ text: String, at: CGPoint, select item: Item, box: CGRect? = nil, font: Font? = nil,
+    placeholder: String? = nil
+  ) {
     guard let doc = document, let host = superview else { return }
     endInPlace(commit: true)
     if doc.selection != [item] { doc.select([item]) }
@@ -240,10 +248,12 @@ extension CanvasView {
     field.cell?.isScrollable = true
     field.placeholderString = label ? "Label" : Board.untitledSection
     if case .board = what { field.placeholderString = text }
+    if let placeholder { field.placeholderString = placeholder }
     field.textColor = NSColor(cgColor: label ? (theme.label == .box ? theme.ink : theme.ink2) : theme.sectionTitle)
     field.wantsLayer = true
     field.delegate = self
-    inPlace = InPlace(what: what, field: field, before: text, at: at)
+    if case .web = what { field.textColor = NSColor(cgColor: theme.ink) }
+    inPlace = InPlace(what: what, field: field, before: text, at: at, box: box, font: font)
     withoutAnimation {
       if let i = inPlaceItem(what) { items[i].box.isHidden = true }
       placeField()
@@ -261,12 +271,14 @@ extension CanvasView {
     let z = camera.zoom
     let label = { if case .label = ip.what { true } else { false } }()
     let named = { if case .board = ip.what { true } else { false } }()
-    let font = label ? theme.arrowLabel : named ? theme.subName : theme.sectionTitleFont
+    let font = ip.font ?? (label ? theme.arrowLabel : named ? theme.subName : theme.sectionTitleFont)
     ip.field.font = CTFontCreateCopyWithAttributes(font.ct, CTFontGetSize(font.ct) * z, nil, nil) as NSFont
     let text = ip.field.stringValue.isEmpty ? (ip.field.placeholderString ?? "") : ip.field.stringValue
     let v = camera.view(ip.at)
     let r: CGRect
-    if label {
+    if let box = ip.box {
+      r = CGRect(origin: camera.view(box.origin), size: CGSize(width: box.width * z, height: box.height * z))
+    } else if label {
       let pad: CGFloat = theme.label == .box ? 13 : 33
       let w = max(60, Drawing.width(text, font) + pad + 4) * z
       let h = 22 * z
@@ -304,6 +316,12 @@ extension CanvasView {
     var change: ((inout Board) -> Void)?
     var name = ""
     // a board's name: its package renamed (blank or unchanged: as it was)
+    if case .web(let id, let w) = ip.what {
+      ip.field.removeFromSuperview()
+      drawChrome()
+      if commit, text != ip.before { commitWebText(id, w, text) }
+      return
+    }
     if case .board(_, let at) = ip.what {
       ip.field.removeFromSuperview()
       drawChrome()

@@ -31,6 +31,8 @@ struct Gesture {
     case draw
     /// A sticker moved or resized
     case sticker(StickerDrag)
+    /// A Link List's row dragged
+    case row(RowDrag)
   }
 
   var kind: Kind
@@ -146,6 +148,7 @@ extension CanvasView {
     let zoom = camera.zoom
     let view = camera.visible(bounds.size)
     let highlighter = CanvasView.highlighter
+    let fetching = Set(webFetching.filter { !$0.contains("/") }.map(CardID.init(rawValue:)))
     refreshing = Task {
       let r = await Task.detached(priority: .userInitiated) {
         let package = vault.url(of: vb.path)
@@ -162,7 +165,7 @@ extension CanvasView {
         sizes.merge(await CanvasView.measure(todo, theme: theme, notes: notes)) { a, _ in a }
         let s = Scene(
           board, package: package, vault: vault, theme: theme, highlighter: highlighter ?? Highlighter(), sizes: sizes,
-          reusing: old, vaultSeen: seen)
+          reusing: old, vaultSeen: seen, fetching: fetching)
         var before: [Scene.Owner: Scene.Item] = [:]
         for it in old.items { if let o = it.owner { before[o] = it } }
         var fresh: [Int: Fresh] = [:]
@@ -834,6 +837,9 @@ extension CanvasView {
       clearLineSel()
       return
     }
+    // a Web card's Retry and Edit Title; a Link List's row, dragged
+    if e.clickCount == 1, pressWebLink(at: p) { return }
+    if pressRow(e, view: v, board: p) { return }
     // a ref's preview closes, but on the press on its ref (which closes it too, as its second click)
     refPress = e.clickCount == 1 ? refAt(p) : nil
     if let peek = refPeek,
@@ -994,6 +1000,10 @@ extension CanvasView {
       g.kind = .sticker(d)
       gesture = g
       drawChrome()
+    case .row(var d):
+      dragRow(&d, view: v)
+      g.kind = .row(d)
+      gesture = g
     case .nudge, .still:
       break
     }
@@ -1058,6 +1068,8 @@ extension CanvasView {
         from: g.start, to: camera.board(v), moved: hypot(v.x - g.startView.x, v.y - g.startView.y) >= dragSlop)
     case .sticker(let d):
       commitSticker(d, free: e.modifierFlags.contains(.option))
+    case .row(let d):
+      commitRow(d, view: convert(e.locationInWindow, from: nil))
     case .nudge, .still:
       gesture = nil
     }
@@ -1510,6 +1522,11 @@ extension CanvasView {
   /// Pastes plain copies: beside what was copied when that is in view (each paste a step further), else in the middle of
   /// the view
   @objc public func paste(_ sender: Any?) {
+    if gesture == nil, pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)) == nil,
+      pasteLinks()
+    {
+      return
+    }
     guard document != nil, gesture == nil,
       let data = pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)),
       let clip = try? Clip(decoding: data), let box = clip.bounds
@@ -1598,6 +1615,11 @@ extension CanvasView {
       doc.select([.arrow(id)])
       return arrowMenu(id)
     }
+    // a Link List's row: its own menu
+    if let row = linkRow(at: p) {
+      doc.select([.card(row.card)])
+      return rowMenu(row.card, row.item)
+    }
     // a ref to another board: that board's seal
     if let r = refAt(p), let b = refBoard(r.box) {
       let m = NSMenu()
@@ -1644,6 +1666,10 @@ extension CanvasView {
     if sel.count == 1, case .card(let c)? = sel.first {
       menu.addItem(addNoteItem(card: c, at: p))
       menu.addItem(.separator())
+      // a Web card's and a Link List's own
+      let own = webMenuItems(c) + linksMenuItems(c)
+      for i in own { menu.addItem(i) }
+      if !own.isEmpty { menu.addItem(.separator()) }
     }
     let arrange = NSMenu()
     add("Bring to Front", #selector(bringToFront(_:)), to: arrange)
@@ -1660,6 +1686,9 @@ extension CanvasView {
       menu.addItem(menuItem("Connect with Arrow", enabled: cards.count == 2) { [weak self] in self?.connectSelected() })
       menu.addItem(menuItem("Move to New Section") { [weak self] in self?.moveToNewSection() })
       menu.addItem(shelfItem())
+      if mergeable {
+        menu.addItem(menuItem("Merge into Link List") { [weak self] in self?.mergeSelected() })
+      }
       add(locked ? "Unlock" : "Lock", #selector(lock(_:)))
       if !cards.isEmpty {
         add("Tilt", #selector(tilt(_:)))
@@ -1692,6 +1721,9 @@ extension CanvasView: NSMenuItemValidation {
     case #selector(cut(_:)), #selector(delete(_:)): return sel.contains { !doc.board.isLocked($0) }
     case #selector(paste(_:)):
       return pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)) != nil
+        || pasteboard.string(forType: .string).map { s in
+          s.split(whereSeparator: \.isNewline).allSatisfy { webAddress(String($0)) != nil } && !s.isEmpty
+        } == true
     case #selector(bringToFront(_:)), #selector(sendToBack(_:)), #selector(tilt(_:)):
       return sel.contains { $0.card != nil }
     case #selector(lock(_:)):
