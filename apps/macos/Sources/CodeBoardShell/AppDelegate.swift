@@ -47,6 +47,10 @@ import CodeBoardModel
     self.window = window
     self.panes = panes
     panes.onVaultChanged = { [weak self] in self?.readTree(reloadBoards: true) }
+    let ai = AISettings(defaults: .standard)
+    let keys = KeychainKeyStore()
+    panes.summarySwitch = ai.summarySwitch
+    panes.summaryWriter = keys.key() != nil ? ai.writer(keys: keys) : nil
     window.title = shell.vault?.root.lastPathComponent ?? "CodeBoard"
     window.makeKeyAndOrderFront(nil)
     NSApp.activate()
@@ -166,7 +170,11 @@ import CodeBoardModel
   @objc func showPreviousTab(_ sender: Any?) { shell.selectTab(by: -1) }
 
   @objc func showSettings(_ sender: Any?) {
-    let s = settings ?? SettingsWindow(settings: AISettings(defaults: .standard), keys: KeychainKeyStore())
+    let ai = AISettings(defaults: .standard)
+    let keys = KeychainKeyStore()
+    let s = settings ?? SettingsWindow(settings: ai, keys: keys)
+    s.onSwitchChange = { [weak self] in self?.panes?.summarySwitch = $0 }
+    s.onKeyChange = { [weak self] set in self?.panes?.summaryWriter = set ? ai.writer(keys: keys) : nil }
     settings = s
     s.show()
   }

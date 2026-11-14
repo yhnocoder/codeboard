@@ -98,8 +98,10 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     #expect(r.canvas.hoveredArrow == aid("a1"))
     let accent = r.canvas.currentTheme.accent
     // over the arrows, under their labels
-    let world = r.canvas.world.sublayers ?? []
-    #expect(world.firstIndex(of: r.canvas.litArrows)! < world.firstIndex(of: r.canvas.above)!)
+    let level = r.canvas.cardLevel.sublayers ?? []
+    #expect(
+      r.canvas.above.superlayer === r.canvas.cardLevel
+        && level.firstIndex(of: r.canvas.litArrows)! < level.firstIndex(of: r.canvas.above)!)
     let lit = { (r.canvas.litArrows.sublayers ?? []).contains { ($0 as? CAShapeLayer)?.fillColor == accent } }
     #expect(lit(), "hovered: in the accent")
     r.canvas.mouseMoved(with: r.mouse(.mouseMoved, CGPoint(x: 400, y: 400)))

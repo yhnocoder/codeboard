@@ -51,6 +51,34 @@ public final class CanvasView: NSView {
   let summaryLayer = CALayer()
   /// Which level is shown and how it changes (SummaryLevels.swift)
   var levels = SummaryLevels()
+  /// The level the canvas last acted on (levelChanged)
+  var levelShown = SummaryLevels.Level.cards
+  /// The summary level as laid out, its columns and their pictures (kept while their text, width and look stay)
+  var summaryLayout: SumLayout?
+  var summaryColumns: [SummaryColumn] = []
+  var summaryPictures: [SummaryPictureKey: SummaryArt.Drawn] = [:]
+  var summaryMeasures: [SummaryPictureKey: SumMeasure] = [:]
+  var summaryHover: SummaryKey?
+  /// The hovered column's ↻, dot and ✓ 保留, kept their size on screen
+  let summaryButtons = CALayer()
+  /// A body pressed, edited when let go where it was pressed (view points)
+  var summaryPress: (key: SummaryKey, at: CGPoint)?
+  var summaryEditor: SummaryEditor?
+  /// Summaries the AI is writing
+  var summaryWriting: Set<SummaryKey> = []
+  /// Writes a summary again when its ↻ is clicked; nil (no AI key set): no ↻
+  public var summaryWriter: (any SummaryWriter)? {
+    didSet {
+      if let k = summaryHover, let c = summaryColumns.first(where: { $0.col.key == k }) { placeSummaryButtons(c) }
+    }
+  }
+  /// The zoom the summaries take over below (0: none on this board)
+  package var summaryCut: CGFloat { levels.cut }
+  /// 摘要切换
+  public var summarySwitch: SummarySwitch {
+    get { levels.mode }
+    set { levels.mode = newValue }
+  }
   var camera = Camera(origin: .zero, zoom: 1)
   /// Where the next board shown is shown from (back to a board: where it was), instead of all of it in view
   public var arriving: Camera?
@@ -576,6 +604,9 @@ public final class CanvasView: NSView {
     motion = Motion()
     restZoom = nil
     hoveredMark = nil
+    summariesChanged()
+    if !keepCamera { levels.show(zoom: camera.zoom) }
+    applyLevels(levels.frame(at: CACurrentMediaTime()))
     applyCamera()
     arrive()
     stylePopLine()
@@ -724,6 +755,10 @@ public final class CanvasView: NSView {
       if editing != nil { cameraMovedWhileEditing() }
       if popShown != nil { positionPop() }
       if refPeek != nil { placeRefPeek() }
+      if summaryButtons.superlayer != nil {
+        summaryButtons.setAffineTransform(CGAffineTransform(scaleX: 1 / camera.zoom, y: 1 / camera.zoom))
+      }
+      if summaryEditor != nil { placeSummaryEditor() }
       onZoom?(camera.zoom)
       // a label or title being written is kept when the camera moves
       if inPlace != nil { endInPlace(commit: true) }
@@ -849,6 +884,10 @@ public final class CanvasView: NSView {
       cardLevel.isHidden = c == 0
       summaryLayer.opacity = s
       summaryLayer.isHidden = s == 0
+    }
+    if levels.level != levelShown {
+      levelShown = levels.level
+      levelChanged()
     }
   }
 
@@ -1134,10 +1173,11 @@ public final class CanvasView: NSView {
   /// Jumps to a zoom with the board point `centre` in the middle of the view, at rest
   package func place(zoom: CGFloat, centre: CGPoint) {
     let z = limits.clamp(zoom)
-    levels.moved(from: camera.zoom, to: z)
+    // a jump, not a move: its level at once
+    levels.show(zoom: z)
     camera = Camera(origin: CGPoint(x: centre.x - bounds.width / 2 / z, y: centre.y - bounds.height / 2 / z), zoom: z)
     motion = Motion()
-    if levels.isAnimating { link?.isPaused = false }
+    applyLevels(levels.frame(at: CACurrentMediaTime()))
     cancelRedraws()
     applyCamera()
     arrive()

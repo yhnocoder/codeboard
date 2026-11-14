@@ -111,6 +111,12 @@ func sidenoteBoard(question: Bool = false) -> Board {
     c.onPop = { opened.append($0) }
     let p = CGPoint(x: onBoard(whole).midX, y: onBoard(whole).midY)
     #expect(c.markAt(p) != nil)
+    // zoomed out past the switch point the summaries show: the card level, its markers with it, is not there to click
+    if c.levels.level == .summaries {
+      r.click(p)
+      #expect(c.openPop == nil && opened.isEmpty)
+      return
+    }
     r.click(p)
     #expect(c.openPop == .spot(.card(cid("n1"))))
     r.click(p)

@@ -5,9 +5,9 @@ Format version 2: everything a VS Code board of version 17 holds that the app ke
 `LegacyUpgrade.swift` and `LegacyImport.swift` the importer). `Tests/CodeBoardModelTests/Fixtures` has an old storage
 folder (`storage/`) and the vault it imports to (`vault/`), byte for byte, and `upgrade.json` (see Importing).
 
-**Status**: the canvas draws code, Notes, Texts, Boxes (Note, Text and Box through the web page in `web/`, with the board's
-own stylesheets), images, sections and arrows. Sidenotes, stickers, the shelf, web cards, link lists, sub-board cards,
-summaries and the seal are stored and round-tripped but not drawn yet. Version 1 files (step 1) are refused; vaults are
+**Status**: the canvas draws everything stored here: code, Notes, Texts, Boxes (Note, Text and Box through the web page
+in `web/`, with the board's own stylesheets), images, sections, arrows, sidenotes, stickers, the shelf, web cards, link
+lists, sub-board cards and their seals, and, zoomed out, the summaries. Version 1 files (step 1) are refused; vaults are
 imported again from the old boards. How the format grows from here: Versions, below.
 
 ## Vault

@@ -14,6 +14,13 @@ import CodeBoardNotes
   var onVaultChanged: (() -> Void)?
   /// The Note renderer its canvases share (nil: the app's)
   private let notes: NoteRenderer?
+  /// 摘要切换, and who writes a summary again (nil: no AI key, no ↻), for every canvas
+  var summarySwitch = SummarySwitch.default {
+    didSet { for p in panes.values { p.canvas.summarySwitch = summarySwitch } }
+  }
+  var summaryWriter: (any SummaryWriter)? {
+    didSet { for p in panes.values { p.canvas.summaryWriter = summaryWriter } }
+  }
 
   init(shell: Shell, notes: NoteRenderer? = nil) {
     self.shell = shell
@@ -115,6 +122,8 @@ import CodeBoardNotes
         pane.autoresizingMask = [.width, .height]
         pane.isHidden = true
         pane.onReady = { [weak self] in self?.reveal() }
+        pane.canvas.summarySwitch = summarySwitch
+        pane.canvas.summaryWriter = summaryWriter
         pane.onOpenBoard = { [weak self] in self?.shell.show($0) }
         pane.canvas.onVaultChanged = { [weak self] in self?.onVaultChanged?() }
         pane.canvas.onSetSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }

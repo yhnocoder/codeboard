@@ -311,6 +311,7 @@ extension CanvasView {
     placeMarks()
     if openPop != nil { refreshPop() }
     questionsChanged()
+    summariesChanged()
     // a swap made here otherwise reaches the screen a frame later than the layers it replaces go
     CATransaction.flush()
     arrive()
@@ -748,6 +749,12 @@ extension CanvasView {
   public override func mouseMoved(with e: NSEvent) {
     guard gesture == nil else { return }
     let v = convert(e.locationInWindow, from: nil)
+    if levels.level == .summaries {
+      let p = camera.board(v)
+      if summaryButton(at: p) == nil { hoverSummary(summaryColumn(at: p).map { summaryColumns[$0].col.key }) }
+      (summaryButton(at: p) != nil ? NSCursor.pointingHand : NSCursor.arrow).set()
+      return
+    }
     if placing != nil {
       moveGhost(to: v)
       NSCursor.arrow.set()
@@ -786,6 +793,7 @@ extension CanvasView {
   }
 
   public override func mouseExited(with e: NSEvent) {
+    hoverSummary(nil)
     hover(nil)
     hoverMark(nil)
     guard gesture == nil, hoveredCard != nil else { return }
@@ -806,6 +814,10 @@ extension CanvasView {
     let p = camera.board(v)
     if placing != nil {
       putSticker(at: p, free: e.modifierFlags.contains(.option))
+      return
+    }
+    if levels.level == .summaries {
+      pressAtSummaries(e, view: v, board: p, doc)
       return
     }
     // a press anywhere on the board closes the sticker palette and the Shelf's large picture
@@ -970,11 +982,14 @@ extension CanvasView {
         origin: camera.board(r.origin), size: CGSize(width: r.width / camera.zoom, height: r.height / camera.zoom))
       var hit = base
       for it in scene?.items ?? [] {
-        if case .card(let id)? = it.owner, it.rect.intersects(w), !doc.board.isLocked(.card(id)) {
+        if case .card(let id)? = it.owner, it.rect.intersects(w), !doc.board.isLocked(.card(id)),
+          it.kept || levels.level == .cards
+        {
           hit.insert(.card(id))
         }
       }
-      for f in scene?.frames ?? [] where w.contains(f.rect) && !doc.board.isLocked(section: f.id) {
+      for f in scene?.frames ?? []
+      where levels.level == .cards && w.contains(f.rect) && !doc.board.isLocked(section: f.id) {
         hit.insert(.section(f.id))
       }
       if hit != doc.selection { doc.select(hit) }
@@ -1012,6 +1027,7 @@ extension CanvasView {
   }
 
   public override func mouseUp(with e: NSEvent) {
+    if releaseSummary(at: convert(e.locationInWindow, from: nil)) { return }
     if let d = markDrag {
       markDrag = nil
       if d.moved {
@@ -1599,7 +1615,7 @@ extension CanvasView {
   /// Only what works, in the web board's order: a card's Arrange ▸ (with Tilt and Lock), then Delete; for several items
   /// Lock, Tilt and Arrange ▸, then Cut, Copy, Duplicate and Delete; a Section's Lock and Delete; on the canvas, Paste
   public override func menu(for e: NSEvent) -> NSMenu? {
-    guard let doc = document, gesture == nil else { return nil }
+    guard let doc = document, gesture == nil, levels.level == .cards else { return nil }
     // it acts on what is under the pointer, selected first when it is not
     let p = camera.board(convert(e.locationInWindow, from: nil))
     // a sticker's: its colours and Delete
