@@ -46,6 +46,9 @@ final class BlockMoveHost {
 
   init(demo: Demo) { self.demo = demo }
 
+  /// whether the ⌘ outline shows now (the check)
+  var outlineShown: Bool { !outline.isHidden }
+
   func start() {
     let page = demo.page
     for v in [outline, line] {
@@ -80,7 +83,9 @@ final class BlockMoveHost {
 
   private func handle(_ e: NSEvent) -> NSEvent? {
     guard e.window === demo.window else { return e }
-    let p = demo.page.convert(e.locationInWindow, from: nil)
+    // a modifier key's event carries no pointer: where the pointer is now
+    let at = e.type == .flagsChanged ? demo.window.mouseLocationOutsideOfEventStream : e.locationInWindow
+    let p = demo.page.convert(at, from: nil)
     let cmd = e.modifierFlags.contains(.command)
     switch e.type {
     case .flagsChanged, .mouseMoved:

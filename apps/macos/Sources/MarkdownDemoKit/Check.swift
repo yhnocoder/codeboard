@@ -44,6 +44,7 @@ enum Check {
     if ticking > 0 { failures.append("\(ticking) editors still tick at rest") }
     var idle: [[String: Any]] = []
     var rests: [String: Any] = [:]
+    var ticks: [String: Bool] = [:]
     func rest(_ name: String) {
       let cpu0 = processCPU()
       let main0 = threadCPU()
@@ -65,6 +66,8 @@ enum Check {
     demo.window.setContentSize(CGSize(width: 920, height: 900))
     demo.window.setFrameOrigin(CGPoint(x: screen.visibleFrame.minX, y: screen.visibleFrame.minY))
     demo.window.alphaValue = 0.01
+    // never in the way of her pointer: the real mouse goes through it; the check's own events are posted to the app
+    demo.window.ignoresMouseEvents = true
     demo.window.orderFrontRegardless()
     rest("shown")
     let visible = demo.window.occlusionState.contains(.visible)
@@ -73,6 +76,10 @@ enum Check {
     // scrolled top to bottom and back, a frame at a time
     var peak = base
     func frame() {
+      // events taken off the app's queue and dispatched as NSApp.run does (monitors included), then a frame's time
+      while let ev = NSApp.nextEvent(matching: .any, until: nil, inMode: .default, dequeue: true) {
+        NSApp.sendEvent(ev)
+      }
       RunLoop.main.run(until: Date(timeIntervalSinceNow: 1.0 / 60))
       peak = max(peak, footprint()?.now ?? 0)
     }
@@ -113,6 +120,41 @@ enum Check {
       demo.window.makeFirstResponder(nil)
       frame()
     }
+    // a ⌘ move through the app's own event queue (the monitors see it as they see hers): ⌘ over the first card's second
+    // block, then a ⌘-drag of it below the third
+    if let e = demo.cards.first, let content = demo.window.contentView {
+      demo.window.makeFirstResponder(e)
+      e.enter(at: CGPoint(x: 40, y: 12))
+      frame()
+      let frames = e.core.layout.blockFrames
+      func at(_ block: Int) -> CGPoint {
+        let r = frames[min(block, frames.count - 1)]
+        let inPage = CGPoint(x: e.frame.minX + 30 * demo.zoom, y: e.frame.minY + r.midY * demo.zoom)
+        return content.convert(demo.page.convert(inPage, to: content), to: nil)
+      }
+      func post(_ type: NSEvent.EventType, _ p: CGPoint, _ flags: NSEvent.ModifierFlags = .command) {
+        let ev = NSEvent.mouseEvent(
+          with: type, location: p, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+          windowNumber: demo.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1,
+          pressure: type == .leftMouseUp ? 0 : 1)!
+        NSApp.postEvent(ev, atStart: false)
+        frame()
+      }
+      let before = e.source
+      post(.mouseMoved, at(1))
+      ticks["outline on ⌘ hover"] = demo.moves.outlineShown
+      post(.leftMouseDown, at(1))
+      post(.leftMouseDragged, CGPoint(x: at(1).x, y: at(1).y - 20))
+      post(.leftMouseDragged, at(3))
+      post(.leftMouseUp, at(3))
+      for _ in 0..<24 { frame() }
+      ticks["⌘-drag moved a block"] = e.source != before
+      e.undo(nil)
+      e.isEditing = false
+      demo.window.makeFirstResponder(nil)
+      frame()
+      for (k, v) in ticks where !v { failures.append("\(k): no") }
+    }
     rest("after click, typing, zoom, leaving")
     rest("after click, typing, zoom, leaving, again")
     let afterAll = footprint()?.now ?? 0
@@ -142,6 +184,7 @@ enum Check {
     stage("engines trimmed to one and collected")
     let result: [String: Any] = [
       "stages": stages, "layouts": layouts, "idleCpuPercent": idle, "tickingEditors": ticking, "onScreen": rests,
+      "events": ticks,
       "failures": failures,
     ]
     if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]) {

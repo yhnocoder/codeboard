@@ -23,7 +23,28 @@ public enum MarkdownSourceOps {
     var prev = ""
     for t in toks {
       let caption = prev == "table" && t.type == "paragraph" && Ext.tableCaption.test(t.raw.ns)
-      if t.type != "space" && !caption {
+      if t.type == "list", listNodes(t) > 1 {
+        // a list mixing task and plain items is one node per run of either kind (TipTap splits it): each run a block
+        var from = at
+        var run: [Token] = []
+        for (i, item) in t.items.enumerated() {
+          if let last = run.last, taskItemStart.test(last.raw.ns) != taskItemStart.test(item.raw.ns) {
+            var part = t
+            part.items = run
+            starts.append(from)
+            blocks.append(part)
+            from += run.reduce(0) { $0 + $1.raw.count }
+            run = []
+          }
+          run.append(item)
+          if i == t.items.count - 1 {
+            var part = t
+            part.items = run
+            starts.append(from)
+            blocks.append(part)
+          }
+        }
+      } else if t.type != "space" && !caption {
         starts.append(at)
         blocks.append(t)
       }
