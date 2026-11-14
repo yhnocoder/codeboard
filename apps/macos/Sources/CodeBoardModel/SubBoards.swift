@@ -66,8 +66,10 @@ extension Board {
   public func nextAutoPlace() -> (x: Double, y: Double) {
     let autos = autoCards.map(\.card)
     guard let last = autos.last, let first = autos.first else {
-      let bottom = cards.map { $0.y + ($0.height ?? $0.measuredHeight ?? 200) }.max()
-      let left = cards.map(\.x).min()
+      // below all that is on the board, its Sections too
+      let bottom = (cards.map { $0.y + ($0.height ?? $0.measuredHeight ?? 200) } + sections.map { $0.y + $0.height })
+        .max()
+      let left = (cards.map(\.x) + sections.map(\.x)).min()
       guard let bottom, let left else { return (0, 0) }
       return (left, bottom + Board.autoRowGap)
     }

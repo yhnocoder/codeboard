@@ -204,3 +204,12 @@ private func targets(_ b: Board) -> [SubBoard.Target] { b.autoCards.map(\.target
   // nothing selected that is here: nothing
   #expect(b.extract([cid("zz")], rects: rects, child: bid("k2"), frame: cid("f2")) == nil)
 }
+
+@Test func theFirstAutomaticCardGoesBelowTheUsersSectionsToo() {
+  var b = Board(
+    id: bid("fb"), cards: [note("mine", x: 0, y: 0)],
+    sections: [Section(id: SectionID(rawValue: "s"), title: "S", x: -40, y: -20, width: 300, height: 400)])
+  b.keepUp(with: [.board(bid("b1"))])
+  let first = b.autoCards[0].card
+  #expect(first.x == -40 && first.y == 380 + Board.autoRowGap)
+}
