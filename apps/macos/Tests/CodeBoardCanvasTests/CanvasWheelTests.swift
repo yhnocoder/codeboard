@@ -117,7 +117,10 @@ extension Rig {
     r.doc.select([.card(cid("b1"))])
     r.key(51)
     await r.settle()
-    #expect(c.hitCard(p) == nil, "\(String(describing: c.hitCard(p))) \(r.doc.board.card(cid("b1")) == nil) \(String(describing: r.window.firstResponder))")
+    #expect(
+      c.hitCard(p) == nil,
+      "\(String(describing: c.hitCard(p))) \(r.doc.board.card(cid("b1")) == nil) \(String(describing: r.window.firstResponder))"
+    )
     #expect(now() == nil, "b1 deleted: nothing hovered")
     // t1 moved under the pointer
     let t = r.centre("t1")

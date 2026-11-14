@@ -139,7 +139,9 @@ struct CodeLayout: Equatable, Sendable {
   /// sticker on a hidden line sits on the "N lines hidden" row)
   func shownRow(segment: Int, line: Int) -> Placed? {
     row(segment: segment, line: line)
-      ?? rows.first { if case .gap(let s, let a, let b) = $0.row { s == segment && (a...b).contains(line) } else { false } }
+      ?? rows.first {
+        if case .gap(let s, let a, let b) = $0.row { s == segment && (a...b).contains(line) } else { false }
+      }
   }
 
   /// The middle of the row of a segment's line, when it is shown
