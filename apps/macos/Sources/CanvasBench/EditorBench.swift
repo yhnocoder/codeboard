@@ -14,18 +14,24 @@ import Foundation
 /// (which today parses the whole Note: a label → blocks index is the next step). Prints one JSON object.
 enum EditorBench {
   static func run() throws {
-    let rows: [(String, String, String)] = [
-      ("prose", document(definitions: false), "Paragraph 601 "),
-      ("list item", document(definitions: false), "list item 612 "),
-      ("definition line", document(definitions: true), "[ref]: https://example.com/"),
+    let rows: [(String, String, String, Script)] = [
+      ("prose", document(definitions: false), "Paragraph 601 ", .typing),
+      ("list item", document(definitions: false), "list item 612 ", .typing),
+      ("prose, Note with definitions", document(definitions: true), "Paragraph 601 ", .typing),
+      ("definition URL", document(definitions: true), "[ref]: https://example.com/", .typing),
+      ("definition made and removed", document(definitions: true), "Paragraph 601 ", .definitions),
     ]
     var out: [String: Any] = [:]
-    for (name, text, anchor) in rows {
-      out[name] = try row(text, anchor: anchor)
+    for (name, text, anchor, script) in rows {
+      out[name] = try row(text, anchor: anchor, script: script)
     }
     let json = try JSONSerialization.data(withJSONObject: out, options: [.prettyPrinted, .sortedKeys])
     print(String(decoding: json, as: UTF8.self))
   }
+
+  /// What the keys are: typing (letters and spaces, an Enter every 60, a Backspace every 15), or a definition line put
+  /// in after the paragraph and taken out again, key by key (each one a paste or a cut of it)
+  enum Script { case typing, definitions }
 
   static func document(definitions: Bool) -> String {
     var parts: [String] = []
@@ -40,16 +46,25 @@ enum EditorBench {
           "Paragraph \(i) with some **bold**, `code`, a [link](https://example.com) and 中文混排的一段文字，看看折行。")
       }
     }
-    if definitions { parts.append("See [the reference][ref].\n\n[ref]: https://example.com/a") }
+    if definitions {
+      // definitions spread through the Note, as a long Note with reference links has them
+      for i in stride(from: 50, to: 1200, by: 100) { parts[i] += " See [ref \(i)][r\(i)]." }
+      for i in stride(from: 99, to: 1200, by: 100) { parts.insert("[r\(i - 49)]: https://example.com/\(i)", at: i) }
+      parts.append("See [the reference][ref].\n\n[ref]: https://example.com/a")
+    }
     return parts.joined(separator: "\n\n")
   }
 
-  static func row(_ text: String, anchor: String) throws -> [String: Any] {
+  static func row(_ text: String, anchor: String, script: Script) throws -> [String: Any] {
     let env = NoteEnv(folder: URL(filePath: "/nonexistent"))
     let note = Note(text: text, style: .note)
+    // the Note shown (laid out for the display), then opened for editing (a copy of that layout)
     let t0 = cpu()
+    _ = try NativeNotes.body(note, width: 360, look: "warm-ink", dark: false, env: env)
+    let t1 = cpu()
     let (editor, _) = try NativeNotes.editor(note, width: 360, look: "warm-ink", dark: false, env: env)
-    let opened = cpu() - t0
+    let entered = cpu() - t1
+    let displayed = t1 - t0
     var doc = editor.document
     let start = (doc.source as NSString).range(of: anchor)
     precondition(start.location != NSNotFound, "no \(anchor) in the bench Note")
@@ -61,6 +76,13 @@ enum EditorBench {
       space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
     ctx.translateBy(x: 0, y: viewport * scale)
     ctx.scaleBy(x: scale, y: -scale)
+    // the Note was on screen before it was edited: what is around the caret has been drawn once already
+    let shownAt = editor.blockFrames[doc.blocks.lastIndex { $0.range.lowerBound <= caret } ?? 0]
+    let shown = CGRect(x: 0, y: max(0, shownAt.midY - viewport / 2), width: editor.width, height: viewport)
+    ctx.saveGState()
+    ctx.translateBy(x: 0, y: -shown.minY)
+    editor.draw(in: ctx, scale: scale, clip: shown) { _ in nil }
+    ctx.restoreGState()
     let typed = Array("the scheduler keeps a batch of requests in flight ")
     var reparse: [Double] = []
     var layout: [Double] = []
@@ -68,42 +90,62 @@ enum EditorBench {
     var draw: [Double] = []
     var total: [Double] = []
     var laidOut = 0
+    var slow: [[String: Any]] = []
+    // each key in a pool of its own, as each key event is in the app's run loop
     for key in 0..<500 {
-      let r: Range<Int>
-      let ins: String
-      if key % 15 == 14 {
-        r = (caret - 1)..<caret
-        ins = ""
-      } else if key % 60 == 59 {
-        r = caret..<caret
-        ins = "\n\n"
-      } else {
-        r = caret..<caret
-        ins = String(typed[key % typed.count])
+      autoreleasepool {
+        let r: Range<Int>
+        let ins: String
+        let definition = "\n\n[made\(key)]: https://example.com/new"
+        if script == .definitions {
+          if key % 2 == 0 {
+            r = caret..<caret
+            ins = definition
+          } else {
+            let made = "\n\n[made\(key - 1)]: https://example.com/new" as NSString
+            r = (caret - made.length)..<caret
+            ins = ""
+          }
+        } else if key % 15 == 14 {
+          r = (caret - 1)..<caret
+          ins = ""
+        } else if key % 60 == 59 {
+          r = caret..<caret
+          ins = "\n\n"
+        } else {
+          r = caret..<caret
+          ins = String(typed[key % typed.count])
+        }
+        let a = cpu()
+        let next = doc.reparse(replacing: r, with: ins)
+        let b = cpu()
+        let t = editor.update(to: next, replacing: r, delta: (ins as NSString).length - r.count)
+        let c = cpu()
+        caret = r.lowerBound + (ins as NSString).length
+        // the 800 points around the caret's block
+        let frames = editor.blockFrames
+        let i = next.blocks.lastIndex { $0.range.lowerBound <= caret } ?? 0
+        let clip = CGRect(x: 0, y: max(0, frames[i].midY - viewport / 2), width: editor.width, height: viewport)
+        ctx.saveGState()
+        ctx.translateBy(x: 0, y: -clip.minY)
+        ctx.clear(clip)
+        editor.draw(in: ctx, scale: scale, clip: clip) { _ in nil }
+        ctx.restoreGState()
+        let d = cpu()
+        doc = next
+        reparse.append(b - a)
+        layout.append(t.layout)
+        restack.append(t.restack)
+        draw.append(d - c)
+        total.append(d - a)
+        laidOut += t.laidOut
+        if d - a > 5 {
+          slow.append([
+            "key": key, "edit": ins.isEmpty ? "delete \(r.count)" : ins.debugDescription, "reparse": b - a,
+            "layout": t.layout, "restack": t.restack, "draw": d - c, "laid_out": t.laidOut,
+          ])
+        }
       }
-      let a = cpu()
-      let next = doc.reparse(replacing: r, with: ins)
-      let b = cpu()
-      let t = editor.update(to: next, replacing: r, delta: (ins as NSString).length - r.count)
-      let c = cpu()
-      caret = r.lowerBound + (ins as NSString).length
-      // the 800 points around the caret's block
-      let frames = editor.blockFrames
-      let i = next.blocks.lastIndex { $0.range.lowerBound <= caret } ?? 0
-      let clip = CGRect(x: 0, y: max(0, frames[i].midY - viewport / 2), width: editor.width, height: viewport)
-      ctx.saveGState()
-      ctx.translateBy(x: 0, y: -clip.minY)
-      ctx.clear(clip)
-      editor.draw(in: ctx, scale: scale, clip: clip) { _ in nil }
-      ctx.restoreGState()
-      let d = cpu()
-      doc = next
-      reparse.append(b - a)
-      layout.append(t.layout)
-      restack.append(t.restack)
-      draw.append(d - c)
-      total.append(d - a)
-      laidOut += t.laidOut
     }
     func stats(_ v: [Double]) -> [String: Double] {
       let s = v.sorted()
@@ -111,7 +153,8 @@ enum EditorBench {
       return ["median": at(0.5), "p95": at(0.95), "max": at(1)]
     }
     return [
-      "blocks": doc.blocks.count, "open_ms": (opened * 10).rounded() / 10, "keys": 500,
+      "blocks": doc.blocks.count, "display_ms": (displayed * 10).rounded() / 10,
+      "enter_edit_ms": (entered * 1000).rounded() / 1000, "keys": 500, "slow_keys": slow,
       "blocks_laid_out_per_key": Double(laidOut) / 500,
       "reparse_ms": stats(reparse), "layout_ms": stats(layout), "restack_ms": stats(restack), "draw_ms": stats(draw),
       "total_ms": stats(total),

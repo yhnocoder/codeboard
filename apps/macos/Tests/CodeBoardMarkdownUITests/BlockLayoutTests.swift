@@ -7,7 +7,7 @@ import Testing
 
 /// The editor's layout, kept up to date edit by edit, is the layout of the whole document made afresh: the same block
 /// frames, height and pixels after every edit, while only the blocks an edit changed are laid out again
-@Suite struct EditorLayoutTests {
+@Suite struct BlockLayoutTests {
   struct Seeded: RandomNumberGenerator {
     var state: UInt64
     mutating func next() -> UInt64 {
@@ -61,7 +61,7 @@ import Testing
     for round in 0..<12 {
       let src = (0..<14).map { _ in Self.parts.randomElement(using: &rng)! }.joined(separator: "\n\n")
       var doc = MarkdownDocument(src)
-      let editor = EditorLayout(doc, width: width, theme: testTheme, layout: nil, resources: TestResources())
+      let editor = BlockLayout(doc, width: width, theme: testTheme, layout: nil, resources: TestResources())
       for step in 0..<20 {
         let len = (doc.source as NSString).length
         let at = Int.random(in: 0...len, using: &rng)
@@ -103,7 +103,7 @@ import Testing
   @Test func aBlockIsLaidOutAgainWhenItsPlaceInDocumentOrderChanges() {
     _ = boardFonts
     let doc = MarkdownDocument("Text\n\nA\n\n| a |\n|---|\n| 1 |\n\nMore")
-    let editor = EditorLayout(doc, width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let editor = BlockLayout(doc, width: 300, theme: testTheme, layout: nil, resources: TestResources())
     let ins = "\n\n| x |\n|---|\n| 0 |"
     let next = doc.reparse(replacing: 4..<4, with: ins)
     let t = editor.update(to: next, replacing: 4..<4, delta: (ins as NSString).length)

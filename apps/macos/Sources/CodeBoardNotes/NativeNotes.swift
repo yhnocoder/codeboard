@@ -109,37 +109,28 @@ public enum NativeNotes {
         let widest = MarkdownLayout.make(document, width: nil, theme: card.theme, layout: info, resources: resources)
         inner = max(1, widest.size.width)
       }
-      let layout = MarkdownLayout.make(document, width: inner, theme: card.theme, layout: info, resources: resources)
+      let layout = BlockLayout(document, width: inner, theme: card.theme, layout: info, resources: resources)
       return NoteBody(layout: layout, card: card, folder: env.folder)
     }
     return useCache ? cache.get(key, make) : make()
   }
 
-  /// The Note laid out for editing: the same card, theme and resources as `body`, kept block by block (EditorLayout) so
-  /// that each edit lays out only what it changed. The engines are started whatever the text holds now: any key may
-  /// begin a formula. A Text or Box that does not wrap is laid out as wide as its text is now
+  /// The Note laid out for editing: a copy of the display's layout of it (from the cache when it is shown, as it is when
+  /// someone starts editing it), so starting to edit lays nothing out; what the edits make is laid out with the formula
+  /// engines, whatever the text holds now, since any key may begin a formula
   public static func editor(
     _ note: Note, width: Double, look: String, dark: Bool, env: NoteEnv
-  ) throws(NoteError) -> (layout: EditorLayout, card: NoteLooks.Card) {
-    try fonts.get()
-    let math = try engines()
-    let card = NoteLooks.card(note.style, look: look, dark: dark)
-    let document = MarkdownDocument(note.text)
-    let info = note.layout.map(Self.info)
-    let resources = NoteResources(env: env, math: math)
-    var inner = max(1, CGFloat(width) - card.padding[1] - card.padding[3])
-    if card.natural {
-      inner = max(
-        1, MarkdownLayout.make(document, width: nil, theme: card.theme, layout: info, resources: resources).size.width)
-    }
-    return (EditorLayout(document, width: inner, theme: card.theme, layout: info, resources: resources), card)
+  ) throws(NoteError) -> (layout: BlockLayout, card: NoteLooks.Card) {
+    let shown = try body(note, width: width, look: look, dark: dark, env: env)
+    let resources = NoteResources(env: env, math: try engines())
+    return (shown.layout.copy(resources: resources), shown.card)
   }
 
   /// A formula or a diagram anywhere in Markdown: `$`, `\(`, `\[` or a mermaid fence. A Note without any never starts
   /// the engines
   static func needsEngines(_ note: Note) -> Bool {
     let t = note.text
-    return t.contains("$") || t.contains("\\(") || t.contains("\\[") || t.contains("mermaid")
+    return t.holds("$") || t.holds("\\(") || t.holds("\\[") || t.holds("mermaid")
   }
 
   /// A code fence's language as the code highlighter (CodeBoardSyntax) names its grammars; nil: not coloured
@@ -238,11 +229,11 @@ public struct NoteEnv: Sendable {
 
 /// A Note laid out for a card: its content and where it sits in the card
 public final class NoteBody: Sendable {
-  public let layout: MarkdownLayout
+  public let layout: BlockLayout
   public let card: NoteLooks.Card
   let folder: URL
 
-  init(layout: MarkdownLayout, card: NoteLooks.Card, folder: URL) {
+  init(layout: BlockLayout, card: NoteLooks.Card, folder: URL) {
     self.layout = layout
     self.card = card
     self.folder = folder

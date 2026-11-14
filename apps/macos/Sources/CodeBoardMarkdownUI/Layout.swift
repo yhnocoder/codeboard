@@ -29,7 +29,7 @@ public final class MarkdownLayout: @unchecked Sendable {
   }
 
   /// A height rounded up to a hundredth of a point, as the page's layout does; sums of the same heights in another order
-  /// (EditorLayout adds them block by block) differ by far less than the allowance and round the same
+  /// (BlockLayout adds them block by block) differ by far less than the allowance and round the same
   static func roundedUp(_ y: CGFloat) -> CGFloat { ceil(y * 100 - 1e-6) / 100 }
 
   /// Lays the document out `width` points wide (nil: as wide as its widest paragraph line or code line, max-content;

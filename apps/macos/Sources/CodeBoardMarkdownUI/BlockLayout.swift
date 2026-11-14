@@ -2,17 +2,17 @@ import CodeBoardMarkdown
 import CoreGraphics
 import Foundation
 
-/// A Note's layout while it is edited: the same picture as `MarkdownLayout.make` of the whole document (EditorLayoutTests
-/// checks frames and pixels), kept as one piece per top-level block so that an edit lays out again only the blocks it
-/// changed. After `MarkdownDocument.reparse`, `update` keeps the pieces of the blocks before and after the edit that came
-/// back equal (those after it moved by the edit's length), lays out the others, and stacks the pieces again (one pass
-/// over the blocks: adding up heights and gaps, nothing laid out). Geometry is in the Note's own points at 100 %; a view
-/// scales it.
+/// A Note laid out block by block: the same picture as `MarkdownLayout.make` of the whole document (BlockLayoutTests
+/// checks frames and pixels), kept as one piece per top-level block. The display draws it, and editing starts from a copy
+/// of it (`copy`), so entering a Note lays nothing out; an edit then lays out again only the blocks it changed. After
+/// `MarkdownDocument.reparse`, `update` keeps the pieces of the blocks before and after the edit that came back equal
+/// (those after it moved by the edit's length), lays out the others, and stacks the pieces again (one pass over the
+/// blocks: adding up heights and gaps, nothing laid out). Geometry is in the Note's own points at 100 %; a view scales it.
 ///
 /// A block's layout can depend on what came before it only through the document-order counters: which table, code block,
 /// task item it is (the Note's layout info is by position) and the how-manyth use of an image file it shows. A kept piece
 /// is laid out again when a counter it uses starts at another value than before.
-public final class EditorLayout: @unchecked Sendable {
+public final class BlockLayout: @unchecked Sendable {
   /// Where in document order a block starts: how many tables, code blocks and task items came before it, and how often
   /// each image file was shown
   struct Counters: Equatable {
@@ -89,6 +89,24 @@ public final class EditorLayout: @unchecked Sendable {
     }
     shifts = Array(repeating: 0, count: pieces.count)
     restack()
+  }
+
+  /// A layout of its own with the same pieces (they never change; a copy costs one array), laying out what an edit makes
+  /// with `resources` (editing has the formula engines a display without formulas did without)
+  public func copy(resources: MarkdownResources) -> BlockLayout {
+    BlockLayout(copying: self, resources: resources)
+  }
+
+  private init(copying o: BlockLayout, resources: MarkdownResources) {
+    document = o.document
+    width = o.width
+    theme = o.theme
+    info = o.info
+    self.resources = resources
+    pieces = o.pieces
+    tops = o.tops
+    shifts = o.shifts
+    height = o.height
   }
 
   /// The layout of `next`, the document after replacing `range` (in this layout's document) by text `delta` units longer
