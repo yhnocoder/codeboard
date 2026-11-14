@@ -7,6 +7,9 @@ public enum MDCommand: Sendable, Equatable {
   case heading(Int)
   /// ⌘= is -1 (a level up), ⌘- is +1
   case headingStep(Int)
+  /// ⌘↵ a table row below, ⌘⇧↵ above; ⌘⇧⌫ the row deleted
+  case addRow(below: Bool)
+  case deleteRow
 }
 
 public enum MDMarkKind: Sendable, Equatable {
@@ -30,6 +33,8 @@ extension MarkdownEditing {
     switch c {
     case .toggle(let kind): return toggle(kind.markers.open, kind.markers.close, state, document)
     case .heading(let level): return heading(to: { _ in level }, state, document)
+    case .addRow(let below): return tableRow(add: below, in: state, document: document)
+    case .deleteRow: return tableRow(add: nil, in: state, document: document)
     case .headingStep(let d):
       // ⌘= a level up (body text to 6, 1 stays 1), ⌘- a level down (6 to body text): editor/typora.ts
       return heading(

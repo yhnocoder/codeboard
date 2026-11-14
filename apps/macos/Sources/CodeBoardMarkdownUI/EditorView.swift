@@ -433,6 +433,16 @@ public final class MarkdownEditorView: NSView {
       !flags.contains(.option)
     else { return super.performKeyEquivalent(with: e) }
     let shift = flags.contains(.shift)
+    if key == "\r" || e.keyCode == 36 || e.keyCode == 51 {
+      // ⌘↵ / ⌘⇧↵ a table row below or above, ⌘⇧⌫ the row deleted
+      let c: MDCommand = e.keyCode == 51 ? .deleteRow : .addRow(below: !shift)
+      if e.keyCode != 51 || shift, core.command(c) {
+        note(.key(Self.mods(e) + (e.keyCode == 51 ? "⌫" : "↵"), did: "\(c)"))
+        changed()
+        return true
+      }
+      return super.performKeyEquivalent(with: e)
+    }
     if key == "/", !shift, core.toggleComment() {
       changed()
       return true

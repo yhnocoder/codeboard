@@ -113,6 +113,7 @@ extension MarkdownEditing {
       if !forward, let e = unpair(state, document) { return e }
       return delete(at: sel.head, forward: forward, ns, document)
     case .tab, .shiftTab:
+      if let e = tableKey(key, state, document) { return e }
       guard context(at: sel.head, in: document).leaf == .code else { return nil }
       let lines = ns.lineRange(for: NSRange(location: sel.range.lowerBound, length: sel.range.count))
       let multi = ns.substring(with: NSRange(location: sel.range.lowerBound, length: sel.range.count)).contains("\n")
@@ -205,7 +206,10 @@ extension MarkdownEditing {
         .trimmingCharacters(in: .whitespaces)
       if let last = before.last, ":{[(".contains(last), c.leaf == .code { indent += codeIndent }
       return insert("\n" + indent, replacing: r)
-    case .cell, .none:
+    case .cell:
+      return tableKey(.enter, MDEditState(source: ns as String, selection: MDSelection(q)), d)
+        ?? MDEdit(range: q..<q, replacement: "", selection: sel)
+    case .none:
       return MDEdit(range: q..<q, replacement: "", selection: sel)
     case .heading:
       // at the start: a line above, the caret staying in the heading; elsewhere the rest goes to body text after it
