@@ -96,7 +96,7 @@ extension MarkdownEditing {
     let ns = state.source as NSString
     switch key {
     case .text(let s):
-      return insert(s, replacing: sel.range)
+      return paired(s, state, document) ?? insert(s, replacing: sel.range)
     case .shiftEnter:
       // a line break inside the paragraph or cell, written as <br> (the source shows it); a heading is one line
       let c = context(at: sel.head, in: document)
@@ -110,6 +110,7 @@ extension MarkdownEditing {
     case .backspace, .delete:
       let forward = key == .delete
       if !sel.isEmpty { return MDEdit(range: sel.range, replacement: "", selection: MDSelection(sel.range.lowerBound)) }
+      if !forward, let e = unpair(state, document) { return e }
       return delete(at: sel.head, forward: forward, ns, document)
     case .tab, .shiftTab, .commandEnter:
       return nil
@@ -150,7 +151,23 @@ extension MarkdownEditing {
       }
       return insert("\n\n", replacing: r)
     case .paragraph:
-      break
+      // a line of |cells| alone in its paragraph, Enter at its end: a table with that header and one empty row, the
+      // caret in its first cell (editor/typora.ts)
+      if r.isEmpty, c.item == nil, c.quote == nil, q == c.block.upperBound {
+        let line = ns.substring(with: NSRange(location: c.block.lowerBound, length: c.block.count))
+        if line.hasPrefix("|"), line.hasSuffix("|"), line.count > 2, !line.contains("\n") {
+          let heads = String(line.dropFirst().dropLast()).split(separator: "|", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+          if heads.count <= 20 {
+            let head = "| " + heads.joined(separator: " | ") + " |"
+            let rule = "|" + heads.map { _ in "---" }.joined(separator: "|") + "|"
+            let row = "|" + heads.map { _ in "   " }.joined(separator: "|") + "|"
+            let text = head + "\n" + rule + "\n" + row
+            let firstCell = c.block.lowerBound + (head as NSString).length + (rule as NSString).length + 2 + 2
+            return MDEdit(range: c.block, replacement: text, selection: MDSelection(firstCell), undo: .inputRule)
+          }
+        }
+      }
     }
     // the prefix this line's text sits after (a quote's "> ", a list item's continuation indent)
     if let (item, list, first) = c.item, first {

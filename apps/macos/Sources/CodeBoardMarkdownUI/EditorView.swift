@@ -220,6 +220,33 @@ public final class MarkdownEditorView: NSView {
 
   // MARK: keys
 
+  /// ⌘B ⌘I ⌘U ⌘E ⌘⇧` ⌘⇧S ⌘⇧X ⌘⇧H, ⌘0–⌘6, ⌘= ⌘- (editor/typora.ts)
+  public override func performKeyEquivalent(with e: NSEvent) -> Bool {
+    guard isEditing, window?.firstResponder === self else { return super.performKeyEquivalent(with: e) }
+    let flags = e.modifierFlags.intersection([.command, .shift, .option, .control])
+    guard let key = e.charactersIgnoringModifiers?.lowercased(), flags.contains(.command), !flags.contains(.control),
+      !flags.contains(.option)
+    else { return super.performKeyEquivalent(with: e) }
+    let shift = flags.contains(.shift)
+    let c: MDCommand? =
+      switch (key, shift) {
+      case ("b", false): .toggle(.strong)
+      case ("i", false): .toggle(.emphasis)
+      case ("u", false): .toggle(.underline)
+      case ("e", false), ("`", true), ("~", true): .toggle(.code)
+      case ("s", true), ("x", true): .toggle(.strike)
+      case ("h", true): .toggle(.highlight)
+      case ("=", false): .headingStep(-1)
+      case ("-", false): .headingStep(1)
+      case (let k, false) where k.count == 1 && "0123456".contains(k): .heading(Int(k)!)
+      default: nil
+      }
+    guard let c else { return super.performKeyEquivalent(with: e) }
+    core.command(c)
+    changed()
+    return true
+  }
+
   public override func keyDown(with e: NSEvent) {
     guard isEditing else { return super.keyDown(with: e) }
     interpretKeyEvents([e])

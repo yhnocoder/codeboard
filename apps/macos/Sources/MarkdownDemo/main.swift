@@ -2,7 +2,7 @@
 // card in the board's looks, with the editor over it. ⌘O opens another file; tools/markdown/make-demo.sh makes an app.
 //   swift run MarkdownDemo [file.md] [--width 420]
 // The toolbar switches editing and the static picture (also ⌘↩ and Esc), the look (Warm Ink, Ink Wash), light and dark,
-// and the zoom (50 to 200 %, also ⌘= ⌘- ⌘0). Images
+// and the zoom (50 to 200 %, also ⌥⌘= ⌥⌘- ⌥⌘0). Images
 // are read relative to the file. Typing edits the text shown; the file is never written.
 import AppKit
 import CodeBoardMarkdown
@@ -326,9 +326,15 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
       withTitle: "Edit / Display", action: #selector(toggleMode(_:)), keyEquivalent: "\r")
     mode.target = self
     view.submenu!.addItem(.separator())
-    view.submenu!.addItem(withTitle: "Zoom In", action: #selector(zoomIn(_:)), keyEquivalent: "=").target = self
-    view.submenu!.addItem(withTitle: "Zoom Out", action: #selector(zoomOut(_:)), keyEquivalent: "-").target = self
-    view.submenu!.addItem(withTitle: "Actual Size", action: #selector(zoomActual(_:)), keyEquivalent: "0").target = self
+    // ⌥⌘: ⌘= ⌘- ⌘0 are the editor's heading keys
+    for (title, action, key) in [
+      ("Zoom In", #selector(zoomIn(_:)), "="), ("Zoom Out", #selector(zoomOut(_:)), "-"),
+      ("Actual Size", #selector(zoomActual(_:)), "0"),
+    ] {
+      let item = view.submenu!.addItem(withTitle: title, action: action, keyEquivalent: key)
+      item.keyEquivalentModifierMask = [.command, .option]
+      item.target = self
+    }
     main.addItem(view)
     NSApp.mainMenu = main
   }

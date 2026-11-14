@@ -85,12 +85,40 @@ public final class EditorCore {
   /// A key that may change the text: what the editing rules make of it, applied; whether it did anything
   @discardableResult
   public func key(_ k: MDKey) -> Bool {
+    // a closer typed over one a pair put in steps over it (editor/pairs.ts)
+    if case .text(let s) = k, selection.isEmpty, autoClosers.contains(selection.head),
+      (source as NSString).length > selection.head,
+      (source as NSString).substring(with: NSRange(location: selection.head, length: 1)) == s
+    {
+      autoClosers.remove(selection.head)
+      place(MDSelection(selection.head + 1))
+      return true
+    }
     guard marked == nil,
       let e = MarkdownEditing.key(k, in: MDEditState(source: source, selection: selection), document: document)
     else { return false }
     apply(e)
+    // a pair put in around the caret: its closer may be typed over
+    if case .text(let t) = k, (t as NSString).length == 1, e.range.isEmpty, (e.replacement as NSString).length == 2,
+      e.replacement.hasPrefix(t), e.selection == MDSelection(e.range.lowerBound + 1)
+    {
+      autoClosers.insert(e.range.lowerBound + 1)
+    }
     return true
   }
+
+  /// A formatting command (⌘B, ⌘1…): what the rules make of it, applied; whether it did anything
+  @discardableResult
+  public func command(_ c: MDCommand) -> Bool {
+    guard marked == nil,
+      let e = MarkdownEditing.command(c, in: MDEditState(source: source, selection: selection), document: document)
+    else { return false }
+    apply(e)
+    return true
+  }
+
+  /// where closers the editor paired sit, until anything else happens
+  private var autoClosers: Set<Int> = []
 
   /// Every change goes through here: the source edited, the blocks around the edit parsed again, the blocks that changed
   /// laid out again, the selection set and the change recorded for undo
@@ -123,6 +151,11 @@ public final class EditorCore {
   private func edit(_ r: Range<Int>, _ text: String, select s: MDSelection) -> String {
     let ns = document.source as NSString
     let old = ns.substring(with: NSRange(location: r.lowerBound, length: r.count))
+    // paired closers move with the edit; one it touches is no longer the editor's
+    let delta = (text as NSString).length - r.count
+    autoClosers = Set(
+      autoClosers.compactMap { c in c >= r.upperBound ? c + delta : c < r.lowerBound ? c : nil
+      })
     let next = document.reparse(replacing: r, with: text)
     document = next
     selection = s
@@ -403,6 +436,7 @@ public final class EditorCore {
   /// a new selection from a key: a caret shows its markers at once, a selection holds the layout still
   private func place(_ s: MDSelection, upstream up: Bool = false) {
     joinable = false
+    autoClosers = []
     revealPending = false
     selection = s
     upstream = up
