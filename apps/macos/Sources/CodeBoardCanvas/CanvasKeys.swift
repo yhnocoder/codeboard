@@ -30,8 +30,6 @@ extension CanvasView {
     case (.command, 36), (.command, 76):
       guard let c = cards.first, case .board? = scene?.parts[c]?.content.body else { return false }
       openSubBoard(c)
-    case ([.command, .shift], 30) where !cards.isEmpty: bringToFront(nil)
-    case ([.command, .shift], 33) where !cards.isEmpty: sendToBack(nil)
     case ([], 51), ([], 117): delete(nil)
     case ([.command, .shift], _) where key == "b": turnIntoBoard(nil)
     case (.option, 3): fitContentKey()

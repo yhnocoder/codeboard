@@ -2,7 +2,7 @@
 
 What each key and menu item of the web board (main: `packages/board/src`) does, and what the Mac app does. The parity
 decisions' NOT DO items are left out (Add Function, From GitHub, AI submenus, ⌘[ / ⌘] as layer order, Walkthrough,
-Call Tree, Moving Cars, Capture / Apply Run, Compare, Merge, Variant, Call Graph, Process Tag, Generated Code, arrow
+Call Tree, Moving Cars, ⇧⌘[ / ⇧⌘] as layer order, Capture / Apply Run, Compare, Merge, Variant, Call Graph, Process Tag, Generated Code, arrow
 label Arguments, New Code, Unmerge, Export). Checked by `Tests/CodeBoardCanvasTests/ParityKeysTests.swift`,
 `ParityMenusTests.swift` and `Tests/CodeBoardShellTests/ParityMenuKeysTests.swift`.
 
@@ -36,7 +36,7 @@ The app: `Sources/CodeBoardCanvas/CanvasKeys.swift` (`boardKey`, reached from `k
 | ⌘C / ⌘X | Copy / Cut the cards (lines selected: their code) | same for cards; gap: lines' code |
 | ⌥⌘V | Paste as Copy (cards copied on another board) | gap: no linked cards across boards yet |
 | ⌘D | Duplicate | same (Edit menu) |
-| ⇧⌘] / ⇧⌘[ | Bring to Front / Send to Back (cards selected; else VS Code's tabs) | same (else the tabs) |
+| ⇧⌘] / ⇧⌘[ | (main: Bring to Front / Send to Back with cards selected, else VS Code's tabs; NOT DO: one key doing two things by the selection is unpredictable, and these are the system's tab keys) | Show Next / Previous Tab, always; Bring to Front / Send to Back are ⌥⇧⌘F / ⌥⇧⌘B (Edit menu) |
 | ⌫ ⌦ | Delete: a sticker selected, the text selected in a card, else what is selected | same, but gap: text selected in a card (no static text selection) |
 | ⌘⌫ | Delete Everywhere (linked card, asks first) | gap: linked cards |
 | ⌘B, ⇧⌘H | Bold / Highlight the text selected in a Note at rest | gap: no static text selection |
@@ -62,7 +62,7 @@ The app: `CanvasEditing.swift` (`menu(for:)`), `CanvasMenus.swift`, `CanvasArrow
 
 ### A card (cardItems, kindItems): Add Sidenote S, `-`, the kind's own items, then the tail: Arrange ▸, Copy Path, `-`, Delete ⌫
 
-Arrange ▸ (arrangeItem): Bring to Front ⇧⌘], Bring Forward, Send Backward, Send to Back ⇧⌘[ (Front and Forward off when
+Arrange ▸ (arrangeItem): Bring to Front (app: ⌥⇧⌘F), Bring Forward, Send Backward, Send to Back (app: ⌥⇧⌘B) (Front and Forward off when
 already in front, Backward and Back when at the back), `-`, Tilt ⌥⇧T (checked), Lock / Unlock ⇧⌘L.
 
 | Card | main's own items | app |

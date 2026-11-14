@@ -95,7 +95,8 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     #expect(enabled(item(m, "Arrange", "Bring to Front")) && enabled(item(m, "Arrange", "Bring Forward")))
     #expect(!enabled(item(m, "Arrange", "Send Backward")) && !enabled(item(m, "Arrange", "Send to Back")))
     let keys = [
-      ("Bring to Front", "]", NSEvent.ModifierFlags([.command, .shift])), ("Send to Back", "[", [.command, .shift]),
+      ("Bring to Front", "f", NSEvent.ModifierFlags([.command, .option, .shift])),
+      ("Send to Back", "b", [.command, .option, .shift]),
       ("Tilt", "t", [.option, .shift]), ("Lock", "l", [.command, .shift]),
     ]
     for (t, k, mask) in keys {
