@@ -22,10 +22,18 @@ type RefList = {
 type Answer = { id: string; md: string };
 /** fixed: in a shared card's file, shown and not changed here */
 type PopNote =
-  | { id: string; fixed: boolean; kind: "text"; md: string; q: { done: boolean; answers: Answer[] } | null }
   | {
       id: string;
       fixed: boolean;
+      place: boolean;
+      kind: "text";
+      md: string;
+      q: { done: boolean; answers: Answer[] } | null;
+    }
+  | {
+      id: string;
+      fixed: boolean;
+      place: boolean;
       kind: "code";
       head: { title: string; where: string; version: string };
       start: number;
@@ -60,6 +68,7 @@ type Posted =
   | { type: "add"; text: string; ask: boolean }
   | { type: "write"; id: string; text: string }
   | { type: "delete"; id: string }
+  | { type: "place"; id: string }
   | { type: "done"; id: string; done: boolean }
   | { type: "answer"; id: string; text: string }
   | { type: "writeAnswer"; id: string; answer: string; text: string }
@@ -76,6 +85,7 @@ const ICONS: Record<string, string> = {
   close: "M12 4 4 12M4 4l8 8",
   check: "M13 4 6 11 3 8",
   pencil: "M11 2l3 3-8.5 8.5L2 14l.5-3.5zM9 4l3 3",
+  place: "M2.5 3H13.5A.5 .5 0 0 1 14 3.5V12.5A.5 .5 0 0 1 13.5 13H2.5A.5 .5 0 0 1 2 12.5V3.5A.5 .5 0 0 1 2.5 3zM5 7h6M5 10h4",
   trash:
     "M2 4h12M6 7v4M10 7v4M13 4V13.5A.5 .5 0 0 1 12.5 14H3.5A.5 .5 0 0 1 3 13.5V4M6 4V2.5A.5 .5 0 0 1 6.5 2H9.5A.5 .5 0 0 1 10 2.5V4",
   reply: "M10 7l3 3-3 3M3 3v4a3 3 0 0 0 3 3h7",
@@ -269,9 +279,13 @@ function slip(s: Shown, n: PopNote): HTMLElement {
       post({ type: "menu", id: n.id, x: e.clientX, y: e.clientY });
     });
   const tools = el("div", "kt");
+  // on a card (not a question): it can become a card beside it (notes.tsx Slip's Place on Board)
+  const place = () =>
+    n.place ? [button("ib", "Place on Board", "place", 14, () => post({ type: "place", id: n.id }))] : [];
   if (n.kind === "code") {
     box.append(codeOf(n));
-    if (!n.fixed) tools.append(button("ib", "Delete Sidenote", "trash", 14, () => post({ type: "delete", id: n.id })));
+    if (!n.fixed)
+      tools.append(...place(), button("ib", "Delete Sidenote", "trash", 14, () => post({ type: "delete", id: n.id })));
     if (tools.childElementCount) box.prepend(tools);
     return box;
   }
@@ -299,6 +313,7 @@ function slip(s: Shown, n: PopNote): HTMLElement {
     }
     tools.append(
       button("ib", "Edit", "pencil", 14, edit),
+      ...place(),
       button("ib", q ? "Delete Question" : "Delete Sidenote", "trash", 14, () => post({ type: "delete", id: n.id })),
     );
   }

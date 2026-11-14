@@ -522,7 +522,7 @@ extension CanvasSidenoteTests {
 
 extension CanvasSidenoteTests {
   /// A sidenote's menu (notes.tsx noteMenu): a right-click on it in the popup asks the app for its menu at the
-  /// pointer; a text sidenote's is Edit, then Delete Sidenote, a code sidenote's Delete Sidenote alone
+  /// pointer; a text sidenote's is Edit, Place on Board when it is on a card and asks nothing, then Delete Sidenote
   @Test func aRightClickOnASidenoteGivesItsMenu() async throws {
     let r = try await Rig(sidenoteBoard(), zoom: 1)
     defer { r.close() }
@@ -542,12 +542,70 @@ extension CanvasSidenoteTests {
     await r.until("asked for its menu") { got == [.menu("l1", at: CGPoint(x: 30, y: 40))] }
     pop.onAction = theirs
     let m = c.sidenoteMenu(nid("l1"))
-    #expect(m.items.map { $0.isSeparatorItem ? "-" : $0.title } == ["Edit", "-", "Delete Sidenote"])
+    func titles(_ m: NSMenu) -> [String] { m.items.map { $0.isSeparatorItem ? "-" : $0.title } }
+    #expect(titles(m) == ["Edit", "Place on Board", "-", "Delete Sidenote"])
+    #expect(titles(c.sidenoteMenu(nid("g1"))) == ["Edit", "-", "Delete Sidenote"], "on a Section: no card to place by")
+    r.doc.edit("x") {
+      $0.sidenotes.append(
+        Sidenote(
+          id: nid("k1"), anchor: .card(cid("n1")),
+          body: .code(
+            Segment(
+              id: SegmentID(rawValue: "k"), source: nil, language: "python", firstLine: 1, lines: ["x = 1"]))))
+    }
+    #expect(titles(c.sidenoteMenu(nid("k1"))) == ["Place on Board", "-", "Delete Sidenote"])
     (m.items.first?.representedObject as? MenuAction)?.run()
     await r.until("written in") {
       await pop.run("return !!document.querySelector('.sn-edit')") as? Bool == true
     }
     (m.items.last?.representedObject as? MenuAction)?.run()
     #expect(r.doc.board.sidenote(nid("l1")) == nil && r.doc.undoName == "Delete Sidenote")
+  }
+}
+
+extension CanvasSidenoteTests {
+  /// The tools of a sidenote hovered in its popup (notes.tsx Slip): Edit, Place on Board (on a card, no question),
+  /// Delete; a question's Resolve, Edit and Delete Question
+  @Test func aSidenotesToolsAreMainsAndPlaceOnBoardMakesItACard() async throws {
+    let r = try await Rig(sidenoteBoard(question: true), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let pop = c.sidenotePop
+    func tools(_ n: String) async -> [String] {
+      await pop.run(
+        "return [...document.querySelectorAll(s)].map((b) => b.getAttribute('aria-label'))",
+        ["s": ".slip[data-note=\"\(n)\"] .kt button"]) as? [String] ?? []
+    }
+    let lines = PopAt.lines(Lines(card: cid("c1"), segment: s1, range: 12...13))
+    c.openPop(.spot(.section(gid("g1"))))
+    await opened(r, .spot(.section(gid("g1"))))
+    #expect(await tools("g1") == ["Edit", "Delete Sidenote"])
+    c.openPop(.spot(.card(cid("n1"))))
+    await opened(r, .spot(.card(cid("n1"))))
+    #expect(await tools("w1") == ["Resolve", "Edit", "Delete Question"])
+    c.openPop(lines)
+    await opened(r, lines)
+    #expect(await tools("l1") == ["Edit", "Place on Board", "Delete Sidenote"])
+    // pressed: a Note of its text beside the card, an arrow to it from the Highlight's first line, one step, selected
+    let from = r.rect("c1")
+    _ = await pop.run("pop.click(s)", ["s": ".slip[data-note=\"l1\"] [aria-label=\"Place on Board\"]"])
+    await r.until("placed") { r.doc.board.sidenote(nid("l1")) == nil }
+    let id = try #require(r.doc.selection.first?.card)
+    let card = try #require(r.doc.board.card(id))
+    #expect(card.content == .own(CardContent(body: .note(Note(text: "取一批")))) && card.width == Board.newNoteWidth)
+    #expect(r.doc.board.arrows.last?.from == Endpoint(card: cid("c1"), segment: s1, line: 12))
+    #expect(r.doc.board.arrows.last?.to == Endpoint(card: id))
+    #expect(r.doc.undoName == "Place on Board" && c.openPop == nil)
+    await c.popTask?.value
+    #expect(c.popShown == nil, "the popup closes")
+    // from 48 right of the card and 20 down, the nearest place clear of the others
+    await r.settle()
+    let placed = r.rect(id.rawValue)
+    #expect(placed.minX >= from.maxX + 48 || placed.minY >= from.minY + 20, "\(placed)")
+    for o in r.doc.board.cards where o.id != id {
+      #expect(!r.rect(o.id.rawValue).insetBy(dx: -28, dy: -28).intersects(placed), "\(o.id.rawValue)")
+    }
+    r.doc.undo()
+    #expect(r.doc.board.sidenote(nid("l1")) != nil && r.doc.board.card(id) == nil)
   }
 }
