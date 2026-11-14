@@ -182,23 +182,50 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   var vault: Vault?
   var boardPath: String?
   var vaultNotes: [VaultNote]?
-  /// the Board menu, filled from the vault's folders
+  /// the Board menu, filled from the vault's folders, and the toolbar's picker of the same boards
   let boardMenu = NSMenu(title: "Board")
+  let boardPicker = NSPopUpButton(frame: CGRect(x: 0, y: 0, width: 220, height: 24), pullsDown: false)
+
+  @objc func pickFromToolbar(_ p: NSPopUpButton) {
+    guard let path = p.selectedItem?.representedObject as? String, path != boardPath, show(board: path) else { return }
+    remember()
+  }
 
   /// the paper under the card, the card's box and the editor inside it; a click on the paper ends editing
   final class Page: NSView {
     var onClick: () -> Void = {}
+    /// a file, board or vault dropped on the paper
+    var onDrop: (URL) -> Bool = { _ in false }
+    override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+      sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+        ? .copy : []
+    }
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+      guard
+        let url = sender.draggingPasteboard.readObjects(
+          forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])?.first as? URL
+      else { return false }
+      return onDrop(url)
+    }
     override func mouseDown(with event: NSEvent) { onClick() }
     var paper = NSColor.windowBackgroundColor
     var card = NSColor.textBackgroundColor
+    /// each card's fill (nil: none, a Text on the paper)
+    var fills: [NSColor?] = []
     var cardRects: [CGRect] = []
     var cardRect: CGRect { cardRects.first ?? .zero }
+    /// how many times the paper has drawn (the HUD)
+    var draws = 0
     override var isFlipped: Bool { true }
     override func draw(_ dirtyRect: NSRect) {
+      draws += 1
       paper.setFill()
       dirtyRect.fill()
-      card.setFill()
-      for r in cardRects { NSBezierPath(roundedRect: r, xRadius: 10, yRadius: 10).fill() }
+      for (i, r) in cardRects.enumerated() {
+        guard let fill = i < fills.count ? fills[i] : card else { continue }
+        fill.setFill()
+        NSBezierPath(roundedRect: r, xRadius: 10, yRadius: 10).fill()
+      }
     }
   }
 
@@ -234,7 +261,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
         contentRect: CGRect(x: 0, y: 0, width: cardWidth + 160 + 340, height: 820),
         styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
     }
-    window.title = name
+    setTitle()
     scroll.hasVerticalScroller = true
     scroll.hasHorizontalScroller = true
     scroll.documentView = page
@@ -242,10 +269,28 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     columns.panel = inspector
     columns.noteWidth = { [weak self] in
       guard let self else { return 0 }
-      return CGFloat(self.cardWidth) * self.zoom + 2 * 40
+      return CGFloat(self.sheets.map(\.width).max() ?? self.cardWidth) * self.zoom + 2 * 40
     }
     columns.onResize = { [weak self] in self?.place() }
+    inspector.context = { [weak self] in
+      guard let self, let w = self.window else { return "" }
+      let size = w.contentView?.bounds.size ?? .zero
+      let what = self.vault != nil ? "a board, \(self.cards.count) cards" : "a file, \(self.cards.count) cards"
+      return
+        "window \(Int(size.width)) × \(Int(size.height)) pt at \(w.backingScaleFactor)x, zoom \(Int(self.zoom * 100)) %, "
+        + "\(self.look), \(self.dark ? "dark" : "light"), \(what)"
+    }
+    inspector.counts = { [weak self] in
+      guard let self else { return (0, 0, 0) }
+      return (self.cards.reduce(0) { $0 + $1.draws }, self.page.draws, MarkdownEditorView.linkTicks)
+    }
     page.onClick = { [weak self] in for c in self?.cards ?? [] { c.isEditing = false } }
+    page.registerForDraggedTypes([.fileURL])
+    page.onDrop = { [weak self] url in
+      guard let self, self.open(any: url) else { return false }
+      self.remember()
+      return true
+    }
     moves.start()
     window.contentView = columns
     window.toolbar = toolbar()
@@ -255,14 +300,39 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
 
   func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
 
-  /// a file dropped on the app or opened from Finder
+  /// a file, board or vault dropped on the app's icon or opened from Finder
   func application(_ app: NSApplication, openFile path: String) -> Bool {
-    open(URL(filePath: path))
+    let ok = open(any: URL(filePath: path))
+    if ok { remember() }
+    return ok
+  }
+
+  /// What Open takes: a Markdown file, a board package (`X.board`, in its vault: the nearest folder above holding the
+  /// app's data folder, else the folder it is in) or a vault folder
+  @discardableResult
+  func open(any url: URL) -> Bool {
+    guard url.hasDirectoryPath || (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+      return open(url)
+    }
+    guard url.pathExtension == Vault.packageExtension else { return open(vault: url, board: nil) }
+    var root = url.deletingLastPathComponent()
+    var probe = root
+    while probe.pathComponents.count > 1 {
+      if FileManager.default.fileExists(atPath: probe.appending(path: Vault.appDataFolder).path) {
+        root = probe
+        break
+      }
+      probe = probe.deletingLastPathComponent()
+    }
+    let board = String(url.standardizedFileURL.path.dropFirst(root.standardizedFileURL.path.count + 1))
+    return open(vault: root, board: board.hasSuffix("/") ? String(board.dropLast()) : board)
   }
 
   @discardableResult
   func open(_ url: URL) -> Bool {
     guard let t = try? String(contentsOf: url, encoding: .utf8) else { return false }
+    vault = nil
+    fillBoardMenu(nil)
     text = t
     folder = url.deletingLastPathComponent()
     resources = FileResources(folder: folder, pasted: resources.pasted, math: resources.math)
@@ -271,7 +341,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     clearCards()
     window?.isDocumentEdited = false
     name = url.lastPathComponent
-    window?.title = name
+    setTitle()
     if window != nil { rebuild() }
     return true
   }
@@ -290,6 +360,13 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     p.message = "A vault folder: its boards are read, never written"
     guard p.runModal() == .OK, let url = p.url, open(vault: url, board: nil) else { return }
     remember()
+  }
+
+  /// window title: the file's name, or the vault and board; a board's edits stay in memory and say so
+  func setTitle() {
+    var t = name
+    if vault != nil, boardPath != nil { t += " — not saved" }
+    window?.title = t
   }
 
   /// what a person picked from the menus is what the next plain launch opens
@@ -330,9 +407,9 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
       boardPath = path
       let title = path.split(separator: "/").last.map { String($0.dropLast(".board".count)) } ?? path
       name = "\(v.root.lastPathComponent) – \(title)"
-      window?.title = name
+      setTitle()
       window?.isDocumentEdited = false
-      for item in boardMenu.items { item.state = item.representedObject as? String == path ? .on : .off }
+      markBoard(path)
       clearCards()
       if window != nil { rebuild() }
       if !skipped.isEmpty { alert("Some cards were left out", skipped.joined(separator: "\n")) }
@@ -348,8 +425,39 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     remember()
   }
 
-  /// one item per board, a submenu per folder, in the vault's own order
-  func fillBoardMenu(_ tree: VaultFolder) {
+  /// the board shown, ticked in the menu and chosen in the toolbar's picker
+  func markBoard(_ path: String?) {
+    func mark(_ m: NSMenu) {
+      for item in m.items {
+        item.state = item.representedObject as? String == path ? .on : .off
+        if let sub = item.submenu { mark(sub) }
+      }
+    }
+    mark(boardMenu)
+    if let i = boardPicker.itemArray.firstIndex(where: { $0.representedObject as? String == path }) {
+      boardPicker.selectItem(at: i)
+    }
+  }
+
+  /// one item per board, a submenu per folder, in the vault's own order (nil: no vault); the toolbar's picker lists the
+  /// same boards, folders as a path before the title
+  func fillBoardMenu(_ tree: VaultFolder?) {
+    boardPicker.removeAllItems()
+    boardPicker.isEnabled = tree != nil
+    guard let tree else {
+      boardMenu.removeAllItems()
+      boardMenu.addItem(withTitle: "Open a vault or a board first", action: nil, keyEquivalent: "")
+      boardPicker.addItem(withTitle: "No board")
+      return
+    }
+    func pick(_ folder: VaultFolder, _ prefix: String) {
+      for b in folder.boards {
+        boardPicker.addItem(withTitle: prefix + b.title)
+        boardPicker.lastItem?.representedObject = b.path
+      }
+      for f in folder.folders { pick(f, prefix + f.name + " / ") }
+    }
+    pick(tree, "")
     func fill(_ menu: NSMenu, _ folder: VaultFolder) {
       for f in folder.folders {
         let sub = NSMenu(title: f.name)
@@ -364,6 +472,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     }
     boardMenu.removeAllItems()
     fill(boardMenu, tree)
+    if boardPicker.numberOfItems == 0 { boardPicker.addItem(withTitle: "No boards") }
     if boardMenu.items.isEmpty {
       boardMenu.addItem(withTitle: "No boards in this vault", action: nil, keyEquivalent: "")
     }
@@ -379,21 +488,35 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
 
   @objc func openDocument(_ s: Any?) {
     let p = NSOpenPanel()
-    p.allowedContentTypes = [.init(filenameExtension: "md")!, .plainText]
-    guard p.runModal() == .OK, let url = p.url else { return }
-    open(url)
+    p.allowedContentTypes = [.init(filenameExtension: "md")!, .plainText, .folder]
+    p.canChooseDirectories = true
+    p.treatsFilePackagesAsDirectories = false
+    p.message = "A Markdown file, a board (.board) or a vault folder. A board is read, never written"
+    guard p.runModal() == .OK, let url = p.url, open(any: url) else { return }
+    remember()
+  }
+
+  /// What the cards show: a vault's board (its Markdown cards, each with its own image folder, layout info, style and
+  /// width), else the file and a second Note, as Notes of the demo's width
+  var sheets: [VaultNote] {
+    vaultNotes
+      ?? ([text] + (secondText.map { [$0] } ?? [])).enumerated().map {
+        VaultNote(id: "\($0.offset)", text: $0.element, folder: folder, width: cardWidth)
+      }
+  }
+
+  /// card `i`'s look: its style in the look and appearance
+  func card(_ i: Int) -> MarkdownLooks.Card {
+    MarkdownLooks.card(sheets[safe: i]?.style ?? .note, look: look, dark: dark)
   }
 
   /// Lays the texts out in the look and appearance: the editors kept (selection and undo history), only their layouts new
   func rebuild() {
-    let card = MarkdownLooks.card(.note, look: look, dark: dark)
-    let inner = cardWidth - card.padding[1] - card.padding[3]
-    // a vault's board: its Notes, each with its own image folder and layout info; else the file (and a second Note)
-    let notes: [(text: String, folder: URL, info: MDLayoutInfo?)] =
-      vaultNotes?.map { ($0.text, $0.folder, $0.info) }
-      ?? ([text] + (secondText.map { [$0] } ?? [])).map { ($0, folder, nil) }
+    let notes = sheets
     while cards.count > notes.count { cards.removeLast().removeFromSuperview() }
     for (i, n) in notes.enumerated() {
+      let card = MarkdownLooks.card(n.style, look: look, dark: dark)
+      let inner = n.width - card.padding[1] - card.padding[3]
       let doc = i < cards.count ? cards[i].core.document : MarkdownDocument(n.text)
       let info = i < cards.count ? cards[i].core.layout.info : n.info
       let layout = BlockLayout(doc, width: inner, theme: card.theme, layout: info, resources: live(for: n.folder))
@@ -424,7 +547,16 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
     page.paper = NSColor(cgColor: MarkdownLooks.theme(look, dark: dark).colors.surface.cg)!.blended(
       withFraction: 0.06, of: dark ? .black : .gray)!
-    page.card = NSColor(cgColor: card.theme.colors.surface.cg)!
+    let surface = MarkdownLooks.theme(look, dark: dark).colors.surface.cg
+    page.card = NSColor(cgColor: surface)!
+    // a Note on its card, a Box on its fill, a Text on the paper
+    page.fills = notes.map { n in
+      switch n.style {
+      case .note: page.card
+      case .text: nil
+      case .box: n.fill.map { Self.boxFill($0, surface: surface) } ?? page.card
+      }
+    }
     place()
     if let e = cards.first { window.makeFirstResponder(e) }
   }
@@ -433,13 +565,13 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   /// each card's bottom edge, and the cards under it, slide from where they were over FLIP_MS (blockmove.ts's height
   /// change) instead of jumping, from the boxes `before` the move changed the Notes
   func place(animatedFrom before: [CGRect]? = nil) {
-    let card = MarkdownLooks.card(.note, look: look, dark: dark)
     let margin: CGFloat = 40
     let gap: CGFloat = 24
     var sizes: [CGSize] = []
-    for e in cards {
+    let notes = sheets
+    for (i, e) in cards.enumerated() {
       e.zoom = zoom
-      sizes.append(card.size(content: e.core.layout.size, width: cardWidth, height: nil))
+      sizes.append(card(i).size(content: e.core.layout.size, width: notes[safe: i]?.width ?? cardWidth, height: nil))
     }
     let widest = sizes.map(\.width).max() ?? CGFloat(cardWidth)
     let w = max(scroll.contentSize.width, widest * zoom + 2 * margin)
@@ -474,6 +606,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   private var growLink: CADisplayLink?
 
   @objc private func growFrame(_ link: CADisplayLink) {
+    MarkdownEditorView.linkTicks += 1
     guard let g = grow else { return }
     let e = CGFloat(MarkdownTiming.ease((link.targetTimestamp - g.since) / MarkdownTiming.blockFlip))
     let rects = zip(g.from, g.to).map { a, b in
@@ -490,21 +623,38 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   /// where an editor is once a height change in flight has settled (page points)
   func settledOrigin(of e: MarkdownEditorView) -> CGPoint {
     guard let g = grow, let i = cards.firstIndex(where: { $0 === e }), i < g.to.count else { return e.frame.origin }
-    let card = MarkdownLooks.card(.note, look: look, dark: dark)
+    let card = card(i)
     return CGPoint(
       x: g.to[i].minX + card.padding[3] * zoom, y: g.to[i].minY + (card.header + card.padding[0]) * zoom)
   }
 
   /// the page's size, the cards' boxes and each editor at its card's top
   private func show(rects: [CGRect], width w: CGFloat) {
-    let card = MarkdownLooks.card(.note, look: look, dark: dark)
     let bottom = max(rects.last?.maxY ?? 0, grow?.to.last?.maxY ?? 0)
     page.frame = CGRect(x: 0, y: 0, width: w, height: bottom + 40)
     page.cardRects = rects
-    for (e, r) in zip(cards, rects) {
+    for (i, (e, r)) in zip(cards, rects).enumerated() {
+      let card = card(i)
       e.setFrameOrigin(CGPoint(x: r.minX + card.padding[3] * zoom, y: r.minY + (card.header + card.padding[0]) * zoom))
     }
     page.needsDisplay = true
+  }
+
+  /// a Box's fill: the colour mixed into the paper, as the canvas mixes it (CodeBoardCanvas Theme.boxFills)
+  static func boxFill(_ f: NoteStyle.BoxFill, surface: CGColor) -> NSColor {
+    let (p, other): (CGFloat, UInt32) =
+      switch f {
+      case .yellow: (0.66, 0xf0cf62)
+      case .paper: (1, 0)
+      case .blue: (0.78, 0x8eb0dc)
+      case .green: (0.76, 0x9cc48a)
+      case .pink: (0.78, 0xe3a0b4)
+      }
+    let s = NSColor(cgColor: surface)?.usingColorSpace(.sRGB) ?? .white
+    let o = [16, 8, 0].map { CGFloat(other >> UInt32($0) & 0xff) / 255 }
+    return NSColor(
+      srgbRed: s.redComponent * p + o[0] * (1 - p), green: s.greenComponent * p + o[1] * (1 - p),
+      blue: s.blueComponent * p + o[2] * (1 - p), alpha: 1)
   }
 
   @objc func toggleSecond(_ s: Any?) {
@@ -644,7 +794,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     main.addItem(view)
     let board = NSMenuItem()
     board.submenu = boardMenu
-    if boardMenu.items.isEmpty { boardMenu.addItem(withTitle: "Open a vault first", action: nil, keyEquivalent: "") }
+    if boardMenu.items.isEmpty { fillBoardMenu(vault.flatMap { try? $0.tree() }) }
     main.addItem(board)
     NSApp.mainMenu = main
   }
@@ -652,7 +802,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
 
 extension Demo: NSToolbarDelegate {
   static let items: [NSToolbarItem.Identifier] = [
-    .init("inspector"), .init("look"), .init("dark"), .flexibleSpace, .init("zoom"),
+    .init("inspector"), .init("board"), .init("look"), .init("dark"), .flexibleSpace, .init("zoom"),
   ]
   func toolbarDefaultItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] { Self.items }
   func toolbarAllowedItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] { Self.items }
@@ -666,6 +816,10 @@ extension Demo: NSToolbarDelegate {
         labels: ["Inspector"], trackingMode: .selectAny, target: self, action: #selector(toggleInspector(_:)))
       c.setSelected(true, forSegment: 0)
       item.view = c
+    case "board":
+      boardPicker.target = self
+      boardPicker.action = #selector(pickFromToolbar(_:))
+      item.view = boardPicker
     case "look":
       let c = NSSegmentedControl(
         labels: ["Warm Ink", "Ink Wash"], trackingMode: .selectOne, target: self, action: #selector(setLook(_:)))
@@ -751,6 +905,10 @@ public func runMarkdownDemo(arguments: [String]) throws -> Never {
   let check = option("--check").map { URL(filePath: $0) }
   let vault = option("--vault").map { URL(filePath: $0) }
   let board = option("--board")
+  if let folder = option("--make-sample-vault") {
+    try SampleVault.write(to: URL(filePath: folder))
+    exit(0)
+  }
   let file = args.first.map { URL(filePath: $0) }
   let text = try file.map { try String(contentsOf: $0, encoding: .utf8) } ?? sample
   let app = NSApplication.shared
@@ -780,4 +938,8 @@ enum DemoDefaults {
     get { UserDefaults.standard.string(forKey: "MarkdownDemo.board") }
     set { UserDefaults.standard.set(newValue, forKey: "MarkdownDemo.board") }
   }
+}
+
+extension Array {
+  subscript(safe i: Int) -> Element? { i >= 0 && i < count ? self[i] : nil }
 }

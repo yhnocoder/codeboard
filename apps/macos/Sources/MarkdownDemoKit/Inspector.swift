@@ -11,7 +11,8 @@ final class Inspector: NSView {
   private let scroll = NSScrollView()
   private let text = NSTextView()
   private let hudLabel = NSTextField(labelWithString: "")
-  private var events: [(String, Double)] = []
+  /// the editor's events, newest first: when, what, its main-thread cost (the last 200 kept for a report, 50 shown)
+  private var events: [(at: Date, line: String, ms: Double)] = []
   private var copied: [(type: String, text: String)] = []
   private var pasted: (String, String)?
   private weak var editor: MarkdownEditorView?
@@ -20,6 +21,15 @@ final class Inspector: NSView {
   private var hud = ""
   private var sampler: Timer?
   private var lastCPU = (cpu: 0.0, wall: 0.0)
+  /// the Notes' draws, the paper's draws and display-link frames so far (the demo's), and at the last sample
+  var counts: () -> (notes: Int, paper: Int, ticks: Int) = { (0, 0, 0) }
+  private var lastCounts = (notes: 0, paper: 0, ticks: 0)
+  /// the window, zoom, look and appearance, for a report (the demo's)
+  var context: () -> String = { "" }
+  /// memory by what holds it, measured when asked (walking the address space costs tens of ms: never per second)
+  private var parts = ""
+  private let copyButton = NSButton(title: "Copy report", target: nil, action: nil)
+  private let partsButton = NSButton(title: "Memory parts", target: nil, action: nil)
   /// nil before the first key
   private var lastKeyMs: Double?
 
@@ -28,12 +38,23 @@ final class Inspector: NSView {
     wantsLayer = true
     layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
     hudLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-    hudLabel.maximumNumberOfLines = 3
+    hudLabel.maximumNumberOfLines = 6
     hudLabel.lineBreakMode = .byTruncatingTail
-    hudLabel.frame = CGRect(x: 14, y: 600 - 58, width: 300 - 28, height: 48)
+    hudLabel.frame = CGRect(x: 14, y: 600 - 92, width: 300 - 28, height: 82)
     hudLabel.autoresizingMask = [.width, .minYMargin]
     addSubview(hudLabel)
-    scroll.frame = CGRect(x: 0, y: 0, width: 300, height: 600 - 60)
+    for (i, b) in [copyButton, partsButton].enumerated() {
+      b.bezelStyle = .push
+      b.controlSize = .small
+      b.font = .systemFont(ofSize: 11)
+      b.target = self
+      b.frame = CGRect(x: 10 + CGFloat(i) * 112, y: 600 - 120, width: 108, height: 24)
+      b.autoresizingMask = [.minYMargin]
+      addSubview(b)
+    }
+    copyButton.action = #selector(copyReport(_:))
+    partsButton.action = #selector(measureParts(_:))
+    scroll.frame = CGRect(x: 0, y: 0, width: 300, height: 600 - 124)
     scroll.autoresizingMask = [.width, .height]
     scroll.hasVerticalScroller = true
     scroll.drawsBackground = false
@@ -90,7 +111,13 @@ final class Inspector: NSView {
     let mem = footprint().map { "\(mb($0.now)) (peak \(mb($0.peak)))" } ?? "?"
     let draw = editor.flatMap { $0.lastDrawMs > 0 ? String(format: "%.2f ms", $0.lastDrawMs) : nil } ?? "–"
     let key = lastKeyMs.map { String(format: "%.2f ms", $0) } ?? "–"
-    let next = String(format: "memory %@   CPU %.0f %%\nlast key %@   last frame %@", mem, pct, key, draw)
+    let c = counts()
+    let per = String(
+      format: "draws/s %d (paper %d)   link frames/s %d", c.notes - lastCounts.notes, c.paper - lastCounts.paper,
+      c.ticks - lastCounts.ticks)
+    lastCounts = c
+    let next = String(
+      format: "memory %@   CPU %.0f %%\n%@\nlast key %@   last frame %@\n%@", mem, pct, parts, key, draw, per)
     // the panel is laid out again only when a number changed: the HUD must not cost what it measures
     guard next != hud else { return }
     hud = next
@@ -111,8 +138,8 @@ final class Inspector: NSView {
         default: break
         }
         if case .key = event { self.lastKeyMs = ms }
-        self.events.insert((event.line, ms), at: 0)
-        if self.events.count > 50 { self.events.removeLast(self.events.count - 50) }
+        self.events.insert((Date(), event.line, ms), at: 0)
+        if self.events.count > 200 { self.events.removeLast(self.events.count - 200) }
         self.refreshSoon()
       }
   }
@@ -124,6 +151,43 @@ final class Inspector: NSView {
       self?.queued = false
       self?.refresh()
     }
+  }
+
+  @objc func measureParts(_ s: Any?) {
+    parts = Regions.byName().filter { $0.value >= 2 << 20 }.sorted { $0.value > $1.value }
+      .map { "\($0.key) \($0.value >> 20) MB" }.joined(separator: " · ")
+    refresh()
+  }
+
+  /// A plain-text report of what the panel knows, on the pasteboard, only on a click of its button: the build, the
+  /// window, the HUD, the selection and caret's block, what was copied and pasted, memory parts and the events oldest
+  /// first
+  @objc func copyReport(_ s: Any?) {
+    measureParts(nil)
+    let info = Bundle.main.infoDictionary ?? [:]
+    var lines = [
+      "Markdown Demo \(info["CodeBoardCommit"] as? String ?? "dev build") built \(info["CodeBoardBuilt"] as? String ?? "?")",
+      context(), hud.replacingOccurrences(of: "\n", with: "  ·  "), "memory parts: \(parts)",
+    ]
+    if let e = editor {
+      let sel = e.core.selection
+      lines.append("\(e.isEditing ? "editing" : "display"), selection anchor \(sel.anchor) head \(sel.head)")
+      if let bi = MarkdownEditing.blockHolding(sel.head, in: e.core.document) {
+        let r = e.core.document.blocks[bi].range
+        lines.append("caret's block \(r.lowerBound)..<\(r.upperBound):")
+        lines.append((e.core.source as NSString).substring(with: NSRange(location: r.lowerBound, length: r.count)))
+      }
+    }
+    for c in copied { lines.append("copied \(c.type): \(c.text)") }
+    if let (t, rule) = pasted { lines.append("pasted (\(rule)): \(t)") }
+    lines.append("events, oldest first:")
+    let time = DateFormatter()
+    time.dateFormat = "HH:mm:ss.SSS"
+    for e in events.reversed() {
+      lines.append(String(format: "%@ %6.2f ms  %@", time.string(from: e.at), e.ms, e.line))
+    }
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
   }
 
   func refresh() {
@@ -159,10 +223,14 @@ final class Inspector: NSView {
       add("\nPasted (\(rule))\n", head)
       add(t + "\n", mono)
     }
+    if !parts.isEmpty {
+      add("\nMemory parts\n", head)
+      add(parts + "\n", mono)
+    }
     add("\nEvents\n", head)
-    for (line, ms) in events {
-      add(String(format: "%6.2f ms  ", ms), mono, faint)
-      add(line + "\n", mono)
+    for e in events.prefix(50) {
+      add(String(format: "%6.2f ms  ", e.ms), mono, faint)
+      add(e.line + "\n", mono)
     }
     text.textStorage?.setAttributedString(out)
   }

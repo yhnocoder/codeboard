@@ -46,10 +46,13 @@ import Testing
     defer { try? FileManager.default.removeItem(at: v.root) }
     #expect(try v.tree().allBoards.map(\.path) == ["Topic/Step.board"])
     let (notes, skipped) = try VaultNotes.notes(of: "Topic/Step.board", in: v)
-    #expect(notes.map(\.id) == ["top", "right", "sh", "low"])
-    #expect(notes[0].info == MDLayoutInfo(tables: [MDLayoutInfo.Table(cols: [120])], wrap: [0]))
-    #expect(notes[0].folder == v.url(of: "Topic/Step.board"))
-    #expect(notes[2].text == "Shared" && notes[2].folder == v.sharedFolderURL)
+    #expect(notes.map(\.id) == ["label", "top", "right", "sh", "low"])
+    #expect(notes[0].style == .text(size: 20, wrap: true), "\(notes[0].style)")
+    #expect(notes[1].style == .note, "\(notes[1].style)")
+    let rest = Array(notes.dropFirst())
+    #expect(rest[0].info == MDLayoutInfo(tables: [MDLayoutInfo.Table(cols: [120])], wrap: [0]))
+    #expect(rest[0].folder == v.url(of: "Topic/Step.board"))
+    #expect(rest[2].text == "Shared" && rest[2].folder == v.sharedFolderURL)
     #expect(skipped.count == 1 && skipped[0].hasPrefix("gone"))
   }
 
@@ -59,12 +62,15 @@ import Testing
     _ = NSApplication.shared
     let demo = try Demo(text: "# A file", folder: FileManager.default.temporaryDirectory, cardWidth: 420)
     demo.setUp()
-    #expect(demo.open(vault: v.root, board: "Topic/Step.board"))
-    #expect(demo.cards.map(\.source) == ["| a |\n|---|\n| 1 |", "Right", "Shared", "Lower"])
+    // a board package opens in its vault (the folder holding the app's data)
+    #expect(demo.open(any: v.url(of: "Topic/Step.board")))
+    #expect(demo.vault?.root.standardizedFileURL == v.root.standardizedFileURL && demo.boardPath == "Topic/Step.board")
+    #expect(demo.window.title.hasSuffix("not saved"))
+    #expect(demo.cards.map(\.source) == ["A label", "| a |\n|---|\n| 1 |", "Right", "Shared", "Lower"])
     // one column, top to bottom, the table's width from the Note's layout info
     let rects = demo.page.cardRects
-    #expect(rects.count == 4 && zip(rects, rects.dropFirst()).allSatisfy { $0.maxY < $1.minY && $0.minX == $1.minX })
-    #expect(demo.cards[0].core.layout.info == MDLayoutInfo(tables: [MDLayoutInfo.Table(cols: [120])], wrap: [0]))
+    #expect(rects.count == 5 && zip(rects, rects.dropFirst()).allSatisfy { $0.maxY < $1.minY && $0.minX == $1.minX })
+    #expect(demo.cards[1].core.layout.info == MDLayoutInfo(tables: [MDLayoutInfo.Table(cols: [120])], wrap: [0]))
     // the board menu lists the board under its folder
     #expect(demo.boardMenu.items.first?.submenu?.items.first?.representedObject as? String == "Topic/Step.board")
     DemoWindowTests.kept.append(demo)

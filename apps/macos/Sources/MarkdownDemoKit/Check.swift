@@ -43,6 +43,7 @@ enum Check {
     let ticking = demo.cards.filter(\.isTicking).count
     if ticking > 0 { failures.append("\(ticking) editors still tick at rest") }
     var idle: [[String: Any]] = []
+    var rests: [String: Any] = [:]
     func rest(_ name: String) {
       let cpu0 = processCPU()
       let main0 = threadCPU()
@@ -57,19 +58,90 @@ enum Check {
     }
     rest("not shown")
     rest("not shown, again")
-    demo.window.setContentSize(CGSize(width: 920, height: 820))
-    demo.window.setFrameOrigin(CGPoint(x: -30000, y: -30000))
-    demo.window.orderBack(nil)
+    // on a real display, as she has it: a window of 920 × 900 on the main screen at its backing scale, nearly
+    // transparent and never key (nothing appears to her, nothing takes the keys), where AppKit draws, backs its layers and
+    // runs display links as it does for the app
+    let screen = NSScreen.main ?? NSScreen.screens[0]
+    demo.window.setContentSize(CGSize(width: 920, height: 900))
+    demo.window.setFrameOrigin(CGPoint(x: screen.visibleFrame.minX, y: screen.visibleFrame.minY))
+    demo.window.alphaValue = 0.01
+    demo.window.orderFrontRegardless()
     rest("shown")
-    rest("shown, again")
-    demo.window.orderOut(nil)
-    if let last = idle.last, (last["process"] as? Double ?? 0) > 0.5 {
-      failures.append("\(last["process"] ?? 0) % CPU at rest")
+    let visible = demo.window.occlusionState.contains(.visible)
+    let base = footprint()?.now ?? 0
+    stage("shown, at rest (scale \(demo.window.backingScaleFactor), visible \(visible))")
+    // scrolled top to bottom and back, a frame at a time
+    var peak = base
+    func frame() {
+      RunLoop.main.run(until: Date(timeIntervalSinceNow: 1.0 / 60))
+      peak = max(peak, footprint()?.now ?? 0)
     }
+    let clip = demo.scroll.contentView
+    let bottom = max(0, demo.page.frame.height - clip.bounds.height)
+    for down in [true, false] {
+      var y: CGFloat = down ? 0 : bottom
+      while down ? y < bottom : y > 0 {
+        y = down ? min(bottom, y + 40) : max(0, y - 40)
+        clip.scroll(to: CGPoint(x: 0, y: y))
+        demo.scroll.reflectScrolledClipView(clip)
+        frame()
+      }
+    }
+    stage("scrolled down and up (peak during \(mb(peak)) MB)")
+    clip.scroll(to: CGPoint(x: 0, y: bottom / 2))
+    demo.scroll.reflectScrolledClipView(clip)
+    frame()
+    autoreleasepool { render(demo.window.contentView!, to: out.appending(path: "shown-scrolled.png")) }
+    clip.scroll(to: .zero)
+    demo.scroll.reflectScrolledClipView(clip)
+    frame()
+    rest("after scrolling")
+    rest("after scrolling, again")
+    let afterScroll = footprint()?.now ?? 0
+    // the other things a person does: a click into the Note, typing, zoom, leaving editing
+    if let e = demo.cards.first {
+      demo.window.makeFirstResponder(e)
+      e.enter(at: CGPoint(x: 40, y: 12))
+      for ch in "abc" { e.insertText(String(ch), replacementRange: NSRange(location: NSNotFound, length: 0)) }
+      frame()
+      autoreleasepool { render(demo.window.contentView!, to: out.appending(path: "shown-typed.png")) }
+      demo.step(1.25)
+      frame()
+      demo.zoomActual(nil)
+      frame()
+      e.isEditing = false
+      demo.window.makeFirstResponder(nil)
+      frame()
+    }
+    rest("after click, typing, zoom, leaving")
+    rest("after click, typing, zoom, leaving, again")
+    let afterAll = footprint()?.now ?? 0
+    let counts = (demo.cards.reduce(0) { $0 + $1.draws }, demo.page.draws, MarkdownEditorView.linkTicks)
+    RunLoop.main.run(until: Date(timeIntervalSinceNow: 2))
+    let still = (
+      demo.cards.reduce(0) { $0 + $1.draws } - counts.0, demo.page.draws - counts.1,
+      MarkdownEditorView.linkTicks - counts.2
+    )
+    demo.window.orderOut(nil)
+    let budget: UInt64 = 8 << 20
+    let grown = [("scrolling", afterScroll), ("all of it", afterAll)].map { ($0.0, Int64($0.1) - Int64(base)) }
+    // reported, not failed on: the memory work is parked (guideline 6.5)
+    let overBudget = grown.filter { $0.1 > Int64(budget) }.map(\.0)
+    if still != (0, 0, 0) {
+      failures.append("at rest in 2 s: \(still.0) Note draws, \(still.1) paper draws, \(still.2) link frames")
+    }
+    for r in idle.filter({ ($0["when"] as? String ?? "").hasSuffix("again") })
+    where (r["process"] as? Double ?? 0) > 0.5 {
+      failures.append("\(r["process"] ?? 0) % CPU at rest (\(r["when"] ?? ""))")
+    }
+    rests = [
+      "visible": visible, "overMemoryBudget": overBudget,
+      "grownMb": Dictionary(uniqueKeysWithValues: grown.map { ($0.0, Double($0.1) / 1_048_576) }),
+    ]
     (demo.resources.math as? JSEngines)?.trim()
     stage("engines trimmed to one and collected")
     let result: [String: Any] = [
-      "stages": stages, "layouts": layouts, "idleCpuPercent": idle, "tickingEditors": ticking,
+      "stages": stages, "layouts": layouts, "idleCpuPercent": idle, "tickingEditors": ticking, "onScreen": rests,
       "failures": failures,
     ]
     if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]) {

@@ -16,6 +16,9 @@ rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin/MarkdownDemo" "$app/Contents/MacOS/MarkdownDemo"
 cp -R .build-markdown "$app/Contents/Resources/Assets"
+# the commit and time it was built from, for the inspector's report (a "+" when the tree had changes)
+commit=$(git rev-parse --short HEAD)$(git diff --quiet HEAD -- . || echo +)
+built=$(date -u +%Y-%m-%dT%H:%MZ)
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -29,9 +32,14 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>LSMinimumSystemVersion</key><string>27.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>CodeBoardCommit</key><string>$commit</string>
+  <key>CodeBoardBuilt</key><string>$built</string>
   <key>CFBundleDocumentTypes</key><array><dict>
     <key>CFBundleTypeRole</key><string>Viewer</string>
     <key>LSItemContentTypes</key><array><string>net.daringfireball.markdown</string><string>public.plain-text</string></array>
+  </dict><dict>
+    <key>CFBundleTypeRole</key><string>Viewer</string>
+    <key>LSItemContentTypes</key><array><string>public.folder</string></array>
   </dict></array>
 </dict></plist>
 PLIST

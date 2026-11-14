@@ -270,9 +270,14 @@ public final class MarkdownEditorView: NSView {
 
   /// the main thread's time the last draw took, ms (a host's HUD)
   public private(set) var lastDrawMs = 0.0
+  /// how many times this editor has drawn, and how many display-link frames every editor has run (a host's HUD: at rest
+  /// neither moves)
+  public private(set) var draws = 0
+  public static var linkTicks = 0
 
   public override func draw(_ dirtyRect: NSRect) {
     let started = BlockLayout.cpu()
+    draws += 1
     defer { lastDrawMs = BlockLayout.cpu() - started }
     guard let ctx = NSGraphicsContext.current?.cgContext else { return }
     let scale = zoom * (window?.backingScaleFactor ?? 2)
@@ -402,6 +407,7 @@ public final class MarkdownEditorView: NSView {
 
   /// the slides of a table drag, one step a frame
   @objc private func dragFrame(_ link: CADisplayLink) {
+    Self.linkTicks += 1
     guard let d = tableDrag else { return }
     _ = d.tick(link.targetTimestamp)
     setNeedsDisplay(d.table.insetBy(dx: -20, dy: -40).applying(CGAffineTransform(scaleX: zoom, y: zoom)))
@@ -784,6 +790,7 @@ public final class MarkdownEditorView: NSView {
   private var blockLink: CADisplayLink?
 
   @objc private func blockFrame(_ link: CADisplayLink) {
+    Self.linkTicks += 1
     guard let b = blockSlide else { return }
     stepBlocks(at: link.targetTimestamp - b.since)
   }
@@ -854,6 +861,7 @@ public final class MarkdownEditorView: NSView {
   }
 
   @objc private func slideFrame(_ link: CADisplayLink) {
+    Self.linkTicks += 1
     let t = link.targetTimestamp
     slides = slides.filter { t - $0.value.since < MarkdownTiming.imageSlide }
     needsDisplay = true

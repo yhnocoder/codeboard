@@ -243,6 +243,7 @@ final class BlockMoveHost {
   }
 
   @objc private func swapFrame(_ link: CADisplayLink) {
+    MarkdownEditorView.linkTicks += 1
     guard let l = lift else { return endSwap() }
     place(float: swapped(l, at: link.targetTimestamp))
   }
