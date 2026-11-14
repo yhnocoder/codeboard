@@ -133,3 +133,23 @@ import Testing
     #expect(shrunk.edit.replacement == "| a |\n|---|" && shrunk.dropped == 3)
   }
 }
+
+/// The / menu's Footnote (menu.tsx addFootnote) and Image (the typed text goes; the host writes the picture)
+@Suite struct SlashFootnoteTests {
+  @Test func aFootnoteAndItsDefinition() {
+    let src = "Text[^1] and /foot more\n\n[^1]: one"
+    let d = MarkdownDocument(src)
+    let q = (src as NSString).range(of: "/foot").upperBound
+    let item = MarkdownEditing.slashItems.first { $0.id == "footnote" }!
+    let e = MarkdownEditing.applySlash(
+      item, from: q - 5, in: MDEditState(source: src, selection: MDSelection(q)), document: d)!
+    let out = (src as NSString).replacingCharacters(
+      in: NSRange(location: e.range.lowerBound, length: e.range.count), with: e.replacement)
+    #expect(out == "Text[^1] and [^2] more\n\n[^1]: one\n\n[^2]: ")
+    #expect(e.selection.head == (out as NSString).length)
+    let img = MarkdownEditing.slashItems.first { $0.id == "image" }!
+    let i = MarkdownEditing.applySlash(
+      img, from: q - 5, in: MDEditState(source: src, selection: MDSelection(q)), document: d)!
+    #expect(i.replacement == "" && i.range == (q - 5)..<q)
+  }
+}

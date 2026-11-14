@@ -33,20 +33,23 @@ extension MDMenuItem {
     case "table": "grid"
     case "ref": "ref reference [["
     case "rule": "hr rule line"
+    case "image": "picture photo"
+    case "footnote": "note reference"
     default: ""
     }
   }
 }
 
 extension MarkdownEditing {
-  /// The / menu's blocks, in menu.tsx's order (Image, Details and Footnote, which this component does not make, left out)
+  /// The / menu's blocks, in menu.tsx's order (Details, a block this component does not have yet, left out)
   public static let slashItems: [MDMenuItem] = [
     .init(title: "Heading 1", hint: "#", id: "h1"), .init(title: "Heading 2", hint: "##", id: "h2"),
     .init(title: "Heading 3", hint: "###", id: "h3"), .init(title: "Bullet List", hint: "-", id: "ul"),
     .init(title: "Numbered List", hint: "1.", id: "ol"), .init(title: "Task List", hint: "[ ]", id: "task"),
     .init(title: "Quote", hint: ">", id: "quote"), .init(title: "Code Block", hint: "```", id: "code"),
     .init(title: "Math Block", hint: "$$", id: "math"), .init(title: "Mermaid Diagram", hint: "", id: "mermaid"),
-    .init(title: "Table", hint: "", id: "table"), .init(title: "Link to Card", hint: "[[", id: "ref"),
+    .init(title: "Table", hint: "", id: "table"), .init(title: "Image", hint: "", id: "image"),
+    .init(title: "Link to Card", hint: "[[", id: "ref"), .init(title: "Footnote", hint: "[^1]", id: "footnote"),
     .init(title: "Divider", hint: "---", id: "rule"),
   ]
 
@@ -139,6 +142,23 @@ extension MarkdownEditing {
       return MDEdit(range: start..<c.block.upperBound, replacement: out, selection: MDSelection(caret), undo: .command)
     case "ref":
       return MDEdit(range: from..<q, replacement: "[[", selection: MDSelection(from + 2), undo: .command)
+    case "image":
+      // the typed "/query" goes; the host picks the picture and writes it at the caret
+      return MDEdit(range: from..<q, replacement: "", selection: MDSelection(from), undo: .command)
+    case "footnote":
+      // [^n] at the caret (n one past the highest used) and its definition at the end, where the caret goes to write it
+      // (menu.tsx addFootnote)
+      var n = 0
+      let re = try? NSRegularExpression(pattern: "\\[\\^(\\d+)\\]")
+      for m in re?.matches(in: state.source, range: NSRange(location: 0, length: ns.length)) ?? [] {
+        n = max(n, Int(ns.substring(with: m.range(at: 1))) ?? 0)
+      }
+      let mark = "[^\(n + 1)]"
+      let rest = ns.substring(from: q)
+      let out = mark + rest + "\n\n" + mark + ": "
+      return MDEdit(
+        range: from..<ns.length, replacement: out, selection: MDSelection(from + (out as NSString).length),
+        undo: .command)
     case "rule":
       let out = (text.isEmpty ? "" : text + "\n\n") + "---\n\n"
       let caret = start + (out as NSString).length

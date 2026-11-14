@@ -18,12 +18,21 @@ public protocol MarkdownEditorDelegate: AnyObject {
   func editor(_ e: MarkdownEditorView, refCandidates query: String) -> [MarkdownRefCandidate]
   /// a picture pasted or dropped into the text: the host saves it and gives the address to write, or nil to leave it out
   func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String?
+  /// the / menu's Image: the host lets the user pick a picture (its bytes and file name), nil when none was picked
+  func editorPicksImage(_ e: MarkdownEditorView) -> (Data, String)?
 }
 
 extension MarkdownEditorDelegate {
   public func editor(_ e: MarkdownEditorView, refCandidates query: String) -> [MarkdownRefCandidate] { [] }
   public func editor(_ e: MarkdownEditorView, open url: URL) { NSWorkspace.shared.open(url) }
   public func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String? { nil }
+  /// an Open panel for pictures
+  public func editorPicksImage(_ e: MarkdownEditorView) -> (Data, String)? {
+    let p = NSOpenPanel()
+    p.allowedContentTypes = [.png, .jpeg, .gif, .webP, .svg]
+    guard p.runModal() == .OK, let url = p.url, let d = try? Data(contentsOf: url) else { return nil }
+    return (d, url.lastPathComponent)
+  }
 }
 
 /// The editor as an NSView: a thin adapter that hands keys and the mouse to `EditorCore` and draws what it holds, with
@@ -1071,6 +1080,16 @@ public final class MarkdownEditorView: NSView {
         item, from: t.from, in: MDEditState(source: core.source, selection: core.selection), document: core.document)
       {
         core.apply(e)
+      }
+      // a picture the host picks, saved as a pasted one is, written at the caret
+      if item.id == "image", let delegate, let (data, name) = delegate.editorPicksImage(self),
+        let address = delegate.editor(self, saveImage: data, name: name)
+      {
+        let text = "![](\(address))"
+        let at = core.selection.head
+        core.apply(
+          MDEdit(
+            range: at..<at, replacement: text, selection: MDSelection(at + (text as NSString).length), undo: .command))
       }
     case .emoji:
       let text = ":\(item.id):"
