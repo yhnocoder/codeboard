@@ -280,6 +280,12 @@ extension MarkdownEditing {
     {
       return [document.blocks[bi].range]
     }
+    // a Mermaid diagram with the caret in its source likewise: its source as code, the diagram under it
+    if let bi = blockHolding(offset, in: document), case .mermaid = document.blocks[bi].kind,
+      document.blocks[bi].range.contains(offset) || document.blocks[bi].range.upperBound == offset
+    {
+      return [document.blocks[bi].range]
+    }
     guard let r = run(at: offset, in: document), r.kind == .inline, r.holds(offset) else { return [] }
     var out: [Range<Int>] = []
     func walk(_ ins: [MDInline]) {

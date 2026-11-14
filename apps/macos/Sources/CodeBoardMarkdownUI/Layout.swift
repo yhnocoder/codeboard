@@ -149,6 +149,12 @@ final class TextBlock {
 /// How a block is spaced (markdown.css): a paragraph, a block spaced like one, or neither (gaps.ts)
 private enum GapKind { case p, block, none }
 
+/// What a Note's layouts keep from one to the next: an open diagram's last good picture, shown while its source does
+/// not draw (a diagram being typed is mostly not one)
+final class LayoutMemo: @unchecked Sendable {
+  var diagrams: [Int: DiagramResult] = [:]
+}
+
 struct LayoutBuilder {
   let theme: MarkdownTheme
   let resources: MarkdownResources
@@ -166,6 +172,8 @@ struct LayoutBuilder {
   var nesting = 0
   /// the caret, whose constructs show their markers (editing); nil: nowhere
   var head: Int?
+  /// what the Note's layouts remember between them (the last diagram that drew, by where its block starts)
+  var memo: LayoutMemo?
   var m: MarkdownTheme.Metrics { theme.metrics }
 
   init(theme: MarkdownTheme, resources: MarkdownResources, info: MDLayoutInfo?, width: CGFloat) {
@@ -295,6 +303,12 @@ struct LayoutBuilder {
     case .code(let language, let body):
       return code(body: body, language: language, b: b, x: x, width: width, y: y)
     case .mermaid(let body):
+      if let h = head, h >= b.range.lowerBound, h <= b.range.upperBound {
+        // open: its source as a code block, the diagram drawn under it from that source, the last one that drew kept
+        // while the source does not
+        let end = code(body: body, language: "mermaid", b: b, x: x, width: width, y: y)
+        return diagram(body: body, b: b, x: x, width: width, y: end + CGFloat(m.codeMargin), open: true)
+      }
       return diagram(body: body, b: b, x: x, width: width, y: y)
     case .math(let latex):
       if let h = head, h >= b.range.lowerBound, h <= b.range.upperBound {
@@ -629,9 +643,11 @@ struct LayoutBuilder {
 
   /// a Mermaid diagram: drawn at its own size, or, wider than the body, with a width limit in 40 px steps that turns it
   /// vertical (diagram.ts); its source as a code block when it does not draw
-  mutating func diagram(body: Range<Int>, b: MDBlock, x: CGFloat, width: CGFloat, y: CGFloat) -> CGFloat {
+  mutating func diagram(body: Range<Int>, b: MDBlock, x: CGFloat, width: CGFloat, y: CGFloat, open: Bool = false)
+    -> CGFloat
+  {
     guard let r = resources.diagrams else {
-      return code(body: body, language: "mermaid", b: b, x: x, width: width, y: y)
+      return open ? y : code(body: body, language: "mermaid", b: b, x: x, width: width, y: y)
     }
     let src = sourceText(body)
     // pele's node corners: half the board's --md-radius (markdown.css .mmd --pele-radius)
@@ -642,8 +658,13 @@ struct LayoutBuilder {
       result = r.diagram(
         src, fonts: theme.fonts.body, maxWidth: max(step, Int(width) / step * step), cornerRadius: corner)
     }
+    if case .ok = result {
+      memo?.diagrams[b.range.lowerBound] = result
+    } else if open, let last = memo?.diagrams[b.range.lowerBound] {
+      result = last
+    }
     guard case .ok(let w, let h, let paths, let texts) = result else {
-      return code(body: body, language: "mermaid", b: b, x: x, width: width, y: y)
+      return open ? y : code(body: body, language: "mermaid", b: b, x: x, width: width, y: y)
     }
     // centred in the body (.mmd.ok: flex, justify-content: center)
     let frame = CGRect(x: x + max(0, (width - CGFloat(w)) / 2), y: y, width: CGFloat(w), height: CGFloat(h))

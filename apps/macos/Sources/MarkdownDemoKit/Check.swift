@@ -280,6 +280,33 @@ enum Check {
       e.isEditing = false
       frame()
     }
+    // a click on a Mermaid diagram opens its source with the diagram under it
+    if let e = demo.cards.first(where: { $0.source.contains("```mermaid") }), let content = demo.window.contentView {
+      let ns = e.source as NSString
+      let at = ns.range(of: "```mermaid").location
+      if let i = e.core.document.blocks.firstIndex(where: { $0.range.contains(at) }) {
+        let f = e.core.layout.blockFrames[i]
+        clip.scroll(to: CGPoint(x: 0, y: max(0, e.frame.minY + f.minY * demo.zoom - 160)))
+        demo.scroll.reflectScrolledClipView(clip)
+        frame()
+        let q = CGPoint(x: f.midX, y: f.midY)
+        let w = content.convert(
+          demo.page.convert(CGPoint(x: e.frame.minX + q.x * demo.zoom, y: e.frame.minY + q.y * demo.zoom), to: content),
+          to: nil)
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+          let ev = NSEvent.mouseEvent(
+            with: type, location: w, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: demo.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+          if type == .leftMouseDown { e.mouseDown(with: ev) } else { e.mouseUp(with: ev) }
+          frame()
+        }
+        for _ in 0..<10 { frame() }
+        ticks["a click on a diagram opens its source"] = e.core.layout.blockFrames[i].height > f.height
+        autoreleasepool { render(content, to: out.appending(path: "mermaid-open.png")) }
+        e.isEditing = false
+        frame()
+      }
+    }
     rest("after click, typing, zoom, leaving")
     rest("after click, typing, zoom, leaving, again")
     let afterAll = footprint()?.now ?? 0

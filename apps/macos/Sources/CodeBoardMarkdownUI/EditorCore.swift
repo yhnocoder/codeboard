@@ -899,6 +899,14 @@ public final class EditorCore {
       place(MDSelection(MarkdownEditing.mathBody(document.blocks[i], source as NSString).upperBound))
       return
     }
+    // a press on a drawn Mermaid diagram opens its source at once, the caret at its end (as a formula block)
+    if !extend, clicks == 1, let i = layout.block(at: p), case .mermaid(let body) = document.blocks[i].kind,
+      layout.head.map({ !document.blocks[i].range.contains($0) }) ?? true
+    {
+      mouse = nil
+      place(MDSelection(body.upperBound))
+      return
+    }
     // a press on a drawn formula, reference or tag means "edit this": its source shows at once, the caret where one goes
     // on typing (editor/widgets.ts); an image is selected
     if !extend, clicks == 1, let r = layout.atom(at: p), let i = MarkdownEditing.inline(r, in: document),

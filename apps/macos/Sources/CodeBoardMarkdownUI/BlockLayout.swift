@@ -79,6 +79,8 @@ public final class BlockLayout: @unchecked Sendable {
   public private(set) var height: CGFloat = 0
   /// blocks being moved, by block index, and how they show (BlockMoves)
   var marks: [Int: MDBlockMark] = [:]
+  /// what its layouts keep between them (LayoutMemo)
+  let memo = LayoutMemo()
   /// blocks drawn off their place while they slide to it (FLIP after a move), offset by block index
   var drawOffsets: [Int: CGFloat] = [:]
   /// the caret whose constructs show their markers (editing); nil: nowhere, the static picture
@@ -290,6 +292,7 @@ public final class BlockLayout: @unchecked Sendable {
 
   private func lay(_ b: MDBlock, from counters: Counters, document: MarkdownDocument) -> Piece {
     var lb = LayoutBuilder(theme: theme, resources: resources, info: info, width: width)
+    lb.memo = memo
     lb.setSource(document.source)
     // the caret opens constructs only in its own block
     var opened: [Range<Int>] = []
