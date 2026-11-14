@@ -26,8 +26,9 @@ import CodeBoardNotes
     didSet { for p in panes.values { p.canvas.cameras = cameras } }
   }
 
-  /// Asks a question (tests answer it themselves): a sheet on the window, Delete first
-  var confirm: (NSAlert, NSWindow?) async -> Bool = { alert, window in
+  /// Asks a question (tests answer it themselves): a sheet on the window, Delete first. On the main actor: a closure
+  /// without it runs off the main thread when awaited, where AppKit refuses to begin a sheet
+  var confirm: @MainActor (NSAlert, NSWindow?) async -> Bool = { alert, window in
     guard let window else { return alert.runModal() == .alertFirstButtonReturn }
     return await alert.beginSheetModal(for: window) == .alertFirstButtonReturn
   }
