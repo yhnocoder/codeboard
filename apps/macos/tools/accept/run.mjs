@@ -149,6 +149,12 @@ class Driver {
     const begin = demo && this.onScreen ? ["warp 500 400", "wait 1500", "focus", "move 300 500 200"]
       : demo ? ["warp 700 500", "wait 1000", "focus", "key cmd+alt+0", "wait 300", "move 700 650 200"] : ["warp 700 500", "click 90 91", "wait 1500", "focus", "move 700 650 200"];
     if (this.side === "mac") for (const c of begin) await this.send(c);
+    // the demo's Inspector shows its own process figures, which tick on their own: no answer of the Note's
+    this.ignore = [];
+    if (demo && this.side === "mac") {
+      const r = await this.send("frame Inspector");
+      if (/^[\d.]+ [\d.]+ [\d.]+ [\d.]+$/.test(r)) this.ignore.push(r.split(" ").map(Number));
+    }
   }
   plist(vault) {
     fs.writeFileSync(
@@ -413,8 +419,9 @@ async function report(d, out) {
     let n = 0, x0 = Infinity, x1 = -1, y0 = Infinity, y1 = -1;
     for (let i = 0; i < x.length; i += 3) {
       if (Math.abs(x[i] - y[i]) <= 24 && Math.abs(x[i + 1] - y[i + 1]) <= 24 && Math.abs(x[i + 2] - y[i + 2]) <= 24) continue;
-      n++;
       const px = (i / 3) % width, py = Math.floor(i / 3 / width);
+      if (d.ignore?.some(([ix, iy, iw, ih]) => px >= ix && px < ix + iw && py >= iy && py < iy + ih)) continue;
+      n++;
       x0 = Math.min(x0, px), x1 = Math.max(x1, px), y0 = Math.min(y0, py), y1 = Math.max(y1, py);
     }
     return n > 3 && (x1 - x0 >= 3 || y1 - y0 >= 24);
