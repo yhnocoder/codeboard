@@ -127,6 +127,9 @@ class Driver {
       const width = String(boardPlace()[this.card]?.w ?? 360);
       const args = [path.join(this.copy, `${this.card}.md`), "--width", width, "--save-to", this.saved, "--report", this.place];
       if (this.cards[1]) args.push("--second", path.join(this.copy, `${this.cards[1]}.md`));
+      // / Image takes the storage's first picture, so no Open panel ever comes up
+      const pic = fs.existsSync(path.join(this.copy, "assets")) && fs.readdirSync(path.join(this.copy, "assets")).find((f) => /\.(png|jpe?g|gif)$/i.test(f));
+      if (pic) args.push("--pick-image", path.join(this.copy, "assets", pic));
       Object.assign(env, { ACCEPT_DEMO_ARGS: JSON.stringify(args) });
       if (this.onScreen) env.ACCEPT_ONSCREEN = "1";
       this.proc = spawn(path.join(app, `Contents/MacOS/${exe}`), [], { env, stdio: ["ignore", outFd, outFd] });

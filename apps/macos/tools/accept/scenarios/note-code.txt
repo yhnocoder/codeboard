@@ -3,7 +3,9 @@ zoom 1
 center @ncode
 dbl @ncode"After the code"
 wait 600
-click @ncode"(batch)">
+click @ncode"After the code">
+wait 300
+click @ncode"model(batch)">
 wait 300
 rec code
 shot band

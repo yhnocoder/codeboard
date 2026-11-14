@@ -1,0 +1,14 @@
+# 选择工具条放在哪：选中最后一行的字，工具条在选中第一行上面 8 pt、不在指针下；选中最上面一行（靠 Note 上边），工具条翻到下面
+zoom 1
+center @ntask"值"
+dbl @ntask"Last line"
+wait 600
+click @ntask"here.">
+wait 300
+drag @ntask"Last"< @ntask"here.">
+wait 600
+shot lastline
+dbl @ntask"任务"
+wait 600
+shot firstline
+key esc

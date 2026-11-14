@@ -5,6 +5,7 @@ dbl @ntask"Last line"
 wait 600
 rec footnote
 click @ntask"anything.">
+key return
 keys /foot
 wait 500
 shot menu
@@ -16,4 +17,5 @@ shot written
 key esc
 wait 600
 stop
+wait 800
 source @ntask
