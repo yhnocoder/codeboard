@@ -92,7 +92,7 @@ private func freeBoard() -> Board {
     Pinyin.install()
     let r = try await Rig(freeBoard(), zoom: 1)
     defer {
-      Pinyin.on = false
+      Pinyin.windows.remove(r.window.windowNumber)
       r.close()
     }
     let c = r.canvas
@@ -106,7 +106,7 @@ private func freeBoard() -> Board {
         "return [...document.querySelectorAll('.cm-line')].at(-1)?.textContent ?? ''", contentWorld: .page) as? String)
         ?? ""
     }
-    Pinyin.on = true
+    Pinyin.windows.insert(r.window.windowNumber)
     r.press("ni")
     await r.until("composing") { await last().hasSuffix("ni") }
     r.press("\u{1b}")
