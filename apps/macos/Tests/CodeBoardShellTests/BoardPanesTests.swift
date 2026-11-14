@@ -245,4 +245,62 @@ import Testing
     #expect(n.folder == vault.sharedFolderURL)
     #expect(scene.notes.map(\.id.rawValue) == ["n1"])
   }
+
+  @Test func aBoardOpensWhereItWasLeftAndAtTheCameraItsImportBrought() async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appending(path: "panes-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: root) }
+    let vault = Vault(root: root)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let a = BoardID(rawValue: "a")
+    let b = BoardID(rawValue: "b")
+    let far = Card(
+      id: CardID(rawValue: "n"), x: 2000, y: 900, width: 200, height: 100,
+      content: .own(CardContent(body: .note(Note(text: "far")))))
+    try vault.newBoard(in: "", title: "A", board: Board(id: a, cards: [far]))
+    try vault.newBoard(in: "", title: "B", board: Board(id: b, cards: [far]))
+    // this machine's own state, never the vault: B was looked at in VS Code, its import kept where
+    let store = CameraStore(folder: fm.temporaryDirectory.appending(path: "cameras-\(UUID().uuidString)"))
+    defer { try? fm.removeItem(at: store.folder) }
+    try store.keep([b: BoardCamera(x: 1900, y: 850, zoom: 1.5)], for: vault)
+    func open() -> (Shell, BoardPanes) {
+      let shell = Shell()
+      shell.open(vault, restoring: nil)
+      shell.apply(.success(try! vault.tree()))
+      let panes = BoardPanes(shell: shell)
+      panes.cameras = store
+      panes.frame = CGRect(x: 0, y: 0, width: 1000, height: 700)
+      return (shell, panes)
+    }
+    let (shell, panes) = open()
+    shell.show(b)
+    panes.sync()
+    let tab = try #require(shell.selected)
+    let pane = try #require(panes.panes[tab])
+    await until("B shown") { pane.canvas.scene != nil && pane.canvas.shown?.board.id == b }
+    #expect(pane.canvas.currentCamera == Camera(origin: CGPoint(x: 1900, y: 850), zoom: 1.5))
+    // A moved to and left at rest; B, then A again from the sidebar: where it was
+    shell.show(a)
+    panes.sync()
+    await until("A shown") { pane.canvas.shown?.board.id == a && pane.canvas.scene != nil }
+    pane.canvas.place(zoom: 0.62, centre: CGPoint(x: 333, y: 211))
+    let was = pane.canvas.currentCamera
+    shell.show(b)
+    panes.sync()
+    await until("B again") { pane.canvas.shown?.board.id == b }
+    shell.show(a)
+    panes.sync()
+    await until("A again") { pane.canvas.shown?.board.id == a && pane.canvas.scene != nil }
+    #expect(pane.canvas.currentCamera == was)
+    // and after a relaunch
+    await panes.close()
+    let (shell2, panes2) = open()
+    shell2.show(a)
+    panes2.sync()
+    let tab2 = try #require(shell2.selected)
+    let pane2 = try #require(panes2.panes[tab2])
+    await until("A after a relaunch") { pane2.canvas.scene != nil && pane2.canvas.shown?.board.id == a }
+    #expect(pane2.canvas.currentCamera == was)
+    #expect(try fm.subpathsOfDirectory(atPath: root.path).allSatisfy { !$0.contains("camera") }, "not in the vault")
+  }
 }

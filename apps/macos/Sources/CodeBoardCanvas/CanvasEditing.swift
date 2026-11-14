@@ -110,6 +110,7 @@ extension CanvasView {
 
   /// Stops showing the document (its tab closed)
   public func leave() {
+    keepCamera(now: true)
     closeRefPeek()
     cancelRefGo()
     dropEditing()

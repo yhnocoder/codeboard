@@ -15,10 +15,11 @@ public enum LegacyImport {
   /// cannot be imported is listed in the report's failures and the rest go on. It never writes over a file in the vault: a
   /// board already there (found by id, wherever it is now) comes in as a copy, under a new id, and so does a shared card
   /// whose file there has other content. `cameras`: where each old board (by its old id) was looked at, as `cameras(for:)`
-  /// reads them; the report gives them by the id each board has in the vault
-  public static func run(from source: URL, to destination: URL, cameras: [String: BoardCamera] = [:]) throws
-    -> ImportReport
-  {
+  /// reads them; the report gives them by the id each board has in the vault, and they are kept in `store` for it (this
+  /// machine's state, never the vault)
+  public static func run(
+    from source: URL, to destination: URL, cameras: [String: BoardCamera] = [:], store: CameraStore? = nil
+  ) throws -> ImportReport {
     try checkPlaces(source: source, destination: destination)
     let fm = FileManager.default
     do {
@@ -38,6 +39,8 @@ public enum LegacyImport {
     try run.sharedCards()
     // the library cards are written with the boards' copies known, as a copy's Markdown may refer to them
     try run.boards(inVault: inVault)
+    // where the boards were looked at, kept for this machine (a camera that cannot be written is not a failure)
+    if !run.cameras.isEmpty { try? store?.keep(run.cameras, for: vault) }
     return ImportReport(
       imported: run.entries.sorted { $0.source < $1.source },
       failed: run.failed.sorted { String(describing: $0) < String(describing: $1) }, cameras: run.cameras)

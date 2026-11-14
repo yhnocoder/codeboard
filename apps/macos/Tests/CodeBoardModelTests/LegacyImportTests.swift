@@ -873,8 +873,35 @@ private func unchanged(_ before: [String: Data], _ after: [String: Data]) -> [St
   let vault = root.appending(path: "vault")
   try FileManager.default.createDirectory(at: vault.appending(path: "Old.board"), withIntermediateDirectories: true)
   try Board(id: BoardID(rawValue: "b1"), cards: []).encoded().write(to: vault.appending(path: "Old.board/board.json"))
-  let report = try LegacyImport.run(from: source, to: vault, cameras: cams)
+  let state = workspaces.appending(path: "b/state.vscdb")
+  let stateBefore = try Data(contentsOf: state)
+  let store = CameraStore(folder: root.appending(path: "app-state"))
+  let report = try LegacyImport.run(from: source, to: vault, cameras: cams, store: store)
   #expect(report.cameras == [BoardID(rawValue: "b1-copy"): BoardCamera(x: -40, y: 20, zoom: 2)])
+  // kept in this machine's state for the vault they came into, for the board to open there; not in the vault, and
+  // VS Code's state is only read
+  #expect(store.cameras(for: Vault(root: vault)) == report.cameras)
+  #expect(store.cameras(for: Vault(root: root.appending(path: "other"))).isEmpty)
+  #expect(
+    try FileManager.default.subpathsOfDirectory(atPath: vault.path).allSatisfy { !$0.contains("camera") })
+  #expect(try Data(contentsOf: state) == stateBefore)
+}
+
+// Cameras are this machine's state, kept under the running app's own identity: a test or acceptance build never reads
+// or writes the app's
+@Test func camerasAreKeptUnderTheRunningAppsOwnName() throws {
+  let folder = try #require(CameraStore.ofThisApp()?.folder)
+  #expect(!folder.path.contains("com.yhnocoder.codeboard"))
+  #expect(folder.path.contains("Application Support/"))
+  let root = try scratch()
+  let store = CameraStore(folder: root.appending(path: "state"))
+  let a = Vault(root: root.appending(path: "a"))
+  try store.keep([BoardID(rawValue: "x"): BoardCamera(x: 1, y: 2, zoom: 3)], for: a)
+  try store.keep([BoardID(rawValue: "y"): BoardCamera(x: 4, y: 5, zoom: 1)], for: a)
+  #expect(store.cameras(for: a).count == 2)
+  #expect(store.cameras(for: Vault(root: root.appending(path: "a/"))).count == 2, "by the standardized path")
+  #expect(store.cameras(for: Vault(root: root.appending(path: "b"))).isEmpty)
+  #expect(try FileManager.default.contentsOfDirectory(atPath: store.folder.path).count == 1, "no side file left")
 }
 
 // 同一块白板的共享卡: main's cards with the same `same` (packages/core/src/edit/twins.ts) come in as one card placed

@@ -574,4 +574,31 @@ private func png(_ url: URL) throws {
     await r.settle()
     #expect(r.rect("b1").minY == 500 && !r.doc.history.canUndo)
   }
+
+  /// Where the board was left is kept on this machine (main camsOf): written once the camera has been still a moment,
+  /// never while a gesture is under way
+  @Test func aCameraIsWrittenOnceStillAndNeverDuringAGesture() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    let store = CameraStore(
+      folder: FileManager.default.temporaryDirectory.appending(path: "cameras-\(UUID().uuidString)"))
+    defer { try? FileManager.default.removeItem(at: store.folder) }
+    r.canvas.cameras = store
+    let (board, vault) = try #require(r.canvas.shown)
+    r.canvas.place(zoom: 0.8, centre: CGPoint(x: 300, y: 200))
+    #expect(store.cameras(for: vault).isEmpty, "not at once")
+    await r.until("written") { store.cameras(for: vault)[board.id] != nil }
+    let cam = r.canvas.currentCamera
+    #expect(
+      store.cameras(for: vault)[board.id] == BoardCamera(x: cam.origin.x, y: cam.origin.y, zoom: cam.zoom))
+    // a press on the empty board: a marquee under way while the camera moves; written only once it ends
+    r.canvas.cameraDelay = .milliseconds(1)
+    r.send(r.mouse(.leftMouseDown, CGPoint(x: 800, y: 380)))
+    #expect(r.canvas.gesture != nil)
+    r.canvas.place(zoom: 0.6, centre: CGPoint(x: 300, y: 200))
+    await r.canvas.cameraSave?.value
+    #expect(store.cameras(for: vault)[board.id]?.zoom == 0.8, "not during the gesture")
+    r.send(r.mouse(.leftMouseUp, CGPoint(x: 800, y: 380)))
+    await r.until("written after it") { store.cameras(for: vault)[board.id]?.zoom == 0.6 }
+  }
 }

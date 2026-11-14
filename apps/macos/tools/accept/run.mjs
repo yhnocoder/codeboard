@@ -79,6 +79,15 @@ if (!attach && sides.includes("web")) {
   });
 }
 
+/** The driver app's own record of a vault's cameras (CameraStore: under its bundle id, named by FNV-1a of the vault's
+ *  path), taken away with the vault; other runs' vaults have files of their own */
+function cameraFile(vault) {
+  let h = 0xcbf29ce484222325n;
+  for (const b of Buffer.from(path.resolve(vault))) h = ((h ^ BigInt(b)) * 0x100000001b3n) & 0xffffffffffffffffn;
+  const dir = path.join(os.homedir(), "Library/Application Support/com.example.codeboard.accept/Cameras");
+  return path.join(dir, `${h.toString(16).padStart(16, "0")}.json`);
+}
+
 // ---- a driver: commands into its FIFO, results from its log ("start n …" / "done n … -> result")
 class Driver {
   constructor(side, dir) {
@@ -179,6 +188,7 @@ class Driver {
     await sleep(300);
     if (this.alive()) process.kill(this.pid, "SIGKILL");
     for (const d of [this.vault, this.copy]) if (d) fs.rmSync(d, { recursive: true, force: true });
+    if (this.vault) fs.rmSync(cameraFile(this.vault), { force: true });
   }
 }
 

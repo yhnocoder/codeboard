@@ -21,6 +21,10 @@ import CodeBoardNotes
   var summaryWriter: (any SummaryWriter)? {
     didSet { for p in panes.values { p.canvas.summaryWriter = summaryWriter } }
   }
+  /// Where this machine keeps each board's camera, for every canvas (nil: nowhere)
+  var cameras: CameraStore? {
+    didSet { for p in panes.values { p.canvas.cameras = cameras } }
+  }
 
   init(shell: Shell, notes: NoteRenderer? = nil) {
     self.shell = shell
@@ -124,6 +128,7 @@ import CodeBoardNotes
         pane.onReady = { [weak self] in self?.reveal() }
         pane.canvas.summarySwitch = summarySwitch
         pane.canvas.summaryWriter = summaryWriter
+        pane.canvas.cameras = cameras
         pane.onOpenBoard = { [weak self] in self?.shell.show($0) }
         pane.canvas.onVaultChanged = { [weak self] in self?.onVaultChanged?() }
         pane.canvas.onSetSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }
