@@ -1,17 +1,22 @@
-# 子白板卡右键 Delete Board…：先问；取消还在；确认后那块白板没了。再看侧栏行右键的 Delete 会不会先问
+# 子白板卡右键 Delete Board…：先问；取消还在；确认后那块白板没了。删除是红色的破坏性按钮、不是默认按钮：Return 和 Esc 都取消，要点 Delete 才删（Mac 的决定，VS Code 不同）
 # storage: storage-two
+# known mac: 确认框里 Return 还会删除（开发在改：Cancel 是默认按钮）
 zoom 1
 center @csub+140,90
 move @csub+140,90 300
 menu
 pick Delete Board…
 wait 700
-info
+mac: expect dialog has Delete
 shot asking
 key esc
 wait 500
-info
-move @row:Third
+mac: expect dialog = none
+# Third 在 First 的文件夹里：先展开 First，侧栏里 Third 还在
+move @row:First:chevron 300
+click @row:First:chevron
+wait 400
+move @row:Third 300
 shot cancelled
 center @csub+140,90
 move @csub+140,90 300
@@ -19,6 +24,10 @@ menu
 pick Delete Board…
 wait 700
 key return
+wait 700
+mac: expect dialog has Delete
+button Delete
 wait 1200
+mac: expect dialog = none
 info
 shot deleted

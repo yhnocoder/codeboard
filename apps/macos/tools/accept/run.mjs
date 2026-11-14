@@ -439,6 +439,8 @@ async function geom(d, id, needSection = false, aim = false) {
 async function subject(d, subj) {
   const [id, field] = subj.split(".");
   // focus: what keys go to now (the Mac's first responder, e.g. OnBoardField's NSTextView; the page's focused element)
+  // dialog: the dialog that is up (its text and buttons; none)
+  if (subj === "dialog") return (await d.send("dialog")) || "none";
   if (subj === "focus") {
     const r = await d.send("focused");
     return r || "none";

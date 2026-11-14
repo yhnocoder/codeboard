@@ -758,6 +758,7 @@ func strings(_ x: Any) -> [String] {
       log("unknown key \(k)")
       return
     }
+    let dialog = w === NSApp.modalWindow || w.isSheet
     let chars = Self.specials[k] ?? k
     let shown =
       !f.contains(.shift) || chars.count != 1
@@ -779,8 +780,24 @@ func strings(_ x: Any) -> [String] {
         windowNumber: w.windowNumber, context: nil, characters: e0.characters ?? chars,
         charactersIgnoringModifiers: e0.charactersIgnoringModifiers ?? chars, isARepeat: false, keyCode: code)!
       // the app is not active for the window server, so NSApp has no key window of its own to send keys to: keys
-      // without ⌘ or ⌃ go to the window as NSApp would hand them over; with them, through NSApp (key equivalents, menus)
-      if f.isDisjoint(with: [.command, .control]) { w.sendEvent(e) } else { NSApp.postEvent(e, atStart: false) }
+      // without ⌘ or ⌃ go to the window as NSApp would hand them over; with them, through NSApp (key equivalents, menus).
+      // A dialog's keys as NSApp hands a key window its keys: key equivalents first (the buttons' own keys: Esc for
+      // Cancel), then the window. Return to a default button is done here: AppKit presses the default button only in a
+      // window the window server made key, which this window never is (its button gets no Return of its own then), so
+      // without this a dialog whose default button deletes would seem to ignore Return
+      if dialog {
+        if down, w.performKeyEquivalent(with: e) {
+        } else if down, code == 36, f.isEmpty, let b = w.defaultButtonCell, b.isEnabled {
+          log("return: the dialog’s default button \(b.title ?? "")")
+          b.performClick(nil)
+        } else {
+          w.sendEvent(e)
+        }
+      } else if f.isDisjoint(with: [.command, .control]) {
+        w.sendEvent(e)
+      } else {
+        NSApp.postEvent(e, atStart: false)
+      }
       try? await Task.sleep(for: .milliseconds(40))
     }
     vFlags = []
@@ -874,7 +891,10 @@ func strings(_ x: Any) -> [String] {
   func dialogText(_ d: NSWindow) -> String {
     let vs = views(in: d.contentView)
     let texts = vs.compactMap { ($0 as? NSTextField)?.stringValue }.filter { !$0.isEmpty }
-    let buttons = vs.compactMap { $0 as? NSButton }.filter { !$0.isHidden && !$0.title.isEmpty }.map(\.title)
+    // each button with the key it takes, if any (⏎: the default button; ⎋: the cancel button)
+    let keys = ["\r": " ⏎", "\u{1b}": " ⎋"]
+    let buttons = vs.compactMap { $0 as? NSButton }.filter { !$0.isHidden && !$0.title.isEmpty }
+      .map { $0.title + (keys[$0.keyEquivalent] ?? ($0.cell === d.defaultButtonCell ? " ⏎" : "")) }
     let kind = d === NSApp.modalWindow ? "app-modal" : "sheet"
     return "\(kind): \(texts.joined(separator: " | ")) [\(buttons.joined(separator: "] ["))]"
   }
@@ -1125,25 +1145,31 @@ func strings(_ x: Any) -> [String] {
     case "board":
       guard let c = canvas, let p = field(c, "shown", "board", "path") as? String else { return "none" }
       return p
-    // row title: where the sidebar's row of the board or folder with this title is, in the window (what move and click
-    // take): the rows as the sidebar lists them (each folder, what is in it when open, then the boards), 29 apart, the
-    // first at 90, 91 (Sidebar.swift: 28 tall, 1 between)
+    // row title[:chevron]: where the sidebar's row of the board or folder with this title is, in the window (what move
+    // and click take), or its folder's chevron (what opens and closes it). From the sidebar's own list (SwiftUI exposes
+    // no accessibility elements for it here) and its layout (Sidebar.swift): the rows as it lists them (each folder,
+    // what is in it when open, then the boards), 28 tall and 1 apart, the first at 91; 10 in from the window's left, a
+    // row's content 2 further and 18 per level in; the chevron 14 wide at its start. A closed folder's rows are not there
     case "row":
+      var title = String(line.dropFirst(4))
+      let chevron = title.hasSuffix(":chevron")
+      if chevron { title.removeLast(8) }
       guard let shell = NSApp.delegate.flatMap({ field($0, "shell") }), let tree = field(shell, "tree") else {
         return "none"
       }
       let open = field(shell, "expanded") as? Set<String> ?? []
-      var rows: [String] = []
-      func walk(_ f: Any) {
+      var rows: [(name: String, depth: Int)] = []
+      func walk(_ f: Any, _ depth: Int) {
         for sub in field(f, "folders") as? [Any] ?? [] {
-          rows.append(field(sub, "name") as? String ?? "")
-          if let p = field(sub, "path") as? String, open.contains(p) { walk(sub) }
+          rows.append((field(sub, "name") as? String ?? "", depth))
+          if let p = field(sub, "path") as? String, open.contains(p) { walk(sub, depth + 1) }
         }
-        for b in field(f, "boards") as? [Any] ?? [] { rows.append(field(b, "title") as? String ?? "") }
+        for b in field(f, "boards") as? [Any] ?? [] { rows.append((field(b, "title") as? String ?? "", depth)) }
       }
-      walk(tree)
-      guard let i = rows.firstIndex(of: String(line.dropFirst(4))) else { return "none" }
-      return String(format: "90 %.0f", 91 + 29 * Double(i))
+      walk(tree, 0)
+      guard let i = rows.firstIndex(where: { $0.name == title }) else { return "none" }
+      let x = chevron ? 10 + 2 + 18 * Double(rows[i].depth) + 7 : 90
+      return String(format: "%.0f %.0f", x, 91 + 29 * Double(i))
     case "quit":
       ownPasteboard.releaseGlobally()
       NSApp.terminate(nil)
