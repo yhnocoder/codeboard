@@ -95,7 +95,8 @@ import Testing
 
   /// Delete Board… on the sub-board card's menu: main's question as a sheet on the window, the other windows going on;
   /// Cancel keeps the board and the card, Delete sends the board to the Trash and takes the card off as one step; Return
-  /// is Delete, as in main's dialog (the key equivalent the app hands a sheet's buttons a key down)
+  /// presses nothing (the sheet has no default button: what undo does not bring back takes a press on Delete) and Esc is
+  /// Cancel's
   @Test(arguments: ["Cancel", "Delete", "Return"]) func deleteBoardAsksInASheetOnTheWindow(_ answer: String)
     async throws
   {
@@ -119,17 +120,18 @@ import Testing
     s.pressOther()
     #expect(s.presses.count == 1, "the other window takes its press")
     if answer == "Return" {
-      // Return goes to the key window's default button (the test's window is never key, so it is pressed here as the
-      // window would); before, Delete was marked as destroying and the sheet had none
-      let d = try #require(sheet.defaultButtonCell, "the sheet has a default button")
-      #expect(d.title == "Delete")
-      d.performClick(nil)
+      // Return goes to the key window's default button: there is none
+      #expect(sheet.defaultButtonCell == nil, "\(String(describing: sheet.defaultButtonCell?.title))")
+      #expect(button("Delete", in: content)?.hasDestructiveAction == true)
+      let cancel = try #require(button("Cancel", in: content))
+      #expect(cancel.keyEquivalent == "\u{1b}")
+      cancel.performClick(nil)
     } else {
       try #require(button(answer, in: content)).performClick(nil)
     }
     await FullWindowEditTests().until("the question gone", in: w) { w.window.attachedSheet == nil }
     let fm = FileManager.default
-    if answer == "Cancel" {
+    if answer != "Delete" {
       #expect(
         fm.fileExists(atPath: s.vault.url(of: s.child.path).path)
           && c.document?.board.card(CardID(rawValue: "sub")) != nil)

@@ -33,26 +33,29 @@ import CodeBoardNotes
     return await alert.beginSheetModal(for: window) == .alertFirstButtonReturn
   }
 
-  /// Delete Board…'s question, in main's words; Return presses Delete, Esc Cancel, as main's dialog (a button marked as
-  /// destroying loses Return on the Mac)
+  /// Delete Board…'s question, in main's words
   static func deleteQuestion(_ title: String, cards: Int) -> NSAlert {
-    let a = NSAlert()
-    a.alertStyle = .warning
-    a.messageText = "Delete board “\(title)”?"
-    a.informativeText = "\(cards) cards and their links will be removed. Your code is not affected."
-    a.addButton(withTitle: "Delete")
-    a.addButton(withTitle: "Cancel")
-    return a
+    destroying(
+      "Delete board “\(title)”?", "\(cards) cards and their links will be removed. Your code is not affected.", "Delete"
+    )
   }
 
   /// The sidebar's Delete Folder: main's Delete Group question (actions.ts deleteGroup) in the words of what it does here,
   /// where the boards go with their folder
   static func deleteFolderQuestion(_ name: String, boards: Int) -> NSAlert {
+    destroying("Delete folder “\(name)”?", "Its \(boards) boards go to the Trash with it.", "Delete Folder")
+  }
+
+  /// A question before what undo does not bring back (a board or folder to the Trash): its button first and marked as
+  /// destroying, so the sheet has no default button and Return does nothing; Esc is Cancel's; only a press on the button
+  /// goes ahead (the Mac's way for what cannot be undone; main's web dialog takes Return for its first button:
+  /// parity-decisions.md). AppKit gives a button one key: Cancel made default takes Return in place of Esc
+  static func destroying(_ message: String, _ info: String, _ action: String) -> NSAlert {
     let a = NSAlert()
     a.alertStyle = .warning
-    a.messageText = "Delete folder “\(name)”?"
-    a.informativeText = "Its \(boards) boards go to the Trash with it."
-    a.addButton(withTitle: "Delete Folder").hasDestructiveAction = true
+    a.messageText = message
+    a.informativeText = info
+    a.addButton(withTitle: action).hasDestructiveAction = true
     a.addButton(withTitle: "Cancel")
     return a
   }

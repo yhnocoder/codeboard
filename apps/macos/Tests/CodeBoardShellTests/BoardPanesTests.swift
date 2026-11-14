@@ -425,14 +425,17 @@ import Testing
   }
 }
 
-/// Delete Board…'s question as main's dialog: Return deletes, Esc cancels
-@MainActor @Test func deleteBoardsQuestionTakesReturnForDeleteAndEscForCancel() {
+/// The questions before what undo does not bring back (Delete Board…, the sidebar's Delete Folder): the button that goes
+/// ahead marked as destroying and keyless, Cancel Esc's, no default button for Return
+@MainActor @Test(arguments: ["board", "folder"]) func aQuestionBeforeDeletingTakesAPressToGoAhead(_ what: String) {
   _ = NSApplication.shared
-  let a = BoardPanes.deleteQuestion("Child", cards: 2)
+  let a =
+    what == "board" ? BoardPanes.deleteQuestion("Child", cards: 2) : BoardPanes.deleteFolderQuestion("F", boards: 2)
   a.layout()
-  #expect(a.buttons.map(\.title) == ["Delete", "Cancel"])
-  #expect(a.buttons.map(\.keyEquivalent) == ["\r", "\u{1b}"])
-  #expect(!a.buttons[0].hasDestructiveAction, "a button marked as destroying is never the one Return presses")
+  #expect(a.buttons.map(\.title) == [what == "board" ? "Delete" : "Delete Folder", "Cancel"])
+  #expect(a.buttons[0].hasDestructiveAction && a.buttons[0].keyEquivalent.isEmpty)
+  #expect(a.buttons[1].keyEquivalent == "\u{1b}")
+  #expect(a.window.defaultButtonCell == nil)
 }
 
 @MainActor final class Answer {
