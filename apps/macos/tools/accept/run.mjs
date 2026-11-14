@@ -404,8 +404,10 @@ for (const file of scenarios) {
   const lines = fs.readFileSync(file, "utf8").split("\n").map((l, i) => ({ n: i + 1, text: l.trim() }));
   // the subjects compared with `was`, taken at each `mark`
   const marked = [...new Set(lines.filter((l) => / was\b/.test(l.text)).map((l) => l.text.replace(/^(mac|web):\s*/, "").split(" ")[1]))];
-  // `# known: <why>`: a problem followed elsewhere; its failures are reported but do not fail the run
-  const known = lines.map((l) => /^#\s*known:\s*(.*)$/.exec(l.text)?.[1]).find(Boolean);
+  // `# known: <why>` (or `# known mac: <why>`, one side): a problem followed elsewhere; its failures are reported but do
+  // not fail the run
+  const knownOf = (side) =>
+    lines.map((l) => /^#\s*known(?:\s+(mac|web))?:\s*(.*)$/.exec(l.text)).find((m) => m && (!m[1] || m[1] === side))?.[2];
   const results = Object.fromEntries(sides.map((s) => [s, []]));
   const was = Object.fromEntries(sides.map((s) => [s, {}]));
   const answers = [];
@@ -465,6 +467,7 @@ for (const file of scenarios) {
   for (const side of sides) {
     const r = results[side].sort((a, b) => a.n - b.n);
     const bad = r.filter((x) => x.ok === false), na = r.filter((x) => x.ok === undefined);
+    const known = knownOf(side);
     failed ||= bad.length > 0 && !known;
     const verdict = bad.length ? (known ? `known (${known})` : "FAIL") : known && r.length ? "passes now: remove `# known`" : "ok";
     console.log(`${name} ${side}: ${verdict} ${r.length - bad.length - na.length}/${r.length}${na.length ? `, ${na.length} not checkable` : ""}`);
