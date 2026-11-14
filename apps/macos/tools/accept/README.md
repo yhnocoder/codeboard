@@ -5,7 +5,7 @@
 ```bash
 node apps/macos/tools/accept/run.mjs apps/macos/tools/accept/scenarios/section-follow.txt   # 两边
 node apps/macos/tools/accept/run.mjs <场景>… --only mac      # 只跑 Mac（不对照的产品体验检查）
-node apps/macos/tools/accept/run.mjs <场景>… --skip-build    # 不重新构建（改了场景、没改代码时）
+node apps/macos/tools/accept/run.mjs <场景>… --skip-build    # 不重新构建网页白板和 Note 页（只改了场景或驱动时；驱动总会增量构建）
 node apps/macos/tools/accept/run.mjs <场景>… --storage <folder>   # 换一个 storage 文件夹（默认 tools/look/storage）
 ```
 

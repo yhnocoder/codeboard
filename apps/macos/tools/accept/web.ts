@@ -141,7 +141,8 @@ async function run(line: string): Promise<string> {
       const r = p.getBoundingClientRect();
       p.remove();
       const z = r.width / 100;
-      return `${(-r.left / z).toFixed(2)} ${(-r.top / z).toFixed(2)} ${z.toFixed(4)}`;
+      const b = w.parentElement!.getBoundingClientRect();
+      return `${(-r.left / z).toFixed(2)} ${(-r.top / z).toFixed(2)} ${z.toFixed(4)} ${(b.left + b.width / 2).toFixed(1)} ${(b.top + b.height / 2).toFixed(1)}`;
     });
     case "rect": return await page.evaluate((id) => {
       // a card, or a Section's frame (the larger of its two elements: frame and title)

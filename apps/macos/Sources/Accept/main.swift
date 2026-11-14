@@ -697,10 +697,13 @@ swizzle(
       let vp = NSPoint(x: (d(1) - cam.origin.x) * cam.zoom, y: (d(2) - cam.origin.y) * cam.zoom)
       let p = cv.convert(c.convert(vp, to: nil), from: nil)
       return String(format: "%.1f %.1f", p.x, p.y)
-    case "cam":  // the camera: the board point at the canvas's top-left, the zoom
+    // the camera (the board point at the canvas's top-left, the zoom), then the canvas's middle in the window
+    case "cam":
       guard let c = canvas else { return "no canvas" }
       let cam = c.currentCamera
-      return String(format: "%.2f %.2f %.4f", cam.origin.x, cam.origin.y, cam.zoom)
+      guard let cv = win?.contentView else { return "no window" }
+      let mid = cv.convert(c.convert(NSPoint(x: c.bounds.midX, y: c.bounds.midY), to: nil), from: nil)
+      return String(format: "%.2f %.2f %.4f %.1f %.1f", cam.origin.x, cam.origin.y, cam.zoom, mid.x, mid.y)
     case "areas":
       var out: [String] = []
       guard let w = window(at: vPointer), let root = w.contentView?.superview else { return "no window" }

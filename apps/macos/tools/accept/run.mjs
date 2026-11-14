@@ -27,21 +27,20 @@ if (!scenarios.length) throw new Error("usage: run.mjs <scenario.txt>… [--only
 fs.mkdirSync(outRoot, { recursive: true });
 const app = path.join(outRoot, "CodeBoard Accept.app");
 const webBundle = path.join(outRoot, "web.mjs");
-if (!argv.includes("--skip-build")) {
-  if (sides.includes("web")) {
-    run("npm", ["run", "build", "-w", "@yhnocoder/markdown"]);
-    run("npm", ["run", "build", "-w", "@codeboard/board"]);
-  }
-  if (sides.includes("mac")) {
-    run("node", ["apps/macos/web/build.mjs"]);
-    run("swift", ["build", "-c", "release", "--product", "Accept"], mac);
-    const bin = execFileSync("swift", ["build", "-c", "release", "--show-bin-path"], { cwd: mac }).toString().trim();
-    fs.rmSync(app, { recursive: true, force: true });
-    fs.mkdirSync(path.join(app, "Contents/MacOS"), { recursive: true });
-    fs.copyFileSync(path.join(bin, "Accept"), path.join(app, "Contents/MacOS/Accept"));
-    fs.cpSync(path.join(mac, "web/dist"), path.join(app, "Contents/Resources/NotePage"), { recursive: true });
-    run("codesign", ["--force", "--sign", "-", app]);
-  }
+// --skip-build skips the web builds (the board, the Note page); the driver is always built (swift build is incremental)
+const skip = argv.includes("--skip-build");
+if (!skip && sides.includes("web")) {
+  run("npm", ["run", "build", "-w", "@yhnocoder/markdown"]);
+  run("npm", ["run", "build", "-w", "@codeboard/board"]);
+}
+if (sides.includes("mac")) {
+  if (!skip) run("node", ["apps/macos/web/build.mjs"]);
+  run("swift", ["build", "-c", "release", "--product", "Accept"], mac);
+  const bin = execFileSync("swift", ["build", "-c", "release", "--show-bin-path"], { cwd: mac }).toString().trim();
+  fs.rmSync(app, { recursive: true, force: true });
+  fs.mkdirSync(path.join(app, "Contents/MacOS"), { recursive: true });
+  fs.copyFileSync(path.join(bin, "Accept"), path.join(app, "Contents/MacOS/Accept"));
+  fs.cpSync(path.join(mac, "web/dist"), path.join(app, "Contents/Resources/NotePage"), { recursive: true });
 }
 if (sides.includes("web")) {
   await build({
@@ -176,7 +175,8 @@ async function resolve(d, line) {
   return out.join(" ");
 }
 const cam = async (d) => (await d.send("cam")).split(" ").map(Number);
-const center = async (d) => (d.side === "mac" ? [600, 390] : [500, 380]);
+/** the middle of the canvas (beside the Mac app's sidebar) */
+const center = async (d) => (await cam(d)).slice(3, 5);
 
 /** zoom Z: pinch at the window's middle until the camera is at Z */
 async function zoomTo(d, z) {
@@ -189,19 +189,23 @@ async function zoomTo(d, z) {
     await d.send("wait 300");
   }
 }
-/** center @target: two-finger scrolls without momentum until the board point is in the window's middle */
+/** center @target: two-finger scrolls without momentum until the board point is in the window's middle; how far a
+ *  scroll moves the board (sign and acceleration differ by side) is learnt from the scrolls already made */
 async function centerOn(d, target) {
   const [cx, cy] = await center(d);
   await d.send(`move ${cx} ${cy} 200`);
-  let sign = 1;
-  for (let i = 0; i < 6; i++) {
-    const [x, y] = (await point(d, target)).split(" ").map(Number);
-    const dist = Math.hypot(cx - x, cy - y);
-    if (dist < 2) return;
-    await d.send(`scroll ${(sign * (cx - x)).toFixed(1)} ${(sign * (cy - y)).toFixed(1)} 12 still`);
-    await d.send("wait 200");
-    const [x2, y2] = (await point(d, target)).split(" ").map(Number);
-    if (Math.hypot(cx - x2, cy - y2) > dist) sign = -sign;
+  const at = async () => (await point(d, target)).split(" ").map(Number);
+  let g = [1, 1];
+  for (let i = 0; i < 8; i++) {
+    const [x, y] = await at();
+    const e = [cx - x, cy - y];
+    if (Math.hypot(...e) < 2) return;
+    const s = e.map((v, k) => Math.max(-600, Math.min(600, v / g[k])));
+    await d.send(`scroll ${s[0].toFixed(1)} ${s[1].toFixed(1)} 12 still`);
+    await d.send("wait 250");
+    const [x2, y2] = await at();
+    const moved = [x2 - x, y2 - y];
+    g = g.map((v, k) => (Math.abs(s[k]) > 5 && Math.abs(moved[k]) > 1 ? moved[k] / s[k] : v));
   }
 }
 
