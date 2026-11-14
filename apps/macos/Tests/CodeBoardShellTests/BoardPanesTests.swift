@@ -425,6 +425,16 @@ import Testing
   }
 }
 
+/// Delete Board…'s question as main's dialog: Return deletes, Esc cancels
+@MainActor @Test func deleteBoardsQuestionTakesReturnForDeleteAndEscForCancel() {
+  _ = NSApplication.shared
+  let a = BoardPanes.deleteQuestion("Child", cards: 2)
+  a.layout()
+  #expect(a.buttons.map(\.title) == ["Delete", "Cancel"])
+  #expect(a.buttons.map(\.keyEquivalent) == ["\r", "\u{1b}"])
+  #expect(!a.buttons[0].hasDestructiveAction, "a button marked as destroying is never the one Return presses")
+}
+
 @MainActor final class Answer {
   var yes = false
 }

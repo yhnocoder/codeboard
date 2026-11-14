@@ -94,8 +94,11 @@ import Testing
   }
 
   /// Delete Board… on the sub-board card's menu: main's question as a sheet on the window, the other windows going on;
-  /// Cancel keeps the board and the card, Delete sends the board to the Trash and takes the card off as one step
-  @Test(arguments: ["Cancel", "Delete"]) func deleteBoardAsksInASheetOnTheWindow(_ answer: String) async throws {
+  /// Cancel keeps the board and the card, Delete sends the board to the Trash and takes the card off as one step; Return
+  /// is Delete, as in main's dialog (the key equivalent the app hands a sheet's buttons a key down)
+  @Test(arguments: ["Cancel", "Delete", "Return"]) func deleteBoardAsksInASheetOnTheWindow(_ answer: String)
+    async throws
+  {
     let s = try Setup()
     defer { s.close() }
     let w = s.w
@@ -115,7 +118,15 @@ import Testing
     #expect(NSApp.modalWindow == nil, "not the whole app's: \(String(describing: NSApp.modalWindow))")
     s.pressOther()
     #expect(s.presses.count == 1, "the other window takes its press")
-    try #require(button(answer, in: content)).performClick(nil)
+    if answer == "Return" {
+      // Return goes to the key window's default button (the test's window is never key, so it is pressed here as the
+      // window would); before, Delete was marked as destroying and the sheet had none
+      let d = try #require(sheet.defaultButtonCell, "the sheet has a default button")
+      #expect(d.title == "Delete")
+      d.performClick(nil)
+    } else {
+      try #require(button(answer, in: content)).performClick(nil)
+    }
     await FullWindowEditTests().until("the question gone", in: w) { w.window.attachedSheet == nil }
     let fm = FileManager.default
     if answer == "Cancel" {

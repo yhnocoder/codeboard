@@ -33,13 +33,14 @@ import CodeBoardNotes
     return await alert.beginSheetModal(for: window) == .alertFirstButtonReturn
   }
 
-  /// Delete Board…'s question, in main's words, Delete marked as destroying
+  /// Delete Board…'s question, in main's words; Return presses Delete, Esc Cancel, as main's dialog (a button marked as
+  /// destroying loses Return on the Mac)
   static func deleteQuestion(_ title: String, cards: Int) -> NSAlert {
     let a = NSAlert()
     a.alertStyle = .warning
     a.messageText = "Delete board “\(title)”?"
     a.informativeText = "\(cards) cards and their links will be removed. Your code is not affected."
-    a.addButton(withTitle: "Delete").hasDestructiveAction = true
+    a.addButton(withTitle: "Delete")
     a.addButton(withTitle: "Cancel")
     return a
   }
