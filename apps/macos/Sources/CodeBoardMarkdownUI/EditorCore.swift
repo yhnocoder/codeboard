@@ -102,6 +102,11 @@ public final class EditorCore {
   public func key(_ k: MDKey) -> Bool {
     endLone()
     defer { beginLone() }
+    // a selected image: ↵ opens its source, a typed character goes after it (editor/inline.ts imageKey)
+    if let (range, _) = selectedImage {
+      if k == .enter { return openImage() }
+      if case .text = k { place(MDSelection(range.upperBound)) }
+    }
     // a closer typed over one a pair put in steps over it (editor/pairs.ts)
     if case .text(let s) = k, selection.isEmpty, autoClosers.contains(selection.head),
       (source as NSString).length > selection.head,
@@ -242,6 +247,71 @@ public final class EditorCore {
 
   /// the layout info changed (a wrap toggled): for the host to keep
   public var onLayoutInfo: ((MDLayoutInfo?) -> Void)?
+
+  // MARK: images
+
+  /// The image the selection is exactly (a click on a drawn image selects it): its source range and description
+  public var selectedImage: (range: Range<Int>, image: MDImage)? {
+    guard !selection.isEmpty, let i = MarkdownEditing.inline(selection.range, in: document),
+      case .atom(.image(let img)) = i.kind
+    else { return nil }
+    return (i.range, img)
+  }
+
+  /// which image of its address an image is, in source order (what the layout info and MarkdownSourceOps count by)
+  private func nth(of range: Range<Int>, src: String) -> Int {
+    var n = 0
+    var q = MarkdownEditing.start(of: document)
+    var seen = Set<Int>()
+    while let r = MarkdownEditing.run(at: q, in: document), !seen.contains(r.first) {
+      seen.insert(r.first)
+      func walk(_ ins: [MDInline]) {
+        for i in ins {
+          if case .atom(.image(let img)) = i.kind, img.src == src, i.range.lowerBound < range.lowerBound { n += 1 }
+          walk(i.children)
+        }
+      }
+      walk(r.inlines)
+      let next = MarkdownEditing.caretStep(from: r.last, forward: true, in: document, head: nil)
+      if next <= r.last { break }
+      q = next
+    }
+    return n
+  }
+
+  /// Writes a selected image's width as a share of the body ({width=N%}; nil or 100 % takes it out), one undo step;
+  /// the image stays selected
+  public func setImageWidth(_ share: Double?) {
+    guard let (range, img) = selectedImage else { return }
+    let next = MarkdownSourceOps.setImageWidth(source, src: img.src, nth: nth(of: range, src: img.src), width: share)
+    guard next != source, let e = Self.diff(source, next) else { return }
+    let grow = (e.replacement as NSString).length - e.range.count
+    apply(
+      MDEdit(
+        range: e.range, replacement: e.replacement,
+        selection: MDSelection(
+          anchor: range.lowerBound, head: range.upperBound + (e.range.lowerBound <= range.upperBound ? grow : 0)),
+        undo: .command))
+  }
+
+  /// the one replacement that turns a into b: what they share at their start and end left out
+  static func diff(_ a: String, _ b: String) -> (range: Range<Int>, replacement: String)? {
+    let x = Array(a.utf16)
+    let y = Array(b.utf16)
+    var i = 0
+    while i < x.count, i < y.count, x[i] == y[i] { i += 1 }
+    var j = 0
+    while j < x.count - i, j < y.count - i, x[x.count - 1 - j] == y[y.count - 1 - j] { j += 1 }
+    guard i < x.count - j || i < y.count - j else { return nil }
+    return (i..<(x.count - j), String(decoding: y[i..<(y.count - j)], as: UTF16.self))
+  }
+
+  /// ↵ on a selected image: its source opens, the caret after "![" (editor/inline.ts imageKey)
+  public func openImage() -> Bool {
+    guard let (range, _) = selectedImage else { return false }
+    place(MDSelection(range.lowerBound + 2))
+    return true
+  }
 
   /// ⌘/ in a code block: its lines commented in its language, or uncommented
   @discardableResult

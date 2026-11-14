@@ -164,6 +164,21 @@ public final class MarkdownEditorView: NSView {
     // text reads through; in the static picture too (a selection made there before editing)
     ctx.setFillColor(selectionColor.cgColor)
     for r in core.selectionRects where r.intersects(clip) { ctx.fill(r) }
+    // a selected image: its ring and the two handles at its bottom corners; while one is dragged, the size it will get
+    if isEditing, let box = imageBox {
+      let ring =
+        (resizing.map { r in
+          CGRect(
+            x: box.midX - r.width / 2, y: box.minY, width: r.width, height: box.height * r.width / max(1, box.width))
+        } ?? box).insetBy(dx: -2, dy: -2)
+      ctx.setStrokeColor(caretColor.cgColor)
+      ctx.setLineWidth(2 / zoom * (window?.backingScaleFactor ?? 2) / 2)
+      ctx.stroke(ring)
+      for h in handles(ring) {
+        ctx.setFillColor(caretColor.cgColor)
+        ctx.fill(h)
+      }
+    }
     if isEditing, blinkOn, window?.firstResponder === self, let c = core.caretRect {
       // two device pixels wide whatever the zoom, on the caret's line
       let w = 2 / scale
@@ -406,6 +421,21 @@ public final class MarkdownEditorView: NSView {
       changed()
       return
     }
+    // a press on a selected image's handle: resizing it, symmetrically about its centre (editor/image.ts); a double-click
+    // on a handle gives it back its full width
+    if let box = imageBox,
+      let k = handles(box.insetBy(dx: -2, dy: -2)).firstIndex(where: {
+        $0.insetBy(dx: -4 / zoom, dy: -4 / zoom).contains(at)
+      })
+    {
+      if e.clickCount == 2 {
+        core.setImageWidth(nil)
+        changed()
+        return
+      }
+      resizing = (box.width, at, box.width, k == 0)
+      return
+    }
     core.mouseDown(at: at, clicks: e.clickCount, extend: e.modifierFlags.contains(.shift))
     changed()
   }
@@ -422,12 +452,39 @@ public final class MarkdownEditorView: NSView {
     delegate?.editorDidBegin(self)
   }
 
+  /// the selected image's box in the layout's points
+  var imageBox: CGRect? {
+    guard let (range, _) = core.selectedImage, let atom = core.layout.rects(forAtom: range) else { return nil }
+    return core.layout.images.first { $0.frame.intersects(atom) }?.frame ?? atom
+  }
+
+  /// the two handles at a box's bottom corners, in the layout's points
+  private func handles(_ box: CGRect) -> [CGRect] {
+    let s = 10 / zoom
+    return [
+      CGRect(x: box.minX - s / 2, y: box.maxY - s / 2, width: s, height: s),
+      CGRect(x: box.maxX - s / 2, y: box.maxY - s / 2, width: s, height: s),
+    ]
+  }
+
+  /// a handle being dragged: the image's width as it will be (the layout's points), and where the drag began
+  private var resizing: (width: CGFloat, start: CGPoint, from: CGFloat, left: Bool)?
+
   /// the press that started editing is still down: its drag and release are not a selection
   private var entering = false
   /// a press on the static picture, and whether it has moved into a drag (a selection) yet
   private var pressed: (at: CGPoint, dragged: Bool)?
 
   public override func mouseDragged(with e: NSEvent) {
+    if let r = resizing {
+      let p = convert(e.locationInWindow, from: nil)
+      let dx = (p.x / zoom - r.start.x) * (r.left ? -1 : 1)
+      // both sides move: twice the pointer's way; at least 48 points, on an 8-point grid
+      let w = min(core.layout.width, max(48, ((r.from + 2 * dx) / 8).rounded() * 8))
+      resizing?.width = w
+      needsDisplay = true
+      return
+    }
     if !isEditing, let (start, _) = pressed {
       let p = convert(e.locationInWindow, from: nil)
       let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
@@ -445,6 +502,13 @@ public final class MarkdownEditorView: NSView {
   }
 
   public override func mouseUp(with e: NSEvent) {
+    if let r = resizing {
+      resizing = nil
+      // one write on release: the width as a share of the body
+      core.setImageWidth(Double(r.width / core.layout.width))
+      changed()
+      return
+    }
     begin()
     defer { note(.mouse(.up, clicks: e.clickCount, modifiers: Self.mods(e), offset: core.selection.head)) }
     if let (start, dragged) = pressed {
