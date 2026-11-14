@@ -48,7 +48,7 @@ The app: `Sources/CodeBoardCanvas/CanvasKeys.swift` (`boardKey`, reached from `k
 | ⌥S | Move to Shelf | same |
 | ⌥Z | Wrap Lines (code cards selected) | same |
 | ← → ↑ ↓ (⇧: 10) | Nudge the cards selected | same |
-| H | Hide the lines selected | gap: hiding lines |
+| H | Hide the lines selected | same (hidden runs they touch merge into one) |
 | ⌘Z / ⇧⌘Z, ⌘Y | Undo / Redo | same (Edit menu) |
 | ⌘, | Settings | same (app menu) |
 | ? | Keyboard Shortcuts | same: the list at the right, made from the board's key table (CanvasKeys BoardKey.all) and the app menu's keys; ? or Esc closes it. gap: its Search… (Settings has no shortcuts page) |

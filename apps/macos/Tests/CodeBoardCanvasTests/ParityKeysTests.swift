@@ -62,6 +62,24 @@ private func keysBoard() -> Board {
     return r
   }
 
+  /// H hides the lines selected (keymap.ts hide, core hideLines): hidden runs they overlap or touch merge into one, in
+  /// line order; one step; with no lines selected H does nothing
+  @Test func hHidesTheLinesSelected() async throws {
+    let r = try await rig()
+    defer { r.close() }
+    let c = r.canvas
+    let s1 = SegmentID(rawValue: "s1")
+    func hidden() -> [ClosedRange<Int>]? { r.doc.board.segment(cid("c1"), s1)?.hidden }
+    _ = pressed(r, 4, "h")
+    #expect(hidden() == [])
+    c.lineSel = Lines(card: cid("c1"), segment: s1, range: 3...3)
+    #expect(pressed(r, 4, "h"))
+    #expect(hidden() == [3...3] && c.lineSel == nil && r.doc.history.undoSteps.last?.name == "Hide Lines")
+    c.lineSel = Lines(card: cid("c1"), segment: s1, range: 1...2)
+    _ = pressed(r, 4, "h")
+    #expect(hidden() == [1...3])
+  }
+
   /// ? opens the shortcut list and ? or Esc closes it (keymap.ts help, BoardView.tsx Keys). Its rows are the key
   /// table's, by group, every key the board answers among them, then the app menu's keys by menu, none twice
   @Test func questionMarkOpensTheShortcutListMadeFromTheKeyTable() async throws {
@@ -72,7 +90,7 @@ private func keysBoard() -> Board {
     let groups = try #require(c.keysPanel?.groups)
     let rows = groups.flatMap(\.rows)
     for k in BoardKey.all { #expect(rows.contains { $0.key == k.show && $0.label == k.label }, "\(k.label) listed") }
-    #expect(groups.prefix(4).map(\.name) == ["Create", "View", "Cards", "Board"])
+    #expect(groups.prefix(5).map(\.name) == ["Create", "View", "Cards", "Code", "Board"])
     #expect(pressed(r, 44, "?", .shift) && c.keysPanel == nil)
     _ = pressed(r, 44, "?", .shift)
     r.key(53)

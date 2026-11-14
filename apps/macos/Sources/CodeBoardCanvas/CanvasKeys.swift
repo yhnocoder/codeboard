@@ -11,7 +11,7 @@ import CodeBoardModel
 struct BoardKey {
   enum Action {
     case newNote, newText, newBox, addSidenote, fitWindow, fitSelection, zoom100, zoomIn, zoomOut, pan, open
-    case enterBoard, delete, turnIntoBoard, fitContent, tilt, shelve, wrap, nudge, escape, help
+    case enterBoard, delete, turnIntoBoard, fitContent, tilt, shelve, wrap, nudge, hide, escape, help
   }
 
   /// A press: its modifiers, and what it types (letters and symbols, as e.key) or else the key itself (e.code)
@@ -37,7 +37,7 @@ struct BoardKey {
   static func char(_ c: String, _ m: NSEvent.ModifierFlags = []) -> Press { Press(mods: m, char: c) }
   static func code(_ c: UInt16, _ m: NSEvent.ModifierFlags = []) -> Press { Press(mods: m, code: c) }
 
-  static let groups = ["Create", "View", "Cards", "Board"]
+  static let groups = ["Create", "View", "Cards", "Code", "Board"]
 
   /// In keymap.ts's order: the first row that matches and applies takes the key
   static let all: [BoardKey] = [
@@ -74,6 +74,7 @@ struct BoardKey {
     BoardKey(
       action: .nudge, presses: [123, 124, 125, 126].flatMap { [code($0), code($0, .shift)] }, show: "Arrows",
       label: "Nudge (⇧ = 10px on screen)", group: "Cards"),
+    BoardKey(action: .hide, presses: [char("h")], show: "H", label: "Hide lines", group: "Code"),
     BoardKey(action: .help, presses: [char("?")], show: "?", label: "Keyboard Shortcuts", group: "Board"),
     BoardKey(action: .escape, presses: [code(53)], show: "Esc", label: "Cancel · Deselect", group: "Board"),
   ]
@@ -125,6 +126,9 @@ extension CanvasView {
     case .nudge:
       guard !cards.isEmpty else { return false }
       nudge(e)
+    case .hide:
+      guard let l = lineSel else { return false }
+      hideLines(l)
     case .help: toggleKeys()
     case .escape: escape()
     }
@@ -169,6 +173,25 @@ extension CanvasView {
     if openPop != nil { return openPop(nil) }
     if lineSel != nil { return clearLineSel() }
     if gesture == nil { document?.select([]) }
+  }
+
+  /// H (keymap.ts hide, core hideLines): the lines selected hidden; hidden runs they overlap or touch merge into one,
+  /// in line order
+  func hideLines(_ l: Lines) {
+    editCode(l.card, "Hide Lines") { c in
+      guard let i = c.segments.firstIndex(where: { $0.id == l.segment }) else { return }
+      var r = l.range
+      var keep: [ClosedRange<Int>] = []
+      for h in c.segments[i].hidden {
+        if h.upperBound < r.lowerBound - 1 || h.lowerBound > r.upperBound + 1 {
+          keep.append(h)
+        } else {
+          r = min(h.lowerBound, r.lowerBound)...max(h.upperBound, r.upperBound)
+        }
+      }
+      c.segments[i].hidden = (keep + [r]).sorted { $0.lowerBound < $1.lowerBound }
+    }
+    clearLineSel()
   }
 
   /// ⌥F (keymap.ts fitContent): the card under the pointer, else the cards selected fit their content; else the

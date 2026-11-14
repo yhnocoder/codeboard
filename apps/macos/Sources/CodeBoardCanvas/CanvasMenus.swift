@@ -112,7 +112,7 @@ extension CanvasView {
   }
 
   /// One step changing a code card of this board's own
-  private func editCode(_ id: CardID, _ name: String, _ change: @escaping (inout CodeCard) -> Void) {
+  func editCode(_ id: CardID, _ name: String, _ change: @escaping (inout CodeCard) -> Void) {
     document?.edit(name) { b in
       guard let i = b.cards.firstIndex(where: { $0.id == id }), case .own(var k) = b.cards[i].content,
         case .code(var c) = k.body
