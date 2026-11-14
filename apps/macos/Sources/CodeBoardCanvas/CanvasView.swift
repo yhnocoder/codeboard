@@ -419,6 +419,11 @@ public final class CanvasView: NSView {
     await rest()
     guard let (board, vault) = shown, !theme.same(as: self.theme) else { return }
     try await load(board, in: vault, theme: theme, keepCamera: true)
+    // an open shortcut list is drawn again in the new theme, where it was
+    if keysPanel != nil {
+      toggleKeys()
+      toggleKeys()
+    }
   }
 
   /// Waiting for the camera to come to rest
