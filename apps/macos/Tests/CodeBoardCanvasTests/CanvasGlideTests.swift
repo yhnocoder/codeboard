@@ -77,11 +77,11 @@ import Testing
   }
 
   enum Stop: String, CaseIterable {
-    case press, scroll, pinch
+    case press, rightPress, otherPress, scroll, mayBegin, pinch
   }
 
-  /// Mid-glide a press on the board, fingers on the trackpad again, or a pinch beginning stops it where it is: the
-  /// next frame moves nothing
+  /// Mid-glide a press of any button on the board (a right press before its menu is built), fingers on the trackpad
+  /// again (moving or not yet), or a pinch beginning stops it where it is: the next frames move nothing
   @Test(arguments: Stop.allCases) func aGlideStopsAtOnce(by stop: Stop) async throws {
     let r = try await rig()
     defer { r.close() }
@@ -90,22 +90,120 @@ import Testing
     for _ in 0..<3 { r.tick() }
     try #require(gliding(c), "mid-glide")
     let w = r.at(between)
+    let p = c.camera.board(c.convert(w, from: nil))
     switch stop {
-    case .press: r.send(r.mouse(.leftMouseDown, c.camera.board(c.convert(w, from: nil))))
+    case .press: r.send(r.mouse(.leftMouseDown, p))
+    // what AppKit's right press asks first; the menu is never shown here
+    case .rightPress: _ = c.menu(for: r.mouse(.rightMouseDown, p))
+    case .otherPress: c.otherMouseDown(with: r.mouse(.otherMouseDown, p))
     case .scroll: r.deliver(r.gesture(at: w, phase: 1, t: r.next(1.0 / 120)))
+    case .mayBegin: r.deliver(r.gesture(at: w, phase: 128, t: r.next(1.0 / 120)))
     case .pinch: r.deliver(r.gesture(at: w, phase: 1, pinch: 0, t: r.next(1.0 / 120)))
     }
     let there = c.camera
+    #expect(!gliding(c), "\(stop.rawValue): still gliding after it")
+    for _ in 0..<3 { r.tick() }
+    #expect(c.camera == there, "\(stop.rawValue): moved on to \(c.camera.origin) from \(there.origin)")
+    if stop == .press { r.send(r.mouse(.leftMouseUp, p)) }
+  }
+
+  /// At the stop the hover is worked out again for the camera there: the card under the resting pointer is hovered
+  @Test func aPressMidGlideHoversWhatIsUnderThePointerThen() async throws {
+    let r = try await rig()
+    defer { r.close() }
+    let c = r.canvas
+    c.mouseMoved(with: r.mouse(.mouseMoved, between))
+    let w = r.at(between)
+    func under() -> CardID? { c.hitCard(c.camera.board(c.convert(w, from: nil))) }
+    _ = swipe(r, at: between, steps: 4)
+    var frames = 0
+    while under() == nil && gliding(c) && frames < 600 {
+      r.tick()
+      frames += 1
+    }
+    try #require(gliding(c) && under() != nil, "a card under the pointer mid-glide")
+    // the hover as nothing had set it: the stop alone must set it again
+    c.hoveredCard = nil
+    _ = c.menu(for: r.mouse(.rightMouseDown, c.camera.board(c.convert(w, from: nil))))
+    #expect(
+      c.hoveredCard == under(), "hovered \(String(describing: c.hoveredCard)), under \(String(describing: under()))")
+  }
+
+  /// Mid-glide a press on a card and a drag: the card follows the pointer, the camera stays where the press
+  /// stopped it, frames between the drag's steps included
+  @Test func aCardPressedAndDraggedMidGlideFollowsThePointerOnAStillBoard() async throws {
+    let r = try await rig()
+    defer { r.close() }
+    let c = r.canvas
+    _ = swipe(r, at: between)
+    for _ in 0..<3 { r.tick() }
+    try #require(gliding(c), "mid-glide")
+    let card = r.rect("b1")
+    let from = r.centre("b1")
+    let start = r.at(from)
+    r.send(r.mouse(.leftMouseDown, from))
+    let there = c.camera
+    let by = CGVector(dx: 60, dy: 40)
+    for k in 1...6 {
+      r.tick()
+      let f = CGFloat(k) / 6
+      r.send(r.mouse(.leftMouseDragged, CGPoint(x: from.x + by.dx * f, y: from.y + by.dy * f)))
+      #expect(c.camera == there, "step \(k): the camera moved to \(c.camera.origin) from \(there.origin)")
+    }
+    r.send(r.mouse(.leftMouseUp, CGPoint(x: from.x + by.dx, y: from.y + by.dy)))
     r.tick()
-    let still = {
-      #expect(c.camera == there && !gliding(c), "\(stop.rawValue): moved on to \(c.camera.origin) from \(there.origin)")
+    #expect(c.camera == there)
+    let moved = r.card("b1")
+    #expect(moved.x == card.minX + by.dx && moved.y == card.minY + by.dy, "b1 at \(moved.x), \(moved.y)")
+    // under the pointer still: the press point moved with it in the window
+    let end = r.at(CGPoint(x: from.x + by.dx, y: from.y + by.dy))
+    #expect(abs(end.x - start.x - by.dx) < 0.01 && abs(abs(end.y - start.y) - by.dy) < 0.01)
+  }
+
+  enum Key: String, CaseIterable {
+    case fitWindow, fitAll, fitSelection, zoom100, zoomIn, zoomOut
+  }
+
+  /// Mid-glide a camera key takes over at once: the camera ends exactly where the key puts it from where the glide
+  /// was when it was pressed, with nothing of the glide added
+  @Test(arguments: Key.allCases) func aCameraKeyMidGlideTakesOverFromIt(_ key: Key) async throws {
+    let r = try await rig()
+    defer { r.close() }
+    let c = r.canvas
+    r.window.makeFirstResponder(c)
+    r.doc.select([.card(cid("t1"))])
+    _ = swipe(r, at: between)
+    for _ in 0..<3 { r.tick() }
+    try #require(gliding(c), "mid-glide")
+    let there = c.camera
+    let mid = CGPoint(x: c.bounds.midX, y: c.bounds.midY)
+    func zoomed(_ f: CGFloat) -> Camera {
+      var z = there
+      z.zoom(to: c.limits.clamp(there.zoom * f), at: mid)
+      return z
     }
-    if stop == .press {
-      withKnownIssue("a press does not stop a glide yet: nothing on the mouse path touches Motion") { still() }
-    } else {
-      still()
+    let all = try #require(c.scene?.bounds)
+    let (code, flags, want): (UInt16, NSEvent.ModifierFlags, Camera) =
+      switch key {
+      case .fitWindow: (18, .shift, c.fitRect(all, maxZoom: 1))
+      case .fitAll: (29, .command, c.fitRect(all, maxZoom: 1))
+      case .fitSelection: (19, .shift, c.fitRect(r.rect("t1"), maxZoom: 1.4))
+      case .zoom100: (18, .command, zoomed(1 / there.zoom))
+      case .zoomIn: (24, .command, zoomed(1.25))
+      case .zoomOut: (27, .command, zoomed(0.8))
+      }
+    let e = NSEvent.keyEvent(
+      with: .keyDown, location: .zero, modifierFlags: flags, timestamp: r.next(0.016),
+      windowNumber: r.window.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "",
+      isARepeat: false, keyCode: code)!
+    if flags.contains(.command) { #expect(c.performKeyEquivalent(with: e)) } else { c.keyDown(with: e) }
+    #expect(!gliding(c), "\(key.rawValue): still gliding")
+    var frames = 0
+    while !c.motion.isResting && frames < 600 {
+      r.tick()
+      frames += 1
     }
-    if stop == .press { r.send(r.mouse(.leftMouseUp, c.camera.board(c.convert(w, from: nil)))) }
+    #expect(c.camera == want, "\(key.rawValue): at \(c.camera), the key's \(want)")
   }
 
   /// Mid-glide the pointer rests where it is in the window: whatever card the board brings under it is hovered on that

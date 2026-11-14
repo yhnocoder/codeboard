@@ -117,6 +117,13 @@ struct Motion {
     lastInput = t
   }
 
+  /// A press stops a glide where it is (as any press in a scroll view stops its momentum); it rests as after input
+  mutating func stopGlide(at t: TimeInterval) {
+    guard case .glide = phase else { return }
+    phase = .input
+    lastInput = t
+  }
+
   /// Moves the camera to `c` over the frames that follow; any input stops it where it is
   mutating func fly(to c: Camera) {
     phase = .fly(Fly(to: c))
