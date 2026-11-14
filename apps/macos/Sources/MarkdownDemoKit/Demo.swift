@@ -48,6 +48,9 @@ struct FileResources: MarkdownResources {
   var diagrams: DiagramRenderer? { math as? DiagramRenderer }
   func imageSize(_ src: String) -> CGSize? {
     if let p = pasted.picture(src) { return CGSize(width: p.width, height: p.height) }
+    if !src.contains("://"), let d = try? Data(contentsOf: folder.appending(path: src)), MarkdownSVG.isSVG(d) {
+      return MarkdownSVG.size(d)
+    }
     guard !src.contains("://"), let s = CGImageSourceCreateWithURL(folder.appending(path: src) as CFURL, nil),
       let p = CGImageSourceCopyPropertiesAtIndex(s, 0, nil) as? [CFString: Any],
       let w = p[kCGImagePropertyPixelWidth] as? Int, let h = p[kCGImagePropertyPixelHeight] as? Int
@@ -666,6 +669,15 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   func image(_ slot: MarkdownImageSlot, in folder: URL) -> CGImage? {
     let url = folder.appending(path: slot.src)
     if let i = images[url.path] ?? resources.pasted.picture(slot.src) { return i }
+    // an SVG drawn at twice its box's width at the zoom (sharp on the display; again when the zoom grows past it)
+    if !slot.src.contains("://"), let d = try? Data(contentsOf: url), MarkdownSVG.isSVG(d) {
+      let want = slot.pixelWidth(at: 2 * max(1, zoom))
+      let key = url.path + "@\(want)"
+      if let i = images[key] { return i }
+      let i = MarkdownSVG.image(d, pixelWidth: want)
+      images[key] = i
+      return i
+    }
     guard !slot.src.contains("://"), let s = CGImageSourceCreateWithURL(url as CFURL, nil),
       let i = CGImageSourceCreateImageAtIndex(s, max(0, (slot.stillFrame ?? 1) - 1), nil)
     else { return nil }

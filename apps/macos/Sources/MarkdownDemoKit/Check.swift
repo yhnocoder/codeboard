@@ -99,6 +99,13 @@ enum Check {
     demo.scroll.reflectScrolledClipView(clip)
     frame()
     autoreleasepool { render(demo.window.contentView!, to: out.appending(path: "shown-scrolled.png")) }
+    // each card at the top of the window, as she scrolls to it (the first eight)
+    for (i, r) in demo.page.cardRects.prefix(8).enumerated() {
+      clip.scroll(to: CGPoint(x: 0, y: min(bottom, max(0, r.minY - 20))))
+      demo.scroll.reflectScrolledClipView(clip)
+      frame()
+      autoreleasepool { render(demo.window.contentView!, to: out.appending(path: "card-\(i + 1).png")) }
+    }
     clip.scroll(to: .zero)
     demo.scroll.reflectScrolledClipView(clip)
     frame()
@@ -122,7 +129,9 @@ enum Check {
     }
     // a ⌘ move through the app's own event queue (the monitors see it as they see hers): ⌘ over the first card's second
     // block, then a ⌘-drag of it below the third
-    if let e = demo.cards.first, let content = demo.window.contentView {
+    if let e = demo.cards.max(by: { $0.core.layout.blockFrames.count < $1.core.layout.blockFrames.count }),
+      let content = demo.window.contentView
+    {
       demo.window.makeFirstResponder(e)
       e.enter(at: CGPoint(x: 40, y: 12))
       frame()
