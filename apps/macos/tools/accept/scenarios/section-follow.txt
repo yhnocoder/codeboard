@@ -1,0 +1,13 @@
+# 成员卡拖到 Section 下边外、按住不放：框在拖动中就要跟着撑开（VS Code 是这样），松手后留在 Section 里
+zoom 1
+center @sboxes+350,100
+move @cyellow 300
+rec drag
+down
+move @cyellow+65,150 500
+wait 300
+shot holding
+up
+wait 600
+shot released
+stop

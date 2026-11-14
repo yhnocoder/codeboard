@@ -1,0 +1,13 @@
+# 不对照：新建一张 Text、写一句话、把它拖进 Input Section 的完整流程。看步数、每步多久有反应、有没有遮挡和误触
+zoom 1
+center @sinput+500,300
+rec flow
+dbl @sboxes+100,250
+wait 500
+type 第一条想法
+key esc
+wait 300
+drag @sboxes+100,260 @sinput+260,470 900
+wait 600
+shot done
+stop

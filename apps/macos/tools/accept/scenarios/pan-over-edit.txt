@@ -1,0 +1,13 @@
+# 编辑一张卡时，从卡外开始的双指平移经过这张卡不能停（VS Code：手势从哪开始就归谁）
+zoom 1
+center @cnote+150,60
+dbl @cnote+150,70
+wait 800
+move @cnote+-200,60 300
+rec pan
+scroll -300 0 30
+wait 300
+scroll -300 0 30
+wait 600
+stop
+key esc
