@@ -61,3 +61,6 @@ package.targets += [
   .testTarget(name: "CodeBoardMarkdownTests", dependencies: ["CodeBoardMarkdown"], resources: [.copy("Fixtures")]),
   .testTarget(name: "CodeBoardMarkdownUITests", dependencies: ["CodeBoardMarkdownUI"]),
 ]
+// a window to try the component in, standing alone (tools/markdown/make-demo.sh packages it)
+package.targets.append(
+  .executableTarget(name: "MarkdownDemo", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI"]))
