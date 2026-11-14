@@ -54,3 +54,47 @@ import Testing
     w.close()
   }
 }
+
+/// The shape acceptance's note-image has: an image with no width yet, ending the Note, selected by a click and widened
+/// by its right grip; on release the width is written and the image stays selected, its source closed, also through
+/// undo and redo (the selection once became the source line's text, which opened it and moved the picture down)
+@MainActor @Suite struct ImageFirstWidthTests {
+  @Test func theFirstWidthKeepsTheImageSelected() {
+    _ = boardFonts
+    let image = "![a picture of the scheduler](pictures/step.png)"
+    let src = "Some text.\n\n" + image
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: ImageTests.Sized())
+    let v = MarkdownEditorView(layout: l, caret: 0)
+    let w = NSWindow(
+      contentRect: CGRect(origin: .zero, size: l.size), styleMask: [.borderless], backing: .buffered, defer: true)
+    w.isReleasedWhenClosed = false
+    w.contentView = NSView(frame: CGRect(origin: .zero, size: l.size))
+    w.contentView!.addSubview(v)
+    func ev(_ t: NSEvent.EventType, _ p: CGPoint) -> NSEvent {
+      NSEvent.mouseEvent(
+        with: t, location: v.convert(p, to: nil), modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
+        eventNumber: 0, clickCount: 1, pressure: 1)!
+    }
+    let pic = v.core.layout.images.first!.frame
+    v.mouseDown(with: ev(.leftMouseDown, CGPoint(x: pic.midX, y: pic.midY)))
+    v.mouseUp(with: ev(.leftMouseUp, CGPoint(x: pic.midX, y: pic.midY)))
+    #expect(v.core.selectedImage != nil)
+    // as in the window: the layout's caret left at the image's end, where its width is about to be written
+    v.core.layout.setHead((src as NSString).length)
+    let box = v.imageBox!
+    let g = CGPoint(x: v.handles(box)[1].midX, y: box.midY)
+    v.mouseDown(with: ev(.leftMouseDown, g))
+    v.mouseDragged(with: ev(.leftMouseDragged, CGPoint(x: g.x - 60, y: g.y)))
+    v.mouseUp(with: ev(.leftMouseUp, CGPoint(x: g.x - 60, y: g.y)))
+    #expect(v.core.source.hasSuffix("{width=") == false && v.core.source.contains("{width="), "\(v.core.source)")
+    #expect(v.core.selectedImage != nil && v.imageBox != nil, "\(v.core.selection)")
+    #expect(abs(v.core.layout.images.first!.frame.minY - pic.minY) < 0.5)
+    v.undo(nil)
+    #expect(v.core.source == src && v.core.selectedImage != nil && v.imageBox != nil, "\(v.core.selection)")
+    v.redo(nil)
+    #expect(
+      v.core.source.contains("{width=") && v.core.selectedImage != nil && v.imageBox != nil, "\(v.core.selection)")
+    #expect(abs(v.core.layout.images.first!.frame.minY - pic.minY) < 0.5)
+    w.close()
+  }
+}

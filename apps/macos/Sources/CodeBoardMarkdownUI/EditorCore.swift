@@ -407,6 +407,8 @@ public final class EditorCore {
     let next = MarkdownSourceOps.setImageWidth(source, src: img.src, nth: nth(of: range, src: img.src), width: share)
     guard next != source, let e = Self.diff(source, next) else { return }
     let grow = (e.replacement as NSString).length - e.range.count
+    // the image stays selected with its source closed: no caret left in the layout to open it
+    layout.setHead(nil)
     apply(
       MDEdit(
         range: e.range, replacement: e.replacement,
@@ -434,8 +436,9 @@ public final class EditorCore {
     let shown = layout.document.source
     guard want != shown, let e = Self.diff(shown, want) else { return }
     let next = layout.document.reparse(replacing: e.range, with: e.replacement)
-    layout.update(
-      to: next, replacing: e.range, delta: (e.replacement as NSString).length - e.range.count, head: layout.head)
+    // no caret in the layout while an image is selected: a head left at the image's end would sit inside it once its
+    // width is written there, and open its source
+    layout.update(to: next, replacing: e.range, delta: (e.replacement as NSString).length - e.range.count, head: nil)
     previewing = true
   }
 
@@ -447,7 +450,7 @@ public final class EditorCore {
     }
     previewing = false
     layout.update(
-      to: document, replacing: e.range, delta: (e.replacement as NSString).length - e.range.count, head: layout.head)
+      to: document, replacing: e.range, delta: (e.replacement as NSString).length - e.range.count, head: nil)
   }
   private var previewing = false
 

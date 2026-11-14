@@ -307,6 +307,30 @@ enum Check {
         frame()
       }
     }
+    // the selection's toolbar over a selected word, then the link box under a link
+    if let e = demo.cards.first(where: { $0.source.contains("](") }), let content = demo.window.contentView {
+      let ns = e.source as NSString
+      let word = ns.range(of: "scheduler")
+      let link = ns.range(of: "the docs")
+      demo.window.makeFirstResponder(e)
+      e.isEditing = true
+      if word.location != NSNotFound {
+        e.selection = MDSelection(anchor: word.location, head: NSMaxRange(word))
+        clip.scroll(to: CGPoint(x: 0, y: max(0, e.frame.minY + (e.core.caretRect?.minY ?? 0) * demo.zoom - 200)))
+        demo.scroll.reflectScrolledClipView(clip)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: MarkdownTiming.toolbarSettle + 0.1))
+        for _ in 0..<5 { frame() }
+        autoreleasepool { render(content, to: out.appending(path: "toolbar.png")) }
+      }
+      if link.location != NSNotFound {
+        e.selection = MDSelection(link.location + 2)
+        e.openLinkBoxForCheck()
+        for _ in 0..<5 { frame() }
+        autoreleasepool { render(content, to: out.appending(path: "linkbox.png")) }
+      }
+      e.isEditing = false
+      frame()
+    }
     rest("after click, typing, zoom, leaving")
     rest("after click, typing, zoom, leaving, again")
     let afterAll = footprint()?.now ?? 0

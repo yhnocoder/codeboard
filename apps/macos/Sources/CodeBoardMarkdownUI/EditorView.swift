@@ -1070,6 +1070,9 @@ public final class MarkdownEditorView: NSView {
 
   // MARK: the link box
 
+  /// the link box for the link at the caret, as ⌘K opens it (a host's check)
+  public func openLinkBoxForCheck() { openLinkBox() }
+
   /// ⌘K, the toolbar's Link, a click on a link the caret is not in: the box for the link at the selection, or for a new
   /// one on the selected text
   func openLinkBox() {
@@ -1118,12 +1121,12 @@ public final class MarkdownEditorView: NSView {
     let all: [SelectionToolbar.Button] = [
       .init(id: "bold", symbol: "bold", tip: "Bold (⌘B)", on: w("**", "**")),
       .init(id: "italic", symbol: "italic", tip: "Italic (⌘I)", on: w("*", "*") && !w("**", "**")),
-      .init(id: "strike", symbol: "strikethrough", tip: "Strikethrough (⌘⇧S)", on: w("~~", "~~")),
-      .init(id: "highlight", symbol: "highlighter", tip: "Highlight (⌘⇧H)", on: w("==", "==")),
-      .init(id: "code", symbol: "chevron.left.forwardslash.chevron.right", tip: "Inline Code (⌘E)", on: w("`", "`")),
+      .init(id: "strike", symbol: "strike", tip: "Strikethrough (⌘⇧S)", on: w("~~", "~~")),
+      .init(id: "highlight", symbol: "highlight", tip: "Highlight (⌘⇧H)", on: w("==", "==")),
+      .init(id: "code", symbol: "code", tip: "Inline Code (⌘E)", on: w("`", "`")),
       .init(id: "link", symbol: "link", tip: "Link (⌘K)", on: false),
-      .init(id: "math", symbol: "function", tip: "Inline Math", on: w("$", "$")),
-      .init(id: "annot", symbol: "pencil.and.scribble", tip: "Handwritten Note", on: false),
+      .init(id: "math", symbol: "math", tip: "Inline Math", on: w("$", "$")),
+      .init(id: "annot", symbol: "annot", tip: "Handwritten Note", on: false),
     ]
     return isEditing ? all : all.filter { $0.id == "bold" || $0.id == "highlight" }
   }

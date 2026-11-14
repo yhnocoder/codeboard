@@ -5,15 +5,20 @@ import CodeBoardMarkdown
 /// a row of buttons over its first line (under it when there is no room above), at the screen's own size. While editing:
 /// Bold, Italic, Strikethrough, Highlight, Inline Code, Link, Inline Math, Handwritten Note; on the static picture's
 /// selection only Bold and Highlight (the board's static toolbar). A button is pressed when the selection is wrapped in
-/// its markers; a press toggles them (one undo step). No labels: the symbols say it, the tooltips name the keys
+/// its markers; a press toggles them (one undo step). No labels: the web's icons say it (MarkdownIcons), the tooltips
+/// name the keys; a thin separator between the marks and Link, as on the web
 @MainActor
 final class SelectionToolbar: NSView {
   struct Button {
     var id: String
+    /// the icon's name in MarkdownIcons
     var symbol: String
     var tip: String
     var on: Bool
   }
+  /// a separator goes before this button (bubble.tsx: between Inline Code and Link)
+  private static let separated: Set<String> = ["link"]
+  private let gap: CGFloat = 7
   private(set) var buttons: [Button] = []
   var onPress: (String) -> Void = { _ in }
   private var theme: MarkdownTheme?
@@ -24,7 +29,7 @@ final class SelectionToolbar: NSView {
   func show(_ buttons: [Button], over line: CGRect, in bounds: CGRect, theme: MarkdownTheme) {
     self.buttons = buttons
     self.theme = theme
-    let w = CGFloat(buttons.count) * size + 8
+    let w = CGFloat(buttons.count) * size + 8 + CGFloat(buttons.filter { Self.separated.contains($0.id) }.count) * gap
     let h = size + 8
     var x = line.midX - w / 2
     x = min(max(bounds.minX, x), bounds.maxX - w)
@@ -39,7 +44,10 @@ final class SelectionToolbar: NSView {
 
   func hide() { isHidden = true }
 
-  private func rect(_ i: Int) -> CGRect { CGRect(x: 4 + CGFloat(i) * size, y: 4, width: size, height: size) }
+  private func rect(_ i: Int) -> CGRect {
+    let seps = buttons.prefix(i + 1).filter { Self.separated.contains($0.id) }.count
+    return CGRect(x: 4 + CGFloat(i) * size + CGFloat(seps) * gap, y: 4, width: size, height: size)
+  }
 
   override func draw(_ dirtyRect: NSRect) {
     guard let theme, let ctx = NSGraphicsContext.current?.cgContext else { return }
@@ -61,12 +69,20 @@ final class SelectionToolbar: NSView {
         ctx.addPath(CGPath(roundedRect: r.insetBy(dx: 2, dy: 2), cornerWidth: 5, cornerHeight: 5, transform: nil))
         ctx.fillPath()
       }
-      let ink = NSColor(cgColor: (b.on ? theme.colors.accent : theme.colors.ink2).cg) ?? .labelColor
-      let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium).applying(.init(paletteColors: [ink]))
-      if let img = NSImage(systemSymbolName: b.symbol, accessibilityDescription: b.tip)?.withSymbolConfiguration(config)
-      {
-        let s = img.size
-        img.draw(in: CGRect(x: r.midX - s.width / 2, y: r.midY - s.height / 2, width: s.width, height: s.height))
+      if Self.separated.contains(b.id) {
+        ctx.setFillColor(theme.colors.hair.cg)
+        ctx.fill(CGRect(x: r.minX - gap / 2 - 0.5, y: r.midY - 8, width: 1, height: 16))
+      }
+      if let icon = MarkdownIcons.path(b.symbol) {
+        ctx.saveGState()
+        ctx.translateBy(x: r.midX - 8, y: r.midY - 8)
+        ctx.addPath(icon)
+        ctx.setStrokeColor((b.on ? theme.colors.accent : theme.colors.ink2).cg)
+        ctx.setLineWidth(1.3)
+        ctx.setLineCap(.round)
+        ctx.setLineJoin(.round)
+        ctx.strokePath()
+        ctx.restoreGState()
       }
     }
   }
