@@ -62,7 +62,9 @@ function notes(a: Args, host: Segment): Sidenote[] {
 function base(a: Args, after: (seg: string) => void): Scene {
   const { board, put } = scene("Sidenotes");
   const host = put(codeCard(HOST, "schedule"), { x: 40, y: 60, w: 520, h: 520 });
-  put(noteAt("sn-note", "## 抢占\n\nblock 不够就抢占最后进来的请求。"), { x: 40, y: 640, w: 320 });
+  // what the first sidenote's [[reference]] points to: far right of the view, so its click previews it (a card near the view is
+  // gone to instead)
+  put(noteAt("sn-note", "## 抢占\n\nblock 不够就抢占最后进来的请求。"), { x: 6000, y: 60, w: 320 });
   board.sidenotes.push(...notes(a, host.segments[0]));
   return {
     board,
@@ -112,7 +114,7 @@ const previewRef = async () => {
   await frames();
 };
 const codeSearch = async () => {
-  const b = await waitFor(() => $<HTMLButtonElement>(".pop .ncomp-kind"), "the Code switch");
+  const b = await waitFor(() => $<HTMLButtonElement>('.pop .ncomp-kind[aria-label="Code"]'), "the Code switch");
   b.click();
   await waitFor(() => $(".ncomp input"), "the code search");
   await frames();
