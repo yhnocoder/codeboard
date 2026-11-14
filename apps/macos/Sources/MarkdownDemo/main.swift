@@ -225,6 +225,10 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
       e.isEditing = false
       e.delegate = self
       e.image = { [weak self] slot in self?.image(slot) }
+      e.codeLanguages = [
+        ("python", "Python"), ("rust", "Rust"), ("c", "C"), ("cpp", "C++"), ("cuda", "CUDA"), ("triton", "Triton"),
+        ("tilelang", "TileLang"), ("mermaid", "Mermaid"), ("json", "JSON"), ("bash", "Shell"),
+      ]
       editor = e
       page.addSubview(e)
       inspector.watch(e)

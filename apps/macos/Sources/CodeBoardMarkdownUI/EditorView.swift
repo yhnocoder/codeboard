@@ -50,6 +50,12 @@ public final class MarkdownEditorView: NSView {
   }
 
   let preview = MathPreview()
+  let band = CodeBand()
+  /// the languages a code block's band offers (name written into the fence, label shown); the host's
+  public var codeLanguages: [(name: String, label: String)] = []
+  /// a code block the pointer is over (its band shows while it is)
+  private var hovered: EditorCore.CodeBlock?
+  private var bandTimer: Timer?
 
   /// What the editor receives and does, each with the main thread's time it has cost so far in that event, in ms
   /// (EditorEvent); events are built only while this is set
@@ -77,6 +83,12 @@ public final class MarkdownEditorView: NSView {
     super.init(frame: CGRect(origin: .zero, size: layout.size))
     preview.isHidden = true
     addSubview(preview)
+    band.isHidden = true
+    addSubview(band)
+    band.onCopy = { [weak self] in self?.copyCode() }
+    band.onWrap = { [weak self] in self?.toggleWrap() }
+    band.onLanguage = { [weak self] v, r in self?.pickLanguage(from: v, at: r) }
+    updateTrackingAreas()
     core.onLayout = { [weak self] in
       MainActor.assumeIsolated { self?.changed() }
     }
@@ -194,11 +206,120 @@ public final class MarkdownEditorView: NSView {
     if frame.size != before { delegate?.editor(self, didResize: core.layout.size) }
     restartBlink()
     showPreview()
+    showBand()
     guard isEditing else { return }
     if let c = core.caretRect ?? core.selectionRects.last {
       scrollToVisible(
         CGRect(x: c.minX * zoom, y: c.minY * zoom, width: max(1, c.width * zoom), height: c.height * zoom))
     }
+  }
+
+  // MARK: a code block's band
+
+  /// the code block whose band shows: the caret's while editing, else the one the pointer is over
+  private var bandBlock: EditorCore.CodeBlock? {
+    if isEditing, core.marked == nil, let b = core.codeBlock(at: core.selection.head) { return b }
+    return isEditing ? hovered : nil
+  }
+
+  private func showBand() {
+    guard let b = bandBlock, let i = MarkdownEditing.blockHolding(b.body.lowerBound, in: core.document) else {
+      // gone after BAND_GRACE, so passing from the block to its band does not drop it
+      bandTimer?.invalidate()
+      guard band.shown else { return }
+      bandTimer = Timer.scheduledTimer(withTimeInterval: MarkdownTiming.bandGrace, repeats: false) { [weak self] _ in
+        MainActor.assumeIsolated {
+          guard let self, self.bandBlock == nil else { return }
+          self.band.show(false)
+        }
+      }
+      return
+    }
+    bandTimer?.invalidate()
+    _ = i
+    let boxes = core.rects(for: b.body.lowerBound..<max(b.body.lowerBound + 1, b.body.upperBound))
+    guard let first = boxes.first else { return }
+    // the code block's box: the code's padding around its lines
+    let m = core.layout.theme.metrics
+    let top = first.minY - CGFloat(m.codePadding[0])
+    let frame = core.layout.blockFrames.first { $0.minY <= top + 1 && $0.maxY >= top } ?? .zero
+    let box = CGRect(x: frame.minX * zoom, y: top * zoom, width: frame.width * zoom, height: 1)
+    band.block = b
+    band.place(
+      over: box, zoom: zoom, theme: core.layout.theme, language: b.language,
+      wraps: core.layout.info?.wrap?.contains(b.index) ?? false)
+    band.show(true)
+  }
+
+  private func copyCode() {
+    guard let b = band.block else { return }
+    let t = (core.source as NSString).substring(with: NSRange(location: b.body.lowerBound, length: b.body.count))
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(t, forType: .string)
+    note(.copied([("public.utf8-plain-text", t)]))
+  }
+
+  private func toggleWrap() {
+    guard let b = band.block else { return }
+    begin()
+    let on = !(core.layout.info?.wrap?.contains(b.index) ?? false)
+    core.setWrap(on, of: b)
+    note(.key("band Wrap", did: on ? "wrap" : "no wrap"))
+    changed()
+  }
+
+  private func pickLanguage(from v: NSView, at r: CGRect) {
+    guard let b = band.block, b.info != nil else { return }
+    let menu = NSMenu()
+    let current = b.language ?? ""
+    for (name, label) in [("", "Plain text")] + codeLanguages {
+      let item = NSMenuItem(title: label, action: #selector(languagePicked(_:)), keyEquivalent: "")
+      item.representedObject = name
+      item.target = self
+      item.state = name == current ? .on : .off
+      menu.addItem(item)
+    }
+    menu.popUp(positioning: nil, at: CGPoint(x: r.minX, y: r.maxY), in: v)
+  }
+
+  @objc private func languagePicked(_ item: NSMenuItem) {
+    guard let b = band.block, let name = item.representedObject as? String else { return }
+    begin()
+    core.setLanguage(name, of: b)
+    note(.key("band language", did: name.isEmpty ? "plain text" : name))
+    changed()
+  }
+
+  public override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    for t in trackingAreas { removeTrackingArea(t) }
+    addTrackingArea(
+      NSTrackingArea(
+        rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+  }
+
+  public override func mouseMoved(with e: NSEvent) {
+    let p = convert(e.locationInWindow, from: nil)
+    let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
+    var over: EditorCore.CodeBlock?
+    if isEditing, band.isHidden || !band.frame.contains(p) {
+      let c = core.layout.caret(at: at)
+      if let b = core.codeBlock(at: c.offset) {
+        let boxes = core.rects(for: b.body.lowerBound..<max(b.body.lowerBound + 1, b.body.upperBound))
+        let pad = CGFloat(core.layout.theme.metrics.codePadding[0])
+        if let f = boxes.first, let l = boxes.last, at.y >= f.minY - pad, at.y <= l.maxY + pad { over = b }
+      }
+    } else if band.shown, band.frame.contains(p) {
+      over = band.block
+    }
+    guard over != hovered else { return }
+    hovered = over
+    showBand()
+  }
+
+  public override func mouseExited(with e: NSEvent) {
+    hovered = nil
+    showBand()
   }
 
   /// the preview of the formula the caret is in, under its source

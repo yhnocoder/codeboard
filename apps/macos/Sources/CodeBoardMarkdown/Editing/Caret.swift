@@ -448,6 +448,14 @@ extension MarkdownEditing {
   /// The whole run at a caret place (a triple-click: a paragraph, a heading's text, a cell, a code block)
   public static func paragraph(at offset: Int, in document: MarkdownDocument) -> Range<Int> {
     guard let r = run(at: offset, in: document) else { return offset..<offset }
+    if r.kind == .plain, context(at: offset, in: document).leaf == .code {
+      // in code a line, as the web's code editor takes it
+      let ns = document.source as NSString
+      let line = ns.lineRange(for: NSRange(location: offset, length: 0))
+      var end = NSMaxRange(line)
+      if end > line.location, end <= ns.length, ns.character(at: end - 1) == 0x0A { end -= 1 }
+      return max(r.first, line.location)..<min(r.last, end)
+    }
     return r.first..<r.last
   }
 }

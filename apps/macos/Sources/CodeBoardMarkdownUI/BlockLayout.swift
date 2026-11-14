@@ -70,7 +70,7 @@ public final class BlockLayout: @unchecked Sendable {
   public private(set) var document: MarkdownDocument
   public let width: CGFloat
   let theme: MarkdownTheme
-  let info: MDLayoutInfo?
+  public private(set) var info: MDLayoutInfo?
   let resources: MarkdownResources
   private(set) var pieces: [Piece] = []
   /// each piece's top, and how far its ranges are from the document's (edits after it was laid out)
@@ -127,6 +127,17 @@ public final class BlockLayout: @unchecked Sendable {
     guard reconcile() else { return false }
     restack()
     return true
+  }
+
+  /// New layout info (a code block's wrap, a table's sizes): the code blocks and tables laid out again with it
+  public func setInfo(_ i: MDLayoutInfo?) {
+    guard i != info else { return }
+    info = i
+    for (k, p) in pieces.enumerated() where p.added.codes > 0 || p.added.tables > 0 {
+      pieces[k] = lay(document.blocks[k], from: p.start, document: document)
+      shifts[k] = 0
+    }
+    restack()
   }
 
   /// Lays out again the code blocks whose body is `code` (their colours came): whether any was

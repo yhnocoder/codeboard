@@ -99,3 +99,37 @@ import Testing
     #expect(calls.lock.withLock { calls.n } >= 2)
   }
 }
+
+/// The code block's band: shown with the caret in the block, its language written into the fence, its wrap kept in the
+/// layout info
+@MainActor @Suite struct CodeBandTests {
+  @Test func theBandFollowsTheCaretAndWritesTheFence() {
+    _ = boardFonts
+    let src = "Before\n\n```py {.x}\nx = 1\n```\n\nAfter"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 3)
+    #expect(!v.band.shown)
+    v.selection = MDSelection(20)
+    #expect(v.band.shown)
+    // over the block, above its top edge, 30 points tall at 100 %
+    let code = v.core.rects(for: 18..<23).first!
+    #expect(v.band.frame.maxY <= code.minY && abs(v.band.frame.height - 30) < 0.01)
+    let b = v.core.codeBlock(at: 20)!
+    #expect(b.language == "py" && b.index == 0)
+    v.core.setLanguage("rust", of: b)
+    #expect(v.core.source == "Before\n\n```rust {.x}\nx = 1\n```\n\nAfter")
+    v.core.undo()
+    #expect(v.core.source == src)
+    let h0 = v.core.layout.size.height
+    var info: MDLayoutInfo?
+    v.core.onLayoutInfo = { info = $0 }
+    v.core.setWrap(true, of: v.core.codeBlock(at: 20)!)
+    #expect(info?.wrap == [0] && v.core.layout.info?.wrap == [0])
+    #expect(v.core.layout.size.height == h0)
+    v.core.setWrap(false, of: v.core.codeBlock(at: 20)!)
+    #expect(v.core.layout.info == nil)
+    // away from the block: it goes (after its grace)
+    v.selection = MDSelection(2)
+    #expect(v.core.codeBlock(at: 2) == nil)
+  }
+}

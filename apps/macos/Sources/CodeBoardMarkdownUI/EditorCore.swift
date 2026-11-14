@@ -176,6 +176,73 @@ public final class EditorCore {
     layout.update(to: document, replacing: at..<(at + 1), delta: -1, head: layout.head.map { $0 > at ? $0 - 1 : $0 })
   }
 
+  /// A fenced or indented code block: its source range, the fence's info string (nil for indented code), its body, its
+  /// language and which code block of the Note it is (the layout info's wrap list counts them so)
+  public struct CodeBlock: Equatable, Sendable {
+    public var range: Range<Int>
+    public var info: Range<Int>?
+    public var body: Range<Int>
+    public var language: String?
+    public var index: Int
+  }
+
+  /// The code block at an offset (the caret's, or one the pointer is over)
+  public func codeBlock(at offset: Int) -> CodeBlock? {
+    let ns = source as NSString
+    var n = 0
+    var found: CodeBlock?
+    func walk(_ b: MDBlock) {
+      guard found == nil else { return }
+      switch b.kind {
+      case .code(let lang, let body):
+        if offset >= b.range.lowerBound, offset <= b.range.upperBound {
+          var info: Range<Int>?
+          let first = ns.lineRange(for: NSRange(location: b.range.lowerBound, length: 0))
+          let line = ns.substring(with: first)
+          let trimmed = line.drop { $0 == " " }
+          if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
+            let lead = line.count - trimmed.count
+            let fence = trimmed.prefix { $0 == "`" || $0 == "~" }.count
+            let start = first.location + (line.prefix(lead + fence) as Substring).utf16.count
+            var end = NSMaxRange(first)
+            if end > start, ns.character(at: end - 1) == 0x0A { end -= 1 }
+            info = start..<max(start, end)
+          }
+          found = CodeBlock(range: b.range, info: info, body: body, language: lang, index: n)
+        }
+        n += 1
+      case .quote(let children): for c in children { walk(c) }
+      case .list(let l): for item in l.items { for c in item.children { walk(c) } }
+      default: break
+      }
+    }
+    for b in document.blocks { walk(b) }
+    return found
+  }
+
+  /// Writes a code block's language into its fence (one undo step); the block's colours follow
+  public func setLanguage(_ language: String, of block: CodeBlock) {
+    guard let info = block.info else { return }
+    let ns = source as NSString
+    // what follows the language on the fence line (attributes) stays
+    let old = ns.substring(with: NSRange(location: info.lowerBound, length: info.count))
+    let rest = old.drop { $0 == " " }.drop { $0 != " " }
+    apply(MDEdit(range: info, replacement: language + rest, selection: selection, undo: .command))
+  }
+
+  /// Whether a code block wraps its long lines, kept in the layout info (never in the Markdown)
+  public func setWrap(_ on: Bool, of block: CodeBlock) {
+    var info = layout.info ?? MDLayoutInfo()
+    var wrap = Set(info.wrap ?? [])
+    if on { wrap.insert(block.index) } else { wrap.remove(block.index) }
+    info.wrap = wrap.isEmpty ? nil : wrap.sorted()
+    layout.setInfo(info.tables == nil && info.wrap == nil ? nil : info)
+    onLayoutInfo?(layout.info)
+  }
+
+  /// the layout info changed (a wrap toggled): for the host to keep
+  public var onLayoutInfo: ((MDLayoutInfo?) -> Void)?
+
   /// ⌘/ in a code block: its lines commented in its language, or uncommented
   @discardableResult
   public func toggleComment() -> Bool {

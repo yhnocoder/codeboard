@@ -76,9 +76,10 @@ import Testing
     #expect(!v.core.selectionRects.isEmpty)
     v.core.mouseDown(at: p, clicks: 3, extend: false)
     v.core.mouseUp()
-    // the code block's body, as a triple-click in a paragraph takes the paragraph
+    // in code one line, as the web's code editor takes it
+    let line = ns.range(of: "    return model(batch)")
+    #expect(v.selection.range == line.location..<NSMaxRange(line))
     let body = ns.range(of: "def step(batch):\n    return model(batch)")
-    #expect(v.selection.range == body.location..<NSMaxRange(body))
     v.core.select(MDSelection(body.location))
     for _ in 0..<5 { v.core.move(.character, forward: true, extend: true) }
     #expect(v.selection.range == body.location..<(body.location + 5))
