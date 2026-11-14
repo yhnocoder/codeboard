@@ -731,6 +731,7 @@ public protocol MarkdownEditorDelegate: AnyObject {
 - [x] ⌘ 整块移动：Note 上方的副本变成指针右下的缩略图（长边 ≤132，120 ms 切换）、落下 / 拿起 / 放回后其余块 160 ms 滑到位（FLIP，插入符和选区跟着块走）、落下的块等副本到达才显示、卡片高度 160 ms 跟随；逐帧工具 `--frames tools/markdown/frames/blockmove.json`（`moveBlocks`、`tick` 步骤，每帧记 `drawMs`）：滑动中每帧绘制 < 1 ms（3j）
 - [x] 编辑界面元素和网页版的一次性对照（11-15，`--check` 的 chrome-*.png、toolbar.png、linkbox.png 对 main 的 markdown.css）：改了的有 `/` 和 `[[` 菜单（高度上限 300 / 340 后滚动、选中行实色、引用菜单宽 372）、公式预览（内边距 12、最小宽 120、阴影、图居中）、块旁的光标（main 的 gap cursor：块左边 20 pt 的短线、墨色，原来是整块宽、强调色）；一样的有选区工具条、标题级别标记（左边距里 8.5 pt 的 H1）、链接框；没比的：悬停和打开时的样子（标记的底色、菜单行的悬停）、出现和消失的过渡、暗色主题下的这些元素
 - [x] 第一张 Note 的首次显示：启动时预热（`MarkdownAssets.warmUp`）之后 7 ms，网页版 54 ms（性能）
+- [x] 演示用的白板从主人固定的那份白板快照改出来，不全靠自己写（11-14 主人定）：`MarkdownDemo --make-sample-vault <目录> --from <快照>` 整份复制（源不写），把旧格式的部分升级成这一版读得懂的（Text 的字号换成 title / heading / body），在块种类最多的那块白板上用各 Note 自己的字加上真实 Note 少见的东西（任务列表、标题或列表项连成的流程图、脚注、删除线、长地址、Text 标题和 Box），这块白板改名 `0 Demo` 排在最前。生成的白板只在本机，不进仓库；代码里没有快照的内容。CI 和单元测试仍用合成的示例。导入器不跟着 main 更新（11-14 主人定）
 - 不做：AI 补全（第 3.2 节）
 
 ### 6.6 主人用出来、测试没抓住的（11-14）

@@ -948,6 +948,7 @@ final class Columns: NSView {
 
 /// Runs the demo window in this process (MarkdownDemo's main, and a driver that runs it in its own process):
 ///   [file.md] [--width 420] [--save-to <path>] [--report <path>] [--check <folder>] [--vault <folder> [--board <path>]]
+///   --make-sample-vault <folder> [--from <vault>]
 /// --save-to writes the Note's Markdown there after every change; --report writes where the card and its editor are in the
 /// window (points from its top left), the zoom and the window's number, whenever they move; --check (Check.run) lays the
 /// window out without showing it, renders it offscreen at several widths, measures it at rest and exits; --vault opens a
@@ -969,7 +970,11 @@ public func runMarkdownDemo(arguments: [String]) throws -> Never {
   let vault = option("--vault").map { URL(filePath: $0) }
   let board = option("--board")
   if let folder = option("--make-sample-vault") {
-    try SampleVault.write(to: URL(filePath: folder))
+    if let from = option("--from") {
+      print(try DerivedVault.write(to: URL(filePath: folder), from: URL(filePath: from)).joined(separator: "\n"))
+    } else {
+      try SampleVault.write(to: URL(filePath: folder))
+    }
     exit(0)
   }
   let file = args.first.map { URL(filePath: $0) }
