@@ -2,7 +2,7 @@
 // card in the board's looks, with the editor over it. ⌘O opens another file; tools/markdown/make-demo.sh makes an app.
 //   swift run MarkdownDemo [file.md] [--width 420]
 // The toolbar switches the look (Warm Ink, Ink Wash), light and dark, and the zoom (50 to 200 %, also ⌘= ⌘- ⌘0). Images
-// are read relative to the file. The file is never written.
+// are read relative to the file. Typing edits the text shown; the file is never written.
 import AppKit
 import CodeBoardMarkdown
 import CodeBoardMarkdownUI
@@ -53,7 +53,41 @@ let sample = """
   $$
   \\sum_{k=1}^{n} k^2 = \\frac{n(n+1)(2n+1)}{6}
   $$
+
+  ![A made-up picture](picture.png "图 1：a caption under the picture")
+
+  ```mermaid
+  flowchart LR
+    A[请求] --> B{有空闲块?}
+    B -->|是| C[Prefill]
+    B -->|否| D[等待]
+  ```
+
+  ---
+
+  Last line.
   """
+
+/// The sample's folder: a picture drawn here, in a temporary folder of this process's own
+func sampleFolder() -> URL {
+  let folder = FileManager.default.temporaryDirectory.appending(path: "markdown-demo-\(getpid())")
+  try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+  let (w, h) = (1200, 675)
+  let ctx = CGContext(
+    data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+  ctx.setFillColor(CGColor(srgbRed: 0.85, green: 0.62, blue: 0.45, alpha: 1))
+  ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+  ctx.setFillColor(CGColor(srgbRed: 0.98, green: 0.95, blue: 0.9, alpha: 0.7))
+  ctx.fillEllipse(in: CGRect(x: 380, y: 120, width: 440, height: 440))
+  if let dest = CGImageDestinationCreateWithURL(
+    folder.appending(path: "picture.png") as CFURL, "public.png" as CFString, 1, nil)
+  {
+    CGImageDestinationAddImage(dest, ctx.makeImage()!, nil)
+    CGImageDestinationFinalize(dest)
+  }
+  return folder
+}
 
 @MainActor
 final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
@@ -193,6 +227,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   }
 
   func editor(_ e: MarkdownEditorView, didResize size: CGSize) { place() }
+  func editor(_ e: MarkdownEditorView, didChange source: String) { window.isDocumentEdited = true }
   func editorWantsToEnd(_ e: MarkdownEditorView) { window.makeFirstResponder(nil) }
 
   // MARK: controls
@@ -239,6 +274,12 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     main.addItem(file)
     let edit = NSMenuItem()
     edit.submenu = NSMenu(title: "Edit")
+    edit.submenu!.addItem(withTitle: "Undo", action: #selector(MarkdownEditorView.undo(_:)), keyEquivalent: "z")
+    edit.submenu!.addItem(withTitle: "Redo", action: #selector(MarkdownEditorView.redo(_:)), keyEquivalent: "Z")
+    edit.submenu!.addItem(.separator())
+    edit.submenu!.addItem(withTitle: "Cut", action: #selector(MarkdownEditorView.cut(_:)), keyEquivalent: "x")
+    edit.submenu!.addItem(withTitle: "Copy", action: #selector(MarkdownEditorView.copy(_:)), keyEquivalent: "c")
+    edit.submenu!.addItem(withTitle: "Paste", action: #selector(MarkdownEditorView.paste(_:)), keyEquivalent: "v")
     edit.submenu!.addItem(withTitle: "Select All", action: #selector(NSResponder.selectAll(_:)), keyEquivalent: "a")
     main.addItem(edit)
     let view = NSMenuItem()
@@ -292,7 +333,7 @@ let file = args.first.map { URL(filePath: $0) }
 let text = try file.map { try String(contentsOf: $0, encoding: .utf8) } ?? sample
 let app = NSApplication.shared
 app.setActivationPolicy(.regular)
-let demo = try Demo(text: text, folder: file?.deletingLastPathComponent() ?? URL(filePath: "/"), cardWidth: width)
+let demo = try Demo(text: text, folder: file?.deletingLastPathComponent() ?? sampleFolder(), cardWidth: width)
 if let file { demo.name = file.lastPathComponent }
 app.delegate = demo
 app.run()

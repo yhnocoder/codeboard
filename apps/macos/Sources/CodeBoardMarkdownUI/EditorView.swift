@@ -4,6 +4,8 @@ import CodeBoardMarkdown
 /// What the editor tells its host
 @MainActor
 public protocol MarkdownEditorDelegate: AnyObject {
+  /// after each change of the source
+  func editor(_ e: MarkdownEditorView, didChange source: String)
   /// the content's size changed (at 100 %)
   func editor(_ e: MarkdownEditorView, didResize size: CGSize)
   /// Esc: the user wants to stop editing
@@ -36,6 +38,12 @@ public final class MarkdownEditorView: NSView {
   public init(layout: BlockLayout, caret: Int? = nil) {
     core = EditorCore(layout: layout, caret: caret)
     super.init(frame: CGRect(origin: .zero, size: layout.size))
+    core.onChange = { [weak self] source in
+      MainActor.assumeIsolated {
+        guard let self else { return }
+        self.delegate?.editor(self, didChange: source)
+      }
+    }
   }
 
   @available(*, unavailable)
@@ -92,6 +100,11 @@ public final class MarkdownEditorView: NSView {
       height: dirtyRect.height / zoom)
     ctx.setFillColor(selectionColor.cgColor)
     for r in core.selectionRects where r.intersects(clip) { ctx.fill(r) }
+    // an input method's text: underlined, as the system's text views underline it
+    ctx.setFillColor(caretColor.withAlphaComponent(0.8).cgColor)
+    for r in core.markedRects where r.intersects(clip) {
+      ctx.fill(CGRect(x: r.minX, y: r.maxY - 2.5, width: r.width, height: 1.5))
+    }
     // the glyphs' positions must not depend on the scale (guideline 3.4)
     ctx.setShouldSubpixelQuantizeFonts(false)
     ctx.setAllowsFontSubpixelQuantization(false)
@@ -177,13 +190,91 @@ public final class MarkdownEditorView: NSView {
   }
 
   public override func doCommand(by selector: Selector) {
-    guard let action = Self.moves[selector] else {
-      if selector == #selector(cancelOperation(_:)) { delegate?.editorWantsToEnd(self) }
+    settle?.invalidate()
+    if let action = Self.moves[selector] {
+      action(core)
+    } else if let k = Self.keys[selector] {
+      // ⇧↵ arrives as insertNewline: too
+      let shift = NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false
+      core.key(k == .enter && shift ? .shiftEnter : k)
+    } else if let unit = Self.deletes[selector] {
+      deleteBy(unit.0, forward: unit.1)
+    } else if selector == #selector(cancelOperation(_:)) {
+      delegate?.editorWantsToEnd(self)
+      return
+    } else {
       return
     }
-    settle?.invalidate()
-    action(core)
     changed()
+  }
+
+  /// ⌥⌫, ⌘⌫ and their forward forms: to the word or line boundary; a selection goes whole
+  private func deleteBy(_ unit: EditorCore.Unit, forward: Bool) {
+    let s = core.selection
+    guard s.isEmpty else {
+      core.key(.backspace)
+      return
+    }
+    let to: Int
+    switch unit {
+    case .word: to = MarkdownEditing.wordStep(from: s.head, forward: forward, in: core.document, head: core.layout.head)
+    default: to = core.layout.lineBoundary(core.caret, end: forward).offset
+    }
+    guard to != s.head else {
+      core.key(forward ? .delete : .backspace)
+      return
+    }
+    let r = min(to, s.head)..<max(to, s.head)
+    core.apply(MDEdit(range: r, replacement: "", selection: MDSelection(r.lowerBound)))
+  }
+
+  static let keys: [Selector: MDKey] = [
+    #selector(insertNewline(_:)): .enter, #selector(insertLineBreak(_:)): .shiftEnter,
+    #selector(insertNewlineIgnoringFieldEditor(_:)): .enter, #selector(deleteBackward(_:)): .backspace,
+    #selector(deleteForward(_:)): .delete, #selector(deleteBackwardByDecomposingPreviousCharacter(_:)): .backspace,
+    #selector(insertTab(_:)): .tab, #selector(insertBacktab(_:)): .shiftTab,
+  ]
+  static let deletes: [Selector: (EditorCore.Unit, Bool)] = [
+    #selector(deleteWordBackward(_:)): (.word, false), #selector(deleteWordForward(_:)): (.word, true),
+    #selector(deleteToBeginningOfLine(_:)): (.line, false), #selector(deleteToEndOfLine(_:)): (.line, true),
+  ]
+
+  // MARK: undo and the clipboard
+
+  @objc public func undo(_ sender: Any?) {
+    core.undo()
+    changed()
+  }
+  @objc public func redo(_ sender: Any?) {
+    core.redo()
+    changed()
+  }
+  @objc public func copy(_ sender: Any?) {
+    guard let t = core.copy() else { return }
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(t, forType: .string)
+  }
+  @objc public func cut(_ sender: Any?) {
+    guard let t = core.cut() else { return }
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(t, forType: .string)
+    changed()
+  }
+  @objc public func paste(_ sender: Any?) {
+    guard let t = NSPasteboard.general.string(forType: .string) else { return }
+    core.paste(t)
+    changed()
+  }
+  @objc public func pasteAsPlainText(_ sender: Any?) { paste(sender) }
+
+  @objc public func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+    switch item.action {
+    case #selector(undo(_:)): core.canUndo
+    case #selector(redo(_:)): core.canRedo
+    case #selector(copy(_:)), #selector(cut(_:)): !core.selection.isEmpty
+    case #selector(paste(_:)), #selector(pasteAsPlainText(_:)): NSPasteboard.general.string(forType: .string) != nil
+    default: responds(to: item.action)
+    }
   }
 
   public override func selectAll(_ sender: Any?) {
@@ -226,4 +317,74 @@ public final class MarkdownEditorView: NSView {
     m[#selector(selectLine(_:))] = { $0.selectParagraph() }
     return m
   }()
+}
+
+// MARK: input methods
+
+extension MarkdownEditorView: @preconcurrency NSTextInputClient {
+  /// Ranges here are source offsets; while an input method composes, offsets from its start are in the source as shown
+  /// with the marked text in it
+  public func insertText(_ string: Any, replacementRange: NSRange) {
+    let text = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
+    if core.marked == nil, replacementRange.location != NSNotFound {
+      core.select(MDSelection(anchor: replacementRange.location, head: NSMaxRange(replacementRange)))
+    }
+    core.insert(text)
+    changed()
+  }
+
+  public func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+    let text = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
+    if core.marked == nil, replacementRange.location != NSNotFound {
+      core.select(MDSelection(anchor: replacementRange.location, head: NSMaxRange(replacementRange)))
+    }
+    core.setMarked(text, selected: selectedRange)
+    changed()
+  }
+
+  public func unmarkText() {
+    guard let m = core.marked else { return }
+    core.insert(m.text)
+    changed()
+  }
+
+  public func selectedRange() -> NSRange {
+    if let m = core.marked { return NSRange(location: m.at + m.selected.location, length: m.selected.length) }
+    let r = core.selection.range
+    return NSRange(location: r.lowerBound, length: r.count)
+  }
+
+  public func markedRange() -> NSRange {
+    guard let m = core.marked else { return NSRange(location: NSNotFound, length: 0) }
+    return NSRange(location: m.at, length: (m.text as NSString).length)
+  }
+
+  public func hasMarkedText() -> Bool { core.marked != nil }
+
+  public func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString?
+  {
+    let ns = core.layout.document.source as NSString
+    let r = NSIntersectionRange(range, NSRange(location: 0, length: ns.length))
+    actualRange?.pointee = r
+    return NSAttributedString(string: ns.substring(with: r))
+  }
+
+  public func validAttributesForMarkedText() -> [NSAttributedString.Key] { [.underlineStyle] }
+
+  /// Where the candidate window goes: the range's first line, on screen
+  public func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
+    actualRange?.pointee = range
+    let box =
+      core.rects(for: range.location..<NSMaxRange(range)).first
+      ?? core.layout.caretRect(MDCaret(range.location)) ?? .zero
+    let r = CGRect(x: box.minX * zoom, y: box.minY * zoom, width: max(1, box.width * zoom), height: box.height * zoom)
+    guard let w = window else { return r }
+    return w.convertToScreen(convert(r, to: nil))
+  }
+
+  public func characterIndex(for point: NSPoint) -> Int {
+    guard let w = window else { return NSNotFound }
+    let p = convert(w.convertPoint(fromScreen: point), from: nil)
+    return core.layout.caret(at: CGPoint(x: p.x / zoom, y: p.y / zoom)).offset
+  }
 }
