@@ -360,6 +360,40 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     }
   }
 
+  /// The pointer over a Section's title row is the arrow, as main's (styles.css: buttons and the chrome take
+  /// `cursor: default`; .slabel, .sname, .dots and .chev2 set none): over its title, grip, chevron, Fit Content,
+  /// Color, a swatch and Lock. Over its sidenote marker it is the pointing hand (.snb `cursor: pointer`)
+  @Test func aSectionsTitleRowShowsTheArrowAndItsSidenoteMarkerThePointingHand() async throws {
+    var b = sections()
+    b.sidenotes = [
+      Sidenote(
+        id: SidenoteID(rawValue: "sn"), anchor: Spot.section(gid("g1")).anchor, body: .text(TextNote(text: "why")))
+    ]
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let g = gid("g1")
+    let t = try #require(c.sectionTitle(g))
+    func cursor(at p: CGPoint) -> NSCursor {
+      r.send(r.mouse(.mouseMoved, p))
+      return NSCursor.current
+    }
+    #expect(cursor(at: CGPoint(x: t.minX + 4, y: t.midY)) == .arrow, "the title")
+    #expect(cursor(at: CGPoint(x: t.minX - 6, y: t.midY)) == .arrow && c.hoveredAct == .grip, "the grip")
+    func act(_ a: SectionAct) throws -> CGPoint {
+      let rect = try #require(c.actsLayout(g).first { $0.0 == a }?.1, "\(a)")
+      return CGPoint(x: rect.midX, y: rect.midY)
+    }
+    r.click(try act(.color))
+    #expect(c.swatchesOpen == g)
+    for a in [SectionAct.fold, .fit, .color, .swatch("blue"), .lock] {
+      let cur = cursor(at: try act(a))
+      #expect(c.hoveredAct == a && cur == .arrow, "\(a): \(cur.image.size)")
+    }
+    let mark = try #require(c.marks.first { $0.at == .spot(.section(g)) }).frame.offsetBy(dx: t.minX, dy: t.minY)
+    #expect(cursor(at: CGPoint(x: mark.midX, y: mark.midY)) == .pointingHand, "the sidenote marker")
+  }
+
   /// Hovered, its title shows Fit Content, Color with its five swatches, Lock and the chevron that folds it
   /// (Sections.tsx SectionActs)
   @Test func aSectionsTitleControlsFitColourLockAndFoldIt() async throws {
