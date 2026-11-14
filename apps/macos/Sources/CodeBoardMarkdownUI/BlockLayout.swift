@@ -129,6 +129,26 @@ public final class BlockLayout: @unchecked Sendable {
     return true
   }
 
+  /// Lays out again the code blocks whose body is `code` (their colours came): whether any was
+  @discardableResult
+  public func relayCode(_ code: String) -> Bool {
+    let ns = document.source as NSString
+    var changed = false
+    for (i, b) in document.blocks.enumerated() {
+      let body: Range<Int>
+      switch b.kind {
+      case .code(_, let r), .mermaid(let r): body = r
+      default: continue
+      }
+      guard ns.substring(with: NSRange(location: body.lowerBound, length: body.count)) == code else { continue }
+      pieces[i] = lay(b, from: pieces[i].start, document: document)
+      shifts[i] = 0
+      changed = true
+    }
+    if changed { restack() }
+    return changed
+  }
+
   /// Lays out again every piece whose shown markers are not what the caret now opens; whether any was
   private func reconcile() -> Bool {
     let hb = head.flatMap { MarkdownEditing.blockHolding($0, in: document) }

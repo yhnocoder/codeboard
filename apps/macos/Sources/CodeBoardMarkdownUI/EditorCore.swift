@@ -47,6 +47,8 @@ public final class EditorCore {
   public var clock: () -> Double = { ProcessInfo.processInfo.systemUptime }
   /// after each change of the source: the new source
   public var onChange: ((String) -> Void)?
+  /// the layout changed by itself (a code block's colours came): redraw
+  public var onLayout: (() -> Void)?
 
   public enum Unit: Sendable { case character, word, line, paragraph, document }
 
@@ -56,6 +58,12 @@ public final class EditorCore {
     let c = MarkdownEditing.snap(caret ?? MarkdownEditing.end(of: layout.document), in: layout.document)
     selection = MDSelection(c)
     layout.setHead(c)
+    if let live = layout.resources as? LiveHighlight {
+      live.ready = { [weak self] _, code in
+        guard let self, self.layout.relayCode(code) else { return }
+        self.onLayout?()
+      }
+    }
   }
 
   /// The same text laid out anew (another look, appearance or width): selection and undo history kept
@@ -162,6 +170,30 @@ public final class EditorCore {
     guard let at = lone else { return }
     lone = nil
     layout.update(to: document, replacing: at..<(at + 1), delta: -1, head: layout.head.map { $0 > at ? $0 - 1 : $0 })
+  }
+
+  /// ⌘/ in a code block: its lines commented in its language, or uncommented
+  @discardableResult
+  public func toggleComment() -> Bool {
+    endLone()
+    let c = MarkdownEditing.context(at: selection.head, in: document)
+    guard c.leaf == .code, let bi = MarkdownEditing.blockHolding(selection.head, in: document) else { return false }
+    var language: String?
+    func find(_ b: MDBlock) {
+      switch b.kind {
+      case .code(let l, _) where b.range == c.block: language = l
+      case .quote(let children): for ch in children { find(ch) }
+      case .list(let l): for item in l.items { for ch in item.children { find(ch) } }
+      default: break
+      }
+    }
+    find(document.blocks[bi])
+    guard
+      let e = MarkdownEditing.toggleComment(
+        in: MDEditState(source: source, selection: selection), document: document, language: language)
+    else { return false }
+    apply(e)
+    return true
   }
 
   /// where closers the editor paired sit, until anything else happens

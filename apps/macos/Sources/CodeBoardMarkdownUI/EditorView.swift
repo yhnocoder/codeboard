@@ -56,6 +56,9 @@ public final class MarkdownEditorView: NSView {
     super.init(frame: CGRect(origin: .zero, size: layout.size))
     preview.isHidden = true
     addSubview(preview)
+    core.onLayout = { [weak self] in
+      MainActor.assumeIsolated { self?.changed() }
+    }
     core.onChange = { [weak self] source in
       MainActor.assumeIsolated {
         guard let self else { return }
@@ -259,6 +262,10 @@ public final class MarkdownEditorView: NSView {
       !flags.contains(.option)
     else { return super.performKeyEquivalent(with: e) }
     let shift = flags.contains(.shift)
+    if key == "/", !shift, core.toggleComment() {
+      changed()
+      return true
+    }
     let c: MDCommand? =
       switch (key, shift) {
       case ("b", false): .toggle(.strong)

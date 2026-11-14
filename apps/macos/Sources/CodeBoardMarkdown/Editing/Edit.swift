@@ -112,8 +112,71 @@ extension MarkdownEditing {
       if !sel.isEmpty { return MDEdit(range: sel.range, replacement: "", selection: MDSelection(sel.range.lowerBound)) }
       if !forward, let e = unpair(state, document) { return e }
       return delete(at: sel.head, forward: forward, ns, document)
-    case .tab, .shiftTab, .commandEnter:
+    case .tab, .shiftTab:
+      guard context(at: sel.head, in: document).leaf == .code else { return nil }
+      let lines = ns.lineRange(for: NSRange(location: sel.range.lowerBound, length: sel.range.count))
+      let multi = ns.substring(with: NSRange(location: sel.range.lowerBound, length: sel.range.count)).contains("\n")
+      if key == .tab, !multi { return insert(codeIndent, replacing: sel.range) }
+      return editLines(ns, lines, sel) { line in
+        if key == .tab { return line.isEmpty ? line : codeIndent + line }
+        if line.hasPrefix("\t") { return String(line.dropFirst()) }
+        return String(line.dropFirst(min(4, line.prefix { $0 == " " }.count)))
+      }
+    case .commandEnter:
       return nil
+    }
+  }
+
+  /// a code block's indent unit (cm/editor.ts IND)
+  static let codeIndent = "    "
+
+  /// the whole lines of a range changed line by line, the selection kept on the same text
+  static func editLines(_ ns: NSString, _ lines: NSRange, _ sel: MDSelection, _ f: (String) -> String) -> MDEdit {
+    var text = ns.substring(with: lines)
+    let trailing = text.hasSuffix("\n")
+    if trailing { text.removeLast() }
+    let out = text.components(separatedBy: "\n").map(f).joined(separator: "\n") + (trailing ? "\n" : "")
+    let r = lines.location..<NSMaxRange(lines)
+    let delta = (out as NSString).length - r.count
+    // the selection grows or shrinks with its lines; a caret in the first line moves with that line's change
+    let firstDelta =
+      (f(
+        ns.substring(with: ns.lineRange(for: NSRange(location: lines.location, length: 0)))
+          .trimmingCharacters(in: .newlines)) as NSString).length
+      - (ns.substring(with: ns.lineRange(for: NSRange(location: lines.location, length: 0))).trimmingCharacters(
+        in: .newlines) as NSString).length
+    let a = max(lines.location, sel.range.lowerBound + firstDelta)
+    let b = sel.isEmpty ? a : max(a, sel.range.upperBound + delta)
+    return MDEdit(range: r, replacement: out, selection: MDSelection(anchor: a, head: b), undo: .command)
+  }
+
+  /// ⌘/ in a code block: each line commented with the language's line comment, or all uncommented when all are
+  public static func toggleComment(in state: MDEditState, document: MarkdownDocument, language: String?) -> MDEdit? {
+    guard context(at: state.selection.head, in: document).leaf == .code else { return nil }
+    let ns = state.source as NSString
+    let mark: String = {
+      switch language?.lowercased() {
+      case "python", "py", "python3", "sh", "bash", "shell", "zsh", "yaml", "yml", "toml", "ruby", "rb", "r": "#"
+      case "sql", "lua", "haskell", "hs": "--"
+      default: "//"
+      }
+    }()
+    let lines = ns.lineRange(
+      for: NSRange(location: state.selection.range.lowerBound, length: state.selection.range.count))
+    let all = ns.substring(with: lines).components(separatedBy: "\n").filter {
+      !$0.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+    let on = !all.isEmpty && all.allSatisfy { $0.trimmingCharacters(in: .whitespaces).hasPrefix(mark) }
+    let ind = all.map { $0.prefix { $0 == " " || $0 == "\t" }.count }.min() ?? 0
+    return editLines(ns, lines, state.selection) { l in
+      if l.trimmingCharacters(in: .whitespaces).isEmpty { return l }
+      if on {
+        let lead = l.prefix { $0 == " " || $0 == "\t" }
+        var rest = l.dropFirst(lead.count).dropFirst(mark.count)
+        if rest.hasPrefix(" ") { rest = rest.dropFirst() }
+        return String(lead) + rest
+      }
+      return String(l.prefix(ind)) + mark + " " + l.dropFirst(ind)
     }
   }
 
@@ -131,13 +194,16 @@ extension MarkdownEditing {
     let lineStart = ns.lineRange(for: NSRange(location: q, length: 0)).location
     switch c.leaf {
     case .code, .source:
-      // the next line starts as indented as this one
+      // the next line starts as indented as this one, a level more after an opening : { [ ( (cm/editor.ts)
       var indent = ""
       var i = lineStart
       while i < q, let ch = Unicode.Scalar(ns.character(at: i)), ch == " " || ch == "\t" {
         indent.unicodeScalars.append(ch)
         i += 1
       }
+      let before = ns.substring(with: NSRange(location: lineStart, length: q - lineStart))
+        .trimmingCharacters(in: .whitespaces)
+      if let last = before.last, ":{[(".contains(last), c.leaf == .code { indent += codeIndent }
       return insert("\n" + indent, replacing: r)
     case .cell, .none:
       return MDEdit(range: q..<q, replacement: "", selection: sel)
@@ -239,6 +305,10 @@ extension MarkdownEditing {
       return MDEdit(range: range, replacement: "", selection: MDSelection(range.lowerBound))
     }
     let c = context(at: q, in: d)
+    if !forward, c.leaf == .code, r.first == r.last, c.item == nil, c.quote == nil {
+      // an empty code block: an empty paragraph in its place (editor/codeblock.ts unwrapIfEmpty)
+      return MDEdit(range: c.block, replacement: "", selection: MDSelection(c.block.lowerBound), undo: .command)
+    }
     if !forward {
       // at the start of a heading: body text, its text kept
       if case .heading = c.leaf {

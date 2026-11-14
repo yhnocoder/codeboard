@@ -124,6 +124,8 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   var editor: MarkdownEditorView?
   var zoomLabel: NSTextField!
   var images: [String: CGImage] = [:]
+  /// code colours that never hold a key up (the component's LiveHighlight over the file's resources)
+  lazy var live = LiveHighlight(resources)
 
   /// the paper under the card, the card's box and the editor inside it; a click on the paper ends editing
   final class Page: NSView {
@@ -180,6 +182,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     text = t
     folder = url.deletingLastPathComponent()
     resources = FileResources(folder: folder, math: resources.math)
+    live = LiveHighlight(resources)
     images = [:]
     editor?.removeFromSuperview()
     editor = nil
@@ -203,7 +206,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     let inner = cardWidth - card.padding[1] - card.padding[3]
     let layout = BlockLayout(
       editor.map { $0.core.document } ?? MarkdownDocument(text), width: inner, theme: card.theme, layout: nil,
-      resources: resources)
+      resources: live)
     let e: MarkdownEditorView
     if let old = editor {
       e = old
