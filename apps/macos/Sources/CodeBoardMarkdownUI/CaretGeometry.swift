@@ -341,3 +341,12 @@ extension BlockLayout {
     }
   }
 }
+
+extension BlockLayout {
+  /// The top-level block a point is on (its box), if any
+  public func block(at p: CGPoint) -> Int? {
+    guard !pieces.isEmpty else { return nil }
+    let i = min(firstPieceIndex(atOrBelow: p.y), pieces.count - 1)
+    return p.y >= tops[i] && p.y <= tops[i] + pieces[i].height ? i : nil
+  }
+}

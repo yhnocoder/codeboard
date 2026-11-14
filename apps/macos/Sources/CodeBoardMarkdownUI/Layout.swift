@@ -297,6 +297,9 @@ struct LayoutBuilder {
     case .mermaid(let body):
       return diagram(body: body, b: b, x: x, width: width, y: y)
     case .math(let latex):
+      if let h = head, h >= b.range.lowerBound, h <= b.range.upperBound {
+        return openMath(b, latex, x: x, width: width, y: y, style: style)
+      }
       return mathBlock(latex, x: x, width: width, y: y, style: style)
     case .table(let t):
       return table(t, x: x, width: width, y: y, style: style)
@@ -679,6 +682,25 @@ struct LayoutBuilder {
     let tb = setText(d, x: x, width: width, y: y + pad, style: s, lineHeight: CGFloat(m.lineHeight), center: true)
     items.append(.text(tb))
     return tb.frame.maxY + pad
+  }
+
+  /// A formula block with the caret in it (editor/mathblock.ts): its TeX in the code font, the caret moving through it,
+  /// and the formula drawn under it as it types, the two framed
+  mutating func openMath(_ b: MDBlock, _ latex: String, x: CGFloat, width: CGFloat, y: CGFloat, style: InlineStyle)
+    -> CGFloat
+  {
+    let body = MarkdownEditing.mathBody(b, source as NSString)
+    var s = style
+    s.families = theme.fonts.mono
+    s.size = m.em(m.inlineCodeSize)
+    s.color = theme.colors.ink2
+    let pad: CGFloat = 6
+    let text = MDText(string: sourceText(body), offsets: Array(body.lowerBound...body.upperBound))
+    let top = paragraph(
+      text, [], x: x + pad, width: width - 2 * pad, y: y + pad, style: s, lineHeight: CGFloat(m.lineHeight))
+    let end = mathBlock(latex, x: x, width: width, y: top, style: style)
+    items.append(.stroke(CGRect(x: x, y: y, width: width, height: end - y), radius: 6, theme.colors.hair, width: 1))
+    return end
   }
 
   // MARK: tables

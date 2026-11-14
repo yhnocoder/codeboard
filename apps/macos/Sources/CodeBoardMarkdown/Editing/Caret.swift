@@ -98,9 +98,24 @@ extension MarkdownEditing {
         r = r.lowerBound..<(r.upperBound - 1)
       }
       out.append(plain(r, ns))
-    case .math, .rule:
+    case .math:
+      // a formula block's TeX, between its $$ (editor/mathblock.ts: the caret opens it)
+      out.append(plain(mathBody(b, ns), ns))
+    case .rule:
       break
     }
+  }
+
+  /// A formula block's TeX in the source: what is between its opening and closing $$ (and the line breaks next to them)
+  public static func mathBody(_ b: MDBlock, _ ns: NSString) -> Range<Int> {
+    var a = b.range.lowerBound
+    var z = b.range.upperBound
+    while a < z, ns.character(at: a) == 0x20 { a += 1 }
+    if a + 1 < z, ns.character(at: a) == 0x24, ns.character(at: a + 1) == 0x24 { a += 2 }
+    if z - 2 >= a, ns.character(at: z - 1) == 0x24, ns.character(at: z - 2) == 0x24 { z -= 2 }
+    if a < z, ns.character(at: a) == 0x0A { a += 1 }
+    if z > a, ns.character(at: z - 1) == 0x0A { z -= 1 }
+    return a..<max(a, z)
   }
 
   private static func plain(_ r: Range<Int>, _ ns: NSString) -> MDTextRun {
@@ -225,6 +240,12 @@ extension MarkdownEditing {
   /// The constructs that show their source with the caret at `offset` (their ranges, outermost first): a layout made
   /// with the caret there differs from the static one exactly when this is not empty
   public static func openings(at offset: Int, in document: MarkdownDocument) -> [Range<Int>] {
+    // a formula block with the caret in its TeX is open: shown as its source with the formula under it
+    if let bi = blockHolding(offset, in: document), case .math = document.blocks[bi].kind,
+      run(at: offset, in: document)?.holds(offset) == true
+    {
+      return [document.blocks[bi].range]
+    }
     guard let r = run(at: offset, in: document), r.kind == .inline, r.holds(offset) else { return [] }
     var out: [Range<Int>] = []
     func walk(_ ins: [MDInline]) {

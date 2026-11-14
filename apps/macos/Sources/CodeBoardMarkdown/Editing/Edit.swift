@@ -66,7 +66,9 @@ extension MarkdownEditing {
       case .code, .mermaid: (out.leaf, out.block) = (.code, b.range)
       case .html: (out.leaf, out.block) = (.source, b.range)
       case .table: (out.leaf, out.block) = (.cell, b.range)
-      case .math, .rule: (out.leaf, out.block) = (.none, b.range)
+      // a formula block's TeX is typed as written, like an HTML block's source
+      case .math: (out.leaf, out.block) = (.source, b.range)
+      case .rule: (out.leaf, out.block) = (.none, b.range)
       case .quote(let children):
         guard let i = children.lastIndex(where: { $0.range.lowerBound <= offset }) ?? children.indices.first else {
           return
