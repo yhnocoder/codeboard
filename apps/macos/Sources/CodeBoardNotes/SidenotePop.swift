@@ -55,6 +55,8 @@ public final class SidenotePop: NSObject {
       public var head: Head?
       public var start: Int?
       public var html: [String]?
+      /// A code one's line on why it is there (notes.tsx .sn-why)
+      public var why: String?
 
       public static func text(
         _ id: String, _ md: String, q: Ask?, fixed: Bool = false, place: Bool = false, review: String? = nil,
@@ -65,9 +67,11 @@ public final class SidenotePop: NSObject {
       }
       public static func code(
         _ id: String, head: Head, start: Int, html: [String], fixed: Bool = false, place: Bool = false,
-        review: String? = nil
+        review: String? = nil, why: String? = nil
       ) -> Note {
-        Note(id: id, fixed: fixed, place: place, review: review, kind: "code", head: head, start: start, html: html)
+        Note(
+          id: id, fixed: fixed, place: place, review: review, kind: "code", head: head, start: start, html: html,
+          why: why)
       }
     }
 

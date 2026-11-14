@@ -56,7 +56,7 @@ private func onlyCard(_ v: Vault, _ path: String) throws -> CardContent {
       .variants: ["cfree"], .messageNote: ["cmsg"], .processes: ["cstep"], .callMark: ["lcall"],
       .missingImage: ["ffffffffffffffff-1x1.png"],
       .field: [
-        "bflow1.born", "bflow1.hideNumbers", "bflow1.seq", "sstep.keep", "cgh.collapsed", "sfree.src.langPicked",
+        "bflow1.born", "bflow1.hideNumbers", "bflow1.seq", "sstep.keep", "cgh.collapsed",
       ],
     ])
   // the sidenote that travels with the shared card is in its library file
@@ -573,25 +573,30 @@ private func unchanged(_ before: [String: Data], _ after: [String: Data]) -> [St
   #expect(try LegacyImport.run(from: storage, to: root.appending(path: "vault")).failed.isEmpty)
 }
 
-@Test func freeCodeHasNoSource() throws {
+/// Free code has no source; where it was pasted from and a language picked by hand come along (main's free source
+/// `url`, `langPicked`)
+@Test func freeCodeKeepsWhereItCameFromAndItsPickedLanguage() throws {
   let code: [String: Any] = [
     "id": "c", "kind": "code",
     "segments": [
       [
-        "id": "s", "src": ["kind": "free", "url": "https://gist.github.com/x"], "path": "", "lang": "python",
-        "start": 1, "end": 1, "text": ["pass"], "version": ["kind": "none"],
-      ]
+        "id": "s", "src": ["kind": "free", "url": "https://gist.github.com/x", "langPicked": true], "path": "",
+        "lang": "python", "start": 1, "end": 1, "text": ["pass"], "version": ["kind": "none"],
+      ],
+      [
+        "id": "t", "src": ["kind": "free"], "path": "", "lang": "cpp", "start": 1, "end": 1, "text": ["int x;"],
+        "version": ["kind": "none"],
+      ],
     ],
   ]
   let (vault, report, _) = try importing(["b.json": oldBoard("b", cards: [code])])
   let content = try onlyCard(vault, "Board.board")
-  #expect(
-    content.body
-      == .code(
-        CodeCard(segments: [
-          Segment(id: SegmentID(rawValue: "s"), source: nil, language: "python", firstLine: 1, lines: ["pass"])
-        ])))
-  #expect(skipped(report, "b.json") == [.field: ["s.src.url"]])
+  var s = Segment(id: SegmentID(rawValue: "s"), source: nil, language: "python", firstLine: 1, lines: ["pass"])
+  s.url = "https://gist.github.com/x"
+  s.languagePicked = true
+  let t = Segment(id: SegmentID(rawValue: "t"), source: nil, language: "cpp", firstLine: 1, lines: ["int x;"])
+  #expect(content.body == .code(CodeCard(segments: [s, t])))
+  #expect(skipped(report, "b.json").isEmpty)
 }
 
 @Test func sidenotesStickersShelfAndTheOtherKindsAreImported() throws {
@@ -637,7 +642,7 @@ private func unchanged(_ before: [String: Data], _ after: [String: Data]) -> [St
         ],
         ["id": "n3", "kind": "text", "at": ["x": 4, "y": 5], "md": "", "why": "only a reason"],
         [
-          "id": "n4", "kind": "code", "at": ["card": "n"], "why": "dropped",
+          "id": "n4", "kind": "code", "at": ["card": "n"], "why": "where it is called",
           "code": [
             "id": "cs", "src": ["kind": "free"], "path": "", "lang": "py", "start": 1, "end": 1, "text": ["x"],
             "version": ["kind": "none"],
@@ -715,6 +720,8 @@ private func unchanged(_ before: [String: Data], _ after: [String: Data]) -> [St
   #expect(FileManager.default.fileExists(atPath: vault.url(of: "Board.board/images/q.png").path))
 
   #expect(b.sidenotes.map(\.id.rawValue) == ["n1", "n2", "n3", "n4", "n7"])
+  // a code sidenote's "why" is its own line over the code (notes.tsx sn-why)
+  #expect(b.sidenotes[3].why == "where it is called")
   #expect(b.sidenotes[0].anchor == .card(c, segment: SegmentID(rawValue: "s"), lines: 6...6))
   #expect(b.sidenotes[0].body == .text(TextNote(text: "the reason\n\nthe text", alwaysShow: true)))
   #expect(b.sidenotes[0].review == "widened")
@@ -749,7 +756,7 @@ private func unchanged(_ before: [String: Data], _ after: [String: Data]) -> [St
   #expect(
     skipped(report, "b.json") == [
       .variants: ["c"], .sidenoteWithoutAnchor: ["n5", "n6"], .stickerWithoutAnchor: ["k6"], .arrowSticker: ["k5"],
-      .stickerPack: ["k4"], .field: ["sb.pcols", "n4.why"],
+      .stickerPack: ["k4"], .field: ["sb.pcols"],
     ])
 }
 

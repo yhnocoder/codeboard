@@ -138,7 +138,19 @@ extension Board {
 extension Sidenote {
   func problem() -> String? {
     if case .code(let s) = body, s.firstLine < 1 { return "its code starts at line \(s.firstLine)" }
+    if case .code(let s) = body, let p = s.problem() { return p }
+    if case .text = body, why != nil { return "a why is a code sidenote's" }
     if case .card(_, _, let lines?, _) = anchor, lines.lowerBound < 1 { return "line \(lines.lowerBound)" }
+    return nil
+  }
+}
+
+extension Segment {
+  /// Free code's own fields on one with a source, or a false picked language (never written)
+  func problem() -> String? {
+    if source != nil, url != nil { return "segment \(id.rawValue) has a source and a url" }
+    if source != nil, languagePicked != nil { return "segment \(id.rawValue) has a source and a picked language" }
+    if languagePicked == false { return "segment \(id.rawValue): a picked language is true or absent" }
     return nil
   }
 }
@@ -190,6 +202,7 @@ extension CardContent {
       for s in code.segments {
         guard ids.insert(s.id).inserted else { return "segment \(s.id.rawValue) is there twice" }
         guard s.firstLine >= 1 else { return "segment \(s.id.rawValue) starts at line \(s.firstLine)" }
+        if let p = s.problem() { return p }
       }
     case .text(let t):
       if !TextCard.fontSizes.contains(t.fontSize) { return "font size \(t.fontSize) is outside 10…240" }
@@ -509,7 +522,7 @@ extension SubBoard: Codable {
 
 extension Sidenote: Codable {
   private enum Keys: String, CodingKey {
-    case id, anchor, lineRemoved, boardOnly, review, text, code
+    case id, anchor, lineRemoved, boardOnly, review, why, text, code
   }
   private enum Kind: String, CodingKey {
     case text, code
@@ -526,7 +539,8 @@ extension Sidenote: Codable {
       id: try c.decode(SidenoteID.self, forKey: .id), anchor: try c.decode(Anchor.self, forKey: .anchor), body: body,
       lineRemoved: try c.decode(Bool.self, forKey: .lineRemoved),
       boardOnly: try c.decode(Bool.self, forKey: .boardOnly),
-      review: try c.decodeIfPresent(String.self, forKey: .review))
+      review: try c.decodeIfPresent(String.self, forKey: .review), why: try c.decodeIfPresent(String.self, forKey: .why)
+    )
   }
 
   public func encode(to encoder: any Encoder) throws {
@@ -536,6 +550,7 @@ extension Sidenote: Codable {
     try c.encode(lineRemoved, forKey: .lineRemoved)
     try c.encode(boardOnly, forKey: .boardOnly)
     try c.encodeIfPresent(review, forKey: .review)
+    try c.encodeIfPresent(why, forKey: .why)
     switch body {
     case .text(let t): try c.encode(t, forKey: .text)
     case .code(let s): try c.encode(s, forKey: .code)

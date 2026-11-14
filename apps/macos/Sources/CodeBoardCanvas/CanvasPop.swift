@@ -201,7 +201,7 @@ extension CanvasView {
       case .code(let seg):
         return .code(
           n.id.rawValue, head: Self.codeHead(seg), start: seg.firstLine, html: Self.codeHTML(seg), place: place,
-          review: n.review)
+          review: n.review, why: n.why)
       }
     }
     return SidenotePop.Shown(

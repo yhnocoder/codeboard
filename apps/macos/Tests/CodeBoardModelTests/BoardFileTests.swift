@@ -103,7 +103,9 @@ private func everything() -> Board {
       Sidenote(
         id: SidenoteID(rawValue: "sn2"), anchor: .card(CardID(rawValue: "n0"), block: BlockRef(index: 0, hash: "h")),
         body: .code(
-          Segment(id: SegmentID(rawValue: "x"), source: nil, language: "plaintext", firstLine: 1, lines: ["z"]))),
+          Segment(
+            id: SegmentID(rawValue: "x"), source: nil, language: "plaintext", firstLine: 1, lines: ["z"],
+            url: "https://gist.github.com/x", languagePicked: true)), why: "where it is called"),
       Sidenote(
         id: SidenoteID(rawValue: "sn3"), anchor: .section(SectionID(rawValue: "top")), body: .text(TextNote(text: ""))),
       Sidenote(id: SidenoteID(rawValue: "sn4"), anchor: .point(x: -3, y: 4.5), body: .text(TextNote(text: "free"))),
@@ -226,6 +228,14 @@ private func card(_ json: inout [String: Any], _ i: Int, _ change: (inout [Strin
   #expect(throws: VaultError.malformed(file, "not JSON")) { try Board(decoding: Data("{".utf8), file: file) }
 }
 
+/// The first segment of the first card, with a free code's address though it has a source
+private func freeFrom(_ b: Board) -> Segment {
+  guard case .own(let c) = b.cards[0].content, case .code(let code) = c.body else { fatalError() }
+  var s = code.segments[0]
+  s.url = "https://e"
+  return s
+}
+
 @Test func decodingRejectsBrokenReferences() throws {
   func problem(_ change: (inout Board) -> Void) throws -> VaultError? {
     var b = everything()
@@ -261,6 +271,14 @@ private func card(_ json: inout [String: Any], _ i: Int, _ change: (inout [Strin
     try problem { $0.stickers[2].anchor = .line(CardID(rawValue: "c"), segment: SegmentID(rawValue: "zz"), line: 1) }
       == .malformed(file, "sticker k3: card c has no segment zz"))
   #expect(try problem { $0.shelf[0].cards[0].id = CardID(rawValue: "c") } == .malformed(file, "card c is there twice"))
+  #expect(
+    try problem { $0.sidenotes[0].why = "a reason" } == .malformed(file, "sidenote sn1: a why is a code sidenote's"))
+  #expect(
+    try problem { b in
+      let s = freeFrom(b)
+      b.cards[0].content = .own(CardContent(body: .code(CodeCard(segments: [s]))))
+    }
+      == .malformed(file, "card c: segment s1 has a source and a url"))
   #expect(
     try problem { $0.seal = Seal(text: "two words") }
       == .malformed(file, "seal text two words: 1–5 CJK and 1–12 other characters"))

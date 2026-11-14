@@ -683,4 +683,22 @@ extension CanvasSidenoteTests {
       await pop.run("return document.querySelectorAll('.sn-why.review').length") as? Int == 0
     }
   }
+
+  /// A code sidenote's "why" is its line under the code (notes.tsx .sn-why)
+  @Test func aCodeSidenotesWhyShowsUnderItsCode() async throws {
+    var b = sidenoteBoard()
+    b.sidenotes.append(
+      Sidenote(
+        id: nid("k1"), anchor: .card(cid("t1")),
+        body: .code(Segment(id: SegmentID(rawValue: "k"), source: nil, language: "python", firstLine: 1, lines: ["x"])),
+        why: "where it is called"))
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    let at = PopAt.spot(.card(cid("t1")))
+    r.canvas.openPop(at)
+    await opened(r, at)
+    let why = await r.canvas.sidenotePop.run(
+      "return document.querySelector('.slip[data-note=\"k1\"] .sn-why')?.textContent ?? null")
+    #expect(why as? String == "where it is called")
+  }
 }
