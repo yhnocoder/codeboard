@@ -161,7 +161,10 @@ async function run(line: string): Promise<string> {
     });
     case "rect": return await page.evaluate((id) => {
       // a card, or a Section's frame (the larger of its two elements: frame and title)
-      const els = [...document.querySelectorAll(`.card[data-id="${CSS.escape(id)}"], [data-sect="${CSS.escape(id)}"]`)];
+      // or an arrow's label
+      const q = CSS.escape(id);
+      const els = [...document.querySelectorAll(`.card[data-id="${q}"], [data-sect="${q}"]`)];
+      if (!els.length) els.push(...document.querySelectorAll(`[data-link="${q}"] .vlabel`));
       const r = els.map((e) => e.getBoundingClientRect()).sort((a, b) => b.width * b.height - a.width * a.height)[0];
       return r ? `${r.left.toFixed(1)} ${r.top.toFixed(1)} ${r.width.toFixed(1)} ${r.height.toFixed(1)}` : "none";
     }, a[1]);
@@ -214,11 +217,35 @@ async function run(line: string): Promise<string> {
       }
       return "none";
     }, a[1]);
+    case "canvas": return `0 0 ${W} ${H}`;
+    case "focused": return await page.evaluate(() => {
+      // the focused element and its ancestors, as hit describes them
+      const out: string[] = [];
+      for (let e = document.activeElement; e && e !== document.body && out.length < 6; e = e.parentElement)
+        out.push(e.tagName.toLowerCase() + [...e.classList].map((c) => `.${c}`).join(""));
+      return out.join(" < ") || "body";
+    });
     case "hit": return await hitAt(pos.x, pos.y);
     case "pointer": return `${pos.x.toFixed(1)} ${pos.y.toFixed(1)}`;
     case "origin": return "0 0";
     case "menu": await page.mouse.down({ button: "right" }); await page.mouse.up({ button: "right" }); await sleep(200);
       return await page.evaluate(() => [...document.querySelectorAll(".menu, [role=menu]")].map((m) => (m as HTMLElement).innerText).join("\n----\n"));
+    case "pick": {
+      // pick One/Two: move to each item as a person would (a submenu opens on the way) and click the last
+      const levels = line.slice(5).split("/");
+      for (const [i, label] of levels.entries()) {
+        const r = await page.evaluate((label) => {
+          const items = [...document.querySelectorAll<HTMLElement>(".ctx.open [role^=menuitem]")].reverse();
+          const b = items.find((x) => x.querySelector(".lb")?.textContent?.trim() === label)?.getBoundingClientRect();
+          return b && { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+        }, label);
+        if (!r) return `no item ${label}`;
+        await move(r.x, r.y, 250);
+        if (i < levels.length - 1) { await sleep(300); continue; }
+        await pressed(false); await page.mouse.down(); await sleep(70); await page.mouse.up();
+      }
+      return `picked ${line.slice(5)}`;
+    }
     case "rec": times = ""; recDir = path.join(out, a[1]); fs.rmSync(recDir, { recursive: true, force: true }); fs.mkdirSync(recDir, { recursive: true }); frame = 0;
       await cdp.send("Page.startScreencast", { format: "png", everyNthFrame: 1 }); break;
     case "stop": {

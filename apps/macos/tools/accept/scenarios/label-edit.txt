@@ -1,0 +1,30 @@
+# 箭头标签和 Section 标题就地编辑：双击、右键 Edit Label、选中后回车，都出现编辑框，键盘进到编辑框
+zoom 1
+center @lnote:c
+dbl @lnote:c
+wait 400
+mac: expect focus has OnBoardField
+web: expect focus has vlabel
+key esc
+wait 300
+menu
+pick Edit Label
+wait 400
+mac: expect focus has OnBoardField
+web: expect focus has vlabel
+key esc
+wait 300
+click @lnote:c
+wait 300
+key return
+wait 400
+mac: expect focus has OnBoardField
+web: expect focus has vlabel
+key esc
+wait 300
+center @sboxes+60,12
+dbl @sboxes+28,12
+wait 400
+mac: expect focus has OnBoardField
+web: expect focus has slabel
+key esc

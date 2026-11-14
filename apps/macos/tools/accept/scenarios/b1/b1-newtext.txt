@@ -1,6 +1,6 @@
 # 新建 Text：双击空白、立刻打字、Esc，量每步多久有反应；再把它拖走
 zoom 1
-center @sinput+500,300
+center @sinput+770,650
 rec nt
 dbl @sinput+700,620
 type abc

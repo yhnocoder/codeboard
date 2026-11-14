@@ -8,7 +8,9 @@ wait 600
 ime ni|nih|你好
 wait 100
 key esc
-expect answer < 300
+mac: expect answer < 300
 wait 800
+expect focus lacks EditorWebView
+expect focus lacks ProseMirror
 shot left
 stop
