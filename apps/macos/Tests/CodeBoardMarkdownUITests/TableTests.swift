@@ -69,3 +69,48 @@ import Testing
     #expect(!h.command(.deleteRow))
   }
 }
+
+@Suite struct TableColumnTests {
+  func core(_ src: String, _ caret: Int) -> EditorCore {
+    _ = boardFonts
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let e = EditorCore(layout: l)
+    e.select(MDSelection(caret))
+    return e
+  }
+
+  @Test func columnsAddedDeletedAndAligned() {
+    let src = "Before\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nAfter"
+    let e = core(src, 10)
+    e.command(.column(.add(after: true)))
+    #expect(e.source == "Before\n\n| a |   | b |\n|---|---|---|\n| 1 |   | 2 |\n\nAfter")
+    e.undo()
+    e.command(.column(.add(after: false)))
+    #expect(e.source == "Before\n\n|   | a | b |\n|---|---|---|\n|   | 1 | 2 |\n\nAfter")
+    #expect(MarkdownEditing.tablePlace(at: e.selection.head, in: e.document)?.column == 1)
+    e.undo()
+    e.command(.column(.align(.center)))
+    #expect(e.source == "Before\n\n| a | b |\n|:-:|---|\n| 1 | 2 |\n\nAfter")
+    e.command(.column(.align(.right)))
+    #expect(e.source == "Before\n\n| a | b |\n|--:|---|\n| 1 | 2 |\n\nAfter")
+    e.command(.column(.align(.none)))
+    #expect(e.source == src)
+    e.command(.column(.delete))
+    #expect(e.source == "Before\n\n| b |\n|---|\n| 2 |\n\nAfter")
+    #expect(!e.command(.column(.delete)) || e.source.contains("|"))
+  }
+}
+
+@MainActor @Suite struct TableBandTests {
+  @Test func theBandShowsWithTheCaretInATable() {
+    _ = boardFonts
+    let src = "Before\n\n| a | b |\n|---|---|\n| 1 | 2 |"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 2)
+    #expect(!v.band.shown)
+    v.selection = MDSelection(30)
+    #expect(v.band.shown && v.band.table != nil && v.band.block == nil)
+    let header = v.core.rects(for: 10..<11).first!
+    #expect(v.band.frame.maxY <= header.minY)
+  }
+}

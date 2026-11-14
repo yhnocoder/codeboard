@@ -10,6 +10,8 @@ public enum MDCommand: Sendable, Equatable {
   /// ⌘↵ a table row below, ⌘⇧↵ above; ⌘⇧⌫ the row deleted
   case addRow(below: Bool)
   case deleteRow
+  /// a column added after or before the caret's, deleted, or aligned
+  case column(MarkdownEditing.ColumnChange)
 }
 
 public enum MDMarkKind: Sendable, Equatable {
@@ -35,6 +37,7 @@ extension MarkdownEditing {
     case .heading(let level): return heading(to: { _ in level }, state, document)
     case .addRow(let below): return tableRow(add: below, in: state, document: document)
     case .deleteRow: return tableRow(add: nil, in: state, document: document)
+    case .column(let change): return tableColumn(change, in: state, document: document)
     case .headingStep(let d):
       // ⌘= a level up (body text to 6, 1 stays 1), ⌘- a level down (6 to body text): editor/typora.ts
       return heading(

@@ -1,17 +1,27 @@
 import AppKit
 import CodeBoardMarkdown
 
-/// A code block's tool band (editor/band.ts): a 30 pt strip in the block's own colour that grows upward out of the block's
-/// top edge over what is above it, the block and the Note never resizing for it. It shows the language (a click picks
-/// another), Copy and Wrap; a click on its blank part goes to what is under it. It scales with the editor's zoom, as the
-/// block does, and slides with Core Animation, so the slide runs at the display's rate on the render server.
+/// A block's tool band (editor/band.ts): a 30 pt strip in the block's own colour that grows upward out of the block's
+/// top edge over what is above it, the block and the Note never resizing for it: a code block's (its language, a click
+/// picks another; Copy; Wrap) or a table's (rows, columns, alignment). A click on its blank part goes to what is under
+/// it. It scales with the editor's zoom, as the block does, and slides with Core Animation, so the slide runs at the
+/// display's rate on the render server.
 @MainActor
 final class CodeBand: NSView {
+  /// one button: what it shows, whether it is on, and whether it goes at the left (the rest go right, in order)
+  struct Part: Equatable {
+    var id: String
+    var label: String
+    var on = false
+    var left = false
+  }
   static let height: CGFloat = 30
 
   /// the strip, inside this view, which clips it at the block's top edge
   private let strip = Strip()
   var block: EditorCore.CodeBlock?
+  /// the table it is for, when it is a table's
+  var table: Range<Int>?
   var shown = false
 
   override init(frame: NSRect) {
@@ -35,13 +45,13 @@ final class CodeBand: NSView {
   }
 
   /// Puts the band over `blockRect` (the code block's box in the editor view's points), scaled by `zoom`
-  func place(over blockRect: CGRect, zoom: CGFloat, theme: MarkdownTheme, language: String?, wraps: Bool) {
+  func place(over blockRect: CGRect, zoom: CGFloat, theme: MarkdownTheme, parts: [Part], fill: MDColor) {
     let h = Self.height * zoom
     frame = CGRect(x: blockRect.minX, y: blockRect.minY - h, width: blockRect.width, height: h)
     strip.zoom = zoom
     strip.theme = theme
-    strip.language = language
-    strip.wraps = wraps
+    strip.parts = parts
+    strip.fill = fill
     strip.radius = CGFloat(theme.metrics.codeRadius) * zoom
     strip.frame.size = CGSize(width: blockRect.width, height: h)
     if !shown { strip.frame.origin = CGPoint(x: 0, y: h) }
@@ -62,45 +72,41 @@ final class CodeBand: NSView {
     }
   }
 
-  var onLanguage: (NSView, CGRect) -> Void = { _, _ in }
-  var onCopy: () -> Void = {}
-  var onWrap: () -> Void = {}
+  var onPart: (String, NSView, CGRect) -> Void = { _, _, _ in }
 
   /// what the band shows, drawn at the zoom
   final class Strip: NSView {
-    enum Part { case language, copy, wrap }
     var zoom: CGFloat = 1
     var theme: MarkdownTheme?
-    var language: String?
-    var wraps = false
+    var parts: [Part] = []
+    var fill = MDColor(0.95, 0.95, 0.95, 1)
     var radius: CGFloat = 12
     override var isFlipped: Bool { true }
 
     private var font: NSFont { NSFont.systemFont(ofSize: 11 * zoom, weight: .medium) }
     private func size(_ s: String) -> CGSize { (s as NSString).size(withAttributes: [.font: font]) }
-    var label: String { (language?.isEmpty ?? true) ? "Plain text" : language! }
 
-    /// where each part is
-    func rect(_ p: Part) -> CGRect {
-      let pad = 12 * zoom
+    /// where each part is: the left ones from the left edge, the others from the right edge back
+    func rects() -> [(Part, CGRect)] {
+      let pad = 6 * zoom
       let h = bounds.height
-      switch p {
-      case .language:
-        let w = size(label + " ▾").width + 2 * 6 * zoom
-        return CGRect(x: pad - 6 * zoom, y: 0, width: w, height: h)
-      case .wrap:
-        let w = size("Wrap").width + 12 * zoom
-        return CGRect(x: bounds.width - pad - w + 6 * zoom, y: 0, width: w, height: h)
-      case .copy:
-        let wrap = rect(.wrap)
-        let w = size("Copy").width + 12 * zoom
-        return CGRect(x: wrap.minX - w, y: 0, width: w, height: h)
+      var out: [(Part, CGRect)] = []
+      var x = pad
+      for p in parts where p.left {
+        let w = size(p.label).width + 12 * zoom
+        out.append((p, CGRect(x: x, y: 0, width: w, height: h)))
+        x += w
       }
+      var r = bounds.width - pad
+      for p in parts.reversed() where !p.left {
+        let w = size(p.label).width + 12 * zoom
+        r -= w
+        out.append((p, CGRect(x: r, y: 0, width: w, height: h)))
+      }
+      return out
     }
 
-    func part(at p: CGPoint) -> Part? {
-      [Part.language, .copy, .wrap].first { rect($0).contains(p) }
-    }
+    func part(at p: CGPoint) -> Part? { rects().first { $0.1.contains(p) }?.0 }
 
     override func draw(_ dirtyRect: NSRect) {
       guard let theme, let ctx = NSGraphicsContext.current?.cgContext else { return }
@@ -112,29 +118,22 @@ final class CodeBand: NSView {
       path.addLine(to: CGPoint(x: b.maxX, y: b.maxY))
       path.closeSubpath()
       ctx.addPath(path)
-      ctx.setFillColor(theme.colors.codeBlock.cg)
+      ctx.setFillColor(fill.cg)
       ctx.fillPath()
       let ink = NSColor(cgColor: theme.colors.ink2.cg) ?? .secondaryLabelColor
       let faint = NSColor(cgColor: theme.colors.ink3.cg) ?? .tertiaryLabelColor
-      func text(_ s: String, in r: CGRect, _ c: NSColor) {
-        let sz = size(s)
-        (s as NSString).draw(
+      for (p, r) in rects() {
+        let sz = size(p.label)
+        (p.label as NSString).draw(
           at: CGPoint(x: r.minX + (r.width - sz.width) / 2, y: r.midY - sz.height / 2),
-          withAttributes: [.font: font, .foregroundColor: c])
+          withAttributes: [.font: font, .foregroundColor: p.on || p.left ? ink : faint])
       }
-      text(label + " ▾", in: rect(.language), ink)
-      text("Copy", in: rect(.copy), faint)
-      text("Wrap", in: rect(.wrap), wraps ? ink : faint)
     }
 
     override func mouseDown(with e: NSEvent) {
       let p = convert(e.locationInWindow, from: nil)
-      guard let band = superview as? CodeBand, let part = part(at: p) else { return }
-      switch part {
-      case .language: band.onLanguage(self, rect(.language))
-      case .copy: band.onCopy()
-      case .wrap: band.onWrap()
-      }
+      guard let band = superview as? CodeBand, let hit = rects().first(where: { $0.1.contains(p) }) else { return }
+      band.onPart(hit.0.id, self, hit.1)
     }
   }
 }

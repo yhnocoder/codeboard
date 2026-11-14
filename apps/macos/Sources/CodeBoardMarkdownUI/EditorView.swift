@@ -85,9 +85,7 @@ public final class MarkdownEditorView: NSView {
     addSubview(preview)
     band.isHidden = true
     addSubview(band)
-    band.onCopy = { [weak self] in self?.copyCode() }
-    band.onWrap = { [weak self] in self?.toggleWrap() }
-    band.onLanguage = { [weak self] v, r in self?.pickLanguage(from: v, at: r) }
+    band.onPart = { [weak self] id, v, r in self?.bandPart(id, v, r) }
     updateTrackingAreas()
     core.onLayout = { [weak self] in
       MainActor.assumeIsolated { self?.changed() }
@@ -223,32 +221,84 @@ public final class MarkdownEditorView: NSView {
   }
 
   private func showBand() {
-    guard let b = bandBlock, let i = MarkdownEditing.blockHolding(b.body.lowerBound, in: core.document) else {
-      // gone after BAND_GRACE, so passing from the block to its band does not drop it
+    let m = core.layout.theme.metrics
+    if let b = bandBlock {
       bandTimer?.invalidate()
-      guard band.shown else { return }
-      bandTimer = Timer.scheduledTimer(withTimeInterval: MarkdownTiming.bandGrace, repeats: false) { [weak self] _ in
-        MainActor.assumeIsolated {
-          guard let self, self.bandBlock == nil else { return }
-          self.band.show(false)
-        }
-      }
+      let boxes = core.rects(for: b.body.lowerBound..<max(b.body.lowerBound + 1, b.body.upperBound))
+      guard let first = boxes.first else { return }
+      // the code block's box: the code's padding around its lines
+      let top = first.minY - CGFloat(m.codePadding[0])
+      let frame = core.layout.blockFrames.first { $0.minY <= top + 1 && $0.maxY >= top } ?? .zero
+      band.block = b
+      band.table = nil
+      let wraps = core.layout.info?.wrap?.contains(b.index) ?? false
+      band.place(
+        over: CGRect(x: frame.minX * zoom, y: top * zoom, width: frame.width * zoom, height: 1), zoom: zoom,
+        theme: core.layout.theme,
+        parts: [
+          .init(id: "language", label: ((b.language?.isEmpty ?? true) ? "Plain text" : b.language!) + " ▾", left: true),
+          .init(id: "copy", label: "Copy"), .init(id: "wrap", label: "Wrap", on: wraps),
+        ], fill: core.layout.theme.colors.codeBlock)
+      band.show(true)
       return
     }
+    if isEditing, core.marked == nil, let t = MarkdownEditing.tablePlace(at: core.selection.head, in: core.document),
+      let cell = t.table.rows.first?.first
+    {
+      bandTimer?.invalidate()
+      let top =
+        (core.rects(for: cell.range.lowerBound..<max(cell.range.lowerBound + 1, cell.range.upperBound)).first?
+          .minY ?? 0) - CGFloat(m.cellPadding[0]) - 1
+      let frame = core.layout.blockFrames.first { $0.minY <= top + 1 && $0.maxY >= top } ?? .zero
+      band.block = nil
+      band.table = t.block
+      let align = t.column < t.table.align.count ? t.table.align[t.column] : .none
+      band.place(
+        over: CGRect(x: frame.minX * zoom, y: top * zoom, width: frame.width * zoom, height: 1), zoom: zoom,
+        theme: core.layout.theme,
+        parts: [
+          .init(id: "row+", label: "+ Row", left: true), .init(id: "col+", label: "+ Column", left: true),
+          .init(id: "row-", label: "− Row", left: true), .init(id: "col-", label: "− Column", left: true),
+          .init(id: "left", label: "Left", on: align == .left),
+          .init(id: "center", label: "Center", on: align == .center),
+          .init(id: "right", label: "Right", on: align == .right),
+        ], fill: core.layout.theme.colors.fill)
+      band.show(true)
+      return
+    }
+    // gone after BAND_GRACE, so passing from the block to its band does not drop it
     bandTimer?.invalidate()
-    _ = i
-    let boxes = core.rects(for: b.body.lowerBound..<max(b.body.lowerBound + 1, b.body.upperBound))
-    guard let first = boxes.first else { return }
-    // the code block's box: the code's padding around its lines
-    let m = core.layout.theme.metrics
-    let top = first.minY - CGFloat(m.codePadding[0])
-    let frame = core.layout.blockFrames.first { $0.minY <= top + 1 && $0.maxY >= top } ?? .zero
-    let box = CGRect(x: frame.minX * zoom, y: top * zoom, width: frame.width * zoom, height: 1)
-    band.block = b
-    band.place(
-      over: box, zoom: zoom, theme: core.layout.theme, language: b.language,
-      wraps: core.layout.info?.wrap?.contains(b.index) ?? false)
-    band.show(true)
+    guard band.shown else { return }
+    bandTimer = Timer.scheduledTimer(withTimeInterval: MarkdownTiming.bandGrace, repeats: false) { [weak self] _ in
+      MainActor.assumeIsolated {
+        guard let self, self.bandBlock == nil,
+          MarkdownEditing.tablePlace(at: self.core.selection.head, in: self.core.document) == nil
+        else { return }
+        self.band.show(false)
+      }
+    }
+  }
+
+  private func bandPart(_ id: String, _ v: NSView, _ r: CGRect) {
+    begin()
+    switch id {
+    case "language": pickLanguage(from: v, at: r)
+    case "copy": copyCode()
+    case "wrap": toggleWrap()
+    case "row+": core.command(.addRow(below: true))
+    case "row-": core.command(.deleteRow)
+    case "col+": core.command(.column(.add(after: true)))
+    case "col-": core.command(.column(.delete))
+    case "left", "center", "right":
+      let al: MDTable.Align = id == "left" ? .left : id == "center" ? .center : .right
+      let now = MarkdownEditing.tablePlace(at: core.selection.head, in: core.document).map {
+        $0.column < $0.table.align.count ? $0.table.align[$0.column] : .none
+      }
+      core.command(.column(.align(now == al ? .none : al)))
+    default: return
+    }
+    note(.key("band \(id)", did: "selection \(core.selection.head)"))
+    changed()
   }
 
   private func copyCode() {

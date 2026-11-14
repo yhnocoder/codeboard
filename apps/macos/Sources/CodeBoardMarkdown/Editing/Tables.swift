@@ -123,3 +123,88 @@ extension MarkdownEditing {
       selection: MDSelection(anchor: state.selection.anchor + n, head: state.selection.head + n), undo: .command)
   }
 }
+
+extension MarkdownEditing {
+  /// A column change at the caret's column: a column added after (or before) it, the column deleted, or its alignment
+  /// set (none clears it). Each table line is changed only where the column is; the caret stays in its cell's text
+  public enum ColumnChange: Sendable, Equatable {
+    case add(after: Bool)
+    case delete
+    case align(MDTable.Align)
+  }
+
+  public static func tableColumn(_ change: ColumnChange, in state: MDEditState, document d: MarkdownDocument) -> MDEdit?
+  {
+    let q = state.selection.head
+    guard let p = tablePlace(at: q, in: d) else { return nil }
+    let ns = state.source as NSString
+    let t = p.table
+    let header = rowLine(t, 0, ns)
+    let sep = ns.lineRange(for: NSRange(location: NSMaxRange(header), length: 0))
+    // every line of the table with its row (nil: the separator), top to bottom
+    var lines: [(NSRange, Int?)] = [(header, 0), (sep, nil)]
+    for r in 1..<t.rows.count { lines.append((rowLine(t, r, ns), r)) }
+    let first = header.location
+    let lastLine = lines.last!.0
+    var end = NSMaxRange(lastLine)
+    if end > lastLine.location, ns.character(at: end - 1) == 0x0A { end -= 1 }
+    let c = p.column
+    if case .delete = change, t.rows[0].count <= 1 { return nil }
+    var out = ""
+    var caretShift = 0
+    for (k, (line, row)) in lines.enumerated() {
+      var text = ns.substring(with: line)
+      if text.hasSuffix("\n") { text.removeLast() }
+      let u = Array(text.utf16)
+      // the pipes of this line that are not escaped and not in code
+      var pipes: [Int] = []
+      var tick = false
+      for (i, ch) in u.enumerated() {
+        if ch == 0x60 { tick.toggle() }
+        if ch == 0x7C, !tick, i == 0 || u[i - 1] != 0x5C { pipes.append(i) }
+      }
+      let ns2 = text as NSString
+      var piece = text
+      // the cell between pipes[j] and pipes[j+1] is column j when the line starts with a pipe
+      let lead = pipes.first == 0 ? 0 : -1
+      let open = c + lead + (lead < 0 ? 1 : 0)
+      func pipe(_ j: Int) -> Int? { j >= 0 && j < pipes.count ? pipes[j] : nil }
+      switch change {
+      case .add(let after):
+        let at = after ? pipe(open + 1) : pipe(open)
+        if let at {
+          let cell = row == nil ? "---|" : "   |"
+          piece = ns2.substring(to: at + 1) + cell + ns2.substring(from: at + 1)
+          if row == p.row, !after { caretShift = 4 }
+        }
+      case .delete:
+        if let a = pipe(open), let b = pipe(open + 1) {
+          piece = ns2.substring(to: a) + ns2.substring(from: b)
+        }
+      case .align(let al):
+        if row == nil, let a = pipe(open), let b = pipe(open + 1) {
+          let w = max(3, b - a - 1)
+          let dash = String(repeating: "-", count: max(1, w - (al == .center ? 2 : al == .none ? 0 : 1)))
+          let cell =
+            switch al {
+            case .none: dash
+            case .left: ":" + dash
+            case .center: ":" + dash + ":"
+            case .right: dash + ":"
+            }
+          piece = ns2.substring(to: a + 1) + cell + ns2.substring(from: b)
+        }
+      }
+      out += piece + (k + 1 < lines.count ? "\n" : "")
+    }
+    let range = first..<end
+    var caret = q + caretShift
+    if case .delete = change {
+      // the caret to the start of the table: its column is gone
+      caret = first
+    }
+    let n = (out as NSString).length
+    caret = min(caret, first + n)
+    return MDEdit(range: range, replacement: out, selection: MDSelection(caret), undo: .command)
+  }
+}
