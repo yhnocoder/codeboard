@@ -35,6 +35,8 @@ public final class MarkdownEditorView: NSView {
   /// the decoded image for a slot, nil while there is none (its place stays empty)
   public var image: (MarkdownImageSlot) -> CGImage? = { _ in nil }
   public var caretColor = NSColor.controlAccentColor
+  /// draws the caret without the keyboard focus (offscreen frames for a script player)
+  public var alwaysShowsCaret = false
   public var selectionColor = NSColor.selectedTextBackgroundColor
   /// the caret's blink is off and nothing is laid out while frozen (a pinch or pan going on)
   public private(set) var frozen = false
@@ -190,7 +192,8 @@ public final class MarkdownEditorView: NSView {
     if let d = tableDrag {
       d.draw(in: ctx, paper: core.layout.theme.colors.surface.cg, ring: caretColor.cgColor)
     }
-    if isEditing, blinkOn, window?.firstResponder === self, let c = core.caretRect, tableDrag == nil {
+    if isEditing, blinkOn, alwaysShowsCaret || window?.firstResponder === self, let c = core.caretRect, tableDrag == nil
+    {
       // two device pixels wide whatever the zoom, on the caret's line
       let w = 2 / scale
       ctx.setFillColor(caretColor.cgColor)
