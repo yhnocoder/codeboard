@@ -19,6 +19,13 @@ import Testing
       .compactMap(\.action)
   }
 
+  /// The toolbar's ⋯ sends Rename Board… and Edit Mark… up the responder chain: the app answers them
+  @Test func theAppAnswersRenameBoardAndEditMark() {
+    _ = NSApplication.shared
+    let app = AppDelegate()
+    #expect(app.responds(to: Selector(("renameBoard:"))) && app.responds(to: Selector(("editMark:"))))
+  }
+
   @Test func lockIsCommandShiftL() {
     #expect(actions("l", [.command, .shift]) == [#selector(CanvasView.lock(_:))])
     #expect(actions("l", .command).isEmpty)

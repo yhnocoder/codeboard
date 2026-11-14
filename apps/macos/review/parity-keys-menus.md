@@ -126,8 +126,9 @@ Window, the questions.
 ⋯ (not narrow): Undo ⌘Z, Redo ⇧⌘Z, `-`, Rename Board…, Copy Path, Edit Mark…, (Export…, Export Boards…: later), `-`,
 (Capture Run…, Apply Run…: NOT DO), `-`, Settings… ⌘,, Theme ▸, Keyboard Shortcuts ?, Copy Diagnostics.
 
-App: Note, Text, Box, Section, Arrow, Sticker (gap: Image, Web), `|`, ⋯, `|`, the zoom (Zoom to 100 %), `|`, the
-questions; the Shelf's button alone at the bottom right. gap: Search (no palette), the dock as main's right group
-(Zoom Out, Zoom In, Fit to Window buttons; Shelf in it), Arrow Legend. ⋯: Undo ⌘Z, Redo ⇧⌘Z, `-`, Copy Path, `-`,
-Settings…, Theme ▸ (the app menu's); gap: Rename Board… (the sidebar renames), Edit Mark…, Keyboard Shortcuts, Copy
-Diagnostics. The narrow toolbar's folded items are not made (the app's window has no narrow board beside an editor).
+App: Note, Text, Box, Section, Arrow, Sticker (gap: Image, Web), `|`, ⋯. Dock at the bottom right (CanvasDock): Shelf,
+`|`, Zoom Out, the zoom (Zoom to 100 %), Zoom In, `|`, Fit to Window, the questions; the toolbar moves left of the
+dock rather than over it (main overlaps the two from about 1000 pt). gap: Search (no palette), Arrow Legend. ⋯: Undo ⌘Z, Redo ⇧⌘Z, `-`,
+Rename Board… (the board's name written in place in the sidebar, its row shown), Copy Path, Edit Mark… (its seal's
+popover in the sidebar; off for a folder's own board), `-`, Settings…, Theme ▸ (the app menu's); gap: Keyboard
+Shortcuts, Copy Diagnostics. The narrow toolbar's folded items are not made (the app's window has no narrow board beside an editor).

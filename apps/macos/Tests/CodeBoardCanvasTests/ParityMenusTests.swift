@@ -232,22 +232,41 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     bar.onMore = { asked = $0 }
     let more = bar.extraRects().more
     #expect(bar.button(at: CGPoint(x: more.midX, y: more.midY)) == -3)
-    #expect(more.minX > (bar.buttonRects().last?.maxX ?? .infinity) && more.maxX < bar.extraRects().zoom.minX)
+    #expect(more.minX > (bar.buttonRects().last?.maxX ?? .infinity) && more.maxX < bar.barRect.maxX)
     _ = asked
     let r = try await Rig(menusBoard(), zoom: 1)
     defer { r.close() }
     let m = r.canvas.moreMenu()
-    #expect(titles(m) == ["Undo", "Redo", "-", "Copy Path", "-", "Settings…", "Theme"])
+    #expect(
+      titles(m) == ["Undo", "Redo", "-", "Rename Board…", "Copy Path", "Edit Mark…", "-", "Settings…", "Theme"])
+    #expect(item(m, "Rename Board…")?.action == Selector(("renameBoard:")))
+    #expect(item(m, "Edit Mark…")?.action == Selector(("editMark:")))
     #expect(titles(item(m, "Theme")?.submenu) == Theme.all.map(\.name))
     #expect(item(m, "Redo")?.keyEquivalent == "z" && item(m, "Redo")?.keyEquivalentModifierMask == [.command, .shift])
     fire(item(m, "Copy Path"))
     #expect(r.canvas.pasteboard.string(forType: .string) == r.file.path(percentEncoded: false))
   }
 
-  /// Warm Ink's bar is a squircle of 14 (.pill, the board's --corner), its blur too: not a capsule
-  @Test func theToolbarsGlassIsItsSquircle() {
+  /// Warm Ink's bar is a squircle of 14 (.pill, the board's --corner), its blur too: not a capsule; Ink Wash's blur is
+  /// inside its stroke (--ink-bar-mask), whose tail and rounded start are left clear
+  @Test func theToolbarsGlassIsItsSquircleOrItsStroke() throws {
     let bar = CanvasToolbar(frame: CGRect(x: 0, y: 0, width: 600, height: 120))
     bar.layout()
-    #expect(bar.glass.maskImage?.size == bar.barRect.size)
+    #expect(bar.glass.maskImage?.size == bar.barRect.size && !bar.glass.isHidden)
+    bar.theme = .inkWash
+    bar.layout()
+    let mask = try #require(bar.glass.maskImage)
+    #expect(mask.size == bar.barRect.size && !bar.glass.isHidden)
+    var r = CGRect(origin: .zero, size: mask.size)
+    let img = try #require(mask.cgImage(forProposedRect: &r, context: nil, hints: nil))
+    let rep = NSBitmapImageRep(cgImage: img)
+    func alpha(_ x: CGFloat, _ y: CGFloat) -> CGFloat {
+      let k = CGFloat(rep.pixelsWide) / mask.size.width
+      return rep.colorAt(x: Int(x * k), y: Int(y * k))?.alphaComponent ?? -1
+    }
+    let w = mask.size.width
+    #expect(alpha(w / 2, 23) == 1, "the stroke's middle is blurred")
+    #expect(alpha(w / 2, 2) == 0 && alpha(w / 2, 44) == 0, "above and below the stroke is not")
+    #expect(alpha(1, 23) == 0 && alpha(w - 1, 23) == 0, "nor before its start and after its tail")
   }
 }

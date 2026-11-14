@@ -41,10 +41,11 @@ func shelfBoard() -> Board {
     let r = try await Rig(shelfBoard(), zoom: 1)
     defer { r.close() }
     let c = r.canvas
-    let dock = try #require(c.shelfDock)
+    let dock = c.dock
     #expect(dock.count == 0 && c.shelfPanel == nil)
-    // at the bottom right
+    // first in the dock at the bottom right
     #expect(dock.frame.maxX == c.bounds.width - 12 && dock.frame.maxY == c.bounds.height - 12)
+    #expect(c.shelfButton?.minX == dock.frame.minX + 4)
     c.toggleShelf()
     let p = try #require(c.shelfPanel)
     #expect(p.frame.maxX == c.bounds.width - 12 && p.frame.minY == 12 && p.frame.width == 300)
@@ -74,7 +75,7 @@ func shelfBoard() -> Board {
     let e = try #require(r.doc.board.shelf.first)
     // a card with no height keeps the one it was drawn at, so its place is known after a reload
     #expect(e.cards.first?.measuredHeight == Double(drawnHeight))
-    #expect(c.shelfDock?.count == 1)
+    #expect(c.dock.count == 1)
     // it flies into the panel, over it
     let fly = try #require(c.shelfFlights.first)
     let p = try #require(c.shelfPanel)
@@ -229,8 +230,9 @@ func shelfBoard() -> Board {
     let r = try await Rig(shelfBoard(), zoom: 1)
     defer { r.close() }
     let c = r.canvas
-    let dock = try #require(c.shelfDock)
-    let target = c.camera.board(CGPoint(x: dock.frame.midX, y: dock.frame.midY))
+    let dock = c.dock
+    let button = try #require(c.shelfButton)
+    let target = c.camera.board(CGPoint(x: button.midX, y: button.midY))
     var armed = false
     r.drag(r.centre("n1"), target) { armed = dock.armed && dock.hot }
     #expect(armed, "the button is lit under the pointer")

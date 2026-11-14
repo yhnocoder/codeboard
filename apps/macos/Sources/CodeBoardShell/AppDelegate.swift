@@ -189,6 +189,9 @@ import CodeBoardModel
 
   // Not toggleSidebar(_:): NSWindow answers that one itself (and disables it, having no split view)
   @objc func flipSidebar(_ sender: Any?) { shell.sidebarShown.toggle() }
+  /// The toolbar's ⋯ Rename Board… and Edit Mark…: in the sidebar
+  @objc func renameBoard(_ sender: Any?) { shell.renameOpenBoard() }
+  @objc func editMark(_ sender: Any?) { shell.editOpenBoardMark() }
   @objc func goBack(_ sender: Any?) { shell.goBack() }
   @objc func goForward(_ sender: Any?) { shell.goForward() }
   @objc func showNextTab(_ sender: Any?) { shell.selectTab(by: 1) }
@@ -219,6 +222,11 @@ import CodeBoardModel
     case #selector(flipSidebar(_:)):
       item.title = shell.sidebarShown ? "Hide Sidebar" : "Show Sidebar"
       return shell.vault != nil
+    case #selector(renameBoard(_:)): return shell.current != nil
+    case #selector(editMark(_:)):
+      // a folder's own board has no seal of its own
+      let id = shell.current?.board
+      return shell.tree?.allBoards.contains { $0.id == id && !$0.isFolderBoard } ?? false
     case #selector(goBack(_:)): return shell.canGoBack
     case #selector(goForward(_:)): return shell.canGoForward
     case #selector(showNextTab(_:)), #selector(showPreviousTab(_:)): return shell.tabs.count > 1

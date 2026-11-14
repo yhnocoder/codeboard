@@ -332,7 +332,10 @@ extension CanvasView {
     m.addItem(key(action("Undo", #selector(undo(_:))), "z", .command))
     m.addItem(key(action("Redo", #selector(redo(_:))), "z", [.command, .shift]))
     m.addItem(.separator())
+    // Rename Board… and Edit Mark… go up to the app, which does them in the sidebar
+    m.addItem(NSMenuItem(title: "Rename Board…", action: Selector(("renameBoard:")), keyEquivalent: ""))
     m.addItem(copyPathItem([]))
+    m.addItem(NSMenuItem(title: "Edit Mark…", action: Selector(("editMark:")), keyEquivalent: ""))
     m.addItem(.separator())
     m.addItem(NSMenuItem(title: "Settings…", action: Selector(("showSettings:")), keyEquivalent: ","))
     let themes = Theme.all.map { t in

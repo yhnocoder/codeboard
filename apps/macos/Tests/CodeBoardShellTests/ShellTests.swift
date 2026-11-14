@@ -28,6 +28,22 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
 }
 
 @MainActor @Suite struct ShellTests {
+  /// Rename Board… and Edit Mark… in the toolbar's ⋯ (Chrome.tsx more): the open board's row shows in the sidebar, its
+  /// folders open, and is renamed in place or its seal edited there
+  @Test func renameBoardAndEditMarkShowTheOpenBoardsRow() {
+    let s = shell()
+    s.renameOpenBoard()
+    s.editOpenBoardMark()
+    #expect(s.renaming == nil && s.sealEditing == nil, "no board open: nothing")
+    s.show(id("d"))
+    s.sidebarShown = false
+    s.renameOpenBoard()
+    #expect(s.renaming == .board(id("d")) && s.expanded.contains("f") && s.sidebarShown)
+    s.renaming = nil
+    s.editOpenBoardMark()
+    #expect(s.sealEditing == id("d"))
+  }
+
   @Test func firstBoardOpensATab() {
     let s = shell()
     s.show(id("a"))

@@ -169,4 +169,24 @@ import Testing
     panes.flush()
     #expect(try vault.board(at: fb.path).autoCards.count == 2)
   }
+
+  /// The bottom toolbar never covers the dock at the bottom right (main overlaps them from about 1000 pt): centred while
+  /// there is room, else left of the dock, else over it
+  @Test func theToolbarStaysClearOfTheDock() {
+    let bar = CanvasToolbar()
+    let view = bar.intrinsicContentSize
+    let m = CanvasToolbar.margin
+    let dock = CGSize(width: 185, height: 34)
+    for width: CGFloat in [1400, 1000, 760, 600, 470, 420] {
+      let pane = CGSize(width: width, height: 700)
+      let d = CGRect(x: width - 12 - dock.width, y: 700 - 12 - dock.height, width: dock.width, height: dock.height)
+      let f = Pane.toolbarFrame(view, in: pane, dock: d).insetBy(dx: m, dy: m)
+      // y-up in the pane: the dock's rect turned
+      let dockUp = CGRect(x: d.minX, y: pane.height - d.maxY, width: d.width, height: d.height)
+      #expect(
+        !f.insetBy(dx: -4, dy: -4).intersects(dockUp), "at \(width) pt the toolbar \(f) reaches the dock \(dockUp)")
+      #expect(f.minX >= 12 && f.maxX <= width - 12, "at \(width) pt the toolbar leaves the pane")
+      if width >= 1000 { #expect(abs(f.midX - width / 2) <= 1 && f.minY == 12, "centred and 12 up at \(width) pt") }
+    }
+  }
 }
