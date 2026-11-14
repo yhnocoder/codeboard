@@ -561,6 +561,33 @@ extension CanvasSidenoteTests {
     (m.items.last?.representedObject as? MenuAction)?.run()
     #expect(r.doc.board.sidenote(nid("l1")) == nil && r.doc.undoName == "Delete Sidenote")
   }
+
+  /// The popup's buttons are main's <button>s in its page: a press and a release off one does nothing, a click acts,
+  /// and a mouse click leaves no focus ring (button:focus-visible)
+  @Test func thePopupsButtonsActOnTheReleaseOverThemWithNoFocusRing() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let pop = c.sidenotePop
+    let at = PopAt.spot(.point(x: 300, y: 600))
+    c.openPop(at)
+    await opened(r, at)
+    let xy = try #require(
+      await pop.run(
+        """
+        const b = document.querySelector('[aria-label="Close"]').getBoundingClientRect();
+        return [b.x + b.width / 2, b.y + b.height / 2]
+        """) as? [Double])
+    let close = CGPoint(x: xy[0], y: xy[1])
+    let v = pop.view
+    func ring() async -> Bool? { await pop.run("return !!document.querySelector(':focus-visible')") as? Bool }
+    r.mouse(.leftMouseDown, in: v, at: close)
+    r.mouse(.leftMouseUp, in: v, at: CGPoint(x: close.x - 120, y: close.y + 60))
+    #expect(await ring() == false, "pressed: no ring")
+    #expect(c.openPop == at, "let go off it: still open")
+    r.click(in: v, at: close)
+    await r.until("closed by the click") { c.openPop == nil }
+  }
 }
 
 extension CanvasSidenoteTests {

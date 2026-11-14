@@ -166,6 +166,24 @@ extension CanvasWritingTests {
       #expect(r.canvas.safeView.contains(CGPoint(x: r.rect("far").midX, y: r.rect("far").minY + 10)))
     }
 
+    /// The preview's arrow is main's <button class="cpeek-go">: it goes on the release over it, not on the press, and
+    /// not when let go off it
+    @Test func thePreviewsArrowGoesOnTheReleaseOverIt() async throws {
+      let r = try await refRig()
+      defer { r.close() }
+      let far = try #require(await r.refBox("Far"))
+      r.click(CGPoint(x: far.midX, y: far.midY))
+      await r.until("the preview drawn") { r.canvas.refPeek?.ready == true }
+      let peek = try #require(r.canvas.refPeek)
+      let go = CGPoint(x: peek.goRect.midX, y: peek.goRect.midY)
+      r.mouse(.leftMouseDown, in: peek, at: go)
+      #expect(r.canvas.refPeek === peek, "the press alone does nothing")
+      r.mouse(.leftMouseUp, in: peek, at: CGPoint(x: go.x - 200, y: go.y))
+      #expect(r.canvas.refPeek === peek && r.doc.selection == [.card(cid("n1"))], "let go off it")
+      r.click(in: peek, at: go)
+      #expect(r.canvas.refPeek == nil && r.doc.selection == [.card(cid("far"))], "a click goes")
+    }
+
     @Test func aCardOnAnotherBoardIsPreviewedAndItsArrowOpensThatBoardAtIt() async throws {
       let r = try await refRig()
       defer { r.close() }

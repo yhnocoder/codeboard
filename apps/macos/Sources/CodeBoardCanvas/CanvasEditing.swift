@@ -898,36 +898,53 @@ extension CanvasView {
       finishConnect(from: from, at: p)
       return
     }
+    // the buttons drawn on the board act on the release over them (hold)
     if let b = barButton(at: p) {
-      if e.clickCount == 1 { press(b) }
+      if e.clickCount == 1 {
+        hold(over: { [weak self] in self?.barButton(at: $0) == b }, act: { [weak self] in self?.press(b) })
+      }
       return
     }
     // a Section title's control; its grip is pressed as the title is
     if let (id, a) = sectionAct(at: p), a != .grip {
-      if e.clickCount == 1 { press(a, of: id) }
+      if e.clickCount == 1 {
+        hold(
+          over: { [weak self] in self?.sectionAct(at: $0).map { $0 == (id, a) } == true },
+          act: { [weak self] in self?.press(a, of: id) })
+      }
       return
     }
     // a sidenote marker: its popup opens, or closes when it is open
     if let i = markAt(p) {
       guard e.clickCount == 1 else { return }
-      if marks[i].add {
-        openAddNote(marks[i].at)
-      } else if case .spot(.point) = marks[i].at {
+      let at = marks[i].at
+      if case .spot(.point) = at, !marks[i].add {
         // a free one is dragged, or clicked when it does not move
         markDrag = (i, v, false)
       } else {
-        togglePop(marks[i].at)
+        let add = marks[i].add
+        hold(
+          over: { [weak self] in self?.markAt($0).map { self?.marks[$0].at == at } == true },
+          act: { [weak self] in add ? self?.openAddNote(at) : self?.togglePop(at) })
       }
       return
     }
     // a card's mark of its other places (on the card, over the Section titles): the next one
     if let id = twinMark(at: p) {
-      if e.clickCount == 1 { showNextTwin(id) }
+      if e.clickCount == 1 {
+        hold(over: { [weak self] in self?.twinMark(at: $0) == id }, act: { [weak self] in self?.showNextTwin(id) })
+      }
       return
     }
     // a faded chevron, under the markers
     if let (id, a) = fadedSectionAct(at: p), a == .fold {
-      if e.clickCount == 1 { press(a, of: id) }
+      if e.clickCount == 1 {
+        hold(
+          over: { [weak self] in
+            guard let self else { return false }
+            return (sectionAct(at: $0) ?? fadedSectionAct(at: $0)).map { $0 == (id, a) } == true
+          }, act: { [weak self] in self?.press(a, of: id) })
+      }
       return
     }
     // a press anywhere else on the board closes it (what is being written in it is added)
@@ -938,7 +955,12 @@ extension CanvasView {
       return
     }
     // a Web card's Retry and Edit Title; a Link List's row, dragged
-    if e.clickCount == 1, pressWebLink(at: p) { return }
+    if e.clickCount == 1, let l = webLink(at: p) {
+      hold(
+        over: { [weak self] in self?.webLink(at: $0).map { $0 == l } == true },
+        act: { [weak self] in self?.pressWebLink(l) })
+      return
+    }
     if pressRow(e, view: v, board: p) { return }
     // a ref's preview closes, but on the press on its ref (which closes it too, as its second click)
     refPress = e.clickCount == 1 ? refAt(p) : nil
@@ -1008,9 +1030,14 @@ extension CanvasView {
       startView: v, start: p)
   }
 
+  /// A button on the board pressed: it acts on the release over it (main's <button>, whose click is a press and a
+  /// release over it), nothing when let go off it
+  func hold(over: @escaping (CGPoint) -> Bool, act: @escaping () -> Void) { held = (over, act) }
+
   public override func mouseDragged(with e: NSEvent) {
     if spacePanDragged(e) { return }
     if chipPressed != nil { return hoverChip(at: camera.board(convert(e.locationInWindow, from: nil))) }
+    if held != nil { return }
     if let d = markDrag {
       let v = convert(e.locationInWindow, from: nil)
       guard d.moved || hypot(v.x - d.from.x, v.y - d.from.y) >= dragSlop else { return }
@@ -1122,6 +1149,11 @@ extension CanvasView {
         pasteAs(b == .reference)
       }
       return drawChrome()
+    }
+    if let h = held {
+      held = nil
+      if h.over(camera.board(convert(e.locationInWindow, from: nil))) { h.act() }
+      return
     }
     if releaseSummary(at: convert(e.locationInWindow, from: nil)) { return }
     if let d = markDrag {

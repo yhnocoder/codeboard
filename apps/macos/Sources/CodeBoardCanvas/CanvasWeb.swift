@@ -116,20 +116,18 @@ extension CanvasView {
     return true
   }
 
-  /// A click on what nothing read shows: Retry, or Edit Title. True when it was one of them
-  func pressWebLink(at p: CGPoint) -> Bool {
-    guard let id = hitCard(p), let (w, r, b) = webAt(id), b.shape == .none else { return false }
+  /// What nothing read shows under a board point: its card's Retry (true) or Edit Title (false)
+  func webLink(at p: CGPoint) -> (card: CardID, retry: Bool)? {
+    guard let id = hitCard(p), let (_, r, b) = webAt(id), b.shape == .none else { return nil }
     let local = CGPoint(x: p.x - r.minX, y: p.y - r.minY)
-    if let rr = b.retry, rr.contains(local) {
-      refreshWeb(id)
-      return true
-    }
-    if let e = b.edit, e.contains(local) {
-      editWebText(id, .title)
-      _ = w
-      return true
-    }
-    return false
+    if let rr = b.retry, rr.contains(local) { return (id, true) }
+    if let e = b.edit, e.contains(local) { return (id, false) }
+    return nil
+  }
+
+  /// Retry, or Edit Title, clicked
+  func pressWebLink(_ l: (card: CardID, retry: Bool)) {
+    if l.retry { refreshWeb(l.card) } else { editWebText(l.card, .title) }
   }
 
   // MARK: Commands

@@ -722,10 +722,21 @@ package final class ShelfPanel: NSView {
   /// The X's rect
   var closeRect: CGRect { CGRect(x: bounds.width - 4 - 22 - 4, y: (Self.header - 22) / 2, width: 22, height: 22) }
 
-  package override func mouseDown(with e: NSEvent) { CanvasView.under(self)?.stopGlide() }
+  /// Pressed on the X: a click on it is a press and a release over it (main's <button>)
+  private var down = false
+
+  package override func mouseDown(with e: NSEvent) {
+    CanvasView.under(self)?.stopGlide()
+    down = closeRect.contains(convert(e.locationInWindow, from: nil))
+  }
   package override func mouseUp(with e: NSEvent) {
+    defer { down = false }
     let p = convert(e.locationInWindow, from: nil)
-    if closeRect.contains(p) { onClose?() } else { onBlank?() }
+    if closeRect.contains(p) {
+      if down { onClose?() }
+    } else if !down {
+      onBlank?()
+    }
   }
   package override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
@@ -908,9 +919,16 @@ package final class ShelfPreview: NSView {
     CATransaction.commit()
   }
 
-  package override func mouseDown(with e: NSEvent) { CanvasView.under(self)?.stopGlide() }
+  /// Pressed on Put Back: a click on it is a press and a release over it (main's <button>)
+  private var down = false
+
+  package override func mouseDown(with e: NSEvent) {
+    CanvasView.under(self)?.stopGlide()
+    down = buttonRect.contains(convert(e.locationInWindow, from: nil))
+  }
   package override func mouseUp(with e: NSEvent) {
-    if buttonRect.contains(convert(e.locationInWindow, from: nil)) { onPutBack?() }
+    defer { down = false }
+    if down, buttonRect.contains(convert(e.locationInWindow, from: nil)) { onPutBack?() }
   }
   package override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }

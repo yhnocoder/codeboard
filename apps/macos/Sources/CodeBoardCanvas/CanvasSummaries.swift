@@ -412,7 +412,11 @@ extension CanvasView {
   /// (a double-click flies to it). False: not on a column
   func pressSummary(_ e: NSEvent, view v: CGPoint, board p: CGPoint) -> Bool {
     if let b = summaryButton(at: p) {
-      if e.clickCount == 1 { b.keep ? keepSummary(b.key) : rewriteSummary(b.key) }
+      if e.clickCount == 1 {
+        hold(
+          over: { [weak self] in self?.summaryButton(at: $0).map { $0 == b } == true },
+          act: { [weak self] in b.keep ? self?.keepSummary(b.key) : self?.rewriteSummary(b.key) })
+      }
       return true
     }
     guard let i = summaryColumn(at: p) else { return false }

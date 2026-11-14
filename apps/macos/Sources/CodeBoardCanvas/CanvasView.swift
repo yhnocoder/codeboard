@@ -338,6 +338,10 @@ public final class CanvasView: NSView {
   var chipHovered: ChipButton?
   /// The chip's button pressed, until the release (it acts if let go over it)
   var chipPressed: ChipButton?
+  /// A button drawn on the board pressed (a Section's control, a sidenote's marker, a card's mark of its other places,
+  /// the Text bar's, a summary's, a Web card's Retry or Edit Title), until the release: as main's <button>, it acts
+  /// when let go over it (`over`), and does nothing when let go off it
+  var held: (over: (CGPoint) -> Bool, act: () -> Void)?
   var chipInside = false
   var choosingChip = false
   /// How long the chip stays once the pointer is not over it (timing.ts PASTE_CHIP_IDLE)
