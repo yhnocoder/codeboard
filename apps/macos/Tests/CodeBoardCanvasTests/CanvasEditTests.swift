@@ -58,8 +58,30 @@ private func png(_ url: URL) throws {
   #expect(CGImageDestinationFinalize(dest))
 }
 
+/// Lets one rig at a time be open: every rig's Notes are drawn by the one renderer (one web page, a picture at a time)
+/// and each opens web views of its own, so rigs side by side queue behind each other, on a runner's few cores past
+/// their waits; tests that open none still run side by side
+actor RigTurns {
+  private var taken = false
+  private var waiting: [CheckedContinuation<Void, Never>] = []
+
+  func take() async {
+    guard taken else {
+      taken = true
+      return
+    }
+    await withCheckedContinuation { waiting.append($0) }
+  }
+
+  func give() {
+    if waiting.isEmpty { taken = false } else { waiting.removeFirst().resume() }
+  }
+}
+
 /// A board in a vault of its own, open in a canvas in a window of its own
 @MainActor final class Rig {
+  static let turns = RigTurns()
+
   let root: URL
   let window: NSWindow
   let canvas: CanvasView
@@ -68,8 +90,18 @@ private func png(_ url: URL) throws {
   static let notes = NoteRenderer(
     cache: FileManager.default.temporaryDirectory.appending(path: "canvas-edit-cache-\(UUID().uuidString)"))
 
-  init(_ board: Board = sample(), zoom: CGFloat?, pasteboard: NSPasteboard? = nil, root given: URL? = nil) async throws
-  {
+  /// Whether it holds the turn (a second rig a test opens alongside its first shares the first's)
+  private let turn: Bool
+
+  init(
+    _ board: Board = sample(), zoom: CGFloat?, pasteboard: NSPasteboard? = nil, root given: URL? = nil,
+    alongside: Rig? = nil
+  ) async throws {
+    let mine = alongside == nil
+    turn = mine
+    if mine { await Rig.turns.take() }
+    var opened = false
+    defer { if !opened && mine { Task { await Rig.turns.give() } } }
     _ = NSApplication.shared
     let page = NoteRenderer.bundledPage.appending(path: "page.html").path(percentEncoded: false)
     try #require(FileManager.default.fileExists(atPath: page), "build the Note page first: node web/build.mjs")
@@ -109,6 +141,7 @@ private func png(_ url: URL) throws {
     if let zoom { canvas.place(zoom: zoom, centre: CGPoint(x: 550, y: 400)) }
     // from rest: a test's gestures start with no redraw of the setup's under way, as a person's do on a board drawn
     await idle()
+    opened = true
   }
 
   func close() {
@@ -117,6 +150,7 @@ private func png(_ url: URL) throws {
     canvas.leave()
     window.close()
     try? FileManager.default.removeItem(at: root)
+    if turn { Task { await Rig.turns.give() } }
   }
 
   /// A board point in the window's coordinates
@@ -488,7 +522,7 @@ private func png(_ url: URL) throws {
     // into another board
     var other = Board(id: BoardID(rawValue: "other"))
     other.cards = []
-    let s = try await Rig(other, zoom: 1, pasteboard: board)
+    let s = try await Rig(other, zoom: 1, pasteboard: board, alongside: r)
     defer { s.close() }
     s.canvas.paste(nil)
     #expect(s.doc.board.cards.count == 2 && s.doc.board.arrows.count == 1)

@@ -981,6 +981,19 @@ public final class CanvasView: NSView {
     }
   }
 
+  /// A press of any button stops a glide at once, before the press is hit-tested; what is under the pointer is worked
+  /// out again for the camera there
+  func stopGlide() {
+    guard case .glide = motion.phase else { return }
+    motion.stopGlide(at: lastTick)
+    if let w = pointerInWindow { rehover(convert(w, from: nil)) }
+  }
+
+  public override func otherMouseDown(with e: NSEvent) {
+    stopGlide()
+    super.otherMouseDown(with: e)
+  }
+
   /// Input moved the camera: rest work is cancelled
   func moved() {
     gestureStarts += 1
