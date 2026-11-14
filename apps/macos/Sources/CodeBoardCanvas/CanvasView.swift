@@ -110,6 +110,15 @@ public final class CanvasView: NSView {
   /// Rest work was started since the queue was last idle
   var worked = false
   var link: CADisplayLink?
+  /// A clock of the interaction driver's (Sources/Drive): the display link stops and the driver steps every frame
+  /// (`tick(at:)`) on its own time, so a recording is the same each run
+  package var steppedClock: (() -> TimeInterval)? {
+    didSet { link?.isPaused = steppedClock != nil }
+  }
+  /// Frames are wanted: the display link runs, unless the driver steps them
+  func wake() { link?.isPaused = steppedClock != nil }
+  /// Now, on the display's clock or the driver's
+  var now: TimeInterval { steppedClock?() ?? CACurrentMediaTime() }
   let images = CanvasView.sharedImages
   /// Made by the first board shown, off the main thread (compiling its queries takes tens of milliseconds and as many
   /// megabytes), and kept for every canvas
@@ -118,7 +127,7 @@ public final class CanvasView: NSView {
   /// Called at the start of every display-link frame, before the canvas moves (CanvasBench drives and measures from it).
   /// While set, the display link never pauses
   package var onFrame: ((CADisplayLink) -> Void)? {
-    didSet { link?.isPaused = false }
+    didSet { wake() }
   }
   // MARK: Editing state (CanvasEditing.swift)
 
@@ -609,7 +618,7 @@ public final class CanvasView: NSView {
     hoveredMark = nil
     summariesChanged()
     if !keepCamera { levels.show(zoom: camera.zoom) }
-    applyLevels(levels.frame(at: CACurrentMediaTime()))
+    applyLevels(levels.frame(at: now))
     applyCamera()
     arrive()
     stylePopLine()
@@ -819,6 +828,7 @@ public final class CanvasView: NSView {
     let l = displayLink(target: self, selector: #selector(step(_:)))
     l.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
     l.add(to: .main, forMode: .common)
+    l.isPaused = steppedClock != nil
     link = l
   }
 
@@ -900,7 +910,7 @@ public final class CanvasView: NSView {
     gestureStarts += 1
     if !queue.isIdle || !tasks.isEmpty { cancelRedraws() }
     applyCamera()
-    link?.isPaused = false
+    wake()
   }
 
   func cancelRedraws() {
@@ -979,7 +989,7 @@ public final class CanvasView: NSView {
     let writing = editingIndex
     queue.replace(with: plan.jobs.filter { $0.item != writing })
     restAfterEditingZoom()
-    link?.isPaused = false
+    wake()
   }
 
   /// Each frame at rest: start redraws up to the limit, swap in finished ones within the frame's budget
@@ -1041,7 +1051,7 @@ public final class CanvasView: NSView {
       ruleBreaks.redraws += 1
       ruleBreaks.decodes += decodes
     }
-    link?.isPaused = false
+    wake()
   }
 
   /// The first picture of a Note fades in over its paper
@@ -1181,7 +1191,7 @@ public final class CanvasView: NSView {
     levels.show(zoom: z)
     camera = Camera(origin: CGPoint(x: centre.x - bounds.width / 2 / z, y: centre.y - bounds.height / 2 / z), zoom: z)
     motion = Motion()
-    applyLevels(levels.frame(at: CACurrentMediaTime()))
+    applyLevels(levels.frame(at: now))
     cancelRedraws()
     applyCamera()
     arrive()

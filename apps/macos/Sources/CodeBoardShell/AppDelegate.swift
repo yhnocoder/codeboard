@@ -12,6 +12,21 @@ import CodeBoardModel
   withExtendedLifetime(delegate) { NSApp.run() }
 }
 
+/// What drives the app in place of a person's hands (the interaction driver, Sources/Drive): the app starts behind every
+/// other window and never activates, so nobody's work is interrupted, and the driver is handed its window once the vault
+/// in the saved state is open
+@MainActor package protocol AppDriver: AnyObject {
+  func started(window: NSWindow)
+}
+
+@MainActor package func runApp(driver: AppDriver) {
+  let delegate = AppDelegate()
+  delegate.driver = driver
+  NSApplication.shared.delegate = delegate
+  NSApp.setActivationPolicy(.accessory)
+  withExtendedLifetime(delegate) { NSApp.run() }
+}
+
 /// Owns the one window and does what touches the disk for the shell: the vault choice, its tree and watcher, the import,
 /// saving the state. Menu actions reach it through the responder chain.
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
@@ -25,6 +40,7 @@ import CodeBoardModel
   /// Only the latest tree read is applied
   private var treeRead = 0
   private var settings: SettingsWindow?
+  var driver: AppDriver?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSWindow.allowsAutomaticWindowTabbing = false
@@ -57,8 +73,13 @@ import CodeBoardModel
     panes.summarySwitch = ai.summarySwitch
     panes.summaryWriter = keys.key() != nil ? ai.writer(keys: keys) : nil
     window.title = shell.vault?.root.lastPathComponent ?? "CodeBoard"
-    window.makeKeyAndOrderFront(nil)
-    NSApp.activate()
+    if let driver {
+      window.orderBack(nil)
+      driver.started(window: window)
+    } else {
+      window.makeKeyAndOrderFront(nil)
+      NSApp.activate()
+    }
     track { [weak self] in
       guard let self, let state = shell.state, let data = try? JSONEncoder().encode(state) else { return }
       UserDefaults.standard.set(data, forKey: Self.stateKey)

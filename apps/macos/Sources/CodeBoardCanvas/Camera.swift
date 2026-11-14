@@ -11,11 +11,11 @@ public struct Camera: Equatable, Codable, Sendable {
     self.zoom = zoom
   }
 
-  func board(_ p: CGPoint) -> CGPoint {
+  package func board(_ p: CGPoint) -> CGPoint {
     CGPoint(x: origin.x + p.x / zoom, y: origin.y + p.y / zoom)
   }
 
-  func view(_ p: CGPoint) -> CGPoint {
+  package func view(_ p: CGPoint) -> CGPoint {
     CGPoint(x: (p.x - origin.x) * zoom, y: (p.y - origin.y) * zoom)
   }
 
