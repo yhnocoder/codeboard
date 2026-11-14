@@ -1,0 +1,14 @@
+# 拼音选字上屏后马上按 Esc（0.1 秒内），编辑就结束：第一下 Esc 不能被吞掉
+# known mac: 上屏后 0.5 秒内的第一下 Esc 被 ProseMirror 当作确认组字的那个键吞掉（WebKit 里选字的空格先于 compositionend 到页面）
+zoom 1
+center @cnote+150,60
+rec ime
+dbl @cnote+150,90
+wait 600
+ime ni|nih|你好
+wait 100
+key esc
+expect answer < 300
+wait 800
+shot left
+stop

@@ -109,7 +109,16 @@ class Driver {
     this.proc.unref();
     await this.until(/driver ready|web ready/, 60000);
     // the Mac app starts on its sidebar: open the first board, as a person would
-    if (this.side === "mac") for (const c of ["warp 700 500", "click 90 91", "wait 1500", "focus", "move 700 650 200"]) await this.send(c);
+    // (until its canvas is there: a fixed wait sometimes clicked before the sidebar listed the board)
+    if (this.side !== "mac") return;
+    await this.send("warp 700 500");
+    for (let i = 0; ; i++) {
+      if (i % 10 === 0) await this.send("click 90 91");
+      await this.send("wait 300");
+      if ((await this.send("cam")) !== "no canvas") break;
+      if (i === 50) throw new Error("mac: the board did not open (log.txt)");
+    }
+    for (const c of ["wait 500", "focus", "move 700 650 200"]) await this.send(c);
   }
   plist(vault) {
     fs.writeFileSync(
@@ -262,7 +271,8 @@ async function centerOn(d, target) {
 //   subjects: <id>.x|y|w|h|right|bottom|section (board units; a card or Section), cam.x|y|zoom, pointer.x|y (board
 //   units), ui.<part>.x|y|w|h|right|bottom (the toolbar, the dock and their parts, in points from the board's top
 //   left), press (what the last
-//   press landed on), answer (ms from the last input's end to the first change on screen; needs a running `rec`)
+//   press landed on), answer (ms from the last input reaching the app to the first change on screen, the drawn
+//   pointer left out; needs a running `rec`)
 //   ops: = != < <= > >= ~ (within 2) has lacks; values: a number, a word, another subject (`<id>.bottom`), was, was+N,
 //   was-N (the subject at `mark`)
 // The Mac app's cards are where its canvas's accessibility elements say (identifier = id) when it has them; otherwise
@@ -341,31 +351,79 @@ const shown = (v) => (typeof v === "number" ? String(Math.round(v * 10) / 10) : 
 
 /** How long the window took to answer the last input before log line `upto` (ms), from the recorded frames */
 async function answerTime(d, upto) {
-  const lines = d.lines().slice(0, upto).filter(Boolean).map((l) => ({ t: Number(l.split(" ")[0]), text: l.replace(/^\S+ /, "") }));
+  const lines = logLines(d).slice(0, upto);
   const last = lines.filter((l) => /^done \d+ (click|dbl|up|key|type|drag|menu|scroll|pinch)\b/.test(l.text)).pop();
   if (!last) return undefined;
-  const frames = framesOf(d);
-  const at = frames.findIndex((f) => f.t >= last.t);
+  const a = await answered(lines, framesOf(d), last);
+  return a === undefined ? undefined : a.first === undefined ? 3000 : (a.first - a.from) * 1000;
+}
+const logLines = (d) =>
+  d.lines().filter(Boolean).map((l) => {
+    const i = l.indexOf(" ");
+    return { t: Number(l.slice(0, i)), text: l.slice(i + 1) };
+  });
+/** When the input of command `done` (its log line) reached the app: the button going down (click, dbl, menu), the key
+ *  going down (key), the button coming up (up, drag), otherwise the command's start; and the first and last frame that
+ *  changed after it, the drawn pointer left out (until nothing changed for 300 ms, within 3 s). Not from the command's
+ *  end: an app that answers a key between its down and up has changed before the command ends. */
+async function answered(lines, frames, done) {
+  const n = /^done (\d+) (\S+)/.exec(done.text);
+  const start = lines.findIndex((l) => l.text.startsWith(`start ${n[1]} `));
+  const inside = lines.slice(start, lines.indexOf(done) + 1);
+  const from = /^(up|drag)$/.test(n[2])
+    ? done.t
+    : (inside.filter((l) => /^(press|key down) /.test(l.text)).pop() ?? inside[0] ?? done).t;
+  const at = frames.findIndex((f) => f.t >= from);
   if (at < 1) return undefined;
-  for (let i = at; i < frames.length && frames[i].t - last.t < 3; i++)
-    if (await differ(frames[i - 1].file, frames[i].file)) return (frames[i].t - last.t) * 1000;
-  return 3000;
+  let first, last;
+  // (Chromium sends a frame only when the picture changed; the Mac recorder sends every frame)
+  for (let i = at; i < frames.length && frames[i].t - from < 3; i++) {
+    if (last !== undefined && frames[i].t - last > 0.3) break;
+    if (await differ(frames[i - 1], frames[i])) {
+      first ??= frames[i].t;
+      last = frames[i].t;
+    }
+  }
+  return { from, first, last };
 }
 function framesOf(d) {
   const frames = [];
   for (const r of fs.readdirSync(d.dir).filter((f) => fs.existsSync(path.join(d.dir, f, "times.txt")))) {
-    const times = fs.readFileSync(path.join(d.dir, r, "times.txt"), "utf8").split("\n").filter(Boolean).map(Number);
-    times.forEach((t, i) => frames.push({ t, file: path.join(d.dir, r, `f${String(i).padStart(5, "0")}.png`) }));
+    const rows = fs.readFileSync(path.join(d.dir, r, "times.txt"), "utf8").split("\n").filter(Boolean);
+    rows.forEach((row, i) => {
+      const [t, x, y] = row.split(" ").map(Number);
+      frames.push({ t, x, y, file: path.join(d.dir, r, `f${String(i).padStart(5, "0")}.png`) });
+    });
   }
   return frames.sort((a, b) => a.t - b.t);
 }
 const small = new Map();
-const pixels = async (f) =>
-  small.get(f) ?? small.set(f, await sharp(f).resize(160, 104, { fit: "fill" }).raw().toBuffer()).get(f);
+const SW = 160, SH = 104;
+const pixels = async (f) => {
+  if (!small.has(f)) {
+    const img = sharp(f);
+    const { width, height } = await img.metadata();
+    const s = Number(lookEnv.ACCEPT_SCALE);
+    small.set(f, { data: await img.resize(SW, SH, { fit: "fill" }).raw().toBuffer(), kx: (SW * s) / width, ky: (SH * s) / height });
+  }
+  return small.get(f);
+};
+/** Whether two frames differ, leaving out the pointer the recorder draws in each (its arrow, the ring of a button held
+ *  down, the cursor's name beside it) */
 async function differ(a, b) {
-  const [x, y] = await Promise.all([pixels(a), pixels(b)]);
+  const [x, y] = await Promise.all([pixels(a.file), pixels(b.file)]);
+  const { kx, ky } = x, ch = x.data.length / (SW * SH);
+  // (points from the pointer's tip: the ring and the arrow, then the cursor's name)
+  const boxes = [[-12, -12, 13, 21], [14, 15, 100, 31]];
+  const masks = [a, b].filter((f) => !Number.isNaN(f.x ?? NaN))
+    .flatMap((f) => boxes.map(([l, t, r, btm]) => [(f.x + l) * kx, (f.y + t) * ky, (f.x + r) * kx, (f.y + btm) * ky]));
   let n = 0;
-  for (let i = 0; i < x.length; i++) if (Math.abs(x[i] - y[i]) > 24) n++;
+  for (let i = 0; i < x.data.length; i++) {
+    if (Math.abs(x.data[i] - y.data[i]) <= 24) continue;
+    const p = Math.floor(i / ch), px = p % SW, py = Math.floor(p / SW);
+    if (masks.some(([l, t, r, btm]) => px >= Math.floor(l) && px <= Math.ceil(r) && py >= Math.floor(t) && py <= Math.ceil(btm))) continue;
+    n++;
+  }
   return n > 3;
 }
 
@@ -387,7 +445,7 @@ async function cut(d, name, [target, w, h]) {
 
 // ---- outputs
 const fpsOf = (dir) => {
-  const t = fs.readFileSync(path.join(dir, "times.txt"), "utf8").split("\n").filter(Boolean).map(Number);
+  const t = fs.readFileSync(path.join(dir, "times.txt"), "utf8").split("\n").filter(Boolean).map((l) => Number(l.split(" ")[0]));
   return t.length > 1 ? (t.length - 1) / (t[t.length - 1] - t[0]) : 30;
 };
 function sideBySide(out, name, have, dirs) {
@@ -416,10 +474,7 @@ async function shotPair(out, name, have, dirs) {
  *  answer (first frame that changed after the command ended) and to settle (no change for 300 ms) */
 async function report(d, out) {
   const rows = [];
-  const lines = d.lines().filter(Boolean).map((l) => {
-    const i = l.indexOf(" ");
-    return { t: Number(l.slice(0, i)), text: l.slice(i + 1) };
-  });
+  const lines = logLines(d);
   const frames = framesOf(d);
   const inputs = { move: 0, click: 0, dbl: 0, drag: 0, down: 0, key: 0, type: 0, scroll: 0, pinch: 0, menu: 0 };
   for (const l of lines) {
@@ -431,18 +486,10 @@ async function report(d, out) {
     const start = lines.find((x) => x.text.startsWith(`start ${done[1]} `));
     let answer = "";
     if (/^(click|dbl|up|key|type|drag|menu)\b/.test(done[2])) {
-      const at = frames.findIndex((f) => f.t >= l.t);
-      if (at > 0) {
-        let first, last;
-        // (Chromium sends a frame only when the picture changed; the Mac recorder sends every frame)
-        for (let i = at; i < frames.length && frames[i].t - l.t < 3; i++) {
-          if (last !== undefined && frames[i].t - last > 0.3) break;
-          if (await differ(frames[i - 1].file, frames[i].file)) {
-            first ??= frames[i].t;
-            last = frames[i].t;
-          }
-        }
-        answer = first === undefined ? "  no change within 3 s" : `  answered ${((first - l.t) * 1000).toFixed(0)} ms, settled ${((last - l.t) * 1000).toFixed(0)} ms`;
+      const a = await answered(lines, frames, l);
+      if (a) {
+        const ms = (t) => ((t - a.from) * 1000).toFixed(0);
+        answer = a.first === undefined ? "  no change within 3 s" : `  answered ${ms(a.first)} ms, settled ${ms(a.last)} ms`;
       }
     }
     rows.push(`${((l.t - (start?.t ?? l.t)) * 1000).toFixed(0).padStart(6)} ms  ${done[2]}${answer}`);
