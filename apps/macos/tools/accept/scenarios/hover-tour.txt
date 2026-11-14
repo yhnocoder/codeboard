@@ -1,0 +1,20 @@
+# 指针慢慢经过每种卡的卡头和 Section 标题：悬停时出现什么（按钮、光标、提示）
+zoom 1
+center @cfree+150,40
+rec hover
+move @ccode+230,12 600
+wait 700
+shot code-head
+move @cfree+150,12 600
+wait 700
+shot free-head
+move @cnote+150,12 600
+wait 700
+shot note-head
+move @sboxes+20,-10 600
+wait 700
+shot section-title
+move @cyellow 600
+wait 700
+shot text-box
+stop

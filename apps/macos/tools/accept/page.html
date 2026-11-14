@@ -1,0 +1,41 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="board/board.css">
+<style>
+html, body { margin: 0; height: 100%; overflow: hidden; } #root { position: fixed; inset: 0; }
+#__ptr { position: fixed; left: 0; top: 0; width: 13px; height: 20px; z-index: 2147483647; pointer-events: none; }
+#__ring { position: fixed; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; background: rgba(255,59,48,.35); z-index: 2147483646; pointer-events: none; display: none; }
+#__cur { position: fixed; z-index: 2147483647; pointer-events: none; font: 500 10px -apple-system, sans-serif; color: #fff; background: rgba(0,0,0,.7); padding: 0 4px; }
+</style>
+</head>
+<body class="vscode-light"><div id="root"></div>
+<svg id="__ptr" viewBox="0 0 13 20"><path d="M0.5 0.5 L0.5 17.5 L5 13 L8.5 19.5 L11 18.5 L7.7 12 L12.5 12 Z" fill="#000" stroke="#fff" stroke-width="1.2"/></svg>
+<div id="__ring"></div><div id="__cur"></div>
+<script type="module">
+import { boot } from "./board/boot.js";
+let listener = () => {};
+window.__posted = [];
+window.__deliver = (msgs) => { for (const m of msgs) listener(m); };
+window.__board = boot(
+  {
+    listen: (fn) => (listener = fn),
+    post: (m) => {
+      window.__posted.push(m);
+      if ("req" in m) queueMicrotask(() => listener({ type: "reply", req: m.req, data: null }));
+    },
+  },
+  { selfCheck: false },
+);
+window.__booted = true;
+const ptr = document.getElementById("__ptr"), ring = document.getElementById("__ring"), cur = document.getElementById("__cur");
+const at = (e) => {
+  ptr.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
+  ring.style.left = e.clientX + "px"; ring.style.top = e.clientY + "px";
+  const c = getComputedStyle(document.elementFromPoint(e.clientX, e.clientY) ?? document.body).cursor;
+  cur.textContent = c; cur.style.display = c === "auto" || c === "default" ? "none" : "block";
+  cur.style.left = e.clientX + 14 + "px"; cur.style.top = e.clientY + 20 + "px";
+};
+addEventListener("pointermove", at, true);
+addEventListener("pointerdown", (e) => { at(e); ring.style.display = "block"; }, true);
+addEventListener("pointerup", (e) => { at(e); ring.style.display = "none"; }, true);
+</script></body></html>
