@@ -1,4 +1,5 @@
 # Section 标题行：旁注标记、折叠箭头各点一次（展开时、折叠后），点到的是对的东西
+# theme: ink-wash
 zoom 1
 center @sboxes+200,100
 move @sboxes+40,-1 300

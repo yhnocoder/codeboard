@@ -1,4 +1,5 @@
 # 插入子白板卡后右键 Delete Board…：先问；Esc 取消后白板还在；再来一次按回车确认，侧栏里 Second 没了
+# storage: storage-two
 zoom 1
 center @cown+150,300
 move @cown+150,300 300

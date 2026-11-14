@@ -1,4 +1,5 @@
 # 白板回来时还在离开时的地方：缩放、平移以后换到另一块白板再回来，镜头不变（main：每块白板记着自己的镜头）。两块白板：--storage apps/macos/tools/accept/storage-two --only mac
+# storage: storage-two
 zoom 1.7
 scroll 160 -90 12 still
 wait 900
