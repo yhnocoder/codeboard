@@ -100,6 +100,8 @@ public final class MarkdownEditorView: NSView {
   let preview = MathPreview()
   let hints = MathHintList()
   let toolbar = SelectionToolbar()
+  /// whether the selection toolbar is up (a host's check)
+  public var toolbarShown: Bool { !toolbar.isHidden }
   let linkBox = LinkBox()
   let sizePicker = TableSizePicker()
   let noteBox = NoteBox()
@@ -1301,6 +1303,7 @@ public final class MarkdownEditorView: NSView {
     }
     let caret = CGRect(x: c.minX * zoom, y: c.minY * zoom, width: 1, height: c.height * zoom)
     typedMenu.show(items, token: t, under: caret, theme: core.layout.theme)
+    fit(typedMenu, to: caret)
   }
 
   /// groups whose "N more" was taken: all their items listed
@@ -1489,7 +1492,10 @@ public final class MarkdownEditorView: NSView {
   /// the toolbar comes up once the selection has stood still for TOOLBAR_SETTLE, the button up
   private func scheduleToolbar() {
     let s = core.selection
+    // none for a selection in code (bubble.tsx want(): not where the parent is code)
+    let leaf = MarkdownEditing.context(at: s.range.lowerBound, in: core.document).leaf
     guard !s.isEmpty, !holdsToolbar, core.selectedImage == nil, core.marked == nil, tableDrag == nil, resizing == nil,
+      leaf != .code, leaf != .source,
       MarkdownEditing.run(at: s.range.lowerBound, in: core.document)?.kind == .inline
     else {
       toolbarTimer?.invalidate()
@@ -1565,6 +1571,7 @@ public final class MarkdownEditorView: NSView {
     guard let c = core.caretRect else { return hints.hide() }
     let caret = CGRect(x: c.minX * zoom, y: c.minY * zoom, width: 1, height: c.height * zoom)
     hints.show(items, token: (from, t.query), under: caret, theme: core.layout.theme, resources: core.layout.resources)
+    fit(hints, to: caret)
   }
 
   /// where the previewed formula's TeX starts in the source
@@ -1624,6 +1631,9 @@ public final class MarkdownEditorView: NSView {
         under: CGRect(
           x: frame.minX * zoom + 8, y: frame.minY * zoom, width: frame.width * zoom, height: frame.height * zoom),
         theme: l.theme, resources: l.resources, caret: h - body.lowerBound, errorOnly: true)
+      fit(
+        preview,
+        to: CGRect(x: frame.minX * zoom, y: frame.minY * zoom, width: frame.width * zoom, height: frame.height * zoom))
       return
     }
     guard isEditing, core.selection.isEmpty, let h = l.head, h == core.selection.head,
@@ -1653,6 +1663,28 @@ public final class MarkdownEditorView: NSView {
     }
     preview.show(
       (f.latex, f.display), under: r, theme: l.theme, resources: l.resources, caret: core.selection.head - start)
+    fit(preview, to: r)
+  }
+
+  /// A popup the caret or a formula anchors, shown under `anchor`: flipped above it when under would run off what the
+  /// window shows and above has more room, and kept 6 points inside it across (main's place(): flip and shift, pad 6,
+  /// in the viewport)
+  func fit(_ v: NSView, to anchor: CGRect) {
+    guard !v.isHidden else { return }
+    let shown: CGRect? =
+      if let clip = enclosingScrollView?.contentView { convert(clip.bounds, from: clip) } else {
+        window?.contentView.map { convert($0.bounds, from: $0) }
+      }
+    let b = shown ?? bounds
+    guard !b.isNull, !b.isEmpty else { return }
+    let pad: CGFloat = 6
+    var f = v.frame
+    let gap = f.minY - anchor.maxY
+    let roomBelow = b.maxY - pad - anchor.maxY - gap
+    let roomAbove = anchor.minY - gap - (b.minY + pad)
+    if f.height > roomBelow, roomAbove > roomBelow { f.origin.y = anchor.minY - gap - f.height }
+    f.origin.x = max(b.minX + pad, min(f.minX, b.maxX - pad - f.width))
+    v.frame = f
   }
 
   // MARK: the mouse

@@ -23,6 +23,18 @@ import Testing
     #expect(m.clipsToBounds)
   }
 
+  /// a / menu opened on the Note's last line, with no room under it: above the line, inside the Note (the [[ menu ran
+  /// off the window's bottom)
+  @Test func aMenuNearTheBottomOpensAbove() {
+    let v = view((1...20).map { "Line \($0)" }.joined(separator: "\n\n"), caret: 0)
+    v.selection = MDSelection((v.core.source as NSString).length)
+    v.insertText(" /", replacementRange: NSRange(location: NSNotFound, length: 0))
+    let caret = v.core.caretRect!
+    #expect(v.typedMenu.shown)
+    #expect(v.typedMenu.frame.maxY <= caret.minY * v.zoom)
+    #expect(v.typedMenu.frame.minY >= v.bounds.minY)
+  }
+
   /// the toolbar over a selection on the last line: above it, 8 points off, as main places it; never where the pointer
   /// just pressed (a press on the line above went to the toolbar's Link and opened the link box)
   @Test func theToolbarSitsAboveTheSelectionAndAwayFromThePress() {
