@@ -383,6 +383,7 @@ public final class MarkdownEditorView: NSView {
       ctx.draw(pic, in: CGRect(origin: .zero, size: r.size))
       ctx.restoreGState()
     }
+    drawTableFlip(ctx)
     // the selection over the text: under it, a code block's or a table header's fill would hide it. Translucent, so the
     // text reads through; in the static picture too (a selection made there before editing)
     // (a selected image's source is selected underneath: no selection colour on it or its caption)
@@ -731,12 +732,12 @@ public final class MarkdownEditorView: NSView {
     case "language": pickLanguage(from: v, at: r)
     case "copy": copyCode()
     case "wrap": toggleWrap()
-    case "rowBelow": core.command(.addRow(below: true))
-    case "rowAbove": core.command(.addRow(below: false))
-    case "delRow": core.command(.deleteRow)
-    case "colRight": core.command(.column(.add(after: true)))
-    case "colLeft": core.command(.column(.add(after: false)))
-    case "delCol": core.command(.column(.delete))
+    case "rowBelow": flipTable(.row, add: 1) { core.command(.addRow(below: true)) }
+    case "rowAbove": flipTable(.row, add: 0) { core.command(.addRow(below: false)) }
+    case "delRow": flipTable(.row, add: nil) { core.command(.deleteRow) }
+    case "colRight": flipTable(.column, add: 1) { core.command(.column(.add(after: true))) }
+    case "colLeft": flipTable(.column, add: 0) { core.command(.column(.add(after: false))) }
+    case "delCol": flipTable(.column, add: nil) { core.command(.column(.delete)) }
     case "more":
       moreMenu(from: v, at: r)
       return
@@ -996,6 +997,116 @@ public final class MarkdownEditorView: NSView {
     }
     if left == right { return c }
     return c.offsetBy(dx: left ? -2 : 2, dy: 0)
+  }
+
+  // MARK: a table's rows and columns changing
+
+  enum TableAxis { case row, column }
+  /// cells moving to their new places: a picture of each, where it was, where it is, and whether it comes or goes
+  private var tableFlip: (cover: CGRect, pieces: [(pic: CGImage, from: CGRect, to: CGRect, fade: Int)], since: Double)?
+  private var tableLink: CADisplayLink?
+
+  /// Runs a row or column change at the caret's cell (`add`: 0 before it, 1 after it, nil the caret's one deleted) with
+  /// main's flip (tableview.ts): the cells that stay slide from where they were, new ones fade in, the removed ones fade
+  /// out where they were, over TABLE_SLIDE. Nothing slides in a window nobody sees. Whether the change was made
+  @discardableResult
+  func flipTable(_ axis: TableAxis, add: Int?, _ run: () -> Bool) -> Bool {
+    let before = MarkdownEditing.tablePlace(at: core.selection.head, in: core.document)
+    // each cell with its border (half a line on each side and the line itself), so the lines move with the cells
+    let cells0 = (before.map { core.layout.cellBoxes(of: $0.table) } ?? []).map {
+      $0.map { $0.insetBy(dx: -1, dy: -1) }
+    }
+    let pics0 = cells0.map { $0.map { snapshot($0) } }
+    guard run() else { return false }
+    // the table again by where it starts (the caret may be at its edge, in no cell, after a column goes)
+    guard let b = before, window.map({ $0.occlusionState.contains(.visible) }) ?? true,
+      let table = core.document.blocks.first(where: { $0.range.lowerBound == b.block.lowerBound }).flatMap({
+        blk -> MDTable? in
+        if case .table(let t) = blk.kind { return t }
+        return nil
+      })
+    else { return true }
+    let cells1 = core.layout.cellBoxes(of: table).map { $0.map { $0.insetBy(dx: -1, dy: -1) } }
+    // where the line that changed is: the new one's index, or the removed one's
+    let at =
+      axis == .row ? (add.map { b.row + $0 == 0 ? 1 : b.row + $0 } ?? b.row) : (add.map { b.column + $0 } ?? b.column)
+    // an old row's (or column's) index now: past an added one one more, past a removed one one less, the removed none
+    func moved(_ k: Int) -> Int? {
+      if add != nil { return k >= at ? k + 1 : k }
+      return k == at ? nil : k > at ? k - 1 : k
+    }
+    var pieces: [(pic: CGImage, from: CGRect, to: CGRect, fade: Int)] = []
+    var kept = Set<[Int]>()
+    for (r, row) in cells0.enumerated() {
+      for (c, from) in row.enumerated() {
+        guard let pic = pics0[r][c] else { continue }
+        let r1 = axis == .row ? moved(r) : r
+        let c1 = axis == .column ? moved(c) : c
+        if let r1, let c1, let to = cells1[safe: r1]?[safe: c1] {
+          kept.insert([r1, c1])
+          pieces.append((pic, from, to, 0))
+        } else {
+          pieces.append((pic, from, from, -1))
+        }
+      }
+    }
+    for (r, row) in cells1.enumerated() {
+      for (c, to) in row.enumerated() where !kept.contains([r, c]) {
+        if let pic = snapshot(to) { pieces.append((pic, to, to, 1)) }
+      }
+    }
+    let all = (cells0 + cells1).flatMap { $0 }
+    guard let first = all.first else { return true }
+    tableFlip = (all.dropFirst().reduce(first) { $0.union($1) }.insetBy(dx: -1, dy: -1), pieces, core.clock())
+    if tableLink == nil {
+      let link = displayLink(target: self, selector: #selector(tableFrame(_:)))
+      link.add(to: .main, forMode: .common)
+      tableLink = link
+    }
+    needsDisplay = true
+    return true
+  }
+
+  @objc private func tableFrame(_ link: CADisplayLink) {
+    Self.linkTicks += 1
+    needsDisplay = true
+    if tableFlip == nil {
+      tableLink?.invalidate()
+      tableLink = nil
+    }
+  }
+
+  /// the table's cells where the flip has them now, over the table as it is (drawn from the clock: right in any frame)
+  private func drawTableFlip(_ ctx: CGContext) {
+    guard let f = tableFlip else { return }
+    let k = min(1, max(0, (core.clock() - f.since) / MarkdownTiming.tableSlide))
+    guard k < 1 else {
+      tableFlip = nil
+      return
+    }
+    let e = CGFloat(MarkdownTiming.ease(k))
+    ctx.saveGState()
+    ctx.setFillColor(core.layout.theme.colors.surface.cg)
+    ctx.fill(f.cover)
+    for p in f.pieces {
+      let r = CGRect(
+        x: p.from.minX + (p.to.minX - p.from.minX) * e, y: p.from.minY + (p.to.minY - p.from.minY) * e,
+        width: p.from.width + (p.to.width - p.from.width) * e, height: p.from.height + (p.to.height - p.from.height) * e
+      )
+      ctx.saveGState()
+      ctx.setAlpha(p.fade == 0 ? 1 : p.fade > 0 ? e : 1 - e)
+      ctx.translateBy(x: r.minX, y: r.maxY)
+      ctx.scaleBy(x: 1, y: -1)
+      ctx.draw(p.pic, in: CGRect(origin: .zero, size: r.size))
+      ctx.restoreGState()
+    }
+    ctx.restoreGState()
+  }
+
+  /// cells flipping now: staying, coming, going (tests)
+  var flippingCells: (stay: Int, come: Int, go: Int) {
+    let p = tableFlip?.pieces ?? []
+    return (p.filter { $0.fade == 0 }.count, p.filter { $0.fade > 0 }.count, p.filter { $0.fade < 0 }.count)
   }
 
   // MARK: an image address settling
@@ -1849,7 +1960,9 @@ public final class MarkdownEditorView: NSView {
     if key == "\r" || e.keyCode == 36 || e.keyCode == 51 {
       // ⌘↵ / ⌘⇧↵ a table row below or above, ⌘⇧⌫ the row deleted
       let c: MDCommand = e.keyCode == 51 ? .deleteRow : .addRow(below: !shift)
-      if e.keyCode != 51 || shift, core.command(c) {
+      if e.keyCode != 51 || shift,
+        flipTable(.row, add: e.keyCode == 51 ? nil : shift ? 0 : 1, { core.command(c) })
+      {
         note(.key(Self.mods(e) + (e.keyCode == 51 ? "⌫" : "↵"), did: "\(c)"))
         changed()
         return true

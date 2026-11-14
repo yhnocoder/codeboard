@@ -10,8 +10,9 @@ import CodeBoardMarkdownUI
 /// {"move": "left|right|up|down|wordLeft|wordRight|lineStart|lineEnd", "extend": bool}, {"select": [anchor, head]},
 /// {"command": "bold|italic|code|highlight|strike|h1…h6|body"}, {"marked": "pinyin"}, {"commit": "中"}, {"undo": true},
 /// {"redo": true}, {"click": offset} (where the caret would be drawn), {"edit": bool}, {"moveBlocks": [from, to, before]}
-/// (a ⌘ move of blocks from..<to to before block `before`, every block then sliding) and {"tick": seconds} (the slide's
-/// clock moved on: one frame of it). Each step's log has the time the step took and the time its frame took to draw
+/// (a ⌘ move of blocks from..<to to before block `before`, every block then sliding), {"band": "rowBelow"} (a band
+/// control pressed: a table's row or column added or removed, its cells then flipping) and {"tick": seconds} (the
+/// animation clock moved on: one frame of it). Each step's log has the time the step took and the time its frame took to draw
 @MainActor
 enum Frames {
   struct Script: Decodable {
@@ -36,6 +37,7 @@ enum Frames {
     var edit: Bool?
     var moveBlocks: [Int]?
     var tick: Double?
+    var band: String?
   }
   /// how far the blocks' slide is
   static var slideClock: Double = 0
@@ -162,6 +164,15 @@ enum Frames {
       slideClock += t
       v.stepBlocks(at: slideClock)
       return "tick \(slideClock)"
+    }
+    if let id = s.band {
+      // the editor's clock is the script's from here, so ticks move what it animates by its clock (a table's flip)
+      let start = slideClock
+      v.core.clock = { 1000 + Frames.slideClock - start }
+      // the band follows the selection the script left
+      v.selection = v.selection
+      v.pressBandPart(id)
+      return "band \(id)"
     }
     return "nothing"
   }

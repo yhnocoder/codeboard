@@ -724,7 +724,7 @@ public protocol MarkdownEditorDelegate: AnyObject {
 - [x] 粘贴：网页上画好的公式还原成 TeX（KaTeX、MathJax、MathML 的 TeX 注释，旁边画出来的那份不要），`\( \)`、`\[ \]` 写成 `$`、`$$`（3i）
 - [x] 粘贴：网页文字里的 `* _ \` [ ]` 保持是字，`==`、`~~` 照 Markdown 读（pastemarks.ts）；"显示的字 + TeX" 连在一起的变回 `$TeX$`（doubled.ts，显示的字由公式引擎给）（3i）
 - [ ] 粘贴：代码识别用宿主的分类器（3i）
-- [ ] 表格：增删行列时格子滑动、新格淡入、删掉的淡出（tableview.ts flip；原生要在表格排版里按格子画偏移，比看上去大）（3e）
+- [x] 表格：增删行列时留下的格子（连同边线）滑到新位置、新格淡入、删掉的淡出，TABLE_SLIDE，按时钟在绘制时算，看不见的窗口里不做；逐帧工具 `frames/tableflip.json`（`band` 步骤）（3e）
 - [ ] 末尾是代码、公式、表格块时补一个不保存的空段落；静态显示里的选区映射进编辑器（3i）
 - [x] ⌘ 整块移动：组件这一半（6.4）和演示程序当宿主（两张卡之间：⌘ 悬停轮廓、⌘-拖动、⌘-单击拿起、浮起、放回）（3j）
 - [x] ⌘ 整块移动：Note 上方的副本变成指针右下的缩略图（长边 ≤132，120 ms 切换）、落下 / 拿起 / 放回后其余块 160 ms 滑到位（FLIP，插入符和选区跟着块走）、落下的块等副本到达才显示、卡片高度 160 ms 跟随；逐帧工具 `--frames tools/markdown/frames/blockmove.json`（`moveBlocks`、`tick` 步骤，每帧记 `drawMs`）：滑动中每帧绘制 < 1 ms（3j）

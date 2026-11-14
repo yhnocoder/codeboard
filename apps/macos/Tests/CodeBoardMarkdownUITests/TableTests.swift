@@ -258,3 +258,27 @@ import Testing
     #expect(v.core.source == src)
   }
 }
+
+/// Inserting and deleting rows and columns as main animates it (tableview.ts flip): the cells that stay slide, new ones
+/// fade in, removed ones fade out, over TABLE_SLIDE by the clock
+@MainActor @Suite struct TableFlipTests {
+  @Test func cellsSlideComeAndGo() {
+    _ = boardFonts
+    let src = "| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 22)
+    var t = 10.0
+    v.core.clock = { t }
+    v.selection = MDSelection(22)
+    #expect(v.flipTable(.row, add: 1) { v.core.command(.addRow(below: true)) })
+    #expect(v.flippingCells == (6, 2, 0))
+    t += MarkdownTiming.tableSlide
+    // a frame drawn once the slide's time is over ends it
+    let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds)!
+    v.cacheDisplay(in: v.bounds, to: rep)
+    #expect(v.flippingCells == (0, 0, 0))
+    v.selection = MDSelection(22)
+    #expect(v.flipTable(.column, add: nil) { v.core.command(.column(.delete)) })
+    #expect(v.flippingCells.go == 4 && v.flippingCells.come == 0, "\(v.flippingCells) \(v.core.source)")
+  }
+}
