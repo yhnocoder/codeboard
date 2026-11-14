@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardNotes
 import Foundation
 import Testing
 
@@ -185,6 +186,7 @@ private func withDefaults(_ body: (UserDefaults, String) throws -> Void) rethrow
       let keys = MemoryKeyStore()
       let w = SettingsWindow(settings: AISettings(defaults: d), keys: keys)
       w.window.setFrameOrigin(CGPoint(x: -30000, y: -30000))
+      w.window.level = .underDesktop
       w.window.orderFrontRegardless()
       defer { w.window.close() }
       var switched: [SummarySwitch] = []

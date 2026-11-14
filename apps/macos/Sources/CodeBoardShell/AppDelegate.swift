@@ -74,7 +74,6 @@ import CodeBoardModel
     panes.summaryWriter = keys.key() != nil ? ai.writer(keys: keys) : nil
     window.title = shell.vault?.root.lastPathComponent ?? "CodeBoard"
     if let driver {
-      window.orderBack(nil)
       driver.started(window: window)
     } else {
       window.makeKeyAndOrderFront(nil)

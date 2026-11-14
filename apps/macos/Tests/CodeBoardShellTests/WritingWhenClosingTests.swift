@@ -43,11 +43,12 @@ import Testing
       shell.apply(.success(try vault.tree()))
       panes = BoardPanes(shell: shell, notes: WritingWhenClosingTests.notes)
       panes.frame = CGRect(x: 0, y: 0, width: 900, height: 600)
-      // far off screen, never key: the web view runs its animation frames only in a window that is ordered in
+      // under the desktop, never key: the web view runs its animation frames only in a window that is ordered in
       window = NSWindow(
         contentRect: CGRect(x: -30000, y: -30000, width: 900, height: 600), styleMask: [.titled],
         backing: .buffered, defer: false)
       window.isReleasedWhenClosed = false
+      window.level = .underDesktop
       window.contentView = panes
       window.orderFrontRegardless()
       shell.show(board.id)

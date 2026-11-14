@@ -1,6 +1,7 @@
 import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
+import CodeBoardNotes
 import CodeBoardShell
 
 // The interaction driver: the app as a person uses it, in this process only. It starts the real app (runApp with a
@@ -45,7 +46,9 @@ import CodeBoardShell
 
   func started(window: NSWindow) {
     self.window = window
-    // on the main display, behind every other window: events reach it from this process, nobody sees it in front
+    // on the main display under the desktop picture: events reach it from this process alone, it is captured alone,
+    // and nobody sees it or clicks it; put there before it is ordered in, so it never shows among the person's windows
+    window.level = .underDesktop
     if let screen = NSScreen.screens.first {
       let v = screen.visibleFrame
       window.setFrame(

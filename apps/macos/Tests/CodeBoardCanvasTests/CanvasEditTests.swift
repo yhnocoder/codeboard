@@ -89,6 +89,7 @@ private func png(_ url: URL) throws {
       contentRect: CGRect(x: -30000, y: -30000, width: 1000, height: 700), styleMask: [.titled], backing: .buffered,
       defer: false)
     window.isReleasedWhenClosed = false
+    window.level = .underDesktop
     // the canvas in a view of its own, as in a tab: the editor's web view goes over it there
     let host = NSView(frame: canvas.frame)
     host.addSubview(canvas)
@@ -96,7 +97,7 @@ private func png(_ url: URL) throws {
     canvas.noteEditor.drawOffScreen()
     canvas.sidenotePop.drawOffScreen()
     canvas.questionList.drawOffScreen()
-    // far off screen: the web view runs its animation frames only in a window that is ordered in
+    // under the desktop: the web view runs its animation frames only in a window that is ordered in
     window.orderFrontRegardless()
     try await canvas.show(
       doc, at: VaultBoard(id: board.id, title: "B", path: name), in: Vault(root: root), theme: .warmInk)

@@ -230,3 +230,9 @@ private final class DrawOnlyWebView: WKWebView {
   override var acceptsFirstResponder: Bool { false }
   override func becomeFirstResponder() -> Bool { false }
 }
+
+extension NSWindow.Level {
+  /// Under the desktop picture: a window ordered in there draws and can be captured alone, and nobody sees it or clicks
+  /// it. A titled window ordered in is put on a screen whatever its frame, so far off screen is not enough
+  package static let underDesktop = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) - 1)
+}
