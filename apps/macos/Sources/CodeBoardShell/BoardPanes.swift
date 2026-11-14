@@ -247,6 +247,8 @@ import CodeBoardNotes
   /// Writes every board with changes not yet saved (quitting, another vault); returns the boards whose changes could
   /// not be written, by title, with why
   @discardableResult func flush() -> [(title: String, why: String)] {
+    // and where each board is looked at, not yet written while it was coming to rest (quitting)
+    for pane in panes.values { pane.canvas.keepCamera(now: true) }
     var unsaved: [(title: String, why: String)] = []
     for (id, doc) in documents {
       doc.flush()

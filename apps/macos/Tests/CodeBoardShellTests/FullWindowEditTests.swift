@@ -73,12 +73,13 @@ import Testing
     var pane: CanvasView? { shell.selected.flatMap { panes.panes[$0]?.canvas } }
     var canvas: CanvasView { pane! }
 
-    init(_ vault: Vault, board: BoardID) {
+    init(_ vault: Vault, board: BoardID, cameras: CameraStore? = nil) {
       self.vault = vault
       shell = Shell()
       shell.open(vault, restoring: nil)
       shell.apply(.success(try! vault.tree()))
       (window, panes) = makeMainWindow(shell: shell)
+      panes.cameras = cameras
       window.setFrameAutosaveName("")
       window.level = .underDesktop
       window.orderFrontRegardless()
@@ -86,9 +87,9 @@ import Testing
       panes.sync()
     }
 
-    func close() {
+    func close(keepingVault: Bool = false) {
       window.orderOut(nil)
-      try? FileManager.default.removeItem(at: vault.root)
+      if !keepingVault { try? FileManager.default.removeItem(at: vault.root) }
     }
 
     /// The view the window gives a press at a board point to
@@ -159,8 +160,8 @@ import Testing
     }
   }
 
-  func opened() async throws -> Window {
-    let w = Window(try vault(), board: board)
+  func opened(_ vault: Vault? = nil, cameras: CameraStore? = nil) async throws -> Window {
+    let w = Window(try vault ?? self.vault(), board: board, cameras: cameras)
     await until("the board shown", in: w) { w.pane?.scene != nil && w.pane?.shown?.board.id == board }
     // under the desktop the window counts as hidden, where WebKit would hold the editor page's frames (as the rig does)
     w.canvas.noteEditor.drawOffScreen()
@@ -215,5 +216,27 @@ import Testing
     #expect(c.isEditing && c.editing?.id == card, "still writing")
     #expect(
       w.keysIn(c.noteEditor.view), "the keyboard still in the editor: \(String(describing: w.window.firstResponder))")
+  }
+
+  /// The app quit right after the camera moved (before it came to rest long enough to be written), then opened again
+  /// on the same vault, its window and camera store made anew: the board opens where it was left
+  @Test func aBoardOpensWhereItWasLeftAfterTheAppQuitAndOpenedTheVaultAgain() async throws {
+    let fm = FileManager.default
+    let store = CameraStore(folder: fm.temporaryDirectory.appending(path: "cameras-\(UUID().uuidString)"))
+    defer { try? fm.removeItem(at: store.folder) }
+    let v = try vault()
+    defer { try? fm.removeItem(at: v.root) }
+    let w = try await opened(v, cameras: store)
+    // quit before the camera is written as at rest
+    w.canvas.cameraDelay = .seconds(600)
+    w.canvas.place(zoom: 0.62, centre: CGPoint(x: 333, y: 211))
+    await w.frames(3)
+    let left = w.canvas.currentCamera
+    // what the app does on quitting (AppDelegate applicationShouldTerminate), then the window goes
+    _ = w.panes.flush()
+    w.close(keepingVault: true)
+    let again = try await opened(v, cameras: CameraStore(folder: store.folder))
+    defer { again.close(keepingVault: true) }
+    #expect(again.canvas.currentCamera == left, "\(again.canvas.currentCamera) after \(left)")
   }
 }

@@ -1091,7 +1091,7 @@ public final class CanvasView: NSView {
   /// The camera come to rest is kept for the board, to open there next time: written once nothing has moved it for
   /// `cameraDelay`, and not while a gesture is under way; `now`: the board is being left, written at once (unless a
   /// gesture is under way)
-  func keepCamera(now: Bool = false) {
+  package func keepCamera(now: Bool = false) {
     if let (board, vault) = shown, let store = cameras, scene != nil, camera != cameraKept {
       cameraKept = camera
       cameraToKeep = (store, vault, board.id, camera)
