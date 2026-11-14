@@ -521,7 +521,40 @@ if (editMode) watchUi();
 // one before reached the page (WebKit runs a text key through the input method first, so Esc or ⌘↵ sent right after
 // would overtake it)
 let keysSeen = 0;
-addEventListener("keydown", () => keysSeen++, true);
+addEventListener("keydown", (e) => e.isTrusted && keysSeen++, true);
+// Both editors keep a rule for Safari, where the key that commits a composition (a Space, a digit, Enter) reached the
+// page after compositionend: they skip the first key after a composition ends as that one (prosemirror-view
+// inOrNearComposition, CodeMirror's compositionPendingKey). WebKit now gives the page that key first, before the
+// composition's end, for most input methods (WebViewImpl::inputMethodUsesCorrectKeyEventOrder), and the rule would skip
+// the next key typed instead: an Esc that leaves, an Enter. Each composing key comes with one update (the key that
+// starts it may come just before it starts); a key more than that by compositionend was the committing one, and the
+// editor is handed the key its rule waits for: a keydown of nothing (Process, as a key an input method takes), which
+// it skips
+let keyPending = false;
+let compositionKeys = 0;
+let compositionUpdates = 0;
+// a key's own text or composition, or its release, ends it being the one that may start a composition
+addEventListener("beforeinput", () => (keyPending = false), true);
+addEventListener("keyup", () => (keyPending = false), true);
+addEventListener("compositionstart", () => {
+  compositionKeys = keyPending ? 1 : 0;
+  compositionUpdates = 0;
+});
+addEventListener("compositionupdate", () => compositionUpdates++, true);
+addEventListener(
+  "keydown",
+  (e) => {
+    if (!e.isTrusted) return;
+    keyPending = true;
+    compositionKeys++;
+  },
+  true,
+);
+// bubbling, so after the editors' own compositionend (on their elements)
+addEventListener("compositionend", (e) => {
+  if (compositionKeys <= compositionUpdates || !(e.target instanceof Element)) return;
+  e.target.dispatchEvent(new KeyboardEvent("keydown", { key: "Process", bubbles: true, cancelable: true }));
+});
 // an Esc the input method took to cancel its composition: WebKit gives it as Escape with keyCode 229 (Chromium as
 // Process), and the editors' Esc would leave
 addEventListener(

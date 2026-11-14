@@ -133,6 +133,7 @@ public final class NoteEditor: NSObject {
   /// key through the input method first, so a key that skips that, Esc or ⌘↵, would overtake it); keys typed meanwhile
   /// wait behind them
   public func replay(_ keys: [NSEvent]) async {
+    await inputContextReady()
     var queue = keys + (view.held ?? [])
     view.held = []
     guard !queue.isEmpty else {
@@ -149,6 +150,16 @@ public final class NoteEditor: NSObject {
       view.held = []
     }
     view.held = nil
+  }
+
+  /// WebKit gives the web view an input context only once the page has told it that what has the focus is editable (with
+  /// its next rendering update after the focus): a key handed over before that goes past the input method (Pinyin's
+  /// first letter written as it is), so keys are held until then; a page frame at a time, at most half a second
+  private func inputContextReady() async {
+    for _ in 0..<30 where view.inputContext == nil {
+      _ = try? await view.callAsyncJavaScript(
+        "await new Promise((r) => requestAnimationFrame(() => setTimeout(r)))", contentWorld: .page)
+    }
   }
 
   /// Where the card is in the web view (its points), for letting the pointer through around it
