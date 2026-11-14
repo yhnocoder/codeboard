@@ -70,6 +70,19 @@ import CodeBoardNotes
     if shell.move(path, into: fb.folder) == nil { doc.sync { $0.dropAutoCard(for: entry.target) } }
   }
 
+  /// Cards copied on board `id` and pasted on another become shared cards there first (host storage/boards.ts share),
+  /// written at once so the other board finds their files; returns their ids there now (old → new) and its title. No
+  /// cards: only the title
+  func share(_ id: BoardID, _ cards: Set<CardID>) -> (ids: [CardID: CardID], title: String)? {
+    guard let vault = shell.vault, let at = shell.board(id), let doc = try? document(id) else { return nil }
+    var ids: [CardID: CardID] = [:]
+    if !cards.isEmpty {
+      doc.sync { ids = $0.share(cards, taken: vault.sharedCardExists) }
+      doc.flush()
+    }
+    return (ids, at.title)
+  }
+
   /// Where each board whose seal is being edited began
   private var sealBefore: [BoardID: Seal?] = [:]
 
@@ -132,6 +145,7 @@ import CodeBoardNotes
         pane.onOpenBoard = { [weak self] in self?.shell.show($0) }
         pane.canvas.onVaultChanged = { [weak self] in self?.onVaultChanged?() }
         pane.canvas.onSetSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }
+        pane.canvas.shareOnBoard = { [weak self] in self?.share($0, $1) }
         pane.canvas.onVaultDrop = { [weak self, weak pane] path, p in
           guard let self, let id = pane?.document?.id else { return }
           self.vaultDrop(path, at: p, on: id)

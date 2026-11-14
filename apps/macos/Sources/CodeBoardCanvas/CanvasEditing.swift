@@ -123,6 +123,7 @@ extension CanvasView {
 
   private func documentChanged(_ change: BoardDocument.Change) {
     guard let doc = document else { return }
+    chipFollowBoard()
     // a draft of the card being written in: the web view shows it already; its picture comes when the writing ends
     if change == .draft { return drawChrome() }
     // only the selection changed (a marquee under way too): its rings follow at once
@@ -488,6 +489,7 @@ extension CanvasView {
       }
       raiseText()
       if let bar = barLayer() { chrome.addSublayer(bar) }
+      if let chip = chipLayer() { chrome.addSublayer(chip) }
       if let acts = sectionActsLayer() { chrome.addSublayer(acts) }
       drawPorts()
       drawEndHandles()
@@ -778,6 +780,12 @@ extension CanvasView {
     guard gesture == nil else { return }
     if spaceHeld { return NSCursor.openHand.set() }
     let v = convert(e.locationInWindow, from: nil)
+    hoverChip(at: camera.board(v))
+    if chipInside {
+      NSCursor.arrow.set()
+      hover(nil)
+      return
+    }
     if levels.level == .summaries {
       let p = camera.board(v)
       if summaryButton(at: p) == nil { hoverSummary(summaryColumn(at: p).map { summaryColumns[$0].col.key }) }
@@ -799,9 +807,14 @@ extension CanvasView {
       hover(nil)
       return
     }
+    let twin = twinMark(at: camera.board(v))
+    if twin != hoveredTwin {
+      hoveredTwin = twin
+      placeMarks()
+    }
     let mark = markAt(camera.board(v))
     hoverMark(mark)
-    if mark != nil {
+    if mark != nil || twin != nil {
       NSCursor.pointingHand.set()
       hover(nil)
       return
@@ -832,6 +845,7 @@ extension CanvasView {
   }
 
   public override func mouseExited(with e: NSEvent) {
+    hoverChip(at: CGPoint(x: CGFloat.infinity, y: .infinity))
     hoverTitle(nil, act: nil)
     hoverSummary(nil)
     hover(nil)
@@ -853,6 +867,12 @@ extension CanvasView {
     guard let doc = document, scene != nil, gesture == nil else { return }
     let v = convert(e.locationInWindow, from: nil)
     let p = camera.board(v)
+    // the chip's buttons; a press anywhere else closes it
+    if let on = chipButton(at: p) {
+      if let b = on, e.clickCount == 1 { pasteAs(b == .reference) }
+      return
+    }
+    closeChip()
     if placing != nil {
       putSticker(at: p, free: e.modifierFlags.contains(.option))
       return
@@ -888,6 +908,11 @@ extension CanvasView {
       } else {
         togglePop(marks[i].at)
       }
+      return
+    }
+    // a card's mark of its other places (on the card, over the Section titles): the next one
+    if let id = twinMark(at: p) {
+      if e.clickCount == 1 { showNextTwin(id) }
       return
     }
     // a faded chevron, under the markers
@@ -1573,17 +1598,23 @@ extension CanvasView {
     doc.edit("Cut", selection: []) { $0.delete(doc.selection, missing: gone) }
   }
 
-  /// Pastes plain copies: beside what was copied when that is in view (each paste a step further), else in the middle of
-  /// the view
-  @objc public func paste(_ sender: Any?) {
+  /// Pastes what was copied: on the board it was copied from, copies beside it (each paste a step further) with the chip
+  /// that makes them References; from another board, the same cards, shared by both (main's paste onto another board),
+  /// once there: they are selected. In the middle of the view when what was copied is not in view
+  @objc public func paste(_ sender: Any?) { paste(asCopy: false) }
+
+  /// ⌥⌘V: cards copied on another board come as copies of their own (keymap.ts pasteOther)
+  @objc public func pasteAsCopy(_ sender: Any?) { paste(asCopy: true) }
+
+  private func paste(asCopy: Bool) {
     if gesture == nil, pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)) == nil,
       pasteLinks()
     {
       return
     }
-    guard document != nil, gesture == nil,
+    guard let doc = document, gesture == nil,
       let data = pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)),
-      let clip = try? Clip(decoding: data), let box = clip.bounds
+      var clip = try? Clip(decoding: data), let box = clip.bounds
     else { return }
     let view = camera.visible(bounds.size)
     var dx: Double
@@ -1597,22 +1628,45 @@ extension CanvasView {
       dy = (view.midY - (box.y + box.maxY) / 2).rounded()
     }
     lastPaste = (data, dx, dy)
-    place(clip, dx: dx, dy: dy, name: "Paste")
+    guard let from = clip.board, from != shown?.board.id else {
+      let copies = place(clip, dx: dx, dy: dy, name: "Paste")
+      toast(copies.count > 1 ? "Pasted \(copies.count) copies" : "Pasted a copy")
+      return offerReference(copies)
+    }
+    let other = shareOnBoard?(from, asCopy ? [] : Set(clip.cards.map(\.id)))
+    guard !asCopy, let other else {
+      let n = place(clip, dx: dx, dy: dy, name: "Paste").count
+      let what = n > 1 ? "\(n) copies" : "a copy"
+      return toast(other.map { "Pasted \(what) from \($0.title)" } ?? "Pasted \(what)")
+    }
+    clip = clip.renamed(other.ids)
+    if !clip.cards.isEmpty, clip.cards.allSatisfy({ doc.board.card($0.id) != nil }) {
+      doc.select(Set(clip.cards.map { .card($0.id) }))
+      if let first = clip.cards.first, let r = liveRect(.card(first.id)) { reveal(r) }
+      return toast("Already on this board")
+    }
+    let n = place(clip, dx: dx, dy: dy, name: "Paste", shared: true).count
+    toast("Pasted as linked card\(n > 1 ? "s" : "") · also on \(other.title)")
   }
 
-  /// ⌘D: copies 48 down and to the right (core duplicateCards)
+  /// ⌘D: copies 48 down and to the right (core duplicateCards), with the chip that makes them References
   @objc public func duplicate(_ sender: Any?) {
     guard let doc = document, let (_, vault) = shown, gesture == nil, !doc.selection.isEmpty else { return }
     let clip = doc.board.clip(doc.selection) { try? vault.sharedCard($0) }
     guard !clip.isEmpty else { return }
-    place(clip, dx: 48, dy: 48, name: "Duplicate")
+    offerReference(place(clip, dx: 48, dy: 48, name: "Duplicate"))
   }
 
-  private func place(_ clip: Clip, dx: Double, dy: Double, name: String) {
-    guard let doc = document else { return }
+  /// The clip put on the board, what was made selected; returns each card made with the one it was made from
+  @discardableResult
+  private func place(_ clip: Clip, dx: Double, dy: Double, name: String, shared: Bool = false) -> [(
+    copy: CardID, of: CardID
+  )] {
+    guard let doc = document else { return [] }
     var b = doc.board
-    let made = b.paste(clip, dx: dx, dy: dy)
+    let (made, copies) = b.paste(clip, dx: dx, dy: dy, shared: shared)
     doc.edit(name, selection: made) { $0 = b }
+    return copies
   }
 
   @objc public func bringToFront(_ sender: Any?) { arrange(front: true) }
@@ -1660,7 +1714,7 @@ extension CanvasView: NSMenuItemValidation {
       return doc.history.canRedo && gesture == nil && editing == nil
     case #selector(copy(_:)), #selector(duplicate(_:)): return !sel.isEmpty
     case #selector(cut(_:)), #selector(delete(_:)): return sel.contains { !doc.board.isLocked($0) }
-    case #selector(paste(_:)):
+    case #selector(paste(_:)), #selector(pasteAsCopy(_:)):
       return pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)) != nil
         || pasteboard.string(forType: .string).map { s in
           s.split(whereSeparator: \.isNewline).allSatisfy { webAddress(String($0)) != nil } && !s.isEmpty

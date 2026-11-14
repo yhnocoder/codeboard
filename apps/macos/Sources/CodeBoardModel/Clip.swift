@@ -96,11 +96,12 @@ extension Board {
   /// them; segment ids stay, as they are a card's own). `shared`: its cards are the same cards as on the board it was
   /// copied from (their source board made them shared cards first, `share`): they keep their ids and are shared, the
   /// sidenotes that travel with them come along as they are, and one already on this board is left as it is (core
-  /// placeCards, copy false). Returns the cards and Sections made, to select
+  /// placeCards, copy false). Returns the cards and Sections made, to select, and each card made with the one in the clip
+  /// it was made from (core pasteCards pairs: [new id, original id])
   @discardableResult
   public mutating func paste(
     _ clip: Clip, dx: Double, dy: Double, shared: Bool = false, newID: (String) -> String = Board.newID
-  ) -> Set<Item> {
+  ) -> (made: Set<Item>, copies: [(copy: CardID, of: CardID)]) {
     var cardIDs: [CardID: CardID] = [:]
     var sectionIDs: [SectionID: SectionID] = [:]
     for c in clip.cards where !(shared && card(c.id) != nil) {
@@ -172,7 +173,10 @@ extension Board {
       stickers.append(n)
     }
     selfCheck()
-    return Set(cardIDs.values.map(Item.card)).union(sectionIDs.values.map(Item.section))
+    return (
+      Set(cardIDs.values.map(Item.card)).union(sectionIDs.values.map(Item.section)),
+      clip.cards.compactMap { c in cardIDs[c.id].map { ($0, c.id) } }
+    )
   }
 
   /// A new id: the prefix and eight random letters and digits

@@ -8,6 +8,7 @@ import CodeBoardModel
 extension CanvasView {
   /// What is under the pointer, selected first when it is not
   public override func menu(for e: NSEvent) -> NSMenu? {
+    closeChip()
     guard let doc = document, gesture == nil, levels.level == .cards else { return nil }
     let p = camera.board(convert(e.locationInWindow, from: nil))
     if let i = stickerAt(p), markAt(p) == nil {

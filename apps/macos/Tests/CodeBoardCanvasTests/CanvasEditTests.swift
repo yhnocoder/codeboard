@@ -601,4 +601,74 @@ private func png(_ url: URL) throws {
     r.send(r.mouse(.leftMouseUp, CGPoint(x: 800, y: 380)))
     await r.until("written after it") { store.cameras(for: vault)[board.id]?.zoom == 0.6 }
   }
+
+  /// The middle of a button of the chip, on the board
+  func chipPoint(_ r: Rig, _ b: ChipButton) throws -> CGPoint {
+    let rect = try #require(r.canvas.chipRect())
+    let c = try #require(r.canvas.pasteChip)
+    let l = ChipLayout.layout(ref: c.ref, font: ChipLayout.font(r.canvas.theme))
+    let at = b == .copy ? l.copy : l.reference
+    let z = r.canvas.camera.zoom
+    return CGPoint(x: rect.minX + at.midX / z, y: rect.minY + at.midY / z)
+  }
+
+  /// main's pastechip: a paste or ⌘D on the board gives Copy ✓ | Reference under the copies; Reference makes each copy
+  /// the same card as its original (both marked, the mark going to the other place), Copy a card of its own again
+  @Test func aCopyOnItsBoardOffersReferenceThenFollowsItsOriginal() async throws {
+    let board = NSPasteboard(name: NSPasteboard.Name("codeboard-tests-\(UUID().uuidString)"))
+    defer { board.releaseGlobally() }
+    let r = try await Rig(zoom: 1, pasteboard: board)
+    defer { r.close() }
+    r.doc.select([.card(cid("n1"))])
+    r.canvas.copy(nil)
+    r.canvas.paste(nil)
+    let copy = try #require(r.doc.selection.first?.card)
+    #expect(r.canvas.pasteChip?.pairs.map(\.copy) == [copy] && r.canvas.pasteChip?.pairs.map(\.of) == [cid("n1")])
+    #expect(r.canvas.pasteChip?.ref == false && r.canvas.toastText == "Pasted a copy")
+    // under the copy once it is drawn, right-aligned with it, 8 below; the same size at any zoom
+    await r.settle()
+    let chip = try #require(r.canvas.chipRect())
+    let cr = r.canvas.liveRect(.card(copy))!
+    #expect(chip.maxX == cr.maxX && chip.minY == cr.maxY + 8 && chip.height == 30)
+    #expect(r.canvas.chrome.sublayers?.contains { $0.zPosition == 15 } == true)
+    // Reference: one step; the copy is the original's other place
+    r.click(try chipPoint(r, .reference))
+    #expect(r.canvas.pasteChip?.ref == true)
+    #expect(r.card("n1").same != nil && r.doc.board.card(copy)?.same == r.card("n1").same)
+    #expect(r.canvas.toastText == "Same card in 2 places: editing one changes the other")
+    // Copy again: a card of its own; and Reference once more
+    r.click(try chipPoint(r, .copy))
+    #expect(r.doc.board.card(copy)?.same == nil && r.card("n1").same == nil)
+    #expect(r.canvas.toastText == "Detached: this is its own copy now" && r.canvas.pasteChip?.ref == false)
+    r.click(try chipPoint(r, .reference))
+    #expect(r.doc.board.card(copy)?.same != nil && r.canvas.pasteChip?.ref == true)
+    // each place marked; a click on the mark selects the other place, and as a press elsewhere closes the chip
+    await r.settle()
+    #expect(Set(r.canvas.twinSpots.map(\.card)) == [cid("n1"), copy])
+    let mark = try #require(r.canvas.twinSpots.first { $0.card == cid("n1") }).hit
+    r.click(CGPoint(x: mark.midX, y: mark.midY))
+    #expect(r.doc.selection == [.card(copy)] && r.canvas.pasteChip == nil)
+    // one place written in: the other follows
+    r.doc.edit("Write") { $0.write(cid("n1"), text: "both", layout: nil) }
+    if case .own(let c)? = r.doc.board.card(copy)?.content { #expect(c.body == .note(Note(text: "both"))) }
+    // ⌘D: the chip again; the copy moved closes it
+    r.doc.select([.card(cid("n2"))])
+    r.canvas.duplicate(nil)
+    let dup = try #require(r.doc.selection.first?.card)
+    #expect(r.canvas.pasteChip?.pairs.map(\.of) == [cid("n2")])
+    r.doc.edit("Move") { $0.move([.card(dup)], dx: 10, dy: 0) }
+    #expect(r.canvas.pasteChip == nil)
+    // it goes on its own once the pointer is not over it; not while it is
+    r.canvas.duplicate(nil)
+    await r.settle()
+    r.canvas.chipIdle = .milliseconds(1)
+    let over = try chipPoint(r, .copy)
+    r.send(r.mouse(.mouseMoved, over))
+    r.send(r.mouse(.mouseMoved, CGPoint(x: 800, y: 380)))
+    r.send(r.mouse(.mouseMoved, over))
+    await r.settle()
+    #expect(r.canvas.pasteChip != nil && r.canvas.chipHovered == .copy)
+    r.send(r.mouse(.mouseMoved, CGPoint(x: 800, y: 380)))
+    await r.until("the chip gone") { r.canvas.pasteChip == nil }
+  }
 }

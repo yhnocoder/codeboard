@@ -316,6 +316,21 @@ public final class CanvasView: NSView {
   var cardShadow: (IOSurface, margin: CGFloat)?
   /// Where Copy writes and Paste reads; tests give their own
   package var pasteboard = NSPasteboard.general
+  /// Cards copied on another board, pasted here: the shell makes them shared cards on that board (`Board.share`) and
+  /// gives the ids they have there now (old → new) and its title; nil: that board cannot take it now (they come as
+  /// copies). With no cards it only gives the title
+  public var shareOnBoard: ((BoardID, Set<CardID>) -> (ids: [CardID: CardID], title: String)?)?
+  /// The Copy ✓ | Reference chip under copies just made (CanvasPasteChip.swift)
+  var pasteChip: PasteChip?
+  var chipTimer: Task<Void, Never>?
+  var chipHovered: ChipButton?
+  var chipInside = false
+  var choosingChip = false
+  /// How long the chip stays once the pointer is not over it (timing.ts PASTE_CHIP_IDLE)
+  package var chipIdle = Duration.milliseconds(6000)
+  /// The marks of cards placed several times on the board, where they take the pointer
+  var twinSpots: [(card: CardID, hit: CGRect)] = []
+  var hoveredTwin: CardID?
   /// Each Text's narrowest width (its longest word), once measured
   var leastWidths: [CardID: CGFloat] = [:]
   /// Arrow keys held for the nudge under way
@@ -669,6 +684,7 @@ public final class CanvasView: NSView {
     if openPop != nil { refreshPop() }
     if listShown, !keepCamera { closeQuestionList() }
     if !keepCamera {
+      closeChip()
       cancelPlacing()
       closeStickerPalette()
       closeShelf()

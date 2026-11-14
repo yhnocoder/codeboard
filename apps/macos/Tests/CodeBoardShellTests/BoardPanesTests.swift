@@ -1,3 +1,4 @@
+import AppKit
 import CodeBoardModel
 import Foundation
 import Testing
@@ -302,5 +303,59 @@ import Testing
     await until("A after a relaunch") { pane2.canvas.scene != nil && pane2.canvas.shown?.board.id == a }
     #expect(pane2.canvas.currentCamera == was)
     #expect(try fm.subpathsOfDirectory(atPath: root.path).allSatisfy { !$0.contains("camera") }, "not in the vault")
+  }
+
+  /// main's paste onto another board: the cards copied are made shared cards on their board and pasted as the same
+  /// cards; pasted again, they are there already; ⌥⌘V brings a copy of its own
+  @Test func cardsCopiedOnAnotherBoardArePastedAsTheSameCards() async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appending(path: "panes-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: root) }
+    let vault = Vault(root: root)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let a = BoardID(rawValue: "a")
+    let b = BoardID(rawValue: "b")
+    let c = CardID(rawValue: "c")
+    try vault.newBoard(
+      in: "", title: "Alpha",
+      board: Board(
+        id: a,
+        cards: [
+          Card(id: c, x: 0, y: 0, width: 200, height: 100, content: .own(CardContent(body: .note(Note(text: "c")))))
+        ]))
+    try vault.newBoard(in: "", title: "Beta", board: Board(id: b))
+    let shell = Shell()
+    shell.open(vault, restoring: nil)
+    shell.apply(.success(try vault.tree()))
+    let panes = BoardPanes(shell: shell)
+    panes.frame = CGRect(x: 0, y: 0, width: 1000, height: 700)
+    shell.show(a)
+    panes.sync()
+    let tab = try #require(shell.selected)
+    let pane = try #require(panes.panes[tab])
+    let clipboard = NSPasteboard(name: NSPasteboard.Name("codeboard-tests-\(UUID().uuidString)"))
+    defer { clipboard.releaseGlobally() }
+    pane.canvas.pasteboard = clipboard
+    await until("Alpha shown") { pane.canvas.scene != nil && pane.canvas.shown?.board.id == a }
+    let docA = try #require(panes.documents[a])
+    docA.select([.card(c)])
+    pane.canvas.copy(nil)
+    shell.show(b)
+    panes.sync()
+    await until("Beta shown") { pane.canvas.shown?.board.id == b && pane.canvas.scene != nil }
+    pane.canvas.paste(nil)
+    let docB = try #require(panes.documents[b])
+    #expect(docB.board.cards.map(\.id) == [c] && docB.board.card(c)?.isShared == true)
+    #expect(docA.board.card(c)?.isShared == true && vault.sharedCardExists(c), "shared on Alpha first, written")
+    #expect(pane.canvas.toastText == "Pasted as linked card · also on Alpha")
+    // pasted again: already here
+    docB.select([])
+    pane.canvas.paste(nil)
+    #expect(docB.board.cards.count == 1 && docB.selection == [.card(c)])
+    #expect(pane.canvas.toastText == "Already on this board")
+    // ⌥⌘V: a copy of its own
+    pane.canvas.pasteAsCopy(nil)
+    #expect(docB.board.cards.count == 2 && docB.board.cards[1].id != c && !docB.board.cards[1].isShared)
+    #expect(pane.canvas.toastText == "Pasted a copy from Alpha")
   }
 }
