@@ -103,16 +103,16 @@ enum SidenoteSheets {
     init(
       root: URL, notes: NoteRenderer, theme: Theme, zoom: CGFloat = 1, board: Board = SidenoteSheets.board(),
       others: [(String, Board)] = [("Other", SidenoteSheets.other())], size: CGSize = SidenoteSheets.size,
-      centre: CGPoint
+      centre: CGPoint, sheet: String = "Sheet"
     ) async throws {
       let fm = FileManager.default
       try? fm.removeItem(at: root)
-      for (name, b) in [("Sheet", board)] + others {
+      for (name, b) in [(sheet, board)] + others {
         let package = root.appending(path: "\(name).board")
         try fm.createDirectory(at: package.appending(path: Vault.imagesFolder), withIntermediateDirectories: true)
         try b.encoded().write(to: package.appending(path: Vault.boardFileName))
       }
-      let file = root.appending(path: "Sheet.board").appending(path: Vault.boardFileName)
+      let file = root.appending(path: "\(sheet).board").appending(path: Vault.boardFileName)
       doc = try BoardDocument { file }
       canvas = CanvasView(frame: CGRect(origin: .zero, size: size), notes: notes)
       window = NSWindow(
@@ -126,7 +126,12 @@ enum SidenoteSheets {
       canvas.sidenotePop.drawOffScreen()
       canvas.questionList.drawOffScreen()
       window.orderFrontRegardless()
-      let at = VaultBoard(id: doc.id, title: "Sheet", path: "Sheet.board")
+      // a folder board ("<folder>/.folder") is titled with its folder's name
+      let parts = sheet.split(separator: "/").map(String.init)
+      let own = parts.last == ".folder"
+      let at = VaultBoard(
+        id: doc.id, title: own ? parts.dropLast().last ?? "" : parts.last ?? "", path: "\(sheet).board",
+        isFolderBoard: own)
       try await canvas.show(doc, at: at, in: Vault(root: root), theme: theme)
       canvas.place(zoom: zoom, centre: centre)
       await canvas.drawAll()

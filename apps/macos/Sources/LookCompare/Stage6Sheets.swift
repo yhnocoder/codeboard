@@ -71,7 +71,7 @@ enum Stage6Sheets {
 
   /// A part of the canvas (view points), at 2x
   @MainActor static func cut(_ r: Rig, _ rect: CGRect) throws -> CGImage {
-    let img = try EditSheets.render(r.canvas.layer!, size: size, scale: 2)
+    let img = try EditSheets.render(r.canvas.layer!, size: r.canvas.bounds.size, scale: 2)
     return img.cropping(to: CGRect(x: rect.minX * 2, y: rect.minY * 2, width: rect.width * 2, height: rect.height * 2))
       ?? img
   }
@@ -103,5 +103,13 @@ enum Stage6Sheets {
       if let main, let m = load(main.appending(path: "sub-\(suffix).png")) { cuts.insert(m, at: 0) }
       EditSheets.write(try WritingSheets.row(cuts, theme: theme), out, "subboard-\(suffix)")
     }
+    var lines = [
+      "subboard-<theme>.png: main's sub-board card (its Storybook story, rendered in Chromium) on the left, ours drawn"
+        + " natively on the right"
+    ]
+    lines += try sidebars(out: out, root: root)
+    lines += try await boards(out: out, root: root, notes: notes)
+    try (lines.joined(separator: "\n\n") + "\n").write(
+      to: out.appending(path: "report.txt"), atomically: true, encoding: .utf8)
   }
 }
