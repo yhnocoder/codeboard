@@ -76,7 +76,7 @@ Mac 这边复制粘贴用的是这个进程自己的私有剪贴板，碰不到�
 
 `scenarios/` 里的场景：`b1/`（第 2 步第 1 批的交互验收）、`stale-hover`（指针不动时平移，连接点从原来的卡换到新到指针下的卡；捏合时跟着缩放）、`look-tour`、`look-tour2`（外观：各部件静止、悬停、选中、拖动中、编辑中各拍一张，只拍不判）、`section-follow`（拖动中 Section 跟着撑开）、`pan-over-edit`（编辑时平移经过这张卡不停）、`hover-tour`（经过各种卡头和 Section 标题时出现什么）、`new-text-flow`（不对照：新建、输入、拖进 Section 的完整流程）、`ime-esc`（拼音上屏后马上按 Esc，编辑要结束）、`label-edit`（箭头标签和 Section 标题的就地编辑：双击、右键 Edit Label、选中箭头按回车）、`summary-edit`（缩小推过摘要那一级，点摘要正文就地编辑）、`glide-stop`（只跑 Mac：滑行途中按下，相机立即停住）。`reopen-camera`（关掉 app 再打开，镜头不变）。第二轮交互验收的：`space-pan`、`space-pan2`（按住空格拖动平移）、`help-keys`（`?` 打开快捷键列表）、`sidenote-menu`、`badge-chevron`、`badge-chevron-iw`（Sidenote 标记和折叠箭头）、`sticker`、`dup-copy`、`paste-copy`、`paste-ref`、`fit-alt-f`、`hide-lines`、`layout-keep`，两块白板的 `two/two-delete-board`、`two/three-delete-board`、`two/two-alt-paste`。
 
-测试白板（`storage/blook.json`）有各种卡、带标签和样式的箭头、两个 Section、Sticker、Sidenote，每个会被摘要的项都带着摘要；右下远处一张 `cfar`，让白板大到缩得到摘要那一级。
+测试白板（`storage/blook.json`）有各种卡、带标签和样式的箭头、两个 Section、Sticker、Sidenote，每个会被摘要的项都带着摘要；右下远处一张 `cfar`，让白板大到缩得到摘要那一级。Shelf 上有两项（Note `cshelf1`、粉色 Box `cshelf2`），点 Shelf 按钮能看到面板。
 
 ## 怎么做到不打扰用 Mac 的人
 

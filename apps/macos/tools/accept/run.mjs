@@ -201,17 +201,23 @@ class Driver {
     if (/(^|\s)(NaN|-?Infinity|undefined|nan|inf)(\s|$)/.test(line)) throw new Error(`${this.side}: not a number in "${line}"`);
     if (/^down\b/.test(line)) this.held = true;
     if (/^up\b/.test(line)) this.held = false;
-    const n = ++this.n;
     // without blocking: a FIFO opened to write waits for ever for a reader, so a driver that died (the app crashed) would
-    // hang the run here; with no reader the open fails at once (ENXIO)
+    // hang the run here. With no reader the open fails (ENXIO): the driver is gone, or between two reads (it opens the
+    // FIFO again after each), so try again while it lives. The driver numbers lines as they arrive, so the number is
+    // taken only once this line is in (two sides' lines to one driver, the Mac borrowing where the web draws a thing)
     let fd;
-    try {
-      fd = fs.openSync(path.join(this.dir, "cmd"), fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
-    } catch (e) {
-      if (e.code !== "ENXIO") throw e;
-      throw new Error(`${this.side} driver exited${this.why()}: see ${this.dir}/stdout.txt`);
+    for (let t = 0; fd === undefined; t += 5) {
+      try {
+        fd = fs.openSync(path.join(this.dir, "cmd"), fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
+      } catch (e) {
+        if (e.code !== "ENXIO") throw e;
+        if (!this.alive()) throw new Error(`${this.side} driver exited${this.why()}: see ${this.dir}/stdout.txt`);
+        if (t > 30000) throw new Error(`${this.side}: the driver has not read its commands for 30 s`);
+        await sleep(5);
+      }
     }
     try { fs.writeSync(fd, `${line}\n`); } finally { fs.closeSync(fd); }
+    const n = ++this.n;
     const re = new RegExp(`^\\S+ done ${n} `);
     // a line answers within 30 s past the time it asks for (wait, move, drag…): a driver that hangs fails this line soon,
     // not the run half an hour later

@@ -29,7 +29,10 @@ await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 const rec = await recordBoards(storage, boardDist);
 // ACCEPT_BOARD (part of its id): the storage board to open; the first one when unset
-const [, recorded] = [...rec.messages].find(([k]) => process.env.ACCEPT_BOARD && String(k).includes(process.env.ACCEPT_BOARD)) ?? [...rec.messages][0];
+const found = [...rec.messages].find(([k]) => process.env.ACCEPT_BOARD && String(k).includes(process.env.ACCEPT_BOARD)) ?? [...rec.messages][0];
+// the host opens no board it cannot read (a file the schema refuses), and says nothing here
+if (!found) throw new Error(`no board recorded from ${storage}: does each board file pass the schema (core's readBoardFile)?`);
+const [, recorded] = found;
 // the look under test: the theme setting the host sends, light or dark as VS Code's body class says
 const LOOK = process.env.ACCEPT_THEME ?? "warm-ink", DARK = process.env.ACCEPT_DARK === "1";
 // no keys forwarded: VS Code takes those (⌘D…) and sends them back as the same key action; here the board takes them itself
