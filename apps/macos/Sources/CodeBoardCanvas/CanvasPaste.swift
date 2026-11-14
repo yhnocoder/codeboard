@@ -52,7 +52,7 @@ extension CanvasView {
   func pasteText(at p: CGPoint?) -> Bool {
     guard let s = pasteboard.string(forType: .string), !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     else { return false }
-    let at = p ?? pointerInWindow.map { camera.board(convert($0, from: nil)) }
+    let at = p
     let doc = document
     Task { [weak self, weak doc] in
       let kind = (try? await self?.notes.paste(s)) ?? .note(s)

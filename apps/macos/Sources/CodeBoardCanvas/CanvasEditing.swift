@@ -1640,10 +1640,12 @@ extension CanvasView {
   /// ⌥⌘V: cards copied on another board come as copies of their own (keymap.ts pasteOther)
   @objc public func pasteAsCopy(_ sender: Any?) { paste(asCopy: true, at: nil) }
 
-  /// `at`: where the board's menu was asked, for a Note of plain text
+  /// `at`: where the board's menu was asked, else the pointer's place (interact.ts paste: worldAt(lastPointer())), for
+  /// plain text
   func paste(asCopy: Bool, at: CGPoint?) {
+    let p = at ?? pointerInWindow.map { camera.board(convert($0, from: nil)) }
     if gesture == nil, pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)) == nil,
-      pasteLinks(at: at) || pasteText(at: at)
+      pasteLinks(at: p) || pasteText(at: p)
     {
       return
     }
