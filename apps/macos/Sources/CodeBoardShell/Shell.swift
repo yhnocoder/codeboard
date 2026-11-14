@@ -73,6 +73,9 @@ public struct ShellState: Codable, Equatable, Sendable {
   /// A subfolder renamed in the sidebar, before the tree is read again: its parent's folder board keeps its card where
   /// it was (the parent folder's path, the old name, the new)
   public var folderRenamed: ((String, String, String) -> Void)?
+  /// A board or subfolder deleted or moved away from the sidebar, before the tree is read again: its folder's folder
+  /// board lets its card go (the folder's path, the entry)
+  public var entryLeft: ((String, FolderEntry) -> Void)?
   /// What is being renamed in the sidebar: a board by id, a folder by path
   public var renaming: Renaming?
   /// Where deleted boards and folders go: the system Trash; tests give a stand-in

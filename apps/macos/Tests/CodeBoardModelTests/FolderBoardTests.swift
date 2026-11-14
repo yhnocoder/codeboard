@@ -31,27 +31,53 @@ private func targets(_ b: Board) -> [SubBoard.Target] { b.autoCards.map(\.target
   #expect(b.autoCards[1].card.x == Board.autoWidth + Board.autoGap && b.autoCards[1].card.y == first.y)
   changed = b.keepUp(with: [.board(bid("b1")), .board(bid("b2")), .folder("Sub")])
   #expect(!changed, "nothing to change")
-  // the user moves one; one goes: its place is not filled, a new one comes after the last
+  // the user moves one; b2 is not there now: its card stays where it is (drawn missing); b3 comes after the last
   let moved = b.autoCards[2].card.id
   if let i = b.cards.firstIndex(where: { $0.id == moved }) { b.cards[i].x = 2000 }
+  let b2 = b.autoCards[1].card
   changed = b.keepUp(with: [.board(bid("b1")), .folder("Sub"), .board(bid("b3"))])
   #expect(changed)
-  #expect(targets(b) == [.board(bid("b1")), .folder("Sub"), .board(bid("b3"))])
+  #expect(targets(b) == [.board(bid("b1")), .board(bid("b2")), .folder("Sub"), .board(bid("b3"))])
+  #expect(b.card(b2.id) == b2, "kept as it was")
   #expect(b.card(moved)?.x == 2000, "where the user put it")
-  // after the last: its row is past four cards' width, so under it from the first one's left; the gap left as it is
+  // after the last: its row is past four cards' width, so under it from the first one's left
   let sub = try #require(b.card(moved))
-  #expect(b.autoCards[2].card.x == 0 && b.autoCards[2].card.y == sub.y + Board.autoHeight + Board.autoRowGap)
-  #expect(b.autoCards[0].card.x == 0 && !b.cards.contains { $0.x == Board.autoWidth + Board.autoGap })
+  #expect(b.autoCards[3].card.x == 0 && b.autoCards[3].card.y == sub.y + Board.autoHeight + Board.autoRowGap)
   #expect(b.card(cid("mine")) != nil && b.arrows.count == 1, "the user's own")
+  // b2 back: the same card, nothing changes
+  let before = b
+  let again = b.keepUp(with: [.board(bid("b1")), .board(bid("b2")), .folder("Sub"), .board(bid("b3"))])
+  #expect(!again)
+  #expect(b == before)
   // a row is full at four: the next starts a row under the first
   var r = Board(id: bid("r"))
   r.keepUp(with: (1...5).map { .board(bid("x\($0)")) })
   let cards = r.autoCards.map(\.card)
   #expect(cards.map(\.x) == [0, 480, 960, 1440, 0] && cards[4].y == Board.autoHeight + Board.autoRowGap)
-  // an automatic card's arrows go with it
+  // deleted or moved away in the app: its card goes, unless something is on it
   r.arrows.append(Arrow(id: ArrowID(rawValue: "z"), from: Endpoint(card: cards[0].id), to: Endpoint(card: cards[1].id)))
-  r.keepUp(with: (2...5).map { .board(bid("x\($0)")) })
-  #expect(r.arrows.isEmpty && r.autoCards.count == 4)
+  let kept = r.dropAutoCard(for: .board(bid("x1")))
+  #expect(!kept)
+  #expect(r.autoCards.count == 5 && r.arrows.count == 1)
+  let went = r.dropAutoCard(for: .board(bid("x3")))
+  #expect(went)
+  #expect(r.autoCards.map(\.target) == [.board(bid("x1")), .board(bid("x2")), .board(bid("x4")), .board(bid("x5"))])
+}
+
+@Test func aMissingCardIsTheCardOfABoardOfItsLastKnownTitleThatCame() {
+  var b = Board(id: bid("fb"))
+  b.keepUp(with: [.board(bid("old")), .board(bid("other"))])
+  let card = b.autoCards[0].card
+  // made again with another id, the same title: the same card, where it was
+  let changed = b.keepUp(
+    with: [.board(bid("new")), .board(bid("other"))], titles: [bid("new"): "Prefill", bid("other"): "Decode"],
+    known: [bid("old"): "Prefill", bid("other"): "Decode"])
+  #expect(changed)
+  #expect(b.autoCards.map(\.target) == [.board(bid("new")), .board(bid("other"))])
+  #expect(b.autoCards[0].card.id == card.id && b.autoCards[0].card.x == card.x)
+  // a board of another title: a card of its own
+  b.keepUp(with: [.board(bid("third"))], titles: [bid("third"): "Else"], known: [bid("new"): "Prefill"])
+  #expect(b.autoCards.count == 3)
 }
 
 @Test func aPlainSubBoardCardIsTheUsersAndASecondAutoCardForTheSameGoes() {
@@ -63,7 +89,7 @@ private func targets(_ b: Board) -> [SubBoard.Target] { b.autoCards.map(\.target
     ])
   b.keepUp(with: [.board(bid("b1"))])
   #expect(b.card(cid("plain")) != nil && b.autoCards.count == 1)
-  // two automatic cards for one board (a merge of two writers): one stays
+  // two automatic cards for one board (a merge of two writers): one stays, the second going when nothing is on it
   var twice = b
   twice.cards.append(
     Card(

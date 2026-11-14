@@ -177,6 +177,8 @@ public struct Theme: Sendable {
   /// Section names and counts (.sblab: 11, semibold and medium)
   var subName = Font(NSFont.systemFont(ofSize: 25, weight: .bold)).tracked(-0.375)
   var subCount = Font(NSFont.systemFont(ofSize: 25, weight: .medium)).tracked(-0.375)
+  /// What a sub-board card whose board is missing says (.sbgone, 12 px in the look's system face)
+  var subGone = Font(NSFont.systemFont(ofSize: 12))
   var subLabel = Font(NSFont.systemFont(ofSize: 11, weight: .semibold))
   var subLabelCount = Font(NSFont.systemFont(ofSize: 11, weight: .medium))
 
@@ -296,6 +298,7 @@ public struct Theme: Sendable {
       metrics: CodeMetrics(charWidth: code.advance))
     t.subName = serif(25, 600).tracked(-0.375)
     t.subCount = serif(25, 500).tracked(-0.375)
+    t.subGone = serif(12, 400)
     t.subLabel = serif(11, 600)
     t.subLabelCount = serif(11, 500)
     t.mark = rgb(0x1d1c1a)

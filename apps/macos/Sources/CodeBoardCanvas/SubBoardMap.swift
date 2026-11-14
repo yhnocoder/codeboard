@@ -137,6 +137,11 @@ struct Skeleton: Sendable, Equatable {
 final class Skeletons: Sendable {
   static let shared = Skeletons()
   private let kept = Mutex([String: (Date, Skeleton)]())
+  /// Each board's title when it was last seen while the app runs: what a card whose board is missing is called
+  private let names = Mutex([BoardID: String]())
+
+  func saw(_ id: BoardID, _ title: String) { names.withLock { $0[id] = title } }
+  func lastName(_ id: BoardID) -> String? { names.withLock { $0[id] } }
 
   func of(_ b: VaultBoard, vault: Vault) -> Skeleton? {
     let file = vault.url(of: b.path).appending(path: Vault.boardFileName)
@@ -167,6 +172,9 @@ extension Drawing {
     var map: Skeleton?
     /// What the count says when there is no map (a folder without a folder board: what is in it)
     var count: Int?
+    /// Its board or subfolder is not there (deleted, moved away outside the app, a checkout): drawn as main draws a
+    /// board that cannot be found, the card kept with all on it
+    var gone = false
   }
 
   /// A sub-board card's height when it has none of its own (FRAME_H)
@@ -227,6 +235,12 @@ extension Drawing {
     let nw = min(Drawing.width(b.name, nameFont), r.width - 6 - (cw > 0 ? cw + 10 : 0))
     Drawing.text(ctx, b.name, nameFont, t.ink, x: r.minX + 6, midY: midY, width: nw)
     if cw > 0 { Drawing.text(ctx, count, countFont, t.ink3, x: r.minX + 6 + nw + 10, midY: midY, width: cw) }
+    if b.gone {
+      // .sbgone: 16 18 in, 12 px, the third ink
+      Drawing.text(
+        ctx, "This board was deleted or can’t be read.", t.subGone, t.ink3, x: r.minX + 18, midY: r.minY + 16 + 8.4,
+        width: r.width - 36)
+    }
     guard let sk = b.map else { return 0 }
     // the map, clipped to the card
     ctx.saveGState()

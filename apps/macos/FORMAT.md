@@ -144,11 +144,15 @@ an animated image rests on; `loops`: it always plays.
 **board**: `board: {board: <board id>, auto?}` or `board: {folder: <name>, auto: true}`: another board shown inside this
 one (a sub-board card), by id, or a subfolder of a folder board's folder by its name (it shows that folder's folder
 board, when it has one). `auto: true` (only written when true) marks a folder board's automatic card, which the app keeps
-in step with the folder: one for each board and subfolder in it, in sidebar order; a card for what left goes (and the
-arrows on it); one for what came goes after the last automatic card, `400 × 300`, `80` apart, in rows of four from the
-first one's left with `120` between rows (the first below what the board has, or at 0, 0); places left by cards that went
-are not filled, and the user's own content and every card's position are kept. A subfolder renamed in the app keeps its
-card; renamed in Finder it is one gone and one new. A plain card (no `auto`) is the user's own and can be on any board.
+in step with the folder: one for each board and subfolder in it, in sidebar order; one for what came goes after the last
+automatic card, `400 × 300`, `80` apart, in rows of four from the first one's left with `120` between rows (the first
+below what the board and its Sections take, or at 0, 0); places left by cards that went are not filled, and the user's
+own content and every card's position are kept. A card goes only when the app itself deleted or moved away what it is for
+and nothing is on it (an arrow's end, a sidenote, a sticker). Otherwise (gone in Finder, a git checkout, a sync, or
+something on it) it stays where it is with all on it, drawn as missing; that is worked out when drawing, never written,
+and when a board of that id (or one of the title it last had, seen while the app runs) is there again the same card shows
+it. The user deletes a missing card as any card. A subfolder renamed in the app keeps its card; renamed in Finder it is a
+missing card and a new one. A plain card (no `auto`) is the user's own and can be on any board.
 Its preview's column count, a choice of the moment, is not kept.
 
 **Summary** (a card's, a section's `summary` and `directSummary`): `text, title?, at, sig, edited, pairs: [{ai, user, at}],

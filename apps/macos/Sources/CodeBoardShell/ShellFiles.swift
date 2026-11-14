@@ -98,7 +98,11 @@ extension Shell {
   @discardableResult
   public func move(_ path: String, into folder: String) -> String? {
     var to: String?
-    files { v in to = try v.move(path, into: folder) }
+    let left = leaving(path)
+    files { v in
+      to = try v.move(path, into: folder)
+      if to != path, let left { entryLeft?(left.folder, left.entry) }
+    }
     if let to {
       follow(path, to)
       if !folder.isEmpty { expanded.insert(folder) }
@@ -109,10 +113,24 @@ extension Shell {
   /// To the trash (`trasher`: the system Trash in the app); nothing changes when it cannot go there (a beep)
   @discardableResult
   public func trash(_ path: String) -> Bool {
-    let ok = files { v in try v.trash(path, with: trasher) }
+    let left = leaving(path)
+    let ok = files { v in
+      try v.trash(path, with: trasher)
+      if let left { entryLeft?(left.folder, left.entry) }
+    }
     guard ok else { return false }
     expanded = expanded.filter { $0 != path && !$0.hasPrefix(path + "/") }
     return true
+  }
+
+  /// What a folder's folder board has a card for that goes with a board or subfolder at `path` (none for a folder
+  /// board: its folder stays)
+  private func leaving(_ path: String) -> (folder: String, entry: FolderEntry)? {
+    if let b = tree?.allBoards.first(where: { $0.path == path }) {
+      return b.isFolderBoard ? nil : (b.folder, .board(b.id))
+    }
+    guard tree?.folder(at: path) != nil, let name = path.split(separator: "/").last else { return nil }
+    return (path.split(separator: "/").dropLast().joined(separator: "/"), .folder(String(name)))
   }
 
   /// Expanded folders at or under a folder that moved keep their state at their new paths

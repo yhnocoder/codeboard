@@ -26,17 +26,28 @@ extension Board {
     return s.auto
   }
 
-  /// The folder board's automatic cards made to match its folder (`entries`, in sidebar order): one goes for what left,
-  /// one comes for what came, after the last automatic card (gaps left by those gone are not filled). The user's own
-  /// cards, Sections, arrows and where every card is are kept. Whether it changed anything
+  /// Something on a card that would go with it: an arrow's end, a sidenote, a sticker
+  public func hasAttached(_ id: CardID) -> Bool {
+    arrows.contains { $0.from.card == id || $0.to.card == id } || sidenotes.contains { $0.anchor.card == id }
+      || stickers.contains { $0.anchor.card == id }
+  }
+
+  /// The folder board's automatic cards kept in step with its folder (`entries`, in sidebar order), conservatively: a
+  /// card for what came is added after the last automatic card (gaps are not filled), and a card whose board or
+  /// subfolder is not there now stays where it is with all on it (drawn as missing), since it may be back (a git
+  /// checkout, a sync); when it is, the same card shows it again. A missing card for a board whose last known title
+  /// (`known`) is the title of a board that came (`titles`) is that board's card again. Only the app's own Delete and
+  /// move take a card away (`dropAutoCard`). A second card for the same goes when nothing is on it. Whether it changed
+  /// anything
   @discardableResult
-  public mutating func keepUp(with entries: [FolderEntry]) -> Bool {
+  public mutating func keepUp(
+    with entries: [FolderEntry], titles: [BoardID: String] = [:], known: [BoardID: String] = [:]
+  ) -> Bool {
     let want = Set(entries.map(\.target))
     var seen = Set<SubBoard.Target>()
     var gone = Set<CardID>()
-    for (c, t) in autoCards {
-      // one card for each: a second for the same is gone too
-      if !want.contains(t) || !seen.insert(t).inserted { gone.insert(c.id) }
+    for (c, t) in autoCards where want.contains(t) {
+      if !seen.insert(t).inserted && !hasAttached(c.id) { gone.insert(c.id) }
     }
     if !gone.isEmpty {
       cards.removeAll { gone.contains($0.id) }
@@ -44,21 +55,47 @@ extension Board {
     }
     var changed = !gone.isEmpty
     for e in entries where !seen.contains(e.target) {
-      let at = nextAutoPlace()
-      let body: SubBoard =
-        switch e {
-        case .board(let b): SubBoard(board: b, auto: true)
-        case .folder(let f): SubBoard(folder: f)
-        }
-      cards.append(
-        Card(
-          id: CardID(rawValue: Board.newID("card-")), x: at.x, y: at.y, width: Board.autoWidth,
-          height: Board.autoHeight, content: .own(CardContent(body: .board(body)))))
+      // a missing card for a board of the same title: that board's again, where it is
+      if case .board(let b) = e, let title = titles[b],
+        let i = cards.firstIndex(where: { c in
+          guard case .own(let content) = c.content, case .board(let s) = content.body, s.auto,
+            case .board(let old) = s.target, !want.contains(s.target)
+          else { return false }
+          return known[old] == title
+        }), case .own(var content) = cards[i].content, case .board(var s) = content.body
+      {
+        s.target = .board(b)
+        content.body = .board(s)
+        cards[i].content = .own(content)
+      } else {
+        let at = nextAutoPlace()
+        let body: SubBoard =
+          switch e {
+          case .board(let b): SubBoard(board: b, auto: true)
+          case .folder(let f): SubBoard(folder: f)
+          }
+        cards.append(
+          Card(
+            id: CardID(rawValue: Board.newID("card-")), x: at.x, y: at.y, width: Board.autoWidth,
+            height: Board.autoHeight, content: .own(CardContent(body: .board(body)))))
+      }
       seen.insert(e.target)
       changed = true
     }
     if changed { selfCheck() }
     return changed
+  }
+
+  /// The app deleted or moved away what an automatic card is for: its card goes, unless something is on it (then it
+  /// stays, drawn as missing, until the user deletes it). Whether it went
+  @discardableResult
+  public mutating func dropAutoCard(for target: SubBoard.Target) -> Bool {
+    let ids = Set(autoCards.filter { $0.target == target && !hasAttached($0.card.id) }.map(\.card.id))
+    guard !ids.isEmpty else { return false }
+    cards.removeAll { ids.contains($0.id) }
+    prune()
+    selfCheck()
+    return true
   }
 
   /// Where the next automatic card goes: right of the last one, the next row once a row has `autoPerRow` (counted from
@@ -212,7 +249,7 @@ extension Board {
 }
 
 extension FolderEntry {
-  var target: SubBoard.Target {
+  public var target: SubBoard.Target {
     switch self {
     case .board(let b): .board(b)
     case .folder(let f): .folder(f)

@@ -102,10 +102,37 @@ enum Stage6Sheets {
       r.close()
       if let main, let m = load(main.appending(path: "sub-\(suffix).png")) { cuts.insert(m, at: 0) }
       EditSheets.write(try WritingSheets.row(cuts, theme: theme), out, "subboard-\(suffix)")
+
+      // a folder board's card whose board went away outside the app: kept with the arrow on it, drawn as main draws a
+      // board it cannot find, under the name it last had
+      var fb = Board(
+        id: BoardID(rawValue: "sb-fb"),
+        cards: [
+          Card(
+            id: cid("why"), x: -420, y: 60, width: 300,
+            content: .own(CardContent(body: .note(Note(text: "## 为什么\n\n先看这块。")))))
+        ])
+      fb.keepUp(with: [.board(BoardID(rawValue: "sb-sched"))])
+      let auto = fb.autoCards[0].card.id
+      fb.arrows = [Arrow(id: ArrowID(rawValue: "m1"), from: Endpoint(card: cid("why")), to: Endpoint(card: auto))]
+      let mr = try await Rig(
+        root: vault, notes: notes, theme: theme, zoom: 0.8, board: fb,
+        others: [("书 Book/Scheduler", scheduler())], size: size, centre: CGPoint(x: 0, y: 260),
+        sheet: "书 Book/.folder")
+      await mr.canvas.drawAll()
+      try FileManager.default.removeItem(at: vault.appending(path: "书 Book/Scheduler.board"))
+      mr.canvas.vaultChanged()
+      await mr.until { mr.canvas.isGone(auto) }
+      await mr.canvas.drawAll()
+      EditSheets.write(try cut(mr, CGRect(origin: .zero, size: size)), out, "missing-card-\(suffix)")
+      mr.close()
     }
     var lines = [
       "subboard-<theme>.png: main's sub-board card (its Storybook story, rendered in Chromium) on the left, ours drawn"
-        + " natively on the right"
+        + " natively on the right",
+      "missing-card-<theme>.png: a folder board's automatic card after its board was removed outside the app: it stays"
+        + " where it was with the arrow on it, under the name it last had, as main draws a board it cannot find (its"
+        + " sentence, an empty card); the folder board's file is not written for it",
     ]
     lines += try sidebars(out: out, root: root)
     lines += try await boards(out: out, root: root, notes: notes)

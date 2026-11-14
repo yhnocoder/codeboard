@@ -26,6 +26,12 @@ import CodeBoardNotes
     shell.beforeFiles = { [weak self] in self?.flush() }
     shell.afterFiles = { [weak self] in self?.sync(reload: true) }
     shell.setSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }
+    shell.entryLeft = { [weak self] parent, entry in
+      guard let self, let fb = self.shell.tree?.folder(at: parent)?.folderBoard, let doc = try? self.document(fb.id)
+      else { return }
+      doc.sync { $0.dropAutoCard(for: entry.target) }
+      doc.flush()
+    }
     shell.folderRenamed = { [weak self] parent, old, new in
       guard let self, let fb = self.shell.tree?.folder(at: parent)?.folderBoard, let doc = try? self.document(fb.id)
       else { return }
@@ -35,7 +41,7 @@ import CodeBoardNotes
   }
 
   /// A board or folder from the sidebar let go on an open folder board: its card where it was let go, then the move
-  /// (when the move cannot be made, the card goes with the next upkeep)
+  /// (when the move cannot be made, the card goes again)
   func vaultDrop(_ path: String, at p: CGPoint, on id: BoardID) {
     guard let fb = shell.board(id), fb.isFolderBoard, let doc = documents[id], let tree = shell.tree else { return }
     let entry: FolderEntry
@@ -49,7 +55,8 @@ import CodeBoardNotes
     doc.sync {
       $0.placeAutoCard(for: entry, x: p.x - Board.autoWidth / 2, y: p.y - Board.autoHeight / 2)
     }
-    shell.move(path, into: fb.folder)
+    // not moved (a name taken there): the card put for it goes again
+    if shell.move(path, into: fb.folder) == nil { doc.sync { $0.dropAutoCard(for: entry.target) } }
   }
 
   /// Where each board whose seal is being edited began
@@ -139,11 +146,16 @@ import CodeBoardNotes
   /// Each open folder board keeps one automatic card for each board and subfolder in its folder (no undo step)
   private func keepFolderBoardsUp() {
     guard let tree = shell.tree else { return }
+    let titles = Dictionary(tree.allBoards.map { ($0.id, $0.title) }, uniquingKeysWith: { a, _ in a })
+    defer { known.merge(titles) { _, new in new } }
     for (id, doc) in documents {
       guard let at = shell.board(id), at.isFolderBoard, let folder = tree.folder(at: at.folder) else { continue }
-      doc.sync { $0.keepUp(with: folder.entries) }
+      doc.sync { $0.keepUp(with: folder.entries, titles: titles, known: known) }
     }
   }
+
+  /// The title each board seen while the app runs last had: a missing automatic card finds its board again by it
+  private var known: [BoardID: String] = [:]
 
   /// One document per board while the app runs, whichever tabs show it, so its undo history outlives tab switches
   private(set) var documents: [BoardID: BoardDocument] = [:]

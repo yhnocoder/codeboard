@@ -528,14 +528,17 @@ struct Scene: Sendable {
       var map: Skeleton?
       var count: Int?
       var shows: BoardID?
+      var gone = false
       switch s.target {
       case .board(let id):
         if let vb = tree?.allBoards.first(where: { $0.id == id }) {
           if name.isEmpty { name = vb.title }
+          Skeletons.shared.saw(id, vb.title)
           map = Skeletons.shared.of(vb, vault: refs.vault)
           shows = id
-        } else if name.isEmpty {
-          name = "Board not found"
+        } else {
+          gone = tree != nil
+          if name.isEmpty { name = Skeletons.shared.lastName(id) ?? "Board not found" }
         }
       case .folder(let f):
         // a subfolder of the folder this folder board is of: its folder board's map, else how much is in it
@@ -549,9 +552,11 @@ struct Scene: Sendable {
           } else {
             count = sub.entries.count
           }
+        } else {
+          gone = tree != nil
         }
       }
-      let d = Drawing.SubBoard(id: c.id.rawValue, board: shows, name: name, map: map, count: count)
+      let d = Drawing.SubBoard(id: c.id.rawValue, board: shows, name: name, map: map, count: count, gone: gone)
       return (.board(d), CGSize(width: c.width, height: c.height ?? Drawing.subHeight), nil)
     case .web, .links:
       return nil

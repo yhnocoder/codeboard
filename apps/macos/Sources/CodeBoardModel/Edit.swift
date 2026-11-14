@@ -159,11 +159,15 @@ extension Board {
   /// Deletes cards, Sections and arrows, with what hangs on them: a card's arrows (on the canvas and on the shelf),
   /// sidenotes and stickers; a Section's sidenotes. A Section's cards and inner Sections stay, in the Section it was in
   /// (core deleteItems). Locked ones stay
-  public mutating func delete(_ items: Set<Item>) {
+  /// `missing`: automatic cards whose board or subfolder is not there, which go as any card does
+  public mutating func delete(_ items: Set<Item>, missing: Set<CardID> = []) {
     let goneArrows = Set(items.compactMap(\.arrow))
     arrows.removeAll { goneArrows.contains($0.id) }
-    // a folder board's automatic cards go only with what they are for
-    let goneCards = Set(items.compactMap(\.card).filter { card($0) != nil && !isLocked(.card($0)) && !isAuto($0) })
+    // a folder board's automatic cards go only with what they are for, or when that is missing
+    let goneCards = Set(
+      items.compactMap(\.card).filter {
+        card($0) != nil && !isLocked(.card($0)) && (!isAuto($0) || missing.contains($0))
+      })
     let goneSections = Set(items.compactMap(\.section).filter { section($0) != nil && !isLocked(section: $0) })
     // up out of the deleted Sections, to the nearest one that stays
     func up(_ id: SectionID?) -> SectionID? {

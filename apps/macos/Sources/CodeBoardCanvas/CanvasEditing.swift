@@ -1431,7 +1431,8 @@ extension CanvasView {
 
   @objc public func delete(_ sender: Any?) {
     guard let doc = document, gesture == nil, !doc.selection.isEmpty else { return }
-    doc.edit("Delete", selection: []) { $0.delete(doc.selection) }
+    let gone = goneAutoCards
+    doc.edit("Delete", selection: []) { $0.delete(doc.selection, missing: gone) }
   }
 
   @objc public func copy(_ sender: Any?) {
@@ -1446,7 +1447,8 @@ extension CanvasView {
   @objc public func cut(_ sender: Any?) {
     copy(sender)
     guard let doc = document, gesture == nil else { return }
-    doc.edit("Cut", selection: []) { $0.delete(doc.selection) }
+    let gone = goneAutoCards
+    doc.edit("Cut", selection: []) { $0.delete(doc.selection, missing: gone) }
   }
 
   /// Pastes plain copies: beside what was copied when that is in view (each paste a step further), else in the middle of
@@ -1568,7 +1570,7 @@ extension CanvasView {
       return menu
     }
     // a folder board's automatic card: Open and Arrange ▸ (it goes only with its board or folder)
-    if sel.count == 1, case .card(let c)? = sel.first, doc.board.isAuto(c) {
+    if sel.count == 1, case .card(let c)? = sel.first, doc.board.isAuto(c), !isGone(c) {
       menu.addItem(menuItem("Open") { [weak self] in self?.openSubBoard(c) })
       let arrange = NSMenu()
       add("Bring to Front", #selector(bringToFront(_:)), to: arrange)

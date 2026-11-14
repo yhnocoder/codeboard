@@ -38,8 +38,19 @@ extension CanvasView {
   /// Opens the board a sub-board card shows in this tab; whether it is one
   @discardableResult func openSubBoard(_ id: CardID) -> Bool {
     guard case .board? = scene?.parts[id]?.content.body else { return false }
-    if let b = subBoardTarget(id) { onOpenBoard?(b, nil) }
+    if !isGone(id), let b = subBoardTarget(id) { onOpenBoard?(b, nil) }
     return true
+  }
+
+  /// A sub-board card whose board or subfolder is not there now
+  package func isGone(_ id: CardID) -> Bool {
+    if case .board(let d)? = scene?.parts[id]?.drawing { d.gone } else { false }
+  }
+
+  /// The automatic cards here whose board or subfolder is missing: they can be deleted as any card
+  var goneAutoCards: Set<CardID> {
+    guard let doc = document else { return [] }
+    return Set(doc.board.autoCards.map(\.card.id).filter(isGone))
   }
 
   // MARK: Turn into Board (⌘⇧B)

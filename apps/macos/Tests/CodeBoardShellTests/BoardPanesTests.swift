@@ -157,11 +157,11 @@ import Testing
     panes.sync(reload: true)
     #expect(Set(doc.board.autoCards.map(\.target)) == [.board(step.id), .board(more.id), .folder("Kernels")])
     #expect(doc.board.card(CardID(rawValue: "mine")) != nil)
-    // deleting them on the board does nothing; the board moved out: its card goes
+    // deleting them on the board does nothing; the board moved out in the app: its card goes
     let auto = Set(doc.board.autoCards.map { Item.card($0.card.id) })
     doc.edit("Delete") { $0.delete(auto) }
     #expect(doc.board.autoCards.count == 3)
-    try vault.move(more.path, into: "")
+    #expect(shell.move(more.path, into: "") != nil, "moved away in the app")
     shell.apply(.success(try vault.tree()))
     panes.sync(reload: true)
     #expect(Set(doc.board.autoCards.map(\.target)) == [.board(step.id), .folder("Kernels")])
