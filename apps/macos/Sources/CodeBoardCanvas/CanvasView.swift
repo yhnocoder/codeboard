@@ -285,7 +285,7 @@ public final class CanvasView: NSView {
   /// Another board to open, and what to go to on it once shown
   public var onOpenBoard: ((BoardID, Arrival?) -> Void)?
   /// A board to delete (a sub-board card's Delete Board…): the shell asks first; whether it went
-  public var onDeleteBoard: ((BoardID) async -> Bool)?
+  public var onDeleteBoard: (@MainActor (BoardID) async -> Bool)?
   /// A ref clicked: what goes there once the double-click time is over
   var refGo: Task<Void, Never>?
   /// How long a click on a ref waits for a second (tests shorten it)

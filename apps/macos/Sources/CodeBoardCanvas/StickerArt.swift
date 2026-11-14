@@ -56,10 +56,10 @@ enum StickerArt {
   ]
 
   /// Parsed once
-  nonisolated(unsafe) private static let paths: [BuiltinSticker: (stroke: CGPath?, fill: CGPath?)] = Dictionary(
+  private static let paths: [BuiltinSticker: (stroke: Outline?, fill: Outline?)] = Dictionary(
     uniqueKeysWithValues: BuiltinSticker.allCases.map { b in
       let m = marks(b)
-      return (b, (m.stroke.map(SVGPath.parse), m.fill.map(SVGPath.parse)))
+      return (b, (m.stroke.map { Outline(SVGPath.parse($0)) }, m.fill.map { Outline(SVGPath.parse($0)) }))
     })
 
   /// The outline a glyph has in its box: a disc, a pill, or (an emoji) a rounded square
@@ -80,7 +80,7 @@ enum StickerArt {
   // MARK: The TODO tag
 
   /// `.glyph.tag`: the word at half the height, bold, 0.04 em apart, 0.55 em in on each side, in 24 units
-  nonisolated(unsafe) private static let tag: (path: CGPath, width: CGFloat) = {
+  private static let tag: (path: Outline, width: CGFloat) = {
     let font = NSFont.systemFont(ofSize: 12, weight: .bold) as CTFont
     let chars = Array("TODO".utf16)
     var glyphs = [CGGlyph](repeating: 0, count: chars.count)
@@ -101,7 +101,7 @@ enum StickerArt {
       x += a.width + track
     }
     // the last letter's tracking is not room
-    return (p, x - track + pad)
+    return (Outline(p), x - track + pad)
   }()
 
   /// A glyph's width in its 24-unit box (its height is 24)
@@ -233,7 +233,7 @@ enum StickerArt {
           transform: nil)
         pill.fillColor = bg
         let word = CAShapeLayer()
-        word.path = tag.path
+        word.path = tag.path.cg
         word.fillColor = fg
         l.addSublayer(pill)
         l.addSublayer(word)
@@ -246,7 +246,7 @@ enum StickerArt {
       let p = paths[b]
       if let s = p?.stroke {
         let m = CAShapeLayer()
-        m.path = s
+        m.path = s.cg
         m.fillColor = nil
         m.strokeColor = fg
         m.lineWidth = 2
@@ -256,7 +256,7 @@ enum StickerArt {
       }
       if let f = p?.fill {
         let m = CAShapeLayer()
-        m.path = f
+        m.path = f.cg
         m.fillColor = fg
         m.strokeColor = fg
         m.lineWidth = 1

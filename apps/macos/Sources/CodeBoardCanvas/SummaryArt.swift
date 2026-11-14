@@ -119,7 +119,7 @@ enum SummaryArt {
     var bold = false
     for part in plain.components(separatedBy: "**") {
       if !part.isEmpty {
-        var a: [NSAttributedString.Key: Any] = [
+        let a: [NSAttributedString.Key: Any] = [
           .font: body(look, em, bold: bold), .foregroundColor: bold ? look.ink : look.grey, .paragraphStyle: para,
         ]
         out.append(NSAttributedString(string: part, attributes: a))

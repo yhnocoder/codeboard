@@ -402,10 +402,11 @@ import Testing
     panes.sync()
     let canvas = try #require(panes.panes.values.first?.canvas)
     var asked: [[String]] = []
-    var answer = false
+    // what the sheet's next press is: read when it is shown, changed between the two
+    let answer = Answer()
     panes.confirm = { alert, _ in
       asked.append([alert.messageText, alert.informativeText] + alert.buttons.map(\.title))
-      return answer
+      return answer.yes
     }
     let ask = try #require(canvas.onDeleteBoard)
     #expect(await ask(child.id) == false)
@@ -417,9 +418,13 @@ import Testing
         ]
       ])
     #expect(fm.fileExists(atPath: vault.url(of: child.path).path), "Cancel: the board stays")
-    answer = true
+    answer.yes = true
     #expect(await ask(child.id) == true)
     #expect(
       !fm.fileExists(atPath: vault.url(of: child.path).path) && fm.fileExists(atPath: trash.path + "/Child.board"))
   }
+}
+
+@MainActor final class Answer {
+  var yes = false
 }

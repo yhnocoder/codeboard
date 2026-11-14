@@ -76,7 +76,7 @@ extension CanvasView {
     if item == nil { refresh() }
     let fetch = fetchPage
     // the board it was read for, though another be shown by the time it arrives
-    weak var doc = document
+    weak let doc = document
     let task = Task { [weak self] in
       let page = await fetch(u)
       let meta = await Task.detached { CanvasView.store(page, in: folder) }.value

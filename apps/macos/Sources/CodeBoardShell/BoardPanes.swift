@@ -27,7 +27,7 @@ import CodeBoardNotes
   }
 
   /// Asks a question (tests answer it themselves): a sheet on the window, Delete first
-  var confirm: (NSAlert, NSWindow?) async -> Bool = { alert, window in
+  var confirm: @MainActor (NSAlert, NSWindow?) async -> Bool = { alert, window in
     guard let window else { return alert.runModal() == .alertFirstButtonReturn }
     return await alert.beginSheetModal(for: window) == .alertFirstButtonReturn
   }

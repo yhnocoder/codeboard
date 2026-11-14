@@ -152,12 +152,10 @@ import CodeBoardModel
     guard let window else { return }
     panel.beginSheetModal(for: window) { [weak self] response in
       guard response == .OK, let url = panel.url else { return }
-      MainActor.assumeIsolated {
-        Task {
-          // what is being written goes to its board before the boards are let go
-          await self?.panes?.close()
-          self?.open(url, restoring: nil)
-        }
+      Task { @MainActor in
+        // what is being written goes to its board before the boards are let go
+        await self?.panes?.close()
+        self?.open(url, restoring: nil)
       }
     }
   }

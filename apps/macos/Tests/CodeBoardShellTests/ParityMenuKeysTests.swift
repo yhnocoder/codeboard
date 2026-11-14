@@ -23,7 +23,8 @@ import Testing
   @Test func theAppAnswersRenameBoardAndEditMark() {
     _ = NSApplication.shared
     let app = AppDelegate()
-    #expect(app.responds(to: Selector(("renameBoard:"))) && app.responds(to: Selector(("editMark:"))))
+    #expect(
+      app.responds(to: #selector(AppDelegate.renameBoard(_:))) && app.responds(to: #selector(AppDelegate.editMark(_:))))
   }
 
   @Test func lockIsCommandShiftL() {

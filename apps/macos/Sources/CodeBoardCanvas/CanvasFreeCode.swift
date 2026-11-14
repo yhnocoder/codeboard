@@ -88,10 +88,6 @@ extension CanvasView {
   static func codeHTML(_ text: String, language: String) -> String {
     let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
     let tokens = (CanvasView.highlighter ?? Highlighter()).tokens(lines: lines, language: language)
-    func esc(_ s: Substring) -> String {
-      s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
-        .replacingOccurrences(of: ">", with: "&gt;")
-    }
     return zip(lines, tokens).map { line, toks in
       let u = Array(line.utf16)
       var out = ""
@@ -122,4 +118,9 @@ extension CanvasView {
       return out
     }.joined(separator: "\n")
   }
+}
+
+private func esc(_ s: Substring) -> String {
+  s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+    .replacingOccurrences(of: ">", with: "&gt;")
 }

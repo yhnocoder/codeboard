@@ -65,7 +65,8 @@ import CodeBoardShell
     t = CACurrentMediaTime()
     Task {
       await settle()
-      for c in canvases { c.steppedClock = { [weak self] in self?.t ?? 0 } }
+      // the driver lives as long as the process
+      for c in canvases { c.steppedClock = { self.t } }
       // Core Animation's own animations (springs, fades) on the same clock: the window's layers stopped and moved on one
       // frame a step, however long a step takes in real time (main's probes stop the document timeline the same way)
       if let root = window.contentView?.superview?.layer ?? window.contentView?.layer {
