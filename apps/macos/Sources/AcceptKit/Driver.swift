@@ -624,7 +624,8 @@ extension NSMenu {
     guard let w = win else { return "no window" }
     // at the window's own resolution (the recorder's 1x is too coarse to read small text)
     let shot =
-      Recorder.layers
+      // (asked afresh: the display may have gone to sleep since the last shot)
+      Recorder.layers || screenOff()
       ? Recorder.drawn(w) : createImage(.null, 1 << 3, UInt32(w.windowNumber), 1 << 0)?.takeRetainedValue()
     guard let img = shot else { return "no picture of the window" }
     let sx = CGFloat(img.width) / w.frame.width
@@ -680,7 +681,9 @@ extension NSMenu {
           guard let found = try? c.boundingBox(for: lo..<hi)?.boundingBox else { continue }
           // normalized, bottom-left origin in the crop
           let nx = mode == "before" ? found.minX : mode == "after" ? found.maxX : found.midX
-          let ix = crop.minX + nx * crop.width
+          // just inside the word's edge (1.5 pt): its edge as read can lie a fraction outside the text, on what is beside it
+          let inside = mode == "before" ? 1.5 * sx : mode == "after" ? -1.5 * sx : 0
+          let ix = crop.minX + nx * crop.width + inside
           let iy = crop.minY + (1 - found.midY) * crop.height
           let p = NSPoint(x: w.frame.minX + ix / sx, y: w.frame.maxY - iy / sy)
           guard let l = content(p) else { return "no content view" }
