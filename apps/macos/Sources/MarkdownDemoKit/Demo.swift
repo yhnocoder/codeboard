@@ -63,6 +63,20 @@ struct FileResources: MarkdownResources {
   var mathPreamble: String { "" }
 }
 
+/// the second card's sample: a few blocks to move between the Notes
+let secondSample = """
+  ## Second Note
+
+  A paragraph to move into the other Note, or to take blocks from it with ⌘.
+
+  - one
+  - two
+
+  ```python
+  print("moved")
+  ```
+  """
+
 let sample = """
   # Native Markdown
 
@@ -143,7 +157,14 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   /// the panel at the right: selection, copied, events (on by default)
   let inspector = Inspector()
   let page = Page()
-  var editor: MarkdownEditorView?
+  /// the cards, top to bottom: each a Note's editor (its picture until clicked)
+  var cards: [MarkdownEditorView] = []
+  /// a second Note's text (--second, or View > Second Note)
+  var secondText: String?
+  /// the first card: what the report names and the inspector watches first
+  var editor: MarkdownEditorView? { cards.first }
+  /// the ⌘ gesture's host (BlockMoveHost)
+  lazy var moves = BlockMoveHost(demo: self)
   var zoomLabel: NSTextField!
   var images: [String: CGImage] = [:]
   /// code colours that never hold a key up (the component's LiveHighlight over the file's resources)
@@ -155,13 +176,14 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     override func mouseDown(with event: NSEvent) { onClick() }
     var paper = NSColor.windowBackgroundColor
     var card = NSColor.textBackgroundColor
-    var cardRect = CGRect.zero
+    var cardRects: [CGRect] = []
+    var cardRect: CGRect { cardRects.first ?? .zero }
     override var isFlipped: Bool { true }
     override func draw(_ dirtyRect: NSRect) {
       paper.setFill()
       dirtyRect.fill()
       card.setFill()
-      NSBezierPath(roundedRect: cardRect, xRadius: 10, yRadius: 10).fill()
+      for r in cardRects { NSBezierPath(roundedRect: r, xRadius: 10, yRadius: 10).fill() }
     }
   }
 
@@ -189,7 +211,8 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     split.addArrangedSubview(scroll)
     split.addArrangedSubview(inspector)
     inspector.widthAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
-    page.onClick = { [weak self] in self?.editor?.isEditing = false }
+    page.onClick = { [weak self] in for c in self?.cards ?? [] { c.isEditing = false } }
+    moves.start()
     window.contentView = split
     window.toolbar = toolbar()
     menu()
@@ -214,8 +237,8 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     resources = FileResources(folder: folder, pasted: resources.pasted, math: resources.math)
     live = LiveHighlight(resources)
     images = [:]
-    editor?.removeFromSuperview()
-    editor = nil
+    for c in cards { c.removeFromSuperview() }
+    cards = []
     window?.isDocumentEdited = false
     name = url.lastPathComponent
     window?.title = name
@@ -230,58 +253,78 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     open(url)
   }
 
-  /// Lays the text out in the look and appearance: the editor kept (selection and undo history), only its layout new
+  /// Lays the texts out in the look and appearance: the editors kept (selection and undo history), only their layouts new
   func rebuild() {
     let card = MarkdownLooks.card(.note, look: look, dark: dark)
     let inner = cardWidth - card.padding[1] - card.padding[3]
-    let layout = BlockLayout(
-      editor.map { $0.core.document } ?? MarkdownDocument(text), width: inner, theme: card.theme, layout: nil,
-      resources: live)
-    let e: MarkdownEditorView
-    if let old = editor {
-      e = old
-      e.core.relayout(layout)
-    } else {
-      e = MarkdownEditorView(layout: layout, caret: 0)
-      // a card shows its picture until it is clicked, as on the board
-      e.isEditing = false
-      e.delegate = self
-      e.image = { [weak self] slot in self?.image(slot) }
-      e.codeLanguages = [
-        ("python", "Python"), ("rust", "Rust"), ("c", "C"), ("cpp", "C++"), ("cuda", "CUDA"), ("triton", "Triton"),
-        ("tilelang", "TileLang"), ("mermaid", "Mermaid"), ("json", "JSON"), ("bash", "Shell"),
-      ]
-      editor = e
-      page.addSubview(e)
-      inspector.watch(e)
+    let texts = [text] + (secondText.map { [$0] } ?? [])
+    while cards.count > texts.count { cards.removeLast().removeFromSuperview() }
+    for (i, t) in texts.enumerated() {
+      let doc = i < cards.count ? cards[i].core.document : MarkdownDocument(t)
+      let layout = BlockLayout(doc, width: inner, theme: card.theme, layout: nil, resources: live)
+      let e: MarkdownEditorView
+      if i < cards.count {
+        e = cards[i]
+        e.core.relayout(layout)
+      } else {
+        e = MarkdownEditorView(layout: layout, caret: 0)
+        // a card shows its picture until it is clicked, as on the board
+        e.isEditing = false
+        e.delegate = self
+        e.image = { [weak self] slot in self?.image(slot) }
+        e.codeLanguages = [
+          ("python", "Python"), ("rust", "Rust"), ("c", "C"), ("cpp", "C++"), ("cuda", "CUDA"), ("triton", "Triton"),
+          ("tilelang", "TileLang"), ("mermaid", "Mermaid"), ("json", "JSON"), ("bash", "Shell"),
+        ]
+        cards.append(e)
+        page.addSubview(e)
+        if i == 0 { inspector.watch(e) }
+      }
+      let ink = card.theme.colors
+      e.caretColor = NSColor(cgColor: ink.accent.cg) ?? .controlAccentColor
+      e.selectionColor = NSColor(cgColor: ink.accent.alpha(0.26).cg) ?? .selectedTextBackgroundColor
+      e.needsDisplay = true
     }
-    let ink = card.theme.colors
-    e.caretColor = NSColor(cgColor: ink.accent.cg) ?? .controlAccentColor
-    e.selectionColor = NSColor(cgColor: ink.accent.alpha(0.26).cg) ?? .selectedTextBackgroundColor
     window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
     page.paper = NSColor(cgColor: MarkdownLooks.theme(look, dark: dark).colors.surface.cg)!.blended(
       withFraction: 0.06, of: dark ? .black : .gray)!
     page.card = NSColor(cgColor: card.theme.colors.surface.cg)!
     place()
-    e.needsDisplay = true
-    window.makeFirstResponder(e)
+    if let e = cards.first { window.makeFirstResponder(e) }
   }
 
-  /// The card at the zoom, centred, the editor at its padding
+  /// The cards at the zoom, one under another, centred, each editor at its card's padding
   func place() {
-    guard let e = editor else { return }
     let card = MarkdownLooks.card(.note, look: look, dark: dark)
-    e.zoom = zoom
-    let size = card.size(content: e.core.layout.size, width: cardWidth, height: nil)
     let margin: CGFloat = 40
-    let w = max(scroll.contentSize.width, size.width * zoom + 2 * margin)
-    page.frame = CGRect(x: 0, y: 0, width: w, height: size.height * zoom + 2 * margin)
-    let x = (w - size.width * zoom) / 2
-    page.cardRect = CGRect(x: x, y: margin, width: size.width * zoom, height: size.height * zoom)
-    e.setFrameOrigin(CGPoint(x: x + card.padding[3] * zoom, y: margin + (card.header + card.padding[0]) * zoom))
+    let gap: CGFloat = 24
+    var sizes: [CGSize] = []
+    for e in cards {
+      e.zoom = zoom
+      sizes.append(card.size(content: e.core.layout.size, width: cardWidth, height: nil))
+    }
+    let widest = sizes.map(\.width).max() ?? CGFloat(cardWidth)
+    let w = max(scroll.contentSize.width, widest * zoom + 2 * margin)
+    let h = sizes.reduce(0) { $0 + $1.height * zoom } + CGFloat(max(0, sizes.count - 1)) * gap + 2 * margin
+    page.frame = CGRect(x: 0, y: 0, width: w, height: h)
+    var y = margin
+    page.cardRects = []
+    for (e, size) in zip(cards, sizes) {
+      let x = (w - size.width * zoom) / 2
+      let r = CGRect(x: x, y: y, width: size.width * zoom, height: size.height * zoom)
+      page.cardRects.append(r)
+      e.setFrameOrigin(CGPoint(x: x + card.padding[3] * zoom, y: y + (card.header + card.padding[0]) * zoom))
+      y = r.maxY + gap
+    }
     page.needsDisplay = true
+    moves.layoutChanged()
     DispatchQueue.main.async { [weak self] in self?.writeReport() }
     zoomLabel?.stringValue = "\(Int((zoom * 100).rounded())) %"
+  }
+
+  @objc func toggleSecond(_ s: Any?) {
+    secondText = secondText == nil ? secondSample : nil
+    rebuild()
   }
 
   func image(_ slot: MarkdownImageSlot) -> CGImage? {
@@ -297,8 +340,14 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   func editor(_ e: MarkdownEditorView, didResize size: CGSize) { place() }
   func editor(_ e: MarkdownEditorView, didChange source: String) {
     window.isDocumentEdited = true
-    // for a driver reading the Note back: the Markdown after every change
-    if let saveTo { try? source.write(to: saveTo, atomically: true, encoding: .utf8) }
+    // for a driver reading the Notes back: the first Note's Markdown after every change, a second Note's beside it
+    guard let saveTo else { return }
+    if e === cards.first {
+      try? source.write(to: saveTo, atomically: true, encoding: .utf8)
+    } else if let i = cards.firstIndex(where: { $0 === e }) {
+      let other = saveTo.deletingPathExtension().appendingPathExtension("\(i + 1).md")
+      try? source.write(to: other, atomically: true, encoding: .utf8)
+    }
   }
 
   /// where the demo writes the Note's Markdown after every change, and where it reports the card's place
@@ -315,6 +364,10 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     let out: [String: Any] = [
       "window": window.windowNumber, "zoom": Double(zoom), "card": top(page.cardRect), "editor": top(e.frame),
       "editing": e.isEditing,
+      // every card, top to bottom (the first is the one above)
+      "cards": zip(cards, page.cardRects).map { c, r in
+        ["card": top(r), "editor": top(c.frame), "editing": c.isEditing]
+      },
     ]
     if let data = try? JSONSerialization.data(withJSONObject: out, options: [.sortedKeys]) {
       try? data.write(to: reportTo)
@@ -325,7 +378,11 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     inspector.refresh()
   }
   func editorWantsToEnd(_ e: MarkdownEditorView) { e.isEditing = false }
-  func editorDidBegin(_ e: MarkdownEditorView) {}
+  func editorDidBegin(_ e: MarkdownEditorView) {
+    // one card edits at a time
+    for c in cards where c !== e { c.isEditing = false }
+    inspector.watch(e)
+  }
   func editor(_ e: MarkdownEditorView, open url: URL) { NSWorkspace.shared.open(url) }
   func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String? { resources.pasted.add(data) }
 
@@ -383,6 +440,9 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     main.addItem(edit)
     let view = NSMenuItem()
     view.submenu = NSMenu(title: "View")
+    view.submenu!.addItem(withTitle: "Second Note", action: #selector(toggleSecond(_:)), keyEquivalent: "").target =
+      self
+    view.submenu!.addItem(.separator())
     // ⌥⌘: ⌘= ⌘- ⌘0 are the editor's heading keys
     for (title, action, key) in [
       ("Zoom In", #selector(zoomIn(_:)), "="), ("Zoom Out", #selector(zoomOut(_:)), "-"),
@@ -449,6 +509,7 @@ public func runMarkdownDemo(arguments: [String]) throws -> Never {
     return v
   }
   let width = option("--width").flatMap(Double.init) ?? 420
+  let second = option("--second").map { URL(filePath: $0) }
   let saveTo = option("--save-to").map { URL(filePath: $0) }
   let report = option("--report").map { URL(filePath: $0) }
   let file = args.first.map { URL(filePath: $0) }
@@ -457,6 +518,7 @@ public func runMarkdownDemo(arguments: [String]) throws -> Never {
   app.setActivationPolicy(.regular)
   let demo = try Demo(text: text, folder: file?.deletingLastPathComponent() ?? sampleFolder(), cardWidth: width)
   demo.saveTo = saveTo
+  if let second { demo.secondText = try String(contentsOf: second, encoding: .utf8) }
   demo.reportTo = report
   if let file { demo.name = file.lastPathComponent }
   app.delegate = demo
