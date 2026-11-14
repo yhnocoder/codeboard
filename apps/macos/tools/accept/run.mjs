@@ -439,11 +439,18 @@ async function report(d, out) {
       const held = (t) => pointer && presses.some((p) => t >= p.t && t <= p.t + 0.1);
       const at = frames.findIndex((f) => f.t >= from && !held(f.t));
       const before = pointer ? frames.findLastIndex((f) => f.t < from) : at - 1;
+      // a command's answer ends where the next input begins: what that does is its own answer, not this one settling
+      const next = lines.find((x) => x.t > l.t && /^start \d+ (move|warp|click|dbl|down|up|drag|scroll|wheel|pinch|key|keys|type|ime|menu|pick)\b/.test(x.text));
+      const until = next ? Math.min(next.t, from + 3) : from + 3;
       if (at > 0 && before >= 0) {
-        let first, last;
+        let first, last, cut = false;
         let prev = before;
         // (Chromium sends a frame only when the picture changed; the Mac recorder sends every frame)
         for (let i = at; i < frames.length && frames[i].t - from < 3; i++) {
+          if (frames[i].t >= until) {
+            cut = last !== undefined && frames[i].t - last <= 0.3;
+            break;
+          }
           if (held(frames[i].t)) continue;
           if (last !== undefined && frames[i].t - last > 0.3) break;
           if (await differ(frames[prev].file, frames[i].file)) {
@@ -452,7 +459,11 @@ async function report(d, out) {
           }
           prev = i;
         }
-        answer = first === undefined ? "  no change within 3 s" : `  answered ${((first - from) * 1000).toFixed(0)} ms, settled ${((last - from) * 1000).toFixed(0)} ms`;
+        const settled = `${cut ? "still changing when the next input came, at " : ""}${((last - from) * 1000).toFixed(0)} ms`;
+        answer =
+          first === undefined
+            ? `  no change ${until < from + 3 ? `before the next input (${((until - from) * 1000).toFixed(0)} ms)` : "within 3 s"}`
+            : `  answered ${((first - from) * 1000).toFixed(0)} ms, settled ${settled}`;
       }
     }
     rows.push(`${((l.t - (start?.t ?? l.t)) * 1000).toFixed(0).padStart(6)} ms  ${done[2]}${answer}`);
