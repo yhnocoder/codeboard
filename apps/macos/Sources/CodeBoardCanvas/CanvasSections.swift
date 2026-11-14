@@ -297,47 +297,6 @@ extension CanvasView {
       })
   }
 
-  /// A Section's menu (menus.ts sectionMenu, its row of Fit Content, Color and Lock as items): then Move Out of Parent
-  /// Section when it is in one, and Remove Section, which keeps what is in it
-  func sectionMenu(_ id: SectionID) -> NSMenu? {
-    guard let doc = document, let s = doc.board.section(id) else { return nil }
-    let m = NSMenu()
-    m.addItem(addNoteItem(.spot(.section(id))))
-    m.addItem(.separator())
-    m.addItem(menuItem("Fit Content", enabled: !fittable([id]).isEmpty) { [weak self] in self?.fitContent([id]) })
-    m.addItem(colorItem([id]))
-    let lock = NSMenuItem(title: s.locked ? "Unlock" : "Lock", action: #selector(lock(_:)), keyEquivalent: "")
-    lock.target = self
-    m.addItem(lock)
-    m.addItem(.separator())
-    if s.parent != nil {
-      m.addItem(
-        menuItem("Move Out of Parent Section") { doc.edit("Move Out of Parent Section") { $0.moveOutOfParent(id) } })
-    }
-    let remove = NSMenuItem(title: "Remove Section", action: #selector(delete(_:)), keyEquivalent: "")
-    remove.target = self
-    m.addItem(remove)
-    return m
-  }
-
-  /// Several Sections and no cards (menus.ts multiSectionItems): Fit Content, Lock, Color, then Remove N Sections
-  func sectionsMenu(_ ids: [SectionID]) -> NSMenu {
-    let m = NSMenu()
-    let fit = fittable(ids)
-    m.addItem(menuItem("Fit Content", enabled: !fit.isEmpty) { [weak self] in self?.fitContent(fit) })
-    let all = ids.allSatisfy { document?.board.section($0)?.locked == true }
-    let lock = NSMenuItem(title: all ? "Unlock" : "Lock", action: #selector(lock(_:)), keyEquivalent: "")
-    lock.target = self
-    m.addItem(lock)
-    m.addItem(colorItem(ids))
-    m.addItem(.separator())
-    m.addItem(shelfItem())
-    let remove = NSMenuItem(title: "Remove \(ids.count) Sections", action: #selector(delete(_:)), keyEquivalent: "")
-    remove.target = self
-    m.addItem(remove)
-    return m
-  }
-
   // MARK: Where a drag lands
 
   /// The Sections the dragged cards would go into, other than the ones they are in: tinted while the drag runs

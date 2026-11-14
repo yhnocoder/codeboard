@@ -485,8 +485,11 @@ private func png(_ url: URL) throws {
     let n1 = CGPoint(x: 40, y: 40)
     let menu = r.canvas.menu(for: r.mouse(.rightMouseDown, n1))
     #expect(r.doc.selection == [.card(cid("n1"))], "right-click selects what is under it")
-    #expect(titles(menu) == ["Add Sidenote", "-", "Arrange", "-", "Delete"])
-    #expect(titles(menu?.items[2].submenu) == ["Bring to Front", "Send to Back", "-", "Tilt", "Lock"])
+    #expect(titles(menu) == ["Add Sidenote", "-", "Arrange", "Copy Path", "-", "Delete"])
+    #expect(
+      titles(menu?.items[2].submenu) == [
+        "Bring to Front", "Bring Forward", "Send Backward", "Send to Back", "-", "Tilt", "Lock",
+      ])
     r.canvas.bringToFront(nil)
     #expect(r.doc.board.cards.last?.id == cid("n1"))
     r.canvas.sendToBack(nil)
@@ -501,19 +504,20 @@ private func png(_ url: URL) throws {
     r.drag(n1, CGPoint(x: 340, y: 40))
     r.key(51)
     #expect(r.card("n1").x == 0)
-    // several: Connect with Arrow, Move to New Section, Move to Shelf, Lock, Tilt, Arrange, then Cut, Copy, Duplicate,
-    // Delete
+    // several (menus.ts multiItems)
     r.doc.select([.card(cid("t1")), .card(cid("b1"))])
     #expect(
       titles(r.canvas.menu(for: r.mouse(.rightMouseDown, r.centre("t1"))))
         == [
-          "Connect with Arrow", "Move to New Section", "Move to Shelf", "Lock", "Tilt", "Arrange", "-", "Cut", "Copy",
-          "Duplicate", "Delete",
+          "Connect with Arrow", "Move to Section", "Move to New Section", "Move to Shelf", "Turn into Board…", "Lock",
+          "Tilt", "Arrange", "Copy Paths", "-", "Cut", "Copy", "Duplicate", "Delete",
         ])
     // a Section's
     #expect(
       titles(r.canvas.menu(for: r.mouse(.rightMouseDown, CGPoint(x: 450, y: 750))))
-        == ["Add Sidenote", "-", "Fit Content", "Color", "Lock", "-", "Remove Section"])
+        == [
+          "Fit Content", "Color", "Lock", "-", "Add Sidenote", "Collapse", "Copy Path", "-", "Remove Section",
+        ])
     #expect(r.doc.undoName == "Lock" && r.doc.history.undoSteps.count == 4)
   }
 

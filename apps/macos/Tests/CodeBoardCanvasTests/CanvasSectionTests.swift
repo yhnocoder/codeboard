@@ -339,9 +339,10 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     #expect(r.doc.selection == [.section(gid("g2"))])
     #expect(
       titles(menu) == [
-        "Add Sidenote", "-", "Fit Content", "Color", "Lock", "-", "Move Out of Parent Section", "Remove Section",
+        "Fit Content", "Color", "Lock", "-", "Add Sidenote", "Collapse", "Move Out of Parent Section", "Copy Path", "-",
+        "Remove Section",
       ])
-    #expect(titles(menu?.items[3].submenu) == ["None", "Warm Sand", "Light Blue", "Light Green", "Light Pink"])
+    #expect(titles(menu?.items[1].submenu) == ["None", "Warm Sand", "Light Blue", "Light Green", "Light Pink"])
     fire(menu, "Color", "Light Blue")
     #expect(r.doc.board.section(gid("g2"))?.color == "blue")
     // Fit Content: its frame round m2 with the room a Section keeps

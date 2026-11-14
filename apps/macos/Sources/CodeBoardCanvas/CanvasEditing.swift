@@ -1627,125 +1627,12 @@ extension CanvasView {
   }
 
   /// Locked itself (not only through a Section it is in)
-  private func isOwnLock(_ item: Item) -> Bool {
+  func isOwnLock(_ item: Item) -> Bool {
     switch item {
     case .card(let id): document?.board.card(id)?.locked == true
     case .section(let id): document?.board.section(id)?.locked == true
     case .arrow, .sticker: false
     }
-  }
-
-  // MARK: The context menu
-
-  /// Only what works, in the web board's order: a card's Arrange ▸ (with Tilt and Lock), then Delete; for several items
-  /// Lock, Tilt and Arrange ▸, then Cut, Copy, Duplicate and Delete; a Section's Lock and Delete; on the canvas, Paste
-  public override func menu(for e: NSEvent) -> NSMenu? {
-    guard let doc = document, gesture == nil, levels.level == .cards else { return nil }
-    // it acts on what is under the pointer, selected first when it is not
-    let p = camera.board(convert(e.locationInWindow, from: nil))
-    // a sticker's: its colours and Delete
-    if let i = stickerAt(p), markAt(p) == nil {
-      let id = stickerSpots[i].id
-      doc.select([.sticker(id)])
-      return stickerMenu(id)
-    }
-    // an arrow's or its label's own menu, for it alone (menus.ts linkMenu, labelMenu)
-    if let id = hitArrowLabel(p) {
-      doc.select([.arrow(id)])
-      return labelMenu(id)
-    }
-    if hitCard(p) == nil, let id = hitArrow(p) {
-      doc.select([.arrow(id)])
-      return arrowMenu(id)
-    }
-    // a Link List's row: its own menu
-    if let row = linkRow(at: p) {
-      doc.select([.card(row.card)])
-      return rowMenu(row.card, row.item)
-    }
-    // a ref to another board: that board's seal
-    if let r = refAt(p), let b = refBoard(r.box) {
-      let m = NSMenu()
-      m.addItem(menuItem("Edit Mark…") { [weak self] in self?.editSeal(b, at: r) })
-      return m
-    }
-    let under = hitCard(p).map(Item.card) ?? hitSectionTitle(p).map(Item.section) ?? deepestSection(p).map(Item.section)
-    if let under, !doc.selection.contains(under) { doc.select([under]) } else if under == nil { doc.select([]) }
-    // Sections and no cards: their own menus
-    let secs = doc.selection.compactMap(\.section)
-    if !secs.isEmpty, secs.count == doc.selection.count {
-      return secs.count == 1 ? sectionMenu(secs[0]) : sectionsMenu(secs.sorted { $0.rawValue < $1.rawValue })
-    }
-    // a right-click on a code line selects it (kept when it is in the lines selected): Add Sidenote goes on them
-    if case .card(let c)? = under, doc.selection == [under!] { lineForMenu(at: p, of: c) } else { clearLineSel() }
-    let menu = NSMenu()
-    func add(_ title: String, _ action: Selector, to m: NSMenu = menu) {
-      let i = NSMenuItem(title: title, action: action, keyEquivalent: "")
-      i.target = self
-      m.addItem(i)
-    }
-    let sel = doc.selection
-    let cards = sel.compactMap(\.card)
-    let locked = !sel.isEmpty && sel.allSatisfy(isOwnLock)
-    let tilted = !cards.isEmpty && cards.allSatisfy { doc.board.card($0)?.tilted == true }
-    if sel.isEmpty {
-      // free on the board, where it was asked
-      menu.addItem(addNoteItem(.spot(.point(x: p.x.rounded(), y: p.y.rounded()))))
-      if pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)) != nil {
-        add("Paste", #selector(paste(_:)))
-      }
-      return menu
-    }
-    // a folder board's automatic card: Open and Arrange ▸ (it goes only with its board or folder)
-    if sel.count == 1, case .card(let c)? = sel.first, doc.board.isAuto(c), !isGone(c) {
-      menu.addItem(menuItem("Open") { [weak self] in self?.openSubBoard(c) })
-      let arrange = NSMenu()
-      add("Bring to Front", #selector(bringToFront(_:)), to: arrange)
-      add("Send to Back", #selector(sendToBack(_:)), to: arrange)
-      menu.addItem(withTitle: "Arrange", action: nil, keyEquivalent: "").submenu = arrange
-      return menu
-    }
-    // one card: its menu starts with Add Sidenote
-    if sel.count == 1, case .card(let c)? = sel.first {
-      menu.addItem(addNoteItem(card: c, at: p))
-      menu.addItem(.separator())
-      // a Web card's and a Link List's own
-      let own = webMenuItems(c) + linksMenuItems(c)
-      for i in own { menu.addItem(i) }
-      if !own.isEmpty { menu.addItem(.separator()) }
-    }
-    let arrange = NSMenu()
-    add("Bring to Front", #selector(bringToFront(_:)), to: arrange)
-    add("Send to Back", #selector(sendToBack(_:)), to: arrange)
-    if sel.count == 1, !cards.isEmpty {
-      arrange.addItem(.separator())
-      add("Tilt", #selector(tilt(_:)), to: arrange)
-      arrange.items.last?.state = tilted ? .on : .off
-      add(locked ? "Unlock" : "Lock", #selector(lock(_:)), to: arrange)
-      menu.addItem(withTitle: "Arrange", action: nil, keyEquivalent: "").submenu = arrange
-    } else if sel.count == 1 {
-      add(locked ? "Unlock" : "Lock", #selector(lock(_:)))
-    } else {
-      menu.addItem(menuItem("Connect with Arrow", enabled: cards.count == 2) { [weak self] in self?.connectSelected() })
-      menu.addItem(menuItem("Move to New Section") { [weak self] in self?.moveToNewSection() })
-      menu.addItem(shelfItem())
-      if mergeable {
-        menu.addItem(menuItem("Merge into Link List") { [weak self] in self?.mergeSelected() })
-      }
-      add(locked ? "Unlock" : "Lock", #selector(lock(_:)))
-      if !cards.isEmpty {
-        add("Tilt", #selector(tilt(_:)))
-        menu.items.last?.state = tilted ? .on : .off
-        menu.addItem(withTitle: "Arrange", action: nil, keyEquivalent: "").submenu = arrange
-      }
-      menu.addItem(.separator())
-      add("Cut", #selector(cut(_:)))
-      add("Copy", #selector(copy(_:)))
-      add("Duplicate", #selector(duplicate(_:)))
-    }
-    if sel.count == 1 { menu.addItem(.separator()) }
-    add("Delete", #selector(delete(_:)))
-    return menu
   }
 }
 

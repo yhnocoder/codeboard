@@ -106,7 +106,7 @@ Arrow: (Call Mark, RPC, ↩ Back to Start, Style ▸ and Edit Legend… ride on 
 New Text T, New Note N, (New Code, Add Function: NOT DO), Add Sidenote S, Paste ⌘V, Insert Board ▸ (the other boards;
 one that would hold this board says so and does nothing), `-`, Select All ⌘A, Fit to Window ⇧1.
 
-App: same.
+App: same, but Paste is off when there is nothing the board can paste (main reads the clipboard and says so).
 
 ### A sticker, a Shelf entry, a Link List row, a sidenote
 

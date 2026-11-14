@@ -348,8 +348,8 @@ extension CanvasSidenoteTests {
     let start = r.bytes
     let p = CGPoint(x: 300, y: 900)
     let menu = try #require(c.menu(for: r.mouse(.rightMouseDown, p)))
-    #expect(menu.items.map(\.title) == ["Add Sidenote"])
-    let item = try #require(menu.items.first)
+    #expect(menu.items.map(\.title).contains("Add Sidenote"))
+    let item = try #require(menu.items.first { $0.title == "Add Sidenote" })
     _ = (item.target as? NSObject)?.perform(item.action, with: item)
     await opened(r, .spot(.point(x: 300, y: 900)))
     // an empty ring where it goes, its popup beside it
