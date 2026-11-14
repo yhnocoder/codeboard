@@ -69,6 +69,22 @@ public final class JSEngines: MathTypesetter, DiagramRenderer, @unchecked Sendab
     pool.unlock()
   }
 
+  private let shownTexts = Cache<ShownKey, String?>(limit: 500)
+  struct ShownKey: Hashable {
+    let latex: String
+    let preamble: String
+  }
+
+  /// What a TeX shows as text (its MathML's characters), nil when it does not typeset: how a page's "shown text + TeX"
+  /// copy is told apart (MarkdownEditing.undoubleTex)
+  public func shown(_ latex: String, preamble: String) -> String? {
+    shownTexts.get(ShownKey(latex: latex, preamble: preamble)) {
+      let e = take()
+      defer { give(e) }
+      return e.shown(latex, preamble: preamble)
+    }
+  }
+
   public func typeset(_ latex: String, display: Bool, preamble: String) -> MathResult {
     results.get(MathKey(latex: latex, display: display, preamble: preamble)) {
       let e = take()
@@ -157,6 +173,14 @@ private final class Engine {
       return .error("unreadable diagram output")
     }
     return .ok(width: read.box.width, height: read.box.height, paths: read.paths, texts: read.texts)
+  }
+
+  /// the text a TeX shows, nil when it does not typeset
+  func shown(_ latex: String, preamble: String) -> String? {
+    guard let engines = context.objectForKeyedSubscript("engines"),
+      let r = engines.invokeMethod("shown", withArguments: [latex, preamble]), r.isString
+    else { return nil }
+    return r.toString()
   }
 
   func tex(_ latex: String, display: Bool, preamble: String) -> MathResult {

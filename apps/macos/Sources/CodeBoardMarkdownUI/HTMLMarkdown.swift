@@ -1,3 +1,4 @@
+import CodeBoardMarkdown
 import Foundation
 
 /// HTML from the pasteboard read as Markdown, enough for what pages and mail put there: paragraphs and line breaks,
@@ -6,7 +7,8 @@ import Foundation
 /// pastemath.ts reads them). A small reader of tags (no WebKit, which the component never starts); anything else keeps
 /// its text
 enum HTMLMarkdown {
-  static func markdown(_ html: String) -> String? {
+  /// `shown`: what a TeX shows as text (the formula engine's), for a page's formulas copied as "shown text + TeX"
+  static func markdown(_ html: String, shown: ((String) -> String?)? = nil) -> String? {
     // only the fragment a page marks as copied, when it says
     var src = html
     if let a = src.range(of: "<!--StartFragment-->"), let b = src.range(of: "<!--EndFragment-->") {
@@ -45,7 +47,12 @@ enum HTMLMarkdown {
         var t = decode(ns.substring(with: m.range(at: 4)))
         // a page's * _ ` [ ] are its characters (the formatting it wants is in its tags): written escaped, so they stay
         // characters; == ~~ and $ are read as Markdown, as pastemarks.ts and pastemath.ts read them
-        if pre == 0, href.last == nil { t = escaped(t) }
+        if pre == 0, href.last == nil {
+          if let shown, t.contains("\\") || t.contains("^") || t.contains("_") {
+            t = MarkdownEditing.undoubleTex(t, shown: shown)
+          }
+          t = escaped(t)
+        }
         if pre == 0 { t = t.replacingOccurrences(of: "\n", with: " ") }
         line += t
         continue

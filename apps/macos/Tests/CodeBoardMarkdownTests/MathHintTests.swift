@@ -53,3 +53,16 @@ import Testing
     #expect(!MarkdownEditing.typingCommand("\\fracc", caret: 6, preamble: ""))
   }
 }
+
+/// A page's formula copied as text ("shown + TeX") comes back as $TeX$ (doubled.ts)
+@Suite struct UndoubleTests {
+  @Test func shownTextThenTeX() {
+    // what each TeX shows, as the engine gives it
+    let shows: [String: String] = ["N\\times N": "N×N", "x^2": "x2", "\\alpha": "α"]
+    let shown: (String) -> String? = { shows[$0] }
+    #expect(
+      MarkdownEditing.undoubleTex("a grid of N×NN\\times N pixels", shown: shown) == "a grid of $N\\times N$ pixels")
+    #expect(MarkdownEditing.undoubleTex("so x2x^2 and αα\\alpha here", shown: shown) == "so $x^2$ and α$\\alpha$ here")
+    #expect(MarkdownEditing.undoubleTex("plain text", shown: shown) == "plain text")
+  }
+}

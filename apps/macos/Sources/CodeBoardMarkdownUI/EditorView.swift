@@ -337,7 +337,7 @@ public final class MarkdownEditorView: NSView {
     let now = CACurrentMediaTime()
     let sliding = slides
     core.layout.draw(in: ctx, scale: scale, clip: clip) { [image] slot in
-      sliding["\(slot.src)#\(slot.nth)"] == nil ? image(slot) : nil
+      sliding["\(slot.src)#\(slot.nth)"] == nil && settled(slot.src) ? image(slot) : nil
     }
     // a sliding picture at its place now, eased
     for slot in core.layout.images {
@@ -416,7 +416,8 @@ public final class MarkdownEditorView: NSView {
     if let d = tableDrag {
       d.draw(in: ctx, paper: core.layout.theme.colors.surface.cg, ring: caretColor.cgColor)
     }
-    if isEditing, blinkOn, alwaysShowsCaret || window?.firstResponder === self, let c = core.caretRect.map(slid),
+    if isEditing, blinkOn, alwaysShowsCaret || window?.firstResponder === self,
+      let c = core.caretRect.map(slid).map(offImage),
       tableDrag == nil
     {
       // two device pixels wide whatever the zoom, on the caret's line; a gap's caret lies across the block
@@ -952,6 +953,52 @@ public final class MarkdownEditorView: NSView {
     Self.linkTicks += 1
     guard let b = blockSlide else { return }
     stepBlocks(at: link.targetTimestamp - b.since)
+  }
+
+  /// The caret beside a drawn picture is drawn a few points off its edge, not against it (imagecaret.ts); between two
+  /// pictures it stays where it is
+  func offImage(_ c: CGRect) -> CGRect {
+    guard c.height > 0, core.selection.isEmpty else { return c }
+    var left = false
+    var right = false
+    for slot in core.layout.images where slot.frame.minY < c.maxY && slot.frame.maxY > c.minY {
+      if abs(slot.frame.minX - c.minX) < 0.5 { left = true }
+      if abs(slot.frame.maxX - c.minX) < 0.5 { right = true }
+    }
+    if left == right { return c }
+    return c.offsetBy(dx: left ? -2 : 2, dy: 0)
+  }
+
+  // MARK: an image address settling
+
+  /// addresses already shown, which load at once; addresses typed while editing, since when they stood
+  private var shownAddresses = Set<String>()
+  private var typedAddresses: [String: Double] = [:]
+  private var settleTimer: Timer?
+
+  /// Whether an image's address may load: one shown before at once; one new while its source is being written, once it
+  /// has stood for IMAGE_SETTLE (widgets.ts imageBelow), so a half-typed address is never asked for
+  func settled(_ src: String) -> Bool {
+    if shownAddresses.contains(src) || !isEditing || core.layout.head == nil {
+      shownAddresses.insert(src)
+      return true
+    }
+    let now = core.clock()
+    guard let since = typedAddresses[src] else {
+      typedAddresses[src] = now
+      settleTimer?.invalidate()
+      settleTimer = Timer.scheduledTimer(withTimeInterval: MarkdownTiming.imageSettle, repeats: false) {
+        [weak self] _ in
+        MainActor.assumeIsolated { self?.needsDisplay = true }
+      }
+      return false
+    }
+    if now - since >= MarkdownTiming.imageSettle {
+      shownAddresses.insert(src)
+      typedAddresses = [:]
+      return true
+    }
+    return false
   }
 
   /// a box in a block where that block is drawn now: off its place while it slides
@@ -1889,7 +1936,9 @@ public final class MarkdownEditorView: NSView {
       {
         p.vscodeLanguage = o["mode"] as? String ?? ""
       } else if let html = pb.string(forType: .html) {
-        p.htmlMarkdown = HTMLMarkdown.markdown(html)
+        let engines = core.layout.resources.math as? JSEngines
+        let preamble = core.layout.resources.mathPreamble
+        p.htmlMarkdown = HTMLMarkdown.markdown(html, shown: engines.map { e in { e.shown($0, preamble: preamble) } })
       }
     }
     guard p.plain != nil || p.htmlMarkdown != nil else { return }

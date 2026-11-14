@@ -8,6 +8,8 @@ import { SVG } from "mathjax-full/js/output/svg.js";
 import { liteAdaptor } from "mathjax-full/js/adaptors/liteAdaptor.js";
 import { RegisterHTMLHandler } from "mathjax-full/js/handlers/html.js";
 import { AllPackages } from "mathjax-full/js/input/tex/AllPackages.js";
+import { SerializedMmlVisitor } from "mathjax-full/js/core/MmlTree/SerializedMmlVisitor.js";
+import { STATE } from "mathjax-full/js/core/MathItem.js";
 import { render as pele } from "pele";
 
 declare const measureText: (text: string, size: number) => number;
@@ -61,6 +63,25 @@ function docFor(preamble: string): Doc {
       return { svg: adaptor.innerHTML(node) };
     } catch (e) {
       return { error: String((e as Error).message ?? e) };
+    }
+  },
+  /** TeX → the text it shows (its MathML's characters, no tags), or null when it does not typeset: what a page's
+   *  "shown text + TeX" copy is told apart by (doubled.ts) */
+  shown(src: string, preamble: string): string | null {
+    try {
+      const mml = docFor(preamble).convert(src, { display: false, end: STATE.CONVERT });
+      const xml = new SerializedMmlVisitor().visitTree(mml);
+      return xml
+        .replace(/<annotation[\s\S]*?<\/annotation>/g, "")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot);/gi, (_: string, e: string) =>
+          e[0] === "#"
+            ? String.fromCodePoint(parseInt(e[1] === "x" ? e.slice(2) : e.slice(1), e[1] === "x" ? 16 : 10))
+            : ({ amp: "&", lt: "<", gt: ">", quot: '"' } as Record<string, string>)[e.toLowerCase()],
+        )
+        .replace(/[\s\u2061-\u2064\u200b]/g, "");
+    } catch {
+      return null;
     }
   },
   /** Mermaid → { svg, width, height } or { error } */

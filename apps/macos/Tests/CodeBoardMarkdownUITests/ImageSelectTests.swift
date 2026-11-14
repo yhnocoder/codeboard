@@ -98,3 +98,40 @@ import Testing
     w.close()
   }
 }
+
+/// The caret beside a drawn picture is drawn a little off its edge, as on the web (imagecaret.ts)
+@MainActor @Suite struct ImageCaretTests {
+  @Test func offThePicturesEdge() {
+    _ = boardFonts
+    let src = "Text ![p](a.png){width=30%} after"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: ImageTests.Sized())
+    let v = MarkdownEditorView(layout: l, caret: 5)
+    let pic = l.images.first!.frame
+    v.selection = MDSelection(5)
+    #expect(abs(v.offImage(l.caretRect(MDCaret(5))!).minX - (pic.minX - 2)) < 0.5)
+    v.selection = MDSelection(27)
+    #expect(abs(v.offImage(l.caretRect(MDCaret(27))!).minX - (pic.maxX + 2)) < 0.5)
+  }
+}
+
+/// An address typed while editing loads once it has stood for IMAGE_SETTLE; one shown before loads at once
+@MainActor @Suite struct ImageSettleTests {
+  @Test func aNewAddressWaits() {
+    _ = boardFonts
+    let src = "![p](a.png)"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: ImageTests.Sized())
+    let v = MarkdownEditorView(layout: l, caret: 0)
+    var t = 100.0
+    v.core.clock = { t }
+    v.isEditing = false
+    #expect(v.settled("a.png"))
+    v.isEditing = true
+    v.selection = MDSelection(7)
+    #expect(v.settled("a.png"))
+    #expect(!v.settled("ab.png"))
+    t += MarkdownTiming.imageSettle / 2
+    #expect(!v.settled("ab.png"))
+    t += MarkdownTiming.imageSettle / 2
+    #expect(v.settled("ab.png"))
+  }
+}

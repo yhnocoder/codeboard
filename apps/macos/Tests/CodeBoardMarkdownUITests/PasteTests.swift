@@ -90,3 +90,13 @@ import Testing
     #expect(HTMLMarkdown.markdown("<p>Some <b>bold</b></p>") == "Some **bold**")
   }
 }
+
+/// With the formula engine: a page's "shown text + TeX" pasted as HTML text comes back as $TeX$
+@Suite struct PasteDoubledTests {
+  @Test func withTheEngine() throws {
+    let e = try MarkdownAssets.engines()
+    #expect(e.shown("N\\times N", preamble: "") == "N×N")
+    let md = HTMLMarkdown.markdown("<p>a grid of N×NN\\times N pixels</p>", shown: { e.shown($0, preamble: "") })
+    #expect(md == "a grid of $N\\times N$ pixels")
+  }
+}
