@@ -52,7 +52,7 @@ extension CanvasView {
   func pasteText(at p: CGPoint?) -> Bool {
     guard let s = pasteboard.string(forType: .string), !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     else { return false }
-    let at = p ?? pointerInWindow.map { camera.board(convert($0, from: nil)) }
+    let at = p
     let doc = document
     Task { [weak self, weak doc] in
       let kind = (try? await self?.notes.paste(s)) ?? .note(s)
@@ -111,7 +111,7 @@ extension CanvasView {
 
   /// A new card added in one step and selected, in the Section its rect (`size` at where it is put) covers by more than
   /// a third (settleHome)
-  private func settle(_ id: CardID, _ size: CGSize, _ name: String, _ add: (inout Board) -> Void) {
+  func settle(_ id: CardID, _ size: CGSize, _ name: String, _ add: (inout Board) -> Void) {
     guard let doc = document else { return }
     let frames = Dictionary((scene?.frames ?? []).map { ($0.id, $0.rect) }, uniquingKeysWith: { a, _ in a })
     doc.edit(name, selection: [.card(id)]) { b in

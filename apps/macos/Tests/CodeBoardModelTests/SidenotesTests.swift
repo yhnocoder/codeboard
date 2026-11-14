@@ -144,3 +144,75 @@ private func lines(_ r: ClosedRange<Int>, _ card: String = "c1") -> Anchor { .ca
   b.delete([.card(cid("c1"))])
   #expect(b.sidenotes.map(\.id) == [nid("f")])
 }
+
+/// Place on Board (core sidenoteCard, sidenoteToCard): a text sidenote a Note of its text, a code one a code card of its
+/// lines with a segment id of its own; the sidenote goes, an arrow comes from its first line, its block or its card;
+/// a question, or one on a Section or the board, makes none
+@Test func placeOnBoardMakesItACardWithAnArrowFromWhereItWas() throws {
+  var b = board()
+  let block = BlockRef(index: 1, hash: BlockRef.sig("B"))
+  b.addSidenote(nid("l"), text: "on lines", at: lines(21...22))
+  b.addSidenote(nid("k"), text: "on a block", at: .card(cid("n1"), block: block))
+  b.addSidenote(nid("w"), text: "on the card", at: .card(cid("n1")))
+  b.addSidenote(nid("q"), text: "why?", at: .card(cid("n1")), question: 1)
+  b.addSidenote(nid("g"), text: "on a Section", at: .section(SectionID(rawValue: "g1")))
+  let free = Segment(id: SegmentID(rawValue: "f"), source: nil, language: "rust", firstLine: 1, lines: ["fn a() {}"])
+  let read = Segment(
+    id: SegmentID(rawValue: "r"), source: .file(path: "a.py", hash: nil), language: "python", firstLine: 3,
+    lines: ["x = 1"])
+  b.sidenotes.append(Sidenote(id: nid("cf"), anchor: .card(cid("n1")), body: .code(free)))
+  b.sidenotes.append(Sidenote(id: nid("cr"), anchor: .card(cid("n1"), block: block), body: .code(read)))
+  #expect(b.sidenoteCard(nid("q"), card: cid("x")) == nil && b.sidenoteCard(nid("g"), card: cid("x")) == nil)
+  #expect(!Ok.it(&b) { $0.placeSidenote(nid("g"), as: Card(id: cid("x"), x: 0, y: 0, width: 1, content: .shared)) })
+
+  func place(_ n: String, at x: Double) throws -> (Card, Arrow) {
+    var c = try #require(b.sidenoteCard(nid(n), card: cid("p-\(n)")))
+    c.x = x
+    c.y = 700
+    let arrows = b.arrows.count
+    #expect(Ok.it(&b) { $0.placeSidenote(nid(n), as: c) })
+    #expect(b.sidenote(nid(n)) == nil && b.card(c.id) == c && b.arrows.count == arrows + 1)
+    let a = try #require(b.arrows.last)
+    #expect(a.to == Endpoint(card: c.id))
+    return (c, a)
+  }
+  let (l, la) = try place("l", at: 0)
+  #expect(l.content == .own(CardContent(body: .note(Note(text: "on lines")))) && l.width == Board.newNoteWidth)
+  #expect(la.from == Endpoint(card: cid("c1"), segment: s1, line: 20), "from the Highlight's first line: \(la.from)")
+  // the Highlight it was on stays
+  #expect(b.segment(cid("c1"), s1)?.highlights.contains(20...22) == true)
+  let (_, ka) = try place("k", at: 400)
+  #expect(ka.from == Endpoint(card: cid("n1"), block: block))
+  let (_, wa) = try place("w", at: 800)
+  #expect(wa.from == Endpoint(card: cid("n1")))
+  let (f, _) = try place("cf", at: 1200)
+  guard case .own(let fc) = f.content, case .code(let fcode) = fc.body, let fs = fcode.segments.first else {
+    Issue.record("not code: \(f)")
+    return
+  }
+  #expect(fs.id != free.id && fs.lines == free.lines && fs.language == "rust" && f.width == Board.newNoteWidth)
+  let (r, ra) = try place("cr", at: 1600)
+  #expect(r.width == 480 && ra.from == Endpoint(card: cid("n1"), block: block))
+  #expect(b.problem() == nil)
+}
+
+/// Always Show (core toggleAlwaysShow) turns on and off for a text sidenote on a card, never a code one or one off
+/// cards; Mark Reviewed (core markReviewed) clears its second look
+@Test func alwaysShowTogglesOnATextSidenoteOnACardAndMarkReviewedClearsTheLook() {
+  var b = board()
+  b.addSidenote(nid("l"), text: "on lines", at: lines(21...22))
+  b.addSidenote(nid("g"), text: "on a Section", at: .section(SectionID(rawValue: "g1")))
+  let seg = Segment(id: SegmentID(rawValue: "f"), source: nil, language: "rust", firstLine: 1, lines: ["fn a() {}"])
+  b.sidenotes.append(Sidenote(id: nid("c"), anchor: .card(cid("n1")), body: .code(seg), review: "v2"))
+  func always(_ n: String) -> Bool? { if case .text(let t)? = b.sidenote(nid(n))?.body { t.alwaysShow } else { nil } }
+  b.toggleAlwaysShow(nid("l"))
+  #expect(always("l") == true)
+  b.toggleAlwaysShow(nid("l"))
+  #expect(always("l") == false)
+  b.toggleAlwaysShow(nid("g"))
+  #expect(always("g") == false, "not on a card")
+  b.toggleAlwaysShow(nid("c"))
+  #expect(b.sidenote(nid("c"))?.body == .code(seg))
+  b.markReviewed(nid("c"))
+  #expect(b.sidenote(nid("c"))?.review == nil)
+}

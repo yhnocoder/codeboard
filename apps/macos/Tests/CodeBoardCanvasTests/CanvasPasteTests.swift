@@ -151,6 +151,18 @@ import Testing
     #expect(wide.width == Board.newNoteWidth)
   }
 
+  /// A link and a list of them (newWeb, newLinkList by addCards) from the pointer's place, as main's paste gives it
+  /// (interact.ts worldAt(lastPointer())), the nearest free place there
+  @Test func linksPasteFromThePointer() async throws {
+    let (r, pb) = try await rig()
+    defer { r.close() }
+    r.canvas.fetchPage = { _ in WebPage(title: "T", description: "", site: "") }
+    let web = try await paste("https://site.test/post", r, pb, at: CGPoint(x: 700, y: 500))
+    #expect(web.x == 700 && web.y == 500)
+    let list = try await paste("https://a.test/1\nhttps://b.test/2", r, pb, at: CGPoint(x: 700, y: 900))
+    #expect(list.x == 700 && list.y == 900)
+  }
+
   /// Pasted into a Section (by more than a third of the card): the card is the Section's (settleHome)
   @Test func aCardPastedIntoASectionIsTheSections() async throws {
     let (r, pb) = try await rig()

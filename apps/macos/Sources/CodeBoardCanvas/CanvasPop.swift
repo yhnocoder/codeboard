@@ -142,17 +142,20 @@ extension CanvasView {
     return seg.highlights.first { $0.contains(l.range.lowerBound) && $0.contains(l.range.upperBound) }
   }
 
-  /// The sidenotes the popup for `at` shows: a spot's; a Highlight's, on lines inside it
+  /// The sidenotes the popup for `at` shows: a spot's; a Highlight's, on lines inside it, the ones always shown last
+  /// (notes.tsx HighlightPop notes)
   func popNotes(_ at: PopAt, in scene: Scene) -> [Sidenote] {
     switch at {
     case .spot(let s): return scene.notes.filter { $0.anchor.spot == s }
     case .lines(let l):
       let r = shownHighlight(l, in: scene) ?? l.range
-      return scene.notes.filter { n in
+      let mine = scene.notes.filter { n in
         guard let m = n.anchor.lines else { return false }
         return m.card == l.card && m.segment == l.segment && r.contains(m.range.lowerBound)
           && r.contains(m.range.upperBound)
       }
+      func always(_ n: Sidenote) -> Bool { if case .text(let t) = n.body { t.alwaysShow } else { false } }
+      return mine.filter { !always($0) } + mine.filter(always)
     }
   }
 
@@ -183,6 +186,7 @@ extension CanvasView {
     }
     var texts: [String] = []
     let shownNotes = notes.map { n -> SidenotePop.Shown.Note in
+      let place = n.placeable
       switch n.body {
       case .text(let t):
         texts.append(t.text)
@@ -191,10 +195,13 @@ extension CanvasView {
           SidenotePop.Shown.Ask(
             done: q.done, answers: q.answers.map { SidenotePop.Shown.Answer(id: $0.id, md: $0.text) })
         }
-        return .text(n.id.rawValue, t.text, q: q)
+        return .text(
+          n.id.rawValue, t.text, q: q, place: place, review: n.review, lines: n.anchor.lines != nil,
+          always: t.alwaysShow)
       case .code(let seg):
         return .code(
-          n.id.rawValue, head: Self.codeHead(seg), start: seg.firstLine, html: Self.codeHTML(seg))
+          n.id.rawValue, head: Self.codeHead(seg), start: seg.firstLine, html: Self.codeHTML(seg), place: place,
+          review: n.review)
       }
     }
     return SidenotePop.Shown(
@@ -376,6 +383,9 @@ extension CanvasView {
       }
     case .write(let n, let text): doc.edit("Edit Sidenote") { $0.writeSidenote(id(n), text) }
     case .delete(let n): doc.edit("Delete Sidenote") { $0.deleteSidenotes([id(n)]) }
+    case .place(let n): placeSidenote(id(n))
+    case .alwaysShow(let n): doc.edit("Always Show") { $0.toggleAlwaysShow(id(n)) }
+    case .reviewed(let n): doc.edit("Mark Reviewed") { $0.markReviewed(id(n)) }
     case .done(let n, let done): doc.edit(done ? "Resolve" : "Reopen") { $0.setQuestionDone(id(n), done) }
     case .answer(let n, let text):
       doc.edit("Answer") { _ = $0.addAnswer(id(n), answer: Board.newID("a"), text: text, at: now) }
@@ -408,6 +418,8 @@ extension CanvasView {
 
   /// A sidenote's menu (notes.tsx noteMenu): Edit for a text sidenote (as its pencil), then Delete Sidenote. Place on
   /// Board, Board-only and Mark Reviewed are not made here yet; Only in This Variant is not done
+  /// A sidenote's right-click menu (notes.tsx noteMenu): Edit for a text one, Place on Board for one on a card that is no
+  /// question, Mark Reviewed while it asks for a second look, then Delete Sidenote
   func sidenoteMenu(_ n: SidenoteID) -> NSMenu {
     let m = NSMenu()
     if case .text? = document?.board.sidenote(n)?.body {
@@ -416,10 +428,36 @@ extension CanvasView {
           guard let pop = self?.sidenotePop else { return }
           Task { _ = await pop.run("pop.click(s)", ["s": ".slip[data-note=\"\(n.rawValue)\"] [aria-label=Edit]"]) }
         })
-      m.addItem(.separator())
     }
+    if document?.board.sidenote(n)?.placeable == true {
+      m.addItem(menuItem("Place on Board") { [weak self] in self?.placeSidenote(n) })
+    }
+    if document?.board.sidenote(n)?.review != nil {
+      m.addItem(menuItem("Mark Reviewed") { [weak self] in self?.popAction(.reviewed(n.rawValue)) })
+    }
+    if !m.items.isEmpty { m.addItem(.separator()) }
     m.addItem(menuItem("Delete Sidenote") { [weak self] in self?.popAction(.delete(n.rawValue)) })
     return m
+  }
+
+  /// Place on Board (actions/notes.ts placeSidenote): the sidenote as a card at the nearest free place from 48 right of
+  /// the card it is on and 20 down, an arrow to it from where it was, one step, selected; the popup closes
+  func placeSidenote(_ n: SidenoteID) {
+    guard let b = document?.board, let on = b.sidenote(n)?.anchor.card, let i = index(of: .card(on)),
+      let r = scene?.items[i].rect
+    else { return }
+    let id = CardID(rawValue: Board.newID("card-"))
+    guard var card = b.sidenoteCard(n, card: id) else { return }
+    var h = 160.0
+    if case .own(let k) = card.content, case .code(let code) = k.body, let s = code.segments.first {
+      h = min(520, 52 + Double(s.lines.count) * 19)
+    }
+    let size = CGSize(width: card.width, height: h)
+    let at = pastePlace(size, at: CGPoint(x: r.maxX + 48, y: r.minY + 20), besideSelection: false)
+    card.x = at.x
+    card.y = at.y
+    openPop(nil)
+    settle(id, size, "Place on Board") { $0.placeSidenote(n, as: card) }
   }
 
   // MARK: Tint

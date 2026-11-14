@@ -348,6 +348,7 @@ extension CanvasView {
     }
     m.addItem(submenu("Theme", themes))
     m.addItem(key(menuItem("Keyboard Shortcuts") { [weak self] in self?.toggleKeys() }, "?"))
+    m.addItem(menuItem("Copy Diagnostics") { [weak self] in self?.copyDiagnostics() })
     return m
   }
 

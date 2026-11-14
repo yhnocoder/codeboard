@@ -223,6 +223,10 @@ func stickerBoard() -> Board {
     code.segments[0].hidden = [11...11]
     k.body = .code(code)
     b.cards[0].content = .own(k)
+    // its own glyph and colour, a CSS name as a board may carry (main sets it as the glyph's --c)
+    let ki = try #require(b.stickers.firstIndex { $0.id == kid("k3") })
+    b.stickers[ki].glyph = .builtin(.bug)
+    b.stickers[ki].color = "red"
     let r = try await Rig(b, zoom: 1)
     defer { r.close() }
     let c = r.canvas
@@ -233,6 +237,11 @@ func stickerBoard() -> Board {
     #expect(k3.line && k3.owner == cid("c1"))
     #expect(k3.frame.minY == layout.top + gap.y + 3, "on the hidden row: \(k3.frame), the row at \(layout.top + gap.y)")
     #expect(k3.frame.minX == layout.layout.gutter - 18, "at the line numbers")
+    #expect(k3.glyph == .builtin(.bug) && k3.color == "red")
+    let i = try #require(c.stickerSpots.firstIndex { $0.id == kid("k3") })
+    let disc = c.stickerLayers[i].sublayers?.first as? CAShapeLayer
+    let red = StickerArt.colors(CGColor(srgbRed: 1, green: 0, blue: 0, alpha: 1), c.theme).bg
+    #expect(disc?.fillColor == red, "drawn in its own red: \(String(describing: disc?.fillColor))")
   }
 
   @Test func aGlyphPickedWithOneSelectedSwapsItsGlyphAndItsColourGoesBack() async throws {

@@ -1089,9 +1089,9 @@ public final class CanvasView: NSView {
   }
 
   /// The camera come to rest is kept for the board, to open there next time: written once nothing has moved it for
-  /// `cameraDelay`, and not while a gesture is under way; `now`: the board is being left, written at once (unless a
-  /// gesture is under way)
-  func keepCamera(now: Bool = false) {
+  /// `cameraDelay`, and not while a gesture is under way; `now`: the board is being left (another board, its tab or
+  /// window closed, the app quitting), written at once, where a gesture under way has it
+  package func keepCamera(now: Bool = false) {
     if let (board, vault) = shown, let store = cameras, scene != nil, camera != cameraKept {
       cameraKept = camera
       cameraToKeep = (store, vault, board.id, camera)
@@ -1099,7 +1099,7 @@ public final class CanvasView: NSView {
     guard cameraToKeep != nil else { return }
     cameraSave?.cancel()
     cameraSave = nil
-    if now, gesture == nil { return writeCamera() }
+    if now { return writeCamera() }
     let delay = cameraDelay
     cameraSave = Task { [weak self] in
       try? await Task.sleep(for: delay)

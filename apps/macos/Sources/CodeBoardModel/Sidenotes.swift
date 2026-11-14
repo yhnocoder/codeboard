@@ -63,6 +63,9 @@ extension Sidenote {
 
   /// A question not resolved yet
   public var isOpenQuestion: Bool { question.map { !$0.done } ?? false }
+
+  /// Place on Board can make a card of it: it is on a card and asks nothing (notes.tsx Slip, noteMenu)
+  public var placeable: Bool { anchor.card != nil && question == nil }
 }
 
 extension Board {
@@ -199,6 +202,54 @@ extension Board {
   public mutating func deleteSidenotes(_ ids: Set<SidenoteID>) {
     sidenotes.removeAll { ids.contains($0.id) }
     selfCheck()
+  }
+
+  /// Always Show on or off (core commands/notes.ts toggleAlwaysShow): a text sidenote on a card
+  public mutating func toggleAlwaysShow(_ id: SidenoteID) {
+    guard let i = sidenotes.firstIndex(where: { $0.id == id }), sidenotes[i].anchor.card != nil,
+      case .text(var t) = sidenotes[i].body
+    else { return }
+    t.alwaysShow.toggle()
+    sidenotes[i].body = .text(t)
+  }
+
+  /// Mark Reviewed (core markReviewed): its second look is done
+  public mutating func markReviewed(_ id: SidenoteID) {
+    guard let i = sidenotes.firstIndex(where: { $0.id == id }) else { return }
+    sidenotes[i].review = nil
+  }
+
+  /// The card Place on Board makes of a sidenote on a card (core edit/ops.ts sidenoteCard), at 0, 0: a text one a Note
+  /// of its Markdown, a code one a code card of its lines (a segment id of its own), a Note's width when it is a Note or
+  /// Free code, 480 when its lines are read from a file. Nil for a question, or one not on a card (main offers neither)
+  public func sidenoteCard(_ id: SidenoteID, card: CardID) -> Card? {
+    guard let n = sidenote(id), n.placeable else { return nil }
+    switch n.body {
+    case .text(let t):
+      return Card(
+        id: card, x: 0, y: 0, width: Board.newNoteWidth, content: .own(CardContent(body: .note(Note(text: t.text)))))
+    case .code(var seg):
+      seg.id = SegmentID(rawValue: Board.newID("s"))
+      return Card(
+        id: card, x: 0, y: 0, width: seg.source == nil ? Board.newNoteWidth : 480,
+        content: .own(CardContent(body: .code(CodeCard(segments: [seg])))))
+    }
+  }
+
+  /// Place on Board (core commands/notes.ts sidenoteOnBoard, edit/ops.ts sidenoteToCard): its card (`sidenoteCard`,
+  /// placed) put on the board, the sidenote gone, and an arrow from what it was on (its first line, its block, its card)
+  /// to the card, in one edit. False when the sidenote is not on a card
+  @discardableResult
+  public mutating func placeSidenote(_ id: SidenoteID, as card: Card) -> Bool {
+    guard let n = sidenote(id), case .card(let on, let seg, let lines, let block) = n.anchor, self.card(card.id) == nil
+    else { return false }
+    cards.append(card)
+    deleteSidenotes([id])
+    let from =
+      block.map { Endpoint(card: on, block: $0) }
+      ?? Endpoint(card: on, segment: lines == nil ? nil : seg, line: lines?.lowerBound)
+    addArrow(ArrowID(rawValue: Board.newID("l")), from: from, to: Endpoint(card: card.id))
+    return true
   }
 
   /// Remove Highlight (a lines popup's delete): the segment's own Highlights inside these lines, and every sidenote on
