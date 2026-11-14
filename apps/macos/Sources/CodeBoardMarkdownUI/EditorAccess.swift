@@ -27,12 +27,9 @@ extension MarkdownEditorView {
   public func cursor(at p: CGPoint, modifiers: NSEvent.ModifierFlags = []) -> NSCursor {
     let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
     guard isEditing else { return .arrow }
-    if let box = imageBox {
-      let s = 10 / zoom
-      for c in [CGPoint(x: box.minX - 2, y: box.maxY + 2), CGPoint(x: box.maxX + 2, y: box.maxY + 2)]
-      where abs(c.x - at.x) <= s && abs(c.y - at.y) <= s {
-        return .resizeLeftRight
-      }
+    // a selected image's width grips on its sides (markdown.css .md-imgrip: ew-resize)
+    if let box = imageBox, handles(box).contains(where: { $0.insetBy(dx: -4, dy: -4).contains(at) }) {
+      return .resizeLeftRight
     }
     if let k = tableCursor(at) { return k }
     if modifiers.contains(.command), linkUnder(at) { return .pointingHand }

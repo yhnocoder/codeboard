@@ -38,6 +38,9 @@ import Testing
     )
     v.selection = v.core.selection
     #expect(v.toolbar.isHidden && !v.isTicking)
+    // over a grip the pointer is a left-right resize, as on the web (it stayed an I-beam)
+    #expect(v.cursor(at: CGPoint(x: grips[1].midX, y: grips[1].midY)) == .resizeLeftRight)
+    #expect(v.cursor(at: CGPoint(x: grips[0].midX, y: grips[0].midY)) == .resizeLeftRight)
     // the grip's outer half, past the editor's edge, is the editor's
     #expect(
       w.contentView!.hitTest(v.convert(CGPoint(x: grips[1].maxX - 0.5, y: grips[1].midY), to: w.contentView)) === v)

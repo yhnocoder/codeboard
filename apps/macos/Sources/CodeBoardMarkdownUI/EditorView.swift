@@ -1249,6 +1249,7 @@ public final class MarkdownEditorView: NSView {
     // resize it; taken as a click on the picture, their release opened its source)
     if let box = imageBox, box.contains(at), e.clickCount == 1, !onImageGrip(at, box) {
       imageDragFrom = at
+      note(.key("press on the selected picture", did: "drag out, or open its source on release"))
       return
     }
     // a press on a column's right edge or a row's bottom edge: its width or height (layout info, editor/table.ts)
@@ -1286,10 +1287,12 @@ public final class MarkdownEditorView: NSView {
     // on a handle gives it back its full width
     if let box = imageBox, let k = handles(box).firstIndex(where: { $0.insetBy(dx: -4, dy: -4).contains(at) }) {
       if e.clickCount == 2 {
+        note(.key("double press on an image grip", did: "full width"))
         core.setImageWidth(nil)
         changed()
         return
       }
+      note(.key("press on an image grip", did: k == 0 ? "resize from the left" : "resize from the right"))
       resizing = (box.width, at, box.width, k == 0)
       return
     }
