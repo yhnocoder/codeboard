@@ -103,7 +103,13 @@ import CodeBoardShell
     let name = String(format: "f%04d.png", n)
     let file = out.appending(path: name)
     var image: String?
-    if ownWindow(), shot(window.windowNumber, to: file) { image = name }
+    if Driver.screenAway {
+      if !notes.contains(where: { $0.hasPrefix("the screen") }) {
+        notes.append("the screen went to sleep or was locked at frame \(n): no pictures from there on")
+      }
+    } else if ownWindow(), shot(window.windowNumber, to: file) {
+      image = name
+    }
     let hitView = hit(pointer)
     let bar = window.contentView.flatMap { find(CanvasToolbar.self, in: $0) }
     frames.append(
@@ -122,6 +128,13 @@ import CodeBoardShell
   }
 
   /// The window to record is this process's own: checked with the window server before every shot
+  /// The display asleep or the session locked: the window server shows nothing, a web view draws nothing, and a
+  /// recording would show neither. The driver never wakes the display
+  static var screenAway: Bool {
+    let locked = (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false
+    return CGDisplayIsAsleep(CGMainDisplayID()) != 0 || locked
+  }
+
   func ownWindow() -> Bool {
     guard
       let info = CGWindowListCopyWindowInfo(.optionIncludingWindow, CGWindowID(window.windowNumber))

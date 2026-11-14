@@ -1,0 +1,5 @@
+toolbar: the bottom toolbar as the window shows it, idle and while a Note is written in
+
+ok   jumped: none
+ok   flash: none
+ok   toolbar has its tools: 318 frames: icons there

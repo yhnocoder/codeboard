@@ -25,6 +25,10 @@ guard args.count >= 3, let made = Scenarios.all.first(where: { $0.name == args[1
   print("usage: Drive <scenario> <out folder> [--dark] [--ink-wash]; Drive list")
   exit(2)
 }
+if Driver.screenAway {
+  print("the screen is asleep or locked: nothing can be recorded until it is awake")
+  exit(3)
+}
 var scenario = made
 let fm = FileManager.default
 let out = URL(filePath: args[2], directoryHint: .isDirectory)
