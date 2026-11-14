@@ -289,6 +289,7 @@ func editSample() -> Board {
 
 // MARK: Copy and paste
 
+/// Copies take the arrows among them and the sidenotes on them, no sticker (main's core placeCards)
 @Test func pastingMakesPlainCopiesWithWhatHangsOnThem() throws {
   var b = editSample()
   // c1 is a shared card here
@@ -315,13 +316,13 @@ func editSample() -> Board {
   #expect(b.cards.count == 7 && b.sections.count == 4)
   #expect(b.arrows.count == 3, "the arrow between two copied cards came too, not the one to t1")
   #expect(b.sidenotes.count == 6, "the one on c1's lines, the one on g2, the travelling one")
-  #expect(b.stickers.count == 5, "the one on n1's copy and on c1's line")
+  #expect(b.stickers.count == 3, "no sticker came")
   let inner = try #require(b.sections.last)
   #expect(inner.parent == b.sections[2].id && inner.x == 450)
   #expect(b.problem() == nil)
   // pasted again into a board without those cards: what pointed outside the clip is not there
   var other = Board(id: BoardID(rawValue: "o"))
   other.paste(b.clip([.card(cid("n1"))], shared: { _ in nil }), dx: 0, dy: 0)
-  #expect(other.cards.count == 1 && other.cards[0].section == nil && other.stickers.count == 1)
+  #expect(other.cards.count == 1 && other.cards[0].section == nil && other.stickers.isEmpty)
   #expect(other.problem() == nil)
 }

@@ -1667,22 +1667,35 @@ extension CanvasView {
     toast("Pasted as linked card\(n > 1 ? "s" : "") · also on \(other.title)")
   }
 
-  /// ⌘D: copies 48 down and to the right (core duplicateCards), with the chip that makes them References
+  /// ⌘D: copies 48 down and to the right (core duplicateCards), with the chip that makes them References: no arrow and
+  /// no sidenote of a card come along, and they stay in no Section
   @objc public func duplicate(_ sender: Any?) {
     guard let doc = document, let (_, vault) = shown, gesture == nil, !doc.selection.isEmpty else { return }
-    let clip = doc.board.clip(doc.selection) { try? vault.sharedCard($0) }
+    var clip = doc.board.clip(doc.selection) { try? vault.sharedCard($0) }
     guard !clip.isEmpty else { return }
-    offerReference(place(clip, dx: 48, dy: 48, name: "Duplicate"))
+    clip.arrows = []
+    clip.sidenotes.removeAll { $0.anchor.card != nil }
+    offerReference(place(clip, dx: 48, dy: 48, name: "Duplicate", settle: false))
   }
 
-  /// The clip put on the board, what was made selected; returns each card made with the one it was made from
+  /// The clip put on the board, what was made selected; returns each card made with the one it was made from.
+  /// `settle`: each card in no Section of the clip goes in the Section it lands in (board actions/shared.ts settleHome)
   @discardableResult
-  private func place(_ clip: Clip, dx: Double, dy: Double, name: String, shared: Bool = false) -> [(
-    copy: CardID, of: CardID
-  )] {
+  private func place(_ clip: Clip, dx: Double, dy: Double, name: String, shared: Bool = false, settle: Bool = true)
+    -> [(copy: CardID, of: CardID)]
+  {
     guard let doc = document else { return [] }
     var b = doc.board
     let (made, copies) = b.paste(clip, dx: dx, dy: dy, shared: shared)
+    if settle, let s = scene {
+      let frames = Dictionary(s.frames.map { ($0.id, $0.rect) }, uniquingKeysWith: { a, _ in a })
+      for (id, of) in copies {
+        guard let i = b.cards.firstIndex(where: { $0.id == id }), b.cards[i].section == nil else { continue }
+        let c = b.cards[i]
+        let h = c.height ?? c.measuredHeight ?? liveRect(.card(of)).map { Double($0.height) } ?? 0
+        b.cards[i].section = home(of: CGRect(x: c.x, y: c.y, width: c.width, height: h), frames: frames)
+      }
+    }
     doc.edit(name, selection: made) { $0 = b }
     return copies
   }

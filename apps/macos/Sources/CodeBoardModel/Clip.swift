@@ -1,7 +1,9 @@
 import Foundation
 
-/// What Copy puts on the pasteboard: cards and Sections with what hangs on them and the arrows between them, every card
-/// with its content (a shared card's content and travelling sidenotes copied in), and the board they were copied from.
+/// What Copy puts on the pasteboard: cards and Sections, the arrows between the cards, the sidenotes that travel with the
+/// cards (not one kept to the board) and those on the Sections, every card with its content (a shared card's content and
+/// travelling sidenotes copied in), and the board they were copied from. No sticker: main's copies take none (core
+/// placeCards).
 /// Pasted on that board they are copies; on another, by default, the same cards shared by both (FORMAT.md)
 public struct Clip: Codable, Equatable, Sendable {
   public static let pasteboardType = "com.yhnocoder.codeboard.clip"
@@ -12,19 +14,17 @@ public struct Clip: Codable, Equatable, Sendable {
   public var sections: [Section]
   public var arrows: [Arrow]
   public var sidenotes: [Sidenote]
-  public var stickers: [Sticker]
 
   public var isEmpty: Bool { cards.isEmpty && sections.isEmpty }
 
   public func encoded() throws -> Data { try canonicalJSON(self) }
   public init(decoding data: Data) throws { self = try JSONDecoder().decode(Clip.self, from: data) }
 
-  init(cards: [Card], sections: [Section], arrows: [Arrow], sidenotes: [Sidenote], stickers: [Sticker]) {
+  init(cards: [Card], sections: [Section], arrows: [Arrow], sidenotes: [Sidenote]) {
     self.cards = cards
     self.sections = sections
     self.arrows = arrows
     self.sidenotes = sidenotes
-    self.stickers = stickers
   }
 
   /// Where it covers, in board units
@@ -38,9 +38,9 @@ public struct Clip: Codable, Equatable, Sendable {
 }
 
 extension Board {
-  /// A copy of `items`: the cards, each Section with what is inside it, the arrows with both ends among them, the
-  /// sidenotes on them and the stickers on their cards. `shared` reads a shared card's file; one that cannot be read is
-  /// left out
+  /// A copy of `items`: the cards, each Section with what is inside it, the arrows with both ends among them and the
+  /// sidenotes on them, but those kept to this board (core cardCopies: sharedOf, travels). `shared` reads a shared card's
+  /// file; one that cannot be read is left out
   public func clip(_ items: Set<Item>, shared: (CardID) -> SharedCard?) -> Clip {
     var secs = Set<SectionID>()
     for case .section(let id) in items where section(id) != nil { secs.formUnion(sectionTree(id)) }
@@ -79,20 +79,20 @@ extension Board {
     }
     notes += sidenotes.filter { n in
       switch n.anchor {
-      case .card(let c, _, _, _): ids.contains(c)
+      case .card(let c, _, _, _): ids.contains(c) && !n.boardOnly
       case .section(let s): secs.contains(s)
       case .point: false
       }
     }
     var clip = Clip(
       cards: out, sections: sectionList,
-      arrows: arrows.filter { ids.contains($0.from.card) && ids.contains($0.to.card) }, sidenotes: notes,
-      stickers: stickers.filter { $0.anchor.card.map(ids.contains) == true })
+      arrows: arrows.filter { ids.contains($0.from.card) && ids.contains($0.to.card) }, sidenotes: notes)
     clip.board = id
     return clip
   }
 
-  /// Puts copies of what `clip` holds on the board, moved by (dx, dy), on top, unlocked, every id new (`newID` gives
+  /// Puts copies of what `clip` holds on the board, moved by (dx, dy), on top, unlocked and with no summary (both the
+  /// place's on the board it came from: core placeCards takes a place's x, y, w, h), every id new (`newID` gives
   /// them; segment ids stay, as they are a card's own). `shared`: its cards are the same cards as on the board it was
   /// copied from (their source board made them shared cards first, `share`): they keep their ids and are shared, the
   /// sidenotes that travel with them come along as they are, and one already on this board is left as it is (core
@@ -127,6 +127,7 @@ extension Board {
       n.x += dx
       n.y += dy
       n.locked = false
+      n.summary = nil
       cards.append(n)
     }
     for a in clip.arrows {
@@ -158,20 +159,6 @@ extension Board {
       n.boardOnly = false
       sidenotes.append(n)
     }
-    for k in clip.stickers {
-      var n = k
-      switch k.anchor {
-      case .canvas: continue
-      case .card(let c, let x, let y, let size):
-        guard let to = cardIDs[c] else { continue }
-        n.anchor = .card(to, x: x, y: y, size: size)
-      case .line(let c, let seg, let line):
-        guard let to = cardIDs[c] else { continue }
-        n.anchor = .line(to, segment: seg, line: line)
-      }
-      n.id = StickerID(rawValue: newID("k"))
-      stickers.append(n)
-    }
     selfCheck()
     return (
       Set(cardIDs.values.map(Item.card)).union(sectionIDs.values.map(Item.section)),
@@ -191,11 +178,10 @@ extension Clip {
   /// with a new id (old → new): what hangs on them following
   public func renamed(_ ids: [CardID: CardID]) -> Clip {
     guard !ids.isEmpty else { return self }
-    var b = Board(
-      id: board ?? BoardID(rawValue: ""), cards: cards, arrows: arrows, sidenotes: sidenotes, stickers: stickers)
+    var b = Board(id: board ?? BoardID(rawValue: ""), cards: cards, arrows: arrows, sidenotes: sidenotes)
     for (old, new) in ids { b.renameCard(old, to: new) }
     var out = self
-    (out.cards, out.arrows, out.sidenotes, out.stickers) = (b.cards, b.arrows, b.sidenotes, b.stickers)
+    (out.cards, out.arrows, out.sidenotes) = (b.cards, b.arrows, b.sidenotes)
     return out
   }
 }
