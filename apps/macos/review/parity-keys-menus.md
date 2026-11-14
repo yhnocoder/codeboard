@@ -115,7 +115,7 @@ App: same, but Paste is off when there is nothing the board can paste (main read
 | Sticker | Color ▸ (not an emoji), Size ▸ (free ones), Detach from Card / Arrow, `-`, Delete ⌫ | colours as a row of swatches, Size ▸ (24, 32, 48, 72 px), Detach from Card (the app pins stickers to cards only, not arrows), Delete |
 | Shelf entry | Put Back, `-`, Remove | same |
 | Link List row | Open in Browser ↵, Show as Compact / Rich, Edit Title, Retry Preview (failed), `-`, Move Out as Card, Remove from List ⌫ | same |
-| Sidenote | Edit (text), Place on Board (on a card), Board-only (linked card), Mark Reviewed, `-`, Delete Sidenote | gap: the popup has its buttons, no menu |
+| Sidenote | Edit (text), Place on Board (on a card), Board-only (linked card), Mark Reviewed, `-`, Delete Sidenote | a right-click on it in the popup: Edit (a text sidenote), `-`, Delete Sidenote; gap: Place on Board (no sidenote-to-card op yet), Board-only (no linked cards), Mark Reviewed (review marks are kept, not shown) |
 
 ## The toolbar (main: `Chrome.tsx`)
 

@@ -109,6 +109,8 @@ public final class SidenotePop: NSObject {
     case ref(RefPress?)
     /// A press anywhere else in it
     case elsewhere
+    /// A right-click on a sidenote: its menu, at that point in the view
+    case menu(String, at: CGPoint)
   }
 
   /// The room around the popup in the web view: its shadow's on every side, and the [[ list's below it (or above,
@@ -247,6 +249,8 @@ public final class SidenotePop: NSObject {
     case "writeAnswer": onAction?(.writeAnswer(s("id"), answer: s("answer"), s("text")))
     case "remove": onAction?(.remove)
     case "close": onAction?(.close)
+    case "menu":
+      onAction?(.menu(s("id"), at: CGPoint(x: m["x"] as? Double ?? 0, y: m["y"] as? Double ?? 0)))
     case "picked": onAction?(.picked(group: m["group"] as? String, id: s("id")))
     case "ref": RefPress(m).map { onAction?(.ref($0)) }
     case "refDouble": onAction?(.ref(nil))
