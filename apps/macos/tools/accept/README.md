@@ -22,7 +22,7 @@ node apps/macos/tools/accept/run.mjs --stop                  # 关掉留着的�
 细节在 `apps/macos/.build-accept/<场景名>/`：
 
 - `expect-mac.txt`、`expect-web.txt`：每条断言的结果和实际值。
-- `<名字>.mp4`（`--video`）：`rec <名字>` 到 `stop` 之间的录像，左 Mac、右 VS Code，按真实帧时间播放，画着指针（按下时一个红圈），Mac 这边光标不是箭头时在指针旁写出光标名。
+- `<名字>.mp4`（`--video`）：`rec <名字>` 到 `stop` 之间的录像，左 Mac、右 VS Code，按真实帧时间播放，画着指针（按下时一个红圈），Mac 这边光标不是箭头时在指针旁写出光标名（系统光标按名字，改大小的按它画的箭头，如 `frameResize ↖↘`；app 自己画的写成 `custom(宽x高)`）。
 - `<名字>.png`：`shot <名字>` 那一刻两边并排（不缩小）；`mac/`、`web/` 里是各自的原图和每一帧。
 - `report-mac.txt`、`report-web.txt`：用了几次什么输入；每条命令花了多久；每次按下落在什么上（Mac 是视图链，网页是元素链，带卡 id）；录像中的点击、按键、拖动从输入到达 app（按下鼠标、按下键；拖动和 `up` 是松开）起多久画面开始变（answered）、多久停下（settled，300 ms 不变），比较帧时不看画上去的指针。
 - `results-*.txt`：有返回值的命令（`menu` 读出的菜单、`hit`、`info`…）。
@@ -71,7 +71,7 @@ node apps/macos/tools/accept/run.mjs --stop                  # 关掉留着的�
 
 Mac 这边复制粘贴用的是这个进程自己的私有剪贴板，碰不到用 Mac 的人的剪贴板。网页那边不转发按键：VS Code 先拦下 ⌘D 这些键再转回给白板，这里白板自己接。
 
-`scenarios/` 里的场景：`b1/`（第 2 步第 1 批的交互验收）、`stale-hover`（指针不动时平移，连接点从原来的卡换到新到指针下的卡；捏合时跟着缩放）、`look-tour`、`look-tour2`（外观：各部件静止、悬停、选中、拖动中、编辑中各拍一张，只拍不判）、`section-follow`（拖动中 Section 跟着撑开）、`pan-over-edit`（编辑时平移经过这张卡不停）、`hover-tour`（经过各种卡头和 Section 标题时出现什么）、`new-text-flow`（不对照：新建、输入、拖进 Section 的完整流程）、`ime-esc`（拼音上屏后马上按 Esc，编辑要结束）、`label-edit`（箭头标签和 Section 标题的就地编辑：双击、右键 Edit Label、选中箭头按回车）、`summary-edit`（缩小推过摘要那一级，点摘要正文就地编辑）。
+`scenarios/` 里的场景：`b1/`（第 2 步第 1 批的交互验收）、`stale-hover`（指针不动时平移，连接点从原来的卡换到新到指针下的卡；捏合时跟着缩放）、`look-tour`、`look-tour2`（外观：各部件静止、悬停、选中、拖动中、编辑中各拍一张，只拍不判）、`section-follow`（拖动中 Section 跟着撑开）、`pan-over-edit`（编辑时平移经过这张卡不停）、`hover-tour`（经过各种卡头和 Section 标题时出现什么）、`new-text-flow`（不对照：新建、输入、拖进 Section 的完整流程）、`ime-esc`（拼音上屏后马上按 Esc，编辑要结束）、`label-edit`（箭头标签和 Section 标题的就地编辑：双击、右键 Edit Label、选中箭头按回车）、`summary-edit`（缩小推过摘要那一级，点摘要正文就地编辑）、`glide-stop`（只跑 Mac：滑行途中按下，相机立即停住）。
 
 测试白板（`storage/blook.json`）有各种卡、带标签和样式的箭头、两个 Section、Sticker、Sidenote，每个会被摘要的项都带着摘要；右下远处一张 `cfar`，让白板大到缩得到摘要那一级。
 

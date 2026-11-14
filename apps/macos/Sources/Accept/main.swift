@@ -136,14 +136,26 @@ nonisolated var cursorNames: [(NSCursor, String)] {
     (.operationNotAllowed, "notAllowed"), (.dragCopy, "dragCopy"), (.dragLink, "dragLink"),
     (.contextualMenu, "contextMenu"),
     (.disappearingItem, "disappearing"), (.iBeamCursorForVerticalLayout, "iBeamVertical"),
-    (.columnResize, "columnResize"),
   ]
-    + ([
-      ("left", .left), ("right", .right), ("top", .top), ("bottom", .bottom), ("topLeft", .topLeft),
-      ("topRight", .topRight), ("bottomLeft", .bottomLeft), ("bottomRight", .bottomRight),
-    ] as [(String, NSCursor.FrameResizePosition)]).map {
-      (NSCursor.frameResize(position: $0.1, directions: .all), "frameResize(\($0.0))")
-    }
+    // the system's resize cursors, named by what they show: a frame's edges and corners (frameResize; the opposite edge with
+    // the opposite direction is the same cursor) and columns, rows
+    + [
+      (NSCursor.frameResize(position: .top, directions: .all), "frameResize ↕"),
+      (.frameResize(position: .top, directions: .outward), "frameResize ↑"),
+      (.frameResize(position: .top, directions: .inward), "frameResize ↓"),
+      (.frameResize(position: .left, directions: .all), "frameResize ↔"),
+      (.frameResize(position: .left, directions: .outward), "frameResize ←"),
+      (.frameResize(position: .left, directions: .inward), "frameResize →"),
+      (.frameResize(position: .topLeft, directions: .all), "frameResize ↖↘"),
+      (.frameResize(position: .topLeft, directions: .outward), "frameResize ↖"),
+      (.frameResize(position: .topLeft, directions: .inward), "frameResize ↘"),
+      (.frameResize(position: .topRight, directions: .all), "frameResize ↗↙"),
+      (.frameResize(position: .topRight, directions: .outward), "frameResize ↗"),
+      (.frameResize(position: .topRight, directions: .inward), "frameResize ↙"),
+      (.columnResize(directions: .all), "columnResize ↔"), (.columnResize(directions: .left), "columnResize ←"),
+      (.columnResize(directions: .right), "columnResize →"), (.rowResize(directions: .all), "rowResize ↕"),
+      (.rowResize(directions: .up), "rowResize ↑"), (.rowResize(directions: .down), "rowResize ↓"),
+    ]
 }
 func nameOf(_ c: NSCursor) -> String {
   if let n = cursorNames.first(where: { $0.0 == c })?.1 { return n }
