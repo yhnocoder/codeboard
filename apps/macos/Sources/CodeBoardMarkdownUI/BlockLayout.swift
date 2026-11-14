@@ -264,6 +264,23 @@ public final class BlockLayout: @unchecked Sendable {
     }
   }
 
+  /// The filled box (a code block's panel) drawn around a point of the Note, nil when none is: what a band sits on
+  public func panel(around p: CGPoint, of offset: Int, color: MDColor) -> CGRect? {
+    guard let i = pieceIndex(offset) else { return nil }
+    let local = CGPoint(x: p.x, y: p.y - tops[i])
+    func find(_ items: [Item]) -> CGRect? {
+      for it in items {
+        switch it {
+        case .fill(let r, _, let c) where c == color && r.contains(local): return r
+        case .clip(_, let inner): if let r = find(inner) { return r }
+        default: continue
+        }
+      }
+      return nil
+    }
+    return find(pieces[i].layout.items).map { $0.offsetBy(dx: 0, dy: tops[i]) }
+  }
+
   /// The images to draw, where they are in the whole Note
   public var images: [MarkdownImageSlot] {
     zip(pieces, tops).flatMap { p, y in p.layout.images.map { $0.moved(by: y) } }

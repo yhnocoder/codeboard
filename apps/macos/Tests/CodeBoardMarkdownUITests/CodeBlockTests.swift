@@ -180,7 +180,30 @@ import Testing
     let v = MarkdownEditorView(layout: l, caret: 0)
     v.selection = MDSelection(14)
     #expect(v.band.shown)
-    let panel = l.blockFrames[1]
+    let first = l.caretRect(MDCaret(14))!
+    let panel = l.panel(around: CGPoint(x: first.midX, y: first.midY), of: 14, color: testTheme.colors.codeBlock)!
     #expect(abs(v.band.bandFrame.maxY - panel.minY) < 0.5, "\(v.band.bandFrame) \(panel)")
+    // in a look with margins round code blocks too
+    var t = testTheme
+    t.metrics.codeMargin = 8
+    let l2 = BlockLayout(MarkdownDocument(src), width: 300, theme: t, layout: nil, resources: TestResources())
+    let w = MarkdownEditorView(layout: l2, caret: 0)
+    w.selection = MDSelection(14)
+    let f2 = l2.caretRect(MDCaret(14))!
+    let p2 = l2.panel(around: CGPoint(x: f2.midX, y: f2.midY), of: 14, color: t.colors.codeBlock)!
+    #expect(abs(w.band.bandFrame.maxY - p2.minY) < 0.5, "\(w.band.bandFrame) \(p2)")
+  }
+}
+
+/// The band's face is where its box is: its strip, shown, ends on the block's edge (an unflipped clip once lifted it 8 pt)
+@MainActor @Suite struct BandFaceTests {
+  @Test func theFaceEndsOnTheEdge() {
+    _ = boardFonts
+    let src = "Text\n\n```py\nx = 1\n```"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 0)
+    v.selection = MDSelection(14)
+    // the strip is the fade (10) over the face (30)
+    #expect(abs(v.band.stripFrame.maxY - v.band.bandFrame.maxY) < 0.5, "\(v.band.stripFrame) \(v.band.bandFrame)")
   }
 }

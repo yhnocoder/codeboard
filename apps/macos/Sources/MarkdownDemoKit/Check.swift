@@ -47,6 +47,7 @@ enum Check {
     var rests: [String: Any] = [:]
     var ticks: [String: Bool] = [:]
     var moveSettleMs = 0.0
+    var bands: [String: String] = [:]
     func rest(_ name: String) {
       let cpu0 = processCPU()
       let main0 = threadCPU()
@@ -274,6 +275,7 @@ enum Check {
         demo.scroll.reflectScrolledClipView(clip)
         for _ in 0..<20 { frame() }
         autoreleasepool { render(content, to: out.appending(path: "band-\(what).png")) }
+        bands[what] = e.bandGeometry
       }
       e.isEditing = false
       frame()
@@ -307,7 +309,7 @@ enum Check {
     stage("engines trimmed to one and collected")
     let result: [String: Any] = [
       "stages": stages, "layouts": layouts, "idleCpuPercent": idle, "tickingEditors": ticking, "onScreen": rests,
-      "events": ticks, "moveSettleMs": moveSettleMs,
+      "events": ticks, "moveSettleMs": moveSettleMs, "bands": bands,
       "failures": failures,
     ]
     if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]) {

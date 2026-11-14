@@ -587,9 +587,10 @@ public final class MarkdownEditorView: NSView {
       // the code block's box: the code's padding around its lines, from the first line's own top (its caret box: the whole
       // line; a glyph's box sits lower, which left a gap under the band)
       guard let first = core.layout.caretRect(MDCaret(b.body.lowerBound)) else { return }
-      // a code block of its own is its block's frame; one inside a list or quote is found from its first line
-      let own = core.document.blocks.indices.first { core.document.blocks[$0].range == b.range }
-      let top = own.map { core.layout.blockFrames[$0].minY } ?? first.minY - CGFloat(m.codePadding[0])
+      // the panel as drawn around its first line (a look's margins around the block are not the panel)
+      let panel = core.layout.panel(
+        around: CGPoint(x: first.midX, y: first.midY), of: b.body.lowerBound, color: core.layout.theme.colors.codeBlock)
+      let top = panel?.minY ?? first.minY - CGFloat(m.codePadding[0])
       let frame = core.layout.blockFrames.first { $0.minY <= top + 1 && $0.maxY >= top } ?? .zero
       band.block = b
       band.table = nil
@@ -950,6 +951,15 @@ public final class MarkdownEditorView: NSView {
 
   /// blocks sliding now (tests)
   var slidingBlocks: Int { blockSlide?.from.count ?? 0 }
+
+  /// where the band is and the code panel under the caret, in the editor's points (a host's check)
+  public var bandGeometry: String {
+    let c = core.caretRect ?? .zero
+    let panel = core.layout.panel(
+      around: CGPoint(x: c.midX, y: c.midY), of: core.selection.head, color: core.layout.theme.colors.codeBlock)
+    return
+      "band \(band.bandFrame) strip \(band.stripFrame) shown \(band.shown) panel \(panel.map { "\($0)" } ?? "none")"
+  }
 
   /// whether anything of the editor's still runs on its own: the caret's blink, a slide, a drag's scrolling, a pending
   /// toolbar, band or reveal. At rest in the static picture nothing does

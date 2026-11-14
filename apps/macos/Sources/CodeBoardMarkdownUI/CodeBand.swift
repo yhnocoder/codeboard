@@ -29,7 +29,8 @@ final class CodeBand: NSView {
   /// the room around the band for its shadow and the fade above it (.md-band-clip's inset)
   static let margin: CGFloat = 18
 
-  private let clip = NSView()
+  /// clips the sliding strip at the band's bottom edge; flipped like the band, so the strip's y counts from the top
+  private let clip = Flipped()
   private let strip = Strip()
   private let corners = [CALayer(), CALayer()]
   var block: EditorCore.CodeBlock?
@@ -64,6 +65,9 @@ final class CodeBand: NSView {
     let local = strip.convert(p, from: superview)
     return strip.part(at: local) == nil ? nil : strip
   }
+
+  /// the strip's frame in the editor view's points (tests, checks)
+  var stripFrame: CGRect { convert(strip.frame, from: clip).offsetBy(dx: frame.minX, dy: frame.minY) }
 
   /// the band's own box in the editor view's points (without the margin)
   var bandFrame: CGRect {
@@ -132,6 +136,13 @@ final class CodeBand: NSView {
     let m = Self.margin * strip.zoom
     let h = Self.height * strip.zoom
     let fadeH = 10 * strip.zoom
+    // where nobody sees it (a window off screen or covered), it is simply in place: no slide left half done
+    guard window.map({ $0.occlusionState.contains(.visible) }) ?? true else {
+      strip.setFrameOrigin(CGPoint(x: m, y: on ? m - fadeH : m - fadeH + h + 16 * strip.zoom))
+      for c in corners { c.opacity = on ? 1 : 0 }
+      isHidden = !on
+      return
+    }
     NSAnimationContext.runAnimationGroup { c in
       c.duration = on ? MarkdownTiming.bandShow : MarkdownTiming.bandHide
       // .md-band-slide: in cubic-bezier(.33, 1, .68, 1), out (.32, 0, .67, 0)
@@ -326,6 +337,11 @@ final class CodeBand: NSView {
       band.onPart(hit.0.id, self, hit.1)
     }
   }
+}
+
+/// a plain view whose y counts from the top
+final class Flipped: NSView {
+  override var isFlipped: Bool { true }
 }
 
 extension MDColor {
