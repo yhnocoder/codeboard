@@ -379,7 +379,7 @@ extension CanvasView {
 
   func hitSectionTitle(_ p: CGPoint) -> SectionID? {
     guard let s = scene else { return nil }
-    if let (id, a) = sectionAct(at: p), a == .grip { return id }
+    if let (id, a) = sectionAct(at: p) ?? fadedSectionAct(at: p), a == .grip { return id }
     for it in s.items[..<s.cardsFrom].reversed() {
       if case .sectionTitle(let id)? = it.owner, it.rect.insetBy(dx: -4, dy: -4).contains(p) { return id }
     }
@@ -885,6 +885,11 @@ extension CanvasView {
       } else {
         togglePop(marks[i].at)
       }
+      return
+    }
+    // a faded chevron, under the markers
+    if let (id, a) = fadedSectionAct(at: p), a == .fold {
+      if e.clickCount == 1 { press(a, of: id) }
       return
     }
     // a press anywhere else on the board closes it (what is being written in it is added)

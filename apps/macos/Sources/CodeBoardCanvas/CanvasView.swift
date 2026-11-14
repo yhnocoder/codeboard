@@ -799,8 +799,8 @@ public final class CanvasView: NSView {
       }
       if summaryEditor != nil { placeSummaryEditor() }
       dock.zoom = camera.zoom
-      // a label or title being written is kept when the camera moves
-      if inPlace != nil { endInPlace(commit: true) }
+      // a label or title being written goes on where it is (Editable.tsx ends only on blur)
+      if inPlace != nil { withoutAnimation { placeField() } }
       // a zoom (not a pan) away from the rest zoom: the held bitmaps take over, with mipmaps
       if let z = restZoom, z != camera.zoom {
         restZoom = nil

@@ -17,7 +17,7 @@ func cid(_ s: String) -> CardID { CardID(rawValue: s) }
 private func gid(_ s: String) -> SectionID { SectionID(rawValue: s) }
 
 /// Two overlapping Notes, a Text, a Box, an image, a Section with a Note in it, a locked Note and an arrow
-private func sample() -> Board {
+func sample() -> Board {
   func note(_ id: String, x: Double, y: Double, section: String? = nil, locked: Bool = false) -> Card {
     Card(
       id: cid(id), x: x, y: y, width: 240, height: 160, section: section.map(gid), locked: locked,

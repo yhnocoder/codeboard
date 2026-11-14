@@ -162,10 +162,14 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     _ = r.canvas.control(again, textView: NSTextView(), doCommandBy: #selector(NSResponder.cancelOperation(_:)))
     #expect(r.doc.board.arrows[0].label == "等待 waits" && r.doc.history.undoSteps.count == 1)
     #expect(!r.canvas.items[li].box.isHidden && again.superview == nil)
-    // a camera move keeps what is written
+    // a camera move leaves it being written, where the label is now (Editable.tsx ends only on blur)
     r.key(36)
     r.canvas.inPlace?.field.stringValue = "调用"
     r.canvas.scroll(by: CGVector(dx: 30, dy: 0), at: 1, began: true, ended: true)
+    let moved = try #require(r.canvas.inPlace?.field)
+    let mc = moved.superview!.convert(CGPoint(x: moved.frame.midX, y: moved.frame.midY), to: r.canvas)
+    #expect(abs(mc.x - r.canvas.viewPoint(mid).x) < 1 && abs(mc.y - r.canvas.viewPoint(mid).y) < 1)
+    _ = r.canvas.control(moved, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))
     #expect(r.doc.board.arrows[0].label == "调用")
     await r.settle()
     // blank: no label

@@ -68,6 +68,19 @@ extension CanvasView {
     return actsLayout(id).first { $0.1.insetBy(dx: -1, dy: -1).contains(p) }.map { (id, $0.0) }
   }
 
+  /// The grip or the chevron of a Section whose controls do not show: they are only faded out (.dots, .chev2: opacity
+  /// 0), so a press finds them before any hover (one that comes as the camera brings the title under a resting pointer)
+  func fadedSectionAct(at p: CGPoint) -> (SectionID, SectionAct)? {
+    guard levels.level == .cards, inPlace == nil, let doc = document else { return nil }
+    for s in doc.board.sections.reversed() where s.id != actsSection {
+      let hit = actsLayout(s.id).first { a, r in
+        (a == .fold || (a == .grip && !s.collapsed)) && r.insetBy(dx: -1, dy: -1).contains(p)
+      }
+      if let (a, _) = hit { return (s.id, a) }
+    }
+    return nil
+  }
+
   /// The Section whose title, grip or controls are under a board point
   func titleHover(at p: CGPoint) -> SectionID? {
     if let id = actsSection, let b = actsBounds(id), b.contains(p) { return id }

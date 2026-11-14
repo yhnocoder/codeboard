@@ -270,6 +270,28 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     #expect(r.doc.selection == [.section(gid("g1"))])
   }
 
+  /// The grip and the chevron are there before the title is hovered (only faded out: .dots, .chev2), so a press that
+  /// comes with no move before it (the pointer resting there as the camera brought the Section under it) drags or
+  /// folds it as one after a hover does
+  @Test func aSectionsGripAndChevronTakeAPressBeforeAnyHover() async throws {
+    let r = try await Rig(sections(), zoom: 1)
+    defer { r.close() }
+    let g = gid("g1")
+    #expect(r.canvas.actsSection == nil)
+    let title = try #require(r.canvas.sectionTitle(g))
+    let grab = CGPoint(x: title.minX - 6, y: title.midY)
+    let m1 = r.rect("m1")
+    r.drag(grab, CGPoint(x: grab.x + 120, y: grab.y + 40))
+    await r.settle()
+    #expect(r.rect("m1").minX - m1.minX == 120 && r.rect("m1").minY - m1.minY == 40, "dragged by its grip")
+    r.doc.select([])
+    r.send(r.mouse(.mouseMoved, CGPoint(x: 5, y: 5)))
+    #expect(r.canvas.actsSection == nil)
+    let fold = try #require(r.canvas.actsLayout(g).first { $0.0 == .fold }?.1)
+    r.click(CGPoint(x: fold.midX, y: fold.midY))
+    #expect(r.doc.board.section(g)?.collapsed == true, "folded by its chevron")
+  }
+
   /// Hovered, its title shows Fit Content, Color with its five swatches, Lock and the chevron that folds it
   /// (Sections.tsx SectionActs)
   @Test func aSectionsTitleControlsFitColourLockAndFoldIt() async throws {
