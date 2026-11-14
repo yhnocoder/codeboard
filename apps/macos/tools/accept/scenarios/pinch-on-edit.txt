@@ -1,0 +1,11 @@
+# 编辑一张卡时，在这张卡上双指捏合缩放白板（VS Code 在可编辑内容上把捏合交给编辑器，不缩放；Mac 版定为总是缩放白板）
+zoom 1
+center @cnote+150,60
+dbl @cnote+150,70
+wait 800
+move @cnote+120,40 300
+mark
+pinch 0.5 20
+wait 600
+mac: expect cam.zoom > was
+key esc
