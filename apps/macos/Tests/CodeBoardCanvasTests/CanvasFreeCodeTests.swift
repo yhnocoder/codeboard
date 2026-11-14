@@ -79,6 +79,31 @@ private func freeBoard() -> Board {
     #expect(r.doc.board.segment(cid("f"), s1)?.lines.count == 3)
   }
 
+  /// Typing at once after the double-click, before the editor is there, and leaving with ⌘↵ as fast: nothing is lost
+  /// (Return indents, as CodeMirror does on the board)
+  @Test func keysTypedAtOnceAfterTheDoubleClickAreAllWritten() async throws {
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let card = r.rect("f")
+    let code = try #require(c.scene?.placed[cid("f")]?.code)
+    let row = try #require(code.layout.row(segment: 0, line: 3))
+    // past the end of the last line
+    r.doubleClick(CGPoint(x: card.maxX - 10, y: card.minY + code.top + row.y + row.height / 2))
+    r.press("x = 1\ry")
+    // ⌘↵ leaves, whatever completion shows (Esc closes that first, as on the board)
+    for t in [NSEvent.EventType.keyDown, .keyUp] {
+      r.window.sendEvent(
+        NSEvent.keyEvent(
+          with: t, location: .zero, modifierFlags: .command, timestamp: ProcessInfo.processInfo.systemUptime,
+          windowNumber: r.window.windowNumber, context: nil, characters: "\r", charactersIgnoringModifiers: "\r",
+          isARepeat: false, keyCode: 36)!)
+    }
+    await r.editorReady()
+    await r.until("left") { !c.isEditing }
+    #expect(r.doc.board.segment(cid("f"), s1)?.lines.suffix(2) == ["    return run(ids)x = 1", "    y"])
+  }
+
   @Test func sourcedCodeIsNotWrittenByADoubleClick() async throws {
     let r = try await Rig(freeBoard(), zoom: 1)
     defer { r.close() }

@@ -23,6 +23,8 @@ public final class NoteEditor: NSObject {
   }
 
   public let view: EditorWebView
+  /// Who is writing with it now (a canvas): the one that began last; one that began before it leaves the editor alone
+  public weak var owner: AnyObject?
   /// The card's size at 100 % as it changes while typing
   public var onSize: ((CGSize) -> Void)?
   /// The editor left by itself (Esc), with what was written
@@ -121,6 +123,25 @@ public final class NoteEditor: NSObject {
     let size = CGSize(width: w, height: h)
     place(size: size, k: k, margin: margin)
     return size
+  }
+
+  /// Keys typed before the editor was there, in order: each sent once the one before reached the page (WebKit puts a text
+  /// key through the input method first, so a key that skips that, Esc or ⌘↵, would overtake it); keys typed meanwhile
+  /// wait behind them
+  public func replay(_ keys: [NSEvent]) async {
+    guard !keys.isEmpty else { return }
+    var seen = (try? await view.callAsyncJavaScript("return edit.keysSeen()", contentWorld: .page) as? Int) ?? 0
+    var queue = keys
+    view.held = []
+    while !queue.isEmpty {
+      view.deliver(queue.removeFirst())
+      seen += 1
+      _ = try? await view.callAsyncJavaScript(
+        "return await edit.seen(n, 300)", arguments: ["n": seen], contentWorld: .page)
+      queue += view.held ?? []
+      view.held = []
+    }
+    view.held = nil
   }
 
   /// Where the card is in the web view (its points), for letting the pointer through around it
@@ -280,7 +301,26 @@ public final class EditorWebView: WKWebView {
   /// Esc: true when something over the canvas took it (a ref's preview closed), and the editor goes on
   package var escape: (() -> Bool)?
 
+  /// Keys that wait while the keys typed before the editor was there are handed to it (NoteEditor.replay)
+  package var held: [NSEvent]?
+
   public override func keyDown(with e: NSEvent) {
+    if held != nil {
+      held?.append(e)
+      return
+    }
+    deliver(e)
+  }
+
+  public override func performKeyEquivalent(with e: NSEvent) -> Bool {
+    if held != nil, e.type == .keyDown, window?.firstResponder === self {
+      held?.append(e)
+      return true
+    }
+    return super.performKeyEquivalent(with: e)
+  }
+
+  func deliver(_ e: NSEvent) {
     if e.keyCode == 53, escape?() == true { return }
     super.keyDown(with: e)
   }

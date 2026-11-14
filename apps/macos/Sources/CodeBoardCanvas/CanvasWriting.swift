@@ -42,6 +42,8 @@ struct Editing {
   var code = false
   /// Leaving: a Note whose header folded away while it was written in shows its header again
   var unfolding = false
+  /// The editor it writes with, kept to the end (the canvas may have left its window by then: a tab closed)
+  var editor: NoteEditor?
 }
 
 /// The card sits this far in from the web view's top left (view points), so the editor's menus have room: it places them
@@ -50,16 +52,18 @@ struct Editing {
 let editorMargin: CGFloat = 400
 
 extension CanvasView {
-  /// One editor for the app: one card is edited at a time
-  static var sharedEditor: NoteEditor?
+  nonisolated(unsafe) private static var editorKey: UInt8 = 0
   /// The refs picked from the [[ list lately (board id, card id), newest first, while the app runs (the web board keeps
   /// them per workspace)
   static var recentRefs: [(board: String, id: String)] = []
 
+  /// One editor for a window, its tabs and panes sharing it: one card is written in at a time there
   package var noteEditor: NoteEditor {
-    if let e = CanvasView.sharedEditor { return e }
+    if let e = editing?.editor { return e }
+    let holder: AnyObject = window ?? self
+    if let e = objc_getAssociatedObject(holder, &CanvasView.editorKey) as? NoteEditor { return e }
     let e = NoteEditor()
-    CanvasView.sharedEditor = e
+    objc_setAssociatedObject(holder, &CanvasView.editorKey, e, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
     return e
   }
 
@@ -85,7 +89,11 @@ extension CanvasView {
     // a new card's writing began when it was made
     if !fresh { doc.beginWriting(id) }
     editing = Editing(doc: doc, id: id, fresh: fresh, card: card, shownZoom: camera.zoom)
+    editing?.keys = keysAhead ?? []
+    keysAhead = nil
     let editor = noteEditor
+    editing?.editor = editor
+    editor.owner = self
     editor.imagesFolder = n.folder
     if editor.view.superview !== host { host.addSubview(editor.view, positioned: .above, relativeTo: self) }
     editor.view.shown = false
@@ -134,8 +142,11 @@ extension CanvasView {
           editor.view.shown = true
         }
         window?.makeFirstResponder(editor.view)
-        for k in editing?.keys ?? [] { editor.view.keyDown(with: k) }
-        editing?.keys = []
+        // what was typed meanwhile, in order; keys typed during it wait behind it
+        while let keys = editing?.keys, !keys.isEmpty, editing?.ending == false {
+          editing?.keys = []
+          await editor.replay(keys)
+        }
         drawChrome()
         if let session = editing?.session { keepDrafts(session) }
       } catch {
@@ -175,7 +186,8 @@ extension CanvasView {
       // the editor's header fold: 220 ms on cubic-bezier(.2, .8, .2, 1) (NoteBody foldHeader)
       parent.insertSublayer(was, above: l.box)
       CATransaction.begin()
-      CATransaction.setCompletionBlock { was.removeFromSuperlayer() }
+      // the card's own layers, faded out as it is written in, are what come back if nothing was written: kept then
+      CATransaction.setCompletionBlock { if was.opacity == 0 { was.removeFromSuperlayer() } }
       let a = CABasicAnimation(keyPath: "opacity")
       a.fromValue = 1
       a.toValue = 0
@@ -389,8 +401,10 @@ extension CanvasView {
     }
     editing?.ending = true
     let editor = noteEditor
+    // another canvas (another tab) took the editor since: it is that one's now, this one only writes what it was given
+    let mine = { editor.owner === self }
     var written = given
-    if ed.ready, written == nil { written = await editor.finish() }
+    if ed.ready, written == nil, mine() { written = await editor.finish() }
     let text = written?.text
     let id = ed.id
     let note = !(ed.card.textCard != nil)
@@ -437,16 +451,20 @@ extension CanvasView {
       }
     } else if let original = editingOriginal, let i = editingIndex {
       withoutAnimation {
+        original.box.opacity = 1
+        original.box.removeAnimation(forKey: "fold")
         items[i].box.superlayer?.replaceSublayer(items[i].box, with: original.box)
         items[i] = original
       }
     }
-    withoutAnimation {
-      editor.view.shown = false
-      editor.view.layer?.setAffineTransform(.identity)
+    if mine() {
+      withoutAnimation {
+        editor.view.shown = false
+        editor.view.layer?.setAffineTransform(.identity)
+      }
+      CATransaction.flush()
+      editor.clear()
     }
-    CATransaction.flush()
-    editor.clear()
     editingOriginal = nil
     editing = nil
     if window?.firstResponder === editor.view { window?.makeFirstResponder(self) }
@@ -471,23 +489,22 @@ extension CanvasView {
       if openSubBoard(id) { return }
       if openPage(at: p) { return }
       if isFreeCode(id) {
-        Task {
-          await endEditing()
-          beginCodeEditing(id, at: p)
+        return editSoon {
+          await self.endEditing()
+          self.beginCodeEditing(id, at: p)
         }
-        return
       }
       guard isWriting(id) else { return }
-      Task {
-        await endEditing()
-        beginEditing(id, at: p)
+      editSoon {
+        await self.endEditing()
+        self.beginEditing(id, at: p)
       }
     } else if let id = hitSectionTitle(p) {
       // its title is written where it is
       if !doc.board.isLocked(section: id) { editTitle(id) }
     } else {
       if !doc.selection.isEmpty { doc.select([]) }
-      Task { await create(.text(.text), at: CGPoint(x: p.x, y: p.y - 12)) }
+      editSoon { await self.create(.text(.text), at: CGPoint(x: p.x, y: p.y - 12)) }
     }
   }
 
@@ -511,7 +528,19 @@ extension CanvasView {
   public func createInView(_ kind: Board.Writing) {
     let v = camera.visible(bounds.size)
     let w = if case .note = kind { Board.newNoteWidth } else { Board.newTextWidth }
-    Task { await create(kind, at: CGPoint(x: v.midX - w / 2, y: v.midY - 40)) }
+    editSoon { await self.create(kind, at: CGPoint(x: v.midX - w / 2, y: v.midY - 40)) }
+  }
+
+  /// Starts an editor in `start`, the keys typed before it is there kept for it: a person types at once after the
+  /// double-click
+  func editSoon(_ start: @escaping @MainActor () async -> Void) {
+    keysAhead = []
+    Task {
+      // another tab or pane writing with this window's editor finishes first
+      if let other = noteEditor.owner as? CanvasView, other !== self { await other.endEditing() }
+      await start()
+      keysAhead = nil
+    }
   }
 }
 

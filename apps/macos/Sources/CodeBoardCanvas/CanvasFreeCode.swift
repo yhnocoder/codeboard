@@ -28,8 +28,12 @@ extension CanvasView {
     if doc.selection != [.card(id)] { doc.select([.card(id)]) }
     doc.beginWriting(id)
     editing = Editing(doc: doc, id: id, fresh: false, card: card, shownZoom: camera.zoom)
+    editing?.keys = keysAhead ?? []
+    keysAhead = nil
     editing?.code = true
     let editor = noteEditor
+    editing?.editor = editor
+    editor.owner = self
     if editor.view.superview !== host { host.addSubview(editor.view, positioned: .above, relativeTo: self) }
     editor.view.shown = false
     editor.highlight = { CanvasView.codeHTML($0, language: $1) }
@@ -63,8 +67,11 @@ extension CanvasView {
           editor.view.shown = true
         }
         window?.makeFirstResponder(editor.view)
-        for k in editing?.keys ?? [] { editor.view.keyDown(with: k) }
-        editing?.keys = []
+        // what was typed meanwhile, in order; keys typed during it wait behind it
+        while let keys = editing?.keys, !keys.isEmpty, editing?.ending == false {
+          editing?.keys = []
+          await editor.replay(keys)
+        }
         drawChrome()
       } catch {
         editing = nil

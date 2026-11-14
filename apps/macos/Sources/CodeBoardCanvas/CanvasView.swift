@@ -159,6 +159,8 @@ public final class CanvasView: NSView {
   /// The editor showing itself at rest at a new zoom
   var editingRests: Task<Void, Never>?
   var editingEnds: Task<Void, Never>?
+  /// An editor is on its way (a double-click, a new card): the keys typed until it is there, for it
+  var keysAhead: [NSEvent]?
   /// The floating bar's bitmap and what it shows
   var barImage: (key: String, image: CGImage)?
   /// A Section title's controls (CanvasSectionActs): the title hovered and its control, the Section whose swatches are

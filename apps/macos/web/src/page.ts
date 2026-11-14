@@ -515,7 +515,21 @@ function watchUi() {
 }
 if (editMode) watchUi();
 
+// keydowns the page has seen: native hands it the keys typed before the editor was there one at a time, each once the
+// one before reached the page (WebKit runs a text key through the input method first, so Esc or ⌘↵ sent right after
+// would overtake it)
+let keysSeen = 0;
+addEventListener("keydown", () => keysSeen++, true);
+
 const edit = {
+  /** The keydowns seen so far */
+  keysSeen: () => keysSeen,
+  /** Resolves once `n` keydowns have been seen, or after `ms` (a key that reaches no page) */
+  async seen(n: number, ms: number) {
+    const until = performance.now() + ms;
+    while (keysSeen < n && performance.now() < until) await new Promise((r) => setTimeout(r, 1));
+    return keysSeen >= n;
+  },
   /** Mounts `note` in the editor, `margin` px from the page's top left, at zoom k, takes the keyboard and puts the
    *  caret at `caret` (card px at 100 %), else at the end; resolves with its size once laid out */
   async begin(a: {

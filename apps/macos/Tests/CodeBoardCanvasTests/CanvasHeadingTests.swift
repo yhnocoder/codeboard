@@ -39,9 +39,10 @@ import Testing
     #expect(rig.doc.board.card(cid("n0"))?.writing == Self.doc)
   }
 
-  /// Written in, its header folds away and the heading comes out of the body, the card as tall as before; leaving
-  /// unfolds it again and, nothing typed, leaves no step (NoteBody foldHeader)
-  @Test func writingInItFoldsTheHeaderAndKeepsTheCardsHeight() async throws {
+  /// Written in, its header folds away and the heading comes out of the body, the card as tall as before; leaving (a
+  /// click elsewhere, Esc) unfolds it again and, nothing typed, leaves no step and the card drawn as before
+  /// (NoteBody foldHeader)
+  @Test(arguments: ["click", "esc"]) func writingInItFoldsTheHeaderAndKeepsTheCardsHeight(leave: String) async throws {
     let rig = try await Rig(Self.board(), zoom: 1)
     defer { rig.close() }
     let c = rig.canvas
@@ -65,10 +66,20 @@ import Testing
       return
     }
     #expect(shown.hideHead)
-    // a click on the bare canvas leaves: no step
-    rig.click(CGPoint(x: 900, y: 600))
+    // nothing typed: no step
+    if leave == "click" {
+      rig.click(CGPoint(x: 900, y: 600))
+    } else {
+      _ = try await c.noteEditor.view.callAsyncJavaScript(
+        "document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))",
+        contentWorld: .page)
+    }
     await rig.until("left") { !c.isEditing }
     #expect(!rig.doc.history.canUndo)
     #expect(abs(try item(c, "n0").rect.height - before.height) < 0.5)
+    // its picture is there, and stays once the fold's fade is over
+    try await Task.sleep(for: .milliseconds(400))
+    let box = try #require(c.index(of: .card(cid("n0"))).map { c.items[$0].box })
+    #expect(box.superlayer != nil && box.opacity == 1 && box.animation(forKey: "fold") == nil)
   }
 }

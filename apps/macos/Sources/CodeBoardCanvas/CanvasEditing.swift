@@ -1475,8 +1475,12 @@ extension CanvasView {
   public override func keyDown(with e: NSEvent) {
     guard let doc = document else { return super.keyDown(with: e) }
     if editing != nil {
-      // the editor is mounting: its keys wait for it (Esc leaves)
-      if e.keyCode == 53 { Task { await endEditing() } } else { editing?.keys.append(e) }
+      // the editor is mounting: its keys wait for it, Esc among them, in the order typed
+      editing?.keys.append(e)
+      return
+    }
+    if keysAhead != nil {
+      keysAhead?.append(e)
       return
     }
     switch e.keyCode {

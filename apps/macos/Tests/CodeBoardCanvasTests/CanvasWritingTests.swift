@@ -10,6 +10,22 @@ import Testing
 // empty leaves none, and what another writer changes meanwhile merges with what is typed.
 
 extension Rig {
+  /// Presses keys as the keyboard does, through the window to whoever takes them, with no wait between them
+  func press(_ text: String) {
+    let codes: [Character: UInt16] = [
+      "a": 0, "b": 11, "c": 8, "h": 4, "i": 34, "x": 7, "y": 16, "1": 18, "=": 24, " ": 49, "\r": 36, "\u{1b}": 53,
+    ]
+    for ch in text {
+      for t in [NSEvent.EventType.keyDown, .keyUp] {
+        window.sendEvent(
+          NSEvent.keyEvent(
+            with: t, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber, context: nil, characters: String(ch),
+            charactersIgnoringModifiers: String(ch), isARepeat: false, keyCode: codes[ch] ?? 0)!)
+      }
+    }
+  }
+
   /// Once the editor shows the card and takes keys
   func editorReady() async {
     let deadline = ContinuousClock.now + .seconds(60)
@@ -655,6 +671,19 @@ extension CanvasWritingTests {
     await r.canvas.endEditing()
     #expect(r.doc.board.card(id)?.writing == "x")
     #expect(r.doc.history.undoSteps.map(\.name) == ["New Text"])
+  }
+
+  /// Typing at once after a double-click on the board, before the new Text's editor is there: every key reaches it
+  @Test func keysTypedAtOnceAfterADoubleClickAllReachTheNewText() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    r.doubleClick(CGPoint(x: 800, y: 330))
+    r.press("hi a")
+    await r.editorReady()
+    let id = try #require(r.canvas.editing?.id)
+    r.press("b\u{1b}")
+    await r.until("left") { !r.canvas.isEditing }
+    #expect(r.doc.board.card(id)?.writing == "hi ab")
   }
 
   /// A new Text left with Esc and pressed on its own left edge (where its double-click put it, under the pointer): the
