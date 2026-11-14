@@ -605,7 +605,7 @@ package final class StickerPalette: NSView {
 
   package override func mouseMoved(with e: NSEvent) { hover = slot(at: convert(e.locationInWindow, from: nil)) }
   package override func mouseExited(with e: NSEvent) { hover = nil }
-  package override func mouseDown(with e: NSEvent) {}
+  package override func mouseDown(with e: NSEvent) { CanvasView.under(self)?.stopGlide() }
 
   package override func mouseUp(with e: NSEvent) {
     guard let i = slot(at: convert(e.locationInWindow, from: nil)) else { return }
