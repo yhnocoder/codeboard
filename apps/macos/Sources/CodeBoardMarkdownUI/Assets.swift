@@ -132,6 +132,17 @@ extension MarkdownAssets {
         else { continue }
         ctx.scaleBy(x: 2, y: 2)
         l.draw(in: ctx, scale: 2, clip: CGRect(origin: .zero, size: l.size)) { _ in nil }
+        // the caret into a link, a mark, code and a formula once: what showing their source first costs (a link's
+        // address chip in the code font, 83 ms the first time) is paid here, not on her first click
+        guard look == "warm-ink", !dark else { continue }
+        let e = EditorCore(layout: l, caret: 0)
+        let ns = text as NSString
+        for needle in ["a link", "bold", "code`", "E = mc"] {
+          let at = ns.range(of: needle).location
+          guard at != NSNotFound else { continue }
+          e.select(MDSelection(at + 1))
+          l.draw(in: ctx, scale: 2, clip: CGRect(origin: .zero, size: l.size)) { _ in nil }
+        }
       }
     }
   }
