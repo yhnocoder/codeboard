@@ -100,35 +100,56 @@ class Driver {
     fs.rmSync(this.dir, { recursive: true, force: true });
     fs.mkdirSync(this.dir, { recursive: true });
     execFileSync("mkfifo", [path.join(this.dir, "cmd")]);
-    const env = { ...process.env, ...lookEnv, ACCEPT_OUT: this.dir, ACCEPT_FIFO: path.join(this.dir, "cmd"), ACCEPT_REPO: repo };
-    const outFd = fs.openSync(path.join(this.dir, "stdout.txt"), "w");
+    this.env = { ...process.env, ...lookEnv, ACCEPT_OUT: this.dir, ACCEPT_FIFO: path.join(this.dir, "cmd"), ACCEPT_REPO: repo };
     if (this.side === "mac") {
       // a vault of its own, imported from the storage folder; the app's own defaults start empty
       this.vault = fs.mkdtempSync(path.join(os.tmpdir(), "accept-vault-"));
       this.plist(this.vault);
       execFileSync("sh", ["-c", "defaults delete com.example.codeboard.accept >/dev/null 2>&1 || true"]);
-      Object.assign(env, { ACCEPT_VAULT: this.vault, ACCEPT_IMPORT_FROM: storage });
-      this.proc = spawn(path.join(app, "Contents/MacOS/Accept"), [], { env, stdio: ["ignore", outFd, outFd], detached: true });
+      Object.assign(this.env, { ACCEPT_VAULT: this.vault, ACCEPT_IMPORT_FROM: storage });
     } else {
       this.copy = fs.mkdtempSync(path.join(os.tmpdir(), "accept-storage-"));
       fs.cpSync(storage, this.copy, { recursive: true });
-      this.proc = spawn("node", [webBundle, this.copy, this.dir], { env, cwd: repo, stdio: ["ignore", outFd, outFd], detached: true });
     }
+    await this.spawn();
+  }
+  async spawn() {
+    const outFd = fs.openSync(path.join(this.dir, "stdout.txt"), "a");
+    this.proc =
+      this.side === "mac"
+        ? spawn(path.join(app, "Contents/MacOS/Accept"), [], { env: this.env, stdio: ["ignore", outFd, outFd], detached: true })
+        : spawn("node", [webBundle, this.copy, this.dir], { env: this.env, cwd: repo, stdio: ["ignore", outFd, outFd], detached: true });
     this.pid = this.proc.pid;
+    // (an exited child stays a zombie that kill(pid, 0) still finds: its exit event is what says it is gone)
+    this.exited = false;
+    this.proc.on("exit", () => (this.exited = true));
     this.proc.unref();
     await this.until(/driver ready|web ready/, 60000);
-    // the Mac app starts on its sidebar: open the first board, as a person would
+    // the Mac app starts on its sidebar (or on the board it had open): open the first board, as a person would
     // (until its canvas is there: a fixed wait sometimes clicked before the sidebar listed the board)
     if (this.side !== "mac") return;
     await this.send("warp 700 500");
     for (let i = 0; ; i++) {
+      if ((await this.send("cam")) !== "no canvas") break;
       // (a click now and then has done nothing: then Return on the selected row, then a double-click)
       if (i % 10 === 0) await this.send(["click 90 91", "key return", "dbl 90 91"][(i / 10) % 3]);
       await this.send("wait 300");
-      if ((await this.send("cam")) !== "no canvas") break;
       if (i === 90) throw new Error(`mac: the board did not open (${this.dir}/log.txt)`);
     }
     for (const c of ["wait 500", "focus", "move 700 650 200"]) await this.send(c);
+  }
+  /** Quit and open again on what it had: the Mac app on the same vault and the same defaults (what it saves on quitting:
+   *  each board's camera, the open board), the web board on the same storage copy. The log so far is kept as
+   *  log-<n>.txt; recordings and shots stay */
+  async reopen() {
+    await Promise.race([this.send("quit").catch(() => {}), sleep(3000)]);
+    for (let t = 0; t < 100 && this.alive(); t++) await sleep(50);
+    if (this.alive()) process.kill(this.pid, "SIGTERM");
+    this.opened = (this.opened ?? 0) + 1;
+    fs.renameSync(this.log, path.join(this.dir, `log-${this.opened}.txt`));
+    this.n = 0;
+    delete this.env.ACCEPT_IMPORT_FROM;
+    await this.spawn();
   }
   plist(vault) {
     fs.writeFileSync(
@@ -149,12 +170,20 @@ class Driver {
     run("codesign", ["--force", "--sign", "-", app]);
   }
   alive() {
+    if (this.proc) return !this.exited;
     try {
       process.kill(this.pid, 0);
       return true;
     } catch {
       return false;
     }
+  }
+  /** Why the app went away, from its last words (an uncaught exception, a Swift fatal error) */
+  why() {
+    const f = path.join(this.dir, "stdout.txt");
+    const out = fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "";
+    const m = /Terminating app due to uncaught exception[^\n]*|Fatal error:[^\n]*/.exec(out);
+    return m ? ` (${m[0].slice(0, 300)})` : "";
   }
   lines() {
     return fs.existsSync(this.log) ? fs.readFileSync(this.log, "utf8").split("\n") : [];
@@ -172,16 +201,35 @@ class Driver {
     if (/(^|\s)(NaN|-?Infinity|undefined|nan|inf)(\s|$)/.test(line)) throw new Error(`${this.side}: not a number in "${line}"`);
     if (/^down\b/.test(line)) this.held = true;
     if (/^up\b/.test(line)) this.held = false;
+    // without blocking: a FIFO opened to write waits for ever for a reader, so a driver that died (the app crashed) would
+    // hang the run here. With no reader the open fails (ENXIO): the driver is gone, or between two reads (it opens the
+    // FIFO again after each), so try again while it lives. The driver numbers lines as they arrive, so the number is
+    // taken only once this line is in (two sides' lines to one driver, the Mac borrowing where the web draws a thing)
+    let fd;
+    for (let t = 0; fd === undefined; t += 5) {
+      try {
+        fd = fs.openSync(path.join(this.dir, "cmd"), fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
+      } catch (e) {
+        if (e.code !== "ENXIO") throw e;
+        if (!this.alive()) throw new Error(`${this.side} driver exited${this.why()}: see ${this.dir}/stdout.txt`);
+        if (t > 30000) throw new Error(`${this.side}: the driver has not read its commands for 30 s`);
+        await sleep(5);
+      }
+    }
+    try { fs.writeSync(fd, `${line}\n`); } finally { fs.closeSync(fd); }
     const n = ++this.n;
-    fs.writeFileSync(path.join(this.dir, "cmd"), `${line}\n`);
     const re = new RegExp(`^\\S+ done ${n} `);
-    for (let t = 0; t < 120000; t += 20) {
+    // a line answers within 30 s past the time it asks for (wait, move, drag…): a driver that hangs fails this line soon,
+    // not the run half an hour later
+    const asked = line.split(" ").slice(1).map(Number).filter((x) => x >= 100 && x <= 60000);
+    const limit = 30000 + (asked.length ? Math.max(...asked) : 0) + (/^(stop|rec|quit)\b/.test(line) ? 30000 : 0);
+    for (let t = 0; t < limit; t += 20) {
       const l = this.lines().find((x) => re.test(x));
       if (l) return l.includes(" -> ") ? l.slice(l.indexOf(" -> ") + 4) : "";
-      if (!this.alive()) throw new Error(`${this.side} driver exited: see ${this.dir}/stdout.txt`);
+      if (!this.alive()) throw new Error(`${this.side} driver exited${this.why()}: see ${this.dir}/stdout.txt`);
       await sleep(20);
     }
-    throw new Error(`${this.side}: no answer to ${line}`);
+    throw new Error(`${this.side}: no answer to ${line} within ${limit / 1000} s`);
   }
   async stop() {
     await Promise.race([this.send("quit").catch(() => {}), sleep(1500)]);
@@ -237,7 +285,7 @@ async function point(d, tok, onBoard = false) {
   // @row:<title>: the Mac app's sidebar row of that board
   if (tok.startsWith("@row:")) {
     const r = await d.send(`row ${tok.slice(5)}`);
-    if (r === "none") throw new Error(`${d.side}: no sidebar row ${tok.slice(5)}`);
+    if (!/^-?[\d.]+ -?[\d.]+$/.test(r)) throw new Error(`${d.side}: no sidebar row ${tok.slice(5)}${r === "none" ? "" : ` (${r})`}`);
     return r;
   }
   // @ui.<part>[:anchor][+dx,dy]: a part of the chrome (the ui subjects), its centre by default, offsets in points
@@ -340,7 +388,11 @@ async function centerOn(d, target) {
 // they are read from its saved board file, so while a button is held they are not checkable there.
 /** A card's or Section's place in board units as this side has it now: x y w h right bottom (and section on the Mac);
  *  undefined while a button is held on the Mac without accessibility elements, "missing" when there is no such item */
-const linkIds = () => new Set((storageBoard().links ?? []).map((l) => l.id));
+/** What the Mac app does not say where it draws (arrow labels, sidenote markers, stickers): their ids */
+const borrowedIds = () => {
+  const b = storageBoard();
+  return new Set([...(b.links ?? []), ...(b.sidenotes ?? []), ...(b.stickers ?? [])].map((x) => x.id));
+};
 const storageBoard = () =>
   JSON.parse(fs.readFileSync(path.join(storage, fs.readdirSync(storage).find((f) => f.endsWith(".json"))), "utf8"));
 async function geom(d, id, needSection = false, aim = false) {
@@ -353,11 +405,12 @@ async function geom(d, id, needSection = false, aim = false) {
     // aiming (a target to move to) takes the file as it is, even mid-drag; checking waits for the app to save
     if (d.held && !aim) return undefined;
     const c = (aim ? await macBoard(d) : await macSaved(d))[id];
-    if (!c && linkIds().has(id)) {
-      // an arrow's label: the app does not say where it draws it; the web board's is at the same board point
+    if (!c && borrowedIds().has(id)) {
+      // an arrow's label, a sidenote's marker, a sticker: the app does not say where it draws them (no accessibility
+      // element with this id yet); the web board's is at the same board point, as near as the two layouts agree
       const web = running.find((x) => x.side === "web");
       const wg = web ? await geom(web, id) : undefined;
-      if (typeof wg !== "object") throw new Error(`mac: where the label of ${id} is is not known here (run both sides)`);
+      if (typeof wg !== "object") throw new Error(`mac: where ${id} is drawn is not known here (run both sides)`);
       return wg;
     }
     if (!c) return "missing";
@@ -631,7 +684,7 @@ for (const file of scenarios) {
     if (argv.includes("--keep")) {
       kept = drivers;
       kept.started = true;
-      const keep = ({ side, dir, pid, vault, copy }) => ({ side, dir, pid, vault, copy });
+      const keep = ({ side, dir, pid, vault, copy, env }) => ({ side, dir, pid, vault, copy, env });
       fs.writeFileSync(sessionFile, JSON.stringify(drivers.map(keep)));
     }
     for (const { n, text: line } of lines) {
@@ -644,11 +697,13 @@ for (const file of scenarios) {
       // shot <name> @target W H: also the board rectangle W × H (board units) from the target, cut out on each side,
       // so the two sides' pictures of one part line up
       const crop = verb === "shot" && cmd.split(" ")[2]?.startsWith("@") ? cmd.split(" ").slice(2) : undefined;
-      const sent = drivers.filter((d) => !m || m[1] === d.side);
+      // a side whose driver exited (the app crashed) failed once, with why; its later lines are not run
+      const sent = drivers.filter((d) => (!m || m[1] === d.side) && !d.gone);
       // a line that cannot run (no such card, a height not known) fails as an expectation would, and the run goes on
       await Promise.all(
         sent
           .map((d) => (async () => {
+            if (verb === "reopen") return d.reopen();
             if (verb === "zoom") return zoomTo(d, Number(arg));
             if (verb === "center") return centerOn(d, arg);
             if (verb === "locate") {
@@ -687,7 +742,10 @@ for (const file of scenarios) {
             }
             const r = await d.send(await resolve(d, cmd));
             if (r) fs.appendFileSync(path.join(out, `results-${d.side}.txt`), `${cmd}\n${r}\n\n`);
-          })().catch((e) => results[d.side].push({ n, cmd, ok: false, got: e.message }))),
+          })().catch((e) => {
+            if (/driver exited/.test(e.message)) d.gone = true;
+            results[d.side].push({ n, cmd, ok: false, got: d.gone ? `${e.message}; the lines after it were not run` : e.message });
+          })),
       );
     }
   } finally {

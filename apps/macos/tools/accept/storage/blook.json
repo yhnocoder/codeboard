@@ -186,6 +186,19 @@
    "kind": "note",
    "look": "note",
    "md": "# Far corner\nKept far from the rest, so the board is large enough to zoom out to its summaries."
+  },
+  {
+   "id": "cshelf1",
+   "kind": "note",
+   "look": "note",
+   "md": "# Put aside\nA note kept on the Shelf for later."
+  },
+  {
+   "id": "cshelf2",
+   "kind": "note",
+   "look": "box",
+   "md": "todo",
+   "fill": "pink"
   }
  ],
  "place": {
@@ -502,6 +515,38 @@
    "q": {
     "at": 1763100000000
    }
+  }
+ ],
+ "shelf": [
+  {
+   "id": "e1",
+   "at": 1763000000000,
+   "place": {
+    "cshelf1": {
+     "x": 200,
+     "y": 900,
+     "w": 300,
+     "h": 120
+    }
+   },
+   "sections": [],
+   "links": [],
+   "stickers": []
+  },
+  {
+   "id": "e2",
+   "at": 1763000100000,
+   "place": {
+    "cshelf2": {
+     "x": 560,
+     "y": 900,
+     "w": 130,
+     "h": 60
+    }
+   },
+   "sections": [],
+   "links": [],
+   "stickers": []
   }
  ]
 }

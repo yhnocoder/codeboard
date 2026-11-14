@@ -28,14 +28,21 @@ const server = http.createServer((req, res) => {
 await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 const rec = await recordBoards(storage, boardDist);
-const [, recorded] = [...rec.messages][0];
+// ACCEPT_BOARD (part of its id): the storage board to open; the first one when unset
+const found = [...rec.messages].find(([k]) => process.env.ACCEPT_BOARD && String(k).includes(process.env.ACCEPT_BOARD)) ?? [...rec.messages][0];
+// the host opens no board it cannot read (a file the schema refuses), and says nothing here
+if (!found) throw new Error(`no board recorded from ${storage}: does each board file pass the schema (core's readBoardFile)?`);
+const [, recorded] = found;
 // the look under test: the theme setting the host sends, light or dark as VS Code's body class says
 const LOOK = process.env.ACCEPT_THEME ?? "warm-ink", DARK = process.env.ACCEPT_DARK === "1";
 // no keys forwarded: VS Code takes those (⌘D…) and sends them back as the same key action; here the board takes them itself
 const msgs = recorded.map((m: any) => (m.type === "init" ? { ...m, host: { ...m.host, forwardedKeys: [], settings: { ...m.host.settings, theme: LOOK } } } : m));
 const browser = await launch();
 for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => void browser.close().finally(() => process.exit(0)));
-const ctx = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: Number(process.env.ACCEPT_SCALE ?? 1) });
+const SCALE = Number(process.env.ACCEPT_SCALE ?? 1);
+const ctx = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: SCALE });
+// Chrome takes a dispatched wheel's delta in device pixels, so at --scale 2 a bare wheel(160) pans 80 CSS px
+const wheel = (dx: number, dy: number) => page.mouse.wheel(dx * SCALE, dy * SCALE);
 const page = await ctx.newPage();
 page.on("pageerror", (e) => log(`pageerror ${e.message}`));
 page.on("console", (m) => { if (m.type() === "error") log(`console ${m.text()}`); });
@@ -78,6 +85,10 @@ async function hold(ms: string[], f: () => Promise<void>) {
   await f();
   for (const m of ms.reverse()) await page.keyboard.up(m);
 }
+/** What shift makes of the other keys (a US layout), as the Mac driver's */
+const shifted: Record<string, string> = { "`": "~", "1": "!", "2": "@", "3": "#", "4": "$", "5": "%", "6": "^", "7": "&", "8": "*", "9": "(", "0": ")", "-": "_", "=": "+", "[": "{", "]": "}", "\\": "|", ";": ":", "'": '"', ",": "<", ".": ">", "/": "?" };
+/** The keys of the characters shift changes, by code: Playwright makes "Shift+/" a "/" but "Shift+Slash" a "?" */
+const keyCode: Record<string, string> = { "`": "Backquote", "-": "Minus", "=": "Equal", "[": "BracketLeft", "]": "BracketRight", "\\": "Backslash", ";": "Semicolon", "'": "Quote", ",": "Comma", ".": "Period", "/": "Slash", ...Object.fromEntries([..."0123456789"].map((d) => [d, `Digit${d}`])) };
 const keyName: Record<string, string> = { return: "Enter", esc: "Escape", delete: "Backspace", fwddelete: "Delete", left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp", down: "ArrowDown", tab: "Tab", space: "Space", home: "Home", end: "End", pageup: "PageUp", pagedown: "PageDown", f2: "F2" };
 /** What a press lands on, as the Mac driver logs it: the element under the pointer and its ancestors' classes */
 const hitAt = (x: number, y: number) => page.evaluate(([x, y]) => {
@@ -112,25 +123,48 @@ async function run(line: string): Promise<string> {
     case "scroll": {
       const steps = d(3, 12), cmd = a[4] === "cmd";
       for (let i = 0; i < steps; i++) {
-        if (cmd) await hold(["Control"], () => page.mouse.wheel(d(1) / steps, -d(2) / steps));
-        else await page.mouse.wheel(-d(1) / steps, -d(2) / steps);
+        if (cmd) await hold(["Control"], () => wheel(d(1) / steps, -d(2) / steps));
+        else await wheel(-d(1) / steps, -d(2) / steps);
         await sleep(8);
       }
       // the fingers lift moving: the momentum macOS sends after a trackpad swipe, as more wheel events (as Chrome gets
       // them); `still`: they stopped first, nothing more
       if (!cmd && a[4] !== "still") {
         let mx = d(1) / steps, my = d(2) / steps;
-        for (let i = 0; i < 24; i++) { mx *= 0.88; my *= 0.88; await page.mouse.wheel(-mx, -my); await sleep(8); }
+        for (let i = 0; i < 24; i++) { mx *= 0.88; my *= 0.88; await wheel(-mx, -my); await sleep(8); }
       }
       break;
     }
     case "pinch": {
       // Chrome turns a trackpad pinch into wheel events with ctrlKey
       const steps = d(2, 12), per = Math.log(1 + d(1)) / steps;
-      for (let i = 0; i < steps; i++) { await hold(["Control"], () => page.mouse.wheel(0, -per * 100)); await sleep(8); }
+      for (let i = 0; i < steps; i++) { await hold(["Control"], () => wheel(0, -per * 100)); await sleep(8); }
       break;
     }
-    case "key": { log(`key down ${a[1]} at ${pos.x.toFixed(0)},${pos.y.toFixed(0)}`); const p = a[1].split("+"); const k = p.pop()!; await page.keyboard.press([...mods(p.join("+")), keyName[k] ?? k].join("+")); break; }
+    case "key": { log(`key down ${a[1]} at ${pos.x.toFixed(0)},${pos.y.toFixed(0)}`); const half = a[1].endsWith(":down") ? "down" : a[1].endsWith(":up") ? "up" : ""; const p = a[1].replace(/:(down|up)$/, "").split("+"); const k = p.pop()!; const name = [...mods(p.join("+")), keyName[k] ?? keyCode[k] ?? k].join("+"); if (half === "down") await page.keyboard.down(name); else if (half === "up") await page.keyboard.up(name); else await page.keyboard.press(name); break; }
+    // keys: key by key, as typed (a character shift makes, like ?, with shift held, as a person types it)
+    case "keys": for (const ch of line.slice(5)) {
+      const base = Object.entries(shifted).find(([, v]) => v === ch)?.[0];
+      await page.keyboard.press(base ? `Shift+${keyCode[base] ?? base}` : ch === " " ? "Space" : ch); await sleep(30);
+    } break;
+    // dialog: the board's dialog that is up (its text and buttons); button <title>: click that button in it
+    case "dialog": return await page.evaluate(() => {
+      const d = [...document.querySelectorAll<HTMLElement>("[role=dialog], [role=alertdialog]")].find((e) => e.offsetParent);
+      if (!d) return "none";
+      const buttons = [...d.querySelectorAll("button")].map((b) => (b.textContent ?? "").trim()).filter(Boolean);
+      return `dialog: ${d.innerText.split("\n").slice(0, 4).join(" | ")} [${buttons.join("] [")}]`;
+    });
+    case "button": {
+      const title = line.slice(7);
+      const r = await page.evaluate((title) => {
+        const d = [...document.querySelectorAll<HTMLElement>("[role=dialog], [role=alertdialog]")].find((e) => e.offsetParent);
+        const b = d && [...d.querySelectorAll("button")].find((x) => (x.textContent ?? "").trim() === title)?.getBoundingClientRect();
+        return b && { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+      }, title);
+      if (!r) return `no button ${title}`;
+      await move(r.x, r.y, 250); await pressed(false); await page.mouse.down(); await sleep(70); await page.mouse.up();
+      break;
+    }
     case "type": for (const ch of line.slice(5).replace(/\\n/g, "\n")) { if (ch === "\n") await page.keyboard.press("Enter"); else await page.keyboard.insertText(ch); await sleep(35); } break;
     case "ime": {
       const parts = line.slice(4).split("|");
@@ -166,6 +200,9 @@ async function run(line: string): Promise<string> {
       const q = CSS.escape(id);
       const els = [...document.querySelectorAll(`.card[data-id="${q}"], [data-sect="${q}"]`)];
       if (!els.length) els.push(...document.querySelectorAll(`[data-link="${q}"] .vlabel`));
+      // a sidenote's marker (the badge that lists it), a sticker
+      if (!els.length) els.push(...[...document.querySelectorAll<HTMLElement>(".snb[data-notes]")].filter((b) => b.dataset.notes!.split(",").includes(id)));
+      if (!els.length) els.push(...document.querySelectorAll(`[data-sticker="${q}"]`));
       const r = els.map((e) => e.getBoundingClientRect()).sort((a, b) => b.width * b.height - a.width * a.height)[0];
       return r ? `${r.left.toFixed(1)} ${r.top.toFixed(1)} ${r.width.toFixed(1)} ${r.height.toFixed(1)}` : "none";
     }, a[1]);

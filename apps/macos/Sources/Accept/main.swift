@@ -127,17 +127,19 @@ extension NSApplication {
   @objc func accOrderFrontCharacterPalette(_ sender: Any?) { log("character palette asked for (not shown)") }
 }
 
-/// Made when a cursor is named, not at launch: read before NSApplication is made, `NSCursor.arrow` came back empty, and
-/// every arrow the app set was named custom(28x40)
-nonisolated var cursorNames: [(NSCursor, String)] {
-  [
-    (.arrow, "arrow"), (.pointingHand, "pointingHand"), (.openHand, "openHand"), (.closedHand, "closedHand"),
-    (.iBeam, "iBeam"), (.crosshair, "crosshair"), (.resizeLeftRight, "resizeLeftRight"),
-    (.resizeUpDown, "resizeUpDown"),
-    (.operationNotAllowed, "notAllowed"), (.dragCopy, "dragCopy"), (.dragLink, "dragLink"),
-    (.contextualMenu, "contextMenu"),
-    (.disappearingItem, "disappearing"), (.iBeamCursorForVerticalLayout, "iBeamVertical"),
-  ]
+/// Made the first time a cursor is named (a static is made when first read): main.swift's top-level lets are made at
+/// launch, before NSApplication, when `NSCursor.arrow` is not yet the arrow the app sets, so every arrow was named
+/// custom(28x40)
+enum Cursors {
+  nonisolated(unsafe) static let names: [(NSCursor, String)] =
+    [
+      (.arrow, "arrow"), (.pointingHand, "pointingHand"), (.openHand, "openHand"), (.closedHand, "closedHand"),
+      (.iBeam, "iBeam"), (.crosshair, "crosshair"), (.resizeLeftRight, "resizeLeftRight"),
+      (.resizeUpDown, "resizeUpDown"),
+      (.operationNotAllowed, "notAllowed"), (.dragCopy, "dragCopy"), (.dragLink, "dragLink"),
+      (.contextualMenu, "contextMenu"),
+      (.disappearingItem, "disappearing"), (.iBeamCursorForVerticalLayout, "iBeamVertical"),
+    ]
     // the system's resize cursors, named by what they show: a frame's edges and corners (frameResize; the opposite edge with
     // the opposite direction is the same cursor) and columns, rows
     + [
@@ -159,7 +161,7 @@ nonisolated var cursorNames: [(NSCursor, String)] {
     ]
 }
 func nameOf(_ c: NSCursor) -> String {
-  if let n = cursorNames.first(where: { $0.0 == c })?.1 { return n }
+  if let n = Cursors.names.first(where: { $0.0 == c })?.1 { return n }
   return "custom(\(Int(c.image.size.width))x\(Int(c.image.size.height)))"
 }
 
@@ -667,6 +669,11 @@ func strings(_ x: Any) -> [String] {
     "return": 36, "tab": 48, "space": 49, "delete": 51, "esc": 53, "left": 123, "right": 124, "down": 125, "up": 126,
     "fwddelete": 117, "home": 115, "end": 119, "pageup": 116, "pagedown": 121, "f2": 120,
   ]
+  /// What shift makes of the other keys (a US layout): shift+/ is ?
+  static let shifted: [String: String] = [
+    "`": "~", "1": "!", "2": "@", "3": "#", "4": "$", "5": "%", "6": "^", "7": "&", "8": "*", "9": "(", "0": ")",
+    "-": "_", "=": "+", "[": "{", "]": "}", "\\": "|", ";": ":", "'": "\"", ",": "<", ".": ">", "/": "?",
+  ]
   static let specials: [String: String] = [
     "return": "\r", "tab": "\t", "space": " ", "delete": "\u{7f}", "esc": "\u{1b}",
     "left": String(UnicodeScalar(NSLeftArrowFunctionKey)!), "right": String(UnicodeScalar(NSRightArrowFunctionKey)!),
@@ -678,6 +685,16 @@ func strings(_ x: Any) -> [String] {
 
   /// cmd+shift+z, esc, return… (no printable key without a modifier: text goes through `type`)
   func key(_ spec: String) async {
+    // "space:down" / "space:up": only that half (holding a key while the pointer moves)
+    var phases = [true, false]
+    var spec = spec
+    if spec.hasSuffix(":down") {
+      phases = [true]
+      spec.removeLast(5)
+    } else if spec.hasSuffix(":up") {
+      phases = [false]
+      spec.removeLast(3)
+    }
     var parts = spec.lowercased().split(separator: "+").map(String.init)
     let k = parts.removeLast()
     var f: NSEvent.ModifierFlags = []
@@ -694,15 +711,18 @@ func strings(_ x: Any) -> [String] {
       f.insert(.function)
       f.insert(.numericPad)
     }
-    guard let code = Self.codes[k], let w = gKey ?? win else {
+    // (into a dialog when one is up: an app-modal alert, or a sheet on the window)
+    guard let code = Self.codes[k], let w = NSApp.modalWindow ?? (gKey ?? win)?.attachedSheet ?? gKey ?? win else {
       log("unknown key \(k)")
       return
     }
     let chars = Self.specials[k] ?? k
-    let shown = f.contains(.shift) && chars.count == 1 && chars.first!.isLetter ? chars.uppercased() : chars
+    let shown =
+      !f.contains(.shift) || chars.count != 1
+      ? chars : chars.first!.isLetter ? chars.uppercased() : Self.shifted[chars] ?? chars
     vFlags = f
     log("key down \(spec) at \(local(vPointer))")
-    for down in [true, false] {
+    for down in phases {
       // from a CGEvent, as the window server makes them (WebKit passes on only such key events)
       let cg = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)!
       cg.timestamp = now()
@@ -738,6 +758,11 @@ func strings(_ x: Any) -> [String] {
         continue
       }
       let c = String(ch)
+      // a character shift makes (?, !, …): its key with shift, as a person types it
+      if let base = Self.shifted.first(where: { $0.value == c })?.key {
+        await key("shift+\(base)")
+        continue
+      }
       let code = Self.codes[c.lowercased()] ?? (c == " " ? 49 : 0)
       let f: NSEvent.ModifierFlags = ch.isUppercase ? [.shift] : []
       for t in [NSEvent.EventType.keyDown, .keyUp] {
@@ -803,8 +828,17 @@ func strings(_ x: Any) -> [String] {
     return chain.joined(separator: " < ")
   }
 
-  func contextMenu() {
-    guard let w = window(at: vPointer), let root = w.contentView?.superview else { return }
+  func views(in v: NSView?) -> [NSView] { v.map { [$0] + $0.subviews.flatMap { views(in: $0) } } ?? [] }
+  func dialogText(_ d: NSWindow) -> String {
+    let vs = views(in: d.contentView)
+    let texts = vs.compactMap { ($0 as? NSTextField)?.stringValue }.filter { !$0.isEmpty }
+    let buttons = vs.compactMap { $0 as? NSButton }.filter { !$0.isHidden && !$0.title.isEmpty }.map(\.title)
+    let kind = d === NSApp.modalWindow ? "app-modal" : "sheet"
+    return "\(kind): \(texts.joined(separator: " | ")) [\(buttons.joined(separator: "] ["))]"
+  }
+
+  func contextMenu() async -> String {
+    guard let w = window(at: vPointer), let root = w.contentView?.superview else { return "no window" }
     let wp = w.convertPoint(fromScreen: vPointer)
     vButtons |= 2
     let e = NSEvent.mouseEvent(
@@ -818,7 +852,23 @@ func strings(_ x: Any) -> [String] {
     }
     vButtons &= ~2
     lastMenu = menu
+    // a web view (a sidenote's popup, a Note) builds its menu in its page and asks the app to show it: a real right-click,
+    // then whatever menu the app pops up (the popUp swizzles catch it) within a second
+    if menu == nil, let hit = root.hitTest(wp),
+      sequence(first: hit, next: { $0.superview }).contains(where: { $0 is WKWebView })
+    {
+      for t in [NSEvent.EventType.rightMouseDown, .rightMouseUp] {
+        w.sendEvent(
+          NSEvent.mouseEvent(
+            with: t, location: wp, modifierFlags: vFlags, timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1,
+            pressure: t == .rightMouseDown ? 1 : 0)!)
+      }
+      for _ in 0..<50 where lastMenu == nil { try? await Task.sleep(for: .milliseconds(20)) }
+      menu = lastMenu
+    }
     log(menu.map { "context menu:\n" + describe($0) } ?? "context menu: none")
+    return menu.map { describe($0) } ?? "none"
   }
 
   func pick(_ path: String) {
@@ -830,7 +880,10 @@ func strings(_ x: Any) -> [String] {
         return
       }
       if i == parts.count - 1 {
-        menu.performActionForItem(at: idx)
+        // after this command has answered: an item that opens an app-modal dialog runs it from inside its action, and
+        // the driver goes on (the dialog is read with `dialog`, answered with `button` or a key). From the run loop, not
+        // the main queue: a main-queue block that runs a modal session holds the queue, and the next command with it
+        RunLoop.main.perform(inModes: [.common]) { menu.performActionForItem(at: idx) }
         log("picked \(path)")
       } else {
         m = menu.items[idx].submenu
@@ -884,7 +937,18 @@ func strings(_ x: Any) -> [String] {
     case "keys": await keys(String(line.dropFirst(5)).replacingOccurrences(of: "\\n", with: "\n"))
     case "ime": await ime(String(line.dropFirst(4)).split(separator: "|").map(String.init))
     case "wait": try? await Task.sleep(for: .milliseconds(Int(d(1, 200))))
-    case "menu": contextMenu()
+    case "menu": return await contextMenu()
+    // dialog: the dialog that is up (an app-modal alert or panel, or a sheet on the window): its text and its buttons
+    case "dialog":
+      guard let d = NSApp.modalWindow ?? win?.attachedSheet else { return "none" }
+      return dialogText(d)
+    case "button":  // button <title>: click that button of the dialog that is up
+      let title = String(line.dropFirst(7))
+      guard let d = NSApp.modalWindow ?? win?.attachedSheet else { return "no dialog" }
+      guard let b = views(in: d.contentView).compactMap({ $0 as? NSButton }).first(where: { $0.title == title }) else {
+        return "no button \(title): \(dialogText(d))"
+      }
+      RunLoop.main.perform(inModes: [.common]) { b.performClick(nil) }
     case "pick": pick(String(line.dropFirst(5)))
     case "hit": return hitInfo(vPointer)
     // ax id: where the canvas's accessibility element with this identifier (a card or Section, when the app exposes
@@ -971,7 +1035,7 @@ func strings(_ x: Any) -> [String] {
     case "info":
       let fr = (gKey ?? win)?.firstResponder
       return
-        "win \(win?.frame ?? .zero) key \(String(describing: gKey.map { Swift.type(of: $0) })) responder \(String(describing: fr.map { Swift.type(of: $0) })) cursor \(cursorName) windows \(NSApp.orderedWindows.filter(\.isVisible).map { "\(Swift.type(of: $0))\($0.frame)" })"
+        "win \(win?.frame ?? .zero) key \(String(describing: gKey.map { Swift.type(of: $0) })) responder \(String(describing: fr.map { Swift.type(of: $0) })) cursor \(cursorName) windows \(NSApp.orderedWindows.filter(\.isVisible).map { "\(Swift.type(of: $0))\($0.frame)" }) dialog \((NSApp.modalWindow ?? win?.attachedSheet).map(dialogText) ?? "none")"
     case "rec":  // rec name [fps]
       rec?.stop()
       rec = Recorder(name: a[1], fps: Int(d(2, 30)), driver: self)

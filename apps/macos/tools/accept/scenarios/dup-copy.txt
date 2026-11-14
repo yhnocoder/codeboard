@@ -1,0 +1,15 @@
+# ⌘D 不点小条就是 Copy：改副本，原卡不变；Esc 或点别处小条收起
+zoom 1
+center @cnote+150,180
+click @cnote+250,110
+key cmd+d
+wait 700
+shot chip @cnote+-20,-20 440 380
+dbl @new+150,62
+wait 600
+type  heron
+key esc
+wait 900
+expect new.text has heron
+expect cnote.text lacks heron
+shot after @cnote+-20,-20 440 380
