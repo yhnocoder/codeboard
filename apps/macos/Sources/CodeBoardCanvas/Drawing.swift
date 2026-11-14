@@ -413,7 +413,7 @@ enum Drawing: Sendable {
           text(ctx, ns, t.code, color, x: numberRight - width(ns, t.code), midY: mid, width: .infinity)
         }
         codeLine(ctx, s, tokens, t, x: l.gutter + l.shift, midY: mid)
-      case .gap(let a, let b):
+      case .gap(_, let a, let b):
         let row = CGRect(x: 0, y: p.y + 1, width: r.width, height: p.height - 2)
         ctx.setFillColor(t.hiddenRow)
         ctx.fill(row)

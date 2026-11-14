@@ -30,7 +30,8 @@ struct CodeLayout: Equatable, Sendable {
   enum Row: Equatable, Sendable {
     /// A line, or (`number` nil) the continuation of a wrapped one; tokens in UTF-16 columns of `text`
     case line(segment: Int, number: Int?, text: String, tokens: [Token] = [])
-    case gap(from: Int, to: Int)
+    /// Lines not shown (hidden, or between two segments), of the segment they belong to (the next one, between two)
+    case gap(segment: Int, from: Int, to: Int)
     case file(String)
     case function(String)
   }
@@ -76,7 +77,7 @@ struct CodeLayout: Equatable, Sendable {
         } else if let scope = s.scope, prev.scope != scope {
           put(.function("def " + (scope.split(separator: ".").last.map(String.init) ?? scope)), m.function)
         } else if s.firstLine > prev.lastLine + 1 {
-          put(.gap(from: prev.lastLine + 1, to: s.firstLine - 1), m.gap)
+          put(.gap(segment: si, from: prev.lastLine + 1, to: s.firstLine - 1), m.gap)
         }
       }
       var top: [Int: CGFloat] = [:]
@@ -85,7 +86,7 @@ struct CodeLayout: Equatable, Sendable {
       while l <= s.lastLine {
         if let r = s.hidden.first(where: { $0.contains(l) }) {
           let to = min(r.upperBound, s.lastLine)
-          put(.gap(from: l, to: to), m.gap)
+          put(.gap(segment: si, from: l, to: to), m.gap)
           l = to + 1
           continue
         }
@@ -132,6 +133,13 @@ struct CodeLayout: Equatable, Sendable {
   /// The row of a segment's line (its first, when it wraps), when it is shown
   func row(segment: Int, line: Int) -> Placed? {
     rows.first { if case .line(let s, let n?, _, _) = $0.row { s == segment && n == line } else { false } }
+  }
+
+  /// Where something on a segment's line shows: its row, or the hidden run's row when it is hidden (main marks.ts: a
+  /// sticker on a hidden line sits on the "N lines hidden" row)
+  func shownRow(segment: Int, line: Int) -> Placed? {
+    row(segment: segment, line: line)
+      ?? rows.first { if case .gap(let s, let a, let b) = $0.row { s == segment && (a...b).contains(line) } else { false } }
   }
 
   /// The middle of the row of a segment's line, when it is shown

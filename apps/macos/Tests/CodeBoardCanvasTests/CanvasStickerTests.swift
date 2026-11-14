@@ -216,6 +216,25 @@ func stickerBoard() -> Board {
     #expect(c.hitStickerGrip(c.camera.view(c.stickerGrip(try #require(c.selectedSticker)))) == nil)
   }
 
+  /// A sticker on a line that is hidden sits on the "N lines hidden" row, at its line number (main marks.ts lineStk)
+  @Test func aStickerOnAHiddenLineSitsOnTheHiddenLinesRow() async throws {
+    var b = stickerBoard()
+    guard case .own(var k) = b.cards[0].content, case .code(var code) = k.body else { return }
+    code.segments[0].hidden = [11...11]
+    k.body = .code(code)
+    b.cards[0].content = .own(k)
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let layout = try #require(c.scene?.placed[cid("c1")]?.code)
+    let gap = try #require(
+      layout.layout.rows.first { if case .gap(_, 11, 11) = $0.row { true } else { false } }, "the hidden row")
+    let k3 = try spot(c, "k3")
+    #expect(k3.line && k3.owner == cid("c1"))
+    #expect(k3.frame.minY == layout.top + gap.y + 3, "on the hidden row: \(k3.frame), the row at \(layout.top + gap.y)")
+    #expect(k3.frame.minX == layout.layout.gutter - 18, "at the line numbers")
+  }
+
   @Test func aGlyphPickedWithOneSelectedSwapsItsGlyphAndItsColourGoesBack() async throws {
     let r = try await Rig(stickerBoard(), zoom: 1)
     defer { r.close() }

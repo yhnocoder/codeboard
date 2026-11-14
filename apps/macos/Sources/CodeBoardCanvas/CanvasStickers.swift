@@ -68,7 +68,7 @@ extension CanvasView {
       case .line(let c, let seg, let n):
         guard let r = rects[c], let p = scene.placed[c], !p.folded, let code = p.code,
           case .code(let card)? = scene.parts[c]?.content.body,
-          let si = card.segments.firstIndex(where: { $0.id == seg }), let row = code.layout.row(segment: si, line: n)
+          let si = card.segments.firstIndex(where: { $0.id == seg }), let row = code.layout.shownRow(segment: si, line: n)
         else { continue }
         let y = code.top + row.y
         let key = "\(Scene.Owner.card(c))|\(Int(y))"
