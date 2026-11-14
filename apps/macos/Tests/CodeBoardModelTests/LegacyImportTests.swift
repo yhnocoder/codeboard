@@ -836,3 +836,43 @@ private func unchanged(_ before: [String: Data], _ after: [String: Data]) -> [St
   #expect(code.segments.map(\.lines) == [["a", "b"]])
   #expect(code.segments[0].source == nil)
 }
+
+// The extension keeps each board's camera in VS Code's workspace state (packages/host/src/storage/place.ts camsOf), the
+// world drawn at translate(x, y) scale(z): it comes in as the board point at the top left and the zoom, by the id each
+// board has in the vault (a copy's its own)
+@Test func camerasComeFromTheWorkspaceStateOfTheFolderHoldingTheBoards() throws {
+  let root = try scratch()
+  let project = root.appending(path: "project")
+  let source = project.appending(path: ".codeboard")
+  try put(oldBoard("b1", name: "One"), at: source.appending(path: "one.json"))
+  try put(oldBoard("b2", name: "Two"), at: source.appending(path: "two.json"))
+  let workspaces = root.appending(path: "workspaceStorage")
+  func workspace(_ name: String, folder: URL, cams: [String: Any]) throws {
+    let dir = workspaces.appending(path: name)
+    try put(["folder": folder.absoluteString], at: dir.appending(path: "workspace.json"))
+    let state = String(
+      decoding: try JSONSerialization.data(withJSONObject: ["codeboard.cams": cams, "codeboard.open": []]),
+      as: UTF8.self)
+    let p = Process()
+    p.executableURL = URL(filePath: "/usr/bin/sqlite3")
+    p.arguments = [
+      dir.appending(path: "state.vscdb").path,
+      "CREATE TABLE ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB); INSERT INTO ItemTable VALUES "
+        + "('yhnocoder.codeboard-vscode', '\(state)'), ('other', 'x');",
+    ]
+    try p.run()
+    p.waitUntilExit()
+  }
+  try workspace("a", folder: root, cams: ["b1": ["x": 1, "y": 1, "z": 1]])
+  try workspace("b", folder: project, cams: ["b1": ["x": 80, "y": -40, "z": 2], "b2": ["x": 0, "y": 0, "z": 0]])
+  let cams = LegacyImport.cameras(for: source, in: workspaces)
+  // the deepest workspace holding the folder; a camera that cannot be (zoom 0) is left out
+  #expect(cams == ["b1": BoardCamera(x: -40, y: 20, zoom: 2)])
+  #expect(LegacyImport.cameras(for: source, in: root.appending(path: "none")).isEmpty)
+
+  let vault = root.appending(path: "vault")
+  try FileManager.default.createDirectory(at: vault.appending(path: "Old.board"), withIntermediateDirectories: true)
+  try Board(id: BoardID(rawValue: "b1"), cards: []).encoded().write(to: vault.appending(path: "Old.board/board.json"))
+  let report = try LegacyImport.run(from: source, to: vault, cameras: cams)
+  #expect(report.cameras == [BoardID(rawValue: "b1-copy"): BoardCamera(x: -40, y: 20, zoom: 2)])
+}

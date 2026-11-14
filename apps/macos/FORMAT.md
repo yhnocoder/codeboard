@@ -324,6 +324,14 @@ Dropped without a report, because it is not the user's content: `place[id].mh` o
 measured; it is written again on every draw), `place` entries of cards that do not exist, and the height a library Text or
 Box kept on a board before version 16 (the extension drops it too).
 
+**Cameras**: the extension keeps where each board was looked at per machine, not in its file (VS Code's workspace state,
+`codeboard.cams`: board id → `{x, y, z}`, the world drawn at `translate(x, y) scale(z)`). `LegacyImport.cameras(for:
+<old storage folder>)` reads them, read-only, from the state database of the VS Code workspace whose folder holds the
+storage folder (the deepest one; `workspaceStorage/<hash>/state.vscdb`, the extension's row), as the board point at the
+view's top left and the zoom (`BoardCamera`: `x = -x/z`, `y = -y/z`, `zoom = z`). Given to `run(from:to:cameras:)`, the
+report's `cameras` has them by the id each written board has in the vault (a copy's its own). They are not part of the
+format: like the extension, the app keeps a board's camera per machine.
+
 **Report** (`ImportReport`): per old file (`source`, relative path) its `destination` in the vault and what was left out,
 as `SkipKind` + the old ids. Nothing is lost: the old files stay as they were and the importer can run again once the model
 holds more. Kinds:
