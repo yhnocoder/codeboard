@@ -270,10 +270,8 @@ extension CanvasView {
       }
       // every layer is at zPosition 0 again
       raised = nil
-      for l in [below, cards, above] { l.sublayers = nil }
-      for (i, l) in next.enumerated() {
-        (i < s.cardsFrom ? below : i < s.labelsFrom ? cards : above).addSublayer(l.box)
-      }
+      for l in [below, cards, above, kept] { l.sublayers = nil }
+      for (i, l) in next.enumerated() { home(of: i, in: s).addSublayer(l.box) }
       sections.sublayers = nil
       for f in s.frames { sections.addSublayer(CanvasView.frameLayer(f, theme)) }
       dropLayer.sublayers = nil
@@ -360,7 +358,11 @@ extension CanvasView {
   /// The topmost card drawn at a board point
   func hitCard(_ p: CGPoint) -> CardID? {
     guard let s = scene else { return nil }
-    for it in s.items[s.cardsFrom..<s.labelsFrom].reversed() {
+    // the kept cards (sub-boards, Texts, Boxes) are drawn over the others, so they are hit first; at the summary level
+    // only they are there
+    let all = s.items[s.cardsFrom..<s.labelsFrom].reversed()
+    let order = all.filter(\.kept) + (levels.level == .summaries ? [] : all.filter { !$0.kept })
+    for it in order {
       guard case .card(let id)? = it.owner else { continue }
       if it.rect.contains(p) { return id }
       // a sub-board card's name and count above it are the card's

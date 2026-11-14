@@ -42,6 +42,15 @@ public final class CanvasView: NSView {
   let arrows = CALayer()
   let above = CALayer()
   let cards = CALayer()
+  /// Everything the summary level fades out as one: Section frames and titles, arrows, cards, stickers, marks
+  let cardLevel = CALayer()
+  /// Sub-board cards, Texts and Boxes, which the summary level shows as they are (main's .keeplay): always over the card
+  /// level, never faded
+  let kept = CALayer()
+  /// The summary level's columns (CanvasSummaries.swift)
+  let summaryLayer = CALayer()
+  /// Which level is shown and how it changes (SummaryLevels.swift)
+  var levels = SummaryLevels()
   var camera = Camera(origin: .zero, zoom: 1)
   /// Where the next board shown is shown from (back to a board: where it was), instead of all of it in view
   public var arriving: Camera?
@@ -267,17 +276,19 @@ public final class CanvasView: NSView {
     layer = root
     wantsLayer = true
     for l in [
-      world, sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers, freeMarks, shelfHome, shelfDrag,
-      chrome,
+      world, cardLevel, kept, summaryLayer, sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers,
+      freeMarks, shelfHome, shelfDrag, chrome,
     ] {
       l.anchorPoint = .zero
     }
-    for l in [
-      sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers, freeMarks, shelfHome, shelfDrag,
-      chrome,
-    ] {
-      world.addSublayer(l)
+    for l in [sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers, freeMarks, chrome] {
+      cardLevel.addSublayer(l)
     }
+    // faded as one: cards over one another do not show through each other halfway
+    cardLevel.allowsGroupOpacity = true
+    summaryLayer.allowsGroupOpacity = true
+    summaryLayer.isHidden = true
+    for l in [cardLevel, kept, summaryLayer, shelfHome, shelfDrag] { world.addSublayer(l) }
     backdrop.anchorPoint = .zero
     root.addSublayer(backdrop)
     root.addSublayer(world)
@@ -543,14 +554,12 @@ public final class CanvasView: NSView {
       backdropImage = theme.backdrop.flatMap(Backdrop.image)
       backdrop.contents = backdropImage
       placeBackdrop()
-      for l in [sections, dropLayer, below, arrows, above, cards] { l.sublayers = nil }
+      for l in [sections, dropLayer, below, arrows, above, cards, kept] { l.sublayers = nil }
       for f in s.frames { sections.addSublayer(CanvasView.frameLayer(f, theme)) }
       items = s.items.enumerated().map { i, it in
         ItemLayers(it, overview: overviews[i], shadow: it.drawing.framed ? shadow : nil)
       }
-      for (i, l) in items.enumerated() {
-        (i < s.cardsFrom ? below : i < s.labelsFrom ? cards : above).addSublayer(l.box)
-      }
+      for (i, l) in items.enumerated() { home(of: i, in: s).addSublayer(l.box) }
       arrowGroups = s.arrows.map { a in
         let ls = CanvasView.arrowLayers(a, theme)
         for l in ls { arrows.addSublayer(l) }
@@ -584,6 +593,12 @@ public final class CanvasView: NSView {
     shelfChanged()
     questionsChanged()
     drawChrome()
+  }
+
+  /// The layer an item's box goes in: Section titles below the cards, arrow labels above them, sub-boards, Texts and Boxes
+  /// on the kept layer over the card level (they stay at the summary level), the other cards in between
+  func home(of i: Int, in s: Scene) -> CALayer {
+    i < s.cardsFrom ? below : i >= s.labelsFrom ? above : s.items[i].kept ? kept : cards
   }
 
   /// The soft shadow under a framed card, nine-sliced onto every one: only the shadow, the card's own area left clear
@@ -775,9 +790,8 @@ public final class CanvasView: NSView {
     guard scene != nil, e.momentumPhase.isEmpty else { return }
     if e.modifierFlags.contains(.command) {
       let d = e.scrollingDeltaY * (e.hasPreciseScrollingDeltas ? 0.01 : 0.1)
-      motion.wheelZoom(
-        by: exp(d), at: convert(e.locationInWindow, from: nil), time: e.timestamp, limits: limits, camera: &camera)
-      moved()
+      wheelZoom(
+        by: d, precise: e.hasPreciseScrollingDeltas, at: convert(e.locationInWindow, from: nil), time: e.timestamp)
     } else {
       let k: CGFloat = e.hasPreciseScrollingDeltas ? 1 : 10
       scroll(
@@ -799,8 +813,43 @@ public final class CanvasView: NSView {
   }
 
   package func pinch(by f: CGFloat, around p: CGPoint, at t: TimeInterval, began: Bool, ended: Bool) {
+    let before = camera
     motion.pinch(by: f, at: p, time: t, began: began, ended: ended, limits: limits, camera: &camera)
+    zoomStep(from: before, around: p, wheelNotch: false, at: t)
     moved()
+  }
+
+  /// ⌘-scroll by `d` (the zoom's logarithm); `precise`: a trackpad or Magic Mouse, else a mouse wheel's notches
+  package func wheelZoom(by d: CGFloat, precise: Bool, at p: CGPoint, time t: TimeInterval) {
+    let before = camera
+    motion.wheelZoom(by: exp(d), at: p, time: t, limits: limits, camera: &camera)
+    zoomStep(from: before, around: p, wheelNotch: !precise, at: t)
+    moved()
+  }
+
+  /// A zoom gesture's step through the summary switch: held at the switch point while pushing or fading (原地)
+  private func zoomStep(from before: Camera, around p: CGPoint, wheelNotch: Bool, at t: TimeInterval) {
+    let z = levels.step(from: before.zoom, to: camera.zoom, wheelNotch: wheelNotch, at: t)
+    guard z != camera.zoom else { return }
+    var c = before
+    c.zoom(to: z, at: p)
+    camera = c
+    motion.hold(zoom: z)
+  }
+
+  /// The two levels' opacities, set only when they change (opacity alone: nothing is drawn or laid out again)
+  func applyLevels(_ o: (cards: CGFloat, summaries: CGFloat)) {
+    let (c, s) = (Float(o.cards), Float(o.summaries))
+    guard
+      c != cardLevel.opacity || s != summaryLayer.opacity || cardLevel.isHidden != (c == 0)
+        || summaryLayer.isHidden != (s == 0)
+    else { return }
+    withoutAnimation {
+      cardLevel.opacity = c
+      cardLevel.isHidden = c == 0
+      summaryLayer.opacity = s
+      summaryLayer.isHidden = s == 0
+    }
   }
 
   /// Input moved the camera: rest work is cancelled
@@ -828,9 +877,12 @@ public final class CanvasView: NSView {
     var cam = camera
     let rested = motion.step(at: time, camera: &cam)
     if cam != camera {
+      // the app's own move (a fly, a spring back): crossing the switch point cross-fades at once
+      levels.moved(from: camera.zoom, to: cam.zoom)
       camera = cam
       applyCamera()
     }
+    applyLevels(levels.frame(at: time))
     if rested { arrive() }
     if motion.isResting && !resting.isEmpty {
       let waiting = resting
@@ -843,7 +895,9 @@ public final class CanvasView: NSView {
       // decoding and drawing free large blocks that the allocator would otherwise keep, counted in the footprint
       DispatchQueue.global(qos: .utility).async { _ = malloc_zone_pressure_relief(nil, 0) }
     }
-    if motion.isResting && queue.isIdle && onFrame == nil && gesture == nil { link?.isPaused = true }
+    if motion.isResting && queue.isIdle && onFrame == nil && gesture == nil && !levels.isAnimating {
+      link?.isPaused = true
+    }
   }
 
   /// At rest: what each item should hold now, within what the other canvases leave of the budget
@@ -1080,8 +1134,10 @@ public final class CanvasView: NSView {
   /// Jumps to a zoom with the board point `centre` in the middle of the view, at rest
   package func place(zoom: CGFloat, centre: CGPoint) {
     let z = limits.clamp(zoom)
+    levels.moved(from: camera.zoom, to: z)
     camera = Camera(origin: CGPoint(x: centre.x - bounds.width / 2 / z, y: centre.y - bounds.height / 2 / z), zoom: z)
     motion = Motion()
+    if levels.isAnimating { link?.isPaused = false }
     cancelRedraws()
     applyCamera()
     arrive()

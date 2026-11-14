@@ -22,6 +22,9 @@ struct Scene: Sendable {
     var tilt: CGFloat
     /// How far its bitmap reaches past `rect` on each side (paper, rings)
     var bleed: CGFloat = 0
+    /// A card the summary level shows as it is (a sub-board, a Text, a Box: core summary.ts unsummarized), drawn over the
+    /// card level so that it stays when the rest fades
+    var kept = false
 
     /// What its bitmap covers, in the item's own units (its rect's top left at 0, 0)
     var bitmapSize: CGSize { CGSize(width: rect.width + 2 * bleed, height: rect.height + 2 * bleed) }
@@ -238,8 +241,10 @@ struct Scene: Sendable {
       let r = CGRect(origin: CGPoint(x: c.x, y: c.y), size: part.size)
       placed[c.id] = Placed(
         rect: r, code: part.code, tilt: tilt, blocks: part.measured?.blocks, refs: part.measured?.refs ?? [])
-      cardItems.append(
-        Item(owner: .card(c.id), rect: r, drawing: part.drawing, tilt: tilt, bleed: part.drawing.bleed(t)))
+      var item = Item(owner: .card(c.id), rect: r, drawing: part.drawing, tilt: tilt, bleed: part.drawing.bleed(t))
+      if case .board = content.body { item.kept = true }
+      if case .text = content.body { item.kept = true }
+      cardItems.append(item)
       if let s = c.section { members[s, default: []].append(r) }
       bounds = bounds.union(r)
     }

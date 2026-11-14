@@ -103,6 +103,11 @@ struct Motion {
     }
   }
 
+  /// The zoom was held (at the summary switch point): the fingers go on from there, so turning back does not jump
+  mutating func hold(zoom: CGFloat) {
+    if pinchRaw != nil { pinchRaw = zoom }
+  }
+
   /// ⌘-scroll: zooms within the limits, no rubber band
   mutating func wheelZoom(
     by factor: CGFloat, at p: CGPoint, time t: TimeInterval, limits: ZoomLimits, camera: inout Camera
