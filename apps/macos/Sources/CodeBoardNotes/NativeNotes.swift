@@ -115,6 +115,26 @@ public enum NativeNotes {
     return useCache ? cache.get(key, make) : make()
   }
 
+  /// The Note laid out for editing: the same card, theme and resources as `body`, kept block by block (EditorLayout) so
+  /// that each edit lays out only what it changed. The engines are started whatever the text holds now: any key may
+  /// begin a formula. A Text or Box that does not wrap is laid out as wide as its text is now
+  public static func editor(
+    _ note: Note, width: Double, look: String, dark: Bool, env: NoteEnv
+  ) throws(NoteError) -> (layout: EditorLayout, card: NoteLooks.Card) {
+    try fonts.get()
+    let math = try engines()
+    let card = NoteLooks.card(note.style, look: look, dark: dark)
+    let document = MarkdownDocument(note.text)
+    let info = note.layout.map(Self.info)
+    let resources = NoteResources(env: env, math: math)
+    var inner = max(1, CGFloat(width) - card.padding[1] - card.padding[3])
+    if card.natural {
+      inner = max(
+        1, MarkdownLayout.make(document, width: nil, theme: card.theme, layout: info, resources: resources).size.width)
+    }
+    return (EditorLayout(document, width: inner, theme: card.theme, layout: info, resources: resources), card)
+  }
+
   /// A formula or a diagram anywhere in Markdown: `$`, `\(`, `\[` or a mermaid fence. A Note without any never starts
   /// the engines
   static func needsEngines(_ note: Note) -> Bool {

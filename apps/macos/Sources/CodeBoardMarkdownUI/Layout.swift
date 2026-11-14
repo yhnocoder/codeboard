@@ -28,6 +28,10 @@ public final class MarkdownLayout: @unchecked Sendable {
     self.theme = theme
   }
 
+  /// A height rounded up to a hundredth of a point, as the page's layout does; sums of the same heights in another order
+  /// (EditorLayout adds them block by block) differ by far less than the allowance and round the same
+  static func roundedUp(_ y: CGFloat) -> CGFloat { ceil(y * 100 - 1e-6) / 100 }
+
   /// Lays the document out `width` points wide (nil: as wide as its widest paragraph line or code line, max-content;
   /// tables, formulas, diagrams and images do not widen it)
   public static func make(
@@ -39,7 +43,7 @@ public final class MarkdownLayout: @unchecked Sendable {
     let frames = b.top(document.blocks)
     let w = width ?? ceil(b.widest)
     return MarkdownLayout(
-      size: CGSize(width: w, height: ceil(b.bottom * 100) / 100), blockFrames: frames, images: b.images, items: b.items,
+      size: CGSize(width: w, height: Self.roundedUp(b.bottom)), blockFrames: frames, images: b.images, items: b.items,
       theme: theme, mathTextFont: (resources.math as? JSEngines)?.textFont)
   }
 }
@@ -215,27 +219,30 @@ struct LayoutBuilder {
     var frames: [CGRect] = []
     var prev: MDBlock?
     for b in blocks {
-      let (mt, _) = margins(b)
-      if let p = prev {
-        let (_, mb) = margins(p)
-        let pk = gapKind(p)
-        let k = gapKind(b)
-        if pk == .p && k == .block {
-          // .md-gap on a block after a paragraph: its top margin is the gap, half an em of its own text (a code
-          // block's is the code's), in place of its own margin
-          let em = { if case .code = b.kind { CGFloat(m.codeSize) } else { m.em(1) } }()
-          y += max(mb, em * CGFloat(m.paragraphGap))
-        } else {
-          let paragraphGap = (pk == .p && k == .p) || (pk == .block && k == .p) ? m.em(m.paragraphGap) : 0
-          y += max(mb, mt, paragraphGap)
-        }
-      }
+      if let p = prev { y += gap(after: p, before: b) }
       let top = y
       y = block(b, x: x, width: width, y: y, style: style)
       frames.append(CGRect(x: x, y: top, width: width, height: y - top))
       prev = b
     }
     return (frames, y)
+  }
+
+  /// The space between two neighbouring blocks: their margins collapse into the larger, and a paragraph next to a
+  /// paragraph or a block gets the paragraph gap
+  func gap(after p: MDBlock, before b: MDBlock) -> CGFloat {
+    let (mt, _) = margins(b)
+    let (_, mb) = margins(p)
+    let pk = gapKind(p)
+    let k = gapKind(b)
+    if pk == .p && k == .block {
+      // .md-gap on a block after a paragraph: its top margin is the gap, half an em of its own text (a code block's is
+      // the code's), in place of its own margin
+      let em = { if case .code = b.kind { CGFloat(m.codeSize) } else { m.em(1) } }()
+      return max(mb, em * CGFloat(m.paragraphGap))
+    }
+    let paragraphGap = (pk == .p && k == .p) || (pk == .block && k == .p) ? m.em(m.paragraphGap) : 0
+    return max(mb, mt, paragraphGap)
   }
 
   /// lays one block out at y; returns its bottom

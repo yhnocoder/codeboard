@@ -14,6 +14,7 @@ import CodeBoardModel
 //   --open   no window: each board opened in a 1440 × 900 canvas at 2x, until it is shown (every item drawn at the
 //            level the fitted view needs), then its SVGs rasterized; WebKit processes started and memory after each
 //        CanvasBench --make-synthetic <folder>   writes the synthetic vault (Synthetic) there
+//        CanvasBench --editor   no window: what a key costs while a 1200-paragraph Note is edited (EditorBench)
 // SVG pictures are cached in a new temporary folder, never in the app's cache: every run draws its SVGs anew
 
 @MainActor
@@ -95,6 +96,10 @@ final class App: NSObject, NSApplicationDelegate {
 }
 
 var args = Array(CommandLine.arguments.dropFirst())
+if args.contains("--editor") {
+  try EditorBench.run()
+  exit(0)
+}
 if let i = args.firstIndex(of: "--make-synthetic"), i + 1 < args.count {
   try Synthetic.make(URL(filePath: args[i + 1]))
   print("wrote \(args[i + 1])")
