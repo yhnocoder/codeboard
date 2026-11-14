@@ -44,6 +44,8 @@ public final class CanvasToolbar: NSView {
   public var onTool: ((Tool) -> Void)?
   /// The zoom figure clicked (Zoom to 100%), the questions button clicked
   public var onZoom100: (() -> Void)?
+  /// The ⋯ button clicked (Chrome.tsx More), at its rect in this view
+  public var onMore: ((CGRect) -> Void)?
   public var onQuestions: (() -> Void)?
   /// The zoom shown after the tools (Chrome.tsx Zoom's figure), as a whole percentage
   public var zoom: CGFloat = 1 {
@@ -130,23 +132,27 @@ public final class CanvasToolbar: NSView {
   /// The questions button's width (.qlist-btn: 4 + the 16 ? + 5 + the count + 8)
   var questionsWidth: CGFloat { 33 + Drawing.width("\(questions)", Self.countFont).rounded(.up) }
 
-  /// What follows the tools: a separator (.sep, 0.5 wide with 4 each side), the zoom figure (44 wide), and the
-  /// questions button after another separator (2 each side)
+  /// What follows the tools: a separator (.sep, 0.5 wide with 4 each side), ⋯ (a button as a tool's), another
+  /// separator, the zoom figure (44 wide), and the questions button after another separator (2 each side)
   private var extrasWidth: CGFloat {
     let gap: CGFloat = theme.id == .inkWash ? 1 : 2
-    var w = gap + 8.5 + gap + 44
+    var w = gap + 8.5 + gap + 30 + gap + 8.5 + gap + 44
     if showsQuestions { w += gap + 8.5 + gap + 2 + questionsWidth + 2 }
     return w
   }
 
   /// Where the separators, the zoom figure and the questions button are in the view
-  func extraRects() -> (seps: [CGRect], zoom: CGRect, questions: CGRect?) {
+  func extraRects() -> (seps: [CGRect], more: CGRect, zoom: CGRect, questions: CGRect?) {
     let b = barRect
     let gap: CGFloat = theme.id == .inkWash ? 1 : 2
     let last = buttonRects().last ?? CGRect(x: b.minX, y: b.minY, width: 0, height: 0)
     let mid = last.midY
     var x = last.maxX + gap
     var seps = [CGRect(x: x + 4, y: mid - 8, width: 0.5, height: 16)]
+    x += 8.5 + gap
+    let more = CGRect(x: x, y: last.minY, width: 30, height: 28)
+    x += 30 + gap
+    seps.append(CGRect(x: x + 4, y: mid - 8, width: 0.5, height: 16))
     x += 8.5 + gap
     let zoom = CGRect(x: x, y: mid - 9.5, width: 44, height: 19)
     x += 44
@@ -157,7 +163,7 @@ public final class CanvasToolbar: NSView {
       x += 8.5 + gap + 2
       q = CGRect(x: x, y: mid - 12, width: questionsWidth, height: 24)
     }
-    return (seps, zoom, q)
+    return (seps, more, zoom, q)
   }
 
   public override var intrinsicContentSize: NSSize {
@@ -216,12 +222,15 @@ public final class CanvasToolbar: NSView {
   var extrasDrawn: Extras {
     let r = extraRects()
     return Extras(
-      seps: r.seps, zoom: r.zoom, zoomText: Self.percent(zoom), zoomLit: hover == -1, questions: r.questions,
+      seps: r.seps, more: r.more, moreLit: hover == -3 || pressed == -3, zoom: r.zoom, zoomText: Self.percent(zoom),
+      zoomLit: hover == -1, questions: r.questions,
       count: questions, questionsLit: hover == -2 || listOpen, none: questions == 0)
   }
 
   struct Extras {
     var seps: [CGRect]
+    var more: CGRect
+    var moreLit: Bool
     var zoom: CGRect
     var zoomText: String
     var zoomLit: Bool
@@ -333,6 +342,16 @@ public final class CanvasToolbar: NSView {
     for s in e.seps {
       ctx.setFillColor(look.sep)
       ctx.fill(s)
+    }
+    if e.moreLit {
+      ctx.addPath(CGPath(roundedRect: e.more, cornerWidth: 8.5, cornerHeight: 8.5, transform: nil))
+      ctx.setFillColor(look.ink.copy(alpha: 0.07)!)
+      ctx.fillPath()
+    }
+    // ⋯: three dots 1.5 across, 5 apart (Icon more)
+    ctx.setFillColor(e.moreLit ? look.ink : look.ink2)
+    for k in -1...1 {
+      ctx.fillEllipse(in: CGRect(x: e.more.midX + CGFloat(k) * 5 - 1.5, y: e.more.midY - 1.5, width: 3, height: 3))
     }
     if e.zoomLit {
       ctx.addPath(CGPath(roundedRect: e.zoom, cornerWidth: 7, cornerHeight: 7, transform: nil))
@@ -479,10 +498,11 @@ public final class CanvasToolbar: NSView {
         owner: self))
   }
 
-  /// The tool under a point; -1: the zoom figure, -2: the questions button
+  /// The tool under a point; -1: the zoom figure, -2: the questions button, -3: ⋯
   func button(at p: CGPoint) -> Int? {
     if let i = buttonRects().firstIndex(where: { $0.contains(p) }) { return i }
     let e = extraRects()
+    if e.more.contains(p) { return -3 }
     if e.zoom.contains(p) { return -1 }
     if let q = e.questions, q.contains(p) { return -2 }
     return nil
@@ -499,6 +519,7 @@ public final class CanvasToolbar: NSView {
     switch at {
     case -1: onZoom100?()
     case -2: onQuestions?()
+    case -3: onMore?(extraRects().more)
     default: onTool?(tools[at])
     }
   }

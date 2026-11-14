@@ -323,6 +323,27 @@ extension CanvasView {
     }
   }
 
+  // MARK: The toolbar's ⋯
+
+  /// The toolbar's ⋯ (Chrome.tsx more, the toolbar not narrow): Undo, Redo, Copy Path (the board's file), Settings…,
+  /// Theme ▸; Settings and the themes are the app's own items, which answer them on the responder chain
+  public func moreMenu() -> NSMenu {
+    let m = NSMenu()
+    m.addItem(key(action("Undo", #selector(undo(_:))), "z", .command))
+    m.addItem(key(action("Redo", #selector(redo(_:))), "z", [.command, .shift]))
+    m.addItem(.separator())
+    m.addItem(copyPathItem([]))
+    m.addItem(.separator())
+    m.addItem(NSMenuItem(title: "Settings…", action: Selector(("showSettings:")), keyEquivalent: ","))
+    let themes = Theme.all.map { t in
+      let i = NSMenuItem(title: t.name, action: Selector(("chooseTheme:")), keyEquivalent: "")
+      i.representedObject = t.id.rawValue
+      return i
+    }
+    m.addItem(submenu("Theme", themes))
+    return m
+  }
+
   // MARK: Items
 
   /// Arrange ▸ (actions/edit.ts arrangeItem): the four orders, Front and Forward off when already in front, Backward
@@ -412,7 +433,8 @@ extension CanvasView {
   func copyPaths(_ ids: [String]) {
     guard let doc = document, let (here, vault) = shown else { return }
     let file = vault.url(of: here.path).appending(path: Vault.boardFileName).path(percentEncoded: false)
-    var lines: [String] = []
+    // none: the board's own file
+    var lines: [String] = ids.isEmpty ? [file] : []
     for id in ids {
       let line: String
       if let c = doc.board.card(CardID(rawValue: id)), case .shared = c.content {

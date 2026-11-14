@@ -222,4 +222,24 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     await r.editorReady()
     await r.canvas.endEditing()
   }
+
+  /// The toolbar's ⋯ (Chrome.tsx more): after the tools and a separator; Undo, Redo, Copy Path (the board's file),
+  /// Settings…, Theme ▸ (the app's items answer those)
+  @Test func theToolbarsMoreMenu() async throws {
+    let bar = CanvasToolbar()
+    var asked: CGRect?
+    bar.onMore = { asked = $0 }
+    let more = bar.extraRects().more
+    #expect(bar.button(at: CGPoint(x: more.midX, y: more.midY)) == -3)
+    #expect(more.minX > (bar.buttonRects().last?.maxX ?? .infinity) && more.maxX < bar.extraRects().zoom.minX)
+    _ = asked
+    let r = try await Rig(menusBoard(), zoom: 1)
+    defer { r.close() }
+    let m = r.canvas.moreMenu()
+    #expect(titles(m) == ["Undo", "Redo", "-", "Copy Path", "-", "Settings…", "Theme"])
+    #expect(titles(item(m, "Theme")?.submenu) == Theme.all.map(\.name))
+    #expect(item(m, "Redo")?.keyEquivalent == "z" && item(m, "Redo")?.keyEquivalentModifierMask == [.command, .shift])
+    fire(item(m, "Copy Path"))
+    #expect(r.canvas.pasteboard.string(forType: .string) == r.file.path(percentEncoded: false))
+  }
 }

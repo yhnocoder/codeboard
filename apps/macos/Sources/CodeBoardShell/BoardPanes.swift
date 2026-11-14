@@ -253,6 +253,12 @@ final class Pane: NSView {
     canvas.onMode = { [weak self] in self?.toolbar.active = $0 }
     // the zoom figure and the questions after the tools
     toolbar.onZoom100 = { [weak self] in self?.canvas.zoomTo100() }
+    // ⋯ opens upward from its left, 6 over it (Chrome.tsx more)
+    toolbar.onMore = { [weak self] r in
+      guard let self else { return }
+      let m = canvas.moreMenu()
+      m.popUp(positioning: nil, at: CGPoint(x: r.minX, y: r.minY - 6 - m.size.height), in: toolbar)
+    }
     toolbar.onQuestions = { [weak self] in
       guard let self, let r = toolbar.questionsRect else { return }
       canvas.toggleQuestionList(under: toolbar.convert(r, to: canvas))
