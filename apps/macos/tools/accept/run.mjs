@@ -2,7 +2,9 @@
 // The acceptance runner (README.md): runs scenario files on the Mac app and on the web board VS Code shows, side by side,
 // with a hand's pointer, and writes recordings, screenshots and a report to apps/macos/.build-accept/<scenario>/.
 //   node apps/macos/tools/accept/run.mjs <scenario.txt>… [--only mac|web] [--video] [--theme warm-ink|ink-wash] [--dark]
-//     [--scale 2] [--storage <folder>] [--skip-build] [--debug]
+//     [--scale 2] [--storage <folder>] [--skip-build] [--debug] [--keep | --attach | --stop]
+// --keep leaves both sides running after the scenarios; later runs with --attach go on in them (no build, no start: a
+// few seconds per run, for trying out targets and expectations); --stop ends them.
 // It prints one line per scenario and side (expectations passed, failed, not checkable) and exits 1 when one failed.
 import { execFileSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
@@ -28,9 +30,10 @@ const lookEnv = {
   ACCEPT_SCALE: opt("--scale") ?? "1",
 };
 const sides = only ? [only] : ["mac", "web"];
+const attach = argv.includes("--attach") || argv.includes("--stop");
 const run = (cmd, a, cwd = repo) => execFileSync(cmd, a, { cwd, stdio: "inherit" });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-if (!scenarios.length) throw new Error("usage: run.mjs <scenario.txt>… [--only mac|web] [--video] [--skip-build] [--debug]");
+if (!scenarios.length && !argv.includes("--stop")) throw new Error("usage: run.mjs <scenario.txt>… [--only mac|web] [--video] [--skip-build] [--debug]");
 const video = argv.includes("--video");
 const config = argv.includes("--debug") ? "debug" : "release";
 
@@ -40,11 +43,11 @@ const app = path.join(outRoot, "CodeBoard Accept.app");
 const webBundle = path.join(outRoot, "web.mjs");
 // --skip-build skips the web board's builds; the driver and the Note page are always built (both are incremental)
 const skip = argv.includes("--skip-build");
-if (!skip && sides.includes("web")) {
+if (!attach && !skip && sides.includes("web")) {
   run("npm", ["run", "build", "-w", "@yhnocoder/markdown"]);
   run("npm", ["run", "build", "-w", "@codeboard/board"]);
 }
-if (sides.includes("mac")) {
+if (!attach && sides.includes("mac")) {
   run("node", ["apps/macos/web/build.mjs"]);  // the Note page of this checkout (cached: a fraction of a second)
   run("swift", ["build", "-c", config, "--product", "Accept"], mac);
   const bin = execFileSync("swift", ["build", "-c", config, "--show-bin-path"], { cwd: mac }).toString().trim();
@@ -53,7 +56,7 @@ if (sides.includes("mac")) {
   fs.copyFileSync(path.join(bin, "Accept"), path.join(app, "Contents/MacOS/Accept"));
   fs.cpSync(path.join(mac, "web/dist"), path.join(app, "Contents/Resources/NotePage"), { recursive: true });
 }
-if (sides.includes("web")) {
+if (!attach && sides.includes("web")) {
   await build({
     entryPoints: [path.join(here, "web.ts")],
     outfile: webBundle,
@@ -96,12 +99,14 @@ class Driver {
       this.plist(this.vault);
       execFileSync("sh", ["-c", "defaults delete com.example.codeboard.accept >/dev/null 2>&1 || true"]);
       Object.assign(env, { ACCEPT_VAULT: this.vault, ACCEPT_IMPORT_FROM: storage });
-      this.proc = spawn(path.join(app, "Contents/MacOS/Accept"), [], { env, stdio: ["ignore", outFd, outFd] });
+      this.proc = spawn(path.join(app, "Contents/MacOS/Accept"), [], { env, stdio: ["ignore", outFd, outFd], detached: true });
     } else {
       this.copy = fs.mkdtempSync(path.join(os.tmpdir(), "accept-storage-"));
       fs.cpSync(storage, this.copy, { recursive: true });
-      this.proc = spawn("node", [webBundle, this.copy, this.dir], { env, cwd: repo, stdio: ["ignore", outFd, outFd] });
+      this.proc = spawn("node", [webBundle, this.copy, this.dir], { env, cwd: repo, stdio: ["ignore", outFd, outFd], detached: true });
     }
+    this.pid = this.proc.pid;
+    this.proc.unref();
     await this.until(/driver ready|web ready/, 60000);
     // the Mac app starts on its sidebar: open the first board, as a person would
     if (this.side === "mac") for (const c of ["warp 700 500", "click 90 91", "wait 1500", "focus", "move 700 650 200"]) await this.send(c);
@@ -124,12 +129,20 @@ class Driver {
     );
     run("codesign", ["--force", "--sign", "-", app]);
   }
+  alive() {
+    try {
+      process.kill(this.pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  }
   lines() {
     return fs.existsSync(this.log) ? fs.readFileSync(this.log, "utf8").split("\n") : [];
   }
   async until(re, ms) {
     for (let t = 0; t < ms; t += 50) {
-      if (this.proc.exitCode !== null) throw new Error(`${this.side} driver exited: see ${this.dir}/stdout.txt`);
+      if (!this.alive()) throw new Error(`${this.side} driver exited: see ${this.dir}/stdout.txt`);
       if (this.lines().some((l) => re.test(l))) return;
       await sleep(50);
     }
@@ -144,16 +157,16 @@ class Driver {
     for (let t = 0; t < 120000; t += 20) {
       const l = this.lines().find((x) => re.test(x));
       if (l) return l.includes(" -> ") ? l.slice(l.indexOf(" -> ") + 4) : "";
-      if (this.proc.exitCode !== null) throw new Error(`${this.side} driver exited: see ${this.dir}/stdout.txt`);
+      if (!this.alive()) throw new Error(`${this.side} driver exited: see ${this.dir}/stdout.txt`);
       await sleep(20);
     }
     throw new Error(`${this.side}: no answer to ${line}`);
   }
   async stop() {
     await Promise.race([this.send("quit").catch(() => {}), sleep(1500)]);
-    this.proc.kill("SIGTERM");
+    if (this.alive()) process.kill(this.pid, "SIGTERM");
     await sleep(300);
-    if (this.proc.exitCode === null) this.proc.kill("SIGKILL");
+    if (this.alive()) process.kill(this.pid, "SIGKILL");
     for (const d of [this.vault, this.copy]) if (d) fs.rmSync(d, { recursive: true, force: true });
   }
 }
@@ -181,20 +194,25 @@ async function macSaved(d) {
   return macBoard(d);
 }
 async function point(d, tok) {
-  const m = /^@([\w-]+)(?:\+(-?[\d.]+),(-?[\d.]+))?$/.exec(tok);
+  const m = /^@([\w-]+)(?::(tl|tr|bl|br|c|t|b|l|r))?(?:\+(-?[\d.]+),(-?[\d.]+))?$/.exec(tok);
   if (!m) throw new Error(`not a target: ${tok}`);
-  if (d.side === "web") {
-    const r = await d.send(`rect ${m[1]}`);
-    if (r === "none") throw new Error(`web: no card or Section ${m[1]}`);
-    const [left, top, w] = r.split(" ").map(Number);
-    const [, , z] = await cam(d);
-    const [dx, dy] = m[2] === undefined ? [w / z / 2, 14] : [Number(m[2]), Number(m[3])];
-    return `${(left + dx * z).toFixed(1)} ${(top + dy * z).toFixed(1)}`;
+  const [, id, anchor, ox, oy] = m;
+  const g = await geom(d, id, false, true);
+  if (g === "missing") throw new Error(`${d.side}: no card or Section ${id}`);
+  if (g === undefined) throw new Error(`${d.side}: ${id} is not readable while a button is held (no accessibility elements)`);
+  // the anchor: a corner, an edge's middle or the centre; none: the middle of the top strip (14 board units down)
+  const fx = { tl: 0, l: 0, bl: 0, t: 0.5, c: 0.5, b: 0.5, tr: 1, r: 1, br: 1 }[anchor] ?? 0.5;
+  const fy = { tl: 0, t: 0, tr: 0, l: 0.5, c: 0.5, r: 0.5, bl: 1, b: 1, br: 1 }[anchor];
+  if (fy && g.h === undefined) {
+    // the Mac app's file has no height for a Text, Box or code card: the web board's, when it runs, is the same card
+    const web = running.find((x) => x.side === "web");
+    const wg = web && (await geom(web, id));
+    if (typeof wg !== "object") throw new Error(`${d.side}: the height of ${id} is not known here (see README)`);
+    g.h = wg.h;
   }
-  const c = macBoard(d)[m[1]];
-  if (!c) throw new Error(`mac: no card or Section ${m[1]}`);
-  const [dx, dy] = m[2] === undefined ? [c.width / 2, 14] : [Number(m[2]), Number(m[3])];
-  return d.send(`where ${c.x + dx} ${c.y + dy}`);
+  const base = ox === undefined ? [g.x + g.w * fx, fy === undefined ? g.y + 14 : g.y + g.h * fy] : anchor ? [g.x + g.w * fx, g.y + (g.h ?? 0) * (fy ?? 0)] : [g.x, g.y];
+  const [x, y] = [base[0] + Number(ox ?? 0), base[1] + Number(oy ?? 0)];
+  return d.send(`where ${x} ${y}`);
 }
 async function resolve(d, line) {
   const out = [];
@@ -248,6 +266,32 @@ async function centerOn(d, target) {
 //   was-N (the subject at `mark`)
 // The Mac app's cards are where its canvas's accessibility elements say (identifier = id) when it has them; otherwise
 // they are read from its saved board file, so while a button is held they are not checkable there.
+/** A card's or Section's place in board units as this side has it now: x y w h right bottom (and section on the Mac);
+ *  undefined while a button is held on the Mac without accessibility elements, "missing" when there is no such item */
+async function geom(d, id, needSection = false, aim = false) {
+  let g;
+  const live = d.side === "mac" && !needSection ? await d.send(`ax ${id}`) : "none";
+  if (live !== "none") {
+    const [x, y, w, h] = live.split(" ").map(Number);
+    g = { x, y, w, h };
+  } else if (d.side === "mac") {
+    // aiming (a target to move to) takes the file as it is, even mid-drag; checking waits for the app to save
+    if (d.held && !aim) return undefined;
+    const c = (aim ? macBoard(d) : await macSaved(d))[id];
+    if (!c) return "missing";
+    g = { x: c.x, y: c.y, w: c.width, h: c.height ?? undefined, section: c.section ?? c.parent ?? "none" };
+  } else {
+    const r = await d.send(`rect ${id}`);
+    if (r === "none") return "missing";
+    const [left, top, w, h] = r.split(" ").map(Number);
+    const [ox, oy] = (await d.send("where 0 0")).split(" ").map(Number);
+    const [, , z] = await cam(d);
+    g = { x: (left - ox) / z, y: (top - oy) / z, w: w / z, h: h / z };
+  }
+  g.right = g.w === undefined ? undefined : g.x + g.w;
+  g.bottom = g.h === undefined ? undefined : g.y + g.h;
+  return g;
+}
 async function subject(d, subj) {
   const [id, field] = subj.split(".");
   if (subj === "press") return d.lines().filter((l) => / press /.test(` ${l}`)).pop()?.replace(/^\S+ /, "") ?? "none";
@@ -265,27 +309,8 @@ async function subject(d, subj) {
     return { x, y, zoom }[field];
   }
   if (!field) throw new Error(`no such subject: ${subj}`);
-  let g;
-  const live = d.side === "mac" && field !== "section" ? await d.send(`ax ${id}`) : "none";
-  if (live !== "none") {
-    const [x, y, w, h] = live.split(" ").map(Number);
-    g = { x, y, w, h };
-  } else if (d.side === "mac") {
-    if (d.held) return undefined;
-    const c = (await macSaved(d))[id];
-    if (!c) return "missing";
-    g = { x: c.x, y: c.y, w: c.width, h: c.height ?? undefined, section: c.section ?? c.parent ?? "none" };
-  } else {
-    const r = await d.send(`rect ${id}`);
-    if (r === "none") return "missing";
-    const [left, top, w, h] = r.split(" ").map(Number);
-    const [ox, oy] = (await d.send("where 0 0")).split(" ").map(Number);
-    const [, , z] = await cam(d);
-    g = { x: (left - ox) / z, y: (top - oy) / z, w: w / z, h: h / z };
-  }
-  g.right = g.w === undefined ? undefined : g.x + g.w;
-  g.bottom = g.h === undefined ? undefined : g.y + g.h;
-  return g[field];
+  const g = await geom(d, id, field === "section");
+  return typeof g === "object" ? g[field] : g;
 }
 function judge(got, op, want) {
   if (got === undefined) return undefined;
@@ -356,17 +381,17 @@ const fpsOf = (dir) => {
   const t = fs.readFileSync(path.join(dir, "times.txt"), "utf8").split("\n").filter(Boolean).map(Number);
   return t.length > 1 ? (t.length - 1) / (t[t.length - 1] - t[0]) : 30;
 };
-function sideBySide(out, name, have) {
+function sideBySide(out, name, have, dirs) {
   const font = "/System/Library/Fonts/Helvetica.ttc";
   const label = (i, side) =>
     `[${i}]scale=-2:720,fps=30,drawtext=fontfile=${font}:text=${side === "mac" ? "Mac" : "VS Code"}:x=12:y=h-36:fontsize=24:fontcolor=red,tpad=stop_mode=clone:stop_duration=3[v${i}]`;
-  const ins = have.flatMap((s) => ["-framerate", fpsOf(path.join(out, s, name)).toFixed(2), "-i", path.join(out, s, name, "f%05d.png")]);
+  const ins = have.flatMap((s) => ["-framerate", fpsOf(path.join(dirs[s], name)).toFixed(2), "-i", path.join(dirs[s], name, "f%05d.png")]);
   const f = have.map((s, i) => label(i, s)).join(";");
   const stack = have.length > 1 ? `;[v0][v1]hstack=2:shortest=1,pad=ceil(iw/2)*2:ceil(ih/2)*2[o]` : ";[v0]pad=ceil(iw/2)*2:ceil(ih/2)*2[o]";
   execFileSync("ffmpeg", ["-loglevel", "error", "-y", ...ins, "-filter_complex", f + stack, "-map", "[o]", "-c:v", "libx264", "-pix_fmt", "yuv420p", path.join(out, `${name}.mp4`)]);
 }
-async function shotPair(out, name, have) {
-  const files = have.map((s) => path.join(out, s, `${name}.png`)).filter((f) => fs.existsSync(f));
+async function shotPair(out, name, have, dirs) {
+  const files = have.map((s) => path.join(dirs[s], `${name}.png`)).filter((f) => fs.existsSync(f));
   if (files.length < 2) return;
   const height = Math.min(...(await Promise.all(files.map(async (f) => (await sharp(f).metadata()).height))));
   const imgs = await Promise.all(files.map((f) => sharp(f).resize({ height }).toBuffer({ resolveWithObject: true })));
@@ -417,13 +442,40 @@ async function report(d, out) {
   fs.writeFileSync(path.join(out, `report-${d.side}.txt`), `inputs: ${counts}\n\n${rows.join("\n")}\n`);
 }
 
+// ---- a kept session (--keep, --attach, --stop)
+const sessionFile = path.join(outRoot, "session.json");
+function attached() {
+  if (!fs.existsSync(sessionFile)) throw new Error("no kept session: run with --keep first");
+  const kept = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
+  return kept.map((k) => {
+    const d = Object.assign(new Driver(k.side, k.dir), k);
+    if (!d.alive()) throw new Error(`the kept ${d.side} side is gone: run with --keep again`);
+    d.n = d.lines().filter((l) => / done \d+ /.test(l)).length;
+    return d;
+  });
+}
+if (argv.includes("--stop")) {
+  if (fs.existsSync(sessionFile)) {
+    await Promise.all(JSON.parse(fs.readFileSync(sessionFile, "utf8")).map((k) => Object.assign(new Driver(k.side, k.dir), k).stop()));
+    fs.rmSync(sessionFile);
+  }
+  process.exit(0);
+}
+
 // ---- scenarios
 let failed = false;
+let kept;
+let running = [];
 for (const file of scenarios) {
   const name = path.basename(file).replace(/\.\w+$/, "");
   const out = path.join(outRoot, name);
-  fs.rmSync(out, { recursive: true, force: true });
-  const drivers = sides.map((s) => new Driver(s, path.join(out, s)));
+  if (!attach && !kept) fs.rmSync(out, { recursive: true, force: true });
+  fs.mkdirSync(out, { recursive: true });
+  const drivers = attach ? (kept ??= attached()) : (kept ?? sides.map((s) => new Driver(s, path.join(out, s))));
+  const fresh = !attach && !kept?.started;
+  const ds = drivers.map((d) => d.side);
+  running = drivers;
+  const dirs = Object.fromEntries(drivers.map((d) => [d.side, d.dir]));
   const recs = new Set(), shots = new Set();
   const lines = fs.readFileSync(file, "utf8").split("\n").map((l, i) => ({ n: i + 1, text: l.trim() }));
   // the subjects compared with `was`, taken at each `mark`
@@ -432,11 +484,17 @@ for (const file of scenarios) {
   // not fail the run
   const knownOf = (side) =>
     lines.map((l) => /^#\s*known(?:\s+(mac|web))?:\s*(.*)$/.exec(l.text)).find((m) => m && (!m[1] || m[1] === side))?.[2];
-  const results = Object.fromEntries(sides.map((s) => [s, []]));
-  const was = Object.fromEntries(sides.map((s) => [s, {}]));
+  const results = Object.fromEntries(ds.map((s) => [s, []]));
+  const was = Object.fromEntries(ds.map((s) => [s, {}]));
   const answers = [];
   try {
-    await Promise.all(drivers.map((d) => d.start()));
+    if (fresh) await Promise.all(drivers.map((d) => d.start()));
+    if (argv.includes("--keep")) {
+      kept = drivers;
+      kept.started = true;
+      const keep = ({ side, dir, pid, vault, copy }) => ({ side, dir, pid, vault, copy });
+      fs.writeFileSync(sessionFile, JSON.stringify(drivers.map(keep)));
+    }
     for (const { n, text: line } of lines) {
       if (!line || line.startsWith("#")) continue;
       const m = /^(mac|web):\s*(.*)$/.exec(line);
@@ -447,12 +505,28 @@ for (const file of scenarios) {
       // shot <name> @target W H: also the board rectangle W × H (board units) from the target, cut out on each side,
       // so the two sides' pictures of one part line up
       const crop = verb === "shot" && cmd.split(" ")[2]?.startsWith("@") ? cmd.split(" ").slice(2) : undefined;
+      const sent = drivers.filter((d) => !m || m[1] === d.side);
+      // a line that cannot run (no such card, a height not known) fails as an expectation would, and the run goes on
       await Promise.all(
-        drivers
-          .filter((d) => !m || m[1] === d.side)
-          .map(async (d) => {
+        sent
+          .map((d) => (async () => {
             if (verb === "zoom") return zoomTo(d, Number(arg));
             if (verb === "center") return centerOn(d, arg);
+            if (verb === "locate") {
+              // where things are now, once, instead of trying targets: id, board rect, window rect
+              const board = JSON.parse(fs.readFileSync(path.join(storage, fs.readdirSync(storage).find((f) => f.endsWith(".json"))), "utf8"));
+              const ids = cmd.split(" ").slice(1).length ? cmd.split(" ").slice(1) : [...(board.sections ?? []), ...(board.cards ?? [])].map((c) => c.id);
+              const rows = [];
+              for (const id of ids) {
+                const g = await geom(d, id);
+                if (typeof g !== "object") { rows.push(`${id}: ${g ?? "n/a"}`); continue; }
+                const [wx, wy] = (await d.send(`where ${g.x} ${g.y}`)).split(" ");
+                const [, , z] = await cam(d);
+                rows.push(`${id}: board ${shown(g.x)},${shown(g.y)} ${shown(g.w)}×${g.h === undefined ? "?" : shown(g.h)}  window ${wx},${wy} ${shown(g.w * z)}×${g.h === undefined ? "?" : shown(g.h * z)}`);
+              }
+              console.log(`${d.side} locate:\n  ${rows.join("\n  ")}`);
+              return;
+            }
             if (verb === "mark") {
               for (const s of marked) if (s !== "answer") was[d.side][s] = await subject(d, s);
               return;
@@ -474,11 +548,11 @@ for (const file of scenarios) {
             }
             const r = await d.send(await resolve(d, cmd));
             if (r) fs.appendFileSync(path.join(out, `results-${d.side}.txt`), `${cmd}\n${r}\n\n`);
-          }),
+          })().catch((e) => results[d.side].push({ n, cmd, ok: false, got: e.message }))),
       );
     }
   } finally {
-    await Promise.all(drivers.map((d) => d.stop()));
+    if (!argv.includes("--keep") && !attach) await Promise.all(drivers.map((d) => d.stop()));
   }
   for (const a of answers) {
     const got = await answerTime(a.d, a.upto);
@@ -486,16 +560,16 @@ for (const file of scenarios) {
   }
   if (video) {
     for (const r of recs) {
-      const have = sides.filter((s) => fs.existsSync(path.join(out, s, r, "f00000.png")));
-      for (const s of sides.filter((x) => !have.includes(x)))
-        console.warn(`${name}: ${s} recorded no frames for ${r} (${path.join(out, s, "log.txt")} says why)`);
-      if (have.length) sideBySide(out, r, have);
+      const have = ds.filter((s) => fs.existsSync(path.join(dirs[s], r, "f00000.png")));
+      for (const s of ds.filter((x) => !have.includes(x)))
+        console.warn(`${name}: ${s} recorded no frames for ${r} (${path.join(dirs[s], "log.txt")} says why)`);
+      if (have.length) sideBySide(out, r, have, dirs);
     }
   }
-  for (const s of shots) await shotPair(out, s, sides);
+  for (const s of shots) await shotPair(out, s, ds, dirs);
   for (const d of drivers) await report(d, out);
   // one line per side, then only what failed or could not be checked
-  for (const side of sides) {
+  for (const side of ds) {
     const r = results[side].sort((a, b) => a.n - b.n);
     const bad = r.filter((x) => x.ok === false), na = r.filter((x) => x.ok === undefined);
     const known = knownOf(side);

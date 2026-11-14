@@ -1,0 +1,19 @@
+# 有标题的 Note：标题只在卡头出现；编辑时卡头收起；不改字离开后卡不空白；双击后立刻打的字不丢
+zoom 1
+center @cnote+150,60
+rec note
+shot still
+dbl @cnote+150,90
+wait 600
+shot editing
+key esc
+wait 600
+shot left
+dbl @cnote+150,100
+type 立刻
+wait 600
+shot typed
+key esc
+wait 600
+shot typed-left
+stop

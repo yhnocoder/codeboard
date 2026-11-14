@@ -10,7 +10,12 @@ node apps/macos/tools/accept/run.mjs <场景>… --skip-build    # 不重新构�
 node apps/macos/tools/accept/run.mjs <场景>… --theme ink-wash --dark --scale 2   # 外观：主题、暗色、2 倍像素（两边一起）
 node apps/macos/tools/accept/run.mjs <场景>… --storage <folder>   # 换一个 storage 文件夹（默认 storage/：合成白板，带 Sticker 和 Sidenote）
 node apps/macos/tools/accept/run.mjs <场景>… --debug         # 用 debug 构建的驱动（CI：swift build 已经建好）
+node apps/macos/tools/accept/run.mjs <场景> --keep           # 跑完不关两边
+node apps/macos/tools/accept/run.mjs <试的场景> --attach     # 接着在开着的两边上跑：不构建、不启动，几秒一次（试目标、试断言）
+node apps/macos/tools/accept/run.mjs --stop                  # 关掉留着的两边
 ```
+
+找位置别靠反复重跑：先 `--keep` 跑一条，再用 `--attach` 跑只有一行 `locate`（或 `locate <id>…`）的场景，一次打出每张卡和 Section 在两边白板上和窗口里的位置；目标尽量用锚点（下面），不要手算坐标。
 
 每条场景每一边打印一行：`ok 3/3`、`FAIL 1/3`、`known (原因)`、`passes now: remove # known`，后面只列失败的和判不了的断言（文件:行号、断言、实际值）。有断言失败（`known` 的除外）时退出码是 1。
 
@@ -26,7 +31,7 @@ node apps/macos/tools/accept/run.mjs <场景>… --debug         # 用 debug 构
 
 一行一条命令，`#` 开头是注释，第一行注释写这条场景在检查什么。行首写 `mac:` 或 `web:` 只发给那一边。
 
-坐标可以写窗口里的点 `x y`（左上角为原点，单位 pt），通常写目标：`@<卡或 Section 的 id>` 是它顶部 14 个白板单位处的中点，`@<id>+dx,dy` 是从它左上角起 dx、dy 个白板单位。每边按自己现在的白板和相机算出窗口里的位置，所以两边缩放、平移不同也打在同一处。id 见 storage 的白板文件。
+坐标可以写窗口里的点 `x y`（左上角为原点，单位 pt），通常写目标：`@<卡或 Section 的 id>` 是它顶部 14 个白板单位处的中点，`@<id>+dx,dy` 是从它左上角起 dx、dy 个白板单位，`@<id>:<锚点>` 是它的角、边的中点或中心（`tl` `t` `tr` `l` `c` `r` `bl` `b` `br`），锚点后也能再加 `+dx,dy`（`@cblue:br+6,6` 是右下角外 6 个单位：Text 和 Box 的改大小手柄）。用到高度的锚点在 Mac 上要能读到卡的高度（见“已知的不足”）。每边按自己现在的白板和相机算出窗口里的位置，所以两边缩放、平移不同也打在同一处。id 见 storage 的白板文件。
 
 | 命令 | 做什么 |
 |---|---|
@@ -35,7 +40,7 @@ node apps/macos/tools/accept/run.mjs <场景>… --debug         # 用 debug 构
 | `click <点> [cmd+shift…]` / `dbl <点>` | 移过去再单击、双击 |
 | `down [right]` / `up [right]` | 按下、松开（拖动就是 `down`、`move`、`up`，中间可以 `shot`） |
 | `drag <点> <点> [ms] [修饰键]` | 一次拖动 |
-| `scroll dx dy [步数] [still\|cmd]` | 双指滑动：开始、移动、结束，然后是触控板松手后的惯性；`still` 不要惯性，`cmd` 是 ⌘ 滚轮 |
+| `scroll dx dy [步数] [still\|cmd]` | 双指滑动 dx、dy 个屏幕点（两边一样：100% 时就是同样多的白板单位）：开始、移动、结束，手指带着速度离开，所以会滑行（Mac app 自己滑；网页收到 macOS 发给浏览器的惯性滚轮事件）；`still` 是手指停住再离开，两边都不滑行，走的正好是 dx、dy；`cmd` 是 ⌘ 滚轮 |
 | `pinch <比例> [步数]` | 双指捏合，0.5 是放大到 1.5 倍 |
 | `key cmd+shift+z` / `key esc` | 按键（带修饰键或特殊键） |
 | `type <文字>` / `ime 拼\|拼音\|拼音输入` | 打字（经输入法提交，不经系统输入法）；`ime` 先逐步给出组字再提交最后一段 |
@@ -46,6 +51,7 @@ node apps/macos/tools/accept/run.mjs <场景>… --debug         # 用 debug 构
 | `rec <名字>` / `stop` | 开始、停止录像 |
 | `shot <名字> [<目标> W H]` | 截图；带目标时另从目标起剪下 W × H 个白板单位，两边剪的是白板上同一块，并排图逐部件对齐（整窗口图存为 `<名字>-window.png`） |
 | `hit` / `info` / `cam` | 指针下是什么 / 焦点、窗口、光标 / 相机 |
+| `locate [id…]` | 打出卡和 Section 现在在两边白板上和窗口里的位置（不写 id 就是全部） |
 | `expect <对象> <比较> <值>` | 断言，见下 |
 | `mark` | 记下这一刻的值，给后面断言里的 `was` 用 |
 
@@ -60,7 +66,7 @@ node apps/macos/tools/accept/run.mjs <场景>… --debug         # 用 debug 构
 - 值：数字、文字、另一个对象（`expect sboxes.bottom >= cyellow.bottom`）、`was`、`was+N`、`was-N`（`mark` 时这个对象的值）。
 
 判不了的记为 `n/a`，不算失败但会列出来：网页没有 `section`；Mac 的卡位置从 app 存下的白板文件读，按住按钮时还没存，判不了，除非 app 把卡和 Section 作为辅助功能元素公开（`accessibilityIdentifier` 是 id、`accessibilityFrame` 是它在屏幕上的位置；驱动的 `ax <id>` 读它们），那样拖动过程中也能判。
-`scenarios/` 里的场景：`look-tour`、`look-tour2`（外观：各部件静止、悬停、选中、拖动中、编辑中各拍一张，只拍不判）、`section-follow`（拖动中 Section 跟着撑开）、`pan-over-edit`（编辑时平移经过这张卡不停）、`hover-tour`（经过各种卡头和 Section 标题时出现什么）、`new-text-flow`（不对照：新建、输入、拖进 Section 的完整流程）。
+`scenarios/` 里的场景：`b1/`（第 2 步第 1 批的交互验收）、`stale-hover`（指针不动时平移、捏合，连接点跟着换）、`look-tour`、`look-tour2`（外观：各部件静止、悬停、选中、拖动中、编辑中各拍一张，只拍不判）、`section-follow`（拖动中 Section 跟着撑开）、`pan-over-edit`（编辑时平移经过这张卡不停）、`hover-tour`（经过各种卡头和 Section 标题时出现什么）、`new-text-flow`（不对照：新建、输入、拖进 Section 的完整流程）。
 
 ## 怎么做到不打扰用 Mac 的人
 
@@ -73,7 +79,8 @@ Mac 这边是 `Accept` target（`apps/macos/Sources/Accept/main.swift`）：它�
 ## 已知的不足
 
 - Mac 的目标位置和断言读的是 vault 里的白板文件（app 没公开辅助功能元素时）：app 还没存下的改动（比如拖动中）看不到；没有高度的卡（Text、Box、代码卡）只能指到它的上部，`h` 和 `bottom` 判不了。
-- 驱动的双指滑动在 Mac 上移动的距离比网页大好几倍（Mac 对这些事件的加速），两边同一条 `scroll` 走的距离不同；断言写成和距离无关的形式（比如“卡整张滑过了指针”）。
+- 不带 `still` 的滑动，两边滑行的距离不同：Mac app 自己算滑行（300 点的快速滑动约再滑 550 个单位），网页这边的惯性事件是驱动按衰减模拟的（约 70）。哪边更像真触控板要真机比；要距离确定就用 `still`。Mac app 的滑行跟着屏幕刷新走，屏幕关着时不滑。
+- 在正在编辑的文字上捏合，两边都不缩放：VS Code 有意把编辑框上的滚轮和捏合交给编辑框（`interact.ts` 的 `ownsWheel`），Mac 的编辑器网页也接走了。这不是工具发错了事件。
 - 响应时间按帧比较：Mac 每帧都录，网页只在画面变时来一帧；指针本身的移动也算变化，所以只对停着的指针下的点击、按键有意义。
 - 显示器睡眠或锁屏时（不唤醒屏幕是规则），窗口服务器给出的还是熄屏那一刻的窗口画面，录像改成在进程里按图层树画（日志的 `recording` 行会写明）：app 自己画的都在，别的进程画进来的内容可能缺；动画只看得到每帧设定的值。要看真实合成的画面，在屏幕亮着时再录一遍。
 - 驱动自己的时钟不受 App Nap 影响，屏幕关着时等待和动作的时长照常。

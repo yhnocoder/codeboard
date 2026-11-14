@@ -115,6 +115,12 @@ async function run(line: string): Promise<string> {
         else await page.mouse.wheel(-d(1) / steps, -d(2) / steps);
         await sleep(8);
       }
+      // the fingers lift moving: the momentum macOS sends after a trackpad swipe, as more wheel events (as Chrome gets
+      // them); `still`: they stopped first, nothing more
+      if (!cmd && a[4] !== "still") {
+        let mx = d(1) / steps, my = d(2) / steps;
+        for (let i = 0; i < 24; i++) { mx *= 0.88; my *= 0.88; await page.mouse.wheel(-mx, -my); await sleep(8); }
+      }
       break;
     }
     case "pinch": {
