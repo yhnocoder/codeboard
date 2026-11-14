@@ -18,6 +18,9 @@ package struct CanvasTrace: Codable, Sendable {
 }
 
 extension CanvasView {
+  /// A board is installed
+  package var hasScene: Bool { scene != nil }
+
   package var trace: CanvasTrace {
     func rect(_ l: CALayer) -> [Double] {
       let p = l.presentation() ?? l

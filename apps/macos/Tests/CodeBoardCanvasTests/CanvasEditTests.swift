@@ -83,7 +83,8 @@ private func png(_ url: URL) throws {
     let f = file
     doc = try BoardDocument { f }
     canvas = CanvasView(frame: CGRect(x: 0, y: 0, width: 1000, height: 700), notes: Rig.notes)
-    if let pasteboard { canvas.pasteboard = pasteboard }
+    // never the general pasteboard: that is the person's own clipboard
+    canvas.pasteboard = pasteboard ?? NSPasteboard(name: NSPasteboard.Name("codeboard-tests-\(UUID().uuidString)"))
     window = NSWindow(
       contentRect: CGRect(x: -30000, y: -30000, width: 1000, height: 700), styleMask: [.titled], backing: .buffered,
       defer: false)
@@ -106,6 +107,7 @@ private func png(_ url: URL) throws {
   }
 
   func close() {
+    canvas.pasteboard.releaseGlobally()
     doc.flush()
     canvas.leave()
     window.close()
@@ -130,6 +132,7 @@ private func png(_ url: URL) throws {
     case .leftMouseDown: canvas.mouseDown(with: e)
     case .leftMouseDragged: canvas.mouseDragged(with: e)
     case .leftMouseUp: canvas.mouseUp(with: e)
+    case .mouseMoved: canvas.mouseMoved(with: e)
     case .keyDown: canvas.keyDown(with: e)
     case .keyUp: canvas.keyUp(with: e)
     default: Issue.record("no handler for \(e.type)")

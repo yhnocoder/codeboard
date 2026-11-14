@@ -53,6 +53,9 @@ import CodeBoardShell
         display: true)
     }
     window.orderBack(nil)
+    // the window takes this app's keys, as the one a person works in; the app is never activated, so no other app's
+    // window loses its keys, and a first press is not taken as the click that activates the window
+    window.makeKey()
     t = CACurrentMediaTime()
     Task {
       await settle()
@@ -75,7 +78,7 @@ import CodeBoardShell
   func settle(_ what: String = "the board", timeout: Double = 20, until f: () -> Bool = { true }) async {
     let deadline = Date().addingTimeInterval(timeout)
     while Date() < deadline {
-      if let c = canvas, c.currentCamera.zoom > 0, f() { break }
+      if let c = canvas, c.hasScene, f() { break }
       try? await Task.sleep(for: .milliseconds(20))
     }
     if !f() { notes.append("\(what): not within \(Int(timeout)) s") }
@@ -103,7 +106,8 @@ import CodeBoardShell
     let name = String(format: "f%04d.png", n)
     let file = out.appending(path: name)
     var image: String?
-    if Driver.screenAway {
+    if Driver.traceOnly {
+    } else if Driver.screenAway {
       if !notes.contains(where: { $0.hasPrefix("the screen") }) {
         notes.append("the screen went to sleep or was locked at frame \(n): no pictures from there on")
       }
@@ -130,6 +134,8 @@ import CodeBoardShell
   /// The window to record is this process's own: checked with the window server before every shot
   /// The display asleep or the session locked: the window server shows nothing, a web view draws nothing, and a
   /// recording would show neither. The driver never wakes the display
+  static let traceOnly = CommandLine.arguments.contains("--trace-only")
+
   static var screenAway: Bool {
     let locked = (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false
     return CGDisplayIsAsleep(CGMainDisplayID()) != 0 || locked
@@ -207,7 +213,8 @@ import CodeBoardShell
 
   func press(flags: NSEvent.ModifierFlags = [], clicks: Int = 1, label: String = "press") async {
     buttonDown = true
-    NSApp.sendEvent(mouse(.leftMouseDown, pointer, clicks: clicks, flags: flags))
+    let ev = mouse(.leftMouseDown, pointer, clicks: clicks, flags: flags)
+    NSApp.sendEvent(ev)
     await step(label)
   }
 

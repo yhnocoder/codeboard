@@ -134,6 +134,132 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     #expect(r.canvas.mode == nil && r.canvas.toastText == "Connect cancelled" && r.doc.board.arrows.count == 2)
   }
 
+  /// A member card dragged: its Section's frame grows round it on every step, while a third of it still lies in the
+  /// frame the drag began with; past that it leaves and the frame goes back (state/sections.ts setMovingHome, homeFor)
+  @Test func aSectionsFrameFollowsADraggedMember() async throws {
+    let r = try await Rig(sections(), zoom: 0.5)
+    defer { r.close() }
+    let c = r.canvas
+    let g = gid("g1")
+    let fi = try #require(c.scene?.frames.firstIndex { $0.id == g })
+    let start = try #require(c.scene?.frames[fi].rect)
+    func shown() -> CGRect { c.sections.sublayers![fi].frame }
+    let from = r.centre("m1")
+    // down by 340: still in g1 (a third of it in the frame it began in), whose frame holds it on every step
+    var bottoms: [CGFloat] = []
+    r.send(r.mouse(.leftMouseDown, from))
+    for k in 1...10 {
+      r.send(r.mouse(.leftMouseDragged, CGPoint(x: from.x, y: from.y + CGFloat(k) * 34)))
+      bottoms.append(shown().maxY)
+    }
+    let moved = r.rect("m1").offsetBy(dx: 0, dy: 340)
+    #expect(shown().maxY >= moved.maxY + 22, "frame \(shown()), card \(moved)")
+    #expect(bottoms == bottoms.sorted() && bottoms.last! > start.maxY, "\(bottoms), began \(start)")
+    r.send(r.mouse(.leftMouseUp, CGPoint(x: from.x, y: from.y + 340)))
+    await r.settle()
+    #expect(r.doc.board.card(cid("m1"))?.section == g)
+    #expect(try #require(c.scene?.frames.first { $0.id == g }?.rect).maxY >= r.rect("m1").maxY + 22)
+    // far down: out of it, the frame back round what stays
+    let now = try #require(c.scene?.frames.first { $0.id == g }?.rect)
+    let at = r.centre("m1")
+    r.send(r.mouse(.leftMouseDown, at))
+    for k in 1...12 { r.send(r.mouse(.leftMouseDragged, CGPoint(x: at.x, y: at.y + CGFloat(k) * 80))) }
+    #expect(shown().maxY < now.maxY, "frame \(shown()), was \(now)")
+    r.send(r.mouse(.leftMouseUp, CGPoint(x: at.x, y: at.y + 960)))
+    await r.settle()
+    #expect(r.doc.board.card(cid("m1"))?.section == nil)
+  }
+
+  /// Any open Section's edge or corner resizes it, selected or not (Sections.tsx .sedge)
+  @Test func aSectionIsResizedByItsEdgeWithoutBeingSelected() async throws {
+    let r = try await Rig(sections(), zoom: 1)
+    defer { r.close() }
+    let g = gid("g2")
+    let f = try #require(r.canvas.scene?.frames.first { $0.id == g }?.rect)
+    #expect(r.doc.selection.isEmpty)
+    let edge = CGPoint(x: f.maxX + 2, y: f.midY)
+    #expect(r.canvas.hitHandle(r.canvas.camera.view(edge))?.0 == .section(g))
+    r.drag(edge, CGPoint(x: edge.x + 60, y: edge.y))
+    await r.settle()
+    let after = try #require(r.canvas.scene?.frames.first { $0.id == g }?.rect)
+    #expect(abs(after.width - f.width - 60) < 1 && after.minX == f.minX, "\(f) → \(after)")
+    // a corner both ways
+    let corner = CGPoint(x: after.maxX + 3, y: after.maxY + 3)
+    r.drag(corner, CGPoint(x: corner.x + 20, y: corner.y + 30))
+    await r.settle()
+    let last = try #require(r.canvas.scene?.frames.first { $0.id == g }?.rect)
+    #expect(abs(last.width - after.width - 20) < 1 && abs(last.height - after.height - 30) < 1)
+  }
+
+  /// Its title or its grip dragged: the whole Section goes, its cards and the Sections in it with it (board
+  /// sectionLabelDown); a card outside stays
+  @Test(arguments: [false, true]) func aSectionIsDraggedByItsTitleOrItsGrip(grip: Bool) async throws {
+    let r = try await Rig(sections(), zoom: 1)
+    defer { r.close() }
+    let title = try #require(r.canvas.sectionTitle(gid("g1")))
+    let at = CGPoint(x: title.midX, y: title.midY)
+    r.send(r.mouse(.mouseMoved, at))
+    #expect(r.canvas.actsSection == gid("g1"))
+    let grab = grip ? CGPoint(x: title.minX - 6, y: title.midY) : at
+    if grip { #expect(r.canvas.hitSectionTitle(grab) == gid("g1")) }
+    let (m1, n1, s1) = (r.rect("m1"), r.rect("n1"), try #require(r.doc.board.section(gid("g2"))))
+    r.drag(grab, CGPoint(x: grab.x + 120, y: grab.y + 40))
+    await r.settle()
+    #expect(r.rect("m1").minX - m1.minX == 120 && r.rect("m1").minY - m1.minY == 40)
+    #expect(r.doc.board.section(gid("g2"))?.x == s1.x + 120)
+    #expect(r.rect("n1") == n1)
+    #expect(r.doc.selection == [.section(gid("g1"))])
+  }
+
+  /// Hovered, its title shows Fit Content, Color with its five swatches, Lock and the chevron that folds it
+  /// (Sections.tsx SectionActs)
+  @Test func aSectionsTitleControlsFitColourLockAndFoldIt() async throws {
+    let r = try await Rig(sections(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let g = gid("g2")
+    let title = try #require(c.sectionTitle(g))
+    r.send(r.mouse(.mouseMoved, CGPoint(x: title.midX, y: title.midY)))
+    #expect(c.actsSection == g)
+    func spot(_ a: SectionAct) throws -> CGPoint {
+      let rect = try #require(c.actsLayout(g).first { $0.0 == a }?.1)
+      return CGPoint(x: rect.midX, y: rect.midY)
+    }
+    // the pointer over a control keeps them shown
+    r.send(r.mouse(.mouseMoved, try spot(.fit)))
+    #expect(c.actsSection == g && c.hoveredAct == .fit)
+    let before = try #require(r.doc.board.section(g))
+    r.click(try spot(.fit))
+    let fitted = try #require(r.doc.board.section(g))
+    #expect(fitted.width != before.width || fitted.height != before.height)
+    r.click(try spot(.color))
+    #expect(c.swatchesOpen == g && c.actsLayout(g).filter { if case .swatch = $0.0 { true } else { false } }.count == 5)
+    r.click(try spot(.swatch("blue")))
+    #expect(r.doc.board.section(g)?.color == "blue")
+    r.click(try spot(.lock))
+    #expect(r.doc.board.section(g)?.locked == true)
+    #expect(c.fitBlocked(g) == "the Section is locked")
+    r.click(try spot(.lock))
+    #expect(r.doc.board.section(g)?.locked == false)
+    // folded and back: the frame it had open comes back
+    let open = try #require(c.scene?.frames.first { $0.id == g }?.rect)
+    r.click(try spot(.fold))
+    await r.settle()
+    #expect(r.doc.board.section(g)?.collapsed == true)
+    #expect(c.fitBlocked(g) == "expand the Section first")
+    r.send(
+      r.mouse(.mouseMoved, CGPoint(x: try #require(c.sectionTitle(g)).midX, y: try #require(c.sectionTitle(g)).midY)))
+    r.click(try spot(.fold))
+    await r.settle()
+    #expect(r.doc.board.section(g)?.collapsed == false)
+    #expect(c.scene?.frames.first { $0.id == g }?.rect == open)
+    // each a step of its own: Fit, the colour, Lock, Unlock, fold, unfold
+    #expect(r.doc.history.undoSteps.count == 6)
+    // the pointer gone: they go
+    r.send(r.mouse(.mouseMoved, CGPoint(x: -400, y: -400)))
+    #expect(c.actsSection == nil)
+  }
+
   @Test func aSectionsTitleIsWrittenInPlaceAndItsMenuFitsColoursMovesOutAndRemovesKeepingItsCards() async throws {
     let r = try await Rig(sections(), zoom: 1)
     defer { r.close() }

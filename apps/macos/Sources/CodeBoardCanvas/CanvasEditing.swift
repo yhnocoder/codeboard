@@ -246,7 +246,7 @@ extension CanvasView {
     // where the frames and titles are shown now, to ease from
     var shownFrames: [SectionID: CGRect] = [:]
     for (i, l) in (sections.sublayers ?? []).enumerated() where i < old.frames.count {
-      shownFrames[old.frames[i].id] = l.frame
+      shownFrames[old.frames[i].id] = (l.presentation() ?? l).frame
     }
     var movedTitles: [(CALayer, CGPoint)] = []
     withoutAnimation {
@@ -379,6 +379,7 @@ extension CanvasView {
 
   func hitSectionTitle(_ p: CGPoint) -> SectionID? {
     guard let s = scene else { return nil }
+    if let (id, a) = sectionAct(at: p), a == .grip { return id }
     for it in s.items[..<s.cardsFrom].reversed() {
       if case .sectionTitle(let id)? = it.owner, it.rect.insetBy(dx: -4, dy: -4).contains(p) { return id }
     }
@@ -486,6 +487,7 @@ extension CanvasView {
       }
       raiseText()
       if let bar = barLayer() { chrome.addSublayer(bar) }
+      if let acts = sectionActsLayer() { chrome.addSublayer(acts) }
       drawPorts()
       drawEndHandles()
       drawConnect()
@@ -719,6 +721,28 @@ extension CanvasView {
       else { return nil }
       return (.card(id), e)
     }
+    // any open Section's edges and corners, selected or not (Sections.tsx .sedge)
+    for f in (scene?.frames ?? []).reversed() where !f.folded && !doc.board.isLocked(section: f.id) {
+      if let e = CanvasView.sectionEdge(f.rect, at: p) { return (.section(f.id), e) }
+    }
+    return nil
+  }
+
+  /// A frame's edge or corner under a board point: 8 across each edge, 10 in from the corners, which take 14 square
+  /// reaching 5 out (styles.css .sect .sedge)
+  static func sectionEdge(_ r: CGRect, at p: CGPoint) -> Resize.Edges? {
+    let corners: [(Resize.Edges, CGPoint)] = [
+      ([.left, .top], CGPoint(x: r.minX - 5, y: r.minY - 5)), ([.right, .top], CGPoint(x: r.maxX - 9, y: r.minY - 5)),
+      ([.left, .bottom], CGPoint(x: r.minX - 5, y: r.maxY - 9)),
+      ([.right, .bottom], CGPoint(x: r.maxX - 9, y: r.maxY - 9)),
+    ]
+    for (e, o) in corners where CGRect(origin: o, size: CGSize(width: 14, height: 14)).contains(p) { return e }
+    let across = (r.minX + 10)...(r.maxX - 10)
+    let down = (r.minY + 10)...(r.maxY - 10)
+    if across.contains(p.x), abs(p.y - r.minY) <= 4 { return .top }
+    if across.contains(p.x), abs(p.y - r.maxY) <= 4 { return .bottom }
+    if down.contains(p.y), abs(p.x - r.minX) <= 4 { return .left }
+    if down.contains(p.y), abs(p.x - r.maxX) <= 4 { return .right }
     return nil
   }
 
@@ -777,6 +801,16 @@ extension CanvasView {
       hover(nil)
       return
     }
+    // a Section's title, its grip and its controls
+    let bp = camera.board(v)
+    if hitCard(bp) == nil, let id = titleHover(at: bp) {
+      let act = sectionAct(at: bp)?.1
+      hoverTitle(id, act: act)
+      (act == nil || act == .grip ? NSCursor.arrow : NSCursor.pointingHand).set()
+      hover(nil)
+      return
+    }
+    hoverTitle(nil, act: nil)
     hoverPorts(at: v)
     let port = hitPort(v) != nil || hitEndHandle(v) != nil
     let arrow = hitHandle(v) == nil && !port ? arrowAt(camera.board(v)) : nil
@@ -793,6 +827,7 @@ extension CanvasView {
   }
 
   public override func mouseExited(with e: NSEvent) {
+    hoverTitle(nil, act: nil)
     hoverSummary(nil)
     hover(nil)
     hoverMark(nil)
@@ -829,6 +864,11 @@ extension CanvasView {
     }
     if let b = barButton(at: p) {
       if e.clickCount == 1 { press(b) }
+      return
+    }
+    // a Section title's control; its grip is pressed as the title is
+    if let (id, a) = sectionAct(at: p), a != .grip {
+      if e.clickCount == 1 { press(a, of: id) }
       return
     }
     // a sidenote marker: its popup opens, or closes when it is open
@@ -1140,6 +1180,8 @@ extension CanvasView {
         return p
       }
     }
+    // the Sections the dragged cards are in or go into grow round them as they go (springs: not without animation)
+    if !m.loose.isEmpty { followDrag(m) }
     showDrop(m)
     drawChrome()
   }
@@ -1190,12 +1232,16 @@ extension CanvasView {
   /// Section in the one its title is in (board dragGroup)
   func commitMove(_ m: Move, name: String = "Move") {
     gesture = nil
+    let followed = Set(dragShown.keys)
     clearDrop()
     guard let doc = document, let s = scene else { return }
     let dx = m.d.dx.rounded()
     let dy = m.d.dy.rounded()
     guard dx != 0 || dy != 0 else {
-      showScene(arrows: m.arrows, items: m.items, frames: m.frames)
+      // back where it began: the frames the drag grew too
+      let grown = s.frames.indices.filter { followed.contains(s.frames[$0].id) && !m.frames.contains($0) }
+      let titles = grown.compactMap { index(of: .sectionTitle(s.frames[$0].id)) }
+      showScene(arrows: m.arrows, items: m.items + titles, frames: m.frames + grown)
       drawChrome()
       return
     }

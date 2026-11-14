@@ -143,6 +143,22 @@ extension Board {
     selfCheck()
   }
 
+  /// Folds or unfolds a Section (core setSectionFolded): folding keeps the frame it had open (`open`, as drawn: grown
+  /// round its cards), so unfolding shows it there again; nothing when it is already so
+  public mutating func setFolded(
+    _ id: SectionID, _ shut: Bool, open: (x: Double, y: Double, width: Double, height: Double)
+  ) {
+    guard let i = sections.firstIndex(where: { $0.id == id }), sections[i].collapsed != shut else { return }
+    if shut {
+      sections[i].x = open.x.rounded()
+      sections[i].y = open.y.rounded()
+      sections[i].width = open.width.rounded()
+      sections[i].height = open.height.rounded()
+    }
+    sections[i].collapsed = shut
+    selfCheck()
+  }
+
   /// One level up: into the Section its parent is in (none: on the board) (core moveOutOfParent)
   public mutating func moveOutOfParent(_ id: SectionID) {
     guard let i = sections.firstIndex(where: { $0.id == id }) else { return }

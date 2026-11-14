@@ -4,7 +4,7 @@ import CodeBoardShell
 
 // swift run Drive <scenario> <out folder> [--dark] [--ink-wash]: runs one scenario of Scenarios.swift on a vault of
 // made-up boards in a temp folder, writes its frames (f0000.png…), trace.json, sheet.png and report.txt to the folder.
-// `swift run Drive list` lists them.
+// `swift run Drive list` lists them. --trace-only: the events and the board's trace, no pictures (the display may sleep).
 
 let args = CommandLine.arguments
 if args.count > 1, args[1] == "list" {
@@ -39,7 +39,7 @@ guard args.count >= 3, let made = Scenarios.all.first(where: { $0.name == args[1
   print("usage: Drive <scenario> <out folder> [--dark] [--ink-wash]; Drive list")
   exit(2)
 }
-if Driver.screenAway {
+if Driver.screenAway, !Driver.traceOnly {
   print("the screen is asleep or locked: nothing can be recorded until it is awake")
   exit(3)
 }

@@ -158,6 +158,13 @@ public final class CanvasView: NSView {
   var editingEnds: Task<Void, Never>?
   /// The floating bar's bitmap and what it shows
   var barImage: (key: String, image: CGImage)?
+  /// A Section title's controls (CanvasSectionActs): the title hovered and its control, the Section whose swatches are
+  /// open, the Section whose controls show, their bitmap
+  var hoveredTitle: SectionID?
+  var hoveredAct: SectionAct?
+  var swatchesOpen: SectionID?
+  var actsShown: SectionID?
+  var actsImage: (key: String, image: CGImage)?
   /// The Text or Box raised over its neighbours (its item index)
   var raised: Int?
   /// The latest refresh (tests wait for it)
@@ -277,6 +284,8 @@ public final class CanvasView: NSView {
   /// The selected and hovered arrows in the accent: over the arrows, under their labels
   let litArrows = CALayer()
   var dropLit: Set<SectionID> = []
+  /// The frames a card drag has redrawn, where it drew them (CanvasSections followDrag)
+  var dragShown: [SectionID: CGRect] = [:]
   /// The zoom that fits the board, which overviews are drawn for
   var fitZoom: CGFloat = 1
   /// The framed cards' shadow, made once per theme

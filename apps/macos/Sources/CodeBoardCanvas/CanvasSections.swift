@@ -386,6 +386,7 @@ extension CanvasView {
   }
 
   func clearDrop() {
+    dragShown = [:]
     guard !dropLit.isEmpty else { return }
     dropLit = []
     withoutAnimation { dropLayer.sublayers = nil }
@@ -410,5 +411,115 @@ extension CanvasView {
       a.duration = a.settlingDuration
       ls[i].add(a, forKey: "ease")
     }
+  }
+}
+
+// MARK: Frames following a drag
+
+extension CanvasView {
+  /// The frames as the drag has them (state/sections.ts frames while setMovingHome is set): each dragged card counted in
+  /// the Section its moved rect lies in (by `home`, against the frames as they were when the drag began, as the board's
+  /// homeFor against its `fr`), the dragged cards and Sections where they are now
+  func dragFrames(_ m: Move) -> [SectionID: CGRect] {
+    guard let doc = document, let s = scene else { return [:] }
+    let b = doc.board
+    let d = m.d
+    let start = Dictionary(s.frames.map { ($0.id, $0.rect) }, uniquingKeysWith: { a, _ in a })
+    var shifted = start
+    for id in m.sections { shifted[id] = start[id]?.offsetBy(dx: d.dx, dy: d.dy) }
+    var homes: [CardID: SectionID?] = [:]
+    var rects: [CardID: CGRect] = [:]
+    for it in s.items {
+      guard case .card(let id)? = it.owner else { continue }
+      rects[id] = m.cards.contains(id) ? it.rect.offsetBy(dx: d.dx, dy: d.dy) : it.rect
+    }
+    for id in m.loose {
+      if let r = rects[id] { homes[id] = home(of: r, frames: shifted, skip: m.sections) }
+    }
+    var members: [SectionID: [CGRect]] = [:]
+    for c in b.cards {
+      guard let home = homes[c.id] ?? c.section, let r = rects[c.id] else { continue }
+      members[home, default: []].append(r)
+    }
+    var children: [SectionID: [SectionID]] = [:]
+    for q in b.sections { if let p = q.parent { children[p, default: []].append(q.id) } }
+    var out: [SectionID: CGRect] = [:]
+    var visiting = Set<SectionID>()
+    func frame(_ id: SectionID) -> CGRect? {
+      if let f = out[id] { return f }
+      guard let q = b.section(id), let shown = shifted[id] else { return nil }
+      // a folded one keeps its title bar
+      if q.collapsed { return shown }
+      let moved = m.sections.contains(id)
+      var r = CGRect(x: q.x, y: q.y, width: q.width, height: q.height)
+      if moved { r = r.offsetBy(dx: d.dx, dy: d.dy) }
+      visiting.insert(id)
+      for c in members[id] ?? [] { r = r.union(Scene.padded(c)) }
+      for c in children[id] ?? [] where !visiting.contains(c) {
+        if let f = frame(c) { r = r.union(Scene.padded(f)) }
+      }
+      visiting.remove(id)
+      out[id] = r
+      return r
+    }
+    for f in s.frames { _ = frame(f.id) }
+    return out
+  }
+
+  /// Each frame the drag changed drawn at its new rect, easing there from where it is shown (the board's frame spring,
+  /// k 2500, c 100), its title with it
+  func followDrag(_ m: Move) {
+    guard let s = scene, let ls = sections.sublayers else { return }
+    let target = dragFrames(m)
+    for (i, f) in s.frames.enumerated() where i < ls.count {
+      guard let to = target[f.id] else { continue }
+      let now = dragShown[f.id] ?? (m.sections.contains(f.id) ? f.rect.offsetBy(dx: m.d.dx, dy: m.d.dy) : f.rect)
+      // the frames dragged along and unchanged in size are moved by showMove
+      guard to != now || dragShown[f.id] != nil else { continue }
+      if to == now { continue }
+      let old = ls[i]
+      let from = old.presentation()?.frame ?? old.frame
+      var made = f
+      made.rect = to
+      if made.strokes != nil {
+        let tw = index(of: .sectionTitle(f.id)).map { s.items[$0].rect.width } ?? 0
+        made.strokes = Outline(InkFrame.path(id: f.id.rawValue, size: to.size, gap: max(40, tw + 18)))
+      }
+      let l = CanvasView.frameLayer(made, theme)
+      old.removeFromSuperlayer()
+      sections.insertSublayer(l, at: UInt32(i))
+      dragShown[f.id] = to
+      if from.width > 0, from.height > 0, from != to {
+        var t = CATransform3DMakeTranslation(from.midX - to.midX, from.midY - to.midY, 0)
+        t = CATransform3DScale(t, from.width / to.width, from.height / to.height, 1)
+        l.add(CanvasView.frameSpring(from: t), forKey: "ease")
+      }
+      if let ti = index(of: .sectionTitle(f.id)) {
+        let title = s.items[ti].rect
+        let box = items[ti].box
+        let was = box.presentation()?.position ?? box.position
+        box.position = CGPoint(x: title.midX + to.minX - f.rect.minX, y: title.midY + to.minY - f.rect.minY)
+        if was != box.position {
+          let a = CASpringAnimation(keyPath: "position")
+          a.stiffness = 2500
+          a.damping = 100
+          a.fromValue = NSValue(point: was)
+          a.toValue = NSValue(point: box.position)
+          a.duration = a.settlingDuration
+          box.add(a, forKey: "ease")
+        }
+      }
+    }
+  }
+
+  static func frameSpring(from t: CATransform3D) -> CASpringAnimation {
+    let a = CASpringAnimation(keyPath: "transform")
+    a.stiffness = 2500
+    a.damping = 100
+    a.mass = 1
+    a.fromValue = NSValue(caTransform3D: t)
+    a.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+    a.duration = a.settlingDuration
+    return a
   }
 }

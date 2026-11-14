@@ -51,10 +51,12 @@ func sidenoteBoard(question: Bool = false) -> Board {
 
 @MainActor @Suite(.serialized) struct CanvasSidenoteTests {
   @Test(arguments: [0.1, 0.5, 1, 2] as [CGFloat])
-  func eachAnchorsMarkerIsWhereTheWebBoardPutsItAndTakesTheClick(zoom: CGFloat) async throws {
-    let r = try await Rig(sidenoteBoard(question: true), zoom: zoom)
+  func eachAnchorsMarkerIsWhereTheWebBoardPutsItAndTakesTheClick(zoom asked: CGFloat) async throws {
+    let r = try await Rig(sidenoteBoard(question: true), zoom: asked)
     defer { r.close() }
     let c = r.canvas
+    // the smallest is held at the board's own floor
+    let zoom = c.camera.zoom
     let t = c.theme
     func mark(_ at: PopAt) throws -> Mark { try #require(c.marks.first { $0.at == at }, "\(at)") }
     func onBoard(_ m: Mark) -> CGRect {

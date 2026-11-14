@@ -13,11 +13,15 @@ import CodeBoardModel
     }
     let canvas = CanvasView(frame: CGRect(origin: .zero, size: size))
     var rows: [(zoom: Double, cut: Double, cards: Int)] = []
+    var times: [Double] = []
     for b in tree.allBoards {
       guard
-        let doc = try? BoardDocument(file: { vault.url(of: b.path).appending(path: Vault.boardFileName) }),
-        (try? await canvas.show(doc, at: b, in: vault, theme: .warmInk)) != nil
+        let doc = try? BoardDocument(file: { vault.url(of: b.path).appending(path: Vault.boardFileName) })
       else { continue }
+      let t0 = CACurrentMediaTime()
+      guard (try? await canvas.show(doc, at: b, in: vault, theme: .warmInk)) != nil else { continue }
+      times.append(CACurrentMediaTime() - t0)
+      print(String(format: "board %d: %.2f s, %d cards", times.count, times.last!, doc.board.cards.count))
       rows.append((Double(canvas.currentCamera.zoom), Double(canvas.summaryCut), doc.board.cards.count))
     }
     let below = rows.filter { $0.cut > 0 && $0.zoom < $0.cut }
@@ -37,6 +41,10 @@ import CodeBoardModel
       print(
         "opening zoom \(k): \(r.count) boards, of them below the cut \(r.filter { $0.cut > 0 && $0.zoom < $0.cut }.count)"
       )
+    }
+    let ts = times.sorted()
+    if !ts.isEmpty {
+      print(String(format: "time to the first picture: median %.2f s, max %.2f s", ts[ts.count / 2], ts[ts.count - 1]))
     }
     let cuts = rows.map(\.cut).filter { $0 > 0 }.sorted()
     if !cuts.isEmpty {

@@ -50,7 +50,174 @@ func spread(_ f: Driver.Frame, _ r: [Double], in folder: URL) -> Double? {
 }
 
 @MainActor enum Scenarios {
-  static var all: [Scenario] { [toolbar, panOverEditing] }
+  static var all: [Scenario] { [toolbar, panOverEditing, panOntoEditing, sectionTitleDrag, sectionFollowsDrag] }
+
+  /// Linda's marked frame (04:32): a Section of Boxes, the last one dragged down inside it; the frame grows round it on
+  /// every frame while a third of it is still in the frame the drag began with, then lets it go
+  static var sectionFollowsDrag: Scenario {
+    func box(_ id: String, _ text: String, x: Double, y: Double) -> Card {
+      Card(
+        id: CardID(rawValue: id), x: x, y: y, width: 180, section: SectionID(rawValue: "boxes"),
+        content: .own(CardContent(body: .text(TextCard(text: text, look: .box, wrap: true)))))
+    }
+    let board = Board(
+      id: BoardID(rawValue: "drive-boxes"),
+      cards: [
+        box("loop", "loop", x: 40, y: 60), box("join", "join", x: 260, y: 60), box("split", "split", x: 480, y: 60),
+        box("plain", "plain", x: 40, y: 200), box("lookup", "lookup", x: 260, y: 200),
+      ],
+      sections: [Section(id: SectionID(rawValue: "boxes"), title: "Boxes", x: 0, y: 0, width: 700, height: 300)])
+    return Scenario(
+      name: "section-follows-drag",
+      about: "a Box dragged down inside its Section: the frame grows with it, frame by frame",
+      boards: [("Boxes", board)], sheetEvery: 3,
+      checks: [
+        { (frames: [Driver.Frame]) -> Verdict in
+          let f = labelled(frames, "drag down")
+          guard let first = f.first?.canvas?.sections["boxes"] else {
+            return Verdict(check: "the frame holds the card", ok: false, detail: "no frames")
+          }
+          // where the card is a third or more inside the frame it began in, the frame holds it (22 to its sides, 34
+          // above, 22 below its bottom)
+          var out: [String] = []
+          for x in f {
+            guard let c = x.canvas?.cards["lookup"], let s = x.canvas?.sections["boxes"] else { continue }
+            let inside = max(0, min(c[1] + c[3], first[1] + first[3]) - c[1]) * 3 > c[3]
+            if inside, s[1] + s[3] < c[1] + c[3] + 21 {
+              out.append("frame \(x.n): \(Int(s[1] + s[3])) < \(Int(c[1] + c[3]))")
+            }
+          }
+          return Verdict(
+            check: "the frame holds the card", ok: out.isEmpty,
+            detail: out.isEmpty ? "every frame" : out.prefix(5).joined(separator: "; "))
+        }
+      ],
+      run: { d in
+        await d.frames(4, "open")
+        guard let p = d.centre(of: "lookup") else { return }
+        await d.move(to: p, label: "to the card")
+        await d.press(label: "drag down")
+        // window points: y up
+        await d.move(to: CGPoint(x: p.x, y: p.y - 180), speed: 3, label: "drag down")
+        await d.frames(10, "drag down")
+        await d.release(label: "drop")
+        await d.frames(30, "rest")
+      })
+  }
+
+  /// Linda's steps (04:29): a card written in, the fingers put down beside it and the board panned so the card comes
+  /// under the still pointer, for a Note, a Text and a Box, with the system's momentum after the fingers lift too
+  static var panOntoEditing: Scenario {
+    let kinds: [(String, Card)] = [
+      ("note", note("note", "## 调度器\n\n每一步先看等待队列。", x: 0, y: 0)),
+      (
+        "text",
+        Card(
+          id: CardID(rawValue: "text"), x: 420, y: 0, width: 260,
+          content: .own(CardContent(body: .text(TextCard(text: "预填和解码", wrap: true)))))
+      ),
+      (
+        "box",
+        Card(
+          id: CardID(rawValue: "box"), x: 760, y: 0, width: 260,
+          content: .own(CardContent(body: .text(TextCard(text: "抢占最后进来的请求", look: .box, wrap: true)))))
+      ),
+    ]
+    return Scenario(
+      name: "pan-onto-editing",
+      about:
+        "two-finger pans that carry a card being written in under the still pointer: Note, Text, Box; with momentum",
+      boards: [("Pan onto", Board(id: BoardID(rawValue: "drive-pan-onto"), cards: kinds.map(\.1)))], sheetEvery: 4,
+      checks: kinds.flatMap { k -> [([Driver.Frame]) -> Verdict] in
+        [false, true].map { m in
+          { (frames: [Driver.Frame]) -> Verdict in
+            let label = "\(k.0)\(m ? " with momentum" : ""): pan"
+            let f = labelled(frames, label)
+            // each step of the fingers moves the board 6 points, the card under the pointer or not
+            var stalls: [Int] = []
+            for (a, b) in zip(f, f.dropFirst()) {
+              guard let ca = a.canvas?.camera, let cb = b.canvas?.camera else { continue }
+              if abs((cb[1] - ca[1]) * cb[2]) < 1, b.label == a.label, b.n != f.last?.n { stalls.append(b.n) }
+            }
+            let under = f.contains { $0.hit == "EditorWebView" }
+            return Verdict(
+              check: label + " carries the card under the pointer", ok: under && stalls.isEmpty && f.count > 10,
+              detail: "editor under the pointer: \(under); frames where the board stood still: \(stalls.prefix(6))")
+          }
+        }
+      },
+      run: { d in
+        await d.frames(4, "open")
+        for (name, _) in kinds {
+          for m in [false, true] {
+            let label = "\(name)\(m ? " with momentum" : "")"
+            guard let p = d.centre(of: name) else { continue }
+            await d.move(to: p, label: "\(label): to the card")
+            await d.doubleClick(label: "\(label): edit")
+            await d.settle("the editor", until: { d.canvas?.isEditing == true })
+            await d.frames(6, "\(label): editing")
+            // just above the card, still; the board moves up under it
+            guard let c = d.canvas, let r = c.trace.cards[name] else { continue }
+            let above = c.convert(CGPoint(x: r[0] + r[2] / 2, y: r[1] - 40), to: nil)
+            await d.move(to: above, label: "\(label): beside it")
+            await d.scroll(dy: -6, steps: 24, momentum: m ? 20 : 0, label: "\(label): pan")
+            await d.frames(6, "rest")
+            // back where it was, and the writing ended
+            await d.scroll(dy: 6, steps: 24, label: "back")
+            await d.frames(4, "rest")
+            await d.key(53, "\u{1b}", label: "\(label): leave")
+            await d.settle("leaving", until: { d.canvas?.isEditing == false })
+            await d.frames(4, "rest")
+          }
+        }
+      })
+  }
+
+  /// A Section with two Notes and a Note outside it
+  static func sectionBoard() -> Board {
+    Board(
+      id: BoardID(rawValue: "drive-section"),
+      cards: [
+        note("a", "## 预填\n\n整段 prompt 一次算完。", x: 40, y: 80, section: "s"),
+        note("b", "## 解码\n\n每次一个 token。", x: 380, y: 80, section: "s"),
+        note("out", "## 外面\n\n不在 Section 里。", x: 40, y: 420),
+      ],
+      sections: [Section(id: SectionID(rawValue: "s"), title: "调度", x: 0, y: 0, width: 740, height: 320)])
+  }
+
+  /// The Section's title pressed where it is drawn and dragged: the whole Section goes, its cards with it (board
+  /// sectionLabelDown)
+  static var sectionTitleDrag: Scenario {
+    Scenario(
+      name: "section-title-drag", about: "a Section dragged by its title, as the pointer finds the title on screen",
+      boards: [("Section", sectionBoard())], sheetEvery: 2,
+      checks: [
+        { (frames: [Driver.Frame]) -> Verdict in
+          let f = labelled(frames, "drag")
+          guard let a = f.first?.canvas, let b = f.last?.canvas, let fa = a.sections["s"], let fb = b.sections["s"],
+            let ca = a.cards["a"], let cb = b.cards["a"], let oa = a.cards["out"], let ob = b.cards["out"]
+          else { return Verdict(check: "the Section moves", ok: false, detail: "no frames") }
+          let moved = fb[0] - fa[0]
+          let ok = abs(moved - 160) < 2 && abs(cb[0] - ca[0] - 160) < 2 && oa == ob
+          return Verdict(
+            check: "the Section moves", ok: ok,
+            detail:
+              "frame \(Int(moved)) pt, its card \(Int(cb[0] - ca[0])) pt, the card outside \(Int(ob[0] - oa[0])) pt; selected \(b.selection)"
+          )
+        }
+      ],
+      run: { d in
+        await d.frames(4, "open")
+        guard let c = d.canvas, let r = c.sectionTitle(SectionID(rawValue: "s")) else { return }
+        let title = c.convert(c.currentCamera.view(CGPoint(x: r.midX, y: r.midY)), to: nil)
+        await d.move(to: title, label: "to the title")
+        await d.frames(8, "hover")
+        await d.press(label: "drag")
+        await d.move(to: CGPoint(x: title.x + 160, y: title.y), speed: 5, label: "drag")
+        await d.release(label: "drag")
+        await d.frames(6, "rest")
+      })
+  }
 
   /// A board with a few Notes, one big in the middle
   static func notesBoard() -> Board {
