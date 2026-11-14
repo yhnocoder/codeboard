@@ -168,3 +168,151 @@ extension MarkdownEditing {
     return Array((head + headI + mid).prefix(8))
   }
 }
+
+/// What is wrong with a formula, in plain words (mathhints.ts MathProblem): text, source (in the code font) and one-click
+/// fixes (a range of the TeX and what to write there); `at`, where in the TeX the problem is, when known
+public struct MDMathProblem: Sendable, Equatable {
+  public enum Part: Sendable, Equatable {
+    case text(String)
+    case code(String)
+    case fix(label: String, range: Range<Int>, text: String)
+  }
+  public var parts: [Part]
+  public var at: Int?
+}
+
+extension MarkdownEditing {
+  /// a TeX's braces: how many are still open at its end, and where the first one closes nothing (-1: none)
+  static func braces(_ tex: String) -> (open: Int, extra: Int) {
+    let u = Array(tex.utf16)
+    var open = 0
+    var extra = -1
+    var i = 0
+    while i < u.count {
+      let ch = u[i]
+      if ch == 0x5C {
+        i += 2
+        continue
+      }
+      if ch == 0x7B {
+        open += 1
+      } else if ch == 0x7D {
+        if open > 0 { open -= 1 } else if extra < 0 { extra = i }
+      }
+      i += 1
+    }
+    return (open, extra)
+  }
+
+  /// the known command nearest a misspelt name, two edits away at most (mathhints.ts nearest)
+  static func nearestCommand(_ name: String, tex: String, preamble: String) -> String? {
+    func lev(_ a: [Character], _ b: [Character]) -> Int {
+      var prev = Array(0...b.count)
+      for (i, x) in a.enumerated() {
+        var cur = [i + 1]
+        for (j, y) in b.enumerated() { cur.append(min(prev[j + 1] + 1, cur[j] + 1, prev[j] + (x == y ? 0 : 1))) }
+        prev = cur
+      }
+      return prev[b.count]
+    }
+    let names = mathDefinitions(preamble).map(\.name) + mathDefinitions(tex).map(\.name) + mathCommands.map(\.name)
+    var best: String?
+    var bd = 3
+    for n in names {
+      let d = lev(Array(name), Array(n))
+      if d < bd {
+        bd = d
+        best = n
+      }
+    }
+    return best
+  }
+
+  /// Whether a TeX that does not typeset is only a command name being typed (the caret at its end and longer names start
+  /// with it): no error is shown for it yet (mathhints.ts checkMath)
+  public static func typingCommand(_ tex: String, caret: Int, preamble: String) -> Bool {
+    guard let t = mathToken(tex, caret: caret), !t.query.isEmpty else { return false }
+    let ns = tex as NSString
+    if caret < ns.length, let c = Unicode.Scalar(ns.character(at: caret)), CharacterSet.letters.contains(c) {
+      return false
+    }
+    let names = mathDefinitions(preamble).map(\.name) + mathDefinitions(tex).map(\.name) + mathCommands.map(\.name)
+    return names.contains { $0.hasPrefix(t.query) && $0 != t.query }
+  }
+
+  /// MathJax's message for a TeX that does not typeset, said as mathhints.ts says KaTeX's: what is wrong, and a fix when
+  /// one is sure (the nearest command, a missing or extra brace, \renewcommand)
+  public static func explainMath(_ message: String, tex: String, preamble: String) -> MDMathProblem {
+    let ns = tex as NSString
+    let b = braces(tex)
+    func match(_ p: String) -> [String]? {
+      guard let re = try? NSRegularExpression(pattern: p, options: [.caseInsensitive]),
+        let m = re.firstMatch(in: message, range: NSRange(location: 0, length: (message as NSString).length))
+      else { return nil }
+      return (0..<m.numberOfRanges).map {
+        m.range(at: $0).location == NSNotFound ? "" : (message as NSString).substring(with: m.range(at: $0))
+      }
+    }
+    var parts: [MDMathProblem.Part] = []
+    var at: Int?
+    if let m = match(#"Undefined control sequence (\\[A-Za-z]+)"#) {
+      let name = m[1]
+      parts = [.text("不认识 "), .code(name), .text(" 这个命令。")]
+      let from = ns.range(of: name).location
+      let next = from == NSNotFound ? nil : NSMaxRange(ns.range(of: name))
+      let followedByLetter =
+        next.map { $0 < ns.length && CharacterSet.letters.contains(Unicode.Scalar(ns.character(at: $0)) ?? " ") }
+        ?? true
+      if from != NSNotFound, !followedByLetter,
+        let best = nearestCommand(String(name.dropFirst()), tex: tex, preamble: preamble)
+      {
+        at = from
+        let len = (name as NSString).length
+        parts += [
+          .text(" 是不是想写 "), .fix(label: "\\" + best, range: from..<(from + len), text: "\\" + best), .text("？"),
+        ]
+      }
+    } else if let m = match(#"(\\[A-Za-z]+) already defined"#) ?? match(#"redefine (\\[A-Za-z]+)"#) {
+      let from = ns.range(of: "\\newcommand").location
+      parts = [
+        .code(m[1]), .text(" 已经有了（公式预设里定义过，或是自带的）；要在这个公式里改写它，用 "), .code("\\renewcommand"), .text("。"),
+      ]
+      if from != NSNotFound {
+        at = from
+        parts += [.text(" "), .fix(label: "改成 \\renewcommand", range: from..<(from + 11), text: "\\renewcommand")]
+      }
+    } else if b.open > 0, match("Missing close brace|end of input") != nil {
+      at = ns.length
+      parts = [
+        .text("少了一个 "), .code("}"), .text("：前面有个 "), .code("{"), .text(" 没配上。 "),
+        .fix(label: "补上 }", range: ns.length..<ns.length, text: "}"),
+      ]
+    } else if b.extra >= 0 {
+      at = b.extra
+      parts = [
+        .text("多了一个 "), .code("}"), .text("，删掉它，或在前面补上 "), .code("{"), .text("。 "),
+        .fix(label: "删掉 }", range: b.extra..<(b.extra + 1), text: ""),
+      ]
+    } else if match("Double subscripts") != nil {
+      parts = [
+        .text("同一个字母只能有一个下标："), .code("x_i_j"), .text(" 要写成 "), .code("x_{ij}"), .text(" 或 "), .code("x_{i_j}"),
+        .text("。"),
+      ]
+    } else if match("Double exponent") != nil {
+      parts = [.text("同一个字母只能有一个上标："), .code("x^a^b"), .text(" 要写成 "), .code("x^{ab}"), .text("。")]
+    } else if match("Missing superscript or subscript argument") != nil {
+      parts = [.code("^"), .text(" 或 "), .code("_"), .text(" 后面还没写东西。")]
+    } else if let m = match(#"Missing argument for (\\[A-Za-z]+)"#) {
+      parts = [.code(m[1]), .text(" 后面要跟 "), .code("{…}"), .text("。")]
+    } else if match(#"\\right|\\left"#) != nil {
+      parts = [.code("\\left"), .text(" 要和 "), .code("\\right"), .text(" 成对出现。")]
+    } else if match(#"\\begin\{[^}]*\} ended with|Missing \\end"#) != nil {
+      parts = [.code("\\begin{…}"), .text(" 少了配对的 "), .code("\\end{…}"), .text("。")]
+    } else if match("Misplaced &") != nil {
+      parts = [.code("&"), .text(" 只能用在矩阵、"), .code("cases"), .text("、"), .code("aligned"), .text(" 这类环境里。")]
+    } else {
+      parts = [.text("排不出来："), .text(message)]
+    }
+    return MDMathProblem(parts: parts, at: at.map { min($0, ns.length) })
+  }
+}

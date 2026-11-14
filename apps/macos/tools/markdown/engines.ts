@@ -21,8 +21,9 @@ adaptor.nodeSize = (node: unknown, em = 1) => {
   const size = parseFloat(adaptor.getAttribute(node as never, "font-size") ?? "1000") || 1000;
   return [measureText(text, size) / em, 0];
 };
-// autoload and require load packages asynchronously, which a synchronous engine cannot wait for
-const packages = AllPackages.filter((p: string) => p !== "autoload" && p !== "require");
+// autoload and require load packages asynchronously, which a synchronous engine cannot wait for;
+// noundefined draws an unknown command in red instead of failing: KaTeX (the web's) fails, and the editor explains it
+const packages = AllPackages.filter((p: string) => p !== "autoload" && p !== "require" && p !== "noundefined");
 
 type Doc = ReturnType<typeof mathjax.document>;
 const docs = new Map<string, Doc>();

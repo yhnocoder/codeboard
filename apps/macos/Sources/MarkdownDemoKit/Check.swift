@@ -327,6 +327,16 @@ enum Check {
         for _ in 0..<5 { frame() }
         autoreleasepool { render(content, to: out.appending(path: "toolbar.png")) }
       }
+      // a formula with an extra brace: its preview says why and offers the fix
+      let qk = ns.range(of: "QK")
+      if qk.location != NSNotFound {
+        e.selection = MDSelection(qk.location + 2)
+        e.insertText("}", replacementRange: NSRange(location: NSNotFound, length: 0))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+        for _ in 0..<5 { frame() }
+        autoreleasepool { render(content, to: out.appending(path: "math-error.png")) }
+        e.undo(nil)
+      }
       if link.location != NSNotFound {
         e.selection = MDSelection(link.location + 2)
         e.openLinkBoxForCheck()

@@ -1276,7 +1276,23 @@ public final class MarkdownEditorView: NSView {
     let boxes = l.selectionRects(f.range)
     let u = boxes.dropFirst().reduce(boxes.first ?? .zero) { $0.union($1) }
     let r = CGRect(x: u.minX * zoom, y: u.minY * zoom, width: u.width * zoom, height: u.height * zoom)
-    preview.show((f.latex, f.display), under: r, theme: l.theme, resources: l.resources)
+    // where the TeX starts in the source: the caret's place in it, and where a fix writes
+    let ns = core.source as NSString
+    let inside = ns.range(of: f.latex, range: NSRange(location: f.range.lowerBound, length: f.range.count))
+    let start = inside.location == NSNotFound ? f.range.lowerBound : inside.location
+    preview.onFix = { [weak self] range, text in
+      guard let self else { return }
+      self.begin()
+      let r = (start + range.lowerBound)..<(start + range.upperBound)
+      self.core.apply(
+        MDEdit(
+          range: r, replacement: text, selection: MDSelection(r.lowerBound + (text as NSString).length), undo: .command)
+      )
+      self.note(.key("formula fix", did: text.isEmpty ? "removed" : text))
+      self.changed()
+    }
+    preview.show(
+      (f.latex, f.display), under: r, theme: l.theme, resources: l.resources, caret: core.selection.head - start)
   }
 
   // MARK: the mouse

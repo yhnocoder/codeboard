@@ -102,6 +102,22 @@ import Testing
     #expect(v.preview.isHidden)
   }
 
+  /// a TeX that does not typeset says why and offers the fix main offers; a command name being typed is no error yet
+  @Test func aFormulaErrorIsExplainedAndFixed() async throws {
+    let src = "Sum $x^{2$ here."
+    let v = try view(src, caret: 9, math: true)
+    v.selection = MDSelection(9)
+    for _ in 0..<200 where v.preview.shown.error == nil { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(v.preview.shown.error != nil)
+    v.preview.onFix(4..<4, "}")
+    #expect(v.core.source == "Sum $x^{2}$ here.")
+    // typing \fra: no error shown for it
+    let w = try view("Sum $\\fra$ here.", caret: 9, math: true)
+    w.selection = MDSelection(9)
+    for _ in 0..<200 where w.preview.shown.error == nil { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(w.preview.isHidden || w.preview.shown.picture)
+  }
+
   @Test func aNewLayoutKeepsTheSelectionAndTheUndoHistory() throws {
     let v = try view("start", caret: 5)
     v.core.insert("x")

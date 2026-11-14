@@ -11,6 +11,13 @@ final class MathPreview: NSView {
   private var display = false
   private var picture: MathPicture?
   private var error: String?
+  /// the error said in plain words, with its fixes (MarkdownEditing.explainMath)
+  private var problem: MDMathProblem?
+  /// a command name is being typed at the caret: no error for it yet, the last picture stays
+  private var typing = false
+  /// a fix pressed: the range of the TeX and what to write there
+  var onFix: (Range<Int>, String) -> Void = { _, _ in }
+  private var preamble = ""
   private var theme: MarkdownTheme?
   private var textFont: [String]?
   /// counts requests: a result for an older one is dropped
@@ -23,7 +30,8 @@ final class MathPreview: NSView {
 
   /// Shows the formula with TeX `latex` under `anchor`, typesetting it unless it is what is shown; nil hides the bubble
   func show(
-    _ f: (latex: String, display: Bool)?, under anchor: CGRect, theme: MarkdownTheme, resources: MarkdownResources
+    _ f: (latex: String, display: Bool)?, under anchor: CGRect, theme: MarkdownTheme, resources: MarkdownResources,
+    caret: Int? = nil
   ) {
     guard let f, let math = resources.math else {
       latex = nil
@@ -34,6 +42,8 @@ final class MathPreview: NSView {
     }
     self.anchor = anchor
     self.theme = theme
+    preamble = resources.mathPreamble
+    typing = caret.map { MarkdownEditing.typingCommand(f.latex, caret: $0, preamble: preamble) } ?? false
     textFont = (math as? JSEngines)?.textFont
     if f.latex != latex || f.display != display {
       latex = f.latex
@@ -63,8 +73,10 @@ final class MathPreview: NSView {
     case .ok(let pic):
       picture = pic
       error = nil
+      problem = nil
     case .error(let message, _, _):
       error = message
+      problem = latex.map { MarkdownEditing.explainMath(message, tex: $0, preamble: preamble) }
     }
     place()
   }
@@ -72,18 +84,37 @@ final class MathPreview: NSView {
   private var size: CGFloat { CGFloat(theme?.metrics.bodySize ?? 13.5) * 1.08 }
   private let pad: CGFloat = 8
 
+  private static let fixKey = NSAttributedString.Key("MDMathFix")
+
+  /// the problem in words: text, code in the code font, fixes in the accent (pressable)
   private var errorText: NSAttributedString? {
-    guard let error, let theme else { return nil }
-    return NSAttributedString(
-      string: error,
-      attributes: [
-        .font: NSFont.systemFont(ofSize: 11),
-        .foregroundColor: NSColor(cgColor: theme.colors.ink2.cg) ?? .secondaryLabelColor,
-      ])
+    guard error != nil, !typing, let theme else { return nil }
+    let body = NSFont.systemFont(ofSize: 11)
+    let ink2 = NSColor(cgColor: theme.colors.ink2.cg) ?? .secondaryLabelColor
+    let out = NSMutableAttributedString()
+    for (i, part) in (problem?.parts ?? [.text(error ?? "")]).enumerated() {
+      switch part {
+      case .text(let t): out.append(NSAttributedString(string: t, attributes: [.font: body, .foregroundColor: ink2]))
+      case .code(let c):
+        out.append(
+          NSAttributedString(
+            string: c,
+            attributes: [.font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .regular), .foregroundColor: ink2]))
+      case .fix(let label, _, _):
+        out.append(
+          NSAttributedString(
+            string: label,
+            attributes: [
+              .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+              .foregroundColor: NSColor(cgColor: theme.colors.accent.cg) ?? .controlAccentColor, Self.fixKey: i,
+            ]))
+      }
+    }
+    return out
   }
 
   private func place() {
-    guard picture != nil || error != nil else {
+    guard picture != nil || (error != nil && !typing) else {
       isHidden = true
       return
     }
@@ -124,7 +155,28 @@ final class MathPreview: NSView {
       ctx.restoreGState()
       y += CGFloat(p.height) * size + 4
     }
-    errorText?.draw(at: CGPoint(x: pad, y: y))
+    errorText?.draw(with: CGRect(x: pad, y: y, width: 320, height: 200), options: [.usesLineFragmentOrigin])
+    errorTop = y
+  }
+
+  private var errorTop: CGFloat = 0
+
+  /// a press on a fix writes it
+  override func mouseDown(with e: NSEvent) {
+    guard let text = errorText, let problem else { return }
+    let p = convert(e.locationInWindow, from: nil)
+    let storage = NSTextStorage(attributedString: text)
+    let lm = NSLayoutManager()
+    let tc = NSTextContainer(size: CGSize(width: 320, height: 200))
+    tc.lineFragmentPadding = 0
+    lm.addTextContainer(tc)
+    storage.addLayoutManager(lm)
+    let i = lm.characterIndex(
+      for: CGPoint(x: p.x - pad, y: p.y - errorTop), in: tc, fractionOfDistanceBetweenInsertionPoints: nil)
+    guard i < storage.length, let k = storage.attribute(Self.fixKey, at: i, effectiveRange: nil) as? Int,
+      case .fix(_, let range, let t) = problem.parts[k]
+    else { return }
+    onFix(range, t)
   }
 
   /// what it shows (tests)

@@ -30,3 +30,26 @@ import Testing
     #expect(mine[0].origin == .preamble && mine[1].origin == .sameFormula && mine[1].snip == "\\Rn{|}")
   }
 }
+
+/// MathJax's messages said as the web says KaTeX's, with the same one-click fixes (mathhints.ts explain)
+@Suite struct MathExplainTests {
+  func fixes(_ p: MDMathProblem) -> [(Range<Int>, String)] {
+    p.parts.compactMap { if case .fix(_, let r, let t) = $0 { (r, t) } else { nil } }
+  }
+
+  @Test func eachMistake() {
+    let unknown = MarkdownEditing.explainMath("Undefined control sequence \\fracc", tex: "\\fracc{a}{b}", preamble: "")
+    #expect(fixes(unknown).first?.0 == 0..<6 && fixes(unknown).first?.1 == "\\frac" && unknown.at == 0)
+    let open = MarkdownEditing.explainMath("Extra open brace or missing close brace", tex: "x^{2", preamble: "")
+    #expect(fixes(open).first?.0 == 4..<4 && fixes(open).first?.1 == "}")
+    let extra = MarkdownEditing.explainMath("Extra close brace or missing open brace", tex: "x}+1", preamble: "")
+    #expect(fixes(extra).first?.0 == 1..<2 && fixes(extra).first?.1 == "")
+    let sub = MarkdownEditing.explainMath("Double subscripts: use braces to clarify", tex: "x_i_j", preamble: "")
+    #expect(sub.parts.contains(.code("x_{ij}")) && fixes(sub).isEmpty)
+    let arg = MarkdownEditing.explainMath("Missing argument for \\frac", tex: "\\frac", preamble: "")
+    #expect(arg.parts.first == .code("\\frac"))
+    // a command name being typed is not an error yet
+    #expect(MarkdownEditing.typingCommand("\\fra", caret: 4, preamble: ""))
+    #expect(!MarkdownEditing.typingCommand("\\fracc", caret: 6, preamble: ""))
+  }
+}
