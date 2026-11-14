@@ -102,6 +102,12 @@ public final class EditorCore {
   /// A key that may change the text: what the editing rules make of it, applied; whether it did anything
   @discardableResult
   public func key(_ k: MDKey) -> Bool {
+    // the key after a lone block marker that makes it the block (the space): an undo step of its own, so the first ⌘Z
+    // gives the marker back as text, as an input rule is undone first (editor/typora.ts undoInputRule)
+    if lone != nil, case .text(let t) = k, t == " " {
+      joinable = false
+      ruleNext = true
+    }
     endLone()
     defer { beginLone() }
     // a selected image: ↵ opens its source, a typed character goes after it (editor/inline.ts imageKey)
@@ -122,6 +128,14 @@ public final class EditorCore {
       let e = MarkdownEditing.key(k, in: MDEditState(source: source, selection: selection), document: document)
     else { return false }
     apply(e)
+    if ruleNext {
+      ruleNext = false
+      joinable = false
+      if var last = undoSteps.last {
+        last.kind = .inputRule
+        undoSteps[undoSteps.count - 1] = last
+      }
+    }
     // a pair put in around the caret: its closer may be typed over
     if case .text(let t) = k, (t as NSString).length == 1, e.range.isEmpty, (e.replacement as NSString).length == 2,
       e.replacement.hasPrefix(t), e.selection == MDSelection(e.range.lowerBound + 1)
@@ -462,6 +476,9 @@ public final class EditorCore {
     return true
   }
 
+  /// the next key's edit is a block marker's rule (its own undo step)
+  private var ruleNext = false
+
   /// where closers the editor paired sit, until anything else happens
   private var autoClosers: Set<Int> = []
 
@@ -567,6 +584,8 @@ public final class EditorCore {
     }
     redoSteps.append(step)
     joinable = false
+    // the marker given back by undoing its rule shows as text again
+    beginLone()
   }
 
   /// ⇧⌘Z

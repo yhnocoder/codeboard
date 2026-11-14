@@ -62,7 +62,8 @@ package.targets += [
   .testTarget(name: "CodeBoardMarkdownUITests", dependencies: ["CodeBoardMarkdownUI"]),
 ]
 // a window to try the component in, standing alone (tools/markdown/make-demo.sh packages it); code coloured by
-// CodeBoardSyntax, as the look tool colours it
-package.targets.append(
-  .executableTarget(
-    name: "MarkdownDemo", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeBoardSyntax"]))
+// CodeBoardSyntax, as the look tool colours it. The kit runs it in any process (runMarkdownDemo), for a driver too
+package.targets += [
+  .target(name: "MarkdownDemoKit", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeBoardSyntax"]),
+  .executableTarget(name: "MarkdownDemo", dependencies: ["MarkdownDemoKit"]),
+]

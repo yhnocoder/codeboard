@@ -545,15 +545,7 @@ public final class MarkdownEditorView: NSView {
   public override func mouseMoved(with e: NSEvent) {
     let p = convert(e.locationInWindow, from: nil)
     let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
-    if let g = tableGrips, g.box.insetBy(dx: -4, dy: -4).contains(at) {
-      if g.cols.contains(where: { abs($0.maxX - at.x) <= 3 }) {
-        NSCursor.resizeLeftRight.set()
-      } else if g.rows.contains(where: { abs($0.maxY - at.y) <= 3 }) {
-        NSCursor.resizeUpDown.set()
-      } else {
-        NSCursor.iBeam.set()
-      }
-    }
+    cursor(at: p, modifiers: e.modifierFlags).set()
     var over: EditorCore.CodeBlock?
     if isEditing, band.isHidden || !band.frame.contains(p) {
       let c = core.layout.caret(at: at)
@@ -989,6 +981,29 @@ public final class MarkdownEditorView: NSView {
     }
     let box = rows.dropFirst().reduce(rows[0]) { $0.union($1) }
     return (p.table, rows, cols, box)
+  }
+
+  /// the pointer over a table: resize arrows on its edges, an open hand on its grips
+  func tableCursor(_ at: CGPoint) -> NSCursor? {
+    guard let g = tableGrips, g.box.insetBy(dx: -8, dy: -8).contains(at) else { return nil }
+    if g.cols.contains(where: { abs($0.maxX - at.x) <= 3 }) { return .resizeLeftRight }
+    if g.rows.contains(where: { abs($0.maxY - at.y) <= 3 }) { return .resizeUpDown }
+    if g.rows.dropFirst().contains(where: { rowGrip($0).insetBy(dx: -4, dy: -3).contains(at) })
+      || g.cols.contains(where: { colGrip($0).insetBy(dx: -3, dy: -4).contains(at) })
+    {
+      return .openHand
+    }
+    return nil
+  }
+
+  /// whether a link is under a point
+  func linkUnder(_ at: CGPoint) -> Bool {
+    let q = core.layout.caret(at: at).offset
+    guard
+      let p = MarkdownEditing.linkPlace(
+        in: MDEditState(source: core.source, selection: MDSelection(q)), document: core.document)
+    else { return false }
+    return p.exists
   }
 
   private func rowGrip(_ r: CGRect) -> CGRect { CGRect(x: r.minX + 1, y: r.midY - 7, width: 4, height: 14) }

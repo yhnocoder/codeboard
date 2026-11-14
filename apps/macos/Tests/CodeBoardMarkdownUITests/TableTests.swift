@@ -218,3 +218,22 @@ import Testing
     #expect(e.source == src)
   }
 }
+
+@MainActor @Suite struct NarrowTableTests {
+  @Test func gripsSitAtANarrowTablesOwnEdge() {
+    _ = boardFonts
+    let l = BlockLayout(
+      MarkdownDocument("Text\n\n| a | b |\n|---|---|\n| 1 | 2 |"), width: 400, theme: testTheme, layout: nil,
+      resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 8)
+    v.selection = MDSelection(8)
+    guard case .table(let t) = l.document.blocks[1].kind else { return }
+    let cells = l.cellBoxes(of: t)
+    let left = cells[1][0].minX
+    // the table is far narrower than the Note; its row grip is on its own left edge, and the pointer finds it there
+    #expect(cells[1].last!.maxX < 300)
+    #expect(v.cursor(at: CGPoint(x: left + 3, y: cells[1][0].midY)) == .openHand)
+    // and on the way from the cell to the grip the pointer never leaves the table's region
+    #expect(v.cursor(at: CGPoint(x: left + 12, y: cells[1][0].midY)) == .iBeam)
+  }
+}

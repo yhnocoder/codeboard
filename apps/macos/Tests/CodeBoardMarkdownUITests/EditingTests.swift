@@ -338,3 +338,21 @@ import Testing
     #expect(e.lone == nil && e.source == "Before\n\n##x")
   }
 }
+
+@Suite struct UndoRuleTests {
+  @Test func theFirstUndoAfterAMarkersSpaceGivesTheMarkerBackAsText() {
+    _ = boardFonts
+    let l = BlockLayout(
+      MarkdownDocument("Before\n\n"), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let e = EditorCore(layout: l, caret: 8)
+    for ch in "## " { e.insert(String(ch)) }
+    #expect(e.source == "Before\n\n## ")
+    e.undo()
+    // the space gone, ## shown as text (never escaped into the source)
+    #expect(e.source == "Before\n\n##")
+    #expect(e.lone == 8)
+    #expect(!e.source.contains("\\"))
+    e.undo()
+    #expect(e.source == "Before\n\n")
+  }
+}
