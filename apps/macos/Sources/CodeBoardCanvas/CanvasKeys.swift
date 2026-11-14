@@ -39,23 +39,35 @@ struct BoardKey {
 
   static let groups = ["Create", "View", "Cards", "Code", "Board"]
 
-  /// In keymap.ts's order: the first row that matches and applies takes the key
+  /// In keymap.ts's order, groups and words, the rows the app has: the first row that matches and applies takes the key.
+  /// The rows with no action are shown only: gestures, and the keys the app menu answers (Mac-only ones among them:
+  /// tabs, the sidebar, the vault), which CodeBoardShellTests holds to the menu
   static let all: [BoardKey] = [
     BoardKey(action: .newNote, presses: [char("n")], show: "N", label: "New Note", group: "Create"),
     BoardKey(action: .newText, presses: [char("t")], show: "T", label: "New Text", group: "Create"),
     BoardKey(action: .newBox, presses: [char("r")], show: "R", label: "New Box", group: "Create"),
+    BoardKey(show: "Double-click empty space", label: "New Text", group: "Create"),
     BoardKey(action: .addSidenote, presses: [char("s")], show: "S", label: "Add Sidenote", group: "Create"),
+    BoardKey(show: "⌘V", label: "Paste code, link or image", group: "Create"),
+    BoardKey(show: "⌥⌘V", label: "Paste as Copy", group: "Create"),
     BoardKey(action: .fitWindow, presses: [code(18, .shift)], show: "⇧1", label: "Fit to Window", group: "View"),
     BoardKey(action: .fitSelection, presses: [code(19, .shift)], show: "⇧2", label: "Fit Selection", group: "View"),
     BoardKey(action: .fitWindow, presses: [code(29, .command)], show: "⌘0", label: "Fit All", group: "View"),
     BoardKey(action: .zoom100, presses: [code(18, .command)], show: "⌘1", label: "Zoom to 100%", group: "View"),
+    BoardKey(show: "⌃- / ⌘[", label: "Back after a jump", group: "View"),
+    BoardKey(show: "⌃⇧- / ⌘]", label: "Forward after a jump", group: "View"),
     BoardKey(
       action: .zoomIn, presses: [code(24, .command), code(24, [.command, .shift])], show: "⌘+", label: "Zoom In",
       group: "View"),
     BoardKey(action: .zoomOut, presses: [code(27, .command)], show: "⌘−", label: "Zoom Out", group: "View"),
     BoardKey(show: "⌘ + scroll / pinch", label: "Zoom", group: "View"),
     BoardKey(action: .pan, presses: [code(49)], show: "Space + drag / two fingers", label: "Pan", group: "View"),
+    BoardKey(show: "⌃⌘S", label: "Hide Sidebar", group: "View"),
+    BoardKey(show: "⇧⌘[ / ⌃⇧⇥", label: "Show Previous Tab", group: "View"),
+    BoardKey(show: "⇧⌘] / ⌃⇥", label: "Show Next Tab", group: "View"),
+    BoardKey(show: "⌃⌘F", label: "Enter Full Screen", group: "View"),
     BoardKey(show: "Drag empty space", label: "Select with a box", group: "Cards"),
+    BoardKey(show: "⌘A", label: "Select All", group: "Cards"),
     BoardKey(show: "Drag title bar", label: "Move", group: "Cards"),
     BoardKey(
       action: .open, presses: [code(36), code(76)], show: "↵",
@@ -63,7 +75,14 @@ struct BoardKey {
     BoardKey(
       action: .enterBoard, presses: [code(36, .command), code(76, .command)], show: "⌘↵",
       label: "Open the selected board frame", group: "Cards"),
+    BoardKey(show: "⌘D", label: "Duplicate", group: "Cards"),
+    // not ⇧⌘] / ⇧⌘[: the system's tab keys here
+    BoardKey(show: "⌥⇧⌘F", label: "Bring to Front", group: "Cards"),
+    BoardKey(show: "⌥⇧⌘B", label: "Send to Back", group: "Cards"),
+    BoardKey(show: "⌘X", label: "Cut", group: "Cards"),
+    BoardKey(show: "⌘C", label: "Copy", group: "Cards"),
     BoardKey(action: .delete, presses: [code(51), code(117)], show: "⌫", label: "Delete", group: "Cards"),
+    BoardKey(show: "⇧⌘L", label: "Lock / Unlock", group: "Cards"),
     BoardKey(
       action: .turnIntoBoard, presses: [char("b", [.command, .shift])], show: "⇧⌘B", label: "Turn into Board",
       group: "Cards"),
@@ -74,9 +93,17 @@ struct BoardKey {
     BoardKey(
       action: .nudge, presses: [123, 124, 125, 126].flatMap { [code($0), code($0, .shift)] }, show: "Arrows",
       label: "Nudge (⇧ = 10px on screen)", group: "Cards"),
+    BoardKey(show: "Click line numbers", label: "Select lines (⇧ extends)", group: "Code"),
     BoardKey(action: .hide, presses: [char("h")], show: "H", label: "Hide lines", group: "Code"),
+    BoardKey(show: "⌘Z", label: "Undo", group: "Board"),
+    BoardKey(show: "⇧⌘Z", label: "Redo", group: "Board"),
+    BoardKey(show: "⌘,", label: "Settings", group: "Board"),
     BoardKey(action: .help, presses: [char("?")], show: "?", label: "Keyboard Shortcuts", group: "Board"),
     BoardKey(action: .escape, presses: [code(53)], show: "Esc", label: "Cancel · Deselect", group: "Board"),
+    BoardKey(show: "⌘O", label: "Open Vault…", group: "Board"),
+    BoardKey(show: "⇧⌘I", label: "Import Old Boards…", group: "Board"),
+    BoardKey(show: "⌘W", label: "Close Tab", group: "Board"),
+    BoardKey(show: "⇧⌘W", label: "Close Window", group: "Board"),
   ]
 }
 

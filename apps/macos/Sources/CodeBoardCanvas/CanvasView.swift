@@ -315,8 +315,8 @@ public final class CanvasView: NSView {
   var dropLit: Set<SectionID> = []
   /// The frames a card drag has redrawn, where it drew them (CanvasSections followDrag)
   var dragShown: [SectionID: CGRect] = [:]
-  /// The cards' and Sections' accessibility elements, kept while they are on the board (CanvasAccessibility)
-  var axElements: [Item: BoardElement] = [:]
+  /// The accessibility elements of what is drawn on the board, kept while it is there (CanvasAccessibility)
+  var axElements: [BoardThing: BoardElement] = [:]
   /// The latest frame's time (a test's own clock goes on from it)
   package private(set) var lastTick: TimeInterval = 0
   /// The frames easing towards where the drag has them, each a spring that keeps its speed as the target moves
@@ -336,6 +336,8 @@ public final class CanvasView: NSView {
   var pasteChip: PasteChip?
   var chipTimer: Task<Void, Never>?
   var chipHovered: ChipButton?
+  /// The chip's button pressed, until the release (it acts if let go over it)
+  var chipPressed: ChipButton?
   var chipInside = false
   var choosingChip = false
   /// How long the chip stays once the pointer is not over it (timing.ts PASTE_CHIP_IDLE)
@@ -347,8 +349,12 @@ public final class CanvasView: NSView {
   var leastWidths: [CardID: CGFloat] = [:]
   /// Arrow keys held for the nudge under way
   var nudging: Set<UInt16> = []
-  /// Where the last paste went, to step the next one on
-  var lastPaste: (clip: Data, dx: Double, dy: Double)?
+  /// The cards ⌘C copied on this board (the pasteboard data that stands for them) and how many times they were pasted
+  /// since (actions/shared.ts copied)
+  var copied: (board: BoardID, data: Data, n: Int)?
+  /// The cards ⌘X cut on this board with every arrow that touched them, and the pasteboard data that stands for them
+  /// (actions/shared.ts cutClip)
+  var cutClip: (board: BoardID, data: Data, clip: Clip)?
 
   /// Work begun while a gesture was active; the gesture rule says all stay 0
   package private(set) var ruleBreaks = (redraws: 0, decodes: 0, swaps: 0, noteRequests: 0, noteSwaps: 0)
@@ -427,6 +433,11 @@ public final class CanvasView: NSView {
     await rest()
     guard let (board, vault) = shown, !theme.same(as: self.theme) else { return }
     try await load(board, in: vault, theme: theme, keepCamera: true)
+    // an open shortcut list is drawn again in the new theme, where it was
+    if keysPanel != nil {
+      toggleKeys()
+      toggleKeys()
+    }
   }
 
   /// Waiting for the camera to come to rest

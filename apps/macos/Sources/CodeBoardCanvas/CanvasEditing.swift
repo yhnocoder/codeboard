@@ -874,9 +874,12 @@ extension CanvasView {
     guard let doc = document, scene != nil, gesture == nil else { return }
     let v = convert(e.locationInWindow, from: nil)
     let p = camera.board(v)
-    // the chip's buttons; a press anywhere else closes it
+    // the chip's buttons; a press anywhere else closes it. A button acts on the release over it (main's .tbtn)
     if let on = chipButton(at: p) {
-      if let b = on, e.clickCount == 1 { pasteAs(b == .reference) }
+      if let b = on {
+        chipPressed = b
+        drawChrome()
+      }
       return
     }
     closeChip()
@@ -1007,6 +1010,7 @@ extension CanvasView {
 
   public override func mouseDragged(with e: NSEvent) {
     if spacePanDragged(e) { return }
+    if chipPressed != nil { return hoverChip(at: camera.board(convert(e.locationInWindow, from: nil))) }
     if let d = markDrag {
       let v = convert(e.locationInWindow, from: nil)
       guard d.moved || hypot(v.x - d.from.x, v.y - d.from.y) >= dragSlop else { return }
@@ -1112,6 +1116,13 @@ extension CanvasView {
 
   public override func mouseUp(with e: NSEvent) {
     if spacePanUp(e) { return }
+    if let b = chipPressed {
+      chipPressed = nil
+      if chipButton(at: camera.board(convert(e.locationInWindow, from: nil))) == .some(b) {
+        pasteAs(b == .reference)
+      }
+      return drawChrome()
+    }
     if releaseSummary(at: convert(e.locationInWindow, from: nil)) { return }
     if let d = markDrag {
       markDrag = nil
@@ -1589,56 +1600,76 @@ extension CanvasView {
     doc.edit("Delete", selection: []) { $0.delete(doc.selection, missing: gone) }
   }
 
+  /// ⌘C: the selected cards (only cards: actions/shared.ts copyCardsSel); none, nothing
   @objc public func copy(_ sender: Any?) {
-    guard let doc = document, let (_, vault) = shown, !doc.selection.isEmpty else { return }
-    let clip = doc.board.clip(doc.selection) { try? vault.sharedCard($0) }
-    guard !clip.isEmpty, let data = try? clip.encoded() else { return }
+    guard let board = shown?.board.id, let data = putOnPasteboard(selectedCards) else { return }
+    copied = (board, data, 0)
+  }
+
+  /// ⌘X: the selected cards copied, then deleted in one step (actions/shared.ts cutCardsSel); a paste on this board
+  /// puts them back
+  @objc public func cut(_ sender: Any?) {
+    guard let doc = document, let (_, vault) = shown, gesture == nil else { return }
+    let ids = selectedCards
+    guard let data = putOnPasteboard(ids) else { return }
+    let clip = doc.board.clip(ids, touching: true) { try? vault.sharedCard($0) }
+    let gone = goneAutoCards
+    doc.edit("Cut", selection: []) { $0.delete(Set(ids.map(Item.card)), missing: gone) }
+    cutClip = (doc.board.id, data, clip)
+    toast("Cut \(clip.cards.count) card\(clip.cards.count > 1 ? "s" : "")")
+  }
+
+  private var selectedCards: Set<CardID> { Set(document?.selection.compactMap(\.card) ?? []) }
+
+  /// The cards' clip on the pasteboard; nil: nothing to copy
+  private func putOnPasteboard(_ ids: Set<CardID>) -> Data? {
+    guard let doc = document, let (_, vault) = shown else { return nil }
+    let clip = doc.board.clip(ids) { try? vault.sharedCard($0) }
+    guard !clip.isEmpty, let data = try? clip.encoded() else { return nil }
     pasteboard.clearContents()
     pasteboard.setData(data, forType: NSPasteboard.PasteboardType(Clip.pasteboardType))
-    lastPaste = nil
+    return data
   }
 
-  @objc public func cut(_ sender: Any?) {
-    copy(sender)
-    guard let doc = document, gesture == nil else { return }
-    let gone = goneAutoCards
-    doc.edit("Cut", selection: []) { $0.delete(doc.selection, missing: gone) }
-  }
-
-  /// Pastes what was copied: on the board it was copied from, copies beside it (each paste a step further) with the chip
-  /// that makes them References; from another board, the same cards, shared by both (main's paste onto another board),
-  /// once there: they are selected. In the middle of the view when what was copied is not in view
-  @objc public func paste(_ sender: Any?) { paste(asCopy: false) }
+  /// Pastes what was copied (actions/shared.ts pasteFromBoard): cards cut on this board back where the pointer is, with
+  /// their ids and arrows (pasteCut); cards copied on this board as copies 36 × n down and right of them, n counting the
+  /// pastes since the copy, with the chip that makes them References (pasteCopied); from another board, the same cards,
+  /// shared by both (main's paste onto another board), at the pointer, once there: they are selected
+  @objc public func paste(_ sender: Any?) { paste(asCopy: false, at: nil) }
 
   /// ⌥⌘V: cards copied on another board come as copies of their own (keymap.ts pasteOther)
-  @objc public func pasteAsCopy(_ sender: Any?) { paste(asCopy: true) }
+  @objc public func pasteAsCopy(_ sender: Any?) { paste(asCopy: true, at: nil) }
 
-  private func paste(asCopy: Bool) {
+  /// `at`: where the board's menu was asked, for a Note of plain text
+  func paste(asCopy: Bool, at: CGPoint?) {
     if gesture == nil, pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)) == nil,
-      pasteLinks()
+      pasteLinks(at: at) || pasteText(at: at)
     {
       return
     }
-    guard let doc = document, gesture == nil,
+    guard let doc = document, gesture == nil, let here = shown?.board.id,
       let data = pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)),
-      var clip = try? Clip(decoding: data), let box = clip.bounds
+      var clip = try? Clip(decoding: data), !clip.isEmpty
     else { return }
-    let view = camera.visible(bounds.size)
-    var dx: Double
-    var dy: Double
-    if let last = lastPaste, last.clip == data {
-      (dx, dy) = (last.dx + 24, last.dy + 24)
-    } else if view.intersects(CGRect(x: box.x, y: box.y, width: box.maxX - box.x, height: box.maxY - box.y)) {
-      (dx, dy) = (24, 24)
-    } else {
-      dx = (view.midX - (box.x + box.maxX) / 2).rounded()
-      dy = (view.midY - (box.y + box.maxY) / 2).rounded()
+    if let c = cutClip, c.board == here, c.data == data {
+      let back = c.clip.cards.allSatisfy { doc.board.card($0.id) == nil }
+      let (dx, dy) = atPointer(c.clip)
+      let n = place(c.clip, dx: dx, dy: dy, name: "Paste", back: back).count
+      return toast(back ? "Pasted \(n) card\(n > 1 ? "s" : "")" : n > 1 ? "Pasted \(n) copies" : "Pasted a copy")
     }
-    lastPaste = (data, dx, dy)
-    guard let from = clip.board, from != shown?.board.id else {
-      let copies = place(clip, dx: dx, dy: dy, name: "Paste")
+    if let c = copied, c.board == here, c.data == data, clip.board == here,
+      clip.cards.contains(where: { doc.board.card($0.id) != nil })
+    {
+      copied?.n += 1
+      let k = 36 * Double(c.n + 1)
+      let copies = place(clip, dx: k, dy: k, name: "Paste")
       toast(copies.count > 1 ? "Pasted \(copies.count) copies" : "Pasted a copy")
       return offerReference(copies)
+    }
+    let (dx, dy) = atPointer(clip)
+    guard let from = clip.board, from != here else {
+      let n = place(clip, dx: dx, dy: dy, name: "Paste").count
+      return toast(n > 1 ? "Pasted \(n) copies" : "Pasted a copy")
     }
     let other = shareOnBoard?(from, asCopy ? [] : Set(clip.cards.map(\.id)))
     guard !asCopy, let other else {
@@ -1647,7 +1678,7 @@ extension CanvasView {
       return toast(other.map { "Pasted \(what) from \($0.title)" } ?? "Pasted \(what)")
     }
     clip = clip.renamed(other.ids)
-    if !clip.cards.isEmpty, clip.cards.allSatisfy({ doc.board.card($0.id) != nil }) {
+    if clip.cards.allSatisfy({ doc.board.card($0.id) != nil }) {
       doc.select(Set(clip.cards.map { .card($0.id) }))
       if let first = clip.cards.first, let r = liveRect(.card(first.id)) { reveal(r) }
       return toast("Already on this board")
@@ -1656,23 +1687,75 @@ extension CanvasView {
     toast("Pasted as linked card\(n > 1 ? "s" : "") · also on \(other.title)")
   }
 
-  /// ⌘D: copies 48 down and to the right (core duplicateCards), with the chip that makes them References
-  @objc public func duplicate(_ sender: Any?) {
-    guard let doc = document, let (_, vault) = shown, gesture == nil, !doc.selection.isEmpty else { return }
-    let clip = doc.board.clip(doc.selection) { try? vault.sharedCard($0) }
-    guard !clip.isEmpty else { return }
-    offerReference(place(clip, dx: 48, dy: 48, name: "Duplicate"))
+  /// How far to move the clip's cards for them to be at the first free place from where the pointer is (the view's
+  /// middle when it is not over the board), as actions/shared.ts putCards: their box (a card's height, or 300, and 40),
+  /// core layout.ts findFree
+  private func atPointer(_ clip: Clip) -> (Double, Double) {
+    let v = pointerInWindow.map { convert($0, from: nil) } ?? CGPoint(x: bounds.midX, y: bounds.midY)
+    let at = camera.board(v)
+    let rects = clip.cards.map { CGRect(x: $0.x, y: $0.y, width: $0.width, height: ($0.height ?? 300) + 40) }
+    let box = rects.dropFirst().reduce(rects.first ?? .zero) { $0.union($1) }
+    let others =
+      document?.board.cards.map { c in
+        liveRect(.card(c.id)) ?? CGRect(x: c.x, y: c.y, width: c.width, height: c.height ?? c.measuredHeight ?? 0)
+      } ?? []
+    let free = Self.findFree(CGRect(origin: at, size: box.size), others: others)
+    return ((free.x - box.minX).rounded(), (free.y - box.minY).rounded())
   }
 
-  /// The clip put on the board, what was made selected; returns each card made with the one it was made from
+  /// The first place from `want`'s, in 40-unit steps down, right, both, up and left, where it is 28 clear of `others`
+  /// (core layout.ts findFree)
+  static func findFree(_ want: CGRect, others: [CGRect]) -> CGPoint {
+    func free(_ x: CGFloat, _ y: CGFloat) -> Bool {
+      let r = CGRect(x: x, y: y, width: want.width, height: want.height)
+      return !others.contains {
+        r.minX < $0.maxX + 28 && $0.minX < r.maxX + 28 && r.minY < $0.maxY + 28 && $0.minY < r.maxY + 28
+      }
+    }
+    let (x, y) = (want.minX, want.minY)
+    if free(x, y) { return want.origin }
+    for r in 1..<60 {
+      let d = CGFloat(r) * 40
+      for (cx, cy) in [(x, y + d), (x + d, y), (x + d, y + d), (x, y - d), (x - d, y)] where free(cx, cy) {
+        return CGPoint(x: cx, y: cy)
+      }
+    }
+    return CGPoint(x: x, y: y + 60 * 40)
+  }
+
+  /// ⌘D: copies of the selected cards 48 down and to the right (core duplicateCards), with the chip that makes them
+  /// References: no arrow and no sidenote come along, and they stay in no Section; with no card selected, it says so
+  /// (actions/edit.ts duplicateSel)
+  @objc public func duplicate(_ sender: Any?) {
+    guard let doc = document, let (_, vault) = shown, gesture == nil, !doc.selection.isEmpty else { return }
+    var clip = doc.board.clip(selectedCards) { try? vault.sharedCard($0) }
+    guard !clip.isEmpty else { return toast("Select a card to duplicate") }
+    clip.arrows = []
+    clip.sidenotes = []
+    offerReference(place(clip, dx: 48, dy: 48, name: "Duplicate", settle: false))
+  }
+
+  /// The clip put on the board, what was made selected and brought into view; returns each card made with the one it
+  /// was made from. `settle`: each card goes in the Section it lands in (board actions/shared.ts settleHome)
   @discardableResult
-  private func place(_ clip: Clip, dx: Double, dy: Double, name: String, shared: Bool = false) -> [(
-    copy: CardID, of: CardID
-  )] {
+  private func place(
+    _ clip: Clip, dx: Double, dy: Double, name: String, shared: Bool = false, back: Bool = false, settle: Bool = true
+  ) -> [(copy: CardID, of: CardID)] {
     guard let doc = document else { return [] }
     var b = doc.board
-    let (made, copies) = b.paste(clip, dx: dx, dy: dy, shared: shared)
+    let (made, copies) = b.paste(clip, dx: dx, dy: dy, shared: shared, back: back)
+    var placed = CGRect.null
+    let frames = Dictionary((scene?.frames ?? []).map { ($0.id, $0.rect) }, uniquingKeysWith: { a, _ in a })
+    for (id, of) in copies {
+      guard let i = b.cards.firstIndex(where: { $0.id == id }) else { continue }
+      let c = b.cards[i]
+      let h = c.height ?? c.measuredHeight ?? liveRect(.card(of)).map { Double($0.height) } ?? 0
+      let r = CGRect(x: c.x, y: c.y, width: c.width, height: h)
+      placed = placed.union(r)
+      if settle { b.cards[i].section = home(of: r, frames: frames) }
+    }
     doc.edit(name, selection: made) { $0 = b }
+    if !placed.isNull { reveal(placed) }
     return copies
   }
 
@@ -1723,9 +1806,7 @@ extension CanvasView: NSMenuItemValidation {
     case #selector(cut(_:)), #selector(delete(_:)): return sel.contains { !doc.board.isLocked($0) }
     case #selector(paste(_:)), #selector(pasteAsCopy(_:)):
       return pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)) != nil
-        || pasteboard.string(forType: .string).map { s in
-          s.split(whereSeparator: \.isNewline).allSatisfy { webAddress(String($0)) != nil } && !s.isEmpty
-        } == true
+        || pasteboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     case #selector(bringToFront(_:)), #selector(sendToBack(_:)), #selector(tilt(_:)):
       return sel.contains { $0.card != nil }
     case #selector(lock(_:)):

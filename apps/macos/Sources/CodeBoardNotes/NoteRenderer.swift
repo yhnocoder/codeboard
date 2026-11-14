@@ -186,6 +186,21 @@ public final class NoteRenderer {
     return out
   }
 
+  /// What plain text pasted on the board makes, worked out by the Markdown package and core's paste rules in the page
+  /// (board actions/create.ts pasteText); before the pictures waiting, as a person waits for it
+  public func paste(_ text: String) async throws -> PastedText {
+    try await takeTurn(priority: Int.max)
+    defer { endTurn() }
+    do {
+      let p = try page ?? NotePage(page: pageFolder)
+      page = p
+      return PastedText(try await p.paste(text))
+    } catch {
+      page = nil
+      throw error
+    }
+  }
+
   /// Each Note's size at 100 % and where its first glyph is from its top left (nil when it has none), measured now: what
   /// a Text keeps in place when it becomes a Box (the board measures it the same way, notes.ts setTextLook)
   public func firstGlyphs(of notes: [SizeRequest]) async throws -> [(size: CGSize, first: CGPoint?)?] {
@@ -332,6 +347,31 @@ public final class NoteRenderer {
     idle = Task { [weak self] in
       guard (try? await Task.sleep(for: .seconds(30))) != nil else { return }
       self?.page = nil
+    }
+  }
+}
+
+/// What a paste of plain text makes (page.ts pasted)
+public enum PastedText: Equatable, Sendable {
+  /// A Note of this Markdown
+  case note(String)
+  case web(String)
+  case links([String])
+  /// An SVG, cleaned, as a data: URL, and its own width in pixels (0 when it could not be drawn)
+  case svg(dataURL: String, natural: Double)
+  /// Free code in the language guessed
+  case code(String, language: String)
+  /// Nothing; `why`, to say, when the text could not be used
+  case none(why: String?)
+
+  init(_ d: [String: Any]) {
+    switch d["kind"] as? String {
+    case "note": self = .note(d["text"] as? String ?? "")
+    case "web": self = .web(d["url"] as? String ?? "")
+    case "links": self = .links(d["urls"] as? [String] ?? [])
+    case "svg": self = .svg(dataURL: d["dataUrl"] as? String ?? "", natural: d["natural"] as? Double ?? 0)
+    case "code": self = .code(d["text"] as? String ?? "", language: d["lang"] as? String ?? "python")
+    default: self = .none(why: d["error"] as? String)
     }
   }
 }

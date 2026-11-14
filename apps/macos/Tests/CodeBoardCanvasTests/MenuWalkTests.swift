@@ -137,17 +137,7 @@ private func walkBoard() -> Board {
     }
     #expect(Set(menus.map(\.0)).count == 18, "every menu built: \(menus.map(\.0))")
     for i in items where !i.titled { Issue.record("no title: \(i.path)") }
-    for i in items where !i.on && Self.mainOff[i.path] == nil {
-      if i.path == "canvas › Paste" {
-        // main's is always on: it reads the clipboard when chosen and pastes text as a Note; ours pastes only clips and
-        // web addresses, so with nothing of those it is off
-        withKnownIssue("Paste is off with no clip or web address on the clipboard; main pastes text as a Note") {
-          Issue.record("off where main is on: \(i.path)")
-        }
-      } else {
-        Issue.record("off where main is on: \(i.path)")
-      }
-    }
+    for i in items where !i.on && Self.mainOff[i.path] == nil { Issue.record("off where main is on: \(i.path)") }
     // main's off items are all here and off
     for (p, line) in Self.mainOff { #expect(items.contains { $0.path == p && !$0.on }, "\(p) (main's \(line))") }
   }

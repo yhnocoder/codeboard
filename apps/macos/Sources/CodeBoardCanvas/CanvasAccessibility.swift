@@ -1,26 +1,34 @@
 import AppKit
 import CodeBoardModel
 
-// The cards, Sections and arrow labels as accessibility elements, for VoiceOver and the acceptance driver: the identifier is the id,
-// the frame where it is drawn now (its layer as on screen, so mid-drag and mid-animation too), read only when asked:
-// nothing is kept up to date while a gesture runs.
+// The cards, Sections, arrow labels, sidenote markers and stickers as accessibility elements, for VoiceOver and the
+// acceptance driver: the identifier is the id (a sidenote's: the marker that shows it), the frame where it is drawn now
+// (its layer as on screen, so mid-drag and mid-animation too), read only when asked: nothing is kept up to date while
+// a gesture runs. One that is not drawn (folded away, on hidden lines, off its card's shown part) has no element.
 
-/// A card or a Section on the board
+/// What an element stands for: an item of the board, or a sidenote (where its marker is)
+enum BoardThing: Hashable {
+  case item(Item)
+  case sidenote(SidenoteID)
+}
+
+/// A card, a Section, an arrow's label, a sidenote's marker or a sticker on the board
 @MainActor final class BoardElement: NSAccessibilityElement {
   weak let canvas: CanvasView?
-  let item: Item
+  let item: BoardThing
 
-  init(_ item: Item, in canvas: CanvasView) {
+  init(_ item: BoardThing, in canvas: CanvasView) {
     self.item = item
     self.canvas = canvas
     super.init()
     setAccessibilityParent(canvas)
     setAccessibilityRole(.group)
     switch item {
-    case .card(let id): setAccessibilityIdentifier(id.rawValue)
-    case .section(let id): setAccessibilityIdentifier(id.rawValue)
-    case .arrow(let id): setAccessibilityIdentifier(id.rawValue)
-    default: break
+    case .item(.card(let id)): setAccessibilityIdentifier(id.rawValue)
+    case .item(.section(let id)): setAccessibilityIdentifier(id.rawValue)
+    case .item(.arrow(let id)): setAccessibilityIdentifier(id.rawValue)
+    case .item(.sticker(let id)): setAccessibilityIdentifier(id.rawValue)
+    case .sidenote(let id): setAccessibilityIdentifier(id.rawValue)
     }
   }
 
@@ -33,9 +41,11 @@ import CodeBoardModel
   }
   override func accessibilityRoleDescription() -> String? {
     switch item {
-    case .section: "Section"
-    case .arrow: "label"
-    default: "card"
+    case .item(.section): "Section"
+    case .item(.arrow): "label"
+    case .item(.sticker): "sticker"
+    case .item(.card): "card"
+    case .sidenote: "sidenote"
     }
   }
 }
@@ -47,15 +57,21 @@ extension CanvasView {
 
   public override func accessibilityChildren() -> [Any]? {
     guard let s = scene else { return chromeElements() }
-    var want: [Item] = s.frames.map { .section($0.id) }
-    for it in s.items { if case .card(let id)? = it.owner { want.append(.card(id)) } }
+    var want: [BoardThing] = s.frames.map { .item(.section($0.id)) }
+    for it in s.items { if case .card(let id)? = it.owner { want.append(.item(.card(id))) } }
     // an arrow's label, when it has one: under the arrow's id
     for it in s.items {
       if case .arrowLabel(let id)? = it.owner, document?.board.arrow(id)?.label?.isEmpty == false {
-        want.append(.arrow(id))
+        want.append(.item(.arrow(id)))
       }
     }
-    var kept: [Item: BoardElement] = [:]
+    for (i, m) in marks.enumerated() where i < markLayers.count && drawn(markLayers[i]) {
+      want += m.notes.map(BoardThing.sidenote)
+    }
+    for (i, k) in stickerSpots.enumerated() where i < stickerLayers.count && drawn(stickerLayers[i]) {
+      want.append(.item(.sticker(k.id)))
+    }
+    var kept: [BoardThing: BoardElement] = [:]
     let out: [Any] = want.map { i in
       let e = axElements[i] ?? BoardElement(i, in: self)
       kept[i] = e
@@ -68,8 +84,20 @@ extension CanvasView {
   /// The toolbar's and the dock's parts
   func chromeElements() -> [Any] { dock.isHidden ? [] : [dock] }
 
+  /// Whether a marker's or sticker's layer shows: none of its layers hidden, and one on a card (or a Section's title)
+  /// level with its shown part (not on lines scrolled or cut off below it)
+  private func drawn(_ l: CALayer) -> Bool {
+    var at: CALayer? = l
+    while let x = at {
+      if x.isHidden { return false }
+      at = x.superlayer
+    }
+    guard let box = l.superlayer, box !== freeMarks, box !== freeStickers else { return true }
+    return l.frame.maxY > 0 && l.frame.minY < box.bounds.height
+  }
+
   /// Where an item is drawn now, on the screen
-  func screenFrame(of item: Item) -> NSRect {
+  func screenFrame(of item: BoardThing) -> NSRect {
     guard let window, let root = layer, let l = drawnLayer(item) else { return .zero }
     // an animation under way (a frame easing, a card springing back): where it is in it; else where it was just put,
     // which the presentation shows only once the transaction is in
@@ -82,28 +110,39 @@ extension CanvasView {
     return window.convertToScreen(convert(r, to: nil))
   }
 
-  private func drawnLayer(_ item: Item) -> CALayer? {
+  private func drawnLayer(_ item: BoardThing) -> CALayer? {
     switch item {
-    case .card(let id): return index(of: .card(id)).map { items[$0].box }
-    case .arrow(let id): return index(of: .arrowLabel(id)).map { items[$0].box }
-    case .section(let id):
+    case .item(.card(let id)): return index(of: .card(id)).map { items[$0].box }
+    case .item(.arrow(let id)): return index(of: .arrowLabel(id)).map { items[$0].box }
+    case .item(.section(let id)):
       guard let i = scene?.frames.firstIndex(where: { $0.id == id }), let ls = sections.sublayers, i < ls.count
       else { return nil }
       return ls[i]
-    default: return nil
+    case .item(.sticker(let id)):
+      guard let i = stickerSpots.firstIndex(where: { $0.id == id }), i < stickerLayers.count else { return nil }
+      return stickerLayers[i]
+    case .sidenote(let id):
+      guard let i = marks.firstIndex(where: { $0.notes.contains(id) }), i < markLayers.count else { return nil }
+      return markLayers[i]
     }
   }
 
-  func spokenName(of item: Item) -> String? {
+  func spokenName(of item: BoardThing) -> String? {
     guard let b = document?.board else { return nil }
     switch item {
-    case .section(let id): return b.section(id)?.title
-    case .arrow(let id): return b.arrow(id)?.label
-    case .card(let id):
+    case .item(.section(let id)): return b.section(id)?.title
+    case .item(.arrow(let id)): return b.arrow(id)?.label
+    case .item(.card(let id)):
       guard let c = b.card(id) else { return nil }
       if case .own(let k) = c.content, let t = k.title { return t }
       return c.writing?.split(separator: "\n").first.map(String.init)
-    default: return nil
+    case .item(.sticker(let id)):
+      return b.stickers.first { $0.id == id }.map { k in
+        if case .emoji(let e) = k.glyph { e } else { "sticker" }
+      }
+    case .sidenote(let id):
+      guard case .text(let t)? = b.sidenotes.first(where: { $0.id == id })?.body else { return "sidenote" }
+      return t.text.split(separator: "\n").first.map(String.init)
     }
   }
 }

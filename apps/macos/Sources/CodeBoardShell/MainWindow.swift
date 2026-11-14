@@ -19,6 +19,8 @@ import SwiftUI
   window.isReleasedWhenClosed = false
   let root = RootView(shell: shell)
   window.contentView = root
+  let panes = root.panel.panes
+  shell.confirm = { [weak window, weak panes] alert in await panes?.confirm(alert, window) ?? false }
   if !window.setFrameUsingName("main") { window.center() }
   window.setFrameAutosaveName("main")
   return (window, root.panel.panes)
