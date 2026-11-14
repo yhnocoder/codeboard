@@ -1,0 +1,16 @@
+# 点 Note 里画出来的引用 [[Other card]]：激活要传到宿主（网页白板跳过去；Mac 的 demo 看事件列表）
+zoom 1
+center @ntask"值"
+dbl @ntask"Last line"
+wait 600
+click @ntask"Last line">
+wait 400
+rec ref
+click @ntask"more."<+-72,0
+wait 800
+shot clicked
+demo: text Inspector
+stop
+key esc
+wait 800
+source @ntask

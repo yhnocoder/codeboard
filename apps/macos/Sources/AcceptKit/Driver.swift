@@ -112,6 +112,21 @@ extension NSResponder {
   }
 }
 
+extension NSWorkspace {
+  /// Nothing opens outside this process (a clicked link would open the person's browser): it is logged instead
+  @objc func accOpen(_ url: URL) -> Bool {
+    log("would open \(url.absoluteString) (not opened)")
+    return true
+  }
+}
+
+extension NSPasteboard {
+  /// The person's clipboard is never read or written: this process copies and pastes through a pasteboard of its own
+  @objc class func accGeneral() -> NSPasteboard { ownPasteboard }
+}
+nonisolated(unsafe) let ownPasteboard = NSPasteboard(
+  name: NSPasteboard.Name("com.example.codeboard.accept.\(getpid())"))
+
 extension NSApplication {
   @objc func accIsActive() -> Bool { true }
   @objc func accKeyWindow() -> NSWindow? { gKey }
@@ -218,6 +233,10 @@ extension NSMenu {
     class_replaceMethod(
       cls, #selector(NSView.scrollWheel(with:)), imp_implementationWithBlock(block), method_getTypeEncoding(m))
   }
+  swizzle(NSPasteboard.self, #selector(getter: NSPasteboard.general), #selector(NSPasteboard.accGeneral), meta: true)
+  swizzle(
+    NSWorkspace.self, #selector(NSWorkspace.open(_:) as (NSWorkspace) -> (URL) -> Bool),
+    #selector(NSWorkspace.accOpen(_:)))
   swizzle(NSApplication.self, #selector(getter: NSApplication.isActive), #selector(NSApplication.accIsActive))
   swizzle(NSApplication.self, #selector(getter: NSApplication.keyWindow), #selector(NSApplication.accKeyWindow))
   swizzle(NSApplication.self, #selector(getter: NSApplication.mainWindow), #selector(NSApplication.accMainWindow))
@@ -606,8 +625,14 @@ extension NSMenu {
         windowNumber: w.windowNumber, context: nil, characters: e0.characters ?? chars,
         charactersIgnoringModifiers: e0.charactersIgnoringModifiers ?? chars, isARepeat: false, keyCode: code)!
       // the app is not active for the window server, so NSApp has no key window of its own to send keys to: keys
-      // without ⌘ or ⌃ go to the window as NSApp would hand them over; with them, through NSApp (key equivalents, menus)
-      if f.isDisjoint(with: [.command, .control]) { w.sendEvent(e) } else { NSApp.postEvent(e, atStart: false) }
+      // without ⌘ or ⌃ go to the window as NSApp would hand them over; with them, as AppKit does for its key window: the menus, then the window's views (performKeyEquivalent: a ⌘K the
+      // editor takes itself), then the key itself. AppKit would offer the window only its own key window, which this
+      // app, never really active, does not have
+      if f.isDisjoint(with: [.command, .control]) || !down {
+        w.sendEvent(e)
+      } else if NSApp.mainMenu?.performKeyEquivalent(with: e) != true, !w.performKeyEquivalent(with: e) {
+        w.sendEvent(e)
+      }
       try? await Task.sleep(for: .milliseconds(40))
     }
     vFlags = []

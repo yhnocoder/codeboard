@@ -1,0 +1,26 @@
+# 在 Note 里选一段带标记和公式的字，⌘C，粘到最后一行后面：Markdown 原样回来（公式回到 TeX，标记还在）；再复制代码块里的两行粘过去，看它成了什么。剪贴板是驱动自己的，不碰真正的剪贴板（只跑 Mac）
+zoom 1
+center @ntask"值"
+dbl @ntask"Last line"
+wait 600
+rec paste
+drag @ntask"Marks"< @ntask"energy is">+60,0 500
+wait 300
+shot selected
+key cmd+c
+click @ntask"here.">
+key return
+key cmd+v
+wait 600
+shot pasted
+drag @ntask"def"< @ntask"len(batch)"> 500
+wait 300
+key cmd+c
+click @ntask"here.">
+key return
+key cmd+v
+wait 600
+shot codepasted
+stop
+wait 500
+source @ntask

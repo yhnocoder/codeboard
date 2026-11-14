@@ -1,0 +1,42 @@
+# 外观：/ 菜单、[[ 菜单、公式预览、代码块边上的间隙光标、选择工具条、引用悬停；Mac 再切到 demo 自己的暗色看一遍
+zoom 1
+center @ntask"值"
+dbl @ntask"Last line"
+wait 600
+click @ntask"anything.">
+key return
+keys /
+wait 500
+shot slash
+key esc
+keys [[Oth
+wait 600
+shot refmenu
+key esc
+key cmd+z
+key cmd+z
+wait 300
+click @ntask"energy is">+30,0
+wait 600
+shot formula
+click @ntask"len(batch)"+0,26
+wait 500
+shot gapcaret
+dbl @ntask"scheduler"
+wait 500
+shot seltoolbar
+move @ntask"more."<+-72,0 300
+wait 800
+shot refhover
+demo: click 809 -26
+demo: wait 800
+demo: shot darkpage
+demo: click @ntask"anything.">
+demo: key return
+demo: keys /
+demo: wait 500
+demo: shot darkslash
+demo: key esc
+demo: dbl @ntask"scheduler"
+demo: wait 500
+demo: shot darktoolbar

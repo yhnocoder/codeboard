@@ -55,7 +55,7 @@ Note 里的字按字找，像人看着屏幕找字一样：`@<id>"几个字"` �
 | `shot <名字>` | 截图 |
 | `hit` / `info` / `cam` | 指针下是什么 / 焦点、窗口、光标 / 相机 |
 
-`scenarios/` 里的场景：编辑 Note 的 `note-blockmove-cross`（⌘ 拖一块到另一张 Note，再撤回）、`note-heading`（打 `## ` 变标题再撤回）、`note-markers`（方向键穿过加粗、高亮、行内代码的标记）、`note-ime`（拼音接着写、删字、撤回）、`note-table`（改一格，拖行把手换行）、`note-code`（代码块里改一行）、`note-blockmove`（⌘ 拖动整块）、`note-image`（选中图片、拖把手缩窄），用 `--storage apps/macos/tools/accept/storage-notes`；`section-follow`（拖动中 Section 跟着撑开）、`pan-over-edit`（编辑时平移经过这张卡不停）、`hover-tour`（经过各种卡头和 Section 标题时出现什么）、`new-text-flow`（不对照：新建、输入、拖进 Section 的完整流程）。
+`task-*`（用 `--storage apps/macos/tools/accept/storage-tasks`）是一个人会做的事：拖图片把手分几步缩窄（`task-image-resize`）、⌘K 加链接（`task-link`）、表格加删行、加列（`task-table`）、批注（`task-annotate`）、在 Note 里复制粘贴带标记和公式的字和代码（`task-paste`，只跑 Mac）、点引用（`task-ref`）、`/` 菜单（`task-footnote`）、各种菜单和工具条的样子，Mac 再切到暗色（`task-looks`）。`scenarios/` 里的场景：编辑 Note 的 `note-blockmove-cross`（⌘ 拖一块到另一张 Note，再撤回）、`note-heading`（打 `## ` 变标题再撤回）、`note-markers`（方向键穿过加粗、高亮、行内代码的标记）、`note-ime`（拼音接着写、删字、撤回）、`note-table`（改一格，拖行把手换行）、`note-code`（代码块里改一行）、`note-blockmove`（⌘ 拖动整块）、`note-image`（选中图片、拖把手缩窄），用 `--storage apps/macos/tools/accept/storage-notes`；`section-follow`（拖动中 Section 跟着撑开）、`pan-over-edit`（编辑时平移经过这张卡不停）、`hover-tour`（经过各种卡头和 Section 标题时出现什么）、`new-text-flow`（不对照：新建、输入、拖进 Section 的完整流程）。
 
 ## 驱动的结构
 
@@ -70,6 +70,8 @@ Mac 这边是 `Accept` target（`apps/macos/Sources/Accept/main.swift`）：它�
 网页这边是 `web.ts`：在无头 Chromium 里启动 `packages/board/dist` 的白板（`boot`，和 VS Code 的 webview 一样），宿主消息由 `packages/tiles` 的 `recordBoards` 从同一个 storage 文件夹录下，指针和按键走 Playwright 的真实输入事件，录像用 CDP 的 screencast。
 
 ## 已知的不足
+
+- 剪贴板：驱动的进程用自己的一块剪贴板（`NSPasteboard.general` 换成一个只属于它的），场景里的 ⌘C、⌘V 不读也不改人的剪贴板；网页那边的复制粘贴会用到 Chromium 的剪贴板，所以 `task-paste` 只跑 Mac（`--only mac`）。驱动的进程里也不打开任何东西：点到链接时 `NSWorkspace.open` 只在日志里写一句 `would open …`。
 
 - 除了 `real-use`，场景里 app 的窗口都放在桌面图片下面（人看不见），大小由驱动定（1200×780）；跑 Markdown demo 时还会 ⌥⌘0 重新排一下。所以窗口刚打开时的样子（默认大小、面板挡住了什么）、在屏幕上的表现，这些场景看不到。`real-use` 是在屏幕上的那一份：一行 `screen on` 让 Mac 那边照 app 自己的样子开在屏幕前面（默认大小、面板照常；指针仍然是虚拟的，不碰真指针），打开时截整个窗口，用滚轮滚到底、再滚回来，各截一张，静下来 5 秒记 CPU 和内存。只在一眼能看出的问题上算失败（`checks.txt`）：有东西盖住 Note 的编辑器（`covered`：在编辑器露在窗口里的部分上打 7×7 个点，打到别的视图或什么都没打到）、截图是空白的。CPU、内存只记在 `idle.txt` 里（Mac 是 app 的进程，含驱动；网页是整棵 Chromium 进程树），不算失败。在 Mac 上跑会在屏幕上出现一个窗口，所以只在交接时跑，不在每次改动后跑：`node apps/macos/tools/accept/run.mjs apps/macos/tools/accept/scenarios/real-use.txt --mac demo --storage apps/macos/tools/accept/storage-long --web <main 的 checkout>`。
 - 触控板的双指滑动（`scroll`）走不到系统自带的 NSScrollView（事件没有窗口，它不理）；要滚这种视图用 `wheel <行数> [格数]`，像鼠标滚轮那样一格一格（负数往下）。CodeBoard 的白板自己处理滚动，不受影响。

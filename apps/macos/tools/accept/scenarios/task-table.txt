@@ -1,0 +1,31 @@
+# 表格：⌘↵ 加一行、⌘⇧⌫ 删掉；Mac 从表格条的 ··· 菜单加一列，⌘Z 撤掉；滑动中各截一张
+zoom 1
+center @ntask"值"
+dbl @ntask"Last line"
+wait 600
+rec table
+click @ntask"值"+0,54
+wait 400
+key cmd+return
+wait 100
+shot rowsliding
+wait 700
+shot rowadded
+key cmd+shift+delete
+wait 100
+shot rowdeleting
+wait 700
+shot rowdeleted
+demo: click @ntask"值">+20,-27
+demo: pick Insert column right
+demo: wait 100
+demo: shot colsliding
+demo: wait 700
+demo: shot coladded
+demo: key cmd+z
+demo: wait 700
+demo: shot colundone
+stop
+key esc
+wait 800
+source @ntask

@@ -1,0 +1,19 @@
+# 在一行后面回车，打 / 调出菜单，筛出 Footnote 选中：脚注写进 Markdown
+zoom 1
+center @ntask"值"
+dbl @ntask"Last line"
+wait 600
+rec footnote
+click @ntask"anything.">
+keys /foot
+wait 500
+shot menu
+key return
+wait 400
+type 脚注的内容
+wait 400
+shot written
+key esc
+wait 600
+stop
+source @ntask
