@@ -93,10 +93,15 @@ extension Vault {
 
   /// The system Trash, where Finder can put it back
   public static let systemTrash: Trasher = { url in
+    // a test that would reach the person's own Trash fails here, before anything moves: tests give their own trasher
+    precondition(!underTest, "a test reached the system Trash with \(url.path)")
     var out: NSURL?
     try FileManager.default.trashItem(at: url, resultingItemURL: &out)
     return out as URL?
   }
+
+  /// Whether this process runs tests (swift test's runner, Xcode's): what Swift Testing and XCTest load is there
+  static let underTest = NSClassFromString("XCTestCase") != nil || ProcessInfo.processInfo.processName.hasPrefix("swiftpm-testing")
 
   /// A board package or a folder (with all in it) to the trash, never removed outright; only something in the vault, not
   /// the vault itself. Where it went

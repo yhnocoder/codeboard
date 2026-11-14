@@ -239,4 +239,65 @@ import Testing
     defer { again.close(keepingVault: true) }
     #expect(again.canvas.currentCamera == left, "\(again.canvas.currentCamera) after \(left)")
   }
+
+  /// The camera moved a moment before the board was left (its tab closed, another board shown in it, the app quitting
+  /// with a drag still held): kept for the board at once, not after it would have come to rest
+  @Test(arguments: ["tab", "board", "gesture"])
+  func aBoardLeftRightAfterItsCameraMovedIsKeptWhereItWas(_ how: String) async throws {
+    let fm = FileManager.default
+    let store = CameraStore(folder: fm.temporaryDirectory.appending(path: "cameras-\(UUID().uuidString)"))
+    defer { try? fm.removeItem(at: store.folder) }
+    let w = try await opened(cameras: store)
+    defer { w.close() }
+    w.canvas.cameraDelay = .seconds(600)
+    w.canvas.place(zoom: 0.62, centre: CGPoint(x: 333, y: 211))
+    await w.frames(3)
+    let c = w.canvas.currentCamera
+    let left = BoardCamera(x: c.origin.x, y: c.origin.y, zoom: c.zoom)
+    switch how {
+    case "tab":
+      w.shell.close(try #require(w.shell.selected))
+      w.panes.sync()
+    case "board":
+      w.shell.show(BoardID(rawValue: "o"))
+      w.panes.sync()
+      await until("the other board shown", in: w) { w.pane?.shown?.board.id == BoardID(rawValue: "o") }
+    default:
+      // a marquee drag still held, the board scrolled under it, when the app quits
+      let p = w.at(CGPoint(x: 580, y: 260))
+      for (type, q) in [(NSEvent.EventType.leftMouseDown, p), (.leftMouseDragged, CGPoint(x: p.x + 30, y: p.y - 20))] {
+        let e = NSEvent.mouseEvent(
+          with: type, location: q, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+          windowNumber: w.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+        if type == .leftMouseDown { w.canvas.mouseDown(with: e) } else { w.canvas.mouseDragged(with: e) }
+      }
+      #expect(w.canvas.gesture != nil, "the drag under way")
+      for phase in [NSEvent.Phase.began, .changed, .changed] {
+        w.window.sendEvent(try #require(Self.scroll(phase: phase, dy: phase == .began ? 0 : -40, in: w)))
+      }
+      await w.frames(2)
+      let now = w.canvas.currentCamera
+      #expect(now != c, "the scroll moved the camera")
+      _ = w.panes.flush()
+      #expect(store.cameras(for: w.vault)[board] == BoardCamera(x: now.origin.x, y: now.origin.y, zoom: now.zoom))
+      return
+    }
+    #expect(store.cameras(for: w.vault)[board] == left, "\(String(describing: store.cameras(for: w.vault)[board]))")
+  }
+
+  /// A trackpad scroll event at the middle of the canvas
+  static func scroll(phase: NSEvent.Phase, dy: Int32 = 0, in w: Window) -> NSEvent? {
+    guard let cg = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: dy, wheel2: 0, wheel3: 0)
+    else { return nil }
+    let c = w.canvas
+    let p = c.convert(CGPoint(x: c.bounds.midX, y: c.bounds.midY), to: nil)
+    cg.location = CGPoint(x: p.x, y: (NSScreen.screens.first?.frame.height ?? 0) - p.y)
+    cg.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+    cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase == .began ? 1 : 2)
+    cg.setDoubleValueField(.scrollWheelEventPointDeltaAxis1, value: Double(dy))
+    cg.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(w.window.windowNumber))
+    cg.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(w.window.windowNumber))
+    cg.timestamp = UInt64(ProcessInfo.processInfo.systemUptime * 1e9)
+    return NSEvent(cgEvent: cg)
+  }
 }
