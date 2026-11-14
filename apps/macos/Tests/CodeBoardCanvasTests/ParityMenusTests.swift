@@ -241,7 +241,7 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
   }
 
   /// The toolbar's ⋯ (Chrome.tsx more): after the tools and a separator; Undo, Redo, Copy Path (the board's file),
-  /// Settings…, Theme ▸ (the app's items answer those)
+  /// Settings…, Theme ▸ (the app's items answer those), Keyboard Shortcuts, Copy Diagnostics
   @Test func theToolbarsMoreMenu() async throws {
     let bar = CanvasToolbar()
     var asked: CGRect?
@@ -256,7 +256,7 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     #expect(
       titles(m) == [
         "Undo", "Redo", "-", "Rename Board…", "Copy Path", "Edit Mark…", "-", "Settings…", "Theme",
-        "Keyboard Shortcuts",
+        "Keyboard Shortcuts", "Copy Diagnostics",
       ])
     fire(item(m, "Keyboard Shortcuts"))
     #expect(r.canvas.keysPanel != nil && item(m, "Keyboard Shortcuts")?.keyEquivalent == "?")
