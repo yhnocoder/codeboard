@@ -13,6 +13,11 @@ final class Inspector: NSScrollView {
   private var pasted: (String, String)?
   private weak var editor: MarkdownEditorView?
   private var queued = false
+  /// the HUD's numbers, sampled once a second while the panel is open
+  private var hud = ""
+  private var sampler: Timer?
+  private var lastCPU = (cpu: 0.0, wall: 0.0)
+  private var lastKeyMs = 0.0
 
   init() {
     super.init(frame: CGRect(x: 0, y: 0, width: 320, height: 600))
@@ -36,7 +41,44 @@ final class Inspector: NSScrollView {
   }
 
   override var isHidden: Bool {
-    didSet { attach() }
+    didSet {
+      attach()
+      sampleSoon()
+    }
+  }
+
+  /// the HUD samples once a second while the panel shows, nothing while it is hidden
+  private func sampleSoon() {
+    sampler?.invalidate()
+    sampler = nil
+    guard !isHidden else { return }
+    sample()
+    sampler = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+      MainActor.assumeIsolated { self?.sample() }
+    }
+  }
+
+  private func sample() {
+    var info = task_vm_info_data_t()
+    var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+    let ok = withUnsafeMutablePointer(to: &info) {
+      $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+        task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+      }
+    }
+    var ru = rusage()
+    getrusage(RUSAGE_SELF, &ru)
+    let cpu = Double(ru.ru_utime.tv_sec + ru.ru_stime.tv_sec) + Double(ru.ru_utime.tv_usec + ru.ru_stime.tv_usec) / 1e6
+    let wall = ProcessInfo.processInfo.systemUptime
+    let pct = lastCPU.wall > 0 ? (cpu - lastCPU.cpu) / max(0.001, wall - lastCPU.wall) * 100 : 0
+    lastCPU = (cpu, wall)
+    let mb = { (b: UInt64) in String(format: "%.0f MB", Double(b) / 1_048_576) }
+    let mem =
+      ok == KERN_SUCCESS
+      ? "\(mb(info.phys_footprint)) (peak \(mb(UInt64(max(0, info.ledger_phys_footprint_peak)))))" : "?"
+    let draw = editor.map { String(format: "%.2f ms", $0.lastDrawMs) } ?? "–"
+    hud = String(format: "memory %@   CPU %.0f %%\nlast key %.2f ms   last frame %@", mem, pct, lastKeyMs, draw)
+    refreshSoon()
   }
 
   /// observing costs only while the panel is shown
@@ -52,6 +94,7 @@ final class Inspector: NSScrollView {
         case .pasted(let t, let rule): self.pasted = (t, rule)
         default: break
         }
+        if case .key = event { self.lastKeyMs = ms }
         self.events.insert((event.line, ms), at: 0)
         if self.events.count > 50 { self.events.removeLast(self.events.count - 50) }
         self.refreshSoon()
@@ -78,6 +121,8 @@ final class Inspector: NSScrollView {
     func add(_ s: String, _ f: NSFont, _ c: NSColor = ink) {
       out.append(NSAttributedString(string: s, attributes: [.font: f, .foregroundColor: c]))
     }
+    add("This process\n", head)
+    add(hud + "\n\n", mono)
     if let e = editor {
       let core = e.core
       let s = core.selection

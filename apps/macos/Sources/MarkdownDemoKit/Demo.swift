@@ -211,6 +211,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     split.addArrangedSubview(scroll)
     split.addArrangedSubview(inspector)
     inspector.widthAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
+    inspector.isHidden = false
     page.onClick = { [weak self] in for c in self?.cards ?? [] { c.isEditing = false } }
     moves.start()
     window.contentView = split

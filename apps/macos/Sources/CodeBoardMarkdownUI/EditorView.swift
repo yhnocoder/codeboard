@@ -268,7 +268,12 @@ public final class MarkdownEditorView: NSView {
 
   // MARK: drawing
 
+  /// the main thread's time the last draw took, ms (a host's HUD)
+  public private(set) var lastDrawMs = 0.0
+
   public override func draw(_ dirtyRect: NSRect) {
+    let started = BlockLayout.cpu()
+    defer { lastDrawMs = BlockLayout.cpu() - started }
     guard let ctx = NSGraphicsContext.current?.cgContext else { return }
     let scale = zoom * (window?.backingScaleFactor ?? 2)
     ctx.saveGState()
