@@ -40,3 +40,30 @@ import Testing
     #expect(MarkdownEditing.writeLink(p, text: "", url: "") == nil)
   }
 }
+
+/// The link box closes when a press lands elsewhere in the Note, writing what changed and nothing else (it stayed open
+/// after a click into other text)
+@MainActor @Suite struct LinkBoxLeaveTests {
+  func view(_ src: String, caret: Int) -> MarkdownEditorView {
+    _ = boardFonts
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    return MarkdownEditorView(layout: l, caret: caret)
+  }
+
+  @Test func aPressElsewhereClosesIt() {
+    let v = view("Some text here.\n\nSee [the docs](https://x.y) now.", caret: 22)
+    v.openLinkBox()
+    #expect(!v.linkBox.isHidden)
+    v.leaveLinkBox(later: true)
+    #expect(v.linkBox.isHidden)
+    v.mouseUp(with: NSEvent())
+    #expect(v.core.source == "Some text here.\n\nSee [the docs](https://x.y) now.")
+    // a changed address is written when the box is left, the caret kept where it was
+    v.selection = MDSelection(22)
+    v.openLinkBox()
+    v.linkBox.url.stringValue = "https://z.w"
+    v.selection = MDSelection(3)
+    v.leaveLinkBox(later: false)
+    #expect(v.core.source == "Some text here.\n\nSee [the docs](https://z.w) now." && v.core.selection.head == 3)
+  }
+}

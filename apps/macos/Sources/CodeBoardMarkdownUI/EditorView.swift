@@ -56,6 +56,7 @@ public final class MarkdownEditorView: NSView {
       if isEditing {
         core.select(core.selection)
       } else {
+        leaveLinkBox(later: false)
         // leaving: nothing stays selected, the static picture again
         core.select(MDSelection(core.selection.head))
         core.layout.setHead(nil)
@@ -952,6 +953,32 @@ public final class MarkdownEditorView: NSView {
     linkBox.show(p, under: r, theme: core.layout.theme)
   }
 
+  /// what the link box held when a press left it, written once the press has put the caret where it was pressed
+  private var leftLink: (place: MDLinkPlace, text: String, url: String)?
+
+  /// The link box is left for somewhere else (bubble.tsx leaveLink): it closes; what it holds is written, now or after the
+  /// press that left it (`later`); fields left as they were write nothing
+  func leaveLinkBox(later: Bool) {
+    guard !linkBox.isHidden, let p = linkBox.place else { return }
+    let held = (p, linkBox.text.stringValue, linkBox.url.stringValue)
+    linkBox.isHidden = true
+    linkBox.place = nil
+    leftLink = held
+    if !later { writeLeftLink() }
+  }
+
+  private func writeLeftLink() {
+    guard let (p, text, url) = leftLink else { return }
+    leftLink = nil
+    guard text != p.text || url != p.url, let e = MarkdownEditing.writeLink(p, text: text, url: url) else { return }
+    // the caret stays where the press put it, moved by what the write changed before it
+    let head = core.selection.head
+    let delta = (e.replacement as NSString).length - e.range.count
+    let keep = head >= e.range.upperBound ? head + delta : head <= e.range.lowerBound ? head : e.range.lowerBound
+    core.apply(MDEdit(range: e.range, replacement: e.replacement, selection: MDSelection(keep), undo: e.undo))
+    changed()
+  }
+
   // MARK: the selection's toolbar
 
   /// the buttons for the selection: all while editing, Bold and Highlight on the static picture
@@ -1071,6 +1098,8 @@ public final class MarkdownEditorView: NSView {
 
   public override func mouseDown(with e: NSEvent) {
     begin()
+    // a press anywhere in the Note leaves the link box: it closes at once, what it holds is written on the release
+    leaveLinkBox(later: true)
     let p = convert(e.locationInWindow, from: nil)
     let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
     defer {
@@ -1309,6 +1338,7 @@ public final class MarkdownEditorView: NSView {
   }
 
   public override func mouseUp(with e: NSEvent) {
+    defer { writeLeftLink() }
     if imageDragFrom != nil {
       // a click on the image already selected: its source opens (editor/widgets.ts)
       imageDragFrom = nil
@@ -1365,7 +1395,10 @@ public final class MarkdownEditorView: NSView {
     guard core.revealPending else { return }
     settle = Timer.scheduledTimer(withTimeInterval: MarkdownTiming.revealAfterClick, repeats: false) { [weak self] _ in
       MainActor.assumeIsolated {
-        guard let self, self.core.settle() else { return }
+        guard let self else { return }
+        // timed from the timer, not from the click 450 ms before (that wait is not the main thread's)
+        self.begin()
+        guard self.core.settle() else { return }
         self.changed()
       }
     }

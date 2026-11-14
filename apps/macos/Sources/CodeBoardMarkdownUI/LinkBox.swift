@@ -29,9 +29,12 @@ final class LinkBox: NSView, NSTextFieldDelegate {
     }
     open.image = NSImage(systemSymbolName: "arrow.up.right.square", accessibilityDescription: "Open")
     open.toolTip = "Open"
-    remove.image = NSImage(systemSymbolName: "link.badge.minus", accessibilityDescription: "Remove Link")
+    // a symbol every supported macOS has (a missing one leaves the button its title, "Button", cut off at the edge)
+    remove.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Remove Link")
     remove.toolTip = "Remove Link"
     for b in [open, remove] {
+      b.title = ""
+      b.imagePosition = .imageOnly
       b.bezelStyle = .accessoryBarAction
       b.isBordered = false
       b.target = self
