@@ -315,16 +315,16 @@ extension CanvasWritingTests {
 }
 
 extension CanvasWritingTests {
-  @Test func theToolbarShowsItsFiveToolsAndMakesNoteTextAndBoxInTheViewsMiddle() async throws {
+  @Test func theToolbarShowsItsSixToolsAndMakesNoteTextAndBoxInTheViewsMiddle() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }
     let bar = CanvasToolbar(frame: CGRect(x: 0, y: 0, width: 300, height: 100))
-    #expect(bar.tools == [.note, .text, .box, .section, .arrow])
-    // the web board's sizes: Warm Ink 4 + 5 × 30 + 4 × 2 + 4 wide, 36 tall; Ink Wash 22 + 5 × 30 + 4 + 34, 46; then
+    #expect(bar.tools == [.note, .text, .box, .section, .arrow, .sticker])
+    // the web board's sizes: Warm Ink 4 + 6 × 30 + 5 × 2 + 4 wide, 36 tall; Ink Wash 22 + 6 × 30 + 5 + 34, 46; then
     // the zoom figure after a separator (gap, 0.5 with 4 each side, gap, 44)
-    #expect(bar.barSize == CGSize(width: 166 + 2 + 8.5 + 2 + 44, height: 36))
+    #expect(bar.barSize == CGSize(width: 198 + 2 + 8.5 + 2 + 44, height: 36))
     bar.theme = .inkWash
-    #expect(bar.barSize == CGSize(width: 210 + 1 + 8.5 + 1 + 44, height: 46))
+    #expect(bar.barSize == CGSize(width: 241 + 1 + 8.5 + 1 + 44, height: 46))
     var used: [Tool] = []
     bar.onTool = {
       used.append($0)

@@ -11,7 +11,7 @@ public enum Tool: CaseIterable, Sendable {
   case note, text, box, image, web, section, arrow, sticker
 
   /// What can be made from the Mac app's toolbar now
-  public static let made: [Tool] = [.note, .text, .box, .section, .arrow]
+  public static let made: [Tool] = [.note, .text, .box, .section, .arrow, .sticker]
 
   var name: String {
     switch self {
@@ -33,6 +33,7 @@ public enum Tool: CaseIterable, Sendable {
     case .box: Icons.box()
     case .section: Icons.section()
     case .arrow: Icons.arrowLink()
+    case .sticker: Icons.sticker
     default: nil
     }
   }
@@ -112,6 +113,9 @@ public final class CanvasToolbar: NSView {
   static let zoomFont = Font.board("JetBrainsMono-400-600", size: 11.5, weight: 400) ?? Font.mono(11.5, .regular)
   static let countFont = Font(NSFont.systemFont(ofSize: 12, weight: .semibold))
   static let askFont = Font(NSFont.systemFont(ofSize: 11, weight: .bold))
+
+  /// A tool's button in this view
+  public func rect(of tool: Tool) -> CGRect? { tools.firstIndex(of: tool).map { buttonRects()[$0] } }
 
   /// The questions button's rect in this view, while it shows
   public var questionsRect: CGRect? { extraRects().questions }

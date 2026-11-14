@@ -281,6 +281,7 @@ extension Board {
     case .card(let id): card(id) != nil
     case .section(let id): section(id) != nil
     case .arrow(let id): arrows.contains { $0.id == id }
+    case .sticker(let id): stickers.contains { $0.id == id }
     }
   }
 }

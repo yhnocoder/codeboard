@@ -144,6 +144,14 @@ public final class CanvasView: NSView {
   let dropLayer = CALayer()
   /// Sidenote markers free on the board (a card's and a Section's are in their own layers)
   let freeMarks = CALayer()
+  /// Stickers free on the board, over the cards (a card's are in its own layer), as laid out, their layers in order
+  let freeStickers = CALayer()
+  var stickerSpots: [StickerSpot] = []
+  var stickerLayers: [CALayer] = []
+  /// The glyph picked in the palette, following the pointer (its ghost, in the view's units) until a click
+  package var placing: Sticker.Glyph?
+  let stickerGhost = CALayer()
+  package var stickerPalette: StickerPalette?
   /// The sidenote markers shown, their layers in the same order, and the zoom they were placed at
   var marks: [Mark] = []
   var markLayers: [CALayer] = []
@@ -238,10 +246,12 @@ public final class CanvasView: NSView {
     root.backgroundColor = theme.canvas
     layer = root
     wantsLayer = true
-    for l in [world, sections, dropLayer, below, arrows, litArrows, above, cards, freeMarks, chrome] {
+    for l in [world, sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers, freeMarks, chrome] {
       l.anchorPoint = .zero
     }
-    for l in [sections, dropLayer, below, arrows, litArrows, above, cards, freeMarks, chrome] { world.addSublayer(l) }
+    for l in [sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers, freeMarks, chrome] {
+      world.addSublayer(l)
+    }
     backdrop.anchorPoint = .zero
     root.addSublayer(backdrop)
     root.addSublayer(world)
@@ -249,6 +259,9 @@ public final class CanvasView: NSView {
     root.addSublayer(marquee)
     toastLayer.isHidden = true
     root.addSublayer(toastLayer)
+    stickerGhost.anchorPoint = .zero
+    stickerGhost.isHidden = true
+    root.addSublayer(stickerGhost)
   }
 
   @available(*, unavailable)
@@ -536,6 +549,10 @@ public final class CanvasView: NSView {
     placeMarks()
     if openPop != nil { refreshPop() }
     if listShown, !keepCamera { closeQuestionList() }
+    if !keepCamera {
+      cancelPlacing()
+      closeStickerPalette()
+    }
     questionsChanged()
     drawChrome()
   }

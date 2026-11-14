@@ -211,6 +211,7 @@ extension CanvasView {
     }
     // a popup goes with its marker
     if popShown != nil { positionPop() }
+    placeStickers()
   }
 
   /// A marker's layer: its round badge, the count or ? on it

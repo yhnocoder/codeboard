@@ -233,7 +233,14 @@ final class Pane: NSView {
     addSubview(canvas)
     // the bottom toolbar, 12 above the bottom edge (its view has room for its shadow around it)
     toolbar.translatesAutoresizingMaskIntoConstraints = false
-    toolbar.onTool = { [weak self] in self?.canvas.use($0) }
+    toolbar.onTool = { [weak self] tool in
+      guard let self else { return }
+      if tool == .sticker, let r = toolbar.rect(of: .sticker) {
+        canvas.toggleStickerPalette(above: toolbar.convert(r, to: canvas))
+      } else {
+        canvas.use(tool)
+      }
+    }
     canvas.onMode = { [weak self] in self?.toolbar.active = $0 }
     // the zoom figure and the questions after the tools
     toolbar.onZoom100 = { [weak self] in self?.canvas.zoomTo100() }

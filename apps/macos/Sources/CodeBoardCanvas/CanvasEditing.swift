@@ -29,6 +29,8 @@ struct Gesture {
     case connect(Connect)
     /// A Section's frame dragged out (the toolbar's Section)
     case draw
+    /// A sticker moved or resized
+    case sticker(StickerDrag)
   }
 
   var kind: Kind
@@ -87,7 +89,7 @@ struct Resize {
 /// How near a Text's handle the pointer must be to take it (view points)
 private let handleReach: CGFloat = 6
 /// How far the pointer moves before a press becomes a drag (view points)
-private let dragSlop: CGFloat = 3
+let dragSlop: CGFloat = 3
 
 extension CanvasView {
   // MARK: Showing a document
@@ -425,7 +427,7 @@ extension CanvasView {
     switch item {
     case .card(let id): r = index(of: .card(id)).map { s.items[$0].rect }
     case .section(let id): r = s.frames.first { $0.id == id }?.rect
-    case .arrow: return nil
+    case .arrow, .sticker: return nil
     }
     guard var rect = r else { return nil }
     if case .card(let id) = item, editing?.id == id { rect = editingRect(rect) }
@@ -456,6 +458,10 @@ extension CanvasView {
       litArrows.sublayers = nil
       drawArrowChrome()
       for item in doc.selection {
+        if case .sticker(let id) = item {
+          stickerChrome(id)
+          continue
+        }
         guard let r = liveRect(item) else { continue }
         switch item {
         case .card(let id):
@@ -467,7 +473,7 @@ extension CanvasView {
             framed(r, zoom: z)
           }
         // an arrow's selected look is its own (selectArrows)
-        case .arrow: break
+        case .arrow, .sticker: break
         }
       }
       raiseText()
@@ -645,7 +651,7 @@ extension CanvasView {
       // folded: no handles (only its title shows)
       if document?.board.section(id)?.collapsed == true { return [] }
       return [.left, .right, .top, .bottom, [.left, .top], [.right, .top], [.left, .bottom], [.right, .bottom]]
-    case .arrow: return []
+    case .arrow, .sticker: return []
     case .card(let id):
       guard let s = scene, let i = index(of: .card(id)), s.items[i].tilt == 0 else { return [] }
       switch s.items[i].drawing {
@@ -735,6 +741,21 @@ extension CanvasView {
   public override func mouseMoved(with e: NSEvent) {
     guard gesture == nil else { return }
     let v = convert(e.locationInWindow, from: nil)
+    if placing != nil {
+      moveGhost(to: v)
+      NSCursor.arrow.set()
+      return
+    }
+    if hitStickerGrip(v) != nil {
+      resizeCursor([.right, .bottom]).set()
+      hover(nil)
+      return
+    }
+    if let i = stickerAt(camera.board(v)), markAt(camera.board(v)) == nil {
+      (stickerSpots[i].line ? NSCursor.pointingHand : NSCursor.openHand).set()
+      hover(nil)
+      return
+    }
     let mark = markAt(camera.board(v))
     hoverMark(mark)
     if mark != nil {
@@ -776,6 +797,12 @@ extension CanvasView {
     guard let doc = document, scene != nil, gesture == nil else { return }
     let v = convert(e.locationInWindow, from: nil)
     let p = camera.board(v)
+    if placing != nil {
+      putSticker(at: p, free: e.modifierFlags.contains(.option))
+      return
+    }
+    // a press anywhere on the board closes the sticker palette
+    closeStickerPalette()
     if case .connect(let from)? = mode {
       finishConnect(from: from, at: p)
       return
@@ -799,6 +826,11 @@ extension CanvasView {
     }
     // a press anywhere else on the board closes it (what is being written in it is added)
     if openPop != nil { openPop(nil) }
+    // a sticker, or the selected one's grip
+    if pressSticker(e, view: v, board: p) {
+      clearLineSel()
+      return
+    }
     // a ref's preview closes, but on the press on its ref (which closes it too, as its second click)
     refPress = e.clickCount == 1 ? refAt(p) : nil
     if let peek = refPeek,
@@ -953,6 +985,11 @@ extension CanvasView {
       g.kind = .connect(c)
       gesture = g
       drawChrome()
+    case .sticker(var d):
+      dragSticker(&d, view: v, start: g.start, startView: g.startView)
+      g.kind = .sticker(d)
+      gesture = g
+      drawChrome()
     case .nudge, .still:
       break
     }
@@ -1007,6 +1044,8 @@ extension CanvasView {
       let v = convert(e.locationInWindow, from: nil)
       commitDraw(
         from: g.start, to: camera.board(v), moved: hypot(v.x - g.startView.x, v.y - g.startView.y) >= dragSlop)
+    case .sticker(let d):
+      commitSticker(d, free: e.modifierFlags.contains(.option))
     case .nudge, .still:
       gesture = nil
     }
@@ -1147,7 +1186,7 @@ extension CanvasView {
     var what = Resize.What.card
     var minSize = CGSize(width: 160, height: 64)
     switch item {
-    case .arrow: return
+    case .arrow, .sticker: return
     case .section:
       what = .section
       minSize = CGSize(width: 120, height: 80)
@@ -1264,7 +1303,7 @@ extension CanvasView {
     }
     let rounded = CGRect(x: r.minX.rounded(), y: r.minY.rounded(), width: r.width.rounded(), height: r.height.rounded())
     switch (z.item, z.what) {
-    case (.arrow, _): return
+    case (.arrow, _), (.sticker, _): return
     case (.section(let id), _):
       // the cards it now covers by more than a third join it (in none or in one around it), its own it no longer
       // covers go to the Section they then lie in (board resizeSection)
@@ -1323,7 +1362,7 @@ extension CanvasView {
     case .section(let id):
       if let i = index(of: .sectionTitle(id)) { ids.append(i) }
       if let i = scene?.frames.firstIndex(where: { $0.id == id }) { fs.append(i) }
-    case .arrow: break
+    case .arrow, .sticker: break
     }
     showScene(arrows: [], items: ids, frames: fs)
     drawChrome()
@@ -1362,6 +1401,8 @@ extension CanvasView {
       delete(nil)
     case 53:  // Esc: a ref's preview, the mode, else the popup, else the selection
       if refPeek != nil { return closeRefPeek() }
+      if placing != nil { return cancelPlacing() }
+      if stickerPalette != nil { return closeStickerPalette() }
       if cancelMode() { return }
       if openPop != nil { return openPop(nil) }
       if lineSel != nil { return clearLineSel() }
@@ -1515,7 +1556,7 @@ extension CanvasView {
     switch item {
     case .card(let id): document?.board.card(id)?.locked == true
     case .section(let id): document?.board.section(id)?.locked == true
-    case .arrow: false
+    case .arrow, .sticker: false
     }
   }
 
@@ -1527,6 +1568,12 @@ extension CanvasView {
     guard let doc = document, gesture == nil else { return nil }
     // it acts on what is under the pointer, selected first when it is not
     let p = camera.board(convert(e.locationInWindow, from: nil))
+    // a sticker's: its colours and Delete
+    if let i = stickerAt(p), markAt(p) == nil {
+      let id = stickerSpots[i].id
+      doc.select([.sticker(id)])
+      return stickerMenu(id)
+    }
     // an arrow's or its label's own menu, for it alone (menus.ts linkMenu, labelMenu)
     if let id = hitArrowLabel(p) {
       doc.select([.arrow(id)])

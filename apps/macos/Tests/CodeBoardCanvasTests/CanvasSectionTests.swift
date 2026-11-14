@@ -65,7 +65,7 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     defer { r.close() }
     var shown: [Tool?] = []
     r.canvas.onMode = { shown.append($0) }
-    #expect(Tool.made == [.note, .text, .box, .section, .arrow])
+    #expect(Tool.made == [.note, .text, .box, .section, .arrow, .sticker])
     r.canvas.use(.section)
     #expect(r.canvas.mode == .drawSection && shown == [.section])
     #expect(r.canvas.toastText == "Drag on the canvas to draw a section · Esc to cancel")

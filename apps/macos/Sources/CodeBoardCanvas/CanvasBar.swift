@@ -91,6 +91,11 @@ enum Icons {
   }
 
   /// icons.tsx arrowLink: a ring with a bent arrow
+  /// icons.tsx sticker: a sheet with a turned corner and a smile
+  nonisolated(unsafe) static let sticker = SVGPath.parse(
+    "M10 2L14 6V13.5A.5 .5 0 0 1 13.5 14H2.5A.5 .5 0 0 1 2 13.5V2.5A.5 .5 0 0 1 2.5 2H10zM10 2V5.5A.5 .5 0 0 0 10.5 6H14M6 11c1.2 1 2.8 1 4 0"
+  )
+
   static func arrowLink() -> CGPath {
     let p = CGMutablePath()
     p.addEllipse(in: CGRect(x: 2, y: 10, width: 4, height: 4))

@@ -23,7 +23,8 @@ extension CanvasView {
 
   /// The toolbar's tool that shows as in use
   var activeTool: Tool? {
-    switch mode {
+    if placing != nil || stickerPalette != nil { return .sticker }
+    return switch mode {
     case .connect?: .arrow
     case .drawSection?: .section
     case nil: nil

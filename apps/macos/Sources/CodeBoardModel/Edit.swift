@@ -11,8 +11,10 @@ public enum Item: Hashable, Sendable {
   case card(CardID)
   case section(SectionID)
   case arrow(ArrowID)
+  case sticker(StickerID)
 
   public var card: CardID? { if case .card(let id) = self { id } else { nil } }
+  public var sticker: StickerID? { if case .sticker(let id) = self { id } else { nil } }
   public var section: SectionID? { if case .section(let id) = self { id } else { nil } }
   public var arrow: ArrowID? { if case .arrow(let id) = self { id } else { nil } }
 }
@@ -41,8 +43,8 @@ extension Board {
       guard let c = card(id) else { return false }
       return c.locked || c.section.map { isLocked(section: $0) } == true
     case .section(let id): return isLocked(section: id)
-    // an arrow has no lock of its own (the web board's links have none)
-    case .arrow: return false
+    // an arrow or a sticker has no lock of its own (the web board's have none)
+    case .arrow, .sticker: return false
     }
   }
 
@@ -163,6 +165,8 @@ extension Board {
   public mutating func delete(_ items: Set<Item>, missing: Set<CardID> = []) {
     let goneArrows = Set(items.compactMap(\.arrow))
     arrows.removeAll { goneArrows.contains($0.id) }
+    let goneStickers = Set(items.compactMap(\.sticker))
+    stickers.removeAll { goneStickers.contains($0.id) }
     // a folder board's automatic cards go only with what they are for, or when that is missing
     let goneCards = Set(
       items.compactMap(\.card).filter {
