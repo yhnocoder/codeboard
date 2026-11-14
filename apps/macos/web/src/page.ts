@@ -19,6 +19,7 @@ import {
   type RefPick,
   warmUp,
 } from "@yhnocoder/markdown/editor";
+import { codeEditor } from "@yhnocoder/markdown/code-editor";
 import "@yhnocoder/markdown/katex.css";
 import "../../../../packages/board/src/fonts.css";
 import "../../../../packages/board/src/styles.css";
@@ -381,11 +382,13 @@ type Ended = {
   layoutChanged: boolean;
   blocks: { was: string[] | null; now: string[] | null } | null;
 };
+/** What the editing needs of its editor: the Markdown editor's, or the code editor's made to look like it */
+type Handle = Pick<MdEditorHandle, "value" | "layout" | "destroy" | "type" | "placeCaret">;
 type Editing = {
   slot: Slot;
   original: string;
   layout: MdLayout | null;
-  editor: MdEditorHandle;
+  editor: Handle;
   /** What it ended with, once ended (the editor leaving by itself or native finishing it, whichever came first) */
   ended: Ended | null;
 };
@@ -527,6 +530,115 @@ const edit = {
       if (a.open) openRefAt(x, y);
     } else e.editor.placeCaret("end");
     const r = made.card.getBoundingClientRect();
+    return { width: r.width / a.k, height: r.height / a.k };
+  },
+  /** Mounts a Free code card's code in the code editor, as the board's FreeEdit does: the card `width` wide, its code
+   *  `top` below the card's top (under its header, which the canvas draws), at zoom k, `margin` px from the page's top
+   *  left; the caret at `caret` (card px at 100 %), else at the start. Colours come from native (the `highlight`
+   *  handler: the board's token classes as HTML), so entering and leaving change no colour. Resolves with its size */
+  async code(a: {
+    look: string;
+    dark: boolean;
+    k: number;
+    margin: number;
+    width: number;
+    top: number;
+    text: string;
+    lang: string;
+    start: number;
+    wrap: boolean;
+    html: string | null;
+    caret: { x: number; y: number } | null;
+  }) {
+    edit.clear();
+    setLook(a.look, a.dark);
+    document.documentElement.dataset.margin = String(a.margin);
+    // Card.tsx and CodeBody.tsx: the card, its face, its body, the code (the header keeps its place, drawn by the canvas)
+    const card = document.createElement("div");
+    card.className = "card ccard editing";
+    card.style.width = `${a.width}px`;
+    const face = document.createElement("div");
+    face.className = "cface";
+    face.style.paddingTop = `${a.top}px`;
+    const body = document.createElement("div");
+    body.className = a.wrap ? "cbody editing wrap" : "cbody editing";
+    const code = document.createElement("div");
+    const lines = a.text.split("\n").length;
+    code.className = "code freecode";
+    code.style.setProperty("--nd", String(String(a.start + lines - 1).length));
+    body.append(code);
+    face.append(body);
+    card.append(face);
+    const s = newSlot("edit", card);
+    s.slot.classList.add("shown");
+    s.slot.style.left = `${a.margin}px`;
+    s.slot.style.top = `${a.margin}px`;
+    s.slot.style.transform = a.k === 1 ? "" : `scale(${a.k})`;
+    s.slot.dataset.k = String(a.k);
+    const handler = (
+      window.webkit?.messageHandlers as unknown as {
+        highlight?: { postMessage(m: unknown): Promise<string | null> };
+      }
+    ).highlight;
+    const lang = a.lang;
+    const e: Editing = {
+      slot: s,
+      original: a.text,
+      layout: null,
+      ended: null,
+      editor: undefined as unknown as Handle,
+    };
+    const ed = codeEditor({
+      parent: code,
+      text: a.text,
+      lang,
+      wrap: a.wrap,
+      gutter: { start: a.start },
+      html: a.html ?? undefined,
+      highlight: handler ? (t) => handler.postMessage({ text: t, lang }).catch(() => null) : undefined,
+      stopPointerDown: true,
+      find: true,
+      classes: { menu: "ctx", bar: "pill", button: "tbtn" },
+      // Esc, ⌘↵ (FreeEdit onExit)
+      onExit: () => {
+        const r = end(e, ed.text() === e.original ? null : ed.text(), null);
+        if (r) post({ type: "done", ...r });
+      },
+      onChange: (t) => {
+        code.style.setProperty("--nd", String(String(a.start + t.split("\n").length - 1).length));
+      },
+    });
+    const v = ed.view;
+    e.editor = {
+      value: () => ed.text(),
+      layout: () => null,
+      destroy: () => ed.destroy(),
+      type: (t: string) => v.dispatch(v.state.replaceSelection(t), { userEvent: "input.type", scrollIntoView: false }),
+      placeCaret: (at) => {
+        const pos = at === "end" ? v.state.doc.length : "x" in at ? v.posAtCoords(at, false) : 0;
+        v.dispatch({ selection: { anchor: pos } });
+        v.focus();
+        return true;
+      },
+    };
+    editing = e;
+    let last = "";
+    new ResizeObserver(() => {
+      const r = card.getBoundingClientRect();
+      const k = Number(s.slot.dataset.k ?? 1);
+      const size = { width: r.width / k, height: r.height / k };
+      const key = `${size.width} ${size.height}`;
+      if (key === last) return;
+      last = key;
+      post({ type: "size", ...size });
+    }).observe(card);
+    await settled([card]);
+    if (a.caret) e.editor.placeCaret({ x: a.margin + a.caret.x * a.k, y: a.margin + a.caret.y * a.k });
+    else {
+      v.dispatch({ selection: { anchor: 0 } });
+      v.focus();
+    }
+    const r = card.getBoundingClientRect();
     return { width: r.width / a.k, height: r.height / a.k };
   },
   /** The zoom it is shown at; resolves once drawn so */

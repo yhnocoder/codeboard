@@ -38,12 +38,14 @@ struct Editing {
   var drafted = false
   /// This writing, among others of the same card
   let session = UUID()
+  /// Free code, in the code editor (CanvasFreeCode)
+  var code = false
 }
 
 /// The card sits this far in from the web view's top left (view points), so the editor's menus have room: it places them
 /// inside the web view, where the web board has the whole window, so the room takes the widest (the [[ list, 372) beside
 /// a caret anywhere on the card
-private let editorMargin: CGFloat = 400
+let editorMargin: CGFloat = 400
 
 extension CanvasView {
   /// One editor for the app: one card is edited at a time
@@ -149,6 +151,12 @@ extension CanvasView {
     if let size = ed.size {
       it.rect.size.height = size.height
       if case .note(let n) = it.drawing, n.content.isText { it.rect.size.width = size.width }
+    }
+    // Free code: its header and paper, the code being the editor's
+    if case .code(var c) = it.drawing {
+      c.layout.rows = []
+      c.layout.bands = []
+      it.drawing = .code(c)
     }
     let scale = Levels.scale(camera.zoom, backing: backing, size: it.bitmapSize)
     let paper = CanvasView.render(it, scale: scale, theme: theme, images: images).surface
@@ -310,6 +318,11 @@ extension CanvasView {
       editing?.ending == false, w.text != nil || w.layoutChanged || ed.drafted
     else { return }
     let id = ed.id
+    if ed.code {
+      if let text = w.text { ed.doc.draft { $0.writeFreeCode(id, text: text) } }
+      editing?.drafted = true
+      return
+    }
     let text = w.text ?? ed.card.writing ?? ""
     guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
     ed.doc.draft { b in
@@ -354,7 +367,13 @@ extension CanvasView {
     let text = written?.text
     let id = ed.id
     let note = !(ed.card.textCard != nil)
-    if ed.fresh {
+    if ed.code {
+      // one step from where the writing began; none when nothing changed
+      doc.settleWriting(keep: true, "Edit Code") { b in
+        if b.card(id) == nil { b.cards.append(ed.card) }
+        if let text { b.writeFreeCode(id, text: text) }
+      }
+    } else if ed.fresh {
       let keep = !(text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       let name = note ? "New Note" : ed.card.textCard?.look == .box ? "New Box" : "New Text"
       doc.settleWriting(keep: keep, name) { b in
@@ -424,6 +443,13 @@ extension CanvasView {
     if let id = hitCard(p) {
       if openSubBoard(id) { return }
       if openPage(at: p) { return }
+      if isFreeCode(id) {
+        Task {
+          await endEditing()
+          beginCodeEditing(id, at: p)
+        }
+        return
+      }
       guard isWriting(id) else { return }
       Task {
         await endEditing()

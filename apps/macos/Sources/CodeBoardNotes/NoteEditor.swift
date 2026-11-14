@@ -36,6 +36,8 @@ public final class NoteEditor: NSObject {
   public var onElsewhere: (() -> Void)?
   /// Where a pasted or dropped picture is stored: the folder whose `images/` it goes into (the board's package)
   public var imagesFolder: URL?
+  /// Code's colours as the board's token classes in HTML, one line per line (text, language), for code being written
+  public var highlight: (@MainActor (String, String) -> String?)?
   private let signal = EditorSignal()
 
   public init(page: URL = NoteRenderer.bundledPage) {
@@ -44,6 +46,7 @@ public final class NoteEditor: NSObject {
     super.init()
     config.userContentController.add(signal, name: "note")
     config.userContentController.addScriptMessageHandler(ImageSaver(self), contentWorld: .page, name: "image")
+    config.userContentController.addScriptMessageHandler(CodeColours(self), contentWorld: .page, name: "highlight")
     view.setValue(false, forKey: "drawsBackground")
     view.shown = false
     signal.editor = self
@@ -84,6 +87,34 @@ public final class NoteEditor: NSObject {
         + " refList: list === null ? null : JSON.parse(list)})", arguments: args, contentWorld: .page)
     guard let d = r as? [String: Any], let w = d["width"] as? Double, let h = d["height"] as? Double else {
       throw NoteRenderError.page("the editor answered \(String(describing: r))")
+    }
+    let size = CGSize(width: w, height: h)
+    place(size: size, k: k, margin: margin)
+    return size
+  }
+
+  /// Mounts a Free code card's code (`lines` from `start`, in `language`) in the code editor, on a card `width` wide
+  /// whose code is `top` below its top, in the board theme `look` and appearance, at zoom `k`, its card `margin` points
+  /// in, the caret at `caret` (card points at 100 %) or at the start, and takes the keyboard; returns its size at 100 %
+  public func beginCode(
+    _ lines: [String], language: String, start: Int, wrap: Bool, width: Double, top: Double, look: String, dark: Bool,
+    k: Double, margin: Double, caret: CGPoint?
+  ) async throws -> CGSize {
+    await ready()
+    view.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+    view.cardRect = .zero
+    view.uiRects = []
+    let text = lines.joined(separator: "\n")
+    let args: [String: Any] = [
+      "a": [
+        "look": look, "dark": dark, "k": k, "margin": margin, "width": width, "top": top, "text": text,
+        "lang": language, "start": start, "wrap": wrap, "html": highlight?(text, language) ?? NSNull(),
+        "caret": caret.map { ["x": $0.x, "y": $0.y] } ?? NSNull(),
+      ] as [String: Any]
+    ]
+    let r = try await view.callAsyncJavaScript("return await edit.code(a)", arguments: args, contentWorld: .page)
+    guard let d = r as? [String: Any], let w = d["width"] as? Double, let h = d["height"] as? Double else {
+      throw NoteRenderError.page("the code editor answered \(String(describing: r))")
     }
     let size = CGSize(width: w, height: h)
     place(size: size, k: k, margin: margin)
@@ -295,5 +326,19 @@ private final class ImageSaver: NSObject, WKScriptMessageHandlerWithReply {
     else { return (nil, nil) }
     let address = try? await Task.detached { try NoteEditor.store(dataURL: url, in: folder) }.value
     return (address ?? nil, nil)
+  }
+}
+
+/// The code editor's colours, asked as its text changes
+private final class CodeColours: NSObject, WKScriptMessageHandlerWithReply {
+  weak var editor: NoteEditor?
+  init(_ e: NoteEditor) { editor = e }
+
+  func userContentController(
+    _ c: WKUserContentController, didReceive message: WKScriptMessage
+  ) async -> (Any?, String?) {
+    guard let m = message.body as? [String: Any], let text = m["text"] as? String, let lang = m["lang"] as? String
+    else { return (nil, nil) }
+    return (await MainActor.run { editor?.highlight?(text, lang) }, nil)
   }
 }
