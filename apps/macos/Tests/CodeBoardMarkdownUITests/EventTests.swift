@@ -10,7 +10,8 @@ import Testing
   /// a switch a host makes is timed from itself, not from the last key (the inspector once showed seconds for it)
   @Test func enteringEditingIsTimedFromItsOwnStart() {
     _ = boardFonts
-    let l = BlockLayout(MarkdownDocument("a b c"), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let l = BlockLayout(
+      MarkdownDocument("a b c"), width: 300, theme: testTheme, layout: nil, resources: TestResources())
     let v = MarkdownEditorView(layout: l, caret: 0)
     var editing: Double?
     v.observer = { e, ms in if case .editing = e { editing = ms } }
