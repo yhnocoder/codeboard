@@ -171,6 +171,14 @@ extension NSMenu {
   }
 }
 
+/// The app's pasteboard: a private one of this process, never the clipboard the person uses
+nonisolated(unsafe) let ownPasteboard = NSPasteboard(
+  name: NSPasteboard.Name("com.example.codeboard.accept.\(getpid())"))
+extension NSPasteboard {
+  @objc class func accGeneral() -> NSPasteboard { ownPasteboard }
+}
+
+swizzle(NSPasteboard.self, #selector(getter: NSPasteboard.general), #selector(NSPasteboard.accGeneral), meta: true)
 swizzle(NSEvent.self, #selector(getter: NSEvent.mouseLocation), #selector(NSEvent.accMouseLocation), meta: true)
 swizzle(
   NSEvent.self, #selector(getter: NSEvent.pressedMouseButtons), #selector(NSEvent.accPressedMouseButtons), meta: true)
@@ -256,6 +264,33 @@ swizzle(NSMenu.self, #selector(NSMenu.popUp(positioning:at:in:)), #selector(NSMe
 swizzle(
   NSMenu.self, #selector(NSMenu.popUpContextMenu(_:with:for:)), #selector(NSMenu.accPopUpContextMenu(_:with:for:)),
   meta: true)
+
+/// A stored property of `x` (and of what that one holds…), optionals unwrapped, by reflection: the driver needs nothing
+/// public from the app
+func field(_ x: Any, _ path: String...) -> Any? {
+  var at: Any? = x
+  for label in path {
+    guard let v = at.flatMap(unwrapped) else { return nil }
+    var m: Mirror? = Mirror(reflecting: v)
+    at = nil
+    while let mm = m, at == nil {
+      // (an @Observable class keeps its properties as `_name`)
+      at = mm.children.first { $0.label == label || $0.label == "_" + label }?.value
+      m = mm.superclassMirror
+    }
+  }
+  return at.flatMap(unwrapped)
+}
+func unwrapped(_ x: Any) -> Any? {
+  let m = Mirror(reflecting: x)
+  guard m.displayStyle == .optional else { return x }
+  return m.children.first.flatMap { unwrapped($0.value) }
+}
+/// Every string in a value, depth first
+func strings(_ x: Any) -> [String] {
+  if let s = x as? String { return [s] }
+  return Mirror(reflecting: x).children.flatMap { strings($0.value) }
+}
 
 // MARK: The driver
 
@@ -883,7 +918,41 @@ swizzle(
         NotificationCenter.default.post(name: NSWindow.didBecomeMainNotification, object: w)
         NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: w)
       }
+    // text id: every string the canvas draws the card from now (its scene's part), as read by reflection
+    case "text":
+      guard let c = canvas, let parts = field(c, "scene", "parts") else { return "no canvas" }
+      for kv in Mirror(reflecting: parts).children {
+        let pair = Mirror(reflecting: kv.value).children.map(\.value)
+        guard pair.count == 2, field(pair[0], "rawValue") as? String == a[1] else { continue }
+        return strings(field(pair[1], "content") as Any).joined(separator: " ").replacingOccurrences(
+          of: "\n", with: " ")
+      }
+      return "none"
+    // board: the open board's package, relative to the vault
+    case "board":
+      guard let c = canvas, let p = field(c, "shown", "board", "path") as? String else { return "none" }
+      return p
+    // row title: where the sidebar's row of the board or folder with this title is, in the window (what move and click
+    // take): the rows as the sidebar lists them (each folder, what is in it when open, then the boards), 29 apart, the
+    // first at 90, 91 (Sidebar.swift: 28 tall, 1 between)
+    case "row":
+      guard let shell = NSApp.delegate.flatMap({ field($0, "shell") }), let tree = field(shell, "tree") else {
+        return "none"
+      }
+      let open = field(shell, "expanded") as? Set<String> ?? []
+      var rows: [String] = []
+      func walk(_ f: Any) {
+        for sub in field(f, "folders") as? [Any] ?? [] {
+          rows.append(field(sub, "name") as? String ?? "")
+          if let p = field(sub, "path") as? String, open.contains(p) { walk(sub) }
+        }
+        for b in field(f, "boards") as? [Any] ?? [] { rows.append(field(b, "title") as? String ?? "") }
+      }
+      walk(tree)
+      guard let i = rows.firstIndex(of: String(line.dropFirst(4))) else { return "none" }
+      return String(format: "90 %.0f", 91 + 29 * Double(i))
     case "quit":
+      ownPasteboard.releaseGlobally()
       NSApp.terminate(nil)
     default: return "unknown command"
     }

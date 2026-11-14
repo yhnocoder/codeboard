@@ -21,6 +21,10 @@ import CodeBoardNotes
   var summaryWriter: (any SummaryWriter)? {
     didSet { for p in panes.values { p.canvas.summaryWriter = summaryWriter } }
   }
+  /// Where this machine keeps each board's camera, for every canvas (nil: nowhere)
+  var cameras: CameraStore? {
+    didSet { for p in panes.values { p.canvas.cameras = cameras } }
+  }
 
   init(shell: Shell, notes: NoteRenderer? = nil) {
     self.shell = shell
@@ -64,6 +68,19 @@ import CodeBoardNotes
     }
     // not moved (a name taken there): the card put for it goes again
     if shell.move(path, into: fb.folder) == nil { doc.sync { $0.dropAutoCard(for: entry.target) } }
+  }
+
+  /// Cards copied on board `id` and pasted on another become shared cards there first (host storage/boards.ts share),
+  /// written at once so the other board finds their files; returns their ids there now (old → new) and its title. No
+  /// cards: only the title
+  func share(_ id: BoardID, _ cards: Set<CardID>) -> (ids: [CardID: CardID], title: String)? {
+    guard let vault = shell.vault, let at = shell.board(id), let doc = try? document(id) else { return nil }
+    var ids: [CardID: CardID] = [:]
+    if !cards.isEmpty {
+      doc.sync { ids = $0.share(cards, taken: vault.sharedCardExists) }
+      doc.flush()
+    }
+    return (ids, at.title)
   }
 
   /// Where each board whose seal is being edited began
@@ -124,9 +141,11 @@ import CodeBoardNotes
         pane.onReady = { [weak self] in self?.reveal() }
         pane.canvas.summarySwitch = summarySwitch
         pane.canvas.summaryWriter = summaryWriter
+        pane.canvas.cameras = cameras
         pane.onOpenBoard = { [weak self] in self?.shell.show($0) }
         pane.canvas.onVaultChanged = { [weak self] in self?.onVaultChanged?() }
         pane.canvas.onSetSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }
+        pane.canvas.shareOnBoard = { [weak self] in self?.share($0, $1) }
         pane.canvas.onVaultDrop = { [weak self, weak pane] path, p in
           guard let self, let id = pane?.document?.id else { return }
           self.vaultDrop(path, at: p, on: id)
@@ -172,10 +191,12 @@ import CodeBoardNotes
   private func document(_ id: BoardID) throws -> BoardDocument {
     if let doc = documents[id] { return doc }
     // ponytail: reads board.json on the main thread when a board is first opened; move off it if large boards stall
-    let doc = try BoardDocument { [weak shell] in
-      guard let shell, let vault = shell.vault, let at = shell.board(id) else { return nil }
-      return vault.url(of: at.path).appending(path: Vault.boardFileName)
-    }
+    // its shared cards are read in from the vault open now (documents go when it changes: close())
+    let doc = try BoardDocument(
+      file: { [weak shell] in
+        guard let shell, let vault = shell.vault, let at = shell.board(id) else { return nil }
+        return vault.url(of: at.path).appending(path: Vault.boardFileName)
+      }, vault: shell.vault)
     documents[id] = doc
     return doc
   }

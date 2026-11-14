@@ -515,7 +515,7 @@ enum Drawing: Sendable {
     CTLineDraw(CTLineCreateWithAttributedString(a), ctx)
   }
 
-  private static func line(_ s: String, _ font: Font, _ color: CGColor? = nil) -> CTLine {
+  static func line(_ s: String, _ font: Font, _ color: CGColor? = nil) -> CTLine {
     var attrs: [CFString: Any] = [kCTFontAttributeName: font.ct]
     if let color { attrs[kCTForegroundColorAttributeName] = color }
     if font.tracking != 0 { attrs[kCTKernAttributeName] = font.tracking }

@@ -40,6 +40,8 @@ import CodeBoardModel
   /// Only the latest tree read is applied
   private var treeRead = 0
   private var settings: SettingsWindow?
+  /// This app's own record of where each board was last looked at (never the vault's)
+  private let cameras = CameraStore.ofThisApp()
   var driver: AppDriver?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
@@ -68,6 +70,7 @@ import CodeBoardModel
     self.window = window
     self.panes = panes
     panes.onVaultChanged = { [weak self] in self?.readTree(reloadBoards: true) }
+    panes.cameras = cameras
     let ai = AISettings(defaults: .standard)
     let keys = KeychainKeyStore()
     panes.summarySwitch = ai.summarySwitch
@@ -176,7 +179,14 @@ import CodeBoardModel
   private func runImport(from source: URL, into vault: Vault) {
     shell.importing = true
     Task {
-      let result = await Task.detached { Result { try LegacyImport.run(from: source, to: vault.root) } }.value
+      // where each board was looked at in VS Code, read from its state (only read) and kept in this app's own state
+      let store = cameras
+      let result = await Task.detached {
+        Result {
+          try LegacyImport.run(
+            from: source, to: vault.root, cameras: LegacyImport.cameras(for: source), store: store)
+        }
+      }.value
       shell.importing = false
       readTree(reloadBoards: true)
       if let window { presentImport(result, on: window) }
@@ -273,6 +283,8 @@ import CodeBoardModel
     edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
     edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
     edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+    // cards copied on another board: copies of their own, not the same cards (keymap.ts pasteOther)
+    edit.addItem(item("Paste as Copy", #selector(CanvasView.pasteAsCopy(_:)), "v", [.command, .option]))
     edit.addItem(withTitle: "Duplicate", action: #selector(CanvasView.duplicate(_:)), keyEquivalent: "d")
     edit.addItem(withTitle: "Delete", action: #selector(NSText.delete(_:)), keyEquivalent: "")
     edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")

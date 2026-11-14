@@ -31,7 +31,8 @@ const rec = await recordBoards(storage, boardDist);
 const [, recorded] = [...rec.messages][0];
 // the look under test: the theme setting the host sends, light or dark as VS Code's body class says
 const LOOK = process.env.ACCEPT_THEME ?? "warm-ink", DARK = process.env.ACCEPT_DARK === "1";
-const msgs = recorded.map((m: any) => (m.type === "init" ? { ...m, host: { ...m.host, settings: { ...m.host.settings, theme: LOOK } } } : m));
+// no keys forwarded: VS Code takes those (⌘D…) and sends them back as the same key action; here the board takes them itself
+const msgs = recorded.map((m: any) => (m.type === "init" ? { ...m, host: { ...m.host, forwardedKeys: [], settings: { ...m.host.settings, theme: LOOK } } } : m));
 const browser = await launch();
 for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => void browser.close().finally(() => process.exit(0)));
 const ctx = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: Number(process.env.ACCEPT_SCALE ?? 1) });
@@ -214,6 +215,9 @@ async function run(line: string): Promise<string> {
       }
       return "none";
     }, a[1]);
+    // the card's words as the board shows them; the ids of the cards on it
+    case "text": return await page.evaluate((id) => (document.querySelector(`.card[data-id="${CSS.escape(id)}"]`) as HTMLElement | null)?.innerText.replace(/\s+/g, " ").trim() ?? "none", a[1]);
+    case "ids": return await page.evaluate(() => [...document.querySelectorAll(".card[data-id]")].map((e) => e.getAttribute("data-id")).join(" "));
     case "hit": return await hitAt(pos.x, pos.y);
     case "pointer": return `${pos.x.toFixed(1)} ${pos.y.toFixed(1)}`;
     case "origin": return "0 0";

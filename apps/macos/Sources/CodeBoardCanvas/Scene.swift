@@ -87,10 +87,8 @@ struct Scene: Sendable {
   var parts: [CardID: Part] = [:]
   /// The cards whose drawing came from the scene before, unchanged
   var reused: Set<CardID> = []
-  /// The sidenotes shown: the board's own, then those that travel with its shared cards (in their files)
+  /// The sidenotes shown: the board's, those that travel with its shared cards among them (read in with the cards)
   var notes: [Sidenote] = []
-  /// Of `notes`, the ones in shared cards' files (shown, not changed: this board writes only its own file)
-  var sharedNotes: Set<SidenoteID> = []
   /// The Web cards and Link Lists whose pages are being read now (Fetching preview…)
   var fetching: Set<CardID> = []
 
@@ -149,10 +147,11 @@ struct Scene: Sendable {
     }
   }
 
-  /// A card's content and the folder its images are in; nil for a shared card whose file could not be read
+  /// A card's content and the folder its images are in (a shared card's: the vault's shared folder); nil for a shared
+  /// card whose file could not be read
   static func content(of c: Card, package: URL, vault: Vault) -> (CardContent, URL)? {
     switch c.content {
-    case .own(let own): (own, package)
+    case .own(let own): (own, c.isShared ? vault.sharedFolderURL : package)
     case .shared: (try? vault.sharedCard(c.id)).map { ($0.content, vault.sharedFolderURL) }
     }
   }
@@ -197,10 +196,6 @@ struct Scene: Sendable {
       guard var (content, folder) = Scene.content(of: c, package: package, vault: vault) else {
         missing.append(c.id)
         continue
-      }
-      if case .shared = c.content, let s = try? vault.sharedCard(c.id) {
-        notes += s.sidenotes
-        sharedNotes.formUnion(s.sidenotes.map(\.id))
       }
       // the Highlights the board shows: the segment's own and this board's own sidenotes' lines (core shownRanges)
       if case .code(var code) = content.body {

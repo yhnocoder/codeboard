@@ -343,7 +343,8 @@ Box kept on a board before version 16 (the extension drops it too).
 storage folder (the deepest one; `workspaceStorage/<hash>/state.vscdb`, the extension's row), as the board point at the
 view's top left and the zoom (`BoardCamera`: `x = -x/z`, `y = -y/z`, `zoom = z`). Given to `run(from:to:cameras:)`, the
 report's `cameras` has them by the id each written board has in the vault (a copy's its own). They are not part of the
-format: like the extension, the app keeps a board's camera per machine.
+format: like the extension, the app keeps a board's camera per machine, in its own local state (`CameraStore`, under
+Application Support, one file per vault), never in the vault; `run(…, store:)` puts the imported ones there.
 
 **Report** (`ImportReport`): per old file (`source`, relative path) its `destination` in the vault and what was left out,
 as `SkipKind` + the old ids. Nothing is lost: the old files stay as they were and the importer can run again once the model

@@ -204,7 +204,7 @@ extension CanvasView {
         (m.owner.flatMap { boxes[$0] } ?? freeMarks).addSublayer(l)
         return l
       }
-      for (l, box) in popTintLayers(boxes: boxes) + lineSelLayers(boxes: boxes) {
+      for (l, box) in popTintLayers(boxes: boxes) + lineSelLayers(boxes: boxes) + twinMarkLayers(boxes: boxes) {
         box.addSublayer(l)
         markLayers.append(l)
       }

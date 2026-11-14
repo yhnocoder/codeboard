@@ -307,7 +307,7 @@ func editSample() -> Board {
   let data = try clip.encoded()
   #expect(try Clip(decoding: data) == clip)
   var ids = 0
-  let made = b.paste(clip, dx: 50, dy: 50) { p in
+  let (made, _) = b.paste(clip, dx: 50, dy: 50) { p in
     ids += 1
     return "\(p)-new\(ids)"
   }

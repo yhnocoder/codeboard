@@ -94,6 +94,14 @@ public final class CanvasView: NSView {
   var vaultSeen = 0
   /// Where the view is now
   public var currentCamera: Camera { camera }
+  /// Where this machine keeps each board's camera (nil: nowhere, as in tests that give none)
+  public var cameras: CameraStore?
+  /// The camera last kept for the board shown (or that it opened at)
+  var cameraKept: Camera?
+  /// A camera to be written once things are still for `cameraDelay`, never during a gesture
+  var cameraToKeep: (store: CameraStore, vault: Vault, board: BoardID, camera: Camera)?
+  var cameraSave: Task<Void, Never>?
+  package var cameraDelay = Duration.milliseconds(500)
   var limits = ZoomLimits(min: 0.1)
   var motion = Motion()
   /// The scroll and pinch gestures the board took (CanvasWheel.swift), and the app's event monitor that routes them
@@ -310,6 +318,21 @@ public final class CanvasView: NSView {
   var cardShadow: (IOSurface, margin: CGFloat)?
   /// Where Copy writes and Paste reads; tests give their own
   package var pasteboard = NSPasteboard.general
+  /// Cards copied on another board, pasted here: the shell makes them shared cards on that board (`Board.share`) and
+  /// gives the ids they have there now (old → new) and its title; nil: that board cannot take it now (they come as
+  /// copies). With no cards it only gives the title
+  public var shareOnBoard: ((BoardID, Set<CardID>) -> (ids: [CardID: CardID], title: String)?)?
+  /// The Copy ✓ | Reference chip under copies just made (CanvasPasteChip.swift)
+  var pasteChip: PasteChip?
+  var chipTimer: Task<Void, Never>?
+  var chipHovered: ChipButton?
+  var chipInside = false
+  var choosingChip = false
+  /// How long the chip stays once the pointer is not over it (timing.ts PASTE_CHIP_IDLE)
+  package var chipIdle = Duration.milliseconds(6000)
+  /// The marks of cards placed several times on the board, where they take the pointer
+  var twinSpots: [(card: CardID, hit: CGRect)] = []
+  var hoveredTwin: CardID?
   /// Each Text's narrowest width (its longest word), once measured
   var leastWidths: [CardID: CGFloat] = [:]
   /// Arrow keys held for the nudge under way
@@ -469,6 +492,8 @@ public final class CanvasView: NSView {
       await rest()
       guard load == loads else { return }
     }
+    // the board left is kept where it was, also when its camera never came to rest
+    if !keepCamera { self.keepCamera(now: true) }
     shown = (board, vault)
     install(scene, overviews: overviews, shadow: shadow, theme: theme, keepCamera: keepCamera)
   }
@@ -646,7 +671,8 @@ public final class CanvasView: NSView {
     // the summary cut first: where the board opens depends on it
     summariesChanged()
     if !keepCamera {
-      camera = arriving ?? Camera.opening(s.bounds, in: view, cut: levels.cut)
+      camera = arriving ?? storedCamera ?? Camera.opening(s.bounds, in: view, cut: levels.cut)
+      cameraKept = camera
       arriving = nil
       levels.show(zoom: camera.zoom)
     }
@@ -660,6 +686,7 @@ public final class CanvasView: NSView {
     if openPop != nil { refreshPop() }
     if listShown, !keepCamera { closeQuestionList() }
     if !keepCamera {
+      closeChip()
       cancelPlacing()
       closeStickerPalette()
       closeShelf()
@@ -828,7 +855,8 @@ public final class CanvasView: NSView {
     limits = ZoomLimits(view: newSize, content: scene.bounds)
     // shown before the view had a size: opened now
     if unsized {
-      camera = Camera.opening(scene.bounds, in: newSize, cut: levels.cut)
+      camera = storedCamera ?? Camera.opening(scene.bounds, in: newSize, cut: levels.cut)
+      cameraKept = camera
       levels.show(zoom: camera.zoom)
     }
     applyCamera()
@@ -1000,8 +1028,44 @@ public final class CanvasView: NSView {
     }
   }
 
+  /// Where the board shown was last left on this machine (main camsOf), a camera not written yet first
+  var storedCamera: Camera? {
+    guard let (board, vault) = shown else { return nil }
+    if let k = cameraToKeep, k.board == board.id, k.vault.root == vault.root { return k.camera }
+    guard let c = cameras?.cameras(for: vault)[board.id] else { return nil }
+    return Camera(origin: CGPoint(x: c.x, y: c.y), zoom: limits.clamp(c.zoom))
+  }
+
+  /// The camera come to rest is kept for the board, to open there next time: written once nothing has moved it for
+  /// `cameraDelay`, and not while a gesture is under way; `now`: the board is being left, written at once (unless a
+  /// gesture is under way)
+  func keepCamera(now: Bool = false) {
+    if let (board, vault) = shown, let store = cameras, scene != nil, camera != cameraKept {
+      cameraKept = camera
+      cameraToKeep = (store, vault, board.id, camera)
+    }
+    guard cameraToKeep != nil else { return }
+    cameraSave?.cancel()
+    cameraSave = nil
+    if now, gesture == nil { return writeCamera() }
+    let delay = cameraDelay
+    cameraSave = Task { [weak self] in
+      try? await Task.sleep(for: delay)
+      guard let self, !Task.isCancelled else { return }
+      if gesture != nil || !motion.isResting { keepCamera() } else { writeCamera() }
+    }
+  }
+
+  private func writeCamera() {
+    guard let k = cameraToKeep else { return }
+    cameraToKeep = nil
+    try? k.store.keep(
+      [k.board: BoardCamera(x: k.camera.origin.x, y: k.camera.origin.y, zoom: k.camera.zoom)], for: k.vault)
+  }
+
   /// At rest: what each item should hold now, within what the other canvases leave of the budget
   func arrive() {
+    keepCamera()
     guard scene != nil, onScreen else { return }
     CanvasView.clock += 1
     shownAt = CanvasView.clock
