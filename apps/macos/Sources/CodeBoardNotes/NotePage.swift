@@ -89,6 +89,15 @@ final class NotePage {
     return r
   }
 
+  /// What plain text pasted on the board makes (page.ts pasted), as the page answers it
+  func paste(_ text: String) async throws -> [String: Any] {
+    await signal.ready()
+    let r = try await view.callAsyncJavaScript(
+      "return await note.paste(t)", arguments: ["t": text], contentWorld: .page)
+    guard let d = r as? [String: Any] else { throw NoteRenderError.page("the page answered \(String(describing: r))") }
+    return d
+  }
+
   /// Where each mounted Note's first glyph is from its top left at 100 % (nil: it has no text)
   func firstGlyphs(_ ids: [String]) async throws -> [String: CGPoint] {
     let r = try await view.callAsyncJavaScript("return note.first(ids)", arguments: ["ids": ids], contentWorld: .page)

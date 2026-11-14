@@ -45,6 +45,18 @@ import CodeBoardNotes
     return a
   }
 
+  /// The sidebar's Delete Folder: main's Delete Group question (actions.ts deleteGroup) in the words of what it does here,
+  /// where the boards go with their folder
+  static func deleteFolderQuestion(_ name: String, boards: Int) -> NSAlert {
+    let a = NSAlert()
+    a.alertStyle = .warning
+    a.messageText = "Delete folder “\(name)”?"
+    a.informativeText = "Its \(boards) boards go to the Trash with it."
+    a.addButton(withTitle: "Delete Folder").hasDestructiveAction = true
+    a.addButton(withTitle: "Cancel")
+    return a
+  }
+
   init(shell: Shell, notes: NoteRenderer? = nil) {
     self.shell = shell
     self.notes = notes

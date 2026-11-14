@@ -5,7 +5,9 @@
 // again. Native drives it through window.note and hears back on the "note" message handler.
 import {
   createMarkdown,
+  markTags,
   mdBlockStarts,
+  texBrackets,
   type Markdown,
   type MdLayout,
   type RefBroken,
@@ -26,6 +28,8 @@ import "../../../../packages/board/src/styles.css";
 import "@yhnocoder/markdown/style.css";
 import "../../../../packages/board/src/themes.css";
 import "./page.css";
+import { classifyPaste } from "../../../../packages/core/src/paste";
+import { cleanSvg, svgDataUrl } from "../../../../packages/board/src/md/images";
 import { pop } from "./pop";
 import { openRefAt, watchRefs } from "./refclick";
 import { type QData, qlist } from "./qlist";
@@ -279,7 +283,42 @@ function setLook(look: string, dark: boolean) {
   html.classList.add(`look-${look}`);
 }
 
+/** Plain text pasted on the board, as main's pasteText makes a card of it (board actions/create.ts): a Note (formulas
+ * copied as text kept as TeX, <mark> as ==), a web address or several, an SVG (cleaned, with the width its card is
+ * drawn at: its own, at most a Note's), or code with its language guessed. Nothing for white space; an SVG that cannot
+ * be read says so */
+async function pasted(text: string) {
+  if (!text.trim()) return { kind: "none" };
+  const tex = texBrackets(mdFor("", []).undoubleTex(text));
+  if (tex !== text && classifyPaste(tex).kind === "note") return { kind: "note", text: markTags(tex) };
+  const k = classifyPaste(text);
+  switch (k.kind) {
+    case "note":
+      return { kind: "note", text: markTags(text) };
+    case "web":
+      return { kind: "web", url: k.url };
+    // a GitHub file is not fetched here: its address is kept as a page, as main does when it cannot fetch it
+    case "github":
+      return { kind: "web", url: text.trim() };
+    case "links":
+      return { kind: "links", urls: k.urls };
+    case "svg": {
+      const svg = cleanSvg(text.trim());
+      if (!svg) return { kind: "none", error: "This SVG image could not be read" };
+      const url = svgDataUrl(svg);
+      const img = new Image();
+      img.src = url;
+      await img.decode().catch(() => {});
+      return { kind: "svg", dataUrl: url, natural: img.naturalWidth };
+    }
+    case "code":
+      return { kind: "code", text: text.replace(/\s+$/, ""), lang: k.lang };
+  }
+}
+
 window.note = {
+  /** What a paste of plain text makes (pasted) */
+  paste: pasted,
   /** Mounts Notes at 100 % (each one not mounted yet, under its id) and measures them all */
   async mount(list: { id: string; note: Note; images: string }[]) {
     for (const { id, note: n, images } of list) {

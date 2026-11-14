@@ -80,6 +80,9 @@ public struct ShellState: Codable, Equatable, Sendable {
   public var renaming: Renaming?
   /// Where deleted boards and folders go: the system Trash; tests give a stand-in
   public var trasher: Vault.Trasher = Vault.systemTrash
+  /// Asks a question before a delete, the first button the yes: a sheet on the main window (makeMainWindow); with no
+  /// window to ask in, nothing is deleted
+  @ObservationIgnored public var confirm: @MainActor (NSAlert) async -> Bool = { _ in false }
   /// Why the last change of the vault's files from the sidebar did not go through (a beep said so); nil when it did
   public internal(set) var fileError: String?
   /// The sidebar row under the pointer (`rowKey`)

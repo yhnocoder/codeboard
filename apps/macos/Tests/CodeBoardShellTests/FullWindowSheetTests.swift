@@ -213,4 +213,74 @@ import Testing
     #expect(
       !fm.fileExists(atPath: vault.url(of: child.path).path) && fm.fileExists(atPath: trash.path + "/Child.board"))
   }
+
+  enum Row: String, CaseIterable {
+    case board, folderBoard, folder
+  }
+
+  /// The sidebar's Delete, Delete Folder Board and Delete Folder ask first in a sheet on the window, as main's Delete
+  /// Board and Delete Group do (host handlers.ts deleteBoardAsked, actions.ts deleteGroup): Cancel keeps it, the answer
+  /// sends it to the Trash
+  @Test(arguments: Row.allCases) func theSidebarsDeletesAskInASheet(_ row: Row) async throws {
+    let fm = FileManager.default
+    let base = fm.temporaryDirectory.appending(path: "sidebar-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: base) }
+    let root = base.appending(path: "vault")
+    let trash = base.appending(path: "Trash")
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    try fm.createDirectory(at: trash, withIntermediateDirectories: true)
+    let vault = Vault(root: root)
+    let folder = try vault.newFolder(in: "", name: "F")
+    let fb = try vault.newFolderBoard(in: folder)
+    let child = try vault.newBoard(in: folder, title: "Child")
+    var b = try vault.board(at: child.path)
+    b.cards = [
+      Card(id: CardID(rawValue: "a"), x: 0, y: 0, width: 200, content: .own(CardContent(body: .note(Note(text: "a")))))
+    ]
+    try b.encoded().write(to: vault.url(of: child.path).appending(path: Vault.boardFileName))
+    try vault.newBoard(in: "", title: "Other")
+    let w = FullWindowEditTests.Window(vault, board: fb.id)
+    defer { w.close() }
+    w.shell.trasher = { url in
+      let to = trash.appending(path: url.lastPathComponent)
+      try FileManager.default.moveItem(at: url, to: to)
+      return to
+    }
+    let tree = try #require(w.shell.tree)
+    let f = try #require(tree.folder(at: folder))
+    let (entries, title, path, words, yes): ([Shell.MenuEntry], String, String, [String], String) =
+      switch row {
+      case .board:
+        (
+          w.shell.menu(board: try #require(tree.allBoards.first { $0.id == child.id })), "Delete", child.path,
+          ["Delete board “Child”?", "1 cards and their links will be removed. Your code is not affected."], "Delete"
+        )
+      case .folderBoard:
+        (
+          w.shell.menu(folder: f), "Delete Folder Board", fb.path,
+          ["Delete board “F”?", "0 cards and their links will be removed. Your code is not affected."], "Delete"
+        )
+      case .folder:
+        (
+          w.shell.menu(folder: f), "Delete Folder", folder,
+          ["Delete folder “F”?", "Its 2 boards go to the Trash with it."], "Delete Folder"
+        )
+      }
+    let run = try #require(entries.compactMap { $0 }.first { $0.title == title }?.run)
+    for answer in ["Cancel", yes] {
+      run()
+      await FullWindowEditTests().until("the question up", in: w) { w.window.attachedSheet != nil }
+      let content = try #require(w.window.attachedSheet?.contentView)
+      for t in words { #expect(text(in: content).contains(t), "\(t) in \(text(in: content))") }
+      #expect(NSApp.modalWindow == nil)
+      try #require(button(answer, in: content)).performClick(nil)
+      await FullWindowEditTests().until("the question gone", in: w) { w.window.attachedSheet == nil }
+      if answer == "Cancel" {
+        #expect(fm.fileExists(atPath: vault.url(of: path).path), "Cancel keeps it")
+      } else {
+        await FullWindowEditTests().until("in the Trash", in: w) { !fm.fileExists(atPath: vault.url(of: path).path) }
+      }
+    }
+    #expect(fm.fileExists(atPath: vault.url(of: "Other.board").path), "nothing else")
+  }
 }

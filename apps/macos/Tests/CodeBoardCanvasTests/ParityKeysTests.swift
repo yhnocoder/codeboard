@@ -80,9 +80,10 @@ private func keysBoard() -> Board {
     #expect(hidden() == [1...3])
   }
 
-  /// ? opens the shortcut list and ? or Esc closes it (keymap.ts help, BoardView.tsx Keys). Its rows are the key
-  /// table's, by group, every key the board answers among them, then the app menu's keys by menu, none twice
-  @Test func questionMarkOpensTheShortcutListMadeFromTheKeyTable() async throws {
+  /// ? opens the shortcut list and ? or Esc closes it (keymap.ts help, BoardView.tsx Keys). Its rows are main's
+  /// (keymap.ts KEYMAP, helpRows) in its groups, order and words, those the app has, with the app's own keys among them
+  /// (CodeBoardShellTests checks every key of the app menu is listed); every key the board answers is a row
+  @Test func questionMarkOpensTheShortcutListInMainsGroupsAndWords() async throws {
     let r = try await rig()
     defer { r.close() }
     let c = r.canvas
@@ -90,25 +91,58 @@ private func keysBoard() -> Board {
     let groups = try #require(c.keysPanel?.groups)
     let rows = groups.flatMap(\.rows)
     for k in BoardKey.all { #expect(rows.contains { $0.key == k.show && $0.label == k.label }, "\(k.label) listed") }
-    #expect(groups.prefix(5).map(\.name) == ["Create", "View", "Cards", "Code", "Board"])
+    let want: [(String, [(String, String)])] = [
+      (
+        "Create",
+        [
+          ("N", "New Note"), ("T", "New Text"), ("R", "New Box"), ("Double-click empty space", "New Text"),
+          ("S", "Add Sidenote"), ("⌘V", "Paste code, link or image"), ("⌥⌘V", "Paste as Copy"),
+        ]
+      ),
+      (
+        "View",
+        [
+          ("⇧1", "Fit to Window"), ("⇧2", "Fit Selection"), ("⌘0", "Fit All"), ("⌘1", "Zoom to 100%"),
+          ("⌃- / ⌘[", "Back after a jump"), ("⌃⇧- / ⌘]", "Forward after a jump"), ("⌘+", "Zoom In"),
+          ("⌘−", "Zoom Out"), ("⌘ + scroll / pinch", "Zoom"), ("Space + drag / two fingers", "Pan"),
+          ("⌃⌘S", "Hide Sidebar"), ("⇧⌘[ / ⌃⇧⇥", "Show Previous Tab"), ("⇧⌘] / ⌃⇥", "Show Next Tab"),
+          ("⌃⌘F", "Enter Full Screen"),
+        ]
+      ),
+      (
+        "Cards",
+        [
+          ("Drag empty space", "Select with a box"), ("⌘A", "Select All"), ("Drag title bar", "Move"),
+          ("↵", "Open the card selected (an arrow alone: its label)"), ("⌘↵", "Open the selected board frame"),
+          ("⌘D", "Duplicate"), ("⌥⇧⌘F", "Bring to Front"), ("⌥⇧⌘B", "Send to Back"), ("⌘X", "Cut"), ("⌘C", "Copy"),
+          ("⌫", "Delete"), ("⇧⌘L", "Lock / Unlock"), ("⇧⌘B", "Turn into Board"), ("⌥F", "Fit Content"),
+          ("⌥⇧T", "Tilt"), ("⌥S", "Move to Shelf"), ("⌥Z", "Wrap Lines"), ("Arrows", "Nudge (⇧ = 10px on screen)"),
+        ]
+      ),
+      ("Code", [("Click line numbers", "Select lines (⇧ extends)"), ("H", "Hide lines")]),
+      (
+        "Board",
+        [
+          ("⌘Z", "Undo"), ("⇧⌘Z", "Redo"), ("⌘,", "Settings"), ("?", "Keyboard Shortcuts"),
+          ("Esc", "Cancel · Deselect"),
+          ("⌘O", "Open Vault…"), ("⇧⌘I", "Import Old Boards…"), ("⌘W", "Close Tab"), ("⇧⌘W", "Close Window"),
+        ]
+      ),
+    ]
+    #expect(groups.map(\.name) == want.map(\.0))
+    for (g, (name, rows)) in zip(groups, want) {
+      #expect(g.rows.map(\.key) == rows.map(\.0), "\(name)")
+      #expect(g.rows.map(\.label) == rows.map(\.1), "\(name)")
+    }
+    // filtered as main's Filter shortcuts… (helpRows q): a group's name keeps all its rows, else words or keys
+    #expect(KeysPanel.filter(groups, "code").map(\.name) == ["Create", "Code"])
+    #expect(KeysPanel.filter(groups, "CODE").first?.rows.map(\.label) == ["Paste code, link or image"])
+    #expect(KeysPanel.filter(groups, "⌘0").flatMap(\.rows).map(\.label) == ["Fit All"])
+    #expect(KeysPanel.filter(groups, "  ").map(\.name) == groups.map(\.name) && KeysPanel.filter(groups, "qqq").isEmpty)
     #expect(pressed(r, 44, "?", .shift) && c.keysPanel == nil)
     _ = pressed(r, 44, "?", .shift)
     r.key(53)
     #expect(c.keysPanel == nil)
-    // the app menu's keys after the board's, by menu; a key the board lists already not again
-    let menu = NSMenu()
-    let edit = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
-    edit.submenu = NSMenu(title: "Edit")
-    edit.submenu?.addItem(NSMenuItem(title: "Undo", action: nil, keyEquivalent: "z"))
-    edit.submenu?.addItem(NSMenuItem(title: "Redo", action: nil, keyEquivalent: "Z"))
-    edit.submenu?.addItem(NSMenuItem(title: "Zoom to 100% again", action: nil, keyEquivalent: "1"))
-    let hidden = NSMenuItem(title: "Redo", action: nil, keyEquivalent: "y")
-    hidden.isHidden = true
-    edit.submenu?.addItem(hidden)
-    menu.addItem(edit)
-    let listed = KeysPanel.rows(menu: menu)
-    #expect(listed.last?.name == "Edit")
-    #expect(listed.last?.rows.map(\.key) == ["⌘Z", "⇧⌘Z"] && listed.last?.rows.map(\.label) == ["Undo", "Redo"])
   }
 
   /// ⌥F Fit Content on cards (keymap.ts fitContent, actions/common.ts fitContent, core fitCardSizes): the card under the
