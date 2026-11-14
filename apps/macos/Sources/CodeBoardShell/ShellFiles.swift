@@ -16,8 +16,16 @@ extension Shell {
       ("New Board", { self.newBoard(in: folder.path) }), ("New Folder", { self.newFolder(in: folder.path) }), nil,
       ("Rename", { self.renaming = .folder(folder.path) }), nil,
     ]
-    if let own = folder.folderBoard { m.append(("Delete Folder Board", { self.trash(own.path) })) }
-    m.append(("Delete Folder", { self.trash(folder.path) }))
+    if let own = folder.folderBoard {
+      m.append(("Delete Folder Board", { self.trashAsked(own.path, self.boardQuestion(own)) }))
+    }
+    m.append(
+      (
+        "Delete Folder",
+        {
+          self.trashAsked(folder.path, BoardPanes.deleteFolderQuestion(folder.name, boards: folder.allBoards.count))
+        }
+      ))
     return m
   }
 
@@ -25,8 +33,17 @@ extension Shell {
   public func menu(board: VaultBoard) -> [MenuEntry] {
     [
       ("Rename", { self.renaming = .board(board.id) }), ("Edit Mark…", { self.sealEditing = board.id }), nil,
-      ("Delete", { self.trash(board.path) }),
+      ("Delete", { self.trashAsked(board.path, self.boardQuestion(board)) }),
     ]
+  }
+
+  /// Asked first, as main's sidebar asks (host handlers.ts deleteBoardAsked, actions.ts deleteGroup), then to the Trash
+  private func trashAsked(_ path: String, _ question: NSAlert) {
+    Task { if await confirm(question) { trash(path) } }
+  }
+
+  private func boardQuestion(_ b: VaultBoard) -> NSAlert {
+    BoardPanes.deleteQuestion(b.title, cards: (try? vault?.board(at: b.path).cards.count) ?? 0)
   }
 
   /// What `hoveredRow` names
