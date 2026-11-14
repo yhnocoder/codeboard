@@ -431,7 +431,7 @@ extension NSMenu {
       count = l.count + 1
     }
     lastDown = (now, vPointer, count)
-    log("press \(right ? "right" : "left") at \(local(vPointer)) on \(hitInfo(vPointer))")
+    log("press \(right ? "right" : "left") ×\(count) at \(local(vPointer)) on \(hitInfo(vPointer))")
     vButtons |= right ? 2 : 1
     post(right ? .rightMouseDown : .leftMouseDown, at: vPointer, clicks: count)
   }
@@ -910,6 +910,24 @@ extension NSMenu {
       }
       return r
     case "caret": return await caret()
+    // text ViewClass: the text that view shows (its text views and labels, in order), as a person reads it off the screen
+    case "text":
+      guard let w = win, let root = w.contentView?.superview ?? w.contentView else { return "no window" }
+      func find(_ v: NSView) -> NSView? {
+        "\(Swift.type(of: v))" == a[1] && !v.isHiddenOrHasHiddenAncestor ? v : v.subviews.lazy.compactMap(find).first
+      }
+      guard let v = find(root) else { return "none" }
+      var parts: [String] = []
+      func walk(_ x: NSView) {
+        if let t = x as? NSTextView {
+          parts.append(t.string)
+        } else if let l = x as? NSTextField {
+          parts.append(l.stringValue)
+        }
+        x.subviews.forEach(walk)
+      }
+      walk(v)
+      return parts.joined(separator: "\n")
     // frame ViewClass: where the first such view is in the recorded window picture (points from its top left)
     case "frame":
       guard let w = win, let root = w.contentView?.superview ?? w.contentView else { return "no window" }
