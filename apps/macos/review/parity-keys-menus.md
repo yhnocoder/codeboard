@@ -48,10 +48,10 @@ The app: `Sources/CodeBoardCanvas/CanvasKeys.swift` (`boardKey`, reached from `k
 | ⌥S | Move to Shelf | same |
 | ⌥Z | Wrap Lines (code cards selected) | same |
 | ← → ↑ ↓ (⇧: 10) | Nudge the cards selected | same |
-| H | Hide the lines selected | gap: hiding lines |
+| H | Hide the lines selected | same (hidden runs they touch merge into one) |
 | ⌘Z / ⇧⌘Z, ⌘Y | Undo / Redo | same (Edit menu) |
 | ⌘, | Settings | same (app menu) |
-| ? | Keyboard Shortcuts | gap: no shortcut list |
+| ? | Keyboard Shortcuts | same: the list at the right, made from the board's key table (CanvasKeys BoardKey.all) and the app menu's keys; ? or Esc closes it. gap: its Search… (Settings has no shortcuts page) |
 | Esc | Cancel the tool, stop waiting for AI, deselect the sticker, back to the parent board, deselect | same but gap: back to the parent board |
 
 ## Context menus (main: `actions/menus.ts`, `actions/edit.ts` arrangeItem, `actions/stickers.ts`, `actions/shelf.ts`,
@@ -112,7 +112,7 @@ App: same, but Paste is off when there is nothing the board can paste (main read
 
 | Menu | main | app |
 |---|---|---|
-| Sticker | Color ▸ (not an emoji), Size ▸ (free ones), Detach from Card / Arrow, `-`, Delete ⌫ | colours as a row of swatches, Delete; gap: Size, Detach |
+| Sticker | Color ▸ (not an emoji), Size ▸ (free ones), Detach from Card / Arrow, `-`, Delete ⌫ | colours as a row of swatches, Size ▸ (24, 32, 48, 72 px), Detach from Card (the app pins stickers to cards only, not arrows), Delete |
 | Shelf entry | Put Back, `-`, Remove | same |
 | Link List row | Open in Browser ↵, Show as Compact / Rich, Edit Title, Retry Preview (failed), `-`, Move Out as Card, Remove from List ⌫ | same |
 | Sidenote | Edit (text), Place on Board (on a card), Board-only (linked card), Mark Reviewed, `-`, Delete Sidenote | gap: the popup has its buttons, no menu |
@@ -130,5 +130,5 @@ App: Note, Text, Box, Section, Arrow, Sticker (gap: Image, Web), `|`, ⋯. Dock 
 `|`, Zoom Out, the zoom (Zoom to 100 %), Zoom In, `|`, Fit to Window, the questions; the toolbar moves left of the
 dock rather than over it (main overlaps the two from about 1000 pt). gap: Search (no palette), Arrow Legend. ⋯: Undo ⌘Z, Redo ⇧⌘Z, `-`,
 Rename Board… (the board's name written in place in the sidebar, its row shown), Copy Path, Edit Mark… (its seal's
-popover in the sidebar; off for a folder's own board), `-`, Settings…, Theme ▸ (the app menu's); gap: Keyboard
-Shortcuts, Copy Diagnostics. The narrow toolbar's folded items are not made (the app's window has no narrow board beside an editor).
+popover in the sidebar; off for a folder's own board), `-`, Settings…, Theme ▸ (the app menu's), Keyboard
+Shortcuts ?; gap: Copy Diagnostics. The narrow toolbar's folded items are not made (the app's window has no narrow board beside an editor).

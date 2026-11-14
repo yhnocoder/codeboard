@@ -15,8 +15,10 @@ import Testing
 /// composition's characters, Esc cancels it; any other key, or any key but a letter with nothing composed, goes on as
 /// with no input method
 @MainActor enum Pinyin {
-  static var on = false
-  static var composing = ""
+  /// The windows it takes keys in, and what is composed in each: suites run side by side, and another test's keys, in
+  /// another window, are not its
+  static var windows: Set<Int> = []
+  static var composing: [Int: String] = [:]
   static let words = ["ni": "你", "hao": "好"]
 
   static func install() {
@@ -32,7 +34,10 @@ import Testing
 
   /// Whether the input method took the key
   static func take(_ e: NSEvent, client: NSTextInputClient) -> Bool {
-    guard on, e.type == .keyDown else { return false }
+    let w = e.windowNumber
+    guard windows.contains(w), e.type == .keyDown else { return false }
+    var composing = self.composing[w, default: ""]
+    defer { self.composing[w] = composing }
     let none = NSRange(location: NSNotFound, length: 0)
     let ch = e.charactersIgnoringModifiers ?? ""
     if ch.count == 1, let c = ch.first, c.isLetter, c.isASCII {
@@ -76,13 +81,13 @@ extension NSTextInputContext {
     Pinyin.install()
     let r = try await Rig(zoom: 1)
     defer {
-      Pinyin.on = false
+      Pinyin.windows.remove(r.window.windowNumber)
       r.close()
     }
     r.doubleClick(CGPoint(x: 800, y: 330))
     await r.editorReady()
     let id = try #require(r.canvas.editing?.id)
-    Pinyin.on = true
+    Pinyin.windows.insert(r.window.windowNumber)
     r.press("ni ")
     await r.until("你 written") { await text(r).contains("你") }
     r.press("\u{1b}")
@@ -95,13 +100,13 @@ extension NSTextInputContext {
     Pinyin.install()
     let r = try await Rig(zoom: 1)
     defer {
-      Pinyin.on = false
+      Pinyin.windows.remove(r.window.windowNumber)
       r.close()
     }
     r.doubleClick(CGPoint(x: 800, y: 330))
     await r.editorReady()
     let id = try #require(r.canvas.editing?.id)
-    Pinyin.on = true
+    Pinyin.windows.insert(r.window.windowNumber)
     r.press("ni")
     await r.until("composing") { await text(r).contains("ni") }
     r.press("\u{1b}")

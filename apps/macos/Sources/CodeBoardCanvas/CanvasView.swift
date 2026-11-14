@@ -221,6 +221,8 @@ public final class CanvasView: NSView {
   package var shelfPanel: ShelfPanel?
   /// Space held, and where the pointer was last in a drag it pans (CanvasKeys)
   var spaceHeld = false
+  /// The shortcut list, while open
+  package var keysPanel: KeysPanel?
   var spacePan: CGPoint?
   package var shelfPreview: ShelfPreview?
   package var previewing: String?

@@ -391,7 +391,8 @@ extension CanvasView {
 
   // MARK: The menu
 
-  /// A sticker's menu: its colours (not an emoji's) and Delete
+  /// A sticker's menu (actions/stickers.ts stickerMenu): its colours (not an emoji's), Size ▸ and Detach from Card,
+  /// Delete
   func stickerMenu(_ id: StickerID) -> NSMenu {
     let m = NSMenu()
     if let k = document?.board.sticker(id), let own = Sticker.ownColor(k.glyph) {
@@ -403,6 +404,28 @@ extension CanvasView {
       let item = NSMenuItem()
       item.view = row
       m.addItem(item)
+      m.addItem(.separator())
+    }
+    // one on the board or on a card: its size; on a card, Detach keeps it where it is drawn, on the board
+    if let k = document?.board.sticker(id), let now = k.size {
+      m.addItem(
+        submenu(
+          "Size",
+          [24.0, 32, 48, 72].map { n in
+            menuItem("\(Int(n))px", checked: now == n) { [weak self] in
+              self?.document?.edit("Sticker Size") { $0.setStickerSize(id, n) }
+            }
+          }))
+      if case .card(_, _, _, let size) = k.anchor, let at = stickerSpots.first(where: { $0.id == id })?.board {
+        let detach = menuItem("Detach from Card") { [weak self] in
+          self?.document?.edit("Detach Sticker") { b in
+            guard let i = b.stickers.firstIndex(where: { $0.id == id }) else { return }
+            b.stickers[i].anchor = .canvas(x: at.minX.rounded(), y: at.minY.rounded(), size: size)
+          }
+        }
+        detach.toolTip = "Keep it here on the canvas"
+        m.addItem(detach)
+      }
       m.addItem(.separator())
     }
     m.addItem(

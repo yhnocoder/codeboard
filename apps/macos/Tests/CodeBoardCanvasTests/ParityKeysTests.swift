@@ -62,6 +62,55 @@ private func keysBoard() -> Board {
     return r
   }
 
+  /// H hides the lines selected (keymap.ts hide, core hideLines): hidden runs they overlap or touch merge into one, in
+  /// line order; one step; with no lines selected H does nothing
+  @Test func hHidesTheLinesSelected() async throws {
+    let r = try await rig()
+    defer { r.close() }
+    let c = r.canvas
+    let s1 = SegmentID(rawValue: "s1")
+    func hidden() -> [ClosedRange<Int>]? { r.doc.board.segment(cid("c1"), s1)?.hidden }
+    _ = pressed(r, 4, "h")
+    #expect(hidden() == [])
+    c.lineSel = Lines(card: cid("c1"), segment: s1, range: 3...3)
+    #expect(pressed(r, 4, "h"))
+    #expect(hidden() == [3...3] && c.lineSel == nil && r.doc.history.undoSteps.last?.name == "Hide Lines")
+    c.lineSel = Lines(card: cid("c1"), segment: s1, range: 1...2)
+    _ = pressed(r, 4, "h")
+    #expect(hidden() == [1...3])
+  }
+
+  /// ? opens the shortcut list and ? or Esc closes it (keymap.ts help, BoardView.tsx Keys). Its rows are the key
+  /// table's, by group, every key the board answers among them, then the app menu's keys by menu, none twice
+  @Test func questionMarkOpensTheShortcutListMadeFromTheKeyTable() async throws {
+    let r = try await rig()
+    defer { r.close() }
+    let c = r.canvas
+    #expect(pressed(r, 44, "?", .shift) && c.keysPanel != nil)
+    let groups = try #require(c.keysPanel?.groups)
+    let rows = groups.flatMap(\.rows)
+    for k in BoardKey.all { #expect(rows.contains { $0.key == k.show && $0.label == k.label }, "\(k.label) listed") }
+    #expect(groups.prefix(5).map(\.name) == ["Create", "View", "Cards", "Code", "Board"])
+    #expect(pressed(r, 44, "?", .shift) && c.keysPanel == nil)
+    _ = pressed(r, 44, "?", .shift)
+    r.key(53)
+    #expect(c.keysPanel == nil)
+    // the app menu's keys after the board's, by menu; a key the board lists already not again
+    let menu = NSMenu()
+    let edit = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+    edit.submenu = NSMenu(title: "Edit")
+    edit.submenu?.addItem(NSMenuItem(title: "Undo", action: nil, keyEquivalent: "z"))
+    edit.submenu?.addItem(NSMenuItem(title: "Redo", action: nil, keyEquivalent: "Z"))
+    edit.submenu?.addItem(NSMenuItem(title: "Zoom to 100% again", action: nil, keyEquivalent: "1"))
+    let hidden = NSMenuItem(title: "Redo", action: nil, keyEquivalent: "y")
+    hidden.isHidden = true
+    edit.submenu?.addItem(hidden)
+    menu.addItem(edit)
+    let listed = KeysPanel.rows(menu: menu)
+    #expect(listed.last?.name == "Edit")
+    #expect(listed.last?.rows.map(\.key) == ["⌘Z", "⇧⌘Z"] && listed.last?.rows.map(\.label) == ["Undo", "Redo"])
+  }
+
   /// ⌥F Fit Content on cards (keymap.ts fitContent, actions/common.ts fitContent, core fitCardSizes): the card under the
   /// pointer, else the cards selected. A code card as wide as its longest line (240 to 1600), its height stored only when
   /// its code is taller than the 460 a card grows to by itself; a Note's and a Web card's height follows their content

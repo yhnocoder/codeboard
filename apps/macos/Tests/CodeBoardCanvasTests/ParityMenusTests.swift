@@ -238,7 +238,12 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     defer { r.close() }
     let m = r.canvas.moreMenu()
     #expect(
-      titles(m) == ["Undo", "Redo", "-", "Rename Board…", "Copy Path", "Edit Mark…", "-", "Settings…", "Theme"])
+      titles(m) == [
+        "Undo", "Redo", "-", "Rename Board…", "Copy Path", "Edit Mark…", "-", "Settings…", "Theme",
+        "Keyboard Shortcuts",
+      ])
+    fire(item(m, "Keyboard Shortcuts"))
+    #expect(r.canvas.keysPanel != nil && item(m, "Keyboard Shortcuts")?.keyEquivalent == "?")
     #expect(item(m, "Rename Board…")?.action == Selector(("renameBoard:")))
     #expect(item(m, "Edit Mark…")?.action == Selector(("editMark:")))
     #expect(titles(item(m, "Theme")?.submenu) == Theme.all.map(\.name))
