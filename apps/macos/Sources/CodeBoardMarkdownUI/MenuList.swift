@@ -81,6 +81,8 @@ final class MenuList: NSView {
     let refs = token.kind == .ref
     let h = min(CGFloat(items.count) * rowHeight + 8, refs ? 340 : 300)
     frame = CGRect(x: caret.minX, y: caret.maxY + 4, width: refs ? 372 : 260, height: h)
+    // a view draws outside its bounds unless told not to (macOS 14 on): the rows scrolled past the panel's edge are cut
+    clipsToBounds = true
     keepChosenInView()
     isHidden = items.isEmpty
     needsDisplay = true
@@ -142,6 +144,9 @@ final class MenuList: NSView {
     ctx.addPath(path)
     ctx.setStrokeColor(theme.colors.hair.cg)
     ctx.strokePath()
+    // the rows inside the panel's rounded box, the one half cut at its edge
+    ctx.addPath(path)
+    ctx.clip()
     let ink = NSColor(cgColor: theme.colors.ink.cg) ?? .labelColor
     let faint = NSColor(cgColor: theme.colors.ink3.cg) ?? .secondaryLabelColor
     let font = NSFont.systemFont(ofSize: 12.5)

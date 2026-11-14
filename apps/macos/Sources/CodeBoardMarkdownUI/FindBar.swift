@@ -67,6 +67,12 @@ final class FindBar: NSView, NSTextFieldDelegate {
     replacement.isHidden = !replacing
   }
 
+  /// a new look or appearance while shown
+  func restyle(_ theme: MarkdownTheme) {
+    layer?.backgroundColor = theme.colors.surface.cg
+    layer?.borderColor = theme.colors.hair.cg
+  }
+
   func show(replace: Bool, theme: MarkdownTheme, in visible: CGRect) {
     replacing = replace
     layer?.backgroundColor = theme.colors.surface.cg

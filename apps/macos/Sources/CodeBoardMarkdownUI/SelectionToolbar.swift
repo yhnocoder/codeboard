@@ -21,20 +21,35 @@ final class SelectionToolbar: NSView {
   private let gap: CGFloat = 7
   private(set) var buttons: [Button] = []
   var onPress: (String) -> Void = { _ in }
-  private var theme: MarkdownTheme?
+  private(set) var theme: MarkdownTheme?
   private let size: CGFloat = 28
 
   override var isFlipped: Bool { true }
 
-  func show(_ buttons: [Button], over line: CGRect, in bounds: CGRect, theme: MarkdownTheme) {
+  /// Above the selection's first line, 8 points off, flipped under its last line when above would leave the Note's
+  /// visible part, shifted across to stay 6 points inside it (bubble.tsx: place "top", gap 8, flip and shift, pad 6); and
+  /// never over `avoid`, where the pointer last pressed (a press on the text there must reach the text)
+  func show(
+    _ buttons: [Button], over line: CGRect, under last: CGRect? = nil, in bounds: CGRect, avoid: CGPoint? = nil,
+    theme: MarkdownTheme
+  ) {
     self.buttons = buttons
     self.theme = theme
     let w = CGFloat(buttons.count) * size + 8 + CGFloat(buttons.filter { Self.separated.contains($0.id) }.count) * gap
     let h = size + 8
-    var x = line.midX - w / 2
-    x = min(max(bounds.minX, x), bounds.maxX - w)
-    let above = line.minY - h - 6
-    frame = CGRect(x: x, y: above >= bounds.minY - 40 ? above : line.maxY + 6, width: w, height: h)
+    let pad: CGFloat = 6
+    let gap: CGFloat = 8
+    let x = max(bounds.minX + pad, min(line.midX - w / 2, bounds.maxX - pad - w))
+    let above = CGRect(x: x, y: line.minY - gap - h, width: w, height: h)
+    let below = CGRect(x: x, y: (last ?? line).maxY + gap, width: w, height: h)
+    let fitsAbove = above.minY >= bounds.minY + pad
+    let fitsBelow = below.maxY <= bounds.maxY - pad
+    var r = fitsAbove || !fitsBelow ? above : below
+    if let p = avoid, r.insetBy(dx: -2, dy: -2).contains(p) {
+      let other = r == above ? below : above
+      if !other.insetBy(dx: -2, dy: -2).contains(p) { r = other }
+    }
+    frame = r
     toolTip = nil
     isHidden = false
     needsDisplay = true

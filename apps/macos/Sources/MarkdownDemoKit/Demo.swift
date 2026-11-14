@@ -57,7 +57,13 @@ struct FileResources: MarkdownResources {
     else { return nil }
     return CGSize(width: w, height: h)
   }
-  func ref(label: String, target: String?) -> MarkdownRefHit? { nil }
+  /// the demo's own cards, without a vault: a few names its sample Note's references resolve to (a vault's references
+  /// are its own cards)
+  static let sampleCards = ["reference", "Scheduler", "Block manager", "Prefill", "Decode"]
+  func ref(label: String, target: String?) -> MarkdownRefHit? {
+    Self.sampleCards.contains { $0.caseInsensitiveCompare(label) == .orderedSame }
+      ? .found(title: label, seal: nil) : nil
+  }
   func highlight(lines: [String], language: String) -> [[MarkdownToken]]? {
     guard let grammar = Self.grammars[language.lowercased()] else { return nil }
     return highlighter.tokens(lines: lines, language: grammar).map { line in
@@ -755,8 +761,12 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   /// The [[ menu from the open vault: this board's other cards, then each other board with its cards, by their first
   /// line; what is typed narrows them
   func editor(_ e: MarkdownEditorView, refMenu query: String) -> MarkdownRefMenu {
-    guard let v = vault, let tree = try? v.tree() else { return MarkdownRefMenu(local: []) }
     let q = query.lowercased()
+    guard let v = vault, let tree = try? v.tree() else {
+      let local = FileResources.sampleCards.filter { q.isEmpty || $0.lowercased().contains(q) }
+        .map { MarkdownRefCandidate(label: $0, target: nil, title: $0) }
+      return MarkdownRefMenu(recent: recentRefs, here: "This board", local: local)
+    }
     func title(_ n: VaultNote) -> String {
       let first = n.title ?? n.text.split(separator: "\n").first.map(String.init) ?? ""
       // its first line as read: heading marks and inline markers left out
@@ -780,6 +790,17 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     }
     return MarkdownRefMenu(recent: recentRefs, here: "This board", local: mine, groups: groups)
   }
+
+  /// `--pick-image <file>`: the file / Image takes, without the Open panel (a driver's run never puts a modal panel on
+  /// the screen); nil asks with the panel
+  var pickImage: URL?
+  func editorPicksImage(_ e: MarkdownEditorView) -> (Data, String)? {
+    guard let u = pickImage else { return DefaultPicker().editorPicksImage(e) }
+    return (try? Data(contentsOf: u)).map { ($0, u.lastPathComponent) }
+  }
+
+  /// a click on a resolved reference: taken (a board would go to the card); the editor logs it in the inspector
+  func editor(_ e: MarkdownEditorView, activate label: String, target: String?) -> Bool { true }
 
   func editor(_ e: MarkdownEditorView, pickedRef r: MarkdownRefCandidate) {
     recentRefs.removeAll { $0 == r }
@@ -948,6 +969,7 @@ final class Columns: NSView {
 
 /// Runs the demo window in this process (MarkdownDemo's main, and a driver that runs it in its own process):
 ///   [file.md] [--width 420] [--save-to <path>] [--report <path>] [--check <folder>] [--vault <folder> [--board <path>]]
+///   [--pick-image <file>: what / Image takes, without the Open panel]
 ///   --make-sample-vault <folder> [--from <vault>]
 /// --save-to writes the Note's Markdown there after every change; --report writes where the card and its editor are in the
 /// window (points from its top left), the zoom and the window's number, whenever they move; --check (Check.run) lays the
@@ -969,6 +991,7 @@ public func runMarkdownDemo(arguments: [String]) throws -> Never {
   let check = option("--check").map { URL(filePath: $0) }
   let vault = option("--vault").map { URL(filePath: $0) }
   let board = option("--board")
+  let pickImage = option("--pick-image").map { URL(filePath: $0) }
   if let folder = option("--make-sample-vault") {
     if let from = option("--from") {
       print(try DerivedVault.write(to: URL(filePath: folder), from: URL(filePath: from)).joined(separator: "\n"))
@@ -987,6 +1010,7 @@ public func runMarkdownDemo(arguments: [String]) throws -> Never {
   let atStart = footprint()
   let demo = try Demo(text: text, folder: file?.deletingLastPathComponent() ?? sampleFolder(), cardWidth: width)
   demo.saveTo = saveTo
+  demo.pickImage = pickImage
   if let second { demo.secondText = try String(contentsOf: second, encoding: .utf8) }
   demo.reportTo = report
   if let file { demo.name = file.lastPathComponent }
@@ -1013,4 +1037,12 @@ enum DemoDefaults {
 
 extension Array {
   subscript(safe i: Int) -> Element? { i >= 0 && i < count ? self[i] : nil }
+}
+
+/// the component's own Open panel, for a demo not given --pick-image
+private final class DefaultPicker: MarkdownEditorDelegate {
+  func editor(_ e: MarkdownEditorView, didChange source: String) {}
+  func editor(_ e: MarkdownEditorView, didResize size: CGSize) {}
+  func editorWantsToEnd(_ e: MarkdownEditorView) {}
+  func editorDidBegin(_ e: MarkdownEditorView) {}
 }

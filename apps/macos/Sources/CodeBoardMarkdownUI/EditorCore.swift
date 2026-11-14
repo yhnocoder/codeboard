@@ -85,7 +85,11 @@ public final class EditorCore {
     precondition(l.document == document, "a relayout lays out the same source")
     layout = l
     layout.setHead(selection.isEmpty && marked == nil ? selection.head : nil)
+    onRelayout?()
   }
+
+  /// the host laid the Note out again (a new look or appearance): what floats over it takes the new theme
+  public var onRelayout: (() -> Void)?
 
   // MARK: what to draw
 
@@ -901,8 +905,12 @@ public final class EditorCore {
   /// layout holds still until `settle` after the release
   public func mouseDown(at p: CGPoint, clicks: Int, extend: Bool) {
     endLone()
-    // a press on a drawn formula block opens its TeX, the caret at its end (editor/mathblock.ts)
-    if !extend, clicks == 1, let i = layout.block(at: p), case .math = document.blocks[i].kind,
+    // a press on a drawn formula block opens its TeX, the caret at its end (editor/mathblock.ts); on the block itself, not
+    // in the space beside it, where a gap's caret goes
+    let drawn = layout.block(at: p).flatMap { i in
+      p.y >= layout.blockFrames[i].minY && p.y <= layout.blockFrames[i].maxY ? i : nil
+    }
+    if !extend, clicks == 1, let i = drawn, case .math = document.blocks[i].kind,
       layout.head.map({ !document.blocks[i].range.contains($0) }) ?? true
     {
       mouse = nil
@@ -910,7 +918,7 @@ public final class EditorCore {
       return
     }
     // a press on a drawn Mermaid diagram opens its source at once, the caret at its end (as a formula block)
-    if !extend, clicks == 1, let i = layout.block(at: p), case .mermaid(let body) = document.blocks[i].kind,
+    if !extend, clicks == 1, let i = drawn, case .mermaid(let body) = document.blocks[i].kind,
       layout.head.map({ !document.blocks[i].range.contains($0) }) ?? true
     {
       mouse = nil

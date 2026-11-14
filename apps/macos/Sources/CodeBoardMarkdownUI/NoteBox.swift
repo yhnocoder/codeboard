@@ -32,6 +32,12 @@ final class NoteBox: NSView, NSTextFieldDelegate {
     field.frame = CGRect(x: 10, y: 10, width: bounds.width - 20, height: 24)
   }
 
+  /// a new look or appearance while shown
+  func restyle(_ theme: MarkdownTheme) {
+    layer?.backgroundColor = theme.colors.surface.cg
+    layer?.borderColor = theme.colors.hair.cg
+  }
+
   func show(_ note: String, under r: CGRect, theme: MarkdownTheme) {
     field.stringValue = note
     layer?.backgroundColor = theme.colors.surface.cg

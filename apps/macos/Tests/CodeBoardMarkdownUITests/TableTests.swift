@@ -281,4 +281,17 @@ import Testing
     #expect(v.flipTable(.column, add: nil) { v.core.command(.column(.delete)) })
     #expect(v.flippingCells.go == 4 && v.flippingCells.come == 0, "\(v.flippingCells) \(v.core.source)")
   }
+
+  /// a row deleted with a paragraph under the table (the acceptance's mid-delete shot): the paragraph slides up with the
+  /// table instead of being covered by where the table was
+  @Test func whatIsUnderTheTableSlidesWithIt() {
+    _ = boardFonts
+    let src = "| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n\nAfter it."
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 22)
+    v.core.clock = { 10 }
+    v.selection = MDSelection(22)
+    #expect(v.flipTable(.row, add: nil) { v.core.command(.deleteRow) })
+    #expect((v.core.layout.drawOffsets[1] ?? 0) > 0)
+  }
 }

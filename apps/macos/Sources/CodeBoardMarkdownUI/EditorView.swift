@@ -59,6 +59,11 @@ extension MarkdownEditorDelegate {
 public final class MarkdownEditorView: NSView {
   public private(set) var core: EditorCore
   public weak var delegate: MarkdownEditorDelegate?
+  /// where ⌘C, ⌘X and ⌘V go (the general pasteboard; a test's own)
+  public var pasteboard = NSPasteboard.general
+  /// The selection's source exactly as copied, beside the plain text and HTML: a paste in any Note reads it back as it
+  /// was (ProseMirror's own slice in the web's copies), never through the HTML, which loses == marks and code lines
+  public static let sourceType = NSPasteboard.PasteboardType("com.yhnocoder.codeboard.markdown")
   /// device-independent scale of the drawing (the canvas's zoom)
   public var zoom: CGFloat = 1 {
     didSet { resize() }
@@ -246,6 +251,9 @@ public final class MarkdownEditorView: NSView {
     }
     c.onLayout = { [weak self] in
       MainActor.assumeIsolated { self?.changed() }
+    }
+    c.onRelayout = { [weak self] in
+      MainActor.assumeIsolated { self?.restyleChrome() }
     }
     c.onChange = { [weak self] source in
       MainActor.assumeIsolated {
@@ -510,6 +518,22 @@ public final class MarkdownEditorView: NSView {
   }
 
   /// after anything the core did: redraw, keep the caret in view, say if the size changed
+  /// what floats over the Note, shown again in the layout's theme (an appearance switched while a toolbar was open stayed
+  /// white): nothing scrolls, the boxes' typing is kept
+  private func restyleChrome() {
+    let theme = core.layout.theme
+    if !toolbar.isHidden { placeToolbar() }
+    showHeadingChip()
+    showMenu()
+    showHints()
+    if !hints.shown { showPreview() }
+    showBand()
+    if !linkBox.isHidden { linkBox.restyle(theme) }
+    if !noteBox.isHidden { noteBox.restyle(theme) }
+    if !findBar.isHidden { findBar.restyle(theme) }
+    needsDisplay = true
+  }
+
   private func changed() {
     let before = frame.size
     resize()
@@ -809,8 +833,8 @@ public final class MarkdownEditorView: NSView {
   private func copyCode() {
     guard let b = band.block else { return }
     let t = (core.source as NSString).substring(with: NSRange(location: b.body.lowerBound, length: b.body.count))
-    NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(t, forType: .string)
+    pasteboard.clearContents()
+    pasteboard.setString(t, forType: .string)
     note(.copied([("public.utf8-plain-text", t)]))
   }
 
@@ -1038,6 +1062,7 @@ public final class MarkdownEditorView: NSView {
       $0.map { $0.insetBy(dx: -1, dy: -1) }
     }
     let pics0 = cells0.map { $0.map { snapshot($0) } }
+    let places0 = blockPlaces()
     guard run() else { return false }
     // the table again by where it starts (the caret may be at its edge, in no cell, after a column goes)
     guard let b = before, window.map({ $0.occlusionState.contains(.visible) }) ?? true,
@@ -1065,7 +1090,8 @@ public final class MarkdownEditorView: NSView {
         let c1 = axis == .column ? moved(c) : c
         if let r1, let c1, let to = cells1[safe: r1]?[safe: c1] {
           kept.insert([r1, c1])
-          pieces.append((pic, from, to, 0))
+          // a staying cell as it is now, moved from where it was: its text never squeezed by a column's new width
+          pieces.append((snapshot(to) ?? pic, from, to, 0))
         } else {
           pieces.append((pic, from, from, -1))
         }
@@ -1076,9 +1102,12 @@ public final class MarkdownEditorView: NSView {
         if let pic = snapshot(to) { pieces.append((pic, to, to, 1)) }
       }
     }
-    let all = (cells0 + cells1).flatMap { $0 }
+    // the table as it is now is covered (the cells drawn over it); what moved up under where it was stays drawn
+    let all = cells1.flatMap { $0 }
     guard let first = all.first else { return true }
     tableFlip = (all.dropFirst().reduce(first) { $0.union($1) }.insetBy(dx: -1, dy: -1), pieces, core.clock())
+    // the blocks under the table follow its new height, as blocks do after a move
+    slideBlocks(from: places0)
     if tableLink == nil {
       let link = displayLink(target: self, selector: #selector(tableFrame(_:)))
       link.add(to: .main, forMode: .common)
@@ -1112,8 +1141,7 @@ public final class MarkdownEditorView: NSView {
     for p in f.pieces {
       let r = CGRect(
         x: p.from.minX + (p.to.minX - p.from.minX) * e, y: p.from.minY + (p.to.minY - p.from.minY) * e,
-        width: p.from.width + (p.to.width - p.from.width) * e, height: p.from.height + (p.to.height - p.from.height) * e
-      )
+        width: p.to.width, height: p.to.height)
       ctx.saveGState()
       ctx.setAlpha(p.fade == 0 ? 1 : p.fade > 0 ? e : 1 - e)
       ctx.translateBy(x: r.minX, y: r.maxY)
@@ -1369,8 +1397,9 @@ public final class MarkdownEditorView: NSView {
   /// presses a control of the band showing now, by its id ("size", "copy", "wrap", "more", a table action), as a click on it
   /// does (a host's check)
   public func pressBandPart(_ id: String) {
-    guard band.shown, let (_, r) = band.partRect(id) else { return }
-    bandPart(id, band, r)
+    guard band.shown else { return }
+    // a part folded into ⋯ on a narrow band is pressed as its menu item would be
+    bandPart(id, band, band.partRect(id)?.1 ?? .zero)
   }
 
   /// the handwritten note box under the selection, with the note of the annotation it is in
@@ -1485,10 +1514,13 @@ public final class MarkdownEditorView: NSView {
   }
 
   func placeToolbar() {
-    guard let first = core.selectionRects.first else { return toolbar.hide() }
-    let line = CGRect(
-      x: first.minX * zoom, y: first.minY * zoom, width: first.width * zoom, height: first.height * zoom)
-    toolbar.show(toolbarButtons, over: line, in: visibleRect, theme: core.layout.theme)
+    let rects = core.selectionRects
+    guard let first = rects.first, let last = rects.last else { return toolbar.hide() }
+    let k = zoom
+    let z = { (r: CGRect) in CGRect(x: r.minX * k, y: r.minY * k, width: r.width * k, height: r.height * k) }
+    toolbar.show(
+      toolbarButtons, over: z(first), under: z(last), in: visibleRect.intersection(bounds), avoid: lastPress,
+      theme: core.layout.theme)
   }
 
   func toolbarPress(_ id: String) {
@@ -1625,8 +1657,12 @@ public final class MarkdownEditorView: NSView {
 
   // MARK: the mouse
 
+  /// where the pointer last pressed in the view: the toolbar does not come up over it
+  var lastPress: CGPoint?
+
   public override func mouseDown(with e: NSEvent) {
     begin()
+    lastPress = convert(e.locationInWindow, from: nil)
     // a press anywhere in the Note leaves the link box: it closes at once, what it holds is written on the release
     leaveLinkBox(later: true)
     sizePicker.close()
@@ -1646,7 +1682,7 @@ public final class MarkdownEditorView: NSView {
     if e.clickCount == 1, e.modifierFlags.intersection([.command, .shift, .option, .control]).isEmpty,
       let (label, target) = resolvedRef(at: at), delegate?.editor(self, activate: label, target: target) == true
     {
-      note(.key("click on a reference", did: "taken by the host"))
+      note(.key("click on a reference", did: "activated [[\(label)]] (taken by the host)"))
       return
     }
     guard isEditing else {
@@ -2208,13 +2244,16 @@ public final class MarkdownEditorView: NSView {
   @objc public func copy(_ sender: Any?) {
     begin()
     guard let t = core.copy() else { return }
-    let pb = NSPasteboard.general
+    let pb = pasteboard
     pb.clearContents()
     pb.setString(t, forType: .string)
-    // and as HTML, for apps that paste formatted text (the web editor's copy gives text/html too)
-    let html = MarkdownHTML.render(t)
+    pb.setString(t, forType: Self.sourceType)
+    // and as HTML, for apps that paste formatted text (the web editor's copy gives text/html too); lines of a code block
+    // as preformatted code, so their line breaks hold there too
+    let inCode = MarkdownEditing.context(at: core.selection.range.lowerBound, in: core.document).leaf == .code
+    let html = inCode ? "<pre><code>\(Self.escapedHTML(t))</code></pre>" : MarkdownHTML.render(t)
     pb.setString(html, forType: .html)
-    var types = [("public.utf8-plain-text", t), ("public.html", html)]
+    var types = [("public.utf8-plain-text", t), ("public.html", html), (Self.sourceType.rawValue, t)]
     // a selected image: its picture too, as the web's ⌘C copies the picture itself (editor/image.ts copyImage)
     if let png = selectedImagePNG() {
       pb.setData(png, forType: .png)
@@ -2225,20 +2264,23 @@ public final class MarkdownEditorView: NSView {
   @objc public func cut(_ sender: Any?) {
     begin()
     guard isEditing, let t = core.cut() else { return }
-    NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(t, forType: .string)
-    note(.copied([("public.utf8-plain-text", t)]))
+    pasteboard.clearContents()
+    pasteboard.setString(t, forType: .string)
+    pasteboard.setString(t, forType: Self.sourceType)
+    note(.copied([("public.utf8-plain-text", t), (Self.sourceType.rawValue, t)]))
     changed()
   }
   @objc public func paste(_ sender: Any?) {
     // a picture (or picture files) on the pasteboard: saved by the host, written as images
-    if isEditing, insertImages(from: NSPasteboard.general) { return }
+    let pb = pasteboard
+    // a Note's own copy: its source, as it was
+    let own = pb.string(forType: Self.sourceType)
+    if own == nil, isEditing, insertImages(from: pb) { return }
     guard isEditing else { return }
-    let pb = NSPasteboard.general
     let plainOnly = (sender as? NSMenuItem)?.action == #selector(pasteAsPlainText(_:)) || sender == nil
-    var p = MDPaste(plain: pb.string(forType: .string))
+    var p = MDPaste(plain: own ?? pb.string(forType: .string))
     if let plain = p.plain, plain.contains("\n") { p.hostCode = delegate?.editor(self, classify: plain) }
-    if !plainOnly {
+    if !plainOnly, own == nil {
       // VS Code marks its copies with the language; HTML from elsewhere is read as Markdown
       if let vs = pb.data(forType: NSPasteboard.PasteboardType("vscode-editor-data")),
         let o = try? JSONSerialization.jsonObject(with: vs) as? [String: Any]
@@ -2256,13 +2298,18 @@ public final class MarkdownEditorView: NSView {
   }
   @objc public func pasteAsPlainText(_ sender: Any?) { paste(sender) }
 
+  static func escapedHTML(_ t: String) -> String {
+    t.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+      .replacingOccurrences(of: ">", with: "&gt;")
+  }
+
   @objc public func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
     switch item.action {
     case #selector(undo(_:)): core.canUndo
     case #selector(redo(_:)): core.canRedo
     case #selector(copy(_:)): !core.selection.isEmpty
     case #selector(cut(_:)): isEditing && !core.selection.isEmpty
-    case #selector(paste(_:)), #selector(pasteAsPlainText(_:)): NSPasteboard.general.string(forType: .string) != nil
+    case #selector(paste(_:)), #selector(pasteAsPlainText(_:)): pasteboard.string(forType: .string) != nil
     default: responds(to: item.action)
     }
   }

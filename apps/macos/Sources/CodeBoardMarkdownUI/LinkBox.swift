@@ -58,6 +58,12 @@ final class LinkBox: NSView, NSTextFieldDelegate {
     remove.frame = CGRect(x: 286, y: 40, width: 24, height: 24)
   }
 
+  /// a new look or appearance while shown
+  func restyle(_ theme: MarkdownTheme) {
+    layer?.backgroundColor = theme.colors.surface.cg
+    layer?.borderColor = theme.colors.hair.cg
+  }
+
   func show(_ p: MDLinkPlace, under r: CGRect, theme: MarkdownTheme) {
     place = p
     text.stringValue = p.text
