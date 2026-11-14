@@ -276,7 +276,7 @@ export function CardPeek(p: {
               data-tip="Go to Card"
               onClick={() => {
                 pk().hide();
-                A.openCardRef(p.id, p.place);
+                A.clickToCardRef(p.id, p.place);
               }}
             >
               <Icon name="arrowR" size={14} />

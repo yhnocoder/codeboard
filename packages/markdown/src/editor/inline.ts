@@ -313,6 +313,22 @@ export function pickImageAt(view: EditorView, x: number, y: number): boolean {
   return !!r;
 }
 
+/** Opens the source of the drawn atom (a [[reference]], math, an emoji…) that starts at `from`, the caret where a press on it puts
+ *  it; false if no atom starts there. An image is opened by its own (openImage) */
+export function openAtom(view: EditorView, from: number): boolean {
+  const doc = view.state.doc;
+  if (from < 0 || from > doc.content.size) return false;
+  const $p = doc.resolve(from);
+  if (!$p.parent.isTextblock || !isSource($p.parent) || !$p.depth) return false;
+  const base = $p.start(),
+    links = inlineKey.getState(view.state)?.links,
+    sp = flat(blockInfo($p.parent.textContent, links).spans).find(
+      (x) => x.atom && x.atom.type !== "image" && base + x.from === from,
+    );
+  if (sp) toCaret(view, from + caretIn(sp));
+  return !!sp;
+}
+
 /** The keys of a selected image (⌫ / Delete remove it, ↵ opens its source, a typed character goes after it), and ⌫ / Delete
  *  beside a drawn image, which select it first */
 function imageKey(view: EditorView, e: KeyboardEvent): boolean {

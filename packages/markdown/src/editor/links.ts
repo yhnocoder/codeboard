@@ -73,8 +73,10 @@ export function linkText(t: string): string {
   return depth === 0 ? t : t.replace(/(?<!\\)((?:\\\\)*)([[\]])/g, "$1\\$2");
 }
 
-/** A web site written without its scheme: www.x, or a host with a dot (example.com, example.com/a, x.io:8080?q) */
-const HOST = /^(?:www\.|[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?::\d+)?(?:[/?#]|$))/i;
+/** A web site written without its scheme: www.x, or a host with a dot (example.com, x.io:8080?q), any dotted host before a
+ *  path (x.y/z) */
+const HOST =
+  /^(?:www\.|[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9-]+)*\.(?:[a-z]{2,}(?::\d+)?(?:[/?#]|$)|[a-z]+(?::\d+)?[/?#]))/i;
 /**
  * The address a link is written with, from what was typed or pasted: one with a scheme, a link to an item (refs.link: a Copy
  * Link path) and any other path (./x, /x, ~/x, a folder/file) stay as they are; only a web site written without its scheme

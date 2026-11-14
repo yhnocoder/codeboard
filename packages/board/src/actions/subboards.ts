@@ -28,6 +28,10 @@ import { animScale } from "../state/motion";
 import { ask, send } from "../host";
 import { promptText } from "../ui/Menu";
 import { cardSel } from "../cardsel";
+import { lastDown } from "../state/measure";
+import { tune } from "../state/tune";
+import { DBL_SLOP, swallowRepeats } from "../gesture";
+import { boardRef, boardTimer } from "../state/root";
 
 const subsOf = (id: string) => state.boards.find((m) => m.id === id)?.subs;
 const nameOf = (id: string) => state.boards.find((m) => m.id === id)?.name ?? "Board";
@@ -499,10 +503,60 @@ export function cardElsewhere(to: { id: string; place?: string }): string | unde
   return subRefs().find((r) => r.id === to.id)?.board;
 }
 /** A click on a reference to a card near the view goes there as Go to Card does; from an editor the camera only moves and the
- *  card is pinged, so the editing and its caret go on */
+ *  card is pinged, so the editing and its caret go on. Either way it goes once the double-click window is over: a second click on
+ *  the reference in that time is a double-click, which opens the reference's source (interact.ts at rest, the editor's own
+ *  double-click while editing) and leaves the camera where it is, so the second press still lands on the reference */
 export function goToNearCard(id: string, editing: boolean) {
-  if (editing) void revealCard(id);
-  else openCardRef(id);
+  goAfterDblClick(id, () => (editing ? void revealCard(id) : openCardRef(id)));
+}
+/** A click on a reference that goes somewhere at once (a Section, a board, an item the page does not preview): there as Go to
+ *  Card goes, once the double-click window is over, as goToNearCard */
+export function goToRefAfterDblClick(id: string, place?: string) {
+  goAfterDblClick(id, () => openCardRef(id, place));
+}
+function goAfterDblClick(id: string, go: () => void) {
+  if (nearGoDropped.v && nearGoDropped.v === lastDown()) return;
+  if (nearGo.pending && nearGoing.v === id) return nearGo.stop();
+  nearGoing.v = id;
+  const gap = tune("dblClick"),
+    from = lastDown(),
+    ctl = new AbortController();
+  nearGo.start(() => {
+    ctl.abort();
+    go();
+    clickWent();
+  }, gap);
+  // the editor takes a double-click on a reference itself (its source) and gives the page only the first click: a second press
+  // there drops the go-to
+  window.addEventListener(
+    "pointerdown",
+    (e) => {
+      ctl.abort();
+      if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) <= DBL_SLOP) nearGo.stop();
+    },
+    { capture: true, signal: ctl.signal },
+  );
+  setTimeout(() => ctl.abort(), gap);
+}
+const nearGo = boardTimer(),
+  nearGoing = boardRef("");
+/** The press that made a double-click on a reference: its click does not go anywhere (refDoubled) */
+const nearGoDropped = boardRef<ReturnType<typeof lastDown>>(null);
+/** The second press of a double-click on a reference (which opens its source): the go-to its first click started is dropped,
+ *  and so is the one its own click would start */
+export function refDoubled() {
+  nearGo.stop();
+  nearGoDropped.v = lastDown();
+}
+/** openCardRef from a click (a reference ⌘-clicked, the preview's arrow) */
+export function clickToCardRef(id: string, place?: string) {
+  openCardRef(id, place);
+  clickWent();
+}
+/** The click just pressed moved the board under the pointer: the rest of a double or triple click lands on nothing */
+function clickWent() {
+  const d = lastDown();
+  if (d) swallowRepeats(d, tune("dblClick"));
 }
 
 /** An address opened from Markdown (a link's ⌘-click, the link box's Open): a link to an item (Copy Link) goes to it as Go to

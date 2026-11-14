@@ -82,10 +82,13 @@ export type MdEditorHandle = {
   destroy(): void;
   /**
    * Put the caret at the end, next to characters counted as the static render shows them (staticTextRange: before them, or
-   * after them with after), or at a point on the page (moved into the text when it is beside it; below the text = the end).
+   * after them with after; with open, the one drawn atom they are, a [[reference]] or math, has its source opened with the caret
+   * where a press on it puts it), or at a point on the page (moved into the text when it is beside it; below the text = the end).
    * False when the characters are not in the document
    */
-  placeCaret(at: "end" | { visible: StaticTextRange; after?: boolean } | { x: number; y: number }): boolean;
+  placeCaret(
+    at: "end" | { visible: StaticTextRange; after?: boolean; open?: boolean } | { x: number; y: number },
+  ): boolean;
   /** Select the image drawn at a point on the page (the press that started the editing was on it); false when none is there */
   pickImage(at: { x: number; y: number }): boolean;
   /** Select characters counted as the static render shows them (staticTextRange); false when they are not in the document */

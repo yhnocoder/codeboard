@@ -106,9 +106,10 @@ export const [editing, setEditing] = boardSignal<Editing>(null);
 /**
  * Where a click on a Note's static view lands, counted in its text (one character next to the point, see staticTextRange) or
  * "end" below its last block. The editor mounts before its layout settles (a leading heading slides in from the card's header),
- * so the screen point alone would resolve against a layout that is still moving
+ * so the screen point alone would resolve against a layout that is still moving. open: the character is a drawn [[reference]]
+ * that was double-clicked, whose source opens
  */
-export type NoteSpot = { char: StaticTextRange; after: boolean } | "end";
+export type NoteSpot = { char: StaticTextRange; after: boolean; open?: boolean } | "end";
 export type EditEntry = { id: string } & (
   | { kind: "note"; key: "Backspace" | "Delete"; range: StaticTextRange }
   | { kind: "note"; at: { x: number; y: number }; spot?: NoteSpot }

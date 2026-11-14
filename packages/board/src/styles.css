@@ -2943,6 +2943,12 @@ textarea {
   font: 10.5px var(--mono);
   opacity: 0.6;
 }
+/* a tip that is an address (a link's in a Note, ui/Md.tsx): wrapped anywhere, never wider than the window */
+.tip.long {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: min(480px, calc(100vw - 16px));
+}
 .toast {
   position: absolute;
   left: 50%;
@@ -3176,6 +3182,17 @@ textarea {
 }
 .cand.on {
   box-shadow: inset 2px 0 0 var(--accent);
+}
+/* The Note editor's lists ([[ references, the / menu, : emoji: @yhnocoder/markdown's .md-pick, with the board's .ctx look): the
+   row the keys are on keeps the list's own look (.md-menu button.sel: the accent, its words in the accent's ink) with the pointer
+   on it too. A theme's context-menu hover (Warm Ink's takes the colour off a row, for the band that slides between its rows,
+   which these lists do not have) left that row with no colour and its grey words in the accent's ink */
+:root .md-menu.md-pick.ctx .md-list button.sel:not([disabled]) {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+:root .md-menu.md-pick.ctx .md-list button.sel:not([disabled]) :is(small, .bc, .ck) {
+  color: color-mix(in srgb, var(--accent-ink) 75%, transparent);
 }
 .empty {
   padding: 14px 12px;

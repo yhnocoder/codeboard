@@ -41,6 +41,47 @@ export function followPointer(move: (e: PointerEvent) => void): () => void {
 export const DRAG_SLOP = 3;
 /** A call in code is clicked (expand) far more often than dragged (to a card): it needs a longer move */
 export const CALL_DRAG_SLOP = 6;
+/** How far apart (screen px) the presses of a double-click may be (interact.ts isDbl) */
+export const DBL_SLOP = 6;
+
+/**
+ * A click that moved what is under the pointer (a reference's Go to Card, the preview's arrow, a board opened): the presses that
+ * follow it at the same spot within `gap` ms of each other, the rest of a double or triple click, land on nothing. Otherwise they
+ * hit whatever the move put there: the board's empty space (whose double-click adds a card), a sub-board's frame (entered), another
+ * card. It outlives a board switch, which is when the new board is under the pointer
+ */
+export function swallowRepeats(at: { x: number; y: number }, gap: number) {
+  const ctl = new AbortController(),
+    o = { capture: true, signal: ctl.signal };
+  let last = at,
+    pressing = false,
+    timer = 0;
+  const wait = () => {
+    clearTimeout(timer);
+    timer = window.setTimeout(() => (pressing ? wait() : ctl.abort()), gap);
+  };
+  const eat = (e: Event) => {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  };
+  window.addEventListener(
+    "pointerdown",
+    (e) => {
+      if (Math.hypot(e.clientX - last.x, e.clientY - last.y) > DBL_SLOP) return ctl.abort();
+      last = { x: e.clientX, y: e.clientY };
+      pressing = true;
+      eat(e);
+      wait();
+    },
+    o,
+  );
+  // the press's own mouse events and its click (and dblclick) right after its release
+  window.addEventListener("pointerup", () => void setTimeout(() => (pressing = false)), o);
+  for (const k of ["mousedown", "mouseup", "click"]) window.addEventListener(k, (e) => pressing && eat(e), o);
+  window.addEventListener("dblclick", eat, o);
+  ctl.signal.addEventListener("abort", () => clearTimeout(timer));
+  wait();
+}
 
 /**
  * A pointer drag: `move` from the first move past `threshold` screen pixels on, `up` once on release or cancel (moved = it got

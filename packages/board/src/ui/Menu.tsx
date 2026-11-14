@@ -631,12 +631,13 @@ export function DialogLayer() {
 // 按钮提示：停一会儿出现并带快捷键；之后在按钮间滑动立刻切换；按下即消失
 
 export function TooltipLayer() {
-  const [tip, setTip] = createSignal<{ text: string; kbd?: string; at: HTMLElement } | null>(null);
+  const [tip, setTip] = createSignal<{ text: string; kbd?: string; long?: boolean; at: HTMLElement } | null>(null);
   const [pos, setPos] = createSignal<{ x: number; y: number } | null>(null);
   let el: HTMLDivElement | undefined,
     timer: number | undefined,
     warmUntil = 0;
-  const show = (b: HTMLElement) => setTip({ text: b.dataset.tip!, kbd: b.dataset.kbd, at: b });
+  const show = (b: HTMLElement) =>
+    setTip({ text: b.dataset.tip!, kbd: b.dataset.kbd, long: b.hasAttribute("data-tip-long"), at: b });
   // 按钮上方居中，放不下翻到下方
   createEffect(() => {
     const t = tip();
@@ -670,10 +671,13 @@ export function TooltipLayer() {
   window.addEventListener("pointerover", over);
   window.addEventListener("pointerout", out);
   window.addEventListener("pointerdown", down, true);
+  // the wheel pans or zooms the board, or scrolls what is under the pointer: what the tip is about moves away from it
+  window.addEventListener("wheel", hide, { capture: true, passive: true });
   onCleanup(() => {
     window.removeEventListener("pointerover", over);
     window.removeEventListener("pointerout", out);
     window.removeEventListener("pointerdown", down, true);
+    window.removeEventListener("wheel", hide, { capture: true });
   });
   return (
     <Show when={tip()}>
@@ -681,7 +685,7 @@ export function TooltipLayer() {
         <div
           ref={el}
           class="tip"
-          classList={{ show: !!pos() }}
+          classList={{ show: !!pos(), long: !!t().long }}
           style={{ left: `${pos()?.x ?? 0}px`, top: `${pos()?.y ?? 0}px` }}
         >
           {t().text}

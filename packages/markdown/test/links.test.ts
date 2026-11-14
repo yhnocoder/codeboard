@@ -30,6 +30,7 @@ describe("the address a link is written with", () => {
     expect(linkHref("example.com/a?b", refs)).toBe("https://example.com/a?b");
     expect(linkHref("www.example.org", refs)).toBe("https://www.example.org");
     expect(linkHref("docs.rs/tokio", refs)).toBe("https://docs.rs/tokio");
+    expect(linkHref("x.y/z", refs)).toBe("https://x.y/z");
     expect(linkHref("http://example.com", refs)).toBe("http://example.com");
     expect(linkHref("mailto:a@b.c", refs)).toBe("mailto:a@b.c");
     expect(linkHref("  ", refs)).toBe("");

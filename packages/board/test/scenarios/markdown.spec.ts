@@ -152,9 +152,14 @@ async function renderIn(themes: string[]) {
     await h.page.locator('.card[data-id="n1"] a.md-link').first().click();
     await until(h, "the link goes to the host", () => h.sent.some((m) => m.type === "openLink"));
     const opened = h.sent.some((m) => m.type === "openLink");
-    // a click on a reference to a card near the view goes there (one further away is previewed: note-links.spec.ts)
+    // a click on a reference to a card near the view goes there once the double-click window is over (one further away is
+    // previewed: note-links.spec.ts)
     await h.page.locator('.card[data-id="n1"] .md-ref').first().click();
-    await until(h, "the chip selects its card", () => h.page.locator(".card.sel").count());
+    await until(
+      h,
+      "the chip selects its card",
+      async () => (await h.page.locator('.card.sel:not([data-id="n1"])').count()) > 0,
+    );
     await idle(h);
     const selId = await h.page.locator(".card.sel").evaluateAll((es) => es.map((e) => (e as HTMLElement).dataset.id));
     check(
