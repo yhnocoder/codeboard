@@ -281,6 +281,8 @@ public final class MarkdownEditorView: NSView {
   public override func draw(_ dirtyRect: NSRect) {
     let started = BlockLayout.cpu()
     draws += 1
+    // a slide is drawn where its clock says, whether or not its display link has run since
+    if let b = blockSlide { stepBlocks(at: CACurrentMediaTime() - b.since) }
     defer { lastDrawMs = BlockLayout.cpu() - started }
     guard let ctx = NSGraphicsContext.current?.cgContext else { return }
     let scale = zoom * (window?.backingScaleFactor ?? 2)
@@ -354,9 +356,33 @@ public final class MarkdownEditorView: NSView {
       ctx.restoreGState()
     }
     if let g = tableGrips, tableDrag == nil {
-      ctx.setFillColor(core.layout.theme.colors.ink3.alpha(0.5).cg)
-      for r in g.rows.dropFirst() { ctx.fill(rowGrip(r)) }
-      for c in g.cols { ctx.fill(colGrip(c)) }
+      // pills on the paper with a hair ring and a small shadow, the hovered cell's only
+      let grips = [
+        gripHover.row.flatMap { g.rows[safe: $0] }.map(rowGrip),
+        gripHover.col.flatMap { g.cols[safe: $0] }.map(colGrip),
+      ]
+      for r in grips.compactMap({ $0 }) {
+        let pill = CGPath(roundedRect: r, cornerWidth: 3, cornerHeight: 3, transform: nil)
+        ctx.saveGState()
+        ctx.setShadow(
+          offset: CGSize(width: 0, height: 1), blur: 2,
+          color: CGColor(srgbRed: 50 / 255, green: 35 / 255, blue: 10 / 255, alpha: 0.13))
+        ctx.addPath(pill)
+        ctx.setFillColor(core.layout.theme.colors.surface.cg)
+        ctx.fillPath()
+        ctx.restoreGState()
+        ctx.addPath(pill)
+        ctx.setStrokeColor(core.layout.theme.colors.hair.cg)
+        ctx.setLineWidth(0.5)
+        ctx.strokePath()
+        // its dots (the grip's handle)
+        ctx.setFillColor(core.layout.theme.colors.ink3.cg)
+        let vertical = r.height > r.width
+        for k in [-1.0, 1.0] {
+          let c = vertical ? CGPoint(x: r.midX, y: r.midY + k * 2.5) : CGPoint(x: r.midX + k * 2.5, y: r.midY)
+          ctx.fillEllipse(in: CGRect(x: c.x - 0.9, y: c.y - 0.9, width: 1.8, height: 1.8))
+        }
+      }
     }
     if let d = tableDrag {
       d.draw(in: ctx, paper: core.layout.theme.colors.surface.cg, ring: caretColor.cgColor)
@@ -535,49 +561,94 @@ public final class MarkdownEditorView: NSView {
     return isEditing ? hovered : nil
   }
 
+  /// a table band's actions in their groups and order (tableview.ts GROUPS), and which stay first when they do not all fit
+  /// (KEEP)
+  private static let tableActs: [[(id: String, icon: String, tip: String)]] = [
+    [
+      ("rowAbove", "rowAbove", "Insert row above (⌘⇧↵)"), ("rowBelow", "rowBelow", "Insert row below (⌘↵)"),
+      ("colLeft", "colLeft", "Insert column left"), ("colRight", "colRight", "Insert column right"),
+    ],
+    [
+      ("left", "alignL", "Align column left"), ("center", "alignC", "Align column center"),
+      ("right", "alignR", "Align column right"),
+    ],
+    [("delRow", "delRow", "Delete row (⌘⇧⌫)"), ("delCol", "delCol", "Delete column")],
+  ]
+  private static let tableKeep = [
+    "rowBelow", "colRight", "left", "center", "right", "rowAbove", "colLeft", "delRow", "delCol",
+  ]
+  /// the table actions the band had no room for: they go in its ⋯ menu
+  private var tableOverflow: [String] = []
+
   private func showBand() {
     let m = core.layout.theme.metrics
     if let b = bandBlock {
       bandTimer?.invalidate()
-      let boxes = core.rects(for: b.body.lowerBound..<max(b.body.lowerBound + 1, b.body.upperBound))
-      guard let first = boxes.first else { return }
-      // the code block's box: the code's padding around its lines
-      let top = first.minY - CGFloat(m.codePadding[0])
+      // the code block's box: the code's padding around its lines, from the first line's own top (its caret box: the whole
+      // line; a glyph's box sits lower, which left a gap under the band)
+      guard let first = core.layout.caretRect(MDCaret(b.body.lowerBound)) else { return }
+      // a code block of its own is its block's frame; one inside a list or quote is found from its first line
+      let own = core.document.blocks.indices.first { core.document.blocks[$0].range == b.range }
+      let top = own.map { core.layout.blockFrames[$0].minY } ?? first.minY - CGFloat(m.codePadding[0])
       let frame = core.layout.blockFrames.first { $0.minY <= top + 1 && $0.maxY >= top } ?? .zero
       band.block = b
       band.table = nil
       let wraps = core.layout.info?.wrap?.contains(b.index) ?? false
+      let name =
+        (b.language?.isEmpty ?? true) ? "Plain text" : (codeLanguages.first { $0.0 == b.language }?.1 ?? b.language!)
       band.place(
-        over: CGRect(x: frame.minX * zoom, y: top * zoom, width: frame.width * zoom, height: 1), zoom: zoom,
-        theme: core.layout.theme,
+        over: CGRect(x: frame.minX * zoom, y: top * zoom, width: frame.width * zoom, height: 1),
+        key: "code \(b.range.lowerBound)", zoom: zoom, theme: core.layout.theme,
         parts: [
-          .init(id: "language", label: ((b.language?.isEmpty ?? true) ? "Plain text" : b.language!) + " ▾", left: true),
-          .init(id: "copy", label: "Copy"), .init(id: "wrap", label: "Wrap", on: wraps),
-        ], fill: core.layout.theme.colors.codeBlock)
+          .init(id: "language", kind: .language(name), tip: "Language"),
+          .init(id: "copy", kind: .icon("copy"), tip: "Copy code"),
+          .init(id: "wrap", kind: .icon("wrap"), tip: "Wrap lines", on: wraps),
+          .init(id: "more", kind: .icon("dots"), tip: "More"),
+        ], fill: core.layout.theme.colors.codeBlock, table: false, radius: CGFloat(m.codeRadius))
       band.show(true)
       return
     }
     if isEditing, core.marked == nil, let t = MarkdownEditing.tablePlace(at: core.selection.head, in: core.document),
-      let cell = t.table.rows.first?.first
+      let g = tableGrips
     {
       bandTimer?.invalidate()
-      let top =
-        (core.rects(for: cell.range.lowerBound..<max(cell.range.lowerBound + 1, cell.range.upperBound)).first?
-          .minY ?? 0) - CGFloat(m.cellPadding[0]) - 1
-      let frame = core.layout.blockFrames.first { $0.minY <= top + 1 && $0.maxY >= top } ?? .zero
       band.block = nil
       band.table = t.block
       let align = t.column < t.table.align.count ? t.table.align[t.column] : .none
+      let rows = t.table.rows.count
+      let cols = t.table.rows.first?.count ?? 0
+      // as many actions as the table's width holds, the most used first; the rest in ⋯
+      let room = g.box.width - (8 + 7 + 8 + 27) - (6 + 14 + 6 + 8 + 40)
+      var keep = Set<String>()
+      var used: CGFloat = 0
+      for id in Self.tableKeep {
+        let groupGap: CGFloat = keep.isEmpty ? 0 : 6
+        guard used + 27 + groupGap <= room else { break }
+        keep.insert(id)
+        used +=
+          27
+          + (Self.tableActs.firstIndex { $0.contains { $0.id == id } }.map { gi in
+            Self.tableActs[gi].contains { keep.contains($0.id) && $0.id != id } ? 0 : groupGap
+          } ?? 0)
+      }
+      tableOverflow = Self.tableActs.flatMap { $0 }.map(\.id).filter { !keep.contains($0) }
+      var parts: [CodeBand.Part] = [.init(id: "size", kind: .size("\(rows) × \(cols)"), tip: "Table size")]
+      var firstGroup = true
+      for group in Self.tableActs {
+        let shown = group.filter { keep.contains($0.id) }
+        for (i, a) in shown.enumerated() {
+          let on =
+            (a.id == "left" && align == .left) || (a.id == "center" && align == .center)
+            || (a.id == "right" && align == .right)
+          parts.append(.init(id: a.id, kind: .icon(a.icon), tip: a.tip, on: on, gapBefore: i == 0 && !firstGroup))
+        }
+        if !shown.isEmpty { firstGroup = false }
+      }
+      parts.append(.init(id: "more", kind: .icon("dots"), tip: "More"))
       band.place(
-        over: CGRect(x: frame.minX * zoom, y: top * zoom, width: frame.width * zoom, height: 1), zoom: zoom,
-        theme: core.layout.theme,
-        parts: [
-          .init(id: "row+", label: "+ Row", left: true), .init(id: "col+", label: "+ Column", left: true),
-          .init(id: "row-", label: "− Row", left: true), .init(id: "col-", label: "− Column", left: true),
-          .init(id: "left", label: "Left", on: align == .left),
-          .init(id: "center", label: "Center", on: align == .center),
-          .init(id: "right", label: "Right", on: align == .right),
-        ], fill: core.layout.theme.colors.fill)
+        over: CGRect(x: g.box.minX * zoom, y: g.box.minY * zoom, width: g.box.width * zoom, height: 1),
+        key: "table \(t.block.lowerBound)", zoom: zoom, theme: core.layout.theme, parts: parts,
+        fill: core.layout.theme.colors.fill, table: true, radius: 6)
       band.show(true)
       return
     }
@@ -600,10 +671,15 @@ public final class MarkdownEditorView: NSView {
     case "language": pickLanguage(from: v, at: r)
     case "copy": copyCode()
     case "wrap": toggleWrap()
-    case "row+": core.command(.addRow(below: true))
-    case "row-": core.command(.deleteRow)
-    case "col+": core.command(.column(.add(after: true)))
-    case "col-": core.command(.column(.delete))
+    case "rowBelow": core.command(.addRow(below: true))
+    case "rowAbove": core.command(.addRow(below: false))
+    case "delRow": core.command(.deleteRow)
+    case "colRight": core.command(.column(.add(after: true)))
+    case "colLeft": core.command(.column(.add(after: false)))
+    case "delCol": core.command(.column(.delete))
+    case "more":
+      moreMenu(from: v, at: r)
+      return
     case "left", "center", "right":
       let al: MDTable.Align = id == "left" ? .left : id == "center" ? .center : .right
       let now = MarkdownEditing.tablePlace(at: core.selection.head, in: core.document).map {
@@ -614,6 +690,32 @@ public final class MarkdownEditorView: NSView {
     }
     note(.key("band \(id)", did: "selection \(core.selection.head)"))
     changed()
+  }
+
+  /// a band's ⋯: a table's actions that had no room, a code block's rest (codeblock.ts openMenu)
+  private func moreMenu(from v: NSView, at r: CGRect) {
+    let menu = NSMenu()
+    if band.table != nil {
+      let tips = Dictionary(uniqueKeysWithValues: Self.tableActs.flatMap { $0 }.map { ($0.id, $0.tip) })
+      for id in tableOverflow {
+        let item = NSMenuItem(title: tips[id] ?? id, action: #selector(bandMenuPicked(_:)), keyEquivalent: "")
+        item.representedObject = id
+        item.target = self
+        menu.addItem(item)
+      }
+      if menu.items.isEmpty { menu.addItem(withTitle: "No more actions", action: nil, keyEquivalent: "") }
+    } else {
+      let item = NSMenuItem(title: "Copy code", action: #selector(bandMenuPicked(_:)), keyEquivalent: "")
+      item.representedObject = "copy"
+      item.target = self
+      menu.addItem(item)
+    }
+    menu.popUp(positioning: nil, at: CGPoint(x: r.minX, y: r.maxY), in: v)
+  }
+
+  @objc private func bandMenuPicked(_ item: NSMenuItem) {
+    guard let id = item.representedObject as? String else { return }
+    bandPart(id, self, .zero)
   }
 
   private func copyCode() {
@@ -666,16 +768,17 @@ public final class MarkdownEditorView: NSView {
   public override func mouseMoved(with e: NSEvent) {
     let p = convert(e.locationInWindow, from: nil)
     let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
+    hoverGrips(at)
     cursor(at: p, modifiers: e.modifierFlags).set()
     var over: EditorCore.CodeBlock?
-    if isEditing, band.isHidden || !band.frame.contains(p) {
+    if isEditing, band.isHidden || !band.bandFrame.contains(p) {
       let c = core.layout.caret(at: at)
       if let b = core.codeBlock(at: c.offset) {
         let boxes = core.rects(for: b.body.lowerBound..<max(b.body.lowerBound + 1, b.body.upperBound))
         let pad = CGFloat(core.layout.theme.metrics.codePadding[0])
         if let f = boxes.first, let l = boxes.last, at.y >= f.minY - pad, at.y <= l.maxY + pad { over = b }
       }
-    } else if band.shown, band.frame.contains(p) {
+    } else if band.shown, band.bandFrame.contains(p) {
       over = band.block
     }
     guard over != hovered else { return }
@@ -793,7 +896,9 @@ public final class MarkdownEditorView: NSView {
       was[t]?.removeFirst()
       if abs(old - y) > 0.5 { offsets[i] = old - y }
     }
-    guard !offsets.isEmpty else { return }
+    // nothing slides in a window nobody sees (off screen, covered, a locked screen): its display link would not run, and
+    // the blocks would stay drawn where they started (without a window, a frame tool steps it by hand)
+    guard !offsets.isEmpty, window.map({ $0.occlusionState.contains(.visible) }) ?? true else { return }
     blockSlide = (offsets, CACurrentMediaTime())
     core.layout.drawOffsets = offsets
     if blockLink == nil {
@@ -1154,8 +1259,8 @@ public final class MarkdownEditorView: NSView {
     }
     // a press on a table's row or column grip: moving it
     if let g = tableGrips {
-      let row = g.rows.indices.dropFirst().first { rowGrip(g.rows[$0]).insetBy(dx: -4, dy: -3).contains(at) }
-      let col = g.cols.indices.first { colGrip(g.cols[$0]).insetBy(dx: -3, dy: -4).contains(at) }
+      let row = gripHover.row.flatMap { r in rowGrip(g.rows[r]).insetBy(dx: -4, dy: -3).contains(at) ? r : nil }
+      let col = gripHover.col.flatMap { c in colGrip(g.cols[c]).insetBy(dx: -3, dy: -4).contains(at) ? c : nil }
       if row != nil || col != nil, let pic = snapshot(g.box) {
         tableDrag = TableDrag(
           axis: row != nil ? .row : .column, from: row ?? col!, boxes: row != nil ? g.rows : g.cols, table: g.box,
@@ -1275,8 +1380,8 @@ public final class MarkdownEditorView: NSView {
     guard let g = tableGrips, g.box.insetBy(dx: -8, dy: -8).contains(at) else { return nil }
     if g.cols.contains(where: { abs($0.maxX - at.x) <= 3 }) { return .resizeLeftRight }
     if g.rows.contains(where: { abs($0.maxY - at.y) <= 3 }) { return .resizeUpDown }
-    if g.rows.dropFirst().contains(where: { rowGrip($0).insetBy(dx: -4, dy: -3).contains(at) })
-      || g.cols.contains(where: { colGrip($0).insetBy(dx: -3, dy: -4).contains(at) })
+    if gripHover.row.flatMap({ g.rows[safe: $0] }).map({ rowGrip($0).insetBy(dx: -4, dy: -3).contains(at) }) == true
+      || gripHover.col.flatMap({ g.cols[safe: $0] }).map({ colGrip($0).insetBy(dx: -3, dy: -4).contains(at) }) == true
     {
       return .openHand
     }
@@ -1293,8 +1398,25 @@ public final class MarkdownEditorView: NSView {
     return p.exists
   }
 
-  private func rowGrip(_ r: CGRect) -> CGRect { CGRect(x: r.minX + 1, y: r.midY - 7, width: 4, height: 14) }
-  private func colGrip(_ r: CGRect) -> CGRect { CGRect(x: r.midX - 7, y: r.minY + 1, width: 14, height: 4) }
+  /// the grips of the hovered cell (tableview.ts hover, .md-tgrip): one 8 × 16 at the left of its row (not the header
+  /// row), 3 in from the table's edge, one 16 × 7 at the top of its column, 2.5 down
+  private func rowGrip(_ r: CGRect) -> CGRect { CGRect(x: r.minX + 3, y: r.midY - 8, width: 8, height: 16) }
+  private func colGrip(_ r: CGRect) -> CGRect { CGRect(x: r.midX - 8, y: r.minY + 2.5, width: 16, height: 7) }
+  /// the cell under the pointer in the caret's table: its row and column, whose grips show
+  private var gripHover: (row: Int?, col: Int?) = (nil, nil)
+
+  func hoverGrips(_ at: CGPoint) {
+    var next: (row: Int?, col: Int?) = (nil, nil)
+    if let g = tableGrips, g.box.insetBy(dx: -4, dy: -4).contains(at) {
+      // a grip keeps its row or column while the pointer is on it, past the cell's edge
+      let row = g.rows.indices.first { g.rows[$0].minY <= at.y && at.y < g.rows[$0].maxY }
+      let col = g.cols.indices.first { g.cols[$0].minX <= at.x && at.x < g.cols[$0].maxX }
+      next = (row.flatMap { $0 > 0 ? $0 : nil }, col)
+    }
+    guard next.row != gripHover.row || next.col != gripHover.col else { return }
+    gripHover = next
+    needsDisplay = true
+  }
 
   /// a handle being dragged: the image's width as it will be (the layout's points), and where the drag began
   private var resizing: (width: CGFloat, start: CGPoint, from: CGFloat, left: Bool)?

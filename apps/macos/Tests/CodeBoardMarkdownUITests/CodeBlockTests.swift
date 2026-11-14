@@ -113,7 +113,7 @@ import Testing
     #expect(v.band.shown)
     // over the block, above its top edge, 30 points tall at 100 %
     let code = v.core.rects(for: 18..<23).first!
-    #expect(v.band.frame.maxY <= code.minY && abs(v.band.frame.height - 30) < 0.01)
+    #expect(v.band.bandFrame.maxY <= code.minY && abs(v.band.bandFrame.height - 30) < 0.01)
     let b = v.core.codeBlock(at: 20)!
     #expect(b.language == "py" && b.index == 0)
     v.core.setLanguage("rust", of: b)
@@ -153,5 +153,34 @@ import Testing
     #expect(e.selection == MDSelection(9))
     e.key(.enter)
     #expect(e.source == "```\nx\n```\n\n\n\n")
+  }
+}
+
+/// Each band slides in for its own block: a table's band up, then the caret into a code block, and the code block's band
+/// slides in too (it once appeared at once, the band already counting as shown)
+@MainActor @Suite struct BandSlideTests {
+  @Test func eachBlocksBandSlidesIn() {
+    _ = boardFonts
+    let src = "| a | b |\n|---|---|\n| 1 | 2 |\n\n```py\nx = 1\n```"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 2)
+    v.selection = MDSelection(2)
+    #expect(v.band.shown && v.band.table != nil && v.band.slidesIn == 1)
+    v.selection = MDSelection((src as NSString).range(of: "x = 1").location + 1)
+    #expect(v.band.shown && v.band.block != nil && v.band.slidesIn == 2)
+  }
+}
+
+/// The code band sits on the block's top edge, no gap between them (one shape, as on the web)
+@MainActor @Suite struct CodeBandEdgeTests {
+  @Test func theBandTouchesTheBlock() {
+    _ = boardFonts
+    let src = "Text\n\n```py\nx = 1\n```"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 0)
+    v.selection = MDSelection(14)
+    #expect(v.band.shown)
+    let panel = l.blockFrames[1]
+    #expect(abs(v.band.bandFrame.maxY - panel.minY) < 0.5, "\(v.band.bandFrame) \(panel)")
   }
 }

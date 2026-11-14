@@ -597,7 +597,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
       rects.append(CGRect(x: x, y: y, width: size.width * zoom, height: size.height * zoom))
       y = rects[rects.count - 1].maxY + gap
     }
-    if let from = before, from.count == rects.count, from != rects {
+    if let from = before, from.count == rects.count, from != rects, window?.occlusionState.contains(.visible) == true {
       grow = (from, rects, CACurrentMediaTime())
       if growLink == nil {
         let link = page.displayLink(target: self, selector: #selector(growFrame(_:)))

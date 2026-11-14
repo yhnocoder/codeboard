@@ -1,3 +1,4 @@
+import AppKit
 import CodeBoardMarkdown
 import CoreGraphics
 import Foundation
@@ -95,5 +96,26 @@ import Testing
     let half = MarkdownTiming.ease(0.5)
     #expect(half > 0.85 && half < 0.95)
     #expect(MarkdownTiming.ease(0.25) < half)
+  }
+}
+
+/// A Note in a window nobody sees takes a move at once: no slide left waiting on a display link that does not run (the
+/// blocks once stayed drawn over each other where the slide began)
+@MainActor @Suite struct HiddenSlideTests {
+  @Test func noSlideInAWindowNobodySees() {
+    _ = boardFonts
+    let l = BlockLayout(
+      MarkdownDocument("One\n\nTwo\n\nThree"), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 0)
+    let w = NSWindow(
+      contentRect: CGRect(x: 0, y: 0, width: 300, height: 300), styleMask: [.borderless], backing: .buffered,
+      defer: true)
+    w.isReleasedWhenClosed = false
+    w.contentView?.addSubview(v)
+    let before = v.blockPlaces()
+    #expect(v.core.move(0..<1, to: 3))
+    v.slideBlocks(from: before)
+    #expect(v.slidingBlocks == 0 && v.core.layout.drawOffsets.isEmpty)
+    w.close()
   }
 }

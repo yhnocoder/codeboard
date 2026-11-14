@@ -112,7 +112,7 @@ import Testing
     v.selection = MDSelection(30)
     #expect(v.band.shown && v.band.table != nil && v.band.block == nil)
     let header = v.core.rects(for: 10..<11).first!
-    #expect(v.band.frame.maxY <= header.minY)
+    #expect(v.band.bandFrame.maxY <= header.minY)
   }
 }
 
@@ -232,8 +232,10 @@ import Testing
     let left = cells[1][0].minX
     // the table is far narrower than the Note; its row grip is on its own left edge, and the pointer finds it there
     #expect(cells[1].last!.maxX < 300)
-    #expect(v.cursor(at: CGPoint(x: left + 3, y: cells[1][0].midY)) == .openHand)
+    // grips show for the hovered cell (as on the web), then the pointer finds the row's
+    v.hoverGrips(CGPoint(x: left + 12, y: cells[1][0].midY))
+    #expect(v.cursor(at: CGPoint(x: left + 6, y: cells[1][0].midY)) == .openHand)
     // and on the way from the cell to the grip the pointer never leaves the table's region
-    #expect(v.cursor(at: CGPoint(x: left + 12, y: cells[1][0].midY)) == .iBeam)
+    #expect(v.cursor(at: CGPoint(x: left + 18, y: cells[1][0].midY)) == .iBeam)
   }
 }

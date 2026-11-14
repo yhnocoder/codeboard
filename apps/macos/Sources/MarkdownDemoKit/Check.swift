@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardMarkdown
 import CodeBoardMarkdownUI
 
 /// `MarkdownDemo [file.md] --check <folder>`: what is checked before a demo build is called in place. The window is set
@@ -45,6 +46,7 @@ enum Check {
     var idle: [[String: Any]] = []
     var rests: [String: Any] = [:]
     var ticks: [String: Bool] = [:]
+    var moveSettleMs = 0.0
     func rest(_ name: String) {
       let cpu0 = processCPU()
       let main0 = threadCPU()
@@ -156,7 +158,24 @@ enum Check {
       post(.leftMouseDragged, CGPoint(x: at(1).x, y: at(1).y - 20))
       post(.leftMouseDragged, at(3))
       post(.leftMouseUp, at(3))
-      for _ in 0..<24 { frame() }
+      // until nothing draws for three frames in a row: how long the move takes to come to rest
+      let dropped = ProcessInfo.processInfo.systemUptime
+      var still = 0
+      var lastDraws = (demo.cards.reduce(0) { $0 + $1.draws }, demo.page.draws, MarkdownEditorView.linkTicks)
+      var settled = 0.0
+      for _ in 0..<120 {
+        frame()
+        let now = (demo.cards.reduce(0) { $0 + $1.draws }, demo.page.draws, MarkdownEditorView.linkTicks)
+        if now == lastDraws {
+          still += 1
+        } else {
+          still = 0
+          settled = ProcessInfo.processInfo.systemUptime - dropped
+        }
+        lastDraws = now
+        if still >= 3 { break }
+      }
+      moveSettleMs = (settled * 1000).rounded()
       ticks["⌘-drag moved a block"] = e.source != before
       e.undo(nil)
       // across Notes, then one Undo from the source Note: both Notes as they were
@@ -239,6 +258,26 @@ enum Check {
       frame()
       for (k, v) in ticks where !v && k.contains("picture") { failures.append("\(k): no") }
     }
+    // the bands: the caret in a table, then in a code block, each band rendered where she sees it
+    if let e = demo.cards.first(where: { $0.source.contains("|---") || $0.source.contains("|:--") }),
+      let content = demo.window.contentView
+    {
+      demo.window.makeFirstResponder(e)
+      e.isEditing = true
+      let ns = e.source as NSString
+      for (what, needle) in [("table", "| prefill"), ("code", "def step")] {
+        let at = ns.range(of: needle).location
+        guard at != NSNotFound else { continue }
+        e.selection = MDSelection(at + 3)
+        let caret = e.core.caretRect.map { $0.minY * demo.zoom } ?? 0
+        clip.scroll(to: CGPoint(x: 0, y: max(0, e.frame.minY + caret - 260)))
+        demo.scroll.reflectScrolledClipView(clip)
+        for _ in 0..<20 { frame() }
+        autoreleasepool { render(content, to: out.appending(path: "band-\(what).png")) }
+      }
+      e.isEditing = false
+      frame()
+    }
     rest("after click, typing, zoom, leaving")
     rest("after click, typing, zoom, leaving, again")
     let afterAll = footprint()?.now ?? 0
@@ -268,7 +307,7 @@ enum Check {
     stage("engines trimmed to one and collected")
     let result: [String: Any] = [
       "stages": stages, "layouts": layouts, "idleCpuPercent": idle, "tickingEditors": ticking, "onScreen": rests,
-      "events": ticks,
+      "events": ticks, "moveSettleMs": moveSettleMs,
       "failures": failures,
     ]
     if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]) {
