@@ -301,6 +301,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   }
   func editorWantsToEnd(_ e: MarkdownEditorView) { e.isEditing = false }
   func editorDidBegin(_ e: MarkdownEditorView) {}
+  func editor(_ e: MarkdownEditorView, open url: URL) { NSWorkspace.shared.open(url) }
   func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String? { resources.pasted.add(data) }
 
   // MARK: controls

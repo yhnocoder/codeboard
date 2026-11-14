@@ -75,6 +75,12 @@ extension MarkdownEditing {
 
   // MARK: marks
 
+  /// Toggles any pair of markers around the selection, as the commands do ($…$ from the toolbar)
+  public static func wrap(_ open: String, _ close: String, in state: MDEditState, document: MarkdownDocument) -> MDEdit?
+  {
+    toggle(open, close, state, document)
+  }
+
   /// ⌘B and friends (editor/inline.ts toggleWrap): the selection wrapped in the markers, or unwrapped when they are
   /// around it or at its edges; with nothing selected, the pair put in with the caret between, or, right before the
   /// closing marker of a span the pair makes (⌘B, the text, ⌘B), the caret stepping out over it. A selection over
@@ -244,5 +250,60 @@ extension MarkdownEditing {
       if case .code = $0.kind, let i = $0.inner { return q > i.lowerBound && q < i.upperBound }
       return false
     }
+  }
+}
+
+// MARK: links
+
+/// A [text](address) link at the selection, or where a new one goes (editor/links.ts)
+public struct MDLinkPlace: Sendable, Equatable {
+  /// the link's whole source, or the selection a new one wraps
+  public var range: Range<Int>
+  public var text: String
+  public var url: String
+  public var exists: Bool
+}
+
+extension MarkdownEditing {
+  /// The link the selection is in (its text and address), else the selected text a new link goes on
+  public static func linkPlace(in state: MDEditState, document d: MarkdownDocument) -> MDLinkPlace? {
+    let r = state.selection.range
+    let ns = state.source as NSString
+    if let run = run(at: r.lowerBound, in: d), run.kind == .inline {
+      for i in spans(run.inlines) {
+        guard case .link(let url) = i.kind, i.range.lowerBound <= r.lowerBound, r.upperBound <= i.range.upperBound,
+          let inner = i.inner
+        else { continue }
+        return MDLinkPlace(
+          range: i.range, text: ns.substring(with: NSRange(location: inner.lowerBound, length: inner.count)), url: url,
+          exists: true)
+      }
+    }
+    guard let run = run(at: r.lowerBound, in: d), run.kind == .inline, run.holds(r.upperBound) else { return nil }
+    return MDLinkPlace(
+      range: r, text: ns.substring(with: NSRange(location: r.lowerBound, length: r.count)), url: "", exists: false)
+  }
+
+  /// Writes a link's text and address over its place: an empty address leaves the text unlinked; a link that did not
+  /// change writes nothing. Brackets that do not pair in the text are escaped, an address with spaces or parentheses
+  /// goes in <…> (links.ts linkText, hrefSource)
+  public static func writeLink(_ p: MDLinkPlace, text: String, url: String) -> MDEdit? {
+    let address = url.trimmingCharacters(in: .whitespaces)
+    if p.exists, text == p.text, address == p.url { return nil }
+    if !p.exists, address.isEmpty { return nil }
+    let opens = text.filter { $0 == "[" }.count
+    let closes = text.filter { $0 == "]" }.count
+    let t =
+      opens == closes
+      ? text : text.replacingOccurrences(of: "[", with: "\\[").replacingOccurrences(of: "]", with: "\\]")
+    let out: String
+    if address.isEmpty {
+      out = text
+    } else {
+      let href = address.contains(where: { $0 == " " || $0 == "(" || $0 == ")" }) ? "<\(address)>" : address
+      out = "[\(t)](\(href))"
+    }
+    let end = p.range.lowerBound + (out as NSString).length
+    return MDEdit(range: p.range, replacement: out, selection: MDSelection(end), undo: .command)
   }
 }

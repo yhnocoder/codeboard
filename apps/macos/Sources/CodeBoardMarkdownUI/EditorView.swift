@@ -12,11 +12,14 @@ public protocol MarkdownEditorDelegate: AnyObject {
   func editorWantsToEnd(_ e: MarkdownEditorView)
   /// a click on the static picture started editing
   func editorDidBegin(_ e: MarkdownEditorView)
+  /// a link opened (⌘-click, the link box's Open)
+  func editor(_ e: MarkdownEditorView, open url: URL)
   /// a picture pasted or dropped into the text: the host saves it and gives the address to write, or nil to leave it out
   func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String?
 }
 
 extension MarkdownEditorDelegate {
+  public func editor(_ e: MarkdownEditorView, open url: URL) { NSWorkspace.shared.open(url) }
   public func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String? { nil }
 }
 
@@ -59,6 +62,11 @@ public final class MarkdownEditorView: NSView {
 
   let preview = MathPreview()
   let hints = MathHintList()
+  let toolbar = SelectionToolbar()
+  let linkBox = LinkBox()
+  private var toolbarTimer: Timer?
+  /// the selection the toolbar is for, so a change hides it until the new one settles
+  private var toolbarFor: MDSelection?
   let band = CodeBand()
   /// the languages a code block's band offers (name written into the fence, label shown); the host's
   public var codeLanguages: [(name: String, label: String)] = []
@@ -94,6 +102,23 @@ public final class MarkdownEditorView: NSView {
     addSubview(preview)
     hints.isHidden = true
     addSubview(hints)
+    toolbar.isHidden = true
+    addSubview(toolbar)
+    toolbar.onPress = { [weak self] id in self?.toolbarPress(id) }
+    addSubview(linkBox)
+    linkBox.onWrite = { [weak self] p, t, u in
+      guard let self, let e = MarkdownEditing.writeLink(p, text: t, url: u) else { return }
+      self.core.apply(e)
+      self.changed()
+    }
+    linkBox.onOpen = { [weak self] u in
+      guard let self, let url = URL(string: u) else { return }
+      self.delegate?.editor(self, open: url)
+    }
+    linkBox.onClose = { [weak self] in
+      guard let self else { return }
+      self.window?.makeFirstResponder(self)
+    }
     band.isHidden = true
     addSubview(band)
     registerForDraggedTypes([.fileURL, .png, .tiff])
@@ -235,6 +260,7 @@ public final class MarkdownEditorView: NSView {
     resize()
     if frame.size != before { delegate?.editor(self, didResize: core.layout.size) }
     restartBlink()
+    scheduleToolbar()
     showHints()
     // the command list and the preview share the place under the formula: the list while a command is typed
     if hints.shown { preview.isHidden = true } else { showPreview() }
@@ -512,6 +538,98 @@ public final class MarkdownEditorView: NSView {
     showBand()
   }
 
+  // MARK: the link box
+
+  /// ⌘K, the toolbar's Link, a click on a link the caret is not in: the box for the link at the selection, or for a new
+  /// one on the selected text
+  func openLinkBox() {
+    guard isEditing,
+      let p = MarkdownEditing.linkPlace(
+        in: MDEditState(source: core.source, selection: core.selection), document: core.document),
+      let first = core.rects(for: p.range.lowerBound..<max(p.range.lowerBound + 1, p.range.upperBound)).first
+    else { return }
+    toolbar.hide()
+    let r = CGRect(x: first.minX * zoom, y: first.minY * zoom, width: first.width * zoom, height: first.height * zoom)
+    linkBox.show(p, under: r, theme: core.layout.theme)
+  }
+
+  // MARK: the selection's toolbar
+
+  /// the buttons for the selection: all while editing, Bold and Highlight on the static picture
+  private var toolbarButtons: [SelectionToolbar.Button] {
+    let st = MDEditState(source: core.source, selection: core.selection)
+    func w(_ o: String, _ c: String) -> Bool { MarkdownEditing.isWrapped(o, c, in: st) }
+    let all: [SelectionToolbar.Button] = [
+      .init(id: "bold", symbol: "bold", tip: "Bold (⌘B)", on: w("**", "**")),
+      .init(id: "italic", symbol: "italic", tip: "Italic (⌘I)", on: w("*", "*") && !w("**", "**")),
+      .init(id: "strike", symbol: "strikethrough", tip: "Strikethrough (⌘⇧S)", on: w("~~", "~~")),
+      .init(id: "highlight", symbol: "highlighter", tip: "Highlight (⌘⇧H)", on: w("==", "==")),
+      .init(id: "code", symbol: "chevron.left.forwardslash.chevron.right", tip: "Inline Code (⌘E)", on: w("`", "`")),
+      .init(id: "link", symbol: "link", tip: "Link (⌘K)", on: false),
+      .init(id: "math", symbol: "function", tip: "Inline Math", on: w("$", "$")),
+      .init(id: "annot", symbol: "pencil.and.scribble", tip: "Handwritten Note", on: false),
+    ]
+    return isEditing ? all : all.filter { $0.id == "bold" || $0.id == "highlight" }
+  }
+
+  /// the toolbar comes up once the selection has stood still for TOOLBAR_SETTLE, the button up
+  private func scheduleToolbar() {
+    let s = core.selection
+    guard !s.isEmpty, core.marked == nil, tableDrag == nil, resizing == nil,
+      MarkdownEditing.run(at: s.range.lowerBound, in: core.document)?.kind == .inline
+    else {
+      toolbarTimer?.invalidate()
+      toolbarFor = nil
+      toolbar.hide()
+      return
+    }
+    if toolbarFor == s, !toolbar.isHidden {
+      placeToolbar()
+      return
+    }
+    toolbar.hide()
+    toolbarFor = s
+    toolbarTimer?.invalidate()
+    toolbarTimer = Timer.scheduledTimer(withTimeInterval: MarkdownTiming.toolbarSettle, repeats: false) {
+      [weak self] _ in
+      MainActor.assumeIsolated {
+        guard let self, self.toolbarFor == self.core.selection, NSEvent.pressedMouseButtons == 0 else { return }
+        self.placeToolbar()
+      }
+    }
+  }
+
+  func placeToolbar() {
+    guard let first = core.selectionRects.first else { return toolbar.hide() }
+    let line = CGRect(
+      x: first.minX * zoom, y: first.minY * zoom, width: first.width * zoom, height: first.height * zoom)
+    toolbar.show(toolbarButtons, over: line, in: visibleRect, theme: core.layout.theme)
+  }
+
+  func toolbarPress(_ id: String) {
+    begin()
+    let kind: MDMarkKind? =
+      switch id {
+      case "bold": .strong
+      case "italic": .emphasis
+      case "strike": .strike
+      case "highlight": .highlight
+      case "code": .code
+      default: nil
+      }
+    if let kind {
+      core.command(.toggle(kind))
+    } else if id == "link" {
+      openLinkBox()
+    } else if id == "math" {
+      // $…$ around the selection, or off again
+      let st = MDEditState(source: core.source, selection: core.selection)
+      if let e = MarkdownEditing.wrap("$", "$", in: st, document: core.document) { core.apply(e) }
+    }
+    note(.key("toolbar \(id)", did: "selection \(core.selection.anchor)…\(core.selection.head)"))
+    changed()
+  }
+
   /// the command list while a \\command is typed in a formula
   private func showHints() {
     guard isEditing, let f = core.formulaBeforeCaret,
@@ -615,9 +733,30 @@ public final class MarkdownEditorView: NSView {
       resizing = (box.width, at, box.width, k == 0)
       return
     }
+    let linkBefore = linkAtCaret()
     core.mouseDown(at: at, clicks: e.clickCount, extend: e.modifierFlags.contains(.shift))
+    // a click on a link: ⌘ opens it; without, when the caret was not in it, its box comes up on the release
+    // (editor/session.ts handleClick)
+    if e.clickCount == 1, !e.modifierFlags.contains(.shift), let l = linkAtCaret(), l.range != linkBefore?.range {
+      if e.modifierFlags.contains(.command), let url = URL(string: l.url) {
+        delegate?.editor(self, open: url)
+      } else {
+        linkOnRelease = true
+      }
+    }
     changed()
   }
+
+  /// the link the caret is in, if any
+  private func linkAtCaret() -> MDLinkPlace? {
+    guard core.selection.isEmpty,
+      let p = MarkdownEditing.linkPlace(
+        in: MDEditState(source: core.source, selection: core.selection), document: core.document), p.exists
+    else { return nil }
+    return p
+  }
+  /// a click landed on a link the caret was not in: its box comes up on the release
+  private var linkOnRelease = false
 
   /// A click on the static picture starts editing there: the caret where the picture was clicked (a drawn formula's
   /// source opened), its markers shown at once, as the web editor reveals on focus with no button held. `at` is in the
@@ -792,6 +931,10 @@ public final class MarkdownEditorView: NSView {
       return
     }
     core.mouseUp()
+    if linkOnRelease {
+      linkOnRelease = false
+      openLinkBox()
+    }
     guard core.revealPending else { return }
     settle = Timer.scheduledTimer(withTimeInterval: MarkdownTiming.revealAfterClick, repeats: false) { [weak self] _ in
       MainActor.assumeIsolated {
@@ -817,6 +960,10 @@ public final class MarkdownEditorView: NSView {
       !flags.contains(.option)
     else { return super.performKeyEquivalent(with: e) }
     let shift = flags.contains(.shift)
+    if key == "k", !shift {
+      openLinkBox()
+      return true
+    }
     if key == "\r" || e.keyCode == 36 || e.keyCode == 51 {
       // ⌘↵ / ⌘⇧↵ a table row below or above, ⌘⇧⌫ the row deleted
       let c: MDCommand = e.keyCode == 51 ? .deleteRow : .addRow(below: !shift)
