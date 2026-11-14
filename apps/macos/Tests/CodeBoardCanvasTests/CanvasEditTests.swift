@@ -3,6 +3,7 @@ import CodeBoardModel
 import CodeBoardNotes
 import Testing
 import UniformTypeIdentifiers
+import WebKit
 
 @testable import CodeBoardCanvas
 
@@ -101,7 +102,7 @@ private func png(_ url: URL) throws {
     window.orderFrontRegardless()
     // the rig's frames are the canvas's only ones and its clock: the display link, which runs on a machine whose
     // display is awake (a CI runner) and not on one asleep, would put frames of its own between a test's steps
-    canvas.steppedClock = { [weak self] in self?.time ?? CACurrentMediaTime() }
+    canvas.steppedClock = { [weak self] in self?.time ?? 0 }
     try await canvas.show(
       doc, at: VaultBoard(id: board.id, title: "B", path: name), in: Vault(root: root), theme: .warmInk)
     // nil: the camera the board opens at
@@ -121,13 +122,13 @@ private func png(_ url: URL) throws {
   /// A board point in the window's coordinates
   func at(_ p: CGPoint) -> CGPoint { canvas.convert(canvas.camera.view(p), to: nil) }
 
-  /// The time of the rig's last frame or event, which every one moves on by at least its step and never puts behind
-  /// the canvas's own clock (what an animation starts from): a glide or an ease ends after as many frames on a machine
-  /// up for days as on a runner just booted
-  private(set) var time: TimeInterval = 0
+  /// The time of the rig's last frame or event: each moves it on by its step, from the latest frame the canvas had
+  /// (a test that gives its own times goes on from those), never by the wall clock, so what eases or glides takes as
+  /// many frames on a slow runner as here
+  private(set) lazy var time: TimeInterval = CACurrentMediaTime()
 
   func next(_ step: TimeInterval) -> TimeInterval {
-    time = max(time + step, CACurrentMediaTime())
+    time = max(time, canvas.lastTick) + step
     return time
   }
 
@@ -203,14 +204,26 @@ private func png(_ url: URL) throws {
     while !(canvas.queue.isIdle && canvas.tasks.isEmpty && canvas.motion.isResting) {
       if ContinuousClock.now > deadline {
         let q = canvas.queue
+        let page = await pageState(canvas.noteEditor.view)
         Issue.record(
-          "the canvas did not come to rest: \(q.pending.count) redraws to start, \(q.running) running, \(q.ready.count) to show, \(canvas.tasks.count) tasks, motion \(canvas.motion.phase)"
+          "the canvas did not come to rest: \(q.pending.count) redraws to start, \(q.running) running, \(q.ready.count) to show, \(canvas.tasks.count) tasks, motion \(canvas.motion.phase); the editor's page \(page)"
         )
         return
       }
       tick()
       try? await Task.sleep(for: .milliseconds(2))
     }
+  }
+
+  /// Whether a web view's page counts as shown and how many animation frames it runs in 200 ms (WebKit stops them in a
+  /// page it takes for hidden)
+  func pageState(_ v: WKWebView) async -> String {
+    let js = """
+      let n = 0; const f = () => { n++; requestAnimationFrame(f) }; requestAnimationFrame(f);
+      await new Promise(r => setTimeout(r, 200));
+      return `${document.visibilityState}, ${n} frames in 200 ms`
+      """
+    return (try? await v.callAsyncJavaScript(js, contentWorld: .page) as? String) ?? "not answering"
   }
 
   /// Once `f` holds, frames ticking meanwhile (what the web views do comes back on its own time)

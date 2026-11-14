@@ -295,6 +295,10 @@ public final class CanvasView: NSView {
   var dropLit: Set<SectionID> = []
   /// The frames a card drag has redrawn, where it drew them (CanvasSections followDrag)
   var dragShown: [SectionID: CGRect] = [:]
+  /// The cards' and Sections' accessibility elements, kept while they are on the board (CanvasAccessibility)
+  var axElements: [Item: BoardElement] = [:]
+  /// The latest frame's time (a test's own clock goes on from it)
+  package private(set) var lastTick: TimeInterval = 0
   /// The frames easing towards where the drag has them, each a spring that keeps its speed as the target moves
   var frameEase: [SectionID: FrameEase] = [:]
   var frameEaseAt: TimeInterval?
@@ -955,6 +959,7 @@ public final class CanvasView: NSView {
 
   /// One frame's work (the display link's; tests drive it themselves where the display sleeps and the link does not run)
   package func tick(at time: CFTimeInterval) {
+    lastTick = max(lastTick, time)
     var cam = camera
     let rested = motion.step(at: time, camera: &cam)
     if cam != camera {
