@@ -366,14 +366,11 @@ extension MarkdownEditing {
 
   // MARK: pasting
 
-  /// Plain text pasted over the selection: `\(…\)` and `\[…\]` become `$…$` and `$$…$$`, `<mark>` becomes `==`
-  /// (editor/paste.ts texBrackets, markTags); one undo step
+  /// Plain text pasted over the selection, as the paste rules make it
   public static func paste(plain: String?, html: String?, in state: MDEditState, document: MarkdownDocument)
     -> [MDEdit]
   {
-    guard let text = plain, !text.isEmpty else { return [] }
-    let s = MarkdownSourceOps.markTags(MarkdownSourceOps.texBrackets(text.replacingOccurrences(of: "\r\n", with: "\n")))
-    return [insert(s, replacing: state.selection.range, undo: .command)]
+    paste(MDPaste(plain: plain), in: state, document: document)
   }
 
   /// What ⌘C puts on the clipboard: the selection's source; a whole heading's text with its #s (editor/clipboard.ts)
@@ -386,6 +383,25 @@ extension MarkdownEditing {
     {
       return String(repeating: "#", count: level) + " " + text
     }
-    return text
+    // a part of a span keeps the span's markers: "ain wor" out of ==Plain words== is ==ain wor== (editor/clipboard.ts)
+    guard let r = run(at: range.lowerBound, in: document), r.kind == .inline, r.holds(range.upperBound) else {
+      return text
+    }
+    var out = text
+    func walk(_ ins: [MDInline]) {
+      for i in ins {
+        guard let inner = i.inner, inner.lowerBound <= range.lowerBound, range.upperBound <= inner.upperBound,
+          range != inner, i.markers.count >= 2
+        else { continue }
+        walk(i.children)
+        let open = ns.substring(with: NSRange(location: i.markers[0].lowerBound, length: i.markers[0].count))
+        let last = i.markers[i.markers.count - 1]
+        let close = ns.substring(with: NSRange(location: last.lowerBound, length: last.count))
+        if case .link = i.kind { continue }
+        out = open + out + close
+      }
+    }
+    walk(r.inlines)
+    return out
   }
 }

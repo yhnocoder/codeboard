@@ -627,15 +627,27 @@ public final class EditorCore {
     return t
   }
   /// ⌘V: plain text, as the paste rules make it
-  public func paste(_ plain: String) {
+  public func paste(_ plain: String) { paste(MDPaste(plain: plain)) }
+
+  /// A paste as the paste rules make it (MarkdownEditing.paste(_:in:document:)): each edit its own undo step
+  public func paste(_ p: MDPaste) {
     endLone()
-    let edits = MarkdownEditing.paste(
-      plain: plain, html: nil, in: MDEditState(source: source, selection: selection), document: document)
+    let plain = p.plain ?? ""
+    let edits = MarkdownEditing.paste(p, in: MDEditState(source: source, selection: selection), document: document)
     if let observer {
       let made = edits.last?.replacement ?? ""
-      observer(.pasted(plain, rule: made == plain ? "plain text" : "\\( \\) to $, <mark> to =="))
+      let rule =
+        edits.count == 2
+        ? "code: lines, then a code block"
+        : p.vscodeLanguage != nil
+          ? "code from VS Code"
+          : p.htmlMarkdown != nil ? "HTML as Markdown" : made == plain ? "plain text" : "Markdown rules"
+      observer(.pasted(plain, rule: rule))
     }
-    for e in edits { apply(e) }
+    for e in edits {
+      apply(e)
+      joinable = false
+    }
   }
 
   // MARK: input methods

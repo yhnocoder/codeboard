@@ -1476,7 +1476,10 @@ public final class MarkdownEditorView: NSView {
     let pb = NSPasteboard.general
     pb.clearContents()
     pb.setString(t, forType: .string)
-    var types = [("public.utf8-plain-text", t)]
+    // and as HTML, for apps that paste formatted text (the web editor's copy gives text/html too)
+    let html = MarkdownHTML.render(t)
+    pb.setString(html, forType: .html)
+    var types = [("public.utf8-plain-text", t), ("public.html", html)]
     // a selected image: its picture too, as the web's ⌘C copies the picture itself (editor/image.ts copyImage)
     if let png = selectedImagePNG() {
       pb.setData(png, forType: .png)
@@ -1495,8 +1498,22 @@ public final class MarkdownEditorView: NSView {
   @objc public func paste(_ sender: Any?) {
     // a picture (or picture files) on the pasteboard: saved by the host, written as images
     if isEditing, insertImages(from: NSPasteboard.general) { return }
-    guard isEditing, let t = NSPasteboard.general.string(forType: .string) else { return }
-    core.paste(t)
+    guard isEditing else { return }
+    let pb = NSPasteboard.general
+    let plainOnly = (sender as? NSMenuItem)?.action == #selector(pasteAsPlainText(_:)) || sender == nil
+    var p = MDPaste(plain: pb.string(forType: .string))
+    if !plainOnly {
+      // VS Code marks its copies with the language; HTML from elsewhere is read as Markdown
+      if let vs = pb.data(forType: NSPasteboard.PasteboardType("vscode-editor-data")),
+        let o = try? JSONSerialization.jsonObject(with: vs) as? [String: Any]
+      {
+        p.vscodeLanguage = o["mode"] as? String ?? ""
+      } else if let html = pb.string(forType: .html) {
+        p.htmlMarkdown = HTMLMarkdown.markdown(html)
+      }
+    }
+    guard p.plain != nil || p.htmlMarkdown != nil else { return }
+    core.paste(p)
     changed()
   }
   @objc public func pasteAsPlainText(_ sender: Any?) { paste(sender) }
