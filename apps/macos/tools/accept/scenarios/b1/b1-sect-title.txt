@@ -1,0 +1,19 @@
+# Section 标题条：从拖柄、从标题文字上方几点、从标题和按钮之间按住拖动，Section 和成员一起走
+zoom 1
+center @sboxes+350,100
+rec title
+mark
+drag @sboxes+10,12 @sboxes+10,42 700
+wait 500
+expect sboxes.y ~ was+30
+expect cyellow.y ~ was+30
+mark
+drag @sboxes+30,4 @sboxes+30,34 700
+wait 500
+expect sboxes.y ~ was+30
+mark
+drag @sboxes+76,12 @sboxes+76,42 700
+wait 500
+expect sboxes.y ~ was+30
+stop
+shot after

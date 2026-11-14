@@ -1,0 +1,17 @@
+# Text / Box：卡里靠右边按下是拖卡（不改宽），卡外右边按下才改宽；新建的 Text 能拖动
+zoom 1
+center @cyellow+65,30
+rec tb
+mark
+drag @cyellow+126,30 @cyellow+126,70 600
+wait 500
+# 卡里靠边按下是拖动
+expect cyellow.y ~ was+40
+expect cyellow.w ~ was
+mark
+drag @cyellow+136,30 @cyellow+176,30 600
+wait 500
+# 卡外的手柄改宽
+expect cyellow.w ~ was+40
+stop
+shot after

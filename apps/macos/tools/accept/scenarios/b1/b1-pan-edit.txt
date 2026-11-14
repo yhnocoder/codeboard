@@ -1,0 +1,26 @@
+# 编辑中的 Note 上：从卡上开始的滚动、从卡外开始经过卡的滚动、在卡上的捏合，都移动白板
+zoom 1
+center @cnote+150,60
+dbl @cnote+150,70
+wait 800
+rec gest
+mark
+scroll -200 0 20 still
+wait 300
+# 从正在编辑的卡上开始的平移也移动白板
+expect cam.x != was
+move @cnote+-120,60 300
+mark
+scroll -300 0 30 still
+wait 300
+# 从卡外开始、经过卡的平移不停
+expect cnote.right < pointer.x
+move @cnote+150,70 300
+mark
+pinch 0.5 12
+wait 400
+# 在正在编辑的卡上捏合也缩放白板
+expect cam.zoom > was
+stop
+shot after
+key esc

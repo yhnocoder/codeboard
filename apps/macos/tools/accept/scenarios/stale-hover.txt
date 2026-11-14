@@ -1,0 +1,15 @@
+# 指针停在卡上出连接点，然后指针不动、平移：原来那张卡的连接点要收起，新到指针下的卡要出；捏合：连接点跟着卡缩放
+zoom 1
+center @sboxes+350,100
+move @cyellow+65,30 500
+wait 700
+shot h0-hover
+scroll -230 0 12 still
+wait 800
+shot h1-after-pan
+move @cgreen+65,30 500
+wait 700
+shot h2-hover-join
+pinch -0.3 10
+wait 900
+shot h3-after-pinch

@@ -1,0 +1,13 @@
+# 没有源文件的代码卡（Free code）：双击进编辑，打字立刻出现，Esc 离开后留着
+zoom 1
+center @cfree+150,40
+rec free
+dbl @cfree+200,46
+type zz
+wait 400
+shot typing
+info
+key esc
+wait 500
+shot after
+stop

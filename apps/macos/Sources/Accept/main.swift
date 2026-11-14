@@ -466,6 +466,8 @@ swizzle(
         ddx = momentum == 3 ? 0 : mx
         ddy = momentum == 3 ? 0 : my
       }
+      // `still`: the fingers stop before they lift, so nothing glides (the app's own glide or the system's momentum)
+      if still && i == steps + 1 { try? await Task.sleep(for: .milliseconds(120)) }
       guard
         let cg = CGEvent(
           scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: Int32(ddy.rounded()),

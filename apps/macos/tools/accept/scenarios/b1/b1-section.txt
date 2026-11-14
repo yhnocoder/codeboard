@@ -1,0 +1,27 @@
+# Section：悬停标题出现按钮；从标题条上远离文字的地方能拖（成员一起走）；不选中直接拖右边改宽
+zoom 1
+center @sboxes+350,100
+rec sect
+move @sboxes+40,12 500
+wait 600
+shot title-hover
+move @sboxes+400,12 500
+wait 400
+mark
+drag @sboxes+400,12 @sboxes+400,52 700
+wait 600
+# 整条标题都能按住拖动，成员跟着走
+expect sboxes.y ~ was+40
+expect cyellow.y ~ was+40
+click @sinput+400,520
+wait 300
+move @sboxes+699,100 500
+wait 300
+info
+mark
+drag @sboxes+699,100 @sboxes+759,100 700
+wait 600
+# 没选中也能拖边改大小
+expect sboxes.w ~ was+60
+stop
+shot after
