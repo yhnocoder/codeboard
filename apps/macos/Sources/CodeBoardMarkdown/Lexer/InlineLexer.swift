@@ -599,6 +599,10 @@ enum Emoji {
     return d
   }()
   static func glyph(_ name: String) -> String? { table[name] }
+  /// every name, in the table's order (gemoji's)
+  static let names: [String] = EmojiTable.lines.split(separator: "\n").compactMap {
+    $0.split(separator: "\t").first.map(String.init)
+  }
 }
 
 /// The emoji a `:name:` shows (gemoji names, the TypeScript package's table)

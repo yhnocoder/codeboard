@@ -14,11 +14,14 @@ public protocol MarkdownEditorDelegate: AnyObject {
   func editorDidBegin(_ e: MarkdownEditorView)
   /// a link opened (⌘-click, the link box's Open)
   func editor(_ e: MarkdownEditorView, open url: URL)
+  /// the [[ menu's candidates for what is typed after [[ (the host's references)
+  func editor(_ e: MarkdownEditorView, refCandidates query: String) -> [MarkdownRefCandidate]
   /// a picture pasted or dropped into the text: the host saves it and gives the address to write, or nil to leave it out
   func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String?
 }
 
 extension MarkdownEditorDelegate {
+  public func editor(_ e: MarkdownEditorView, refCandidates query: String) -> [MarkdownRefCandidate] { [] }
   public func editor(_ e: MarkdownEditorView, open url: URL) { NSWorkspace.shared.open(url) }
   public func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String? { nil }
 }
@@ -64,6 +67,9 @@ public final class MarkdownEditorView: NSView {
   let hints = MathHintList()
   let toolbar = SelectionToolbar()
   let linkBox = LinkBox()
+  let typedMenu = MenuList()
+  /// the [[ menu's candidates, by the row id they were shown under
+  private var refRows: [String: MarkdownRefCandidate] = [:]
   private var toolbarTimer: Timer?
   /// the selection the toolbar is for, so a change hides it until the new one settles
   private var toolbarFor: MDSelection?
@@ -106,6 +112,8 @@ public final class MarkdownEditorView: NSView {
     addSubview(toolbar)
     toolbar.onPress = { [weak self] id in self?.toolbarPress(id) }
     addSubview(linkBox)
+    typedMenu.isHidden = true
+    addSubview(typedMenu)
     linkBox.onWrite = { [weak self] p, t, u in
       guard let self, let e = MarkdownEditing.writeLink(p, text: t, url: u) else { return }
       self.core.apply(e)
@@ -261,6 +269,7 @@ public final class MarkdownEditorView: NSView {
     if frame.size != before { delegate?.editor(self, didResize: core.layout.size) }
     restartBlink()
     scheduleToolbar()
+    showMenu()
     showHints()
     // the command list and the preview share the place under the formula: the list while a command is typed
     if hints.shown { preview.isHidden = true } else { showPreview() }
@@ -536,6 +545,67 @@ public final class MarkdownEditorView: NSView {
   public override func mouseExited(with e: NSEvent) {
     hovered = nil
     showBand()
+  }
+
+  // MARK: typed menus
+
+  /// / [[ : menus while their query is typed (editor/menu.tsx)
+  private func showMenu() {
+    guard isEditing, core.marked == nil,
+      let t = MarkdownEditing.menuToken(
+        MDEditState(source: core.source, selection: core.selection), document: core.document),
+      typedMenu.dismissedAt != t.from, let c = core.caretRect
+    else {
+      if !isEditing || core.selection.head < (typedMenu.dismissedAt ?? Int.max) { typedMenu.dismissedAt = nil }
+      return typedMenu.hide()
+    }
+    let items: [MDMenuItem]
+    switch t.kind {
+    case .slash: items = MarkdownEditing.slashMenu(t.query)
+    case .emoji: items = MarkdownEditing.emojiMenu(t.query)
+    case .ref:
+      let found = delegate?.editor(self, refCandidates: t.query) ?? []
+      refRows = [:]
+      items = found.prefix(10).enumerated().map { i, r in
+        refRows["ref\(i)"] = r
+        return MDMenuItem(title: r.title, hint: r.crumb ?? "", id: "ref\(i)")
+      }
+    }
+    let caret = CGRect(x: c.minX * zoom, y: c.minY * zoom, width: 1, height: c.height * zoom)
+    typedMenu.show(items, token: t, under: caret, theme: core.layout.theme)
+  }
+
+  /// a typed menu's row taken
+  private func take(_ item: MDMenuItem, _ t: (kind: MDMenuKind, from: Int, query: String)) {
+    begin()
+    let q = core.selection.head
+    switch t.kind {
+    case .slash:
+      if let e = MarkdownEditing.applySlash(
+        item, from: t.from, in: MDEditState(source: core.source, selection: core.selection), document: core.document)
+      {
+        core.apply(e)
+      }
+    case .emoji:
+      let text = ":\(item.id):"
+      core.apply(
+        MDEdit(
+          range: t.from..<q, replacement: text, selection: MDSelection(t.from + (text as NSString).length),
+          undo: .command))
+    case .ref:
+      guard let r = refRows[item.id] else { break }
+      // a ]] the pair put in after the caret is taken in
+      let ns = core.source as NSString
+      let end = q + 2 <= ns.length && ns.substring(with: NSRange(location: q, length: 2)) == "]]" ? q + 2 : q
+      let text = "[[" + r.label + (r.target.map { "#^" + $0 } ?? "") + "]]"
+      core.apply(
+        MDEdit(
+          range: t.from..<end, replacement: text, selection: MDSelection(t.from + (text as NSString).length),
+          undo: .command))
+    }
+    typedMenu.hide()
+    note(.key("menu \(item.title)", did: "selection \(core.selection.head)"))
+    changed()
   }
 
   // MARK: the link box
@@ -1008,6 +1078,21 @@ public final class MarkdownEditorView: NSView {
   }
 
   public override func doCommand(by selector: Selector) {
+    // a typed menu takes ↑ ↓ ↵ Tab Esc while it is up
+    if typedMenu.shown, let token = typedMenu.token {
+      switch selector {
+      case #selector(moveUp(_:)): return typedMenu.step(-1)
+      case #selector(moveDown(_:)): return typedMenu.step(1)
+      case #selector(insertNewline(_:)), #selector(insertTab(_:)):
+        take(typedMenu.items[typedMenu.chosen], token)
+        return
+      case #selector(cancelOperation(_:)):
+        typedMenu.dismissedAt = token.from
+        typedMenu.hide()
+        return
+      default: break
+      }
+    }
     // the formula command list takes ↑ ↓ ↵ Tab Esc while it is up
     if hints.shown, let token = hints.token {
       switch selector {
