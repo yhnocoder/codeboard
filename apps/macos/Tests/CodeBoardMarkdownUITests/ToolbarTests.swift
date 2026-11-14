@@ -41,3 +41,19 @@ import Testing
     #expect(v.core.source.contains("==") && !v.isEditing && v.core.layout.head == nil)
   }
 }
+
+@MainActor @Suite struct HeadingChipTests {
+  @Test func theChipShowsTheLevelLeftOfTheHeading() {
+    _ = boardFonts
+    let l = BlockLayout(
+      MarkdownDocument("## Title\n\nBody"), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 5)
+    v.selection = MDSelection(5)
+    #expect(!v.headingChip.isHidden && v.headingChip.level == 2)
+    #expect(v.headingChip.frame.maxX <= v.core.layout.caretRect(MDCaret(3))!.minX)
+    v.headingChip.onPick(4)
+    #expect(v.core.source == "#### Title\n\nBody")
+    v.selection = MDSelection(14)
+    #expect(v.headingChip.isHidden)
+  }
+}

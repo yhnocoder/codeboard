@@ -12,6 +12,12 @@ public enum MDCommand: Sendable, Equatable {
   case deleteRow
   /// a column added after or before the caret's, deleted, or aligned
   case column(MarkdownEditing.ColumnChange)
+  /// ⌥⌘O ⌥⌘U ⌥⌘Q ⌥⌘X
+  case block(MarkdownEditing.BlockToggle)
+  /// ⌥⌘T a table, ⌥⌘B a formula block after the paragraph
+  case insertTable, insertMathBlock
+  /// ⌘] ⌘[
+  case indent, outdent
 }
 
 public enum MDMarkKind: Sendable, Equatable {
@@ -38,6 +44,11 @@ extension MarkdownEditing {
     case .addRow(let below): return tableRow(add: below, in: state, document: document)
     case .deleteRow: return tableRow(add: nil, in: state, document: document)
     case .column(let change): return tableColumn(change, in: state, document: document)
+    case .block(let t): return toggleBlock(t, in: state, document: document)
+    case .insertTable: return insertBlockAfter(table: true, in: state, document: document)
+    case .insertMathBlock: return insertBlockAfter(table: false, in: state, document: document)
+    case .indent: return indentItem(true, in: state, document: document)
+    case .outdent: return indentItem(false, in: state, document: document)
     case .headingStep(let d):
       // ⌘= a level up (body text to 6, 1 stays 1), ⌘- a level down (6 to body text): editor/typora.ts
       return heading(
@@ -305,5 +316,111 @@ extension MarkdownEditing {
     }
     let end = p.range.lowerBound + (out as NSString).length
     return MDEdit(range: p.range, replacement: out, selection: MDSelection(end), undo: .command)
+  }
+}
+
+// MARK: block toggles
+
+extension MarkdownEditing {
+  /// ⌥⌘O ⌥⌘U ⌥⌘Q ⌥⌘X (editor/typora.ts): the caret's paragraph, or every paragraph the selection touches, made a numbered,
+  /// bullet or task list item or a quote, or back to a paragraph when it already is one. One undo step
+  public enum BlockToggle: Sendable, Equatable { case ordered, bullet, quote, task }
+
+  public static func toggleBlock(_ t: BlockToggle, in state: MDEditState, document d: MarkdownDocument) -> MDEdit? {
+    let ns = state.source as NSString
+    let sel = state.selection.range
+    // the lines of the paragraphs the selection touches
+    let first = context(at: sel.lowerBound, in: d)
+    let last = context(at: sel.upperBound, in: d)
+    guard first.leaf == .paragraph || first.leaf != .none else { return nil }
+    let start = ns.lineRange(for: NSRange(location: min(first.block.lowerBound, sel.lowerBound), length: 0)).location
+    var endLine = ns.lineRange(for: NSRange(location: max(last.block.upperBound, sel.upperBound), length: 0))
+    if NSMaxRange(endLine) > ns.length {
+      endLine = NSRange(location: endLine.location, length: ns.length - endLine.location)
+    }
+    var end = NSMaxRange(endLine)
+    if end > start, end <= ns.length, end > 0, ns.character(at: end - 1) == 0x0A { end -= 1 }
+    let text = ns.substring(with: NSRange(location: start, length: end - start))
+    let lines = text.components(separatedBy: "\n")
+    let prefix: (Int) -> String = { n in
+      switch t {
+      case .ordered: "\(n). "
+      case .bullet: "- "
+      case .quote: "> "
+      case .task: "- [ ] "
+      }
+    }
+    let pattern: String =
+      switch t {
+      case .ordered: #"^\d{1,9}[.)] "#
+      case .bullet: #"^[-*+] (?!\[[ xX]\] )"#
+      case .quote: #"^> ?"#
+      case .task: #"^[-*+] \[[ xX]\] "#
+      }
+    let re = try! NSRegularExpression(pattern: pattern)
+    let body = lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    let on =
+      !body.isEmpty
+      && body.allSatisfy { re.firstMatch(in: $0, range: NSRange(location: 0, length: ($0 as NSString).length)) != nil }
+    var n = 0
+    let out = lines.map { line -> String in
+      if line.trimmingCharacters(in: .whitespaces).isEmpty { return line }
+      let r = NSRange(location: 0, length: (line as NSString).length)
+      if on { return re.stringByReplacingMatches(in: line, range: r, withTemplate: "") }
+      // another block marker goes first: a bullet item made a task, a quote line made an item
+      let bare = (try! NSRegularExpression(pattern: #"^(?:\d{1,9}[.)] |[-*+] (?:\[[ xX]\] )?|> ?|#{1,6} )"#))
+        .stringByReplacingMatches(in: line, range: r, withTemplate: "")
+      n += 1
+      return prefix(n) + bare
+    }.joined(separator: "\n")
+    let delta = (out as NSString).length - (text as NSString).length
+    let caret = max(start, state.selection.head + (state.selection.head >= start ? delta : 0))
+    return MDEdit(
+      range: start..<end, replacement: out, selection: MDSelection(min(caret, start + (out as NSString).length)),
+      undo: .command)
+  }
+
+  /// ⌥⌘T a table, ⌥⌘B a formula block after the caret's paragraph (an empty one replaced), the caret in its first place
+  public static func insertBlockAfter(table: Bool, in state: MDEditState, document d: MarkdownDocument) -> MDEdit? {
+    let c = context(at: state.selection.head, in: d)
+    guard c.leaf != .none else { return nil }
+    let ns = state.source as NSString
+    let empty =
+      c.block.isEmpty
+      || ns.substring(with: NSRange(location: c.block.lowerBound, length: c.block.count))
+        .trimmingCharacters(in: .whitespaces).isEmpty
+    let block = table ? "|  |  |\n|---|---|\n|  |  |" : "$$\n\n$$"
+    let caretIn = table ? 2 : 3
+    if empty {
+      return MDEdit(
+        range: c.block, replacement: block, selection: MDSelection(c.block.lowerBound + caretIn), undo: .command)
+    }
+    let at = c.block.upperBound
+    return MDEdit(range: at..<at, replacement: "\n\n" + block, selection: MDSelection(at + 2 + caretIn), undo: .command)
+  }
+
+  /// ⌘] / ⌘[ in a list item: the item's lines indented by its marker's width (it nests under the item before), or
+  /// taken back out by that much
+  public static func indentItem(_ deeper: Bool, in state: MDEditState, document d: MarkdownDocument) -> MDEdit? {
+    guard let (item, _, _) = context(at: state.selection.head, in: d).item else { return nil }
+    let ns = state.source as NSString
+    let first = ns.lineRange(for: NSRange(location: item.markerRange.lowerBound, length: 0))
+    let width = item.markerRange.count + 1
+    var lines = ns.lineRange(for: NSRange(location: first.location, length: item.range.upperBound - first.location))
+    if NSMaxRange(lines) > 0, NSMaxRange(lines) <= ns.length, ns.character(at: NSMaxRange(lines) - 1) == 0x0A {
+      lines.length -= 1
+    }
+    let pad = String(repeating: " ", count: width)
+    let text = ns.substring(with: lines)
+    let out = text.components(separatedBy: "\n").map { l -> String in
+      if deeper { return l.isEmpty ? l : pad + l }
+      let spaces = l.prefix { $0 == " " }.count
+      return String(l.dropFirst(min(spaces, width)))
+    }.joined(separator: "\n")
+    guard out != text else { return nil }
+    let firstDelta = deeper ? width : -min(width, (ns.substring(with: first) as String).prefix { $0 == " " }.count)
+    return MDEdit(
+      range: lines.location..<NSMaxRange(lines), replacement: out,
+      selection: MDSelection(max(lines.location, state.selection.head + firstDelta)), undo: .command)
   }
 }

@@ -111,3 +111,51 @@ import Testing
     #expect(e.source.hasSuffix("| 1 |   |") || e.source.hasSuffix("|  1|   |") || e.source.contains("1"))
   }
 }
+
+/// ⌥⌘ lists and quote, a table and a formula block after the paragraph, ⌘] ⌘[ (editor/typora.ts)
+@Suite struct BlockCommandTests {
+  func core(_ src: String, _ sel: MDSelection) -> EditorCore {
+    _ = boardFonts
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let e = EditorCore(layout: l)
+    e.select(sel)
+    return e
+  }
+
+  @Test func listsAndQuotesOnAndOff() {
+    let e = core("one\n\ntwo", MDSelection(1))
+    e.command(.block(.bullet))
+    #expect(e.source == "- one\n\ntwo")
+    e.command(.block(.bullet))
+    #expect(e.source == "one\n\ntwo")
+    e.command(.block(.ordered))
+    #expect(e.source == "1. one\n\ntwo")
+    e.command(.block(.task))
+    #expect(e.source == "- [ ] one\n\ntwo")
+    e.command(.block(.quote))
+    #expect(e.source == "> one\n\ntwo")
+    e.undo()
+    e.undo()
+    e.undo()
+    e.undo()
+    e.undo()
+    #expect(e.source == "one\n\ntwo")
+  }
+
+  @Test func blocksAfterTheParagraph() {
+    var e = core("Text", MDSelection(2))
+    e.command(.insertTable)
+    #expect(e.source == "Text\n\n|  |  |\n|---|---|\n|  |  |")
+    e = core("Text", MDSelection(2))
+    e.command(.insertMathBlock)
+    #expect(e.source == "Text\n\n$$\n\n$$")
+  }
+
+  @Test func itemsIndentAndOutdent() {
+    let e = core("- one\n- two", MDSelection(10))
+    e.command(.indent)
+    #expect(e.source == "- one\n  - two")
+    e.command(.outdent)
+    #expect(e.source == "- one\n- two")
+  }
+}

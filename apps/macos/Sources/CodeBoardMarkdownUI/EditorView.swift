@@ -67,6 +67,7 @@ public final class MarkdownEditorView: NSView {
   let hints = MathHintList()
   let toolbar = SelectionToolbar()
   let linkBox = LinkBox()
+  let headingChip = HeadingChip()
   let typedMenu = MenuList()
   /// the [[ menu's candidates, by the row id they were shown under
   private var refRows: [String: MarkdownRefCandidate] = [:]
@@ -112,6 +113,13 @@ public final class MarkdownEditorView: NSView {
     addSubview(toolbar)
     toolbar.onPress = { [weak self] id in self?.toolbarPress(id) }
     addSubview(linkBox)
+    headingChip.isHidden = true
+    addSubview(headingChip)
+    headingChip.onPick = { [weak self] n in
+      guard let self else { return }
+      self.core.command(.heading(n))
+      self.changed()
+    }
     typedMenu.isHidden = true
     addSubview(typedMenu)
     linkBox.onWrite = { [weak self] p, t, u in
@@ -268,6 +276,7 @@ public final class MarkdownEditorView: NSView {
     resize()
     if frame.size != before { delegate?.editor(self, didResize: core.layout.size) }
     restartBlink()
+    showHeadingChip()
     scheduleToolbar()
     showMenu()
     showHints()
@@ -545,6 +554,24 @@ public final class MarkdownEditorView: NSView {
   public override func mouseExited(with e: NSEvent) {
     hovered = nil
     showBand()
+  }
+
+  /// the chip of the heading the caret is in
+  private func showHeadingChip() {
+    guard isEditing, core.marked == nil,
+      case .heading(let level) = MarkdownEditing.context(at: core.selection.head, in: core.document).leaf,
+      let r = MarkdownEditing.run(at: core.selection.head, in: core.document),
+      let box = core.layout.caretRect(MDCaret(r.first))
+    else {
+      headingChip.isHidden = true
+      return
+    }
+    headingChip.level = level
+    headingChip.theme = core.layout.theme
+    headingChip.zoom = zoom
+    // its first baseline: the caret box at the heading's start runs from the font's ascent above it to its descent below,
+    // the descent about a fifth of the whole
+    headingChip.place(baseline: (box.maxY - box.height * 0.22) * zoom, left: box.minX * zoom)
   }
 
   // MARK: typed menus
@@ -1026,9 +1053,47 @@ public final class MarkdownEditorView: NSView {
   public override func performKeyEquivalent(with e: NSEvent) -> Bool {
     guard isEditing, window?.firstResponder === self else { return super.performKeyEquivalent(with: e) }
     let flags = e.modifierFlags.intersection([.command, .shift, .option, .control])
-    guard let key = e.charactersIgnoringModifiers?.lowercased(), flags.contains(.command), !flags.contains(.control),
-      !flags.contains(.option)
+    guard let key = e.charactersIgnoringModifiers?.lowercased(), flags.contains(.command), !flags.contains(.control)
     else { return super.performKeyEquivalent(with: e) }
+    // ⌥⌘: lists, quote, a table, a formula block (editor/typora.ts); the key's letter, whatever ⌥ makes of it
+    if flags.contains(.option) {
+      let letter = e.keyCode
+      let c: MDCommand? =
+        switch letter {
+        case 31: .block(.ordered)  // O
+        case 32: .block(.bullet)  // U
+        case 12: .block(.quote)  // Q
+        case 7: .block(.task)  // X
+        case 17: .insertTable  // T
+        case 11: .insertMathBlock  // B
+        default: nil
+        }
+      guard let c, !flags.contains(.shift) else { return super.performKeyEquivalent(with: e) }
+      begin()
+      core.command(c)
+      note(.key(Self.mods(e) + (e.charactersIgnoringModifiers ?? ""), did: "\(c)"))
+      changed()
+      return true
+    }
+    if !flags.contains(.shift), key == "]" || key == "[" {
+      begin()
+      if core.command(key == "]" ? .indent : .outdent) { changed() }
+      return true
+    }
+    if !flags.contains(.shift), key == "d" {
+      core.selectWord()
+      changed()
+      return true
+    }
+    if !flags.contains(.shift), key == "l" {
+      core.selectParagraph()
+      changed()
+      return true
+    }
+    if flags.contains(.shift), key == "v" {
+      paste(nil)
+      return true
+    }
     let shift = flags.contains(.shift)
     if key == "k", !shift {
       openLinkBox()
