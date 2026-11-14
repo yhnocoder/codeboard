@@ -10,13 +10,36 @@ enum FontBook {
     var size: CGFloat
     var weight: Double
     var italic: Bool
+    /// prose has its ligatures off (as the page has them, and the editor places the caret between letters), a code
+    /// block keeps the code font's
+    var ligatures = false
   }
 
   private static let cache = Cache<Key, CTFont>()
 
+  /// A font by PostScript name, size and matrix (a fallback set again by name, InlineBuilder.fallbackFonts): made once
+  /// per key, since every paragraph with Chinese or emoji asks for the same few
+  struct Named: Hashable {
+    var name: String
+    var size: CGFloat
+    var matrix: [CGFloat]
+  }
+  private static let namedFonts = Cache<Named, CTFont>()
+  static func named(_ name: String, size: CGFloat, matrix: CGAffineTransform) -> CTFont {
+    let m = matrix
+    return namedFonts.get(Named(name: name, size: size, matrix: [m.a, m.b, m.c, m.d, m.tx, m.ty])) {
+      var t = m
+      let f = CTFontCreateWithName(name as CFString, size, &t)
+      // Apple Color Emoji builds its sequences from its own ligatures: left as it is (the emoji's text keeps only the
+      // ligatures it needs by attribute, InlineBuilder.fallbackFonts)
+      return name.contains("AppleColorEmoji") ? f : withoutLigatures(f)
+    }
+  }
+
   /// fonts looked up so far, and their metrics, are looked up again (new fonts were registered)
   static func forget() {
     cache.removeAll()
+    namedFonts.removeAll()
     metrics.removeAll()
     families.withLock { $0 = nil }
   }
@@ -67,10 +90,27 @@ enum FontBook {
     return sets[w]
   }
 
-  static func font(_ families: [String], size: CGFloat, weight: Double = 400, italic: Bool = false) -> CTFont {
-    let key = Key(families: families, size: size, weight: weight, italic: italic)
+  static func font(
+    _ families: [String], size: CGFloat, weight: Double = 400, italic: Bool = false, ligatures: Bool = false
+  ) -> CTFont {
+    let key = Key(families: families, size: size, weight: weight, italic: italic, ligatures: ligatures)
     return cache.get(key) { make(key) }
   }
+
+  /// The font with its ligatures off: OpenType liga and clig turned off in the font itself. The same glyphs as
+  /// kCTLigatureAttributeName 0 on the text, but that attribute sends a line set in more than one font (a bold word, a
+  /// link, inline code) down a path of CoreText's ten to thirty times slower, which every paragraph would pay
+  static func withoutLigatures(_ f: CTFont) -> CTFont {
+    CTFontCreateCopyWithAttributes(f, CTFontGetSize(f), nil, noLigatures)
+  }
+  // immutable once made (CoreText reads descriptors from any thread), though the SDK does not mark them Sendable
+  nonisolated(unsafe) private static let noLigatures: CTFontDescriptor = CTFontDescriptorCreateWithAttributes(
+    [
+      kCTFontFeatureSettingsAttribute: [
+        [kCTFontOpenTypeFeatureTag: "liga", kCTFontOpenTypeFeatureValue: 0],
+        [kCTFontOpenTypeFeatureTag: "clig", kCTFontOpenTypeFeatureValue: 0],
+      ] as [[CFString: Any]]
+    ] as CFDictionary)
 
   /// CSS weight (100–900) → CoreText's weight trait (-1…1), as the system font maps its own weights
   static func trait(_ w: Double) -> Double {
@@ -124,7 +164,8 @@ enum FontBook {
       font = CTFontCreateCopyWithAttributes(
         font, k.size, nil, CTFontDescriptorCreateWithAttributes([kCTFontCascadeListAttribute: rest] as CFDictionary))
     }
-    return axes(font, k)
+    let made = axes(font, k)
+    return k.ligatures ? made : withoutLigatures(made)
   }
 
   /// Chrome's synthetic oblique: x skewed by tan 14° of y
@@ -137,9 +178,14 @@ enum FontBook {
     guard CTFontCopyPostScriptName(fb) as String != CTFontCopyPostScriptName(f) as String,
       !CTFontGetSymbolicTraits(fb).contains(.traitItalic)
     else { return nil }
-    // by name: a fallback under the system font carries its tracking (InlineBuilder.fallbackFonts)
+    // by name: a fallback under the system font carries its tracking (InlineBuilder.fallbackFonts); a private system
+    // font (a dot name) cannot be had by name, so it is copied with the slant instead
     var m = slant
-    return CTFontCreateWithName(CTFontCopyPostScriptName(fb), CTFontGetSize(fb), &m)
+    let name = CTFontCopyPostScriptName(fb)
+    if (name as String).hasPrefix(".") {
+      return CTFontCreateCopyWithAttributes(fb, CTFontGetSize(fb), &m, noLigatures)
+    }
+    return withoutLigatures(CTFontCreateWithName(name, CTFontGetSize(fb), &m))
   }
 
   /// the italic face, when asked for: a separate file for the board's fonts, so the family is asked for it by trait

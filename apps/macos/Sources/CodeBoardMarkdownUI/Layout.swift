@@ -530,11 +530,13 @@ struct LayoutBuilder {
     let text = sourceText(body)
     let lines = text.components(separatedBy: "\n")
     let tokens = language.flatMap { resources.highlight(lines: lines, language: $0) }
+    // code blocks keep the code font's ligatures, as the page's code editor draws them (prose turns them off)
     var style = InlineStyle(
-      families: theme.fonts.mono, size: CGFloat(m.codeSize), weight: 400, color: theme.code.plain, mono: true)
-    let italic = FontBook.font(theme.fonts.mono, size: CGFloat(m.codeSize), weight: 400, italic: true)
+      families: theme.fonts.mono, size: CGFloat(m.codeSize), weight: 400, color: theme.code.plain, mono: true,
+      ligatures: true)
+    let italic = FontBook.font(theme.fonts.mono, size: CGFloat(m.codeSize), weight: 400, italic: true, ligatures: true)
     let keyword = theme.code.keywordWeight.map {
-      FontBook.font(theme.fonts.mono, size: CGFloat(m.codeSize), weight: $0)
+      FontBook.font(theme.fonts.mono, size: CGFloat(m.codeSize), weight: $0, ligatures: true)
     }
     let lh = CGFloat(m.codeLineHeight)
     var yy = y + pv
@@ -544,10 +546,6 @@ struct LayoutBuilder {
         string: line,
         attributes: InlineBuilder(theme: theme, resources: resources, imageCounts: [:], bodyWidth: width).attributes(
           style))
-      // code blocks keep the code font's ligatures, as the page's code editor draws them (prose turns them off)
-      attr.addAttribute(
-        NSAttributedString.Key(kCTLigatureAttributeName as String), value: 1,
-        range: NSRange(location: 0, length: attr.length))
       for t in tokens?[safe: i] ?? [] {
         guard let c = theme.code.kinds[t.kind], t.columns.upperBound <= attr.length else { continue }
         attr.addAttribute(

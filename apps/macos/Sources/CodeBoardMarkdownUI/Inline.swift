@@ -21,6 +21,8 @@ struct InlineStyle {
   var shift = 0
   /// letter-spacing, points
   var kern: CGFloat = 0
+  /// the font's ligatures kept (a code block's), else off
+  var ligatures = false
 }
 
 /// A box drawn behind inline code or kbd
@@ -236,13 +238,15 @@ struct InlineBuilder {
       guard name != primary, !name.hasPrefix(".SF") else { continue }
       let r = CTRunGetStringRange(run)
       let range = NSRange(location: start + r.location, length: r.length)
-      var m = CTFontGetMatrix(f)
+      let m = CTFontGetMatrix(f)
       if name.hasPrefix(".AppleColorEmoji") || name == "AppleColorEmoji" {
         // Chrome draws an emoji as tall as the font size on an advance of 1.26 em; CoreText's picture is 1.26 em tall
         // on 1.33 em: smaller by 1.26, each spaced out to the browser's advance (measured: CoreText rounds it)
         let size = CTFontGetSize(f)
-        let emoji = CTFontCreateWithName("AppleColorEmoji" as CFString, size / 1.26, &m)
+        let emoji = FontBook.named("AppleColorEmoji", size: size / 1.26, matrix: m)
         out.string.addAttribute(key, value: emoji, range: range)
+        // an emoji sequence is put together by the font's own ligatures: only those it needs, as on all text before
+        out.string.addAttribute(NSAttributedString.Key(kCTLigatureAttributeName as String), value: 0, range: range)
         let ns = out.string.string as NSString
         var at = range.location
         while at < NSMaxRange(range) {
@@ -256,7 +260,11 @@ struct InlineBuilder {
         }
         continue
       }
-      out.string.addAttribute(key, value: CTFontCreateWithName(name as CFString, CTFontGetSize(f), &m), range: range)
+      // a private system font (a dot name: .CJKSymbolsFallbackSC, which sets Chinese punctuation) cannot be had by name
+      // (CoreText hands back Times New Roman): it keeps the typesetter's pick, its ligatures off as everywhere
+      let set =
+        name.hasPrefix(".") ? FontBook.withoutLigatures(f) : FontBook.named(name, size: CTFontGetSize(f), matrix: m)
+      out.string.addAttribute(key, value: set, range: range)
     }
   }
 
@@ -291,12 +299,11 @@ struct InlineBuilder {
   }
 
   func attributes(_ s: InlineStyle) -> [NSAttributedString.Key: Any] {
-    let font = FontBook.font(s.families, size: s.size, weight: s.weight, italic: s.italic)
+    // ligatures are off in the font itself unless asked for (FontBook.withoutLigatures)
+    let font = FontBook.font(s.families, size: s.size, weight: s.weight, italic: s.italic, ligatures: s.ligatures)
     var a: [NSAttributedString.Key: Any] = [
       NSAttributedString.Key(kCTFontAttributeName as String): font,
       NSAttributedString.Key(kCTForegroundColorAttributeName as String): s.color.cg,
-      // ligatures off, as the page has them (the editor needs it to place the caret inside one)
-      NSAttributedString.Key(kCTLigatureAttributeName as String): 0,
     ]
     if let c = s.strike { a[Attr.strike] = c }
     if let c = s.highlight { a[Attr.highlight] = c }
