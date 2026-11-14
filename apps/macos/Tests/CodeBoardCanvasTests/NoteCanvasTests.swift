@@ -110,7 +110,9 @@ import Testing
     let again = CanvasView(frame: frame, noteCache: cache)
     try await again.show(at, in: vault, theme: .warmInk)
     #expect(again.boardBounds == bounds)
-    #expect(again.noteProgress.overviews == 2)
+    #expect(
+      again.noteProgress.overviews == 2,
+      "\(again.noteProgress), backing \(backing), fit \(fit) for \(bounds), the canvas's \(again.boardBounds)")
   }
 
   /// An SVG picture comes from the Note renderer (WebKit) like a Note: paper until then, then the picture over it with

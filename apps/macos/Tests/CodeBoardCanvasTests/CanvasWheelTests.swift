@@ -55,34 +55,28 @@ extension Rig {
   /// events follow. How far the camera moved (view points)
   func scrollGesture(from: CGPoint, to: CGPoint? = nil, dy: CGFloat = -12, momentum: Int = 0) -> CGFloat {
     let c0 = canvas.currentCamera
-    var t = 5000.0 + Double(Int.random(in: 0..<1000))
     let a = at(from)
     let b = at(to ?? from)
     func along(_ k: CGFloat) -> CGPoint { CGPoint(x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k) }
-    deliver(gesture(at: a, phase: 1, t: t))
+    deliver(gesture(at: a, phase: 1, t: next(1.0 / 120)))
     for i in 1...10 {
-      t += 1.0 / 120
-      deliver(gesture(at: along(CGFloat(i) / 10), dy: dy, phase: 2, t: t))
+      deliver(gesture(at: along(CGFloat(i) / 10), dy: dy, phase: 2, t: next(1.0 / 120)))
     }
-    t += 0.1
-    deliver(gesture(at: b, phase: 4, t: t))
+    deliver(gesture(at: b, phase: 4, t: next(0.1)))
     for i in 0..<momentum {
-      t += 1.0 / 120
-      deliver(gesture(at: b, dy: dy, momentum: i == 0 ? 1 : i == momentum - 1 ? 3 : 2, t: t))
+      deliver(gesture(at: b, dy: dy, momentum: i == 0 ? 1 : i == momentum - 1 ? 3 : 2, t: next(1.0 / 120)))
     }
     return (c0.origin.y - canvas.currentCamera.origin.y) * canvas.currentCamera.zoom
   }
 
   func pinchGesture(at p: CGPoint) -> CGFloat {
     let z0 = canvas.currentCamera.zoom
-    var t = 9000.0
     let w = at(p)
-    deliver(gesture(at: w, phase: 1, pinch: 0, t: t))
+    deliver(gesture(at: w, phase: 1, pinch: 0, t: next(1.0 / 120)))
     for _ in 0..<5 {
-      t += 1.0 / 120
-      deliver(gesture(at: w, phase: 2, pinch: 0.04, t: t))
+      deliver(gesture(at: w, phase: 2, pinch: 0.04, t: next(1.0 / 120)))
     }
-    deliver(gesture(at: w, phase: 4, pinch: 0, t: t + 0.01))
+    deliver(gesture(at: w, phase: 4, pinch: 0, t: next(0.01)))
     return canvas.currentCamera.zoom / z0
   }
 }

@@ -68,6 +68,11 @@ private func freeBoard() -> Board {
     let before = c.editing?.size?.height ?? 0
     await r.type("\n    out = 1")
     await r.until("the card grew") { (c.editing?.size?.height ?? 0) >= before + 19 }
+    let typed = try? await c.noteEditor.view.callAsyncJavaScript(
+      "return [...document.querySelectorAll('.cm-line')].map(l => l.textContent)", contentWorld: .page)
+    #expect(
+      (c.editing?.size?.height ?? 0) >= before + 19,
+      "\(c.editing?.size?.height ?? 0) from \(before), lines \(String(describing: typed))")
     // Esc leaves: one step, the text written, the sourced card untouched
     _ = try await c.noteEditor.view.callAsyncJavaScript(
       "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))",

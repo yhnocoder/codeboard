@@ -118,10 +118,18 @@ private func png(_ url: URL) throws {
   /// A board point in the window's coordinates
   func at(_ p: CGPoint) -> CGPoint { canvas.convert(canvas.camera.view(p), to: nil) }
 
-  private var time: TimeInterval = 1000
+  /// The time of the rig's last frame or event, which every one moves on by at least its step and never puts behind
+  /// the canvas's own clock (what an animation starts from): a glide or an ease ends after as many frames on a machine
+  /// up for days as on a runner just booted
+  private(set) var time: TimeInterval = 0
+
+  func next(_ step: TimeInterval) -> TimeInterval {
+    time = max(time + step, CACurrentMediaTime())
+    return time
+  }
 
   func mouse(_ type: NSEvent.EventType, _ p: CGPoint, _ flags: NSEvent.ModifierFlags = [], clicks: Int = 1) -> NSEvent {
-    time += 0.016
+    let time = next(0.016)
     return NSEvent.mouseEvent(
       with: type, location: at(p), modifierFlags: flags, timestamp: time, windowNumber: window.windowNumber,
       context: nil, eventNumber: 0, clickCount: clicks, pressure: 1)!
@@ -160,7 +168,7 @@ private func png(_ url: URL) throws {
   }
 
   func key(_ code: UInt16, _ flags: NSEvent.ModifierFlags = [], up: Bool = true) {
-    time += 0.016
+    let time = next(0.016)
     let chars = code == 53 ? "\u{1b}" : code == 51 ? "\u{7f}" : " "
     for type in up ? [NSEvent.EventType.keyDown, .keyUp] : [.keyDown] {
       send(
@@ -212,7 +220,7 @@ private func png(_ url: URL) throws {
   }
 
   /// A frame, as the display link gives one (it does not run while the display sleeps)
-  func tick() { canvas.tick(at: CACurrentMediaTime()) }
+  func tick() { canvas.tick(at: next(1.0 / 60)) }
 
   func card(_ id: String) -> Card { doc.board.card(cid(id))! }
   /// Where the scene draws a card
@@ -516,7 +524,9 @@ private func png(_ url: URL) throws {
     let origin = r.canvas.camera.origin
     let e = try #require(
       CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: -40, wheel2: -20, wheel3: 0))
-    r.canvas.scrollWheel(with: try #require(NSEvent(cgEvent: e)))
+    // in the window's middle, through the window (its location the window's own, as a posted event's)
+    e.location = CGPoint(x: 500, y: (NSScreen.screens.first?.frame.height ?? 0) - 350)
+    r.window.sendEvent(try #require(NSEvent(cgEvent: e)))
     // the content follows the fingers up and left (shaped as a trackpad's deltas are)
     #expect(r.canvas.camera.origin.y > origin.y && r.canvas.camera.origin.x > origin.x)
     // NSEvent makes no magnify events: the pinch is given as its handler gets it
