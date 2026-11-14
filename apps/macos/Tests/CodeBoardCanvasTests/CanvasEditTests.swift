@@ -486,13 +486,14 @@ private func png(_ url: URL) throws {
     r.drag(n1, CGPoint(x: 340, y: 40))
     r.key(51)
     #expect(r.card("n1").x == 0)
-    // several: Connect with Arrow, Move to New Section, Lock, Tilt, Arrange, then Cut, Copy, Duplicate, Delete
+    // several: Connect with Arrow, Move to New Section, Move to Shelf, Lock, Tilt, Arrange, then Cut, Copy, Duplicate,
+    // Delete
     r.doc.select([.card(cid("t1")), .card(cid("b1"))])
     #expect(
       titles(r.canvas.menu(for: r.mouse(.rightMouseDown, r.centre("t1"))))
         == [
-          "Connect with Arrow", "Move to New Section", "Lock", "Tilt", "Arrange", "-", "Cut", "Copy", "Duplicate",
-          "Delete",
+          "Connect with Arrow", "Move to New Section", "Move to Shelf", "Lock", "Tilt", "Arrange", "-", "Cut", "Copy",
+          "Duplicate", "Delete",
         ])
     // a Section's
     #expect(

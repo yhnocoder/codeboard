@@ -331,6 +331,7 @@ extension CanvasView {
     m.addItem(lock)
     m.addItem(colorItem(ids))
     m.addItem(.separator())
+    m.addItem(shelfItem())
     let remove = NSMenuItem(title: "Remove \(ids.count) Sections", action: #selector(delete(_:)), keyEquivalent: "")
     remove.target = self
     m.addItem(remove)

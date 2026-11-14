@@ -115,6 +115,7 @@ extension CanvasView {
     stopObserving?()
     stopObserving = nil
     document = nil
+    shelfChanged()
   }
 
   private func documentChanged(_ change: BoardDocument.Change) {
@@ -123,6 +124,7 @@ extension CanvasView {
     if change == .draft { return drawChrome() }
     // only the selection changed (a marquee under way too): its rings follow at once
     if doc.board != shownBoard { refresh() } else { drawChrome() }
+    shelfChanged()
   }
 
   /// Makes the scene again from the document's board: drawings that did not change are reused with their bitmaps; what
@@ -801,8 +803,9 @@ extension CanvasView {
       putSticker(at: p, free: e.modifierFlags.contains(.option))
       return
     }
-    // a press anywhere on the board closes the sticker palette
+    // a press anywhere on the board closes the sticker palette and the Shelf's large picture
     closeStickerPalette()
+    closePreview()
     if case .connect(let from)? = mode {
       finishConnect(from: from, at: p)
       return
@@ -949,6 +952,7 @@ extension CanvasView {
       g.kind = .move(m)
       gesture = g
       showMove(m)
+      armShelf(v)
     case .marquee(let base):
       let r = CGRect(
         x: min(v.x, g.startView.x), y: min(v.y, g.startView.y), width: abs(v.x - g.startView.x),
@@ -1029,7 +1033,15 @@ extension CanvasView {
         doc.select([])
       }
     case .move(let m):
-      commitMove(m)
+      armShelf(nil)
+      if overShelf(convert(e.locationInWindow, from: nil)) {
+        // let go on the Shelf's button or panel: onto the Shelf, not moved
+        gesture = nil
+        clearDrop()
+        shelve(cards: m.cards, sections: Set(m.tops), offset: m.d)
+      } else {
+        commitMove(m)
+      }
     case .marquee:
       gesture = nil
       withoutAnimation { marquee.path = nil }
@@ -1403,12 +1415,15 @@ extension CanvasView {
       if refPeek != nil { return closeRefPeek() }
       if placing != nil { return cancelPlacing() }
       if stickerPalette != nil { return closeStickerPalette() }
+      if previewing != nil { return closePreview() }
       if cancelMode() { return }
       if openPop != nil { return openPop(nil) }
       if lineSel != nil { return clearLineSel() }
       if gesture == nil { doc.select([]) }
     case 1 where e.modifierFlags.intersection([.command, .control, .option]).isEmpty:  // S: Add Sidenote
       addSidenoteFromKey()
+    case 1 where e.modifierFlags.intersection([.command, .control, .option]) == .option:  // ⌥S: Move to Shelf
+      moveToShelf(nil)
     case 123, 124, 125, 126:
       nudge(e)
     default:
@@ -1644,6 +1659,7 @@ extension CanvasView {
     } else {
       menu.addItem(menuItem("Connect with Arrow", enabled: cards.count == 2) { [weak self] in self?.connectSelected() })
       menu.addItem(menuItem("Move to New Section") { [weak self] in self?.moveToNewSection() })
+      menu.addItem(shelfItem())
       add(locked ? "Unlock" : "Lock", #selector(lock(_:)))
       if !cards.isEmpty {
         add("Tilt", #selector(tilt(_:)))

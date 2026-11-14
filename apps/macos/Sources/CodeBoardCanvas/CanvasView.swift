@@ -152,6 +152,17 @@ public final class CanvasView: NSView {
   package var placing: Sticker.Glyph?
   let stickerGhost = CALayer()
   package var stickerPalette: StickerPalette?
+  /// The Shelf: its button, its panel, the entry shown large, the pictures drawn of each entry, what flies in, the
+  /// outline of where a hovered entry returns and of one dragged out (board units)
+  package var shelfDock: ShelfDock?
+  package var shelfPanel: ShelfPanel?
+  package var shelfPreview: ShelfPreview?
+  package var previewing: String?
+  var shelfPictures: [String: (key: ShelfPictureKey, image: CGImage)] = [:]
+  var shelfFlights: [CALayer] = []
+  package var shelfHovered: String?
+  let shelfHome = CALayer()
+  let shelfDrag = CALayer()
   /// The sidenote markers shown, their layers in the same order, and the zoom they were placed at
   var marks: [Mark] = []
   var markLayers: [CALayer] = []
@@ -246,10 +257,16 @@ public final class CanvasView: NSView {
     root.backgroundColor = theme.canvas
     layer = root
     wantsLayer = true
-    for l in [world, sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers, freeMarks, chrome] {
+    for l in [
+      world, sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers, freeMarks, shelfHome, shelfDrag,
+      chrome,
+    ] {
       l.anchorPoint = .zero
     }
-    for l in [sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers, freeMarks, chrome] {
+    for l in [
+      sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers, freeMarks, shelfHome, shelfDrag,
+      chrome,
+    ] {
       world.addSublayer(l)
     }
     backdrop.anchorPoint = .zero
@@ -552,7 +569,10 @@ public final class CanvasView: NSView {
     if !keepCamera {
       cancelPlacing()
       closeStickerPalette()
+      closeShelf()
+      shelfPictures = [:]
     }
+    shelfChanged()
     questionsChanged()
     drawChrome()
   }
@@ -698,6 +718,7 @@ public final class CanvasView: NSView {
     let unsized = bounds.isEmpty
     super.setFrameSize(newSize)
     withoutAnimation { placeBackdrop() }
+    placeShelf()
     guard let scene, newSize.width > 0, newSize.height > 0 else { return }
     let fit = Camera.fit(scene.bounds, in: newSize)
     limits = ZoomLimits(fit: fit.zoom)
