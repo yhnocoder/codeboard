@@ -195,3 +195,24 @@ private func lines(_ r: ClosedRange<Int>, _ card: String = "c1") -> Anchor { .ca
   #expect(r.width == 480 && ra.from == Endpoint(card: cid("n1"), block: block))
   #expect(b.problem() == nil)
 }
+
+/// Always Show (core toggleAlwaysShow) turns on and off for a text sidenote on a card, never a code one or one off
+/// cards; Mark Reviewed (core markReviewed) clears its second look
+@Test func alwaysShowTogglesOnATextSidenoteOnACardAndMarkReviewedClearsTheLook() {
+  var b = board()
+  b.addSidenote(nid("l"), text: "on lines", at: lines(21...22))
+  b.addSidenote(nid("g"), text: "on a Section", at: .section(SectionID(rawValue: "g1")))
+  let seg = Segment(id: SegmentID(rawValue: "f"), source: nil, language: "rust", firstLine: 1, lines: ["fn a() {}"])
+  b.sidenotes.append(Sidenote(id: nid("c"), anchor: .card(cid("n1")), body: .code(seg), review: "v2"))
+  func always(_ n: String) -> Bool? { if case .text(let t)? = b.sidenote(nid(n))?.body { t.alwaysShow } else { nil } }
+  b.toggleAlwaysShow(nid("l"))
+  #expect(always("l") == true)
+  b.toggleAlwaysShow(nid("l"))
+  #expect(always("l") == false)
+  b.toggleAlwaysShow(nid("g"))
+  #expect(always("g") == false, "not on a card")
+  b.toggleAlwaysShow(nid("c"))
+  #expect(b.sidenote(nid("c"))?.body == .code(seg))
+  b.markReviewed(nid("c"))
+  #expect(b.sidenote(nid("c"))?.review == nil)
+}

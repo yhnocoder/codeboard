@@ -204,6 +204,21 @@ extension Board {
     selfCheck()
   }
 
+  /// Always Show on or off (core commands/notes.ts toggleAlwaysShow): a text sidenote on a card
+  public mutating func toggleAlwaysShow(_ id: SidenoteID) {
+    guard let i = sidenotes.firstIndex(where: { $0.id == id }), sidenotes[i].anchor.card != nil,
+      case .text(var t) = sidenotes[i].body
+    else { return }
+    t.alwaysShow.toggle()
+    sidenotes[i].body = .text(t)
+  }
+
+  /// Mark Reviewed (core markReviewed): its second look is done
+  public mutating func markReviewed(_ id: SidenoteID) {
+    guard let i = sidenotes.firstIndex(where: { $0.id == id }) else { return }
+    sidenotes[i].review = nil
+  }
+
   /// The card Place on Board makes of a sidenote on a card (core edit/ops.ts sidenoteCard), at 0, 0: a text one a Note
   /// of its Markdown, a code one a code card of its lines (a segment id of its own), a Note's width when it is a Note or
   /// Free code, 480 when its lines are read from a file. Nil for a question, or one not on a card (main offers neither)
