@@ -202,11 +202,18 @@ extension Drawing {
         srgbRed: x[0] * k + y[0] * (1 - k), green: x[1] * k + y[1] * (1 - k), blue: x[2] * k + y[2] * (1 - k), alpha: 1)
     }
     let ground = mix(t.surface, t.canvas, 0.72)
-    // the card (its shadow is the canvas's, as every framed card's) in a hairline ring: Warm Ink a tinted sheet, Ink Wash
-    // a plain one, not torn
-    ctx.addPath(outline)
-    ctx.setFillColor(sheet ? ground : t.surface)
-    ctx.fillPath()
+    // the card (its shadow is the canvas's, as every framed card's) in a hairline ring (.card.board --ring): Warm Ink a
+    // tinted sheet; Ink Wash the torn paper every card of it is, with its fibres (themes.css .card::before --deckle)
+    if sheet {
+      ctx.addPath(outline)
+      ctx.setFillColor(ground)
+      ctx.fillPath()
+    } else {
+      ctx.saveGState()
+      ctx.translateBy(x: r.minX, y: r.minY)
+      Drawing.paper(ctx, CGRect(origin: .zero, size: r.size), t, id: b.id, rule: nil)
+      ctx.restoreGState()
+    }
     ctx.addPath(Drawing.squircle(r.insetBy(dx: -0.5, dy: -0.5), radius + 0.5))
     ctx.setStrokeColor(t.hair)
     ctx.setLineWidth(1)

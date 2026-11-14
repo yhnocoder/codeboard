@@ -265,7 +265,7 @@ enum Drawing: Sendable {
   // MARK: Parts
 
   /// The card's paper and its title bar (rule: whether the bar has a rule under it, where the theme draws one; nil: no bar)
-  private static func paper(_ ctx: CGContext, _ r: CGRect, _ t: Theme, id: String, rule: Bool?) {
+  static func paper(_ ctx: CGContext, _ r: CGRect, _ t: Theme, id: String, rule: Bool?) {
     switch t.paper {
     case .sheet:
       ctx.addPath(squircle(r, t.cardRadius))
