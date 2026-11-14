@@ -226,8 +226,17 @@ enum WritingBar {
 
   /// A floating panel (`.pill`): its CSS shadows only outside it (its glass may be see-through), its glass and a 0.5
   /// hairline around it; `scale`: device pixels per unit, as CoreGraphics offsets shadows in device space (y up)
-  static func float(_ bar: CGRect, radius: CGFloat, look: BarLook, glass: CGColor, scale: CGFloat, in ctx: CGContext) {
-    let shape = CGPath(roundedRect: bar, cornerWidth: radius, cornerHeight: radius, transform: nil)
+  /// `squircle`: continuous corners (the board's --corner), as the toolbar's
+  static func float(
+    _ bar: CGRect, radius: CGFloat, look: BarLook, glass: CGColor, scale: CGFloat, squircle: Bool = false,
+    in ctx: CGContext
+  ) {
+    func box(_ r: CGRect, _ k: CGFloat) -> CGPath {
+      squircle
+        ? Drawing.squircle(r, k)
+        : CGPath(roundedRect: r, cornerWidth: min(k, r.width / 2), cornerHeight: min(k, r.height / 2), transform: nil)
+    }
+    let shape = box(bar, radius)
     ctx.saveGState()
     ctx.beginTransparencyLayer(auxiliaryInfo: nil)
     // each shadow's shape is drawn this far to the side and its shadow moved back: only the shadow lands
@@ -237,8 +246,7 @@ enum WritingBar {
       ctx.setShadow(offset: CGSize(width: -away * scale, height: -s.y * scale), blur: s.blur * scale, color: s.color)
       let r = bar.insetBy(dx: -s.spread, dy: -s.spread).offsetBy(dx: away, dy: 0)
       let k = max(0, radius + s.spread)
-      ctx.addPath(
-        CGPath(roundedRect: r, cornerWidth: min(k, r.width / 2), cornerHeight: min(k, r.height / 2), transform: nil))
+      ctx.addPath(box(r, k))
       ctx.setFillColor(CGColor(gray: 0, alpha: 1))
       ctx.fillPath()
       ctx.restoreGState()
@@ -251,10 +259,7 @@ enum WritingBar {
     ctx.addPath(shape)
     ctx.setFillColor(glass)
     ctx.fillPath()
-    ctx.addPath(
-      CGPath(
-        roundedRect: bar.insetBy(dx: -0.25, dy: -0.25), cornerWidth: radius + 0.25, cornerHeight: radius + 0.25,
-        transform: nil))
+    ctx.addPath(box(bar.insetBy(dx: -0.25, dy: -0.25), radius + 0.25))
     ctx.setStrokeColor(look.ring)
     ctx.setLineWidth(0.5)
     ctx.strokePath()

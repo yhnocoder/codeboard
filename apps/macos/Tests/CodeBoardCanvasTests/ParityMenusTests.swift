@@ -242,4 +242,11 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     fire(item(m, "Copy Path"))
     #expect(r.canvas.pasteboard.string(forType: .string) == r.file.path(percentEncoded: false))
   }
+
+  /// Warm Ink's bar is a squircle of 14 (.pill, the board's --corner), its blur too: not a capsule
+  @Test func theToolbarsGlassIsItsSquircle() {
+    let bar = CanvasToolbar(frame: CGRect(x: 0, y: 0, width: 600, height: 120))
+    bar.layout()
+    #expect(bar.glass.maskImage?.size == bar.barRect.size)
+  }
 }

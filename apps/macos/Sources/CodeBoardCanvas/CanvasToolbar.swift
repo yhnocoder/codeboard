@@ -82,7 +82,7 @@ public final class CanvasToolbar: NSView {
     }
   }
   /// The board blurred under the glass (Warm Ink's backdrop-filter)
-  private let glass = NSVisualEffectView()
+  let glass = NSVisualEffectView()
   /// The tools, in a view of their own after the glass: a window puts a subview's layer over layers added to the view's
   /// own, so drawn there they would sit under the glass
   private let faceView = LayerView()
@@ -196,8 +196,15 @@ public final class CanvasToolbar: NSView {
   public override func layout() {
     super.layout()
     glass.frame = barRect
-    glass.layer?.cornerRadius = 14
-    glass.layer?.masksToBounds = true
+    // the blur in the bar's own shape: a squircle of 14 (.pill under the board's --corner), not a capsule
+    let size = barRect.size
+    if glass.maskImage?.size != size {
+      glass.maskImage = NSImage(size: size, flipped: false) { r in
+        NSGraphicsContext.current?.cgContext.addPath(Drawing.squircle(r, 14))
+        NSGraphicsContext.current?.cgContext.fillPath()
+        return true
+      }
+    }
     draw()
   }
 
@@ -278,9 +285,9 @@ public final class CanvasToolbar: NSView {
       let top =
         theme.dark
         ? CGColor(srgbRed: 1, green: 245 / 255, blue: 230 / 255, alpha: 0.13) : CGColor(gray: 1, alpha: 1)
-      WritingBar.float(bar, radius: 14, look: look, glass: glass, scale: scale, in: ctx)
+      WritingBar.float(bar, radius: 14, look: look, glass: glass, scale: scale, squircle: true, in: ctx)
       ctx.saveGState()
-      ctx.addPath(CGPath(roundedRect: bar, cornerWidth: 14, cornerHeight: 14, transform: nil))
+      ctx.addPath(Drawing.squircle(bar, 14))
       ctx.clip()
       ctx.setFillColor(top)
       ctx.fill(CGRect(x: bar.minX, y: bar.minY, width: bar.width, height: 0.5))
