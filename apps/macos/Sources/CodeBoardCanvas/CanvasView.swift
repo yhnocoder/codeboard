@@ -229,6 +229,8 @@ public final class CanvasView: NSView {
   /// How a Web card's page is read and opened (tests give their own: never the network or a browser)
   package var fetchPage: WebFetch = WebFetcher.live
   package var openURL: (URL) -> Void = { NSWorkspace.shared.open($0) }
+  /// Where the pointer is in the window (tests give their own: never the person's pointer); nil: the window's
+  package var pointerInWindow: CGPoint?
   /// The pages being read now, by card ("card/row" for a list's row), and their tasks
   package var webFetching: Set<String> = []
   package var webTasks: [String: Task<Void, Never>] = [:]

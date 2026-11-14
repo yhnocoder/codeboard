@@ -231,7 +231,7 @@ import CodeBoardModel
 
   // MARK: Menus
 
-  private func mainMenu() -> NSMenu {
+  func mainMenu() -> NSMenu {
     let app = NSMenu(title: "CodeBoard")
     app.addItem(
       withTitle: "About CodeBoard", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: ""
@@ -260,6 +260,7 @@ import CodeBoardModel
     let edit = NSMenu(title: "Edit")
     edit.addItem(withTitle: "Undo", action: #selector(CanvasView.undo(_:)), keyEquivalent: "z")
     edit.addItem(withTitle: "Redo", action: #selector(CanvasView.redo(_:)), keyEquivalent: "Z")
+    edit.addItem(hidden(item("Redo", #selector(CanvasView.redo(_:)), "y", .command)))
     edit.addItem(.separator())
     edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
     edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
@@ -268,16 +269,19 @@ import CodeBoardModel
     edit.addItem(withTitle: "Delete", action: #selector(NSText.delete(_:)), keyEquivalent: "")
     edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
     edit.addItem(.separator())
-    // not ⇧⌘] / ⇧⌘[ as in Keynote: those switch tabs here
-    edit.addItem(item("Bring to Front", #selector(CanvasView.bringToFront(_:)), "f", [.command, .option, .shift]))
-    edit.addItem(item("Send to Back", #selector(CanvasView.sendToBack(_:)), "b", [.command, .option, .shift]))
-    edit.addItem(withTitle: "Lock", action: #selector(CanvasView.lock(_:)), keyEquivalent: "l")
+    // ⇧⌘] / ⇧⌘[ bring the selected cards to the front or send them back (the canvas takes them first), else switch tabs
+    edit.addItem(withTitle: "Bring to Front", action: #selector(CanvasView.bringToFront(_:)), keyEquivalent: "")
+    edit.addItem(withTitle: "Send to Back", action: #selector(CanvasView.sendToBack(_:)), keyEquivalent: "")
+    edit.addItem(item("Lock", #selector(CanvasView.lock(_:)), "l", [.command, .shift]))
 
     let view = NSMenu(title: "View")
     view.addItem(item("Hide Sidebar", #selector(flipSidebar(_:)), "s", [.command, .control]))
     view.addItem(.separator())
     view.addItem(withTitle: "Back", action: #selector(goBack(_:)), keyEquivalent: "[")
     view.addItem(withTitle: "Forward", action: #selector(goForward(_:)), keyEquivalent: "]")
+    // the web board's ⌃- and ⌃⇧- (keymap.ts navBack, navForward)
+    view.addItem(hidden(item("Back", #selector(goBack(_:)), "-", .control)))
+    view.addItem(hidden(item("Forward", #selector(goForward(_:)), "-", [.control, .shift])))
     view.addItem(.separator())
     let themes = NSMenu(title: "Theme")
     for t in Theme.all {
@@ -299,12 +303,7 @@ import CodeBoardModel
     let tabKeys: [(Selector, NSEvent.ModifierFlags)] = [
       (#selector(showNextTab(_:)), .control), (#selector(showPreviousTab(_:)), [.control, .shift]),
     ]
-    for (action, mask) in tabKeys {
-      let hidden = item("", action, "\t", mask)
-      hidden.isHidden = true
-      hidden.allowsKeyEquivalentWhenHidden = true
-      windows.addItem(hidden)
-    }
+    for (action, mask) in tabKeys { windows.addItem(hidden(item("", action, "\t", mask))) }
     windows.addItem(.separator())
     windows.addItem(
       withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
@@ -315,6 +314,13 @@ import CodeBoardModel
       bar.addItem(withTitle: menu.title, action: nil, keyEquivalent: "").submenu = menu
     }
     return bar
+  }
+
+  /// An item for its key alone, not shown
+  private func hidden(_ i: NSMenuItem) -> NSMenuItem {
+    i.isHidden = true
+    i.allowsKeyEquivalentWhenHidden = true
+    return i
   }
 
   private func item(

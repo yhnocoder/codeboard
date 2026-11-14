@@ -1473,7 +1473,7 @@ extension CanvasView {
   // MARK: Keys
 
   public override func keyDown(with e: NSEvent) {
-    guard let doc = document else { return super.keyDown(with: e) }
+    guard document != nil else { return super.keyDown(with: e) }
     if editing != nil {
       // the editor is mounting: its keys wait for it, Esc among them, in the order typed
       editing?.keys.append(e)
@@ -1483,35 +1483,7 @@ extension CanvasView {
       keysAhead?.append(e)
       return
     }
-    switch e.keyCode {
-    case 36, 76:  // Return writes in the one Note, Text or Box selected
-      if doc.selection.count == 1, let id = doc.selection.first?.card, isWriting(id) {
-        beginEditing(id)
-      } else if doc.selection.count == 1, let id = doc.selection.first?.arrow {
-        editLabel(id)
-      } else {
-        super.keyDown(with: e)
-      }
-    case 51, 117:  // ⌫ ⌦
-      delete(nil)
-    case 53:  // Esc: a ref's preview, the mode, else the popup, else the selection
-      if refPeek != nil { return closeRefPeek() }
-      if placing != nil { return cancelPlacing() }
-      if stickerPalette != nil { return closeStickerPalette() }
-      if previewing != nil { return closePreview() }
-      if cancelMode() { return }
-      if openPop != nil { return openPop(nil) }
-      if lineSel != nil { return clearLineSel() }
-      if gesture == nil { doc.select([]) }
-    case 1 where e.modifierFlags.intersection([.command, .control, .option]).isEmpty:  // S: Add Sidenote
-      addSidenoteFromKey()
-    case 1 where e.modifierFlags.intersection([.command, .control, .option]) == .option:  // ⌥S: Move to Shelf
-      moveToShelf(nil)
-    case 123, 124, 125, 126:
-      nudge(e)
-    default:
-      super.keyDown(with: e)
-    }
+    if !boardKey(e) { super.keyDown(with: e) }
   }
 
   public override func keyUp(with e: NSEvent) {
@@ -1521,7 +1493,7 @@ extension CanvasView {
 
   /// An arrow key moves the selection one point on screen (⇧: ten); from the first key down to the last key up is one
   /// step
-  private func nudge(_ e: NSEvent) {
+  func nudge(_ e: NSEvent) {
     guard let doc = document else { return }
     let step = (e.modifierFlags.contains(.shift) ? 10 : 1) / camera.zoom
     let unit = max(1, step.rounded())

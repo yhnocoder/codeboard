@@ -5,7 +5,8 @@ import Testing
 
 @testable import CodeBoardCanvas
 
-/// Sub-board cards on the canvas: Turn into Board and New Board (⌘⇧B) with their name written in place, one undo step
+/// Sub-board cards on the canvas: Turn into Board (⌘⇧B) with its name written in place, one undo step; with no card
+/// selected it makes nothing (ParityKeysTests)
 @MainActor @Suite struct CanvasSubBoardTests {
   func note(_ id: String, x: Double, y: Double) -> Card {
     Card(
@@ -48,27 +49,5 @@ import Testing
     #expect(r.doc.history.undoSteps.map(\.name) == ["Turn into Board"])
     r.doc.undo()
     #expect(r.doc.board == board)
-  }
-
-  @Test func withNothingSelectedANewEmptyBoardsCardComesInTheMiddleOfTheView() async throws {
-    let r = try await Rig(Board(id: BoardID(rawValue: "here"), cards: [note("a", x: 0, y: 0)]), zoom: 1)
-    defer { r.close() }
-    let c = r.canvas
-    r.doc.select([])
-    c.turnIntoBoard(nil)
-    let frame = try #require(r.doc.board.cards.last)
-    guard case .own(let content) = frame.content, case .board(let s) = content.body, let child = s.board else {
-      Issue.record("no sub-board card")
-      return
-    }
-    let mid = c.currentCamera.board(CGPoint(x: c.bounds.midX, y: c.bounds.midY))
-    #expect(abs(frame.x + frame.width / 2 - mid.x) <= 1 && abs(frame.y + (frame.height ?? 0) / 2 - mid.y) <= 1)
-    let tree = try Vault(root: r.root).tree()
-    #expect(tree.boards.first { $0.id == child }?.title == "New Board")
-    await r.until("the name's field") { c.inPlace != nil }
-    // Esc: the name it was given stays
-    c.endInPlace(commit: false)
-    #expect(try Vault(root: r.root).tree().boards.contains { $0.title == "New Board" })
-    #expect(r.doc.history.undoSteps.map(\.name) == ["New Board"])
   }
 }

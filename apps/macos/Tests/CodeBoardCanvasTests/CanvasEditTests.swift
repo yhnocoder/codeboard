@@ -169,7 +169,8 @@ private func png(_ url: URL) throws {
 
   func key(_ code: UInt16, _ flags: NSEvent.ModifierFlags = [], up: Bool = true) {
     let time = next(0.016)
-    let chars = code == 53 ? "\u{1b}" : code == 51 ? "\u{7f}" : " "
+    // what the key types: the board matches letters by it (keymap.ts e.key)
+    let chars = [53: "\u{1b}", 51: "\u{7f}", 1: "s"][code] ?? " "
     for type in up ? [NSEvent.EventType.keyDown, .keyUp] : [.keyDown] {
       send(
         NSEvent.keyEvent(

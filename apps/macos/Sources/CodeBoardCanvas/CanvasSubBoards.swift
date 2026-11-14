@@ -55,39 +55,26 @@ extension CanvasView {
 
   // MARK: Turn into Board (⌘⇧B)
 
-  /// ⌘⇧B, which is in no menu (as on the web board)
+  /// The board's keys with ⌘ the app menu does not have (CanvasKeys), before the menu is asked
   public override func performKeyEquivalent(with e: NSEvent) -> Bool {
-    let mods = e.modifierFlags.intersection(.deviceIndependentFlagsMask)
-    if mods == [.command, .shift], e.charactersIgnoringModifiers?.lowercased() == "b", window?.firstResponder === self {
-      turnIntoBoard(nil)
+    if e.modifierFlags.contains(.command), window?.firstResponder === self, editing == nil, keysAhead == nil,
+      boardKey(e)
+    {
       return true
     }
     return super.performKeyEquivalent(with: e)
   }
 
   /// With cards selected: they become a new board in this board's folder and a sub-board card takes their place (core
-  /// cardsToFrame); with nothing selected, a new empty board and its card in the middle of the view. Either is one undo
-  /// step here, and its name is written in place over the card's head (Return keeps it, Esc and blank leave the one it
-  /// was given)
+  /// cardsToFrame), one undo step here, its name written in place over the card's head (Return keeps it, Esc and blank
+  /// leave the one it was given); with none selected, it says to select some (subboards.ts turnIntoBoard)
   @objc public func turnIntoBoard(_ sender: Any?) {
     guard let doc = document, let (here, vault) = shown, gesture == nil, editing == nil, inPlace == nil else { return }
     let ids = Set(doc.selection.compactMap(\.card).filter { doc.board.card($0) != nil })
     let child = BoardID(rawValue: Board.newID("b"))
     let frame = CardID(rawValue: Board.newID("card-"))
     let folder = here.folder
-    guard !ids.isEmpty else {
-      let c = camera.board(CGPoint(x: bounds.midX, y: bounds.midY))
-      let title = vault.freeName(in: folder, "New Board", package: true)
-      guard let made = try? vault.newBoard(in: folder, title: title, board: Board(id: child)) else { return }
-      let (w, h) = (Board.autoWidth, Double(Drawing.subHeight))
-      doc.edit("New Board", selection: [.card(frame)]) {
-        $0.cards.append(
-          Card(
-            id: frame, x: (c.x - w / 2).rounded(), y: (c.y - h / 2).rounded(), width: w, height: h,
-            content: .own(CardContent(body: .board(SubBoard(board: child))))))
-      }
-      return nameInPlace(frame, made)
-    }
+    guard !ids.isEmpty else { return toast("Select the cards to turn into a board first") }
     let rects = { [scene] (id: CardID) -> Rect? in
       scene?.placed[id].map { Rect(x: $0.rect.minX, y: $0.rect.minY, width: $0.rect.width, height: $0.rect.height) }
     }
