@@ -331,21 +331,25 @@ swizzle(
     }
     for (id, a) in inside where now[id] == nil {
       inside[id] = nil
-      if a.options.contains(.mouseEnteredAndExited), let o = a.owner as? NSResponder {
-        o.mouseExited(with: ev(.mouseExited, nil))
-      }
+      if a.options.contains(.mouseEnteredAndExited) { tell(a.owner, "mouseExited:", ev(.mouseExited, nil)) }
     }
     for (id, (a, v)) in now where inside[id] == nil {
       inside[id] = a
-      if a.options.contains(.mouseEnteredAndExited), let o = a.owner as? NSResponder {
-        o.mouseEntered(with: ev(.mouseEntered, v))
-      }
+      if a.options.contains(.mouseEnteredAndExited) { tell(a.owner, "mouseEntered:", ev(.mouseEntered, v)) }
     }
     if !dragging && moved {
       for (_, (a, v)) in now where a.options.contains(.mouseMoved) {
-        (a.owner as? NSResponder)?.mouseMoved(with: ev(.mouseMoved, v))
+        tell(a.owner, "mouseMoved:", ev(.mouseMoved, v))
       }
     }
+  }
+
+  /// A tracking area's owner told what AppKit would tell it. Owners need not be responders: a WKWebView's is an
+  /// NSObject of WebKit's (its mouse tracking observer), and that is the only way its page hears the pointer move
+  func tell(_ owner: Any?, _ name: String, _ e: NSEvent) {
+    let sel = NSSelectorFromString(name)
+    guard let o = owner as? NSObject, o.responds(to: sel) else { return }
+    o.perform(sel, with: e)
   }
 
   func step(to p: NSPoint) {

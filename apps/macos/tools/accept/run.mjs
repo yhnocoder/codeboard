@@ -22,6 +22,12 @@ const scenarios = argv.filter((a, i) => !a.startsWith("--") && !["--only", "--st
 const webRepo = path.resolve(opt("--web") ?? repo);
 const sides = only ? [only] : ["mac", "web"];
 const run = (cmd, a, cwd = repo) => execFileSync(cmd, a, { cwd, stdio: "inherit" });
+// the Command Line Tools have no SwiftUI macro plugin (the app's @State does not compile): use Xcode's toolchain when
+// xcode-select points there and Xcode is installed
+if (!process.env.DEVELOPER_DIR && fs.existsSync("/Applications/Xcode.app")) {
+  const dev = execFileSync("xcode-select", ["-p"]).toString().trim();
+  if (dev.startsWith("/Library/Developer/CommandLineTools")) process.env.DEVELOPER_DIR = "/Applications/Xcode.app/Contents/Developer";
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 if (!scenarios.length) throw new Error("usage: run.mjs <scenario.txt>… [--only mac|web] [--storage <folder>] [--web <checkout>] [--skip-build]");
 
@@ -283,7 +289,7 @@ async function shotPair(out, name, have) {
 }
 
 /** Per side: each command's time, what each press landed on, and for recorded commands how long the window took to
- *  answer (first frame that changed after the command ended) and to settle (no change for 300 ms) */
+ *  answer (first frame that changed after the command ended, a key's after it started) and to settle (no change for 300 ms) */
 async function report(d, out) {
   const rows = [];
   const lines = d.lines().filter(Boolean).map((l) => {
@@ -296,13 +302,27 @@ async function report(d, out) {
     const times = fs.readFileSync(path.join(d.dir, r, "times.txt"), "utf8").split("\n").filter(Boolean).map(Number);
     times.forEach((t, i) => frames.push({ t, file: path.join(d.dir, r, `f${String(i).padStart(5, "0")}.png`) }));
   }
-  const small = new Map();
-  const pixels = async (f) => small.get(f) ?? small.set(f, await sharp(f).resize(160, 104, { fit: "fill" }).raw().toBuffer()).get(f);
+  const small = new Map(); // the last few frames read
+  const pixels = async (f) => {
+    if (small.has(f)) return small.get(f);
+    if (small.size > 8) small.delete(small.keys().next().value);
+    return small.set(f, await sharp(f).removeAlpha().raw().toBuffer()).get(f);
+  };
+  // full size: a thumbnail averages away a faint change over a whole card (a Note's editing ring giving way to the
+  // selection's). A caret blinking is no answer: a change that fits in one caret (at most 3 px wide and 24 px tall);
+  // a caret that moves (off here, on there) is
   const differ = async (a, b) => {
     const [x, y] = await Promise.all([pixels(a), pixels(b)]);
-    let n = 0;
-    for (let i = 0; i < x.length; i++) if (Math.abs(x[i] - y[i]) > 24) n++;
-    return n > 3;
+    if (x.length !== y.length) return true;
+    const { width } = await sharp(a).metadata();
+    let n = 0, x0 = Infinity, x1 = -1, y0 = Infinity, y1 = -1;
+    for (let i = 0; i < x.length; i += 3) {
+      if (Math.abs(x[i] - y[i]) <= 24 && Math.abs(x[i + 1] - y[i + 1]) <= 24 && Math.abs(x[i + 2] - y[i + 2]) <= 24) continue;
+      n++;
+      const px = (i / 3) % width, py = Math.floor(i / 3 / width);
+      x0 = Math.min(x0, px), x1 = Math.max(x1, px), y0 = Math.min(y0, py), y1 = Math.max(y1, py);
+    }
+    return n > 3 && (x1 - x0 >= 3 || y1 - y0 >= 24);
   };
   const inputs = { move: 0, click: 0, dbl: 0, drag: 0, down: 0, key: 0, type: 0, scroll: 0, pinch: 0, menu: 0 };
   for (const l of lines) {
@@ -313,19 +333,22 @@ async function report(d, out) {
     if (!done || /^(cam|rect|where|hit)\b/.test(done[2])) continue;
     const start = lines.find((x) => x.text.startsWith(`start ${done[1]} `));
     let answer = "";
-    if (/^(click|dbl|up|key|type|drag|menu)\b/.test(done[2])) {
-      const at = frames.findIndex((f) => f.t >= l.t);
+    if (/^(click|dbl|up|key|keys|type|ime|drag|menu)\b/.test(done[2])) {
+      // keys count from when they start: the Mac side spends ~90 ms sending a key's down and up, and the editor answers
+      // within that, before the command ends (a pointer command's press comes at its end, after the move there)
+      const from = /^(key|keys|type|ime)\b/.test(done[2]) && start ? start.t : l.t;
+      const at = frames.findIndex((f) => f.t >= from);
       if (at > 0) {
         let first, last;
         // (Chromium sends a frame only when the picture changed; the Mac recorder sends every frame)
-        for (let i = at; i < frames.length && frames[i].t - l.t < 3; i++) {
+        for (let i = at; i < frames.length && frames[i].t - from < 3; i++) {
           if (last !== undefined && frames[i].t - last > 0.3) break;
           if (await differ(frames[i - 1].file, frames[i].file)) {
             first ??= frames[i].t;
             last = frames[i].t;
           }
         }
-        answer = first === undefined ? "  no change within 3 s" : `  answered ${((first - l.t) * 1000).toFixed(0)} ms, settled ${((last - l.t) * 1000).toFixed(0)} ms`;
+        answer = first === undefined ? "  no change within 3 s" : `  answered ${((first - from) * 1000).toFixed(0)} ms, settled ${((last - from) * 1000).toFixed(0)} ms`;
       }
     }
     rows.push(`${((l.t - (start?.t ?? l.t)) * 1000).toFixed(0).padStart(6)} ms  ${done[2]}${answer}`);
