@@ -340,19 +340,29 @@ import Testing
 }
 
 @Suite struct UndoRuleTests {
-  @Test func theFirstUndoAfterAMarkersSpaceGivesTheMarkerBackAsText() {
+  /// ⌘Z after the space that made a marker a block: first the marker and space as plain text (escaped in the source,
+  /// the one escape the editor writes), then the characters, as on the web; the keys typed as fast as a driver types
+  /// them, at a line's end and at the start of a line with text
+  @Test func theFirstUndoAfterAMarkersSpaceLeavesItAsText() {
     _ = boardFonts
-    let l = BlockLayout(
-      MarkdownDocument("Before\n\n"), width: 300, theme: testTheme, layout: nil, resources: TestResources())
-    let e = EditorCore(layout: l, caret: 8)
-    for ch in "## " { e.insert(String(ch)) }
-    #expect(e.source == "Before\n\n## ")
-    e.undo()
-    // the space gone, ## shown as text (never escaped into the source)
-    #expect(e.source == "Before\n\n##")
-    #expect(e.lone == 8)
-    #expect(!e.source.contains("\\"))
-    e.undo()
-    #expect(e.source == "Before\n\n")
+    for (start, caret, typed, escaped) in [
+      ("Before\n\n", 8, "## ", "Before\n\n\\## "), ("Before\n\nText", 8, "## ", "Before\n\n\\## Text"),
+      ("Text", 0, "1. ", "1\\. Text"), ("Text", 0, "- ", "\\- Text"), ("Text", 0, "> ", "\\> Text"),
+    ] {
+      let l = BlockLayout(
+        MarkdownDocument(start), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+      let e = EditorCore(layout: l, caret: caret)
+      e.clock = { 100 }
+      for ch in typed { e.insert(String(ch)) }
+      let made = e.source
+      e.undo()
+      #expect(e.source == escaped)
+      #expect(e.document.blocks.contains { if case .paragraph = $0.kind { $0.range.contains(caret) } else { false } })
+      e.undo()
+      #expect(e.source == start)
+      e.redo()
+      e.redo()
+      #expect(e.source == made)
+    }
   }
 }

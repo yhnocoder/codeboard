@@ -112,7 +112,7 @@ public final class EditorCore {
   public func key(_ k: MDKey) -> Bool {
     // the key after a lone block marker that makes it the block (the space): an undo step of its own, so the first ⌘Z
     // gives the marker back as text, as an input rule is undone first (editor/typora.ts undoInputRule)
-    if lone != nil, case .text(let t) = k, t == " " {
+    if case .text(let t) = k, t == " ", lone != nil || markerBefore(selection) {
       joinable = false
       ruleNext = true
     }
@@ -162,6 +162,16 @@ public final class EditorCore {
     else { return false }
     apply(e)
     return true
+  }
+
+  /// the line up to the caret is only a block marker (#, -, 1., >…): the space typed now makes it a block, at a line's
+  /// end or before text already on the line
+  private func markerBefore(_ s: MDSelection) -> Bool {
+    guard s.isEmpty, marked == nil else { return false }
+    let ns = source as NSString
+    let start = ns.lineRange(for: NSRange(location: s.head, length: 0)).location
+    let line = ns.substring(with: NSRange(location: start, length: s.head - start))
+    return Self.textMarker.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) != nil
   }
 
   // MARK: a lone block marker
@@ -585,6 +595,7 @@ public final class EditorCore {
     endLone()
     guard canUndo, let last = undoSteps.last else { return }
     if let id = last.link, let hook = onLinkedStep, !hook(id, true) { return }
+    if undoRule(last) { return }
     let step = undoSteps.removeLast()
     observer?(.undo)
     if let (before, _) = step.info {
@@ -622,6 +633,42 @@ public final class EditorCore {
     onLinkedStep = nil
     defer { onLinkedStep = hook }
     redo()
+    return true
+  }
+
+  /// The first ⌘Z after the space that made a block marker a block (an input rule) leaves the marker and the space as
+  /// plain text, as TipTap's undoInputRule does; in Markdown that is the marker escaped ("\## ", "1\. ", "\- "),
+  /// the one place the editor writes an escape of its own. The step under it (the marker's typing) takes the escape
+  /// along, so the next ⌘Z takes the characters back and redo goes forward again
+  private func undoRule(_ step: Step) -> Bool {
+    guard step.kind == .inputRule, step.link == nil, step.info == nil, step.edits.count == 1,
+      let e = step.edits.first, e.old.isEmpty, e.new == " "
+    else { return false }
+    let ns = source as NSString
+    let q = e.range.lowerBound
+    guard q + 1 <= ns.length else { return false }
+    let start = ns.lineRange(for: NSRange(location: q, length: 0)).location
+    let marker = ns.substring(with: NSRange(location: start, length: q - start))
+    guard
+      Self.textMarker.firstMatch(in: marker, range: NSRange(location: 0, length: (marker as NSString).length)) != nil
+    else { return false }
+    // a number's dot or bracket is what makes it a list; anything else is escaped at its first character
+    let ordered = marker.last == "." || marker.last == ")"
+    let at = ordered ? q - 1 : start
+    undoSteps.removeLast()
+    observer?(.undo)
+    let caret = MDSelection(q + 2)
+    edit(at..<at, "\\", select: caret)
+    if !undoSteps.isEmpty {
+      // the space and the escape now belong to the marker's typing: its undo takes all three back
+      undoSteps[undoSteps.count - 1].edits += [(range: q..<q, old: "", new: " "), (range: at..<at, old: "", new: "\\")]
+      undoSteps[undoSteps.count - 1].after = caret
+    }
+    redoSteps.append(
+      Step(
+        edits: [(range: at..<(at + 1), old: "\\", new: "")], before: caret, after: step.after, kind: .command,
+        time: clock()))
+    joinable = false
     return true
   }
 
