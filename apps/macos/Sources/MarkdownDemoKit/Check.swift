@@ -159,6 +159,35 @@ enum Check {
       for _ in 0..<24 { frame() }
       ticks["⌘-drag moved a block"] = e.source != before
       e.undo(nil)
+      // across Notes, then one Undo from the source Note: both Notes as they were
+      // the Note just above, both in view: the source's top at the window's middle
+      let i = demo.cards.firstIndex { $0 === e } ?? 0
+      if i > 0, demo.cards[i - 1].core.layout.blockFrames.count > 1 {
+        let f = demo.cards[i - 1]
+        let fromBefore = e.source
+        let toBefore = f.source
+        clip.scroll(to: CGPoint(x: 0, y: max(0, e.frame.minY - clip.bounds.height / 2)))
+        demo.scroll.reflectScrolledClipView(clip)
+        frame()
+        let fr = f.core.layout.blockFrames
+        let into = content.convert(
+          demo.page.convert(
+            CGPoint(x: f.frame.minX + 30 * demo.zoom, y: f.frame.minY + fr[fr.count - 1].midY * demo.zoom), to: content),
+          to: nil)
+        post(.leftMouseDown, at(1))
+        post(.leftMouseDragged, CGPoint(x: at(1).x, y: at(1).y - 20))
+        post(.leftMouseDragged, into)
+        post(.leftMouseUp, into)
+        for _ in 0..<24 { frame() }
+        let moved = e.source != fromBefore && f.source != toBefore
+        ticks["⌘-drag across Notes moved the block"] = moved
+        demo.window.makeFirstResponder(e)
+        // the action Edit > Undo (⌘Z) sends: the window is never key, so its keys would go to her front window
+        e.undo(nil)
+        for _ in 0..<6 { frame() }
+        ticks["⌘-drag across Notes, then one Undo restores both"] =
+          moved && e.source == fromBefore && f.source == toBefore
+      }
       e.isEditing = false
       demo.window.makeFirstResponder(nil)
       frame()

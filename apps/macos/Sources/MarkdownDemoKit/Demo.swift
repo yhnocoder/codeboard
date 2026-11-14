@@ -722,7 +722,9 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     guard let reportTo, let e = editor, let content = window.contentView else { return }
     func top(_ r: CGRect) -> [Double] {
       let w = content.convert(r, from: page)
-      return [w.minX, content.bounds.height - w.maxY, w.width, w.height].map { Double($0) }
+      // from the window content's top, whichever way the content view counts
+      let y = content.isFlipped ? w.minY : content.bounds.height - w.maxY
+      return [w.minX, y, w.width, w.height].map { Double($0) }
     }
     let out: [String: Any] = [
       "window": window.windowNumber, "zoom": Double(zoom), "card": top(page.cardRect), "editor": top(e.frame),
@@ -937,6 +939,9 @@ public func runMarkdownDemo(arguments: [String]) throws -> Never {
   let text = try file.map { try String(contentsOf: $0, encoding: .utf8) } ?? sample
   let app = NSApplication.shared
   app.setActivationPolicy(.regular)
+  // a window with unsaved edits in memory: the system must not end the process on its own while it rests
+  ProcessInfo.processInfo.disableAutomaticTermination("Notes edited in memory")
+  ProcessInfo.processInfo.disableSuddenTermination()
   let atStart = footprint()
   let demo = try Demo(text: text, folder: file?.deletingLastPathComponent() ?? sampleFolder(), cardWidth: width)
   demo.saveTo = saveTo

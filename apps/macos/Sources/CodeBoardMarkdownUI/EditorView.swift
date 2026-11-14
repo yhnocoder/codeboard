@@ -971,10 +971,15 @@ public final class MarkdownEditorView: NSView {
     return isEditing ? all : all.filter { $0.id == "bold" || $0.id == "highlight" }
   }
 
+  /// a host's gesture over the Note (a ⌘ move) is going on: no selection toolbar over it until it ends
+  public var holdsToolbar = false {
+    didSet { if holdsToolbar != oldValue { scheduleToolbar() } }
+  }
+
   /// the toolbar comes up once the selection has stood still for TOOLBAR_SETTLE, the button up
   private func scheduleToolbar() {
     let s = core.selection
-    guard !s.isEmpty, core.marked == nil, tableDrag == nil, resizing == nil,
+    guard !s.isEmpty, !holdsToolbar, core.marked == nil, tableDrag == nil, resizing == nil,
       MarkdownEditing.run(at: s.range.lowerBound, in: core.document)?.kind == .inline
     else {
       toolbarTimer?.invalidate()

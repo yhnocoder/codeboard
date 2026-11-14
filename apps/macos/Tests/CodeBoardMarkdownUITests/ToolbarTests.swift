@@ -101,3 +101,19 @@ import Testing
     #expect(v.core.source == src)
   }
 }
+
+/// no selection toolbar over a Note while a host's ⌘ move holds it (it floated over the text during a ⌘-drag)
+@MainActor @Suite struct ToolbarHoldTests {
+  @Test func heldWhileAMoveGoesOn() {
+    _ = boardFonts
+    let l = BlockLayout(
+      MarkdownDocument("Some words here"), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 0)
+    v.holdsToolbar = true
+    v.selection = MDSelection(anchor: 0, head: 4)
+    #expect(!v.isTicking || v.toolbar.isHidden)
+    #expect(v.toolbar.isHidden)
+    v.holdsToolbar = false
+    #expect(v.isTicking)
+  }
+}

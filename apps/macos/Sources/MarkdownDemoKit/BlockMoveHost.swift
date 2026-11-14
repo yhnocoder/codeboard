@@ -34,7 +34,13 @@ final class BlockMoveHost {
     /// the pointer's offset from the float's corner while it is dragged
     var grab = CGPoint.zero
   }
-  private var lift: Lift?
+  /// while blocks are lifted, their Note shows no selection toolbar over them
+  private var lift: Lift? {
+    didSet {
+      if oldValue?.card !== lift?.card { oldValue?.card.holdsToolbar = false }
+      lift?.card.holdsToolbar = true
+    }
+  }
   /// the copy over a Note: its longer side at most this many points on screen, this far right of and below the pointer
   static let thumb: CGFloat = 132
   static let thumbOffset = CGPoint(x: 14, y: 16)
