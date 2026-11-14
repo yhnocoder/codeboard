@@ -57,13 +57,30 @@ private struct FolderContents: View {
   items.compactMap(VaultDrag.path).reduce(false) { ok, p in shell.move(p, into: folder) != nil || ok }
 }
 
+/// A row's hover is the shell's (one row at a time), so a picture of the sidebar can show it
+private struct ShellHover<Content: View>: View {
+  let shell: Shell
+  let key: String
+  @ViewBuilder var content: (Bool) -> Content
+
+  var body: some View {
+    content(shell.hoveredRow == key).onHover { on in
+      if on {
+        shell.hoveredRow = key
+      } else if shell.hoveredRow == key {
+        shell.hoveredRow = nil
+      }
+    }
+  }
+}
+
 /// The vault itself: its name; on hover a new board and a new folder in it. Dropping on it moves to the top.
 private struct RootRow: View {
   let shell: Shell
   @State private var target = false
 
   var body: some View {
-    Hover { hovered in
+    ShellHover(shell: shell, key: Shell.rowKey(folder: "")) { hovered in
       HStack(spacing: 0) {
         Text(shell.vault?.root.lastPathComponent ?? "")
           .font(.system(size: 11.5, weight: .semibold))
@@ -109,7 +126,7 @@ private struct FolderRow: View {
     let open = shell.expanded.contains(folder.path)
     let own = folder.folderBoard
     let on = own != nil && shell.current?.board == own?.id
-    Hover { hovered in
+    ShellHover(shell: shell, key: Shell.rowKey(folder: folder.path)) { hovered in
       Row(depth: depth, selected: on, target: target) {
         Image(systemName: "chevron.right")
           .font(.system(size: 8.5, weight: .semibold))
@@ -163,15 +180,7 @@ private struct FolderRow: View {
     } isTargeted: {
       target = $0
     }
-    .contextMenu {
-      Button("New Board") { shell.newBoard(in: folder.path) }
-      Button("New Folder") { shell.newFolder(in: folder.path) }
-      Divider()
-      Button("Rename") { shell.renaming = .folder(folder.path) }
-      Divider()
-      if let own { Button("Delete Folder Board") { shell.trash(own.path) } }
-      Button("Delete Folder") { shell.trash(folder.path) }
-    }
+    .contextMenu { MenuItems(entries: shell.menu(folder: folder)) }
   }
 
   private func toggle() {
@@ -190,7 +199,7 @@ private struct BoardRow: View {
 
   var body: some View {
     let on = shell.current?.board == board.id
-    Hover { hovered in
+    ShellHover(shell: shell, key: Shell.rowKey(board: board.id)) { hovered in
       Row(depth: depth, selected: on, target: false) {
         Color.clear.frame(width: 14, height: 1)
         BoardIcon().stroke(on ? ShellTheme.selectedIcon : ShellTheme.icon, lineWidth: 1.2).frame(width: 16, height: 16)
@@ -210,11 +219,16 @@ private struct BoardRow: View {
       }
     }
     .draggable(VaultDrag.payload(board.path))
-    .contextMenu {
-      Button("Rename") { shell.renaming = .board(board.id) }
-      Button("Edit Mark…") { shell.sealEditing = board.id }
-      Divider()
-      Button("Delete") { shell.trash(board.path) }
+    .contextMenu { MenuItems(entries: shell.menu(board: board)) }
+  }
+}
+
+private struct MenuItems: View {
+  let entries: [Shell.MenuEntry]
+
+  var body: some View {
+    ForEach(entries.indices, id: \.self) { i in
+      if let e = entries[i] { Button(e.title, action: e.run) } else { Divider() }
     }
   }
 }

@@ -7,6 +7,32 @@ import CodeBoardModel
 // deleting moves to the system Trash.
 
 extension Shell {
+  /// A menu item; nil: a separator
+  public typealias MenuEntry = (title: String, run: () -> Void)?
+
+  /// A folder's row menu
+  public func menu(folder: VaultFolder) -> [MenuEntry] {
+    var m: [MenuEntry] = [
+      ("New Board", { self.newBoard(in: folder.path) }), ("New Folder", { self.newFolder(in: folder.path) }), nil,
+      ("Rename", { self.renaming = .folder(folder.path) }), nil,
+    ]
+    if let own = folder.folderBoard { m.append(("Delete Folder Board", { self.trash(own.path) })) }
+    m.append(("Delete Folder", { self.trash(folder.path) }))
+    return m
+  }
+
+  /// A board's row menu
+  public func menu(board: VaultBoard) -> [MenuEntry] {
+    [
+      ("Rename", { self.renaming = .board(board.id) }), ("Edit Mark…", { self.sealEditing = board.id }), nil,
+      ("Delete", { self.trash(board.path) }),
+    ]
+  }
+
+  /// What `hoveredRow` names
+  public static func rowKey(folder path: String) -> String { "folder:" + path }
+  public static func rowKey(board id: BoardID) -> String { "board:" + id.rawValue }
+
   /// Runs a change to the vault's files; whether it went through (a name taken: nothing changed, a beep)
   @discardableResult
   func files(_ change: (Vault) throws -> Void) -> Bool {

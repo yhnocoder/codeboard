@@ -108,7 +108,7 @@ public struct SealEditor: View {
         commit: { _ in finish(kept) }, cancel: { finish(original) }
       )
       .frame(height: 22)
-      HStack(spacing: 8) {
+      HStack(spacing: 6) {
         ForEach(Seal.Color.allCases, id: \.self) { c in
           Circle()
             .fill(Color(nsColor: SealPalette.color(c)))
@@ -127,7 +127,7 @@ public struct SealEditor: View {
       }
     }
     .padding(12)
-    .frame(width: 236, alignment: .leading)
+    .frame(width: 242, alignment: .leading)
     .onDisappear { if !finished { apply(kept, true) } }
   }
 

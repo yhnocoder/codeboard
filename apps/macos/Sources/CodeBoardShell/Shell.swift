@@ -75,6 +75,8 @@ public struct ShellState: Codable, Equatable, Sendable {
   public var folderRenamed: ((String, String, String) -> Void)?
   /// What is being renamed in the sidebar: a board by id, a folder by path
   public var renaming: Renaming?
+  /// The sidebar row under the pointer (`rowKey`)
+  public var hoveredRow: String?
   /// The board whose seal is being edited, and where its popover is anchored
   public var sealEditing: BoardID?
 

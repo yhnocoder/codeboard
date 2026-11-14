@@ -303,7 +303,7 @@ private final class FlippedView: NSView {
 }
 
 /// Sidebar toggle, back and forward, right of the traffic lights; they never move
-private struct TitleControls: View {
+struct TitleControls: View {
   let shell: Shell
 
   var body: some View {
