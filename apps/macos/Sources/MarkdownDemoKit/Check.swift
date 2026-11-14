@@ -444,7 +444,8 @@ enum Check {
   static func engines(_ demo: Demo) -> Int { (demo.resources.math as? JSEngines)?.engineCount ?? 0 }
 
   /// The window at a width: where the Notes' column, the first card and the panel are, and what is wrong with that: the
-  /// card not wholly in view across, or the panel wider than a third of the window
+  /// card not wholly in view across (its left edge, when it is wider than the column), or the panel wider than a third of
+  /// the window
   static func lay(_ demo: Demo, width w: CGFloat) -> ([String: Any], [String]) {
     demo.window.setContentSize(CGSize(width: w, height: 820))
     demo.window.contentView?.layoutSubtreeIfNeeded()
@@ -454,7 +455,9 @@ enum Check {
     let seen = card.intersection(notes)
     let panel = demo.columns.shownPanel
     var wrong: [String] = []
-    if card.isEmpty || seen.width < min(card.width, notes.width) - 1 || seen.height <= 0 {
+    // a card wider than the column (a board's fixed width) scrolls across: then its left edge must be in view
+    let across = card.width <= notes.width ? seen.width >= card.width - 1 : seen.minX <= card.minX + 0.5
+    if card.isEmpty || !across || seen.height <= 0 {
       wrong.append("at \(Int(w)) pt the Note is not in view beside the panel")
     }
     if panel > w / 3 + 0.5 { wrong.append("at \(Int(w)) pt the panel is wider than a third") }
