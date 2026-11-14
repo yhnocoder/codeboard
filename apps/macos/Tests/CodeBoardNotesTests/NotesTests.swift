@@ -227,6 +227,34 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     #expect(after.first == plain.first)
   }
 
+  // A Note whose paragraph ends with an image (ProseMirror puts its own src-less <img> after it) counts as drawn whole
+  // once its images are in: its size is measured once and kept, so a board with it opens without measuring it again
+  @Test func aNoteWithImagesIsMeasuredOnceAndKept() async throws {
+    _ = NSApplication.shared
+    let cache = try tempFolder()
+    let folder = try tempFolder()
+    defer {
+      try? FileManager.default.removeItem(at: cache)
+      try? FileManager.default.removeItem(at: folder)
+    }
+    try FileManager.default.createDirectory(at: folder.appending(path: "images"), withIntermediateDirectories: true)
+    let svg = #"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20"/></svg>"#
+    for name in ["0123456789abcdef-40x20.svg", "fedcba9876543210.svg"] {
+      try Data(svg.utf8).write(to: folder.appending(path: "images/\(name)"))
+    }
+    for name in ["0123456789abcdef-40x20.svg", "fedcba9876543210.svg"] {
+      let req = NoteRenderer.SizeRequest(
+        note: .note(Note(text: "A picture\n\n![](images/\(name))")), width: 300, folder: folder, look: "warm-ink",
+        dark: false)
+      let r = NoteRenderer(cache: cache)
+      let m = try #require(try await r.metrics(of: [req], priority: 0)[0])
+      await r.written()
+      let fresh = NoteRenderer(cache: cache)
+      #expect(try await fresh.metrics(of: [req], priority: 0)[0] == m, "\(name)")
+      #expect(!fresh.webViewOpen, "\(name): read back from the disk cache")
+    }
+  }
+
   @Test func aNotesBlocksAreMeasuredWithItsSizeAndKeptWithIt() async throws {
     _ = NSApplication.shared
     let cache = try tempFolder()

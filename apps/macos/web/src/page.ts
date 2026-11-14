@@ -162,7 +162,9 @@ async function settled(els: HTMLElement[], laidOut = false): Promise<boolean[]> 
   const loaded = await Promise.all(
     els.map((el) =>
       Promise.all(
-        [...el.querySelectorAll("img")].map((img) =>
+        // not ProseMirror's own src-less <img> after an image at a paragraph's end (it is never an image: its decode
+        // always fails, and the Note would never count as drawn whole)
+        [...el.querySelectorAll("img:not(.ProseMirror-separator)")].map((img) =>
           img.decode().then(
             () => true,
             () => false,
