@@ -13,8 +13,8 @@ import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardShell
 import ObjectiveC
+import Synchronization
 import WebKit
-import os
 
 setbuf(stdout, nil)
 // no App Nap: with the display asleep or the session locked, a background app's timers and sleeps would be stretched to
@@ -33,19 +33,28 @@ let shotScale = CGFloat(Double(env["ACCEPT_SCALE"] ?? "1") ?? 1)
 /// Now, as an event's timestamp: a CGEvent made here carries none (0), and the app reads speeds and pauses from event
 /// times (a scroll's glide: fingers that stopped before lifting do not glide)
 func now() -> CGEventTimestamp { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
-nonisolated(unsafe) var vPointer = NSPoint(x: 0, y: 0)  // screen coordinates, as NSEvent.mouseLocation
-nonisolated(unsafe) var vButtons = 0
-/// The modifier keys held, as `NSEvent.modifierFlags` reports them; read from any thread (SwiftUI reads it off the main
-/// thread), so behind a lock
-nonisolated let flagsLock = OSAllocatedUnfairLock(initialState: NSEvent.ModifierFlags())
-nonisolated var vFlags: NSEvent.ModifierFlags {
-  get { flagsLock.withLock { $0 } }
-  set { flagsLock.withLock { $0 = newValue } }
+/// The pointer, its buttons and the modifier keys the app sees: AppKit and SwiftUI read them from any thread (a hosting
+/// view's display link asks for the modifiers off the main thread), so they are kept under a lock
+enum Virtual {
+  static let input = Mutex((pointer: NSPoint(x: 0, y: 0), buttons: 0, flags: NSEvent.ModifierFlags()))
 }
-nonisolated(unsafe) var gKey: NSWindow?
-nonisolated(unsafe) weak var gMain: NSWindow?
-nonisolated(unsafe) var cursorName = "arrow"
-nonisolated(unsafe) var lastMenu: NSMenu?
+/// Screen coordinates, as NSEvent.mouseLocation
+nonisolated var vPointer: NSPoint {
+  get { Virtual.input.withLock { $0.pointer } }
+  set { Virtual.input.withLock { $0.pointer = newValue } }
+}
+nonisolated var vButtons: Int {
+  get { Virtual.input.withLock { $0.buttons } }
+  set { Virtual.input.withLock { $0.buttons = newValue } }
+}
+nonisolated var vFlags: NSEvent.ModifierFlags {
+  get { Virtual.input.withLock { $0.flags } }
+  set { Virtual.input.withLock { $0.flags = newValue } }
+}
+var gKey: NSWindow?
+weak var gMain: NSWindow?
+var cursorName = "arrow"
+var lastMenu: NSMenu?
 let deskLevel = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) - 1)
 
 func log(_ s: String) {
@@ -136,8 +145,8 @@ extension NSApplication {
 /// Made the first time a cursor is named (a static is made when first read): main.swift's top-level lets are made at
 /// launch, before NSApplication, when `NSCursor.arrow` is not yet the arrow the app sets, so every arrow was named
 /// custom(28x40)
-enum Cursors {
-  nonisolated(unsafe) static let names: [(NSCursor, String)] =
+@MainActor enum Cursors {
+  static let names: [(NSCursor, String)] =
     [
       (.arrow, "arrow"), (.pointingHand, "pointingHand"), (.openHand, "openHand"), (.closedHand, "closedHand"),
       (.iBeam, "iBeam"), (.crosshair, "crosshair"), (.resizeLeftRight, "resizeLeftRight"),
@@ -166,18 +175,18 @@ enum Cursors {
       (.rowResize(directions: .up), "rowResize ↑"), (.rowResize(directions: .down), "rowResize ↓"),
     ]
 }
-func nameOf(_ c: NSCursor) -> String {
+@MainActor func nameOf(_ c: NSCursor) -> String {
   if let n = Cursors.names.first(where: { $0.0 == c })?.1 { return n }
   return "custom(\(Int(c.image.size.width))x\(Int(c.image.size.height)))"
 }
 
 extension NSCursor {
-  @objc func accSet() {
+  @MainActor @objc func accSet() {
     let n = nameOf(self)
     if n != cursorName { log("cursor \(n)") }
     cursorName = n
   }
-  @objc func accPush() { accSet() }
+  @MainActor @objc func accPush() { accSet() }
   @objc func accPop() {}
   @objc class func accClassPop() {}
   @objc class func accHide() { log("cursor hide (not done)") }
@@ -197,19 +206,22 @@ func describe(_ m: NSMenu, _ indent: String = "") -> String {
 }
 
 extension NSMenu {
-  @objc func accPopUp(positioning item: NSMenuItem?, at p: NSPoint, in view: NSView?) -> Bool {
+  /// An item's action, as the menu does it when the item is chosen
+  @objc func accPerform(_ item: NSMenuItem) { performActionForItem(at: index(of: item)) }
+  @MainActor @objc func accPopUp(positioning item: NSMenuItem?, at p: NSPoint, in view: NSView?) -> Bool {
     lastMenu = self
     log("menu popUp (not shown):\n" + describe(self))
     return false
   }
-  @objc class func accPopUpContextMenu(_ m: NSMenu, with e: NSEvent, for v: NSView) {
+  @MainActor @objc class func accPopUpContextMenu(_ m: NSMenu, with e: NSEvent, for v: NSView) {
     lastMenu = m
     log("context menu (not shown):\n" + describe(m))
   }
 }
 
-/// The app's pasteboard: a private one of this process, never the clipboard the person uses
-/// (taken by its name each time: `general` is asked for off the main thread too, by ShareKit)
+/// The app's pasteboard: a private one of this process, never the clipboard the person uses. Named afresh each time it
+/// is asked for (the same name gives the same pasteboard): AppKit and the system read `general` from any thread
+/// (ShareKit from a background queue)
 nonisolated let ownPasteboardName = NSPasteboard.Name("com.example.codeboard.accept.\(getpid())")
 nonisolated var ownPasteboard: NSPasteboard { NSPasteboard(name: ownPasteboardName) }
 extension NSPasteboard {
@@ -265,8 +277,8 @@ where env["ACCEPT_TRACE_SCROLL"] != nil {
 // Korean and Vietnamese input methods go another way, inputMethodUsesCorrectKeyEventOrder), and the page sees the key
 // with the composition. Called on their own, the calls come with no key: ProseMirror then swallows the next key within
 // half a second as the one that confirmed the composition (inOrNearComposition).
-nonisolated(unsafe) var imeStep: ((NSTextInputClient) -> Void)?
-func imeTakes(_ ctx: AnyObject, _ e: NSEvent) -> Bool {
+var imeStep: ((NSTextInputClient) -> Void)?
+@MainActor func imeTakes(_ ctx: AnyObject, _ e: NSEvent) -> Bool {
   guard e.type == .keyDown, let step = imeStep, let client = (ctx as? NSTextInputContext)?.client else { return false }
   imeStep = nil
   step(client)
@@ -276,7 +288,7 @@ if let m = class_getInstanceMethod(NSTextInputContext.self, #selector(NSTextInpu
   typealias Imp = @convention(c) (AnyObject, Selector, NSEvent) -> Bool
   let orig = unsafeBitCast(method_getImplementation(m), to: Imp.self)
   let block: @convention(block) (AnyObject, NSEvent) -> Bool = { ctx, e in
-    imeTakes(ctx, e) || orig(ctx, #selector(NSTextInputContext.handleEvent(_:)), e)
+    MainActor.assumeIsolated { imeTakes(ctx, e) } || orig(ctx, #selector(NSTextInputContext.handleEvent(_:)), e)
   }
   method_setImplementation(m, imp_implementationWithBlock(block))
 }
@@ -299,7 +311,7 @@ if env["ACCEPT_TRACE_RESPONDER"] != nil,
 // With the display asleep or the session locked the display link stops, and with it all the app moves by frames (a
 // glide, a fly, the cross-fade to the summaries): the driver then steps the canvas's link itself (Driver.frames), and the
 // link tells the time it is now
-nonisolated(unsafe) var steppingLink = false
+var steppingLink = false
 if let m = class_getInstanceMethod(CADisplayLink.self, #selector(getter: CADisplayLink.timestamp)) {
   typealias Imp = @convention(c) (AnyObject, Selector) -> CFTimeInterval
   let orig = unsafeBitCast(method_getImplementation(m), to: Imp.self)
@@ -894,7 +906,7 @@ func strings(_ x: Any) -> [String] {
         // after this command has answered: an item that opens an app-modal dialog runs it from inside its action, and
         // the driver goes on (the dialog is read with `dialog`, answered with `button` or a key). From the run loop, not
         // the main queue: a main-queue block that runs a modal session holds the queue, and the next command with it
-        RunLoop.main.perform(inModes: [.common]) { menu.performActionForItem(at: idx) }
+        menu.perform(#selector(NSMenu.accPerform(_:)), with: menu.items[idx], afterDelay: 0, inModes: [.common])
         log("picked \(path)")
       } else {
         m = menu.items[idx].submenu
@@ -959,7 +971,7 @@ func strings(_ x: Any) -> [String] {
       guard let b = views(in: d.contentView).compactMap({ $0 as? NSButton }).first(where: { $0.title == title }) else {
         return "no button \(title): \(dialogText(d))"
       }
-      RunLoop.main.perform(inModes: [.common]) { b.performClick(nil) }
+      b.perform(#selector(NSButton.performClick(_:)), with: nil, afterDelay: 0, inModes: [.common])
     case "pick": pick(String(line.dropFirst(5)))
     case "hit": return hitInfo(vPointer)
     // ax id: where the canvas's accessibility element with this identifier (a card or Section, when the app exposes
@@ -1155,10 +1167,18 @@ func strings(_ x: Any) -> [String] {
 // MARK: Recording: every frame the screen shows, this app's windows composited, the pointer drawn on top
 
 typealias CreateImage = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
-nonisolated(unsafe) let createImage: CreateImage = {
-  let h = dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_NOW)
-  return unsafeBitCast(dlsym(h, "CGWindowListCreateImage")!, to: CreateImage.self)
-}()
+enum WindowServer {
+  static let createImage: CreateImage = {
+    let h = dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_NOW)
+    return unsafeBitCast(dlsym(h, "CGWindowListCreateImage")!, to: CreateImage.self)
+  }()
+}
+
+/// What a frame is made of, read on the main thread: the main window's frame, this app's windows over it (back to
+/// front), and the pointer drawn on top with the cursor the app asked for
+typealias Shot = (
+  main: CGRect, list: [(id: UInt32, frame: CGRect, image: CGImage?)], pointer: NSPoint, buttons: Int, cursor: String
+)
 
 @MainActor final class Recorder: NSObject {
   let dir: URL
@@ -1239,7 +1259,7 @@ nonisolated(unsafe) let createImage: CreateImage = {
     if let w = windows(), let img = compose(w) { write(img, to: outDir.appending(path: name + ".png")) }
   }
 
-  static func write(_ img: CGImage, to url: URL) {
+  nonisolated static func write(_ img: CGImage, to url: URL) {
     guard let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else { return }
     CGImageDestinationAddImage(dest, img, nil)
     CGImageDestinationFinalize(dest)
@@ -1249,7 +1269,7 @@ nonisolated(unsafe) let createImage: CreateImage = {
   /// With the display asleep or the session locked the window server keeps showing each window as it was when the
   /// screen went off; then the windows are drawn here from their layer trees instead (what the app has set, without
   /// what other processes draw into it, such as web views' pages)
-  nonisolated(unsafe) static var layers = false
+  static var layers = false
 
   static func drawn(_ w: NSWindow) -> CGImage? {
     guard let root = w.contentView?.superview ?? w.contentView, let layer = root.layer else { return nil }
@@ -1270,15 +1290,16 @@ nonisolated(unsafe) let createImage: CreateImage = {
   }
 
   /// The main window's frame and this app's windows over it, back to front (read on the main thread)
-  static func windows() -> (main: CGRect, list: [(id: UInt32, frame: CGRect, image: CGImage?)])? {
+  static func windows() -> Shot? {
     guard let main = gMain else { return nil }
     let list = NSApp.orderedWindows.reversed().filter { $0.isVisible && $0.frame.intersects(main.frame) }
-    return (main.frame, list.map { (UInt32($0.windowNumber), $0.frame, layers ? drawn($0) : nil) })
+    return (
+      main.frame, list.map { (UInt32($0.windowNumber), $0.frame, layers ? drawn($0) : nil) }, vPointer, vButtons,
+      cursorName
+    )
   }
 
-  nonisolated static func compose(_ windows: (main: CGRect, list: [(id: UInt32, frame: CGRect, image: CGImage?)]))
-    -> CGImage?
-  {
+  nonisolated static func compose(_ windows: Shot) -> CGImage? {
     let f = windows.main
     let scale = shotScale
     let pw = Int(f.width * scale)
@@ -1294,7 +1315,8 @@ nonisolated(unsafe) let createImage: CreateImage = {
     for w in windows.list {
       guard
         let img = w.image
-          ?? createImage(.null, 1 << 3, w.id, (1 << 0) | (shotScale > 1 ? 1 << 3 : 1 << 4))?.takeRetainedValue()
+          ?? WindowServer.createImage(.null, 1 << 3, w.id, (1 << 0) | (shotScale > 1 ? 1 << 3 : 1 << 4))?
+          .takeRetainedValue()
       else { continue }
       let r = CGRect(
         x: (w.frame.minX - f.minX) * scale, y: (w.frame.minY - f.minY) * scale, width: w.frame.width * scale,
@@ -1302,8 +1324,8 @@ nonisolated(unsafe) let createImage: CreateImage = {
       ctx.draw(img, in: r)
     }
     // the pointer: an arrow, a ring while a button is down
-    let p = CGPoint(x: (vPointer.x - f.minX) * scale, y: (vPointer.y - f.minY) * scale)
-    if vButtons != 0 {
+    let p = CGPoint(x: (windows.pointer.x - f.minX) * scale, y: (windows.pointer.y - f.minY) * scale)
+    if windows.buttons != 0 {
       ctx.setFillColor(NSColor.systemRed.withAlphaComponent(0.35).cgColor)
       ctx.fillEllipse(in: CGRect(x: p.x - 11, y: p.y - 11, width: 22, height: 22))
     }
@@ -1322,9 +1344,9 @@ nonisolated(unsafe) let createImage: CreateImage = {
     ctx.setLineWidth(1.2)
     ctx.drawPath(using: .fillStroke)
     // the cursor the app asked for, when not the arrow
-    if cursorName != "arrow" {
+    if windows.cursor != "arrow" {
       let s = NSAttributedString(
-        string: cursorName,
+        string: windows.cursor,
         attributes: [.font: NSFont.systemFont(ofSize: 10, weight: .medium), .foregroundColor: NSColor.white])
       let line = CTLineCreateWithAttributedString(s)
       let b = CTLineGetBoundsWithOptions(line, [])
@@ -1354,7 +1376,7 @@ let frames = Timer(timeInterval: 1.0 / 60, repeats: true) { _ in
 }
 RunLoop.main.add(frames, forMode: .common)
 // commands arrive one per line through a FIFO, from any number of writers in turn
-_ = Thread {
+Thread {
   while true {
     guard let h = FileHandle(forReadingAtPath: fifoPath) else {
       sleep(1)

@@ -530,6 +530,7 @@ package final class RefPeek: NSView {
   }
 
   package override func mouseDown(with e: NSEvent) {
+    CanvasView.under(self)?.stopGlide()
     let p = convert(e.locationInWindow, from: nil)
     if goRect.contains(p) { return onGo?() ?? () }
     guard p.y - Self.margin < gripHeight, let sv = superview else { return }

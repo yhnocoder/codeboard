@@ -722,7 +722,7 @@ package final class ShelfPanel: NSView {
   /// The X's rect
   var closeRect: CGRect { CGRect(x: bounds.width - 4 - 22 - 4, y: (Self.header - 22) / 2, width: 22, height: 22) }
 
-  package override func mouseDown(with e: NSEvent) {}
+  package override func mouseDown(with e: NSEvent) { CanvasView.under(self)?.stopGlide() }
   package override func mouseUp(with e: NSEvent) {
     let p = convert(e.locationInWindow, from: nil)
     if closeRect.contains(p) { onClose?() } else { onBlank?() }
@@ -815,6 +815,7 @@ package final class ShelfThumb: NSView {
   }
 
   package override func mouseDown(with e: NSEvent) {
+    CanvasView.under(self)?.stopGlide()
     press = convert(e.locationInWindow, from: nil)
     dragging = false
   }
@@ -907,7 +908,7 @@ package final class ShelfPreview: NSView {
     CATransaction.commit()
   }
 
-  package override func mouseDown(with e: NSEvent) {}
+  package override func mouseDown(with e: NSEvent) { CanvasView.under(self)?.stopGlide() }
   package override func mouseUp(with e: NSEvent) {
     if buttonRect.contains(convert(e.locationInWindow, from: nil)) { onPutBack?() }
   }

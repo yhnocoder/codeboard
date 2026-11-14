@@ -395,16 +395,16 @@ extension CanvasView {
   /// Delete
   func stickerMenu(_ id: StickerID) -> NSMenu {
     let m = NSMenu()
-    if let k = document?.board.sticker(id), let own = Sticker.ownColor(k.glyph) {
-      let row = StickerSwatches(theme: theme, own: own, current: k.drawnColor ?? own)
-      row.onPick = { [weak self, weak m] hex in
-        m?.cancelTracking()
-        self?.document?.edit("Sticker Color") { $0.setStickerColor(id, hex) }
-      }
-      let item = NSMenuItem()
-      item.view = row
-      m.addItem(item)
-      m.addItem(.separator())
+    // an emoji has its own colours
+    if let k = document?.board.sticker(id), Sticker.ownColor(k.glyph) != nil {
+      let pick = { [weak self] (hex: String?) in self?.document?.edit("Sticker Color") { $0.setStickerColor(id, hex) } }
+      m.addItem(
+        submenu(
+          "Color",
+          [menuItem("Default", checked: k.color == nil) { pick(nil) }]
+            + zip(Self.stickerColorNames, Sticker.palette).map { name, hex in
+              menuItem(name, checked: k.color?.uppercased() == hex) { pick(hex) }
+            }))
     }
     // one on the board or on a card: its size; on a card, Detach keeps it where it is drawn, on the board
     if let k = document?.board.sticker(id), let now = k.size {
@@ -426,14 +426,18 @@ extension CanvasView {
         detach.toolTip = "Keep it here on the canvas"
         m.addItem(detach)
       }
-      m.addItem(.separator())
     }
+    if !m.items.isEmpty { m.addItem(.separator()) }
     m.addItem(
-      menuItem("Delete") { [weak self] in
-        self?.document?.edit("Delete") { $0.delete([.sticker(id)]) }
-      })
+      key(
+        menuItem("Delete") { [weak self] in
+          self?.document?.edit("Delete") { $0.delete([.sticker(id)]) }
+        }, "\u{8}"))
     return m
   }
+
+  /// Sticker.palette's names (glyphs.tsx STICKER_PALETTE)
+  static let stickerColorNames = ["Gold", "Orange", "Red", "Pink", "Purple", "Blue", "Green", "Grey"]
 }
 
 /// The palette over the toolbar's Sticker (Picker.tsx .stkpick, without its tabs, search and colours): the built-in
@@ -605,7 +609,7 @@ package final class StickerPalette: NSView {
 
   package override func mouseMoved(with e: NSEvent) { hover = slot(at: convert(e.locationInWindow, from: nil)) }
   package override func mouseExited(with e: NSEvent) { hover = nil }
-  package override func mouseDown(with e: NSEvent) {}
+  package override func mouseDown(with e: NSEvent) { CanvasView.under(self)?.stopGlide() }
 
   package override func mouseUp(with e: NSEvent) {
     guard let i = slot(at: convert(e.locationInWindow, from: nil)) else { return }
@@ -648,50 +652,5 @@ final class EmojiField: NSTextField, NSTextFieldDelegate {
 
   func controlTextDidChange(_ n: Notification) {
     if !stringValue.isEmpty { onText?(stringValue) }
-  }
-}
-
-/// A sticker menu's row of colours (Picker.tsx .scolors .sw): 16 across, 8 apart; the glyph's own first when the
-/// palette lacks it; the one it is ringed in the accent
-package final class StickerSwatches: NSView {
-  package var onPick: ((String) -> Void)?
-  package let colors: [String]
-  let current: String
-  let theme: Theme
-
-  package init(theme: Theme, own: String, current: String) {
-    self.theme = theme
-    self.current = current.uppercased()
-    let palette = Sticker.palette.map { $0.uppercased() }
-    colors = (palette.contains(own.uppercased()) ? [] : [own.uppercased()]) + palette
-    super.init(frame: CGRect(x: 0, y: 0, width: 14 + CGFloat(colors.count) * 24 - 8 + 14, height: 28))
-    wantsLayer = true
-    for (i, c) in colors.enumerated() {
-      let l = CALayer()
-      l.frame = rect(i)
-      l.cornerRadius = 8
-      l.backgroundColor = StickerArt.color(c)
-      l.borderWidth = 1
-      l.borderColor = CGColor(gray: 0, alpha: 0.12)
-      layer?.addSublayer(l)
-      if c == self.current {
-        let ring = CAShapeLayer()
-        ring.path = CGPath(ellipseIn: l.frame.insetBy(dx: -2.75, dy: -2.75), transform: nil)
-        ring.fillColor = nil
-        ring.strokeColor = theme.accent
-        ring.lineWidth = 1.5
-        layer?.addSublayer(ring)
-      }
-    }
-  }
-
-  @available(*, unavailable)
-  required init?(coder: NSCoder) { fatalError("StickerSwatches is not loaded from nibs") }
-
-  func rect(_ i: Int) -> CGRect { CGRect(x: 14 + CGFloat(i) * 24, y: 6, width: 16, height: 16) }
-
-  package override func mouseUp(with e: NSEvent) {
-    let p = convert(e.locationInWindow, from: nil)
-    if let i = colors.indices.first(where: { rect($0).insetBy(dx: -4, dy: -6).contains(p) }) { onPick?(colors[i]) }
   }
 }

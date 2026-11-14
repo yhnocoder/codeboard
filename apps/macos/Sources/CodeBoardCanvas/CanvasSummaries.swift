@@ -568,7 +568,7 @@ extension CanvasView {
     guard board.summaryRequest(key, contents: contents) != nil else { return }
     summaryWriting.insert(key)
     breathe(key, true)
-    weak var d = doc
+    weak let d = doc
     Task { [weak self] in
       // the examples: the user's own edits on every board of the vault (main: every board the host has read), this one
       // as it is now

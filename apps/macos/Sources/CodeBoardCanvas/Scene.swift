@@ -193,10 +193,11 @@ struct Scene: Sendable {
         hiddenIn[c.id] = f
         continue
       }
-      guard var (content, folder) = Scene.content(of: c, package: package, vault: vault) else {
+      guard let (found, folder) = Scene.content(of: c, package: package, vault: vault) else {
         missing.append(c.id)
         continue
       }
+      var content = found
       // the Highlights the board shows: the segment's own and this board's own sidenotes' lines (core shownRanges)
       if case .code(var code) = content.body {
         for i in code.segments.indices {

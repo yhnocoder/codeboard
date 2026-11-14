@@ -377,5 +377,5 @@ func spread(_ f: Driver.Frame, _ r: [Double], in folder: URL) -> Double? {
 
 extension Scenario {
   /// The recording's folder, for checks that look at its pictures
-  nonisolated(unsafe) static var recording = URL(filePath: "/")
+  @MainActor static var recording = URL(filePath: "/")
 }

@@ -52,7 +52,7 @@ struct Editing {
 let editorMargin: CGFloat = 400
 
 extension CanvasView {
-  nonisolated(unsafe) private static var editorKey: UInt8 = 0
+  private static var editorKey: UInt8 = 0
   /// The refs picked from the [[ list lately (board id, card id), newest first, while the app runs (the web board keeps
   /// them per workspace)
   static var recentRefs: [(board: String, id: String)] = []

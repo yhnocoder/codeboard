@@ -166,7 +166,7 @@ package final class KeysPanel: NSView {
 
   var closeRect: CGRect { CGRect(x: bounds.width - 4 - 22 - 6, y: (Self.header - 22) / 2, width: 22, height: 22) }
 
-  package override func mouseDown(with e: NSEvent) {}
+  package override func mouseDown(with e: NSEvent) { CanvasView.under(self)?.stopGlide() }
   package override func mouseUp(with e: NSEvent) {
     if closeRect.contains(convert(e.locationInWindow, from: nil)) { onClose?() }
   }

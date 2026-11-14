@@ -278,13 +278,6 @@ enum Stage7Sheets {
       r.doc.select([.sticker(kid("sel"))])
       await r.canvas.drawAll()
       try sheet("stickers", "canvas-stickers--overview", try cut(r, all))
-      // its menu's colour row (the menu itself is macOS's), put where the menu would open
-      let swatches = StickerSwatches(theme: theme, own: BuiltinSticker.heart.color, current: "#4C8BF5")
-      swatches.frame = CGRect(origin: CGPoint(x: 1000, y: 540), size: swatches.fittingSize)
-      r.canvas.addSubview(swatches)
-      await r.canvas.drawAll()
-      EditSheets.write(
-        try cut(r, CGRect(x: 960, y: 440, width: 420, height: 200)), out, "sticker-selected-menu-\(suffix)")
       r.close()
 
       // the palette, open over a Sticker button at the bottom
@@ -336,8 +329,6 @@ enum Stage7Sheets {
     emoji as the system draws them, a flag on the code card and stickers on its lines (76: star; 78: zap and TODO), the
     heart selected with its grip. Not drawn: main's folder-pack row (packs are not imported), its corner and arrow
     stickers (not in this stage), its sidenote on line 76.
-    sticker-selected-menu: the selected heart and the colour row its right-click menu starts with (macOS draws the menu
-    around it with Delete under it; a native menu cannot be drawn off screen).
     palette: main's picker (with its tabs, search, colours and pack line) | ours: the built-in glyphs, TODO two wide,
     and the emoji button, which opens the system's emoji picker.
     shelf-empty: the panel open with nothing in it. main has no Shelf story.

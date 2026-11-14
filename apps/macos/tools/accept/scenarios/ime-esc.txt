@@ -1,5 +1,4 @@
-# 拼音选字上屏后马上按 Esc（0.1 秒内），编辑就结束：第一下 Esc 不能被吞掉
-# known mac: 上屏后 0.5 秒内的第一下 Esc 被 ProseMirror 当作确认组字的那个键吞掉（WebKit 里选字的空格先于 compositionend 到页面）
+# 拼音选字上屏后马上按 Esc（0.1 秒内），编辑就结束：第一下 Esc 不能被吞掉。Note、Text、Box 和 Free code 各一遍
 zoom 1
 center @cnote+150,60
 rec ime
@@ -12,5 +11,38 @@ mac: expect answer < 300
 wait 800
 expect focus lacks EditorWebView
 expect focus lacks ProseMirror
-shot left
+expect cnote.text has 你好
+shot note
+center @ctext
+dbl @ctext:c
+wait 600
+ime ni|nih|你好
+wait 100
+key esc
+wait 800
+expect focus lacks EditorWebView
+expect focus lacks ProseMirror
+expect ctext.text has 你好
+center @cyellow
+dbl @cyellow:c
+wait 600
+ime ni|nih|你好
+wait 100
+key esc
+wait 800
+expect focus lacks EditorWebView
+expect focus lacks ProseMirror
+expect cyellow.text has 你好
+center @cfree
+dbl @cfree+120,72
+wait 600
+ime ni|nih|你好
+wait 100
+key esc
+wait 800
+expect focus lacks EditorWebView
+expect focus lacks cm-content
+# the web side keeps no Free code edit in this harness (typed text is not there either after Esc)
+mac: expect cfree.text has 你好
+shot code
 stop

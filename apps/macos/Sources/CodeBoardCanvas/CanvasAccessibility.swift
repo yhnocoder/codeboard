@@ -7,7 +7,7 @@ import CodeBoardModel
 
 /// A card or a Section on the board
 @MainActor final class BoardElement: NSAccessibilityElement {
-  weak var canvas: CanvasView?
+  weak let canvas: CanvasView?
   let item: Item
 
   init(_ item: Item, in canvas: CanvasView) {
@@ -24,8 +24,13 @@ import CodeBoardModel
     }
   }
 
-  override func accessibilityFrame() -> NSRect { canvas?.screenFrame(of: item) ?? .zero }
-  override func accessibilityLabel() -> String? { canvas?.spokenName(of: item) }
+  // AppKit asks these on the main thread; the SDK leaves the overrides nonisolated
+  override func accessibilityFrame() -> NSRect {
+    MainActor.assumeIsolated { [canvas, item] in canvas?.screenFrame(of: item) ?? .zero }
+  }
+  override func accessibilityLabel() -> String? {
+    MainActor.assumeIsolated { [canvas, item] in canvas?.spokenName(of: item) }
+  }
   override func accessibilityRoleDescription() -> String? {
     switch item {
     case .section: "Section"

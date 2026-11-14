@@ -285,7 +285,7 @@ public final class CanvasView: NSView {
   /// Another board to open, and what to go to on it once shown
   public var onOpenBoard: ((BoardID, Arrival?) -> Void)?
   /// A board to delete (a sub-board card's Delete Board…): the shell asks first; whether it went
-  public var onDeleteBoard: ((BoardID) async -> Bool)?
+  public var onDeleteBoard: (@MainActor (BoardID) async -> Bool)?
   /// A ref clicked: what goes there once the double-click time is over
   var refGo: Task<Void, Never>?
   /// How long a click on a ref waits for a second (tests shorten it)
@@ -987,6 +987,17 @@ public final class CanvasView: NSView {
     guard case .glide = motion.phase else { return }
     motion.stopGlide(at: lastTick)
     if let w = pointerInWindow { rehover(convert(w, from: nil)) }
+  }
+
+  /// The board under what floats over it: the canvas it is in (the dock, the Shelf, the palette, the shortcut list) or
+  /// the one beside it in its pane (the toolbar, a ref's preview)
+  static func under(_ overlay: NSView) -> CanvasView? {
+    var v = overlay.superview
+    while let s = v {
+      if let c = (s as? CanvasView) ?? s.subviews.lazy.compactMap({ $0 as? CanvasView }).first { return c }
+      v = s.superview
+    }
+    return nil
   }
 
   public override func otherMouseDown(with e: NSEvent) {

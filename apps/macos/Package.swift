@@ -52,3 +52,9 @@ let package = Package(
     .testTarget(name: "CodeBoardShellTests", dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardNotes"]),
   ]
 )
+
+// No warnings in our own Swift: a concurrency warning (Swift 6 downgrades some isolation errors from AppKit's overrides)
+// is as much a crash as an error, and the rest stay at zero with it
+for t in package.targets where t.name != "CTreeSitterScanners" {
+  t.swiftSettings = (t.swiftSettings ?? []) + [.treatAllWarnings(as: .error)]
+}

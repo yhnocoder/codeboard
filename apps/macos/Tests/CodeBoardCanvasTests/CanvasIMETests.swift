@@ -69,6 +69,21 @@ extension NSTextInputContext {
   }
 }
 
+extension Rig {
+  /// Keys as a person types them, once the editor takes them itself: each once the page has had the one before (a burst
+  /// would have the input method answer every key before the page saw the first)
+  func typeInTurn(_ text: String) async {
+    let v = canvas.noteEditor.view
+    await until("the editor takes the keys itself") { v.held == nil && v.inputContext != nil }
+    for ch in text {
+      let n = (try? await v.callAsyncJavaScript("return edit.keysSeen()", contentWorld: .page) as? Int) ?? 0
+      press(String(ch))
+      _ = try? await v.callAsyncJavaScript(
+        "return await edit.seen(n, 2000)", arguments: ["n": n + 1], contentWorld: .page)
+    }
+  }
+}
+
 @MainActor @Suite(.serialized) struct CanvasIMETests {
   func text(_ r: Rig) async -> String {
     (try? await r.canvas.noteEditor.view.callAsyncJavaScript(
@@ -88,11 +103,55 @@ extension NSTextInputContext {
     await r.editorReady()
     let id = try #require(r.canvas.editing?.id)
     Pinyin.windows.insert(r.window.windowNumber)
-    r.press("ni ")
+    await r.typeInTurn("ni ")
     await r.until("你 written") { await text(r).contains("你") }
     r.press("\u{1b}")
     await r.until("left") { !r.canvas.isEditing }
     #expect(r.doc.board.card(id)?.writing == "你")
+  }
+
+  /// "ni" and Space typed at once after the double-click, before the editor is there: they go through the input method
+  /// too, so 你 is written (WebKit gives a web view an input context only once it has heard from the page that the
+  /// focused element is editable; keys handed to it before that went past the input method)
+  @Test func pinyinTypedAtOnceAfterTheDoubleClickIsComposed() async throws {
+    Pinyin.install()
+    let r = try await Rig(zoom: 1)
+    defer {
+      Pinyin.windows.remove(r.window.windowNumber)
+      r.close()
+    }
+    let before = r.doc.board.card(cid("n1"))?.writing ?? ""
+    Pinyin.windows.insert(r.window.windowNumber)
+    r.doubleClick(CGPoint(x: 40, y: 40))
+    r.press("ni ")
+    await r.editorReady()
+    await r.until("the keys handed over") { r.canvas.noteEditor.view.held == nil }
+    r.press("\u{1b}")
+    await r.until("left") { !r.canvas.isEditing }
+    let now = r.doc.board.card(cid("n1"))?.writing ?? ""
+    #expect(now.contains("你") && now.count == before.count + 1, "\(before) → \(now)")
+  }
+
+  /// "ni", Space and at once Esc, on a Note, a Text and a Box being written: the Esc right after the commit leaves. Here
+  /// WebKit gives the page the Space after the composition ends (a window that is not key: the input method answers
+  /// through handleEventByInputMethod:completionHandler:), the order the editors' rule for it expects, and the page's
+  /// guard for the other order (the Space first, as in the app's key window: Accept's ime-esc) must leave it alone
+  @Test(arguments: ["n1", "t1", "b1"])
+  func anEscAtOnceAfterTheCommitLeavesWithTheText(id: String) async throws {
+    Pinyin.install()
+    let r = try await Rig(zoom: 1)
+    defer {
+      Pinyin.windows.remove(r.window.windowNumber)
+      r.close()
+    }
+    r.doubleClick(id == "n1" ? CGPoint(x: 40, y: 40) : r.centre(id))
+    await r.editorReady()
+    let before = r.doc.board.card(cid(id))?.writing ?? ""
+    Pinyin.windows.insert(r.window.windowNumber)
+    await r.typeInTurn("ni \u{1b}")
+    await r.until("left") { !r.canvas.isEditing }
+    let now = r.doc.board.card(cid(id))?.writing ?? ""
+    #expect(now.contains("你") && now.count == before.count + 1, "\(before) → \(now)")
   }
 
   /// "ni", Esc: the composition goes and the editor stays; what is typed then is written, and the next Esc leaves
@@ -107,7 +166,7 @@ extension NSTextInputContext {
     await r.editorReady()
     let id = try #require(r.canvas.editing?.id)
     Pinyin.windows.insert(r.window.windowNumber)
-    r.press("ni")
+    await r.typeInTurn("ni")
     await r.until("composing") { await text(r).contains("ni") }
     r.press("\u{1b}")
     // a key after it, with nothing composed: once it is written, whatever the Esc did has happened
