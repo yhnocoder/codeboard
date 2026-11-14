@@ -153,7 +153,8 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   var zoom: CGFloat = 1
   var window: NSWindow!
   let scroll = NSScrollView()
-  let split = NSSplitView()
+  /// the Notes at the left, the inspector as a fixed column at the right
+  let columns = Columns()
   /// the panel at the right: selection, copied, events (on by default)
   let inspector = Inspector()
   let page = Page()
@@ -198,29 +199,41 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   func applicationDidFinishLaunching(_ n: Notification) {
     // warm up off the main thread, as a host does at launch
     let math = resources.math
-    DispatchQueue.global(qos: .userInitiated).async { MarkdownAssets.warmUp(math: math) }
-    window = NSWindow(
-      contentRect: CGRect(x: 0, y: 0, width: cardWidth + 160 + 340, height: 820),
-      styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
+    DispatchQueue.global(qos: .userInitiated).async {
+      MarkdownAssets.warmUp(math: math)
+      // the first display ran beside the warm-up and may have made a second engine: once quiet, one is enough
+      DispatchQueue.main.asyncAfter(deadline: .now() + 3) { (math as? JSEngines)?.trim() }
+    }
+    setUp()
+    window.center()
+    window.makeKeyAndOrderFront(nil)
+    NSApp.activate()
+  }
+
+  /// the window and everything in it, laid out, not shown (`--check` renders it offscreen)
+  func setUp() {
+    if window == nil {
+      window = NSWindow(
+        contentRect: CGRect(x: 0, y: 0, width: cardWidth + 160 + 340, height: 820),
+        styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
+    }
     window.title = name
     scroll.hasVerticalScroller = true
     scroll.hasHorizontalScroller = true
     scroll.documentView = page
-    split.isVertical = true
-    split.dividerStyle = .thin
-    split.addArrangedSubview(scroll)
-    split.addArrangedSubview(inspector)
-    inspector.widthAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
-    inspector.isHidden = false
+    columns.notes = scroll
+    columns.panel = inspector
+    columns.noteWidth = { [weak self] in
+      guard let self else { return 0 }
+      return CGFloat(self.cardWidth) * self.zoom + 2 * 40
+    }
+    columns.onResize = { [weak self] in self?.place() }
     page.onClick = { [weak self] in for c in self?.cards ?? [] { c.isEditing = false } }
     moves.start()
-    window.contentView = split
+    window.contentView = columns
     window.toolbar = toolbar()
     menu()
     rebuild()
-    window.center()
-    window.makeKeyAndOrderFront(nil)
-    NSApp.activate()
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
@@ -424,8 +437,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     }
   }
   @objc func toggleInspector(_ c: NSSegmentedControl) {
-    inspector.isHidden = !c.isSelected(forSegment: 0)
-    inspector.refresh()
+    columns.wantsPanel = c.isSelected(forSegment: 0)
   }
   func editorWantsToEnd(_ e: MarkdownEditorView) { e.isEditing = false }
   func editorDidBegin(_ e: MarkdownEditorView) {
@@ -545,10 +557,52 @@ extension Demo: NSToolbarDelegate {
   }
 }
 
+/// The window's content: the Notes' scroll view at the left and the inspector, a fixed column at the right of at most
+/// `panelWidth` and a third of the window. The Notes keep the room their card needs (`noteWidth`): a window too narrow
+/// for both collapses the panel, never the Notes
+@MainActor
+final class Columns: NSView {
+  static let panelWidth: CGFloat = 300
+  var notes: NSView? {
+    didSet {
+      oldValue?.removeFromSuperview()
+      if let notes { addSubview(notes) }
+    }
+  }
+  var panel: NSView? {
+    didSet {
+      oldValue?.removeFromSuperview()
+      if let panel { addSubview(panel) }
+    }
+  }
+  var noteWidth: () -> CGFloat = { 0 }
+  var onResize: () -> Void = {}
+  /// the toolbar's switch; the panel shows when this is on and the window has the room
+  var wantsPanel = true {
+    didSet { needsLayout = true }
+  }
+  /// the panel's width now (0: hidden or collapsed)
+  var shownPanel: CGFloat {
+    guard wantsPanel else { return 0 }
+    let w = min(Self.panelWidth, (bounds.width / 3).rounded(.down))
+    return bounds.width - w >= min(noteWidth(), bounds.width) && w >= 200 ? w : 0
+  }
+
+  override func layout() {
+    super.layout()
+    let w = shownPanel
+    notes?.frame = CGRect(x: 0, y: 0, width: bounds.width - w, height: bounds.height)
+    panel?.frame = CGRect(x: bounds.width - w, y: 0, width: w, height: bounds.height)
+    if panel?.isHidden != (w == 0) { panel?.isHidden = w == 0 }
+    onResize()
+  }
+}
+
 /// Runs the demo window in this process (MarkdownDemo's main, and a driver that runs it in its own process):
-///   [file.md] [--width 420] [--save-to <path>] [--report <path>]
+///   [file.md] [--width 420] [--save-to <path>] [--report <path>] [--check <folder>]
 /// --save-to writes the Note's Markdown there after every change; --report writes where the card and its editor are in the
-/// window (points from its top left), the zoom and the window's number, whenever they move
+/// window (points from its top left), the zoom and the window's number, whenever they move; --check (Check.run) lays the
+/// window out without showing it, renders it offscreen at several widths, measures it at rest and exits
 @MainActor
 public func runMarkdownDemo(arguments: [String]) throws -> Never {
   var args = arguments
@@ -562,15 +616,18 @@ public func runMarkdownDemo(arguments: [String]) throws -> Never {
   let second = option("--second").map { URL(filePath: $0) }
   let saveTo = option("--save-to").map { URL(filePath: $0) }
   let report = option("--report").map { URL(filePath: $0) }
+  let check = option("--check").map { URL(filePath: $0) }
   let file = args.first.map { URL(filePath: $0) }
   let text = try file.map { try String(contentsOf: $0, encoding: .utf8) } ?? sample
   let app = NSApplication.shared
   app.setActivationPolicy(.regular)
+  let atStart = footprint()
   let demo = try Demo(text: text, folder: file?.deletingLastPathComponent() ?? sampleFolder(), cardWidth: width)
   demo.saveTo = saveTo
   if let second { demo.secondText = try String(contentsOf: second, encoding: .utf8) }
   demo.reportTo = report
   if let file { demo.name = file.lastPathComponent }
+  if let check { exit(Check.run(demo, out: check, start: atStart) ? 0 : 1) }
   app.delegate = demo
   app.run()
   exit(0)

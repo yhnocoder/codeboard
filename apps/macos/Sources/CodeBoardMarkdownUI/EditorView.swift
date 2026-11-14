@@ -355,9 +355,11 @@ public final class MarkdownEditorView: NSView {
 
   private func restartBlink() {
     blink?.invalidate()
+    blink = nil
     blinkOn = true
     needsDisplay = true
-    guard !frozen else { return }
+    // the caret blinks only where it is drawn: editing, and taking the keys (a static picture costs nothing at rest)
+    guard !frozen, isEditing, alwaysShowsCaret || window?.firstResponder === self else { return }
     blink = Timer.scheduledTimer(withTimeInterval: MarkdownTiming.blinkOn, repeats: false) { [weak self] _ in
       MainActor.assumeIsolated { self?.toggleBlink() }
     }
@@ -818,6 +820,13 @@ public final class MarkdownEditorView: NSView {
 
   /// blocks sliding now (tests)
   var slidingBlocks: Int { blockSlide?.from.count ?? 0 }
+
+  /// whether anything of the editor's still runs on its own: the caret's blink, a slide, a drag's scrolling, a pending
+  /// toolbar, band or reveal. At rest in the static picture nothing does
+  public var isTicking: Bool {
+    blink != nil || slideLink != nil || blockLink != nil || dragLink != nil || toolbarTimer?.isValid == true
+      || bandTimer?.isValid == true || settle?.isValid == true
+  }
 
   // MARK: pictures sliding
 

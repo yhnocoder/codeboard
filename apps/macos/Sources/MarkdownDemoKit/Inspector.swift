@@ -4,10 +4,13 @@ import CodeBoardMarkdownUI
 
 /// The panel at the window's right: the selection in source offsets and the caret's block as source, what the editor
 /// last copied and pasted, and its last 50 events, newest first, each with the main thread's time it cost. It reads
-/// only the editor's own events (MarkdownEditorView.observer): never the system clipboard
+/// only the editor's own events (MarkdownEditorView.observer): never the system clipboard. The HUD at its top is a label
+/// of its own, so its once-a-second numbers never lay the rest out again
 @MainActor
-final class Inspector: NSScrollView {
+final class Inspector: NSView {
+  private let scroll = NSScrollView()
   private let text = NSTextView()
+  private let hudLabel = NSTextField(labelWithString: "")
   private var events: [(String, Double)] = []
   private var copied: [(type: String, text: String)] = []
   private var pasted: (String, String)?
@@ -17,16 +20,30 @@ final class Inspector: NSScrollView {
   private var hud = ""
   private var sampler: Timer?
   private var lastCPU = (cpu: 0.0, wall: 0.0)
-  private var lastKeyMs = 0.0
+  /// nil before the first key
+  private var lastKeyMs: Double?
 
   init() {
-    super.init(frame: CGRect(x: 0, y: 0, width: 320, height: 600))
-    hasVerticalScroller = true
+    super.init(frame: CGRect(x: 0, y: 0, width: 300, height: 600))
+    wantsLayer = true
+    layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+    hudLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+    hudLabel.maximumNumberOfLines = 3
+    hudLabel.lineBreakMode = .byTruncatingTail
+    hudLabel.frame = CGRect(x: 14, y: 600 - 58, width: 300 - 28, height: 48)
+    hudLabel.autoresizingMask = [.width, .minYMargin]
+    addSubview(hudLabel)
+    scroll.frame = CGRect(x: 0, y: 0, width: 300, height: 600 - 60)
+    scroll.autoresizingMask = [.width, .height]
+    scroll.hasVerticalScroller = true
+    scroll.drawsBackground = false
     text.isEditable = false
     text.isRichText = true
-    text.textContainerInset = CGSize(width: 10, height: 10)
+    text.drawsBackground = false
+    text.textContainerInset = CGSize(width: 10, height: 4)
     text.autoresizingMask = [.width]
-    documentView = text
+    scroll.documentView = text
+    addSubview(scroll)
   }
 
   @available(*, unavailable)
@@ -47,11 +64,17 @@ final class Inspector: NSScrollView {
     }
   }
 
-  /// the HUD samples once a second while the panel shows, nothing while it is hidden
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    attach()
+    sampleSoon()
+  }
+
+  /// the HUD samples once a second while the panel shows in a window, nothing while it is hidden
   private func sampleSoon() {
     sampler?.invalidate()
     sampler = nil
-    guard !isHidden else { return }
+    guard !isHidden, window != nil else { return }
     sample()
     sampler = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
       MainActor.assumeIsolated { self?.sample() }
@@ -59,26 +82,19 @@ final class Inspector: NSScrollView {
   }
 
   private func sample() {
-    var info = task_vm_info_data_t()
-    var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
-    let ok = withUnsafeMutablePointer(to: &info) {
-      $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-        task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
-      }
-    }
-    var ru = rusage()
-    getrusage(RUSAGE_SELF, &ru)
-    let cpu = Double(ru.ru_utime.tv_sec + ru.ru_stime.tv_sec) + Double(ru.ru_utime.tv_usec + ru.ru_stime.tv_usec) / 1e6
+    let cpu = processCPU()
     let wall = ProcessInfo.processInfo.systemUptime
     let pct = lastCPU.wall > 0 ? (cpu - lastCPU.cpu) / max(0.001, wall - lastCPU.wall) * 100 : 0
     lastCPU = (cpu, wall)
     let mb = { (b: UInt64) in String(format: "%.0f MB", Double(b) / 1_048_576) }
-    let mem =
-      ok == KERN_SUCCESS
-      ? "\(mb(info.phys_footprint)) (peak \(mb(UInt64(max(0, info.ledger_phys_footprint_peak)))))" : "?"
-    let draw = editor.map { String(format: "%.2f ms", $0.lastDrawMs) } ?? "–"
-    hud = String(format: "memory %@   CPU %.0f %%\nlast key %.2f ms   last frame %@", mem, pct, lastKeyMs, draw)
-    refreshSoon()
+    let mem = footprint().map { "\(mb($0.now)) (peak \(mb($0.peak)))" } ?? "?"
+    let draw = editor.flatMap { $0.lastDrawMs > 0 ? String(format: "%.2f ms", $0.lastDrawMs) : nil } ?? "–"
+    let key = lastKeyMs.map { String(format: "%.2f ms", $0) } ?? "–"
+    let next = String(format: "memory %@   CPU %.0f %%\nlast key %@   last frame %@", mem, pct, key, draw)
+    // the panel is laid out again only when a number changed: the HUD must not cost what it measures
+    guard next != hud else { return }
+    hud = next
+    hudLabel.stringValue = "This process\n" + next
   }
 
   /// observing costs only while the panel is shown
@@ -121,8 +137,6 @@ final class Inspector: NSScrollView {
     func add(_ s: String, _ f: NSFont, _ c: NSColor = ink) {
       out.append(NSAttributedString(string: s, attributes: [.font: f, .foregroundColor: c]))
     }
-    add("This process\n", head)
-    add(hud + "\n\n", mono)
     if let e = editor {
       let core = e.core
       let s = core.selection
@@ -152,4 +166,24 @@ final class Inspector: NSScrollView {
     }
     text.textStorage?.setAttributedString(out)
   }
+}
+
+/// the process's memory as Activity Monitor counts it (phys_footprint), now and at its peak, in bytes
+func footprint() -> (now: UInt64, peak: UInt64)? {
+  var info = task_vm_info_data_t()
+  var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+  let ok = withUnsafeMutablePointer(to: &info) {
+    $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+      task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+    }
+  }
+  guard ok == KERN_SUCCESS else { return nil }
+  return (info.phys_footprint, UInt64(max(0, info.ledger_phys_footprint_peak)))
+}
+
+/// the process's CPU time so far, every thread, in seconds
+func processCPU() -> Double {
+  var ru = rusage()
+  getrusage(RUSAGE_SELF, &ru)
+  return Double(ru.ru_utime.tv_sec + ru.ru_stime.tv_sec) + Double(ru.ru_utime.tv_usec + ru.ru_stime.tv_usec) / 1e6
 }

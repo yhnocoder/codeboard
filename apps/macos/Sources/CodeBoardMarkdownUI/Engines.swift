@@ -77,6 +77,26 @@ public final class JSEngines: MathTypesetter, DiagramRenderer, @unchecked Sendab
     }
   }
 
+  /// how many engines are made (each a JavaScriptCore machine with the whole script and its heap)
+  public var engineCount: Int {
+    pool.lock()
+    defer { pool.unlock() }
+    return made
+  }
+
+  /// Lets idle engines beyond `keeping` go and has the kept ones collect their garbage: a host calls it once things are
+  /// quiet, since a burst of formulas (a first display) makes a second engine that is seldom needed after. Results stay
+  public func trim(keeping n: Int = 1) {
+    pool.lock()
+    while made > n, !idle.isEmpty {
+      idle.removeFirst()
+      made -= 1
+    }
+    let kept = idle
+    pool.unlock()
+    for e in kept { JSGarbageCollect(e.context.jsGlobalContextRef) }
+  }
+
   /// converts these formulas now, so later drawing finds them ready (opening a vault, say)
   public func prepare(_ formulas: [(latex: String, display: Bool)], preamble: String) async {
     await withTaskGroup(of: Void.self) { g in
