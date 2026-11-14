@@ -185,29 +185,54 @@ class Driver {
 // ---- targets: @id is a card or Section on the board as each side has it now, at the middle of its top strip;
 // @id+dx,dy is that many board units from its top-left corner. The web board says where its element is; the Mac app's
 // place comes from its vault's board file and its camera.
-function macBoardFile(d) {
-  const dir = fs.readdirSync(d.vault, { recursive: true }).find((f) => String(f).endsWith("board.json"));
-  return path.join(d.vault, String(dir));
+/** The board open in the Mac app: its file in the vault */
+async function macBoardFile(d) {
+  const at = await d.send("board");
+  if (at === "none") throw new Error("mac: no board open");
+  return path.join(d.vault, at, "board.json");
 }
-function macBoard(d) {
-  const b = JSON.parse(fs.readFileSync(macBoardFile(d), "utf8"));
+async function macBoard(d) {
+  const b = JSON.parse(fs.readFileSync(await macBoardFile(d), "utf8"));
   return Object.fromEntries([...(b.sections ?? []), ...(b.cards ?? [])].map((c) => [c.id, c]));
 }
 /** The Mac board once the app has saved it: the file unchanged for 400 ms (at most 3 s) */
 async function macSaved(d) {
+  const file = await macBoardFile(d);
   let last = -1;
   for (let t = 0; t < 3000; t += 100) {
-    const m = fs.statSync(macBoardFile(d)).mtimeMs;
+    const m = fs.statSync(file).mtimeMs;
     if (m === last && t >= 400) break;
     last = m;
     await sleep(100);
   }
   return macBoard(d);
 }
+/** The ids in the storage folder's boards: `new` is a card on the open board that is not one of them (the last made) */
+const storageIds = new Set(
+  fs.readdirSync(storage, { recursive: true }).filter((f) => String(f).endsWith(".json") && !String(f).startsWith("cards"))
+    .flatMap((f) => JSON.parse(fs.readFileSync(path.join(storage, String(f)), "utf8")).cards?.map((c) => c.id) ?? []),
+);
+async function idOf(d, id) {
+  if (id !== "new") return id;
+  const ids =
+    d.side === "mac"
+      ? JSON.parse(fs.readFileSync(await macBoardFile(d), "utf8")).cards.map((c) => c.id)
+      : (await d.send("ids")).split(" ");
+  const made = ids.filter((x) => !storageIds.has(x));
+  if (!made.length) throw new Error(`${d.side}: no new card`);
+  return made[made.length - 1];
+}
 async function point(d, tok) {
+  // @row:<title>: the Mac app's sidebar row of that board
+  if (tok.startsWith("@row:")) {
+    const r = await d.send(`row ${tok.slice(5)}`);
+    if (r === "none") throw new Error(`${d.side}: no sidebar row ${tok.slice(5)}`);
+    return r;
+  }
   const m = /^@([\w-]+)(?::(tl|tr|bl|br|c|t|b|l|r))?(?:\+(-?[\d.]+),(-?[\d.]+))?$/.exec(tok);
   if (!m) throw new Error(`not a target: ${tok}`);
-  const [, id, anchor, ox, oy] = m;
+  const [, given, anchor, ox, oy] = m;
+  const id = await idOf(d, given);
   const g = await geom(d, id, false, true);
   if (g === "missing") throw new Error(`${d.side}: no card or Section ${id}`);
   if (g === undefined) throw new Error(`${d.side}: ${id} is not readable while a button is held (no accessibility elements)`);
@@ -296,7 +321,7 @@ async function geom(d, id, needSection = false, aim = false) {
   } else if (d.side === "mac") {
     // aiming (a target to move to) takes the file as it is, even mid-drag; checking waits for the app to save
     if (d.held && !aim) return undefined;
-    const c = (aim ? macBoard(d) : await macSaved(d))[id];
+    const c = (aim ? await macBoard(d) : await macSaved(d))[id];
     if (!c) return "missing";
     g = { x: c.x, y: c.y, w: c.width, h: c.height ?? undefined, section: c.section ?? c.parent ?? "none" };
   } else {
@@ -336,7 +361,8 @@ async function subject(d, subj) {
     return { x, y, zoom }[field];
   }
   if (!field) throw new Error(`no such subject: ${subj}`);
-  const g = await geom(d, id, field === "section");
+  if (field === "text") return d.send(`text ${await idOf(d, id)}`);
+  const g = await geom(d, await idOf(d, id), field === "section");
   return typeof g === "object" ? g[field] : g;
 }
 function judge(got, op, want) {

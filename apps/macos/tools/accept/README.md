@@ -31,7 +31,7 @@ node apps/macos/tools/accept/run.mjs --stop                  # 关掉留着的�
 
 一行一条命令，`#` 开头是注释，第一行注释写这条场景在检查什么。行首写 `mac:` 或 `web:` 只发给那一边。
 
-坐标可以写窗口里的点 `x y`（左上角为原点，单位 pt），通常写目标：`@<卡或 Section 的 id>` 是它顶部 14 个白板单位处的中点，`@<id>+dx,dy` 是从它左上角起 dx、dy 个白板单位，`@<id>:<锚点>` 是它的角、边的中点或中心（`tl` `t` `tr` `l` `c` `r` `bl` `b` `br`），锚点后也能再加 `+dx,dy`（`@cblue:br+6,6` 是右下角外 6 个单位：Text 和 Box 的改大小手柄）。用到高度的锚点在 Mac 上要能读到卡的高度（见“已知的不足”）。每边按自己现在的白板和相机算出窗口里的位置，所以两边缩放、平移不同也打在同一处。id 见 storage 的白板文件。
+坐标可以写窗口里的点 `x y`（左上角为原点，单位 pt），通常写目标：`@<卡或 Section 的 id>` 是它顶部 14 个白板单位处的中点，`@<id>+dx,dy` 是从它左上角起 dx、dy 个白板单位，`@<id>:<锚点>` 是它的角、边的中点或中心（`tl` `t` `tr` `l` `c` `r` `bl` `b` `br`），锚点后也能再加 `+dx,dy`（`@cblue:br+6,6` 是右下角外 6 个单位：Text 和 Box 的改大小手柄）。用到高度的锚点在 Mac 上要能读到卡的高度（见“已知的不足”）。每边按自己现在的白板和相机算出窗口里的位置，所以两边缩放、平移不同也打在同一处。id 见 storage 的白板文件；`new` 代替 id 是这块白板上 storage 里没有的那张卡（最后做出来的：粘贴、⌘D 出来的副本），`@new:br+-48,23` 这样用。`@row:<标题>` 是 Mac 侧边栏里这块白板（或文件夹）的那一行，点它就是像人一样换白板（网页那边只有 storage 的第一块白板，换不了）。
 
 | 命令 | 做什么 |
 |---|---|
@@ -61,11 +61,15 @@ node apps/macos/tools/accept/run.mjs --stop                  # 关掉留着的�
 
 `expect <对象> <比较> <值>`，每一边按自己当时的状态判：
 
-- 对象：`<id>.x|y|w|h|right|bottom`（卡或 Section 的位置大小，白板单位）、`ui.<部件>.x|y|w|h|right|bottom`（工具栏和右下角那组的部件，从白板左上角起的屏幕点：`bar`、`more`、`barink`（Ink Wash 那一笔的实心部分；别的主题是整条）、`barblur`（底下模糊的范围，没有时宽 0）、`brush`、`dock`、`dockink`、`dockblur`、`shelf`、`zoomout`、`zoom`、`zoomin`、`fit`、`questions`；Mac 由 app 的辅助功能元素 `ui-<部件>` 给出）、`<id>.section`（所在的 Section，没有是 `none`）、`cam.x|y|zoom`、`pointer.x|y`（指针在白板上的位置）、`press`（最后一次按下落在的视图链或元素链）、`answer`（上一个点击、按键、拖动、滚动的输入到达 app 后多少毫秒画面开始变，算法同 report 的 answered，要在 `rec` 中）。
+- 对象：`<id>.x|y|w|h|right|bottom`（卡或 Section 的位置大小，白板单位）、`ui.<部件>.x|y|w|h|right|bottom`（工具栏和右下角那组的部件，从白板左上角起的屏幕点：`bar`、`more`、`barink`（Ink Wash 那一笔的实心部分；别的主题是整条）、`barblur`（底下模糊的范围，没有时宽 0）、`brush`、`dock`、`dockink`、`dockblur`、`shelf`、`zoomout`、`zoom`、`zoomin`、`fit`、`questions`；Mac 由 app 的辅助功能元素 `ui-<部件>` 给出）、`<id>.section`（所在的 Section，没有是 `none`）、`<id>.text`（卡现在显示的字：Mac 是画布画这张卡用的内容，网页是卡的 innerText；配 `has`、`lacks`）、`cam.x|y|zoom`、`pointer.x|y`（指针在白板上的位置）、`press`（最后一次按下落在的视图链或元素链）、`answer`（上一个点击、按键、拖动、滚动的输入到达 app 后多少毫秒画面开始变，算法同 report 的 answered，要在 `rec` 中）。
 - 比较：`=` `!=` `<` `<=` `>` `>=` `~`（差不超过 2）`has` `lacks`（文字包含）。
 - 值：数字、文字、另一个对象（`expect sboxes.bottom >= cyellow.bottom`）、`was`、`was+N`、`was-N`（`mark` 时这个对象的值）。
 
 判不了的记为 `n/a`，不算失败但会列出来：网页没有 `section`；Mac 的卡位置从 app 存下的白板文件读，按住按钮时还没存，判不了，除非 app 把卡和 Section 作为辅助功能元素公开（`accessibilityIdentifier` 是 id、`accessibilityFrame` 是它在屏幕上的位置；驱动的 `ax <id>` 读它们），那样拖动过程中也能判。
+`scenarios/two/` 里的场景要两块白板，只跑 Mac：`--storage apps/macos/tools/accept/storage-two --only mac`（`storage-two/`：First 和 Second 两块白板摆着同一张共享卡 `cshared`，带一张图和一条跟着卡走的 Sidenote）：`shared-edit`（共享卡在一块白板上改了，另一块上也变）、`shared-paste`（别的白板上复制的卡贴过来就是同一张卡）、`camera-reopen`（换到别的白板再回来，镜头还在原处）。`twin-follows`（⌘D 的副本在小条上选 Reference，改副本原卡跟着变）两边都跑。
+
+Mac 这边复制粘贴用的是这个进程自己的私有剪贴板，碰不到用 Mac 的人的剪贴板。网页那边不转发按键：VS Code 先拦下 ⌘D 这些键再转回给白板，这里白板自己接。
+
 `scenarios/` 里的场景：`b1/`（第 2 步第 1 批的交互验收）、`stale-hover`（指针不动时平移、捏合，连接点跟着换）、`look-tour`、`look-tour2`（外观：各部件静止、悬停、选中、拖动中、编辑中各拍一张，只拍不判）、`section-follow`（拖动中 Section 跟着撑开）、`pan-over-edit`（编辑时平移经过这张卡不停）、`hover-tour`（经过各种卡头和 Section 标题时出现什么）、`new-text-flow`（不对照：新建、输入、拖进 Section 的完整流程）、`ime-esc`（拼音上屏后马上按 Esc，编辑要结束）。
 
 ## 怎么做到不打扰用 Mac 的人
