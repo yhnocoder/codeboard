@@ -66,3 +66,18 @@ import Testing
         == "<h1>T</h1><p>Some <strong>b</strong> and <a href=\"https://x.y\">l</a>.</p><ul><li><p>a</p></li></ul>")
   }
 }
+
+/// Formulas a page drew come back as TeX (KaTeX's MathML annotation, the drawn copy left out), and \( \) / \[ \] as $
+@Suite struct PasteMathTests {
+  @Test func drawnFormulasAndLaTeXDelimiters() {
+    let katex =
+      "<p>Energy <span class=\"katex\"><span class=\"katex-mathml\"><math><semantics><mrow><mi>E</mi></mrow>"
+      + "<annotation encoding=\"application/x-tex\">E = mc^2</annotation></semantics></math></span>"
+      + "<span class=\"katex-html\" aria-hidden=\"true\"><span class=\"base\"><span>E</span><span>=</span></span></span></span> here.</p>"
+    #expect(HTMLMarkdown.markdown(katex) == "Energy $E = mc^2$ here.")
+    let block =
+      "<p>Before</p><math display=\"block\"><semantics><annotation encoding=\"application/x-tex\">\\sum x</annotation></semantics></math><p>After</p>"
+    #expect(HTMLMarkdown.markdown(block) == "Before\n\n$$\n\\sum x\n$$\n\nAfter")
+    #expect(HTMLMarkdown.markdown("<p>so \\(a+b\\) and \\[c\\]</p>") == "so $a+b$ and $$\nc\n$$")
+  }
+}
