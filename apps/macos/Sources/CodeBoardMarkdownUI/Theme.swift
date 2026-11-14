@@ -224,6 +224,11 @@ public struct MarkdownTheme: Sendable, Hashable {
     public var htmlSize: Double = 0.85
     /// --md-radius
     public var radius: Double = 10
+    /// a marker shown beside the caret (.md-pm .md-mk): size em of the text around it, opacity
+    public var markerSize: Double = 0.85
+    public var markerAlpha: Double = 0.75
+    /// a formula's TeX with the caret in it (.md-pm .md-texsrc): size em
+    public var texSourceSize: Double = 0.9
     public init() {}
 
     func em(_ v: Double) -> CGFloat { CGFloat(v * bodySize) }

@@ -134,6 +134,8 @@ final class TextBlock {
   let display: DisplayText
   let lines: [Line]
   let frame: CGRect
+  /// text the caret moves through (a paragraph's, a heading's, a cell's, a code line), not a list number or a caption
+  var caret = false
   /// its widest line's width, trailing spaces left out (what it would take without wrapping, max-content)
   let widest: CGFloat
   init(display: DisplayText, lines: [Line], frame: CGRect, widest: CGFloat = 0) {
@@ -162,6 +164,8 @@ struct LayoutBuilder {
   var taskIndex = 0
   /// how deep in quotes and list items the block being laid out is
   var nesting = 0
+  /// the caret, whose constructs show their markers (editing); nil: nowhere
+  var head: Int?
   var m: MarkdownTheme.Metrics { theme.metrics }
 
   init(theme: MarkdownTheme, resources: MarkdownResources, info: MDLayoutInfo?, width: CGFloat) {
@@ -324,9 +328,11 @@ struct LayoutBuilder {
     lineHeight: CGFloat, center: Bool = false
   ) -> CGFloat {
     var ib = InlineBuilder(theme: theme, resources: resources, imageCounts: imageCounts, bodyWidth: width)
+    ib.head = head
     let d = ib.build(text, inlines, style)
     imageCounts = ib.imageCounts
     let tb = setText(d, x: x, width: width, y: y, style: style, lineHeight: lineHeight, center: center)
+    tb.caret = true
     widest = max(widest, x + tb.widest)
     items.append(.text(tb))
     atoms(tb)
@@ -548,6 +554,7 @@ struct LayoutBuilder {
     let lh = CGFloat(m.codeLineHeight)
     var yy = y + pv
     var inner: [Item] = []
+    var lineStart = body.lowerBound
     for (i, line) in lines.enumerated() {
       let attr = NSMutableAttributedString(
         string: line,
@@ -571,8 +578,14 @@ struct LayoutBuilder {
       }
       var d = DisplayText()
       d.string = attr
+      let n = attr.length
+      d.toSource = Array(lineStart..<(lineStart + n))
+      d.sourceEnds = Array((lineStart + 1)..<(lineStart + n + 1))
+      d.endSource = lineStart + n
+      lineStart += n + 1
       style.color = theme.code.plain
       let tb = setText(d, x: x + ph, width: width - 2 * ph, y: yy, style: style, lineHeight: lh, wrap: wraps)
+      tb.caret = true
       widest = max(widest, x + 2 * ph + tb.widest)
       inner.append(.text(tb))
       yy = tb.frame.maxY
@@ -669,6 +682,7 @@ struct LayoutBuilder {
       var rowTexts: [DisplayText] = []
       for (c, cell) in row.enumerated() {
         var ib = InlineBuilder(theme: theme, resources: resources, imageCounts: imageCounts, bodyWidth: width)
+        ib.head = head
         let d = ib.build(cell.text, cell.inlines, styleFor(r))
         imageCounts = ib.imageCounts
         let one = CTLineCreateWithAttributedString(d.string)
@@ -715,6 +729,7 @@ struct LayoutBuilder {
         let tb = setText(
           d, x: cx + ph, width: widths[c], y: yy + pv, style: styleFor(r), lineHeight: lh, center: align == .center,
           right: align == .right)
+        tb.caret = c < row.count
         blocks.append(tb)
         rowH = max(rowH, tb.frame.height + 2 * pv)
         cx += widths[c] + pad

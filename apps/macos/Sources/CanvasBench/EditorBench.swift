@@ -20,6 +20,7 @@ enum EditorBench {
       ("prose, Note with definitions", document(definitions: true), "Paragraph 601 ", .typing),
       ("definition URL", document(definitions: true), "[ref]: https://example.com/", .typing),
       ("definition made and removed", document(definitions: true), "Paragraph 601 ", .definitions),
+      ("caret moves", document(definitions: false), "Paragraph 601 ", .arrows),
     ]
     var out: [String: Any] = [:]
     for (name, text, anchor, script) in rows {
@@ -31,7 +32,8 @@ enum EditorBench {
 
   /// What the keys are: typing (letters and spaces, an Enter every 60, a Backspace every 15), or a definition line put
   /// in after the paragraph and taken out again, key by key (each one a paste or a cut of it)
-  enum Script { case typing, definitions }
+  /// or the caret moved by keys (→ through words and markers, ⌥→, ↓ and ↑, ⌘→), the markers following it
+  enum Script { case typing, definitions, arrows }
 
   static func document(definitions: Bool) -> String {
     var parts: [String] = []
@@ -83,6 +85,7 @@ enum EditorBench {
     ctx.translateBy(x: 0, y: -shown.minY)
     editor.draw(in: ctx, scale: scale, clip: shown) { _ in nil }
     ctx.restoreGState()
+    if script == .arrows { return arrows(editor, caret: caret, ctx: ctx, scale: scale, viewport: viewport) }
     let typed = Array("the scheduler keeps a batch of requests in flight ")
     var reparse: [Double] = []
     var layout: [Double] = []
@@ -119,9 +122,9 @@ enum EditorBench {
         let a = cpu()
         let next = doc.reparse(replacing: r, with: ins)
         let b = cpu()
-        let t = editor.update(to: next, replacing: r, delta: (ins as NSString).length - r.count)
-        let c = cpu()
         caret = r.lowerBound + (ins as NSString).length
+        let t = editor.update(to: next, replacing: r, delta: (ins as NSString).length - r.count, head: caret)
+        let c = cpu()
         // the 800 points around the caret's block
         let frames = editor.blockFrames
         let i = next.blocks.lastIndex { $0.range.lowerBound <= caret } ?? 0
@@ -159,6 +162,51 @@ enum EditorBench {
       "reparse_ms": stats(reparse), "layout_ms": stats(layout), "restack_ms": stats(restack), "draw_ms": stats(draw),
       "total_ms": stats(total),
     ]
+  }
+
+  /// 500 caret moves from `caret`: what moving costs (finding the place, laying out the blocks whose markers show or go,
+  /// restacking) and drawing the 800 points around it
+  static func arrows(_ editor: BlockLayout, caret: Int, ctx: CGContext, scale: CGFloat, viewport: CGFloat) -> [String:
+    Any]
+  {
+    let core = EditorCore(layout: editor, caret: caret)
+    var move: [Double] = []
+    var draw: [Double] = []
+    var total: [Double] = []
+    var relaid = 0
+    for key in 0..<500 {
+      autoreleasepool {
+        let a = cpu()
+        let before = editor.head
+        switch key % 20 {
+        case 7: core.moveVertically(down: true, extend: false)
+        case 13: core.moveVertically(down: false, extend: false)
+        case 17: core.move(.word, forward: true, extend: false)
+        case 19: core.move(.line, forward: true, extend: false)
+        default: core.move(.character, forward: true, extend: false)
+        }
+        _ = core.caretRect
+        let b = cpu()
+        if editor.head != before { relaid += 1 }
+        let r = core.caretRect ?? .zero
+        let clip = CGRect(x: 0, y: max(0, r.midY - viewport / 2), width: editor.width, height: viewport)
+        ctx.saveGState()
+        ctx.translateBy(x: 0, y: -clip.minY)
+        ctx.clear(clip)
+        editor.draw(in: ctx, scale: scale, clip: clip) { _ in nil }
+        ctx.restoreGState()
+        let c = cpu()
+        move.append(b - a)
+        draw.append(c - b)
+        total.append(c - a)
+      }
+    }
+    func stats(_ v: [Double]) -> [String: Double] {
+      let s = v.sorted()
+      let at = { (p: Double) in (s[Int(Double(s.count - 1) * p)] * 1000).rounded() / 1000 }
+      return ["median": at(0.5), "p95": at(0.95), "max": at(1)]
+    }
+    return ["keys": 500, "moved": relaid, "move_ms": stats(move), "draw_ms": stats(draw), "total_ms": stats(total)]
   }
 
   static func cpu() -> Double {

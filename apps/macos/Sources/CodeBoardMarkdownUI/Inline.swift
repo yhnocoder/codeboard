@@ -75,23 +75,29 @@ final class AtomBox: @unchecked Sendable {
 struct DisplayText {
   var string = NSMutableAttributedString()
   var toSource: [Int] = []
+  /// for each unit, where the source it shows ends (an atom's whole source, a character's one unit)
+  var sourceEnds: [Int] = []
   var endSource = 0
   /// links in display ranges, for hits
   var links: [(NSRange, String)] = []
   var refs: [(NSRange, String, String?)] = []
 }
 
-/// Builds display text for one inline text with every marker hidden (the static picture is the editor with the caret
-/// nowhere)
+/// Builds display text for one inline text: every marker hidden (the static picture is the editor with the caret
+/// nowhere), or, with the caret at `head`, the markers and source of the constructs it is in shown (editor/inline.ts)
 struct InlineBuilder {
   let theme: MarkdownTheme
   let resources: MarkdownResources
+  /// the caret, whose constructs show their markers; nil: nowhere
+  var head: Int?
   /// how many images of each address came before, for MarkdownImageSlot.nth
   var imageCounts: [String: Int]
   /// the width images are sized against (the body's)
   let bodyWidth: CGFloat
   var out = DisplayText()
   private var boxCount = 0
+  /// while an atom is written: where its source ends, for each unit it puts out
+  private var atomEnd: Int?
 
   init(theme: MarkdownTheme, resources: MarkdownResources, imageCounts: [String: Int], bodyWidth: CGFloat) {
     self.theme = theme
@@ -137,13 +143,19 @@ struct InlineBuilder {
     let m = theme.metrics
     var s = style
     let innerRange = i.inner.map { index(offsets, $0.lowerBound)..<index(offsets, $0.upperBound) }
+    let act = MarkdownEditing.active(i, head: head)
     switch i.kind {
     case .atom(let atom):
-      self.atom(atom, i, u, offsets, r, innerRange, style)
+      if act {
+        openAtom(atom, i, u, offsets, r, innerRange, style)
+      } else {
+        self.atom(atom, i, u, offsets, r, innerRange, style)
+      }
       return
     case .text:
       // an escape shows what it escapes; source shown as written (an HTML comment) is faint
       if let inner = innerRange {
+        if act { return marked(i, u, offsets, r, inner, style, style) }
         plain(u, offsets, inner, style)
       } else {
         s.color = theme.colors.ink3
@@ -181,11 +193,86 @@ struct InlineBuilder {
       s.color = theme.colors.link
       s.underline = theme.colors.link.alpha(m.linkUnderlineAlpha)
       let start = out.string.length
-      emitInner(i, u, offsets, r, innerRange, s)
+      if act {
+        marked(i, u, offsets, r, innerRange, style, s)
+      } else {
+        emitInner(i, u, offsets, r, innerRange, s)
+      }
       out.links.append((NSRange(location: start, length: out.string.length - start), url))
       return
     }
+    if act { return marked(i, u, offsets, r, innerRange, style, s) }
     emitInner(i, u, offsets, r, innerRange, s)
+  }
+
+  /// A Markdown marker as the editor shows it next to the caret (markdown.css .md-mk): the code font at 0.85em, faint,
+  /// upright, regular, undecorated
+  func markerStyle(_ outer: InlineStyle) -> InlineStyle {
+    var s = outer
+    s.families = theme.fonts.mono
+    s.mono = true
+    s.size = outer.size * CGFloat(theme.metrics.markerSize)
+    s.weight = 400
+    s.italic = false
+    s.color = theme.colors.ink3.alpha(theme.metrics.markerAlpha)
+    s.strike = nil
+    s.underline = nil
+    s.stroke = 0
+    s.box = nil
+    s.ligatures = false
+    return s
+  }
+
+  /// A construct with the caret in it: its markers shown in the marker style (`outer` is the text around it), its inner
+  /// text formatted (`s`)
+  private mutating func marked(
+    _ i: MDInline, _ u: [UInt16], _ offsets: [Int], _ r: Range<Int>, _ inner: Range<Int>?, _ outer: InlineStyle,
+    _ s: InlineStyle
+  ) {
+    let ms = markerStyle(outer)
+    let marks = i.markers.map { index(offsets, $0.lowerBound)..<index(offsets, $0.upperBound) }.filter { !$0.isEmpty }
+    var pos = r.lowerBound
+    guard let inner else {
+      for mk in marks where mk.lowerBound >= pos {
+        if mk.lowerBound > pos { emit(u, offsets, pos..<mk.lowerBound, i.children, s) }
+        plain(u, offsets, mk, ms)
+        pos = mk.upperBound
+      }
+      if pos < r.upperBound { emit(u, offsets, pos..<r.upperBound, i.children, s) }
+      return
+    }
+    for mk in marks where mk.upperBound <= inner.lowerBound && mk.lowerBound >= pos {
+      if mk.lowerBound > pos { plain(u, offsets, pos..<mk.lowerBound, ms) }
+      plain(u, offsets, mk, ms)
+      pos = mk.upperBound
+    }
+    if inner.lowerBound > pos { plain(u, offsets, pos..<inner.lowerBound, ms) }
+    emitInner(i, u, offsets, r, inner, s)
+    pos = inner.upperBound
+    for mk in marks where mk.lowerBound >= pos {
+      if mk.lowerBound > pos { plain(u, offsets, pos..<mk.lowerBound, ms) }
+      plain(u, offsets, mk, ms)
+      pos = mk.upperBound
+    }
+    if pos < r.upperBound { plain(u, offsets, pos..<r.upperBound, ms) }
+  }
+
+  /// An atom with the caret in or beside it, shown as its source: markers faint, a formula's TeX in the code font
+  /// (markdown.css .md-texsrc), the rest (an image's alt text, a reference's label, an annotation's text) as text
+  private mutating func openAtom(
+    _ atom: MDAtom, _ i: MDInline, _ u: [UInt16], _ offsets: [Int], _ r: Range<Int>, _ inner: Range<Int>?,
+    _ style: InlineStyle
+  ) {
+    var s = style
+    if case .math = atom {
+      s.families = theme.fonts.mono
+      s.mono = true
+      s.size = style.size * CGFloat(theme.metrics.texSourceSize)
+      s.color = theme.colors.ink2
+      s.weight = 400
+      s.italic = false
+    }
+    marked(i, u, offsets, r, inner, style, s)
   }
 
   private mutating func emitInner(
@@ -196,7 +283,7 @@ struct InlineBuilder {
       boxCount += 1
       spacer(box.pad, at: offsets[range.lowerBound], s, box: boxCount)
       emit(u, offsets, range, i.children, s, box: boxCount)
-      spacer(box.pad, at: offsets[max(range.lowerBound, range.upperBound - 1)], s, box: boxCount)
+      spacer(box.pad, at: offsets[range.upperBound], s, box: boxCount)
     } else {
       emit(u, offsets, range, i.children, s)
     }
@@ -217,7 +304,7 @@ struct InlineBuilder {
     attrs[NSAttributedString.Key(kCTRunDelegateAttributeName as String)] = Self.delegate(a)
     attrs[Attr.atom] = a
     attrs[Attr.boxID] = box
-    append("\u{FFFC}", attrs, source: [source])
+    append("\u{FFFC}", attrs, source: [source], end: source)
   }
 
   /// Characters from `start` on that the system font hands to a fallback, set in that fallback by name, as the browser
@@ -291,11 +378,19 @@ struct InlineBuilder {
     }
   }
 
-  private mutating func append(_ str: String, _ attrs: [NSAttributedString.Key: Any], source: [Int]) {
+  private mutating func append(_ str: String, _ attrs: [NSAttributedString.Key: Any], source: [Int], end: Int? = nil) {
     out.string.append(NSAttributedString(string: str, attributes: attrs))
     // a string can come out longer than its source units (never here, but keep the map the display's length)
     let n = (str as NSString).length
-    out.toSource += source.count == n ? source : Array(repeating: source.first ?? out.endSource, count: n)
+    let end = end ?? atomEnd
+    if source.count == n, end == nil {
+      out.toSource += source
+      out.sourceEnds += source.map { $0 + 1 }
+    } else {
+      let at = source.first ?? out.endSource
+      out.toSource += Array(repeating: at, count: n)
+      out.sourceEnds += Array(repeating: end ?? at + 1, count: n)
+    }
   }
 
   func attributes(_ s: InlineStyle) -> [NSAttributedString.Key: Any] {
@@ -330,6 +425,8 @@ struct InlineBuilder {
     _ style: InlineStyle
   ) {
     let source = offsets[min(r.lowerBound, offsets.count - 1)]
+    atomEnd = offsets[min(r.upperBound, offsets.count - 1)]
+    defer { atomEnd = nil }
     switch atom {
     case .emoji(let name):
       let start = out.string.length

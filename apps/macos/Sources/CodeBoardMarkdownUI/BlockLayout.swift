@@ -31,7 +31,13 @@ public final class BlockLayout: @unchecked Sendable {
     /// the counters it started from, and what it added to them
     let start: Counters
     let added: Counters
-    init(block: MDBlock, layout: MarkdownLayout, height: CGFloat, start: Counters, added: Counters) {
+    /// the constructs the caret opened when it was laid out (MarkdownEditing.openings), in its own ranges
+    let opened: [Range<Int>]
+    init(
+      block: MDBlock, layout: MarkdownLayout, height: CGFloat, start: Counters, added: Counters,
+      opened: [Range<Int>] = []
+    ) {
+      self.opened = opened
       self.block = block
       self.layout = layout
       self.height = height
@@ -71,6 +77,8 @@ public final class BlockLayout: @unchecked Sendable {
   private(set) var tops: [CGFloat] = []
   private(set) var shifts: [Int] = []
   public private(set) var height: CGFloat = 0
+  /// the caret whose constructs show their markers (editing); nil: nowhere, the static picture
+  public private(set) var head: Int?
 
   public init(
     _ document: MarkdownDocument, width: CGFloat, theme: MarkdownTheme, layout: MDLayoutInfo?,
@@ -83,7 +91,7 @@ public final class BlockLayout: @unchecked Sendable {
     self.resources = resources
     var counters = Counters()
     pieces = document.blocks.map { b in
-      let p = lay(b, from: counters, source: document.source)
+      let p = lay(b, from: counters, document: document)
       counters = Self.adding(counters, p.added)
       return p
     }
@@ -107,13 +115,43 @@ public final class BlockLayout: @unchecked Sendable {
     tops = o.tops
     shifts = o.shifts
     height = o.height
+    head = o.head
+  }
+
+  /// Moves the caret: the block it left and the one it entered are laid out again when what they show changes (a
+  /// construct's markers appear or go); nothing else moves but what is below them
+  @discardableResult
+  public func setHead(_ h: Int?) -> Bool {
+    if h == head { return false }
+    head = h
+    guard reconcile() else { return false }
+    restack()
+    return true
+  }
+
+  /// Lays out again every piece whose shown markers are not what the caret now opens; whether any was
+  private func reconcile() -> Bool {
+    let hb = head.flatMap { MarkdownEditing.blockIndex($0, in: document) }
+    let want = head.map { MarkdownEditing.openings(at: $0, in: document) } ?? []
+    var changed = false
+    for i in pieces.indices where !pieces[i].opened.isEmpty || i == hb {
+      let need = i == hb ? want : []
+      let d = shifts[i]
+      let have = pieces[i].opened.map { ($0.lowerBound + d)..<($0.upperBound + d) }
+      guard have != need else { continue }
+      pieces[i] = lay(document.blocks[i], from: pieces[i].start, document: document)
+      shifts[i] = 0
+      changed = true
+    }
+    return changed
   }
 
   /// The layout of `next`, the document after replacing `range` (in this layout's document) by text `delta` units longer
   /// or shorter
   @discardableResult
-  public func update(to next: MarkdownDocument, replacing range: Range<Int>, delta: Int) -> Timings {
+  public func update(to next: MarkdownDocument, replacing range: Range<Int>, delta: Int, head: Int? = nil) -> Timings {
     let t0 = Self.cpu()
+    self.head = head
     let old = document.blocks
     let new = next.blocks
     // the blocks before the edit that came back the same, and those after it moved by the edit's length
@@ -134,7 +172,7 @@ public final class BlockLayout: @unchecked Sendable {
     var made: [Piece] = []
     var madeShifts: [Int] = []
     for b in new[head..<(new.count - tail)] {
-      let p = lay(b, from: counters, source: next.source)
+      let p = lay(b, from: counters, document: next)
       laidOut += 1
       counters = Self.adding(counters, p.added)
       made.append(p)
@@ -143,7 +181,7 @@ public final class BlockLayout: @unchecked Sendable {
     for i in (old.count - tail)..<old.count {
       var p = pieces[i]
       if !p.holds(from: counters) {
-        p = lay(new[i - old.count + new.count], from: counters, source: next.source)
+        p = lay(new[i - old.count + new.count], from: counters, document: next)
         laidOut += 1
         madeShifts.append(0)
       } else {
@@ -156,6 +194,7 @@ public final class BlockLayout: @unchecked Sendable {
     pieces = Array(pieces[..<head]) + made
     shifts = Array(shifts[..<head]) + madeShifts
     document = next
+    _ = reconcile()
     restack()
     let tEnd = Self.cpu()
     return Timings(layout: tLaid - tMatch, restack: (tMatch - t0) + (tEnd - tLaid), laidOut: laidOut)
@@ -190,9 +229,15 @@ public final class BlockLayout: @unchecked Sendable {
 
   // MARK: laying out
 
-  private func lay(_ b: MDBlock, from counters: Counters, source: String) -> Piece {
+  private func lay(_ b: MDBlock, from counters: Counters, document: MarkdownDocument) -> Piece {
     var lb = LayoutBuilder(theme: theme, resources: resources, info: info, width: width)
-    lb.setSource(source)
+    lb.setSource(document.source)
+    // the caret opens constructs only in its own block
+    var opened: [Range<Int>] = []
+    if let h = head, h >= b.range.lowerBound, h <= b.range.upperBound {
+      opened = MarkdownEditing.openings(at: h, in: document)
+      if !opened.isEmpty { lb.head = h }
+    }
     lb.tableIndex = counters.tables
     lb.codeIndex = counters.codes
     lb.taskIndex = counters.tasks
@@ -207,7 +252,7 @@ public final class BlockLayout: @unchecked Sendable {
     for (src, n) in lb.imageCounts where n != counters.images[src, default: 0] {
       added.images[src] = n - counters.images[src, default: 0]
     }
-    return Piece(block: b, layout: layout, height: lb.bottom, start: counters, added: added)
+    return Piece(block: b, layout: layout, height: lb.bottom, start: counters, added: added, opened: opened)
   }
 
   private static func adding(_ c: Counters, _ d: Counters) -> Counters {
