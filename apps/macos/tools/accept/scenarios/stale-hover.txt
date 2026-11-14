@@ -1,14 +1,21 @@
 # 指针停在卡上出连接点，然后指针不动、平移：原来那张卡的连接点要收起，新到指针下的卡要出；捏合：连接点跟着卡缩放
+# known mac: 指针不动平移后，原来那张卡还算悬停（连接点不收），新到指针下的卡不出连接点（开发下一项修）
 zoom 1
 center @sboxes+200,100
 move @cyellow+65,30 500
 wait 700
+expect hover = cyellow
 shot h0-hover
-scroll -230 0 12 still
+# 平移 160：指针从 cyellow 的正中（x 665）落到 cblue 的正中（x 825），两张卡同一排
+scroll -160 0 12 still
 wait 800
+expect pointer.x ~ 825
+expect hover != cyellow
+expect hover = cblue
 shot h1-after-pan
 move @cgreen+65,30 500
 wait 700
+expect hover = cgreen
 shot h2-hover-join
 pinch -0.3 10
 wait 900

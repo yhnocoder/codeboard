@@ -218,6 +218,11 @@ async function run(line: string): Promise<string> {
       return "none";
     }, a[1]);
     case "canvas": return `0 0 ${W} ${H}`;
+    // the card whose ports show: only the hovered card's ports get their sizes (state/hover.ts portStyle), the rest hide
+    case "hovered": return await page.evaluate(() => {
+      const p = [...document.querySelectorAll<HTMLElement>(".eport, .lport")].find((e) => e.style.getPropertyValue("--uv"));
+      return p?.closest<HTMLElement>(".card[data-id]")?.dataset.id ?? "none";
+    });
     case "focused": return await page.evaluate(() => {
       // the focused element and its ancestors, as hit describes them
       const out: string[] = [];

@@ -9,6 +9,7 @@
 // (insertText / setMarkedText on the first responder; `ime` from inside the keys' handling, as an input method does),
 // never through the system's input method.
 import AppKit
+import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardShell
 import ObjectiveC
@@ -869,6 +870,9 @@ swizzle(
       let vp = NSPoint(x: (d(1) - cam.origin.x) * cam.zoom, y: (d(2) - cam.origin.y) * cam.zoom)
       let p = cv.convert(c.convert(vp, to: nil), from: nil)
       return String(format: "%.1f %.1f", p.x, p.y)
+    case "trace":  // what the canvas shows now, as the app reports it (CanvasTrace): hovered card, editing, selection…
+      guard let c = canvas as? CanvasView, let d = try? JSONEncoder().encode(c.trace) else { return "no canvas" }
+      return String(decoding: d, as: UTF8.self)
     case "focused":  // where keys go: the first responder and the views it is in
       var chain: [String] = []
       var r = (gKey ?? win)?.firstResponder

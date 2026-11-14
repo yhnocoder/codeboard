@@ -297,7 +297,7 @@ async function centerOn(d, target) {
 //   subjects: <id>.x|y|w|h|right|bottom|section (board units; a card or Section), cam.x|y|zoom, pointer.x|y (board
 //   units), ui.<part>.x|y|w|h|right|bottom (the toolbar, the dock and their parts, in points from the board's top
 //   left), press (what the last
-//   press landed on), focus (where keys go now), answer (ms from the last input reaching the app to the first change on screen, the drawn
+//   press landed on), focus (where keys go now), hover (the card whose ports show), answer (ms from the last input reaching the app to the first change on screen, the drawn
 //   pointer left out; needs a running `rec`)
 //   ops: = != < <= > >= ~ (within 2) has lacks; values: a number, a word, another subject (`<id>.bottom`), was, was+N,
 //   was-N (the subject at `mark`)
@@ -345,6 +345,12 @@ async function subject(d, subj) {
   if (subj === "focus") {
     const r = await d.send("focused");
     return r || "none";
+  }
+  // hover: the card whose ports show (the Mac app's hovered card, from its CanvasTrace; the web board's ports)
+  if (subj === "hover") {
+    if (d.side === "web") return d.send("hovered");
+    const r = await d.send("trace");
+    return r.startsWith("{") ? (JSON.parse(r).hovered ?? "none") : r;
   }
   if (subj === "press") return d.lines().filter((l) => / press /.test(` ${l}`)).pop()?.replace(/^\S+ /, "") ?? "none";
   if (id === "pointer") {

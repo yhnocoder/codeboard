@@ -51,6 +51,7 @@ node apps/macos/tools/accept/run.mjs --stop                  # 关掉留着的�
 | `rec <名字>` / `stop` | 开始、停止录像 |
 | `shot <名字> [<目标> W H]` | 截图；带目标时另从目标起剪下 W × H 个白板单位，两边剪的是白板上同一块，并排图逐部件对齐（整窗口图存为 `<名字>-window.png`） |
 | `hit` / `info` / `cam` / `canvas` | 指针下是什么 / 焦点、窗口、光标 / 相机 / 白板在窗口里的范围 |
+| `mac: trace` | app 自己报的画布状态（CanvasTrace：各卡和 Section 画在哪、悬停、正在写、选中、first responder、层级），JSON |
 | `locate [id…]` | 打出卡和 Section 现在在两边白板上和窗口里的位置（不写 id 就是全部） |
 | `expect <对象> <比较> <值>` | 断言，见下 |
 | `mark` | 记下这一刻的值，给后面断言里的 `was` 用 |
@@ -61,12 +62,12 @@ node apps/macos/tools/accept/run.mjs --stop                  # 关掉留着的�
 
 `expect <对象> <比较> <值>`，每一边按自己当时的状态判：
 
-- 对象：`<id>.x|y|w|h|right|bottom`（卡或 Section 的位置大小，白板单位）、`ui.<部件>.x|y|w|h|right|bottom`（工具栏和右下角那组的部件，从白板左上角起的屏幕点：`bar`、`more`、`barink`（Ink Wash 那一笔的实心部分；别的主题是整条）、`barblur`（底下模糊的范围，没有时宽 0）、`brush`、`dock`、`dockink`、`dockblur`、`shelf`、`zoomout`、`zoom`、`zoomin`、`fit`、`questions`；Mac 由 app 的辅助功能元素 `ui-<部件>` 给出）、`<id>.section`（所在的 Section，没有是 `none`）、`cam.x|y|zoom`、`pointer.x|y`（指针在白板上的位置）、`press`（最后一次按下落在的视图链或元素链）、`focus`（键盘现在进哪儿：Mac 的 first responder 和它所在的视图，比如正在写标签时是 `NSTextView < _NSKeyboardFocusClipView < OnBoardField`；网页的焦点元素和它的祖先，比如 `span.vlabel`）、`answer`（上一个点击、按键、拖动、滚动的输入到达 app 后多少毫秒画面开始变，算法同 report 的 answered，要在 `rec` 中）。
+- 对象：`<id>.x|y|w|h|right|bottom`（卡或 Section 的位置大小，白板单位）、`ui.<部件>.x|y|w|h|right|bottom`（工具栏和右下角那组的部件，从白板左上角起的屏幕点：`bar`、`more`、`barink`（Ink Wash 那一笔的实心部分；别的主题是整条）、`barblur`（底下模糊的范围，没有时宽 0）、`brush`、`dock`、`dockink`、`dockblur`、`shelf`、`zoomout`、`zoom`、`zoomin`、`fit`、`questions`；Mac 由 app 的辅助功能元素 `ui-<部件>` 给出）、`<id>.section`（所在的 Section，没有是 `none`）、`cam.x|y|zoom`、`pointer.x|y`（指针在白板上的位置）、`press`（最后一次按下落在的视图链或元素链）、`hover`（连接点出在哪张卡上，没有是 `none`：Mac 读 app 的 CanvasTrace 里的悬停卡，网页读哪张卡的连接点带着尺寸）、`focus`（键盘现在进哪儿：Mac 的 first responder 和它所在的视图，比如正在写标签时是 `NSTextView < _NSKeyboardFocusClipView < OnBoardField`；网页的焦点元素和它的祖先，比如 `span.vlabel`）、`answer`（上一个点击、按键、拖动、滚动的输入到达 app 后多少毫秒画面开始变，算法同 report 的 answered，要在 `rec` 中）。
 - 比较：`=` `!=` `<` `<=` `>` `>=` `~`（差不超过 2）`has` `lacks`（文字包含）。
 - 值：数字、文字、另一个对象（`expect sboxes.bottom >= cyellow.bottom`）、`was`、`was+N`、`was-N`（`mark` 时这个对象的值）。
 
 判不了的记为 `n/a`，不算失败但会列出来：网页没有 `section`；Mac 的 `section` 从 app 存下的白板文件读，按住按钮时还没存。Mac 的卡和 Section 的位置大小读 app 的辅助功能元素（identifier 是 id，frame 是现在画在哪；驱动的 `ax <id>`），拖动过程中也判得了；读不到时退回白板文件。
-`scenarios/` 里的场景：`b1/`（第 2 步第 1 批的交互验收）、`stale-hover`（指针不动时平移、捏合，连接点跟着换）、`look-tour`、`look-tour2`（外观：各部件静止、悬停、选中、拖动中、编辑中各拍一张，只拍不判）、`section-follow`（拖动中 Section 跟着撑开）、`pan-over-edit`（编辑时平移经过这张卡不停）、`hover-tour`（经过各种卡头和 Section 标题时出现什么）、`new-text-flow`（不对照：新建、输入、拖进 Section 的完整流程）、`ime-esc`（拼音上屏后马上按 Esc，编辑要结束）、`label-edit`（箭头标签和 Section 标题的就地编辑：双击、右键 Edit Label、选中箭头按回车）、`summary-edit`（缩小推过摘要那一级，点摘要正文就地编辑）。
+`scenarios/` 里的场景：`b1/`（第 2 步第 1 批的交互验收）、`stale-hover`（指针不动时平移，连接点从原来的卡换到新到指针下的卡；捏合时跟着缩放）、`look-tour`、`look-tour2`（外观：各部件静止、悬停、选中、拖动中、编辑中各拍一张，只拍不判）、`section-follow`（拖动中 Section 跟着撑开）、`pan-over-edit`（编辑时平移经过这张卡不停）、`hover-tour`（经过各种卡头和 Section 标题时出现什么）、`new-text-flow`（不对照：新建、输入、拖进 Section 的完整流程）、`ime-esc`（拼音上屏后马上按 Esc，编辑要结束）、`label-edit`（箭头标签和 Section 标题的就地编辑：双击、右键 Edit Label、选中箭头按回车）、`summary-edit`（缩小推过摘要那一级，点摘要正文就地编辑）。
 
 测试白板（`storage/blook.json`）有各种卡、带标签和样式的箭头、两个 Section、Sticker、Sidenote，每个会被摘要的项都带着摘要；右下远处一张 `cfar`，让白板大到缩得到摘要那一级。
 
