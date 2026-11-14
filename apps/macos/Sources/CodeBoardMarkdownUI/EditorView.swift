@@ -51,7 +51,8 @@ public final class MarkdownEditorView: NSView {
   public var isEditing = true {
     didSet {
       guard isEditing != oldValue else { return }
-      note(.editing(isEditing))
+      // measured from here: a switch made by a host, with no input event of its own to time it from
+      begin()
       if isEditing {
         core.select(core.selection)
       } else {
@@ -60,6 +61,7 @@ public final class MarkdownEditorView: NSView {
         core.layout.setHead(nil)
       }
       changed()
+      note(.editing(isEditing))
     }
   }
 

@@ -7,6 +7,22 @@ import Testing
 
 /// The editor's events: what an inspector or a test driver sees, and nothing while nobody observes
 @MainActor @Suite struct EventTests {
+  /// a switch a host makes is timed from itself, not from the last key (the inspector once showed seconds for it)
+  @Test func enteringEditingIsTimedFromItsOwnStart() {
+    _ = boardFonts
+    let l = BlockLayout(MarkdownDocument("a b c"), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 0)
+    var editing: Double?
+    v.observer = { e, ms in if case .editing = e { editing = ms } }
+    v.insertText("x", replacementRange: NSRange(location: NSNotFound, length: 0))
+    // CPU spent elsewhere after the key
+    let start = BlockLayout.cpu()
+    var n = 0.0
+    while BlockLayout.cpu() - start < 120 { n += 1 }
+    v.isEditing = false
+    #expect(n > 0 && (editing ?? 999) < 60)
+  }
+
   @Test func editsUndoKeysAndRevealsAreReported() {
     _ = boardFonts
     let l = BlockLayout(
