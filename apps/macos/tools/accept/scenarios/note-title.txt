@@ -1,0 +1,17 @@
+# 开头是标题、没有自己名字的 Note：卡头显示标题，正文不再显示；编辑时卡头收起、标题从正文上沿滑出来，卡片高度不变；离开时反过来
+zoom 1
+center @cnote
+mark
+shot rest
+rec fold
+dbl @cnote+100,90
+expect answer < 600
+wait 500
+shot editing
+key esc
+expect answer < 300
+wait 600
+expect cnote.h = was
+expect cnote.y = was
+shot left
+stop

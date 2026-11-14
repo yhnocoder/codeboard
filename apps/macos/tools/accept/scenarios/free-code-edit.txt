@@ -1,0 +1,22 @@
+# Free code 编辑：双击代码进 CodeMirror，双击后马上打字（第一个字和回车不丢由单元测试 keysTypedAtOnceAfterTheDoubleClickAreAllWritten 判）；打一行，卡片变高；Esc 关掉补全再 Esc 离开
+zoom 1
+center @cfree
+mark
+rec edit
+dbl @cfree+120,72
+expect press has CanvasView
+expect answer < 500
+type x = 1
+key return
+type y = 2
+wait 300
+expect answer < 500
+shot typed
+key esc
+wait 200
+key esc
+wait 600
+expect cfree.x = was
+expect cfree.y = was
+shot left
+stop
