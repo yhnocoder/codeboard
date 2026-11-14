@@ -219,11 +219,14 @@ extension NSMenu {
   }
 }
 
-/// The app's pasteboard: a private one of this process, never the clipboard the person uses
-let ownPasteboard = NSPasteboard(
-  name: NSPasteboard.Name("com.example.codeboard.accept.\(getpid())"))
+/// The app's pasteboard: a private one of this process, never the clipboard the person uses. Named afresh each time it
+/// is asked for (the same name gives the same pasteboard): AppKit and the system read `general` from any thread
+/// (ShareKit from a background queue)
+nonisolated var ownPasteboard: NSPasteboard {
+  NSPasteboard(name: NSPasteboard.Name("com.example.codeboard.accept.\(getpid())"))
+}
 extension NSPasteboard {
-  @MainActor @objc class func accGeneral() -> NSPasteboard { ownPasteboard }
+  @objc class func accGeneral() -> NSPasteboard { ownPasteboard }
 }
 
 swizzle(NSPasteboard.self, #selector(getter: NSPasteboard.general), #selector(NSPasteboard.accGeneral), meta: true)
