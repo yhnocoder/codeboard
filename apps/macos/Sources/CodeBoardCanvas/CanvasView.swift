@@ -670,10 +670,10 @@ public final class CanvasView: NSView {
     motion = Motion()
     restZoom = nil
     hoveredMark = nil
-    // the summary cut first: where the board opens depends on it
+    // the summary cut first: the level shown at the zoom it opens at depends on it
     summariesChanged()
     if !keepCamera {
-      camera = arriving ?? storedCamera ?? Camera.opening(s.bounds, in: view, cut: levels.cut)
+      camera = arriving ?? storedCamera ?? Camera.opening(s.bounds)
       cameraKept = camera
       arriving = nil
       levels.show(zoom: camera.zoom)
@@ -860,7 +860,7 @@ public final class CanvasView: NSView {
     limits = ZoomLimits(view: newSize, content: scene.bounds)
     // shown before the view had a size: opened now
     if unsized {
-      camera = storedCamera ?? Camera.opening(scene.bounds, in: newSize, cut: levels.cut)
+      camera = storedCamera ?? Camera.opening(scene.bounds)
       cameraKept = camera
       levels.show(zoom: camera.zoom)
     }

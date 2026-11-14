@@ -199,6 +199,9 @@ import Testing
     let c = w.canvas
     let card = CardID(rawValue: id)
     let r = try #require(c.scene?.items.first { $0.owner == .card(card) }?.rect)
+    // the card in the middle of the view first (a board opens at 100 %, where it may be beyond the window's edge)
+    c.place(zoom: 1, centre: CGPoint(x: r.midX, y: r.midY))
+    await w.frames(6)
     var p = CGPoint(x: r.midX, y: r.midY)
     if id == "f", let code = c.scene?.placed[card]?.code, let row = code.layout.row(segment: 0, line: 2) {
       p = CGPoint(x: r.maxX - 10, y: r.minY + code.top + row.y + row.height / 2)

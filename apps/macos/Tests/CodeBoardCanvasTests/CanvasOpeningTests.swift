@@ -4,8 +4,9 @@ import Testing
 
 @testable import CodeBoardCanvas
 
-// How a board opens with no camera to come back to (a new tab, the app started again, an imported board): its cards,
-// never its summaries (a large board opened below its summary cut and showed only summaries)
+// How a board opens with no camera to come back to (a new tab, the app started again, an imported board): at 100 %, what
+// it holds with its top left corner 80 points in (main's homeCam, model.ts; a large board fitted whole opened at its
+// summaries, or at a zoom too small to read)
 
 private func gid(_ s: String) -> SectionID { SectionID(rawValue: s) }
 
@@ -35,15 +36,33 @@ private func grid(_ n: Int) -> [Card] {
         },
         sections: [Section(id: gid("s"), title: "Scheduler", x: -60, y: -60, width: 2580, height: 2420)])
     ),
+    // imported: drawn far from the board's origin
+    (
+      "far from the origin",
+      Board(
+        id: BoardID(rawValue: "far"),
+        cards: grid(3).map {
+          var c = $0
+          c.x += 40_000
+          c.y += 25_000
+          return c
+        })
+    ),
     ("empty", Board(id: BoardID(rawValue: "empty"))),
   ]
 
-  @Test(arguments: boards.indices) func aBoardOpensAboveItsCut(_ i: Int) async throws {
+  @Test(arguments: boards.indices) func aBoardOpensAt100PercentWithItsTopLeftCorner80In(_ i: Int) async throws {
     let (name, board) = Self.boards[i]
     let rig = try await Rig(board, zoom: nil)
     defer { rig.close() }
     let c = rig.canvas
-    #expect(c.currentCamera.zoom > c.summaryCut, "\(name): opens at \(c.currentCamera.zoom), cut \(c.summaryCut)")
+    let cam = c.currentCamera
+    #expect(cam.zoom == 1, "\(name): opens at \(cam.zoom)")
+    // its top left corner (an empty board's origin) 80 points in
+    let corner = try #require(c.scene).bounds
+    let at = corner.isNull || corner.isEmpty ? CGPoint.zero : corner.origin
+    let v = cam.view(at)
+    #expect(abs(v.x - 80) < 0.5 && abs(v.y - 80) < 0.5, "\(name): its corner at \(v)")
     #expect(c.trace.level == "cards", "\(name): \(c.trace.level)")
     // and shows some of its cards
     if !board.cards.isEmpty {

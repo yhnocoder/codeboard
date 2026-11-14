@@ -46,12 +46,12 @@ public struct Camera: Equatable, Codable, Sendable {
 }
 
 extension Camera {
-  /// Where a board opens with no camera to come back to: the whole of it when that shows its cards (above its summary
-  /// cut), else at 100 % with its top left corner 80 points in, as main opens a board at its home camera
-  static func opening(_ r: CGRect, in size: CGSize, cut: CGFloat) -> Camera {
-    let fit = fit(r, in: size)
-    if fit.zoom > cut { return fit }
-    return Camera(origin: CGPoint(x: r.minX - 80, y: r.minY - 80), zoom: 1)
+  /// Where a board opens with no camera to come back to: at 100 %, what it holds with its top left corner 80 points in
+  /// (main's homeCam keeps the board's origin there: the same for a board drawn from its origin, and an imported board
+  /// far from it opens on its cards, not on empty paper); an empty board at main's homeCam
+  static func opening(_ r: CGRect) -> Camera {
+    let at = r.isNull || r.isEmpty ? .zero : r.origin
+    return Camera(origin: CGPoint(x: at.x - 80, y: at.y - 80), zoom: 1)
   }
 }
 
