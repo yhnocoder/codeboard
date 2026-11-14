@@ -344,6 +344,7 @@ extension CanvasView {
       return i
     }
     m.addItem(submenu("Theme", themes))
+    m.addItem(key(menuItem("Keyboard Shortcuts") { [weak self] in self?.toggleKeys() }, "?"))
     return m
   }
 

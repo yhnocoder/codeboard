@@ -6,42 +6,127 @@ import CodeBoardModel
 // these are the rest. Letters match what the key types (e.key), keys with ⌥ and digits and brackets the key itself
 // (e.code), as there.
 
+/// A key of the board (keymap.ts Bind): what presses it, how the shortcut list shows it, what it does and its group. A
+/// row with no action is a gesture, only shown
+struct BoardKey {
+  enum Action {
+    case newNote, newText, newBox, addSidenote, fitWindow, fitSelection, zoom100, zoomIn, zoomOut, pan, open
+    case enterBoard, delete, turnIntoBoard, fitContent, tilt, shelve, wrap, nudge, escape, help
+  }
+
+  /// A press: its modifiers, and what it types (letters and symbols, as e.key) or else the key itself (e.code)
+  struct Press {
+    var mods: NSEvent.ModifierFlags = []
+    var char: String?
+    var code: UInt16?
+
+    func matches(_ m: NSEvent.ModifierFlags, _ key: String, _ keyCode: UInt16) -> Bool {
+      guard let char else { return m == mods && keyCode == code }
+      // a symbol (? !): Shift is what types it, not compared
+      let symbol = !char.allSatisfy { $0.isLetter || $0.isNumber }
+      return key == char && (symbol ? m.subtracting(.shift) == mods.subtracting(.shift) : m == mods)
+    }
+  }
+
+  var action: Action?
+  var presses: [Press] = []
+  var show: String
+  var label: String
+  var group: String
+
+  static func char(_ c: String, _ m: NSEvent.ModifierFlags = []) -> Press { Press(mods: m, char: c) }
+  static func code(_ c: UInt16, _ m: NSEvent.ModifierFlags = []) -> Press { Press(mods: m, code: c) }
+
+  static let groups = ["Create", "View", "Cards", "Board"]
+
+  /// In keymap.ts's order: the first row that matches and applies takes the key
+  static let all: [BoardKey] = [
+    BoardKey(action: .newNote, presses: [char("n")], show: "N", label: "New Note", group: "Create"),
+    BoardKey(action: .newText, presses: [char("t")], show: "T", label: "New Text", group: "Create"),
+    BoardKey(action: .newBox, presses: [char("r")], show: "R", label: "New Box", group: "Create"),
+    BoardKey(action: .addSidenote, presses: [char("s")], show: "S", label: "Add Sidenote", group: "Create"),
+    BoardKey(action: .fitWindow, presses: [code(18, .shift)], show: "⇧1", label: "Fit to Window", group: "View"),
+    BoardKey(action: .fitSelection, presses: [code(19, .shift)], show: "⇧2", label: "Fit Selection", group: "View"),
+    BoardKey(action: .fitWindow, presses: [code(29, .command)], show: "⌘0", label: "Fit All", group: "View"),
+    BoardKey(action: .zoom100, presses: [code(18, .command)], show: "⌘1", label: "Zoom to 100%", group: "View"),
+    BoardKey(
+      action: .zoomIn, presses: [code(24, .command), code(24, [.command, .shift])], show: "⌘+", label: "Zoom In",
+      group: "View"),
+    BoardKey(action: .zoomOut, presses: [code(27, .command)], show: "⌘−", label: "Zoom Out", group: "View"),
+    BoardKey(show: "⌘ + scroll / pinch", label: "Zoom", group: "View"),
+    BoardKey(action: .pan, presses: [code(49)], show: "Space + drag / two fingers", label: "Pan", group: "View"),
+    BoardKey(show: "Drag empty space", label: "Select with a box", group: "Cards"),
+    BoardKey(show: "Drag title bar", label: "Move", group: "Cards"),
+    BoardKey(
+      action: .open, presses: [code(36), code(76)], show: "↵",
+      label: "Open the card selected (an arrow alone: its label)", group: "Cards"),
+    BoardKey(
+      action: .enterBoard, presses: [code(36, .command), code(76, .command)], show: "⌘↵",
+      label: "Open the selected board frame", group: "Cards"),
+    BoardKey(action: .delete, presses: [code(51), code(117)], show: "⌫", label: "Delete", group: "Cards"),
+    BoardKey(
+      action: .turnIntoBoard, presses: [char("b", [.command, .shift])], show: "⇧⌘B", label: "Turn into Board",
+      group: "Cards"),
+    BoardKey(action: .fitContent, presses: [code(3, .option)], show: "⌥F", label: "Fit Content", group: "Cards"),
+    BoardKey(action: .tilt, presses: [code(17, [.option, .shift])], show: "⌥⇧T", label: "Tilt", group: "Cards"),
+    BoardKey(action: .shelve, presses: [code(1, .option)], show: "⌥S", label: "Move to Shelf", group: "Cards"),
+    BoardKey(action: .wrap, presses: [code(6, .option)], show: "⌥Z", label: "Wrap Lines", group: "Cards"),
+    BoardKey(
+      action: .nudge, presses: [123, 124, 125, 126].flatMap { [code($0), code($0, .shift)] }, show: "Arrows",
+      label: "Nudge (⇧ = 10px on screen)", group: "Cards"),
+    BoardKey(action: .help, presses: [char("?")], show: "?", label: "Keyboard Shortcuts", group: "Board"),
+    BoardKey(action: .escape, presses: [code(53)], show: "Esc", label: "Cancel · Deselect", group: "Board"),
+  ]
+}
+
 extension CanvasView {
   /// A key the board answers, with or without ⌘ / ⌃; whether it did
   func boardKey(_ e: NSEvent) -> Bool {
-    guard let doc = document else { return false }
+    guard document != nil else { return false }
     let mods = e.modifierFlags.intersection([.command, .control, .option, .shift])
     let key = e.charactersIgnoringModifiers?.lowercased() ?? ""
+    for k in BoardKey.all where k.presses.contains(where: { $0.matches(mods, key, e.keyCode) }) {
+      if let a = k.action, run(a, e) { return true }
+    }
+    return false
+  }
+
+  /// A key's action; whether it applied (when not, a later row may take the key)
+  private func run(_ a: BoardKey.Action, _ e: NSEvent) -> Bool {
+    guard let doc = document else { return false }
     let cards = doc.selection.compactMap(\.card)
-    switch (mods, e.keyCode) {
-    case ([], _) where key == "n": newWriting(.note)
-    case ([], _) where key == "t": newWriting(.text(.text))
-    case ([], _) where key == "r": newWriting(.text(.box))
-    case ([], _) where key == "s": addSidenoteFromKey()
-    case (.shift, 18): fitAll()
-    case (.shift, 19): fitSelection()
-    case (.command, 29): fitAll()
-    case (.command, 18): zoom(by: 1 / zoomTarget.zoom)
-    case (.command, 24), ([.command, .shift], 24): zoom(by: 1.25)
-    case (.command, 27): zoom(by: 0.8)
-    case ([], 49): holdSpace(e)
-    case ([], 36), ([], 76):
-      // Return: an arrow alone, its label; else the first card selected opens
+    switch a {
+    case .newNote: newWriting(.note)
+    case .newText: newWriting(.text(.text))
+    case .newBox: newWriting(.text(.box))
+    case .addSidenote: addSidenoteFromKey()
+    case .fitWindow: fitAll()
+    case .fitSelection: fitSelection()
+    case .zoom100: zoom(by: 1 / zoomTarget.zoom)
+    case .zoomIn: zoom(by: 1.25)
+    case .zoomOut: zoom(by: 0.8)
+    case .pan: holdSpace(e)
+    case .open:
+      // an arrow alone, its label; else the first card selected opens
       if doc.selection.count == 1, let a = doc.selection.first?.arrow { editLabel(a) } else { return open(cards) }
-    case (.command, 36), (.command, 76):
+    case .enterBoard:
       guard let c = cards.first, case .board? = scene?.parts[c]?.content.body else { return false }
       openSubBoard(c)
-    case ([], 51), ([], 117): delete(nil)
-    case ([.command, .shift], _) where key == "b": turnIntoBoard(nil)
-    case (.option, 3): fitContentKey()
-    case ([.option, .shift], 17) where !cards.isEmpty: tilt(nil)
-    case (.option, 1) where !doc.selection.isEmpty: moveToShelf(nil)
-    case (.option, 6): toggleWrap(cards)
-    case ([], 123), ([], 124), ([], 125), ([], 126), (.shift, 123), (.shift, 124), (.shift, 125), (.shift, 126):
+    case .delete: delete(nil)
+    case .turnIntoBoard: turnIntoBoard(nil)
+    case .fitContent: fitContentKey()
+    case .tilt:
+      guard !cards.isEmpty else { return false }
+      tilt(nil)
+    case .shelve:
+      guard !doc.selection.isEmpty else { return false }
+      moveToShelf(nil)
+    case .wrap: toggleWrap(cards)
+    case .nudge:
       guard !cards.isEmpty else { return false }
       nudge(e)
-    case ([], 53): escape()
-    default: return false
+    case .help: toggleKeys()
+    case .escape: escape()
     }
     return true
   }
@@ -75,6 +160,7 @@ extension CanvasView {
 
   /// Esc: a ref's preview, the mode, else the popup, else the selection
   private func escape() {
+    if keysPanel != nil { return toggleKeys() }
     if refPeek != nil { return closeRefPeek() }
     if placing != nil { return cancelPlacing() }
     if stickerPalette != nil { return closeStickerPalette() }
