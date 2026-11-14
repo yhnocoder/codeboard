@@ -424,3 +424,82 @@ extension MarkdownEditing {
       selection: MDSelection(max(lines.location, state.selection.head + firstDelta)), undo: .command)
   }
 }
+
+extension MarkdownEditing {
+  /// A note as written in {text|note} (schema-marks.ts escAnnot): \ before { } | \ (or at the end) doubled, any other \
+  /// kept (\frac); { } kept when they pair up, else escaped; | always escaped
+  public static func escapeAnnotation(_ t: String) -> String {
+    var depth = 0
+    var paired = true
+    for c in t {
+      if c == "{" {
+        depth += 1
+      } else if c == "}" {
+        depth -= 1
+        if depth < 0 { paired = false }
+      }
+    }
+    paired = paired && depth == 0
+    var out = ""
+    let cs = Array(t)
+    var i = 0
+    while i < cs.count {
+      let c = cs[i]
+      if c == "\\" {
+        if i + 1 >= cs.count || "\\{}|".contains(cs[i + 1]) {
+          out += "\\\\"
+        } else {
+          out.append(c)
+          out.append(cs[i + 1])
+          i += 1
+        }
+      } else if c == "|" || ((c == "{" || c == "}") && !paired) {
+        out += "\\" + String(c)
+      } else {
+        out.append(c)
+      }
+      i += 1
+    }
+    return out
+  }
+
+  /// The handwritten note on the selection (bubble.tsx annotEdit): an annotation the selection is in gets the note (its
+  /// colour and side kept; an empty note takes it off); selected words get {words|note}. The annotated words stay
+  /// selected. nil when there is nothing to annotate
+  public static func annotate(_ note: String, in state: MDEditState, document d: MarkdownDocument) -> MDEdit? {
+    let sel = state.selection.range
+    let ns = state.source as NSString
+    let note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+    func select(_ from: Int, _ text: String, inner: Int) -> MDSelection {
+      let k = text.hasPrefix("{") ? 1 : 0
+      return MDSelection(anchor: from + k, head: from + k + inner)
+    }
+    if let a = annotation(at: sel, in: d), case .atom(.annotation(let text, _, let color, let below)) = a.kind {
+      let opts = [color != "blue" ? color : "", below ? "below" : ""].filter { !$0.isEmpty }.joined(separator: " ")
+      let out = note.isEmpty ? text : "{" + text + "|" + escapeAnnotation(note) + (opts.isEmpty ? "" : "|" + opts) + "}"
+      return MDEdit(
+        range: a.range, replacement: out, selection: select(a.range.lowerBound, out, inner: (text as NSString).length),
+        undo: .command)
+    }
+    guard !sel.isEmpty, !note.isEmpty else { return nil }
+    let words = ns.substring(with: NSRange(location: sel.lowerBound, length: sel.count))
+    let esc = words.replacingOccurrences(of: #"(?<!\\)([{}|])"#, with: "\\\\$1", options: .regularExpression)
+    let out = "{" + esc + "|" + escapeAnnotation(note) + "}"
+    return MDEdit(
+      range: sel, replacement: out, selection: select(sel.lowerBound, out, inner: (esc as NSString).length),
+      undo: .command)
+  }
+
+  /// the {text|note} the selection is in, if any
+  public static func annotation(at sel: Range<Int>, in d: MarkdownDocument) -> MDInline? {
+    guard let r = run(at: sel.lowerBound, in: d) else { return nil }
+    func find(_ ins: [MDInline]) -> MDInline? {
+      for i in ins where i.range.lowerBound <= sel.lowerBound && sel.upperBound <= i.range.upperBound {
+        if case .atom(.annotation) = i.kind { return i }
+        if let f = find(i.children) { return f }
+      }
+      return nil
+    }
+    return find(r.inlines)
+  }
+}

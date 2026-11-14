@@ -6,10 +6,18 @@ public struct MDPaste: Sendable, Equatable {
   public var plain: String?
   public var htmlMarkdown: String?
   public var vscodeLanguage: String?
-  public init(plain: String?, htmlMarkdown: String? = nil, vscodeLanguage: String? = nil) {
+  /// what the host's code classifier says of the plain text (the board's, as main asks it): code in a language, or not
+  /// code; nil when the host has none, and the component's own rules decide
+  public var hostCode: HostCode?
+  public enum HostCode: Sendable, Equatable {
+    case code(String)
+    case notCode
+  }
+  public init(plain: String?, htmlMarkdown: String? = nil, vscodeLanguage: String? = nil, hostCode: HostCode? = nil) {
     self.plain = plain
     self.htmlMarkdown = htmlMarkdown
     self.vscodeLanguage = vscodeLanguage
+    self.hostCode = hostCode
   }
 }
 
@@ -68,7 +76,13 @@ extension MarkdownEditing {
       return [put(empty && sel.lowerBound == c.block.lowerBound ? raw : String(raw[m.upperBound...]))]
     }
     let lines = MarkdownSourceOps.markTags(MarkdownSourceOps.texBrackets(raw))
-    guard let lang = codeLanguage(raw) else { return [put(lines)] }
+    let guessed: String? =
+      switch p.hostCode {
+      case .code(let l): l
+      case .notCode: nil
+      case nil: codeLanguage(raw)
+      }
+    guard let lang = guessed else { return [put(lines)] }
     // code from elsewhere: the lines first, then a code block in their place
     let first = put(lines, undo: .command)
     var second = codeBlock(raw, lang, sel.lowerBound..<(sel.lowerBound + (lines as NSString).length), state)

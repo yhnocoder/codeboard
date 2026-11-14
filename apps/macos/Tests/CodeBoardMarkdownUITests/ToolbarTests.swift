@@ -117,3 +117,20 @@ import Testing
     #expect(v.isTicking)
   }
 }
+
+/// The toolbar's handwritten note: its box opens under the selection, ↵ writes {words|note}
+@MainActor @Suite struct NoteBoxTests {
+  @Test func writesTheNote() {
+    _ = boardFonts
+    let l = BlockLayout(
+      MarkdownDocument("Some words here"), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 0)
+    v.selection = MDSelection(anchor: 5, head: 10)
+    v.toolbarPress("annot")
+    #expect(!v.noteBox.isHidden)
+    v.noteBox.field.stringValue = "a note"
+    _ = v.noteBox.control(
+      v.noteBox.field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))
+    #expect(v.noteBox.isHidden && v.core.source == "Some {words|a note} here")
+  }
+}

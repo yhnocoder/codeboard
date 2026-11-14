@@ -24,6 +24,9 @@ public protocol MarkdownEditorDelegate: AnyObject {
   func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String?
   /// the / menu's Image: the host lets the user pick a picture (its bytes and file name), nil when none was picked
   func editorPicksImage(_ e: MarkdownEditorView) -> (Data, String)?
+  /// whether pasted plain text is code, and in which language (the host's classifier, as main uses the board's); nil
+  /// leaves it to the component's own rules
+  func editor(_ e: MarkdownEditorView, classify text: String) -> MDPaste.HostCode?
   /// a plain click on a drawn [[reference]] that resolves (onRef): true when the host took it (its preview, or going
   /// there), and the caret stays where it was; false makes it an ordinary click (its source opens)
   func editor(_ e: MarkdownEditorView, activate label: String, target: String?) -> Bool
@@ -38,6 +41,7 @@ extension MarkdownEditorDelegate {
   public func editor(_ e: MarkdownEditorView, open url: URL) { NSWorkspace.shared.open(url) }
   public func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String? { nil }
   public func editor(_ e: MarkdownEditorView, activate label: String, target: String?) -> Bool { false }
+  public func editor(_ e: MarkdownEditorView, classify text: String) -> MDPaste.HostCode? { nil }
   /// an Open panel for pictures
   public func editorPicksImage(_ e: MarkdownEditorView) -> (Data, String)? {
     let p = NSOpenPanel()
@@ -93,6 +97,7 @@ public final class MarkdownEditorView: NSView {
   let toolbar = SelectionToolbar()
   let linkBox = LinkBox()
   let sizePicker = TableSizePicker()
+  let noteBox = NoteBox()
   let headingChip = HeadingChip()
   let findBar = FindBar()
   /// pictures sliding to where the caret's moving put them (IMAGE_SLIDE): from, to, since; and where each was
@@ -195,6 +200,21 @@ public final class MarkdownEditorView: NSView {
     band.isHidden = true
     addSubview(band)
     addSubview(sizePicker)
+    addSubview(noteBox)
+    noteBox.onWrite = { [weak self] note in
+      guard let self,
+        let e = MarkdownEditing.annotate(
+          note, in: MDEditState(source: self.core.source, selection: self.core.selection), document: self.core.document)
+      else { return }
+      self.begin()
+      self.core.apply(e)
+      self.note(.key("handwritten note", did: note.isEmpty ? "taken off" : "written"))
+      self.changed()
+    }
+    noteBox.onClose = { [weak self] in
+      guard let self else { return }
+      self.window?.makeFirstResponder(self)
+    }
     sizePicker.dropsAt = { [weak self] r, c in
       guard let self else { return 0 }
       return MarkdownEditing.tableResize(
@@ -1353,6 +1373,22 @@ public final class MarkdownEditorView: NSView {
     bandPart(id, band, r)
   }
 
+  /// the handwritten note box under the selection, with the note of the annotation it is in
+  func openNoteBox() {
+    guard isEditing, let first = core.rects(for: core.selection.range).first else { return }
+    var note = ""
+    if let a = MarkdownEditing.annotation(at: core.selection.range, in: core.document),
+      case .atom(.annotation(_, let n, _, _)) = a.kind
+    {
+      note = n
+    }
+    toolbar.hide()
+    noteBox.show(
+      note,
+      under: CGRect(x: first.minX * zoom, y: first.minY * zoom, width: first.width * zoom, height: first.height * zoom),
+      theme: core.layout.theme)
+  }
+
   /// the link box for the link at the caret, as ⌘K opens it (a host's check)
   public func openLinkBoxForCheck() { openLinkBox() }
 
@@ -1409,7 +1445,9 @@ public final class MarkdownEditorView: NSView {
       .init(id: "code", symbol: "code", tip: "Inline Code (⌘E)", on: w("`", "`")),
       .init(id: "link", symbol: "link", tip: "Link (⌘K)", on: false),
       .init(id: "math", symbol: "math", tip: "Inline Math", on: w("$", "$")),
-      .init(id: "annot", symbol: "annot", tip: "Handwritten Note", on: false),
+      .init(
+        id: "annot", symbol: "annot", tip: "Handwritten Note",
+        on: MarkdownEditing.annotation(at: core.selection.range, in: core.document) != nil),
     ]
     return isEditing ? all : all.filter { $0.id == "bold" || $0.id == "highlight" }
   }
@@ -1468,6 +1506,8 @@ public final class MarkdownEditorView: NSView {
       core.command(.toggle(kind))
     } else if id == "link" {
       openLinkBox()
+    } else if id == "annot" {
+      openNoteBox()
     } else if id == "math" {
       // $…$ around the selection, or off again
       let st = MDEditState(source: core.source, selection: core.selection)
@@ -1590,6 +1630,11 @@ public final class MarkdownEditorView: NSView {
     // a press anywhere in the Note leaves the link box: it closes at once, what it holds is written on the release
     leaveLinkBox(later: true)
     sizePicker.close()
+    if !noteBox.isHidden {
+      let v = noteBox.field.stringValue
+      noteBox.isHidden = true
+      noteBox.onWrite(v)
+    }
     let p = convert(e.locationInWindow, from: nil)
     let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
     defer {
@@ -2192,6 +2237,7 @@ public final class MarkdownEditorView: NSView {
     let pb = NSPasteboard.general
     let plainOnly = (sender as? NSMenuItem)?.action == #selector(pasteAsPlainText(_:)) || sender == nil
     var p = MDPaste(plain: pb.string(forType: .string))
+    if let plain = p.plain, plain.contains("\n") { p.hostCode = delegate?.editor(self, classify: plain) }
     if !plainOnly {
       // VS Code marks its copies with the language; HTML from elsewhere is read as Markdown
       if let vs = pb.data(forType: NSPasteboard.PasteboardType("vscode-editor-data")),

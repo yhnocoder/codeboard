@@ -153,3 +153,22 @@ import Testing
     #expect(i.replacement == "" && i.range == (q - 5)..<q)
   }
 }
+
+/// The toolbar's handwritten note (bubble.tsx annotEdit, schema-marks.ts escAnnot)
+@Suite struct AnnotateTests {
+  @Test func addChangeAndTakeOff() {
+    let src = "Some words here"
+    let d = MarkdownDocument(src)
+    let e = MarkdownEditing.annotate(
+      "a note", in: MDEditState(source: src, selection: MDSelection(anchor: 5, head: 10)), document: d)!
+    #expect(e.replacement == "{words|a note}" && e.selection == MDSelection(anchor: 6, head: 11))
+    let src2 = "Some {words|old|green} here"
+    let d2 = MarkdownDocument(src2)
+    let c = MarkdownEditing.annotate(
+      "new|one", in: MDEditState(source: src2, selection: MDSelection(anchor: 6, head: 11)), document: d2)!
+    #expect(c.replacement == "{words|new\\|one|green}")
+    let off = MarkdownEditing.annotate("", in: MDEditState(source: src2, selection: MDSelection(8)), document: d2)!
+    #expect(off.replacement == "words")
+    #expect(MarkdownEditing.escapeAnnotation("\\frac{a}{b}") == "\\frac{a}{b}")
+  }
+}

@@ -100,3 +100,21 @@ import Testing
     #expect(md == "a grid of $N\\times N$ pixels")
   }
 }
+
+/// The host's classifier decides whether pasted text is code (main asks the board's); without one, the own rules
+@Suite struct PasteHostCodeTests {
+  @Test func theHostDecides() {
+    _ = boardFonts
+    func paste(_ p: MDPaste) -> String {
+      let l = BlockLayout(MarkdownDocument(""), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+      let e = EditorCore(layout: l)
+      e.select(MDSelection(0))
+      e.paste(p)
+      return e.source
+    }
+    let text = "first line of something\nsecond line of it"
+    #expect(paste(MDPaste(plain: text, hostCode: .code("rust"))).hasPrefix("```rust\n"))
+    #expect(paste(MDPaste(plain: "def f(x):\n    return x", hostCode: .notCode)) == "def f(x):\n    return x")
+    #expect(paste(MDPaste(plain: "def f(x):\n    return x")).hasPrefix("```python"))
+  }
+}
