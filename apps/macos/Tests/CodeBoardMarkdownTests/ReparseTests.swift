@@ -22,6 +22,8 @@ import Testing
   static let inserts = [
     "\n", "\n\n", "x", "# ", "- ", "1. ", "> ", "    ", "  ", "```\n", "```py\n", "$$\n", "$$", "| a | b |\n",
     "|---|---|\n", "| ", "===\n", "---\n", "* ", "- [ ] ", "<div>\n", "Table: c\n", "**", "`", "[[x]]", "[a]: b\n",
+    // link reference definitions: another label, the same one again (a repeat is dropped), half of one, a use of one
+    "[B]: https://x\n", "\n[a]: c\n", "]: ", "[a]", "[b][a]", "\n\n[A]: d \"t\"\n\n",
   ]
 
   /// places where block structure is decided: line starts and ends, block starts and ends, blank lines
@@ -40,6 +42,12 @@ import Testing
   func check(_ doc: MarkdownDocument, _ r: Range<Int>, _ ins: String, _ what: String) -> Bool {
     let edited = doc.reparse(replacing: r, with: ins)
     let fresh = MarkdownDocument(edited.source)
+    if edited.definitions != fresh.definitions {
+      Issue.record(
+        "\(what): \(ins.debugDescription) over \(r): definitions \(edited.definitions.map { "\($0.tag)@\($0.at)" }) where a fresh parse has \(fresh.definitions.map { "\($0.tag)@\($0.at)" })"
+      )
+      return false
+    }
     if edited != fresh {
       let i =
         Array(zip(edited.blocks, fresh.blocks)).firstIndex { $0 != $1 } ?? min(edited.blocks.count, fresh.blocks.count)

@@ -8,14 +8,24 @@ import Foundation
 struct BlockLexer {
   private var top = true
   /// link definitions seen: a later definition of the same label is dropped, as marked does
-  private var links: Set<String> = []
+  var links: Set<String> = []
 
-  static func lex(_ source: String) -> [Token] {
+  /// Every link reference definition, in order, with its offset in the text lexed and whether it took its label first
+  /// (a later one of the same label is dropped: no block)
+  private(set) var definitions: [Definition] = []
+
+  static func lex(_ source: String) -> [Token] { lexing(source).tokens }
+
+  /// The tokens, and every definition. `defined`: labels defined before the text (a window
+  /// of a document lexed again): definitions of them in it are dropped, as they are in the whole document
+  static func lexing(_ source: String, defined: Set<String> = []) -> (tokens: [Token], definitions: [Definition]) {
     var lx = BlockLexer()
+    lx.links = defined
     // marked reads \r\n and \r as \n; the mapped text keeps pointing at the original source
     var text = Mapped(source)
     if source.utf16.contains(0x0D) { text = text.replacing(carriageReturn, template: "\n") }
-    return lx.blockTokens(text, [])
+    let tokens = lx.blockTokens(text, [])
+    return (tokens, lx.definitions)
   }
 
   private static let carriageReturn = JSRegex(#"\r\n|\r"#, flags: "g")
@@ -78,7 +88,11 @@ struct BlockLexer {
           last.text = last.text + newline(after: last.text) + t.raw
         } else if !links.contains(t.tag) {
           links.insert(t.tag)
+          definitions.append(Definition(tag: t.tag, at: t.raw.source.lowerBound, first: true))
           tokens.append(t)
+        } else {
+          // a repeat: no block, but listed, since it becomes one when the definition before it goes
+          definitions.append(Definition(tag: t.tag, at: t.raw.source.lowerBound, first: false))
         }
         continue
       }
@@ -686,4 +700,12 @@ struct BlockLexer {
     while n < m.count, Mapped.isJSSpace(m.units[n]) { n += 1 }
     return n
   }
+}
+
+/// A link reference definition: the label as marked keys it, its offset, and whether it took the label first (a later
+/// one of the same label is dropped)
+struct Definition: Sendable, Equatable {
+  var tag: String
+  var at: Int
+  var first: Bool
 }
