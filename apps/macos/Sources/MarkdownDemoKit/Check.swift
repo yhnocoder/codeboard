@@ -276,6 +276,11 @@ enum Check {
         for _ in 0..<20 { frame() }
         autoreleasepool { render(content, to: out.appending(path: "band-\(what).png")) }
         bands[what] = e.bandGeometry
+        if what == "table" {
+          e.pressBandPart("size")
+          for _ in 0..<3 { frame() }
+          autoreleasepool { render(content, to: out.appending(path: "table-size.png")) }
+        }
       }
       e.isEditing = false
       frame()

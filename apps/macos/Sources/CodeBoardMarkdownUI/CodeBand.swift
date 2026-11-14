@@ -69,6 +69,11 @@ final class CodeBand: NSView {
   /// the strip's frame in the editor view's points (tests, checks)
   var stripFrame: CGRect { convert(strip.frame, from: clip).offsetBy(dx: frame.minX, dy: frame.minY) }
 
+  /// a control's box in the band's own points, by its id
+  func partRect(_ id: String) -> (Part, CGRect)? {
+    strip.rects().first { $0.0.id == id }.map { ($0.0, convert($0.1, from: strip)) }
+  }
+
   /// the band's own box in the editor view's points (without the margin)
   var bandFrame: CGRect {
     CGRect(

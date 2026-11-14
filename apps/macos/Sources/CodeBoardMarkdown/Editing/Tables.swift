@@ -305,3 +305,36 @@ extension MarkdownEditing {
     return MDSelection(at + (state.selection.head - oldLine))
   }
 }
+
+extension MarkdownEditing {
+  /// The table at the caret made `rows` rows (the header counts as row 1) by `cols` columns (tableview.ts resizeTable):
+  /// cells it keeps keep their text, new ones are empty, the rest go; one undo step. Also how many of the cells that go
+  /// hold something (the size grid warns of them first)
+  public static func tableResize(rows: Int, cols: Int, in state: MDEditState, document d: MarkdownDocument)
+    -> (edit: MDEdit, dropped: Int)?
+  {
+    guard rows >= 1, cols >= 1, let (_, lines, range) = tableLines(state, d) else { return nil }
+    var dropped = 0
+    func fit(_ line: String, sep: Bool) -> String {
+      let (head, cells, tail) = splitCells(line)
+      for c in cells.dropFirst(cols) where !c.trimmingCharacters(in: .whitespaces).isEmpty && !sep { dropped += 1 }
+      var kept = Array(cells.prefix(cols))
+      while kept.count < cols { kept.append(sep ? "---" : "   ") }
+      return head + kept.joined(separator: "|") + (tail.isEmpty ? "|" : tail)
+    }
+    var out = [fit(lines[0], sep: false), fit(lines[1], sep: true)]
+    let body = Array(lines.dropFirst(2))
+    for (i, line) in body.enumerated() {
+      if i < rows - 1 {
+        out.append(fit(line, sep: false))
+      } else {
+        let (_, cells, _) = splitCells(line)
+        dropped += cells.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count
+      }
+    }
+    while out.count < rows + 1 { out.append("|" + Array(repeating: "   ", count: cols).joined(separator: "|") + "|") }
+    let text = out.joined(separator: "\n")
+    let caret = min(state.selection.head, range.lowerBound + (text as NSString).length)
+    return (MDEdit(range: range, replacement: text, selection: MDSelection(caret), undo: .command), dropped)
+  }
+}

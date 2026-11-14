@@ -57,6 +57,7 @@ public final class MarkdownEditorView: NSView {
         core.select(core.selection)
       } else {
         leaveLinkBox(later: false)
+        sizePicker.close()
         // leaving: nothing stays selected, the static picture again
         core.select(MDSelection(core.selection.head))
         core.layout.setHead(nil)
@@ -70,6 +71,7 @@ public final class MarkdownEditorView: NSView {
   let hints = MathHintList()
   let toolbar = SelectionToolbar()
   let linkBox = LinkBox()
+  let sizePicker = TableSizePicker()
   let headingChip = HeadingChip()
   let findBar = FindBar()
   /// pictures sliding to where the caret's moving put them (IMAGE_SLIDE): from, to, since; and where each was
@@ -159,6 +161,24 @@ public final class MarkdownEditorView: NSView {
     }
     band.isHidden = true
     addSubview(band)
+    addSubview(sizePicker)
+    sizePicker.dropsAt = { [weak self] r, c in
+      guard let self else { return 0 }
+      return MarkdownEditing.tableResize(
+        rows: r, cols: c, in: MDEditState(source: self.core.source, selection: self.core.selection),
+        document: self.core.document)?.dropped ?? 0
+    }
+    sizePicker.onPick = { [weak self] r, c in
+      guard let self,
+        let x = MarkdownEditing.tableResize(
+          rows: r, cols: c, in: MDEditState(source: self.core.source, selection: self.core.selection),
+          document: self.core.document)
+      else { return }
+      self.begin()
+      self.core.apply(x.edit)
+      self.note(.key("table size", did: "\(r) × \(c)"))
+      self.changed()
+    }
     registerForDraggedTypes([.fileURL, .png, .tiff])
     band.onPart = { [weak self] id, v, r in self?.bandPart(id, v, r) }
     updateTrackingAreas()
@@ -681,6 +701,12 @@ public final class MarkdownEditorView: NSView {
     case "more":
       moreMenu(from: v, at: r)
       return
+    case "size":
+      guard let t = MarkdownEditing.tablePlace(at: core.selection.head, in: core.document) else { return }
+      sizePicker.open(
+        above: convert(r, from: v), rows: t.table.rows.count, cols: t.table.rows.first?.count ?? 1,
+        theme: core.layout.theme)
+      return
     case "left", "center", "right":
       let al: MDTable.Align = id == "left" ? .left : id == "center" ? .center : .right
       let now = MarkdownEditing.tablePlace(at: core.selection.head, in: core.document).map {
@@ -1070,6 +1096,13 @@ public final class MarkdownEditorView: NSView {
 
   // MARK: the link box
 
+  /// presses a control of the band showing now, by its id ("size", "copy", "wrap", "more", a table action), as a click on it
+  /// does (a host's check)
+  public func pressBandPart(_ id: String) {
+    guard band.shown, let (_, r) = band.partRect(id) else { return }
+    bandPart(id, band, r)
+  }
+
   /// the link box for the link at the caret, as ⌘K opens it (a host's check)
   public func openLinkBoxForCheck() { openLinkBox() }
 
@@ -1233,6 +1266,7 @@ public final class MarkdownEditorView: NSView {
     begin()
     // a press anywhere in the Note leaves the link box: it closes at once, what it holds is written on the release
     leaveLinkBox(later: true)
+    sizePicker.close()
     let p = convert(e.locationInWindow, from: nil)
     let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
     defer {

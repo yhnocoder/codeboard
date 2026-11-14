@@ -239,3 +239,22 @@ import Testing
     #expect(v.cursor(at: CGPoint(x: left + 18, y: cells[1][0].midY)) == .iBeam)
   }
 }
+
+/// The band's size button opens the size grid; a picked size resizes the table in one step
+@MainActor @Suite struct TableSizeGridTests {
+  @Test func theGridResizes() {
+    _ = boardFonts
+    let src = "| a | b |\n|---|---|\n| 1 | 2 |"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 2)
+    v.selection = MDSelection(2)
+    #expect(v.band.shown)
+    v.band.onPart("size", v, CGRect(x: 0, y: 0, width: 60, height: 24))
+    #expect(!v.sizePicker.isHidden && v.sizePicker.picked == (2, 2))
+    v.sizePicker.pick(3, 3)
+    v.sizePicker.onPick(3, 3)
+    #expect(v.core.source == "| a | b |   |\n|---|---|---|\n| 1 | 2 |   |\n|   |   |   |")
+    v.undo(nil)
+    #expect(v.core.source == src)
+  }
+}

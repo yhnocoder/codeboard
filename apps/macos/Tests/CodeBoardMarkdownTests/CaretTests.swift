@@ -119,3 +119,17 @@ import Testing
     #expect(MarkdownEditing.word(at: 5, in: d, head: nil) == 4..<12)
   }
 }
+
+/// The size grid's resize (tableview.ts resizeTable): the header counts as a row, kept cells keep their text
+@Suite struct TableResizeTests {
+  @Test func growsAndShrinks() {
+    let src = "| a | b |\n|---|---|\n| 1 | 2 |"
+    let d = MarkdownDocument(src)
+    let st = MDEditState(source: src, selection: MDSelection(2))
+    let grown = MarkdownEditing.tableResize(rows: 3, cols: 3, in: st, document: d)!
+    #expect(
+      grown.edit.replacement == "| a | b |   |\n|---|---|---|\n| 1 | 2 |   |\n|   |   |   |" && grown.dropped == 0)
+    let shrunk = MarkdownEditing.tableResize(rows: 1, cols: 1, in: st, document: d)!
+    #expect(shrunk.edit.replacement == "| a |\n|---|" && shrunk.dropped == 3)
+  }
+}
