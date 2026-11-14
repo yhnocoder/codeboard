@@ -12,10 +12,14 @@ keys 30
 caret
 move @ntable"每步生成"
 wait 400
-move @ntable"decode"<+-59,0 400
+web: move @ntable"decode"<+-59,0 400
+app: move @ntable"decode"<+-59,0 400
+demo: move @ntable"decode"<+-4,0 400
 wait 300
 shot grip
-drag @ntable"decode"<+-59,0 @ntable"prefill"<+-59,-8 900
+web: drag @ntable"decode"<+-59,0 @ntable"prefill"<+-59,-8 900
+app: drag @ntable"decode"<+-59,0 @ntable"prefill"<+-59,-8 900
+demo: drag @ntable"decode"<+-4,0 @ntable"prefill"<+-4,-8 900
 wait 600
 shot dragged
 stop

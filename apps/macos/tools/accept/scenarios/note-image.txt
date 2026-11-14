@@ -4,13 +4,19 @@ center @nimage
 dbl @nimage"Text after"
 wait 600
 rec image
-click @nimage"A picture"+0,60
+web: click @nimage"A picture"+0,60
+app: click @nimage"A picture"+0,60
+demo: click @nimage"A picture"+60,60
 wait 400
 shot selected
-move @nimage"一张图"+107,-87 400
+web: move @nimage"一张图"+107,-87 400
+app: move @nimage"一张图"+107,-87 400
+demo: move @nimage"一张图"+105,-10 400
 wait 300
 shot grip
-drag @nimage"一张图"+107,-87 @nimage"一张图"+30,-87 800
+web: drag @nimage"一张图"+107,-87 @nimage"一张图"+30,-87 800
+app: drag @nimage"一张图"+107,-87 @nimage"一张图"+30,-87 800
+demo: drag @nimage"一张图"+105,-10 @nimage"一张图"+30,-10 800
 wait 500
 shot narrowed
 wait 400

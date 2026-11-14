@@ -171,6 +171,15 @@ async function run(line: string): Promise<string> {
       }
       break;
     }
+    case "wheel": {
+      // a mouse wheel's clicks: lines of about 10 px (negative scrolls down, as on the Mac side)
+      const clicks = d(2, 10);
+      for (let i = 0; i < clicks; i++) {
+        await page.mouse.wheel(0, (-d(1) / clicks) * 10);
+        await sleep(30);
+      }
+      break;
+    }
     case "pinch": {
       // Chrome turns a trackpad pinch into wheel events with ctrlKey
       const steps = d(2, 12), per = Math.log(1 + d(1)) / steps;

@@ -39,7 +39,10 @@ let package = Package(
     .target(name: "CodeBoardShell", dependencies: ["CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes"]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
     .executableTarget(name: "CanvasBench", dependencies: ["CodeBoardCanvas", "CodeBoardNotes"]),
-    .executableTarget(name: "Accept", dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardModel"]),
+    // the acceptance driver (tools/accept/README.md): AcceptKit drives an app in its own process, Accept runs the app
+    .target(name: "AcceptKit"),
+    .executableTarget(
+      name: "Accept", dependencies: ["AcceptKit", "CodeBoardShell", "CodeBoardCanvas", "CodeBoardModel"]),
     .executableTarget(
       name: "LookCompare",
       dependencies: ["CodeBoardCanvas", "CodeBoardModel", "CodeBoardNotes", "CodeBoardSyntax", "CodeBoardShell"]),
