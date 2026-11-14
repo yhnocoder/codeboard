@@ -208,3 +208,100 @@ extension MarkdownEditing {
     return MDEdit(range: range, replacement: out, selection: MDSelection(caret), undo: .command)
   }
 }
+
+extension MarkdownEditing {
+  /// A body row moved to another place among the body rows (the header stays first), or a column to another place; the
+  /// lines keep their own text, only their order or their cells' order changes. One undo step; the caret moves with its
+  /// cell (editor/tablemove.ts)
+  public static func tableMove(row from: Int, to: Int, in state: MDEditState, document d: MarkdownDocument) -> MDEdit? {
+    guard let (t, lines, range) = tableLines(state, d), from >= 1, to >= 1, from < t.rows.count, to < t.rows.count,
+      from != to
+    else { return nil }
+    // lines[0] header, lines[1] separator, lines[1 + r] row r
+    var rows = Array(lines[2...])
+    let moved = rows.remove(at: from - 1)
+    rows.insert(moved, at: to - 1)
+    let out = ([lines[0], lines[1]] + rows).joined(separator: "\n")
+    return MDEdit(
+      range: range, replacement: out, selection: movedCaret(state, d, out, range, row: (from, to)), undo: .command)
+  }
+
+  public static func tableMove(column from: Int, to: Int, in state: MDEditState, document d: MarkdownDocument)
+    -> MDEdit?
+  {
+    guard let (t, lines, range) = tableLines(state, d), from >= 0, to >= 0, from != to else { return nil }
+    let cols = t.rows.map(\.count).max() ?? 0
+    guard from < cols, to < cols else { return nil }
+    let out = lines.map { line -> String in
+      let (pre, cells, post) = splitCells(line)
+      guard from < cells.count, to < cells.count else { return line }
+      var c = cells
+      let m = c.remove(at: from)
+      c.insert(m, at: to)
+      return pre + c.joined(separator: "|") + post
+    }.joined(separator: "\n")
+    return MDEdit(range: range, replacement: out, selection: MDSelection(range.lowerBound), undo: .command)
+  }
+
+  /// the caret's table's lines (header, separator, rows) and their source range
+  static func tableLines(_ state: MDEditState, _ d: MarkdownDocument) -> (MDTable, [String], Range<Int>)? {
+    guard let p = tablePlace(at: state.selection.head, in: d) else { return nil }
+    let ns = state.source as NSString
+    let t = p.table
+    let header = rowLine(t, 0, ns)
+    let sep = ns.lineRange(for: NSRange(location: NSMaxRange(header), length: 0))
+    var ranges = [header, sep]
+    for r in 1..<t.rows.count { ranges.append(rowLine(t, r, ns)) }
+    let last = ranges.last!
+    var end = NSMaxRange(last)
+    if end > last.location, ns.character(at: end - 1) == 0x0A { end -= 1 }
+    let lines = ranges.map { r -> String in
+      var s = ns.substring(with: r)
+      if s.hasSuffix("\n") { s.removeLast() }
+      return s
+    }
+    return (t, lines, header.location..<end)
+  }
+
+  /// a table line cut at its pipes (escaped ones and those in code kept): what is before the first cell, the cells,
+  /// what is after the last
+  static func splitCells(_ line: String) -> (String, [String], String) {
+    let u = Array(line.utf16)
+    var pipes: [Int] = []
+    var tick = false
+    for (i, ch) in u.enumerated() {
+      if ch == 0x60 { tick.toggle() }
+      if ch == 0x7C, !tick, i == 0 || u[i - 1] != 0x5C { pipes.append(i) }
+    }
+    let ns = line as NSString
+    guard pipes.count >= 2 else { return ("", [line], "") }
+    var cells: [String] = []
+    for k in 0..<(pipes.count - 1) {
+      cells.append(ns.substring(with: NSRange(location: pipes[k] + 1, length: pipes[k + 1] - pipes[k] - 1)))
+    }
+    return (ns.substring(to: pipes[0] + 1), cells, ns.substring(from: pipes.last!))
+  }
+
+  /// the caret after a row move: in the same cell of the row that moved, or of the row now at its place
+  private static func movedCaret(
+    _ state: MDEditState, _ d: MarkdownDocument, _ out: String, _ range: Range<Int>, row: (Int, Int)
+  ) -> MDSelection {
+    guard let p = tablePlace(at: state.selection.head, in: d) else { return state.selection }
+    let old = p.row
+    var now = old
+    if old == row.0 {
+      now = row.1
+    } else if row.0 < old, old <= row.1 {
+      now = old - 1
+    } else if row.1 <= old, old < row.0 {
+      now = old + 1
+    }
+    // the same column offset into the line now at that row
+    let lines = out.components(separatedBy: "\n")
+    var at = range.lowerBound
+    for k in 0..<(now + 1) { at += (lines[k] as NSString).length + 1 }
+    let ns = state.source as NSString
+    let oldLine = ns.lineRange(for: NSRange(location: state.selection.head, length: 0)).location
+    return MDSelection(at + (state.selection.head - oldLine))
+  }
+}

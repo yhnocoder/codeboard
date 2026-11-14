@@ -114,3 +114,30 @@ import Testing
     #expect(v.band.frame.maxY <= header.minY)
   }
 }
+
+@Suite struct TableMoveTests {
+  func core(_ src: String, _ caret: Int) -> EditorCore {
+    _ = boardFonts
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let e = EditorCore(layout: l)
+    e.select(MDSelection(caret))
+    return e
+  }
+
+  @Test func rowsAndColumnsMove() {
+    let src = "| a | b |\n|:--|---|\n| 1 | 2 |\n| 3 | 4 |\n| 5 | 6 |"
+    let e = core(src, 22)
+    let s = MDEditState(source: e.source, selection: e.selection)
+    let r = MarkdownEditing.tableMove(row: 1, to: 3, in: s, document: e.document)!
+    e.apply(r)
+    #expect(e.source == "| a | b |\n|:--|---|\n| 3 | 4 |\n| 5 | 6 |\n| 1 | 2 |")
+    // the caret went with its cell
+    #expect((e.source as NSString).substring(with: NSRange(location: e.selection.head, length: 1)) == "1")
+    e.undo()
+    #expect(e.source == src)
+    let c = MarkdownEditing.tableMove(
+      column: 0, to: 1, in: MDEditState(source: e.source, selection: e.selection), document: e.document)!
+    e.apply(c)
+    #expect(e.source == "| b | a |\n|---|:--|\n| 2 | 1 |\n| 4 | 3 |\n| 6 | 5 |")
+  }
+}
