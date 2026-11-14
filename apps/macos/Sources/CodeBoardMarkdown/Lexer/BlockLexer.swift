@@ -269,7 +269,7 @@ struct BlockLexer {
       let g2 = cap.groups[2]!
       let cap2 = input[itemStart + g2.location..<itemStart + g2.upperBound]
       var line = (cap2.lines().first ?? cap2).expandingTabs(from: cap1)
-      var nextLine = src.lines().first ?? src
+      var nextLine = src.firstLine()
       var blankLine = line.trimmed().isEmpty
       var indent = 0
       var contents: Mapped
@@ -297,7 +297,7 @@ struct BlockLexer {
         let htmlBegin = Other.htmlBegin(indent)
         let quoteBegin = Other.blockquoteBegin(indent)
         while !src.isEmpty {
-          let rawLine = src.lines().first ?? src
+          let rawLine = src.firstLine()
           nextLine = rawLine
           let noTabs = nextLine.replacing(Other.tabCharGlobal, template: "    ")
           let nl = nextLine.ns
@@ -505,12 +505,16 @@ struct BlockLexer {
   static func extensionStart(_ src: Mapped) -> Int? {
     var best: Int?
     let s = src.ns
+    // a paragraph never runs past a blank line, so a start after the first one cannot cut it: only the text up to there
+    // is searched (marked searches the whole rest, which makes a long document quadratic). The paragraph after such a
+    // cut would have been a paragraph of its own anyway, as a blank line stands between them
+    let blank = Ext.blankLineAhead.exec(s).map { $0.range.location + 1 } ?? s.length
     // taskList: a line that starts a task item
-    if let m = Ext.taskStart.exec(s) { best = m.range.location }
+    if let m = Ext.taskStart.exec(s, from: 0, to: blank) { best = m.range.location }
     // blockMath: a $$ line after a line break
-    if let m = Ext.blockMathStart.exec(s) { best = min(best ?? .max, m.range.location + 1) }
+    if let m = Ext.blockMathStart.exec(s, from: 0, to: blank) { best = min(best ?? .max, m.range.location + 1) }
     // TipTap's table: the first line holds a | and the second is a delimiter row
-    let lines = src.lines()
+    let lines = src.lines(limit: 2)
     if lines.count >= 2, Ext.tableSeparator.test(lines[1].ns), lines[1].firstIndex(of: "|") != nil,
       lines[0].firstIndex(of: "|") != nil
     {
@@ -545,7 +549,7 @@ struct BlockLexer {
     inner.links = links
     guard let t = inner.blockTokens(pre, []).first, t.type == "table", !t.raw.isEmpty else { return nil }
     let lineCount = t.raw.lines().count
-    t.raw = Mapped.join(Array(src.lines().prefix(lineCount)))
+    t.raw = Mapped.join(src.lines(limit: lineCount))
     return t
   }
 
@@ -611,14 +615,13 @@ struct BlockLexer {
 
   /// phantom: how much longer TipTap's raw is than the source it took (the \n it adds after a last line that has none)
   private mutating func taskBlocks(_ src: Mapped) -> (raw: Mapped, items: [Token], phantom: Int)? {
-    let lines = src.lines()
+    let lines = Mapped.LineReader(src)
     var items: [Token] = []
     var rawLen = 0
     var i = 0
     // TipTap adds a \n after every line it takes, also after the last one when the source has none
-    func takeLine(_ k: Int) { rawLen += lines[k].count + 1 }
-    while i < lines.count {
-      let line = lines[i]
+    func takeLine(_ k: Int) { rawLen += lines.line(k)!.count + 1 }
+    while let line = lines.line(i) {
       guard let m = Ext.taskItem.exec(line.ns) else {
         if !items.isEmpty { break }
         if line.trimmed().isEmpty {
@@ -633,11 +636,12 @@ struct BlockLexer {
       takeLine(i)
       var nested: [Mapped] = []
       i += 1
-      while i < lines.count {
-        let next = lines[i]
+      while let next = lines.line(i) {
         if next.trimmed().isEmpty {
-          guard let k = lines[(i + 1)...].firstIndex(where: { !$0.trimmed().isEmpty }) else { break }
-          if Self.leadingSpace(lines[k]) > indentLevel {
+          var k = i + 1
+          while let l = lines.line(k), l.trimmed().isEmpty { k += 1 }
+          guard let after = lines.line(k) else { break }
+          if Self.leadingSpace(after) > indentLevel {
             nested.append(next)
             takeLine(i)
             i += 1

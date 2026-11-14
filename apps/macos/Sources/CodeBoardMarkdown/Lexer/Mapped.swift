@@ -4,43 +4,94 @@ import Foundation
 /// descends (a quote's `> ` is cut off, a list item is dedented, tabs become spaces, a cell's `\|` becomes `|`); the
 /// tokens it makes from the rewritten text still have to point into the source, so every rewrite goes through here.
 struct Mapped: Equatable {
-  private(set) var units: [UInt16]
-  /// source offset of each unit, plus one more: where the text ends in the source
-  private(set) var map: [Int]
+  /// The units and their source offsets, shared by every window cut from them: cutting (`dropFirst`, `prefix`, a range)
+  /// is O(1), so the block lexer stepping through a long document token by token does not copy the rest of it each time
+  private final class Store {
+    let buffer: UnsafeMutableBufferPointer<UInt16>
+    /// source offset of each unit, plus one more: where the text ends in the source
+    let map: [Int]
+    init<U: Collection<UInt16>>(units: U, map: [Int]) {
+      buffer = .allocate(capacity: max(1, units.count))
+      _ = buffer.initialize(from: units)
+      self.map = map
+    }
+    deinit { buffer.deallocate() }
+  }
 
-  /// the text as an NSString, made once: every tokenizer tried at a position matches on it
+  /// The units of a window, indexed from 0
+  struct Units: RandomAccessCollection, Equatable {
+    fileprivate let base: UnsafePointer<UInt16>
+    let count: Int
+    var startIndex: Int { 0 }
+    var endIndex: Int { count }
+    subscript(i: Int) -> UInt16 { base[i] }
+    static func == (a: Units, b: Units) -> Bool { a.elementsEqual(b) }
+  }
+  /// The source offsets of a window's units, indexed from 0, with one more at `count`
+  struct Offsets: RandomAccessCollection, Equatable {
+    fileprivate let all: [Int]
+    fileprivate let lo: Int
+    let count: Int
+    var startIndex: Int { 0 }
+    var endIndex: Int { count }
+    subscript(i: Int) -> Int { all[lo + i] }
+    static func == (a: Offsets, b: Offsets) -> Bool { a.elementsEqual(b) }
+  }
+
+  private let store: Store
+  private let lo: Int
+  let count: Int
+  /// the text as an NSString over the shared units (no copy), made once: every tokenizer tried at a position matches on
+  /// it. It keeps the store alive itself, so it may outlive this value
   let ns: NSString
 
   init(_ s: String, at base: Int = 0) {
-    units = Array(s.utf16)
-    map = Array(base...(base + units.count))
-    ns = s as NSString
+    let units = Array(s.utf16)
+    self.init(store: Store(units: units, map: Array(base...(base + units.count))), lo: 0, count: units.count)
   }
   private init(units: [UInt16], map: [Int]) {
-    self.units = units
-    self.map = map
-    ns = String(decoding: units, as: UTF16.self) as NSString
+    self.init(store: Store(units: units, map: map), lo: 0, count: units.count)
+  }
+  private init(store: Store, lo: Int, count: Int) {
+    self.store = store
+    self.lo = lo
+    self.count = count
+    ns = Self.string(store, lo, count)
+  }
+
+  // only its address is used, as the association's key
+  nonisolated(unsafe) private static var keepKey: UInt8 = 0
+  private static func string(_ store: Store, _ lo: Int, _ count: Int) -> NSString {
+    guard count > 0 else { return "" }
+    let cf = CFStringCreateWithCharactersNoCopy(nil, store.buffer.baseAddress! + lo, count, kCFAllocatorNull)!
+    let ns = cf as NSString
+    // the string points into the store's buffer: it holds the store for as long as it lives
+    objc_setAssociatedObject(ns, &keepKey, store, .OBJC_ASSOCIATION_RETAIN)
+    return ns
   }
 
   static func == (a: Mapped, b: Mapped) -> Bool { a.units == b.units && a.map == b.map }
 
-  var count: Int { units.count }
-  var isEmpty: Bool { units.isEmpty }
+  var units: Units { Units(base: UnsafePointer(store.buffer.baseAddress! + lo), count: count) }
+  /// source offset of each unit, plus one more: where the text ends in the source
+  var map: Offsets { Offsets(all: store.map, lo: lo, count: count + 1) }
+  var isEmpty: Bool { count == 0 }
   var string: String { ns as String }
   /// the source range this text spans
-  var source: Range<Int> { map[0]..<map[units.count] }
+  var source: Range<Int> { map[0]..<map[count] }
   func sourceOffset(_ i: Int) -> Int { map[i] }
 
   subscript(r: Range<Int>) -> Mapped {
-    Mapped(units: Array(units[r]), map: Array(map[r.lowerBound...r.upperBound]))
+    precondition(r.lowerBound >= 0 && r.upperBound <= count)
+    return Mapped(store: store, lo: lo + r.lowerBound, count: r.count)
   }
   func prefix(_ n: Int) -> Mapped { self[0..<min(n, count)] }
   func dropFirst(_ n: Int) -> Mapped { self[min(n, count)..<count] }
 
   static func + (a: Mapped, b: Mapped) -> Mapped {
     if a.isEmpty { return b }
-    if b.isEmpty { return Mapped(units: a.units, map: Array(a.map.dropLast()) + [b.map[0]]) }
-    return Mapped(units: a.units + b.units, map: Array(a.map.dropLast()) + b.map)
+    if b.isEmpty { return Mapped(units: Array(a.units), map: Array(a.map.dropLast()) + [b.map[0]]) }
+    return Mapped(units: Array(a.units) + Array(b.units), map: Array(a.map.dropLast()) + Array(b.map))
   }
   /// text that is not in the source (a `\n` marked puts between lines it joined, a space it adds), placed at offset
   static func synthetic(_ s: String, at offset: Int) -> Mapped {
@@ -59,6 +110,51 @@ struct Mapped: Equatable {
     out.append(self[start..<count])
     return out
   }
+  /// `split("\n")[0]`: the text up to its first line break (all of it without one)
+  func firstLine() -> Mapped {
+    let r = ns.range(of: "\n")
+    return r.location == NSNotFound ? self : self[0..<r.location]
+  }
+  /// `split("\n").slice(0, limit)`, without splitting the rest
+  func lines(limit: Int) -> [Mapped] {
+    var out: [Mapped] = []
+    var start = 0
+    while out.count < limit {
+      let r = ns.range(of: "\n", options: .literal, range: NSRange(location: start, length: count - start))
+      if r.location == NSNotFound {
+        out.append(self[start..<count])
+        break
+      }
+      out.append(self[start..<r.location])
+      start = r.location + 1
+    }
+    return out
+  }
+
+  /// `split("\n")` read a line at a time, as far as asked: a tokenizer that looks at the lines from here on reads only
+  /// those it needs, not every line to the end of the document
+  final class LineReader {
+    private let text: Mapped
+    private var read: [Mapped] = []
+    private var next = 0
+    private var done = false
+    init(_ text: Mapped) { self.text = text }
+    /// line i, nil past the last
+    func line(_ i: Int) -> Mapped? {
+      while read.count <= i && !done {
+        let r = text.ns.range(of: "\n", options: .literal, range: NSRange(location: next, length: text.count - next))
+        if r.location == NSNotFound {
+          read.append(text[next..<text.count])
+          done = true
+        } else {
+          read.append(text[next..<r.location])
+          next = r.location + 1
+        }
+      }
+      return i < read.count ? read[i] : nil
+    }
+  }
+
   /// `arr.join("\n")`: the newline between two lines keeps its place in the source when the lines were neighbours
   static func join(_ parts: [Mapped], separator: String = "\n") -> Mapped {
     guard var out = parts.first else { return Mapped("") }

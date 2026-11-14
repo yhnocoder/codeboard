@@ -64,6 +64,8 @@ enum Other {
 enum Ext {
   static let blockMath = JSRegex(#"^ {0,3}\$\$([^$]+?)\$\$[ \t]*(?:\n|$)"#, flags: "")
   static let blockMathStart = JSRegex(#"\n {0,3}\$\$"#, flags: "")
+  /// the line break that a blank (or whitespace-only) line follows
+  static let blankLineAhead = JSRegex(#"\n[ \t]*(?:\n|$)"#, flags: "")
   static let taskStart = JSRegex(#"^\s*[-+*]\s+\[[ xX]\](?:[ \t]|$)"#, flags: "m")
   static let taskItem = JSRegex(#"^(\s*)([-+*])\s+\[([ xX])\](?:[ \t]+(.*))?$"#, flags: "")
   static let tableSeparator = JSRegex(#"^[ \t|:]*-[ \t|:-]*$"#, flags: "")
