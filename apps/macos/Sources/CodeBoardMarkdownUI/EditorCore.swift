@@ -519,6 +519,10 @@ public final class EditorCore {
     let old = ns.substring(with: NSRange(location: r.lowerBound, length: r.count))
     // paired closers move with the edit; one it touches is no longer the editor's
     let delta = (text as NSString).length - r.count
+    if let c = confine {
+      // the range it keeps the caret in grows or shrinks with what is typed in it
+      confine = c.lowerBound..<(c.upperBound + (text as NSString).length - r.count)
+    }
     autoClosers = Set(
       autoClosers.compactMap { c in c >= r.upperBound ? c + delta : c < r.lowerBound ? c : nil
       })
@@ -886,7 +890,17 @@ public final class EditorCore {
   // MARK: placing
 
   /// a new selection from a key: a caret shows its markers at once, a selection holds the layout still
+  /// Keeps the caret and selection inside a range of the source (the Note's Markdown in source mode, not its fence)
+  public var confine: Range<Int>?
+
+  private func clamp(_ s: MDSelection) -> MDSelection {
+    guard let c = confine else { return s }
+    let f = { (q: Int) in min(max(q, c.lowerBound), c.upperBound) }
+    return MDSelection(anchor: f(s.anchor), head: f(s.head))
+  }
+
   private func place(_ s: MDSelection, upstream up: Bool = false) {
+    let s = clamp(s)
     joinable = false
     autoClosers = []
     revealPending = false

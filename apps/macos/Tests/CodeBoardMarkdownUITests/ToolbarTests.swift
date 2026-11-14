@@ -79,3 +79,25 @@ import Testing
     #expect(v.core.source == src)
   }
 }
+
+@MainActor @Suite struct SourceModeTests {
+  @Test func theWholeNoteAsItsSourceOneUndoStep() {
+    _ = boardFonts
+    let src = "# Title\n\nSome **bold** and `code`."
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 12)
+    v.selection = MDSelection(12)
+    v.toggleSourceMode()
+    #expect(v.isSourceMode)
+    // the caret where it was in the Markdown, every character a place (the #, the ** too)
+    v.core.move(.document, forward: false, extend: false)
+    v.core.insert("x")
+    v.core.move(.character, forward: true, extend: false)
+    v.core.insert("y")
+    v.toggleSourceMode()
+    #expect(!v.isSourceMode)
+    #expect(v.core.source == "x#y Title\n\nSome **bold** and `code`.")
+    v.core.undo()
+    #expect(v.core.source == src)
+  }
+}

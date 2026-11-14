@@ -32,7 +32,7 @@ extension MarkdownEditorDelegate {
 /// zoom only scales the drawing, the layout stays at 100 %.
 @MainActor
 public final class MarkdownEditorView: NSView {
-  public let core: EditorCore
+  public private(set) var core: EditorCore
   public weak var delegate: MarkdownEditorDelegate?
   /// device-independent scale of the drawing (the canvas's zoom)
   public var zoom: CGFloat = 1 {
@@ -159,15 +159,69 @@ public final class MarkdownEditorView: NSView {
     registerForDraggedTypes([.fileURL, .png, .tiff])
     band.onPart = { [weak self] id, v, r in self?.bandPart(id, v, r) }
     updateTrackingAreas()
-    core.onLayout = { [weak self] in
+    wire(core)
+  }
+
+  private func wire(_ c: EditorCore) {
+    c.onLayout = { [weak self] in
       MainActor.assumeIsolated { self?.changed() }
     }
-    core.onChange = { [weak self] source in
+    c.onChange = { [weak self] source in
       MainActor.assumeIsolated {
-        guard let self else { return }
+        guard let self, self.sourceMode == nil else { return }
         self.delegate?.editor(self, didChange: source)
       }
     }
+  }
+
+  // MARK: source mode
+
+  /// ⌘/ (editor/srcmode.ts): the whole Note as its Markdown in the code font, edited as code, the caret kept both ways;
+  /// leaving writes what changed back as one undo step. While it is on, `core` edits the source shown as a fenced block
+  /// (the Note's own core kept here), its offsets the Note's shifted by the fence's line
+  private(set) var sourceMode: (note: EditorCore, fence: Int)?
+
+  public var isSourceMode: Bool { sourceMode != nil }
+
+  public func toggleSourceMode() {
+    if let (note, fence) = sourceMode {
+      let ns = core.source as NSString
+      let body =
+        MarkdownEditing.run(at: fence, in: core.document).map {
+          ns.substring(with: NSRange(location: $0.first, length: $0.last - $0.first))
+        } ?? note.source
+      let head = max(0, core.selection.head - fence)
+      sourceMode = nil
+      core = note
+      if body != note.source, let e = EditorCore.diff(note.source, body) {
+        note.apply(
+          MDEdit(
+            range: e.range, replacement: e.replacement, selection: MDSelection(min(head, (body as NSString).length)),
+            undo: .command))
+        delegate?.editor(self, didChange: note.source)
+      } else {
+        note.select(MDSelection(head))
+      }
+      changed()
+      return
+    }
+    let src = core.source
+    // a fence longer than any run of backticks in the Note
+    var ticks = 3
+    while src.contains(String(repeating: "`", count: ticks)) { ticks += 1 }
+    let open = String(repeating: "`", count: ticks) + "\n"
+    let text = open + src + "\n" + String(repeating: "`", count: ticks)
+    let l = core.layout
+    let layout = BlockLayout(
+      MarkdownDocument(text), width: l.width, theme: l.theme, layout: nil, resources: l.resources)
+    let fence = (open as NSString).length
+    let shown = EditorCore(layout: layout, caret: core.selection.head + fence)
+    shown.confine = fence..<(fence + (src as NSString).length)
+    shown.select(MDSelection(core.selection.head + fence))
+    wire(shown)
+    sourceMode = (core, fence)
+    core = shown
+    changed()
   }
 
   @available(*, unavailable)
@@ -1247,6 +1301,10 @@ public final class MarkdownEditorView: NSView {
     if !flags.contains(.shift), key == "]" || key == "[" {
       begin()
       if core.command(key == "]" ? .indent : .outdent) { changed() }
+      return true
+    }
+    if key == "/", !flags.contains(.shift), core.codeBlock(at: core.selection.head) == nil || sourceMode != nil {
+      toggleSourceMode()
       return true
     }
     if key == "f", !flags.contains(.shift) {
