@@ -138,11 +138,11 @@ extension BlockLayout {
 
   /// Where the caret is drawn
   public func caretRect(_ c: MDCaret) -> CGRect? {
-    // a gap's caret: a line across the block's width, just outside its edge (editor/gap.ts)
+    // a gap's caret: a short line at the block's left, just outside its edge (editor/gap.ts, .ProseMirror-gapcursor)
     if let g = MarkdownEditing.gap(at: c.offset, in: document), g.block < pieces.count {
       let top = tops[g.block]
       let y = g.before ? top - 3 : top + pieces[g.block].height + 3
-      return CGRect(x: 0, y: y, width: width, height: 0)
+      return CGRect(x: 0, y: y, width: min(20, width), height: 0)
     }
     guard let s = spot(c.offset) else { return nil }
     let j = s.text.displayIndex(c.offset - s.shift)

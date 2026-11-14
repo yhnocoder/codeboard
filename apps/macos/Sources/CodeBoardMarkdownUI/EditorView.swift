@@ -471,9 +471,9 @@ public final class MarkdownEditorView: NSView {
       let c = core.caretRect.map(slid).map(offImage),
       tableDrag == nil
     {
-      // two device pixels wide whatever the zoom, on the caret's line; a gap's caret lies across the block
+      // two device pixels wide whatever the zoom, on the caret's line; a gap's caret is a short line in ink, as on main
       let w = 2 / scale
-      ctx.setFillColor(caretColor.cgColor)
+      ctx.setFillColor(c.height == 0 ? core.layout.theme.colors.ink.cg : caretColor.cgColor)
       if c.height == 0 {
         ctx.fill(CGRect(x: c.minX, y: c.minY - w / 2, width: c.width, height: w))
       } else {

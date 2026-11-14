@@ -346,6 +346,46 @@ enum Check {
         e.undo(nil)
         e.undo(nil)
       }
+      // the rest of the editing chrome, each once: the heading chip, the / menu, a formula's preview, the gap caret
+      let now = e.source as NSString
+      let heading = now.range(of: #"(?m)^#{1,6} \S"#, options: .regularExpression)
+      if heading.location != NSNotFound {
+        e.selection = MDSelection(NSMaxRange(heading) + 1)
+        clip.scroll(to: CGPoint(x: 0, y: max(0, e.frame.minY + (e.core.caretRect?.minY ?? 0) * demo.zoom - 200)))
+        demo.scroll.reflectScrolledClipView(clip)
+        for _ in 0..<3 { frame() }
+        autoreleasepool { render(content, to: out.appending(path: "chrome-heading.png")) }
+      }
+      let last = ns.range(of: "Last line.")
+      if last.location != NSNotFound {
+        e.selection = MDSelection(NSMaxRange(last))
+        e.insertText(" /", replacementRange: NSRange(location: NSNotFound, length: 0))
+        clip.scroll(to: CGPoint(x: 0, y: max(0, e.frame.minY + (e.core.caretRect?.minY ?? 0) * demo.zoom - 200)))
+        demo.scroll.reflectScrolledClipView(clip)
+        for _ in 0..<3 { frame() }
+        autoreleasepool { render(content, to: out.appending(path: "chrome-slash.png")) }
+        e.undo(nil)
+      }
+      let qk2 = ns.range(of: "QK")
+      if qk2.location != NSNotFound {
+        e.selection = MDSelection(qk2.location + 1)
+        clip.scroll(to: CGPoint(x: 0, y: max(0, e.frame.minY + (e.core.caretRect?.minY ?? 0) * demo.zoom - 200)))
+        demo.scroll.reflectScrolledClipView(clip)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.4))
+        for _ in 0..<3 { frame() }
+        autoreleasepool { render(content, to: out.appending(path: "chrome-mathpreview.png")) }
+      }
+      // the first place only a gap caret can stand (beside a picture or a formula block)
+      let doc = e.core.document
+      if let gap = doc.blocks.flatMap({ [$0.range.lowerBound, $0.range.upperBound] })
+        .first(where: { MarkdownEditing.gap(at: $0, in: doc) != nil })
+      {
+        e.selection = MDSelection(gap)
+        clip.scroll(to: CGPoint(x: 0, y: max(0, e.frame.minY + (e.core.caretRect?.minY ?? 0) * demo.zoom - 200)))
+        demo.scroll.reflectScrolledClipView(clip)
+        for _ in 0..<3 { frame() }
+        autoreleasepool { render(content, to: out.appending(path: "chrome-gap.png")) }
+      }
       if link.location != NSNotFound {
         e.selection = MDSelection(link.location + 2)
         e.openLinkBoxForCheck()

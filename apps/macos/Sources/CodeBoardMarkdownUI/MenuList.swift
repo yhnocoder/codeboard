@@ -77,7 +77,11 @@ final class MenuList: NSView {
     self.theme = theme
     chosen = min(chosen, max(0, items.count - 1))
     if !items.isEmpty, !items[chosen].takes { chosen = items.firstIndex(where: \.takes) ?? 0 }
-    frame = CGRect(x: caret.minX, y: caret.maxY + 4, width: 260, height: CGFloat(items.count) * rowHeight + 8)
+    // at most 300 points high (the [[ menu 340 and 372 wide), the rows scrolling inside (markdown.css .md-menu, .md-refs)
+    let refs = token.kind == .ref
+    let h = min(CGFloat(items.count) * rowHeight + 8, refs ? 340 : 300)
+    frame = CGRect(x: caret.minX, y: caret.maxY + 4, width: refs ? 372 : 260, height: h)
+    keepChosenInView()
     isHidden = items.isEmpty
     needsDisplay = true
   }
@@ -88,12 +92,30 @@ final class MenuList: NSView {
     isHidden = true
   }
 
+  /// how far the rows are scrolled
+  private var scrolled: CGFloat = 0
+  private var listHeight: CGFloat { CGFloat(items.count) * rowHeight + 8 }
+
+  /// the chosen row in view, with a row and a half to spare above and below where the list allows (menu.tsx keepInView)
+  private func keepChosenInView() {
+    let top = 4 + CGFloat(chosen) * rowHeight
+    let margin = rowHeight * 1.5
+    if top - margin < scrolled { scrolled = top - margin }
+    if top + rowHeight + margin > scrolled + bounds.height { scrolled = top + rowHeight + margin - bounds.height }
+    scrolled = max(0, min(scrolled, listHeight - bounds.height))
+  }
+
+  override func scrollWheel(with e: NSEvent) {
+    scrolled = max(0, min(scrolled - e.scrollingDeltaY, listHeight - bounds.height))
+    needsDisplay = true
+  }
+
   /// a row clicked (a group's name is not taken)
   var onTake: (MDMenuItem) -> Void = { _ in }
 
   override func mouseDown(with e: NSEvent) {
     let p = convert(e.locationInWindow, from: nil)
-    let i = Int((p.y - 4) / rowHeight)
+    let i = Int((p.y + scrolled - 4) / rowHeight)
     guard i >= 0, i < items.count, items[i].takes else { return }
     chosen = i
     needsDisplay = true
@@ -103,6 +125,7 @@ final class MenuList: NSView {
   func step(_ d: Int) {
     guard items.contains(where: \.takes) else { return }
     repeat { chosen = (chosen + d + items.count) % items.count } while !items[chosen].takes
+    keepChosenInView()
     needsDisplay = true
   }
 
@@ -124,7 +147,8 @@ final class MenuList: NSView {
     let font = NSFont.systemFont(ofSize: 12.5)
     let small = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
     for (i, it) in items.enumerated() {
-      let row = CGRect(x: 4, y: 4 + CGFloat(i) * rowHeight, width: bounds.width - 8, height: rowHeight)
+      let row = CGRect(x: 4, y: 4 + CGFloat(i) * rowHeight - scrolled, width: bounds.width - 8, height: rowHeight)
+      guard row.maxY > 0, row.minY < bounds.height else { continue }
       if it.style == .head {
         (it.title as NSString).draw(
           at: CGPoint(x: row.minX + 8, y: row.midY - 6),
@@ -132,11 +156,16 @@ final class MenuList: NSView {
         continue
       }
       if i == chosen {
-        ctx.setFillColor(theme.colors.accent.alpha(0.14).cg)
+        // the chosen row: the accent, its text in the accent's ink (.md-menu button.sel)
+        ctx.setFillColor(theme.colors.accent.cg)
         ctx.addPath(CGPath(roundedRect: row, cornerWidth: 5, cornerHeight: 5, transform: nil))
         ctx.fillPath()
       }
       let indent: CGFloat = it.style == .child || it.style == .more ? 22 : 8
+      let on = i == chosen
+      let accentInk = NSColor(cgColor: theme.colors.accentInk.cg) ?? .white
+      let ink = on ? accentInk : ink
+      let faint = on ? accentInk.withAlphaComponent(0.75) : faint
       (it.title as NSString).draw(
         in: CGRect(x: row.minX + indent, y: row.midY - 8, width: row.width - 90 - indent + 8, height: 18),
         withAttributes: [

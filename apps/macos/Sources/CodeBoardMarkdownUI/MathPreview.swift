@@ -85,7 +85,9 @@ final class MathPreview: NSView {
   }
 
   private var size: CGFloat { CGFloat(theme?.metrics.bodySize ?? 13.5) * 1.08 }
+  /// .md-mathtip: 8 × 12 padding, at least 120 wide
   private let pad: CGFloat = 8
+  private let padX: CGFloat = 12
 
   private static let fixKey = NSAttributedString.Key("MDMathFix")
 
@@ -132,7 +134,7 @@ final class MathPreview: NSView {
       w = max(w, ceil(b.width))
       h += ceil(b.height) + (picture == nil || errorOnly ? 0 : 4)
     }
-    frame = CGRect(x: anchor.minX - pad, y: anchor.maxY + 6, width: w + 2 * pad, height: h + 2 * pad)
+    frame = CGRect(x: anchor.minX - padX, y: anchor.maxY + 6, width: max(120, w + 2 * padX), height: h + 2 * pad)
     isHidden = false
     needsDisplay = true
   }
@@ -141,9 +143,13 @@ final class MathPreview: NSView {
     guard let theme, let ctx = NSGraphicsContext.current?.cgContext else { return }
     let box = bounds.insetBy(dx: 0.5, dy: 0.5)
     let path = CGPath(roundedRect: box, cornerWidth: 8, cornerHeight: 8, transform: nil)
+    // the bar's soft shadow, as the toolbar and the menus have
+    ctx.saveGState()
+    ctx.setShadow(offset: CGSize(width: 0, height: 3), blur: 12, color: CGColor(gray: 0, alpha: 0.16))
     ctx.addPath(path)
     ctx.setFillColor(theme.colors.surface.cg)
     ctx.fillPath()
+    ctx.restoreGState()
     ctx.addPath(path)
     ctx.setStrokeColor(theme.colors.hair.cg)
     ctx.setLineWidth(1)
@@ -153,12 +159,13 @@ final class MathPreview: NSView {
       ctx.saveGState()
       // the last good picture, faded while the TeX does not typeset
       if error != nil { ctx.setAlpha(0.4) }
-      ctx.translateBy(x: pad, y: y)
+      // centred in the tip (.md-mathpv text-align: center)
+      ctx.translateBy(x: (bounds.width - CGFloat(p.width) * size) / 2, y: y)
       SVGShapes.draw(p.paths, p.texts, ctx, scale: size, ink: theme.colors.ink, theme: theme, textFont: textFont)
       ctx.restoreGState()
       y += CGFloat(p.height) * size + 4
     }
-    errorText?.draw(with: CGRect(x: pad, y: y, width: 320, height: 200), options: [.usesLineFragmentOrigin])
+    errorText?.draw(with: CGRect(x: padX, y: y, width: 320, height: 200), options: [.usesLineFragmentOrigin])
     errorTop = y
   }
 
@@ -175,7 +182,7 @@ final class MathPreview: NSView {
     lm.addTextContainer(tc)
     storage.addLayoutManager(lm)
     let i = lm.characterIndex(
-      for: CGPoint(x: p.x - pad, y: p.y - errorTop), in: tc, fractionOfDistanceBetweenInsertionPoints: nil)
+      for: CGPoint(x: p.x - padX, y: p.y - errorTop), in: tc, fractionOfDistanceBetweenInsertionPoints: nil)
     guard i < storage.length, let k = storage.attribute(Self.fixKey, at: i, effectiveRange: nil) as? Int,
       case .fix(_, let range, let t) = problem.parts[k]
     else { return }

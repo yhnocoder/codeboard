@@ -143,9 +143,9 @@ import Testing
     let e = EditorCore(layout: l, caret: 4)
     e.move(.character, forward: false, extend: false)
     #expect(e.selection == MDSelection(0))
-    // drawn across the block, above it
+    // a short line at the block's left, above it (main's gap cursor is 20px)
     let c = e.caretRect!
-    #expect(c.height == 0 && c.width == 300 && c.minY < l.blockFrames[0].minY)
+    #expect(c.height == 0 && c.minX == 0 && c.width == 20 && c.minY < l.blockFrames[0].minY)
     e.insert("a")
     #expect(e.source == "a\n\n```\nx\n```")
     e.undo()
