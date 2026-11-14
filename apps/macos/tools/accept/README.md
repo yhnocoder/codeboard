@@ -22,6 +22,8 @@ node apps/macos/tools/accept/run.mjs <场景>… --storage <folder>   # 换一�
 
 坐标可以写窗口里的点 `x y`（左上角为原点，单位 pt），通常写目标：`@<卡或 Section 的 id>` 是它顶部 14 个白板单位处的中点，`@<id>+dx,dy` 是从它左上角起 dx、dy 个白板单位。每边按自己现在的白板和相机算出窗口里的位置，所以两边缩放、平移不同也打在同一处。id 见 storage 的白板文件。
 
+Note 里的字按字找，像人看着屏幕找字一样：`@<id>"几个字"` 是这张卡里这几个字的中间，`@<id>"几个字"<` 是紧挨着它前面，`@<id>"几个字">` 是紧挨着它后面，再加 `+dx,dy` 是从那里再挪几个 pt（表格行左边的把手、图片边上的把手）。网页这边在画出来的页面里找（只算看得见的字，藏起来的标记不算），Mac 这边用系统的文字识别（Vision）读窗口的画面。所以两边排版差几个 pt、Note 打字时变高了，都还是点在同一个字上。
+
 | 命令 | 做什么 |
 |---|---|
 | `move <点> [ms]` | 像手一样移过去（缓动、略带弧线，每秒约 120 步），沿途的悬停都会发生 |
@@ -32,7 +34,10 @@ node apps/macos/tools/accept/run.mjs <场景>… --storage <folder>   # 换一�
 | `scroll dx dy [步数] [still\|cmd]` | 双指滑动：开始、移动、结束，然后是触控板松手后的惯性；`still` 不要惯性，`cmd` 是 ⌘ 滚轮 |
 | `pinch <比例> [步数]` | 双指捏合，0.5 是放大到 1.5 倍 |
 | `key cmd+shift+z` / `key esc` | 按键（带修饰键或特殊键） |
-| `type <文字>` / `ime 拼\|拼音\|拼音输入` | 打字（经输入法提交，不经系统输入法）；`ime` 先逐步给出组字再提交最后一段 |
+| `type <文字>` / `ime 拼\|拼音\|拼音输入` | 打字（经输入法提交，不经系统输入法）；`ime` 先逐步给出组字再提交最后一段；`\n` 是回车，`\s` 是空格（行尾的空格会被去掉） |
+| `keys <文字>` | 一个键一个键地按（真的按键事件；`## ` 变标题这类输入规则靠它） |
+| `caret` | 光标在哪、前后各 12 个字，选中的在方括号里：`x y h 高度 \| 前[选中]后`。Mac 从系统的文字输入接口读（原生编辑器和网页视图都实现它），只读不改 |
+| `source @<id>` | 这张 Note 存下来的 Markdown（Mac：vault；网页：最后发给宿主的）。两边都跑时写进 `sources.txt`：一样写 same，不一样两份都列出来 |
 | `menu` / `pick 一级/二级` | 在指针处右键，读出菜单；选其中一项 |
 | `wait <ms>` | 等 |
 | `zoom <倍数>` | 在窗口中间捏合，直到两边缩放都是这个倍数（外观对比前先对齐） |
@@ -41,7 +46,7 @@ node apps/macos/tools/accept/run.mjs <场景>… --storage <folder>   # 换一�
 | `shot <名字>` | 截图 |
 | `hit` / `info` / `cam` | 指针下是什么 / 焦点、窗口、光标 / 相机 |
 
-`scenarios/` 里的场景：`section-follow`（拖动中 Section 跟着撑开）、`pan-over-edit`（编辑时平移经过这张卡不停）、`hover-tour`（经过各种卡头和 Section 标题时出现什么）、`new-text-flow`（不对照：新建、输入、拖进 Section 的完整流程）。
+`scenarios/` 里的场景：编辑 Note 的 `note-heading`（打 `## ` 变标题再撤回）、`note-markers`（方向键穿过加粗、高亮、行内代码的标记）、`note-ime`（拼音接着写、删字、撤回）、`note-table`（改一格，拖行把手换行）、`note-code`（代码块里改一行）、`note-blockmove`（⌘ 拖动整块）、`note-image`（选中图片、拖把手缩窄），用 `--storage apps/macos/tools/accept/storage-notes`；`section-follow`（拖动中 Section 跟着撑开）、`pan-over-edit`（编辑时平移经过这张卡不停）、`hover-tour`（经过各种卡头和 Section 标题时出现什么）、`new-text-flow`（不对照：新建、输入、拖进 Section 的完整流程）。
 
 ## 怎么做到不打扰用 Mac 的人
 
@@ -52,6 +57,9 @@ Mac 这边是 `Accept` target（`apps/macos/Sources/Accept/main.swift`）：它�
 网页这边是 `web.ts`：在无头 Chromium 里启动 `packages/board/dist` 的白板（`boot`，和 VS Code 的 webview 一样），宿主消息由 `packages/tiles` 的 `recordBoards` 从同一个 storage 文件夹录下，指针和按键走 Playwright 的真实输入事件，录像用 CDP 的 screencast。
 
 ## 已知的不足
+
+- 按字找时 Mac 靠文字识别：很小的字、公式里的字可能认不出或认错（报错里会列出它读到了什么）；同一张卡里有两处一样的字时取第一处。
+- 网页的 `caret` 读的是页面里的字，编辑器画进去的控件上的字（比如标题前的 H2）也算在里面；Mac 读的是编辑器给输入法的文字。两边写法可能差一点，看前后的字对不对就行。
 
 - Mac 的目标位置读的是 vault 里的白板文件：app 还没存下的改动（比如拖动中）看不到；没有高度的卡（Text、Box、代码卡）只能指到它的上部。
 - 响应时间按帧比较：Mac 每帧都录，网页只在画面变时来一帧；指针本身的移动也算变化，所以只对停着的指针下的点击、按键有意义。

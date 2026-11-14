@@ -130,7 +130,7 @@ class Driver {
     const re = new RegExp(`^\\S+ done ${n} `);
     for (let t = 0; t < 120000; t += 20) {
       const l = this.lines().find((x) => re.test(x));
-      if (l) return l.includes(" -> ") ? l.slice(l.indexOf(" -> ") + 4) : "";
+      if (l) return l.includes(" -> ") ? l.slice(l.indexOf(" -> ") + 4).replace(/\\(\\|n)/g, (_, c) => (c === "n" ? "\n" : "\\")) : "";
       if (this.proc.exitCode !== null) throw new Error(`${this.side} driver exited: see ${this.dir}/stdout.txt`);
       await sleep(20);
     }
@@ -148,12 +148,41 @@ class Driver {
 // ---- targets: @id is a card or Section on the board as each side has it now, at the middle of its top strip;
 // @id+dx,dy is that many board units from its top-left corner. The web board says where its element is; the Mac app's
 // place comes from its vault's board file and its camera.
+function macBoardFile(d) {
+  const f = fs.readdirSync(d.vault, { recursive: true }).find((f) => String(f).endsWith("board.json"));
+  return path.join(d.vault, String(f));
+}
 function macBoard(d) {
-  const dir = fs.readdirSync(d.vault, { recursive: true }).find((f) => String(f).endsWith("board.json"));
-  const b = JSON.parse(fs.readFileSync(path.join(d.vault, String(dir)), "utf8"));
+  const b = JSON.parse(fs.readFileSync(macBoardFile(d), "utf8"));
   return Object.fromEntries([...(b.sections ?? []), ...(b.cards ?? [])].map((c) => [c.id, c]));
 }
+/** A card's or Section's box in the Mac window (content coordinates), from the vault and the camera; a card without a
+ *  stored height reaches to the window's bottom */
+async function macBox(d, c) {
+  const [x0, y0] = (await d.send(`where ${c.x} ${c.y}`)).split(" ").map(Number);
+  const [x1, y1] = (await d.send(`where ${c.x + c.width} ${c.y + (c.height ?? c.measuredHeight ?? 1e5)}`)).split(" ").map(Number);
+  return [x0, y0, x1, Math.min(y1, 5000)];
+}
+// @id"words" (the middle of those words in that card), @id"words"< (just before them), @id"words"> (just after): found
+// on screen as a person reads them (the web side in the rendered page, the Mac side by text recognition on the window),
+// so a scenario aims at text, whatever each side's layout. A trailing +dx,dy moves that many points from there (a grip
+// beside a table row, the line under a heading)
+const TOKEN = /@[\w-]+"[^"]*"[<>]?(?:\+-?[\d.]+,-?[\d.]+)?|\S+/g;
 async function point(d, tok) {
+  const t = /^@([\w-]+)"([^"]*)"([<>]?)(?:\+(-?[\d.]+),(-?[\d.]+))?$/.exec(tok);
+  if (t) {
+    const mode = t[3] === "<" ? "before" : t[3] === ">" ? "after" : "mid";
+    let r;
+    if (d.side === "web") r = await d.send(`find ${t[1]} ${mode} ${t[2]}`);
+    else {
+      const c = macBoard(d)[t[1]];
+      if (!c) throw new Error(`mac: no card ${t[1]}`);
+      r = await d.send(`find ${(await macBox(d, c)).map((v) => v.toFixed(1)).join(" ")} ${mode} ${t[2]}`);
+    }
+    if (!/^-?[\d.]+ -?[\d.]+$/.test(r)) throw new Error(`${d.side}: "${t[2]}" in ${t[1]}: ${r}`);
+    const [x, y] = r.split(" ").map(Number);
+    return `${(x + Number(t[4] ?? 0)).toFixed(1)} ${(y + Number(t[5] ?? 0)).toFixed(1)}`;
+  }
   const m = /^@([\w-]+)(?:\+(-?[\d.]+),(-?[\d.]+))?$/.exec(tok);
   if (!m) throw new Error(`not a target: ${tok}`);
   if (d.side === "web") {
@@ -170,9 +199,21 @@ async function point(d, tok) {
   return d.send(`where ${c.x + dx} ${c.y + dy}`);
 }
 async function resolve(d, line) {
+  // what is typed is text, not targets
+  if (/^(type|keys|ime) /.test(line)) return line;
   const out = [];
-  for (const tok of line.split(" ")) out.push(tok.startsWith("@") ? await point(d, tok) : tok);
+  for (const tok of line.match(TOKEN) ?? []) out.push(tok.startsWith("@") ? await point(d, tok) : tok);
   return out.join(" ");
+}
+/** source @id: a Note's Markdown as each side saved it (the Mac app in its vault, the web board in its last patch) */
+async function source(d, id) {
+  if (d.side === "web") return d.send(`source ${id}`);
+  const c = macBoard(d)[id];
+  if (!c) return "none";
+  const content = c.shared
+    ? JSON.parse(fs.readFileSync(path.join(d.vault, ".codeboard/shared", `${id}.json`), "utf8")).content
+    : c.content;
+  return content?.note?.text ?? content?.text?.text ?? "none";
 }
 const cam = async (d) => (await d.send("cam")).split(" ").map(Number);
 /** the middle of the canvas (beside the Mac app's sidebar) */
@@ -304,16 +345,28 @@ for (const file of scenarios) {
       const [verb, arg] = cmd.split(" ");
       if (verb === "rec") recs.add(arg);
       if (verb === "shot") shots.add(arg);
+      const sources = {};
       await Promise.all(
         drivers
           .filter((d) => !m || m[1] === d.side)
           .map(async (d) => {
             if (verb === "zoom") return zoomTo(d, Number(arg));
             if (verb === "center") return centerOn(d, arg);
+            if (verb === "source") {
+              const md = await source(d, arg.slice(1));
+              sources[d.side] = md;
+              fs.appendFileSync(path.join(out, `results-${d.side}.txt`), `${cmd}\n${md}\n\n`);
+              return;
+            }
             const r = await d.send(await resolve(d, cmd));
             if (r) fs.appendFileSync(path.join(out, `results-${d.side}.txt`), `${cmd}\n${r}\n\n`);
           }),
       );
+      if (verb === "source" && sides.length > 1)
+        fs.appendFileSync(
+          path.join(out, "sources.txt"),
+          `${cmd}: ${sources.mac === sources.web ? "same" : `DIFFERENT\n--- mac\n${sources.mac}\n--- web\n${sources.web}`}\n`,
+        );
     }
   } finally {
     await Promise.all(drivers.map((d) => d.stop()));

@@ -1,0 +1,24 @@
+# 改表格：点进一格改数字，再按住行左边的把手把 decode 那一行拖到 prefill 上面
+zoom 1
+center @ntable
+dbl @ntable"Stages"
+wait 600
+click @ntable"12.5">
+wait 300
+rec table
+key delete
+key delete
+keys 30
+caret
+move @ntable"每步生成"
+wait 400
+move @ntable"decode"<+-59,0 400
+wait 300
+shot grip
+drag @ntable"decode"<+-59,0 @ntable"prefill"<+-59,-8 900
+wait 600
+shot dragged
+stop
+key esc
+wait 500
+source @ntable

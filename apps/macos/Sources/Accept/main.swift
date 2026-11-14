@@ -12,6 +12,7 @@ import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardShell
 import ObjectiveC
+import Vision
 import WebKit
 
 setbuf(stdout, nil)
@@ -567,6 +568,77 @@ swizzle(
     vFlags = []
   }
 
+  /// What type and keys take: \\n is Return and \\s a space (a scenario line's trailing spaces are trimmed)
+  func typed(_ s: Substring) -> String {
+    s.replacingOccurrences(of: "\\n", with: "\n").replacingOccurrences(of: "\\s", with: " ")
+  }
+
+  /// Words as a person reads them: the main window's picture read by text recognition inside a box (content
+  /// coordinates), and the point just before, in the middle of or just after the first match, so a scenario aims at
+  /// text whatever the layout. Only what is drawn counts (hidden markers are not there to find)
+  func find(_ box: CGRect, _ mode: String, _ text: String) -> String {
+    guard let w = win else { return "no window" }
+    // at the window's own resolution (the recorder's 1x is too coarse to read small text)
+    let shot =
+      Recorder.layers
+      ? Recorder.drawn(w) : createImage(.null, 1 << 3, UInt32(w.windowNumber), 1 << 0)?.takeRetainedValue()
+    guard let img = shot else { return "no picture of the window" }
+    let sx = CGFloat(img.width) / w.frame.width
+    let sy = CGFloat(img.height) / w.frame.height
+    // content coordinates to the picture's pixels (top-left origin) and back
+    func pixel(_ x: Double, _ y: Double) -> CGPoint {
+      let p = screen(x, y)
+      return CGPoint(x: (p.x - w.frame.minX) * sx, y: (w.frame.maxY - p.y) * sy)
+    }
+    let a = pixel(box.minX, box.minY)
+    let b = pixel(box.maxX, box.maxY)
+    let crop = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y)).integral
+      .intersection(CGRect(x: 0, y: 0, width: img.width, height: img.height))
+    guard !crop.isEmpty, let part = img.cropping(to: crop) else { return "box off the window" }
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .accurate
+    request.recognitionLanguages = ["zh-Hans", "en-US"]
+    request.usesLanguageCorrection = false
+    do { try VNImageRequestHandler(cgImage: part).perform([request]) } catch { return "text recognition: \(error)" }
+    var read: [String] = []
+    for o in request.results ?? [] {
+      guard let c = o.topCandidates(1).first else { continue }
+      read.append(c.string)
+      guard let r = c.string.range(of: text), let found = try? c.boundingBox(for: r)?.boundingBox else { continue }
+      // normalized, bottom-left origin in the crop
+      let nx = mode == "before" ? found.minX : mode == "after" ? found.maxX : found.midX
+      let ix = crop.minX + nx * crop.width
+      let iy = crop.minY + (1 - found.midY) * crop.height
+      let p = NSPoint(x: w.frame.minX + ix / sx, y: w.frame.maxY - iy / sy)
+      guard let cv = w.contentView else { return "no content view" }
+      let l = cv.convert(w.convertPoint(fromScreen: p), from: nil)
+      return String(format: "%.1f %.1f", l.x, l.y)
+    }
+    return "not found; read: \(read.joined(separator: " | "))"
+  }
+
+  /// Where the caret is, as the text input system sees it in any editor (the native Note editor, a web view): its
+  /// place in content coordinates and height, then twelve characters on each side with the selection in brackets,
+  /// "x y h <height> | <before>[<selected>]<after>", line breaks as ⏎ (the web side answers in the same shape)
+  func caret() -> String {
+    guard let c = client else { return "no text client" }
+    let sel = c.selectedRange()
+    guard sel.location != NSNotFound else { return "no selection" }
+    var actual = NSRange()
+    func text(_ r: NSRange) -> String {
+      guard r.length > 0 else { return "" }
+      return (c.attributedSubstring(forProposedRange: r, actualRange: &actual)?.string ?? "")
+        .replacingOccurrences(of: "\n", with: "⏎")
+    }
+    let lo = max(0, sel.location - 12)
+    let before = text(NSRange(location: lo, length: sel.location - lo))
+    let after = text(NSRange(location: sel.location + sel.length, length: 12))
+    let r = c.firstRect(forCharacterRange: NSRange(location: sel.location, length: 0), actualRange: &actual)
+    guard let w = win, let cv = w.contentView else { return "no window" }
+    let top = cv.convert(w.convertPoint(fromScreen: NSPoint(x: r.minX, y: r.maxY)), from: nil)
+    return String(format: "%.1f %.1f h %.0f | ", top.x, top.y, r.height) + "\(before)[\(text(sel))]\(after)"
+  }
+
   var client: NSTextInputClient? {
     let r = (gKey ?? win)?.firstResponder
     return r as? NSTextInputClient
@@ -711,12 +783,16 @@ swizzle(
       await pinch(total: d(1), steps: Int(d(2, 12)))
     case "key": await key(a[1])
     case "mods": vFlags = mods(a.count > 1 ? a[1] : "")
-    case "type": await type(String(line.dropFirst(5)).replacingOccurrences(of: "\\n", with: "\n"))
-    case "keys": await keys(String(line.dropFirst(5)).replacingOccurrences(of: "\\n", with: "\n"))
+    case "type": await type(typed(line.dropFirst(5)))
+    case "keys": await keys(typed(line.dropFirst(5)))
     case "ime": await ime(String(line.dropFirst(4)).split(separator: "|").map(String.init))
     case "wait": try? await Task.sleep(for: .milliseconds(Int(d(1, 200))))
     case "menu": contextMenu()
     case "pick": pick(String(line.dropFirst(5)))
+    case "find":  // find x0 y0 x1 y1 before|mid|after words: where those words are on screen inside that box
+      let box = CGRect(x: d(1), y: d(2), width: d(3) - d(1), height: d(4) - d(2))
+      return a.count > 6 ? find(box, a[5], a[6...].joined(separator: " ")) : "find x0 y0 x1 y1 mode words"
+    case "caret": return caret()
     case "hit": return hitInfo(vPointer)
     case "where":  // where bx by: the board point's place in the window (what move and click take), from the camera
       guard let c = canvas, let w = win, let cv = w.contentView else { return "no canvas" }
@@ -814,7 +890,9 @@ swizzle(
         n += 1
         log("start \(n) \(l)")
         let r = await run(l)
-        log("done \(n) \(l)\(r.isEmpty ? "" : " -> " + r)")
+        // one log line per result: line breaks escaped (run.mjs undoes it)
+        let one = r.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\n", with: "\\n")
+        log("done \(n) \(l)\(r.isEmpty ? "" : " -> " + one)")
       }
       running = false
     }

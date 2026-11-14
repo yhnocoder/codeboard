@@ -1,0 +1,34 @@
+# 在加粗、高亮、行内代码里用方向键走一遍：标记只在光标边上出现，字不跳，光标一格一格走得自然。看录像，results 里每一步光标前后的字
+zoom 1
+center @nprose
+dbl @nprose"scheduler runs"
+wait 600
+click @nprose"prefill"<
+wait 300
+rec markers
+caret
+key right
+caret
+key left
+key left
+caret
+key left
+caret
+click @nprose"the notes">
+wait 300
+caret
+key right
+caret
+key right
+caret
+click @nprose"step()"<
+wait 300
+caret
+key left
+caret
+wait 400
+stop
+shot markers
+key esc
+wait 500
+source @nprose

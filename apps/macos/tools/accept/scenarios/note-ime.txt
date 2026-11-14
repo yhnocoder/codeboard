@@ -1,0 +1,29 @@
+# 用拼音在中文句子后面接着写一句，再改掉一个字，最后 ⌘Z 撤回：组字时下划线和候选位置自然，提交后不丢字不重复
+zoom 1
+center @nprose
+dbl @nprose"键值缓存"
+wait 600
+click @nprose"键值缓存。">
+wait 300
+rec ime
+ime y|yu|yut|yutian|预填
+ime c|ch|chong|充
+type 要单独处理。
+wait 300
+caret
+key delete
+key delete
+caret
+ime ji|jisuan|计算
+type 。
+wait 300
+caret
+shot ime
+key cmd+z
+wait 400
+caret
+wait 300
+stop
+key esc
+wait 500
+source @nprose

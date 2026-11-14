@@ -62,12 +62,16 @@ async function move(x: number, y: number, ms = 350) {
   pos = { x, y };
   await page.mouse.move(x, y);
 }
-const mods = (s?: string) => (s ? s.split("+").map((m) => ({ cmd: "Meta", shift: "Shift", alt: "Alt", opt: "Alt", ctrl: "Control" })[m] ?? m) : []);
+// ⌘ is the board's Mod key on a Mac; elsewhere (a Linux run of the web side) the board's Mod is Control
+const CMD = process.platform === "darwin" ? "Meta" : "Control";
+const mods = (s?: string) => (s ? s.split("+").map((m) => ({ cmd: CMD, shift: "Shift", alt: "Alt", opt: "Alt", ctrl: "Control" })[m] ?? m) : []);
 async function hold(ms: string[], f: () => Promise<void>) {
   for (const m of ms) await page.keyboard.down(m);
   await f();
   for (const m of ms.reverse()) await page.keyboard.up(m);
 }
+/** what type takes: \\n is Return and \\s a space (a scenario line's trailing spaces are trimmed) */
+const typed = (s: string) => s.replace(/\\n/g, "\n").replace(/\\s/g, " ");
 const keyName: Record<string, string> = { return: "Enter", esc: "Escape", delete: "Backspace", fwddelete: "Delete", left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp", down: "ArrowDown", tab: "Tab", space: "Space", home: "Home", end: "End", pageup: "PageUp", pagedown: "PageDown", f2: "F2" };
 /** What a press lands on, as the Mac driver logs it: the element under the pointer and its ancestors' classes */
 const hitAt = (x: number, y: number) => page.evaluate(([x, y]) => {
@@ -76,6 +80,65 @@ const hitAt = (x: number, y: number) => page.evaluate(([x, y]) => {
     out.push(e.tagName.toLowerCase() + (e.classList.length ? "." + [...e.classList].slice(0, 2).join(".") : "") + ((e as HTMLElement).dataset?.id ? `#${(e as HTMLElement).dataset.id}` : ""));
   return out.join(" < ");
 }, [x, y]);
+/** find <card> before|mid|after <words>: where the words are on screen in that card, as a person would see them (only
+ *  text that is drawn: hidden markers are not), and the point just before, in the middle of or just after them */
+function findText([id, mode, text]: string[]) {
+  const card = document.querySelector(`.card[data-id="${CSS.escape(id)}"]`);
+  if (!card) return "no card";
+  const nodes: [Text, number][] = [];
+  let all = "";
+  const walk = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode() as Text | null; n; n = walk.nextNode() as Text | null) {
+    const r = document.createRange();
+    r.selectNodeContents(n);
+    if (!n.parentElement || getComputedStyle(n.parentElement).visibility === "hidden" || !r.getClientRects().length) continue;
+    nodes.push([n, all.length]);
+    all += n.data;
+  }
+  const i = all.indexOf(text);
+  if (i < 0 || !text) return `not found; read: ${all.slice(0, 300)}`;
+  const at = (k: number) => nodes.findLast(([, s]) => s <= k)!;
+  const [n0, s0] = at(i), [n1, s1] = at(i + text.length - 1);
+  const r = document.createRange();
+  r.setStart(n0, i - s0);
+  r.setEnd(n1, i + text.length - s1);
+  const rs = [...r.getClientRects()].filter((x) => x.width > 0);
+  const f = rs[0], l = rs[rs.length - 1];
+  const p = mode === "before" ? [f.left, f.top + f.height / 2] : mode === "after" ? [l.right, l.top + l.height / 2] : [(f.left + f.right) / 2, f.top + f.height / 2];
+  return p.map((v) => v.toFixed(1)).join(" ");
+}
+/** caret: where the caret is and what is around it, as the Mac side reads it from the text input system:
+ *  "x y h <height> | <12 before>[<selected>]<12 after>", line breaks as ⏎ */
+function caretAt() {
+  const s = getSelection();
+  if (!s?.rangeCount) return "no selection";
+  const r = s.getRangeAt(0);
+  const ed = r.startContainer.parentElement?.closest("[contenteditable=true], .cm-content") ?? document.body;
+  const side = (start: boolean) => {
+    const x = document.createRange();
+    x.selectNodeContents(ed);
+    if (start) x.setEnd(r.startContainer, r.startOffset);
+    else x.setStart(r.endContainer, r.endOffset);
+    return x.toString();
+  };
+  const box = [...r.getClientRects()][0] ?? r.getBoundingClientRect();
+  const nl = (t: string) => t.replace(/\n/g, "⏎");
+  return `${box.left.toFixed(1)} ${box.top.toFixed(1)} h ${box.height.toFixed(0)} | ${nl(side(true).slice(-12))}[${nl(s.toString())}]${nl(side(false).slice(0, 12))}`;
+}
+/** source <card>: the Note's Markdown as the board last sent it to the host (page.html keeps each card's last), else as
+ *  stored */
+async function sourceOf(id: string): Promise<string | undefined> {
+  const sent = await page.evaluate((id) => (window as any).__saved[id] as string | undefined, id);
+  return sent ?? storedCard(id);
+}
+function storedCard(id: string): string | undefined {
+  for (const f of fs.readdirSync(storage).filter((f) => f.endsWith(".json"))) {
+    const b = JSON.parse(fs.readFileSync(path.join(storage, f), "utf8"));
+    const c = (b.cards ?? []).find((x: { id: string }) => x.id === id);
+    if (c) return c.md ?? c.text;
+  }
+  return undefined;
+}
 async function pressed(right: boolean) { log(`press ${right ? "right" : "left"} at ${pos.x.toFixed(0)},${pos.y.toFixed(0)} on ${await hitAt(pos.x, pos.y)}`); }
 async function run(line: string): Promise<string> {
   const a = line.split(" ").filter(Boolean), d = (i: number, def = 0) => (i < a.length ? Number(a[i]) : def);
@@ -115,7 +178,8 @@ async function run(line: string): Promise<string> {
       break;
     }
     case "key": { const p = a[1].split("+"); const k = p.pop()!; await page.keyboard.press([...mods(p.join("+")), keyName[k] ?? k].join("+")); break; }
-    case "type": for (const ch of line.slice(5).replace(/\\n/g, "\n")) { if (ch === "\n") await page.keyboard.press("Enter"); else await page.keyboard.insertText(ch); await sleep(35); } break;
+    case "type": for (const ch of typed(line.slice(5))) { if (ch === "\n") await page.keyboard.press("Enter"); else await page.keyboard.insertText(ch); await sleep(35); } break;
+    case "keys": for (const ch of typed(line.slice(5))) { await page.keyboard.press(ch === "\n" ? "Enter" : ch === " " ? "Space" : ch); await sleep(35); } break;
     case "ime": {
       const parts = line.slice(4).split("|");
       for (const s of parts.slice(0, -1)) { await cdp.send("Input.imeSetComposition", { text: s, selectionStart: s.length, selectionEnd: s.length }); await sleep(120); }
@@ -150,6 +214,9 @@ async function run(line: string): Promise<string> {
       const r = els.map((e) => e.getBoundingClientRect()).sort((a, b) => b.width * b.height - a.width * a.height)[0];
       return r ? `${r.left.toFixed(1)} ${r.top.toFixed(1)} ${r.width.toFixed(1)} ${r.height.toFixed(1)}` : "none";
     }, a[1]);
+    case "find": return await page.evaluate(findText, [a[1], a[2], line.split(" ").slice(3).join(" ")]);
+    case "caret": return await page.evaluate(caretAt);
+    case "source": return (await sourceOf(a[1])) ?? "none";
     case "hit": return await hitAt(pos.x, pos.y);
     case "menu": await page.mouse.down({ button: "right" }); await page.mouse.up({ button: "right" }); await sleep(200);
       return await page.evaluate(() => [...document.querySelectorAll(".menu, [role=menu]")].map((m) => (m as HTMLElement).innerText).join("\n----\n"));
@@ -178,6 +245,7 @@ for (;;) {
     let r = "";
     log(`start ${n} ${l}`);
     try { r = await run(l); } catch (e) { r = `error ${(e as Error).message}`; }
-    log(`done ${n} ${l}${r ? " -> " + r : ""}`);
+    // one log line per result: line breaks escaped (run.mjs undoes it)
+    log(`done ${n} ${l}${r ? " -> " + r.replace(/\\/g, "\\\\").replace(/\n/g, "\\n") : ""}`);
   }
 }
