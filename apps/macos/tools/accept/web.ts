@@ -28,15 +28,24 @@ const server = http.createServer((req, res) => {
 await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 const rec = await recordBoards(storage, boardDist);
-const [, msgs] = [...rec.messages][0];
+const [, recorded] = [...rec.messages][0];
+// the look under test: the theme setting the host sends, light or dark as VS Code's body class says
+const LOOK = process.env.ACCEPT_THEME ?? "warm-ink", DARK = process.env.ACCEPT_DARK === "1";
+const msgs = recorded.map((m: any) => (m.type === "init" ? { ...m, host: { ...m.host, settings: { ...m.host.settings, theme: LOOK } } } : m));
 const browser = await launch();
 for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => void browser.close().finally(() => process.exit(0)));
-const ctx = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
+const ctx = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: Number(process.env.ACCEPT_SCALE ?? 1) });
 const page = await ctx.newPage();
 page.on("pageerror", (e) => log(`pageerror ${e.message}`));
 page.on("console", (m) => { if (m.type() === "error") log(`console ${m.text()}`); });
 await page.goto(`${base}/page.html`);
 await page.waitForFunction(() => (window as any).__booted);
+await page.evaluate(([t, dk]) => {
+  document.documentElement.dataset.look = t;
+  document.documentElement.classList.add(`look-${t}`);
+  document.body.className = dk ? "vscode-dark" : "vscode-light";
+  document.documentElement.dataset.theme = dk ? "dark" : "light";
+}, [LOOK, DARK] as const);
 await page.evaluate((ms) => (window as any).__deliver(ms), msgs);
 const cdp = await ctx.newCDPSession(page);
 let pos = { x: W / 2, y: H / 2 };
@@ -152,6 +161,7 @@ async function run(line: string): Promise<string> {
     }, a[1]);
     case "hit": return await hitAt(pos.x, pos.y);
     case "pointer": return `${pos.x.toFixed(1)} ${pos.y.toFixed(1)}`;
+    case "origin": return "0 0";
     case "menu": await page.mouse.down({ button: "right" }); await page.mouse.up({ button: "right" }); await sleep(200);
       return await page.evaluate(() => [...document.querySelectorAll(".menu, [role=menu]")].map((m) => (m as HTMLElement).innerText).join("\n----\n"));
     case "rec": times = ""; recDir = path.join(out, a[1]); fs.rmSync(recDir, { recursive: true, force: true }); fs.mkdirSync(recDir, { recursive: true }); frame = 0;

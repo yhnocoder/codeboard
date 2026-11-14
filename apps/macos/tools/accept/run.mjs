@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // The acceptance runner (README.md): runs scenario files on the Mac app and on the web board VS Code shows, side by side,
 // with a hand's pointer, and writes recordings, screenshots and a report to apps/macos/.build-accept/<scenario>/.
-//   node apps/macos/tools/accept/run.mjs <scenario.txt>… [--only mac|web] [--video] [--storage <folder>] [--skip-build]
-//     [--debug]
+//   node apps/macos/tools/accept/run.mjs <scenario.txt>… [--only mac|web] [--video] [--theme warm-ink|ink-wash] [--dark]
+//     [--scale 2] [--storage <folder>] [--skip-build] [--debug]
 // It prints one line per scenario and side (expectations passed, failed, not checkable) and exits 1 when one failed.
 import { execFileSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
@@ -18,8 +18,15 @@ const outRoot = path.join(mac, ".build-accept");
 const argv = process.argv.slice(2);
 const opt = (k) => (argv.includes(k) ? argv[argv.indexOf(k) + 1] : undefined);
 const only = opt("--only");
-const storage = path.resolve(opt("--storage") ?? path.join(mac, "tools/look/storage"));
-const scenarios = argv.filter((a, i) => !a.startsWith("--") && !["--only", "--storage"].includes(argv[i - 1]));
+const storage = path.resolve(opt("--storage") ?? path.join(here, "storage"));
+const valued = ["--only", "--storage", "--theme", "--scale"];
+const scenarios = argv.filter((a, i) => !a.startsWith("--") && !valued.includes(argv[i - 1]));
+// the look under test and the pixels per point of recordings and shots, the same on both sides
+const lookEnv = {
+  ...(opt("--theme") ? { ACCEPT_THEME: opt("--theme") } : {}),
+  ...(argv.includes("--dark") ? { ACCEPT_DARK: "1" } : {}),
+  ACCEPT_SCALE: opt("--scale") ?? "1",
+};
 const sides = only ? [only] : ["mac", "web"];
 const run = (cmd, a, cwd = repo) => execFileSync(cmd, a, { cwd, stdio: "inherit" });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -81,7 +88,7 @@ class Driver {
     fs.rmSync(this.dir, { recursive: true, force: true });
     fs.mkdirSync(this.dir, { recursive: true });
     execFileSync("mkfifo", [path.join(this.dir, "cmd")]);
-    const env = { ...process.env, ACCEPT_OUT: this.dir, ACCEPT_FIFO: path.join(this.dir, "cmd"), ACCEPT_REPO: repo };
+    const env = { ...process.env, ...lookEnv, ACCEPT_OUT: this.dir, ACCEPT_FIFO: path.join(this.dir, "cmd"), ACCEPT_REPO: repo };
     const outFd = fs.openSync(path.join(this.dir, "stdout.txt"), "w");
     if (this.side === "mac") {
       // a vault of its own, imported from the storage folder; the app's own defaults start empty
@@ -328,6 +335,22 @@ async function differ(a, b) {
   return n > 3;
 }
 
+async function cut(d, name, [target, w, h]) {
+  const [x, y] = (await point(d, target)).split(" ").map(Number);
+  const [ox, oy] = (await d.send("origin")).split(" ").map(Number);
+  const [, , z] = await cam(d);
+  const s = Number(lookEnv.ACCEPT_SCALE);
+  const full = path.join(d.dir, `${name}.png`);
+  const meta = await sharp(full).metadata();
+  const left = Math.max(0, Math.round((ox + x) * s)), top = Math.max(0, Math.round((oy + y) * s));
+  const width = Math.min(meta.width - left, Math.round(Number(w) * z * s));
+  const height = Math.min(meta.height - top, Math.round(Number(h) * z * s));
+  if (width < 1 || height < 1) return;
+  const buf = await sharp(full).extract({ left, top, width, height }).png().toBuffer();
+  fs.renameSync(full, path.join(d.dir, `${name}-window.png`));
+  fs.writeFileSync(full, buf);
+}
+
 // ---- outputs
 const fpsOf = (dir) => {
   const t = fs.readFileSync(path.join(dir, "times.txt"), "utf8").split("\n").filter(Boolean).map(Number);
@@ -345,10 +368,11 @@ function sideBySide(out, name, have) {
 async function shotPair(out, name, have) {
   const files = have.map((s) => path.join(out, s, `${name}.png`)).filter((f) => fs.existsSync(f));
   if (files.length < 2) return;
-  const imgs = await Promise.all(files.map((f) => sharp(f).resize({ height: 760 }).toBuffer({ resolveWithObject: true })));
+  const height = Math.min(...(await Promise.all(files.map(async (f) => (await sharp(f).metadata()).height))));
+  const imgs = await Promise.all(files.map((f) => sharp(f).resize({ height }).toBuffer({ resolveWithObject: true })));
   const width = imgs.reduce((a, i) => a + i.info.width, 0);
   let left = 0;
-  await sharp({ create: { width, height: 760, channels: 3, background: "#000" } })
+  await sharp({ create: { width, height, channels: 3, background: "#000" } })
     .composite(imgs.map((i) => ({ input: i.data, left: (left += i.info.width) - i.info.width, top: 0 })))
     .png()
     .toFile(path.join(out, `${name}.png`));
@@ -404,8 +428,10 @@ for (const file of scenarios) {
   const lines = fs.readFileSync(file, "utf8").split("\n").map((l, i) => ({ n: i + 1, text: l.trim() }));
   // the subjects compared with `was`, taken at each `mark`
   const marked = [...new Set(lines.filter((l) => / was\b/.test(l.text)).map((l) => l.text.replace(/^(mac|web):\s*/, "").split(" ")[1]))];
-  // `# known: <why>`: a problem followed elsewhere; its failures are reported but do not fail the run
-  const known = lines.map((l) => /^#\s*known:\s*(.*)$/.exec(l.text)?.[1]).find(Boolean);
+  // `# known: <why>` (or `# known mac: <why>`, one side): a problem followed elsewhere; its failures are reported but do
+  // not fail the run
+  const knownOf = (side) =>
+    lines.map((l) => /^#\s*known(?:\s+(mac|web))?:\s*(.*)$/.exec(l.text)).find((m) => m && (!m[1] || m[1] === side))?.[2];
   const results = Object.fromEntries(sides.map((s) => [s, []]));
   const was = Object.fromEntries(sides.map((s) => [s, {}]));
   const answers = [];
@@ -418,6 +444,9 @@ for (const file of scenarios) {
       const [verb, arg, op, want] = cmd.split(" ");
       if (verb === "rec") recs.add(arg);
       if (verb === "shot") shots.add(arg);
+      // shot <name> @target W H: also the board rectangle W × H (board units) from the target, cut out on each side,
+      // so the two sides' pictures of one part line up
+      const crop = verb === "shot" && cmd.split(" ")[2]?.startsWith("@") ? cmd.split(" ").slice(2) : undefined;
       await Promise.all(
         drivers
           .filter((d) => !m || m[1] === d.side)
@@ -439,6 +468,10 @@ for (const file of scenarios) {
               const ok = v === undefined ? undefined : judge(got, op, String(v));
               return results[d.side].push({ n, cmd, ok, got: (isSubj ? `${shown(got)} vs ${shown(other)}` : shown(got)) + before });
             }
+            if (crop) {
+              await d.send(`shot ${arg}`);
+              return cut(d, arg, crop);
+            }
             const r = await d.send(await resolve(d, cmd));
             if (r) fs.appendFileSync(path.join(out, `results-${d.side}.txt`), `${cmd}\n${r}\n\n`);
           }),
@@ -458,13 +491,14 @@ for (const file of scenarios) {
         console.warn(`${name}: ${s} recorded no frames for ${r} (${path.join(out, s, "log.txt")} says why)`);
       if (have.length) sideBySide(out, r, have);
     }
-    for (const s of shots) await shotPair(out, s, sides);
   }
+  for (const s of shots) await shotPair(out, s, sides);
   for (const d of drivers) await report(d, out);
   // one line per side, then only what failed or could not be checked
   for (const side of sides) {
     const r = results[side].sort((a, b) => a.n - b.n);
     const bad = r.filter((x) => x.ok === false), na = r.filter((x) => x.ok === undefined);
+    const known = knownOf(side);
     failed ||= bad.length > 0 && !known;
     const verdict = bad.length ? (known ? `known (${known})` : "FAIL") : known && r.length ? "passes now: remove `# known`" : "ok";
     console.log(`${name} ${side}: ${verdict} ${r.length - bad.length - na.length}/${r.length}${na.length ? `, ${na.length} not checkable` : ""}`);

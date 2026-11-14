@@ -6,12 +6,12 @@ rec drag
 down
 move @cyellow+65,150 500
 wait 300
-shot holding
+shot holding @sboxes+-20,-30 760 300
 # 拖动中：框已经包住卡
 expect sboxes.bottom >= cyellow.bottom
 up
 wait 600
-shot released
+shot released @sboxes+-20,-30 760 300
 stop
 expect cyellow.section = sboxes
 expect sboxes.bottom >= cyellow.bottom

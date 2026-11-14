@@ -25,6 +25,8 @@ let fifoPath = env["ACCEPT_FIFO"] ?? outDir.appending(path: "cmd").path
 let logURL = outDir.appending(path: "log.txt")
 let winSize = NSSize(width: Double(env["ACCEPT_W"] ?? "1200") ?? 1200, height: Double(env["ACCEPT_H"] ?? "780") ?? 780)
 
+/// Recordings and shots at this many pixels per point (2: the detail of a Retina screen)
+let shotScale = CGFloat(Double(env["ACCEPT_SCALE"] ?? "1") ?? 1)
 nonisolated(unsafe) var vPointer = NSPoint(x: 0, y: 0)  // screen coordinates, as NSEvent.mouseLocation
 nonisolated(unsafe) var vButtons = 0
 nonisolated(unsafe) var vFlags: NSEvent.ModifierFlags = []
@@ -521,6 +523,9 @@ swizzle(
       }
       if e.window == nil, let w = window(at: vPointer) { w.sendEvent(e) } else { NSApp.postEvent(e, atStart: false) }
       try? await Task.sleep(for: .milliseconds(8))
+      // views moved under the still pointer: AppKit tells tracking areas it entered or left them
+      refreshAreas()
+      track(dragging: false, moved: false)
     }
   }
 
@@ -753,6 +758,9 @@ swizzle(
       return String(
         format: "%.1f %.1f %.1f %.1f", cam.origin.x + r.minX / cam.zoom, cam.origin.y + r.minY / cam.zoom,
         r.width / cam.zoom, r.height / cam.zoom)
+    case "origin":  // the content view's top-left in the window's picture (points): shots are of the whole window
+      guard let w = win, let cv = w.contentView else { return "0 0" }
+      return String(format: "%.1f %.1f", cv.frame.minX, w.frame.height - cv.frame.maxY)
     case "pointer":  // where the pointer is, in board units
       guard let c = canvas, let cam = camera(c), let w = win else { return "none" }
       let v = c.convert(w.convertPoint(fromScreen: vPointer), from: nil)
@@ -948,13 +956,15 @@ nonisolated(unsafe) let createImage: CreateImage = {
     let size = w.frame.size
     guard
       let ctx = CGContext(
-        data: nil, width: Int(size.width), height: Int(size.height), bitsPerComponent: 8, bytesPerRow: 0,
+        data: nil, width: Int(size.width * shotScale), height: Int(size.height * shotScale), bitsPerComponent: 8,
+        bytesPerRow: 0,
         space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue)
     else { return nil }
     if layer.contentsAreFlipped() || root.isFlipped {
-      ctx.translateBy(x: 0, y: size.height)
+      ctx.translateBy(x: 0, y: size.height * shotScale)
       ctx.scaleBy(x: 1, y: -1)
     }
+    ctx.scaleBy(x: shotScale, y: shotScale)
     layer.render(in: ctx)
     return ctx.makeImage()
   }
@@ -970,7 +980,7 @@ nonisolated(unsafe) let createImage: CreateImage = {
     -> CGImage?
   {
     let f = windows.main
-    let scale: CGFloat = 1
+    let scale = shotScale
     let pw = Int(f.width * scale)
     let ph = Int(f.height * scale)
     guard
@@ -982,7 +992,9 @@ nonisolated(unsafe) let createImage: CreateImage = {
     ctx.setFillColor(NSColor.black.cgColor)
     ctx.fill(CGRect(x: 0, y: 0, width: pw, height: ph))
     for w in windows.list {
-      guard let img = w.image ?? createImage(.null, 1 << 3, w.id, (1 << 0) | (1 << 4))?.takeRetainedValue()
+      guard
+        let img = w.image
+          ?? createImage(.null, 1 << 3, w.id, (1 << 0) | (shotScale > 1 ? 1 << 3 : 1 << 4))?.takeRetainedValue()
       else { continue }
       let r = CGRect(
         x: (w.frame.minX - f.minX) * scale, y: (w.frame.minY - f.minY) * scale, width: w.frame.width * scale,
@@ -1063,4 +1075,7 @@ func screenState() -> String {
   return "screen \(CGDisplayIsAsleep(CGMainDisplayID()) != 0 ? "asleep" : "awake")\(locked ? ", locked" : "")"
 }
 log("driver ready, fifo \(fifoPath), \(screenState())")
+// the look under test: the theme in this app's own defaults, light or dark for this process only
+if let t = env["ACCEPT_THEME"] { UserDefaults.standard.set(t, forKey: "theme") }
+NSApplication.shared.appearance = NSAppearance(named: env["ACCEPT_DARK"] == "1" ? .darkAqua : .aqua)
 runApp()
