@@ -93,12 +93,15 @@ contains itself, an arrow width other than 1–3, a label position outside 0–1
 Optional fields (`?`) are left out when absent. Enums are an object with exactly one key naming the case, e.g.
 `{"git": {…}}`, `{"note": {}}`: a new case (a resource source, an image from a resource) is a new key, not a format break.
 
-**Card**: `id, x, y, width, height?, measuredHeight?, section?, locked, tilted, summary?` and either `content:
-CardContent` or `shared: true` (the content is `.codeboard/shared/<id>.json`). `height` absent: as tall as its content
+**Card**: `id, x, y, width, height?, measuredHeight?, section?, locked, tilted, summary?, same?` and either `content:
+CardContent` or `shared: true` (the content is `.codeboard/shared/<id>.json`, never both in a file). `height` absent: as tall as its content
 (always for a Text or Box); a code card's height leaves out its header and footer (they depend on the theme).
 `measuredHeight`: how tall the board drew it, kept for shelved cards only (their thumbnails are laid out without drawing
 them). `section`: the section the card is in, stored, not derived from geometry, because commands such as Move into
-Section set it directly. `tilted` and `summary` are the placement's, also for a shared card.
+Section set it directly. `tilted` and `summary` are the placement's, also for a shared card. `same` (同一块白板的共享卡, the extension's `same`):
+the cards of one board with the same `same` are one card placed several times on it, their content always the same (a
+file where it is not is refused); each has its own id, place, tilt, arrows, sidenotes and stickers, and their segments
+the same ids. Absent: a card of its own.
 
 **CardContent**: `title?` (absent: the kind's default title), `description?` (Markdown under the body), and one of `code`,
 `note`, `text`, `image`, `web`, `links`, `board`.
@@ -197,8 +200,17 @@ open frame (as the old one did).
 
 `.codeboard/shared/<id>.json`: `{"version": 2, "id": "<id>", "content": CardContent, "sidenotes": [Sidenote]}`, written
 and read like `board.json`. The `id` must equal the file name; its sidenotes travel with it and are on it (never
-board-only). Copy and paste of a card makes it shared by default (design); every board that shows it
-has a card with `shared: true` and the same id.
+board-only). Every board that shows it has a card with `shared: true` and the same id.
+
+An open board (`BoardDocument` given the vault) reads each shared card's content and travelling sidenotes in, so it is
+edited there as any card is; writing the board puts them back in the card's file (only one that changed, and never over
+a file that is not what was last read there), copying the images it shows from the board's `images/` into
+`.codeboard/shared/images/` where that has none of the name. Another board's change of the file is taken in when the
+vault changes (the file wins over a change here not written yet). As in the extension: a card pasted onto another board
+is by default the same card there, shared (the board it was copied from makes it a shared card first, `Board.share`, a
+new id when one of its id is in `.codeboard/shared/` already; `Board.paste(_:shared:)` keeps the ids); pasted on the
+board it was copied from it is a copy, which Reference makes another place of the original (`Board.makeTwin`, `same`)
+and Copy a card of its own again (`Board.detachTwin`).
 
 ## Importing old boards (LegacyImport)
 
@@ -280,6 +292,7 @@ files that are not in the vault yet; a file that is there is never written, what
 | card in a shelf entry's `place` | the entry's `cards`, with `mh` → `measuredHeight` |
 | `hideAllComments` | `hideComments` |
 | card `title desc tilt` | `title description`, `tilted` (placement) |
+| card `same` (同一块白板的共享卡) | `same`; should their content differ, the first place's is what all show |
 | code `segments hide wrap bg` | `segments`, `hide` (`blank` → `blankLines`), `wrap`, `framed = bg != false` |
 | segment `start end text` | `firstLine`, `lines` |
 | segment `lang symbol{qual,kind} scope hidden hl annots` | `language`, `symbol{name,kind}`, `scope`, `hidden`, `highlights`, `annotations` (absent colour → blue) |
@@ -324,6 +337,14 @@ Dropped without a report, because it is not the user's content: `place[id].mh` o
 measured; it is written again on every draw), `place` entries of cards that do not exist, and the height a library Text or
 Box kept on a board before version 16 (the extension drops it too).
 
+**Cameras**: the extension keeps where each board was looked at per machine, not in its file (VS Code's workspace state,
+`codeboard.cams`: board id → `{x, y, z}`, the world drawn at `translate(x, y) scale(z)`). `LegacyImport.cameras(for:
+<old storage folder>)` reads them, read-only, from the state database of the VS Code workspace whose folder holds the
+storage folder (the deepest one; `workspaceStorage/<hash>/state.vscdb`, the extension's row), as the board point at the
+view's top left and the zoom (`BoardCamera`: `x = -x/z`, `y = -y/z`, `zoom = z`). Given to `run(from:to:cameras:)`, the
+report's `cameras` has them by the id each written board has in the vault (a copy's its own). They are not part of the
+format: like the extension, the app keeps a board's camera per machine.
+
 **Report** (`ImportReport`): per old file (`source`, relative path) its `destination` in the vault and what was left out,
 as `SkipKind` + the old ids. Nothing is lost: the old files stay as they were and the importer can run again once the model
 holds more. Kinds:
@@ -332,8 +353,7 @@ holds more. Kinds:
 - `unplacedCard`: a card in no place and no shelf entry that is not a Compare column
 - `missingSharedCard`: the library has no such card, or it failed or is of a skipped kind (then that kind is reported)
 - `variants` (the card keeps the segments it showed), `mergedFrom`, `generated` (the card keeps its code),
-  `classMembers` (a class card keeps its code), `messageNote` (kept as a plain Note), `twin` (same card twice on a board:
-  imported as separate copies), `processes` (process tags)
+  `classMembers` (a class card keeps its code), `messageNote` (kept as a plain Note), `processes` (process tags)
 - `callMark`: an arrow's `call`, `rpc`, `back` or `gen` (the arrow is kept plain)
 - `arrowWithoutEnd`, `sidenoteWithoutAnchor` (on a card, segment or section not imported or not there, or on a Variant the
   card does not show), `stickerWithoutAnchor`, `danglingReference` (a card's section or a section's parent that does not

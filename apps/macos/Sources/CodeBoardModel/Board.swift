@@ -37,6 +37,7 @@ public struct Board: Equatable, Sendable {
 public struct Card: Equatable, Sendable {
   public enum Content: Equatable, Sendable {
     case own(CardContent)
+    /// A shared card's, not read into the board (its file is in `.codeboard/shared/`)
     case shared
   }
 
@@ -55,10 +56,17 @@ public struct Card: Equatable, Sendable {
   /// Its zoomed-out summary while it is in no section; per placement, so a shared card has one per board
   public var summary: Summary?
   public var content: Content
+  /// Its content is the shared card's of the same id: `.shared` in the file, and read in (`.own`) on an open board,
+  /// where an edit of it is an edit of the shared card (BoardDocument writes it back to its file)
+  public var isShared: Bool
+  /// 同一块白板的共享卡: the cards of a board with the same `same` are one card placed several times on it (main's
+  /// `same`), their content always the same; each has its own id, place, tilt and what hangs on it
+  public var same: String?
 
   public init(
     id: CardID, x: Double, y: Double, width: Double, height: Double? = nil, measuredHeight: Double? = nil,
-    section: SectionID? = nil, locked: Bool = false, tilted: Bool = false, summary: Summary? = nil, content: Content
+    section: SectionID? = nil, locked: Bool = false, tilted: Bool = false, summary: Summary? = nil, content: Content,
+    isShared: Bool = false, same: String? = nil
   ) {
     self.id = id
     self.x = x
@@ -71,6 +79,8 @@ public struct Card: Equatable, Sendable {
     self.tilted = tilted
     self.summary = summary
     self.content = content
+    self.isShared = isShared || content == .shared
+    self.same = same
   }
 }
 

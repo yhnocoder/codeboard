@@ -301,7 +301,7 @@ private func fixtureVaultCopy() throws -> URL {
   #expect(
     skipped(report, "b.json") == [
       .compareCard: ["cmp", "x1", "x2"], .unplacedCard: ["nowhere"], .mergedFrom: ["c"], .generated: ["c"],
-      .classMembers: ["c"], .twin: ["c"], .processes: ["c"], .callMark: ["l"], .arrowWithoutEnd: ["l2"],
+      .classMembers: ["c"], .processes: ["c"], .callMark: ["l"], .arrowWithoutEnd: ["l2"],
       .field: ["b.born", "b.hideNumbers", "b.mystery", "b.seq", "c.keepOld", "c.collapsed"],
     ])
 }
@@ -810,4 +810,89 @@ private func unchanged(_ before: [String: Data], _ after: [String: Data]) -> [St
   // on its folder board, what the folder has: nothing to add or take away
   var t = top
   #expect(!t.keepUp(with: try #require(tree.folder(at: "Top 2")).entries))
+}
+
+// A version 13 library card of free code shown on two boards: its one segment is in the shared card's file, and both
+// boards show that file (a count of board.json files alone finds one segment fewer than the old folder holds)
+@Test func libraryFreeCodeKeepsItsSegment() throws {
+  let seg: [String: Any] = [
+    "id": "s", "src": ["kind": "free", "langPicked": true], "path": "", "lang": "python", "start": 1, "end": 2,
+    "text": ["a", "b"], "version": ["kind": "none"],
+  ]
+  let lib: [String: Any] = ["version": 13, "card": ["id": "f", "kind": "code", "segments": [seg]]]
+  let ref: [String: Any] = ["id": "f", "kind": "shared"]
+  let (vault, report, _) = try importing(
+    [
+      "a.json": oldBoard("a", name: "A", cards: [ref], extra: ["version": 13]),
+      "b.json": oldBoard("b", name: "B", cards: [ref], extra: ["version": 13]),
+    ], shared: ["f": lib])
+  #expect(report.failed.isEmpty)
+  #expect(try vault.board(at: "A.board").cards.map(\.content) == [.shared])
+  #expect(try vault.board(at: "B.board").cards.map(\.content) == [.shared])
+  guard case .code(let code) = try vault.sharedCard(CardID(rawValue: "f")).content.body else {
+    Issue.record("not code")
+    return
+  }
+  #expect(code.segments.map(\.lines) == [["a", "b"]])
+  #expect(code.segments[0].source == nil)
+}
+
+// The extension keeps each board's camera in VS Code's workspace state (packages/host/src/storage/place.ts camsOf), the
+// world drawn at translate(x, y) scale(z): it comes in as the board point at the top left and the zoom, by the id each
+// board has in the vault (a copy's its own)
+@Test func camerasComeFromTheWorkspaceStateOfTheFolderHoldingTheBoards() throws {
+  let root = try scratch()
+  let project = root.appending(path: "project")
+  let source = project.appending(path: ".codeboard")
+  try put(oldBoard("b1", name: "One"), at: source.appending(path: "one.json"))
+  try put(oldBoard("b2", name: "Two"), at: source.appending(path: "two.json"))
+  let workspaces = root.appending(path: "workspaceStorage")
+  func workspace(_ name: String, folder: URL, cams: [String: Any]) throws {
+    let dir = workspaces.appending(path: name)
+    try put(["folder": folder.absoluteString], at: dir.appending(path: "workspace.json"))
+    let state = String(
+      decoding: try JSONSerialization.data(withJSONObject: ["codeboard.cams": cams, "codeboard.open": []]),
+      as: UTF8.self)
+    let p = Process()
+    p.executableURL = URL(filePath: "/usr/bin/sqlite3")
+    p.arguments = [
+      dir.appending(path: "state.vscdb").path,
+      "CREATE TABLE ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB); INSERT INTO ItemTable VALUES "
+        + "('yhnocoder.codeboard-vscode', '\(state)'), ('other', 'x');",
+    ]
+    try p.run()
+    p.waitUntilExit()
+  }
+  try workspace("a", folder: root, cams: ["b1": ["x": 1, "y": 1, "z": 1]])
+  try workspace("b", folder: project, cams: ["b1": ["x": 80, "y": -40, "z": 2], "b2": ["x": 0, "y": 0, "z": 0]])
+  let cams = LegacyImport.cameras(for: source, in: workspaces)
+  // the deepest workspace holding the folder; a camera that cannot be (zoom 0) is left out
+  #expect(cams == ["b1": BoardCamera(x: -40, y: 20, zoom: 2)])
+  #expect(LegacyImport.cameras(for: source, in: root.appending(path: "none")).isEmpty)
+
+  let vault = root.appending(path: "vault")
+  try FileManager.default.createDirectory(at: vault.appending(path: "Old.board"), withIntermediateDirectories: true)
+  try Board(id: BoardID(rawValue: "b1"), cards: []).encoded().write(to: vault.appending(path: "Old.board/board.json"))
+  let report = try LegacyImport.run(from: source, to: vault, cameras: cams)
+  #expect(report.cameras == [BoardID(rawValue: "b1-copy"): BoardCamera(x: -40, y: 20, zoom: 2)])
+}
+
+// 同一块白板的共享卡: main's cards with the same `same` (packages/core/src/edit/twins.ts) come in as one card placed
+// twice, each with its own id, place and tilt, their content the same
+@Test func twinsComeInAsTheSameCardPlacedTwice() throws {
+  let note = { (id: String, tilt: Bool) -> [String: Any] in
+    var n = oldNote(id, "same text")
+    n["same"] = "t1"
+    if tilt { n["tilt"] = true }
+    return n
+  }
+  let (vault, report, _) = try importing([
+    "b.json": oldBoard("b", name: "B", cards: [note("n1", false), note("n2", true)])
+  ])
+  #expect(report.failed.isEmpty)
+  #expect(skipped(report, "b.json").isEmpty)
+  let b = try vault.board(at: "B.board")
+  #expect(b.cards.map(\.same) == ["t1", "t1"])
+  #expect(b.cards.map(\.tilted) == [false, true])
+  #expect(b.cards[0].content == b.cards[1].content)
 }

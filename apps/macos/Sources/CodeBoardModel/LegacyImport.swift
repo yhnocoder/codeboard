@@ -14,8 +14,11 @@ public enum LegacyImport {
   /// Imports every board and shared card of the old storage folder `source` into the vault at `destination`. A file that
   /// cannot be imported is listed in the report's failures and the rest go on. It never writes over a file in the vault: a
   /// board already there (found by id, wherever it is now) comes in as a copy, under a new id, and so does a shared card
-  /// whose file there has other content
-  public static func run(from source: URL, to destination: URL) throws -> ImportReport {
+  /// whose file there has other content. `cameras`: where each old board (by its old id) was looked at, as `cameras(for:)`
+  /// reads them; the report gives them by the id each board has in the vault
+  public static func run(from source: URL, to destination: URL, cameras: [String: BoardCamera] = [:]) throws
+    -> ImportReport
+  {
     try checkPlaces(source: source, destination: destination)
     let fm = FileManager.default
     do {
@@ -31,12 +34,13 @@ public enum LegacyImport {
       }
     }
     var run = Run(source: source, vault: vault)
+    run.oldCameras = cameras
     try run.sharedCards()
     // the library cards are written with the boards' copies known, as a copy's Markdown may refer to them
     try run.boards(inVault: inVault)
     return ImportReport(
       imported: run.entries.sorted { $0.source < $1.source },
-      failed: run.failed.sorted { String(describing: $0) < String(describing: $1) })
+      failed: run.failed.sorted { String(describing: $0) < String(describing: $1) }, cameras: run.cameras)
   }
 
   /// The vault is a folder of its own: not the old storage folder or inside it, and the old folder not its app-data folder
@@ -93,6 +97,8 @@ public struct ImportReport: Equatable, Sendable {
   public var imported: [Entry]
   /// Sorted by what they say, which starts with the file
   public var failed: [LegacyImportError]
+  /// Where each board written was looked at in the extension, by its id in the vault
+  public var cameras: [BoardID: BoardCamera] = [:]
 }
 
 /// What the importer leaves out because the format has no place for it. The old files are never changed, so a later
@@ -114,8 +120,6 @@ public enum SkipKind: String, CaseIterable, Sendable {
   case classMembers
   /// A message Note's mark: imported as a plain Note
   case messageNote
-  /// Another place of the same card on the board: imported as a copy of its own
-  case twin
   /// A card's process tags (rank 0, Scheduler × TP)
   case processes
   /// An arrow's call, RPC, back or generated-from mark: the arrow is imported plain
@@ -186,6 +190,8 @@ private struct Run {
   var entries: [ImportReport.Entry] = []
   var failed: [LegacyImportError] = []
   var shared: [String: SharedState] = [:]
+  var oldCameras: [String: BoardCamera] = [:]
+  var cameras: [BoardID: BoardCamera] = [:]
   /// The library cards upgraded to version 17, for the titles of references to them
   var sharedJSON: [String: NSDictionary] = [:]
 
@@ -369,7 +375,7 @@ private struct Run {
         let title = Vault.packageName(for: try o.string("name"))
         mapped.append(
           Mapped(
-            file: file, rel: rel, group: group.isEmpty ? "" : folderName(group), board: board, mapper: m,
+            file: file, rel: rel, group: group.isEmpty ? "" : folderName(group), oldID: id, board: board, mapper: m,
             name: inVault[id] == nil ? title : "\(title) copy", copyOf: inVault[id]))
       } catch let bad as Bad {
         failed.append(.malformed(file, bad.message))
@@ -394,6 +400,7 @@ private struct Run {
           b.mapper.skips.add(kind, name)
         }
         for c in b.board.cards where c.content == .shared { sharedShown.insert(c.id) }
+        if let cam = oldCameras[b.oldID.rawValue] { cameras[b.board.id] = cam }
         entries.append(.init(source: b.rel, destination: path, copyOf: b.copyOf, skipped: b.mapper.skips.list))
       } catch let e as LegacyImportError {
         failed.append(e)
@@ -417,6 +424,7 @@ private struct Run {
     var rel: String
     /// Its group's folder ("" at the top)
     var group: String
+    var oldID: BoardID
     var board: Board
     var mapper: Mapper
     /// Its package or folder name (a copy's with ` copy`)
@@ -776,7 +784,7 @@ private struct Mapper {
         id: CardID(rawValue: cid), x: try p.double("x"), y: try p.double("y"), width: try p.double("w"),
         height: height, measuredHeight: entry == nil ? nil : try p.optDouble("mh"), section: section,
         locked: try p.flag("locked"), tilted: tilted, summary: try p.optObject("summary").map { try summary($0) },
-        content: content)
+        content: content, same: try c.optString("same"))
       if let entry { shelfCards[entry].append(card) } else { cards.append(card) }
     }
     let allCards = Set(cards.map(\.id) + shelfCards.flatMap { $0.map(\.id) })
@@ -833,10 +841,13 @@ private struct Mapper {
           id: eid, at: try e.double("at"), cards: shelfCards[i], sections: shelfSections[i],
           arrows: try arrows(try e.objects("links")), stickers: try stickers(try e.objects("stickers"))))
     }
-    return Board(
+    var board = Board(
       id: id, cards: cards, arrows: try arrows(try o.objects("links")), sections: sections, sidenotes: notes,
       stickers: try stickers(try o.objects("stickers")), shelf: shelf, seal: try seal(o, id: bid),
       hideComments: try o.flag("hideAllComments"))
+    // main keeps 同一块白板的共享卡 the same; should a file not, the first place is what they all show
+    board.syncTwins(since: Board(id: id))
+    return board
   }
 
   private mutating func seal(_ o: Obj, id: String) throws -> Seal? {
@@ -867,7 +878,6 @@ private struct Mapper {
       skippedKind = .compareCard
       return nil
     }
-    if c.has("same") { skips.add(.twin, id) }
     if !(try c.optObjects("procs")).isEmpty { skips.add(.processes, id) }
     let common: Set = ["id", "kind", "title", "desc", "procs", "tilt", "same"]
     let body: CardContent.Body

@@ -38,11 +38,28 @@ public enum VaultError: Error, Equatable, CustomStringConvertible {
 }
 
 extension Board {
-  public func encoded() throws -> Data { try canonicalJSON(self) }
+  /// board.json: a shared card read in is written as `shared: true` alone, its content and travelling sidenotes go to
+  /// its own file (`deflated`)
+  public func encoded() throws -> Data { try canonicalJSON(deflated().board) }
 
   public init(decoding data: Data, file: URL) throws {
     self = try strictDecode(Board.self, from: data, file: file, version: Board.version)
-    if let problem = problem() { throw VaultError.malformed(file, problem) }
+    for c in cards + shelf.flatMap(\.cards) where c.isShared && c.content != .shared {
+      throw VaultError.malformed(file, "card \(c.id.rawValue): a shared card's content is in its own file")
+    }
+    if let problem = problem() ?? twinProblem() { throw VaultError.malformed(file, problem) }
+  }
+
+  /// 同一块白板的共享卡 must show the same in every place; only between edits (an edit of one place changes the others
+  /// at its end, BoardDocument)
+  func twinProblem() -> String? {
+    var twins: [String: Card.Content] = [:]
+    for card in cards + shelf.flatMap(\.cards) {
+      guard let g = card.same else { continue }
+      if let first = twins[g], first != card.content { return "card \(card.id.rawValue): not the same as its twins" }
+      twins[g] = card.content
+    }
+    return nil
   }
 
   /// The first reference or value that does not hold, as a message
@@ -372,15 +389,20 @@ extension SharedCard: Codable {
 
 extension Card: Codable {
   private enum Keys: String, CodingKey {
-    case id, x, y, width, height, measuredHeight, section, locked, tilted, summary, content, shared
+    case id, x, y, width, height, measuredHeight, section, locked, tilted, summary, content, shared, same
   }
 
   public init(from decoder: any Decoder) throws {
     let c = try decoder.container(keyedBy: Keys.self)
     let content: Content
+    // both: a shared card read into an open board (a pasteboard's, a merge's); a file has one or the other (Board.init)
+    let shared = try c.decodeIfPresent(Bool.self, forKey: .shared)
+    if shared == false {
+      throw DecodingError.dataCorruptedError(forKey: .shared, in: c, debugDescription: "written only as true")
+    }
     if c.contains(.content) {
       content = .own(try c.decode(CardContent.self, forKey: .content))
-    } else if try c.decode(Bool.self, forKey: .shared) {
+    } else if shared == true {
       content = .shared
     } else {
       throw DecodingError.dataCorruptedError(
@@ -393,7 +415,8 @@ extension Card: Codable {
       measuredHeight: try c.decodeIfPresent(Double.self, forKey: .measuredHeight),
       section: try c.decodeIfPresent(SectionID.self, forKey: .section),
       locked: try c.decode(Bool.self, forKey: .locked), tilted: try c.decode(Bool.self, forKey: .tilted),
-      summary: try c.decodeIfPresent(Summary.self, forKey: .summary), content: content)
+      summary: try c.decodeIfPresent(Summary.self, forKey: .summary), content: content, isShared: shared == true,
+      same: try c.decodeIfPresent(String.self, forKey: .same))
   }
 
   public func encode(to encoder: any Encoder) throws {
@@ -408,10 +431,9 @@ extension Card: Codable {
     try c.encode(locked, forKey: .locked)
     try c.encode(tilted, forKey: .tilted)
     try c.encodeIfPresent(summary, forKey: .summary)
-    switch content {
-    case .own(let own): try c.encode(own, forKey: .content)
-    case .shared: try c.encode(true, forKey: .shared)
-    }
+    if case .own(let own) = content { try c.encode(own, forKey: .content) }
+    if isShared { try c.encode(true, forKey: .shared) }
+    try c.encodeIfPresent(same, forKey: .same)
   }
 }
 

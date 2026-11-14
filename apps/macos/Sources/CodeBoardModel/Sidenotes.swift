@@ -138,7 +138,7 @@ extension Board {
     var n = Sidenote(
       id: id, anchor: anchor, body: .text(TextNote(text: t, question: question.map { Question(at: $0) })))
     if let l = anchor.lines {
-      if case .shared? = card(l.card)?.content {
+      if card(l.card)?.isShared == true {
         n.boardOnly = true
       } else if let s = segment(l.card, l.segment) {
         let a = max(s.firstLine, min(l.range.lowerBound, s.lastLine))

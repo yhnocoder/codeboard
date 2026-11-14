@@ -11,6 +11,11 @@ import Foundation
 /// (`Board.merge` against that version), without asking. The merge is no undo step, and the steps it broke are dropped.
 /// A file it cannot read (a newer format, broken JSON) stops saving until it can be read again, so it is never written
 /// over.
+///
+/// Shared cards (given the vault): their content and travelling sidenotes are read in from their own files, so editing
+/// one on this board edits the shared card; saving writes each one that changed back to its file (with the images it
+/// shows, copied into the shared images folder where that has none of the name), and another writer's change of one is
+/// merged in as a change of the board file is. 同一块白板的共享卡 are kept the same after every change.
 @MainActor public final class BoardDocument {
   public enum Change: Sendable {
     /// A command or gesture of this app, or its undo or redo
@@ -38,11 +43,15 @@ import Foundation
   private var baseData: Data
   /// Where the file is now: asked at every read and write, as the package may have been renamed or moved meanwhile
   private let file: () -> URL?
+  /// Where shared cards are read from and written to; nil: they stay unread (`.shared`)
+  private let vault: Vault?
+  /// Each shared card file read or written, as its bytes were then (nil: it was not there)
+  private var sharedData: [CardID: Data?] = [:]
   private var saving: Task<Void, Never>?
   private var observers: [UUID: (Change) -> Void] = [:]
 
-  /// The document of the board in `file`, as read now
-  public init(file: @escaping () -> URL?) throws {
+  /// The document of the board in `file`, as read now, its shared cards read in from `vault`
+  public init(file: @escaping () -> URL?, vault: Vault? = nil) throws {
     guard let url = file() else { throw CocoaError(.fileNoSuchFile) }
     let data: Data
     do {
@@ -50,12 +59,64 @@ import Foundation
     } catch {
       throw VaultError.unreadable(url, error.localizedDescription)
     }
-    let b = try Board(decoding: data, file: url)
+    self.vault = vault
+    self.file = file
+    var shared: [CardID: Data?] = [:]
+    let b = Self.inflate(try Board(decoding: data, file: url), vault, &shared)
+    sharedData = shared
     id = b.id
     board = b
     base = b
     baseData = data
-    self.file = file
+  }
+
+  /// `b` with its shared cards read in from the vault, noting each file's bytes in `read`
+  private static func inflate(_ b: Board, _ vault: Vault?, _ read: inout [CardID: Data?]) -> Board {
+    guard let vault else { return b }
+    var seen: [CardID: Data?] = [:]
+    let out = b.inflated { id in
+      guard Vault.isSafeID(id.rawValue) else { return nil }
+      let url = vault.sharedFolderURL.appending(path: "\(id.rawValue).json")
+      let data = try? Data(contentsOf: url)
+      seen[id] = data
+      return data.flatMap { try? SharedCard(decoding: $0, file: url) }.flatMap { $0.id == id ? $0 : nil }
+    }
+    read.merge(seen) { $1 }
+    return out
+  }
+
+  private func sharedFile(_ id: CardID) -> URL? {
+    guard let vault, Vault.isSafeID(id.rawValue) else { return nil }
+    return vault.sharedFolderURL.appending(path: "\(id.rawValue).json")
+  }
+
+  /// Each shared card on the board whose file is not what was last read or written there (or was never read here: one
+  /// just pasted) takes what the file has now, on the board and in what undo and the writing go back to. The file wins
+  /// over a change here not written yet. Whether anything changed
+  private func refreshShared() -> Bool {
+    var changed = false
+    let ids = Set((board.cards + board.shelf.flatMap(\.cards)).filter(\.isShared).map(\.id))
+    for id in ids.sorted(by: { $0.rawValue < $1.rawValue }) {
+      guard let url = sharedFile(id) else { continue }
+      let now = try? Data(contentsOf: url)
+      if let was = sharedData[id], was == now { continue }
+      sharedData[id] = now
+      guard let now, let card = try? SharedCard(decoding: now, file: url), card.id == id else { continue }
+      let before = board
+      board.putShared(card)
+      base.putShared(card)
+      writing?.before.putShared(card)
+      history.keep(holdingOn: board)
+      changed = changed || board != before
+    }
+    return changed
+  }
+
+  /// The change, and 同一块白板的共享卡 kept the same after it
+  private func apply(_ change: (inout Board) -> Void, to b: inout Board) {
+    let before = b
+    change(&b)
+    b.syncTwins(since: before)
   }
 
   /// Called after every change of the board or the selection; returns what stops it
@@ -74,7 +135,7 @@ import Foundation
   /// when it changes nothing
   public func edit(_ name: String, selection after: Set<Item>? = nil, _ change: (inout Board) -> Void) {
     var b = board
-    change(&b)
+    apply(change, to: &b)
     let before = selection
     let now = (after ?? selection).filter { b.has($0) }
     guard b != board else {
@@ -85,7 +146,7 @@ import Foundation
       // a card is being written in: the step is taken on the board without what is typed so far (its drafts), so that
       // undoing it never brings a draft back; the writing's own step starts from after it
       var nb = w.before
-      change(&nb)
+      apply(change, to: &nb)
       history.record(name, from: w.before, to: nb, selection: (before, now), epoch: derived)
       w.before = nb
       writing = w
@@ -101,10 +162,10 @@ import Foundation
   /// saved, no undo step, as another writer's change is; the steps it breaks are dropped
   public func sync(_ change: (inout Board) -> Void) {
     var b = board
-    change(&b)
+    apply(change, to: &b)
     guard b != board else { return }
     if var w = writing {
-      change(&w.before)
+      apply(change, to: &w.before)
       writing = w
     }
     board = b
@@ -118,7 +179,7 @@ import Foundation
   /// since it is put back before the one step it ends in
   public func preview(_ change: (inout Board) -> Void) {
     var b = board
-    change(&b)
+    apply(change, to: &b)
     guard b != board else { return }
     board = b
     for o in observers.values { o(.merge) }
@@ -136,11 +197,11 @@ import Foundation
     derivedLog.append((derived, change))
     trimDerived()
     if var w = writing {
-      change(&w.before)
+      apply(change, to: &w.before)
       writing = w
     }
     var b = board
-    change(&b)
+    apply(change, to: &b)
     guard b != board else { return }
     board = b
     for o in observers.values { o(.merge) }
@@ -158,7 +219,7 @@ import Foundation
 
   /// The derived changes made since a step was recorded, run again on the board it put back
   private func replayDerived(after epoch: Int, on b: inout Board) {
-    for d in derivedLog where d.n > epoch { d.change(&b) }
+    for d in derivedLog where d.n > epoch { apply(d.change, to: &b) }
   }
 
   // MARK: Writing in a card
@@ -190,7 +251,7 @@ import Foundation
   public func draft(_ change: (inout Board) -> Void) {
     guard let w = writing else { return }
     var b = board
-    change(&b)
+    apply(change, to: &b)
     guard b != board, board.card(w.id) == nil || b.card(w.id) != nil else { return }
     board = b
     changed(.draft)
@@ -202,7 +263,7 @@ import Foundation
     guard let w = writing else { return }
     writing = nil
     var b = board
-    change(&b)
+    apply(change, to: &b)
     let dropped = w.isNew && !keep
     if dropped { b.delete([.card(w.id)]) }
     let now = (dropped ? w.selection : selection).filter { b.has($0) }
@@ -266,15 +327,18 @@ import Foundation
     saving = nil
     guard let url = file() else { return }
     if let disk = try? Data(contentsOf: url), disk != baseData || problem != nil { take(disk, from: url) }
+    if refreshShared() { for o in observers.values { o(.merge) } }
     guard problem == nil, isDirty else { return }
     // never a file that cannot be read back: it stays unsaved, and says why
-    if let p = board.problem() {
+    if let p = board.problem() ?? board.twinProblem() {
       problem = "\(url.path): not saved, as it would not read back: \(p)"
       return
     }
     do {
-      let data = try board.encoded()
-      try data.write(to: url, options: .atomic)
+      let (flat, shared) = board.deflated()
+      for card in shared { try writeShared(card, package: url.deletingLastPathComponent()) }
+      let data = try canonicalJSON(flat)
+      if data != baseData { try data.write(to: url, options: .atomic) }
       base = board
       baseData = data
     } catch {
@@ -282,26 +346,61 @@ import Foundation
     }
   }
 
+  /// A shared card's file written when it changed, never over a file that is not what was last read there; the images
+  /// it shows are copied from the board's images folder into the shared one where that has none of the name
+  private func writeShared(_ card: SharedCard, package: URL) throws {
+    guard let file = sharedFile(card.id), let vault else { return }
+    let data = try card.encoded()
+    let was = sharedData[card.id] ?? nil
+    guard data != was else { return }
+    let there = try? Data(contentsOf: file)
+    if there == data {
+      sharedData[card.id] = data
+      return
+    }
+    // another writer's, not taken in yet (refreshShared): never written over
+    guard there == was else { return }
+    let from = package.appending(path: Vault.imagesFolder)
+    let to = vault.sharedFolderURL.appending(path: Vault.imagesFolder)
+    for name in card.imageFiles.sorted() where Vault.isFileName(name) {
+      let src = from.appending(path: name)
+      let dst = to.appending(path: name)
+      guard FileManager.default.fileExists(atPath: src.path), !FileManager.default.fileExists(atPath: dst.path)
+      else { continue }
+      try FileManager.default.createDirectory(at: to, withIntermediateDirectories: true)
+      try? FileManager.default.copyItem(at: src, to: dst)
+    }
+    try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try data.write(to: file, options: was == nil ? .withoutOverwriting : .atomic)
+    sharedData[card.id] = data
+  }
+
   // MARK: Another writer
 
   /// The vault changed on disk: when this board's file is not what was last read or written, it is merged in
   public func diskChanged() {
-    guard let url = file(), let disk = try? Data(contentsOf: url), disk != baseData || problem != nil else { return }
-    take(disk, from: url)
-    scheduleSave()
+    guard let url = file(), let disk = try? Data(contentsOf: url) else { return }
+    let boardChanged = disk != baseData || problem != nil
+    if boardChanged { take(disk, from: url) }
+    let sharedChanged = refreshShared()
+    if sharedChanged { for o in observers.values { o(.merge) } }
+    if boardChanged || sharedChanged { scheduleSave() }
   }
 
   private func take(_ data: Data, from url: URL) {
     let theirs: Board
     do {
-      theirs = try Board(decoding: data, file: url)
+      var read: [CardID: Data?] = [:]
+      theirs = Self.inflate(try Board(decoding: data, file: url), vault, &read)
+      sharedData.merge(read) { $1 }
     } catch {
       // never written over: it stays as the other writer left it until it can be read
       problem = String(describing: error)
       return
     }
     problem = nil
-    let merged = Board.merge(base: base, mine: board, disk: theirs)
+    var merged = Board.merge(base: base, mine: board, disk: theirs)
+    merged.syncTwins(since: board)
     // what the writing's step will start from takes in the other writer's changes too, so undoing it leaves them
     if let w = writing { writing?.before = Board.merge(base: base, mine: w.before, disk: theirs) }
     base = theirs
