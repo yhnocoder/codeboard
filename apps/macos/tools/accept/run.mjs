@@ -257,10 +257,14 @@ const fpsOf = (dir) => {
   const t = fs.readFileSync(path.join(dir, "times.txt"), "utf8").split("\n").filter(Boolean).map(Number);
   return t.length > 1 ? (t.length - 1) / (t[t.length - 1] - t[0]) : 30;
 };
+// an ffmpeg built without freetype (Homebrew's) has no drawtext: the sides go unlabelled (Mac is always on the left)
+let drawtext;
 function sideBySide(out, name, have) {
+  drawtext ??= / drawtext /.test(execFileSync("ffmpeg", ["-hide_banner", "-filters"]).toString());
   const font = "/System/Library/Fonts/Helvetica.ttc";
-  const label = (i, side) =>
-    `[${i}]scale=-2:720,fps=30,drawtext=fontfile=${font}:text=${side === "mac" ? "Mac" : "VS Code"}:x=12:y=h-36:fontsize=24:fontcolor=red,tpad=stop_mode=clone:stop_duration=3[v${i}]`;
+  const text = (side) =>
+    drawtext ? `,drawtext=fontfile=${font}:text=${side === "mac" ? "Mac" : "VS Code"}:x=12:y=h-36:fontsize=24:fontcolor=red` : "";
+  const label = (i, side) => `[${i}]scale=-2:720,fps=30${text(side)},tpad=stop_mode=clone:stop_duration=3[v${i}]`;
   const ins = have.flatMap((s) => ["-framerate", fpsOf(path.join(out, s, name)).toFixed(2), "-i", path.join(out, s, name, "f%05d.png")]);
   const f = have.map((s, i) => label(i, s)).join(";");
   const stack = have.length > 1 ? `;[v0][v1]hstack=2:shortest=1,pad=ceil(iw/2)*2:ceil(ih/2)*2[o]` : ";[v0]pad=ceil(iw/2)*2:ceil(ih/2)*2[o]";

@@ -14,14 +14,14 @@ key left
 caret
 key left
 caret
-click @nprose"the notes">
+click @nprose"notes">
 wait 300
 caret
 key right
 caret
 key right
 caret
-click @nprose"step()"<
+click @nprose"step"<
 wait 300
 caret
 key left

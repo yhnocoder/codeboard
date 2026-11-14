@@ -1,9 +1,9 @@
 # 用拼音在中文句子后面接着写一句，再改掉一个字，最后 ⌘Z 撤回：组字时下划线和候选位置自然，提交后不丢字不重复
 zoom 1
 center @nprose
-dbl @nprose"键值缓存"
+dbl @nprose"每个批次"
 wait 600
-click @nprose"键值缓存。">
+click @nprose"存。">
 wait 300
 rec ime
 ime y|yu|yut|yutian|预填
