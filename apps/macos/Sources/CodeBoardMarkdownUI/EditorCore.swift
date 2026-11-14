@@ -69,6 +69,7 @@ public final class EditorCore {
 
   public var caret: MDCaret {
     if let m = marked { return MDCaret(m.at + m.selected.location) }
+    if let l = lone { return MDCaret(selection.head + (l < selection.head ? 1 : 0)) }
     return MDCaret(selection.head, upstream: upstream && selection.isEmpty)
   }
   /// where the caret is drawn; nil with a selection
@@ -87,6 +88,8 @@ public final class EditorCore {
   /// A key that may change the text: what the editing rules make of it, applied; whether it did anything
   @discardableResult
   public func key(_ k: MDKey) -> Bool {
+    endLone()
+    defer { beginLone() }
     // a closer typed over one a pair put in steps over it (editor/pairs.ts)
     if case .text(let s) = k, selection.isEmpty, autoClosers.contains(selection.head),
       (source as NSString).length > selection.head,
@@ -112,11 +115,53 @@ public final class EditorCore {
   /// A formatting command (⌘B, ⌘1…): what the rules make of it, applied; whether it did anything
   @discardableResult
   public func command(_ c: MDCommand) -> Bool {
+    endLone()
     guard marked == nil,
       let e = MarkdownEditing.command(c, in: MDEditState(source: source, selection: selection), document: document)
     else { return false }
     apply(e)
     return true
+  }
+
+  // MARK: a lone block marker
+
+  /// Where the layout's text has a zero-width space the source has not, while a block marker the user just typed waits
+  /// for its next key. TipTap's rules fire on the space after a marker; Markdown reads the line at once. So a line that is
+  /// only a marker (#, -, *, +, >, 1., 1)) with the caret after it is shown as text (the space goes before the marker),
+  /// and a list marker and its space with nothing after them as an empty item (the space goes after the caret)
+  public private(set) var lone: Int?
+  private static let textMarker = try! NSRegularExpression(pattern: "^(#{1,6}|[-*+>]|\\d{1,9}[.)])$")
+  private static let emptyItem = try! NSRegularExpression(pattern: "^([-*+]|\\d{1,9}[.)])( \\[[ xX]\\])? $")
+
+  private func beginLone() {
+    guard lone == nil, marked == nil, selection.isEmpty else { return }
+    let ns = source as NSString
+    let q = selection.head
+    guard q > 0, q == ns.length || ns.character(at: q) == 0x0A else { return }
+    let start = ns.lineRange(for: NSRange(location: q - 1, length: 0)).location
+    let line = ns.substring(with: NSRange(location: start, length: q - start))
+    let whole = NSRange(location: 0, length: (line as NSString).length)
+    let at: Int
+    if Self.textMarker.firstMatch(in: line, range: whole) != nil {
+      at = start
+    } else if Self.emptyItem.firstMatch(in: line, range: whole) != nil,
+      case .paragraph = MarkdownEditing.context(at: q, in: document).leaf,
+      MarkdownEditing.context(at: q, in: document).item == nil
+    {
+      at = q
+    } else {
+      return
+    }
+    let shown = document.reparse(replacing: at..<at, with: "\u{200B}")
+    layout.update(to: shown, replacing: at..<at, delta: 1, head: at < q ? q + 1 : q)
+    lone = at
+  }
+
+  /// the layout shows the source as it is again
+  private func endLone() {
+    guard let at = lone else { return }
+    lone = nil
+    layout.update(to: document, replacing: at..<(at + 1), delta: -1, head: layout.head.map { $0 > at ? $0 - 1 : $0 })
   }
 
   /// where closers the editor paired sit, until anything else happens
@@ -175,6 +220,7 @@ public final class EditorCore {
 
   /// ⌘Z: the last step taken back, its selection before it restored
   public func undo() {
+    endLone()
     guard canUndo, let step = undoSteps.popLast() else { return }
     for e in step.edits.reversed() {
       let end = e.range.lowerBound + (e.new as NSString).length
@@ -186,6 +232,7 @@ public final class EditorCore {
 
   /// ⇧⌘Z
   public func redo() {
+    endLone()
     guard canRedo, let step = redoSteps.popLast() else { return }
     for e in step.edits { edit(e.range, e.new, select: step.after) }
     undoSteps.append(step)
@@ -200,6 +247,7 @@ public final class EditorCore {
   }
   /// ⌘X
   public func cut() -> String? {
+    endLone()
     guard let t = copy() else { return nil }
     apply(
       MDEdit(
@@ -208,6 +256,7 @@ public final class EditorCore {
   }
   /// ⌘V: plain text, as the paste rules make it
   public func paste(_ plain: String) {
+    endLone()
     for e in MarkdownEditing.paste(
       plain: plain, html: nil, in: MDEditState(source: source, selection: selection), document: document)
     {
@@ -220,6 +269,7 @@ public final class EditorCore {
   /// An input method's text being composed at the selection (which it replaces): shown in the layout, never in the
   /// source, the layout held still around it. `selected` is the input method's caret or selection in it
   public func setMarked(_ text: String, selected: NSRange) {
+    endLone()
     if marked == nil, !selection.isEmpty {
       apply(MDEdit(range: selection.range, replacement: "", selection: MDSelection(selection.range.lowerBound)))
     }
@@ -284,6 +334,7 @@ public final class EditorCore {
 
   /// ← → ⌥← ⌥→ ⌘← ⌘→ ⌘↑ ⌘↓ and their ⇧ forms
   public func move(_ unit: Unit, forward: Bool, extend: Bool) {
+    endLone()
     let d = document
     // markers follow the caret only while nothing is selected; extending keeps the layout as it is
     let shown = layout.head
@@ -320,6 +371,7 @@ public final class EditorCore {
 
   /// ↑ ↓ and ⇧↑ ⇧↓
   public func moveVertically(down: Bool, extend: Bool) {
+    endLone()
     if !extend, !selection.isEmpty {
       let edge = down ? selection.range.upperBound : selection.range.lowerBound
       selection = MDSelection(edge)
@@ -332,24 +384,28 @@ public final class EditorCore {
   }
 
   public func selectAll() {
+    endLone()
     goalX = nil
     place(MDSelection(anchor: MarkdownEditing.start(of: document), head: MarkdownEditing.end(of: document)))
   }
 
   /// ⌘D: the word at the caret, as a double-click selects it
   public func selectWord() {
+    endLone()
     let r = MarkdownEditing.word(at: selection.head, in: document, head: layout.head)
     place(MDSelection(anchor: r.lowerBound, head: r.upperBound))
   }
 
   /// ⌘L and a triple-click: the paragraph, heading text, cell or code block
   public func selectParagraph() {
+    endLone()
     let r = MarkdownEditing.paragraph(at: selection.head, in: document)
     place(MDSelection(anchor: r.lowerBound, head: r.upperBound))
   }
 
   /// Sets the selection (the host's `selection = …`, a find result): snapped to caret places, markers shown at once
   public func select(_ s: MDSelection) {
+    endLone()
     goalX = nil
     let d = document
     place(MDSelection(anchor: MarkdownEditing.snap(s.anchor, in: d), head: MarkdownEditing.snap(s.head, in: d)))
@@ -360,6 +416,7 @@ public final class EditorCore {
   /// A press: one click places the caret, two select a word, three a paragraph; with ⇧ the selection is extended. The
   /// layout holds still until `settle` after the release
   public func mouseDown(at p: CGPoint, clicks: Int, extend: Bool) {
+    endLone()
     // a press on a drawn formula, reference or tag means "edit this": its source shows at once, the caret where one goes
     // on typing (editor/widgets.ts); an image is selected
     if !extend, clicks == 1, let r = layout.atom(at: p), let i = MarkdownEditing.inline(r, in: document),

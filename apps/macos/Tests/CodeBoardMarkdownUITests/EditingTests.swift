@@ -272,3 +272,69 @@ import Testing
     #expect(e.source == "x\n\n## Title")
   }
 }
+
+/// A line that is only a block marker just typed stays text until the next key, as TipTap's rules fire on the space
+@Suite struct LoneMarkerTests {
+  func core(_ src: String, caret: Int) -> EditorCore {
+    _ = boardFonts
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    return EditorCore(layout: l, caret: caret)
+  }
+
+  func shownKinds(_ e: EditorCore) -> [String] {
+    e.layout.document.blocks.map {
+      switch $0.kind {
+      case .heading: "heading"
+      case .list: "list"
+      case .quote: "quote"
+      default: "paragraph"
+      }
+    }
+  }
+
+  @Test(arguments: ["#", "-", "*", ">", "1."]) func aLoneMarkerIsTextUntilTheSpace(_ marker: String) {
+    let e = core("Before\n\n", caret: 8)
+    let height = e.layout.size.height
+    for ch in marker { e.insert(String(ch)) }
+    #expect(e.source == "Before\n\n" + marker)
+    #expect(e.lone == 8)
+    #expect(shownKinds(e).last == "paragraph")
+    // one line of body text: no heading's size, no bullet
+    #expect(e.layout.size.height <= height + 1)
+    let caret = e.caretRect!
+    #expect(caret.minX > 0)
+    e.insert(" ")
+    // the space makes it the block: a list marker and its space are an empty item until text follows
+    #expect(shownKinds(e).last != "paragraph")
+    e.insert("x")
+    #expect(e.lone == nil && shownKinds(e).last != "paragraph")
+    #expect(e.layout.document == e.document)
+  }
+
+  @Test func undoAndInputMethodsEndIt() {
+    var e = core("Before\n\n", caret: 8)
+    e.insert("#")
+    e.undo()
+    #expect(e.source == "Before\n\n" && e.lone == nil && e.layout.document == e.document)
+    e = core("Before\n\n", caret: 8)
+    e.insert("#")
+    e.setMarked("zhong", selected: NSRange(location: 5, length: 0))
+    #expect(e.lone == nil)
+    #expect(shownKinds(e).last == "paragraph")
+    e.insert("中")
+    #expect(e.source == "Before\n\n#中")
+    e = core("Before\n\n", caret: 8)
+    e.insert("#")
+    e.move(.character, forward: false, extend: false)
+    #expect(e.lone == nil && e.layout.document == e.document)
+  }
+
+  @Test func aSecondHashKeepsItText() {
+    let e = core("Before\n\n", caret: 8)
+    e.insert("#")
+    e.insert("#")
+    #expect(e.lone == 8 && shownKinds(e).last == "paragraph")
+    e.insert("x")
+    #expect(e.lone == nil && e.source == "Before\n\n##x")
+  }
+}
