@@ -237,7 +237,10 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     let r = try await Rig(menusBoard(), zoom: 1)
     defer { r.close() }
     let m = r.canvas.moreMenu()
-    #expect(titles(m) == ["Undo", "Redo", "-", "Copy Path", "-", "Settings…", "Theme"])
+    #expect(
+      titles(m) == ["Undo", "Redo", "-", "Rename Board…", "Copy Path", "Edit Mark…", "-", "Settings…", "Theme"])
+    #expect(item(m, "Rename Board…")?.action == Selector(("renameBoard:")))
+    #expect(item(m, "Edit Mark…")?.action == Selector(("editMark:")))
     #expect(titles(item(m, "Theme")?.submenu) == Theme.all.map(\.name))
     #expect(item(m, "Redo")?.keyEquivalent == "z" && item(m, "Redo")?.keyEquivalentModifierMask == [.command, .shift])
     fire(item(m, "Copy Path"))

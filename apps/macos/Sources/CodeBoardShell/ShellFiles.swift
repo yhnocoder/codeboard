@@ -60,6 +60,28 @@ extension Shell {
     renaming = .board(made.id)
   }
 
+  /// Rename Board… (the toolbar's ⋯): the open board's row shown in the sidebar, its name written in place there; a
+  /// folder's own board is its folder's row
+  public func renameOpenBoard() {
+    guard let (b, folder) = revealOpenBoard() else { return }
+    renaming = b.isFolderBoard ? .folder(folder) : .board(b.id)
+  }
+
+  /// Edit Mark… (the toolbar's ⋯): the open board's seal edited beside its row in the sidebar
+  public func editOpenBoardMark() {
+    guard let (b, _) = revealOpenBoard(), !b.isFolderBoard else { return }
+    sealEditing = b.id
+  }
+
+  /// The open board and its folder, its row shown: the sidebar shown, every folder it is in open
+  private func revealOpenBoard() -> (VaultBoard, String)? {
+    guard let id = current?.board, let b = tree?.allBoards.first(where: { $0.id == id }) else { return nil }
+    let folders = b.path.split(separator: "/").dropLast()
+    for i in folders.indices { expanded.insert(folders[...i].joined(separator: "/")) }
+    sidebarShown = true
+    return (b, folders.joined(separator: "/"))
+  }
+
   /// A new folder in `folder`, its name written in place
   public func newFolder(in folder: String) {
     var path: String?
