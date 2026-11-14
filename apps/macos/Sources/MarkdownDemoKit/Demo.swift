@@ -7,6 +7,7 @@
 import AppKit
 import CodeBoardMarkdown
 import CodeBoardMarkdownUI
+import CodeBoardModel
 import CodeBoardSyntax
 import ImageIO
 
@@ -168,8 +169,21 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   lazy var moves = BlockMoveHost(demo: self)
   var zoomLabel: NSTextField!
   var images: [String: CGImage] = [:]
-  /// code colours that never hold a key up (the component's LiveHighlight over the file's resources)
-  lazy var live = LiveHighlight(resources)
+  /// code colours that never hold a key up (the component's LiveHighlight), one per folder images resolve against
+  private var lives: [URL: LiveHighlight] = [:]
+  func live(for folder: URL) -> LiveHighlight {
+    if let l = lives[folder] { return l }
+    let l = LiveHighlight(FileResources(folder: folder, pasted: resources.pasted, math: resources.math))
+    lives[folder] = l
+    return l
+  }
+  /// an opened vault (File > Open Vault…), read and never written, and the board shown from it: its Notes stacked in one
+  /// column, in reading order (VaultNotes)
+  var vault: Vault?
+  var boardPath: String?
+  var vaultNotes: [VaultNote]?
+  /// the Board menu, filled from the vault's folders
+  let boardMenu = NSMenu(title: "Board")
 
   /// the paper under the card, the card's box and the editor inside it; a click on the paper ends editing
   final class Page: NSView {
@@ -205,6 +219,9 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
       DispatchQueue.main.asyncAfter(deadline: .now() + 3) { (math as? JSEngines)?.trim() }
     }
     setUp()
+    if restoresVault, let path = DemoDefaults.vault, FileManager.default.fileExists(atPath: path) {
+      open(vault: URL(filePath: path), board: DemoDefaults.board)
+    }
     window.center()
     window.makeKeyAndOrderFront(nil)
     NSApp.activate()
@@ -249,15 +266,115 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     text = t
     folder = url.deletingLastPathComponent()
     resources = FileResources(folder: folder, pasted: resources.pasted, math: resources.math)
-    live = LiveHighlight(resources)
-    images = [:]
-    for c in cards { c.removeFromSuperview() }
-    cards = []
+    vaultNotes = nil
+    boardPath = nil
+    clearCards()
     window?.isDocumentEdited = false
     name = url.lastPathComponent
     window?.title = name
     if window != nil { rebuild() }
     return true
+  }
+
+  /// every card goes: the next rebuild makes new editors for new texts
+  func clearCards() {
+    images = [:]
+    for c in cards { c.removeFromSuperview() }
+    cards = []
+  }
+
+  @objc func openVault(_ s: Any?) {
+    let p = NSOpenPanel()
+    p.canChooseDirectories = true
+    p.canChooseFiles = false
+    p.message = "A vault folder: its boards are read, never written"
+    guard p.runModal() == .OK, let url = p.url, open(vault: url, board: nil) else { return }
+    remember()
+  }
+
+  /// what a person picked from the menus is what the next plain launch opens
+  func remember() {
+    DemoDefaults.vault = vault?.root.path
+    DemoDefaults.board = boardPath
+  }
+
+  /// Opens a vault and a board in it (nil: its first board)
+  @discardableResult
+  func open(vault url: URL, board: String?) -> Bool {
+    let v = Vault(root: url)
+    guard let tree = try? v.tree() else {
+      alert("Not a vault", "\(url.path) could not be read as a vault.")
+      return false
+    }
+    vault = v
+    fillBoardMenu(tree)
+    let boards = tree.allBoards
+    guard let path = board.flatMap({ b in boards.first { $0.path == b }?.path }) ?? boards.first?.path else {
+      vaultNotes = []
+      boardPath = nil
+      window?.title = url.lastPathComponent
+      clearCards()
+      if window != nil { rebuild() }
+      return true
+    }
+    return show(board: path)
+  }
+
+  /// the board's Notes, stacked; a board that does not read says why
+  @discardableResult
+  func show(board path: String) -> Bool {
+    guard let v = vault else { return false }
+    do {
+      let (notes, skipped) = try VaultNotes.notes(of: path, in: v)
+      vaultNotes = notes
+      boardPath = path
+      let title = path.split(separator: "/").last.map { String($0.dropLast(".board".count)) } ?? path
+      name = "\(v.root.lastPathComponent) – \(title)"
+      window?.title = name
+      window?.isDocumentEdited = false
+      for item in boardMenu.items { item.state = item.representedObject as? String == path ? .on : .off }
+      clearCards()
+      if window != nil { rebuild() }
+      if !skipped.isEmpty { alert("Some cards were left out", skipped.joined(separator: "\n")) }
+      return true
+    } catch {
+      alert("The board could not be read", "\(error)")
+      return false
+    }
+  }
+
+  @objc func pickBoard(_ item: NSMenuItem) {
+    guard let path = item.representedObject as? String, show(board: path) else { return }
+    remember()
+  }
+
+  /// one item per board, a submenu per folder, in the vault's own order
+  func fillBoardMenu(_ tree: VaultFolder) {
+    func fill(_ menu: NSMenu, _ folder: VaultFolder) {
+      for f in folder.folders {
+        let sub = NSMenu(title: f.name)
+        fill(sub, f)
+        menu.addItem(withTitle: f.name, action: nil, keyEquivalent: "").submenu = sub
+      }
+      for b in folder.boards {
+        let item = menu.addItem(withTitle: b.title, action: #selector(pickBoard(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = b.path
+      }
+    }
+    boardMenu.removeAllItems()
+    fill(boardMenu, tree)
+    if boardMenu.items.isEmpty {
+      boardMenu.addItem(withTitle: "No boards in this vault", action: nil, keyEquivalent: "")
+    }
+  }
+
+  func alert(_ title: String, _ text: String) {
+    guard window != nil, NSApp.isRunning else { return }
+    let a = NSAlert()
+    a.messageText = title
+    a.informativeText = text
+    a.runModal()
   }
 
   @objc func openDocument(_ s: Any?) {
@@ -271,11 +388,15 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   func rebuild() {
     let card = MarkdownLooks.card(.note, look: look, dark: dark)
     let inner = cardWidth - card.padding[1] - card.padding[3]
-    let texts = [text] + (secondText.map { [$0] } ?? [])
-    while cards.count > texts.count { cards.removeLast().removeFromSuperview() }
-    for (i, t) in texts.enumerated() {
-      let doc = i < cards.count ? cards[i].core.document : MarkdownDocument(t)
-      let layout = BlockLayout(doc, width: inner, theme: card.theme, layout: nil, resources: live)
+    // a vault's board: its Notes, each with its own image folder and layout info; else the file (and a second Note)
+    let notes: [(text: String, folder: URL, info: MDLayoutInfo?)] =
+      vaultNotes?.map { ($0.text, $0.folder, $0.info) }
+      ?? ([text] + (secondText.map { [$0] } ?? [])).map { ($0, folder, nil) }
+    while cards.count > notes.count { cards.removeLast().removeFromSuperview() }
+    for (i, n) in notes.enumerated() {
+      let doc = i < cards.count ? cards[i].core.document : MarkdownDocument(n.text)
+      let info = i < cards.count ? cards[i].core.layout.info : n.info
+      let layout = BlockLayout(doc, width: inner, theme: card.theme, layout: info, resources: live(for: n.folder))
       let e: MarkdownEditorView
       if i < cards.count {
         e = cards[i]
@@ -285,7 +406,8 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
         // a card shows its picture until it is clicked, as on the board
         e.isEditing = false
         e.delegate = self
-        e.image = { [weak self] slot in self?.image(slot) }
+        let folder = n.folder
+        e.image = { [weak self] slot in self?.image(slot, in: folder) }
         e.codeLanguages = [
           ("python", "Python"), ("rust", "Rust"), ("c", "C"), ("cpp", "C++"), ("cuda", "CUDA"), ("triton", "Triton"),
           ("tilelang", "TileLang"), ("mermaid", "Mermaid"), ("json", "JSON"), ("bash", "Shell"),
@@ -386,17 +508,18 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   }
 
   @objc func toggleSecond(_ s: Any?) {
+    guard vaultNotes == nil else { return }
     secondText = secondText == nil ? secondSample : nil
     rebuild()
   }
 
-  func image(_ slot: MarkdownImageSlot) -> CGImage? {
-    if let i = images[slot.src] ?? resources.pasted.picture(slot.src) { return i }
-    guard !slot.src.contains("://"),
-      let s = CGImageSourceCreateWithURL(folder.appending(path: slot.src) as CFURL, nil),
+  func image(_ slot: MarkdownImageSlot, in folder: URL) -> CGImage? {
+    let url = folder.appending(path: slot.src)
+    if let i = images[url.path] ?? resources.pasted.picture(slot.src) { return i }
+    guard !slot.src.contains("://"), let s = CGImageSourceCreateWithURL(url as CFURL, nil),
       let i = CGImageSourceCreateImageAtIndex(s, max(0, (slot.stillFrame ?? 1) - 1), nil)
     else { return nil }
-    images[slot.src] = i
+    images[url.path] = i
     return i
   }
 
@@ -412,6 +535,9 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
       try? source.write(to: other, atomically: true, encoding: .utf8)
     }
   }
+
+  /// a plain launch (no file, no driver's options) opens the vault and board it had open last
+  var restoresVault = false
 
   /// where the demo writes the Note's Markdown after every change, and where it reports the card's place
   var saveTo: URL?
@@ -489,6 +615,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     let file = NSMenuItem()
     file.submenu = NSMenu(title: "File")
     file.submenu!.addItem(withTitle: "Open…", action: #selector(openDocument(_:)), keyEquivalent: "o").target = self
+    file.submenu!.addItem(withTitle: "Open Vault…", action: #selector(openVault(_:)), keyEquivalent: "O").target = self
     main.addItem(file)
     let edit = NSMenuItem()
     edit.submenu = NSMenu(title: "Edit")
@@ -515,6 +642,10 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
       item.target = self
     }
     main.addItem(view)
+    let board = NSMenuItem()
+    board.submenu = boardMenu
+    if boardMenu.items.isEmpty { boardMenu.addItem(withTitle: "Open a vault first", action: nil, keyEquivalent: "") }
+    main.addItem(board)
     NSApp.mainMenu = main
   }
 }
@@ -599,10 +730,11 @@ final class Columns: NSView {
 }
 
 /// Runs the demo window in this process (MarkdownDemo's main, and a driver that runs it in its own process):
-///   [file.md] [--width 420] [--save-to <path>] [--report <path>] [--check <folder>]
+///   [file.md] [--width 420] [--save-to <path>] [--report <path>] [--check <folder>] [--vault <folder> [--board <path>]]
 /// --save-to writes the Note's Markdown there after every change; --report writes where the card and its editor are in the
 /// window (points from its top left), the zoom and the window's number, whenever they move; --check (Check.run) lays the
-/// window out without showing it, renders it offscreen at several widths, measures it at rest and exits
+/// window out without showing it, renders it offscreen at several widths, measures it at rest and exits; --vault opens a
+/// vault (read only) at a board (its path in the vault; else the first), as File > Open Vault… does
 @MainActor
 public func runMarkdownDemo(arguments: [String]) throws -> Never {
   var args = arguments
@@ -617,6 +749,8 @@ public func runMarkdownDemo(arguments: [String]) throws -> Never {
   let saveTo = option("--save-to").map { URL(filePath: $0) }
   let report = option("--report").map { URL(filePath: $0) }
   let check = option("--check").map { URL(filePath: $0) }
+  let vault = option("--vault").map { URL(filePath: $0) }
+  let board = option("--board")
   let file = args.first.map { URL(filePath: $0) }
   let text = try file.map { try String(contentsOf: $0, encoding: .utf8) } ?? sample
   let app = NSApplication.shared
@@ -627,8 +761,23 @@ public func runMarkdownDemo(arguments: [String]) throws -> Never {
   if let second { demo.secondText = try String(contentsOf: second, encoding: .utf8) }
   demo.reportTo = report
   if let file { demo.name = file.lastPathComponent }
+  demo.restoresVault = file == nil && vault == nil && second == nil && saveTo == nil && report == nil && check == nil
+  if let vault { demo.open(vault: vault, board: board) }
   if let check { exit(Check.run(demo, out: check, start: atStart) ? 0 : 1) }
   app.delegate = demo
   app.run()
   exit(0)
+}
+
+/// What the demo remembers between launches, in its own defaults (its bundle's domain; never the app's)
+@MainActor
+enum DemoDefaults {
+  static var vault: String? {
+    get { UserDefaults.standard.string(forKey: "MarkdownDemo.vault") }
+    set { UserDefaults.standard.set(newValue, forKey: "MarkdownDemo.vault") }
+  }
+  static var board: String? {
+    get { UserDefaults.standard.string(forKey: "MarkdownDemo.board") }
+    set { UserDefaults.standard.set(newValue, forKey: "MarkdownDemo.board") }
+  }
 }

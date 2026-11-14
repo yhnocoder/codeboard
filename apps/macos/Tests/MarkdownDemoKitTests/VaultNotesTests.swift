@@ -1,3 +1,4 @@
+import AppKit
 import CodeBoardMarkdown
 import CodeBoardModel
 import Foundation
@@ -6,7 +7,7 @@ import Testing
 @testable import MarkdownDemoKit
 
 /// The demo's Open Vault on a vault made here: a board's Note cards in reading order, shared ones from the shared folder
-@Suite struct VaultNotesTests {
+@MainActor @Suite struct VaultNotesTests {
   func vault() throws -> Vault {
     let root = FileManager.default.temporaryDirectory.appending(path: "demo-vault-\(UUID().uuidString)")
     let v = Vault(root: root)
@@ -50,5 +51,22 @@ import Testing
     #expect(notes[0].folder == v.url(of: "Topic/Step.board"))
     #expect(notes[2].text == "Shared" && notes[2].folder == v.sharedFolderURL)
     #expect(skipped.count == 1 && skipped[0].hasPrefix("gone"))
+  }
+
+  @Test func theDemoStacksABoardsNotes() throws {
+    let v = try vault()
+    defer { try? FileManager.default.removeItem(at: v.root) }
+    _ = NSApplication.shared
+    let demo = try Demo(text: "# A file", folder: FileManager.default.temporaryDirectory, cardWidth: 420)
+    demo.setUp()
+    #expect(demo.open(vault: v.root, board: "Topic/Step.board"))
+    #expect(demo.cards.map(\.source) == ["| a |\n|---|\n| 1 |", "Right", "Shared", "Lower"])
+    // one column, top to bottom, the table's width from the Note's layout info
+    let rects = demo.page.cardRects
+    #expect(rects.count == 4 && zip(rects, rects.dropFirst()).allSatisfy { $0.maxY < $1.minY && $0.minX == $1.minX })
+    #expect(demo.cards[0].core.layout.info == MDLayoutInfo(tables: [MDLayoutInfo.Table(cols: [120])], wrap: [0]))
+    // the board menu lists the board under its folder
+    #expect(demo.boardMenu.items.first?.submenu?.items.first?.representedObject as? String == "Topic/Step.board")
+    DemoWindowTests.kept.append(demo)
   }
 }
