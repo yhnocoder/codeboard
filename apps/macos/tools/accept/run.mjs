@@ -153,7 +153,11 @@ class Driver {
   async reopen() {
     await Promise.race([this.send("quit").catch(() => {}), sleep(3000)]);
     for (let t = 0; t < 100 && this.alive(); t++) await sleep(50);
-    if (this.alive()) process.kill(this.pid, "SIGTERM");
+    const hung = this.alive();
+    if (hung) process.kill(this.pid, "SIGTERM");
+    // what the app kept for the next start (its cameras), in the log of the run that ends: why a camera did not come back
+    const kept = fs.existsSync(cameraFile(this.vault)) ? fs.readFileSync(cameraFile(this.vault), "utf8").replace(/\s+/g, "") : "none";
+    fs.appendFileSync(this.log, `reopen: ${hung ? "did not quit in 5 s, terminated" : "quit"}; cameras kept ${kept}\n`);
     this.opened = (this.opened ?? 0) + 1;
     fs.renameSync(this.log, path.join(this.dir, `log-${this.opened}.txt`));
     this.n = 0;

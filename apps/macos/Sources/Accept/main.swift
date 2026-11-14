@@ -51,7 +51,20 @@ nonisolated var vFlags: NSEvent.ModifierFlags {
   get { Virtual.input.withLock { $0.flags } }
   set { Virtual.input.withLock { $0.flags = newValue } }
 }
-var gKey: NSWindow?
+var keyWindowSet: NSWindow?
+/// The key window as the window server would have it: the one made key last while it is on screen; once that one is
+/// gone (a sheet ended, a panel closed) the window server hands key back to the main window, which then becomes key
+/// (its first responder takes the keys again)
+var gKey: NSWindow? {
+  get {
+    if let k = keyWindowSet, k.isVisible { return k }
+    guard let back = gMain, back !== keyWindowSet else { return keyWindowSet }
+    keyWindowSet = back
+    DispatchQueue.main.async { back.becomeKey() }
+    return back
+  }
+  set { keyWindowSet = newValue }
+}
 weak var gMain: NSWindow?
 var cursorName = "arrow"
 var lastMenu: NSMenu?
