@@ -1,5 +1,5 @@
 // The boards of the stage 8 look sheets (the summary level), made with main's own core (emptyBoard, putSummary,
-// summarySig), written to review/stage8/storage/ as main's board files: capture-main.spec.ts opens them in main's board,
+// summarySig), written to review/stage8/storage/ as main's board files: capture-main.spec.ts.txt opens them in main's board,
 // `LookCompare --stage8` imports them into a vault and draws them natively. Made-up content (the nested board is main's
 // summaryNestedSections scenario's). From the repository root, after npm ci:
 //   node apps/macos/review/stage8/boards.mjs

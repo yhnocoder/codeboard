@@ -2,7 +2,7 @@ Stage 8 look sheets: the summary level, on made-up boards (storage/, written by 
 emptyBoard, putSummary, summarySig), imported as the app imports old boards and drawn off screen at 2x by
 `swift run -c release LookCompare --stage8 <out> <main's pictures> apps/macos/review/stage8/storage`, in Warm Ink and
 Ink Wash, light and dark (<sheet>-<theme>[-dark].png). main's picture is on the left (its board in headless Chromium
-at 2x, 1400 × 900, through the harness's fixture host: capture-main.spec.ts), ours on the right, both at the camera
+at 2x, 1400 × 900, through the harness's fixture host: capture-main.spec.ts.txt), ours on the right, both at the camera
 main ended at (main never zooms out past fit-all ÷ 1.3; it records its cameras in cams.json).
 
 nested: Sections three deep. Each innermost Section a column (title, body with its key phrases bold), anchored at its

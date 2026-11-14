@@ -4,7 +4,7 @@ import CodeBoardModel
 import CodeBoardNotes
 
 // LookCompare --stage8 <out folder> <main's pictures>: the summary level of the boards in review/stage8/storage (made
-// with main's core by review/stage8/boards.mjs; review/stage8/capture-main.spec.ts draws them in main's board), imported
+// with main's core by review/stage8/boards.mjs; review/stage8/capture-main.spec.ts.txt draws them in main's board), imported
 // as the app imports old boards and drawn off screen at 2x in each theme light and dark, beside main's picture where
 // main has one. <out>/<sheet>-<theme>.png
 
@@ -84,7 +84,7 @@ enum Stage8Sheets {
     }
     let notes = NoteRenderer(cache: root.appending(path: "cache"))
     let vault = root.appending(path: "vault")
-    // main's cameras (capture-main.spec.ts), so both show the same part at the same zoom
+    // main's cameras (capture-main.spec.ts.txt), so both show the same part at the same zoom
     let cams =
       (try? JSONDecoder().decode(
         [String: [String: CGFloat]].self, from: Data(contentsOf: main.appending(path: "cams.json"))))
@@ -173,7 +173,7 @@ enum Stage8Sheets {
     emptyBoard, putSummary, summarySig), imported as the app imports old boards and drawn off screen at 2x by
     `swift run -c release LookCompare --stage8 <out> <main's pictures> apps/macos/review/stage8/storage`, in Warm Ink and
     Ink Wash, light and dark (<sheet>-<theme>[-dark].png). main's picture is on the left (its board in headless Chromium
-    at 2x, 1400 × 900, through the harness's fixture host: capture-main.spec.ts), ours on the right, both at the camera
+    at 2x, 1400 × 900, through the harness's fixture host: capture-main.spec.ts.txt), ours on the right, both at the camera
     main ended at (main never zooms out past fit-all ÷ 1.3; it records its cameras in cams.json).
 
     nested: Sections three deep. Each innermost Section a column (title, body with its key phrases bold), anchored at its

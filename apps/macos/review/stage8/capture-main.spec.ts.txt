@@ -1,7 +1,7 @@
 // main's side of the stage 8 sheets: the boards in storage/ (boards.mjs) in main's board (the harness's fixture host),
 // 1400 × 900 at 2x, in each theme light and dark, at the cameras the native side uses. It is a harness scenario only
 // while it runs: copied into packages/board/test/scenarios/, run, removed (from the repository root, after npm run build):
-//   cp apps/macos/review/stage8/capture-main.spec.ts packages/board/test/scenarios/zz-stage8.spec.ts
+//   cp apps/macos/review/stage8/capture-main.spec.ts.txt packages/board/test/scenarios/zz-stage8.spec.ts
 //   STAGE8_OUT=<out> npx playwright test -c packages/board zz-stage8 --trace off
 //   rm packages/board/test/scenarios/zz-stage8.spec.ts
 import * as fs from "node:fs";
