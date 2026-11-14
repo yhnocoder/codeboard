@@ -1,0 +1,63 @@
+# 外观验收第二轮：第一轮没拍到的部件（卡头按钮、Text、Section 标题、箭头标签、Sidenote、整张代码卡）
+zoom 1
+center @cnote+150,70
+wait 600
+shot n-rest
+move @cnote+250,14 600
+wait 800
+shot n-hover-head
+move @cfree+340,14 500
+wait 700
+shot n-hover-label
+click @cfree+340,14
+wait 600
+shot n-sel-arrow
+key esc
+wait 300
+move @ctext+40,30 500
+wait 700
+shot n-hover-text
+click @ctext+40,30
+wait 600
+shot n-sel-text
+dbl @ctext+40,30
+wait 900
+shot n-edit-text
+key esc
+wait 300
+key esc
+wait 300
+# Note 编辑中拖选一段字：格式条
+dbl @cnote+150,100
+wait 900
+drag @cnote+24,72 @cnote+130,72 400
+wait 700
+shot n-edit-select
+key esc
+wait 300
+key esc
+wait 400
+center @ccode+230,180
+wait 600
+shot c-rest
+move @ccode+300,14 600
+wait 800
+shot c-hover-head
+click @ccode+300,100
+wait 600
+shot c-sel
+key esc
+wait 300
+center @sboxes+350,100
+wait 600
+move @sboxes+30,10 500
+wait 800
+shot s-hover-title
+click @sboxes+30,10
+wait 600
+shot s-sel
+key esc
+wait 300
+move @cfreetext+60,30 500
+wait 700
+shot s-hover-freetext
