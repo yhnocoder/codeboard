@@ -232,6 +232,21 @@ extension NSPasteboard {
   }
 }
 
+/// What the app sends to the Trash goes to a folder of this run's instead (beside its vault, removed with it): never
+/// into the Trash of the person using the Mac
+let ownTrash = URL(filePath: (env["ACCEPT_VAULT"] ?? NSTemporaryDirectory() + "accept") + "-trash")
+extension FileManager {
+  @objc func accTrashItem(at url: URL, resultingItemURL out: AutoreleasingUnsafeMutablePointer<NSURL?>?) throws {
+    try createDirectory(at: ownTrash, withIntermediateDirectories: true)
+    let to = ownTrash.appending(path: "\(UUID().uuidString.prefix(8)) \(url.lastPathComponent)")
+    try moveItem(at: url, to: to)
+    out?.pointee = to as NSURL
+    log("trashed \(url.lastPathComponent) (into this run's own trash)")
+  }
+}
+swizzle(
+  FileManager.self, #selector(FileManager.trashItem(at:resultingItemURL:)),
+  #selector(FileManager.accTrashItem(at:resultingItemURL:)))
 swizzle(NSPasteboard.self, #selector(getter: NSPasteboard.general), #selector(NSPasteboard.accGeneral), meta: true)
 swizzle(
   NSPasteboard.self, NSSelectorFromString("pasteboardWithName:"), #selector(NSPasteboard.accNamed(_:)), meta: true)
@@ -351,25 +366,6 @@ swizzle(
 
 /// A stored property of `x` (and of what that one holds…), optionals unwrapped, by reflection: the driver needs nothing
 /// public from the app
-/// Where the canvas draws a sidenote's marker or a sticker, board units ("x y w h"; none): it has no accessibility
-/// element for them yet, so this reads its own layout (the markers it hit-tests, `marks`; the stickers', `stickerSpots`)
-@MainActor func spot(_ c: NSView, _ id: String) -> String {
-  let fmt = { (r: CGRect) in String(format: "%.1f %.1f %.1f %.1f", r.minX, r.minY, r.width, r.height) }
-  for m in field(c, "marks") as? [Any] ?? [] {
-    guard (field(m, "notes") as? [SidenoteID])?.contains(where: { $0.rawValue == id }) == true,
-      let hit = field(m, "hit") as? CGRect
-    else { continue }
-    // the hit area is the badge grown to a size the pointer can take, around its middle; the badge is 14 across, 13 in a
-    // code card's line numbers (CanvasView.markSize, gutterMarkSize)
-    let size: CGFloat = (field(m, "gutter") as? Bool) == true ? 13 : 14
-    return fmt(CGRect(x: hit.midX - size / 2, y: hit.midY - size / 2, width: size, height: size))
-  }
-  for s in field(c, "stickerSpots") as? [Any] ?? [] {
-    if (field(s, "id") as? StickerID)?.rawValue == id, let r = field(s, "board") as? CGRect { return fmt(r) }
-  }
-  return "none"
-}
-
 func field(_ x: Any, _ path: String...) -> Any? {
   var at: Any? = x
   for label in path {
@@ -568,13 +564,14 @@ func strings(_ x: Any) -> [String] {
   func move(to target: NSPoint, ms: Double) async {
     refreshAreas()
     let from = vPointer
-    let steps = max(2, Int(ms / 8))
     let dx = target.x - from.x
     let dy = target.y - from.y
     let len = hypot(dx, dy)
     let bend = min(40, len * 0.08) * (Bool.random() ? 1 : -1)
-    for i in 1...steps {
-      let t = Double(i) / Double(steps)
+    // by the clock, a step every 8 ms or as soon as the last is handled: the move takes the time asked, however long the
+    // app takes for each step (counting steps made a 600 ms move take 2.5 s)
+    let start = ProcessInfo.processInfo.systemUptime
+    while case let t = (ProcessInfo.processInfo.systemUptime - start) * 1000 / max(ms, 1), t < 1 {
       let e = t < 0.5 ? 2 * t * t : 1 - pow(-2 * t + 2, 2) / 2
       let b = sin(.pi * e) * bend
       let nx = len > 0 ? -dy / len : 0
@@ -1023,7 +1020,7 @@ func strings(_ x: Any) -> [String] {
         for k in el.accessibilityChildren() ?? [] { if let f = find(k) { return f } }
         return nil
       }
-      guard let el = (c.accessibilityChildren() ?? []).lazy.compactMap(find).first else { return spot(c, a[1]) }
+      guard let el = (c.accessibilityChildren() ?? []).lazy.compactMap(find).first else { return "none" }
       let r = c.convert(w.convertFromScreen(el.accessibilityFrame()), from: nil)  // the canvas is y-down
       return String(
         format: "%.1f %.1f %.1f %.1f", cam.origin.x + r.minX / cam.zoom, cam.origin.y + r.minY / cam.zoom,
