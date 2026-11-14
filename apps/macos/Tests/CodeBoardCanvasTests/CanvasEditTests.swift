@@ -67,7 +67,8 @@ private func png(_ url: URL) throws {
   static let notes = NoteRenderer(
     cache: FileManager.default.temporaryDirectory.appending(path: "canvas-edit-cache-\(UUID().uuidString)"))
 
-  init(_ board: Board = sample(), zoom: CGFloat, pasteboard: NSPasteboard? = nil, root given: URL? = nil) async throws {
+  init(_ board: Board = sample(), zoom: CGFloat?, pasteboard: NSPasteboard? = nil, root given: URL? = nil) async throws
+  {
     _ = NSApplication.shared
     let page = NoteRenderer.bundledPage.appending(path: "page.html").path(percentEncoded: false)
     try #require(FileManager.default.fileExists(atPath: page), "build the Note page first: node web/build.mjs")
@@ -98,7 +99,8 @@ private func png(_ url: URL) throws {
     window.orderFrontRegardless()
     try await canvas.show(
       doc, at: VaultBoard(id: board.id, title: "B", path: name), in: Vault(root: root), theme: .warmInk)
-    canvas.place(zoom: zoom, centre: CGPoint(x: 550, y: 400))
+    // nil: the camera the board opens at
+    if let zoom { canvas.place(zoom: zoom, centre: CGPoint(x: 550, y: 400)) }
     // from rest: a test's gestures start with no redraw of the setup's under way, as a person's do on a board drawn
     await idle()
   }

@@ -164,7 +164,7 @@ private struct PrototypeMotion {
     p.camX = 300
     p.camY = 200
     p.z = 0.6
-    let limits = ZoomLimits(fit: 0.5)
+    let limits = ZoomLimits(min: 0.25)
     let at = CGPoint(x: 512, y: 380)
     var t = 5.0
     for i in 0..<60 {

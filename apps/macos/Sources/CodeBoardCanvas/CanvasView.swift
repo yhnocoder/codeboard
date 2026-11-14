@@ -94,7 +94,7 @@ public final class CanvasView: NSView {
   var vaultSeen = 0
   /// Where the view is now
   public var currentCamera: Camera { camera }
-  var limits = ZoomLimits(fit: 1)
+  var limits = ZoomLimits(min: 0.1)
   var motion = Motion()
   /// The scroll and pinch gestures the board took (CanvasWheel.swift), and the app's event monitor that routes them
   var wheel = WheelOwner()
@@ -606,18 +606,19 @@ public final class CanvasView: NSView {
         return ls
       }
     }
-    let fit = Camera.fit(s.bounds, in: bounds.isEmpty ? CGSize(width: 1440, height: 900) : bounds.size)
-    fitZoom = fit.zoom
-    limits = ZoomLimits(fit: fit.zoom)
-    if !keepCamera {
-      camera = arriving ?? fit
-      arriving = nil
-    }
+    let view = bounds.isEmpty ? CGSize(width: 1440, height: 900) : bounds.size
+    fitZoom = Camera.fit(s.bounds, in: view).zoom
+    limits = ZoomLimits(view: view, content: s.bounds)
     motion = Motion()
     restZoom = nil
     hoveredMark = nil
+    // the summary cut first: where the board opens depends on it
     summariesChanged()
-    if !keepCamera { levels.show(zoom: camera.zoom) }
+    if !keepCamera {
+      camera = arriving ?? Camera.opening(s.bounds, in: view, cut: levels.cut)
+      arriving = nil
+      levels.show(zoom: camera.zoom)
+    }
     applyLevels(levels.frame(at: now))
     applyCamera()
     arrive()
@@ -791,10 +792,12 @@ public final class CanvasView: NSView {
     withoutAnimation { placeBackdrop() }
     placeShelf()
     guard let scene, newSize.width > 0, newSize.height > 0 else { return }
-    let fit = Camera.fit(scene.bounds, in: newSize)
-    limits = ZoomLimits(fit: fit.zoom)
-    // shown before the view had a size: fit now
-    if unsized { camera = fit }
+    limits = ZoomLimits(view: newSize, content: scene.bounds)
+    // shown before the view had a size: opened now
+    if unsized {
+      camera = Camera.opening(scene.bounds, in: newSize, cut: levels.cut)
+      levels.show(zoom: camera.zoom)
+    }
     applyCamera()
     if motion.isResting { arrive() }
   }

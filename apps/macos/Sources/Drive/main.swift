@@ -21,6 +21,20 @@ if args.count > 3, args[1] == "judge", var s = Scenarios.all.first(where: { $0.n
   MainActor.assumeIsolated { Driver.report(frames: frames, scenario: s, notes: [], to: folder) }
   exit(0)
 }
+// `Drive survey <vault>`: how a vault's boards open (Survey.swift)
+if args.count > 2, args[1] == "survey" {
+  let root = URL(filePath: args[2], directoryHint: .isDirectory)
+  MainActor.assumeIsolated {
+    _ = NSApplication.shared
+    NSApp.setActivationPolicy(.prohibited)
+    Task {
+      // the main window's content: 1200 × 800 less its title bar
+      await Survey.run(root, size: CGSize(width: 1200, height: 772))
+      exit(0)
+    }
+    NSApp.run()
+  }
+}
 guard args.count >= 3, let made = Scenarios.all.first(where: { $0.name == args[1] }) else {
   print("usage: Drive <scenario> <out folder> [--dark] [--ink-wash]; Drive list")
   exit(2)
