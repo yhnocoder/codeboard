@@ -58,6 +58,7 @@ public final class MarkdownEditorView: NSView {
   }
 
   let preview = MathPreview()
+  let hints = MathHintList()
   let band = CodeBand()
   /// the languages a code block's band offers (name written into the fence, label shown); the host's
   public var codeLanguages: [(name: String, label: String)] = []
@@ -91,6 +92,8 @@ public final class MarkdownEditorView: NSView {
     super.init(frame: CGRect(origin: .zero, size: layout.size))
     preview.isHidden = true
     addSubview(preview)
+    hints.isHidden = true
+    addSubview(hints)
     band.isHidden = true
     addSubview(band)
     registerForDraggedTypes([.fileURL, .png, .tiff])
@@ -232,7 +235,9 @@ public final class MarkdownEditorView: NSView {
     resize()
     if frame.size != before { delegate?.editor(self, didResize: core.layout.size) }
     restartBlink()
-    showPreview()
+    showHints()
+    // the command list and the preview share the place under the formula: the list while a command is typed
+    if hints.shown { preview.isHidden = true } else { showPreview() }
     showBand()
     guard isEditing else { return }
     if let c = core.caretRect ?? core.selectionRects.last {
@@ -505,6 +510,24 @@ public final class MarkdownEditorView: NSView {
   public override func mouseExited(with e: NSEvent) {
     hovered = nil
     showBand()
+  }
+
+  /// the command list while a \\command is typed in a formula
+  private func showHints() {
+    guard isEditing, let f = core.formulaBeforeCaret,
+      let t = MarkdownEditing.mathToken(f.tex, caret: (f.tex as NSString).length)
+    else {
+      hints.hide()
+      return
+    }
+    let from = f.start + t.from
+    if hints.dismissedAt == from { return hints.hide() }
+    hints.dismissedAt = nil
+    let tex = core.layout.resources.mathPreamble
+    let items = MarkdownEditing.mathCompletions(t.query, tex: f.tex, preamble: tex)
+    guard let c = core.caretRect else { return hints.hide() }
+    let caret = CGRect(x: c.minX * zoom, y: c.minY * zoom, width: 1, height: c.height * zoom)
+    hints.show(items, token: (from, t.query), under: caret, theme: core.layout.theme, resources: core.layout.resources)
   }
 
   /// the preview of the formula the caret is in, under its source
@@ -838,6 +861,22 @@ public final class MarkdownEditorView: NSView {
   }
 
   public override func doCommand(by selector: Selector) {
+    // the formula command list takes ↑ ↓ ↵ Tab Esc while it is up
+    if hints.shown, let token = hints.token {
+      switch selector {
+      case #selector(moveUp(_:)): return hints.step(-1)
+      case #selector(moveDown(_:)): return hints.step(1)
+      case #selector(insertNewline(_:)), #selector(insertTab(_:)):
+        core.insertMathCommand(hints.items[hints.chosen], from: token.from)
+        changed()
+        return
+      case #selector(cancelOperation(_:)):
+        hints.dismissedAt = token.from
+        hints.hide()
+        return
+      default: break
+      }
+    }
     begin()
     defer {
       note(.key(NSStringFromSelector(selector), did: "selection \(core.selection.anchor)…\(core.selection.head)"))

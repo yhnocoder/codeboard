@@ -307,6 +307,36 @@ public final class EditorCore {
   /// the layout info changed (a wrap toggled): for the host to keep
   public var onLayoutInfo: ((MDLayoutInfo?) -> Void)?
 
+  // MARK: formula commands
+
+  /// The TeX before the caret in the formula it is in (an inline formula open, a formula block open): where that TeX
+  /// starts in the source, and the TeX up to the caret
+  public var formulaBeforeCaret: (start: Int, tex: String)? {
+    guard selection.isEmpty, marked == nil, layout.head == selection.head else { return nil }
+    let q = selection.head
+    let ns = source as NSString
+    if let f = MarkdownEditing.formula(at: q, in: document), let i = MarkdownEditing.inline(f.range, in: document),
+      let inner = i.inner, q >= inner.lowerBound, q <= inner.upperBound
+    {
+      return (inner.lowerBound, ns.substring(with: NSRange(location: inner.lowerBound, length: q - inner.lowerBound)))
+    }
+    if let bi = MarkdownEditing.blockHolding(q, in: document), case .math = document.blocks[bi].kind {
+      let body = MarkdownEditing.mathBody(document.blocks[bi], ns)
+      guard q >= body.lowerBound, q <= body.upperBound else { return nil }
+      return (body.lowerBound, ns.substring(with: NSRange(location: body.lowerBound, length: q - body.lowerBound)))
+    }
+    return nil
+  }
+
+  /// Writes a command over the one being typed (from its \\ to the caret), the caret where its | is
+  public func insertMathCommand(_ c: MDMathCommand, from: Int) {
+    let snip = c.snip as NSString
+    let bar = snip.range(of: "|")
+    let text = snip.replacingOccurrences(of: "|", with: "")
+    let at = bar.location == NSNotFound ? (text as NSString).length : bar.location
+    apply(MDEdit(range: from..<selection.head, replacement: text, selection: MDSelection(from + at), undo: .command))
+  }
+
   // MARK: images
 
   /// The image the selection is exactly (a click on a drawn image selects it): its source range and description
