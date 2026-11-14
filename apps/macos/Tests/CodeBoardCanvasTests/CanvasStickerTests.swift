@@ -231,14 +231,14 @@ func stickerBoard() -> Board {
     #expect(sticker(r, "k1")?.glyph == .builtin(.star) && sticker(r, "k1")?.color == "#4C8BF5")
   }
 
-  @Test func itsMenuIsItsColoursAndDeleteAndAnEmojiHasNoColours() async throws {
+  @Test func itsMenuIsItsColoursSizeAndDeleteAndAnEmojiHasNoColours() async throws {
     let r = try await Rig(stickerBoard(), zoom: 1)
     defer { r.close() }
     let c = r.canvas
     let menu = try #require(c.menu(for: r.mouse(.rightMouseDown, centre(try spot(c, "k1")))))
     #expect(r.doc.selection == [.sticker(kid("k1"))])
     let row = try #require(menu.items.first?.view as? StickerSwatches)
-    #expect(menu.items.count == 3 && menu.items[1].isSeparatorItem && menu.items[2].title == "Delete")
+    #expect(menu.items.count == 5 && menu.items[1].isSeparatorItem && menu.items.last?.title == "Delete")
     #expect(row.colors == Sticker.palette)
     row.onPick?("#3FA36B")
     #expect(sticker(r, "k1")?.color == "#3FA36B" && r.doc.undoName == "Sticker Color")
@@ -248,11 +248,11 @@ func stickerBoard() -> Board {
     // a glyph whose own colour the palette lacks: it comes first
     let bug = StickerSwatches(theme: c.theme, own: BuiltinSticker.bug.color, current: BuiltinSticker.bug.color)
     #expect(bug.colors.first == BuiltinSticker.bug.color && bug.colors.count == 9)
-    // an emoji: Delete alone
+    // an emoji: no colours; its size and Delete
     await r.settle()
     let emoji = try #require(c.menu(for: r.mouse(.rightMouseDown, centre(try spot(c, "k5")))))
-    #expect(emoji.items.map(\.title) == ["Delete"])
-    (emoji.items[0].representedObject as? MenuAction)?.run()
+    #expect(emoji.items.map { $0.isSeparatorItem ? "-" : $0.title } == ["Size", "-", "Delete"])
+    (emoji.items.last?.representedObject as? MenuAction)?.run()
     #expect(sticker(r, "k5") == nil && r.doc.undoName == "Delete")
     // ⌫ deletes the selected one too
     await r.settle()
@@ -274,5 +274,39 @@ func stickerBoard() -> Board {
     #expect(r.bytes == start)
     await r.settle()
     #expect(r.canvas.stickerSpots.count == 5)
+  }
+}
+
+extension CanvasStickerTests {
+  /// A sticker's menu (actions/stickers.ts stickerMenu): Size ▸ 24, 32, 48 and 72 px for one on the board or on a card,
+  /// Detach from Card for one on a card (it stays where it is drawn, on the board), not for one in the line numbers
+  @Test func theStickerMenuHasSizeAndDetach() async throws {
+    let r = try await Rig(stickerBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    // the colours' row is a view, not a title
+    func titles(_ m: NSMenu?) -> [String] {
+      m?.items.filter { $0.view == nil }.map { $0.isSeparatorItem ? "-" : $0.title } ?? []
+    }
+    func fire(_ i: NSMenuItem?) {
+      guard let i, let a = i.action else {
+        Issue.record("no item")
+        return
+      }
+      NSApp.sendAction(a, to: i.target, from: i)
+    }
+    let free = c.stickerMenu(kid("k1"))
+    #expect(titles(free) == ["-", "Size", "-", "Delete"])
+    let size = free.items.first { $0.title == "Size" }?.submenu
+    #expect(titles(size) == ["24px", "32px", "48px", "72px"] && size?.items[1].state == .on)
+    fire(size?.items[3])
+    #expect(sticker(r, "k1")?.anchor == .canvas(x: 300, y: 500, size: 72))
+    let drawn = try spot(c, "k2").board
+    let onCard = c.stickerMenu(kid("k2"))
+    #expect(titles(onCard) == ["-", "Size", "Detach from Card", "-", "Delete"])
+    fire(onCard.items.first { $0.title == "Detach from Card" })
+    #expect(sticker(r, "k2")?.anchor == .canvas(x: drawn.minX.rounded(), y: drawn.minY.rounded(), size: 40))
+    #expect(r.doc.history.undoSteps.last?.name == "Detach Sticker")
+    #expect(!titles(c.stickerMenu(kid("k3"))).contains("Size"))
   }
 }
