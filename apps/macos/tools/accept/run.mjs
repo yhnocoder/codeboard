@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The acceptance runner (README.md): runs scenario files on the Mac app and on the web board VS Code shows, side by side,
 // with a hand's pointer, and writes recordings, screenshots and a report to apps/macos/.build-accept/<scenario>/.
-//   node apps/macos/tools/accept/run.mjs <scenario.txt>… [--only mac|web] [--storage <folder>] [--skip-build]
+//   node apps/macos/tools/accept/run.mjs <scenario.txt>… [--only mac|web] [--storage <folder>] [--web <checkout>] [--skip-build]
 import { execFileSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -17,11 +17,13 @@ const argv = process.argv.slice(2);
 const opt = (k) => (argv.includes(k) ? argv[argv.indexOf(k) + 1] : undefined);
 const only = opt("--only");
 const storage = path.resolve(opt("--storage") ?? path.join(mac, "tools/look/storage"));
-const scenarios = argv.filter((a, i) => !a.startsWith("--") && !["--only", "--storage"].includes(argv[i - 1]));
+const scenarios = argv.filter((a, i) => !a.startsWith("--") && !["--only", "--storage", "--web"].includes(argv[i - 1]));
+// --web <checkout>: the web side draws that checkout's board (a worktree of the latest main: the VS Code version to beat)
+const webRepo = path.resolve(opt("--web") ?? repo);
 const sides = only ? [only] : ["mac", "web"];
 const run = (cmd, a, cwd = repo) => execFileSync(cmd, a, { cwd, stdio: "inherit" });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-if (!scenarios.length) throw new Error("usage: run.mjs <scenario.txt>… [--only mac|web] [--storage <folder>] [--skip-build]");
+if (!scenarios.length) throw new Error("usage: run.mjs <scenario.txt>… [--only mac|web] [--storage <folder>] [--web <checkout>] [--skip-build]");
 
 // ---- build: the driver app (its own name and bundle id, never the app in use) and the web side
 fs.mkdirSync(outRoot, { recursive: true });
@@ -30,8 +32,8 @@ const webBundle = path.join(outRoot, "web.mjs");
 // --skip-build skips the web builds (the board, the Note page); the driver is always built (swift build is incremental)
 const skip = argv.includes("--skip-build");
 if (!skip && sides.includes("web")) {
-  run("npm", ["run", "build", "-w", "@yhnocoder/markdown"]);
-  run("npm", ["run", "build", "-w", "@codeboard/board"]);
+  run("npm", ["run", "build", "-w", "@yhnocoder/markdown"], webRepo);
+  run("npm", ["run", "build", "-w", "@codeboard/board"], webRepo);
 }
 if (sides.includes("mac")) {
   if (!skip) run("node", ["apps/macos/web/build.mjs"]);
@@ -77,7 +79,7 @@ class Driver {
     fs.rmSync(this.dir, { recursive: true, force: true });
     fs.mkdirSync(this.dir, { recursive: true });
     execFileSync("mkfifo", [path.join(this.dir, "cmd")]);
-    const env = { ...process.env, ACCEPT_OUT: this.dir, ACCEPT_FIFO: path.join(this.dir, "cmd"), ACCEPT_REPO: repo };
+    const env = { ...process.env, ACCEPT_OUT: this.dir, ACCEPT_FIFO: path.join(this.dir, "cmd"), ACCEPT_REPO: repo, ACCEPT_WEB: webRepo };
     const outFd = fs.openSync(path.join(this.dir, "stdout.txt"), "w");
     if (this.side === "mac") {
       // a vault of its own, imported from the storage folder; the app's own defaults start empty

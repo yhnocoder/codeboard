@@ -7,6 +7,7 @@ node apps/macos/tools/accept/run.mjs apps/macos/tools/accept/scenarios/section-f
 node apps/macos/tools/accept/run.mjs <场景>… --only mac      # 只跑 Mac（不对照的产品体验检查）
 node apps/macos/tools/accept/run.mjs <场景>… --skip-build    # 不重新构建网页白板和 Note 页（只改了场景或驱动时；驱动总会增量构建）
 node apps/macos/tools/accept/run.mjs <场景>… --storage <folder>   # 换一个 storage 文件夹（默认 tools/look/storage）
+node apps/macos/tools/accept/run.mjs <场景>… --web <checkout>     # 网页那一侧画另一个 checkout 的白板：对照时用最新 main 的 worktree（git worktree add ../codeboard-main origin/main，在里面 npm ci），VS Code 版的编辑体验以它为准
 ```
 
 结果在 `apps/macos/.build-accept/<场景名>/`：

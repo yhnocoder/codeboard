@@ -10,7 +10,7 @@ import { launch } from "../../../../tools/test/chromium.mjs";
 
 const [storage, out] = process.argv.slice(2);
 const repo = process.env.ACCEPT_REPO ?? process.cwd();
-const boardDist = path.join(repo, "packages/board/dist");
+const boardDist = path.join(process.env.ACCEPT_WEB ?? repo, "packages/board/dist");
 const here = path.join(repo, "apps/macos/tools/accept");
 const W = Number(process.env.WEB_W ?? 1000), H = Number(process.env.WEB_H ?? 760);
 fs.mkdirSync(out, { recursive: true });
