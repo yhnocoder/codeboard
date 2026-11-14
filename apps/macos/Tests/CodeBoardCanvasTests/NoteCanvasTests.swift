@@ -9,17 +9,20 @@ import Testing
 @Suite struct NoteSizeTests {
   let vault = Vault(root: URL(filePath: "/nonexistent-vault"))
 
-  func note(_ id: String, height: Double? = nil, _ style: NoteStyle = .note) -> Card {
+  func note(_ id: String, height: Double? = nil) -> Card {
     Card(
       id: CardID(rawValue: id), x: 0, y: 0, width: 300, height: height,
-      content: .own(CardContent(body: .note(Note(text: "# Idea\n\nbody", style: style)))))
+      content: .own(CardContent(body: .note(Note(text: "# Idea\n\nbody")))))
   }
 
-  @Test func aNoteWithoutAHeightTakesTheMeasuredOneAndAFreeTextItsWidth() {
-    let cards = [
-      note("auto"), note("fixed", height: 120), note("free", .freeText(level: 0, bold: false, fontSize: nil)),
-      note("unmeasured"),
-    ]
+  func text(_ id: String, wrap: Bool) -> Card {
+    Card(
+      id: CardID(rawValue: id), x: 0, y: 0, width: 300,
+      content: .own(CardContent(body: .text(TextCard(text: "# Idea\n\nbody", wrap: wrap)))))
+  }
+
+  @Test func aNoteWithoutAHeightTakesTheMeasuredOneAndATextItsWidth() {
+    let cards = [note("auto"), note("fixed", height: 120), text("free", wrap: false), note("unmeasured")]
     let board = Board(id: BoardID(rawValue: "b"), cards: cards)
     let package = URL(filePath: "/nonexistent-vault/B.board")
     #expect(
@@ -29,7 +32,8 @@ import Testing
       CardID(rawValue: "free"): CGSize(width: 87, height: 24),
     ]
     let s = Scene(
-      board, package: package, vault: vault, theme: .warmInk, highlighter: Highlighter(), sizes: sizes)
+      board, package: package, vault: vault, theme: .warmInk, highlighter: Highlighter(),
+      sizes: sizes.mapValues { NoteMetrics(size: $0) })
     #expect(
       s.items.map(\.rect.size) == [
         CGSize(width: 300, height: 333), CGSize(width: 300, height: 120), CGSize(width: 87, height: 24),
@@ -58,8 +62,8 @@ import Testing
       cards: [
         Card(id: CardID(rawValue: "tall"), x: 0, y: 0, width: 300, content: .own(CardContent(body: .note(tall)))),
         Card(
-          id: CardID(rawValue: "box"), x: 400, y: 0, width: 200, height: 80,
-          content: .own(CardContent(body: .note(Note(text: "A box", style: .box(fill: .yellow)))))),
+          id: CardID(rawValue: "box"), x: 400, y: 0, width: 200,
+          content: .own(CardContent(body: .text(TextCard(text: "A box", look: .box, wrap: true))))),
       ])
     let package = root.appending(path: "B.board")
     try fm.createDirectory(at: package, withIntermediateDirectories: true)
@@ -79,7 +83,8 @@ import Testing
     let renderer = NoteRenderer(cache: cache)
     let sizes = [CardID(rawValue: "tall"): CGSize(width: 300, height: bounds.height)]
     let scene = Scene(
-      board, package: package, vault: vault, theme: .warmInk, highlighter: Highlighter(), sizes: sizes)
+      board, package: package, vault: vault, theme: .warmInk, highlighter: Highlighter(),
+      sizes: sizes.mapValues { NoteMetrics(size: $0) })
     let images = DecodeCache(cap: 1 << 20)
     let composed = try #require(
       await CanvasView.drawNote(
@@ -93,7 +98,7 @@ import Testing
     // the overviews the canvas asks for, in the cache: a re-open shows them at once, at the same sizes
     let fit = Camera.fit(bounds, in: frame.size).zoom
     let backing = NSScreen.main?.backingScaleFactor ?? 2
-    for (it, height) in zip(scene.items, [nil, 80] as [Double?]) {
+    for (it, height) in zip(scene.items, [nil, nil] as [Double?]) {
       guard case .note(let n) = it.drawing else { continue }
       _ = try await renderer.snapshot(
         of: n.content, width: it.rect.width, height: height, folder: package,

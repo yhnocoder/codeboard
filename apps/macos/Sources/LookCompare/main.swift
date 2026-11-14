@@ -1,5 +1,6 @@
 import CodeBoardCanvas
 import CodeBoardModel
+import CodeBoardNotes
 import CodeBoardSyntax
 import CoreGraphics
 import Foundation
@@ -10,6 +11,7 @@ import UniformTypeIdentifiers
 // imported into a vault, drawn by the canvas's drawing code at the same rects and zooms as the web board's pictures in
 // <out>/<theme>/ (and <theme>-dark/), and each pair written side by side with their difference.
 //   swift run -c release LookCompare <storage folder> <out folder>
+//   swift run -c release LookCompare --texts <out folder>   (Texts.swift)
 
 struct Rects: Decodable {
   struct R: Decodable {
@@ -21,8 +23,26 @@ struct Rects: Decodable {
 }
 
 let args = CommandLine.arguments
+if args.count == 3, args[1] == "--texts" { TextSheets.run(out: URL(filePath: args[2])) }
+if args.count == 3, args[1] == "--edit" { EditSheets.run(out: URL(filePath: args[2])) }
+if args.count == 3, args[1] == "--writing" { WritingSheets.run(out: URL(filePath: args[2])) }
+if args.count == 3, args[1] == "--arrows" { ArrowSheets.run(out: URL(filePath: args[2])) }
+if args.count == 3, args[1] == "--sidenotes" { SidenoteSheets.run(out: URL(filePath: args[2])) }
+if args.count == 3, args[1] == "--refs" { RefSheets.run(out: URL(filePath: args[2])) }
+if args.count >= 3, args[1] == "--stage6" {
+  Stage6Sheets.run(out: URL(filePath: args[2]), main: args.count > 3 ? URL(filePath: args[3]) : nil)
+}
+if args.count == 4, args[1] == "--stage7" {
+  Stage7Sheets.run(out: URL(filePath: args[2]), main: URL(filePath: args[3]))
+}
+if args.count == 5, args[1] == "--stage8" {
+  Stage8Sheets.run(out: URL(filePath: args[2]), main: URL(filePath: args[3]), storage: URL(filePath: args[4]))
+}
 guard args.count == 3 else {
-  FileHandle.standardError.write(Data("usage: LookCompare <storage folder> <out folder>\n".utf8))
+  FileHandle.standardError.write(
+    Data(
+      "usage: LookCompare <storage folder> <out folder> | --texts <out folder> | --edit <out folder> | --writing <out folder> | --arrows <out folder>\n"
+        .utf8))
   exit(2)
 }
 let storage = URL(filePath: args[1])
@@ -107,8 +127,8 @@ for theme in Theme.all.flatMap({ [$0, Theme.named($0.id, dark: true)] }) {
     continue
   }
   // what the Note page measures, as the web board measured it
-  var sizes: [CardID: CGSize] = [:]
-  for (id, r) in rects.rects { sizes[CardID(rawValue: id)] = CGSize(width: r.w, height: r.h) }
+  var sizes: [CardID: NoteMetrics] = [:]
+  for (id, r) in rects.rects { sizes[CardID(rawValue: id)] = NoteMetrics(size: CGSize(width: r.w, height: r.h)) }
   func picture(_ rect: CGRect, scale: CGFloat, backdrop: Bool) -> (image: CGImage?, cards: [String: CGRect]) {
     Picture.draw(
       board: board, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes, rect: rect,

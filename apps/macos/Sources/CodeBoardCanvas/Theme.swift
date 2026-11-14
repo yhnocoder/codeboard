@@ -114,13 +114,21 @@ public struct Theme: Sendable {
   var sectionTitle: CGColor
   /// `Frame.tray`'s inner top line; `Frame.brush`'s strokes
   var sectionEdge: CGColor
-  var boxFills: [NoteStyle.BoxFill: CGColor]
+  var boxFills: [BoxFill: CGColor]
   var boxEdge: CGColor
   /// The soft shadow under a card, CSS box-shadow layers (offset y, blur, spread, colour), on a rounded rectangle
   var shadow: [(y: CGFloat, blur: CGFloat, spread: CGFloat, color: CGColor)]
   var shadowRadius: CGFloat
   /// Code colours (`--k-*`); plain code is `ink`
   var syntax: [TokenClass: CGColor]
+  /// A sidenote marker (--mark, --mark-ink), one with an open question (--ask, --ask-ink), and text on the accent
+  var mark = CGColor(srgbRed: 0x3b / 255, green: 0x38 / 255, blue: 0x33 / 255, alpha: 1)
+  var markInk = CGColor(srgbRed: 0xf6 / 255, green: 0xf4 / 255, blue: 0xef / 255, alpha: 1)
+  var ask = CGColor(srgbRed: 0xc4 / 255, green: 0x8a / 255, blue: 0x1f / 255, alpha: 1)
+  var askInk = CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
+  var accentInk = CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
+  /// A row's hover tint (--hlrow)
+  var hlrow = CGColor(srgbRed: 60 / 255, green: 45 / 255, blue: 20 / 255, alpha: 0.07)
 
   var code: Font
   var codeComment: Font
@@ -138,6 +146,8 @@ public struct Theme: Sendable {
   var smallStrong: Font
   var linkedIn: Font
   var sectionTitleFont: Font
+  /// A folded Section's "· N cards"
+  var sectionCount: Font
   var arrowLabel: Font
 
   var paper: Paper
@@ -158,9 +168,19 @@ public struct Theme: Sendable {
   /// A Section title's top left from the Section's, and its height
   var sectionTitleAt: CGPoint
   var sectionTitleHeight: CGFloat
+  /// A folded Section's title's top left: its bar is this much round the title
+  var foldedTitleAt: CGPoint
   /// A stroked (dashed) arrow's width at the default weight (2), board units
   var arrowWidth: CGFloat
   var metrics: CodeMetrics
+  /// A sub-board card's name and card count above it (.sbname, .sbmeta: 25, bold and medium, -0.015em), and its map's
+  /// Section names and counts (.sblab: 11, semibold and medium)
+  var subName = Font(NSFont.systemFont(ofSize: 25, weight: .bold)).tracked(-0.375)
+  var subCount = Font(NSFont.systemFont(ofSize: 25, weight: .medium)).tracked(-0.375)
+  /// What a sub-board card whose board is missing says (.sbgone, 12 px in the look's system face)
+  var subGone = Font(NSFont.systemFont(ofSize: 12))
+  var subLabel = Font(NSFont.systemFont(ofSize: 11, weight: .semibold))
+  var subLabelCount = Font(NSFont.systemFont(ofSize: 11, weight: .medium))
 
   /// What a framed item draws past its rect on each side: a deckled sheet's paper, a sheet's hairline ring (CSS
   /// 0 0 0 0.5px), which a bitmap of the rect alone would cut off along its sides and keep only round the corners
@@ -218,13 +238,14 @@ public struct Theme: Sendable {
       kindGlyphMono: Font.board("JetBrainsMono-400-600", size: 11, weight: 600) ?? Font.mono(11, .semibold),
       noteTitle: sys(12, .medium), small: sys(11, .regular), smallStrong: sys(11, .medium),
       linkedIn: Font.board("JetBrainsMono-400-600", size: 11, weight: 400) ?? Font.mono(11, .regular),
-      sectionTitleFont: sys(12.5, .semibold),
+      sectionTitleFont: sys(12.5, .semibold), sectionCount: sys(12.5, .regular),
       arrowLabel: sys(11.5, .medium),
       paper: .sheet, header: .band, arrowLine: .taper(start: 2.5, end: 0.9), arrowHead: .dart, frame: .tray,
       label: .box,
       cardRadius: 12.5, sectionRadius: 13.5, labelRadius: 8.5, headerHeight: 36, headerPad: 10, headerPadRight: 6,
       headerGap: 7,
-      sectionTitleAt: CGPoint(x: 16, y: 6), sectionTitleHeight: 22, arrowWidth: 1.25,
+      sectionTitleAt: CGPoint(x: 16, y: 6), sectionTitleHeight: 22, foldedTitleAt: CGPoint(x: 16, y: 6),
+      arrowWidth: 1.25,
       metrics: CodeMetrics(charWidth: code.advance))
   }()
 
@@ -236,7 +257,7 @@ public struct Theme: Sendable {
     }
     let italic = Font.board("SourceSerif4-400i", size: 12, weight: nil, opticalSize: true) ?? serif(12, 400)
     let code = Font.board("JetBrainsMono-400-600", size: 11, weight: 400) ?? Font.mono(11, .regular)
-    return Theme(
+    var t = Theme(
       id: .inkWash, name: "Ink Wash",
       canvas: rgb(0xf6f5f1), backdrop: "ink-light", surface: rgb(surface), head: rgb(0, 0), ink: rgb(0x1d1c1a),
       ink2: rgb(0x4c4943), ink3: rgb(0x9a958b), accent: rgb(0xb8321f), line: rgb(0x1d1c1a, 0.08),
@@ -268,11 +289,23 @@ public struct Theme: Sendable {
       linkedIn: code,
       sectionTitleFont: Font.board("ZhiMangXing-latin", size: 25, weight: nil, cascade: "ZhiMangXing-")
         ?? Font(NSFont(name: "Xingkai SC", size: 25) ?? NSFont.systemFont(ofSize: 25)),
+      sectionCount: Font.board("SourceSerif4-400i", size: 13, weight: nil, opticalSize: true) ?? serif(13, 400),
       arrowLabel: italic,
       paper: .deckle, header: .wash, arrowLine: .brush(half: 1.5), arrowHead: .dot, frame: .brush, label: .halo,
       cardRadius: 2, sectionRadius: 2, labelRadius: 0, headerHeight: 36, headerPad: 14, headerPadRight: 8, headerGap: 9,
-      sectionTitleAt: CGPoint(x: 24, y: -17), sectionTitleHeight: 32, arrowWidth: 2,
+      sectionTitleAt: CGPoint(x: 24, y: -17), sectionTitleHeight: 32, foldedTitleAt: CGPoint(x: 14, y: 4),
+      arrowWidth: 2,
       metrics: CodeMetrics(charWidth: code.advance))
+    t.subName = serif(25, 600).tracked(-0.375)
+    t.subCount = serif(25, 500).tracked(-0.375)
+    t.subGone = serif(12, 400)
+    t.subLabel = serif(11, 600)
+    t.subLabelCount = serif(11, 500)
+    t.mark = rgb(0x1d1c1a)
+    t.markInk = rgb(0xfdfdfb)
+    t.accentInk = rgb(0xfdfdfb)
+    t.hlrow = rgb(0x1d1c1a, 0.06)
+    return t
   }()
 
   /// :root[data-theme="dark"] in styles.css; the card's edge and shadow are its --wi-ring and --wi-soft
@@ -280,6 +313,12 @@ public struct Theme: Sendable {
     var t = warmInk
     let surface: UInt32 = 0x252422
     t.dark = true
+    t.mark = rgb(0xd9d4ca)
+    t.markInk = rgb(0x1d1c1a)
+    t.ask = rgb(0xe0b055)
+    t.askInk = rgb(0x1d1c1a)
+    t.accentInk = rgb(0x1d1c1a)
+    t.hlrow = rgb(0xfff0dc, 0.07)
     t.canvas = rgb(0x191816)
     t.surface = rgb(surface)
     t.head = rgb(0x2a2926)
@@ -324,6 +363,12 @@ public struct Theme: Sendable {
   public static let inkWashDark: Theme = {
     var t = inkWash
     t.dark = true
+    t.mark = rgb(0xe9e5da)
+    t.markInk = rgb(0x131312)
+    t.ask = rgb(0xe0b055)
+    t.askInk = rgb(0x1d1c1a)
+    t.accentInk = rgb(0x131312)
+    t.hlrow = rgb(0xe9e5da, 0.07)
     t.canvas = rgb(0x131312)
     t.backdrop = "ink-dark"
     // the deckled sheet's paper (ink.ts), a shade off --surface, which box Notes mix their fills with
@@ -368,7 +413,7 @@ public struct Theme: Sendable {
   }
 
   /// A box Note's fills: color-mix(in srgb, surface p, colour)
-  private static func boxFills(_ surface: UInt32) -> [NoteStyle.BoxFill: CGColor] {
+  private static func boxFills(_ surface: UInt32) -> [BoxFill: CGColor] {
     func mix(_ p: CGFloat, _ other: UInt32) -> CGColor {
       let c = [16, 8, 0].map { s in
         (CGFloat(surface >> UInt32(s) & 0xff) * p + CGFloat(other >> UInt32(s) & 0xff) * (1 - p)) / 255

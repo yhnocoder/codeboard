@@ -46,9 +46,11 @@ import Testing
     let card = CGSize(width: 200, height: 100)
     let item = Scene.Item(
       rect: CGRect(origin: .zero, size: card),
-      drawing: .note(.init(id: "n", title: "Plan", content: Note(text: ""), folder: URL(filePath: "/"), refs: [])),
+      drawing: .note(
+        .init(id: "n", title: "Plan", content: .note(Note(text: "")), folder: URL(filePath: "/"), refs: [])),
       tilt: 0,
-      bleed: Drawing.note(.init(id: "n", content: Note(text: ""), folder: URL(filePath: "/"), refs: [])).bleed(t))
+      bleed: Drawing.note(.init(id: "n", content: .note(Note(text: "")), folder: URL(filePath: "/"), refs: [])).bleed(t)
+    )
     let bitmap = try #require(CanvasView.render(item, scale: level, theme: t, images: DecodeCache(cap: 1)).surface)
     let l = CanvasView.ItemLayers(item, overview: (bitmap, level, .drawn), shadow: CanvasView.shadow(t))
     let s = zoom * 2

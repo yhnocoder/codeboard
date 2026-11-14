@@ -7,7 +7,7 @@ body {
 :root {
   --t: 0;
 }
-/* Every slot is laid out as the page's top left corner, as wide as its card wants (a Free Text as its text, whatever
+/* Every slot is laid out as the page's top left corner, as wide as its card wants (a Text as its text, whatever
    the window's width); only the one shown is drawn */
 #root > .slot {
   position: absolute;
@@ -30,7 +30,29 @@ body {
 #root .card > .cface > .chead {
   visibility: hidden;
 }
-#root .card,
-#root .card * {
+/* a snapshot has no caret; the editing web view shows it */
+.render #root .card,
+.render #root .card * {
   caret-color: transparent;
+}
+/* The editor's menus and floating bar are glass on the web board, blurred over what lies under them. The web view
+   cannot blur the canvas under it (it would show the cards there sharp through the glass), so here the glass lies over
+   the board's backdrop: what the blur shows over bare board */
+:root:is(.edit, .popup) .ctx,
+:root:is(.edit, .popup) .pill {
+  --under-glass: var(--glass);
+  background-color: var(--canvas);
+  background-image: linear-gradient(var(--under-glass), var(--under-glass));
+}
+:root:is(.edit, .popup).look-warm-ink .ctx,
+:root:is(.edit, .popup).look-warm-ink .bbar > .pill {
+  --under-glass: var(--wi-glass);
+}
+:root:is(.edit, .popup).look-ink-wash .ctx {
+  --under-glass: var(--paper);
+}
+/* The sidenote popup (pop.ts): as tall as the window it is in allows (native sets --pop-max: the window's height
+   less 16, at most 560), not as the web view, which is only as big as the popup */
+:root.popup .pop:is(.k-highlight, .k-notes) {
+  max-height: var(--pop-max, 560px);
 }

@@ -27,13 +27,21 @@ private func board(_ id: String, in package: URL) throws {
   #expect(try Vault(root: root).board(at: "Papers/Attention/Heads.board").id == BoardID(rawValue: "b2"))
 }
 
-@Test func treeRefusesABoardOfAnotherVersion() throws {
+@Test func boardsOfOtherVersionsAreListedAndRefusedWhenOpened() throws {
   let root = try scratch()
-  let package = root.appending(path: "A.board")
-  try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
-  let file = package.appending(path: Vault.boardFileName)
-  try Data(#"{"version": 2, "id": "a"}"#.utf8).write(to: file)
-  #expect(throws: VaultError.unsupportedVersion(file, 2)) { try Vault(root: root).tree() }
+  var files: [URL] = []
+  for (name, version) in [("A", 1), ("B", 3)] {
+    let package = root.appending(path: "\(name).board")
+    try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
+    let file = package.appending(path: Vault.boardFileName)
+    try Data(#"{"version": \#(version), "id": "\#(name)"}"#.utf8).write(to: file)
+    files.append(file)
+  }
+  let vault = Vault(root: root)
+  #expect(try vault.tree().allBoards.map(\.title) == ["A", "B"])
+  #expect(throws: VaultError.olderFormat(files[0], 1)) { try vault.board(at: "A.board") }
+  #expect(throws: VaultError.newerFormat(files[1], 3)) { try vault.board(at: "B.board") }
+  #expect(VaultError.newerFormat(files[1], 3).description.contains("Update CodeBoard"))
 }
 
 @Test func sharedCardIDsCannotLeaveTheirFolder() throws {

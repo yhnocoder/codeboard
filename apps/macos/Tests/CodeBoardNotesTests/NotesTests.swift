@@ -12,14 +12,14 @@ private func tempFolder() throws -> URL {
 }
 
 private func json(
-  _ note: Note, width: Double = 300, height: Double? = nil, look: String = "warm-ink", dark: Bool = false,
+  _ note: NoteBody, width: Double = 300, height: Double? = nil, look: String = "warm-ink", dark: Bool = false,
   refs: [NoteRef] = []
 ) throws -> String {
   try PageNote(note, width: width, height: height, look: look, dark: dark, refs: refs).json()
 }
 
 @Suite struct SnapshotKeyTests {
-  let base = Note(text: "# Title\n\nbody", style: .note)
+  let base = NoteBody.note(Note(text: "# Title\n\nbody"))
 
   func key(
     build: String = "b", system: String = "s", note: String? = nil, scale: Double = 2, images: [String] = []
@@ -29,7 +29,7 @@ private func json(
 
   @Test func sameInputsSameKey() throws {
     #expect(try key() == key())
-    let n = Note(text: "x", style: .mark(color: .blue, weight: .bold, fontSize: 20), layout: NoteLayout(wrap: [1]))
+    let n = NoteBody.text(TextCard(text: "x", look: .box, fontSize: 24, layout: NoteLayout(wrap: [1])))
     #expect(try json(n) == json(n))
   }
 
@@ -43,15 +43,12 @@ private func json(
       try key(note: json(base, refs: [NoteRef(label: "Plan", target: nil, hit: .found(title: "Plan", seal: nil))])),
       try key(note: json(base, refs: [NoteRef(label: "Plan", target: nil, hit: .found(title: "Plans", seal: nil))])),
     ]
-    let notes: [Note] = [
-      Note(text: "# Title\n\nbody!", style: .note),
-      Note(text: base.text, style: .text(size: .body, bold: false)),
-      Note(text: base.text, style: .text(size: .body, bold: true)),
-      Note(text: base.text, style: .box(fill: .yellow)),
-      Note(text: base.text, style: .mark(color: .blue, weight: .regular, fontSize: nil)),
-      Note(text: base.text, style: .mark(color: .blue, weight: .regular, fontSize: 24)),
-      Note(text: base.text, style: .freeText(level: 1, bold: false, fontSize: nil)),
-      Note(text: base.text, style: .note, layout: NoteLayout(tables: [NoteLayout.Table(cols: [80, nil])])),
+    let md = base.markdown
+    let notes: [NoteBody] = [
+      .note(Note(text: "# Title\n\nbody!")), .text(TextCard(text: md)), .text(TextCard(text: md, look: .box)),
+      .text(TextCard(text: md, look: .box, fill: .blue)), .text(TextCard(text: md, fill: .blue)),
+      .text(TextCard(text: md, fontSize: 24)), .text(TextCard(text: md, wrap: true)),
+      .note(Note(text: md, layout: NoteLayout(tables: [NoteLayout.Table(cols: [80, nil])]))),
     ]
     for n in notes { others.append(try key(note: json(n))) }
     #expect(Set(others + [k]).count == others.count + 1)
@@ -182,29 +179,82 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
 
 /// The real page in a real web view: needs the built page (node web/build.mjs) and a login session with a screen
 @MainActor @Suite(.serialized) struct NoteRendererTests {
-  static let note = Note(
-    text: """
-      # Scheduler
+  static let note = NoteBody.note(
+    Note(
+      text: """
+        # Scheduler
 
-      One step **prefills** or *decodes*, never both: $t = \\sum_i n_i$.
+        One step **prefills** or *decodes*, never both: $t = \\sum_i n_i$.
 
-      - waiting requests
-      - running requests
+        - waiting requests
+        - running requests
 
-      | stage | tokens |
-      | --- | --- |
-      | prefill | 512 |
-      | decode | 1 |
+        | stage | tokens |
+        | --- | --- |
+        | prefill | 512 |
+        | decode | 1 |
 
-      $$
-      \\text{throughput} = \\frac{\\text{tokens}}{\\text{step}}
-      $$
+        $$
+        \\text{throughput} = \\frac{\\text{tokens}}{\\text{step}}
+        $$
 
-      ```python
-      def step(batch):
-          return model(batch)
-      ```
-      """, style: .note)
+        ```python
+        def step(batch):
+            return model(batch)
+        ```
+        """))
+
+  @Test func aNoteDrawnAtAScaleIsStillMeasuredAt100Percent() async throws {
+    _ = NSApplication.shared
+    let page = NoteRenderer.bundledPage.appending(path: "page.html").path(percentEncoded: false)
+    try #require(FileManager.default.fileExists(atPath: page), "build the Note page first: node web/build.mjs")
+    let cache = try tempFolder()
+    let folder = try tempFolder()
+    defer {
+      try? FileManager.default.removeItem(at: cache)
+      try? FileManager.default.removeItem(at: folder)
+    }
+    let box = NoteBody.text(TextCard(text: "Check the bounds", look: .box, wrap: true))
+    let req = NoteRenderer.SizeRequest(note: box, width: 180, folder: folder, look: "warm-ink", dark: false)
+    let r = NoteRenderer(cache: cache)
+    let plain = try #require(try await r.firstGlyphs(of: [req])[0])
+    // its picture drawn finer than the page's backing scale leaves it shown under a CSS scale there: what is measured
+    // of it is still at 100 %
+    _ = try await r.snapshot(
+      of: box, width: 180, height: nil, folder: folder, scale: 4, look: "warm-ink", dark: false, priority: 0)
+    let after = try #require(try await r.firstGlyphs(of: [req])[0])
+    #expect(after.size == plain.size)
+    #expect(after.first == plain.first)
+  }
+
+  @Test func aNotesBlocksAreMeasuredWithItsSizeAndKeptWithIt() async throws {
+    _ = NSApplication.shared
+    let cache = try tempFolder()
+    let folder = try tempFolder()
+    defer {
+      try? FileManager.default.removeItem(at: cache)
+      try? FileManager.default.removeItem(at: folder)
+    }
+    let text = "调度 Scheduling\n\nRequests wait in the queue.\n\n- 每一步取一批\n- 再算一步"
+    let req = NoteRenderer.SizeRequest(
+      note: .note(Note(text: text)), width: 300, folder: folder, look: "warm-ink", dark: false)
+    let r = NoteRenderer(cache: cache)
+    let m = try #require(try await r.metrics(of: [req], priority: 0)[0])
+    let blocks = try #require(m.blocks)
+    #expect(
+      blocks.map(\.sig) == ["调度 Scheduling", "Requests wait in the queue.", "- 每一步取一批\n- 再算一步"].map(BlockRef.sig))
+    #expect(zip(blocks, blocks.dropFirst()).allSatisfy { $0.y + $0.h <= $1.y + 0.5 }, "one under another")
+    #expect(blocks.allSatisfy { $0.h > 0 && $0.line > 0 && $0.line <= $0.h + 0.5 && $0.y + $0.h <= m.size.height })
+    // a Text has no blocks
+    let t = NoteRenderer.SizeRequest(
+      note: .text(TextCard(text: text)), width: 300, folder: folder, look: "warm-ink", dark: false)
+    #expect(try await r.metrics(of: [t], priority: 0)[0]?.blocks == nil)
+    // read back from the disk cache, without the web view
+    await r.written()
+    let fresh = NoteRenderer(cache: cache)
+    #expect(try await fresh.metrics(of: [req], priority: 0)[0] == m)
+    #expect(!fresh.webViewOpen)
+  }
 
   @Test func drawsAtEachScaleThenReadsFromDisk() async throws {
     _ = NSApplication.shared
@@ -253,7 +303,7 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
       of: Self.note, width: 320, height: nil, folder: folder, scale: 2, look: "warm-ink", dark: true, priority: 0)
     #expect(dark.size == sizes[0] && pixels(dark.surface) != atTwo)
     // words alone: dark ink on a light board, light ink on a dark one
-    let words = Note(text: "Plain words on a card, and nothing else.", style: .note)
+    let words = NoteBody.note(Note(text: "Plain words on a card, and nothing else."))
     for onDark in [false, true] {
       let px = pixels(
         try await r.snapshot(
@@ -278,7 +328,7 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
 
   /// Notes measured together stay mounted together, each drawn as if it were the only one: the same sizes and the same
   /// pixels at every scale as a renderer that mounts it alone, also after the page switched looks and back. The other
-  /// Notes are what could leak into a picture: wider and taller ones, a Free Text, a box, one in a fixed height
+  /// Notes are what could leak into a picture: wider and taller ones, a Text as wide as its words, a box, one in a fixed height
   @Test func notesMountedTogetherDrawAsAlone() async throws {
     _ = NSApplication.shared
     let cache = try tempFolder()
@@ -288,18 +338,18 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
       try? FileManager.default.removeItem(at: alone)
     }
     let code = (1...90).map { "x\($0) = step(\($0))" }.joined(separator: "\n")
-    let notes: [(Note, Double)] = [
+    let notes: [(NoteBody, Double)] = [
       (Self.note, 320),
-      (Note(text: "# Long\n\n```python\n\(code)\n```\n\nThe end.", style: .note), 420),
-      (Note(text: "A free text title", style: .freeText(level: 1, bold: false, fontSize: nil)), 50),
-      (Note(text: "Boxed **words** over two lines of a box", style: .box(fill: .yellow)), 160),
-      (Note(text: "- [x] done\n- [ ] open\n\n> quoted", style: .note), 240),
+      (NoteBody.note(Note(text: "# Long\n\n```python\n\(code)\n```\n\nThe end.")), 420),
+      (.text(TextCard(text: "A text as wide as its words", fontSize: 40)), 50),
+      (.text(TextCard(text: "Boxed **words** over two lines of a box", look: .box, wrap: true)), 160),
+      (NoteBody.note(Note(text: "- [x] done\n- [ ] open\n\n> quoted")), 240),
     ]
     let r = NoteRenderer(cache: cache)
     let sizes = try await r.sizes(
       of: notes.map { NoteRenderer.SizeRequest(note: $0.0, width: $0.1, folder: cache, look: "warm-ink", dark: false) },
       priority: 0)
-    // the long one is taller than the window the page starts with, the Free Text as wide as its text
+    // the long one is taller than the window the page starts with, the Text as wide as its text
     #expect(sizes[1].map { $0.height > 1500 } == true)
     #expect(sizes[2].map { $0.width > 50 } == true)
     for (i, (note, width)) in notes.enumerated() {
@@ -341,7 +391,7 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     defer { try? FileManager.default.removeItem(at: cache) }
     let prose = (1...30).map { "Paragraph \($0) about the scheduler and its queue." }.joined(separator: "\n\n")
     let code = (1...120).map { "x\($0) = step(\($0))" }.joined(separator: "\n")
-    let note = Note(text: "# Long\n\n\(prose)\n\n```python\n\(code)\n```\n\nThe end.", style: .note)
+    let note = NoteBody.note(Note(text: "# Long\n\n\(prose)\n\n```python\n\(code)\n```\n\nThe end."))
     let r = NoteRenderer(cache: cache)
     let s = try await r.snapshot(
       of: note, width: 360, height: nil, folder: cache, scale: 1, look: "warm-ink", dark: false, priority: 0)
@@ -358,7 +408,7 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     _ = NSApplication.shared
     let cache = try tempFolder()
     defer { try? FileManager.default.removeItem(at: cache) }
-    let note = Note(text: "Next comes [[step#^c2]] in the loop.", style: .note)
+    let note = NoteBody.note(Note(text: "Next comes [[step#^c2]] in the loop."))
     let r = NoteRenderer(cache: cache)
     func draw(_ refs: [NoteRef]) async throws -> [UInt8] {
       pixels(

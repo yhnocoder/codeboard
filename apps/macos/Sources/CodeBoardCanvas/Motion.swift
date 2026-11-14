@@ -11,6 +11,14 @@ struct Motion {
     case input
     case glide(Glide)
     case spring(Spring)
+    /// The app's own move to a camera (a ref's card brought into view)
+    case fly(Fly)
+  }
+
+  /// Eased to `to` as the web board's camTo spring settles (camera.ts, k 120 c 22), from the first frame on
+  struct Fly: Equatable {
+    var to: Camera
+    var at: TimeInterval?
   }
 
   struct Glide: Equatable {
@@ -35,6 +43,7 @@ struct Motion {
   static let glideStop: CGFloat = 15
   /// Matches the prototype's spring (a quarter of the way per frame at 120 Hz), but per second, not per frame
   static let springTau: TimeInterval = 0.03
+  static let flyTau: TimeInterval = 0.07
 
   private(set) var phase = Phase.resting
   private var lastInput: TimeInterval = -.infinity
@@ -94,6 +103,11 @@ struct Motion {
     }
   }
 
+  /// The zoom was held (at the summary switch point): the fingers go on from there, so turning back does not jump
+  mutating func hold(zoom: CGFloat) {
+    if pinchRaw != nil { pinchRaw = zoom }
+  }
+
   /// ⌘-scroll: zooms within the limits, no rubber band
   mutating func wheelZoom(
     by factor: CGFloat, at p: CGPoint, time t: TimeInterval, limits: ZoomLimits, camera: inout Camera
@@ -103,7 +117,12 @@ struct Motion {
     lastInput = t
   }
 
-  /// A frame: plays the glide or spring. Returns true on the frame the motion comes to rest
+  /// Moves the camera to `c` over the frames that follow; any input stops it where it is
+  mutating func fly(to c: Camera) {
+    phase = .fly(Fly(to: c))
+  }
+
+  /// A frame: plays the glide, spring or fly. Returns true on the frame the motion comes to rest
   mutating func step(at t: TimeInterval, camera: inout Camera) -> Bool {
     switch phase {
     case .resting:
@@ -122,6 +141,27 @@ struct Motion {
       camera.zoom(to: next, at: s.anchor)
       s.at = t
       phase = next == s.target ? .input : .spring(s)
+    case .fly(var f):
+      guard let at = f.at else {
+        f.at = t
+        phase = .fly(f)
+        return false
+      }
+      let k = 1 - exp(-(t - at) / Motion.flyTau)
+      f.at = t
+      var c = camera
+      c.zoom *= pow(f.to.zoom / c.zoom, k)
+      c.origin.x += (f.to.origin.x - c.origin.x) * k
+      c.origin.y += (f.to.origin.y - c.origin.y) * k
+      let off = hypot(c.origin.x - f.to.origin.x, c.origin.y - f.to.origin.y) * f.to.zoom
+      if off < 0.25 && abs(log(c.zoom / f.to.zoom)) < 1e-4 {
+        camera = f.to
+        // there: at rest at once, nothing to wait for as after the fingers
+        phase = .resting
+        return true
+      }
+      camera = c
+      phase = .fly(f)
     case .input:
       break
     }

@@ -45,6 +45,21 @@
       "dashed": false,
       "endHead": true,
       "from": {
+        "card": "cnote",
+        "lost": false
+      },
+      "id": "lweb",
+      "startHead": false,
+      "to": {
+        "card": "cweb",
+        "lost": false
+      },
+      "width": 2
+    },
+    {
+      "dashed": false,
+      "endHead": true,
+      "from": {
         "card": "cstep",
         "lost": false
       },
@@ -120,16 +135,6 @@
           "wrap": true
         },
         "description": "Runs the scheduler, then the model. ![diagram](images/9e8d7c6b5a493827-1x1.png)",
-        "processes": [
-          {
-            "light": false,
-            "text": "rank 0"
-          },
-          {
-            "light": true,
-            "text": "stream 1"
-          }
-        ],
         "title": "One engine step"
       },
       "id": "cstep",
@@ -207,8 +212,7 @@
             }
           ],
           "wrap": false
-        },
-        "processes": []
+        }
       },
       "height": 200,
       "id": "cgh",
@@ -242,8 +246,7 @@
             }
           ],
           "wrap": false
-        },
-        "processes": []
+        }
       },
       "id": "cfree",
       "locked": false,
@@ -264,12 +267,8 @@
             ],
             "wrap": [0]
           },
-          "style": {
-            "note": {}
-          },
           "text": "# Prefill\nThe first pass.\n\n![shot](images/5f1a2b3c4d5e6f70-1x1.png){width=50%}\n\nNot an asset: myassets/x.png"
-        },
-        "processes": []
+        }
       },
       "id": "cnote",
       "locked": false,
@@ -281,16 +280,13 @@
     },
     {
       "content": {
-        "note": {
-          "style": {
-            "text": {
-              "bold": true,
-              "size": "title"
-            }
-          },
-          "text": "Decode"
-        },
-        "processes": []
+        "text": {
+          "fill": "yellow",
+          "fontSize": 14.5,
+          "look": "text",
+          "text": "# Decode",
+          "wrap": true
+        }
       },
       "id": "ctext",
       "locked": false,
@@ -301,15 +297,13 @@
     },
     {
       "content": {
-        "note": {
-          "style": {
-            "box": {
-              "fill": "blue"
-            }
-          },
-          "text": "loop"
-        },
-        "processes": []
+        "text": {
+          "fill": "blue",
+          "fontSize": 13.5,
+          "look": "box",
+          "text": "loop",
+          "wrap": true
+        }
       },
       "id": "cbox",
       "locked": false,
@@ -320,17 +314,13 @@
     },
     {
       "content": {
-        "note": {
-          "style": {
-            "mark": {
-              "color": "green",
-              "fontSize": 24,
-              "weight": "bold"
-            }
-          },
-          "text": "hot path"
-        },
-        "processes": []
+        "text": {
+          "fill": "yellow",
+          "fontSize": 24,
+          "look": "text",
+          "text": "hot path",
+          "wrap": true
+        }
       },
       "id": "cmark",
       "locked": false,
@@ -341,16 +331,13 @@
     },
     {
       "content": {
-        "note": {
-          "style": {
-            "freeText": {
-              "bold": false,
-              "level": 2
-            }
-          },
-          "text": "assets/ stays as typed"
-        },
-        "processes": []
+        "text": {
+          "fill": "yellow",
+          "fontSize": 16.5,
+          "look": "text",
+          "text": "# assets/ stays as typed",
+          "wrap": false
+        }
       },
       "id": "cfreetext",
       "locked": false,
@@ -362,12 +349,8 @@
     {
       "content": {
         "note": {
-          "style": {
-            "note": {}
-          },
           "text": "Req"
-        },
-        "processes": []
+        }
       },
       "id": "cmsg",
       "locked": false,
@@ -386,8 +369,7 @@
             "file": "0a1b2c3d4e5f6071-1x1.png"
           },
           "stillFrame": 2
-        },
-        "processes": []
+        }
       },
       "id": "cimg",
       "locked": false,
@@ -404,8 +386,7 @@
           "source": {
             "file": "ffffffffffffffff-1x1.png"
           }
-        },
-        "processes": []
+        }
       },
       "id": "cmissing",
       "locked": false,
@@ -415,9 +396,34 @@
       "y": 700
     },
     {
+      "content": {
+        "web": {
+          "meta": {
+            "failed": false,
+            "title": "Example"
+          },
+          "style": "automatic",
+          "url": "https://example.com"
+        }
+      },
+      "id": "cweb",
+      "locked": false,
+      "tilted": false,
+      "width": 300,
+      "x": 500,
+      "y": 700
+    },
+    {
       "id": "cshared",
       "locked": false,
       "shared": true,
+      "summary": {
+        "at": 1,
+        "edited": false,
+        "pairs": [],
+        "sig": "x",
+        "text": "a note"
+      },
       "tilted": true,
       "width": 300,
       "x": 900,
@@ -434,6 +440,13 @@
       "height": 900,
       "id": "sec-outer",
       "locked": false,
+      "summary": {
+        "at": 1,
+        "edited": false,
+        "pairs": [],
+        "sig": "x",
+        "text": "s"
+      },
       "title": "Step",
       "width": 1400,
       "x": 40,
@@ -451,5 +464,59 @@
       "y": 380
     }
   ],
-  "version": 1
+  "shelf": [],
+  "sidenotes": [
+    {
+      "anchor": {
+        "card": {
+          "card": "cstep",
+          "lines": [50, 51],
+          "segment": "sstep"
+        }
+      },
+      "boardOnly": false,
+      "id": "n1",
+      "lineRemoved": false,
+      "text": {
+        "alwaysShow": false,
+        "text": "why"
+      }
+    },
+    {
+      "anchor": {
+        "card": {
+          "card": "cshared"
+        }
+      },
+      "boardOnly": true,
+      "id": "n2",
+      "lineRemoved": false,
+      "text": {
+        "alwaysShow": false,
+        "text": "only here"
+      }
+    },
+    {
+      "anchor": {
+        "point": {
+          "x": 17,
+          "y": 18
+        }
+      },
+      "boardOnly": false,
+      "id": "k1",
+      "lineRemoved": false,
+      "text": {
+        "alwaysShow": false,
+        "question": {
+          "answers": [],
+          "at": 0,
+          "done": false
+        },
+        "text": ""
+      }
+    }
+  ],
+  "stickers": [],
+  "version": 2
 }

@@ -1,0 +1,149 @@
+{
+ "version": 17,
+ "id": "s8single",
+ "name": "一个子 Section",
+ "cam": {
+  "x": 80,
+  "y": 80,
+  "z": 1
+ },
+ "cards": [
+  {
+   "id": "d0",
+   "kind": "note",
+   "md": "## 查询设备属性\n\ncudaGetDeviceProperties 读出每个设备的资源上限。",
+   "look": "note"
+  },
+  {
+   "id": "d1",
+   "kind": "note",
+   "md": "## 使用 cudaDeviceProp\n\n按 SM 数和每 block 线程上限调参。",
+   "look": "note"
+  },
+  {
+   "id": "d2",
+   "kind": "note",
+   "md": "## 合并访存\n\n同一 warp 访问连续地址。",
+   "look": "note"
+  },
+  {
+   "id": "d3",
+   "kind": "note",
+   "md": "## bank 冲突\n\n填充一列错开 bank。",
+   "look": "note"
+  },
+  {
+   "id": "d4",
+   "kind": "note",
+   "md": "## 流和事件\n\n流里的操作按顺序执行。",
+   "look": "note"
+  },
+  {
+   "id": "d5",
+   "kind": "note",
+   "md": "## 异步拷贝与页锁定内存\n\ncudaMemcpyAsync 要页锁定内存，否则退化成同步拷贝。",
+   "look": "note"
+  },
+  {
+   "id": "far",
+   "kind": "note",
+   "md": "# 远处\n\n撑开白板",
+   "look": "note"
+  }
+ ],
+ "place": {
+  "d0": {
+   "x": 80,
+   "y": 80,
+   "w": 700,
+   "section": "q"
+  },
+  "d1": {
+   "x": 880,
+   "y": 80,
+   "w": 700,
+   "section": "q"
+  },
+  "d2": {
+   "x": 2200,
+   "y": 80,
+   "w": 700,
+   "section": "u"
+  },
+  "d3": {
+   "x": 3000,
+   "y": 80,
+   "w": 700,
+   "section": "u"
+  },
+  "d4": {
+   "x": 2200,
+   "y": 1400,
+   "w": 700,
+   "section": "st"
+  },
+  "d5": {
+   "x": 3000,
+   "y": 1400,
+   "w": 700,
+   "section": "st"
+  },
+  "far": {
+   "x": 6000,
+   "y": 3500,
+   "w": 700
+  }
+ },
+ "links": [],
+ "sections": [
+  {
+   "id": "D",
+   "title": "设备与资源",
+   "x": 80,
+   "y": 80,
+   "w": 0,
+   "h": 0
+  },
+  {
+   "id": "q",
+   "title": "查询设备属性",
+   "x": 80,
+   "y": 80,
+   "w": 0,
+   "h": 0,
+   "parent": "D",
+   "summary": {
+    "text": "每个设备的资源由**计算能力**决定，查 SM 数、每 block 线程上限等资源上限。",
+    "at": 1700000000000,
+    "sig": "qevrkv",
+    "input": "d7zqqf"
+   }
+  },
+  {
+   "id": "u",
+   "title": "还没写过的 Section",
+   "x": 2200,
+   "y": 80,
+   "w": 0,
+   "h": 0
+  },
+  {
+   "id": "st",
+   "title": "改过的 Section",
+   "x": 2200,
+   "y": 1400,
+   "w": 0,
+   "h": 0,
+   "summary": {
+    "text": "同一个流里的拷贝和 kernel **按顺序**执行，不同流之间可以**重叠**。",
+    "at": 1700000000000,
+    "sig": "1ud53xm",
+    "input": "1iu15ix"
+   }
+  }
+ ],
+ "sidenotes": [],
+ "stickers": [],
+ "born": {},
+ "seq": 0
+}

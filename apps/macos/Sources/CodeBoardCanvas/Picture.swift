@@ -85,7 +85,7 @@ package enum Picture {
   /// `rect` of the board (board units) at `scale` pixels per unit, the theme's backdrop covering it when asked; sizes: what
   /// the Note renderer would measure of Notes (as `Scene` takes it). Also returns where each card is
   package static func draw(
-    board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter, sizes: [CardID: CGSize],
+    board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter, sizes: [CardID: NoteMetrics],
     rect: CGRect, scale: CGFloat, backdrop: Bool
   ) -> (image: CGImage?, cards: [String: CGRect]) {
     let scene = Scene(board, package: package, vault: vault, theme: t, highlighter: highlighter, sizes: sizes)
@@ -95,13 +95,44 @@ package enum Picture {
       case .code(let c): cards[c.id] = it.rect
       case .note(let n): cards[n.id] = it.rect
       case .image(let p): cards[p.id] = it.rect
+      case .board(let b): cards[b.id] = it.rect
+      case .web(let w): cards[w.id] = it.rect
+      case .links(let l): cards[l.id] = it.rect
       case .label: break
       }
     }
     return (draw(scene, theme: t, rect: rect, scale: scale, backdrop: backdrop), cards)
   }
 
-  static func draw(_ s: Scene, theme t: Theme, rect: CGRect, scale: CGFloat, backdrop: Bool) -> CGImage? {
+  /// The same with what the Note renderer draws (Notes, Texts, Boxes, SVG pictures) over their paper, as the canvas shows
+  /// them at rest: measured, then each drawn at `scale`. Also returns where each card is
+  package static func draw(
+    board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter, notes: NoteRenderer,
+    rect: CGRect, scale: CGFloat, backdrop: Bool
+  ) async -> (image: CGImage?, cards: [String: CGRect]) {
+    let sizes = await CanvasView.measure(Scene.measures(board, package: package, vault: vault), theme: t, notes: notes)
+    let scene = Scene(board, package: package, vault: vault, theme: t, highlighter: highlighter, sizes: sizes)
+    var pictures: [Int: IOSurface] = [:]
+    var cards: [String: CGRect] = [:]
+    for (i, it) in scene.items.enumerated() {
+      switch it.drawing {
+      case .code(let c): cards[c.id] = it.rect
+      case .note(let n): cards[n.id] = it.rect
+      case .image(let p): cards[p.id] = it.rect
+      case .board(let b): cards[b.id] = it.rect
+      case .web(let w): cards[w.id] = it.rect
+      case .links(let l): cards[l.id] = it.rect
+      case .label: break
+      }
+      guard it.drawing.byRenderer else { continue }
+      pictures[i] = await CanvasView.picture(it, scale: scale, theme: t, notes: notes, priority: 1)?.surface
+    }
+    return (draw(scene, theme: t, rect: rect, scale: scale, backdrop: backdrop, pictures: pictures), cards)
+  }
+
+  static func draw(
+    _ s: Scene, theme t: Theme, rect: CGRect, scale: CGFloat, backdrop: Bool, pictures: [Int: IOSurface] = [:]
+  ) -> CGImage? {
     let w = Int((rect.width * scale).rounded(.up))
     let h = Int((rect.height * scale).rounded(.up))
     guard
@@ -133,18 +164,19 @@ package enum Picture {
         ctx.setFillColor(t.sectionEdge)
         ctx.fillPath()
       } else {
-        let shape = Drawing.squircle(r, t.sectionRadius)
+        let radius = f.folded ? min(t.sectionRadius, 10) : t.sectionRadius
+        let shape = Drawing.squircle(r, radius)
         ctx.addPath(shape)
         ctx.setFillColor(f.fill)
         ctx.fillPath()
         ctx.saveGState()
         ctx.addPath(shape)
         ctx.clip()
-        ctx.addPath(Shadow.innerTop(r.size, radius: t.sectionRadius))
+        ctx.addPath(Shadow.innerTop(r.size, radius: radius))
         ctx.setFillColor(t.sectionEdge)
         ctx.fillPath()
         ctx.restoreGState()
-        ctx.addPath(Drawing.squircle(r.insetBy(dx: 0.25, dy: 0.25), t.sectionRadius - 0.25))
+        ctx.addPath(Drawing.squircle(r.insetBy(dx: 0.25, dy: 0.25), radius - 0.25))
         ctx.setStrokeColor(t.hair)
         ctx.setLineWidth(0.5)
         ctx.strokePath()
@@ -152,7 +184,8 @@ package enum Picture {
       ctx.restoreGState()
     }
     let images = DecodeCache(cap: 64 << 20)
-    func item(_ it: Scene.Item) {
+    func item(_ i: Int) {
+      let it = s.items[i]
       ctx.saveGState()
       ctx.translateBy(x: it.rect.midX, y: it.rect.midY)
       ctx.rotate(by: it.tilt)
@@ -160,10 +193,10 @@ package enum Picture {
       if it.drawing.framed {
         Shadow.draw(t, card: CGRect(origin: .zero, size: it.rect.size), scale: scale, in: ctx)
       }
-      _ = it.drawing.draw(in: ctx, size: it.rect.size, scale: scale, theme: t, images: images)
+      _ = it.drawing.draw(in: ctx, size: it.rect.size, scale: scale, theme: t, images: images, picture: pictures[i])
       ctx.restoreGState()
     }
-    for it in s.items[..<s.cardsFrom] { item(it) }
+    for i in 0..<s.cardsFrom { item(i) }
     for a in s.arrows {
       if !a.fill.isEmpty {
         ctx.addPath(a.fill.cg)
@@ -196,8 +229,8 @@ package enum Picture {
         ctx.drawPath(using: .fillStroke)
       }
     }
-    for it in s.items[s.labelsFrom...] { item(it) }
-    for it in s.items[s.cardsFrom..<s.labelsFrom] { item(it) }
+    for i in s.labelsFrom..<s.items.count { item(i) }
+    for i in s.cardsFrom..<s.labelsFrom { item(i) }
     return ctx.makeImage()
   }
 }

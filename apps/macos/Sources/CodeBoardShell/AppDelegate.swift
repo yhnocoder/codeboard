@@ -24,6 +24,7 @@ import CodeBoardModel
   private var appearance: NSKeyValueObservation?
   /// Only the latest tree read is applied
   private var treeRead = 0
+  private var settings: SettingsWindow?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSWindow.allowsAutomaticWindowTabbing = false
@@ -31,15 +32,30 @@ import CodeBoardModel
     let saved = UserDefaults.standard.data(forKey: Self.stateKey).flatMap {
       try? JSONDecoder().decode(ShellState.self, from: $0)
     }
-    if let saved { shell.sidebarShown = saved.sidebarShown }
+    if let saved {
+      shell.sidebarShown = saved.sidebarShown
+      if let w = saved.sidebarWidth {
+        shell.sidebarWidth = min(max(w, Shell.sidebarWidths.lowerBound), Shell.sidebarWidths.upperBound)
+      }
+    }
     if let id = UserDefaults.standard.string(forKey: Self.themeKey).flatMap(Theme.ID.init) { shell.theme = id }
     appearance = follow(NSApp, into: shell)
     if let saved, FileManager.default.fileExists(atPath: saved.vault) {
       open(URL(filePath: saved.vault, directoryHint: .isDirectory), restoring: saved)
+    } else if saved == nil, let first = Bundle.main.object(forInfoDictionaryKey: "CodeBoardFirstVault") as? String,
+      FileManager.default.fileExists(atPath: first)
+    {
+      // a build made with a vault to start in (make-app.sh's FIRST_VAULT): opened on its first launch only
+      open(URL(filePath: first, directoryHint: .isDirectory), restoring: nil)
     }
     let (window, panes) = makeMainWindow(shell: shell)
     self.window = window
     self.panes = panes
+    panes.onVaultChanged = { [weak self] in self?.readTree(reloadBoards: true) }
+    let ai = AISettings(defaults: .standard)
+    let keys = KeychainKeyStore()
+    panes.summarySwitch = ai.summarySwitch
+    panes.summaryWriter = keys.key() != nil ? ai.writer(keys: keys) : nil
     window.title = shell.vault?.root.lastPathComponent ?? "CodeBoard"
     window.makeKeyAndOrderFront(nil)
     NSApp.activate()
@@ -49,10 +65,37 @@ import CodeBoardModel
     }
   }
 
+  /// Every board is written first; when one cannot be, quitting would lose its changes, so it asks
+  func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    // a card being written in: what was typed goes to its board first
+    if let panes, panes.isEditing {
+      Task {
+        await panes.endEditing()
+        NSApp.reply(toApplicationShouldTerminate: self.writeAll() == .terminateNow)
+      }
+      return .terminateLater
+    }
+    return writeAll()
+  }
+
+  private func writeAll() -> NSApplication.TerminateReply {
+    let unsaved = panes?.flush() ?? []
+    guard !unsaved.isEmpty else { return .terminateNow }
+    let alert = NSAlert()
+    alert.messageText =
+      unsaved.count == 1
+      ? "Changes to “\(unsaved[0].title)” could not be saved" : "Changes to \(unsaved.count) boards could not be saved"
+    alert.informativeText = unsaved.map { "\($0.title): \($0.why)" }.joined(separator: "\n\n")
+    alert.addButton(withTitle: "Cancel")
+    alert.addButton(withTitle: "Quit Anyway")
+    return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
+  }
+
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
     true
   }
 
+  /// Opens a vault; what was open is closed first (`close` with the panes)
   private func open(_ root: URL, restoring state: ShellState?) {
     let vault = Vault(root: root)
     shell.open(vault, restoring: state)
@@ -86,7 +129,13 @@ import CodeBoardModel
     guard let window else { return }
     panel.beginSheetModal(for: window) { [weak self] response in
       guard response == .OK, let url = panel.url else { return }
-      MainActor.assumeIsolated { self?.open(url, restoring: nil) }
+      MainActor.assumeIsolated {
+        Task {
+          // what is being written goes to its board before the boards are let go
+          await self?.panes?.close()
+          self?.open(url, restoring: nil)
+        }
+      }
     }
   }
 
@@ -125,6 +174,16 @@ import CodeBoardModel
   @objc func showNextTab(_ sender: Any?) { shell.selectTab(by: 1) }
   @objc func showPreviousTab(_ sender: Any?) { shell.selectTab(by: -1) }
 
+  @objc func showSettings(_ sender: Any?) {
+    let ai = AISettings(defaults: .standard)
+    let keys = KeychainKeyStore()
+    let s = settings ?? SettingsWindow(settings: ai, keys: keys)
+    s.onSwitchChange = { [weak self] in self?.panes?.summarySwitch = $0 }
+    s.onKeyChange = { [weak self] set in self?.panes?.summaryWriter = set ? ai.writer(keys: keys) : nil }
+    settings = s
+    s.show()
+  }
+
   @objc func chooseTheme(_ sender: NSMenuItem) {
     guard let id = (sender.representedObject as? String).flatMap(Theme.ID.init) else { return }
     shell.theme = id
@@ -158,6 +217,8 @@ import CodeBoardModel
       withTitle: "About CodeBoard", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: ""
     )
     app.addItem(.separator())
+    app.addItem(withTitle: "Settings…", action: #selector(showSettings(_:)), keyEquivalent: ",")
+    app.addItem(.separator())
     let services = NSMenu(title: "Services")
     app.addItem(withTitle: "Services", action: nil, keyEquivalent: "").submenu = services
     NSApp.servicesMenu = services
@@ -175,15 +236,22 @@ import CodeBoardModel
     file.addItem(withTitle: "Close Tab", action: #selector(closeTab(_:)), keyEquivalent: "w")
     file.addItem(item("Close Window", #selector(NSWindow.performClose(_:)), "w", [.command, .shift]))
 
-    // Only text is selectable (error messages, import details), so Copy and Select All are what applies
+    // The canvas answers these for the board (undo titles name the step); text fields Cut, Copy, Paste and Select All
     let edit = NSMenu(title: "Edit")
-    edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
-    edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+    edit.addItem(withTitle: "Undo", action: #selector(CanvasView.undo(_:)), keyEquivalent: "z")
+    edit.addItem(withTitle: "Redo", action: #selector(CanvasView.redo(_:)), keyEquivalent: "Z")
     edit.addItem(.separator())
     edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
     edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
     edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+    edit.addItem(withTitle: "Duplicate", action: #selector(CanvasView.duplicate(_:)), keyEquivalent: "d")
+    edit.addItem(withTitle: "Delete", action: #selector(NSText.delete(_:)), keyEquivalent: "")
     edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+    edit.addItem(.separator())
+    // not ⇧⌘] / ⇧⌘[ as in Keynote: those switch tabs here
+    edit.addItem(item("Bring to Front", #selector(CanvasView.bringToFront(_:)), "f", [.command, .option, .shift]))
+    edit.addItem(item("Send to Back", #selector(CanvasView.sendToBack(_:)), "b", [.command, .option, .shift]))
+    edit.addItem(withTitle: "Lock", action: #selector(CanvasView.lock(_:)), keyEquivalent: "l")
 
     let view = NSMenu(title: "View")
     view.addItem(item("Hide Sidebar", #selector(flipSidebar(_:)), "s", [.command, .control]))

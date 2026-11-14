@@ -1,0 +1,437 @@
+{
+ "version": 17,
+ "id": "s8nested",
+ "name": "计算架构与调度",
+ "cam": {
+  "x": 80,
+  "y": 80,
+  "z": 1
+ },
+ "cards": [
+  {
+   "id": "k0",
+   "kind": "note",
+   "md": "## 现代 GPU 的架构\n\nGPU 由一组高度多线程化的 SM 组成。",
+   "look": "note"
+  },
+  {
+   "id": "k1",
+   "kind": "note",
+   "md": "## thread block 调度\n\nblock 整块分给一个 SM。",
+   "look": "note"
+  },
+  {
+   "id": "k2",
+   "kind": "note",
+   "md": "## 同步与透明可扩展性\n\n同一 block 的线程用 barrier 协调。",
+   "look": "note"
+  },
+  {
+   "id": "k3",
+   "kind": "note",
+   "md": "## barrier 应尽量限制在较小范围\n\n范围越大，等待越多。",
+   "look": "note"
+  },
+  {
+   "id": "k4",
+   "kind": "note",
+   "md": "## 错误使用 __syncthreads() 的示例\n\nif 和 else 各放一个。",
+   "look": "note"
+  },
+  {
+   "id": "k5",
+   "kind": "note",
+   "md": "## thread block cluster\n\ncluster 范围的 barrier。",
+   "look": "note"
+  },
+  {
+   "id": "k6",
+   "kind": "note",
+   "md": "## grid 范围同步\n\n开销高于 block 和 cluster。",
+   "look": "note"
+  },
+  {
+   "id": "k7",
+   "kind": "note",
+   "md": "## Intrinsic Function\n\n__syncthreads 是 intrinsic。",
+   "look": "note"
+  },
+  {
+   "id": "k8",
+   "kind": "note",
+   "md": "## __syncthreads tricky 的地方\n\n每处调用都是独立的同步点。",
+   "look": "note"
+  },
+  {
+   "id": "k9",
+   "kind": "note",
+   "md": "## Wave\n\n同时执行的一组 block。",
+   "look": "note"
+  },
+  {
+   "id": "k10",
+   "kind": "note",
+   "md": "## Warp\n\n32 个线程一组。",
+   "look": "note"
+  },
+  {
+   "id": "k11",
+   "kind": "note",
+   "md": "## 线程布局\n\nrow-major 展平再切。",
+   "look": "note"
+  },
+  {
+   "id": "k12",
+   "kind": "note",
+   "md": "## GPU 中的 SIMD 硬件设计\n\n一条指令跑整个 warp。",
+   "look": "note"
+  },
+  {
+   "id": "k13",
+   "kind": "note",
+   "md": "## Wrap 控制流分歧\n\n分支要分遍跑。",
+   "look": "note"
+  },
+  {
+   "id": "k14",
+   "kind": "note",
+   "md": "## 检查是否会造成控制流分歧\n\n看判定条件。",
+   "look": "note"
+  },
+  {
+   "id": "k15",
+   "kind": "note",
+   "md": "## 控制流分歧: if-else\n\n两边各跑一遍。",
+   "look": "note"
+  },
+  {
+   "id": "k16",
+   "kind": "note",
+   "md": "## Warp 调度与延迟容忍\n\n等内存时换一个 warp。",
+   "look": "note"
+  },
+  {
+   "id": "k17",
+   "kind": "note",
+   "md": "## 资源划分与占用率\n\noccupancy。",
+   "look": "note"
+  },
+  {
+   "id": "k18",
+   "kind": "note",
+   "md": "## 性能悬崖初探\n\n多用一个寄存器就掉一截。",
+   "look": "note"
+  },
+  {
+   "id": "k19",
+   "kind": "note",
+   "md": "## 查询设备属性\n\ncudaGetDeviceProperties。",
+   "look": "note"
+  },
+  {
+   "id": "k20",
+   "kind": "note",
+   "md": "## 使用 cudaDeviceProp\n\n按资源上限调参。",
+   "look": "note"
+  }
+ ],
+ "place": {
+  "k0": {
+   "x": 63,
+   "y": 25,
+   "w": 524,
+   "section": "c1"
+  },
+  "k1": {
+   "x": 617,
+   "y": 25,
+   "w": 498,
+   "section": "c1"
+  },
+  "k2": {
+   "x": 1203,
+   "y": 25,
+   "w": 517,
+   "section": "c2"
+  },
+  "k3": {
+   "x": 1203,
+   "y": 692,
+   "w": 524,
+   "section": "c2"
+  },
+  "k4": {
+   "x": 2382,
+   "y": 671,
+   "w": 292,
+   "section": "c3"
+  },
+  "k5": {
+   "x": 1807,
+   "y": 25,
+   "w": 404,
+   "section": "P"
+  },
+  "k6": {
+   "x": 1807,
+   "y": 228,
+   "w": 404,
+   "section": "P"
+  },
+  "k7": {
+   "x": 1807,
+   "y": 413,
+   "w": 404,
+   "section": "P"
+  },
+  "k8": {
+   "x": 1807,
+   "y": 648,
+   "w": 517,
+   "section": "P"
+  },
+  "k9": {
+   "x": 1807,
+   "y": 983,
+   "w": 476,
+   "section": "P"
+  },
+  "k10": {
+   "x": 1703,
+   "y": 1700,
+   "w": 476,
+   "section": "w1"
+  },
+  "k11": {
+   "x": 2258,
+   "y": 1700,
+   "w": 476,
+   "section": "w1"
+  },
+  "k12": {
+   "x": 1703,
+   "y": 2558,
+   "w": 476,
+   "section": "w1"
+  },
+  "k13": {
+   "x": 2994,
+   "y": 1700,
+   "w": 381,
+   "section": "w2"
+  },
+  "k14": {
+   "x": 3635,
+   "y": 1700,
+   "w": 480,
+   "section": "w2"
+  },
+  "k15": {
+   "x": 2845,
+   "y": 2206,
+   "w": 387,
+   "section": "w2"
+  },
+  "k16": {
+   "x": 2808,
+   "y": 2902,
+   "w": 517,
+   "section": "w3"
+  },
+  "k17": {
+   "x": 2808,
+   "y": 3626,
+   "w": 381,
+   "section": "w3"
+  },
+  "k18": {
+   "x": 3698,
+   "y": 3626,
+   "w": 417,
+   "section": "w3"
+  },
+  "k19": {
+   "x": 4542,
+   "y": 2902,
+   "w": 380,
+   "section": "q"
+  },
+  "k20": {
+   "x": 4261,
+   "y": 3297,
+   "w": 450,
+   "section": "q"
+  }
+ },
+ "links": [],
+ "sections": [
+  {
+   "id": "T",
+   "title": "计算架构",
+   "x": 1807,
+   "y": 25,
+   "w": 0,
+   "h": 0,
+   "summary": {
+    "text": "SM 按 block 调度、barrier 只在块内，warp 是执行单位：**两层调度**决定了并行怎么写。",
+    "at": 1700000000000,
+    "sig": "6xxhx8",
+    "input": "18x5zhd"
+   }
+  },
+  {
+   "id": "P",
+   "title": "GPU 架构初探",
+   "x": 1807,
+   "y": 25,
+   "w": 0,
+   "h": 0,
+   "parent": "T",
+   "directSummary": {
+    "text": "barrier 分三层：block 内用 __syncthreads()，cluster 和 grid 用 Cooperative Groups，**范围越大开销越高**。同时执行的一批 block 叫 wave。",
+    "at": 1700000000000,
+    "sig": "168owk6",
+    "input": "zup2zm",
+    "title": "同步层次与 wave"
+   },
+   "summary": {
+    "text": "SM 按块调度，barrier 只在块内，**换来透明扩展**。",
+    "at": 1700000000000,
+    "sig": "1rq89ny",
+    "input": "smzkcp"
+   }
+  },
+  {
+   "id": "c1",
+   "title": "SM 与 block 调度",
+   "x": 63,
+   "y": 25,
+   "w": 0,
+   "h": 0,
+   "parent": "P",
+   "summary": {
+    "text": "线程以 **thread block 为单位**分到 SM，同一 block 的线程落在同一个 SM 上，能用 barrier 和 shared memory **低延迟协作**。",
+    "at": 1700000000000,
+    "sig": "vlv11c",
+    "input": "23juqf"
+   }
+  },
+  {
+   "id": "c2",
+   "title": "barrier 与透明扩展",
+   "x": 1203,
+   "y": 25,
+   "w": 0,
+   "h": 0,
+   "parent": "P",
+   "summary": {
+    "text": "barrier 只限在 block 内，不同 block 就能按任意顺序执行，程序在大小不同的 GPU 上**透明扩展**。",
+    "at": 1700000000000,
+    "sig": "11bne2j",
+    "input": "1ckhfdf"
+   }
+  },
+  {
+   "id": "c3",
+   "title": "__syncthreads 误用示例",
+   "x": 2382,
+   "y": 671,
+   "w": 0,
+   "h": 0,
+   "parent": "P",
+   "summary": {
+    "text": "if 和 else 两边各放一个 __syncthreads()，其实是**两个同步点**，行为未定义。",
+    "at": 1700000000000,
+    "sig": "cn58uf",
+    "input": "7qjbax"
+   }
+  },
+  {
+   "id": "W",
+   "title": "WARP 执行",
+   "x": 1703,
+   "y": 1700,
+   "w": 0,
+   "h": 0,
+   "parent": "T",
+   "summary": {
+    "text": "warp 一起跑、分支分遍跑，靠**多驻留 warp** 盖住延迟。",
+    "at": 1700000000000,
+    "sig": "74ocjc",
+    "input": "1bt95fc"
+   }
+  },
+  {
+   "id": "w1",
+   "title": "WARP 与 SIMD 硬件",
+   "x": 1703,
+   "y": 1700,
+   "w": 0,
+   "h": 0,
+   "parent": "W",
+   "summary": {
+    "text": "block 按 32 个线程切成 **warp**，是 SM 的调度单位；SIMD 让一条指令同时跑整个 warp。",
+    "at": 1700000000000,
+    "sig": "1m0wvwo",
+    "input": "1g4fjbk"
+   }
+  },
+  {
+   "id": "w2",
+   "title": "WARP 控制流分歧",
+   "x": 2994,
+   "y": 1700,
+   "w": 0,
+   "h": 0,
+   "parent": "W",
+   "summary": {
+    "text": "同一 warp 的线程走不同分支时，硬件要**分遍执行**，每遍只有部分线程活动。",
+    "at": 1700000000000,
+    "sig": "x7pc8o",
+    "input": "bba54w"
+   }
+  },
+  {
+   "id": "w3",
+   "title": "WARP 调度、延迟、占用率",
+   "x": 2808,
+   "y": 2902,
+   "w": 0,
+   "h": 0,
+   "parent": "W",
+   "summary": {
+    "text": "一个 warp 等内存时调度器**零开销**切到另一个，靠 warp 多来盖住延迟。",
+    "at": 1700000000000,
+    "sig": "1y3hfl2",
+    "input": "1m8whgx"
+   }
+  },
+  {
+   "id": "D",
+   "title": "设备与资源",
+   "x": 4542,
+   "y": 2902,
+   "w": 0,
+   "h": 0
+  },
+  {
+   "id": "q",
+   "title": "查询设备属性",
+   "x": 4542,
+   "y": 2902,
+   "w": 0,
+   "h": 0,
+   "parent": "D",
+   "summary": {
+    "text": "每个设备的资源由**计算能力**决定，查 SM 数、每 block 线程上限等资源上限。",
+    "at": 1700000000000,
+    "sig": "qevrkv",
+    "input": "1v1ra0b"
+   }
+  }
+ ],
+ "sidenotes": [],
+ "stickers": [],
+ "born": {},
+ "seq": 0
+}

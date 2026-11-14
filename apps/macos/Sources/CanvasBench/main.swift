@@ -9,6 +9,9 @@ import CodeBoardModel
 //            again, prints one JSON object per board on stdout and quits. The window floats on top: a covered window
 //            gets no frames
 //   --memory see MemoryRun
+//   --drag   see DragBench: drags on a copy of each board named (every board when none is), in a window never on screen
+//   --arrows the same drags on two boards made for it (ArrowBoards): a card with twenty arrows, a Section of twenty
+//            cards with their arrows; no vault folder
 // Note snapshots are cached in a new temporary folder, never in the app's cache: every run draws its Notes anew
 
 @MainActor
@@ -18,11 +21,13 @@ final class App: NSObject, NSApplicationDelegate {
   let hud: Bool
   let bench: Bool
   let memory: URL?
+  let drag: Bool
   var window: NSWindow?
   var meter: Meter?
   var noteCache: URL?
 
-  init(vault: Vault, boards: [VaultBoard], hud: Bool, bench: Bool, memory: URL?) {
+  init(vault: Vault, boards: [VaultBoard], hud: Bool, bench: Bool, memory: URL?, drag: Bool) {
+    self.drag = drag
     self.vault = vault
     self.boards = boards
     self.hud = hud
@@ -31,6 +36,7 @@ final class App: NSObject, NSApplicationDelegate {
   }
 
   func applicationDidFinishLaunching(_ n: Notification) {
+    if drag { return runDrag() }
     let screen = NSScreen.main?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
     let w = NSWindow(
       contentRect: screen.insetBy(dx: 40, dy: 30), styleMask: [.titled, .closable, .resizable, .miniaturizable],
@@ -82,6 +88,30 @@ final class App: NSObject, NSApplicationDelegate {
     }
   }
 
+  /// Never ordered on screen nor activated
+  private func runDrag() {
+    let frame = CGRect(x: 0, y: 0, width: 1440, height: 900)
+    let w = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
+    let cache = FileManager.default.temporaryDirectory.appending(path: "canvasbench-notes-\(UUID().uuidString)")
+    let scratch = FileManager.default.temporaryDirectory.appending(path: "canvasbench-drag-\(UUID().uuidString)")
+    noteCache = cache
+    let canvas = CanvasView(frame: frame, noteCache: cache)
+    w.contentView = canvas
+    window = w
+    Task {
+      try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+      for b in boards {
+        do {
+          print(try await DragBench(canvas: canvas, window: w).run(b, in: vault, scratch: scratch))
+        } catch {
+          FileHandle.standardError.write(Data("\(b.path): \(error)\n".utf8))
+        }
+      }
+      try? FileManager.default.removeItem(at: scratch)
+      NSApp.terminate(nil)
+    }
+  }
+
   func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
 
   func applicationWillTerminate(_ n: Notification) {
@@ -92,12 +122,24 @@ final class App: NSObject, NSApplicationDelegate {
 var args = Array(CommandLine.arguments.dropFirst())
 let hud = args.contains("--hud")
 let bench = args.contains("--bench")
+let arrows = args.contains("--arrows")
+let drag = arrows || args.contains("--drag")
 var memory: URL?
 if let i = args.firstIndex(of: "--memory"), i + 1 < args.count {
   memory = URL(filePath: args[i + 1])
   args.removeSubrange(i...i + 1)
 }
 args.removeAll { $0.hasPrefix("-") }
+if arrows {
+  let root = FileManager.default.temporaryDirectory.appending(path: "canvasbench-arrows-\(UUID().uuidString)")
+  args = [root.path(percentEncoded: false)]
+  do {
+    _ = try ArrowBoards.make(in: root)
+  } catch {
+    FileHandle.standardError.write(Data("\(error)\n".utf8))
+    exit(1)
+  }
+}
 guard let folder = args.first else {
   FileHandle.standardError.write(Data("usage: CanvasBench <vault folder> [board id or title] [--hud] [--bench]\n".utf8))
   exit(2)
@@ -111,7 +153,9 @@ do {
   exit(1)
 }
 let named = args.dropFirst().compactMap { a in all.first { $0.id.rawValue == a || $0.title == a } }
-let chosen = memory != nil ? named : args.count > 1 ? Array(named.prefix(1)) : bench ? all : Array(all.prefix(1))
+let chosen =
+  memory != nil || drag && args.count > 1
+  ? named : args.count > 1 ? Array(named.prefix(1)) : bench || drag ? all : Array(all.prefix(1))
 guard !chosen.isEmpty else {
   FileHandle.standardError.write(Data("no such board in \(folder)\n".utf8))
   exit(1)
@@ -119,7 +163,8 @@ guard !chosen.isEmpty else {
 // the WebKit processes already running, before the canvas starts its own
 _ = webKitFootprint()
 let app = NSApplication.shared
-app.setActivationPolicy(.regular)
-let delegate = App(vault: vault, boards: chosen, hud: hud, bench: bench, memory: memory)
+// --drag shows nothing: no Dock icon, no menu bar, never the active app
+app.setActivationPolicy(drag ? .prohibited : .regular)
+let delegate = App(vault: vault, boards: chosen, hud: hud, bench: bench, memory: memory, drag: drag)
 app.delegate = delegate
 app.run()

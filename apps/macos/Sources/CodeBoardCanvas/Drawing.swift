@@ -13,6 +13,11 @@ enum Drawing: Sendable {
   case note(Note)
   case image(Picture)
   case label(Label)
+  /// A sub-board card (SubBoardMap.swift)
+  case board(SubBoard)
+  /// A Web card and a Link List (WebDrawing.swift)
+  case web(Web)
+  case links(Links)
 
   struct Code: Sendable {
     /// The card's id: picks its paper
@@ -35,7 +40,7 @@ enum Drawing: Sendable {
     var id: String
     /// nil: untitled, shown as "Note"
     var title: String?
-    var content: CodeBoardModel.Note
+    var content: NoteBody
     /// Where its images are: the board package or the vault's shared folder
     var folder: URL
     /// The stored height, as the renderer is asked for it; nil: as tall as its content
@@ -43,7 +48,10 @@ enum Drawing: Sendable {
     /// What its [[refs]] point at now
     var refs: [NoteRef]
 
-    var style: NoteStyle { content.style }
+    /// A Box's fill; nil for a Note or a Text
+    var boxFill: BoxFill? {
+      if case .text(let t) = content, t.look == .box { t.fill } else { nil }
+    }
   }
 
   struct Picture: Sendable {
@@ -65,32 +73,46 @@ enum Drawing: Sendable {
 
     var text: String
     var kind: Kind
+    /// A folded Section's: how many cards are in it ("Title · N cards", then the chevron)
+    var count: Int? = nil
   }
+
+  /// A folded Section's title: `.slabel.collapsed` (its padding, the title, "· N cards" 5 after it, the chevron 16
+  /// wide, 2 between each)
+  static func foldedTitleWidth(_ title: String, count: Int, _ t: Theme) -> CGFloat {
+    let pad: CGFloat = t.frame == .tray ? 8 : 2
+    return pad + width(title, t.sectionTitleFont) + 2 + 5 + width(foldedCount(count), t.sectionCount) + 2 + 16
+  }
+
+  static func foldedCount(_ n: Int) -> String { "· \(n) card\(n == 1 ? "" : "s")" }
 
   /// Its picture comes from the Note renderer: until then it shows its paper
   var byRenderer: Bool {
     switch self {
     case .note: true
     case .image(let p): p.svg
-    case .code, .label: false
+    case .code, .label, .board, .web, .links: false
     }
   }
 
   var framed: Bool {
     switch self {
     case .code(let c): c.framed
-    case .note(let n): n.style == .note
+    case .note(let n): if case .note = n.content { true } else { false }
     case .image(let p): p.framed
+    case .board, .web, .links: true
     case .label: false
     }
   }
 
   /// How far it draws past its rect on each side
   func bleed(_ t: Theme) -> CGFloat {
+    // its name and count above it
+    if case .board = self { return Drawing.subHead + 2 }
     if framed { return t.bleed }
     // a box's ring and its shadow lie outside it, and an arrow label's box's
     switch self {
-    case .note(let n): if case .box = n.style { return 3 }
+    case .note(let n): if n.boxFill != nil { return 3 }
     case .label(let l): if l.kind == .arrow && t.label == .box { return 3 }
     default: break
     }
@@ -111,7 +133,7 @@ enum Drawing: Sendable {
       Drawing.code(ctx, c, r, t)
       if c.framed { Drawing.edge(ctx, r, t) }
     case .note(let n):
-      switch n.style {
+      switch n.content {
       case .note:
         Drawing.paper(ctx, r, t, id: n.id, rule: true)
         var x = t.headerPad
@@ -124,14 +146,14 @@ enum Drawing: Sendable {
           ctx, n.title ?? "Note", t.noteTitle, n.title == nil ? t.ink3 : t.ink, x: x, midY: t.headerHeight / 2,
           width: size.width - x - t.headerPadRight)
         Drawing.edge(ctx, r, t)
-      case .box(let fill):
+      case .text(let text) where text.look == .box:
         let p = Drawing.squircle(r, t.cardRadius)
         ctx.saveGState()
         ctx.setShadow(
           offset: CGSize(width: 0, height: -1 * scale), blur: 2 * scale,
           color: CGColor(srgbRed: 50 / 255, green: 35 / 255, blue: 10 / 255, alpha: 0.06))
         ctx.addPath(p)
-        ctx.setFillColor(t.boxFills[fill] ?? t.surface)
+        ctx.setFillColor(t.boxFills[text.fill] ?? t.surface)
         ctx.fillPath()
         ctx.restoreGState()
         // a ring wholly outside the box (box-shadow 0 0 0 1.25px)
@@ -139,7 +161,7 @@ enum Drawing: Sendable {
         ctx.setStrokeColor(t.boxEdge)
         ctx.setLineWidth(1.25)
         ctx.strokePath()
-      case .text, .mark, .freeText:
+      case .text:
         break
       }
       // transparent around the content, pixel for pixel from the top left
@@ -178,6 +200,12 @@ enum Drawing: Sendable {
       }
       ctx.restoreGState()
       if p.framed { Drawing.edge(ctx, r, t) }
+    case .board(let b):
+      decodes += Drawing.subBoard(ctx, b, r, t, scale: scale)
+    case .web(let w):
+      decodes += Drawing.web(ctx, w, r, t, images: images, scale: scale)
+    case .links(let l):
+      decodes += Drawing.links(ctx, l, r, t, images: images, scale: scale)
     case .label(let l):
       switch (l.kind, t.label) {
       case (.arrow, .box):
@@ -210,8 +238,32 @@ enum Drawing: Sendable {
         Drawing.text(ctx, l.text, t.arrowLabel, t.ink2, x: 16, midY: size.height / 2, width: size.width - 32)
       case (.section, _):
         let x: CGFloat = t.frame == .tray ? 6 : 0
-        Drawing.text(
-          ctx, l.text, t.sectionTitleFont, t.sectionTitle, x: x, midY: size.height / 2, width: size.width - x)
+        guard let n = l.count else {
+          Drawing.text(
+            ctx, l.text, t.sectionTitleFont, t.sectionTitle, x: x, midY: size.height / 2, width: size.width - x)
+          break
+        }
+        // folded: the title, its card count, the chevron pointing right
+        let tw = Drawing.width(l.text, t.sectionTitleFont)
+        Drawing.text(ctx, l.text, t.sectionTitleFont, t.sectionTitle, x: x, midY: size.height / 2, width: tw)
+        let count = Drawing.foldedCount(n)
+        let cx = x + tw + 2 + 5
+        let cw = Drawing.width(count, t.sectionCount)
+        Drawing.text(ctx, count, t.sectionCount, t.ink3, x: cx, midY: size.height / 2, width: cw)
+        // icons.tsx chevR (M6 12l4-4-4-4) at 10 px in a 16 px box, its stroke 2 of 16
+        let k: CGFloat = 10 / 16
+        let ox = cx + cw + 2 + 3
+        let oy = size.height / 2 - 5
+        let chev = CGMutablePath()
+        chev.move(to: CGPoint(x: ox + 6 * k, y: oy + 12 * k))
+        chev.addLine(to: CGPoint(x: ox + 10 * k, y: oy + 8 * k))
+        chev.addLine(to: CGPoint(x: ox + 6 * k, y: oy + 4 * k))
+        ctx.addPath(chev)
+        ctx.setStrokeColor(t.ink3)
+        ctx.setLineWidth(2 * k)
+        ctx.setLineCap(.round)
+        ctx.setLineJoin(.round)
+        ctx.strokePath()
       }
     }
     return decodes
@@ -220,7 +272,7 @@ enum Drawing: Sendable {
   // MARK: Parts
 
   /// The card's paper and its title bar (rule: whether the bar has a rule under it, where the theme draws one; nil: no bar)
-  private static func paper(_ ctx: CGContext, _ r: CGRect, _ t: Theme, id: String, rule: Bool?) {
+  static func paper(_ ctx: CGContext, _ r: CGRect, _ t: Theme, id: String, rule: Bool?) {
     switch t.paper {
     case .sheet:
       ctx.addPath(squircle(r, t.cardRadius))
@@ -279,7 +331,7 @@ enum Drawing: Sendable {
   }
 
   /// `Paper.sheet`'s card edge: a hairline, a light line inside the top and a warm one inside the bottom
-  private static func edge(_ ctx: CGContext, _ r: CGRect, _ t: Theme) {
+  static func edge(_ ctx: CGContext, _ r: CGRect, _ t: Theme) {
     guard t.paper == .sheet else { return }
     let p = squircle(r, t.cardRadius)
     // the two lines through strips along the top and bottom, where they are
@@ -463,7 +515,7 @@ enum Drawing: Sendable {
   }
 
   /// One line of text with its middle at midY, cut with an ellipsis to `width`
-  private static func text(
+  static func text(
     _ ctx: CGContext, _ s: String, _ font: Font, _ color: CGColor, x: CGFloat, midY: CGFloat, width w: CGFloat
   ) {
     guard !s.isEmpty, w > 0 else { return }

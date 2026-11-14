@@ -42,7 +42,6 @@ enum ShellTheme {
     return out
   }
 
-  static let sidebarWidth: CGFloat = 244
   /// Between the panel and the window edge
   static let inset: CGFloat = 8
   static let panelRadius: CGFloat = 11

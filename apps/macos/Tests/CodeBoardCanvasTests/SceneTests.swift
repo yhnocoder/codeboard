@@ -182,6 +182,61 @@ private func segment(_ id: String, path: String? = "src/engine.py", first: Int, 
     #expect(s.frames[0].fill == Theme.warmInk.sectionColors["blue"])
     #expect(s.items.first?.rect.origin == CGPoint(x: 26, y: 26))
   }
+
+  /// A Section's frame is its own ∪ its cards and inner Sections with room round them (core sectionFrame: 22 at the
+  /// sides and bottom, 34 at the top), the inner one's grown frame counting
+  @Test func aSectionsFrameGrowsRoundItsCardsAndInnerSections() {
+    let g = { (s: String) in SectionID(rawValue: s) }
+    var inside = card("c", x: 400, y: 200, height: 100, .code(CodeCard(segments: [segment("a", first: 1, ["x"])])))
+    inside.section = g("inner")
+    let s = scene(
+      Board(
+        id: BoardID(rawValue: "b"), cards: [inside],
+        sections: [
+          Section(id: g("outer"), title: "Out", x: 0, y: 0, width: 200, height: 100),
+          Section(id: g("inner"), title: "In", x: 380, y: 170, width: 50, height: 50, parent: g("outer")),
+        ]))
+    let f = Dictionary(uniqueKeysWithValues: s.frames.map { ($0.id, $0.rect) })
+    // the card 400…700 × 200…336 (36 header + 100): inner = its own ∪ (378…722 × 166…358)
+    #expect(f[g("inner")] == CGRect(x: 378, y: 166, width: 344, height: 192))
+    // outer = its own ∪ inner padded (356…744 × 132…380)
+    #expect(f[g("outer")] == CGRect(x: 0, y: 0, width: 744, height: 380))
+  }
+
+  /// A folded Section is its title bar, "Title · N cards" and the chevron: the cards and Sections in it are not drawn,
+  /// an arrow from outside meets the bar at the middle of its height, an arrow inside it is not drawn
+  @Test func aFoldedSectionHidesWhatIsInItAndArrowsMeetItsTitleBar() {
+    let g = { (s: String) in SectionID(rawValue: s) }
+    var a = card("a", x: 100, y: 100, height: 80, .note(Note(text: "a")))
+    a.section = g("inner")
+    var b = card("b", x: 100, y: 300, height: 80, .note(Note(text: "b")))
+    b.section = g("fold")
+    let out = card("o", x: 900, y: 600, height: 80, .note(Note(text: "o")))
+    let arrows = [
+      Arrow(id: ArrowID(rawValue: "x"), from: Endpoint(card: out.id), to: Endpoint(card: a.id)),
+      Arrow(id: ArrowID(rawValue: "y"), from: Endpoint(card: a.id), to: Endpoint(card: b.id)),
+    ]
+    let s = scene(
+      Board(
+        id: BoardID(rawValue: "b"), cards: [a, b, out], arrows: arrows,
+        sections: [
+          Section(id: g("fold"), title: "Kernels", x: 50, y: 40, width: 900, height: 500, collapsed: true),
+          Section(id: g("inner"), title: "Inner", x: 60, y: 60, width: 400, height: 200, parent: g("fold")),
+        ]))
+    #expect(s.frames.map(\.id) == [g("fold")] && s.frames[0].folded)
+    let title = Drawing.foldedTitleWidth("Kernels", count: 2, .warmInk)
+    #expect(s.frames[0].rect == CGRect(x: 50, y: 40, width: (16 + title + 8).rounded(.up), height: 34))
+    #expect(s.items.compactMap { if case .card(let id)? = $0.owner { id } else { nil } } == [out.id])
+    guard case .label(let l)? = s.items.first?.drawing else {
+      Issue.record("no title")
+      return
+    }
+    #expect(l.text == "Kernels" && l.count == 2)
+    #expect(s.arrowModels.map(\.id.rawValue) == ["x"])
+    // it ends at the bar's right side, at the middle of its height (40 + 17)
+    let line = s.arrows[0].fill.cg.boundingBoxOfPath.union(s.arrows[0].heads.cg.boundingBoxOfPath)
+    #expect(abs(line.minY - 57) < 4 && abs(line.minX - s.frames[0].rect.maxX) < 3)
+  }
 }
 
 @Suite struct ByteLRUTests {

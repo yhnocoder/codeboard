@@ -38,23 +38,30 @@ struct ImportSummary: Equatable {
       for skip in entry.skipped { left[skip.kind, default: 0] += skip.count }
     }
     var notes: [String] = []
+    let copies = report.imported.filter { $0.copyOf != nil }
+    if !copies.isEmpty {
+      notes.append(
+        "\(count(copies.count, "of them was", plural: "of them were")) in the vault already and came in as a copy, "
+          + "leaving what is there as it is.")
+    }
     if !report.failed.isEmpty { notes.append("\(count(report.failed.count, "file")) could not be imported.") }
     let leftTotal = left.values.reduce(0, +)
-    if leftTotal > 0 { notes.append("\(count(leftTotal, "item")) left out, which this version does not show yet.") }
+    if leftTotal > 0 { notes.append("\(count(leftTotal, "item")) left out, which this version does not keep yet.") }
     subtitle = notes.joined(separator: " ")
     details =
       report.failed.map { String(describing: $0) }
+      + copies.map { "\($0.destination ?? ""): a copy of \($0.copyOf ?? "")" }
       + SkipKind.allCases.compactMap { kind in left[kind].map { "\(Self.name(of: kind)): \($0)" } }
   }
 
-  /// `webCard` → "web card"
+  /// `compareCard` → "compare card"
   static func name(of kind: SkipKind) -> String {
     kind.rawValue.reduce(into: "") { out, c in out += c.isUppercase ? " " + c.lowercased() : String(c) }
   }
 }
 
-private func count(_ n: Int, _ noun: String) -> String {
-  "\(n) \(noun)\(n == 1 ? "" : "s")"
+private func count(_ n: Int, _ noun: String, plural: String? = nil) -> String {
+  "\(n) \(n == 1 ? noun : plural ?? noun + "s")"
 }
 
 private struct ImportSheet: View {

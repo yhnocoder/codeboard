@@ -1,0 +1,23 @@
+subboard-<theme>.png: main's sub-board card (its Storybook story, rendered in Chromium) on the left, ours drawn natively on the right
+
+missing-card-<theme>.png: a folder board's automatic card after its board was removed outside the app: it stays where it was with the arrow on it, under the name it last had, as main draws a board it cannot find (its sentence, an empty card); the folder board's file is not written for it
+
+sidebar-light.png, sidebar-dark.png: left to right at 244 pt: at rest (Overview open); a board row hovered (Prefill 预填充); a folder without a folder board hovered (Notes: + board, new folder, board icon); a folder with one hovered (调度 Scheduler: + and new folder, its seal solid); the vault's row hovered; renaming a board in place; Decode Loop open; then at rest at 180 pt (narrow) and 400 pt (wide)
+
+seal-popover-light.png, seal-popover-dark.png: the Edit Mark… popover's content (drawn on a plain rounded sheet; the system popover's material and arrow are not drawn off screen): its default (placeholder = the default text), edited (调度, teal), and a seal another board in the same book has (the one line under it)
+
+back-light.png, back-dark.png: sidebar toggle, back and forward: nothing to go back to, then back enabled after a sub-board card was opened in the tab
+
+folder-board-<theme>.png: the folder board of 调度 Scheduler: its automatic cards (Prefill 预填充, Decode Loop, the subfolder Kernels, which has no folder board, so its map is empty) after one another, and the user's own Section, Note and an arrow to the first card, kept
+
+ref-seals-<theme>.png: a Note on a board in the book 调度 Scheduler with refs to a board in the same book (its seal only), to one with a CJK seal (not trimmed to cap height, one size larger), to a board in another book (Engine 引擎's seal in front, two halves) and to a top-level board, a book itself: its seal alone, no title, as main draws a ref to a book (md/refs.ts sealFor)
+
+menus-light.png, menus-dark.png: each context menu as its items, read from the menus the app builds (the sidebar's row menus and the canvas's menu(for:)); drawn as a list, not the system menu
+
+Drawn with: .build/debug/LookCompare --stage6 <out> <main's sub-board pictures>, off screen at 2x (no window on screen).
+The sidebar, popover, menus and back button belong to the window chrome, which has light and dark only (it does not
+change with the board theme); the canvas sheets are in Warm Ink and Ink Wash, light and dark.
+
+Not seen on a screen: the system popover's material and arrow, the system context menus, hover as the pointer gives it,
+dragging a row (between folders and onto a folder board) and the sidebar edge being dragged; the rename field and the
+seal field with a real input method (the composition rule is tested with marked text).
