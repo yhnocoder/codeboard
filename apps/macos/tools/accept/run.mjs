@@ -318,7 +318,12 @@ for (const file of scenarios) {
   } finally {
     await Promise.all(drivers.map((d) => d.stop()));
   }
-  for (const r of recs) sideBySide(out, r, sides.filter((s) => fs.existsSync(path.join(out, s, r, "times.txt"))));
+  for (const r of recs) {
+    const have = sides.filter((s) => fs.existsSync(path.join(out, s, r, "f00000.png")));
+    for (const s of sides.filter((x) => !have.includes(x)))
+      console.warn(`${name}: ${s} recorded no frames for ${r} (${path.join(out, s, "log.txt")} says why)`);
+    if (have.length) sideBySide(out, r, have);
+  }
   for (const s of shots) await shotPair(out, s, sides);
   for (const d of drivers) await report(d, out);
   console.log(`${name}: ${out}`);

@@ -15,6 +15,10 @@ import ObjectiveC
 import WebKit
 
 setbuf(stdout, nil)
+// no App Nap: with the display asleep or the session locked, a background app's timers and sleeps would be stretched to
+// a second or more (frames a second apart, every wait far too long)
+let activity = ProcessInfo.processInfo.beginActivity(
+  options: [.userInitiated, .latencyCritical], reason: "acceptance driver")
 let env = ProcessInfo.processInfo.environment
 let outDir = URL(filePath: env["ACCEPT_OUT"] ?? (NSTemporaryDirectory() + "accept"))
 try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
@@ -262,8 +266,31 @@ swizzle(
     NSApp.orderedWindows.first { $0.isVisible && $0.frame.contains(p) && $0.alphaValue > 0 && !$0.ignoresMouseEvents }
   }
 
+  /// Views that answer acceptsFirstMouse themselves (overriding NSView's, which is swizzled) answer yes too: the
+  /// window is key for the person, the window server just does not know it
+  var firstMouse: Set<ObjectIdentifier> = []
+  func acceptFirstMouse(at p: NSPoint, in w: NSWindow) {
+    guard let root = w.contentView?.superview else { return }
+    let base = class_getMethodImplementation(NSView.self, #selector(NSView.acceptsFirstMouse(for:)))
+    var cls: AnyClass? =
+      root.hitTest(root.superview?.convert(w.convertPoint(fromScreen: p), from: nil) ?? .zero)
+      .map { object_getClass($0) } ?? nil
+    while let c = cls, c != NSView.self {
+      let sel = #selector(NSView.acceptsFirstMouse(for:))
+      if !firstMouse.contains(ObjectIdentifier(c)), let m = class_getInstanceMethod(c, sel),
+        method_getImplementation(m) != base
+      {
+        let yes: @convention(block) (AnyObject, NSEvent?) -> Bool = { _, _ in true }
+        class_replaceMethod(c, sel, imp_implementationWithBlock(yes), method_getTypeEncoding(m))
+        firstMouse.insert(ObjectIdentifier(c))
+      }
+      cls = class_getSuperclass(c)
+    }
+  }
+
   func post(_ type: NSEvent.EventType, at p: NSPoint, clicks: Int = 0) {
     guard let w = window(at: p) ?? (vButtons != 0 ? win : nil) else { return }
+    if type == .leftMouseDown || type == .rightMouseDown { acceptFirstMouse(at: p, in: w) }
     let e = NSEvent.mouseEvent(
       with: type, location: w.convertPoint(fromScreen: p), modifierFlags: vFlags,
       timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: w.windowNumber, context: nil, eventNumber: 0,
@@ -797,18 +824,16 @@ swizzle(
 // MARK: Recording: every frame the screen shows, this app's windows composited, the pointer drawn on top
 
 typealias CreateImage = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
-let createImage: CreateImage = {
+nonisolated(unsafe) let createImage: CreateImage = {
   let h = dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_NOW)
   return unsafeBitCast(dlsym(h, "CGWindowListCreateImage")!, to: CreateImage.self)
 }()
 
 @MainActor final class Recorder: NSObject {
   let dir: URL
-  var link: CADisplayLink?
+  var timer: Timer?
   var frame = 0
-  var tick = 0
   var times = ""  // each frame's time, as the log's
-  let every: Int
   let io = DispatchQueue(label: "rec")
   weak var driver: Driver?
 
@@ -816,33 +841,57 @@ let createImage: CreateImage = {
     dir = outDir.appending(path: name)
     try? FileManager.default.removeItem(at: dir)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    every = max(1, 120 / fps)
     self.driver = driver
     super.init()
-    let l = NSScreen.screens[0].displayLink(target: self, selector: #selector(step))
-    l.add(to: .main, forMode: .common)
-    link = l
+    // a timer, not the display link: a sleeping or locked display stops the display link, and the window server still
+    // keeps each window's picture, so recording goes on with the screen off
+    let t = Timer(timeInterval: 1 / Double(fps), target: self, selector: #selector(step), userInfo: nil, repeats: true)
+    RunLoop.main.add(t, forMode: .common)
+    timer = t
+    Recorder.layers = screenOff()
+    log("recording \(screenState())\(Recorder.layers ? ": windows drawn from their layers (no web view pages)" : "")")
   }
 
+  var inFlight = 0
+  var done = false
+  let capture = DispatchQueue(label: "capture", attributes: .concurrent)
+
+  /// Captures run off the main thread, a few at once: with the display asleep the window server takes about a second
+  /// to hand over each window's picture, and the app under test must not wait for that
   @objc func step() {
-    tick += 1
-    guard tick % every == 0, let img = Recorder.compose() else { return }
-    let url = dir.appending(path: String(format: "f%05d.png", frame))
-    times += String(format: "%.3f\n", ProcessInfo.processInfo.systemUptime)
-    frame += 1
-    io.async { Recorder.write(img, to: url) }
+    guard inFlight < 40, let windows = Recorder.windows() else { return }
+    inFlight += 1
+    capture.async {
+      let img = Recorder.compose(windows)
+      let t = ProcessInfo.processInfo.systemUptime
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          self.inFlight -= 1
+          guard let img, !self.done else { return }
+          let url = self.dir.appending(path: String(format: "f%05d.png", self.frame))
+          self.times += String(format: "%.3f\n", t)
+          self.frame += 1
+          self.io.async { Recorder.write(img, to: url) }
+        }
+      }
+    }
   }
 
   @discardableResult func stop() -> Int {
-    link?.invalidate()
-    link = nil
+    timer?.invalidate()
+    timer = nil
+    // the captures still on their way belong to the recording
+    let until = Date(timeIntervalSinceNow: 2.5)
+    while inFlight > 0 && Date() < until { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02)) }
+    done = true
     io.sync {}
     try? times.write(to: dir.appending(path: "times.txt"), atomically: true, encoding: .utf8)
     return frame
   }
 
   static func shot(name: String, driver: Driver) {
-    if let img = compose() { write(img, to: outDir.appending(path: name + ".png")) }
+    layers = screenOff()
+    if let w = windows(), let img = compose(w) { write(img, to: outDir.appending(path: name + ".png")) }
   }
 
   static func write(_ img: CGImage, to url: URL) {
@@ -852,9 +901,38 @@ let createImage: CreateImage = {
   }
 
   /// The main window and every window of this app above it, at the main window's frame, 1x, with the pointer
-  static func compose() -> CGImage? {
+  /// With the display asleep or the session locked the window server keeps showing each window as it was when the
+  /// screen went off; then the windows are drawn here from their layer trees instead (what the app has set, without
+  /// what other processes draw into it, such as web views' pages)
+  nonisolated(unsafe) static var layers = false
+
+  static func drawn(_ w: NSWindow) -> CGImage? {
+    guard let root = w.contentView?.superview ?? w.contentView, let layer = root.layer else { return nil }
+    let size = w.frame.size
+    guard
+      let ctx = CGContext(
+        data: nil, width: Int(size.width), height: Int(size.height), bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue)
+    else { return nil }
+    if layer.contentsAreFlipped() || root.isFlipped {
+      ctx.translateBy(x: 0, y: size.height)
+      ctx.scaleBy(x: 1, y: -1)
+    }
+    layer.render(in: ctx)
+    return ctx.makeImage()
+  }
+
+  /// The main window's frame and this app's windows over it, back to front (read on the main thread)
+  static func windows() -> (main: CGRect, list: [(id: UInt32, frame: CGRect, image: CGImage?)])? {
     guard let main = gMain else { return nil }
-    let f = main.frame
+    let list = NSApp.orderedWindows.reversed().filter { $0.isVisible && $0.frame.intersects(main.frame) }
+    return (main.frame, list.map { (UInt32($0.windowNumber), $0.frame, layers ? drawn($0) : nil) })
+  }
+
+  nonisolated static func compose(_ windows: (main: CGRect, list: [(id: UInt32, frame: CGRect, image: CGImage?)]))
+    -> CGImage?
+  {
+    let f = windows.main
     let scale: CGFloat = 1
     let pw = Int(f.width * scale)
     let ph = Int(f.height * scale)
@@ -866,8 +944,8 @@ let createImage: CreateImage = {
     else { return nil }
     ctx.setFillColor(NSColor.black.cgColor)
     ctx.fill(CGRect(x: 0, y: 0, width: pw, height: ph))
-    for w in NSApp.orderedWindows.reversed() where w.isVisible && w.frame.intersects(f) {
-      guard let img = createImage(.null, 1 << 3, UInt32(w.windowNumber), (1 << 0) | (1 << 4))?.takeRetainedValue()
+    for w in windows.list {
+      guard let img = w.image ?? createImage(.null, 1 << 3, w.id, (1 << 0) | (1 << 4))?.takeRetainedValue()
       else { continue }
       let r = CGRect(
         x: (w.frame.minX - f.minX) * scale, y: (w.frame.minY - f.minY) * scale, width: w.frame.width * scale,
@@ -938,5 +1016,14 @@ if let from = env["ACCEPT_IMPORT_FROM"], let to = env["ACCEPT_VAULT"] {
     log("imported: \(r.imported.count) boards, \(r.failed.count) failed")
   } catch { log("import failed: \(error)") }
 }
-log("driver ready, fifo \(fifoPath)")
+func screenOff() -> Bool {
+  CGDisplayIsAsleep(CGMainDisplayID()) != 0
+    || (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false
+}
+/// Whether the display sleeps or the session is locked: the app may draw less then (its own display link stops)
+func screenState() -> String {
+  let locked = (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false
+  return "screen \(CGDisplayIsAsleep(CGMainDisplayID()) != 0 ? "asleep" : "awake")\(locked ? ", locked" : "")"
+}
+log("driver ready, fifo \(fifoPath), \(screenState())")
 runApp()
