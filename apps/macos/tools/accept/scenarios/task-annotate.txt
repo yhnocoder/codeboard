@@ -7,7 +7,7 @@ rec annotate
 dbl @ntask"scheduler"
 wait 500
 shot toolbar
-demo: click @ntask"scheduler"+99,-34
+demo: click @view:SelectionToolbar>+-14,0
 web: click @ntask"scheduler"+109,-33
 wait 500
 shot notebox

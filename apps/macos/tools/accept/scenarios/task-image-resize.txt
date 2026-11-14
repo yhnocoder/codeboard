@@ -4,15 +4,15 @@ center @ntask"值"
 dbl @ntask"Last line"
 wait 600
 rec resize
-click @ntask"示意"+0,-80
+click @ntask"：示"+11,-80
 wait 500
-move @ntask"示意"+105,-85 300
+move @ntask"：示"+116,-85 300
 wait 300
 shot grip
 down
-move @ntask"示意"+80,-85 300
+move @ntask"：示"+91,-85 300
 shot mid1
-move @ntask"示意"+45,-85 300
+move @ntask"：示"+56,-85 300
 shot mid2
 up
 shot released

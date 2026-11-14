@@ -19,7 +19,7 @@ wait 300
 click @ntask"energy is">+30,0
 wait 600
 shot formula
-click @ntask"len(batch)"+0,26
+click @ntask"len(batch)"+0,32
 wait 500
 shot gapcaret
 dbl @ntask"scheduler"

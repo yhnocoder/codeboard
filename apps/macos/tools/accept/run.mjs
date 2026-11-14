@@ -268,6 +268,17 @@ async function macBox(d, c) {
 // beside a table row, the line under a heading)
 const TOKEN = /@[\w-]+"[^"]*"[<>]?(?:\+-?[\d.]+,-?[\d.]+)?|\S+/g;
 async function point(d, tok) {
+  // @view:Class (the Mac side): the middle of the first view of that class, @view:Class< its left end, @view:Class> its
+  // right end, then +dx,dy points (a control the app draws in a view of its own, such as the selection toolbar's buttons)
+  const v = /^@view:([\w.]+)([<>]?)(?:\+(-?[\d.]+),(-?[\d.]+))?$/.exec(tok);
+  if (v) {
+    if (d.side !== "mac") throw new Error(`${tok}: a view is a Mac target`);
+    const r = await d.send(`frame ${v[1]} content`);
+    if (!/^[-\d.]+ [-\d.]+ [\d.]+ [\d.]+$/.test(r)) throw new Error(`mac: no view ${v[1]}`);
+    const [x, y, w, h] = r.split(" ").map(Number);
+    const px = v[2] === "<" ? x : v[2] === ">" ? x + w : x + w / 2;
+    return `${(px + Number(v[3] ?? 0)).toFixed(1)} ${(y + h / 2 + Number(v[4] ?? 0)).toFixed(1)}`;
+  }
   const t = /^@([\w-]+)"([^"]*)"([<>]?)(?:\+(-?[\d.]+),(-?[\d.]+))?$/.exec(tok);
   if (t) {
     const mode = t[3] === "<" ? "before" : t[3] === ">" ? "after" : "mid";
@@ -536,7 +547,7 @@ for (const file of scenarios) {
   fs.rmSync(out, { recursive: true, force: true });
   const drivers = sides.map((s) => new Driver(s, path.join(out, s)));
   // the card the scenario is about (the first it names): the one the demo opens
-  const named = [...fs.readFileSync(file, "utf8").replace(/^#.*$/gm, "").matchAll(/@([\w-]+)/g)].map((m) => m[1]);
+  const named = [...fs.readFileSync(file, "utf8").replace(/^#.*$/gm, "").matchAll(/@(?!view:)([\w-]+)/g)].map((m) => m[1]);
   // a line "screen on": the Mac side runs on screen as it opens (real-use), not hidden at the driver's size
   const onScreen = /^screen on$/m.test(fs.readFileSync(file, "utf8"));
   const checks = [];
@@ -566,6 +577,11 @@ for (const file of scenarios) {
           .filter((d) => !to || to === d.side)
           .map(async (d) => {
             if (verb === "screen") return;
+            // report: the Markdown demo's own report at this moment (card and editor frames, zoom) into the results
+            if (verb === "report") {
+              if (demo && d.side === "mac") fs.appendFileSync(path.join(out, "results-mac.txt"), `report\n${fs.readFileSync(d.place, "utf8")}\n\n`);
+              return;
+            }
             if (verb === "idle") return idle(d, out, Number(arg), cmd.split(" ")[2] ?? "idle");
             if (verb === "covered") {
               if (!(demo && d.side === "mac")) return;

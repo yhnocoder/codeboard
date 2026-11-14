@@ -954,7 +954,8 @@ extension NSMenu {
       }
       walk(v)
       return parts.joined(separator: "\n")
-    // frame ViewClass: where the first such view is in the recorded window picture (points from its top left)
+    // frame ViewClass [content]: where the first such view is in the recorded window picture (points from its top left),
+    // or with "content" in content coordinates (what move and click take)
     case "frame":
       guard let w = win, let root = w.contentView?.superview ?? w.contentView else { return "no window" }
       func find(_ v: NSView) -> NSView? {
@@ -962,6 +963,11 @@ extension NSMenu {
       }
       guard let v = find(root) else { return "none" }
       let f = v.convert(v.bounds, to: nil)
+      if a.count > 2, a[2] == "content", let cv = w.contentView {
+        let c = cv.convert(f, from: nil)
+        let y = cv.isFlipped ? c.minY : cv.bounds.height - c.maxY
+        return String(format: "%.1f %.1f %.1f %.1f", c.minX, y, c.width, c.height)
+      }
       return String(format: "%.0f %.0f %.0f %.0f", f.minX, w.frame.height - f.maxY, f.width, f.height)
     case "covered":  // covered x y w h: is the view with that frame (content coordinates) under something at rest?
       guard let w = win, let cv = w.contentView, let root = cv.superview ?? Optional(cv) else { return "no window" }
