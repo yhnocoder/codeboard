@@ -96,6 +96,9 @@ public final class CanvasView: NSView {
   public var currentCamera: Camera { camera }
   var limits = ZoomLimits(fit: 1)
   var motion = Motion()
+  /// The scroll and pinch gestures the board took (CanvasWheel.swift), and the app's event monitor that routes them
+  var wheel = WheelOwner()
+  var wheelMonitor: Any?
   var queue = RedrawQueue<IOSurface>()
   /// Rest bitmaps are drawn for this zoom; nil once a zoom has cleared them
   var restZoom: CGFloat?
@@ -811,6 +814,7 @@ public final class CanvasView: NSView {
     super.viewDidMoveToWindow()
     link?.invalidate()
     link = nil
+    watchWheel()
     guard window != nil else { return }
     let l = displayLink(target: self, selector: #selector(step(_:)))
     l.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)

@@ -234,6 +234,28 @@ final class FakeWriter: SummaryWriter, @unchecked Sendable {
     #expect(r.doc.board.summary(for: sec1) == before)
   }
 
+  @Test func aScrollOverASummaryBeingWrittenMovesTheBoard() async throws {
+    let r = try await Rig(summaryBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    atSummaries(r)
+    let col = try column(r, sec1)
+    let body = CGPoint(x: col.rect.minX + 2 * CGFloat(c.summaryLayout!.padding), y: col.rect.minY + col.bodyTop + 30)
+    let start = c.currentCamera
+    let want = r.scrollGesture(from: body, dy: -3)
+    #expect(abs(want) > 20, "the board moves at the summary level: \(want)")
+    await r.idle()
+    c.place(zoom: start.zoom, centre: c.camera.board(CGPoint(x: c.bounds.midX, y: c.bounds.midY)))
+    c.camera = start
+    await r.idle()
+    r.click(body)
+    let ed = try #require(c.summaryEditor)
+    let hit = r.hit(body)
+    #expect(hit.map { $0 === ed || $0.isDescendant(of: ed) } == true, "the editor is under the pointer")
+    let moved = r.scrollGesture(from: body, dy: -3)
+    #expect(abs(moved - want) < 0.01, "over the editor: \(moved), over the column: \(want)")
+  }
+
   @Test func rewriteOnlyWithAWriterFollowsTheHandEditAndAFailureKeepsTheText() async throws {
     let r = try await Rig(summaryBoard(), zoom: 1)
     defer { r.close() }
