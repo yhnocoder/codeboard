@@ -1,0 +1,28 @@
+Stage 7 look sheets: made-up content only (the pages and boards of main's Storybook stories), drawn off screen at
+2x by `swift run -c release LookCompare --stage7 <out> <main's pictures>`, in Warm Ink and Ink Wash, light and dark
+(<sheet>-<theme>[-dark].png). Where main has a story, its picture (Storybook in headless Chromium, 2x) is on the left
+and ours on the right.
+
+web-styles: the five Web styles (Auto, Banner, Side, Text, Compact) of the same page, 380 wide. main's captions are
+story labels, not cards, so ours has none.
+link-lists: Compact rows (titled), Rich rows (View ▸ Rich), Mixed (rows 1 and 3 Rich), Selected, a Rich row being
+read (looks the same).
+web-failed-fetching: main's Nothing Fetched | ours | main's Fetching Preview | ours.
+stickers: every built-in glyph (no "?": questions are sidenotes), the star in each palette colour, sizes 16 to 120,
+emoji as the system draws them, a flag on the code card and stickers on its lines (76: star; 78: zap and TODO), the
+heart selected with its grip. Not drawn: main's folder-pack row (packs are not imported), its corner and arrow
+stickers (not in this stage), its sidenote on line 76.
+sticker-selected-menu: the selected heart and the colour row its right-click menu starts with (macOS draws the menu
+around it with Delete under it; a native menu cannot be drawn off screen).
+palette: main's picker (with its tabs, search, colours and pack line) | ours: the built-in glyphs, TODO two wide,
+and the emoji button, which opens the system's emoji picker.
+shelf-empty: the panel open with nothing in it. main has no Shelf story.
+shelf-entries: three entries in board order (a Section with its cards as one picture, two Notes put in together as
+one), the Section's entry hovered: its outline on the board where it returns. The panel's glass is a
+NSVisualEffectView, whose blur is not drawn off screen.
+shelf-preview: the two Notes' entry clicked: the large picture left of the panel, level with its thumbnail, with
+its one button (Put Back).
+Found by these sheets and fixed in the commit before this one: an emoji sticker's shadow was a grey square (it now
+follows the emoji's own shape, as main's drop-shadow does); the palette's glyphs could end up under its glass (they now
+sit in a view above it); a Web card's two-line description and title were cut inside a word ("at a time. Howe…") where
+main's line clamp ends the last line at a word and puts "…" after it ("at a time.…").

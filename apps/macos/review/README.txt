@@ -47,3 +47,7 @@ dark (<sheet>-<theme>[-dark].png); report.txt has what each shows:
 - edge: no room on the Note's right: the preview pulled in to 8 from the view's edge
 - toolbar-ink-wash-dark-main-and-mac.png: main's Ink Wash dark toolbar (Storybook ui-toolbar--wide, Chromium, top) and
   the Mac app's (bottom): the brush at the end of the stroke is main's (.bbar .pill::after), in the same place
+
+stage7/: stickers, the Shelf, Web cards and Link Lists, drawn off screen at 2x with `swift run -c release LookCompare
+--stage7 <out> <main's pictures>` on boards made from main's Storybook stories' data, each beside main's story where it
+has one (capture-main.mjs takes those); report.txt says what each sheet shows and what is not drawn
