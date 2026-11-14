@@ -774,9 +774,15 @@ extension CanvasView {
   }
 
   public override func mouseMoved(with e: NSEvent) {
+    pointerInWindow = e.locationInWindow
+    rehover(convert(e.locationInWindow, from: nil))
+  }
+
+  /// What is under the pointer at a view point: hovered, its cursor set. Also when the board moves under a pointer at
+  /// rest, as the web board's :hover and pointer moves follow it
+  func rehover(_ v: CGPoint) {
     guard gesture == nil else { return }
     if spaceHeld { return NSCursor.openHand.set() }
-    let v = convert(e.locationInWindow, from: nil)
     if levels.level == .summaries {
       let p = camera.board(v)
       if summaryButton(at: p) == nil { hoverSummary(summaryColumn(at: p).map { summaryColumns[$0].col.key }) }
@@ -831,6 +837,7 @@ extension CanvasView {
   }
 
   public override func mouseExited(with e: NSEvent) {
+    pointerInWindow = nil
     hoverTitle(nil, act: nil)
     hoverSummary(nil)
     hover(nil)

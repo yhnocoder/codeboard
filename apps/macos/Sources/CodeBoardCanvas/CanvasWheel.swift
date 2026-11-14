@@ -76,6 +76,7 @@ extension CanvasView {
   func take(_ e: NSEvent, at p: CGPoint) -> Bool {
     guard window != nil, !isHiddenOrHasHiddenAncestor, scene != nil else { return false }
     let over = isOverBoard(p)
+    if over { pointerInWindow = p }
     switch e.type {
     case .scrollWheel:
       let began = !e.phase.isDisjoint(with: [.began, .mayBegin])

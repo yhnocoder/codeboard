@@ -812,6 +812,8 @@ public final class CanvasView: NSView {
           l.held.minificationFilter = .trilinear
         }
       }
+      // the pointer at rest over what moved under it
+      if let w = pointerInWindow { rehover(convert(w, from: nil)) }
     }
   }
 

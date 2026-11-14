@@ -99,6 +99,31 @@ extension Rig {
     return want
   }
 
+  /// The pointer at rest while the board moves under it: what is under it now is hovered, the card it was over is not
+  /// (stale-hover.txt), by a scroll there and by a camera jump (⇧1, Fit All)
+  @Test func whatTheBoardBringsUnderARestingPointerIsHovered() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    c.place(zoom: 1, centre: view)
+    await r.idle()
+    let p = r.centre("t1")
+    c.mouseMoved(with: r.mouse(.mouseMoved, p))
+    #expect(c.hoveredCard == cid("t1"))
+    let w = r.at(p)
+    func under() -> CardID? { c.hitCard(c.camera.board(c.convert(w, from: nil))) }
+    // the scroll's events where the pointer rests, in the window
+    func here() -> CGPoint { c.camera.board(c.convert(w, from: nil)) }
+    for _ in 0..<20 where under() != cid("b1") { _ = r.scrollGesture(from: here(), dy: -4) }
+    try #require(under() == cid("b1"), "the scroll brought b1 under the pointer")
+    #expect(c.hoveredCard == cid("b1"), "hovered: \(String(describing: c.hoveredCard))")
+    c.place(zoom: 1, centre: r.centre("n1"))
+    let now = under()
+    #expect(
+      now != cid("b1") && c.hoveredCard == now,
+      "after the jump: \(String(describing: c.hoveredCard)) over \(String(describing: now))")
+  }
+
   @Test(arguments: ["n1", "t1", "b1"])
   func aScrollOverACardBeingWrittenInMovesTheBoard(id: String) async throws {
     let r = try await Rig(zoom: 1)
