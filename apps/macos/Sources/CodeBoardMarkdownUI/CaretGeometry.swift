@@ -176,6 +176,47 @@ extension BlockLayout {
     return c
   }
 
+  /// The drawn atom (a formula, a reference, an annotation, an image) a point is on: its source range
+  public func atom(at p: CGPoint) -> Range<Int>? {
+    guard !pieces.isEmpty else { return nil }
+    let i = min(firstPieceIndex(atOrBelow: p.y), pieces.count - 1)
+    let local = CGPoint(x: p.x, y: p.y - tops[i])
+    for t in pieces[i].layout.caretTexts {
+      for l in t.lines where local.y >= l.top && local.y <= l.top + l.height {
+        for run in CTLineGetGlyphRuns(l.line) as! [CTRun] {
+          let attrs = CTRunGetAttributes(run) as NSDictionary
+          guard let a = attrs[Attr.atom] as? AtomBox else { continue }
+          if case .spacer = a.content { continue }
+          let j = CTRunGetStringRange(run).location
+          let x0 = l.origin.x + CTLineGetOffsetForStringIndex(l.line, j, nil)
+          guard local.x >= x0, local.x <= x0 + a.width else { continue }
+          let d = shifts[i]
+          return (t.display.toSource[j] + d)..<(t.display.sourceEnds[j] + d)
+        }
+      }
+    }
+    return nil
+  }
+
+  /// Where an atom drawn for the source `range` is (tests, a driver clicking it)
+  public func rects(forAtom range: Range<Int>) -> CGRect? {
+    guard let i = pieceIndex(range.lowerBound) else { return nil }
+    let d = shifts[i]
+    for t in pieces[i].layout.caretTexts {
+      for l in t.lines {
+        for run in CTLineGetGlyphRuns(l.line) as! [CTRun] {
+          let attrs = CTRunGetAttributes(run) as NSDictionary
+          guard let a = attrs[Attr.atom] as? AtomBox else { continue }
+          let j = CTRunGetStringRange(run).location
+          guard t.display.toSource[j] + d == range.lowerBound else { continue }
+          let x0 = l.origin.x + CTLineGetOffsetForStringIndex(l.line, j, nil)
+          return CGRect(x: x0, y: tops[i] + l.origin.y - a.ascent, width: a.width, height: a.ascent + a.descent)
+        }
+      }
+    }
+    return nil
+  }
+
   /// The boxes a selection covers: per line of text, from where it starts to where it ends on that line
   public func selectionRects(_ range: Range<Int>) -> [CGRect] {
     guard !range.isEmpty, let a = pieceIndex(range.lowerBound), let b = pieceIndex(range.upperBound) else { return [] }

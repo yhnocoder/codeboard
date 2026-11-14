@@ -10,6 +10,9 @@ import Foundation
 //                                        a script can read the process's memory as it shows them
 //   MarkdownBench --first                time until the forty Notes are first laid out and drawn, from a cold process
 //                                        (fonts and engines loaded on the way), one Note alone, then all of them
+// at the QoS of an app's main thread, which keeps it on the performance cores: a command-line process at the default may
+// be moved to the efficiency cores partway, and its thread CPU per key with it
+pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0)
 let args = Array(CommandLine.arguments.dropFirst())
 if args.contains("--editor") {
   try EditorBench.run()

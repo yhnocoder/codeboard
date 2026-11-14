@@ -26,7 +26,13 @@ enum EditorBench {
     let only = ProcessInfo.processInfo.environment["MARKDOWN_BENCH_ROWS"]?.split(separator: ",").map(String.init)
     let chosen = only.map { names in names.compactMap { n in rows.first { $0.0 == n } } } ?? rows
     for (name, text, anchor, script) in chosen {
-      out[name] = try row(text, anchor: anchor, script: script)
+      var key = name
+      var n = 2
+      while out[key] != nil {
+        key = "\(name) #\(n)"
+        n += 1
+      }
+      out[key] = try row(text, anchor: anchor, script: script)
     }
     let json = try JSONSerialization.data(withJSONObject: out, options: [.prettyPrinted, .sortedKeys])
     print(String(decoding: json, as: UTF8.self))

@@ -9,7 +9,7 @@ import Foundation
 /// while the selection is not empty, and for `revealAfterClick` after a click (a double-click's second press must land
 /// on what the first press saw). editor/inline.ts
 public final class EditorCore {
-  public let layout: BlockLayout
+  public private(set) var layout: BlockLayout
   public private(set) var selection: MDSelection
   /// the caret shows at the end of a wrapped line rather than the start of the next
   public private(set) var upstream = false
@@ -54,6 +54,13 @@ public final class EditorCore {
     let c = MarkdownEditing.snap(caret ?? MarkdownEditing.end(of: layout.document), in: layout.document)
     selection = MDSelection(c)
     layout.setHead(c)
+  }
+
+  /// The same text laid out anew (another look, appearance or width): selection and undo history kept
+  public func relayout(_ l: BlockLayout) {
+    precondition(l.document == document, "a relayout lays out the same source")
+    layout = l
+    layout.setHead(selection.isEmpty && marked == nil ? selection.head : nil)
   }
 
   // MARK: what to draw
@@ -318,6 +325,19 @@ public final class EditorCore {
   /// A press: one click places the caret, two select a word, three a paragraph; with ⇧ the selection is extended. The
   /// layout holds still until `settle` after the release
   public func mouseDown(at p: CGPoint, clicks: Int, extend: Bool) {
+    // a press on a drawn formula, reference or tag means "edit this": its source shows at once, the caret where one goes
+    // on typing (editor/widgets.ts); an image is selected
+    if !extend, clicks == 1, let r = layout.atom(at: p), let i = MarkdownEditing.inline(r, in: document),
+      case .atom(let a) = i.kind
+    {
+      mouse = nil
+      if case .image = a {
+        place(MDSelection(anchor: r.lowerBound, head: r.upperBound))
+      } else {
+        place(MDSelection(MarkdownEditing.caretIn(i)))
+      }
+      return
+    }
     let c = layout.caret(at: p)
     goalX = nil
     revealPending = false

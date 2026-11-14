@@ -449,6 +449,30 @@ struct LayoutBuilder {
   mutating func list(_ list: MDList, x: CGFloat, width: CGFloat, y y0: CGFloat, style: InlineStyle, depth: Int = 0)
     -> CGFloat
   {
+    // a list mixing task items and other items is two lists or more in the editor (TipTap's task list holds only task
+    // items): each run of one kind is a list of its own, with its own indent, a list's margins between them
+    var groups: [[MDListItem]] = []
+    for item in list.items {
+      if let last = groups.last?.last, (last.checked == nil) == (item.checked == nil) {
+        groups[groups.count - 1].append(item)
+      } else {
+        groups.append([item])
+      }
+    }
+    if groups.count > 1 {
+      var y = y0
+      var first = 0
+      for (i, g) in groups.enumerated() {
+        if i > 0 { y += CGFloat(m.listMargin) }
+        var part = list
+        part.items = g
+        if case .ordered(let start, let d) = list.marker { part.marker = .ordered(start: start + first, delimiter: d) }
+        if g[0].checked != nil { part.marker = .task } else if case .task = list.marker { part.marker = .bullet("-") }
+        y = self.list(part, x: x, width: width, y: y, style: style, depth: depth)
+        first += g.count
+      }
+      return y
+    }
     nesting += 1
     defer { nesting -= 1 }
     var y = y0

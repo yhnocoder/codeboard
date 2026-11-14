@@ -219,6 +219,45 @@ extension MarkdownEditing {
     return out
   }
 
+  /// The inline construct whose source is exactly `range` in the run at it (an atom a click landed on)
+  public static func inline(_ range: Range<Int>, in document: MarkdownDocument) -> MDInline? {
+    guard let r = run(at: range.lowerBound, in: document) else { return nil }
+    func find(_ ins: [MDInline]) -> MDInline? {
+      for i in ins {
+        if i.range == range { return i }
+        if let f = find(i.children) { return f }
+      }
+      return nil
+    }
+    return find(r.inlines)
+  }
+
+  /// Where a press on a drawn atom puts the caret (editor/inline.ts caretIn): a formula's at the end of its TeX, before
+  /// the closing $; a reference's after its [[; an HTML tag's after it; anything else's after its first character
+  public static func caretIn(_ i: MDInline) -> Int {
+    switch i.kind {
+    case .atom(.math): return i.markers.count > 1 ? i.markers[i.markers.count - 1].lowerBound : i.range.upperBound - 1
+    case .atom(.ref): return i.range.lowerBound + 2
+    case .atom(.html): return i.range.upperBound
+    default: return i.range.lowerBound + 1
+    }
+  }
+
+  /// The formula whose source the caret is in (open with the caret there): its range, TeX and whether it is display
+  public static func formula(at offset: Int, in document: MarkdownDocument) -> (
+    range: Range<Int>, latex: String, display: Bool
+  )? {
+    guard let r = run(at: offset, in: document), r.kind == .inline else { return nil }
+    func find(_ ins: [MDInline]) -> (Range<Int>, String, Bool)? {
+      for i in ins where offset >= i.range.lowerBound && offset <= i.range.upperBound {
+        if case .atom(.math(let latex, let display)) = i.kind { return (i.range, latex, display) }
+        if let f = find(i.children) { return f }
+      }
+      return nil
+    }
+    return find(r.inlines).map { (range: $0.0, latex: $0.1, display: $0.2) }
+  }
+
   /// The source offsets of the markers shown with the caret at `offset`
   public static func revealed(at offset: Int, in document: MarkdownDocument) -> IndexSet {
     var out = IndexSet()

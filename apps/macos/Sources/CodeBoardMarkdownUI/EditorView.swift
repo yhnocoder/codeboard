@@ -31,6 +31,20 @@ public final class MarkdownEditorView: NSView {
   /// the caret's blink is off and nothing is laid out while frozen (a pinch or pan going on)
   public private(set) var frozen = false
 
+  /// editing, or showing the static picture: no caret, no selection, no markers, keys and clicks left alone
+  public var isEditing = true {
+    didSet {
+      guard isEditing != oldValue else { return }
+      if isEditing {
+        core.select(core.selection)
+      } else {
+        core.layout.setHead(nil)
+      }
+      changed()
+    }
+  }
+
+  let preview = MathPreview()
   private var blinkOn = true
   private var blink: Timer?
   private var settle: Timer?
@@ -38,6 +52,8 @@ public final class MarkdownEditorView: NSView {
   public init(layout: BlockLayout, caret: Int? = nil) {
     core = EditorCore(layout: layout, caret: caret)
     super.init(frame: CGRect(origin: .zero, size: layout.size))
+    preview.isHidden = true
+    addSubview(preview)
     core.onChange = { [weak self] source in
       MainActor.assumeIsolated {
         guard let self else { return }
@@ -99,7 +115,7 @@ public final class MarkdownEditorView: NSView {
       x: dirtyRect.minX / zoom, y: dirtyRect.minY / zoom, width: dirtyRect.width / zoom,
       height: dirtyRect.height / zoom)
     ctx.setFillColor(selectionColor.cgColor)
-    for r in core.selectionRects where r.intersects(clip) { ctx.fill(r) }
+    if isEditing { for r in core.selectionRects where r.intersects(clip) { ctx.fill(r) } }
     // an input method's text: underlined, as the system's text views underline it
     ctx.setFillColor(caretColor.withAlphaComponent(0.8).cgColor)
     for r in core.markedRects where r.intersects(clip) {
@@ -109,7 +125,7 @@ public final class MarkdownEditorView: NSView {
     ctx.setShouldSubpixelQuantizeFonts(false)
     ctx.setAllowsFontSubpixelQuantization(false)
     core.layout.draw(in: ctx, scale: scale, clip: clip, image: image)
-    if blinkOn, window?.firstResponder === self, let c = core.caretRect {
+    if isEditing, blinkOn, window?.firstResponder === self, let c = core.caretRect {
       // two device pixels wide whatever the zoom, on the caret's line
       let w = 2 / scale
       ctx.setFillColor(caretColor.cgColor)
@@ -148,15 +164,33 @@ public final class MarkdownEditorView: NSView {
     resize()
     if frame.size != before { delegate?.editor(self, didResize: core.layout.size) }
     restartBlink()
+    showPreview()
+    guard isEditing else { return }
     if let c = core.caretRect ?? core.selectionRects.last {
       scrollToVisible(
         CGRect(x: c.minX * zoom, y: c.minY * zoom, width: max(1, c.width * zoom), height: c.height * zoom))
     }
   }
 
+  /// the preview of the formula the caret is in, under its source
+  private func showPreview() {
+    let l = core.layout
+    guard isEditing, core.selection.isEmpty, let h = l.head, h == core.selection.head,
+      let f = MarkdownEditing.formula(at: h, in: l.document)
+    else {
+      preview.show(nil, under: .zero, theme: l.theme, resources: l.resources)
+      return
+    }
+    let boxes = l.selectionRects(f.range)
+    let u = boxes.dropFirst().reduce(boxes.first ?? .zero) { $0.union($1) }
+    let r = CGRect(x: u.minX * zoom, y: u.minY * zoom, width: u.width * zoom, height: u.height * zoom)
+    preview.show((f.latex, f.display), under: r, theme: l.theme, resources: l.resources)
+  }
+
   // MARK: the mouse
 
   public override func mouseDown(with e: NSEvent) {
+    guard isEditing else { return }
     window?.makeFirstResponder(self)
     settle?.invalidate()
     let p = convert(e.locationInWindow, from: nil)
@@ -166,6 +200,7 @@ public final class MarkdownEditorView: NSView {
   }
 
   public override func mouseDragged(with e: NSEvent) {
+    guard isEditing else { return }
     let p = convert(e.locationInWindow, from: nil)
     core.mouseDragged(to: CGPoint(x: p.x / zoom, y: p.y / zoom))
     changed()
@@ -186,6 +221,7 @@ public final class MarkdownEditorView: NSView {
   // MARK: keys
 
   public override func keyDown(with e: NSEvent) {
+    guard isEditing else { return super.keyDown(with: e) }
     interpretKeyEvents([e])
   }
 
