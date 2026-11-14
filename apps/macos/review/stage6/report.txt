@@ -1,5 +1,7 @@
 subboard-<theme>.png: main's sub-board card (its Storybook story, rendered in Chromium) on the left, ours drawn natively on the right
 
+missing-card-<theme>.png: a folder board's automatic card after its board was removed outside the app: it stays where it was with the arrow on it, under the name it last had, as main draws a board it cannot find (its sentence, an empty card); the folder board's file is not written for it
+
 sidebar-light.png, sidebar-dark.png: left to right at 244 pt: at rest (Overview open); a board row hovered (Prefill 预填充); a folder without a folder board hovered (Notes: + board, new folder, board icon); a folder with one hovered (调度 Scheduler: + and new folder, its seal solid); the vault's row hovered; renaming a board in place; Decode Loop open; then at rest at 180 pt (narrow) and 400 pt (wide)
 
 seal-popover-light.png, seal-popover-dark.png: the Edit Mark… popover's content (drawn on a plain rounded sheet; the system popover's material and arrow are not drawn off screen): its default (placeholder = the default text), edited (调度, teal), and a seal another board in the same book has (the one line under it)
