@@ -40,6 +40,8 @@ extension CanvasView {
       // the folded title draws its chevron at its right end
       out.append((.fold, CGRect(x: r.maxX - 18, y: r.midY - 8, width: 16, height: 16)))
     } else {
+      // after the sidenote marker when it has one (.chev2 order 1: last in the row)
+      x += CanvasView.titleBadge(id, in: scene?.notes ?? []) ?? 0
       out.append((.fold, CGRect(x: x, y: r.midY - 8, width: 16, height: 16)))
       x += 16 + 2
     }

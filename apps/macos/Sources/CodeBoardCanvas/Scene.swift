@@ -259,7 +259,10 @@ struct Scene: Sendable {
       }
     }
     func titleWidth(_ s: Section) -> CGFloat {
-      if s.collapsed { return Drawing.foldedTitleWidth(s.title, count: counts[s.id] ?? 0, t) }
+      if s.collapsed {
+        return Drawing.foldedTitleWidth(
+          s.title, count: counts[s.id] ?? 0, badge: CanvasView.titleBadge(s.id, in: notes) ?? 0, t)
+      }
       // a tray's label has 6 before its text and 2 after, a brush title 2 after
       return s.title.isEmpty ? 0 : Drawing.width(s.title, t.sectionTitleFont) + (t.frame == .tray ? 8 : 2)
     }
@@ -290,7 +293,12 @@ struct Scene: Sendable {
         switch t.frame {
         case .tray: nil
         // the gap is the title label's width, its collapse chevron (16, shown on hover) and the gap before it included
-        case .brush: Outline(InkFrame.path(id: s.id.rawValue, size: r.size, gap: max(40, tw + 18)))
+        // and an open one's sidenote marker between the two
+        case .brush:
+          Outline(
+            InkFrame.path(
+              id: s.id.rawValue, size: r.size,
+              gap: max(40, tw + 18 + (s.collapsed ? 0 : CanvasView.titleBadge(s.id, in: notes) ?? 0))))
         }
       frames.append(
         Frame(
@@ -304,7 +312,10 @@ struct Scene: Sendable {
             owner: .sectionTitle(s.id),
             // at the frame's top left, as it grows round its cards (Sections.tsx shownFrame)
             rect: CGRect(x: r.minX + at.x, y: r.minY + at.y, width: tw, height: t.sectionTitleHeight),
-            drawing: .label(.init(text: s.title, kind: .section, count: s.collapsed ? counts[s.id] ?? 0 : nil)),
+            drawing: .label(
+              .init(
+                text: s.title, kind: .section, count: s.collapsed ? counts[s.id] ?? 0 : nil,
+                badge: s.collapsed ? CanvasView.titleBadge(s.id, in: notes) ?? 0 : 0)),
             tilt: 0))
       }
     }

@@ -33,7 +33,7 @@ struct Mark {
 
 extension CanvasView {
   /// A marker as drawn, board units: 14 across (13 in the line numbers), like the rest of the card
-  static let markSize: CGFloat = 14
+  nonisolated static let markSize: CGFloat = 14
   static let gutterMarkSize: CGFloat = 13
 
   /// Its invisible hit area at the zoom at rest: at least 18 px on screen, and never under 18 board units
@@ -75,13 +75,9 @@ extension CanvasView {
       spots.append(s)
       bySpot[s] = []
     }
-    func badge(_ notes: [Sidenote]) -> CGFloat {
-      let text = notes.contains(where: \.isOpenQuestion) ? "?" : notes.isEmpty ? "" : "\(notes.count)"
-      return max(Self.markSize, (Drawing.width(text, Self.markFont(gutter: false)) + 8).rounded(.up))
-    }
     for s in spots {
       let notes = bySpot[s] ?? []
-      let w = badge(notes)
+      let w = Self.badgeWidth(notes)
       let ask = notes.contains(where: \.isOpenQuestion)
       var owner: Scene.Owner?
       var frame: CGRect
@@ -103,7 +99,12 @@ extension CanvasView {
         if let r = titles[id] {
           owner = .sectionTitle(id)
           origin = r.origin
-          frame = CGRect(x: r.width + 6, y: (r.height - Self.markSize) / 2, width: w, height: Self.markSize)
+          // right after the title's text, before a folded one's count (Sections.tsx: .sname, SectionSpot, .scount)
+          let sec = document?.board.section(id)
+          let text =
+            sec?.collapsed == true
+            ? (t.frame == .tray ? 6 : 0) + Drawing.width(sec?.title ?? "", t.sectionTitleFont) + 2 : r.width
+          frame = CGRect(x: text + 6, y: (r.height - Self.markSize) / 2, width: w, height: Self.markSize)
         } else if let f = scene.frames.first(where: { $0.id == id }) {
           let at = CGPoint(x: f.rect.minX + t.sectionTitleAt.x, y: f.rect.minY + t.sectionTitleAt.y)
           frame = CGRect(x: at.x, y: at.y + (t.sectionTitleHeight - Self.markSize) / 2, width: w, height: Self.markSize)
@@ -186,7 +187,20 @@ extension CanvasView {
     }
   }
 
-  static func markFont(gutter: Bool) -> Font { Font(NSFont.systemFont(ofSize: 9, weight: .semibold)) }
+  nonisolated static func markFont(gutter: Bool) -> Font { Font(NSFont.systemFont(ofSize: 9, weight: .semibold)) }
+
+  /// A marker's width: its count (or ?) with 4 either side, 14 at least (.snb)
+  nonisolated static func badgeWidth(_ notes: [Sidenote]) -> CGFloat {
+    let text = notes.contains(where: \.isOpenQuestion) ? "?" : notes.isEmpty ? "" : "\(notes.count)"
+    return max(markSize, (Drawing.width(text, markFont(gutter: false)) + 8).rounded(.up))
+  }
+
+  /// The room a Section's sidenote marker takes in its title's row after the title (.snb.insect: 6 before it, then
+  /// the row's gap of 2), nil with none on it
+  nonisolated static func titleBadge(_ id: SectionID, in notes: [Sidenote]) -> CGFloat? {
+    let on = notes.filter { $0.anchor.spot == .section(id) }
+    return on.isEmpty ? nil : 6 + badgeWidth(on) + 2
+  }
 
   /// The markers laid out again (the board changed, the camera came to rest at another zoom, a popup opened)
   func placeMarks() {

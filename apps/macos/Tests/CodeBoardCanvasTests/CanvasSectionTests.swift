@@ -292,6 +292,74 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     #expect(r.doc.board.section(g)?.collapsed == true, "folded by its chevron")
   }
 
+  /// A Section's title row in main's order (Sections.tsx): the title, its sidenote marker, the chevron, then Fit
+  /// Content, Color and Lock; folded, the title, the marker, "· N cards", the chevron. None of them overlap, with a
+  /// marker or without, a long title too, in both looks; a click on the chevron folds it, on the marker opens its popup
+  @Test(arguments: [false, true], [false, true])
+  func aSectionsTitleRowHasItsMarkerThenItsChevronAndNothingOverlaps(folded: Bool, long: Bool) async throws {
+    for theme in [Theme.warmInk, .inkWash] {
+      for noted in [false, true] {
+        var b = sections()
+        b.sections[0].title = long ? "A long title that goes on well past where the chevron used to sit" : "Outer"
+        b.sections[0].collapsed = folded
+        if noted {
+          b.sidenotes = [
+            Sidenote(
+              id: SidenoteID(rawValue: "sn"), anchor: Spot.section(gid("g1")).anchor, body: .text(TextNote(text: "why"))
+            )
+          ]
+        }
+        let r = try await Rig(b, zoom: 1)
+        defer { r.close() }
+        let c = r.canvas
+        try await c.show(theme: theme)
+        await r.idle()
+        let what = "\(theme.id) folded \(folded) long \(long) noted \(noted)"
+        let t = try #require(c.sectionTitle(gid("g1")), "\(what)")
+        let font = c.currentTheme.sectionTitleFont
+        let text = CGRect(
+          x: t.minX, y: t.minY,
+          width: (c.currentTheme.frame == .tray ? 6 : 0) + Drawing.width(b.sections[0].title, font),
+          height: t.height)
+        var row: [(String, CGRect)] = [("title", text)]
+        let mark = c.marks.first { $0.at == .spot(.section(gid("g1"))) }.map {
+          $0.frame.offsetBy(dx: t.minX, dy: t.minY)
+        }
+        #expect((mark != nil) == noted, "\(what): a marker only with a sidenote")
+        if let mark { row.append(("marker", mark)) }
+        if folded {
+          let n = Drawing.foldedCount(1)
+          let cw = Drawing.width(n, c.currentTheme.sectionCount)
+          let cx = text.maxX + 2 + (mark.map { $0.width + 8 } ?? 0) + 5
+          row.append(("count", CGRect(x: cx, y: t.minY, width: cw, height: t.height)))
+        }
+        let acts = c.actsLayout(gid("g1"))
+        let fold = try #require(acts.first { $0.0 == .fold }?.1)
+        row.append(("chevron", fold))
+        if !folded {
+          for a in [SectionAct.fit, .color, .lock] {
+            row.append(("\(a)", try #require(acts.first { $0.0 == a }?.1)))
+          }
+        }
+        // left to right, apart
+        for (x, y) in zip(row, row.dropFirst()) {
+          #expect(x.1.maxX <= y.1.minX + 0.01, "\(what): \(x.0) \(x.1) reaches \(y.0) \(y.1)")
+        }
+        if !folded {
+          #expect(abs(fold.minX - (mark.map { $0.maxX + 2 } ?? t.maxX)) < 0.01, "\(what): the chevron 2 after")
+        }
+        if let mark {
+          r.click(CGPoint(x: mark.midX, y: mark.midY))
+          await r.until("\(what): its popup") { c.popShown == .spot(.section(gid("g1"))) }
+          r.click(CGPoint(x: mark.midX, y: mark.midY))
+          await r.until("\(what): closed") { c.popShown == nil }
+        }
+        r.click(CGPoint(x: fold.midX, y: fold.midY))
+        #expect(r.doc.board.section(gid("g1"))?.collapsed == !folded, "\(what): the chevron folds it")
+      }
+    }
+  }
+
   /// Hovered, its title shows Fit Content, Color with its five swatches, Lock and the chevron that folds it
   /// (Sections.tsx SectionActs)
   @Test func aSectionsTitleControlsFitColourLockAndFoldIt() async throws {

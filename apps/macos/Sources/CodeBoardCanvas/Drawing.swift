@@ -79,13 +79,15 @@ enum Drawing: Sendable {
     var kind: Kind
     /// A folded Section's: how many cards are in it ("Title · N cards", then the chevron)
     var count: Int? = nil
+    /// A folded Section's: the room its sidenote marker takes after the title, before the count
+    var badge: CGFloat = 0
   }
 
   /// A folded Section's title: `.slabel.collapsed` (its padding, the title, "· N cards" 5 after it, the chevron 16
   /// wide, 2 between each)
-  static func foldedTitleWidth(_ title: String, count: Int, _ t: Theme) -> CGFloat {
+  static func foldedTitleWidth(_ title: String, count: Int, badge: CGFloat = 0, _ t: Theme) -> CGFloat {
     let pad: CGFloat = t.frame == .tray ? 8 : 2
-    return pad + width(title, t.sectionTitleFont) + 2 + 5 + width(foldedCount(count), t.sectionCount) + 2 + 16
+    return pad + width(title, t.sectionTitleFont) + 2 + badge + 5 + width(foldedCount(count), t.sectionCount) + 2 + 16
   }
 
   static func foldedCount(_ n: Int) -> String { "· \(n) card\(n == 1 ? "" : "s")" }
@@ -255,7 +257,7 @@ enum Drawing: Sendable {
         let tw = Drawing.width(l.text, t.sectionTitleFont)
         Drawing.text(ctx, l.text, t.sectionTitleFont, t.sectionTitle, x: x, midY: size.height / 2, width: tw)
         let count = Drawing.foldedCount(n)
-        let cx = x + tw + 2 + 5
+        let cx = x + tw + 2 + l.badge + 5
         let cw = Drawing.width(count, t.sectionCount)
         Drawing.text(ctx, count, t.sectionCount, t.ink3, x: cx, midY: size.height / 2, width: cw)
         // icons.tsx chevR (M6 12l4-4-4-4) at 10 px in a 16 px box, its stroke 2 of 16
