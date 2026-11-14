@@ -22,7 +22,19 @@ one), the Section's entry hovered: its outline on the board where it returns. Th
 NSVisualEffectView, whose blur is not drawn off screen.
 shelf-preview: the two Notes' entry clicked: the large picture left of the panel, level with its thumbnail, with
 its one button (Put Back).
+
 Found by these sheets and fixed in the commit before this one: an emoji sticker's shadow was a grey square (it now
 follows the emoji's own shape, as main's drop-shadow does); the palette's glyphs could end up under its glass (they now
 sit in a view above it); a Web card's two-line description and title were cut inside a word ("at a time. Howe…") where
 main's line clamp ends the last line at a word and puts "…" after it ("at a time.…").
+
+Answers to the first look (after 9642204):
+- web-styles, Text style, Warm Ink: main and ours use the same rule (two lines, 298 px wide at 380: 380 - 2 x 14 padding
+  - 54 kept free on the right). The second line "Language Model Serving with PagedAttention" measures 298.12 px in
+  Chromium (canvas measureText, the same -apple-system 600 13.5px) and 297.47 px in Core Text (SF semibold 13.5), so
+  it just does not fit in main and just fits in ours. The difference is the two engines' advances (0.2 %), not the
+  rule; in Ink Wash (Source Serif) the same title is clamped on both sides.
+- stickers, line 78: the chips sit as main's (.lstks: left = gutter - 18, 14 px glyphs, 2 px apart). In main's story
+  the code is a method indented inside its class, so it is dedented and starts 16 px right of the gutter (DED_PAD),
+  which the canvas does too (CodeLayout shift); this sheet's sample code had no indent, so no pad. With the sample
+  indented as main's is, the TODO ends left of the code exactly as in main's picture.

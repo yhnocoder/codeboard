@@ -104,8 +104,9 @@ enum Stage7Sheets {
       id: SegmentID(rawValue: "s-\(id)"), source: .file(path: "nanovllm/engine/scheduler.py", hash: nil),
       language: "python", firstLine: 75,
       lines: [
-        "def preempt(self, seq: Sequence):", "    seq.status = SequenceStatus.WAITING", "    seq.is_prefill = True",
-        "    self.block_manager.deallocate(seq)", "    self.waiting.appendleft(seq)",
+        "    def preempt(self, seq: Sequence):", "        seq.status = SequenceStatus.WAITING",
+        "        seq.is_prefill = True", "        self.block_manager.deallocate(seq)",
+        "        self.waiting.appendleft(seq)",
       ], symbol: Symbol(name: "Scheduler.preempt", kind: .function))
     return Card(id: cid(id), x: x, y: y, width: w, content: .own(CardContent(body: .code(CodeCard(segments: [seg])))))
   }
