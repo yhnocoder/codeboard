@@ -78,6 +78,15 @@ import Testing
     let block =
       "<p>Before</p><math display=\"block\"><semantics><annotation encoding=\"application/x-tex\">\\sum x</annotation></semantics></math><p>After</p>"
     #expect(HTMLMarkdown.markdown(block) == "Before\n\n$$\n\\sum x\n$$\n\nAfter")
-    #expect(HTMLMarkdown.markdown("<p>so \\(a+b\\) and \\[c\\]</p>") == "so $a+b$ and $$\nc\n$$")
+    #expect(HTMLMarkdown.markdown("<p>so \\(a_1+b\\) and \\[c\\] and $x_2$</p>") == "so $a_1+b$ and $$c$$ and $x_2$")
+  }
+}
+
+/// A page's own * _ ` [ ] stay characters; == and ~~ written as text are read as Markdown (pastemarks.ts)
+@Suite struct PasteMarksTests {
+  @Test func charactersStayCharacters() {
+    #expect(HTMLMarkdown.markdown("<p>5 * 3 * 2 and [x] and `y`</p>") == "5 \\* 3 \\* 2 and \\[x\\] and \\`y\\`")
+    #expect(HTMLMarkdown.markdown("<p>a ==mark== and ~~gone~~</p>") == "a ==mark== and ~~gone~~")
+    #expect(HTMLMarkdown.markdown("<p>Some <b>bold</b></p>") == "Some **bold**")
   }
 }

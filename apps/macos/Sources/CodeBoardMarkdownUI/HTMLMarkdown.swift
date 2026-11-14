@@ -43,6 +43,9 @@ enum HTMLMarkdown {
         }
         if hidden > 0 || math != nil { continue }
         var t = decode(ns.substring(with: m.range(at: 4)))
+        // a page's * _ ` [ ] are its characters (the formatting it wants is in its tags): written escaped, so they stay
+        // characters; == ~~ and $ are read as Markdown, as pastemarks.ts and pastemath.ts read them
+        if pre == 0, href.last == nil { t = escaped(t) }
         if pre == 0 { t = t.replacingOccurrences(of: "\n", with: " ") }
         line += t
         continue
@@ -155,11 +158,33 @@ enum HTMLMarkdown {
       }
     }
     flush()
-    // LaTeX's own delimiters as Markdown's
-    out = out.replacingOccurrences(of: #"\\\[([\s\S]+?)\\\]"#, with: "\\$\\$\n$1\n\\$\\$", options: .regularExpression)
-    out = out.replacingOccurrences(of: #"\\\(([\s\S]+?)\\\)"#, with: "\\$$1\\$", options: .regularExpression)
     let md = out.trimmingCharacters(in: .whitespacesAndNewlines)
     return md.isEmpty ? nil : md
+  }
+
+  /// A text node's own characters written so they stay characters: formulas in it ($ $, $$ $$, and LaTeX's \( \) and
+  /// \[ \], which become dollars) kept as they are, * _ ` [ ] between them escaped
+  static func escaped(_ t: String) -> String {
+    let math = try! NSRegularExpression(
+      pattern: #"\$\$[\s\S]+?\$\$|\$[^$\n]+?\$|\\\(([\s\S]+?)\\\)|\\\[([\s\S]+?)\\\]"#)
+    let ns = t as NSString
+    var out = ""
+    var at = 0
+    func plain(_ s: String) -> String {
+      s.replacingOccurrences(of: #"([*_`\[\]])"#, with: "\\\\$1", options: .regularExpression)
+    }
+    for m in math.matches(in: t, range: NSRange(location: 0, length: ns.length)) {
+      out += plain(ns.substring(with: NSRange(location: at, length: m.range.location - at)))
+      if m.range(at: 1).location != NSNotFound {
+        out += "$" + ns.substring(with: m.range(at: 1)) + "$"
+      } else if m.range(at: 2).location != NSNotFound {
+        out += "$$" + ns.substring(with: m.range(at: 2)) + "$$"
+      } else {
+        out += ns.substring(with: m.range)
+      }
+      at = NSMaxRange(m.range)
+    }
+    return out + plain(ns.substring(from: at))
   }
 
   static func decode(_ s: String) -> String {
