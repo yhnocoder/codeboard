@@ -11,16 +11,18 @@ wait 300
 expect cam.x != was
 move @cnote+-120,60 300
 mark
-scroll -300 0 30 still
+scroll -500 0 30 still
 wait 300
 # 从卡外开始、经过卡的平移不停
 expect cnote.right < pointer.x
+# 卡已经出了窗口：先把它移回来
+center @cnote+150,60
 move @cnote+150,70 300
 mark
 pinch 0.5 12
 wait 400
-# 在正在编辑的卡上捏合也缩放白板
-expect cam.zoom > was
+# 在正在编辑的卡上捏合也缩放白板（Mac 版的规则；VS Code 交给编辑框）
+mac: expect cam.zoom > was
 stop
 shot after
 key esc
