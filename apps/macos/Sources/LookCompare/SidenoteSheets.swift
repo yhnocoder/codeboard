@@ -325,18 +325,11 @@ enum SidenoteSheets {
       r.close()
       write(try WritingSheets.column(cuts, theme: theme), out, "code-\(suffix)")
 
-      // the toolbar's ? with its list open: this board's | every board's
+      // the dock's ? with its list open: this board's | every board's
       r = try await rig()
       let bar = CanvasToolbar(frame: .zero)
       bar.theme = theme
-      bar.zoom = 1
-      bar.questions = 2
-      bar.listOpen = true
-      let barSize = bar.intrinsicContentSize
-      let barOrigin = CGPoint(
-        x: (size.width - barSize.width) / 2, y: size.height - (12 - CanvasToolbar.margin) - barSize.height)
-      let q = bar.questionsRect!.offsetBy(dx: barOrigin.x, dy: barOrigin.y)
-      r.canvas.toggleQuestionList(under: q)
+      r.canvas.useDock(.questions)
       await r.until { r.canvas.questionList.view.alphaValue == 1 }
       try? await Task.sleep(for: .milliseconds(200))
       cuts = [try ArrowSheets.withBar(try await r.picture(), bar)]

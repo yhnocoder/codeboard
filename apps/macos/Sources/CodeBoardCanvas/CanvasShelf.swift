@@ -72,28 +72,17 @@ extension CanvasView {
 
   /// The board changed: the button's count, the panel's pictures
   func shelfChanged() {
-    guard let doc = document else {
-      shelfDock?.removeFromSuperview()
-      shelfDock = nil
-      closeShelf()
-      return
-    }
-    if let d = shelfDock, !d.theme.same(as: theme) {
-      d.removeFromSuperview()
-      shelfDock = nil
+    dock.isHidden = document == nil
+    guard let doc = document else { return closeShelf() }
+    if !dock.theme.same(as: theme) {
+      dock.theme = theme
       if shelfPanel != nil {
         closeShelf()
         toggleShelf()
         return
       }
     }
-    if shelfDock == nil {
-      let d = ShelfDock(theme: theme)
-      d.onClick = { [weak self] in self?.toggleShelf() }
-      addSubview(d)
-      shelfDock = d
-    }
-    shelfDock?.count = doc.board.shelf.count
+    dock.count = doc.board.shelf.count
     placeShelf()
     if let p = shelfPanel {
       let shown = shelfShown
@@ -103,13 +92,11 @@ extension CanvasView {
     }
   }
 
-  /// The button at the bottom right, the panel at the top right, the large picture by its thumbnail
+  /// The dock at the bottom right, the panel at the top right, the large picture by its thumbnail
   func placeShelf() {
-    if let d = shelfDock {
-      d.frame = CGRect(
-        x: bounds.width - 12 - ShelfDock.side, y: bounds.height - 12 - ShelfDock.side, width: ShelfDock.side,
-        height: ShelfDock.side)
-    }
+    let s = dock.size
+    let f = CGRect(x: bounds.width - 12 - s.width, y: bounds.height - 12 - s.height, width: s.width, height: s.height)
+    if dock.frame != f { dock.frame = f }
     if let p = shelfPanel {
       let h = min(p.wantedHeight, min(0.76 * bounds.height, 700))
       p.frame = CGRect(x: bounds.width - 12 - ShelfPanel.width, y: 12, width: ShelfPanel.width, height: h)
@@ -131,7 +118,7 @@ extension CanvasView {
     p.onBlank = { [weak self] in self?.closePreview() }
     addSubview(p)
     shelfPanel = p
-    shelfDock?.open = true
+    dock.open = true
     shelfChanged()
   }
 
@@ -140,7 +127,7 @@ extension CanvasView {
     showHome(nil)
     shelfPanel?.removeFromSuperview()
     shelfPanel = nil
-    shelfDock?.open = false
+    dock.open = false
   }
 
   /// An entry's picture: drawn as the board draws it, once for what it holds in this look
@@ -258,10 +245,10 @@ extension CanvasView {
           height: cr.height * k)
       }
       p.fadeIn(id, after: Self.flyTime * 0.72)
-    } else if let d = shelfDock {
-      let c = CGPoint(x: d.frame.midX, y: d.frame.midY)
+    } else if let r = shelfButton {
+      let c = CGPoint(x: r.midX, y: r.midY)
       for (cid, _, _) in flights { targets[cid] = CGRect(x: c.x - 7, y: c.y - 7, width: 14, height: 14) }
-      d.bump(after: Self.flyTime * 0.85)
+      dock.bump(after: Self.flyTime * 0.85)
     }
     let ease = CAMediaTimingFunction(controlPoints: 0.45, 0, 0.25, 1)
     for (c, contents, from) in flights {
@@ -297,16 +284,19 @@ extension CanvasView {
 
   static let flyTime: CFTimeInterval = 0.42
 
-  /// A drag of cards over the button or the open panel: they would go onto the Shelf
+  /// The Shelf's button in the dock, in this view
+  package var shelfButton: CGRect? { dock.isHidden ? nil : dock.rect(.shelf).map { dock.convert($0, to: self) } }
+
+  /// A drag of cards over the Shelf's button or the open panel: they would go onto the Shelf
   func overShelf(_ v: CGPoint) -> Bool {
-    (shelfDock?.frame.contains(v) ?? false) || (shelfPanel?.frame.contains(v) ?? false)
+    (shelfButton?.contains(v) ?? false) || (shelfPanel?.frame.contains(v) ?? false)
   }
 
   /// The button and the panel while cards are dragged: armed, lit when the pointer is over them
   func armShelf(_ v: CGPoint?) {
     let hot = v.map(overShelf) ?? false
-    shelfDock?.armed = v != nil
-    shelfDock?.hot = hot
+    dock.armed = v != nil
+    dock.hot = hot
     shelfPanel?.hot = hot
   }
 
@@ -561,107 +551,6 @@ package struct ShelfPictureKey: Equatable {
     "M2.5 2H13.5A.5 .5 0 0 1 14 2.5V4.5A.5 .5 0 0 1 13.5 5H2.5A.5 .5 0 0 1 2 4.5V2.5A.5 .5 0 0 1 2.5 2zM3 5V13.5A.5 .5 0 0 0 3.5 14H12.5A.5 .5 0 0 0 13 13.5V5M6 8h4"
   static let place =
     "M2.5 3H13.5A.5 .5 0 0 1 14 3.5V12.5A.5 .5 0 0 1 13.5 13H2.5A.5 .5 0 0 1 2 12.5V3.5A.5 .5 0 0 1 2.5 3zM5 7h6M5 10h4"
-}
-
-/// The Shelf's button at the bottom right (Chrome.tsx .dock): its icon, how many entries there are on a badge
-package final class ShelfDock: NSView {
-  static let side: CGFloat = 34
-  var onClick: (() -> Void)?
-  let theme: Theme
-  package var count = 0 {
-    didSet { if count != oldValue { draw() } }
-  }
-  var open = false {
-    didSet { if open != oldValue { draw() } }
-  }
-  /// Cards are being dragged: it would take them; the pointer is over it
-  var armed = false {
-    didSet { if armed != oldValue { draw() } }
-  }
-  var hot = false {
-    didSet { if hot != oldValue { draw() } }
-  }
-  private var hover = false {
-    didSet { if hover != oldValue { draw() } }
-  }
-  private let pill = CALayer()
-  private let button = CALayer()
-  private let icon: CAShapeLayer
-  private let badge = CATextLayer()
-
-  init(theme: Theme) {
-    self.theme = theme
-    icon = ShelfLook.icon(ShelfLook.shelf, size: 16, color: theme.ink2)
-    super.init(frame: CGRect(x: 0, y: 0, width: Self.side, height: Self.side))
-    wantsLayer = true
-    layer?.addSublayer(pill)
-    pill.addSublayer(button)
-    button.addSublayer(icon)
-    badge.alignmentMode = .center
-    badge.font = NSFont.systemFont(ofSize: 9, weight: .semibold)
-    badge.fontSize = 9
-    badge.contentsScale = 2
-    pill.addSublayer(badge)
-    draw()
-  }
-
-  @available(*, unavailable)
-  required init?(coder: NSCoder) { fatalError("ShelfDock is not loaded from nibs") }
-
-  package override var isFlipped: Bool { true }
-
-  private func draw() {
-    let t = theme
-    CATransaction.begin()
-    CATransaction.setDisableActions(true)
-    pill.frame = bounds
-    ShelfLook.glass(pill, t, radius: 14)
-    button.frame = CGRect(x: 4, y: 4, width: 26, height: 26)
-    button.cornerRadius = 8.5
-    button.backgroundColor =
-      hot ? t.accent : open ? t.hlrow : hover ? t.ink.copy(alpha: 0.07) : nil
-    button.borderWidth = armed && !hot ? 1 : 0
-    button.borderColor = t.accent.copy(alpha: 0.55)
-    icon.position = CGPoint(x: 13, y: 13)
-    icon.strokeColor = hot ? t.accentInk : open ? t.accent : t.ink2
-    button.setAffineTransform(hot ? CGAffineTransform(scaleX: 1.15, y: 1.15) : .identity)
-    badge.isHidden = count == 0
-    badge.string = "\(count)"
-    let w = max(
-      13,
-      (("\(count)" as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 9, weight: .semibold)]).width + 6)
-        .rounded(.up))
-    badge.frame = CGRect(x: bounds.width - 2 - w + 2, y: -2 + 2, width: w, height: 13)
-    badge.cornerRadius = 6.5
-    badge.backgroundColor = t.accent
-    badge.foregroundColor = t.accentInk
-    CATransaction.commit()
-  }
-
-  /// What flew in arrives: the button bumps (scale 1.2, 260 ms)
-  func bump(after delay: CFTimeInterval) {
-    let a = CAKeyframeAnimation(keyPath: "transform.scale")
-    a.values = [1, 1.2, 1]
-    a.keyTimes = [0, 0.4, 1]
-    a.duration = 0.26
-    a.beginTime = CACurrentMediaTime() + delay
-    button.add(a, forKey: "bump")
-  }
-
-  package override func updateTrackingAreas() {
-    super.updateTrackingAreas()
-    for t in trackingAreas where t.owner === self { removeTrackingArea(t) }
-    addTrackingArea(
-      NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
-  }
-
-  package override func mouseEntered(with e: NSEvent) { hover = true }
-  package override func mouseExited(with e: NSEvent) { hover = false }
-  package override func mouseDown(with e: NSEvent) {}
-  package override func mouseUp(with e: NSEvent) {
-    if bounds.contains(convert(e.locationInWindow, from: nil)) { onClick?() }
-  }
-  package override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 /// The panel at the top right (ShelfPanel.tsx .shelf): "Shelf" and the count, its X, and a picture of each entry

@@ -217,7 +217,7 @@ public final class CanvasView: NSView {
   package var stickerPalette: StickerPalette?
   /// The Shelf: its button, its panel, the entry shown large, the pictures drawn of each entry, what flies in, the
   /// outline of where a hovered entry returns and of one dragged out (board units)
-  package var shelfDock: ShelfDock?
+  package let dock = CanvasDock(theme: .warmInk)
   package var shelfPanel: ShelfPanel?
   package var shelfPreview: ShelfPreview?
   package var previewing: String?
@@ -266,9 +266,8 @@ public final class CanvasView: NSView {
   package var listShown = false
   var listButton = CGRect.zero
   var listOthers: [(VaultBoard, [QuestionListView.Shown.Item])] = []
-  /// How many of this board's questions are open, as it changes (the toolbar's ?); the list opened or closed
+  /// How many of this board's questions are open, as it changes
   public var onQuestions: ((Int) -> Void)?
-  public var onListOpen: ((Bool) -> Void)?
   /// A question on another board picked in the list: that board is to open and go to it
   /// Another board to open, and what to go to on it once shown
   public var onOpenBoard: ((BoardID, Arrival?) -> Void)?
@@ -283,8 +282,6 @@ public final class CanvasView: NSView {
   /// The card last flashed (tests), its ring and how it is drawn some way out
   package var flashed: CardID?
   var flashRing: (CAShapeLayer, (CGFloat) -> CGPath)?
-  /// The zoom as the camera moves (the toolbar's figure)
-  public var onZoom: ((CGFloat) -> Void)?
   /// Lines selected by their numbers in a code card
   package var lineSel: Lines?
   /// A free marker pressed (its index in `marks`), where, and whether it has moved; what it would land on, tinted
@@ -364,6 +361,9 @@ public final class CanvasView: NSView {
     stickerGhost.anchorPoint = .zero
     stickerGhost.isHidden = true
     root.addSublayer(stickerGhost)
+    dock.isHidden = true
+    dock.onPart = { [weak self] in self?.useDock($0) }
+    addSubview(dock)
   }
 
   @available(*, unavailable)
@@ -798,7 +798,7 @@ public final class CanvasView: NSView {
         summaryButtons.setAffineTransform(CGAffineTransform(scaleX: 1 / camera.zoom, y: 1 / camera.zoom))
       }
       if summaryEditor != nil { placeSummaryEditor() }
-      onZoom?(camera.zoom)
+      dock.zoom = camera.zoom
       // a label or title being written is kept when the camera moves
       if inPlace != nil { endInPlace(commit: true) }
       // a zoom (not a pan) away from the rest zoom: the held bitmaps take over, with mipmaps

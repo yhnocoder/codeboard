@@ -240,8 +240,6 @@ final class Pane: NSView {
     super.init(frame: .zero)
     canvas.autoresizingMask = [.width, .height]
     addSubview(canvas)
-    // the bottom toolbar, 12 above the bottom edge (its view has room for its shadow around it)
-    toolbar.translatesAutoresizingMaskIntoConstraints = false
     toolbar.onTool = { [weak self] tool in
       guard let self else { return }
       if tool == .sticker, let r = toolbar.rect(of: .sticker) {
@@ -251,30 +249,19 @@ final class Pane: NSView {
       }
     }
     canvas.onMode = { [weak self] in self?.toolbar.active = $0 }
-    // the zoom figure and the questions after the tools
-    toolbar.onZoom100 = { [weak self] in self?.canvas.zoomTo100() }
     // ⋯ opens upward from its left, 6 over it (Chrome.tsx more)
     toolbar.onMore = { [weak self] r in
       guard let self else { return }
       let m = canvas.moreMenu()
       m.popUp(positioning: nil, at: CGPoint(x: r.minX, y: r.minY - 6 - m.size.height), in: toolbar)
     }
-    toolbar.onQuestions = { [weak self] in
-      guard let self, let r = toolbar.questionsRect else { return }
-      canvas.toggleQuestionList(under: toolbar.convert(r, to: canvas))
-    }
-    canvas.onZoom = { [weak self] in self?.toolbar.zoom = $0 }
-    canvas.onQuestions = { [weak self] in self?.toolbar.questions = $0 }
-    canvas.onListOpen = { [weak self] in self?.toolbar.listOpen = $0 }
     canvas.onOpenBoard = { [weak self] board, arrival in
       self?.pending = arrival
       self?.onOpenBoard?(board)
     }
     addSubview(toolbar)
-    NSLayoutConstraint.activate([
-      toolbar.centerXAnchor.constraint(equalTo: centerXAnchor),
-      toolbar.bottomAnchor.constraint(equalTo: bottomAnchor, constant: CanvasToolbar.margin - 12),
-    ])
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(dockMoved), name: NSView.frameDidChangeNotification, object: canvas.dock)
     problem.textColor = .secondaryLabelColor
     problem.alignment = .center
     problem.isSelectable = true
@@ -296,6 +283,26 @@ final class Pane: NSView {
   override func layout() {
     super.layout()
     canvas.frame = bounds
+    toolbar.frame = Self.toolbarFrame(toolbar.intrinsicContentSize, in: bounds.size, dock: canvas.dock.frame)
+  }
+
+  @objc private func dockMoved() { needsLayout = true }
+
+  /// The bottom toolbar's view (the bar with room around it), its bar 12 above the bottom edge and centred, but left
+  /// of the dock at the bottom right, 8 from it, when centred it would reach it (main lets the two overlap from about
+  /// 1000 pt); too narrow for that too, it sits centred 8 over the dock. `dock`: its frame, y-down
+  static func toolbarFrame(_ view: CGSize, in pane: CGSize, dock: CGRect) -> CGRect {
+    let m = CanvasToolbar.margin
+    let bar = CGSize(width: view.width - 2 * m, height: view.height - 2 * m)
+    let centred = ((pane.width - bar.width) / 2).rounded(.down)
+    let left = (dock.minX - 8 - bar.width).rounded(.down)
+    var x = min(centred, left)
+    var bottom: CGFloat = 12
+    if x < 12 {
+      x = centred
+      bottom = pane.height - dock.minY + 8
+    }
+    return CGRect(x: x - m, y: bottom - m, width: view.width, height: view.height)
   }
 
   /// The theme the board is to be drawn in
@@ -305,6 +312,7 @@ final class Pane: NSView {
   func restyle(_ theme: Theme) {
     self.theme = theme
     toolbar.theme = theme
+    needsLayout = true
     guard !theme.same(as: canvas.currentTheme), document != nil else { return }
     Task {
       do { try await canvas.show(theme: theme) } catch { fail(error) }
@@ -315,6 +323,7 @@ final class Pane: NSView {
   func load(_ at: VaultBoard, in vault: Vault, theme: Theme, document doc: BoardDocument) {
     self.theme = theme
     toolbar.theme = theme
+    needsLayout = true
     toolbar.isHidden = false
     problem.isHidden = true
     canvas.isHidden = false

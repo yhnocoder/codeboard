@@ -50,7 +50,7 @@ extension CanvasView {
   }
 
   /// The toolbar's and the dock's parts
-  func chromeElements() -> [Any] { [] }
+  func chromeElements() -> [Any] { dock.isHidden ? [] : [dock] }
 
   /// Where an item is drawn now, on the screen
   func screenFrame(of item: Item) -> NSRect {

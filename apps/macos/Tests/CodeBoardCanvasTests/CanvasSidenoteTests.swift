@@ -394,20 +394,54 @@ extension CanvasSidenoteTests {
 }
 
 extension CanvasSidenoteTests {
-  @Test func theToolbarShowsTheZoomAndWhileQuestionsAreOpenTheirCount() {
-    let bar = CanvasToolbar(frame: CGRect(x: 0, y: 0, width: 600, height: 120))
-    #expect(bar.questionsRect == nil, "no question open: no button")
-    let plain = bar.intrinsicContentSize.width
-    bar.questions = 3
-    let q = try? #require(bar.questionsRect)
-    #expect(bar.intrinsicContentSize.width > plain && q?.height == 24)
-    #expect(bar.button(at: CGPoint(x: q!.midX, y: q!.midY)) == -2)
-    let zoom = bar.extraRects().zoom
-    #expect(bar.button(at: CGPoint(x: zoom.midX, y: zoom.midY)) == -1 && zoom.width == 44)
-    // after the last tool, the zoom figure, then the questions at the far right
-    #expect(zoom.minX > bar.buttonRects().last!.maxX && q!.minX > zoom.maxX && q!.maxX < bar.barRect.maxX)
-    bar.questions = 0
-    #expect(bar.questionsRect == nil)
+  @Test func theDockShowsTheZoomAndWhileQuestionsAreOpenTheirCount() throws {
+    let dock = CanvasDock(theme: .warmInk)
+    #expect(dock.rect(.questions) == nil, "no question open: no button")
+    let plain = dock.size.width
+    dock.questions = 3
+    let q = try #require(dock.rect(.questions))
+    #expect(dock.size.width > plain && q.height == 24)
+    #expect(dock.part(at: CGPoint(x: q.midX, y: q.midY)) == .questions)
+    let zoom = try #require(dock.rect(.zoom))
+    #expect(dock.part(at: CGPoint(x: zoom.midX, y: zoom.midY)) == .zoom && zoom.width == 44)
+    // the questions last, at the far right
+    #expect(q.minX > zoom.maxX && q.maxX == dock.size.width - 4 - 2)
+    dock.questions = 0
+    #expect(dock.rect(.questions) == nil)
+  }
+
+  /// The dock (Chrome.tsx Dock): the Shelf | Zoom Out, the zoom, Zoom In | Fit to Window, in that order, each part
+  /// doing what its button does on the web board
+  @Test func theDocksPartsInOrderAndWhatEachDoes() async throws {
+    for theme in [Theme.warmInk, .inkWash] {
+      let dock = CanvasDock(theme: theme)
+      let ink = theme.id == .inkWash
+      let order: [CanvasDock.Part] = [.shelf, .zoomOut, .zoom, .zoomIn, .fit]
+      let rects = try order.map { try #require(dock.rect($0)) }
+      for (a, b) in zip(rects, rects.dropFirst()) { #expect(a.maxX <= b.minX) }
+      #expect(rects[0].minX == (ink ? 18 : 4) && dock.size.width == rects[4].maxX + (ink ? 26 : 4))
+      #expect(dock.size.height == (ink ? 46 : 34) && rects.allSatisfy { $0.midY == dock.size.height / 2 })
+      // Ink Wash: the buttons inside the stroke's body, not on its tail
+      if ink { #expect(rects[4].maxX <= CanvasToolbar.inkBody(CGRect(origin: .zero, size: dock.size)).maxX) }
+    }
+    let r = try await Rig(sidenoteBoard(question: true), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let d = c.dock
+    #expect(!d.isHidden && d.frame.maxX == c.bounds.width - 12 && d.frame.maxY == c.bounds.height - 12)
+    c.useDock(.zoomIn)
+    await r.until("zoomed in") { abs(c.camera.zoom - 1.25) < 1e-9 && c.motion.isResting }
+    #expect(abs(d.zoom - 1.25) < 1e-9)
+    c.useDock(.zoomOut)
+    await r.until("zoomed out") { abs(c.camera.zoom - 1) < 1e-9 && c.motion.isResting }
+    c.useDock(.zoomOut)
+    await r.until("zoomed out again") { abs(c.camera.zoom - 0.8) < 1e-9 && c.motion.isResting }
+    c.useDock(.zoom)
+    await r.until("at 100 %") { abs(c.camera.zoom - 1) < 1e-9 && c.motion.isResting }
+    c.useDock(.shelf)
+    #expect(c.shelfPanel != nil && d.open)
+    c.useDock(.shelf)
+    #expect(c.shelfPanel == nil && !d.open)
   }
 
   @Test func theQuestionListListsThisAndOtherBoardsQuestionsAndARowGoesToItsPopup() async throws {

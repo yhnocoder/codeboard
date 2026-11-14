@@ -26,6 +26,7 @@ extension CanvasView {
     let n = openQuestions
     if n != shownQuestions {
       shownQuestions = n
+      dock.questions = n
       onQuestions?(n)
     }
     if listShown, let doc = document, let (vb, vault) = shown {
@@ -78,7 +79,7 @@ extension CanvasView {
       questions: mine + others.flatMap(\.1))
   }
 
-  /// The toolbar's ? pressed: the list opens over it (its bottom right 12 above the button's top, 6 right of it), or
+  /// The dock's ? pressed: the list opens over it (its bottom right 12 above the button's top, 6 right of it), or
   /// closes. `button`: the button's rect in this view
   public func toggleQuestionList(under button: CGRect) {
     if listShown { return closeQuestionList() }
@@ -87,7 +88,7 @@ extension CanvasView {
     if list.view.superview !== host { host.addSubview(list.view, positioned: .above, relativeTo: self) }
     listShown = true
     listButton = button
-    onListOpen?(true)
+    dock.listOpen = true
     list.onPick = { [weak self] board, note in self?.pickQuestion(board, note) }
     list.onClose = { [weak self] in self?.closeQuestionList() }
     list.onSize = { [weak self] _ in self?.placeList() }
@@ -127,7 +128,7 @@ extension CanvasView {
     listShown = false
     listOthers = []
     questionList.close()
-    onListOpen?(false)
+    dock.listOpen = false
     window?.makeFirstResponder(self)
   }
 
