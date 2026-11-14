@@ -55,6 +55,12 @@ public struct Vault: Sendable {
     return card
   }
 
+  /// Whether a shared card of that id is there: what `Board.share` must not take (an unsafe id counts as taken)
+  public func sharedCardExists(_ id: CardID) -> Bool {
+    !Vault.isSafeID(id.rawValue)
+      || FileManager.default.fileExists(atPath: sharedFolderURL.appending(path: "\(id.rawValue).json").path)
+  }
+
   /// The package folder name (without `.board`) for a title: characters that cannot be in a file name on macOS, or that
   /// break a clone of the vault on Windows, become "-"; leading dots go (they would hide the board), and the name is cut to
   /// leave room for a " 2" and the extension in the 255 bytes a name may have

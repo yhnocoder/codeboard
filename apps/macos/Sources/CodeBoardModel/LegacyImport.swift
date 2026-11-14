@@ -120,8 +120,6 @@ public enum SkipKind: String, CaseIterable, Sendable {
   case classMembers
   /// A message Note's mark: imported as a plain Note
   case messageNote
-  /// Another place of the same card on the board: imported as a copy of its own
-  case twin
   /// A card's process tags (rank 0, Scheduler × TP)
   case processes
   /// An arrow's call, RPC, back or generated-from mark: the arrow is imported plain
@@ -786,7 +784,7 @@ private struct Mapper {
         id: CardID(rawValue: cid), x: try p.double("x"), y: try p.double("y"), width: try p.double("w"),
         height: height, measuredHeight: entry == nil ? nil : try p.optDouble("mh"), section: section,
         locked: try p.flag("locked"), tilted: tilted, summary: try p.optObject("summary").map { try summary($0) },
-        content: content)
+        content: content, same: try c.optString("same"))
       if let entry { shelfCards[entry].append(card) } else { cards.append(card) }
     }
     let allCards = Set(cards.map(\.id) + shelfCards.flatMap { $0.map(\.id) })
@@ -843,10 +841,13 @@ private struct Mapper {
           id: eid, at: try e.double("at"), cards: shelfCards[i], sections: shelfSections[i],
           arrows: try arrows(try e.objects("links")), stickers: try stickers(try e.objects("stickers"))))
     }
-    return Board(
+    var board = Board(
       id: id, cards: cards, arrows: try arrows(try o.objects("links")), sections: sections, sidenotes: notes,
       stickers: try stickers(try o.objects("stickers")), shelf: shelf, seal: try seal(o, id: bid),
       hideComments: try o.flag("hideAllComments"))
+    // main keeps 同一块白板的共享卡 the same; should a file not, the first place is what they all show
+    board.syncTwins(since: Board(id: id))
+    return board
   }
 
   private mutating func seal(_ o: Obj, id: String) throws -> Seal? {
@@ -877,7 +878,6 @@ private struct Mapper {
       skippedKind = .compareCard
       return nil
     }
-    if c.has("same") { skips.add(.twin, id) }
     if !(try c.optObjects("procs")).isEmpty { skips.add(.processes, id) }
     let common: Set = ["id", "kind", "title", "desc", "procs", "tilt", "same"]
     let body: CardContent.Body

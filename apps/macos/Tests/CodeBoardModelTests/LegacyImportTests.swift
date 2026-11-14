@@ -301,7 +301,7 @@ private func fixtureVaultCopy() throws -> URL {
   #expect(
     skipped(report, "b.json") == [
       .compareCard: ["cmp", "x1", "x2"], .unplacedCard: ["nowhere"], .mergedFrom: ["c"], .generated: ["c"],
-      .classMembers: ["c"], .twin: ["c"], .processes: ["c"], .callMark: ["l"], .arrowWithoutEnd: ["l2"],
+      .classMembers: ["c"], .processes: ["c"], .callMark: ["l"], .arrowWithoutEnd: ["l2"],
       .field: ["b.born", "b.hideNumbers", "b.mystery", "b.seq", "c.keepOld", "c.collapsed"],
     ])
 }
@@ -875,4 +875,24 @@ private func unchanged(_ before: [String: Data], _ after: [String: Data]) -> [St
   try Board(id: BoardID(rawValue: "b1"), cards: []).encoded().write(to: vault.appending(path: "Old.board/board.json"))
   let report = try LegacyImport.run(from: source, to: vault, cameras: cams)
   #expect(report.cameras == [BoardID(rawValue: "b1-copy"): BoardCamera(x: -40, y: 20, zoom: 2)])
+}
+
+// 同一块白板的共享卡: main's cards with the same `same` (packages/core/src/edit/twins.ts) come in as one card placed
+// twice, each with its own id, place and tilt, their content the same
+@Test func twinsComeInAsTheSameCardPlacedTwice() throws {
+  let note = { (id: String, tilt: Bool) -> [String: Any] in
+    var n = oldNote(id, "same text")
+    n["same"] = "t1"
+    if tilt { n["tilt"] = true }
+    return n
+  }
+  let (vault, report, _) = try importing([
+    "b.json": oldBoard("b", name: "B", cards: [note("n1", false), note("n2", true)])
+  ])
+  #expect(report.failed.isEmpty)
+  #expect(skipped(report, "b.json").isEmpty)
+  let b = try vault.board(at: "B.board")
+  #expect(b.cards.map(\.same) == ["t1", "t1"])
+  #expect(b.cards.map(\.tilted) == [false, true])
+  #expect(b.cards[0].content == b.cards[1].content)
 }
