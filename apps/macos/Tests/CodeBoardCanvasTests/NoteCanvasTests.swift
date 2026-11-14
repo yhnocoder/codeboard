@@ -103,8 +103,7 @@ import Testing
       _ = try await renderer.snapshot(
         of: n.content, width: it.rect.width, height: height, folder: package,
         scale: Levels.noteOverview(fit, backing: backing, size: it.bitmapSize), look: Theme.warmInk.id.rawValue,
-        dark: false,
-        priority: 0)
+        dark: false, refs: n.refs, hideHead: n.hideHead, priority: 0)
     }
     await renderer.written()
     let again = CanvasView(frame: frame, noteCache: cache)

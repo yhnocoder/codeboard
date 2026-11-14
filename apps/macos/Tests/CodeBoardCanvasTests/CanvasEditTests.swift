@@ -99,6 +99,9 @@ private func png(_ url: URL) throws {
     canvas.questionList.drawOffScreen()
     // under the desktop: the web view runs its animation frames only in a window that is ordered in
     window.orderFrontRegardless()
+    // the rig's frames are the canvas's only ones and its clock: the display link, which runs on a machine whose
+    // display is awake (a CI runner) and not on one asleep, would put frames of its own between a test's steps
+    canvas.steppedClock = { [weak self] in self?.time ?? CACurrentMediaTime() }
     try await canvas.show(
       doc, at: VaultBoard(id: board.id, title: "B", path: name), in: Vault(root: root), theme: .warmInk)
     // nil: the camera the board opens at
@@ -199,7 +202,10 @@ private func png(_ url: URL) throws {
     let deadline = ContinuousClock.now + .seconds(60)
     while !(canvas.queue.isIdle && canvas.tasks.isEmpty && canvas.motion.isResting) {
       if ContinuousClock.now > deadline {
-        Issue.record("the canvas did not come to rest")
+        let q = canvas.queue
+        Issue.record(
+          "the canvas did not come to rest: \(q.pending.count) redraws to start, \(q.running) running, \(q.ready.count) to show, \(canvas.tasks.count) tasks, motion \(canvas.motion.phase)"
+        )
         return
       }
       tick()
