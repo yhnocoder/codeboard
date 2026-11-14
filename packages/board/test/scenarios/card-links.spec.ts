@@ -31,8 +31,8 @@
 //  noteLinkTip               resting on a link in a Note shows its whole address (a long one drawn as its site too) as the
 //                            board's tips do, after the tip delay, nothing flashing; leaving it or the wheel hides it; a link to a
 //                            card shows none
-//  refListLikePalette        the Note editor's [[ list marks its highlighted row as ⌘K's list does (a band, the accent's bar,
-//                            the words as they are), with the pointer on that row too, in Warm Ink light and Ink Wash dark
+//  refListRowKeepsLook       the Note editor's [[ list's highlighted row is the accent, its words in the accent's ink, and looks
+//                            the same with the pointer on it, in Warm Ink light and Ink Wash dark
 import * as fs from "node:fs";
 import type { Page } from "@playwright/test";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
@@ -865,9 +865,9 @@ test("refWhileEditorLoads", async () => {
   );
 });
 
-test("refListLikePalette", async () => {
-  // the Note editor's [[ list marks its rows as ⌘K's list does, in Warm Ink light and Ink Wash dark: the row the keys are on a band
-  // with the accent's bar and its words as they are, the band staying when the pointer rests on that row
+test("refListRowKeepsLook", async () => {
+  // the Note editor's [[ list, in Warm Ink light and Ink Wash dark: the row the keys are on is the accent with its words in the
+  // accent's ink, and stays so when the pointer rests on it (the theme's context-menu hover does not take its colour off)
   const seen: Record<string, unknown> = {};
   let ok = true;
   for (const [theme, lt] of [
@@ -891,8 +891,9 @@ test("refListLikePalette", async () => {
         .locator(sel)
         .first()
         .evaluate((e) => {
-          const s = getComputedStyle(e);
-          return { bg: s.backgroundColor, ink: s.color, bar: s.boxShadow };
+          const s = getComputedStyle(e),
+            bc = e.querySelector(".bc, small");
+          return { bg: s.backgroundColor, ink: s.color, path: bc ? getComputedStyle(bc).color : "" };
         });
     const p = (await pg.locator('.card[data-id="n0"] .nbody p').last().boundingBox())!;
     await pg.mouse.dblclick(p.x + p.width - 2, p.y + p.height / 2);
@@ -907,19 +908,23 @@ test("refListLikePalette", async () => {
     const r = (await sel.boundingBox())!;
     await pg.mouse.move(r.x + 30, r.y + r.height / 2);
     const pointer = await row(".md-pick.md-refs button.sel");
-    for (let i = 0; i < 3; i++) await pg.keyboard.press("Escape");
-    await idle(h);
-    await pg.mouse.click(1200, 850);
-    await pg.keyboard.press("ControlOrMeta+k");
-    await pg.keyboard.type("Block");
-    await pg.locator(".plist .cand.on").waitFor();
-    await idle(h);
-    const palette = await row(".plist .cand.on");
-    const same = (a: typeof keys) => a.bg === palette.bg && a.ink === palette.ink && a.bar === palette.bar;
-    ok &&= same(keys) && same(pointer);
-    seen[`${theme}-${lt ? "light" : "dark"}`] = { keys, pointer, palette };
+    await shot(h, `ref-list-${theme}-${lt ? "light" : "dark"}`);
+    const accent = await pg.evaluate(() => {
+      const t = document.createElement("i");
+      t.style.color = "var(--accent)";
+      document.body.append(t);
+      const c = getComputedStyle(t).color;
+      t.remove();
+      return c;
+    });
+    ok &&= keys.bg === accent && keys.bg === pointer.bg && keys.ink === pointer.ink && keys.path === pointer.path;
+    seen[`${theme}-${lt ? "light" : "dark"}`] = { keys, pointer, accent };
   }
-  check("refListLikePalette the [[ list's highlighted row looks as ⌘K's, with the pointer on it too", ok, seen);
+  check(
+    "refListRowKeepsLook the [[ list's highlighted row is the accent, and looks the same with the pointer on it",
+    ok,
+    seen,
+  );
 });
 
 const LONG_URL =
