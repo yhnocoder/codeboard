@@ -18,6 +18,8 @@ public final class EditorCore {
   /// a click is waiting for `revealAfterClick` before the caret's markers show
   public private(set) var revealPending = false
   private var mouse: (anchor: Range<Int>, unit: Unit)?
+  /// where the first press of a click sequence put the caret
+  private var firstPress: Int?
 
   /// the Markdown as it is: the only truth. The layout shows it, with an input method's marked text put in while one
   /// composes (never in here)
@@ -376,7 +378,11 @@ public final class EditorCore {
     revealPending = false
     joinable = false
     let unit: Unit = clicks >= 3 ? .paragraph : clicks == 2 ? .word : .character
-    let r = range(c.offset, unit)
+    // the second and third press of a double or triple click take the word or paragraph where the first put the caret:
+    // the layout may have changed under the pointer since (its markers shown)
+    let q = clicks >= 2 ? firstPress ?? c.offset : c.offset
+    if clicks == 1 { firstPress = c.offset }
+    let r = range(q, unit)
     if extend {
       mouse = (selection.anchor..<selection.anchor, unit)
       stay(extended(to: r))

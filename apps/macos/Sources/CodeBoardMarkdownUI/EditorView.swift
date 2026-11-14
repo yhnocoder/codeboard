@@ -10,6 +10,8 @@ public protocol MarkdownEditorDelegate: AnyObject {
   func editor(_ e: MarkdownEditorView, didResize size: CGSize)
   /// Esc: the user wants to stop editing
   func editorWantsToEnd(_ e: MarkdownEditorView)
+  /// a click on the static picture started editing
+  func editorDidBegin(_ e: MarkdownEditorView)
 }
 
 /// The editor as an NSView: a thin adapter that hands keys and the mouse to `EditorCore` and draws what it holds, with
@@ -190,17 +192,36 @@ public final class MarkdownEditorView: NSView {
   // MARK: the mouse
 
   public override func mouseDown(with e: NSEvent) {
-    guard isEditing else { return }
+    let p = convert(e.locationInWindow, from: nil)
+    let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
     window?.makeFirstResponder(self)
     settle?.invalidate()
-    let p = convert(e.locationInWindow, from: nil)
-    core.mouseDown(
-      at: CGPoint(x: p.x / zoom, y: p.y / zoom), clicks: e.clickCount, extend: e.modifierFlags.contains(.shift))
+    guard isEditing else {
+      entering = true
+      enter(at: at)
+      return
+    }
+    core.mouseDown(at: at, clicks: e.clickCount, extend: e.modifierFlags.contains(.shift))
     changed()
   }
 
+  /// A click on the static picture starts editing there: the caret where the picture was clicked (a drawn formula's
+  /// source opened), its markers shown at once, as the web editor reveals on focus with no button held. `at` is in the
+  /// layout's points
+  public func enter(at p: CGPoint) {
+    core.mouseDown(at: p, clicks: 1, extend: false)
+    core.mouseUp()
+    isEditing = true
+    core.settle()
+    changed()
+    delegate?.editorDidBegin(self)
+  }
+
+  /// the press that started editing is still down: its drag and release are not a selection
+  private var entering = false
+
   public override func mouseDragged(with e: NSEvent) {
-    guard isEditing else { return }
+    guard isEditing, !entering else { return }
     let p = convert(e.locationInWindow, from: nil)
     core.mouseDragged(to: CGPoint(x: p.x / zoom, y: p.y / zoom))
     changed()
@@ -208,6 +229,10 @@ public final class MarkdownEditorView: NSView {
   }
 
   public override func mouseUp(with e: NSEvent) {
+    if entering {
+      entering = false
+      return
+    }
     core.mouseUp()
     guard core.revealPending else { return }
     settle = Timer.scheduledTimer(withTimeInterval: MarkdownTiming.revealAfterClick, repeats: false) { [weak self] _ in
@@ -219,6 +244,12 @@ public final class MarkdownEditorView: NSView {
   }
 
   // MARK: keys
+
+  /// a key right after a click: the markers shown first, the key handled on that layout (editor/inline.ts)
+  func revealFirst() {
+    settle?.invalidate()
+    if core.revealPending, core.settle() { changed() }
+  }
 
   /// ⌘B ⌘I ⌘U ⌘E ⌘⇧` ⌘⇧S ⌘⇧X ⌘⇧H, ⌘0–⌘6, ⌘= ⌘- (editor/typora.ts)
   public override func performKeyEquivalent(with e: NSEvent) -> Bool {
@@ -249,11 +280,12 @@ public final class MarkdownEditorView: NSView {
 
   public override func keyDown(with e: NSEvent) {
     guard isEditing else { return super.keyDown(with: e) }
+    revealFirst()
     interpretKeyEvents([e])
   }
 
   public override func doCommand(by selector: Selector) {
-    settle?.invalidate()
+    revealFirst()
     if let action = Self.moves[selector] {
       action(core)
     } else if let k = Self.keys[selector] {

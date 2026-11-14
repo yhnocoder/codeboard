@@ -1,8 +1,8 @@
 // A window to try the Markdown component in, standing alone (no canvas, no board): a Markdown file laid out as a Note
 // card in the board's looks, with the editor over it. ⌘O opens another file; tools/markdown/make-demo.sh makes an app.
 //   swift run MarkdownDemo [file.md] [--width 420]
-// The toolbar switches editing and the static picture (also ⌘↩ and Esc), the look (Warm Ink, Ink Wash), light and dark,
-// and the zoom (50 to 200 %, also ⌥⌘= ⌥⌘- ⌥⌘0). Images
+// The card is a picture until clicked, as on the board: a click on it edits there, a click beside it or Esc ends editing.
+// The toolbar switches the look (Warm Ink, Ink Wash), light and dark, and the zoom (50 to 200 %, also ⌥⌘= ⌥⌘- ⌥⌘0). Images
 // are read relative to the file. Typing edits the text shown; the file is never written.
 import AppKit
 import CodeBoardMarkdown
@@ -125,8 +125,10 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   var zoomLabel: NSTextField!
   var images: [String: CGImage] = [:]
 
-  /// the paper under the card, the card's box and the editor inside it
+  /// the paper under the card, the card's box and the editor inside it; a click on the paper ends editing
   final class Page: NSView {
+    var onClick: () -> Void = {}
+    override func mouseDown(with event: NSEvent) { onClick() }
     var paper = NSColor.windowBackgroundColor
     var card = NSColor.textBackgroundColor
     var cardRect = CGRect.zero
@@ -155,6 +157,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     scroll.hasVerticalScroller = true
     scroll.hasHorizontalScroller = true
     scroll.documentView = page
+    page.onClick = { [weak self] in self?.editor?.isEditing = false }
     window.contentView = scroll
     window.toolbar = toolbar()
     menu()
@@ -207,12 +210,13 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
       e.core.relayout(layout)
     } else {
       e = MarkdownEditorView(layout: layout, caret: 0)
+      // a card shows its picture until it is clicked, as on the board
+      e.isEditing = false
       e.delegate = self
       e.image = { [weak self] slot in self?.image(slot) }
       editor = e
       page.addSubview(e)
     }
-    e.isEditing = editing
     let ink = card.theme.colors
     e.caretColor = NSColor(cgColor: ink.accent.cg) ?? .controlAccentColor
     e.selectionColor = NSColor(cgColor: ink.accent.alpha(0.26).cg) ?? .selectedTextBackgroundColor
@@ -223,19 +227,6 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     place()
     e.needsDisplay = true
     window.makeFirstResponder(e)
-  }
-
-  /// editing, or the static picture
-  var editing = true
-  var modeControl: NSSegmentedControl?
-  @objc func setMode(_ c: NSSegmentedControl) {
-    editing = c.selectedSegment == 0
-    editor?.isEditing = editing
-  }
-  @objc func toggleMode(_ s: Any?) {
-    editing.toggle()
-    modeControl?.selectedSegment = editing ? 0 : 1
-    editor?.isEditing = editing
   }
 
   /// The card at the zoom, centred, the editor at its padding
@@ -266,7 +257,8 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
 
   func editor(_ e: MarkdownEditorView, didResize size: CGSize) { place() }
   func editor(_ e: MarkdownEditorView, didChange source: String) { window.isDocumentEdited = true }
-  func editorWantsToEnd(_ e: MarkdownEditorView) { if editing { toggleMode(nil) } }
+  func editorWantsToEnd(_ e: MarkdownEditorView) { e.isEditing = false }
+  func editorDidBegin(_ e: MarkdownEditorView) {}
 
   // MARK: controls
 
@@ -322,10 +314,6 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     main.addItem(edit)
     let view = NSMenuItem()
     view.submenu = NSMenu(title: "View")
-    let mode = view.submenu!.addItem(
-      withTitle: "Edit / Display", action: #selector(toggleMode(_:)), keyEquivalent: "\r")
-    mode.target = self
-    view.submenu!.addItem(.separator())
     // ⌥⌘: ⌘= ⌘- ⌘0 are the editor's heading keys
     for (title, action, key) in [
       ("Zoom In", #selector(zoomIn(_:)), "="), ("Zoom Out", #selector(zoomOut(_:)), "-"),
@@ -342,7 +330,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
 
 extension Demo: NSToolbarDelegate {
   static let items: [NSToolbarItem.Identifier] = [
-    .init("mode"), .init("look"), .init("dark"), .flexibleSpace, .init("zoom"),
+    .init("look"), .init("dark"), .flexibleSpace, .init("zoom"),
   ]
   func toolbarDefaultItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] { Self.items }
   func toolbarAllowedItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] { Self.items }
@@ -351,12 +339,6 @@ extension Demo: NSToolbarDelegate {
   {
     let item = NSToolbarItem(itemIdentifier: id)
     switch id.rawValue {
-    case "mode":
-      let c = NSSegmentedControl(
-        labels: ["Edit", "Display"], trackingMode: .selectOne, target: self, action: #selector(setMode(_:)))
-      c.selectedSegment = 0
-      modeControl = c
-      item.view = c
     case "look":
       let c = NSSegmentedControl(
         labels: ["Warm Ink", "Ink Wash"], trackingMode: .selectOne, target: self, action: #selector(setLook(_:)))
