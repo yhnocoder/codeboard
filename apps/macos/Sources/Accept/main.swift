@@ -14,6 +14,7 @@ import CodeBoardModel
 import CodeBoardShell
 import ObjectiveC
 import WebKit
+import os
 
 setbuf(stdout, nil)
 // no App Nap: with the display asleep or the session locked, a background app's timers and sleeps would be stretched to
@@ -34,7 +35,13 @@ let shotScale = CGFloat(Double(env["ACCEPT_SCALE"] ?? "1") ?? 1)
 func now() -> CGEventTimestamp { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
 nonisolated(unsafe) var vPointer = NSPoint(x: 0, y: 0)  // screen coordinates, as NSEvent.mouseLocation
 nonisolated(unsafe) var vButtons = 0
-nonisolated(unsafe) var vFlags: NSEvent.ModifierFlags = []
+/// The modifier keys held, as `NSEvent.modifierFlags` reports them; read from any thread (SwiftUI reads it off the main
+/// thread), so behind a lock
+nonisolated let flagsLock = OSAllocatedUnfairLock(initialState: NSEvent.ModifierFlags())
+nonisolated var vFlags: NSEvent.ModifierFlags {
+  get { flagsLock.withLock { $0 } }
+  set { flagsLock.withLock { $0 = newValue } }
+}
 nonisolated(unsafe) var gKey: NSWindow?
 nonisolated(unsafe) weak var gMain: NSWindow?
 nonisolated(unsafe) var cursorName = "arrow"
@@ -202,13 +209,20 @@ extension NSMenu {
 }
 
 /// The app's pasteboard: a private one of this process, never the clipboard the person uses
-nonisolated(unsafe) let ownPasteboard = NSPasteboard(
-  name: NSPasteboard.Name("com.example.codeboard.accept.\(getpid())"))
+/// (taken by its name each time: `general` is asked for off the main thread too, by ShareKit)
+nonisolated let ownPasteboardName = NSPasteboard.Name("com.example.codeboard.accept.\(getpid())")
+nonisolated var ownPasteboard: NSPasteboard { NSPasteboard(name: ownPasteboardName) }
 extension NSPasteboard {
   @objc class func accGeneral() -> NSPasteboard { ownPasteboard }
+  /// the general pasteboard asked for by its name (WebKit does, for copy and paste in the Note pages) is this one too
+  @objc class func accNamed(_ name: NSPasteboard.Name) -> NSPasteboard {
+    accNamed(name == .general ? ownPasteboardName : name)
+  }
 }
 
 swizzle(NSPasteboard.self, #selector(getter: NSPasteboard.general), #selector(NSPasteboard.accGeneral), meta: true)
+swizzle(
+  NSPasteboard.self, NSSelectorFromString("pasteboardWithName:"), #selector(NSPasteboard.accNamed(_:)), meta: true)
 swizzle(NSEvent.self, #selector(getter: NSEvent.mouseLocation), #selector(NSEvent.accMouseLocation), meta: true)
 swizzle(
   NSEvent.self, #selector(getter: NSEvent.pressedMouseButtons), #selector(NSEvent.accPressedMouseButtons), meta: true)

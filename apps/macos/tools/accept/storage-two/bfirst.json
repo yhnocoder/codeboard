@@ -12,6 +12,11 @@
    "kind": "note",
    "look": "note",
    "md": "# Own words\nOnly on the first board."
+  },
+  {
+   "id": "csub",
+   "kind": "board",
+   "board": "bthird"
   }
  ],
  "place": {
@@ -26,6 +31,12 @@
    "y": 80,
    "w": 300,
    "h": 140
+  },
+  "csub": {
+   "x": 860,
+   "y": 80,
+   "w": 260,
+   "h": 180
   }
  },
  "links": [],

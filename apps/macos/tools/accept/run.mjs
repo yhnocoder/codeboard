@@ -20,9 +20,13 @@ const outRoot = path.join(mac, ".build-accept");
 const argv = process.argv.slice(2);
 const opt = (k) => (argv.includes(k) ? argv[argv.indexOf(k) + 1] : undefined);
 const only = opt("--only");
-const storage = path.resolve(opt("--storage") ?? path.join(here, "storage"));
 const valued = ["--only", "--storage", "--theme", "--scale"];
 const scenarios = argv.filter((a, i) => !a.startsWith("--") && !valued.includes(argv[i - 1]));
+// the storage folder: --storage, else the one the scenarios name in a "# storage: <folder>" line (relative to this
+// folder: storage-two), else storage/. Scenarios run together share one, so they must name the same
+const declared = [...new Set(scenarios.map((f) => /^# storage: *(\S+)/m.exec(fs.readFileSync(f, "utf8"))?.[1] ?? "storage"))];
+if (!opt("--storage") && declared.length > 1) throw new Error(`these scenarios need different storage folders (${declared.join(", ")}): run them apart`);
+const storage = path.resolve(opt("--storage") ?? path.join(here, declared[0] ?? "storage"));
 // the look under test and the pixels per point of recordings and shots, the same on both sides
 const lookEnv = {
   ...(opt("--theme") ? { ACCEPT_THEME: opt("--theme") } : {}),
