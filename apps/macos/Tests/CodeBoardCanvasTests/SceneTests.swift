@@ -36,7 +36,7 @@ private func segment(_ id: String, path: String? = "src/engine.py", first: Int, 
     #expect(
       l.rows.map(\.row) == [
         .line(segment: 0, number: 8, text: "def f():"), .gap(segment: 0, from: 9, to: 10),
-        .line(segment: 0, number: 11, text: "    return x"), .gap(segment: 0, from: 12, to: 19),
+        .line(segment: 0, number: 11, text: "    return x"), .gap(segment: 1, from: 12, to: 19),
         .line(segment: 1, number: 20, text: "def g():"),
       ])
     // 6 padding, 20 + 24 + 20 + 24 + 20 rows and gaps, 8 padding
