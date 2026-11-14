@@ -273,9 +273,8 @@ swizzle(
   func acceptFirstMouse(at p: NSPoint, in w: NSWindow) {
     guard let root = w.contentView?.superview else { return }
     let base = class_getMethodImplementation(NSView.self, #selector(NSView.acceptsFirstMouse(for:)))
-    var cls: AnyClass? =
-      root.hitTest(root.superview?.convert(w.convertPoint(fromScreen: p), from: nil) ?? .zero)
-      .map { object_getClass($0) } ?? nil
+    // the frame view has no superview: it hit-tests in window coordinates
+    var cls: AnyClass? = root.hitTest(w.convertPoint(fromScreen: p)).map { object_getClass($0) } ?? nil
     while let c = cls, c != NSView.self {
       let sel = #selector(NSView.acceptsFirstMouse(for:))
       if !firstMouse.contains(ObjectIdentifier(c)), let m = class_getInstanceMethod(c, sel),
@@ -619,24 +618,26 @@ swizzle(
 
   /// Where the caret is, as the text input system sees it in any editor (the native Note editor, a web view): its
   /// place in content coordinates and height, then twelve characters on each side with the selection in brackets,
-  /// "x y h <height> | <before>[<selected>]<after>", line breaks as ⏎ (the web side answers in the same shape)
-  func caret() -> String {
+  /// "x y h <height> | <before>[<selected>]<after>", line breaks as ⏎ (the web side answers in the same shape).
+  /// A WKWebView answers the synchronous calls with nothing (NSNotFound): it is an asynchronous text input client
+  /// (AppKit's NSTextInputClient_Async), so it is asked the same three questions that way
+  func caret() async -> String {
     guard let c = client else { return "no text client" }
-    let sel = c.selectedRange()
+    let input = TextInput(c)
+    let sel = await input.selectedRange()
     guard sel.location != NSNotFound else { return "no selection" }
-    var actual = NSRange()
-    func text(_ r: NSRange) -> String {
+    func text(_ r: NSRange) async -> String {
       guard r.length > 0 else { return "" }
-      return (c.attributedSubstring(forProposedRange: r, actualRange: &actual)?.string ?? "")
-        .replacingOccurrences(of: "\n", with: "⏎")
+      return (await input.text(r) ?? "").replacingOccurrences(of: "\n", with: "⏎")
     }
     let lo = max(0, sel.location - 12)
-    let before = text(NSRange(location: lo, length: sel.location - lo))
-    let after = text(NSRange(location: sel.location + sel.length, length: 12))
-    let r = c.firstRect(forCharacterRange: NSRange(location: sel.location, length: 0), actualRange: &actual)
+    let before = await text(NSRange(location: lo, length: sel.location - lo))
+    let after = await text(NSRange(location: sel.location + sel.length, length: 12))
+    let selected = await text(sel)
+    let r = await input.rect(NSRange(location: sel.location, length: 0))
     guard let w = win, let cv = w.contentView else { return "no window" }
     let top = cv.convert(w.convertPoint(fromScreen: NSPoint(x: r.minX, y: r.maxY)), from: nil)
-    return String(format: "%.1f %.1f h %.0f | ", top.x, top.y, r.height) + "\(before)[\(text(sel))]\(after)"
+    return String(format: "%.1f %.1f h %.0f | ", top.x, top.y, r.height) + "\(before)[\(selected)]\(after)"
   }
 
   var client: NSTextInputClient? {
@@ -792,7 +793,7 @@ swizzle(
     case "find":  // find x0 y0 x1 y1 before|mid|after words: where those words are on screen inside that box
       let box = CGRect(x: d(1), y: d(2), width: d(3) - d(1), height: d(4) - d(2))
       return a.count > 6 ? find(box, a[5], a[6...].joined(separator: " ")) : "find x0 y0 x1 y1 mode words"
-    case "caret": return caret()
+    case "caret": return await caret()
     case "hit": return hitInfo(vPointer)
     case "where":  // where bx by: the board point's place in the window (what move and click take), from the camera
       guard let c = canvas, let w = win, let cv = w.contentView else { return "no canvas" }
@@ -1105,3 +1106,63 @@ func screenState() -> String {
 }
 log("driver ready, fifo \(fifoPath), \(screenState())")
 runApp()
+
+/// The three questions caret asks a text input client: synchronously when it answers that way (an NSTextView), else
+/// through the asynchronous calls a WKWebView answers (selectedRangeWithCompletionHandler: and the like, which
+/// AppKit's text input context itself uses for it)
+@MainActor
+struct TextInput {
+  let client: NSTextInputClient
+  init(_ c: NSTextInputClient) { client = c }
+
+  private var object: NSObject? { client as? NSObject }
+  private func async(_ name: String) -> IMP? {
+    let s = NSSelectorFromString(name)
+    guard let o = object, o.responds(to: s) else { return nil }
+    return o.method(for: s)
+  }
+
+  func selectedRange() async -> NSRange {
+    let sync = client.selectedRange()
+    guard sync.location == NSNotFound, let o = object, let imp = async("selectedRangeWithCompletionHandler:") else {
+      return sync
+    }
+    typealias F = @convention(c) (NSObject, Selector, @escaping @convention(block) (NSRange) -> Void) -> Void
+    let f = unsafeBitCast(imp, to: F.self)
+    return await withCheckedContinuation { k in
+      f(o, NSSelectorFromString("selectedRangeWithCompletionHandler:")) { k.resume(returning: $0) }
+    }
+  }
+
+  func text(_ r: NSRange) async -> String? {
+    guard let o = object, let imp = async("attributedSubstringForProposedRange:completionHandler:") else {
+      var actual = NSRange()
+      return client.attributedSubstring(forProposedRange: r, actualRange: &actual)?.string
+    }
+    typealias F =
+      @convention(c) (
+        NSObject, Selector, NSRange, @escaping @convention(block) (NSAttributedString?, NSRange) -> Void
+      ) -> Void
+    let f = unsafeBitCast(imp, to: F.self)
+    return await withCheckedContinuation { k in
+      f(o, NSSelectorFromString("attributedSubstringForProposedRange:completionHandler:"), r) { s, _ in
+        k.resume(returning: s?.string)
+      }
+    }
+  }
+
+  func rect(_ r: NSRange) async -> NSRect {
+    guard let o = object, let imp = async("firstRectForCharacterRange:completionHandler:") else {
+      var actual = NSRange()
+      return client.firstRect(forCharacterRange: r, actualRange: &actual)
+    }
+    typealias F =
+      @convention(c) (NSObject, Selector, NSRange, @escaping @convention(block) (NSRect, NSRange) -> Void) -> Void
+    let f = unsafeBitCast(imp, to: F.self)
+    return await withCheckedContinuation { k in
+      f(o, NSSelectorFromString("firstRectForCharacterRange:completionHandler:"), r) { rect, _ in
+        k.resume(returning: rect)
+      }
+    }
+  }
+}
