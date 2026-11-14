@@ -131,4 +131,4 @@ App: Note, Text, Box, Section, Arrow, Sticker (gap: Image, Web), `|`, ⋯. Dock 
 dock rather than over it (main overlaps the two from about 1000 pt). gap: Search (no palette), Arrow Legend. ⋯: Undo ⌘Z, Redo ⇧⌘Z, `-`,
 Rename Board… (the board's name written in place in the sidebar, its row shown), Copy Path, Edit Mark… (its seal's
 popover in the sidebar; off for a folder's own board), `-`, Settings…, Theme ▸ (the app menu's), Keyboard
-Shortcuts ?; gap: Copy Diagnostics. The narrow toolbar's folded items are not made (the app's window has no narrow board beside an editor).
+Shortcuts ?, Copy Diagnostics (main's pick as a sheet; no log lines, the app keeps none). The narrow toolbar's folded items are not made (the app's window has no narrow board beside an editor).

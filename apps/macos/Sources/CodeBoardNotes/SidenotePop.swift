@@ -39,10 +39,11 @@ public final class SidenotePop: NSObject {
       }
     }
     /// A sidenote: text (`md`, `q` when a question) or code (`head`, `start`, `html`: each line's highlighted HTML).
-    /// `fixed`: shown, not changed here
+    /// `fixed`: shown, not changed here; `place`: it can be placed on the board as a card
     public struct Note: Encodable, Sendable {
       public var id: String
       public var fixed: Bool
+      public var place: Bool
       public var kind: String
       public var md: String?
       public var q: Ask?
@@ -50,11 +51,13 @@ public final class SidenotePop: NSObject {
       public var start: Int?
       public var html: [String]?
 
-      public static func text(_ id: String, _ md: String, q: Ask?, fixed: Bool = false) -> Note {
-        Note(id: id, fixed: fixed, kind: "text", md: md, q: q)
+      public static func text(_ id: String, _ md: String, q: Ask?, fixed: Bool = false, place: Bool = false) -> Note {
+        Note(id: id, fixed: fixed, place: place, kind: "text", md: md, q: q)
       }
-      public static func code(_ id: String, head: Head, start: Int, html: [String], fixed: Bool = false) -> Note {
-        Note(id: id, fixed: fixed, kind: "code", head: head, start: start, html: html)
+      public static func code(
+        _ id: String, head: Head, start: Int, html: [String], fixed: Bool = false, place: Bool = false
+      ) -> Note {
+        Note(id: id, fixed: fixed, place: place, kind: "code", head: head, start: start, html: html)
       }
     }
 
@@ -98,6 +101,8 @@ public final class SidenotePop: NSObject {
     case add(String, ask: Bool)
     case write(String, String)
     case delete(String)
+    /// Place on Board
+    case place(String)
     case done(String, Bool)
     case answer(String, String)
     case writeAnswer(String, answer: String, String)
@@ -244,6 +249,7 @@ public final class SidenotePop: NSObject {
     case "add": onAction?(.add(s("text"), ask: m["ask"] as? Bool ?? false))
     case "write": onAction?(.write(s("id"), s("text")))
     case "delete": onAction?(.delete(s("id")))
+    case "place": onAction?(.place(s("id")))
     case "done": onAction?(.done(s("id"), m["done"] as? Bool ?? false))
     case "answer": onAction?(.answer(s("id"), s("text")))
     case "writeAnswer": onAction?(.writeAnswer(s("id"), answer: s("answer"), s("text")))

@@ -285,4 +285,57 @@ import Testing
     }
     #expect(fm.fileExists(atPath: vault.url(of: "Other.board").path), "nothing else")
   }
+
+  /// ⋯ Copy Diagnostics (host diagnostics.ts): main's pick as a sheet on the window, the other windows going on; Cancel
+  /// copies nothing, the others the app's and system's versions, the vault and the board's size, and the board's JSON
+  /// with "+ Board JSON"; then main's toast. Only the test's own pasteboard is written
+  @Test(arguments: ["Cancel", "Copy Diagnostics", "Copy Diagnostics + Board JSON"])
+  func copyDiagnosticsAsksInASheetAndCopiesMainsLines(_ answer: String) async throws {
+    let s = try Setup()
+    defer { s.close() }
+    let w = s.w
+    await FullWindowEditTests().until("the board shown", in: w) { w.pane?.scene != nil }
+    let c = w.canvas
+    let pb = NSPasteboard(name: NSPasteboard.Name("diagnostics-\(UUID().uuidString)"))
+    defer { pb.releaseGlobally() }
+    pb.clearContents()
+    pb.setString("before", forType: .string)
+    c.pasteboard = pb
+    let item = try #require(c.moreMenu().items.last)
+    #expect(item.title == "Copy Diagnostics")
+    try #require(item.representedObject as? MenuAction).run()
+    await FullWindowEditTests().until("the question up", in: w) { w.window.attachedSheet != nil }
+    let content = try #require(w.window.attachedSheet?.contentView)
+    #expect(text(in: content).contains("Copy Diagnostics"), "\(text(in: content))")
+    #expect(NSApp.modalWindow == nil, "not the whole app's")
+    s.pressOther()
+    #expect(s.presses.count == 1, "the other window takes its press")
+    try #require(button(answer, in: content)).performClick(nil)
+    await FullWindowEditTests().until("the question gone", in: w) { w.window.attachedSheet == nil }
+    if answer == "Cancel" {
+      #expect(pb.string(forType: .string) == "before")
+      return
+    }
+    await FullWindowEditTests().until("copied", in: w) { pb.string(forType: .string) != "before" }
+    let lines = try #require(pb.string(forType: .string)).components(separatedBy: "\n")
+    #expect(lines.first?.hasPrefix("CodeBoard ") == true && lines.first?.contains(" · macOS ") == true, "\(lines)")
+    #expect(lines.contains("Workspace: \(s.vault.root.path(percentEncoded: false))"))
+    #expect(lines.contains("Board: “Parent” · 1 cards · 0 arrows · 0 sections"))
+    let json = lines.firstIndex(of: "Board JSON:")
+    if answer == "Copy Diagnostics" {
+      #expect(json == nil)
+    } else {
+      let i = try #require(json)
+      let copied = Data(lines[(i + 1)...].joined(separator: "\n").utf8)
+      #expect(copied == (try c.document?.board.encoded()), "board.json as it is written")
+    }
+    #expect(c.toastText == "Diagnostics copied to clipboard")
+  }
+
+  /// The home folder as ~ where a path begins with it (core tildify), and nowhere else
+  @Test func diagnosticsWriteTheHomeFolderAsTilde() {
+    let t = CanvasView.tildify(
+      "at /Users/ada/vault, \"/Users/ada\" and /Users/adam/x or /Users/ada", home: "/Users/ada/")
+    #expect(t == "at ~/vault, \"~\" and /Users/adam/x or ~")
+  }
 }
