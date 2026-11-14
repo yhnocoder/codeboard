@@ -193,6 +193,52 @@ enum Check {
       frame()
       for (k, v) in ticks where !v { failures.append("\(k): no") }
     }
+    // a picture selected by a click, then resized by its right grip, through the app's own event queue
+    if let e = demo.cards.first(where: { !$0.core.layout.images.isEmpty }), let content = demo.window.contentView,
+      let slot = e.core.layout.images.first
+    {
+      func win(_ q: CGPoint) -> CGPoint {
+        content.convert(
+          demo.page.convert(CGPoint(x: e.frame.minX + q.x * demo.zoom, y: e.frame.minY + q.y * demo.zoom), to: content),
+          to: nil)
+      }
+      // to the view under the point, as the window would hand them over: the check's window is never key, and a first
+      // click in a window that is not key only activates it
+      func click(_ type: NSEvent.EventType, _ q: CGPoint) {
+        let ev = NSEvent.mouseEvent(
+          with: type, location: win(q), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+          windowNumber: demo.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1,
+          pressure: type == .leftMouseUp ? 0 : 1)!
+        let hit = content.hitTest(content.convert(win(q), from: nil)) ?? e
+        switch type {
+        case .leftMouseDown: hit.mouseDown(with: ev)
+        case .leftMouseDragged: hit.mouseDragged(with: ev)
+        default: hit.mouseUp(with: ev)
+        }
+        frame()
+      }
+      clip.scroll(to: CGPoint(x: 0, y: max(0, e.frame.minY + slot.frame.minY * demo.zoom - 120)))
+      demo.scroll.reflectScrolledClipView(clip)
+      frame()
+      let mid = CGPoint(x: slot.frame.midX, y: slot.frame.midY)
+      // one click: it enters editing with the picture selected (a second click on it would open its source)
+      click(.leftMouseDown, mid)
+      click(.leftMouseUp, mid)
+      for _ in 0..<30 { frame() }
+      ticks["a click selects the picture"] = e.core.selectedImage != nil
+      autoreleasepool { render(content, to: out.appending(path: "image-selected.png")) }
+      let g = CGPoint(x: slot.frame.maxX, y: slot.frame.midY)
+      click(.leftMouseDown, g)
+      click(.leftMouseDragged, CGPoint(x: g.x - 40, y: g.y))
+      click(.leftMouseUp, CGPoint(x: g.x - 40, y: g.y))
+      for _ in 0..<10 { frame() }
+      ticks["a grip resizes and the picture stays selected"] = e.core.selectedImage != nil
+      autoreleasepool { render(content, to: out.appending(path: "image-resized.png")) }
+      e.undo(nil)
+      e.isEditing = false
+      frame()
+      for (k, v) in ticks where !v && k.contains("picture") { failures.append("\(k): no") }
+    }
     rest("after click, typing, zoom, leaving")
     rest("after click, typing, zoom, leaving, again")
     let afterAll = footprint()?.now ?? 0

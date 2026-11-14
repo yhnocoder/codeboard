@@ -325,18 +325,33 @@ public final class MarkdownEditorView: NSView {
     }
     // the selection over the text: under it, a code block's or a table header's fill would hide it. Translucent, so the
     // text reads through; in the static picture too (a selection made there before editing)
-    ctx.setFillColor(selectionColor.cgColor)
-    for r in core.selectionRects.map(slid) where r.intersects(clip) { ctx.fill(r) }
-    // a selected image: its ring and the two handles at its bottom corners; while one is dragged, the size it will get
-    if isEditing, let box = imageBox {
-      let ring = box.insetBy(dx: -2, dy: -2)
-      ctx.setStrokeColor(caretColor.cgColor)
-      ctx.setLineWidth(2 / zoom * (window?.backingScaleFactor ?? 2) / 2)
-      ctx.stroke(ring)
-      for h in handles(ring) {
-        ctx.setFillColor(caretColor.cgColor)
-        ctx.fill(h)
+    // (a selected image's source is selected underneath: no selection colour on it or its caption)
+    let picked = isEditing ? imageBox : nil
+    if picked == nil {
+      ctx.setFillColor(selectionColor.cgColor)
+      for r in core.selectionRects.map(slid) where r.intersects(clip) { ctx.fill(r) }
+    }
+    // a selected image: a thin accent ring on the picture itself, with its corners, and the width grips on its sides
+    // (markdown.css .md-imgframe::after, .md-imgrip)
+    if let box = picked {
+      let ring = caretColor.withAlphaComponent(0.75).cgColor
+      ctx.saveGState()
+      ctx.setStrokeColor(ring)
+      ctx.setLineWidth(1.5)
+      ctx.addPath(
+        CGPath(roundedRect: box.insetBy(dx: -0.75, dy: -0.75), cornerWidth: 5, cornerHeight: 5, transform: nil))
+      ctx.strokePath()
+      for h in handles(box) {
+        let pill = CGPath(roundedRect: h, cornerWidth: 3, cornerHeight: 3, transform: nil)
+        ctx.setShadow(offset: CGSize(width: 0, height: 1), blur: 3, color: CGColor(gray: 0, alpha: 0.18))
+        ctx.setFillColor(core.layout.theme.colors.surface.cg)
+        ctx.addPath(pill)
+        ctx.fillPath()
+        ctx.setShadow(offset: .zero, blur: 0, color: nil)
+        ctx.addPath(pill)
+        ctx.strokePath()
       }
+      ctx.restoreGState()
     }
     if let g = tableGrips, tableDrag == nil {
       ctx.setFillColor(core.layout.theme.colors.ink3.alpha(0.5).cg)
@@ -1006,7 +1021,7 @@ public final class MarkdownEditorView: NSView {
   /// the toolbar comes up once the selection has stood still for TOOLBAR_SETTLE, the button up
   private func scheduleToolbar() {
     let s = core.selection
-    guard !s.isEmpty, !holdsToolbar, core.marked == nil, tableDrag == nil, resizing == nil,
+    guard !s.isEmpty, !holdsToolbar, core.selectedImage == nil, core.marked == nil, tableDrag == nil, resizing == nil,
       MarkdownEditing.run(at: s.range.lowerBound, in: core.document)?.kind == .inline
     else {
       toolbarTimer?.invalidate()
@@ -1115,8 +1130,9 @@ public final class MarkdownEditorView: NSView {
       changed()
       return
     }
-    // a press on a selected image's picture may start dragging it out
-    if let box = imageBox, box.contains(at), e.clickCount == 1 {
+    // a press on a selected image's picture may start dragging it out (not on its grips, which overlap its edges: they
+    // resize it; taken as a click on the picture, their release opened its source)
+    if let box = imageBox, box.contains(at), e.clickCount == 1, !onImageGrip(at, box) {
       imageDragFrom = at
       return
     }
@@ -1153,11 +1169,7 @@ public final class MarkdownEditorView: NSView {
     }
     // a press on a selected image's handle: resizing it, symmetrically about its centre (editor/image.ts); a double-click
     // on a handle gives it back its full width
-    if let box = imageBox,
-      let k = handles(box.insetBy(dx: -2, dy: -2)).firstIndex(where: {
-        $0.insetBy(dx: -4 / zoom, dy: -4 / zoom).contains(at)
-      })
-    {
+    if let box = imageBox, let k = handles(box).firstIndex(where: { $0.insetBy(dx: -4, dy: -4).contains(at) }) {
       if e.clickCount == 2 {
         core.setImageWidth(nil)
         changed()
@@ -1209,13 +1221,27 @@ public final class MarkdownEditorView: NSView {
     return core.layout.images.first { $0.frame.intersects(atom) }?.frame ?? atom
   }
 
-  /// the two handles at a box's bottom corners, in the layout's points
-  private func handles(_ box: CGRect) -> [CGRect] {
-    let s = 10 / zoom
+  /// the width grips on the picture's two sides, centred (markdown.css .md-imgrip: 6 × 26, 3.75 outside its edge)
+  func handles(_ box: CGRect) -> [CGRect] {
+    let (w, h): (CGFloat, CGFloat) = (6, 26)
     return [
-      CGRect(x: box.minX - s / 2, y: box.maxY - s / 2, width: s, height: s),
-      CGRect(x: box.maxX - s / 2, y: box.maxY - s / 2, width: s, height: s),
+      CGRect(x: box.minX - 3.75 - w / 2 + 3, y: box.midY - h / 2, width: w, height: h),
+      CGRect(x: box.maxX + 3.75 - w / 2 - 3, y: box.midY - h / 2, width: w, height: h),
     ]
+  }
+
+  /// the image grips reach past the editor's edge (as on the web, into the card's padding): a press there is still the
+  /// editor's, not the card's under it (which ends editing)
+  public override func hitTest(_ point: NSPoint) -> NSView? {
+    if isEditing, let box = imageBox {
+      let p = convert(point, from: superview)
+      if onImageGrip(CGPoint(x: p.x / zoom, y: p.y / zoom), box), !bounds.contains(p) { return self }
+    }
+    return super.hitTest(point)
+  }
+
+  private func onImageGrip(_ at: CGPoint, _ box: CGRect) -> Bool {
+    handles(box).contains { $0.insetBy(dx: -4, dy: -4).contains(at) }
   }
 
   /// a press on the selected image, before it has moved far enough to drag it out
