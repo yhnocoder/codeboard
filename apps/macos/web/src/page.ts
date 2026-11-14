@@ -522,6 +522,15 @@ if (editMode) watchUi();
 // would overtake it)
 let keysSeen = 0;
 addEventListener("keydown", () => keysSeen++, true);
+// an Esc the input method took to cancel its composition: WebKit gives it as Escape with keyCode 229 (Chromium as
+// Process), and the editors' Esc would leave
+addEventListener(
+  "keydown",
+  (e) => {
+    if (e.key === "Escape" && e.keyCode === 229) e.stopImmediatePropagation();
+  },
+  true,
+);
 
 const edit = {
   /** The keydowns seen so far */

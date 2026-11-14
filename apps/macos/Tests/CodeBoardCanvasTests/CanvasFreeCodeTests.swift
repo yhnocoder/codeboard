@@ -86,6 +86,36 @@ private func freeBoard() -> Board {
 
   /// Typing at once after the double-click, before the editor is there, and leaving with ⌘↵ as fast: nothing is lost
   /// (Return indents, as CodeMirror does on the board)
+  /// Writing code through an input method: an Esc while "ni" is composed only cancels it (CanvasIMETests' Pinyin)
+  @Test func anEscDuringACompositionInCodeCancelsOnlyTheComposition() async throws {
+    Pinyin.install()
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer {
+      Pinyin.on = false
+      r.close()
+    }
+    let c = r.canvas
+    let card = r.rect("f")
+    let code = try #require(c.scene?.placed[cid("f")]?.code)
+    let row = try #require(code.layout.row(segment: 0, line: 3))
+    r.doubleClick(CGPoint(x: card.maxX - 10, y: card.minY + code.top + row.y + row.height / 2))
+    await r.editorReady()
+    func last() async -> String {
+      (try? await c.noteEditor.view.callAsyncJavaScript(
+        "return [...document.querySelectorAll('.cm-line')].at(-1)?.textContent ?? ''", contentWorld: .page) as? String)
+        ?? ""
+    }
+    Pinyin.on = true
+    r.press("ni")
+    await r.until("composing") { await last().hasSuffix("ni") }
+    r.press("\u{1b}")
+    // a key after it, with nothing composed: once it is written, whatever the Esc did has happened
+    r.press("1")
+    await r.until("1 written") { await last().hasSuffix("1") }
+    #expect(c.isEditing, "the Esc cancelled the composition only")
+    #expect(await last() == "    return run(ids)1", "nothing of the composition kept")
+  }
+
   @Test func keysTypedAtOnceAfterTheDoubleClickAreAllWritten() async throws {
     let r = try await Rig(freeBoard(), zoom: 1)
     defer { r.close() }
