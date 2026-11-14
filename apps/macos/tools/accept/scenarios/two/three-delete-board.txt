@@ -1,0 +1,23 @@
+# 子白板卡右键 Delete Board…：先问；取消还在；确认后那块白板没了。再看侧栏行右键的 Delete 会不会先问
+zoom 1
+center @csub+140,90
+move @csub+140,90 300
+menu
+pick Delete Board…
+wait 700
+info
+shot asking
+key esc
+wait 500
+info
+move @row:Second
+shot cancelled
+center @csub+140,90
+move @csub+140,90 300
+menu
+pick Delete Board…
+wait 700
+key return
+wait 1200
+info
+shot deleted

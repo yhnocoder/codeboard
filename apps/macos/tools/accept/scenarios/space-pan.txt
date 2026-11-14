@@ -1,0 +1,15 @@
+# 按住空格拖动平移白板（指针在卡上也是平移，不拖卡）；松开空格后拖卡是拖卡
+zoom 1
+center @cnote:c
+move @cnote+150,90 300
+rec sp
+key space:down
+mark
+down
+move @cnote+50,60 600
+up
+key space:up
+wait 400
+expect cam.x != was
+expect cnote.x ~ was
+stop

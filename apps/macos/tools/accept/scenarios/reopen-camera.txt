@@ -1,0 +1,10 @@
+# 关掉应用再打开（同一个 vault、同一个 defaults），白板还在关掉时的镜头上。断言只对 Mac：网页那边的回放宿主不存镜头
+zoom 1.7
+scroll 160 -90 12 still
+wait 900
+mark
+reopen
+wait 600
+mac: expect cam.zoom > 1.5
+mac: expect cam.x = was
+mac: expect cam.y = was

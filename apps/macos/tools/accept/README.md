@@ -42,15 +42,18 @@ node apps/macos/tools/accept/run.mjs --stop                  # 关掉留着的�
 | `drag <点> <点> [ms] [修饰键]` | 一次拖动 |
 | `scroll dx dy [步数] [still\|cmd]` | 双指滑动 dx、dy 个屏幕点（两边一样：100% 时就是同样多的白板单位）：开始、移动、结束，手指带着速度离开，所以会滑行（Mac app 自己滑；网页收到 macOS 发给浏览器的惯性滚轮事件）；`still` 是手指停住再离开，两边都不滑行，走的正好是 dx、dy；`cmd` 是 ⌘ 滚轮 |
 | `pinch <比例> [步数]` | 双指捏合，0.5 是放大到 1.5 倍 |
-| `key cmd+shift+z` / `key esc` | 按键（带修饰键或特殊键） |
+| `key cmd+shift+z` / `key esc` / `key space:down` … `key space:up` | 按键（带修饰键或特殊键）；`:down`、`:up` 只按下或只松开（按住空格拖动）；`key shift+/` 按键盘布局出 `?`（美式布局） |
+| `keys <字符>` | 一个一个键按出来（`?` 这类要 ⇧ 的字符按着 ⇧ 按），和 `type` 不同，走的是按键不是输入法 |
 | `type <文字>` / `ime ni\|nih\|你好` | 打字（经输入法提交，不经系统输入法）；`ime` 像拼音输入法：每一步组字随一个字母键，最后一段随选字的空格键上屏，输入法的调用都在那个键的处理里，和真输入法一样（网页这边没有按键，Chrome 不需要） |
-| `menu` / `pick 一级/二级` | 在指针处右键，读出菜单；选其中一项（像人一样移到那一项上再点，二级菜单在路上打开） |
+| `menu` / `pick 一级/二级` | 在指针处右键，读出菜单（Mac 上 app 里的网页，如 Sidenote 弹框，读的是它弹出的菜单）；选其中一项（像人一样移到那一项上再点，二级菜单在路上打开）。`pick` 不等那一项做完：它弹出确认框时下一行照常来 |
+| `dialog` / `button <标题>` | 读出现在弹着的框（Mac：app 级的模态框或窗口上的 sheet；网页：`[role=dialog]`）的字和按钮；点其中一个按钮。框弹着时 `key` 发给框 |
+| `reopen` | 退出 app 再打开，同一个 vault、同一个 defaults 域（关掉时存下的镜头、打开的白板都还在）；网页那边重开页面，回放的宿主不存镜头，所以镜头的断言写成 `mac:` |
 | `wait <ms>` | 等 |
 | `zoom <倍数>` | 在窗口中间捏合，直到两边缩放都是这个倍数（外观对比前先对齐） |
 | `center <目标>` | 无惯性地平移，直到这个目标在窗口中间 |
 | `rec <名字>` / `stop` | 开始、停止录像 |
 | `shot <名字> [<目标> W H]` | 截图；带目标时另从目标起剪下 W × H 个白板单位，两边剪的是白板上同一块，并排图逐部件对齐（整窗口图存为 `<名字>-window.png`） |
-| `hit` / `info` / `cam` / `canvas` | 指针下是什么 / 焦点、窗口、光标 / 相机 / 白板在窗口里的范围 |
+| `hit` / `info` / `cam` / `canvas` | 指针下是什么 / 焦点、窗口、光标、弹着的框 / 相机 / 白板在窗口里的范围 |
 | `mac: trace` | app 自己报的画布状态（CanvasTrace：各卡和 Section 画在哪、悬停、正在写、选中、first responder、层级），JSON |
 | `locate [id…]` | 打出卡和 Section 现在在两边白板上和窗口里的位置（不写 id 就是全部） |
 | `expect <对象> <比较> <值>` | 断言，见下 |
@@ -71,7 +74,7 @@ node apps/macos/tools/accept/run.mjs --stop                  # 关掉留着的�
 
 Mac 这边复制粘贴用的是这个进程自己的私有剪贴板，碰不到用 Mac 的人的剪贴板。网页那边不转发按键：VS Code 先拦下 ⌘D 这些键再转回给白板，这里白板自己接。
 
-`scenarios/` 里的场景：`b1/`（第 2 步第 1 批的交互验收）、`stale-hover`（指针不动时平移，连接点从原来的卡换到新到指针下的卡；捏合时跟着缩放）、`look-tour`、`look-tour2`（外观：各部件静止、悬停、选中、拖动中、编辑中各拍一张，只拍不判）、`section-follow`（拖动中 Section 跟着撑开）、`pan-over-edit`（编辑时平移经过这张卡不停）、`hover-tour`（经过各种卡头和 Section 标题时出现什么）、`new-text-flow`（不对照：新建、输入、拖进 Section 的完整流程）、`ime-esc`（拼音上屏后马上按 Esc，编辑要结束）、`label-edit`（箭头标签和 Section 标题的就地编辑：双击、右键 Edit Label、选中箭头按回车）、`summary-edit`（缩小推过摘要那一级，点摘要正文就地编辑）、`glide-stop`（只跑 Mac：滑行途中按下，相机立即停住）。
+`scenarios/` 里的场景：`b1/`（第 2 步第 1 批的交互验收）、`stale-hover`（指针不动时平移，连接点从原来的卡换到新到指针下的卡；捏合时跟着缩放）、`look-tour`、`look-tour2`（外观：各部件静止、悬停、选中、拖动中、编辑中各拍一张，只拍不判）、`section-follow`（拖动中 Section 跟着撑开）、`pan-over-edit`（编辑时平移经过这张卡不停）、`hover-tour`（经过各种卡头和 Section 标题时出现什么）、`new-text-flow`（不对照：新建、输入、拖进 Section 的完整流程）、`ime-esc`（拼音上屏后马上按 Esc，编辑要结束）、`label-edit`（箭头标签和 Section 标题的就地编辑：双击、右键 Edit Label、选中箭头按回车）、`summary-edit`（缩小推过摘要那一级，点摘要正文就地编辑）、`glide-stop`（只跑 Mac：滑行途中按下，相机立即停住）。`reopen-camera`（关掉 app 再打开，镜头不变）。第二轮交互验收的：`space-pan`、`space-pan2`（按住空格拖动平移）、`help-keys`（`?` 打开快捷键列表）、`sidenote-menu`、`badge-chevron`、`badge-chevron-iw`（Sidenote 标记和折叠箭头）、`sticker`、`dup-copy`、`paste-copy`、`paste-ref`、`fit-alt-f`、`hide-lines`、`layout-keep`，两块白板的 `two/two-delete-board`、`two/three-delete-board`、`two/two-alt-paste`。
 
 测试白板（`storage/blook.json`）有各种卡、带标签和样式的箭头、两个 Section、Sticker、Sidenote，每个会被摘要的项都带着摘要；右下远处一张 `cfar`，让白板大到缩得到摘要那一级。
 
@@ -94,7 +97,9 @@ Mac 这边是 `Accept` target（`apps/macos/Sources/Accept/main.swift`）：它�
 - 查焦点为什么丢了：`ACCEPT_TRACE_RESPONDER=1` 让日志记下每次换 first responder、是谁要求的（调用栈前几层）。`ACCEPT_TRACE_SCROLL=1` 记下每个滚动事件落到哪个视图。
 - 驱动自己的时钟不受 App Nap 影响，屏幕关着时等待和动作的时长照常。
 - 悬停提示（tooltip）、系统菜单的外观录不到：菜单只读出文字；Mac 的自定义光标只写出名字和大小，看不到样子。
-- `@id` 指得到卡、Section 和箭头标签；Sticker、Sidenote 要用相对某张卡的偏移去指。
+- `@id` 指得到卡、Section、箭头标签、Sidenote 标记和 Sticker；后三样 Mac 读不到辅助功能元素，借网页那边画在哪（两边都跑时才行）。
 - 响应时间的比较是粗的（缩成 160 × 104 再比），闪烁的光标不算变化；只出现一个光标的变化（比如网页上点进摘要正文）量不出来，用 `focus` 判。
 - 机器负载高时慢：一条场景两边约 5 分钟。看外观时用带目标的 `shot` 只剪需要的一块，别读整张并排图（费 token）。
+- 一行命令最多等 30 秒加它自己要的时长（`wait`、`move`…），超了这一行失败并写明。app 崩溃时（例如抛了 NSException）这一边立即失败，写出原因（stdout 里的那一行），后面的行不再跑。
+- 网页那边打开 storage 里的第一块白板；`ACCEPT_BOARD=<id 的一部分>` 换一块。网页按 `--scale` 放大滚轮的量（Chrome 收到的滚轮以设备像素计），两边平移的白板单位一样。
 - 一条场景约 20–40 秒（两边启动约 10 秒）；Mac 的构建第一次要几分钟。

@@ -1,0 +1,40 @@
+# Section 标题行：旁注标记、折叠箭头各点一次（展开时、折叠后），点到的是对的东西
+zoom 1
+center @sboxes+200,100
+move @sboxes+40,17 300
+wait 500
+shot row-open @sboxes+0,-10 260 40
+mark
+click @sn2:c
+wait 700
+shot badge-click @sboxes+0,-20 560 200
+expect sboxes.h ~ was
+key esc
+wait 400
+click @sinput+600,640
+move @sboxes+40,17 300
+wait 400
+mark
+click @sboxes+90,17
+wait 700
+expect sboxes.h < was
+move @sboxes+40,17 300
+wait 400
+shot row-folded @sboxes+0,-10 260 40
+mark
+click @sn2:c
+wait 700
+shot folded-badge @sboxes+0,-20 560 200
+expect sboxes.h ~ was
+key esc
+wait 400
+click @sinput+600,640
+move @sboxes+40,17 300
+wait 400
+mark
+click @sboxes+150,17
+wait 700
+expect sboxes.h > was
+move @sboxes+40,17 300
+wait 400
+shot row-again @sboxes+0,-10 260 40

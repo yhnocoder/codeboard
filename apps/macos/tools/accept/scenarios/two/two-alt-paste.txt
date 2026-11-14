@@ -1,0 +1,18 @@
+# 别的白板复制，⌥⌘V 贴成独立副本：在这边改，原来那块白板上不变
+zoom 1
+click @cown
+key cmd+c
+click @row:Second
+wait 1500
+click @cother+140,220
+key cmd+alt+v
+wait 900
+dbl @new+150,62
+wait 600
+type  llama
+key esc
+wait 900
+expect new.text has llama
+click @row:First
+wait 1500
+expect cown.text lacks llama

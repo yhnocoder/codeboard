@@ -1,0 +1,15 @@
+# ? 打开快捷键列表（两种发法：⇧/ 的按键，和字符 ?），Esc 关掉
+zoom 1
+center @sinput+600,640
+click @sinput+600,640
+key shift+/
+wait 700
+shot open1
+key esc
+wait 500
+keys ?
+wait 700
+shot open2
+key esc
+wait 500
+shot closed

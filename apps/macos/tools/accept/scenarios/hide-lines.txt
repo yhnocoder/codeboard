@@ -1,0 +1,12 @@
+# 点代码卡行号选两行，按 H 隐藏；再看隐藏行的提示
+zoom 1
+center @ccode+230,150
+rec h
+click @ccode+20,62
+click @ccode+20,80 shift
+wait 300
+shot selected @ccode+-10,-10 480 340
+key h
+wait 600
+shot hidden @ccode+-10,-10 480 340
+stop

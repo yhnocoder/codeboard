@@ -1,0 +1,16 @@
+# 同一块白板 ⌘C ⌘V：出现 Copy | Reference 小条，不点就是 Copy；改副本，原卡不变
+zoom 1
+center @cnote+150,180
+click @cnote+250,110
+key cmd+c
+key cmd+v
+wait 700
+shot chip @cnote+-20,-20 440 380
+dbl @new+150,62
+wait 600
+type  walrus
+key esc
+wait 900
+expect new.text has walrus
+expect cnote.text lacks walrus
+shot after @cnote+-20,-20 440 380

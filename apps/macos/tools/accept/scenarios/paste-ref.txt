@@ -1,0 +1,17 @@
+# 同一块白板 ⌘C ⌘V 后在小条上点 Reference：改副本，原卡跟着变
+zoom 1
+center @cnote+150,180
+click @cnote+250,110
+key cmd+c
+key cmd+v
+wait 700
+click @new:br+-48,23
+wait 600
+dbl @new+150,62
+wait 600
+type  otter
+key esc
+wait 900
+expect new.text has otter
+expect cnote.text has otter
+shot after @cnote+-20,-20 440 380

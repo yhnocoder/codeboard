@@ -1,0 +1,17 @@
+# 贴纸右键菜单：Size 和 Detach；Detach 后拖动原来那张卡，贴纸不跟着走
+zoom 1
+center @cnote:c
+move @cnote+131,-9 300
+wait 300
+shot before @cnote+-20,-60 360 240
+menu
+pick Size/48px
+wait 500
+shot sized @cnote+-20,-60 360 240
+move @cnote+131,-9 300
+menu
+pick Detach from Card
+wait 500
+drag @cnote+250,110 @cnote+250,190 700
+wait 600
+shot detached @cnote+-20,-60 360 320

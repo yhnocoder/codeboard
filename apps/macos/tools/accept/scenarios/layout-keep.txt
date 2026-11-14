@@ -1,0 +1,92 @@
+# 进入编辑后等存盘、指针扫过工具栏和侧栏（会引起布局但大小不变），编辑不退出、接着打的字进得去
+zoom 1
+center @lnote:c
+dbl @lnote:c
+wait 600
+type  q1
+wait 2500
+move @ui.zoomout 600
+move @lnote:c 600
+wait 300
+mac: expect focus has OnBoardField
+type  q2
+wait 300
+mac: expect focus has OnBoardField
+key esc
+wait 500
+center @sboxes+28,12
+dbl @sboxes+28,12
+wait 600
+type  q1
+wait 2500
+move @ui.zoomout 600
+move @sboxes+28,12 600
+wait 300
+mac: expect focus has OnBoardField
+type  q2
+wait 300
+mac: expect focus has OnBoardField
+key esc
+wait 500
+center @cnote+150,90
+dbl @cnote+150,90
+wait 600
+type  q1
+wait 2500
+move @ui.zoomout 600
+move @cnote+150,90 600
+wait 300
+mac: expect focus has EditorWebView
+type  q2
+wait 300
+mac: expect focus has EditorWebView
+key esc
+wait 500
+center @ctext+130,30
+dbl @ctext+130,30
+wait 600
+type  q1
+wait 2500
+move @ui.zoomout 600
+move @ctext+130,30 600
+wait 300
+mac: expect focus has EditorWebView
+type  q2
+wait 300
+mac: expect focus has EditorWebView
+key esc
+wait 500
+center @cyellow+65,30
+dbl @cyellow+65,30
+wait 600
+type  q1
+wait 2500
+move @ui.zoomout 600
+move @cyellow+65,30 600
+wait 300
+mac: expect focus has EditorWebView
+type  q2
+wait 300
+mac: expect focus has EditorWebView
+key esc
+wait 500
+center @cfree+200,46
+dbl @cfree+200,46
+wait 600
+type  q1
+wait 2500
+move @ui.zoomout 600
+move @cfree+200,46 600
+wait 300
+mac: expect focus has EditorWebView
+type  q2
+wait 300
+mac: expect focus has EditorWebView
+key esc
+wait 500
+expect cnote.text has q1
+expect cnote.text has q2
+expect cyellow.text has q1
+expect cyellow.text has q2
+expect cfree.text has q1
+expect cfree.text has q2
