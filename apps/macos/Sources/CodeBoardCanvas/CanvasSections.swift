@@ -342,7 +342,7 @@ extension CanvasView {
 
   /// The Sections the dragged cards would go into, other than the ones they are in: tinted while the drag runs
   /// (state/sections.ts dropSections, .sect.drop: an ink edge at 42 %, a wash at 6.5 %, a 4 point ring at 7 %; Ink Wash
-  /// the wash only). Only a layer of their own changes
+  /// the wash only), over the frame as it is shown, so following it as it eases. Only a layer of their own changes
   func showDrop(_ m: Move) {
     guard let doc = document, let s = scene else { return }
     let dx = m.d.dx.rounded()
@@ -360,12 +360,19 @@ extension CanvasView {
     }
     guard lit != dropLit else { return }
     dropLit = lit
+    dropFrames = frames
+    drawDrop()
+  }
+
+  /// The drop tint over each lit Section where its frame is shown now
+  func drawDrop() {
+    guard let s = scene else { return }
     let ink = theme.ink
     let tray = theme.frame == .tray
     withoutAnimation {
       dropLayer.sublayers = nil
-      for f in s.frames where lit.contains(f.id) {
-        let r = frames[f.id] ?? f.rect
+      for f in s.frames where dropLit.contains(f.id) {
+        let r = dragShown[f.id] ?? dropFrames[f.id] ?? f.rect
         let radius = tray ? theme.sectionRadius : 2
         if tray {
           let ring = CAShapeLayer()
@@ -391,6 +398,7 @@ extension CanvasView {
     frameEaseAt = nil
     guard !dropLit.isEmpty else { return }
     dropLit = []
+    dropFrames = [:]
     withoutAnimation { dropLayer.sublayers = nil }
   }
 
@@ -501,6 +509,7 @@ extension CanvasView {
     frameEaseAt = time
     let q = min(1, camera.zoom * backing)
     func px(_ v: CGFloat) -> CGFloat { (v * q).rounded() / q }
+    var lit = false
     withoutAnimation {
       for (i, f) in s.frames.enumerated() where i < ls.count {
         guard var e = frameEase[f.id] else { continue }
@@ -522,8 +531,10 @@ extension CanvasView {
           let title = s.items[ti].rect
           items[ti].box.position = CGPoint(x: title.midX + r.minX - f.rect.minX, y: title.midY + r.minY - f.rect.minY)
         }
+        if dropLit.contains(f.id) { lit = true }
       }
     }
+    if lit { drawDrop() }
   }
 
 }

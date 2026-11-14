@@ -197,6 +197,38 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     #expect(r.doc.board.card(cid("m1"))?.section == nil)
   }
 
+  /// A card dragged into a Section past its edge: the drop tint lies over the frame on every frame as the frame eases
+  /// round the card (.sect.drop is the frame's own class on the board)
+  @Test func theDropTintFollowsTheFrameAsItEases() async throws {
+    let r = try await Rig(sections(), zoom: 0.5)
+    defer { r.close() }
+    let c = r.canvas
+    let g = gid("g1")
+    let fi = try #require(c.scene?.frames.firstIndex { $0.id == g })
+    let start = try #require(c.scene?.frames[fi].rect)
+    var t = c.now
+    c.steppedClock = { t }
+    defer { c.steppedClock = nil }
+    let from = r.centre("n1")
+    let to = CGPoint(x: 120, y: 880)
+    r.send(r.mouse(.leftMouseDown, from))
+    for k in 1...10 {
+      let f = CGFloat(k) / 10
+      r.send(r.mouse(.leftMouseDragged, CGPoint(x: from.x + (to.x - from.x) * f, y: from.y + (to.y - from.y) * f)))
+      for _ in 0..<4 {
+        t += 1.0 / 120
+        c.tick(at: t)
+        guard c.dropLit == [g] else { continue }
+        let shown = c.sections.sublayers![fi].frame
+        let wash = (c.dropLayer.sublayers?.last as? CAShapeLayer)?.path?.boundingBox ?? .null
+        #expect(abs(wash.maxY - shown.maxY) < 0.5 && abs(wash.minX - shown.minX) < 0.5, "tint \(wash), frame \(shown)")
+      }
+    }
+    #expect(c.sections.sublayers![fi].frame.maxY > start.maxY, "the frame grew")
+    r.send(r.mouse(.leftMouseUp, to))
+    await r.settle()
+  }
+
   /// Any open Section's edge or corner resizes it, selected or not (Sections.tsx .sedge)
   @Test func aSectionIsResizedByItsEdgeWithoutBeingSelected() async throws {
     let r = try await Rig(sections(), zoom: 1)

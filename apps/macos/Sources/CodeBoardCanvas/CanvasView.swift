@@ -201,6 +201,8 @@ public final class CanvasView: NSView {
   var toastShown = 0
   /// The Sections a drag would drop cards into, tinted under the cards
   let dropLayer = CALayer()
+  /// The frames as the drop tint was worked out (the dragged Sections moved)
+  var dropFrames: [SectionID: CGRect] = [:]
   /// Sidenote markers free on the board (a card's and a Section's are in their own layers)
   let freeMarks = CALayer()
   /// Stickers free on the board, over the cards (a card's are in its own layer), as laid out, their layers in order
