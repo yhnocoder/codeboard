@@ -516,7 +516,7 @@ extension Optional where Wrapped: Collection {
 }
 
 /// What an entry's picture was drawn from
-struct ShelfPictureKey: Equatable {
+package struct ShelfPictureKey: Equatable {
   var entry: ShelfEntry
   var look: Theme.ID
   var dark: Bool

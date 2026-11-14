@@ -78,6 +78,23 @@ func webBoard() -> Board {
     }
   }
 
+  @Test func theLastLineBreaksAtAWordAndAnEllipsisFollowsAsLineClampDoes() {
+    let font = Font(NSFont.systemFont(ofSize: 12))
+    let s = "requires batching sufficiently many requests at a time. However, existing systems struggle"
+    let one = Drawing.wrap("requires batching sufficiently many requests at a time.", font, .black, width: 1000, max: 1)
+    let w = CTLineGetTypographicBounds(one[0], nil, nil, nil) + 30
+    let lines = Drawing.wrap(s, font, .black, width: w, max: 1)
+    // "However," does not fit: the line ends at "time." and the ellipsis comes after it, not inside a word
+    let dots = Drawing.wrap(
+      "requires batching sufficiently many requests at a time.…", font, .black, width: 1000, max: 1)
+    #expect(lines.count == 1)
+    #expect(
+      abs(CTLineGetTypographicBounds(lines[0], nil, nil, nil) - CTLineGetTypographicBounds(dots[0], nil, nil, nil))
+        < 0.5)
+    // all of it fits: no ellipsis
+    #expect(Drawing.wrap("short", font, .black, width: w, max: 1).count == 1)
+  }
+
   @Test func aPastedLinkIsAWebCardWhosePageIsReadOnceWithItsPictureKeptOneStep() async throws {
     let board = NSPasteboard(name: NSPasteboard.Name("web-\(UUID().uuidString)"))
     let r = try await Rig(webBoard(), zoom: 1, pasteboard: board)

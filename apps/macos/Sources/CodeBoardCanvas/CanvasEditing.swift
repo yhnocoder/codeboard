@@ -131,7 +131,7 @@ extension CanvasView {
 
   /// Makes the scene again from the document's board: drawings that did not change are reused with their bitmaps; what
   /// changed is measured and drawn (at the zoom shown, when in view) before anything is swapped in
-  func refresh() {
+  package func refresh() {
     guard let doc = document, let (vb, vault) = shown, let old = scene else { return }
     guard gesture == nil else {
       pendingRefresh = true

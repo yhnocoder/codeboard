@@ -181,6 +181,26 @@ enum StickerArt {
     return l
   }
 
+  /// The soft shadow under one on the board or a card (.stk.canvas .glyph: drop-shadow(0 1px 2px)): a built-in's
+  /// follows its outline; an emoji's its own shape, drawn once with the text (rasterized, so moving it draws nothing)
+  static func shadow(_ l: CALayer, _ g: Sticker.Glyph, size: CGFloat, pixels: CGFloat) {
+    var target = l
+    var k: CGFloat = 1
+    if case .emoji = g, let text = l.sublayers?.first {
+      // in the text's own 24 units
+      target = text
+      k = size / 24
+      text.shouldRasterize = true
+      text.rasterizationScale = max(1, pixels * k)
+    } else {
+      l.shadowPath = outline(g, size: size, out: 0)
+    }
+    target.shadowColor = CGColor(gray: 0, alpha: 1)
+    target.shadowOpacity = 0.18
+    target.shadowRadius = 1 / k
+    target.shadowOffset = CGSize(width: 0, height: 1 / k)
+  }
+
   /// Another size for a glyph's layer: its transform alone changes
   static func resize(_ l: CALayer, _ g: Sticker.Glyph, size: CGFloat) {
     let k = size / 24

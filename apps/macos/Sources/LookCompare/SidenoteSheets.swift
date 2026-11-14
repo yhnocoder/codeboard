@@ -103,7 +103,7 @@ enum SidenoteSheets {
     init(
       root: URL, notes: NoteRenderer, theme: Theme, zoom: CGFloat = 1, board: Board = SidenoteSheets.board(),
       others: [(String, Board)] = [("Other", SidenoteSheets.other())], size: CGSize = SidenoteSheets.size,
-      centre: CGPoint, sheet: String = "Sheet"
+      centre: CGPoint, sheet: String = "Sheet", images: [URL] = []
     ) async throws {
       let fm = FileManager.default
       try? fm.removeItem(at: root)
@@ -111,6 +111,11 @@ enum SidenoteSheets {
         let package = root.appending(path: "\(name).board")
         try fm.createDirectory(at: package.appending(path: Vault.imagesFolder), withIntermediateDirectories: true)
         try b.encoded().write(to: package.appending(path: Vault.boardFileName))
+        if name == sheet {
+          for i in images {
+            try fm.copyItem(at: i, to: package.appending(path: Vault.imagesFolder).appending(path: i.lastPathComponent))
+          }
+        }
       }
       let file = root.appending(path: "\(sheet).board").appending(path: Vault.boardFileName)
       doc = try BoardDocument { file }

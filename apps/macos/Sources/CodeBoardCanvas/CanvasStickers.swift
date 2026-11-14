@@ -116,13 +116,7 @@ extension CanvasView {
     l.name = "sticker"
     l.position = s.frame.origin
     l.zPosition = 4
-    if !s.line {
-      l.shadowPath = StickerArt.outline(s.glyph, size: s.frame.height, out: 0)
-      l.shadowColor = CGColor(gray: 0, alpha: 1)
-      l.shadowOpacity = 0.18
-      l.shadowRadius = 1
-      l.shadowOffset = CGSize(width: 0, height: 1)
-    }
+    if !s.line { StickerArt.shadow(l, s.glyph, size: s.frame.height, pixels: backing * camera.zoom) }
     return l
   }
 
@@ -236,7 +230,7 @@ extension CanvasView {
         let size = min(max((d.from.height + max(dx, dy)).rounded(), Sticker.sizes.lowerBound), Sticker.sizes.upperBound)
         d.to = CGRect(origin: d.from.origin, size: StickerArt.boxSize(s.glyph, size: size))
         StickerArt.resize(l, s.glyph, size: size)
-        l.shadowPath = StickerArt.outline(s.glyph, size: size, out: 0)
+        if case .builtin = s.glyph { l.shadowPath = StickerArt.outline(s.glyph, size: size, out: 0) }
       } else {
         if !d.moved {
           // over every card while it moves
@@ -432,6 +426,8 @@ package final class StickerPalette: NSView {
     didSet { if hover != oldValue { draw() } }
   }
   private let glass = NSVisualEffectView()
+  /// Over the glass: the face and the cells (layers added to the palette's own layer could end up under the glass)
+  private let content = FlippedView()
   private let face = CALayer()
   private var cells: [CALayer] = []
   /// Where the system's emoji picker types its emoji
@@ -466,7 +462,10 @@ package final class StickerPalette: NSView {
     field.alphaValue = 0
     field.onText = { [weak self] s in self?.typed(s) }
     addSubview(field)
-    layer?.addSublayer(face)
+    content.frame = bounds
+    content.wantsLayer = true
+    addSubview(content)
+    content.layer?.addSublayer(face)
     let t = theme
     for (i, r) in Self.rects().enumerated() {
       let cell = CALayer()
@@ -493,7 +492,7 @@ package final class StickerPalette: NSView {
       }
       art.position = CGPoint(x: (r.width - art.bounds.width) / 2, y: (r.height - art.bounds.height) / 2)
       cell.addSublayer(art)
-      layer?.addSublayer(cell)
+      content.layer?.addSublayer(cell)
       cells.append(cell)
     }
     draw()
@@ -637,7 +636,7 @@ package final class StickerSwatches: NSView {
   let current: String
   let theme: Theme
 
-  init(theme: Theme, own: String, current: String) {
+  package init(theme: Theme, own: String, current: String) {
     self.theme = theme
     self.current = current.uppercased()
     let palette = Sticker.palette.map { $0.uppercased() }

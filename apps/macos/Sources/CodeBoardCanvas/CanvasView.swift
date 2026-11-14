@@ -158,7 +158,7 @@ public final class CanvasView: NSView {
   package var shelfPanel: ShelfPanel?
   package var shelfPreview: ShelfPreview?
   package var previewing: String?
-  var shelfPictures: [String: (key: ShelfPictureKey, image: CGImage)] = [:]
+  package var shelfPictures: [String: (key: ShelfPictureKey, image: CGImage)] = [:]
   var shelfFlights: [CALayer] = []
   package var shelfHovered: String?
   let shelfHome = CALayer()

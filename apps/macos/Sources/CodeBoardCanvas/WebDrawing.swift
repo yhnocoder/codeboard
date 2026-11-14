@@ -293,13 +293,25 @@ extension Drawing {
     var at = 0
     while at < n, out.count < max {
       if out.count == max - 1 {
-        let rest = CTTypesetterCreateLine(ts, CFRange(location: at, length: n - at))
-        if CTLineGetTypographicBounds(rest, nil, nil, nil) > width + 0.5 {
+        // as -webkit-line-clamp: the last line breaks where it would, and "…" follows it when more text does
+        var k =
+          breakAll
+          ? CTTypesetterSuggestClusterBreak(ts, at, Double(width)) : CTTypesetterSuggestLineBreak(ts, at, Double(width))
+        if k <= 0 { k = 1 }
+        guard at + k < n else {
+          out.append(CTTypesetterCreateLine(ts, CFRange(location: at, length: n - at)))
+          break
+        }
+        let head = (s as NSString).substring(with: NSRange(location: at, length: k))
+        let line = CTLineCreateWithAttributedString(
+          CFAttributedStringCreate(
+            nil, (head.trimmingCharacters(in: .whitespaces) + "…") as CFString, attrs as CFDictionary))
+        if CTLineGetTypographicBounds(line, nil, nil, nil) > width + 0.5 {
           let dots = CTLineCreateWithAttributedString(
             CFAttributedStringCreate(nil, "…" as CFString, attrs as CFDictionary))
-          out.append(CTLineCreateTruncatedLine(rest, width, .end, dots) ?? rest)
+          out.append(CTLineCreateTruncatedLine(line, width, .end, dots) ?? line)
         } else {
-          out.append(rest)
+          out.append(line)
         }
         break
       }
