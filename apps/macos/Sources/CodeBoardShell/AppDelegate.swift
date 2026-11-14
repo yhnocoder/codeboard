@@ -42,6 +42,11 @@ import CodeBoardModel
     appearance = follow(NSApp, into: shell)
     if let saved, FileManager.default.fileExists(atPath: saved.vault) {
       open(URL(filePath: saved.vault, directoryHint: .isDirectory), restoring: saved)
+    } else if saved == nil, let first = Bundle.main.object(forInfoDictionaryKey: "CodeBoardFirstVault") as? String,
+      FileManager.default.fileExists(atPath: first)
+    {
+      // a build made with a vault to start in (make-app.sh's FIRST_VAULT): opened on its first launch only
+      open(URL(filePath: first, directoryHint: .isDirectory), restoring: nil)
     }
     let (window, panes) = makeMainWindow(shell: shell)
     self.window = window
