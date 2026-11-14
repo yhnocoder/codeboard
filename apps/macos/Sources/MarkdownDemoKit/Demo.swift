@@ -532,6 +532,18 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
         // a card shows its picture until it is clicked, as on the board
         e.isEditing = false
         e.delegate = self
+        // the other half of a move across Notes goes back (or comes again) with this one
+        e.core.onLinkedStep = { [weak self] link, undo in
+          guard let self else { return false }
+          for c in self.cards where c !== e {
+            if undo ? c.core.undoLinked(link) : c.core.redoLinked(link) {
+              c.coreChanged()
+              self.editor(c, didChange: c.core.source)
+              return true
+            }
+          }
+          return false
+        }
         let folder = n.folder
         e.image = { [weak self] slot in self?.image(slot, in: folder) }
         e.codeLanguages = [

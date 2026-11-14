@@ -674,7 +674,7 @@ public protocol MarkdownEditorDelegate: AnyObject {
 
 照 origin/main 的做法（`packages/board/src/md/blockmove.ts`、`packages/markdown/src/editor/moveblocks.ts`）：⌘ 手势从按下 ⌘ 起就归宿主，因为它跨 Note、跨画布；组件只回答问题、做源码修改，不知道卡片和画布。
 
-- 组件提供：某一点下是哪几块（`blocks(at:)`，有跨块选区时是整段）；这几块在 Note 里的框（`frames(of:)`，Note 的点）；这几块的图（`picture(of:scale:)`，同一份绘制代码，太高的截一段）；在排版里把几块标成淡（dim，原处留影）、离开（away，文字合拢）或已落下（gone），不改源码；`dropIndex(at:)` 和宿主要求的插入线；源码修改 `take(blocks) -> Part`、`put(Part, at:)`、`move(blocks, to:)`，各是一个撤销步骤。纯源码的剪切、插入、移动（列表记号互换）已在 `MarkdownSourceOps`。
+- 组件提供：某一点下是哪几块（`blocks(at:)`，有跨块选区时是整段）；这几块在 Note 里的框（`frames(of:)`，Note 的点）；这几块的图（`picture(of:scale:)`，同一份绘制代码，太高的截一段）；在排版里把几块标成淡（dim，原处留影）、离开（away，文字合拢）或已落下（gone），不改源码；`dropIndex(at:)` 和宿主要求的插入线；源码修改 `take(blocks) -> Part`、`put(Part, at:)`、`move(blocks, to:)`，各是一个撤销步骤。跨 Note 的移动是一步：宿主给这次移动一个 id，`take(blocks, link: id)` 和另一张 Note 的 `put(Part, at:, link: id)` 都带上它；一张 Note 要撤销或重做带 link 的一步时，先调 `onLinkedStep(id, undo)`，宿主在另一张 Note 上调 `undoLinked(id)` / `redoLinked(id)` 并返回成没成；另一张 Note 顶上有自己的步骤、做不了时，这一张也不动，所以内容不会两边都有或两边都没有。真正的 app 若有整块白板的撤销栈，可以直接把这两步记成白板的一条，不用这个钩子。纯源码的剪切、插入、移动（列表记号互换）已在 `MarkdownSourceOps`。
 - 宿主负责：⌘ 悬停的轮廓、按下后的判断（拖动或单击）、浮起的副本、缩略图、跨 Note 的插入线、放回（Esc、⌘Z，不占撤销步骤）、落下。同一个 Note 且编辑器开着时调 `move`；跨 Note 时在源 Note 上 `take`、目标上 `put`，编辑器没开的 Note 直接用 `MarkdownSourceOps` 改保存的源码。整块不能放到画布上变成新卡（main 也没有）。
 - 引用和链接作为“激活”交给宿主：`activated(.ref(label, target) | .link(url) | .cardLink(url), rect, clickCount, modifiers) -> Bool`，返回 true 表示宿主接了（光标不动），false 时组件打开源码或链接框。去那里还是原地预览由宿主决定。
 - 图片拖出：组件开始一个 NSDraggingSession，剪贴板里是它的 Markdown 和图；拖到 Note 外并以移动结束时，组件删掉源码（连同相邻的空格），一个撤销步骤。

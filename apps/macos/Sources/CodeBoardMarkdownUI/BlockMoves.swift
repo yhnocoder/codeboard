@@ -58,18 +58,20 @@ extension EditorCore {
 
   var part: MarkdownSourceOps.Part { MarkdownSourceOps.Part(source: source, layout: layout.info) }
 
-  /// Takes blocks out of the Note: what they were (their Markdown and layout info), one undo step
-  public func take(_ blocks: Range<Int>) -> MarkdownSourceOps.Part? {
+  /// Takes blocks out of the Note: what they were (their Markdown and layout info), one undo step. `link`: the move's
+  /// id when the blocks go to another Note, given to the `put` there too, so one ⌘Z in either Note undoes both
+  /// (`onLinkedStep`)
+  public func take(_ blocks: Range<Int>, link: UUID? = nil) -> MarkdownSourceOps.Part? {
     guard let (rest, cut) = MarkdownSourceOps.cutBlocks(part, blocks) else { return nil }
-    rewrite(rest)
+    rewrite(rest, link: link)
     return cut
   }
 
-  /// Puts blocks into the Note before block `index`, one undo step
+  /// Puts blocks into the Note before block `index`, one undo step (`link`: as `take`'s)
   @discardableResult
-  public func put(_ blocks: MarkdownSourceOps.Part, at index: Int) -> Bool {
+  public func put(_ blocks: MarkdownSourceOps.Part, at index: Int, link: UUID? = nil) -> Bool {
     guard let next = MarkdownSourceOps.insertBlocks(part, blocks, at: index) else { return false }
-    rewrite(next)
+    rewrite(next, link: link)
     return true
   }
 
@@ -82,9 +84,10 @@ extension EditorCore {
   }
 
   /// the source and layout info made `p`, as one edit where they differ
-  private func rewrite(_ p: MarkdownSourceOps.Part) {
+  private func rewrite(_ p: MarkdownSourceOps.Part, link: UUID? = nil) {
     mark(nil, .dim)
     if p.layout != layout.info { layout.setInfo(p.layout) }
+    defer { linkLastStep(link) }
     guard let e = Self.diff(source, p.source) else { return }
     let q = min(selection.head, (p.source as NSString).length)
     apply(

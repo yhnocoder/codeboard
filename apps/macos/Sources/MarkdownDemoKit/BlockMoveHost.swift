@@ -321,8 +321,10 @@ final class BlockMoveHost {
     l.card.core.mark(nil, .dim)
     if target === l.card {
       l.card.core.move(l.blocks, to: d.index)
-    } else if let cut = l.card.core.take(l.blocks) {
-      target.core.put(cut, at: d.index)
+    } else {
+      // across Notes: one move, so one ⌘Z in either Note takes both halves back
+      let link = UUID()
+      if let cut = l.card.core.take(l.blocks, link: link) { target.core.put(cut, at: d.index, link: link) }
     }
     for c in [l.card, target] {
       c.needsDisplay = true

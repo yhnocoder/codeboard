@@ -39,6 +39,34 @@ import Testing
     #expect(other.put(cut!, at: 1))
     #expect(other.source == "A\n\nTwo\n\nB")
   }
+
+  /// a move across Notes is one step: ⌘Z in either Note takes both halves back, ⇧⌘Z brings both again (it once left the
+  /// blocks in both Notes)
+  @Test func aMoveAcrossNotesUndoesAsOne() {
+    let from = core("One\n\nTwo\n\nThree")
+    let to = core("A\n\nB")
+    for (a, b) in [(from, to), (to, from)] {
+      a.onLinkedStep = { link, undo in undo ? b.undoLinked(link) : b.redoLinked(link) }
+    }
+    let link = UUID()
+    let cut = from.take(1..<2, link: link)!
+    #expect(to.put(cut, at: 1, link: link))
+    to.undo()
+    #expect(from.source == "One\n\nTwo\n\nThree" && to.source == "A\n\nB")
+    from.redo()
+    #expect(from.source == "One\n\nThree" && to.source == "A\n\nTwo\n\nB")
+    from.undo()
+    #expect(from.source == "One\n\nTwo\n\nThree" && to.source == "A\n\nB")
+    // while the other Note has a step of its own on top, the move stays put in both (never in both or neither)
+    to.redo()
+    from.select(MDSelection(0))
+    from.apply(MDEdit(range: 0..<0, replacement: "x", selection: MDSelection(1), undo: .command))
+    to.undo()
+    #expect(to.source == "A\n\nTwo\n\nB" && from.source == "xOne\n\nThree")
+    from.undo()
+    to.undo()
+    #expect(to.source == "A\n\nB" && from.source == "One\n\nTwo\n\nThree")
+  }
 }
 
 /// After a move the other blocks slide to their new places (blockmove.ts's flip), the landed ones stay put

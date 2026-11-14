@@ -40,6 +40,8 @@ public final class EditorCore {
     var time: Double
     /// a change of the layout info (a table's sizes, a code block's wrap) instead of edits: before and after
     var info: (MDLayoutInfo?, MDLayoutInfo?)?
+    /// a step made together with steps of other Notes (a ⌘ move across Notes): undone and redone with them
+    var link: UUID?
   }
   private var undoSteps: [Step] = []
   private var redoSteps: [Step] = []
@@ -49,6 +51,10 @@ public final class EditorCore {
   public static let groupDelay = 0.5
   /// seconds, for grouping; tests set their own clock
   public var clock: () -> Double = { ProcessInfo.processInfo.systemUptime }
+  /// a linked step is about to be undone (true) or redone here: the host undoes or redoes the other Notes' steps of that
+  /// link first (`undoLinked`, `redoLinked`) and says whether they went; when they cannot (the other Note has steps of
+  /// its own on top), this one stays too, so a move across Notes never ends up in both Notes or in neither
+  public var onLinkedStep: ((UUID, Bool) -> Bool)?
   /// after each change of the source: the new source
   public var onChange: ((String) -> Void)?
   /// the layout changed by itself (a code block's colours came): redraw
@@ -577,7 +583,9 @@ public final class EditorCore {
   /// ⌘Z: the last step taken back, its selection before it restored
   public func undo() {
     endLone()
-    guard canUndo, let step = undoSteps.popLast() else { return }
+    guard canUndo, let last = undoSteps.last else { return }
+    if let id = last.link, let hook = onLinkedStep, !hook(id, true) { return }
+    let step = undoSteps.removeLast()
     observer?(.undo)
     if let (before, _) = step.info {
       setInfo(before)
@@ -595,10 +603,34 @@ public final class EditorCore {
     beginLone()
   }
 
+  /// Undoes this Note's last step when it belongs to `link` (the other half of a move across Notes); nothing otherwise
+  @discardableResult
+  public func undoLinked(_ link: UUID) -> Bool {
+    guard undoSteps.last?.link == link else { return false }
+    let hook = onLinkedStep
+    onLinkedStep = nil
+    defer { onLinkedStep = hook }
+    undo()
+    return true
+  }
+
+  /// Redoes this Note's next step when it belongs to `link`
+  @discardableResult
+  public func redoLinked(_ link: UUID) -> Bool {
+    guard redoSteps.last?.link == link else { return false }
+    let hook = onLinkedStep
+    onLinkedStep = nil
+    defer { onLinkedStep = hook }
+    redo()
+    return true
+  }
+
   /// ⇧⌘Z
   public func redo() {
     endLone()
-    guard canRedo, let step = redoSteps.popLast() else { return }
+    guard canRedo, let next = redoSteps.last else { return }
+    if let id = next.link, let hook = onLinkedStep, !hook(id, false) { return }
+    let step = redoSteps.removeLast()
     observer?(.redo)
     if let (_, after) = step.info {
       setInfo(after)
@@ -609,6 +641,12 @@ public final class EditorCore {
     for e in step.edits { edit(e.range, e.new, select: step.after) }
     undoSteps.append(step)
     joinable = false
+  }
+
+  /// the last undo step belongs to `link` (BlockMoves: take and put across Notes)
+  func linkLastStep(_ link: UUID?) {
+    guard let link, !undoSteps.isEmpty else { return }
+    undoSteps[undoSteps.count - 1].link = link
   }
 
   // MARK: the clipboard

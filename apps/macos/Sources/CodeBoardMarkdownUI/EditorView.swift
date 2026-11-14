@@ -1566,6 +1566,9 @@ public final class MarkdownEditorView: NSView {
 
   // MARK: undo and the clipboard
 
+  /// The host changed the core itself (a ⌘ move's take or put, the other half of a linked undo): redraw, resize, report
+  public func coreChanged() { changed() }
+
   @objc public func undo(_ sender: Any?) {
     begin()
     core.undo()
