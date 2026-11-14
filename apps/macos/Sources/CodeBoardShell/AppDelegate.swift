@@ -24,6 +24,7 @@ import CodeBoardModel
   private var appearance: NSKeyValueObservation?
   /// Only the latest tree read is applied
   private var treeRead = 0
+  private var settings: SettingsWindow?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSWindow.allowsAutomaticWindowTabbing = false
@@ -164,6 +165,12 @@ import CodeBoardModel
   @objc func showNextTab(_ sender: Any?) { shell.selectTab(by: 1) }
   @objc func showPreviousTab(_ sender: Any?) { shell.selectTab(by: -1) }
 
+  @objc func showSettings(_ sender: Any?) {
+    let s = settings ?? SettingsWindow(settings: AISettings(defaults: .standard), keys: KeychainKeyStore())
+    settings = s
+    s.show()
+  }
+
   @objc func chooseTheme(_ sender: NSMenuItem) {
     guard let id = (sender.representedObject as? String).flatMap(Theme.ID.init) else { return }
     shell.theme = id
@@ -196,6 +203,8 @@ import CodeBoardModel
     app.addItem(
       withTitle: "About CodeBoard", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: ""
     )
+    app.addItem(.separator())
+    app.addItem(withTitle: "Settings…", action: #selector(showSettings(_:)), keyEquivalent: ",")
     app.addItem(.separator())
     let services = NSMenu(title: "Services")
     app.addItem(withTitle: "Services", action: nil, keyEquivalent: "").submenu = services

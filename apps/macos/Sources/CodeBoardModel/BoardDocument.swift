@@ -128,7 +128,9 @@ import Foundation
   /// What the app learned by itself about the board (a page's details read once): on the board and saved, no undo step
   /// and none dropped; run again after an undo or redo that puts back what it was learned on (core history: syncs
   /// replayed after undo), so a paste redone gets its page back without reading it again. `change` must work on an
-  /// older board: find by id, skip what is gone. Kept while a step older than it is on a stack, at most 2000
+  /// older board: find by id, skip what is gone. Kept while a step older than it is on a stack, at most 2000.
+  /// Only fields the user never changes through an undo step may be written here (a page's details, never a title or a
+  /// style the user can set): the replay after an undo or redo would write over the user's change
   public func derive(_ change: @escaping (inout Board) -> Void) {
     derived += 1
     derivedLog.append((derived, change))
