@@ -26,58 +26,6 @@ struct RowDrag {
 }
 
 extension CanvasView {
-  // MARK: Pasting
-
-  /// A link alone (or several, one per line) pasted: a Web card (a Link List) in the middle of the view, selected, one
-  /// step; its page is read now. False when the pasteboard holds no link
-  /// Plain text: a Note of it, its top left at `p` (the board menu's point), else under the pointer (⌘V), else 40
-  /// above the middle of the view (create.ts pasteText, newWriting); whether there was text
-  func pasteNote(at p: CGPoint?) -> Bool {
-    guard let doc = document, let s = pasteboard.string(forType: .string),
-      !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    else { return false }
-    let v = camera.visible(bounds.size)
-    let at =
-      p ?? pointerInWindow.map { camera.board(convert($0, from: nil)) }
-      ?? CGPoint(x: v.midX - Board.newNoteWidth / 2, y: v.midY - 40)
-    let id = CardID(rawValue: Board.newID("card-"))
-    var card = Board.newCard(.note, id: id, x: at.x.rounded(), y: at.y.rounded())
-    card.content = .own(CardContent(body: .note(Note(text: s))))
-    doc.edit("Paste", selection: [.card(id)]) { $0.cards.append(card) }
-    return true
-  }
-
-  func pasteLinks() -> Bool {
-    guard let doc = document, let s = pasteboard.string(forType: .string) else { return false }
-    let lines = s.split(whereSeparator: \.isNewline).map(String.init).filter {
-      !$0.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-    let urls = lines.compactMap(webAddress)
-    guard !urls.isEmpty, urls.count == lines.count else { return false }
-    var seen = Set<String>()
-    let unique = urls.filter { seen.insert($0).inserted }
-    let id = CardID(rawValue: Board.newID("card-"))
-    let view = camera.visible(bounds.size)
-    if unique.count == 1 {
-      let x = (view.midX - Board.webWidth / 2).rounded()
-      let y = (view.midY - 56).rounded()
-      doc.edit("Paste", selection: [.card(id)]) { $0.addWeb(id, url: unique[0], x: x, y: y) }
-      fetchWeb(id, url: unique[0])
-    } else {
-      let items = unique.map { LinkList.Item(id: Board.newID("li"), url: $0) }
-      let x = (view.midX - Board.linksWidth / 2).rounded()
-      let y = (view.midY - 26 - Double(items.count) * 15).rounded()
-      doc.edit("Paste", selection: [.card(id)]) {
-        $0.cards.append(
-          Card(
-            id: id, x: x, y: y, width: Board.linksWidth,
-            content: .own(CardContent(body: .links(LinkList(items: items))))))
-      }
-      for it in items { fetchWeb(id, item: it.id, url: it.url) }
-    }
-    return true
-  }
-
   // MARK: Reading a page
 
   /// The images folder of the board shown

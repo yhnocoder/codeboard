@@ -1616,7 +1616,7 @@ extension CanvasView {
   /// `at`: where the board's menu was asked, for a Note of plain text
   func paste(asCopy: Bool, at: CGPoint?) {
     if gesture == nil, pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)) == nil,
-      pasteLinks() || pasteNote(at: at)
+      pasteLinks(at: at) || pasteText(at: at)
     {
       return
     }
