@@ -13,6 +13,7 @@ import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardShell
 import ObjectiveC
+import Synchronization
 import WebKit
 
 setbuf(stdout, nil)
@@ -32,9 +33,24 @@ let shotScale = CGFloat(Double(env["ACCEPT_SCALE"] ?? "1") ?? 1)
 /// Now, as an event's timestamp: a CGEvent made here carries none (0), and the app reads speeds and pauses from event
 /// times (a scroll's glide: fingers that stopped before lifting do not glide)
 func now() -> CGEventTimestamp { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
-var vPointer = NSPoint(x: 0, y: 0)  // screen coordinates, as NSEvent.mouseLocation
-var vButtons = 0
-var vFlags: NSEvent.ModifierFlags = []
+/// The pointer, its buttons and the modifier keys the app sees: AppKit and SwiftUI read them from any thread (a hosting
+/// view's display link asks for the modifiers off the main thread), so they are kept under a lock
+enum Virtual {
+  static let input = Mutex((pointer: NSPoint(x: 0, y: 0), buttons: 0, flags: NSEvent.ModifierFlags()))
+}
+/// Screen coordinates, as NSEvent.mouseLocation
+nonisolated var vPointer: NSPoint {
+  get { Virtual.input.withLock { $0.pointer } }
+  set { Virtual.input.withLock { $0.pointer = newValue } }
+}
+nonisolated var vButtons: Int {
+  get { Virtual.input.withLock { $0.buttons } }
+  set { Virtual.input.withLock { $0.buttons = newValue } }
+}
+nonisolated var vFlags: NSEvent.ModifierFlags {
+  get { Virtual.input.withLock { $0.flags } }
+  set { Virtual.input.withLock { $0.flags = newValue } }
+}
 var gKey: NSWindow?
 weak var gMain: NSWindow?
 var cursorName = "arrow"
@@ -68,10 +84,9 @@ func swizzle(_ cls: AnyClass, _ orig: Selector, _ repl: Selector, meta: Bool = f
 }
 
 extension NSEvent {
-  // AppKit asks these on the main thread (the swizzled originals are main-thread API there)
-  @objc class func accMouseLocation() -> NSPoint { MainActor.assumeIsolated { vPointer } }
-  @objc class func accPressedMouseButtons() -> Int { MainActor.assumeIsolated { vButtons } }
-  @objc class func accModifierFlags() -> NSEvent.ModifierFlags { MainActor.assumeIsolated { vFlags } }
+  @objc class func accMouseLocation() -> NSPoint { vPointer }
+  @objc class func accPressedMouseButtons() -> Int { vButtons }
+  @objc class func accModifierFlags() -> NSEvent.ModifierFlags { vFlags }
 }
 
 extension NSWindow {
@@ -191,6 +206,8 @@ func describe(_ m: NSMenu, _ indent: String = "") -> String {
 }
 
 extension NSMenu {
+  /// An item's action, as the menu does it when the item is chosen
+  @objc func accPerform(_ item: NSMenuItem) { performActionForItem(at: index(of: item)) }
   @MainActor @objc func accPopUp(positioning item: NSMenuItem?, at p: NSPoint, in view: NSView?) -> Bool {
     lastMenu = self
     log("menu popUp (not shown):\n" + describe(self))
@@ -881,7 +898,7 @@ func strings(_ x: Any) -> [String] {
         // after this command has answered: an item that opens an app-modal dialog runs it from inside its action, and
         // the driver goes on (the dialog is read with `dialog`, answered with `button` or a key). From the run loop, not
         // the main queue: a main-queue block that runs a modal session holds the queue, and the next command with it
-        RunLoop.main.perform(inModes: [.common]) { menu.performActionForItem(at: idx) }
+        menu.perform(#selector(NSMenu.accPerform(_:)), with: menu.items[idx], afterDelay: 0, inModes: [.common])
         log("picked \(path)")
       } else {
         m = menu.items[idx].submenu
@@ -946,7 +963,7 @@ func strings(_ x: Any) -> [String] {
       guard let b = views(in: d.contentView).compactMap({ $0 as? NSButton }).first(where: { $0.title == title }) else {
         return "no button \(title): \(dialogText(d))"
       }
-      RunLoop.main.perform(inModes: [.common]) { b.performClick(nil) }
+      b.perform(#selector(NSButton.performClick(_:)), with: nil, afterDelay: 0, inModes: [.common])
     case "pick": pick(String(line.dropFirst(5)))
     case "hit": return hitInfo(vPointer)
     // ax id: where the canvas's accessibility element with this identifier (a card or Section, when the app exposes
