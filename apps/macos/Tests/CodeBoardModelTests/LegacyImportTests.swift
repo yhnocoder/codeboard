@@ -811,3 +811,28 @@ private func unchanged(_ before: [String: Data], _ after: [String: Data]) -> [St
   var t = top
   #expect(!t.keepUp(with: try #require(tree.folder(at: "Top 2")).entries))
 }
+
+// A version 13 library card of free code shown on two boards: its one segment is in the shared card's file, and both
+// boards show that file (a count of board.json files alone finds one segment fewer than the old folder holds)
+@Test func libraryFreeCodeKeepsItsSegment() throws {
+  let seg: [String: Any] = [
+    "id": "s", "src": ["kind": "free", "langPicked": true], "path": "", "lang": "python", "start": 1, "end": 2,
+    "text": ["a", "b"], "version": ["kind": "none"],
+  ]
+  let lib: [String: Any] = ["version": 13, "card": ["id": "f", "kind": "code", "segments": [seg]]]
+  let ref: [String: Any] = ["id": "f", "kind": "shared"]
+  let (vault, report, _) = try importing(
+    [
+      "a.json": oldBoard("a", name: "A", cards: [ref], extra: ["version": 13]),
+      "b.json": oldBoard("b", name: "B", cards: [ref], extra: ["version": 13]),
+    ], shared: ["f": lib])
+  #expect(report.failed.isEmpty)
+  #expect(try vault.board(at: "A.board").cards.map(\.content) == [.shared])
+  #expect(try vault.board(at: "B.board").cards.map(\.content) == [.shared])
+  guard case .code(let code) = try vault.sharedCard(CardID(rawValue: "f")).content.body else {
+    Issue.record("not code")
+    return
+  }
+  #expect(code.segments.map(\.lines) == [["a", "b"]])
+  #expect(code.segments[0].source == nil)
+}
