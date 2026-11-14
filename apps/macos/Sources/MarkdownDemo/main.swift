@@ -7,12 +7,25 @@
 import AppKit
 import CodeBoardMarkdown
 import CodeBoardMarkdownUI
+import CodeBoardSyntax
 import ImageIO
 
-/// Images next to the file, formulas and diagrams through the engines; no references, code uncoloured
+/// Images next to the file, formulas and diagrams through the engines, code coloured by the app's highlighter
+/// (CodeBoardSyntax); no references
 struct FileResources: MarkdownResources {
   let folder: URL
   let math: MathTypesetter?
+  let highlighter = Highlighter()
+  /// a fence's language as the highlighter names its grammars
+  static let grammars: [String: String] = [
+    "python": "python", "py": "python", "python3": "python", "triton": "triton", "tilelang": "tilelang", "c": "c",
+    "h": "c", "cpp": "cpp", "c++": "cpp", "cc": "cpp", "cxx": "cpp", "hpp": "cpp", "cuda": "cuda-cpp", "cu": "cuda-cpp",
+    "cuh": "cuda-cpp", "cuda-cpp": "cuda-cpp", "rust": "rust", "rs": "rust",
+  ]
+  static let kinds: [TokenClass: MarkdownTokenKind] = [
+    .keyword: .keyword, .operator: .operator, .function: .function, .string: .string, .comment: .comment,
+    .number: .number, .receiver: .receiver, .punctuation: .punctuation,
+  ]
   var diagrams: DiagramRenderer? { math as? DiagramRenderer }
   func imageSize(_ src: String) -> CGSize? {
     guard !src.contains("://"), let s = CGImageSourceCreateWithURL(folder.appending(path: src) as CFURL, nil),
@@ -22,7 +35,12 @@ struct FileResources: MarkdownResources {
     return CGSize(width: w, height: h)
   }
   func ref(label: String, target: String?) -> MarkdownRefHit? { nil }
-  func highlight(lines: [String], language: String) -> [[MarkdownToken]]? { nil }
+  func highlight(lines: [String], language: String) -> [[MarkdownToken]]? {
+    guard let grammar = Self.grammars[language.lowercased()] else { return nil }
+    return highlighter.tokens(lines: lines, language: grammar).map { line in
+      line.map { MarkdownToken(columns: $0.columns, kind: Self.kinds[$0.kind] ?? .punctuation) }
+    }
+  }
   var mathPreamble: String { "" }
 }
 

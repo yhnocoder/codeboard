@@ -131,7 +131,7 @@ public final class BlockLayout: @unchecked Sendable {
 
   /// Lays out again every piece whose shown markers are not what the caret now opens; whether any was
   private func reconcile() -> Bool {
-    let hb = head.flatMap { MarkdownEditing.blockIndex($0, in: document) }
+    let hb = head.flatMap { MarkdownEditing.blockHolding($0, in: document) }
     let want = head.map { MarkdownEditing.openings(at: $0, in: document) } ?? []
     var changed = false
     for i in pieces.indices where !pieces[i].opened.isEmpty || i == hb {

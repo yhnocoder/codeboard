@@ -293,6 +293,13 @@ public struct MDBlock: Sendable, Equatable {
   /// where the inline text is in the source, unit by unit (its lines inside a quote or list item skip their markers)
   public var inlineText: MDText?
 
+  public init(kind: Kind, range: Range<Int>, inlines: [MDInline], inlineText: MDText?) {
+    self.kind = kind
+    self.range = range
+    self.inlines = inlines
+    self.inlineText = inlineText
+  }
+
   public static func == (a: MDBlock, b: MDBlock) -> Bool {
     a.kind == b.kind && a.range == b.range && a.inlines == b.inlines && a.inlineText == b.inlineText
   }
@@ -484,7 +491,7 @@ struct DocumentBuilder {
         let raw = absorbed ?? t.raw
         let hasPrev = nonSpace.contains { $0 < i } || absorbed != nil
         let hasNext = nonSpace.contains { $0 > i }
-        let made = emptyParagraphs(raw, between: hasPrev && hasNext)
+        let made = emptyParagraphs(raw, between: hasPrev && hasNext, afterBlock: hasPrev)
         out += made
         if t.type == "space" { continue }
         own = made.count
@@ -513,13 +520,20 @@ struct DocumentBuilder {
 
   /// TipTap's createImplicitEmptyParagraphsFromSpace: one empty paragraph per blank line pair in a run of blank lines, less
   /// one between two blocks (that one is the ordinary gap)
-  private func emptyParagraphs(_ raw: Mapped, between: Bool) -> [MDBlock] {
+  ///
+  /// Each sits where the blocks around it leave it (its range is empty, at the end of the text before), but its one caret
+  /// place is the start of its own blank line: the line after the gap a block before it keeps, then every second one
+  private func emptyParagraphs(_ raw: Mapped, between: Bool, afterBlock: Bool) -> [MDBlock] {
     let n = raw.string.components(separatedBy: "\n\n").count - 1
     let count = max(0, n - (between ? 1 : 0))
     guard count > 0 else { return [] }
     let at = raw.source.lowerBound
-    return (0..<count).map { _ in
-      MDBlock(kind: .paragraph, range: at..<at, inlines: [], inlineText: MDText(string: "", offsets: [at]))
+    let units = Array(raw.string.utf16)
+    let breaks = units.indices.filter { units[$0] == 0x0A }.map { raw.sourceOffset($0) }
+    return (0..<count).map { k in
+      let i = afterBlock ? 2 * k + 1 : 2 * k - 1
+      let place = i < 0 ? at : i < breaks.count ? breaks[i] + 1 : raw.source.upperBound
+      return MDBlock(kind: .paragraph, range: at..<at, inlines: [], inlineText: MDText(string: "", offsets: [place]))
     }
   }
 

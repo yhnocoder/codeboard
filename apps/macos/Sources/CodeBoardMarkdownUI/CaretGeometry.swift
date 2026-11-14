@@ -125,7 +125,7 @@ extension BlockLayout {
     let top: CGFloat
   }
 
-  func pieceIndex(_ offset: Int) -> Int? { MarkdownEditing.blockIndex(offset, in: document) }
+  func pieceIndex(_ offset: Int) -> Int? { MarkdownEditing.blockHolding(offset, in: document) }
 
   func spot(_ offset: Int) -> Spot? {
     guard let i = pieceIndex(offset) else { return nil }
@@ -288,7 +288,14 @@ extension BlockLayout {
         return r
       }
     }
-    var i = s.piece + (down ? 1 : -1)
+    _ = probeY
+    return firstText(from: s.piece + (down ? 1 : -1), down: down, x: x)
+      ?? MDCaret(down ? MarkdownEditing.end(of: document) : MarkdownEditing.start(of: document))
+  }
+
+  /// the place nearest x on the first line (going down) or the last line (going up) of the first piece with text from i
+  private func firstText(from start: Int, down: Bool, x: CGFloat) -> MDCaret? {
+    var i = start
     while i >= 0, i < pieces.count {
       let ts = pieces[i].layout.caretTexts
       if let n = down ? ts.first : ts.last {
@@ -299,8 +306,7 @@ extension BlockLayout {
       }
       i += down ? 1 : -1
     }
-    _ = probeY
-    return MDCaret(down ? MarkdownEditing.end(of: document) : MarkdownEditing.start(of: document))
+    return nil
   }
 
   /// the first piece whose bottom is at or below y

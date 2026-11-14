@@ -57,7 +57,7 @@ extension MarkdownEditing {
   /// The block structure around a caret place
   public static func context(at offset: Int, in document: MarkdownDocument) -> MDCaretContext {
     var out = MDCaretContext(leaf: .none, block: offset..<offset, item: nil, quote: nil)
-    guard let bi = blockIndex(offset, in: document) else { return out }
+    guard let bi = blockHolding(offset, in: document) else { return out }
     func holds(_ r: Range<Int>) -> Bool { offset >= r.lowerBound && offset <= r.upperBound }
     func walk(_ b: MDBlock, first: Bool) {
       switch b.kind {
@@ -143,8 +143,10 @@ extension MarkdownEditing {
     case .heading:
       // at the start: a line above, the caret staying in the heading; elsewhere the rest goes to body text after it
       if q == c.block.lowerBound + headingPrefix(ns, c.block), r.isEmpty, q < c.block.upperBound {
+        // the blank line above reads as an empty paragraph (as TipTap reads it), the caret in it
         return MDEdit(
-          range: c.block.lowerBound..<c.block.lowerBound, replacement: "\n\n", selection: MDSelection(q + 2))
+          range: c.block.lowerBound..<c.block.lowerBound, replacement: "\n\n",
+          selection: MDSelection(c.block.lowerBound))
       }
       return insert("\n\n", replacing: r)
     case .paragraph:

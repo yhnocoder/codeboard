@@ -122,12 +122,31 @@ extension MarkdownEditing {
     return lo == 0 ? (blocks.isEmpty ? nil : 0) : lo - 1
   }
 
+  /// The index of the top-level block whose text holds `offset` (an empty paragraph's place is not where its range is),
+  /// else `blockIndex`
+  public static func blockHolding(_ offset: Int, in document: MarkdownDocument) -> Int? {
+    guard let bi = blockIndex(offset, in: document) else { return nil }
+    var j = bi
+    while j >= 0, j == bi || document.blocks[j].range.upperBound >= offset {
+      if runs(of: document.blocks[j], in: document).contains(where: { $0.holds(offset) }) { return j }
+      j -= 1
+    }
+    return bi
+  }
+
   /// The run a caret at `offset` stands in: the one holding it, else the nearest (an offset on a heading's `#`, a list
   /// marker or between blocks)
   public static func run(at offset: Int, in document: MarkdownDocument) -> MDTextRun? {
     guard let bi = blockIndex(offset, in: document) else { return nil }
     let here = runs(of: document.blocks[bi], in: document)
     if let r = here.first(where: { $0.holds(offset) }) { return r }
+    // an empty paragraph's range is the end of the text before it (its place is its own blank line): an offset there is
+    // that text's, or another empty paragraph's
+    var j = bi - 1
+    while j >= 0, document.blocks[j].range.upperBound >= offset {
+      if let r = runs(of: document.blocks[j], in: document).first(where: { $0.holds(offset) }) { return r }
+      j -= 1
+    }
     if let r = here.last(where: { $0.first <= offset }) { return r }
     if let r = here.first { return r }
     // a block without runs: the nearest run after it, else before
@@ -289,10 +308,18 @@ extension MarkdownEditing {
   }
 
   public static func caretStep(from offset: Int, forward: Bool, in document: MarkdownDocument, head: Int?) -> Int {
-    guard let bi = blockIndex(offset, in: document), let r = run(at: offset, in: document) else { return offset }
-    let q = min(max(offset, r.first), r.last)
+    guard let bi = blockHolding(offset, in: document), let r = run(at: offset, in: document) else { return offset }
+    // a place outside the run (an empty paragraph the editor shows, between blocks): to the run on that side
+    if offset > r.last {
+      if !forward { return r.last }
+      return nextRun(after: bi, in: document)?.first ?? offset
+    }
+    if offset < r.first {
+      if forward { return r.first }
+      return previousRun(before: bi, in: document)?.last ?? offset
+    }
+    let q = offset
     if let n = step(r, q, forward: forward, head: head) { return n }
-    if q != offset { return q }
     let rs = runs(of: document.blocks[bi], in: document)
     if let k = rs.firstIndex(where: { $0.first == r.first }) {
       if forward, k + 1 < rs.count { return rs[k + 1].first }

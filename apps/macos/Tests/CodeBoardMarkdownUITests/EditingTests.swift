@@ -79,10 +79,6 @@ import Testing
     e.key(.backspace)
     #expect(e.source == "Title")
     #expect(e.selection == MDSelection(0))
-    (e, _) = core("## Title", caret: 3)
-    e.key(.enter)
-    #expect(e.source == "\n\n## Title")
-    #expect(e.selection == MDSelection(5))
   }
 
   @Test func backspaceJoinsLiftsAndSelectsImages() {
@@ -204,5 +200,75 @@ import Testing
     e.undo()
     #expect(e.source == "## Title\n\nbody")
     check(e)
+  }
+}
+
+/// An empty paragraph after Enter at a paragraph's end or above a heading: the blank line its source keeps, read as an
+/// empty paragraph (TipTap's createImplicitEmptyParagraphsFromSpace), the caret at its own line
+@Suite struct EmptyParagraphTests {
+  func core(_ src: String, caret: Int) -> EditorCore {
+    _ = boardFonts
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    return EditorCore(layout: l, caret: caret)
+  }
+
+  @Test func enterAtTheEndMakesALineToTypeOn() {
+    let e = core("Before", caret: 6)
+    let h0 = e.layout.size.height
+    e.key(.enter)
+    #expect(e.source == "Before\n\n")
+    #expect(e.selection == MDSelection(8))
+    #expect(true)
+    // a line of its own under the paragraph, the caret on it
+    let r = e.caretRect!
+    #expect(r.minY > h0 && e.layout.size.height > h0)
+    e.insert("#")
+    e.insert(" ")
+    e.insert("T")
+    #expect(e.source == "Before\n\n# T")
+
+    #expect(e.selection == MDSelection(11))
+  }
+
+  @Test func theEmptyParagraphIsAPlaceOfItsOwn() {
+    let e = core("A\n\nB", caret: 1)
+    let still = e.layout.blockFrames
+    e.key(.enter)
+    #expect(e.source == "A\n\n\n\nB")
+    // between A and B a line of its own: B moved down
+    #expect(e.layout.blockFrames.last!.minY > still.last!.minY)
+    e.move(.character, forward: true, extend: false)
+    #expect(e.selection == MDSelection(5))
+
+    e.move(.character, forward: false, extend: false)
+    #expect(e.selection == MDSelection(3))
+    e.move(.character, forward: false, extend: false)
+    #expect(e.selection == MDSelection(1))
+    // up and down go through it
+    e.moveVertically(down: true, extend: false)
+    #expect(e.selection == MDSelection(3))
+    // and on into B at the column it came from (A's end, B's end: one letter each)
+    e.moveVertically(down: true, extend: false)
+    #expect(e.selection == MDSelection(6))
+  }
+
+  @Test func backspaceAndDeleteTakeTheEmptyParagraph() {
+    var e = core("A", caret: 1)
+    e.key(.enter)
+    e.key(.backspace)
+    #expect(e.source == "A" && e.selection == MDSelection(1))
+    e = core("A\n\nB", caret: 1)
+    e.key(.enter)
+    e.key(.delete)
+    #expect(e.source == "A\n\nB" && e.selection == MDSelection(3))
+  }
+
+  @Test func enterAtAHeadingsStartPutsAnEmptyParagraphAbove() {
+    let e = core("## Title", caret: 3)
+    e.key(.enter)
+    #expect(e.source == "\n\n## Title")
+    #expect(e.selection == MDSelection(0))
+    e.insert("x")
+    #expect(e.source == "x\n\n## Title")
   }
 }
