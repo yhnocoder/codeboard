@@ -262,10 +262,33 @@ import CodeBoardNotes
   private func place(_ id: Tab.ID?) {
     front = id
     for (tab, pane) in panes { pane.isHidden = tab != id }
+    guard let id, let pane = panes[id] else { return }
+    // a board come to the front (opened, a tab switched to, back or forward, into or out of a sub-board) takes the
+    // keys, as the VS Code board does: its keys work with no click on it first
+    let now = Focus(tab: id, board: pane.document?.id)
+    if now != focused {
+      focused = now
+      pane.takeKeys()
+    }
   }
+
+  private struct Focus: Equatable {
+    var tab: Tab.ID
+    var board: BoardID?
+  }
+  /// The tab and board the keys were last given to
+  private var focused: Focus?
 }
 
 final class Pane: NSView {
+  /// The canvas takes the keys, unless something outside the boards is being typed in (the sidebar's rename or
+  /// search field, ⌘K): those keep them
+  func takeKeys() {
+    guard let window, !isHidden else { return }
+    if let text = window.firstResponder as? NSText, let host = superview, !text.isDescendant(of: host) { return }
+    window.makeFirstResponder(canvas)
+  }
+
   private(set) var document: BoardDocument?
   /// Where the board shown is in the vault
   private(set) var shown: VaultBoard?

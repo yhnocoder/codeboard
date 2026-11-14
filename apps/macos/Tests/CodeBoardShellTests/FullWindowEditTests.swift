@@ -44,6 +44,9 @@ import Testing
           Card(
             id: CardID(rawValue: "m"), x: 40, y: 480, width: 240, height: 120,
             section: SectionID(rawValue: "g"), content: own(.note(Note(text: "inside")))),
+          Card(
+            id: CardID(rawValue: "sb"), x: 680, y: 300, width: 220, height: 140,
+            content: own(.board(SubBoard(board: BoardID(rawValue: "o"))))),
         ],
         arrows: [
           Arrow(
@@ -51,6 +54,14 @@ import Testing
             to: Endpoint(card: CardID(rawValue: "t")), label: "calls")
         ],
         sections: [Section(id: SectionID(rawValue: "g"), title: "Group", x: 0, y: 400, width: 600, height: 300)]))
+    // another board, the sub-board card's
+    try vault.newBoard(
+      in: "", title: "Other",
+      board: Board(
+        id: BoardID(rawValue: "o"),
+        cards: [
+          Card(id: CardID(rawValue: "on"), x: 0, y: 0, width: 240, height: 160, content: own(.note(Note(text: "o"))))
+        ]))
     return vault
   }
 
