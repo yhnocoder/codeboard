@@ -19,9 +19,13 @@ enum EditorBench {
       ("definition URL", document(definitions: true), "[ref]: https://example.com/", .typing),
       ("definition made and removed", document(definitions: true), "Paragraph 601 ", .definitions),
       ("caret moves", document(definitions: false), "Paragraph 601 ", .arrows),
+      ("typed through the editor core", document(definitions: false), "Paragraph 601 ", .core),
     ]
     var out: [String: Any] = [:]
-    for (name, text, anchor, script) in rows {
+    // MARKDOWN_BENCH_ROWS=name,name runs only those rows, in that order
+    let only = ProcessInfo.processInfo.environment["MARKDOWN_BENCH_ROWS"]?.split(separator: ",").map(String.init)
+    let chosen = only.map { names in names.compactMap { n in rows.first { $0.0 == n } } } ?? rows
+    for (name, text, anchor, script) in chosen {
       out[name] = try row(text, anchor: anchor, script: script)
     }
     let json = try JSONSerialization.data(withJSONObject: out, options: [.prettyPrinted, .sortedKeys])
@@ -31,7 +35,8 @@ enum EditorBench {
   /// What the keys are: typing (letters and spaces, an Enter every 60, a Backspace every 15), or a definition line put
   /// in after the paragraph and taken out again, key by key (each one a paste or a cut of it)
   /// or the caret moved by keys (→ through words and markers, ⌥→, ↓ and ↑, ⌘→), the markers following it
-  enum Script { case typing, definitions, arrows }
+  /// or the typing script played through EditorCore's keys (its one apply path, undo recorded, caret placed)
+  enum Script { case typing, definitions, arrows, core }
 
   static func document(definitions: Bool) -> String {
     var parts: [String] = []
@@ -87,6 +92,7 @@ enum EditorBench {
     editor.draw(in: ctx, scale: scale, clip: shown) { _ in nil }
     ctx.restoreGState()
     if script == .arrows { return arrows(editor, caret: caret, ctx: ctx, scale: scale, viewport: viewport) }
+    if script == .core { return typed(editor, caret: caret, ctx: ctx, scale: scale, viewport: viewport) }
     let typed = Array("the scheduler keeps a batch of requests in flight ")
     var reparse: [Double] = []
     var layout: [Double] = []
@@ -208,6 +214,52 @@ enum EditorBench {
       return ["median": at(0.5), "p95": at(0.95), "max": at(1)]
     }
     return ["keys": 500, "moved": relaid, "move_ms": stats(move), "draw_ms": stats(draw), "total_ms": stats(total)]
+  }
+
+  /// 500 keys of the typing script through EditorCore, and the 800 points around the caret drawn after each
+  static func typed(_ editor: BlockLayout, caret: Int, ctx: CGContext, scale: CGFloat, viewport: CGFloat) -> [String:
+    Any]
+  {
+    let core = EditorCore(layout: editor, caret: caret)
+    let typed = Array("the scheduler keeps a batch of requests in flight ")
+    var key: [Double] = []
+    var draw: [Double] = []
+    var total: [Double] = []
+    for k in 0..<500 {
+      autoreleasepool {
+        let a = cpu()
+        if k % 15 == 14 {
+          core.key(.backspace)
+        } else if k % 60 == 59 {
+          core.key(.enter)
+        } else {
+          core.insert(String(typed[k % typed.count]))
+        }
+        let r = core.caretRect ?? .zero
+        let b = cpu()
+        let frames = editor.blockFrames
+        let i = core.document.blocks.lastIndex { $0.range.lowerBound <= core.selection.head } ?? 0
+        let clip =
+          ProcessInfo.processInfo.environment["BYFRAME"] != nil
+          ? CGRect(x: 0, y: max(0, frames[i].midY - viewport / 2), width: editor.width, height: viewport)
+          : CGRect(x: 0, y: max(0, r.midY - viewport / 2), width: editor.width, height: viewport)
+        ctx.saveGState()
+        ctx.translateBy(x: 0, y: -clip.minY)
+        ctx.clear(clip)
+        editor.draw(in: ctx, scale: scale, clip: clip) { _ in nil }
+        ctx.restoreGState()
+        let c = cpu()
+        key.append(b - a)
+        draw.append(c - b)
+        total.append(c - a)
+      }
+    }
+    func stats(_ v: [Double]) -> [String: Double] {
+      let s = v.sorted()
+      let at = { (p: Double) in (s[Int(Double(s.count - 1) * p)] * 1000).rounded() / 1000 }
+      return ["median": at(0.5), "p95": at(0.95), "max": at(1)]
+    }
+    return ["keys": 500, "key_ms": stats(key), "draw_ms": stats(draw), "total_ms": stats(total)]
   }
 
   static func cpu() -> Double {
