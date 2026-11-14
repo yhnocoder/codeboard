@@ -1,0 +1,75 @@
+// main's side of the stage 8 sheets: the boards in storage/ (boards.mjs) in main's board (the harness's fixture host),
+// 1400 × 900 at 2x, in each theme light and dark, at the cameras the native side uses. It is a harness scenario only
+// while it runs: copied into packages/board/test/scenarios/, run, removed (from the repository root, after npm run build):
+//   cp apps/macos/review/stage8/capture-main.spec.ts packages/board/test/scenarios/zz-stage8.spec.ts
+//   STAGE8_OUT=<out> npx playwright test -c packages/board zz-stage8 --trace off
+//   rm packages/board/test/scenarios/zz-stage8.spec.ts
+import * as fs from "node:fs";
+import * as path from "node:path";
+import type { Board } from "@codeboard/core";
+import { test, open, idle } from "../fixtures";
+
+const storage = path.resolve(__dirname, "../../../apps/macos/review/stage8/storage");
+const out = process.env.STAGE8_OUT!;
+const board = (id: string, cam: Board["cam"]): Board => ({
+  ...JSON.parse(fs.readFileSync(path.join(storage, `${id}.json`), "utf8")),
+  cam,
+});
+const looks = [
+  ["warm-ink", true, "warm-ink"],
+  ["warm-ink", false, "warm-ink-dark"],
+  ["ink-wash", true, "ink-wash"],
+  ["ink-wash", false, "ink-wash-dark"],
+] as const;
+/** The hover panel's 140 ms fade, and the ↻ and dot's */
+const settle = 400;
+
+test.setTimeout(240_000);
+test("stage8Capture", async () => {
+  // where main's camera ended (it never zooms out past fit-all ÷ 1.3): the native side is put at the same
+  const cams: Record<string, { x: number; y: number; z: number }> = {};
+  for (const [theme, light, suffix] of looks) {
+    const shot = async (h: Awaited<ReturnType<typeof open>>, name: string) => {
+      await idle(h);
+      await h.page.screenshot({ path: `${out}/${name}-${suffix}.png` });
+    };
+    const at = async (id: string, x: number, y: number, z: number) => {
+      const h = await open({ board: board(id, { x, y, z }), light, w: 1400, h: 900, scale: 2, settings: { theme } });
+      await idle(h);
+      cams[id] = await h.page.evaluate(() => {
+        const m = /translate\(([-\d.e]+)px, ([-\d.e]+)px\) scale\(([\d.e-]+)\)/.exec(
+          (document.querySelector(".world") as HTMLElement).style.transform,
+        )!;
+        return { x: +m[1], y: +m[2], z: +m[3] };
+      });
+      return h;
+    };
+    let h = await at("s8nested", 40, 190, 0.17);
+    await shot(h, "nested");
+    await h.close();
+    h = await at("s8single", 40, 40, 0.2);
+    await shot(h, "single");
+    await h.page.locator('.sumcol[data-sum="sec:st"] .sumhd').hover({ force: true });
+    await h.page.waitForTimeout(settle);
+    await shot(h, "stale");
+    await h.close();
+    h = await at("s8loose", 40, 40, 0.2);
+    await shot(h, "loose");
+    // the layer never counts as stable for Playwright (it is scaled every frame): a click where the body is
+    const box = (await h.page.locator('.sumcol[data-sum="card:l2"] .sumtx').boundingBox())!;
+    await h.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await h.page.waitForTimeout(settle);
+    await shot(h, "editing");
+    await h.close();
+    h = await at("s8overflow", 40, 40, 0.2);
+    await shot(h, "overflow");
+    await h.page.locator('.sumcol[data-sum="card:a"] .sumhd').hover({ force: true });
+    await h.page.waitForTimeout(settle);
+    await shot(h, "overflow-hover");
+    await h.page.locator('.sumcol[data-sum="card:c"] .sumhd').hover({ force: true });
+    await h.page.waitForTimeout(settle);
+    await shot(h, "overflow-title");
+    await h.close();
+  }
+  fs.writeFileSync(`${out}/cams.json`, JSON.stringify(cams, null, 1));
+});

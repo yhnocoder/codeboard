@@ -1,0 +1,32 @@
+Stage 8 look sheets: the summary level, on made-up boards (storage/, written by boards.mjs with main's own core:
+emptyBoard, putSummary, summarySig), imported as the app imports old boards and drawn off screen at 2x by
+`swift run -c release LookCompare --stage8 <out> <main's pictures> apps/macos/review/stage8/storage`, in Warm Ink and
+Ink Wash, light and dark (<sheet>-<theme>[-dark].png). main's picture is on the left (its board in headless Chromium
+at 2x, 1400 × 900, through the harness's fixture host: capture-main.spec.ts), ours on the right, both at the camera
+main ended at (main never zooms out past fit-all ÷ 1.3; it records its cameras in cams.json).
+
+nested: Sections three deep. Each innermost Section a column (title, body with its key phrases bold), anchored at its
+frame's top left; the outer ones a header above their frames (level 1: larger ink title over a vermilion rule; level
+2: ink-2 title over a dashed hairline), with their one-sentence overview; a header's own cards one column with the
+AI's title; a Section with one child Section only a small kick line above that child's title (设备与资源 ›).
+single: the one-child case alone, a Section never written (its title only) and one whose cards were renamed after
+it was written.
+stale: that one hovered, with a writer set: ↻ with the dot, then ✓ 保留; the body's dotted underline. main shows ↻
+without a key too; ours shows it only once a key is set (✓ 保留 with the dot alone when none is).
+loose: cards outside Sections a sentence each (one with the AI's title, one never written: its title only); a Text
+and a Box stay as they are, at their own size.
+editing: a body clicked: written in place, its bold as bold, the ring outside the text (Enter keeps, Esc leaves).
+overflow: two stacked loose cards with long summaries: the upper one clipped at its room, fading over its last lines;
+a title past two lines ends in an ellipsis, and the row's titles share its height.
+overflow-hover: the upper one hovered: its whole text on the panel, raised over the lower one.
+overflow-title: the long title hovered: the whole title, the body under it.
+push (ours only): half a push at the switch point (原地): the card level and its Section blocks at 0.65, the camera
+held at the cut. main's mist, line and seal are not carried over, so main has no picture to set beside it.
+crossfade (ours only): 130 ms into the cross-fade after a push through: the cards nearly gone, the text only just
+coming in.
+
+Known differences: line breaks differ by a character in places (Chrome's CJK punctuation trimming and kinsoku against
+Core Text's), which can make a column a line shorter or longer than main's. The page's fonts: the system font is
+set at the size main lays the text out at (S · cut), with PingFang SC for CJK as Chrome falls back to; the system's
+own CJK fallback at large sizes is about 6 % narrower. Small boards: the Mac keeps its own zoom limits (down to
+10 % at least), so it reaches the summaries on boards main stops above the switch point on.
