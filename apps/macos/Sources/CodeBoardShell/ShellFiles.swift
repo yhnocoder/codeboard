@@ -39,8 +39,10 @@ extension Shell {
     guard let vault else { return false }
     beforeFiles?()
     var ok = true
+    fileError = nil
     do { try change(vault) } catch {
       ok = false
+      fileError = String(describing: error)
       NSSound.beep()
     }
     apply(Result { try vault.tree() })
@@ -104,10 +106,13 @@ extension Shell {
     return to
   }
 
-  /// To the system Trash
-  public func trash(_ path: String) {
-    files { v in try v.trash(path) }
+  /// To the trash (`trasher`: the system Trash in the app); nothing changes when it cannot go there (a beep)
+  @discardableResult
+  public func trash(_ path: String) -> Bool {
+    let ok = files { v in try v.trash(path, with: trasher) }
+    guard ok else { return false }
     expanded = expanded.filter { $0 != path && !$0.hasPrefix(path + "/") }
+    return true
   }
 
   /// Expanded folders at or under a folder that moved keep their state at their new paths

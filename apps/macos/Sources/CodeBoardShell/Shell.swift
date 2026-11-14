@@ -75,6 +75,10 @@ public struct ShellState: Codable, Equatable, Sendable {
   public var folderRenamed: ((String, String, String) -> Void)?
   /// What is being renamed in the sidebar: a board by id, a folder by path
   public var renaming: Renaming?
+  /// Where deleted boards and folders go: the system Trash; tests give a stand-in
+  public var trasher: Vault.Trasher = Vault.systemTrash
+  /// Why the last change of the vault's files from the sidebar did not go through (a beep said so); nil when it did
+  public internal(set) var fileError: String?
   /// The sidebar row under the pointer (`rowKey`)
   public var hoveredRow: String?
   /// The board whose seal is being edited, and where its popover is anchored

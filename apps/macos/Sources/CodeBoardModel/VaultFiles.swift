@@ -87,17 +87,31 @@ extension Vault {
     return to
   }
 
-  /// A board package or a folder (with all in it) to the system Trash, where Finder can put it back; where it went
-  @discardableResult
-  public func trash(_ path: String) throws -> URL? {
-    guard !path.isEmpty else { throw VaultError.unwritable(root, "the vault itself is not deleted") }
+  /// Moves a file or folder to a trash and says where it went; the app's is the system Trash (`systemTrash`), tests give
+  /// one of their own
+  public typealias Trasher = @Sendable (URL) throws -> URL?
+
+  /// The system Trash, where Finder can put it back
+  public static let systemTrash: Trasher = { url in
     var out: NSURL?
-    do {
-      try FileManager.default.trashItem(at: url(of: path), resultingItemURL: &out)
-    } catch {
-      throw VaultError.unwritable(url(of: path), error.localizedDescription)
-    }
+    try FileManager.default.trashItem(at: url, resultingItemURL: &out)
     return out as URL?
+  }
+
+  /// A board package or a folder (with all in it) to the trash, never removed outright; only something in the vault, not
+  /// the vault itself. Where it went
+  @discardableResult
+  public func trash(_ path: String, with trasher: Trasher = Vault.systemTrash) throws -> URL? {
+    let at = url(of: path)
+    guard !path.isEmpty, !path.hasPrefix("/"), let p = self.path(of: at), !p.isEmpty else {
+      throw VaultError.unwritable(at, "only something in the vault goes to the Trash")
+    }
+    guard FileManager.default.fileExists(atPath: at.path) else { throw VaultError.unwritable(at, "it is not there") }
+    do {
+      return try trasher(at)
+    } catch {
+      throw VaultError.unwritable(at, error.localizedDescription)
+    }
   }
 
   // MARK: The file system
