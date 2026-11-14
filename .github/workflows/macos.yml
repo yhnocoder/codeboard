@@ -19,10 +19,11 @@ jobs:
       run: { working-directory: apps/macos }
     steps:
       - uses: actions/checkout@v6
-      # the page that draws Notes (apps/macos/web, over the Markdown package's build); the Notes tests render through it
+      # the page that draws Notes (apps/macos/web, over the Markdown package's build); the Notes tests render through it.
+      # The native Markdown component's fonts and formula engines (apps/macos/tools/markdown/assets.mjs); its tests use them
       - uses: ./.github/actions/setup
         with:
-          build: npm run build -w @yhnocoder/markdown && node apps/macos/web/build.mjs
+          build: npm run build -w @yhnocoder/markdown && node apps/macos/web/build.mjs && node apps/macos/tools/markdown/assets.mjs
       - name: Select the newest Xcode
         run: |
           sudo xcode-select -s "$(find /Applications -maxdepth 1 -type d -name 'Xcode_*.app' | sort -V | tail -1)"

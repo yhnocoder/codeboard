@@ -1,0 +1,8 @@
+[
+  { "label": "step", "target": "c2", "hit": { "title": "step" } },
+  { "label": "old name", "target": "c3", "hit": { "title": "Scheduler.step" } },
+  { "label": "Scheduler", "target": "c4", "hit": { "title": "Scheduler", "seal": { "text": "SP", "color": "teal" } } },
+  { "label": "Engine", "target": null, "hit": { "title": "Engine", "seal": { "text": "EN", "color": "vermilion", "alone": true } } },
+  { "label": "deleted card", "target": "c9", "hit": { "broken": "item", "title": "deleted card", "badge": "Plan" } },
+  { "label": "Lost board/thing", "target": null, "hit": { "broken": "place", "title": "thing", "badge": "Lost board" } }
+]

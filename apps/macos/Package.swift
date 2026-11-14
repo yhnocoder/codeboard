@@ -47,3 +47,23 @@ let package = Package(
     .testTarget(name: "CodeBoardShellTests", dependencies: ["CodeBoardShell"]),
   ]
 )
+
+// The native Markdown component (apps/macos/docs/markdown-guideline.md), self-contained: no target of the app depends
+// on it yet, and it depends on none of the app's but CodeBoardSyntax, which only the look tool uses for code colours
+package.targets += [
+  // Markdown parsed the way @yhnocoder/markdown parses it, with source ranges, and its editing rules (guideline 6.2)
+  .target(name: "CodeBoardMarkdown"),
+  // Markdown laid out and drawn with CoreText, edited in place; formulas and diagrams through JavaScriptCore (6.3)
+  .target(name: "CodeBoardMarkdownUI", dependencies: ["CodeBoardMarkdown"]),
+  .executableTarget(name: "MarkdownBench", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI"]),
+  .executableTarget(
+    name: "MarkdownLook", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeBoardSyntax"]),
+  .testTarget(name: "CodeBoardMarkdownTests", dependencies: ["CodeBoardMarkdown"], resources: [.copy("Fixtures")]),
+  .testTarget(name: "CodeBoardMarkdownUITests", dependencies: ["CodeBoardMarkdownUI"]),
+]
+// a window to try the component in, standing alone (tools/markdown/make-demo.sh packages it); code coloured by
+// CodeBoardSyntax, as the look tool colours it. The kit runs it in any process (runMarkdownDemo), for a driver too
+package.targets += [
+  .target(name: "MarkdownDemoKit", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeBoardSyntax"]),
+  .executableTarget(name: "MarkdownDemo", dependencies: ["MarkdownDemoKit"]),
+]

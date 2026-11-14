@@ -1,0 +1,19 @@
+{
+  "text": "# Frames\n\nSome **bold** text and a formula $x^2$ here.\n\n- a list item\n",
+  "width": 360,
+  "steps": [
+    {"click": 21},
+    {"move": "left"},
+    {"move": "left"},
+    {"type": "er"},
+    {"move": "lineEnd"},
+    {"key": "enter"},
+    {"marked": "zhong"},
+    {"commit": "中"},
+    {"type": " and **new**"},
+    {"select": [10, 14]},
+    {"command": "highlight"},
+    {"undo": true},
+    {"edit": false}
+  ]
+}
