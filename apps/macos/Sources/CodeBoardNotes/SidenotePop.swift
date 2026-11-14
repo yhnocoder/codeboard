@@ -44,6 +44,11 @@ public final class SidenotePop: NSObject {
       public var id: String
       public var fixed: Bool
       public var place: Bool
+      /// Its second look: the version its lines changed in, or "widened"
+      public var review: String?
+      /// A text one on lines, and whether it is always shown under them
+      public var lines: Bool?
+      public var always: Bool?
       public var kind: String
       public var md: String?
       public var q: Ask?
@@ -51,13 +56,18 @@ public final class SidenotePop: NSObject {
       public var start: Int?
       public var html: [String]?
 
-      public static func text(_ id: String, _ md: String, q: Ask?, fixed: Bool = false, place: Bool = false) -> Note {
-        Note(id: id, fixed: fixed, place: place, kind: "text", md: md, q: q)
+      public static func text(
+        _ id: String, _ md: String, q: Ask?, fixed: Bool = false, place: Bool = false, review: String? = nil,
+        lines: Bool = false, always: Bool = false
+      ) -> Note {
+        Note(
+          id: id, fixed: fixed, place: place, review: review, lines: lines, always: always, kind: "text", md: md, q: q)
       }
       public static func code(
-        _ id: String, head: Head, start: Int, html: [String], fixed: Bool = false, place: Bool = false
+        _ id: String, head: Head, start: Int, html: [String], fixed: Bool = false, place: Bool = false,
+        review: String? = nil
       ) -> Note {
-        Note(id: id, fixed: fixed, place: place, kind: "code", head: head, start: start, html: html)
+        Note(id: id, fixed: fixed, place: place, review: review, kind: "code", head: head, start: start, html: html)
       }
     }
 
@@ -103,6 +113,9 @@ public final class SidenotePop: NSObject {
     case delete(String)
     /// Place on Board
     case place(String)
+    case alwaysShow(String)
+    /// Mark Reviewed
+    case reviewed(String)
     case done(String, Bool)
     case answer(String, String)
     case writeAnswer(String, answer: String, String)
@@ -250,6 +263,8 @@ public final class SidenotePop: NSObject {
     case "write": onAction?(.write(s("id"), s("text")))
     case "delete": onAction?(.delete(s("id")))
     case "place": onAction?(.place(s("id")))
+    case "always": onAction?(.alwaysShow(s("id")))
+    case "reviewed": onAction?(.reviewed(s("id")))
     case "done": onAction?(.done(s("id"), m["done"] as? Bool ?? false))
     case "answer": onAction?(.answer(s("id"), s("text")))
     case "writeAnswer": onAction?(.writeAnswer(s("id"), answer: s("answer"), s("text")))

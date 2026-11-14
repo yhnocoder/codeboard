@@ -564,8 +564,8 @@ extension CanvasSidenoteTests {
 }
 
 extension CanvasSidenoteTests {
-  /// The tools of a sidenote hovered in its popup (notes.tsx Slip): Edit, Place on Board (on a card, no question),
-  /// Delete; a question's Resolve, Edit and Delete Question
+  /// The tools of a sidenote hovered in its popup (notes.tsx Slip): Edit, Always Show (on lines), Place on Board (on a
+  /// card, no question), Delete; a question's Resolve, Edit and Delete Question
   @Test func aSidenotesToolsAreMainsAndPlaceOnBoardMakesItACard() async throws {
     let r = try await Rig(sidenoteBoard(question: true), zoom: 1)
     defer { r.close() }
@@ -585,7 +585,7 @@ extension CanvasSidenoteTests {
     #expect(await tools("w1") == ["Resolve", "Edit", "Delete Question"])
     c.openPop(lines)
     await opened(r, lines)
-    #expect(await tools("l1") == ["Edit", "Place on Board", "Delete Sidenote"])
+    #expect(await tools("l1") == ["Edit", "Always Show", "Place on Board", "Delete Sidenote"])
     // pressed: a Note of its text beside the card, an arrow to it from the Highlight's first line, one step, selected
     let from = r.rect("c1")
     _ = await pop.run("pop.click(s)", ["s": ".slip[data-note=\"l1\"] [aria-label=\"Place on Board\"]"])
@@ -607,5 +607,53 @@ extension CanvasSidenoteTests {
     }
     r.doc.undo()
     #expect(r.doc.board.sidenote(nid("l1")) != nil && r.doc.board.card(id) == nil)
+  }
+}
+
+extension CanvasSidenoteTests {
+  /// Always Show (notes.tsx Slip): its eye on, the sidenote last in its Highlight's popup, one step; Mark Reviewed, in
+  /// the slip's second-look line and in its menu, clears the look
+  @Test func alwaysShowAndMarkReviewedAreMains() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let pop = c.sidenotePop
+    let at = PopAt.lines(Lines(card: cid("c1"), segment: s1, range: 12...13))
+    c.openPop(at)
+    await opened(r, at)
+    func order() async -> [String] {
+      await pop.run("return [...document.querySelectorAll('.slip')].map((s) => s.dataset.note)") as? [String] ?? []
+    }
+    #expect(await order() == ["l1", "l2"])
+    _ = await pop.run("pop.click(s)", ["s": ".slip[data-note=\"l1\"] [aria-label=\"Always Show\"]"])
+    await r.until("always shown") {
+      if case .text(let t)? = r.doc.board.sidenote(nid("l1"))?.body { t.alwaysShow } else { false }
+    }
+    #expect(r.doc.undoName == "Always Show")
+    await r.until("drawn so") {
+      await pop.run(
+        "return document.querySelector('.slip[data-note=\"l1\"]').classList.contains('always') && !!document.querySelector('.slip[data-note=\"l1\"] [aria-label=\"Always Show\"].on')"
+      ) as? Bool == true
+    }
+    #expect(await order() == ["l2", "l1"], "the ones always shown last")
+    // a second look: said in the slip, and Mark Reviewed there and in its menu
+    #expect(!c.sidenoteMenu(nid("l2")).items.map(\.title).contains("Mark Reviewed"))
+    r.doc.edit("x") { b in
+      if let i = b.sidenotes.firstIndex(where: { $0.id == nid("l2") }) { b.sidenotes[i].review = "v2" }
+    }
+    #expect(
+      c.sidenoteMenu(nid("l2")).items.map { $0.isSeparatorItem ? "-" : $0.title } == [
+        "Edit", "Place on Board", "Mark Reviewed", "-", "Delete Sidenote",
+      ])
+    await r.until("its second look said") {
+      await pop.run("return document.querySelector('.slip[data-note=\"l2\"] .sn-why.review span')?.textContent")
+        as? String == "Line changed in v2, check it"
+    }
+    _ = await pop.run("pop.click(s)", ["s": ".slip[data-note=\"l2\"] .sn-why.review .tbtn"])
+    await r.until("reviewed") { r.doc.board.sidenote(nid("l2"))?.review == nil }
+    #expect(r.doc.undoName == "Mark Reviewed")
+    await r.until("its line gone") {
+      await pop.run("return document.querySelectorAll('.sn-why.review').length") as? Int == 0
+    }
   }
 }
