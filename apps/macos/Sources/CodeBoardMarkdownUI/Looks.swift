@@ -1,10 +1,29 @@
-import CodeBoardMarkdownUI
-import CodeBoardModel
 import CoreGraphics
 
 /// The board's looks (Warm Ink, Ink Wash, light and dark) as MarkdownThemes, with the values the web board computes for
 /// them (tools/markdown/styles.mjs reads them off the reference page), and each card style's type and box in them
-public enum NoteLooks {
+public enum MarkdownLooks {
+  /// How a piece of Markdown is set: a Note card, or frameless Markdown at a size of its own (a Text), or the same on a
+  /// coloured box with its text centred (a Box). `wrap`: it wraps at the width it is given; otherwise it is as wide as
+  /// its text
+  public enum Style: Hashable, Sendable {
+    case note
+    case text(size: Double, wrap: Bool)
+    case box(size: Double, wrap: Bool)
+    var size: Double? {
+      switch self {
+      case .note: nil
+      case .text(let s, _), .box(let s, _): s
+      }
+    }
+    var wraps: Bool {
+      switch self {
+      case .note: true
+      case .text(_, let w), .box(_, let w): w
+      }
+    }
+  }
+
   static let sys = ["-apple-system", "PingFang SC"]
   static let serif = ["Source Serif 4", "Songti SC"]
   static let mono = ["JetBrains Mono", "SF Mono", "Menlo"]
@@ -172,7 +191,7 @@ public enum NoteLooks {
 
   /// The card a style draws (styles.css .card.note, and .card.text .tx.tb for a Text or Box: Markdown at the card's own
   /// size --tfs, headings 1.8 / 1.35 / 1.1 em, code 0.82 em; themes.css for the look's fonts)
-  public static func card(_ style: NoteStyle, look: String, dark: Bool) -> Card {
+  public static func card(_ style: Style, look: String, dark: Bool) -> Card {
     var t = theme(look, dark: dark)
     let warm = look == "warm-ink"
     let sys = warm ? Self.sys : Self.serif
@@ -181,7 +200,7 @@ public enum NoteLooks {
       return Card(
         theme: t, header: 36, padding: [10, 14, 12, 14], natural: false, fixedHeight: true, minContent: 1.6 * 13.5)
     case .text, .box:
-      let size = style.textSize ?? NoteStyle.defaultTextSize
+      let size = style.size ?? 20
       // .tx.st-body at --tfs: the look's body family, 1.6, regular; .tx h1 is --display, the others --note-h (the
       // body's family in Ink Wash)
       t.fonts.body = sys
@@ -208,5 +227,32 @@ public enum NoteLooks {
         theme: t, header: 0, padding: box ? [8, 14, 8, 14] : [2, 4, 2, 4], natural: !style.wraps, fixedHeight: false,
         minContent: 1.6 * size)
     }
+  }
+}
+
+extension MarkdownLooks.Card {
+  /// The card's size at 100 % around content of `content` size for a card `width` wide: as tall as its content (unless
+  /// a Note keeps a stored `height`), a Text or Box that does not wrap as wide as its text
+  public func size(content: CGSize, width: Double, height: Double?) -> CGSize {
+    let p = padding
+    let w = natural ? content.width + p[1] + p[3] : CGFloat(width)
+    if let height, fixedHeight { return CGSize(width: w, height: CGFloat(height)) }
+    return CGSize(width: w, height: (header + p[0] + max(content.height, minContent) + p[2]).rounded(.up))
+  }
+
+  /// Draws laid out content into a card `size` big at 100 %, y-down from the card's top left, at `scale` device pixels a
+  /// point; what does not fit the card's height is cut at its padding
+  public func draw(
+    _ content: BlockLayout, in ctx: CGContext, size: CGSize, scale: CGFloat, image: (MarkdownImageSlot) -> CGImage?
+  ) {
+    let p = padding
+    let inner = CGRect(
+      x: p[3], y: header + p[0], width: size.width - p[1] - p[3], height: max(0, size.height - header - p[0] - p[2]))
+    ctx.saveGState()
+    ctx.clip(to: CGRect(x: 0, y: inner.minY, width: size.width, height: inner.height))
+    ctx.translateBy(x: inner.minX, y: inner.minY)
+    content.draw(
+      in: ctx, scale: scale, clip: CGRect(x: -p[3], y: -1, width: size.width, height: inner.height + 2), image: image)
+    ctx.restoreGState()
   }
 }

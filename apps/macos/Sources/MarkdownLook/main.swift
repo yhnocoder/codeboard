@@ -1,13 +1,12 @@
-// Draws cards with the app's own Note path (CodeBoardNotes over CodeBoardMarkdownUI) into PNGs, for comparing with the
+// Draws cards with the Markdown component (CodeBoardMarkdownUI, its looks in MarkdownLooks) into PNGs, for comparing with the
 // web board (tools/markdown/look.mjs):
 //   swift run MarkdownLook <jobs.json> <out dir> <look> <dark 0|1> <scale>
 // jobs.json: [{name, text, style (as board.json writes it), width, height?, folder, refs}], refs as the web board's
 // resolver gives them ({label, target, hit: {title, seal?} or {broken: "place" | "item", title, badge}}). Each card is
 // drawn on the look's paper, as the canvas draws it under the content; its code coloured by CodeBoardSyntax, whose
 // tokens are written to tokens.json for the web side to colour the same code alike.
+import CodeBoardMarkdown
 import CodeBoardMarkdownUI
-import CodeBoardModel
-import CodeBoardNotes
 import CodeBoardSyntax
 import CoreGraphics
 import Foundation
@@ -60,32 +59,61 @@ enum JSONValue: Decodable {
   var bool: Bool? { if case .bool(let b) = self { b } else { nil } }
 }
 
-func style(_ s: [String: [String: JSONValue]]) -> NoteStyle {
+/// a card style as board.json writes it ({"text": {"fontSize": 20, "wrap": true}}); a Text or Box without a size is the
+/// board's default, 20
+func style(_ s: [String: [String: JSONValue]]) -> MarkdownLooks.Style {
   guard let (kind, f) = s.first else { return .note }
-  let size = f["fontSize"]?.number
+  let size = f["fontSize"]?.number ?? 20
   let wrap = f["wrap"]?.bool ?? false
   switch kind {
-  case "text": return .text(fontSize: size, wrap: wrap)
-  case "box":
-    let fill = NoteStyle.BoxFill(rawValue: f["fill"]?.string ?? "yellow") ?? .yellow
-    return .box(fill: fill, fontSize: size, wrap: wrap)
+  case "text": return .text(size: size, wrap: wrap)
+  case "box": return .box(size: size, wrap: wrap)
   default: return .note
   }
 }
 
-func refs(_ r: [Job.Ref]) -> [NoteRef] {
-  r.map { ref in
+/// what the web board's resolver said each reference points at
+func hits(_ r: [Job.Ref]) -> [String: MarkdownRefHit] {
+  var out: [String: MarkdownRefHit] = [:]
+  for ref in r {
     let h = ref.hit
-    let hit: NoteRef.Hit =
+    out[ref.label + "\u{0}" + (ref.target ?? "")] =
       if let broken = h.broken {
-        .broken(place: broken == "place", title: h.title, badge: h.badge ?? "")
+        .broken(place: broken == "place", title: h.title, badge: (h.badge ?? "").isEmpty ? nil : h.badge)
       } else {
         .found(
-          title: h.title, seal: h.seal.map { NoteRef.Seal(text: $0.text, color: $0.color, alone: $0.alone ?? false) })
+          title: h.title, seal: h.seal.map { MarkdownSeal(text: $0.text, color: $0.color, alone: $0.alone ?? false) })
       }
-    return NoteRef(label: ref.label, target: ref.target, hit: hit)
   }
+  return out
 }
+
+/// A card's resources: its folder's images (sizes read from their headers), the references as resolved, code coloured
+/// by CodeBoardSyntax, the engines
+struct LookResources: MarkdownResources {
+  let folder: URL
+  let refs: [String: MarkdownRefHit]
+  let math: MathTypesetter?
+  let colour: @Sendable ([String], String) -> [[MarkdownToken]]?
+  var diagrams: DiagramRenderer? { math as? DiagramRenderer }
+  func imageSize(_ src: String) -> CGSize? {
+    guard !src.contains("://"), let s = CGImageSourceCreateWithURL(folder.appending(path: src) as CFURL, nil),
+      let p = CGImageSourceCopyPropertiesAtIndex(s, 0, nil) as? [CFString: Any],
+      let w = p[kCGImagePropertyPixelWidth] as? Int, let h = p[kCGImagePropertyPixelHeight] as? Int
+    else { return nil }
+    return CGSize(width: w, height: h)
+  }
+  func ref(label: String, target: String?) -> MarkdownRefHit? { refs[label + "\u{0}" + (target ?? "")] }
+  func highlight(lines: [String], language: String) -> [[MarkdownToken]]? { colour(lines, language) }
+  var mathPreamble: String { "" }
+}
+
+/// a code fence's language as CodeBoardSyntax names its grammars; nil: not coloured
+let fenceLanguages: [String: String] = [
+  "python": "python", "py": "python", "python3": "python", "triton": "triton", "tilelang": "tilelang",
+  "c": "c", "h": "c", "cpp": "cpp", "c++": "cpp", "cc": "cpp", "cxx": "cpp", "hpp": "cpp", "cuda": "cuda-cpp",
+  "cu": "cuda-cpp", "cuh": "cuda-cpp", "cuda-cpp": "cuda-cpp", "rust": "rust", "rs": "rust",
+]
 
 let a = CommandLine.arguments
 guard a.count == 6 else {
@@ -109,21 +137,16 @@ let classes: [MarkdownTokenKind: String] = [
 ]
 /// what the web side colours each code block with: "language\u0000code" → each line's [from, to, class]
 let tokensOut = Mutex([String: [[[String]]]]())
-let paper = NoteLooks.theme(look, dark: dark).colors.surface
+let paper = MarkdownLooks.theme(look, dark: dark).colors.surface
+try MarkdownAssets.fonts.get()
+let engines = try MarkdownAssets.engines()
 
 for job in jobs {
   let folder = URL(filePath: job.folder)
-  let env = NoteEnv(
-    folder: folder, refs: refs(job.refs),
-    imageSize: { url in
-      guard let s = CGImageSourceCreateWithURL(url as CFURL, nil),
-        let p = CGImageSourceCopyPropertiesAtIndex(s, 0, nil) as? [CFString: Any],
-        let w = p[kCGImagePropertyPixelWidth] as? Int, let h = p[kCGImagePropertyPixelHeight] as? Int
-      else { return nil }
-      return CGSize(width: w, height: h)
-    },
-    highlight: { lines, language in
-      guard let grammar = NativeNotes.grammar(fence: language) else { return nil }
+  let resources = LookResources(
+    folder: folder, refs: hits(job.refs), math: engines,
+    colour: { lines, language in
+      guard let grammar = fenceLanguages[language.lowercased()] else { return nil }
       let tokens = highlighter.tokens(lines: lines, language: grammar).map { line in
         line.map { MarkdownToken(columns: $0.columns, kind: kinds[$0.kind] ?? .punctuation) }
       }
@@ -135,10 +158,18 @@ for job in jobs {
       return tokens
     })
   let t0 = Date()
-  let body = try NativeNotes.body(
-    Note(text: job.text, style: style(job.style)), width: job.width, look: look, dark: dark, env: env, cache: false)
+  let card = MarkdownLooks.card(style(job.style), look: look, dark: dark)
+  let document = MarkdownDocument(job.text)
+  let p = card.padding
+  var inner = max(1, CGFloat(job.width) - p[1] - p[3])
+  if card.natural {
+    // as wide as its widest line: measured, then laid out at that width
+    inner = max(
+      1, MarkdownLayout.make(document, width: nil, theme: card.theme, layout: nil, resources: resources).size.width)
+  }
+  let body = BlockLayout(document, width: inner, theme: card.theme, layout: nil, resources: resources)
   let t1 = Date()
-  let size = body.size(width: job.width, height: job.height)
+  let size = card.size(content: body.size, width: job.width, height: job.height)
   let w = Int((size.width * scale).rounded(.up))
   let h = Int((size.height * scale).rounded(.up))
   let ctx = CGContext(
@@ -148,9 +179,11 @@ for job in jobs {
   ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
   ctx.translateBy(x: 0, y: CGFloat(h))
   ctx.scaleBy(x: scale, y: -scale)
-  body.draw(in: ctx, size: size, scale: scale) { img, width in
-    guard let src = CGImageSourceCreateWithURL(img.url as CFURL, nil) else { return nil }
-    let i = min(img.frame, max(0, CGImageSourceGetCount(src) - 1))
+  card.draw(body, in: ctx, size: size, scale: scale) { slot in
+    guard !slot.src.contains("://"),
+      let src = CGImageSourceCreateWithURL(folder.appending(path: slot.src) as CFURL, nil)
+    else { return nil }
+    let i = min(max(0, (slot.stillFrame ?? 1) - 1), max(0, CGImageSourceGetCount(src) - 1))
     return CGImageSourceCreateImageAtIndex(src, i, nil)
   }
   let t2 = Date()

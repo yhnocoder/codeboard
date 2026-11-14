@@ -38,7 +38,7 @@ public final class JSEngines: MathTypesetter, DiagramRenderer, @unchecked Sendab
     let preamble: String
   }
 
-  /// script: engines.js of the assets build (apps/macos/web/dist); engines: how many may run at once
+  /// script: engines.js of the assets build (apps/macos/.build-markdown); engines: how many may run at once
   public init(script: URL, engines: Int = 2, textFont: [String] = ["-apple-system", "PingFang SC"]) throws {
     self.script = try String(contentsOf: script, encoding: .utf8)
     limit = max(1, engines)

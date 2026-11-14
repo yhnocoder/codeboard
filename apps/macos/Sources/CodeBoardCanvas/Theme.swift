@@ -9,7 +9,7 @@ import CodeBoardSyntax
 /// board's themes (packages/board/src/styles.css for Warm Ink, themes.css for the others), each in a light and a dark
 /// variant as the web board's html[data-theme] picks them.
 public struct Theme: Sendable {
-  /// The look's stable name: the web board's theme id, kept in settings and cache keys
+  /// The look's stable name: the web board's theme id, kept in settings, cache keys and the Note page
   public enum ID: String, CaseIterable, Sendable {
     case warmInk = "warm-ink"
     case inkWash = "ink-wash"
@@ -71,7 +71,7 @@ public struct Theme: Sendable {
 
   /// The board's background; the shell's board panel is the same surface
   package var canvas: CGColor
-  /// A picture behind the board, fixed to the view (an asset of the assets build, by its source name): nil for none
+  /// A picture behind the board, fixed to the view (an asset of the Note page build, by its source name): nil for none
   var backdrop: String?
   /// The backdrop drawn (once per process; tens of milliseconds the first time)
   package var backdropImage: CGImage? { backdrop.flatMap(Backdrop.image) }
@@ -411,7 +411,7 @@ struct Font: @unchecked Sendable {
     Font(NSFont.monospacedSystemFont(ofSize: size, weight: weight))
   }
 
-  /// One of the board's own fonts, from the assets build (the same files the web board's stylesheets load): `file` is the font's
+  /// One of the board's own fonts, from the Note page build (the same files its stylesheets load): `file` is the font's
   /// source name (packages/board/src/fonts), weight a `wght` value for a variable font, opticalSize sets `opsz` to the size
   /// as browsers do; cascade: the source name prefix of further files that fill in characters the first one lacks. nil when
   /// the page build has no such file
@@ -430,9 +430,9 @@ struct Font: @unchecked Sendable {
   }
 }
 
-/// The board's font files as the assets build carries them (`assets/<source name>-<hash>.woff2`), read once
+/// The board's font files as the Note page build carries them (`assets/<source name>-<hash>.woff2`), read once
 enum BoardFonts {
-  private static let folder = NativeNotes.assets.appending(path: "assets")
+  private static let folder = NoteRenderer.bundledPage.appending(path: "assets")
   private static let names: [String] =
     ((try? FileManager.default.contentsOfDirectory(atPath: folder.path(percentEncoded: false))) ?? [])
     .filter { $0.hasSuffix(".woff2") }.sorted()

@@ -1,4 +1,3 @@
-import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardNotes
 import CodeBoardSyntax
@@ -57,37 +56,29 @@ struct Scene: Sendable {
   /// The tilt of a tilted card, as the board's (counter-clockwise)
   static let tilt = -1.2 * CGFloat.pi / 180
 
-  /// Lays out every Note of the board at once, on all cores, into the Notes' layout cache: making the scene after this
-  /// finds them there. Errors are left for the scene to throw
-  static func layOutNotes(_ board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter) {
+  /// A Note whose size only the Note renderer knows: one without a stored height, or a Free Text
+  struct Measure: Sendable {
+    var card: CardID
+    var note: Note
+    var width: Double
+    /// Where its images are: the board package or the vault's shared folder
+    var folder: URL
+    var refs: [NoteRef]
+  }
+
+  /// The Notes the renderer must measure before the scene can be made
+  static func measures(_ board: Board, package: URL, vault: Vault) -> [Measure] {
     let refs = RefResolver(board, package: package, vault: vault)
-    let notes: [(Card, Note, NoteEnv)] = board.cards.compactMap { c in
+    return board.cards.compactMap { c in
       guard let (content, folder) = content(of: c, package: package, vault: vault), case .note(let n) = content.body
       else { return nil }
-      return (c, n, env(folder: folder, refs: refs.refs(in: n.text), highlighter: highlighter))
-    }
-    DispatchQueue.concurrentPerform(iterations: notes.count) { i in
-      let (c, n, env) = notes[i]
-      _ = try? NativeNotes.body(n, width: c.width, look: t.id.rawValue, dark: t.dark, env: env)
+      // a Free Text is as wide as its text, whatever its stored height
+      var freeText = false
+      if case .freeText = n.style { freeText = true }
+      guard c.height == nil || freeText else { return nil }
+      return Measure(card: c.id, note: n, width: c.width, folder: folder, refs: refs.refs(in: n.text))
     }
   }
-
-  /// What a Note's content needs from the canvas: image sizes as image cards read them, code coloured as code cards are
-  static func env(folder: URL, refs: [NoteRef], highlighter: Highlighter) -> NoteEnv {
-    NoteEnv(
-      folder: folder, refs: refs, imageSize: { DecodeCache.pixelSize($0) },
-      highlight: { lines, language in
-        guard let name = NativeNotes.grammar(fence: language) else { return nil }
-        return highlighter.tokens(lines: lines, language: name).map { line in
-          line.map { MarkdownToken(columns: $0.columns, kind: tokenKinds[$0.kind] ?? .punctuation) }
-        }
-      })
-  }
-
-  static let tokenKinds: [TokenClass: MarkdownTokenKind] = [
-    .keyword: .keyword, .operator: .operator, .function: .function, .string: .string, .comment: .comment,
-    .number: .number, .receiver: .receiver, .punctuation: .punctuation,
-  ]
 
   /// A card's content and the folder its images are in; nil for a shared card whose file could not be read
   static func content(of c: Card, package: URL, vault: Vault) -> (CardContent, URL)? {
@@ -97,11 +88,11 @@ struct Scene: Sendable {
     }
   }
 
-  /// Off the main thread: code is highlighted and Notes are laid out here (from their cache, after `layOutNotes`), once,
-  /// and kept with their item for every redraw. Throws when a Note needs the formula engines and they cannot be had
+  /// Off the main thread: code is highlighted here, once, and kept with its item for every redraw. `sizes`: what the
+  /// Note renderer measured of each Note in `measures`
   init(
-    _ board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter
-  ) throws(NoteError) {
+    _ board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter, sizes: [CardID: CGSize] = [:]
+  ) {
     for s in board.sections {
       let r = CGRect(x: s.x, y: s.y, width: s.width, height: s.height)
       // the title's room: a tray's label has 6 before its text and 2 after, a brush title 2 after
@@ -132,8 +123,8 @@ struct Scene: Sendable {
         continue
       }
       let tilt = c.tilted ? Scene.tilt : 0
-      let (drawing, size, code) = try Scene.card(
-        c, content, board: board, folder: folder, theme: t, highlighter: highlighter, refs: refs)
+      let (drawing, size, code) = Scene.card(
+        c, content, board: board, folder: folder, measured: sizes[c.id], theme: t, highlighter: highlighter, refs: refs)
       let r = CGRect(origin: CGPoint(x: c.x, y: c.y), size: size)
       placed[c.id] = Placed(rect: r, code: code, tilt: tilt)
       items.append(Item(rect: r, drawing: drawing, tilt: tilt, bleed: drawing.bleed(t)))
@@ -263,9 +254,9 @@ struct Scene: Sendable {
   }
 
   private static func card(
-    _ c: Card, _ content: CardContent, board: Board, folder: URL, theme t: Theme, highlighter: Highlighter,
-    refs: RefResolver
-  ) throws(NoteError) -> (
+    _ c: Card, _ content: CardContent, board: Board, folder: URL, measured: CGSize?, theme t: Theme,
+    highlighter: Highlighter, refs: RefResolver
+  ) -> (
     Drawing, CGSize, (layout: CodeLayout, top: CGFloat, segments: [SegmentID])?
   ) {
     let images = folder.appending(path: Vault.imagesFolder)
@@ -293,12 +284,12 @@ struct Scene: Sendable {
       return (.code(d), CGSize(width: c.width, height: top + body), (layout, top, code.segments.map(\.id)))
     case .note(let n):
       let title = content.title ?? heading(n.text)
-      let body = try NativeNotes.body(
-        n, width: c.width, look: t.id.rawValue, dark: t.dark,
-        env: env(folder: folder, refs: refs.refs(in: n.text), highlighter: highlighter))
-      // as tall as its content without a stored height (a Text or Box always), as wide as its text when it does not wrap
-      let size = body.size(width: c.width, height: c.height)
-      return (.note(Drawing.Note(id: c.id.rawValue, title: title, content: n, body: body)), size, nil)
+      // a Free Text is as wide as its text; a Note the renderer could not measure is shown as paper of an arbitrary height
+      var size = CGSize(width: c.width, height: c.height ?? measured?.height ?? c.width * 0.6)
+      if case .freeText = n.style, let m = measured { size.width = m.width }
+      let note = Drawing.Note(
+        id: c.id.rawValue, title: title, content: n, folder: folder, height: c.height, refs: refs.refs(in: n.text))
+      return (.note(note), size, nil)
     case .image(let img):
       var url: URL?
       if case .file(let f) = img.source { url = images.appending(path: f) }

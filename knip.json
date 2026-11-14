@@ -9,7 +9,7 @@
     "@yhnocoder/tree-sitter-cuda",
     // a Storybook addon, named only as a string in .storybook/main.ts
     "storybook-addon-pseudo-states",
-    // bundled into the Mac app's formula engine by apps/macos/web/build.mjs, outside knip's workspaces
+    // bundled into the Mac Markdown component's formula engine by apps/macos/tools/markdown/assets.mjs, outside knip's workspaces
     "mathjax-full"
   ],
   "workspaces": {

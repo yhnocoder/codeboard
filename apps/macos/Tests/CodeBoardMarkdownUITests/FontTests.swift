@@ -7,7 +7,7 @@ import Testing
 /// The board's fonts from the assets build, registered once for these tests
 /// (registered through FontBook: a font another test looked up before is looked up again)
 let boardFonts: Void = {
-  let folder = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../web/dist/assets")
+  let folder = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../.build-markdown/assets")
     .standardized
   MarkdownFonts.register(
     ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []).filter {

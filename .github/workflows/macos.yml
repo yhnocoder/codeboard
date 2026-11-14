@@ -19,24 +19,15 @@ jobs:
       run: { working-directory: apps/macos }
     steps:
       - uses: actions/checkout@v6
-      # the assets the app carries (apps/macos/web: the formula engines, the board's fonts, the SVG page); the tests use them
+      # the page that draws Notes (apps/macos/web, over the Markdown package's build); the Notes tests render through it.
+      # The native Markdown component's fonts and formula engines (apps/macos/tools/markdown/assets.mjs); its tests use them
       - uses: ./.github/actions/setup
         with:
-          build: node apps/macos/web/build.mjs
+          build: npm run build -w @yhnocoder/markdown && node apps/macos/web/build.mjs && node apps/macos/tools/markdown/assets.mjs
       - name: Select the newest Xcode
         run: |
           sudo xcode-select -s "$(find /Applications -maxdepth 1 -type d -name 'Xcode_*.app' | sort -V | tail -1)"
           swift --version
       - run: swift build
       - run: swift test
-        env:
-          # the watchdog dumps every thread's stack to this file if the tests hang (CodeBoardCanvasTests/Watchdog.swift)
-          WATCHDOG_FILE: ${{ runner.temp }}/watchdog.txt
-      - name: Upload the watchdog's thread dump if the tests hung
-        if: failure()
-        uses: actions/upload-artifact@v6
-        with:
-          name: canvas-test-watchdog
-          path: ${{ runner.temp }}/watchdog.txt
-          if-no-files-found: ignore
       - run: swift format lint --strict -r Sources Tests Package.swift

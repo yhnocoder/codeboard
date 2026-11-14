@@ -95,10 +95,11 @@ extension CardContent {
       }
     case .note(let note):
       switch note.style {
-      case .text(let size?, _), .box(_, let size?, _):
-        if !NoteStyle.textSizes.contains(size) { return "font size \(size) is outside 10…240" }
+      case .mark(_, _, let size?), .freeText(_, _, let size?):
+        if !(10...240).contains(size) { return "font size \(size) is outside 10…240" }
       default: break
       }
+      if case .freeText(let level, _, _) = note.style, !(0...3).contains(level) { return "free text level \(level)" }
     case .image(let image):
       if let f = image.stillFrame, f < 1 { return "still frame \(f)" }
     }
@@ -397,16 +398,24 @@ extension CodeSource: Codable {
 
 extension NoteStyle: Codable {
   private enum Keys: String, CodingKey {
-    case note, text, box
+    case note, text, box, mark, freeText
   }
   private struct Text: Codable {
-    var fontSize: Double?
-    var wrap: Bool
+    var size: TextSize
+    var bold: Bool
   }
   private struct Box: Codable {
     var fill: BoxFill
+  }
+  private struct Mark: Codable {
+    var color: HandColor
+    var weight: HandWeight
     var fontSize: Double?
-    var wrap: Bool
+  }
+  private struct FreeText: Codable {
+    var level: Int
+    var bold: Bool
+    var fontSize: Double?
   }
 
   public init(from decoder: any Decoder) throws {
@@ -417,10 +426,15 @@ extension NoteStyle: Codable {
       self = .note
     case .text:
       let t = try c.decode(Text.self, forKey: .text)
-      self = .text(fontSize: t.fontSize, wrap: t.wrap)
+      self = .text(size: t.size, bold: t.bold)
     case .box:
-      let b = try c.decode(Box.self, forKey: .box)
-      self = .box(fill: b.fill, fontSize: b.fontSize, wrap: b.wrap)
+      self = .box(fill: try c.decode(Box.self, forKey: .box).fill)
+    case .mark:
+      let m = try c.decode(Mark.self, forKey: .mark)
+      self = .mark(color: m.color, weight: m.weight, fontSize: m.fontSize)
+    case .freeText:
+      let f = try c.decode(FreeText.self, forKey: .freeText)
+      self = .freeText(level: f.level, bold: f.bold, fontSize: f.fontSize)
     }
   }
 
@@ -428,8 +442,12 @@ extension NoteStyle: Codable {
     var c = encoder.container(keyedBy: Keys.self)
     switch self {
     case .note: try c.encode(Empty(), forKey: .note)
-    case .text(let size, let wrap): try c.encode(Text(fontSize: size, wrap: wrap), forKey: .text)
-    case .box(let fill, let size, let wrap): try c.encode(Box(fill: fill, fontSize: size, wrap: wrap), forKey: .box)
+    case .text(let size, let bold): try c.encode(Text(size: size, bold: bold), forKey: .text)
+    case .box(let fill): try c.encode(Box(fill: fill), forKey: .box)
+    case .mark(let color, let weight, let fontSize):
+      try c.encode(Mark(color: color, weight: weight, fontSize: fontSize), forKey: .mark)
+    case .freeText(let level, let bold, let fontSize):
+      try c.encode(FreeText(level: level, bold: bold, fontSize: fontSize), forKey: .freeText)
     }
   }
 }

@@ -26,8 +26,6 @@ import CodeBoardModel
   private var treeRead = 0
 
   func applicationDidFinishLaunching(_ notification: Notification) {
-    // the fonts and the Note layout code warmed up while the window opens, off the main thread
-    Task.detached(priority: .userInitiated) { CanvasView.warmUp() }
     NSWindow.allowsAutomaticWindowTabbing = false
     NSApp.mainMenu = mainMenu()
     let saved = UserDefaults.standard.data(forKey: Self.stateKey).flatMap {

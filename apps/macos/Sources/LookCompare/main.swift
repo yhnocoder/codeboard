@@ -106,15 +106,13 @@ for theme in Theme.all.flatMap({ [$0, Theme.named($0.id, dark: true)] }) {
     print("\(name): no web pictures (run tools/look/compare.mjs)")
     continue
   }
+  // what the Note page measures, as the web board measured it
+  var sizes: [CardID: CGSize] = [:]
+  for (id, r) in rects.rects { sizes[CardID(rawValue: id)] = CGSize(width: r.w, height: r.h) }
   func picture(_ rect: CGRect, scale: CGFloat, backdrop: Bool) -> (image: CGImage?, cards: [String: CGRect]) {
-    do {
-      return try Picture.draw(
-        board: board, package: package, vault: vault, theme: theme, highlighter: highlighter, rect: rect, scale: scale,
-        backdrop: backdrop)
-    } catch {
-      print("\(name): \(error)")
-      return (nil, [:])
-    }
+    Picture.draw(
+      board: board, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes, rect: rect,
+      scale: scale, backdrop: backdrop)
   }
   // the whole board as the web view showed it: 1440 × 900 at 100 %, on a 2x screen
   let whole = picture(CGRect(x: 0, y: 0, width: 1440, height: 900), scale: 2, backdrop: true)

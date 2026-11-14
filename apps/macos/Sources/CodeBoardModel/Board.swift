@@ -200,7 +200,7 @@ public struct Annotation: Codable, Equatable, Sendable {
   }
 }
 
-public enum HandColor: String, Codable, Hashable, Sendable {
+public enum HandColor: String, Codable, Sendable {
   case blue, purple, orange, green
 }
 
@@ -218,46 +218,34 @@ public struct Note: Codable, Equatable, Sendable {
   }
 }
 
-/// How a Note is drawn: a Note, or a Text or Box (one card with two looks, as in the extension since its version 16)
-public enum NoteStyle: Hashable, Sendable {
-  public enum BoxFill: String, Codable, Sendable, CaseIterable {
+/// How a Note is drawn. The old Text, Box, Mark and Free Text cards are Notes drawn their way, so they can later become
+/// Note looks or annotations without a new card kind
+public enum NoteStyle: Equatable, Sendable {
+  public enum TextSize: String, Codable, Sendable {
+    case title, heading, body
+  }
+  public enum BoxFill: String, Codable, Sendable {
     case yellow, paper, blue, green, pink
   }
-
-  /// A Text's or Box's text size when it stores none (the S of S M L XL: 20, 24, 30, 40), and how small and large one can be
-  public static let defaultTextSize = 20.0
-  public static let textSizes = 10.0...240.0
+  public enum HandWeight: String, Codable, Sendable {
+    case light, regular, bold
+  }
 
   /// A card with a frame and a title bar
   case note
-  /// Frameless Markdown at a size of its own (`fontSize` nil: `defaultTextSize`), its headings and code scaled with it.
-  /// `wrap`: it wraps at the card's stored width; otherwise it is as wide as its text
-  case text(fontSize: Double?, wrap: Bool)
-  /// The same on a coloured box, its text centred
-  case box(fill: BoxFill, fontSize: Double?, wrap: Bool)
-}
-
-extension NoteStyle {
-  /// The text size a Text or Box is drawn at; nil for a Note
-  public var textSize: Double? {
-    switch self {
-    case .note: nil
-    case .text(let size, _), .box(_, let size, _): size ?? Self.defaultTextSize
-    }
-  }
-
-  /// Whether a Text or Box wraps at its stored width (a Note always does)
-  public var wraps: Bool {
-    switch self {
-    case .note: true
-    case .text(_, let wrap), .box(_, _, let wrap): wrap
-    }
-  }
+  /// Frameless text in the theme's title, heading or body style
+  case text(size: TextSize, bold: Bool)
+  /// Frameless text on a coloured box
+  case box(fill: BoxFill)
+  /// Handwriting; fontSize nil: the Mark default (18 px)
+  case mark(color: HandColor, weight: HandWeight, fontSize: Double?)
+  /// Plain text written on the board; level 1–3 = H1–H3, 0 = body; fontSize nil: that level's default
+  case freeText(level: Int, bold: Bool, fontSize: Double?)
 }
 
 /// By position: the nth table, the nth code block
-public struct NoteLayout: Codable, Hashable, Sendable {
-  public struct Table: Codable, Hashable, Sendable {
+public struct NoteLayout: Codable, Equatable, Sendable {
+  public struct Table: Codable, Equatable, Sendable {
     public var cols: [Double?]?
     public var rows: [Double?]?
 

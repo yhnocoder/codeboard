@@ -1,7 +1,7 @@
 // The reference half of the look comparison: the fixture board drawn by the real web board (the real host records what it
 // sends the board, the built board draws it as a still picture in headless Chromium), in each theme, light and dark, as the
 // whole board and as one crop per card at each zoom. Writes <out>/<theme>[-dark]/web-*.png and rects.json (world rects the
-// Swift half crops the same way). Note content is hidden: tools/markdown/look.mjs compares that.
+// Swift half crops the same way). Note content is hidden: the Mac canvas draws a Note's frame, the Note page its content.
 import * as fs from "node:fs";
 import * as http from "node:http";
 import * as path from "node:path";

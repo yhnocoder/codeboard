@@ -83,18 +83,19 @@ source's version, so a card draws without the source. `language` is a VS Code la
 - `file: {path, hash?}`: a file in no git repository, `hash` a fingerprint of its content.
 - Later: `resource: {item, page, paragraph}` for code or text taken from a resource.
 
-**note**: `text, style, layout?`. `text` is Markdown. `layout` is
+**note**: `text, style, layout?`. `text` is Markdown, plain text for a free text. `layout` is
 `{tables?: [{cols?, rows?} | null], wrap?: [Int]}`, the shape of `@yhnocoder/markdown`'s `MdLayout` (table sizes and
 wrapped code blocks by position), handed to the editor unchanged. `style` is one of:
 - `note: {}`: a card with a frame and title bar
-- `text: {fontSize?, wrap}`: frameless Markdown at a size of its own (absent: 20, the S of S M L XL = 20 24 30 40; 10–240),
-  headings 1.8 / 1.35 / 1.1 times it, code 0.82 times it; `wrap`: it wraps at the card's width, otherwise it is as wide as
-  its text. Its height always follows its text
-- `box: {fill: yellow|paper|blue|green|pink, fontSize?, wrap}`: the same on a coloured box, its paragraphs and headings
-  centred
+- `text: {size: title|heading|body, bold}`
+- `box: {fill: yellow|paper|blue|green|pink}`
+- `mark: {color: blue|purple|orange|green, weight: light|regular|bold, fontSize?}` (absent: 18)
+- `freeText: {level: 0–3, bold, fontSize?}` (level 0 = body, 1–3 = H1–H3; absent size: the level's default)
 
-Text and Box are styles of a Note, not card kinds, as in the extension since its version 16 (one card with two looks). A
-Box's fill left out of the old file is written out (yellow).
+The old Text / Box / Mark / Free Text are styles of a Note, not card kinds: the design merges them into Notes or annotations
+later, and that becomes a change of styles, not of kinds. Defaults the old files left out (Text size body, Box fill yellow,
+Mark colour blue and weight regular) are written out; font sizes stay optional because "the level's default" follows the
+level.
 
 **image**: `source: {file: name} | {url: "https://…"}, alt?, framed, stillFrame?, loops`. `stillFrame` (from 1): the frame
 an animated image rests on; `loops`: it always plays.
@@ -120,12 +121,9 @@ has a card with `shared: true` and the same id.
 `LegacyImport.run(from: <old storage folder>, to: <vault>)` → `ImportReport`. The only code that knows the old format.
 
 **Source**: the VS Code extension's storage folder (`.codeboard/` in a project, or its own `boards/`). It reads only
-files of versions 13 to 16; 16 is what main writes today (`BOARD_VERSION` in `packages/core/src/model.ts`). A file older than
-16 is first brought to 16 as the extension's `migrate.ts` does (`LegacyUpgrade.swift`, a port of its 13 → 14 `<mark>` → `==`
-and 15 → 16 Text and Box steps; 14 → 15 changes only sidenotes, which are skipped), checked against `migrate.ts`'s own output
-by `LegacyUpgradeTests` (`tools/legacy-upgrade/cases.mjs` writes the pairs). A file older than 13 is refused, asking the
-user to open the board in the VS Code extension and change anything once: the extension upgrades files when it reads them
-but writes them only when it saves. A newer one is refused as newer. Layout read: `*.json` at the top and
+version 15 files, which is what main writes today (`BOARD_VERSION` in `packages/core/src/model.ts`). An older file is
+refused, asking the user to open the board in the VS Code extension and change anything once: the extension upgrades files
+when it reads them but writes them only when it saves. A newer one is refused as newer. Layout read: `*.json` at the top and
 one level of group folders, `cards/<id>.json` the shared-card library, `assets/` the images; `.trash/`, `runs/`, `github/`
 and every dot-file are ignored. The old folder is never written to.
 
@@ -168,8 +166,8 @@ deleted in VS Code stay in the vault; images no longer used stay in `images/`.
 | `src` repo / external + version git | `git`, no repository, `checkout` = `repo` / `root` |
 | any `src` + version pkg | `package` |
 | `src` repo / external + version hash or none | `file`, path joined to `repo` / `root`, the hash |
-| note `look` note / text / box, `fs wrap fill` | style `note` / `text {fontSize, wrap}` / `box {fill, fontSize, wrap}` |
-| note `md mdLayout` | `text` (`assets/<f>` → `images/<f>`), `layout` |
+| note `look` note / text / box / mark / freetext | style `note` / `text` / `box` / `mark` / `freeText` |
+| note `md mdLayout` | `text` (`assets/<f>` → `images/<f>`, not in free text), `layout` |
 | image `src` file name (or `assets/<f>`) | `{file}`, the file copied from `assets/` |
 | image `src` data: URL (PNG, JPEG, GIF, WebP, SVG) | a file named by the FNV-1a 64 of its bytes, `{file}` |
 | image `src` http(s) | `{url}` |
@@ -205,4 +203,4 @@ holds more. Kinds:
 - `field` (`<owner id>.<field>`): any other field, known or unknown: e.g. `born`, `seq`, `marks`, `legend`, `seal`,
   `hideNumbers` (it hides the call graph marks, which v1 does not draw; line numbers are always drawn),
   `place.collapsed`, `place.start`, `segment.keep`, `keepOld`, free code's `url` and `langPicked`, a style field the look
-  does not use (the `fill` a Text keeps from when it was a Box)
+  does not use (`bold` on a Box)

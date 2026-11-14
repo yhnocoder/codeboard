@@ -1,13 +1,11 @@
 import Foundation
 
-// The one-way importer from the VS Code extension's storage folder (board files of versions 13 to 16, as main writes them;
-// older ones are brought to 16 first, LegacyUpgrade) into a vault. The only code that knows the old format. It never writes into the old folder. FORMAT.md lists what maps to what.
+// The one-way importer from the VS Code extension's storage folder (version 15 board files, as main writes them) into a
+// vault. The only code that knows the old format. It never writes into the old folder. FORMAT.md lists what maps to what.
 
 public enum LegacyImport {
-  /// The versions of the old files it reads; any other is refused. Files older than `currentVersion` are first brought
-  /// to it as the extension does (LegacyUpgrade), then mapped
-  public static let oldestVersion = 13
-  public static let currentVersion = 16
+  /// The version of the old files it reads; any other is refused
+  public static let oldVersion = 15
 
   /// Imports every board and shared card of the old storage folder `source` into the vault at `destination`. A file that
   /// cannot be imported is listed in the report's failures and the rest go on; a board already in the vault (found by id,
@@ -131,9 +129,9 @@ public enum LegacyImportError: Error, Equatable, CustomStringConvertible {
     case .sourceInsideAppData(let url): "\(url.path) is inside the vault's own \(Vault.appDataFolder) folder"
     case .oldVersion(let url, let v):
       "\(url.path) is a version \(v) board file; open it in the VS Code extension and change anything once, so it is "
-        + "saved as version \(LegacyImport.currentVersion), then import again"
+        + "saved as version \(LegacyImport.oldVersion), then import again"
     case .newerVersion(let url, let v):
-      "\(url.path) is a version \(v) board file, newer than this app imports (\(LegacyImport.currentVersion))"
+      "\(url.path) is a version \(v) board file, newer than this app imports (\(LegacyImport.oldVersion))"
     case .malformed(let url, let why): "\(url.path): \(why)"
     case .duplicateBoardID(let url, let id, let other):
       "\(url.path) has board id \(id.rawValue), which \(other.path) has too; it was not imported"
@@ -170,7 +168,7 @@ private struct Run {
       let rel = "cards/\(file.lastPathComponent)"
       do {
         guard Vault.isSafeID(id) else { throw Bad("\(id) cannot name a shared card") }
-        let o = try oldFile(file, shared: true)
+        let o = try oldFile(file)
         var m = Mapper()
         m.only(o, ["version", "card", "sidenotes"], id: id)
         for n in try o.optObjects("sidenotes") { m.skips.add(.sidenote, try n.string("id")) }
@@ -209,7 +207,7 @@ private struct Run {
     var seen: [BoardID: URL] = [:]
     for (file, group, rel) in files {
       do {
-        let o = try oldFile(file, shared: false)
+        let o = try oldFile(file)
         let stem = file.deletingPathExtension().lastPathComponent
         let own = try o.optString("id")
         guard let raw = [own, stem].compactMap({ $0 }).first(where: Vault.isSafeID) else {
@@ -310,24 +308,19 @@ private func subfolders(of dir: URL) -> [URL] {
   entries(of: dir).filter(isFolder)
 }
 
-/// An old board or shared card file at a version this importer reads, brought to the one it maps
-private func oldFile(_ file: URL, shared: Bool) throws -> Obj {
+/// An old board or shared card file at the version this importer reads
+private func oldFile(_ file: URL) throws -> Obj {
   let raw: Any
   do {
     raw = try JSONSerialization.jsonObject(with: Data(contentsOf: file))
   } catch {
     throw Bad("not JSON")
   }
-  let version = try Obj(raw, path: "").optInt("version") ?? 1
-  if version < LegacyImport.oldestVersion { throw LegacyImportError.oldVersion(file, version) }
-  if version > LegacyImport.currentVersion { throw LegacyImportError.newerVersion(file, version) }
-  guard var dict = raw as? [String: Any] else { throw Bad("not a JSON object") }
-  if shared {
-    LegacyUpgrade.sharedCard(&dict, from: version)
-  } else {
-    LegacyUpgrade.board(&dict, from: version)
-  }
-  return try Obj(dict, path: "")
+  let o = try Obj(raw, path: "")
+  let version = try o.optInt("version") ?? 1
+  if version < LegacyImport.oldVersion { throw LegacyImportError.oldVersion(file, version) }
+  if version > LegacyImport.oldVersion { throw LegacyImportError.newerVersion(file, version) }
+  return o
 }
 
 // MARK: Mapping the old content
@@ -472,7 +465,7 @@ private struct Mapper {
     case "note":
       body = .note(try note(c, id: id))
       only(
-        c, common.union(["md", "look", "fill", "fs", "wrap", "msg", "mdLayout"]),
+        c, common.union(["md", "look", "size", "bold", "fill", "hand", "weight", "level", "fs", "msg", "mdLayout"]),
         id: id)
     case "image":
       body = .image(try image(c))
@@ -589,21 +582,27 @@ private struct Mapper {
       style = .note
       used = []
     case "text":
-      style = .text(fontSize: try c.optDouble("fs"), wrap: try c.flag("wrap"))
-      used = ["fs", "wrap"]
+      style = .text(size: try c.pick("size", NoteStyle.TextSize.self) ?? .body, bold: try c.flag("bold"))
+      used = ["size", "bold"]
     case "box":
-      style = .box(
-        fill: try c.pick("fill", NoteStyle.BoxFill.self) ?? .yellow, fontSize: try c.optDouble("fs"),
-        wrap: try c.flag("wrap"))
-      used = ["fill", "fs", "wrap"]
+      style = .box(fill: try c.pick("fill", NoteStyle.BoxFill.self) ?? .yellow)
+      used = ["fill"]
+    case "mark":
+      style = .mark(
+        color: try c.pick("hand", HandColor.self) ?? .blue,
+        weight: try c.pick("weight", NoteStyle.HandWeight.self) ?? .regular, fontSize: try c.optDouble("fs"))
+      used = ["hand", "weight", "fs"]
+    case "freetext":
+      style = .freeText(level: try c.optInt("level") ?? 0, bold: try c.flag("bold"), fontSize: try c.optDouble("fs"))
+      used = ["level", "bold", "fs"]
     default:
       throw Bad("\(c.at("look")): unknown look \(look)")
     }
-    // a Text keeps the fill it had as a Box, to take again if it turns back into one: v1 has no turning back
-    for key in ["fill", "fs", "wrap"] where c.has(key) && !used.contains(key) {
+    for key in ["size", "bold", "fill", "hand", "weight", "level", "fs"] where c.has(key) && !used.contains(key) {
       skips.add(.field, "\(id).\(key)")
     }
-    return Note(text: markdown(try c.string("md")), style: style, layout: try layout(c, id: id))
+    let text = try c.string("md")
+    return Note(text: look == "freetext" ? text : markdown(text), style: style, layout: try layout(c, id: id))
   }
 
   private mutating func layout(_ c: Obj, id: String) throws -> NoteLayout? {

@@ -46,7 +46,7 @@ enum Shadow {
   }
 }
 
-/// A theme's picture behind the board (an SVG of the assets build, as the web board's stylesheet names it), drawn once
+/// A theme's picture behind the board (an SVG of the Note page build, as the web board's stylesheet names it), drawn once
 enum Backdrop {
   private static let drawn = Mutex<[String: CGImage]>([:])
   /// Wide enough for a large window on a 2x screen without visible softening of its soft gradients
@@ -54,7 +54,7 @@ enum Backdrop {
 
   static func image(_ name: String) -> CGImage? {
     if let img = drawn.withLock({ $0[name] }) { return img }
-    let folder = NativeNotes.assets.appending(path: "assets")
+    let folder = NoteRenderer.bundledPage.appending(path: "assets")
     guard
       let file = (try? FileManager.default.contentsOfDirectory(atPath: folder.path(percentEncoded: false)))?
         .first(where: { $0.hasPrefix(name + "-") && $0.hasSuffix(".svg") }),
@@ -80,15 +80,15 @@ enum Backdrop {
 }
 
 /// The whole board as the canvas shows it at rest, drawn offscreen in one go: the look comparison's Swift half and tests.
-/// SVG images show their paper only (they need the SVG rasterizer's web view)
+/// Notes and SVG pictures show their paper only (they need the Note renderer's web view)
 package enum Picture {
-  /// `rect` of the board (board units) at `scale` pixels per unit, the theme's backdrop covering it when asked. Also
-  /// returns where each card is
+  /// `rect` of the board (board units) at `scale` pixels per unit, the theme's backdrop covering it when asked; sizes: what
+  /// the Note renderer would measure of Notes (as `Scene` takes it). Also returns where each card is
   package static func draw(
-    board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter, rect: CGRect, scale: CGFloat,
-    backdrop: Bool
-  ) throws -> (image: CGImage?, cards: [String: CGRect]) {
-    let scene = try Scene(board, package: package, vault: vault, theme: t, highlighter: highlighter)
+    board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter, sizes: [CardID: CGSize],
+    rect: CGRect, scale: CGFloat, backdrop: Bool
+  ) -> (image: CGImage?, cards: [String: CGRect]) {
+    let scene = Scene(board, package: package, vault: vault, theme: t, highlighter: highlighter, sizes: sizes)
     var cards: [String: CGRect] = [:]
     for it in scene.items {
       switch it.drawing {

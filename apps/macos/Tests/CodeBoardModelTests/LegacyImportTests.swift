@@ -61,6 +61,7 @@ private func onlyCard(_ v: Vault, _ path: String) throws -> CardContent {
   #expect(
     s[.field] == [
       "bflow1.born", "bflow1.hideNumbers", "bflow1.seq", "sstep.keep", "cgh.collapsed", "sfree.src.langPicked",
+      "cbox.bold",
     ])
   // the sidenote that travels with the shared card is in its library file
   #expect(skipped(report, "cards/cshared.json") == [.sidenote: ["n9"]])
@@ -119,9 +120,7 @@ private func fixtureVaultCopy() throws -> URL {
   return dst
 }
 
-/// The old looks come in as the extension's version 16 has them (migrate.ts textAndBox, LegacyUpgradeTests): Text, Mark
-/// and Free Text a Text at the size that keeps their pixels, a Box a Box; Text, Mark and Box wrap at their width
-@Test func oldLooksBecomeTextAndBox() throws {
+@Test func noteLooksBecomeNoteStyles() throws {
   let looks: [[String: Any]] = [
     oldNote("n", "# Hi"),
     oldNote("t", look: "text"),
@@ -134,35 +133,16 @@ private func fixtureVaultCopy() throws -> URL {
   ]
   let (vault, report, _) = try importing(["b.json": oldBoard("b", cards: looks)])
   #expect(report.failed.isEmpty)
-  let notes = try vault.board(at: "Board.board").cards.map { c -> Note? in
-    guard case .own(let content) = c.content, case .note(let note) = content.body else { return nil }
-    return note
-  }
-  #expect(
-    notes.map { $0?.style } == [
-      .note, .text(fontSize: 13.5, wrap: true), .text(fontSize: 12, wrap: true),
-      .box(fill: .yellow, fontSize: 13.5, wrap: true), .text(fontSize: 32, wrap: true), .text(fontSize: 18, wrap: true),
-      .text(fontSize: nil, wrap: false), .text(fontSize: 37, wrap: false),
-    ])
-  // a heading-level Text's plain line is a ## heading; a Free Text's plain text is Markdown, H3 as ##, bold as **
-  #expect(notes[2]?.text == "## x")
-  #expect(notes[7]?.text == "## **x**")
-}
-
-/// A version 16 Text and Box come in with their size, wrap and fill; the fill a Text keeps from being a Box is skipped
-@Test func textAndBoxComeInAsTheyAre() throws {
-  let cards: [[String: Any]] = [
-    ["id": "t", "kind": "note", "look": "text", "md": "# T", "fs": 30, "wrap": true, "fill": "blue"],
-    ["id": "b", "kind": "note", "look": "box", "md": "B", "fill": "green"],
-  ]
-  let (vault, report, _) = try importing(["b.json": oldBoard("b", cards: cards).merging(["version": 16]) { $1 }])
-  #expect(report.failed.isEmpty)
   let styles = try vault.board(at: "Board.board").cards.map { c -> NoteStyle? in
     guard case .own(let content) = c.content, case .note(let note) = content.body else { return nil }
     return note.style
   }
-  #expect(styles == [.text(fontSize: 30, wrap: true), .box(fill: .green, fontSize: nil, wrap: false)])
-  #expect(report.imported.first?.skipped.contains { $0.kind == .field && $0.ids == ["t.fill"] } == true)
+  #expect(
+    styles == [
+      .note, .text(size: .body, bold: false), .text(size: .heading, bold: true), .box(fill: .yellow),
+      .mark(color: .purple, weight: .light, fontSize: 32), .mark(color: .blue, weight: .regular, fontSize: nil),
+      .freeText(level: 0, bold: false, fontSize: nil), .freeText(level: 3, bold: true, fontSize: 50),
+    ])
 }
 
 @Test func imagesAreCopiedPerBoardAndReferencesRewritten() throws {
@@ -362,10 +342,9 @@ private func fixtureVaultCopy() throws -> URL {
 @Test func otherVersionsAndMalformedFilesFailOneByOne() throws {
   let (vault, report, source) = try importing([
     "good.json": oldBoard("good"),
-    "v13.json": oldBoard("old13", name: "Old 13").merging(["version": 13]) { $1 },
-    "v12.json": ["version": 12, "name": "Old", "cards": []],
+    "v14.json": ["version": 14, "name": "Old", "cards": []],
     "v1.json": ["name": "Oldest", "cards": []],
-    "v17.json": ["version": 17, "name": "Newer"],
+    "v16.json": ["version": 16, "name": "Newer"],
     "broken.json": oldBoard("br", cards: [oldNote("n").merging(["md": 5]) { $1 }]),
     "badlines.json": oldBoard(
       "bl",
@@ -383,7 +362,7 @@ private func fixtureVaultCopy() throws -> URL {
   ])
   try Data("{ not json".utf8).write(to: source.appending(path: "garbage.json"))
   let again = try LegacyImport.run(from: source, to: vault.root)
-  #expect(report.imported.map(\.source) == ["good.json", "v13.json"])
+  #expect(report.imported.map(\.source) == ["good.json"])
   let file = { (name: String) in source.appending(path: name) }
   #expect(
     again.failed == [
@@ -391,11 +370,10 @@ private func fixtureVaultCopy() throws -> URL {
       .malformed(file("broken.json"), "cards[0].md: expected a string"),
       .malformed(file("garbage.json"), "not JSON"),
       .oldVersion(file("v1.json"), 1),
-      .oldVersion(file("v12.json"), 12),
-      .newerVersion(file("v17.json"), 17),
+      .oldVersion(file("v14.json"), 14),
+      .newerVersion(file("v16.json"), 16),
     ])
-  #expect(LegacyImportError.oldVersion(file("v12.json"), 12).description.contains("VS Code extension"))
-  #expect(LegacyImportError.newerVersion(file("v17.json"), 17).description.contains("newer than this app imports (16)"))
+  #expect(LegacyImportError.oldVersion(file("v14.json"), 14).description.contains("VS Code extension"))
 }
 
 @Test func duplicateBoardIDsImportTheFirstOnly() throws {

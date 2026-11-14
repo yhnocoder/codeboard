@@ -23,7 +23,7 @@ final class MemoryRun {
   private let root: NSView
   private let vault: Vault
   private let boards: [VaultBoard]
-  private let svgs: SVGRasterizer
+  private let notes: NoteRenderer
   private let out: URL
   private var canvases: [CanvasView] = []
 
@@ -31,8 +31,8 @@ final class MemoryRun {
     self.root = root
     self.vault = vault
     self.boards = boards
-    // one SVG rasterizer for every canvas, as in the app
-    svgs = SVGRasterizer(cache: cache)
+    // one renderer for every canvas, as in the app
+    notes = NoteRenderer(cache: cache)
     self.out = out
   }
 
@@ -67,14 +67,14 @@ final class MemoryRun {
     try await first.show(boards[1], in: vault, theme: .warmInk)
     await settled(first)
     await record("switched-board")
-    // the SVG rasterizer closes its web view 30 s after its last request
+    // the renderer closes its web view 30 s after its last request
     try await Task.sleep(for: .seconds(32))
     await record("web-view-closed")
   }
 
   /// A new canvas in front of the others, as a new tab's, once its board is drawn
   private func open(_ board: VaultBoard) async throws -> CanvasView {
-    let c = CanvasView(frame: root.bounds, svgs: svgs)
+    let c = CanvasView(frame: root.bounds, notes: notes)
     c.autoresizingMask = [.width, .height]
     root.addSubview(c)
     try await c.show(board, in: vault, theme: .warmInk)

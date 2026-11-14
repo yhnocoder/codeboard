@@ -4,10 +4,10 @@ import Foundation
 import IOSurface
 import Synchronization
 
-/// SVG pictures on disk, one file per key, the least recently used removed first once the folder holds more than
+/// Note snapshots on disk, one file per key, the least recently used removed first once the folder holds more than
 /// `limit` bytes. A file is raw BGRA compressed with LZ4 (lossless; a 35 MB picture in 6 ms and read back in 3, where
 /// LZFSE took 150 ms to write it at half the size, and PNG is slower still), after a header with its pixel size and the
-/// picture's size in CSS px; a measured size alone is the header with no pixels. Reads and writes run on the caller's thread
+/// Note's size at 100 %; a measured size alone is the header with no pixels. Reads and writes run on the caller's thread
 /// and may overlap.
 final class SnapshotStore: Sendable {
   let folder: URL
@@ -20,7 +20,7 @@ final class SnapshotStore: Sendable {
     index = Mutex(nil)
   }
 
-  func read(_ key: SnapshotKey) -> SVGPicture? {
+  func read(_ key: SnapshotKey) -> NoteSnapshot? {
     let url = file(key)
     guard let data = try? Data(contentsOf: url) else { return nil }
     guard let snap = Self.decode(data) else {
@@ -33,7 +33,7 @@ final class SnapshotStore: Sendable {
     return snap
   }
 
-  func write(_ snap: SVGPicture, as key: SnapshotKey) throws {
+  func write(_ snap: NoteSnapshot, as key: SnapshotKey) throws {
     guard let data = Self.encode(snap) else { return }
     try put(data, as: key)
   }
@@ -87,7 +87,7 @@ final class SnapshotStore: Sendable {
   /// The surface's memory as it is, row padding included, so that neither writing nor reading a picture copies its
   /// pixels into a buffer of their size. What it is compressed into is mapped, not allocated: the allocator keeps a
   /// freed block that large for reuse, in the footprint
-  static func encode(_ snap: SVGPicture) -> Data? {
+  static func encode(_ snap: NoteSnapshot) -> Data? {
     let s = snap.surface
     let count = s.bytesPerRow * s.height
     // LZ4 grows what it cannot compress by at most a 255th, plus its headers; only the pages written take memory
@@ -137,11 +137,11 @@ final class SnapshotStore: Sendable {
     }
   }
 
-  static func decode(_ data: Data) -> SVGPicture? {
+  static func decode(_ data: Data) -> NoteSnapshot? {
     guard data.count > headerSize, let size = size(data) else { return nil }
     let (w, h, row) = (Int(u32(data, 4)), Int(u32(data, 8)), Int(u32(data, 12)))
     // a surface laid out as the one written, or none (IOSurface would not take that row length here)
-    guard w > 0, h > 0, let s = SVGPicture.makeSurface(width: w, height: h, bytesPerRow: row), s.bytesPerRow == row
+    guard w > 0, h > 0, let s = NoteSnapshot.makeSurface(width: w, height: h, bytesPerRow: row), s.bytesPerRow == row
     else { return nil }
     s.lock(options: [], seed: nil)
     let n = data.withUnsafeBytes { src in
@@ -153,7 +153,7 @@ final class SnapshotStore: Sendable {
     }
     s.unlock(options: [], seed: nil)
     guard n == row * h else { return nil }
-    return SVGPicture(surface: s, size: size)
+    return NoteSnapshot(surface: s, size: size)
   }
 }
 

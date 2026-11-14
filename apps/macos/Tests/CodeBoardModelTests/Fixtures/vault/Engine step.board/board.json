@@ -284,11 +284,11 @@
         "note": {
           "style": {
             "text": {
-              "fontSize": 14.5,
-              "wrap": true
+              "bold": true,
+              "size": "title"
             }
           },
-          "text": "# Decode"
+          "text": "Decode"
         },
         "processes": []
       },
@@ -304,9 +304,7 @@
         "note": {
           "style": {
             "box": {
-              "fill": "blue",
-              "fontSize": 13.5,
-              "wrap": true
+              "fill": "blue"
             }
           },
           "text": "loop"
@@ -324,9 +322,10 @@
       "content": {
         "note": {
           "style": {
-            "text": {
+            "mark": {
+              "color": "green",
               "fontSize": 24,
-              "wrap": true
+              "weight": "bold"
             }
           },
           "text": "hot path"
@@ -344,12 +343,12 @@
       "content": {
         "note": {
           "style": {
-            "text": {
-              "fontSize": 16.5,
-              "wrap": false
+            "freeText": {
+              "bold": false,
+              "level": 2
             }
           },
-          "text": "# assets/ stays as typed"
+          "text": "assets/ stays as typed"
         },
         "processes": []
       },

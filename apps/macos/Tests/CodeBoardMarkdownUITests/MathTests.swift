@@ -4,9 +4,9 @@ import Testing
 
 @testable import CodeBoardMarkdownUI
 
-/// the formula engine over the assets build's engines.js (node apps/macos/web/build.mjs makes it)
+/// the formula engine over the assets build's engines.js (node apps/macos/tools/markdown/assets.mjs makes it)
 let engines: JSEngines? = {
-  let url = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../web/dist/engines.js")
+  let url = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../.build-markdown/engines.js")
     .standardized
   return try? JSEngines(script: url)
 }()
@@ -16,7 +16,7 @@ let engines: JSEngines? = {
 @Suite(.timeLimit(.minutes(1)))
 struct MathTests {
   @Test func theEnginesAreBuilt() throws {
-    try #require(engines != nil, "build the assets: node apps/macos/web/build.mjs")
+    try #require(engines != nil, "build the assets: node apps/macos/tools/markdown/assets.mjs")
   }
 
   /// guideline 4: what the boards use, and a preamble

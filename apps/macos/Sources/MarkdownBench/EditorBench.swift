@@ -1,11 +1,9 @@
 import CodeBoardMarkdown
 import CodeBoardMarkdownUI
-import CodeBoardModel
-import CodeBoardNotes
 import CoreGraphics
 import Foundation
 
-/// `CanvasBench --editor`: what a key costs the main thread in a long Note being edited, without a window. A Note of
+/// `MarkdownBench --editor`: what a key costs the main thread in a long Note being edited, without a window. A Note of
 /// 1200 paragraphs (headings, lists, code, tables, CJK prose between them) is opened for editing in Warm Ink at 360
 /// points, and 500 keys are played into it at a place in the middle: letters and spaces, an Enter (a new paragraph)
 /// every 60 keys, a Backspace every 15. For each key, in the thread's CPU time: the reparse (MarkdownDocument.reparse),
@@ -58,13 +56,16 @@ enum EditorBench {
   }
 
   static func row(_ text: String, anchor: String, script: Script) throws -> [String: Any] {
-    let env = NoteEnv(folder: URL(filePath: "/nonexistent"))
-    let note = Note(text: text, style: .note)
+    try MarkdownAssets.fonts.get()
+    let resources = BenchResources(math: try MarkdownAssets.engines())
+    let card = MarkdownLooks.card(.note, look: "warm-ink", dark: false)
+    let width = 360 - card.padding[1] - card.padding[3]
     // the Note shown (laid out for the display), then opened for editing (a copy of that layout)
     let t0 = cpu()
-    _ = try NativeNotes.body(note, width: 360, look: "warm-ink", dark: false, env: env)
+    let shownLayout = BlockLayout(
+      MarkdownDocument(text), width: width, theme: card.theme, layout: nil, resources: resources)
     let t1 = cpu()
-    let (editor, _) = try NativeNotes.editor(note, width: 360, look: "warm-ink", dark: false, env: env)
+    let editor = shownLayout.copy(resources: resources)
     let entered = cpu() - t1
     let displayed = t1 - t0
     var doc = editor.document
