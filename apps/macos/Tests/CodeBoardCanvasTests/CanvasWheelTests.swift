@@ -99,6 +99,48 @@ extension Rig {
     return want
   }
 
+  /// The pointer at rest while the board changes under it: the card under it deleted, another card moved there, each
+  /// undone, the Section it is in folded; on the next frame what is under it is hovered, and nothing gone stays hovered
+  @Test func whatABoardChangeBringsUnderARestingPointerIsHovered() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    c.place(zoom: 1, centre: view)
+    await r.idle()
+    let p = r.centre("b1")
+    c.mouseMoved(with: r.mouse(.mouseMoved, p))
+    #expect(c.hoveredCard == cid("b1"))
+    func now() -> CardID? {
+      r.tick()
+      return c.hoveredCard
+    }
+    r.doc.select([.card(cid("b1"))])
+    r.key(51)
+    await r.settle()
+    #expect(c.hitCard(p) == nil, "\(String(describing: c.hitCard(p))) \(r.doc.board.card(cid("b1")) == nil) \(String(describing: r.window.firstResponder))")
+    #expect(now() == nil, "b1 deleted: nothing hovered")
+    // t1 moved under the pointer
+    let t = r.centre("t1")
+    r.doc.edit("Move") { $0.move([.card(cid("t1"))], dx: p.x - t.x, dy: p.y - t.y) }
+    await r.settle()
+    #expect(c.hitCard(p) == cid("t1"), "\(String(describing: c.hitCard(p))) t1 at \(r.rect("t1")) p \(p)")
+    #expect(now() == cid("t1"), "t1 moved there: hovered")
+    r.doc.undo()
+    await r.settle()
+    #expect(now() == nil, "the move undone")
+    r.doc.undo()
+    await r.settle()
+    #expect(now() == cid("b1"), "the delete undone: b1 again")
+    // m1, in Group: the Section folded, nothing of it there to hover
+    let m = r.centre("m1")
+    c.mouseMoved(with: r.mouse(.mouseMoved, m))
+    #expect(c.hoveredCard == cid("m1"))
+    c.press(.fold, of: SectionID(rawValue: "g1"))
+    await r.settle()
+    await r.idle()
+    #expect(now() != cid("m1"), "folded: \(String(describing: c.hoveredCard)) hit \(String(describing: c.hitCard(m)))")
+  }
+
   /// The pointer at rest while the board moves under it: what is under it now is hovered, the card it was over is not
   /// (stale-hover.txt), by a scroll there and by a camera jump (⇧1, Fit All)
   @Test func whatTheBoardBringsUnderARestingPointerIsHovered() async throws {

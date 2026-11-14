@@ -31,7 +31,15 @@ public final class CanvasView: NSView {
   var theme = Theme.warmInk
   /// The board shown, to show again in another theme
   var shown: (board: VaultBoard, vault: Vault)?
-  var scene: Scene?
+  /// What is drawn; every change of it (a card added, gone, moved or resized, a Section folded, an undo, another
+  /// board) has what is under a resting pointer hovered again on the next frame
+  var scene: Scene? {
+    didSet {
+      rehoverDue = true
+      wake()
+    }
+  }
+  var rehoverDue = false
   var items: [ItemLayers] = []
   let world = CALayer()
   /// The theme's picture behind the board, fixed to the view
@@ -1028,6 +1036,10 @@ public final class CanvasView: NSView {
   /// One frame's work (the display link's; tests drive it themselves where the display sleeps and the link does not run)
   package func tick(at time: CFTimeInterval) {
     lastTick = max(lastTick, time)
+    if rehoverDue {
+      rehoverDue = false
+      if let w = pointerInWindow { rehover(convert(w, from: nil)) }
+    }
     var cam = camera
     let rested = motion.step(at: time, camera: &cam)
     if cam != camera {
