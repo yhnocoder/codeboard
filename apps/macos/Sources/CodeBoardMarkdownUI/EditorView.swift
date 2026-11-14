@@ -399,6 +399,12 @@ public final class MarkdownEditorView: NSView {
     setNeedsDisplay(d.table.insetBy(dx: -20, dy: -40).applying(CGAffineTransform(scaleX: zoom, y: zoom)))
   }
 
+  /// A picture of blocks as they are drawn (for the float a host moves), at the screen's scale and the zoom
+  public func picture(of blocks: Range<Int>) -> CGImage? {
+    let r = core.frame(of: blocks)
+    return r.isNull ? nil : snapshot(r)
+  }
+
   /// a picture of part of the layout at the screen's scale, for a drag to move around
   func snapshot(_ r: CGRect) -> CGImage? {
     let scale = zoom * (window?.backingScaleFactor ?? 2)

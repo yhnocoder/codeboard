@@ -77,6 +77,8 @@ public final class BlockLayout: @unchecked Sendable {
   private(set) var tops: [CGFloat] = []
   private(set) var shifts: [Int] = []
   public private(set) var height: CGFloat = 0
+  /// blocks being moved, by block index, and how they show (BlockMoves)
+  var marks: [Int: MDBlockMark] = [:]
   /// the caret whose constructs show their markers (editing); nil: nowhere, the static picture
   public private(set) var head: Int?
 
@@ -243,7 +245,12 @@ public final class BlockLayout: @unchecked Sendable {
     var i = firstPiece(atOrBelow: clip.minY)
     while i < pieces.count, tops[i] <= clip.maxY {
       let y = tops[i]
+      if let m = marks[i], m != .dim {
+        i += 1
+        continue
+      }
       ctx.saveGState()
+      if marks[i] == .dim { ctx.setAlpha(0.35) }
       ctx.translateBy(x: 0, y: y)
       pieces[i].layout.draw(in: ctx, scale: scale, clip: clip.offsetBy(dx: 0, dy: -y)) { slot in
         image(slot.moved(by: y))
@@ -296,15 +303,22 @@ public final class BlockLayout: @unchecked Sendable {
   }
 
   /// Every piece's top: the gaps between neighbours as `LayoutBuilder.stack` puts them
-  private func restack() {
+  func restack() {
     let gaps = LayoutBuilder(theme: theme, resources: resources, info: info, width: width)
     var y: CGFloat = 0
     tops = []
     tops.reserveCapacity(pieces.count)
+    var prev: Piece?
     for (i, p) in pieces.enumerated() {
-      if i > 0 { y += gaps.gap(after: pieces[i - 1].block, before: p.block) }
+      // a block taken away leaves no room: the text closes up over it
+      if marks[i] == .away {
+        tops.append(y)
+        continue
+      }
+      if let q = prev { y += gaps.gap(after: q.block, before: p.block) }
       tops.append(y)
       y += p.height
+      prev = p
     }
     height = MarkdownLayout.roundedUp(y)
   }
