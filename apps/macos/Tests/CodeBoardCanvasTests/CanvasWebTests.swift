@@ -37,10 +37,13 @@ func webBoard() -> Board {
   final class Pages: @unchecked Sendable {
     var asked: [String] = []
     var page = WebPage(title: "Fetched", description: "Read once.", site: "Site")
+    /// While true, a read waits
+    var held = false
 
     var fetch: WebFetch {
       { [self] url in
         await MainActor.run { asked.append(url.absoluteString) }
+        while await MainActor.run(body: { held }) { try? await Task.sleep(for: .milliseconds(5)) }
         return await MainActor.run { page }
       }
     }
@@ -152,6 +155,49 @@ func webBoard() -> Board {
     }
     #expect(l.items.map(\.url) == ["https://a.test/1", "https://b.test/2"])
     await r.until("both read") { pages.asked.count == 4 }
+  }
+
+  @Test func aPasteRedoneHasItsPageAndPicturesWithoutReadingItAgainAndOneUndoneBeforeItsReadGetsItOnRedo()
+    async throws
+  {
+    let board = NSPasteboard(name: NSPasteboard.Name("web-\(UUID().uuidString)"))
+    let r = try await Rig(webBoard(), zoom: 1, pasteboard: board)
+    defer { r.close() }
+    let c = r.canvas
+    let pages = Pages()
+    pages.page.image = WebPage.Asset(data: tinyPNG, ext: "png")
+    c.fetchPage = pages.fetch
+    func web(_ id: CardID) -> WebCard? {
+      if case .web(let w)? = content(r, id.rawValue)?.body { w } else { nil }
+    }
+    board.clearContents()
+    board.setString("https://site.test/post", forType: .string)
+    c.paste(nil)
+    let id = try #require(r.doc.selection.first?.card)
+    await r.until("the page is read") { !c.webFetching.contains(id.rawValue) }
+    let read = try #require(web(id)?.meta)
+    let name = try #require({ if case .file(let f)? = read.image { f } else { nil } }())
+    let picture = r.file.deletingLastPathComponent().appending(path: "images/\(name)")
+    r.doc.undo()
+    #expect(r.doc.board.card(id) == nil)
+    r.doc.redo()
+    #expect(web(id)?.meta == read, "the same page, its picture the same file")
+    #expect(FileManager.default.fileExists(atPath: picture.path) && pages.asked.count == 1, "not read again")
+    #expect(r.doc.undoName == "Paste")
+
+    // undone before its page came: the page comes on redo, read once
+    pages.held = true
+    board.clearContents()
+    board.setString("https://site.test/late", forType: .string)
+    c.paste(nil)
+    let late = try #require(r.doc.selection.first?.card)
+    await r.until("asked") { pages.asked.count == 2 }
+    r.doc.undo()
+    pages.held = false
+    await r.until("read") { !c.webFetching.contains(late.rawValue) }
+    #expect(r.doc.board.card(late) == nil)
+    r.doc.redo()
+    #expect(web(late)?.meta?.title == "Fetched" && pages.asked == ["https://site.test/post", "https://site.test/late"])
   }
 
   @Test func aFailedReadShowsRetryAndEditTitleAndAStyleIsOneStep() async throws {

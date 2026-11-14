@@ -140,6 +140,9 @@ public struct History: Sendable {
     var change: BoardChange
     public var selectionBefore: Set<Item>
     public var selectionAfter: Set<Item>
+    /// How many derived changes the board had had when it was recorded (BoardDocument.derive): those after it run again
+    /// when it is undone or redone
+    public var epoch: Int = 0
   }
 
   public private(set) var undoSteps: [Step] = []
@@ -150,16 +153,20 @@ public struct History: Sendable {
   public init() {}
 
   public var canUndo: Bool { !undoSteps.isEmpty }
+  /// The oldest epoch a step still holds: derived changes up to it are never run again
+  public var oldestEpoch: Int? { (undoSteps + redoSteps).map(\.epoch).min() }
   public var canRedo: Bool { !redoSteps.isEmpty }
 
   /// Records the change from `before` to `after` as one step (none when nothing changed); redo is gone
   public mutating func record(
-    _ name: String, from before: Board, to after: Board, selection: (before: Set<Item>, after: Set<Item>)
+    _ name: String, from before: Board, to after: Board, selection: (before: Set<Item>, after: Set<Item>),
+    epoch: Int = 0
   ) {
     let change = BoardChange(from: before, to: after)
     guard !change.isEmpty else { return }
     undoSteps.append(
-      Step(name: name, change: change, selectionBefore: selection.before, selectionAfter: selection.after))
+      Step(
+        name: name, change: change, selectionBefore: selection.before, selectionAfter: selection.after, epoch: epoch))
     if undoSteps.count > History.limit { undoSteps.removeFirst(undoSteps.count - History.limit) }
     redoSteps = []
   }

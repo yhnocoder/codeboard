@@ -87,3 +87,88 @@ import Testing
     if case .own(let x)? = b.card(c("w"))?.content, case .web(let w) = x.body { #expect(w.meta?.title == "Yes") }
   }
 }
+
+/// A board with a locked Web card, a Web card and a locked Link List of two rows, in a document
+@MainActor func lockedLinksDoc() throws -> BoardDocument {
+  func web(_ id: String, locked: Bool) -> Card {
+    Card(
+      id: CardID(rawValue: id), x: 0, y: id == "w1" ? 0 : 200, width: 420, locked: locked,
+      content: .own(CardContent(body: .web(WebCard(url: "https://\(id).org", meta: WebMeta(title: id))))))
+  }
+  let list = Card(
+    id: CardID(rawValue: "l"), x: 600, y: 0, width: 380, locked: true,
+    content: .own(
+      CardContent(
+        body: .links(
+          LinkList(items: [
+            LinkList.Item(id: "r1", url: "https://r1.org"), LinkList.Item(id: "r2", url: "https://r2.org"),
+          ])))))
+  let file = try scratch().appending(path: "board.json")
+  try Board(id: BoardID(rawValue: "b"), cards: [web("w1", locked: false), web("w2", locked: true), list]).encoded()
+    .write(to: file)
+  return try BoardDocument { file }
+}
+
+/// Merging, a list's last row removed or taken out: the cards go though locked (core removeCards does not look at the
+/// lock), one step each, and undo brings them back locked
+@MainActor @Test func lockedCardsGoInAMergeAndWithTheirLastRowAndUndoBringsThemBackLocked() throws {
+  let doc = try lockedLinksDoc()
+  let start = doc.board
+  let w2 = CardID(rawValue: "w2")
+  let l = CardID(rawValue: "l")
+  doc.edit("Merge into Link List") { _ = $0.mergeLinks([CardID(rawValue: "w1"), w2]) }
+  #expect(doc.board.card(w2) == nil, "the locked one merged goes: its link is in the list now")
+  #expect(doc.history.undoSteps.count == 1)
+  doc.undo()
+  #expect(doc.board == start && doc.board.card(w2)?.locked == true)
+
+  doc.edit("Remove from List") { $0.removeLinkItem(l, "r1") }
+  doc.edit("Remove from List") { $0.removeLinkItem(l, "r2") }
+  #expect(doc.board.card(l) == nil, "no empty list stays")
+  doc.undo()
+  #expect(doc.board.card(l)?.locked == true)
+  doc.undo()
+  #expect(doc.board == start)
+
+  doc.edit("Move Out as Card") { $0.removeLinkItem(l, "r1") }
+  doc.edit("Move Out as Card") {
+    $0.takeOutLinkItem(l, "r2", as: CardID(rawValue: "out"), x: 900, y: 0)
+  }
+  #expect(doc.board.card(l) == nil && doc.board.card(CardID(rawValue: "out")) != nil)
+  doc.undo()
+  #expect(doc.board.card(l)?.locked == true && doc.board.card(CardID(rawValue: "out")) == nil)
+}
+
+/// What the app learned (a page read) is no step and drops none; an undo or redo that brings the card back brings it
+/// with what was learned, learned while it was gone too
+@MainActor @Test func aDerivedChangeRunsAgainWhenAnUndoOrRedoBringsItsCardBack() throws {
+  let doc = try lockedLinksDoc()
+  let id = CardID(rawValue: "new")
+  let card = Card(
+    id: id, x: 0, y: 600, width: 420, content: .own(CardContent(body: .web(WebCard(url: "https://new.org")))))
+  func meta() -> WebMeta? {
+    if case .own(let c)? = doc.board.card(id)?.content, case .web(let w) = c.body { w.meta } else { nil }
+  }
+  doc.edit("Paste") { $0.cards.append(card) }
+  doc.derive { $0.setWebMeta(id, item: nil, url: "https://new.org", WebMeta(title: "Read", fetchedAt: 1)) }
+  #expect(meta()?.title == "Read" && doc.undoName == "Paste" && doc.history.undoSteps.count == 1)
+  doc.undo()
+  #expect(doc.board.card(id) == nil)
+  doc.redo()
+  #expect(meta()?.title == "Read", "redone with its page")
+
+  // read while it was undone: arrives on redo
+  doc.edit("Paste") {
+    $0.cards.append(Card(id: CardID(rawValue: "b2"), x: 0, y: 900, width: 420, content: card.content))
+  }
+  doc.undo()
+  doc.derive {
+    $0.setWebMeta(CardID(rawValue: "b2"), item: nil, url: "https://new.org", WebMeta(title: "Late", fetchedAt: 2))
+  }
+  doc.redo()
+  guard case .own(let c)? = doc.board.card(CardID(rawValue: "b2"))?.content, case .web(let w) = c.body else {
+    Issue.record("no card")
+    return
+  }
+  #expect(w.meta?.title == "Late")
+}

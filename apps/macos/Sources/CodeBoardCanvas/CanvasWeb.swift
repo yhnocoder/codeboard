@@ -75,12 +75,15 @@ extension CanvasView {
     webFetching.insert(key)
     if item == nil { refresh() }
     let fetch = fetchPage
+    // the board it was read for, though another be shown by the time it arrives
+    weak var doc = document
     let task = Task { [weak self] in
       let page = await fetch(u)
       let meta = await Task.detached { CanvasView.store(page, in: folder) }.value
+      // learned, not done: no step, and an undo or redo that brings the card back brings it back with its page
+      doc?.derive { $0.setWebMeta(id, item: item, url: url, meta) }
       guard let self else { return }
       webFetching.remove(key)
-      document?.preview { $0.setWebMeta(id, item: item, url: url, meta) }
       if item == nil { refresh() }
     }
     webTasks[key] = task
@@ -342,9 +345,10 @@ extension CanvasView {
 
   // MARK: Dragging a row
 
-  /// A press on a row of a Link List (not its header): the row is dragged
+  /// A press on a row of a Link List (not its header): the row is dragged, in a locked list too (the web board hides
+  /// only a locked card's own grips, not its rows')
   func pressRow(_ e: NSEvent, view v: CGPoint, board p: CGPoint) -> Bool {
-    guard e.clickCount == 1, let doc = document, let row = linkRow(at: p), !doc.board.isLocked(.card(row.card)),
+    guard e.clickCount == 1, let doc = document, let row = linkRow(at: p),
       let (l, _, _) = linksAt(row.card)
     else { return false }
     if doc.selection != [.card(row.card)] { doc.select([.card(row.card)]) }

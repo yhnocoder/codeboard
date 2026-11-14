@@ -120,7 +120,7 @@ extension Board {
     for (c, its) in parts where c.id != keep.id { items += its }
     let gone = Set(parts.map(\.0.id)).subtracting([keep.id])
     // the others' arrows go with them, as Delete takes them
-    delete(Set(gone.map(Item.card)))
+    delete(Set(gone.map(Item.card)), ignoringLock: true)
     guard let i = cards.firstIndex(where: { $0.id == keep.id }) else { return nil }
     cards[i].width = max(cards[i].width, Board.linksWidth)
     cards[i].height = nil
@@ -178,7 +178,7 @@ extension Board {
       l.items.removeAll { $0.id == item }
       empty = l.items.isEmpty
     }
-    if empty { delete([.card(id)]) }
+    if empty { delete([.card(id)], ignoringLock: true) }
     selfCheck()
   }
 

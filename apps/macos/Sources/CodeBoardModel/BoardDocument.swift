@@ -86,11 +86,11 @@ import Foundation
       // undoing it never brings a draft back; the writing's own step starts from after it
       var nb = w.before
       change(&nb)
-      history.record(name, from: w.before, to: nb, selection: (before, now))
+      history.record(name, from: w.before, to: nb, selection: (before, now), epoch: derived)
       w.before = nb
       writing = w
     } else {
-      history.record(name, from: board, to: b, selection: (before, now))
+      history.record(name, from: board, to: b, selection: (before, now), epoch: derived)
     }
     board = b
     selection = now
@@ -123,6 +123,40 @@ import Foundation
     board = b
     for o in observers.values { o(.merge) }
     scheduleSave()
+  }
+
+  /// What the app learned by itself about the board (a page's details read once): on the board and saved, no undo step
+  /// and none dropped; run again after an undo or redo that puts back what it was learned on (core history: syncs
+  /// replayed after undo), so a paste redone gets its page back without reading it again. `change` must work on an
+  /// older board: find by id, skip what is gone. Kept while a step older than it is on a stack, at most 2000
+  public func derive(_ change: @escaping (inout Board) -> Void) {
+    derived += 1
+    derivedLog.append((derived, change))
+    trimDerived()
+    if var w = writing {
+      change(&w.before)
+      writing = w
+    }
+    var b = board
+    change(&b)
+    guard b != board else { return }
+    board = b
+    for o in observers.values { o(.merge) }
+    scheduleSave()
+  }
+
+  private var derived = 0
+  private var derivedLog: [(n: Int, change: (inout Board) -> Void)] = []
+
+  private func trimDerived() {
+    let min = history.oldestEpoch ?? derived
+    derivedLog.removeAll { $0.n <= min }
+    if derivedLog.count > 2000 { derivedLog.removeFirst(derivedLog.count - 2000) }
+  }
+
+  /// The derived changes made since a step was recorded, run again on the board it put back
+  private func replayDerived(after epoch: Int, on b: inout Board) {
+    for d in derivedLog where d.n > epoch { d.change(&b) }
   }
 
   // MARK: Writing in a card
@@ -188,7 +222,9 @@ import Foundation
 
   public func undo() {
     var b = board
+    let epoch = history.undoSteps.last?.epoch ?? derived
     guard let sel = history.undo(&b) else { return }
+    replayDerived(after: epoch, on: &b)
     board = b
     selection = sel.filter { b.has($0) }
     changed(.edit)
@@ -196,7 +232,9 @@ import Foundation
 
   public func redo() {
     var b = board
+    let epoch = history.redoSteps.last?.epoch ?? derived
     guard let sel = history.redo(&b) else { return }
+    replayDerived(after: epoch, on: &b)
     board = b
     selection = sel.filter { b.has($0) }
     changed(.edit)
