@@ -301,6 +301,12 @@ public final class EditorWebView: WKWebView {
   /// Esc: true when something over the canvas took it (a ref's preview closed), and the editor goes on
   package var escape: (() -> Bool)?
 
+  /// Scroll and pinch events the window sends here go to the board first, which keeps its gestures (true)
+  package var handOver: ((NSEvent) -> Bool)?
+
+  public override func scrollWheel(with e: NSEvent) { if handOver?(e) != true { super.scrollWheel(with: e) } }
+  public override func magnify(with e: NSEvent) { if handOver?(e) != true { super.magnify(with: e) } }
+
   /// Keys that wait while the keys typed before the editor was there are handed to it (NoteEditor.replay)
   package var held: [NSEvent]?
 

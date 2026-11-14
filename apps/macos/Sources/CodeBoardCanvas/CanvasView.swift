@@ -857,9 +857,13 @@ public final class CanvasView: NSView {
 
   // MARK: Input
 
-  public override func scrollWheel(with e: NSEvent) {
+  public override func scrollWheel(with e: NSEvent) { _ = take(e, at: e.locationInWindow) }
+
+  public override func magnify(with e: NSEvent) { _ = take(e, at: e.locationInWindow) }
+
+  func scrollBoard(_ e: NSEvent) {
     // the system's momentum: the canvas glides on its own
-    guard scene != nil, e.momentumPhase.isEmpty else { return }
+    guard e.momentumPhase.isEmpty else { return }
     if e.modifierFlags.contains(.command) {
       let d = e.scrollingDeltaY * (e.hasPreciseScrollingDeltas ? 0.01 : 0.1)
       wheelZoom(
@@ -872,8 +876,7 @@ public final class CanvasView: NSView {
     }
   }
 
-  public override func magnify(with e: NSEvent) {
-    guard scene != nil else { return }
+  func pinchBoard(_ e: NSEvent) {
     pinch(
       by: 1 + e.magnification, around: convert(e.locationInWindow, from: nil), at: e.timestamp,
       began: e.phase.contains(.began), ended: !e.phase.isDisjoint(with: [.ended, .cancelled]))

@@ -235,8 +235,9 @@ extension CanvasView {
     endInPlace(commit: true)
     if doc.selection != [item] { doc.select([item]) }
     let label = { if case .label = what { true } else { false } }()
-    let field = NSTextField(string: text)
+    let field = OnBoardField(string: text)
     field.cell = MiddleCell(textCell: text)
+    field.handOver = { [weak self] in self?.take($0, at: $0.locationInWindow) ?? false }
     field.isEditable = true
     field.isSelectable = true
     field.isBordered = false

@@ -483,6 +483,7 @@ extension CanvasView {
     ed.look = look
     ed.em = em
     ed.onEnd = { [weak self] commit in self?.endSummaryEdit(commit: commit) }
+    ed.handOver = { [weak self] in self?.take($0, at: $0.locationInWindow) ?? false }
     ed.load(sum.text)
     summaryEditor = ed
     cropForEdit(c)
@@ -650,7 +651,13 @@ final class SummaryEditor: NSTextView {
   var zoom: CGFloat = 1
   var onEnd: ((Bool) -> Void)?
   /// Behind the field: its paper and ring
-  let ring = NSView()
+  let ring = OnBoardView()
+  var handOver: ((NSEvent) -> Bool)? {
+    didSet { ring.handOver = handOver }
+  }
+
+  override func scrollWheel(with e: NSEvent) { if handOver?(e) != true { super.scrollWheel(with: e) } }
+  override func magnify(with e: NSEvent) { if handOver?(e) != true { super.magnify(with: e) } }
 
   func load(_ text: String) {
     guard let look else { return }

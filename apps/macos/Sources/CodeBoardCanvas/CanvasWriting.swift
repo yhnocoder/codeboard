@@ -94,6 +94,7 @@ extension CanvasView {
     let editor = noteEditor
     editing?.editor = editor
     editor.owner = self
+    editor.view.handOver = { [weak self] in self?.take($0, at: $0.locationInWindow) ?? false }
     editor.imagesFolder = n.folder
     if editor.view.superview !== host { host.addSubview(editor.view, positioned: .above, relativeTo: self) }
     editor.view.shown = false

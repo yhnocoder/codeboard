@@ -5,8 +5,9 @@ import AppKit
 // that begins over one moves the board as over any card (an editing Note has no scroll of its own: it is as tall as its
 // text). A gesture the board took keeps going on the board, its momentum too, whatever comes under the pointer (main:
 // `panning`). One that begins over the board's chrome (a sidenote's popover, the question list, the Shelf, the sticker
-// palette) stays there, as main's nodrag panels outside the world. The web views and fields would take the events
-// themselves, so an event monitor of the app routes them before they are sent.
+// palette) stays there, as main's nodrag panels outside the world. The window sends each event to the view under the
+// pointer, so the views on the board hand the board's gestures back to it (`take`), and an event monitor of the app
+// routes what passes over the chrome before it is sent.
 
 /// Who has the scroll and the pinch gesture now
 struct WheelOwner {
@@ -67,7 +68,13 @@ extension CanvasView {
   /// Takes a scroll or pinch event at `p` (window coordinates) for the board (true) or leaves it to the view under the
   /// pointer
   package func route(_ e: NSEvent, at p: CGPoint) -> Bool {
-    guard e.window === window, window != nil, !isHiddenOrHasHiddenAncestor, scene != nil else { return false }
+    e.window === window && take(e, at: p)
+  }
+
+  /// A scroll or pinch event the window sent to the canvas or to a view on the board: the board moves when the
+  /// gesture is its (true); one it does not own is the view's
+  func take(_ e: NSEvent, at p: CGPoint) -> Bool {
+    guard window != nil, !isHiddenOrHasHiddenAncestor, scene != nil else { return false }
     let over = isOverBoard(p)
     switch e.type {
     case .scrollWheel:
@@ -75,15 +82,30 @@ extension CanvasView {
       let mine = wheel.scroll(
         began: began, phased: !e.phase.isEmpty, momentum: !e.momentumPhase.isEmpty,
         ended: !e.momentumPhase.isDisjoint(with: [.ended, .cancelled]), over: over, at: e.timestamp)
-      if mine { scrollWheel(with: e) }
+      if mine { scrollBoard(e) }
       return mine
     case .magnify:
       let mine = wheel.pinch(
         began: e.phase.contains(.began), ended: !e.phase.isDisjoint(with: [.ended, .cancelled]), over: over)
-      if mine { magnify(with: e) }
+      if mine { pinchBoard(e) }
       return mine
     default:
       return false
     }
   }
+}
+
+/// A view on the board: the window sends it the scroll and pinch events under the pointer, and it hands them to the
+/// board first (`CanvasView.take`)
+class OnBoardView: NSView {
+  var handOver: ((NSEvent) -> Bool)?
+  override func scrollWheel(with e: NSEvent) { if handOver?(e) != true { super.scrollWheel(with: e) } }
+  override func magnify(with e: NSEvent) { if handOver?(e) != true { super.magnify(with: e) } }
+}
+
+/// A label's or a title's field on the board (its field editor passes the events it does not use up to it)
+final class OnBoardField: NSTextField {
+  var handOver: ((NSEvent) -> Bool)?
+  override func scrollWheel(with e: NSEvent) { if handOver?(e) != true { super.scrollWheel(with: e) } }
+  override func magnify(with e: NSEvent) { if handOver?(e) != true { super.magnify(with: e) } }
 }
