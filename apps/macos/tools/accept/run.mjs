@@ -376,6 +376,9 @@ async function centerOn(d, target) {
   }
 }
 
+const storageBoard = () =>
+  JSON.parse(fs.readFileSync(path.join(storage, fs.readdirSync(storage).find((f) => f.endsWith(".json"))), "utf8"));
+
 // ---- expectations: `expect <subject> <op> <value>`, checked on each side as the scenario runs
 //   subjects: <id>.x|y|w|h|right|bottom|section (board units; a card or Section), cam.x|y|zoom, pointer.x|y (board
 //   units), ui.<part>.x|y|w|h|right|bottom (the toolbar, the dock and their parts, in points from the board's top
@@ -384,17 +387,12 @@ async function centerOn(d, target) {
 //   pointer left out; needs a running `rec`)
 //   ops: = != < <= > >= ~ (within 2) has lacks; values: a number, a word, another subject (`<id>.bottom`), was, was+N,
 //   was-N (the subject at `mark`)
-// The Mac app's cards are where its canvas's accessibility elements say (identifier = id) when it has them; otherwise
-// they are read from its saved board file, so while a button is held they are not checkable there.
-/** A card's or Section's place in board units as this side has it now: x y w h right bottom (and section on the Mac);
- *  undefined while a button is held on the Mac without accessibility elements, "missing" when there is no such item */
-/** What the Mac app does not say where it draws (arrow labels, sidenote markers, stickers): their ids */
-const borrowedIds = () => {
-  const b = storageBoard();
-  return new Set([...(b.links ?? []), ...(b.sidenotes ?? []), ...(b.stickers ?? [])].map((x) => x.id));
-};
-const storageBoard = () =>
-  JSON.parse(fs.readFileSync(path.join(storage, fs.readdirSync(storage).find((f) => f.endsWith(".json"))), "utf8"));
+// The Mac app's cards, Sections, arrow labels, sidenote markers and stickers are where its canvas's accessibility elements
+// say (identifier = id); with none (a card or Section asked for its Section, or not drawn), cards and Sections are read
+// from its saved board file, so while a button is held they are not checkable there.
+/** A card's, Section's, arrow label's, sidenote marker's or sticker's place in board units as this side has it now:
+ *  x y w h right bottom (and section on the Mac); undefined while a button is held on the Mac without accessibility
+ *  elements, "missing" when there is no such item */
 async function geom(d, id, needSection = false, aim = false) {
   let g;
   const live = d.side === "mac" && !needSection ? await d.send(`ax ${id}`) : "none";
@@ -405,14 +403,6 @@ async function geom(d, id, needSection = false, aim = false) {
     // aiming (a target to move to) takes the file as it is, even mid-drag; checking waits for the app to save
     if (d.held && !aim) return undefined;
     const c = (aim ? await macBoard(d) : await macSaved(d))[id];
-    if (!c && borrowedIds().has(id)) {
-      // an arrow's label, a sidenote's marker, a sticker: the app does not say where it draws them (no accessibility
-      // element with this id yet); the web board's is at the same board point, as near as the two layouts agree
-      const web = running.find((x) => x.side === "web");
-      const wg = web ? await geom(web, id) : undefined;
-      if (typeof wg !== "object") throw new Error(`mac: where ${id} is drawn is not known here (run both sides)`);
-      return wg;
-    }
     if (!c) return "missing";
     g = { x: c.x, y: c.y, w: c.width, h: c.height ?? undefined, section: c.section ?? c.parent ?? "none" };
   } else {
