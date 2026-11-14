@@ -158,6 +158,8 @@ class Driver {
     throw new Error(`${this.side}: timed out waiting for ${re}`);
   }
   async send(line) {
+    // a number that is not one would leave the driver moving towards it for ever
+    if (/(^|\s)(NaN|-?Infinity|undefined|nan|inf)(\s|$)/.test(line)) throw new Error(`${this.side}: not a number in "${line}"`);
     if (/^down\b/.test(line)) this.held = true;
     if (/^up\b/.test(line)) this.held = false;
     const n = ++this.n;
@@ -212,16 +214,22 @@ async function point(d, tok) {
   // the anchor: a corner, an edge's middle or the centre; none: the middle of the top strip (14 board units down)
   const fx = { tl: 0, l: 0, bl: 0, t: 0.5, c: 0.5, b: 0.5, tr: 1, r: 1, br: 1 }[anchor] ?? 0.5;
   const fy = { tl: 0, t: 0, tr: 0, l: 0.5, c: 0.5, r: 0.5, bl: 1, b: 1, br: 1 }[anchor];
-  if (fy && g.h === undefined) {
-    // the Mac app's file has no height for a Text, Box or code card: the web board's, when it runs, is the same card
+  // the Mac app's file has no size for some cards (a Text, Box or code card's height, a Free code card's width…): the
+  // web board's, when it runs, is the same card
+  const need = [...(fy ? ["h"] : []), ...(g.w === undefined ? ["w"] : [])];
+  for (const k of need.filter((k) => g[k] === undefined)) {
     const web = running.find((x) => x.side === "web");
-    const wg = web && (await geom(web, id));
-    if (typeof wg !== "object") throw new Error(`${d.side}: the height of ${id} is not known here (see README)`);
-    g.h = wg.h;
+    const wg = web && web !== d ? await geom(web, id) : undefined;
+    if (typeof wg !== "object" || !Number.isFinite(wg[k]))
+      throw new Error(`${d.side}: the ${k === "h" ? "height" : "width"} of ${id} is not known here${web ? "" : " (run both sides to borrow the web board's)"}; use @${id}+dx,dy from its top left`);
+    g[k] = wg[k];
   }
   const base = ox === undefined ? [g.x + g.w * fx, fy === undefined ? g.y + 14 : g.y + g.h * fy] : anchor ? [g.x + g.w * fx, g.y + (g.h ?? 0) * (fy ?? 0)] : [g.x, g.y];
   const [x, y] = [base[0] + Number(ox ?? 0), base[1] + Number(oy ?? 0)];
-  return d.send(`where ${x} ${y}`);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error(`${d.side}: ${tok} gives no point (${id}: ${JSON.stringify(g)})`);
+  const w = await d.send(`where ${x} ${y}`);
+  if (!/^-?[\d.]+ -?[\d.]+$/.test(w)) throw new Error(`${d.side}: ${tok} is not on the window (${w})`);
+  return w;
 }
 async function resolve(d, line) {
   const out = [];
