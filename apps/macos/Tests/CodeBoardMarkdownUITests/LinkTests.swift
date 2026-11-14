@@ -67,3 +67,15 @@ import Testing
     #expect(v.core.source == "Some text here.\n\nSee [the docs](https://z.w) now." && v.core.selection.head == 3)
   }
 }
+
+/// The link box stays inside the Note's width when it fits (it hung past the right edge for a link near it)
+@MainActor @Suite struct LinkBoxPlaceTests {
+  @Test func insideTheNote() {
+    _ = boardFonts
+    let src = "Some words at the start of a line and then [the docs](https://x.y)"
+    let l = BlockLayout(MarkdownDocument(src), width: 400, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 50)
+    v.openLinkBox()
+    #expect(!v.linkBox.isHidden && v.linkBox.frame.maxX <= v.bounds.width + 0.5, "\(v.linkBox.frame) \(v.bounds)")
+  }
+}

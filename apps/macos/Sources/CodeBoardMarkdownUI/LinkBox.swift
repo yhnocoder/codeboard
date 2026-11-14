@@ -64,7 +64,10 @@ final class LinkBox: NSView, NSTextFieldDelegate {
     url.stringValue = p.url
     layer?.backgroundColor = theme.colors.surface.cg
     layer?.borderColor = theme.colors.hair.cg
-    frame = CGRect(x: r.minX, y: r.maxY + 6, width: 320, height: 74)
+    // under the link, from its start, kept inside the Note's width where it fits (place.ts bottom-start, shifted)
+    let w: CGFloat = 320
+    let room = superview?.bounds.width ?? w
+    frame = CGRect(x: max(0, min(r.minX, room - w)), y: r.maxY + 6, width: w, height: 74)
     isHidden = false
     remove.isHidden = !p.exists
     window?.makeFirstResponder(p.exists || p.text.isEmpty == false ? url : text)
