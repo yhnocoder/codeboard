@@ -1,4 +1,4 @@
-# 把 Note 里一段正文改成二级标题：点进那段字的开头，打 "## "，标题出现、字不跳；再 ⌘Z 撤回。看录像里光标和字的位置，results 里两边光标前后的字
+# 把 Note 里一段正文改成二级标题：点进那段字的开头，打 "## "，标题出现、字不跳；⌘Z 一次变回字面的 "## "（存成 \##），再 ⌘Z 一次连字也撤掉。看录像里光标和字的位置，results 里两边光标前后的字和每一步存下的 Markdown
 zoom 1
 center @nprose
 rec heading
@@ -11,6 +11,11 @@ keys ##\s
 wait 500
 caret
 shot heading
+key cmd+z
+wait 500
+caret
+wait 2500
+source @nprose
 key cmd+z
 wait 500
 caret
