@@ -9,6 +9,8 @@ public struct MarkdownDocument: Sendable, Equatable {
 
   /// the inline structure of each inline text, kept for reparse
   let inlineCache: InlineCache
+  /// it may hold a link reference definition: reparse then parses it whole
+  let hasDefinitions: Bool
 
   public init(_ source: String) {
     self.init(source, previous: InlineCache())
@@ -19,15 +21,225 @@ public struct MarkdownDocument: Sendable, Equatable {
     var builder = DocumentBuilder(cache: InlineCache(previous: previous))
     blocks = builder.blocks(BlockLexer.lex(source))
     inlineCache = builder.cache
+    hasDefinitions = Self.mayDefine(source)
   }
 
-  /// The document after one edit. Blocks are lexed again (they depend on each other: a paragraph swallows a lazy line, a
-  /// list continues), but the inline structure of every block whose text did not change is kept, which is most of the
-  /// work. The result is always equal to `MarkdownDocument(newSource)`.
+  /// A document assembled from blocks already parsed (reparse)
+  init(source: String, blocks: [MDBlock], cache: InlineCache, hasDefinitions: Bool) {
+    self.source = source
+    self.blocks = blocks
+    self.inlineCache = cache
+    self.hasDefinitions = hasDefinitions
+  }
+
+  /// The document after one edit, always equal to `MarkdownDocument(newSource)`, at a cost that does not grow with the
+  /// document: only a window of whole top-level blocks around the edit is lexed again. Both ends of the window are restart
+  /// points, places a parse of the whole document passes through in a state that nothing before them shapes:
+  /// - the start of an old top-level block, with a blank line before it that the edit does not touch, and
+  /// - the block before that blank line is one a blank line closes: not a list (an item goes on across blank lines, and
+  ///   decides whether the list is loose) and not indented code (it goes on across blank lines too).
+  /// The start is the nearest such place at or before the edit, from the old parse alone. The end is the nearest one after
+  /// it that the new window's own last block also satisfies, and that every fence, `$$` or HTML block opened in the window
+  /// closes before; a window that does not end so takes in more blocks, twice as many each time, up to the document's end.
+  /// Parsed whole instead: a document with a link reference definition, or an edit that may make or break one (marked
+  /// keeps the first definition of a label anywhere), and an edit whose lines hold a `$$` (a `$$` block's body runs across
+  /// blank lines, so one `$$` more or less can pair or unpair others far away).
   public func reparse(replacing range: Range<Int>, with text: String) -> MarkdownDocument {
     let ns = source as NSString
     let new = ns.replacingCharacters(in: NSRange(location: range.lowerBound, length: range.count), with: text)
-    return MarkdownDocument(new, previous: inlineCache)
+    let newNS = new as NSString
+    let delta = (text as NSString).length - range.count
+    let a = range.lowerBound
+    let b = range.upperBound
+    let removed = ns.substring(with: NSRange(location: a, length: range.count))
+    // a $$ block's body holds no $ at all: one $ more or less anywhere between two $$ lines pairs or unpairs them
+    let dollars = (text.contains("$") || removed.contains("$")) && (source.contains("$$") || new.contains("$$"))
+    if hasDefinitions || Self.mayDefine(text) || Self.mayDefine(removed) || dollars
+      || Self.linesHoldDoubleDollar(ns, a..<b) || Self.linesHoldDoubleDollar(newNS, a..<(b + delta))
+    {
+      return MarkdownDocument(new, previous: inlineCache)
+    }
+    let solid = blocks.indices.filter { !blocks[$0].range.isEmpty }
+    guard !solid.isEmpty else { return MarkdownDocument(new, previous: inlineCache) }
+
+    // the window's start: solid block `k` (0 = the document's start) before the edit, a restart point. Its first line
+    // must have text before the edit: line breaks put in before that, or into the spaces it starts with, lengthen the
+    // blank lines before it, which the window must then hold. And it must not be a "Table: …" line, which the table
+    // before it may take as its caption
+    // block starts rise with the index: the last one before the edit by binary search, then back past any whose text
+    // begins at or after it
+    var k = max(0, Self.partition(solid.count) { blocks[solid[$0]].range.lowerBound < a } - 1)
+    while k > 0 && Self.textStart(ns, blocks[solid[k]].range.lowerBound) >= a { k -= 1 }
+    while k > 0 {
+      let at = blocks[solid[k]].range.lowerBound
+      if restarts(at: k, solid: solid, ns: ns) && !Self.taskListReachesBack(after: blocks[solid[k - 1]], at: at, newNS)
+        && !Ext.tableCaption.test(newNS, from: at)
+      {
+        break
+      }
+      k -= 1
+    }
+    let start = k > 0 ? blocks[solid[k]].range.lowerBound : 0
+    // the end's candidates, found as far as asked: solid blocks starting after the edit with a blank line before them
+    // that the edit leaves be, not a "Table: …" line (which a table before it takes as its caption across blank lines)
+    var nextCandidate = max(Self.partition(solid.count) { blocks[solid[$0]].range.lowerBound <= b }, k + 1)
+    var ends: [Int] = []
+    func end(_ n: Int) -> Int? {
+      while ends.count <= n && nextCandidate < solid.count {
+        let j = nextCandidate
+        nextCandidate += 1
+        let at = blocks[solid[j]].range.lowerBound
+        if restarts(at: j, solid: solid, ns: ns) && Self.blankLineBefore(ns, at, after: b)
+          && !Ext.tableCaption.test(ns, from: at)
+        {
+          ends.append(j)
+        }
+      }
+      return n < ends.count ? ends[n] : nil
+    }
+    var step = 0
+    var tried = 0
+    while true {
+      let j = end(tried)
+      let endOld = j.map { blocks[solid[$0]].range.lowerBound } ?? ns.length
+      let end = j == nil ? newNS.length : endOld + delta
+      if start == 0 && j == nil { return MarkdownDocument(new, previous: inlineCache) }
+      let window = newNS.substring(with: NSRange(location: start, length: end - start))
+      // lexed with the first line of the block at the end as well: the blank lines before it are then between blocks,
+      // as in the whole document, not at the end of the text (where TipTap makes an empty paragraph of them); everything
+      // from that line on is dropped again
+      let lexedEnd = j == nil ? end : NSMaxRange(newNS.lineRange(for: NSRange(location: end, length: 0)))
+      let lexed = newNS.substring(with: NSRange(location: start, length: lexedEnd - start))
+      var builder = DocumentBuilder(cache: InlineCache(previous: inlineCache))
+      let parsed = builder.blocks(BlockLexer.lex(lexed)).map { $0.shifted(start) }.filter { $0.range.lowerBound < end }
+      let lastSolid = parsed.last { !$0.range.isEmpty }
+      // a fence, HTML block or container left open in the window runs on into the next block's line: the window's
+      // blocks must all end before it
+      let staysInside = parsed.allSatisfy { $0.range.upperBound <= end }
+      let endsClean =
+        staysInside && Self.windowCloses(window) && (lastSolid.map { Self.closedByBlankLine($0, newNS) } ?? true)
+        && !(lastSolid.map { Self.taskListReachesBack(after: $0, at: end, newNS) } ?? false)
+      if j == nil || endsClean {
+        let prefix = Array(blocks[..<(k > 0 ? solid[k] : 0)])
+        let suffix = j.map { Array(blocks[solid[$0]...].map { $0.shifted(delta) }) } ?? []
+        var cache = inlineCache
+        cache.merge(builder.cache)
+        return MarkdownDocument(source: new, blocks: prefix + parsed + suffix, cache: cache, hasDefinitions: false)
+      }
+      step = max(1, step * 2)
+      tried += step
+    }
+  }
+
+  /// Whether solid block `k` (k ≥ 1) starts a restart point in the old parse: a blank line between it and the block
+  /// before, which is a block a blank line closes
+  private func restarts(at k: Int, solid: [Int], ns: NSString) -> Bool {
+    let prev = blocks[solid[k - 1]]
+    let here = blocks[solid[k]].range.lowerBound
+    guard Self.closedByBlankLine(prev, ns) else { return false }
+    let gap = ns.substring(with: NSRange(location: prev.range.upperBound, length: here - prev.range.upperBound))
+    return Self.blankLine.firstMatch(in: gap, range: NSRange(location: 0, length: (gap as NSString).length)) != nil
+  }
+
+  private static let blankLine = try! NSRegularExpression(pattern: "\\n[ \\t]*\\n")
+
+  /// Whether a blank line closes this block for good: everything but a list, an indented code block and an HTML block
+  /// (which takes in the whitespace-only lines after it, so where it ends depends on what follows)
+  static func closedByBlankLine(_ block: MDBlock, _ ns: NSString) -> Bool {
+    switch block.kind {
+    case .list, .html: return false
+    case .code:
+      // fenced (``` or ~~~ within its first four columns) or indented
+      let head = ns.substring(with: NSRange(location: block.range.lowerBound, length: min(7, block.range.count)))
+      let t = head.drop { $0 == " " }
+      return t.hasPrefix("```") || t.hasPrefix("~~~")
+    default: return true
+    }
+  }
+
+  /// Whether a task list starting at `at` (in `ns`) would take in the blank lines before it: after a paragraph, the
+  /// paragraph ends where the task list's search finds it, and the list's range begins there (TipTap's taskList)
+  static func taskListReachesBack(after prev: MDBlock, at: Int, _ ns: NSString) -> Bool {
+    guard case .paragraph = prev.kind, at < ns.length else { return false }
+    return Ext.taskStart.test(ns, from: at, to: NSMaxRange(ns.lineRange(for: NSRange(location: at, length: 0))))
+  }
+
+  /// How many of the indices 0..<n satisfy `below`, which holds for a first run of them and fails for the rest
+  static func partition(_ n: Int, _ below: (Int) -> Bool) -> Int {
+    var lo = 0
+    var hi = n
+    while lo < hi {
+      let mid = (lo + hi) / 2
+      if below(mid) { lo = mid + 1 } else { hi = mid }
+    }
+    return lo
+  }
+
+  /// Where the text of the line starting at `at` begins, past its spaces and tabs
+  static func textStart(_ ns: NSString, _ at: Int) -> Int {
+    var i = at
+    while i < ns.length, ns.character(at: i) == 0x20 || ns.character(at: i) == 0x09 { i += 1 }
+    return i
+  }
+
+  /// Whether the line before the one starting at `at` is blank and lies wholly at or after `after`
+  static func blankLineBefore(_ ns: NSString, _ at: Int, after: Int) -> Bool {
+    guard at >= 2, ns.character(at: at - 1) == 0x0A else { return false }
+    var i = at - 2
+    while i >= 0, ns.character(at: i) == 0x20 || ns.character(at: i) == 0x09 { i -= 1 }
+    // the blank line runs from just after the line break at i to at - 1
+    return i >= 0 && ns.character(at: i) == 0x0A && i >= after
+  }
+
+  /// Whether the whole lines a range touches hold a `$$`
+  static func linesHoldDoubleDollar(_ ns: NSString, _ r: Range<Int>) -> Bool {
+    let lines = ns.lineRange(for: NSRange(location: r.lowerBound, length: r.count))
+    return ns.range(of: "$$", options: .literal, range: lines).location != NSNotFound
+  }
+
+  /// whether a piece of text may hold a link reference definition (`[label]:`): conservative, any `]:` will do
+  static func mayDefine(_ text: String) -> Bool { text.contains("]:") }
+
+  /// Whether every fenced code block, `$$` math block and HTML block the window opens also closes in it. An opener left
+  /// open runs to the end of the document in a full parse, which lexing the window alone turns into ordinary text, so
+  /// such a window is never accepted on its own; the caller grows it. Conservative: it may say a closed window is open
+  /// (then the window just grows), never that an open one is closed.
+  static func windowCloses(_ text: String) -> Bool {
+    var fence: (char: Character, count: Int)?
+    var math = false
+    var html = false
+    for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
+      let line = raw
+      let trimmed = line.drop { $0 == " " }
+      if let f = fence {
+        // a fence closes on a line of at least as many of its own character, nothing else but spaces after
+        let run = trimmed.prefix { $0 == f.char }
+        if run.count >= f.count && trimmed.dropFirst(run.count).allSatisfy({ $0 == " " }) { fence = nil }
+        continue
+      }
+      if math {
+        if trimmed.hasPrefix("$$") { math = false }
+        continue
+      }
+      if html {
+        if line.allSatisfy({ $0 == " " }) { html = false }
+        continue
+      }
+      let indent = line.prefix { $0 == " " }.count
+      if indent >= 4 { continue }
+      if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
+        let char = trimmed.first!
+        fence = (char, trimmed.prefix { $0 == char }.count)
+      } else if trimmed.hasPrefix("$$") {
+        // a one-line $$…$$ opens and closes on the same line
+        if trimmed.dropFirst(2).contains("$$") { continue }
+        math = true
+      } else if trimmed.first == "<" {
+        // an HTML block closes on a blank line (marked types 1–6 all do, or sooner); treat the window as open until one
+        html = true
+      }
+    }
+    return fence == nil && !math && !html
   }
 
   public static func == (a: MarkdownDocument, b: MarkdownDocument) -> Bool {
@@ -187,6 +399,13 @@ struct InlineCache: Sendable {
   init() {}
   /// a cache that looks in `previous` first, and keeps only what this document uses
   init(previous: InlineCache) { self.previous = previous.spans }
+  /// what `other` worked out added to what this holds (a window parsed by reparse); bounded: past a few thousand texts
+  /// only the newer ones are kept
+  mutating func merge(_ other: InlineCache) {
+    if spans.count > 4096 { spans = [:] }
+    spans.merge(other.spans) { $1 }
+  }
+
   mutating func spans(_ text: String) -> [Span] {
     if let s = spans[text] { return s }
     let s = previous[text] ?? Spans.of(text)
@@ -211,12 +430,16 @@ struct DocumentBuilder {
       if t.type != "space", next != "space", let m = Self.trailingBlankLines.exec(t.raw.ns) {
         absorbed = t.raw.dropFirst(m.range.location)
       }
+      // the empty paragraphs this token's own trailing blank lines make: it goes before them, and only them
+      var own = 0
       if t.type == "space" || absorbed != nil {
         let raw = absorbed ?? t.raw
         let hasPrev = nonSpace.contains { $0 < i } || absorbed != nil
         let hasNext = nonSpace.contains { $0 > i }
-        out += emptyParagraphs(raw, between: hasPrev && hasNext)
+        let made = emptyParagraphs(raw, between: hasPrev && hasNext)
+        out += made
         if t.type == "space" { continue }
+        own = made.count
       }
       // a "Table: …" paragraph right after a table is that table's caption (schema.ts tableCaptions)
       if t.type == "paragraph", let ti = prevTable, case .table(var table) = out[ti].kind, table.caption == nil,
@@ -231,13 +454,9 @@ struct DocumentBuilder {
       }
       guard let b = block(t) else { continue }
       prevTable = if case .table = b.kind { out.count } else { nil }
-      if absorbed != nil, let last = out.last, last.inlines.isEmpty, last.range.isEmpty, case .paragraph = last.kind {
-        // the empty paragraphs of a token's own trailing blank lines come after it
-        let empties = out.reversed().prefix { $0.range.isEmpty && $0.inlineText?.string == "" }.count
-        out.insert(b, at: out.count - empties)
-      } else {
-        out.append(b)
-      }
+      // the empty paragraphs of a token's own trailing blank lines come after it; empty paragraphs from blank lines
+      // before it stay where they are (moving past them too put a blank line after later blocks)
+      out.insert(b, at: out.count - own)
     }
     return out
   }
