@@ -595,7 +595,8 @@ extension NSMenu {
       // from a CGEvent, as the window server makes them (WebKit passes on only such key events)
       let cg = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)!
       cg.flags = CGEventFlags(rawValue: UInt64(f.rawValue))
-      let u = Array((f.contains(.command) ? chars : shown).utf16)
+      // with ⇧ a letter is a capital, ⌘ or not (charactersIgnoringModifiers keeps ⇧: ⇧⌘Z is "Z", as menus match it)
+      let u = Array(shown.utf16)
       cg.keyboardSetUnicodeString(stringLength: u.count, unicodeString: u)
       cg.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(w.windowNumber))
       guard let e0 = NSEvent(cgEvent: cg) else { return }

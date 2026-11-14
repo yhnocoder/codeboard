@@ -1,4 +1,4 @@
-# 点一下 Note 里的图片选中它，拖右边的把手把它缩窄：选中框、把手和缩放过程都顺手
+# 点一下 Note 里的图片选中它，拖右边的把手把它缩窄：选中框、把手和缩放过程都顺手；缩完 ⌘Z 撤回、⇧⌘Z 重做，图片一直选着，存下的宽度跟着来回
 zoom 1
 center @nimage
 dbl @nimage"Text after"
@@ -15,7 +15,18 @@ shot grip
 drag @nimage"一张图"+107,-87 @nimage"一张图"+30,-87 800
 wait 500
 shot narrowed
-wait 400
+wait 2500
+source @nimage
+key cmd+z
+wait 500
+shot undone
+wait 2500
+source @nimage
+key cmd+shift+z
+wait 500
+shot redone
+wait 2500
+source @nimage
 stop
 key esc
 wait 500
