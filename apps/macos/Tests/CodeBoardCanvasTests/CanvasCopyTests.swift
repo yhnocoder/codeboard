@@ -125,3 +125,102 @@ private func copyBoard() -> Board {
     #expect(touches(r.doc.board, c9.id).arrows == 1 && touches(r.doc.board, c9.id).sidenotes == ["why"])
   }
 }
+
+// MARK: What is copied, where pastes go, cut and paste back (main's actions/edit.ts duplicateSel, actions/shared.ts
+// copyCardsSel, pasteCopied, cutCardsSel, pasteCut)
+
+@MainActor @Suite(.serialized) struct CanvasCopyPlacesTests {
+  func rig() async throws -> (Rig, NSPasteboard) {
+    let board = NSPasteboard(name: NSPasteboard.Name("codeboard-tests-\(UUID().uuidString)"))
+    var b = sample()
+    b.arrows.append(Arrow(id: ArrowID(rawValue: "a2"), from: Endpoint(card: cid("n2")), to: Endpoint(card: cid("n1"))))
+    return (try await Rig(b, zoom: 0.5, pasteboard: board), board)
+  }
+
+  /// Only cards are copied: "const cs = selCards()…; if (!cs.length) return toast("Select a card to duplicate")"
+  /// (duplicateSel), "const cs = selHosts(); if (!cs.length) return false;" (copyCardsSel: the key goes on, nothing is
+  /// copied). A selected Section with its cards adds nothing; the cards selected with it are copied, alone
+  @Test func duplicateAndCopyTakeOnlyTheSelectedCards() async throws {
+    let (r, board) = try await rig()
+    defer {
+      r.close()
+      board.releaseGlobally()
+    }
+    let was = r.doc.board
+    r.doc.select([.section(SectionID(rawValue: "g1"))])
+    r.canvas.duplicate(nil)
+    #expect(r.doc.board.cards.count == was.cards.count && r.doc.board.sections.count == was.sections.count)
+    #expect(r.canvas.toastText == "Select a card to duplicate")
+    r.canvas.copy(nil)
+    #expect(board.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)) == nil, "nothing copied")
+    r.doc.select([.section(SectionID(rawValue: "g1")), .card(cid("n1"))])
+    r.canvas.duplicate(nil)
+    #expect(r.doc.board.sections.count == was.sections.count && r.doc.board.cards.count == was.cards.count + 1)
+    #expect(r.canvas.pasteChip?.pairs.map(\.of) == [cid("n1")])
+    r.doc.select([.section(SectionID(rawValue: "g1")), .card(cid("n2"))])
+    r.canvas.copy(nil)
+    r.canvas.paste(nil)
+    #expect(r.doc.board.sections.count == was.sections.count && r.doc.board.cards.count == was.cards.count + 2)
+    #expect(r.canvas.pasteChip?.pairs.map(\.of) == [cid("n2")])
+  }
+
+  /// ⌘V on the board the cards were copied on: 36 × n down and right of the originals, n counting the pastes since that
+  /// ⌘C ("const k = ++c.n" … "{ x: box.x + 36 * k, y: box.y + 36 * k }", n: 0 at each copyCardsSel)
+  @Test func pastesGo36TimesNFromTheOriginals() async throws {
+    let (r, board) = try await rig()
+    defer {
+      r.close()
+      board.releaseGlobally()
+    }
+    let n1 = r.card("n1")
+    r.doc.select([.card(cid("n1")), .card(cid("n2"))])
+    r.canvas.copy(nil)
+    func pasted() throws -> Card {
+      r.canvas.paste(nil)
+      let id = try #require(r.canvas.pasteChip?.pairs.first { $0.of == cid("n1") }?.copy)
+      return try #require(r.doc.board.card(id))
+    }
+    for k in 1...3 {
+      let c = try pasted()
+      #expect(c.x == n1.x + 36 * Double(k) && c.y == n1.y + 36 * Double(k), "paste \(k)")
+    }
+    r.doc.select([.card(cid("n1")), .card(cid("n2"))])
+    r.canvas.copy(nil)
+    let again = try pasted()
+    #expect(again.x == n1.x + 36 && again.y == n1.y + 36, "a new ⌘C counts from 1")
+  }
+
+  /// ⌘X then ⌘V on the same board: the cards come back with their ids, the arrows that touched them to cards still here
+  /// with them, at the first free place by the pointer (pasteCut: putCards(c.cards, c.links, !back, at); placeCards
+  /// copy false); ⌘V again: copies, with only the arrows among them
+  @Test func cutThenPastePutsTheCardsBackWithTheirArrows() async throws {
+    let (r, board) = try await rig()
+    defer {
+      r.close()
+      board.releaseGlobally()
+    }
+    let was = r.doc.board
+    r.doc.select([.card(cid("n1")), .card(cid("m1"))])
+    r.canvas.cut(nil)
+    #expect(r.doc.board.card(cid("n1")) == nil && r.doc.board.card(cid("m1")) == nil)
+    #expect(r.doc.board.arrows.isEmpty && r.canvas.toastText == "Cut 2 cards")
+    let at = CGPoint(x: 1600, y: 200)
+    r.send(r.mouse(.mouseMoved, at))
+    r.canvas.paste(nil)
+    let n1 = try #require(r.doc.board.card(cid("n1")))
+    let m1 = try #require(r.doc.board.card(cid("m1")))
+    #expect(r.canvas.toastText == "Pasted 2 cards")
+    #expect(
+      Set(r.doc.board.arrows.map { [$0.from.card.rawValue, $0.to.card.rawValue] }) == [["n1", "m1"], ["n2", "n1"]],
+      "both arrows back")
+    // their top left where the pointer is (free there), the two keeping their places to each other
+    let o1 = try #require(was.card(cid("n1")))
+    let o2 = try #require(was.card(cid("m1")))
+    #expect(n1.x == at.x && n1.y == at.y, "\(n1.x) \(n1.y)")
+    #expect(m1.x - n1.x == o2.x - o1.x && m1.y - n1.y == o2.y - o1.y)
+    // again: copies with new ids, the arrow among them only
+    r.canvas.paste(nil)
+    #expect(r.canvas.toastText == "Pasted 2 copies")
+    #expect(r.doc.board.cards.count == was.cards.count + 2 && r.doc.board.arrows.count == 3)
+  }
+}

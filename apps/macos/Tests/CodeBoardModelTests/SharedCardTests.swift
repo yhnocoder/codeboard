@@ -99,7 +99,7 @@ private func sharedVault() throws -> (Vault, URL, URL) {
     let docA = try BoardDocument(file: { dirs[0].appending(path: Vault.boardFileName) }, vault: vault)
     let docB = try BoardDocument(file: { dirs[1].appending(path: Vault.boardFileName) }, vault: vault)
     a = docA.board
-    let clip = a.clip([.card(cid("c1")), .card(cid("c2"))]) { _ in nil }
+    let clip = a.clip([cid("c1"), cid("c2")]) { _ in nil }
     #expect(clip.board == BoardID(rawValue: "a"))
     var renamed: [CardID: CardID] = [:]
     docA.sync {
@@ -131,7 +131,7 @@ private func sharedVault() throws -> (Vault, URL, URL) {
     let file = try scratch().appending(path: "board.json")
     try Board(id: BoardID(rawValue: "b"), cards: [noteCard("c1", "one")]).encoded().write(to: file)
     let doc = try BoardDocument(file: { file })
-    let clip = doc.board.clip([.card(cid("c1"))]) { _ in nil }
+    let clip = doc.board.clip([cid("c1")]) { _ in nil }
     doc.edit("Paste") { $0.paste(clip, dx: 24, dy: 24) { _ in "c2" } }
     #expect(doc.board.cards.map(\.same) == [nil, nil] && !doc.board.cards[1].isShared)
     // Reference

@@ -513,7 +513,7 @@ actor RigTurns {
     r.canvas.paste(nil)
     #expect(r.doc.board.cards.count == 9 && r.doc.selection.count == 2)
     let pasted = r.doc.selection.compactMap(\.card).compactMap(r.doc.board.card).sorted { $0.y < $1.y }
-    #expect(pasted.map(\.x) == [24, 74] && pasted.map(\.y) == [24, 504])
+    #expect(pasted.map(\.x) == [36, 86] && pasted.map(\.y) == [36, 516], "36 down and right (pasteCopied)")
     #expect(r.doc.board.arrows.count == 2, "the arrow between them comes along")
     r.canvas.duplicate(nil)
     #expect(r.doc.board.cards.count == 11)

@@ -341,8 +341,12 @@ public final class CanvasView: NSView {
   var leastWidths: [CardID: CGFloat] = [:]
   /// Arrow keys held for the nudge under way
   var nudging: Set<UInt16> = []
-  /// Where the last paste went, to step the next one on
-  var lastPaste: (clip: Data, dx: Double, dy: Double)?
+  /// The cards ⌘C copied on this board (the pasteboard data that stands for them) and how many times they were pasted
+  /// since (actions/shared.ts copied)
+  var copied: (board: BoardID, data: Data, n: Int)?
+  /// The cards ⌘X cut on this board with every arrow that touched them, and the pasteboard data that stands for them
+  /// (actions/shared.ts cutClip)
+  var cutClip: (board: BoardID, data: Data, clip: Clip)?
 
   /// Work begun while a gesture was active; the gesture rule says all stay 0
   package private(set) var ruleBreaks = (redraws: 0, decodes: 0, swaps: 0, noteRequests: 0, noteSwaps: 0)

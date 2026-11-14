@@ -166,7 +166,7 @@ func editSample() -> Board {
     ("back", { $0.arrange([cid("t1")], toFront: false) }),
     ("lock", { $0.setLocked([.card(cid("n1")), .section(gid("g1"))], true) }),
     ("tilt", { $0.setTilted([cid("n1"), cid("c1")], true) }),
-    ("paste", { b in b.paste(b.clip([.section(gid("g1")), .card(cid("c1"))], shared: { _ in nil }), dx: 40, dy: 40) }),
+    ("paste", { b in b.paste(b.clip([cid("c1"), cid("n1"), cid("n2")], shared: { _ in nil }), dx: 40, dy: 40) }),
   ]
   for (name, command) in commands {
     let start = editSample()
@@ -302,7 +302,7 @@ func editSample() -> Board {
     return
   }
   let shared = SharedCard(id: cid("c1"), content: content, sidenotes: [travels])
-  let clip = b.clip([.section(gid("g1")), .card(cid("c1"))]) { $0 == cid("c1") ? shared : nil }
+  let clip = b.clip([cid("c1"), cid("n1"), cid("n2")]) { $0 == cid("c1") ? shared : nil }
   #expect(clip.cards.map(\.id.rawValue).sorted() == ["c1", "n1", "n2"])
   #expect(clip.cards.allSatisfy { $0.content != .shared }, "a shared card is copied with its content")
   let data = try clip.encoded()
@@ -312,17 +312,15 @@ func editSample() -> Board {
     ids += 1
     return "\(p)-new\(ids)"
   }
-  #expect(made.count == 5, "three cards and two Sections")
-  #expect(b.cards.count == 7 && b.sections.count == 4)
+  #expect(made.count == 3, "three cards, no Section (main copies only cards)")
+  #expect(b.cards.count == 7 && b.sections.count == 2)
   #expect(b.arrows.count == 3, "the arrow between two copied cards came too, not the one to t1")
-  #expect(b.sidenotes.count == 6, "the one on c1's lines, the one on g2, the travelling one")
+  #expect(b.sidenotes.count == 5, "the one on c1's lines and the travelling one, not the one on g2")
   #expect(b.stickers.count == 3, "no sticker came")
-  let inner = try #require(b.sections.last)
-  #expect(inner.parent == b.sections[2].id && inner.x == 450)
   #expect(b.problem() == nil)
   // pasted again into a board without those cards: what pointed outside the clip is not there
   var other = Board(id: BoardID(rawValue: "o"))
-  other.paste(b.clip([.card(cid("n1"))], shared: { _ in nil }), dx: 0, dy: 0)
+  other.paste(b.clip([cid("n1")], shared: { _ in nil }), dx: 0, dy: 0)
   #expect(other.cards.count == 1 && other.cards[0].section == nil && other.stickers.isEmpty)
   #expect(other.problem() == nil)
 }
