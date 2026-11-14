@@ -101,7 +101,8 @@ extension Vault {
   }
 
   /// Whether this process runs tests (swift test's runner, Xcode's): what Swift Testing and XCTest load is there
-  static let underTest = NSClassFromString("XCTestCase") != nil || ProcessInfo.processInfo.processName.hasPrefix("swiftpm-testing")
+  static let underTest =
+    NSClassFromString("XCTestCase") != nil || ProcessInfo.processInfo.processName.hasPrefix("swiftpm-testing")
 
   /// A board package or a folder (with all in it) to the trash, never removed outright; only something in the vault, not
   /// the vault itself. Where it went

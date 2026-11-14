@@ -296,7 +296,8 @@ import Testing
     cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase == .began ? 1 : 2)
     cg.setDoubleValueField(.scrollWheelEventPointDeltaAxis1, value: Double(dy))
     cg.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(w.window.windowNumber))
-    cg.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(w.window.windowNumber))
+    cg.setIntegerValueField(
+      .mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(w.window.windowNumber))
     cg.timestamp = UInt64(ProcessInfo.processInfo.systemUptime * 1e9)
     return NSEvent(cgEvent: cg)
   }
