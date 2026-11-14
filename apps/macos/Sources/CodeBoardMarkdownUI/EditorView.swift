@@ -1708,6 +1708,8 @@ public final class MarkdownEditorView: NSView {
   }
 
   public override func mouseUp(with e: NSEvent) {
+    // timed from the release (a drag's frames before it are their own)
+    begin()
     defer { writeLeftLink() }
     if imageDragFrom != nil {
       // a click on the image already selected: its source opens (editor/widgets.ts)
