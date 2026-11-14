@@ -130,8 +130,8 @@ extension NSApplication {
 /// Made the first time a cursor is named (a static is made when first read): main.swift's top-level lets are made at
 /// launch, before NSApplication, when `NSCursor.arrow` is not yet the arrow the app sets, so every arrow was named
 /// custom(28x40)
-enum Cursors {
-  nonisolated(unsafe) static let names: [(NSCursor, String)] =
+@MainActor enum Cursors {
+  static let names: [(NSCursor, String)] =
     [
       (.arrow, "arrow"), (.pointingHand, "pointingHand"), (.openHand, "openHand"), (.closedHand, "closedHand"),
       (.iBeam, "iBeam"), (.crosshair, "crosshair"), (.resizeLeftRight, "resizeLeftRight"),
@@ -160,20 +160,18 @@ enum Cursors {
       (.rowResize(directions: .up), "rowResize ↑"), (.rowResize(directions: .down), "rowResize ↓"),
     ]
 }
-func nameOf(_ c: NSCursor) -> String {
+@MainActor func nameOf(_ c: NSCursor) -> String {
   if let n = Cursors.names.first(where: { $0.0 == c })?.1 { return n }
   return "custom(\(Int(c.image.size.width))x\(Int(c.image.size.height)))"
 }
 
 extension NSCursor {
-  @objc func accSet() {
+  @MainActor @objc func accSet() {
     let n = nameOf(self)
-    MainActor.assumeIsolated {
-      if n != cursorName { log("cursor \(n)") }
-      cursorName = n
-    }
+    if n != cursorName { log("cursor \(n)") }
+    cursorName = n
   }
-  @objc func accPush() { accSet() }
+  @MainActor @objc func accPush() { accSet() }
   @objc func accPop() {}
   @objc class func accClassPop() {}
   @objc class func accHide() { log("cursor hide (not done)") }
