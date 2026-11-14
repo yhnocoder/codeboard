@@ -13,7 +13,8 @@ extension Rig {
   /// Presses keys as the keyboard does, through the window to whoever takes them, with no wait between them
   func press(_ text: String) {
     let codes: [Character: UInt16] = [
-      "a": 0, "b": 11, "c": 8, "h": 4, "i": 34, "n": 45, "o": 31, "x": 7, "y": 16, "1": 18, "=": 24, " ": 49, "\r": 36, "\u{1b}": 53,
+      "a": 0, "b": 11, "c": 8, "h": 4, "i": 34, "n": 45, "o": 31, "x": 7, "y": 16, "1": 18, "=": 24, " ": 49, "\r": 36,
+      "\u{1b}": 53,
     ]
     for ch in text {
       for t in [NSEvent.EventType.keyDown, .keyUp] {
