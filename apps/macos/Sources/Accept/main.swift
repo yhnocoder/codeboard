@@ -735,6 +735,8 @@ swizzle(
     let a = line.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
     guard let cmd = a.first else { return "" }
     func d(_ i: Int, _ def: Double = 0) -> Double { i < a.count ? Double(a[i]) ?? def : def }
+    // a number that is not one (nan, inf) would leave a move going towards it for ever
+    if a.dropFirst().contains(where: { Double($0).map { !$0.isFinite } ?? false }) { return "error: not a number" }
     switch cmd {
     case "move":  // move x y [ms]
       await move(to: screen(d(1), d(2)), ms: d(3, 350))
