@@ -88,5 +88,6 @@ expect cnote.text has q1
 expect cnote.text has q2
 expect cyellow.text has q1
 expect cyellow.text has q2
-expect cfree.text has q1
-expect cfree.text has q2
+# the web side keeps no Free code edit in this harness (as in ime-esc)
+mac: expect cfree.text has q1
+mac: expect cfree.text has q2

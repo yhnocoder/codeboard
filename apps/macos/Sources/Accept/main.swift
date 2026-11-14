@@ -51,7 +51,20 @@ nonisolated var vFlags: NSEvent.ModifierFlags {
   get { Virtual.input.withLock { $0.flags } }
   set { Virtual.input.withLock { $0.flags = newValue } }
 }
-var gKey: NSWindow?
+var keyWindowSet: NSWindow?
+/// The key window as the window server would have it: the one made key last while it is on screen; once that one is
+/// gone (a sheet ended, a panel closed) the window server hands key back to the main window, which then becomes key
+/// (its first responder takes the keys again)
+var gKey: NSWindow? {
+  get {
+    if let k = keyWindowSet, k.isVisible { return k }
+    guard let back = gMain, back !== keyWindowSet else { return keyWindowSet }
+    keyWindowSet = back
+    DispatchQueue.main.async { back.becomeKey() }
+    return back
+  }
+  set { keyWindowSet = newValue }
+}
 weak var gMain: NSWindow?
 var cursorName = "arrow"
 var lastMenu: NSMenu?
@@ -232,6 +245,21 @@ extension NSPasteboard {
   }
 }
 
+/// What the app sends to the Trash goes to a folder of this run's instead (beside its vault, removed with it): never
+/// into the Trash of the person using the Mac
+let ownTrash = URL(filePath: (env["ACCEPT_VAULT"] ?? NSTemporaryDirectory() + "accept") + "-trash")
+extension FileManager {
+  @objc func accTrashItem(at url: URL, resultingItemURL out: AutoreleasingUnsafeMutablePointer<NSURL?>?) throws {
+    try createDirectory(at: ownTrash, withIntermediateDirectories: true)
+    let to = ownTrash.appending(path: "\(UUID().uuidString.prefix(8)) \(url.lastPathComponent)")
+    try moveItem(at: url, to: to)
+    out?.pointee = to as NSURL
+    log("trashed \(url.lastPathComponent) (into this run's own trash)")
+  }
+}
+swizzle(
+  FileManager.self, #selector(FileManager.trashItem(at:resultingItemURL:)),
+  #selector(FileManager.accTrashItem(at:resultingItemURL:)))
 swizzle(NSPasteboard.self, #selector(getter: NSPasteboard.general), #selector(NSPasteboard.accGeneral), meta: true)
 swizzle(
   NSPasteboard.self, NSSelectorFromString("pasteboardWithName:"), #selector(NSPasteboard.accNamed(_:)), meta: true)
@@ -351,25 +379,6 @@ swizzle(
 
 /// A stored property of `x` (and of what that one holds…), optionals unwrapped, by reflection: the driver needs nothing
 /// public from the app
-/// Where the canvas draws a sidenote's marker or a sticker, board units ("x y w h"; none): it has no accessibility
-/// element for them yet, so this reads its own layout (the markers it hit-tests, `marks`; the stickers', `stickerSpots`)
-@MainActor func spot(_ c: NSView, _ id: String) -> String {
-  let fmt = { (r: CGRect) in String(format: "%.1f %.1f %.1f %.1f", r.minX, r.minY, r.width, r.height) }
-  for m in field(c, "marks") as? [Any] ?? [] {
-    guard (field(m, "notes") as? [SidenoteID])?.contains(where: { $0.rawValue == id }) == true,
-      let hit = field(m, "hit") as? CGRect
-    else { continue }
-    // the hit area is the badge grown to a size the pointer can take, around its middle; the badge is 14 across, 13 in a
-    // code card's line numbers (CanvasView.markSize, gutterMarkSize)
-    let size: CGFloat = (field(m, "gutter") as? Bool) == true ? 13 : 14
-    return fmt(CGRect(x: hit.midX - size / 2, y: hit.midY - size / 2, width: size, height: size))
-  }
-  for s in field(c, "stickerSpots") as? [Any] ?? [] {
-    if (field(s, "id") as? StickerID)?.rawValue == id, let r = field(s, "board") as? CGRect { return fmt(r) }
-  }
-  return "none"
-}
-
 func field(_ x: Any, _ path: String...) -> Any? {
   var at: Any? = x
   for label in path {
@@ -568,13 +577,14 @@ func strings(_ x: Any) -> [String] {
   func move(to target: NSPoint, ms: Double) async {
     refreshAreas()
     let from = vPointer
-    let steps = max(2, Int(ms / 8))
     let dx = target.x - from.x
     let dy = target.y - from.y
     let len = hypot(dx, dy)
     let bend = min(40, len * 0.08) * (Bool.random() ? 1 : -1)
-    for i in 1...steps {
-      let t = Double(i) / Double(steps)
+    // by the clock, a step every 8 ms or as soon as the last is handled: the move takes the time asked, however long the
+    // app takes for each step (counting steps made a 600 ms move take 2.5 s)
+    let start = ProcessInfo.processInfo.systemUptime
+    while case let t = (ProcessInfo.processInfo.systemUptime - start) * 1000 / max(ms, 1), t < 1 {
       let e = t < 0.5 ? 2 * t * t : 1 - pow(-2 * t + 2, 2) / 2
       let b = sin(.pi * e) * bend
       let nx = len > 0 ? -dy / len : 0
@@ -758,6 +768,7 @@ func strings(_ x: Any) -> [String] {
       log("unknown key \(k)")
       return
     }
+    let dialog = w === NSApp.modalWindow || w.isSheet
     let chars = Self.specials[k] ?? k
     let shown =
       !f.contains(.shift) || chars.count != 1
@@ -779,8 +790,24 @@ func strings(_ x: Any) -> [String] {
         windowNumber: w.windowNumber, context: nil, characters: e0.characters ?? chars,
         charactersIgnoringModifiers: e0.charactersIgnoringModifiers ?? chars, isARepeat: false, keyCode: code)!
       // the app is not active for the window server, so NSApp has no key window of its own to send keys to: keys
-      // without ⌘ or ⌃ go to the window as NSApp would hand them over; with them, through NSApp (key equivalents, menus)
-      if f.isDisjoint(with: [.command, .control]) { w.sendEvent(e) } else { NSApp.postEvent(e, atStart: false) }
+      // without ⌘ or ⌃ go to the window as NSApp would hand them over; with them, through NSApp (key equivalents, menus).
+      // A dialog's keys as NSApp hands a key window its keys: key equivalents first (the buttons' own keys: Esc for
+      // Cancel), then the window. Return to a default button is done here: AppKit presses the default button only in a
+      // window the window server made key, which this window never is (its button gets no Return of its own then), so
+      // without this a dialog whose default button deletes would seem to ignore Return
+      if dialog {
+        if down, w.performKeyEquivalent(with: e) {
+        } else if down, code == 36, f.isEmpty, let b = w.defaultButtonCell, b.isEnabled {
+          log("return: the dialog’s default button \(b.title ?? "")")
+          b.performClick(nil)
+        } else {
+          w.sendEvent(e)
+        }
+      } else if f.isDisjoint(with: [.command, .control]) {
+        w.sendEvent(e)
+      } else {
+        NSApp.postEvent(e, atStart: false)
+      }
       try? await Task.sleep(for: .milliseconds(40))
     }
     vFlags = []
@@ -874,7 +901,10 @@ func strings(_ x: Any) -> [String] {
   func dialogText(_ d: NSWindow) -> String {
     let vs = views(in: d.contentView)
     let texts = vs.compactMap { ($0 as? NSTextField)?.stringValue }.filter { !$0.isEmpty }
-    let buttons = vs.compactMap { $0 as? NSButton }.filter { !$0.isHidden && !$0.title.isEmpty }.map(\.title)
+    // each button with the key it takes, if any (⏎: the default button; ⎋: the cancel button)
+    let keys = ["\r": " ⏎", "\u{1b}": " ⎋"]
+    let buttons = vs.compactMap { $0 as? NSButton }.filter { !$0.isHidden && !$0.title.isEmpty }
+      .map { $0.title + (keys[$0.keyEquivalent] ?? ($0.cell === d.defaultButtonCell ? " ⏎" : "")) }
     let kind = d === NSApp.modalWindow ? "app-modal" : "sheet"
     return "\(kind): \(texts.joined(separator: " | ")) [\(buttons.joined(separator: "] ["))]"
   }
@@ -1003,7 +1033,7 @@ func strings(_ x: Any) -> [String] {
         for k in el.accessibilityChildren() ?? [] { if let f = find(k) { return f } }
         return nil
       }
-      guard let el = (c.accessibilityChildren() ?? []).lazy.compactMap(find).first else { return spot(c, a[1]) }
+      guard let el = (c.accessibilityChildren() ?? []).lazy.compactMap(find).first else { return "none" }
       let r = c.convert(w.convertFromScreen(el.accessibilityFrame()), from: nil)  // the canvas is y-down
       return String(
         format: "%.1f %.1f %.1f %.1f", cam.origin.x + r.minX / cam.zoom, cam.origin.y + r.minY / cam.zoom,
@@ -1125,25 +1155,31 @@ func strings(_ x: Any) -> [String] {
     case "board":
       guard let c = canvas, let p = field(c, "shown", "board", "path") as? String else { return "none" }
       return p
-    // row title: where the sidebar's row of the board or folder with this title is, in the window (what move and click
-    // take): the rows as the sidebar lists them (each folder, what is in it when open, then the boards), 29 apart, the
-    // first at 90, 91 (Sidebar.swift: 28 tall, 1 between)
+    // row title[:chevron]: where the sidebar's row of the board or folder with this title is, in the window (what move
+    // and click take), or its folder's chevron (what opens and closes it). From the sidebar's own list (SwiftUI exposes
+    // no accessibility elements for it here) and its layout (Sidebar.swift): the rows as it lists them (each folder,
+    // what is in it when open, then the boards), 28 tall and 1 apart, the first at 91; 10 in from the window's left, a
+    // row's content 2 further and 18 per level in; the chevron 14 wide at its start. A closed folder's rows are not there
     case "row":
+      var title = String(line.dropFirst(4))
+      let chevron = title.hasSuffix(":chevron")
+      if chevron { title.removeLast(8) }
       guard let shell = NSApp.delegate.flatMap({ field($0, "shell") }), let tree = field(shell, "tree") else {
         return "none"
       }
       let open = field(shell, "expanded") as? Set<String> ?? []
-      var rows: [String] = []
-      func walk(_ f: Any) {
+      var rows: [(name: String, depth: Int)] = []
+      func walk(_ f: Any, _ depth: Int) {
         for sub in field(f, "folders") as? [Any] ?? [] {
-          rows.append(field(sub, "name") as? String ?? "")
-          if let p = field(sub, "path") as? String, open.contains(p) { walk(sub) }
+          rows.append((field(sub, "name") as? String ?? "", depth))
+          if let p = field(sub, "path") as? String, open.contains(p) { walk(sub, depth + 1) }
         }
-        for b in field(f, "boards") as? [Any] ?? [] { rows.append(field(b, "title") as? String ?? "") }
+        for b in field(f, "boards") as? [Any] ?? [] { rows.append((field(b, "title") as? String ?? "", depth)) }
       }
-      walk(tree)
-      guard let i = rows.firstIndex(of: String(line.dropFirst(4))) else { return "none" }
-      return String(format: "90 %.0f", 91 + 29 * Double(i))
+      walk(tree, 0)
+      guard let i = rows.firstIndex(where: { $0.name == title }) else { return "none" }
+      let x = chevron ? 10 + 2 + 18 * Double(rows[i].depth) + 7 : 90
+      return String(format: "%.0f %.0f", x, 91 + 29 * Double(i))
     case "quit":
       ownPasteboard.releaseGlobally()
       NSApp.terminate(nil)

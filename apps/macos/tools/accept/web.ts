@@ -68,9 +68,11 @@ cdp.on("Page.screencastFrame", async (f: any) => {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function move(x: number, y: number, ms = 350) {
   const from = { ...pos }, dx = x - from.x, dy = y - from.y, len = Math.hypot(dx, dy);
-  const steps = Math.max(2, Math.round(ms / 8)), bend = Math.min(40, len * 0.08) * (Math.random() < 0.5 ? 1 : -1);
-  for (let i = 1; i <= steps; i++) {
-    const t = i / steps, e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2, b = Math.sin(Math.PI * e) * bend;
+  const bend = Math.min(40, len * 0.08) * (Math.random() < 0.5 ? 1 : -1);
+  // by the clock, a step every 8 ms or as soon as the last is handled: the move takes the time asked (as the Mac side's)
+  const start = performance.now();
+  for (let t = 0; (t = (performance.now() - start) / Math.max(ms, 1)) < 1; ) {
+    const e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2, b = Math.sin(Math.PI * e) * bend;
     const nx = len ? -dy / len : 0, ny = len ? dx / len : 0;
     pos = { x: from.x + dx * e + nx * b, y: from.y + dy * e + ny * b };
     await page.mouse.move(pos.x, pos.y);

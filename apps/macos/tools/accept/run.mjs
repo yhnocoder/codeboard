@@ -153,7 +153,11 @@ class Driver {
   async reopen() {
     await Promise.race([this.send("quit").catch(() => {}), sleep(3000)]);
     for (let t = 0; t < 100 && this.alive(); t++) await sleep(50);
-    if (this.alive()) process.kill(this.pid, "SIGTERM");
+    const hung = this.alive();
+    if (hung) process.kill(this.pid, "SIGTERM");
+    // what the app kept for the next start (its cameras), in the log of the run that ends: why a camera did not come back
+    const kept = fs.existsSync(cameraFile(this.vault)) ? fs.readFileSync(cameraFile(this.vault), "utf8").replace(/\s+/g, "") : "none";
+    fs.appendFileSync(this.log, `reopen: ${hung ? "did not quit in 5 s, terminated" : "quit"}; cameras kept ${kept}\n`);
     this.opened = (this.opened ?? 0) + 1;
     fs.renameSync(this.log, path.join(this.dir, `log-${this.opened}.txt`));
     this.n = 0;
@@ -245,7 +249,8 @@ class Driver {
     if (this.alive()) process.kill(this.pid, "SIGTERM");
     await sleep(300);
     if (this.alive()) process.kill(this.pid, "SIGKILL");
-    for (const d of [this.vault, this.copy]) if (d) fs.rmSync(d, { recursive: true, force: true });
+    // the vault, its own trash (what the app deleted goes there, never to the person's Trash) and the web's copy
+    for (const d of [this.vault, this.vault && `${this.vault}-trash`, this.copy]) if (d) fs.rmSync(d, { recursive: true, force: true });
     if (this.vault) fs.rmSync(cameraFile(this.vault), { force: true });
   }
 }
@@ -293,7 +298,9 @@ async function idOf(d, id) {
 async function point(d, tok, onBoard = false) {
   // @row:<title>: the Mac app's sidebar row of that board
   if (tok.startsWith("@row:")) {
-    const r = await d.send(`row ${tok.slice(5)}`);
+    // (the sidebar lists the vault a moment after the app starts and after each change: wait a little for the row)
+    let r = await d.send(`row ${tok.slice(5)}`);
+    for (let i = 0; r === "none" && i < 20; i++) { await sleep(100); r = await d.send(`row ${tok.slice(5)}`); }
     if (!/^-?[\d.]+ -?[\d.]+$/.test(r)) throw new Error(`${d.side}: no sidebar row ${tok.slice(5)}${r === "none" ? "" : ` (${r})`}`);
     return r;
   }
@@ -429,6 +436,10 @@ async function geom(d, id, needSection = false, aim = false) {
 async function subject(d, subj) {
   const [id, field] = subj.split(".");
   // focus: what keys go to now (the Mac's first responder, e.g. OnBoardField's NSTextView; the page's focused element)
+  // dialog: the dialog that is up (its text and buttons; none)
+  if (subj === "dialog") return (await d.send("dialog")) || "none";
+  // row:<title>: whether the sidebar shows that board's or folder's row (shown, none)
+  if (subj.startsWith("row:")) return (await d.send(`row ${subj.slice(4)}`)) === "none" ? "none" : "shown";
   if (subj === "focus") {
     const r = await d.send("focused");
     return r || "none";
