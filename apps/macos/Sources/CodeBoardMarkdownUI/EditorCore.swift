@@ -18,6 +18,8 @@ public final class EditorCore {
   /// a click is waiting for `revealAfterClick` before the caret's markers show
   public private(set) var revealPending = false
   private var mouse: (anchor: Range<Int>, unit: Unit)?
+  /// why the next reveal happens (the inspector's log)
+  private var revealReason = "key"
   /// where the first press of a click sequence put the caret
   private var firstPress: Int?
 
@@ -49,6 +51,8 @@ public final class EditorCore {
   public var onChange: ((String) -> Void)?
   /// the layout changed by itself (a code block's colours came): redraw
   public var onLayout: (() -> Void)?
+  /// what the core does, for an inspector (EditorEvent); nil costs nothing
+  public var observer: ((EditorEvent) -> Void)?
 
   public enum Unit: Sendable { case character, word, line, paragraph, document }
 
@@ -209,6 +213,7 @@ public final class EditorCore {
     }
     let before = selection
     let old = edit(e.range, e.replacement, select: e.selection)
+    if let observer { observer(.edit(range: e.range, before: old, after: e.replacement, undo: e.undo)) }
     let now = clock()
     let step = (range: e.range, old: old, new: e.replacement)
     if e.undo == .typing, joinable, var last = undoSteps.last, last.kind == .typing, now - last.time < Self.groupDelay,
@@ -254,6 +259,7 @@ public final class EditorCore {
   public func undo() {
     endLone()
     guard canUndo, let step = undoSteps.popLast() else { return }
+    observer?(.undo)
     for e in step.edits.reversed() {
       let end = e.range.lowerBound + (e.new as NSString).length
       edit(e.range.lowerBound..<end, e.old, select: step.before)
@@ -266,6 +272,7 @@ public final class EditorCore {
   public func redo() {
     endLone()
     guard canRedo, let step = redoSteps.popLast() else { return }
+    observer?(.redo)
     for e in step.edits { edit(e.range, e.new, select: step.after) }
     undoSteps.append(step)
     joinable = false
@@ -289,11 +296,13 @@ public final class EditorCore {
   /// ⌘V: plain text, as the paste rules make it
   public func paste(_ plain: String) {
     endLone()
-    for e in MarkdownEditing.paste(
+    let edits = MarkdownEditing.paste(
       plain: plain, html: nil, in: MDEditState(source: source, selection: selection), document: document)
-    {
-      apply(e)
+    if let observer {
+      let made = edits.last?.replacement ?? ""
+      observer(.pasted(plain, rule: made == plain ? "plain text" : "\\( \\) to $, <mark> to =="))
     }
+    for e in edits { apply(e) }
   }
 
   // MARK: input methods
@@ -311,6 +320,7 @@ public final class EditorCore {
       unmark()
       return
     }
+    observer?(.marked(text))
     let shown = layout.document.reparse(replacing: at..<(at + oldLength), with: text)
     layout.update(
       to: shown, replacing: at..<(at + oldLength), delta: (text as NSString).length - oldLength, head: layout.head)
@@ -320,6 +330,7 @@ public final class EditorCore {
   /// The composition is given up: the layout shows the source again
   public func unmark() {
     guard let m = marked else { return }
+    observer?(.unmark)
     marked = nil
     let n = (m.text as NSString).length
     layout.update(to: document, replacing: m.at..<(m.at + n), delta: -n, head: layout.head)
@@ -332,6 +343,7 @@ public final class EditorCore {
       key(.text(text))
       return
     }
+    observer?(.commit(text))
     marked = nil
     let n = (m.text as NSString).length
     if text == m.text {
@@ -509,6 +521,7 @@ public final class EditorCore {
   @discardableResult
   public func settle() -> Bool {
     revealPending = false
+    revealReason = "after the click's wait"
     guard selection.isEmpty, mouse == nil else { return false }
     return reveal()
   }
@@ -549,6 +562,8 @@ public final class EditorCore {
   @discardableResult
   private func reveal() -> Bool {
     let changed = layout.setHead(selection.head)
+    if changed, let observer { observer(.reveal(selection.head, reason: revealReason)) }
+    revealReason = "key"
     if changed, upstream, let r = layout.caretRect(MDCaret(selection.head, upstream: true)),
       let d = layout.caretRect(MDCaret(selection.head)), r == d
     {

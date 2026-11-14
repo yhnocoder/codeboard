@@ -37,9 +37,12 @@ public final class MarkdownEditorView: NSView {
   public var isEditing = true {
     didSet {
       guard isEditing != oldValue else { return }
+      note(.editing(isEditing))
       if isEditing {
         core.select(core.selection)
       } else {
+        // leaving: nothing stays selected, the static picture again
+        core.select(MDSelection(core.selection.head))
         core.layout.setHead(nil)
       }
       changed()
@@ -47,6 +50,24 @@ public final class MarkdownEditorView: NSView {
   }
 
   let preview = MathPreview()
+
+  /// What the editor receives and does, each with the main thread's time it has cost so far in that event, in ms
+  /// (EditorEvent); events are built only while this is set
+  public var observer: ((EditorEvent, Double) -> Void)? {
+    didSet {
+      core.observer = observer.map { o in { [weak self] e in o(e, self?.elapsed ?? 0) } }
+    }
+  }
+  /// thread CPU at the start of the event being handled
+  private var eventStart = 0.0
+  private var elapsed: Double { BlockLayout.cpu() - eventStart }
+  private func begin() { if observer != nil { eventStart = BlockLayout.cpu() } }
+  private func note(_ e: @autoclosure () -> EditorEvent) { if let observer { observer(e(), elapsed) } }
+  private static func mods(_ e: NSEvent) -> String {
+    let f = e.modifierFlags
+    return (f.contains(.control) ? "⌃" : "") + (f.contains(.option) ? "⌥" : "") + (f.contains(.shift) ? "⇧" : "")
+      + (f.contains(.command) ? "⌘" : "")
+  }
   private var blinkOn = true
   private var blink: Timer?
   private var settle: Timer?
@@ -119,8 +140,7 @@ public final class MarkdownEditorView: NSView {
     let clip = CGRect(
       x: dirtyRect.minX / zoom, y: dirtyRect.minY / zoom, width: dirtyRect.width / zoom,
       height: dirtyRect.height / zoom)
-    ctx.setFillColor(selectionColor.cgColor)
-    if isEditing { for r in core.selectionRects where r.intersects(clip) { ctx.fill(r) } }
+
     // an input method's text: underlined, as the system's text views underline it
     ctx.setFillColor(caretColor.withAlphaComponent(0.8).cgColor)
     for r in core.markedRects where r.intersects(clip) {
@@ -130,6 +150,10 @@ public final class MarkdownEditorView: NSView {
     ctx.setShouldSubpixelQuantizeFonts(false)
     ctx.setAllowsFontSubpixelQuantization(false)
     core.layout.draw(in: ctx, scale: scale, clip: clip, image: image)
+    // the selection over the text: under it, a code block's or a table header's fill would hide it. Translucent, so the
+    // text reads through; in the static picture too (a selection made there before editing)
+    ctx.setFillColor(selectionColor.cgColor)
+    for r in core.selectionRects where r.intersects(clip) { ctx.fill(r) }
     if isEditing, blinkOn, window?.firstResponder === self, let c = core.caretRect {
       // two device pixels wide whatever the zoom, on the caret's line
       let w = 2 / scale
@@ -195,13 +219,20 @@ public final class MarkdownEditorView: NSView {
   // MARK: the mouse
 
   public override func mouseDown(with e: NSEvent) {
+    begin()
     let p = convert(e.locationInWindow, from: nil)
     let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
+    defer {
+      note(.mouse(.down, clicks: e.clickCount, modifiers: Self.mods(e), offset: core.selection.head))
+    }
     window?.makeFirstResponder(self)
     settle?.invalidate()
     guard isEditing else {
-      entering = true
-      enter(at: at)
+      // the static picture: a drag selects its text, a click without one starts editing there (the board's selected
+      // card: singleSelectedBodySelectsText, clickSelectedCardEdits)
+      pressed = (at, false)
+      core.mouseDown(at: at, clicks: 1, extend: false)
+      changed()
       return
     }
     core.mouseDown(at: at, clicks: e.clickCount, extend: e.modifierFlags.contains(.shift))
@@ -222,8 +253,19 @@ public final class MarkdownEditorView: NSView {
 
   /// the press that started editing is still down: its drag and release are not a selection
   private var entering = false
+  /// a press on the static picture, and whether it has moved into a drag (a selection) yet
+  private var pressed: (at: CGPoint, dragged: Bool)?
 
   public override func mouseDragged(with e: NSEvent) {
+    if !isEditing, let (start, _) = pressed {
+      let p = convert(e.locationInWindow, from: nil)
+      let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
+      guard hypot(at.x - start.x, at.y - start.y) * zoom > 3 || pressed!.dragged else { return }
+      pressed!.dragged = true
+      core.mouseDragged(to: at)
+      changed()
+      return
+    }
     guard isEditing, !entering else { return }
     let p = convert(e.locationInWindow, from: nil)
     core.mouseDragged(to: CGPoint(x: p.x / zoom, y: p.y / zoom))
@@ -232,6 +274,14 @@ public final class MarkdownEditorView: NSView {
   }
 
   public override func mouseUp(with e: NSEvent) {
+    begin()
+    defer { note(.mouse(.up, clicks: e.clickCount, modifiers: Self.mods(e), offset: core.selection.head)) }
+    if let (start, dragged) = pressed {
+      pressed = nil
+      core.mouseUp()
+      if !dragged { enter(at: start) }
+      return
+    }
     if entering {
       entering = false
       return
@@ -280,18 +330,26 @@ public final class MarkdownEditorView: NSView {
       default: nil
       }
     guard let c else { return super.performKeyEquivalent(with: e) }
-    core.command(c)
+    begin()
+    let did = core.command(c)
+    note(.key(Self.mods(e) + key.uppercased(), did: did ? "\(c)" : "\(c): nothing here"))
     changed()
     return true
   }
 
   public override func keyDown(with e: NSEvent) {
+    // a key on a selection made in the static picture starts editing with that selection
+    if !isEditing, !core.selection.isEmpty { isEditing = true }
     guard isEditing else { return super.keyDown(with: e) }
     revealFirst()
     interpretKeyEvents([e])
   }
 
   public override func doCommand(by selector: Selector) {
+    begin()
+    defer {
+      note(.key(NSStringFromSelector(selector), did: "selection \(core.selection.anchor)…\(core.selection.head)"))
+    }
     revealFirst()
     if let action = Self.moves[selector] {
       action(core)
@@ -344,26 +402,32 @@ public final class MarkdownEditorView: NSView {
   // MARK: undo and the clipboard
 
   @objc public func undo(_ sender: Any?) {
+    begin()
     core.undo()
     changed()
   }
   @objc public func redo(_ sender: Any?) {
+    begin()
     core.redo()
     changed()
   }
   @objc public func copy(_ sender: Any?) {
+    begin()
     guard let t = core.copy() else { return }
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(t, forType: .string)
+    note(.copied([("public.utf8-plain-text", t)]))
   }
   @objc public func cut(_ sender: Any?) {
-    guard let t = core.cut() else { return }
+    begin()
+    guard isEditing, let t = core.cut() else { return }
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(t, forType: .string)
+    note(.copied([("public.utf8-plain-text", t)]))
     changed()
   }
   @objc public func paste(_ sender: Any?) {
-    guard let t = NSPasteboard.general.string(forType: .string) else { return }
+    guard isEditing, let t = NSPasteboard.general.string(forType: .string) else { return }
     core.paste(t)
     changed()
   }
@@ -373,7 +437,8 @@ public final class MarkdownEditorView: NSView {
     switch item.action {
     case #selector(undo(_:)): core.canUndo
     case #selector(redo(_:)): core.canRedo
-    case #selector(copy(_:)), #selector(cut(_:)): !core.selection.isEmpty
+    case #selector(copy(_:)): !core.selection.isEmpty
+    case #selector(cut(_:)): isEditing && !core.selection.isEmpty
     case #selector(paste(_:)), #selector(pasteAsPlainText(_:)): NSPasteboard.general.string(forType: .string) != nil
     default: responds(to: item.action)
     }
@@ -427,7 +492,9 @@ extension MarkdownEditorView: @preconcurrency NSTextInputClient {
   /// Ranges here are source offsets; while an input method composes, offsets from its start are in the source as shown
   /// with the marked text in it
   public func insertText(_ string: Any, replacementRange: NSRange) {
+    begin()
     let text = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
+    defer { note(.key("type \"\(text)\"", did: "selection \(core.selection.head)")) }
     if core.marked == nil, replacementRange.location != NSNotFound {
       core.select(MDSelection(anchor: replacementRange.location, head: NSMaxRange(replacementRange)))
     }

@@ -120,6 +120,9 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   var zoom: CGFloat = 1
   var window: NSWindow!
   let scroll = NSScrollView()
+  let split = NSSplitView()
+  /// the panel at the right: selection, copied, events (on by default)
+  let inspector = Inspector()
   let page = Page()
   var editor: MarkdownEditorView?
   var zoomLabel: NSTextField!
@@ -153,14 +156,19 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
 
   func applicationDidFinishLaunching(_ n: Notification) {
     window = NSWindow(
-      contentRect: CGRect(x: 0, y: 0, width: cardWidth + 160, height: 820),
+      contentRect: CGRect(x: 0, y: 0, width: cardWidth + 160 + 340, height: 820),
       styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
     window.title = name
     scroll.hasVerticalScroller = true
     scroll.hasHorizontalScroller = true
     scroll.documentView = page
+    split.isVertical = true
+    split.dividerStyle = .thin
+    split.addArrangedSubview(scroll)
+    split.addArrangedSubview(inspector)
+    inspector.widthAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
     page.onClick = { [weak self] in self?.editor?.isEditing = false }
-    window.contentView = scroll
+    window.contentView = split
     window.toolbar = toolbar()
     menu()
     rebuild()
@@ -219,6 +227,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
       e.image = { [weak self] slot in self?.image(slot) }
       editor = e
       page.addSubview(e)
+      inspector.watch(e)
     }
     let ink = card.theme.colors
     e.caretColor = NSColor(cgColor: ink.accent.cg) ?? .controlAccentColor
@@ -260,6 +269,10 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
 
   func editor(_ e: MarkdownEditorView, didResize size: CGSize) { place() }
   func editor(_ e: MarkdownEditorView, didChange source: String) { window.isDocumentEdited = true }
+  @objc func toggleInspector(_ c: NSSegmentedControl) {
+    inspector.isHidden = !c.isSelected(forSegment: 0)
+    inspector.refresh()
+  }
   func editorWantsToEnd(_ e: MarkdownEditorView) { e.isEditing = false }
   func editorDidBegin(_ e: MarkdownEditorView) {}
 
@@ -333,7 +346,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
 
 extension Demo: NSToolbarDelegate {
   static let items: [NSToolbarItem.Identifier] = [
-    .init("look"), .init("dark"), .flexibleSpace, .init("zoom"),
+    .init("inspector"), .init("look"), .init("dark"), .flexibleSpace, .init("zoom"),
   ]
   func toolbarDefaultItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] { Self.items }
   func toolbarAllowedItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] { Self.items }
@@ -342,6 +355,11 @@ extension Demo: NSToolbarDelegate {
   {
     let item = NSToolbarItem(itemIdentifier: id)
     switch id.rawValue {
+    case "inspector":
+      let c = NSSegmentedControl(
+        labels: ["Inspector"], trackingMode: .selectAny, target: self, action: #selector(toggleInspector(_:)))
+      c.setSelected(true, forSegment: 0)
+      item.view = c
     case "look":
       let c = NSSegmentedControl(
         labels: ["Warm Ink", "Ink Wash"], trackingMode: .selectOne, target: self, action: #selector(setLook(_:)))
