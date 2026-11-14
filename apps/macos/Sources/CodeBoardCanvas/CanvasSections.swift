@@ -387,6 +387,8 @@ extension CanvasView {
 
   func clearDrop() {
     dragShown = [:]
+    frameEase = [:]
+    frameEaseAt = nil
     guard !dropLit.isEmpty else { return }
     dropLit = []
     withoutAnimation { dropLayer.sublayers = nil }
@@ -466,60 +468,106 @@ extension CanvasView {
     return out
   }
 
-  /// Each frame the drag changed drawn at its new rect, easing there from where it is shown (the board's frame spring,
-  /// k 2500, c 100), its title with it
+  /// The frames the drag changes ease to their new rect on every frame, each a spring that keeps its speed as the target
+  /// moves (state/sections.ts wireSectionEasing: k 2500, c 100), its title with it
   func followDrag(_ m: Move) {
-    guard let s = scene, let ls = sections.sublayers else { return }
+    guard let s = scene else { return }
     let target = dragFrames(m)
-    for (i, f) in s.frames.enumerated() where i < ls.count {
+    for f in s.frames {
       guard let to = target[f.id] else { continue }
-      let now = dragShown[f.id] ?? (m.sections.contains(f.id) ? f.rect.offsetBy(dx: m.d.dx, dy: m.d.dy) : f.rect)
-      // the frames dragged along and unchanged in size are moved by showMove
-      guard to != now || dragShown[f.id] != nil else { continue }
-      if to == now { continue }
-      let old = ls[i]
-      let from = old.presentation()?.frame ?? old.frame
-      var made = f
-      made.rect = to
-      if made.strokes != nil {
-        let tw = index(of: .sectionTitle(f.id)).map { s.items[$0].rect.width } ?? 0
-        made.strokes = Outline(InkFrame.path(id: f.id.rawValue, size: to.size, gap: max(40, tw + 18)))
+      let at = m.sections.contains(f.id) ? f.rect.offsetBy(dx: m.d.dx, dy: m.d.dy) : f.rect
+      if var e = frameEase[f.id] {
+        e.target = to
+        frameEase[f.id] = e
+      } else if to != (dragShown[f.id] ?? at) {
+        frameEase[f.id] = FrameEase(from: dragShown[f.id] ?? at, to: to)
       }
-      let l = CanvasView.frameLayer(made, theme)
-      old.removeFromSuperlayer()
-      sections.insertSublayer(l, at: UInt32(i))
-      dragShown[f.id] = to
-      if from.width > 0, from.height > 0, from != to {
-        var t = CATransform3DMakeTranslation(from.midX - to.midX, from.midY - to.midY, 0)
-        t = CATransform3DScale(t, from.width / to.width, from.height / to.height, 1)
-        l.add(CanvasView.frameSpring(from: t), forKey: "ease")
-      }
-      if let ti = index(of: .sectionTitle(f.id)) {
-        let title = s.items[ti].rect
-        let box = items[ti].box
-        let was = box.presentation()?.position ?? box.position
-        box.position = CGPoint(x: title.midX + to.minX - f.rect.minX, y: title.midY + to.minY - f.rect.minY)
-        if was != box.position {
-          let a = CASpringAnimation(keyPath: "position")
-          a.stiffness = 2500
-          a.damping = 100
-          a.fromValue = NSValue(point: was)
-          a.toValue = NSValue(point: box.position)
-          a.duration = a.settlingDuration
-          box.add(a, forKey: "ease")
+    }
+    if !frameEase.isEmpty {
+      if frameEaseAt == nil { frameEaseAt = now }
+      wake()
+      // this frame already at the spring's first step, not at the target first and back on the next
+      stepFrameEase(at: now)
+    }
+  }
+
+  /// One frame of the easing frames: each drawn where its spring is, rounded to device pixels, its title with it
+  func stepFrameEase(at time: TimeInterval) {
+    guard !frameEase.isEmpty, let s = scene, let ls = sections.sublayers else {
+      frameEaseAt = nil
+      return
+    }
+    let dt = min(max(time - (frameEaseAt ?? time), 0), 0.05)
+    frameEaseAt = time
+    let q = min(1, camera.zoom * backing)
+    func px(_ v: CGFloat) -> CGFloat { (v * q).rounded() / q }
+    withoutAnimation {
+      for (i, f) in s.frames.enumerated() where i < ls.count {
+        guard var e = frameEase[f.id] else { continue }
+        e.step(dt)
+        frameEase[f.id] = e.done ? nil : e
+        let r = CGRect(x: px(e.x.v), y: px(e.y.v), width: px(e.w.v), height: px(e.h.v))
+        guard r != dragShown[f.id] else { continue }
+        var made = f
+        made.rect = r
+        if made.strokes != nil {
+          let tw = index(of: .sectionTitle(f.id)).map { s.items[$0].rect.width } ?? 0
+          made.strokes = Outline(InkFrame.path(id: f.id.rawValue, size: r.size, gap: max(40, tw + 18)))
+        }
+        let l = CanvasView.frameLayer(made, theme)
+        ls[i].removeFromSuperlayer()
+        sections.insertSublayer(l, at: UInt32(i))
+        dragShown[f.id] = r
+        if let ti = index(of: .sectionTitle(f.id)) {
+          let title = s.items[ti].rect
+          items[ti].box.position = CGPoint(x: title.midX + r.minX - f.rect.minX, y: title.midY + r.minY - f.rect.minY)
         }
       }
     }
   }
 
-  static func frameSpring(from t: CATransform3D) -> CASpringAnimation {
-    let a = CASpringAnimation(keyPath: "transform")
-    a.stiffness = 2500
-    a.damping = 100
-    a.mass = 1
-    a.fromValue = NSValue(caTransform3D: t)
-    a.toValue = NSValue(caTransform3D: CATransform3DIdentity)
-    a.duration = a.settlingDuration
-    return a
+}
+
+/// A frame's spring, one per side (state/camera.ts Spring with state/sections.ts EASE_K, EASE_C, EASE_EPS)
+struct FrameEase {
+  struct Axis {
+    var v: CGFloat
+    var speed: CGFloat = 0
+    var t: CGFloat
+    mutating func step(_ dt: CGFloat) {
+      // in steps of at most 1/240 s, so a long frame stays stable
+      var left = dt
+      while left > 0 {
+        let h = min(left, 1.0 / 240)
+        speed += (2500 * (t - v) - 100 * speed) * h
+        v += speed * h
+        left -= h
+      }
+      if abs(t - v) < 0.05 && abs(speed) < 0.05 {
+        v = t
+        speed = 0
+      }
+    }
+    var done: Bool { v == t && speed == 0 }
+  }
+  var x, y, w, h: Axis
+  init(from: CGRect, to: CGRect) {
+    x = Axis(v: from.minX, t: to.minX)
+    y = Axis(v: from.minY, t: to.minY)
+    w = Axis(v: from.width, t: to.width)
+    h = Axis(v: from.height, t: to.height)
+  }
+  var target: CGRect {
+    get { CGRect(x: x.t, y: y.t, width: w.t, height: h.t) }
+    set {
+      x.t = newValue.minX
+      y.t = newValue.minY
+      w.t = newValue.width
+      h.t = newValue.height
+    }
+  }
+  var done: Bool { x.done && y.done && w.done && h.done }
+  mutating func step(_ dt: TimeInterval) {
+    for k in [\Self.x, \.y, \.w, \.h] { self[keyPath: k].step(CGFloat(dt)) }
   }
 }

@@ -39,6 +39,9 @@ import CodeBoardShell
     var image: String?
   }
 
+  /// The window's root layer, whose time the driver moves on
+  var layerClock: CALayer?
+
   init(scenario: Scenario, out: URL) {
     self.scenario = scenario
     self.out = out
@@ -63,6 +66,13 @@ import CodeBoardShell
     Task {
       await settle()
       for c in canvases { c.steppedClock = { [weak self] in self?.t ?? 0 } }
+      // Core Animation's own animations (springs, fades) on the same clock: the window's layers stopped and moved on one
+      // frame a step, however long a step takes in real time (main's probes stop the document timeline the same way)
+      if let root = window.contentView?.superview?.layer ?? window.contentView?.layer {
+        root.timeOffset = root.convertTime(CACurrentMediaTime(), from: nil)
+        root.speed = 0
+        layerClock = root
+      }
       do {
         try await scenario.run(self)
       } catch {
@@ -93,6 +103,7 @@ import CodeBoardShell
   /// One frame: the board's work for it, then the window recorded
   func step(_ label: String = "") async {
     t += Driver.frame
+    layerClock?.timeOffset += Driver.frame
     for c in canvases where !c.isHiddenOrHasHiddenAncestor { c.tick(at: t) }
     CATransaction.flush()
     // the window server composites what was committed; a page in a web view paints on its own time

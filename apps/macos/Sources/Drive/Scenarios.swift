@@ -77,20 +77,34 @@ func spread(_ f: Driver.Frame, _ r: [Double], in folder: URL) -> Double? {
           guard let first = f.first?.canvas?.sections["boxes"] else {
             return Verdict(check: "the frame holds the card", ok: false, detail: "no frames")
           }
-          // where the card is a third or more inside the frame it began in, the frame holds it (22 to its sides, 34
-          // above, 22 below its bottom)
+          // where the card is a third or more inside the frame it began in, the frame holds it on every frame: its spring
+          // runs a little behind the card, so the card may eat into the 22 below it, never past the frame's edge
           var out: [String] = []
           for x in f {
             guard let c = x.canvas?.cards["lookup"], let s = x.canvas?.sections["boxes"] else { continue }
             let inside = max(0, min(c[1] + c[3], first[1] + first[3]) - c[1]) * 3 > c[3]
-            if inside, s[1] + s[3] < c[1] + c[3] + 21 {
+            if inside, s[1] + s[3] < c[1] + c[3] {
               out.append("frame \(x.n): \(Int(s[1] + s[3])) < \(Int(c[1] + c[3]))")
             }
           }
           return Verdict(
             check: "the frame holds the card", ok: out.isEmpty,
             detail: out.isEmpty ? "every frame" : out.prefix(5).joined(separator: "; "))
-        }
+        },
+        { (frames: [Driver.Frame]) -> Verdict in
+          // the drag happened: the card went down, and its frame grew while it was dragged
+          let f = labelled(frames, "drag down")
+          guard let a = f.first?.canvas, let b = f.last?.canvas, let ca = a.cards["lookup"], let cb = b.cards["lookup"],
+            let sa = a.sections["boxes"], let sb = b.sections["boxes"]
+          else { return Verdict(check: "the card was dragged", ok: false, detail: "no frames") }
+          let down = cb[1] - ca[1]
+          let grew = (f.compactMap { $0.canvas?.sections["boxes"].map { $0[1] + $0[3] } }.max() ?? 0) - (sa[1] + sa[3])
+          return Verdict(
+            check: "the card was dragged", ok: down > 50 && grew > 20,
+            detail:
+              "the card \(Int(down)) pt down, the frame at most \(Int(grew)) pt taller, at the end \(Int(sb[3] - sa[3]))"
+          )
+        },
       ],
       run: { d in
         await d.frames(4, "open")

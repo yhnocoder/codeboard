@@ -24,7 +24,8 @@ extension CanvasView {
   package var trace: CanvasTrace {
     func rect(_ l: CALayer) -> [Double] {
       let p = l.presentation() ?? l
-      let r = layer.map { $0.convert(p.bounds, from: p) } ?? p.frame
+      // within the presentation tree, so a transform being animated counts
+      let r = layer.map { ($0.presentation() ?? $0).convert(p.bounds, from: p) } ?? p.frame
       return [r.minX, r.minY, r.width, r.height].map { (Double($0) * 10).rounded() / 10 }
     }
     var cardRects: [String: [Double]] = [:]

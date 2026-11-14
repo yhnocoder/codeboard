@@ -117,6 +117,9 @@ public final class CanvasView: NSView {
   }
   /// Frames are wanted: the display link runs, unless the driver steps them
   func wake() { link?.isPaused = steppedClock != nil }
+  /// Under the driver the app is never activated, so its window is never key, and a press would only be the click that
+  /// brings it forward
+  public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { steppedClock != nil }
   /// Now, on the display's clock or the driver's
   var now: TimeInterval { steppedClock?() ?? CACurrentMediaTime() }
   let images = CanvasView.sharedImages
@@ -286,6 +289,9 @@ public final class CanvasView: NSView {
   var dropLit: Set<SectionID> = []
   /// The frames a card drag has redrawn, where it drew them (CanvasSections followDrag)
   var dragShown: [SectionID: CGRect] = [:]
+  /// The frames easing towards where the drag has them, each a spring that keeps its speed as the target moves
+  var frameEase: [SectionID: FrameEase] = [:]
+  var frameEaseAt: TimeInterval?
   /// The zoom that fits the board, which overviews are drawn for
   var fitZoom: CGFloat = 1
   /// The framed cards' shadow, made once per theme
@@ -960,7 +966,10 @@ public final class CanvasView: NSView {
       // decoding and drawing free large blocks that the allocator would otherwise keep, counted in the footprint
       DispatchQueue.global(qos: .utility).async { _ = malloc_zone_pressure_relief(nil, 0) }
     }
-    if motion.isResting && queue.isIdle && onFrame == nil && gesture == nil && !levels.isAnimating {
+    stepFrameEase(at: time)
+    if motion.isResting && queue.isIdle && onFrame == nil && gesture == nil && !levels.isAnimating
+      && frameEase.isEmpty
+    {
       link?.isPaused = true
     }
   }

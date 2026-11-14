@@ -144,15 +144,29 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     let fi = try #require(c.scene?.frames.firstIndex { $0.id == g })
     let start = try #require(c.scene?.frames[fi].rect)
     func shown() -> CGRect { c.sections.sublayers![fi].frame }
+    // the canvas's clock, moved on by hand: 120 frames a second
+    var t = c.now
+    c.steppedClock = { t }
+    defer { c.steppedClock = nil }
+    func frames(_ n: Int) {
+      for _ in 0..<n {
+        t += 1.0 / 120
+        c.tick(at: t)
+      }
+    }
     let from = r.centre("m1")
-    // down by 340: still in g1 (a third of it in the frame it began in), whose frame holds it on every step
+    // down by 340 at 1020 pt/s: still in g1 (a third of it in the frame it began in), whose frame eases after it on
+    // every frame and holds it once it stops
     var bottoms: [CGFloat] = []
     r.send(r.mouse(.leftMouseDown, from))
     for k in 1...10 {
       r.send(r.mouse(.leftMouseDragged, CGPoint(x: from.x, y: from.y + CGFloat(k) * 34)))
+      frames(4)
       bottoms.append(shown().maxY)
     }
     let moved = r.rect("m1").offsetBy(dx: 0, dy: 340)
+    #expect(shown().maxY > moved.maxY - 40, "frame \(shown()), card \(moved): the spring a few frames behind")
+    frames(60)
     #expect(shown().maxY >= moved.maxY + 22, "frame \(shown()), card \(moved)")
     #expect(bottoms == bottoms.sorted() && bottoms.last! > start.maxY, "\(bottoms), began \(start)")
     r.send(r.mouse(.leftMouseUp, CGPoint(x: from.x, y: from.y + 340)))
@@ -163,8 +177,21 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     let now = try #require(c.scene?.frames.first { $0.id == g }?.rect)
     let at = r.centre("m1")
     r.send(r.mouse(.leftMouseDown, at))
-    for k in 1...12 { r.send(r.mouse(.leftMouseDragged, CGPoint(x: at.x, y: at.y + CGFloat(k) * 80))) }
+    for k in 1...12 {
+      r.send(r.mouse(.leftMouseDragged, CGPoint(x: at.x, y: at.y + CGFloat(k) * 80)))
+      frames(4)
+    }
+    // the frame shrinks back by its spring, no step longer than three times the one before or after it (watch.ts jumped)
+    var heights = [shown().height]
+    for _ in 0..<40 {
+      frames(1)
+      heights.append(shown().height)
+    }
     #expect(shown().maxY < now.maxY, "frame \(shown()), was \(now)")
+    let steps = zip(heights, heights.dropFirst()).map { abs($1 - $0) }
+    for i in 1..<(steps.count - 1) where steps[i] > 1 {
+      #expect(steps[i] <= 3 * max(steps[i - 1], steps[i + 1]) + 1, "step \(i): \(steps)")
+    }
     r.send(r.mouse(.leftMouseUp, CGPoint(x: at.x, y: at.y + 960)))
     await r.settle()
     #expect(r.doc.board.card(cid("m1"))?.section == nil)
