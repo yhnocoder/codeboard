@@ -262,6 +262,12 @@ function staticMd(s: Shown, src: string, onDbl: () => void, onToggle: (v: string
 function slip(s: Shown, n: PopNote): HTMLElement {
   const box = el("div", "slip");
   box.dataset.note = n.id;
+  // a right-click: the app's menu for it (notes.tsx noteMenu), at the pointer
+  if (!n.fixed)
+    box.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      post({ type: "menu", id: n.id, x: e.clientX, y: e.clientY });
+    });
   const tools = el("div", "kt");
   if (n.kind === "code") {
     box.append(codeOf(n));

@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardModel
+import CodeBoardNotes
 import Testing
 
 @testable import CodeBoardCanvas
@@ -516,5 +517,37 @@ extension CanvasSidenoteTests {
         "const r = document.querySelector('.ncomp .md-ref'); return !!r && !r.classList.contains('missing')"
           + " && r.textContent.includes('调度')") as? Bool == true
     }
+  }
+}
+
+extension CanvasSidenoteTests {
+  /// A sidenote's menu (notes.tsx noteMenu): a right-click on it in the popup asks the app for its menu at the
+  /// pointer; a text sidenote's is Edit, then Delete Sidenote, a code sidenote's Delete Sidenote alone
+  @Test func aRightClickOnASidenoteGivesItsMenu() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let pop = c.sidenotePop
+    let at = PopAt.lines(Lines(card: cid("c1"), segment: s1, range: 12...13))
+    c.openPop(at)
+    await opened(r, at)
+    let theirs = pop.onAction
+    var got: [SidenotePop.Action] = []
+    pop.onAction = { got.append($0) }
+    _ = await pop.run(
+      """
+      document.querySelector('.slip[data-note="l1"]').dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 40 }))
+      """)
+    await r.until("asked for its menu") { got == [.menu("l1", at: CGPoint(x: 30, y: 40))] }
+    pop.onAction = theirs
+    let m = c.sidenoteMenu(nid("l1"))
+    #expect(m.items.map { $0.isSeparatorItem ? "-" : $0.title } == ["Edit", "-", "Delete Sidenote"])
+    (m.items.first?.representedObject as? MenuAction)?.run()
+    await r.until("written in") {
+      await pop.run("return !!document.querySelector('.sn-edit')") as? Bool == true
+    }
+    (m.items.last?.representedObject as? MenuAction)?.run()
+    #expect(r.doc.board.sidenote(nid("l1")) == nil && r.doc.undoName == "Delete Sidenote")
   }
 }

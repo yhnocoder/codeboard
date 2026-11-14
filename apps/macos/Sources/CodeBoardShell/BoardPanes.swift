@@ -26,6 +26,23 @@ import CodeBoardNotes
     didSet { for p in panes.values { p.canvas.cameras = cameras } }
   }
 
+  /// Asks a question (tests answer it themselves): a sheet on the window, Delete first
+  var confirm: (NSAlert, NSWindow?) async -> Bool = { alert, window in
+    guard let window else { return alert.runModal() == .alertFirstButtonReturn }
+    return await alert.beginSheetModal(for: window) == .alertFirstButtonReturn
+  }
+
+  /// Delete Board…'s question, in main's words, Delete marked as destroying
+  static func deleteQuestion(_ title: String, cards: Int) -> NSAlert {
+    let a = NSAlert()
+    a.alertStyle = .warning
+    a.messageText = "Delete board “\(title)”?"
+    a.informativeText = "\(cards) cards and their links will be removed. Your code is not affected."
+    a.addButton(withTitle: "Delete").hasDestructiveAction = true
+    a.addButton(withTitle: "Cancel")
+    return a
+  }
+
   init(shell: Shell, notes: NoteRenderer? = nil) {
     self.shell = shell
     self.notes = notes
@@ -143,6 +160,15 @@ import CodeBoardNotes
         pane.canvas.summaryWriter = summaryWriter
         pane.canvas.cameras = cameras
         pane.onOpenBoard = { [weak self] in self?.shell.show($0) }
+        // a sub-board card's Delete Board…: asked as main asks (host handlers.ts deleteBoardAsked), then as the
+        // sidebar's Delete, to the Trash
+        pane.canvas.onDeleteBoard = { [weak self, weak pane] id in
+          guard let self, let vault = shell.vault, let b = shell.tree?.allBoards.first(where: { $0.id == id })
+          else { return false }
+          let n = (try? vault.board(at: b.path).cards.count) ?? 0
+          guard await confirm(Self.deleteQuestion(b.title, cards: n), pane?.window) else { return false }
+          return shell.trash(b.path)
+        }
         pane.canvas.onVaultChanged = { [weak self] in self?.onVaultChanged?() }
         pane.canvas.onSetSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }
         pane.canvas.shareOnBoard = { [weak self] in self?.share($0, $1) }

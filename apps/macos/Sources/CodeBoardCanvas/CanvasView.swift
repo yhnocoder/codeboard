@@ -284,6 +284,8 @@ public final class CanvasView: NSView {
   /// A question on another board picked in the list: that board is to open and go to it
   /// Another board to open, and what to go to on it once shown
   public var onOpenBoard: ((BoardID, Arrival?) -> Void)?
+  /// A board to delete (a sub-board card's Delete Board…): the shell asks first; whether it went
+  public var onDeleteBoard: ((BoardID) async -> Bool)?
   /// A ref clicked: what goes there once the double-click time is over
   var refGo: Task<Void, Never>?
   /// How long a click on a ref waits for a second (tests shorten it)

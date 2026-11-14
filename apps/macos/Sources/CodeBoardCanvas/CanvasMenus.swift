@@ -72,6 +72,9 @@ extension CanvasView {
       m.addItem(copyPathItem([c.rawValue]))
       m.addItem(.separator())
       m.addItem(key(action("Remove from This Board", #selector(delete(_:))), "\u{8}"))
+      if case .board(let s)? = scene?.parts[c]?.content.body, case .board(let id) = s.target {
+        m.addItem(menuItem("Delete Board…") { [weak self] in self?.deleteBoard(id) })
+      }
       return m
     }
     for i in webMenuItems(c) + linksMenuItems(c) + codeMenuItems(c) { m.addItem(i) }
@@ -347,6 +350,20 @@ extension CanvasView {
     m.addItem(submenu("Theme", themes))
     m.addItem(key(menuItem("Keyboard Shortcuts") { [weak self] in self?.toggleKeys() }, "?"))
     return m
+  }
+
+  /// Delete Board… (actions/subboards.ts deleteFrameBoard): once the shell has asked and the board went (to the Trash,
+  /// as the sidebar's Delete sends it), its cards on this board, in one step
+  func deleteBoard(_ id: BoardID) {
+    guard let ask = onDeleteBoard else { return }
+    Task {
+      guard await ask(id), let doc = document else { return }
+      let cards = doc.board.cards.filter {
+        if case .own(let k) = $0.content, case .board(let s) = k.body { s.target == .board(id) } else { false }
+      }
+      doc.edit("Delete Board") { $0.delete(Set(cards.map { .card($0.id) })) }
+      doc.select([])
+    }
   }
 
   // MARK: Items

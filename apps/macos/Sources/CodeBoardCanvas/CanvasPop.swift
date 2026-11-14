@@ -399,7 +399,27 @@ extension CanvasView {
         ([(board: b, id: card)] + CanvasView.recentRefs.filter { $0.board != b || $0.id != card }).prefix(3))
     case .ref(let p): refPressed(p, inPopup: true)
     case .elsewhere: closeRefPeek()
+    case .menu(let n, let p):
+      let v = sidenotePop.view
+      sidenoteMenu(id(n)).popUp(
+        positioning: nil, at: v.isFlipped ? p : CGPoint(x: p.x, y: v.bounds.height - p.y), in: v)
     }
+  }
+
+  /// A sidenote's menu (notes.tsx noteMenu): Edit for a text sidenote (as its pencil), then Delete Sidenote. Place on
+  /// Board, Board-only and Mark Reviewed are not made here yet; Only in This Variant is not done
+  func sidenoteMenu(_ n: SidenoteID) -> NSMenu {
+    let m = NSMenu()
+    if case .text? = document?.board.sidenote(n)?.body {
+      m.addItem(
+        menuItem("Edit") { [weak self] in
+          guard let pop = self?.sidenotePop else { return }
+          Task { _ = await pop.run("pop.click(s)", ["s": ".slip[data-note=\"\(n.rawValue)\"] [aria-label=Edit]"]) }
+        })
+      m.addItem(.separator())
+    }
+    m.addItem(menuItem("Delete Sidenote") { [weak self] in self?.popAction(.delete(n.rawValue)) })
+    return m
   }
 
   // MARK: Tint

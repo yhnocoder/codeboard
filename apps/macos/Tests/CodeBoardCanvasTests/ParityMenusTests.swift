@@ -152,14 +152,30 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     #expect(k.hide.blankLines)
   }
 
-  /// A sub-board card's: Open, then Arrange and Copy Path, then Remove from This Board (the board stays)
-  @Test func aSubBoardCardsMenuOpensAndRemovesFromThisBoard() async throws {
+  /// A sub-board card's: Open, then Arrange and Copy Path, then Remove from This Board (the board stays) and Delete
+  /// Board… (actions/subboards.ts deleteFrameBoard: once the shell has asked and the board went, its cards here go)
+  @Test func aSubBoardCardsMenuOpensRemovesFromThisBoardAndDeletesTheBoard() async throws {
     let r = try await Rig(menusBoard(), zoom: 1)
     defer { r.close() }
     let m = menu(r, at: r.centre("b1"))
     #expect(
-      titles(m) == ["Add Sidenote", "-", "Open", "-", "Arrange", "Copy Path", "-", "Remove from This Board"])
+      titles(m) == [
+        "Add Sidenote", "-", "Open", "-", "Arrange", "Copy Path", "-", "Remove from This Board", "Delete Board…",
+      ])
     #expect(item(m, "Open")?.keyEquivalent == "\r" && item(m, "Open")?.keyEquivalentModifierMask == .command)
+    // the shell could not delete it: the card stays
+    var asked: [BoardID] = []
+    r.canvas.onDeleteBoard = {
+      asked.append($0)
+      return false
+    }
+    fire(item(m, "Delete Board…"))
+    await r.until("asked") { asked == [BoardID(rawValue: "elsewhere")] }
+    #expect(r.doc.board.card(cid("b1")) != nil)
+    r.canvas.onDeleteBoard = { _ in true }
+    fire(item(menu(r, at: r.centre("b1")), "Delete Board…"))
+    await r.until("its card gone") { r.doc.board.card(cid("b1")) == nil }
+    #expect(r.doc.history.undoSteps.last?.name == "Delete Board")
   }
 
   /// Several cards (multiItems), in main's order
