@@ -293,7 +293,7 @@ public final class MarkdownEditorView: NSView {
     // the find bar's matches, under the text, the current one stronger
     for (i, m) in matches.enumerated() {
       ctx.setFillColor(core.layout.theme.marks.highlight.alpha(i == currentMatch ? 1 : 0.55).cg)
-      for r in core.rects(for: m) where r.intersects(clip) { ctx.fill(r) }
+      for r in core.rects(for: m).map(slid) where r.intersects(clip) { ctx.fill(r) }
     }
     let now = CACurrentMediaTime()
     let sliding = slides
@@ -318,7 +318,7 @@ public final class MarkdownEditorView: NSView {
     // the selection over the text: under it, a code block's or a table header's fill would hide it. Translucent, so the
     // text reads through; in the static picture too (a selection made there before editing)
     ctx.setFillColor(selectionColor.cgColor)
-    for r in core.selectionRects where r.intersects(clip) { ctx.fill(r) }
+    for r in core.selectionRects.map(slid) where r.intersects(clip) { ctx.fill(r) }
     // a selected image: its ring and the two handles at its bottom corners; while one is dragged, the size it will get
     if isEditing, let box = imageBox {
       let ring = box.insetBy(dx: -2, dy: -2)
@@ -338,7 +338,8 @@ public final class MarkdownEditorView: NSView {
     if let d = tableDrag {
       d.draw(in: ctx, paper: core.layout.theme.colors.surface.cg, ring: caretColor.cgColor)
     }
-    if isEditing, blinkOn, alwaysShowsCaret || window?.firstResponder === self, let c = core.caretRect, tableDrag == nil
+    if isEditing, blinkOn, alwaysShowsCaret || window?.firstResponder === self, let c = core.caretRect.map(slid),
+      tableDrag == nil
     {
       // two device pixels wide whatever the zoom, on the caret's line; a gap's caret lies across the block
       let w = 2 / scale
@@ -742,6 +743,81 @@ public final class MarkdownEditorView: NSView {
     refind(go: !all)
     changed()
   }
+
+  // MARK: blocks sliding
+
+  /// Each block's source and top now, what `slideBlocks(from:)` takes after a change
+  public func blockPlaces() -> [(String, CGFloat)] {
+    let ns = core.source as NSString
+    return zip(core.document.blocks, core.layout.tops).map { b, y in
+      (ns.substring(with: NSRange(location: b.range.lowerBound, length: b.range.count)), y)
+    }
+  }
+
+  /// After a ⌘ move (landing, taking away, putting back) every block still there slides from where it was to its new
+  /// place over FLIP_MS (blockmove.ts's flip) instead of jumping; blocks are matched by their source. Blocks in `except`
+  /// (counted as block moves count them: the ones just landed, which the host's copy glides into) stay put
+  public func slideBlocks(from before: [(String, CGFloat)], except: Range<Int> = 0..<0) {
+    var was: [String: [CGFloat]] = [:]
+    for (t, y) in before { was[t, default: []].append(y) }
+    let landed = Set(except.compactMap { core.movable[safe: $0] })
+    var offsets: [Int: CGFloat] = [:]
+    for (i, (t, y)) in blockPlaces().enumerated() {
+      guard !landed.contains(i), let old = was[t]?.first else { continue }
+      was[t]?.removeFirst()
+      if abs(old - y) > 0.5 { offsets[i] = old - y }
+    }
+    guard !offsets.isEmpty else { return }
+    blockSlide = (offsets, CACurrentMediaTime())
+    core.layout.drawOffsets = offsets
+    if blockLink == nil {
+      let link = displayLink(target: self, selector: #selector(blockFrame(_:)))
+      link.add(to: .main, forMode: .common)
+      blockLink = link
+    }
+    needsDisplay = true
+  }
+
+  private var blockSlide: (from: [Int: CGFloat], since: CFTimeInterval)?
+  private var blockLink: CADisplayLink?
+
+  @objc private func blockFrame(_ link: CADisplayLink) {
+    guard let b = blockSlide else { return }
+    stepBlocks(at: link.targetTimestamp - b.since)
+  }
+
+  /// a box in a block where that block is drawn now: off its place while it slides
+  private func slid(_ r: CGRect) -> CGRect {
+    let offsets = core.layout.drawOffsets
+    guard !offsets.isEmpty else { return r }
+    let tops = core.layout.tops
+    // the last block starting above the box's middle holds it
+    var lo = 0
+    var hi = tops.count
+    while lo < hi {
+      let mid = (lo + hi) / 2
+      if tops[mid] <= r.midY { lo = mid + 1 } else { hi = mid }
+    }
+    return r.offsetBy(dx: 0, dy: offsets[lo - 1] ?? 0)
+  }
+
+  /// the slide `t` seconds in (the display link's clock, or a frame tool's)
+  public func stepBlocks(at t: CFTimeInterval) {
+    guard let b = blockSlide else { return }
+    let k = min(1, max(0, t / MarkdownTiming.blockFlip))
+    let e = MarkdownTiming.ease(k)
+    core.layout.drawOffsets = b.from.mapValues { $0 * (1 - e) }
+    needsDisplay = true
+    if k >= 1 {
+      core.layout.drawOffsets = [:]
+      blockSlide = nil
+      blockLink?.invalidate()
+      blockLink = nil
+    }
+  }
+
+  /// blocks sliding now (tests)
+  var slidingBlocks: Int { blockSlide?.from.count ?? 0 }
 
   // MARK: pictures sliding
 

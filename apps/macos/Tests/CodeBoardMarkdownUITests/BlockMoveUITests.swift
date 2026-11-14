@@ -40,3 +40,32 @@ import Testing
     #expect(other.source == "A\n\nTwo\n\nB")
   }
 }
+
+/// After a move the other blocks slide to their new places (blockmove.ts's flip), the landed ones stay put
+@MainActor @Suite struct BlockSlideTests {
+  @Test func theOthersSlideAndSettle() {
+    _ = boardFonts
+    let l = BlockLayout(
+      MarkdownDocument("One\n\nTwo\n\nThree"), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 0)
+    let before = v.blockPlaces()
+    #expect(v.core.move(0..<1, to: 3))
+    // Two and Three moved up; One (landed at 2) is left to the host's copy
+    v.slideBlocks(from: before, except: 2..<3)
+    #expect(v.slidingBlocks == 2)
+    let start = v.core.layout.drawOffsets
+    #expect(start[0] == before[1].1 - v.blockPlaces()[0].1 && start[0]! > 0 && start[2] == nil)
+    v.stepBlocks(at: MarkdownTiming.blockFlip / 2)
+    #expect(v.core.layout.drawOffsets[0]! < start[0]! && v.core.layout.drawOffsets[0]! > 0)
+    v.stepBlocks(at: MarkdownTiming.blockFlip)
+    #expect(v.slidingBlocks == 0 && v.core.layout.drawOffsets.isEmpty)
+  }
+
+  @Test func theEaseIsBlockmovesCurve() {
+    #expect(MarkdownTiming.ease(0) == 0 && abs(MarkdownTiming.ease(1) - 1) < 1e-9)
+    // cubic-bezier(.2, .7, .3, 1) is well past half way at half the time
+    let half = MarkdownTiming.ease(0.5)
+    #expect(half > 0.85 && half < 0.95)
+    #expect(MarkdownTiming.ease(0.25) < half)
+  }
+}

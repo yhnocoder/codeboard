@@ -9,7 +9,9 @@ import CodeBoardMarkdownUI
 /// each step one of {"type": "abc"} (each character a key), {"key": "enter|backspace|delete|tab|shiftEnter"},
 /// {"move": "left|right|up|down|wordLeft|wordRight|lineStart|lineEnd", "extend": bool}, {"select": [anchor, head]},
 /// {"command": "bold|italic|code|highlight|strike|h1…h6|body"}, {"marked": "pinyin"}, {"commit": "中"}, {"undo": true},
-/// {"redo": true}, {"click": offset} (where the caret would be drawn), {"edit": bool}
+/// {"redo": true}, {"click": offset} (where the caret would be drawn), {"edit": bool}, {"moveBlocks": [from, to, before]}
+/// (a ⌘ move of blocks from..<to to before block `before`, every block then sliding) and {"tick": seconds} (the slide's
+/// clock moved on: one frame of it). Each step's log has the time the step took and the time its frame took to draw
 @MainActor
 enum Frames {
   struct Script: Decodable {
@@ -32,7 +34,11 @@ enum Frames {
     var redo: Bool?
     var click: Int?
     var edit: Bool?
+    var moveBlocks: [Int]?
+    var tick: Double?
   }
+  /// how far the blocks' slide is
+  static var slideClock: Double = 0
 
   static func run(_ script: URL, out: URL) throws {
     let s = try JSONDecoder().decode(Script.self, from: Data(contentsOf: script))
@@ -53,10 +59,10 @@ enum Frames {
       let t = cpu()
       let did = play(step, v)
       let ms = cpu() - t
-      try frame(v, card, i + 1, out)
+      let drawMs = try frame(v, card, i + 1, out)
       log.append([
         "step": i + 1, "did": did, "anchor": v.selection.anchor, "head": v.selection.head,
-        "ms": (ms * 1000).rounded() / 1000,
+        "ms": (ms * 1000).rounded() / 1000, "drawMs": (drawMs * 1000).rounded() / 1000,
       ])
     }
     try JSONSerialization.data(withJSONObject: log, options: [.prettyPrinted]).write(
@@ -144,11 +150,25 @@ enum Frames {
       v.isEditing = e
       return e ? "edit" : "display"
     }
+    if let m = s.moveBlocks, m.count == 3 {
+      let before = v.blockPlaces()
+      guard c.move(m[0]..<m[1], to: m[2]) else { return "no move" }
+      // no host's copy here to glide into the landed blocks: they slide too
+      v.slideBlocks(from: before)
+      slideClock = 0
+      return "move blocks \(m[0])..<\(m[1]) before \(m[2])"
+    }
+    if let t = s.tick {
+      slideClock += t
+      v.stepBlocks(at: slideClock)
+      return "tick \(slideClock)"
+    }
     return "nothing"
   }
 
-  /// the editor's picture on its card's paper, 2x
-  static func frame(_ v: MarkdownEditorView, _ card: MarkdownLooks.Card, _ n: Int, _ out: URL) throws {
+  /// the editor's picture on its card's paper, 2x; the main thread's time the editor's drawing took
+  @discardableResult
+  static func frame(_ v: MarkdownEditorView, _ card: MarkdownLooks.Card, _ n: Int, _ out: URL) throws -> Double {
     let size = CGSize(
       width: v.core.layout.size.width + card.padding[1] + card.padding[3], height: v.core.layout.size.height + 24)
     let scale: CGFloat = 2
@@ -161,12 +181,15 @@ enum Frames {
     ctx.scaleBy(x: scale, y: -scale)
     ctx.translateBy(x: card.padding[3], y: 12)
     NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
+    let t = cpu()
     v.draw(CGRect(origin: .zero, size: v.core.layout.size))
+    let ms = cpu() - t
     NSGraphicsContext.current = nil
     let url = out.appending(path: String(format: "frame-%03d.png", n))
     let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil)!
     CGImageDestinationAddImage(dest, ctx.makeImage()!, nil)
     CGImageDestinationFinalize(dest)
+    return ms
   }
 
   static func cpu() -> Double {

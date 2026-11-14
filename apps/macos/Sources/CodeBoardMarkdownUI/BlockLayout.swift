@@ -79,6 +79,8 @@ public final class BlockLayout: @unchecked Sendable {
   public private(set) var height: CGFloat = 0
   /// blocks being moved, by block index, and how they show (BlockMoves)
   var marks: [Int: MDBlockMark] = [:]
+  /// blocks drawn off their place while they slide to it (FLIP after a move), offset by block index
+  var drawOffsets: [Int: CGFloat] = [:]
   /// the caret whose constructs show their markers (editing); nil: nowhere, the static picture
   public private(set) var head: Int?
 
@@ -242,9 +244,11 @@ public final class BlockLayout: @unchecked Sendable {
 
   /// Draws what meets `clip` (in the layout's points), as `MarkdownLayout.draw`: only the pieces in it are drawn
   public func draw(in ctx: CGContext, scale: CGFloat, clip: CGRect, image: (MarkdownImageSlot) -> CGImage?) {
-    var i = firstPiece(atOrBelow: clip.minY)
-    while i < pieces.count, tops[i] <= clip.maxY {
-      let y = tops[i]
+    // a sliding block may be drawn up to its offset away from its place
+    let reach = drawOffsets.values.reduce(0) { max($0, abs($1)) }
+    var i = firstPiece(atOrBelow: clip.minY - reach)
+    while i < pieces.count, tops[i] <= clip.maxY + reach {
+      let y = tops[i] + (drawOffsets[i] ?? 0)
       if let m = marks[i], m != .dim {
         i += 1
         continue

@@ -294,8 +294,10 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     if let e = cards.first { window.makeFirstResponder(e) }
   }
 
-  /// The cards at the zoom, one under another, centred, each editor at its card's padding
-  func place() {
+  /// The cards at the zoom, one under another, centred, each editor at its card's padding. `animated` (after a ⌘ move):
+  /// each card's bottom edge, and the cards under it, slide from where they were over FLIP_MS (blockmove.ts's height
+  /// change) instead of jumping, from the boxes `before` the move changed the Notes
+  func place(animatedFrom before: [CGRect]? = nil) {
     let card = MarkdownLooks.card(.note, look: look, dark: dark)
     let margin: CGFloat = 40
     let gap: CGFloat = 24
@@ -306,21 +308,68 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     }
     let widest = sizes.map(\.width).max() ?? CGFloat(cardWidth)
     let w = max(scroll.contentSize.width, widest * zoom + 2 * margin)
-    let h = sizes.reduce(0) { $0 + $1.height * zoom } + CGFloat(max(0, sizes.count - 1)) * gap + 2 * margin
-    page.frame = CGRect(x: 0, y: 0, width: w, height: h)
     var y = margin
-    page.cardRects = []
-    for (e, size) in zip(cards, sizes) {
+    var rects: [CGRect] = []
+    for size in sizes {
       let x = (w - size.width * zoom) / 2
-      let r = CGRect(x: x, y: y, width: size.width * zoom, height: size.height * zoom)
-      page.cardRects.append(r)
-      e.setFrameOrigin(CGPoint(x: x + card.padding[3] * zoom, y: y + (card.header + card.padding[0]) * zoom))
-      y = r.maxY + gap
+      rects.append(CGRect(x: x, y: y, width: size.width * zoom, height: size.height * zoom))
+      y = rects[rects.count - 1].maxY + gap
     }
-    page.needsDisplay = true
+    if let from = before, from.count == rects.count, from != rects {
+      grow = (from, rects, CACurrentMediaTime())
+      if growLink == nil {
+        let link = page.displayLink(target: self, selector: #selector(growFrame(_:)))
+        link.add(to: .main, forMode: .common)
+        growLink = link
+      }
+      show(rects: from, width: w)
+    } else {
+      grow = nil
+      growLink?.invalidate()
+      growLink = nil
+      show(rects: rects, width: w)
+    }
     moves.layoutChanged()
     DispatchQueue.main.async { [weak self] in self?.writeReport() }
     zoomLabel?.stringValue = "\(Int((zoom * 100).rounded())) %"
+  }
+
+  /// a height change sliding: the cards' boxes before and after, since when
+  private var grow: (from: [CGRect], to: [CGRect], since: CFTimeInterval)?
+  private var growLink: CADisplayLink?
+
+  @objc private func growFrame(_ link: CADisplayLink) {
+    guard let g = grow else { return }
+    let e = CGFloat(MarkdownTiming.ease((link.targetTimestamp - g.since) / MarkdownTiming.blockFlip))
+    let rects = zip(g.from, g.to).map { a, b in
+      CGRect(x: b.minX, y: a.minY + (b.minY - a.minY) * e, width: b.width, height: a.height + (b.height - a.height) * e)
+    }
+    show(rects: rects, width: page.frame.width)
+    if e >= 1 {
+      grow = nil
+      growLink?.invalidate()
+      growLink = nil
+    }
+  }
+
+  /// where an editor is once a height change in flight has settled (page points)
+  func settledOrigin(of e: MarkdownEditorView) -> CGPoint {
+    guard let g = grow, let i = cards.firstIndex(where: { $0 === e }), i < g.to.count else { return e.frame.origin }
+    let card = MarkdownLooks.card(.note, look: look, dark: dark)
+    return CGPoint(
+      x: g.to[i].minX + card.padding[3] * zoom, y: g.to[i].minY + (card.header + card.padding[0]) * zoom)
+  }
+
+  /// the page's size, the cards' boxes and each editor at its card's top
+  private func show(rects: [CGRect], width w: CGFloat) {
+    let card = MarkdownLooks.card(.note, look: look, dark: dark)
+    let bottom = max(rects.last?.maxY ?? 0, grow?.to.last?.maxY ?? 0)
+    page.frame = CGRect(x: 0, y: 0, width: w, height: bottom + 40)
+    page.cardRects = rects
+    for (e, r) in zip(cards, rects) {
+      e.setFrameOrigin(CGPoint(x: r.minX + card.padding[3] * zoom, y: r.minY + (card.header + card.padding[0]) * zoom))
+    }
+    page.needsDisplay = true
   }
 
   @objc func toggleSecond(_ s: Any?) {
