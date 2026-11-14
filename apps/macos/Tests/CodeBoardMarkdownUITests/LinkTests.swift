@@ -125,3 +125,25 @@ import Testing
     w.close()
   }
 }
+
+/// Long addresses fold to their site (url.ts): a bare one away from the caret; a [text](url) link's with the caret in its
+/// text, as a chip; written out with the caret in the address
+@Suite struct AddressFoldTests {
+  func shown(_ src: String, head: Int?) -> String {
+    _ = boardFonts
+    let l = BlockLayout(MarkdownDocument(src), width: 600, theme: testTheme, layout: nil, resources: TestResources())
+    _ = l.setHead(head)
+    return l.pieces.flatMap { $0.layout.caretTexts }.map { $0.display.string.string }.joined()
+  }
+
+  @Test func foldedToTheSite() {
+    let bare = "See https://github.com/yhnocoder/codeboard/pull/214/files#diff here"
+    #expect(shown(bare, head: nil).contains("github.com/…") && !shown(bare, head: nil).contains("/pull/214"))
+    let link = "A [docs](https://example.com/very/long/path) b"
+    // caret in the text: [docs]( and the site
+    #expect(shown(link, head: 5).contains("[docs](example.com/…") && !shown(link, head: 5).contains("very/long"))
+    // caret in the address: written out
+    #expect(shown(link, head: 20).contains("https://example.com/very/long/path"))
+    #expect(InlineBuilder.shortURL("https://www.example.com") == "example.com")
+  }
+}

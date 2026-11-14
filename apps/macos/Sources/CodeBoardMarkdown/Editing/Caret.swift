@@ -292,11 +292,28 @@ extension MarkdownEditing {
       for i in ins where active(i, head: offset) {
         if case .text = i.kind, i.inner == nil, i.markers.isEmpty { continue }
         out.append(i.range)
+        // a [text](url) link's address is written out only with the caret in it (folded to its site otherwise): that
+        // is a layout of its own
+        if case .link = i.kind, let url = linkAddress(i, in: document), offset >= url.lowerBound,
+          offset <= url.upperBound
+        {
+          out.append(url)
+        }
         walk(i.children)
       }
     }
     walk(r.inlines)
     return out
+  }
+
+  /// A [text](url) link's address and closing bracket in the source (after "]("), nil when it is not written so
+  public static func linkAddress(_ i: MDInline, in document: MarkdownDocument) -> Range<Int>? {
+    guard case .link = i.kind, let inner = i.inner else { return nil }
+    let ns = document.source as NSString
+    guard inner.upperBound + 2 <= ns.length,
+      ns.substring(with: NSRange(location: inner.upperBound, length: 2)) == "]("
+    else { return nil }
+    return (inner.upperBound + 2)..<(i.range.upperBound - 1)
   }
 
   /// The inline construct whose source is exactly `range` in the run at it (an atom a click landed on)

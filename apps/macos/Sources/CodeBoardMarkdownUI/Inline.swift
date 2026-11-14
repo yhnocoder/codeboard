@@ -193,7 +193,28 @@ struct InlineBuilder {
       s.color = theme.colors.link
       s.underline = theme.colors.link.alpha(m.linkUnderlineAlpha)
       let start = out.string.length
-      if act {
+      let from = offsets[min(r.lowerBound, offsets.count - 1)]
+      let to = offsets[min(r.upperBound, offsets.count - 1)]
+      if case .autolink = i.kind, !act, to - from > Self.longURL {
+        // a long address written as it is, away from the caret: its site, drawn as the link, one step (url.ts)
+        append(Self.shortURL(url), attributes(s), source: [from], end: to)
+      } else if case .link = i.kind, act, let inner = innerRange, let tail = urlTail(u, offsets, inner, r),
+        !((head ?? -1) >= tail.lowerBound && (head ?? -1) <= to - 1)
+      {
+        // [text](url) with the caret in its text: the address folded to its site, a chip (inline.ts urlChip); written
+        // out only while the caret is inside it
+        let ms = markerStyle(style)
+        let open = i.markers.first.map { index(offsets, $0.lowerBound)..<index(offsets, $0.upperBound) }
+        if let open, !open.isEmpty { plain(u, offsets, open, ms) }
+        emitInner(i, u, offsets, r, inner, s)
+        let paren = index(offsets, tail.lowerBound)
+        plain(u, offsets, inner.upperBound..<paren, ms)
+        var chip = style
+        chip.color = theme.colors.ink3
+        chip.size = style.size * 0.85
+        chip.families = theme.fonts.body
+        append(Self.shortURL(url), attributes(chip), source: [tail.lowerBound], end: to)
+      } else if act {
         marked(i, u, offsets, r, innerRange, style, s)
       } else {
         emitInner(i, u, offsets, r, innerRange, s)
@@ -203,6 +224,25 @@ struct InlineBuilder {
     }
     if act { return marked(i, u, offsets, r, innerRange, style, s) }
     emitInner(i, u, offsets, r, innerRange, s)
+  }
+
+  /// a bare address longer than this folds to its site away from the caret (url.ts LONG_URL)
+  static let longURL = 40
+
+  /// An address as its site (url.ts shortUrl): the host without www., "/…" when more follows
+  static func shortURL(_ u: String) -> String {
+    guard let x = URL(string: u.lowercased().hasPrefix("www.") ? "https://" + u : u), let host = x.host else {
+      return u.count > 24 ? String(u.prefix(22)) + "…" : u
+    }
+    let rest = x.path.count > 1 || x.query != nil || x.fragment != nil
+    return (host.hasPrefix("www.") ? String(host.dropFirst(4)) : host) + (rest ? "/…" : "")
+  }
+
+  /// where a [text](url) link's address starts and the link ends in the source (after "]("), nil when it is not written so
+  private func urlTail(_ u: [UInt16], _ offsets: [Int], _ inner: Range<Int>, _ r: Range<Int>) -> Range<Int>? {
+    let k = inner.upperBound
+    guard k + 2 <= r.upperBound, k + 1 < u.count, u[k] == 0x5D, u[k + 1] == 0x28 else { return nil }
+    return offsets[min(k + 2, offsets.count - 1)]..<offsets[min(r.upperBound, offsets.count - 1)]
   }
 
   /// A Markdown marker as the editor shows it next to the caret (markdown.css .md-mk): the code font at 0.85em, faint,
