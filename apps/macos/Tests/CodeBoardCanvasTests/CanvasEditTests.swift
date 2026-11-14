@@ -513,7 +513,7 @@ actor RigTurns {
     r.canvas.paste(nil)
     #expect(r.doc.board.cards.count == 9 && r.doc.selection.count == 2)
     let pasted = r.doc.selection.compactMap(\.card).compactMap(r.doc.board.card).sorted { $0.y < $1.y }
-    #expect(pasted.map(\.x) == [24, 74] && pasted.map(\.y) == [24, 504])
+    #expect(pasted.map(\.x) == [36, 86] && pasted.map(\.y) == [36, 516], "36 down and right (pasteCopied)")
     #expect(r.doc.board.arrows.count == 2, "the arrow between them comes along")
     r.canvas.duplicate(nil)
     #expect(r.doc.board.cards.count == 11)
@@ -644,6 +644,53 @@ actor RigTurns {
     let at = b == .copy ? l.copy : l.reference
     let z = r.canvas.camera.zoom
     return CGPoint(x: rect.minX + at.midX / z, y: rect.minY + at.midY / z)
+  }
+
+  /// The chip's buttons are buttons (main's .tbtn): a press only shows them pressed (.tbtn:active), the release over the
+  /// same button acts, a press moved off it before the release does nothing, and the chip stays
+  @Test func aChipButtonActsOnTheReleaseOverItAndNotWhenLetGoOffIt() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    r.doc.select([.card(cid("n2"))])
+    r.canvas.duplicate(nil)
+    await r.settle()
+    let reference = try chipPoint(r, .reference)
+    r.send(r.mouse(.leftMouseDown, reference))
+    #expect(r.canvas.chipPressed == .reference && r.canvas.pasteChip?.ref == false, "pressed, nothing done yet")
+    r.send(r.mouse(.leftMouseDragged, CGPoint(x: reference.x, y: reference.y + 60)))
+    r.send(r.mouse(.leftMouseUp, CGPoint(x: reference.x, y: reference.y + 60)))
+    #expect(r.canvas.chipPressed == nil && r.canvas.pasteChip?.ref == false, "let go off it: nothing")
+    #expect(r.doc.history.undoSteps.count == 1, "only the ⌘D")
+    r.send(r.mouse(.leftMouseDown, reference))
+    r.send(r.mouse(.leftMouseDragged, CGPoint(x: reference.x + 60, y: reference.y)))
+    r.send(r.mouse(.leftMouseDragged, reference))
+    r.send(r.mouse(.leftMouseUp, reference))
+    #expect(r.canvas.chipPressed == nil && r.canvas.pasteChip?.ref == true, "let go over it again: Reference")
+    // pressed on one button, let go over the other: nothing
+    let copy = try chipPoint(r, .copy)
+    r.send(r.mouse(.leftMouseDown, copy))
+    r.send(r.mouse(.leftMouseDragged, try chipPoint(r, .reference)))
+    r.send(r.mouse(.leftMouseUp, try chipPoint(r, .reference)))
+    #expect(r.canvas.pasteChip?.ref == true)
+  }
+
+  /// Under Warm Ink the chip is main's .pill: 14 of radius with the board's squircle corners (styles.css --corner), not
+  /// a circular arc that makes it a capsule: 3.2 points in from a corner along its diagonal is inside the squircle
+  /// (2.2 in) and outside the arc (4.1 in)
+  @Test func theChipUnderWarmInkHasSquircleCorners() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    #expect(r.canvas.theme.id == .warmInk)
+    r.doc.select([.card(cid("n2"))])
+    r.canvas.duplicate(nil)
+    await r.settle()
+    let layer = try #require(r.canvas.chrome.sublayers?.first { $0.zPosition == 15 })
+    let image = try #require(layer.contents.map { $0 as! CGImage })
+    let bitmap = NSBitmapImageRep(cgImage: image)
+    let scale = CGFloat(image.width) / layer.bounds.width
+    let at = Int(((ChipLayout.margin + 3.2) * scale).rounded(.down))
+    let alpha = try #require(bitmap.colorAt(x: at, y: at)?.alphaComponent)
+    #expect(alpha > 0.8, "the glass reaches \(alpha)")
   }
 
   /// main's pastechip: a paste or ⌘D on the board gives Copy ✓ | Reference under the copies; Reference makes each copy

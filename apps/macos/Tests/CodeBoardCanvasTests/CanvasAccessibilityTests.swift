@@ -4,7 +4,8 @@ import Testing
 
 @testable import CodeBoardCanvas
 
-// The cards and Sections as accessibility elements: found by their id, where they are drawn, also while dragged
+// The cards, Sections, sidenote markers and stickers as accessibility elements: found by their id, where they are
+// drawn, also while dragged; one not drawn has none
 
 extension Rig {
   /// The element with this identifier and where it is on the board (its screen frame taken back through the camera)
@@ -67,5 +68,40 @@ extension Rig {
       let at = r.element("b1")?.1 ?? .null
       #expect(near(at, from.offsetBy(dx: 120, dy: 40)), "mid-drag: \(at), from \(from)")
     }
+  }
+
+  /// A sidenote's marker is an element under the sidenote's id and a sticker one under its own, where each is drawn;
+  /// one on a card folded away in its Section, or off the part of the card that shows, has none
+  @Test(arguments: [0.5, 1] as [CGFloat])
+  func sidenoteMarkersAndStickersAreElementsWhereTheyAreDrawn(zoom: CGFloat) async throws {
+    var b = sidenoteBoard()
+    b.stickers = [
+      Sticker(id: StickerID(rawValue: "k1"), glyph: .builtin(.star), anchor: .canvas(x: 300, y: 700, size: nil)),
+      Sticker(id: StickerID(rawValue: "k2"), glyph: .builtin(.flag), anchor: .card(cid("t1"), x: 10, y: 4, size: 20)),
+      Sticker(id: StickerID(rawValue: "k3"), glyph: .builtin(.flag), anchor: .card(cid("t1"), x: 10, y: 900, size: 20)),
+    ]
+    let r = try await Rig(b, zoom: zoom)
+    defer { r.close() }
+    let c = r.canvas
+    let (f, fat) = try #require(r.element("f1"))
+    let free = try #require(c.marks.first { $0.notes == [SidenoteID(rawValue: "f1")] }?.frame)
+    #expect(near(fat, free), "\(fat) for \(free)")
+    #expect(f.accessibilityRoleDescription() == "sidenote")
+    // both sidenotes on the Highlight share its marker
+    let (_, l1) = try #require(r.element("l1"))
+    let (_, l2) = try #require(r.element("l2"))
+    #expect(near(l1, l2) && r.rect("c1").intersects(l1), "\(l1) \(l2)")
+    for k in ["k1", "k2"] {
+      let (e, at) = try #require(r.element(k))
+      let drawn = try #require(c.stickerSpots.first { $0.id == StickerID(rawValue: k) }?.board)
+      #expect(near(at, drawn), "\(k): \(at) for \(drawn)")
+      #expect(e.accessibilityRoleDescription() == "sticker")
+    }
+    #expect(r.element("k3") == nil, "below the card's end, not drawn")
+    #expect(r.element("w1") != nil && r.element("b1") != nil)
+    r.doc.edit("Fold") { $0.sections[0].collapsed = true }
+    await r.settle()
+    #expect(r.element("w1") == nil && r.element("b1") == nil, "folded away with their card")
+    #expect(r.element("f1") != nil)
   }
 }

@@ -214,20 +214,31 @@ extension CanvasView {
       size: CGSize(width: l.size.width + 2 * m, height: l.size.height + 2 * m), scale: scale
     ) { ctx in
       ctx.translateBy(x: m, y: m)
+      // Warm Ink: the board's squircle corners (styles.css --corner), which .pill and .tbtn take
       WritingBar.float(
-        CGRect(origin: .zero, size: l.size), radius: look.radius, look: look, glass: look.glass, scale: scale, in: ctx)
+        CGRect(origin: .zero, size: l.size), radius: look.radius, look: look, glass: look.glass, scale: scale,
+        squircle: !ink, in: ctx)
       ctx.setFillColor(look.sep)
       ctx.fill(l.sep)
       for (b, r) in [(ChipButton.copy, l.copy), (.reference, l.reference)] {
         let on = (b == .reference) == c.ref
         let hovered = chipHovered == b
-        // .tbtn.on: the accent on --row (Ink Wash: its ink); hovered: --ink, on 7 % of it when not on (.tbtn.on comes later)
+        let pressed = chipPressed == b
+        // .tbtn.on: the accent on --row (Ink Wash: its ink); hovered: --ink, on 7 % of it when not on, pressed
+        // (.tbtn:active) on 12 % and drawn at 0.96 of its size (.tbtn.on comes later: its --row stays)
         var color = ink ? look.ink : on ? t.accent : look.ink2
         if hovered { color = look.ink }
-        let bg: CGColor? = on ? row : hovered ? look.ink.copy(alpha: 0.07) : nil
+        let bg: CGColor? = on ? row : pressed ? look.ink.copy(alpha: 0.12) : hovered ? look.ink.copy(alpha: 0.07) : nil
+        ctx.saveGState()
+        defer { ctx.restoreGState() }
+        if pressed {
+          ctx.translateBy(x: r.midX, y: r.midY)
+          ctx.scaleBy(x: 0.96, y: 0.96)
+          ctx.translateBy(x: -r.midX, y: -r.midY)
+        }
         if let bg {
-          let k: CGFloat = ink ? 2 : 8.5
-          ctx.addPath(CGPath(roundedRect: r, cornerWidth: k, cornerHeight: k, transform: nil))
+          ctx.addPath(
+            ink ? CGPath(roundedRect: r, cornerWidth: 2, cornerHeight: 2, transform: nil) : Drawing.squircle(r, 8.5))
           ctx.setFillColor(bg)
           ctx.fillPath()
         }
