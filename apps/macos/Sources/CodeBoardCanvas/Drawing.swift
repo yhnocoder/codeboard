@@ -47,6 +47,10 @@ enum Drawing: Sendable {
     var height: Double?
     /// What its [[refs]] point at now
     var refs: [NoteRef]
+    /// Its header shows its leading heading, which its body does not show again (CardContent.hidesHeading)
+    var hideHead = false
+    /// Its header folded away while it is written in: the heading shows in the body instead (NoteBody foldHeader)
+    var folded = false
 
     /// A Box's fill; nil for a Note or a Text
     var boxFill: BoxFill? {
@@ -135,7 +139,11 @@ enum Drawing: Sendable {
     case .note(let n):
       switch n.content {
       case .note:
-        Drawing.paper(ctx, r, t, id: n.id, rule: true)
+        Drawing.paper(ctx, r, t, id: n.id, rule: !n.folded)
+        if n.folded {
+          Drawing.edge(ctx, r, t)
+          return decodes
+        }
         var x = t.headerPad
         if let g = t.kindGlyph {
           Drawing.text(

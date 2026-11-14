@@ -120,6 +120,7 @@ struct Scene: Sendable {
     /// Where its images are: the board package or the vault's shared folder
     var folder: URL
     var refs: [NoteRef]
+    var hideHead = false
   }
 
   /// The Notes the renderer must measure before the scene can be made
@@ -137,7 +138,8 @@ struct Scene: Sendable {
       case .note(let n):
         let r = refs.refs(in: n.text)
         guard c.height == nil || onBlocks.contains(c.id) || !r.isEmpty else { return nil }
-        return Measure(card: c.id, note: .note(n), width: c.width, folder: folder, refs: r)
+        return Measure(
+          card: c.id, note: .note(n), width: c.width, folder: folder, refs: r, hideHead: content.hidesHeading)
       // a Text or Box is as tall as its text, and as wide too unless it wraps
       case .text(let t):
         return Measure(card: c.id, note: .text(t), width: c.width, folder: folder, refs: refs.refs(in: t.text))
@@ -511,7 +513,7 @@ struct Scene: Sendable {
       let size = CGSize(width: c.width, height: c.height ?? measured?.height ?? c.width * 0.6)
       let note = Drawing.Note(
         id: c.id.rawValue, title: title, content: .note(n), folder: folder, height: c.height,
-        refs: refs.refs(in: n.text))
+        refs: refs.refs(in: n.text), hideHead: content.hidesHeading)
       return (.note(note), size, nil)
     case .text(let text):
       // as wide as its text unless it wraps at the card's width

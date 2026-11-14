@@ -69,13 +69,15 @@ public final class NoteEditor: NSObject {
   public func begin(
     _ note: NoteBody, width: Double, height: Double?, folder: URL, look: String, dark: Bool, refs: [NoteRef] = [],
     refList: RefCandidates? = nil, k: Double, margin: Double, caret: CGPoint?, open: Bool = false,
-    placeholder: String
+    placeholder: String, hideHead: Bool = false
   ) async throws -> CGSize {
     await ready()
     view.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
     view.cardRect = .zero
     view.uiRects = []
-    let json = try PageNote(note, width: width, height: height, look: look, dark: dark, refs: refs).json()
+    let json = try PageNote(
+      note, width: width, height: height, look: look, dark: dark, refs: refs, hideHead: hideHead
+    ).json()
     let list = try refList.map { String(decoding: try JSONEncoder().encode($0), as: UTF8.self) }
     let args: [String: Any] = [
       "note": json, "images": NoteRenderer.images(folder).absoluteString, "k": k, "margin": margin,

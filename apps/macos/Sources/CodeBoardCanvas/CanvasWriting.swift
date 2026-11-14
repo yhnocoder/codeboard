@@ -40,6 +40,8 @@ struct Editing {
   let session = UUID()
   /// Free code, in the code editor (CanvasFreeCode)
   var code = false
+  /// Leaving: a Note whose header folded away while it was written in shows its header again
+  var unfolding = false
 }
 
 /// The card sits this far in from the web view's top left (view points), so the editor's menus have room: it places them
@@ -120,14 +122,14 @@ extension CanvasView {
         let size = try await editor.begin(
           n.content, width: card.width, height: n.height, folder: n.folder, look: theme.id.rawValue, dark: theme.dark,
           refs: n.refs, refList: refList, k: zoom, margin: editorMargin, caret: local, open: openRef,
-          placeholder: n.content.isText ? "Type something…" : "Type / for blocks")
+          placeholder: n.content.isText ? "Type something…" : "Type / for blocks", hideHead: n.hideHead)
         guard editing?.id == id, editing?.ending == false else { return }
         editing?.size = size
         editing?.ready = true
         if camera.zoom != zoom { await editor.zoom(camera.zoom) }
         editing?.shownZoom = camera.zoom
         withoutAnimation {
-          showPaper()
+          showPaper(fade: n.hideHead)
           positionEditor()
           editor.view.shown = true
         }
@@ -145,9 +147,14 @@ extension CanvasView {
 
   /// The card being written shows its paper only: the web view over it draws the text. Drawn at its size as the editor
   /// lays it out, in place of its layers (they come back when nothing was written)
-  func showPaper() {
+  /// `fade`: what was shown fades out over it (a folded header's title going or coming back, with the editor's fold)
+  func showPaper(fade: Bool = false) {
     guard let ed = editing, ed.ready, !ed.ending, let i = editingIndex, let s = scene else { return }
     var it = s.items[i]
+    if case .note(var n) = it.drawing, n.hideHead {
+      n.folded = !ed.unfolding
+      it.drawing = .note(n)
+    }
     if let size = ed.size {
       it.rect.size.height = size.height
       if case .note(let n) = it.drawing, n.content.isText { it.rect.size.width = size.width }
@@ -162,7 +169,22 @@ extension CanvasView {
     let paper = CanvasView.render(it, scale: scale, theme: theme, images: images).surface
     let l = ItemLayers(it, overview: (paper, scale, .paper), shadow: it.drawing.framed ? cardShadow : nil)
     l.box.zPosition = items[i].box.zPosition
-    items[i].box.superlayer?.replaceSublayer(items[i].box, with: l.box)
+    let was = items[i].box
+    was.superlayer?.replaceSublayer(was, with: l.box)
+    if fade, let parent = l.box.superlayer {
+      // the editor's header fold: 220 ms on cubic-bezier(.2, .8, .2, 1) (NoteBody foldHeader)
+      parent.insertSublayer(was, above: l.box)
+      CATransaction.begin()
+      CATransaction.setCompletionBlock { was.removeFromSuperlayer() }
+      let a = CABasicAnimation(keyPath: "opacity")
+      a.fromValue = 1
+      a.toValue = 0
+      a.duration = 0.22
+      a.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
+      was.opacity = 0
+      was.add(a, forKey: "fold")
+      CATransaction.commit()
+    }
     editingOriginal = editingOriginal ?? items[i]
     items[i] = l
   }
@@ -360,6 +382,11 @@ extension CanvasView {
     // its refs are drawn anew
     if case .card(let c, _)? = refPeek?.at, c == ed.id { closeRefPeek() }
     let doc = ed.doc
+    // a folded header comes back as the editor unfolds it (finish waits for that)
+    if ed.ready, given == nil, case .note(let n)? = editingIndex.map({ scene!.items[$0].drawing }), n.hideHead {
+      editing?.unfolding = true
+      withoutAnimation { showPaper(fade: true) }
+    }
     editing?.ending = true
     let editor = noteEditor
     var written = given

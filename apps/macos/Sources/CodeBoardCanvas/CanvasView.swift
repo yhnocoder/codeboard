@@ -465,7 +465,8 @@ public final class CanvasView: NSView {
   {
     let requests = ms.map {
       NoteRenderer.SizeRequest(
-        note: $0.note, width: $0.width, folder: $0.folder, look: theme.id.rawValue, dark: theme.dark, refs: $0.refs)
+        note: $0.note, width: $0.width, folder: $0.folder, look: theme.id.rawValue, dark: theme.dark, refs: $0.refs,
+        hideHead: $0.hideHead)
     }
     // before any picture: the board waits for these
     let sizes = (try? await notes.metrics(of: requests, priority: 1)) ?? []
@@ -1124,11 +1125,11 @@ public final class CanvasView: NSView {
       guard let priority else {
         return await notes.cached(
           of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale, look: look,
-          dark: theme.dark, refs: n.refs)
+          dark: theme.dark, refs: n.refs, hideHead: n.hideHead)
       }
       return try? await notes.snapshot(
         of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale, look: look,
-        dark: theme.dark, refs: n.refs, priority: priority)
+        dark: theme.dark, refs: n.refs, hideHead: n.hideHead, priority: priority)
     case .image(let p):
       guard p.svg, let url = p.url else { return nil }
       let width = Int((item.rect.width * scale).rounded(.up))

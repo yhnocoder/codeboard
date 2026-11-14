@@ -76,8 +76,9 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     defer { r.close() }
     let y = { (a: String) in r.canvas.arrowPoints(aid(a))?.end.y ?? -1 }
     let card = r.rect("n1")
-    // the whole card at its header; each block lower than the one before it, inside the card
-    #expect(y("w") < y("b0") && y("b0") < y("b2") && y("b2") < y("b3") && y("b3") < card.maxY)
+    // the whole card at its header, and so the heading, which the header shows and the body does not (the board's
+    // blockY: a block not drawn is met at the header); each other block lower than the one before it, inside the card
+    #expect(y("w") == y("b0") && y("w") < y("b2") && y("b2") < y("b3") && y("b3") < card.maxY)
   }
 
   @Test(arguments: [1, 0.5] as [CGFloat])

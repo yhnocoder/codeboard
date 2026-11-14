@@ -111,3 +111,31 @@ extension Card {
     if case .own(let c) = content, case .text(let t) = c.body { t } else { nil }
   }
 }
+
+/// A Note's leading heading, its inline marks taken off ("" when its first line with text is not an ATX heading): the
+/// title its header shows when it has none of its own (core mdHeading)
+public func mdHeading(_ md: String) -> String {
+  guard let line = md.components(separatedBy: "\n").lazy.map(jsTrim).first(where: { !$0.isEmpty }),
+    let m = re(#"^#{1,6}\s+(.*?)(?:\s+#+)?$"#).exec(line)
+  else { return "" }
+  var t = re(#"!?\[([^\]]*)\]\([^)]*\)"#).replace(m[1]) { $0[1] }
+  t = re(#"(\*\*|__|~~|`|\*|_)(?=\S)(.+?)(?<=\S)\1"#).replace(t) { $0[2] }
+  return jsTrim(re(#"\$+"#).replace(t) { _ in "" })
+}
+
+extension CardContent {
+  /// What a Note's header shows: its own title, else its leading heading; nil for neither (a Note shows "Note")
+  public var noteTitle: String? {
+    guard case .note(let n) = body else { return nil }
+    if let t = title, !t.isEmpty { return t }
+    let h = mdHeading(n.text)
+    return h.isEmpty ? nil : h
+  }
+
+  /// A Note whose header shows its leading heading: the body does not show it again; it is there when written in
+  /// (board NoteBody hidesHeading, with Settings → Notes → heading in body off)
+  public var hidesHeading: Bool {
+    guard case .note(let n) = body, (title ?? "").isEmpty else { return false }
+    return !mdHeading(n.text).isEmpty
+  }
+}

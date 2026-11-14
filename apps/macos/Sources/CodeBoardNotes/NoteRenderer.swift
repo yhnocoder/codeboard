@@ -57,9 +57,11 @@ public final class NoteRenderer {
   /// view a higher `priority` goes first; a request cancelled before its turn draws nothing.
   public func snapshot(
     of note: NoteBody, width: Double, height: Double?, folder: URL, scale: Double, look: String, dark: Bool,
-    refs: [NoteRef] = [], priority: Int
+    refs: [NoteRef] = [], hideHead: Bool = false, priority: Int
   ) async throws -> NoteSnapshot {
-    let json = try PageNote(note, width: width, height: height, look: look, dark: dark, refs: refs).json()
+    let json = try PageNote(
+      note, width: width, height: height, look: look, dark: dark, refs: refs, hideHead: hideHead
+    ).json()
     let (key, mount, cached) = await Self.lookUp(
       store: store, build: build, note: json, markdown: note.markdown, folder: folder, scale: scale)
     if let cached { return cached }
@@ -93,9 +95,13 @@ public final class NoteRenderer {
   /// The picture `snapshot` would give, if the disk cache has it; never opens the web view
   public func cached(
     of note: NoteBody, width: Double, height: Double?, folder: URL, scale: Double, look: String, dark: Bool,
-    refs: [NoteRef] = []
+    refs: [NoteRef] = [], hideHead: Bool = false
   ) async -> NoteSnapshot? {
-    guard let json = try? PageNote(note, width: width, height: height, look: look, dark: dark, refs: refs).json() else {
+    guard
+      let json = try? PageNote(
+        note, width: width, height: height, look: look, dark: dark, refs: refs, hideHead: hideHead
+      ).json()
+    else {
       return nil
     }
     return await Self.lookUp(
@@ -111,14 +117,18 @@ public final class NoteRenderer {
     public var look: String
     public var dark: Bool
     public var refs: [NoteRef]
+    public var hideHead: Bool
 
-    public init(note: NoteBody, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef] = []) {
+    public init(
+      note: NoteBody, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef] = [], hideHead: Bool = false
+    ) {
       self.note = note
       self.width = width
       self.folder = folder
       self.look = look
       self.dark = dark
       self.refs = refs
+      self.hideHead = hideHead
     }
   }
 
@@ -135,7 +145,9 @@ public final class NoteRenderer {
     var missing: [(i: Int, key: SnapshotKey, json: String, images: URL, look: Look)] = []
     for (i, n) in notes.enumerated() {
       guard
-        let json = try? PageNote(n.note, width: n.width, height: nil, look: n.look, dark: n.dark, refs: n.refs).json()
+        let json = try? PageNote(
+          n.note, width: n.width, height: nil, look: n.look, dark: n.dark, refs: n.refs, hideHead: n.hideHead
+        ).json()
       else { continue }
       let (key, cached) = await Self.lookUpSize(
         store: store, build: build, note: json, markdown: n.note.markdown, folder: n.folder)
@@ -185,7 +197,9 @@ public final class NoteRenderer {
       page = p
       for (i, n) in notes.enumerated() {
         guard
-          let json = try? PageNote(n.note, width: n.width, height: nil, look: n.look, dark: n.dark, refs: n.refs).json()
+          let json = try? PageNote(
+            n.note, width: n.width, height: nil, look: n.look, dark: n.dark, refs: n.refs, hideHead: n.hideHead
+          ).json()
         else { continue }
         let (key, _) = await Self.lookUpSize(
           store: store, build: build, note: json, markdown: n.note.markdown, folder: n.folder)

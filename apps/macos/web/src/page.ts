@@ -35,7 +35,7 @@ type Note = {
   text: string;
   layout: MdLayout | null;
   style:
-    | { note: Record<string, never> }
+    | { note: { hideHead?: boolean } }
     | { text: { look: "text" | "box"; fill: string; fontSize: number; wrap: boolean } };
   width: number;
   height: number | null;
@@ -129,7 +129,7 @@ function cardFor(n: Note): { card: HTMLDivElement; body: HTMLDivElement } {
     const head = document.createElement("div");
     head.className = "chead";
     face.append(head);
-    body.className = "nbody";
+    body.className = s.note.hideHead ? "nbody hidehead" : "nbody";
     c.style.width = `${n.width}px`;
   } else {
     // a Text or Box: Markdown at the card's own size, as wide as its text unless it wraps at its width (cardsel.ts
@@ -409,6 +409,78 @@ function keepStatic(e: Editing) {
   box.style.display = "none";
 }
 
+const HEADS = ":is(h1, h2, h3, h4, h5, h6):first-child";
+/** The heading's block: its height and the space under it, in the card's own pixels (NoteBody block) */
+const block = (e: HTMLElement) => {
+  const r = e.getBoundingClientRect();
+  return r.height * (e.offsetWidth / r.width || 1) + parseFloat(getComputedStyle(e).marginBottom);
+};
+const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** A Note whose header shows its leading heading, written in (the board's NoteBody foldHeader): entering, the header
+ *  folds away (the body over it) and the heading slides out of the body's top edge; leaving, the other way, and then
+ *  the heading is hidden as the canvas's picture has it. The card keeps its height on every frame; 220 ms, the
+ *  canvas fading its header's title with it. Resolves when done */
+function fold(card: HTMLElement, entering: boolean): Promise<void> {
+  const face = card.querySelector<HTMLElement>(":scope > .cface");
+  const head = face?.querySelector<HTMLElement>(":scope > .chead");
+  const body = face?.querySelector<HTMLElement>(":scope > .nbody");
+  if (!face || !head || !body || !body.classList.contains("hidehead")) return Promise.resolve();
+  const h = body.querySelector<HTMLElement>(`.md-pm > ${HEADS}`);
+  let H: number, p0: number, p1: number;
+  if (entering) {
+    H = head.offsetHeight;
+    p0 = parseFloat(getComputedStyle(body).paddingTop);
+    face.style.setProperty("--fold-h", `${H}px`);
+    face.style.setProperty("--fold-p0", `${p0}px`);
+    body.classList.remove("unfolded");
+    head.classList.add("fold");
+    body.classList.add("fold");
+  } else {
+    H = parseFloat(face.style.getPropertyValue("--fold-h")) || head.offsetHeight;
+    p0 = parseFloat(face.style.getPropertyValue("--fold-p0")) || 0;
+  }
+  const blk = h ? block(h) : 0;
+  if (entering) {
+    p1 = Math.max(6, H + p0 - blk);
+    face.style.setProperty("--fold-pt", `${p1}px`);
+  } else p1 = parseFloat(getComputedStyle(body).paddingTop);
+  const settle = () => {
+    if (entering) return;
+    head.classList.remove("fold");
+    body.classList.remove("fold");
+    body.classList.add("unfolded");
+  };
+  if (reduced()) {
+    settle();
+    return Promise.resolve();
+  }
+  const opts: KeyframeAnimationOptions = {
+    duration: 220,
+    easing: "cubic-bezier(.2, .8, .2, 1)",
+    fill: entering ? "none" : "forwards",
+  };
+  const dir = <T>(a: T, b: T) => (entering ? [a, b] : [b, a]);
+  const anims = [
+    body.animate(dir({ paddingTop: `${p0}px` }, { paddingTop: `${p1}px` }) as Keyframe[], opts),
+    head.animate(dir({ marginBottom: "0px" }, { marginBottom: `${-H}px` }) as Keyframe[], opts),
+    // what of the heading is above the body's top edge while it slides is cut off
+    body.animate(
+      [{ clipPath: "inset(0 -100vmax -100vmax -100vmax)" }, { clipPath: "inset(0 -100vmax -100vmax -100vmax)" }],
+      opts,
+    ),
+  ];
+  if (h)
+    anims.push(h.animate(dir({ marginTop: `${-blk}px`, opacity: 0 }, { marginTop: "0px", opacity: 1 }) as Keyframe[], opts));
+  return new Promise((done) => {
+    anims[0].onfinish = anims[0].oncancel = () => {
+      settle();
+      for (const a of anims) a.cancel();
+      done();
+    };
+  });
+}
+
 /** Ends the editing: what was written (text null when nothing changed) and its layout; the content stays shown until
  *  clear. Null when it had ended already */
 function end(e: Editing, text: string | null, layout: MdLayout | null): Ended | null {
@@ -501,8 +573,11 @@ const edit = {
       // the board's menus, bars and buttons (cm/load.ts BOARD_CLASSES)
       classes: { menu: "ctx", bar: "pill", button: "tbtn" },
       onDone: (v, l) => {
-        const r = end(e, v, l === undefined ? e.layout : l);
-        if (r) post({ type: "done", ...r });
+        // the header unfolds first, the heading going back into it
+        void fold(made.card, false).then(() => {
+          const r = end(e, v, l === undefined ? e.layout : l);
+          if (r) post({ type: "done", ...r });
+        });
       },
       saveImage: (dataUrl, name) =>
         (window.webkit?.messageHandlers as unknown as { image: { postMessage(m: unknown): Promise<string | null> } })
@@ -522,6 +597,9 @@ const edit = {
       post({ type: "size", ...size });
     }).observe(made.card);
     s.slot.dataset.k = String(a.k);
+    // a Note whose header shows its heading: the header folds away, the heading coming out of the body (its card as tall
+    // as before, so the size below is the card's)
+    void fold(made.card, true);
     await settled([made.card]);
     if (a.caret) {
       const x = a.margin + a.caret.x * a.k,
@@ -667,11 +745,15 @@ const edit = {
   },
   /** Native ends the editing (a click outside): what was written, also when the editor left by itself first (focus
    *  went, and its "done" is still on the way); what is shown stays until clear */
-  finish() {
+  async finish() {
     if (!editing) return null;
     const e = editing;
     if (e.ended) return e.ended;
-    const r = end(e, e.editor.value(), e.editor.layout());
+    const value = e.editor.value();
+    const layout = e.editor.layout();
+    await fold(e.slot.card, false);
+    if (e.ended) return e.ended;
+    const r = end(e, value, layout);
     e.editor.destroy();
     return r;
   },

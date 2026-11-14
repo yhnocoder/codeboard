@@ -56,3 +56,17 @@ body {
 :root.popup .pop:is(.k-highlight, .k-notes) {
   max-height: var(--pop-max, 560px);
 }
+/* A Note whose header shows its leading heading: not shown again in the body (the board's .nbody.hidehead, which the
+   page's bodies, always editors, would not match); while it is written in, the header folds away and it shows (fold) */
+.render .nbody.hidehead .md-pm > :is(h1, h2, h3, h4, h5, h6):first-child {
+  display: none;
+}
+.render .nbody.hidehead .md-pm > :nth-child(2) {
+  margin-top: 0;
+}
+.nbody.hidehead.unfolded .md-pm > :is(h1, h2, h3, h4, h5, h6):first-child {
+  display: none;
+}
+.nbody.hidehead.unfolded .md-pm > :nth-child(2) {
+  margin-top: 0;
+}

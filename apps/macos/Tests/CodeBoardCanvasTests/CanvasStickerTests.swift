@@ -21,7 +21,9 @@ func stickerBoard() -> Board {
     id: BoardID(rawValue: "stickers"),
     cards: [
       Card(id: cid("c1"), x: 0, y: 0, width: 420, content: .own(CardContent(body: .code(CodeCard(segments: [seg]))))),
-      Card(id: cid("n1"), x: 600, y: 0, width: 300, content: .own(CardContent(body: .note(Note(text: "# 调度\n\n一批"))))),
+      Card(
+        id: cid("n1"), x: 600, y: 0, width: 300, height: 140,
+        content: .own(CardContent(body: .note(Note(text: "# 调度\n\n一批"))))),
     ],
     sidenotes: [
       Sidenote(
