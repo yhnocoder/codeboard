@@ -272,7 +272,8 @@ extension Stage6Sheets {
     lines.append(
       "ref-seals-<theme>.png: a Note on a board in the book 调度 Scheduler with refs to a board in the same book (its"
         + " seal only), to one with a CJK seal (not trimmed to cap height, one size larger), to a board in another book"
-        + " (Engine 引擎's seal in front, two halves) and to a top-level board (its own book)")
+        + " (Engine 引擎's seal in front, two halves) and to a top-level board, a book itself: its seal alone, no"
+        + " title, as main draws a ref to a book (md/refs.ts sealFor)")
     for dark in [false, true] {
       let pics = (rowMenus + canvasMenus).compactMap {
         ShellPictures.draw(MenuPicture(title: $0.0, items: $0.1), dark: dark)

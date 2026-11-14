@@ -54,6 +54,7 @@ const names = [
   "Ⅻ roman",
   "İstanbul notes",
   "ǆungla words",
+  "Paged KV Cache with a long name that does not fit",
 ];
 const texts = ["", "  ", "SP", "s p", "调度器的设计与实现细节", "ABCDEFGHIJKLMNOP", "a b\tc", "中文Mixed很多字符呀呀", "é ü", "😀😀"];
 const ids = ["b1", "board-0001", "sched", "mem", "x", "", "调度", "a/b", "0c9f3e2a-77aa-4f1e-9b0c-123456789abc", "zz"];

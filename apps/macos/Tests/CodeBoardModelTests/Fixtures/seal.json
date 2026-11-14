@@ -119,6 +119,10 @@
   {
    "name": "ǆungla words",
    "text": "ǄW"
+  },
+  {
+   "name": "Paged KV Cache with a long name that does not fit",
+   "text": "PKVCLNTDNF"
   }
  ],
  "clean": [
@@ -270,6 +274,11 @@
   {
    "text": "ǆungla words",
    "clean": "ǆunglawords",
+   "ok": false
+  },
+  {
+   "text": "Paged KV Cache with a long name that does not fit",
+   "clean": "PagedKVCache",
    "ok": false
   },
   {
