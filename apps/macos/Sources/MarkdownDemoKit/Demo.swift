@@ -748,6 +748,43 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     inspector.watch(e)
   }
   func editor(_ e: MarkdownEditorView, open url: URL) { NSWorkspace.shared.open(url) }
+
+  /// references picked from the [[ menu, newest first (in memory)
+  private var recentRefs: [MarkdownRefCandidate] = []
+
+  /// The [[ menu from the open vault: this board's other cards, then each other board with its cards, by their first
+  /// line; what is typed narrows them
+  func editor(_ e: MarkdownEditorView, refMenu query: String) -> MarkdownRefMenu {
+    guard let v = vault, let tree = try? v.tree() else { return MarkdownRefMenu(local: []) }
+    let q = query.lowercased()
+    func title(_ n: VaultNote) -> String {
+      let first = n.title ?? n.text.split(separator: "\n").first.map(String.init) ?? ""
+      // its first line as read: heading marks and inline markers left out
+      return first.replacingOccurrences(of: #"^#+\s*"#, with: "", options: .regularExpression)
+        .replacingOccurrences(of: #"[*_`~=]{1,2}"#, with: "", options: .regularExpression)
+    }
+    func fits(_ t: String) -> Bool { q.isEmpty || t.lowercased().contains(q) }
+    let mine = (vaultNotes ?? []).enumerated().filter { cards.indices.contains($0.offset) && cards[$0.offset] !== e }
+      .map { MarkdownRefCandidate(label: title($0.element), target: $0.element.id, title: title($0.element)) }
+      .filter { fits($0.title) }
+    var groups: [MarkdownRefGroup] = []
+    for b in tree.allBoards where b.path != boardPath {
+      let notes = (try? VaultNotes.notes(of: b.path, in: v).notes) ?? []
+      let items = notes.map { MarkdownRefCandidate(label: title($0), target: $0.id, title: title($0), crumb: b.title) }
+        .filter { fits($0.title) }
+      guard !items.isEmpty || fits(b.title) else { continue }
+      groups.append(
+        MarkdownRefGroup(
+          id: b.path, title: b.title, place: MarkdownRefCandidate(label: b.title, target: nil, title: b.title),
+          note: notes.count == 1 ? "1 card" : "\(notes.count) cards", items: items))
+    }
+    return MarkdownRefMenu(recent: recentRefs, here: "This board", local: mine, groups: groups)
+  }
+
+  func editor(_ e: MarkdownEditorView, pickedRef r: MarkdownRefCandidate) {
+    recentRefs.removeAll { $0 == r }
+    recentRefs.insert(r, at: 0)
+  }
   func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String? { resources.pasted.add(data) }
 
   // MARK: controls

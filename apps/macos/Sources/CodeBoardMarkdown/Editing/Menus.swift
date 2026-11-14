@@ -5,15 +5,22 @@ public enum MDMenuKind: Sendable, Equatable { case slash, ref, emoji }
 
 /// One row of a typed menu: what it shows and what it writes
 public struct MDMenuItem: Sendable, Equatable {
+  /// how a row is drawn (menu.tsx cls / head): an ordinary row; a group's name above its rows (not taken); a group's own
+  /// row (another place, taken as a reference to it); a row in a group; "N more", which lists the rest in place
+  public enum Style: Sendable, Equatable { case plain, head, brow, child, more }
   public var title: String
   /// the small text after it (a block's Markdown, an emoji's name, a reference's place)
   public var hint: String
   public var id: String
-  public init(title: String, hint: String, id: String) {
+  public var style: Style
+  public init(title: String, hint: String, id: String, style: Style = .plain) {
     self.title = title
     self.hint = hint
     self.id = id
+    self.style = style
   }
+  /// whether ↑ ↓ and a click can choose it
+  public var takes: Bool { style != .head }
 }
 
 extension MDMenuItem {

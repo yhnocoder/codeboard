@@ -50,3 +50,23 @@ import Testing
     #expect(v.core.observer == nil)
   }
 }
+
+/// A change a host makes (a block move, a width written on release) is timed from its own start, not from the last input
+/// the editor timed (seconds showed in the inspector)
+@MainActor @Suite struct HostEditTimingTests {
+  @Test func timedFromItsStart() {
+    _ = boardFonts
+    let l = BlockLayout(
+      MarkdownDocument("One\n\nTwo"), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 0)
+    var last: Double?
+    v.observer = { e, ms in if case .edit = e { last = ms } }
+    v.insertText("x", replacementRange: NSRange(location: NSNotFound, length: 0))
+    let start = BlockLayout.cpu()
+    var n = 0.0
+    while BlockLayout.cpu() - start < 120 { n += 1 }
+    // without an input event of the view's: a host's edit
+    v.core.apply(MDEdit(range: 0..<0, replacement: "y", selection: MDSelection(1), undo: .command))
+    #expect(n > 0 && (last ?? 999) < 60)
+  }
+}

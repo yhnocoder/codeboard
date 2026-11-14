@@ -76,3 +76,48 @@ import Testing
     #expect(!v.typedMenu.shown)
   }
 }
+
+/// The [[ menu as main groups it: recent, the local ones under their name, each other place's row and three of its items
+/// with "N more", which lists the rest in place; the place's own row writes a reference to the place
+@MainActor @Suite struct RefMenuGroupTests {
+  final class Host: MarkdownEditorDelegate {
+    var picked: [String] = []
+    func editor(_ e: MarkdownEditorView, didResize size: CGSize) {}
+    func editorWantsToEnd(_ e: MarkdownEditorView) {}
+    func editorDidBegin(_ e: MarkdownEditorView) {}
+    func editor(_ e: MarkdownEditorView, didChange source: String) {}
+    func editor(_ e: MarkdownEditorView, refMenu query: String) -> MarkdownRefMenu {
+      let c = { (t: String) in MarkdownRefCandidate(label: t, target: nil, title: t) }
+      return MarkdownRefMenu(
+        recent: [c("Last one")], here: "This board", local: [c("Plan")],
+        groups: [
+          MarkdownRefGroup(
+            id: "g", title: "Other board", place: c("Other board"), note: "5 cards",
+            items: ["A", "B", "C", "D", "E"].map(c))
+        ])
+    }
+    func editor(_ e: MarkdownEditorView, pickedRef r: MarkdownRefCandidate) { picked.append(r.label) }
+  }
+
+  @Test func groupsAndMore() {
+    _ = boardFonts
+    let l = BlockLayout(MarkdownDocument("See "), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 4)
+    let host = Host()
+    v.delegate = host
+    v.selection = MDSelection(4)
+    for ch in "[[" { v.insertText(String(ch), replacementRange: NSRange(location: NSNotFound, length: 0)) }
+    let rows = v.typedMenu.items
+    #expect(
+      rows.map(\.title) == [
+        "Recent", "Last one", "This board", "Plan", "Other board", "A", "B", "C", "2 more in Other board",
+      ])
+    #expect(v.typedMenu.items[v.typedMenu.chosen].title == "Last one")
+    // "N more" lists the rest in place
+    v.typedMenu.onTake(rows.last!)
+    #expect(v.typedMenu.items.map(\.title).suffix(5) == ["A", "B", "C", "D", "E"])
+    // the place's own row writes a reference to the place
+    v.typedMenu.onTake(v.typedMenu.items.first { $0.style == .brow }!)
+    #expect(v.core.source.hasPrefix("See [[Other board") && host.picked == ["Other board"])
+  }
+}

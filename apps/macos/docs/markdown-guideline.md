@@ -675,6 +675,7 @@ public protocol MarkdownEditorDelegate: AnyObject {
 照 origin/main 的做法（`packages/board/src/md/blockmove.ts`、`packages/markdown/src/editor/moveblocks.ts`）：⌘ 手势从按下 ⌘ 起就归宿主，因为它跨 Note、跨画布；组件只回答问题、做源码修改，不知道卡片和画布。
 
 - 组件提供：某一点下是哪几块（`blocks(at:)`，有跨块选区时是整段）；这几块在 Note 里的框（`frames(of:)`，Note 的点）；这几块的图（`picture(of:scale:)`，同一份绘制代码，太高的截一段）；在排版里把几块标成淡（dim，原处留影）、离开（away，文字合拢）或已落下（gone），不改源码；`dropIndex(at:)` 和宿主要求的插入线；源码修改 `take(blocks) -> Part`、`put(Part, at:)`、`move(blocks, to:)`，各是一个撤销步骤。跨 Note 的移动是一步：宿主给这次移动一个 id，`take(blocks, link: id)` 和另一张 Note 的 `put(Part, at:, link: id)` 都带上它；一张 Note 要撤销或重做带 link 的一步时，先调 `onLinkedStep(id, undo)`，宿主在另一张 Note 上调 `undoLinked(id)` / `redoLinked(id)` 并返回成没成；另一张 Note 顶上有自己的步骤、做不了时，这一张也不动，所以内容不会两边都有或两边都没有。真正的 app 若有整块白板的撤销栈，可以直接把这两步记成白板的一条，不用这个钩子。纯源码的剪切、插入、移动（列表记号互换）已在 `MarkdownSourceOps`。
+- 引用（11-14 加）：宿主用 `editor(_:refMenu:) -> MarkdownRefMenu` 给出整个 `[[` 菜单（recent、here、local、groups；每组 `MarkdownRefGroup` 有指向那个地方本身的 `place`、`note` 和它的 items），`editor(_:pickedRef:)` 告诉宿主选了哪个（记最近）；只实现旧的 `refCandidates` 时菜单不分组。点画出来、解析得到的引用时先调 `editor(_:activate:target:) -> Bool`，宿主返回 true 表示它接了（预览或跳过去），光标不动。
 - 宿主负责：⌘ 悬停的轮廓、按下后的判断（拖动或单击）、浮起的副本、缩略图、跨 Note 的插入线、放回（Esc、⌘Z，不占撤销步骤）、落下。同一个 Note 且编辑器开着时调 `move`；跨 Note 时在源 Note 上 `take`、目标上 `put`，编辑器没开的 Note 直接用 `MarkdownSourceOps` 改保存的源码。整块不能放到画布上变成新卡（main 也没有）。
 - 引用和链接作为“激活”交给宿主：`activated(.ref(label, target) | .link(url) | .cardLink(url), rect, clickCount, modifiers) -> Bool`，返回 true 表示宿主接了（光标不动），false 时组件打开源码或链接框。去那里还是原地预览由宿主决定。
 - 图片拖出：组件开始一个 NSDraggingSession，剪贴板里是它的 Markdown 和图；拖到 Note 外并以移动结束时，组件删掉源码（连同相邻的空格），一个撤销步骤。
@@ -703,7 +704,9 @@ public protocol MarkdownEditorDelegate: AnyObject {
 - [x] `/` 菜单（标题、列表、引用、代码块、公式块、Mermaid、表格、引用卡片、分隔线）、`[[` 菜单（候选由宿主给）、`:` 表情菜单（3h）
 - [x] `/` 菜单的图片（宿主选文件，像粘贴的图片一样交给宿主保存）和脚注（光标处 `[^n]`，文末加定义，光标到那里）（3h）
 - [x] 表格工具带的尺寸格（10 × 8，表头算第 1 行，行列输入框，Apply，会删掉有内容的格子时提示）（3e）
-- [ ] `/` 菜单的 Details（原生解析还没有这种块）；`[[` 菜单的最近和其他白板分组、「N more」（3h）
+- [x] `[[` 菜单照 main 分组：没打字时最近选过的在前，本地的（宿主给名字），其他地方各一组（组那一行能选，引用那个地方本身；没打字时每组露 3 个，其余收进「N more in …」，选它原地展开）；行能点（3h）
+- [ ] `/` 菜单的 Details（原生解析还没有这种块）（3h）
+- [x] 点画出来的 [[引用]] 先交给宿主（onRef）：宿主接了光标不动，没接就是普通的点击（3j）
 - [x] ⌥⌘O / U / Q / X、⌥⌘T、⌥⌘B、⌘[ / ⌘]、⌘D、⌘L、⇧⌘V、标题级别标记和菜单（3h）
 - [x] 打完 `## ` 等之后的第一个 ⌘Z 只撤销规则：记号和空格作为纯文字留下，源码里写成 `\## `（`1\. `、`\- `、`\> `），和网页版一样；这是编辑器自己往源码里写转义的唯一一处（11-14 起替换之前“从不转义”的写法）；第二个 ⌘Z 撤掉字符，重做也对。规则那一步不管按键多快都不和前面的打字合并，行首已有文字时也一样（3h）
 - [x] 窄的表格：行把手在表格自己的边上，从格子到把手的悬停区域连续（网页版把手离格子约 50 pt、移过去会消失）（3e）
@@ -725,7 +728,6 @@ public protocol MarkdownEditorDelegate: AnyObject {
 - [ ] 末尾是代码、公式、表格块时补一个不保存的空段落；静态显示里的选区映射进编辑器（3i）
 - [x] ⌘ 整块移动：组件这一半（6.4）和演示程序当宿主（两张卡之间：⌘ 悬停轮廓、⌘-拖动、⌘-单击拿起、浮起、放回）（3j）
 - [x] ⌘ 整块移动：Note 上方的副本变成指针右下的缩略图（长边 ≤132，120 ms 切换）、落下 / 拿起 / 放回后其余块 160 ms 滑到位（FLIP，插入符和选区跟着块走）、落下的块等副本到达才显示、卡片高度 160 ms 跟随；逐帧工具 `--frames tools/markdown/frames/blockmove.json`（`moveBlocks`、`tick` 步骤，每帧记 `drawMs`）：滑动中每帧绘制 < 1 ms（3j）
-- [ ] 引用和卡片链接的激活（宿主决定去那里还是原地预览）（3j，接口见 6.4）
 - [x] 第一张 Note 的首次显示：启动时预热（`MarkdownAssets.warmUp`）之后 7 ms，网页版 54 ms（性能）
 - 不做：AI 补全（第 3.2 节）
 

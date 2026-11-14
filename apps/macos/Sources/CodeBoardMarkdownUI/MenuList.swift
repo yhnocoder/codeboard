@@ -2,6 +2,43 @@ import AppKit
 import CodeBoardMarkdown
 
 /// A reference the [[ menu offers (the host's: editor/menu.tsx RefItem)
+/// What the [[ menu lists (menu.tsx refs): recently picked first (when nothing is typed), the local candidates (named
+/// `here` when there are others), then the other places, one group each: its own row refers to the place itself, three
+/// of its items show when nothing is typed and the rest behind "N more"
+public struct MarkdownRefMenu: Sendable, Hashable {
+  public var recent: [MarkdownRefCandidate]
+  public var here: String?
+  public var local: [MarkdownRefCandidate]
+  public var groups: [MarkdownRefGroup]
+  public init(
+    recent: [MarkdownRefCandidate] = [], here: String? = nil, local: [MarkdownRefCandidate],
+    groups: [MarkdownRefGroup] = []
+  ) {
+    self.recent = recent
+    self.here = here
+    self.local = local
+    self.groups = groups
+  }
+}
+
+/// Another place's candidates: its name, what [[…]] writes for the place itself, a note beside its name, its items
+public struct MarkdownRefGroup: Sendable, Hashable {
+  public var id: String
+  public var title: String
+  public var place: MarkdownRefCandidate
+  public var note: String?
+  public var items: [MarkdownRefCandidate]
+  public init(
+    id: String, title: String, place: MarkdownRefCandidate, note: String? = nil, items: [MarkdownRefCandidate]
+  ) {
+    self.id = id
+    self.title = title
+    self.place = place
+    self.note = note
+    self.items = items
+  }
+}
+
 public struct MarkdownRefCandidate: Sendable, Hashable {
   /// what [[label#^target]] writes
   public var label: String
@@ -39,7 +76,8 @@ final class MenuList: NSView {
     self.token = token
     self.theme = theme
     chosen = min(chosen, max(0, items.count - 1))
-    frame = CGRect(x: caret.minX, y: caret.maxY + 4, width: 240, height: CGFloat(items.count) * rowHeight + 8)
+    if !items.isEmpty, !items[chosen].takes { chosen = items.firstIndex(where: \.takes) ?? 0 }
+    frame = CGRect(x: caret.minX, y: caret.maxY + 4, width: 260, height: CGFloat(items.count) * rowHeight + 8)
     isHidden = items.isEmpty
     needsDisplay = true
   }
@@ -50,9 +88,21 @@ final class MenuList: NSView {
     isHidden = true
   }
 
+  /// a row clicked (a group's name is not taken)
+  var onTake: (MDMenuItem) -> Void = { _ in }
+
+  override func mouseDown(with e: NSEvent) {
+    let p = convert(e.locationInWindow, from: nil)
+    let i = Int((p.y - 4) / rowHeight)
+    guard i >= 0, i < items.count, items[i].takes else { return }
+    chosen = i
+    needsDisplay = true
+    onTake(items[i])
+  }
+
   func step(_ d: Int) {
-    guard !items.isEmpty else { return }
-    chosen = (chosen + d + items.count) % items.count
+    guard items.contains(where: \.takes) else { return }
+    repeat { chosen = (chosen + d + items.count) % items.count } while !items[chosen].takes
     needsDisplay = true
   }
 
@@ -75,14 +125,24 @@ final class MenuList: NSView {
     let small = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
     for (i, it) in items.enumerated() {
       let row = CGRect(x: 4, y: 4 + CGFloat(i) * rowHeight, width: bounds.width - 8, height: rowHeight)
+      if it.style == .head {
+        (it.title as NSString).draw(
+          at: CGPoint(x: row.minX + 8, y: row.midY - 6),
+          withAttributes: [.font: NSFont.systemFont(ofSize: 10.5, weight: .semibold), .foregroundColor: faint])
+        continue
+      }
       if i == chosen {
         ctx.setFillColor(theme.colors.accent.alpha(0.14).cg)
         ctx.addPath(CGPath(roundedRect: row, cornerWidth: 5, cornerHeight: 5, transform: nil))
         ctx.fillPath()
       }
+      let indent: CGFloat = it.style == .child || it.style == .more ? 22 : 8
       (it.title as NSString).draw(
-        in: CGRect(x: row.minX + 8, y: row.midY - 8, width: row.width - 90, height: 18),
-        withAttributes: [.font: font, .foregroundColor: ink])
+        in: CGRect(x: row.minX + indent, y: row.midY - 8, width: row.width - 90 - indent + 8, height: 18),
+        withAttributes: [
+          .font: it.style == .brow ? NSFont.systemFont(ofSize: 12.5, weight: .medium) : font,
+          .foregroundColor: it.style == .more ? faint : ink,
+        ])
       let hs = (it.hint as NSString).size(withAttributes: [.font: small])
       (it.hint as NSString).draw(
         at: CGPoint(x: row.maxX - 8 - min(hs.width, 120), y: row.midY - hs.height / 2),

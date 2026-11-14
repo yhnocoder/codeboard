@@ -505,7 +505,11 @@ public final class EditorCore {
 
   /// Every change goes through here: the source edited, the blocks around the edit parsed again, the blocks that changed
   /// laid out again, the selection set and the change recorded for undo
+  /// a change is starting (an edit, undo or redo): a view times its events from here when no input of its own started it
+  public var willChange: (() -> Void)?
+
   public func apply(_ e: MDEdit) {
+    willChange?()
     guard e.changesSource else {
       joinable = false
       place(e.selection)
@@ -560,6 +564,7 @@ public final class EditorCore {
   /// Several edits as one undo step (replace all): applied from the last to the first, so each range is still where it
   /// was found; the selection after them
   public func applyAll(_ edits: [MDEdit], select after: MDSelection) {
+    willChange?()
     guard !edits.isEmpty else { return }
     endLone()
     let before = selection
@@ -595,6 +600,7 @@ public final class EditorCore {
 
   /// ⌘Z: the last step taken back, its selection before it restored
   public func undo() {
+    willChange?()
     endLone()
     guard canUndo, let last = undoSteps.last else { return }
     if let id = last.link, let hook = onLinkedStep, !hook(id, true) { return }
@@ -677,6 +683,7 @@ public final class EditorCore {
 
   /// ⇧⌘Z
   public func redo() {
+    willChange?()
     endLone()
     guard canRedo, let next = redoSteps.last else { return }
     if let id = next.link, let hook = onLinkedStep, !hook(id, false) { return }

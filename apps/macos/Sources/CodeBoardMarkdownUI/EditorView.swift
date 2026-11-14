@@ -16,16 +16,28 @@ public protocol MarkdownEditorDelegate: AnyObject {
   func editor(_ e: MarkdownEditorView, open url: URL)
   /// the [[ menu's candidates for what is typed after [[ (the host's references)
   func editor(_ e: MarkdownEditorView, refCandidates query: String) -> [MarkdownRefCandidate]
+  /// the whole [[ menu for what is typed after [[ (by default the candidates above, ungrouped)
+  func editor(_ e: MarkdownEditorView, refMenu query: String) -> MarkdownRefMenu
+  /// a reference was picked from the [[ menu (the host remembers it as recent)
+  func editor(_ e: MarkdownEditorView, pickedRef r: MarkdownRefCandidate)
   /// a picture pasted or dropped into the text: the host saves it and gives the address to write, or nil to leave it out
   func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String?
   /// the / menu's Image: the host lets the user pick a picture (its bytes and file name), nil when none was picked
   func editorPicksImage(_ e: MarkdownEditorView) -> (Data, String)?
+  /// a plain click on a drawn [[reference]] that resolves (onRef): true when the host took it (its preview, or going
+  /// there), and the caret stays where it was; false makes it an ordinary click (its source opens)
+  func editor(_ e: MarkdownEditorView, activate label: String, target: String?) -> Bool
 }
 
 extension MarkdownEditorDelegate {
   public func editor(_ e: MarkdownEditorView, refCandidates query: String) -> [MarkdownRefCandidate] { [] }
+  public func editor(_ e: MarkdownEditorView, refMenu query: String) -> MarkdownRefMenu {
+    MarkdownRefMenu(local: editor(e, refCandidates: query))
+  }
+  public func editor(_ e: MarkdownEditorView, pickedRef r: MarkdownRefCandidate) {}
   public func editor(_ e: MarkdownEditorView, open url: URL) { NSWorkspace.shared.open(url) }
   public func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String? { nil }
+  public func editor(_ e: MarkdownEditorView, activate label: String, target: String?) -> Bool { false }
   /// an Open panel for pictures
   public func editorPicksImage(_ e: MarkdownEditorView) -> (Data, String)? {
     let p = NSOpenPanel()
@@ -114,7 +126,14 @@ public final class MarkdownEditorView: NSView {
   /// thread CPU at the start of the event being handled
   private var eventStart = 0.0
   private var elapsed: Double { BlockLayout.cpu() - eventStart }
-  private func begin() { if observer != nil { eventStart = BlockLayout.cpu() } }
+  private func begin() {
+    guard observer != nil else { return }
+    eventStart = BlockLayout.cpu()
+    timedEvent = NSApp.currentEvent?.timestamp
+  }
+  /// the input event the last begin() timed: a change started under another one (a host's, a timer's) is timed from its
+  /// own start instead of from that old input
+  private var timedEvent: TimeInterval?
   private func note(_ e: @autoclosure () -> EditorEvent) { if let observer { observer(e(), elapsed) } }
   private static func mods(_ e: NSEvent) -> String {
     let f = e.modifierFlags
@@ -155,6 +174,11 @@ public final class MarkdownEditorView: NSView {
     }
     typedMenu.isHidden = true
     addSubview(typedMenu)
+    typedMenu.onTake = { [weak self] item in
+      guard let self, let t = self.typedMenu.token else { return }
+      self.take(item, t)
+      self.changed()
+    }
     linkBox.onWrite = { [weak self] p, t, u in
       guard let self, let e = MarkdownEditing.writeLink(p, text: t, url: u) else { return }
       self.core.apply(e)
@@ -195,6 +219,11 @@ public final class MarkdownEditorView: NSView {
   }
 
   private func wire(_ c: EditorCore) {
+    c.willChange = { [weak self] in
+      guard let self, self.observer != nil else { return }
+      let now = NSApp.currentEvent?.timestamp
+      if now == nil || now != self.timedEvent { self.begin() }
+    }
     c.onLayout = { [weak self] in
       MainActor.assumeIsolated { self?.changed() }
     }
@@ -1099,6 +1128,7 @@ public final class MarkdownEditorView: NSView {
       typedMenu.dismissedAt != t.from, let c = core.caretRect
     else {
       if !isEditing || core.selection.head < (typedMenu.dismissedAt ?? Int.max) { typedMenu.dismissedAt = nil }
+      expandedRefGroups = []
       return typedMenu.hide()
     }
     let items: [MDMenuItem]
@@ -1106,15 +1136,50 @@ public final class MarkdownEditorView: NSView {
     case .slash: items = MarkdownEditing.slashMenu(t.query)
     case .emoji: items = MarkdownEditing.emojiMenu(t.query)
     case .ref:
-      let found = delegate?.editor(self, refCandidates: t.query) ?? []
-      refRows = [:]
-      items = found.prefix(10).enumerated().map { i, r in
-        refRows["ref\(i)"] = r
-        return MDMenuItem(title: r.title, hint: r.crumb ?? "", id: "ref\(i)")
-      }
+      items = refMenuRows(
+        delegate?.editor(self, refMenu: t.query) ?? MarkdownRefMenu(local: []), typed: !t.query.isEmpty)
     }
     let caret = CGRect(x: c.minX * zoom, y: c.minY * zoom, width: 1, height: c.height * zoom)
     typedMenu.show(items, token: t, under: caret, theme: core.layout.theme)
+  }
+
+  /// groups whose "N more" was taken: all their items listed
+  private var expandedRefGroups = Set<String>()
+
+  /// The [[ menu's rows (menu.tsx): recent when nothing is typed, the local ones (under `here` when others follow), each
+  /// other place's own row then its items, three while nothing is typed and the rest behind "N more in …"
+  private func refMenuRows(_ m: MarkdownRefMenu, typed: Bool) -> [MDMenuItem] {
+    refRows = [:]
+    var rows: [MDMenuItem] = []
+    var n = 0
+    func add(_ r: MarkdownRefCandidate, _ style: MDMenuItem.Style) {
+      let id = "ref\(n)"
+      n += 1
+      refRows[id] = r
+      rows.append(MDMenuItem(title: r.title, hint: r.crumb ?? "", id: id, style: style))
+    }
+    let others = !m.groups.isEmpty || (!typed && !m.recent.isEmpty)
+    if !typed, !m.recent.isEmpty {
+      rows.append(MDMenuItem(title: "Recent", hint: "", id: "head-recent", style: .head))
+      for r in m.recent.prefix(5) { add(r, .plain) }
+    }
+    if !m.local.isEmpty {
+      if others { rows.append(MDMenuItem(title: m.here ?? "Here", hint: "", id: "head-here", style: .head)) }
+      for r in m.local.prefix(10) { add(r, .plain) }
+    }
+    for g in m.groups {
+      let id = "ref\(n)"
+      n += 1
+      refRows[id] = g.place
+      rows.append(MDMenuItem(title: g.title, hint: g.note ?? "", id: id, style: .brow))
+      let all = typed || expandedRefGroups.contains(g.id)
+      for r in all ? g.items : Array(g.items.prefix(3)) { add(r, .child) }
+      if !all, g.items.count > 3 {
+        rows.append(
+          MDMenuItem(title: "\(g.items.count - 3) more in \(g.title)", hint: "", id: "more:" + g.id, style: .more))
+      }
+    }
+    return rows
   }
 
   /// a typed menu's row taken
@@ -1145,7 +1210,14 @@ public final class MarkdownEditorView: NSView {
           range: t.from..<q, replacement: text, selection: MDSelection(t.from + (text as NSString).length),
           undo: .command))
     case .ref:
+      // "N more": the group's other items listed in place, the menu staying
+      if item.id.hasPrefix("more:") {
+        expandedRefGroups.insert(String(item.id.dropFirst(5)))
+        showMenu()
+        return
+      }
       guard let r = refRows[item.id] else { break }
+      delegate?.editor(self, pickedRef: r)
       // a ]] the pair put in after the caret is taken in
       let ns = core.source as NSString
       let end = q + 2 <= ns.length && ns.substring(with: NSRange(location: q, length: 2)) == "]]" ? q + 2 : q
@@ -1356,6 +1428,13 @@ public final class MarkdownEditorView: NSView {
     }
     window?.makeFirstResponder(self)
     settle?.invalidate()
+    // a plain click on a drawn reference that resolves goes to the host first (session.ts / widgets.ts onRef)
+    if e.clickCount == 1, e.modifierFlags.intersection([.command, .shift, .option, .control]).isEmpty,
+      let (label, target) = resolvedRef(at: at), delegate?.editor(self, activate: label, target: target) == true
+    {
+      note(.key("click on a reference", did: "taken by the host"))
+      return
+    }
     guard isEditing else {
       // the static picture: a drag selects its text, a click without one starts editing there (the board's selected
       // card: singleSelectedBodySelectsText, clickSelectedCardEdits)
@@ -1427,6 +1506,17 @@ public final class MarkdownEditorView: NSView {
       }
     }
     changed()
+  }
+
+  /// the drawn [[reference]] under a point that resolves: its label and target
+  func resolvedRef(at p: CGPoint) -> (String, String?)? {
+    guard let r = core.layout.atom(at: p), let i = MarkdownEditing.inline(r, in: core.document),
+      case .atom(.ref(let label, let target)) = i.kind,
+      case .found = core.layout.resources.ref(label: label, target: target)
+    else { return nil }
+    // its source shown (the caret in it) is text, not the drawn reference
+    if let h = core.layout.head, r.lowerBound < h, h < r.upperBound { return nil }
+    return (label, target)
   }
 
   /// the link the caret is in, if any

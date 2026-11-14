@@ -79,3 +79,49 @@ import Testing
     #expect(!v.linkBox.isHidden && v.linkBox.frame.maxX <= v.bounds.width + 0.5, "\(v.linkBox.frame) \(v.bounds)")
   }
 }
+
+/// A plain click on a drawn [[reference]] goes to the host first; taken, the caret stays where it was (onRef)
+@MainActor @Suite struct RefActivateTests {
+  final class Host: MarkdownEditorDelegate {
+    var take = true
+    var asked: [String] = []
+    func editor(_ e: MarkdownEditorView, didChange source: String) {}
+    func editor(_ e: MarkdownEditorView, didResize size: CGSize) {}
+    func editorWantsToEnd(_ e: MarkdownEditorView) {}
+    func editorDidBegin(_ e: MarkdownEditorView) {}
+    func editor(_ e: MarkdownEditorView, activate label: String, target: String?) -> Bool {
+      asked.append(label)
+      return take
+    }
+  }
+
+  @Test func theHostTakesIt() {
+    _ = boardFonts
+    let src = "See [[Step one]] here"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 0)
+    let host = Host()
+    v.delegate = host
+    let w = NSWindow(
+      contentRect: CGRect(origin: .zero, size: l.size), styleMask: [.borderless], backing: .buffered, defer: true)
+    w.isReleasedWhenClosed = false
+    w.contentView = NSView(frame: CGRect(origin: .zero, size: l.size))
+    w.contentView!.addSubview(v)
+    let box = l.rects(forAtom: 4..<16)!
+    func click() {
+      for t in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+        let ev = NSEvent.mouseEvent(
+          with: t, location: v.convert(CGPoint(x: box.midX, y: box.midY), to: nil), modifierFlags: [], timestamp: 0,
+          windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+        if t == .leftMouseDown { v.mouseDown(with: ev) } else { v.mouseUp(with: ev) }
+      }
+    }
+    v.selection = MDSelection(0)
+    click()
+    #expect(host.asked == ["Step one"] && v.core.selection == MDSelection(0))
+    host.take = false
+    click()
+    #expect(host.asked.count == 2 && v.core.selection.head > 4 && v.core.selection.head < 16)
+    w.close()
+  }
+}

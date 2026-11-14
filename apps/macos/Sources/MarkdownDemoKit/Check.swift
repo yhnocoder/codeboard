@@ -337,6 +337,15 @@ enum Check {
         autoreleasepool { render(content, to: out.appending(path: "math-error.png")) }
         e.undo(nil)
       }
+      // the [[ menu, as the host gives it
+      if demo.vault != nil {
+        e.selection = MDSelection(word.location)
+        for ch in "[[" { e.insertText(String(ch), replacementRange: NSRange(location: NSNotFound, length: 0)) }
+        for _ in 0..<3 { frame() }
+        autoreleasepool { render(content, to: out.appending(path: "ref-menu.png")) }
+        e.undo(nil)
+        e.undo(nil)
+      }
       if link.location != NSNotFound {
         e.selection = MDSelection(link.location + 2)
         e.openLinkBoxForCheck()
