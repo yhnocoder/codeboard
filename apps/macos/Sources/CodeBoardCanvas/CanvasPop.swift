@@ -173,7 +173,7 @@ extension CanvasView {
         title = doc.board.section(id).map(\.title).flatMap { $0.isEmpty ? nil : $0 } ?? "Section"
       case .point: break
       }
-      if notes.contains(where: { !scene.sharedNotes.contains($0.id) }) { remove = "Delete Sidenotes" }
+      if !notes.isEmpty { remove = "Delete Sidenotes" }
     case .lines(let l):
       let h = shownHighlight(l, in: scene)
       let r = h ?? l.range
@@ -183,7 +183,6 @@ extension CanvasView {
     }
     var texts: [String] = []
     let shownNotes = notes.map { n -> SidenotePop.Shown.Note in
-      let fixed = scene.sharedNotes.contains(n.id)
       switch n.body {
       case .text(let t):
         texts.append(t.text)
@@ -192,10 +191,10 @@ extension CanvasView {
           SidenotePop.Shown.Ask(
             done: q.done, answers: q.answers.map { SidenotePop.Shown.Answer(id: $0.id, md: $0.text) })
         }
-        return .text(n.id.rawValue, t.text, q: q, fixed: fixed)
+        return .text(n.id.rawValue, t.text, q: q)
       case .code(let seg):
         return .code(
-          n.id.rawValue, head: Self.codeHead(seg), start: seg.firstLine, html: Self.codeHTML(seg), fixed: fixed)
+          n.id.rawValue, head: Self.codeHead(seg), start: seg.firstLine, html: Self.codeHTML(seg))
       }
     }
     return SidenotePop.Shown(

@@ -189,4 +189,60 @@ import Testing
       if width >= 1000 { #expect(abs(f.midX - width / 2) <= 1 && f.minY == 12, "centred and 12 up at \(width) pt") }
     }
   }
+
+  /// Boards "A" and "B" in a new vault, both showing shared card "s" (a Note with an image from the shared images
+  /// folder and a sidenote that travels with it)
+  func sharedVault() throws -> (Vault, BoardID, BoardID) {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appending(path: "panes-\(UUID().uuidString)")
+    let vault = Vault(root: root)
+    try fm.createDirectory(at: vault.sharedFolderURL, withIntermediateDirectories: true)
+    let s = CardID(rawValue: "s")
+    try SharedCard(
+      id: s, content: CardContent(body: .note(Note(text: "before ![](images/p.png)"))),
+      sidenotes: [Sidenote(id: SidenoteID(rawValue: "n1"), anchor: .card(s), body: .text(TextNote(text: "travels")))]
+    ).encoded().write(to: vault.sharedFolderURL.appending(path: "s.json"))
+    for name in ["A", "B"] {
+      try vault.newBoard(
+        in: "", title: name,
+        board: Board(
+          id: BoardID(rawValue: name.lowercased()),
+          cards: [Card(id: s, x: 0, y: 0, width: 200, height: 120, content: .shared)]))
+    }
+    return (vault, BoardID(rawValue: "a"), BoardID(rawValue: "b"))
+  }
+
+  @Test func aSharedCardEditedOnOneBoardShowsOnTheOtherWithItsImagesAndTravellingSidenote() async throws {
+    let (vault, a, b) = try sharedVault()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    let s = CardID(rawValue: "s")
+    let shell = Shell()
+    shell.open(vault, restoring: nil)
+    shell.apply(.success(try vault.tree()))
+    let panes = BoardPanes(shell: shell)
+    panes.frame = CGRect(x: 0, y: 0, width: 1000, height: 700)
+    shell.show(a)
+    panes.sync()
+    let tab = try #require(shell.selected)
+    let pane = try #require(panes.panes[tab])
+    await until("A shown") { pane.canvas.scene != nil && pane.canvas.shown?.board.id == a }
+    // written in on A, as the canvas writes a Note
+    let doc = try #require(panes.documents[a])
+    doc.edit("Write") { $0.write(s, text: "after ![](images/p.png)", layout: nil) }
+    doc.flush()
+    #expect(try vault.sharedCard(s).content.body == .note(Note(text: "after ![](images/p.png)")))
+    // B shows it as A left it, its image from the shared folder, the sidenote that travels with it once
+    shell.show(b)
+    panes.sync(reload: true)
+    await until("B shown") { pane.canvas.shown?.board.id == b && pane.canvas.scene != nil }
+    let scene = try #require(pane.canvas.scene)
+    #expect(scene.parts[s]?.content.body == .note(Note(text: "after ![](images/p.png)")))
+    let item = try #require(scene.items.first { $0.owner == .card(s) })
+    guard case .note(let n) = item.drawing else {
+      Issue.record("not drawn as a Note")
+      return
+    }
+    #expect(n.folder == vault.sharedFolderURL)
+    #expect(scene.notes.map(\.id.rawValue) == ["n1"])
+  }
 }

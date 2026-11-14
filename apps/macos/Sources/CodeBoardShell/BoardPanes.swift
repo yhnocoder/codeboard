@@ -172,10 +172,12 @@ import CodeBoardNotes
   private func document(_ id: BoardID) throws -> BoardDocument {
     if let doc = documents[id] { return doc }
     // ponytail: reads board.json on the main thread when a board is first opened; move off it if large boards stall
-    let doc = try BoardDocument { [weak shell] in
-      guard let shell, let vault = shell.vault, let at = shell.board(id) else { return nil }
-      return vault.url(of: at.path).appending(path: Vault.boardFileName)
-    }
+    // its shared cards are read in from the vault open now (documents go when it changes: close())
+    let doc = try BoardDocument(
+      file: { [weak shell] in
+        guard let shell, let vault = shell.vault, let at = shell.board(id) else { return nil }
+        return vault.url(of: at.path).appending(path: Vault.boardFileName)
+      }, vault: shell.vault)
     documents[id] = doc
     return doc
   }
