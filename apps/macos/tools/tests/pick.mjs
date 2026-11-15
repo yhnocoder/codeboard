@@ -3,11 +3,10 @@
 //   node apps/macos/tools/tests/pick.mjs --all              every test (the regular full run)
 //   node apps/macos/tools/tests/pick.mjs --base <git ref>   a PR: the working tree against the ref, untracked files too
 // A PR runs every target's important tests. A change to a module's sources reaches the test targets of that module and
-// of every module that depends on it: a "changed": "whole" target then runs whole, and a "changed": "files" target runs
-// each of its areas whose sources name a changed file (none for a file in its "broad"), unless more than "maxAreas" of
-// them did. A changed test file runs the suites it declares, and a "whole" target whole. A change to the sources of a
-// "heavy" module, or of a module a heavy one depends on, compiles everything again, which takes most of the job's
-// time: then every target runs only its important tests.
+// of every module that depends on it: a "changed": "whole" target then runs whole (only its important tests when the
+// change reached it only through a "heavy" module, whose rebuild already takes the job's time), and a "changed":
+// "files" target runs each of its areas whose sources name a changed file (none for a file in its "broad"), unless
+// more than "maxAreas" of them did. A changed test file runs the suites it declares, and a "whole" target whole.
 // --dry prints the selection and runs nothing. Otherwise it prints the same (and adds it to $GITHUB_STEP_SUMMARY) and
 // runs swift test --skip-build in apps/macos with it, after swift build --build-tests. Either way it first checks
 // tiers.json against Package.swift and the sources: every target and test it names must be there, once, and every
@@ -253,21 +252,6 @@ const moduleOf = (file) => {
 const sourceChanges = changed.map((file) => ({ file, module: moduleOf(file) })).filter((c) => c.module);
 const listed = (files, most = 3) =>
   files.slice(0, most).join(", ") + (files.length > most ? ` and ${files.length - most} more` : "");
-// A change to the sources of a heavy module, or of a module one is built on, compiles everything again, which takes
-// most of the job's time, so the tests it reaches are left to the regular full run
-const builtOn = (module) => (heavy.includes(module) ? module : heavy.find((h) => below(h).has(module)));
-const rebuilds = sourceChanges.filter((c) => builtOn(c.module));
-const rebuildModules = [...new Set(rebuilds.map((c) => builtOn(c.module)))].flatMap((h) => {
-  const lower = [...new Set(rebuilds.map((c) => c.module).filter((m) => m !== h && builtOn(m) === h))];
-  return [
-    ...(rebuilds.some((c) => c.module === h) ? [h] : []),
-    ...(lower.length ? [`${h} is built on ${lower.join(" and ")}`] : []),
-  ];
-});
-const rebuildWhy = rebuilds.length
-  ? `${listed(rebuilds.map((c) => c.file))} compile${rebuilds.length === 1 ? "s" : ""} everything again ` +
-    `(${rebuildModules.join("; ")}): every target runs only its important tests, and the regular full run covers the rest`
-  : "";
 
 const lines = [];
 const filters = [];
@@ -279,13 +263,22 @@ for (const t of targets) {
     expected.push({ name: t.name, count: t.tests.length });
     continue;
   }
-  const ownTests = rebuilds.length ? [] : changed.filter((f) => under(f, `Tests/${t.name}`));
-  const hits = rebuilds.length ? [] : sourceChanges.filter((c) => c.module === t.module || t.reaches.has(c.module));
+  const ownTests = changed.filter((f) => under(f, `Tests/${t.name}`));
+  const hits = sourceChanges.filter((c) => c.module === t.module || t.reaches.has(c.module));
   const why = [];
   if (ownTests.length || hits.some((c) => c.module === t.module))
     why.push(`changed: ${listed([...hits.filter((c) => c.module === t.module).map((c) => c.file), ...ownTests])}`);
-  for (const m of new Set(hits.map((c) => c.module).filter((m) => m !== t.module)))
+  const lower = [...new Set(hits.map((c) => c.module).filter((m) => m !== t.module))];
+  for (const m of lower.filter((m) => !heavy.includes(m)))
     why.push(`depends on ${m}: ${listed(hits.filter((c) => c.module === m).map((c) => c.file))}`);
+  // A heavy module's change already takes the job's time to build, so above it a whole target keeps to its
+  // important tests, unless something else it runs on changed too
+  const onlyHeavy = lower.filter((m) => heavy.includes(m));
+  const heavyWhy = onlyHeavy.map((m) => `depends on ${m}, which compiles everything again: important tests only`);
+  if (why.length)
+    why.push(
+      ...onlyHeavy.map((m) => `depends on ${m}: ${listed(hits.filter((c) => c.module === m).map((c) => c.file))}`),
+    );
   if (t.tier.important === "whole" || (t.tier.changed === "whole" && why.length)) {
     lines.push(`${t.name}: all ${t.tests.length} tests (${why.join("; ") || "important"})`);
     filters.push(wholeFilter(t.name));
@@ -337,7 +330,7 @@ for (const t of targets) {
       if (names.size) fromFiles.push(`${path.basename(file)} (${[...names].join(", ")})`);
     }
     if (fromFiles.length) reasons.push(`from changed test files: ${fromFiles.join("; ")}`);
-  }
+  } else reasons.push(...heavyWhy);
   const count = new Set([...picked.values()].flat()).size;
   lines.push(`${t.name}: ${count} of ${t.tests.length} tests`, ...reasons.map((r) => `  ${r}`));
   filters.push(...picked.keys());
@@ -350,7 +343,6 @@ const summary = [
   all
     ? `Every test: ${total}`
     : `Against ${base}: ${changed.length} files changed in apps/macos, ${filtered} of ${total} tests`,
-  ...(rebuildWhy ? [rebuildWhy] : []),
   ...lines.map((l) => `  ${l}`),
   `swift ${args.map((a) => (/^[\w./-]+$/.test(a) ? a : `'${a}'`)).join(" ")}`,
 ].join("\n");

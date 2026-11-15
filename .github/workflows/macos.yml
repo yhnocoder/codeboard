@@ -2,9 +2,10 @@ name: macOS
 # The native Mac app (apps/macos): build, unit tests and swift-format's lint. It targets the latest macOS only, so it
 # needs the image with Xcode 27 (a preview image on GitHub for now); the newest Xcode on it is selected, which is the
 # toolchain the app is developed with.
-# A PR runs two jobs, each meant to end in under 6 minutes: app (one build, the important unit tests and those of what
-# the PR changed, picked by tools/tests/pick.mjs from Tests/tiers.json, and the lint) and accept (smoke) (the acceptance
-# scenarios in smoke.txt). The regular full run (regular.yml) calls this with everything: every unit test in app and
+# A PR runs two jobs, each meant to end in under 6 minutes for an ordinary change: app (one build, the important unit
+# tests and those of what the PR changed, picked by tools/tests/pick.mjs from Tests/tiers.json, and the lint) and
+# accept (smoke) (the acceptance scenarios in smoke.txt). A PR that changes much compiles and runs more and takes
+# longer. The regular full run (regular.yml) calls this with everything: every unit test in app and
 # the whole acceptance list in two accept jobs.
 on:
   pull_request:
@@ -27,9 +28,8 @@ jobs:
   accept:
     name: accept (${{ inputs.everything && matrix.shard || 'smoke' }})
     runs-on: xcode-27
-    # as for app below: meant to end in under 6 minutes on a PR, which a slow runner without a kept build does not
-    # (6.4 minutes seen)
-    timeout-minutes: ${{ inputs.everything && 30 || 8 }}
+    # as for app below, only against a job that hangs
+    timeout-minutes: 30
     env:
       BOX_PREBUILT: "1" # the web side's host runs without box (Related by Meaning off), as the app does
     strategy:
@@ -84,10 +84,9 @@ jobs:
   app:
     name: app
     runs-on: xcode-27
-    # a PR's job is meant to end in under 6 minutes, but without a kept build (the first PRs after a change to
-    # Package.resolved) compiling everything takes up to 4.5 minutes on a slow runner, and a limit at 6 would turn that
-    # into a red PR
-    timeout-minutes: ${{ inputs.everything && 25 || 8 }}
+    # only against a job that hangs: a PR that changes much is not cut short (one that changed a module at the bottom
+    # and most above it needed about 12 minutes on a slow runner), and the full run takes about 14
+    timeout-minutes: 25
     env:
       BOX_PREBUILT: "1" # the app does not use box, so the setup leaves out Rust
     defaults:
