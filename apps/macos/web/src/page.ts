@@ -660,9 +660,20 @@ addEventListener("compositionend", (e) => {
 // the input event; CodeMirror reads the selection in between (its MutationObserver) and keeps the text selected until
 // WebKit's selectionchange. Whatever it draws before then puts that selection back, and WebKit takes a selection the
 // page sets as the end of the composition: code's colours coming back in between ended it, and the commit landed beside
-// what was composed ("n你"). Colours that come then wait for that selectionchange, and for CodeMirror to have read it
+// what was composed ("n你"). Colours that come then wait for that selectionchange, and for CodeMirror to have read it.
+// They wait too for the composition to end: a line drawn again while it goes on, even between its keys, lost WebKit's
+// composition, whose next update was written beside the old text ("nni"), with CodeMirror's own text left behind (keys
+// typed at once on a busy machine). The composing text shows uncoloured until then
 let caretDue: Promise<void> | null = null;
 let caretCame = () => {};
+let composing = false;
+const hold = () => {
+  composing = true;
+  caretDue ??= new Promise((r) => (caretCame = r));
+};
+// (WebKit sends a composition's first beforeinput before or after its compositionstart)
+addEventListener("compositionstart", hold, true);
+addEventListener("beforeinput", (e) => (e as InputEvent).inputType === "insertCompositionText" && hold(), true);
 addEventListener(
   "input",
   (e) => {
@@ -672,12 +683,19 @@ addEventListener(
   true,
 );
 const caretIn = () => {
-  if (!caretDue) return;
+  if (!caretDue || composing) return;
   caretDue = null;
   setTimeout(caretCame);
 };
 document.addEventListener("selectionchange", caretIn);
-addEventListener("compositionend", caretIn, true);
+addEventListener(
+  "compositionend",
+  () => {
+    composing = false;
+    caretIn();
+  },
+  true,
+);
 const afterCaret = async <T>(v: T) => {
   while (caretDue) await caretDue;
   return v;
