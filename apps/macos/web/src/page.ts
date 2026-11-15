@@ -29,7 +29,9 @@ import "@yhnocoder/markdown/style.css";
 import "../../../../packages/board/src/themes.css";
 import "./page.css";
 import { classifyPaste, guessLang, pythonDialect } from "../../../../packages/core/src/paste";
-import { cleanSvg, svgDataUrl } from "../../../../packages/board/src/md/images";
+import { cleanImage, cleanSvg, svgDataUrl } from "../../../../packages/board/src/md/images";
+import { imageScale } from "../../../../packages/core/src/image";
+import { NEW_CARD_W } from "../../../../packages/core/src/layout";
 import { pop } from "./pop";
 import { openRefAt, watchRefs } from "./refclick";
 import { type QData, qlist } from "./qlist";
@@ -336,9 +338,36 @@ async function pasted(text: string) {
   }
 }
 
+/** A picture file added as main's addImage adds it (board actions/create.ts): an SVG cleaned, and its card as wide as
+ * the picture shows (imageCardWidth: its pixels over a PNG's resolution, 24 to NEW_CARD_W); null for an SVG that
+ * cannot be read */
+async function added(dataUrl: string) {
+  try {
+    dataUrl = cleanImage(dataUrl);
+  } catch {
+    return null;
+  }
+  const img = new Image();
+  img.src = dataUrl;
+  await img.decode().catch(() => {});
+  let k = 1;
+  const png = /^data:image\/png;base64,/.exec(dataUrl);
+  if (png) {
+    const b64 = dataUrl.slice(png[0].length, png[0].length + 65536);
+    try {
+      k = imageScale(Uint8Array.from(atob(b64.slice(0, b64.length - (b64.length % 4))), (ch) => ch.charCodeAt(0)));
+    } catch {
+      /* not base64: 1 */
+    }
+  }
+  return { dataUrl, width: Math.max(24, Math.min(NEW_CARD_W, Math.round((img.naturalWidth || 320) / k))) };
+}
+
 window.note = {
   /** What a paste of plain text makes (pasted) */
   paste: pasted,
+  /** A picture file's cleaned data: URL and its card's width (added) */
+  added,
   /** The language Free code's text looks like, null when it cannot tell (core commands/code.ts freeLang) */
   lang(text: string) {
     const g = guessLang(text);

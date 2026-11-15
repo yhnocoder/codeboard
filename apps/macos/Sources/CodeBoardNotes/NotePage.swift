@@ -89,6 +89,18 @@ final class NotePage {
     return r
   }
 
+  /// A picture's cleaned data: URL and its card's width (page.ts added); nil for an SVG that cannot be read
+  func added(_ dataURL: String) async throws -> (dataURL: String, width: Double)? {
+    await signal.ready()
+    let r = try await view.callAsyncJavaScript(
+      "return await note.added(u)", arguments: ["u": dataURL], contentWorld: .page)
+    guard let d = r as? [String: Any] else { return nil }
+    guard let u = d["dataUrl"] as? String, let w = d["width"] as? Double else {
+      throw NoteRenderError.page("the page answered \(d)")
+    }
+    return (u, w)
+  }
+
   /// What plain text pasted on the board makes (page.ts pasted), as the page answers it
   func paste(_ text: String) async throws -> [String: Any] {
     await signal.ready()

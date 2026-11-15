@@ -348,6 +348,9 @@ public final class CanvasView: NSView {
   var cardShadow: (IOSurface, margin: CGFloat)?
   /// Where Copy writes and Paste reads; tests give their own
   package var pasteboard = NSPasteboard.general
+  /// The picture file New Image adds, asked in the open panel as a sheet on the window; tests answer it (a panel made
+  /// in the test process stops its main run loop)
+  package var pickImage: (NSWindow) async -> URL? = CanvasView.askImageFile
   /// Cards copied on another board, pasted here: the shell makes them shared cards on that board (`Board.share`) and
   /// gives the ids they have there now (old → new) and its title; nil: that board cannot take it now (they come as
   /// copies). With no cards it only gives the title
