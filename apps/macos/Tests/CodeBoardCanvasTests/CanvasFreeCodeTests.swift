@@ -280,8 +280,8 @@ private func freeBoard() -> Board {
     c.inPlace?.field.stringValue = " "
     c.endInPlace(commit: true)
     #expect(title("f") == nil)
-    // an untitled Free code card: anywhere on its head, empty
-    r.doubleClick(head("u", -40))
+    // an untitled Free code card: anywhere on its head but its buttons, empty
+    r.doubleClick(head("u", 60))
     await r.settle()
     #expect(c.inPlace?.what == .card(cid("u")) && c.inPlace?.field.stringValue == "")
     c.inPlace?.field.stringValue = "Setup"
