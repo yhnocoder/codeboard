@@ -208,6 +208,8 @@ public final class CanvasView: NSView {
   var hoveredArrow: ArrowID?
   /// The card under the pointer, which shows its ports, the code line under it and the port under it
   var hoveredCard: CardID?
+  /// The hovered Text's or Box's line (drawHoverLine)
+  var hoverLine: CALayer?
   var hoveredLine: Endpoint?
   var hoveredPort: Port?
   /// The label or title being written in place, and a written one's field until the board shows what it says
@@ -397,16 +399,15 @@ public final class CanvasView: NSView {
     ] {
       l.anchorPoint = .zero
     }
-    for l in [
-      sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers, freeMarks, chrome,
-    ] {
+    for l in [sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers, freeMarks] {
       cardLevel.addSublayer(l)
     }
     // faded as one: cards over one another do not show through each other halfway
     cardLevel.allowsGroupOpacity = true
     summaryLayer.allowsGroupOpacity = true
     summaryLayer.isHidden = true
-    for l in [cardLevel, kept, summaryLayer, shelfHome, shelfDrag] { world.addSublayer(l) }
+    // the ports and handles over Texts and Boxes too (main's .eport is over its card's face); faded with the card level
+    for l in [cardLevel, kept, chrome, summaryLayer, shelfHome, shelfDrag] { world.addSublayer(l) }
     backdrop.anchorPoint = .zero
     root.addSublayer(backdrop)
     root.addSublayer(world)
@@ -1003,8 +1004,10 @@ public final class CanvasView: NSView {
         || summaryLayer.isHidden != (s == 0)
     else { return }
     withoutAnimation {
-      cardLevel.opacity = c
-      cardLevel.isHidden = c == 0
+      for l in [cardLevel, chrome] {
+        l.opacity = c
+        l.isHidden = c == 0
+      }
       summaryLayer.opacity = s
       summaryLayer.isHidden = s == 0
     }

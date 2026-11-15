@@ -507,6 +507,7 @@ extension CanvasView {
       if let bar = barLayer() { chrome.addSublayer(bar) }
       if let chip = chipLayer() { chrome.addSublayer(chip) }
       if let acts = sectionActsLayer() { chrome.addSublayer(acts) }
+      drawHoverLine()
       drawPorts()
       drawEndHandles()
       drawConnect()
@@ -534,10 +535,9 @@ extension CanvasView {
   /// Ink Wash's seal, else the ring; `fadeIn`: it was not selected before, so it comes in as main's does. Its layers
   @discardableResult
   func selectedLook(_ id: CardID, _ r: CGRect, tilt: CGFloat, into parent: CALayer, fadeIn: Bool = false) -> [CALayer] {
-    let z = camera.zoom
     let looks: [CALayer]
     if isText(id) {
-      looks = [outline(r, box: isBox(id), tilt: tilt, zoom: z)]
+      looks = [outline(r, box: isBox(id), tilt: tilt)]
     } else if theme.id == .inkWash {
       looks = [seal(on: r, tilt: tilt)]
     } else {
@@ -708,10 +708,12 @@ extension CanvasView {
   }
 
   /// A selected Text's or Box's frame (styles.css .card.text.sel): a 1.5 point line of the accent, 2 out from a Text
-  /// (3 from a Box), round as the card's corners
-  private func outline(_ r: CGRect, box: Bool, tilt: CGFloat, zoom z: CGFloat) -> CALayer {
+  /// (3 from a Box), round as the card's corners; hovered, `w` 1 in `color`, dashed on a Text
+  private func outline(
+    _ r: CGRect, box: Bool, tilt: CGFloat, width: CGFloat = 1.5, color: CGColor? = nil, dashed: Bool = false
+  ) -> CAShapeLayer {
     let gap: CGFloat = box ? 3 : 2
-    let w = boardLine(1.5)
+    let w = boardLine(width)
     let o = r.insetBy(dx: -gap - w / 2, dy: -gap - w / 2)
     let l = CAShapeLayer()
     l.bounds = CGRect(origin: .zero, size: o.size)
@@ -719,11 +721,30 @@ extension CanvasView {
     let radius = (box ? theme.cardRadius : 5.5) + gap + w / 2
     l.path = CGPath(roundedRect: l.bounds, cornerWidth: radius, cornerHeight: radius, transform: nil)
     l.fillColor = nil
-    l.strokeColor = theme.accent
+    l.strokeColor = color ?? theme.accent
     l.lineWidth = w
+    if dashed { l.lineDashPattern = [NSNumber(value: 3 * w), NSNumber(value: 3 * w)] }
     if tilt != 0 { l.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
     l.name = "outline"
     return l
+  }
+
+  /// The Text or Box under the pointer, not selected: a dashed line of the faint ink round a Text, a line of the accent at
+  /// 45 % round a Box (styles.css .card.text:hover, .card.text.box:hover:not(.sel)), in its layer
+  func drawHoverLine() {
+    hoverLine?.removeFromSuperlayer()
+    hoverLine = nil
+    guard let id = hoveredCard, isText(id), document?.selection.contains(.card(id)) == false,
+      let i = index(of: .card(id))
+    else { return }
+    let box = items[i].box
+    let b = isBox(id)
+    let l = outline(
+      box.bounds, box: b, tilt: 0, width: 1, color: b ? theme.accent.copy(alpha: 0.45) : theme.ink3, dashed: !b)
+    l.name = "hover"
+    l.zPosition = 3
+    box.addSublayer(l)
+    hoverLine = l
   }
 
   /// A Text's or Box's handles where they are drawn (board units): a pill on each side edge for the width it wraps at,
