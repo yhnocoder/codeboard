@@ -527,7 +527,7 @@ extension CanvasView {
       let r = s.items[i].rect
       let fn = theme.syntax[.function] ?? theme.accent
       let k = theme.cardRadius
-      func ring(_ out: CGFloat, _ w: CGFloat, _ c: CGColor) {
+      @MainActor func ring(_ out: CGFloat, _ w: CGFloat, _ c: CGColor) {
         let l = CAShapeLayer()
         let d = out - w / 2
         l.path = Drawing.squircle(r.insetBy(dx: -d, dy: -d), k + d)
