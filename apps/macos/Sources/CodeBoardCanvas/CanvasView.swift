@@ -281,6 +281,8 @@ public final class CanvasView: NSView {
   package var previewing: String?
   package var shelfPictures: [String: (key: ShelfPictureKey, image: CGImage)] = [:]
   var shelfFlights: [CALayer] = []
+  /// Put back, waiting for the scene that shows it
+  var flyingOut: FlyOut?
   package var shelfHovered: String?
   let shelfHome = CALayer()
   let shelfDrag = CALayer()
