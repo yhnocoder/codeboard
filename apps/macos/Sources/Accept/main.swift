@@ -1293,6 +1293,18 @@ func strings(_ x: Any) -> [String] {
       return "frames \(r)"
     case "shot":
       Recorder.shot(name: a[1], driver: self)
+    // sel <script>: the selected text and its range where keys go, as [text, "from-to"] in JSON: a native text view's
+    // own (UTF-16 offsets); in a web view (the Note editor's page), what the runner's script reads there
+    case "sel":
+      let fr = (gKey ?? win)?.firstResponder
+      if let t = fr as? NSTextView {
+        let r = t.selectedRange()
+        let d = try? JSONSerialization.data(
+          withJSONObject: [(t.string as NSString).substring(with: r), "\(r.location)-\(r.location + r.length)"])
+        return d.map { String(decoding: $0, as: UTF8.self) } ?? "none"
+      }
+      guard let wv = fr as? WKWebView else { return "none" }
+      return (try? await wv.evaluateJavaScript(String(line.dropFirst(4)))) as? String ?? "none"
     case "js":  // a diagnostic: script in the web view that is first responder
       guard let wv = (gKey ?? win)?.firstResponder as? WKWebView else { return "first responder is no web view" }
       do {

@@ -451,6 +451,19 @@ async function geom(d, id, needSection = false, aim = false) {
   g.bottom = g.h === undefined ? undefined : g.y + g.h;
   return g;
 }
+// what sel reads in a page (one line: it goes through the drivers' FIFOs)
+const SEL = `(() => {
+  const a = document.activeElement, pm = a && a.closest && a.closest(".ProseMirror"), ed = pm && pm.editor;
+  if (ed) { const { from, to } = ed.state.selection; return JSON.stringify([ed.state.doc.textBetween(from, to, "\\n"), from + "-" + to]); }
+  if (a && typeof a.selectionStart === "number") return JSON.stringify([a.value.slice(a.selectionStart, a.selectionEnd), a.selectionStart + "-" + a.selectionEnd]);
+  const s = getSelection();
+  const editable = a && a.isContentEditable;
+  if (!s || !s.rangeCount || (s.isCollapsed && !editable)) return "none";
+  const r = s.getRangeAt(0), pre = document.createRange(), root = editable ? a : document.body;
+  pre.setStart(root, 0); pre.setEnd(r.startContainer, r.startOffset);
+  const from = pre.toString().length;
+  return JSON.stringify([s.toString(), from + "-" + (from + r.toString().length)]);
+})()`.replaceAll("\n", " ");
 async function subject(d, subj) {
   const [id, field] = subj.split(".");
   // focus: what keys go to now (the Mac's first responder, e.g. OnBoardField's NSTextView; the page's focused element)
@@ -458,6 +471,15 @@ async function subject(d, subj) {
   if (subj === "dialog") return (await d.send("dialog")) || "none";
   // row:<title>: whether the sidebar shows that board's or folder's row (shown, none)
   if (subj.startsWith("row:")) return (await d.send(`row ${subj.slice(4)}`)) === "none" ? "none" : "shown";
+  // sel, sel.text, sel.range: the selected text where keys go and its range (from-to; a caret: n-n; none): in a
+  // ProseMirror editor (a Note, on both sides the same editor) its positions, in a field its offsets, elsewhere the
+  // page selection's text offsets in the focused editable; in the Mac app's native text views their own offsets
+  if (id === "sel") {
+    const r = d.side === "web" ? await d.send(`eval ${SEL}`) : await d.send(`sel ${SEL}`);
+    if (!r.startsWith("[")) return "none";
+    const [text, range] = JSON.parse(r.replaceAll("\n", "\\n")); // JSON has no line breaks: send made them of its \\n
+    return field === "text" ? text : field === "range" ? range : `${JSON.stringify(text)} ${range}`;
+  }
   // opened: what the app asked to open outside itself so far, one per line (none); the drivers open nothing
   if (subj === "opened") return d.send("opened");
   if (subj === "focus") {
@@ -738,7 +760,8 @@ for (const file of scenarios) {
       if (!line || line.startsWith("#")) continue;
       const m = /^(mac|web):\s*(.*)$/.exec(line);
       const cmd = m ? m[2] : line;
-      const [verb, arg, op, want] = cmd.split(" ");
+      // what an expect wants is the rest of the line (a selected text has spaces)
+      const [verb, arg, op, ...rest] = cmd.split(" "), want = rest.join(" ");
       if (verb === "rec") recs.add(arg);
       if (verb === "shot") shots.add(arg);
       // shot <name> @target W H: also the board rectangle W × H (board units) from the target, cut out on each side,
