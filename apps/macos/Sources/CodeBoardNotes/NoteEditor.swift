@@ -20,6 +20,15 @@ public final class NoteEditor: NSObject {
     /// The Note's blocks when the writing began and now, as the page splits them (nil: it could not), when the text
     /// changed: what is on a block follows it
     public var blocks: (was: [String]?, now: [String]?)?
+
+    public init(
+      text: String?, layout: NoteLayout?, layoutChanged: Bool, blocks: (was: [String]?, now: [String]?)? = nil
+    ) {
+      self.text = text
+      self.layout = layout
+      self.layoutChanged = layoutChanged
+      self.blocks = blocks
+    }
   }
 
   public let view: EditorWebView

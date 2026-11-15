@@ -99,7 +99,9 @@ import Testing
       }
       w.doubleClick(p)
       await ready("the editor up") { c.editing?.ready == true }
-      let v = c.noteEditor.view
+      // the native editor for a Note, on its text (beside it the press is the canvas's), the web page's for Free code
+      let v = try #require(c.writingView)
+      if c.editing?.writer != nil { return (v, CGPoint(x: v.bounds.midX, y: v.bounds.midY)) }
       return (v, v.convert(w.at(p), from: nil))
     }
   }

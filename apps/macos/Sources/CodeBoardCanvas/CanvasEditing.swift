@@ -1111,12 +1111,19 @@ extension CanvasView {
     if spacePanDown(e) { return }
     // AppKit sends a multi-click's later presses to the view its first went to: a double-click's second press over the
     // editor its first press opened is the editor's, as in main
-    if editing != nil, let sv = noteEditor.view.superview,
-      noteEditor.view.hitTest(sv.convert(e.locationInWindow, from: nil)) != nil
+    if let w = writingView, let sv = w.superview,
+      w.hitTest(sv.convert(e.locationInWindow, from: nil)) != nil
     {
       pressToEditor = true
-      window?.makeFirstResponder(noteEditor.view)
-      return noteEditor.view.mouseDown(with: e)
+      window?.makeFirstResponder(w)
+      return w.mouseDown(with: e)
+    }
+    // on the paper of the card written in natively, off its text: below the text the caret goes to the end, beside it
+    // nothing changes; the writing goes on
+    if let ed = editing, let v = ed.writer, hitCard(camera.board(convert(e.locationInWindow, from: nil))) == ed.id {
+      if v.convert(e.locationInWindow, from: nil).y > v.bounds.maxY { v.moveToEndOfDocument(nil) }
+      window?.makeFirstResponder(v)
+      return
     }
     // a click outside the card being written in ends the writing; on it while its editor is still mounting (that second
     // press, which main's editor would have) the writing goes on
@@ -1322,7 +1329,7 @@ extension CanvasView {
   func hold(over: @escaping (CGPoint) -> Bool, act: @escaping () -> Void) { held = (over, act) }
 
   public override func mouseDragged(with e: NSEvent) {
-    if pressToEditor { return noteEditor.view.mouseDragged(with: e) }
+    if pressToEditor { return writingView?.mouseDragged(with: e) ?? () }
     if spacePanDragged(e) { return }
     if chipPressed != nil { return hoverChip(at: camera.board(convert(e.locationInWindow, from: nil))) }
     if alignPressed != nil { return hoverAlignBar(alignBarButton(at: convert(e.locationInWindow, from: nil)) ?? nil) }
@@ -1438,7 +1445,7 @@ extension CanvasView {
   public override func mouseUp(with e: NSEvent) {
     if pressToEditor {
       pressToEditor = false
-      return noteEditor.view.mouseUp(with: e)
+      return writingView?.mouseUp(with: e) ?? ()
     }
     if spacePanUp(e) { return }
     if let b = alignPressed {
@@ -2013,6 +2020,11 @@ extension CanvasView {
     // Esc closes the bar's open panel, and only that
     if alignMore, e.keyCode == 53 { return setAlignMore(false) }
     guard document != nil else { return super.keyDown(with: e) }
+    if let v = editing?.writer {
+      // the native editor is there from the first: a key that came here is its
+      window?.makeFirstResponder(v)
+      return v.keyDown(with: e)
+    }
     if editing != nil {
       // the editor is mounting: its keys wait for it, Esc among them, in the order typed
       editing?.keys.append(e)

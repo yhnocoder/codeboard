@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardNotes
 import QuartzCore
@@ -44,6 +45,13 @@ struct Editing {
   var unfolding = false
   /// The editor it writes with, kept to the end (the canvas may have left its window by then: a tab closed)
   var editor: NoteEditor?
+  /// The native editor it writes with instead (NativeWriting), what the card's Markdown was when the writing began, the
+  /// card's look, where the editor's text starts in the card (points at 100 %) and the card's stored height
+  var writer: MarkdownEditorView?
+  var was = ""
+  var look: MarkdownLooks.Card?
+  var inset = CGPoint.zero
+  var storedHeight: Double?
 }
 
 /// The card sits this far in from the web view's top left (view points), so the editor's menus have room: it places them
@@ -91,6 +99,13 @@ extension CanvasView {
     editing = Editing(doc: doc, id: id, fresh: fresh, card: card, shownZoom: camera.zoom)
     editing?.keys = keysAhead ?? []
     keysAhead = nil
+    closeRefPeek()
+    // a Note with the native editor; a Text or Box with the web page's until the native one lays them out at their
+    // own width (its next step; then the web editor's writing goes)
+    if let native = display as? NativeNotes, !card.isText {
+      if !beginNativeEditing(id, display: native, note: n, card: card, caret: caret, host: host) { editing = nil }
+      return
+    }
     let editor = noteEditor
     editing?.editor = editor
     editor.owner = self
@@ -106,7 +121,6 @@ extension CanvasView {
     editor.onRef = { [weak self] in self?.refPressed($0, inPopup: false) }
     editor.onElsewhere = { [weak self] in self?.closeRefPeek() }
     editor.view.escape = { [weak self] in self?.escapePeek() ?? false }
-    closeRefPeek()
     editor.onPicked = { group, id in
       let b = group ?? doc.board.id.rawValue
       CanvasView.recentRefs = Array(
@@ -221,6 +235,9 @@ extension CanvasView {
 
   /// The web view over the card, the card `editorMargin` in from its top left
   func positionEditor() {
+    if let ed = editing, let v = ed.writer, let i = editingIndex, let host = v.superview {
+      return positionNativeEditor(v, ed, at: i, in: host)
+    }
     guard let ed = editing, let i = editingIndex, let host = noteEditor.view.superview else { return }
     if ed.zooming && !ed.pictured { return scaleEditor() }
     let r = editingRect(scene!.items[i].rect)
@@ -293,6 +310,7 @@ extension CanvasView {
   /// shown (a picture at rest, never during the gesture), then the editor over the card's paper again
   func restAfterEditingZoom() {
     guard let ed = editing, ed.zooming, !ed.ending, editingRests == nil else { return }
+    if ed.writer != nil { return restNativeEditor() }
     editingRests = Task {
       await restEditor()
       editingRests = nil
@@ -342,7 +360,7 @@ extension CanvasView {
   static let draftEvery = Duration.seconds(2)
 
   /// Drafts what is typed every `draftEvery` while this writing goes on
-  private func keepDrafts(_ session: UUID) {
+  func keepDrafts(_ session: UUID) {
     Task { [weak self] in
       while true {
         try? await Task.sleep(for: CanvasView.draftEvery)
@@ -357,7 +375,8 @@ extension CanvasView {
   /// ends). Never a blank text: writing one deletes the card with what points at it, which only the end of the writing
   /// may do; the board keeps the last draft (or what the card had) until there is text again
   package func saveDraft() async {
-    guard let ed = editing, ed.ready, !ed.ending, let w = await noteEditor.peek(), editing?.session == ed.session,
+    guard let ed = editing, ed.ready, !ed.ending,
+      let w = ed.writer != nil ? nativeWritten(ed) : await noteEditor.peek(), editing?.session == ed.session,
       editing?.ending == false, w.text != nil || w.layoutChanged || ed.drafted
     else { return }
     let id = ed.id
@@ -404,22 +423,82 @@ extension CanvasView {
     if case .card(let c, _)? = refPeek?.at, c == ed.id { closeRefPeek() }
     let doc = ed.doc
     // a folded header comes back as the editor unfolds it (finish waits for that)
-    if ed.ready, given == nil, case .note(let n)? = editingIndex.map({ scene!.items[$0].drawing }), n.hideHead {
+    if ed.ready, given == nil, ed.writer == nil, case .note(let n)? = editingIndex.map({ scene!.items[$0].drawing }),
+      n.hideHead
+    {
       editing?.unfolding = true
       withoutAnimation { showPaper(fade: true) }
     }
     editing?.ending = true
-    let editor = noteEditor
+    // the web editor, when it is the one written with
+    let editor = ed.writer == nil ? noteEditor : nil
     // another canvas (another tab) took the editor since: it is that one's now, this one only writes what it was given
-    let mine = { editor.owner === self }
+    let mine = { editor?.owner === self }
     var written = given
-    if ed.ready, written == nil, mine() { written = await editor.finish() }
+    if ed.writer != nil {
+      // what the native editor holds now: nothing to wait for
+      written = written ?? nativeWritten(ed)
+    } else if let editor, ed.ready, written == nil, mine() {
+      written = await editor.finish()
+    }
+    // a Free code card's language follows what the text now looks like (writeFreeCode, freeLang), asked of the page first
+    var guessed: String?
+    if ed.code, let text = written?.text { guessed = try? await notes.freeLanguage(text) }
+    settle(ed, written, guessed: guessed)
+    // the card's picture under the web view before it goes
+    if doc.board != shownBoard {
+      while shownBoard != doc.board, document === doc {
+        if gesture != nil {
+          try? await Task.sleep(for: .milliseconds(16))
+          continue
+        }
+        if !pendingRefresh, refreshing == nil { refresh() }
+        await refreshing?.value
+        if shownBoard != doc.board { refresh() }
+        await Task.yield()
+      }
+    } else {
+      putBackOriginal()
+    }
+    leaveWriting(ed, editor: editor, mine: mine())
+  }
+
+  /// Nothing written changed the card: its layers as they were come back in place of its paper
+  private func putBackOriginal() {
+    guard let original = editingOriginal, let i = editingIndex else { return }
+    withoutAnimation {
+      original.box.opacity = 1
+      original.box.removeAnimation(forKey: "fold")
+      items[i].box.superlayer?.replaceSublayer(items[i].box, with: original.box)
+      items[i] = original
+      // its stickers, markers and selected look into the layer it is back in, in the same frame
+      placeMarks()
+      drawChrome()
+    }
+  }
+
+  /// Ends the writing with the native editor at once, its text on the board before this returns, with no wait for the
+  /// card's new picture: for a caller that lets the canvas go right after (its tab closing, the app quitting). False
+  /// when the writing is the web editor's, which only `endEditing` ends
+  public func endEditingNow() -> Bool {
+    guard let ed = editing, ed.writer != nil else { return editing == nil }
+    // a finishing under way has written already (nothing in it waits before that)
+    if !ed.ending {
+      editing?.ending = true
+      settle(ed, nativeWritten(ed), guessed: nil)
+    }
+    // the card's new picture comes with the next refresh; until then the paper it had
+    if ed.doc.board == shownBoard { putBackOriginal() } else { refresh() }
+    leaveWriting(ed, editor: nil, mine: false)
+    return true
+  }
+
+  /// What was written becomes one undo step, or none
+  private func settle(_ ed: Editing, _ written: NoteEditor.Written?, guessed: String?) {
+    let doc = ed.doc
     let text = written?.text
     let id = ed.id
     let note = !(ed.card.textCard != nil)
-    // a Free code card's language follows what the text now looks like (writeFreeCode, freeLang), asked of the page first
-    var guessed: String?
-    if ed.code, let text { guessed = try? await notes.freeLanguage(text) }
     if ed.code && ed.fresh {
       // a new card: written, one step with its making; left empty, gone with none (code.ts writeFreeCode, env.fresh)
       let keep = !(text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -455,30 +534,16 @@ extension CanvasView {
         if text != nil, let blocks = written?.blocks { b.rebaseBlocks(id, old: blocks.was, now: blocks.now) }
       }
     }
-    // the card's picture under the web view before it goes
-    if doc.board != shownBoard {
-      while shownBoard != doc.board, document === doc {
-        if gesture != nil {
-          try? await Task.sleep(for: .milliseconds(16))
-          continue
-        }
-        if !pendingRefresh, refreshing == nil { refresh() }
-        await refreshing?.value
-        if shownBoard != doc.board { refresh() }
-        await Task.yield()
-      }
-    } else if let original = editingOriginal, let i = editingIndex {
-      withoutAnimation {
-        original.box.opacity = 1
-        original.box.removeAnimation(forKey: "fold")
-        items[i].box.superlayer?.replaceSublayer(items[i].box, with: original.box)
-        items[i] = original
-        // its stickers, markers and selected look into the layer it is back in, in the same frame
-        placeMarks()
-        drawChrome()
-      }
-    }
-    if mine() {
+  }
+
+  /// The editor goes from over the card, the canvas takes the keys again
+  private func leaveWriting(_ ed: Editing, editor: NoteEditor?, mine: Bool) {
+    if let v = ed.writer {
+      // asked first: once it is out of the window, the window is its own first responder
+      let keys = window?.firstResponder === v || window?.firstResponder == nil
+      withoutAnimation { v.removeFromSuperview() }
+      if keys { window?.makeFirstResponder(self) }
+    } else if let editor, mine {
       withoutAnimation {
         editor.view.shown = false
         editor.view.layer?.setAffineTransform(.identity)
@@ -489,9 +554,11 @@ extension CanvasView {
       editor.view.held = nil
       editor.view.openedBy = nil
     }
+    // the writing that ends is still this one (one ended at once meanwhile leaves the canvas's next alone)
+    guard editing?.session == ed.session else { return }
     editingOriginal = nil
     editing = nil
-    if window?.firstResponder === editor.view { window?.makeFirstResponder(self) }
+    if let editor, window?.firstResponder === editor.view { window?.makeFirstResponder(self) }
     drawChrome()
   }
 
@@ -499,7 +566,7 @@ extension CanvasView {
 
   /// Stops writing without waiting (the canvas leaves its document, its tab is hidden)
   func dropEditing() {
-    guard editing != nil else { return }
+    guard editing != nil, !endEditingNow() else { return }
     Task { await endEditing() }
   }
 
@@ -632,7 +699,22 @@ extension CanvasView {
     beginEditing(id)
     while editing?.ready == false { try? await Task.sleep(for: .milliseconds(5)) }
     var picture: CGImage?
-    if let ed = editing, let size = ed.size, let s = scene,
+    if let ed = editing, let v = ed.writer, let size = ed.size, let s = scene {
+      // the native editor's own drawing, where it lies on the card, over the card's paper
+      let snap = Raster.surface(size: size, scale: scale) { ctx in
+        ctx.translateBy(x: ed.inset.x, y: ed.inset.y)
+        ctx.scaleBy(x: 1 / v.zoom, y: 1 / v.zoom)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
+        v.draw(v.bounds)
+        NSGraphicsContext.restoreGraphicsState()
+      }
+      var it = s.items[i]
+      it.rect = editingRect(it.rect)
+      picture = snap.flatMap {
+        CanvasView.compose(it, NoteSnapshot(surface: $0, size: size), scale: scale, theme: theme, images: images)
+      }.flatMap(Self.image)
+    } else if let ed = editing, let size = ed.size, let s = scene,
       let snap = await noteEditor.snapshot(size: size, k: camera.zoom),
       abs(Double(snap.surface.width) - Double(size.width * scale).rounded(.up)) <= 1
     {

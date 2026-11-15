@@ -213,12 +213,14 @@ import Testing
     #expect(w.hit(p).map { $0 === c } == true, "the canvas under it: \(String(describing: w.hit(p)))")
     w.doubleClick(p)
     await until("the editor up", in: w) { c.editing?.ready == true }
-    #expect(w.keysIn(c.noteEditor.view), "the keyboard in the editor: \(String(describing: w.window.firstResponder))")
+    // the native editor for a Note, the web page's for the rest (CanvasView.writingView)
+    let editor = try #require(c.writingView)
+    #expect(w.keysIn(editor), "the keyboard in the editor: \(String(describing: w.window.firstResponder))")
     #expect(c.editing?.id == card)
     await w.sameSizeLayout()
     #expect(c.isEditing && c.editing?.id == card, "still writing")
     #expect(
-      w.keysIn(c.noteEditor.view), "the keyboard still in the editor: \(String(describing: w.window.firstResponder))")
+      w.keysIn(editor), "the keyboard still in the editor: \(String(describing: w.window.firstResponder))")
   }
 
   /// The app quit right after the camera moved (before it came to rest long enough to be written), then opened again

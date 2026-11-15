@@ -14,6 +14,8 @@ import CodeBoardNotes
   var onVaultChanged: (() -> Void)?
   /// The Note renderer its canvases share (nil: the app's)
   private let notes: NoteRenderer?
+  /// What draws its tabs' Markdown when `notes` is given (a test's): the native component, or the web page when nil
+  private let display: (any NoteDisplay)?
   /// 摘要切换, and who writes a summary again (nil: no AI key, no ↻), for every canvas
   var summarySwitch = SummarySwitch.default {
     didSet { for p in panes.values { p.canvas.summarySwitch = summarySwitch } }
@@ -100,9 +102,10 @@ import CodeBoardNotes
     return a
   }
 
-  init(shell: Shell, notes: NoteRenderer? = nil) {
+  init(shell: Shell, notes: NoteRenderer? = nil, display: (any NoteDisplay)? = nil) {
     self.shell = shell
     self.notes = notes
+    self.display = display
     super.init(frame: .zero)
     shell.cameraNow = { [weak self] in
       guard let self, let t = self.shell.selected, let p = self.panes[t], p.document != nil else { return nil }
@@ -191,7 +194,7 @@ import CodeBoardNotes
     let live = Set(shell.tabs.map(\.id))
     for (id, pane) in panes where !live.contains(id) {
       panes[id] = nil
-      if pane.canvas.isEditing {
+      if pane.canvas.isEditing, !pane.canvas.endEditingNow() {
         pane.isHidden = true
         Task {
           await pane.canvas.endEditing()
@@ -206,7 +209,7 @@ import CodeBoardNotes
       for pane in panes.values where pane.document != nil { pane.canvas.vaultChanged() }
     }
     for tab in shell.tabs {
-      let pane = panes[tab.id] ?? Pane(notes: notes)
+      let pane = panes[tab.id] ?? Pane(notes: notes, display: display)
       if panes[tab.id] == nil {
         panes[tab.id] = pane
         pane.frame = bounds
@@ -319,7 +322,7 @@ import CodeBoardNotes
 
   /// Ends the writing in any card, what was typed written to its board (quitting)
   func endEditing() async {
-    for pane in panes.values { await pane.canvas.endEditing() }
+    for pane in panes.values where !pane.canvas.endEditingNow() { await pane.canvas.endEditing() }
   }
 
   var isEditing: Bool { panes.values.contains { $0.canvas.isEditing } }
@@ -388,8 +391,8 @@ final class Pane: NSView {
   func arriving(_ a: Arrival) { pending = a }
   private let problem = NSTextField(wrappingLabelWithString: "")
 
-  init(notes: NoteRenderer?) {
-    canvas = notes.map { CanvasView(frame: .zero, notes: $0) } ?? CanvasView()
+  init(notes: NoteRenderer?, display: (any NoteDisplay)?) {
+    canvas = notes.map { CanvasView(frame: .zero, notes: $0, display: display) } ?? CanvasView()
     super.init(frame: .zero)
     canvas.autoresizingMask = [.width, .height]
     addSubview(canvas)

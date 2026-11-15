@@ -54,6 +54,13 @@ package final class NativeNotes: NoteDisplay {
 
   /// The engines, with what they made kept on disk when there is a folder for it; made the first time a Note needs them
   private let math = Mutex<(any MathTypesetter)?>(nil)
+  /// The layout an editor of the Note starts from: the one shown, laying out what is typed with the formula engines
+  /// whether or not the Note had a formula (one may be typed)
+  func editorLayout(_ l: Laid, folder: URL, refs: [NoteRef], dark: Bool) -> BlockLayout {
+    let math = try? engines()
+    return l.layout.copy(resources: Resources(folder: folder, pictures: pictures, refs: refs, math: math, dark: dark))
+  }
+
   private func engines() throws -> any MathTypesetter {
     if let m = math.withLock({ $0 }) { return m }
     let e = try MarkdownAssets.engines()
