@@ -3,11 +3,11 @@ import CodeBoardModel
 import WebKit
 
 /// The sidenote popup: the web board's (ui/pops/notes.tsx), its markup and stylesheet, in a web view of its own over the
-/// canvas (page.html?pop), so its slips, questions and the Notes' editor in its input are the web board's. One popup at
-/// a time, kept while what it shows changes: `show` again with the same key updates it in place. The web view is the
+/// canvas (page.html?pop), so its slips, questions and the Notes' editor in its input are the web board's. One popup in
+/// each, kept while what it shows changes: `show` again with the same key updates it in place. The web view is the
 /// popup and room around it (its shadow, and the [[ list below or above it); the pointer goes through it everywhere but
 /// on the popup and the editor's menus. Its title bar is dragged natively (`onDrag`): the canvas moves the web view, the
-/// page never lays out during a drag. Made once and kept.
+/// page never lays out during a drag. Kept for the next popup once closed.
 @MainActor
 public final class SidenotePop: NSObject {
   /// What the popup shows (pop.ts PopData)
@@ -168,6 +168,7 @@ public final class SidenotePop: NSObject {
     config.userContentController.add(signal, name: "note")
     view.setValue(false, forKey: "drawsBackground")
     view.alphaValue = 0
+    if Self.offScreen { view.setValue(false, forKey: "windowOcclusionDetectionEnabled") }
     signal.pop = self
     view.grip.onDrag = { [weak self] d, ended in self?.onDrag?(d, ended) }
     var url = page.appending(path: "page.html")
@@ -177,10 +178,13 @@ public final class SidenotePop: NSObject {
 
   func ready() async { await signal.ready() }
 
-  /// Draws, and runs the page's animation frames, in a window that is off screen (tests and the review sheets)
+  /// Draws, and runs the page's animation frames, in a window that is off screen (tests and the review sheets); the
+  /// popups made after it too
   package func drawOffScreen() {
+    Self.offScreen = true
     view.setValue(false, forKey: "windowOcclusionDetectionEnabled")
   }
+  private static var offScreen = false
 
   /// The popup's top left in the web view
   public var origin: CGPoint {

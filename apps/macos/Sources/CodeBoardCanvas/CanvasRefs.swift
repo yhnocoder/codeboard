@@ -279,7 +279,7 @@ extension CanvasView {
       peek.put = CGPoint(x: o.x + m - a.ref.x, y: o.y + m - a.ref.y)
     }
     refPeek = peek
-    host.addSubview(peek, positioned: .above, relativeTo: popShown != nil ? sidenotePop.view : self)
+    host.addSubview(peek, positioned: .above, relativeTo: pops.last?.web.view ?? self)
     let theme = self.theme
     let notes = self.notes
     let images = self.images
@@ -360,9 +360,9 @@ extension CanvasView {
       let b = camera.view(CGPoint(x: card.maxX, y: r.maxY))
       return (CGRect(x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y), camera.view(r.origin))
     case .popup(let r):
-      guard popShown != nil, sidenotePop.view.superview != nil else { return nil }
-      let v = sidenotePop.view
-      let box = v.convert(CGRect(origin: sidenotePop.origin, size: sidenotePop.size), to: self)
+      guard let p = refPop, p.shown, p.web.view.superview != nil else { return nil }
+      let v = p.web.view
+      let box = v.convert(CGRect(origin: p.web.origin, size: p.web.size), to: self)
       return (box, v.convert(r, to: self).origin)
     }
   }
