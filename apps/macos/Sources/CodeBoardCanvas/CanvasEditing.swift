@@ -54,6 +54,10 @@ struct Move {
   var frames: [Int]
   var arrows: [Int]
   var d = CGVector.zero
+  /// A pointer drag's snapping (interact.ts snapMove): what it lines up with, what moves (at the start), how fast
+  var targets: [CGRect] = []
+  var box = CGRect.null
+  var pace: Snap.Pace?
 }
 
 /// A resize from one of an item's handles
@@ -494,7 +498,13 @@ extension CanvasView {
     guard let doc = document, scene != nil else {
       chrome.sublayers = nil
       litArrows.sublayers = nil
+      placeAlignBar()
       return
+    }
+    if case .move? = gesture?.kind {
+    } else {
+      snapSettle?.cancel()
+      showGuides([])
     }
     let z = camera.zoom
     let accent = theme.accent
@@ -544,6 +554,7 @@ extension CanvasView {
       if let acts = sectionActsLayer() { chrome.addSublayer(acts) }
       drawHoverLine()
       placeHeadActs()
+      placeAlignBar()
       drawPorts()
       drawConnect()
       guard doc.selection.count == 1, let item = doc.selection.first, !doc.board.isLocked(item) else { return }
@@ -927,6 +938,14 @@ extension CanvasView {
     guard gesture == nil else { return }
     if spaceHeld { return NSCursor.openHand.set() }
     hoverChip(at: camera.board(v))
+    let onBar = alignBarButton(at: v)
+    hoverAlignBar(onBar ?? nil)
+    if onBar != nil {
+      NSCursor.arrow.set()
+      hoverHead(nil)
+      hover(nil)
+      return
+    }
     if chipInside {
       NSCursor.arrow.set()
       hover(nil)
@@ -1001,6 +1020,7 @@ extension CanvasView {
   public override func mouseExited(with e: NSEvent) {
     pointerInWindow = nil
     hoverChip(at: CGPoint(x: CGFloat.infinity, y: .infinity))
+    hoverAlignBar(nil)
     hoverHead(nil)
     hoverTitle(nil, act: nil)
     hoverSummary(nil)
@@ -1016,13 +1036,36 @@ extension CanvasView {
   // MARK: Pointer
 
   public override func mouseDown(with e: NSEvent) {
+    if opening { return }
+    dropPicture()
     if spacePanDown(e) { return }
-    // a click outside the card being written in (on it, the web view takes it) ends the writing
-    if editing != nil { Task { await endEditing() } }
+    // AppKit sends a multi-click's later presses to the view its first went to: a double-click's second press over the
+    // editor its first press opened is the editor's, as in main
+    if editing != nil, let sv = noteEditor.view.superview,
+      noteEditor.view.hitTest(sv.convert(e.locationInWindow, from: nil)) != nil
+    {
+      pressToEditor = true
+      window?.makeFirstResponder(noteEditor.view)
+      return noteEditor.view.mouseDown(with: e)
+    }
+    // a click outside the card being written in ends the writing; on it while its editor is still mounting (that second
+    // press, which main's editor would have) the writing goes on
+    if let ed = editing, ed.ready || hitCard(camera.board(convert(e.locationInWindow, from: nil))) != ed.id {
+      Task { await endEditing() }
+    }
     window?.makeFirstResponder(self)
     guard let doc = document, scene != nil, gesture == nil else { return }
     let v = convert(e.locationInWindow, from: nil)
     let p = camera.board(v)
+    // the bar's buttons, acting on the release over them; a press anywhere else closes its panel
+    if let on = alignBarButton(at: v) {
+      if let b = on {
+        alignPressed = b
+        placeAlignBar()
+      }
+      return
+    }
+    if alignMore { setAlignMore(false) }
     // the chip's buttons; a press anywhere else closes it. A button acts on the release over it (main's .tbtn)
     if let on = chipButton(at: p) {
       if let b = on {
@@ -1201,8 +1244,10 @@ extension CanvasView {
   func hold(over: @escaping (CGPoint) -> Bool, act: @escaping () -> Void) { held = (over, act) }
 
   public override func mouseDragged(with e: NSEvent) {
+    if pressToEditor { return noteEditor.view.mouseDragged(with: e) }
     if spacePanDragged(e) { return }
     if chipPressed != nil { return hoverChip(at: camera.board(convert(e.locationInWindow, from: nil))) }
+    if alignPressed != nil { return hoverAlignBar(alignBarButton(at: convert(e.locationInWindow, from: nil)) ?? nil) }
     if held != nil { return }
     if let d = markDrag {
       let v = convert(e.locationInWindow, from: nil)
@@ -1240,7 +1285,7 @@ extension CanvasView {
           gesture = g
           return
         }
-        g.kind = .move(m)
+        g.kind = .move(snapping(m, from: g.startView))
       } else {
         let base = toggle ? doc.selection : []
         g.kind = .marquee(base: base)
@@ -1249,7 +1294,9 @@ extension CanvasView {
       gesture = g
       mouseDragged(with: e)
     case .move(var m):
-      m.d = CGVector(dx: p.x - g.start.x, dy: p.y - g.start.y)
+      dragMove(
+        &m, to: v, from: g, at: e.timestamp, unsnapped: !e.modifierFlags.isDisjoint(with: [.command, .control]),
+        still: false)
       g.kind = .move(m)
       gesture = g
       showMove(m)
@@ -1308,7 +1355,18 @@ extension CanvasView {
   }
 
   public override func mouseUp(with e: NSEvent) {
+    if pressToEditor {
+      pressToEditor = false
+      return noteEditor.view.mouseUp(with: e)
+    }
     if spacePanUp(e) { return }
+    if let b = alignPressed {
+      alignPressed = nil
+      let over = alignBarButton(at: convert(e.locationInWindow, from: nil)) == .some(b)
+      placeAlignBar()
+      if over { pressAlignBar(b) }
+      return
+    }
     if let b = chipPressed {
       chipPressed = nil
       if chipButton(at: camera.board(convert(e.locationInWindow, from: nil))) == .some(b) {
@@ -1416,6 +1474,85 @@ extension CanvasView {
     return Move(cards: cs, sections: secs, tops: tops, loose: loose, items: items, frames: frames, arrows: arrows)
   }
 
+  /// What a pointer drag lines up with (interact.ts startCardDrag / startSectionDrag): a card drag, every other card and
+  /// every Section frame; a Section drag, the frames but its own, those inside it and those round it, and the cards
+  /// outside it when it carries loose cards too
+  func snapping(_ m: Move, from v: CGPoint) -> Move {
+    guard let doc = document, let s = scene else { return m }
+    var m = m
+    m.pace = Snap.Pace(at: v, time: CACurrentMediaTime())
+    let loose = m.loose.compactMap { id in index(of: .card(id)).map { s.items[$0].rect } }
+    let cards: [CGRect] = s.items.compactMap { it in
+      guard case .card(let id)? = it.owner, !m.cards.contains(id) else { return nil }
+      return it.rect
+    }
+    if m.sections.isEmpty {
+      m.box = loose.reduce(CGRect.null) { $0.union($1) }
+      m.targets = cards + s.frames.map(\.rect)
+    } else {
+      var outer = Set<SectionID>()
+      for t in m.tops {
+        var q = doc.board.section(t)?.parent
+        while let id = q, outer.insert(id).inserted { q = doc.board.section(id)?.parent }
+      }
+      m.box = (s.frames.filter { m.tops.contains($0.id) }.map(\.rect) + loose).reduce(CGRect.null) { $0.union($1) }
+      m.targets =
+        s.frames.filter { !m.sections.contains($0.id) && !outer.contains($0.id) }.map(\.rect)
+        + (loose.isEmpty ? [] : cards)
+    }
+    return m
+  }
+
+  /// The move to where the pointer is, lined up with what is near when it goes slowly and ⌘ is not held (interact.ts
+  /// onMove); a pointer held still lines it up after SNAP_SETTLE
+  func dragMove(_ m: inout Move, to v: CGPoint, from g: Gesture, at t: TimeInterval, unsnapped: Bool, still: Bool) {
+    let z = camera.zoom
+    m.d = CGVector(dx: (v.x - g.startView.x) / z, dy: (v.y - g.startView.y) / z)
+    let fast = m.pace?.fast(v, at: t, still: still) ?? true
+    snapSettle?.cancel()
+    if !still {
+      snapSettle = Task { [weak self] in
+        try? await Task.sleep(for: Snap.Pace.settle)
+        guard let self, !Task.isCancelled, var g = gesture, case .move(var m) = g.kind else { return }
+        dragMove(&m, to: v, from: g, at: CACurrentMediaTime(), unsnapped: unsnapped, still: true)
+        g.kind = .move(m)
+        gesture = g
+        showMove(m)
+      }
+    }
+    var guides: [Guide] = []
+    if !unsnapped, !fast, !m.box.isNull {
+      let sn = Snap.move(m.box.offsetBy(dx: m.d.dx, dy: m.d.dy), to: m.targets, threshold: Snap.Pace.distance / z)
+      m.d.dx += sn.d.dx
+      m.d.dy += sn.d.dy
+      guides = sn.guides
+    }
+    showGuides(guides)
+  }
+
+  /// The guides, dashed lines 1 point wide in the faint ink, 8 past what lines up at either end (styles.css .guide)
+  func showGuides(_ gs: [Guide]) {
+    guard !gs.isEmpty || guideLayer.path != nil else { return }
+    let z = camera.zoom
+    let path = CGMutablePath()
+    for g in gs {
+      switch g.axis {
+      case .x:
+        path.move(to: CGPoint(x: g.at, y: g.from - 8))
+        path.addLine(to: CGPoint(x: g.at, y: g.to + 8))
+      case .y:
+        path.move(to: CGPoint(x: g.from - 8, y: g.at))
+        path.addLine(to: CGPoint(x: g.to + 8, y: g.at))
+      }
+    }
+    withoutAnimation {
+      guideLayer.path = gs.isEmpty ? nil : path
+      guideLayer.lineWidth = 1 / z
+      guideLayer.lineDashPattern = [NSNumber(value: 3 / z), NSNumber(value: 3 / z)]
+      guideLayer.strokeColor = theme.ink3.copy(alpha: 0.85)
+    }
+  }
+
   /// The moved layers where the move has them: cards and titles, frames, the arrows with an end on a moved card re-routed
   func showMove(_ m: Move) {
     guard let s = scene else { return }
@@ -1489,6 +1626,8 @@ extension CanvasView {
   /// Section in the one its title is in (board dragGroup)
   func commitMove(_ m: Move, name: String = "Move") {
     gesture = nil
+    snapSettle?.cancel()
+    showGuides([])
     land()
     let followed = Set(dragShown.keys)
     clearDrop()
@@ -1728,6 +1867,9 @@ extension CanvasView {
   // MARK: Keys
 
   public override func keyDown(with e: NSEvent) {
+    if opening { return }
+    // Esc closes the bar's open panel, and only that
+    if alignMore, e.keyCode == 53 { return setAlignMore(false) }
     guard document != nil else { return super.keyDown(with: e) }
     if editing != nil {
       // the editor is mounting: its keys wait for it, Esc among them, in the order typed

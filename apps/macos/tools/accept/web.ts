@@ -256,7 +256,17 @@ async function run(line: string): Promise<string> {
         case "zoomin": return at(box('.dock [aria-label="Zoom In"]'));
         case "fit": return at(box('.dock [aria-label="Fit to Window"]'));
         case "questions": return at(box(".dock .qlist-btn"));
+        // the bar over two or more selected cards (Canvas.tsx AlignBar) and its ⋯ panel
+        case "alignbar": return at(box(".alignbar.pill"));
+        case "newsection": return at(box('.alignbar [data-tip="Create Section"]'));
+        case "subboard": return at(box('.alignbar [data-tip^="Create Sub-board"]'));
+        case "alignmore": return at(box('.alignbar > .ib[aria-label="More"]'));
       }
+      const ops: Record<string, string> = {
+        alignleft: "Align Left", alignhcenter: "Align Centre", alignright: "Align Right", aligntop: "Align Top",
+        alignbottom: "Align Bottom", alignhdist: "Distribute Horizontally", alignvdist: "Distribute Vertically",
+      };
+      if (ops[name]) return at(box(`.alignmore.open [aria-label="${ops[name]}"]`));
       return "none";
     }, a[1]);
     // the card's words as the board shows them; the ids of the cards on it

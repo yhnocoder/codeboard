@@ -12,7 +12,8 @@ import CodeBoardModel
 //   --drag   see DragBench: drags on a copy of each board named (every board when none is), in a window never on screen
 //   --open-frames  what each frame shows while each board named opens, then while it is panned and zoomed (OpenFrames),
 //            in a window below the desktop picture that is never activated; with --note-cache <folder> the Note
-//            snapshots are kept there across runs (a relaunch with the disk cache filled)
+//            snapshots are kept there across runs (a relaunch with the disk cache filled); with --pictures <folder> the
+//            board pictures and the cameras they were taken at are kept there (the app's first board after a launch)
 //   --arrows the same drags on two boards made for it (ArrowBoards): a card with twenty arrows, a Section of twenty
 //            cards with their arrows; no vault folder
 // Note snapshots are cached in a new temporary folder, never in the app's cache: every run draws its Notes anew
@@ -127,6 +128,7 @@ final class App: NSObject, NSApplicationDelegate {
       keptNoteCache ?? FileManager.default.temporaryDirectory.appending(path: "canvasbench-notes-\(UUID().uuidString)")
     if keptNoteCache == nil { noteCache = cache }
     let canvas = CanvasView(frame: frame, noteCache: cache)
+    canvas.picturesFolder = keptPictures
     w.contentView = canvas
     w.orderFrontRegardless()
     window = w
@@ -134,11 +136,12 @@ final class App: NSObject, NSApplicationDelegate {
       let run = OpenFrames(canvas: canvas)
       for b in boards {
         do {
-          print(try await run.run(b, in: vault))
+          print(try await run.run(b, in: vault, pictures: keptPictures))
         } catch {
           FileHandle.standardError.write(Data("\(b.path): \(error)\n".utf8))
         }
       }
+      if let p = keptPictures { run.leave(pictures: p) }
       NSApp.terminate(nil)
     }
   }
@@ -159,6 +162,11 @@ let openFrames = args.contains("--open-frames")
 var keptNoteCache: URL?
 if let i = args.firstIndex(of: "--note-cache"), i + 1 < args.count {
   keptNoteCache = URL(filePath: args[i + 1])
+  args.removeSubrange(i...i + 1)
+}
+var keptPictures: URL?
+if let i = args.firstIndex(of: "--pictures"), i + 1 < args.count {
+  keptPictures = URL(filePath: args[i + 1])
   args.removeSubrange(i...i + 1)
 }
 var memory: URL?

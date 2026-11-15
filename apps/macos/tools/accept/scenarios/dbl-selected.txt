@@ -1,0 +1,11 @@
+# 已选中的 Note 上双击：第一下进入编辑，第二下落在编辑器里，编辑不结束；接着打的字写进卡里
+zoom 1
+center @cnote+150,180
+click @cnote+250,110
+wait 500
+dbl @cnote+150,62
+wait 600
+type  walrus
+key esc
+wait 900
+expect cnote.text has walrus
