@@ -52,6 +52,35 @@ import Testing
     return Array(UnsafeBufferPointer(start: ctx.data!.assumingMemoryBound(to: UInt8.self), count: w * h * 4))
   }
 
+  /// A block is found by where its Markdown is, its box is where it is laid out, and a host hears of each change that
+  /// may move it
+  @Test func aBlockIsFoundByItsSourceAndAChangeThatMovesItIsSaid() throws {
+    _ = boardFonts
+    let doc = MarkdownDocument("# Title\n\nA paragraph.\n\n- one\n- two\n\nLast.")
+    let l = BlockLayout(doc, width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    var said = 0
+    l.onChange = { said += 1 }
+    let boxes = l.blockBoxes
+    #expect(boxes.map(\.frame) == l.blockFrames && boxes.map(\.index) == [0, 1, 2, 3])
+    #expect(boxes.map(\.source) == doc.blocks.map(\.range))
+    #expect(boxes.allSatisfy { $0.firstLine > 0 && $0.firstLine <= $0.frame.height })
+    // the list's two lines: its first line is the first item's
+    #expect(boxes[2].firstLine < boxes[2].frame.height)
+    let list = (doc.source as NSString).range(of: "- two").location
+    #expect(l.blockBox(containing: list) == boxes[2])
+    // the blank line between two blocks is in neither
+    #expect(l.blockBox(containing: boxes[1].source.upperBound + 1) == nil)
+    // a line added to the paragraph: said once, and the list found where it now is, lower by the paragraph's growth
+    let at = boxes[1].source.upperBound
+    let ins = "\nand a second line"
+    let next = doc.reparse(replacing: at..<at, with: ins)
+    _ = l.update(to: next, replacing: at..<at, delta: (ins as NSString).length)
+    #expect(said == 1)
+    let grown = l.blockBoxes[1].frame.height - boxes[1].frame.height
+    let moved = try #require(l.blockBox(containing: list + (ins as NSString).length))
+    #expect(grown > 0 && moved.index == 2 && abs(moved.frame.minY - boxes[2].frame.minY - grown) < 1e-6)
+  }
+
   @Test func editByEditItIsTheWholeDocumentLaidOutAfresh() {
     _ = boardFonts
     var rng = Seeded(state: 214)

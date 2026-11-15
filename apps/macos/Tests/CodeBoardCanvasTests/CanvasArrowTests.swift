@@ -51,8 +51,8 @@ private func fire(_ m: NSMenu?, _ path: String...) {
 }
 
 @MainActor @Suite(.serialized) struct CanvasArrowTests {
-  @Test(arguments: [nil, 400] as [Double?])
-  func anArrowOnANotesBlockMeetsTheNoteAtThatBlock(height: Double?) async throws {
+  @Test(arguments: [nil, 400] as [Double?], [false, true])
+  func anArrowOnANotesBlockMeetsTheNoteAtThatBlock(height: Double?, native: Bool) async throws {
     let text = "# 调度 Scheduling\n\nRequests wait in the queue until a slot is free.\n\n- 每一步取一批\n- 再算一步\n\n结尾 the end"
     let blocks = [
       "# 调度 Scheduling", "Requests wait in the queue until a slot is free.", "- 每一步取一批\n- 再算一步", "结尾 the end",
@@ -72,13 +72,26 @@ private func fire(_ m: NSMenu?, _ path: String...) {
         Arrow(id: aid("b3"), from: Endpoint(card: cid("n2")), to: to(3)),
         Arrow(id: aid("w"), from: Endpoint(card: cid("n2")), to: Endpoint(card: cid("n1"))),
       ])
-    let r = try await Rig(board, zoom: 1)
+    let r = try await Rig(board, zoom: 1, native: native)
     defer { r.close() }
     let y = { (a: String) in r.canvas.arrowPoints(aid(a))?.end.y ?? -1 }
     let card = r.rect("n1")
     // the whole card at its header, and so the heading, which the header shows and the body does not (the board's
     // blockY: a block not drawn is met at the header); each other block lower than the one before it, inside the card
     #expect(y("w") == y("b0") && y("w") < y("b2") && y("b2") < y("b3") && y("b3") < card.maxY)
+    // drawn by the native component: at the middle of the block as the component lays it out, found there by its
+    // Markdown
+    if native {
+      let notes = try #require(r.canvas.display as? NativeNotes)
+      let l = try notes.laid(
+        .note(Note(text: text)), width: 300, folder: r.root, look: "warm-ink", dark: false, refs: [], hideHead: true)
+      let shown = l.layout.document.source as NSString
+      for (a, md) in [("b2", "- 再算一步"), ("b3", "结尾 the end")] {
+        let box = try #require(l.layout.blockBox(containing: shown.range(of: md).location))
+        let o = l.origin(in: l.size(height: height))
+        #expect(abs(y(a) - (card.minY + o.y + box.frame.midY)) < 1e-6, "\(a)")
+      }
+    }
   }
 
   @Test(arguments: [1, 0.5] as [CGFloat])

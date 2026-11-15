@@ -77,8 +77,7 @@ extension MarkdownLayout {
     return w
   }
 
-  /// How far down the first line of text reaches from the top (its line box's bottom), nil when there is no text: a
-  /// block's first line, where a mark beside the block sits (the board's BlockGeo line)
+  /// How far down the first line of text reaches from the top (its line box's bottom), nil when there is no text
   public var firstLineBottom: CGFloat? {
     var found: CGFloat?
     each { it in
@@ -107,8 +106,34 @@ extension BlockLayout {
     return nil
   }
 
-  /// Each top-level block's first line, as `MarkdownLayout.firstLineBottom` (its whole height when it has no text)
-  public var firstLines: [CGFloat] {
-    pieces.map { p in min(p.height, p.layout.firstLineBottom ?? p.height) }
+  /// Every top-level block where it is laid out, one to one with `document.blocks`
+  public var blockBoxes: [MarkdownBlockBox] {
+    zip(pieces, tops).enumerated().map { i, pt in
+      let (p, y) = pt
+      return MarkdownBlockBox(
+        index: i, source: document.blocks[i].range, frame: CGRect(x: 0, y: y, width: width, height: p.height),
+        firstLine: min(p.height, p.layout.firstLineBottom ?? p.height))
+    }
   }
+
+  /// The top-level block whose source holds `offset` (a block's source ends before the line breaks after it: an offset
+  /// between two blocks is in neither); nil when none does
+  public func blockBox(containing offset: Int) -> MarkdownBlockBox? {
+    guard let i = document.blocks.firstIndex(where: { $0.range.contains(offset) }) else { return nil }
+    return blockBoxes[i]
+  }
+}
+
+/// One top-level block of a layout, for a host that places things by it: which block, where its Markdown is and where
+/// it is laid out. Valid until the layout changes (`BlockLayout.onChange`)
+public struct MarkdownBlockBox: Sendable, Equatable {
+  /// its place among the document's top-level blocks
+  public var index: Int
+  /// its Markdown in the document's source (UTF-16 offsets), without the line breaks after it
+  public var source: Range<Int>
+  /// its box in the layout's points, from the layout's top left, as wide as the layout
+  public var frame: CGRect
+  /// how far down its first line of text reaches from the block's top (the line box's bottom); its whole height when
+  /// it has no text
+  public var firstLine: CGFloat
 }

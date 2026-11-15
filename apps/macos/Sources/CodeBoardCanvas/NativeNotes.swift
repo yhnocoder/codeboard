@@ -350,15 +350,14 @@ package final class NativeNotes: NoteDisplay {
       starts.count == l.layout.document.blocks.count + l.skipped
     else { return nil }
     let ns = l.source as NSString
-    let frames = l.layout.blockFrames
-    let lines = l.layout.firstLines
+    let boxes = l.layout.blockBoxes
     return starts.enumerated().map { i, s in
       let end = i + 1 < starts.count ? starts[i + 1] : ns.length
       let sig = BlockRef.sig(ns.substring(with: NSRange(location: s, length: end - s)))
       let k = i - l.skipped
       guard k >= 0 else { return NoteBlock(sig: sig, y: 0, h: 0, line: 0) }
-      let f = frames[k]
-      return NoteBlock(sig: sig, y: Double(o.y + f.minY), h: Double(f.height), line: Double(lines[k]))
+      let f = boxes[k].frame
+      return NoteBlock(sig: sig, y: Double(o.y + f.minY), h: Double(f.height), line: Double(boxes[k].firstLine))
     }
   }
 
