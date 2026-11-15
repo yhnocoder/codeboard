@@ -21,7 +21,7 @@ let package = Package(
     // CodeCore: the rules, on text alone; CodeUI: laying code out and drawing it
     .target(name: "CodeCore"),
     .target(name: "CodeUI", dependencies: ["CodeCore"]),
-    .target(name: "CodeBoardModel"),
+    .target(name: "CodeBoardModel", dependencies: ["CodeCore"]),
     .target(
       name: "CodeBoardSyntax",
       dependencies: [
@@ -56,7 +56,7 @@ let package = Package(
     .testTarget(name: "CodeBoardSyntaxTests", dependencies: ["CodeBoardSyntax"]),
     .testTarget(name: "CodeBoardNotesTests", dependencies: ["CodeBoardNotes"]),
     .testTarget(name: "CodeBoardCanvasTests", dependencies: ["CodeBoardCanvas"]),
-    .testTarget(name: "CodeCoreTests", dependencies: ["CodeCore"]),
+    .testTarget(name: "CodeCoreTests", dependencies: ["CodeCore"], resources: [.copy("Fixtures")]),
     .testTarget(name: "CodeUITests", dependencies: ["CodeUI"]),
     .testTarget(name: "CodeBoardShellTests", dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardNotes"]),
   ]
