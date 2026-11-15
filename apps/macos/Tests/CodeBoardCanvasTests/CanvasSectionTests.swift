@@ -270,6 +270,37 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     #expect(r.doc.selection == [.section(gid("g1"))])
   }
 
+  /// The whole title strip takes a press to drag the Section, as main's .slabel (interact.ts sectionLabelDown): the
+  /// title, the gap between the chevron and Fit Content as tall as the buttons, the grip; its buttons keep their presses. Left of the
+  /// grip (main's .dots: 8.5 to 16 right of the Section's edge) is the canvas
+  @Test func aSectionIsDraggedByAnyPartOfItsTitleStripButItsButtons() async throws {
+    let r = try await Rig(sections(), zoom: 1)
+    defer { r.close() }
+    let g = gid("g1")
+    let title = try #require(r.canvas.sectionTitle(g))
+    let x = try #require(r.doc.board.section(g)?.x)
+    r.send(r.mouse(.mouseMoved, CGPoint(x: title.midX, y: title.midY)))
+    #expect(r.canvas.actsSection == g)
+    let acts = r.canvas.actsLayout(g)
+    let fold = try #require(acts.first { $0.0 == .fold }?.1)
+    let fit = try #require(acts.first { $0.0 == .fit }?.1)
+    for p in [
+      CGPoint(x: (fold.maxX + fit.minX) / 2, y: title.midY), CGPoint(x: (fold.maxX + fit.minX) / 2, y: fit.minY + 1),
+      CGPoint(x: x + 10, y: title.midY),
+    ] {
+      #expect(r.canvas.hitSectionTitle(p) == g, "\(p)")
+    }
+    #expect(r.canvas.hitSectionTitle(CGPoint(x: x + 8, y: title.midY)) == nil, "left of the grip")
+    #expect(r.canvas.sectionAct(at: CGPoint(x: fit.midX, y: fit.midY))?.1 == .fit, "a button keeps its press")
+    // dragged from between the chevron and Fit Content
+    let m1 = r.rect("m1")
+    let grab = CGPoint(x: (fold.maxX + fit.minX) / 2, y: title.midY)
+    r.drag(grab, CGPoint(x: grab.x + 120, y: grab.y + 40))
+    await r.settle()
+    #expect(r.rect("m1").minX - m1.minX == 120 && r.rect("m1").minY - m1.minY == 40)
+    #expect(r.doc.selection == [.section(g)])
+  }
+
   /// The grip and the chevron are there before the title is hovered (only faded out: .dots, .chev2), so a press that
   /// comes with no move before it (the pointer resting there as the camera brought the Section under it) drags or
   /// folds it as one after a hover does
