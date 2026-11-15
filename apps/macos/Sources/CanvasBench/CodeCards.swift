@@ -82,11 +82,12 @@ enum CodeCards {
       // the first is a warm-up (fonts, the decode and line caches)
       for r in 0...runs {
         let t0 = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
-        _ = Picture.draw(
+        let picture = Picture.draw(
           board: board, package: package, vault: vault, theme: .warmInk, highlighter: highlighter, sizes: [:],
           rect: rect, scale: max(scale, 1), backdrop: false)
         let t = Double(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - t0) / 1e6
         if r > 0 { times.append(t) }
+        if r == 0, scale == 2, let img = picture.image { out.append("\"pixels@2\":\"\(fingerprint(img))\"") }
       }
       times.sort()
       out.append(
@@ -94,5 +95,16 @@ enum CodeCards {
       )
     }
     return "{\"cards\":\(cards)," + out.joined(separator: ",") + "}"
+  }
+
+  /// FNV-1a over the picture's pixels: the same number, the same picture
+  static func fingerprint(_ img: CGImage) -> String {
+    guard let data = img.dataProvider?.data, let p = CFDataGetBytePtr(data) else { return "none" }
+    var h: UInt64 = 0xcbf2_9ce4_8422_2325
+    for i in 0..<CFDataGetLength(data) {
+      h ^= UInt64(p[i])
+      h = h &* 0x100_0000_01b3
+    }
+    return String(h, radix: 16)
   }
 }
