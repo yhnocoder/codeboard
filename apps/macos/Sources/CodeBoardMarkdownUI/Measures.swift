@@ -34,7 +34,7 @@ extension MarkdownLayout {
   }
 
   /// Where the first character that is not white space starts: its line's left at its offset, and the top of its font's
-  /// ascent (a text range's box on the page); nil when there is no text
+  /// ascent above the baseline (a text range's box on the page); nil when there is no text
   public var firstGlyph: CGPoint? {
     var found: CGPoint?
     each { it in
@@ -48,8 +48,16 @@ extension MarkdownLayout {
           i += 1
         }
         guard i < l.range.location + l.range.length else { continue }
+        // the ascent of the font its style asks for (the page's text box: a fallback font for Chinese does not change
+        // it), not the line's, which may be a taller formula's or picture's next to it
+        let font = t.display.string.attribute(
+          NSAttributedString.Key(kCTFontAttributeName as String), at: i, effectiveRange: nil)
         var ascent: CGFloat = 0
-        _ = CTLineGetTypographicBounds(l.line, &ascent, nil, nil)
+        if let f = font, CFGetTypeID(f as CFTypeRef) == CTFontGetTypeID() {
+          ascent = CTFontGetAscent(f as! CTFont)
+        } else {
+          _ = CTLineGetTypographicBounds(l.line, &ascent, nil, nil)
+        }
         found = CGPoint(x: l.origin.x + CTLineGetOffsetForStringIndex(l.line, i, nil), y: l.origin.y - ascent)
         return
       }
