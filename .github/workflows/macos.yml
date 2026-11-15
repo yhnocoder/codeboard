@@ -27,7 +27,9 @@ jobs:
   accept:
     name: accept (${{ inputs.everything && matrix.shard || 'smoke' }})
     runs-on: xcode-27
-    timeout-minutes: ${{ inputs.everything && 30 || 6 }}
+    # as for app below: meant to end in under 6 minutes on a PR, which a slow runner without a kept build does not
+    # (6.4 minutes seen)
+    timeout-minutes: ${{ inputs.everything && 30 || 8 }}
     env:
       BOX_PREBUILT: "1" # the web side's host runs without box (Related by Meaning off), as the app does
     strategy:
@@ -82,8 +84,9 @@ jobs:
   app:
     name: app
     runs-on: xcode-27
-    # a PR's job is meant to end in under 6 minutes, but compiling takes over a minute longer on some runners than on
-    # others, and a limit at 6 would turn a slow runner into a red PR
+    # a PR's job is meant to end in under 6 minutes, but without a kept build (the first PRs after a change to
+    # Package.resolved) compiling everything takes up to 4.5 minutes on a slow runner, and a limit at 6 would turn that
+    # into a red PR
     timeout-minutes: ${{ inputs.everything && 25 || 8 }}
     env:
       BOX_PREBUILT: "1" # the app does not use box, so the setup leaves out Rust
