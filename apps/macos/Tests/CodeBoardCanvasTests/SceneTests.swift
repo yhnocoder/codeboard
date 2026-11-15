@@ -45,6 +45,18 @@ private func segment(_ id: String, path: String? = "src/engine.py", first: Int, 
     #expect(l.lineY(segment: 0, line: 9) == nil)
   }
 
+  /// A wrapped line's arrow ends meet it at the middle of all its rows, as the web board's lineY does (the middle of the
+  /// line's element)
+  @Test func aWrappedLinesMiddleIsTheMiddleOfAllItsRows() throws {
+    let s = segment("a", first: 1, ["x = 1", "y = " + String(repeating: "value + ", count: 12) + "0", "z = 3"])
+    let l = CodeLayout(CodeCard(segments: [s], wrap: true), width: 240, metrics: metrics)
+    let two = try #require(l.row(segment: 0, line: 2))
+    let three = try #require(l.row(segment: 0, line: 3))
+    #expect(three.y - two.y > 2 * two.height, "wraps to three rows or more")
+    #expect(l.lineY(segment: 0, line: 2) == (two.y + three.y) / 2)
+    #expect(l.lineY(segment: 0, line: 3) == three.y + three.height / 2)
+  }
+
   @Test func anotherFileOrFunctionIsMarked() {
     let a = segment("a", first: 1, ["x"])
     let b = segment("b", path: "src/other.py", first: 2, ["y"])

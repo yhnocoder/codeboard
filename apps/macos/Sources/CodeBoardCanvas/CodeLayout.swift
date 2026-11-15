@@ -211,11 +211,12 @@ struct CodeLayout: Equatable, Sendable {
       }
   }
 
-  /// The middle of a segment's line's first row (CodeLines.frame), when it is shown: nil when it is folded away
+  /// The middle of a segment's line, all its rows when it wraps (the web board's lineY: the line element's middle), when
+  /// it is shown: nil when it is folded away
   func lineY(segment: Int, line: Int) -> CGFloat? {
     guard segment < segmentLines.count, let f = segmentLines[segment].frame(of: line...line, width: 0), !f.folded
     else { return nil }
-    return f.first.midY
+    return f.rect.midY
   }
 
   static func path(_ s: Segment) -> String? {
