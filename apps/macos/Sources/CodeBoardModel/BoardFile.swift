@@ -72,7 +72,6 @@ extension Board {
       if case .own(let content) = card.content {
         if let p = content.problem() { return "card \(card.id.rawValue): \(p)" }
         if case .code(let code) = content.body { codeCards[card.id] = code }
-        if case .text = content.body, card.height != nil { return "card \(card.id.rawValue): a Text has no height" }
       }
     }
     let allSections = sections + shelf.flatMap(\.sections)

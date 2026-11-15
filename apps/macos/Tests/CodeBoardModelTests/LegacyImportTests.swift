@@ -147,9 +147,37 @@ private func fixtureVaultCopy() throws -> URL {
       .text(TextCard(text: "x", fontSize: 32, wrap: true)), .text(TextCard(text: "text", fontSize: 18, wrap: true)),
       .text(TextCard(text: "text")), .text(TextCard(text: "## **x**", fontSize: 37)),
     ])
-  // a Note keeps its height; a Text is as tall as its text (a Box's height went in the upgrade, the others' here)
-  #expect(board.cards.map(\.height) == [40, nil, nil, nil, nil, nil, nil, nil])
-  #expect(skipped(report, "b.json") == [.field: ["t.h", "t2.h", "m.h", "m2.h", "f.h", "f3.h"]])
+  // a Box's height (the least it was) goes in the upgrade; the others keep theirs, as main's board draws them
+  // (migrate.ts textAndBox, cards/Card.tsx)
+  #expect(board.cards.map(\.height) == [40, 40, 40, nil, 40, 40, 40, 40])
+  #expect(skipped(report, "b.json").isEmpty)
+}
+
+/// Main keeps the height a version 17 file gives a Text or a Box (an old Mark's, an old Free Text's, a Text turned into a
+/// Box since) and draws it; a library Text from a board file before 16 loses it once its content is read in
+/// (migrate.ts sharedTextHeights), one from 16 on keeps it
+@Test func aTextOrBoxKeepsTheHeightItsFileGivesIt() throws {
+  let cards: [[String: Any]] = [
+    ["id": "t", "kind": "note", "look": "text", "md": "a", "fs": 24],
+    ["id": "b", "kind": "note", "look": "box", "md": "b"],
+    ["id": "s", "kind": "shared"],
+  ]
+  let place: [String: Any] = [
+    "t": ["x": 0, "y": 0, "w": 100, "h": 80], "b": ["x": 200, "y": 0, "w": 100, "h": 120],
+    "s": ["x": 400, "y": 0, "w": 100, "h": 60],
+  ]
+  let shared: [String: Any] = [
+    "version": 17, "card": ["id": "s", "kind": "note", "look": "text", "md": "s"], "sidenotes": [Any](),
+  ]
+  // before 16 a Box's height (the least it was) goes in the upgrade too (migrate.ts textAndBox)
+  for (version, heights) in [(17, [80, 120, 60] as [Double?]), (15, [80, nil, nil])] {
+    let (vault, report, _) = try importing(
+      ["b.json": oldBoard("b", cards: cards, place: place, extra: ["version": version])], shared: ["s": shared])
+    #expect(report.failed.isEmpty)
+    let board = try vault.board(at: "Board.board")
+    #expect(board.cards.map(\.height) == heights, "version \(version)")
+    #expect(skipped(report, "b.json").isEmpty)
+  }
 }
 
 @Test func textAndBoxKeepTheirLookAtVersion17() throws {

@@ -775,12 +775,9 @@ private struct Mapper {
         section = nil
       }
       var height = try p.optDouble("h")
-      // a Text or Box is as tall as its text; before 16 a library Text kept the height its board file stored, which the
-      // extension drops once it has the card's content
-      if isText && height != nil {
-        if !(content == .shared && version < 16) { skips.add(.field, "\(cid).h") }
-        height = nil
-      }
+      // a Text or Box keeps the height its file gives it (an old Mark's or Free Text's), which main draws; a library one
+      // from a board file before 16 loses it once its content is read in (migrate.ts sharedTextHeights)
+      if isText && content == .shared && version < 16 { height = nil }
       // on the canvas mh is a height the board measured, written again whenever it is drawn; a shelved card keeps it for
       // its thumbnail
       let card = Card(
