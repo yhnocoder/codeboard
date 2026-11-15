@@ -347,8 +347,8 @@ extension Rig {
     await r.until("xy typed") { (await js("return document.body.innerText") as? String)?.contains("xy") == true }
     // a double-click in the editor now selects the word
     // straight to the editor, the view under the pointer, as the window gives it: through the window's sendEvent, this
-    // second double-click ended the test process (its main run loop returned) with no report, which a person's never
-    // does
+    // second double-click ends the test process: the window is not key and the editor takes no first mouse, so AppKit
+    // posts the press back to the event queue, and posting stops the main run loop the tests run on (TestWatch)
     for k in [1, 2] {
       v.mouseDown(with: r.mouse(.leftMouseDown, number, clicks: k))
       v.mouseUp(with: r.mouse(.leftMouseUp, number, clicks: k))
