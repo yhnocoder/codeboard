@@ -175,7 +175,8 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     #expect(try #require(c.scene?.frames.first { $0.id == g }?.rect).maxY >= r.rect("m1").maxY + 22)
     // far down: out of it, the frame back round what stays
     let now = try #require(c.scene?.frames.first { $0.id == g }?.rect)
-    let at = r.centre("m1")
+    // by its header: a drag on the body of the one card selected selects its text
+    let at = CGPoint(x: r.centre("m1").x, y: r.rect("m1").minY + 15)
     r.send(r.mouse(.leftMouseDown, at))
     for k in 1...12 {
       r.send(r.mouse(.leftMouseDragged, CGPoint(x: at.x, y: at.y + CGFloat(k) * 80)))

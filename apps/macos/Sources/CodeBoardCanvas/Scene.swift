@@ -1,3 +1,5 @@
+import CodeBoardMarkdown
+import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardNotes
 import CoreGraphics
@@ -577,6 +579,28 @@ struct Scene: Sendable {
     }
   }
 
+  /// A card's description laid out by the Markdown component in its look (.cdesc), the card's width across; nil when it
+  /// has none (or the component's fonts are not there: said once, NativeNotes.report)
+  static func desc(_ text: String?, width: CGFloat, folder: URL, theme t: Theme) -> Drawing.Desc? {
+    guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+    do {
+      try MarkdownAssets.fonts.get()
+    } catch {
+      NativeNotes.report(error)
+      return nil
+    }
+    let card = MarkdownLooks.card(.desc, look: t.id.rawValue, dark: t.dark)
+    // ponytail: pictures at web addresses in a description are not read (the folder's own images are)
+    let resources = NativeNotes.Resources(
+      folder: folder, pictures: folder, refs: [],
+      math: NativeNotes.needsEngines(text) ? try? MarkdownAssets.engines() : nil, dark: t.dark)
+    let l = BlockLayout(
+      MarkdownDocument(text), width: max(1, width - card.padding[1] - card.padding[3]), theme: card.theme, layout: nil,
+      resources: resources)
+    // its line under it (border-bottom 1)
+    return Drawing.Desc(layout: l, card: card, height: card.size(content: l.size, width: width, height: nil).height + 1)
+  }
+
   /// A card's or an inner Section's frame with the room a Section keeps around it (core SECTION_PAD)
   static func padded(_ r: CGRect) -> CGRect {
     CGRect(x: r.minX - 22, y: r.minY - 34, width: r.width + 44, height: r.height + 56)
@@ -600,8 +624,10 @@ struct Scene: Sendable {
       let named = s?.symbol?.name ?? s?.scope ?? s.flatMap(CodeLayout.path).map(file) ?? "Code"
       let title = content.title ?? (free ? "" : named)
       let path = s.flatMap { s in CodeLayout.path(s).map { "\(file($0)):\(s.firstLine)" } }
-      let top = code.framed ? t.headerHeight : 0
-      let body = c.height ?? min(layout.height, t.metrics.maxAutoHeight)
+      // a framed card's description under its header, its code below that
+      let desc = code.framed ? Scene.desc(content.description, width: c.width, folder: folder, theme: t) : nil
+      let top = code.framed ? t.headerHeight + (desc?.height ?? 0) : 0
+      let body = c.height.map { max(0, $0 - (desc?.height ?? 0)) } ?? min(layout.height, t.metrics.maxAutoHeight)
       var linked = Set<[Int]>()
       for a in board.arrows {
         for e in [a.from, a.to] where e.card == c.id && !e.lost {
@@ -624,7 +650,7 @@ struct Scene: Sendable {
               id: m.id, text: md, frame: CGRect(x: layout.gutter + i.x, y: y, width: w, height: m.height),
               folder: folder, refs: refs.refs(in: md))
           }
-        }, locked: c.locked == true)
+        }, locked: c.locked == true, desc: desc, top: top)
       return (.code(d), CGSize(width: c.width, height: top + body), (layout, top, code.segments.map(\.id)))
     case .note(let n):
       let title = content.title ?? heading(n.text)
@@ -652,10 +678,11 @@ struct Scene: Sendable {
       }
       let size = url.flatMap(DecodeCache.pixelSize)
       let h = c.height ?? size.map { c.width * $0.height / max($0.width, 1) } ?? c.width * 0.6
+      let desc = Scene.desc(content.description, width: c.width, folder: folder, theme: t)
       let pic = Drawing.Picture(
         id: c.id.rawValue, url: size == nil ? nil : url, fileSize: size ?? .zero, frame: (img.stillFrame ?? 1) - 1,
-        framed: img.framed)
-      return (.image(pic), CGSize(width: c.width, height: h), nil)
+        framed: img.framed, desc: desc)
+      return (.image(pic), CGSize(width: c.width, height: h + (desc?.height ?? 0)), nil)
     case .board(let s):
       let tree = refs.vaultTree()
       var name = content.title ?? ""

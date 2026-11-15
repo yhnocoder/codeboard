@@ -10,30 +10,37 @@ import CodeBoardMarkdown
 /// (.tbtn with .md-bubble .md-btn.md-ib): the ink at 7 % behind on hover, eased over 120 ms, 12 % and a little smaller
 /// while pressed; a pressed one (its marks are on) in the accent on --row
 @MainActor
-final class SelectionToolbar: HoverControls {
-  struct Button {
-    var id: String
+package final class SelectionToolbar: HoverControls {
+  package struct Button {
+    package var id: String
     /// the icon's name in MarkdownIcons
     var symbol: String
     var tip: String
     /// the keys, beside the name in the tip
     var kbd: String? = nil
     var on: Bool
+    package init(id: String, symbol: String, tip: String, kbd: String? = nil, on: Bool) {
+      self.id = id
+      self.symbol = symbol
+      self.tip = tip
+      self.kbd = kbd
+      self.on = on
+    }
   }
   /// a separator goes before this button (bubble.tsx: between Inline Code and Link)
   private static let separated: Set<String> = ["link"]
   private let gap: CGFloat = 7
-  private(set) var buttons: [Button] = []
-  var onPress: (String) -> Void = { _ in }
+  package private(set) var buttons: [Button] = []
+  package var onPress: (String) -> Void = { _ in }
   private(set) var theme: MarkdownTheme?
   private let size: CGFloat = 28
 
-  override var isFlipped: Bool { true }
+  package override var isFlipped: Bool { true }
 
   /// Above the selection's first line, 8 points off, flipped under its last line when above would leave the Note's
   /// visible part, shifted across to stay 6 points inside it (bubble.tsx: place "top", gap 8, flip and shift, pad 6); and
   /// never over `avoid`, where the pointer last pressed (a press on the text there must reach the text)
-  func show(
+  package func show(
     _ buttons: [Button], over line: CGRect, under last: CGRect? = nil, in bounds: CGRect, avoid: CGPoint? = nil,
     theme: MarkdownTheme
   ) {
@@ -58,7 +65,7 @@ final class SelectionToolbar: HoverControls {
     needsDisplay = true
   }
 
-  func hide() { isHidden = true }
+  package func hide() { isHidden = true }
 
   override func controls() -> [(id: String, box: CGRect, tip: String)] {
     buttons.enumerated().map { ($0.element.id, rect($0.offset), $0.element.tip) }
@@ -73,7 +80,7 @@ final class SelectionToolbar: HoverControls {
     return CGRect(x: 4 + CGFloat(i) * size + CGFloat(seps) * gap, y: 4, width: size, height: size)
   }
 
-  override func draw(_ dirtyRect: NSRect) {
+  package override func draw(_ dirtyRect: NSRect) {
     guard let theme, let ctx = NSGraphicsContext.current?.cgContext else { return }
     let box = bounds.insetBy(dx: 0.5, dy: 0.5)
     let path = CGPath(roundedRect: box, cornerWidth: 8, cornerHeight: 8, transform: nil)

@@ -696,7 +696,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     // a Note on its card, a Box on its fill, a Text on the paper
     page.fills = notes.map { n in
       switch n.style {
-      case .note, .sidenote: page.card
+      case .note, .sidenote, .desc: page.card
       case .text: nil
       case .box: n.fill.map { Self.boxFill($0, surface: surface) } ?? page.card
       }

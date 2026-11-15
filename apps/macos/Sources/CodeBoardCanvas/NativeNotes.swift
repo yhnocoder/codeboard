@@ -6,6 +6,7 @@ import CodeBoardNotes
 import CodeUI
 import Foundation
 import IOSurface
+import OSLog
 import Synchronization
 import TreeSitterHighlight
 
@@ -92,10 +93,35 @@ package final class NativeNotes: NoteDisplay {
     return ([binary, MeasuredSizes.stamp(assets.appending(path: "engines.js"))] + fonts).joined(separator: "\n")
   }()
 
+  private static let reported = Mutex(false)
+  /// Without its fonts every Note's layout fails (without engines.js every one with a formula or diagram), and the
+  /// layout's callers (drawing, writing, refs) can only skip the card: a build packaged without them showed blank Notes
+  /// that a double-click did not open, and said nothing. Said once a process, in the app's log and on stderr, with where
+  /// they were looked for (the launch's warm-up, or the first layout that fails)
+  static func report(_ error: any Error) {
+    guard
+      reported.withLock({ was in
+        defer { was = true }
+        return !was
+      })
+    else { return }
+    let said = "CodeBoard: Markdown assets missing or broken, Notes cannot be drawn or written in: \(error)"
+    Logger(subsystem: "CodeBoard", category: "assets").fault("\(said, privacy: .public)")
+    FileHandle.standardError.write(Data((said + "\n").utf8))
+  }
+
   /// The fonts, the layout code and the formula engines used once, off the main thread, so the first board does not pay
   /// for them (the app starts this as it launches)
   package static func warmUp() {
-    Task.detached(priority: .utility) { MarkdownAssets.warmUp(math: try? MarkdownAssets.engines()) }
+    Task.detached(priority: .utility) {
+      do {
+        try MarkdownAssets.fonts.get()
+        MarkdownAssets.warmUp(math: try MarkdownAssets.engines())
+      } catch {
+        report(error)
+        if (try? MarkdownAssets.fonts.get()) != nil { MarkdownAssets.warmUp(math: nil) }
+      }
+    }
     // its queries compiled meanwhile: tens of milliseconds the first Note with code, or the first board, waits for
     Task.detached(priority: .utility) { _ = NativeNotes.highlighter }
   }
@@ -295,6 +321,18 @@ package final class NativeNotes: NoteDisplay {
   func laid(
     _ note: NoteBody, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef], hideHead: Bool
   ) throws -> Laid {
+    // the only errors a layout has: its assets' (every caller skips the card; said once here)
+    do {
+      return try laidOut(note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead)
+    } catch {
+      Self.report(error)
+      throw error
+    }
+  }
+
+  private func laidOut(
+    _ note: NoteBody, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef], hideHead: Bool
+  ) throws -> Laid {
     try MarkdownAssets.fonts.get()
     // its pictures at web addresses: laid out again once one is read or fails
     let remote = remoteState(note.markdown)
@@ -448,12 +486,83 @@ package final class NativeNotes: NoteDisplay {
   ) -> CGImage? {
     guard let url = Resources.file(slot.src, in: folder, pictures: pictures) else { return nil }
     let width = slot.pixelWidth(at: scale)
-    if Resources.svg(url) {
-      guard let d = try? Data(contentsOf: url) else { return nil }
-      return MarkdownSVG.image(d, pixelWidth: width, dark: dark)
-    }
+    if Resources.svg(url) { return svgs.image(url, width: width, least: slot.pixelWidth(at: 4), dark: dark) }
     guard let size = DecodeCache.pixelSize(url) else { return nil }
     return images.image(url, frame: max(0, (slot.stillFrame ?? 1) - 1), width: width, fileSize: size).image
+  }
+
+  static let svgs = SVGPictures()
+
+  /// SVG pictures in Notes, each drawn once and scaled down for every smaller width asked: the system's SVG renderer
+  /// takes about as long at any size, a few hundred ms for a detailed file, and a Note in view asks for three at once
+  /// (its picture at the zoom, the next zoom-in's and its overview). Drawn at least as wide as 400 % needs, so the
+  /// levels of 100 % and 200 % on a 2x screen come from one drawing; a wider ask draws it again. One drawing of a file
+  /// is made at a time (the others wait for it); kept by file, its time stamp and the appearance, the least recently
+  /// used going past `budget` bytes
+  final class SVGPictures: @unchecked Sendable {
+    struct Key: Hashable {
+      let path: String
+      let stamp: Date?
+      let dark: Bool
+    }
+    private var store: [Key: (image: CGImage, used: UInt64)] = [:]
+    private var making: Set<Key> = []
+    private var clock: UInt64 = 0
+    private let cond = NSCondition()
+    let budget: Int
+    /// Drawings made (tests)
+    private(set) var drawings = 0
+
+    init(budget: Int = 96 << 20) { self.budget = budget }
+
+    func image(_ url: URL, width: Int, least: Int, dark: Bool) -> CGImage? {
+      let stamp = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+      let key = Key(path: url.path(percentEncoded: false), stamp: stamp, dark: dark)
+      // MarkdownSVG draws at most 4096 pixels a side
+      let wanted = min(width, 4096)
+      cond.lock()
+      while making.contains(key) { cond.wait() }
+      if let kept = store[key], kept.image.width >= wanted {
+        clock += 1
+        store[key]?.used = clock
+        cond.unlock()
+        return Self.scaled(kept.image, width: wanted)
+      }
+      making.insert(key)
+      drawings += 1
+      cond.unlock()
+      let drawn = (try? Data(contentsOf: url)).flatMap {
+        MarkdownSVG.image($0, pixelWidth: max(width, least), dark: dark)
+      }
+      cond.lock()
+      making.remove(key)
+      cond.broadcast()
+      if let drawn {
+        clock += 1
+        store[key] = (drawn, clock)
+        var bytes = store.values.reduce(0) { $0 + $1.image.bytesPerRow * $1.image.height }
+        for (k, v) in store.sorted(by: { $0.value.used < $1.value.used }) where bytes > budget && k != key {
+          store[k] = nil
+          bytes -= v.image.bytesPerRow * v.image.height
+        }
+      }
+      cond.unlock()
+      return drawn.flatMap { Self.scaled($0, width: wanted) }
+    }
+
+    /// `image` `width` pixels wide, its height in proportion
+    static func scaled(_ image: CGImage, width: Int) -> CGImage? {
+      guard image.width != width else { return image }
+      let h = max(1, Int((CGFloat(width) * CGFloat(image.height) / CGFloat(image.width)).rounded()))
+      guard
+        let ctx = CGContext(
+          data: nil, width: width, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+          space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+      else { return nil }
+      ctx.interpolationQuality = .high
+      ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: h))
+      return ctx.makeImage()
+    }
   }
 
   /// What the component asks of the board while it lays a piece of Markdown out

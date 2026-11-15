@@ -423,7 +423,10 @@ extension CanvasView {
   }
 
   /// Stops writing without waiting (the canvas leaves its document, its tab is hidden)
-  func dropEditing() { endEditingNow() }
+  func dropEditing() {
+    endDesc()
+    endEditingNow()
+  }
 
   /// A double-click writes in a Note, Text or Box, the caret where it was; on the canvas it makes a Text there
   /// (Canvas.tsx: its first line under the pointer)

@@ -33,6 +33,13 @@ extension MarkdownLayout {
     return out
   }
 
+  /// The task items' checkboxes, in the order of their tasks in the source (SourceOps.toggleTask's nth)
+  public var taskBoxes: [CGRect] {
+    var out: [CGRect] = []
+    each { it in if case .checkbox(let r, _, _) = it { out.append(r) } }
+    return out
+  }
+
   /// Where the first character that is not white space starts: its line's left at its offset, and the top of its font's
   /// ascent above the baseline (a text range's box on the page); nil when there is no text
   public var firstGlyph: CGPoint? {
@@ -97,6 +104,15 @@ extension BlockLayout {
         return r
       }
     }
+  }
+
+  public var taskBoxes: [CGRect] {
+    zip(pieces, tops).flatMap { p, y in p.layout.taskBoxes.map { $0.offsetBy(dx: 0, dy: y) } }
+  }
+
+  /// The nth task whose checkbox is at a point (a press's slop round it, as the drawn picture's hit)
+  public func task(at p: CGPoint) -> Int? {
+    taskBoxes.firstIndex { $0.insetBy(dx: -3, dy: -3).contains(p) }
   }
 
   public var firstGlyph: CGPoint? {

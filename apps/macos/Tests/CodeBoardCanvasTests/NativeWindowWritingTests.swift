@@ -221,6 +221,14 @@ import Testing
     await r.until("writing") { r.canvas.editing?.writer != nil }
     let v = try writer(r)
     #expect(try titleInk() < atRest / 10, "the paper's header folded: no title on it")
+    // the selected card's header strip over it: its buttons only (M↓ and ···), no title drawn again (.chead.fold > .ib)
+    let head = try #require(r.canvas.head(cid("n1")))
+    #expect(head.folded && head.buttons.map(\.0) == [.source, .more])
+    let shown = try #require(r.canvas.headShown[cid("n1")]?.layer.contents, "the strip shows")
+    let strip = shown as! CGImage
+    let dots = try #require(head.buttons.first?.1)
+    let k = CGFloat(strip.width) / r.rect("n1").width
+    #expect(ink(strip, rows: 0..<Int(header * k), columns: 0..<Int(dots.minX * k)) == 0, "no title on the strip")
     #expect(v.source.hasPrefix("# Why words"), "the heading is the editor's")
     let heading = try #require(v.core.layout.blockFrames.first)
     let top = r.canvas.convert(v.convert(CGPoint(x: 0, y: heading.minY * v.zoom), to: nil), from: nil).y
@@ -233,7 +241,7 @@ import Testing
   }
 
   /// Dark pixels in these rows of a picture
-  func ink(_ img: CGImage, rows: Range<Int>) -> Int {
+  func ink(_ img: CGImage, rows: Range<Int>, columns: Range<Int>? = nil) -> Int {
     let (w, h) = (img.width, img.height)
     var px = [UInt8](repeating: 0, count: w * h * 4)
     px.withUnsafeMutableBytes { buf in
@@ -244,7 +252,7 @@ import Testing
     }
     var n = 0
     for y in rows.clamped(to: 0..<h) {
-      for x in 0..<w {
+      for x in (columns ?? 0..<w).clamped(to: 0..<w) {
         let i = (y * w + x) * 4
         if px[i + 3] > 200 && Int(px[i]) + Int(px[i + 1]) + Int(px[i + 2]) < 300 { n += 1 }
       }

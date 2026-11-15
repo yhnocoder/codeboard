@@ -254,13 +254,22 @@
           "sources": ["CodeBoardCanvas/CanvasWheel.swift"],
           "tests": ["CanvasWheelTests"]
         },
+        "text at rest": {
+          "sources": ["CodeBoardCanvas/CanvasRestText.swift"],
+          "tests": ["CanvasRestTextTests"]
+        },
+        "descriptions": {
+          "sources": ["CodeBoardCanvas/CanvasDesc.swift"],
+          "tests": ["CanvasDescTests"]
+        },
         "refs": {
           "sources": ["CodeBoardCanvas/CanvasRefs.swift", "CodeBoardCanvas/Refs.swift", "CodeBoardNotes/NoteRef.swift"],
           "tests": [
             "CanvasWritingTests/RefClicks",
             "CanvasSidenoteTests/RefClicksInPopup",
             "RefTests",
-            "CanvasWritingTests/doubleBracketListsTheCardsAndWritesThePickWithItsID"
+            "CanvasWritingTests/doubleBracketListsTheCardsAndWritesThePickWithItsID",
+            "CanvasTaskTests"
           ]
         },
         "shelf": {
@@ -307,7 +316,7 @@
         },
         "card headers": {
           "sources": ["CodeBoardCanvas/CanvasHeadActs.swift", "CodeBoardModel/HeadingSplit.swift"],
-          "tests": ["CanvasHeadActsTests", "CanvasHeadingTests"]
+          "tests": ["CanvasHeadActsTests", "CanvasHeadingTests", "CanvasSourceTests"]
         },
         "camera": {
           "sources": [
@@ -385,6 +394,7 @@
           "tests": [
             "NativeNotesTests",
             "NativeNotesKeptTests",
+            "NativeSVGPicturesTests",
             "NativeCanvasTests",
             "CanvasArrowTests/anArrowOnANotesBlockMeetsTheNoteAtThatBlock"
           ]

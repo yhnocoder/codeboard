@@ -114,6 +114,59 @@ import Testing
     let header = v.core.rects(for: 10..<11).first!
     #expect(v.band.bandFrame.maxY <= header.minY)
   }
+
+  /// The band and its table read as one shape (.md-band-table): the band's sides on the table's frame lines, its bottom
+  /// on the table's top, and the corner squares carrying the frame on past the rounded corners they cover, at 1x and
+  /// 2x and at zooms between. The table's frame is found in the editor's own picture, without its band
+  @Test(arguments: [(1, 1), (1, 2), (1.5, 1), (1.5, 2), (2, 2), (0.75, 2)] as [(CGFloat, CGFloat)])
+  func theBandsSidesRunOnTheTablesFrame(_ zoom: CGFloat, _ scale: CGFloat) throws {
+    _ = boardFonts
+    let src = "Before\n\n| a | b |\n|---|---|\n| 1 | 2 |"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 2)
+    v.zoom = zoom
+    v.selection = MDSelection(30)
+    let band = v.band.bandFrame
+    #expect(v.band.shown && v.band.table != nil)
+    // the editor drawn with its band hidden, `scale` device pixels a point
+    v.band.isHidden = true
+    let rep = try #require(
+      NSBitmapImageRep(
+        bitmapDataPlanes: nil, pixelsWide: Int(v.bounds.width * scale), pixelsHigh: Int(v.bounds.height * scale),
+        bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+        bytesPerRow: 0, bitsPerPixel: 0))
+    rep.size = v.bounds.size
+    v.cacheDisplay(in: v.bounds, to: rep)
+    v.band.isHidden = false
+    // along the header row, under the table's rounded corners: the outermost columns drawn are the frame's sides
+    let y = Int((band.maxY + 12 * zoom) * scale)
+    // the paper: past the table, at the Note's right edge
+    let paper = rep.colorAt(x: rep.pixelsWide - 1, y: y)!
+    let drawn = (0..<rep.pixelsWide).filter { x in
+      let c = rep.colorAt(x: x, y: y)!
+      return abs(c.redComponent - paper.redComponent) + abs(c.alphaComponent - paper.alphaComponent) > 0.02
+    }
+    let left = try #require(drawn.first)
+    let right = try #require(drawn.last)
+    #expect(
+      left == Int((band.minX * scale).rounded(.down)), "the band's left side at \(band.minX), the table's \(left)")
+    #expect(
+      right == Int((band.maxX * scale).rounded(.up)) - 1, "the band's right side at \(band.maxX), the table's \(right)")
+    // the table's top: the first row drawn down its middle, from just above it (the paragraph's text is higher)
+    let top = (Int((band.maxY - 2 * zoom) * scale)..<rep.pixelsHigh).first { yy in
+      let c = rep.colorAt(x: (left + right) / 2, y: yy)!
+      return abs(c.redComponent - paper.redComponent) + abs(c.alphaComponent - paper.alphaComponent) > 0.02
+    }
+    #expect(
+      top == Int((band.maxY * scale).rounded(.down)), "the band's bottom at \(band.maxY), the table's top \(top!)")
+    // the corner squares: the frame's top and outer side on each, the side down to where the table's own straight side
+    // begins (its 6 pt corner)
+    let edges = v.band.cornerEdges
+    try #require(edges.count == 2)
+    let half = zoom / 2
+    #expect(edges[0].minX == band.minX + half && edges[1].maxX == band.maxX - half)
+    #expect(edges.allSatisfy { $0.minY == band.maxY + half && $0.maxY == band.maxY + 6 * zoom })
+  }
 }
 
 @Suite struct TableMoveTests {

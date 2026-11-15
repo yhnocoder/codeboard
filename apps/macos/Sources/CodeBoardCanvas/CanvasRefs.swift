@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardMarkdown
 import CodeBoardModel
 import CodeBoardNotes
 import SwiftUI
@@ -25,6 +26,39 @@ extension CanvasView {
     let local = CGPoint(x: p.x - placed.rect.minX, y: p.y - placed.rect.minY)
     guard let b = placed.refs.first(where: { $0.rect.insetBy(dx: -1, dy: -1).contains(local) }) else { return nil }
     return (c, b)
+  }
+
+  // MARK: Task checkboxes at rest (view.ts mdClick, toggleTask; Editable.tsx onToggle)
+
+  /// A Note's, Text's or Box's task boxes on the board, in the order of their tasks in its source; none on a card
+  /// being written in, locked, or not of its own text
+  func taskBoxes(_ c: CardID) -> [CGRect] {
+    guard editing?.id != c, let doc = document, isWriting(c), !doc.board.isLocked(.card(c)),
+      let i = index(of: .card(c)), case .note(let n) = scene!.items[i].drawing, n.content.markdown.contains("["),
+      let card = doc.board.card(c),
+      let l = try? display.laid(
+        n.content, width: card.width, folder: n.folder, look: theme.id.rawValue, dark: theme.dark, refs: n.refs,
+        hideHead: n.hideHead)
+    else { return [] }
+    let r = scene!.items[i].rect
+    let o = l.origin(in: l.size(height: n.height.map { Double($0) }))
+    return l.layout.taskBoxes.map { $0.offsetBy(dx: r.minX + o.x, dy: r.minY + o.y) }
+  }
+
+  /// The task whose box is under a board point (with a press's slop round it, as in the editor)
+  func taskAt(_ p: CGPoint) -> (card: CardID, nth: Int)? {
+    guard let c = hitCard(p) else { return nil }
+    return taskBoxes(c).firstIndex { $0.insetBy(dx: -3, dy: -3).contains(p) }.map { (c, $0) }
+  }
+
+  /// Checks or unchecks a task on a card at rest: its text written as one step, as writing in it would
+  func toggleTask(_ t: (card: CardID, nth: Int)) {
+    guard let doc = document, let card = doc.board.card(t.card), let text = card.writing,
+      let next = MarkdownSourceOps.toggleTask(text, nth: t.nth)
+    else { return }
+    doc.edit(card.textCard == nil ? "Edit Note" : "Edit Text") {
+      $0.write(t.card, text: next, layout: CanvasView.layout(of: card))
+    }
   }
 
   func boardRect(_ box: NoteRefBox, on c: CardID) -> CGRect {

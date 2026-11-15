@@ -385,12 +385,12 @@ actor RigTurns {
     let contents = layer.held.contents as AnyObject?
     let breaks = r.breaks
     var arrowPath: CGPath?
-    // n2 lies over n1's middle
-    let n1 = CGPoint(x: 40, y: 40)
+    // n2 lies over n1's middle; n1 by its header (a drag on the body of the one card selected selects its text)
+    let n1 = CGPoint(x: 40, y: 15)
     r.click(n1)
     // n1 into the Section: its arrow follows during the drag
     let arrowBefore = (r.canvas.arrowGroups[0].first as? CAShapeLayer)?.path
-    r.drag(n1, CGPoint(x: 100, y: 540)) {
+    r.drag(n1, CGPoint(x: 100, y: 515)) {
       arrowPath = (r.canvas.arrowGroups[0].first as? CAShapeLayer)?.path
     }
     #expect(arrowPath != nil && arrowPath != arrowBefore)

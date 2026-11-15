@@ -231,6 +231,11 @@ public final class MarkdownEditorView: NSView {
     addSubview(preview)
     hints.isHidden = true
     addSubview(hints)
+    hints.onTake = { [weak self] i in
+      guard let self, let t = self.hints.token, i < self.hints.items.count else { return }
+      self.core.insertMathCommand(self.hints.items[i], from: t.from)
+      self.changed()
+    }
     toolbar.isHidden = true
     addSubview(toolbar)
     toolbar.onPress = { [weak self] id in self?.toolbarPress(id) }
@@ -952,6 +957,14 @@ public final class MarkdownEditorView: NSView {
   /// the table actions the band had no room for: they go in its ⋯ menu
   private var tableOverflow: [String] = []
 
+  /// What a band over the block at `at` covers: the top-level block before the one holding it (band.ts data-over)
+  private func above(_ at: Int) -> CodeBand.Above {
+    let blocks = core.document.blocks
+    guard let i = blocks.firstIndex(where: { $0.range.upperBound >= at }), i > 0 else { return .none }
+    if case .code = blocks[i - 1].kind { return .code }
+    return .text
+  }
+
   private func showBand() {
     let m = core.layout.theme.metrics
     if let b = bandBlock {
@@ -971,7 +984,7 @@ public final class MarkdownEditorView: NSView {
         (b.language?.isEmpty ?? true) ? "Plain text" : (codeLanguages.first { $0.0 == b.language }?.1 ?? b.language!)
       band.place(
         over: CGRect(x: frame.minX * zoom, y: top * zoom, width: frame.width * zoom, height: 1),
-        key: "code \(b.range.lowerBound)", zoom: zoom, theme: core.layout.theme,
+        above: above(b.range.lowerBound), key: "code \(b.range.lowerBound)", zoom: zoom, theme: core.layout.theme,
         parts: [
           .init(id: "language", kind: .language(name), tip: "Language"),
           .init(id: "copy", kind: .icon("copy"), tip: "Copy code"),
@@ -991,25 +1004,24 @@ public final class MarkdownEditorView: NSView {
         at == core.selection.head && t.column < t.table.align.count ? t.table.align[t.column] : .none
       let rows = t.table.rows.count
       let cols = t.table.rows.first?.count ?? 0
-      // over the part of the table the Note shows: a table wider than the Note scrolls, its band does not run off
-      let shownX = max(0, g.box.minX)
-      let shownW = max(0, min(g.box.maxX, core.layout.width) - shownX)
-      // as many actions as that width holds, the most used first; the rest in ⋯
-      let room = shownW - (8 + 7 + 8 + 27) - (6 + 14 + 6 + 8 + 40)
-      var keep = Set<String>()
-      var used: CGFloat = 0
-      for id in Self.tableKeep {
-        let groupGap: CGFloat = keep.isEmpty ? 0 : 6
-        guard used + 27 + groupGap <= room else { break }
-        keep.insert(id)
-        used +=
-          27
-          + (Self.tableActs.firstIndex { $0.contains { $0.id == id } }.map { gi in
-            Self.tableActs[gi].contains { keep.contains($0.id) && $0.id != id } ? 0 : groupGap
-          } ?? 0)
-      }
+      // over the table's frame (tableview.ts: the table's border box), its cells' box and the 1 pt frame around them
+      // (Layout.table), so the band's sides run on the table's; over the part of it the editor shows: a table wider
+      // than the editor scrolls, its band does not run off
+      let outer = g.box.insetBy(dx: -1, dy: -1)
+      let shownX = max(0, outer.minX)
+      let shownW = max(0, min(outer.maxX, core.layout.width) - shownX)
+      // as many actions as that width holds, the most used first; the rest in ⋯ (tableview.ts fit: the row's padding,
+      // the size, the spacer, a group gap and ⋯ fixed, two group gaps spared)
+      let size = "\(rows)×\(cols)"
+      let sizeW =
+        6 + 14 + 6
+        + (size as NSString).size(withAttributes: [.font: CodeBand.font(core.layout.theme, size: 12, tabular: true)])
+        .width + 8
+      let fixed = 15 + sizeW + 8 + 6 + 27
+      let n = Int(((shownW - fixed - 2 * 6) / 27).rounded(.down))
+      let keep = Set(Self.tableKeep.prefix(max(0, n)))
       tableOverflow = Self.tableActs.flatMap { $0 }.map(\.id).filter { !keep.contains($0) }
-      var parts: [CodeBand.Part] = [.init(id: "size", kind: .size("\(rows) × \(cols)"), tip: "Table size")]
+      var parts: [CodeBand.Part] = [.init(id: "size", kind: .size(size), tip: "Table size")]
       var firstGroup = true
       for group in Self.tableActs {
         let shown = group.filter { keep.contains($0.id) }
@@ -1021,11 +1033,13 @@ public final class MarkdownEditorView: NSView {
         }
         if !shown.isEmpty { firstGroup = false }
       }
-      parts.append(.init(id: "more", kind: .icon("dots"), tip: "More"))
+      // a group gap after the last group shown, before ⋯ (the gap a group with buttons shown keeps after it)
+      parts.append(.init(id: "more", kind: .icon("dots"), tip: "More", gapBefore: !firstGroup))
       band.place(
-        over: CGRect(x: shownX * zoom, y: g.box.minY * zoom, width: shownW * zoom, height: 1),
-        key: "table \(t.block.lowerBound)", zoom: zoom, theme: core.layout.theme, parts: parts,
-        fill: core.layout.theme.colors.fill, table: true, radius: 6)
+        over: CGRect(x: shownX * zoom, y: outer.minY * zoom, width: shownW * zoom, height: 1),
+        above: above(t.block.lowerBound), key: "table \(t.block.lowerBound)", zoom: zoom, theme: core.layout.theme,
+        parts: parts,
+        fill: core.layout.theme.colors.fill, table: true, radius: CGFloat(m.tableRadius))
       band.show(true)
       return
     }
@@ -1706,16 +1720,19 @@ public final class MarkdownEditorView: NSView {
       return typedMenu.hide()
     }
     let items: [MDMenuItem]
+    var foot: String?
     switch t.kind {
     case .slash: items = MarkdownEditing.slashMenu(t.query)
     case .emoji: items = MarkdownEditing.emojiMenu(t.query)
     case .ref:
-      items = refMenuRows(
-        delegate?.editor(self, refMenu: t.query) ?? MarkdownRefMenu(local: []), typed: !t.query.isEmpty)
+      let m = delegate?.editor(self, refMenu: t.query) ?? MarkdownRefMenu(local: [])
+      foot = m.foot
+      items = refMenuRows(m, typed: !t.query.isEmpty)
     }
     let caret = CGRect(x: c.minX * zoom, y: c.minY * zoom, width: 1, height: c.height * zoom)
-    typedMenu.show(items, token: t, under: caret, theme: core.layout.theme)
+    typedMenu.show(items, token: t, under: caret, theme: core.layout.theme, foot: foot)
     fit(typedMenu, to: caret)
+    lift(typedMenu)
   }
 
   /// groups whose "N more" was taken: all their items listed
@@ -2012,6 +2029,7 @@ public final class MarkdownEditorView: NSView {
     let caret = CGRect(x: c.minX * zoom, y: c.minY * zoom, width: 1, height: c.height * zoom)
     hints.show(items, token: (from, t.query), under: caret, theme: core.layout.theme, resources: core.layout.resources)
     fit(hints, to: caret)
+    lift(hints)
   }
 
   /// where the previewed formula's TeX starts in the source
@@ -2109,6 +2127,28 @@ public final class MarkdownEditorView: NSView {
   /// A popup the caret or a formula anchors, shown under `anchor`: flipped above it when under would run off what the
   /// window shows and above has more room, and kept 6 points inside it across (main's place(): flip and shift, pad 6,
   /// in the viewport)
+  /// Where the typed lists go when what holds the editor cuts what hangs out of it (a popup's tray while it scrolls):
+  /// a view over it, the list placed there where it would be (the web's lists are the page's own, menu.tsx)
+  public weak var floatHost: NSView?
+
+  /// A list just placed in the editor's points, moved into `floatHost` at the same place
+  private func lift(_ v: NSView) {
+    guard let h = floatHost, h.window === window, !v.isHidden else { return }
+    let f = v.frame
+    if v.superview !== h { h.addSubview(v) }
+    v.frame = h.convert(f, from: self)
+  }
+
+  /// the lists lifted out come back with the editor leaving its window, not left behind in their host
+  public override func viewWillMove(toWindow w: NSWindow?) {
+    super.viewWillMove(toWindow: w)
+    guard w == nil else { return }
+    for v in [typedMenu, hints] where v.superview !== self {
+      v.isHidden = true
+      addSubview(v)
+    }
+  }
+
   func fit(_ v: NSView, to anchor: CGRect) {
     guard !v.isHidden else { return }
     let b = shownArea()
@@ -2162,6 +2202,19 @@ public final class MarkdownEditorView: NSView {
       // frame: singleSelectedBodySelectsText, clickSelectedCardEdits)
       pressed = (at, false)
       core.mouseDown(at: at, clicks: 1, extend: false)
+      changed()
+      return
+    }
+    // a press on a task's box checks or unchecks it, the caret where it was (TipTap's TaskItem checkbox)
+    if e.clickCount == 1, let k = core.layout.task(at: at), let next = MarkdownSourceOps.toggleTask(core.source, nth: k)
+    {
+      let (a, b) = (core.source as NSString, next as NSString)
+      var i = 0
+      while i < a.length, a.character(at: i) == b.character(at: i) { i += 1 }
+      core.apply(
+        MDEdit(
+          range: i..<(i + 1), replacement: b.substring(with: NSRange(location: i, length: 1)),
+          selection: core.selection, undo: .command))
       changed()
       return
     }
@@ -2342,9 +2395,15 @@ public final class MarkdownEditorView: NSView {
     ]
   }
 
+  /// Where a press is not the editor's but the host's under it, in the editor's own points (the host's own buttons
+  /// the editor lies over)
+  public var letThrough: ((CGPoint) -> Bool)?
+
   /// the image grips reach past the editor's edge (as on the web, into the frame's padding): a press there is still the
   /// editor's, not the host's view under it (which ends editing)
   public override func hitTest(_ point: NSPoint) -> NSView? {
+    // the host's own controls under it (a folded header's buttons) take their presses
+    if letThrough?(convert(point, from: superview)) == true { return nil }
     // what floats on the Note may reach past its edges (the heading chip in the left padding, a band over a first block):
     // a press there is still its, which AppKit would not route outside the view's frame
     let p0 = convert(point, from: superview)

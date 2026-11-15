@@ -11,17 +11,19 @@ public enum MarkdownLooks {
     /// an Always Show sidenote under its lines in a code card (styles.css .inote > .nbody): a Note's type at 12.5, its
     /// headings 1.45 / 1.25 / 1.1 em, no frame
     case sidenote
+    /// a code, Free code or image card's description (styles.css .cdesc): 12 at 1.55 in ink-2, padded 7 12 6
+    case desc
     case text(size: Double, wrap: Bool)
     case box(size: Double, wrap: Bool)
     var size: Double? {
       switch self {
-      case .note, .sidenote: nil
+      case .note, .sidenote, .desc: nil
       case .text(let s, _), .box(let s, _): s
       }
     }
     var wraps: Bool {
       switch self {
-      case .note, .sidenote: true
+      case .note, .sidenote, .desc: true
       case .text(_, let w), .box(_, let w): w
       }
     }
@@ -249,6 +251,12 @@ public enum MarkdownLooks {
     case .note:
       return Card(
         theme: t, header: 36, padding: [10, 14, 12, 14], natural: false, fixedHeight: true, minContent: 1.6 * 13.5)
+    case .desc:
+      t.metrics.bodySize = 12
+      t.metrics.lineHeight = 1.55
+      t.colors.ink = t.colors.ink2
+      return Card(
+        theme: t, header: 0, padding: [7, 12, 6, 12], natural: false, fixedHeight: false, minContent: 12 * 1.55)
     case .sidenote:
       t.metrics.bodySize = 12.5
       t.metrics.headingSizes = [1.45, 1.25, 1.1, 1, 1, 1]

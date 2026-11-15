@@ -194,7 +194,10 @@ package final class SidenotePop: NSObject {
     sync(d)
     setBottom(d.write ? composer(ask: d.ask, reply: nil) : addRow())
     relayout()
-    if let f = d.focus, let s = slips.first(where: { $0.note.id == f }) { tray.reveal(s.frame) }
+    if let f = d.focus, let s = slips.first(where: { $0.note.id == f }) {
+      tray.reveal(s.frame)
+      s.flash()
+    }
     return size
   }
 
@@ -338,7 +341,9 @@ package final class SidenotePop: NSObject {
     case .text(let md, let q, let lines, let always):
       s.always = always
       let width = Self.width - 2 * Self.pad - (q == nil ? 0 : 32)
-      s.body = body(md, width: width, edit: n.fixed ? nil : { [weak s] in s?.onEdit?() })
+      s.body = body(
+        md, width: width, edit: n.fixed ? nil : { [weak s] in s?.onEdit?() },
+        toggle: n.fixed ? nil : { [weak self] text in self?.onAction?(.write(id, text)) })
       s.onEdit =
         n.fixed
         ? nil
@@ -398,7 +403,9 @@ package final class SidenotePop: NSObject {
     let id = n.id
     let v = AnswerView(theme: t)
     let width = Self.width - 2 * Self.pad - 32 - 13
-    v.body = body(a.md, width: width, edit: n.fixed ? nil : { [weak v] in v?.onEdit?() })
+    v.body = body(
+      a.md, width: width, edit: n.fixed ? nil : { [weak v] in v?.onEdit?() },
+      toggle: n.fixed ? nil : { [weak self] text in self?.onAction?(.writeAnswer(id, answer: a.id, text)) })
     if !n.fixed {
       v.onEdit = { [weak self, weak v] in
         guard let self, let v else { return }
@@ -425,12 +432,13 @@ package final class SidenotePop: NSObject {
   }
 
   /// A piece of Markdown drawn as the board draws a sidenote's (.hxpop .sb.nbody); a double-click writes in it, a
-  /// click on a drawn ref or link goes to the canvas
+  /// click on a drawn ref or link goes to the canvas, one on a task's box writes it checked or not (Md onToggle)
   private func body(
-    _ md: String, width: CGFloat, edit: (() -> Void)?
+    _ md: String, width: CGFloat, edit: (() -> Void)?, toggle: ((String) -> Void)?
   ) -> MDBody {
     let b = MDBody(layout: layout(md, width: width, editing: false), folder: shown!.folder, dark: shown!.theme.dark)
     b.onDouble = edit
+    if let toggle { b.onTask = { k in MarkdownSourceOps.toggleTask(md, nth: k).map(toggle) } }
     b.onRef = { [weak self, weak b] r in
       guard let self, let b else { return }
       guard let r else {
@@ -486,6 +494,8 @@ package final class SidenotePop: NSObject {
     e.delegate = self
     e.acceptsFirstClick = true
     e.wantsLayer = true
+    // its [[ and formula lists over the whole popup: the tray cuts what hangs out of it while it scrolls
+    e.floatHost = view
     e.selectionColor = shown!.theme.textSelection
     e.pasteboard = pasteboard
     let (folder, dark) = (shown!.folder, shown!.theme.dark)
@@ -739,6 +749,20 @@ extension SidenotePop: MarkdownEditorDelegate {
 
   package func editor(_ e: MarkdownEditorView, open url: URL) { onAction?(.openLink(url.absoluteString)) }
 
+  /// A click on a drawn ref in a field: to the canvas as one in a sidenote's text, the caret staying (refclick.ts)
+  package func editor(_ e: MarkdownEditorView, activate label: String, target: String?) -> Bool {
+    let r = e.core.layout.drawnRefs.first { $0.label == label && $0.target == target }?.rect ?? .zero
+    let z = e.zoom
+    let box = e.convert(CGRect(x: r.minX * z, y: r.minY * z, width: r.width * z, height: r.height * z), to: view)
+    onAction?(.ref(RefPress(ref: label, target: target, rect: box, writing: true)))
+    return true
+  }
+
+  /// The second press of a double-click on one: its source opens in the field, the first click's going dropped
+  package func editor(_ e: MarkdownEditorView, doubleClickedRef label: String, target: String?) {
+    onAction?(.ref(nil))
+  }
+
   /// The [[ list (md/load.ts editorOpts' refs): this board's titled cards and Sections, then each other board's
   package func editor(_ e: MarkdownEditorView, refMenu query: String) -> MarkdownRefMenu {
     Self.refMenu(shown?.refList, query: query)
@@ -777,7 +801,8 @@ extension SidenotePop: MarkdownEditorDelegate {
         row)
     }
     return MarkdownRefMenu(
-      recent: recent, here: "This board", local: list.items.filter { fits($0.title) }.map(row), groups: groups)
+      recent: recent, here: "This board", local: list.items.filter { fits($0.title) }.map(row), groups: groups,
+      foot: list.foot)
   }
 }
 
@@ -1031,8 +1056,8 @@ final class PopTray: NSView {
 
   override var isFlipped: Bool { true }
 
-  /// ponytail: clipped only while it scrolls, so a field's [[ list hangs out of the popup otherwise; a slip written in
-  /// while it scrolls has its list cut at the tray's edge
+  /// Clipped only while it scrolls: a field's toolbar hangs out of the popup otherwise (its [[ and formula lists are
+  /// the popup's own, MarkdownEditorView.floatHost, and hang out of it either way)
   func content(height h: CGFloat) {
     height = h
     clipsToBounds = h > bounds.height + 0.5
@@ -1089,11 +1114,14 @@ final class SlipView: NSView, Writable {
   }
   var onEdit: (() -> Void)?
   var onMenu: ((CGPoint) -> Void)?
-  private let bar = ToolBar()
+  /// its tools (internal: tests read where they are)
+  let bar = ToolBar()
   private var hovered = false {
     didSet { bar.isHidden = !hovered || writing != nil }
   }
   private var first = true
+  /// A question's own text (.qbody): its tools show over it alone, not over its answers
+  private var qbody: CGRect?
 
   init(_ n: SidenotePop.Shown.Note, theme: Theme) {
     note = n
@@ -1140,6 +1168,9 @@ final class SlipView: NSView, Writable {
       body.frame = CGRect(x: left, y: y, width: body.layout.width, height: max(body.layout.height, 20))
       y += body.frame.height + gap
     }
+    qbody =
+      question == nil
+      ? nil : CGRect(x: left, y: body?.frame.minY ?? 10, width: w - left, height: body?.frame.height ?? 20)
     if review != nil {
       let h: CGFloat = 28
       reviewButton?.frame = CGRect(x: w - 10 - reviewWidth, y: y, width: reviewWidth, height: h)
@@ -1160,9 +1191,13 @@ final class SlipView: NSView, Writable {
     }
     let h = y - gap + 11
     bar.place()
-    bar.frame.origin = CGPoint(x: w - 4 - bar.frame.width, y: 4)
+    // over the slip's top right (.kt: 4 in); a question's over its own text's, 4 above and 6 past it (.qbody > .kt)
+    bar.frame.origin =
+      qbody.map { CGPoint(x: $0.maxX + 6 - bar.frame.width, y: $0.minY - 4) }
+      ?? CGPoint(x: w - 4 - bar.frame.width, y: 4)
     bar.isHidden = !hovered || writing != nil || tools.isEmpty
     needsDisplay = true
+    updateTrackingAreas()
     return h
   }
 
@@ -1255,14 +1290,53 @@ final class SlipView: NSView, Writable {
   override func updateTrackingAreas() {
     super.updateTrackingAreas()
     for a in trackingAreas where a.owner === self { removeTrackingArea(a) }
+    // a question's tools come with its own text hovered, its bar too (.qbody:hover > .kt)
+    let r = qbody.map { $0.union(bar.frame) } ?? bounds
     addTrackingArea(
-      NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+      NSTrackingArea(
+        rect: r,
+        options: qbody == nil
+          ? [.mouseEnteredAndExited, .activeAlways, .inVisibleRect] : [.mouseEnteredAndExited, .activeAlways],
+        owner: self))
   }
 
   override func mouseEntered(with e: NSEvent) { hovered = true }
   override func mouseExited(with e: NSEvent) { hovered = false }
 
   override func mouseDown(with e: NSEvent) { popOf(self)?.pressedElsewhere() }
+
+  /// The pulse round it while it flashes (tests)
+  private(set) var flashRing: CALayer?
+
+  /// One soft pulse round it, the question list having gone to it (notes.tsx focus, .slip.flash): a 2 ring of the
+  /// question's amber in a 6 one of it at 22 %, held for the first 35 % of 1.1 s, then gone
+  func flash() {
+    wantsLayer = true
+    guard let layer else { return }
+    let ring = CALayer()
+    ring.frame = bounds.insetBy(dx: -6, dy: -6)
+    ring.borderWidth = 4
+    ring.borderColor = theme.ask.copy(alpha: 0.22)
+    let inner = CALayer()
+    inner.frame = CGRect(x: 4, y: 4, width: bounds.width + 4, height: bounds.height + 4)
+    inner.borderWidth = 2
+    inner.borderColor = theme.ask
+    ring.addSublayer(inner)
+    ring.opacity = 0
+    layer.addSublayer(ring)
+    flashRing = ring
+    let a = CAKeyframeAnimation(keyPath: "opacity")
+    a.values = [1, 1, 0]
+    a.keyTimes = [0, 0.35, 1]
+    a.timingFunctions = [
+      CAMediaTimingFunction(name: .linear), CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1),
+    ]
+    a.duration = 1.1
+    CATransaction.begin()
+    CATransaction.setCompletionBlock { MainActor.assumeIsolated { ring.removeFromSuperlayer() } }
+    ring.add(a, forKey: "flash")
+    CATransaction.commit()
+  }
 
   override func rightMouseDown(with e: NSEvent) {
     guard let onMenu, let v = popOf(self)?.view else { return super.rightMouseDown(with: e) }
@@ -1398,6 +1472,8 @@ final class MDBody: NSView {
   var onDouble: (() -> Void)?
   var onRef: (((label: String, target: String?, rect: CGRect, go: Bool)?) -> Void)?
   var onLink: ((String) -> Void)?
+  /// a task's box clicked: the nth task in its source
+  var onTask: ((Int) -> Void)?
 
   init(layout: BlockLayout, folder: URL, dark: Bool) {
     self.layout = layout
@@ -1435,6 +1511,10 @@ final class MDBody: NSView {
       return
     }
     popOf(self)?.pressedElsewhere()
+    if e.clickCount == 1, let onTask, let k = layout.task(at: p) {
+      onTask(k)
+      return
+    }
     if e.clickCount == 1, let l = layout.link(at: p) {
       onLink?(l.url)
       return
