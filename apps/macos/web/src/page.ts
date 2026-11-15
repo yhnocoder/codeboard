@@ -583,6 +583,10 @@ if (editMode) watchUi();
 // would overtake it)
 let keysSeen = 0;
 addEventListener("keydown", (e) => e.isTrusted && keysSeen++, true);
+// code colours asked for and not yet put in (each is put in by the editor as soon as it comes): one that comes between
+// two keys of an input method redraws the line under its composition, and what it commits lands beside the text it
+// had marked instead of over it, so a key is handed over only once the colours its predecessor asked for are in
+let hlAsked = 0;
 // Both editors keep a rule for Safari, where the key that commits a composition (a Space, a digit, Enter) reached the
 // page after compositionend: they skip the first key after a composition ends as that one (prosemirror-view
 // inOrNearComposition, CodeMirror's compositionPendingKey). WebKit now gives the page that key first, before the
@@ -637,11 +641,17 @@ const edit = {
   },
   /** The keydowns seen so far */
   keysSeen: () => keysSeen,
-  /** Resolves once `n` keydowns have been seen, or after `ms` (a key that reaches no page) */
+  /** Resolves once `n` keydowns have been seen and the code colours they asked for are in, or after `ms` (a key that
+   *  reaches no page) */
   async seen(n: number, ms: number) {
     const until = performance.now() + ms;
-    while (keysSeen < n && performance.now() < until) await new Promise((r) => setTimeout(r, 1));
-    return keysSeen >= n;
+    const tick = () => new Promise((r) => setTimeout(r, 1));
+    while (keysSeen < n && performance.now() < until) await tick();
+    if (keysSeen < n) return false;
+    // what the key did asks for its colours in a microtask after it
+    await tick();
+    while (hlAsked > 0 && performance.now() < until) await tick();
+    return hlAsked === 0;
   },
   /** Mounts `note` in the editor, `margin` px from the page's top left, at zoom k, takes the keyboard and puts the
    *  caret at `caret` (card px at 100 %), else at the end; resolves with its size once laid out */
@@ -800,7 +810,15 @@ const edit = {
       wrap: a.wrap,
       gutter: { start: a.start },
       html: a.html ?? undefined,
-      highlight: handler ? (t) => handler.postMessage({ text: t, lang }).catch(() => null) : undefined,
+      highlight: handler
+        ? (t) => {
+            hlAsked++;
+            return handler
+              .postMessage({ text: t, lang })
+              .catch(() => null)
+              .finally(() => setTimeout(() => hlAsked--));
+          }
+        : undefined,
       stopPointerDown: true,
       find: true,
       classes: { menu: "ctx", bar: "pill", button: "tbtn" },
