@@ -260,6 +260,11 @@ extension FileManager {
 swizzle(
   FileManager.self, #selector(FileManager.trashItem(at:resultingItemURL:)),
   #selector(FileManager.accTrashItem(at:resultingItemURL:)))
+/// The window server's word to a window's views that it is key (web views learn it so)
+func tellKey(_ w: NSWindow) {
+  NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: w)
+  NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: w)
+}
 swizzle(NSPasteboard.self, #selector(getter: NSPasteboard.general), #selector(NSPasteboard.accGeneral), meta: true)
 swizzle(
   NSPasteboard.self, NSSelectorFromString("pasteboardWithName:"), #selector(NSPasteboard.accNamed(_:)), meta: true)
@@ -522,21 +527,28 @@ func strings(_ x: Any) -> [String] {
     }
     for (id, a) in inside where now[id] == nil {
       inside[id] = nil
-      if a.options.contains(.mouseEnteredAndExited), let o = a.owner as? NSResponder {
-        o.mouseExited(with: ev(.mouseExited, nil))
+      if a.options.contains(.mouseEnteredAndExited) {
+        tell(a.owner, #selector(NSResponder.mouseExited(with:)), ev(.mouseExited, nil))
       }
     }
     for (id, (a, v)) in now where inside[id] == nil {
       inside[id] = a
-      if a.options.contains(.mouseEnteredAndExited), let o = a.owner as? NSResponder {
-        o.mouseEntered(with: ev(.mouseEntered, v))
+      if a.options.contains(.mouseEnteredAndExited) {
+        tell(a.owner, #selector(NSResponder.mouseEntered(with:)), ev(.mouseEntered, v))
       }
     }
     if !dragging && moved {
       for (_, (a, v)) in now where a.options.contains(.mouseMoved) {
-        (a.owner as? NSResponder)?.mouseMoved(with: ev(.mouseMoved, v))
+        tell(a.owner, #selector(NSResponder.mouseMoved(with:)), ev(.mouseMoved, v))
       }
     }
+  }
+
+  /// A tracking area's owner told what AppKit tells it: any object that answers (WebKit's is no responder, a
+  /// WKMouseTrackingObserver: cast to a responder, a web view that is not first responder never heard the pointer move)
+  func tell(_ owner: Any?, _ sel: Selector, _ e: NSEvent) {
+    guard let o = owner as? NSObject, o.responds(to: sel) else { return }
+    o.perform(sel, with: e)
   }
 
   func step(to p: NSPoint) {
@@ -611,10 +623,7 @@ func strings(_ x: Any) -> [String] {
     post(right ? .rightMouseUp : .leftMouseUp, at: vPointer, clicks: lastDown?.count ?? 1)
     // web views made by the click learn that their window is key, as they would from the window server
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-      if let w = gKey ?? gMain {
-        NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: w)
-        NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: w)
-      }
+      if let w = gKey ?? gMain { tellKey(w) }
     }
   }
 
