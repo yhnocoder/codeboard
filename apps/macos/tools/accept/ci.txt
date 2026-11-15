@@ -1,6 +1,9 @@
 # What CI runs (ci.mjs): scenarios with expectations that hold without timing, at 1x, on a machine slower than a Mac on a desk.
 # Left out: what is timed or only recorded (glide-stop, look-tour, look-tour2, hover-tour), load-sensitive (pan-over-edit,
-# b1/b1-pan-edit; nudge-hold: its 150 ms before the 300 ms glide stretched past it on CI), on screen (real-use)
+# b1/b1-pan-edit; nudge-hold: its 150 ms before the 300 ms glide stretched past it on CI), on screen (real-use), and
+# what aims at words on the Mac side (@id"words": the note-* and task-* scenarios but note-title): text recognition does
+# not run on CI's virtual Macs (Vision: unknownError, on the CPU too; the fast reader garbles the text) and the Note being
+# edited is not in the window's picture there
 align-bar.txt
 arrow-end.txt
 arrow-read.txt
@@ -35,14 +38,6 @@ line-port-tip.txt
 lock-head.txt
 new-code.txt
 new-text-flow.txt
-note-blockmove-cross.txt
-note-blockmove.txt
-note-code.txt
-note-heading.txt
-note-image.txt
-note-ime.txt
-note-markers.txt
-note-table.txt
 note-title.txt
 paste-copy.txt
 paste-near.txt
@@ -68,16 +63,6 @@ space-pan2.txt
 stale-hover.txt
 sticker.txt
 summary-edit.txt
-task-annotate.txt
-task-footnote.txt
-task-image-resize.txt
-task-link.txt
-task-looks.txt
-task-paste.txt
-task-ref.txt
-task-slash-image.txt
-task-table.txt
-task-toolbar-place.txt
 text-handles.txt
 text-height.txt
 tidy-up.txt

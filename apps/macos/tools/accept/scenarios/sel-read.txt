@@ -1,5 +1,5 @@
 # sel：在正在编辑的 Note 正文上拖动选字，两边选中的字和范围（ProseMirror 的位置）一样
-# known mac: on CI (1x, under load) the double-click below the text put the caret at the end of the first line (32), not after the last (54); seen once, PR 229's first run
+# known mac: on CI (1x, under load) the double-click below the text put the caret at the end of the first line (32), not after the last (54); seen on each of PR 229's CI runs, not on a Mac on a desk
 zoom 1
 center @cnote+150,60
 expect sel = none
