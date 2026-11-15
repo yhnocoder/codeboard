@@ -131,16 +131,16 @@ extension CanvasView {
   }
 
   /// What dragging the port under the pointer does (cards/CodeBody.tsx .lport, Card.tsx .eport data-tip), over its dot
-  func showPortTip() {
+  /// in the view
+  func portTip() -> (Tip, CGRect)? {
     // only while its dot is drawn (drawPorts)
-    guard let port = hoveredPort, gesture == nil, inPlace == nil, editing == nil else {
-      return Tips.shared.hover(nil, in: self, theme: theme)
-    }
+    guard let port = hoveredPort, gesture == nil, inPlace == nil, editing == nil else { return nil }
     let v = camera.view(port.at)
     let d = portRadius * camera.zoom
-    Tips.shared.hover(
+    return (
       Tip(port.end.line == nil ? "Drag to link" : "Drag to link this line"),
-      CGRect(x: v.x - d, y: v.y - d, width: 2 * d, height: 2 * d), in: self, theme: theme)
+      CGRect(x: v.x - d, y: v.y - d, width: 2 * d, height: 2 * d)
+    )
   }
 
   /// The hovered card's ports, over everything (z-index 4): the card's paper ringed in the line colour, in the accent under
