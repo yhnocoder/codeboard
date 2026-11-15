@@ -3,9 +3,10 @@
 //   node apps/macos/tools/tests/pick.mjs --all              every test (the regular full run)
 //   node apps/macos/tools/tests/pick.mjs --base <git ref>   a PR: the working tree against the ref, untracked files too
 // A PR runs every target's important tests. A change to a module's sources reaches the test targets of that module and
-// of every module that depends on it: a "changed": "whole" target then runs whole, and a "changed": "files" target
-// runs each of its areas whose sources name a changed file (none for a file in its "broad"), unless more than
-// "maxAreas" of them did. A changed test file runs the suites it declares, and a "whole" target whole.
+// of every module that depends on it: a "changed": "whole" target then runs whole (only its important tests when the
+// change reached it only through a "heavy" module, whose rebuild already takes the job's time), and a "changed":
+// "files" target runs each of its areas whose sources name a changed file (none for a file in its "broad"), unless
+// more than "maxAreas" of them did. A changed test file runs the suites it declares, and a "whole" target whole.
 // --dry prints the selection and runs nothing. Otherwise it prints the same (and adds it to $GITHUB_STEP_SUMMARY) and
 // runs swift test --skip-build in apps/macos with it, after swift build --build-tests. Either way it first checks
 // tiers.json against Package.swift and the sources: every target and test it names must be there, once, and every
@@ -137,9 +138,12 @@ const below = (name, seen = new Set()) => {
 
 const tiers = JSON.parse(fs.readFileSync(path.join(testsDir, "tiers.json"), "utf8"));
 const maxAreas = tiers.maxAreas;
+const heavy = tiers.heavy ?? [];
 const folders = fs.readdirSync(testsDir).filter((f) => fs.statSync(path.join(testsDir, f)).isDirectory());
 const problems = [];
 if (!Number.isInteger(maxAreas) || maxAreas < 1) problems.push(`"maxAreas" is a whole number of at least 1`);
+if (!Array.isArray(heavy)) problems.push(`"heavy" is a list of modules`);
+for (const m of heavy) if (graph.get(m)?.kind !== "target") problems.push(`"heavy" names ${m}, not a library target`);
 for (const f of folders) if (!tiers.targets[f]) problems.push(`${f}: a test target missing from tiers.json`);
 for (const t of Object.keys(tiers.targets)) {
   if (!folders.includes(t)) problems.push(`${t}: no such folder in Tests`);
@@ -264,8 +268,17 @@ for (const t of targets) {
   const why = [];
   if (ownTests.length || hits.some((c) => c.module === t.module))
     why.push(`changed: ${listed([...hits.filter((c) => c.module === t.module).map((c) => c.file), ...ownTests])}`);
-  for (const m of new Set(hits.map((c) => c.module).filter((m) => m !== t.module)))
+  const lower = [...new Set(hits.map((c) => c.module).filter((m) => m !== t.module))];
+  for (const m of lower.filter((m) => !heavy.includes(m)))
     why.push(`depends on ${m}: ${listed(hits.filter((c) => c.module === m).map((c) => c.file))}`);
+  // A heavy module's change already takes the job's time to build, so above it a whole target keeps to its
+  // important tests, unless something else it runs on changed too
+  const onlyHeavy = lower.filter((m) => heavy.includes(m));
+  const heavyWhy = onlyHeavy.map((m) => `depends on ${m}, which compiles everything again: important tests only`);
+  if (why.length)
+    why.push(
+      ...onlyHeavy.map((m) => `depends on ${m}: ${listed(hits.filter((c) => c.module === m).map((c) => c.file))}`),
+    );
   if (t.tier.important === "whole" || (t.tier.changed === "whole" && why.length)) {
     lines.push(`${t.name}: all ${t.tests.length} tests (${why.join("; ") || "important"})`);
     filters.push(wholeFilter(t.name));
@@ -317,7 +330,7 @@ for (const t of targets) {
       if (names.size) fromFiles.push(`${path.basename(file)} (${[...names].join(", ")})`);
     }
     if (fromFiles.length) reasons.push(`from changed test files: ${fromFiles.join("; ")}`);
-  }
+  } else reasons.push(...heavyWhy);
   const count = new Set([...picked.values()].flat()).size;
   lines.push(`${t.name}: ${count} of ${t.tests.length} tests`, ...reasons.map((r) => `  ${r}`));
   filters.push(...picked.keys());

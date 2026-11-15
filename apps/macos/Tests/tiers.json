@@ -1,5 +1,6 @@
 {
   "maxAreas": 3,
+  "heavy": ["CodeBoardModel"],
   "targets": {
     "CodeBoardModelTests": {
       "changed": "whole",
@@ -211,6 +212,7 @@
             "CanvasWritingTests/aDoubleClickBelowTheLastLineOfANoteWithItsHeadingInTheHeaderWritesAtTheEnd",
             "CanvasWritingTests/theSecondClickOfADoubleClickOnTheSelectedNoteKeepsTheWritingGoing",
             "CanvasWritingTests/theSecondPressOfADoubleClickOnTheEmptyBodyKeepsTheWritingGoing",
+            "CanvasWritingTests/theSecondClickOfTheDoubleClickThatOpensTheEditorSelectsNoWord",
             "CanvasWritingTests/aNewCardWrittenInIsOneStep",
             "CanvasWritingTests/theCardGrowsAsItIsTypedIn",
             "CanvasWritingTests/whatIsTypedWinsOverAnotherWritersTextAndTheRestMerges",
