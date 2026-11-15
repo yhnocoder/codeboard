@@ -1,6 +1,7 @@
 # ⌘↵ on the one sub-board card selected enters its board (keymap.ts enterBoard: mod+Enter, enterFrame), the breadcrumb
 # "‹ First › Third"; ⌘↵ with a Note selected enters nothing; Esc goes back. --only mac
 # storage: storage-two
+# only: mac
 zoom 1
 center @csub:c
 click @cown:c

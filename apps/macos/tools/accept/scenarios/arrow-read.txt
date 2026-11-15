@@ -1,0 +1,19 @@
+# 箭头和提示：读箭头标签的位置、箭头两端；拖动它一端的卡后两端跟着走；指针停在工具栏的按钮上，读提示
+zoom 1
+center @lnote:c
+expect lnote.x != x
+expect lnote.w > 0
+expect lnote.x1 != x
+expect lnote.y2 != x
+mark lnote.x1 lnote.x2
+drag @cnote @cnote+0,-100 400
+wait 400
+expect lnote.x2 != was
+expect lnote.x1 = was
+key cmd+z
+wait 300
+expect tip = none
+move @ui.fit 300
+wait 1500
+expect tip != x
+move @lnote:c 200

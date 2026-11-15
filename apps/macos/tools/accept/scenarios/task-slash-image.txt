@@ -1,0 +1,19 @@
+# 在一行后面回车，打 /image 选中：Image 拿 demo 给的图片（--pick-image，不弹打开面板），图片写进 Markdown
+# storage: storage-tasks
+zoom 1
+center @ntask"值"
+dbl @ntask"Last line"
+wait 600
+rec image
+click @ntask"anything.">
+key return
+keys /image
+wait 500
+shot menu
+key return
+wait 800
+shot inserted
+stop
+key esc
+wait 800
+source @ntask

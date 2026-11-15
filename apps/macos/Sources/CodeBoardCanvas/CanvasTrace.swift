@@ -9,6 +9,8 @@ package struct CanvasTrace: Codable, Sendable {
   package var level: String
   package var cards: [String: [Double]]
   package var sections: [String: [Double]]
+  /// Each arrow's ends as drawn now (re-routed while its cards move), in board units: start x y, end x y
+  package var arrows: [String: [Double]]
   package var hovered: String?
   package var editing: String?
   package var selection: [String]
@@ -38,11 +40,16 @@ extension CanvasView {
         if let ls = sections.sublayers, i < ls.count { sectionRects[f.id.rawValue] = rect(ls[i]) }
       }
     }
+    var arrowEnds: [String: [Double]] = [:]
+    for i in scene?.arrows.indices ?? 0..<0 {
+      guard let a = liveArrow(i), let p = a.pts.first, let q = a.pts.last else { continue }
+      arrowEnds[a.id.rawValue] = [p.x, p.y, q.x, q.y].map { (Double($0) * 10).rounded() / 10 }
+    }
     let r = window?.firstResponder
     return CanvasTrace(
       camera: [Double(camera.origin.x), Double(camera.origin.y), Double(camera.zoom)], level: "\(levels.level)",
       cards: cardRects,
-      sections: sectionRects, hovered: hoveredCard?.rawValue, editing: editing?.id.rawValue,
+      sections: sectionRects, arrows: arrowEnds, hovered: hoveredCard?.rawValue, editing: editing?.id.rawValue,
       selection: (document?.selection ?? []).map { "\($0)" }.sorted(),
       firstResponder: r.map { String(describing: type(of: $0)) }, toast: toastText, gesture: gesture != nil)
   }

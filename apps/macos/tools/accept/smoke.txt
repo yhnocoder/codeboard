@@ -1,0 +1,15 @@
+# What a PR runs (ci.mjs --list smoke.txt; ci.txt in full every 6 hours): one quick scenario per main area, all on the
+# default storage (one group, one build), that passed on CI; about 2.5 minutes of scenarios inside the PR job's 6 minutes:
+# canvas: pan, snap while dragging; cards: open a Note to write, edit free code; arrows; Sections; menus; the private
+# clipboard; ⌘K; opening links; the toolbar's look
+space-pan.txt
+snap-guide.txt
+b1/b1-open.txt
+free-code-edit.txt
+arrow-read.txt
+section-follow.txt
+sidenote-menu.txt
+paste-copy.txt
+search-open.txt
+web-open.txt
+toolbar-warm-ink.txt

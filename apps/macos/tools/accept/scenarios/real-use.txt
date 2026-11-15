@@ -1,0 +1,15 @@
+# 像人一样用：demo 照它自己的样子开在屏幕上（默认大小、Inspector 照常），一张很长的 Note；打开时、用滚轮滚到底、再滚回来后各截整个窗口，静下来 5 秒记 CPU 和内存。只在一眼能看出的问题上算失败：有东西盖住 Note 的编辑器、窗口是空白的。CPU、内存只记录
+# storage: storage-long
+screen on
+wait 800
+shot open
+covered @nlong
+idle 5 open
+wheel -2500 50
+wait 800
+shot bottom
+wheel 2500 50
+wait 800
+shot back
+covered @nlong
+idle 5 scrolled

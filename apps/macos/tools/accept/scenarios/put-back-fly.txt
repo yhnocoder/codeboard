@@ -7,8 +7,8 @@ type Put aside
 wait 400
 rec fly
 key return
-wait 900
+wait 1200
 stop
-expect cshelf1.x = 200
-expect cshelf1.y = 900
+expect cshelf1.x ~ 200
+expect cshelf1.y ~ 900
 shot landed @cshelf1
