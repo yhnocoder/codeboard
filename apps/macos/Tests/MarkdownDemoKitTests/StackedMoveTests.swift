@@ -181,4 +181,76 @@ import Testing
     #expect(demo.dragStats?.frames == 121)
     #expect(demo.widthLine != nil)
   }
+
+  /// a card holding a heavy figure (an SVG of many labels) dragged wider step by step: the figure is never drawn again
+  /// on the main thread during the drag (it was, at every step), and only a few times off it
+  @Test func aWidthDragDrawsNoFigureOnTheMainThread() throws {
+    _ = NSApplication.shared
+    let folder = FileManager.default.temporaryDirectory.appending(path: "figure-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    var svg = "<svg xmlns='http://www.w3.org/2000/svg' width='800' height='500' viewBox='0 0 800 500'>"
+    for r in 0..<10 {
+      for c in 0..<8 {
+        svg += "<rect x='\(c * 100)' y='\(r * 50)' width='100' height='50' fill='none' stroke='black'/>"
+        svg += "<text x='\(c * 100 + 8)' y='\(r * 50 + 30)' font-size='14'>M[\(r)][\(c)], M[\(c)][\(r)]</text>"
+      }
+    }
+    try Data((svg + "</svg>").utf8).write(to: folder.appending(path: "fig.svg"))
+    let demo = try Demo(text: "Before.\n\n![a figure](fig.svg)\n\nAfter.", folder: folder, cardWidth: 420)
+    demo.setUp()
+    _ = Check.lay(demo, width: 1400)
+    Self.kept.append(demo)
+    let w = demo.window!
+    w.alphaValue = 0.02
+    w.ignoresMouseEvents = true
+    w.setFrameOrigin(CGPoint(x: -30000, y: -30000))
+    w.orderFrontRegardless()
+    defer { w.orderOut(nil) }
+    func draw() {
+      let e = demo.cards[0]
+      let rep = e.bitmapImageRepForCachingDisplay(in: e.bounds)!
+      e.cacheDisplay(in: e.bounds, to: rep)
+    }
+    draw()
+    let first = demo.svgDraws
+    #expect(first.sync == 1)
+    let r = demo.page.cardRects[0]
+    let p = CGPoint(x: r.maxX - 2, y: r.midY)
+    #expect(demo.edgeDown(p))
+    for k in stride(from: 4.0, through: 120, by: 4) {
+      demo.edgeDragged(CGPoint(x: p.x + k, y: p.y))
+      draw()
+    }
+    demo.edgeUp()
+    #expect(demo.svgDraws.sync == first.sync)
+    #expect(demo.svgDraws.background - first.background <= 4)
+  }
+
+  /// a formula in an image's caption is drawn (its room was left blank): more ink with it than without it
+  @Test func aFormulaInACaptionIsDrawn() throws {
+    _ = NSApplication.shared
+    func ink(_ caption: String) throws -> Int {
+      let demo = try Demo(
+        text: "![a picture](picture.png \"\(caption)\")", folder: sampleFolder(), cardWidth: 420)
+      demo.setUp()
+      Self.kept.append(demo)
+      let l = demo.cards[0].core.layout
+      let f = l.images[0].frame
+      let band = CGRect(x: 0, y: f.maxY, width: l.width, height: l.size.height - f.maxY)
+      let ctx = CGContext(
+        data: nil, width: Int(band.width * 2), height: Int(band.height * 2), bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+      ctx.scaleBy(x: 2, y: -2)
+      ctx.translateBy(x: 0, y: -band.maxY)
+      l.draw(in: ctx, scale: 2, clip: band) { _ in nil }
+      let rep = NSBitmapImageRep(cgImage: ctx.makeImage()!)
+      var n = 0
+      for y in 0..<rep.pixelsHigh {
+        for x in 0..<rep.pixelsWide where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.5 { n += 1 }
+      }
+      return n
+    }
+    #expect(try ink("Figure 1: the tiles of $M$ loaded") > ink("Figure 1: the tiles of loaded") + 20)
+  }
 }

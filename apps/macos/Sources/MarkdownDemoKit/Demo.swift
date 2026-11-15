@@ -815,9 +815,15 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
       // one drawing per file and look, drawn again only when a wider one is wanted: a picture being resized is that
       // one drawing scaled into its box every frame, never a new drawing a step (drawings swapped in mid-drag flickered)
       let key = url.path + (dark ? "@dark" : "@light")
-      if let i = images[key], i.width >= want { return i }
+      if let i = images[key] {
+        // wider wanted: drawn again off the main thread, the one it has scaled meanwhile (a heavy figure drawn at every
+        // step of a width drag stalled it); one drawing at a time per picture, the widest asked for when it is done
+        if i.width < want { drawLater(d, key: key, width: want * 3 / 2, dark: dark) }
+        return i
+      }
       let i = MarkdownSVG.image(d, pixelWidth: want, dark: dark)
       images[key] = i
+      svgDraws.sync += 1
       return i
     }
     guard !slot.src.contains("://"), let s = CGImageSourceCreateWithURL(url as CFURL, nil),
@@ -825,6 +831,32 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     else { return nil }
     images[url.path] = i
     return i
+  }
+
+  /// SVG drawings made on the main thread (a picture's first) and off it (a wider one), for the check and tests
+  var svgDraws = (sync: 0, background: 0)
+  /// a wider drawing under way per picture, and the widest asked for since it started
+  private var drawing: [String: Int] = [:]
+
+  private func drawLater(_ d: Data, key: String, width: Int, dark: Bool) {
+    if let w = drawing[key] {
+      drawing[key] = max(w, width)
+      return
+    }
+    drawing[key] = width
+    svgDraws.background += 1
+    DispatchQueue.global(qos: .userInitiated).async {
+      let i = MarkdownSVG.image(d, pixelWidth: width, dark: dark)
+      DispatchQueue.main.async { [weak self] in
+        guard let self else { return }
+        let wanted = self.drawing.removeValue(forKey: key) ?? width
+        if let i, i.width > self.images[key]?.width ?? 0 {
+          self.images[key] = i
+          for c in self.cards { c.needsDisplay = true }
+        }
+        if wanted > width { self.drawLater(d, key: key, width: wanted, dark: dark) }
+      }
+    }
   }
 
   func editor(_ e: MarkdownEditorView, didResize size: CGSize) { place() }

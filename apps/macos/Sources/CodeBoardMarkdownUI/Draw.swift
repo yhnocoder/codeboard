@@ -67,7 +67,8 @@ extension MarkdownLayout {
         if f.broken != nil {
           f.drawBroken(r, ink3: theme.colors.ink3, hair: theme.colors.hair, ctx)
         } else if let cap = f.caption {
-          cap.draw(at: CGPoint(x: r.minX + f.captionX, y: r.minY + f.captionTop), ctx)
+          // with its formulas, references and marks, as body text (drawn as bare lines a formula left a gap)
+          drawText(cap, at: CGPoint(x: r.minX + f.captionX, y: r.minY + f.captionTop), ctx)
         }
       case .annot(let box, let o):
         drawAnnot(box, o, ctx)
@@ -169,8 +170,14 @@ extension MarkdownLayout {
   /// and formulas), then the note and arrow
   private func drawAnnot(_ box: AnnotBox, _ o: CGPoint, _ ctx: CGContext) {
     box.drawTint(at: o, ctx)
-    let t = box.textOrigin(at: o)
-    for l in box.text.lines {
+    drawText(box.text, at: box.textOrigin(at: o), ctx)
+    box.drawNote(at: o, ctx)
+  }
+
+  /// lines set in a box (an annotated phrase, a caption) as body text is drawn: marks and code boxes under the glyphs,
+  /// strike and link lines over them, references and formulas in their places
+  private func drawText(_ text: BoxText, at t: CGPoint, _ ctx: CGContext) {
+    for l in text.lines {
       let origin = CGPoint(x: t.x + l.origin.x, y: t.y + l.origin.y)
       decorations(l.line, origin, ctx, under: true)
       drawLine(l.line, at: origin, ctx)
@@ -188,7 +195,6 @@ extension MarkdownLayout {
         }
       }
     }
-    box.drawNote(at: o, ctx)
   }
 
   /// what CoreText does not draw: inline code and kbd boxes and highlights under the text, strike lines over it
