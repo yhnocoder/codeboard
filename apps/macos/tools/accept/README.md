@@ -97,6 +97,10 @@ Mac 这边复制粘贴用的是这个进程自己的私有剪贴板，碰不到�
 
 `task-*`（`# storage` 用 `storage-tasks`）是一个人会做的事：拖图片把手分几步缩窄（`task-image-resize`）、⌘K 加链接（`task-link`）、表格加删行、加列（`task-table`）、批注（`task-annotate`）、在 Note 里复制粘贴带标记和公式的字和代码（`task-paste`）、点引用（`task-ref`）、`/` 菜单（`task-footnote`、`task-slash-image`）、工具条的位置（`task-toolbar-place`）、各种菜单和工具条的样子，Mac 再切到暗色（`task-looks`）。编辑 Note 的（`storage-notes`）：`note-blockmove-cross`（⌘ 拖一块到另一张 Note，再撤回）、`note-heading`（打 `## ` 变标题再撤回）、`note-markers`（方向键穿过加粗、高亮、行内代码的标记）、`note-ime`（拼音接着写、删字、撤回）、`note-table`（改一格，拖行把手换行）、`note-code`（代码块里改一行）、`note-blockmove`（⌘ 拖动整块）、`note-image`（选中图片、拖把手缩窄）。`real-use`（`storage-long`）是开在屏幕上的那一份，见下面的限制，默认不跑。
 
+## 定时全量里
+
+每 6 小时的定时全量（`regular.yml` 调 `macos.yml`，`acceptance: true`）跑 `ci.txt` 里的场景：`node ci.mjs --shard k/n`，按场景声明的 storage、theme、only 分组，每组一次 `run.mjs --ci`。`--ci` 只看功能、不计时（`answer` 记成 n/a）、不录像（去掉 `rec` / `stop`）、用 debug 的驱动，每个场景每一侧截三张：开始、中间、结束（`ci-1-start`、`ci-2-middle`、`ci-3-end`），连同报告传成那次运行的产物。CI 的虚拟 Mac 比桌上的慢，每一行多给 120 秒应答。不进 `ci.txt` 的和原因写在它开头：计时的、受负载影响的、开在屏幕上的，以及 Mac 侧按文字瞄准的（CI 的虚拟 Mac 上 Vision 读不了字）。PR 上不跑：太久，macOS 的机器又少。
+
 ## 驱动的结构
 
 驱动就是 `Accept`（`apps/macos/Sources/Accept/main.swift`）：装好假的指针、键盘和窗口状态，开命令的 FIFO，再在自己的进程里启动 app：默认 CodeBoard（先从 storage 导入一个 vault，再 `runApp()`），`ACCEPT_APP=demo` 时是原生 Markdown 组件的 demo（`runMarkdownDemo`，参数是 `ACCEPT_DEMO_ARGS` 里的 JSON 数组），由 `run.mjs --mac demo` 设好。白板上的点经画布的相机换成窗口里的位置；demo 里的点按 demo 自己写的报告（卡的框、缩放）换算。
