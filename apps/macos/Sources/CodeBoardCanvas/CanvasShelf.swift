@@ -227,6 +227,11 @@ extension CanvasView {
         cards: cards, sections: sections, id: id, at: (Date().timeIntervalSince1970 * 1000).rounded(), heights: heights)
     }
     doc.select([])
+    // with the panel closed only the button's count shows it (actions/shelf.ts told)
+    if shelfPanel == nil {
+      toast(
+        pick.sections.isEmpty && pick.cards.count > 1 ? "Moved \(pick.cards.count) cards to Shelf" : "Moved to Shelf")
+    }
     flyIn(id, flights)
   }
 
@@ -309,7 +314,7 @@ extension CanvasView {
     showHome(nil)
     var back: (cards: [CardID], sections: [SectionID])?
     doc.edit("Put Back") { back = $0.unshelve(id) }
-    if let back { doc.select(Set(back.cards.map(Item.card))) }
+    if let back { select(back) }
     reveal(put: s.box)
   }
 
@@ -362,8 +367,14 @@ extension CanvasView {
       }
       var back: (cards: [CardID], sections: [SectionID])?
       doc.edit("Put Back") { back = $0.unshelve(id, dx: dx, dy: dy, into: into) }
-      if let back { doc.select(Set(back.cards.map(Item.card))) }
+      if let back { select(back) }
     }
+  }
+
+  /// What came back selected: its Sections when it has any, else its cards (actions/shelf.ts putBack)
+  private func select(_ back: (cards: [CardID], sections: [SectionID])) {
+    document?.select(
+      back.sections.isEmpty ? Set(back.cards.map(Item.card)) : Set(back.sections.map(Item.section)))
   }
 
   /// The dashed outline of an entry being dragged out: round it all, and round each card (board units)
@@ -425,11 +436,13 @@ extension CanvasView {
     let m = NSMenu()
     m.addItem(menuItem("Put Back") { [weak self] in self?.putBack(id) })
     m.addItem(.separator())
-    m.addItem(
-      menuItem("Remove") { [weak self] in
-        self?.closePreview()
-        self?.document?.edit("Remove from Shelf") { $0.removeShelfEntry(id) }
-      })
+    let remove = menuItem("Remove") { [weak self] in
+      self?.closePreview()
+      self?.document?.edit("Remove from Shelf") { $0.removeShelfEntry(id) }
+      self?.toast("Removed from Shelf")
+    }
+    remove.toolTip = "Delete it and what is in it"
+    m.addItem(remove)
     return m
   }
 
@@ -562,7 +575,8 @@ package final class ShelfPanel: NSView {
 
   static let width: CGFloat = 300
   static let header: CGFloat = 34
-  static let empty = "⌥S or drag to the Shelf button"
+  static let empty =
+    "Nothing on the Shelf. Right-click a card or Section → Move to Shelf, or drag it onto the Shelf button."
   var onClose: (() -> Void)?
   var onClickThumb: ((String) -> Void)?
   var onHoverThumb: ((String?) -> Void)?
@@ -711,9 +725,10 @@ package final class ShelfPanel: NSView {
     emptyText.isHidden = !ids.isEmpty
     emptyText.string = NSAttributedString(
       string: Self.empty,
-      attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor(cgColor: t.ink3)!])
-    emptyText.alignmentMode = .center
-    emptyText.frame = CGRect(x: 8, y: Self.header + 10, width: bounds.width - 16, height: 18)
+      attributes: [.font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: NSColor(cgColor: t.ink3)!])
+    // .cpanel .empty.sm: 6 by 8 in from the list, wrapped
+    emptyText.isWrapped = true
+    emptyText.frame = CGRect(x: 12, y: Self.header + 6, width: bounds.width - 24, height: 48)
     CATransaction.commit()
     scroll.frame = CGRect(
       x: 4, y: Self.header, width: bounds.width - 8, height: max(0, bounds.height - Self.header - 6))
