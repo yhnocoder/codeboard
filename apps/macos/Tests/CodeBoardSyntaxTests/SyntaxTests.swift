@@ -384,3 +384,42 @@ func twoThousandLinesInLinearTime(language: String) {
   // About 0.1 s in a debug build on an M-series Mac; something quadratic takes many times that
   #expect(seconds < 1.5)
 }
+
+/// A text edited key by key, each version coloured by a session (reparsing what changed, colouring the lines asked
+/// for) and from scratch: the same tokens every time, through strings and comments opened and closed, a common indent
+/// changed, an unknown language and back
+@Suite struct Sessions {
+  @Test(arguments: [
+    ("python", Python().lines),
+    (
+      "cuda-cpp",
+      ["#define N 4", "__global__ void k(float* x) {", "  /* a */ int i = threadIdx.x;", "  x[i] = 1.0f;", "}"]
+    ),
+    ("rust", ["fn main() {", "    let s = \"a\"; // c", "    println!(\"{}\", s);", "}"]),
+  ])
+  func aSessionColoursAsAWholeParseDoes(language: String, start: [String]) {
+    let session = HighlightSession(highlighter)
+    var text = start.joined(separator: "\n")
+    var seed: UInt64 = 7
+    func next(_ n: Int) -> Int {
+      seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+      return Int((seed >> 33) % UInt64(n))
+    }
+    let pieces = ["\"\"\"", "\"", "'", "(", ")", "#", "/*", "*/", "\n", "\n    ", "x", " ", "{", "}", "//", "é中"]
+    for step in 0..<300 {
+      let ns = text as NSString
+      let at = next(ns.length + 1)
+      if next(3) == 0, at < ns.length {
+        text = ns.replacingCharacters(in: NSRange(location: at, length: min(1 + next(3), ns.length - at)), with: "")
+      } else {
+        text = ns.replacingCharacters(in: NSRange(location: at, length: 0), with: pieces[next(pieces.count)])
+      }
+      let lines = text.components(separatedBy: "\n")
+      let lo = next(lines.count)
+      let wanted = lo..<(lo + 1 + next(lines.count - lo))
+      let lang = step == 150 ? "plaintext" : language
+      let whole = highlighter.tokens(lines: lines, language: lang)
+      #expect(session.tokens(lines: lines, language: lang, wanted: wanted) == Array(whole[wanted]), "step \(step)")
+    }
+  }
+}

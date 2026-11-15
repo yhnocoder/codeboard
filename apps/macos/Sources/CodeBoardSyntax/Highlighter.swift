@@ -46,18 +46,34 @@ public struct Highlighter: Sendable {
   /// included: a hidden range can open or close a string. An unknown language gives no tokens.
   public func tokens(lines: [String], language: String) -> [[Token]] {
     guard let grammar = Grammar(language: language) else { return lines.map { _ in [] } }
-    let query =
-      switch grammar {
-      case .python: python
-      case .rust: rust
-      case .cuda: cuda
-      }
     let slice = Slice(lines, dedent: grammar == .python)
     guard let (tree, text, offset) = bestParse(grammar, slice.text) else { return lines.map { _ in [] } }
+    return color(slice, lines.indices, tree, text, offset, grammar)
+  }
+
+  func query(_ grammar: Grammar) -> Query {
+    switch grammar {
+    case .python: python
+    case .rust: rust
+    case .cuda: cuda
+    }
+  }
+
+  /// The tokens of the slice's lines `wanted`, from the parse of `text` (the slice's text from `offset` on): only what
+  /// can colour them is looked at
+  fileprivate func color(
+    _ slice: Slice, _ wanted: Range<Int>, _ tree: Tree, _ text: [UInt16], _ offset: Int, _ grammar: Grammar
+  ) -> [[Token]] {
+    guard let first = wanted.first.map({ slice.lines[$0] }), let last = wanted.last.map({ slice.lines[$0] }) else {
+      return []
+    }
     var spans: [Span] = []
-    collect(query, grammar, tree.root, text, at: 0, into: &spans)
-    let classes = paint(spans, count: text.count)
-    return slice.lines.map { line in
+    let from = max(0, offset + first.start - 1)
+    collect(
+      query(grammar), grammar, tree.root, text, at: 0, into: &spans,
+      bytes: from..<(offset + last.start + last.count))
+    let classes = paint(spans, count: text.count, in: from..<(offset + last.start + last.count))
+    return slice.lines[wanted].map { line in
       let start = offset + line.start
       let indent = line.cut > 0 && start > 0 ? classes[start - 1] : nil
       return runs(Array(repeating: indent, count: line.cut) + classes[start..<start + line.count])
@@ -69,22 +85,101 @@ public struct Highlighter: Sendable {
   /// the most text. Other errors (a slice of statements from a function body) need nothing: the query still colours
   /// the tokens inside ERROR nodes, as the tests check against whole files.
   private func bestParse(_ grammar: Grammar, _ body: [UInt16]) -> (Tree, [UInt16], Int)? {
-    guard let plain = Tree(grammar, body) else { return nil }
+    Highlighter.best(grammar, body) { text, _ in Tree(grammar, text) }
+  }
+
+  /// The plain parse when it has no errors, else the one of it and the parses after each opening that places the most
+  /// text; `parse` gives the parse of a text (and the opening's index, -1 for none)
+  fileprivate static func best(
+    _ grammar: Grammar, _ body: [UInt16], parse: ([UInt16], Int) -> Tree?
+  ) -> (Tree, [UInt16], Int)? {
+    guard let plain = parse(body, -1) else { return nil }
     guard ts_node_has_error(plain.root) else { return (plain, body, 0) }
     var best = (plain, body, 0)
     var cost = plain.errorCost
-    let openings =
-      switch grammar {
-      case .python: ["\"\"\"", "'''"]
-      case .cuda, .rust: ["/*"]
-      }
-    for opening in openings {
+    for (k, opening) in openings(grammar).enumerated() {
       let text = Array(opening.utf16) + [newline] + body
-      guard let tree = Tree(grammar, text) else { continue }
+      guard let tree = parse(text, k) else { continue }
       let c = tree.errorCost
       if c < cost { (best, cost) = ((tree, text, opening.utf16.count + 1), c) }
     }
     return best
+  }
+
+  fileprivate static func openings(_ grammar: Grammar) -> [String] {
+    switch grammar {
+    case .python: ["\"\"\"", "'''"]
+    case .cuda, .rust: ["/*"]
+    }
+  }
+}
+
+/// Highlights one text as it is written: each call parses again only what changed since the one before (tree-sitter's
+/// incremental parsing, every parse `Highlighter.tokens` tries kept and edited), and colours only the lines asked
+/// for, with the same tokens `Highlighter.tokens` gives them. Calls take turns
+public final class HighlightSession: @unchecked Sendable {
+  private let highlighter: Highlighter
+  private let lock = NSLock()
+  private let parser: OpaquePointer = ts_parser_new()!
+  private var grammar: Grammar?
+  private var body: [UInt16] = []
+  /// By opening (-1: none), parsed for `body`
+  private var trees: [Int: Tree] = [:]
+
+  public init(_ highlighter: Highlighter) { self.highlighter = highlighter }
+
+  deinit { ts_parser_delete(parser) }
+
+  /// The tokens of `lines[wanted]`
+  public func tokens(lines: [String], language: String, wanted: Range<Int>) -> [[Token]] {
+    lock.withLock {
+      let wanted = wanted.clamped(to: lines.indices)
+      guard let g = Grammar(language: language), ts_parser_set_language(parser, g.language) else {
+        return wanted.map { _ in [] }
+      }
+      let slice = Slice(lines, dedent: g == .python)
+      if g != grammar {
+        (grammar, body, trees) = (g, [], [:])
+      } else {
+        edit(from: body, to: slice.text)
+      }
+      body = slice.text
+      var kept: [Int: Tree] = [:]
+      let best = Highlighter.best(g, slice.text) { text, k in
+        let t = Tree(parser, text, old: trees[k])
+        kept[k] = t
+        return t
+      }
+      trees = kept
+      guard let (tree, text, offset) = best else { return wanted.map { _ in [] } }
+      return highlighter.color(slice, wanted, tree, text, offset, g)
+    }
+  }
+
+  /// Every kept parse edited from the old text to the new: what lies between their common start and end
+  private func edit(from a: [UInt16], to b: [UInt16]) {
+    var p = 0
+    while p < a.count, p < b.count, a[p] == b[p] { p += 1 }
+    var q = 0
+    while q < a.count - p, q < b.count - p, a[a.count - 1 - q] == b[b.count - 1 - q] { q += 1 }
+    if p == a.count && p == b.count { return }
+    func point(_ units: [UInt16], _ end: Int, shift: Int) -> TSPoint {
+      var row: UInt32 = shift > 0 ? 1 : 0
+      var lineStart = 0
+      for i in 0..<end where units[i] == newline {
+        row += 1
+        lineStart = i + 1
+      }
+      return TSPoint(row: row, column: UInt32((end - lineStart) * 2))
+    }
+    for (k, tree) in trees {
+      let shift = k < 0 ? 0 : Highlighter.openings(grammar!)[k].utf16.count + 1
+      var e = TSInputEdit(
+        start_byte: UInt32((shift + p) * 2), old_end_byte: UInt32((shift + a.count - q) * 2),
+        new_end_byte: UInt32((shift + b.count - q) * 2), start_point: point(b, p, shift: shift),
+        old_end_point: point(a, a.count - q, shift: shift), new_end_point: point(b, b.count - q, shift: shift))
+      ts_tree_edit(tree.raw, &e)
+    }
   }
 }
 
@@ -133,10 +228,12 @@ private struct Span {
 
 /// The query's spans over the tree of `text`, which starts at `base` in the text being painted.
 private func collect(
-  _ query: Query, _ grammar: Grammar, _ root: TSNode, _ text: [UInt16], at base: Int, into spans: inout [Span]
+  _ query: Query, _ grammar: Grammar, _ root: TSNode, _ text: [UInt16], at base: Int, into spans: inout [Span],
+  bytes: Range<Int>? = nil
 ) {
   let cursor = ts_query_cursor_new()
   defer { ts_query_cursor_delete(cursor) }
+  if let bytes { ts_query_cursor_set_byte_range(cursor, UInt32(bytes.lowerBound * 2), UInt32(bytes.upperBound * 2)) }
   ts_query_cursor_exec(cursor, query.raw, root)
   var match = TSQueryMatch()
   let string = { (n: TSNode) in String(decoding: text[n.range], as: UTF16.self) }
@@ -191,15 +288,16 @@ private let bracePlaceholder = regex(
   #"\{\{|\}\}|\{\w*(\.[_[:alpha:]]\w*|\[[^\]"']+\])*(![ars])?(:\w?[<=>^]?[- +]?#?\d*,?(\.\d+)?[%EFGXb-gnosx]?)?\}"#)
 
 /// Outer spans first, inner ones over them, equal lengths in pattern order; the last paint of a code unit wins.
-private func paint(_ spans: [Span], count: Int) -> [TokenClass?] {
+private func paint(_ spans: [Span], count: Int, in range: Range<Int>) -> [TokenClass?] {
   var classes = [TokenClass?](repeating: nil, count: count)
+  let spans = spans.filter { $0.range.overlaps(range) }
   let ordered = spans.sorted { a, b in
     if a.whole != b.whole { return b.whole }
     if a.range.count != b.range.count { return a.range.count > b.range.count }
     return a.pattern < b.pattern
   }
   for span in ordered {
-    for i in span.range.clamped(to: 0..<count) { classes[i] = span.kind }
+    for i in span.range.clamped(to: range.clamped(to: 0..<count)) { classes[i] = span.kind }
   }
   return classes
 }

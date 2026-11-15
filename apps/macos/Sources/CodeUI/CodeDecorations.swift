@@ -4,10 +4,10 @@ import Foundation
 /// What a host marks on lines, drawn under the code, in colours it resolved itself: a line's background (on its first
 /// row, across the width), bands over runs of lines, a picture in the gutter. Lines are the numbers CodeLines was given;
 /// room after a line is CodeLines' `insert`
-public struct CodeDecorations: @unchecked Sendable {
+public struct CodeDecorations: Equatable, @unchecked Sendable {
   /// A rounded band from the top of the first shown line of `lines` to the bottom of the last one's rows, or down to the
   /// end of the room inserted `through` (its index in `insert`) when that is lower
-  public struct Band: @unchecked Sendable {
+  public struct Band: Equatable, @unchecked Sendable {
     public var lines: ClosedRange<Int>
     public var through: Int?
     public var color: CGColor

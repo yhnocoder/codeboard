@@ -73,7 +73,7 @@ extension CanvasView {
     let runs = h.tokens(lines: seg.lines, language: seg.language).map {
       $0.map { CodeRun(columns: $0.columns, style: $0.kind.rawValue) }
     }
-    v.colors = CodeColors(SyntaxColors(highlighter: h, language: seg.language), text: text, runs: runs)
+    v.colors = CodeColors(SyntaxColors(session: HighlightSession(h), language: seg.language), text: text, runs: runs)
     v.change { $0.lineComment = CodeEditing.lineComment(language: seg.language) }
     v.frame.size = CGSize(width: card.width, height: v.height)
     var e = Editing(doc: doc, id: id, fresh: fresh, card: card, shownZoom: camera.zoom)
@@ -284,16 +284,15 @@ extension CanvasView {
   }
 }
 
-/// The canvas's highlighter, colouring code as it is edited
+/// The canvas's highlighter, colouring code as it is edited: one session a card being written, which parses again
+/// only what an edit changed and colours only the lines asked for
 struct SyntaxColors: CodeHighlighter {
-  let highlighter: Highlighter
+  let session: HighlightSession
   let language: String
 
   @concurrent func runs(of text: String, lines: Range<Int>) async -> [[CodeRun]]? {
-    let all = text.components(separatedBy: "\n")
-    let tokens = highlighter.tokens(lines: all, language: language)
-    return lines.map { i in
-      i < tokens.count ? tokens[i].map { CodeRun(columns: $0.columns, style: $0.kind.rawValue) } : []
+    session.tokens(lines: text.components(separatedBy: "\n"), language: language, wanted: lines).map {
+      $0.map { CodeRun(columns: $0.columns, style: $0.kind.rawValue) }
     }
   }
 }

@@ -48,6 +48,18 @@ final class Tree {
     raw = tree
   }
 
+  /// `text` parsed by `parser`, reusing what of `old` (edited to match the text already) did not change
+  init?(_ parser: OpaquePointer, _ text: [UInt16], old: Tree?) {
+    let tree = text.withUnsafeBytes { bytes in
+      bytes.baseAddress.flatMap {
+        ts_parser_parse_string_encoding(
+          parser, old?.raw, $0.assumingMemoryBound(to: CChar.self), UInt32(bytes.count), TSInputEncodingUTF16LE)
+      }
+    }
+    guard let tree else { return nil }
+    raw = tree
+  }
+
   deinit { ts_tree_delete(raw) }
 
   /// How much of the text the parse could not place: code units under ERROR nodes, plus one per node it had to invent.

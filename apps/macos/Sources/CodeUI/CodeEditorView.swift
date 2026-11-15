@@ -38,11 +38,16 @@ public final class CodeEditorView: NSView {
 
   public private(set) var editor: CodeEditor
   public private(set) var layout: CodeTextLayout
-  public var look: Look { didSet { relayout() } }
+  public var look: Look {
+    didSet {
+      relayout()
+      needsDisplay = true
+    }
+  }
   /// Long lines cut to the width
   public var wrap = false { didSet { relayout() } }
   public var firstNumber = 1 { didSet { relayout() } }
-  public var decorations = CodeDecorations() { didSet { needsDisplay = true } }
+  public var decorations = CodeDecorations() { didSet { if decorations != oldValue { needsDisplay = true } } }
   /// Room after lines (the host draws what goes in it)
   public var insertions: [CodeLines.Insertion] = [] { didSet { relayout() } }
   /// The text's colours while it changes; without, what `runs` gives
@@ -75,6 +80,10 @@ public final class CodeEditorView: NSView {
   /// The width the rows are cut to (unscaled): laid out again only when it changes
   private var laidWidth: CGFloat = -1
   private var placing = false
+  /// What the selection, the caret's line and the composition were last drawn over
+  private var marked = CGRect.null
+  /// Redrawn only in view: what is still to draw out of it
+  private var stale: [CGRect] = []
 
   public init(text: String, look: Look) {
     editor = CodeEditor(text: text, selection: CodeSelection((text as NSString).length))
@@ -119,6 +128,7 @@ public final class CodeEditorView: NSView {
     bounds.size = CGSize(width: frame.width / zoom, height: frame.height / zoom)
     placing = false
     if wrap, bounds.width != laidWidth { relayout() }
+    drawSeen(visibleRect)
   }
 
   public override func setFrameSize(_ s: NSSize) {
@@ -154,7 +164,10 @@ public final class CodeEditorView: NSView {
       let line = ns.substring(to: start).utf16.count { $0 == 0x0A }
       if line < lineRuns.count { lineRuns[line] = lineRuns[line].filter { $0.columns.upperBound <= at - start } }
     }
+    let widthChanged = laidWidth != bounds.width
     laidWidth = bounds.width
+    let before = layout
+    let gutterBefore = gutter
     layout = CodeTextLayout(
       text: text, firstNumber: firstNumber, runs: lineRuns,
       wrapWidth: wrap ? CodeLines.wrapWidth(width: bounds.width, gutter: gutter, metrics: m) : nil,
@@ -164,10 +177,86 @@ public final class CodeEditorView: NSView {
       height = h
       onHeight?(h)
     }
-    needsDisplay = true
+    // only what changed is drawn again: the rows that differ, and the marks where they were and are
+    let now = marks()
+    if widthChanged || gutterBefore != gutter {
+      redraw(bounds)
+    } else {
+      redraw(CodeEditorView.changed(before.lineRows, layout.lineRows, width: bounds.width).union(marked).union(now))
+    }
+    marked = now
     placeCaret()
     placeFindBar()
     onLayout?()
+  }
+
+  /// The rows from the first that differs to the last, as they were and as they are
+  static func changed(_ a: [CodeLines.Row], _ b: [CodeLines.Row], width: CGFloat) -> CGRect {
+    var p = 0
+    while p < a.count, p < b.count, a[p] == b[p] { p += 1 }
+    if p == a.count && p == b.count { return .null }
+    var q = 0
+    while q < a.count - p, q < b.count - p, a[a.count - 1 - q] == b[b.count - 1 - q] { q += 1 }
+    var r = CGRect.null
+    for rows in [a[p..<(a.count - q)], b[p..<(b.count - q)]] {
+      if let f = rows.first, let l = rows.last {
+        r = r.union(CGRect(x: 0, y: f.y, width: width, height: l.y + l.height - f.y))
+      }
+    }
+    return r
+  }
+
+  /// The selection, the caret's line and the composition, as they are drawn now
+  private func marks() -> CGRect {
+    let w = bounds.width
+    var r = CGRect.null
+    let s = editor.selection.range
+    for b in layout.rects(drawn(s.lowerBound)..<drawn(s.upperBound), right: w) { r = r.union(b) }
+    let line = layout.placed(layout.row(of: drawn(editor.selection.head), assoc: editor.assoc)).kind
+    if case .line(let n, _, _, _) = line {
+      for row in layout.lineRows {
+        if case .line(n, _, _, _) = row.kind { r = r.union(CGRect(x: 0, y: row.y, width: w, height: row.height)) }
+      }
+    }
+    let (_, at, n) = shown
+    for b in layout.rects(at..<(at + n), right: w) { r = r.union(b.insetBy(dx: 0, dy: -3)) }
+    return r
+  }
+
+  /// Draws `r` again, now where it is in view and when it comes into view for the rest: code thousands of
+  /// points tall is drawn a screenful at a time
+  private func redraw(_ r: CGRect) {
+    let r = r.intersection(bounds)
+    guard !r.isNull, !r.isEmpty else { return }
+    stale.append(r)
+    drawSeen(window == nil ? bounds : visibleRect)
+  }
+
+  /// Draws what is stale in `seen`, and keeps the rest of it (above and below what is seen) for later
+  private func drawSeen(_ seen: CGRect) {
+    guard !stale.isEmpty else { return }
+    var rest: [CGRect] = []
+    for r in stale {
+      let now = r.intersection(seen)
+      guard !now.isNull, !now.isEmpty else {
+        rest.append(r)
+        continue
+      }
+      setNeedsDisplay(now)
+      guard seen.minX <= r.minX, seen.maxX >= r.maxX else {
+        rest.append(r)
+        continue
+      }
+      if r.minY < seen.minY { rest.append(CGRect(x: r.minX, y: r.minY, width: r.width, height: seen.minY - r.minY)) }
+      if r.maxY > seen.maxY { rest.append(CGRect(x: r.minX, y: seen.maxY, width: r.width, height: r.maxY - seen.maxY)) }
+    }
+    stale = rest
+  }
+
+  public override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    stale = [bounds]
+    drawSeen(visibleRect)
   }
 
   /// Where `lines` are drawn in the view (its own points, at zoom 1); nil when none is shown
