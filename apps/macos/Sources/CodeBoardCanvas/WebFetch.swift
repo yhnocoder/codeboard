@@ -84,11 +84,12 @@ package enum WebFetcher {
       (200..<300).contains(http.statusCode)
     else { return nil }
     let type = (http.value(forHTTPHeaderField: "Content-Type") ?? "").lowercased()
-    guard type.isEmpty || type.contains("html") else { return nil }
+    guard type.isEmpty || type.contains("html") || type.contains("xml") else { return nil }
     let final = http.url ?? url
-    // sent to sign in: nothing of the page itself
-    let path = final.path.lowercased()
-    if ["login", "signin", "sign-in", "sign_in", "sso", "auth", "accounts"].contains(where: { path.contains($0) }) {
+    // sent to sign in (host web.ts webMeta): redirected to an address with one of these as a word of its own
+    let at = final.absoluteString.replacing(/^https?:\/\//.ignoresCase(), with: "")
+    if final != url, at.contains(/(^|[\/.-])(login|signin|sign-in|sign_in|sso|auth|accounts)([\/.?-]|$)/.ignoresCase())
+    {
       return nil
     }
     var data = Data()

@@ -616,6 +616,8 @@ if (editMode) watchUi();
 // would overtake it)
 let keysSeen = 0;
 addEventListener("keydown", (e) => e.isTrusted && keysSeen++, true);
+let compositionEnds = 0;
+addEventListener("compositionend", () => compositionEnds++, true);
 // Both editors keep a rule for Safari, where the key that commits a composition (a Space, a digit, Enter) reached the
 // page after compositionend: they skip the first key after a composition ends as that one (prosemirror-view
 // inOrNearComposition, CodeMirror's compositionPendingKey). WebKit now gives the page that key first, before the
@@ -649,6 +651,32 @@ addEventListener("compositionend", (e) => {
   if (compositionKeys <= compositionUpdates || !(e.target instanceof Element)) return;
   e.target.dispatchEvent(new KeyboardEvent("keydown", { key: "Process", bubbles: true, cancelable: true }));
 });
+// WebKit writes a composition's text with that text selected and puts the caret where the input method says only after
+// the input event; CodeMirror reads the selection in between (its MutationObserver) and keeps the text selected until
+// WebKit's selectionchange. Whatever it draws before then puts that selection back, and WebKit takes a selection the
+// page sets as the end of the composition: code's colours coming back in between ended it, and the commit landed beside
+// what was composed ("n你"). Colours that come then wait for that selectionchange, and for CodeMirror to have read it
+let caretDue: Promise<void> | null = null;
+let caretCame = () => {};
+addEventListener(
+  "input",
+  (e) => {
+    if ((e as InputEvent).inputType !== "insertCompositionText" || caretDue) return;
+    caretDue = new Promise((r) => (caretCame = r));
+  },
+  true,
+);
+const caretIn = () => {
+  if (!caretDue) return;
+  caretDue = null;
+  setTimeout(caretCame);
+};
+document.addEventListener("selectionchange", caretIn);
+addEventListener("compositionend", caretIn, true);
+const afterCaret = async <T>(v: T) => {
+  while (caretDue) await caretDue;
+  return v;
+};
 // an Esc the input method took to cancel its composition: WebKit gives it as Escape with keyCode 229 (Chromium as
 // Process), and the editors' Esc would leave
 addEventListener(
@@ -682,6 +710,8 @@ const edit = {
     new Promise<boolean>((r) =>
       setTimeout(() => requestAnimationFrame(() => r(!!document.querySelector(".md-bubble"))), TOOLBAR_SETTLE),
     ),
+  /** Tests: the compositions ended so far (an input method's text committed or cancelled, or the page ending it) */
+  compositionEnds: () => compositionEnds,
   /** Resolves once `n` keydowns have been seen, or after `ms` (a key that reaches no page) */
   async seen(n: number, ms: number) {
     const until = performance.now() + ms;
@@ -845,7 +875,7 @@ const edit = {
       wrap: a.wrap,
       gutter: { start: a.start },
       html: a.html ?? undefined,
-      highlight: handler ? (t) => handler.postMessage({ text: t, lang }).catch(() => null) : undefined,
+      highlight: handler ? (t) => handler.postMessage({ text: t, lang }).then(afterCaret, () => null) : undefined,
       stopPointerDown: true,
       find: true,
       classes: { menu: "ctx", bar: "pill", button: "tbtn" },

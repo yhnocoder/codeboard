@@ -217,7 +217,7 @@ extension CanvasSidenoteTests {
     for i in 1...6 { grip.mouseDragged(with: ev(.leftMouseDragged, CGPoint(x: -40 * i, y: 30 * i))) }
     grip.mouseUp(with: ev(.leftMouseUp, CGPoint(x: -240, y: 180)))
     #expect(abs(popBox(c).minX - (was.x - 240)) < 0.5 && abs(popBox(c).minY - (was.y + 180)) < 0.5)
-    #expect(c.popHeld != nil && !c.popLine.isHidden)
+    #expect(c.popHeld != nil && c.popLine?.isHidden == false)
     await r.idle()
     // pans and a pinch: it keeps its offset from the marker, scaled with the zoom; only its view moves
     let breaks = r.breaks
@@ -249,7 +249,48 @@ extension CanvasSidenoteTests {
     let m2 = try #require(c.marks.first { $0.at == at })
     r.click(CGPoint(x: onBoard(c, m2).midX, y: onBoard(c, m2).midY))
     await opened(r, at)
-    #expect(c.popHeld == nil && c.popLine.isHidden)
+    #expect(c.popHeld == nil && c.popLine?.isHidden == true)
+  }
+
+  /// Sidenote popups stay open side by side (state/pop.ts openPop keeps the pinned ones, and actions/notes.ts pins every
+  /// sidenote popup it opens: pinMarker, openSpot, openAddNote, goToQuestion): a second marker clicked opens its popup, in
+  /// a web view of its own, and the first stays where it is; a marker clicked again closes its own only; Esc and a press on
+  /// the canvas close them all (ui/pops/index.tsx Popovers' layer, interact.ts canvasPointerDown: closeAllPops)
+  @Test func popupsStayOpenTogetherAndEscOrAPressOnTheCanvasClosesThemAll() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let a = PopAt.spot(.card(cid("n1")))
+    let b = PopAt.spot(.card(cid("t1")))
+    func click(_ at: PopAt) throws {
+      let m = try #require(c.marks.first { $0.at == at })
+      r.click(CGPoint(x: onBoard(c, m).midX, y: onBoard(c, m).midY))
+    }
+    func both() async throws -> (SidenotePop, SidenotePop, CGRect) {
+      try click(a)
+      await opened(r, a)
+      let first = c.sidenotePop
+      let was = first.view.frame
+      try click(b)
+      await opened(r, b)
+      return (first, c.sidenotePop, was)
+    }
+    var (first, second, was) = try await both()
+    #expect(first !== second, "a web view each")
+    #expect(first.view.alphaValue == 1 && second.view.alphaValue == 1, "both shown")
+    #expect(first.view.frame == was, "the first stays where it was")
+    #expect(first.key != nil && first.key != second.key)
+    try click(a)
+    await r.until("its marker closes the first only") { first.view.alphaValue == 0 }
+    #expect(c.popShown == b && second.view.alphaValue == 1)
+    r.key(53)
+    await r.until("Esc closes the rest") { c.popShown == nil && second.view.alphaValue == 0 }
+    (first, second, was) = try await both()
+    #expect(first !== second && first.view.alphaValue == 1)
+    r.click(CGPoint(x: 480, y: 560))
+    await r.until("a press on the canvas closes them all") { c.popShown == nil }
+    await c.popTask?.value
+    #expect(first.view.alphaValue == 0 && second.view.alphaValue == 0)
   }
 
   @Test func writtenInThePopupASidenoteOrQuestionIsAddedAndTheInputStaysForTheNext() async throws {
@@ -597,9 +638,8 @@ extension CanvasSidenoteTests {
     let r = try await Rig(sidenoteBoard(question: true), zoom: 1)
     defer { r.close() }
     let c = r.canvas
-    let pop = c.sidenotePop
     func tools(_ n: String) async -> [String] {
-      await pop.run(
+      await c.sidenotePop.run(
         "return [...document.querySelectorAll(s)].map((b) => b.getAttribute('aria-label'))",
         ["s": ".slip[data-note=\"\(n)\"] .kt button"]) as? [String] ?? []
     }
@@ -607,15 +647,17 @@ extension CanvasSidenoteTests {
     c.openPop(.spot(.section(gid("g1"))))
     await opened(r, .spot(.section(gid("g1"))))
     #expect(await tools("g1") == ["Edit", "Delete Sidenote"])
+    c.openPop(nil)
     c.openPop(.spot(.card(cid("n1"))))
     await opened(r, .spot(.card(cid("n1"))))
     #expect(await tools("w1") == ["Resolve", "Edit", "Delete Question"])
+    c.openPop(nil)
     c.openPop(lines)
     await opened(r, lines)
     #expect(await tools("l1") == ["Edit", "Always Show", "Place on Board", "Delete Sidenote"])
     // pressed: a Note of its text beside the card, an arrow to it from the Highlight's first line, one step, selected
     let from = r.rect("c1")
-    _ = await pop.run("pop.click(s)", ["s": ".slip[data-note=\"l1\"] [aria-label=\"Place on Board\"]"])
+    _ = await c.sidenotePop.run("pop.click(s)", ["s": ".slip[data-note=\"l1\"] [aria-label=\"Place on Board\"]"])
     await r.until("placed") { r.doc.board.sidenote(nid("l1")) == nil }
     let id = try #require(r.doc.selection.first?.card)
     let card = try #require(r.doc.board.card(id))

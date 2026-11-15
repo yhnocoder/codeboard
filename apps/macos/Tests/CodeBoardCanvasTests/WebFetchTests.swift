@@ -101,6 +101,32 @@ let tinyPNG = Data(
     }
   }
 
+  /// A sign-in page is one a redirect led to whose address has login, auth, accounts… as a word of its own (host
+  /// web.ts webMeta); a page asked for itself, or with those letters inside a word, is read. A page served as XML is
+  /// read too
+  @Test func onlyARedirectToASignInAddressFails() async {
+    let head = Data("<head><title>Page</title></head>".utf8)
+    StubProtocol.pages = [
+      "https://site.test/author/ann": (200, "text/html", head, nil),
+      "https://docs.site.test/en/authentication/keys": (200, "text/html", head, nil),
+      "https://site.test/login": (200, "text/html", head, nil),
+      "https://site.test/feed": (200, "application/xhtml+xml", head, nil),
+      "https://site.test/old": (301, "text/html", Data(), "https://site.test/authors"),
+      "https://site.test/authors": (200, "text/html", head, nil),
+      "https://site.test/private": (302, "text/html", Data(), "https://accounts.site.test/x?next=1"),
+      "https://accounts.site.test/x?next=1": (200, "text/html", head, nil),
+    ]
+    let s = StubProtocol.session
+    for good in [
+      "site.test/author/ann", "docs.site.test/en/authentication/keys", "site.test/login", "site.test/feed",
+      "site.test/old",
+    ] {
+      let p = await WebFetcher.fetch(URL(string: "https://\(good)")!, session: s)
+      #expect(p.title == "Page", "\(good)")
+    }
+    #expect(await WebFetcher.fetch(URL(string: "https://site.test/private")!, session: s).failed)
+  }
+
   @Test func picturesAreKnownByTheirBytes() {
     #expect(WebFetcher.sniff(tinyPNG) == "png")
     #expect(WebFetcher.sniff(Data([0xFF, 0xD8, 0xFF, 0xE0])) == "jpeg")

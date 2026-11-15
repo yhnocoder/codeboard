@@ -109,8 +109,8 @@ extension CanvasView {
     return nil
   }
 
-  /// A link written on the board opened: only a web page or a mail address (main's host handlers.ts openLink: file://
-  /// and the like would open a program here)
+  /// A link on the board opened (a Web card, a row, a link in a Note): only a web page or a mail address (main's host
+  /// handlers.ts openLink, which every open goes through: file:// and the like would open a program here)
   func openLink(_ s: String) {
     guard let u = URL(string: s), ["http", "https", "mailto"].contains(u.scheme?.lowercased() ?? "") else { return }
     openURL(u)
@@ -119,7 +119,7 @@ extension CanvasView {
   /// A double-click on a Web card or a row: its page in the browser. False when it is on neither
   func openPage(at p: CGPoint) -> Bool {
     guard let u = pageURL(at: p) else { return false }
-    openURL(u)
+    openLink(u.absoluteString)
     return true
   }
 
@@ -246,7 +246,7 @@ extension CanvasView {
     v.submenu = view
     return [
       menuItem("Open in Browser") { [weak self] in
-        if let u = URL(string: w.url) { self?.openURL(u) }
+        self?.openLink(w.url)
       },
       menuItem("Refresh Preview") { [weak self] in self?.refreshWeb(id) }, v,
       menuItem("Edit Title") { [weak self] in self?.editWebText(id, .title) },
@@ -264,7 +264,7 @@ extension CanvasView {
     v.submenu = view
     return [
       menuItem("Open All in Browser") { [weak self] in
-        for it in l.items { if let u = URL(string: it.url) { self?.openURL(u) } }
+        for it in l.items { self?.openLink(it.url) }
       }, v,
       menuItem("Rename") { [weak self] in self?.editWebText(id, .listTitle) },
     ]
@@ -283,7 +283,7 @@ extension CanvasView {
     let m = NSMenu()
     m.addItem(
       menuItem("Open in Browser") { [weak self] in
-        if let u = URL(string: it.url) { self?.openURL(u) }
+        self?.openLink(it.url)
       })
     m.addItem(
       menuItem(rich ? "Show as Compact" : "Show as Rich") { [weak self] in

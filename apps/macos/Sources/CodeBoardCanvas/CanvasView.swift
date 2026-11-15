@@ -283,24 +283,14 @@ public final class CanvasView: NSView {
   var markLayers: [CALayer] = []
   var marksZoom: CGFloat = 0
   var hoveredMark: Int?
-  /// The sidenote popup open, by what it shows
-  var openPop: PopAt?
-  /// A sidenote popup opened or closed (tests)
+  /// The sidenote popups open, the newest last (state/pop.ts pops)
+  var pops: [Popup] = []
+  /// A sidenote popup opened or closed: the newest one open now (tests)
   package var onPop: ((PopAt?) -> Void)?
-  /// What the popup web view shows (kept until it lets it go: what a closing ends is still added there), the key it
-  /// shows it under, and the [[ list for its inputs
-  var popShown: PopAt?
-  var popKey = ""
-  var popRefList: RefCandidates?
-  /// Dragged away: its top left from its marker's, in board units
-  package var popHeld: CGVector?
-  /// Its top left in the view now, and where a drag of it began
-  package var popAt = CGPoint.zero
-  var popDragFrom: CGPoint?
-  /// The dashed line back to the marker of a popup dragged away, in the view's units
-  let popLine = CAShapeLayer()
-  /// The popup's showing and updating, one after another
+  /// The popups' showing, updating and closing, one after another
   var popTask: Task<Void, Never>?
+  /// The popup the [[ref]] previewed was pressed in
+  var refPop: Popup?
   /// The open questions the toolbar was told of; the question list open, under the toolbar button at that rect, with
   /// the other boards' questions it lists
   var shownQuestions = -1
@@ -312,6 +302,8 @@ public final class CanvasView: NSView {
   /// A question on another board picked in the list: that board is to open and go to it
   /// Another board to open, and what to go to on it once shown
   public var onOpenBoard: ((BoardID, Arrival?) -> Void)?
+  /// Over a sub-board: the breadcrumb, and the move in or out under way (CanvasCrumbs.swift)
+  let crumbsBar = CrumbsBar()
   /// A board to delete (a sub-board card's Delete Board…): the shell asks first; whether it went
   public var onDeleteBoard: (@MainActor (BoardID) async -> Bool)?
   /// The titles of the boards showing a shared card now, this one among them
@@ -347,6 +339,8 @@ public final class CanvasView: NSView {
   /// The frames easing towards where the drag has them, each a spring that keeps its speed as the target moves
   var frameEase: [SectionID: FrameEase] = [:]
   var frameEaseAt: TimeInterval?
+  /// Tidy Up's slide (CanvasTidySlide.swift)
+  var tidySlide: TidySlide?
   /// The zoom that fits the board, which overviews are drawn for
   var fitZoom: CGFloat = 1
   /// The framed cards' shadow, made once per theme
@@ -563,6 +557,7 @@ public final class CanvasView: NSView {
     if !keepCamera { self.keepCamera(now: true) }
     shown = (board, vault)
     install(scene, overviews: overviews, shadow: shadow, theme: theme, keepCamera: keepCamera)
+    if keepCamera { showCrumbs() } else { boardArrived() }
   }
 
   /// The sizes the Note renderer gives the Notes without a stored height: from what it kept, else measured in the web
@@ -727,6 +722,7 @@ public final class CanvasView: NSView {
     cardShadow = shadow
     scene = s
     routedArrows = [:]
+    tidySlide = nil
     hoveredArrow = nil
     mode = nil
     dropLit = []
@@ -766,7 +762,6 @@ public final class CanvasView: NSView {
     applyLevels(levels.frame(at: now))
     applyCamera()
     arrive()
-    stylePopLine()
     // another board: its popup goes; the same one drawn again (another theme): it follows
     if openPop != nil, !keepCamera { openPop(nil) }
     placeMarks()
@@ -911,7 +906,7 @@ public final class CanvasView: NSView {
       world.sublayerTransform = m
       if chrome.sublayers?.isEmpty == false { drawChrome() }
       if editing != nil { cameraMovedWhileEditing() }
-      if popShown != nil { positionPop() }
+      if !pops.isEmpty { positionPop() }
       if refPeek != nil { placeRefPeek() }
       if summaryButtons.superlayer != nil {
         summaryButtons.setAffineTransform(CGAffineTransform(scaleX: 1 / camera.zoom, y: 1 / camera.zoom))
@@ -1125,8 +1120,9 @@ public final class CanvasView: NSView {
       DispatchQueue.global(qos: .utility).async { _ = malloc_zone_pressure_relief(nil, 0) }
     }
     stepFrameEase(at: time)
+    stepTidySlide(at: time)
     if motion.isResting && queue.isIdle && onFrame == nil && gesture == nil && !levels.isAnimating
-      && frameEase.isEmpty
+      && frameEase.isEmpty && tidySlide?.started != true
     {
       link?.isPaused = true
     }

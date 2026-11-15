@@ -204,7 +204,9 @@ extension CanvasView {
     }
     editingOriginal = editingOriginal ?? items[i]
     items[i] = l
-    // its selected look into the paper, in the same frame (main keeps it while the card is written in)
+    // its stickers and markers onto the paper, and its selected look, in the same frame (main keeps them while the card
+    // is written in: they are in its face)
+    placeMarks()
     drawChrome()
   }
 
@@ -471,7 +473,8 @@ extension CanvasView {
         original.box.removeAnimation(forKey: "fold")
         items[i].box.superlayer?.replaceSublayer(items[i].box, with: original.box)
         items[i] = original
-        // its selected look into the layer it is back in, in the same frame
+        // its stickers, markers and selected look into the layer it is back in, in the same frame
+        placeMarks()
         drawChrome()
       }
     }

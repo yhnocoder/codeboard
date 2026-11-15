@@ -107,8 +107,9 @@ import Testing
     panes.sync()
     let tab = try #require(shell.selected)
     let pane = try #require(panes.panes[tab])
-    pane.canvas.onOpenBoard = { id, _ in
-      shell.show(id)
+    // the window's tracking of the shell, which syncs the panes
+    pane.canvas.onEnterBoard = { id, card, camera in
+      shell.enter(id, from: card, camera: camera)
       panes.sync()
     }
     await until("Outer shown") { pane.canvas.scene != nil && pane.document?.id == a }
@@ -119,6 +120,8 @@ import Testing
     await until("Inner shown") { pane.document?.id == b && pane.canvas.shown?.board.id == b }
     #expect(shell.current?.board == b && shell.tabs.count == 1)
     #expect(shell.current?.back == [Tab.Visit(board: a, camera: was)])
+    #expect(shell.current?.crumbs == [Tab.Crumb(board: a, frame: frame, camera: was)])
+    #expect(pane.canvas.crumbs.map(\.board) == [a])
     // back (⌘[): Outer again, where its view was
     shell.goBack()
     panes.sync()

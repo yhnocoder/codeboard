@@ -70,6 +70,38 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
     #expect(s.current?.back.map(\.board) == [id("a")])
   }
 
+  /// A sub-board entered from its card (actions/subboards.ts enterFrame, host handlers.ts enterBoard): the boards it was
+  /// entered from are its crumbs; leaving to one (leaveBoard) shows it from where its camera was when it was left; back
+  /// and forward bring a board back with its crumbs, and a board shown otherwise has none
+  @Test func aSubBoardEnteredHasItsParentsAsCrumbsAndLeavingGoesBackToItsCamera() {
+    let s = shell()
+    s.show(id("a"))
+    let cam = Camera(origin: CGPoint(x: 10, y: 20), zoom: 1.5)
+    s.enter(id("b"), from: CardID(rawValue: "fb"), camera: cam)
+    #expect(s.current?.board == id("b"))
+    #expect(s.current?.crumbs == [Tab.Crumb(board: id("a"), frame: CardID(rawValue: "fb"), camera: cam)])
+    s.enter(id("c"), from: CardID(rawValue: "fc"), camera: nil)
+    #expect(s.current?.crumbs.map(\.board) == [id("a"), id("b")])
+    s.leave(to: 0)
+    #expect(s.current?.board == id("a") && s.current?.crumbs == [] && s.current?.arriving == cam)
+    s.goBack()
+    #expect(s.current?.board == id("c") && s.current?.crumbs.map(\.board) == [id("a"), id("b")])
+    s.leave()
+    #expect(s.current?.board == id("b") && s.current?.crumbs.map(\.board) == [id("a")])
+    s.show(id("d"))
+    #expect(s.current?.crumbs == [])
+    s.goBack()
+    #expect(s.current?.board == id("b") && s.current?.crumbs.map(\.board) == [id("a")])
+    s.apply(.success(tree([("b", "B.board"), ("c", "C.board")])))
+    #expect(s.current?.crumbs == [], "a parent gone from disk leaves the crumbs from it on")
+  }
+
+  @Test func aTabSavedBeforeCrumbsStillReads() throws {
+    let old = #"{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","board":"a","back":[{"board":"b"}],"forward":[]}"#
+    let t = try JSONDecoder().decode(Tab.self, from: Data(old.utf8))
+    #expect(t.board == id("a") && t.crumbs == [] && t.back.first?.crumbs == [])
+  }
+
   @Test func aNewTabOpensAfterTheCurrentOneAndIsSelected() {
     let s = shell()
     s.show(id("a"))

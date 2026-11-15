@@ -124,7 +124,7 @@ extension CanvasView {
   /// The drag of a free marker: it follows the pointer (its layer only); what it would land on is tinted
   func dragMark(_ i: Int, to p: CGPoint) {
     guard i < marks.count, i < markLayers.count, case .spot(.point) = marks[i].at else { return }
-    if openPop == marks[i].at { openPop(nil) }
+    if let p = pops.first(where: { $0.at == marks[i].at }) { closePop(p) }
     let l = markLayers[i]
     let spot = freeDrop(at: p)
     withoutAnimation {

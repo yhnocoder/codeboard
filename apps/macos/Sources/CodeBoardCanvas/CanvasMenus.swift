@@ -173,6 +173,7 @@ extension CanvasView {
     let tilt = key(action("Tilt", #selector(tilt(_:))), "t", [.option, .shift])
     tilt.state = !cards.isEmpty && cards.allSatisfy { doc.board.card($0)?.tilted == true } ? .on : .off
     m.addItem(tilt)
+    m.addItem(key(menuItem("Tidy Up", enabled: canTidyUp) { [weak self] in self?.tidyUp() }, "t", .option))
     m.addItem(arrangeItem(cards, tiltAndLock: false))
     // in the board's order: a selection has none of its own here
     let b = doc.board
@@ -271,13 +272,16 @@ extension CanvasView {
     return m
   }
 
-  /// Several Sections and no cards (menus.ts multiSectionItems): Fit Content, Lock, Color, Copy Paths, then Move to
-  /// Shelf and Remove N Sections
+  /// Several Sections and no cards (menus.ts multiSectionItems): Fit Content, Tidy Up, Lock, Color, Copy Paths, then
+  /// Move to Shelf and Remove N Sections
   func sectionsMenu(_ ids: [SectionID]) -> NSMenu {
     let m = NSMenu()
     let fit = fittable(ids)
     m.addItem(
       key(menuItem("Fit Content", enabled: !fit.isEmpty) { [weak self] in self?.fitContent(fit) }, "f", .option))
+    // two or more unlocked Sections (menus.ts multiSectionItems)
+    let free = ids.filter { document?.board.isLocked(section: $0) == false }
+    m.addItem(key(menuItem("Tidy Up", enabled: free.count >= 2) { [weak self] in self?.tidyUp([], ids) }, "t", .option))
     m.addItem(lockItem())
     m.addItem(colorItem(ids))
     m.addItem(copyPathItem(ids.map(\.rawValue), title: "Copy Paths"))
