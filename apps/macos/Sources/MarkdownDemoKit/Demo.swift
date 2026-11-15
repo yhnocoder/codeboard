@@ -784,7 +784,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   }
 
   /// a Box's fill: the colour mixed into the paper, as the canvas mixes it (CodeBoardCanvas Theme.boxFills)
-  static func boxFill(_ f: NoteStyle.BoxFill, surface: CGColor) -> NSColor {
+  static func boxFill(_ f: BoxFill, surface: CGColor) -> NSColor {
     let (p, other): (CGFloat, UInt32) =
       switch f {
       case .yellow: (0.66, 0xf0cf62)
