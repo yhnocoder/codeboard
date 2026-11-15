@@ -1,0 +1,117 @@
+{
+  "CodeBoardModelTests": {
+    "sources": ["Sources/CodeBoardModel"],
+    "changed": "whole",
+    "important": "whole"
+  },
+  "CodeBoardSyntaxTests": {
+    "sources": ["Sources/CodeBoardSyntax", "Sources/CTreeSitterScanners"],
+    "changed": "whole",
+    "important": "whole"
+  },
+  "CodeBoardMarkdownTests": {
+    "sources": ["Sources/CodeBoardMarkdown"],
+    "changed": "whole",
+    "important": [
+      "ParityTests",
+      "BlockMoveTests",
+      "DocumentTests/readsTheBlocks",
+      "DocumentTests/inlineRangesPointIntoTheSourceThroughQuoteMarkers",
+      "CaretTests/markersShowAroundTheCaretAndAreWalkedThroughThere",
+      "MathHintTests/theCommandBeingTyped"
+    ]
+  },
+  "CodeBoardMarkdownUITests": {
+    "sources": ["Sources/CodeBoardMarkdownUI"],
+    "changed": "whole",
+    "important": ["LayoutTests", "MathTests", "EditorCoreTests", "CodeBlockTests", "WebParityTests"]
+  },
+  "CodeBoardNotesTests": {
+    "sources": ["Sources/CodeBoardNotes", "web"],
+    "changed": "whole",
+    "important": [
+      "SnapshotKeyTests",
+      "SnapshotStoreTests",
+      "RenderQueueTests",
+      "NoteRendererTests/aNotesBlocksAreMeasuredWithItsSizeAndKeptWithIt",
+      "NoteEditorTests/itMountsTypesGrowsAndEndsWithWhatWasWritten"
+    ]
+  },
+  "MarkdownDemoKitTests": {
+    "sources": ["Sources/MarkdownDemoKit"],
+    "changed": "whole",
+    "important": ["SampleMoveTests", "VaultNotesTests"]
+  },
+  "CodeBoardCanvasTests": {
+    "sources": ["Sources/CodeBoardCanvas"],
+    "changed": "files",
+    "important": [
+      "canvasIsLayerBacked",
+      "ByteLRUTests",
+      "CameraTests",
+      "ChooseModeTests",
+      "CodeLayoutTests",
+      "ConnectTests",
+      "LabelPlacementTests",
+      "LevelsTests",
+      "MotionTests",
+      "NoteLevelsTests",
+      "NoteSizeTests",
+      "PrototypeMotionTests",
+      "RedrawQueueTests",
+      "RefTests",
+      "RestPlanTests",
+      "RestWeightTests",
+      "SceneTests",
+      "SeededTests",
+      "SummaryLevelsTests",
+      "ThemeTests",
+      "WebFetchTests",
+      "TestGuardTests/theWatchdogSaysWhichTestRanOverItsLimit",
+      "TestGuardTests/aRealRightPressOnAViewWithAMenuReturnsAtOnceAndShowsNothing",
+      "CanvasWritingTests/aNewCardWrittenInIsOneStep",
+      "CanvasWritingTests/theToolbarShowsItsNineToolsAndMakesNoteTextAndBoxInTheViewsMiddle",
+      "CanvasEditTests/draggingACardIsOneStepThatOnlyMovesLayersAndJoinsTheSectionItLandsIn",
+      "CanvasEditTests/scrollAndPinchMoveOnlyTheCamera",
+      "CanvasFreeCodeTests/keysTypedAtOnceAfterTheDoubleClickAreAllWritten",
+      "CanvasSectionTests/theToolbarsSectionDrawsAFrameThatTakesWhatItCoversAndItsTitleIsWrittenAtOnce",
+      "CanvasArrowTests/aCardsPortDrawsAnArrowToTheCardOrLineLetGoOnAndNothingOnTheCanvas",
+      "CanvasSidenoteTests/writtenInThePopupASidenoteOrQuestionIsAddedAndTheInputStaysForTheNext",
+      "CanvasCopyTests/pasteTakesTheArrowsAmongThemAndTravellingSidenotesAndLandsInItsSection",
+      "CanvasPasteTests/plainTextPastesAsANoteWhereMainPutsIt",
+      "CanvasStickerTests/thePaletteOffersTheGlyphsAndAnEmojiAndAPickedOneFollowsThePointerUntilAClickPutsItDown",
+      "CanvasShelfTests/cardsDraggedOntoTheButtonGoOntoTheShelfInOneStep",
+      "CanvasSelectionLookTests/theRingFadesInGrowingAndFadesOut",
+      "CanvasSummaryTests/theSummaryLevelIsLaidOutAndDrawnWhenTheBoardIsShown",
+      "CanvasWebTests/aPastedLinkIsAWebCardWhosePageIsReadOnceWithItsPictureKeptOneStep",
+      "CanvasSubBoardTests/aSubBoardIsEnteredWithItsNameFlyingToTheBreadcrumbAndEscLeavesIt",
+      "CanvasWritingTests/RefClicks/aFarCardIsPreviewedBesideTheNoteAndItsArrowGoesThere",
+      "CanvasIMETests/anEscDuringACompositionCancelsOnlyTheComposition",
+      "ParityMenusTests/aNotesMenuIsAddSidenoteThenArrangeCopyPathAndDelete",
+      "ParityKeysTests/nTAndRMakeANoteATextAndABoxAtThePointer",
+      "CanvasOpeningTests/aBoardOpensAt100PercentWithItsTopLeftCorner80In",
+      "CanvasSnapTests/aSlowDragLinesUpAFastOneDoesNotAndCommandNever",
+      "CanvasGlideTests/aSwipeLetGoGlidesAsFarAsMotionSaysThenRests",
+      "CanvasAccessibilityTests/cardsAndSectionsAreElementsWhereTheyAreDrawn",
+      "CanvasPictureTests/aPictureOfTheBoardAsItWasIsNotShownOnceItChanged",
+      "CanvasHeadActsTests/eachKindHasMainsButtonsWhereMainPutsThem"
+    ]
+  },
+  "CodeBoardShellTests": {
+    "sources": ["Sources/CodeBoardShell"],
+    "changed": "files",
+    "important": [
+      "ShellTests/aSubBoardEnteredHasItsParentsAsCrumbsAndLeavingGoesBackToItsCamera",
+      "ShellTests/theStateRoundTripsThroughRelaunch",
+      "BoardPanesTests/aBoardOpensWhereItWasLeftAndAtTheCameraItsImportBrought",
+      "BoardPanesTests/aSharedCardEditedOnOneBoardShowsOnTheOtherWithItsImagesAndTravellingSidenote",
+      "DeleteTests/aDeletedBoardGoesToTheTrashWholeAndNothingElseChanges",
+      "SidebarFilesTests/duplicateBoardCopiesItBesideItAndMoveToTakesItToAFolder",
+      "FullWindowSearchTests/commandKSearchesEveryBoardAndReturnOpensTheCardsBoard",
+      "FullWindowEditTests/whatIsTypedInOutsideTheBoardsKeepsTheKeys",
+      "WritingWhenClosingTests/closingTheTabWritesWhatIsBeingTyped",
+      "FullWindowSheetTests/quittingWithUnsavedChangesAsksInASheet",
+      "ParityMenuKeysTests/orderKeysAreTheAppsOwnAndBracketsSwitchTabs"
+    ]
+  }
+}

@@ -105,11 +105,11 @@ jobs:
     uses: ./.github/workflows/android.yml
     with: { everything: true }
 
-  # the Mac app's acceptance scenarios beside the web board (macos.yml's accept jobs, apps/macos/tools/accept/ci.txt; too
-  # long for every PR); not part of the report to the results issue: a failure shows on this run
+  # the Mac app's whole unit tests and acceptance list (macos.yml; a PR runs only the important tests and the smoke
+  # scenarios); not part of the report to the results issue: a failure shows on this run
   macos:
     uses: ./.github/workflows/macos.yml
-    with: { acceptance: true }
+    with: { everything: true }
 
   repeat:
     needs: harness
