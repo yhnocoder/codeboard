@@ -21,25 +21,25 @@ extension CanvasView {
     let urls = lines.compactMap(webAddress)
     guard !urls.isEmpty, urls.count == lines.count else { return false }
     var seen = Set<String>()
-    addLinks(urls.filter { seen.insert($0).inserted }, at: p)
+    addLinks(urls.filter { seen.insert($0).inserted }, at: p, "Paste")
     return true
   }
 
   /// One address: a Web card (newWeb, by addCards); more: a Link List (newLinkList), from the middle of the view when
   /// nowhere was given
-  private func addLinks(_ urls: [String], at p: CGPoint?) {
+  private func addLinks(_ urls: [String], at p: CGPoint?, _ step: String) {
     guard let first = urls.first else { return }
     let id = CardID(rawValue: Board.newID("card-"))
     if urls.count == 1 {
       let size = CGSize(width: Board.webWidth, height: 112)
       let at = pastePlace(size, at: p, besideSelection: true)
-      settle(id, size, "Paste", reveal: true) { $0.addWeb(id, url: first, x: at.x, y: at.y) }
+      settle(id, size, step, reveal: true) { $0.addWeb(id, url: first, x: at.x, y: at.y) }
       fetchWeb(id, url: first)
     } else {
       let items = urls.map { LinkList.Item(id: Board.newID("li"), url: $0) }
       let size = CGSize(width: Board.linksWidth, height: 52 + Double(items.count) * 30)
       let at = pastePlace(size, at: p, besideSelection: false)
-      settle(id, size, "Paste") {
+      settle(id, size, step) {
         $0.cards.append(
           Card(
             id: id, x: at.x, y: at.y, width: Board.linksWidth,
@@ -84,8 +84,8 @@ extension CanvasView {
       var card = Board.newCard(.note, id: id, x: at.x.rounded(), y: at.y.rounded())
       card.content = .own(CardContent(body: .note(Note(text: md))))
       settle(id, CGSize(width: Board.newNoteWidth, height: 160), "Paste") { $0.cards.append(card) }
-    case .web(let u): addLinks([u], at: p)
-    case .links(let us): addLinks(us, at: p)
+    case .web(let u): addLinks([u], at: p, "Paste")
+    case .links(let us): addLinks(us, at: p, "Paste")
     case .code(let text, let language):
       // newFreeCode: a Note's width, as tall as its lines up to 520
       let lines = text.components(separatedBy: "\n")
@@ -142,6 +142,29 @@ extension CanvasView {
       guard document === doc else { return }
       guard let made else { return toast("This SVG image could not be read") }
       addImage(made.dataURL, width: made.width, at: nil, "New Image")
+    }
+  }
+
+  /// The toolbar's Web (create.ts newWeb): its address asked in a sheet as main's promptText asks it, https:// put
+  /// before one without; a Web card where a pasted one goes, its page read
+  public func newWeb() {
+    guard let window else { return }
+    let alert = NSAlert()
+    alert.messageText = "Add Web Link"
+    let field = NSTextField(frame: CGRect(x: 0, y: 0, width: 280, height: 22))
+    field.placeholderString = "https://…"
+    alert.accessoryView = field
+    alert.addButton(withTitle: "Add")
+    alert.addButton(withTitle: "Cancel")
+    alert.window.initialFirstResponder = field
+    let doc = document
+    alert.beginSheetModal(for: window) { [weak self] r in
+      MainActor.assumeIsolated {
+        var url = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let self, r == .alertFirstButtonReturn, !url.isEmpty, self.document === doc else { return }
+        if !url.hasPrefix("http://") && !url.hasPrefix("https://") { url = "https://" + url }
+        self.addLinks([url], at: nil, "New Web Card")
+      }
     }
   }
 

@@ -319,6 +319,11 @@ public final class CanvasView: NSView {
   let crumbsBar = CrumbsBar()
   /// A board to delete (a sub-board card's Delete Board…): the shell asks first; whether it went
   public var onDeleteBoard: (@MainActor (BoardID) async -> Bool)?
+  /// The titles of the boards showing a shared card now, this one among them
+  package var boardsShowing: (CardID) -> [String] = { _ in [] }
+  /// Delete Everywhere of a shared card (its title): the shell asks, runs `here` (this board's step) and takes it from
+  /// the other boards; how many boards it was on, nil when not asked or not done
+  package var onDeleteEverywhere: (@MainActor (CardID, String, _ here: @MainActor () -> Void) async -> Int?)?
   /// A ref clicked: what goes there once the double-click time is over
   var refGo: Task<Void, Never>?
   /// How long a click on a ref waits for a second (tests shorten it)

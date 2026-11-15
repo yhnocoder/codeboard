@@ -184,9 +184,13 @@ import Testing
     let h = try #require(doc.board.section(gid("h")))
     #expect([g.x, g.y, h.x, h.y] == [1000, 0, 1000, 328], "\([g.x, g.y, h.x, h.y])")
     #expect(place(w, "m") == [1040 + g.x - 1000, 80 + g.y])
-    let frames = c.sections.sublayers ?? []
-    let at = try #require(c.scene?.frames.firstIndex { $0.id == gid("h") })
-    #expect(frames[at].animation(forKey: "ease") != nil, "its frame eases")
+    // its frame eases, once the board is drawn again after the step (a busy machine draws it a little later)
+    await env.until("its frame eases", in: w) {
+      guard let at = c.scene?.frames.firstIndex(where: { $0.id == gid("h") }), let ls = c.sections.sublayers,
+        at < ls.count
+      else { return false }
+      return ls[at].animation(forKey: "ease") != nil
+    }
     doc.edit("Lock") { b in
       for i in b.sections.indices where b.sections[i].id == gid("h") { b.sections[i].locked = true }
     }

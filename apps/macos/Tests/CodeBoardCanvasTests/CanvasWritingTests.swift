@@ -426,16 +426,16 @@ extension CanvasWritingTests {
 }
 
 extension CanvasWritingTests {
-  @Test func theToolbarShowsItsEightToolsAndMakesNoteTextAndBoxInTheViewsMiddle() async throws {
+  @Test func theToolbarShowsItsNineToolsAndMakesNoteTextAndBoxInTheViewsMiddle() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }
     let bar = CanvasToolbar(frame: CGRect(x: 0, y: 0, width: 300, height: 100))
-    #expect(bar.tools == [.note, .text, .box, .code, .image, .section, .arrow, .sticker])
-    // the web board's sizes: Warm Ink 4 + 8 × 30 + 7 × 2 + 4 wide, 36 tall; Ink Wash 22 + 8 × 30 + 7 + 34, 46; then
+    #expect(bar.tools == [.note, .text, .box, .code, .image, .web, .section, .arrow, .sticker])
+    // the web board's sizes: Warm Ink 4 + 9 × 30 + 8 × 2 + 4 wide, 36 tall; Ink Wash 22 + 9 × 30 + 8 + 34, 46; then
     // Search and ⋯ after a separator (gap, 0.5 with 4 each side, gap, 30, gap, 30)
-    #expect(bar.barSize == CGSize(width: 262 + 2 + 8.5 + 2 + 30 + 2 + 30, height: 36))
+    #expect(bar.barSize == CGSize(width: 294 + 2 + 8.5 + 2 + 30 + 2 + 30, height: 36))
     bar.theme = .inkWash
-    #expect(bar.barSize == CGSize(width: 303 + 1 + 8.5 + 1 + 30 + 1 + 30, height: 46))
+    #expect(bar.barSize == CGSize(width: 334 + 1 + 8.5 + 1 + 30 + 1 + 30, height: 46))
     var used: [Tool] = []
     bar.onTool = {
       used.append($0)
