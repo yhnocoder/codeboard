@@ -123,6 +123,8 @@ final class App: NSObject, NSApplicationDelegate {
 
   /// Below the desktop picture, never activated nor made key: its frames are ticked by OpenFrames
   private func runOpenFrames() {
+    // as the app does as it launches
+    if native { NativeNotes.warmUp() }
     let frame = CGRect(x: 0, y: 0, width: 1440, height: 900)
     let w = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
     w.level = .underDesktop

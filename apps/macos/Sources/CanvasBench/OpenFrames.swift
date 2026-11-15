@@ -35,6 +35,17 @@ import CodeBoardModel
     var firstContentMs: Double?
     var allDrawnMs: Double?
     var notesSharpMs: Double?
+    /// The first frame with an item in view drawn at the display's resolution (readable), and the first with every item
+    /// in view so
+    var firstSharpMs: Double?
+    var allSharpMs: Double?
+    /// The first frame 100 ms or more after asking: items in view drawn at the display's resolution, and in view (-1:
+    /// the board is not installed yet)
+    var at100ms: [Int] = []
+    /// Frames, from the first with content until every item in view is sharp, with an item in view drawn below the
+    /// display's resolution (enlarged: soft), and the most such items in one frame
+    var softFrames = 0
+    var maxSoft = 0
     /// "first": the canvas showed nothing before (a launch); "switch": another board was shown
     var mode = ""
     /// The first frame with the board's kept picture over the view
@@ -53,6 +64,9 @@ import CodeBoardModel
     var opening = Phase()
     var pan = Phase()
     var zoom = Phase()
+    /// This process's footprint and the WebKit processes', MB, once the pan and the zoom are over and the canvas rests
+    var footprintMB = 0.0
+    var webkitMB = 0.0
   }
 
   let canvas: CanvasView
@@ -144,8 +158,9 @@ import CodeBoardModel
           installed = true
           r.installedMs = ms()
         }
+        // what shows before the new board is installed is the board left (a switch) or nothing (a launch)
         if r.firstContentMs == nil {
-          if s.drawn.isEmpty {
+          if s.drawn.isEmpty || !installed {
             r.blankFramesBeforeContent += 1
             if installed { r.blankFramesAfterInstall += 1 }
           } else {
@@ -157,6 +172,15 @@ import CodeBoardModel
         if r.firstContentMs != nil, r.allDrawnMs == nil, s.inView > 0, blank.isEmpty { r.allDrawnMs = ms() }
         let n = canvas.noteProgress
         if r.notesSharpMs == nil, installed, n.sharp == n.inView, canvas.isSettled { r.notesSharpMs = ms() }
+        let res = canvas.resolutionInView
+        if r.firstSharpMs == nil, installed, !res.sharp.isEmpty { r.firstSharpMs = ms() }
+        if r.allSharpMs == nil, installed, s.inView > 0, res.sharp.count == s.inView { r.allSharpMs = ms() }
+        // -1: the board not installed yet (the one left still shows)
+        if r.at100ms.isEmpty, ms() >= 100 { r.at100ms = installed ? [res.sharp.count, s.inView] : [0, -1] }
+        if r.firstContentMs != nil, r.allSharpMs == nil, !res.soft.isEmpty {
+          r.softFrames += 1
+          r.maxSoft = max(r.maxSoft, res.soft.count)
+        }
       }
     }
     var emptyAfterContent = Set<Int>()
@@ -164,7 +188,7 @@ import CodeBoardModel
     onFrame = { sample(&opening, opening: true) }
     try await canvas.show(b, in: vault, theme: .warmInk)
     await frames(
-      until: { r.notesSharpMs != nil && r.allDrawnMs != nil },
+      until: { r.notesSharpMs != nil && r.allDrawnMs != nil && r.allSharpMs != nil },
       each: {
         sample(&opening, opening: true)
         if r.firstContentMs != nil {
@@ -226,6 +250,8 @@ import CodeBoardModel
       if name == "pan" { r.pan = p } else { r.zoom = p }
       await frames(until: { self.canvas.isSettled }, each: {})
     }
+    r.footprintMB = (Double(footprint()) / 1_048_576).rounded()
+    r.webkitMB = (Double(webKitFootprint()) / 1_048_576).rounded()
     let e = JSONEncoder()
     e.keyEncodingStrategy = .convertToSnakeCase
     e.outputFormatting = [.sortedKeys]
