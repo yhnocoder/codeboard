@@ -514,9 +514,17 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
       }
   }
 
+  /// A style's card as the demo draws it: without the header strip a board draws over a Note (its title bar), which the
+  /// demo has none of, so no blank band is left at a card's top
+  static func card(_ style: MarkdownLooks.Style, look: String, dark: Bool) -> MarkdownLooks.Card {
+    var c = MarkdownLooks.card(style, look: look, dark: dark)
+    c.header = 0
+    return c
+  }
+
   /// card `i`'s look: its style in the look and appearance
   func card(_ i: Int) -> MarkdownLooks.Card {
-    MarkdownLooks.card(sheets[safe: i]?.style ?? .note, look: look, dark: dark)
+    Self.card(sheets[safe: i]?.style ?? .note, look: look, dark: dark)
   }
 
   /// Lays the texts out in the look and appearance: the editors kept (selection and undo history), only their layouts new
@@ -524,7 +532,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     let notes = sheets
     while cards.count > notes.count { cards.removeLast().removeFromSuperview() }
     for (i, n) in notes.enumerated() {
-      let card = MarkdownLooks.card(n.style, look: look, dark: dark)
+      let card = Self.card(n.style, look: look, dark: dark)
       let inner = n.width - card.padding[1] - card.padding[3]
       let doc = i < cards.count ? cards[i].core.document : MarkdownDocument(n.text)
       let info = i < cards.count ? cards[i].core.layout.info : n.info
@@ -690,9 +698,9 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     // an SVG drawn at twice its box's width at the zoom (sharp on the display; again when the zoom grows past it)
     if !slot.src.contains("://"), let d = try? Data(contentsOf: url), MarkdownSVG.isSVG(d) {
       let want = slot.pixelWidth(at: 2 * max(1, zoom))
-      let key = url.path + "@\(want)"
+      let key = url.path + "@\(want)" + (dark ? "-dark" : "")
       if let i = images[key] { return i }
-      let i = MarkdownSVG.image(d, pixelWidth: want)
+      let i = MarkdownSVG.image(d, pixelWidth: want, dark: dark)
       images[key] = i
       return i
     }

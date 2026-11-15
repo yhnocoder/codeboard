@@ -90,3 +90,84 @@ import Testing
     }
   }
 }
+
+/// A centred picture resized by its right grip (her recording: it collapsed, came back larger): the width is the press's
+/// plus twice the pointer's way, so back at the press point it is the width it started with, and the ring is the
+/// picture's rect in every step
+@MainActor @Suite struct ImageResizeTests {
+  @Test func aDragLeftAndBackReturnsToTheStartingWidth() {
+    _ = boardFonts
+    let src = "# Pic\n\nA line.\n\n![p](a.png){width=60%}\n\nAfter."
+    let l = BlockLayout(MarkdownDocument(src), width: 392, theme: testTheme, layout: nil, resources: ImageTests.Sized())
+    let v = MarkdownEditorView(layout: l, caret: 0)
+    v.isEditing = true
+    func send(_ t: NSEvent.EventType, _ p: CGPoint) {
+      // a view with no window takes window points as its own, its y counted from the bottom
+      let q = CGPoint(x: p.x, y: v.bounds.height - p.y)
+      let ev = NSEvent.mouseEvent(
+        with: t, location: q, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0,
+        clickCount: 1, pressure: 1)!
+      switch t {
+      case .leftMouseDown: v.mouseDown(with: ev)
+      case .leftMouseDragged: v.mouseDragged(with: ev)
+      default: v.mouseUp(with: ev)
+      }
+    }
+    let f0 = v.core.layout.images[0].frame
+    send(.leftMouseDown, CGPoint(x: f0.midX, y: f0.midY))
+    send(.leftMouseUp, CGPoint(x: f0.midX, y: f0.midY))
+    #expect(v.core.selectedImage != nil)
+    let g = CGPoint(x: f0.maxX, y: f0.midY)
+    send(.leftMouseDown, g)
+    var last = f0.width
+    for dx in [-3.0, -6, -9, -12, -15] {
+      send(.leftMouseDragged, CGPoint(x: g.x + dx, y: g.y))
+      let f = v.core.layout.images[0].frame
+      #expect(f.width <= last)
+      #expect(v.imageBox == f)
+      last = f.width
+    }
+    send(.leftMouseDragged, g)
+    #expect(abs(v.core.layout.images[0].frame.width - f0.width) < 0.5)
+    send(.leftMouseUp, g)
+    #expect(v.core.source == src)
+  }
+}
+
+/// A table under a heading and a paragraph whose cells start with inline code (her card): every cell has its box, so
+/// the band sits on the table's top edge (a cell without one made the table's box reach the Note's top)
+@MainActor @Suite struct TableBandPlaceTests {
+  @Test func cellsStartingWithCodeHaveTheirBoxes() {
+    _ = boardFonts
+    let src =
+      "## A heading\n\nA paragraph of two lines, long enough to wrap in a narrow Note, before the table.\n\n"
+      + "| Declaration | Memory |\n|---|---|\n| plain words | register |\n| `__device__ int x;` | global |\n"
+      + "| `[x] y` | shared |"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let doc = l.document
+    guard case .table(let t) = doc.blocks[2].kind else { return #expect(Bool(false)) }
+    let cells = l.cellBoxes(of: t)
+    #expect(!cells.joined().contains(.zero))
+    let top = cells.joined().map(\.minY).min() ?? 0
+    #expect(abs(top - l.blockFrames[2].minY) < 2)
+  }
+}
+
+/// A table wider than its Note (ten columns in 320 points): its band spans the part the Note shows, so ⋯ is in reach
+/// (the band ran the table's whole width, its end and ⋯ cut off past the Note's edge)
+@MainActor @Suite struct WideTableBandTests {
+  @Test func theBandStaysOverTheShownPart() {
+    _ = boardFonts
+    let cols = 1...10
+    let src =
+      "| " + cols.map { "H\($0)" }.joined(separator: " | ") + " |\n|" + String(repeating: "---|", count: 10) + "\n| "
+      + cols.map { _ in "a longer cell text" }.joined(separator: " | ") + " |"
+    let l = BlockLayout(MarkdownDocument(src), width: 320, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 2)
+    v.isEditing = true
+    v.selection = MDSelection(2)
+    #expect(v.band.shown)
+    #expect(v.band.bandFrame.maxX <= v.bounds.maxX + 0.5)
+    #expect(v.band.partRect("more") != nil)
+  }
+}

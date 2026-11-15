@@ -5,12 +5,13 @@ import CodeBoardMarkdown
 /// first letter and sharing its first baseline, so it never covers text. A click opens the level menu: Body text and
 /// Heading 1–6, the current one checked. It scales with the editor's zoom, as the heading does
 @MainActor
-final class HeadingChip: NSView {
+final class HeadingChip: HoverControls {
   var level = 1
   var theme: MarkdownTheme?
   var zoom: CGFloat = 1
   var onPick: (Int) -> Void = { _ in }
   override var isFlipped: Bool { true }
+  override func controls() -> [(id: String, box: CGRect, tip: String)] { [("chip", bounds, "Heading level")] }
 
   /// over the heading's first line: `baseline` its first baseline, `left` where its text starts (editor view points)
   func place(baseline: CGFloat, left: CGFloat) {
@@ -25,9 +26,16 @@ final class HeadingChip: NSView {
     guard let theme else { return }
     let s = "H\(level)" as NSString
     let font = NSFont.systemFont(ofSize: 8.5 * zoom, weight: .semibold)
-    let attrs: [NSAttributedString.Key: Any] = [
+    var attrs: [NSAttributedString.Key: Any] = [
       .font: font, .foregroundColor: NSColor(cgColor: theme.colors.ink3.cg) ?? .tertiaryLabelColor,
     ]
+    // :hover: the ink, on the ink at 8.5 % (.md-hchip-b:is(:hover, .open))
+    if hovered != nil, let ctx = NSGraphicsContext.current?.cgContext {
+      ctx.addPath(CGPath(roundedRect: bounds, cornerWidth: 3.5 * zoom, cornerHeight: 3.5 * zoom, transform: nil))
+      ctx.setFillColor(theme.colors.ink.alpha(0.085).cg)
+      ctx.fillPath()
+      attrs[.foregroundColor] = NSColor(cgColor: theme.colors.ink.cg) ?? .labelColor
+    }
     let size = s.size(withAttributes: attrs)
     s.draw(at: CGPoint(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2), withAttributes: attrs)
   }

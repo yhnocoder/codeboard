@@ -356,7 +356,11 @@ extension BlockLayout {
     return table.rows.map { row in
       row.map { cell in
         let q = cell.text.offsets[0] - d
-        guard let t = texts.first(where: { $0.holds(q) && $0.sourceStart == q }) ?? texts.first(where: { $0.holds(q) })
+        // a cell starting with hidden marks (`code`, **bold**): its text holds a later offset, not the first; a cell
+        // found by none once gave a zero box, and the table's box then reached up to the Note's top
+        guard
+          let t = texts.first(where: { $0.holds(q) && $0.sourceStart == q }) ?? texts.first(where: { $0.holds(q) })
+            ?? cell.text.offsets.lazy.compactMap({ o in texts.first(where: { $0.holds(o - d) }) }).first
         else { return .zero }
         return t.frame.offsetBy(dx: 0, dy: tops[i]).insetBy(dx: -ph, dy: -pv)
       }

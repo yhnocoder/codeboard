@@ -52,6 +52,9 @@ final class BlockMoveHost {
 
   init(demo: Demo) { self.demo = demo }
 
+  /// the floating copy's box in page points, while blocks float (tests)
+  var floatFrame: CGRect? { lift?.floating == true ? float.frame : nil }
+
   /// whether the ⌘ outline shows now (the check)
   var outlineShown: Bool { !outline.isHidden }
 
@@ -87,7 +90,7 @@ final class BlockMoveHost {
 
   // MARK: events
 
-  private func handle(_ e: NSEvent) -> NSEvent? {
+  func handle(_ e: NSEvent) -> NSEvent? {
     guard e.window === demo.window else { return e }
     // a modifier key's event carries no pointer: where the pointer is now
     let at = e.type == .flagsChanged ? demo.window.mouseLocationOutsideOfEventStream : e.locationInWindow
@@ -301,7 +304,11 @@ final class BlockMoveHost {
     l.card.needsDisplay = true
     slide(from: b)
     let cardRect = demo.page.cardRects[demo.cards.firstIndex { $0 === l.card } ?? 0]
-    let to = CGRect(x: cardRect.maxX + 24, y: l.box.minY, width: l.box.width, height: l.box.height)
+    // right of the Note where the window shows it; else as far right as it shows (beside a column of cards with the
+    // inspector open, right of the card is under the panel)
+    let shown = demo.scroll.documentVisibleRect
+    let x = min(cardRect.maxX + 24, shown.maxX - l.box.width - 8)
+    let to = CGRect(x: max(shown.minX + 8, x), y: l.box.minY, width: l.box.width, height: l.box.height)
     NSAnimationContext.runAnimationGroup { ctx in
       ctx.duration = 0.16
       float.animator().frame = to

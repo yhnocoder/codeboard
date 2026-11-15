@@ -277,7 +277,9 @@ public enum MarkdownSourceOps {
     let out =
       ns.substring(to: end) + attributesText(want) + ns.substring(from: end + ((old?.raw ?? "") as NSString).length)
     guard let back = image(out, src: src, nth: nth) else { return source }
-    let ok = back.width.map { $0 * 100 } == want.width && back.frame == want.frame && back.loops == want.loop
+    // the width read back as a whole percent: 0.57 × 100 is 56.99999…, and an exact compare refused 57 % and 55 %
+    let ok =
+      back.width.map { ($0 * 100).rounded() } == want.width && back.frame == want.frame && back.loops == want.loop
     return ok ? out : source
   }
 

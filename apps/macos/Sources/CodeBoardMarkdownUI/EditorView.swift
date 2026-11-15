@@ -417,9 +417,10 @@ public final class MarkdownEditorView: NSView {
     drawMathProblem(ctx)
     // the selection over the text: under it, a code block's or a table header's fill would hide it. Translucent, so the
     // text reads through; in the static picture too (a selection made there before editing)
-    // (a selected image's source is selected underneath: no selection colour on it or its caption)
+    // (a selected image's source is selected underneath: no selection colour on it or its caption, also in the frame
+    // before editing starts, where it once showed a tint over the picture)
     let picked = isEditing ? imageBox : nil
-    if picked == nil {
+    if core.selectedImage == nil {
       ctx.setFillColor(selectionColor.cgColor)
       for r in core.selectionRects.map(slid) where r.intersects(clip) { ctx.fill(r) }
     }
@@ -725,8 +726,10 @@ public final class MarkdownEditorView: NSView {
       let align = t.column < t.table.align.count ? t.table.align[t.column] : .none
       let rows = t.table.rows.count
       let cols = t.table.rows.first?.count ?? 0
-      // as many actions as the table's width holds, the most used first; the rest in ⋯
-      let room = g.box.width - (8 + 7 + 8 + 27) - (6 + 14 + 6 + 8 + 40)
+      // over the part of the table the Note shows: a table wider than the Note scrolls, its band does not run off
+      let shownW = max(0, min(g.box.width, core.layout.width - max(0, g.box.minX)))
+      // as many actions as that width holds, the most used first; the rest in ⋯
+      let room = shownW - (8 + 7 + 8 + 27) - (6 + 14 + 6 + 8 + 40)
       var keep = Set<String>()
       var used: CGFloat = 0
       for id in Self.tableKeep {
@@ -754,7 +757,7 @@ public final class MarkdownEditorView: NSView {
       }
       parts.append(.init(id: "more", kind: .icon("dots"), tip: "More"))
       band.place(
-        over: CGRect(x: g.box.minX * zoom, y: g.box.minY * zoom, width: g.box.width * zoom, height: 1),
+        over: CGRect(x: g.box.minX * zoom, y: g.box.minY * zoom, width: shownW * zoom, height: 1),
         key: "table \(t.block.lowerBound)", zoom: zoom, theme: core.layout.theme, parts: parts,
         fill: core.layout.theme.colors.fill, table: true, radius: 6)
       band.show(true)
@@ -883,7 +886,9 @@ public final class MarkdownEditorView: NSView {
     let p = convert(e.locationInWindow, from: nil)
     let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
     hoverGrips(at)
-    cursor(at: p, modifiers: e.modifierFlags).set()
+    // over a control floating on the Note (a band, the toolbar, a menu) its own pointer, not the text's I-beam
+    let chrome = subviews.contains { !$0.isHidden && $0.hitTest(convert(p, to: $0.superview)) != nil }
+    if !chrome { cursor(at: p, modifiers: e.modifierFlags).set() }
     var over: EditorCore.CodeBlock?
     if isEditing, band.isHidden || !band.bandFrame.contains(p) {
       let c = core.layout.caret(at: at)
@@ -1842,6 +1847,14 @@ public final class MarkdownEditorView: NSView {
   /// the image grips reach past the editor's edge (as on the web, into the card's padding): a press there is still the
   /// editor's, not the card's under it (which ends editing)
   public override func hitTest(_ point: NSPoint) -> NSView? {
+    // what floats on the Note may reach past its edges (the heading chip in the left padding, a band over a first block):
+    // a press there is still its, which AppKit would not route outside the view's frame
+    let p0 = convert(point, from: superview)
+    if !bounds.contains(p0) {
+      for v in subviews.reversed() where !v.isHidden && v.frame.contains(p0) {
+        if let h = v.hitTest(p0) { return h }
+      }
+    }
     if isEditing, let box = imageBox {
       let p = convert(point, from: superview)
       if onImageGrip(CGPoint(x: p.x / zoom, y: p.y / zoom), box), !bounds.contains(p) { return self }
@@ -1871,7 +1884,7 @@ public final class MarkdownEditorView: NSView {
     guard isEditing, core.marked == nil, let p = MarkdownEditing.tablePlace(at: core.selection.head, in: core.document)
     else { return nil }
     let cells = core.layout.cellBoxes(of: p.table)
-    guard let head = cells.first, !head.isEmpty else { return nil }
+    guard let head = cells.first, !head.isEmpty, !cells.joined().contains(.zero) else { return nil }
     let rows = cells.map { r in r.dropFirst().reduce(r.first ?? .zero) { $0.union($1) } }
     let cols = (0..<head.count).map { c in cells.compactMap { $0[safe: c] }.dropFirst().reduce(head[c]) { $0.union($1) }
     }
@@ -1964,8 +1977,11 @@ public final class MarkdownEditorView: NSView {
     if let r = resizing {
       let p = convert(e.locationInWindow, from: nil)
       let dx = (p.x / zoom - r.start.x) * (r.left ? -1 : 1)
-      // both sides move: twice the pointer's way; at least 48 points, on an 8-point grid
-      let w = min(core.layout.width, max(48, ((r.from + 2 * dx) / 8).rounded() * 8))
+      // both sides move (the picture is centred): twice the pointer's way, always from the press (widgets.ts resize); at
+      // least 48 points (or what it had, when less), within 8 points of the full width the full width
+      let full = core.layout.width
+      var w = min(full, max(min(r.from, 48), r.from + 2 * dx))
+      if abs(w - full) < 8 { w = full }
       guard w != r.width else { return }
       resizing?.width = w
       // the picture scales under the handle and the text below follows, every frame; written on release

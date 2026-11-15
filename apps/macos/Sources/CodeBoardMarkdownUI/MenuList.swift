@@ -112,6 +112,22 @@ final class MenuList: NSView {
     needsDisplay = true
   }
 
+  override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    for a in trackingAreas where a.owner === self { removeTrackingArea(a) }
+    addTrackingArea(
+      NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeAlways, .inVisibleRect], owner: self))
+  }
+
+  /// the pointer over a row makes it the chosen one (menu.tsx onPointerEnter), without scrolling the list
+  override func mouseMoved(with e: NSEvent) {
+    let p = convert(e.locationInWindow, from: nil)
+    let i = Int((p.y + scrolled - 4) / rowHeight)
+    guard i >= 0, i < items.count, items[i].takes, i != chosen else { return }
+    chosen = i
+    needsDisplay = true
+  }
+
   /// a row clicked (a group's name is not taken)
   var onTake: (MDMenuItem) -> Void = { _ in }
 

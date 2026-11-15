@@ -17,6 +17,9 @@ final class CodeBand: NSView {
       case icon(String)
       case language(String)
       case size(String)
+      var isLanguage: Bool {
+        if case .language = self { true } else { false }
+      }
     }
     var id: String
     var kind: Kind
@@ -175,10 +178,19 @@ final class CodeBand: NSView {
   var onPart: (String, NSView, CGRect) -> Void = { _, _, _ in }
 
   /// what the band shows, drawn at the zoom: the fade above it, its face and its controls
-  final class Strip: NSView {
+  final class Strip: HoverControls {
     var zoom: CGFloat = 1
     var theme: MarkdownTheme?
-    var parts: [Part] = []
+    var parts: [Part] = [] {
+      didSet { if parts != oldValue { refreshTips() } }
+    }
+    override func controls() -> [(id: String, box: CGRect, tip: String)] { rects().map { ($0.0.id, $0.1, $0.0.tip) } }
+    override func setFrameSize(_ s: NSSize) {
+      super.setFrameSize(s)
+      refreshTips()
+    }
+    /// the delete actions: hovered in the warning colour (.md-bb.danger:hover)
+    static let danger: Set<String> = ["delRow", "delCol"]
     var fill = MDColor(0.95, 0.95, 0.95, 1)
     var radius: CGFloat = 12
     var table = false
@@ -286,20 +298,24 @@ final class CodeBand: NSView {
       let ink2 = theme.colors.ink2.cg
       let ink3 = theme.colors.ink3.cg
       for (p, box) in rects() {
-        if p.on {
-          // .md-bb.on: the ink at 6.5 % behind it
-          ctx.addPath(CGPath(roundedRect: box, cornerWidth: 6.5 * zoom, cornerHeight: 6.5 * zoom, transform: nil))
-          ctx.setFillColor(theme.colors.ink.alpha(0.065).cg)
+        let over = hovered == p.id
+        let danger = over && Self.danger.contains(p.id)
+        if p.on || over {
+          // .md-bb.on and :hover: the ink at 6.5 % behind it (the language picker 6 %), a delete in the warning's 14 %
+          let chip = danger ? theme.colors.warn.alpha(0.14) : theme.colors.ink.alpha(p.kind.isLanguage ? 0.06 : 0.065)
+          let k: CGFloat = p.kind.isLanguage ? 6 : 6.5
+          ctx.addPath(CGPath(roundedRect: box, cornerWidth: k * zoom, cornerHeight: k * zoom, transform: nil))
+          ctx.setFillColor(chip.cg)
           ctx.fillPath()
         }
         switch p.kind {
         case .icon(let name):
           icon(
             name, in: ctx, at: CGPoint(x: box.midX - 8 * zoom, y: box.midY - 8 * zoom), size: 16,
-            color: p.on ? ink : ink3,
+            color: danger ? theme.colors.warn.cg : p.on || over ? ink : ink3,
             width: name == "dots" ? 2 : 1.3)
         case .language(let name):
-          text(name, font, ink2, at: CGPoint(x: box.minX + 6 * zoom, y: box.midY))
+          text(name, font, over ? ink : ink2, at: CGPoint(x: box.minX + 6 * zoom, y: box.midY))
           icon(
             "down", in: ctx, at: CGPoint(x: box.maxX - 6 * zoom - 9 * zoom, y: box.midY - 4.5 * zoom), size: 9,
             color: ink3.copy(alpha: 0.8 * (ink3.alpha)) ?? ink3, width: 1.3)
@@ -307,7 +323,7 @@ final class CodeBand: NSView {
           icon(
             "grid", in: ctx, at: CGPoint(x: box.minX + 6 * zoom, y: box.midY - 7 * zoom), size: 14, color: ink3,
             width: 1.2)
-          text(n, mono, ink2, at: CGPoint(x: box.minX + 26 * zoom, y: box.midY))
+          text(n, mono, over ? ink : ink2, at: CGPoint(x: box.minX + 26 * zoom, y: box.midY))
         }
       }
     }

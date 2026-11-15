@@ -8,7 +8,7 @@ import CodeBoardMarkdown
 /// its markers; a press toggles them (one undo step). No labels: the web's icons say it (MarkdownIcons), the tooltips
 /// name the keys; a thin separator between the marks and Link, as on the web
 @MainActor
-final class SelectionToolbar: NSView {
+final class SelectionToolbar: HoverControls {
   struct Button {
     var id: String
     /// the icon's name in MarkdownIcons
@@ -59,6 +59,10 @@ final class SelectionToolbar: NSView {
 
   func hide() { isHidden = true }
 
+  override func controls() -> [(id: String, box: CGRect, tip: String)] {
+    buttons.enumerated().map { ($0.element.id, rect($0.offset), $0.element.tip) }
+  }
+
   private func rect(_ i: Int) -> CGRect {
     let seps = buttons.prefix(i + 1).filter { Self.separated.contains($0.id) }.count
     return CGRect(x: 4 + CGFloat(i) * size + CGFloat(seps) * gap, y: 4, width: size, height: size)
@@ -83,6 +87,11 @@ final class SelectionToolbar: NSView {
         ctx.setFillColor(theme.colors.accent.alpha(0.16).cg)
         ctx.addPath(CGPath(roundedRect: r.insetBy(dx: 2, dy: 2), cornerWidth: 5, cornerHeight: 5, transform: nil))
         ctx.fillPath()
+      } else if hovered == b.id {
+        // :hover: the ink at 6.5 % behind it, the icon in the ink
+        ctx.setFillColor(theme.colors.ink.alpha(0.065).cg)
+        ctx.addPath(CGPath(roundedRect: r.insetBy(dx: 2, dy: 2), cornerWidth: 5, cornerHeight: 5, transform: nil))
+        ctx.fillPath()
       }
       if Self.separated.contains(b.id) {
         ctx.setFillColor(theme.colors.hair.cg)
@@ -92,7 +101,7 @@ final class SelectionToolbar: NSView {
         ctx.saveGState()
         ctx.translateBy(x: r.midX - 8, y: r.midY - 8)
         ctx.addPath(icon)
-        ctx.setStrokeColor((b.on ? theme.colors.accent : theme.colors.ink2).cg)
+        ctx.setStrokeColor((b.on ? theme.colors.accent : hovered == b.id ? theme.colors.ink : theme.colors.ink2).cg)
         ctx.setLineWidth(1.3)
         ctx.setLineCap(.round)
         ctx.setLineJoin(.round)

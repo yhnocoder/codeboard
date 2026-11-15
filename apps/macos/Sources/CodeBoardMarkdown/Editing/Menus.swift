@@ -143,7 +143,8 @@ extension MarkdownEditing {
     case "math": return fenced("$$", "", "$$")
     case "mermaid": return fenced("```mermaid", "graph TD\n  A[Start] --> B[End]", "```")
     case "table":
-      let t = "|  |  |\n|---|---|\n|  |  |"
+      // a header and two rows of two columns, as main's insertTable({ rows: 3, cols: 2, withHeaderRow: true })
+      let t = "|  |  |\n|---|---|\n|  |  |\n|  |  |"
       let out = (text.isEmpty ? "" : text + "\n\n") + t
       let caret = start + (text.isEmpty ? 0 : (text as NSString).length + 2) + 2
       return MDEdit(range: start..<c.block.upperBound, replacement: out, selection: MDSelection(caret), undo: .command)
