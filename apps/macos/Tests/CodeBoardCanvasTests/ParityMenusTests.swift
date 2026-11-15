@@ -218,8 +218,8 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
       ])
   }
 
-  /// The board's own (canvasMenu): New Text, New Note, New Code, Add Sidenote, Paste, Insert Board ▸, then Select All
-  /// and Fit to Window (Add Function… needs a workspace); New Note puts a Note where it was asked
+  /// The board's own (canvasMenu): New Text, New Note, Add Sidenote, Paste, Insert Board ▸, then Select All and Fit to
+  /// Window; New Note puts a Note where it was asked
   @Test func theBoardsMenuIsMainsOrder() async throws {
     let r = try await Rig(menusBoard(), zoom: 1)
     defer { r.close() }
@@ -227,8 +227,7 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     let m = menu(r, at: at)
     #expect(
       titles(m) == [
-        "New Text", "New Note", "New Code", "Add Sidenote", "Paste", "Insert Board", "-", "Select All",
-        "Fit to Window",
+        "New Text", "New Note", "Add Sidenote", "Paste", "Insert Board", "-", "Select All", "Fit to Window",
       ])
     #expect(titles(item(m, "Insert Board")?.submenu) == ["No other boards yet"])
     #expect(!enabled(item(m, "Insert Board", "No other boards yet")))

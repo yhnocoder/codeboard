@@ -298,39 +298,4 @@ private func freeBoard() -> Board {
     await r.settle()
     #expect(!r.canvas.isEditing)
   }
-
-  /// The board's New Code (menus.ts canvasMenu, create.ts newFreeCode): a Free code card at the point, its code being
-  /// written at once; left with nothing written it goes with no step (env.fresh), written it is one step "New Code"
-  @Test func newCodeLeftEmptyGoesAndWrittenIsOneStep() async throws {
-    let r = try await Rig(freeBoard(), zoom: 1)
-    defer { r.close() }
-    let c = r.canvas
-    func newCode() throws {
-      let item = try #require(c.boardMenu(at: CGPoint(x: 600, y: 120)).items.first { $0.title == "New Code" })
-      (item.representedObject as? MenuAction)?.run()
-    }
-    let cards = r.doc.board.cards.count
-    try newCode()
-    await r.editorReady()
-    let id = try #require(c.editing?.id)
-    #expect(c.editing?.code == true && c.editing?.fresh == true)
-    let made = try #require(r.doc.board.card(id))
-    #expect(made.x == 600 && made.y == 120 && made.width == Board.newNoteWidth && r.doc.board.isFreeCode(id))
-    await c.endEditing()
-    #expect(r.doc.board.cards.count == cards && r.doc.board.card(id) == nil, "left empty: gone")
-    #expect(r.doc.history.undoSteps.isEmpty, "with no step")
-    try newCode()
-    await r.editorReady()
-    let id2 = try #require(c.editing?.id)
-    await r.type("x = 1")
-    await c.endEditing()
-    guard case .own(let written)? = r.doc.board.card(id2)?.content, case .code(let code) = written.body else {
-      Issue.record("no code card")
-      return
-    }
-    #expect(code.segments.first?.lines == ["x = 1"])
-    #expect(r.doc.history.undoSteps.map(\.name) == ["New Code"])
-    r.doc.undo()
-    #expect(r.doc.board.card(id2) == nil, "one undo takes it away")
-  }
 }

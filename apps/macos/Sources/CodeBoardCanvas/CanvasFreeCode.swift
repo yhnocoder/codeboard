@@ -48,16 +48,15 @@ extension CanvasView {
       .card(id), t.text, at: t.box.origin, select: .card(id), box: t.box, font: theme.codeTitle, placeholder: "")
   }
 
-  /// Starts writing a Free code card's code, the caret where `caret` is on the board (nil: at the start); `fresh`: a
-  /// card just made, which goes when left empty
-  func beginCodeEditing(_ id: CardID, at caret: CGPoint? = nil, fresh: Bool = false) {
+  /// Starts writing a Free code card's code, the caret where `caret` is on the board (nil: at the start)
+  func beginCodeEditing(_ id: CardID, at caret: CGPoint? = nil) {
     guard let doc = document, editing == nil, gesture == nil, let card = doc.board.card(id), isFreeCode(id),
       let i = index(of: .card(id)), case .code(let c) = scene!.items[i].drawing, let host = superview,
       case .own(let own) = card.content, case .code(let code) = own.body, let seg = code.segments.first
     else { return }
     if doc.selection != [.card(id)] { doc.select([.card(id)]) }
-    if !fresh { doc.beginWriting(id) }
-    editing = Editing(doc: doc, id: id, fresh: fresh, card: card, shownZoom: camera.zoom)
+    doc.beginWriting(id)
+    editing = Editing(doc: doc, id: id, fresh: false, card: card, shownZoom: camera.zoom)
     editing?.keys = keysAhead ?? []
     keysAhead = nil
     editing?.code = true

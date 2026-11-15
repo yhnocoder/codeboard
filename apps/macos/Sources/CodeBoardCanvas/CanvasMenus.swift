@@ -272,7 +272,6 @@ extension CanvasView {
     m.addItem(
       key(menuItem("New Text") { [weak self] in self?.editSoon { await self?.create(.text(.text), at: at) } }, "t"))
     m.addItem(key(menuItem("New Note") { [weak self] in self?.editSoon { await self?.create(.note, at: at) } }, "n"))
-    m.addItem(menuItem("New Code") { [weak self] in self?.editSoon { await self?.createCode(at: at) } })
     m.addItem(addNoteItem(.spot(.point(x: at.x, y: at.y))))
     // on with nothing to paste, as main's: it reads the clipboard when chosen
     m.addItem(key(menuItem("Paste") { [weak self] in self?.paste(asCopy: false, at: at) }, "v", .command))
