@@ -89,10 +89,14 @@ public final class CodeEditorView: NSView {
   /// Redrawn only in view: what is still to draw out of it
   private var stale: [CGRect] = []
 
-  public init(text: String, look: Look) {
+  /// `firstNumber` and `wrap` given here, not set after: each set lays the whole text out again
+  public init(text: String, look: Look, firstNumber: Int = 1, wrap: Bool = false) {
     editor = CodeEditor(text: text, selection: CodeSelection((text as NSString).length))
     self.look = look
-    layout = CodeTextLayout(text: text, x: 0, metrics: look.metrics, style: look.style)
+    self.firstNumber = firstNumber
+    self.wrap = wrap
+    // laid out once, by relayout below
+    layout = CodeTextLayout(text: "", x: 0, metrics: look.metrics, style: look.style)
     super.init(frame: .zero)
     caret.displayMode = .hidden
     addSubview(caret)

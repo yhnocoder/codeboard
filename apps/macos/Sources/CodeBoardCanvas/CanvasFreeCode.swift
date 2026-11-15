@@ -63,9 +63,7 @@ extension CanvasView {
     closeRefPeek()
     let text = seg.lines.joined(separator: "\n")
     let top = c.framed ? theme.headerHeight : 0
-    let v = CodeEditorView(text: text, look: codeLook)
-    v.firstNumber = seg.firstLine
-    v.wrap = code.wrap
+    let v = CodeEditorView(text: text, look: codeLook, firstNumber: seg.firstLine, wrap: code.wrap)
     v.continuing = continuing
     v.pasteboard = pasteboard
     v.findLook = FindBar.Look(fill: theme.surface, line: theme.hair, radius: 8)

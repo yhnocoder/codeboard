@@ -37,6 +37,19 @@ extension CanvasView {
     var parts = 0
     /// A Web card's: its two buttons on glass over its top right corner (.wacts), no header behind them
     var floating = false
+
+    /// What the strip is drawn from: the drawing less a code card's lines, which take long to describe and which the
+    /// strip does not show (a 400-line card's took 50 ms each time a card started to be written)
+    var header: Drawing {
+      guard case .code(var c) = drawing else { return drawing }
+      c.layout.rows = []
+      c.layout.segmentLines = []
+      c.layout.bands = []
+      c.layout.inline = []
+      c.inline = []
+      c.linked = []
+      return .code(c)
+    }
   }
 
   /// The language picker's languages and the label of any language (analysis langs.ts LANG_TABLE, those picked first)
@@ -319,7 +332,7 @@ extension CanvasView {
       let hovered = hoveredHead?.0 == id ? hoveredHead?.1 : nil
       let size = box.bounds.size
       let key =
-        "\(h.drawing) \(h.on) \(h.faint) \(String(describing: hovered)) \(size) \(theme.id) \(theme.dark) \(scale)"
+        "\(h.header) \(h.on) \(h.faint) \(String(describing: hovered)) \(size) \(theme.id) \(theme.dark) \(scale)"
       let l: CALayer
       if let shown = headShown[id] {
         l = shown.layer
