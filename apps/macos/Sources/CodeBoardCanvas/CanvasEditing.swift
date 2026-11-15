@@ -1782,14 +1782,16 @@ extension CanvasView {
     guard !clip.isEmpty else { return toast("Select a card to duplicate") }
     clip.arrows = []
     clip.sidenotes = []
-    offerReference(place(clip, dx: 48, dy: 48, name: "Duplicate", settle: false))
+    // left where they are, in view or not (duplicateSel moves no camera)
+    offerReference(place(clip, dx: 48, dy: 48, name: "Duplicate", settle: false, reveal: false))
   }
 
   /// The clip put on the board, what was made selected and brought into view; returns each card made with the one it
   /// was made from. `settle`: each card goes in the Section it lands in (board actions/shared.ts settleHome)
   @discardableResult
   private func place(
-    _ clip: Clip, dx: Double, dy: Double, name: String, shared: Bool = false, back: Bool = false, settle: Bool = true
+    _ clip: Clip, dx: Double, dy: Double, name: String, shared: Bool = false, back: Bool = false, settle: Bool = true,
+    reveal shows: Bool = true
   ) -> [(copy: CardID, of: CardID)] {
     guard let doc = document else { return [] }
     var b = doc.board
@@ -1805,7 +1807,7 @@ extension CanvasView {
       if settle { b.cards[i].section = home(of: r, frames: frames) }
     }
     doc.edit(name, selection: made) { $0 = b }
-    if !placed.isNull { reveal(placed) }
+    if shows && !placed.isNull { reveal(placed) }
     return copies
   }
 
