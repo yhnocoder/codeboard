@@ -13,7 +13,7 @@ public enum Tool: CaseIterable, Sendable {
   case note, text, box, code, image, web, section, arrow, sticker
 
   /// What can be made from the Mac app's toolbar now
-  public static let made: [Tool] = [.note, .text, .box, .code, .image, .section, .arrow, .sticker]
+  public static let made: [Tool] = [.note, .text, .box, .code, .image, .web, .section, .arrow, .sticker]
 
   var name: String {
     switch self {
@@ -29,17 +29,17 @@ public enum Tool: CaseIterable, Sendable {
     }
   }
 
-  var icon: CGPath? {
+  var icon: CGPath {
     switch self {
     case .note: Icons.note()
     case .text: Icons.text()
     case .box: Icons.box()
     case .code: Icons.code
     case .image: Icons.image
+    case .web: Icons.web
     case .section: Icons.section()
     case .arrow: Icons.arrowLink()
     case .sticker: Icons.sticker
-    default: nil
     }
   }
 }
@@ -352,9 +352,7 @@ public final class CanvasToolbar: NSView {
         }
         if lit { Self.lit(r, theme: theme, ink: ink, pressed: pressed == i, in: ctx) }
         let color = active == i && theme.id != .inkWash ? theme.accent : theme.id == .inkWash || lit ? ink : look.ink2
-        if let icon = tools[i].icon {
-          Icons.stroke(icon, at: CGPoint(x: r.minX + 7, y: r.minY + 6), color: color, in: ctx)
-        }
+        Icons.stroke(tools[i].icon, at: CGPoint(x: r.minX + 7, y: r.minY + 6), color: color, in: ctx)
       }
       if let e = extras { drawExtras(e, theme: theme, look: look, in: ctx) }
     }
@@ -513,6 +511,7 @@ public final class CanvasToolbar: NSView {
       case .note: Tip("New Note", kbd: BoardKey.show(of: "New Note"))
       case .text: Tip("New Text", kbd: BoardKey.show(of: "New Text"))
       case .box: Tip("New Box", kbd: BoardKey.show(of: "New Box"))
+      case .web: Tip("New Web Card")
       case .section: Tip("Draw a Section")
       case .arrow: Tip("Select two cards, or pick a card then click another")
       case .sticker: Tip("Add a Sticker")
@@ -591,6 +590,7 @@ extension CanvasView {
     case .box: createInView(.text(.box))
     case .code: newCodeInView()
     case .image: newImage()
+    case .web: newWeb()
     case .section: useSection()
     case .arrow: useArrow()
     default: break

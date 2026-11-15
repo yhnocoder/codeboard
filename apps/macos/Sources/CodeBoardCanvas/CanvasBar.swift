@@ -99,6 +99,11 @@ enum Icons {
     )
   }
 
+  /// icons.tsx web: a globe
+  static var web: CGPath {
+    SVGPath.parse("M14 8A6 6 0 1 1 2 8A6 6 0 1 1 14 8ZM8 2a10 10 0 0 0 0 12 10 10 0 0 0 0-12M2 8h12")
+  }
+
   /// icons.tsx arrowLink: a ring with a bent arrow
   /// icons.tsx sticker: a sheet with a turned corner and a smile
   static var sticker: CGPath {

@@ -40,7 +40,7 @@ import UniformTypeIdentifiers
   @Test func codeAndImageSitAfterBoxInMainsOrder() async throws {
     let w = try await edit.opened()
     defer { w.close() }
-    #expect(try toolbar(w).tools == [.note, .text, .box, .code, .image, .section, .arrow, .sticker])
+    #expect(try toolbar(w).tools == [.note, .text, .box, .code, .image, .web, .section, .arrow, .sticker])
   }
 
   /// Code (create.ts newFreeCode with no point): a Free code card half a Note's width left of the view's middle and 60
@@ -198,5 +198,52 @@ import UniformTypeIdentifiers
     #expect(tips.shown == nil && pending.count == 1)
     pending.removeFirst().1()
     #expect(tips.shown?.tip == Tip("Zoom In", kbd: "⌘+"))
+  }
+
+  /// Web (create.ts newWeb): its address asked in a sheet on the window as main's promptText asks it (Add Web Link,
+  /// https://…, Add / Cancel); https:// put before one without; a Web card where a pasted one goes, its page read
+  @Test func webAsksForTheAddressInASheetAndAddsItsCard() async throws {
+    let w = try await edit.opened()
+    defer { w.close() }
+    let c = w.canvas
+    var read: [URL] = []
+    c.fetchPage = { u in
+      await MainActor.run { read.append(u) }
+      return WebPage(title: "A page", description: "", site: "")
+    }
+    func answer(_ text: String?, _ button: String) async throws {
+      try click(.web, in: w)
+      await edit.until("asked", in: w) { w.window.attachedSheet != nil }
+      let sheet = try #require(w.window.attachedSheet)
+      let content = try #require(sheet.contentView)
+      func all(_ v: NSView) -> [NSView] { [v] + v.subviews.flatMap(all) }
+      let labels = all(content).compactMap { $0 as? NSTextField }
+      #expect(labels.contains { $0.stringValue == "Add Web Link" })
+      let field = try #require(labels.first { $0.isEditable })
+      #expect(field.placeholderString == "https://…")
+      if let text { field.stringValue = text }
+      let buttons = all(content).compactMap { $0 as? NSButton }
+      #expect(Set(buttons.map(\.title)).isSuperset(of: ["Add", "Cancel"]))
+      // Return answers Add (its key equivalent reads empty while the test's window is not key)
+      #expect(sheet.defaultButtonCell === buttons.first { $0.title == "Add" }?.cell)
+      let b = try #require(buttons.first { $0.title == button })
+      b.sendAction(b.action, to: b.target)
+      await edit.until("answered", in: w) { w.window.attachedSheet == nil }
+    }
+    let before = c.document?.board.cards.count ?? 0
+    try await answer("example.com/a", "Cancel")
+    #expect(c.document?.board.cards.count == before, "cancelled: nothing")
+    try await answer("   ", "Add")
+    #expect(c.document?.board.cards.count == before, "blank: nothing")
+    try await answer(" example.com/a ", "Add")
+    await edit.until("the card", in: w) { c.document?.board.cards.count == before + 1 }
+    let card = try #require(c.document?.board.cards.last)
+    guard case .own(let k) = card.content, case .web(let web) = k.body else {
+      Issue.record("not a Web card: \(card.content)")
+      return
+    }
+    #expect(web.url == "https://example.com/a")
+    #expect(c.document?.selection == [.card(card.id)] && c.document?.history.undoSteps.last?.name == "New Web Card")
+    await edit.until("its page read", in: w) { read == [URL(string: "https://example.com/a")!] }
   }
 }
