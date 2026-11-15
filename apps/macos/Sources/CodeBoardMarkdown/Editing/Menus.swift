@@ -48,17 +48,22 @@ extension MDMenuItem {
 }
 
 extension MarkdownEditing {
+  /// What the / menu calls a [[reference]]: the host names what its references point at, before its first editor
+  nonisolated(unsafe) public static var referenceTitle = "Reference"
+
   /// The / menu's blocks, in menu.tsx's order (Details, a block this component does not have yet, left out)
-  public static let slashItems: [MDMenuItem] = [
-    .init(title: "Heading 1", hint: "#", id: "h1"), .init(title: "Heading 2", hint: "##", id: "h2"),
-    .init(title: "Heading 3", hint: "###", id: "h3"), .init(title: "Bullet List", hint: "-", id: "ul"),
-    .init(title: "Numbered List", hint: "1.", id: "ol"), .init(title: "Task List", hint: "[ ]", id: "task"),
-    .init(title: "Quote", hint: ">", id: "quote"), .init(title: "Code Block", hint: "```", id: "code"),
-    .init(title: "Math Block", hint: "$$", id: "math"), .init(title: "Mermaid Diagram", hint: "", id: "mermaid"),
-    .init(title: "Table", hint: "", id: "table"), .init(title: "Image", hint: "", id: "image"),
-    .init(title: "Link to Card", hint: "[[", id: "ref"), .init(title: "Footnote", hint: "[^1]", id: "footnote"),
-    .init(title: "Divider", hint: "---", id: "rule"),
-  ]
+  public static var slashItems: [MDMenuItem] {
+    [
+      .init(title: "Heading 1", hint: "#", id: "h1"), .init(title: "Heading 2", hint: "##", id: "h2"),
+      .init(title: "Heading 3", hint: "###", id: "h3"), .init(title: "Bullet List", hint: "-", id: "ul"),
+      .init(title: "Numbered List", hint: "1.", id: "ol"), .init(title: "Task List", hint: "[ ]", id: "task"),
+      .init(title: "Quote", hint: ">", id: "quote"), .init(title: "Code Block", hint: "```", id: "code"),
+      .init(title: "Math Block", hint: "$$", id: "math"), .init(title: "Mermaid Diagram", hint: "", id: "mermaid"),
+      .init(title: "Table", hint: "", id: "table"), .init(title: "Image", hint: "", id: "image"),
+      .init(title: referenceTitle, hint: "[[", id: "ref"), .init(title: "Footnote", hint: "[^1]", id: "footnote"),
+      .init(title: "Divider", hint: "---", id: "rule"),
+    ]
+  }
 
   /// The menu being typed before the caret: its kind, where its trigger starts and what follows it. / and : after a
   /// space or at the line's start (TipTap Suggestion's allowedPrefixes), [[ anywhere; the query has no spaces
@@ -95,7 +100,8 @@ extension MarkdownEditing {
   /// The / menu's rows for a query: titles or words holding it
   public static func slashMenu(_ query: String) -> [MDMenuItem] {
     let l = query.lowercased()
-    return l.isEmpty ? slashItems : slashItems.filter { $0.title.lowercased().contains(l) || $0.keys.contains(l) }
+    let items = slashItems
+    return l.isEmpty ? items : items.filter { $0.title.lowercased().contains(l) || $0.keys.contains(l) }
   }
 
   /// The : menu's rows: emoji whose names start with the query, then those holding it, at most eight

@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardMarkdown
 import CodeBoardMarkdownUI
 import CodeBoardModel
 import Testing
@@ -46,6 +47,13 @@ private func copyBoard() -> Board {
     let r = try await Rig(zoom: 1)
     defer { r.close() }
     #expect(MarkdownEditorView.sourceType.rawValue == "com.yhnocoder.codeboard.markdown")
+  }
+
+  /// A Note's / menu offers its [[reference]] as a link to a card
+  @Test func aNotesReferenceRowIsALinkToACard() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    #expect(MarkdownEditing.slashMenu("link").map(\.title) == ["Link to Card"])
   }
 
   /// ⌘C on an image card puts its picture on the pasteboard too, as PNG (actions/shared.ts copyCards, imagedata.ts

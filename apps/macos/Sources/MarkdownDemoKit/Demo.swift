@@ -262,6 +262,8 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   init(text: String, folder: URL, cardWidth: Double) throws {
     // in a test process: its alerts and open panels never come up (an editor puts the same guard in)
     TestGuard.install()
+    // a Note's [[reference]] points at a card, as on the board
+    MarkdownEditing.referenceTitle = "Link to Card"
     self.text = text
     self.folder = folder
     self.cardWidth = cardWidth

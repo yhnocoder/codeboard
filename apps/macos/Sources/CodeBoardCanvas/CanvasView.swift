@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardMarkdown
 import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardNotes
@@ -478,6 +479,8 @@ public final class CanvasView: NSView {
     TestGuard.install()
     // what a Note copies is read back as its source by every Note, those copied by earlier versions too
     MarkdownEditorView.sourceType = CanvasView.markdownSource
+    // a Note's [[reference]] points at a card
+    MarkdownEditing.referenceTitle = "Link to Card"
     CanvasView.all.add(self)
     registerForDraggedTypes([.string, .fileURL])
     // layer-hosting: the canvas owns its layer tree, y-down like the board

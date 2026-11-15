@@ -136,6 +136,11 @@ import Testing
 
 /// The / menu's Footnote (menu.tsx addFootnote) and Image (the typed text goes; the host writes the picture)
 @Suite struct SlashFootnoteTests {
+  /// With no name of the host's, the [[ row is a Reference, found by that word
+  @Test func theReferenceRowIsTheHostsToName() {
+    #expect(MarkdownEditing.slashMenu("refer").first { $0.id == "ref" }?.title == "Reference")
+  }
+
   @Test func aFootnoteAndItsDefinition() {
     let src = "Text[^1] and /foot more\n\n[^1]: one"
     let d = MarkdownDocument(src)
