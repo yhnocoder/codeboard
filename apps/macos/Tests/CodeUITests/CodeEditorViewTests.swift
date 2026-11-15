@@ -137,11 +137,13 @@ import Testing
   @Test func offsetsAndPlacesThroughTabsAndWrappedRows() {
     let l = look()
     let cw = l.metrics.charWidth
-    let t = CodeTextLayout(text: "a\tb", x: 10, metrics: l.metrics, style: l.style)
-    #expect(abs(t.x(of: 2, assoc: 1) - t.x(of: 1, assoc: 1) - 4 * cw) < 0.01)
+    // the tab after one column goes to the stop at four
+    let t = CodeTextLayout(text: "a\tb\t", x: 10, metrics: l.metrics, style: l.style)
+    #expect(abs(t.x(of: 2, assoc: 1) - t.x(of: 1, assoc: 1) - 3 * cw) < 0.01)
+    #expect(abs(t.x(of: 4, assoc: 1) - t.x(of: 3, assoc: 1) - 3 * cw) < 0.01)
     // in the tab: the nearer side
-    #expect(t.offset(inRow: 0, x: t.x(of: 1, assoc: 1) + 1.5 * cw) == 1)
-    #expect(t.offset(inRow: 0, x: t.x(of: 1, assoc: 1) + 2.5 * cw) == 2)
+    #expect(t.offset(inRow: 0, x: t.x(of: 1, assoc: 1) + 1.2 * cw) == 1)
+    #expect(t.offset(inRow: 0, x: t.x(of: 1, assoc: 1) + 1.8 * cw) == 2)
     // cut at four columns: the wrap point is the end of the first row and the start of the second
     let w = CodeTextLayout(text: "abcdefg\nh", wrapColumns: 4, x: 0, metrics: l.metrics, style: l.style)
     #expect(w.rowCount == 3 && w.offsets(inRow: 0) == 0...4 && w.offsets(inRow: 1) == 4...7)

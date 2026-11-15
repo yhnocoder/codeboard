@@ -3,7 +3,7 @@ import CoreGraphics
 import CoreText
 import Foundation
 
-/// A whole text laid out as CodeLines lays code out (tabs as spaces, long lines wrapped, room inserted after lines), with
+/// A whole text laid out as CodeLines lays code out (tabs to their stops, long lines wrapped, room inserted after lines), with
 /// what an editor asks of it: where each offset is drawn, which offset a point is at, the rows of a range. x is in the
 /// context the code is drawn into, the code starting at `x`; each row's glyphs are measured as CodeDraw draws them
 public struct CodeTextLayout: CodeLayout {
@@ -16,7 +16,8 @@ public struct CodeTextLayout: CodeLayout {
   struct Row {
     var index: Int
     var range: ClosedRange<Int>
-    var stops: [(src: Int, u16: Int, tab: Bool)]
+    /// `tab`: the columns a tab takes to its stop (0: not a tab)
+    var stops: [(src: Int, u16: Int, tab: Int)]
   }
 
   let rows: [Row]
@@ -24,7 +25,6 @@ public struct CodeTextLayout: CodeLayout {
   public let lineRows: [CodeLines.Row]
   let text: String
   let style: CodeStyle
-  let tabWidth: Int
   private let cache = Cache()
 
   final class Cache {
@@ -44,25 +44,25 @@ public struct CodeTextLayout: CodeLayout {
     self.x = x
     self.text = text
     self.style = style
-    tabWidth = m.tabWidth
     var out: [Row] = []
     var start = 0
     for line in source {
       // each character's expanded columns, cut into rows as CodeLines cuts them; a tab cut there has its offset on the
       // row it starts on, the rest of its spaces drawn at the start of the next
-      var row: [(src: Int, u16: Int, tab: Bool)] = []
+      var row: [(src: Int, u16: Int, tab: Int)] = []
       var cols = 0
       var u16 = 0
       var src = start
       func cut(_ end: Int) {
-        out.append(Row(index: out.count, range: (row.first?.src ?? end)...end, stops: row + [(end, u16, false)]))
+        out.append(Row(index: out.count, range: (row.first?.src ?? end)...end, stops: row + [(end, u16, 0)]))
         (row, u16) = ([], 0)
       }
       for ch in line {
         let tab = ch == "\t"
-        for k in 0..<(tab ? m.tabWidth : 1) {
+        let n = tab ? m.tabWidth - cols % m.tabWidth : 1
+        for k in 0..<n {
           if let w = wrapColumns, cols > 0, cols % w == 0 { cut(k == 0 ? src : src + 1) }
-          if k == 0 { row.append((src, u16, tab)) }
+          if k == 0 { row.append((src, u16, tab ? n : 0)) }
           cols += 1
           u16 += tab ? 1 : ch.utf16.count
         }
@@ -104,7 +104,7 @@ public struct CodeTextLayout: CodeLayout {
     let s = row.stops[k]
     if i == s.u16 || k + 1 >= row.stops.count { return s.src }
     // in a tab's spaces: the side of the tab nearer
-    if s.tab {
+    if s.tab > 0 {
       let mid = (Double(at(s.src, row: r)) + Double(at(row.stops[k + 1].src, row: r))) / 2
       return px < mid ? s.src : row.stops[k + 1].src
     }
@@ -154,7 +154,7 @@ public struct CodeTextLayout: CodeLayout {
   func at(_ q: Int, row r: Int) -> CGFloat {
     let row = rows[r]
     guard let s = row.stops.last(where: { $0.src <= q }) else { return x }
-    let u16 = s.tab ? s.u16 + (q > s.src ? tabWidth : 0) : s.u16 + (q - s.src)
+    let u16 = s.tab > 0 ? s.u16 + (q > s.src ? s.tab : 0) : s.u16 + (q - s.src)
     return x + CTLineGetOffsetForStringIndex(ctLine(r), u16, nil)
   }
 

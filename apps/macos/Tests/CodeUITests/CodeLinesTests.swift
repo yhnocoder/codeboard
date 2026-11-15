@@ -85,4 +85,11 @@ private func kinds(_ l: CodeLines) -> [CodeLines.Kind] { l.rows.map(\.kind) }
     let some = l.frame(of: 2...5, width: 300)
     #expect(some?.folded == false && some?.rect == CGRect(x: 0, y: 26, width: 300, height: 64))
   }
+
+  /// A tab goes to the next stop, four columns apart (the board's .src tab-size: 4), not four spaces on
+  @Test func aTabGoesToTheNextStop() {
+    let l = CodeLines(lines: ["\tx", "ab\tc", "abcd\te"], metrics: m)
+    let texts = l.rows.compactMap { if case .line(_, _, let t, _) = $0.kind { t } else { nil } }
+    #expect(texts == ["    x", "ab  c", "abcd    e"])
+  }
 }

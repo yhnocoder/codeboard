@@ -44,7 +44,7 @@ public struct CodeLineMetrics: Equatable, Sendable {
   }
 }
 
-/// Lines of code laid out in rows, top to bottom: tabs as spaces, a line too long for `wrapColumns` cut into more rows,
+/// Lines of code laid out in rows, top to bottom: tabs as spaces to the next stop (CSS tab-size), a line too long for `wrapColumns` cut into more rows,
 /// folded lines one row each run, blank lines left out when asked, and room the host fills after a line (`insert`).
 /// Line numbers are the caller's: `firstNumber` is the first line's.
 public struct CodeLines: Equatable, Sendable {
@@ -202,7 +202,7 @@ public struct CodeLines: Equatable, Sendable {
     return n
   }
 
-  /// The line's characters with tabs as spaces, each with the style of its first UTF-16 unit
+  /// The line's characters with tabs as spaces to their stops, each with the style of its first UTF-16 unit
   static func expand(_ line: String, _ runs: [CodeRun], tabWidth: Int) -> [(char: Character, style: UInt8?)] {
     var styles = [UInt8?](repeating: nil, count: line.utf16.count)
     for t in runs {
@@ -213,7 +213,8 @@ public struct CodeLines: Equatable, Sendable {
     for ch in line {
       let k = col < styles.count ? styles[col] : nil
       if ch == "\t" {
-        out += Array(repeating: (" ", k), count: tabWidth)
+        // to the next tab stop, as tab-size does
+        out += Array(repeating: (" ", k), count: tabWidth - out.count % tabWidth)
       } else {
         out.append((ch, k))
       }

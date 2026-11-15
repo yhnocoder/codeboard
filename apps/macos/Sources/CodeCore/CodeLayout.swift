@@ -15,7 +15,7 @@ public protocol CodeLayout {
   func offset(inRow r: Int, x: Double) -> Int
 }
 
-/// A text laid out as it is: a row a line, a column a character, a tab as `tabWidth` (as CodeLines draws lines that do
+/// A text laid out as it is: a row a line, a column a character, a tab to the next stop `tabWidth` apart (as CodeLines draws lines that do
 /// not wrap). For an editor no view laid out
 public struct PlainCodeLayout: CodeLayout {
   let ns: NSString
@@ -58,7 +58,7 @@ public struct PlainCodeLayout: CodeLayout {
     var at = 0.0
     var q = row.lowerBound
     for ch in ns.substring(with: NSRange(location: row.lowerBound, length: row.count - 1)) {
-      let w = Double(ch == "\t" ? tabWidth : 1)
+      let w = Double(ch == "\t" ? tabWidth - Int(at) % tabWidth : 1)
       if x < at + w / 2 { break }
       at += w
       q += ch.utf16.count
@@ -66,5 +66,5 @@ public struct PlainCodeLayout: CodeLayout {
     return q
   }
 
-  private func columns(_ s: String) -> Int { s.reduce(0) { $0 + ($1 == "\t" ? tabWidth : 1) } }
+  private func columns(_ s: String) -> Int { CodeEditor.columns(s, tabWidth: tabWidth) }
 }
