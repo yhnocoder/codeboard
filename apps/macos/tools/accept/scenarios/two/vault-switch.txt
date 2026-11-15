@@ -1,0 +1,17 @@
+# 在卡里打字时换库（⌘O：Open Vault…，面板由 panel 代答，不弹出来），再换回来：刚打的字在（AppDelegate.openVault：先写完正在写的）
+# storage: storage-two
+# only: mac
+zoom 1
+center @cown+150,80
+dbl @cown+150,57
+wait 600
+type  kept1
+panel other-vault
+key cmd+o
+wait 1500
+panel vault
+key cmd+o
+wait 1500
+click @row:First
+wait 1500
+expect cown.text has kept1

@@ -544,7 +544,8 @@ function fold(card: HTMLElement, entering: boolean): Promise<void> {
     body.classList.remove("fold");
     body.classList.add("unfolded");
   };
-  if (reduced()) {
+  // a page not shown (its tab closed) runs no animation frames: the fold would never end
+  if (reduced() || document.hidden) {
     settle();
     return Promise.resolve();
   }
@@ -566,11 +567,15 @@ function fold(card: HTMLElement, entering: boolean): Promise<void> {
   if (h)
     anims.push(h.animate(dir({ marginTop: `${-blk}px`, opacity: 0 }, { marginTop: "0px", opacity: 1 }) as Keyframe[], opts));
   return new Promise((done) => {
-    anims[0].onfinish = anims[0].oncancel = () => {
+    const end = () => {
+      document.removeEventListener("visibilitychange", end);
       settle();
       for (const a of anims) a.cancel();
       done();
     };
+    anims[0].onfinish = anims[0].oncancel = end;
+    // hidden partway (WebKit learns of a hidden view a moment after it is hidden)
+    document.addEventListener("visibilitychange", end);
   });
 }
 
@@ -890,17 +895,21 @@ if (paletteMode) {
   (window as unknown as { palette: typeof palette }).palette = palette;
 }
 if (editMode || popMode) watchRefs((m) => window.webkit?.messageHandlers.note.postMessage(m));
-// A press on the card's own paper outside its text (below the last line, its padding) keeps the editor's focus and
-// caret: the editor saves and leaves when its focus goes, so the second press of a double-click on a Note's empty body,
-// which lands here once its first press has the editor up, would end the writing it began. A press on another card is
-// the canvas's, and ends it there
+// A press on the card's own paper outside its text (below the last line, its padding) keeps the editor's focus: the
+// editor saves and leaves when its focus goes, so the second press of a double-click on a Note's empty body, which
+// lands here once its first press has the editor up, would end the writing it began. A press on another card is the
+// canvas's, and ends it there. Below the last line the caret goes to the end, as a press there puts it when it opens
+// the editor (staticSpot "end")
 if (editMode)
   window.addEventListener(
     "mousedown",
     (e) => {
       const t = e.target as Element | null;
-      if (!t?.closest?.("[contenteditable], input, textarea, select, button, a[href], [tabindex], .mdui"))
-        e.preventDefault();
+      if (t?.closest?.("[contenteditable], input, textarea, select, button, a[href], [tabindex], .mdui"))
+        return;
+      e.preventDefault();
+      const last = editing?.slot.card.querySelector(".md-pm")?.lastElementChild;
+      if (last && e.clientY >= last.getBoundingClientRect().bottom) editing?.editor.placeCaret("end");
     },
     true,
   );
