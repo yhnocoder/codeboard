@@ -1,9 +1,10 @@
 // Writes Sources/CodeBoardMarkdown/Data/EmojiTable.swift from the TypeScript package's emoji table (gemoji names), so
 // :name: reads the same in both. Run after packages/markdown/src/emoji-data.ts changes:
-//   node apps/macos/tools/markdown/emoji.mjs
+//   node apps/macos/tools/markdown/emoji.mjs [--out <the component's folder>]
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { componentRoot } from "./component.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(join(here, "../../../../packages/markdown/src/emoji-data.ts"), "utf8");
@@ -23,5 +24,5 @@ ${body}
 """
 }
 `;
-writeFileSync(join(here, "../../Sources/CodeBoardMarkdown/Data/EmojiTable.swift"), swift);
+writeFileSync(join(componentRoot(), "Sources/CodeBoardMarkdown/Data/EmojiTable.swift"), swift);
 console.log(`wrote ${pairs.length} emoji`);
