@@ -1214,7 +1214,7 @@ extension CanvasView {
         return
       }
       // a card's grip, or a Note's bottom edge: Fit Content (Card.tsx .grip, .hb); a Text's edge or corner: nothing
-      if let (item, edges) = hitHandle(v) {
+      if let (item, edges) = sectionEdgeOrHandle(v, p) {
         if case .card(let id) = item, !isText(id) {
           var note = false
           if case .note? = scene?.parts[id]?.content.body { note = true }
@@ -1234,7 +1234,7 @@ extension CanvasView {
     // a code card's line numbers select lines
     if e.clickCount == 1, selectLine(at: p, extend: e.modifierFlags.contains(.shift)) { return }
     clearLineSel()
-    if let (item, edges) = hitHandle(v) {
+    if let (item, edges) = sectionEdgeOrHandle(v, p) {
       startResize(item, edges, at: v, p)
       return
     }
@@ -1269,6 +1269,14 @@ extension CanvasView {
         item: item, toggle: toggle && !e.modifierFlags.contains(.command) || toggle && item?.card != nil,
         wasSelected: was, inside: inside),
       startView: v, start: p)
+  }
+
+  /// The handle or edge under the pointer, but a Section's edge gives way to an arrow's label lying on it (main's labels
+  /// are over the Sections and their edges)
+  func sectionEdgeOrHandle(_ v: CGPoint, _ p: CGPoint) -> (Item, Resize.Edges)? {
+    guard let (item, edges) = hitHandle(v) else { return nil }
+    if item.section != nil, hitArrowLabel(p) != nil { return nil }
+    return (item, edges)
   }
 
   /// A button on the board pressed: it acts on the release over it (main's <button>, whose click is a press and a
