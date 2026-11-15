@@ -7,9 +7,9 @@ import AppKit
 /// pointing hand over a control (cursor: pointer) and an arrow elsewhere; a control's name is its tooltip, the web page's
 /// own (TipView)
 @MainActor
-package class HoverControls: NSView {
+public class HoverControls: NSView {
   /// A click in a window that is not key goes to it when it goes to the editor it floats on
-  package override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+  public override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
     var v = superview
     while let s = v, !(s is MarkdownEditorView) { v = s.superview }
     return (v as? MarkdownEditorView)?.acceptsFirstClick ?? false
@@ -95,7 +95,7 @@ package class HoverControls: NSView {
     }
   }
 
-  package override func viewDidMoveToWindow() {
+  public override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
     if window == nil {
       link?.invalidate()
@@ -103,7 +103,7 @@ package class HoverControls: NSView {
     }
   }
 
-  package override func updateTrackingAreas() {
+  public override func updateTrackingAreas() {
     super.updateTrackingAreas()
     for a in trackingAreas where a.owner === self { removeTrackingArea(a) }
     // over the whole view, not its visible rect: what floats past the Note's edges is cut out of that, and got no moves
@@ -112,7 +112,7 @@ package class HoverControls: NSView {
         rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .cursorUpdate, .activeAlways], owner: self))
   }
 
-  package override func setFrameSize(_ s: NSSize) {
+  public override func setFrameSize(_ s: NSSize) {
     super.setFrameSize(s)
     updateTrackingAreas()
   }
@@ -161,17 +161,17 @@ package class HoverControls: NSView {
     if let was, let c = controls().first(where: { $0.id == was && $0.box.contains(p) }) { activate(c.id, box: c.box) }
   }
 
-  package override func mouseMoved(with e: NSEvent) { hover(at: convert(e.locationInWindow, from: nil)) }
-  package override func mouseEntered(with e: NSEvent) { hover(at: convert(e.locationInWindow, from: nil)) }
-  package override func mouseExited(with e: NSEvent) { hover(at: nil) }
-  package override func mouseDown(with e: NSEvent) { press(at: convert(e.locationInWindow, from: nil)) }
-  package override func mouseDragged(with e: NSEvent) { hover(at: convert(e.locationInWindow, from: nil)) }
-  package override func mouseUp(with e: NSEvent) { release(at: convert(e.locationInWindow, from: nil)) }
-  package override func cursorUpdate(with e: NSEvent) {
+  public override func mouseMoved(with e: NSEvent) { hover(at: convert(e.locationInWindow, from: nil)) }
+  public override func mouseEntered(with e: NSEvent) { hover(at: convert(e.locationInWindow, from: nil)) }
+  public override func mouseExited(with e: NSEvent) { hover(at: nil) }
+  public override func mouseDown(with e: NSEvent) { press(at: convert(e.locationInWindow, from: nil)) }
+  public override func mouseDragged(with e: NSEvent) { hover(at: convert(e.locationInWindow, from: nil)) }
+  public override func mouseUp(with e: NSEvent) { release(at: convert(e.locationInWindow, from: nil)) }
+  public override func cursorUpdate(with e: NSEvent) {
     let p = convert(e.locationInWindow, from: nil)
     (controls().contains { $0.box.contains(p) } ? NSCursor.pointingHand : NSCursor.arrow).set()
   }
-  package override func resetCursorRects() {
+  public override func resetCursorRects() {
     for c in controls() { addCursorRect(c.box, cursor: .pointingHand) }
   }
 
