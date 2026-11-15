@@ -507,7 +507,12 @@ public final class MarkdownEditorView: NSView {
   /// into them again. AppKit's backing store was half-float on a wide-gamut display, dropped after a few seconds idle
   /// and made anew at every new size, so the first key after a pause and the three after a line wrapped drew the
   /// whole editor (35-45 ms each)
-  public override var wantsUpdateLayer: Bool { !caching }
+  public override var wantsUpdateLayer: Bool { !caching && !drawnByAppKit }
+  /// strips it cannot have (an IOSurface not made, or wider than Core Animation shows as one texture): AppKit's own
+  /// backing store, tiled as for any view, rather than a blank editor
+  private var drawnByAppKit = false
+  /// the widest strip, in pixels: Metal's largest texture, which an IOSurface shown as contents is
+  static let stripPixelsMax = 16384
   /// a picture asked of it (cacheDisplay): drawn by `draw`, as AppKit draws a view that has no pictures of its own
   private var caching = false
   public override func cacheDisplay(in r: NSRect, to rep: NSBitmapImageRep) {
@@ -602,7 +607,7 @@ public final class MarkdownEditorView: NSView {
 
   /// The strips in view made (drawn whole), those out of it let go, and what changed drawn into the others
   private func paintStrips() {
-    guard let layer, window != nil else { return }
+    guard let layer, window != nil, !drawnByAppKit else { return }
     let scale = window?.backingScaleFactor ?? 2
     let h = Self.stripHeight
     if stripsMadeAt.map({ $0.width != bounds.width || $0.scale != scale }) ?? true {
@@ -623,8 +628,13 @@ public final class MarkdownEditorView: NSView {
         if !r.isNull { paint(s, r, band) }
         continue
       }
-      guard let s = Strip(width: max(1, Int((bounds.width * scale).rounded(.up))), height: Int(h * scale)) else {
-        continue
+      let w = max(1, Int((bounds.width * scale).rounded(.up)))
+      guard w <= Self.stripPixelsMax, let s = Strip(width: w, height: Int(h * scale)) else {
+        for s in strips.values { s.layer.removeFromSuperlayer() }
+        strips = [:]
+        drawnByAppKit = true
+        needsDisplay = true
+        return
       }
       CATransaction.begin()
       CATransaction.setDisableActions(true)

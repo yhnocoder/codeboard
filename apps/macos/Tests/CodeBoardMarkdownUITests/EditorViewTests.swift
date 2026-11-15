@@ -208,6 +208,53 @@ import Testing
     #expect(Set(view.strips.keys) == Set(1..<6) && same(), "moved up: \(view.strips.keys.sorted())")
   }
 
+  /// An editor wider than a strip can be shown is drawn by AppKit, as any view: its text shows, nothing is blank
+  @Test func anEditorTooWideForItsStripsIsDrawnByAppKit() throws {
+    _ = boardFonts
+    let w = NSWindow(
+      contentRect: CGRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.borderless], backing: .buffered,
+      defer: false)
+    w.alphaValue = 0.02
+    w.ignoresMouseEvents = true
+    w.setFrameOrigin(CGPoint(x: -30000, y: -30000))
+    w.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) - 1)
+    let scale = w.backingScaleFactor
+    let text = (0..<8).map { "Paragraph \($0) with **bold** in it." }.joined(separator: "\n\n")
+    let view = MarkdownEditorView(
+      layout: BlockLayout(
+        MarkdownDocument(text), width: CGFloat(MarkdownEditorView.stripPixelsMax) / scale + 64, theme: testTheme,
+        layout: nil, resources: TestResources()),
+      caret: 0)
+    let host = FlippedHost(frame: CGRect(x: 0, y: 0, width: 400, height: 300))
+    host.wantsLayer = true
+    w.contentView = host
+    host.addSubview(view)
+    w.orderFrontRegardless()
+    defer { w.orderOut(nil) }
+    w.displayIfNeeded()
+    CATransaction.flush()
+    #expect(view.strips.isEmpty && !view.wantsUpdateLayer)
+    w.displayIfNeeded()
+    CATransaction.flush()
+    let top = CGRect(x: 0, y: 0, width: 400, height: 300)
+    func bitmap(_ draw: (CGContext) -> Void) -> Data? {
+      let ctx = CGContext(
+        data: nil, width: Int(top.width * scale), height: Int(top.height * scale), bitsPerComponent: 8,
+        bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+        bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)!
+      ctx.setShouldSmoothFonts(false)
+      ctx.translateBy(x: 0, y: CGFloat(ctx.height))
+      ctx.scaleBy(x: scale, y: -scale)
+      draw(ctx)
+      return ctx.makeImage()?.dataProvider?.data as Data?
+    }
+    for v in view.subviews { v.isHidden = true }
+    let shown = try #require(bitmap { ctx in host.layer!.render(in: ctx) })
+    let blank = try #require(bitmap { _ in })
+    let inked = zip(shown, blank).reduce(0) { $0 + ($1.0 == $1.1 ? 0 : 1) }
+    #expect(inked > 1000, "its text shows: \(inked) bytes")
+  }
+
   @Test func keysGoThroughTheSystemsBindings() {
     _ = boardFonts
     let view = MarkdownEditorView(
