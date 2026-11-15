@@ -40,6 +40,39 @@ import CodeBoardNotes
     )
   }
 
+  /// Delete Everywhere…'s question, in main's words (actions/shared.ts deleteEverywhere, commands boardsText); undo
+  /// brings the card back on this board only
+  static func deleteEverywhereQuestion(_ title: String, boards: [String]) -> NSAlert {
+    destroying(
+      "Delete “\(title)” everywhere?",
+      "This card is on \(boards.count) boards: \(boards.joined(separator: ", ")). Its arrows and sidenotes go too, on every board.",
+      "Delete Everywhere")
+  }
+
+  /// The boards showing shared card `id` now: an open one as it is edited, the others as their files hold them
+  // ponytail: reads every board not open on each ask (its menu, ⌘⌫); keep an index with the vault watcher if vaults grow
+  func boardsShowing(_ id: CardID) -> [VaultBoard] {
+    guard let vault = shell.vault else { return [] }
+    return (shell.tree?.allBoards ?? []).filter { b in
+      let board = documents[b.id]?.board ?? (try? vault.board(at: b.path))
+      return board?.cards.contains { $0.id == id && $0.isShared } == true
+    }
+  }
+
+  /// A shared card deleted everywhere from another board goes from this one as the host takes it (storage deleteEverywhere,
+  /// core cards.ts dropGone): no undo step here; a board not open is read, changed and written
+  private func remove(_ id: CardID, from b: VaultBoard) {
+    let doc =
+      documents[b.id]
+      ?? (try? BoardDocument(
+        file: { [weak shell] in
+          shell?.vault.flatMap { v in shell?.board(b.id).map { v.url(of: $0.path).appending(path: Vault.boardFileName) }
+          }
+        }, vault: shell.vault))
+    doc?.sync { $0.delete([.card(id)], ignoringLock: true) }
+    doc?.flush()
+  }
+
   /// The sidebar's Delete Folder: main's Delete Group question (actions.ts deleteGroup) in the words of what it does here,
   /// where the boards go with their folder
   static func deleteFolderQuestion(_ name: String, boards: Int) -> NSAlert {
@@ -187,6 +220,17 @@ import CodeBoardNotes
           let n = (try? vault.board(at: b.path).cards.count) ?? 0
           guard await confirm(Self.deleteQuestion(b.title, cards: n), pane?.window) else { return false }
           return shell.trash(b.path)
+        }
+        pane.canvas.boardsShowing = { [weak self] id in self?.boardsShowing(id).map(\.title) ?? [] }
+        pane.canvas.onDeleteEverywhere = { [weak self, weak pane] id, title, here in
+          guard let self, let at = pane?.document?.id else { return nil }
+          let boards = boardsShowing(id)
+          guard await confirm(Self.deleteEverywhereQuestion(title, boards: boards.map(\.title)), pane?.window)
+          else { return nil }
+          here()
+          for b in boards where b.id != at { remove(id, from: b) }
+          shell.trash("\(Vault.appDataFolder)/\(Vault.sharedFolder)/\(id.rawValue).json")
+          return boards.count
         }
         pane.canvas.onVaultChanged = { [weak self] in self?.onVaultChanged?() }
         pane.canvas.onSetSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }

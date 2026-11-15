@@ -398,12 +398,13 @@ actor RigTurns {
     #expect(r.card("n1").section == gid("g1"))
     #expect(r.doc.undoName == "Move" && r.doc.history.undoSteps.count == 1)
     await r.settle()
-    // t1 moved by a drag of its own, without being selected first
-    r.drag(from, CGPoint(x: from.x - 30, y: from.y + 40)) {
+    // t1 moved by a drag of its own, without being selected first, to where none of its edges and middles is within 12
+    // of another's (lining up reaches that far at zoom 0.5)
+    r.drag(from, CGPoint(x: from.x - 60, y: from.y + 300)) {
       #expect(r.breaks == breaks, "nothing is drawn, decoded, requested or swapped during the drag")
       #expect(layer.held.contents as AnyObject? === contents)
     }
-    #expect(r.card("t1").x == 470 && r.card("t1").y == 40)
+    #expect(r.card("t1").x == 440 && r.card("t1").y == 300)
     #expect(r.doc.selection == [.card(cid("t1"))])
     await r.settle()
     #expect(r.canvas.items[r.canvas.index(of: .card(cid("t1")))!] === layer, "it keeps its layers and bitmaps")
@@ -414,7 +415,7 @@ actor RigTurns {
     #expect(r.doc.selection == [.card(cid("n1"))], "undo restores the selection the step started with")
     r.doc.redo()
     r.doc.redo()
-    #expect(r.card("t1").x == 470 && r.card("n1").section == gid("g1"))
+    #expect(r.card("t1").x == 440 && r.card("n1").section == gid("g1"))
     // the drag out takes it out
     await r.settle()
     // by a corner m1 does not cover

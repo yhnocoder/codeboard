@@ -75,6 +75,8 @@ extension CanvasView {
   /// gesture is its (true); one it does not own is the view's
   func take(_ e: NSEvent, at p: CGPoint) -> Bool {
     guard window != nil, !isHiddenOrHasHiddenAncestor, scene != nil else { return false }
+    // another board opening: neither the board left nor the one to come is moved
+    if opening { return true }
     let over = isOverBoard(p)
     if over { pointerInWindow = p }
     switch e.type {
