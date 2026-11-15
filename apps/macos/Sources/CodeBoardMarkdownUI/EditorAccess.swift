@@ -22,17 +22,120 @@ extension MarkdownEditorView {
   }
 
   /// The pointer's shape at a point (the view's points) with these modifiers: the resize arrows over a table's column
-  /// and row edges and an image's handles, an open hand over a table grip, a pointing hand over a link with ⌘ held, the
-  /// I-beam over text while editing, the arrow on the static picture
+  /// and row edges and an image's handles, an open hand over a table grip, a pointing hand over a link's words (its
+  /// markers written out too with ⌘ held) and over a drawn atom other than a picture, the I-beam over text while
+  /// editing; on the static picture the arrow, a pointing hand over a link and a [[reference]] that finds its card
   public func cursor(at p: CGPoint, modifiers: NSEvent.ModifierFlags = []) -> NSCursor {
     let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
-    guard isEditing else { return .arrow }
+    // the board's .md-link and .md-ref take the pointer; a reference that finds nothing does nothing there
+    // (.md-ref.missing:not(.md-atom))
+    guard isEditing else { return link(at: at) != nil || ref(at: at)?.found == true ? .pointingHand : .arrow }
     // a selected image's width grips on its sides (markdown.css .md-imgrip: ew-resize)
     if let box = imageBox, handles(box).contains(where: { $0.insetBy(dx: -4, dy: -4).contains(at) }) {
       return .resizeLeftRight
     }
     if let k = tableCursor(at) { return k }
+    // a click there opens the link's box or acts on the atom (.md-link, .md-urlchip, .md-pm .md-atom: cursor pointer)
+    if link(at: at)?.hand == true || handAtom(at) { return .pointingHand }
     if modifiers.contains(.command), linkUnder(at) { return .pointingHand }
     return .iBeam
+  }
+
+  /// The link drawn under a point (the layout's points): its source, its address, and whether the point is on what a
+  /// click takes as the link, its words or its address folded to its site, rather than on its markers written out
+  func link(at: CGPoint) -> (range: Range<Int>, url: String, hand: Bool)? {
+    let q = core.layout.caret(at: at).offset
+    guard let run = MarkdownEditing.run(at: q, in: core.document), run.kind == .inline else { return nil }
+    func all(_ ins: [MDInline]) -> [MDInline] { ins.flatMap { [$0] + all($0.children) } }
+    // the nearest caret is found past a line's end too: the point must be on the link's own boxes
+    let under = { (r: Range<Int>) in self.core.rects(for: r).contains { $0.contains(at) } }
+    for i in all(run.inlines) {
+      let url: String
+      switch i.kind {
+      case .link(let u), .autolink(let u): url = u
+      default: continue
+      }
+      guard i.range.lowerBound <= q, q <= i.range.upperBound, under(i.range) else { continue }
+      guard let h = core.layout.head, i.range.lowerBound <= h, h <= i.range.upperBound else {
+        return (i.range, url, true)
+      }
+      let address = MarkdownEditing.linkAddress(i, in: core.document)
+      let folded = address.map { !($0.lowerBound <= h && h <= $0.upperBound) } ?? false
+      return (i.range, url, under(i.inner ?? i.range) || (folded && address.map(under) == true))
+    }
+    return nil
+  }
+
+  /// the drawn [[reference]] under a point: its source and whether it finds its card
+  func ref(at: CGPoint) -> (range: Range<Int>, found: Bool)? {
+    guard let r = core.layout.atom(at: at), let i = MarkdownEditing.inline(r, in: core.document),
+      case .atom(.ref(let label, let target)) = i.kind
+    else { return nil }
+    if case .found = core.layout.resources.ref(label: label, target: target) { return (r, true) }
+    return (r, false)
+  }
+
+  /// a drawn atom a click acts on: a formula, a reference, an emoji, HTML (widgets.ts md-atom; a picture is its own)
+  private func handAtom(_ at: CGPoint) -> Bool {
+    guard let r = core.layout.atom(at: at), let i = MarkdownEditing.inline(r, in: core.document),
+      case .atom(let a) = i.kind
+    else { return false }
+    switch a {
+    case .image, .lineBreak, .annotation: return false
+    case .math, .emoji, .ref, .html: return true
+    }
+  }
+
+  /// The tooltips of the static picture, set again when its layout changed: a link's whole address (ui/Md.tsx: a
+  /// link's data-tip), and on a [[reference]] that finds nothing why (view.ts paintRef's title), each over its boxes
+  func refreshTips() {
+    let key = TipsKey(layout: ObjectIdentifier(core.layout), revision: core.revision, zoom: zoom, editing: isEditing)
+    guard key != tipsKey else { return }
+    tipsKey = key
+    if !tips.isEmpty { removeAllToolTips() }
+    tips = []
+    guard !isEditing else { return }
+    let doc = core.document
+    func walk(_ ins: [MDInline]) {
+      for i in ins {
+        switch i.kind {
+        case .link(let url), .autolink(let url):
+          for r in core.rects(for: i.range) { tips.append((url, r)) }
+        case .atom(.ref(let label, let target)):
+          if case .found = core.layout.resources.ref(label: label, target: target) { break }
+          if let r = core.layout.rects(forAtom: i.range) { tips.append((Self.nothingFound, r)) }
+        default: break
+        }
+        walk(i.children)
+      }
+    }
+    for b in doc.blocks {
+      for run in MarkdownEditing.runs(of: b, in: doc) where run.kind == .inline { walk(run.inlines) }
+    }
+    for t in tips {
+      addToolTip(
+        CGRect(x: t.box.minX * zoom, y: t.box.minY * zoom, width: t.box.width * zoom, height: t.box.height * zoom),
+        owner: self, userData: nil)
+    }
+  }
+
+  /// what a reference that finds nothing says (view.ts MISSING)
+  static let nothingFound = "Nothing with this title"
+}
+
+/// what the tooltips were last set for
+struct TipsKey: Equatable {
+  var layout: ObjectIdentifier
+  var revision: Int
+  var zoom: CGFloat
+  var editing: Bool
+}
+
+extension MarkdownEditorView: NSViewToolTipOwner {
+  public func view(
+    _ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint, userData data: UnsafeMutableRawPointer?
+  ) -> String {
+    let at = CGPoint(x: point.x / zoom, y: point.y / zoom)
+    return tips.first { $0.box.insetBy(dx: -0.5, dy: -0.5).contains(at) }?.text ?? ""
   }
 }

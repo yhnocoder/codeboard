@@ -155,7 +155,7 @@ final class CodeBand: NSView {
   func show(_ on: Bool) {
     guard on != shown else { return }
     shown = on
-    if on { slidesIn += 1 }
+    if on { slidesIn += 1 } else { pointerIn = false }
     let below = (Self.height + 16) * strip.zoom
     // where nobody sees it (a window off screen or covered), it is simply in place: no slide left half done
     guard window.map({ $0.occlusionState.contains(.visible) }) ?? true else {
@@ -206,6 +206,15 @@ final class CodeBand: NSView {
   }
 
   var onPart: (String, NSView, CGRect) -> Void = { _, _, _ in }
+  /// the pointer is on the band: it stays up while it is, though the band may float past the Note's edge where the
+  /// editor gets no moves (band.ts pointerenter "hover")
+  private(set) var pointerIn = false
+  var onPointer: () -> Void = {}
+  fileprivate func pointer(_ inside: Bool) {
+    guard inside != pointerIn else { return }
+    pointerIn = inside
+    onPointer()
+  }
 
   /// what the band shows, drawn at the zoom: the fade above it, its face and its controls
   final class Strip: HoverControls {
@@ -389,6 +398,15 @@ final class CodeBand: NSView {
       ctx.setLineJoin(.round)
       ctx.strokePath()
       ctx.restoreGState()
+    }
+
+    override func mouseEntered(with e: NSEvent) {
+      super.mouseEntered(with: e)
+      (superview?.superview as? CodeBand)?.pointer(true)
+    }
+    override func mouseExited(with e: NSEvent) {
+      super.mouseExited(with: e)
+      (superview?.superview as? CodeBand)?.pointer(false)
     }
 
     override func mouseDown(with e: NSEvent) {

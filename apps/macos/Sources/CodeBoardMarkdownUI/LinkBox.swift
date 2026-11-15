@@ -132,8 +132,9 @@ final class LinkActs: HoverControls {
     for c in controls() {
       let over = hovered == c.id
       if over {
-        ctx.addPath(CGPath(roundedRect: c.box, cornerWidth: 6, cornerHeight: 6, transform: nil))
-        ctx.setFillColor(theme.colors.ink.alpha(0.065).cg)
+        // the board's .tbtn:hover: the ink at 7 % behind it, its corners 8.5
+        ctx.addPath(CGPath(roundedRect: c.box, cornerWidth: 8.5, cornerHeight: 8.5, transform: nil))
+        ctx.setFillColor(theme.colors.ink.alpha(0.07).cg)
         ctx.fillPath()
       }
       let title = c.id == "open" ? "Open" : "Remove Link"

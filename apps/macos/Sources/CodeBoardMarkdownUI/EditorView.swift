@@ -264,6 +264,7 @@ public final class MarkdownEditorView: NSView {
     }
     registerForDraggedTypes([.fileURL, .png, .tiff])
     band.onPart = { [weak self] id, v, r in self?.bandPart(id, v, r) }
+    band.onPointer = { [weak self] in self?.showBand() }
     updateTrackingAreas()
     wire(core)
   }
@@ -366,6 +367,7 @@ public final class MarkdownEditorView: NSView {
   /// A pinch or pan began: no blinking, no layout, until `thaw`
   public func freeze() {
     frozen = true
+    clearHover()
     blink?.invalidate()
     blink = nil
   }
@@ -716,6 +718,8 @@ public final class MarkdownEditorView: NSView {
     showHints()
     // the command list and the preview share the place under the formula: the list while a command is typed
     if hints.shown { preview.isHidden = true } else { showPreview() }
+    // the hovered table again where the change left it (its cells' offsets moved)
+    if let p = gripPointer, !hoverHeld { hoverTableAt = tableUnder(p) }
     showBand()
     guard isEditing else { return }
     if let c = core.caretRect ?? core.selectionRects.last {
@@ -884,13 +888,14 @@ public final class MarkdownEditorView: NSView {
       band.show(true)
       return
     }
-    if isEditing, core.marked == nil, let t = MarkdownEditing.tablePlace(at: core.selection.head, in: core.document),
-      let g = tableGrips
-    {
+    if let at = bandTableAt, let t = MarkdownEditing.tablePlace(at: at, in: core.document), let g = grips(at: at) {
       bandTimer?.invalidate()
       band.block = nil
       band.table = t.block
-      let align = t.column < t.table.align.count ? t.table.align[t.column] : .none
+      shownTableAt = at
+      // the alignment pressed is the caret's column's, none with the caret outside this table (tableview.ts sync)
+      let align =
+        at == core.selection.head && t.column < t.table.align.count ? t.table.align[t.column] : .none
       let rows = t.table.rows.count
       let cols = t.table.rows.first?.count ?? 0
       // over the part of the table the Note shows: a table wider than the Note scrolls, its band does not run off
@@ -941,16 +946,43 @@ public final class MarkdownEditorView: NSView {
     }
     bandTimer = Timer.scheduledTimer(withTimeInterval: MarkdownTiming.bandGrace, repeats: false) { [weak self] _ in
       MainActor.assumeIsolated {
-        guard let self, !self.isEditing || self.bandBlock == nil,
-          !self.isEditing || MarkdownEditing.tablePlace(at: self.core.selection.head, in: self.core.document) == nil
+        guard let self, !self.band.pointerIn, !self.isEditing || (self.bandBlock == nil && self.bandTableAt == nil)
         else { return }
         self.band.show(false)
       }
     }
   }
 
+  /// the table whose band shows: the caret's (tableview.ts "focus"), else the one the pointer is over or on the band of
+  /// ("hover"): an offset in one of its cells
+  private var bandTableAt: Int? {
+    guard isEditing, core.marked == nil else { return nil }
+    if MarkdownEditing.tablePlace(at: core.selection.head, in: core.document) != nil { return core.selection.head }
+    if let h = hoverTableAt, MarkdownEditing.tablePlace(at: h, in: core.document) != nil { return h }
+    if band.pointerIn, band.table != nil, let s = shownTableAt,
+      MarkdownEditing.tablePlace(at: s, in: core.document)?.block == band.table
+    {
+      return s
+    }
+    return nil
+  }
+  /// an offset in a cell of the table the band was last put over
+  private var shownTableAt: Int?
+
+  /// A band action works on the caret's cell; with the caret outside the band's table, on that table's last cell
+  /// (tableview.ts into)
+  private func intoBandTable() {
+    guard let b = band.table, let at = shownTableAt,
+      MarkdownEditing.tablePlace(at: core.selection.head, in: core.document)?.block != b,
+      let t = MarkdownEditing.tablePlace(at: at, in: core.document), t.block == b,
+      let end = t.table.rows.last?.last?.text.offsets.last
+    else { return }
+    core.select(MDSelection(end))
+  }
+
   private func bandPart(_ id: String, _ v: NSView, _ r: CGRect) {
     begin()
+    if band.table != nil, id != "more" { intoBandTable() }
     switch id {
     case "language": pickLanguage(from: v, at: r)
     case "copy": copyCode()
@@ -1058,29 +1090,76 @@ public final class MarkdownEditorView: NSView {
   public override func mouseMoved(with e: NSEvent) {
     let p = convert(e.locationInWindow, from: nil)
     let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
+    // a pan, a pinch, a host's gesture or the window's live resize moves the Note under a still pointer: nothing it
+    // passes over comes up
+    guard !hoverHeld else { return clearHover() }
+    refreshTips()
+    let onBand = band.shown && band.bandFrame.contains(p)
+    let tableBefore = hoverTableBlock
+    if !onBand { hoverTableAt = tableUnder(at) }
     hoverGrips(at)
     // over a control floating on the Note (a band, the toolbar, a menu) its own pointer, not the text's I-beam
     let chrome = subviews.contains { !$0.isHidden && $0.hitTest(convert(p, to: $0.superview)) != nil }
     if !chrome { cursor(at: p, modifiers: e.modifierFlags).set() }
     var over: EditorCore.CodeBlock?
-    if isEditing, band.isHidden || !band.bandFrame.contains(p) {
+    if isEditing, !onBand {
       let c = core.layout.caret(at: at)
       if let b = core.codeBlock(at: c.offset) {
         let boxes = core.rects(for: b.body.lowerBound..<max(b.body.lowerBound + 1, b.body.upperBound))
         let pad = CGFloat(core.layout.theme.metrics.codePadding[0])
         if let f = boxes.first, let l = boxes.last, at.y >= f.minY - pad, at.y <= l.maxY + pad { over = b }
       }
-    } else if band.shown, band.bandFrame.contains(p) {
+    } else if onBand {
       over = band.block
     }
-    guard over != hovered else { return }
+    guard over != hovered || hoverTableBlock != tableBefore else { return }
     hovered = over
     showBand()
   }
 
-  public override func mouseExited(with e: NSEvent) {
+  public override func mouseEntered(with e: NSEvent) { refreshTips() }
+
+  public override func mouseExited(with e: NSEvent) { clearHover() }
+
+  public override func viewWillStartLiveResize() {
+    super.viewWillStartLiveResize()
+    clearHover()
+  }
+
+  /// whether the Note is being moved, zoomed or resized under the pointer: no hover then
+  private var hoverHeld: Bool { frozen || holdsToolbar || inLiveResize }
+
+  /// the pointer has left (or the Note moves under it): its code block's and table's band go after their grace, the grips
+  /// at once
+  func clearHover() {
     hovered = nil
+    hoverTableAt = nil
+    gripPointer = nil
+    if gripHover.row != nil || gripHover.col != nil {
+      gripHover = (nil, nil)
+      needsDisplay = true
+    }
     showBand()
+  }
+
+  /// an offset in a cell of the table the pointer is over while editing: its band and the grips of the cell under the
+  /// pointer show wherever the caret is (tableview.ts: pointerenter on the table, mousemove over its cells)
+  private(set) var hoverTableAt: Int?
+  /// the tooltips set over the view, in the layout's points (EditorAccess refreshTips)
+  var tips: [(text: String, box: CGRect)] = []
+  var tipsKey: TipsKey?
+  private var hoverTableBlock: Range<Int>? {
+    hoverTableAt.flatMap { MarkdownEditing.tablePlace(at: $0, in: core.document)?.block }
+  }
+
+  /// the table under a point (the layout's points), or the one hovered so far while the point is on its edges or grips
+  /// just outside its cells
+  private func tableUnder(_ at: CGPoint) -> Int? {
+    guard isEditing, core.marked == nil else { return nil }
+    let q = core.layout.caret(at: at).offset
+    if let g = grips(at: q), g.box.insetBy(dx: -8, dy: -8).contains(at) { return q }
+    if let h = hoverTableAt, let g = grips(at: h), g.box.insetBy(dx: -8, dy: -8).contains(at) { return h }
+    return nil
   }
 
   /// the chip of the heading the caret is in
@@ -1676,7 +1755,10 @@ public final class MarkdownEditorView: NSView {
 
   /// a host's gesture over the Note (a ⌘ move) is going on: no selection toolbar over it until it ends
   public var holdsToolbar = false {
-    didSet { if holdsToolbar != oldValue { scheduleToolbar() } }
+    didSet {
+      if holdsToolbar != oldValue { scheduleToolbar() }
+      if holdsToolbar { clearHover() }
+    }
   }
 
   /// the toolbar comes up once the selection has stood still for TOOLBAR_SETTLE, the button up
@@ -1927,7 +2009,7 @@ public final class MarkdownEditorView: NSView {
       return
     }
     // a press on a column's right edge or a row's bottom edge: its width or height (layout info, editor/table.ts)
-    if let g = tableGrips, let index = core.tableIndex(at: core.selection.head),
+    if let g = tableGrips, let index = core.tableIndex(at: g.at),
       g.box.insetBy(dx: -4, dy: -4).contains(at)
     {
       let col = g.cols.indices.first { abs(g.cols[$0].maxX - at.x) <= 3 }
@@ -1947,6 +2029,7 @@ public final class MarkdownEditorView: NSView {
       let row = gripHover.row.flatMap { r in rowGrip(g.rows[r]).insetBy(dx: -4, dy: -3).contains(at) ? r : nil }
       let col = gripHover.col.flatMap { c in colGrip(g.cols[c]).insetBy(dx: -3, dy: -4).contains(at) ? c : nil }
       if row != nil || col != nil, let pic = snapshot(g.box) {
+        tableDragAt = g.at
         tableDrag = TableDrag(
           axis: row != nil ? .row : .column, from: row ?? col!, boxes: row != nil ? g.rows : g.cols, table: g.box,
           picture: pic, start: row != nil ? at.y : at.x)
@@ -2075,17 +2158,23 @@ public final class MarkdownEditorView: NSView {
   /// the source of an image being dragged out
   var draggedImage: Range<Int>?
 
-  /// a table row or column being moved by its grip
+  /// a table row or column being moved by its grip, and an offset in a cell of its table
   private var tableDrag: TableDrag?
+  private var tableDragAt = 0
   /// a column's right edge or a row's bottom edge being dragged: which, where the drag began, its size then
   private var tableSize:
     (column: Bool, k: Int, start: CGFloat, from: CGFloat, index: Int, cols: [Double?], rows: [Double?])?
   private var dragLink: CADisplayLink?
 
-  /// The caret's table's rows and columns as boxes, and the grips: a short bar at each row's left edge and over each
-  /// column's top edge (editor/tableview.ts)
-  private var tableGrips: (table: MDTable, rows: [CGRect], cols: [CGRect], box: CGRect)? {
-    guard isEditing, core.marked == nil, let p = MarkdownEditing.tablePlace(at: core.selection.head, in: core.document)
+  /// The rows and columns as boxes of the table the pointer is over, else of the caret's, and the grips: a short bar at
+  /// each row's left edge and over each column's top edge (editor/tableview.ts)
+  private var tableGrips: (table: MDTable, at: Int, rows: [CGRect], cols: [CGRect], box: CGRect)? {
+    grips(at: hoverTableAt ?? core.selection.head)
+  }
+
+  /// the boxes of the table with a cell at `at`, and that offset
+  private func grips(at: Int) -> (table: MDTable, at: Int, rows: [CGRect], cols: [CGRect], box: CGRect)? {
+    guard isEditing, core.marked == nil, let p = MarkdownEditing.tablePlace(at: at, in: core.document)
     else { return nil }
     let cells = core.layout.cellBoxes(of: p.table)
     guard let head = cells.first, !head.isEmpty, !cells.joined().contains(.zero) else { return nil }
@@ -2093,7 +2182,7 @@ public final class MarkdownEditorView: NSView {
     let cols = (0..<head.count).map { c in cells.compactMap { $0[safe: c] }.dropFirst().reduce(head[c]) { $0.union($1) }
     }
     let box = rows.dropFirst().reduce(rows[0]) { $0.union($1) }
-    return (p.table, rows, cols, box)
+    return (p.table, at, rows, cols, box)
   }
 
   /// the pointer over a table: resize arrows on its edges, an open hand on its grips
@@ -2253,7 +2342,11 @@ public final class MarkdownEditorView: NSView {
       dragLink?.invalidate()
       dragLink = nil
       if d.to != d.from {
-        let state = MDEditState(source: core.source, selection: core.selection)
+        // the grips are the hovered table's, which need not be the caret's
+        let mine =
+          MarkdownEditing.tablePlace(at: core.selection.head, in: core.document)?.block
+          == MarkdownEditing.tablePlace(at: tableDragAt, in: core.document)?.block
+        let state = MDEditState(source: core.source, selection: mine ? core.selection : MDSelection(tableDragAt))
         let edit =
           d.axis == .row
           ? MarkdownEditing.tableMove(row: d.from, to: d.to, in: state, document: core.document)
