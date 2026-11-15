@@ -1427,6 +1427,13 @@ public final class CanvasView: NSView {
 
   /// Each frame at rest: start redraws up to the limit, swap in finished ones within the frame's budget
   func pump() {
+    startRedraws()
+    swapIn()
+  }
+
+  /// Redraws started up to the limit: each frame at rest, and as soon as one finishes (most of a Note's pictures take a
+  /// few ms; a lane waiting for the next frame stood idle most of the time)
+  func startRedraws() {
     guard let scene else { return }
     for (job, generation) in queue.start() {
       worked = true
@@ -1459,8 +1466,15 @@ public final class CanvasView: NSView {
         }
       }
     }
+  }
+
+  /// Finished redraws swapped in within the frame's budget
+  func swapIn() {
     let writing = editingIndex
-    let swaps = queue.takeSwaps().filter { $0.job.item != writing }
+    let view = camera.visible(bounds.size)
+    let swaps = queue.takeSwaps { self.items[$0.job.item].bitmapFrame.intersects(view) }.filter {
+      $0.job.item != writing
+    }
     guard !swaps.isEmpty else { return }
     if !motion.isResting || gesture != nil {
       ruleBreaks.swaps += swaps.count
@@ -1484,6 +1498,7 @@ public final class CanvasView: NSView {
       ruleBreaks.redraws += 1
       ruleBreaks.decodes += decodes
     }
+    if motion.isResting && gesture == nil { startRedraws() }
     wake()
   }
 
