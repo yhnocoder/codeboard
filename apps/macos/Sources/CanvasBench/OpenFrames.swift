@@ -67,6 +67,9 @@ import CodeBoardModel
     /// This process's footprint and the WebKit processes', MB, once the pan and the zoom are over and the canvas rests
     var footprintMB = 0.0
     var webkitMB = 0.0
+    /// At rest after opening, after the pan and after the zoom: items in view, those placed between device pixels and
+    /// those capped below the display's resolution
+    var placement: [[Int]] = []
   }
 
   let canvas: CanvasView
@@ -206,6 +209,11 @@ import CodeBoardModel
     opening.noteSwaps = afterOpen.noteSwaps - base.noteSwaps
     r.opening = opening
     r.cards = canvas.cardRects.count
+    func placed() {
+      let p = canvas.placementInView
+      r.placement.append([p.inView, p.between, p.capped])
+    }
+    placed()
     // a pan across the board at 100 %, then a zoom from 50 % to 200 % around the middle, each 2 s; then rest
     let bb = canvas.boardBounds
     canvas.place(zoom: 1, centre: CGPoint(x: bb.minX + canvas.bounds.width / 2, y: bb.midY))
@@ -249,6 +257,7 @@ import CodeBoardModel
       p.decodes = after.decodes - before.decodes
       if name == "pan" { r.pan = p } else { r.zoom = p }
       await frames(until: { self.canvas.isSettled }, each: {})
+      placed()
     }
     r.footprintMB = (Double(footprint()) / 1_048_576).rounded()
     r.webkitMB = (Double(webKitFootprint()) / 1_048_576).rounded()

@@ -1568,6 +1568,22 @@ public final class CanvasView: NSView {
     return out
   }
 
+  /// Of the items in view: those whose bitmap's top left falls between device pixels (resampled: softened by up to half a
+  /// pixel) and those whose size caps their bitmap below the display's resolution (Levels.cap: enlarged). For CanvasBench
+  package var placementInView: (inView: Int, between: Int, capped: Int) {
+    let view = camera.visible(bounds.size)
+    let z = min(camera.zoom, limits.max)
+    var out = (inView: 0, between: 0, capped: 0)
+    for l in items where l.bitmapFrame.intersects(view) {
+      out.inView += 1
+      let o = camera.view(l.bitmapFrame.origin)
+      let (x, y) = (o.x * backing, o.y * backing)
+      if abs(x - x.rounded()) > 0.02 || abs(y - y.rounded()) > 0.02 { out.between += 1 }
+      if Levels.cap(l.bitmapFrame.size) < z * backing * 0.98 { out.capped += 1 }
+    }
+    return out
+  }
+
   /// Anything in view drawn below display resolution
   package var lowRes: Bool {
     let view = camera.visible(bounds.size)
