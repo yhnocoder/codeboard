@@ -80,5 +80,6 @@ two/three-delete-board.txt
 two/two-alt-paste.txt
 two/two-delete-board.txt
 two/undo-switch.txt
+two/vault-switch.txt
 undo-edges.txt
 web-open.txt

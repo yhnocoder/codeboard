@@ -201,10 +201,15 @@ public final class NoteEditor: NSObject {
     return Self.written(r)
   }
 
-  /// Ends the editing: what was written; the content stays shown until `clear`
+  /// Ends the editing: what was written; the content stays shown until `clear`. A page that does not answer in time
+  /// (one WebKit holds) gives what it holds now
   public func finish() async -> Written? {
-    guard let r = try? await view.callAsyncJavaScript("return edit.finish()", contentWorld: .page) else { return nil }
-    return Self.written(r)
+    let view = view
+    let ended = await within(.seconds(1)) {
+      Self.written(try? await view.callAsyncJavaScript("return edit.finish()", contentWorld: .page))
+    }
+    if let ended { return ended }
+    return await within(.milliseconds(500)) { await self.peek() } ?? nil
   }
 
   /// Lets the card go (once the canvas shows its picture under the web view)
@@ -299,6 +304,30 @@ public final class NoteEditor: NSObject {
       let w = p[kCGImagePropertyPixelWidth] as? Int, let h = p[kCGImagePropertyPixelHeight] as? Int
     else { return nil }
     return (ext, (w, h))
+  }
+}
+
+/// What `op` gives, or nil once `limit` passed first (`op` goes on, what it gives unused): for waits that may never end,
+/// such as a web page WebKit holds (a view not shown runs no animation frames), on the way to writing a board
+@MainActor public func within<T: Sendable>(_ limit: Duration, _ op: @escaping @MainActor () async -> T) async -> T? {
+  await withCheckedContinuation { (c: CheckedContinuation<T?, Never>) in
+    let once = Once(c)
+    once.timer = Task {
+      try? await Task.sleep(for: limit)
+      once.resume(nil)
+    }
+    Task { once.resume(await op()) }
+  }
+}
+
+@MainActor private final class Once<T: Sendable> {
+  private var c: CheckedContinuation<T?, Never>?
+  var timer: Task<Void, Never>?
+  init(_ c: CheckedContinuation<T?, Never>) { self.c = c }
+  func resume(_ v: T?) {
+    timer?.cancel()
+    c?.resume(returning: v)
+    c = nil
   }
 }
 

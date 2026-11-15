@@ -410,6 +410,41 @@ for (o, r) in [
     fatalError("NSWorkspace \(o) is not caught")
   }
 }
+
+/// An open panel answered without being shown (the panel command): what the next one the app opens returns, a folder
+/// (OK) or nil (Cancel). Unarmed, a panel opens as usual
+let panelAnswer = Mutex<URL??>(nil)
+nonisolated(unsafe) var panelChosen: URL?
+func takePanelAnswer() -> URL?? {
+  panelAnswer.withLock { v in
+    defer { v = nil }
+    return v
+  }
+}
+extension NSOpenPanel {
+  @objc func accBeginSheetModal(for w: NSWindow, completionHandler h: @escaping (NSApplication.ModalResponse) -> Void) {
+    guard let a = takePanelAnswer() else {
+      return accBeginSheetModal(for: w, completionHandler: h)
+    }
+    panelChosen = a
+    log("open panel answered (not shown): \(a?.path ?? "Cancel")")
+    DispatchQueue.main.async { h(a == nil ? .cancel : .OK) }
+  }
+  @objc func accRunModal() -> NSApplication.ModalResponse {
+    guard let a = takePanelAnswer() else { return accRunModal() }
+    panelChosen = a
+    log("open panel answered (not shown): \(a?.path ?? "Cancel")")
+    return a == nil ? .cancel : .OK
+  }
+  @objc func accURL() -> URL? { panelChosen ?? accURL() }
+  @objc func accURLs() -> [URL] { panelChosen.map { [$0] } ?? accURLs() }
+}
+swizzle(
+  NSOpenPanel.self, #selector(NSSavePanel.beginSheetModal(for:completionHandler:)),
+  #selector(NSOpenPanel.accBeginSheetModal(for:completionHandler:)))
+swizzle(NSOpenPanel.self, #selector(NSSavePanel.runModal), #selector(NSOpenPanel.accRunModal))
+swizzle(NSOpenPanel.self, #selector(getter: NSSavePanel.url), #selector(NSOpenPanel.accURL))
+swizzle(NSOpenPanel.self, #selector(getter: NSOpenPanel.urls), #selector(NSOpenPanel.accURLs))
 /// The window server's word to a window's views that it is key (web views learn it so)
 func tellKey(_ w: NSWindow) {
   NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: w)
@@ -1492,6 +1527,15 @@ func strings(_ x: Any) -> [String] {
       let file = a.dropLast(2).dropFirst().joined(separator: " ")
       return await drop(file, at: screen(d(a.count - 2), d(a.count - 1)))
     case "opened": return opened.withLock { $0.isEmpty ? "none" : $0.joined(separator: "\n") }
+    // panel <folder>|vault|cancel: the next open panel answers so, unshown (a relative folder is under this run's
+    // folder; vault: the vault the run started on)
+    case "panel":
+      let arg = String(line.dropFirst(6))
+      let path = arg == "vault" ? env["ACCEPT_VAULT"] ?? "" : arg
+      let url = arg == "cancel" ? nil : URL(fileURLWithPath: path, relativeTo: outDir).standardizedFileURL
+      if let url { try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) }
+      panelChosen = nil
+      panelAnswer.withLock { $0 = .some(url) }
     case "pick":
       menuOpen = false
       pick(String(line.dropFirst(5)))
@@ -1767,7 +1811,10 @@ func strings(_ x: Any) -> [String] {
       return String(format: "%.0f %.0f", x, 91 + 29 * Double(i))
     case "quit":
       ownPasteboard.releaseGlobally()
-      NSApp.terminate(nil)
+      // from the run loop, as ⌘Q comes: called in this command's main-queue block, an app that answers .terminateLater
+      // waits in a nested run loop that runs no more main-queue blocks, so its main-actor work (the last save of a
+      // card being written in, its time limits) never runs and the quit hangs
+      NSApp.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 0, inModes: [.common])
     default: return "unknown command"
     }
     return ""
