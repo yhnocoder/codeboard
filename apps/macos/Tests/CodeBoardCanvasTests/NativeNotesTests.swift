@@ -1,6 +1,7 @@
 import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardNotes
+import CoreGraphics
 import Foundation
 import IOSurface
 import Testing
@@ -187,5 +188,45 @@ import Testing
     // inline is another formula
     _ = again.typeset("\\frac{a}{b} + \\text{x}", display: false, preamble: "")
     #expect(engines.engineCount == 1)
+  }
+}
+
+/// An SVG in a Note is drawn by the system's SVG renderer once and scaled down for the smaller widths asked: a Note's
+/// three bitmaps (its zoom's, the next zoom-in's, its overview) take one drawing, made once when asked at once
+@Suite struct NativeSVGPicturesTests {
+  func file() throws -> URL {
+    let url = FileManager.default.temporaryDirectory.appending(path: "svg-\(UUID().uuidString).svg")
+    let svg =
+      ##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100" fill="#f00"/></svg>"##
+    try Data(svg.utf8).write(to: url)
+    return url
+  }
+
+  func red(_ i: CGImage) -> Bool {
+    guard let d = i.dataProvider?.data, let p = CFDataGetBytePtr(d) else { return false }
+    let at = (i.height / 2) * i.bytesPerRow + (i.width / 2) * 4
+    return p[at] > 200 && p[at + 1] < 40 && p[at + 2] < 40
+  }
+
+  @Test func oneDrawingServesEveryWidthUpToTheWidestAsked() async throws {
+    let url = try file()
+    defer { try? FileManager.default.removeItem(at: url) }
+    let svgs = NativeNotes.SVGPictures()
+    let widths = [300, 1200, 75]
+    let images = await withTaskGroup(of: (Int, CGImage?).self) { g in
+      for w in widths { g.addTask { (w, svgs.image(url, width: w, least: 1200, dark: false)) } }
+      var out: [Int: CGImage] = [:]
+      for await (w, i) in g { out[w] = i }
+      return out
+    }
+    #expect(svgs.drawings == 1)
+    for w in widths {
+      let i = try #require(images[w])
+      #expect(i.width == w && abs(i.height * 2 - w) <= 1 && red(i), "\(w): \(i.width)×\(i.height)")
+    }
+    // wider than drawn: drawn again, at that width
+    let wide = try #require(svgs.image(url, width: 2000, least: 1200, dark: false))
+    #expect(svgs.drawings == 2 && wide.width == 2000 && red(wide))
+    #expect(svgs.image(url, width: 1600, least: 1200, dark: false)?.width == 1600 && svgs.drawings == 2)
   }
 }

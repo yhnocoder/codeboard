@@ -379,6 +379,7 @@
           "tests": [
             "NativeNotesTests",
             "NativeNotesKeptTests",
+            "NativeSVGPicturesTests",
             "NativeCanvasTests",
             "CanvasArrowTests/anArrowOnANotesBlockMeetsTheNoteAtThatBlock"
           ]
