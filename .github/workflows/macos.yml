@@ -52,9 +52,12 @@ jobs:
           name: accept-${{ strategy.job-index }}
           path: |
             apps/macos/.build-accept/*/*.png
+            apps/macos/.build-accept/*/*/*.png
             apps/macos/.build-accept/*/*.txt
             apps/macos/.build-accept/*/*/log.txt
-          if-no-files-found: ignore
+          # .build-accept starts with a dot, and upload-artifact leaves hidden folders out unless told
+          include-hidden-files: true
+          if-no-files-found: error
           retention-days: 14
 
   app:
