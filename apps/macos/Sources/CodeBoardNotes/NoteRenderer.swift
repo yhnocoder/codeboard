@@ -215,65 +215,6 @@ public final class NoteRenderer {
     }
   }
 
-  /// Each Markdown's top-level blocks as the Note page splits them (the board's md/blocks.ts noteBlocks); nil for one
-  /// that cannot be split
-  public func blocks(of mds: [String]) async throws -> [[String]?] {
-    try await takeTurn(priority: Int.max)
-    defer { endTurn() }
-    do {
-      let p = try page ?? NotePage(page: pageFolder)
-      page = p
-      return try await p.blocks(mds)
-    } catch {
-      page = nil
-      throw error
-    }
-  }
-
-  /// The cards an export takes, in order, as core's exportOrder gives them (run in the Note page): from the board's
-  /// Start cards and call graphs (the app has none) along their arrows, then the rest by place; a walkthrough from its
-  /// start along the arrows
-  public func exportOrder(_ b: Board, _ scope: ExportScope) async throws -> [CardID] {
-    var place: [String: Any] = [:]
-    let cards: [[String: Any]] = b.cards.map { c in
-      var p: [String: Any] = ["x": c.x, "y": c.y, "w": c.width]
-      if let s = c.section { p["section"] = s.rawValue }
-      place[c.id.rawValue] = p
-      if case .own(let k) = c.content, case .code(let code) = k.body {
-        return ["id": c.id.rawValue, "kind": "code", "segments": code.segments.map { ["id": $0.id.rawValue] }]
-      }
-      return ["id": c.id.rawValue, "kind": "note"]
-    }
-    let links: [[String: Any]] = b.arrows.map { a in
-      var from: [String: Any] = ["card": a.from.card.rawValue]
-      if let s = a.from.segment { from["seg"] = s.rawValue }
-      if let l = a.from.line { from["line"] = l }
-      return ["id": a.id.rawValue, "from": from, "to": ["card": a.to.card.rawValue]]
-    }
-    let sections: [[String: Any]] = b.sections.map { s in
-      var o: [String: Any] = ["id": s.id.rawValue]
-      if let p = s.parent { o["parent"] = p.rawValue }
-      return o
-    }
-    let board: [String: Any] = ["cards": cards, "place": place, "links": links, "sections": sections]
-    let s: [String: Any] =
-      switch scope {
-      case .board: ["kind": "board"]
-      case .sections(let ids): ["kind": "sections", "ids": ids.map(\.rawValue)]
-      case .walk(let start): ["kind": "walk", "start": start.rawValue]
-      }
-    try await takeTurn(priority: Int.max)
-    defer { endTurn() }
-    do {
-      let p = try page ?? NotePage(page: pageFolder)
-      page = p
-      return try await p.exportOrder(board, s).map { CardID(rawValue: $0) }
-    } catch {
-      page = nil
-      throw error
-    }
-  }
-
   /// Each Note's size at 100 % and where its first glyph is from its top left (nil when it has none), measured now: what
   /// a Text keeps in place when it becomes a Box (the board measures it the same way, notes.ts setTextLook)
   public func firstGlyphs(of notes: [SizeRequest]) async throws -> [(size: CGSize, first: CGPoint?)?] {

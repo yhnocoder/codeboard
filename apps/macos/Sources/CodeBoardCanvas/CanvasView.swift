@@ -255,11 +255,6 @@ public final class CanvasView: NSView {
   var spaceHeld = false
   /// The shortcut list, while open
   package var keysPanel: KeysPanel?
-  /// ⋯ Export…'s dialog while it is up (CanvasExport)
-  var exportSheet: ExportSheet?
-  /// Where an export is written: asked in the save panel as a sheet on the window given. Tests answer it themselves:
-  /// a save panel made in the test process stops its main run loop, which ends the process
-  package var saveFile: (SaveRequest, NSWindow) async -> URL? = CanvasView.askSaveFile
   var spacePan: CGPoint?
   package var shelfPreview: ShelfPreview?
   package var previewing: String?

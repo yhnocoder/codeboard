@@ -3,7 +3,7 @@
 What each key and menu item of the web board (main: `packages/board/src`) does, and what the Mac app does. The parity
 decisions' NOT DO items are left out (Add Function, From GitHub, AI submenus, ⌘[ / ⌘] as layer order, Walkthrough,
 Call Tree, Moving Cars, ⇧⌘[ / ⇧⌘] as layer order, Capture / Apply Run, Compare, Merge, Variant, Call Graph, Process Tag, Generated Code, arrow
-label Arguments, New Code, Unmerge). Checked by `Tests/CodeBoardCanvasTests/ParityKeysTests.swift`,
+label Arguments, New Code, Unmerge, Export). Checked by `Tests/CodeBoardCanvasTests/ParityKeysTests.swift`,
 `ParityMenusTests.swift` and `Tests/CodeBoardShellTests/ParityMenuKeysTests.swift`.
 
 **same**: the app does what main does. **gap**: the app does not, with why. The app column is what the app does once
@@ -130,7 +130,5 @@ App: Note, Text, Box, Section, Arrow, Sticker (gap: Image, Web), `|`, ⋯. Dock 
 `|`, Zoom Out, the zoom (Zoom to 100 %), Zoom In, `|`, Fit to Window, the questions; the toolbar moves left of the
 dock rather than over it (main overlaps the two from about 1000 pt). gap: Search (no palette), Arrow Legend. ⋯: Undo ⌘Z, Redo ⇧⌘Z, `-`,
 Rename Board… (the board's name written in place in the sidebar, its row shown), Copy Path, Edit Mark… (its seal's
-popover in the sidebar; off for a folder's own board), Export… (main's dialog as a sheet: Markdown, the default, and PNG;
-not the HTML snapshot, and no Export Boards…: both need main's board files, which the app does not write yet), `-`,
-Settings…, Theme ▸ (the app menu's), Keyboard
+popover in the sidebar; off for a folder's own board), `-`, Settings…, Theme ▸ (the app menu's), Keyboard
 Shortcuts ?, Copy Diagnostics (main's pick as a sheet; no log lines, the app keeps none). The narrow toolbar's folded items are not made (the app's window has no narrow board beside an editor).

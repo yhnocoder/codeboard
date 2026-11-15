@@ -29,8 +29,6 @@ import "@yhnocoder/markdown/style.css";
 import "../../../../packages/board/src/themes.css";
 import "./page.css";
 import { classifyPaste, guessLang, pythonDialect } from "../../../../packages/core/src/paste";
-import { exportOrder, type ExportScope } from "../../../../packages/core/src/export";
-import type { Board } from "../../../../packages/core/src/model";
 import { cleanSvg, svgDataUrl } from "../../../../packages/board/src/md/images";
 import { pop } from "./pop";
 import { openRefAt, watchRefs } from "./refclick";
@@ -343,10 +341,6 @@ window.note = {
     const g = guessLang(text);
     return g === "python" ? pythonDialect(text) : g;
   },
-  /** Each Markdown's top-level blocks (noteBlocks): what an export names an arrow's end on a block by */
-  blocks: (mds: string[]) => mds.map(noteBlocks),
-  /** The cards an export takes, in order (core exportOrder), of a board given as what the order reads of it */
-  exportOrder: (b: Board, scope: ExportScope) => exportOrder(b, scope),
   /** Mounts Notes at 100 % (each one not mounted yet, under its id) and measures them all */
   async mount(list: { id: string; note: Note; images: string }[]) {
     for (const { id, note: n, images } of list) {
