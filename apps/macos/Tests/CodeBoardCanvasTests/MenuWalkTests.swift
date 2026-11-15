@@ -67,6 +67,8 @@ private func walkBoard() -> Board {
     // no line hidden (menus.ts:453)
     "free › View › Show All Hidden Lines": "menus.ts:453", "code › View › Show All Hidden Lines": "menus.ts:453",
     "canvas › Insert Board › No other boards yet": "menus.ts:661",
+    // one Section: Tidy Up needs two or more unlocked (menus.ts:926)
+    "sections › Tidy Up": "menus.ts:926",
     // neither end has a side of its own (menus.ts:805); the label is in the middle (menus.ts:881)
     "arrow › Reset Sides": "menus.ts:805", "label › Reset Label Position": "menus.ts:881",
     // nothing done yet (Chrome.tsx:183-184)
