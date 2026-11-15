@@ -42,7 +42,8 @@ private func gid(_ s: String) -> SectionID { SectionID(rawValue: s) }
       mask.fillRule == .evenOdd && mask.path?.contains(CGPoint(x: card.midX, y: card.midY), using: .evenOdd) == false)
   }
 
-  @Test(arguments: [0.5, 2.0] as [CGFloat])
+  /// (0.75: still over a pixel on a screen of backing 1, as CI's, where at 0.5 the pixel floor takes over)
+  @Test(arguments: [0.75, 2.0] as [CGFloat])
   func theRingIsOnTheBoardSoItZoomsWithIt(_ zoom: CGFloat) async throws {
     let r = try await Rig(zoom: zoom)
     defer { r.close() }
