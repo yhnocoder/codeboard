@@ -109,6 +109,13 @@ extension CanvasView {
     return nil
   }
 
+  /// A link written on the board opened: only a web page or a mail address (main's host handlers.ts openLink: file://
+  /// and the like would open a program here)
+  func openLink(_ s: String) {
+    guard let u = URL(string: s), ["http", "https", "mailto"].contains(u.scheme?.lowercased() ?? "") else { return }
+    openURL(u)
+  }
+
   /// A double-click on a Web card or a row: its page in the browser. False when it is on neither
   func openPage(at p: CGPoint) -> Bool {
     guard let u = pageURL(at: p) else { return false }

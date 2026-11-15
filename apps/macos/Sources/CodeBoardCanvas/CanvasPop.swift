@@ -214,7 +214,7 @@ extension CanvasView {
   static func codeHead(_ s: Segment) -> SidenotePop.Shown.Head {
     let path = CodeLayout.path(s) ?? ""
     let base = path.split(separator: "/").last.map(String.init) ?? path
-    guard s.source != nil else { return .init(title: s.language, where: "", version: "") }
+    guard s.source != nil else { return .init(title: s.language, where: "", version: "", url: s.url) }
     return .init(
       title: s.symbol?.name ?? "\(base) \(s.firstLine)–\(s.lastLine)", where: "\(base):\(s.firstLine)",
       version: Scene.version(s) ?? "")
@@ -409,6 +409,7 @@ extension CanvasView {
         ([(board: b, id: card)] + CanvasView.recentRefs.filter { $0.board != b || $0.id != card }).prefix(3))
     case .ref(let p): refPressed(p, inPopup: true)
     case .elsewhere: closeRefPeek()
+    case .openLink(let u): openLink(u)
     case .menu(let n, let p):
       let v = sidenotePop.view
       sidenoteMenu(id(n)).popUp(

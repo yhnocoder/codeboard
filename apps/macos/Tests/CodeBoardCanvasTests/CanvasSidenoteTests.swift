@@ -701,4 +701,32 @@ extension CanvasSidenoteTests {
       "return document.querySelector('.slip[data-note=\"k1\"] .sn-why')?.textContent ?? null")
     #expect(why as? String == "where it is called")
   }
+
+  /// A free code sidenote's head links where it was pasted from (notes.tsx CodeHead); a click opens a web page, never a
+  /// file or another program (main's host openLink)
+  @Test func aFreeCodeSidenotesHeadLinksWhereItWasPastedFrom() async throws {
+    var b = sidenoteBoard()
+    for (id, url) in [("k1", "https://gist.github.com/x"), ("k2", "file:///Applications/Calculator.app")] {
+      b.sidenotes.append(
+        Sidenote(
+          id: nid(id), anchor: .card(cid("t1")),
+          body: .code(
+            Segment(
+              id: SegmentID(rawValue: id), source: nil, language: "python", firstLine: 1, lines: ["x"], url: url))))
+    }
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    var urls: [URL] = []
+    r.canvas.openURL = { urls.append($0) }
+    let at = PopAt.spot(.card(cid("t1")))
+    r.canvas.openPop(at)
+    await opened(r, at)
+    let pop = r.canvas.sidenotePop
+    for id in ["k1", "k2"] {
+      _ = await pop.run("document.querySelector('.slip[data-note=\"\(id)\"] .sn-head a.lnk').click()")
+    }
+    await r.until("the page opened") { !urls.isEmpty }
+    _ = await pop.run("return 0")
+    #expect(urls == [URL(string: "https://gist.github.com/x")!], "the file link is not opened")
+  }
 }
