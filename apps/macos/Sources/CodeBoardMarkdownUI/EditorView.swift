@@ -66,7 +66,20 @@ public final class MarkdownEditorView: NSView {
   public static let sourceType = NSPasteboard.PasteboardType("com.yhnocoder.codeboard.markdown")
   /// device-independent scale of the drawing (the canvas's zoom)
   public var zoom: CGFloat = 1 {
-    didSet { resize() }
+    didSet {
+      resize()
+      // what floats over the Note follows it to its new scale (a toolbar left behind covered the word it was for)
+      if zoom != oldValue { restyleChrome() }
+    }
+  }
+
+  /// What the window shows of the Note's surroundings, in the view's points: popups and the toolbar flip and shift to
+  /// stay in it (main's viewport), not in the Note's own visible part (cut at the Note's top, it sent the toolbar
+  /// below a word on a line near the top, over the next line)
+  func shownArea() -> CGRect {
+    if let clip = enclosingScrollView?.contentView { return convert(clip.bounds, from: clip) }
+    if let c = window?.contentView { return convert(c.bounds, from: c) }
+    return bounds
   }
   /// the decoded image for a slot, nil while there is none (its place stays empty)
   public var image: (MarkdownImageSlot) -> CGImage? = { _ in nil }
@@ -1698,7 +1711,7 @@ public final class MarkdownEditorView: NSView {
     let k = zoom
     let z = { (r: CGRect) in CGRect(x: r.minX * k, y: r.minY * k, width: r.width * k, height: r.height * k) }
     toolbar.show(
-      toolbarButtons, over: z(first), under: z(last), in: visibleRect.intersection(bounds), avoid: lastPress,
+      toolbarButtons, over: z(first), under: z(last), in: shownArea(), avoid: lastPress,
       theme: core.layout.theme)
   }
 
@@ -1852,11 +1865,7 @@ public final class MarkdownEditorView: NSView {
   /// in the viewport)
   func fit(_ v: NSView, to anchor: CGRect) {
     guard !v.isHidden else { return }
-    let shown: CGRect? =
-      if let clip = enclosingScrollView?.contentView { convert(clip.bounds, from: clip) } else {
-        window?.contentView.map { convert($0.bounds, from: $0) }
-      }
-    let b = shown ?? bounds
+    let b = shownArea()
     guard !b.isNull, !b.isEmpty else { return }
     let pad: CGFloat = 6
     var f = v.frame

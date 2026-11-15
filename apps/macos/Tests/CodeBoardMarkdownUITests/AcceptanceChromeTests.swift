@@ -244,3 +244,88 @@ import Testing
     #expect(abs(v.core.selection.head - last) <= 1)
   }
 }
+
+/// A word selected at the start of a wrapped line (her double-click): no sliver at the end of the line above, so the
+/// toolbar sits above the word, not below it over the next line (the sliver made the selection start a line higher)
+@MainActor @Suite struct WrapStartSelectionTests {
+  @Test func aSelectionAtAWrapStartsOnItsOwnLine() {
+    _ = boardFonts
+    let src = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma\n\nnext"
+    let l = BlockLayout(MarkdownDocument(src), width: 200, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 0)
+    v.isEditing = true
+    // the word starting the fourth line: room above it for the toolbar
+    let line = l.caretRect(MDCaret(0))!
+    let third = line.maxY + 2 * line.height + 4
+    v.core.mouseDown(at: CGPoint(x: 3, y: third), clicks: 2, extend: false)
+    v.core.mouseUp()
+    let rects = v.core.selectionRects
+    #expect(rects.count == 1)
+    #expect(rects.allSatisfy { $0.minY > l.caretRect(MDCaret(0))!.minY })
+    v.placeToolbar()
+    #expect(v.toolbar.frame.maxY <= rects[0].minY)
+  }
+}
+
+/// The Note in a real window, inside a scroll view, its top scrolled out (the tests' Notes were never in a window, so
+/// popups were placed against a Note always in view)
+@MainActor final class ScrolledNote {
+  let window: NSWindow
+  let scroll: NSScrollView
+  let view: MarkdownEditorView
+
+  init(_ src: String, scrolledBy dy: CGFloat, height: CGFloat = 300) {
+    _ = boardFonts
+    let l = BlockLayout(MarkdownDocument(src), width: 360, theme: testTheme, layout: nil, resources: TestResources())
+    view = MarkdownEditorView(layout: l, caret: 0)
+    view.isEditing = true
+    scroll = NSScrollView(frame: CGRect(x: 0, y: 0, width: 400, height: height))
+    let page = Flipped(frame: CGRect(x: 0, y: 0, width: 400, height: view.frame.height + 40))
+    view.setFrameOrigin(CGPoint(x: 20, y: 20))
+    page.addSubview(view)
+    scroll.documentView = page
+    window = NSWindow(contentRect: scroll.frame, styleMask: [.borderless], backing: .buffered, defer: true)
+    window.contentView = scroll
+    scroll.contentView.scroll(to: CGPoint(x: 0, y: dy))
+    scroll.reflectScrolledClipView(scroll.contentView)
+  }
+
+  /// what the scroll view shows, in the editor's points
+  var shown: CGRect { view.convert(scroll.contentView.bounds, from: scroll.contentView) }
+}
+
+@MainActor @Suite struct ScrolledPlacementTests {
+  static let text = (1...30).map { "Line \($0) has a few words to select" }.joined(separator: "\n\n")
+
+  /// a word well below what is scrolled out: the toolbar above it, in view; one right under the top edge: below it,
+  /// still in view
+  @Test func theToolbarStaysInWhatTheScrollViewShows() {
+    let n = ScrolledNote(Self.text, scrolledBy: 200)
+    let v = n.view
+    for at in [140.0, 8] {
+      let y = n.shown.minY + at
+      let p = v.core.layout.caret(at: CGPoint(x: 4, y: y))
+      v.core.mouseDown(at: CGPoint(x: 4, y: y), clicks: 2, extend: false)
+      v.core.mouseUp()
+      _ = p
+      v.placeToolbar()
+      let word = v.core.selectionRects[0]
+      #expect(n.shown.insetBy(dx: 0, dy: -1).contains(v.toolbar.frame))
+      if at > 100 { #expect(v.toolbar.frame.maxY <= word.minY) } else { #expect(v.toolbar.frame.minY >= word.maxY) }
+    }
+  }
+
+  /// the zoom changed with the toolbar open: it moves with the word it is for
+  @Test func anOpenToolbarFollowsTheZoom() {
+    let n = ScrolledNote(Self.text, scrolledBy: 0, height: 900)
+    let v = n.view
+    let y = 200.0
+    v.core.mouseDown(at: CGPoint(x: 4, y: y), clicks: 2, extend: false)
+    v.core.mouseUp()
+    v.placeToolbar()
+    v.zoom = 1.5
+    let word = v.core.selectionRects[0]
+    #expect(v.toolbar.frame.maxY <= word.minY * 1.5)
+    #expect(abs(v.toolbar.frame.maxY - (word.minY * 1.5 - 8)) < 1)
+  }
+}

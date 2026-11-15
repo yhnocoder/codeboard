@@ -268,7 +268,10 @@ extension BlockLayout {
           let e = min(jb, l.range.location + l.range.length)
           // a line the selection runs past the end of shows a sliver for its break
           let past = jb > l.range.location + l.range.length || (hi > t.display.endSource && k == t.lines.count - 1)
-          guard s < e || (past && s <= e && ja <= l.range.location + l.range.length) else { continue }
+          // a selection starting where a line wraps starts on the next line: the wrapped line's end is not in it (it drew
+          // a sliver there, and the toolbar went over that line)
+          let wraps = k < t.lines.count - 1 && ja >= l.range.location + l.range.length
+          guard s < e || (past && !wraps && s <= e && ja <= l.range.location + l.range.length) else { continue }
           let x0 = t.x(s, line: k)
           var x1 = t.x(e, line: k)
           if past { x1 = max(x1, x0) + 4 }
