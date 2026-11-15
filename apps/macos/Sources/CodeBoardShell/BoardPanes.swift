@@ -194,10 +194,10 @@ import CodeBoardNotes
     let live = Set(shell.tabs.map(\.id))
     for (id, pane) in panes where !live.contains(id) {
       panes[id] = nil
-      if pane.canvas.isEditing {
+      if pane.canvas.isWriting {
         pane.isHidden = true
         closing[id] = Task { [weak self] in
-          await pane.canvas.endEditing()
+          await pane.canvas.endWriting()
           pane.close()
           self?.closing[id] = nil
         }
@@ -321,14 +321,19 @@ import CodeBoardNotes
     return unsaved.sorted { $0.title < $1.title }
   }
 
-  /// Ends the writing in any card, what was typed written to its board (quitting); a tab closed while it was being
-  /// written in, until its board is written
+  /// Ends the writing in any card or sidenote popup, what was typed written to its board (quitting); a tab closed
+  /// while it was being written in, until its board is written. Never longer than a few seconds: past that, what the
+  /// boards hold by then (drafts included) is what quitting writes
   func endEditing() async {
-    for t in Array(closing.values) { await t.value }
-    for pane in panes.values { await pane.canvas.endEditing() }
+    let closing = Array(self.closing.values)
+    let open = Array(panes.values)
+    _ = await within(.seconds(4)) {
+      for t in closing { await t.value }
+      for pane in open { await pane.canvas.endWriting() }
+    }
   }
 
-  var isEditing: Bool { !closing.isEmpty || panes.values.contains { $0.canvas.isEditing } }
+  var isEditing: Bool { !closing.isEmpty || panes.values.contains { $0.canvas.isWriting } }
 
   /// Another vault: what is being written in a card goes to its board, then what was open is written and let go
   func close() async {

@@ -455,15 +455,17 @@ extension CanvasView {
         if text != nil, let blocks = written?.blocks { b.rebaseBlocks(id, old: blocks.was, now: blocks.now) }
       }
     }
-    // the card's picture under the web view before it goes
+    // the card's picture under the web view before it goes; what was typed is on the board already, so a picture that
+    // does not come in time (a tab closing) holds up nothing
     if doc.board != shownBoard {
-      while shownBoard != doc.board, document === doc {
+      let deadline = ContinuousClock.now + .seconds(2)
+      while shownBoard != doc.board, document === doc, ContinuousClock.now < deadline {
         if gesture != nil {
           try? await Task.sleep(for: .milliseconds(16))
           continue
         }
         if !pendingRefresh, refreshing == nil { refresh() }
-        await refreshing?.value
+        if let r = refreshing { _ = await within(deadline - .now) { await r.value } }
         if shownBoard != doc.board { refresh() }
         await Task.yield()
       }
@@ -496,6 +498,18 @@ extension CanvasView {
   }
 
   public var isEditing: Bool { editing != nil }
+
+  /// A card or a sidenote popup being written in: what quitting and a closing tab wait for
+  public var isWriting: Bool { editing != nil || pops.contains { $0.web.writing } }
+
+  /// Ends the writing in a card and in the popups, what was typed on the board (a tab closing, quitting)
+  public func endWriting() async {
+    await endEditing()
+    guard pops.contains(where: { $0.web.writing }) else { return }
+    // closing a popup adds what is being written in it
+    pops.reversed().forEach(closePop)
+    await popTask?.value
+  }
 
   /// Stops writing without waiting (the canvas leaves its document, its tab is hidden)
   func dropEditing() {

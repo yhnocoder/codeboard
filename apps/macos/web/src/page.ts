@@ -553,7 +553,8 @@ function fold(card: HTMLElement, entering: boolean): Promise<void> {
     body.classList.remove("fold");
     body.classList.add("unfolded");
   };
-  if (reduced()) {
+  // a page not shown (its tab closed) runs no animation frames: the fold would never end
+  if (reduced() || document.hidden) {
     settle();
     return Promise.resolve();
   }
@@ -575,11 +576,15 @@ function fold(card: HTMLElement, entering: boolean): Promise<void> {
   if (h)
     anims.push(h.animate(dir({ marginTop: `${-blk}px`, opacity: 0 }, { marginTop: "0px", opacity: 1 }) as Keyframe[], opts));
   return new Promise((done) => {
-    anims[0].onfinish = anims[0].oncancel = () => {
+    const end = () => {
+      document.removeEventListener("visibilitychange", end);
       settle();
       for (const a of anims) a.cancel();
       done();
     };
+    anims[0].onfinish = anims[0].oncancel = end;
+    // hidden partway (WebKit learns of a hidden view a moment after it is hidden)
+    document.addEventListener("visibilitychange", end);
   });
 }
 
