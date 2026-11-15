@@ -48,6 +48,19 @@ extension Rig {
     }
   }
 
+  /// A key with ⌘ as the app gets it: offered to the window's views as a key equivalent first (NSApplication.sendEvent),
+  /// sent to the first responder when none takes it
+  func equivalent(_ code: UInt16, _ chars: String, _ flags: NSEvent.ModifierFlags) {
+    for t in [NSEvent.EventType.keyDown, .keyUp] {
+      let e = NSEvent.keyEvent(
+        with: t, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+        windowNumber: window.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
+        isARepeat: false, keyCode: code)!
+      if t == .keyDown, window.performKeyEquivalent(with: e) { continue }
+      window.sendEvent(e)
+    }
+  }
+
   /// The middle of a line of Free code card `id`, `x` in from its gutter (past its end: a large x)
   func line(_ id: String, _ n: Int, x: CGFloat = 40) throws -> CGPoint {
     let card = rect(id)
@@ -263,6 +276,37 @@ extension Rig {
     #expect(v.editor.selection.range == 21..<24, "\(v.editor.selection)")
     await r.canvas.endEditing()
     #expect(!r.doc.history.canUndo)
+  }
+
+  /// ⌘F opens the editor's find bar over the card: what is typed is found from the caret on, ⌘G and ↩ find the next,
+  /// ⇧⌘G the one before, going round; Esc closes the bar only, the found text selected and the keys the editor's
+  @Test func commandFFindsInTheCodeBeingWritten() async throws {
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer { r.close() }
+    r.doubleClick(try r.line("f", 1, x: 4))
+    await r.editorReady()
+    let v = try #require(r.code)
+    r.equivalent(3, "f", .command)
+    let bar = try #require(v.findBar)
+    #expect(bar.isDescendant(of: v) && (r.window.firstResponder as? NSView)?.isDescendant(of: bar) == true)
+    // "ids" is at 21, 33 and 52
+    r.press("ids")
+    #expect(v.editor.selection.range == 21..<24)
+    r.equivalent(5, "g", .command)
+    #expect(v.editor.selection.range == 33..<36)
+    r.press("\r")
+    #expect(v.editor.selection.range == 52..<55)
+    r.equivalent(5, "g", .command)
+    #expect(v.editor.selection.range == 21..<24, "round the end")
+    r.equivalent(5, "G", [.command, .shift])
+    #expect(v.editor.selection.range == 52..<55, "back round the start")
+    r.press("\u{1b}")
+    #expect(v.findBar == nil && r.window.firstResponder === v && r.canvas.isEditing)
+    r.press("x")
+    #expect(v.editor.text.hasSuffix("run(x)"))
+    r.press("\u{1b}")
+    await r.until("left") { !r.canvas.isEditing }
+    #expect(r.doc.board.segment(cid("f"), s1)?.lines.last == "    return run(x)")
   }
 
   /// Two fingers while code is written: a scroll moves the board and a pinch zooms it, the editor over the card all the

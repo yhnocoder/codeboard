@@ -62,6 +62,9 @@ public final class CodeEditorView: NSView {
   /// the first press made here, so the second press of the double-click that opened the editor only places the caret.
   /// A single press ends it
   public var continuing = 0
+  /// How the find bar looks; nil: there is none
+  public var findLook: CodeFindBar.Look?
+  public private(set) var findBar: CodeFindBar?
   /// Where copy, cut and paste go (tests give their own)
   public var pasteboard = NSPasteboard.general
   /// The code's height: its rows and padding
@@ -163,6 +166,7 @@ public final class CodeEditorView: NSView {
     }
     needsDisplay = true
     placeCaret()
+    placeFindBar()
     onLayout?()
   }
 
@@ -264,6 +268,7 @@ public final class CodeEditorView: NSView {
     // an input method's keys are its own while it composes
     guard editor.composition == nil else { return interpretKeyEvents([e]) }
     let name = Self.name(e)
+    if find(name) { return }
     switch name {
     case "Escape", "Meta-Enter":
       onExit?()
@@ -275,6 +280,50 @@ public final class CodeEditorView: NSView {
     }
     if let c = CodeKeys.mac[name] { return perform(c) }
     interpretKeyEvents([e])
+  }
+
+  /// ⌘F, ⌘G and ⇧⌘G come as key equivalents first, while the editor or its find bar has the keys
+  public override func performKeyEquivalent(with e: NSEvent) -> Bool {
+    let r = window?.firstResponder
+    guard r === self || (findBar != nil && (r as? NSView)?.isDescendant(of: findBar!) == true) else { return false }
+    return find(Self.name(e))
+  }
+
+  private func find(_ name: String) -> Bool {
+    guard let look = findLook else { return false }
+    switch name {
+    case "Meta-f":
+      let bar = findBar ?? CodeFindBar(self, look: look)
+      if findBar == nil {
+        findBar = bar
+        addSubview(bar)
+        placeFindBar()
+      }
+      bar.opened()
+    case "Meta-g", "Shift-Meta-g":
+      guard findBar != nil else { return false }
+      findNext(forward: name == "Meta-g")
+    default: return false
+    }
+    return true
+  }
+
+  /// The next (or the one before) of what the find bar holds
+  public func findNext(forward: Bool) {
+    guard let q = findBar?.query, !q.isEmpty else { return }
+    change { _ = $0.find(q, forward: forward) }
+  }
+
+  /// Closes the find bar, the keys back to the editor
+  public func closeFind() {
+    findBar?.removeFromSuperview()
+    findBar = nil
+    window?.makeFirstResponder(self)
+  }
+
+  private func placeFindBar() {
+    guard let bar = findBar else { return }
+    bar.frame.origin = CGPoint(x: max(0, bounds.width - bar.frame.width - 8), y: 4)
   }
 
   /// A key's command, over the rows as laid out

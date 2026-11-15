@@ -68,6 +68,7 @@ extension CanvasView {
     v.wrap = code.wrap
     v.continuing = continuing
     v.pasteboard = pasteboard
+    v.findLook = CodeFindBar.Look(fill: theme.surface, line: theme.hair, text: theme.ink, font: theme.small, radius: 6)
     let h = CanvasView.highlighter ?? Highlighter()
     let runs = h.tokens(lines: seg.lines, language: seg.language).map {
       $0.map { CodeRun(columns: $0.columns, style: $0.kind.rawValue) }
