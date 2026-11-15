@@ -249,7 +249,7 @@ public struct Theme: Sendable {
       headerGap: 7,
       sectionTitleAt: CGPoint(x: 16, y: 6), sectionTitleHeight: 22, foldedTitleAt: CGPoint(x: 16, y: 6),
       arrowWidth: 1.25,
-      metrics: CodeMetrics(charWidth: code.advance))
+      metrics: CodeMetrics(charWidth: code.advance, font: code))
   }()
 
   public static let inkWash: Theme = {
@@ -298,7 +298,7 @@ public struct Theme: Sendable {
       cardRadius: 2, sectionRadius: 2, labelRadius: 0, headerHeight: 36, headerPad: 14, headerPadRight: 8, headerGap: 9,
       sectionTitleAt: CGPoint(x: 24, y: -17), sectionTitleHeight: 32, foldedTitleAt: CGPoint(x: 14, y: 4),
       arrowWidth: 2,
-      metrics: CodeMetrics(charWidth: code.advance))
+      metrics: CodeMetrics(charWidth: code.advance, font: code))
     t.subName = serif(25, 600).tracked(-0.375)
     t.guide = rgb(0xb8321f)
     t.subCount = serif(25, 500).tracked(-0.375)

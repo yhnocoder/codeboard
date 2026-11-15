@@ -24,11 +24,14 @@ struct CodeMetrics: Equatable, Sendable {
   var maxAutoHeight: CGFloat = 460
   /// Advance of one character of the code font
   var charWidth: CGFloat
+  /// The code font, measuring what is not ASCII when code wraps
+  var font: CodeFont?
 
   /// What the code component lays the lines out with
   var lines: CodeLineMetrics {
     CodeLineMetrics(
-      row: row, fold: gap, padLeft: padLeft, numberGap: numberGap, padRight: padRight, charWidth: charWidth)
+      row: row, fold: gap, padLeft: padLeft, numberGap: numberGap, padRight: padRight, charWidth: charWidth,
+      font: font)
   }
 }
 
@@ -99,7 +102,7 @@ struct CodeLayout: Equatable, Sendable {
     var last = 1
     for s in code.segments { last = max(last, s.lastLine) }
     gutter = CodeLines.gutter(lastNumber: last, metrics: lm)
-    let cols = CodeLines.columns(width: width, gutter: gutter, metrics: lm)
+    let wrapWidth = CodeLines.wrapWidth(width: width, gutter: gutter, metrics: lm)
     var y = m.padTop
     var rows: [Placed] = []
     var bands: [ClosedRange<CGFloat>] = []
@@ -126,7 +129,7 @@ struct CodeLayout: Equatable, Sendable {
         si < tokens.count ? tokens[si].map { $0.map { CodeRun(columns: $0.columns, style: $0.kind.rawValue) } } : []
       var lines = CodeLines(
         lines: s.lines, firstNumber: s.firstLine, runs: runs, folds: s.hidden, hideBlankLines: code.hide.blankLines,
-        wrapColumns: code.wrap ? cols : nil, top: y, metrics: lm)
+        wrapWidth: code.wrap ? wrapWidth : nil, top: y, metrics: lm)
       // a Highlight's Always Show sidenotes go under its last row (its lines' or a hidden run's), in the order their
       // rows come, and none where it has no row
       let groups = si < always.count ? always[si] : []

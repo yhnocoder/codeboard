@@ -3,7 +3,7 @@ import CoreGraphics
 import CoreText
 import Foundation
 
-/// A whole text laid out as CodeLines lays code out (tabs to their stops, long lines wrapped, room inserted after lines), with
+/// A whole text laid out as CodeLines lays code out (tabs to their stops, long lines wrapped by their characters' widths, room inserted after lines), with
 /// what an editor asks of it: where each offset is drawn, which offset a point is at, the rows of a range. x is in the
 /// context the code is drawn into, the code starting at `x`; each row's glyphs are measured as CodeDraw draws them
 public struct CodeTextLayout: CodeLayout {
@@ -33,12 +33,12 @@ public struct CodeTextLayout: CodeLayout {
 
   /// `runs`: each line's (CodeLines'); `insertions`: room after lines, as CodeLines.insert takes them
   public init(
-    text: String, firstNumber: Int = 1, runs: [[CodeRun]] = [], wrapColumns: Int? = nil,
+    text: String, firstNumber: Int = 1, runs: [[CodeRun]] = [], wrapWidth: CGFloat? = nil,
     insertions: [CodeLines.Insertion] = [], top: CGFloat = 0, x: CGFloat, metrics m: CodeLineMetrics, style: CodeStyle
   ) {
     let source = text.components(separatedBy: "\n")
     var lines = CodeLines(
-      lines: source, firstNumber: firstNumber, runs: runs, wrapColumns: wrapColumns, top: top, metrics: m)
+      lines: source, firstNumber: firstNumber, runs: runs, wrapWidth: wrapWidth, top: top, metrics: m)
     lines.insert(insertions)
     self.lines = lines
     self.x = x
@@ -57,11 +57,28 @@ public struct CodeTextLayout: CodeLayout {
         out.append(Row(index: out.count, range: (row.first?.src ?? end)...end, stops: row + [(end, u16, 0)]))
         (row, u16) = ([], 0)
       }
+      // where rows start, in expanded columns: CodeLines' cuts of the same columns
+      var breaks = Set<Int>()
+      if let wrapWidth {
+        var widths: [CGFloat] = []
+        for ch in line {
+          if ch == "\t" {
+            widths += Array(repeating: m.charWidth, count: m.tabWidth - widths.count % m.tabWidth)
+          } else {
+            widths.append(CodeLines.advance(ch, m))
+          }
+        }
+        var at = 0
+        for n in CodeLines.cuts(widths, width: wrapWidth).dropLast() {
+          at += n
+          breaks.insert(at)
+        }
+      }
       for ch in line {
         let tab = ch == "\t"
         let n = tab ? m.tabWidth - cols % m.tabWidth : 1
         for k in 0..<n {
-          if let w = wrapColumns, cols > 0, cols % w == 0 { cut(k == 0 ? src : src + 1) }
+          if breaks.contains(cols) { cut(k == 0 ? src : src + 1) }
           if k == 0 { row.append((src, u16, tab ? n : 0)) }
           cols += 1
           u16 += tab ? 1 : ch.utf16.count

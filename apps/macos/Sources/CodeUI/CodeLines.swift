@@ -1,4 +1,6 @@
 import CoreGraphics
+import CoreText
+import Foundation
 
 /// Part of a line drawn in one style: `columns` in UTF-16 units of the line, `style` the host's own number for it (its
 /// style table gives the font and colour)
@@ -28,11 +30,15 @@ public struct CodeLineMetrics: Equatable, Sendable {
   public var tabWidth: Int
   /// With indentation every line has taken off, how far right of the gutter the code still starts
   public var dedentPad: CGFloat
+  /// The code font, which measures what is not ASCII for wrapping (a CJK character takes about an em, not a column);
+  /// nil: every character `charWidth`
+  public var font: CodeFont?
 
   public init(
     row: CGFloat, fold: CGFloat, padLeft: CGFloat, numberGap: CGFloat, padRight: CGFloat, charWidth: CGFloat,
-    tabWidth: Int = 4, dedentPad: CGFloat = 16
+    tabWidth: Int = 4, dedentPad: CGFloat = 16, font: CodeFont? = nil
   ) {
+    self.font = font
     self.row = row
     self.fold = fold
     self.padLeft = padLeft
@@ -44,7 +50,8 @@ public struct CodeLineMetrics: Equatable, Sendable {
   }
 }
 
-/// Lines of code laid out in rows, top to bottom: tabs as spaces to the next stop (CSS tab-size), a line too long for `wrapColumns` cut into more rows,
+/// Lines of code laid out in rows, top to bottom: tabs as spaces to the next stop (CSS tab-size), a line wider than `wrapWidth` cut into more rows
+/// wherever it reaches it, by the characters' widths (white-space: pre-wrap; word-break: break-all),
 /// folded lines one row each run, blank lines left out when asked, and room the host fills after a line (`insert`).
 /// Line numbers are the caller's: `firstNumber` is the first line's.
 public struct CodeLines: Equatable, Sendable {
@@ -80,7 +87,7 @@ public struct CodeLines: Equatable, Sendable {
   /// with the first that has it; `top`: where the first row is
   public init(
     lines: [String], firstNumber: Int = 1, runs: [[CodeRun]] = [], folds: [ClosedRange<Int>] = [],
-    hideBlankLines: Bool = false, wrapColumns: Int? = nil, top: CGFloat = 0, metrics m: CodeLineMetrics
+    hideBlankLines: Bool = false, wrapWidth: CGFloat? = nil, top: CGFloat = 0, metrics m: CodeLineMetrics
   ) {
     var y = top
     var rows: [Row] = []
@@ -102,14 +109,15 @@ public struct CodeLines: Equatable, Sendable {
         l += 1
         continue
       }
-      var rest = CodeLines.expand(lines[i], i < runs.count ? runs[i] : [], tabWidth: m.tabWidth)[...]
-      var wrapped = false
-      repeat {
-        let piece = rest.prefix(wrapColumns ?? rest.count)
-        put(.line(number: l, wrapped: wrapped, text: String(piece.map(\.char)), runs: CodeLines.runs(piece)), m.row)
-        rest = rest.dropFirst(piece.count)
-        wrapped = true
-      } while !rest.isEmpty
+      let chars = CodeLines.expand(lines[i], i < runs.count ? runs[i] : [], tabWidth: m.tabWidth)
+      var rest = chars[...]
+      let counts =
+        wrapWidth.map { w in CodeLines.cuts(chars.map { CodeLines.advance($0.char, m) }, width: w) } ?? [chars.count]
+      for (k, n) in counts.enumerated() {
+        let piece = rest.prefix(n)
+        put(.line(number: l, wrapped: k > 0, text: String(piece.map(\.char)), runs: CodeLines.runs(piece)), m.row)
+        rest = rest.dropFirst(n)
+      }
       l += 1
     }
     self.rows = rows
@@ -169,8 +177,37 @@ public struct CodeLines: Equatable, Sendable {
   }
 
   /// The characters that fit a row `width` wide right of `gutter`, at least one
-  public static func columns(width: CGFloat, gutter: CGFloat, metrics m: CodeLineMetrics) -> Int {
-    max(1, Int((width - gutter - m.padRight) / m.charWidth))
+  /// How wide wrapped code's rows are in a body `width` wide: what is right of the gutter, less the right padding
+  public static func wrapWidth(width: CGFloat, gutter: CGFloat, metrics m: CodeLineMetrics) -> CGFloat {
+    max(m.charWidth, width - gutter - m.padRight)
+  }
+
+  /// How wide a character is drawn: ASCII the code font's advance, anything else what the font (or the font standing in
+  /// for it) gives it, measured once
+  public static func advance(_ ch: Character, _ m: CodeLineMetrics) -> CGFloat {
+    guard !ch.isASCII, let f = m.font else { return m.charWidth }
+    let key = Advances.Key(font: CTFontCopyPostScriptName(f.ct) as String, size: CTFontGetSize(f.ct), ch: ch)
+    if let w = Advances.lock.withLock({ Advances.known[key] }) { return w + f.tracking }
+    let w = CodeDraw.width(String(ch), CodeFont(f.ct))
+    Advances.lock.withLock { Advances.known[key] = w }
+    return w + f.tracking
+  }
+
+  /// How many of a line's characters (their widths given) go on each row `width` wide: as many as fit, at least one
+  public static func cuts(_ widths: [CGFloat], width: CGFloat) -> [Int] {
+    var out: [Int] = []
+    var n = 0
+    var used: CGFloat = 0
+    for w in widths {
+      if n > 0, used + w > width + 0.01 {
+        out.append(n)
+        (n, used) = (0, 0)
+      }
+      n += 1
+      used += w
+    }
+    out.append(n)
+    return out
   }
 
   /// Indentation all of the rows' texts have (their blank ones aside), to take off: in columns, and how far the code
@@ -240,4 +277,15 @@ public struct CodeLines: Equatable, Sendable {
     }
     return out
   }
+}
+
+/// Characters' advances as measured, by font
+private enum Advances {
+  struct Key: Hashable {
+    var font: String
+    var size: CGFloat
+    var ch: Character
+  }
+  static let lock = NSLock()
+  nonisolated(unsafe) static var known: [Key: CGFloat] = [:]
 }

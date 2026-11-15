@@ -145,7 +145,7 @@ import Testing
     #expect(t.offset(inRow: 0, x: t.x(of: 1, assoc: 1) + 1.2 * cw) == 1)
     #expect(t.offset(inRow: 0, x: t.x(of: 1, assoc: 1) + 1.8 * cw) == 2)
     // cut at four columns: the wrap point is the end of the first row and the start of the second
-    let w = CodeTextLayout(text: "abcdefg\nh", wrapColumns: 4, x: 0, metrics: l.metrics, style: l.style)
+    let w = CodeTextLayout(text: "abcdefg\nh", wrapWidth: 4 * cw, x: 0, metrics: l.metrics, style: l.style)
     #expect(w.rowCount == 3 && w.offsets(inRow: 0) == 0...4 && w.offsets(inRow: 1) == 4...7)
     #expect(w.row(of: 4, assoc: -1) == 0 && w.row(of: 4, assoc: 1) == 1 && w.row(of: 8, assoc: 1) == 2)
     #expect(w.rects(1..<6, right: 300).count == 2 && w.rects(1..<6, right: 300)[0].maxX == 300)

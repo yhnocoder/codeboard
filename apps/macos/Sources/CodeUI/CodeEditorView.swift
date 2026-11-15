@@ -154,7 +154,7 @@ public final class CodeEditorView: NSView {
     laidWidth = bounds.width
     layout = CodeTextLayout(
       text: text, firstNumber: firstNumber, runs: lineRuns,
-      wrapColumns: wrap ? CodeLines.columns(width: bounds.width, gutter: gutter, metrics: m) : nil,
+      wrapWidth: wrap ? CodeLines.wrapWidth(width: bounds.width, gutter: gutter, metrics: m) : nil,
       insertions: insertions, top: look.padTop, x: gutter, metrics: m, style: look.style)
     let h = layout.lines.bottom + look.padBottom
     if h != height {

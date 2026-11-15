@@ -14,6 +14,10 @@ public struct CodeFont: @unchecked Sendable {
   }
 }
 
+extension CodeFont: Equatable {
+  public static func == (a: CodeFont, b: CodeFont) -> Bool { CFEqual(a.ct, b.ct) && a.tracking == b.tracking }
+}
+
 /// How code is drawn, resolved by the host into plain values once: nothing is asked of it while drawing
 public struct CodeStyle: @unchecked Sendable {
   /// What a run with a style of its own is drawn in: its colour, and its font where it is not the code's
