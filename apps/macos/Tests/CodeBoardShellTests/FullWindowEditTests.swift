@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardMarkdownUI
 import CodeBoardModel
 import Foundation
 import Testing
@@ -221,6 +222,42 @@ import Testing
     #expect(c.isEditing && c.editing?.id == card, "still writing")
     #expect(
       w.keysIn(editor), "the keyboard still in the editor: \(String(describing: w.window.firstResponder))")
+  }
+
+  /// A double-click on a Note, a Text and a Box through the window's own event path (sendEvent, a real double-click's
+  /// pause between its presses, as the accept tool's driver posts them), then what is typed into the window's first
+  /// responder as text: the native editor has the keyboard and the words are the card's
+  @Test(arguments: ["n", "t", "b"])
+  func aDoubleClickThroughTheWindowWritesWhatIsTypedNext(_ id: String) async throws {
+    let w = try await opened()
+    defer { w.close() }
+    let c = w.canvas
+    let card = CardID(rawValue: id)
+    let r = try #require(c.scene?.items.first { $0.owner == .card(card) }?.rect)
+    c.place(zoom: 1, centre: CGPoint(x: r.midX, y: r.midY))
+    await w.frames(6)
+    let at = w.at(CGPoint(x: r.midX, y: r.midY + (id == "n" ? 20 : 0)))
+    // a window that is not key (a test's never is) passes a first click only to a view that takes it: the canvas does
+    // on a driven clock, here the real one
+    c.steppedClock = { CACurrentMediaTime() }
+    defer { c.steppedClock = nil }
+    for clicks in [1, 2] {
+      for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+        w.window.sendEvent(
+          NSEvent.mouseEvent(
+            with: type, location: at, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: w.window.windowNumber, context: nil, eventNumber: 0, clickCount: clicks, pressure: 1)!)
+        await w.frames(1)
+      }
+      if clicks == 1 { try await Task.sleep(for: .milliseconds(180)) }
+    }
+    await w.frames(36)
+    let client = try #require(
+      w.window.firstResponder as? NSTextInputClient, "\(String(describing: w.window.firstResponder))")
+    #expect(w.window.firstResponder is MarkdownEditorView, "\(String(describing: w.window.firstResponder))")
+    for ch in "q1" { client.insertText(String(ch), replacementRange: NSRange(location: NSNotFound, length: 0)) }
+    await w.frames(6)
+    #expect(c.editing?.id == card && (c.writerView?.source.contains("q1") ?? false))
   }
 
   /// The app quit right after the camera moved (before it came to rest long enough to be written), then opened again

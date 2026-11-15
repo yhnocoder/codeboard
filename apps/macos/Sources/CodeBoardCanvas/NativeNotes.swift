@@ -6,6 +6,7 @@ import CodeBoardNotes
 import CodeBoardSyntax
 import Foundation
 import IOSurface
+import OSLog
 import Synchronization
 
 /// The Markdown the canvas shows at rest (a Note's, a Text's or Box's, an Always Show sidenote's) laid out and drawn by
@@ -94,7 +95,21 @@ package final class NativeNotes: NoteDisplay {
   /// The fonts, the layout code and the formula engines used once, off the main thread, so the first board does not pay
   /// for them (the app starts this as it launches)
   package static func warmUp() {
-    Task.detached(priority: .utility) { MarkdownAssets.warmUp(math: try? MarkdownAssets.engines()) }
+    Task.detached(priority: .utility) {
+      // without its fonts every Note's layout fails (without engines.js every one with a formula or diagram), and the
+      // layout's callers (drawing, writing, refs) can only skip the card: a build packaged without them showed blank
+      // Notes that a double-click did not open, and said nothing. Said here once, in the app's log and on stderr, with
+      // where they were looked for
+      do {
+        try MarkdownAssets.fonts.get()
+        MarkdownAssets.warmUp(math: try MarkdownAssets.engines())
+      } catch {
+        let said = "CodeBoard: Markdown assets missing or broken, Notes cannot be drawn or written in: \(error)"
+        Logger(subsystem: "CodeBoard", category: "assets").fault("\(said, privacy: .public)")
+        FileHandle.standardError.write(Data((said + "\n").utf8))
+        if (try? MarkdownAssets.fonts.get()) != nil { MarkdownAssets.warmUp(math: nil) }
+      }
+    }
     // its queries compiled meanwhile: tens of milliseconds the first Note with code, or the first board, waits for
     Task.detached(priority: .utility) { _ = NativeNotes.highlighter }
   }
