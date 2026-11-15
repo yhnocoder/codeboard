@@ -16,11 +16,6 @@ on:
     paths: ["packages/box/**", ".github/workflows/box.yml"]
 permissions:
   contents: read
-# A newer push to the PR cancels the run it replaces. github.workflow is the caller's name when release.yml calls this,
-# so a Release run on the same PR gets a group of its own instead of cancelling (or being cancelled by) this check
-concurrency:
-  group: box-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: true
 jobs:
   # which platforms: a release builds and tests every platform the .vsix serves, anything else (a PR) only Linux
   plan:

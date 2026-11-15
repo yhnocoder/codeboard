@@ -20,8 +20,7 @@ permissions:
   contents: read
 concurrency:
   group: release-${{ (github.event_name == 'release' || inputs.publish_tag) && format('publish-{0}', github.event.release.tag_name || inputs.publish_tag) || github.event.pull_request.number || github.ref }}
-  # only a PR's check is cancelled by a newer push; a tag build or a publish to the stores always runs to the end
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 jobs:
   # box, the index service behind Related by Meaning, built and smoke-tested on each platform's own runner (box.yml)
   box:
