@@ -90,10 +90,10 @@ if (!attach && sides.includes("web")) {
 
 /** The driver app's own record of a vault's cameras (CameraStore: under its bundle id, named by FNV-1a of the vault's
  *  path), taken away with the vault; other runs' vaults have files of their own */
-function cameraFile(vault) {
+function cameraFile(id, vault) {
   let h = 0xcbf29ce484222325n;
   for (const b of Buffer.from(path.resolve(vault))) h = ((h ^ BigInt(b)) * 0x100000001b3n) & 0xffffffffffffffffn;
-  const dir = path.join(os.homedir(), "Library/Application Support/com.example.codeboard.accept/Cameras");
+  const dir = path.join(os.homedir(), "Library/Application Support", id, "Cameras");
   return path.join(dir, `${h.toString(16).padStart(16, "0")}.json`);
 }
 
@@ -113,8 +113,11 @@ class Driver {
     if (this.side === "mac") {
       // a vault of its own, imported from the storage folder; the app's own defaults start empty
       this.vault = fs.mkdtempSync(path.join(os.tmpdir(), "accept-vault-"));
+      // and an identity of its own, so its defaults (the vault and tabs it reopens), cameras, caches and web data are this
+      // run's alone: with one id for every run, a run in another clone that quit later left its vault for this one to
+      // open, on cameras that were not this one's
+      this.id = `com.example.codeboard.accept.${Math.random().toString(36).slice(2, 8)}`;
       this.plist(this.vault);
-      execFileSync("sh", ["-c", "defaults delete com.example.codeboard.accept >/dev/null 2>&1 || true"]);
       Object.assign(this.env, { ACCEPT_VAULT: this.vault, ACCEPT_IMPORT_FROM: storage });
     } else {
       this.copy = fs.mkdtempSync(path.join(os.tmpdir(), "accept-storage-"));
@@ -130,8 +133,10 @@ class Driver {
         : spawn("node", [webBundle, this.copy, this.dir], { env: this.env, cwd: repo, stdio: ["ignore", outFd, outFd], detached: true });
     this.pid = this.proc.pid;
     // (an exited child stays a zombie that kill(pid, 0) still finds: its exit event is what says it is gone)
+    // (this process's: one before it that was told to go and exits late must not mark the new one gone)
     this.exited = false;
-    this.proc.on("exit", () => (this.exited = true));
+    const proc = this.proc;
+    proc.on("exit", () => { if (this.proc === proc) this.exited = true; });
     this.proc.unref();
     await this.until(/driver ready|web ready/, 60000);
     // the Mac app starts on its sidebar (or on the board it had open): open the first board, as a person would
@@ -156,7 +161,7 @@ class Driver {
     const hung = this.alive();
     if (hung) process.kill(this.pid, "SIGTERM");
     // what the app kept for the next start (its cameras), in the log of the run that ends: why a camera did not come back
-    const kept = fs.existsSync(cameraFile(this.vault)) ? fs.readFileSync(cameraFile(this.vault), "utf8").replace(/\s+/g, "") : "none";
+    const kept = fs.existsSync(cameraFile(this.id, this.vault)) ? fs.readFileSync(cameraFile(this.id, this.vault), "utf8").replace(/\s+/g, "") : "none";
     fs.appendFileSync(this.log, `reopen: ${hung ? "did not quit in 5 s, terminated" : "quit"}; cameras kept ${kept}\n`);
     this.opened = (this.opened ?? 0) + 1;
     fs.renameSync(this.log, path.join(this.dir, `log-${this.opened}.txt`));
@@ -171,7 +176,7 @@ class Driver {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>CFBundleName</key><string>CodeBoard Accept</string>
-  <key>CFBundleIdentifier</key><string>com.example.codeboard.accept</string>
+  <key>CFBundleIdentifier</key><string>${this.id}</string>
   <key>CodeBoardFirstVault</key><string>${vault}</string>
   <key>CFBundleExecutable</key><string>Accept</string>
   <key>CFBundlePackageType</key><string>APPL</string>
@@ -251,7 +256,13 @@ class Driver {
     if (this.alive()) process.kill(this.pid, "SIGKILL");
     // the vault, its own trash (what the app deleted goes there, never to the person's Trash) and the web's copy
     for (const d of [this.vault, this.vault && `${this.vault}-trash`, this.copy]) if (d) fs.rmSync(d, { recursive: true, force: true });
-    if (this.vault) fs.rmSync(cameraFile(this.vault), { force: true });
+    // what the app kept under its identity: its defaults, cameras, caches, web data
+    if (this.id) {
+      execFileSync("sh", ["-c", `defaults delete ${this.id} >/dev/null 2>&1 || true`]);
+      const lib = path.join(os.homedir(), "Library");
+      for (const d of ["Preferences/" + this.id + ".plist", "Application Support/" + this.id, "Caches/" + this.id, "WebKit/" + this.id, "HTTPStorages/" + this.id, "HTTPStorages/" + this.id + ".binarycookies", "Saved Application State/" + this.id + ".savedState"])
+        fs.rmSync(path.join(lib, d), { recursive: true, force: true });
+    }
   }
 }
 
@@ -694,7 +705,7 @@ for (const file of scenarios) {
     if (argv.includes("--keep")) {
       kept = drivers;
       kept.started = true;
-      const keep = ({ side, dir, pid, vault, copy, env }) => ({ side, dir, pid, vault, copy, env });
+      const keep = ({ side, dir, pid, vault, copy, env, id }) => ({ side, dir, pid, vault, copy, env, id });
       fs.writeFileSync(sessionFile, JSON.stringify(drivers.map(keep)));
     }
     for (const { n, text: line } of lines) {
