@@ -307,7 +307,10 @@ extension CanvasView {
     guard let i = index(of: .card(id)) else { return }
     let box = items[i].box
     withoutAnimation {
-      guard hide else { return box.mask = nil }
+      guard hide else {
+        box.mask = nil
+        return
+      }
       let m = CAShapeLayer()
       let all = box.bounds.insetBy(dx: -400, dy: -400)
       m.frame = all
@@ -353,7 +356,8 @@ extension CanvasView {
   /// The world's transform at `k` times about the view's middle
   private var grownWorld: CATransform3D {
     let c = CGPoint(x: bounds.midX, y: bounds.midY)
-    return CATransform3DScale(CATransform3DMakeTranslation(c.x * (1 - grownBy), c.y * (1 - grownBy), 0), grownBy, grownBy, 1)
+    return CATransform3DScale(
+      CATransform3DMakeTranslation(c.x * (1 - grownBy), c.y * (1 - grownBy), 0), grownBy, grownBy, 1)
   }
 
   private func animate(
