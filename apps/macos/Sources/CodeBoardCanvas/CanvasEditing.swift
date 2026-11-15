@@ -480,6 +480,11 @@ extension CanvasView {
     }
     let z = camera.zoom
     let accent = theme.accent
+    let before = selectedLooks
+    selectedLooks = [:]
+    defer {
+      for (id, ls) in before where selectedLooks[id] == nil { Self.fadeOut(ls) }
+    }
     withoutAnimation {
       chrome.sublayers = nil
       litArrows.sublayers = nil
@@ -492,7 +497,18 @@ extension CanvasView {
         guard let r = liveRect(item) else { continue }
         switch item {
         case .card(let id):
-          selectedLook(id, r, tilt: index(of: .card(id)).map { scene!.items[$0].tilt } ?? 0, into: chrome)
+          guard let i = index(of: .card(id)) else { continue }
+          let box = items[i].box
+          let old = before[id] ?? []
+          let looks = selectedLook(id, box.bounds, tilt: 0, into: box, fadeIn: old.isEmpty)
+          // drawn again while it comes in: it goes on coming in, not from the start
+          for l in looks {
+            if let was = old.first(where: { $0.name == l.name }), let a = was.animation(forKey: "in") {
+              l.add(a, forKey: "in")
+            }
+          }
+          for l in old { l.removeFromSuperlayer() }
+          selectedLooks[id] = looks
         case .section(let id):
           if theme.id == .inkWash, let f = scene?.frames.first(where: { $0.id == id }), let strokes = f.strokes {
             brushed(r, strokes: strokes.cg)
@@ -530,40 +546,105 @@ extension CanvasView {
     }
   }
 
-  /// A selected card's look at `r` in `parent`: a Text's or Box's outline, Ink Wash's seal, else the ring
-  func selectedLook(_ id: CardID, _ r: CGRect, tilt: CGFloat, into parent: CALayer) {
+  /// A selected card's look at `r` in `parent` (the card's own layer, or a picture of it): a Text's or Box's outline,
+  /// Ink Wash's seal, else the ring; `fadeIn`: it was not selected before, so it comes in as main's does. Its layers
+  @discardableResult
+  func selectedLook(_ id: CardID, _ r: CGRect, tilt: CGFloat, into parent: CALayer, fadeIn: Bool = false) -> [CALayer] {
     let z = camera.zoom
+    let looks: [CALayer]
     if isText(id) {
-      outline(r, box: isBox(id), tilt: tilt, zoom: z, into: parent)
+      looks = [outline(r, box: isBox(id), tilt: tilt, zoom: z)]
     } else if theme.id == .inkWash {
-      parent.addSublayer(seal(on: r, tilt: tilt))
+      looks = [seal(on: r, tilt: tilt)]
     } else {
-      ring(r, tilt: tilt, zoom: z, into: parent)
+      looks = ring(r, tilt: tilt)
+      if fadeIn { looks.forEach(Self.fadeIn) }
     }
-  }
-
-  /// A selected card's ring (styles.css .card.sel): 1.5 view points of the accent over a 4.5 point halo of it at 16 %
-  private func ring(_ r: CGRect, tilt: CGFloat, zoom z: CGFloat, into parent: CALayer) {
-    for (width, alpha) in [(4.5, 0.16), (1.5, 1.0)] as [(CGFloat, CGFloat)] {
-      let l = CAShapeLayer()
-      let out = width / 2 / z
-      let ring = r.insetBy(dx: -out, dy: -out)
-      l.bounds = CGRect(origin: .zero, size: ring.size)
-      l.position = CGPoint(x: ring.midX, y: ring.midY)
-      let radius = theme.cardRadius + out
-      l.path = CGPath(roundedRect: l.bounds, cornerWidth: radius, cornerHeight: radius, transform: nil)
-      l.fillColor = nil
-      l.strokeColor = theme.accent.copy(alpha: alpha)
-      l.lineWidth = width / z
-      if tilt != 0 { l.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
+    for l in looks {
+      // over the card's content, under its stickers and markers
+      l.zPosition = 3
       parent.addSublayer(l)
     }
+    return looks
+  }
+
+  /// A line that is `w` on the board, never thinner on screen than a pixel
+  func boardLine(_ w: CGFloat) -> CGFloat { max(w, 1 / (camera.zoom * backing)) }
+
+  /// A selected card's ring in Warm Ink (themes.css .card > .cface::before: `0 0 0 1.5px accent, 0 0 4px 3px accent
+  /// 20%`, round as the card): a 1.5 line of the accent hugging the card on its own squircle corner, over a glow of it
+  /// blurred 4 and spread 3, outside the card only; sizes on the board, so they zoom with it
+  private func ring(_ r: CGRect, tilt: CGFloat) -> [CALayer] {
+    func turned(_ l: CALayer) -> CALayer {
+      l.frame = r
+      l.bounds = CGRect(origin: r.origin, size: r.size)
+      if tilt != 0 { l.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
+      return l
+    }
+    let glow = CALayer()
+    glow.name = "glow"
+    glow.shadowPath = Drawing.squircle(r.insetBy(dx: -3, dy: -3), theme.cardRadius + 3)
+    glow.shadowColor = theme.accent
+    glow.shadowOpacity = 0.2
+    glow.shadowRadius = 2
+    glow.shadowOffset = .zero
+    // a box shadow: none under the card
+    let mask = CAShapeLayer()
+    let around = CGMutablePath()
+    around.addRect(r.insetBy(dx: -20, dy: -20))
+    around.addPath(Drawing.squircle(r, theme.cardRadius))
+    mask.path = around
+    mask.fillRule = .evenOdd
+    glow.mask = mask
+    let w = boardLine(1.5)
+    let line = CAShapeLayer()
+    line.name = "ring"
+    line.path = Drawing.squircle(r.insetBy(dx: -w / 2, dy: -w / 2), theme.cardRadius + w / 2)
+    line.fillColor = nil
+    line.strokeColor = theme.accent
+    line.lineWidth = w
+    return [turned(glow), turned(line)]
+  }
+
+  /// A ring coming in (themes.css .card.sel > .cface::before): 120 ms, from 98.5 % of its size
+  static func fadeIn(_ l: CALayer) {
+    let o = CABasicAnimation(keyPath: "opacity")
+    o.fromValue = 0
+    o.toValue = 1
+    let k = CABasicAnimation(keyPath: "transform.scale")
+    k.fromValue = 0.985
+    k.toValue = 1
+    let g = CAAnimationGroup()
+    g.animations = [o, k]
+    g.duration = 0.12
+    g.timingFunction = CAMediaTimingFunction(name: .easeOut)
+    l.add(g, forKey: "in")
+  }
+
+  /// A card's look when it is no longer selected: out over 90 ms where it is, then gone
+  static func fadeOut(_ ls: [CALayer]) {
+    CATransaction.begin()
+    CATransaction.setCompletionBlock {
+      MainActor.assumeIsolated { for l in ls where l.opacity == 0 { l.removeFromSuperlayer() } }
+    }
+    for l in ls {
+      l.removeAnimation(forKey: "in")
+      l.opacity = 0
+      let o = CABasicAnimation(keyPath: "opacity")
+      o.fromValue = 1
+      o.toValue = 0
+      o.duration = 0.09
+      o.timingFunction = CAMediaTimingFunction(name: .easeIn)
+      l.add(o, forKey: "out")
+    }
+    CATransaction.commit()
   }
 
   /// Ink Wash's selected card (themes.css #128): a small vermilion seal 选 over its top right corner, 24 board units
   /// square, its middle 7 out and 5 up from the corner, turned 6 degrees; no ring
   private func seal(on r: CGRect, tilt: CGFloat) -> CALayer {
     let box = CALayer()
+    box.name = "seal"
     box.bounds = CGRect(x: 0, y: 0, width: r.width, height: r.height)
     box.position = CGPoint(x: r.midX, y: r.midY)
     if tilt != 0 { box.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
@@ -644,9 +725,9 @@ extension CanvasView {
 
   /// A selected Text's or Box's frame (styles.css .card.text.sel): a 1.5 point line of the accent, 2 out from a Text
   /// (3 from a Box), round as the card's corners
-  private func outline(_ r: CGRect, box: Bool, tilt: CGFloat, zoom z: CGFloat, into parent: CALayer) {
+  private func outline(_ r: CGRect, box: Bool, tilt: CGFloat, zoom z: CGFloat) -> CALayer {
     let gap: CGFloat = box ? 3 : 2
-    let w = 1.5 / z
+    let w = boardLine(1.5)
     let o = r.insetBy(dx: -gap - w / 2, dy: -gap - w / 2)
     let l = CAShapeLayer()
     l.bounds = CGRect(origin: .zero, size: o.size)
@@ -657,7 +738,8 @@ extension CanvasView {
     l.strokeColor = theme.accent
     l.lineWidth = w
     if tilt != 0 { l.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
-    parent.addSublayer(l)
+    l.name = "outline"
+    return l
   }
 
   /// A Text's or Box's handles where they are drawn (board units): a pill on each side edge for the width it wraps at,
@@ -1284,6 +1366,7 @@ extension CanvasView {
         return p
       }
     }
+    lift(m)
     // the Sections the dragged cards are in or go into grow round them as they go (springs: not without animation)
     if !m.loose.isEmpty { followDrag(m) }
     showDrop(m)
@@ -1336,6 +1419,7 @@ extension CanvasView {
   /// Section in the one its title is in (board dragGroup)
   func commitMove(_ m: Move, name: String = "Move") {
     gesture = nil
+    land()
     let followed = Set(dragShown.keys)
     clearDrop()
     guard let doc = document, let s = scene else { return }

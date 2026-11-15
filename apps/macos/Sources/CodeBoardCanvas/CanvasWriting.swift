@@ -204,6 +204,8 @@ extension CanvasView {
     }
     editingOriginal = editingOriginal ?? items[i]
     items[i] = l
+    // its selected look into the paper, in the same frame (main keeps it while the card is written in)
+    drawChrome()
   }
 
   /// Where the card is drawn while written in (its size as the editor lays it out)
@@ -460,6 +462,8 @@ extension CanvasView {
         original.box.removeAnimation(forKey: "fold")
         items[i].box.superlayer?.replaceSublayer(items[i].box, with: original.box)
         items[i] = original
+        // its selected look into the layer it is back in, in the same frame
+        drawChrome()
       }
     }
     if mine() {

@@ -194,6 +194,12 @@ public final class CanvasView: NSView {
   package var refreshing: Task<Void, Never>?
   /// Selection rings, handles: over the cards, in board units
   let chrome = CALayer()
+  /// Each selected card's look (ring and glow, seal, outline), in the card's own layer as main's .cface::before is:
+  /// it moves, scales and tilts with the card
+  var selectedLooks: [CardID: [CALayer]] = [:]
+  /// The cards a pointer drag has picked up (CanvasLift.swift), and those landing since when
+  var lifted: Set<CardID> = []
+  var landings: [CardID: CFTimeInterval] = [:]
   /// The rubber band, in the view's units
   let marquee = CAShapeLayer()
   /// The arrows' layers, as `scene.arrows`
@@ -393,7 +399,9 @@ public final class CanvasView: NSView {
     ] {
       l.anchorPoint = .zero
     }
-    for l in [sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers, freeMarks, chrome] {
+    for l in [
+      sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers, freeMarks, chrome,
+    ] {
       cardLevel.addSublayer(l)
     }
     // faded as one: cards over one another do not show through each other halfway
@@ -708,6 +716,8 @@ public final class CanvasView: NSView {
         ItemLayers(it, overview: overviews[i], shadow: it.drawing.framed ? shadow : nil)
       }
       for (i, l) in items.enumerated() { home(of: i, in: s).addSublayer(l.box) }
+      // cards let go a moment ago go on landing in their new layers
+      relanding()
       arrowGroups = s.arrows.map { a in
         let ls = CanvasView.arrowLayers(a, theme)
         for l in ls { arrows.addSublayer(l) }

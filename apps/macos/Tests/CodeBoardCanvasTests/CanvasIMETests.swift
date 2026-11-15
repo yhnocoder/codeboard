@@ -11,9 +11,9 @@ import Testing
 // answers there by setting the marked text on the client or committing it before it completes, as `Pinyin` does here.
 // The system's input sources are never touched.
 
-/// A Pinyin input method for the keys WebKit or a native field hands the input context while `on`: letters compose, Space commits the
-/// composition's characters, Esc cancels it; any other key, or any key but a letter with nothing composed, goes on as
-/// with no input method
+/// A Pinyin input method for the keys WebKit or a native field hands the input context while `on`: letters compose,
+/// Space commits the composition's characters, Esc cancels it; any other key, or any key but a letter with nothing
+/// composed, goes on as with no input method
 @MainActor enum Pinyin {
   /// The windows it takes keys in, and what is composed in each: suites run side by side, and another test's keys, in
   /// another window, are not its
