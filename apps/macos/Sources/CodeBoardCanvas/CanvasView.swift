@@ -236,7 +236,9 @@ public final class CanvasView: NSView {
   /// The hovered Text's or Box's line (drawHoverLine)
   var hoverLine: CALayer?
   var hoveredLine: Endpoint?
-  var hoveredPort: Port?
+  var hoveredPort: Port? {
+    didSet { showPortTip() }
+  }
   /// The label or title being written in place, and a written one's field until the board shows what it says
   var inPlace: InPlace?
   var closingField: NSTextField?

@@ -1037,6 +1037,7 @@ extension CanvasView {
 
   public override func mouseDown(with e: NSEvent) {
     if opening { return }
+    Tips.shared.press()
     dropPicture()
     if spacePanDown(e) { return }
     // AppKit sends a multi-click's later presses to the view its first went to: a double-click's second press over the
