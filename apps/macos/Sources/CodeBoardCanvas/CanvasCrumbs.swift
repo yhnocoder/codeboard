@@ -9,6 +9,23 @@ import CodeBoardModel
 // is never shown twice: the card's own name is hidden while its copy flies, and the current crumb until it lands.
 
 /// What the breadcrumb shows of a board this one was entered from
+/// A sub-board entered from a card here (actions/subboards.ts enterFrame): its board, the card, the camera here then;
+/// the sub-board cards gone through on the way to a card deeper down (host handlers.ts enterBoard, cardPath), and the
+/// card to bring into view there
+public struct BoardEntry: Equatable, Sendable {
+  public var board: BoardID
+  public var frame: CardID
+  public var camera: Camera
+  public var deeper: [SubHop] = []
+  public var reveal: CardID?
+}
+
+/// A sub-board card and the board it shows
+public struct SubHop: Equatable, Sendable {
+  public var frame: CardID
+  public var board: BoardID
+}
+
 public struct CrumbShown: Equatable, Sendable {
   public var board: BoardID
   /// The sub-board card it was entered by
@@ -82,7 +99,7 @@ final class CrumbsBar: NSView {
   /// A crumb clicked (its depth), or ← (nil: the parent)
   var onLeave: ((Int?) -> Void)?
   /// The canvas's way to the shell: into a sub-board's board, back to a crumb's
-  var enter: ((BoardID, CardID, Camera) -> Void)?
+  var enter: ((BoardEntry) -> Void)?
   var leave: ((Int?) -> Void)?
   /// The copies of names in flight, over the breadcrumb (.sbmorph z-index 22 over .crumbs 21)
   let flight = LayerView()
@@ -266,8 +283,8 @@ extension CanvasView {
     }
   }
 
-  /// A sub-board card's board entered from it in this tab: the board, the card, the camera here then
-  public var onEnterBoard: ((BoardID, CardID, Camera) -> Void)? {
+  /// A sub-board card's board entered from it in this tab
+  public var onEnterBoard: ((BoardEntry) -> Void)? {
     get { crumbsBar.enter }
     set { crumbsBar.enter = newValue }
   }
@@ -374,9 +391,12 @@ extension CanvasView {
 
   // MARK: In and out
 
-  /// Double-click, ⌘↵ or Open on a sub-board card (enterFrame): its board in this tab, the name flying to the breadcrumb
-  func enterSubBoard(_ id: CardID, _ target: BoardID) {
-    guard let enter = onEnterBoard else { return onOpenBoard?(target, nil) ?? () }
+  /// Double-click, ⌘↵ or Open on a sub-board card (enterFrame): its board in this tab, the name flying to the breadcrumb;
+  /// on through `deeper` and to card `reveal` there (a [[ref]] to a card in a sub-board)
+  func enterSubBoard(_ id: CardID, _ target: BoardID, deeper: [SubHop] = [], reveal: CardID? = nil) {
+    guard let enter = onEnterBoard else {
+      return onOpenBoard?(deeper.last?.board ?? target, reveal.map { .card($0) }) ?? ()
+    }
     guard crumbsBar.move == nil, let here = shown?.board else { return }
     guard case .board(let d)? = scene?.parts[id]?.drawing else { return }
     showCrumbs()
@@ -403,7 +423,7 @@ extension CanvasView {
     Task { @MainActor [weak self] in
       try? await Task.sleep(for: .seconds(enterTime * 0.6))
       guard self?.crumbsBar.move?.id == n else { return }
-      enter(target, id, back)
+      enter(BoardEntry(board: target, frame: id, camera: back, deeper: deeper, reveal: reveal))
     }
     giveUpLater(n)
   }

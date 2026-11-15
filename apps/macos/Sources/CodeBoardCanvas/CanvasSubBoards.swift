@@ -23,14 +23,39 @@ extension CanvasView {
     }
   }
 
-  /// A card of board `b` drawn in the map of a sub-board card here: that card, and the card's block in it (board
-  /// points); the first such sub-board card
-  func inSubBoard(_ b: BoardID, _ c: CardID) -> (frame: CardID, block: CGRect)? {
-    for it in scene?.items ?? [] {
-      guard case .board(let d) = it.drawing, d.board == b, let map = d.map, case .card(let id)? = it.owner,
-        let r = Drawing.block(c, in: map, it.rect)
-      else { continue }
-      return (id, r)
+  /// The way down to board `b` through sub-board cards, this board's first, nine deep at most (core subboard.ts
+  /// cardPath): each card and the board it shows
+  func subPath(to b: BoardID) -> [SubHop]? {
+    guard let (here, vault) = shown, let scene else { return nil }
+    let tree = try? vault.tree()
+    var seen: Set<BoardID> = [here.id]
+    var level: [[SubHop]] = []
+    for it in scene.items {
+      guard case .card(let id)? = it.owner, let t = subBoardTarget(id), !seen.contains(t) else { continue }
+      seen.insert(t)
+      level.append([SubHop(frame: id, board: t)])
+    }
+    for _ in 0..<9 where !level.isEmpty {
+      if let p = level.first(where: { $0.last?.board == b }) { return p }
+      var next: [[SubHop]] = []
+      for path in level {
+        guard let meta = tree?.allBoards.first(where: { $0.id == path.last?.board }),
+          let board = try? vault.board(at: meta.path)
+        else { continue }
+        let package = vault.url(of: meta.path)
+        for c in board.cards + board.autoCards.map(\.card) {
+          guard case .board(let sub)? = Scene.content(of: c, package: package, vault: vault)?.0.body else { continue }
+          let t: BoardID? =
+            switch sub.target {
+            case .board(let x): x
+            case .folder(let f): tree?.folder(at: meta.folder.isEmpty ? f : "\(meta.folder)/\(f)")?.folderBoard?.id
+            }
+          guard let t, !seen.contains(t) else { continue }
+          seen.insert(t)
+          next.append(path + [SubHop(frame: c.id, board: t)])
+        }
+      }
+      level = next
     }
     return nil
   }

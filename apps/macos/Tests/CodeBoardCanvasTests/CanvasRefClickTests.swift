@@ -198,9 +198,9 @@ extension CanvasWritingTests {
       #expect(opened?.0 == BoardID(rawValue: "mem") && opened?.1 == .card(cid("m9")))
     }
 
-    /// A card on a board a sub-board card here shows is on this board for the rule: near, its block in the map is gone
-    /// to and flashed, the sub-board card selected; far, previewed
-    @Test func aCardInASubBoardShownHereIsGoneToWhenNearAndPreviewedWhenFar() async throws {
+    /// A card on a board a sub-board card here shows: the sub-board is entered from that card, to be brought to the
+    /// card there, near or far (actions/subboards.ts openCardRef: enterFrame with reveal)
+    @Test func aCardInASubBoardShownHereIsGoneToIntoTheSubBoard() async throws {
       let root = FileManager.default.temporaryDirectory.appending(path: "canvas-refs-\(UUID().uuidString)")
       try writeOtherBoard(root)
       var b = refBoard()
@@ -213,18 +213,15 @@ extension CanvasWritingTests {
       defer { r.close() }
       var opened: BoardID?
       r.canvas.onOpenBoard = { b, _ in opened = b }
+      var entered: [BoardEntry] = []
+      r.canvas.onEnterBoard = { entered.append($0) }
       let other = try #require(await r.refBox("Memory Model"))
+      let cam = r.canvas.currentCamera
       r.click(CGPoint(x: other.midX, y: other.midY))
-      await r.until("gone to") { r.doc.selection == [.card(cid("sb"))] }
-      #expect(r.canvas.flashed == cid("sb") && r.canvas.refPeek == nil && opened == nil)
-      let ring = try #require(r.canvas.flashRing?.0)
-      #expect(ring.frame.width < 400 && ring.frame.minX > 500 - 20, "the block's ring, inside the card")
-      // far away now: previewed
-      r.doc.edit("Move") { $0.move([.card(cid("sb"))], dx: 9000, dy: 9000) }
-      await r.until("moved") { r.canvas.scene?.placed[cid("sb")]?.rect.minX == 9500 }
-      r.click(CGPoint(x: other.midX, y: other.midY))
-      await r.until("the preview drawn") { r.canvas.refPeek?.ready == true }
-      #expect(r.canvas.refPeek?.board == BoardID(rawValue: "mem") && opened == nil)
+      await r.until("entered") { !entered.isEmpty }
+      #expect(
+        entered == [BoardEntry(board: BoardID(rawValue: "mem"), frame: cid("sb"), camera: cam, reveal: cid("m9"))])
+      #expect(r.canvas.refPeek == nil && opened == nil)
     }
 
     @Test func aSectionIsFramedAndSelected() async throws {
