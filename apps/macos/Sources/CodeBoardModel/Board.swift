@@ -2,7 +2,7 @@
 // A board's title is not in here: it is the package's folder name.
 
 public struct Board: Equatable, Sendable {
-  public static let version = 2
+  public static let version = 3
 
   public var id: BoardID
   /// On the canvas, in stacking order, the last one on top

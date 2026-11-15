@@ -113,7 +113,6 @@ jobs:
       # tracked file gets a time made from its content instead, the same on every run until the file changes
       - name: Give the sources the same times on every checkout
         run: |
-          defaults write com.apple.dt.XCBuild IgnoreFileSystemDeviceInodeChanges -bool YES
           git ls-files -s -z . | node -e '
             const fs = require("node:fs");
             for (const entry of fs.readFileSync(0, "utf8").split("\0").filter(Boolean)) {
