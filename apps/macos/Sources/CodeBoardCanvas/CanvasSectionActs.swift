@@ -36,7 +36,8 @@ extension CanvasView {
   /// Each control's place on the board
   func actsLayout(_ id: SectionID) -> [(SectionAct, CGRect)] {
     guard let s = document?.board.section(id), let r = sectionTitle(id) else { return [] }
-    var out: [(SectionAct, CGRect)] = [(.grip, CGRect(x: r.minX - 12, y: r.minY, width: 12, height: r.height))]
+    // the grip left of the title as main's .dots (right: 100%, about 7 wide): left of it is the canvas
+    var out: [(SectionAct, CGRect)] = [(.grip, CGRect(x: r.minX - 6.5, y: r.minY, width: 6.5, height: r.height))]
     if s.locked {
       let x = r.minX + (theme.frame == .tray ? 6 : 0)
       out.append((.unlock, CGRect(x: x, y: r.midY - 8, width: 16, height: 16)))

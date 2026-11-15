@@ -430,6 +430,13 @@ extension CanvasView {
   func hitSectionTitle(_ p: CGPoint) -> SectionID? {
     guard let s = scene else { return nil }
     if let (id, a) = sectionAct(at: p) ?? fadedSectionAct(at: p), a == .grip { return id }
+    // the whole strip of the Section whose controls show, but its buttons (main's .slabel: the title, the gaps between
+    // the chevron and the buttons and between them)
+    if let id = actsSection, let r = sectionTitle(id), sectionAct(at: p) == nil,
+      actsLayout(id).map(\.1).reduce(r, { $0.union($1) }).contains(p)
+    {
+      return id
+    }
     for it in s.items[..<s.cardsFrom].reversed() {
       if case .sectionTitle(let id)? = it.owner, it.rect.insetBy(dx: -4, dy: -4).contains(p) { return id }
     }
