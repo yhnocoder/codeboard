@@ -35,6 +35,7 @@ import { classifyPaste, guessLang, pythonDialect } from "../../../../packages/co
 import { cleanImage, cleanSvg, svgDataUrl } from "../../../../packages/board/src/md/images";
 import { imageScale } from "../../../../packages/core/src/image";
 import { NEW_CARD_W } from "../../../../packages/core/src/layout";
+import { langInfo } from "../../../../packages/analysis/src/langs";
 import { pop } from "./pop";
 import { openRefAt, watchRefs } from "./refclick";
 import { type QData, qlist } from "./qlist";
@@ -945,6 +946,8 @@ const edit = {
       highlight: handler ? (t) => handler.postMessage({ text: t, lang }).then(afterCaret, () => null) : undefined,
       stopPointerDown: true,
       find: true,
+      // ⌘/ (FreeEdit.tsx)
+      comment: (l) => langInfo(l)?.comment,
       classes: { menu: "ctx", bar: "pill", button: "tbtn" },
       // Esc, ⌘↵ (FreeEdit onExit)
       onExit: () => {

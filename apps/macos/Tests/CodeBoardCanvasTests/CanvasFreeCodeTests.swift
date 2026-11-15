@@ -292,6 +292,33 @@ private func freeBoard() -> Board {
     #expect(lines.last == "    return run(ids)你", "\(lines)")
   }
 
+  /// ⌘/ comments the caret's line out with its language's line comment (FreeEdit.tsx: langInfo's), not always "//"
+  @Test func commandSlashCommentsTheLineOutInItsLanguage() async throws {
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let card = r.rect("f")
+    let code = try #require(c.scene?.placed[cid("f")]?.code)
+    let row = try #require(code.layout.row(segment: 0, line: 3))
+    r.doubleClick(CGPoint(x: card.maxX - 10, y: card.minY + code.top + row.y + row.height / 2))
+    await r.editorReady()
+    await r.until("the editor takes keys") { c.noteEditor.view.held == nil }
+    for t in [NSEvent.EventType.keyDown, .keyUp] {
+      r.window.sendEvent(
+        NSEvent.keyEvent(
+          with: t, location: .zero, modifierFlags: .command, timestamp: ProcessInfo.processInfo.systemUptime,
+          windowNumber: r.window.windowNumber, context: nil, characters: "/", charactersIgnoringModifiers: "/",
+          isARepeat: false, keyCode: 44)!)
+    }
+    await r.until("commented") {
+      (try? await c.noteEditor.view.callAsyncJavaScript(
+        "return [...document.querySelectorAll('.cm-line')].at(-1)?.textContent ?? ''", contentWorld: .page) as? String)?
+        .hasPrefix("    return") == false
+    }
+    await c.endEditing()
+    #expect(r.doc.board.segment(cid("f"), s1)?.lines.last == "    # return run(ids)")
+  }
+
   @Test func keysTypedAtOnceAfterTheDoubleClickAreAllWritten() async throws {
     let r = try await Rig(freeBoard(), zoom: 1)
     defer { r.close() }
