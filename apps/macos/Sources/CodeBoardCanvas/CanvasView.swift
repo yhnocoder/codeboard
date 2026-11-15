@@ -285,6 +285,14 @@ public final class CanvasView: NSView {
   package var openURL: (URL) -> Void = { NSWorkspace.shared.open($0) }
   /// Where the pointer is in the window (tests give their own: never the person's pointer); nil: the window's
   package var pointerInWindow: CGPoint?
+  /// How an image card's picture at a web address is read (tests give their own: never the network), and the folder the
+  /// pictures read are kept in, each once
+  package var fetchPicture: @Sendable (URL) async -> Data? = { try? await URLSession.shared.data(from: $0).0 }
+  package var pictureCache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+    .appending(path: "CodeBoard/Pictures")
+  /// The pictures at web addresses read so far, by address: their files; and the addresses asked for
+  var remotePictures: [String: URL] = [:]
+  var remoteAsked: Set<String> = []
   /// The pages being read now, by card ("card/row" for a list's row), and their tasks
   package var webFetching: Set<String> = []
   package var webTasks: [String: Task<Void, Never>] = [:]
@@ -598,6 +606,10 @@ public final class CanvasView: NSView {
     shown = (board, vault)
     install(scene, overviews: overviews, shadow: shadow, theme: theme, keepCamera: keepCamera)
     if keepCamera { showCrumbs() } else { boardArrived() }
+    // its pictures at web addresses: read now, or already kept from before (then drawn at once)
+    let kept = remotePictures.count
+    fetchPictures(b)
+    if remotePictures.count > kept { refresh() }
   }
 
   /// The sizes the Note renderer gives the Notes without a stored height: from what it kept, else measured in the web

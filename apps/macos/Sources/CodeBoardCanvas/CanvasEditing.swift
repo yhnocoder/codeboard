@@ -156,6 +156,8 @@ extension CanvasView {
     let view = camera.visible(bounds.size)
     let highlighter = CanvasView.highlighter
     let fetching = Set(webFetching.filter { !$0.contains("/") }.map(CardID.init(rawValue:)))
+    fetchPictures(board)
+    let remote = remotePictures
     refreshing = Task {
       let r = await Task.detached(priority: .userInitiated) {
         let package = vault.url(of: vb.path)
@@ -185,7 +187,7 @@ extension CanvasView {
         inline.merge(await CanvasView.measureInline(inlineTodo, theme: theme, notes: notes)) { a, _ in a }
         let s = Scene(
           board, package: package, vault: vault, theme: theme, highlighter: highlighter ?? Highlighter(), sizes: sizes,
-          inline: inline, reusing: old, vaultSeen: seen, fetching: fetching)
+          inline: inline, reusing: old, vaultSeen: seen, fetching: fetching, remote: remote)
         var before: [Scene.Owner: Scene.Item] = [:]
         for it in old.items { if let o = it.owner { before[o] = it } }
         var fresh: [Int: Fresh] = [:]

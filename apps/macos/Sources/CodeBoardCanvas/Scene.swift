@@ -91,6 +91,8 @@ struct Scene: Sendable {
   var notes: [Sidenote] = []
   /// The Web cards and Link Lists whose pages are being read now (Fetching preview…)
   var fetching: Set<CardID> = []
+  /// The pictures at web addresses read so far: their files
+  var remote: [String: URL] = [:]
 
   /// A card's drawing and what it was made from: the next scene reuses it while these are the same
   struct Part: Sendable {
@@ -231,10 +233,11 @@ struct Scene: Sendable {
   init(
     _ board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter,
     sizes: [CardID: NoteMetrics] = [:], inline: [SidenoteID: NoteMetrics] = [:],
-    reusing previous: Scene? = nil, vaultSeen: Int = 0, fetching: Set<CardID> = []
+    reusing previous: Scene? = nil, vaultSeen: Int = 0, fetching: Set<CardID> = [], remote: [String: URL] = [:]
   ) {
     self.vaultSeen = vaultSeen
     self.fetching = fetching
+    self.remote = remote
     // what a folded Section hides: the cards and Sections inside it (the outermost folded one around each)
     let byID = Dictionary(board.sections.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
     func foldedAround(_ id: SectionID?) -> SectionID? {
@@ -306,7 +309,8 @@ struct Scene: Sendable {
         p.always == always,
         p.alwaysText == alwaysText,
         !showsOthers || previous?.vaultSeen == vaultSeen,
-        previous?.fetching.contains(c.id) == fetching.contains(c.id)
+        previous?.fetching.contains(c.id) == fetching.contains(c.id),
+        Scene.remoteAddress(content).map({ previous?.remote[$0] == remote[$0] }) ?? true
       {
         part = p
         reused.insert(c.id)
@@ -314,7 +318,7 @@ struct Scene: Sendable {
         guard
           let (drawing, size, code) = Scene.card(
             c, content, board: board, folder: folder, measured: sizes[c.id]?.size, theme: t, highlighter: highlighter,
-            refs: refs, fetching: fetching.contains(c.id), always: always)
+            refs: refs, fetching: fetching.contains(c.id), always: always, remote: remote)
         else { continue }
         part = Part(
           content: content, width: c.width, height: c.height, tilted: c.tilted, locked: c.locked == true,
@@ -574,7 +578,8 @@ struct Scene: Sendable {
 
   private static func card(
     _ c: Card, _ content: CardContent, board: Board, folder: URL, measured: CGSize?, theme t: Theme,
-    highlighter: Highlighter, refs: RefResolver, fetching: Bool = false, always: [[CodeLayout.Always]] = []
+    highlighter: Highlighter, refs: RefResolver, fetching: Bool = false, always: [[CodeLayout.Always]] = [],
+    remote: [String: URL] = [:]
   ) -> (
     Drawing, CGSize, (layout: CodeLayout, top: CGFloat, segments: [SegmentID])?
   )? {
@@ -633,7 +638,10 @@ struct Scene: Sendable {
       return (.note(note), size, nil)
     case .image(let img):
       var url: URL?
-      if case .file(let f) = img.source { url = images.appending(path: f) }
+      switch img.source {
+      case .file(let f): url = images.appending(path: f)
+      case .url(let s): url = remote[s]
+      }
       let size = url.flatMap(DecodeCache.pixelSize)
       let h = c.height ?? size.map { c.width * $0.height / max($0.width, 1) } ?? c.width * 0.6
       let pic = Drawing.Picture(
@@ -690,6 +698,11 @@ struct Scene: Sendable {
       let h = LinksLayout.of(d, width: c.width, t).height
       return (.links(d), CGSize(width: c.width, height: c.height ?? h), nil)
     }
+  }
+
+  /// An image card's picture's web address
+  static func remoteAddress(_ content: CardContent) -> String? {
+    if case .image(let img) = content.body, case .url(let s) = img.source { s } else { nil }
   }
 
   /// A page as its card draws it: the title and description written over the page's, its pictures where they are
