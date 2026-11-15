@@ -102,11 +102,19 @@ extension CanvasView {
     }
     let (fetch, folder) = (fetchPicture, pictureCache)
     Task { [weak self] in
-      guard let data = await fetch(u),
-        (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil,
-        (try? data.write(to: file, options: .atomic)) != nil, let self
-      else { return }
-      remotePictures[s] = file
+      let data = await fetch(u)
+      let kept =
+        data != nil && (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil
+        && (try? data!.write(to: file, options: .atomic)) != nil
+      guard let self else { return }
+      if kept {
+        remotePictures[s] = file
+      } else if let native = display as? NativeNotes {
+        // shown as nothing while it was read, as a broken image from now on
+        native.pictureFailed(s)
+      } else {
+        return
+      }
       // the Notes showing it are measured again: they grow by the picture
       measured = measured.filter { !Scene.remoteImages($0.value.note.markdown).contains(s) }
       refresh()

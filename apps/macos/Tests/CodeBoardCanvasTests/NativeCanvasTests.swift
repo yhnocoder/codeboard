@@ -72,22 +72,36 @@ private func writingBoard() -> Board {
     }
   }
 
-  @Test func aNotesPictureAtAWebAddressIsReadOnceAndTheNoteGrowsByIt() async throws {
-    let a = "https://example.com/n.png"
+  enum Served: CaseIterable { case png, svg, nothing }
+
+  /// While it is read nothing shows for it and it takes no room, as in a browser (its line is the paragraph's own,
+  /// 21.6 tall); then a PNG or an SVG (known by how it starts: the file it is kept in has no name of its own) as wide as
+  /// the body (292 of its 400 pixels: a page shows a pixel as a point) and as tall as its proportions make it, or, when
+  /// it cannot be read, the broken-image line (25.25 tall); each with the image's 4-point margins above and below
+  @Test(arguments: Served.allCases)
+  func aNotesPictureAtAWebAddressIsReadOnceAndTheNoteGrowsByIt(_ served: Served) async throws {
+    let a = "https://example.com/n"
     let board = Board(
       id: BoardID(rawValue: "remote-note"),
       cards: [card("n", x: 100, y: 100, width: 320, .note(Note(text: "# Picture\n\n![p](\(a))\n\nAfter it.")))])
-    let pictures = HeldPictures(CanvasPasteTests.png(400, 200))
+    let svg =
+      #"<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect width="400" height="200"/></svg>"#
+    let data: Data? =
+      switch served {
+      case .png: CanvasPasteTests.png(400, 200)
+      case .svg: Data(svg.utf8)
+      case .nothing: nil
+      }
+    let pictures = HeldPictures(data)
     let r = try await Rig(board, zoom: 1, pictures: { await pictures.load($0) }, native: true)
     defer { r.close() }
     await r.until("asked for at once") { pictures.asked.count == 1 }
     let without = r.rect("n").height
     pictures.letGo()
-    await r.until("read, measured again and drawn taller") { r.rect("n").height > without + 100 }
+    let grows = served == .nothing ? 25.25 + 8 - 21.6 : 146 + 8 - 21.6
+    await r.until("read or failed, measured again and drawn taller") { r.rect("n").height > without + grows / 2 }
     #expect(pictures.asked.map(\.absoluteString) == [a], "once")
-    // until it is read it is drawn as a picture that does not load (25.25 tall); then as wide as the body (292 of its
-    // 400 pixels: a page shows a pixel as a point) and as tall as its proportions make it
-    #expect(abs(r.rect("n").height - without - (146 - 25.25)) <= 1, "\(without) → \(r.rect("n").height)")
+    #expect(abs(r.rect("n").height - without - grows) <= 1, "\(without) → \(r.rect("n").height)")
   }
 
   /// The vertical shift (device pixels, -6…6) at which the rows of ink of `b` best match those of `a`

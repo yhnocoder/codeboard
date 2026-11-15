@@ -542,8 +542,9 @@ struct LayoutBuilder {
         continue
       }
       // the marker sits outside the item's box, in the faint ink: a number right-aligned against the item with a
-      // space after it, a bullet as Chrome draws one (a disc, then a ring, then a square, 0.3em wide, its centre 1em
-      // before the item, at half the x-height)
+      // space after it, a bullet as Chrome draws one (a disc, then a ring, then a square): sized and placed from the
+      // font's ascent in whole pixels (LayoutNG's ListMarker: width (a·2/3 + 1)/2, its left a·2/3 + 7 before the
+      // item, its top 3(a − a·2/3)/2 below the ascent's)
       if case .ordered(let start, _) = list.marker {
         var ms = style
         ms.color = theme.colors.ink3
@@ -565,9 +566,11 @@ struct LayoutBuilder {
         let font = FontBook.font(style.families, size: style.size, weight: 400)
         let base =
           y + FontBook.baseline(font, lineHeight: CGFloat(m.lineHeight) * style.size, floored: m.flooredLeading)
-        let dia = style.size * 0.3
-        let c = CGPoint(x: cx - style.size, y: base - CTFontGetXHeight(font) / 2)
-        let r = CGRect(x: c.x - dia / 2, y: c.y - dia / 2, width: dia, height: dia)
+        let a = Int(FontBook.ascentDescent(font).0)
+        let dia = CGFloat((a * 2 / 3 + 1) / 2)
+        let r = CGRect(
+          x: cx - CGFloat(a * 2 / 3 + 7), y: base - CGFloat(a) + CGFloat(3 * (a - a * 2 / 3) / 2), width: dia,
+          height: dia)
         items.append(.bullet(r, depth % 3, theme.colors.ink3))
       }
       var end = y

@@ -141,7 +141,26 @@ package final class NativeNotes: NoteDisplay {
 
   /// Its pictures at web addresses as read so far: a Note measured without one is measured again once it is read
   private func remoteStamps(_ markdown: String) -> [String] {
-    Scene.remoteImages(markdown).map { MeasuredSizes.stamp(CanvasView.remoteFile($0, in: pictures)) }
+    remoteState(markdown).map { "\(MeasuredSizes.stamp(CanvasView.remoteFile($0.0, in: pictures))) \($0.1)" }
+  }
+
+  /// A picture at a web address: being read (nothing shows for it yet, as in a browser), read (its file is in the
+  /// canvas's picture cache), or failed (the broken-image line)
+  enum Remote: Hashable { case loading, read, failed }
+
+  /// The addresses the canvas could not read a picture from, in this run
+  private let failed = Mutex<Set<String>>([])
+
+  /// The canvas could not read this address: its Notes show it as a broken image from their next layout
+  func pictureFailed(_ address: String) { failed.withLock { _ = $0.insert(address) } }
+
+  private func remoteState(_ markdown: String) -> [(String, Remote)] {
+    let gone = failed.withLock { $0 }
+    return Scene.remoteImages(markdown).map {
+      let f = CanvasView.remoteFile($0, in: pictures)
+      if FileManager.default.fileExists(atPath: f.path(percentEncoded: false)) { return ($0, .read) }
+      return ($0, gone.contains($0) ? .failed : .loading)
+    }
   }
 
   package func firstGlyphs(of notes: [NoteSizeRequest]) async throws -> [(size: CGSize, first: CGPoint?)?] {
@@ -224,12 +243,11 @@ package final class NativeNotes: NoteDisplay {
     _ note: NoteBody, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef], hideHead: Bool
   ) throws -> Laid {
     try MarkdownAssets.fonts.get()
-    // its pictures at web addresses read by now: laid out again once one arrives
-    let read = Scene.remoteImages(note.markdown).map {
-      FileManager.default.fileExists(atPath: CanvasView.remoteFile($0, in: pictures).path(percentEncoded: false))
-    }
+    // its pictures at web addresses: laid out again once one is read or fails
+    let remote = remoteState(note.markdown)
     let key = Key(
-      note: note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead, read: read)
+      note: note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead,
+      read: remote.map(\.1))
     if let hit = layouts.take(key) { return hit }
     var made = false
     defer { if !made { layouts.drop(key) } }
@@ -253,7 +271,9 @@ package final class NativeNotes: NoteDisplay {
     let info = note.layout.map { l in
       MDLayoutInfo(tables: l.tables?.map { $0.map { MDLayoutInfo.Table(cols: $0.cols, rows: $0.rows) } }, wrap: l.wrap)
     }
-    let resources = Resources(folder: folder, pictures: pictures, refs: refs, math: math, dark: dark)
+    let loading = Set(remote.filter { $0.1 == .loading }.map(\.0))
+    let resources = Resources(
+      folder: folder, pictures: pictures, refs: refs, math: math, dark: dark, loading: loading)
     var inner = max(1, CGFloat(width) - card.padding[1] - card.padding[3])
     // what the card's content measures across: its width, or the text's own when that sets the card's
     var across: CGFloat?
@@ -380,7 +400,7 @@ package final class NativeNotes: NoteDisplay {
   ) -> CGImage? {
     guard let url = Resources.file(slot.src, in: folder, pictures: pictures) else { return nil }
     let width = slot.pixelWidth(at: scale)
-    if url.pathExtension.lowercased() == "svg" {
+    if Resources.svg(url) {
       guard let d = try? Data(contentsOf: url) else { return nil }
       return MarkdownSVG.image(d, pixelWidth: width, dark: dark)
     }
@@ -395,7 +415,11 @@ package final class NativeNotes: NoteDisplay {
     let refs: [NoteRef]
     let math: MathTypesetter?
     let dark: Bool
+    /// its pictures at web addresses still being read
+    var loading: Set<String> = []
     var diagrams: DiagramRenderer? { math as? DiagramRenderer }
+
+    func imageLoading(_ src: String) -> Bool { loading.contains(src) }
 
     /// The file an address names: one in the folder's images (the page resolves `images/…` there, md.setAssetBase), or
     /// the picture read from a web address once the canvas has it (the browser reads one; before that it shows nothing)
@@ -408,9 +432,19 @@ package final class NativeNotes: NoteDisplay {
       return folder.appending(path: src)
     }
 
+    /// An SVG: by its name, or a picture read from a web address (kept without one) by how it starts, as a browser
+    /// goes by what it gets
+    static func svg(_ url: URL) -> Bool {
+      if url.pathExtension.lowercased() == "svg" { return true }
+      guard url.pathExtension.isEmpty, let h = try? FileHandle(forReadingFrom: url) else { return false }
+      defer { try? h.close() }
+      let head = String(decoding: (try? h.read(upToCount: 512)) ?? Data(), as: UTF8.self)
+      return head.contains("<svg")
+    }
+
     func imageSize(_ src: String) -> CGSize? {
       guard let url = Self.file(src, in: folder, pictures: pictures) else { return nil }
-      if url.pathExtension.lowercased() == "svg" {
+      if Self.svg(url) {
         return (try? Data(contentsOf: url)).flatMap(MarkdownSVG.size)
       }
       return DecodeCache.pixelSize(url)
@@ -468,7 +502,7 @@ package final class NativeNotes: NoteDisplay {
     let dark: Bool
     let refs: [NoteRef]
     let hideHead: Bool
-    let read: [Bool]
+    let read: [Remote]
 
     func hash(into h: inout Hasher) {
       h.combine(note.markdown)

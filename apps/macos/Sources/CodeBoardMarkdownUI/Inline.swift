@@ -552,8 +552,11 @@ struct InlineBuilder {
     imageCounts[img.src] = nth + 1
     let m = theme.metrics
     let natural = img.broken ? nil : resources.imageSize(img.src)
+    let loading = natural == nil && !img.broken && resources.imageLoading(img.src)
     let figure: FigureBox
-    if let n = natural, n.width > 0, n.height > 0 {
+    if loading {
+      figure = FigureBox(image: .zero, caption: nil, captionX: 0, captionGap: (0, 0))
+    } else if let n = natural, n.width > 0, n.height > 0 {
       // a CSS px is a point: the image at its own size, at most the body's width; {width=N%} a share of the body
       let w = min(img.width.map { CGFloat($0) * bodyWidth } ?? n.width, bodyWidth)
       // not rounded: the page keeps a fraction of a pixel (layout units of 1/64)
@@ -608,7 +611,8 @@ struct InlineBuilder {
     let mid = CTFontGetXHeight(font) / 2
     let half = figure.height / 2 + margin
     let a = AtomBox(
-      .image(src: img.src, nth: nth, figure: figure, broken: natural == nil, frame: img.frame, loops: img.loops),
+      .image(
+        src: img.src, nth: nth, figure: figure, broken: natural == nil && !loading, frame: img.frame, loops: img.loops),
       width: figure.width, ascent: half + mid, descent: max(0, half - mid))
     var attrs = attributes(style)
     attrs[NSAttributedString.Key(kCTRunDelegateAttributeName as String)] = Self.delegate(a)
