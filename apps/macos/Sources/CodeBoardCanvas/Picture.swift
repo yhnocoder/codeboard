@@ -107,12 +107,13 @@ package enum Picture {
   /// The same with what the Note renderer draws (Notes, Texts, Boxes, SVG pictures) over their paper, as the canvas shows
   /// them at rest: measured, then each drawn at `scale`. Also returns where each card is
   package static func draw(
-    board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter, notes: NoteRenderer,
+    board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter, display: any NoteDisplay,
     rect: CGRect, scale: CGFloat, backdrop: Bool
   ) async -> (image: CGImage?, cards: [String: CGRect]) {
-    let sizes = await CanvasView.measure(Scene.measures(board, package: package, vault: vault), theme: t, notes: notes)
+    let sizes = await CanvasView.measure(
+      Scene.measures(board, package: package, vault: vault), theme: t, display: display)
     let inline = await CanvasView.measureInline(
-      Scene.inlineMeasures(board, package: package, vault: vault, theme: t), theme: t, notes: notes)
+      Scene.inlineMeasures(board, package: package, vault: vault, theme: t), theme: t, display: display)
     let scene = Scene(
       board, package: package, vault: vault, theme: t, highlighter: highlighter, sizes: sizes, inline: inline)
     var pictures: [Int: IOSurface] = [:]
@@ -128,7 +129,7 @@ package enum Picture {
       case .label: break
       }
       guard it.drawing.byRenderer else { continue }
-      pictures[i] = await CanvasView.picture(it, scale: scale, theme: t, notes: notes, priority: 1)?.surface
+      pictures[i] = await CanvasView.picture(it, scale: scale, theme: t, display: display, priority: 1)?.surface
     }
     return (draw(scene, theme: t, rect: rect, scale: scale, backdrop: backdrop, pictures: pictures), cards)
   }

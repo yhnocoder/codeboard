@@ -384,10 +384,10 @@ extension CanvasView {
     var other = t
     other.look = look
     let width = t.wrap ? card.width + (look == .box ? 20 : -20) : card.width
-    func req(_ t: TextCard, _ w: Double) -> NoteRenderer.SizeRequest {
+    func req(_ t: TextCard, _ w: Double) -> NoteSizeRequest {
       .init(note: .text(t), width: w, folder: n.folder, look: theme.id.rawValue, dark: theme.dark, refs: n.refs)
     }
-    let m = try? await notes.firstGlyphs(of: [req(t, card.width), req(other, width)])
+    let m = try? await display.firstGlyphs(of: [req(t, card.width), req(other, width)])
     var at = CGPoint(x: card.x, y: card.y)
     if let a = m?[0]?.first, let b = m?[1]?.first {
       at = CGPoint(x: card.x + a.x - b.x, y: card.y + a.y - b.y)

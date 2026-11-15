@@ -40,7 +40,7 @@ struct BlockLexer {
     }
     while !src.isEmpty {
       // extensions run first, the last registered first (marked unshifts them)
-      if let t = tableExtension(src) ?? blockMath(src) ?? taskList(src) {
+      if let t = tableExtension(src) ?? blockMath(src) ?? taskList(src) ?? footnoteDef(src) {
         take(t)
         tokens.append(t)
         continue
@@ -515,7 +515,7 @@ struct BlockLexer {
   // MARK: the package's block extensions
 
   /// Where the next block extension could start in src (marked's startBlock): -1 functions and the unsupported
-  /// extensions' (footnotes, details, toc) are left out; they never change where a paragraph ends in the result
+  /// extensions' (details, toc) are left out; they never change where a paragraph ends in the result
   static func extensionStart(_ src: Mapped) -> Int? {
     var best: Int?
     let s = src.ns
@@ -527,6 +527,8 @@ struct BlockLexer {
     if let m = Ext.taskStart.exec(s, from: 0, to: blank) { best = m.range.location }
     // blockMath: a $$ line after a line break
     if let m = Ext.blockMathStart.exec(s, from: 0, to: blank) { best = min(best ?? .max, m.range.location + 1) }
+    // footnoteDef: a [^x]: line after a line break
+    if let m = Ext.footnoteDefStart.exec(s, from: 0, to: blank) { best = min(best ?? .max, m.range.location + 1) }
     // TipTap's table: the first line holds a | and the second is a delimiter row
     let lines = src.lines(limit: 2)
     if lines.count >= 2, Ext.tableSeparator.test(lines[1].ns), lines[1].firstIndex(of: "|") != nil,
@@ -535,6 +537,19 @@ struct BlockLexer {
       best = 0
     }
     return best
+  }
+
+  /// A footnote definition and the lines indented under it: one paragraph of its source as written, blank and indented
+  /// lines kept (the page reads them as the footnote's text, and draws a definition nothing refers to as it is written;
+  /// footnotes are not drawn as footnotes, guideline). Not code, however far the lines under it are indented
+  private func footnoteDef(_ src: Mapped) -> Token? {
+    guard let m = Ext.footnoteDef.exec(src.ns) else { return nil }
+    let raw = src.prefix(m.range.length)
+    var text = raw
+    while text.hasSuffix("\n") { text = text.prefix(text.count - 1) }
+    let t = Token("paragraph", raw: raw, text: text)
+    t.inline = true
+    return t
   }
 
   private func blockMath(_ src: Mapped) -> Token? {

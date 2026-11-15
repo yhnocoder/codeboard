@@ -13,8 +13,8 @@ import Testing
   var asked: [URL] = []
   private var held = true
   private var waiting: [CheckedContinuation<Void, Never>] = []
-  let data: Data
-  init(_ data: Data) { self.data = data }
+  let data: Data?
+  init(_ data: Data?) { self.data = data }
 
   func load(_ u: URL) async -> Data? {
     asked.append(u)

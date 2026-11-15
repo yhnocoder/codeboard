@@ -60,6 +60,18 @@ final class SnapshotStore: Sendable {
     try put(data, as: key)
   }
 
+  /// A file's bytes as written (`writeData`), nil when there is none
+  func readData(_ key: SnapshotKey) -> Data? {
+    let url = file(key)
+    guard let data = try? Data(contentsOf: url) else { return nil }
+    let now = Date()
+    try? FileManager.default.setAttributes([.modificationDate: now], ofItemAtPath: url.path(percentEncoded: false))
+    withIndex { $0.touch(key.hex, at: now) }
+    return data
+  }
+
+  func writeData(_ data: Data, as key: SnapshotKey) throws { try put(data, as: key) }
+
   private func put(_ data: Data, as key: SnapshotKey) throws {
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     try data.write(to: file(key), options: .atomic)

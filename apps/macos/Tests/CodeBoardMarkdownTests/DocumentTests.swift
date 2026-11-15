@@ -103,6 +103,12 @@ import Testing
     #expect(d.blocks.count == 1 && d.blocks[0].inlines.isEmpty && d.blocks[0].inlineText?.string == "[^1]: 词")
     #expect(MarkdownDocument("[toc]").blocks.first?.kind == .paragraph)
     #expect(MarkdownDocument("a[^1] b").blocks.first?.inlines.isEmpty == true)
+    // the lines indented under a footnote definition are its text, as the page reads them, not code: one block of the
+    // source as written, its blank and indented lines kept
+    let source = "[^1]: 词\n\n    indented line\n    second line"
+    let f = MarkdownDocument("Before.\n\n" + source + "\n\nAfter.")
+    #expect(f.blocks.map(\.kind) == [.paragraph, .paragraph, .paragraph])
+    #expect(f.blocks[1].inlineText?.string == source)
   }
 
   @Test func atomsAndLinks() throws {

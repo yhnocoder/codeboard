@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardMarkdown
+import CodeBoardTestGuard
 
 /// What the editor tells its host
 @MainActor
@@ -59,8 +60,9 @@ extension MarkdownEditorDelegate {
 public final class MarkdownEditorView: NSView {
   public private(set) var core: EditorCore
   public weak var delegate: MarkdownEditorDelegate?
-  /// where ⌘C, ⌘X and ⌘V go (the general pasteboard; a test's own)
-  public var pasteboard = NSPasteboard.general
+  /// where ⌘C, ⌘X and ⌘V go (the general pasteboard; a test's own). Lazy: taken after init has put the test guard in,
+  /// so in a test process the general pasteboard is already the process's own
+  public lazy var pasteboard = NSPasteboard.general
   /// The selection's source exactly as copied, beside the plain text and HTML: a paste in any Note reads it back as it
   /// was (ProseMirror's own slice in the web's copies), never through the HTML, which loses == marks and code lines
   public static let sourceType = NSPasteboard.PasteboardType("com.yhnocoder.codeboard.markdown")
@@ -192,6 +194,8 @@ public final class MarkdownEditorView: NSView {
   public init(layout: BlockLayout, caret: Int? = nil) {
     core = EditorCore(layout: layout, caret: caret)
     super.init(frame: CGRect(origin: .zero, size: layout.size))
+    // in a test process: no menu, alert or panel ever comes up, nothing opens, the clipboard is the process's own
+    TestGuard.install()
     preview.isHidden = true
     addSubview(preview)
     hints.isHidden = true

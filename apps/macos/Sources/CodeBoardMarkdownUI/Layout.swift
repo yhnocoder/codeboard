@@ -220,7 +220,9 @@ struct LayoutBuilder {
   private func gapKind(_ b: MDBlock) -> GapKind {
     switch b.kind {
     case .paragraph: .p
-    case .list, .quote, .code, .mermaid, .table, .math: .block
+    case .list, .quote, .code, .table, .math: .block
+    // a drawn diagram is a div (.mmd), which takes no paragraph gap (gaps.ts); one shown as its source is a code block
+    case .mermaid: resources.diagrams == nil ? .block : .none
     default: .none
     }
   }
@@ -384,7 +386,7 @@ struct LayoutBuilder {
   ) -> TextBlock {
     let strut = FontBook.font(style.families, size: style.size, weight: style.weight, italic: style.italic)
     let lh = lineHeight * style.size
-    let strutAbove = FontBook.baseline(strut, lineHeight: lh)
+    let strutAbove = FontBook.baseline(strut, lineHeight: lh, floored: theme.metrics.flooredLeading)
     var lines: [TextBlock.Line] = []
     var top = y
     let attr = d.string
@@ -540,8 +542,9 @@ struct LayoutBuilder {
         continue
       }
       // the marker sits outside the item's box, in the faint ink: a number right-aligned against the item with a
-      // space after it, a bullet as Chrome draws one (a disc, then a ring, then a square, 0.3em wide, its centre 1em
-      // before the item, at half the x-height)
+      // space after it, a bullet as Chrome draws one (a disc, then a ring, then a square): sized and placed from the
+      // font's ascent in whole pixels (LayoutNG's ListMarker: width (a·2/3 + 1)/2, its left a·2/3 + 7 before the
+      // item, its top 3(a − a·2/3)/2 below the ascent's)
       if case .ordered(let start, _) = list.marker {
         var ms = style
         ms.color = theme.colors.ink3
@@ -561,10 +564,13 @@ struct LayoutBuilder {
             TextBlock(display: d, lines: lines, frame: CGRect(x: cx - mw, y: y, width: mw, height: mt.frame.height))))
       } else {
         let font = FontBook.font(style.families, size: style.size, weight: 400)
-        let base = y + FontBook.baseline(font, lineHeight: CGFloat(m.lineHeight) * style.size)
-        let dia = style.size * 0.3
-        let c = CGPoint(x: cx - style.size, y: base - CTFontGetXHeight(font) / 2)
-        let r = CGRect(x: c.x - dia / 2, y: c.y - dia / 2, width: dia, height: dia)
+        let base =
+          y + FontBook.baseline(font, lineHeight: CGFloat(m.lineHeight) * style.size, floored: m.flooredLeading)
+        let a = Int(FontBook.ascentDescent(font).0)
+        let dia = CGFloat((a * 2 / 3 + 1) / 2)
+        let r = CGRect(
+          x: cx - CGFloat(a * 2 / 3 + 7), y: base - CGFloat(a) + CGFloat(3 * (a - a * 2 / 3) / 2), width: dia,
+          height: dia)
         items.append(.bullet(r, depth % 3, theme.colors.ink3))
       }
       var end = y
@@ -883,7 +889,8 @@ struct LayoutBuilder {
       end = paragraph(
         cap.text, cap.inlines, x: x, width: width, y: end, style: cs, lineHeight: CGFloat(m.captionLineHeight),
         center: true)
-      end += CGFloat(m.captionMargin[1])
+      // the caption's margin below meets the figure's own below it (.md-tfig) and they collapse into the larger
+      end += max(0, CGFloat(m.captionMargin[1] - m.tableMargin))
     }
     return end
   }

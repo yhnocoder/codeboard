@@ -83,3 +83,13 @@ body {
 :root.pal {
   --t: 1;
 }
+/* A [[reference]] sits on the line by its own text's baseline on the web board (markdown.css .md-ref: baseline-source
+   first). WebKit has no baseline-source, so an inline block that hides its overflow sits there by its bottom edge,
+   higher, and makes its line taller; with its overflow shown it takes its text's baseline, as in Chrome and as the
+   canvas draws it at rest. Workaround with a ceiling: a reference wider than its card runs out of it here instead of
+   ending in an ellipsis; it goes with this page when the native editor takes over */
+@supports not (baseline-source: first) {
+  .md-ref {
+    overflow: visible;
+  }
+}

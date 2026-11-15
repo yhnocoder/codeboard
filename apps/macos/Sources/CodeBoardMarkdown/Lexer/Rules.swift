@@ -64,6 +64,11 @@ enum Other {
 enum Ext {
   static let blockMath = JSRegex(#"^ {0,3}\$\$([^$]+?)\$\$[ \t]*(?:\n|$)"#, flags: "")
   static let blockMathStart = JSRegex(#"\n {0,3}\$\$"#, flags: "")
+  /// A footnote definition, the page's footnoteDef: [^x]: and its text, with the lines indented under it (and the
+  /// blank lines between them)
+  static let footnoteDef = JSRegex(
+    #"^\[\^([^\]\s]+)\]:[ \t]*([^\n]*(?:\n(?:(?: {2,}|\t)[^\n]*|[ \t]*(?=\n(?: {2,}|\t))))*)(?:\n+|$)"#, flags: "")
+  static let footnoteDefStart = JSRegex(#"\n\[\^[^\]\s]+\]:"#, flags: "")
   /// the line break that a blank (or whitespace-only) line follows
   static let blankLineAhead = JSRegex(#"\n[ \t]*(?:\n|$)"#, flags: "")
   static let taskStart = JSRegex(#"^\s*[-+*]\s+\[[ xX]\](?:[ \t]|$)"#, flags: "m")

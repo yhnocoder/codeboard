@@ -310,7 +310,7 @@ struct Scene: Sendable {
         p.alwaysText == alwaysText,
         !showsOthers || previous?.vaultSeen == vaultSeen,
         previous?.fetching.contains(c.id) == fetching.contains(c.id),
-        Scene.remoteAddress(content).map({ previous?.remote[$0] == remote[$0] }) ?? true
+        Scene.remoteAddresses(content).allSatisfy({ previous?.remote[$0] == remote[$0] })
       {
         part = p
         reused.insert(c.id)
@@ -707,9 +707,22 @@ struct Scene: Sendable {
     }
   }
 
-  /// An image card's picture's web address
-  static func remoteAddress(_ content: CardContent) -> String? {
-    if case .image(let img) = content.body, case .url(let s) = img.source { s } else { nil }
+  /// The web addresses of a card's pictures: an image card's, or those a Note, Text or Box shows in its Markdown
+  static func remoteAddresses(_ content: CardContent) -> [String] {
+    switch content.body {
+    case .image(let img): if case .url(let s) = img.source { [s] } else { [] }
+    case .note(let n): remoteImages(n.text)
+    case .text(let t): remoteImages(t.text)
+    default: []
+    }
+  }
+
+  /// The http(s) addresses of the images written in Markdown (![alt](address …)). A plain search, not a parse: one in a
+  /// code block is read too, and kept, but never shown
+  static func remoteImages(_ markdown: String) -> [String] {
+    // bytes: String.contains on a long Note with Chinese takes milliseconds, and every card is asked on every refresh
+    guard markdown.utf8.firstRange(of: "](http".utf8) != nil else { return [] }
+    return markdown.matches(of: /!\[[^\]\n]*\]\((https?:\/\/[^)\s]+)/).map { String($0.1) }
   }
 
   /// A page as its card draws it: the title and description written over the page's, its pictures where they are

@@ -48,7 +48,13 @@ const webRefs = refs.map((r) => ({
   ...r,
   hit: r.hit.broken
     ? r.hit
-    : { id: "", title: r.hit.title, ...(r.hit.seal && { seal: { ...r.hit.seal, color: `var(--seal-${r.hit.seal.color})` } }) },
+    : { id: "", title: r.hit.title, ...(r.hit.seal && {
+          seal: {
+            ...r.hit.seal,
+            color: `var(--seal-${r.hit.seal.color})`,
+            ...(r.hit.seal.outer && { outer: { ...r.hit.seal.outer, color: `var(--seal-${r.hit.seal.outer.color})` } }),
+          },
+        }) },
 }));
 for (const { look, dark } of looks) {
   const dir = path.join(out, `${look}${dark ? "-dark" : ""}`);

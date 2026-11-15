@@ -6,6 +6,9 @@ public protocol MarkdownResources: Sendable {
   /// An image address → its size in pixels; nil when it cannot be had (drawn as a fixed-size broken-image box). The host
   /// has these ready before laying out: this must not wait or read anything but the file's header (guideline 5.4)
   func imageSize(_ src: String) -> CGSize?
+  /// An image the host is still reading (from the web, say): nothing is drawn for it and it takes no room, as a
+  /// browser's image not loaded yet; laid out again once it is read or has failed
+  func imageLoading(_ src: String) -> Bool
   /// What a [[reference]] points at now; nil: not found
   func ref(label: String, target: String?) -> MarkdownRefHit?
   /// Code colouring: each line's tokens; nil for a language without colouring
@@ -19,6 +22,7 @@ public protocol MarkdownResources: Sendable {
 }
 
 extension MarkdownResources {
+  public func imageLoading(_ src: String) -> Bool { false }
   public var math: MathTypesetter? { nil }
   public var diagrams: DiagramRenderer? { nil }
 }
@@ -57,10 +61,21 @@ public struct MarkdownSeal: Sendable, Hashable {
   public var color: String
   /// the reference is to that place itself: only the seal is drawn
   public var alone: Bool
-  public init(text: String, color: String, alone: Bool) {
+  /// the other book it is in, drawn as the first half (markdown.css .md-seal.two): its few letters and its seal colour
+  public var outer: Outer?
+  public struct Outer: Sendable, Hashable {
+    public var text: String
+    public var color: String
+    public init(text: String, color: String) {
+      self.text = text
+      self.color = color
+    }
+  }
+  public init(text: String, color: String, alone: Bool, outer: Outer? = nil) {
     self.text = text
     self.color = color
     self.alone = alone
+    self.outer = outer
   }
 }
 

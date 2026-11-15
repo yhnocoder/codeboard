@@ -17,6 +17,13 @@ import CodeBoardModel
     var redraws = 0
     var swaps = 0
     var noteSwaps = 0
+    /// Notes asked of the display and pictures decoded while the gesture ran (the rule: none)
+    var noteRequests = 0
+    var decodes = 0
+    /// Ticks that came more than half a frame late (the main thread was busy: a frame dropped), and the longest gap
+    /// between two ticks
+    var late = 0
+    var worstGapMs = 0.0
   }
 
   struct Result: Encodable {
@@ -28,6 +35,17 @@ import CodeBoardModel
     var firstContentMs: Double?
     var allDrawnMs: Double?
     var notesSharpMs: Double?
+    /// The first frame with an item in view drawn at the display's resolution (readable), and the first with every item
+    /// in view so
+    var firstSharpMs: Double?
+    var allSharpMs: Double?
+    /// The first frame 100 ms or more after asking: items in view drawn at the display's resolution, and in view (-1:
+    /// the board is not installed yet)
+    var at100ms: [Int] = []
+    /// Frames, from the first with content until every item in view is sharp, with an item in view drawn below the
+    /// display's resolution (enlarged: soft), and the most such items in one frame
+    var softFrames = 0
+    var maxSoft = 0
     /// "first": the canvas showed nothing before (a launch); "switch": another board was shown
     var mode = ""
     /// The first frame with the board's kept picture over the view
@@ -46,11 +64,20 @@ import CodeBoardModel
     var opening = Phase()
     var pan = Phase()
     var zoom = Phase()
+    /// This process's footprint and the WebKit processes', MB, once the pan and the zoom are over and the canvas rests
+    var footprintMB = 0.0
+    var webkitMB = 0.0
+    /// At rest after opening, after the pan and after the zoom: items in view, those placed between device pixels and
+    /// those capped below the display's resolution
+    var placement: [[Int]] = []
   }
 
   let canvas: CanvasView
   private var timer: Timer?
   private var onFrame: (() -> Void)?
+  /// The time since the tick before this one
+  private var gap = 0.0
+  private var lastTick = 0.0
 
   init(canvas: CanvasView) {
     self.canvas = canvas
@@ -60,7 +87,10 @@ import CodeBoardModel
   private func startTicking() {
     timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { _ in
       MainActor.assumeIsolated {
-        self.canvas.tick(at: CACurrentMediaTime())
+        let now = CACurrentMediaTime()
+        self.gap = self.lastTick == 0 ? 0 : now - self.lastTick
+        self.lastTick = now
+        self.canvas.tick(at: now)
         self.onFrame?()
       }
     }
@@ -115,6 +145,8 @@ import CodeBoardModel
     func sample(_ p: inout Phase, opening: Bool) {
       let s = canvas.blankInView
       p.frames += 1
+      if gap > 1.5 / 60 { p.late += 1 }
+      p.worstGapMs = max(p.worstGapMs, (gap * 1000).rounded())
       let blank = s.empty.union(s.paper)
       if !blank.isEmpty { p.framesWithBlank += 1 }
       p.maxBlank = max(p.maxBlank, blank.count)
@@ -129,8 +161,9 @@ import CodeBoardModel
           installed = true
           r.installedMs = ms()
         }
+        // what shows before the new board is installed is the board left (a switch) or nothing (a launch)
         if r.firstContentMs == nil {
-          if s.drawn.isEmpty {
+          if s.drawn.isEmpty || !installed {
             r.blankFramesBeforeContent += 1
             if installed { r.blankFramesAfterInstall += 1 }
           } else {
@@ -142,6 +175,15 @@ import CodeBoardModel
         if r.firstContentMs != nil, r.allDrawnMs == nil, s.inView > 0, blank.isEmpty { r.allDrawnMs = ms() }
         let n = canvas.noteProgress
         if r.notesSharpMs == nil, installed, n.sharp == n.inView, canvas.isSettled { r.notesSharpMs = ms() }
+        let res = canvas.resolutionInView
+        if r.firstSharpMs == nil, installed, !res.sharp.isEmpty { r.firstSharpMs = ms() }
+        if r.allSharpMs == nil, installed, s.inView > 0, res.sharp.count == s.inView { r.allSharpMs = ms() }
+        // -1: the board not installed yet (the one left still shows)
+        if r.at100ms.isEmpty, ms() >= 100 { r.at100ms = installed ? [res.sharp.count, s.inView] : [0, -1] }
+        if r.firstContentMs != nil, r.allSharpMs == nil, !res.soft.isEmpty {
+          r.softFrames += 1
+          r.maxSoft = max(r.maxSoft, res.soft.count)
+        }
       }
     }
     var emptyAfterContent = Set<Int>()
@@ -149,7 +191,7 @@ import CodeBoardModel
     onFrame = { sample(&opening, opening: true) }
     try await canvas.show(b, in: vault, theme: .warmInk)
     await frames(
-      until: { r.notesSharpMs != nil && r.allDrawnMs != nil },
+      until: { r.notesSharpMs != nil && r.allDrawnMs != nil && r.allSharpMs != nil },
       each: {
         sample(&opening, opening: true)
         if r.firstContentMs != nil {
@@ -167,6 +209,11 @@ import CodeBoardModel
     opening.noteSwaps = afterOpen.noteSwaps - base.noteSwaps
     r.opening = opening
     r.cards = canvas.cardRects.count
+    func placed() {
+      let p = canvas.placementInView
+      r.placement.append([p.inView, p.between, p.capped])
+    }
+    placed()
     // a pan across the board at 100 %, then a zoom from 50 % to 200 % around the middle, each 2 s; then rest
     let bb = canvas.boardBounds
     canvas.place(zoom: 1, centre: CGPoint(x: bb.minX + canvas.bounds.width / 2, y: bb.midY))
@@ -206,9 +253,14 @@ import CodeBoardModel
       p.redraws = after.redraws - before.redraws
       p.swaps = after.swaps - before.swaps
       p.noteSwaps = after.noteSwaps - before.noteSwaps
+      p.noteRequests = after.noteRequests - before.noteRequests
+      p.decodes = after.decodes - before.decodes
       if name == "pan" { r.pan = p } else { r.zoom = p }
       await frames(until: { self.canvas.isSettled }, each: {})
+      placed()
     }
+    r.footprintMB = (Double(footprint()) / 1_048_576).rounded()
+    r.webkitMB = (Double(webKitFootprint()) / 1_048_576).rounded()
     let e = JSONEncoder()
     e.keyEncodingStrategy = .convertToSnakeCase
     e.outputFormatting = [.sortedKeys]

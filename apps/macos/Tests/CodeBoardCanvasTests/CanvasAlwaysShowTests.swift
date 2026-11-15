@@ -66,8 +66,11 @@ private func alwaysBoard(
     l.rows.filter { if case .notes = $0.row { true } else { false } }
   }
 
-  @Test func anAlwaysShownSidenoteIsDrawnUnderItsLinesAndTheCardGrows() async throws {
-    let r = try await Rig(alwaysBoard(), zoom: 1)
+  /// native: its notes measured and drawn by the native component, as the app does (NativeNotes)
+  @Test(arguments: [false, true]) func anAlwaysShownSidenoteIsDrawnUnderItsLinesAndTheCardGrows(native: Bool)
+    async throws
+  {
+    let r = try await Rig(alwaysBoard(), zoom: 1, native: native)
     defer { r.close() }
     await r.settle()
     let (l, top) = try layout(r, "c1")
@@ -103,7 +106,7 @@ private func alwaysBoard(
     #expect(a.frame.minX == l.gutter + first.x && a.frame.minY == top + first.y)
     #expect(a.frame.width == l.inlineWidth(card: 420, x: first.x, metrics: m))
     let snap = try #require(
-      await CanvasView.picture(item, scale: 2, theme: c.theme, notes: c.notes, priority: 1), "drawn")
+      await CanvasView.picture(item, scale: 2, theme: c.theme, display: c.display, priority: 1), "drawn")
     #expect(ink(snap.surface, in: a.frame, scale: 2) > 20, "the note's text is there")
     #expect(ink(snap.surface, in: CGRect(x: 0, y: top, width: a.frame.minX - 2, height: a.frame.height), scale: 2) == 0)
   }

@@ -8,14 +8,16 @@ import CodeBoardModel
 //   --bench  opens the board (every board when none is named), runs the scripted pan and zoom segments on it and opens it
 //            again, prints one JSON object per board on stdout and quits. The window floats on top: a covered window
 //            gets no frames
-//   --memory see MemoryRun
+//   --memory see MemoryRun; in a window below the desktop picture that is never activated
 //   --drag   see DragBench: drags on a copy of each board named (every board when none is), in a window never on screen
 //   --open-frames  what each frame shows while each board named opens, then while it is panned and zoomed (OpenFrames),
 //            in a window below the desktop picture that is never activated; with --note-cache <folder> the Note
 //            snapshots are kept there across runs (a relaunch with the disk cache filled); with --pictures <folder> the
 //            board pictures and the cameras they were taken at are kept there (the app's first board after a launch)
+//            Its Notes are drawn by the web page unless --native (the native Markdown component, as the app draws them)
 //   --code   heavy code cards made for it (CodeCards): the whole board drawn offscreen again and again (CPU time), then
 //            --open-frames on it; no vault folder
+//   --import <folder> the vault is that VS Code storage folder (.codeboard) imported into a new temporary vault first
 //   --arrows the same drags on two boards made for it (ArrowBoards): a card with twenty arrows, a Section of twenty
 //            cards with their arrows; no vault folder
 // Note snapshots are cached in a new temporary folder, never in the app's cache: every run draws its Notes anew
@@ -57,15 +59,11 @@ final class App: NSObject, NSApplicationDelegate {
     let root = NSView(frame: w.contentLayoutRect)
     root.addSubview(canvas)
     w.contentView = root
-    w.makeKeyAndOrderFront(nil)
-    w.makeFirstResponder(canvas)
-    if bench || memory != nil {
-      w.level = .floating
-      w.orderFrontRegardless()
-    }
-    NSApp.activate()
     window = w
     if let memory {
+      // below the desktop picture, never activated nor made key: the memory run waits for redraws, not for frames
+      w.level = .underDesktop
+      w.orderFrontRegardless()
       canvas.removeFromSuperview()
       Task {
         do {
@@ -77,6 +75,13 @@ final class App: NSObject, NSApplicationDelegate {
       }
       return
     }
+    w.makeKeyAndOrderFront(nil)
+    w.makeFirstResponder(canvas)
+    if bench {
+      w.level = .floating
+      w.orderFrontRegardless()
+    }
+    NSApp.activate()
     let meter = Meter(canvas)
     self.meter = meter
     if hud { meter.showHUD(in: root) }
@@ -123,13 +128,15 @@ final class App: NSObject, NSApplicationDelegate {
 
   /// Below the desktop picture, never activated nor made key: its frames are ticked by OpenFrames
   private func runOpenFrames() {
+    // as the app does as it launches
+    if native { NativeNotes.warmUp() }
     let frame = CGRect(x: 0, y: 0, width: 1440, height: 900)
     let w = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
     w.level = .underDesktop
     let cache =
       keptNoteCache ?? FileManager.default.temporaryDirectory.appending(path: "canvasbench-notes-\(UUID().uuidString)")
     if keptNoteCache == nil { noteCache = cache }
-    let canvas = CanvasView(frame: frame, noteCache: cache)
+    let canvas = CanvasView(frame: frame, noteCache: cache, native: native)
     canvas.picturesFolder = keptPictures
     w.contentView = canvas
     w.orderFrontRegardless()
@@ -169,6 +176,7 @@ let arrows = args.contains("--arrows")
 let drag = arrows || args.contains("--drag")
 let code = args.contains("--code")
 let openFrames = code || args.contains("--open-frames")
+let native = args.contains("--native")
 var keptNoteCache: URL?
 if let i = args.firstIndex(of: "--note-cache"), i + 1 < args.count {
   keptNoteCache = URL(filePath: args[i + 1])
@@ -183,6 +191,17 @@ var memory: URL?
 if let i = args.firstIndex(of: "--memory"), i + 1 < args.count {
   memory = URL(filePath: args[i + 1])
   args.removeSubrange(i...i + 1)
+}
+if let i = args.firstIndex(of: "--import"), i + 1 < args.count {
+  let into = FileManager.default.temporaryDirectory.appending(path: "canvasbench-import-\(UUID().uuidString)")
+  do {
+    _ = try LegacyImport.run(from: URL(filePath: args[i + 1]), to: into)
+  } catch {
+    FileHandle.standardError.write(Data("\(error)\n".utf8))
+    exit(1)
+  }
+  args.removeSubrange(i...i + 1)
+  args.insert(into.path(percentEncoded: false), at: 0)
 }
 args.removeAll { $0.hasPrefix("-") }
 if arrows {

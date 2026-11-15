@@ -4,7 +4,7 @@ import CodeBoardModel
 import CodeBoardNotes
 import WebKit
 
-// LookCompare --writing <out folder>: Notes, Texts and Boxes written in, in each theme light and dark, at 2x, off screen
+// LookCompare --writing <out folder> [--native]: Notes, Texts and Boxes written in, in each theme light and dark, at 2x, off screen
 // (a window far off every screen; Core Animation and the editor's own picture, never the screen):
 // - writing-<theme>: each card at rest | while written in (its paper and the editor's picture of it, as the canvas
 //   shows it then) | the pixels that differ, in magenta; report.txt has the counts
@@ -54,12 +54,12 @@ enum WritingSheets {
       ])
   }
 
-  @MainActor static func run(out: URL) -> Never {
+  @MainActor static func run(out: URL, native: Bool = false) -> Never {
     let app = NSApplication.shared
     app.setActivationPolicy(.prohibited)
     Task { @MainActor in
       do {
-        try await draw(out: out)
+        try await draw(out: out, native: native)
         exit(0)
       } catch {
         FileHandle.standardError.write(Data("\(error)\n".utf8))
@@ -78,7 +78,7 @@ enum WritingSheets {
     let doc: BoardDocument
     var time: TimeInterval = 1
 
-    init(root: URL, notes: NoteRenderer, theme: Theme) async throws {
+    init(root: URL, notes: NoteRenderer, display: any NoteDisplay, theme: Theme) async throws {
       let fm = FileManager.default
       try? fm.removeItem(at: root)
       let package = root.appending(path: "Writing.board")
@@ -86,7 +86,7 @@ enum WritingSheets {
       let file = package.appending(path: Vault.boardFileName)
       try WritingSheets.board().encoded().write(to: file)
       doc = try BoardDocument { file }
-      canvas = CanvasView(frame: CGRect(origin: .zero, size: WritingSheets.size), notes: notes)
+      canvas = CanvasView(frame: CGRect(origin: .zero, size: WritingSheets.size), notes: notes, display: display)
       window = NSWindow(
         contentRect: CGRect(origin: CGPoint(x: -30000, y: -30000), size: WritingSheets.size), styleMask: [.titled],
         backing: .buffered, defer: false)
@@ -95,6 +95,8 @@ enum WritingSheets {
       host.addSubview(canvas)
       window.contentView = host
       canvas.noteEditor.drawOffScreen()
+      // under the desktop picture too, as test windows are: never seen even where a screen reaches that far
+      window.level = .underDesktop
       window.orderFrontRegardless()
       let at = VaultBoard(id: doc.id, title: "Writing", path: "Writing.board")
       try await canvas.show(doc, at: at, in: Vault(root: root), theme: theme)
@@ -196,17 +198,20 @@ enum WritingSheets {
     try b.encoded().write(to: p.appending(path: Vault.boardFileName))
   }
 
-  @MainActor static func draw(out: URL) async throws {
+  /// `native`: the canvas shows its Markdown at rest with the native component (NativeNotes), so `writing-` compares
+  /// that picture with the web editor's
+  @MainActor static func draw(out: URL, native: Bool) async throws {
     let fm = FileManager.default
     let root = fm.temporaryDirectory.appending(path: "look-writing-\(ProcessInfo.processInfo.processIdentifier)")
     defer { try? fm.removeItem(at: root) }
     try fm.createDirectory(at: out, withIntermediateDirectories: true)
     let notes = NoteRenderer(cache: root.appending(path: "cache"))
+    let display: any NoteDisplay = native ? NativeNotes(web: notes) : notes
     var report = ""
     for theme in Theme.all.flatMap({ [$0, Theme.named($0.id, dark: true)] }) {
       let suffix = theme.id.rawValue + (theme.dark ? "-dark" : "")
       let vault = root.appending(path: "vault")
-      func rig() async throws -> Rig { try await Rig(root: vault, notes: notes, theme: theme) }
+      func rig() async throws -> Rig { try await Rig(root: vault, notes: notes, display: display, theme: theme) }
 
       // at rest and written in
       var r = try await rig()

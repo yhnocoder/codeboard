@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardModel
+import CodeBoardTestGuard
 import Foundation
 import Testing
 

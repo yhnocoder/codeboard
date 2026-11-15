@@ -56,9 +56,11 @@ import Testing
     // every marker inside the column: nothing hangs left of the text's edge
     #expect(bullets(m).allSatisfy { $0 > 0 })
     #expect(boxes(m).allSatisfy { $0 >= 0 })
-    // a bullet at 1.3em less 1em, the nested one a level further
+    // a bullet where Chrome puts it, from the font's ascent a: its left a·2/3 + 7 before the text at 1.3em, (a·2/3 + 1)/2
+    // wide (whole pixels); the nested one a level further
     let em = CGFloat(testTheme.metrics.bodySize)
-    #expect(abs(bullets(m)[0] - 0.3 * em) < 0.01)
+    let a = Int(FontBook.ascentDescent(FontBook.font(testTheme.fonts.body, size: em)).0)
+    #expect(abs(bullets(m)[0] - (1.3 * em - CGFloat(a * 2 / 3 + 7) + CGFloat((a * 2 / 3 + 1) / 2) / 2)) < 0.01)
     #expect(abs(bullets(m)[1] - bullets(m)[0] - 1.3 * em) < 0.01)
   }
 

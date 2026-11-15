@@ -227,12 +227,12 @@ extension CanvasView {
       return (Double(it.rect.minX), Double(it.rect.minY), Double(it.rect.width), Double(it.rect.height))
     }
     let theme = theme
-    let notes = notes
+    let display = display
     Task { [weak self] in
       if self?.editing?.id == id { await self?.endEditing() }
       var hs: [Double] = []
       for md in [sp.pre] + sp.parts.map(\.md) {
-        let m = await CanvasView.measure([measure(md)], theme: theme, notes: notes)[c.id]
+        let m = await CanvasView.measure([measure(md)], theme: theme, display: display)[c.id]
         hs.append(m.map { Double($0.size.height) } ?? 0)
       }
       guard let self, self.document === doc else { return }

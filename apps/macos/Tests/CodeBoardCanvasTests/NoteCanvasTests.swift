@@ -135,7 +135,7 @@ import Testing
     let images = DecodeCache(cap: 1 << 20)
     let composed = try #require(
       await CanvasView.drawNote(
-        scene.items[0], scale: 2, theme: .warmInk, images: images, notes: renderer, priority: 0
+        scene.items[0], scale: 2, theme: .warmInk, images: images, display: renderer, priority: 0
       ).surface)
     let paper = try #require(CanvasView.render(scene.items[0], scale: 2, theme: .warmInk, images: images).surface)
     // and the sheet's hairline ring, half a unit round it
@@ -192,7 +192,7 @@ import Testing
     #expect(bgra(paper, 50, 50) == [0, 0, 0, 0])
     let drawn = try #require(
       await CanvasView.drawNote(
-        item, scale: 2, theme: .warmInk, images: images, notes: NoteRenderer(cache: cache), priority: 0
+        item, scale: 2, theme: .warmInk, images: images, display: NoteRenderer(cache: cache), priority: 0
       ).surface)
     #expect(drawn.width == 400 && drawn.height == 200)
     let bar = bgra(drawn, 50, 50).map(Int.init)

@@ -2,11 +2,13 @@ import AppKit
 import CodeBoardModel
 
 // In a test process nothing may come up on the screen or wait for a person: a menu, an alert, an open or save panel, a
-// modal window, an address opened in the browser or a file shown in Finder. As the system Trash refuses a test (Vault.systemTrash), so do these, from the root: each way AppKit
-// puts one up is replaced, in a test process only, by one that writes down what would have shown and returns at once
-// (a menu: nothing picked; a modal: cancelled). A sheet on a window under the desktop (the tests' own) is left alone:
-// it shows nowhere and tests answer it. Installed by the first canvas or shell a test makes; in the app it is never
-// installed.
+// modal window, an address opened in the browser or a file shown in Finder; nor may it write the owner's clipboard or
+// change their cursor. As the
+// system Trash refuses a test (Vault.systemTrash), so do these, from the root: each way AppKit puts one up is replaced,
+// in a test process only, by one that writes down what would have shown and returns at once (a menu: nothing picked; a
+// modal: cancelled), and the general pasteboard is one of the process's own. A sheet on a window under the desktop (the
+// tests' own) is left alone: it shows nowhere and tests answer it. Installed by the first canvas, shell or Markdown
+// editor a test makes; in the app it is never installed.
 
 @MainActor package enum TestGuard {
   /// What would have come up, in order: "menu: Edit | Delete", "alert: Delete board?"
@@ -25,6 +27,19 @@ import CodeBoardModel
   package static var guardsOpening: Bool { installed && openGuarded }
 
   nonisolated(unsafe) private static var openGuarded = false
+
+  /// Whether NSPasteboard.general is a pasteboard of this process's own, never the system clipboard
+  package static var guardsPasteboard: Bool { installed && pasteboardGuarded }
+
+  nonisolated(unsafe) private static var pasteboardGuarded = false
+
+  /// Whether NSCursor's ways to the screen (set, push, pop, hide) are replaced by this process's own cursor
+  package static var guardsCursor: Bool { installed && cursorGuarded }
+
+  nonisolated(unsafe) private static var cursorGuarded = false
+  /// The cursor set last in the process, and those pushed under it
+  nonisolated(unsafe) private static var cursor = NSCursor.arrow
+  nonisolated(unsafe) private static var cursors: [NSCursor] = []
 
   private static let installed: Bool = {
     guard Vault.underTest else { return false }
@@ -132,6 +147,38 @@ import CodeBoardModel
       return .abort
     }
     replace(NSApplication.self, #selector(NSApplication.runModal(for:)), imp_implementationWithBlock(runWindow))
+    // the clipboard: whatever asks for the general pasteboard gets this process's own
+    let own = NSPasteboard(name: NSPasteboard.Name("codeboard-tests-\(ProcessInfo.processInfo.processIdentifier)"))
+    let general: @convention(block) (AnyObject) -> NSPasteboard = { _ in own }
+    pasteboardGuarded = replace(
+      object_getClass(NSPasteboard.self)!, NSSelectorFromString("generalPasteboard"),
+      imp_implementationWithBlock(general))
+    // the cursor: set, pushed, popped, hidden and shown here stays this process's own. AppKit documents no rule for
+    // what a process that is not in front does to the person's cursor, so a test never asks it to; NSCursor.current
+    // answers with the last one set, as tests read it
+    let cursorClass: AnyClass = object_getClass(NSCursor.self)!
+    let setCursor: @convention(block) (NSCursor) -> Void = { c in cursor = c }
+    let pushCursor: @convention(block) (NSCursor) -> Void = { c in
+      cursors.append(cursor)
+      cursor = c
+    }
+    let popCursor: @convention(block) (AnyObject) -> Void = { _ in cursor = cursors.popLast() ?? .arrow }
+    let currentCursor: @convention(block) (AnyObject) -> NSCursor = { _ in cursor }
+    let hideCursor: @convention(block) (AnyObject) -> Void = { _ in }
+    let hideUntilMoved: @convention(block) (AnyObject, Bool) -> Void = { _, _ in }
+    cursorGuarded =
+      [
+        replace(NSCursor.self, #selector(NSCursor.set), imp_implementationWithBlock(setCursor)),
+        replace(NSCursor.self, #selector(NSCursor.push), imp_implementationWithBlock(pushCursor)),
+        replace(
+          NSCursor.self, #selector(NSCursor.pop as (NSCursor) -> () -> Void), imp_implementationWithBlock(popCursor)),
+        replace(cursorClass, #selector(NSCursor.pop as () -> Void), imp_implementationWithBlock(popCursor)),
+        replace(cursorClass, NSSelectorFromString("currentCursor"), imp_implementationWithBlock(currentCursor)),
+        replace(cursorClass, #selector(NSCursor.hide), imp_implementationWithBlock(hideCursor)),
+        replace(cursorClass, #selector(NSCursor.unhide), imp_implementationWithBlock(hideCursor)),
+        replace(
+          cursorClass, #selector(NSCursor.setHiddenUntilMouseMoves(_:)), imp_implementationWithBlock(hideUntilMoved)),
+      ].allSatisfy { $0 }
     // an address or file opened, or shown in Finder: the owner's browser, apps and Finder, never; written down
     let workspace: AnyClass = NSWorkspace.self
     let open: @convention(block) (NSWorkspace, NSURL) -> Bool = { _, u in
@@ -178,7 +225,7 @@ import CodeBoardModel
   }()
 
   /// A window nobody sees: one of the tests' own, under the desktop
-  private static func hidden(_ w: NSWindow) -> Bool { w.level.rawValue <= NSWindow.Level.underDesktop.rawValue }
+  private static func hidden(_ w: NSWindow) -> Bool { w.level.rawValue < Int(CGWindowLevelForKey(.desktopWindow)) }
 
   private static func record(menu m: NSMenu?) {
     let titles = (m?.items ?? []).map { $0.isSeparatorItem ? "—" : $0.title }
@@ -192,68 +239,4 @@ import CodeBoardModel
     if !class_addMethod(c, sel, imp, method_getTypeEncoding(m)) { method_setImplementation(m, imp) }
     return true
   }
-}
-
-/// The tests' watchdog: a test whose board (its rig, its window) has been open over `limit` is stuck, waiting on what
-/// will never come; the process says which test it was and exits, so the run ends instead of hanging. The rigs say
-/// when a test starts and ends; the watch runs on a thread of its own, so a main thread held up does not stop it.
-/// A process that exits in the middle of a test fails too, saying which test it was in.
-package enum TestWatch {
-  package static let limit: TimeInterval = 120
-
-  nonisolated(unsafe) private static var running: (name: String, since: TimeInterval)?
-  private static let lock = NSLock()
-
-  /// A test began (its name as Swift Testing gives it)
-  package static func started(_ name: String) {
-    lock.withLock { running = (name, ProcessInfo.processInfo.systemUptime) }
-    _ = watching
-    _ = exits
-  }
-
-  package static func ended() { lock.withLock { running = nil } }
-
-  /// What to say when the process exits now: nil between tests
-  package static func cutShort() -> String? {
-    lock.withLock {
-      running.map { "test process exited in the middle of \($0.name); the tests after it did not run\n" }
-    }
-  }
-
-  // Swift Testing's main runs the main run loop itself (CFRunLoopRun, not NSApplication.run), and main exits 0 when
-  // that loop returns. Anything that stops the loop ends the run there with no failure and no summary, and swift test
-  // still passes: AppKit stops it whenever it posts an event, as it does with a double-click through the window on a
-  // view that takes no first mouse in a window that is not key (the tests' never is)
-  private static let exits: Void = {
-    atexit {
-      guard let said = TestWatch.cutShort() else { return }
-      FileHandle.standardError.write(Data(said.utf8))
-      FileHandle.standardOutput.write(Data(said.utf8))
-      _exit(71)
-    }
-  }()
-
-  /// Over the limit: what to say, nil while within it
-  package static func overrun(at now: TimeInterval) -> String? {
-    lock.withLock {
-      guard let r = running, now - r.since > limit else { return nil }
-      return
-        "watchdog: \(r.name) has run \(Int(now - r.since)) s, over the \(Int(limit)) s a test may take; the test process exits\n"
-    }
-  }
-
-  private static let watching: Void = {
-    let t = Thread {
-      while true {
-        Thread.sleep(forTimeInterval: 1)
-        if let said = overrun(at: ProcessInfo.processInfo.systemUptime) {
-          FileHandle.standardError.write(Data(said.utf8))
-          FileHandle.standardOutput.write(Data(said.utf8))
-          _exit(70)
-        }
-      }
-    }
-    t.name = "test watchdog"
-    t.start()
-  }()
 }

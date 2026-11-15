@@ -277,7 +277,7 @@ extension CanvasView {
     refPeek = peek
     host.addSubview(peek, positioned: .above, relativeTo: pops.last?.web.view ?? self)
     let theme = self.theme
-    let notes = self.notes
+    let display = self.display
     let images = self.images
     let here = doc.board
     let backing = self.backing
@@ -295,7 +295,7 @@ extension CanvasView {
         }
         guard let card = source.card(c) else { return nil }
         return await CanvasView.peekPicture(
-          card, board: source.id, package: package, vault: vault, theme: theme, notes: notes, images: images,
+          card, board: source.id, package: package, vault: vault, theme: theme, display: display, images: images,
           room: room, backing: backing)
       }.value
       guard refPeek === peek else { return }
@@ -307,14 +307,15 @@ extension CanvasView {
 
   /// The card alone drawn as the board draws it, `room` points wide at most, cut at the preview's height
   nonisolated static func peekPicture(
-    _ card: Card, board: BoardID, package: URL, vault: Vault, theme: Theme, notes: NoteRenderer, images: DecodeCache,
+    _ card: Card, board: BoardID, package: URL, vault: Vault, theme: Theme, display: any NoteDisplay,
+    images: DecodeCache,
     room: CGFloat, backing: CGFloat
   ) async -> RefPeek.Picture? {
     var lone = card
     lone.section = nil
     let b = Board(id: board, cards: [lone])
     let measures = Scene.measures(b, package: package, vault: vault)
-    let sizes = await CanvasView.measure(measures, theme: theme, notes: notes)
+    let sizes = await CanvasView.measure(measures, theme: theme, display: display)
     let highlighter = await MainActor.run { CanvasView.highlighter } ?? Highlighter()
     let scene = Scene(b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes)
     guard let it = scene.items.first(where: { $0.owner == .card(card.id) }) else { return nil }
@@ -322,7 +323,7 @@ extension CanvasView {
     let scale = k * backing
     let surface: IOSurface?
     if it.drawing.byRenderer {
-      guard let snap = await CanvasView.picture(it, scale: scale, theme: theme, notes: notes, priority: 1) else {
+      guard let snap = await CanvasView.picture(it, scale: scale, theme: theme, display: display, priority: 1) else {
         return nil
       }
       surface = CanvasView.compose(it, snap, scale: scale, theme: theme, images: images)

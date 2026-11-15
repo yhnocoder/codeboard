@@ -494,7 +494,8 @@ struct InlineBuilder {
       s.color = theme.colors.ink3
       append(raw, attributes(s), source: [source])
     case .ref(let label, let target):
-      let box = RefBox(label: label, hit: resources.ref(label: label, target: target), style: style, theme: theme)
+      let box = RefBox(
+        label: label, target: target, hit: resources.ref(label: label, target: target), style: style, theme: theme)
       let a = AtomBox(.ref(box), width: box.width, ascent: box.ascent, descent: box.descent)
       var attrs = attributes(style)
       attrs[NSAttributedString.Key(kCTRunDelegateAttributeName as String)] = Self.delegate(a)
@@ -551,11 +552,15 @@ struct InlineBuilder {
     imageCounts[img.src] = nth + 1
     let m = theme.metrics
     let natural = img.broken ? nil : resources.imageSize(img.src)
+    let loading = natural == nil && !img.broken && resources.imageLoading(img.src)
     let figure: FigureBox
-    if let n = natural, n.width > 0, n.height > 0 {
+    if loading {
+      figure = FigureBox(image: .zero, caption: nil, captionX: 0, captionGap: (0, 0))
+    } else if let n = natural, n.width > 0, n.height > 0 {
       // a CSS px is a point: the image at its own size, at most the body's width; {width=N%} a share of the body
       let w = min(img.width.map { CGFloat($0) * bodyWidth } ?? n.width, bodyWidth)
-      let size = CGSize(width: w, height: (w * n.height / n.width).rounded())
+      // not rounded: the page keeps a fraction of a pixel (layout units of 1/64)
+      let size = CGSize(width: w, height: w * n.height / n.width)
       let cap = img.caption.trimmingCharacters(in: .whitespacesAndNewlines)
       if cap.isEmpty {
         figure = FigureBox(image: size, caption: nil, captionX: 0, captionGap: (0, 0))
@@ -577,7 +582,8 @@ struct InlineBuilder {
         }
         let strut = FontBook.font(cs.families, size: cs.size, weight: cs.weight)
         let text = BoxText(
-          d.string, width: capWidth, lineHeight: cs.size * CGFloat(m.captionLineHeight), strut: strut, center: true)
+          d.string, width: capWidth, lineHeight: cs.size * CGFloat(m.captionLineHeight), strut: strut, center: true,
+          floored: theme.metrics.flooredLeading)
         figure = FigureBox(
           image: size, caption: text, captionX: (w - capWidth) / 2,
           captionGap: (CGFloat(m.captionMargin[0]), CGFloat(m.captionMargin[1])))
@@ -593,15 +599,20 @@ struct InlineBuilder {
       let name = "Image failed to load · " + (img.alt.isEmpty ? img.src : img.alt)
       let label = NSAttributedString(string: name, attributes: attributes(ls))
       let strut = FontBook.font(ls.families, size: 11.5)
-      figure = FigureBox(brokenLabel: BoxText(label, width: nil, lineHeight: 11.5 * 1.5, strut: strut, center: false))
+      figure = FigureBox(
+        brokenLabel: BoxText(
+          label, width: nil, lineHeight: 11.5 * 1.5, strut: strut, center: false,
+          floored: theme.metrics.flooredLeading))
     }
-    // inline-block, vertical-align: middle, 4px margins: centred on the baseline plus half an x-height
-    let margin = natural == nil ? 0 : CGFloat(m.imageMargin)
+    // inline-block, vertical-align: middle, 4px margins (a broken one's too: the editor draws it in .md-img as an image):
+    // centred on the baseline plus half an x-height
+    let margin = CGFloat(m.imageMargin)
     let font = FontBook.font(style.families, size: style.size, weight: style.weight)
     let mid = CTFontGetXHeight(font) / 2
     let half = figure.height / 2 + margin
     let a = AtomBox(
-      .image(src: img.src, nth: nth, figure: figure, broken: natural == nil, frame: img.frame, loops: img.loops),
+      .image(
+        src: img.src, nth: nth, figure: figure, broken: natural == nil && !loading, frame: img.frame, loops: img.loops),
       width: figure.width, ascent: half + mid, descent: max(0, half - mid))
     var attrs = attributes(style)
     attrs[NSAttributedString.Key(kCTRunDelegateAttributeName as String)] = Self.delegate(a)
@@ -627,7 +638,8 @@ struct InlineBuilder {
     }
     let strut = FontBook.font(style.families, size: style.size, weight: style.weight)
     let lh = CGFloat(theme.metrics.lineHeight) * style.size
-    let text = BoxText(sub.out.string, width: nil, lineHeight: lh, strut: strut, center: false)
+    let text = BoxText(
+      sub.out.string, width: nil, lineHeight: lh, strut: strut, center: false, floored: theme.metrics.flooredLeading)
     // the note: 1.1em of the hand font, line height 1.15, in the annotation's colour
     var ns = style
     ns.families = theme.fonts.hand.isEmpty ? theme.fonts.body : theme.fonts.hand
@@ -638,8 +650,7 @@ struct InlineBuilder {
     let noteFont = FontBook.font(ns.families, size: ns.size)
     let noteText = BoxText(
       NSAttributedString(string: note, attributes: attributes(ns)), width: nil, lineHeight: ns.size * 1.15,
-      strut: noteFont,
-      center: false)
+      strut: noteFont, center: false, floored: theme.metrics.flooredLeading)
     let box = AnnotBox(text: text, note: noteText, color: c, below: below, fontSize: style.size)
     let a = AtomBox(.annot(box), width: box.width, ascent: box.baseline, descent: box.height - box.baseline)
     // its words carry the highlight and lines around it; drawn under the whole box too, they would sit under the tint

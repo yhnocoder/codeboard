@@ -91,6 +91,10 @@ public final class BlockLayout: @unchecked Sendable {
   public var codeScrollX: [Int: CGFloat] = [:]
   /// the caret whose constructs show their markers (editing); nil: nowhere, the static picture
   public private(set) var head: Int?
+  /// Called each time the blocks are stacked again, whatever changed them (an edit, a block moved, a code block laid
+  /// out again, the caret's markers, the layout info): what a host placed by `blockBoxes` is placed again then. A
+  /// copy, or a layout made anew (another width, look or resources), is another object with none of its own
+  public var onChange: (() -> Void)?
 
   public init(
     _ document: MarkdownDocument, width: CGFloat, theme: MarkdownTheme, layout: MDLayoutInfo?,
@@ -390,6 +394,7 @@ public final class BlockLayout: @unchecked Sendable {
       prev = p
     }
     height = MarkdownLayout.roundedUp(y)
+    onChange?()
   }
 
   /// the first piece whose bottom is at or below y

@@ -2,7 +2,7 @@
 
 Found on this board: [[step#^c2]] and renamed [[old name#^c3]].
 
-On another board, with its seal: [[Scheduler#^c4]], and the board itself: [[Engine]].
+On another board, with its seal: [[Scheduler#^c4]], and the board itself: [[Engine]]; in another book: [[Planner#^c5]].
 
 Gone: [[deleted card#^c9]] (the card), [[Lost board/thing]] (the board).
 

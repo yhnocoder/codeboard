@@ -645,11 +645,15 @@ extension CanvasView {
   /// written in (the paper the canvas shows then, with the editor's own picture of its text), in device pixels; the
   /// editing is left as it was found (nothing typed, nothing written)
   package func writingPictures(_ id: CardID) async -> (rest: CGImage, editing: CGImage)? {
+    // what it shows: its rest bitmap at the zoom when it has one (a Text or Box has no paper to hold under it), else
     // what it holds (its own sharp bitmap or the overview, whichever is finer), at that scale
-    guard let i = index(of: .card(id)), let surface = items[i].held.contents as? IOSurface,
-      let rest = Self.image(surface)
-    else { return nil }
-    let scale = items[i].heldScale
+    guard let i = index(of: .card(id)) else { return nil }
+    let it = items[i]
+    let shown: (IOSurface, CGFloat)? =
+      if let s = it.rest.contents as? IOSurface, let k = it.restScale { (s, k) } else {
+        (it.held.contents as? IOSurface).map { ($0, it.heldScale) }
+      }
+    guard let (surface, scale) = shown, let rest = Self.image(surface) else { return nil }
     beginEditing(id)
     while editing?.ready == false { try? await Task.sleep(for: .milliseconds(5)) }
     var picture: CGImage?

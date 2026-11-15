@@ -25,7 +25,7 @@ extension CanvasView {
     h.update(data: bytes)
     for part in [
       theme.id.rawValue, "\(theme.dark)", "\(bounds.size.width)x\(bounds.size.height)@\(backing)",
-      notes.build,
+      display.build,
       ProcessInfo.processInfo.operatingSystemVersionString, "\(app?.timeIntervalSince1970 ?? 0)",
     ] {
       h.update(data: Data([0]))

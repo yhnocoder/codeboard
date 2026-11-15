@@ -8,17 +8,20 @@ public enum MarkdownLooks {
   /// its text
   public enum Style: Hashable, Sendable {
     case note
+    /// an Always Show sidenote under its lines in a code card (styles.css .inote > .nbody): a Note's type at 12.5, its
+    /// headings 1.45 / 1.25 / 1.1 em, no frame
+    case sidenote
     case text(size: Double, wrap: Bool)
     case box(size: Double, wrap: Bool)
     var size: Double? {
       switch self {
-      case .note: nil
+      case .note, .sidenote: nil
       case .text(let s, _), .box(let s, _): s
       }
     }
     var wraps: Bool {
       switch self {
-      case .note: true
+      case .note, .sidenote: true
       case .text(_, let w), .box(_, let w): w
       }
     }
@@ -229,6 +232,11 @@ public enum MarkdownLooks {
     case .note:
       return Card(
         theme: t, header: 36, padding: [10, 14, 12, 14], natural: false, fixedHeight: true, minContent: 1.6 * 13.5)
+    case .sidenote:
+      t.metrics.bodySize = 12.5
+      t.metrics.headingSizes = [1.45, 1.25, 1.1, 1, 1, 1]
+      return Card(
+        theme: t, header: 0, padding: [0, 0, 0, 0], natural: false, fixedHeight: false, minContent: 1.6 * 12.5)
     case .text, .box:
       let size = style.size ?? 20
       // .tx.st-body at --tfs: the look's body family, 1.6, regular; .tx h1 is --display, the others --note-h (the

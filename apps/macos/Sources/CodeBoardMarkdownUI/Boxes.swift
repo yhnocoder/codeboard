@@ -13,10 +13,10 @@ struct BoxText {
   let lines: [Line]
   let size: CGSize
 
-  /// sets attributed text in `width` (nil: one line), lines `lineHeight` tall with Chrome's baseline, each line centred
-  /// when `center`
-  init(_ s: NSAttributedString, width: CGFloat?, lineHeight: CGFloat, strut: CTFont, center: Bool) {
-    let base = FontBook.baseline(strut, lineHeight: lineHeight)
+  /// sets attributed text in `width` (nil: one line), lines `lineHeight` tall with their baseline as `floored` says
+  /// (FontBook.baseline), each line centred when `center`
+  init(_ s: NSAttributedString, width: CGFloat?, lineHeight: CGFloat, strut: CTFont, center: Bool, floored: Bool) {
+    let base = FontBook.baseline(strut, lineHeight: lineHeight, floored: floored)
     var out: [Line] = []
     var widest: CGFloat = 0
     if s.length > 0 {

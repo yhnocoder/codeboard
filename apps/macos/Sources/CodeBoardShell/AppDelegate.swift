@@ -45,6 +45,7 @@ import CodeBoardModel
   var driver: AppDriver?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    CanvasView.warmUp()
     NSWindow.allowsAutomaticWindowTabbing = false
     NSApp.mainMenu = mainMenu()
     let saved = UserDefaults.standard.data(forKey: Self.stateKey).flatMap {

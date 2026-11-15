@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardMarkdown
+import CodeBoardTestGuard
 import Foundation
 import Testing
 
@@ -72,11 +73,13 @@ import Testing
 /// reflowed (session.ts handleClick); a click in the link the caret is in places the caret, one on its folded address
 /// opens the box
 @MainActor @Suite struct LinkClickTests {
-  @Test func aClickOnALinkOpensItsBoxWithoutMovingTheCaret() {
+  @Test func aClickOnALinkOpensItsBoxWithoutMovingTheCaret() throws {
     _ = boardFonts
     let src = "Some text here.\n\nSee [the docs](https://example.com/a/long/path) now."
     let l = BlockLayout(MarkdownDocument(src), width: 400, theme: testTheme, layout: nil, resources: TestResources())
     let v = MarkdownEditorView(layout: l, caret: 3)
+    // clicks on a link: never sent unless opening an address is replaced (it would open the owner's browser)
+    try #require(TestGuard.guardsOpening, "the open guard is not in")
     v.isEditing = true
     func click(_ p: CGPoint) {
       for t in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
@@ -138,11 +141,13 @@ import Testing
     }
   }
 
-  @Test func theHostTakesIt() {
+  @Test func theHostTakesIt() throws {
     _ = boardFonts
     let src = "See [[Step one]] here"
     let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
     let v = MarkdownEditorView(layout: l, caret: 0)
+    // its host takes only references; an address would go to the default, which opens the owner's browser
+    try #require(TestGuard.guardsOpening, "the open guard is not in")
     let host = Host()
     v.delegate = host
     let w = NSWindow(

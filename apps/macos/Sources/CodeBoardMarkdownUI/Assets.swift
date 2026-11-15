@@ -17,10 +17,12 @@ public enum MarkdownAssets {
     return URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../.build-markdown").standardized
   }
 
-  /// The board's fonts, registered for this process once; synchronous, so a layout made right after uses them. Yozai,
-  /// the Chinese handwriting, comes in chunks of characters that all carry one name: registered as a chunked family, not
-  /// one by one (CoreText would use one chunk). Zhi Mang Xing is the canvas's own (section titles). A build without its
-  /// fonts is an error, never text quietly drawn in fallback fonts
+  /// The board's fonts for this process, each family registered the first time a font of it is made (synchronously, so
+  /// a layout made right after uses them): registering them all took 200 ms, and a board's Notes draw with two or three.
+  /// Yozai, the Chinese handwriting, comes in chunks of characters that all carry one name: a chunked family, not
+  /// registered one by one (CoreText would use one chunk). Zhi Mang Xing is the canvas's own (section titles); the
+  /// web board's other fonts no look here draws with. A build without its fonts is an error, never text quietly drawn
+  /// in fallback fonts
   public static let fonts: Result<Void, MarkdownAssetError> = {
     let folder = assets.appending(path: "assets")
     let all =
@@ -32,27 +34,29 @@ public enum MarkdownAssets {
       return .failure(.fontsMissing(folder))
     }
     var yozai: [Double: [URL]] = [:]
-    var files: [URL] = []
     for f in all {
       let name = f.lastPathComponent
       if name.hasPrefix("Yozai-") {
         yozai[name.hasPrefix("Yozai-700-") ? 700 : 400, default: []].append(f)
-      } else if !name.hasPrefix("ZhiMangXing-") {
-        files.append(f)
+      } else if let (prefix, family) = families.first(where: { name.hasPrefix($0.0) }) {
+        MarkdownFonts.registerWhenUsed(family, [f])
         // a variable font's file is named after the weights its @font-face declares: <Family>-400-600-<hash>
-        if let m = name.wholeMatch(of: /.+-(\d{3})-(\d{3})-[0-9A-F]+\.woff2/), let lo = Double(m.1),
-          let hi = Double(m.2),
-          let d = (CTFontManagerCreateFontDescriptorsFromURL(f as CFURL) as? [CTFontDescriptor])?.first,
-          let family = CTFontDescriptorCopyAttribute(d, kCTFontFamilyNameAttribute) as? String
+        if let m = name.dropFirst(prefix.count).wholeMatch(of: /(\d{3})-(\d{3})-[0-9A-F]+\.woff2/),
+          let lo = Double(m.1), let hi = Double(m.2)
         {
           MarkdownFonts.declareWeights(family, lo...hi)
         }
       }
     }
     MarkdownFonts.addChunkedFamily("Yozai", weights: yozai)
-    MarkdownFonts.register(files)
     return .success(())
   }()
+
+  /// The files of the families the looks draw with (MarkdownLooks), by the family each holds: its name as a font list
+  /// asks for it (the hand font names its family after its default instance)
+  static let families = [
+    ("SourceSerif4-", "Source Serif 4"), ("JetBrainsMono-", "JetBrains Mono"), ("ShantellSans-", "Shantell Sans Light"),
+  ]
 
   /// The formula and diagram engines (engines.js in JavaScriptCore), loaded on the first Note that may need them. A
   /// build without them, or with ones that do not start, is an error, never formulas quietly shown as source
@@ -88,6 +92,8 @@ extension MarkdownAssets {
   /// loads). For a host's launch, off the main thread; `math` the engines when the host has them
   public static func warmUp(math: MathTypesetter?) {
     guard (try? fonts.get()) != nil else { return }
+    // the hand font first, which the sample does not draw: an annotation's note waits 50 ms for its Chinese otherwise
+    _ = FontBook.font(MarkdownLooks.hand, size: 16)
     struct Sample: MarkdownResources {
       let math: MathTypesetter?
       var diagrams: DiagramRenderer? { math as? DiagramRenderer }

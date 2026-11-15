@@ -39,7 +39,14 @@ let package = Package(
       cSettings: [.headerSearchPath("."), .disableWarning("shorten-64-to-32")]
     ),
     .target(name: "CodeBoardNotes", dependencies: ["CodeBoardModel"]),
-    .target(name: "CodeBoardCanvas", dependencies: ["CodeBoardModel", "CodeBoardSyntax", "CodeBoardNotes", "CodeUI"]),
+    // what a test process may not show or touch (menus, alerts, panels, the browser, Finder, the clipboard), replaced
+    .target(name: "CodeBoardTestGuard", dependencies: ["CodeBoardModel"]),
+    .target(
+      name: "CodeBoardCanvas",
+      dependencies: [
+        "CodeBoardModel", "CodeBoardSyntax", "CodeBoardNotes", "CodeBoardTestGuard", "CodeBoardMarkdown",
+        "CodeBoardMarkdownUI", "CodeUI",
+      ]),
     .target(name: "CodeBoardShell", dependencies: ["CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes"]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
     .executableTarget(name: "CanvasBench", dependencies: ["CodeBoardCanvas", "CodeBoardNotes", "CodeBoardSyntax"]),
@@ -55,32 +62,28 @@ let package = Package(
     .testTarget(name: "CodeBoardModelTests", dependencies: ["CodeBoardModel"], resources: [.copy("Fixtures")]),
     .testTarget(name: "CodeBoardSyntaxTests", dependencies: ["CodeBoardSyntax"]),
     .testTarget(name: "CodeBoardNotesTests", dependencies: ["CodeBoardNotes"]),
-    .testTarget(name: "CodeBoardCanvasTests", dependencies: ["CodeBoardCanvas"]),
+    .testTarget(name: "CodeBoardCanvasTests", dependencies: ["CodeBoardCanvas", "CodeBoardTestGuard"]),
     .testTarget(name: "CodeCoreTests", dependencies: ["CodeCore"], resources: [.copy("Fixtures")]),
     .testTarget(name: "CodeUITests", dependencies: ["CodeUI"]),
-    .testTarget(name: "CodeBoardShellTests", dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardNotes"]),
+    .testTarget(
+      name: "CodeBoardShellTests",
+      dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardNotes", "CodeBoardTestGuard"]),
   ]
 )
 
-// No warnings in our own Swift: a concurrency warning (Swift 6 downgrades some isolation errors from AppKit's overrides)
-// is as much a crash as an error, and the rest stay at zero with it. The native Markdown component's targets, added
-// below, are not under it yet
-for t in package.targets where t.name != "CTreeSitterScanners" {
-  t.swiftSettings = (t.swiftSettings ?? []) + [.treatAllWarnings(as: .error)]
-}
-
-// The native Markdown component (apps/macos/docs/markdown-guideline.md), self-contained: no target of the app depends
-// on it yet, and it depends on none of the app's but CodeBoardSyntax, which only the look tool uses for code colours
+// The native Markdown component (apps/macos/docs/markdown-guideline.md), self-contained: the canvas draws its Markdown
+// at rest with it, and it depends on none of the app's targets but the test guard, which its editor installs in a test
+// process as the canvas does (CodeBoardSyntax colours code for the look tool only)
 package.targets += [
   // Markdown parsed the way @yhnocoder/markdown parses it, with source ranges, and its editing rules (guideline 6.2)
   .target(name: "CodeBoardMarkdown", dependencies: ["CodeCore"]),
   // Markdown laid out and drawn with CoreText, edited in place; formulas and diagrams through JavaScriptCore (6.3)
-  .target(name: "CodeBoardMarkdownUI", dependencies: ["CodeBoardMarkdown"]),
+  .target(name: "CodeBoardMarkdownUI", dependencies: ["CodeBoardMarkdown", "CodeBoardTestGuard"]),
   .executableTarget(name: "MarkdownBench", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI"]),
   .executableTarget(
     name: "MarkdownLook", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeBoardSyntax"]),
   .testTarget(name: "CodeBoardMarkdownTests", dependencies: ["CodeBoardMarkdown"], resources: [.copy("Fixtures")]),
-  .testTarget(name: "CodeBoardMarkdownUITests", dependencies: ["CodeBoardMarkdownUI"]),
+  .testTarget(name: "CodeBoardMarkdownUITests", dependencies: ["CodeBoardMarkdownUI", "CodeBoardTestGuard"]),
 ]
 // a window to try the component in, standing alone (tools/markdown/make-demo.sh packages it); code coloured by
 // CodeBoardSyntax, as the look tool colours it; a vault's Notes read with CodeBoardModel. The kit runs it in any process
@@ -88,7 +91,15 @@ package.targets += [
 package.targets += [
   .target(
     name: "MarkdownDemoKit",
-    dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeBoardSyntax", "CodeBoardModel"]),
+    dependencies: [
+      "CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeBoardSyntax", "CodeBoardModel", "CodeBoardTestGuard",
+    ]),
   .executableTarget(name: "MarkdownDemo", dependencies: ["MarkdownDemoKit"]),
-  .testTarget(name: "MarkdownDemoKitTests", dependencies: ["MarkdownDemoKit", "CodeBoardModel"]),
+  .testTarget(name: "MarkdownDemoKitTests", dependencies: ["MarkdownDemoKit", "CodeBoardModel", "CodeBoardTestGuard"]),
 ]
+// No warnings in our own Swift (the Markdown component included, so after its targets): a concurrency warning (Swift 6 downgrades some isolation errors from AppKit's overrides)
+// is as much a crash as an error, and the rest stay at zero with it. The native Markdown component's targets, added
+// below, are not under it yet
+for t in package.targets where t.name != "CTreeSitterScanners" {
+  t.swiftSettings = (t.swiftSettings ?? []) + [.treatAllWarnings(as: .error)]
+}

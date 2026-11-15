@@ -36,6 +36,11 @@ struct Job: Decodable {
       var text: String
       var color: String
       var alone: Bool?
+      var outer: Outer?
+      struct Outer: Decodable {
+        var text: String
+        var color: String
+      }
     }
   }
 }
@@ -82,7 +87,12 @@ func hits(_ r: [Job.Ref]) -> [String: MarkdownRefHit] {
         .broken(place: broken == "place", title: h.title, badge: (h.badge ?? "").isEmpty ? nil : h.badge)
       } else {
         .found(
-          title: h.title, seal: h.seal.map { MarkdownSeal(text: $0.text, color: $0.color, alone: $0.alone ?? false) })
+          title: h.title,
+          seal: h.seal.map {
+            MarkdownSeal(
+              text: $0.text, color: $0.color, alone: $0.alone ?? false,
+              outer: $0.outer.map { MarkdownSeal.Outer(text: $0.text, color: $0.color) })
+          })
       }
   }
   return out

@@ -37,10 +37,15 @@ let boardFonts: Void = {
   @Test func baselinesLandWhereTheWebBoardPutsThem() {
     _ = boardFonts
     let sys = ["-apple-system"]
-    #expect(FontBook.baseline(FontBook.font(sys, size: 13.5), lineHeight: 21.6) == 15)
-    #expect(FontBook.baseline(FontBook.font(sys, size: 18.225, weight: 600), lineHeight: 23.6925) == 18)
-    #expect(FontBook.baseline(FontBook.font(["Source Serif 4"], size: 24.3, weight: 600), lineHeight: 30.375) == 23)
-    #expect(FontBook.baseline(FontBook.font(["Source Serif 4"], size: 13.5), lineHeight: 18.9) == 13)
-    #expect(FontBook.baseline(FontBook.font(["JetBrains Mono"], size: 12.5), lineHeight: 21.25) == 15)
+    #expect(FontBook.baseline(FontBook.font(sys, size: 13.5), lineHeight: 21.6, floored: true) == 15)
+    #expect(FontBook.baseline(FontBook.font(sys, size: 18.225, weight: 600), lineHeight: 23.6925, floored: true) == 18)
+    #expect(
+      FontBook.baseline(FontBook.font(["Source Serif 4"], size: 24.3, weight: 600), lineHeight: 30.375, floored: true)
+        == 23)
+    #expect(FontBook.baseline(FontBook.font(["Source Serif 4"], size: 13.5), lineHeight: 18.9, floored: true) == 13)
+    #expect(FontBook.baseline(FontBook.font(["JetBrains Mono"], size: 12.5), lineHeight: 21.25, floored: true) == 15)
+    // WebKit's, where the Mac app edits Notes: half the leading as it is, a fraction of a point lower
+    let unfloored = FontBook.baseline(FontBook.font(sys, size: 13.5), lineHeight: 21.6, floored: false)
+    #expect(unfloored > 15 && unfloored < 16)
   }
 }

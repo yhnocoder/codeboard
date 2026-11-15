@@ -376,8 +376,21 @@
           "tests": ["CanvasAccessibilityTests"]
         },
         "test guard": {
-          "sources": ["CodeBoardCanvas/TestGuard.swift"],
+          "sources": ["CodeBoardCanvas/TestWatch.swift", "CodeBoardTestGuard"],
           "tests": ["TestGuardTests"]
+        },
+        "native notes": {
+          "sources": [
+            "CodeBoardCanvas/NativeNotes.swift",
+            "CodeBoardCanvas/KeptMath.swift",
+            "CodeBoardNotes/MeasuredSizes.swift"
+          ],
+          "tests": [
+            "NativeNotesTests",
+            "NativeNotesKeptTests",
+            "NativeCanvasTests",
+            "CanvasArrowTests/anArrowOnANotesBlockMeetsTheNoteAtThatBlock"
+          ]
         }
       }
     },
