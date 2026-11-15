@@ -187,7 +187,7 @@ extension MarkdownLayout {
         guard let a = attrs[Attr.atom] as? AtomBox else { continue }
         let x = origin.x + CTLineGetOffsetForStringIndex(l.line, CTRunGetStringRange(run).location, nil)
         switch a.content {
-        case .ref(let r): r.draw(at: CGPoint(x: x, y: origin.y), ctx)
+        case .ref(let r): r.draw(at: CGPoint(x: x, y: origin.y - r.descent), ctx)
         case .math(let pic, let size):
           let color = LayoutBuilder.mdColor(attrs[kCTForegroundColorAttributeName] as! CGColor)
           drawMath(pic, size: size, origin: CGPoint(x: x, y: origin.y), color: color, ctx)

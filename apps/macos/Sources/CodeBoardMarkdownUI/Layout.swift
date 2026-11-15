@@ -384,7 +384,7 @@ struct LayoutBuilder {
   ) -> TextBlock {
     let strut = FontBook.font(style.families, size: style.size, weight: style.weight, italic: style.italic)
     let lh = lineHeight * style.size
-    let strutAbove = FontBook.baseline(strut, lineHeight: lh)
+    let strutAbove = FontBook.baseline(strut, lineHeight: lh, floored: theme.metrics.flooredLeading)
     var lines: [TextBlock.Line] = []
     var top = y
     let attr = d.string
@@ -467,7 +467,7 @@ struct LayoutBuilder {
         case .annot(let box):
           items.append(.annot(box, CGPoint(x: x, y: l.origin.y - box.baseline)))
         case .ref(let box):
-          items.append(.ref(box, CGPoint(x: x, y: l.origin.y)))
+          items.append(.ref(box, CGPoint(x: x, y: l.origin.y - box.descent)))
         case .spacer:
           break
         }
@@ -561,7 +561,8 @@ struct LayoutBuilder {
             TextBlock(display: d, lines: lines, frame: CGRect(x: cx - mw, y: y, width: mw, height: mt.frame.height))))
       } else {
         let font = FontBook.font(style.families, size: style.size, weight: 400)
-        let base = y + FontBook.baseline(font, lineHeight: CGFloat(m.lineHeight) * style.size)
+        let base =
+          y + FontBook.baseline(font, lineHeight: CGFloat(m.lineHeight) * style.size, floored: m.flooredLeading)
         let dia = style.size * 0.3
         let c = CGPoint(x: cx - style.size, y: base - CTFontGetXHeight(font) / 2)
         let r = CGRect(x: c.x - dia / 2, y: c.y - dia / 2, width: dia, height: dia)

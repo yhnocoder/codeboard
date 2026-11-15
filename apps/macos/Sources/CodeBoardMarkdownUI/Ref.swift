@@ -28,8 +28,15 @@ final class RefBox: @unchecked Sendable {
   let titleX: CGFloat
   let badgeX: CGFloat
   let surface: MDColor
+  /// what it was written as, and whether it found what it names (a host takes a press on it: not .missing, not .gone)
+  let label: String
+  let target: String?
+  let found: Bool
 
-  init(label: String, hit: MarkdownRefHit?, style: InlineStyle, theme: MarkdownTheme) {
+  init(label: String, target: String? = nil, hit: MarkdownRefHit?, style: InlineStyle, theme: MarkdownTheme) {
+    self.label = label
+    self.target = target
+    if case .found = hit { found = true } else { found = false }
     let c = theme.colors
     let size = style.size
     fontSize = size
@@ -117,11 +124,11 @@ final class RefBox: @unchecked Sendable {
     if let b = badge { x += 4 + CGFloat(CTLineGetTypographicBounds(b, nil, nil, nil)) }
     width = x + edge
     let lh = 1.32 * size
-    ascent = FontBook.baseline(font, lineHeight: lh)
+    ascent = FontBook.baseline(font, lineHeight: lh, floored: theme.metrics.flooredLeading)
     descent = lh - ascent
   }
 
-  /// draws the box with its baseline starting at `o`
+  /// draws the box with its own text's baseline starting at `o` (its bottom edge `descent` below)
   func draw(at o: CGPoint, _ ctx: CGContext) {
     let alone = {
       if case .seal(let s, _, _, _) = mark { return s.alone }
