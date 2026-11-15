@@ -1,3 +1,4 @@
+import AppKit
 import CodeBoardMarkdown
 import CoreGraphics
 import Foundation
@@ -168,6 +169,36 @@ import Testing
     #expect(v.band.shown && v.band.table != nil && v.band.slidesIn == 1)
     v.selection = MDSelection((src as NSString).range(of: "x = 1").location + 1)
     #expect(v.band.shown && v.band.block != nil && v.band.slidesIn == 2)
+  }
+}
+
+/// The band's first show, the click that starts editing landing in a code block, slides as a later block's does: only
+/// the strip's y moves (it once came in from the upper left, its frame animated from a stale place)
+@MainActor @Suite struct BandFirstShowTests {
+  @Test func theFirstShowSlidesOnlyUpAsALaterOne() throws {
+    _ = boardFonts
+    let src = "Text\n\n```py\nx = 1\n```\n\nMid\n\n```py\ny = 2\n```"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 0)
+    v.isEditing = false
+    let r = try #require(l.caretRect(MDCaret(14)))
+    v.enter(at: CGPoint(x: r.midX, y: r.midY))
+    func slide() throws -> (String?, CGFloat?, CGFloat?) {
+      // nothing but the slide moves: no frame of the band or its layers animates
+      for layer in [v.band.layer, v.band.subviews.first?.layer, v.band.subviews.first?.subviews.first?.layer] {
+        let keys = layer?.animationKeys() ?? []
+        #expect(keys.allSatisfy { $0 == CodeBand.slideKey }, "\(keys)")
+      }
+      let a = try #require(v.band.lastSlide)
+      return (a.keyPath, a.fromValue as? CGFloat, a.toValue as? CGFloat)
+    }
+    #expect(v.band.shown && v.band.slidesIn == 1)
+    let first = try slide()
+    #expect(first.0 == "transform.translation.y" && first.2 == 0 && (first.1 ?? 0) > 0)
+    v.selection = MDSelection((src as NSString).range(of: "y = 2").location + 1)
+    #expect(v.band.shown && v.band.slidesIn == 2)
+    let later = try slide()
+    #expect(first == later)
   }
 }
 

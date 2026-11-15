@@ -44,6 +44,37 @@ import Testing
     #expect(e.core.source == before)
   }
 
+  /// a ⌘-click's float starts on the block's box as it was at the press and glides straight right, level with it (it
+  /// once went a block's height up first, its frame animated in the page layer while the Note closed up under it)
+  @Test func aCommandClickGlidesStraightRightFromTheBlock() throws {
+    _ = NSApplication.shared
+    let demo = try Demo(text: sample, folder: sampleFolder(), cardWidth: 420)
+    demo.secondText = secondSample
+    demo.setUp()
+    _ = Check.lay(demo, width: 1000)
+    Self.kept.append(demo)
+    let e = demo.cards[0]
+    e.isEditing = true
+    let f = e.core.layout.blockFrames[3]
+    let local = CGPoint(x: f.midX, y: f.midY)
+    let blocks = try #require(e.core.blocks(at: local))
+    let r = e.core.frame(of: blocks)
+    let o = demo.settledOrigin(of: e)
+    let box = CGRect(
+      x: o.x + r.minX * e.zoom, y: o.y + r.minY * e.zoom, width: r.width * e.zoom, height: r.height * e.zoom)
+    let page = demo.page.convert(
+      CGPoint(x: e.frame.minX + local.x * e.zoom, y: e.frame.minY + local.y * e.zoom), to: nil)
+    for t in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+      let ev = NSEvent.mouseEvent(
+        with: t, location: page, modifierFlags: [.command], timestamp: 0, windowNumber: demo.window.windowNumber,
+        context: nil, eventNumber: 0, clickCount: 1, pressure: t == .leftMouseDown ? 1 : 0)!
+      #expect(demo.moves.handle(ev) == nil)
+    }
+    let glide = try #require(demo.moves.lastGlide)
+    #expect(glide.from == box, "\(glide.from) \(box)")
+    #expect(glide.to.minY == box.minY && glide.to.size == box.size && glide.to.minX > box.minX)
+  }
+
   /// the heading chip in the card's left padding, outside the editor's bounds: a press there reaches the chip (it went
   /// nowhere), and a level picked rewrites the marker as one undo step with the caret kept
   @Test func thePressOnTheHeadingChipReachesIt() throws {

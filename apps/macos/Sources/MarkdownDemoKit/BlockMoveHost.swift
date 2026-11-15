@@ -14,7 +14,7 @@ import CodeBoardMarkdownUI
 ///   to and from it over 120 ms
 /// - when blocks land, go or come back, the other blocks slide to their new places and the Notes' heights follow over
 ///   FLIP_MS (blockmove.ts's flip and height change)
-/// The float and the glides are layers moved by Core Animation, at the display's rate
+/// The float and its glides are moved by a display link, at the display's rate
 @MainActor
 final class BlockMoveHost {
   unowned let demo: Demo
@@ -49,6 +49,11 @@ final class BlockMoveHost {
   private var swap: (from: CGRect, since: CFTimeInterval)?
   private var swapLink: CADisplayLink?
   private var pointer = CGPoint.zero
+  /// the float's glide under way: from, to, since when, what then
+  private var glideState: (from: CGRect, to: CGRect, since: CFTimeInterval, then: (@MainActor () -> Void)?)?
+  private var glideLink: CADisplayLink?
+  /// the last glide's ends in page points (tests)
+  private(set) var lastGlide: (from: CGRect, to: CGRect)?
 
   init(demo: Demo) { self.demo = demo }
 
@@ -112,6 +117,8 @@ final class BlockMoveHost {
         if cmd {
           putBack(l)
         } else {
+          // grabbed while still gliding out: it stays where it is, under the pointer
+          endGlide()
           lift?.grab = CGPoint(x: p.x - float.frame.minX, y: p.y - float.frame.minY)
           lift?.dragging = true
           over = false
@@ -203,9 +210,11 @@ final class BlockMoveHost {
   }
 
   private func showFloat(_ l: Lift, at r: CGRect) {
+    // a glide still under way (the last copy going home) ends first, so it neither moves nor hides this one
+    endGlide(finish: true)
     guard let pic = l.card.picture(of: l.blocks) else { return }
     float.image = NSImage(cgImage: pic, size: r.size)
-    float.frame = r
+    place(float: r)
     float.isHidden = false
   }
 
@@ -309,10 +318,7 @@ final class BlockMoveHost {
     let shown = demo.scroll.documentVisibleRect
     let x = min(cardRect.maxX + 24, shown.maxX - l.box.width - 8)
     let to = CGRect(x: max(shown.minX + 8, x), y: l.box.minY, width: l.box.width, height: l.box.height)
-    NSAnimationContext.runAnimationGroup { ctx in
-      ctx.duration = 0.16
-      float.animator().frame = to
-    }
+    move(to: to)
     l.floating = true
     lift = l
     outline.isHidden = true
@@ -364,16 +370,53 @@ final class BlockMoveHost {
     }
   }
 
-  /// the float slides to a box (200 ms, Core Animation) and goes
-  private func glide(to r: CGRect, then: @escaping @MainActor @Sendable () -> Void) {
-    NSAnimationContext.runAnimationGroup { ctx in
-      ctx.duration = 0.2
-      float.animator().frame = r
-    } completionHandler: {
-      MainActor.assumeIsolated {
-        self.float.isHidden = true
-        then()
-      }
+  /// the float slides to a box (blockmove.css's is-glide) and goes
+  private func glide(to r: CGRect, then: @escaping @MainActor () -> Void) {
+    move(to: r) {
+      self.float.isHidden = true
+      then()
     }
+  }
+
+  /// A glide of the float from where it is to `to`, its box set every frame in page points. Not Core Animation's
+  /// frame animation: that runs in the page layer's unflipped space, so the page's height changing under it (the Note
+  /// closing up) carried the copy a block's height off its way
+  private func move(to: CGRect, then: (@MainActor () -> Void)? = nil) {
+    endGlide()
+    let from = float.frame
+    lastGlide = (from, to)
+    guard demo.window.occlusionState.contains(.visible) else {
+      place(float: to)
+      then?()
+      return
+    }
+    glideState = (from, to, CACurrentMediaTime(), then)
+    let link = demo.page.displayLink(target: self, selector: #selector(glideFrame(_:)))
+    link.add(to: .main, forMode: .common)
+    glideLink = link
+  }
+
+  @objc private func glideFrame(_ link: CADisplayLink) {
+    MarkdownEditorView.linkTicks += 1
+    guard let g = glideState else { return endGlide() }
+    let k = (link.targetTimestamp - g.since) / MarkdownTiming.blockSettle
+    guard k < 1 else { return endGlide(finish: true) }
+    let e = CGFloat(MarkdownTiming.glide(k))
+    place(
+      float: CGRect(
+        x: g.from.minX + (g.to.minX - g.from.minX) * e, y: g.from.minY + (g.to.minY - g.from.minY) * e,
+        width: g.from.width + (g.to.width - g.from.width) * e, height: g.from.height + (g.to.height - g.from.height) * e
+      ))
+  }
+
+  /// stops a glide; `finish`: at its end, its completion run
+  private func endGlide(finish: Bool = false) {
+    let g = glideState
+    glideState = nil
+    glideLink?.invalidate()
+    glideLink = nil
+    guard finish, let g else { return }
+    place(float: g.to)
+    g.then?()
   }
 }

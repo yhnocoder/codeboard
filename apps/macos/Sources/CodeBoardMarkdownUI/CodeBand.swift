@@ -104,20 +104,25 @@ final class CodeBand: NSView {
     let w = max(over.width, need)
     strip.hangs = table && w > over.width + 0.5
     strip.overWidth = over.width
+    let fadeH = 10 * zoom
+    // frames change at once: the strip's frame once moved by an animator (and the band's geometry under it) slid the
+    // strip in from a stale place on the band's first show; the only motion is the slide's own translation
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
     frame = CGRect(x: over.minX - m, y: over.minY - h - m, width: w + 2 * m, height: h + m + strip.radius)
     clip.frame = CGRect(x: 0, y: 0, width: frame.width, height: h + m)
-    let fadeH = 10 * zoom
-    strip.frame.size = CGSize(width: w, height: h + fadeH)
+    // the strip always stands in its place; hidden or sliding, it is offset only by the slide
+    strip.frame = CGRect(x: m, y: m - fadeH, width: w, height: h + fadeH)
+    CATransaction.commit()
     if key != self.key {
       // a new block: the strip starts from below its edge, so it slides in for this one too
       self.key = key
       if shown {
         shown = false
-        strip.frame.origin = CGPoint(x: m, y: m - fadeH + h + 16 * zoom)
+        strip.layer?.removeAnimation(forKey: Self.slideKey)
         for c in corners { c.opacity = 0 }
       }
     }
-    if !shown { strip.frame.origin = CGPoint(x: m, y: m - fadeH + h + 16 * zoom) }
     let face = strip.fill.cg
     let r = strip.radius
     CATransaction.begin()
@@ -136,32 +141,51 @@ final class CodeBand: NSView {
   /// how many times it has slid in (tests)
   private(set) var slidesIn = 0
 
+  static let slideKey = "slide"
+  /// the strip's last slide (tests): up from below the band's bottom edge and back, along y only (.md-band-slide's
+  /// translateY)
+  private(set) var lastSlide: CABasicAnimation?
+
   func show(_ on: Bool) {
     guard on != shown else { return }
     shown = on
     if on { slidesIn += 1 }
-    isHidden = false
-    let m = Self.margin * strip.zoom
-    let h = Self.height * strip.zoom
-    let fadeH = 10 * strip.zoom
+    let below = (Self.height + 16) * strip.zoom
     // where nobody sees it (a window off screen or covered), it is simply in place: no slide left half done
     guard window.map({ $0.occlusionState.contains(.visible) }) ?? true else {
-      strip.setFrameOrigin(CGPoint(x: m, y: on ? m - fadeH : m - fadeH + h + 16 * strip.zoom))
+      strip.layer?.removeAnimation(forKey: Self.slideKey)
       for c in corners { c.opacity = on ? 1 : 0 }
       isHidden = !on
       return
     }
-    NSAnimationContext.runAnimationGroup { c in
-      c.duration = on ? MarkdownTiming.bandShow : MarkdownTiming.bandHide
-      // .md-band-slide: in cubic-bezier(.33, 1, .68, 1), out (.32, 0, .67, 0)
-      c.timingFunction =
-        on
-        ? CAMediaTimingFunction(controlPoints: 0.33, 1, 0.68, 1)
-        : CAMediaTimingFunction(controlPoints: 0.32, 0, 0.67, 0)
-      strip.animator().setFrameOrigin(CGPoint(x: m, y: on ? m - fadeH : m - fadeH + h + 16 * strip.zoom))
-    } completionHandler: {
-      MainActor.assumeIsolated { if !self.shown { self.isHidden = true } }
+    // a slide under way turns back from where it has the strip
+    let running = !isHidden && strip.layer?.animation(forKey: Self.slideKey) != nil
+    let now = strip.layer?.presentation()?.value(forKeyPath: "transform.translation.y") as? CGFloat
+    let from = running ? (now ?? (on ? below : 0)) : (on ? below : 0)
+    isHidden = false
+    let slide = CABasicAnimation(keyPath: "transform.translation.y")
+    slide.fromValue = from
+    slide.toValue = on ? 0 : below
+    slide.duration = on ? MarkdownTiming.bandShow : MarkdownTiming.bandHide
+    // .md-band-slide: in cubic-bezier(.33, 1, .68, 1), out (.32, 0, .67, 0)
+    slide.timingFunction =
+      on
+      ? CAMediaTimingFunction(controlPoints: 0.33, 1, 0.68, 1)
+      : CAMediaTimingFunction(controlPoints: 0.32, 0, 0.67, 0)
+    slide.fillMode = .both
+    // gone, the strip stays below until the band hides
+    slide.isRemovedOnCompletion = on
+    lastSlide = slide
+    CATransaction.begin()
+    CATransaction.setCompletionBlock {
+      MainActor.assumeIsolated {
+        guard !self.shown, self.lastSlide === slide else { return }
+        self.isHidden = true
+        self.strip.layer?.removeAnimation(forKey: Self.slideKey)
+      }
     }
+    strip.layer?.add(slide, forKey: Self.slideKey)
+    CATransaction.commit()
     // the corner squares come after the strip has reached the block, and go first
     let fade = CABasicAnimation(keyPath: "opacity")
     fade.duration = on ? 0.05 : 0.06

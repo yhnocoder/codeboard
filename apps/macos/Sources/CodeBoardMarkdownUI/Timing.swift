@@ -23,8 +23,14 @@ public enum MarkdownTiming {
   public static let blockSettle = 0.200
   public static let blockSwap = 0.120
 
-  /// blockmove.ts's EASE, cubic-bezier(.2, .7, .3, 1): the share of the way done `t` (0…1) of the time in
-  public static func ease(_ t: Double) -> Double {
+  /// blockmove.ts's EASE, cubic-bezier(.2, .7, .3, 1)
+  public static func ease(_ t: Double) -> Double { bezier(t, 0.2, 0.7, 0.3, 1) }
+
+  /// blockmove.css's glide, cubic-bezier(.33, 1, .68, 1)
+  public static func glide(_ t: Double) -> Double { bezier(t, 0.33, 1, 0.68, 1) }
+
+  /// cubic-bezier(x1, y1, x2, y2): the share of the way done `t` (0…1) of the time in
+  public static func bezier(_ t: Double, _ x1: Double, _ y1: Double, _ x2: Double, _ y2: Double) -> Double {
     let t = min(1, max(0, t))
     // x(u) and y(u) of the curve; solve x(u) = t by Newton's method (x is increasing), then read y
     func b(_ u: Double, _ p1: Double, _ p2: Double) -> Double {
@@ -35,10 +41,10 @@ public enum MarkdownTiming {
     }
     var u = t
     for _ in 0..<8 {
-      let d = db(u, 0.2, 0.3)
+      let d = db(u, x1, x2)
       guard d > 1e-6 else { break }
-      u = min(1, max(0, u - (b(u, 0.2, 0.3) - t) / d))
+      u = min(1, max(0, u - (b(u, x1, x2) - t) / d))
     }
-    return b(u, 0.7, 1)
+    return b(u, y1, y2)
   }
 }
