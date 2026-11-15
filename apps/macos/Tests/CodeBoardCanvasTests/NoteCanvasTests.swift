@@ -40,6 +40,26 @@ import Testing
         CGSize(width: 300, height: 180),
       ])
   }
+
+  /// A measured card is laid out at whole points, as main's cards are by offsetWidth and offsetHeight (Card.tsx read):
+  /// what Tidy, arrows and the free-place search see
+  @Test func aMeasuredCardIsLaidOutAtWholePoints() {
+    let board = Board(
+      id: BoardID(rawValue: "b"), cards: [note("auto"), text("free", wrap: false), text("box", wrap: true)])
+    let package = URL(filePath: "/nonexistent-vault/B.board")
+    let sizes = [
+      CardID(rawValue: "auto"): CGSize(width: 300, height: 140.4),
+      CardID(rawValue: "free"): CGSize(width: 87.5, height: 36.6),
+      CardID(rawValue: "box"): CGSize(width: 300, height: 37.6),
+    ]
+    let s = Scene(
+      board, package: package, vault: vault, theme: .warmInk, highlighter: Highlighter(),
+      sizes: sizes.mapValues { NoteMetrics(size: $0) })
+    #expect(
+      s.items.map(\.rect.size) == [
+        CGSize(width: 300, height: 140), CGSize(width: 88, height: 37), CGSize(width: 300, height: 38),
+      ])
+  }
 }
 
 /// The real Note page in a real web view, as CodeBoardNotes' renderer tests: needs the built page (node web/build.mjs)

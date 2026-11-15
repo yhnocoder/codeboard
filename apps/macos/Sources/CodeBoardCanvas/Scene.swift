@@ -313,7 +313,10 @@ struct Scene: Sendable {
       } else {
         guard
           let (drawing, size, code) = Scene.card(
-            c, content, board: board, folder: folder, measured: sizes[c.id]?.size, theme: t, highlighter: highlighter,
+            c, content, board: board, folder: folder,
+            // whole points, as main lays a card out by its offsetWidth and offsetHeight (Card.tsx read)
+            measured: sizes[c.id].map { CGSize(width: $0.size.width.rounded(), height: $0.size.height.rounded()) },
+            theme: t, highlighter: highlighter,
             refs: refs, fetching: fetching.contains(c.id), always: always)
         else { continue }
         part = Part(

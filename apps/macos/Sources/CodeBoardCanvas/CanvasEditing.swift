@@ -379,6 +379,10 @@ extension CanvasView {
     guard let s = scene else { return nil }
     // the kept cards (sub-boards, Texts, Boxes) are drawn over the others, so they are hit first; at the summary level
     // only they are there
+    // a Text or Box selected alone is drawn over the cards round it (raiseText), so it is hit first
+    if let r = raised, r < s.items.count, case .card(let id)? = s.items[r].owner, s.items[r].rect.contains(p) {
+      return id
+    }
     let all = s.items[s.cardsFrom..<s.labelsFrom].reversed()
     let order = all.filter(\.kept) + (levels.level == .summaries ? [] : all.filter { !$0.kept })
     for it in order {
@@ -470,8 +474,8 @@ extension CanvasView {
 
   // MARK: Selection chrome
 
-  /// The selection's rings, and the handles of a lone selected item that can change, in the theme's accent; line widths
-  /// in view points whatever the zoom
+  /// The selection's rings and a selected Text's or Box's handles, in the theme's accent; line widths in view points
+  /// whatever the zoom
   func drawChrome() {
     guard let doc = document, scene != nil else {
       chrome.sublayers = nil
@@ -479,7 +483,6 @@ extension CanvasView {
       return
     }
     let z = camera.zoom
-    let accent = theme.accent
     let before = selectedLooks
     selectedLooks = [:]
     defer {
@@ -528,22 +531,41 @@ extension CanvasView {
       drawPorts()
       drawEndHandles()
       drawConnect()
-      guard doc.selection.count == 1, let item = doc.selection.first, !doc.board.isLocked(item) else { return }
-      switch gesture?.kind {
-      case .move?, .nudge?, .marquee?: return
-      default: break
-      }
-      // only a Text's and a Box's handles show (styles.css .hw, .mkgrip); every other kind is resized by its edges,
-      // which only the pointer's shape tells
-      guard case .card(let id) = item, isText(id) else { return }
+      placeTextHandles()
+    }
+  }
+
+  /// The Texts and Boxes whose handles show: every one selected and not locked (styles.css .card.text.sel .hw,
+  /// .mkgrip; .card.locked .hw); every other kind is resized by its edges, which only the pointer's shape tells
+  var textHandleCards: Set<CardID> {
+    guard let doc = document else { return [] }
+    switch gesture?.kind {
+    case .move?, .nudge?, .marquee?: return []
+    default: break
+    }
+    return Set(doc.selection.compactMap(\.card).filter { isText($0) && !doc.board.isLocked(.card($0)) })
+  }
+
+  /// The handles in each card's own layer, as main's are in the card: over its content and selected look, under its
+  /// stickers, and under a card drawn over it unless it comes up (raiseText)
+  private func placeTextHandles() {
+    for l in textHandleLayers { l.removeFromSuperlayer() }
+    textHandleLayers = []
+    for id in textHandleCards {
+      guard let i = index(of: .card(id)) else { continue }
+      let box = items[i].box
       for (_, r) in textHandles(id) {
+        let o = box.convert(r.origin, from: box.superlayer)
         let l = CAShapeLayer()
         let radius = r.height > 12 ? 4.0 : 3.0
-        l.path = CGPath(roundedRect: r, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        l.path = CGPath(
+          roundedRect: CGRect(origin: o, size: r.size), cornerWidth: radius, cornerHeight: radius, transform: nil)
         l.fillColor = theme.surface
-        l.strokeColor = accent
+        l.strokeColor = theme.accent
         l.lineWidth = 1.5
-        chrome.addSublayer(l)
+        l.zPosition = 3.6
+        box.addSublayer(l)
+        textHandleLayers.append(l)
       }
     }
   }
@@ -837,6 +859,10 @@ extension CanvasView {
       let e = edge(of: item, at: v)
     {
       return (item, e)
+    }
+    // every selected Text's and Box's handles (.card.text.sel .hw)
+    for id in textHandleCards {
+      if let e = edge(of: .card(id), at: v) { return (.card(id), e) }
     }
     let p = camera.board(v)
     for it in scene?.items[(scene?.cardsFrom ?? 0)..<(scene?.labelsFrom ?? 0)].reversed() ?? [] {
