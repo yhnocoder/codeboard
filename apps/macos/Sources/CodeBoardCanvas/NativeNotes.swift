@@ -25,6 +25,9 @@ package final class NativeNotes: NoteDisplay {
   let sizes: MeasuredSizes?
   /// Where its typeset formulas and diagrams are kept (nil: in this process only, by the engines)
   let formulas: URL?
+  /// The pictures of the Notes in view as a board opens (`prepare`), kept on disk: after a relaunch they are read, as
+  /// fast as the web renderer's kept pictures, rather than drawn while the board waits
+  let openings: MeasuredSizes?
 
   /// `kept`: the folder its measured sizes, formulas and diagrams are kept in, nil for none
   init(web: NoteRenderer, images: DecodeCache, pictures: URL = CanvasView.pictures, kept: URL?) {
@@ -33,6 +36,10 @@ package final class NativeNotes: NoteDisplay {
     self.pictures = pictures
     sizes = kept.map { MeasuredSizes(folder: $0.appending(path: "sizes"), build: NativeNotes.layoutBuild) }
     formulas = kept?.appending(path: "formulas")
+    // a picture in view at 200 % on a 2x screen is a few megabytes, most of them paper: some hundred boards' openings
+    openings = kept.map {
+      MeasuredSizes(folder: $0.appending(path: "openings"), build: NativeNotes.layoutBuild, limit: 512 << 20)
+    }
   }
 
   /// With an image cache of its own (tools, tests)
@@ -91,6 +98,12 @@ package final class NativeNotes: NoteDisplay {
     of note: NoteBody, width: Double, height: Double?, folder: URL, scale: Double, look: String, dark: Bool,
     refs: [NoteRef], hideHead: Bool, priority: Int
   ) async throws -> NoteSnapshot {
+    let k = key(note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead)
+    if let early = drawnAhead.withLock({ $0.removeValue(forKey: Ahead(key: k, height: height, scale: scale)) }),
+      let s = await early.value
+    {
+      return s
+    }
     let l = try laid(note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead)
     try Task.checkCancellation()
     guard let s = draw(l, height: height, scale: CGFloat(scale), folder: folder, dark: dark) else {
@@ -175,20 +188,46 @@ package final class NativeNotes: NoteDisplay {
     }
   }
 
-  /// The Notes in view of a board about to show laid out now, in order (nearest the middle first): while its scene is
-  /// made, so drawing them, which the board waits for, finds them laid out or being laid out
-  func prepare(_ notes: [NoteSizeRequest]) {
-    guard !notes.isEmpty else { return }
-    Task.detached(priority: .userInitiated) {
-      await withTaskGroup(of: Void.self) { g in
-        for n in notes {
-          g.addTask {
-            _ = try? self.laid(
-              n.note, width: n.width, folder: n.folder, look: n.look, dark: n.dark, refs: n.refs, hideHead: n.hideHead)
-          }
-        }
+  /// The Notes in view of a board about to show (nearest the middle first) laid out and drawn now, at the scale the
+  /// board will most likely open them at (`height`: the card's stored one): while its scene is made, so the board,
+  /// which waits for them, finds them drawn or being drawn. One asked for at another scale is drawn then; what was
+  /// drawn ahead for the board before goes
+  func prepare(_ notes: [(note: NoteSizeRequest, height: Double?, scale: Double)]) {
+    let tasks = notes.map { r, height, scale in
+      let k = key(
+        r.note, width: r.width, folder: r.folder, look: r.look, dark: r.dark, refs: r.refs, hideHead: r.hideHead)
+      let task = Task.detached(priority: .userInitiated) { () -> NoteSnapshot? in
+        let kept = self.openings?.key(r, height: height, scale: scale, extra: self.remoteStamps(r.note.markdown))
+        if let kept, let s = self.openings?.readPicture(kept) { return s }
+        guard
+          let l = try? self.laid(
+            r.note, width: r.width, folder: r.folder, look: r.look, dark: r.dark, refs: r.refs, hideHead: r.hideHead),
+          let s = self.draw(l, height: height, scale: CGFloat(scale), folder: r.folder, dark: r.dark)
+        else { return nil }
+        if let kept { self.openings?.writePicture(s, kept) }
+        return s
       }
+      return (Ahead(key: k, height: height, scale: scale), task)
     }
+    drawnAhead.withLock { $0 = Dictionary(tasks, uniquingKeysWith: { a, _ in a }) }
+  }
+
+  /// A Note drawn ahead by `prepare`, by what a snapshot of it asks for
+  struct Ahead: Hashable {
+    let key: Key
+    let height: Double?
+    let scale: Double
+  }
+  private let drawnAhead = Mutex<[Ahead: Task<NoteSnapshot?, Never>]>([:])
+
+  /// What a Note is laid out by: whether its pictures at web addresses (`remote`: remoteState) are read changes it
+  private func key(
+    _ note: NoteBody, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef], hideHead: Bool,
+    _ remote: [(String, Remote)]? = nil
+  ) -> Key {
+    Key(
+      note: note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead,
+      read: (remote ?? remoteState(note.markdown)).map(\.1))
   }
 
   // MARK: laying out
@@ -245,9 +284,7 @@ package final class NativeNotes: NoteDisplay {
     try MarkdownAssets.fonts.get()
     // its pictures at web addresses: laid out again once one is read or fails
     let remote = remoteState(note.markdown)
-    let key = Key(
-      note: note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead,
-      read: remote.map(\.1))
+    let key = key(note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead, remote)
     if let hit = layouts.take(key) { return hit }
     var made = false
     defer { if !made { layouts.drop(key) } }

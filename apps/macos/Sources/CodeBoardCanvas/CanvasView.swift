@@ -607,7 +607,8 @@ public final class CanvasView: NSView {
       let measures = Scene.measures(b, package: package, vault: vault)
       let sizes = await CanvasView.measure(measures, theme: theme, display: display)
       if let native = display as? NativeNotes {
-        native.prepare(CanvasView.inView(measures, of: b, sizes: sizes, camera: opensAt, size: size, theme: theme))
+        native.prepare(
+          CanvasView.inView(measures, of: b, sizes: sizes, camera: opensAt, size: size, theme: theme, backing: backing))
       }
       let inlines = Scene.inlineMeasures(b, package: package, vault: vault, theme: theme)
       let inline = await CanvasView.measureInline(inlines, theme: theme, display: display)
@@ -687,23 +688,34 @@ public final class CanvasView: NSView {
   }
 
   /// The Notes of a board that will be in view where it opens, nearest the middle first, from where its cards are
-  /// (`camera`, else its top left at 100 % as Camera.opening puts it, of the cards alone): for laying them out ahead
+  /// (`camera`, else its top left at 100 % as Camera.opening puts it, of the cards alone): for drawing them ahead, with
+  /// their stored heights and the scale the board opens them at unless its zoom is clamped (the overview's `opening`)
   nonisolated static func inView(
-    _ ms: [Scene.Measure], of b: Board, sizes: [CardID: NoteMetrics], camera: Camera?, size: CGSize, theme: Theme
-  ) -> [NoteSizeRequest] {
+    _ ms: [Scene.Measure], of b: Board, sizes: [CardID: NoteMetrics], camera: Camera?, size: CGSize, theme: Theme,
+    backing: CGFloat
+  ) -> [(note: NoteSizeRequest, height: Double?, scale: Double)] {
     var at: [CardID: CGPoint] = [:]
-    for c in b.cards { at[c.id] = CGPoint(x: c.x, y: c.y) }
+    var stored: [CardID: Double] = [:]
+    for c in b.cards {
+      at[c.id] = CGPoint(x: c.x, y: c.y)
+      stored[c.id] = c.height
+    }
     let corner = CGPoint(x: at.values.map(\.x).min() ?? 0, y: at.values.map(\.y).min() ?? 0)
     let view = (camera ?? Camera.opening(CGRect(origin: corner, size: CGSize(width: 1, height: 1)))).visible(size)
     let mid = CGPoint(x: view.midX, y: view.midY)
-    return ms.compactMap { m -> (CGFloat, NoteSizeRequest)? in
-      guard m.sidenote == nil, m.width > 0, let p = at[m.card], let h = sizes[m.card]?.size.height else { return nil }
+    let zoom = camera?.zoom ?? 1
+    return ms.compactMap { m -> (CGFloat, (NoteSizeRequest, Double?, Double))? in
+      guard m.sidenote == nil, m.width > 0, let p = at[m.card],
+        let h = stored[m.card] ?? sizes[m.card].map({ Double($0.size.height) })
+      else { return nil }
       let r = CGRect(x: p.x, y: p.y, width: m.width, height: h)
       guard r.intersects(view) else { return nil }
       let request = NoteSizeRequest(
         note: m.note, width: m.width, folder: m.folder, look: theme.id.rawValue, dark: theme.dark, refs: m.refs,
         hideHead: m.hideHead)
-      return (hypot(r.midX - mid.x, r.midY - mid.y), request)
+      // its bitmap's size without the shadow's bleed: only a Note too big for the zoom's scale is capped by it
+      let scale = Levels.scale(zoom, backing: backing, size: r.size)
+      return (hypot(r.midX - mid.x, r.midY - mid.y), (request, stored[m.card], Double(scale)))
     }.sorted { $0.0 < $1.0 }.map(\.1)
   }
 

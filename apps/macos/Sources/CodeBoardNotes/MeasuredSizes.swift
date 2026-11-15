@@ -11,26 +11,35 @@ package final class MeasuredSizes: Sendable {
   private let build: String
   private let writes = DispatchQueue(label: "MeasuredSizes.writes", qos: .utility)
 
-  /// Sizes are a few hundred bytes each: the bound keeps a few hundred thousand
-  package init(folder: URL, build: String) {
-    store = SnapshotStore(folder: folder, limit: 64 << 20)
+  /// Sizes are a few hundred bytes each: the default bound keeps a few hundred thousand
+  package init(folder: URL, build: String, limit: Int = 64 << 20) {
+    store = SnapshotStore(folder: folder, limit: limit)
     self.build = build
   }
 
-  /// nil when the Note cannot be described to the page (then it is never kept)
-  package func key(_ n: NoteSizeRequest, extra: [String]) -> SizeKey? {
+  /// A size's key, or with `scale` a picture's, `height` tall (nil: as tall as its content); nil when the Note cannot
+  /// be described to the page (then it is never kept)
+  package func key(_ n: NoteSizeRequest, height: Double? = nil, scale: Double = 0, extra: [String]) -> SizeKey? {
     guard
       let json = try? PageNote(
-        n.note, width: n.width, height: nil, look: n.look, dark: n.dark, refs: n.refs, hideHead: n.hideHead
+        n.note, width: n.width, height: height, look: n.look, dark: n.dark, refs: n.refs, hideHead: n.hideHead
       ).json()
     else { return nil }
     return SizeKey(
       key: SnapshotKey(
-        build: build, system: ProcessInfo.processInfo.operatingSystemVersionString, note: json, scale: 0,
+        build: build, system: ProcessInfo.processInfo.operatingSystemVersionString, note: json, scale: scale,
         images: SnapshotKey.imageStamps(in: n.note.markdown, folder: n.folder) + extra))
   }
 
   package func read(_ k: SizeKey) -> NoteMetrics? { store.readSize(k.key) }
+
+  /// A picture kept under a key with its scale
+  package func readPicture(_ k: SizeKey) -> NoteSnapshot? { store.read(k.key) }
+
+  package func writePicture(_ s: NoteSnapshot, _ k: SizeKey) {
+    let store = self.store
+    writes.async { try? store.write(s, as: k.key) }
+  }
 
   package func write(_ sizes: [(SizeKey, NoteMetrics)]) {
     guard !sizes.isEmpty else { return }

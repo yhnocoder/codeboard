@@ -116,6 +116,28 @@ import Testing
     #expect(after.layouts.count == 2)
   }
 
+  /// A Note in view as a board opens is drawn ahead, and its picture is read back after a relaunch, not drawn again
+  @Test func aNoteInViewAsABoardOpensIsDrawnAheadAndReadBackAfterARelaunch() async throws {
+    let kept = FileManager.default.temporaryDirectory.appending(path: "nn-kept-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: kept) }
+    let r = request("# Opening\n\nDrawn while the board is laid out.\n\n- one\n- two")
+    func shown(_ d: NativeNotes) async throws -> NoteSnapshot {
+      d.prepare([(r, nil, 2)])
+      return try await d.snapshot(
+        of: r.note, width: r.width, height: nil, folder: folder, scale: 2, look: r.look, dark: r.dark, refs: [],
+        hideHead: false, priority: 1)
+    }
+    let before = NativeNotes(web: web, kept: kept)
+    let drawn = try await shown(before)
+    #expect(before.layouts.count == 1)
+    await before.openings?.written()
+    let after = NativeNotes(web: web, kept: kept)
+    let read = try await shown(after)
+    #expect(after.layouts.count == 0)
+    #expect(read.size == drawn.size && read.surface.width == drawn.surface.width)
+    #expect(read.surface.height == drawn.surface.height && read.surface.width == Int((r.width * 2).rounded(.up)))
+  }
+
   @Test func aNoteAskedForOnManyThreadsAtOnceIsLaidOutOnce() async throws {
     let display = NativeNotes(web: web)
     let text = "# Decode\n\nOne token a step, $x^2$ and **bold**.\n\n```py\nx = 1\n```"
