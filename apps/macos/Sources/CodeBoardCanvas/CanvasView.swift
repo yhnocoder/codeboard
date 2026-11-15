@@ -633,8 +633,9 @@ public final class CanvasView: NSView {
               return (i, (CanvasView.render(it, scale: opening, theme: theme, images: images).surface, opening, .drawn))
             }
             // A Note drawn natively is drawn now when in view, as the other items are: shown with its paper alone it
-            // would read as blank until its picture came. Out of view its overview is its paper at first, and the
-            // queue draws it right after the board shows (RestPlan), so the board does not wait for every Note's
+            // would read as blank until its picture came. Out of view its overview is the one kept on disk, else its
+            // paper at first, and the queue draws it right after the board shows (RestPlan), so the board does not
+            // wait for every Note's
             if native, inView,
               let snap = await CanvasView.picture(it, scale: opening, theme: theme, display: display, priority: 1),
               let drawn = CanvasView.compose(it, snap, scale: opening, theme: theme, images: images)
@@ -642,9 +643,8 @@ public final class CanvasView: NSView {
               return (i, (drawn, opening, .drawn))
             }
             let s = Levels.noteOverview(fit, backing: backing, size: it.bitmapSize)
-            // a web one comes only from the disk cache here
-            if !native,
-              let snap = await CanvasView.picture(it, scale: s, theme: theme, display: display, priority: nil),
+            // only from the disk cache here
+            if let snap = await CanvasView.picture(it, scale: s, theme: theme, display: display, priority: nil),
               let drawn = CanvasView.compose(it, snap, scale: s, theme: theme, images: images)
             {
               return (i, (drawn, s, .drawn))
