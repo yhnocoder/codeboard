@@ -10,9 +10,10 @@ mac: expect press has ListWebView
 web: expect press has qlist
 key esc
 click @ui.questions
-wait 600
+# (a machine under load opens it later: the press outside must come after it is open)
+wait 1200
 click @ui.questions:c+-300,-400
-wait 300
+wait 600
 click @ui.questions:c+-150,-60
 wait 300
 mac: expect press lacks ListWebView

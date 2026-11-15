@@ -1,6 +1,6 @@
 # What CI runs (ci.mjs): scenarios with expectations that hold without timing, at 1x, on a machine slower than a Mac on a desk.
 # Left out: what is timed or only recorded (glide-stop, look-tour, look-tour2, hover-tour), load-sensitive (pan-over-edit,
-# b1/b1-pan-edit), on screen (real-use)
+# b1/b1-pan-edit; nudge-hold: its 150 ms before the 300 ms glide stretched past it on CI), on screen (real-use)
 align-bar.txt
 arrow-end.txt
 arrow-read.txt
@@ -44,7 +44,6 @@ note-ime.txt
 note-markers.txt
 note-table.txt
 note-title.txt
-nudge-hold.txt
 paste-copy.txt
 paste-near.txt
 paste-ref.txt

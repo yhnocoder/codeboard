@@ -965,10 +965,12 @@ for (const file of scenarios) {
   let lines = fs.readFileSync(file, "utf8").split("\n").map((l, i) => ({ n: i + 1, text: l.trim() }));
   if (ci) {
     // nothing timed; a shot before the first step, one halfway and one after the last
-    const steps = lines.filter((l) => l.text && !l.text.startsWith("#") && !/^(\w+:\s*)?(rec|stop)\b/.test(l.text));
+    // (the comments stay: `# known` is read from them)
+    const kept = lines.filter((l) => l.text && !/^(\w+:\s*)?(rec|stop)\b/.test(l.text));
+    const steps = kept.filter((l) => !l.text.startsWith("#"));
     const shot = (k, n) => ({ n, text: `shot ci-${k}` });
     const mid = steps[Math.floor(steps.length / 2)];
-    lines = [shot("1-start", 0), ...steps.flatMap((l) => (l === mid ? [shot("2-middle", l.n), l] : [l])), shot("3-end", lines.length)];
+    lines = [shot("1-start", 0), ...kept.flatMap((l) => (l === mid ? [shot("2-middle", l.n), l] : [l])), shot("3-end", lines.length)];
   }
   // the subjects compared with `was`, taken at each `mark`
   const marked = [...new Set(lines.filter((l) => / was\b/.test(l.text)).map((l) => l.text.replace(/^(mac|web):\s*/, "").split(" ")[1]))];

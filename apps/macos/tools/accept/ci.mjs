@@ -21,9 +21,11 @@ for (const s of list.filter((_, i) => i % shard[1] === shard[0] - 1)) {
 }
 let failed = false, first = true;
 for (const [k, files] of groups) {
-  console.log(`\n== ${k.replace(/\|/g, " ").trim() || "default"}: ${files.length} scenarios`);
+  // written at once: a console.log to a pipe waits for the event loop, which spawnSync holds
+  fs.writeSync(1, `\n== ${k.replace(/\|/g, " ").trim() || "default"}: ${files.length} scenarios\n`);
   const args = [path.join(here, "run.mjs"), ...files, "--ci", ...(first ? [] : ["--skip-build"]), ...pass];
   first = false;
-  failed ||= spawnSync("node", args, { stdio: "inherit" }).status !== 0;
+  // every group runs, whatever an earlier one did
+  if (spawnSync("node", args, { stdio: "inherit" }).status !== 0) failed = true;
 }
 process.exit(failed ? 1 : 0);

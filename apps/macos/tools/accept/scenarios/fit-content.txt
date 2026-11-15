@@ -5,7 +5,8 @@ click @cfree+-40,40
 move @cfree+150,40 400
 key alt+f
 wait 600
-expect cfree.w = 240
+# (within 2: the narrowest width is 240, and CI's fonts measure the code a little wider)
+expect cfree.w ~ 240
 center @cnote
 move @cnote+150,60 400
 key alt+f
