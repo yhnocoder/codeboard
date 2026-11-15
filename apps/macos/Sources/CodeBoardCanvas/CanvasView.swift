@@ -1415,8 +1415,11 @@ public final class CanvasView: NSView {
   func placeItems(onPixels k: CGFloat? = nil) {
     guard let scene, scene.items.count == items.count else { return }
     func off(_ v: CGFloat) -> CGFloat { k.map { ((v * $0).rounded() - v * $0) / $0 } ?? 0 }
+    // the cards Tidy Up is sliding are where the slide has them (it settles them when it ends)
+    let slid = tidySlide?.started == true ? tidySlide?.from ?? [:] : [:]
     withoutAnimation {
       for (it, l) in zip(scene.items, items) where it.tilt == 0 && l.box.animation(forKey: "position") == nil {
+        if case .card(let id)? = it.owner, slid[id] != nil { continue }
         let r = it.rect
         l.box.position = CGPoint(x: r.midX + off(r.minX - it.bleed), y: r.midY + off(r.minY - it.bleed))
       }
