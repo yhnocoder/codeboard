@@ -181,6 +181,8 @@ import CodeBoardModel
     return [
       "written": written, "idleMsPer100ms": round2(base), "cpuMs": round2(mean(keys) - base),
       "cpuP90Ms": round2(percentile(keys, 0.9) - base), "mainMs": round2(mean(keysMain) - baseMain),
+      // the worst key (a line wrapped, the first after the rest) and the first
+      "cpuMaxMs": round2((keys.max() ?? 0) - base), "firstMs": round2((keys.first ?? 0) - base),
     ]
   }
 

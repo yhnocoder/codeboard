@@ -451,8 +451,8 @@ public final class MarkdownEditorView: NSView {
     let s = core.layout.size
     let size = CGSize(width: ceil(s.width * zoom), height: ceil(s.height * zoom))
     guard size != frame.size else { return }
+    // what moved or grew is redrawn by the change (invalidateChanged), the strips kept
     setFrameSize(size)
-    needsDisplay = true
   }
 
   /// What the last draw showed: each block's piece and box, and the boxes of the caret, the selection and an input
@@ -498,6 +498,122 @@ public final class MarkdownEditorView: NSView {
       for r in was.marks + now.marks { dirty = dirty.union(r.insetBy(dx: -4, dy: -2)) }
     }
     return dirty
+  }
+
+  // MARK: its own pictures
+
+  /// The editor draws into pictures of its own: strips of its width and `stripHeight` points tall, 8-bit sRGB as a
+  /// host's own pictures may be, kept for the part of it in its window and a strip around it, and only what changed drawn
+  /// into them again. AppKit's backing store was half-float on a wide-gamut display, dropped after a few seconds idle
+  /// and made anew at every new size, so the first key after a pause and the three after a line wrapped drew the
+  /// whole editor (35-45 ms each)
+  public override var wantsUpdateLayer: Bool { !caching }
+  /// a picture asked of it (cacheDisplay): drawn by `draw`, as AppKit draws a view that has no pictures of its own
+  private var caching = false
+  public override func cacheDisplay(in r: NSRect, to rep: NSBitmapImageRep) {
+    caching = true
+    defer { caching = false }
+    super.cacheDisplay(in: r, to: rep)
+  }
+  static let stripHeight: CGFloat = 256
+  final class Strip {
+    let layer = CALayer()
+    let ctx: CGContext
+    init(_ ctx: CGContext) { self.ctx = ctx }
+  }
+  private(set) var strips: [Int: Strip] = [:]
+  /// the width and backing scale the strips were made at
+  private var stripsMadeAt: (width: CGFloat, scale: CGFloat)?
+  /// what was marked for drawing since the strips were last drawn, in the view's points (past its bottom too: a strip
+  /// goes on below a shrunk editor)
+  private var unpainted = CGRect.null
+
+  public override func setNeedsDisplay(_ r: NSRect) {
+    unpainted = unpainted.union(r)
+    super.setNeedsDisplay(r)
+  }
+  public override var needsDisplay: Bool {
+    get { super.needsDisplay }
+    set {
+      if newValue { unpainted = .infinite }
+      super.needsDisplay = newValue
+    }
+  }
+
+  public override func updateLayer() { paintStrips() }
+
+  public override func setFrameOrigin(_ p: NSPoint) {
+    super.setFrameOrigin(p)
+    // moved in its window: the strips now in view
+    if !strips.isEmpty { paintStrips() }
+  }
+
+  /// The strips in view made (drawn whole), those out of it let go, and what changed drawn into the others
+  private func paintStrips() {
+    guard let layer, window != nil else { return }
+    let scale = window?.backingScaleFactor ?? 2
+    let h = Self.stripHeight
+    if stripsMadeAt.map({ $0.width != bounds.width || $0.scale != scale }) ?? true {
+      for s in strips.values { s.layer.removeFromSuperlayer() }
+      strips = [:]
+      stripsMadeAt = (bounds.width, scale)
+    }
+    let shown = visibleRect.insetBy(dx: 0, dy: -h).intersection(bounds)
+    let want = shown.isEmpty ? 0..<0 : Int(shown.minY / h)..<Int((shown.maxY / h).rounded(.up))
+    for (i, s) in strips where !want.contains(i) {
+      s.layer.removeFromSuperlayer()
+      strips[i] = nil
+    }
+    for i in want {
+      let band = CGRect(x: 0, y: CGFloat(i) * h, width: bounds.width, height: h)
+      if let s = strips[i] {
+        let r = unpainted.intersection(band)
+        if !r.isNull { paint(s, r, band) }
+        continue
+      }
+      let w = max(1, Int((bounds.width * scale).rounded(.up)))
+      guard
+        let space = CGColorSpace(name: CGColorSpace.sRGB),
+        let ctx = CGContext(
+          data: nil, width: w, height: Int(h * scale), bitsPerComponent: 8, bytesPerRow: 0, space: space,
+          bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+      else { continue }
+      ctx.setShouldSmoothFonts(false)
+      let s = Strip(ctx)
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      s.layer.frame = band
+      s.layer.contentsScale = scale
+      layer.insertSublayer(s.layer, at: 0)
+      CATransaction.commit()
+      strips[i] = s
+      paint(s, band, band)
+    }
+    unpainted = .null
+  }
+
+  /// Draws `r` (the view's points) into the strip covering `band`
+  private func paint(_ s: Strip, _ r: CGRect, _ band: CGRect) {
+    let ctx = s.ctx
+    let k = CGFloat(ctx.width) / band.width
+    // on whole device pixels: a pixel drawn in part would lose what was under it
+    let r = r.intersection(band).applying(CGAffineTransform(scaleX: k, y: k)).integral
+      .applying(CGAffineTransform(scaleX: 1 / k, y: 1 / k))
+    ctx.saveGState()
+    ctx.translateBy(x: 0, y: CGFloat(ctx.height))
+    ctx.scaleBy(x: k, y: -k)
+    ctx.translateBy(x: 0, y: -band.minY)
+    ctx.clip(to: r)
+    ctx.clear(r)
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
+    draw(r)
+    NSGraphicsContext.restoreGraphicsState()
+    ctx.restoreGState()
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    s.layer.contents = ctx.makeImage()
+    CATransaction.commit()
   }
 
   // MARK: drawing
