@@ -12,6 +12,7 @@ import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardShell
+import CoreML
 import MarkdownDemoKit
 import ObjectiveC
 import Synchronization
@@ -1138,7 +1139,22 @@ func strings(_ x: Any) -> [String] {
       findShots += 1
       Recorder.write(read2, to: outDir.appending(path: "find-\(findShots).png"))
     }
-    do { try VNImageRequestHandler(cgImage: read2).perform([request]) } catch { return "text recognition: \(error)" }
+    do { try VNImageRequestHandler(cgImage: read2).perform([request]) } catch {
+      // a machine without the GPU or Neural Engine Vision asks for (CI's virtual Macs: "unknownError") reads on the CPU
+      for (stage, devices) in (try? request.supportedComputeStageDevices) ?? [:] {
+        if let cpu = devices.first(where: { if case .cpu = $0 { true } else { false } }) {
+          request.setComputeDevice(cpu, for: stage)
+        }
+      }
+      do { try VNImageRequestHandler(cgImage: read2).perform([request]) } catch {
+        // and failing that, with the fast recognizer (no language model; Chinese is read only by the accurate one)
+        request.recognitionLevel = .fast
+        request.recognitionLanguages = ["en-US"]
+        do { try VNImageRequestHandler(cgImage: read2).perform([request]) } catch {
+          return "text recognition: \(error)"
+        }
+      }
+    }
     var read: [String] = []
     // Vision writes CJK-style punctuation (（）：，) where the page has ASCII and is unsure of case, and its best guess
     // is not always right ("secona"): every candidate is searched, folded the same way as the words sought
