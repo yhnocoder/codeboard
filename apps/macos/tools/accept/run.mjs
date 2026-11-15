@@ -802,14 +802,20 @@ const pixels = async (f) => {
   return small.get(f);
 };
 /** Whether two frames differ, leaving out the pointer the recorder draws in each (its arrow, the ring of a button held
- *  down, the cursor's name beside it) */
+ *  down, the cursor's name beside it): the Mac recorder's copies without it (c00000.png), else a box around it */
 async function differ(a, b) {
+  const [ca, cb] = [a, b].map((f) => f.file.replace(/f(\d+)\.png$/, "c$1.png"));
+  if (fs.existsSync(ca) && fs.existsSync(cb)) return changed(await pixels(ca), await pixels(cb), []);
   const [x, y] = await Promise.all([pixels(a.file), pixels(b.file)]);
-  const { kx, ky } = x, ch = x.data.length / (SW * SH);
+  const { kx, ky } = x;
   // (points from the pointer's tip: the ring and the arrow, then the cursor's name)
   const boxes = [[-12, -12, 13, 21], [14, 15, 100, 31]];
   const masks = [a, b].filter((f) => !Number.isNaN(f.x ?? NaN))
     .flatMap((f) => boxes.map(([l, t, r, btm]) => [(f.x + l) * kx, (f.y + t) * ky, (f.x + r) * kx, (f.y + btm) * ky]));
+  return changed(x, y, masks);
+}
+function changed(x, y, masks) {
+  const ch = x.data.length / (SW * SH);
   let n = 0;
   for (let i = 0; i < x.data.length; i++) {
     if (Math.abs(x.data[i] - y.data[i]) <= 24) continue;

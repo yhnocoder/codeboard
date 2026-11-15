@@ -1953,7 +1953,9 @@ typealias Shot = (
     // and where the drawn pointer is in it (points from its top left), so that comparing frames can leave it out
     let at = String(format: "%.3f %.0f %.0f", t, vPointer.x - windows.main.minX, windows.main.maxY - vPointer.y)
     capture.async {
-      let img = Recorder.compose(windows)
+      var clean: CGImage?
+      let img = Recorder.compose(windows) { clean = Recorder.small($0) }
+      let small = clean
       let lag = ProcessInfo.processInfo.systemUptime - t
       DispatchQueue.main.async {
         MainActor.assumeIsolated {
@@ -1961,9 +1963,13 @@ typealias Shot = (
           self.lags.append(lag)
           guard let img, !self.done else { return }
           let url = self.dir.appending(path: String(format: "f%05d.png", self.frame))
+          let bare = self.dir.appending(path: String(format: "c%05d.png", self.frame))
           self.times += at + "\n"
           self.frame += 1
-          self.io.async { Recorder.write(img, to: url) }
+          self.io.async {
+            Recorder.write(img, to: url)
+            if let small { Recorder.write(small, to: bare) }
+          }
         }
       }
     }
@@ -2033,7 +2039,22 @@ typealias Shot = (
     )
   }
 
-  nonisolated static func compose(_ windows: Shot) -> CGImage? {
+  /// A quarter-size copy: the frame without the pointer (c00000.png beside f00000.png), which the runner compares to
+  /// time answers. With the drawn pointer left out by a box around it instead, a change under the pointer went unseen
+  /// (a new empty Text at the double-click is about that size)
+  nonisolated static func small(_ img: CGImage) -> CGImage? {
+    let (w, h) = (img.width / 4, img.height / 4)
+    guard
+      let ctx = CGContext(
+        data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue)
+    else { return nil }
+    ctx.interpolationQuality = .medium
+    ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
+    return ctx.makeImage()
+  }
+
+  nonisolated static func compose(_ windows: Shot, bare: ((CGImage) -> Void)? = nil) -> CGImage? {
     let f = windows.main
     let scale = shotScale
     let pw = Int(f.width * scale)
@@ -2057,6 +2078,7 @@ typealias Shot = (
         height: w.frame.height * scale)
       ctx.draw(img, in: r)
     }
+    if let bare, let img = ctx.makeImage() { bare(img) }
     // the pointer: an arrow, a ring while a button is down
     let p = CGPoint(x: (windows.pointer.x - f.minX) * scale, y: (windows.pointer.y - f.minY) * scale)
     if windows.buttons != 0 {
