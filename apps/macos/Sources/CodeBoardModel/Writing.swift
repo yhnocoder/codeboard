@@ -36,13 +36,49 @@ extension Board {
       id: id, x: x, y: y, width: newNoteWidth, content: .own(CardContent(body: .code(CodeCard(segments: [seg])))))
   }
 
-  /// A card's title as written; blank or the card's own title is none (cards.ts renameCard)
+  /// A card's title as written; blank or the card's own title is none. [[references]] to its old name follow
+  /// (cards.ts renameCard)
   public mutating func renameCard(_ id: CardID, _ title: String) {
     guard let i = cards.firstIndex(where: { $0.id == id }), case .own(var c) = cards[i].content else { return }
+    let old = cardTitle(c).trimmingCharacters(in: .whitespacesAndNewlines)
     let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
     c.title = nil
     if !t.isEmpty && t != cardTitle(c) { c.title = t }
     cards[i].content = .own(c)
+    renameTitleRefs(from: old, to: cardTitle(c).trimmingCharacters(in: .whitespacesAndNewlines))
+  }
+
+  /// edit/notes.ts renameTitleRefs: references by title to the old name ([[old]], no id, any case) follow wherever the
+  /// board keeps Markdown (mdrefs.ts eachMarkdown), and only where a reference is read, so not in code
+  mutating func renameTitleRefs(from: String, to: String) {
+    guard !from.isEmpty, from != to, !to.contains(where: { "[]\n".contains($0) }) else { return }
+    let old = from.lowercased()
+    func follow(_ md: String) -> String {
+      LegacyUpgrade.mapRefs(md) { label, target in target == nil && label.lowercased() == old ? "[[\(to)]]" : nil }
+    }
+    for i in cards.indices {
+      guard case .own(var c) = cards[i].content else { continue }
+      switch c.body {
+      case .note(var n):
+        n.text = follow(n.text)
+        c.body = .note(n)
+      case .text(var t):
+        t.text = follow(t.text)
+        c.body = .text(t)
+      default: break
+      }
+      c.description = c.description.map(follow)
+      cards[i].content = .own(c)
+    }
+    for i in sidenotes.indices {
+      guard case .text(var n) = sidenotes[i].body else { continue }
+      n.text = follow(n.text)
+      if var q = n.question {
+        for k in q.answers.indices { q.answers[k].text = follow(q.answers[k].text) }
+        n.question = q
+      }
+      sidenotes[i].body = .text(n)
+    }
   }
 
   /// A Note's, Text's or Box's Markdown and layout as written; one written empty goes (cards.ts writeNote)

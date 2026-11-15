@@ -216,15 +216,10 @@ extension CanvasView {
   func commitWebText(_ id: CardID, _ w: WebText, _ text: String) {
     guard let doc = document else { return }
     switch w {
-    case .title: doc.edit("Edit Title") { $0.setWebText(id, title: text) }
+    // WebBody.tsx onTitle, the list's Editable: renameCard, the references to its old name following
+    case .title: doc.edit("Edit Title") { $0.renameCard(id, text) }
     case .description: doc.edit("Edit Description") { $0.setWebText(id, description: text) }
-    case .listTitle:
-      doc.edit("Rename") { b in
-        guard let i = b.cards.firstIndex(where: { $0.id == id }), case .own(var c) = b.cards[i].content else { return }
-        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        c.title = t.isEmpty || t == "Link List" ? nil : t
-        b.cards[i].content = .own(c)
-      }
+    case .listTitle: doc.edit("Rename") { $0.renameCard(id, text) }
     case .row(let item): doc.edit("Rename Link") { $0.renameLinkItem(id, item, text) }
     }
   }

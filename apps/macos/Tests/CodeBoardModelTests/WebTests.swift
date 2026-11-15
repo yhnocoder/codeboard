@@ -79,7 +79,7 @@ import Testing
 
   @Test func aWebCardsOwnTitleIsNoneWhenBlankOrThePagesAndMetaArrivesOnlyForItsAddress() {
     var b = Board(id: BoardID(rawValue: "b"), cards: [web("w", "https://a.org", x: 0, y: 0)])
-    b.setWebText(c("w"), title: "Page w")
+    b.renameCard(c("w"), "Page w")
     b.setWebText(c("w"), description: "  ")
     if case .own(let x)? = b.card(c("w"))?.content { #expect(x.title == nil && x.description == nil) }
     b.setWebMeta(c("w"), url: "https://other.org", WebMeta(title: "No"))
