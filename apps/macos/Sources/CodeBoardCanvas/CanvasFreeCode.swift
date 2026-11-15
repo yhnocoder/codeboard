@@ -68,7 +68,12 @@ extension CanvasView {
     v.wrap = code.wrap
     v.continuing = continuing
     v.pasteboard = pasteboard
-    v.findLook = CodeFindBar.Look(fill: theme.surface, line: theme.hair, text: theme.ink, font: theme.small, radius: 6)
+    v.findLook = FindBar.Look(fill: theme.surface, line: theme.hair, radius: 8)
+    // a match out of view: the board moves to it, at the zoom it has
+    v.onFound = { [weak self] m in
+      guard let self, let r = self.scene?.placed[id]?.rect else { return }
+      self.reveal(m.offsetBy(dx: r.minX, dy: r.minY + top).insetBy(dx: -24, dy: -24))
+    }
     let h = CanvasView.highlighter ?? Highlighter()
     let runs = h.tokens(lines: seg.lines, language: seg.language).map {
       $0.map { CodeRun(columns: $0.columns, style: $0.kind.rawValue) }

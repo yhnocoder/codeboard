@@ -68,8 +68,12 @@ public final class CodeEditorView: NSView {
   /// A single press ends it
   public var continuing = 0
   /// How the find bar looks; nil: there is none
-  public var findLook: CodeFindBar.Look?
-  public private(set) var findBar: CodeFindBar?
+  public var findLook: FindBar.Look?
+  public private(set) var findBar: FindBar?
+  /// A match was found and selected: where it is in the view, for the host to bring it into view
+  public var onFound: ((CGRect) -> Void)?
+  /// Where the selection began when the bar opened: typing finds from there on
+  private var findFrom = 0
   /// Where copy, cut and paste go (tests give their own)
   public var pasteboard = NSPasteboard.general
   /// The code's height: its rows and padding
@@ -129,6 +133,7 @@ public final class CodeEditorView: NSView {
     placing = false
     if wrap, bounds.width != laidWidth { relayout() }
     drawSeen(visibleRect)
+    placeFindBar()
   }
 
   public override func setFrameSize(_ s: NSSize) {
@@ -374,7 +379,7 @@ public final class CodeEditorView: NSView {
   /// ⌘F, ⌘G and ⇧⌘G come as key equivalents first, while the editor or its find bar has the keys
   public override func performKeyEquivalent(with e: NSEvent) -> Bool {
     let r = window?.firstResponder
-    guard r === self || (findBar != nil && (r as? NSView)?.isDescendant(of: findBar!) == true) else { return false }
+    guard r === self || (findBar.map { (r as? NSView)?.isDescendant(of: $0) == true } ?? false) else { return false }
     return find(Self.name(e))
   }
 
@@ -382,25 +387,64 @@ public final class CodeEditorView: NSView {
     guard let look = findLook else { return false }
     switch name {
     case "Meta-f":
-      let bar = findBar ?? CodeFindBar(self, look: look)
-      if findBar == nil {
-        findBar = bar
-        addSubview(bar)
-        placeFindBar()
-      }
-      bar.opened()
+      let bar = findBar ?? makeFindBar()
+      findFrom = editor.selection.range.lowerBound
+      bar.show(replace: false, look: look, in: .zero)
+      placeFindBar()
+      count()
     case "Meta-g", "Shift-Meta-g":
-      guard findBar != nil else { return false }
+      guard findBar?.isHidden == false else { return false }
       findNext(forward: name == "Meta-g")
     default: return false
     }
     return true
   }
 
+  private func makeFindBar() -> FindBar {
+    let bar = FindBar()
+    bar.onChange = { [weak self] in
+      guard let self else { return }
+      self.change { $0.select(CodeSelection(self.findFrom)) }
+      self.findNext(forward: true)
+    }
+    bar.onStep = { [weak self] in self?.findNext(forward: $0) }
+    bar.onClose = { [weak self] in self?.closeFind() }
+    addSubview(bar)
+    findBar = bar
+    return bar
+  }
+
   /// The next (or the one before) of what the find bar holds
   public func findNext(forward: Bool) {
-    guard let q = findBar?.query, !q.isEmpty else { return }
-    change { _ = $0.find(q, forward: forward) }
+    guard let q = findBar?.query.stringValue, !q.isEmpty else { return count() }
+    var found = false
+    change { found = $0.find(q, forward: forward) }
+    count()
+    let s = editor.selection.range
+    if found, let r = layout.rects(drawn(s.lowerBound)..<drawn(s.upperBound), right: bounds.width).first {
+      onFound?(r)
+    }
+  }
+
+  /// "this match / all of them" in the bar
+  private func count() {
+    guard let bar = findBar else { return }
+    let q = bar.query.stringValue
+    guard !q.isEmpty else {
+      bar.count.stringValue = ""
+      return
+    }
+    let ns = editor.text as NSString
+    var all: [Int] = []
+    var r = NSRange(location: 0, length: ns.length)
+    while true {
+      let m = ns.range(of: q, options: .caseInsensitive, range: r)
+      guard m.location != NSNotFound else { break }
+      all.append(m.location)
+      r = NSRange(location: NSMaxRange(m), length: ns.length - NSMaxRange(m))
+    }
+    let at = all.firstIndex(of: editor.selection.range.lowerBound)
+    bar.count.stringValue = all.isEmpty ? "0" : at.map { "\($0 + 1)/\(all.count)" } ?? "\(all.count)"
   }
 
   /// Closes the find bar, the keys back to the editor
@@ -410,9 +454,16 @@ public final class CodeEditorView: NSView {
     window?.makeFirstResponder(self)
   }
 
+  /// At the top right of the editor's part in view, at the screen's size whatever the view's zoom
   private func placeFindBar() {
-    guard let bar = findBar else { return }
-    bar.frame.origin = CGPoint(x: max(0, bounds.width - bar.frame.width - 8), y: 4)
+    guard let bar = findBar, !bar.isHidden else { return }
+    let z = bounds.width > 0 ? frame.width / bounds.width : 1
+    let seen = window == nil ? bounds : visibleRect.intersection(bounds)
+    let s = bar.size
+    bar.frame = CGRect(
+      x: max(0, (seen.isNull ? bounds : seen).maxX - (s.width + 6) / z), y: (seen.isNull ? bounds : seen).minY + 8 / z,
+      width: s.width / z, height: s.height / z)
+    bar.bounds.size = s
   }
 
   /// A key's command, over the rows as laid out

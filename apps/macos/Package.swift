@@ -78,7 +78,7 @@ package.targets += [
   // Markdown parsed the way @yhnocoder/markdown parses it, with source ranges, and its editing rules (guideline 6.2)
   .target(name: "CodeBoardMarkdown", dependencies: ["CodeCore"]),
   // Markdown laid out and drawn with CoreText, edited in place; formulas and diagrams through JavaScriptCore (6.3)
-  .target(name: "CodeBoardMarkdownUI", dependencies: ["CodeBoardMarkdown", "CodeBoardTestGuard"]),
+  .target(name: "CodeBoardMarkdownUI", dependencies: ["CodeBoardMarkdown", "CodeUI", "CodeBoardTestGuard"]),
   .executableTarget(name: "MarkdownBench", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI"]),
   .executableTarget(
     name: "MarkdownLook", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeBoardSyntax"]),

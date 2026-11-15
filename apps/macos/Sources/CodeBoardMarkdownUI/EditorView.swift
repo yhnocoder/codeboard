@@ -1,6 +1,7 @@
 import AppKit
 import CodeBoardMarkdown
 import CodeBoardTestGuard
+import CodeUI
 
 /// What the editor tells its host
 @MainActor
@@ -136,7 +137,11 @@ public final class MarkdownEditorView: NSView {
   let sizePicker = TableSizePicker()
   let noteBox = NoteBox()
   let headingChip = HeadingChip()
+  /// Find and replace (editor/find.ts): ⌘F a small bar at the top right with the query, the count, back and on and the
+  /// case switch; ⌥⌘F adds the replacement. Every match is marked in the text; ↵ and ⇧↵ go on and back, ↵ in the
+  /// replacement replaces the current match, ⌘↵ all of them as one undo step; Esc closes it. At the screen's own size
   let findBar = FindBar()
+  let findButtons = FindButtons()
   /// the board's own tooltip, for what the Note shows and for the controls floating on it
   let tipView = TipView()
   /// pictures sliding to where the caret's moving put them (IMAGE_SLIDE): from, to, since; and where each was
@@ -207,6 +212,18 @@ public final class MarkdownEditorView: NSView {
     headingChip.isHidden = true
     addSubview(headingChip)
     addSubview(findBar)
+    findBar.buttons = findButtons
+    findButtons.onPress = { [weak self] id in
+      guard let self else { return }
+      switch id {
+      case "case":
+        self.findBar.caseSensitive.toggle()
+        self.refind(go: true)
+      case "back": self.stepMatch(false)
+      default: self.stepMatch(true)
+      }
+    }
+    findBar.onCase = { [weak self] on in self?.findButtons.caseOn = on }
     findBar.onChange = { [weak self] in self?.refind(go: true) }
     findBar.onStep = { [weak self] on in self?.stepMatch(on) }
     findBar.onReplace = { [weak self] all in self?.replaceMatch(all: all) }
@@ -607,7 +624,10 @@ public final class MarkdownEditorView: NSView {
     showBand()
     if !linkBox.isHidden { linkBox.restyle(theme) }
     if !noteBox.isHidden { noteBox.restyle(theme) }
-    if !findBar.isHidden { findBar.restyle(theme) }
+    if !findBar.isHidden {
+      findBar.restyle(findLook(theme))
+      findButtons.theme = theme
+    }
     needsDisplay = true
   }
 
@@ -1270,8 +1290,13 @@ public final class MarkdownEditorView: NSView {
       let t = (core.source as NSString).substring(with: NSRange(location: s.lowerBound, length: s.count))
       if !t.contains("\n") { findBar.query.stringValue = t }
     }
-    findBar.show(replace: replace, theme: core.layout.theme, in: visibleRect)
+    findButtons.theme = core.layout.theme
+    findBar.show(replace: replace, look: findLook(core.layout.theme), in: visibleRect)
     refind(go: false)
+  }
+
+  private func findLook(_ theme: MarkdownTheme) -> FindBar.Look {
+    FindBar.Look(fill: theme.colors.surface.cg, line: theme.colors.hair.cg, radius: 8)
   }
 
   /// the matches again (the query, the case switch or the text changed); `go` selects the first at or after the caret

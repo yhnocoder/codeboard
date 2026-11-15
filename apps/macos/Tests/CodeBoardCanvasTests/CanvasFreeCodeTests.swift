@@ -309,6 +309,30 @@ extension Rig {
     #expect(r.doc.board.segment(cid("f"), s1)?.lines.last == "    return run(x)")
   }
 
+  /// The find bar is the screen's size at any zoom, at the top right of the editor; a match out of view brings the board
+  /// to it at the zoom it has
+  @Test func theFindBarKeepsItsSizeAndAMatchOutOfViewIsBroughtIn() async throws {
+    let r = try await Rig(freeBoard(), zoom: 2)
+    defer { r.close() }
+    let c = r.canvas
+    r.doubleClick(try r.line("f", 1, x: 4))
+    await r.editorReady()
+    let v = try #require(r.code)
+    r.equivalent(3, "f", .command)
+    let bar = try #require(v.findBar)
+    #expect(abs(bar.convert(bar.bounds, to: nil).width - bar.size.width) < 0.5, "at 200 %")
+    // the code's last line out of view, below it
+    let line3 = try r.line("f", 3)
+    c.place(zoom: 2, centre: CGPoint(x: line3.x, y: line3.y - c.bounds.height / 2))
+    await r.idle()
+    #expect(!c.safeView.contains(line3))
+    r.press("run")
+    await r.idle()
+    #expect(v.editor.selection.range == 48..<51 && c.camera.zoom == 2)
+    #expect(c.safeView.contains(line3), "brought into view")
+    #expect(abs(bar.convert(bar.bounds, to: nil).width - bar.size.width) < 0.5)
+  }
+
   /// Two fingers while code is written: a scroll moves the board and a pinch zooms it, the editor over the card all the
   /// while, scaled with it and not laid out again; the writing goes on
   @Test func panAndPinchWhileWritingCodeMoveTheBoardAndTheEditorWithIt() async throws {
