@@ -86,7 +86,9 @@ extension CanvasView {
     var out: [Any] = dock.isHidden ? [] : [dock]
     guard !alignBar.isHidden, let bar = alignBarFrame() else { return out }
     out.append(uiElement("alignbar", bar, in: self))
-    let names: [AlignBarButton: String] = [.section: "newsection", .subBoard: "subboard", .more: "alignmore"]
+    let names: [AlignBarButton: String] = [
+      .section: "newsection", .subBoard: "subboard", .tidy: "tidyup", .more: "alignmore",
+    ]
     for (b, r) in AlignBarLayout.bar(AlignBarLayout.font(theme)).buttons {
       out.append(uiElement(names[b]!, r.offsetBy(dx: bar.minX, dy: bar.minY), label: names[b], in: self))
     }

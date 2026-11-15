@@ -260,6 +260,7 @@ async function run(line: string): Promise<string> {
         case "alignbar": return at(box(".alignbar.pill"));
         case "newsection": return at(box('.alignbar [data-tip="Create Section"]'));
         case "subboard": return at(box('.alignbar [data-tip^="Create Sub-board"]'));
+        case "tidyup": return at(box('.alignbar [data-tip^="Tidy Up"]'));
         case "alignmore": return at(box('.alignbar > .ib[aria-label="More"]'));
       }
       const ops: Record<string, string> = {
