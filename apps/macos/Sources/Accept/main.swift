@@ -936,11 +936,14 @@ func strings(_ x: Any) -> [String] {
       cg.keyboardSetUnicodeString(stringLength: u.count, unicodeString: u)
       cg.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(w.windowNumber))
       guard let e0 = NSEvent(cgEvent: cg) else { return }
-      let e = NSEvent.keyEvent(
-        with: down ? .keyDown : .keyUp, location: .zero, modifierFlags: f,
-        timestamp: ProcessInfo.processInfo.systemUptime,
-        windowNumber: w.windowNumber, context: nil, characters: e0.characters ?? chars,
-        charactersIgnoringModifiers: e0.charactersIgnoringModifiers ?? chars, isARepeat: false, keyCode: code)!
+      func event(ignoring: String) -> NSEvent {
+        NSEvent.keyEvent(
+          with: down ? .keyDown : .keyUp, location: .zero, modifierFlags: f,
+          timestamp: ProcessInfo.processInfo.systemUptime,
+          windowNumber: w.windowNumber, context: nil, characters: e0.characters ?? chars,
+          charactersIgnoringModifiers: ignoring, isARepeat: false, keyCode: code)!
+      }
+      let e = event(ignoring: e0.charactersIgnoringModifiers ?? chars)
       // the app is not active for the window server, so NSApp has no key window of its own to send keys to: keys
       // without ⌘ or ⌃ go to the window as NSApp would hand them over; with them, through NSApp (key equivalents, menus).
       // A dialog's keys as NSApp hands a key window its keys: key equivalents first (the buttons' own keys: Esc for
@@ -960,7 +963,18 @@ func strings(_ x: Any) -> [String] {
       } else if down {
         // key equivalents as NSApp tries them, then the window: NSApp has no key window of its own and drops what is
         // left (⌘→ never reached a text view)
-        if !w.performKeyEquivalent(with: e), NSApp.mainMenu?.performKeyEquivalent(with: e) != true { w.sendEvent(e) }
+        // a menu item matches on the characters ignoring modifiers: "Z" for one written "Z" (⇧ implied), "l" for one
+        // written "l" with ⇧ in its mask (Lock, ⇧⌘L); a keyboard's ⇧ keys reach both kinds, so with ⇧ both are tried, the
+        // shifted character first ("L", "{"), the unshifted only when nothing took that
+        let tries = [e] + (f.contains(.shift) && shown != chars ? [event(ignoring: chars)] : [])
+        if let t = tries.first(where: { w.performKeyEquivalent(with: $0) }) {
+          log("key equivalent: the window took it (\(t.charactersIgnoringModifiers ?? ""))")
+        } else if let t = tries.first(where: { NSApp.mainMenu?.performKeyEquivalent(with: $0) == true }) {
+          log("key equivalent: the main menu took it (\(t.charactersIgnoringModifiers ?? ""))")
+        } else {
+          log("key equivalent: none took it, to the window")
+          w.sendEvent(e)
+        }
       } else {
         w.sendEvent(e)
       }
