@@ -173,6 +173,30 @@ import Testing
     #expect(bgra(drawn, 300, 50)[3] == 0)
   }
 
+  /// A Note whose header folded away as it is written in shows its bare paper there, no header band (.chead.fold:
+  /// background transparent), in every theme
+  @Test(arguments: [false, true]) func aFoldedNotesHeaderLeavesItsPaperBare(_ wash: Bool) throws {
+    let t: Theme = wash ? .inkWash : .warmInk
+    let card = Card(
+      id: CardID(rawValue: "n"), x: 0, y: 0, width: 300, height: 200,
+      content: .own(CardContent(body: .note(Note(text: "# Plan\n\nThe first step.")))))
+    let root = URL(filePath: "/nonexistent-vault")
+    let scene = Scene(
+      Board(id: BoardID(rawValue: "b"), cards: [card]), package: root.appending(path: "B.board"),
+      vault: Vault(root: root), theme: t, highlighter: Highlighter(), sizes: [:])
+    var item = scene.items[0]
+    guard case .note(var n) = item.drawing, n.hideHead else {
+      Issue.record("not a Note that hides its heading: \(item.drawing)")
+      return
+    }
+    n.folded = true
+    item.drawing = .note(n)
+    let paper = try #require(CanvasView.render(item, scale: 1, theme: t, images: DecodeCache(cap: 1 << 20)).surface)
+    let head = bgra(paper, 20, 18).map(Int.init)
+    let body = bgra(paper, 20, 120).map(Int.init)
+    #expect(zip(head, body).allSatisfy { abs($0 - $1) <= 2 }, "header \(head), body \(body)")
+  }
+
   /// BGRA at a pixel
   private func bgra(_ s: IOSurface, _ x: Int, _ y: Int) -> [UInt8] {
     s.lock(options: .readOnly, seed: nil)

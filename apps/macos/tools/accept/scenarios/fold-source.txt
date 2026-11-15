@@ -1,0 +1,16 @@
+# Writing a Note whose header shows its heading: the header folds away, M↓ and ··· only; ⌘/ shows its Markdown source, M↓ lit; both sides
+zoom 1
+center @cnote+150,100
+dbl @cnote+60,90
+wait 900
+move @cnote+150,150 200
+wait 400
+shot folded @cnote+-20,-20 360 200
+key cmd+/
+wait 600
+shot source @cnote+-20,-20 360 200
+key cmd+/
+wait 400
+key esc
+wait 600
+shot after @cnote+-20,-20 360 200

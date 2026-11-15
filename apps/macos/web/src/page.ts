@@ -467,7 +467,8 @@ type Posted =
   | { type: "size"; width: number; height: number }
   | ({ type: "done" } & Ended)
   | { type: "ui"; rects: { x: number; y: number; width: number; height: number }[] }
-  | { type: "picked"; group: string | null; id: string };
+  | { type: "picked"; group: string | null; id: string }
+  | { type: "sourceMode"; on: boolean };
 const post = (m: Posted) => window.webkit?.messageHandlers.note.postMessage(m);
 
 /** The card being edited: its slot is placed `margin` px in from the page's top left, so the editor's menus have room */
@@ -703,6 +704,10 @@ const edit = {
     const key = { key: "a", code: "KeyA", metaKey: true, bubbles: true, cancelable: true };
     if (at.dispatchEvent(new KeyboardEvent("keydown", key))) document.execCommand("selectAll");
   },
+  /** The header's M↓: the Note being written as its Markdown source, or back (md/load.ts toggleNoteSource) */
+  toggleSource() {
+    editing?.editor.toggleSource();
+  },
   /** The keydowns seen so far */
   keysSeen: () => keysSeen,
   /** Tests: whether the format bar is up once a selection made now has waited as long as the bar does (TOOLBAR_SETTLE) */
@@ -774,6 +779,8 @@ const edit = {
       scrollOwnBox: true,
       // the board's menus, bars and buttons (cm/load.ts BOARD_CLASSES)
       classes: { menu: "ctx", bar: "pill", button: "tbtn" },
+      // ⌘/ or the header's M↓: the canvas lights its M↓ (Editable.tsx onSourceMode)
+      onSourceMode: (on) => post({ type: "sourceMode", on }),
       onDone: (v, l) => {
         // the header unfolds first, the heading going back into it
         void fold(made.card, false).then(() => {

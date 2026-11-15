@@ -247,4 +247,41 @@ private let seg = SegmentID(rawValue: "s1")
     await r.settle()
     #expect(c.head(cid("lock"))?.buttons.first?.0 != .unlock)
   }
+
+  /// While a Note is written its header has main's M↓ before its ··· (NoteBody .ib.mdsrc): pressed through the editor's
+  /// view, the editor shows its Markdown source and M↓ is on, the writing going on; again, rich text. A Note whose
+  /// header shows its leading heading folds its header away as it is written: only M↓ and ··· (.chead.fold > .ib)
+  @Test func aNoteBeingWrittenHasMarkdownSourceAndAFoldedHeaderOnlyThatAndItsMenu() async throws {
+    var b = Self.board()
+    b.cards.append(
+      Card(
+        id: cid("h"), x: 1100, y: 900, width: 380, height: 200,
+        content: .own(CardContent(body: .note(Note(text: "# Plan\n\nFirst step."))))))
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    #expect(c.head(cid("n"))?.buttons.map(\.0) == [.fit, .split, .more])
+    r.doubleClick(CGPoint(x: r.rect("n").minX + 60, y: r.rect("n").minY + 70))
+    await r.editorReady()
+    #expect(c.head(cid("n"))?.buttons.map(\.0) == [.fit, .split, .source, .more])
+    let src = try at(r, "n", .source)
+    // the editor's view lets the press through to the canvas
+    #expect(c.noteEditor.view.hitTest(c.convert(c.viewPoint(src), to: c.superview)) == nil)
+    hoverOver(r, src)
+    #expect(c.toolTip == "Markdown Source  ⌘/")
+    r.click(src)
+    await r.until("source") { c.noteEditor.sourceMode }
+    #expect(c.isEditing && c.head(cid("n"))?.on.contains(.source) == true)
+    r.click(src)
+    await r.until("rich text") { !c.noteEditor.sourceMode }
+    #expect(c.isEditing)
+    await c.endEditing()
+    // its header folded away: M↓ and ··· only
+    r.doubleClick(CGPoint(x: r.rect("h").minX + 60, y: r.rect("h").minY + 120))
+    await r.editorReady()
+    let folded = try #require(c.head(cid("h")))
+    #expect(folded.folded && folded.buttons.map(\.0) == [.source, .more], "\(folded.buttons)")
+    await c.endEditing()
+    #expect(c.head(cid("h"))?.folded == false)
+  }
 }
