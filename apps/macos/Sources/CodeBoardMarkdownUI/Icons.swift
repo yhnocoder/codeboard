@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// The editor's icons, as the web editor draws them (packages/markdown/src/ui/icons.ts): Lucide's shapes (https://lucide.dev,
+/// The editor's icons, as the web editor draws them (@yhnocoder/markdown's ui/icons.ts): Lucide's shapes (https://lucide.dev,
 /// ISC license) redrawn on a 16 grid. Stroked, round caps and joins, `width` the stroke (1 or the band's 1.3)
 public enum MarkdownIcons {
   static let paths: [String: String] = [

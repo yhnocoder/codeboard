@@ -70,7 +70,7 @@ public enum CodeEditing {
     }
   }
 
-  /// A language's line comment, by its name or an alias of it (packages/analysis langs.ts): `#` for Python and its
+  /// A language's line comment, by its name or an alias of it (the TypeScript side's language table): `#` for Python and its
   /// dialects, the shells, YAML, TOML, Ruby, R, Perl, diffs and plain text, `--` for SQL, Lua and Haskell, `;` for INI,
   /// else `//`
   public static func lineComment(language: String?) -> String {

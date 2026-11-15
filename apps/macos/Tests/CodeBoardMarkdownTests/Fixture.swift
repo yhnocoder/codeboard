@@ -3,7 +3,7 @@ import Foundation
 @testable import CodeBoardMarkdown
 
 /// A JSON value, to compare what the Swift parser makes with what the TypeScript package made (Fixtures/*.json, written by
-/// tools/markdown/fixtures.mjs)
+/// fixtures.mjs)
 indirect enum JSON: Equatable, Decodable, CustomStringConvertible {
   case null
   case bool(Bool)

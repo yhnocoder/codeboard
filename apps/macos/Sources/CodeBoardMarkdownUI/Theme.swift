@@ -29,8 +29,8 @@ public struct MDColor: Sendable, Hashable {
 
 /// Everything a piece of Markdown is drawn with. It is part of every cache key: two equal themes draw the same picture.
 /// The fields follow @yhnocoder/markdown's CSS variables (README, Theming) and the values its stylesheet writes itself
-/// (markdown.css); the host converts its own theme into this. Metrics default to that stylesheet's values, as the Note
-/// page computes them (tools/markdown/styles.mjs measures them).
+/// (markdown.css); the host converts its own theme into this. Metrics default to that stylesheet's values, as a page
+/// of the web editor computes them.
 public struct MarkdownTheme: Sendable, Hashable {
   public struct Colors: Sendable, Hashable {
     /// --ink --ink-2 --ink-3: text, from dark to light

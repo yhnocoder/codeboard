@@ -14,7 +14,7 @@ public enum CodeCommand: Hashable, Sendable {
 }
 
 /// A Mac's keys in a code editor: the web side's (CodeMirror's default and history keymaps, as a Mac has them, under
-/// packages/markdown/src/cm/editor.ts's own). Names are CodeMirror's: modifiers in the order Shift, Meta (⌘), Ctrl,
+/// @yhnocoder/markdown's cm/editor.ts's own). Names are CodeMirror's: modifiers in the order Shift, Meta (⌘), Ctrl,
 /// Alt (⌥), then the key (`name(_:shift:command:control:option:)`). Escape and ⌘↩ are the host's, to stop editing
 public enum CodeKeys {
   public static func name(_ key: String, shift: Bool, command: Bool, control: Bool, option: Bool) -> String {

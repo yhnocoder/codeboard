@@ -3,7 +3,7 @@ import CodeBoardMarkdownUI
 import CoreGraphics
 import Foundation
 
-/// What a comparison with the web side measures the process at (tools/markdown/versus.mjs)
+/// What a comparison with the web editor measures the process at (versus.mjs)
 enum Hold {
   /// The forty Notes laid out and drawn once at 2x, or the 1200-paragraph Note opened for editing with its view drawn
   static func make(_ what: String) throws -> [AnyObject] {

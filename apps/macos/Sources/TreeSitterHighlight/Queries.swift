@@ -2,7 +2,7 @@
 // highlighter does in code (see `Query.Action`). Painting order: longer (outer) spans first, shorter (inner) ones over
 // them, spans of equal length in pattern order, so a later pattern wins on the same node.
 
-/// C / C++ / CUDA: the query of packages/analysis/src/highlight.ts unchanged: the colours VS Code gives C, C++ and CUDA.
+/// C / C++ / CUDA: the TypeScript highlighter's query unchanged: the colours VS Code gives C, C++ and CUDA.
 let cudaQuery = #"""
   (comment) @com
 

@@ -3,7 +3,7 @@ import Testing
 
 @testable import CodeBoardMarkdown
 
-// The cases of packages/markdown's tests for the same functions (blockstarts, blockmove, image, image-playback,
+// The cases of @yhnocoder/markdown's tests for the same functions (blockstarts, blockmove, image, image-playback,
 // markdown, pastemath, pastemarks), with the results that package gives
 
 @Suite struct BlockStartsTests {

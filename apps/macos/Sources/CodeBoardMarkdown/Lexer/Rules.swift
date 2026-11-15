@@ -60,7 +60,7 @@ enum Other {
   }
 }
 
-/// The package's own tokenizer rules (packages/markdown/src/schema-nodes.ts, schema-marks.ts, TipTap's table and task list)
+/// The package's own tokenizer rules (@yhnocoder/markdown's schema-nodes.ts, schema-marks.ts, TipTap's table and task list)
 enum Ext {
   static let blockMath = JSRegex(#"^ {0,3}\$\$([^$]+?)\$\$[ \t]*(?:\n|$)"#, flags: "")
   static let blockMathStart = JSRegex(#"\n {0,3}\$\$"#, flags: "")

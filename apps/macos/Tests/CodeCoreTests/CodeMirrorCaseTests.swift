@@ -4,7 +4,7 @@ import Testing
 @testable import CodeCore
 
 /// Each key of `CodeKeys.mac` and each click, on texts and selections, against what the web side's code editor does
-/// with them: Fixtures/codemirror.json, made by tools/codemirror-cases.mjs with CodeMirror and cm/editor.ts in Chromium.
+/// with them: Fixtures/codemirror.json, made by codemirror-cases.mjs with CodeMirror and @yhnocoder/markdown's cm/editor.ts in Chromium.
 /// The editor moves over the rows and x CodeMirror laid each text out in, so a difference is the editor's, not the
 /// layout's
 @Suite struct CodeMirrorCaseTests {

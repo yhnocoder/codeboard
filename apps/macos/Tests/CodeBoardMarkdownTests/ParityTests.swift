@@ -4,7 +4,7 @@ import Testing
 @testable import CodeBoardMarkdown
 
 /// The Swift parser against what @yhnocoder/markdown makes of the same synthetic Markdown (Fixtures, written by
-/// tools/markdown/fixtures.mjs)
+/// fixtures.mjs)
 /// Syntax the TypeScript package reads and this package does not (guideline 4): footnote references and definitions,
 /// <details> and [toc] read as the text, link definitions and HTML CommonMark makes of them, so cases with them are not
 /// compared. The shapes are looked for outside code only: a regex like `[^a-z]` in a code span is not a footnote

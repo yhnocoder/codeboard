@@ -2,7 +2,7 @@ import Foundation
 
 /// Plain text edited as code, without any view: the text, the selection, an input method's composition, the undo
 /// history, what the mouse and the keys do. Its behaviour is the web side's code editor's (CodeMirror with
-/// packages/markdown/src/cm/editor.ts and the default keymap). Offsets are UTF-16; lines end at "\n"; a column counts
+/// @yhnocoder/markdown's cm/editor.ts and the default keymap). Offsets are UTF-16; lines end at "\n"; a column counts
 /// characters, a tab to its next stop, `tabWidth` apart. The keys that go by what is seen (↑ ↓, ⌘← ⌘→, pages) take the view's layout
 /// (`CodeLayout`; without one the text's lines as they are); the view hit-tests and hands it offsets.
 ///

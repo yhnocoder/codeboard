@@ -1,6 +1,6 @@
 import Foundation
 
-/// The editor's timings, the web editor's (packages/markdown/src/ui/timing.ts), in seconds: one place, as there
+/// The editor's timings, the web editor's (@yhnocoder/markdown's ui/timing.ts), in seconds: one place, as there
 public enum MarkdownTiming {
   /// a selection toolbar shows once the selection has stood this long
   public static let toolbarSettle = 0.400

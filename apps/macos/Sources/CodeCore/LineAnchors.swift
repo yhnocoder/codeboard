@@ -1,4 +1,4 @@
-/// Where lines went when a text changed, found by their content (packages/core/src/diff.ts mapLines, fuzzy): a line
+/// Where lines went when a text changed, found by their content (the TypeScript side's mapLines, fuzzy): a line
 /// still there goes where it is now; of a run of lines removed and added in its place, a removed line similar to an
 /// added one goes to it, those between such pairs pair side by side, and the rest are gone
 public struct LineAnchors: Sendable {

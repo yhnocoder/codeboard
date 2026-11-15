@@ -36,7 +36,7 @@ func wellFormed(_ lines: [String], _ tokens: [[Token]]) -> Bool {
 
 func split(_ text: String) -> [String] { text.components(separatedBy: "\n") }
 
-// The source and expectations of packages/host/test/highlight-cpp.test.ts, which the TypeScript highlighter passes
+// The source and expectations of the TypeScript highlighter's C++ test (highlight-cpp.test.ts), which it passes
 let cudaSource = split(
   #"""
   #include <cstdint>

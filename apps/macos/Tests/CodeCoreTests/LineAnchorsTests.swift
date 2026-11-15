@@ -4,7 +4,7 @@ import Testing
 @testable import CodeCore
 
 /// Lines followed by content as core's mapLines follows them (fuzzy): the cases and its answers are
-/// Fixtures/linemaps.json, made by tools/linemaps.mjs from packages/core/src/diff.ts
+/// Fixtures/linemaps.json, made by linemaps.mjs from the TypeScript side's mapLines
 @Suite struct LineAnchorsTests {
   struct Case: Decodable {
     var a: [String]
