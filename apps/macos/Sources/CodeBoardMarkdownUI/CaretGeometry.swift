@@ -232,6 +232,28 @@ extension BlockLayout {
     return nil
   }
 
+  /// The drawn link a point is on, not merely nearest (a click past a line's end is no click on the link that ends it):
+  /// the source offset of the character under it and the link's address
+  public func link(at p: CGPoint) -> (offset: Int, url: String)? {
+    guard !pieces.isEmpty else { return nil }
+    let i = min(firstPieceIndex(atOrBelow: p.y), pieces.count - 1)
+    for t in pieces[i].layout.caretTexts where !t.display.links.isEmpty {
+      let local = CGPoint(x: p.x + sx(i, t), y: p.y - tops[i])
+      for l in t.lines where local.y >= l.top && local.y <= l.top + l.height {
+        var j = CTLineGetStringIndexForPosition(l.line, CGPoint(x: local.x - l.origin.x, y: 0))
+        guard j != kCFNotFound else { continue }
+        // the boundary nearest the point: the character under it is the one before when the point is left of it
+        if local.x < l.origin.x + CTLineGetOffsetForStringIndex(l.line, j, nil) { j -= 1 }
+        guard j >= l.range.location, j < l.range.location + l.range.length, j < t.display.toSource.count,
+          local.x <= l.origin.x + CTLineGetOffsetForStringIndex(l.line, j + 1, nil),
+          let link = t.display.links.first(where: { NSLocationInRange(j, $0.0) })
+        else { continue }
+        return (t.display.toSource[j] + shifts[i], link.1)
+      }
+    }
+    return nil
+  }
+
   /// Where an atom drawn for the source `range` is (tests, a driver clicking it)
   public func rects(forAtom range: Range<Int>) -> CGRect? {
     guard let i = pieceIndex(range.lowerBound) else { return nil }

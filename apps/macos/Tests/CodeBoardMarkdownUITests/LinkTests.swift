@@ -68,6 +68,49 @@ import Testing
   }
 }
 
+/// A plain click on a link the caret is not in opens its box and leaves the caret alone: no source revealed, nothing
+/// reflowed (session.ts handleClick); a click in the link the caret is in places the caret, one on its folded address
+/// opens the box
+@MainActor @Suite struct LinkClickTests {
+  @Test func aClickOnALinkOpensItsBoxWithoutMovingTheCaret() {
+    _ = boardFonts
+    let src = "Some text here.\n\nSee [the docs](https://example.com/a/long/path) now."
+    let l = BlockLayout(MarkdownDocument(src), width: 400, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 3)
+    v.isEditing = true
+    func click(_ p: CGPoint) {
+      for t in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+        // a view with no window takes window points as its own, its y counted from the bottom
+        let ev = NSEvent.mouseEvent(
+          with: t, location: CGPoint(x: p.x, y: v.bounds.height - p.y), modifierFlags: [], timestamp: 0,
+          windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+        if t == .leftMouseDown { v.mouseDown(with: ev) } else { v.mouseUp(with: ev) }
+      }
+    }
+    let docs = v.core.rects(for: 26..<30)[0]
+    let head = v.core.layout.head
+    let frames = v.core.layout.blockFrames
+    click(CGPoint(x: docs.midX, y: docs.midY))
+    #expect(!v.linkBox.isHidden && v.linkBox.place?.text == "the docs")
+    #expect(v.core.selection == MDSelection(3) && v.core.layout.head == head && v.core.layout.blockFrames == frames)
+    // what the box holds is written when it closes, the caret where it was
+    v.linkBox.url.stringValue = "https://z.w"
+    v.leaveLinkBox(later: false)
+    #expect(
+      v.core.source == "Some text here.\n\nSee [the docs](https://z.w) now." && v.core.selection == MDSelection(3))
+    // in the link the caret is in: the caret goes there, no box
+    v.selection = MDSelection(24)
+    let the = v.core.rects(for: 22..<25)[0]
+    click(CGPoint(x: the.midX, y: the.midY))
+    #expect(v.linkBox.isHidden && v.core.selection.head >= 22 && v.core.selection.head <= 25)
+    // its address folded to a chip while the caret is in its text: a click on the chip opens the box
+    v.selection = MDSelection(24)
+    let chip = v.core.rects(for: 32..<43).last!
+    click(CGPoint(x: chip.maxX - 2, y: chip.midY))
+    #expect(!v.linkBox.isHidden && v.core.selection == MDSelection(24))
+  }
+}
+
 /// The link box stays inside the Note's width when it fits (it hung past the right edge for a link near it)
 @MainActor @Suite struct LinkBoxPlaceTests {
   @Test func insideTheNote() {

@@ -267,18 +267,8 @@ extension MarkdownEditing {
       }
       let markerLine = ns.lineRange(for: NSRange(location: item.markerRange.lowerBound, length: 0)).location
       let indent = ns.substring(with: NSRange(location: markerLine, length: item.markerRange.lowerBound - markerLine))
-      let marker: String
-      switch list.marker {
-      case .bullet(let ch): marker = "\(ch) "
-      case .ordered(let start, let delim):
-        let n = (list.items.firstIndex { $0.range == item.range } ?? 0) + start + 1
-        marker = "\(n)\(delim) "
-      case .task:
-        let written = ns.substring(with: NSRange(location: item.markerRange.lowerBound, length: 1))
-        marker = "\(written) [ ] "
-      }
       let gap = list.tight ? "\n" : "\n\n"
-      return insert(gap + indent + marker, replacing: r)
+      return insert(gap + indent + nextMarker(after: item, in: list, ns), replacing: r)
     }
     if c.quote != nil {
       // a new paragraph in the quote: a quote line of its own between them
@@ -292,6 +282,24 @@ extension MarkdownEditing {
       return insert("\n" + bare + "\n" + prefix, replacing: r)
     }
     return insert("\n\n", replacing: r)
+  }
+
+  /// The marker of a new item after `item`, from that item's own marker: a list may mix bullets and tasks, so a task
+  /// is followed by an empty task and a bullet by a bullet; an ordered item by the next number
+  static func nextMarker(after item: MDListItem, in list: MDList, _ ns: NSString) -> String {
+    let written = ns.substring(with: NSRange(location: item.markerRange.lowerBound, length: item.markerRange.count))
+    let lead = written.prefix { !$0.isWhitespace && $0 != "[" }
+    var base = lead.isEmpty ? "-" : String(lead)
+    if let delim = lead.last, delim == "." || delim == ")", let n = Int(lead.dropLast()) {
+      let k: Int
+      if case .ordered(let start, _) = list.marker {
+        k = (list.items.firstIndex { $0.range == item.range } ?? 0) + start + 1
+      } else {
+        k = n + 1
+      }
+      base = "\(k)\(delim)"
+    }
+    return base + (item.checked != nil ? " [ ] " : " ")
   }
 
   /// how long a heading's "## " is

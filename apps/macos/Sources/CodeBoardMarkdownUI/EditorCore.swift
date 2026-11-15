@@ -20,8 +20,9 @@ public final class EditorCore {
   private var mouse: (anchor: Range<Int>, unit: Unit)?
   /// why the next reveal happens (the inspector's log)
   private var revealReason = "key"
-  /// where the first press of a click sequence put the caret
-  private var firstPress: Int?
+  /// where the first press of a click sequence put the caret, or would have (a click on a link leaves the caret alone,
+  /// and a double click there still takes the word under it)
+  var firstPress: Int?
 
   /// the Markdown as it is: the only truth. The layout shows it, with an input method's marked text put in while one
   /// composes (never in here)

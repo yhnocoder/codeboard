@@ -1610,12 +1610,13 @@ public final class MarkdownEditorView: NSView {
   /// the link box for the link at the caret, as ⌘K opens it (a host's check)
   public func openLinkBoxForCheck() { openLinkBox() }
 
-  /// ⌘K, the toolbar's Link, a click on a link the caret is not in: the box for the link at the selection, or for a new
-  /// one on the selected text
-  func openLinkBox() {
+  /// ⌘K, the toolbar's Link: the box for the link at the selection, or for a new one on the selected text; a click on a
+  /// link gives the link it landed on, the caret left where it was
+  func openLinkBox(_ given: MDLinkPlace? = nil) {
     guard isEditing,
-      let p = MarkdownEditing.linkPlace(
-        in: MDEditState(source: core.source, selection: core.selection), document: core.document),
+      let p = given
+        ?? MarkdownEditing.linkPlace(
+          in: MDEditState(source: core.source, selection: core.selection), document: core.document),
       let first = core.rects(for: p.range.lowerBound..<max(p.range.lowerBound + 1, p.range.upperBound)).first
     else { return }
     toolbar.hide()
@@ -1637,16 +1638,19 @@ public final class MarkdownEditorView: NSView {
     if !later { writeLeftLink() }
   }
 
-  private func writeLeftLink() {
-    guard let (p, text, url) = leftLink else { return }
+  /// the write made, if any
+  @discardableResult
+  private func writeLeftLink() -> MDEdit? {
+    guard let (p, text, url) = leftLink else { return nil }
     leftLink = nil
-    guard text != p.text || url != p.url, let e = MarkdownEditing.writeLink(p, text: text, url: url) else { return }
+    guard text != p.text || url != p.url, let e = MarkdownEditing.writeLink(p, text: text, url: url) else { return nil }
     // the caret stays where the press put it, moved by what the write changed before it
     let head = core.selection.head
     let delta = (e.replacement as NSString).length - e.range.count
     let keep = head >= e.range.upperBound ? head + delta : head <= e.range.lowerBound ? head : e.range.lowerBound
     core.apply(MDEdit(range: e.range, replacement: e.replacement, selection: MDSelection(keep), undo: e.undo))
     changed()
+    return e
   }
 
   // MARK: the selection's toolbar
@@ -1966,17 +1970,14 @@ public final class MarkdownEditorView: NSView {
       resizing = (box.width, at, box.width, k == 0)
       return
     }
-    let linkBefore = linkAtCaret()
-    core.mouseDown(at: at, clicks: e.clickCount, extend: e.modifierFlags.contains(.shift))
-    // a click on a link: ⌘ opens it; without, when the caret was not in it, its box comes up on the release
-    // (editor/session.ts handleClick)
-    if e.clickCount == 1, !e.modifierFlags.contains(.shift), let l = linkAtCaret(), l.range != linkBefore?.range {
-      if e.modifierFlags.contains(.command), let url = URL(string: l.url) {
-        delegate?.editor(self, open: url)
-      } else {
-        linkOnRelease = true
-      }
+    // a click on a link is taken on the release with the caret left alone, so no source is revealed and nothing reflows
+    // before the box (editor/session.ts handleClick); a drag from it selects as usual
+    if e.clickCount == 1, let l = linkClick(at, modifiers: e.modifierFlags) {
+      linkPress = (at, l)
+      core.firstPress = core.layout.caret(at: at).offset
+      return
     }
+    core.mouseDown(at: at, clicks: e.clickCount, extend: e.modifierFlags.contains(.shift))
     changed()
   }
 
@@ -1991,16 +1992,34 @@ public final class MarkdownEditorView: NSView {
     return (label, target)
   }
 
-  /// the link the caret is in, if any
-  private func linkAtCaret() -> MDLinkPlace? {
-    guard core.selection.isEmpty,
-      let p = MarkdownEditing.linkPlace(
-        in: MDEditState(source: core.source, selection: core.selection), document: core.document), p.exists
-    else { return nil }
-    return p
+  /// What a single press on a drawn link does on its release: ⌘ opens its address; a plain press on a link the caret is
+  /// not in, or on the folded address of the one it is in, opens its box (`offset` is where it landed, `place` the
+  /// link). A press in the link the caret is in places the caret as usual (nil)
+  struct LinkClick {
+    var offset: Int
+    var url: String
+    var place: MDLinkPlace?
   }
-  /// a click landed on a link the caret was not in: its box comes up on the release
-  private var linkOnRelease = false
+
+  private func linkClick(_ at: CGPoint, modifiers: NSEvent.ModifierFlags) -> LinkClick? {
+    guard let (q, url) = core.layout.link(at: at) else { return nil }
+    let mods = modifiers.intersection([.command, .shift, .option, .control])
+    if mods == .command { return LinkClick(offset: q, url: url, place: nil) }
+    guard mods.isEmpty,
+      let p = MarkdownEditing.linkPlace(
+        in: MDEditState(source: core.source, selection: MDSelection(q)), document: core.document), p.exists
+    else { return nil }
+    let head = core.selection.head
+    let address = p.range.lowerBound + 1 + (p.text as NSString).length + 2
+    let caretIn = head >= p.range.lowerBound && head <= p.range.upperBound
+    // the address is drawn folded (a chip) unless the caret is in it
+    let onChip = q >= address && !(head >= address && head < p.range.upperBound)
+    guard !caretIn || onChip else { return nil }
+    return LinkClick(offset: q, url: url, place: p)
+  }
+
+  /// a press on a link waiting for its release, and where it was pressed
+  private var linkPress: (at: CGPoint, click: LinkClick)?
 
   /// A click on the static picture starts editing there: the caret where the picture was clicked (a drawn formula's
   /// source opened), its markers shown at once, as the web editor reveals on focus with no button held. `at` is in the
@@ -2201,6 +2220,12 @@ public final class MarkdownEditorView: NSView {
     }
     guard isEditing, !entering else { return }
     let p = convert(e.locationInWindow, from: nil)
+    if let (start, _) = linkPress {
+      // a press on a link that moves is a selection from it after all
+      guard hypot(p.x / zoom - start.x, p.y / zoom - start.y) * zoom > 3 else { return }
+      linkPress = nil
+      core.mouseDown(at: start, clicks: 1, extend: false)
+    }
     core.mouseDragged(to: CGPoint(x: p.x / zoom, y: p.y / zoom))
     changed()
     autoscroll(with: e)
@@ -2258,11 +2283,24 @@ public final class MarkdownEditorView: NSView {
       entering = false
       return
     }
-    core.mouseUp()
-    if linkOnRelease {
-      linkOnRelease = false
-      openLinkBox()
+    if let (_, l) = linkPress {
+      linkPress = nil
+      guard let p = l.place else {
+        if let url = URL(string: l.url) { delegate?.editor(self, open: url) }
+        return
+      }
+      // a box this press left is written first, which may move the clicked link: its place is read again after
+      var now: MDLinkPlace? = p
+      if let w = writeLeftLink() {
+        let delta = (w.replacement as NSString).length - w.range.count
+        let q = l.offset >= w.range.upperBound ? l.offset + delta : min(l.offset, w.range.lowerBound + 1)
+        now = MarkdownEditing.linkPlace(
+          in: MDEditState(source: core.source, selection: MDSelection(q)), document: core.document)
+      }
+      if let now, now.exists { openLinkBox(now) }
+      return
     }
+    core.mouseUp()
     guard core.revealPending else { return }
     settle = Timer.scheduledTimer(withTimeInterval: MarkdownTiming.revealAfterClick, repeats: false) { [weak self] _ in
       MainActor.assumeIsolated {
