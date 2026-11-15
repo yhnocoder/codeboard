@@ -105,7 +105,9 @@ struct BoardKey {
     BoardKey(show: "⇧⌘Z", label: "Redo", group: "Board"),
     BoardKey(show: "⌘,", label: "Settings", group: "Board"),
     BoardKey(action: .help, presses: [char("?")], show: "?", label: "Keyboard Shortcuts", group: "Board"),
-    BoardKey(action: .escape, presses: [code(53)], show: "Esc", label: "Cancel · Deselect · Back to the parent board", group: "Board"),
+    BoardKey(
+      action: .escape, presses: [code(53)], show: "Esc", label: "Cancel · Deselect · Back to the parent board",
+      group: "Board"),
     BoardKey(show: "⌘O", label: "Open Vault…", group: "Board"),
     BoardKey(show: "⇧⌘I", label: "Import Old Boards…", group: "Board"),
     BoardKey(show: "⌘W", label: "Close Tab", group: "Board"),
