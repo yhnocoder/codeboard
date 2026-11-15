@@ -1397,14 +1397,14 @@ func strings(_ x: Any) -> [String] {
     if a.dropFirst().contains(where: { Double($0).map { !$0.isFinite } ?? false }) { return "error: not a number" }
     // A context menu read with `menu` is open until a pick, Esc or a press, as on the web side and for a person: AppKit
     // shows no menu here, so the driver keeps it open, and the Esc or the press that closes it reaches no view
-    if menuOpen, ["key", "down", "click", "dbl", "drag"].contains(cmd) {
+    if menuOpen, ["key", "down", "click", "dbl", "tri", "drag"].contains(cmd) {
       menuOpen = false
       if cmd == "key", a.count > 1, a[1] == "esc" {
         log("esc closes the menu")
         return ""
       }
       if cmd != "key" {
-        if ["click", "dbl"].contains(cmd), a.count > 2 { await move(to: screen(d(1), d(2)), ms: 300) }
+        if ["click", "dbl", "tri"].contains(cmd), a.count > 2 { await move(to: screen(d(1), d(2)), ms: 300) }
         log("the press closes the menu")
         swallowUp = cmd == "down"
         return ""
@@ -1421,11 +1421,11 @@ func strings(_ x: Any) -> [String] {
       vPointer = screen(d(1), d(2))
     case "down": press(a.count > 1 && a[1] == "right")
     case "up": release(a.count > 1 && a[1] == "right")
-    case "click", "dbl":  // click x y [mods]
+    case "click", "dbl", "tri":  // click x y [mods]
       if a.count > 2 { await move(to: screen(d(1), d(2)), ms: 300) }
       if a.count > 3 { vFlags = mods(a[3]) }
       try? await Task.sleep(for: .milliseconds(60))
-      for _ in 0..<(cmd == "dbl" ? 2 : 1) {
+      for _ in 0..<(["dbl": 2, "tri": 3][cmd] ?? 1) {
         press()
         try? await Task.sleep(for: .milliseconds(70))
         release()

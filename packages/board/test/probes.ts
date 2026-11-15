@@ -376,10 +376,11 @@ export type RasterResult = {
  * Canvas.tsx), every zoom step rasters what is in and around the view at its own scale, a small one too: stops stepVP is
  * 9.8 synthetic and 2.7 persona (2.5-2.9 and 0.47 while a stop zoomed a little was left as it was), and the Fit's flight rasters
  * each of its frames to the end, persona restVP 37-45 (27-28 before). The budgets hold those numbers; the times did not grow
- * (zoom work per step 0.91x on the synthetic board).
+ * (zoom work per step 0.91x on the synthetic board). The synthetic stops budget has room for the round with 100 animated
+ * stickers, where stepVP is 10.8 to 11.1 from run to run on the same code.
  */
 export const RASTER_BUDGET = {
-  synthetic: { drag: { stepVP: 2.5 }, stops: { stepVP: 11 }, fit: { restVP: 110, wastedVP: 10 } },
+  synthetic: { drag: { stepVP: 2.5 }, stops: { stepVP: 12 }, fit: { restVP: 110, wastedVP: 10 } },
   persona: {
     drag: { stepVP: 0.25, restVP: 12 },
     dragSnap: { stepVP: 0.25 },
