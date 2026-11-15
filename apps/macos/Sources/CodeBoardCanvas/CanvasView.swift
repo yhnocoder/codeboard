@@ -381,6 +381,8 @@ public final class CanvasView: NSView {
   var alignHovered: AlignBarButton?
   var alignPressed: AlignBarButton?
   var alignBarDrawn: AlignBarLook?
+  /// A press the canvas was sent over the editor (the second of a double-click), handed on to it with its release
+  var pressToEditor = false
   var choosingChip = false
   /// How long the chip stays once the pointer is not over it (timing.ts PASTE_CHIP_IDLE)
   package var chipIdle = Duration.milliseconds(6000)

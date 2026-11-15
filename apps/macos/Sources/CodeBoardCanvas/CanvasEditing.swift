@@ -1024,8 +1024,20 @@ extension CanvasView {
     if opening { return }
     dropPicture()
     if spacePanDown(e) { return }
-    // a click outside the card being written in (on it, the web view takes it) ends the writing
-    if editing != nil { Task { await endEditing() } }
+    // AppKit sends a multi-click's later presses to the view its first went to: a double-click's second press over the
+    // editor its first press opened is the editor's, as in main
+    if editing != nil, let sv = noteEditor.view.superview,
+      noteEditor.view.hitTest(sv.convert(e.locationInWindow, from: nil)) != nil
+    {
+      pressToEditor = true
+      window?.makeFirstResponder(noteEditor.view)
+      return noteEditor.view.mouseDown(with: e)
+    }
+    // a click outside the card being written in ends the writing; on it while its editor is still mounting (that second
+    // press, which main's editor would have) the writing goes on
+    if let ed = editing, ed.ready || hitCard(camera.board(convert(e.locationInWindow, from: nil))) != ed.id {
+      Task { await endEditing() }
+    }
     window?.makeFirstResponder(self)
     guard let doc = document, scene != nil, gesture == nil else { return }
     let v = convert(e.locationInWindow, from: nil)
@@ -1217,6 +1229,7 @@ extension CanvasView {
   func hold(over: @escaping (CGPoint) -> Bool, act: @escaping () -> Void) { held = (over, act) }
 
   public override func mouseDragged(with e: NSEvent) {
+    if pressToEditor { return noteEditor.view.mouseDragged(with: e) }
     if spacePanDragged(e) { return }
     if chipPressed != nil { return hoverChip(at: camera.board(convert(e.locationInWindow, from: nil))) }
     if alignPressed != nil { return hoverAlignBar(alignBarButton(at: convert(e.locationInWindow, from: nil)) ?? nil) }
@@ -1327,6 +1340,10 @@ extension CanvasView {
   }
 
   public override func mouseUp(with e: NSEvent) {
+    if pressToEditor {
+      pressToEditor = false
+      return noteEditor.view.mouseUp(with: e)
+    }
     if spacePanUp(e) { return }
     if let b = alignPressed {
       alignPressed = nil
