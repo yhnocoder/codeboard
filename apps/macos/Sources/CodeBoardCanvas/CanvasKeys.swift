@@ -191,7 +191,7 @@ extension CanvasView {
     if isWriting(c) {
       beginEditing(c)
     } else if case .own(let k)? = doc.board.card(c)?.content, case .web(let w) = k.body {
-      if let u = URL(string: w.url) { openURL(u) }
+      openLink(w.url)
     } else if !openSubBoard(c) {
       return false
     }
