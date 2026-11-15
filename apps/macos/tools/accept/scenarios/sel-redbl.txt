@@ -1,0 +1,19 @@
+# 编辑中双击一个词选中，再双击另一行的词：选中跟到新词上（两边）；三击选中整段。第二个点不能落在第一个词上方弹出的格式条上：
+# 那样按下去的是格式条，选中看着就“没动”
+zoom 1
+center @cnote+150,60
+dbl @cnote+150,90
+wait 600
+dbl @cnote+60,60
+wait 400
+expect sel = "vocabulary" 16-26
+dbl @cnote+60,75
+wait 400
+expect sel = "." 53-54
+# 先单击收起选中（格式条也收起），再三击
+click @cnote+200,75
+wait 400
+tri @cnote+60,75
+wait 400
+expect sel = "The vocabulary maps each word to a number." 12-54
+key esc

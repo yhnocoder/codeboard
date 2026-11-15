@@ -235,11 +235,11 @@ async function run(line: string): Promise<string> {
     case "move": await move(d(1), d(2), d(3, 350)); break;
     case "down": await pressed(a[1] === "right"); await page.mouse.down({ button: a[1] === "right" ? "right" : "left" }); break;
     case "up": await page.mouse.up({ button: a[1] === "right" ? "right" : "left" }); break;
-    case "click": case "dbl":
+    case "click": case "dbl": case "tri":
       if (a.length > 2) await move(d(1), d(2), 300);
       await sleep(60);
       await hold(mods(a[3]), async () => {
-        for (let i = 1; i <= (a[0] === "dbl" ? 2 : 1); i++) {
+        for (let i = 1; i <= ({ dbl: 2, tri: 3 }[a[0]] ?? 1); i++) {
           await pressed(false); await page.mouse.down({ clickCount: i }); await sleep(70); await page.mouse.up({ clickCount: i }); await sleep(90);
         }
       });

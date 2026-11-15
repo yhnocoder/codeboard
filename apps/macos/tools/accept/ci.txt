@@ -55,6 +55,7 @@ search-open.txt
 section-follow.txt
 section-lock.txt
 sel-read.txt
+sel-redbl.txt
 select-all-bar.txt
 sidenote-menu.txt
 snap-guide.txt
