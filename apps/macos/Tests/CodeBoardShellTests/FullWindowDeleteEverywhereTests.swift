@@ -81,7 +81,10 @@ import Testing
     await edit.until("B shown", in: w) { w.pane?.document?.id == BoardID(rawValue: "b") && w.pane?.scene != nil }
     w.shell.show(BoardID(rawValue: "a"))
     w.panes.sync()
-    await edit.until("A shown", in: w) { w.pane?.document?.id == BoardID(rawValue: "a") && w.pane?.scene != nil }
+    // shown and done opening (a board still opening takes no menu)
+    await edit.until("A shown", in: w) {
+      w.pane?.document?.id == BoardID(rawValue: "a") && w.pane?.scene != nil && w.pane?.isOpening == false
+    }
     let c = w.canvas
     let doc = try #require(c.document)
     // its menu: what it is and on how many boards, Remove from This Board, Delete Everywhere…
