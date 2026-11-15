@@ -197,7 +197,24 @@ extension CanvasView {
   /// The editor laid its lines out again: the sidenotes and the arrow ends on its lines go where their lines are
   func writtenLaidOut() {
     placeWrittenNotes()
+    placeWrittenMarks()
     rerouteWritten()
+  }
+
+  /// The card's Highlight counts in its line numbers, level with their Highlights' first lines where those are now; one
+  /// whose lines are gone is not shown. Their places at rest stay in `marks`, so each is moved from there
+  func placeWrittenMarks() {
+    guard let ed = editing, let v = ed.codeView, let w = ed.written, let code = scene?.placed[ed.id]?.code else {
+      return
+    }
+    withoutAnimation {
+      for (i, m) in marks.enumerated() where i < markLayers.count && m.owner == .card(ed.id) && m.gutter && !m.add {
+        guard case .lines(let l) = m.at, l.segment == w.segment else { continue }
+        let f = w.map.range(l.range).flatMap { v.frame(ofLines: $0) }
+        markLayers[i].isHidden = f == nil
+        if let f { markLayers[i].frame.origin.y = code.top + f.first.minY + 3.5 }
+      }
+    }
   }
 
   /// The Always Show sidenotes' pictures, put over the editor's room for them
@@ -210,10 +227,11 @@ extension CanvasView {
       parent.addSublayer(l)
       w.layers.append(l)
       let look = theme.id.rawValue
-      Task { [notes, theme] in
-        let snap = try? await notes.snapshot(
+      // drawn by what drew them at rest, so they look as they did
+      Task { [display, theme] in
+        let snap = try? await display.snapshot(
           of: .inline(n.text), width: n.frame.width, height: nil, folder: n.folder, scale: scale, look: look,
-          dark: theme.dark, refs: n.refs, priority: 1)
+          dark: theme.dark, refs: n.refs, hideHead: false, priority: 1)
         l.contents = snap?.surface
       }
     }

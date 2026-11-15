@@ -209,6 +209,49 @@ private func alwaysBoard(
   }
 }
 
+extension CanvasAlwaysShowTests {
+  /// While Free code is written, a Highlight's count in the line numbers stays level with the Highlight's first line as
+  /// lines are written above it, and goes with the Highlight's lines
+  @Test func whileFreeCodeIsWrittenItsHighlightCountsFollowTheirLines() async throws {
+    let r = try await Rig(alwaysBoard(), zoom: 1)
+    defer { r.close() }
+    await r.settle()
+    let c = r.canvas
+    let (l, top) = try layout(r, "c1")
+    let row10 = try #require(l.row(segment: 0, line: 10))
+    let card = r.rect("c1")
+    r.doubleClick(CGPoint(x: card.maxX - 10, y: card.minY + top + row10.y + 10))
+    await r.editorReady()
+    let v = try #require(c.editing?.codeView)
+    func counts() -> [ClosedRange<Int>: CALayer] {
+      Dictionary(
+        uniqueKeysWithValues: c.marks.indices.compactMap { i in
+          guard c.marks[i].owner == .card(cid("c1")), c.marks[i].gutter, case .lines(let ls) = c.marks[i].at else {
+            return nil
+          }
+          return (ls.range, c.markLayers[i])
+        })
+    }
+    func level(_ layer: CALayer?, _ line: Int) -> Bool {
+      guard let layer, let f = v.frame(ofLines: line...line), !layer.isHidden else { return false }
+      return abs(layer.frame.minY - (top + f.first.minY + 3.5)) < 0.01
+    }
+    #expect(counts().count == 2 && level(counts()[12...13], 12) && level(counts()[14...14], 14))
+    // a line written above them: each one line down, with its Highlight
+    r.press("\r")
+    v.insertText("x = 1", replacementRange: NSRange(location: NSNotFound, length: 0))
+    #expect(level(counts()[12...13], 13) && level(counts()[14...14], 15))
+    // the blank line's Highlight gone with its line: its count with it
+    let ns = v.editor.text as NSString
+    let blank = ns.range(of: "\n\n")
+    v.change { $0.select(CodeSelection(anchor: blank.location, head: blank.location + 1)) }
+    v.perform(.deleteBackward)
+    #expect(level(counts()[12...13], 13) && counts()[14...14]?.isHidden == true)
+    r.press("\u{1b}")
+    await r.until("left") { !c.isEditing }
+  }
+}
+
 /// Pixels with any ink in `rect` (card points) of a surface drawn at `scale`
 private func ink(_ s: IOSurface, in rect: CGRect, scale: CGFloat) -> Int {
   s.lock(options: .readOnly, seed: nil)

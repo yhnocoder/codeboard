@@ -224,6 +224,8 @@ extension CanvasView {
         markLayers.append(l)
       }
     }
+    // a card being written keeps its counts by its lines as they are now
+    placeWrittenMarks()
     // a popup goes with its marker
     if !pops.isEmpty { positionPop() }
     placeStickers()
