@@ -633,7 +633,7 @@ extension CanvasSidenoteTests {
 
 extension CanvasSidenoteTests {
   /// The tools of a sidenote hovered in its popup (notes.tsx Slip): Edit, Always Show (on lines), Place on Board (on a
-  /// card, no question), Delete; a question's Resolve, Edit and Delete Question
+  /// card, no question), Delete; a question's Resolve, Edit and Delete Question. Placed, its popup stays with the rest
   @Test func aSidenotesToolsAreMainsAndPlaceOnBoardMakesItACard() async throws {
     let r = try await Rig(sidenoteBoard(question: true), zoom: 1)
     defer { r.close() }
@@ -664,9 +664,16 @@ extension CanvasSidenoteTests {
     #expect(card.content == .own(CardContent(body: .note(Note(text: "取一批")))) && card.width == Board.newNoteWidth)
     #expect(r.doc.board.arrows.last?.from == Endpoint(card: cid("c1"), segment: s1, line: 12))
     #expect(r.doc.board.arrows.last?.to == Endpoint(card: id))
-    #expect(r.doc.undoName == "Place on Board" && c.openPop == nil)
+    // its popup stays, pinned, with the other sidenote on the lines (actions/notes.ts placeSidenote: closePop() closes
+    // only popups not pinned)
+    #expect(r.doc.undoName == "Place on Board" && c.openPop == lines)
     await c.popTask?.value
-    #expect(c.popShown == nil, "the popup closes")
+    #expect(c.popShown == lines && c.sidenotePop.view.alphaValue == 1, "the popup stays")
+    func slips() async -> [String] {
+      await c.sidenotePop.run("return [...document.querySelectorAll('.slip')].map((s) => s.dataset.note)") as? [String]
+        ?? []
+    }
+    await r.until("it shows the other one") { await slips() == ["l2"] }
     // from 48 right of the card and 20 down, the nearest place clear of the others
     await r.settle()
     let placed = r.rect(id.rawValue)
