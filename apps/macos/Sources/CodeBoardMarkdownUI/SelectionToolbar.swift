@@ -5,8 +5,10 @@ import CodeBoardMarkdown
 /// a row of buttons over its first line (under it when there is no room above), at the screen's own size. While editing:
 /// Bold, Italic, Strikethrough, Highlight, Inline Code, Link, Inline Math, Handwritten Note; on the static picture's
 /// selection only Bold and Highlight (the board's static toolbar). A button is pressed when the selection is wrapped in
-/// its markers; a press toggles them (one undo step). No labels: the web's icons say it (MarkdownIcons), the tooltips
-/// name the keys; a thin separator between the marks and Link, as on the web
+/// its markers; a click toggles them (one undo step). No labels: the web's icons say it (MarkdownIcons), the tooltips
+/// name them and their keys; a thin separator between the marks and Link, as on the web. Its buttons are the board's
+/// (.tbtn with .md-bubble .md-btn.md-ib): the ink at 7 % behind on hover, eased over 120 ms, 12 % and a little smaller
+/// while pressed; a pressed one (its marks are on) in the accent on --row
 @MainActor
 final class SelectionToolbar: HoverControls {
   struct Button {
@@ -14,6 +16,8 @@ final class SelectionToolbar: HoverControls {
     /// the icon's name in MarkdownIcons
     var symbol: String
     var tip: String
+    /// the keys, beside the name in the tip
+    var kbd: String? = nil
     var on: Bool
   }
   /// a separator goes before this button (bubble.tsx: between Inline Code and Link)
@@ -50,11 +54,8 @@ final class SelectionToolbar: HoverControls {
       if !other.insetBy(dx: -2, dy: -2).contains(p) { r = other }
     }
     frame = r
-    toolTip = nil
     isHidden = false
     needsDisplay = true
-    removeAllToolTips()
-    for (i, b) in buttons.enumerated() { addToolTip(rect(i), owner: b.tip as NSString, userData: nil) }
   }
 
   func hide() { isHidden = true }
@@ -62,6 +63,10 @@ final class SelectionToolbar: HoverControls {
   override func controls() -> [(id: String, box: CGRect, tip: String)] {
     buttons.enumerated().map { ($0.element.id, rect($0.offset), $0.element.tip) }
   }
+  override func keys(_ id: String) -> String? { buttons.first { $0.id == id }?.kbd }
+  override var fade: Double { MarkdownTiming.toolbarButtonFade }
+  override var pressInk: Double? { 0.12 }
+  override func activate(_ id: String, box: CGRect) { onPress(id) }
 
   private func rect(_ i: Int) -> CGRect {
     let seps = buttons.prefix(i + 1).filter { Self.separated.contains($0.id) }.count
@@ -81,42 +86,42 @@ final class SelectionToolbar: HoverControls {
     ctx.addPath(path)
     ctx.setStrokeColor(theme.colors.hair.cg)
     ctx.strokePath()
+    let k = theme.controls
     for (i, b) in buttons.enumerated() {
       let r = rect(i)
-      if b.on {
-        ctx.setFillColor(theme.colors.accent.alpha(0.16).cg)
-        ctx.addPath(CGPath(roundedRect: r.insetBy(dx: 2, dy: 2), cornerWidth: 5, cornerHeight: 5, transform: nil))
-        ctx.fillPath()
-      } else if hovered == b.id {
-        // :hover as the board's buttons (.tbtn): the ink at 7 % behind it, 8.5 round, the icon in the ink
-        ctx.setFillColor(theme.colors.ink.alpha(0.07).cg)
-        ctx.addPath(
-          CGPath(roundedRect: r.insetBy(dx: 1, dy: 1), cornerWidth: 8.5, cornerHeight: 8.5, transform: nil))
-        ctx.fillPath()
-      }
       if Self.separated.contains(b.id) {
         ctx.setFillColor(theme.colors.hair.cg)
         ctx.fill(CGRect(x: r.minX - gap / 2 - 0.5, y: r.midY - 8, width: 1, height: 16))
       }
-      if let icon = MarkdownIcons.path(b.symbol) {
-        ctx.saveGState()
-        ctx.translateBy(x: r.midX - 8, y: r.midY - 8)
-        ctx.addPath(icon)
-        ctx.setStrokeColor((b.on ? theme.colors.accent : hovered == b.id ? theme.colors.ink : theme.colors.ink2).cg)
-        ctx.setLineWidth(1.3)
-        ctx.setLineCap(.round)
-        ctx.setLineJoin(.round)
-        ctx.strokePath()
-        ctx.restoreGState()
+      let look = look(b.id)
+      // .md-ib is 28 by 26
+      let chip = CGRect(x: r.minX, y: r.minY + 1, width: r.width, height: r.height - 2)
+      scaled(look.scale, about: chip, ctx) {
+        // .tbtn.on wins over :hover and :active for its colours: the accent on --row
+        let fill = b.on ? (k.row ?? theme.colors.accent.alpha(0.09)) : theme.colors.ink.alpha(look.ink)
+        if fill.a > 0 {
+          ctx.setFillColor(fill.cg)
+          ctx.addPath(
+            CGPath(
+              roundedRect: chip, cornerWidth: CGFloat(k.buttonRadius), cornerHeight: CGFloat(k.buttonRadius),
+              transform: nil))
+          ctx.fillPath()
+        }
+        if let icon = MarkdownIcons.path(b.symbol) {
+          ctx.saveGState()
+          ctx.translateBy(x: r.midX - 8, y: r.midY - 8)
+          ctx.addPath(icon)
+          ctx.setStrokeColor((b.on ? theme.colors.accent : theme.colors.ink2.mixed(theme.colors.ink, look.hover)).cg)
+          ctx.setLineWidth(1.3)
+          ctx.setLineCap(.round)
+          ctx.setLineJoin(.round)
+          ctx.strokePath()
+          ctx.restoreGState()
+        }
       }
     }
   }
 
-  override func mouseDown(with e: NSEvent) {
-    let p = convert(e.locationInWindow, from: nil)
-    guard let i = buttons.indices.first(where: { rect($0).contains(p) }) else { return }
-    onPress(buttons[i].id)
-  }
 }
 
 extension MarkdownEditing {

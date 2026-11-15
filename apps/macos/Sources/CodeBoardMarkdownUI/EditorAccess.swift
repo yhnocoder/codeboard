@@ -86,13 +86,13 @@ extension MarkdownEditorView {
     }
   }
 
-  /// The tooltips of the static picture, set again when its layout changed: a link's whole address (ui/Md.tsx: a
-  /// link's data-tip), and on a [[reference]] that finds nothing why (view.ts paintRef's title), each over its boxes
+  /// The tips of the static picture, found again when its layout changed: a link's whole address (ui/Md.tsx: a link's
+  /// data-tip, data-tip-long), and on a [[reference]] that finds nothing why (view.ts paintRef's title), each over its
+  /// boxes, about the whole link or reference
   func refreshTips() {
     let key = TipsKey(layout: ObjectIdentifier(core.layout), revision: core.revision, zoom: zoom, editing: isEditing)
     guard key != tipsKey else { return }
     tipsKey = key
-    if !tips.isEmpty { removeAllToolTips() }
     tips = []
     guard !isEditing else { return }
     let doc = core.document
@@ -100,10 +100,13 @@ extension MarkdownEditorView {
       for i in ins {
         switch i.kind {
         case .link(let url), .autolink(let url):
-          for r in core.rects(for: i.range) { tips.append((url, r)) }
+          let boxes = core.rects(for: i.range)
+          guard let first = boxes.first else { break }
+          let whole = boxes.dropFirst().reduce(first) { $0.union($1) }
+          for r in boxes { tips.append((url, r, whole, true)) }
         case .atom(.ref(let label, let target)):
           if case .found = core.layout.resources.ref(label: label, target: target) { break }
-          if let r = core.layout.rects(forAtom: i.range) { tips.append((Self.nothingFound, r)) }
+          if let r = core.layout.rects(forAtom: i.range) { tips.append((Self.nothingFound, r, r, false)) }
         default: break
         }
         walk(i.children)
@@ -112,30 +115,21 @@ extension MarkdownEditorView {
     for b in doc.blocks {
       for run in MarkdownEditing.runs(of: b, in: doc) where run.kind == .inline { walk(run.inlines) }
     }
-    for t in tips {
-      addToolTip(
-        CGRect(x: t.box.minX * zoom, y: t.box.minY * zoom, width: t.box.width * zoom, height: t.box.height * zoom),
-        owner: self, userData: nil)
-    }
+  }
+
+  /// the tip of the static picture at a point (the layout's points)
+  func tip(at: CGPoint) -> (text: String, box: CGRect, whole: CGRect, long: Bool)? {
+    tips.first { $0.box.insetBy(dx: -0.5, dy: -0.5).contains(at) }
   }
 
   /// what a reference that finds nothing says (view.ts MISSING)
   static let nothingFound = "Nothing with this title"
 }
 
-/// what the tooltips were last set for
+/// what the tips were last found for
 struct TipsKey: Equatable {
   var layout: ObjectIdentifier
   var revision: Int
   var zoom: CGFloat
   var editing: Bool
-}
-
-extension MarkdownEditorView: NSViewToolTipOwner {
-  public func view(
-    _ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint, userData data: UnsafeMutableRawPointer?
-  ) -> String {
-    let at = CGPoint(x: point.x / zoom, y: point.y / zoom)
-    return tips.first { $0.box.insetBy(dx: -0.5, dy: -0.5).contains(at) }?.text ?? ""
-  }
 }

@@ -100,21 +100,19 @@ final class LinkBox: NSView, NSTextFieldDelegate {
   }
 }
 
-/// The link box's two text buttons (.md-linkacts .md-linkbtn: 24 high, 8 points of padding, 12-point text), with the
-/// hover of main's buttons (the ink at 6.5 % behind, the text in the ink) and a pointing hand
+/// The link box's two text buttons (.md-linkacts .md-linkbtn: 24 high, 8 points of padding, 12-point text), the board's
+/// buttons (.tbtn): the ink at 7 % behind and the text in the ink on hover, 12 % and a little smaller while pressed,
+/// all at once (.tbtn has no transition); a click acts
 @MainActor
 final class LinkActs: HoverControls {
   var theme: MarkdownTheme? { didSet { needsDisplay = true } }
   /// whether Remove Link shows (a link that exists)
-  var removes = true {
-    didSet {
-      needsDisplay = true
-      refreshTips()
-    }
-  }
+  var removes = true { didSet { needsDisplay = true } }
   var onPress: (String) -> Void = { _ in }
   override var isFlipped: Bool { true }
   private let font = NSFont.systemFont(ofSize: 12)
+  override var pressInk: Double? { 0.12 }
+  override func activate(_ id: String, box: CGRect) { onPress(id) }
 
   override func controls() -> [(id: String, box: CGRect, tip: String)] {
     var x: CGFloat = 0
@@ -129,26 +127,23 @@ final class LinkActs: HoverControls {
 
   override func draw(_ dirtyRect: NSRect) {
     guard let theme, let ctx = NSGraphicsContext.current?.cgContext else { return }
+    let k = CGFloat(theme.controls.buttonRadius)
     for c in controls() {
-      let over = hovered == c.id
-      if over {
-        // the board's .tbtn:hover: the ink at 7 % behind it, its corners 8.5
-        ctx.addPath(CGPath(roundedRect: c.box, cornerWidth: 8.5, cornerHeight: 8.5, transform: nil))
-        ctx.setFillColor(theme.colors.ink.alpha(0.07).cg)
-        ctx.fillPath()
+      let look = look(c.id)
+      scaled(look.scale, about: c.box, ctx) {
+        if look.ink > 0 {
+          ctx.addPath(CGPath(roundedRect: c.box, cornerWidth: k, cornerHeight: k, transform: nil))
+          ctx.setFillColor(theme.colors.ink.alpha(look.ink).cg)
+          ctx.fillPath()
+        }
+        let title = c.id == "open" ? "Open" : "Remove Link"
+        let a: [NSAttributedString.Key: Any] = [
+          .font: font,
+          .foregroundColor: NSColor(cgColor: theme.colors.ink2.mixed(theme.colors.ink, look.hover).cg) ?? .labelColor,
+        ]
+        let sz = (title as NSString).size(withAttributes: a)
+        (title as NSString).draw(at: CGPoint(x: c.box.minX + 8, y: c.box.midY - sz.height / 2), withAttributes: a)
       }
-      let title = c.id == "open" ? "Open" : "Remove Link"
-      let a: [NSAttributedString.Key: Any] = [
-        .font: font,
-        .foregroundColor: NSColor(cgColor: (over ? theme.colors.ink : theme.colors.ink2).cg) ?? .labelColor,
-      ]
-      let sz = (title as NSString).size(withAttributes: a)
-      (title as NSString).draw(at: CGPoint(x: c.box.minX + 8, y: c.box.midY - sz.height / 2), withAttributes: a)
     }
-  }
-
-  override func mouseDown(with e: NSEvent) {
-    let p = convert(e.locationInWindow, from: nil)
-    if let c = controls().first(where: { $0.box.contains(p) }) { onPress(c.id) }
   }
 }

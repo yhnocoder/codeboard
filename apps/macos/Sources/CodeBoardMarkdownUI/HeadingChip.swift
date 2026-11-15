@@ -3,7 +3,9 @@ import CodeBoardMarkdown
 
 /// The caret's heading level (editor/headings.ts): a small "H2" in the left padding, ending a little before the heading's
 /// first letter and sharing its first baseline, so it never covers text. A click opens the level menu: Body text and
-/// Heading 1–6, the current one checked. It scales with the editor's zoom, as the heading does
+/// Heading 1–6, the current one checked. It scales with the editor's zoom, as the heading does. Hovered, and while its
+/// menu is open, it is in the ink on the ink at 8.5 %, eased over 90 ms (.md-hchip-b:is(:hover, .open)); main gives it
+/// no tip and no pressed look
 @MainActor
 final class HeadingChip: HoverControls {
   var level = 1
@@ -11,7 +13,9 @@ final class HeadingChip: HoverControls {
   var zoom: CGFloat = 1
   var onPick: (Int) -> Void = { _ in }
   override var isFlipped: Bool { true }
-  override func controls() -> [(id: String, box: CGRect, tip: String)] { [("chip", bounds, "Heading level")] }
+  override func controls() -> [(id: String, box: CGRect, tip: String)] { [("chip", bounds, "")] }
+  override var fade: Double { MarkdownTiming.headingChipFade }
+  override var hoverInk: Double { 0.085 }
 
   /// over the heading's first line: `baseline` its first baseline, `left` where its text starts (editor view points)
   func place(baseline: CGFloat, left: CGFloat) {
@@ -29,18 +33,19 @@ final class HeadingChip: HoverControls {
     var attrs: [NSAttributedString.Key: Any] = [
       .font: font, .foregroundColor: NSColor(cgColor: theme.colors.ink3.cg) ?? .tertiaryLabelColor,
     ]
-    // :hover: the ink, on the ink at 8.5 % (.md-hchip-b:is(:hover, .open))
-    if hovered != nil, let ctx = NSGraphicsContext.current?.cgContext {
+    let look = look("chip")
+    if look.ink > 0, let ctx = NSGraphicsContext.current?.cgContext {
       ctx.addPath(CGPath(roundedRect: bounds, cornerWidth: 3.5 * zoom, cornerHeight: 3.5 * zoom, transform: nil))
-      ctx.setFillColor(theme.colors.ink.alpha(0.085).cg)
+      ctx.setFillColor(theme.colors.ink.alpha(look.ink).cg)
       ctx.fillPath()
-      attrs[.foregroundColor] = NSColor(cgColor: theme.colors.ink.cg) ?? .labelColor
+      attrs[.foregroundColor] =
+        NSColor(cgColor: theme.colors.ink3.mixed(theme.colors.ink, look.hover).cg) ?? .labelColor
     }
     let size = s.size(withAttributes: attrs)
     s.draw(at: CGPoint(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2), withAttributes: attrs)
   }
 
-  override func mouseDown(with e: NSEvent) {
+  override func activate(_ id: String, box: CGRect) {
     let menu = NSMenu()
     for n in 0...6 {
       let item = NSMenuItem(
@@ -55,7 +60,11 @@ final class HeadingChip: HoverControls {
       }
       menu.addItem(item)
     }
+    open = "chip"
     menu.popUp(positioning: nil, at: CGPoint(x: 0, y: bounds.maxY), in: self)
+    open = nil
+    // the pointer may have gone anywhere while the menu was up
+    hover(at: window.map { convert($0.mouseLocationOutsideOfEventStream, from: nil) })
   }
 
   @objc private func pick(_ item: NSMenuItem) { onPick(item.tag) }

@@ -274,6 +274,63 @@ extension BlockLayout {
     return nil
   }
 
+  /// The lines a link is underlined with between the source offsets of `range`, one per line of text, 1 point tall:
+  /// where a hovered link draws its line again, solid (.md-link:hover)
+  public func underlines(_ range: Range<Int>) -> [CGRect] {
+    guard !range.isEmpty, let a = pieceIndex(range.lowerBound), let b = pieceIndex(range.upperBound) else { return [] }
+    let offset = CGFloat(theme.metrics.linkUnderlineOffset)
+    var out: [CGRect] = []
+    for i in a...b {
+      let lo = range.lowerBound - shifts[i]
+      let hi = range.upperBound - shifts[i]
+      for t in pieces[i].layout.caretTexts where t.display.endSource >= lo && t.sourceStart <= hi {
+        let ja = t.displayIndex(lo)
+        let jb = t.displayIndex(hi)
+        for l in t.lines {
+          var x0 = CGFloat.infinity
+          var x1 = -CGFloat.infinity
+          for run in CTLineGetGlyphRuns(l.line) as! [CTRun] {
+            guard (CTRunGetAttributes(run) as NSDictionary)[Attr.underline] is MDColor else { continue }
+            let r = CTRunGetStringRange(run)
+            let s = max(r.location, ja)
+            let e = min(r.location + r.length, jb)
+            guard s < e else { continue }
+            let p0 = CTLineGetOffsetForStringIndex(l.line, s, nil)
+            let p1 = CTLineGetOffsetForStringIndex(l.line, e, nil)
+            x0 = min(x0, p0, p1)
+            x1 = max(x1, p0, p1)
+          }
+          guard x0 < x1 else { continue }
+          // as Draw strokes it: 1 wide, centred half a point under the offset
+          out.append(
+            CGRect(
+              x: l.origin.x + x0 - sx(i, t), y: tops[i] + l.origin.y + offset, width: x1 - x0, height: 1))
+        }
+      }
+    }
+    return out
+  }
+
+  /// The line under a [[reference]] drawn for the source `range`, when it is one a hover draws solid: a reference that
+  /// finds its card, in the link colour (.md-ref:hover; a reference that finds nothing keeps its hairline)
+  public func refLine(_ range: Range<Int>) -> CGRect? {
+    guard let i = pieceIndex(range.lowerBound) else { return nil }
+    for t in pieces[i].layout.caretTexts {
+      for l in t.lines {
+        for run in CTLineGetGlyphRuns(l.line) as! [CTRun] {
+          guard let a = (CTRunGetAttributes(run) as NSDictionary)[Attr.atom] as? AtomBox, case .ref(let r) = a.content
+          else { continue }
+          let j = CTRunGetStringRange(run).location
+          guard t.display.toSource[j] + shifts[i] == range.lowerBound else { continue }
+          guard r.solidOnHover else { return nil }
+          let x0 = l.origin.x + CTLineGetOffsetForStringIndex(l.line, j, nil) - sx(i, t)
+          return CGRect(x: x0 + 2, y: tops[i] + l.origin.y + r.descent - 1, width: r.width - 4, height: 1)
+        }
+      }
+    }
+    return nil
+  }
+
   /// The boxes a selection covers: per line of text, from where it starts to where it ends on that line
   public func selectionRects(_ range: Range<Int>) -> [CGRect] {
     guard !range.isEmpty, let a = pieceIndex(range.lowerBound), let b = pieceIndex(range.upperBound) else { return [] }

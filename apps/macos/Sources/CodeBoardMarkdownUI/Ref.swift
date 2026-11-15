@@ -15,6 +15,8 @@ final class RefBox: @unchecked Sendable {
   let badge: CTLine?
   let color: MDColor
   let lineColor: MDColor?
+  /// its line turns solid in the link colour under the pointer (.md-ref:hover): a reference that finds its card
+  let solidOnHover: Bool
   let strike: MDColor?
   /// the badge struck through (the board it names is gone: .md-ref.gone > .bd)
   let badgeStruck: Bool
@@ -75,6 +77,7 @@ final class RefBox: @unchecked Sendable {
     }
     self.color = color
     lineColor = line
+    if case .found = hit { solidOnHover = line != nil } else { solidOnHover = false }
     self.strike = strike
     if case .broken(true, _, _) = hit { badgeStruck = true } else { badgeStruck = false }
     self.mark = mark

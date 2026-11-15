@@ -250,6 +250,19 @@ public struct MarkdownTheme: Sendable, Hashable {
     }
   }
 
+  /// The board's own controls around the Markdown (styles.css .tip and .tbtn): its tooltip and its buttons
+  public struct Controls: Sendable, Hashable {
+    /// .tip: --tip-bg, --tip-ink and its corners
+    public var tipBackground = MDColor(34 / 255, 32 / 255, 28 / 255, 0.92)
+    public var tipInk = MDColor(hex: "#f6f4ef")
+    public var tipRadius: Double = 8.5
+    /// .tbtn's corners
+    public var buttonRadius: Double = 8.5
+    /// .tbtn.on's background (--row); nil: the accent at 9 %, as the board mixes it
+    public var row: MDColor?
+    public init() {}
+  }
+
   public var colors: Colors
   public var code: CodeColors
   public var marks: MarkColors
@@ -257,6 +270,7 @@ public struct MarkdownTheme: Sendable, Hashable {
   public var fonts: Fonts
   public var metrics: Metrics
   public var chrome: Chrome?
+  public var controls = Controls()
 
   public init(
     colors: Colors, code: CodeColors, marks: MarkColors, diagrams: DiagramColors? = nil, fonts: Fonts,

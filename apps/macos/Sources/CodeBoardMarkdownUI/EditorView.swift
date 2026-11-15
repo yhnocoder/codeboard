@@ -69,7 +69,11 @@ public final class MarkdownEditorView: NSView {
     didSet {
       resize()
       // what floats over the Note follows it to its new scale (a toolbar left behind covered the word it was for)
-      if zoom != oldValue { restyleChrome() }
+      if zoom != oldValue {
+        // what a tip is about moved from under it (the board's tip goes on the wheel that zooms)
+        tipView.hide()
+        restyleChrome()
+      }
     }
   }
 
@@ -94,6 +98,7 @@ public final class MarkdownEditorView: NSView {
   public var isEditing = true {
     didSet {
       guard isEditing != oldValue else { return }
+      tipView.hide()
       // measured from here: a switch made by a host, with no input event of its own to time it from
       begin()
       // the static picture and the editor are separate scrollers on the page: a code block starts unscrolled in each
@@ -130,6 +135,8 @@ public final class MarkdownEditorView: NSView {
   let noteBox = NoteBox()
   let headingChip = HeadingChip()
   let findBar = FindBar()
+  /// the board's own tooltip, for what the Note shows and for the controls floating on it
+  let tipView = TipView()
   /// pictures sliding to where the caret's moving put them (IMAGE_SLIDE): from, to, since; and where each was
   private var slides: [String: (from: CGRect, to: CGRect, since: CFTimeInterval)] = [:]
   private var imageFrames: [String: CGRect] = [:]
@@ -251,6 +258,10 @@ public final class MarkdownEditorView: NSView {
         rows: r, cols: c, in: MDEditState(source: self.core.source, selection: self.core.selection),
         document: self.core.document)?.dropped ?? 0
     }
+    tipView.isHidden = true
+    tipView.theme = layout.theme
+    tipView.area = { [weak self] in self?.shownArea() ?? .zero }
+    addSubview(tipView)
     sizePicker.onPick = { [weak self] r, c in
       guard let self,
         let x = MarkdownEditing.tableResize(
@@ -283,7 +294,10 @@ public final class MarkdownEditorView: NSView {
     }
     c.onChange = { [weak self] source in
       MainActor.assumeIsolated {
-        guard let self, self.sourceMode == nil else { return }
+        guard let self else { return }
+        // its offsets are the old text's
+        self.hoveredLine = nil
+        guard self.sourceMode == nil else { return }
         self.delegate?.editor(self, didChange: source)
       }
     }
@@ -368,6 +382,7 @@ public final class MarkdownEditorView: NSView {
   public func freeze() {
     frozen = true
     clearHover()
+    tipView.hide()
     blink?.invalidate()
     blink = nil
   }
@@ -438,6 +453,7 @@ public final class MarkdownEditorView: NSView {
       ctx.draw(pic, in: CGRect(origin: .zero, size: r.size))
       ctx.restoreGState()
     }
+    drawHoverLine(ctx, clip)
     drawTableFlip(ctx)
     drawMathProblem(ctx)
     // the selection over the text: under it, a code block's or a table header's fill would hide it. Translucent, so the
@@ -471,14 +487,27 @@ public final class MarkdownEditorView: NSView {
       }
       ctx.restoreGState()
     }
-    if let g = tableGrips, tableDrag == nil {
-      // pills on the paper with a hair ring and a small shadow, the hovered cell's only
+    if tableDrag == nil {
+      // pills on the paper with a hair ring and a small shadow, the hovered cell's only; one that goes fades and shrinks
+      // where it was
+      let g = tableGrips
+      if let r = g.flatMap({ g in gripHover.row.flatMap { g.rows[safe: $0] }.map(rowGrip) }) { gripBox.row = r }
+      if let r = g.flatMap({ g in gripHover.col.flatMap { g.cols[safe: $0] }.map(colGrip) }) { gripBox.col = r }
+      let now = core.clock()
       let grips = [
-        gripHover.row.flatMap { g.rows[safe: $0] }.map(rowGrip),
-        gripHover.col.flatMap { g.cols[safe: $0] }.map(colGrip),
+        gripBox.row.map { ($0, gripShow.row.value(at: now)) }, gripBox.col.map { ($0, gripShow.col.value(at: now)) },
       ]
       let colors = core.layout.theme.colors
-      for r in grips.compactMap({ $0 }) {
+      for (r, shown) in grips.compactMap({ $0 }) where shown > 0 {
+        ctx.saveGState()
+        defer { ctx.restoreGState() }
+        let k = CGFloat(MarkdownTiming.gripScale + (1 - MarkdownTiming.gripScale) * shown)
+        ctx.translateBy(x: r.midX, y: r.midY)
+        ctx.scaleBy(x: k, y: k)
+        ctx.translateBy(x: -r.midX, y: -r.midY)
+        ctx.setAlpha(CGFloat(shown))
+        ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+        defer { ctx.endTransparencyLayer() }
         let pill = CGPath(roundedRect: r, cornerWidth: 3, cornerHeight: 3, transform: nil)
         // the pointer on it: the accent, its dots in the accent's ink (.md-tgrip:hover)
         let over = gripPointer.map { r.insetBy(dx: -4, dy: -3).contains($0) } ?? false
@@ -562,6 +591,7 @@ public final class MarkdownEditorView: NSView {
   /// white): nothing scrolls, the boxes' typing is kept
   private func restyleChrome() {
     let theme = core.layout.theme
+    tipView.theme = theme
     if !toolbar.isHidden { placeToolbar() }
     showHeadingChip()
     showMenu()
@@ -667,6 +697,8 @@ public final class MarkdownEditorView: NSView {
   /// a sideways scroll (or ⇧ and the wheel) over a table wider than the Note or a code block with long lines scrolls
   /// that, not the card; a vertical one goes on to the page, and a gesture that starts mostly vertical stays vertical
   public override func scrollWheel(with e: NSEvent) {
+    // the wheel pans, zooms or scrolls what is under the pointer: what a tip is about moves away (ui/Menu.tsx)
+    tipView.hide()
     var dx = e.scrollingDeltaX
     var dy = e.scrollingDeltaY
     if e.modifierFlags.contains(.shift), dx == 0 { (dx, dy) = (dy, 0) }
@@ -1101,6 +1133,19 @@ public final class MarkdownEditorView: NSView {
     // over a control floating on the Note (a band, the toolbar, a menu) its own pointer, not the text's I-beam
     let chrome = subviews.contains { !$0.isHidden && $0.hitTest(convert(p, to: $0.superview)) != nil }
     if !chrome { cursor(at: p, modifiers: e.modifierFlags).set() }
+    // the link or reference under the pointer draws its line solid, and on the static picture shows its tip; a control
+    // floating over it has the pointer instead
+    hoverUnder(chrome ? nil : at)
+    if !chrome, let t = tip(at: at) {
+      tipView.over(
+        .init(
+          text: t.text, long: t.long,
+          anchor: CGRect(
+            x: t.whole.minX * zoom, y: t.whole.minY * zoom, width: t.whole.width * zoom, height: t.whole.height * zoom),
+          owner: ObjectIdentifier(self)))
+    } else if !chrome {
+      tipView.leave(ObjectIdentifier(self))
+    }
     var over: EditorCore.CodeBlock?
     if isEditing, !onBand {
       let c = core.layout.caret(at: at)
@@ -1124,6 +1169,32 @@ public final class MarkdownEditorView: NSView {
   public override func viewWillStartLiveResize() {
     super.viewWillStartLiveResize()
     clearHover()
+    tipView.hide()
+  }
+
+  /// the link or [[reference]] under the pointer, whose line draws solid (.md-link:hover, .md-ref:hover): its source
+  private(set) var hoveredLine: Range<Int>?
+
+  private func hoverUnder(_ at: CGPoint?) {
+    var next: Range<Int>?
+    if let at {
+      if let l = link(at: at) {
+        next = l.range
+      } else if let r = ref(at: at), core.layout.refLine(r.range) != nil {
+        next = r.range
+      }
+    }
+    guard next != hoveredLine else { return }
+    hoveredLine = next
+    needsDisplay = true
+  }
+
+  /// the hovered link's or reference's line, solid in the link colour over the lighter one drawn with the text
+  private func drawHoverLine(_ ctx: CGContext, _ clip: CGRect) {
+    guard let r = hoveredLine else { return }
+    let lines = core.layout.refLine(r).map { [$0] } ?? core.layout.underlines(r)
+    ctx.setFillColor(core.layout.theme.colors.link.cg)
+    for l in lines.map(slid) where l.intersects(clip) { ctx.fill(l) }
   }
 
   /// whether the Note is being moved, zoomed or resized under the pointer: no hover then
@@ -1132,6 +1203,8 @@ public final class MarkdownEditorView: NSView {
   /// the pointer has left (or the Note moves under it): its code block's and table's band go after their grace, the grips
   /// at once
   func clearHover() {
+    hoverUnder(nil)
+    tipView.leave(ObjectIdentifier(self))
     hovered = nil
     hoverTableAt = nil
     gripPointer = nil
@@ -1145,8 +1218,9 @@ public final class MarkdownEditorView: NSView {
   /// an offset in a cell of the table the pointer is over while editing: its band and the grips of the cell under the
   /// pointer show wherever the caret is (tableview.ts: pointerenter on the table, mousemove over its cells)
   private(set) var hoverTableAt: Int?
-  /// the tooltips set over the view, in the layout's points (EditorAccess refreshTips)
-  var tips: [(text: String, box: CGRect)] = []
+  /// the tips of the static picture: each box with its text, the whole thing it is about, and whether it is an address
+  /// (the layout's points; EditorAccess refreshTips)
+  var tips: [(text: String, box: CGRect, whole: CGRect, long: Bool)] = []
   var tipsKey: TipsKey?
   private var hoverTableBlock: Range<Int>? {
     hoverTableAt.flatMap { MarkdownEditing.tablePlace(at: $0, in: core.document)?.block }
@@ -1495,7 +1569,14 @@ public final class MarkdownEditorView: NSView {
   /// toolbar, band or reveal. At rest in the static picture nothing does
   public var isTicking: Bool {
     blink != nil || slideLink != nil || blockLink != nil || dragLink != nil || toolbarTimer?.isValid == true
-      || bandTimer?.isValid == true || settle?.isValid == true
+      || bandTimer?.isValid == true || settle?.isValid == true || gripLink != nil || tipView.isTicking
+      || easingControls
+  }
+
+  /// a control floating on the Note still easing its background or its band's controls
+  var easingControls: Bool {
+    func any(_ v: NSView) -> Bool { (v as? HoverControls)?.isEasing == true || v.subviews.contains(where: any) }
+    return subviews.contains(where: any)
   }
 
   // MARK: pictures sliding
@@ -1739,12 +1820,12 @@ public final class MarkdownEditorView: NSView {
     let st = MDEditState(source: core.source, selection: core.selection)
     func w(_ o: String, _ c: String) -> Bool { MarkdownEditing.isWrapped(o, c, in: st) }
     let all: [SelectionToolbar.Button] = [
-      .init(id: "bold", symbol: "bold", tip: "Bold (⌘B)", on: w("**", "**")),
-      .init(id: "italic", symbol: "italic", tip: "Italic (⌘I)", on: w("*", "*") && !w("**", "**")),
-      .init(id: "strike", symbol: "strike", tip: "Strikethrough (⌘⇧S)", on: w("~~", "~~")),
-      .init(id: "highlight", symbol: "highlight", tip: "Highlight (⌘⇧H)", on: w("==", "==")),
-      .init(id: "code", symbol: "code", tip: "Inline Code (⌘E)", on: w("`", "`")),
-      .init(id: "link", symbol: "link", tip: "Link (⌘K)", on: false),
+      .init(id: "bold", symbol: "bold", tip: "Bold", kbd: "⌘B", on: w("**", "**")),
+      .init(id: "italic", symbol: "italic", tip: "Italic", kbd: "⌘I", on: w("*", "*") && !w("**", "**")),
+      .init(id: "strike", symbol: "strike", tip: "Strikethrough", kbd: "⌘⇧S", on: w("~~", "~~")),
+      .init(id: "highlight", symbol: "highlight", tip: "Highlight", kbd: "⌘⇧H", on: w("==", "==")),
+      .init(id: "code", symbol: "code", tip: "Inline Code", kbd: "⌘E", on: w("`", "`")),
+      .init(id: "link", symbol: "link", tip: "Link", kbd: "⌘K", on: false),
       .init(id: "math", symbol: "math", tip: "Inline Math", on: w("$", "$")),
       .init(
         id: "annot", symbol: "annot", tip: "Handwritten Note",
@@ -1757,7 +1838,10 @@ public final class MarkdownEditorView: NSView {
   public var holdsToolbar = false {
     didSet {
       if holdsToolbar != oldValue { scheduleToolbar() }
-      if holdsToolbar { clearHover() }
+      if holdsToolbar {
+        clearHover()
+        tipView.hide()
+      }
     }
   }
 
@@ -1970,6 +2054,7 @@ public final class MarkdownEditorView: NSView {
 
   public override func mouseDown(with e: NSEvent) {
     begin()
+    tipView.press()
     lastPress = convert(e.locationInWindow, from: nil)
     // a press anywhere in the Note leaves the link box: it closes at once, what it holds is written on the release
     leaveLinkBox(later: true)
@@ -2213,7 +2298,38 @@ public final class MarkdownEditorView: NSView {
   private func rowGrip(_ r: CGRect) -> CGRect { CGRect(x: r.minX + 3, y: r.midY - 8, width: 8, height: 16) }
   private func colGrip(_ r: CGRect) -> CGRect { CGRect(x: r.midX - 8, y: r.minY + 2.5, width: 16, height: 7) }
   /// the cell under the pointer in the caret's table: its row and column, whose grips show
-  private var gripHover: (row: Int?, col: Int?) = (nil, nil)
+  private var gripHover: (row: Int?, col: Int?) = (nil, nil) {
+    didSet {
+      let now = core.clock()
+      // nothing eases in a window nobody sees
+      let d = window.map { $0.occlusionState.contains(.visible) } ?? true ? MarkdownTiming.gripFade : 0
+      gripShow.row.go(to: gripHover.row == nil ? 0 : 1, at: now, over: d, .easeOut)
+      gripShow.col.go(to: gripHover.col == nil ? 0 : 1, at: now, over: d, .easeOut)
+      if gripLink == nil, gripsEasing {
+        let link = displayLink(target: self, selector: #selector(gripFrame(_:)))
+        link.add(to: .main, forMode: .common)
+        gripLink = link
+      }
+    }
+  }
+  /// how much each grip shows (.md-tgrip: opacity, and its scale from 0.55, over 90 ms ease-out), and where each was
+  /// last drawn: one that goes fades out there, one that moves to another row or column jumps (only its opacity and
+  /// scale ease)
+  private(set) var gripShow = (row: Transition(), col: Transition())
+  private var gripBox: (row: CGRect?, col: CGRect?) = (nil, nil)
+  private var gripLink: CADisplayLink?
+  var gripsEasing: Bool {
+    let now = core.clock()
+    return gripShow.row.running(at: now) || gripShow.col.running(at: now)
+  }
+  @objc func gripFrame(_ link: CADisplayLink?) {
+    Self.linkTicks += 1
+    needsDisplay = true
+    if !gripsEasing {
+      gripLink?.invalidate()
+      gripLink = nil
+    }
+  }
 
   /// where the pointer is, for a grip's hover
   private var gripPointer: CGPoint?

@@ -97,10 +97,40 @@ public enum MarkdownLooks {
     let diagrams = MarkdownTheme.DiagramColors(
       background: colors.surface, foreground: colors.ink, muted: colors.ink2, line: colors.ink2, surface: mix(0.05),
       surfaceAlt: mix(0.1), border: mix(0.2), accent: colors.accent, series: [])
-    return MarkdownTheme(
+    var theme = MarkdownTheme(
       colors: colors, code: code(warm: warm, dark: dark, plain: colors.ink), marks: marks, diagrams: diagrams,
       fonts: .init(body: body, mono: mono, headings: headings, hand: hand),
       metrics: metrics)
+    theme.controls = controls(warm: warm, dark: dark)
+    return theme
+  }
+
+  /// --tip-bg and --tip-ink (styles.css for Warm Ink, themes.css for Ink Wash); Ink Wash squares its buttons and tips
+  /// (themes.css: 2px) and sets its own --row
+  static func controls(warm: Bool, dark: Bool) -> MarkdownTheme.Controls {
+    let rgba: (Double, Double, Double, Double) -> MDColor = { MDColor($0 / 255, $1 / 255, $2 / 255, $3) }
+    var k = MarkdownTheme.Controls()
+    switch (warm, dark) {
+    case (true, false):
+      k.tipBackground = rgba(34, 32, 28, 0.92)
+      k.tipInk = MDColor(hex: "#f6f4ef")
+    case (true, true):
+      k.tipBackground = rgba(245, 243, 238, 0.94)
+      k.tipInk = MDColor(hex: "#1d1c1a")
+    case (false, false):
+      k.tipBackground = MDColor(hex: "#1d1c1a")
+      k.tipInk = MDColor(hex: "#fdfdfb")
+      k.row = rgba(184, 50, 31, 0.08)
+    case (false, true):
+      k.tipBackground = MDColor(hex: "#e9e5da")
+      k.tipInk = MDColor(hex: "#131312")
+      k.row = rgba(214, 83, 58, 0.12)
+    }
+    if !warm {
+      k.tipRadius = 2
+      k.buttonRadius = 2
+    }
+    return k
   }
 
   /// --seal-<name> (styles.css), the same in every look

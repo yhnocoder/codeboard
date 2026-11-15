@@ -127,6 +127,7 @@ final class CodeBand: NSView {
         shown = false
         strip.layer?.removeAnimation(forKey: Self.slideKey)
         for c in corners { c.opacity = 0 }
+        strip.showRow(false, animated: false)
       }
     }
     let face = strip.fill.cg
@@ -161,9 +162,11 @@ final class CodeBand: NSView {
     guard window.map({ $0.occlusionState.contains(.visible) }) ?? true else {
       strip.layer?.removeAnimation(forKey: Self.slideKey)
       for c in corners { c.opacity = on ? 1 : 0 }
+      strip.showRow(on, animated: false)
       isHidden = !on
       return
     }
+    strip.showRow(on, animated: true)
     // a slide under way turns back from where it has the strip
     let running = !isHidden && strip.layer?.animation(forKey: Self.slideKey) != nil
     let now = strip.layer?.presentation()?.value(forKeyPath: "transform.translation.y") as? CGFloat
@@ -220,13 +223,21 @@ final class CodeBand: NSView {
   final class Strip: HoverControls {
     var zoom: CGFloat = 1
     var theme: MarkdownTheme?
-    var parts: [Part] = [] {
-      didSet { if parts != oldValue { refreshTips() } }
-    }
+    var parts: [Part] = []
     override func controls() -> [(id: String, box: CGRect, tip: String)] { rects().map { ($0.0.id, $0.1, $0.0.tip) } }
-    override func setFrameSize(_ s: NSSize) {
-      super.setFrameSize(s)
-      refreshTips()
+    /// how much its controls show: they fade in once the strip is on its way up and out at once as it goes
+    /// (.md-band-row's opacity), the face sliding alone
+    var row = Transition()
+    override func easing(at now: Double) -> Bool { row.running(at: now) }
+    func showRow(_ on: Bool, animated: Bool) {
+      if animated {
+        row.go(
+          to: on ? 1 : 0, at: clock(), over: on ? MarkdownTiming.bandRowIn : MarkdownTiming.bandRowOut,
+          delay: on ? MarkdownTiming.bandRowInDelay : 0)
+      } else {
+        row = Transition(on ? 1 : 0)
+      }
+      ease()
     }
     /// the delete actions: hovered in the warning colour (.md-bb.danger:hover)
     static let danger: Set<String> = ["delRow", "delCol"]
@@ -347,6 +358,11 @@ final class CodeBand: NSView {
       let ink = theme.colors.ink.cg
       let ink2 = theme.colors.ink2.cg
       let ink3 = theme.colors.ink3.cg
+      let shown = row.value(at: clock())
+      guard shown > 0 else { return }
+      ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+      defer { ctx.endTransparencyLayer() }
+      ctx.setAlpha(CGFloat(shown))
       for (p, box) in innerRects() {
         let over = hovered == p.id
         let danger = over && Self.danger.contains(p.id)
@@ -409,12 +425,8 @@ final class CodeBand: NSView {
       (superview?.superview as? CodeBand)?.pointer(false)
     }
 
-    override func mouseDown(with e: NSEvent) {
-      let p = convert(e.locationInWindow, from: nil)
-      guard let band = superview?.superview as? CodeBand, let hit = rects().first(where: { $0.1.contains(p) }) else {
-        return
-      }
-      band.onPart(hit.0.id, self, hit.1)
+    override func activate(_ id: String, box: CGRect) {
+      (superview?.superview as? CodeBand)?.onPart(id, self, box)
     }
   }
 }
