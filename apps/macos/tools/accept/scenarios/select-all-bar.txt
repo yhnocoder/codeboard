@@ -1,0 +1,13 @@
+# Writing in a Note: ⌘A selects all with no format bar (main's bubble shows for a text selection only); a word selected shows the bar, its gap to the line and the card as main's; both sides
+zoom 1
+center @cnote+150,100
+dbl @cnote+60,62
+wait 900
+key cmd+a
+wait 700
+shot all @cnote+-20,-80 360 260
+key right
+key shift+alt+left
+wait 700
+shot word @cnote+-20,-80 360 260
+key esc
