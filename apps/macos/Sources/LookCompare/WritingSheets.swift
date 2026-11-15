@@ -344,6 +344,8 @@ enum WritingSheets {
       while !r.canvas.refListRead { try await Task.sleep(for: .milliseconds(5)) }
       // the list as it opens once its candidates are read
       v.insertText("调", replacementRange: NSRange(location: NSNotFound, length: 0))
+      // past the header's fold (220 ms): its title faded out, as it is once the list is read
+      try await Task.sleep(for: .seconds(0.3))
       let list = try r.withEditor()
       let n = r.rect("n1")
       write(
