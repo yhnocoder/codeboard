@@ -78,7 +78,7 @@ test("noteRefFollowsCardRename", async () => {
     { look, md: noteMd(h.board(), "n") },
   );
   await shot(h, "note-ref-rename-after");
-  // 点它还是带到那张卡
+  // 点它还是带到那张卡（就在视野里：直接选中，不预览）
   await chip(pg, "n").click();
   await until(h, "the reference selects the card", () => pg.locator('.card.sel[data-id="a"]').count());
   await close(h);
@@ -150,7 +150,10 @@ test("noteRefFollowsBoardRename", async () => {
   check("noteRefFollowsBoardRename the note is not rewritten", noteMd(h.board(), "n") === picked, {
     md: noteMd(h.board(), "n"),
   });
+  // a click previews the card; the preview's arrow opens the renamed board at it
   await chip(pg, "n").click();
+  await pg.locator(".cpeek.show").waitFor();
+  await pg.locator(".cpeek.show .cpeek-go").click();
   await until(h, "the reference opens the renamed board at the card", () => run.page("bk"));
   await run.close();
 });

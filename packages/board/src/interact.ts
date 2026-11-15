@@ -96,7 +96,7 @@ import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME } from "./ui/guard";
 import { dispatch, matches } from "./keymap";
 import { installShield, raiseShield } from "./ui/shield";
 import * as A from "./actions";
-import { CALL_DRAG_SLOP, DRAG_SLOP, track, undoGesture } from "./gesture";
+import { CALL_DRAG_SLOP, DBL_SLOP, DRAG_SLOP, track, undoGesture } from "./gesture";
 import { togglePreview } from "./state/subboards";
 import { cardSel } from "./cardsel";
 import { boardRef } from "./state/root";
@@ -133,7 +133,6 @@ function snapPace(e: PointerEvent, again: (ev: PointerEvent, still: boolean) => 
 }
 
 // 双击检测（pointerdown 里 preventDefault 后浏览器的 dblclick 不可靠）：同一个东西上、够快、两下点在差不多同一个地方
-const DBL_SLOP = 6;
 const dbl = boardRef<{ key?: string; t: number; x: number; y: number }>({ t: 0, x: 0, y: 0 });
 export function isDbl(key: string, e: { clientX: number; clientY: number }) {
   const now = performance.now(),
@@ -155,9 +154,10 @@ function clickEditKind(c: Card, t: HTMLElement): "note" | "free" | null {
     return t.closest(c.look === "note" ? ".nbody" : ".tx") || t.classList.contains("cface") ? "note" : null;
   return c.kind === "code" && c.segments[0]?.src.kind === "free" && t.closest(".src") ? "free" : null;
 }
-/** first：这是单击（可能是双击的第一下）；双击的第二下进来的不用再拦下一下 */
-function clickEdit(kind: "note" | "free", id: string, at: { x: number; y: number }, first = false) {
-  if (kind === "note") setEditEntry({ kind: "note", id, at, spot: staticSpot(id, at) }); // 手写代码卡的编辑器自己按最近一次按下的地方放光标（lastDown）
+/** first：这是单击（可能是双击的第一下）；双击的第二下进来的不用再拦下一下。ref: a [[reference]] double-clicked in the Note's
+ *  static view, whose source opens in the editor as a double-click on it there does */
+function clickEdit(kind: "note" | "free", id: string, at: { x: number; y: number }, first = false, ref?: HTMLElement) {
+  if (kind === "note") setEditEntry({ kind: "note", id, at, spot: (ref && refSpot(id, ref)) ?? staticSpot(id, at) }); // 手写代码卡的编辑器自己按最近一次按下的地方放光标（lastDown）
   setEditing({ kind, id });
   if (!first) return;
   // 这一下是双击的第一下时，第二下落在刚挂上的编辑器里：只放光标，不让浏览器 / 编辑器选中一个词
@@ -168,6 +168,15 @@ function clickEdit(kind: "note" | "free", id: string, at: { x: number; y: number
       e.preventDefault();
   };
   addEventListener("pointerdown", second, true);
+}
+/** A [[reference]] (ref) in the Note's static view as the character it is in its text, to be opened in the editor */
+function refSpot(id: string, ref: HTMLElement): NoteSpot | undefined {
+  const md = ref.closest<HTMLElement>(".md:is(.nbody, .tx):not(.editing)");
+  if (!md?.closest(cardSel(id))) return undefined;
+  const r = document.createRange();
+  r.selectNode(ref);
+  const c = staticTextRange(md, r);
+  return c ? { char: c, after: false, open: true } : undefined;
 }
 /** The click on the Note's static view as a place in its text (NoteSpot); undefined where the point maps to no character */
 function staticSpot(id: string, at: { x: number; y: number }): NoteSpot | undefined {
@@ -245,6 +254,14 @@ export function cardPointerDown(e: PointerEvent, id: string) {
       setLineSel(null);
     }
     if (e.shiftKey || e.metaKey || e.ctrlKey) return A.selectCard(f.host.id, true);
+    // a [[reference]]: its click previews the card or goes there (MdStatic); the second press of a double-click on it opens its
+    // source in the editor, as a double-click on it there does, and the browser selects no word under it
+    const ref = t.closest<HTMLElement>(".nbody .md-ref");
+    if (ref && isDbl(`r${id}`, e) && solo && editing()?.id !== id) {
+      e.preventDefault();
+      A.refDoubled();
+      return clickEdit("note", id, { x: e.clientX, y: e.clientY }, false, ref);
+    }
     const second = !!editKind && isDbl(`e${id}`, e);
     if (solo && second && editing()?.id !== id) {
       e.preventDefault();
@@ -283,7 +300,10 @@ export function cardPointerDown(e: PointerEvent, id: string) {
     });
   }
   if (isText && isDbl(`x${id}`, e))
-    return void (editing()?.id !== id && clickEdit("note", id, { x: e.clientX, y: e.clientY }));
+    return void (
+      editing()?.id !== id &&
+      clickEdit("note", id, { x: e.clientX, y: e.clientY }, false, t.closest<HTMLElement>(".tx .md-ref") ?? undefined)
+    );
   if (e.shiftKey || e.metaKey || e.ctrlKey) {
     toggleSel("cards", f.host.id);
     return;

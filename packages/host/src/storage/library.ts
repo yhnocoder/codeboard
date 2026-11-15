@@ -1,5 +1,5 @@
 // The shared-card library: cards/<id>.json in the storage folder, read with a cache by modification time.
-import { loadSharedCard, type SharedCardFile } from "@codeboard/core";
+import { CARD_LIBRARY, loadSharedCard, type SharedCardFile } from "@codeboard/core";
 import type { Fs } from "./fs";
 import { SAFE_ID } from "./names";
 
@@ -15,7 +15,7 @@ export class SharedLibrary {
   ) {}
 
   dir() {
-    return this.fs.join(this.root(), "cards");
+    return this.fs.join(this.root(), CARD_LIBRARY);
   }
   fileOf(id: string) {
     return this.fs.join(this.dir(), `${id}.json`);

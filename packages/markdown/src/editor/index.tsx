@@ -9,7 +9,7 @@ import { sourceMode, type SourceMode } from "./srcmode";
 import { noteFind } from "./find";
 import { findKey } from "../ui/find";
 import { visibleRange } from "./visible";
-import { pickImageAt } from "./inline";
+import { openAtom, pickImageAt } from "./inline";
 import { Bubble } from "./bubble";
 import { caretAt, prepKey, stateFor, takeInst, type Sess } from "./session";
 import { uiOf, type Ui } from "./ui";
@@ -216,7 +216,7 @@ export function mountEditor(md: Markdown, host: HTMLElement, o: MdEditorOpts): M
       if (at === "end") return end();
       if ("visible" in at) {
         const c = visibleRange(editor.state.doc, at.visible);
-        if (c) caretAt(editor, at.after ? c.to : c.from);
+        if (c && !(at.open && openAtom(editor.view, c.from))) caretAt(editor, at.after ? c.to : c.from);
         return !!c;
       }
       const r = editor.view.dom.getBoundingClientRect();

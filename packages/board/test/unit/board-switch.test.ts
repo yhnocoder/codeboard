@@ -159,7 +159,7 @@ describe("board switch", () => {
 
   it("cancels an ask still waiting with a cancellation its caller can tell from a failure", async () => {
     fromHost(init("a"));
-    const waiting = ask("copyPath", {}).catch((e: unknown) => e);
+    const waiting = ask("copyLink", {}).catch((e: unknown) => e);
     fromHost(init("b"));
     const e = await waiting;
     expect(switched(e)).toBe(true);

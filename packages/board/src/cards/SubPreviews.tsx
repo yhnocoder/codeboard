@@ -4,7 +4,7 @@
 // 摆在世界坐标里（跟着框走，框挪动、改大小时跟着重摆），预览不进撤销、不存盘、不进导出
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { createStore } from "solid-js/store";
-import { escHtml, isCode, type BoardCard, type Card, type SkelCard, type SubCard } from "@codeboard/core";
+import type { BoardCard, SkelCard } from "@codeboard/core";
 import { observeResize } from "../state/measure";
 import { cam } from "../state/camera";
 import { DRAG_SLOP, track } from "../gesture";
@@ -32,14 +32,9 @@ import {
   TIT_GAP,
   type PvBox,
 } from "../state/subboards";
-import { assetSrc } from "../actions/web";
 import { Icon } from "../ui/icons";
-import { MdStatic } from "../ui/Md";
 import { skelIcon, skelName } from "./BoardBody";
-import { hidesHeading } from "./NoteBody";
-
-/** 代码预览最多排几行（正文最高 ~170px，再多也看不见） */
-const CODE_LINES = 16;
+import { PvContent } from "./MiniCard";
 
 export function SubPreviews() {
   const list = createMemo(() => frames().filter((f) => pvs[f.id]?.open.length && skels[f.board]));
@@ -280,87 +275,4 @@ function PvCard(p: {
       </div>
     </div>
   );
-}
-
-/**
- * A card's content read-only, as a preview shows it (here and on the Shelf, ui/ShelfPanel.tsx); t = its title, an image's caption;
- * lines = how many lines of code at most (CODE_LINES)
- */
-export function PvContent(p: { data: SubCard; t: string; lines?: number }) {
-  const c = () => p.data.card;
-  return (
-    <>
-      {(() => {
-        const k = c();
-        switch (k.kind) {
-          case "note":
-            return <MdStatic src={k.md} class={`pmd${hidesHeading(k) ? " hidehead" : ""}`} />;
-          case "code":
-            return <CodeLines card={k} views={p.data.views} lines={p.lines} />;
-          case "compare":
-            return (
-              <For each={p.data.cols ?? []}>
-                {(col) => (
-                  <>
-                    <div class="pcol">
-                      {col.title || (isCode(col) ? col.segments[0]?.scope || col.segments[0]?.path : "") || "Column"}
-                    </div>
-                    {isCode(col) ? <CodeLines card={col} views={p.data.views} lines={p.lines} /> : null}
-                  </>
-                )}
-              </For>
-            );
-          case "image":
-            return (
-              <>
-                <img class="pimg" src={assetSrc(k.src)} alt={p.t} draggable={false} />
-                <Show when={p.t}>
-                  <div class="cap">{p.t}</div>
-                </Show>
-              </>
-            );
-          case "web":
-            return (
-              <div class="pweb">
-                <b>{k.meta?.title || k.url}</b>
-                <Show when={k.meta?.desc}>
-                  <p>{k.meta!.desc}</p>
-                </Show>
-                <small>{k.meta?.site || k.url}</small>
-              </div>
-            );
-          case "links":
-            return (
-              <ul class="plinks">
-                <For each={k.items}>{(it) => <li>{it.title || it.meta?.title || it.url}</li>}</For>
-              </ul>
-            );
-          case "board":
-            return (
-              <div class="pweb">
-                <b>Sub-board</b>
-                <p>{p.t}</p>
-              </div>
-            );
-          default:
-            return null;
-        }
-      })()}
-    </>
-  );
-}
-
-/** 代码卡的前几行，按宿主给的高亮（没有就是原文） */
-function CodeLines(p: { card: Extract<Card, { kind: "code" }>; views: SubCard["views"]; lines?: number }) {
-  const html = () => {
-    const out: string[] = [];
-    const most = p.lines ?? CODE_LINES;
-    for (const s of p.card.segments) {
-      const v = p.views[s.id];
-      for (let i = 0; i < s.text.length && out.length < most; i++) out.push(v?.html[i] ?? escHtml(s.text[i]));
-      if (out.length >= most) break;
-    }
-    return out.join("\n");
-  };
-  return <pre class="pcode" innerHTML={html()} />;
 }

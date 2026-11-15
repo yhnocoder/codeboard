@@ -7,7 +7,7 @@ import { state, placed } from "../state/store";
 import { ask } from "../host";
 import { editing, dragging } from "../state/ui";
 import { camMoving } from "../state/camera";
-import { openLink } from "../actions/common";
+import { openMdLink } from "../actions/subboards";
 import { BOARD_CLASSES, lspHost } from "../cm/load";
 import { saveNoteImage } from "./images";
 import { copyNoteImage, knownPicture } from "../actions/imagedata";
@@ -164,7 +164,7 @@ export function editorOpts(md: Markdown): Omit<MdEditorOpts, "value" | "onDone" 
       picked: refPicked,
       foot: () => refFoot(refCandidates().filter((c) => c.kind !== "section" && c.kind !== "whiteboard").length),
     },
-    openLink,
+    openLink: (url) => openMdLink(url, md),
     pickImage: () => ask("pickFile", { kind: "image" }).catch(() => null),
     saveImage: saveNoteImage,
     copyImage: copyNoteImage,

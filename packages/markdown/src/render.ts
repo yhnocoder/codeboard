@@ -8,6 +8,7 @@ import { escHtml, isHtmlComment, tocEntries, tocHtml } from "./schema-nodes";
 import { captionOf, missingImageHtml, type Images } from "./image";
 import { withTex, type MathPreamble } from "./math";
 import { gapClass, htmlGapKind, withClass, type GapKind } from "./gaps";
+import { LONG_URL, shortUrl } from "./url";
 
 const escA = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 const VOID = new Set(["img", "br", "hr", "input", "col", "wbr"]);
@@ -156,10 +157,17 @@ function inlineHtml(f: Fragment, cx: Cx | null): string {
       if (cx && m.type.name === "annot") out += `<span class="md-annot-n">${noteInline(m.attrs.note ?? "", cx)}</span>`;
       open.push({ m, close: b });
     }
-    out += nodeHtml(n, cx);
+    const short = cx && folded(n);
+    out += short ? `<span class="md-short" data-src="${escA(n.text!)}">${escHtml(short)}</span>` : nodeHtml(n, cx);
   });
   while (open.length) out += open.pop()!.close;
   return out;
+}
+/** A long web address written as it is: its site, as the editor shows it away from the caret (url.ts) */
+function folded(n: PMNode): string | null {
+  if (!n.isText || n.text!.length <= LONG_URL) return null;
+  const href = String(n.marks.find((m) => m.type.name === "link")?.attrs.href ?? "");
+  return href === n.text || href.endsWith(`//${n.text}`) ? shortUrl(n.text!) : null;
 }
 /**
  * {字|批注} 的批注：当一段行内 Markdown 画（$公式$、粗体、代码…）。读出来不是一段的（"- x" 读成了列表、"# x" 读成了标题）照原文显示；

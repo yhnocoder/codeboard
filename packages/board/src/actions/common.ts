@@ -1,4 +1,14 @@
-import { cardTitle, isCode, isTextCard, segOf, bounds, type Card, type Section, type Rect } from "@codeboard/core";
+import {
+  cardTitle,
+  isCode,
+  isTextCard,
+  segOf,
+  bounds,
+  parseCardLink,
+  type Card,
+  type Section,
+  type Rect,
+} from "@codeboard/core";
 import { state, cardById, hostOf, rectOf, placeOf, placed, flows } from "../state/store";
 import * as C from "@codeboard/core/commands";
 import { commandEnv } from "./env";
@@ -86,6 +96,17 @@ export function resolveCardRef(label: string, md: Markdown, target?: string): Re
     return r && !("broken" in r) ? r : null;
   });
 }
+/**
+ * A link copied with Copy Link (core cardlink.ts) as the [[ref]] target it stands for (resolveCardRef): an item on this board or
+ * another, a shared card, a board there is. Null for any other address, so it stays a link to open in the browser
+ */
+export function cardLinkTarget(href: string): string | null {
+  const to = parseCardLink(href);
+  if (!to) return null;
+  if (!to.board) return to.item ?? null;
+  if (!to.item) return state.boards.some((m) => m.id === to.board) ? to.board : null;
+  return to.board === state.board.id ? to.item : `${to.board}/${to.item}`;
+}
 /** 按 id 找：这块白板上的卡、子白板里的卡、Section、别的白板，再是别的白板上的卡（白板id/卡id，或者只有卡 id：从别的白板复制过来的 Note） */
 function refById(label: string, target: string, md: Markdown): RefTarget | RefBroken | null {
   const k = target.indexOf("/"),
@@ -99,7 +120,7 @@ function refById(label: string, target: string, md: Markdown): RefTarget | RefBr
       if (s) return { id: s.id, title: s.label };
       const sec = state.board.sections.find((x) => x.id === id);
       if (sec) return { id: sec.id, title: sec.title.trim() || label };
-      const b = state.boards.find((m) => m.id === id && m.id !== state.board.id);
+      const b = state.boards.find((m) => m.id === id);
       if (b) return { id: b.id, title: b.name.trim() || label };
     }
   }

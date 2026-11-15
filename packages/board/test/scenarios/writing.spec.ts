@@ -98,7 +98,7 @@ test("writeButtonsAndKeysCreateTextBox", async () => {
 
 /** A Box: no card frame but its own rounded frame and fill (yellow by default), centred text, arrows attach like on a card. Selected,
  *  a Text and a Box show the same bar (S M L XL, Text and Box) and a Box its five fill dots too; their menus and a Note's are the short
- *  one: AI ▸, Arrange ▸, Copy Path, Delete */
+ *  one: AI ▸, Arrange ▸, Copy Link, Delete */
 test("boxFillEditAndToolbars", async () => {
   const h = await open({ board: threeBoard(), light, w: 1100, h: 520 });
   const pg = h.page;
@@ -166,7 +166,7 @@ test("boxFillEditAndToolbars", async () => {
     await idle(h);
     return m;
   };
-  const SHORT = "Add Sidenote|AI|Arrange|Copy Path|Delete";
+  const SHORT = "Add Sidenote|AI|Arrange|Copy Link|Delete";
   const boxMenu = await menu("box");
   check("boxMenu the short menu", boxMenu.join("|") === SHORT, boxMenu);
 

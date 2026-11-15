@@ -9,7 +9,14 @@ import { onHost } from "./hostio";
 import { installKeys } from "./interact";
 import { connectHost, followHostTheme, type Transport } from "./host";
 import { noteHighlight } from "./cm/load";
-import { resolveCardRef, setCardPlayback, setImagePlaybackIn, wireFreshCards, wireVariantViews } from "./actions";
+import {
+  cardLinkTarget,
+  resolveCardRef,
+  setCardPlayback,
+  setImagePlaybackIn,
+  wireFreshCards,
+  wireVariantViews,
+} from "./actions";
 import { installAnims } from "./md/anim";
 import { checkEdits } from "./state/changes";
 import { measure } from "./state/measure";
@@ -44,6 +51,8 @@ export function wireBoard(t: Transport, o: BoardOptions): Markdown {
     refs: {
       resolve: (label, target) => resolveCardRef(label, md, target),
       missing: "Nothing with this title on the board",
+      // a link copied with Copy Link, put on words: a link to that card (a click previews it, as on a reference)
+      link: cardLinkTarget,
     },
     highlight: noteHighlight,
     langId,

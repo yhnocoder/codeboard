@@ -5,7 +5,7 @@ import { Highlighter, type CodeHighlighter } from "./code";
 import { Images, type ImageResolver } from "./image";
 import { MathPreamble, type MathMacros } from "./math";
 import { renderHtml, unwrapParagraph } from "./render";
-import { copyTex, mdClick, paintRef, type ClickOpts, type Refs } from "./view";
+import { copyTex, mdClick, paintLink, paintRef, type ClickOpts, type Refs } from "./view";
 import { AnnotFit } from "./annots";
 import { undoubleTex } from "./doubled";
 import { capped } from "./cache";
@@ -63,7 +63,8 @@ export interface Markdown {
   /** A click on rendered Markdown: links to openLink, [[refs]] to openRef, task checkboxes to onToggle (the new source); true
    *  when handled */
   click(e: MouseEvent, src: string, o: ClickOpts): boolean;
-  /** Paint one [[ref]] (.md-ref) again, after what it resolves to changed (data that arrived later) */
+  /** Paint one [[ref]] (.md-ref) or link to an item (.md-cardlink, Refs.link) again, after what it resolves to changed (data
+   *  that arrived later) */
   paintRef(el: HTMLElement): void;
   /** Set the math preamble; true when it changed. A change clears this instance's render cache (HTML already on the page stays:
    *  render it again) */
@@ -139,7 +140,7 @@ export class Md implements Markdown {
   isCached = (src: string) => this.cache.has(src);
 
   hydrate(el: HTMLElement, html: string) {
-    if (html.includes("data-latex") && !this.copying.has(el)) {
+    if ((html.includes("data-latex") || html.includes("md-short")) && !this.copying.has(el)) {
       this.copying.add(el);
       el.addEventListener("copy", copyTex);
     }
@@ -160,6 +161,8 @@ export class Md implements Markdown {
       }
     }
     if (html.includes('class="md-ref"')) for (const r of el.querySelectorAll<HTMLElement>(".md-ref")) this.paintRef(r);
+    if (this.refs.link && html.includes('class="md-link"'))
+      for (const a of el.querySelectorAll<HTMLElement>("a.md-link[data-href]")) paintLink(a, this.refs);
     if (html.includes(" data-lang=")) this.code.color(el);
     if (html.includes('class="mmd"'))
       void (this.diagrams ??= import("./diagram").then((m) => m.diagrams(this.measure))).then((d) => d.renderAll(el));
@@ -170,7 +173,8 @@ export class Md implements Markdown {
   };
 
   click = (e: MouseEvent, src: string, o: ClickOpts) => mdClick(e, src, o, this.refs);
-  paintRef = (el: HTMLElement) => paintRef(el, this.refs);
+  paintRef = (el: HTMLElement) =>
+    el.classList.contains("md-cardlink") ? void paintLink(el, this.refs) : paintRef(el, this.refs);
 
   setMathPreamble(src: string) {
     if (!this.math.set(src)) return false;

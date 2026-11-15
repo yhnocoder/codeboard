@@ -1,8 +1,10 @@
 // The sidenote popup (ui/pops/notes.tsx) and its input (ui/NoteComposer.tsx):
 //  sidenoteRefInsert       S on selected lines opens their popup with the input focused; `[[` in it lists the board's cards, the
 //                          highlighted one previewed beside the list; ↵ inserts the reference, ↵ again adds the sidenote with it
-//  sidenoteRefPreview      a click on a [[reference]] in a sidenote shows the card's beginning beside the popup (resting on it shows
-//                          nothing); a second click, Esc or a click elsewhere closes it, the popup staying; its arrow goes to the card
+//  sidenoteRefPreview      a click on a [[reference]] in a sidenote to a card far from the view shows the card's beginning beside
+//                          the popup (resting on it shows nothing); a second click, Esc or a click elsewhere closes it, the popup
+//                          staying; its arrow goes to the card
+//  sidenoteRefNear         a click on a [[reference]] in a sidenote to a card in view selects the card, with no preview
 //  sidenoteAddFromPlus     the + at the bottom turns into the input: ↵ adds and keeps a clear, focused input, ⇧↵ breaks the line,
 //                          Esc empty gives the + back; what is written is added by a click elsewhere and by Close
 //  sidenoteOpenNoFlash     a click on a Highlight's count opens its popup, which stays when the pointer leaves; a second click
@@ -97,7 +99,8 @@ async function openPinned(h: Host) {
 }
 
 test("sidenoteRefInsert", async () => {
-  const h = await open({ board: board(), light, w: 1300, h: 900 });
+  // wide enough for the preview on the list's right (the side it always takes)
+  const h = await open({ board: board(), light, w: 1400, h: 900 });
   const pg = h.page;
   await idle(h);
   await no(pg, 8).click();
@@ -137,8 +140,27 @@ test("sidenoteRefInsert", async () => {
   await h.close();
 });
 
-test("sidenoteRefPreview", async () => {
+test("sidenoteRefNear", async () => {
   const h = await open({ board: board(), light, w: 1300, h: 900 });
+  const pg = h.page;
+  await idle(h);
+  await openPinned(h);
+  await pg.locator(`${POP} .slip .md-ref`).first().click();
+  await pg.locator('.card.sel[data-id="nc"]').waitFor();
+  await idle(h);
+  const peeks = await pg.locator(".cpeek").count();
+  check("sidenoteRefNear a reference to a card in view selects it, no preview", peeks === 0, { peeks });
+  await h.close();
+});
+
+test("sidenoteRefPreview", async () => {
+  // wide enough for the preview on the popup's right (the side it always takes); the card far from the view, so a click on a
+  // reference to it previews it (one near the view is gone to)
+  const b = board();
+  b.place.nc.x = 3000;
+  // a sidenote on the previewed card: its badge is copied into the preview, where nothing looking for badges may find it
+  b.sidenotes.push({ id: "t-nc", kind: "text", md: "on the card", at: { card: "nc" } } as never);
+  const h = await open({ board: b, light, w: 1400, h: 900 });
   const pg = h.page;
   await idle(h);
   await openPinned(h);
@@ -159,7 +181,8 @@ test("sidenoteRefPreview", async () => {
       beside: r.left >= pop.right - 1 || r.right <= pop.left + 1,
       h: Math.round(r.height),
       // a copy of the card, which nothing looking for the board's cards finds
-      copy: !!pk.querySelector(".card") && !pk.querySelector("[data-id]"),
+      copy: !!pk.querySelector(".card") && !pk.querySelector("[data-id], [data-spot]"),
+      badges: pk.querySelectorAll(".snb").length,
       go: pk.querySelectorAll(".cpeek-go").length,
     };
   }, POP);
@@ -172,7 +195,8 @@ test("sidenoteRefPreview", async () => {
   const popAfterEsc = await pg.locator(POP).count();
   await ref.click();
   await pg.locator(".cpeek.show").waitFor();
-  await pg.mouse.click(1250, 860);
+  // an empty spot of the board (at the bottom right the zoom bar's Fit to Window would bring the card into view)
+  await pg.mouse.click(1250, 700);
   await until(h, "a click elsewhere closes the preview", async () => (await peeks()) === 0);
   await openPinned(h);
   await pg.locator(`${POP} .slip .md-ref`).first().click();
@@ -185,6 +209,7 @@ test("sidenoteRefPreview", async () => {
       shown.text.includes("Hands out KV cache blocks") &&
       shown.beside &&
       shown.copy &&
+      shown.badges > 0 &&
       shown.go === 1 &&
       shown.h <= 290 &&
       popAfterEsc === 1 &&

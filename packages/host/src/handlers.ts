@@ -53,7 +53,7 @@ import { highlight, segView, viewsFor } from "./views";
 import { splitLines } from "./ws";
 import { imageAiJob } from "./imageai";
 import { summarize, withExamples } from "./summaries";
-import { copyPaths } from "./paths";
+import { copyLinks } from "./paths";
 import { aiInfo, clearDeepseekKey, completeNote, setDeepseekKey } from "./ai";
 import type { HostContext } from "./context";
 
@@ -181,7 +181,7 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
       const done = png && (await cx.ws.ui.copyImage?.(png).catch((e) => (cx.log("warn", `copy image: ${e}`), false)));
       if (!done) await cx.ws.ui.copy(m.text);
     },
-    copyPath: (p, m) => copyPaths(cx, store, p.id, m.items),
+    copyLink: (p, m) => copyLinks(cx, store, p.id, m.items),
     imageAi: (p, m) => imageAiJob(cx, p.imageJobs, m.job, m.op),
     imageAiCancel: (p, m) => {
       p.imageJobs.get(m.job)?.abort();
@@ -221,7 +221,7 @@ export function makeHandler(cx: HostContext, panels: BoardHost, mediaDir: string
       const r = b && subCardOf(b, m.card);
       if (!r) return null;
       const segs = [r.card, ...(r.cols ?? [])].flatMap((c) => (isCode(c) ? c.segments : []));
-      return { ...r, views: segs.length ? await viewsFor(cx, segs) : {} };
+      return { ...r, w: b.place[m.card]?.w, views: segs.length ? await viewsFor(cx, segs) : {} };
     },
     newBoard: async (p, m) => {
       // Turn into Board：白板拆好的新白板（schema 校验一遍；存的就是收到的这个对象，消息是宿主自己的一份）。共享卡在新白板上还是共享卡；放在父白板的组里

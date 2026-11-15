@@ -23,9 +23,14 @@ import {
   bareLink,
   type CaptionHit,
 } from "./widgets";
-import { bareSpan, LONG_URL, shortUrl } from "./links";
+import { bareSpan } from "./links";
+import { LONG_URL, shortUrl } from "../url";
 import { measureImages, slideImages } from "./imageslide";
 import { inlineKey, type InlineState } from "./inlinekey";
+import { mdOf } from "./md";
+import { cardLinkLook, type Refs } from "../view";
+import { uiOf } from "./ui";
+import type { Editor } from "@tiptap/core";
 
 type Tag = NonNullable<Span["tag"]>;
 
@@ -63,6 +68,7 @@ function layout(
   out: Decoration[] | null,
   hidden: Hidden[] | null,
   links: RefLinks,
+  refs?: Refs,
 ) {
   const text = node.textContent;
   if (!text) return;
@@ -105,7 +111,7 @@ function layout(
           out?.push(
             Decoration.widget(
               from,
-              atomWidget(a, raw, (f) => f + caretIn(sp), toCaret, wrap, imageClick),
+              atomWidget(a, raw, (f) => f + caretIn(sp), toCaret, wrap, imageClick, refClick),
               {
                 side: 1,
                 key: `${a.type}:${raw}:${wrap.map((t) => t.nodeName).join()}`,
@@ -179,7 +185,7 @@ function layout(
         continue;
       }
       if (sp.inner && sp.tag && sp.inner[1] > sp.inner[0])
-        out?.push(Decoration.inline(base + sp.inner[0], base + sp.inner[1], { ...sp.tag }));
+        out?.push(Decoration.inline(base + sp.inner[0], base + sp.inner[1], linkLook(sp.tag, refs)));
       // [text](url) with the caret in its text: the address stays folded to its site (a chip that opens the link's box);
       // it is written out only while the caret is inside it
       const tail = sp.tag?.nodeName === "a" && sp.marks.length === 2 ? sp.marks[1] : null,
@@ -201,6 +207,15 @@ function layout(
     }
   };
   walk(info.spans, []);
+}
+
+/** A link's look: one whose address names an item (a card link, view.ts cardLinkLook) found or not, as a reference is */
+function linkLook(tag: NonNullable<Span["tag"]>, refs?: Refs): Record<string, string> {
+  const look = tag.nodeName === "a" && refs?.link ? cardLinkLook(String(tag.href ?? ""), refs) : null;
+  if (!look) return { ...tag };
+  const a: Record<string, string> = { ...tag, class: `${tag.class ?? ""} ${look.class}`, "data-target": look.target };
+  if (look.title) a.title = look.title;
+  return a;
 }
 
 /** Where a click on a drawn atom puts the caret, from the start of its source */
@@ -256,6 +271,15 @@ function openImage(view: EditorView, r: [number, number], cap: CaptionHit | null
   view.dispatch(tr.setMeta(inlineKey, { open: r[0], reveal: true } satisfies Meta).scrollIntoView());
   view.focus();
 }
+/** A click on a drawn [[reference]] that resolves: to the caller (MdEditorOpts.onRef) */
+function refClick(view: EditorView, el: HTMLElement): boolean {
+  const ed = (view.dom as HTMLElement & { editor?: Editor }).editor,
+    on = ed && uiOf.get(ed)?.opts.onRef,
+    r = el.closest<HTMLElement>(".md-ref") ?? el.querySelector<HTMLElement>(".md-ref");
+  if (!on || !r) return false;
+  const hit = mdOf(view.state).refs.resolve(r.dataset.ref ?? "", r.dataset.target || undefined);
+  return !!hit && !("broken" in hit) && on(hit, r);
+}
 /** A press on a drawn image: the first selects it, the next (or a double-click) opens its source */
 function imageClick(view: EditorView, from: number, open: boolean, cap: CaptionHit | null) {
   const r = imageSpanAt(view.state.doc, from);
@@ -287,6 +311,22 @@ export function pickImageAt(view: EditorView, x: number, y: number): boolean {
     r = from == null ? null : imageSpanAt(view.state.doc, from);
   if (r) pickImage(view, r);
   return !!r;
+}
+
+/** Opens the source of the drawn atom (a [[reference]], math, an emoji…) that starts at `from`, the caret where a press on it puts
+ *  it; false if no atom starts there. An image is opened by its own (openImage) */
+export function openAtom(view: EditorView, from: number): boolean {
+  const doc = view.state.doc;
+  if (from < 0 || from > doc.content.size) return false;
+  const $p = doc.resolve(from);
+  if (!$p.parent.isTextblock || !isSource($p.parent) || !$p.depth) return false;
+  const base = $p.start(),
+    links = inlineKey.getState(view.state)?.links,
+    sp = flat(blockInfo($p.parent.textContent, links).spans).find(
+      (x) => x.atom && x.atom.type !== "image" && base + x.from === from,
+    );
+  if (sp) toCaret(view, from + caretIn(sp));
+  return !!sp;
 }
 
 /** The keys of a selected image (⌫ / Delete remove it, ↵ opens its source, a typed character goes after it), and ⌫ / Delete
@@ -361,18 +401,19 @@ function blocksIn(
   expand: number | null,
   out: Decoration[],
   links: RefLinks,
+  refs?: Refs,
 ) {
   doc.nodesBetween(from, to, (n, pos, parent) => {
     if (n.isTextblock) {
-      if (isSource(n)) layout(n, pos, parent === doc, head, expand, null, out, null, links);
+      if (isSource(n)) layout(n, pos, parent === doc, head, expand, null, out, null, links, refs);
       return false;
     }
     return !n.type.spec.code && !n.isAtom;
   });
 }
-function build(doc: PMNode, head: number | null, expand: number | null, links: RefLinks) {
+function build(doc: PMNode, head: number | null, expand: number | null, links: RefLinks, refs?: Refs) {
   const out: Decoration[] = [];
-  blocksIn(doc, 0, doc.content.size, head, expand, out, links);
+  blocksIn(doc, 0, doc.content.size, head, expand, out, links, refs);
   return DecorationSet.create(doc, out);
 }
 /** The link definitions of the document's source paragraphs */
@@ -405,6 +446,7 @@ function update(
   expand: number | null,
   open: number | null,
   doc: PMNode,
+  refs?: Refs,
 ): Pick<InlineState, "decos" | "links"> {
   let set = tr.docChanged ? prev.decos.map(tr.mapping, doc) : prev.decos;
   const dirty: [number, number][] = [];
@@ -447,7 +489,7 @@ function update(
   let links = prev.links;
   if (tr.docChanged && (links.key || [...blocks.values()].some((n) => mayDefine(n.textContent)))) {
     links = docLinks(doc);
-    if (links.key !== prev.links.key) return { decos: build(doc, head, expand, links), links };
+    if (links.key !== prev.links.key) return { decos: build(doc, head, expand, links, refs), links };
   }
   const out: Decoration[] = [];
   for (const [pos, n] of blocks) {
@@ -455,7 +497,7 @@ function update(
     // paragraph's node decoration (md-psized), which would be lost with the block's layout
     const end = pos + n.nodeSize;
     set = set.remove(set.find(pos, end).filter((d) => d.from >= pos && d.to <= end && d.to !== pos && d.from !== end));
-    layout(n, pos, doc.resolve(pos).depth === 0, head, expand, open, out, null, links);
+    layout(n, pos, doc.resolve(pos).depth === 0, head, expand, open, out, null, links, refs);
   }
   return { decos: set.add(doc, out), links };
 }
@@ -480,7 +522,7 @@ export function inlinePlugin() {
           open: null,
           picked: null,
           links,
-          decos: build(st.doc, null, null, links),
+          decos: build(st.doc, null, null, links, mdOf(st)?.refs),
         };
       },
       apply(tr, prev, _old, st) {
@@ -534,7 +576,7 @@ export function inlinePlugin() {
             .filter((p): p is number => p !== undefined && /!\[/.test(st.doc.nodeAt(p)?.textContent ?? ""));
           if (blocks.length) slideFrom = measureImages(slideView, [...new Set(blocks)]);
         }
-        return { head, focused, expand, open, picked, ...update(prev, tr, head, expand, open, st.doc) };
+        return { head, focused, expand, open, picked, ...update(prev, tr, head, expand, open, st.doc, mdOf(st)?.refs) };
       },
     },
     props: {

@@ -6,9 +6,10 @@ import { createEffect, createSignal, onCleanup, Show, type Accessor } from "soli
 import { Icon, type IconName } from "./icons";
 import { isWrapped, revealMeta, toggleWrap } from "./inline";
 import { blockInfo, flat, type Span } from "./spans";
-import { linkAt as linkIn, linkText } from "./links";
+import { hrefSource, linkAt as linkIn, linkHref, linkRef, linkText, type LinkAt } from "./links";
 import { movingBlocks } from "./moveblocks";
 import { escAnnot } from "../schema-marks";
+import { autoUpdate } from "@floating-ui/dom";
 import { place, virtual } from "../ui/place";
 import { TOOLBAR_SETTLE } from "../ui/timing";
 import { IS_MAC } from "../ui/platform";
@@ -77,9 +78,8 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   // 手写批注的输入框（null = 没打开）：打开时记下选中的那段，打字时标签直接画在字上（不进撤销），回车 / 点开时才算一步
   const [annot, setAnnot] = createSignal<string | null>(null);
   const shown = () => link() !== null || annot() !== null || (settled() && want());
-  const pos = () => {
-    p.tick();
-    if (!shown()) return;
+  /** The text the bar is for, on the page */
+  const rect = () => {
     let r = posToDOMRect(e.view, e.state.selection.from, e.state.selection.to);
     // 写批注时：工具条让开整个被标的字（连着上面 / 下面画标签的那条轨道），别盖住正在写的标签
     if (annot() !== null) {
@@ -92,22 +92,31 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
         r = new DOMRect(x, y, Math.max(r.right, b.right) - x, Math.max(r.bottom, b.bottom) - y);
       }
     }
-    queueMicrotask(() => {
-      if (el)
-        // the link box opens under the link, where the eye already is, and leaves the lines above it readable
-        void place(
-          el,
-          virtual({ x: r.left, y: r.top, width: r.width, height: r.height }),
-          link() !== null ? "bottom-start" : "top",
-          {
-            gap: 8,
-            pad: 6,
-          },
-        ).then(({ x, y }) => {
-          el.style.left = `${x}px`;
-          el.style.top = `${y}px`;
-        });
+    return r;
+  };
+  const placeNow = () => {
+    if (!el?.isConnected) return;
+    const r = rect();
+    // the link box opens under the link, where the eye already is, and leaves the lines above it readable
+    void place(
+      el,
+      virtual({ x: r.left, y: r.top, width: r.width, height: r.height }),
+      link() !== null ? "bottom-start" : "top",
+      {
+        gap: 8,
+        pad: 6,
+      },
+    ).then(({ x, y }) => {
+      el.style.left = `${x}px`;
+      el.style.top = `${y}px`;
     });
+  };
+  const pos = () => {
+    p.tick();
+    if (!shown()) return;
+    link();
+    annot();
+    queueMicrotask(placeNow);
   };
   // data-tip / data-kbd 给用的一方的提示条
   const B = (q: { icon: IconName; tip: string; kbd?: string; on: () => boolean; run: () => void }) => {
@@ -140,19 +149,30 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   });
   /** The link the selection is in, if any */
   const linkAt = () => linkIn(e.state);
+  /** What the link box is for: the link the selection is in (else the selected text a new link goes on), as the box showed it */
+  type LinkFor = { shown: string; l: LinkAt | null; from: number; to: number };
+  const linkFor = (shown: string): LinkFor => ({
+    shown,
+    l: linkAt(),
+    from: e.state.selection.from,
+    to: e.state.selection.to,
+  });
   /** Write the link back: its address (empty: the text stays, unlinked) and, for one being edited, its text */
   const applyLink = (v: string, stay = true, textV?: string) => {
     const shown = link();
     if (shown === null || busy) return;
-    const url = v.trim();
     busy = true; // focus below fires blur synchronously: do not insert twice
     if (stay) e.view.focus();
     setLink(null);
     busy = false;
-    const href = !url || /^[a-z][\w+.-]*:/i.test(url) ? url : `https://${url}`;
+    writeLink(linkFor(shown), v, textV);
+    if (!stay) e.view.dom.dispatchEvent(new FocusEvent("blur")); // clicked outside: save and leave as usual
+  };
+  const writeLink = ({ shown, l, from, to }: LinkFor, v: string, textV?: string) => {
+    const url = v.trim();
+    const refs = mdOf(e.state).refs,
+      href = linkHref(url, refs);
     const st = e.state,
-      { from, to } = st.selection,
-      l = linkAt(),
       tr = st.tr;
     if (l) {
       const was = st.doc.textBetween(l.textFrom, l.textTo),
@@ -165,24 +185,47 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
         ? text
         : l.bare && text === was && /^(https?:\/\/|www\.)\S+$/i.test(href)
           ? href
-          : `[${linkText(text)}](${href})`;
+          : `[${linkText(text)}](${hrefSource(href)})`;
       if (!same && src !== st.doc.textBetween(l.from, l.to)) tr.insertText(src, l.from, l.to);
     } else if (href) {
       const text = st.doc.textBetween(from, to);
-      // nothing selected (⌘K): the address itself; a web address is a link as it is (GFM), others go in <…>
+      // nothing selected (⌘K): the address itself; a web address is a link as it is (GFM), a link to an item a [[reference]]
+      // to it (as pasted), others go in <…>
       tr.insertText(
-        text ? `[${linkText(text)}](${href})` : /^(https?:\/\/|www\.)\S+$/i.test(href) ? href : `<${href}>`,
+        text
+          ? `[${linkText(text)}](${hrefSource(href)})`
+          : /^(https?:\/\/|www\.)\S+$/i.test(href)
+            ? href
+            : (linkRef(href, refs) ?? `<${href}>`),
         from,
         to,
       );
     }
     if (tr.docChanged) e.view.dispatch(revealMeta(tr));
-    if (!stay) e.view.dom.dispatchEvent(new FocusEvent("blur")); // clicked outside: save and leave as usual
   };
   let textIn: HTMLInputElement | undefined, urlIn: HTMLInputElement | undefined;
   /** Leaving the link's box for somewhere else: what it holds is written back (not when moving between its own fields) */
   const leaveLink = (ev: FocusEvent) => {
-    if (link() === null || (ev.relatedTarget instanceof Node && el.contains(ev.relatedTarget))) return;
+    const shown = link();
+    if (shown === null || (ev.relatedTarget instanceof Node && el.contains(ev.relatedTarget))) return;
+    if (down && !busy) {
+      // a press in the text: the box closes at once, and what it holds is written once the press has put the caret where it
+      // was pressed (written now, the change would take the selection back to the link and the press would place nothing)
+      const at = linkFor(shown),
+        doc = e.state.doc,
+        url = urlIn?.value ?? "",
+        text = textIn?.value;
+      setLink(null);
+      addEventListener(
+        "pointerup",
+        () =>
+          setTimeout(() => {
+            if (!e.isDestroyed && e.state.doc === doc) writeLink(at, url, text);
+          }),
+        { once: true, capture: true },
+      );
+      return;
+    }
     applyLink(urlIn?.value ?? "", isInside(e, ev.relatedTarget), textIn?.value);
   };
   const linkKey = (ev: KeyboardEvent) => {
@@ -285,7 +328,17 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
     <Show when={shown()}>
       {(pos(), null)}
       <div
-        ref={el}
+        ref={(d) => {
+          el = d;
+          // over its text as the page under it moves (a board panned or zoomed with the bar open)
+          onCleanup(
+            autoUpdate({ getBoundingClientRect: rect, contextElement: e.view.dom }, d, placeNow, {
+              ancestorScroll: false,
+              ancestorResize: false,
+              elementResize: false,
+            }),
+          );
+        }}
         class={`${kindClass(p.ui.opts.classes, "bar")} md-bubble`}
         onMouseDown={(ev) => {
           if (!(ev.target as HTMLElement).closest("input")) ev.preventDefault();
@@ -363,6 +416,8 @@ export function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
                       queueMicrotask(() => {
                         i.focus();
                         i.select();
+                        // a long address shows from its start (selecting it scrolled the field to its end, "ttps://…")
+                        i.scrollLeft = 0;
                       });
                     }}
                     onKeyDown={linkKey}

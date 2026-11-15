@@ -1,7 +1,7 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on } from "solid-js";
 import { IS_MAC } from "@yhnocoder/markdown/ui";
 import { mdHeading, BOX_FILLS, TEXT_SIZES, textSizeName, type NoteCard, type TextSize } from "@codeboard/core";
-import { state, placeOf } from "../state/store";
+import { placeOf } from "../state/store";
 import { isSel, sel } from "../state/selection";
 import { editing } from "../state/ui";
 import { animScale, reduceMotion } from "../state/motion";
@@ -14,13 +14,7 @@ import { trackBlocks } from "../state/blocks";
 import { cardSel } from "../cardsel";
 import { kbd } from "../keymap";
 import { hoverCard } from "../state/hover";
-
-/**
- * 卡头的名字就是 Markdown 开头的标题时，正文里藏起那一行（正文元素加 hidehead，styles.css 藏掉第一个标题）：没自己起名字、开头是标题、
- * 设置 noteHeadingInBody 没开。heading = mdHeading(md)（Note 卡里按 md 缓存着）。子白板预览的 Note 也照这一条（cards/SubPreviews.tsx）
- */
-export const hidesHeading = (c: NoteCard, heading = c.look === "note" ? mdHeading(c.md) : "") =>
-  !c.title && !!heading && !state.host.settings.noteHeadingInBody;
+import { boxFill, hidesHeading } from "./notelook";
 
 export function NoteBody(p: { card: NoteCard }) {
   const c = () => p.card;
@@ -264,9 +258,6 @@ function foldHeader(id: string, entering: boolean, setFolded: (v: boolean) => vo
     for (const a of anims) a.cancel();
   };
 }
-
-/** A Box's fill (yellow until one is picked) */
-export const boxFill = (c: NoteCard) => c.fill ?? "yellow";
 
 const LOOKS = [
   ["text", "Text"],
