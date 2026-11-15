@@ -37,6 +37,9 @@ extension CanvasView {
     var parts = 0
     /// A Web card's: its two buttons on glass over its top right corner (.wacts), no header behind them
     var floating = false
+    /// A Note written in whose header is its heading: the header folds away under the editor, which draws the heading,
+    /// and only its ··· stays (.chead.fold > .ib)
+    var folded = false
   }
 
   /// The language picker's languages and the label of any language (analysis langs.ts LANG_TABLE, those picked first)
@@ -86,6 +89,10 @@ extension CanvasView {
       right = Drawing.headerRight(c, width: w, t)
     case .note(let n):
       guard case .note = n.content, !n.folded, case .note(let note)? = s.parts[id]?.content.body else { return nil }
+      // as showPaper folds it
+      if n.hideHead, let ed = editing, ed.id == id, ed.ready, !ed.ending {
+        return Head(drawing: it.drawing, buttons: [more], reserve: 0, folded: true)
+      }
       acts = [.fit, .split]
       let parts = HeadingSplit(note.text)?.parts.count ?? 0
       h = Head(drawing: it.drawing, buttons: [], reserve: 0, parts: parts)
@@ -319,7 +326,7 @@ extension CanvasView {
       let hovered = hoveredHead?.0 == id ? hoveredHead?.1 : nil
       let size = box.bounds.size
       let key =
-        "\(h.drawing) \(h.on) \(h.faint) \(String(describing: hovered)) \(size) \(theme.id) \(theme.dark) \(scale)"
+        "\(h.drawing) \(h.folded) \(h.on) \(h.faint) \(String(describing: hovered)) \(size) \(theme.id) \(theme.dark) \(scale)"
       let l: CALayer
       if let shown = headShown[id] {
         l = shown.layer
@@ -419,11 +426,12 @@ enum HeadActs {
     ctx.clip(
       to: CGRect(
         x: t.headerPad - 4, y: 2, width: size.width - t.headerPadRight - (t.headerPad - 4), height: t.headerHeight - 4))
-    switch h.drawing {
-    case .code(let c):
+    // folded: the editor's heading shows through
+    switch h.folded ? nil : h.drawing {
+    case .code(let c)?:
       Drawing.paper(ctx, card, t, id: c.id, rule: false)
       Drawing.header(ctx, c, card, t, reserve: h.reserve)
-    case .note(let n):
+    case .note(let n)?:
       Drawing.paper(ctx, card, t, id: n.id, rule: true)
       Drawing.noteHeader(ctx, n, width: size.width, t, reserve: h.reserve)
     default: break
