@@ -1824,10 +1824,10 @@ extension CanvasView {
   /// plain text
   func paste(asCopy: Bool, at: CGPoint?) {
     let p = at ?? pointerInWindow.map { camera.board(convert($0, from: nil)) }
-    if gesture == nil, pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)) == nil,
-      pasteLinks(at: p) || pasteText(at: p)
-    {
-      return
+    if gesture == nil, pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)) == nil {
+      // ⌘V only: the board menu's Paste puts it where the menu was asked, as main's
+      let near = at == nil ? pasteboard.string(forType: .string).flatMap(pasteNear) : nil
+      if pasteLinks(at: near ?? p) || pasteText(at: near ?? p, exact: near != nil) { return }
     }
     guard let doc = document, gesture == nil, let here = shown?.board.id,
       let data = pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)),

@@ -166,6 +166,7 @@ extension CanvasView {
     }
     pasteboard.clearContents()
     pasteboard.setString(lines.joined(separator: "\n"), forType: .string)
+    lastCopy = (id, lines.joined(separator: "\n"), 0)
     toast("Copied \(lines.count) lines")
   }
 

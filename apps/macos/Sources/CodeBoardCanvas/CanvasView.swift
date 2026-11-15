@@ -375,6 +375,9 @@ public final class CanvasView: NSView {
   /// The cards ⌘X cut on this board with every arrow that touched them, and the pasteboard data that stands for them
   /// (actions/shared.ts cutClip)
   var cutClip: (board: BoardID, data: Data, clip: Clip)?
+  /// The text Copy Code last put on the pasteboard, the card it came from and how many times it was pasted since: ⌘V of
+  /// the same text lands beside that card (actions/clipboard.ts lastCopy)
+  var lastCopy: (card: CardID, text: String, n: Int)?
 
   /// Work begun while a gesture was active; the gesture rule says all stay 0
   package private(set) var ruleBreaks = (redraws: 0, decodes: 0, swaps: 0, noteRequests: 0, noteSwaps: 0)
