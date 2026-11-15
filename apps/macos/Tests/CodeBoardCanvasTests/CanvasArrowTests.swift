@@ -132,6 +132,35 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     #expect(r.doc.board.arrows.isEmpty && r.doc.board.cards.count == 3, "⌫ takes the arrow, not its cards")
   }
 
+  /// Pinyin typed at once after the double-click on a label or a Section's title goes through the input method: the
+  /// field takes the keyboard in the double-click itself, so nothing is held or waited for
+  @Test(arguments: ["label", "title"])
+  func pinyinTypedAtOnceInALabelOrATitleIsComposed(_ what: String) async throws {
+    Pinyin.install()
+    var b = arrows(label: "calls")
+    b.sections = [Section(id: SectionID(rawValue: "g"), title: "Group", x: 0, y: 1200, width: 400, height: 300)]
+    let r = try await Rig(b, zoom: 1)
+    defer {
+      Pinyin.windows.remove(r.window.windowNumber)
+      r.close()
+    }
+    let owner: Scene.Owner = what == "label" ? .arrowLabel(aid("a1")) : .sectionTitle(SectionID(rawValue: "g"))
+    let i = try #require(r.canvas.index(of: owner))
+    let at =
+      what == "label"
+      ? try #require(r.canvas.scene?.arrows.first?.mid)
+      : CGPoint(x: r.canvas.items[i].box.frame.midX, y: r.canvas.items[i].box.frame.midY)
+    Pinyin.windows.insert(r.window.windowNumber)
+    r.send(r.mouse(.leftMouseDown, at))
+    r.send(r.mouse(.leftMouseUp, at))
+    r.send(r.mouse(.leftMouseDown, at, clicks: 2))
+    r.send(r.mouse(.leftMouseUp, at, clicks: 2))
+    r.press("ni ")
+    let field = try #require(r.canvas.inPlace?.field)
+    // the label's text or the title selected as the field opens: the composition replaces it
+    #expect(field.currentEditor()?.string == "你", "\(String(describing: field.currentEditor()?.string))")
+  }
+
   @Test func aLabelIsWrittenInPlaceKeptByReturnLeftByEscapeAndRemovedWhenBlank() async throws {
     let r = try await Rig(arrows(), zoom: 1)
     defer { r.close() }
@@ -258,6 +287,31 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     r.doc.select([.card(cid("n1")), .card(cid("n2")), .card(cid("n3"))])
     let three = r.canvas.menu(for: r.mouse(.rightMouseDown, r.centre("n3")))
     #expect(three?.items.first?.title == "Connect with Arrow" && three?.items.first?.action == nil)
+  }
+
+  /// A Box's ports are over the Box, as main's .eport over its .cface, though Texts and Boxes are drawn over the card
+  /// level (kept at the summary level)
+  @Test func aBoxsPortsAreDrawnOverIt() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    c.mouseMoved(with: r.mouse(.mouseMoved, r.centre("b1")))
+    let box = c.items[try #require(c.index(of: .card(cid("b1"))))].box
+    let ports = (c.chrome.sublayers ?? []).filter { ($0 as? CAShapeLayer)?.fillColor == c.theme.surface }
+    #expect(ports.count == 4)
+    for p in ports { #expect(drawnOver(p, box)) }
+  }
+
+  /// Whether `a` is drawn after `b`: of the two branches under their nearest common layer, `a`'s comes later (by
+  /// zPosition, then order)
+  func drawnOver(_ a: CALayer, _ b: CALayer) -> Bool {
+    func chain(_ l: CALayer) -> [CALayer] { sequence(first: l, next: \.superlayer).reversed() }
+    let (ca, cb) = (chain(a), chain(b))
+    var k = 0
+    while k < min(ca.count, cb.count), ca[k] === cb[k] { k += 1 }
+    guard k > 0, k < ca.count, k < cb.count, let kids = ca[k - 1].sublayers else { return false }
+    let order = { (l: CALayer) in (l.zPosition, kids.firstIndex { $0 === l } ?? 0) }
+    return order(ca[k]) > order(cb[k])
   }
 
   @Test(arguments: [1, 0.5] as [CGFloat])

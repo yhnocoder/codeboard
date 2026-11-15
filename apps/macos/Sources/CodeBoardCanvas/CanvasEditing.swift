@@ -145,6 +145,7 @@ extension CanvasView {
     let board = doc.board
     let (theme, notes, images, backing) = (self.theme, self.notes, self.images, self.backing)
     let known = measured
+    let knownInline = measuredInline
     let fit = fitZoom
     let seen = vaultSeen
     let zoom = camera.zoom
@@ -165,9 +166,22 @@ extension CanvasView {
           }
         }
         sizes.merge(await CanvasView.measure(todo, theme: theme, notes: notes)) { a, _ in a }
+        // the Always Show sidenotes in code cards, measured again only when changed
+        let ims = Scene.inlineMeasures(board, package: package, vault: vault, theme: theme)
+        var inline: [SidenoteID: NoteMetrics] = [:]
+        var inlineTodo: [Scene.Measure] = []
+        for m in ims {
+          guard let id = m.sidenote else { continue }
+          if let k = knownInline[id], k.note == m.note, k.width == m.width {
+            inline[id] = k.size
+          } else {
+            inlineTodo.append(m)
+          }
+        }
+        inline.merge(await CanvasView.measureInline(inlineTodo, theme: theme, notes: notes)) { a, _ in a }
         let s = Scene(
           board, package: package, vault: vault, theme: theme, highlighter: highlighter ?? Highlighter(), sizes: sizes,
-          reusing: old, vaultSeen: seen, fetching: fetching)
+          inline: inline, reusing: old, vaultSeen: seen, fetching: fetching)
         var before: [Scene.Owner: Scene.Item] = [:]
         for it in old.items { if let o = it.owner { before[o] = it } }
         var fresh: [Int: Fresh] = [:]
@@ -175,7 +189,7 @@ extension CanvasView {
           fresh[i] = await CanvasView.draw(
             it, fit: fit, zoom: zoom, view: view, backing: backing, theme: theme, images: images, notes: notes)
         }
-        return (s, fresh, ms, sizes)
+        return (s, fresh, ms, sizes, ims, inline)
       }.value
       guard n == refreshes, document === doc else { return }
       guard gesture == nil else {
@@ -185,6 +199,8 @@ extension CanvasView {
       shownBoard = board
       measured = [:]
       for m in r.2 { if let size = r.3[m.card] { measured[m.card] = (m.note, m.width, size) } }
+      measuredInline = [:]
+      for m in r.4 { if let id = m.sidenote, let size = r.5[id] { measuredInline[id] = (m.note, m.width, size) } }
       reinstall(r.0, fresh: r.1)
     }
   }
@@ -464,6 +480,11 @@ extension CanvasView {
     }
     let z = camera.zoom
     let accent = theme.accent
+    let before = selectedLooks
+    selectedLooks = [:]
+    defer {
+      for (id, ls) in before where selectedLooks[id] == nil { Self.fadeOut(ls) }
+    }
     withoutAnimation {
       chrome.sublayers = nil
       litArrows.sublayers = nil
@@ -476,7 +497,18 @@ extension CanvasView {
         guard let r = liveRect(item) else { continue }
         switch item {
         case .card(let id):
-          selectedLook(id, r, tilt: index(of: .card(id)).map { scene!.items[$0].tilt } ?? 0, into: chrome)
+          guard let i = index(of: .card(id)) else { continue }
+          let box = items[i].box
+          let old = before[id] ?? []
+          let looks = selectedLook(id, box.bounds, tilt: 0, into: box, fadeIn: old.isEmpty)
+          // drawn again while it comes in: it goes on coming in, not from the start
+          for l in looks {
+            if let was = old.first(where: { $0.name == l.name }), let a = was.animation(forKey: "in") {
+              l.add(a, forKey: "in")
+            }
+          }
+          for l in old { l.removeFromSuperlayer() }
+          selectedLooks[id] = looks
         case .section(let id):
           if theme.id == .inkWash, let f = scene?.frames.first(where: { $0.id == id }), let strokes = f.strokes {
             brushed(r, strokes: strokes.cg)
@@ -491,6 +523,8 @@ extension CanvasView {
       if let bar = barLayer() { chrome.addSublayer(bar) }
       if let chip = chipLayer() { chrome.addSublayer(chip) }
       if let acts = sectionActsLayer() { chrome.addSublayer(acts) }
+      drawHoverLine()
+      placeHeadActs()
       drawPorts()
       drawEndHandles()
       drawConnect()
@@ -514,40 +548,104 @@ extension CanvasView {
     }
   }
 
-  /// A selected card's look at `r` in `parent`: a Text's or Box's outline, Ink Wash's seal, else the ring
-  func selectedLook(_ id: CardID, _ r: CGRect, tilt: CGFloat, into parent: CALayer) {
-    let z = camera.zoom
+  /// A selected card's look at `r` in `parent` (the card's own layer, or a picture of it): a Text's or Box's outline,
+  /// Ink Wash's seal, else the ring; `fadeIn`: it was not selected before, so it comes in as main's does. Its layers
+  @discardableResult
+  func selectedLook(_ id: CardID, _ r: CGRect, tilt: CGFloat, into parent: CALayer, fadeIn: Bool = false) -> [CALayer] {
+    let looks: [CALayer]
     if isText(id) {
-      outline(r, box: isBox(id), tilt: tilt, zoom: z, into: parent)
+      looks = [outline(r, box: isBox(id), tilt: tilt)]
     } else if theme.id == .inkWash {
-      parent.addSublayer(seal(on: r, tilt: tilt))
+      looks = [seal(on: r, tilt: tilt)]
     } else {
-      ring(r, tilt: tilt, zoom: z, into: parent)
+      looks = ring(r, tilt: tilt)
+      if fadeIn { looks.forEach(Self.fadeIn) }
     }
-  }
-
-  /// A selected card's ring (styles.css .card.sel): 1.5 view points of the accent over a 4.5 point halo of it at 16 %
-  private func ring(_ r: CGRect, tilt: CGFloat, zoom z: CGFloat, into parent: CALayer) {
-    for (width, alpha) in [(4.5, 0.16), (1.5, 1.0)] as [(CGFloat, CGFloat)] {
-      let l = CAShapeLayer()
-      let out = width / 2 / z
-      let ring = r.insetBy(dx: -out, dy: -out)
-      l.bounds = CGRect(origin: .zero, size: ring.size)
-      l.position = CGPoint(x: ring.midX, y: ring.midY)
-      let radius = theme.cardRadius + out
-      l.path = CGPath(roundedRect: l.bounds, cornerWidth: radius, cornerHeight: radius, transform: nil)
-      l.fillColor = nil
-      l.strokeColor = theme.accent.copy(alpha: alpha)
-      l.lineWidth = width / z
-      if tilt != 0 { l.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
+    for l in looks {
+      // over the card's content, under its stickers and markers
+      l.zPosition = 3
       parent.addSublayer(l)
     }
+    return looks
+  }
+
+  /// A line that is `w` on the board, never thinner on screen than a pixel
+  func boardLine(_ w: CGFloat) -> CGFloat { max(w, 1 / (camera.zoom * backing)) }
+
+  /// A selected card's ring in Warm Ink (themes.css .card > .cface::before: `0 0 0 1.5px accent, 0 0 4px 3px accent
+  /// 20%`, round as the card): a 1.5 line of the accent hugging the card on its own squircle corner, over a glow of it
+  /// blurred 4 and spread 3, outside the card only; sizes on the board, so they zoom with it
+  private func ring(_ r: CGRect, tilt: CGFloat) -> [CALayer] {
+    func turned(_ l: CALayer) -> CALayer {
+      l.frame = r
+      l.bounds = CGRect(origin: r.origin, size: r.size)
+      if tilt != 0 { l.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
+      return l
+    }
+    let glow = CALayer()
+    glow.name = "glow"
+    glow.shadowPath = Drawing.squircle(r.insetBy(dx: -3, dy: -3), theme.cardRadius + 3)
+    glow.shadowColor = theme.accent
+    glow.shadowOpacity = 0.2
+    glow.shadowRadius = 2
+    glow.shadowOffset = .zero
+    // a box shadow: none under the card
+    let mask = CAShapeLayer()
+    let around = CGMutablePath()
+    around.addRect(r.insetBy(dx: -20, dy: -20))
+    around.addPath(Drawing.squircle(r, theme.cardRadius))
+    mask.path = around
+    mask.fillRule = .evenOdd
+    glow.mask = mask
+    let w = boardLine(1.5)
+    let line = CAShapeLayer()
+    line.name = "ring"
+    line.path = Drawing.squircle(r.insetBy(dx: -w / 2, dy: -w / 2), theme.cardRadius + w / 2)
+    line.fillColor = nil
+    line.strokeColor = theme.accent
+    line.lineWidth = w
+    return [turned(glow), turned(line)]
+  }
+
+  /// A ring coming in (themes.css .card.sel > .cface::before): 120 ms, from 98.5 % of its size
+  static func fadeIn(_ l: CALayer) {
+    let o = CABasicAnimation(keyPath: "opacity")
+    o.fromValue = 0
+    o.toValue = 1
+    let k = CABasicAnimation(keyPath: "transform.scale")
+    k.fromValue = 0.985
+    k.toValue = 1
+    let g = CAAnimationGroup()
+    g.animations = [o, k]
+    g.duration = 0.12
+    g.timingFunction = CAMediaTimingFunction(name: .easeOut)
+    l.add(g, forKey: "in")
+  }
+
+  /// A card's look when it is no longer selected: out over 90 ms where it is, then gone
+  static func fadeOut(_ ls: [CALayer]) {
+    CATransaction.begin()
+    CATransaction.setCompletionBlock {
+      MainActor.assumeIsolated { for l in ls where l.opacity == 0 { l.removeFromSuperlayer() } }
+    }
+    for l in ls {
+      l.removeAnimation(forKey: "in")
+      l.opacity = 0
+      let o = CABasicAnimation(keyPath: "opacity")
+      o.fromValue = 1
+      o.toValue = 0
+      o.duration = 0.09
+      o.timingFunction = CAMediaTimingFunction(name: .easeIn)
+      l.add(o, forKey: "out")
+    }
+    CATransaction.commit()
   }
 
   /// Ink Wash's selected card (themes.css #128): a small vermilion seal 选 over its top right corner, 24 board units
   /// square, its middle 7 out and 5 up from the corner, turned 6 degrees; no ring
   private func seal(on r: CGRect, tilt: CGFloat) -> CALayer {
     let box = CALayer()
+    box.name = "seal"
     box.bounds = CGRect(x: 0, y: 0, width: r.width, height: r.height)
     box.position = CGPoint(x: r.midX, y: r.midY)
     if tilt != 0 { box.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
@@ -627,10 +725,12 @@ extension CanvasView {
   }
 
   /// A selected Text's or Box's frame (styles.css .card.text.sel): a 1.5 point line of the accent, 2 out from a Text
-  /// (3 from a Box), round as the card's corners
-  private func outline(_ r: CGRect, box: Bool, tilt: CGFloat, zoom z: CGFloat, into parent: CALayer) {
+  /// (3 from a Box), round as the card's corners; hovered, `w` 1 in `color`, dashed on a Text
+  private func outline(
+    _ r: CGRect, box: Bool, tilt: CGFloat, width: CGFloat = 1.5, color: CGColor? = nil, dashed: Bool = false
+  ) -> CAShapeLayer {
     let gap: CGFloat = box ? 3 : 2
-    let w = 1.5 / z
+    let w = boardLine(width)
     let o = r.insetBy(dx: -gap - w / 2, dy: -gap - w / 2)
     let l = CAShapeLayer()
     l.bounds = CGRect(origin: .zero, size: o.size)
@@ -638,10 +738,30 @@ extension CanvasView {
     let radius = (box ? theme.cardRadius : 5.5) + gap + w / 2
     l.path = CGPath(roundedRect: l.bounds, cornerWidth: radius, cornerHeight: radius, transform: nil)
     l.fillColor = nil
-    l.strokeColor = theme.accent
+    l.strokeColor = color ?? theme.accent
     l.lineWidth = w
+    if dashed { l.lineDashPattern = [NSNumber(value: 3 * w), NSNumber(value: 3 * w)] }
     if tilt != 0 { l.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
-    parent.addSublayer(l)
+    l.name = "outline"
+    return l
+  }
+
+  /// The Text or Box under the pointer, not selected: a dashed line of the faint ink round a Text, a line of the accent at
+  /// 45 % round a Box (styles.css .card.text:hover, .card.text.box:hover:not(.sel)), in its layer
+  func drawHoverLine() {
+    hoverLine?.removeFromSuperlayer()
+    hoverLine = nil
+    guard let id = hoveredCard, isText(id), document?.selection.contains(.card(id)) == false,
+      let i = index(of: .card(id))
+    else { return }
+    let box = items[i].box
+    let b = isBox(id)
+    let l = outline(
+      box.bounds, box: b, tilt: 0, width: 1, color: b ? theme.accent.copy(alpha: 0.45) : theme.ink3, dashed: !b)
+    l.name = "hover"
+    l.zPosition = 3
+    box.addSublayer(l)
+    hoverLine = l
   }
 
   /// A Text's or Box's handles where they are drawn (board units): a pill on each side edge for the width it wraps at,
@@ -803,6 +923,15 @@ extension CanvasView {
       NSCursor.arrow.set()
       return
     }
+    // a card header's button: the arrow over it, its card hovered
+    let head = headAct(at: camera.board(v))
+    hoverHead(head)
+    if head != nil {
+      hoverPorts(at: v)
+      NSCursor.arrow.set()
+      hover(nil)
+      return
+    }
     if hitStickerGrip(v) != nil {
       resizeCursor([.right, .bottom]).set()
       hover(nil)
@@ -852,6 +981,7 @@ extension CanvasView {
   public override func mouseExited(with e: NSEvent) {
     pointerInWindow = nil
     hoverChip(at: CGPoint(x: CGFloat.infinity, y: .infinity))
+    hoverHead(nil)
     hoverTitle(nil, act: nil)
     hoverSummary(nil)
     hover(nil)
@@ -947,6 +1077,15 @@ extension CanvasView {
       }
       return
     }
+    // a card header's button
+    if let (id, a) = headAct(at: p) {
+      if e.clickCount == 1 {
+        hold(
+          over: { [weak self] in self?.headAct(at: $0).map { $0 == (id, a) } == true },
+          act: { [weak self] in self?.press(a, of: id) })
+      }
+      return
+    }
     // a press anywhere else on the board closes it (what is being written in it is added)
     if openPop != nil { openPop(nil) }
     // a sticker, or the selected one's grip
@@ -980,8 +1119,16 @@ extension CanvasView {
         }
         return
       }
-      // a double-click on a Text's edge or corner does nothing (no Fit Content)
-      if hitHandle(v) == nil { doubleClick(at: p) }
+      // a card's grip, or a Note's bottom edge: Fit Content (Card.tsx .grip, .hb); a Text's edge or corner: nothing
+      if let (item, edges) = hitHandle(v) {
+        if case .card(let id) = item, !isText(id) {
+          var note = false
+          if case .note? = scene?.parts[id]?.content.body { note = true }
+          if edges == [.right, .bottom] || edges == .bottom && note { fitCards([id]) }
+        }
+      } else {
+        doubleClick(at: p)
+      }
       return
     }
     // a port: an arrow is drawn out of it
@@ -1270,6 +1417,7 @@ extension CanvasView {
         return p
       }
     }
+    lift(m)
     // the Sections the dragged cards are in or go into grow round them as they go (springs: not without animation)
     if !m.loose.isEmpty { followDrag(m) }
     showDrop(m)
@@ -1322,6 +1470,7 @@ extension CanvasView {
   /// Section in the one its title is in (board dragGroup)
   func commitMove(_ m: Move, name: String = "Move") {
     gesture = nil
+    land()
     let followed = Set(dragShown.keys)
     clearDrop()
     guard let doc = document, let s = scene else { return }
@@ -1768,14 +1917,16 @@ extension CanvasView {
     guard !clip.isEmpty else { return toast("Select a card to duplicate") }
     clip.arrows = []
     clip.sidenotes = []
-    offerReference(place(clip, dx: 48, dy: 48, name: "Duplicate", settle: false))
+    // left where they are, in view or not (duplicateSel moves no camera)
+    offerReference(place(clip, dx: 48, dy: 48, name: "Duplicate", settle: false, reveal: false))
   }
 
   /// The clip put on the board, what was made selected and brought into view; returns each card made with the one it
   /// was made from. `settle`: each card goes in the Section it lands in (board actions/shared.ts settleHome)
   @discardableResult
   private func place(
-    _ clip: Clip, dx: Double, dy: Double, name: String, shared: Bool = false, back: Bool = false, settle: Bool = true
+    _ clip: Clip, dx: Double, dy: Double, name: String, shared: Bool = false, back: Bool = false, settle: Bool = true,
+    reveal shows: Bool = true
   ) -> [(copy: CardID, of: CardID)] {
     guard let doc = document else { return [] }
     var b = doc.board
@@ -1791,7 +1942,7 @@ extension CanvasView {
       if settle { b.cards[i].section = home(of: r, frames: frames) }
     }
     doc.edit(name, selection: made) { $0 = b }
-    if !placed.isNull { reveal(placed) }
+    if shows && !placed.isNull { reveal(placed) }
     return copies
   }
 

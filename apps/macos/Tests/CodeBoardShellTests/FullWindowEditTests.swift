@@ -285,6 +285,27 @@ import Testing
     #expect(store.cameras(for: w.vault)[board] == left, "\(String(describing: store.cameras(for: w.vault)[board]))")
   }
 
+  /// A camera waiting for its rest delay and then one written at once (the board left): the one written at once stays,
+  /// the waiting write does not come after it with the older camera
+  @Test func aWaitingCameraWriteDoesNotComeAfterOneWrittenAtOnce() async throws {
+    let fm = FileManager.default
+    let store = CameraStore(folder: fm.temporaryDirectory.appending(path: "cameras-\(UUID().uuidString)"))
+    defer { try? fm.removeItem(at: store.folder) }
+    let w = try await opened(cameras: store)
+    defer { w.close() }
+    w.canvas.cameraDelay = .milliseconds(300)
+    w.canvas.place(zoom: 0.8, centre: CGPoint(x: 100, y: 100))
+    await w.frames(2)
+    w.canvas.keepCamera()
+    w.canvas.place(zoom: 0.62, centre: CGPoint(x: 333, y: 211))
+    await w.frames(2)
+    let c = w.canvas.currentCamera
+    w.canvas.keepCamera(now: true)
+    // past the delay of the waiting write
+    await w.frames(40)
+    #expect(store.cameras(for: w.vault)[board] == BoardCamera(x: c.origin.x, y: c.origin.y, zoom: c.zoom))
+  }
+
   /// A trackpad scroll event at the middle of the canvas
   static func scroll(phase: NSEvent.Phase, dy: Int32 = 0, in w: Window) -> NSEvent? {
     guard let cg = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: dy, wheel2: 0, wheel3: 0)

@@ -161,7 +161,8 @@ private func lines(_ r: ClosedRange<Int>, _ card: String = "c1") -> Anchor { .ca
     id: SegmentID(rawValue: "r"), source: .file(path: "a.py", hash: nil), language: "python", firstLine: 3,
     lines: ["x = 1"])
   b.sidenotes.append(Sidenote(id: nid("cf"), anchor: .card(cid("n1")), body: .code(free)))
-  b.sidenotes.append(Sidenote(id: nid("cr"), anchor: .card(cid("n1"), block: block), body: .code(read)))
+  b.sidenotes.append(
+    Sidenote(id: nid("cr"), anchor: .card(cid("n1"), block: block), body: .code(read), why: "Reads it"))
   #expect(b.sidenoteCard(nid("q"), card: cid("x")) == nil && b.sidenoteCard(nid("g"), card: cid("x")) == nil)
   #expect(!Ok.it(&b) { $0.placeSidenote(nid("g"), as: Card(id: cid("x"), x: 0, y: 0, width: 1, content: .shared)) })
 
@@ -193,6 +194,7 @@ private func lines(_ r: ClosedRange<Int>, _ card: String = "c1") -> Anchor { .ca
   #expect(fs.id != free.id && fs.lines == free.lines && fs.language == "rust" && f.width == Board.newNoteWidth)
   let (r, ra) = try place("cr", at: 1600)
   #expect(r.width == 480 && ra.from == Endpoint(card: cid("n1"), block: block))
+  if case .own(let rc) = r.content { #expect(rc.description == "Reads it", "its why, the card's description") }
   #expect(b.problem() == nil)
 }
 

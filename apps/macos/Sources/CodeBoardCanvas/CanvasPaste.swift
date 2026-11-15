@@ -32,7 +32,7 @@ extension CanvasView {
     if urls.count == 1 {
       let size = CGSize(width: Board.webWidth, height: 112)
       let at = pastePlace(size, at: p, besideSelection: true)
-      settle(id, size, "Paste") { $0.addWeb(id, url: first, x: at.x, y: at.y) }
+      settle(id, size, "Paste", reveal: true) { $0.addWeb(id, url: first, x: at.x, y: at.y) }
       fetchWeb(id, url: first)
     } else {
       let items = urls.map { LinkList.Item(id: Board.newID("li"), url: $0) }
@@ -82,7 +82,7 @@ extension CanvasView {
       let id = CardID(rawValue: Board.newID("card-"))
       let seg = Segment(
         id: SegmentID(rawValue: Board.newID("s")), source: nil, language: language, firstLine: 1, lines: lines)
-      settle(id, size, "Paste") {
+      settle(id, size, "Paste", reveal: true) {
         $0.cards.append(
           Card(
             id: id, x: at.x, y: at.y, width: Board.newNoteWidth,
@@ -98,7 +98,7 @@ extension CanvasView {
       let size = CGSize(width: w, height: 160)
       let at = pastePlace(size, at: p, besideSelection: true)
       let id = CardID(rawValue: Board.newID("card-"))
-      settle(id, size, "Paste") {
+      settle(id, size, "Paste", reveal: true) {
         $0.cards.append(
           Card(
             id: id, x: at.x, y: at.y, width: w, content: .own(CardContent(body: .image(ImageCard(source: .file(name)))))
@@ -110,8 +110,9 @@ extension CanvasView {
   }
 
   /// A new card added in one step and selected, in the Section its rect (`size` at where it is put) covers by more than
-  /// a third (settleHome)
-  func settle(_ id: CardID, _ size: CGSize, _ name: String, _ add: (inout Board) -> Void) {
+  /// a third (settleHome); `reveal`: brought into view when it is not, as main's addCards does (a new Note, Text, Box or
+  /// Link List is not: newWriting, newLinkList)
+  func settle(_ id: CardID, _ size: CGSize, _ name: String, reveal: Bool = false, _ add: (inout Board) -> Void) {
     guard let doc = document else { return }
     let frames = Dictionary((scene?.frames ?? []).map { ($0.id, $0.rect) }, uniquingKeysWith: { a, _ in a })
     doc.edit(name, selection: [.card(id)]) { b in
@@ -119,6 +120,9 @@ extension CanvasView {
       guard let i = b.cards.firstIndex(where: { $0.id == id }) else { return }
       let r = CGRect(x: b.cards[i].x, y: b.cards[i].y, width: size.width, height: size.height)
       b.cards[i].section = home(of: r, frames: frames)
+    }
+    if reveal, let c = doc.board.card(id) {
+      self.reveal(CGRect(x: c.x, y: c.y, width: size.width, height: size.height))
     }
   }
 

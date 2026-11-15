@@ -48,13 +48,14 @@ page.on("pageerror", (e) => log(`pageerror ${e.message}`));
 page.on("console", (m) => { if (m.type() === "error") log(`console ${m.text()}`); });
 await page.goto(`${base}/page.html`);
 await page.waitForFunction(() => (window as any).__booted);
-await page.evaluate(([t, dk]) => {
-  document.documentElement.dataset.look = t;
-  document.documentElement.classList.add(`look-${t}`);
+// light or dark as VS Code says it; the look itself comes with the host's settings (init's theme), which the board
+// applies (applyLook): set here too, the look the board started with stayed on beside it, two looks' rules at once
+await page.evaluate((dk) => {
   document.body.className = dk ? "vscode-dark" : "vscode-light";
   document.documentElement.dataset.theme = dk ? "dark" : "light";
-}, [LOOK, DARK] as const);
+}, DARK);
 await page.evaluate((ms) => (window as any).__deliver(ms), msgs);
+log(`look ${await page.evaluate(() => `${document.documentElement.dataset.look} (html.${document.documentElement.className.split(" ").join(".")})`)}`);
 const cdp = await ctx.newCDPSession(page);
 let pos = { x: W / 2, y: H / 2 };
 let buttons = 0;

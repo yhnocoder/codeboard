@@ -34,6 +34,28 @@ struct CodeLayout: Equatable, Sendable {
     case gap(segment: Int, from: Int, to: Int)
     case file(String)
     case function(String)
+    /// A Highlight's Always Show sidenotes, under its last row (`inline` has where each is)
+    case notes(segment: Int)
+  }
+
+  /// The Always Show sidenotes of one of a segment's Highlights (its lines), each with its height at the width it is
+  /// drawn at (the Note renderer's: 0 until measured)
+  struct Always: Equatable, Sendable {
+    var lines: ClosedRange<Int>
+    var notes: [Measured]
+    struct Measured: Equatable, Sendable {
+      var id: SidenoteID
+      var height: CGFloat
+    }
+  }
+
+  /// Where a Highlight's Always Show sidenotes are drawn (CodeBody .inotes): from `x` right of the gutter (where its
+  /// least indented line's code starts, .inotes --hx-in), one under the other from `y`
+  struct Inline: Equatable, Sendable {
+    var segment: Int
+    var always: Always
+    var x: CGFloat
+    var y: CGFloat
   }
 
   struct Placed: Equatable, Sendable {
@@ -50,14 +72,19 @@ struct CodeLayout: Equatable, Sendable {
   var dedent = 0
   /// How far the code is moved right of the gutter (negative: left)
   var shift: CGFloat = 0
-  /// Highlights as y ranges of their rows
+  /// Highlights as y ranges of their rows (and of the sidenotes shown under them)
   var bands: [ClosedRange<CGFloat>] = []
+  var inline: [Inline] = []
   /// The body's natural height
   var height: CGFloat
 
   /// Hiding comments and docstrings needs the language analysis, which comes later: only blank lines and hidden ranges are
-  /// left out for now. `tokens`: the highlighter's, per segment and line
-  init(_ code: CodeCard, tokens: [[[Token]]] = [], width: CGFloat, metrics m: CodeMetrics) {
+  /// left out for now. `tokens`: the highlighter's, per segment and line; `always`: per segment, its Highlights' Always
+  /// Show sidenotes, drawn under the Highlight's last row, a line's or a hidden run's (highlights.ts useHighlights
+  /// endRow); none where the Highlight has no row (all its lines blank, blank lines hidden)
+  init(
+    _ code: CodeCard, tokens: [[[Token]]] = [], width: CGFloat, metrics m: CodeMetrics, always: [[Always]] = []
+  ) {
     var last = 1
     for s in code.segments { last = max(last, s.lastLine) }
     gutter = m.padLeft + CGFloat(String(last).count) * m.charWidth + m.numberGap
@@ -65,11 +92,39 @@ struct CodeLayout: Equatable, Sendable {
     var y = m.padTop
     var rows: [Placed] = []
     var bands: [ClosedRange<CGFloat>] = []
+    var inline: [Inline] = []
+    // the least indent of each Inline's shown lines, in columns
+    var leads: [Int] = []
     func put(_ r: Row, _ h: CGFloat) {
       rows.append(Placed(row: r, y: y, height: h))
       y += h
     }
+    // the segment's Highlights with Always Show sidenotes that rows have reached and that were not put under them yet
+    var open: [(k: Int, lead: Int)] = []
+    var done = Set<Int>()
+    func close(_ si: Int, below line: Int?) {
+      let groups = si < always.count ? always[si] : []
+      for (k, lead) in open where line.map({ groups[k].lines.upperBound < $0 }) ?? true {
+        inline.append(Inline(segment: si, always: groups[k], x: 0, y: y))
+        leads.append(lead)
+        put(.notes(segment: si), groups[k].notes.reduce(0) { $0 + $1.height })
+        done.insert(k)
+      }
+      open.removeAll { done.contains($0.k) }
+    }
+    func reach(_ si: Int, _ from: Int, _ to: Int, lead: Int?) {
+      close(si, below: from)
+      let groups = si < always.count ? always[si] : []
+      for (k, g) in groups.enumerated() where !done.contains(k) && g.lines.overlaps(from...to) {
+        if let i = open.firstIndex(where: { $0.k == k }) {
+          open[i].lead = min(open[i].lead, lead ?? .max)
+        } else {
+          open.append((k, lead ?? .max))
+        }
+      }
+    }
     for (si, s) in code.segments.enumerated() {
+      done = []
       if si > 0 {
         let prev = code.segments[si - 1]
         if CodeLayout.path(prev) != CodeLayout.path(s) {
@@ -86,6 +141,7 @@ struct CodeLayout: Equatable, Sendable {
       while l <= s.lastLine {
         if let r = s.hidden.first(where: { $0.contains(l) }) {
           let to = min(r.upperBound, s.lastLine)
+          reach(si, l, to, lead: nil)
           put(.gap(segment: si, from: l, to: to), m.gap)
           l = to + 1
           continue
@@ -95,9 +151,11 @@ struct CodeLayout: Equatable, Sendable {
           l += 1
           continue
         }
-        top[l] = y
         let lineTokens = si < tokens.count && i < tokens[si].count ? tokens[si][i] : []
         var rest = CodeLayout.expand(s.lines[i], lineTokens)[...]
+        let blank = rest.allSatisfy { $0.char.isWhitespace }
+        reach(si, l, l, lead: blank ? nil : rest.prefix { $0.char == " " }.count)
+        top[l] = y
         var number: Int? = l
         repeat {
           let piece = rest.prefix(code.wrap ? cols : rest.count)
@@ -109,9 +167,16 @@ struct CodeLayout: Equatable, Sendable {
         bottom[l] = y
         l += 1
       }
+      close(si, below: nil)
       for h in s.highlights {
         let shown = h.filter { top[$0] != nil }
-        if let a = shown.first, let b = shown.last, let t = top[a], let e = bottom[b] { bands.append(t...e) }
+        // down to the end of the sidenotes shown under it (CodeBody bandStyle: ends, the .hx-end's bottom)
+        let under = inline.last { $0.segment == si && $0.always.lines == h }.map { i in
+          i.y + i.always.notes.reduce(0) { $0 + $1.height }
+        }
+        if let a = shown.first, let b = shown.last, let t = top[a], let e = bottom[b] {
+          bands.append(t...max(e, under ?? e))
+        }
       }
     }
     self.rows = rows
@@ -128,6 +193,17 @@ struct CodeLayout: Equatable, Sendable {
       dedent = common
       shift = 16 - CGFloat(common) * m.charWidth
     }
+    // where the Highlight's code starts: its least indented line's, after the hidden indent (CodeBody codeStart)
+    for k in inline.indices {
+      inline[k].x = leads[k] == .max ? 0 : max(0, CGFloat(leads[k]) * m.charWidth + shift)
+    }
+    self.inline = inline
+  }
+
+  /// How wide an Always Show sidenote is drawn from `x` right of the gutter in a card `card` wide: the card's room right of
+  /// the gutter less the code's right padding, its indent and 20 more, at most 600 (styles.css .inote max-width)
+  func inlineWidth(card: CGFloat, x: CGFloat, metrics m: CodeMetrics) -> CGFloat {
+    max(1, min(600, card - gutter - m.padRight - x - 20))
   }
 
   /// The row of a segment's line (its first, when it wraps), when it is shown

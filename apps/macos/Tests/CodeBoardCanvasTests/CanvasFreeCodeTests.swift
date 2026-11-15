@@ -120,13 +120,15 @@ private func freeBoard() -> Board {
 
   /// "ni" and Space typed at once after the double-click on code, before the editor is there: they go through the input
   /// method too, so 你 is written (CanvasIMETests.pinyinTypedAtOnceAfterTheDoubleClickIsComposed)
-  @Test func pinyinTypedAtOnceAfterTheDoubleClickOnCodeIsComposed() async throws {
+  @Test(arguments: [false, true])
+  func pinyinTypedAtOnceAfterTheDoubleClickOnCodeIsComposed(late: Bool) async throws {
     Pinyin.install()
     let r = try await Rig(freeBoard(), zoom: 1)
     defer {
       Pinyin.windows.remove(r.window.windowNumber)
       r.close()
     }
+    if late { await r.editorFocusesLate() }
     let c = r.canvas
     let card = r.rect("f")
     let code = try #require(c.scene?.placed[cid("f")]?.code)

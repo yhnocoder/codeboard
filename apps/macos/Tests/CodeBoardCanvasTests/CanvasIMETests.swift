@@ -11,9 +11,9 @@ import Testing
 // answers there by setting the marked text on the client or committing it before it completes, as `Pinyin` does here.
 // The system's input sources are never touched.
 
-/// A Pinyin input method for the keys WebKit hands the input context while `on`: letters compose, Space commits the
-/// composition's characters, Esc cancels it; any other key, or any key but a letter with nothing composed, goes on as
-/// with no input method
+/// A Pinyin input method for the keys WebKit or a native field hands the input context while `on`: letters compose,
+/// Space commits the composition's characters, Esc cancels it; any other key, or any key but a letter with nothing
+/// composed, goes on as with no input method
 @MainActor enum Pinyin {
   /// The windows it takes keys in, and what is composed in each: suites run side by side, and another test's keys, in
   /// another window, are not its
@@ -25,10 +25,17 @@ import Testing
     guard !installed else { return }
     installed = true
     let c: AnyClass = NSTextInputContext.self
-    guard let a = class_getInstanceMethod(c, NSSelectorFromString("handleEventByInputMethod:completionHandler:")),
+    // WebKit's way in (with a completion handler), and a native field's (AppKit's text views ask synchronously)
+    if let a = class_getInstanceMethod(c, NSSelectorFromString("handleEventByInputMethod:completionHandler:")),
       let b = class_getInstanceMethod(c, #selector(NSTextInputContext.pinyinHandle(_:completionHandler:)))
-    else { return }
-    method_exchangeImplementations(a, b)
+    {
+      method_exchangeImplementations(a, b)
+    }
+    if let a = class_getInstanceMethod(c, #selector(NSTextInputContext.handleEvent(_:))),
+      let b = class_getInstanceMethod(c, #selector(NSTextInputContext.pinyinHandleNow(_:)))
+    {
+      method_exchangeImplementations(a, b)
+    }
   }
   private static var installed = false
 
@@ -67,9 +74,24 @@ extension NSTextInputContext {
     // the system's own (exchanged)
     pinyinHandle(e, completionHandler: completionHandler)
   }
+
+  @MainActor @objc func pinyinHandleNow(_ e: NSEvent) -> Bool {
+    if Pinyin.take(e, client: client) { return true }
+    return pinyinHandleNow(e)
+  }
 }
 
 extension Rig {
+  /// The editor's page takes the focus a second late from now on, as on a busy machine: WebKit gives the web view its
+  /// input context only then, so keys typed at once wait longer than a page frame or two
+  func editorFocusesLate() async {
+    let v = canvas.noteEditor.view
+    await until("the editor page loaded") {
+      (try? await v.callAsyncJavaScript("return typeof edit.focusLate", contentWorld: .page) as? String) == "function"
+    }
+    _ = try? await v.callAsyncJavaScript("edit.focusLate(1000)", contentWorld: .page)
+  }
+
   /// Keys as a person types them, once the editor takes them itself: each once the page has had the one before (a burst
   /// would have the input method answer every key before the page saw the first)
   func typeInTurn(_ text: String) async {
@@ -113,23 +135,43 @@ extension Rig {
   /// "ni" and Space typed at once after the double-click, before the editor is there: they go through the input method
   /// too, so 你 is written (WebKit gives a web view an input context only once it has heard from the page that the
   /// focused element is editable; keys handed to it before that went past the input method)
-  @Test func pinyinTypedAtOnceAfterTheDoubleClickIsComposed() async throws {
+  /// …on a Note, a Text and a Box, also when the editor takes the focus late (a busy machine): the keys wait for the
+  /// input context however long it takes, then go in the order typed
+  @Test(arguments: ["n1", "t1", "b1"], [false, true])
+  func pinyinTypedAtOnceAfterTheDoubleClickIsComposed(id: String, late: Bool) async throws {
     Pinyin.install()
     let r = try await Rig(zoom: 1)
     defer {
       Pinyin.windows.remove(r.window.windowNumber)
       r.close()
     }
-    let before = r.doc.board.card(cid("n1"))?.writing ?? ""
+    if late { await r.editorFocusesLate() }
+    let before = r.doc.board.card(cid(id))?.writing ?? ""
     Pinyin.windows.insert(r.window.windowNumber)
-    r.doubleClick(CGPoint(x: 40, y: 40))
+    r.doubleClick(id == "n1" ? CGPoint(x: 40, y: 40) : r.centre(id))
     r.press("ni ")
     await r.editorReady()
     await r.until("the keys handed over") { r.canvas.noteEditor.view.held == nil }
     r.press("\u{1b}")
     await r.until("left") { !r.canvas.isEditing }
-    let now = r.doc.board.card(cid("n1"))?.writing ?? ""
+    let now = r.doc.board.card(cid(id))?.writing ?? ""
     #expect(now.contains("你") && now.count == before.count + 1, "\(before) → \(now)")
+  }
+
+  /// Keys typed at once, then the writing left before the editor took them (its focus late): they are dropped, not
+  /// written anywhere, and the keys after that reach the board
+  @Test func keysTypedForAnEditorLeftBeforeItTookThemAreDropped() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    await r.editorFocusesLate()
+    let before = r.doc.board.card(cid("n1"))?.writing
+    r.doubleClick(CGPoint(x: 40, y: 40))
+    r.press("xyz")
+    await r.editorReady()
+    await r.canvas.endEditing()
+    await r.until("the keys let go") { r.canvas.noteEditor.view.held == nil }
+    #expect(r.doc.board.card(cid("n1"))?.writing == before)
+    #expect(!r.canvas.isEditing)
   }
 
   /// "ni", Space and at once Esc, on a Note, a Text and a Box being written: the Esc right after the commit leaves. Here

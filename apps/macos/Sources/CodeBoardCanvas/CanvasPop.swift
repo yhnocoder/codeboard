@@ -442,7 +442,8 @@ extension CanvasView {
   }
 
   /// Place on Board (actions/notes.ts placeSidenote): the sidenote as a card at the nearest free place from 48 right of
-  /// the card it is on and 20 down, an arrow to it from where it was, one step, selected; the popup closes
+  /// the card it is on and 20 down, an arrow to it from where it was, one step, selected, brought into view (addCards);
+  /// the popup closes
   func placeSidenote(_ n: SidenoteID) {
     guard let b = document?.board, let on = b.sidenote(n)?.anchor.card, let i = index(of: .card(on)),
       let r = scene?.items[i].rect
@@ -458,7 +459,7 @@ extension CanvasView {
     card.x = at.x
     card.y = at.y
     openPop(nil)
-    settle(id, size, "Place on Board") { $0.placeSidenote(n, as: card) }
+    settle(id, size, "Place on Board", reveal: true) { $0.placeSidenote(n, as: card) }
   }
 
   // MARK: Tint

@@ -66,7 +66,12 @@ extension Rig {
     let from = r.rect("b1")
     r.drag(r.centre("b1"), CGPoint(x: r.centre("b1").x + 120, y: r.centre("b1").y + 40)) {
       let at = r.element("b1")?.1 ?? .null
-      #expect(near(at, from.offsetBy(dx: 120, dy: 40)), "mid-drag: \(at), from \(from)")
+      // picked up: grown about 18 below its top left corner as far as it has grown now
+      let box = r.canvas.items[r.canvas.index(of: .card(cid("b1")))!].box
+      let k = box.presentation()?.transform.m11 ?? 1
+      let to = from.offsetBy(dx: 120, dy: 40)
+      let want = CGRect(x: to.minX, y: to.minY + 18 * (1 - k), width: to.width * k, height: to.height * k)
+      #expect(near(at, want), "mid-drag: \(at), from \(from)")
     }
   }
 

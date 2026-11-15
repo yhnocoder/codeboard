@@ -28,7 +28,7 @@ import "../../../../packages/board/src/styles.css";
 import "@yhnocoder/markdown/style.css";
 import "../../../../packages/board/src/themes.css";
 import "./page.css";
-import { classifyPaste } from "../../../../packages/core/src/paste";
+import { classifyPaste, guessLang, pythonDialect } from "../../../../packages/core/src/paste";
 import { cleanSvg, svgDataUrl } from "../../../../packages/board/src/md/images";
 import { pop } from "./pop";
 import { openRefAt, watchRefs } from "./refclick";
@@ -40,7 +40,8 @@ type Note = {
   layout: MdLayout | null;
   style:
     | { note: { hideHead?: boolean } }
-    | { text: { look: "text" | "box"; fill: string; fontSize: number; wrap: boolean } };
+    | { text: { look: "text" | "box"; fill: string; fontSize: number; wrap: boolean } }
+    | { inline: Record<string, never> };
   width: number;
   height: number | null;
   /** The board theme's id: html[data-look] and its class, as the board's settings apply it (actions/settings.ts applyLook) */
@@ -120,13 +121,29 @@ let shown: Slot | undefined;
 const frames = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
 /** The card and body classes Card.tsx and NoteBody.tsx give each kind, with the variables they set on the card */
-function cardFor(n: Note): { card: HTMLDivElement; body: HTMLDivElement } {
+/** `outer`: what goes in the slot when it is not the card itself (an Always Show note's .inotes) */
+function cardFor(n: Note): { card: HTMLDivElement; body: HTMLDivElement; outer?: HTMLElement } {
+  const s = n.style;
+  if ("inline" in s) {
+    // an Always Show sidenote under its lines in a code card (CodeBody .inotes > .inote): the canvas draws the code,
+    // the page this note, as wide as the card leaves it
+    const c = document.createElement("div");
+    const body = document.createElement("div");
+    c.className = "inote";
+    c.style.width = `${n.width}px`;
+    c.style.maxWidth = "none";
+    body.className = "nbody editing md";
+    c.append(body);
+    const wrap = document.createElement("div");
+    wrap.className = "inotes";
+    wrap.append(c);
+    return { card: c, body, outer: wrap };
+  }
   const c = document.createElement("div");
   const face = document.createElement("div");
   const body = document.createElement("div");
   face.className = "cface";
   c.append(face);
-  const s = n.style;
   if ("note" in s) {
     c.className = "card note";
     // the header keeps its height (the canvas draws the header itself)
@@ -252,10 +269,10 @@ async function measure(ids: string[]): Promise<Record<string, Size>> {
   return out;
 }
 
-function newSlot(id: string, card: HTMLElement): Slot {
+function newSlot(id: string, card: HTMLElement, outer: HTMLElement = card): Slot {
   const slot = document.createElement("div");
   slot.className = "slot";
-  slot.append(card);
+  slot.append(outer);
   root.append(slot);
   const s: Slot = { slot, card };
   slots.set(id, s);
@@ -319,13 +336,18 @@ async function pasted(text: string) {
 window.note = {
   /** What a paste of plain text makes (pasted) */
   paste: pasted,
+  /** The language Free code's text looks like, null when it cannot tell (core commands/code.ts freeLang) */
+  lang(text: string) {
+    const g = guessLang(text);
+    return g === "python" ? pythonDialect(text) : g;
+  },
   /** Mounts Notes at 100 % (each one not mounted yet, under its id) and measures them all */
   async mount(list: { id: string; note: Note; images: string }[]) {
     for (const { id, note: n, images } of list) {
       if (slots.has(id)) continue;
       setLook(n.look, n.dark);
       const made = cardFor(n);
-      const s = newSlot(id, made.card);
+      const s = newSlot(id, made.card, made.outer);
       if ("note" in n.style) s.md = n.text;
       s.editor = mountEditor(mdFor(images, n.refs), made.body, {
         value: n.text,
@@ -605,6 +627,14 @@ addEventListener(
 );
 
 const edit = {
+  /** Tests: the editor takes the focus `ms` late from now on, as on a busy machine (WebKit gives the view its input
+   *  context only once the page has focused something editable) */
+  focusLate(ms: number) {
+    const focus = HTMLElement.prototype.focus;
+    HTMLElement.prototype.focus = function (this: HTMLElement, o?: FocusOptions) {
+      setTimeout(() => focus.call(this, o), ms);
+    };
+  },
   /** The keydowns seen so far */
   keysSeen: () => keysSeen,
   /** Resolves once `n` keydowns have been seen, or after `ms` (a key that reaches no page) */

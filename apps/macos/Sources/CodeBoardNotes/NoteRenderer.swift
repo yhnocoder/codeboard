@@ -201,6 +201,20 @@ public final class NoteRenderer {
     }
   }
 
+  /// The language Free code's text looks like, as the board guesses it (core freeLang); nil when it cannot tell
+  public func freeLanguage(_ text: String) async throws -> String? {
+    try await takeTurn(priority: Int.max)
+    defer { endTurn() }
+    do {
+      let p = try page ?? NotePage(page: pageFolder)
+      page = p
+      return try await p.freeLanguage(text)
+    } catch {
+      page = nil
+      throw error
+    }
+  }
+
   /// Each Note's size at 100 % and where its first glyph is from its top left (nil when it has none), measured now: what
   /// a Text keeps in place when it becomes a Box (the board measures it the same way, notes.ts setTextLook)
   public func firstGlyphs(of notes: [SizeRequest]) async throws -> [(size: CGSize, first: CGPoint?)?] {
