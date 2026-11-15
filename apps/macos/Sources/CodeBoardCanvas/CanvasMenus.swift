@@ -8,7 +8,7 @@ import CodeBoardModel
 extension CanvasView {
   /// What is under the pointer, selected first when it is not
   public override func menu(for e: NSEvent) -> NSMenu? {
-    if opening { return nil }
+    if opening || alignBarButton(at: convert(e.locationInWindow, from: nil)) != nil { return nil }
     // the window stopped any glide first (BoardWindow): the menu is for what is under the pointer there
     closeChip()
     guard let doc = document, gesture == nil, levels.level == .cards else { return nil }

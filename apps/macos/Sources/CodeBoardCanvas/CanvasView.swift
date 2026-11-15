@@ -376,6 +376,14 @@ public final class CanvasView: NSView {
   /// when let go over it (`over`), and does nothing when let go off it
   var held: (over: (CGPoint) -> Bool, act: () -> Void)?
   var chipInside = false
+  /// The bar over two or more selected cards, in view points (CanvasAlignBar.swift), its ⋯ panel in it
+  let alignBar = CALayer()
+  let alignMoreLayer = CALayer()
+  var alignMore = false
+  var alignFor: [CardID] = []
+  var alignHovered: AlignBarButton?
+  var alignPressed: AlignBarButton?
+  var alignBarDrawn: AlignBarLook?
   var choosingChip = false
   /// How long the chip stays once the pointer is not over it (timing.ts PASTE_CHIP_IDLE)
   package var chipIdle = Duration.milliseconds(6000)
@@ -450,6 +458,10 @@ public final class CanvasView: NSView {
     marquee.fillColor = nil
     root.addSublayer(marquee)
     toastLayer.isHidden = true
+    alignBar.isHidden = true
+    alignMoreLayer.isHidden = true
+    alignBar.addSublayer(alignMoreLayer)
+    root.addSublayer(alignBar)
     root.addSublayer(toastLayer)
     stickerGhost.anchorPoint = .zero
     stickerGhost.isHidden = true
@@ -924,7 +936,7 @@ public final class CanvasView: NSView {
     m.m42 = -camera.origin.y * camera.zoom
     withoutAnimation {
       world.sublayerTransform = m
-      if chrome.sublayers?.isEmpty == false { drawChrome() }
+      if chrome.sublayers?.isEmpty == false { drawChrome() } else { placeAlignBar() }
       if editing != nil { cameraMovedWhileEditing() }
       if popShown != nil { positionPop() }
       if refPeek != nil { placeRefPeek() }

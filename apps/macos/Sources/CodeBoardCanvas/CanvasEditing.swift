@@ -482,6 +482,7 @@ extension CanvasView {
     guard let doc = document, scene != nil else {
       chrome.sublayers = nil
       litArrows.sublayers = nil
+      placeAlignBar()
       return
     }
     if case .move? = gesture?.kind {
@@ -537,6 +538,7 @@ extension CanvasView {
       if let acts = sectionActsLayer() { chrome.addSublayer(acts) }
       drawHoverLine()
       placeHeadActs()
+      placeAlignBar()
       drawPorts()
       drawConnect()
       guard doc.selection.count == 1, let item = doc.selection.first, !doc.board.isLocked(item) else { return }
@@ -920,6 +922,14 @@ extension CanvasView {
     guard gesture == nil else { return }
     if spaceHeld { return NSCursor.openHand.set() }
     hoverChip(at: camera.board(v))
+    let onBar = alignBarButton(at: v)
+    hoverAlignBar(onBar ?? nil)
+    if onBar != nil {
+      NSCursor.arrow.set()
+      hoverHead(nil)
+      hover(nil)
+      return
+    }
     if chipInside {
       NSCursor.arrow.set()
       hover(nil)
@@ -994,6 +1004,7 @@ extension CanvasView {
   public override func mouseExited(with e: NSEvent) {
     pointerInWindow = nil
     hoverChip(at: CGPoint(x: CGFloat.infinity, y: .infinity))
+    hoverAlignBar(nil)
     hoverHead(nil)
     hoverTitle(nil, act: nil)
     hoverSummary(nil)
@@ -1018,6 +1029,15 @@ extension CanvasView {
     guard let doc = document, scene != nil, gesture == nil else { return }
     let v = convert(e.locationInWindow, from: nil)
     let p = camera.board(v)
+    // the bar's buttons, acting on the release over them; a press anywhere else closes its panel
+    if let on = alignBarButton(at: v) {
+      if let b = on {
+        alignPressed = b
+        placeAlignBar()
+      }
+      return
+    }
+    if alignMore { setAlignMore(false) }
     // the chip's buttons; a press anywhere else closes it. A button acts on the release over it (main's .tbtn)
     if let on = chipButton(at: p) {
       if let b = on {
@@ -1198,6 +1218,7 @@ extension CanvasView {
   public override func mouseDragged(with e: NSEvent) {
     if spacePanDragged(e) { return }
     if chipPressed != nil { return hoverChip(at: camera.board(convert(e.locationInWindow, from: nil))) }
+    if alignPressed != nil { return hoverAlignBar(alignBarButton(at: convert(e.locationInWindow, from: nil)) ?? nil) }
     if held != nil { return }
     if let d = markDrag {
       let v = convert(e.locationInWindow, from: nil)
@@ -1306,6 +1327,13 @@ extension CanvasView {
 
   public override func mouseUp(with e: NSEvent) {
     if spacePanUp(e) { return }
+    if let b = alignPressed {
+      alignPressed = nil
+      let over = alignBarButton(at: convert(e.locationInWindow, from: nil)) == .some(b)
+      placeAlignBar()
+      if over { pressAlignBar(b) }
+      return
+    }
     if let b = chipPressed {
       chipPressed = nil
       if chipButton(at: camera.board(convert(e.locationInWindow, from: nil))) == .some(b) {
@@ -1807,6 +1835,8 @@ extension CanvasView {
 
   public override func keyDown(with e: NSEvent) {
     if opening { return }
+    // Esc closes the bar's open panel, and only that
+    if alignMore, e.keyCode == 53 { return setAlignMore(false) }
     guard document != nil else { return super.keyDown(with: e) }
     if editing != nil {
       // the editor is mounting: its keys wait for it, Esc among them, in the order typed
