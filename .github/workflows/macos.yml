@@ -45,12 +45,21 @@ jobs:
         run: |
           sudo xcode-select -s "$(find /Applications -maxdepth 1 -type d -name 'Xcode_*.app' | sort -V | tail -1)"
           swift --version
-      - uses: actions/cache@v5
+      # the last regular full run's build (see the app job): the driver is in it, so only what changed since is compiled
+      - id: built
+        uses: actions/cache/restore@v5
+        with:
+          path: apps/macos/.build
+          key: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.sha }}
+          restore-keys: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-
+      - if: ${{ !steps.built.outputs.cache-matched-key }}
+        uses: actions/cache@v5
         with:
           path: |
             apps/macos/.build/repositories
             apps/macos/.build/checkouts
           key: swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}
+      - run: node apps/macos/tools/ci/source-times.mjs
       - run: npx playwright-core install chromium
       # (the boards were built above: --skip-build leaves the web builds out; the driver is built, debug, either way)
       - run: >-
@@ -94,41 +103,36 @@ jobs:
         run: |
           sudo xcode-select -s "$(find /Applications -maxdepth 1 -type d -name 'Xcode_*.app' | sort -V | tail -1)"
           swift --version
-      # cloning tree-sitter and its grammars with their whole history took about a minute and a half on every run. The
-      # regular full run on main is what fills the cache PRs start from: a cache saved on the default branch is readable
-      # by every PR's run
-      - uses: actions/cache@v5
+      # A PR starts from the build the last regular full run made on main (.build, about 500 MB), so it compiles only
+      # what differs from it: compiling everything takes 2 to 4.5 minutes, depending on the runner. The regular run
+      # itself starts from nothing, so a wrong kept build lasts 6 hours at most. A cache saved on the default branch is
+      # readable by every PR's run
+      - id: built
+        if: ${{ !inputs.everything }}
+        uses: actions/cache/restore@v5
+        with:
+          path: apps/macos/.build
+          key: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.sha }}
+          restore-keys: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-
+      # without a kept build: the clones of tree-sitter and its grammars with their whole history, which took about a
+      # minute and a half to fetch on every run
+      - if: ${{ !steps.built.outputs.cache-matched-key }}
+        uses: actions/cache@v5
         with:
           path: |
             apps/macos/.build/repositories
             apps/macos/.build/checkouts
           key: swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}
-      # (trial) the products of an earlier build, so that only what changed since is compiled again
-      - uses: actions/cache/restore@v5
-        with:
-          path: apps/macos/.build
-          key: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.run_id }}
-          restore-keys: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-
-      # a checkout gives every file the time of the checkout, which the build takes for a change to all of them: each
-      # tracked file gets a time made from its content instead, the same on every run until the file changes
-      - name: Give the sources the same times on every checkout
-        run: |
-          git ls-files -s -z . | node -e '
-            const fs = require("node:fs");
-            for (const entry of fs.readFileSync(0, "utf8").split("\0").filter(Boolean)) {
-              const [meta, file] = entry.split("\t");
-              const at = 978307200 + Number.parseInt(meta.split(" ")[1].slice(0, 7), 16);
-              fs.utimesSync(file, at, at);
-            }'
-          du -sh .build 2>/dev/null || true
+      # the times the kept build saw on the sources (source-times.mjs), or everything would be compiled again
+      - run: node tools/ci/source-times.mjs
       # one build of the app, its tools and the tests: swift build then swift test compiled twice
       - run: swift build --build-tests
-      - run: du -sh .build .build/* 2>/dev/null | sort -h | tail -15
       # saved here, not at the end of the job, so that a failing test does not lose the build
-      - uses: actions/cache/save@v5
+      - if: ${{ inputs.everything }}
+        uses: actions/cache/save@v5
         with:
           path: apps/macos/.build
-          key: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.run_id }}
+          key: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.sha }}
       # every test in the regular full run; on a PR the important ones and those of what it changed (Tests/tiers.json)
       - run: node tools/tests/pick.mjs ${{ inputs.everything && '--all' || '--base HEAD^1' }}
       - if: ${{ !cancelled() }}
