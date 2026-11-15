@@ -2374,9 +2374,15 @@ public final class MarkdownEditorView: NSView {
     ]
   }
 
+  /// Where a press is not the editor's but the host's under it, in the editor's own points (the canvas: the buttons of
+  /// a Note's header folded under the editor)
+  public var letThrough: ((CGPoint) -> Bool)?
+
   /// the image grips reach past the editor's edge (as on the web, into the card's padding): a press there is still the
   /// editor's, not the card's under it (which ends editing)
   public override func hitTest(_ point: NSPoint) -> NSView? {
+    // the host's own controls under it (a folded header's buttons) take their presses
+    if letThrough?(convert(point, from: superview)) == true { return nil }
     // what floats on the Note may reach past its edges (the heading chip in the left padding, a band over a first block):
     // a press there is still its, which AppKit would not route outside the view's frame
     let p0 = convert(point, from: superview)

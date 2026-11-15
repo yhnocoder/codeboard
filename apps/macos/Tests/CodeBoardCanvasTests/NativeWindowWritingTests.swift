@@ -221,9 +221,9 @@ import Testing
     await r.until("writing") { r.canvas.editing?.writer != nil }
     let v = try writer(r)
     #expect(try titleInk() < atRest / 10, "the paper's header folded: no title on it")
-    // the selected card's header strip over it: its ··· only, no title drawn again (.chead.fold > .ib)
+    // the selected card's header strip over it: its buttons only (M↓ and ···), no title drawn again (.chead.fold > .ib)
     let head = try #require(r.canvas.head(cid("n1")))
-    #expect(head.folded && head.buttons.map(\.0) == [.more])
+    #expect(head.folded && head.buttons.map(\.0) == [.source, .more])
     let shown = try #require(r.canvas.headShown[cid("n1")]?.layer.contents, "the strip shows")
     let strip = shown as! CGImage
     let dots = try #require(head.buttons.first?.1)

@@ -95,6 +95,14 @@ extension CanvasView {
     let layout = display.editorLayout(l, folder: n.folder, refs: n.refs, dark: theme.dark)
     let v = MarkdownEditorView(layout: layout, caret: (text as NSString).length)
     v.delegate = self
+    // the header folded under it keeps its buttons (.chead.fold > .ib: pointer-events auto)
+    v.letThrough = { [weak self, weak v] p in
+      guard let self, let v, let r = self.scene?.placed[id]?.rect else { return false }
+      let b = self.camera.board(self.convert(p, from: v))
+      // only over the header strip: what lies under the rest of the editor is never asked for
+      guard b.y < r.minY + self.theme.headerHeight else { return false }
+      return self.headAct(at: b).map { $0.0 == id } == true
+    }
     // a click in a window that is not key goes to it as to the canvas
     v.acceptsFirstClick = acceptsFirstMouse(for: nil)
     v.selectionColor = theme.textSelection

@@ -1114,6 +1114,17 @@ extension CanvasView {
     // and the text selected at rest (the browser's selection goes with a press)
     clearRestText()
     if spacePanDown(e) { return }
+    // a header button of the card written in (its M↓, its ···): the writing goes on, the keys stay in the editor
+    if let ed = editing, ed.writer != nil,
+      let (id, a) = headAct(at: camera.board(convert(e.locationInWindow, from: nil))), id == ed.id
+    {
+      if e.clickCount == 1 {
+        hold(
+          over: { [weak self] in self?.headAct(at: $0).map { $0 == (id, a) } == true },
+          act: { [weak self] in self?.press(a, of: id) })
+      }
+      return
+    }
     // AppKit sends a multi-click's later presses to the view its first went to: a double-click's second press over the
     // editor its first press opened is the editor's, as in main
     if let w = writingView, let sv = w.superview,

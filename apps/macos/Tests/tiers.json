@@ -297,7 +297,7 @@
         },
         "card headers": {
           "sources": ["CodeBoardCanvas/CanvasHeadActs.swift", "CodeBoardModel/HeadingSplit.swift"],
-          "tests": ["CanvasHeadActsTests", "CanvasHeadingTests"]
+          "tests": ["CanvasHeadActsTests", "CanvasHeadingTests", "CanvasSourceTests"]
         },
         "camera": {
           "sources": [
