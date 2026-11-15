@@ -185,6 +185,8 @@ extension CanvasView {
     } else {
       return
     }
+    // the sidenote popups open go first (actions/notes.ts goToQuestion)
+    openPop(nil)
     openPop(at, focus: id)
   }
 

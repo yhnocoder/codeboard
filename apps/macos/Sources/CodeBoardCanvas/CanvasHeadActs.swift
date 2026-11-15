@@ -14,6 +14,8 @@ enum HeadAct: Equatable {
   case fit, wrap, copy, lang, split, more
   /// A Web card's Open in Browser
   case open
+  /// A locked card's lock, first in its header (.lockb): Unlock
+  case unlock
 }
 
 extension CanvasView {
@@ -101,7 +103,15 @@ extension CanvasView {
       }
       x -= 2
     }
-    h.buttons = buttons.reversed() + [more]
+    // a locked card's lock first, left of its title (.lockb)
+    let locked =
+      switch it.drawing {
+      case .code(let c): c.locked
+      case .note(let n): n.locked
+      default: false
+      }
+    let lockb = CGRect(x: t.headerPad, y: t.headerHeight / 2 - 9, width: 18, height: 18)
+    h.buttons = (locked ? [(.unlock, lockb)] : []) + buttons.reversed() + [more]
     h.reserve = right - (x + 2) + t.headerGap
     return h
   }
@@ -132,11 +142,10 @@ extension CanvasView {
     case .fit: if !h.faint.contains(.fit) { fitCards([id]) }
     case .wrap: toggleWrap([id])
     case .copy: copyCode(id)
+    case .unlock: doc.edit("Unlock") { $0.setLocked([.card(id)], false) }
     case .split: if !h.faint.contains(.split) { splitByHeadings(id) }
     case .open:
-      if case .own(let k)? = doc.board.card(id)?.content, case .web(let w) = k.body, let u = URL(string: w.url) {
-        openURL(u)
-      }
+      if case .own(let k)? = doc.board.card(id)?.content, case .web(let w) = k.body { openLink(w.url) }
     case .lang, .more:
       guard let r = h.buttons.first(where: { $0.0 == a })?.1, let i = index(of: .card(id)) else { return }
       // under the button (main's below(el)), in the view
@@ -166,6 +175,7 @@ extension CanvasView {
     }
     pasteboard.clearContents()
     pasteboard.setString(lines.joined(separator: "\n"), forType: .string)
+    lastCopy = (id, lines.joined(separator: "\n"), 0)
     toast("Copied \(lines.count) lines")
   }
 
@@ -241,6 +251,7 @@ extension CanvasView {
         ? "Split by Headings · \(h.parts + 1) cards, linked by arrows" : "Split by Headings · no headings to split at"
     case .more: "More Actions"
     case .open: "Open in Browser  Double-click"
+    case .unlock: "Unlock"
     }
   }
 
@@ -393,6 +404,16 @@ enum HeadActs {
         Drawing.text(ctx, label, HeadActs.langFont, lit ? t.ink : t.ink3, x: r.minX + 5, midY: r.midY, width: .infinity)
         continue
       }
+      if a == .unlock {
+        // drawn with the header; lit: .lockb:hover, the row's tint behind it and the lock in the accent
+        if lit {
+          ctx.addPath(CGPath(roundedRect: r, cornerWidth: 5.5, cornerHeight: 5.5, transform: nil))
+          ctx.setFillColor(t.hlrow)
+          ctx.fillPath()
+          Drawing.lock(ctx, in: r, t.accent)
+        }
+        continue
+      }
       let faint = h.faint.contains(a)
       if lit && !faint {
         ctx.addPath(CGPath(roundedRect: r, cornerWidth: 8.5, cornerHeight: 8.5, transform: nil))
@@ -414,7 +435,7 @@ enum HeadActs {
         case .wrap: wrap
         case .copy: copy
         case .split: splitH
-        case .more, .lang, .open: CGMutablePath()
+        case .more, .lang, .open, .unlock: CGMutablePath()
         }
       ctx.saveGState()
       if faint { ctx.setAlpha(0.35) }

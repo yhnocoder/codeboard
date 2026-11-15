@@ -31,6 +31,12 @@ import Testing
     {
       method_exchangeImplementations(a, b)
     }
+    // the system's Pinyin as the input source the view is told of (the person's is not changed): WebKit gives the page
+    // its keys as it does for an input method (keyCode 229), not as for a keyboard layout
+    if let a = class_getInstanceMethod(c, #selector(getter: NSTextInputContext.selectedKeyboardInputSource)) {
+      let block: @convention(block) (NSTextInputContext) -> String? = { _ in "com.apple.inputmethod.SCIM.ITABC" }
+      method_setImplementation(a, imp_implementationWithBlock(block))
+    }
     if let a = class_getInstanceMethod(c, #selector(NSTextInputContext.handleEvent(_:))),
       let b = class_getInstanceMethod(c, #selector(NSTextInputContext.pinyinHandleNow(_:)))
     {
@@ -81,7 +87,38 @@ extension NSTextInputContext {
   }
 }
 
+/// Windows this process takes as key, as for a person typing in them, without taking the focus: WebKit gives the page
+/// the focus (document.hasFocus()) only in a key window, and CodeMirror follows the caret WebKit sets only while its
+/// page has it
+@MainActor enum KeyWindows {
+  nonisolated(unsafe) static let windows = NSHashTable<NSWindow>.weakObjects()
+  private static var installed = false
+
+  static func add(_ w: NSWindow) {
+    if !installed, let m = class_getInstanceMethod(NSWindow.self, #selector(getter: NSWindow.isKeyWindow)) {
+      installed = true
+      typealias Imp = @convention(c) (NSWindow, Selector) -> Bool
+      let isKey = unsafeBitCast(method_getImplementation(m), to: Imp.self)
+      let block: @convention(block) (NSWindow) -> Bool = { w in
+        windows.contains(w) || isKey(w, #selector(getter: NSWindow.isKeyWindow))
+      }
+      method_setImplementation(m, imp_implementationWithBlock(block))
+    }
+    windows.add(w)
+    NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: w)
+  }
+}
+
 extension Rig {
+  /// The window key as a person's is while they type, and the editor's page with the focus
+  func pageFocused() async {
+    KeyWindows.add(window)
+    let v = canvas.noteEditor.view
+    await until("the page has the focus") {
+      (try? await v.callAsyncJavaScript("return document.hasFocus()", contentWorld: .page) as? Bool) == true
+    }
+  }
+
   /// The editor's page takes the focus a second late from now on, as on a busy machine: WebKit gives the web view its
   /// input context only then, so keys typed at once wait longer than a page frame or two
   func editorFocusesLate() async {

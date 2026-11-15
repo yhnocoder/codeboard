@@ -71,7 +71,8 @@ extension CanvasView {
       bySpot[s, default: []].append(n)
     }
     // a free spot whose popup is open with nothing written yet shows its marker too, empty
-    if case .spot(let s)? = openPop, case .point = s, bySpot[s] == nil {
+    for p in pops {
+      guard case .spot(let s) = p.at, case .point = s, bySpot[s] == nil else { continue }
       spots.append(s)
       bySpot[s] = []
     }
@@ -224,7 +225,7 @@ extension CanvasView {
       }
     }
     // a popup goes with its marker
-    if popShown != nil { positionPop() }
+    if !pops.isEmpty { positionPop() }
     placeStickers()
   }
 
@@ -241,7 +242,7 @@ extension CanvasView {
   func paintMark(_ l: CALayer, _ m: Mark, hovered: Bool) {
     let t = theme
     if m.add { return paintAdd(l, hovered: hovered) }
-    let open = openPop == m.at
+    let open = pops.contains { $0.at == m.at }
     let text = m.ask ? "?" : m.notes.isEmpty ? "" : "\(m.notes.count)"
     var bg: CGColor
     var ink: CGColor
@@ -350,7 +351,7 @@ extension CanvasView {
 extension CanvasView {
   /// A marker clicked: its popup opens, or closes when it is open (hover never opens one)
   func togglePop(_ at: PopAt) {
-    openPop(openPop == at ? nil : at)
+    if let p = pops.first(where: { $0.at == at }) { closePop(p) } else { openPop(at) }
   }
 
 }

@@ -187,7 +187,7 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     #expect(
       titles(m) == [
         "Connect with Arrow", "Move to Section", "Move to New Section", "Move to Shelf", "Turn into Board…", "Lock",
-        "Tilt", "Arrange", "Copy Paths", "-", "Cut", "Copy", "Duplicate", "Delete",
+        "Tilt", "Tidy Up", "Arrange", "Copy Paths", "-", "Cut", "Copy", "Duplicate", "Delete",
       ])
     #expect(titles(item(m, "Move to Section")?.submenu) == ["Outer", "Outer › Inner"])
     #expect(item(m, "Turn into Board…")?.keyEquivalent == "b")
@@ -214,7 +214,7 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     r.doc.select([.section(gid("g1")), .section(gid("g2"))])
     #expect(
       titles(menu(r, at: title)) == [
-        "Fit Content", "Lock", "Color", "Copy Paths", "-", "Move to Shelf", "Remove 2 Sections",
+        "Fit Content", "Tidy Up", "Lock", "Color", "Copy Paths", "-", "Move to Shelf", "Remove 2 Sections",
       ])
   }
 

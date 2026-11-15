@@ -1,0 +1,13 @@
+# Free code written over with Rust: once the writing ends its language is Rust, as the header's language button says (commands/code.ts writeFreeCode, freeLang); both sides
+zoom 1
+center @cfree+150,60
+dbl @cfree+120,62
+wait 800
+key cmd+a
+type fn main() { let v: Vec<u32> = Vec::new(); println!("{}", v.len()); }
+wait 300
+key esc
+wait 900
+move @cfree+150,20 300
+wait 500
+shot lang @cfree+-10,-10 340 120

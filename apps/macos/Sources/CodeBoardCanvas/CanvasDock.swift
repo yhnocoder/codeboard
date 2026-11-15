@@ -305,9 +305,26 @@ package final class CanvasDock: NSView {
         rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
   }
 
-  package override func mouseMoved(with e: NSEvent) { hover = part(at: convert(e.locationInWindow, from: nil)) }
-  package override func mouseExited(with e: NSEvent) { hover = nil }
+  /// What a part says (Chrome.tsx Dock data-tip, data-kbd; QuestionList.tsx: none while its list is open)
+  func tip(_ p: Part) -> Tip? {
+    switch p {
+    case .shelf: Tip(armed || hot ? "Drop to Move to Shelf" : "Shelf")
+    case .questions: listOpen ? nil : Tip("Questions")
+    default: Tip(p.label, kbd: BoardKey.show(of: p.label))
+    }
+  }
+
+  package override func mouseMoved(with e: NSEvent) {
+    hover = part(at: convert(e.locationInWindow, from: nil))
+    let r = hover.flatMap { layoutParts().parts[$0] } ?? .zero
+    Tips.shared.hover(hover.flatMap(tip), r, in: self, theme: theme)
+  }
+  package override func mouseExited(with e: NSEvent) {
+    hover = nil
+    Tips.shared.hover(nil, in: self, theme: theme)
+  }
   package override func mouseDown(with e: NSEvent) {
+    Tips.shared.press()
     pressed = part(at: convert(e.locationInWindow, from: nil))
   }
   package override func mouseUp(with e: NSEvent) {

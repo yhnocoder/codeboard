@@ -117,7 +117,8 @@ private func keysBoard() -> Board {
           ("↵", "Open the card selected (an arrow alone: its label)"), ("⌘↵", "Open the selected board frame"),
           ("⌘D", "Duplicate"), ("⌥⇧⌘F", "Bring to Front"), ("⌥⇧⌘B", "Send to Back"), ("⌘X", "Cut"), ("⌘C", "Copy"),
           ("⌫", "Delete"), ("⇧⌘L", "Lock / Unlock"), ("⇧⌘B", "Turn into Board"), ("⌥F", "Fit Content"),
-          ("⌥⇧T", "Tilt"), ("⌥S", "Move to Shelf"), ("⌥Z", "Wrap Lines"), ("Arrows", "Nudge (⇧ = 10px on screen)"),
+          ("⌥T", "Tidy Up"), ("⌥⇧T", "Tilt"), ("⌥S", "Move to Shelf"), ("⌥Z", "Wrap Lines"),
+          ("Arrows", "Nudge (⇧ = 10px on screen)"),
         ]
       ),
       ("Code", [("Click line numbers", "Select lines (⇧ extends)"), ("H", "Hide lines")]),
@@ -125,7 +126,7 @@ private func keysBoard() -> Board {
         "Board",
         [
           ("⌘Z", "Undo"), ("⇧⌘Z", "Redo"), ("⌘,", "Settings"), ("?", "Keyboard Shortcuts"),
-          ("Esc", "Cancel · Deselect"),
+          ("Esc", "Cancel · Deselect · Back to the parent board"),
           ("⌘O", "Open Vault…"), ("⇧⌘I", "Import Old Boards…"), ("⌘W", "Close Tab"), ("⇧⌘W", "Close Window"),
         ]
       ),
@@ -335,6 +336,26 @@ private func keysBoard() -> Board {
     r.doc.select([.card(cid("w1"))])
     press(r, 36, "\r")
     #expect(opened == [URL(string: "https://www.example.org/posts/one")!])
+  }
+
+  /// Only a web page or a mail address opens (host handlers.ts openLink, which every open goes through): a Web card
+  /// pointing at a file opens nothing
+  @Test func returnOpensNoFileAddress() async throws {
+    let r = try await rig()
+    defer { r.close() }
+    var opened: [URL] = []
+    r.canvas.openURL = { opened.append($0) }
+    r.doc.edit("Edit") { b in
+      guard let i = b.cards.firstIndex(where: { $0.id == cid("w1") }), case .own(var k) = b.cards[i].content,
+        case .web(var w) = k.body
+      else { return }
+      w.url = "file:///Applications/Calculator.app"
+      k.body = .web(w)
+      b.cards[i].content = .own(k)
+    }
+    r.doc.select([.card(cid("w1"))])
+    press(r, 36, "\r")
+    #expect(opened.isEmpty)
   }
 
   /// ⇧⌘B with no card selected makes nothing and says so (subboards.ts turnIntoBoard)

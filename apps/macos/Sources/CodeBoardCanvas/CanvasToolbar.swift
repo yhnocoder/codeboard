@@ -4,20 +4,23 @@ import CodeBoardModel
 // The toolbar at the bottom of the board (Chrome.tsx .bbar), as the web board draws it in each look (its computed
 // styles measured in Chromium): in Warm Ink a glass pill over the board, blurred under it; in Ink Wash one pale stroke
 // of ink with a brush resting at its end (state/ink.ts barSvg). Its buttons are 30 × 28 with a 16-unit icon. The tools
-// are laid out in the web board's order; those not made here yet are left out.
+// are laid out in the web board's order; those not made here yet are left out. Code and Image are main's menus with
+// one item each here (New Code: From GitHub and Add Function are not made; New Image: Paste Image Text and New SVG from
+// Text ask an AI model), so each is that item's button, without the menu's chevron.
 
 /// A tool of the toolbar, in its order
 public enum Tool: CaseIterable, Sendable {
-  case note, text, box, image, web, section, arrow, sticker
+  case note, text, box, code, image, web, section, arrow, sticker
 
   /// What can be made from the Mac app's toolbar now
-  public static let made: [Tool] = [.note, .text, .box, .section, .arrow, .sticker]
+  public static let made: [Tool] = [.note, .text, .box, .code, .image, .section, .arrow, .sticker]
 
   var name: String {
     switch self {
     case .note: "Note"
     case .text: "Text"
     case .box: "Box"
+    case .code: "Code"
     case .image: "Image"
     case .web: "Web"
     case .section: "Section"
@@ -31,6 +34,8 @@ public enum Tool: CaseIterable, Sendable {
     case .note: Icons.note()
     case .text: Icons.text()
     case .box: Icons.box()
+    case .code: Icons.code
+    case .image: Icons.image
     case .section: Icons.section()
     case .arrow: Icons.arrowLink()
     case .sticker: Icons.sticker
@@ -497,9 +502,40 @@ public final class CanvasToolbar: NSView {
     return e.search.contains(p) ? -2 : e.more.contains(p) ? -3 : nil
   }
 
-  public override func mouseMoved(with e: NSEvent) { hover = button(at: convert(e.locationInWindow, from: nil)) }
-  public override func mouseExited(with e: NSEvent) { hover = nil }
+  /// What a button says (Chrome.tsx data-tip, data-kbd); Code and Image say their one item. Search says what the app
+  /// searches: main's also searches functions and files
+  func tip(_ i: Int) -> Tip? {
+    switch i {
+    case -2: return Tip("Search Cards · ? Shortcuts", kbd: BoardKey.show(of: "Search"))
+    case -3: return Tip("More")
+    case tools.indices:
+      return switch tools[i] {
+      case .note: Tip("New Note", kbd: BoardKey.show(of: "New Note"))
+      case .text: Tip("New Text", kbd: BoardKey.show(of: "New Text"))
+      case .box: Tip("New Box", kbd: BoardKey.show(of: "New Box"))
+      case .section: Tip("Draw a Section")
+      case .arrow: Tip("Select two cards, or pick a card then click another")
+      case .sticker: Tip("Add a Sticker")
+      case let t: Tip("New \(t.name)")
+      }
+    default: return nil
+    }
+  }
+
+  func rect(ofButton i: Int) -> CGRect {
+    i == -2 ? extraRects().search : i == -3 ? extraRects().more : buttonRects()[i]
+  }
+
+  public override func mouseMoved(with e: NSEvent) {
+    hover = button(at: convert(e.locationInWindow, from: nil))
+    Tips.shared.hover(hover.flatMap(tip), hover.map { rect(ofButton: $0) } ?? .zero, in: self, theme: theme)
+  }
+  public override func mouseExited(with e: NSEvent) {
+    hover = nil
+    Tips.shared.hover(nil, in: self, theme: theme)
+  }
   public override func mouseDown(with e: NSEvent) {
+    Tips.shared.press()
     pressed = button(at: convert(e.locationInWindow, from: nil))
   }
 
@@ -546,16 +582,26 @@ public final class CanvasToolbar: NSView {
 }
 
 extension CanvasView {
-  /// A tool of the toolbar: a new Note, Text or Box in the middle of the view, written in at once
+  /// A tool of the toolbar: a new Note, Text, Box or Free code in the middle of the view, written in at once; a picture
+  /// file as a new image card
   public func use(_ tool: Tool) {
     switch tool {
     case .note: createInView(.note)
     case .text: createInView(.text(.text))
     case .box: createInView(.text(.box))
+    case .code: newCodeInView()
+    case .image: newImage()
     case .section: useSection()
     case .arrow: useArrow()
     default: break
     }
+  }
+
+  /// The toolbar's Code: a new Free code card 60 above the middle of the view, written in at once (create.ts
+  /// newFreeCode with no point)
+  func newCodeInView() {
+    let v = camera.visible(bounds.size)
+    editSoon { await self.createCode(at: CGPoint(x: v.midX - Board.newNoteWidth / 2, y: v.midY - 60)) }
   }
 }
 

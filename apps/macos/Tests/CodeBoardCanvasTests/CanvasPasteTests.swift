@@ -173,4 +173,28 @@ import Testing
     let out = try await paste("Outside", r, pb, at: CGPoint(x: 500, y: 300))
     #expect(out.section == nil)
   }
+
+  /// Text just copied from a card (Copy Code) and pasted on this board lands beside that card, 36 further down and right
+  /// with each paste, over what is there (clipboard.ts pasteNear, addCards exact); other text goes where it would
+  @Test func textCopiedFromACardPastesBesideIt36Apart() async throws {
+    var b = Self.board()
+    let src = Segment(
+      id: SegmentID(rawValue: "s1"), source: .file(path: "a.py", hash: nil), language: "python", firstLine: 10,
+      lines: ["def f(x):", "    y = x + 1", "    return y"])
+    b.cards.append(
+      Card(id: cid("c"), x: 0, y: 600, width: 420, content: .own(CardContent(body: .code(CodeCard(segments: [src]))))))
+    let (r, pb) = try await rig(b)
+    defer { r.close() }
+    r.canvas.copyCode(cid("c"))
+    let copied = try #require(pb.string(forType: .string))
+    let away = CGPoint(x: 700, y: 500)
+    let one = try await paste(copied, r, pb, at: away)
+    #expect(one.x == 36 && one.y == 636, "\(one.x), \(one.y)")
+    // white space around it is the same text
+    let two = try await paste("\n" + copied + "\n\n", r, pb, at: away)
+    #expect(two.x == 72 && two.y == 672, "\(two.x), \(two.y)")
+    // other text: at the pointer
+    let other = try await paste("def g():\n    return 2", r, pb, at: away)
+    #expect(other.x == 700 && other.y == 500, "\(other.x), \(other.y)")
+  }
 }

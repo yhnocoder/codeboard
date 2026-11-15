@@ -296,6 +296,32 @@ func stickerBoard() -> Board {
     #expect(sticker(r, "k1") == nil)
   }
 
+  /// Written in, a card keeps its stickers and its sidenote markers on it, as main's (they are in its face there): moved
+  /// into the paper it is drawn as meanwhile, and back on the card when it is left
+  @Test(arguments: ["n1", "c1"])
+  func aCardBeingWrittenInKeepsItsStickersAndMarkers(_ id: String) async throws {
+    let r = try await Rig(stickerBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    func box() -> CALayer? { c.index(of: .card(cid(id))).map { c.items[$0].box } }
+    func on() -> (stickers: Int, marks: Int) {
+      let b = box()
+      return (c.stickerLayers.filter { $0.superlayer === b }.count, c.markLayers.filter { $0.superlayer === b }.count)
+    }
+    let before = on()
+    #expect(before.stickers == (id == "n1" ? 1 : 2) && (id == "n1" || before.marks > 0), "\(before)")
+    r.doubleClick(r.centre(id))
+    await r.editorReady()
+    await r.until("its paper shown") { c.editing?.ready == true && c.editingOriginal != nil }
+    let writing = on()
+    #expect(writing.stickers == before.stickers && writing.marks == before.marks, "on the paper: \(writing)")
+    r.press("\u{1b}")
+    await r.until("left") { !c.isEditing }
+    await r.settle()
+    let after = on()
+    #expect(after.stickers == before.stickers && after.marks == before.marks, "back on the card: \(after)")
+  }
+
   @Test func deletingACardTakesItsStickersAndUndoBringsThemBack() async throws {
     let r = try await Rig(stickerBoard(), zoom: 1)
     defer { r.close() }

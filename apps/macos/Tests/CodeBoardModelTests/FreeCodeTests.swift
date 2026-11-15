@@ -69,4 +69,18 @@ private func board() -> Board {
     #expect(b == was)
     #expect(b.isFreeCode(cid("f")))
   }
+
+  /// Its language follows the text written, as the page guesses it, unless it was picked by hand; no guess leaves it
+  /// (commands/code.ts writeFreeCode, freeLang)
+  @Test func theLanguageFollowsTheTextUnlessPickedByHand() {
+    func lang(_ b: Board) -> String? { b.freeCodeSegment(cid("f"))?.language }
+    var b = board()
+    b.writeFreeCode(cid("f"), text: "fn main() {}", guessed: "rust")
+    #expect(lang(b) == "rust")
+    b.writeFreeCode(cid("f"), text: "???", guessed: nil)
+    #expect(lang(b) == "rust")
+    b.setFreeCodeLanguage(cid("f"), "cuda")
+    b.writeFreeCode(cid("f"), text: "x = 1", guessed: "python")
+    #expect(lang(b) == "cuda")
+  }
 }

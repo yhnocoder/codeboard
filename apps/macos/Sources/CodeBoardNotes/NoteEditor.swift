@@ -278,7 +278,7 @@ public final class NoteEditor: NSObject {
   }
 
   /// The picture's type by its first bytes, and its size in pixels when it has one
-  nonisolated static func kind(of data: Data) -> (String, (Int, Int)?)? {
+  public nonisolated static func kind(of data: Data) -> (String, (Int, Int)?)? {
     let head = [UInt8](data.prefix(16))
     let ext: String
     if head.starts(with: [0x89, 0x50, 0x4E, 0x47]) {
@@ -341,6 +341,12 @@ public final class EditorWebView: WKWebView {
       return true
     }
     return super.performKeyEquivalent(with: e)
+  }
+
+  /// The Edit menu's Select All goes to the page's editor as its own ⌘A (WebKit's would select the page's text, which
+  /// the Note editor takes as a text selection and shows its format bar for)
+  public override func selectAll(_ sender: Any?) {
+    evaluateJavaScript("edit.selectAll()")
   }
 
   /// Hands a key to the page; false when something over the canvas took it (Esc closing a ref's preview)

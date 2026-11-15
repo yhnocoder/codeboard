@@ -1,0 +1,33 @@
+# Four notes selected: ⌥T lays them out as core's tidy does (main's places on both sides), sliding there; ⌘Z puts them back; the menu's Tidy Up does the same
+zoom 1
+center @cblue:c
+click @cyellow:c
+click @cblue:c shift
+click @cgreen:c shift
+click @cpink:c shift
+mark
+rec tidy
+key alt+t
+wait 1200
+stop
+locate cyellow cblue cgreen cpink
+expect cyellow.x = 600
+expect cyellow.y = 380
+expect cblue.x = 758
+expect cblue.y = 380
+expect cgreen.x = 600
+expect cgreen.y = 446
+expect cpink.x = 758
+expect cpink.y = 446
+shot tidied @sboxes+-20,-40 760 300
+key cmd+z
+wait 600
+expect cblue.x = was
+expect cgreen.y = was
+expect cpink.y = was
+move @cpink:c
+menu
+pick Tidy Up
+wait 1200
+expect cblue.x = 758
+expect cpink.y = 446

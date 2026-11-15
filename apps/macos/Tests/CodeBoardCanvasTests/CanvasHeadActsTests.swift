@@ -190,4 +190,61 @@ private let seg = SegmentID(rawValue: "s1")
     r.send(r.mouse(.leftMouseUp, corner, clicks: 2))
     #expect(r.card("n").height == nil && r.doc.undoName == "Fit Content")
   }
+
+  /// Free code's header shows its own title only, none when it has none; code from a file its symbol (CodeHead.tsx: a
+  /// free card's title is `c.title ?? ""`, shown only when set)
+  @Test func untitledFreeCodeShowsNoTitle() async throws {
+    var b = Self.board()
+    let titled = Segment(id: SegmentID(rawValue: "s3"), source: nil, language: "python", firstLine: 1, lines: ["y = 2"])
+    b.cards.append(
+      Card(
+        id: cid("named"), x: 0, y: 1100, width: 420,
+        content: .own(CardContent(title: "Mine", body: .code(CodeCard(segments: [titled]))))))
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    func title(_ id: String) -> String? {
+      guard let i = r.canvas.index(of: .card(cid(id))), case .code(let d) = r.canvas.scene?.items[i].drawing else {
+        return nil
+      }
+      return d.title
+    }
+    #expect(title("f") == "")
+    #expect(title("named") == "Mine")
+    #expect(title("c") == "a.py")
+  }
+
+  /// A locked card's header starts with main's lock button (.lockb: 18 square, its title after it), drawn whether or not
+  /// the card is hovered; a release on it unlocks the card, one step; the hover buttons keep clear of it
+  @Test func aLockedCardsHeaderStartsWithItsUnlockButton() async throws {
+    let r = try await Rig(Self.board(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let t = c.theme
+    r.doc.edit("Lock") { $0.setLocked([.card(cid("c"))], true) }
+    await r.settle()
+    let lockAt = CGRect(x: t.headerPad, y: t.headerHeight / 2 - 9, width: 18, height: 18)
+    for id in ["lock", "c"] {
+      guard let i = c.index(of: .card(cid(id))) else {
+        Issue.record("\(id) not drawn")
+        continue
+      }
+      switch c.scene?.items[i].drawing {
+      case .note(let n)?: #expect(n.locked, "\(id)")
+      case .code(let d)?: #expect(d.locked, "\(id)")
+      default: Issue.record("\(id): not a Note or code")
+      }
+      let h = try #require(c.head(cid(id)))
+      #expect(h.buttons.first?.0 == .unlock && h.buttons.first?.1 == lockAt, "\(id): \(h.buttons)")
+      #expect(h.buttons.dropFirst().allSatisfy { $0.1.minX > lockAt.maxX + t.headerGap }, "\(id)")
+    }
+    #expect(c.head(cid("n"))?.buttons.contains { $0.0 == .unlock } == false)
+    hoverOver(r, r.centre("lock"))
+    let at = CGPoint(x: r.rect("lock").minX + lockAt.midX, y: r.rect("lock").minY + lockAt.midY)
+    hoverOver(r, at)
+    #expect(c.hoveredHead?.1 == .unlock && c.toolTip == "Unlock")
+    r.click(at)
+    #expect(r.card("lock").locked != true && r.doc.undoName == "Unlock")
+    await r.settle()
+    #expect(c.head(cid("lock"))?.buttons.first?.0 != .unlock)
+  }
 }
