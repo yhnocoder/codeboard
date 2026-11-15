@@ -1,0 +1,15 @@
+# The selected arrow's end dragged onto another card moves there (CanvasPorts.swift; the web board has no such handles,
+# asked for on the Mac): lthin, Blue → Mark, its end taken from Mark onto Paper; one undo puts it back. --only mac
+key esc
+zoom 1
+center @cpink:c
+shot before @cyellow+-20,-40 720 220
+click @cblue:r+105,40
+wait 300
+shot selected @cyellow+-20,-40 720 220
+drag @cmark+-2,17 @cpaper:c 600
+wait 400
+shot moved @cyellow+-20,-40 720 220
+key cmd+z
+wait 300
+shot undone @cyellow+-20,-40 720 220

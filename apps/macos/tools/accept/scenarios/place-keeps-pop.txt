@@ -1,0 +1,23 @@
+# Place on Board on a sidenote with another beside it: its popup stays open, showing the other (actions/notes.ts
+# placeSidenote ends with closePop(), which closes only popups not pinned, and every sidenote popup is pinned; notes.tsx
+# closes one only once what it shows is gone)
+key esc
+zoom 1
+center @cnote+300,150
+click @sn1:c
+wait 700
+click @sn1:c+200,80
+wait 400
+type second note
+key return
+wait 600
+shot pop @cnote+-20,-20 800 400
+move @sn1:c+100,40 200
+menu
+pick Place on Board
+wait 900
+shot placed @cnote+-20,-20 800 400
+click @cnote+420,24
+wait 200
+mac: expect press has PopWebView
+web: expect press has pop

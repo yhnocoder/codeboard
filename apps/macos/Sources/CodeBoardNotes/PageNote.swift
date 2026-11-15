@@ -1,13 +1,35 @@
 import CodeBoardModel
 import Foundation
 
+/// What the Note page draws: a Note's Markdown, or a Text's or Box's, or an Always Show sidenote's under its lines in a
+/// code card (CodeBody .inote)
+public enum NoteBody: Equatable, Sendable {
+  case note(Note)
+  case text(TextCard)
+  case inline(String)
+
+  public var markdown: String {
+    switch self {
+    case .note(let n): n.text
+    case .text(let t): t.text
+    case .inline(let md): md
+    }
+  }
+
+  public var layout: NoteLayout? {
+    switch self {
+    case .note(let n): n.layout
+    case .text(let t): t.layout
+    case .inline: nil
+    }
+  }
+}
+
 /// What the Note page draws (`web/src/page.ts`, type `Note`). Its JSON is both the page's argument and, in the snapshot
 /// key, the description of everything the page draws: the look and appearance among it, so no picture or size is
 /// shared across looks or between light and dark.
 struct PageNote: Encodable {
-  var text: String
-  var layout: NoteLayout?
-  var style: NoteStyle
+  var body: NoteBody
   var width: Double
   var height: Double?
   /// The board theme's id: the page applies the board's own stylesheet for it
@@ -16,27 +38,60 @@ struct PageNote: Encodable {
   var dark: Bool
   /// What its [[refs]] point at, in the order written
   var refs: [NoteRef]
+  /// A Note whose header shows its leading heading: the body does not show it again (CardContent.hidesHeading)
+  var hideHead: Bool
 
-  init(_ note: Note, width: Double, height: Double?, look: String, dark: Bool, refs: [NoteRef]) {
-    text = note.text
-    layout = note.layout
-    style = note.style
+  init(
+    _ body: NoteBody, width: Double, height: Double?, look: String, dark: Bool, refs: [NoteRef], hideHead: Bool = false
+  ) {
+    self.body = body
     self.width = width
     self.height = height
     self.look = look
     self.dark = dark
     self.refs = refs
+    self.hideHead = hideHead
   }
 
   private enum Keys: String, CodingKey {
     case text, layout, style, width, height, look, dark, refs
   }
 
+  /// `style`: {"note": {}} or {"text": {look, fill, fontSize, wrap}}, as board.json writes a card's kind
+  private struct Style: Encodable {
+    let body: NoteBody
+    let hideHead: Bool
+    private enum Keys: String, CodingKey {
+      case note, text, inline
+    }
+    private enum TextKeys: String, CodingKey {
+      case look, fill, fontSize, wrap, hideHead
+    }
+
+    func encode(to encoder: Encoder) throws {
+      var c = encoder.container(keyedBy: Keys.self)
+      switch body {
+      case .note:
+        // only when set: the pictures of every other Note keep their keys
+        var n = c.nestedContainer(keyedBy: TextKeys.self, forKey: .note)
+        if hideHead { try n.encode(true, forKey: .hideHead) }
+      case .text(let t):
+        var f = c.nestedContainer(keyedBy: TextKeys.self, forKey: .text)
+        try f.encode(t.look, forKey: .look)
+        try f.encode(t.fill, forKey: .fill)
+        try f.encode(t.fontSize, forKey: .fontSize)
+        try f.encode(t.wrap, forKey: .wrap)
+      case .inline:
+        _ = c.nestedContainer(keyedBy: TextKeys.self, forKey: .inline)
+      }
+    }
+  }
+
   func encode(to encoder: Encoder) throws {
     var c = encoder.container(keyedBy: Keys.self)
-    try c.encode(text, forKey: .text)
-    try c.encode(layout, forKey: .layout)
-    try c.encode(PageStyle(style), forKey: .style)
+    try c.encode(body.markdown, forKey: .text)
+    try c.encode(body.layout, forKey: .layout)
+    try c.encode(Style(body: body, hideHead: hideHead), forKey: .style)
     try c.encode(width, forKey: .width)
     try c.encode(height, forKey: .height)
     try c.encode(look, forKey: .look)
@@ -49,51 +104,5 @@ struct PageNote: Encodable {
     let e = JSONEncoder()
     e.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
     return String(decoding: try e.encode(self), as: UTF8.self)
-  }
-}
-
-/// A style as board.json writes it: an object with one key naming the case
-private struct PageStyle: Encodable {
-  let style: NoteStyle
-  init(_ style: NoteStyle) { self.style = style }
-
-  private struct Key: CodingKey {
-    var stringValue: String
-    var intValue: Int? { nil }
-    init(_ s: String) { stringValue = s }
-    init?(stringValue: String) { self.stringValue = stringValue }
-    init?(intValue: Int) { nil }
-  }
-
-  func encode(to encoder: Encoder) throws {
-    var c = encoder.container(keyedBy: Key.self)
-    var fields = c.nestedContainer(keyedBy: Key.self, forKey: Key(name))
-    switch style {
-    case .note:
-      break
-    case .text(let size, let bold):
-      try fields.encode(size, forKey: Key("size"))
-      try fields.encode(bold, forKey: Key("bold"))
-    case .box(let fill):
-      try fields.encode(fill, forKey: Key("fill"))
-    case .mark(let color, let weight, let fontSize):
-      try fields.encode(color, forKey: Key("color"))
-      try fields.encode(weight, forKey: Key("weight"))
-      try fields.encodeIfPresent(fontSize, forKey: Key("fontSize"))
-    case .freeText(let level, let bold, let fontSize):
-      try fields.encode(level, forKey: Key("level"))
-      try fields.encode(bold, forKey: Key("bold"))
-      try fields.encodeIfPresent(fontSize, forKey: Key("fontSize"))
-    }
-  }
-
-  private var name: String {
-    switch style {
-    case .note: "note"
-    case .text: "text"
-    case .box: "box"
-    case .mark: "mark"
-    case .freeText: "freeText"
-    }
   }
 }

@@ -1,0 +1,10 @@
+# 旁注右键菜单：点 Section 标题上的旁注标记打开旁注，在旁注文字上右键，读出菜单；两边对照
+zoom 1
+center @sboxes+200,100
+move @sboxes+40,17 300
+click @sn2:c
+wait 700
+move @sboxes+170,57 300
+shot at @sboxes+0,-20 560 200
+menu
+key esc

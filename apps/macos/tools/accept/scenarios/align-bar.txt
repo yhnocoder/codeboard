@@ -1,0 +1,20 @@
+# 选中两张卡，上方浮出工具条（Create Section、Create Sub-board、Tidy Up、⋯），两边各部件一样宽；⋯ 打开对齐和分布，点 Align Top 一步把它们的上边对齐，Esc 只关面板（main canvas/Canvas.tsx AlignBar、core layout.ts align）
+zoom 1
+center @cblue
+click @cblue
+click @cpaper shift
+wait 300
+expect ui.alignbar.w ~ 416.3
+expect ui.tidyup.w ~ 87.5
+shot bar @cyellow+-60,-120 560 320
+click @ui.alignmore
+wait 300
+shot panel @cyellow+-60,-120 560 320
+click @ui.aligntop
+wait 300
+expect cpaper.y = 380
+expect cblue.y = 380
+key esc
+wait 300
+expect ui.alignbar.w > 100
+shot closed @cyellow+-60,-120 560 320

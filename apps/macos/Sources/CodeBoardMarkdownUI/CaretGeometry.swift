@@ -1,0 +1,522 @@
+import CodeBoardMarkdown
+import CoreGraphics
+import CoreText
+import Foundation
+
+/// A caret place in source offsets, with which line it shows on where a line wraps: the end of one line and the start of
+/// the next are the same offset, and only ⌘→ (or a click past a line's end) puts the caret upstream, at the end of the
+/// first. Next to hidden markers the offset decides alone: an offset maps to the first shown character at or after it
+/// (a click in the right half of a character lands after it, in the left half of the next one before that one)
+public struct MDCaret: Sendable, Hashable {
+  public var offset: Int
+  public var upstream: Bool
+  public init(_ offset: Int, upstream: Bool = false) {
+    self.offset = offset
+    self.upstream = upstream
+  }
+}
+
+extension TextBlock {
+  /// the display index of a source offset: the first shown unit at or after it
+  func displayIndex(_ q: Int) -> Int {
+    let m = display.toSource
+    var lo = 0
+    var hi = m.count
+    while lo < hi {
+      let mid = (lo + hi) / 2
+      if m[mid] < q { lo = mid + 1 } else { hi = mid }
+    }
+    return lo
+  }
+
+  var sourceStart: Int { display.toSource.first ?? display.endSource }
+
+  func holds(_ q: Int) -> Bool { q >= sourceStart && q <= display.endSource }
+
+  /// the line a display index shows on: upstream, the line it ends rather than the one it starts
+  func lineIndex(_ j: Int, upstream: Bool) -> Int {
+    for (k, l) in lines.enumerated() {
+      let end = l.range.location + l.range.length
+      if j < end || k == lines.count - 1 { return k }
+      if j == end, upstream { return k }
+    }
+    return max(0, lines.count - 1)
+  }
+
+  /// the source offset of a boundary between display units: downstream the unit after it, upstream the end of the one
+  /// before
+  func source(_ j: Int, upstream: Bool) -> Int {
+    if upstream, j > 0 { return display.sourceEnds[j - 1] }
+    return j < display.toSource.count ? display.toSource[j] : display.endSource
+  }
+
+  /// a line's last caret index: before a line break or the space it wraps at
+  func lineEnd(_ k: Int) -> Int {
+    let l = lines[k]
+    var e = l.range.location + l.range.length
+    let ns = display.string.string as NSString
+    if k < lines.count - 1 || (e > l.range.location && ns.character(at: e - 1) == 0x2028) {
+      while e > l.range.location, let c = Unicode.Scalar(ns.character(at: e - 1)),
+        c == "\u{2028}" || c == "\n" || (k < lines.count - 1 && CharacterSet.whitespaces.contains(c))
+      {
+        e -= 1
+        if c == "\u{2028}" || c == "\n" { break }
+      }
+    }
+    return e
+  }
+
+  func x(_ j: Int, line k: Int) -> CGFloat {
+    let l = lines[k]
+    return l.origin.x + CTLineGetOffsetForStringIndex(l.line, j, nil)
+  }
+
+  /// the caret's box at a display index on line k: as tall as the font there, on the line's baseline
+  func caretBox(_ j: Int, line k: Int) -> CGRect {
+    let l = lines[k]
+    let n = display.string.length
+    let key = NSAttributedString.Key(kCTFontAttributeName as String)
+    let at = n == 0 ? nil : min(max(j > l.range.location ? j - 1 : j, 0), n - 1)
+    let f = at.flatMap { display.string.attribute(key, at: $0, effectiveRange: nil) }.map { $0 as! CTFont }
+    let ascent = f.map(CTFontGetAscent) ?? l.height * 0.6
+    let descent = f.map(CTFontGetDescent) ?? l.height * 0.2
+    return CGRect(x: x(j, line: k), y: l.origin.y - ascent, width: 0, height: ascent + descent)
+  }
+
+  /// the caret place nearest a point on line k
+  func hit(_ p: CGPoint, line k: Int) -> MDCaret {
+    let l = lines[k]
+    var j = CTLineGetStringIndexForPosition(l.line, CGPoint(x: p.x - l.origin.x, y: 0))
+    if j == kCFNotFound { j = l.range.location }
+    j = min(max(j, l.range.location), lineEnd(k))
+    let bx = x(j, line: k)
+    // left of the boundary: the end of the character before it (its right half was hit)
+    let up = p.x < bx && j > l.range.location
+    if j == lineEnd(k), k < lines.count - 1 { return MDCaret(source(j, upstream: true), upstream: true) }
+    return MDCaret(source(j, upstream: up))
+  }
+}
+
+extension MarkdownLayout {
+  /// The text the caret moves through, in reading order
+  var caretTexts: [TextBlock] {
+    var out: [TextBlock] = []
+    func scan(_ list: [Item]) {
+      for item in list {
+        switch item {
+        case .text(let t) where t.caret: out.append(t)
+        case .clip(_, let inner): scan(inner)
+        default: break
+        }
+      }
+    }
+    scan(items)
+    return out
+  }
+}
+
+/// The caret's geometry in a layout being edited, in the layout's points
+extension BlockLayout {
+  /// a place in a piece: the text, and the piece's offset shift and top
+  struct Spot {
+    let text: TextBlock
+    let piece: Int
+    let shift: Int
+    let top: CGFloat
+    /// how far its text is scrolled across (a table wider than the Note, an unwrapped code block's long lines)
+    let left: CGFloat
+  }
+
+  /// how far piece `i` is scrolled across
+  func sx(_ i: Int) -> CGFloat { scrollX[i] ?? 0 }
+
+  /// how far text `t` of piece `i` is scrolled across: its piece's scroll and its code block's
+  func sx(_ i: Int, _ t: TextBlock) -> CGFloat {
+    guard let c = t.scroller, !codeScrollX.isEmpty else { return sx(i) }
+    return sx(i) + (codeScrollX[c.start + shifts[i]] ?? 0)
+  }
+
+  func pieceIndex(_ offset: Int) -> Int? { MarkdownEditing.blockHolding(offset, in: document) }
+
+  func spot(_ offset: Int) -> Spot? {
+    guard let i = pieceIndex(offset) else { return nil }
+    let q = offset - shifts[i]
+    let texts = pieces[i].layout.caretTexts
+    guard let t = texts.first(where: { $0.holds(q) }) ?? texts.last(where: { $0.sourceStart <= q }) ?? texts.first
+    else { return nil }
+    return Spot(text: t, piece: i, shift: shifts[i], top: tops[i], left: sx(i, t))
+  }
+
+  /// Where the caret is drawn
+  public func caretRect(_ c: MDCaret) -> CGRect? {
+    // a gap's caret: a short line at the block's left, just outside its edge (editor/gap.ts, .ProseMirror-gapcursor)
+    if let g = MarkdownEditing.gap(at: c.offset, in: document), g.block < pieces.count {
+      let top = tops[g.block]
+      let y = g.before ? top - 3 : top + pieces[g.block].height + 3
+      return CGRect(x: 0, y: y, width: min(20, width), height: 0)
+    }
+    guard let s = spot(c.offset) else { return nil }
+    let j = s.text.displayIndex(c.offset - s.shift)
+    let k = s.text.lineIndex(j, upstream: c.upstream)
+    return s.text.caretBox(j, line: k).offsetBy(dx: -s.left, dy: s.top)
+  }
+
+  /// The caret place a point is nearest (a click): the nearest line of text in the nearest block that has text
+  public func caret(at p: CGPoint) -> MDCaret {
+    guard !pieces.isEmpty else { return MDCaret(0) }
+    // above or below a block in the space between blocks: its gap, when it has one there
+    let k = min(firstPieceIndex(atOrBelow: p.y), pieces.count - 1)
+    let b = document.blocks[k]
+    if p.y < tops[k] {
+      if k == 0, MarkdownEditing.gap(at: b.range.lowerBound, in: document)?.before == true {
+        return MDCaret(b.range.lowerBound)
+      }
+      if k > 0, let above = document.blocks[k - 1].range.upperBound as Int?,
+        MarkdownEditing.gap(at: above, in: document)?.before == false
+      {
+        return MDCaret(above)
+      }
+    }
+    if p.y > tops[k] + pieces[k].height, MarkdownEditing.gap(at: b.range.upperBound, in: document)?.before == false {
+      return MDCaret(b.range.upperBound)
+    }
+    var i = min(firstPieceIndex(atOrBelow: p.y), pieces.count - 1)
+    // a block without text (a rule, a formula block): the nearest one with text, looking down then up
+    var probe = i
+    while probe < pieces.count, pieces[probe].layout.caretTexts.isEmpty { probe += 1 }
+    if probe == pieces.count {
+      probe = i
+      while probe >= 0, pieces[probe].layout.caretTexts.isEmpty { probe -= 1 }
+    }
+    guard probe >= 0 else { return MDCaret(MarkdownEditing.start(of: document)) }
+    i = probe
+    var best: (TextBlock, Int, CGPoint)?
+    var bestD = CGFloat.infinity
+    for t in pieces[i].layout.caretTexts {
+      // in the text's own points: a code block's lines are scrolled on their own
+      let local = CGPoint(x: p.x + sx(i, t), y: p.y - tops[i])
+      for (k, l) in t.lines.enumerated() {
+        let dy = local.y < l.top ? l.top - local.y : local.y > l.top + l.height ? local.y - l.top - l.height : 0
+        let dx = local.x < t.frame.minX ? t.frame.minX - local.x : local.x > t.frame.maxX ? local.x - t.frame.maxX : 0
+        if dy * 1000 + dx < bestD {
+          bestD = dy * 1000 + dx
+          best = (t, k, local)
+        }
+      }
+    }
+    guard let (t, k, local) = best else { return MDCaret(MarkdownEditing.start(of: document)) }
+    var c = t.hit(local, line: k)
+    c.offset += shifts[i]
+    return c
+  }
+
+  /// The drawn atom (a formula, a reference, an annotation, an image) a point is on: its source range
+  public func atom(at p: CGPoint) -> Range<Int>? {
+    guard !pieces.isEmpty else { return nil }
+    let i = min(firstPieceIndex(atOrBelow: p.y), pieces.count - 1)
+    for t in pieces[i].layout.caretTexts {
+      let local = CGPoint(x: p.x + sx(i, t), y: p.y - tops[i])
+      for l in t.lines where local.y >= l.top && local.y <= l.top + l.height {
+        for run in CTLineGetGlyphRuns(l.line) as! [CTRun] {
+          let attrs = CTRunGetAttributes(run) as NSDictionary
+          guard let a = attrs[Attr.atom] as? AtomBox else { continue }
+          if case .spacer = a.content { continue }
+          let j = CTRunGetStringRange(run).location
+          let x0 = l.origin.x + CTLineGetOffsetForStringIndex(l.line, j, nil)
+          guard local.x >= x0, local.x <= x0 + a.width else { continue }
+          let d = shifts[i]
+          return (t.display.toSource[j] + d)..<(t.display.sourceEnds[j] + d)
+        }
+      }
+    }
+    return nil
+  }
+
+  /// The drawn link a point is on, not merely nearest (a click past a line's end is no click on the link that ends it):
+  /// the source offset of the character under it and the link's address
+  public func link(at p: CGPoint) -> (offset: Int, url: String)? {
+    guard !pieces.isEmpty else { return nil }
+    let i = min(firstPieceIndex(atOrBelow: p.y), pieces.count - 1)
+    for t in pieces[i].layout.caretTexts where !t.display.links.isEmpty {
+      let local = CGPoint(x: p.x + sx(i, t), y: p.y - tops[i])
+      for l in t.lines where local.y >= l.top && local.y <= l.top + l.height {
+        var j = CTLineGetStringIndexForPosition(l.line, CGPoint(x: local.x - l.origin.x, y: 0))
+        guard j != kCFNotFound else { continue }
+        // the boundary nearest the point: the character under it is the one before when the point is left of it
+        if local.x < l.origin.x + CTLineGetOffsetForStringIndex(l.line, j, nil) { j -= 1 }
+        guard j >= l.range.location, j < l.range.location + l.range.length, j < t.display.toSource.count,
+          local.x <= l.origin.x + CTLineGetOffsetForStringIndex(l.line, j + 1, nil),
+          let link = t.display.links.first(where: { NSLocationInRange(j, $0.0) })
+        else { continue }
+        return (t.display.toSource[j] + shifts[i], link.1)
+      }
+    }
+    return nil
+  }
+
+  /// Where an atom drawn for the source `range` is (tests, a driver clicking it)
+  public func rects(forAtom range: Range<Int>) -> CGRect? {
+    guard let i = pieceIndex(range.lowerBound) else { return nil }
+    let d = shifts[i]
+    for t in pieces[i].layout.caretTexts {
+      for l in t.lines {
+        for run in CTLineGetGlyphRuns(l.line) as! [CTRun] {
+          let attrs = CTRunGetAttributes(run) as NSDictionary
+          guard let a = attrs[Attr.atom] as? AtomBox else { continue }
+          let j = CTRunGetStringRange(run).location
+          guard t.display.toSource[j] + d == range.lowerBound else { continue }
+          let x0 = l.origin.x + CTLineGetOffsetForStringIndex(l.line, j, nil)
+          return CGRect(
+            x: x0 - sx(i, t), y: tops[i] + l.origin.y - a.ascent, width: a.width, height: a.ascent + a.descent)
+        }
+      }
+    }
+    return nil
+  }
+
+  /// The lines a link is underlined with between the source offsets of `range`, one per line of text, 1 point tall:
+  /// where a hovered link draws its line again, solid (.md-link:hover)
+  public func underlines(_ range: Range<Int>) -> [CGRect] {
+    guard !range.isEmpty, let a = pieceIndex(range.lowerBound), let b = pieceIndex(range.upperBound) else { return [] }
+    let offset = CGFloat(theme.metrics.linkUnderlineOffset)
+    var out: [CGRect] = []
+    for i in a...b {
+      let lo = range.lowerBound - shifts[i]
+      let hi = range.upperBound - shifts[i]
+      for t in pieces[i].layout.caretTexts where t.display.endSource >= lo && t.sourceStart <= hi {
+        let ja = t.displayIndex(lo)
+        let jb = t.displayIndex(hi)
+        for l in t.lines {
+          var x0 = CGFloat.infinity
+          var x1 = -CGFloat.infinity
+          for run in CTLineGetGlyphRuns(l.line) as! [CTRun] {
+            guard (CTRunGetAttributes(run) as NSDictionary)[Attr.underline] is MDColor else { continue }
+            let r = CTRunGetStringRange(run)
+            let s = max(r.location, ja)
+            let e = min(r.location + r.length, jb)
+            guard s < e else { continue }
+            let p0 = CTLineGetOffsetForStringIndex(l.line, s, nil)
+            let p1 = CTLineGetOffsetForStringIndex(l.line, e, nil)
+            x0 = min(x0, p0, p1)
+            x1 = max(x1, p0, p1)
+          }
+          guard x0 < x1 else { continue }
+          // as Draw strokes it: 1 wide, centred half a point under the offset
+          out.append(
+            CGRect(
+              x: l.origin.x + x0 - sx(i, t), y: tops[i] + l.origin.y + offset, width: x1 - x0, height: 1))
+        }
+      }
+    }
+    return out
+  }
+
+  /// The line under a [[reference]] drawn for the source `range`, when it is one a hover draws solid: a reference that
+  /// finds its card, in the link colour (.md-ref:hover; a reference that finds nothing keeps its hairline)
+  public func refLine(_ range: Range<Int>) -> CGRect? {
+    guard let i = pieceIndex(range.lowerBound) else { return nil }
+    for t in pieces[i].layout.caretTexts {
+      for l in t.lines {
+        for run in CTLineGetGlyphRuns(l.line) as! [CTRun] {
+          guard let a = (CTRunGetAttributes(run) as NSDictionary)[Attr.atom] as? AtomBox, case .ref(let r) = a.content
+          else { continue }
+          let j = CTRunGetStringRange(run).location
+          guard t.display.toSource[j] + shifts[i] == range.lowerBound else { continue }
+          guard r.solidOnHover else { return nil }
+          let x0 = l.origin.x + CTLineGetOffsetForStringIndex(l.line, j, nil) - sx(i, t)
+          return CGRect(x: x0 + 2, y: tops[i] + l.origin.y + r.descent - 1, width: r.width - 4, height: 1)
+        }
+      }
+    }
+    return nil
+  }
+
+  /// The boxes a selection covers: per line of text, from where it starts to where it ends on that line
+  public func selectionRects(_ range: Range<Int>) -> [CGRect] {
+    guard !range.isEmpty, let a = pieceIndex(range.lowerBound), let b = pieceIndex(range.upperBound) else { return [] }
+    var out: [CGRect] = []
+    for i in a...b {
+      let d = shifts[i]
+      let lo = range.lowerBound - d
+      let hi = range.upperBound - d
+      for t in pieces[i].layout.caretTexts where t.display.endSource >= lo && t.sourceStart <= hi {
+        let ja = t.displayIndex(lo)
+        let jb = t.displayIndex(hi)
+        for (k, l) in t.lines.enumerated() {
+          let s = max(ja, l.range.location)
+          let e = min(jb, l.range.location + l.range.length)
+          // a line the selection runs past the end of shows a sliver for its break
+          let past = jb > l.range.location + l.range.length || (hi > t.display.endSource && k == t.lines.count - 1)
+          // a selection starting where a line wraps starts on the next line: the wrapped line's end is not in it (it drew
+          // a sliver there, and the toolbar went over that line)
+          let wraps = k < t.lines.count - 1 && ja >= l.range.location + l.range.length
+          guard s < e || (past && !wraps && s <= e && ja <= l.range.location + l.range.length) else { continue }
+          let x0 = t.x(s, line: k)
+          var x1 = t.x(e, line: k)
+          if past { x1 = max(x1, x0) + 4 }
+          var r = CGRect(x: x0 - sx(i, t), y: tops[i] + l.top, width: max(0, x1 - x0), height: l.height)
+          if let c = t.scroller {
+            // cut at the panel with the lines it covers; one scrolled out of sight keeps its line's place, empty
+            let box = c.box.offsetBy(dx: -sx(i), dy: 0)
+            let lo = min(max(r.minX, box.minX), box.maxX)
+            let hi = max(min(r.maxX, box.maxX), lo)
+            r = CGRect(x: lo, y: r.minY, width: hi - lo, height: r.height)
+          }
+          out.append(r)
+        }
+      }
+    }
+    return out
+  }
+
+  /// ⌘← / ⌘→: the start or end of the line the caret shows on
+  public func lineBoundary(_ c: MDCaret, end: Bool) -> MDCaret {
+    guard let s = spot(c.offset) else { return c }
+    let t = s.text
+    let j = t.displayIndex(c.offset - s.shift)
+    let k = t.lineIndex(j, upstream: c.upstream)
+    if end {
+      let e = t.lineEnd(k)
+      let wrapped = k < t.lines.count - 1
+      return MDCaret(t.source(e, upstream: wrapped) + s.shift, upstream: wrapped)
+    }
+    return MDCaret(t.source(t.lines[k].range.location, upstream: false) + s.shift)
+  }
+
+  /// ↑ / ↓: the place on the line above or below nearest `x` (the column the caret keeps while it goes up and down);
+  /// past the first or last line, the document's start or end
+  public func vertical(_ c: MDCaret, x vx: CGFloat, down: Bool) -> MDCaret {
+    guard let s = spot(c.offset) else { return c }
+    // the column in the Note's points; each text it lands on takes it into its own (a table or a code block scrolled)
+    let t = s.text
+    let j = t.displayIndex(c.offset - s.shift)
+    let k = t.lineIndex(j, upstream: c.upstream)
+    let line = t.lines[k]
+    // the next line in reading order: in this text, else the next text with lines in this block or the next ones
+    let probeY = down ? s.top + line.top + line.height + 0.5 : s.top + line.top - 0.5
+    if down ? k < t.lines.count - 1 : k > 0 {
+      let n = t.lines[k + (down ? 1 : -1)]
+      var r = t.hit(CGPoint(x: vx + s.left, y: n.top + n.height / 2), line: k + (down ? 1 : -1))
+      r.offset += s.shift
+      return r
+    }
+    let texts = pieces[s.piece].layout.caretTexts
+    let ti = texts.firstIndex { $0 === t } ?? 0
+    if down ? ti < texts.count - 1 : ti > 0 {
+      // the text below (or above) in this block: a cell under a cell, the next code line, the next item
+      let candidates = down ? Array(texts[(ti + 1)...]) : Array(texts[..<ti].reversed())
+      let ly = line.top
+      if let n = candidates.first(where: { down ? $0.frame.minY >= ly + line.height - 0.5 : $0.frame.maxY <= ly + 0.5 })
+      {
+        let nk = down ? 0 : n.lines.count - 1
+        var r = n.hit(CGPoint(x: vx + sx(s.piece, n), y: n.lines[nk].top + n.lines[nk].height / 2), line: nk)
+        r.offset += s.shift
+        return r
+      }
+    }
+    _ = probeY
+    return firstText(from: s.piece + (down ? 1 : -1), down: down, x: vx)
+      ?? MDCaret(down ? MarkdownEditing.end(of: document) : MarkdownEditing.start(of: document))
+  }
+
+  /// the place nearest x (in the Note's points) on the first line (going down) or the last line (going up) of the first
+  /// piece with text from i
+  private func firstText(from start: Int, down: Bool, x: CGFloat) -> MDCaret? {
+    var i = start
+    while i >= 0, i < pieces.count {
+      let ts = pieces[i].layout.caretTexts
+      if let n = down ? ts.first : ts.last {
+        let nk = down ? 0 : n.lines.count - 1
+        var r = n.hit(CGPoint(x: x + sx(i, n), y: n.lines[nk].top + n.lines[nk].height / 2), line: nk)
+        r.offset += shifts[i]
+        return r
+      }
+      i += down ? 1 : -1
+    }
+    return nil
+  }
+
+  /// the first piece whose bottom is at or below y
+  func firstPieceIndex(atOrBelow y: CGFloat) -> Int {
+    var lo = 0
+    var hi = pieces.count
+    while lo < hi {
+      let mid = (lo + hi) / 2
+      if tops[mid] + pieces[mid].height < y { lo = mid + 1 } else { hi = mid }
+    }
+    return lo
+  }
+}
+
+extension BlockLayout {
+  /// The boxes of a table's cells by row and column, in the layout's points: each cell's text box grown by the cell
+  /// padding (what a row or column grip and a drag move)
+  public func cellBoxes(of table: MDTable) -> [[CGRect]] {
+    let m = theme.metrics
+    let pv = CGFloat(m.cellPadding[0])
+    let ph = CGFloat(m.cellPadding[1])
+    guard let first = table.rows.first?.first, let i = pieceIndex(first.text.offsets[0]) else { return [] }
+    let d = shifts[i]
+    let texts = pieces[i].layout.caretTexts
+    return table.rows.map { row in
+      row.map { cell in
+        let q = cell.text.offsets[0] - d
+        // a cell starting with hidden marks (`code`, **bold**): its text holds a later offset, not the first; a cell
+        // found by none once gave a zero box, and the table's box then reached up to the Note's top
+        guard
+          let t = texts.first(where: { $0.holds(q) && $0.sourceStart == q }) ?? texts.first(where: { $0.holds(q) })
+            ?? cell.text.offsets.lazy.compactMap({ o in texts.first(where: { $0.holds(o - d) }) }).first
+        else { return .zero }
+        return t.frame.offsetBy(dx: -sx(i), dy: tops[i]).insetBy(dx: -ph, dy: -pv)
+      }
+    }
+  }
+}
+
+extension BlockLayout {
+  /// The top-level block a point is on (its box, with half the gaps around it), if any
+  public func block(at p: CGPoint) -> Int? {
+    guard !pieces.isEmpty else { return nil }
+    let i = min(firstPieceIndex(atOrBelow: p.y), pieces.count - 1)
+    return p.y >= tops[i] - 8 && p.y <= tops[i] + pieces[i].height + 8 ? i : nil
+  }
+}
+
+extension BlockLayout {
+  /// An unwrapped code block whose lines are wider than its panel: where its body starts in the document (its
+  /// `codeScrollX` key), its panel in the Note's points (as drawn, with its piece's scroll), and how far it can scroll
+  public struct CodeScroll: Equatable, Sendable {
+    public let start: Int
+    public let box: CGRect
+    public let room: CGFloat
+  }
+
+  private func codeScrolls(in i: Int) -> [CodeScroll] {
+    var out: [CodeScroll] = []
+    for case .clip(_, let inner) in pieces[i].layout.items {
+      guard case .text(let t)? = inner.first, let c = t.scroller, c.room > 0.5 else { continue }
+      out.append(CodeScroll(start: c.start + shifts[i], box: c.box.offsetBy(dx: -sx(i), dy: tops[i]), room: c.room))
+    }
+    return out
+  }
+
+  /// The code blocks that can scroll across, in document order
+  public var codeScrolls: [CodeScroll] {
+    pieces.indices.filter { pieces[$0].added.codes > 0 }.flatMap { codeScrolls(in: $0) }
+  }
+
+  /// The code block that can scroll across under a point of the Note, if any
+  public func codeScroll(at p: CGPoint) -> CodeScroll? {
+    guard !pieces.isEmpty else { return nil }
+    let i = min(firstPieceIndex(atOrBelow: p.y), pieces.count - 1)
+    return codeScrolls(in: i).first { $0.box.contains(p) }
+  }
+
+  /// The code block that can scroll across holding a source offset (the caret's), if any
+  public func codeScroll(holding offset: Int) -> CodeScroll? {
+    guard let s = spot(offset), let c = s.text.scroller, c.room > 0.5, s.text.holds(offset - s.shift) else {
+      return nil
+    }
+    return CodeScroll(start: c.start + s.shift, box: c.box.offsetBy(dx: -sx(s.piece), dy: s.top), room: c.room)
+  }
+}

@@ -1,0 +1,19 @@
+# 单击已选中的唯一一张 Note 的正文就进编辑（光标在点的地方）；双击代码卡的标题就地改名，回车留下
+zoom 1
+center @cnote
+click @cnote+150,100
+wait 300
+click @cnote+150,100
+wait 800
+shot note
+key esc
+wait 400
+center @cfree
+dbl @cfree+30,14
+wait 400
+shot title
+type Renamed
+key return
+wait 600
+expect cfree.text has Renamed
+shot renamed

@@ -1,0 +1,13 @@
+# A card header button's tip as main's (TooltipLayer): resting on Wrap Lines, the tip over it with its key; then on Copy Code, at once; a press hides it; both sides
+zoom 1
+center @ccode+230,60
+move @ccode+230,-60 200
+wait 300
+move @ccode+200,60 200
+wait 300
+move @ccode:tl+337,18 300
+wait 900
+shot wrap @ccode:tl+200,-50 300 90
+move @ccode:tl+365,18 200
+wait 100
+shot copy @ccode:tl+200,-50 300 90

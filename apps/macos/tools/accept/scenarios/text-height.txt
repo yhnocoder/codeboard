@@ -1,0 +1,7 @@
+# 旧文件里 Text、Mark、Free Text 存着的高度照 main 留着、画出来：卡就是那么高，字不裁（cards/Card.tsx 的 height；migrate.ts 只去掉 Box 的）
+zoom 1
+center @ctext
+expect ctext.h ~ 60
+expect cmark.h ~ 50
+expect cfreetext.h ~ 60
+shot heights @ctext+-40,-40 360 220

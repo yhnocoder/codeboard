@@ -38,17 +38,26 @@ final class SnapshotStore: Sendable {
     try put(data, as: key)
   }
 
-  func readSize(_ key: SnapshotKey) -> CGSize? {
+  /// A measured size, with the blocks and refs measured with it (a snapshot's file has its size only)
+  func readSize(_ key: SnapshotKey) -> NoteMetrics? {
     let url = file(key)
     guard let data = try? Data(contentsOf: url), let size = Self.size(data) else { return nil }
+    let extra =
+      data.count > Self.headerSize && Self.u32(data, 4) == 0
+      ? try? JSONDecoder().decode(MeasuredExtra.self, from: data.subdata(in: Self.headerSize..<data.count)) : nil
     let now = Date()
     try? FileManager.default.setAttributes([.modificationDate: now], ofItemAtPath: url.path(percentEncoded: false))
     withIndex { $0.touch(key.hex, at: now) }
-    return size
+    return NoteMetrics(size: size, blocks: extra?.blocks, refs: extra?.refs ?? [])
   }
 
-  func writeSize(_ size: CGSize, as key: SnapshotKey) throws {
-    try put(Self.header(width: 0, height: 0, row: 0, size: size), as: key)
+  /// A measured size: the header with no pixels, then its blocks and refs as JSON when it has them
+  func writeSize(_ m: NoteMetrics, as key: SnapshotKey) throws {
+    var data = Self.header(width: 0, height: 0, row: 0, size: m.size)
+    if m.blocks != nil || !m.refs.isEmpty {
+      data.append(try JSONEncoder().encode(MeasuredExtra(blocks: m.blocks, refs: m.refs.isEmpty ? nil : m.refs)))
+    }
+    try put(data, as: key)
   }
 
   private func put(_ data: Data, as key: SnapshotKey) throws {

@@ -9,6 +9,8 @@ public struct Vault: Sendable {
   public static let imagesFolder = "images"
   /// In the app-data folder: `<card id>.json`, and their images in its own images folder
   public static let sharedFolder = "shared"
+  /// A folder's own board, hidden in it: its title is always the folder's name
+  public static let folderBoardName = ".folder.board"
 
   public let root: URL
 
@@ -25,7 +27,16 @@ public struct Vault: Sendable {
     path.isEmpty ? root : root.appending(path: path)
   }
 
-  /// The whole tree; reads each board's id, not its content
+  /// A URL in the vault as a path relative to it; nil outside it
+  public func path(of url: URL) -> String? {
+    let r = root.standardizedFileURL.path
+    let u = url.standardizedFileURL.path
+    if u == r { return "" }
+    return u.hasPrefix(r + "/") ? String(u.dropFirst(r.count + 1)) : nil
+  }
+
+  /// The whole tree; reads each board's id, not its content. A board of another format version is listed too, and opening
+  /// it says why it cannot be read
   public func tree() throws -> VaultFolder {
     try folder(at: "", name: root.lastPathComponent)
   }
@@ -42,6 +53,12 @@ public struct Vault: Sendable {
     let card = try SharedCard(decoding: read(file), file: file)
     guard card.id == id else { throw VaultError.malformed(file, "its id is \(card.id.rawValue), not its file name") }
     return card
+  }
+
+  /// Whether a shared card of that id is there: what `Board.share` must not take (an unsafe id counts as taken)
+  public func sharedCardExists(_ id: CardID) -> Bool {
+    !Vault.isSafeID(id.rawValue)
+      || FileManager.default.fileExists(atPath: sharedFolderURL.appending(path: "\(id.rawValue).json").path)
   }
 
   /// The package folder name (without `.board`) for a title: characters that cannot be in a file name on macOS, or that
@@ -79,7 +96,21 @@ public struct Vault: Sendable {
       throw VaultError.unreadable(dir, error.localizedDescription)
     }
     var out = VaultFolder(name: name, path: path, folders: [], boards: [])
-    for name in names.sorted(by: { $0.localizedStandardCompare($1) == .orderedAscending }) {
+    // the vault itself has none
+    if !path.isEmpty {
+      let own = dir.appending(path: Vault.folderBoardName)
+      var isDir: ObjCBool = false
+      if FileManager.default.fileExists(atPath: own.path, isDirectory: &isDir), isDir.boolValue {
+        let child = "\(path)/\(Vault.folderBoardName)"
+        // one that cannot be read: the folder is shown without it
+        if let (id, seal) = try? boardHead(in: own.appending(path: Vault.boardFileName)) {
+          out.folderBoard = VaultBoard(id: id, title: name, path: child, isFolderBoard: true, seal: seal)
+        }
+      }
+    }
+    // by the names shown, a package's without `.board` ("Plan" before "Plan copy"), as Finder lists them
+    func shown(_ n: String) -> String { n.hasSuffix(".\(Vault.packageExtension)") ? String(n.dropLast(6)) : n }
+    for name in names.sorted(by: { shown($0).localizedStandardCompare(shown($1)) == .orderedAscending }) {
       let entry = dir.appending(path: name)
       var isDir: ObjCBool = false
       guard FileManager.default.fileExists(atPath: entry.path, isDirectory: &isDir), isDir.boolValue else { continue }
@@ -87,7 +118,13 @@ public struct Vault: Sendable {
       if entry.pathExtension == Vault.packageExtension {
         let file = entry.appending(path: Vault.boardFileName)
         let title = entry.deletingPathExtension().lastPathComponent
-        out.boards.append(VaultBoard(id: try boardID(in: file), title: title, path: child))
+        // one that cannot be read is listed as such, and the rest reads as ever (sidebar.ts "Can't open")
+        do {
+          let (id, seal) = try boardHead(in: file)
+          out.boards.append(VaultBoard(id: id, title: title, path: child, seal: seal))
+        } catch {
+          out.unreadable.append(VaultUnreadable(title: title, path: child, reason: "\(error)"))
+        }
       } else {
         out.folders.append(try folder(at: child, name: entry.lastPathComponent))
       }
@@ -95,10 +132,11 @@ public struct Vault: Sendable {
     return out
   }
 
-  private func boardID(in file: URL) throws -> BoardID {
+  /// A board's id and its seal, the two the tree needs from its file
+  private func boardHead(in file: URL) throws -> (BoardID, Seal?) {
     struct Head: Decodable {
-      var version: Int
       var id: BoardID
+      var seal: Seal?
     }
     let head: Head
     do {
@@ -106,10 +144,9 @@ public struct Vault: Sendable {
     } catch let e as VaultError {
       throw e
     } catch {
-      throw VaultError.malformed(file, "no format version or id")
+      throw VaultError.malformed(file, "no board id")
     }
-    guard head.version == Board.version else { throw VaultError.unsupportedVersion(file, head.version) }
-    return head.id
+    return (head.id, head.seal)
   }
 
   private func read(_ file: URL) throws -> Data {
@@ -127,9 +164,66 @@ public struct VaultFolder: Equatable, Sendable {
   public var path: String
   public var folders: [VaultFolder]
   public var boards: [VaultBoard]
+  /// Its own board (`.folder.board` in it), titled with its name
+  public var folderBoard: VaultBoard?
+  /// Its board packages whose file cannot be read, in the same order
+  public var unreadable: [VaultUnreadable] = []
 
-  /// Every board in this folder and below
-  public var allBoards: [VaultBoard] { boards + folders.flatMap(\.allBoards) }
+  public init(
+    name: String, path: String, folders: [VaultFolder], boards: [VaultBoard], folderBoard: VaultBoard? = nil
+  ) {
+    self.name = name
+    self.path = path
+    self.folders = folders
+    self.boards = boards
+    self.folderBoard = folderBoard
+  }
+
+  /// Every board in this folder and below, folder boards too
+  public var allBoards: [VaultBoard] { (folderBoard.map { [$0] } ?? []) + boards + folders.flatMap(\.allBoards) }
+
+  /// How many board packages are in it and below, folder boards and those that cannot be read too
+  public var boardCount: Int { allBoards.count + allFolders.reduce(0) { $0 + $1.unreadable.count } }
+
+  /// Every folder in it and below, itself first
+  public var allFolders: [VaultFolder] { [self] + folders.flatMap(\.allFolders) }
+
+  /// The folder at a path in it
+  public func folder(at path: String) -> VaultFolder? { allFolders.first { $0.path == path } }
+
+  /// The book a board is in (in the vault's tree): the folder board of the top-level folder it is in, when that folder
+  /// has one; else the board itself (a top-level board, or one in a top-level folder without a folder board)
+  public func book(of id: BoardID) -> VaultBoard? {
+    guard let b = allBoards.first(where: { $0.id == id }) else { return nil }
+    guard let top = b.path.split(separator: "/").first, b.path.contains("/"),
+      let f = folders.first(where: { $0.name == top }), let fb = f.folderBoard
+    else { return b }
+    return fb
+  }
+
+  /// Another board in the same book drawn with this seal (the first, in tree order)
+  public func sealClash(_ id: BoardID, _ text: String, _ color: Seal.Color) -> VaultBoard? {
+    guard let book = book(of: id)?.id else { return nil }
+    return allBoards.first { b in
+      b.id != id && book == self.book(of: b.id)?.id && b.drawnSeal.text == text && b.drawnSeal.color == color
+    }
+  }
+
+  /// What is directly in it, in sidebar order: its boards, then its subfolders (what its folder board has a card for)
+  public var entries: [FolderEntry] { boards.map { .board($0.id) } + folders.map { .folder($0.name) } }
+}
+
+/// A board or a subfolder directly in a folder
+public enum FolderEntry: Hashable, Sendable {
+  case board(BoardID)
+  case folder(String)
+}
+
+/// A board package whose file cannot be read: what the sidebar lists instead of it
+public struct VaultUnreadable: Equatable, Sendable {
+  public var title: String
+  public var path: String
+  public var reason: String
 }
 
 public struct VaultBoard: Equatable, Sendable {
@@ -138,10 +232,24 @@ public struct VaultBoard: Equatable, Sendable {
   public var title: String
   /// Of the package, relative to the vault
   public var path: String
+  /// A folder's own board: its title is its folder's name
+  public var isFolderBoard: Bool
+  /// Its seal as the user set it (`Seal.of` gives what is drawn)
+  public var seal: Seal?
 
-  public init(id: BoardID, title: String, path: String) {
+  public init(id: BoardID, title: String, path: String, isFolderBoard: Bool = false, seal: Seal? = nil) {
     self.id = id
     self.title = title
     self.path = path
+    self.isFolderBoard = isFolderBoard
+    self.seal = seal
+  }
+
+  /// Its seal as drawn: its own, else the default from its title and id
+  public var drawnSeal: (text: String, color: Seal.Color) { Seal.of(id: id, name: title, seal: seal) }
+
+  /// The folder it is in, relative to the vault ("" for the vault itself); a folder board's is the folder it is of
+  public var folder: String {
+    path.split(separator: "/").dropLast().joined(separator: "/")
   }
 }

@@ -1,13 +1,23 @@
+import CodeBoardModel
 import CoreGraphics
 
 /// What the view shows: the board point at the view's top-left corner and the zoom (view points per board unit). View
 /// and board are both y-down.
-struct Camera: Equatable {
-  var origin: CGPoint
-  var zoom: CGFloat
+public struct Camera: Equatable, Codable, Sendable {
+  public var origin: CGPoint
+  public var zoom: CGFloat
 
-  func board(_ p: CGPoint) -> CGPoint {
+  public init(origin: CGPoint, zoom: CGFloat) {
+    self.origin = origin
+    self.zoom = zoom
+  }
+
+  package func board(_ p: CGPoint) -> CGPoint {
     CGPoint(x: origin.x + p.x / zoom, y: origin.y + p.y / zoom)
+  }
+
+  package func view(_ p: CGPoint) -> CGPoint {
+    CGPoint(x: (p.x - origin.x) * zoom, y: (p.y - origin.y) * zoom)
   }
 
   func visible(_ size: CGSize) -> CGRect {
@@ -35,14 +45,30 @@ struct Camera: Equatable {
   }
 }
 
+extension Camera {
+  /// Where a board opens with no camera to come back to: at 100 %, what it holds with its top left corner 80 points in
+  /// (main's homeCam keeps the board's origin there: the same for a board drawn from its origin, and an imported board
+  /// far from it opens on its cards, not on empty paper); an empty board at main's homeCam
+  static func opening(_ r: CGRect) -> Camera {
+    let at = r.isNull || r.isEmpty ? .zero : r.origin
+    return Camera(origin: CGPoint(x: at.x - 80, y: at.y - 80), zoom: 1)
+  }
+}
+
 struct ZoomLimits: Equatable {
   var min: CGFloat
   var max: CGFloat
 
-  /// Down to half the fit zoom (the whole board with room around it) and at least to 10 %; up to 200 %
-  init(fit: CGFloat) {
-    min = Swift.min(fit / 2, 0.1)
-    max = 2
+  init(min: CGFloat, max: CGFloat = 2) {
+    self.min = min
+    self.max = max
+  }
+
+  /// Down to where the whole board fills about 77 % of the view (main summaryMinZoom: the fit ÷ 1.3, from 2 % to 50 %);
+  /// up to 200 %
+  init(view: CGSize, content: CGRect) {
+    let c = content.isEmpty ? nil : SumRect(content)
+    self.init(min: CGFloat(summaryMinZoom(view: (Double(view.width), Double(view.height)), content: c)))
   }
 
   func clamp(_ z: CGFloat) -> CGFloat { Swift.min(Swift.max(z, min), max) }

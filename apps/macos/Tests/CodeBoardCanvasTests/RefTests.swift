@@ -7,10 +7,8 @@ import Testing
 
 /// [[refs]] resolve as the web board resolves them (actions/common.ts resolveCardRef, md/refs.ts)
 @Suite struct RefTests {
-  func note(_ id: String, _ text: String, _ style: NoteStyle = .note) -> Card {
-    Card(
-      id: CardID(rawValue: id), x: 0, y: 0, width: 300,
-      content: .own(CardContent(body: .note(Note(text: text, style: style)))))
+  func note(_ id: String, _ text: String) -> Card {
+    Card(id: CardID(rawValue: id), x: 0, y: 0, width: 300, content: .own(CardContent(body: .note(Note(text: text)))))
   }
 
   func code(_ id: String, symbol: String) -> Card {
@@ -44,6 +42,47 @@ import Testing
         content: .own(CardContent(body: .note(Note(text: "no heading here"))))),
     ])
 
+  /// Books: a top-level folder with a folder board is one, its seal the folder board's; any other board at the top or in
+  /// a top-level folder without one is its own. A ref into another book has that book's seal in front
+  @Test func aRefIntoAnotherBookHasThatBooksSealFirstAndOneInTheSameBookOnlyItsBoards() throws {
+    let root = FileManager.default.temporaryDirectory.appending(path: "books-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let v = Vault(root: root)
+    let id = { (s: String) in BoardID(rawValue: s) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let eng = try v.newBoard(in: "", title: "Engine", board: Board(id: id("eng")))
+    try v.newFolder(in: "", name: "调度器")
+    try v.newBoard(in: "调度器", title: "Prefill", board: Board(id: id("pre")))
+    let dec = try v.newBoard(in: "调度器", title: "Decode", board: Board(id: id("dec"), seal: Seal(text: "DC")))
+    let fb = Board(id: id("fb"), seal: Seal(text: "调度", color: .teal))
+    let folder = try v.newFolderBoard(in: "调度器")
+    try fb.encoded().write(to: v.url(of: folder.path).appending(path: Vault.boardFileName), options: .atomic)
+    try v.newFolder(in: "", name: "Misc")
+    try v.newBoard(in: "Misc", title: "Loose", board: Board(id: id("loose")))
+    func seals(from b: VaultBoard, _ text: String) throws -> [NoteRef.Seal?] {
+      RefResolver(try v.board(at: b.path), package: v.url(of: b.path), vault: v).refs(in: text).map {
+        if case .found(_, let s) = $0.hit { s } else { nil }
+      }
+    }
+    func plain(_ b: String, _ name: String, alone: Bool = false, outer: NoteRef.Seal.Outer? = nil) -> NoteRef.Seal {
+      let s = Seal.of(id: id(b), name: name, seal: nil)
+      return NoteRef.Seal(text: s.text, color: s.color.rawValue, alone: alone, outer: outer)
+    }
+    let book = NoteRef.Seal.Outer(text: "调度", color: "teal")
+    let fbSeal = NoteRef.Seal(text: "调度", color: "teal", alone: true)
+    // from a board that is its own book
+    #expect(
+      try seals(from: eng, "[[Prefill]] [[调度器]] [[Loose]] [[Decode]]") == [
+        plain("pre", "Prefill", outer: book), fbSeal, plain("loose", "Loose", alone: true),
+        NoteRef.Seal(text: "DC", color: Seal.defaultColor(id("dec")).rawValue, alone: false, outer: book),
+      ])
+    // from inside the book: the boards' own seals only; its folder board and a board of another book, alone
+    #expect(
+      try seals(from: dec, "[[Prefill]] [[调度器]] [[Engine]]") == [
+        plain("pre", "Prefill"), fbSeal, plain("eng", "Engine", alone: true),
+      ])
+  }
+
   @Test func refsResolveOnThisBoardAndOthers() throws {
     let text = """
       [[Plan#^c2]] [[plan]] [[sched.step]] [[Warps]] [[Memory Model]] [[Memory Model › coalescing]] \
@@ -56,7 +95,7 @@ import Testing
     let (v, package) = try vault(here, other: other)
     defer { try? FileManager.default.removeItem(at: v.root) }
     let refs = RefResolver(here, package: package, vault: v).refs(in: text)
-    let seal = NoteRef.Seal(text: "MM", color: RefResolver.sealColor("mem"), alone: false)
+    let seal = NoteRef.Seal(text: "MM", color: Seal.defaultColor(BoardID(rawValue: "mem")).rawValue, alone: false)
     var alone = seal
     alone.alone = true
     #expect(
@@ -89,11 +128,48 @@ import Testing
     #expect(try refs([note("c1", text), note("c3", "# Other")]).isEmpty)
   }
 
-  @Test func sealsAreTheBoardsDefaults() {
-    #expect(RefResolver.sealText("Memory Model") == "MM")
-    #expect(RefResolver.sealText("Large language models for CUDA") == "LLMCUDA")
-    #expect(RefResolver.sealText("Convolution") == "Convolution")
-    #expect(RefResolver.sealText("并行 计算 模式 与 优化 方法 总结") == "并计模与优")
-    #expect(RefResolver.sealColors.contains(RefResolver.sealColor("anything")))
+  /// The [[ list as the web board builds it (md/load.ts refCandidates, md/refs.ts refGroups, core boardRefsOf): this
+  /// board's cards with a title of their own (a heading-like first line, a title, a code card's symbol; never an image
+  /// or a Note whose first line is plain text), its titled Sections, and each other board as a group of its titled cards,
+  /// with the Section each is in; the ids written are `card` here and `board/card` elsewhere
+  @Test func theRefListHasThisBoardsTitledCardsAndSectionsThenEachOtherBoard() throws {
+    var other = self.other
+    other.sections = [Section(id: SectionID(rawValue: "g"), title: " Caches ", x: 0, y: 0, width: 10, height: 10)]
+    other.cards[0].section = SectionID(rawValue: "g")
+    let here = Board(
+      id: BoardID(rawValue: "eng"),
+      cards: [
+        note("c1", "just words"), note("c2", "# Plan\n\nsteps"), code("c3", symbol: "sched.step"),
+        Card(
+          id: CardID(rawValue: "c4"), x: 0, y: 0, width: 200,
+          content: .own(CardContent(body: .text(TextCard(text: "## Big [idea]"))))),
+      ],
+      sections: [
+        Section(id: SectionID(rawValue: "s1"), title: "Warps", x: 0, y: 0, width: 10, height: 10),
+        Section(id: SectionID(rawValue: "s2"), title: "  ", x: 0, y: 0, width: 10, height: 10),
+      ])
+    let (v, package) = try vault(here, other: other)
+    defer { try? FileManager.default.removeItem(at: v.root) }
+    let list = RefResolver(here, package: package, vault: v).candidates(recent: [("eng", "c2"), ("mem", "m1")])
+    #expect(list.items.map(\.id) == ["c2", "c3", "c4", "s1"])
+    #expect(list.items.map(\.title) == ["Plan", "sched.step", "Big  idea ", "Warps"])
+    #expect(list.items.map(\.kind) == ["note", "code", "note", "section"])
+    #expect(list.items.map(\.target) == ["c2", "c3", "c4", "s1"])
+    #expect(list.items.allSatisfy { $0.label == nil && $0.crumb == nil })
+    let g = try #require(list.groups.first)
+    #expect(list.groups.count == 1)
+    #expect(g.id == "mem" && g.title == "Memory Model" && g.label == "Memory Model" && g.target == "mem")
+    #expect(g.note == "1 card · whiteboard")
+    #expect(g.items.map(\.title) == ["Coalescing"])
+    #expect(g.items.first?.label == "Memory Model › Coalescing")
+    #expect(g.items.first?.target == "mem/m1")
+    #expect(g.items.first?.crumb == "Caches")
+    let seal = NoteRef.Seal(text: "MM", color: Seal.defaultColor(BoardID(rawValue: "mem")).rawValue, alone: false)
+    #expect(g.items.first?.hit == .found(title: "Coalescing", seal: seal))
+    var alone = seal
+    alone.alone = true
+    #expect(g.hit == .found(title: "Memory Model", seal: alone))
+    #expect(list.recent == [.init(group: nil, id: "c2"), .init(group: "mem", id: "m1")])
+    #expect(list.foot == "4 titled cards · 2 boards")
   }
 }

@@ -1,0 +1,14 @@
+# Copy Code on a code card, then ⌘V twice with the pointer elsewhere: the code lands 36 down and right of its card, then 36 further, over what is there (clipboard.ts pasteNear); both sides
+zoom 0.8
+center @ccode+230,160
+move @ccode+200,60 300
+wait 400
+click @ccode:tr+-94,18
+wait 400
+move @ccode+200,-120 300
+key cmd+v
+wait 1200
+key cmd+v
+wait 1200
+locate ccode new
+shot near @ccode+-20,-20 600 380

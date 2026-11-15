@@ -1,0 +1,12 @@
+# 快速滑动后在滑行途中按下（不动）：相机立即停住（macOS 惯例：任何按下、手指重新放下都停住滑行）。网页没有自己的惯性，只跑 Mac
+mac: zoom 1
+mac: center @cfar+-900,-600
+mac: move @cfar+-900,-600 300
+mac: mark
+mac: scroll -400 0 8
+mac: down
+mac: mark
+mac: wait 400
+mac: expect cam.x ~ was
+mac: up
+mac: wait 300

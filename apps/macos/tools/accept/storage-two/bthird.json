@@ -1,0 +1,25 @@
+{
+ "version": 15,
+ "id": "bthird",
+ "name": "Third",
+ "cards": [
+  {
+   "id": "cthird",
+   "kind": "note",
+   "look": "note",
+   "md": "# Third\nThe board the sub-board card on First opens."
+  }
+ ],
+ "place": {
+  "cthird": {
+   "x": 80,
+   "y": 80,
+   "w": 300,
+   "h": 120
+  }
+ },
+ "links": [],
+ "sections": [],
+ "stickers": [],
+ "sidenotes": []
+}

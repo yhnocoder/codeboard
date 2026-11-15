@@ -1,0 +1,19 @@
+# Row 15, Ink Wash (run with --theme ink-wash): what the bar and the dock hold stays on the stroke's solid body; the board under each stroke is blurred (main's backdrop-filter in --ink-bar-mask), so a Section's line does not show through; the brush rests across the bar's right end; the Shelf is a button of the dock's stroke
+# theme: ink-wash
+zoom 1
+expect ui.more.right <= ui.barink.right
+expect ui.shelf.x >= ui.dockink.x
+expect ui.fit.right <= ui.dockink.right
+expect ui.barblur.w = ui.bar.w
+expect ui.dockblur.w = ui.dock.w
+expect ui.brush.x < ui.bar.right
+expect ui.brush.right > ui.bar.right
+expect ui.brush.y > ui.more.y
+expect ui.brush.bottom < ui.bar.bottom
+# main overlaps its two groups at this width (centred and right-aligned at ~1000 pt): only the Mac is held to it
+mac: expect ui.dock.x > ui.bar.right
+# the Input Section's bottom line (y 540) at the bar's middle on each side: blurred inside the stroke, not drawn crisp
+mac: center @sinput+260,211
+web: center @sinput+260,195
+wait 600
+shot ink

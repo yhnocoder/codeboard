@@ -1,0 +1,19 @@
+# Text and Box resized by the handle past their bottom right corner (interact.ts resizeDown): dragged 60 right and 40
+# down at 100 % from the handle, as wide and tall as main makes it (197 × 48.8 on both), in place; one undo puts it back
+key esc
+zoom 1
+center @cblue:c
+click @cblue:c
+wait 300
+move @cblue:br+4,4 300
+drag @cblue:br+4,4 @cblue:br+64,44 500
+wait 300
+expect cblue.x = 760
+expect cblue.y = 380
+expect cblue.w = 197
+expect cblue.h ~ 48.8
+shot resized @cyellow+-20,-20 500 200
+key cmd+z
+wait 300
+expect cblue.w = 130
+expect cblue.h = 37.6

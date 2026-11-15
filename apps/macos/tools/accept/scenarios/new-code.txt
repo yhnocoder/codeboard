@@ -1,0 +1,25 @@
+# New Code：白板菜单里 New Code 出一张空的 Free code，编辑器马上开着能写；写了留下，什么都没写就离开，卡就没有了
+zoom 1
+center @cnote+420,200
+move @cnote+420,120
+menu
+pick New Code
+wait 600
+shot open
+type x = 1
+wait 300
+key esc
+wait 200
+key esc
+wait 600
+expect new.text has x = 1
+shot kept
+move @cnote+420,420
+menu
+pick New Code
+wait 600
+key esc
+wait 200
+key esc
+wait 600
+shot gone

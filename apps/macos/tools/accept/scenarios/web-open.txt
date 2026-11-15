@@ -1,0 +1,11 @@
+# 外部打开不出本进程：选中 Web 卡按回车，地址只记下来（opened），浏览器不开；再读 Web 卡的右键菜单，结果里是整份菜单
+zoom 1
+center @cweb
+expect opened = none
+click @cweb
+key return
+wait 300
+expect opened = https://example.com/hills
+move @cweb 200
+menu
+key esc

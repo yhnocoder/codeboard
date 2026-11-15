@@ -1,0 +1,19 @@
+# ⌘D 出来的副本在小条上选 Reference，就和原卡是同一张卡：改副本，原卡跟着变（main：pastechip 的 Copy ✓ | Reference，卡左下角的记号）
+zoom 1
+center @cnote+150,180
+click @cnote+250,110
+key cmd+d
+wait 600
+shot chip @cnote+-20,-20 420 300
+# 小条在副本右下，右对齐；Reference 是右边那一半
+click @new:br+-48,23
+wait 600
+shot referenced @cnote+-20,-20 420 300
+dbl @new+150,62
+wait 600
+type  zebra
+key esc
+wait 900
+expect cnote.text has zebra
+expect new.text has zebra
+shot followed @cnote+-20,-20 420 300

@@ -1,0 +1,20 @@
+# Text/Box：选中后右下角卡外的手柄改大小（两边都在右下角外 4 点）；卡里靠右边按下是拖卡（不改宽）
+zoom 1
+center @cblue+65,30
+rec grip
+click @cblue+65,30
+wait 300
+mark
+drag @cblue:br+4,4 @cblue:br+44,14 600
+wait 400
+shot corner
+expect cblue.w > was
+expect cblue.x ~ was
+click @cpink+65,30
+wait 300
+mark
+drag @cpink+126,30 @cpink+126,70 600
+wait 400
+expect cpink.y ~ was+40
+expect cpink.w ~ was
+stop

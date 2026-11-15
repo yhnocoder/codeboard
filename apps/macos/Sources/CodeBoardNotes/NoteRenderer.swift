@@ -25,7 +25,8 @@ public final class NoteRenderer {
   }
 
   private let pageFolder: URL
-  private let build: String
+  /// The Note page's build: what draws a Note, its stylesheets and fonts
+  public let build: String
   private let store: SnapshotStore
   private var page: NotePage?
   private var busy = false
@@ -56,12 +57,14 @@ public final class NoteRenderer {
   /// (its id: warm-ink, ink-wash) and its `dark` variant or not, its [[refs]] drawn as `refs` resolve them. Among the requests waiting for the web
   /// view a higher `priority` goes first; a request cancelled before its turn draws nothing.
   public func snapshot(
-    of note: Note, width: Double, height: Double?, folder: URL, scale: Double, look: String, dark: Bool,
-    refs: [NoteRef] = [], priority: Int
+    of note: NoteBody, width: Double, height: Double?, folder: URL, scale: Double, look: String, dark: Bool,
+    refs: [NoteRef] = [], hideHead: Bool = false, priority: Int
   ) async throws -> NoteSnapshot {
-    let json = try PageNote(note, width: width, height: height, look: look, dark: dark, refs: refs).json()
+    let json = try PageNote(
+      note, width: width, height: height, look: look, dark: dark, refs: refs, hideHead: hideHead
+    ).json()
     let (key, mount, cached) = await Self.lookUp(
-      store: store, build: build, note: json, markdown: note.text, folder: folder, scale: scale)
+      store: store, build: build, note: json, markdown: note.markdown, folder: folder, scale: scale)
     if let cached { return cached }
     return try await draw(as: key, priority: priority) { p in
       var size = p.mountedSize(mount.hex)
@@ -92,48 +95,63 @@ public final class NoteRenderer {
 
   /// The picture `snapshot` would give, if the disk cache has it; never opens the web view
   public func cached(
-    of note: Note, width: Double, height: Double?, folder: URL, scale: Double, look: String, dark: Bool,
-    refs: [NoteRef] = []
+    of note: NoteBody, width: Double, height: Double?, folder: URL, scale: Double, look: String, dark: Bool,
+    refs: [NoteRef] = [], hideHead: Bool = false
   ) async -> NoteSnapshot? {
-    guard let json = try? PageNote(note, width: width, height: height, look: look, dark: dark, refs: refs).json() else {
+    guard
+      let json = try? PageNote(
+        note, width: width, height: height, look: look, dark: dark, refs: refs, hideHead: hideHead
+      ).json()
+    else {
       return nil
     }
     return await Self.lookUp(
-      store: store, build: build, note: json, markdown: note.text, folder: folder, scale: scale
+      store: store, build: build, note: json, markdown: note.markdown, folder: folder, scale: scale
     ).2
   }
 
   /// A Note to measure: on a card `width` wide that is as tall as its content, its images resolving against `folder`
   public struct SizeRequest: Sendable {
-    public var note: Note
+    public var note: NoteBody
     public var width: Double
     public var folder: URL
     public var look: String
     public var dark: Bool
     public var refs: [NoteRef]
+    public var hideHead: Bool
 
-    public init(note: Note, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef] = []) {
+    public init(
+      note: NoteBody, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef] = [], hideHead: Bool = false
+    ) {
       self.note = note
       self.width = width
       self.folder = folder
       self.look = look
       self.dark = dark
       self.refs = refs
+      self.hideHead = hideHead
     }
   }
 
   /// The size at 100 % of each Note (a Free Text: as wide as its text too), in order: what `snapshot` with no height
-  /// gives as its size, without drawing it; nil for one that could not be measured. Those not kept with the snapshots
-  /// are measured in the web view together, in one turn, and stay mounted there for their pictures
+  /// gives as its size, without drawing it; nil for one that could not be measured
   public func sizes(of notes: [SizeRequest], priority: Int) async throws -> [CGSize?] {
-    var out = [CGSize?](repeating: nil, count: notes.count)
+    try await metrics(of: notes, priority: priority).map { $0?.size }
+  }
+
+  /// What `sizes` gives, with each Note's blocks as laid out. Those not kept with the snapshots are measured in the web
+  /// view together, in one turn, and stay mounted there for their pictures
+  public func metrics(of notes: [SizeRequest], priority: Int) async throws -> [NoteMetrics?] {
+    var out = [NoteMetrics?](repeating: nil, count: notes.count)
     var missing: [(i: Int, key: SnapshotKey, json: String, images: URL, look: Look)] = []
     for (i, n) in notes.enumerated() {
       guard
-        let json = try? PageNote(n.note, width: n.width, height: nil, look: n.look, dark: n.dark, refs: n.refs).json()
+        let json = try? PageNote(
+          n.note, width: n.width, height: nil, look: n.look, dark: n.dark, refs: n.refs, hideHead: n.hideHead
+        ).json()
       else { continue }
       let (key, cached) = await Self.lookUpSize(
-        store: store, build: build, note: json, markdown: n.note.text, folder: n.folder)
+        store: store, build: build, note: json, markdown: n.note.markdown, folder: n.folder)
       if let cached {
         out[i] = cached
       } else {
@@ -142,7 +160,7 @@ public final class NoteRenderer {
     }
     guard !missing.isEmpty else { return out }
     try await takeTurn(priority: priority)
-    var shown: [String: (size: CGSize, complete: Bool)] = [:]
+    var shown: [String: NotePage.Measured] = [:]
     do {
       let p = try page ?? NotePage(page: pageFolder)
       page = p
@@ -157,14 +175,88 @@ public final class NoteRenderer {
       throw error
     }
     endTurn()
-    var keep: [(SnapshotKey, CGSize)] = []
+    var keep: [(SnapshotKey, NoteMetrics)] = []
     for m in missing {
       guard let s = shown[m.key.hex] else { continue }
-      out[m.i] = s.size
+      let metrics = NoteMetrics(size: s.size, blocks: s.blocks, refs: s.refs)
+      out[m.i] = metrics
       // measured without an image that did not come in: too small, so not kept
-      if s.complete { keep.append((m.key, s.size)) }
+      if s.complete { keep.append((m.key, metrics)) }
     }
     keepSizes(keep)
+    return out
+  }
+
+  /// What plain text pasted on the board makes, worked out by the Markdown package and core's paste rules in the page
+  /// (board actions/create.ts pasteText); before the pictures waiting, as a person waits for it
+  public func paste(_ text: String) async throws -> PastedText {
+    try await takeTurn(priority: Int.max)
+    defer { endTurn() }
+    do {
+      let p = try page ?? NotePage(page: pageFolder)
+      page = p
+      return PastedText(try await p.paste(text))
+    } catch {
+      page = nil
+      throw error
+    }
+  }
+
+  /// A picture added from a file as main adds it (board actions/create.ts addImage): an SVG cleaned, and the width of its
+  /// card from its pixels and a PNG's resolution, else `scale` (a pasted screenshot's: the window's); nil for an SVG
+  /// that cannot be read
+  public func image(_ dataURL: String, scale: Double = 1) async throws -> (dataURL: String, width: Double)? {
+    try await takeTurn(priority: Int.max)
+    defer { endTurn() }
+    do {
+      let p = try page ?? NotePage(page: pageFolder)
+      page = p
+      return try await p.added(dataURL, scale: scale)
+    } catch {
+      page = nil
+      throw error
+    }
+  }
+
+  /// The language Free code's text looks like, as the board guesses it (core freeLang); nil when it cannot tell
+  public func freeLanguage(_ text: String) async throws -> String? {
+    try await takeTurn(priority: Int.max)
+    defer { endTurn() }
+    do {
+      let p = try page ?? NotePage(page: pageFolder)
+      page = p
+      return try await p.freeLanguage(text)
+    } catch {
+      page = nil
+      throw error
+    }
+  }
+
+  /// Each Note's size at 100 % and where its first glyph is from its top left (nil when it has none), measured now: what
+  /// a Text keeps in place when it becomes a Box (the board measures it the same way, notes.ts setTextLook)
+  public func firstGlyphs(of notes: [SizeRequest]) async throws -> [(size: CGSize, first: CGPoint?)?] {
+    try await takeTurn(priority: 0)
+    defer { endTurn() }
+    var out = [(size: CGSize, first: CGPoint?)?](repeating: nil, count: notes.count)
+    do {
+      let p = try page ?? NotePage(page: pageFolder)
+      page = p
+      for (i, n) in notes.enumerated() {
+        guard
+          let json = try? PageNote(
+            n.note, width: n.width, height: nil, look: n.look, dark: n.dark, refs: n.refs, hideHead: n.hideHead
+          ).json()
+        else { continue }
+        let (key, _) = await Self.lookUpSize(
+          store: store, build: build, note: json, markdown: n.note.markdown, folder: n.folder)
+        let sizes = try await p.mount([(key.hex, json, Self.images(n.folder))], look: n.look, dark: n.dark)
+        let firsts = try await p.firstGlyphs([key.hex])
+        if let s = sizes[key.hex] { out[i] = (s.size, firsts[key.hex]) }
+      }
+    } catch {
+      page = nil
+      throw error
+    }
     return out
   }
 
@@ -173,7 +265,7 @@ public final class NoteRenderer {
     var dark: Bool
   }
 
-  private nonisolated static func images(_ folder: URL) -> URL {
+  nonisolated static func images(_ folder: URL) -> URL {
     folder.appending(path: "images", directoryHint: .notDirectory)
   }
 
@@ -182,7 +274,7 @@ public final class NoteRenderer {
   @concurrent
   private static func lookUpSize(
     store: SnapshotStore, build: String, note: String, markdown: String, folder: URL
-  ) async -> (SnapshotKey, CGSize?) {
+  ) async -> (SnapshotKey, NoteMetrics?) {
     let key = SnapshotKey(
       build: build, system: ProcessInfo.processInfo.operatingSystemVersionString, note: note, scale: 0,
       images: SnapshotKey.imageStamps(in: markdown, folder: folder))
@@ -190,7 +282,7 @@ public final class NoteRenderer {
   }
 
   /// Written after the measuring is done, off the path to the screen
-  private func keepSizes(_ sizes: [(SnapshotKey, CGSize)]) {
+  private func keepSizes(_ sizes: [(SnapshotKey, NoteMetrics)]) {
     guard !sizes.isEmpty else { return }
     let store = self.store
     writes.async {
@@ -286,6 +378,31 @@ public final class NoteRenderer {
     idle = Task { [weak self] in
       guard (try? await Task.sleep(for: .seconds(30))) != nil else { return }
       self?.page = nil
+    }
+  }
+}
+
+/// What a paste of plain text makes (page.ts pasted)
+public enum PastedText: Equatable, Sendable {
+  /// A Note of this Markdown
+  case note(String)
+  case web(String)
+  case links([String])
+  /// An SVG, cleaned, as a data: URL, and its own width in pixels (0 when it could not be drawn)
+  case svg(dataURL: String, natural: Double)
+  /// Free code in the language guessed
+  case code(String, language: String)
+  /// Nothing; `why`, to say, when the text could not be used
+  case none(why: String?)
+
+  init(_ d: [String: Any]) {
+    switch d["kind"] as? String {
+    case "note": self = .note(d["text"] as? String ?? "")
+    case "web": self = .web(d["url"] as? String ?? "")
+    case "links": self = .links(d["urls"] as? [String] ?? [])
+    case "svg": self = .svg(dataURL: d["dataUrl"] as? String ?? "", natural: d["natural"] as? Double ?? 0)
+    case "code": self = .code(d["text"] as? String ?? "", language: d["lang"] as? String ?? "python")
+    default: self = .none(why: d["error"] as? String)
     }
   }
 }

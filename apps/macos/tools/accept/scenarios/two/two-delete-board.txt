@@ -1,0 +1,33 @@
+# 插入子白板卡后右键 Delete Board…：先问；Esc 取消后白板还在；再来一次，回车不删（没有默认按钮），点 Delete 确认，侧栏里 Second 没了
+# storage: storage-two
+# only: mac
+zoom 1
+center @cown+150,300
+move @cown+150,300 300
+menu
+pick Insert Board/Second
+wait 900
+center @new:c
+move @new:c 300
+menu
+pick Delete Board…
+wait 800
+dialog
+shot asking
+key esc
+wait 600
+info
+shot cancelled
+move @new:c 300
+menu
+pick Delete Board…
+wait 800
+key return
+wait 600
+mac: expect dialog has Delete
+button Delete
+wait 1200
+mac: expect dialog = none
+info
+shot deleted
+mac: expect row:Second = none

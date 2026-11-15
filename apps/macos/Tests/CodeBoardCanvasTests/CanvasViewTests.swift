@@ -37,6 +37,37 @@ import Testing
     #expect(!l.held.isHidden)
   }
 
+  /// A Note's first picture fades in over its paper: halfway through, the card is as opaque as its paper (a crossfade
+  /// faded the paper out as the picture came in, and for a frame the board showed through the whole card, header too)
+  @Test(arguments: [RestPlan.Slot.held, .overview, .rest])
+  func aNotesFirstPictureFadesInOverItsPaper(slot: RestPlan.Slot) throws {
+    let t = Theme.warmInk
+    let size = CGSize(width: 200, height: 100)
+    let item = Scene.Item(
+      rect: CGRect(origin: .zero, size: size),
+      drawing: .note(
+        .init(id: "n", title: "Plan", content: .note(Note(text: "")), folder: URL(filePath: "/"), refs: [])),
+      tilt: 0)
+    let images = DecodeCache(cap: 1 << 20)
+    let paper = try #require(CanvasView.render(item, scale: 2, theme: t, images: images).surface)
+    let picture = try #require(CanvasView.render(item, scale: 2, theme: t, images: images).surface)
+    let l = CanvasView.ItemLayers(item, overview: (paper, 2, .paper), shadow: nil)
+    let whole = try render(l.box, size: size, scale: 1, canvas: t.canvas)
+    l.take(.init(item: 0, slot: slot, scale: 2, note: true), picture)
+    let shown = slot == .rest ? l.rest : l.held
+    #expect(shown.animationKeys()?.isEmpty == false)
+    // halfway through the fade
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    shown.removeAllAnimations()
+    shown.opacity = 0.5
+    CATransaction.commit()
+    let half = try render(l.box, size: size, scale: 1, canvas: t.canvas)
+    let off = zip(whole, half).map { abs(Int($0) - Int($1)) }.max() ?? 0
+    // the same text drawn twice differs only at its antialiased edges (measured 7); the board showing through, 102
+    #expect(off <= 10, "the card differs by up to \(off) of 255 halfway through its fade")
+  }
+
   /// A sheet's edge as the web board draws it (styles.css --wi-ring over --wi-soft): its hairline ring all round, no
   /// darker where the corners curve (the shadow's caster left its antialiased edge there, and the card's bitmap cut the
   /// ring off along the sides), at each level and at a zoom between them
@@ -46,9 +77,11 @@ import Testing
     let card = CGSize(width: 200, height: 100)
     let item = Scene.Item(
       rect: CGRect(origin: .zero, size: card),
-      drawing: .note(.init(id: "n", title: "Plan", content: Note(text: ""), folder: URL(filePath: "/"), refs: [])),
+      drawing: .note(
+        .init(id: "n", title: "Plan", content: .note(Note(text: "")), folder: URL(filePath: "/"), refs: [])),
       tilt: 0,
-      bleed: Drawing.note(.init(id: "n", content: Note(text: ""), folder: URL(filePath: "/"), refs: [])).bleed(t))
+      bleed: Drawing.note(.init(id: "n", content: .note(Note(text: "")), folder: URL(filePath: "/"), refs: [])).bleed(t)
+    )
     let bitmap = try #require(CanvasView.render(item, scale: level, theme: t, images: DecodeCache(cap: 1)).surface)
     let l = CanvasView.ItemLayers(item, overview: (bitmap, level, .drawn), shadow: CanvasView.shadow(t))
     let s = zoom * 2

@@ -1,0 +1,46 @@
+{
+ "version": 15,
+ "id": "bfirst",
+ "name": "First",
+ "cards": [
+  {
+   "id": "cshared",
+   "kind": "shared"
+  },
+  {
+   "id": "cown",
+   "kind": "note",
+   "look": "note",
+   "md": "# Own words\nOnly on the first board."
+  },
+  {
+   "id": "csub",
+   "kind": "board",
+   "board": "bthird"
+  }
+ ],
+ "place": {
+  "cshared": {
+   "x": 80,
+   "y": 80,
+   "w": 320,
+   "h": 260
+  },
+  "cown": {
+   "x": 480,
+   "y": 80,
+   "w": 300,
+   "h": 140
+  },
+  "csub": {
+   "x": 860,
+   "y": 80,
+   "w": 260,
+   "h": 180
+  }
+ },
+ "links": [],
+ "sections": [],
+ "stickers": [],
+ "sidenotes": []
+}
