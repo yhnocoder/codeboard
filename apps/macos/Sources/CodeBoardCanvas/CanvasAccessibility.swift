@@ -82,7 +82,22 @@ extension CanvasView {
   }
 
   /// The toolbar's and the dock's parts
-  func chromeElements() -> [Any] { dock.isHidden ? [] : [dock] }
+  func chromeElements() -> [Any] {
+    var out: [Any] = dock.isHidden ? [] : [dock]
+    guard !alignBar.isHidden, let bar = alignBarFrame() else { return out }
+    out.append(uiElement("alignbar", bar, in: self))
+    let names: [AlignBarButton: String] = [.section: "newsection", .subBoard: "subboard", .more: "alignmore"]
+    for (b, r) in AlignBarLayout.bar(AlignBarLayout.font(theme)).buttons {
+      out.append(uiElement(names[b]!, r.offsetBy(dx: bar.minX, dy: bar.minY), label: names[b], in: self))
+    }
+    guard alignMore else { return out }
+    let m = alignMoreFrame(bar)
+    for (b, r) in AlignBarLayout.more(AlignBarLayout.titleFont(theme)).buttons {
+      guard case .align(let op) = b else { continue }
+      out.append(uiElement("align\(op)", r.offsetBy(dx: m.minX, dy: m.minY), label: "\(op)", in: self))
+    }
+    return out
+  }
 
   /// Whether a marker's or sticker's layer shows: none of its layers hidden, and one on a card (or a Section's title)
   /// level with its shown part (not on lines scrolled or cut off below it)

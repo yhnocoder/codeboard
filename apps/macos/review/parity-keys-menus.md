@@ -38,7 +38,7 @@ The app: `Sources/CodeBoardCanvas/CanvasKeys.swift` (`boardKey`, reached from `k
 | ⌘D | Duplicate | same (Edit menu) |
 | ⇧⌘] / ⇧⌘[ | (main: Bring to Front / Send to Back with cards selected, else VS Code's tabs; NOT DO: one key doing two things by the selection is unpredictable, and these are the system's tab keys) | Show Next / Previous Tab, always; Bring to Front / Send to Back are ⌥⇧⌘F / ⌥⇧⌘B (Edit menu) |
 | ⌫ ⌦ | Delete: a sticker selected, the text selected in a card, else what is selected | same, but gap: text selected in a card (no static text selection) |
-| ⌘⌫ | Delete Everywhere (linked card, asks first) | gap: linked cards |
+| ⌘⌫ | Delete Everywhere (linked card, asks first) | same: asked in a sheet (no default button), then gone here as one step and from every other board showing it, its file to the Trash |
 | ⌘B, ⇧⌘H | Bold / Highlight the text selected in a Note at rest | gap: no static text selection |
 | ⇧⌘L | Lock / Unlock | same (Edit menu) |
 | ⇧⌘B | Turn into Board: no card selected says “Select the cards to turn into a board first”; else asks the name, makes it | same, the name written in place over the new card (no dialog) |
@@ -51,7 +51,7 @@ The app: `Sources/CodeBoardCanvas/CanvasKeys.swift` (`boardKey`, reached from `k
 | H | Hide the lines selected | same (hidden runs they touch merge into one) |
 | ⌘Z / ⇧⌘Z, ⌘Y | Undo / Redo | same (Edit menu) |
 | ⌘, | Settings | same (app menu) |
-| ? | Keyboard Shortcuts | same: pinned at the board's top right (12 / 56 / 60, 380 wide), on the theme's opaque paper in its fonts, made from the key table (CanvasKeys BoardKey.all: main's rows the app has, in main's groups and words, and the app menu's keys, Mac-only ones among them); its X; ? or Esc closes it. Main's Search… (Settings' Filter shortcuts…) is a filter field in the list itself. Not listed (not in the app): Paste Image Text, the editor's rows, animated image keys, Merge, Turn into a Code Sidenote, ⌘] / ⌘[ and ⇧⌘] / ⇧⌘[ as layer order, bold / highlight in a Note at rest, Delete Everywhere, Tidy Up, the Code group's call and peek rows, Copy code, Walkthrough |
+| ? | Keyboard Shortcuts | same: pinned at the board's top right (12 / 56 / 60, 380 wide), on the theme's opaque paper in its fonts, made from the key table (CanvasKeys BoardKey.all: main's rows the app has, in main's groups and words, and the app menu's keys, Mac-only ones among them); its X; ? or Esc closes it. Main's Search… (Settings' Filter shortcuts…) is a filter field in the list itself. Not listed (not in the app): Paste Image Text, the editor's rows, animated image keys, Merge, Turn into a Code Sidenote, ⌘] / ⌘[ and ⇧⌘] / ⇧⌘[ as layer order, bold / highlight in a Note at rest, Tidy Up, the Code group's call and peek rows, Copy code, Walkthrough |
 | Esc | Cancel the tool, stop waiting for AI, deselect the sticker, back to the parent board, deselect | same but gap: back to the parent board |
 
 ## Context menus (main: `actions/menus.ts`, `actions/edit.ts` arrangeItem, `actions/stickers.ts`, `actions/shelf.ts`,
@@ -74,7 +74,7 @@ already in front, Backward and Back when at the back), `-`, Tilt ⌥⇧T (checke
 | Code | Add ▸ (Description), View ▸ (Hide Blank Lines, Hide Comments, Hide Docstrings, Show All Hidden Lines, `-`, Background) | View ▸ same (comments and docstrings are hidden once the language analysis comes); gap: Description |
 | Sub-board | Open ⌘↵, `-`, Arrange ▸, Copy Path, `-`, Remove from This Board ⌫, Delete Board… | same; Delete Board… asks main's question (a sheet: Delete / Cancel), then the board goes to the Trash as the sidebar's Delete sends it and its cards here go |
 | A folder board's own card (app only) | — | Open, Arrange ▸ |
-| Linked card (on 2+ boards) | “title · on N boards”, Remove from This Board ⌫, Delete Everywhere… ⌘⌫, `-`, Unlink (Make This a Copy) | gap: linked cards |
+| Linked card (on 2+ boards) | “title · on N boards”, Remove from This Board ⌫, Delete Everywhere… ⌘⌫, `-`, Unlink (Make This a Copy) | same but gap: Unlink |
 
 Copy Path (paths.ts): the board's file and `#<card id>`; a sub-board card, its board's file; a shared card, its file.
 
