@@ -28,6 +28,12 @@ import CodeBoardModel
     var firstContentMs: Double?
     var allDrawnMs: Double?
     var notesSharpMs: Double?
+    /// "first": the canvas showed nothing before (a launch); "switch": another board was shown
+    var mode = ""
+    /// The first frame with the board's kept picture over the view
+    var pictureMs: Double?
+    /// Frames, until every item in view is drawn, with neither the picture nor any item in view drawn
+    var blankFrames = 0
     /// Frames before the first one with anything drawn (the whole view blank), and of them those after installing
     var blankFramesBeforeContent = 0
     var blankFramesAfterInstall = 0
@@ -76,8 +82,28 @@ import CodeBoardModel
     }
   }
 
-  func run(_ b: VaultBoard, in vault: Vault) async throws -> String {
+  /// The board shown kept as a picture, and the camera it was taken at, as the app does when it quits
+  func leave(pictures: URL) {
+    canvas.keepCamera(now: true)
+    if let b = canvas.shownVaultBoard {
+      let c = canvas.currentCamera
+      try? JSONEncoder().encode([c.origin.x, c.origin.y, c.zoom]).write(
+        to: pictures.appending(path: "camera-\(b.id.rawValue).json"))
+    }
+    CanvasView.pictureWrites.sync {}
+  }
+
+  func run(_ b: VaultBoard, in vault: Vault, pictures: URL? = nil) async throws -> String {
     var r = Result()
+    r.mode = canvas.shownVaultBoard == nil ? "first" : "switch"
+    if let pictures {
+      if canvas.shownVaultBoard != nil { leave(pictures: pictures) }
+      if let d = try? Data(contentsOf: pictures.appending(path: "camera-\(b.id.rawValue).json")),
+        let c = try? JSONDecoder().decode([CGFloat].self, from: d), c.count == 3
+      {
+        canvas.arriving = Camera(origin: CGPoint(x: c[0], y: c[1]), zoom: c[2])
+      }
+    }
     r.view = [Int(canvas.bounds.width), Int(canvas.bounds.height)]
     if timer == nil { startTicking() }
     let t0 = CACurrentMediaTime()
@@ -95,7 +121,11 @@ import CodeBoardModel
       p.emptiedAgain += blank.intersection(shown).count
       shown.formUnion(s.drawn)
       if opening {
-        if !installed, s.inView > 0 {
+        if !canvas.pictureShown, s.drawn.isEmpty, r.allDrawnMs == nil { r.blankFrames += 1 }
+        if r.pictureMs == nil, canvas.pictureShown, let at = canvas.pictureShownAt {
+          r.pictureMs = ((at - t0) * 1000).rounded()
+        }
+        if !installed, s.inView > 0, !canvas.isOpening {
           installed = true
           r.installedMs = ms()
         }

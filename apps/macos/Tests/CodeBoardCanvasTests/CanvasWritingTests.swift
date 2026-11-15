@@ -205,6 +205,58 @@ extension Rig {
     await c.endEditing()
   }
 
+  /// A person's double-click on the one selected Note: its first click begins writing, and its second comes while the
+  /// editor is still mounting or once it is up; either way the writing goes on and what is typed next is written, as in
+  /// main, where the second click lands in the editor
+  @Test func theSecondClickOfADoubleClickOnTheSelectedNoteKeepsTheWritingGoing() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let n = r.rect("n1")
+    // on its words, in the window (its left edge is off it), clear of n2 over its middle
+    let body = CGPoint(x: n.minX + 80, y: n.minY + c.theme.headerHeight + 14)
+    /// Keys pressed through the window, once the editor's page shows them
+    func typed(_ keys: String) async {
+      r.press(keys)
+      await r.until("\(keys) typed") {
+        let t = try? await c.noteEditor.view.evaluateJavaScript("document.body.innerText") as? String
+        return t?.contains(keys) == true
+      }
+    }
+    r.click(body)
+    await r.settle()
+    #expect(r.doc.selection == [.card(cid("n1"))] && !c.isEditing)
+    // the second press while the editor mounts
+    r.click(body)
+    await r.until("writing begun") { c.editing != nil }
+    let first = try #require(c.editing?.session)
+    #expect(c.editing?.ready == false && !c.noteEditor.view.shown, "still mounting")
+    r.click(through: body, clicks: 2)
+    await r.until("mounted or ended") { c.editing?.ready != false }
+    #expect(c.editing?.session == first, "still writing")
+    await typed("xy")
+    await c.endEditing()
+    #expect(r.card("n1").writing?.contains("xy") == true, "what was typed after it is written")
+    await r.settle()
+    // the second press once the editor is up: AppKit sends it where the first went, the canvas, which hands it on
+    r.click(through: body)
+    await r.editorReady()
+    let second = try #require(c.editing?.session)
+    #expect(
+      r.window.contentView?.hitTest(r.at(body))?.isDescendant(of: c.noteEditor.view) == true,
+      "the editor is under the pointer")
+    r.click(through: body, clicks: 2)
+    // the page has had the press and two frames after it
+    for _ in 0..<2 {
+      _ = try? await c.noteEditor.view.evaluateJavaScript("new Promise(r => requestAnimationFrame(() => r(1)))")
+    }
+    await r.settle()
+    #expect(c.editing?.session == second, "still writing")
+    await typed("ab")
+    await c.endEditing()
+    #expect(r.card("n1").writing?.contains("ab") == true)
+  }
+
   @Test func aNewCardWrittenInIsOneStep() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }
