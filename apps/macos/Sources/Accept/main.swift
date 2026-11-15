@@ -537,14 +537,16 @@ if let m = class_getInstanceMethod(NSTextInputContext.self, #selector(NSTextInpu
 /// bindings (StandardKeyBinding.dict) as a US layout gives them, else the key's characters inserted; never the system's
 /// input methods
 final class ScriptedContext: NSTextInputContext {
-  nonisolated(unsafe) static var made: [ObjectIdentifier: ScriptedContext] = [:]
+  /// One per view, let go with it: a view made where a gone one was (the native editor, made anew for each card) must
+  /// not get the gone one's context, whose client is gone (no key reached it)
+  nonisolated(unsafe) static let made = NSMapTable<NSView, ScriptedContext>.weakToStrongObjects()
   nonisolated(unsafe) static let bindings: [String: Any] =
     NSDictionary(contentsOfFile: "/System/Library/Frameworks/AppKit.framework/Resources/StandardKeyBinding.dict")
     as? [String: Any] ?? [:]
   static func of(_ v: NSView, _ c: NSTextInputClient) -> ScriptedContext {
-    if let x = made[ObjectIdentifier(v)] { return x }
+    if let x = made.object(forKey: v) { return x }
     let x = ScriptedContext(client: c)
-    made[ObjectIdentifier(v)] = x
+    made.setObject(x, forKey: v)
     return x
   }
   override func handleEvent(_ e: NSEvent) -> Bool {
