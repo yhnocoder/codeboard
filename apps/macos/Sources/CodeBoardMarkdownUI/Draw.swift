@@ -203,8 +203,10 @@ extension MarkdownLayout {
     // boxes last: a code span's background lies over the highlight around it, as the inner element's does on the page
     for (kind, s) in spans.filter({ $0.1.box == nil }) + spans.filter({ $0.1.box != nil }) {
       let font = s.face
-      let a = CTFontGetAscent(font)
-      let d = CTFontGetDescent(font)
+      // an inline element's background covers its font's ascent and descent each rounded to whole points, as Blink
+      // measures a font (SimpleFontData): JetBrains Mono at 11 is 11 + 3 tall there, not 11.2 + 3.3
+      let a = CTFontGetAscent(font).rounded()
+      let d = CTFontGetDescent(font).rounded()
       let size = CTFontGetSize(font)
       let x0 = origin.x + s.x0
       let x1 = origin.x + s.x1

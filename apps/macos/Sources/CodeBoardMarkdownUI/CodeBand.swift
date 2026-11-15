@@ -29,6 +29,22 @@ final class CodeBand: NSView {
     var gapBefore = false
   }
   static let height: CGFloat = 30
+
+  /// The row's text: the look's own UI family (.md-band-row: 12px var(--sys); Ink Wash's is its serif); `tabular`, a
+  /// table's size, its digits all as wide (.md-tsize: tabular-nums)
+  static func font(_ theme: MarkdownTheme?, size: CGFloat, tabular: Bool = false) -> NSFont {
+    let font = theme.map { FontBook.font($0.fonts.body, size: size) as NSFont } ?? .systemFont(ofSize: size)
+    guard tabular else { return font }
+    let d = font.fontDescriptor.addingAttributes([
+      .featureSettings: [
+        [
+          NSFontDescriptor.FeatureKey.typeIdentifier: kNumberSpacingType,
+          NSFontDescriptor.FeatureKey.selectorIdentifier: kMonospacedNumbersSelector,
+        ]
+      ]
+    ])
+    return NSFont(descriptor: d, size: size) ?? font
+  }
   /// the room around the band for its shadow and the fade above it (.md-band-clip's inset)
   static let margin: CGFloat = 18
 
@@ -36,6 +52,9 @@ final class CodeBand: NSView {
   private let clip = Flipped()
   private let strip = Strip()
   private let corners = [CALayer(), CALayer()]
+  /// a table's frame on each corner square (.md-band-table .md-band-cnr's borders): its top and its outer side, so the
+  /// frame runs on unbroken from the band down past the table's rounded corner the square covers
+  private let cornerLines = [CAShapeLayer(), CAShapeLayer()]
   var block: EditorCore.CodeBlock?
   /// What the band covers above its block (band.ts data-over): the block before it, a code block (a deeper shadow), or
   /// nothing (the first block: no fade)
@@ -54,8 +73,10 @@ final class CodeBand: NSView {
     addSubview(clip)
     strip.wantsLayer = true
     clip.addSubview(strip)
-    for c in corners {
+    for (c, l) in zip(corners, cornerLines) {
       c.opacity = 0
+      l.fillColor = nil
+      c.addSublayer(l)
       layer?.addSublayer(c)
     }
   }
@@ -84,6 +105,15 @@ final class CodeBand: NSView {
 
   /// what it covers above its block, as last placed (tests)
   var above: Above { strip.above }
+
+  /// the frame lines a table's band puts on its corner squares, each line's box (the middle of its stroke) in the editor
+  /// view's points; none for a code block's or a corner not shown (tests)
+  var cornerEdges: [CGRect] {
+    zip(corners, cornerLines).compactMap { c, l in
+      guard !c.isHidden, !l.isHidden, let p = l.path else { return nil }
+      return p.boundingBox.offsetBy(dx: frame.minX + c.frame.minX, dy: frame.minY + c.frame.minY)
+    }
+  }
 
   /// the band's own box in the editor view's points (without the margin)
   var bandFrame: CGRect {
@@ -141,12 +171,24 @@ final class CodeBand: NSView {
     let r = strip.radius
     CATransaction.begin()
     CATransaction.setDisableActions(true)
+    // the table's hairline, 1 pt at 100 % as the layout strokes it, its middle half a line in from the edge
+    let lw = zoom
     for (i, c) in corners.enumerated() {
       c.frame = CGRect(x: i == 0 ? m : m + over.width - r, y: h + m, width: r, height: r)
       c.backgroundColor = face
-      c.borderColor = table ? theme.colors.hair.cg : nil
-      c.borderWidth = 0
       c.isHidden = i == 1 && strip.hangs
+      let line = cornerLines[i]
+      line.isHidden = !table
+      guard table else { continue }
+      line.frame = c.bounds
+      let side = i == 0 ? lw / 2 : r - lw / 2
+      let p = CGMutablePath()
+      p.move(to: CGPoint(x: side, y: r))
+      p.addLine(to: CGPoint(x: side, y: lw / 2))
+      p.addLine(to: CGPoint(x: i == 0 ? r : 0, y: lw / 2))
+      line.path = p
+      line.lineWidth = lw
+      line.strokeColor = theme.colors.hair.cg
     }
     CATransaction.commit()
     strip.needsDisplay = true
@@ -264,8 +306,8 @@ final class CodeBand: NSView {
     private var face: CGRect {
       CGRect(x: 0, y: fadeH, width: bounds.width - 2 * pad, height: CodeBand.height * zoom)
     }
-    private var font: NSFont { NSFont.systemFont(ofSize: 12 * zoom) }
-    private var mono: NSFont { NSFont.monospacedDigitSystemFont(ofSize: 12 * zoom, weight: .regular) }
+    private var font: NSFont { CodeBand.font(theme, size: 12 * zoom) }
+    private var mono: NSFont { CodeBand.font(theme, size: 12 * zoom, tabular: true) }
     private func width(_ s: String, _ f: NSFont) -> CGFloat { (s as NSString).size(withAttributes: [.font: f]).width }
 
     /// a control's width (unzoomed: .md-bb 26 + 1 between, the size and language buttons by their text)
@@ -281,7 +323,8 @@ final class CodeBand: NSView {
     func leastWidth() -> CGFloat {
       let left = parts.first { if case .icon = $0.kind { false } else { true } }
       let more = parts.last { $0.id == "more" }
-      return (table ? 8 + 7 : 22 + 14) * zoom + (left.map(w) ?? 0) + 8 * zoom + (more.map(w) ?? 0)
+      // a table's counts a group gap too (tableview.ts fit's fixed part)
+      return (table ? 8 + 7 + 6 : 22 + 14) * zoom + (left.map(w) ?? 0) + 8 * zoom + (more.map(w) ?? 0)
     }
 
     /// where each control is: the size or language at the left, the buttons from the right edge back
@@ -291,13 +334,15 @@ final class CodeBand: NSView {
     private func innerRects() -> [(Part, CGRect)] {
       let y = face.minY + (face.height - 24 * zoom) / 2
       var out: [(Part, CGRect)] = []
-      var x = (table ? 8 : 22) * zoom
-      var right = face.width - (table ? 7 : 14) * zoom
+      // a table's row starts after its frame's 1 pt line (.md-band-table: border-box, padding-left 8)
+      var x = (table ? 9 : 22) * zoom
+      // the last button at the row's right padding (a table's after its frame's line too); each one 1 pt from the one
+      // before it (.md-bb + .md-bb), a group gap's 6 pt in place of that
+      var right = face.width - (table ? 8 : 14) * zoom
       for p in parts.reversed() {
         if case .icon = p.kind {
-          right -= w(p)
-          out.append((p, CGRect(x: right, y: y, width: 26 * zoom, height: 24 * zoom)))
-          if p.gapBefore { right -= 6 * zoom }
+          out.append((p, CGRect(x: right - 26 * zoom, y: y, width: 26 * zoom, height: 24 * zoom)))
+          right -= (26 + (p.gapBefore ? 6 : 1)) * zoom
         }
       }
       for p in parts {
@@ -314,6 +359,9 @@ final class CodeBand: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
       guard let theme, let ctx = NSGraphicsContext.current?.cgContext else { return }
+      // its text as the Note's (BlockLayout.draw) and the page's: no smoothing, which drew light text on the dark looks
+      // a weight heavier
+      ctx.setShouldSmoothFonts(false)
       ctx.translateBy(x: pad, y: 0)
       let f = face
       // over text, the covered line's sliver above the band fades into the paper
@@ -353,18 +401,21 @@ final class CodeBand: NSView {
       ctx.fillPath()
       ctx.restoreGState()
       if table {
-        // the table's frame drawn on up around the band
+        // the table's frame drawn on up around the band: its hairline (1 pt at 100 %, scaled as the table's is), on the
+        // same lines as the table's sides, half a line in from its edges (box-sizing: border-box)
+        let lw = zoom
+        let h = lw / 2
         let edge = CGMutablePath()
-        edge.move(to: CGPoint(x: 0.5, y: f.maxY))
+        edge.move(to: CGPoint(x: h, y: f.maxY))
         edge.addArc(
-          tangent1End: CGPoint(x: 0.5, y: f.minY + 0.5), tangent2End: CGPoint(x: r, y: f.minY + 0.5), radius: r)
+          tangent1End: CGPoint(x: h, y: f.minY + h), tangent2End: CGPoint(x: r, y: f.minY + h), radius: r - h)
         edge.addArc(
-          tangent1End: CGPoint(x: f.maxX - 0.5, y: f.minY + 0.5), tangent2End: CGPoint(x: f.maxX - 0.5, y: f.minY + r),
-          radius: r)
-        edge.addLine(to: CGPoint(x: f.maxX - 0.5, y: f.maxY))
+          tangent1End: CGPoint(x: f.maxX - h, y: f.minY + h), tangent2End: CGPoint(x: f.maxX - h, y: f.minY + r),
+          radius: r - h)
+        edge.addLine(to: CGPoint(x: f.maxX - h, y: f.maxY))
         ctx.addPath(edge)
         ctx.setStrokeColor(theme.colors.hair.cg)
-        ctx.setLineWidth(1)
+        ctx.setLineWidth(lw)
         ctx.strokePath()
       }
       let ink = theme.colors.ink.cg

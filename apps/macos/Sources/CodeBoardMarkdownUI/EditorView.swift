@@ -988,25 +988,24 @@ public final class MarkdownEditorView: NSView {
         at == core.selection.head && t.column < t.table.align.count ? t.table.align[t.column] : .none
       let rows = t.table.rows.count
       let cols = t.table.rows.first?.count ?? 0
-      // over the part of the table the Note shows: a table wider than the Note scrolls, its band does not run off
-      let shownX = max(0, g.box.minX)
-      let shownW = max(0, min(g.box.maxX, core.layout.width) - shownX)
-      // as many actions as that width holds, the most used first; the rest in ⋯
-      let room = shownW - (8 + 7 + 8 + 27) - (6 + 14 + 6 + 8 + 40)
-      var keep = Set<String>()
-      var used: CGFloat = 0
-      for id in Self.tableKeep {
-        let groupGap: CGFloat = keep.isEmpty ? 0 : 6
-        guard used + 27 + groupGap <= room else { break }
-        keep.insert(id)
-        used +=
-          27
-          + (Self.tableActs.firstIndex { $0.contains { $0.id == id } }.map { gi in
-            Self.tableActs[gi].contains { keep.contains($0.id) && $0.id != id } ? 0 : groupGap
-          } ?? 0)
-      }
+      // over the table's frame (tableview.ts: the table's border box), its cells' box and the 1 pt frame around them
+      // (Layout.table), so the band's sides run on the table's; over the part of it the Note shows: a table wider
+      // than the Note scrolls, its band does not run off
+      let outer = g.box.insetBy(dx: -1, dy: -1)
+      let shownX = max(0, outer.minX)
+      let shownW = max(0, min(outer.maxX, core.layout.width) - shownX)
+      // as many actions as that width holds, the most used first; the rest in ⋯ (tableview.ts fit: the row's padding,
+      // the size, the spacer, a group gap and ⋯ fixed, two group gaps spared)
+      let size = "\(rows)×\(cols)"
+      let sizeW =
+        6 + 14 + 6
+        + (size as NSString).size(withAttributes: [.font: CodeBand.font(core.layout.theme, size: 12, tabular: true)])
+        .width + 8
+      let fixed = 15 + sizeW + 8 + 6 + 27
+      let n = Int(((shownW - fixed - 2 * 6) / 27).rounded(.down))
+      let keep = Set(Self.tableKeep.prefix(max(0, n)))
       tableOverflow = Self.tableActs.flatMap { $0 }.map(\.id).filter { !keep.contains($0) }
-      var parts: [CodeBand.Part] = [.init(id: "size", kind: .size("\(rows) × \(cols)"), tip: "Table size")]
+      var parts: [CodeBand.Part] = [.init(id: "size", kind: .size(size), tip: "Table size")]
       var firstGroup = true
       for group in Self.tableActs {
         let shown = group.filter { keep.contains($0.id) }
@@ -1018,12 +1017,13 @@ public final class MarkdownEditorView: NSView {
         }
         if !shown.isEmpty { firstGroup = false }
       }
-      parts.append(.init(id: "more", kind: .icon("dots"), tip: "More"))
+      // a group gap after the last group shown, before ⋯ (the gap a group with buttons shown keeps after it)
+      parts.append(.init(id: "more", kind: .icon("dots"), tip: "More", gapBefore: !firstGroup))
       band.place(
-        over: CGRect(x: shownX * zoom, y: g.box.minY * zoom, width: shownW * zoom, height: 1),
+        over: CGRect(x: shownX * zoom, y: outer.minY * zoom, width: shownW * zoom, height: 1),
         above: above(t.block.lowerBound), key: "table \(t.block.lowerBound)", zoom: zoom, theme: core.layout.theme,
         parts: parts,
-        fill: core.layout.theme.colors.fill, table: true, radius: 6)
+        fill: core.layout.theme.colors.fill, table: true, radius: CGFloat(m.tableRadius))
       band.show(true)
       return
     }
