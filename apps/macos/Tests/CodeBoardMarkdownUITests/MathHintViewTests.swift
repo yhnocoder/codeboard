@@ -18,6 +18,10 @@ import Testing
     #expect(v.core.source == "Sum $x+\\fr$ here.")
     #expect(v.hints.shown && v.hints.items.first?.name == "frac")
     #expect(v.preview.isHidden)
+    // 6 under the caret, 250 wide, from the caret or moved left to stay in the Note (mathhints.ts place, .md-mathac)
+    let caret = try #require(v.core.caretRect)
+    let f = v.hints.frame
+    #expect(f.minY == caret.maxY + 6 && f.width == 250 && f.minX <= caret.minX && f.maxX <= v.bounds.width, "\(f)")
     v.doCommand(by: #selector(NSResponder.insertNewline(_:)))
     #expect(v.core.source == "Sum $x+\\frac{}{}$ here.")
     #expect(v.selection == MDSelection(13))
@@ -30,5 +34,18 @@ import Testing
     #expect(!v.hints.shown)
     v.insertText("l", replacementRange: NSRange(location: NSNotFound, length: 0))
     #expect(!v.hints.shown)
+  }
+
+  /// A click on a row writes it as Enter would
+  @Test func aClickedRowIsWritten() throws {
+    _ = boardFonts
+    let l = BlockLayout(
+      MarkdownDocument("Sum $x$ here."), width: 300, theme: testTheme, layout: nil,
+      resources: LooksTests.NoResources(math: try MarkdownAssets.engines()))
+    let v = MarkdownEditorView(layout: l, caret: 6)
+    v.selection = MDSelection(6)
+    for ch in "+\\fr" { v.insertText(String(ch), replacementRange: NSRange(location: NSNotFound, length: 0)) }
+    v.hints.onTake(0)
+    #expect(v.core.source == "Sum $x+\\frac{}{}$ here." && !v.hints.shown)
   }
 }

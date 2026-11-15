@@ -225,6 +225,11 @@ public final class MarkdownEditorView: NSView {
     addSubview(preview)
     hints.isHidden = true
     addSubview(hints)
+    hints.onTake = { [weak self] i in
+      guard let self, let t = self.hints.token, i < self.hints.items.count else { return }
+      self.core.insertMathCommand(self.hints.items[i], from: t.from)
+      self.changed()
+    }
     toolbar.isHidden = true
     addSubview(toolbar)
     toolbar.onPress = { [weak self] id in self?.toolbarPress(id) }
@@ -936,6 +941,14 @@ public final class MarkdownEditorView: NSView {
   /// the table actions the band had no room for: they go in its ⋯ menu
   private var tableOverflow: [String] = []
 
+  /// What a band over the block at `at` covers: the top-level block before the one holding it (band.ts data-over)
+  private func above(_ at: Int) -> CodeBand.Above {
+    let blocks = core.document.blocks
+    guard let i = blocks.firstIndex(where: { $0.range.upperBound >= at }), i > 0 else { return .none }
+    if case .code = blocks[i - 1].kind { return .code }
+    return .text
+  }
+
   private func showBand() {
     let m = core.layout.theme.metrics
     if let b = bandBlock {
@@ -955,7 +968,7 @@ public final class MarkdownEditorView: NSView {
         (b.language?.isEmpty ?? true) ? "Plain text" : (codeLanguages.first { $0.0 == b.language }?.1 ?? b.language!)
       band.place(
         over: CGRect(x: frame.minX * zoom, y: top * zoom, width: frame.width * zoom, height: 1),
-        key: "code \(b.range.lowerBound)", zoom: zoom, theme: core.layout.theme,
+        above: above(b.range.lowerBound), key: "code \(b.range.lowerBound)", zoom: zoom, theme: core.layout.theme,
         parts: [
           .init(id: "language", kind: .language(name), tip: "Language"),
           .init(id: "copy", kind: .icon("copy"), tip: "Copy code"),
@@ -1008,7 +1021,8 @@ public final class MarkdownEditorView: NSView {
       parts.append(.init(id: "more", kind: .icon("dots"), tip: "More"))
       band.place(
         over: CGRect(x: shownX * zoom, y: g.box.minY * zoom, width: shownW * zoom, height: 1),
-        key: "table \(t.block.lowerBound)", zoom: zoom, theme: core.layout.theme, parts: parts,
+        above: above(t.block.lowerBound), key: "table \(t.block.lowerBound)", zoom: zoom, theme: core.layout.theme,
+        parts: parts,
         fill: core.layout.theme.colors.fill, table: true, radius: 6)
       band.show(true)
       return
@@ -1685,15 +1699,17 @@ public final class MarkdownEditorView: NSView {
       return typedMenu.hide()
     }
     let items: [MDMenuItem]
+    var foot: String?
     switch t.kind {
     case .slash: items = MarkdownEditing.slashMenu(t.query)
     case .emoji: items = MarkdownEditing.emojiMenu(t.query)
     case .ref:
-      items = refMenuRows(
-        delegate?.editor(self, refMenu: t.query) ?? MarkdownRefMenu(local: []), typed: !t.query.isEmpty)
+      let m = delegate?.editor(self, refMenu: t.query) ?? MarkdownRefMenu(local: [])
+      foot = m.foot
+      items = refMenuRows(m, typed: !t.query.isEmpty)
     }
     let caret = CGRect(x: c.minX * zoom, y: c.minY * zoom, width: 1, height: c.height * zoom)
-    typedMenu.show(items, token: t, under: caret, theme: core.layout.theme)
+    typedMenu.show(items, token: t, under: caret, theme: core.layout.theme, foot: foot)
     fit(typedMenu, to: caret)
   }
 

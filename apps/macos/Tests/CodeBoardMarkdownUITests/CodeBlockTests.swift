@@ -170,6 +170,25 @@ import Testing
     v.selection = MDSelection((src as NSString).range(of: "x = 1").location + 1)
     #expect(v.band.shown && v.band.block != nil && v.band.slidesIn == 2)
   }
+
+  /// As band.ts data-over: the first block's band covers nothing (no fade over the paper), one after a code block
+  /// covers code (no fade, a deeper shadow), one after a formula or text covers text (the fade)
+  @Test func aBandKnowsWhatItCovers() {
+    _ = boardFonts
+    let src =
+      "| a | b |\n|---|---|\n| 1 | 2 |\n\n```py\nx = 1\n```\n\n| c | d |\n|---|---|\n| 3 | 4 |\n\n"
+      + "$$\nx\n$$\n\n| e |\n|---|\n| 5 |"
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 2)
+    v.selection = MDSelection(2)
+    #expect(v.band.shown && v.band.above == .none)
+    v.selection = MDSelection((src as NSString).range(of: "| 3").location + 2)
+    #expect(v.band.shown && v.band.table != nil && v.band.above == .code)
+    v.selection = MDSelection((src as NSString).range(of: "| 5").location + 2)
+    #expect(v.band.shown && v.band.table != nil && v.band.above == .text)
+    v.selection = MDSelection((src as NSString).range(of: "x = 1").location + 1)
+    #expect(v.band.shown && v.band.block != nil && v.band.above == .text)
+  }
 }
 
 /// The band's first show, the click that starts editing landing in a code block, slides as a later block's does: only

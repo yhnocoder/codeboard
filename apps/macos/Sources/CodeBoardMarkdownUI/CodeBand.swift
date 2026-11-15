@@ -37,6 +37,9 @@ final class CodeBand: NSView {
   private let strip = Strip()
   private let corners = [CALayer(), CALayer()]
   var block: EditorCore.CodeBlock?
+  /// What the band covers above its block (band.ts data-over): the block before it, a code block (a deeper shadow), or
+  /// nothing (the first block: no fade)
+  enum Above { case none, code, text }
   /// the table it is for, when it is a table's
   var table: Range<Int>?
   var shown = false
@@ -79,6 +82,9 @@ final class CodeBand: NSView {
     strip.rects().first { $0.0.id == id }.map { ($0.0, convert($0.1, from: strip)) }
   }
 
+  /// what it covers above its block, as last placed (tests)
+  var above: Above { strip.above }
+
   /// the band's own box in the editor view's points (without the margin)
   var bandFrame: CGRect {
     CGRect(
@@ -90,8 +96,8 @@ final class CodeBand: NSView {
   /// Puts the band over `over` (the block's, or the table's, top edge and width in the editor view's points), scaled by
   /// `zoom`. `table`: a table's band (its header colour, a frame, 6 pt corners); `key` says which block it is for
   func place(
-    over: CGRect, key: AnyHashable, zoom: CGFloat, theme: MarkdownTheme, parts: [Part], fill: MDColor, table: Bool,
-    radius: CGFloat
+    over: CGRect, above: Above, key: AnyHashable, zoom: CGFloat, theme: MarkdownTheme, parts: [Part], fill: MDColor,
+    table: Bool, radius: CGFloat
   ) {
     let m = Self.margin * zoom
     let h = Self.height * zoom
@@ -99,6 +105,7 @@ final class CodeBand: NSView {
     strip.theme = theme
     strip.parts = parts
     strip.table = table
+    strip.above = above
     strip.radius = radius * zoom
     // the band's colour over the paper: opaque, nothing shows through it
     strip.fill = theme.colors.surface.over(fill)
@@ -246,6 +253,7 @@ final class CodeBand: NSView {
     var fill = MDColor(0.95, 0.95, 0.95, 1)
     var radius: CGFloat = 12
     var table = false
+    var above = Above.text
     var hangs = false
     var overWidth: CGFloat = 0
     override var isFlipped: Bool { true }
@@ -309,9 +317,10 @@ final class CodeBand: NSView {
       ctx.translateBy(x: pad, y: 0)
       let f = face
       // over text, the covered line's sliver above the band fades into the paper
-      if let fade = CGGradient(
-        colorsSpace: CGColorSpace(name: CGColorSpace.sRGB),
-        colors: [theme.colors.surface.alpha(0).cg, theme.colors.surface.cg] as CFArray, locations: [0, 1])
+      if above == .text,
+        let fade = CGGradient(
+          colorsSpace: CGColorSpace(name: CGColorSpace.sRGB),
+          colors: [theme.colors.surface.alpha(0).cg, theme.colors.surface.cg] as CFArray, locations: [0, 1])
       {
         ctx.saveGState()
         ctx.clip(to: CGRect(x: 0, y: 0, width: f.width, height: fadeH))
@@ -333,11 +342,12 @@ final class CodeBand: NSView {
         path.addLine(to: CGPoint(x: f.maxX, y: f.maxY))
       }
       path.addLine(to: CGPoint(x: 0, y: f.maxY))
-      // one soft, wide shadow upward (no hairline on top, except a table's frame)
+      // one soft, wide shadow upward (no hairline on top, except a table's frame); over code a deeper one (.09 for .07)
       ctx.saveGState()
+      let alpha = (table ? 0.10 : 0.13) * (above == .code ? 9 / 7 : 1)
       ctx.setShadow(
         offset: CGSize(width: 0, height: 4 * zoom), blur: 12 * zoom,
-        color: CGColor(srgbRed: 50 / 255, green: 35 / 255, blue: 10 / 255, alpha: table ? 0.10 : 0.13))
+        color: CGColor(srgbRed: 50 / 255, green: 35 / 255, blue: 10 / 255, alpha: alpha))
       ctx.addPath(path)
       ctx.setFillColor(fill.cg)
       ctx.fillPath()

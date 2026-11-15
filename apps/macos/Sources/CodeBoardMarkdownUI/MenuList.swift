@@ -10,14 +10,17 @@ public struct MarkdownRefMenu: Sendable, Hashable {
   public var here: String?
   public var local: [MarkdownRefCandidate]
   public var groups: [MarkdownRefGroup]
+  /// the line under the list ("N titled cards · M boards"; refs.foot)
+  public var foot: String?
   public init(
     recent: [MarkdownRefCandidate] = [], here: String? = nil, local: [MarkdownRefCandidate],
-    groups: [MarkdownRefGroup] = []
+    groups: [MarkdownRefGroup] = [], foot: String? = nil
   ) {
     self.recent = recent
     self.here = here
     self.local = local
     self.groups = groups
+    self.foot = foot
   }
 }
 
@@ -64,15 +67,21 @@ final class MenuList: NSView {
   var dismissedAt: Int?
   private var theme: MarkdownTheme?
   private let rowHeight: CGFloat = 26
+  /// the line under the rows, if any (.md-foot), and its height: 5 above and below 10.5 type
+  private(set) var foot: String?
+  private var footHeight: CGFloat { foot == nil ? 0 : 25 }
+  /// the rows' part of the panel, above the foot
+  private var listBox: CGFloat { bounds.height - footHeight }
   var shown: Bool { !isHidden && !items.isEmpty }
   override var isFlipped: Bool { true }
 
   func show(
     _ items: [MDMenuItem], token: (kind: MDMenuKind, from: Int, query: String), under caret: CGRect,
-    theme: MarkdownTheme
+    theme: MarkdownTheme, foot: String? = nil
   ) {
     if self.token?.from != token.from { chosen = 0 }
     self.items = items
+    self.foot = foot.flatMap { $0.isEmpty ? nil : $0 }
     self.token = token
     self.theme = theme
     chosen = min(chosen, max(0, items.count - 1))
@@ -83,7 +92,7 @@ final class MenuList: NSView {
     let cap: CGFloat = refs ? 340 : 300
     let rows = ((cap - 8) / rowHeight).rounded(.down)
     let h = min(CGFloat(items.count) * rowHeight + 8, rows * rowHeight + 8)
-    frame = CGRect(x: caret.minX, y: caret.maxY + 4, width: refs ? 372 : 260, height: h)
+    frame = CGRect(x: caret.minX, y: caret.maxY + 4, width: refs ? 372 : 260, height: h + footHeight)
     // a view draws outside its bounds unless told not to (macOS 14 on): the rows scrolled past the panel's edge are cut
     clipsToBounds = true
     keepChosenInView()
@@ -106,12 +115,12 @@ final class MenuList: NSView {
     let top = 4 + CGFloat(chosen) * rowHeight
     let margin = rowHeight * 1.5
     if top - margin < scrolled { scrolled = top - margin }
-    if top + rowHeight + margin > scrolled + bounds.height { scrolled = top + rowHeight + margin - bounds.height }
-    scrolled = max(0, min(scrolled, listHeight - bounds.height))
+    if top + rowHeight + margin > scrolled + listBox { scrolled = top + rowHeight + margin - listBox }
+    scrolled = max(0, min(scrolled, listHeight - listBox))
   }
 
   override func scrollWheel(with e: NSEvent) {
-    scrolled = max(0, min(scrolled - e.scrollingDeltaY, listHeight - bounds.height))
+    scrolled = max(0, min(scrolled - e.scrollingDeltaY, listHeight - listBox))
     needsDisplay = true
   }
 
@@ -132,6 +141,7 @@ final class MenuList: NSView {
 
   /// the row under a point in the panel, as the list is scrolled now, is the chosen one
   func point(at p: CGPoint) {
+    guard p.y < listBox else { return }
     let i = Int(((p.y + scrolled - 4) / rowHeight).rounded(.down))
     guard i >= 0, i < items.count, items[i].takes, i != chosen else { return }
     chosen = i
@@ -143,6 +153,7 @@ final class MenuList: NSView {
 
   override func mouseDown(with e: NSEvent) {
     let p = convert(e.locationInWindow, from: nil)
+    guard p.y < listBox else { return }
     let i = Int((p.y + scrolled - 4) / rowHeight)
     guard i >= 0, i < items.count, items[i].takes else { return }
     chosen = i
@@ -170,16 +181,32 @@ final class MenuList: NSView {
     ctx.addPath(path)
     ctx.setStrokeColor(theme.colors.hair.cg)
     ctx.strokePath()
-    // the rows inside the panel's rounded box, the one half cut at its edge
+    let faintInk = NSColor(cgColor: theme.colors.ink3.cg) ?? .secondaryLabelColor
+    if let foot {
+      // under a 0.5 line, at the right, cut with an ellipsis (.md-pick .md-foot)
+      let y = listBox
+      ctx.setFillColor(theme.colors.line.cg)
+      ctx.fill(CGRect(x: 0, y: y, width: bounds.width, height: 0.5))
+      let cut = NSMutableParagraphStyle()
+      cut.lineBreakMode = .byTruncatingTail
+      cut.alignment = .right
+      let f = NSFont.systemFont(ofSize: 10.5)
+      (foot as NSString).draw(
+        with: CGRect(x: 10, y: y + (footHeight - 14) / 2, width: bounds.width - 20, height: 14),
+        options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
+        attributes: [.font: f, .foregroundColor: faintInk, .paragraphStyle: cut])
+    }
+    // the rows inside the panel's rounded box above the foot, the one half cut at its edge
     ctx.addPath(path)
     ctx.clip()
+    ctx.clip(to: CGRect(x: 0, y: 0, width: bounds.width, height: listBox))
     let ink = NSColor(cgColor: theme.colors.ink.cg) ?? .labelColor
-    let faint = NSColor(cgColor: theme.colors.ink3.cg) ?? .secondaryLabelColor
+    let faint = faintInk
     let font = NSFont.systemFont(ofSize: 12.5)
     let small = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
     for (i, it) in items.enumerated() {
       let row = CGRect(x: 4, y: 4 + CGFloat(i) * rowHeight - scrolled, width: bounds.width - 8, height: rowHeight)
-      guard row.maxY > 0, row.minY < bounds.height else { continue }
+      guard row.maxY > 0, row.minY < listBox else { continue }
       if it.style == .head {
         (it.title as NSString).draw(
           at: CGPoint(x: row.minX + 8, y: row.midY - 6),

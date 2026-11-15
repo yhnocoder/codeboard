@@ -776,7 +776,8 @@ extension SidenotePop: MarkdownEditorDelegate {
         row)
     }
     return MarkdownRefMenu(
-      recent: recent, here: "This board", local: list.items.filter { fits($0.title) }.map(row), groups: groups)
+      recent: recent, here: "This board", local: list.items.filter { fits($0.title) }.map(row), groups: groups,
+      foot: list.foot)
   }
 }
 

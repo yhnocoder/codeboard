@@ -94,7 +94,7 @@ import Testing
           MarkdownRefGroup(
             id: "g", title: "Other board", place: c("Other board"), note: "5 cards",
             items: ["A", "B", "C", "D", "E"].map(c))
-        ])
+        ], foot: "6 titled cards · 2 boards")
     }
     func editor(_ e: MarkdownEditorView, pickedRef r: MarkdownRefCandidate) { picked.append(r.label) }
   }
@@ -113,6 +113,9 @@ import Testing
         "Recent", "Last one", "This board", "Plan", "Other board", "A", "B", "C", "2 more in Other board",
       ])
     #expect(v.typedMenu.items[v.typedMenu.chosen].title == "Last one")
+    // the line under the rows (.md-foot), below the last row
+    #expect(v.typedMenu.foot == "6 titled cards · 2 boards")
+    #expect(v.typedMenu.frame.height == CGFloat(rows.count) * 26 + 8 + 25)
     // "N more" lists the rest in place
     v.typedMenu.onTake(rows.last!)
     #expect(v.typedMenu.items.map(\.title).suffix(5) == ["A", "B", "C", "D", "E"])
