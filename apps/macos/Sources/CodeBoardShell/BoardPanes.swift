@@ -218,7 +218,10 @@ import CodeBoardNotes
         pane.canvas.cameras = cameras
         pane.canvas.picturesFolder = pictures
         pane.onOpenBoard = { [weak self] in self?.shell.show($0) }
-        pane.canvas.onEnterBoard = { [weak self] in self?.shell.enter($0, from: $1, camera: $2) }
+        pane.canvas.onEnterBoard = { [weak self, weak pane] e in
+          if let c = e.reveal { pane?.arriving(.card(c)) }
+          self?.shell.enter(e.board, from: e.frame, camera: e.camera, through: e.deeper.map { ($0.frame, $0.board) })
+        }
         pane.canvas.onLeaveBoard = { [weak self] in self?.shell.leave(to: $0) }
         // a sub-board card's Delete Board…: asked as main asks (host handlers.ts deleteBoardAsked), then as the
         // sidebar's Delete, to the Trash
@@ -381,6 +384,8 @@ final class Pane: NSView {
   /// Another board to open in this tab (a question on it was picked, a ref to it clicked), and what to go to once it shows
   var onOpenBoard: ((BoardID) -> Void)?
   private var pending: Arrival?
+  /// Where the next board shown here is to be brought to
+  func arriving(_ a: Arrival) { pending = a }
   private let problem = NSTextField(wrappingLabelWithString: "")
 
   init(notes: NoteRenderer?) {

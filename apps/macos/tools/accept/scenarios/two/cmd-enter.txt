@@ -1,0 +1,20 @@
+# ⌘↵ on the one sub-board card selected enters its board (keymap.ts enterBoard: mod+Enter, enterFrame), the breadcrumb
+# "‹ First › Third"; ⌘↵ with a Note selected enters nothing; Esc goes back. --only mac
+# storage: storage-two
+zoom 1
+center @csub:c
+click @cown:c
+wait 300
+key cmd+return
+wait 900
+expect cown.x = 480
+click @csub:c
+wait 300
+key cmd+return
+wait 900
+expect cthird.x = 80
+expect ui.crumbs.w > 60
+expect ui.crumbcur.w > 30
+key esc
+wait 900
+expect csub.x = 860

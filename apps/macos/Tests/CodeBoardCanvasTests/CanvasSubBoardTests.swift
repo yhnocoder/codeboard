@@ -69,7 +69,7 @@ import Testing
     let child = try #require(try vault.tree().boards.first { $0.id != board.id })
     await r.until("the card drawn") { c.index(of: .card(frame)) != nil }
     var entered: (BoardID, CardID, Camera)?
-    c.onEnterBoard = { entered = ($0, $1, $2) }
+    c.onEnterBoard = { entered = ($0.board, $0.frame, $0.camera) }
     var left: [Int?] = []
     c.onLeaveBoard = { left.append($0) }
     r.doc.select([])

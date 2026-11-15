@@ -1,0 +1,23 @@
+# A [[ref]] to a card in a sub-board enters the sub-board, its breadcrumb "‹ First › Third", and selects the card there
+# (actions/subboards.ts openCardRef: enterFrame with reveal). --only mac
+# storage: storage-two
+zoom 1
+center @cown:c
+dbl @cown:c
+wait 500
+key cmd+down
+key return
+type [[Third › Third]]
+wait 600
+key esc
+wait 300
+key esc
+wait 500
+shot written @cown+-20,-20 500 300
+click @cown+75,83
+wait 1200
+shot entered
+expect cthird.x = 80
+expect ui.crumbs.w > 60
+expect ui.crumb0.w > 20
+expect ui.crumbcur.w > 30

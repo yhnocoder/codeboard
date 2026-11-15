@@ -254,15 +254,15 @@ function headOf(d: PopData): HTMLDivElement {
   if (d.range) h.append(el("span", "rng", d.range));
   if (d.title) h.append(el("span", "ttl", d.title));
   h.append(el("span", "grow"));
-  const rm = button("ib", d.remove ?? "Delete", "trash", 14, () => {
-    endFields();
-    post({ type: "remove" });
-  });
-  if (!d.remove) rm.disabled = true;
-  h.append(
-    rm,
-    button("ib", "Close", "close", 13, () => close()),
-  );
+  // only with something to delete (notes.tsx: <Show when={p.remove}>)
+  if (d.remove)
+    h.append(
+      button("ib", d.remove, "trash", 14, () => {
+        endFields();
+        post({ type: "remove" });
+      }),
+    );
+  h.append(button("ib", "Close", "close", 13, () => close()));
   return h;
 }
 
