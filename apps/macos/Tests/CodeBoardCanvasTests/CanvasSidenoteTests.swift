@@ -293,6 +293,28 @@ extension CanvasSidenoteTests {
     #expect(first.view.alphaValue == 0 && second.view.alphaValue == 0)
   }
 
+  /// The title bar's delete is there only with something to delete (notes.tsx: <Show when={p.remove}>): a spot with
+  /// sidenotes, a Highlight; a popup opened to write the first one has Close alone
+  @Test func thePopupsDeleteIsShownOnlyWithSomethingToDelete() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    func head() async -> [String] {
+      await c.sidenotePop.run(
+        "return [...document.querySelectorAll('.hh button')].map((b) => b.getAttribute('aria-label'))") as? [String]
+        ?? []
+    }
+    let empty = PopAt.spot(.point(x: 900, y: 900))
+    c.openPop(empty, write: true)
+    await opened(r, empty)
+    #expect(await head() == ["Close"])
+    c.openPop(nil)
+    let some = PopAt.spot(.card(cid("t1")))
+    c.openPop(some)
+    await opened(r, some)
+    #expect(await head() == ["Delete Sidenotes", "Close"])
+  }
+
   @Test func writtenInThePopupASidenoteOrQuestionIsAddedAndTheInputStaysForTheNext() async throws {
     let r = try await Rig(sidenoteBoard(), zoom: 1)
     defer { r.close() }
