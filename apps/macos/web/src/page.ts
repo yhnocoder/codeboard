@@ -28,7 +28,7 @@ import "../../../../packages/board/src/styles.css";
 import "@yhnocoder/markdown/style.css";
 import "../../../../packages/board/src/themes.css";
 import "./page.css";
-import { classifyPaste } from "../../../../packages/core/src/paste";
+import { classifyPaste, guessLang, pythonDialect } from "../../../../packages/core/src/paste";
 import { cleanSvg, svgDataUrl } from "../../../../packages/board/src/md/images";
 import { pop } from "./pop";
 import { openRefAt, watchRefs } from "./refclick";
@@ -336,6 +336,11 @@ async function pasted(text: string) {
 window.note = {
   /** What a paste of plain text makes (pasted) */
   paste: pasted,
+  /** The language Free code's text looks like, null when it cannot tell (core commands/code.ts freeLang) */
+  lang(text: string) {
+    const g = guessLang(text);
+    return g === "python" ? pythonDialect(text) : g;
+  },
   /** Mounts Notes at 100 % (each one not mounted yet, under its id) and measures them all */
   async mount(list: { id: string; note: Note; images: string }[]) {
     for (const { id, note: n, images } of list) {

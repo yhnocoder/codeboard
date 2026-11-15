@@ -523,6 +523,7 @@ extension CanvasView {
       if let bar = barLayer() { chrome.addSublayer(bar) }
       if let chip = chipLayer() { chrome.addSublayer(chip) }
       if let acts = sectionActsLayer() { chrome.addSublayer(acts) }
+      placeHeadActs()
       drawPorts()
       drawEndHandles()
       drawConnect()
@@ -901,6 +902,15 @@ extension CanvasView {
       NSCursor.arrow.set()
       return
     }
+    // a card header's button: the arrow over it, its card hovered
+    let head = headAct(at: camera.board(v))
+    hoverHead(head)
+    if head != nil {
+      hoverPorts(at: v)
+      NSCursor.arrow.set()
+      hover(nil)
+      return
+    }
     if hitStickerGrip(v) != nil {
       resizeCursor([.right, .bottom]).set()
       hover(nil)
@@ -950,6 +960,7 @@ extension CanvasView {
   public override func mouseExited(with e: NSEvent) {
     pointerInWindow = nil
     hoverChip(at: CGPoint(x: CGFloat.infinity, y: .infinity))
+    hoverHead(nil)
     hoverTitle(nil, act: nil)
     hoverSummary(nil)
     hover(nil)
@@ -1045,6 +1056,15 @@ extension CanvasView {
       }
       return
     }
+    // a card header's button
+    if let (id, a) = headAct(at: p) {
+      if e.clickCount == 1 {
+        hold(
+          over: { [weak self] in self?.headAct(at: $0).map { $0 == (id, a) } == true },
+          act: { [weak self] in self?.press(a, of: id) })
+      }
+      return
+    }
     // a press anywhere else on the board closes it (what is being written in it is added)
     if openPop != nil { openPop(nil) }
     // a sticker, or the selected one's grip
@@ -1078,8 +1098,16 @@ extension CanvasView {
         }
         return
       }
-      // a double-click on a Text's edge or corner does nothing (no Fit Content)
-      if hitHandle(v) == nil { doubleClick(at: p) }
+      // a card's grip, or a Note's bottom edge: Fit Content (Card.tsx .grip, .hb); a Text's edge or corner: nothing
+      if let (item, edges) = hitHandle(v) {
+        if case .card(let id) = item, !isText(id) {
+          var note = false
+          if case .note? = scene?.parts[id]?.content.body { note = true }
+          if edges == [.right, .bottom] || edges == .bottom && note { fitCards([id]) }
+        }
+      } else {
+        doubleClick(at: p)
+      }
       return
     }
     // a port: an arrow is drawn out of it

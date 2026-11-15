@@ -188,6 +188,12 @@ public final class CanvasView: NSView {
   var swatchesOpen: SectionID?
   var actsShown: SectionID?
   var actsImage: (key: String, image: CGImage)?
+  /// Cards' header buttons (CanvasHeadActs): the one under the pointer, each card's strip and what it was drawn for, the
+  /// hovered card's grip, and what puts a menu up when tests look at it instead
+  var hoveredHead: (CardID, HeadAct)?
+  var headShown: [CardID: (layer: CALayer, key: String, out: CFTimeInterval)] = [:]
+  var gripShown: (id: CardID, layer: CALayer)?
+  package var menuShown: ((NSMenu, CGPoint) -> Void)?
   /// The Text or Box raised over its neighbours (its item index)
   var raised: Int?
   /// The latest refresh (tests wait for it)
