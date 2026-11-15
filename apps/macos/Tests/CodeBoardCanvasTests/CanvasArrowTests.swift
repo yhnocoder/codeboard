@@ -132,6 +132,35 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     #expect(r.doc.board.arrows.isEmpty && r.doc.board.cards.count == 3, "⌫ takes the arrow, not its cards")
   }
 
+  /// Pinyin typed at once after the double-click on a label or a Section's title goes through the input method: the
+  /// field takes the keyboard in the double-click itself, so nothing is held or waited for
+  @Test(arguments: ["label", "title"])
+  func pinyinTypedAtOnceInALabelOrATitleIsComposed(_ what: String) async throws {
+    Pinyin.install()
+    var b = arrows(label: "calls")
+    b.sections = [Section(id: SectionID(rawValue: "g"), title: "Group", x: 0, y: 1200, width: 400, height: 300)]
+    let r = try await Rig(b, zoom: 1)
+    defer {
+      Pinyin.windows.remove(r.window.windowNumber)
+      r.close()
+    }
+    let owner: Scene.Owner = what == "label" ? .arrowLabel(aid("a1")) : .sectionTitle(SectionID(rawValue: "g"))
+    let i = try #require(r.canvas.index(of: owner))
+    let at =
+      what == "label"
+      ? try #require(r.canvas.scene?.arrows.first?.mid)
+      : CGPoint(x: r.canvas.items[i].box.frame.midX, y: r.canvas.items[i].box.frame.midY)
+    Pinyin.windows.insert(r.window.windowNumber)
+    r.send(r.mouse(.leftMouseDown, at))
+    r.send(r.mouse(.leftMouseUp, at))
+    r.send(r.mouse(.leftMouseDown, at, clicks: 2))
+    r.send(r.mouse(.leftMouseUp, at, clicks: 2))
+    r.press("ni ")
+    let field = try #require(r.canvas.inPlace?.field)
+    // the label's text or the title selected as the field opens: the composition replaces it
+    #expect(field.currentEditor()?.string == "你", "\(String(describing: field.currentEditor()?.string))")
+  }
+
   @Test func aLabelIsWrittenInPlaceKeptByReturnLeftByEscapeAndRemovedWhenBlank() async throws {
     let r = try await Rig(arrows(), zoom: 1)
     defer { r.close() }

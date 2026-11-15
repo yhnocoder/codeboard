@@ -148,12 +148,14 @@ extension CanvasView {
         repeat {
           let keys = editing?.keys ?? []
           editing?.keys = []
-          await editor.replay(keys)
+          await editor.replay(keys) { [weak self] in self?.editing?.id == id && self?.editing?.ending == false }
         } while editing?.keys.isEmpty == false && editing?.ending == false
         drawChrome()
         if let session = editing?.session { keepDrafts(session) }
       } catch {
+        // the editor did not come: what was typed for it goes with it
         editing = nil
+        editor.view.held = nil
         editor.view.shown = false
       }
     }

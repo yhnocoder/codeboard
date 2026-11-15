@@ -605,6 +605,14 @@ addEventListener(
 );
 
 const edit = {
+  /** Tests: the editor takes the focus `ms` late from now on, as on a busy machine (WebKit gives the view its input
+   *  context only once the page has focused something editable) */
+  focusLate(ms: number) {
+    const focus = HTMLElement.prototype.focus;
+    HTMLElement.prototype.focus = function (this: HTMLElement, o?: FocusOptions) {
+      setTimeout(() => focus.call(this, o), ms);
+    };
+  },
   /** The keydowns seen so far */
   keysSeen: () => keysSeen,
   /** Resolves once `n` keydowns have been seen, or after `ms` (a key that reaches no page) */

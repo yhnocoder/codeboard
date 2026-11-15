@@ -129,36 +129,35 @@ public final class NoteEditor: NSObject {
     return size
   }
 
-  /// Keys typed before the editor was there, in order: each sent once the one before reached the page (WebKit puts a text
-  /// key through the input method first, so a key that skips that, Esc or ⌘↵, would overtake it); keys typed meanwhile
-  /// wait behind them
-  public func replay(_ keys: [NSEvent]) async {
-    await inputContextReady()
-    var queue = keys + (view.held ?? [])
-    view.held = []
-    guard !queue.isEmpty else {
-      view.held = nil
-      return
-    }
-    var seen = (try? await view.callAsyncJavaScript("return edit.keysSeen()", contentWorld: .page) as? Int) ?? 0
-    while !queue.isEmpty {
-      view.deliver(queue.removeFirst())
-      seen += 1
-      _ = try? await view.callAsyncJavaScript(
-        "return await edit.seen(n, 300)", arguments: ["n": seen], contentWorld: .page)
-      queue += view.held ?? []
-      view.held = []
-    }
-    view.held = nil
-  }
-
-  /// WebKit gives the web view an input context only once the page has told it that what has the focus is editable (with
-  /// its next rendering update after the focus): a key handed over before that goes past the input method (Pinyin's
-  /// first letter written as it is), so keys are held until then; a page frame at a time, at most half a second
-  private func inputContextReady() async {
-    for _ in 0..<30 where view.inputContext == nil {
+  /// Keys typed before the editor was there, in order, handed to it once it takes keys as typed: once WebKit has given
+  /// the view an input context (it does with the page's next rendering update after the editor took the focus; a key
+  /// before that would go past the input method, Pinyin's letters written as they are), each once the page has had the
+  /// one before (WebKit puts a text key through the input method first, so a key that skips that, Esc or ⌘↵, would
+  /// overtake it). Keys typed meanwhile wait behind them. Nothing is sent once `live` is false (the writing ended or the
+  /// editor went): what is left is dropped, never sent where no editor takes it. No wait gives up on a clock: a busy
+  /// machine only takes longer
+  public func replay(_ keys: [NSEvent], while live: () -> Bool) async {
+    defer { view.held = nil }
+    var queue = keys
+    while view.inputContext == nil {
+      guard live() else { return }
       _ = try? await view.callAsyncJavaScript(
         "await new Promise((r) => requestAnimationFrame(() => setTimeout(r)))", contentWorld: .page)
+    }
+    queue += view.held ?? []
+    view.held = []
+    guard !queue.isEmpty, live() else { return }
+    var seen = (try? await view.callAsyncJavaScript("return edit.keysSeen()", contentWorld: .page) as? Int) ?? 0
+    while !queue.isEmpty, live() {
+      guard view.deliver(queue.removeFirst()) else { continue }
+      seen += 1
+      // in steps, so that the writing ending meanwhile is seen
+      while live(),
+        (try? await view.callAsyncJavaScript(
+          "return await edit.seen(n, 100)", arguments: ["n": seen], contentWorld: .page) as? Bool) != true
+      {}
+      queue += view.held ?? []
+      view.held = []
     }
   }
 
@@ -344,9 +343,11 @@ public final class EditorWebView: WKWebView {
     return super.performKeyEquivalent(with: e)
   }
 
-  func deliver(_ e: NSEvent) {
-    if e.keyCode == 53, escape?() == true { return }
+  /// Hands a key to the page; false when something over the canvas took it (Esc closing a ref's preview)
+  @discardableResult func deliver(_ e: NSEvent) -> Bool {
+    if e.keyCode == 53, escape?() == true { return false }
     super.keyDown(with: e)
+    return true
   }
 
   public override func hitTest(_ point: NSPoint) -> NSView? {

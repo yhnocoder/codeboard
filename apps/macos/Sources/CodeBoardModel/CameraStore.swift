@@ -20,10 +20,11 @@ public struct CameraStore: Sendable {
     return CameraStore(folder: support.appending(path: me).appending(path: "Cameras"))
   }
 
-  /// The vault's file: FNV-1a of its standardized root path
+  /// The vault's file: FNV-1a of its root path standardized with its symlinks resolved, so one folder reached by
+  /// another spelling (a symlink, /private/var for /var, a trailing slash, "..") has the same file
   func file(for vault: Vault) -> URL {
     var h: UInt64 = 0xcbf2_9ce4_8422_2325
-    for b in vault.root.standardizedFileURL.path.utf8 {
+    for b in vault.root.standardizedFileURL.resolvingSymlinksInPath().path.utf8 {
       h ^= UInt64(b)
       h = h &* 0x100_0000_01b3
     }
