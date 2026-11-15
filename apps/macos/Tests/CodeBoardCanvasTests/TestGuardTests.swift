@@ -70,9 +70,11 @@ import Testing
     let web = URL(string: "https://example.invalid/guard")!
     let file = URL(fileURLWithPath: NSTemporaryDirectory())
     #expect(!NSWorkspace.shared.open(web))
-    var failed: Error?
-    NSWorkspace.shared.open(web, configuration: NSWorkspace.OpenConfiguration()) { _, e in failed = e }
-    #expect(failed != nil)
+    // the guard answers at once, on this thread
+    final class Answer: @unchecked Sendable { var error: Error? }
+    let failed = Answer()
+    NSWorkspace.shared.open(web, configuration: NSWorkspace.OpenConfiguration()) { _, e in failed.error = e }
+    #expect(failed.error != nil)
     NSWorkspace.shared.activateFileViewerSelecting([file])
     #expect(!NSWorkspace.shared.selectFile(file.path, inFileViewerRootedAtPath: ""))
     #expect(

@@ -243,6 +243,26 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     #expect(r.doc.board.arrows[0].label == nil)
   }
 
+  /// A label lying on a Section's edge takes the press, as main's (labels are over the Sections and their edges): it
+  /// slides, and the Section is not resized
+  @Test func aLabelOverASectionsEdgeTakesThePress() async throws {
+    var b = arrows(label: "等待")
+    let first = try await Rig(b, zoom: 1)
+    let at = try #require(first.canvas.index(of: .arrowLabel(aid("a1"))).map { first.canvas.items[$0].box.position })
+    first.close()
+    // the Section's left edge through the label's middle
+    let gid = SectionID(rawValue: "g")
+    b.sections = [Section(id: gid, title: "Group", x: at.x, y: at.y - 300, width: 900, height: 600)]
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    let s = try #require(r.doc.board.section(gid))
+    let from = try #require(r.canvas.index(of: .arrowLabel(aid("a1"))).map { r.canvas.items[$0].box.position })
+    r.drag(from, CGPoint(x: from.x + 120, y: from.y)) { r.tick() }
+    let now = try #require(r.doc.board.section(gid))
+    #expect([now.x, now.width] == [s.x, s.width], "the Section is as it was: \([now.x, now.width])")
+    #expect(r.doc.undoName == "Move Label" && r.doc.board.arrows[0].labelPosition != nil)
+  }
+
   @Test func theArrowMenuHasMainsPlainItemsAndConnectWithArrowJoinsTwoCards() async throws {
     let r = try await Rig(arrows(), zoom: 1)
     defer { r.close() }
