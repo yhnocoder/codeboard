@@ -75,6 +75,16 @@ import Testing
       try Board(decoding: Data(contentsOf: file), file: file).card(card)?.writing
     }
 
+    /// The board's folder as it is now: each file with its size
+    func listing() -> String {
+      let folder = file.deletingLastPathComponent()
+      let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+      return names.sorted().map { n in
+        let size = (try? FileManager.default.attributesOfItem(atPath: folder.appending(path: n).path)[.size]) ?? "?"
+        return "\(n) \(size)"
+      }.joined(separator: ", ")
+    }
+
     func close() {
       window.close()
       try? FileManager.default.removeItem(at: root)
@@ -90,7 +100,9 @@ import Testing
     s.panes.sync()
     let deadline = ContinuousClock.now + .seconds(30)
     while canvas.isEditing, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
-    #expect(try s.onDisk() == "Threads wait and then")
+    // read on its own: a value that differs is shown (an expectation with a `try` in it shows none), an error says what
+    let got = try s.onDisk()
+    #expect(got == "Threads wait and then", "\(s.listing())")
   }
 
   @Test func anotherVaultWritesWhatIsBeingTypedBeforeTheBoardsAreLetGo() async throws {
@@ -99,6 +111,7 @@ import Testing
     try await s.write()
     await s.panes.close()
     #expect(s.panes.documents.isEmpty)
-    #expect(try s.onDisk() == "Threads wait and then")
+    let got = try s.onDisk()
+    #expect(got == "Threads wait and then", "\(s.listing())")
   }
 }
