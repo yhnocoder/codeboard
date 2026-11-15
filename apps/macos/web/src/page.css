@@ -70,3 +70,7 @@ body {
 .nbody.hidehead.unfolded .md-pm > :nth-child(2) {
   margin-top: 0;
 }
+/* ⌘K (palette.ts): the board's transitions, as main runs them */
+:root.pal {
+  --t: 1;
+}

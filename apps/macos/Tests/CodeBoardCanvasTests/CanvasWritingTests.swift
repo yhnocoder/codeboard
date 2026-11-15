@@ -380,10 +380,10 @@ extension CanvasWritingTests {
     let bar = CanvasToolbar(frame: CGRect(x: 0, y: 0, width: 300, height: 100))
     #expect(bar.tools == [.note, .text, .box, .section, .arrow, .sticker])
     // the web board's sizes: Warm Ink 4 + 6 × 30 + 5 × 2 + 4 wide, 36 tall; Ink Wash 22 + 6 × 30 + 5 + 34, 46; then
-    // ⋯ after a separator (gap, 0.5 with 4 each side, gap, 30)
-    #expect(bar.barSize == CGSize(width: 198 + 2 + 8.5 + 2 + 30, height: 36))
+    // Search and ⋯ after a separator (gap, 0.5 with 4 each side, gap, 30, gap, 30)
+    #expect(bar.barSize == CGSize(width: 198 + 2 + 8.5 + 2 + 30 + 2 + 30, height: 36))
     bar.theme = .inkWash
-    #expect(bar.barSize == CGSize(width: 241 + 1 + 8.5 + 1 + 30, height: 46))
+    #expect(bar.barSize == CGSize(width: 241 + 1 + 8.5 + 1 + 30 + 1 + 30, height: 46))
     var used: [Tool] = []
     bar.onTool = {
       used.append($0)

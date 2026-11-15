@@ -249,6 +249,7 @@ async function run(line: string): Promise<string> {
           return at({ left: cx - bw / 2, top: cy - bh / 2, width: bw, height: bh });
         }
         case "more": return at(box('.bbar [aria-label="More"]'));
+        case "search": return at(box('.bbar [aria-label="Search"]'));
         case "shelf": return at(box(".dock .shelf-btn"));
         case "zoomout": return at(box('.dock [aria-label="Zoom Out"]'));
         case "zoom": return at(box(".dock .zoom"));

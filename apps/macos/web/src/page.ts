@@ -33,6 +33,7 @@ import { cleanSvg, svgDataUrl } from "../../../../packages/board/src/md/images";
 import { pop } from "./pop";
 import { openRefAt, watchRefs } from "./refclick";
 import { type QData, qlist } from "./qlist";
+import { palette } from "./palette";
 
 /** CodeBoardNotes' PageNote, as JSON */
 type Note = {
@@ -64,10 +65,12 @@ declare global {
 const editMode = new URLSearchParams(location.search).has("edit");
 /** Loaded as page.html?pop: the sidenote popup (pop.ts), in a web view of its own over the canvas */
 const popMode = new URLSearchParams(location.search).has("pop");
-document.documentElement.classList.add(editMode ? "edit" : popMode ? "popup" : "render");
+/** Loaded as page.html?palette: ⌘K and ⌘F (palette.ts), in a web view of its own over the board */
+const paletteMode = new URLSearchParams(location.search).has("palette");
+document.documentElement.classList.add(editMode ? "edit" : popMode ? "popup" : paletteMode ? "pal" : "render");
 // mounting the editor focuses it, and a web view in the background that asks for focus takes the keyboard from the
 // window the user types in
-if (!editMode && !popMode) HTMLElement.prototype.focus = () => {};
+if (!editMode && !popMode && !paletteMode) HTMLElement.prototype.focus = () => {};
 
 /** A Note's top-level blocks, each one's Markdown (the board's md/blocks.ts noteBlocks); null when it cannot be split */
 function noteBlocks(md: string): string[] | null {
@@ -903,6 +906,10 @@ if (popMode) {
     update: qlist.update,
     clear: qlist.clear,
   };
+}
+if (paletteMode) {
+  palette.start({ mdFor, setLook });
+  (window as unknown as { palette: typeof palette }).palette = palette;
 }
 if (editMode || popMode) watchRefs((m) => window.webkit?.messageHandlers.note.postMessage(m));
 window.webkit?.messageHandlers.note.postMessage("ready");

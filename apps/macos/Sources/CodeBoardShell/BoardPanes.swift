@@ -7,7 +7,7 @@ import CodeBoardNotes
 /// instant. One pane is on screen: the selected tab's once its board is drawn; until then the one before it stays, so
 /// opening a tab never passes through an empty canvas
 @MainActor final class BoardPanes: NSView {
-  private let shell: Shell
+  let shell: Shell
   private(set) var panes: [Tab.ID: Pane] = [:]
   private var front: Tab.ID?
   /// A canvas changed the vault's files (a board made or renamed there)
@@ -287,6 +287,8 @@ import CodeBoardNotes
     let now = Focus(tab: id, board: pane.document?.id)
     if now != focused {
       focused = now
+      // what the search palette found was on the board that was in front
+      closeSearch()
       pane.takeKeys()
     }
   }
@@ -338,6 +340,7 @@ final class Pane: NSView {
       }
     }
     canvas.onMode = { [weak self] in self?.toolbar.active = $0 }
+    toolbar.onSearch = { [weak self] in _ = self?.tryToPerform(#selector(BoardPanes.searchBoards(_:)), with: nil) }
     // ⋯ opens upward from its left, 6 over it (Chrome.tsx more)
     toolbar.onMore = { [weak self] r in
       guard let self else { return }
