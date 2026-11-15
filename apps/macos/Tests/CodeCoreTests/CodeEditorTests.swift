@@ -156,11 +156,11 @@ import Testing
     #expect(e.selection.head == 15)
     e.move(.line, forward: true, extend: false)
     #expect(e.selection.head == 22)
-    // the last line: its end; the first: its start
+    // the last line: its end, and the column is that of the end from there on (in the tab: past it, its nearer side)
     e.move(.line, forward: true, extend: false)
     #expect(e.selection.head == 22)
     e.move(.line, forward: false, extend: false)
-    #expect(e.selection.head == 15)
+    #expect(e.selection.head == 13)
     e.select(CodeSelection(3))
     e.move(.line, forward: false, extend: true)
     #expect(e.selection == CodeSelection(anchor: 3, head: 0))
@@ -233,16 +233,25 @@ import Testing
     var (t, _) = editor("\t\tx", CodeSelection(2))
     t.deleteBackward()
     #expect(t.text == "\tx")
-    // past the indent a character, a cluster, and at a line's start the line end
+    // past the indent a code point and what extends it: the skin tone first, then the face; a variation selector with
+    // what it selects; at a line's start the line end; forward a whole cluster
     var (c, _) = editor("a\n  b👍🏽", CodeSelection(9))
     c.deleteBackward()
+    #expect(c.text == "a\n  b👍")
+    c.deleteBackward()
     #expect(c.text == "a\n  b")
+    var (v, _) = editor("x❤️", CodeSelection(3))
+    v.deleteBackward()
+    #expect(v.text == "x")
     c.select(CodeSelection(2))
     c.deleteBackward()
     #expect(c.text == "a  b")
     c.select(CodeSelection(1))
     c.deleteForward()
     #expect(c.text == "a b" && c.selection == CodeSelection(1))
+    var (f, _) = editor("b👍🏽", CodeSelection(1))
+    f.deleteForward()
+    #expect(f.text == "b")
   }
 
   @Test func theCodeRulesThroughTheEditor() {

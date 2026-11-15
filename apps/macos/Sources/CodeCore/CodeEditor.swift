@@ -3,8 +3,8 @@ import Foundation
 /// Plain text edited as code, without any view: the text, the selection, an input method's composition, the undo
 /// history, what the mouse and the keys do. Its behaviour is the web side's code editor's (CodeMirror with
 /// packages/markdown/src/cm/editor.ts and the default keymap). Offsets are UTF-16; lines end at "\n"; a column counts
-/// characters, a tab as `tabWidth` (as CodeLines lays lines out); vertical moves go by lines of the text, not wrapped rows.
-/// The view hit-tests and hands it offsets.
+/// characters, a tab as `tabWidth`. The keys that go by what is seen (↑ ↓, ⌘← ⌘→, pages) take the view's layout
+/// (`CodeLayout`; without one the text's lines as they are); the view hit-tests and hands it offsets.
 ///
 /// ponytail: the text is a String edited through NSString, so each edit copies it; a rope when files of many thousand
 /// lines are edited
@@ -17,15 +17,20 @@ public struct CodeEditor: Sendable {
     public var selected: Range<Int>
   }
 
-  public enum Motion: Sendable {
+  public enum Motion: Hashable, Sendable {
     /// A character (a grapheme cluster, a line end)
     case character
     /// A run of word characters, or of others, white space before it skipped (⌥← ⌥→)
     case group
-    /// The line's end, or its start: its indentation's end first (⌘← ⌘→)
+    /// The row's end, or its start: on a line's first row its indentation's end first (⌘← ⌘→)
     case lineBoundary
-    /// The line above or below, at the column the vertical moves started from (↑ ↓)
+    /// The line's end or start, whatever its rows (⌃E ⌃A)
+    case lineStart
+    /// The row above or below, as far across as the vertical moves started (↑ ↓); from the first row or the last the
+    /// text's start or end
     case line
+    /// The layout's page of rows up or down, as `line` (⌃↑ ⌃↓, page up and down)
+    case page
     /// The text's start or end (⌘↑ ⌘↓)
     case document
   }
@@ -36,6 +41,8 @@ public struct CodeEditor: Sendable {
   public private(set) var text: String
   public private(set) var selection: CodeSelection
   public private(set) var composition: Composition?
+  /// At a wrap point, which row the caret is drawn in: < 0 the end of the one above, else the start of the one below
+  public private(set) var assoc = 0
   public var indentUnit = CodeEditing.indentUnit
   public var tabWidth = 4
   /// The line comment ⌘/ uses (`CodeEditing.lineComment(language:)`)
@@ -55,8 +62,8 @@ public struct CodeEditor: Sendable {
   private var redoSteps: [Step] = []
   /// Typing may join the last step: no move, click or other step came between
   private var joinable = false
-  /// The column vertical moves keep to, from the first of them
-  private var goal: Int?
+  /// How far across vertical moves keep to (the layout's x), from the first of them
+  private var goal: Double?
   private var mouse: (start: Int, assoc: Int, clicks: Int, extend: Bool, before: CodeSelection)?
 
   public init(
@@ -68,8 +75,8 @@ public struct CodeEditor: Sendable {
     self.clock = clock
   }
 
-  private var ns: NSString { text as NSString }
-  private var length: Int { ns.length }
+  var ns: NSString { text as NSString }
+  var length: Int { ns.length }
 
   // MARK: Selection
 
@@ -80,9 +87,10 @@ public struct CodeEditor: Sendable {
 
   public mutating func selectAll() { place(CodeSelection(anchor: 0, head: length)) }
 
-  private mutating func place(_ s: CodeSelection) {
+  private mutating func place(_ s: CodeSelection, assoc: Int = 0, goal: Double? = nil) {
     selection = s
-    goal = nil
+    self.assoc = assoc
+    self.goal = goal
     joinable = false
   }
 
@@ -111,10 +119,7 @@ public struct CodeEditor: Sendable {
       let hi = max(s.range.upperBound, r.range.upperBound)
       r = lo < r.range.lowerBound ? CodeSelection(anchor: lo, head: hi) : CodeSelection(anchor: hi, head: lo)
     }
-    let s = m.extend ? CodeEditor.extend(m.before, r.range) : r
-    selection = s
-    goal = nil
-    joinable = false
+    place(m.extend ? CodeEditor.extend(m.before, r.range) : r, assoc: r.isEmpty ? assoc : 0)
   }
 
   public mutating func release() { mouse = nil }
@@ -144,32 +149,54 @@ public struct CodeEditor: Sendable {
   // MARK: Keys that move
 
   /// An arrow key and its modifiers: with `extend` the selection's head moves; without, a selection collapses to its
-  /// end that way first (for a character, a group or a line), or the caret moves
+  /// end that way first (for a character, a group, a row or a page), or the caret moves
   public mutating func move(_ m: Motion, forward: Bool, extend: Bool) {
+    move(m, forward: forward, extend: extend, in: PlainCodeLayout(text, tabWidth: tabWidth))
+  }
+
+  public mutating func move(_ m: Motion, forward: Bool, extend: Bool, in layout: some CodeLayout) {
     let s = selection
-    if !extend, !s.isEmpty, m == .character || m == .group || m == .line {
-      return place(CodeSelection(forward ? s.range.upperBound : s.range.lowerBound))
-    }
-    let keep = m == .line ? goal ?? column(s.head) : nil
-    let head: Int
     switch m {
-    case .character: head = step(from: s.head, forward: forward)
-    case .group: head = groupStep(from: s.head, forward: forward)
-    case .lineBoundary: head = lineBoundary(from: s.head, forward: forward)
-    case .document: head = forward ? length : 0
-    case .line:
-      let l = line(at: s.head)
-      if forward ? l.upperBound >= length : l.lowerBound == 0 {
-        // nothing above or below: the line's end that way
-        head = forward ? l.upperBound : l.lowerBound
-      } else {
-        let next = forward ? line(at: l.upperBound + 1) : line(at: l.lowerBound - 1)
-        head = offset(column: keep ?? 0, in: next)
-      }
+    case .character, .group, .line, .page:
+      if !extend, !s.isEmpty { return place(CodeSelection(forward ? s.range.upperBound : s.range.lowerBound)) }
+    default: break
     }
-    selection = extend ? CodeSelection(anchor: s.anchor, head: head) : CodeSelection(head)
-    goal = keep
-    joinable = false
+    var to = (head: s.head, assoc: 0, goal: Double?.none)
+    switch m {
+    case .character: (to.head, to.assoc) = (step(from: s.head, forward: forward), forward ? -1 : 1)
+    case .group: (to.head, to.assoc) = (groupStep(from: s.head, forward: forward), forward ? -1 : 1)
+    case .lineBoundary:
+      (to.head, to.assoc) = (lineBoundary(from: s.head, forward: forward, in: layout), forward ? -1 : 1)
+    case .lineStart:
+      let l = line(at: s.head)
+      (to.head, to.assoc) = (forward ? l.upperBound : l.lowerBound, forward ? -1 : 1)
+    case .document: to.head = forward ? length : 0
+    case .line:
+      to = vertical(forward: forward, rows: 1, in: layout)
+      // nowhere to go (the text's start or end): the row's end that way
+      if !extend, to.head == s.head {
+        (to.head, to.assoc) = (rowBoundary(forward: forward, in: layout), forward ? -1 : 1)
+      }
+    case .page: to = vertical(forward: forward, rows: max(1, layout.pageRows), in: layout)
+    }
+    place(
+      extend ? CodeSelection(anchor: s.anchor, head: to.head) : CodeSelection(to.head), assoc: to.assoc, goal: to.goal)
+  }
+
+  /// The head `rows` rows up or down at the goal, or the text's start or end past the first row or the last
+  /// (view moveVertically)
+  private func vertical(forward: Bool, rows: Int, in layout: some CodeLayout) -> (head: Int, assoc: Int, goal: Double?)
+  {
+    let s = selection
+    if s.head == (forward ? length : 0) { return (s.head, assoc, nil) }
+    let side = assoc != 0 ? assoc : (s.isEmpty ? forward : s.head == s.range.lowerBound) ? 1 : -1
+    let goal = goal ?? layout.x(of: s.head, assoc: side)
+    let r = layout.row(of: s.head, assoc: side) + (forward ? rows : -rows)
+    if r < 0 { return (0, 0, nil) }
+    if r >= layout.rowCount { return (length, 0, nil) }
+    let q = layout.offset(inRow: r, x: goal)
+    let row = layout.offsets(inRow: r)
+    return (q, q == row.upperBound && q > row.lowerBound ? -1 : 1, goal)
   }
 
   // MARK: Editing
@@ -186,43 +213,105 @@ public struct CodeEditor: Sendable {
     record(CodeEdit(range: r, replacement: s, selection: CodeSelection(r.lowerBound + (s as NSString).length)))
   }
 
-  /// ⌫: the selection, or in a line's indentation a tab or back to the last indent stop, else the character before
+  /// ⌫ (⌃H): the selection, or in a line's indentation a tab or back to the last indent stop, else the character before
   public mutating func deleteBackward() {
-    let s = selection
-    if !s.isEmpty {
-      return record(CodeEdit(range: s.range, replacement: "", selection: CodeSelection(s.range.lowerBound)))
-    }
-    let q = s.head
-    let l = line(at: q)
-    let before = ns.substring(with: NSRange(location: l.lowerBound, length: q - l.lowerBound))
-    var to: Int
-    if q > l.lowerBound, before.utf16.allSatisfy({ $0 == 0x20 || $0 == 0x09 }) {
-      if before.hasSuffix("\t") {
-        to = q - 1
-      } else {
-        let unit = (indentUnit as NSString).length
-        let col = CodeEditor.columns(before, tabWidth: tabWidth)
-        let drop = col % unit == 0 ? unit : col % unit
-        to = q
-        let units = Array(before.utf16)
-        while q - to < drop, to > l.lowerBound, units[to - l.lowerBound - 1] == 0x20 { to -= 1 }
+    deleteBy { e, q in
+      let l = e.line(at: q)
+      let before = e.ns.substring(with: NSRange(location: l.lowerBound, length: q - l.lowerBound))
+      guard q > l.lowerBound, q < l.lowerBound + 200, before.utf16.allSatisfy({ $0 == 0x20 || $0 == 0x09 }) else {
+        // a code point and what extends it only: an accent or a skin tone before the letter or the face; a variation
+        // selector with what it selects
+        let to = e.step(from: q, forward: false, extending: false)
+        let gone = e.ns.substring(with: NSRange(location: to, length: q - to)).unicodeScalars
+        return gone.contains { (0xFE00...0xFE0F).contains($0.value) }
+          ? e.step(from: to, forward: false, extending: false) : to
       }
-    } else {
-      to = step(from: q, forward: false)
+      if before.hasSuffix("\t") { return q - 1 }
+      let unit = (e.indentUnit as NSString).length
+      let col = CodeEditor.columns(before, tabWidth: e.tabWidth)
+      let drop = col % unit == 0 ? unit : col % unit
+      let units = Array(before.utf16)
+      var to = q
+      while q - to < drop, to > l.lowerBound, units[to - l.lowerBound - 1] == 0x20 { to -= 1 }
+      return to
     }
-    guard to < q else { return }
-    record(CodeEdit(range: to..<q, replacement: "", selection: CodeSelection(to)))
   }
 
-  /// ⌦: the selection, or the character after
-  public mutating func deleteForward() {
-    let s = selection
-    if !s.isEmpty {
-      return record(CodeEdit(range: s.range, replacement: "", selection: CodeSelection(s.range.lowerBound)))
+  /// ⌦ (⌃D): the selection, or the character after
+  public mutating func deleteForward() { deleteBy { e, q in e.step(from: q, forward: true) } }
+
+  /// ⌥⌫ ⌥⌦ (⌃⌥H): the selection, or to the end of the group that way, a single space by the caret going with the
+  /// group past it; at a line's end or start, the line end (commands deleteByGroup)
+  public mutating func deleteGroup(forward: Bool) {
+    deleteBy { e, q in
+      let l = e.line(at: q)
+      var pos = q
+      var kind: Category?
+      while pos != (forward ? l.upperBound : l.lowerBound) {
+        let next = e.step(from: pos, forward: forward)
+        let ch = forward ? e.cluster(pos, next) : e.cluster(next, pos)
+        let c = CodeEditor.category(ch)
+        if let k = kind, c != k { return pos }
+        if ch != " " || pos != q { kind = c }
+        pos = next
+      }
+      return pos == q ? e.step(from: q, forward: forward) : pos
     }
-    let to = step(from: s.head, forward: true)
-    guard to > s.head else { return }
-    record(CodeEdit(range: s.head..<to, replacement: "", selection: CodeSelection(s.head)))
+  }
+
+  /// ⌘⌫ ⌘⌦: the selection, or to the start or end of the row the caret is in; there already, the line end
+  public mutating func deleteLineBoundary(forward: Bool) {
+    deleteLineBoundary(forward: forward, in: PlainCodeLayout(text, tabWidth: tabWidth))
+  }
+
+  public mutating func deleteLineBoundary(forward: Bool, in layout: some CodeLayout) {
+    let b = rowBoundary(forward: forward, in: layout)
+    deleteBy { e, q in forward ? (q < b ? b : min(e.length, q + 1)) : (q > b ? b : max(0, q - 1)) }
+  }
+
+  /// ⌃K: the selection, or to the line's end; there already, the line end
+  public mutating func deleteToLineEnd() {
+    deleteBy { e, q in
+      let end = e.line(at: q).upperBound
+      return q < end ? end : min(e.length, q + 1)
+    }
+  }
+
+  /// The selection deleted, or from the caret to where `to` says (commands deleteBy)
+  private mutating func deleteBy(_ to: (CodeEditor, Int) -> Int) {
+    let s = selection
+    let t = s.isEmpty ? to(self, s.head) : s.anchor
+    let r = s.isEmpty ? min(s.head, t)..<max(s.head, t) : s.range
+    guard !r.isEmpty else { return }
+    record(
+      CodeEdit(range: r, replacement: "", selection: CodeSelection(r.lowerBound)), assoc: r.lowerBound < s.head ? -1 : 1
+    )
+  }
+
+  /// ⌃O: a line end in place of the selection, the caret staying before it
+  public mutating func splitLine() {
+    let r = selection.range
+    record(CodeEdit(range: r, replacement: "\n", selection: CodeSelection(r.lowerBound)))
+  }
+
+  /// ⌃T: the characters either side of the caret swapped, the caret after them; at a line's end or start, with the
+  /// line end
+  public mutating func transpose() {
+    let q = selection.head
+    guard selection.isEmpty, q > 0, q < length else { return }
+    let l = line(at: q)
+    let from = q == l.lowerBound ? q - 1 : step(from: q, forward: false)
+    let to = q == l.upperBound ? q + 1 : step(from: q, forward: true)
+    record(
+      CodeEdit(
+        range: from..<to, replacement: String(cluster(q, to) + cluster(from, q)), selection: CodeSelection(to),
+        undo: .command))
+  }
+
+  /// ⌃L: the selected lines, each with its line end
+  public mutating func selectLine() {
+    let b = block()
+    place(CodeSelection(anchor: b.lowerBound, head: min(b.upperBound + 1, length)))
   }
 
   /// ↩: a new line as indented as this one, a unit more after an opener
@@ -305,12 +394,21 @@ public struct CodeEditor: Sendable {
           range: b.lowerBound..<b.lowerBound, replacement: mine + "\n",
           selection: CodeSelection(anchor: s.anchor + n, head: s.head + n), undo: .command))
     } else {
-      record(CodeEdit(range: b.upperBound..<b.upperBound, replacement: "\n" + mine, selection: s, undo: .command))
+      // what is past the copy's place moves on; a caret there, or a selection's end, stays before it
+      let n = (mine as NSString).length + 1
+      let at = b.upperBound
+      let (lo, hi) = (s.range.lowerBound, s.range.upperBound)
+      let from = lo > at || (lo == at && !s.isEmpty) ? lo + n : lo
+      let to = hi > at ? hi + n : hi
+      let sel = s.anchor <= s.head ? CodeSelection(anchor: from, head: to) : CodeSelection(anchor: to, head: from)
+      record(CodeEdit(range: at..<at, replacement: "\n" + mine, selection: sel, undo: .command))
     }
   }
 
-  /// ⇧⌘K: the selected lines gone with a line end, the caret at its column on the line that comes up
-  public mutating func deleteLines() {
+  /// ⇧⌘K: the selected lines gone with a line end, the caret where a move down to the next line puts it
+  public mutating func deleteLines() { deleteLines(in: PlainCodeLayout(text, tabWidth: tabWidth)) }
+
+  public mutating func deleteLines(in layout: some CodeLayout) {
     let b = block()
     var r = b
     if r.lowerBound > 0 {
@@ -318,12 +416,16 @@ public struct CodeEditor: Sendable {
     } else if r.upperBound < length {
       r = r.lowerBound..<(r.upperBound + 1)
     }
-    let col = goal ?? column(selection.head)
-    var caret = r.lowerBound
-    if b.upperBound < length {
-      let next = line(at: b.upperBound + 1)
-      caret = r.lowerBound + (b.lowerBound > 0 ? 1 : 0) + (offset(column: col, in: next) - next.lowerBound)
+    var q = length
+    let head = selection.head
+    if head < length {
+      let side = assoc != 0 ? assoc : (selection.isEmpty || head == selection.range.lowerBound) ? 1 : -1
+      let below = layout.row(of: line(at: head).upperBound, assoc: -1) + 1
+      if below < layout.rowCount { q = layout.offset(inRow: below, x: goal ?? layout.x(of: head, assoc: side)) }
+    } else {
+      q = head
     }
+    let caret = q >= r.upperBound ? q - r.count : min(q, r.lowerBound)
     record(CodeEdit(range: r, replacement: "", selection: CodeSelection(caret), undo: .command))
   }
 
@@ -343,6 +445,7 @@ public struct CodeEditor: Sendable {
     let at = composition?.at ?? selection.head
     composition = Composition(at: at, text: s, selected: min(selected.lowerBound, n)..<min(selected.upperBound, n))
     goal = nil
+    assoc = 0
   }
 
   /// The composition given up (⎋ while composing): nothing of it is written
@@ -376,7 +479,7 @@ public struct CodeEditor: Sendable {
   }
 
   /// Makes an edit and keeps it for undo: typing next to the last typing within `groupDelay` joins its step
-  private mutating func record(_ e: CodeEdit) {
+  private mutating func record(_ e: CodeEdit, assoc: Int = 0) {
     guard !e.range.isEmpty || !e.replacement.isEmpty else { return place(e.selection) }
     let before = selection
     let old = ns.substring(with: NSRange(location: e.range.lowerBound, length: e.range.count))
@@ -395,6 +498,7 @@ public struct CodeEditor: Sendable {
     }
     redoSteps = []
     selection = e.selection
+    self.assoc = assoc
     goal = nil
     joinable = e.undo == .typing
   }
@@ -415,7 +519,7 @@ public struct CodeEditor: Sendable {
       q = l.upperBound + 1
     }
     guard !changes.isEmpty else { return }
-    // a place in a replaced range goes after its new text
+    // a place in a replaced range goes after its new text, at its start stays there
     func map(_ p: Int) -> Int {
       var shift = 0
       for (r, ins) in changes {
@@ -423,7 +527,7 @@ public struct CodeEditor: Sendable {
         if r.upperBound <= p {
           shift += n - r.count
         } else if r.lowerBound <= p {
-          return r.lowerBound + shift + n
+          return r.lowerBound + shift + (p == r.lowerBound ? 0 : n)
         } else {
           break
         }
@@ -473,35 +577,65 @@ public struct CodeEditor: Sendable {
     return n
   }
 
-  /// An offset's column in its line: characters before it, a tab as `tabWidth` (as the lines are laid out)
-  func column(_ q: Int) -> Int {
-    let l = line(at: q)
-    var n = 0
-    for ch in ns.substring(with: NSRange(location: l.lowerBound, length: q - l.lowerBound)) {
-      n += ch == "\t" ? tabWidth : 1
+  /// One character on, as CodeMirror steps (findClusterBreak): a code point and the extending ones after it (with
+  /// `extending`), code points joined by ZWJ, regional indicators in pairs; a line end on its own
+  func step(from q: Int, forward: Bool, extending: Bool = true) -> Int {
+    if forward { return nextBreak(q, extending) }
+    var pos = q
+    while pos > 1 {
+      let found = nextBreak(pos - 2, extending)
+      if found < pos { return found }
+      pos -= 1
     }
-    return n
+    return 0
   }
 
-  /// Where a column falls in a line: the character boundary at or just past it, at most the line's end
-  func offset(column c: Int, in l: Range<Int>) -> Int {
-    var n = 0
-    var q = l.lowerBound
-    for ch in ns.substring(with: NSRange(location: l.lowerBound, length: l.count)) {
-      if n >= c { break }
-      n += ch == "\t" ? tabWidth : 1
-      q += ch.utf16.count
+  private func nextBreak(_ q: Int, _ extending: Bool) -> Int {
+    guard q < length else { return q }
+    var pos = q
+    if pos > 0, UTF16.isTrailSurrogate(ns.character(at: pos)), UTF16.isLeadSurrogate(ns.character(at: pos - 1)) {
+      pos -= 1
     }
-    return q
+    var (prev, n) = codePoint(at: pos)
+    pos += n
+    if prev == 0x0A { return pos }
+    while pos < length {
+      let (next, m) = codePoint(at: pos)
+      if next == 0x0A { break }
+      if prev == 0x200D || next == 0x200D || extending && CodeEditor.isExtending(next) {
+        pos += m
+        prev = next
+      } else if CodeEditor.isRegional(next) {
+        var before = 0
+        var i = pos - 2
+        while i >= 0, CodeEditor.isRegional(codePoint(at: i).0) {
+          before += 1
+          i -= 2
+        }
+        if before % 2 == 0 { break }
+        pos += 2
+      } else {
+        break
+      }
+    }
+    return pos
   }
 
-  /// One character on: a grapheme cluster, or a line end
-  func step(from q: Int, forward: Bool) -> Int {
-    if forward {
-      return q < length ? NSMaxRange(ns.rangeOfComposedCharacterSequence(at: q)) : q
+  private func codePoint(at i: Int) -> (UInt32, Int) {
+    let u = ns.character(at: i)
+    if UTF16.isLeadSurrogate(u), i + 1 < length, UTF16.isTrailSurrogate(ns.character(at: i + 1)) {
+      return (0x10000 + (UInt32(u) - 0xD800) << 10 + UInt32(ns.character(at: i + 1)) - 0xDC00, 2)
     }
-    return q > 0 ? ns.rangeOfComposedCharacterSequence(at: q - 1).location : q
+    return (UInt32(u), 1)
   }
+
+  /// Grapheme_Cluster_Break=Extend: what extends the code point before it
+  static func isExtending(_ c: UInt32) -> Bool {
+    guard c >= 768, let u = Unicode.Scalar(c) else { return false }
+    return u.properties.isGraphemeExtend || u.properties.isEmojiModifier
+  }
+
+  static func isRegional(_ c: UInt32) -> Bool { (0x1F1E6...0x1F1FF).contains(c) }
 
   enum Category { case space, word, other }
 
@@ -523,7 +657,7 @@ public struct CodeEditor: Sendable {
     }
   }
 
-  private func cluster(_ a: Int, _ b: Int) -> Substring {
+  func cluster(_ a: Int, _ b: Int) -> Substring {
     Substring(ns.substring(with: NSRange(location: a, length: b - a)))
   }
 
@@ -569,12 +703,25 @@ public struct CodeEditor: Sendable {
     return from..<to
   }
 
-  /// ⌘→ to the line's end; ⌘← to its indentation's end, or from there to its start (commands moveByLineBoundary)
-  func lineBoundary(from q: Int, forward: Bool) -> Int {
+  /// The end or start of the row the caret is drawn in (view moveToLineBoundary)
+  func rowBoundary(forward: Bool, in layout: some CodeLayout) -> Int {
+    let q = selection.head
+    let at = assoc < 0 && q > line(at: q).lowerBound ? q - 1 : q
+    let row = layout.offsets(inRow: layout.row(of: at, assoc: 1))
+    return forward ? row.upperBound : row.lowerBound
+  }
+
+  /// ⌘→ to the row's end; ⌘← to its start, on a line's first row to its indentation's end first, or from there to the
+  /// start; at a row's end already, the line's (commands moveByLineBoundary)
+  func lineBoundary(from q: Int, forward: Bool, in layout: some CodeLayout) -> Int {
     let l = line(at: q)
-    if forward { return l.upperBound }
-    let space = Array(ns.substring(with: NSRange(location: l.lowerBound, length: min(100, l.count))).utf16)
-      .prefix(while: CodeEditor.isSpace).count
-    return space > 0 && q != l.lowerBound + space ? l.lowerBound + space : l.lowerBound
+    var to = rowBoundary(forward: forward, in: layout)
+    if to == q, to != (forward ? l.upperBound : l.lowerBound) { to = forward ? l.upperBound : l.lowerBound }
+    if !forward, to == l.lowerBound, !l.isEmpty {
+      let space = Array(ns.substring(with: NSRange(location: l.lowerBound, length: min(100, l.count))).utf16)
+        .prefix(while: CodeEditor.isSpace).count
+      if space > 0, q != l.lowerBound + space { to = l.lowerBound + space }
+    }
+    return to
   }
 }
