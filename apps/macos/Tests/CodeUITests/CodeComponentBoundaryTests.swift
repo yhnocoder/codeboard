@@ -4,7 +4,8 @@ import Testing
 // The code component is to be shared with other apps: it imports the system's frameworks and itself only, and nothing in
 // it speaks of CodeBoard, its targets or its things (boards, cards, segments, sidenotes, stickers, vaults).
 private let allowed: [String: Set<String>] = [
-  "CodeUI": ["AppKit", "CoreGraphics", "CoreText", "Foundation", "QuartzCore"]
+  "CodeCore": ["Foundation"],
+  "CodeUI": ["AppKit", "CodeCore", "CoreGraphics", "CoreText", "Foundation", "QuartzCore"],
 ]
 
 @Test(arguments: allowed.keys.sorted())

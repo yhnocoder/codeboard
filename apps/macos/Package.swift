@@ -17,6 +17,10 @@ let package = Package(
     .package(url: "https://github.com/yhnocoder/tree-sitter-cuda", exact: "0.21.2-cb.3"),
   ],
   targets: [
+    // The code component, to share with other apps: it knows nothing of CodeBoard (CodeComponentBoundaryTests).
+    // CodeCore: the rules, on text alone; CodeUI: laying code out and drawing it
+    .target(name: "CodeCore"),
+    .target(name: "CodeUI", dependencies: ["CodeCore"]),
     .target(name: "CodeBoardModel"),
     .target(
       name: "CodeBoardSyntax",
@@ -35,8 +39,6 @@ let package = Package(
       cSettings: [.headerSearchPath("."), .disableWarning("shorten-64-to-32")]
     ),
     .target(name: "CodeBoardNotes", dependencies: ["CodeBoardModel"]),
-    // The code component, to share with other apps: it knows nothing of CodeBoard (CodeComponentBoundaryTests)
-    .target(name: "CodeUI"),
     .target(name: "CodeBoardCanvas", dependencies: ["CodeBoardModel", "CodeBoardSyntax", "CodeBoardNotes", "CodeUI"]),
     .target(name: "CodeBoardShell", dependencies: ["CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes"]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
@@ -54,6 +56,7 @@ let package = Package(
     .testTarget(name: "CodeBoardSyntaxTests", dependencies: ["CodeBoardSyntax"]),
     .testTarget(name: "CodeBoardNotesTests", dependencies: ["CodeBoardNotes"]),
     .testTarget(name: "CodeBoardCanvasTests", dependencies: ["CodeBoardCanvas"]),
+    .testTarget(name: "CodeCoreTests", dependencies: ["CodeCore"]),
     .testTarget(name: "CodeUITests", dependencies: ["CodeUI"]),
     .testTarget(name: "CodeBoardShellTests", dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardNotes"]),
   ]
@@ -70,7 +73,7 @@ for t in package.targets where t.name != "CTreeSitterScanners" {
 // on it yet, and it depends on none of the app's but CodeBoardSyntax, which only the look tool uses for code colours
 package.targets += [
   // Markdown parsed the way @yhnocoder/markdown parses it, with source ranges, and its editing rules (guideline 6.2)
-  .target(name: "CodeBoardMarkdown"),
+  .target(name: "CodeBoardMarkdown", dependencies: ["CodeCore"]),
   // Markdown laid out and drawn with CoreText, edited in place; formulas and diagrams through JavaScriptCore (6.3)
   .target(name: "CodeBoardMarkdownUI", dependencies: ["CodeBoardMarkdown"]),
   .executableTarget(name: "MarkdownBench", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI"]),
