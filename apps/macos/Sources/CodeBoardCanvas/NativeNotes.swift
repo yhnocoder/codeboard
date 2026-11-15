@@ -3,6 +3,7 @@ import CodeBoardMarkdown
 import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardNotes
+import CodeUI
 import Foundation
 import IOSurface
 import Synchronization
@@ -513,11 +514,11 @@ package final class NativeNotes: NoteDisplay {
       }
     }
 
-    func highlight(lines: [String], language: String) -> [[MarkdownToken]]? {
+    func highlight(lines: [String], language: String) -> [[CodeRun]]? {
       guard let grammar = NativeNotes.grammars[language.lowercased()] else { return nil }
       let h = NativeNotes.highlighter
       return h.tokens(lines: lines, language: grammar).map { line in
-        line.map { MarkdownToken(columns: $0.columns, kind: NativeNotes.kinds[$0.kind] ?? .punctuation) }
+        line.map { CodeRun(columns: $0.columns, style: $0.kind.rawValue) }
       }
     }
 
@@ -533,10 +534,6 @@ package final class NativeNotes: NoteDisplay {
     "python": "python", "py": "python", "python3": "python", "triton": "triton", "tilelang": "tilelang", "c": "c",
     "h": "c", "cpp": "cpp", "c++": "cpp", "cc": "cpp", "cxx": "cpp", "hpp": "cpp", "cuda": "cuda-cpp", "cu": "cuda-cpp",
     "cuh": "cuda-cpp", "cuda-cpp": "cuda-cpp", "rust": "rust", "rs": "rust",
-  ]
-  static let kinds: [TokenClass: MarkdownTokenKind] = [
-    .keyword: .keyword, .operator: .operator, .function: .function, .string: .string, .comment: .comment,
-    .number: .number, .receiver: .receiver, .punctuation: .punctuation,
   ]
 
   // MARK: the layouts kept

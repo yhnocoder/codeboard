@@ -9,6 +9,7 @@ import CodeBoardMarkdown
 import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardTestGuard
+import CodeUI
 import ImageIO
 import TreeSitterHighlight
 
@@ -42,10 +43,6 @@ struct FileResources: MarkdownResources {
     "h": "c", "cpp": "cpp", "c++": "cpp", "cc": "cpp", "cxx": "cpp", "hpp": "cpp", "cuda": "cuda-cpp", "cu": "cuda-cpp",
     "cuh": "cuda-cpp", "cuda-cpp": "cuda-cpp", "rust": "rust", "rs": "rust",
   ]
-  static let kinds: [TokenClass: MarkdownTokenKind] = [
-    .keyword: .keyword, .operator: .operator, .function: .function, .string: .string, .comment: .comment,
-    .number: .number, .receiver: .receiver, .punctuation: .punctuation,
-  ]
   var diagrams: DiagramRenderer? { math as? DiagramRenderer }
   func imageSize(_ src: String) -> CGSize? {
     if let p = pasted.picture(src) { return CGSize(width: p.width, height: p.height) }
@@ -65,10 +62,10 @@ struct FileResources: MarkdownResources {
     Self.sampleCards.contains { $0.caseInsensitiveCompare(label) == .orderedSame }
       ? .found(title: label, seal: nil) : nil
   }
-  func highlight(lines: [String], language: String) -> [[MarkdownToken]]? {
+  func highlight(lines: [String], language: String) -> [[CodeRun]]? {
     guard let grammar = Self.grammars[language.lowercased()] else { return nil }
     return highlighter.tokens(lines: lines, language: grammar).map { line in
-      line.map { MarkdownToken(columns: $0.columns, kind: Self.kinds[$0.kind] ?? .punctuation) }
+      line.map { CodeRun(columns: $0.columns, style: $0.kind.rawValue) }
     }
   }
   var mathPreamble: String { "" }

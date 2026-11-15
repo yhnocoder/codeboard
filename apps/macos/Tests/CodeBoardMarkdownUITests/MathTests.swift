@@ -1,4 +1,5 @@
 import CodeBoardMarkdown
+import CodeUI
 import Foundation
 import Testing
 
@@ -126,6 +127,6 @@ struct MathResources: MarkdownResources {
   var diagrams: DiagramRenderer? { math as? DiagramRenderer }
   func imageSize(_ src: String) -> CGSize? { nil }
   func ref(label: String, target: String?) -> MarkdownRefHit? { nil }
-  func highlight(lines: [String], language: String) -> [[MarkdownToken]]? { nil }
+  func highlight(lines: [String], language: String) -> [[CodeRun]]? { nil }
   var mathPreamble: String { "" }
 }

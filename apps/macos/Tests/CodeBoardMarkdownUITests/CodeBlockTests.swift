@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardMarkdown
+import CodeUI
 import CoreGraphics
 import CoreText
 import Foundation
@@ -17,15 +18,15 @@ import Testing
     }
     func imageSize(_ src: String) -> CGSize? { nil }
     func ref(label: String, target: String?) -> MarkdownRefHit? { nil }
-    func highlight(lines: [String], language: String) -> [[MarkdownToken]]? {
+    func highlight(lines: [String], language: String) -> [[CodeRun]]? {
       calls.lock.withLock { calls.n += 1 }
       // every word a keyword: enough to see colours kept and replaced
       return lines.map { line in
-        var out: [MarkdownToken] = []
+        var out: [CodeRun] = []
         var start: Int?
         for (i, u) in Array(line.utf16 + [0x20]).enumerated() {
           if u == 0x20 {
-            if let s = start { out.append(MarkdownToken(columns: s..<i, kind: .keyword)) }
+            if let s = start { out.append(CodeRun(columns: s..<i, style: MarkdownTokenKind.keyword.rawValue)) }
             start = nil
           } else if start == nil {
             start = i

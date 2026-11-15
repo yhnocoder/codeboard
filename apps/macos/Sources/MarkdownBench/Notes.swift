@@ -1,5 +1,6 @@
 import CodeBoardMarkdown
 import CodeBoardMarkdownUI
+import CodeUI
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -116,7 +117,7 @@ struct BenchResources: MarkdownResources {
     SyntheticNotes.pictures.first { src.hasSuffix($0.name) }?.size
   }
   func ref(label: String, target: String?) -> MarkdownRefHit? { nil }
-  func highlight(lines: [String], language: String) -> [[MarkdownToken]]? { nil }
+  func highlight(lines: [String], language: String) -> [[CodeRun]]? { nil }
   var mathPreamble: String { "" }
 }
 

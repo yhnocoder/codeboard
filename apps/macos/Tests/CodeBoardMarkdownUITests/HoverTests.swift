@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardMarkdown
+import CodeUI
 import Foundation
 import Testing
 
@@ -14,7 +15,7 @@ import Testing
     func ref(label: String, target: String?) -> MarkdownRefHit? {
       label == "gone" ? nil : .found(title: label, seal: nil)
     }
-    func highlight(lines: [String], language: String) -> [[MarkdownToken]]? { nil }
+    func highlight(lines: [String], language: String) -> [[CodeRun]]? { nil }
     var mathPreamble: String { "" }
   }
 

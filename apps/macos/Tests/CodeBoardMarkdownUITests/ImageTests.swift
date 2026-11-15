@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardMarkdown
+import CodeUI
 import CoreGraphics
 import Foundation
 import Testing
@@ -12,7 +13,7 @@ import Testing
   struct Sized: MarkdownResources {
     func imageSize(_ src: String) -> CGSize? { CGSize(width: 800, height: 400) }
     func ref(label: String, target: String?) -> MarkdownRefHit? { nil }
-    func highlight(lines: [String], language: String) -> [[MarkdownToken]]? { nil }
+    func highlight(lines: [String], language: String) -> [[CodeRun]]? { nil }
     var mathPreamble: String { "" }
   }
 

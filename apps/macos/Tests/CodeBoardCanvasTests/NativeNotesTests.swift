@@ -4,6 +4,7 @@ import CodeBoardNotes
 import Foundation
 import IOSurface
 import Testing
+import TreeSitterHighlight
 
 @testable import CodeBoardCanvas
 
@@ -187,5 +188,11 @@ import Testing
     // inline is another formula
     _ = again.typeset("\\frac{a}{b} + \\text{x}", display: false, preamble: "")
     #expect(engines.engineCount == 1)
+  }
+
+  /// A highlighter run's class reaches the Markdown component as its raw value, untranslated
+  @Test func theHighlightersClassesAreTheMarkdownComponentsInItsOrder() {
+    #expect(TokenClass.allCases.map { "\($0)" } == MarkdownTokenKind.allCases.map { "\($0)" })
+    #expect(TokenClass.allCases.map(\.rawValue) == MarkdownTokenKind.allCases.map(\.rawValue))
   }
 }

@@ -84,11 +84,11 @@ package.targets += [
   .target(name: "CodeBoardMarkdown", dependencies: ["CodeCore"]),
   // Markdown laid out and drawn with CoreText, edited in place; formulas and diagrams through JavaScriptCore (6.3)
   .target(name: "CodeBoardMarkdownUI", dependencies: ["CodeBoardMarkdown", "CodeUI", "CodeBoardTestGuard"]),
-  .executableTarget(name: "MarkdownBench", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI"]),
+  .executableTarget(name: "MarkdownBench", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeUI"]),
   .executableTarget(
-    name: "MarkdownLook", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "TreeSitterHighlight"]),
+    name: "MarkdownLook", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeUI", "TreeSitterHighlight"]),
   .testTarget(name: "CodeBoardMarkdownTests", dependencies: ["CodeBoardMarkdown"], resources: [.copy("Fixtures")]),
-  .testTarget(name: "CodeBoardMarkdownUITests", dependencies: ["CodeBoardMarkdownUI", "CodeBoardTestGuard"]),
+  .testTarget(name: "CodeBoardMarkdownUITests", dependencies: ["CodeBoardMarkdownUI", "CodeBoardTestGuard", "CodeUI"]),
 ]
 // a window to try the component in, standing alone (tools/markdown/make-demo.sh packages it); code coloured by
 // TreeSitterHighlight, as the look tool colours it; a vault's Notes read with CodeBoardModel. The kit runs it in any process
@@ -97,7 +97,8 @@ package.targets += [
   .target(
     name: "MarkdownDemoKit",
     dependencies: [
-      "CodeBoardMarkdown", "CodeBoardMarkdownUI", "TreeSitterHighlight", "CodeBoardModel", "CodeBoardTestGuard",
+      "CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeUI", "TreeSitterHighlight", "CodeBoardModel",
+      "CodeBoardTestGuard",
     ]),
   .executableTarget(name: "MarkdownDemo", dependencies: ["MarkdownDemoKit"]),
   .testTarget(name: "MarkdownDemoKitTests", dependencies: ["MarkdownDemoKit", "CodeBoardModel", "CodeBoardTestGuard"]),

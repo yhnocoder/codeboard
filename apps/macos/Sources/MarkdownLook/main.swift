@@ -7,6 +7,7 @@
 // tokens are written to tokens.json for the web side to colour the same code alike.
 import CodeBoardMarkdown
 import CodeBoardMarkdownUI
+import CodeUI
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -104,7 +105,7 @@ struct LookResources: MarkdownResources {
   let folder: URL
   let refs: [String: MarkdownRefHit]
   let math: MathTypesetter?
-  let colour: @Sendable ([String], String) -> [[MarkdownToken]]?
+  let colour: @Sendable ([String], String) -> [[CodeRun]]?
   var diagrams: DiagramRenderer? { math as? DiagramRenderer }
   func imageSize(_ src: String) -> CGSize? {
     guard !src.contains("://"), let s = CGImageSourceCreateWithURL(folder.appending(path: src) as CFURL, nil),
@@ -114,7 +115,7 @@ struct LookResources: MarkdownResources {
     return CGSize(width: w, height: h)
   }
   func ref(label: String, target: String?) -> MarkdownRefHit? { refs[label + "\u{0}" + (target ?? "")] }
-  func highlight(lines: [String], language: String) -> [[MarkdownToken]]? { colour(lines, language) }
+  func highlight(lines: [String], language: String) -> [[CodeRun]]? { colour(lines, language) }
   var mathPreamble: String { "" }
 }
 
@@ -137,10 +138,6 @@ let dark = a[4] == "1"
 let scale = CGFloat(Double(a[5])!)
 try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
 let highlighter = Highlighter()
-let kinds: [TokenClass: MarkdownTokenKind] = [
-  .keyword: .keyword, .operator: .operator, .function: .function, .string: .string, .comment: .comment,
-  .number: .number, .receiver: .receiver, .punctuation: .punctuation,
-]
 let classes: [MarkdownTokenKind: String] = [
   .keyword: "kw", .operator: "kw op", .function: "fn", .string: "str", .comment: "com", .number: "num",
   .receiver: "self", .punctuation: "p",
@@ -158,11 +155,14 @@ for job in jobs {
     colour: { lines, language in
       guard let grammar = fenceLanguages[language.lowercased()] else { return nil }
       let tokens = highlighter.tokens(lines: lines, language: grammar).map { line in
-        line.map { MarkdownToken(columns: $0.columns, kind: kinds[$0.kind] ?? .punctuation) }
+        line.map { CodeRun(columns: $0.columns, style: $0.kind.rawValue) }
       }
       tokensOut.withLock {
         $0[language + "\u{0}" + lines.joined(separator: "\n")] = tokens.map { line in
-          line.map { ["\($0.columns.lowerBound)", "\($0.columns.upperBound)", classes[$0.kind] ?? "p"] }
+          line.map { run in
+            let kind = MarkdownTokenKind(rawValue: run.style).flatMap { classes[$0] } ?? "p"
+            return ["\(run.columns.lowerBound)", "\(run.columns.upperBound)", kind]
+          }
         }
       }
       return tokens

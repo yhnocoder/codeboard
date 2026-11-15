@@ -1,4 +1,5 @@
 import CodeBoardMarkdown
+import CodeUI
 import CoreGraphics
 import Testing
 
@@ -10,7 +11,7 @@ import Testing
   struct Diagrams: MarkdownResources, DiagramRenderer {
     func imageSize(_ src: String) -> CGSize? { nil }
     func ref(label: String, target: String?) -> MarkdownRefHit? { nil }
-    func highlight(lines: [String], language: String) -> [[MarkdownToken]]? { nil }
+    func highlight(lines: [String], language: String) -> [[CodeRun]]? { nil }
     var mathPreamble: String { "" }
     var diagrams: DiagramRenderer? { self }
     func diagram(_ source: String, fonts: [String], maxWidth: Int?, cornerRadius: Double) -> DiagramResult {

@@ -1,4 +1,5 @@
 import CodeBoardMarkdown
+import CodeUI
 import CoreGraphics
 import Foundation
 
@@ -13,9 +14,9 @@ public final class LiveHighlight: MarkdownResources, @unchecked Sendable {
   public var ready: ((_ language: String, _ code: String) -> Void)?
   private let lock = NSLock()
   /// the colours of each code highlighted, by language and code
-  private var done: [String: [[MarkdownToken]]] = [:]
+  private var done: [String: [[CodeRun]]] = [:]
   /// the latest colours of each line text, by language: what an edited block starts from
-  private var lines: [String: [String: [MarkdownToken]]] = [:]
+  private var lines: [String: [String: [CodeRun]]] = [:]
   private var asked: Set<String> = []
   private let queue = DispatchQueue(label: "markdown.highlight", qos: .userInitiated)
 
@@ -27,7 +28,7 @@ public final class LiveHighlight: MarkdownResources, @unchecked Sendable {
   public var math: MathTypesetter? { base.math }
   public var diagrams: DiagramRenderer? { base.diagrams }
 
-  public func highlight(lines code: [String], language: String) -> [[MarkdownToken]]? {
+  public func highlight(lines code: [String], language: String) -> [[CodeRun]]? {
     let key = language + "\u{0}" + code.joined(separator: "\n")
     let (hit, known) = lock.withLock { (done[key], lines[language] ?? [:]) }
     if let hit { return hit }
@@ -51,7 +52,7 @@ public final class LiveHighlight: MarkdownResources, @unchecked Sendable {
   }
 
   @discardableResult
-  private func store(_ key: String, _ code: [String], _ language: String) -> [[MarkdownToken]]? {
+  private func store(_ key: String, _ code: [String], _ language: String) -> [[CodeRun]]? {
     let t = base.highlight(lines: code, language: language)
     lock.withLock {
       asked.remove(key)

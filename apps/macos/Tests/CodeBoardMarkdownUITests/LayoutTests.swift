@@ -1,4 +1,5 @@
 import CodeBoardMarkdown
+import CodeUI
 import CoreGraphics
 import CoreText
 import Foundation
@@ -10,7 +11,7 @@ struct TestResources: MarkdownResources {
   var sizes: [String: CGSize] = [:]
   func imageSize(_ src: String) -> CGSize? { sizes[src] }
   func ref(label: String, target: String?) -> MarkdownRefHit? { .found(title: label, seal: nil) }
-  func highlight(lines: [String], language: String) -> [[MarkdownToken]]? { nil }
+  func highlight(lines: [String], language: String) -> [[CodeRun]]? { nil }
   var mathPreamble: String { "" }
 }
 

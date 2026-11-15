@@ -1,3 +1,4 @@
+import CodeUI
 import CoreGraphics
 import Foundation
 
@@ -11,8 +12,9 @@ public protocol MarkdownResources: Sendable {
   func imageLoading(_ src: String) -> Bool
   /// What a [[reference]] points at now; nil: not found
   func ref(label: String, target: String?) -> MarkdownRefHit?
-  /// Code colouring: each line's tokens; nil for a language without colouring
-  func highlight(lines: [String], language: String) -> [[MarkdownToken]]?
+  /// Code colouring: each line's runs, at UTF-16 columns in it, each one's style a MarkdownTokenKind's raw value; nil
+  /// for a language without colouring
+  func highlight(lines: [String], language: String) -> [[CodeRun]]?
   /// The math preamble (\newcommand, \def lines)
   var mathPreamble: String { get }
   /// Formulas: nil draws each formula as its TeX in the code font
@@ -40,19 +42,10 @@ public enum DiagramResult: Sendable, Hashable {
   case error(String)
 }
 
-/// A code token's colour class, one to one with TreeSitterHighlight's TokenClass
-public enum MarkdownTokenKind: Sendable, Hashable {
+/// A code run's colour class, its style (CodeRun.style) its raw value: TreeSitterHighlight's TokenClass, one to one, so
+/// a host colouring with it gives its runs as they are
+public enum MarkdownTokenKind: UInt8, Sendable, Hashable, CaseIterable {
   case keyword, `operator`, function, string, comment, number, receiver, punctuation
-}
-
-public struct MarkdownToken: Sendable, Hashable {
-  /// UTF-16 columns in its line
-  public var columns: Range<Int>
-  public var kind: MarkdownTokenKind
-  public init(columns: Range<Int>, kind: MarkdownTokenKind) {
-    self.columns = columns
-    self.kind = kind
-  }
 }
 
 public struct MarkdownSeal: Sendable, Hashable {

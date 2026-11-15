@@ -640,9 +640,7 @@ struct LayoutBuilder {
     // laid out as code is (CodeLines): tabs to their stops, a wrapped line cut where its characters reach the width
     let regular = FontBook.font(theme.fonts.mono, size: CGFloat(m.codeSize), weight: 400, ligatures: true)
     // and coloured as code is (CodeDraw): each kind's colour, keywords' weight, comments' italic
-    let kinds: [MarkdownTokenKind] = [
-      .keyword, .operator, .function, .string, .comment, .number, .receiver, .punctuation,
-    ]
+    let kinds = MarkdownTokenKind.allCases
     let codeStyle = CodeStyle(
       font: CodeFont(regular), ink: theme.code.plain.cg,
       runs: kinds.map { k in
@@ -690,9 +688,10 @@ struct LayoutBuilder {
           style))
       // the tokens at the columns shown (a tab is its spaces)
       let runs = (tokens?[safe: i] ?? []).compactMap { t -> CodeRun? in
-        guard theme.code.kinds[t.kind] != nil, t.columns.upperBound < column.count, let k = kinds.firstIndex(of: t.kind)
+        guard let k = MarkdownTokenKind(rawValue: t.style), theme.code.kinds[k] != nil,
+          t.columns.upperBound < column.count
         else { return nil }
-        return CodeRun(columns: column[t.columns.lowerBound]..<column[t.columns.upperBound], style: UInt8(k))
+        return CodeRun(columns: column[t.columns.lowerBound]..<column[t.columns.upperBound], style: t.style)
       }
       CodeDraw.apply(runs, style: codeStyle, to: attr)
       var d = DisplayText()
