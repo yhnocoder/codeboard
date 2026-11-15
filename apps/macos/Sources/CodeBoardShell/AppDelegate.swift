@@ -71,6 +71,7 @@ import CodeBoardModel
     self.panes = panes
     panes.onVaultChanged = { [weak self] in self?.readTree(reloadBoards: true) }
     panes.cameras = cameras
+    panes.pictures = CanvasView.defaultPictures
     let ai = AISettings(defaults: .standard)
     let keys = KeychainKeyStore()
     panes.summarySwitch = ai.summarySwitch

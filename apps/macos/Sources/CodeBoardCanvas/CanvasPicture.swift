@@ -10,12 +10,12 @@ import CryptoKit
 
 extension CanvasView {
   /// ~/Library/Caches/<bundle id, or CodeBoard>/board-pictures
-  static var defaultPictures: URL {
+  package static var defaultPictures: URL {
     URL.cachesDirectory.appending(components: Bundle.main.bundleIdentifier ?? "CodeBoard", "board-pictures")
   }
 
   /// The file a picture of this board, taken so, is in
-  func pictureFile(_ board: VaultBoard, in vault: Vault, bytes: Data, theme: Theme, camera: Camera) -> URL? {
+  func pictureFile(_ board: VaultBoard, in vault: Vault, bytes: Data, theme: Theme) -> URL? {
     guard let folder = picturesFolder, !bounds.isEmpty else { return nil }
     let backing = window?.backingScaleFactor ?? 2
     let app = Bundle.main.executableURL.flatMap {
@@ -25,7 +25,7 @@ extension CanvasView {
     h.update(data: bytes)
     for part in [
       theme.id.rawValue, "\(theme.dark)", "\(bounds.size.width)x\(bounds.size.height)@\(backing)",
-      "\(camera.origin.x),\(camera.origin.y),\(camera.zoom)", notes.build,
+      notes.build,
       ProcessInfo.processInfo.operatingSystemVersionString, "\(app?.timeIntervalSince1970 ?? 0)",
     ] {
       h.update(data: Data([0]))
@@ -46,10 +46,11 @@ extension CanvasView {
   func keepPicture() {
     guard let (board, vault) = shown, let drawn = shownBoard, scene != nil, motion.isResting, gesture == nil,
       let bytes = try? drawn.encoded(),
-      let file = pictureFile(board, in: vault, bytes: bytes, theme: theme, camera: camera),
+      let file = pictureFile(board, in: vault, bytes: bytes, theme: theme),
       let image = renderPicture()
     else { return }
     let stem = Self.pictureStem(board, in: vault)
+    let at = camera
     Self.watchQuit()
     Self.pictureWrites.async {
       let fm = FileManager.default
@@ -59,7 +60,7 @@ extension CanvasView {
       where old.hasPrefix(stem) {
         try? fm.removeItem(at: folder.appending(path: old))
       }
-      guard let data = Self.packed(image) else { return }
+      guard let data = Self.packed(image, camera: at) else { return }
       let tmp = folder.appending(path: ".\(UUID().uuidString)")
       if (try? data.write(to: tmp)) != nil { try? fm.moveItem(at: tmp, to: file) }
       // the boards left last: a few MB each
@@ -92,27 +93,32 @@ extension CanvasView {
 
   /// A picture as its pixels (BGRA, premultiplied, as drawn) after its size, LZ4-compressed: read back in a few
   /// milliseconds, where decoding a PNG of a window takes a tenth of a second
-  nonisolated static func packed(_ image: CGImage) -> Data? {
+  /// Its size and the camera it was taken at, then its pixels
+  nonisolated static func packed(_ image: CGImage, camera: Camera) -> Data? {
     guard let pixels = image.dataProvider?.data as Data?,
       let body = try? (pixels as NSData).compressed(using: .lz4) as Data
     else { return nil }
-    var head = [UInt32(image.width), UInt32(image.height), UInt32(image.bytesPerRow)]
-    return Data(bytes: &head, count: 12) + body
+    var size = [UInt32(image.width), UInt32(image.height), UInt32(image.bytesPerRow), 0]
+    var at = [Double(camera.origin.x), Double(camera.origin.y), Double(camera.zoom)]
+    return Data(bytes: &size, count: 16) + Data(bytes: &at, count: 24) + body
   }
 
-  nonisolated static func unpacked(_ file: URL) -> CGImage? {
-    guard let data = try? Data(contentsOf: file), data.count > 12 else { return nil }
-    let head = data.prefix(12).withUnsafeBytes { Array($0.bindMemory(to: UInt32.self)) }
-    let (w, h, row) = (Int(head[0]), Int(head[1]), Int(head[2]))
-    guard let pixels = try? (data.dropFirst(12) as NSData).decompressed(using: .lz4) as Data, pixels.count == row * h,
+  nonisolated static func unpacked(_ file: URL) -> (CGImage, Camera)? {
+    guard let data = try? Data(contentsOf: file), data.count > 40 else { return nil }
+    let size = data.prefix(16).withUnsafeBytes { Array($0.bindMemory(to: UInt32.self)) }
+    let at = data.dropFirst(16).prefix(24).withUnsafeBytes { Array($0.bindMemory(to: Double.self)) }
+    let (w, h, row) = (Int(size[0]), Int(size[1]), Int(size[2]))
+    guard let pixels = try? (data.dropFirst(40) as NSData).decompressed(using: .lz4) as Data, pixels.count == row * h,
       let provider = CGDataProvider(data: pixels as CFData)
     else { return nil }
-    return CGImage(
+    let camera = Camera(origin: CGPoint(x: at[0], y: at[1]), zoom: at[2])
+    let image = CGImage(
       width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: row,
       space: CGColorSpace(name: CGColorSpace.sRGB)!,
       bitmapInfo: CGBitmapInfo(
         rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
       provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+    return image.map { ($0, camera) }
   }
 
   /// The backdrop and the board's layers, drawn at the view's scale
@@ -139,14 +145,17 @@ extension CanvasView {
   /// The board's picture over the view, when there is one of it exactly as it is about to open
   public func showPicture(_ board: VaultBoard, in vault: Vault, theme: Theme) {
     guard scene == nil, picture.isHidden,
-      let c = arriving
-        ?? cameras?.cameras(for: vault)[board.id].map({
-          Camera(origin: CGPoint(x: $0.x, y: $0.y), zoom: $0.zoom)
-        }),
       let bytes = try? Data(contentsOf: vault.url(of: board.path).appending(path: Vault.boardFileName)),
-      let file = pictureFile(board, in: vault, bytes: bytes, theme: theme, camera: c),
-      let image = Self.unpacked(file)
+      let file = pictureFile(board, in: vault, bytes: bytes, theme: theme),
+      let (image, taken) = Self.unpacked(file)
     else { return }
+    // where it opens: where it is going, else where it was left; a board with neither opens fitted, as it was when its
+    // picture was taken (moved, its camera would have been kept)
+    let opens =
+      arriving
+      ?? cameras?.cameras(for: vault)[board.id].map { Camera(origin: CGPoint(x: $0.x, y: $0.y), zoom: $0.zoom) }
+    if let opens, opens != taken { return }
+    let c = opens ?? taken
     withoutAnimation {
       picture.frame = bounds
       picture.contents = image

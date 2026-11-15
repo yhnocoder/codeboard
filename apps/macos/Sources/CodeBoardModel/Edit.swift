@@ -125,8 +125,8 @@ extension Board {
     selfCheck()
   }
 
-  /// A card's frame from a resize: its place, width and height (nil: as tall as its content). A Text or Box never has
-  /// a height
+  /// A card's frame from a resize: its place, width and height (nil: as tall as its content). A Text's or Box's height
+  /// stays as it is (main gives them no bottom edge; the height an old one has is its file's)
   public mutating func resize(_ id: CardID, x: Double, y: Double, width: Double, height: Double?) {
     guard let i = cards.firstIndex(where: { $0.id == id }) else { return }
     cards[i].x = x

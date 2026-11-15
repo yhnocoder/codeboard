@@ -25,6 +25,10 @@ import CodeBoardNotes
   var cameras: CameraStore? {
     didSet { for p in panes.values { p.canvas.cameras = cameras } }
   }
+  /// Where every canvas keeps the picture of a board it left (nil: nowhere)
+  var pictures: URL? {
+    didSet { for p in panes.values { p.canvas.picturesFolder = pictures } }
+  }
 
   /// Asks a question (tests answer it themselves): a sheet on the window, Delete first. On the main actor: a closure
   /// without it runs off the main thread when awaited, where AppKit refuses to begin a sheet
@@ -209,6 +213,7 @@ import CodeBoardNotes
         pane.canvas.summarySwitch = summarySwitch
         pane.canvas.summaryWriter = summaryWriter
         pane.canvas.cameras = cameras
+        pane.canvas.picturesFolder = pictures
         pane.onOpenBoard = { [weak self] in self?.shell.show($0) }
         pane.canvas.onEnterBoard = { [weak self] in self?.shell.enter($0, from: $1, camera: $2) }
         pane.canvas.onLeaveBoard = { [weak self] in self?.shell.leave(to: $0) }
@@ -471,6 +476,11 @@ final class Pane: NSView {
     failed = false
     document = doc
     shown = at
+    // the picture kept of it, from the tab's first frame (the canvas at its size first: the picture is the view's);
+    // with it up the tab shows at once
+    canvas.frame = bounds
+    canvas.showPicture(at, in: vault, theme: theme)
+    if canvas.pictureShown { becomeReady() }
     if !ready {
       Task { [weak self] in
         try? await Task.sleep(for: Self.patience)

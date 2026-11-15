@@ -61,8 +61,8 @@ public final class CanvasView: NSView {
   var snapSettle: Task<Void, Never>?
   /// Cards picked up by the pointer, until they have landed: over every card, Texts and Boxes too (main's .card.lift)
   let liftedLayer = CALayer()
-  /// Where the board shown last is kept as a picture when it is left (nil: nowhere; the app's canvases keep it in its
-  /// caches), and that picture over the view while the board opens again (CanvasPicture.swift)
+  /// Where the board shown last is kept as a picture when it is left (nil: nowhere; the app's panes keep it in its
+  /// caches, BoardPanes.pictures), and that picture over the view while the board opens again (CanvasPicture.swift)
   package var picturesFolder: URL?
   let picture = CALayer()
   /// The camera the picture was taken at: moved from it, the picture goes
@@ -425,7 +425,6 @@ public final class CanvasView: NSView {
   /// With that Note renderer (CanvasBench: one for several canvases, as the app's)
   package init(frame: NSRect, notes: NoteRenderer) {
     self.notes = notes
-    picturesFolder = notes === CanvasView.sharedNotes ? CanvasView.defaultPictures : nil
     super.init(frame: frame)
     // in a test process: no menu, alert or panel ever comes up
     TestGuard.install()

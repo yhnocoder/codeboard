@@ -120,3 +120,30 @@ private func text(_ b: Board, _ id: String) -> TextCard? { b.card(cid(id))?.text
   doc.undo()
   #expect(doc.board.card(t1)?.y == theirs.card(t1)?.y && doc.board.card(t1)?.writing == editSample().card(t1)?.writing)
 }
+
+/// cards.ts renameCard over edit/notes.ts renameTitleRefs: references by title to a renamed card's old name ([[old]], no
+/// id, any case) follow wherever the board keeps Markdown (Notes, Texts, descriptions, Text sidenotes and their answers),
+/// not in code, not ones with an id, not other names; back to its own title, they follow to that
+@Test func aCardRenamedTakesTheReferencesToItsOldNameAlong() {
+  var b = editSample()
+  b.renameCard(cid("c1"), "Old")
+  b.write(cid("n1"), text: "See [[old]], [[Old#^c1]], `[[Old]]` and [[Older]]\n\n```\n[[Old]]\n```", layout: nil)
+  b.write(cid("t1"), text: "[[OLD]]", layout: nil)
+  if case .own(var c)? = b.card(cid("c1"))?.content {
+    c.description = "Uses [[Old]]"
+    b.cards[0].content = .own(c)
+  }
+  b.sidenotes[0].body = .text(
+    TextNote(text: "[[Old]]", question: Question(at: 0, answers: [Question.Answer(id: "a", text: "[[old]]", at: 0)])))
+  b.renameCard(cid("c1"), "New")
+  #expect(b.card(cid("n1"))?.writing == "See [[New]], [[Old#^c1]], `[[Old]]` and [[Older]]\n\n```\n[[Old]]\n```")
+  #expect(text(b, "t1")?.text == "[[New]]")
+  if case .own(let c)? = b.card(cid("c1"))?.content { #expect(c.description == "Uses [[New]]") }
+  guard case .text(let n) = b.sidenotes[0].body else {
+    Issue.record("a Text sidenote")
+    return
+  }
+  #expect(n.text == "[[New]]" && n.question?.answers.map(\.text) == ["[[New]]"])
+  b.renameCard(cid("c1"), " ")
+  #expect(text(b, "t1")?.text == "[[Code]]", "its own title")
+}

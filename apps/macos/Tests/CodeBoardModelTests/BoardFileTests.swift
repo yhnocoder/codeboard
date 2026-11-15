@@ -260,7 +260,8 @@ private func freeFrom(_ b: Board) -> Segment {
   #expect(
     try problem { $0.cards[8].content = .own(CardContent(body: .text(TextCard(text: "", fontSize: 9)))) }
       == .malformed(file, "card n1: font size 9.0 is outside 10…240"))
-  #expect(try problem { $0.cards[8].height = 40 } == .malformed(file, "card n1: a Text has no height"))
+  // a Text or Box may have a height (an old Mark's or Free Text's, which main draws)
+  #expect(try problem { $0.cards[8].height = 40 } == nil)
   #expect(
     try problem { $0.sidenotes[0].anchor = .card(CardID(rawValue: "zz")) }
       == .malformed(file, "sidenote sn1: no card zz"))
