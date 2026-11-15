@@ -140,7 +140,12 @@ extension NSView {
 extension NSResponder {
   /// No input method: keys reach the text as a plain keyboard layout gives them (the person's Chinese input method must
   /// never see this process's keys, nor show its candidates)
-  @objc func accInputContext() -> NSTextInputContext? { nil }
+  @objc func accInputContext() -> NSTextInputContext? {
+    // a native text client (not a web view; NSTextView has a context of its own) gets the scripted context: without one
+    // interpretKeyEvents drops every key, so nothing typed through `key` / `keys` reached a native editor
+    guard let v = self as? NSView, !(self is WKWebView), let c = self as? NSTextInputClient else { return nil }
+    return ScriptedContext.of(v, c)
+  }
 }
 
 extension NSApplication {
@@ -344,6 +349,50 @@ if let m = class_getInstanceMethod(NSTextInputContext.self, #selector(NSTextInpu
     MainActor.assumeIsolated { imeTakes(ctx, e) } || orig(ctx, #selector(NSTextInputContext.handleEvent(_:)), e)
   }
   method_setImplementation(m, imp_implementationWithBlock(block))
+}
+/// The input context a native text client has here: the scripted input method (`ime`) first, then the standard key
+/// bindings (StandardKeyBinding.dict) as a US layout gives them, else the key's characters inserted; never the system's
+/// input methods
+final class ScriptedContext: NSTextInputContext {
+  nonisolated(unsafe) static var made: [ObjectIdentifier: ScriptedContext] = [:]
+  nonisolated(unsafe) static let bindings: [String: Any] =
+    NSDictionary(contentsOfFile: "/System/Library/Frameworks/AppKit.framework/Resources/StandardKeyBinding.dict")
+    as? [String: Any] ?? [:]
+  static func of(_ v: NSView, _ c: NSTextInputClient) -> ScriptedContext {
+    if let x = made[ObjectIdentifier(v)] { return x }
+    let x = ScriptedContext(client: c)
+    made[ObjectIdentifier(v)] = x
+    return x
+  }
+  override func handleEvent(_ e: NSEvent) -> Bool {
+    guard e.type == .keyDown else { return false }
+    // (the swizzled NSTextInputContext.handleEvent runs the scripted input method's step)
+    if MainActor.assumeIsolated({ imeStep != nil }) { return super.handleEvent(e) }
+    let f = e.modifierFlags
+    let base = e.charactersIgnoringModifiers ?? ""
+    var mods: [String] = []
+    if f.contains(.control) { mods.append("^") }
+    if f.contains(.option) { mods.append("~") }
+    if f.contains(.shift) { mods.append("$") }
+    if f.contains(.command) { mods.append("@") }
+    // the dictionary's keys put their modifier marks in any order
+    func perms(_ a: [String]) -> [String] {
+      a.count <= 1 ? [a.joined()] : a.indices.flatMap { i in perms(Array(a[..<i] + a[(i + 1)...])).map { a[i] + $0 } }
+    }
+    let key = f.contains(.shift) && base.count == 1 && base.first!.isLetter ? base.lowercased() : base
+    for p in perms(mods) {
+      if let b = Self.bindings[p + key] {
+        for sel in (b as? [String]) ?? [(b as? String) ?? ""] where !sel.isEmpty { client.doCommand(by: Selector(sel)) }
+        return true
+      }
+    }
+    if f.contains(.command) || f.contains(.control) { return false }
+    guard let ch = e.characters, let u = ch.unicodeScalars.first, !(0xF700...0xF8FF).contains(u.value) else {
+      return false
+    }
+    client.insertText(ch, replacementRange: NSRange(location: NSNotFound, length: 0))
+    return true
+  }
 }
 // ACCEPT_TRACE_RESPONDER: every change of first responder, what asked for it and whether it took
 if env["ACCEPT_TRACE_RESPONDER"] != nil,
@@ -809,7 +858,8 @@ func strings(_ x: Any) -> [String] {
       let cg = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)!
       cg.timestamp = now()
       cg.flags = CGEventFlags(rawValue: UInt64(f.rawValue))
-      let u = Array((f.contains(.command) ? chars : shown).utf16)
+      // ⇧ shows in the characters with ⌘ too (⇧⌘Z is "Z"), as a keyboard gives them: menus match on them
+      let u = Array(shown.utf16)
       cg.keyboardSetUnicodeString(stringLength: u.count, unicodeString: u)
       cg.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(w.windowNumber))
       guard let e0 = NSEvent(cgEvent: cg) else { return }
@@ -834,8 +884,12 @@ func strings(_ x: Any) -> [String] {
         }
       } else if f.isDisjoint(with: [.command, .control]) {
         w.sendEvent(e)
+      } else if down {
+        // key equivalents as NSApp tries them, then the window: NSApp has no key window of its own and drops what is
+        // left (⌘→ never reached a text view)
+        if !w.performKeyEquivalent(with: e), NSApp.mainMenu?.performKeyEquivalent(with: e) != true { w.sendEvent(e) }
       } else {
-        NSApp.postEvent(e, atStart: false)
+        w.sendEvent(e)
       }
       try? await Task.sleep(for: .milliseconds(40))
     }
