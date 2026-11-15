@@ -53,9 +53,9 @@ import Testing
     return a.flatMap { x in r.canvas.world.sublayers?.firstIndex { $0 === x } }
   }
 
-  /// styles.css .card.lift (z-index 10): a card picked up is over every card, Texts and Boxes too, until it has landed;
-  /// then it is in its own layer again
-  @Test func aNoteDraggedOverATextIsOverItUntilItHasLanded() async throws {
+  /// As main: Texts and Boxes are on the keep layer (Canvas.tsx .keeplay), over a card picked up (.card.lift's z-index
+  /// 10 is within the card layer), while it is dragged and once it has landed
+  @Test func aNoteDraggedOverATextGoesUnderIt() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }
     let from = CGPoint(x: 40, y: 40)
@@ -64,10 +64,11 @@ import Testing
     let n = try #require(box(r, "n1"))
     let t = try #require(box(r, "t1"))
     #expect(n.frame.intersects(t.frame), "over the Text")
-    #expect((rank(r, n) ?? -1) > (rank(r, t) ?? .max), "the Note is drawn over the Text while it is dragged")
+    #expect((rank(r, t) ?? -1) > (rank(r, n) ?? .max), "the Text is drawn over the Note dragged")
     r.send(r.mouse(.leftMouseUp, CGPoint(x: from.x + 480, y: from.y)))
-    #expect((rank(r, n) ?? -1) > (rank(r, t) ?? .max), "and while it lands")
-    await r.until("landed in its own layer") { box(r, "n1").flatMap { rank(r, $0) } == rank(r, r.canvas.cards) }
+    await r.settle()
+    let landed = try #require(box(r, "n1"))
+    #expect((rank(r, try #require(box(r, "t1"))) ?? -1) > (rank(r, landed) ?? .max), "and once it has landed")
   }
 
   @Test func theArrowKeysMoveACardWithoutPickingItUp() async throws {

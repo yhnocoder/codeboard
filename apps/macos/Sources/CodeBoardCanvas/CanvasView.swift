@@ -55,8 +55,6 @@ public final class CanvasView: NSView {
   /// Sub-board cards, Texts and Boxes, which the summary level shows as they are (main's .keeplay): always over the card
   /// level, never faded
   let kept = CALayer()
-  /// Cards picked up by the pointer, until they have landed: over every card, Texts and Boxes too (main's .card.lift)
-  let liftedLayer = CALayer()
   /// The summary level's columns (CanvasSummaries.swift)
   let summaryLayer = CALayer()
   /// Which level is shown and how it changes (SummaryLevels.swift)
@@ -404,8 +402,7 @@ public final class CanvasView: NSView {
     layer = root
     wantsLayer = true
     for l in [
-      world, cardLevel, kept, liftedLayer, summaryLayer, sections, dropLayer, below, arrows, litArrows, above, cards,
-      freeStickers,
+      world, cardLevel, kept, summaryLayer, sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers,
       freeMarks, shelfHome, shelfDrag, chrome,
     ] {
       l.anchorPoint = .zero
@@ -418,7 +415,7 @@ public final class CanvasView: NSView {
     summaryLayer.allowsGroupOpacity = true
     summaryLayer.isHidden = true
     // the ports and handles over Texts and Boxes too (main's .eport is over its card's face); faded with the card level
-    for l in [cardLevel, kept, liftedLayer, chrome, summaryLayer, shelfHome, shelfDrag] { world.addSublayer(l) }
+    for l in [cardLevel, kept, chrome, summaryLayer, shelfHome, shelfDrag] { world.addSublayer(l) }
     backdrop.anchorPoint = .zero
     root.addSublayer(backdrop)
     root.addSublayer(world)
@@ -720,7 +717,7 @@ public final class CanvasView: NSView {
       backdropImage = theme.backdrop.flatMap(Backdrop.image)
       backdrop.contents = backdropImage
       placeBackdrop()
-      for l in [sections, dropLayer, below, arrows, above, cards, kept, liftedLayer] { l.sublayers = nil }
+      for l in [sections, dropLayer, below, arrows, above, cards, kept] { l.sublayers = nil }
       for f in s.frames { sections.addSublayer(CanvasView.frameLayer(f, theme)) }
       items = s.items.enumerated().map { i, it in
         ItemLayers(it, overview: overviews[i], shadow: it.drawing.framed ? shadow : nil)

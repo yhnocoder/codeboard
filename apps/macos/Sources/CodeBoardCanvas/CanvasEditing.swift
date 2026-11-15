@@ -288,7 +288,7 @@ extension CanvasView {
       }
       // every layer is at zPosition 0 again
       raised = nil
-      for l in [below, cards, above, kept, liftedLayer] { l.sublayers = nil }
+      for l in [below, cards, above, kept] { l.sublayers = nil }
       for (i, l) in next.enumerated() { home(of: i, in: s).addSublayer(l.box) }
       sections.sublayers = nil
       for f in s.frames { sections.addSublayer(CanvasView.frameLayer(f, theme)) }
@@ -303,8 +303,6 @@ extension CanvasView {
     }
     scene = s
     items = next
-    // cards let go a moment ago go on landing over the others
-    withoutAnimation { relanding() }
     easeFrames(from: shownFrames, in: s)
     for (l, from) in movedTitles {
       let a = CASpringAnimation(keyPath: "position")

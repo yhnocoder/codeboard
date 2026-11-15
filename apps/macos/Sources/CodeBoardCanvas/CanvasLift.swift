@@ -51,7 +51,6 @@ extension CanvasView {
       lifted.insert(id)
       landings[id] = nil
       let box = items[i].box
-      withoutAnimation { liftedLayer.addSublayer(box) }
       let tilt = s.items[i].tilt
       let k = liftScale
       let warm = theme.id == .warmInk
@@ -109,7 +108,6 @@ extension CanvasView {
         continue
       }
       guard let i = index(of: .card(id)) else { continue }
-      withoutAnimation { liftedLayer.addSublayer(items[i].box) }
       settle(items[i].box, tilt: s.items[i].tilt, since: at)
     }
   }
@@ -121,10 +119,7 @@ extension CanvasView {
     CATransaction.setDisableActions(true)
     CATransaction.setCompletionBlock {
       MainActor.assumeIsolated {
-        if box.animation(forKey: "lift") == nil {
-          box.zPosition = 0
-          self.putHome(box)
-        }
+        if box.animation(forKey: "lift") == nil { box.zPosition = 0 }
         for l in box.sublayers ?? [] where l.name == "lift" && l.opacity == 0 { l.removeFromSuperlayer() }
       }
     }
@@ -147,21 +142,6 @@ extension CanvasView {
       l.add(o, forKey: "out")
     }
     CATransaction.commit()
-  }
-
-  /// A card landed: back among the others in its own layer, in the board's order
-  private func putHome(_ box: CALayer) {
-    guard box.superlayer === liftedLayer, let s = scene, let i = items.firstIndex(where: { $0.box === box }) else {
-      return
-    }
-    let home = home(of: i, in: s)
-    withoutAnimation {
-      if let next = items[(i + 1)...].first(where: { $0.box.superlayer === home }) {
-        home.insertSublayer(box, below: next.box)
-      } else {
-        home.addSublayer(box)
-      }
-    }
   }
 
   /// `from` → `to` on the card's grow transform: through `stops` (a spring, as linear()) or on --lift-in / --lift-out
