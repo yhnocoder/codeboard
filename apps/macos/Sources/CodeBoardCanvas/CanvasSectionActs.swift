@@ -16,6 +16,8 @@ enum SectionAct: Equatable {
   /// One of the five swatches (nil: None)
   case swatch(String?)
   case lock
+  /// A locked Section's lock, first in its title (.slabel .lockb): Unlock Section
+  case unlock
 }
 
 extension CanvasView {
@@ -35,6 +37,10 @@ extension CanvasView {
   func actsLayout(_ id: SectionID) -> [(SectionAct, CGRect)] {
     guard let s = document?.board.section(id), let r = sectionTitle(id) else { return [] }
     var out: [(SectionAct, CGRect)] = [(.grip, CGRect(x: r.minX - 12, y: r.minY, width: 12, height: r.height))]
+    if s.locked {
+      let x = r.minX + (theme.frame == .tray ? 6 : 0)
+      out.append((.unlock, CGRect(x: x, y: r.midY - 8, width: 16, height: 16)))
+    }
     var x = r.maxX
     if s.collapsed {
       // the folded title draws its chevron at its right end
@@ -76,7 +82,7 @@ extension CanvasView {
     guard levels.level == .cards, inPlace == nil, let doc = document else { return nil }
     for s in doc.board.sections.reversed() where s.id != actsSection {
       let hit = actsLayout(s.id).first { a, r in
-        (a == .fold || (a == .grip && !s.collapsed)) && r.insetBy(dx: -1, dy: -1).contains(p)
+        (a == .fold || a == .unlock || (a == .grip && !s.collapsed)) && r.insetBy(dx: -1, dy: -1).contains(p)
       }
       if let (a, _) = hit { return (s.id, a) }
     }
@@ -121,6 +127,8 @@ extension CanvasView {
       if s.color != c { doc.edit("Color") { $0.setSectionColor([id], c) } }
     case .lock:
       doc.edit(s.locked ? "Unlock" : "Lock") { $0.setLocked([.section(id)], !s.locked) }
+    case .unlock:
+      doc.edit("Unlock") { $0.setLocked([.section(id)], false) }
     }
   }
 
@@ -233,6 +241,11 @@ enum SectionActs {
       if faint { ctx.setAlpha(0.35) }
       Icons.stroke(path, at: CGPoint(x: r.midX - 8, y: r.midY - 8), color: ink, in: ctx)
       ctx.restoreGState()
+    case .unlock:
+      // drawn with the title; lit: .lockb:hover, the row's tint behind it and the lock in the accent
+      guard hovered else { return }
+      round(t.hlrow, radius: 5.5)
+      Drawing.lock(ctx, in: r, t.accent)
     case .swatch(let c):
       let cur = s.color == c
       let d = hovered ? r.insetBy(dx: -1, dy: -1) : r

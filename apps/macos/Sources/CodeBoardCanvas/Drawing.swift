@@ -96,7 +96,12 @@ enum Drawing: Sendable {
     var count: Int? = nil
     /// A folded Section's: the room its sidenote marker takes after the title, before the count
     var badge: CGFloat = 0
+    /// A Section's: locked, its lock first (.slabel .lockb: 16 square, 2 before the title)
+    var locked = false
   }
+
+  /// The room a locked Section's lock takes before its title
+  static let sectionLock: CGFloat = 16 + 2
 
   /// A folded Section's title: `.slabel.collapsed` (its padding, the title, "· N cards" 5 after it, the chevron 16
   /// wide, 2 between each)
@@ -265,7 +270,11 @@ enum Drawing: Sendable {
         ctx.restoreGState()
         Drawing.text(ctx, l.text, t.arrowLabel, t.ink2, x: 16, midY: size.height / 2, width: size.width - 32)
       case (.section, _):
-        let x: CGFloat = t.frame == .tray ? 6 : 0
+        var x: CGFloat = t.frame == .tray ? 6 : 0
+        if l.locked {
+          Drawing.lock(ctx, in: CGRect(x: x, y: size.height / 2 - 8, width: 16, height: 16), t.ink2)
+          x += Drawing.sectionLock
+        }
         guard let n = l.count else {
           Drawing.text(
             ctx, l.text, t.sectionTitleFont, t.sectionTitle, x: x, midY: size.height / 2, width: size.width - x)

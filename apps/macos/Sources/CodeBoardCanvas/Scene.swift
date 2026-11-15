@@ -350,12 +350,14 @@ struct Scene: Sendable {
       }
     }
     func titleWidth(_ s: Section) -> CGFloat {
+      let lock = s.locked ? Drawing.sectionLock : 0
       if s.collapsed {
-        return Drawing.foldedTitleWidth(
-          s.title, count: counts[s.id] ?? 0, badge: CanvasView.titleBadge(s.id, in: notes) ?? 0, t)
+        return lock
+          + Drawing.foldedTitleWidth(
+            s.title, count: counts[s.id] ?? 0, badge: CanvasView.titleBadge(s.id, in: notes) ?? 0, t)
       }
       // a tray's label has 6 before its text and 2 after, a brush title 2 after
-      return s.title.isEmpty ? 0 : Drawing.width(s.title, t.sectionTitleFont) + (t.frame == .tray ? 8 : 2)
+      return s.title.isEmpty ? 0 : lock + Drawing.width(s.title, t.sectionTitleFont) + (t.frame == .tray ? 8 : 2)
     }
     var frameOf: [SectionID: CGRect] = [:]
     var visiting = Set<SectionID>()
@@ -406,7 +408,7 @@ struct Scene: Sendable {
             drawing: .label(
               .init(
                 text: s.title, kind: .section, count: s.collapsed ? counts[s.id] ?? 0 : nil,
-                badge: s.collapsed ? CanvasView.titleBadge(s.id, in: notes) ?? 0 : 0)),
+                badge: s.collapsed ? CanvasView.titleBadge(s.id, in: notes) ?? 0 : 0, locked: s.locked)),
             tilt: 0))
       }
     }
