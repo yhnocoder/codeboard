@@ -103,7 +103,7 @@ jobs:
             apps/macos/.build/checkouts
           key: swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}
       # (trial) the products of an earlier build, so that only what changed since is compiled again
-      - uses: actions/cache@v5
+      - uses: actions/cache/restore@v5
         with:
           path: apps/macos/.build
           key: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.run_id }}
@@ -124,6 +124,11 @@ jobs:
       # one build of the app, its tools and the tests: swift build then swift test compiled twice
       - run: swift build --build-tests
       - run: du -sh .build .build/* 2>/dev/null | sort -h | tail -15
+      # saved here, not at the end of the job, so that a failing test does not lose the build
+      - uses: actions/cache/save@v5
+        with:
+          path: apps/macos/.build
+          key: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.run_id }}
       # every test in the regular full run; on a PR the important ones and those of what it changed (Tests/tiers.json)
       - run: node tools/tests/pick.mjs ${{ inputs.everything && '--all' || '--base HEAD^1' }}
       - if: ${{ !cancelled() }}

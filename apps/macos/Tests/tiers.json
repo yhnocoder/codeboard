@@ -73,7 +73,7 @@
       "CanvasWritingTests/theToolbarShowsItsNineToolsAndMakesNoteTextAndBoxInTheViewsMiddle",
       "CanvasEditTests/draggingACardIsOneStepThatOnlyMovesLayersAndJoinsTheSectionItLandsIn",
       "CanvasEditTests/scrollAndPinchMoveOnlyTheCamera",
-      "CanvasFreeCodeTests/freeCodeIsWrittenWhereItIsDrawnAsOneStep",
+      "CanvasFreeCodeTests/keysTypedAtOnceAfterTheDoubleClickAreAllWritten",
       "CanvasSectionTests/theToolbarsSectionDrawsAFrameThatTakesWhatItCoversAndItsTitleIsWrittenAtOnce",
       "CanvasArrowTests/aCardsPortDrawsAnArrowToTheCardOrLineLetGoOnAndNothingOnTheCanvas",
       "CanvasSidenoteTests/writtenInThePopupASidenoteOrQuestionIsAddedAndTheInputStaysForTheNext",
