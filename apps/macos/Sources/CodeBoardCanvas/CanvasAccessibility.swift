@@ -102,7 +102,13 @@ extension CanvasView {
     // an animation under way (a frame easing, a card springing back): where it is in it; else where it was just put,
     // which the presentation shows only once the transaction is in
     let r: CGRect
-    if l.animationKeys()?.isEmpty == false, let p = l.presentation(), let q = root.presentation() {
+    if l.animationKeys() == ["lift"], let p = l.presentation(), let up = l.superlayer {
+      // picked up or landing: where it was just put, at the size it has grown to now
+      let b = l.bounds
+      let at = CGRect(x: -b.width * l.anchorPoint.x, y: -b.height * l.anchorPoint.y, width: b.width, height: b.height)
+        .applying(CATransform3DGetAffineTransform(p.transform)).offsetBy(dx: l.position.x, dy: l.position.y)
+      r = up.convert(at, to: root)
+    } else if l.animationKeys()?.isEmpty == false, let p = l.presentation(), let q = root.presentation() {
       r = p.convert(p.bounds, to: q)
     } else {
       r = l.convert(l.bounds, to: root)

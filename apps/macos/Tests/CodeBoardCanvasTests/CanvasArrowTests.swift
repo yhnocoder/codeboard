@@ -289,6 +289,31 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     #expect(three?.items.first?.title == "Connect with Arrow" && three?.items.first?.action == nil)
   }
 
+  /// A Box's ports are over the Box, as main's .eport over its .cface, though Texts and Boxes are drawn over the card
+  /// level (kept at the summary level)
+  @Test func aBoxsPortsAreDrawnOverIt() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    c.mouseMoved(with: r.mouse(.mouseMoved, r.centre("b1")))
+    let box = c.items[try #require(c.index(of: .card(cid("b1"))))].box
+    let ports = (c.chrome.sublayers ?? []).filter { ($0 as? CAShapeLayer)?.fillColor == c.theme.surface }
+    #expect(ports.count == 4)
+    for p in ports { #expect(drawnOver(p, box)) }
+  }
+
+  /// Whether `a` is drawn after `b`: of the two branches under their nearest common layer, `a`'s comes later (by
+  /// zPosition, then order)
+  func drawnOver(_ a: CALayer, _ b: CALayer) -> Bool {
+    func chain(_ l: CALayer) -> [CALayer] { sequence(first: l, next: \.superlayer).reversed() }
+    let (ca, cb) = (chain(a), chain(b))
+    var k = 0
+    while k < min(ca.count, cb.count), ca[k] === cb[k] { k += 1 }
+    guard k > 0, k < ca.count, k < cb.count, let kids = ca[k - 1].sublayers else { return false }
+    let order = { (l: CALayer) in (l.zPosition, kids.firstIndex { $0 === l } ?? 0) }
+    return order(ca[k]) > order(cb[k])
+  }
+
   @Test(arguments: [1, 0.5] as [CGFloat])
   func aCardsPortDrawsAnArrowToTheCardOrLineLetGoOnAndNothingOnTheCanvas(zoom: CGFloat) async throws {
     let r = try await Rig(arrows(more: true), zoom: zoom)
