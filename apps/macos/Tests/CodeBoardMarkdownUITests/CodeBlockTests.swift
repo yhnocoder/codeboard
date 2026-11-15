@@ -288,4 +288,62 @@ import Testing
     // a caret after the tab is at its stop
     #expect(texts[0].display.toSource.prefix(4).allSatisfy { $0 == texts[0].display.toSource[0] })
   }
+
+  /// A fence indented by 1–3 spaces shows its code without that indent, as the page does (marked's
+  /// indentCodeCompensation for ```: the indent off a line that has as much, nothing off one that has less;
+  /// schema-nodes.ts Code for ~~~: up to that many spaces), and so does a fence in a list item; each shown unit is
+  /// still its own source unit
+  @Test func anIndentedFenceShowsItsCodeWithoutTheIndentAndPointsIntoTheSource() throws {
+    _ = boardFonts
+    let cases: [(String, [String])] = [
+      ("  ```\n  a\n   b\n c\n  ```", ["a", " b", " c"]),
+      ("   ~~~\n   x\n    y\n z\n   ~~~", ["x", " y", "z"]),
+      ("- item\n\n  ```\n  x\n    y\n  ```", ["x", "  y"]),
+      ("```\n  kept\n```", ["  kept"]),
+    ]
+    for (src, want) in cases {
+      let doc = MarkdownDocument(src)
+      let l = MarkdownLayout.make(doc, width: 300, theme: testTheme, layout: nil, resources: TestResources())
+      let texts = l.caretTexts.filter { !$0.display.toSource.isEmpty }.suffix(want.count)
+      #expect(texts.map { $0.display.string.string } == want, "\(src.debugDescription)")
+      let ns = src as NSString
+      for t in texts {
+        let shown = t.display.toSource.map { ns.substring(with: NSRange(location: $0, length: 1)) }.joined()
+        #expect(shown == t.display.string.string, "every unit shown is its source's: \(src.debugDescription)")
+      }
+    }
+  }
+}
+
+/// Written in, an indented fence's lines keep their indent: a click at a line's start puts the caret after it, a
+/// caret in it shows at the line's start, a selection of the line covers what is shown, and only what is typed changes
+@MainActor @Suite struct IndentedFenceEditingTests {
+  @Test func typingAtAShownLineStartKeepsTheIndentAndTheRestOfTheSource() throws {
+    _ = boardFonts
+    let src = "Before\n\n   ~~~\n   x\n    y\n   ~~~\n\nAfter"
+    let ns = src as NSString
+    let l = BlockLayout(MarkdownDocument(src), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let e = EditorCore(layout: l)
+    let y = ns.range(of: "    y").location
+    let x = ns.range(of: "   x").location
+    // a caret inside the indent shows where the line starts, as far left as the line above starts
+    let start = try #require(e.layout.caretRect(MDCaret(y + 3)))
+    let above = try #require(e.layout.caretRect(MDCaret(x + 3)))
+    #expect(abs(start.minX - above.minX) < 0.5 && start.midY > above.midY)
+    for q in y..<(y + 3) {
+      let r = try #require(e.layout.caretRect(MDCaret(q)))
+      #expect(abs(r.minX - start.minX) < 0.5 && abs(r.midY - start.midY) < 0.5, "\(q): \(r) vs \(start)")
+    }
+    // a click left of the line's start: after the indent the page does not show (one space of it is shown)
+    let hit = e.layout.caret(at: CGPoint(x: start.minX - 30, y: start.midY))
+    #expect(hit.offset == y + 3)
+    // the line selected from its start shows over what is shown only
+    let line = e.layout.selectionRects((y + 3)..<(y + 5))
+    #expect(line.count == 1 && abs(line[0].minX - start.minX) < 0.5, "\(line) \(start)")
+    e.select(MDSelection(hit.offset))
+    e.insert("z")
+    #expect(e.source == ns.replacingCharacters(in: NSRange(location: y + 3, length: 0), with: "z"))
+    let texts = e.layout.pieces.flatMap { $0.layout.caretTexts }.map { $0.display.string.string }
+    #expect(texts.contains("z y") && texts.contains("x"), "\(texts)")
+  }
 }

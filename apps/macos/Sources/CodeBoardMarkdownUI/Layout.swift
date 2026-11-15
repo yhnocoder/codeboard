@@ -357,6 +357,14 @@ struct LayoutBuilder {
 
   /// the source of a range: blocks keep no source of their own; an HTML block's text is its range of the document
   private var source: String = ""
+  /// where the line holding a source offset starts, back over the spaces and tabs before it
+  private func lineHead(_ q: Int) -> Int {
+    let ns = source as NSString
+    var a = q
+    while a > 0, ns.character(at: a - 1) == 0x20 || ns.character(at: a - 1) == 0x09 { a -= 1 }
+    return a
+  }
+
   private func sourceText(_ r: Range<Int>) -> String {
     (source as NSString).substring(with: NSRange(location: r.lowerBound, length: r.count))
   }
@@ -625,7 +633,9 @@ struct LayoutBuilder {
     codeIndex += 1
     let pv = CGFloat(m.codePadding[0])
     let ph = CGFloat(m.codePadding[1])
-    let text = sourceText(body)
+    // what is shown: the body's source, or its code without what is not code (b.code), whose units say where they are
+    let code = b.code
+    let text = code?.string ?? sourceText(body)
     let lines = text.components(separatedBy: "\n")
     let tokens = language.flatMap { resources.highlight(lines: lines, language: $0) }
     // code blocks keep the code font's ligatures, as the page's code editor draws them (prose turns them off)
@@ -656,7 +666,11 @@ struct LayoutBuilder {
     var yy = y + pv
     var inner: [Item] = []
     var lineStart = body.lowerBound
+    var unit = 0
     for (i, line) in lines.enumerated() {
+      // the source offset of the line's unit k (k = its length: where the line ends)
+      let first = unit
+      let at: (Int) -> Int = { k in code.map { $0.offsets[first + k] } ?? lineStart + k }
       // the line with its tabs as spaces: each display unit's source, and each source column's display column
       var shown = ""
       var toSource: [Int] = []
@@ -670,13 +684,13 @@ struct LayoutBuilder {
         if ch == "\t" {
           let n = cm.tabWidth - widths.count % cm.tabWidth
           shown += String(repeating: " ", count: n)
-          toSource += Array(repeating: lineStart + su, count: n)
-          ends += Array(repeating: lineStart + su + 1, count: n)
+          toSource += Array(repeating: at(su), count: n)
+          ends += Array(repeating: at(su) + 1, count: n)
           widths += Array(repeating: cm.charWidth, count: n)
         } else {
           shown.append(ch)
-          toSource += (0..<units).map { lineStart + su + $0 }
-          ends += (0..<units).map { lineStart + su + $0 + 1 }
+          toSource += (0..<units).map { at(su + $0) }
+          ends += (0..<units).map { at(su + $0) + 1 }
           widths.append(CodeLines.advance(ch, cm))
         }
         su += units
@@ -698,7 +712,10 @@ struct LayoutBuilder {
       d.string = attr
       d.toSource = toSource
       d.sourceEnds = ends
-      d.endSource = lineStart + su
+      d.endSource = at(su)
+      // the line's source starts where its indent does, which is not shown: a caret there shows at its start
+      if let code { d.startSource = i == 0 ? lineHead(at(0)) : code.offsets[first - 1] + 1 }
+      unit += su + 1
       lineStart += su + 1
       style.color = theme.code.plain
       // rows in UTF-16 units of what is shown, from CodeLines' cuts of its characters
@@ -744,7 +761,7 @@ struct LayoutBuilder {
     guard let r = resources.diagrams else {
       return open ? y : code(body: body, language: "mermaid", b: b, x: x, width: width, y: y)
     }
-    let src = sourceText(body)
+    let src = b.code?.string ?? sourceText(body)
     // pele's node corners: half the web page's --md-radius (markdown.css .mmd --pele-radius)
     let corner = m.radius / 2
     var result = r.diagram(src, fonts: theme.fonts.body, maxWidth: nil, cornerRadius: corner)

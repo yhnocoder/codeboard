@@ -21,7 +21,8 @@ extension MDBlock {
       case .table(let t): .table(t.shifted(d))
       }
     return MDBlock(
-      kind: kind, range: range.shifted(d), inlines: inlines.map { $0.shifted(d) }, inlineText: inlineText?.shifted(d))
+      kind: kind, range: range.shifted(d), inlines: inlines.map { $0.shifted(d) }, inlineText: inlineText?.shifted(d),
+      code: code?.shifted(d))
   }
 }
 

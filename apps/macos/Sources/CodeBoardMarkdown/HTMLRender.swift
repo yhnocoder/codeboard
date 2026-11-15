@@ -53,7 +53,8 @@ public enum MarkdownHTML {
         let tag = { if case .ordered = l.marker { "ol" } else { "ul" } }()
         return "<\(tag)>" + l.items.map { "<li>" + $0.children.map(block).joined() + "</li>" }.joined() + "</\(tag)>"
       case .code(_, let body), .mermaid(let body):
-        return "<pre><code>" + esc(ns.substring(with: NSRange(location: body.lowerBound, length: body.count)))
+        return "<pre><code>"
+          + esc(b.code?.string ?? ns.substring(with: NSRange(location: body.lowerBound, length: body.count)))
           + "</code></pre>"
       case .table(let t):
         return "<table>"

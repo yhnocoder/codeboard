@@ -29,7 +29,7 @@ extension TextBlock {
     return lo
   }
 
-  var sourceStart: Int { display.toSource.first ?? display.endSource }
+  var sourceStart: Int { display.startSource ?? display.toSource.first ?? display.endSource }
 
   func holds(_ q: Int) -> Bool { q >= sourceStart && q <= display.endSource }
 

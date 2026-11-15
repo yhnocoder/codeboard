@@ -290,16 +290,21 @@ public struct MDBlock: Sendable, Equatable {
   public var inlines: [MDInline]
   /// where the inline text is in the source, unit by unit (its lines inside a quote or list item skip their markers)
   public var inlineText: MDText?
+  /// a code block's code as it is shown, unit by unit, when that is not its body's source as it is: its lines without
+  /// the indent of a fence indented by 1–3 spaces (marked's indentCodeCompensation for ```, schema-nodes.ts Code for
+  /// ~~~) or of the list item it is in
+  public var code: MDText?
 
-  public init(kind: Kind, range: Range<Int>, inlines: [MDInline], inlineText: MDText?) {
+  public init(kind: Kind, range: Range<Int>, inlines: [MDInline], inlineText: MDText?, code: MDText? = nil) {
     self.kind = kind
     self.range = range
     self.inlines = inlines
     self.inlineText = inlineText
+    self.code = code
   }
 
   public static func == (a: MDBlock, b: MDBlock) -> Bool {
-    a.kind == b.kind && a.range == b.range && a.inlines == b.inlines && a.inlineText == b.inlineText
+    a.kind == b.kind && a.range == b.range && a.inlines == b.inlines && a.inlineText == b.inlineText && a.code == b.code
   }
 }
 
@@ -565,11 +570,14 @@ struct DocumentBuilder {
       return MDBlock(kind: .list(taskList(t)), range: r, inlines: [], inlineText: nil)
     case "code":
       let body = span(t.text)
-      if t.lang == "mermaid" { return MDBlock(kind: .mermaid(body: body), range: r, inlines: [], inlineText: nil) }
+      let shown = codeShown(t, body)
+      if t.lang == "mermaid" {
+        return MDBlock(kind: .mermaid(body: body), range: r, inlines: [], inlineText: nil, code: shown)
+      }
       let lang = t.lang.flatMap { l in
         l.isEmpty ? nil : String(l.split(whereSeparator: { $0 == " " || $0 == "\t" }).first ?? "")
       }
-      return MDBlock(kind: .code(language: lang, body: body), range: r, inlines: [], inlineText: nil)
+      return MDBlock(kind: .code(language: lang, body: body), range: r, inlines: [], inlineText: nil, code: shown)
     case "blockMath":
       return MDBlock(kind: .math(latex: t.latex), range: r, inlines: [], inlineText: nil)
     case "table":
@@ -592,6 +600,28 @@ struct DocumentBuilder {
       return nil
     }
   }
+
+  /// A code block's code as the page shows it, when that is not its body's source: marked leaves a ~~~ fence's indent
+  /// on its lines, which the package's reader takes off, up to as many spaces (schema-nodes.ts Code)
+  private func codeShown(_ t: Token, _ body: Range<Int>) -> MDText? {
+    var m = t.text
+    if let f = Self.tildeIndent.exec(t.raw.ns) {
+      let n = f.groups[1]!.length
+      var cut: [Range<Int>] = []
+      var at = 0
+      for line in m.lines() {
+        var k = 0
+        while k < n, k < line.count, line.units[k] == 0x20 { k += 1 }
+        if k > 0 { cut.append(at..<(at + k)) }
+        at += line.count + 1
+      }
+      m = m.removing(cut)
+    }
+    let offsets = m.mapForText
+    let same = m.count == body.count && offsets.indices.allSatisfy { offsets[$0] == body.lowerBound + $0 }
+    return same ? nil : text(m)
+  }
+  private static let tildeIndent = JSRegex(#"^( {1,3})~"#, flags: "")
 
   /// the source range a mapped text spans: from its first unit to just after its last
   private func span(_ m: Mapped) -> Range<Int> {

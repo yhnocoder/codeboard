@@ -81,6 +81,8 @@ struct DisplayText {
   /// for each unit, where the source it shows ends (an atom's whole source, a character's one unit)
   var sourceEnds: [Int] = []
   var endSource = 0
+  /// where its source starts when that is before what it shows first (a code line's indent, not shown)
+  var startSource: Int?
   /// links in display ranges, for hits
   var links: [(NSRange, String)] = []
   var refs: [(NSRange, String, String?)] = []
