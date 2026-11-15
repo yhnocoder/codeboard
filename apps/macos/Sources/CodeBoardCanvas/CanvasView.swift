@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardNotes
 import CodeBoardSyntax
@@ -203,6 +204,11 @@ public final class CanvasView: NSView {
   package var lastInstall: (seconds: Double, drawn: Int) = (0, 0)
   /// The card being written in, and the layers it had before (shown again when nothing was written)
   var editing: Editing?
+  /// Text selected in a Note at rest (CanvasRestText), drawn in `restLayer`; its bar once it settles
+  var restText: RestText?
+  var restSettle: Timer?
+  let restLayer = CAShapeLayer()
+  let restBar = SelectionToolbar()
   var editingOriginal: ItemLayers?
   /// The editor showing itself at rest at a new zoom
   var editingRests: Task<Void, Never>?

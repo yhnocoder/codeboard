@@ -64,7 +64,8 @@ import Testing
     defer { r.close() }
     let c = r.canvas
     r.doc.select(Set(ids.map { .card(cid($0)) }))
-    let from = CGPoint(x: 40, y: 40)
+    // by n1's header: a drag on the body of the one card selected selects its text
+    let from = CGPoint(x: 40, y: 15)
     r.send(r.mouse(.leftMouseDown, from))
     for i in 1...8 { r.send(r.mouse(.leftMouseDragged, CGPoint(x: from.x + CGFloat(i) * 60, y: from.y))) }
     let t = try #require(box(r, "t1"))

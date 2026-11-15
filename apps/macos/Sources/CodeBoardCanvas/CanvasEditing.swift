@@ -33,6 +33,8 @@ struct Gesture {
     case sticker(StickerDrag)
     /// A Link List's row dragged
     case row(RowDrag)
+    /// The text of the one card selected, selected at rest (CanvasRestText)
+    case text(CardID)
   }
 
   var kind: Kind
@@ -589,6 +591,7 @@ extension CanvasView {
       if let acts = sectionActsLayer() { chrome.addSublayer(acts) }
       drawHoverLine()
       placeHeadActs()
+      if restText != nil { drawRestText() }
       placeAlignBar()
       drawPorts()
       drawConnect()
@@ -1108,6 +1111,8 @@ extension CanvasView {
     dropPicture()
     // a press anywhere puts away a row's bookmark (WebBody.tsx: pointerdown leaves the row)
     closeRowPeek()
+    // and the text selected at rest (the browser's selection goes with a press)
+    clearRestText()
     if spacePanDown(e) { return }
     // AppKit sends a multi-click's later presses to the view its first went to: a double-click's second press over the
     // editor its first press opened is the editor's, as in main
@@ -1357,8 +1362,14 @@ extension CanvasView {
     let v = convert(e.locationInWindow, from: nil)
     let p = camera.board(v)
     switch g.kind {
-    case .press(let item, let toggle, _, _):
+    case .press(let item, let toggle, let was, _):
       guard hypot(v.x - g.startView.x, v.y - g.startView.y) >= dragSlop else { return }
+      // the one card selected, dragged on its body: its text is selected, the card stays (interact.ts: solo, inBody)
+      if case .card(let id)? = item, was, !toggle, doc.selection == [.card(id)], restOffset(id, g.start) != nil {
+        g.kind = .text(id)
+        gesture = g
+        return dragRestText(id, from: g.start, to: p)
+      }
       if case .arrow(let id)? = item {
         // an end of the selected arrow moves to another card or line; its label slides along it; the line itself stays
         // where its cards are
@@ -1449,6 +1460,8 @@ extension CanvasView {
       dragRow(&d, view: v)
       g.kind = .row(d)
       gesture = g
+    case .text(let id):
+      dragRestText(id, from: g.start, to: p)
     case .nudge, .still:
       break
     }
@@ -1491,6 +1504,9 @@ extension CanvasView {
     }
     guard let g = gesture, let doc = document else { return }
     switch g.kind {
+    case .text:
+      gesture = nil
+      settleRestText()
     case .press(let item, let toggle, let was, let inside):
       gesture = nil
       // a click on a ref
@@ -2046,7 +2062,7 @@ extension CanvasView {
       keysAhead?.append(e)
       return
     }
-    if !boardKey(e) { super.keyDown(with: e) }
+    if !restTextKey(e), !boardKey(e) { super.keyDown(with: e) }
   }
 
   public override func keyUp(with e: NSEvent) {
@@ -2160,6 +2176,7 @@ extension CanvasView {
 
   /// ⌘C: the selected cards (only cards: actions/shared.ts copyCardsSel); none, nothing
   @objc public func copy(_ sender: Any?) {
+    if copyRestText() { return }
     guard let board = shown?.board.id, let data = putOnPasteboard(selectedCards) else { return }
     copied = (board, data, 0)
   }

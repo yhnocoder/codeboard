@@ -239,6 +239,10 @@
           "sources": ["CodeBoardCanvas/CanvasWheel.swift"],
           "tests": ["CanvasWheelTests"]
         },
+        "text at rest": {
+          "sources": ["CodeBoardCanvas/CanvasRestText.swift"],
+          "tests": ["CanvasRestTextTests"]
+        },
         "refs": {
           "sources": ["CodeBoardCanvas/CanvasRefs.swift", "CodeBoardCanvas/Refs.swift", "CodeBoardNotes/NoteRef.swift"],
           "tests": [
