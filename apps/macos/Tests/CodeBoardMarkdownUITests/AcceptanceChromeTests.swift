@@ -56,6 +56,20 @@ import Testing
     #expect(m.chosen == before + 1)
   }
 
+  /// a menu hanging past the Note's bottom edge, and a band's buttons: tracked over their whole box (the part outside
+  /// the Note got no mouse moves, the highlight stuck), and the menu ends on a whole row where it scrolls
+  @Test func floatingControlsAreTrackedOverTheirWholeBox() {
+    let v = view("Line", caret: 4)
+    v.insertText(" /", replacementRange: NSRange(location: NSNotFound, length: 0))
+    let m = v.typedMenu
+    #expect(m.frame.maxY > v.bounds.maxY)
+    m.updateTrackingAreas()
+    let a = m.trackingAreas.first { $0.owner === m }
+    #expect(a?.rect == m.bounds)
+    #expect(a.map { !$0.options.contains(.inVisibleRect) } == true)
+    #expect((m.frame.height - 8).truncatingRemainder(dividingBy: 26) == 0)
+  }
+
   /// the toolbar over a selection on the last line: above it, 8 points off, as main places it; never where the pointer
   /// just pressed (a press on the line above went to the toolbar's Link and opened the link box)
   @Test func theToolbarSitsAboveTheSelectionAndAwayFromThePress() {

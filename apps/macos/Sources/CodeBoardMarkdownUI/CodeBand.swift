@@ -70,7 +70,9 @@ final class CodeBand: NSView {
   }
 
   /// the strip's frame in the editor view's points (tests, checks)
-  var stripFrame: CGRect { convert(strip.frame, from: clip).offsetBy(dx: frame.minX, dy: frame.minY) }
+  var stripFrame: CGRect {
+    convert(strip.frame.insetBy(dx: strip.pad, dy: 0), from: clip).offsetBy(dx: frame.minX, dy: frame.minY)
+  }
 
   /// a control's box in the band's own points, by its id
   func partRect(_ id: String) -> (Part, CGRect)? {
@@ -80,7 +82,8 @@ final class CodeBand: NSView {
   /// the band's own box in the editor view's points (without the margin)
   var bandFrame: CGRect {
     CGRect(
-      x: frame.minX + Self.margin * strip.zoom, y: frame.minY + Self.margin * strip.zoom, width: strip.frame.width,
+      x: frame.minX + Self.margin * strip.zoom, y: frame.minY + Self.margin * strip.zoom,
+      width: strip.frame.width - 2 * strip.pad,
       height: Self.height * strip.zoom)
   }
 
@@ -112,7 +115,10 @@ final class CodeBand: NSView {
     frame = CGRect(x: over.minX - m, y: over.minY - h - m, width: w + 2 * m, height: h + m + strip.radius)
     clip.frame = CGRect(x: 0, y: 0, width: frame.width, height: h + m)
     // the strip always stands in its place; hidden or sliding, it is offset only by the slide
-    strip.frame = CGRect(x: m, y: m - fadeH, width: w, height: h + fadeH)
+    // with the margin on either side, where its shadow spreads (a view's drawing is cut at its own bounds: the shadow
+    // stopped hard at the block's edges)
+    strip.pad = m
+    strip.frame = CGRect(x: 0, y: m - fadeH, width: w + 2 * m, height: h + fadeH)
     CATransaction.commit()
     if key != self.key {
       // a new block: the strip starts from below its edge, so it slides in for this one too
@@ -223,7 +229,11 @@ final class CodeBand: NSView {
     override var isFlipped: Bool { true }
 
     private var fadeH: CGFloat { 10 * zoom }
-    private var face: CGRect { CGRect(x: 0, y: fadeH, width: bounds.width, height: CodeBand.height * zoom) }
+    /// the room on either side of the face, for its shadow
+    var pad: CGFloat = 0
+    private var face: CGRect {
+      CGRect(x: 0, y: fadeH, width: bounds.width - 2 * pad, height: CodeBand.height * zoom)
+    }
     private var font: NSFont { NSFont.systemFont(ofSize: 12 * zoom) }
     private var mono: NSFont { NSFont.monospacedDigitSystemFont(ofSize: 12 * zoom, weight: .regular) }
     private func width(_ s: String, _ f: NSFont) -> CGFloat { (s as NSString).size(withAttributes: [.font: f]).width }
@@ -245,11 +255,14 @@ final class CodeBand: NSView {
     }
 
     /// where each control is: the size or language at the left, the buttons from the right edge back
-    func rects() -> [(Part, CGRect)] {
+    func rects() -> [(Part, CGRect)] { innerRects().map { ($0.0, $0.1.offsetBy(dx: pad, dy: 0)) } }
+
+    /// the controls in the face's own points (its left edge at 0)
+    private func innerRects() -> [(Part, CGRect)] {
       let y = face.minY + (face.height - 24 * zoom) / 2
       var out: [(Part, CGRect)] = []
       var x = (table ? 8 : 22) * zoom
-      var right = bounds.width - (table ? 7 : 14) * zoom
+      var right = face.width - (table ? 7 : 14) * zoom
       for p in parts.reversed() {
         if case .icon = p.kind {
           right -= w(p)
@@ -271,14 +284,18 @@ final class CodeBand: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
       guard let theme, let ctx = NSGraphicsContext.current?.cgContext else { return }
+      ctx.translateBy(x: pad, y: 0)
       let f = face
       // over text, the covered line's sliver above the band fades into the paper
       if let fade = CGGradient(
         colorsSpace: CGColorSpace(name: CGColorSpace.sRGB),
         colors: [theme.colors.surface.alpha(0).cg, theme.colors.surface.cg] as CFArray, locations: [0, 1])
       {
+        ctx.saveGState()
+        ctx.clip(to: CGRect(x: 0, y: 0, width: f.width, height: fadeH))
         ctx.drawLinearGradient(
           fade, start: CGPoint(x: 0, y: 0), end: CGPoint(x: 0, y: fadeH), options: [])
+        ctx.restoreGState()
       }
       let r = radius
       let path = CGMutablePath()
@@ -321,7 +338,7 @@ final class CodeBand: NSView {
       let ink = theme.colors.ink.cg
       let ink2 = theme.colors.ink2.cg
       let ink3 = theme.colors.ink3.cg
-      for (p, box) in rects() {
+      for (p, box) in innerRects() {
         let over = hovered == p.id
         let danger = over && Self.danger.contains(p.id)
         if p.on || over {

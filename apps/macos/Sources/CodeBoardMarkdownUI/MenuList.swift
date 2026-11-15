@@ -79,7 +79,10 @@ final class MenuList: NSView {
     if !items.isEmpty, !items[chosen].takes { chosen = items.firstIndex(where: \.takes) ?? 0 }
     // at most 300 points high (the [[ menu 340 and 372 wide), the rows scrolling inside (markdown.css .md-menu, .md-refs)
     let refs = token.kind == .ref
-    let h = min(CGFloat(items.count) * rowHeight + 8, refs ? 340 : 300)
+    // ending on a whole row where it scrolls (a row cut by the panel's edge read as a broken one)
+    let cap: CGFloat = refs ? 340 : 300
+    let rows = ((cap - 8) / rowHeight).rounded(.down)
+    let h = min(CGFloat(items.count) * rowHeight + 8, rows * rowHeight + 8)
     frame = CGRect(x: caret.minX, y: caret.maxY + 4, width: refs ? 372 : 260, height: h)
     // a view draws outside its bounds unless told not to (macOS 14 on): the rows scrolled past the panel's edge are cut
     clipsToBounds = true
@@ -115,8 +118,13 @@ final class MenuList: NSView {
   override func updateTrackingAreas() {
     super.updateTrackingAreas()
     for a in trackingAreas where a.owner === self { removeTrackingArea(a) }
-    addTrackingArea(
-      NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeAlways, .inVisibleRect], owner: self))
+    // over the whole panel: its visible rect is cut at the Note's edges, and the rows hanging below got no moves
+    addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .activeAlways], owner: self))
+  }
+
+  override func setFrameSize(_ s: NSSize) {
+    super.setFrameSize(s)
+    updateTrackingAreas()
   }
 
   /// the pointer over a row makes it the chosen one (menu.tsx onPointerEnter), without scrolling the list

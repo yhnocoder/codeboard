@@ -13,10 +13,15 @@ class HoverControls: NSView {
   override func updateTrackingAreas() {
     super.updateTrackingAreas()
     for a in trackingAreas where a.owner === self { removeTrackingArea(a) }
+    // over the whole view, not its visible rect: what floats past the Note's edges is cut out of that, and got no moves
     addTrackingArea(
       NSTrackingArea(
-        rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .cursorUpdate, .activeAlways, .inVisibleRect],
-        owner: self))
+        rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .cursorUpdate, .activeAlways], owner: self))
+  }
+
+  override func setFrameSize(_ s: NSSize) {
+    super.setFrameSize(s)
+    updateTrackingAreas()
   }
 
   /// the tooltips again, after the controls changed
