@@ -1,6 +1,7 @@
 import AppKit
 import CodeBoardMarkdown
 import CoreGraphics
+import CoreText
 import Foundation
 import Testing
 
@@ -236,5 +237,35 @@ import Testing
     v.selection = MDSelection(14)
     // the strip is the fade (10) over the face (30)
     #expect(abs(v.band.stripFrame.maxY - v.band.bandFrame.maxY) < 0.5, "\(v.band.stripFrame) \(v.band.bandFrame)")
+  }
+}
+
+/// A code block is laid out as code is (CodeLines): a tab goes to the next stop four columns apart (markdown.css
+/// .md-pm pre tab-size: 4), and a wrapped block cuts a line wherever it reaches the width, by what each character is
+/// drawn as (.md-code.wrap: break-all), a CJK character taking its own width
+@Suite struct CodeBlockLayoutTests {
+  @Test func tabsGoToTheirStopsAndWrappedLinesAreCutAtTheWidth() throws {
+    _ = boardFonts
+    let long = String(repeating: "中文", count: 30)
+    let src = "```python\n\tx = 1\nab\tc\n\(long)\nx = \(String(repeating: "y", count: 100))\n```"
+    let l = MarkdownLayout.make(
+      MarkdownDocument(src), width: 300, theme: testTheme, layout: MDLayoutInfo(wrap: [0]), resources: TestResources())
+    let texts = l.caretTexts
+    let shown = texts.map { $0.display.string.string }
+    #expect(shown.prefix(2) == ["    x = 1", "ab  c"])
+    // not at a word's end: wherever the width is reached
+    for text in [long, "x = " + String(repeating: "y", count: 100)] {
+      let wide = try #require(texts.first { $0.display.string.string == text })
+      let room = wide.frame.width
+      #expect(wide.lines.count > 1)
+      for line in wide.lines.dropLast() {
+        let w = CGFloat(CTLineGetTypographicBounds(line.line, nil, nil, nil))
+        // as full as a row gets: one more character would not have fitted
+        let one = w / CGFloat(line.range.length)
+        #expect(w <= room + 0.5 && w + one > room - 0.5, "\(w) of \(room)")
+      }
+    }
+    // a caret after the tab is at its stop
+    #expect(texts[0].display.toSource.prefix(4).allSatisfy { $0 == texts[0].display.toSource[0] })
   }
 }

@@ -1,4 +1,5 @@
 import CodeBoardMarkdown
+import CodeUI
 import CoreGraphics
 import CoreText
 import Foundation
@@ -382,7 +383,7 @@ struct LayoutBuilder {
   /// font's ascent; an atom taller than that makes its line taller
   func setText(
     _ d: DisplayText, x: CGFloat, width: CGFloat, y: CGFloat, style: InlineStyle, lineHeight: CGFloat,
-    center: Bool = false, right: Bool = false, wrap: Bool = true
+    center: Bool = false, right: Bool = false, wrap: Bool = true, breaks: [Int]? = nil
   ) -> TextBlock {
     let strut = FontBook.font(style.families, size: style.size, weight: style.weight, italic: style.italic)
     let lh = lineHeight * style.size
@@ -401,9 +402,13 @@ struct LayoutBuilder {
     }
     let ts = CTTypesetterCreateWithAttributedString(attr)
     var start = 0
+    var row = 0
     while start < n {
+      // `breaks`: the caller's own rows (code's, cut where its characters reach the width)
       var len = wrap ? CTTypesetterSuggestLineBreak(ts, start, Double(width)) : n - start
-      if !wrap,
+      if let breaks { len = row < breaks.count ? breaks[row] : n - start }
+      row += 1
+      if !wrap, breaks == nil,
         let nl = (attr.string as NSString).rangeOfCharacter(
           from: .newlines, range: NSRange(location: start, length: n - start)
         ).location as Int?, nl != NSNotFound
@@ -619,16 +624,48 @@ struct LayoutBuilder {
       FontBook.font(theme.fonts.mono, size: CGFloat(m.codeSize), weight: $0, ligatures: true)
     }
     let lh = CGFloat(m.codeLineHeight)
+    // laid out as code is (CodeLines): tabs to their stops, a wrapped line cut where its characters reach the width
+    let regular = FontBook.font(theme.fonts.mono, size: CGFloat(m.codeSize), weight: 400, ligatures: true)
+    let cm = CodeLineMetrics(
+      row: lh, fold: 0, padLeft: 0, numberGap: 0, padRight: 0, charWidth: CodeDraw.width("0", CodeFont(regular)),
+      font: CodeFont(regular))
     var yy = y + pv
     var inner: [Item] = []
     var lineStart = body.lowerBound
     for (i, line) in lines.enumerated() {
+      // the line with its tabs as spaces: each display unit's source, and each source column's display column
+      var shown = ""
+      var toSource: [Int] = []
+      var ends: [Int] = []
+      var column = [Int](repeating: 0, count: line.utf16.count + 1)
+      var widths: [CGFloat] = []
+      var su = 0
+      for ch in line {
+        let units = ch.utf16.count
+        for k in 0..<units { column[su + k] = toSource.count }
+        if ch == "\t" {
+          let n = cm.tabWidth - widths.count % cm.tabWidth
+          shown += String(repeating: " ", count: n)
+          toSource += Array(repeating: lineStart + su, count: n)
+          ends += Array(repeating: lineStart + su + 1, count: n)
+          widths += Array(repeating: cm.charWidth, count: n)
+        } else {
+          shown.append(ch)
+          toSource += (0..<units).map { lineStart + su + $0 }
+          ends += (0..<units).map { lineStart + su + $0 + 1 }
+          widths.append(CodeLines.advance(ch, cm))
+        }
+        su += units
+      }
+      column[su] = toSource.count
       let attr = NSMutableAttributedString(
-        string: line,
+        string: shown,
         attributes: InlineBuilder(theme: theme, resources: resources, imageCounts: [:], bodyWidth: width).attributes(
           style))
       for t in tokens?[safe: i] ?? [] {
-        guard let c = theme.code.kinds[t.kind], t.columns.upperBound <= attr.length else { continue }
+        guard let c = theme.code.kinds[t.kind], t.columns.upperBound < column.count else { continue }
+        let t = MarkdownToken(
+          columns: column[t.columns.lowerBound]..<column[t.columns.upperBound], kind: t.kind)
         attr.addAttribute(
           NSAttributedString.Key(kCTForegroundColorAttributeName as String), value: c.cg,
           range: NSRange(location: t.columns.lowerBound, length: t.columns.count))
@@ -645,13 +682,22 @@ struct LayoutBuilder {
       }
       var d = DisplayText()
       d.string = attr
-      let n = attr.length
-      d.toSource = Array(lineStart..<(lineStart + n))
-      d.sourceEnds = Array((lineStart + 1)..<(lineStart + n + 1))
-      d.endSource = lineStart + n
-      lineStart += n + 1
+      d.toSource = toSource
+      d.sourceEnds = ends
+      d.endSource = lineStart + su
+      lineStart += su + 1
       style.color = theme.code.plain
-      let tb = setText(d, x: x + ph, width: width - 2 * ph, y: yy, style: style, lineHeight: lh, wrap: wraps)
+      // rows in UTF-16 units of what is shown, from CodeLines' cuts of its characters
+      var breaks: [Int]?
+      if wraps {
+        var chars = Array(shown)[...]
+        breaks = CodeLines.cuts(widths, width: width - 2 * ph).map { n in
+          defer { chars = chars.dropFirst(n) }
+          return chars.prefix(n).reduce(0) { $0 + $1.utf16.count }
+        }
+      }
+      let tb = setText(
+        d, x: x + ph, width: width - 2 * ph, y: yy, style: style, lineHeight: lh, wrap: wraps, breaks: breaks)
       tb.caret = true
       widest = max(widest, x + 2 * ph + tb.widest)
       inner.append(.text(tb))
