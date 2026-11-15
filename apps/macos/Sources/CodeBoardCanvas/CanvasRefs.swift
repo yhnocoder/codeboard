@@ -420,6 +420,8 @@ package final class RefPeek: NSView {
   /// Dragged: its top left from its ref's top left, in the canvas's points
   var put: CGPoint?
   private var from: (pointer: CGPoint, origin: CGPoint)?
+  /// Pressed on the arrow: a click on it is a press and a release over it (main's <button class="cpeek-go">)
+  private var goDown = false
   private var gripHeight: CGFloat = 0
   private let box = CALayer()
   private let stage = CALayer()
@@ -532,7 +534,8 @@ package final class RefPeek: NSView {
   package override func mouseDown(with e: NSEvent) {
     CanvasView.under(self)?.stopGlide()
     let p = convert(e.locationInWindow, from: nil)
-    if goRect.contains(p) { return onGo?() ?? () }
+    goDown = goRect.contains(p)
+    if goDown { return }
     guard p.y - Self.margin < gripHeight, let sv = superview else { return }
     from = (sv.convert(e.locationInWindow, from: nil), frame.origin)
     NSCursor.closedHand.push()
@@ -547,6 +550,11 @@ package final class RefPeek: NSView {
   }
 
   package override func mouseUp(with e: NSEvent) {
+    if goDown {
+      goDown = false
+      if goRect.contains(convert(e.locationInWindow, from: nil)) { onGo?() }
+      return
+    }
     guard from != nil else { return }
     from = nil
     NSCursor.pop()

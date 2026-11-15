@@ -561,6 +561,33 @@ extension CanvasSidenoteTests {
     (m.items.last?.representedObject as? MenuAction)?.run()
     #expect(r.doc.board.sidenote(nid("l1")) == nil && r.doc.undoName == "Delete Sidenote")
   }
+
+  /// The popup's buttons are main's <button>s in its page: a press and a release off one does nothing, a click acts,
+  /// and a mouse click leaves no focus ring (button:focus-visible)
+  @Test func thePopupsButtonsActOnTheReleaseOverThemWithNoFocusRing() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let pop = c.sidenotePop
+    let at = PopAt.spot(.point(x: 300, y: 600))
+    c.openPop(at)
+    await opened(r, at)
+    let xy = try #require(
+      await pop.run(
+        """
+        const b = document.querySelector('[aria-label="Close"]').getBoundingClientRect();
+        return [b.x + b.width / 2, b.y + b.height / 2]
+        """) as? [Double])
+    let close = CGPoint(x: xy[0], y: xy[1])
+    let v = pop.view
+    func ring() async -> Bool? { await pop.run("return !!document.querySelector(':focus-visible')") as? Bool }
+    r.mouse(.leftMouseDown, in: v, at: close)
+    r.mouse(.leftMouseUp, in: v, at: CGPoint(x: close.x - 120, y: close.y + 60))
+    #expect(await ring() == false, "pressed: no ring")
+    #expect(c.openPop == at, "let go off it: still open")
+    r.click(in: v, at: close)
+    await r.until("closed by the click") { c.openPop == nil }
+  }
 }
 
 extension CanvasSidenoteTests {
@@ -655,5 +682,23 @@ extension CanvasSidenoteTests {
     await r.until("its line gone") {
       await pop.run("return document.querySelectorAll('.sn-why.review').length") as? Int == 0
     }
+  }
+
+  /// A code sidenote's "why" is its line under the code (notes.tsx .sn-why)
+  @Test func aCodeSidenotesWhyShowsUnderItsCode() async throws {
+    var b = sidenoteBoard()
+    b.sidenotes.append(
+      Sidenote(
+        id: nid("k1"), anchor: .card(cid("t1")),
+        body: .code(Segment(id: SegmentID(rawValue: "k"), source: nil, language: "python", firstLine: 1, lines: ["x"])),
+        why: "where it is called"))
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    let at = PopAt.spot(.card(cid("t1")))
+    r.canvas.openPop(at)
+    await opened(r, at)
+    let why = await r.canvas.sidenotePop.run(
+      "return document.querySelector('.slip[data-note=\"k1\"] .sn-why')?.textContent ?? null")
+    #expect(why as? String == "where it is called")
   }
 }

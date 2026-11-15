@@ -610,10 +610,17 @@ package final class StickerPalette: NSView {
 
   package override func mouseMoved(with e: NSEvent) { hover = slot(at: convert(e.locationInWindow, from: nil)) }
   package override func mouseExited(with e: NSEvent) { hover = nil }
-  package override func mouseDown(with e: NSEvent) { CanvasView.under(self)?.stopGlide() }
+  /// The slot pressed: a click on it is a press and a release over it (main's <button>)
+  private var down: Int?
+
+  package override func mouseDown(with e: NSEvent) {
+    CanvasView.under(self)?.stopGlide()
+    down = slot(at: convert(e.locationInWindow, from: nil))
+  }
 
   package override func mouseUp(with e: NSEvent) {
-    guard let i = slot(at: convert(e.locationInWindow, from: nil)) else { return }
+    defer { down = nil }
+    guard let i = slot(at: convert(e.locationInWindow, from: nil)), i == down else { return }
     press(i)
   }
 

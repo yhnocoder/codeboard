@@ -43,6 +43,8 @@ type PopNote =
       head: { title: string; where: string; version: string };
       start: number;
       html: string[];
+      /** Why it is there, under its code (notes.tsx .sn-why) */
+      why?: string;
     };
 
 /** What native shows: key names what the popup is for (the same key: the same popup, updated in place) */
@@ -320,7 +322,7 @@ function slip(s: Shown, n: PopNote): HTMLElement {
           ),
         ];
   if (n.kind === "code") {
-    box.append(codeOf(n), ...review());
+    box.append(codeOf(n), ...(n.why ? [el("div", "sn-why", n.why)] : []), ...review());
     if (!n.fixed)
       tools.append(...place(), button("ib", "Delete Sidenote", "trash", 14, () => post({ type: "delete", id: n.id })));
     if (tools.childElementCount) box.prepend(tools);

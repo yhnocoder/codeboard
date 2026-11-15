@@ -110,9 +110,11 @@ the same ids. Absent: a card of its own.
 the canvas without a card. Free code is a code card whose segments have no `source`.
 
 **Segment**: `id, source?, language, firstLine, lines: [String], symbol?: {name, kind: function|class|module}, scope?,
-hidden: [[a, b]], highlights: [[a, b]], annotations: [{line, from, to, text, color, below}]`. Line numbers are the file's
+hidden: [[a, b]], highlights: [[a, b]], annotations: [{line, from, to, text, color, below}], url?, languagePicked?`. Line numbers are the file's
 own, 1-based; the last line is `firstLine + lines.count - 1` (not stored: it cannot disagree). `lines` is the code at the
-source's version, so a card draws without the source. `language` is a VS Code language id (`python`, `cpp`,
+source's version, so a card draws without the source. Free code (no `source`) may have `url`, the address it was pasted
+from, and `languagePicked: true`, its language picked by hand and never guessed again from what is written (absent: it
+may be); neither is on a segment with a source. `language` is a VS Code language id (`python`, `cpp`,
 `cuda-cpp`…). Ranges are inclusive; highlights sorted, never overlapping.
 
 **source** (where the lines come from, one of):
@@ -162,12 +164,12 @@ Its preview's column count, a choice of the moment, is not kept.
 input?`, as core `summary.ts` keeps it: `sig` a fingerprint of what it was written from (another one now: out of date),
 `edited` the text is the user's, `pairs` the user's last edits, `input` what it was written from. Times in ms since 1970.
 
-**Sidenote**: `id, anchor, lineRemoved, boardOnly, review?` and one of `text: {text, alwaysShow, question?}` (Markdown, its
+**Sidenote**: `id, anchor, lineRemoved, boardOnly, review?, why?` and one of `text: {text, alwaysShow, question?}` (Markdown, its
 [[refs]] included) or `code: Segment`. `anchor` is one of `card: {card, segment?, lines?: [a, b], block?: {index, hash}}`
 (a whole card, lines of a segment, or a Note block), `section: {section}`, `point: {x, y}` (free on the board).
 `question: {at, done, answers: [{id, text, at}]}`: a text sidenote that asks. `boardOnly`: on a shared card but this
-board's own. `review`: its lines changed (a version label) or its Highlight grew (`widened`). There is no separate "why"
-line: an old one is the first paragraph of the text.
+board's own. `review`: its lines changed (a version label) or its Highlight grew (`widened`). `why`: a code sidenote's
+line on why it is there, shown under its code; a text sidenote has none (an old one is the first paragraph of its text).
 
 **Sticker**: `id, glyph, color?, anchor`. `glyph`: `builtin: star|exclaim|check|flag|zap|bug|todo|heart|hourglass|warning|
 todo-text` (the web board's own, without its `?`) or `emoji: "<one emoji>"`. `color` `#RRGGBB`, absent: the glyph's own.
@@ -296,7 +298,7 @@ files that are not in the vault yet; a file that is there is never written, what
 | code `segments hide wrap bg` | `segments`, `hide` (`blank` → `blankLines`), `wrap`, `framed = bg != false` |
 | segment `start end text` | `firstLine`, `lines` |
 | segment `lang symbol{qual,kind} scope hidden hl annots` | `language`, `symbol{name,kind}`, `scope`, `hidden`, `highlights`, `annotations` (absent colour → blue) |
-| `src` free | no `source` |
+| `src` free `url langPicked` | no `source`; `url`, `languagePicked` |
 | `src` github + version git | `git`, repository `https://github.com/<owner>/<name>`, the version's commit |
 | `src` github, other version | `git`, the source's `ref` as commit (GitHub files are pinned to it) |
 | `src` repo / external + version git | `git`, no repository, `checkout` = `repo` / `root` |
@@ -319,7 +321,7 @@ files that are not in the vault yet; a file that is there is never written, what
 | summary `text title at sig edited pairs input` | the same |
 | sidenote `at` `{card seg lines block}` / `{section}` / `{x y}` | `anchor` `card {card segment lines block}` / `section` / `point` |
 | sidenote text `why md alwaysShow q{at done answers{id md at}}` | `text {text: why + blank line + md, alwaysShow, question {at done answers {id text at}}}` |
-| sidenote code `code` | `code` (a Segment) |
+| sidenote code `why code` | `why`, `code` (a Segment) |
 | sidenote `lineRemoved boardOnly review` | the same |
 | sticker `icon{pack: builtin / emoji, name} color` | `glyph {builtin / emoji}`, `color` |
 | sticker `at` line / canvas / canvas `on.card` | `anchor` `line` / `canvas` / `card` |
@@ -365,5 +367,4 @@ holds more. Kinds:
   the vault's shared images already have for other bytes (left as it is)
 - `field` (`<owner id>.<field>`): any other field, known or unknown: e.g. `born`, `seq`, `marks`, `legend`, `hideNumbers`
   (it hides the call graph marks, which are not drawn; line numbers are always drawn), `place.collapsed`, `place.start`,
-  `segment.keep`, `keepOld`, free code's `url` and `langPicked`, a sub-board's `pcols`, a code sidenote's `why`, a Note's
-  `fill fs wrap`, a Text's height, a seal text or colour the format does not accept
+  `segment.keep`, `keepOld`, a sub-board's `pcols`, a Note's `fill fs wrap`, a Text's height, a seal text or colour the format does not accept

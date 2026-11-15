@@ -210,9 +210,16 @@ package final class KeysPanel: NSView, NSSearchFieldDelegate {
 
   var closeRect: CGRect { CGRect(x: bounds.width - 4 - 22 - 6, y: (Self.header - 22) / 2, width: 22, height: 22) }
 
-  package override func mouseDown(with e: NSEvent) { CanvasView.under(self)?.stopGlide() }
+  /// Pressed on the X: a click on it is a press and a release over it (main's <button>)
+  private var down = false
+
+  package override func mouseDown(with e: NSEvent) {
+    CanvasView.under(self)?.stopGlide()
+    down = closeRect.contains(convert(e.locationInWindow, from: nil))
+  }
   package override func mouseUp(with e: NSEvent) {
-    if closeRect.contains(convert(e.locationInWindow, from: nil)) { onClose?() }
+    defer { down = false }
+    if down, closeRect.contains(convert(e.locationInWindow, from: nil)) { onClose?() }
   }
   package override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }

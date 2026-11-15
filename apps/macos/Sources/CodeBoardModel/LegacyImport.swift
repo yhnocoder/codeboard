@@ -971,17 +971,24 @@ private struct Mapper {
           line: try a.int("line"), from: try a.int("from"), to: try a.int("to"), text: try a.string("text"),
           color: try a.pick("color", HandColor.self) ?? .blue, below: try a.flag("below")))
     }
+    // free code: where it was pasted from, and a language picked by hand
+    let free = try s.object("src")
+    let isFree = try free.string("kind") == "free"
+    let picked = try free.flag("langPicked")
     return Segment(
       id: SegmentID(rawValue: sid), source: try codeSource(s, id: sid), language: try s.string("lang"),
       firstLine: start, lines: text, symbol: symbol, scope: try s.optString("scope"), hidden: try s.ranges("hidden"),
-      highlights: try s.ranges("hl"), annotations: annotations)
+      highlights: try s.ranges("hl"), annotations: annotations, url: isFree ? try free.optString("url") : nil,
+      languagePicked: isFree && picked ? true : nil)
   }
   private mutating func codeSource(_ s: Obj, id: String) throws -> CodeSource? {
     let src = try s.object("src")
     let version = try s.object("version")
     let path = try s.string("path")
     let kind = try src.string("kind")
-    only(src, kind == "free" ? ["kind"] : ["kind", "repo", "root", "owner", "name", "ref"], id: "\(id).src")
+    only(
+      src, kind == "free" ? ["kind", "url", "langPicked"] : ["kind", "repo", "root", "owner", "name", "ref"],
+      id: "\(id).src")
     if kind == "free" { return nil }
     only(version, ["kind", "commit", "uncommitted", "name", "version", "hash"], id: "\(id).version")
     switch try version.string("kind") {
@@ -1221,15 +1228,14 @@ private struct Mapper {
       }
       body = .text(TextNote(text: md, alwaysShow: try n.flag("alwaysShow"), question: question))
     case "code":
-      // a code sidenote has no text to put its "why" in: reported as a field
-      only(n, ["id", "kind", "at", "lineRemoved", "boardOnly", "review", "variant", "code"], id: id)
+      only(n, ["id", "kind", "at", "why", "lineRemoved", "boardOnly", "review", "variant", "code"], id: id)
       body = .code(try segment(try n.object("code")))
     default:
       throw Bad("\(n.at("kind")): unknown sidenote kind \(kind)")
     }
     return Sidenote(
       id: SidenoteID(rawValue: id), anchor: anchor, body: body, lineRemoved: try n.flag("lineRemoved"),
-      boardOnly: try n.flag("boardOnly"), review: try n.optString("review"))
+      boardOnly: try n.flag("boardOnly"), review: try n.optString("review"), why: kind == "code" ? why : nil)
   }
 
   /// A sticker; nil (reported) for one on an arrow or from a sticker pack

@@ -239,6 +239,7 @@
               "highlights": [],
               "id": "sfree",
               "language": "cuda-cpp",
+              "languagePicked": true,
               "lines": [
                 "__global__ void k() {",
                 "}"

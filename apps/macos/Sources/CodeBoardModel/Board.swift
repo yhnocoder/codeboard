@@ -155,13 +155,18 @@ public struct Segment: Codable, Equatable, Sendable {
   /// Sorted, never overlapping
   public var highlights: [ClosedRange<Int>]
   public var annotations: [Annotation]
+  /// Free code (no source): the address it was pasted from (main's free source `url`)
+  public var url: String?
+  /// Free code: its language was picked by hand, not to be guessed again from what is written (main's `langPicked`);
+  /// true or absent
+  public var languagePicked: Bool?
 
   public var lastLine: Int { firstLine + lines.count - 1 }
 
   public init(
     id: SegmentID, source: CodeSource?, language: String, firstLine: Int, lines: [String], symbol: Symbol? = nil,
     scope: String? = nil, hidden: [ClosedRange<Int>] = [], highlights: [ClosedRange<Int>] = [],
-    annotations: [Annotation] = []
+    annotations: [Annotation] = [], url: String? = nil, languagePicked: Bool? = nil
   ) {
     self.id = id
     self.source = source
@@ -173,6 +178,8 @@ public struct Segment: Codable, Equatable, Sendable {
     self.hidden = hidden
     self.highlights = highlights
     self.annotations = annotations
+    self.url = url
+    self.languagePicked = languagePicked
   }
 }
 
@@ -598,10 +605,13 @@ public struct Sidenote: Equatable, Sendable {
   public var boardOnly: Bool
   /// The lines it is on changed (a new version's label) or its Highlight grew ("widened"): shown for a second look
   public var review: String?
+  /// A code sidenote's line on why it is there, over its code (main's `why`, notes.tsx .sn-why); a text sidenote's
+  /// is the first paragraph of its text
+  public var why: String?
 
   public init(
     id: SidenoteID, anchor: Anchor, body: Body, lineRemoved: Bool = false, boardOnly: Bool = false,
-    review: String? = nil
+    review: String? = nil, why: String? = nil
   ) {
     self.id = id
     self.anchor = anchor
@@ -609,6 +619,7 @@ public struct Sidenote: Equatable, Sendable {
     self.lineRemoved = lineRemoved
     self.boardOnly = boardOnly
     self.review = review
+    self.why = why
   }
 }
 
