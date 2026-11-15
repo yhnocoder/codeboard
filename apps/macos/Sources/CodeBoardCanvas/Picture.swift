@@ -111,7 +111,10 @@ package enum Picture {
     rect: CGRect, scale: CGFloat, backdrop: Bool
   ) async -> (image: CGImage?, cards: [String: CGRect]) {
     let sizes = await CanvasView.measure(Scene.measures(board, package: package, vault: vault), theme: t, notes: notes)
-    let scene = Scene(board, package: package, vault: vault, theme: t, highlighter: highlighter, sizes: sizes)
+    let inline = await CanvasView.measureInline(
+      Scene.inlineMeasures(board, package: package, vault: vault, theme: t), theme: t, notes: notes)
+    let scene = Scene(
+      board, package: package, vault: vault, theme: t, highlighter: highlighter, sizes: sizes, inline: inline)
     var pictures: [Int: IOSurface] = [:]
     var cards: [String: CGRect] = [:]
     for (i, it) in scene.items.enumerated() {

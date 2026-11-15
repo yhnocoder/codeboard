@@ -34,6 +34,17 @@ enum Drawing: Sendable {
     var linked: Set<[Int]>
     var layout: CodeLayout
     var framed: Bool
+    /// Its Always Show sidenotes, which the Note renderer draws (CanvasView.picture), each at its frame in the card
+    var inline: [InlineNote] = []
+  }
+
+  /// An Always Show sidenote in a code card: its Markdown, drawn at `frame` (card points), its images in `folder`
+  struct InlineNote: Sendable {
+    var id: SidenoteID
+    var text: String
+    var frame: CGRect
+    var folder: URL
+    var refs: [NoteRef]
   }
 
   struct Note: Sendable {
@@ -97,7 +108,8 @@ enum Drawing: Sendable {
     switch self {
     case .note: true
     case .image(let p): p.svg
-    case .code, .label, .board, .web, .links: false
+    case .code(let c): !c.inline.isEmpty
+    case .label, .board, .web, .links: false
     }
   }
 
@@ -137,6 +149,15 @@ enum Drawing: Sendable {
     case .code(let c):
       if c.framed { Drawing.paper(ctx, r, t, id: c.id, rule: false) }
       Drawing.code(ctx, c, r, t)
+      // its Always Show sidenotes, cut where its body ends as its rows are
+      if let px = picture {
+        let top = c.framed ? t.headerHeight : 0
+        ctx.saveGState()
+        ctx.clip(to: CGRect(x: 0, y: top, width: r.width, height: r.height - top))
+        Raster.draw(
+          px, in: CGRect(x: 0, y: 0, width: CGFloat(px.width) / scale, height: CGFloat(px.height) / scale), of: ctx)
+        ctx.restoreGState()
+      }
       if c.framed { Drawing.edge(ctx, r, t) }
     case .note(let n):
       switch n.content {
@@ -171,7 +192,8 @@ enum Drawing: Sendable {
         ctx.setStrokeColor(t.boxEdge)
         ctx.setLineWidth(1.25)
         ctx.strokePath()
-      case .text:
+      // a code card's Always Show sidenotes are drawn with it, never as an item of their own
+      case .text, .inline:
         break
       }
       // transparent around the content, pixel for pixel from the top left
@@ -442,6 +464,9 @@ enum Drawing: Sendable {
         text(ctx, path, t.code, t.ink2, x: x0 + 14, midY: mid, width: bar.width - 20)
       case .function(let name):
         text(ctx, name, t.codePath, t.ink3, x: l.gutter, midY: mid, width: r.width - l.gutter - m.padRight)
+      case .notes:
+        // the Note renderer's: drawn over the card (`picture`)
+        break
       }
     }
     if l.dedent > 0 { dedentMark(ctx, levels: min(4, max(1, Int((CGFloat(l.dedent) / 4).rounded()))), l, r, t) }

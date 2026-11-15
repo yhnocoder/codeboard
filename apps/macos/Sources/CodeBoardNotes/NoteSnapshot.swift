@@ -8,6 +8,12 @@ public struct NoteSnapshot: Sendable {
   public let surface: IOSurface
   public let size: CGSize
 
+  /// Pictures put together by the canvas (a code card's Always Show sidenotes, each drawn here, on one surface)
+  public init(surface: IOSurface, size: CGSize) {
+    self.surface = surface
+    self.size = size
+  }
+
   /// `bytesPerRow`: a row length IOSurface gave a surface of this width before (nil: its own choice)
   static func makeSurface(width: Int, height: Int, bytesPerRow: Int? = nil) -> IOSurface? {
     var p: [IOSurfacePropertyKey: any Sendable] = [

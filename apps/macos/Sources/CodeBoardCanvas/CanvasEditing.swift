@@ -145,6 +145,7 @@ extension CanvasView {
     let board = doc.board
     let (theme, notes, images, backing) = (self.theme, self.notes, self.images, self.backing)
     let known = measured
+    let knownInline = measuredInline
     let fit = fitZoom
     let seen = vaultSeen
     let zoom = camera.zoom
@@ -165,9 +166,22 @@ extension CanvasView {
           }
         }
         sizes.merge(await CanvasView.measure(todo, theme: theme, notes: notes)) { a, _ in a }
+        // the Always Show sidenotes in code cards, measured again only when changed
+        let ims = Scene.inlineMeasures(board, package: package, vault: vault, theme: theme)
+        var inline: [SidenoteID: NoteMetrics] = [:]
+        var inlineTodo: [Scene.Measure] = []
+        for m in ims {
+          guard let id = m.sidenote else { continue }
+          if let k = knownInline[id], k.note == m.note, k.width == m.width {
+            inline[id] = k.size
+          } else {
+            inlineTodo.append(m)
+          }
+        }
+        inline.merge(await CanvasView.measureInline(inlineTodo, theme: theme, notes: notes)) { a, _ in a }
         let s = Scene(
           board, package: package, vault: vault, theme: theme, highlighter: highlighter ?? Highlighter(), sizes: sizes,
-          reusing: old, vaultSeen: seen, fetching: fetching)
+          inline: inline, reusing: old, vaultSeen: seen, fetching: fetching)
         var before: [Scene.Owner: Scene.Item] = [:]
         for it in old.items { if let o = it.owner { before[o] = it } }
         var fresh: [Int: Fresh] = [:]
@@ -175,7 +189,7 @@ extension CanvasView {
           fresh[i] = await CanvasView.draw(
             it, fit: fit, zoom: zoom, view: view, backing: backing, theme: theme, images: images, notes: notes)
         }
-        return (s, fresh, ms, sizes)
+        return (s, fresh, ms, sizes, ims, inline)
       }.value
       guard n == refreshes, document === doc else { return }
       guard gesture == nil else {
@@ -185,6 +199,8 @@ extension CanvasView {
       shownBoard = board
       measured = [:]
       for m in r.2 { if let size = r.3[m.card] { measured[m.card] = (m.note, m.width, size) } }
+      measuredInline = [:]
+      for m in r.4 { if let id = m.sidenote, let size = r.5[id] { measuredInline[id] = (m.note, m.width, size) } }
       reinstall(r.0, fresh: r.1)
     }
   }
