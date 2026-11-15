@@ -57,13 +57,51 @@ enum FontBook {
   /// Families cut into several files by character (as the web loads them with unicode-range), each weight's files
   private static let chunked = Chunked()
 
-  /// immutable descriptors behind a lock (CoreText allows any thread to read them, though the SDK does not mark them
-  /// Sendable)
+  /// A chunked family's files, each weight's read the first time a font of that weight is made (Yozai's 45 files a
+  /// weight take 50 ms to read, and only an annotation's note draws with it); immutable descriptors behind a lock
+  /// (CoreText allows any thread to read them, though the SDK does not mark them Sendable)
   private final class Chunked: @unchecked Sendable {
+    private var files: [String: [Double: [URL]]] = [:]
     private var sets: [String: [Double: [CTFontDescriptor]]] = [:]
     private let lock = NSLock()
-    func set(_ family: String, _ s: [Double: [CTFontDescriptor]]) { lock.withLock { sets[family] = s } }
-    func get(_ family: String) -> [Double: [CTFontDescriptor]]? { lock.withLock { sets[family] } }
+    /// held while a weight's files are read: a second thread asking for it waits for that read, not reads them again
+    private let reading = NSLock()
+    func set(_ family: String, _ f: [Double: [URL]]) {
+      lock.withLock {
+        files[family] = f
+        sets[family] = [:]
+      }
+    }
+    func weights(_ family: String) -> [Double]? { lock.withLock { files[family].map { Array($0.keys) } } }
+    /// Read outside `lock`, which every font made takes
+    func get(_ family: String, _ weight: Double) -> [CTFontDescriptor]? {
+      if let s = lock.withLock({ sets[family]?[weight] }) { return s }
+      return reading.withLock {
+        if let s = lock.withLock({ sets[family]?[weight] }) { return s }
+        guard let urls = lock.withLock({ files[family]?[weight] }) else { return nil }
+        let s = urls.flatMap { (CTFontManagerCreateFontDescriptorsFromURL($0 as CFURL) as? [CTFontDescriptor]) ?? [] }
+        lock.withLock { sets[family]?[weight] = s }
+        return s
+      }
+    }
+  }
+
+  /// Font files not registered yet, by the family they hold: registered the first time a font of that family is made,
+  /// a few milliseconds a file, so a process registers only the families its Notes draw with
+  private static let waiting = Mutex<[String: [URL]]>([:])
+
+  static func registerWhenUsed(_ family: String, _ files: [URL]) {
+    waiting.withLock { $0[family, default: []] += files }
+  }
+
+  /// The family's waiting files registered now, if it has any. Under the lock while it registers: a font of it made on
+  /// another thread meanwhile would fall back to another family, and be kept so
+  private static func registerWaiting(_ family: String) {
+    waiting.withLock { w in
+      guard let files = w.removeValue(forKey: family) else { return }
+      for f in files { CTFontManagerRegisterFontsForURL(f as CFURL, .process, nil) }
+      families.withLock { _ = $0?.insert(family) }
+    }
   }
 
   /// Weight ranges as @font-face declares them for a variable font (its file may hold more): what is asked for outside
@@ -72,22 +110,18 @@ enum FontBook {
   static func setRange(_ family: String, _ r: ClosedRange<Double>) { ranges.withLock { $0[family] = r } }
 
   static func addChunked(_ family: String, weights: [Double: [URL]]) {
-    let sets = weights.mapValues { files in
-      files.flatMap { (CTFontManagerCreateFontDescriptorsFromURL($0 as CFURL) as? [CTFontDescriptor]) ?? [] }
-    }
-    chunked.set(family, sets)
+    chunked.set(family, weights)
   }
 
   /// A chunked family's files for a weight as CSS matches it: from 600 up the nearest at or above it, else the nearest
   /// at or below it (a Light asks for 300 and takes the 400 there is)
   private static func chunks(_ family: String, weight: Double) -> [CTFontDescriptor]? {
-    guard let sets = chunked.get(family), !sets.isEmpty else { return nil }
-    let ws = sets.keys.sorted()
+    guard let ws = chunked.weights(family)?.sorted(), !ws.isEmpty else { return nil }
     let w =
       weight >= 600
       ? ws.first { $0 >= weight } ?? ws.last!
       : ws.last { $0 <= max(weight, 400) } ?? ws.first!
-    return sets[w]
+    return chunked.get(family, w)
   }
 
   static func font(
@@ -134,6 +168,7 @@ enum FontBook {
       let f = NSFont.monospacedSystemFont(ofSize: size, weight: NSFont.Weight(CGFloat(trait(weight))))
       return CTFontCopyFontDescriptor(f as CTFont)
     }
+    registerWaiting(name)
     // only a family this Mac has: matching one it does not (a downloadable system font such as Kaiti SC, not yet
     // downloaded) makes CoreText download it there and then, waiting on the download, which may never finish
     guard installed(name) else { return nil }
@@ -287,6 +322,12 @@ public enum MarkdownFonts {
   /// in the cascade, in order, so each character is found in whichever file has it. Register it before laying out
   public static func addChunkedFamily(_ family: String, weights: [Double: [URL]]) {
     FontBook.addChunked(family, weights: weights)
+  }
+
+  /// Font files of `family` (the name a font list asks for, which is the family they hold), registered for this
+  /// process the first time a font of that family is made: before that, none of their cost
+  public static func registerWhenUsed(_ family: String, _ files: [URL]) {
+    FontBook.registerWhenUsed(family, files)
   }
 
   /// The weights a variable font's @font-face declares (font-weight: 400 600): weights outside are drawn at its nearest

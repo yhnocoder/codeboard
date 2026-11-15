@@ -26,7 +26,7 @@ public final class CanvasView: NSView {
   static let sharedDisplay: any NoteDisplay = {
     guard NativeNotes.on else { return sharedNotes }
     NativeNotes.warmUp()
-    return NativeNotes(web: sharedNotes, images: sharedImages)
+    return NativeNotes(web: sharedNotes, images: sharedImages, kept: NativeNotes.defaultKept)
   }()
   /// Starts what draws Notes as the app launches, so its fonts and engines are ready sooner for the first board
   public static func warmUp() { _ = sharedDisplay }
@@ -465,7 +465,10 @@ public final class CanvasView: NSView {
   /// The same, its Markdown drawn by the native component (`native`) or the web page
   package convenience init(frame: NSRect, noteCache: URL, native: Bool) {
     let web = NoteRenderer(cache: noteCache)
-    self.init(frame: frame, notes: web, display: native ? NativeNotes(web: web) : web)
+    // its measured sizes, formulas and diagrams kept there too, as the app keeps them beside its snapshots
+    self.init(
+      frame: frame, notes: web, display: native ? NativeNotes(web: web, kept: noteCache.appending(path: "native")) : web
+    )
   }
 
   /// With that Note renderer (CanvasBench: one for several canvases, as the app's), which draws its Notes unless
@@ -596,16 +599,18 @@ public final class CanvasView: NSView {
     // where the camera will be once it is installed (install: arriving, else kept, else the board's top left at 100 %)
     let opensAt = keepCamera ? camera : arriving ?? keptCamera(of: board, in: vault)
     let native = display is NativeNotes
-    let (scene, overviews, shadow, highlighter, b, measures, sizes, inlines, inline) = try await Task.detached(
-      priority: .userInitiated
-    ) {
+    let work = Task.detached(priority: .userInitiated) {
       let package = vault.url(of: board.path)
       let b = try open ?? vault.board(at: board.path)
       let measures = Scene.measures(b, package: package, vault: vault)
       let sizes = await CanvasView.measure(measures, theme: theme, display: display)
+      if let native = display as? NativeNotes {
+        native.prepare(CanvasView.inView(measures, of: b, sizes: sizes, camera: opensAt, size: size, theme: theme))
+      }
       let inlines = Scene.inlineMeasures(b, package: package, vault: vault, theme: theme)
       let inline = await CanvasView.measureInline(inlines, theme: theme, display: display)
-      let highlighter = known ?? Highlighter()
+      // the Note display's, compiled as the app starts: one in the app
+      let highlighter = known ?? NativeNotes.highlighter
       let scene = Scene(
         b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes, inline: inline)
       let fit = Camera.fit(scene.bounds, in: size).zoom
@@ -617,18 +622,24 @@ public final class CanvasView: NSView {
         for (i, it) in scene.items.enumerated() {
           g.addTask {
             let inView = it.rect.insetBy(dx: -it.bleed, dy: -it.bleed).intersects(firstView)
+            // in view: at the zoom it opens at, sharp from the first frame, rather than the board's overview size
+            // enlarged until its own bitmap comes
+            let opening = Levels.scale(
+              inView ? max(fit, min(first.zoom, limits.max)) : fit, backing: backing, size: it.bitmapSize)
             guard it.drawing.byRenderer else {
-              // in view: at the zoom it opens at, sharp from the first frame, rather than the board's overview size
-              // enlarged until its own bitmap comes
-              let s = Levels.scale(
-                inView ? max(fit, min(first.zoom, limits.max)) : fit, backing: backing, size: it.bitmapSize)
-              return (i, (CanvasView.render(it, scale: s, theme: theme, images: images).surface, s, .drawn))
+              return (i, (CanvasView.render(it, scale: opening, theme: theme, images: images).surface, opening, .drawn))
+            }
+            // A Note drawn natively is drawn now when in view, as the other items are: shown with its paper alone it
+            // would read as blank until its picture came. Out of view its overview is its paper at first, and the
+            // queue draws it right after the board shows (RestPlan), so the board does not wait for every Note's
+            if native, inView,
+              let snap = await CanvasView.picture(it, scale: opening, theme: theme, display: display, priority: 1),
+              let drawn = CanvasView.compose(it, snap, scale: opening, theme: theme, images: images)
+            {
+              return (i, (drawn, opening, .drawn))
             }
             let s = Levels.noteOverview(fit, backing: backing, size: it.bitmapSize)
-            // Drawn natively (now, unlike a web one, which comes only from the disk cache here), a Note's overview is
-            // its paper at first: in view it is drawn sharp at the camera's zoom right after installing, and an
-            // overview of its text would show enlarged, blurred, until then; out of view the queue draws its overview
-            // right after the Notes in view (RestPlan), so the board shows without waiting for every Note's pictures
+            // a web one comes only from the disk cache here
             if !native,
               let snap = await CanvasView.picture(it, scale: s, theme: theme, display: display, priority: nil),
               let drawn = CanvasView.compose(it, snap, scale: s, theme: theme, images: images)
@@ -645,11 +656,13 @@ public final class CanvasView: NSView {
       // drawn here once, so installing it on the main thread finds it ready
       _ = theme.backdrop.flatMap(Backdrop.image)
       return (scene, overviews, CanvasView.shadow(theme), highlighter, b, measures, sizes, inlines, inline)
-    }.value
+    }
+    // the board left is kept where it was (and as it was), also when its camera never came to rest: while the new one
+    // is read and laid out, as its picture takes the main thread tens of milliseconds
+    if !keepCamera { self.keepCamera(now: true) }
+    let (scene, overviews, shadow, highlighter, b, measures, sizes, inlines, inline) = try await work.value
     CanvasView.highlighter = highlighter
     guard load == loads else { return }
-    // the board left is kept where it was (and as it was), also when its camera never came to rest
-    if !keepCamera { self.keepCamera(now: true) }
     shownBoard = b
     measured = [:]
     for m in measures { if let size = sizes[m.card] { measured[m.card] = (m.note, m.width, size) } }
@@ -669,6 +682,27 @@ public final class CanvasView: NSView {
     let kept = remotePictures.count
     fetchPictures(b)
     if remotePictures.count > kept { refresh() }
+  }
+
+  /// The Notes of a board that will be in view where it opens, nearest the middle first, from where its cards are
+  /// (`camera`, else its top left at 100 % as Camera.opening puts it, of the cards alone): for laying them out ahead
+  nonisolated static func inView(
+    _ ms: [Scene.Measure], of b: Board, sizes: [CardID: NoteMetrics], camera: Camera?, size: CGSize, theme: Theme
+  ) -> [NoteSizeRequest] {
+    var at: [CardID: CGPoint] = [:]
+    for c in b.cards { at[c.id] = CGPoint(x: c.x, y: c.y) }
+    let corner = CGPoint(x: at.values.map(\.x).min() ?? 0, y: at.values.map(\.y).min() ?? 0)
+    let view = (camera ?? Camera.opening(CGRect(origin: corner, size: CGSize(width: 1, height: 1)))).visible(size)
+    let mid = CGPoint(x: view.midX, y: view.midY)
+    return ms.compactMap { m -> (CGFloat, NoteSizeRequest)? in
+      guard m.sidenote == nil, m.width > 0, let p = at[m.card], let h = sizes[m.card]?.size.height else { return nil }
+      let r = CGRect(x: p.x, y: p.y, width: m.width, height: h)
+      guard r.intersects(view) else { return nil }
+      let request = NoteSizeRequest(
+        note: m.note, width: m.width, folder: m.folder, look: theme.id.rawValue, dark: theme.dark, refs: m.refs,
+        hideHead: m.hideHead)
+      return (hypot(r.midX - mid.x, r.midY - mid.y), request)
+    }.sorted { $0.0 < $1.0 }.map(\.1)
   }
 
   /// The sizes the Note renderer gives the Notes without a stored height: from what it kept, else measured in the web

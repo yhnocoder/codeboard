@@ -1,3 +1,4 @@
+import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardNotes
 import Foundation
@@ -86,5 +87,73 @@ import Testing
       }
     }
     return n
+  }
+}
+
+/// What the native display measured and typeset, kept on disk: a display made after a relaunch has it without laying a
+/// Note out or starting an engine, and anything that changes the size is a new entry
+@MainActor @Suite struct NativeNotesKeptTests {
+  let folder = URL(filePath: "/nonexistent-board.board")
+  let web = NoteRenderer(cache: FileManager.default.temporaryDirectory.appending(path: "nn-cache"))
+
+  func request(_ text: String, width: Double = 300) -> NoteSizeRequest {
+    NoteSizeRequest(note: .note(Note(text: text)), width: width, folder: folder, look: "warm-ink", dark: false)
+  }
+
+  @Test func aSizeMeasuredBeforeARelaunchIsReadBackWithoutLayingTheNoteOut() async throws {
+    let kept = FileManager.default.temporaryDirectory.appending(path: "nn-kept-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: kept) }
+    let text = "# Prefill\n\nBatches *wait* for the longest prompt.\n\n- one\n- two"
+    let before = NativeNotes(web: web, kept: kept)
+    let measured = try #require(try await before.metrics(of: [request(text)], priority: 0)[0])
+    await before.sizes?.written()
+    let after = NativeNotes(web: web, kept: kept)
+    let read = try #require(try await after.metrics(of: [request(text)], priority: 0)[0])
+    #expect(read == measured)
+    #expect(after.layouts.count == 0)
+    // another width, or the text changed: laid out again
+    _ = try await after.metrics(of: [request(text, width: 280), request(text + " more")], priority: 0)
+    #expect(after.layouts.count == 2)
+  }
+
+  @Test func aNoteAskedForOnManyThreadsAtOnceIsLaidOutOnce() async throws {
+    let display = NativeNotes(web: web)
+    let text = "# Decode\n\nOne token a step, $x^2$ and **bold**.\n\n```py\nx = 1\n```"
+    let laid = await withTaskGroup(of: NativeNotes.Laid?.self) { g in
+      for _ in 0..<8 {
+        g.addTask {
+          try? display.laid(
+            .note(Note(text: text)), width: 300, folder: folder, look: "warm-ink", dark: false, refs: [],
+            hideHead: false)
+        }
+      }
+      var all: [NativeNotes.Laid?] = []
+      for await l in g { all.append(l) }
+      return all
+    }
+    let first = try #require(laid.first ?? nil)
+    #expect(laid.allSatisfy { $0 === first })
+    #expect(display.layouts.count == 1)
+  }
+
+  @Test func aFormulaTypesetBeforeARelaunchIsDrawnWithoutStartingAnEngine() async throws {
+    let kept = FileManager.default.temporaryDirectory.appending(path: "nn-math-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: kept) }
+    let script = MarkdownAssets.assets.appending(path: "engines.js")
+    let first = KeptMath(engines: try JSEngines(script: script), folder: kept)
+    let typeset = first.typeset("\\frac{a}{b} + \\text{x}", display: true, preamble: "")
+    guard case .ok(let picture) = typeset else {
+      Issue.record("not typeset: \(typeset)")
+      return
+    }
+    #expect(!picture.paths.isEmpty)
+    await first.written()
+    let engines = try JSEngines(script: script)
+    let again = KeptMath(engines: engines, folder: kept)
+    #expect(again.typeset("\\frac{a}{b} + \\text{x}", display: true, preamble: "") == typeset)
+    #expect(engines.engineCount == 0)
+    // inline is another formula
+    _ = again.typeset("\\frac{a}{b} + \\text{x}", display: false, preamble: "")
+    #expect(engines.engineCount == 1)
   }
 }

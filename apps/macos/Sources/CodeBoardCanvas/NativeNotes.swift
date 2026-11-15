@@ -20,18 +20,58 @@ package final class NativeNotes: NoteDisplay {
   /// where the canvas keeps the pictures it read from web addresses (CanvasView.pictureCache)
   let pictures: URL
   package let build = "native"
-  private let layouts = Layouts(capacity: 2000)
+  let layouts = Layouts(capacity: 2000)
+  /// What it measured, kept on disk (nil: kept only as long as its layouts are)
+  let sizes: MeasuredSizes?
+  /// Where its typeset formulas and diagrams are kept (nil: in this process only, by the engines)
+  let formulas: URL?
 
-  init(web: NoteRenderer, images: DecodeCache, pictures: URL = CanvasView.pictures) {
+  /// `kept`: the folder its measured sizes, formulas and diagrams are kept in, nil for none
+  init(web: NoteRenderer, images: DecodeCache, pictures: URL = CanvasView.pictures, kept: URL?) {
     self.web = web
     self.images = images
     self.pictures = pictures
+    sizes = kept.map { MeasuredSizes(folder: $0.appending(path: "sizes"), build: NativeNotes.layoutBuild) }
+    formulas = kept?.appending(path: "formulas")
   }
 
   /// With an image cache of its own (tools, tests)
-  package convenience init(web: NoteRenderer, pictures: URL = CanvasView.pictures) {
-    self.init(web: web, images: DecodeCache(cap: 128 << 20), pictures: pictures)
+  package convenience init(web: NoteRenderer, pictures: URL = CanvasView.pictures, kept: URL? = nil) {
+    self.init(web: web, images: DecodeCache(cap: 128 << 20), pictures: pictures, kept: kept)
   }
+
+  /// ~/Library/Caches/<bundle id, or CodeBoard>/native-notes, beside the Note renderer's snapshots
+  static var defaultKept: URL {
+    URL.cachesDirectory.appending(components: Bundle.main.bundleIdentifier ?? "CodeBoard", "native-notes")
+  }
+
+  /// The engines, with what they made kept on disk when there is a folder for it; made the first time a Note needs them
+  private let math = Mutex<(any MathTypesetter)?>(nil)
+  private func engines() throws -> any MathTypesetter {
+    if let m = math.withLock({ $0 }) { return m }
+    let e = try MarkdownAssets.engines()
+    let m: any MathTypesetter = formulas.map { KeptMath(engines: e, folder: $0) } ?? e
+    return math.withLock {
+      if $0 == nil { $0 = m }
+      return $0!
+    }
+  }
+
+  /// What lays a Note out, for the sizes kept on disk: the binary this code is in (any change to the component, the
+  /// canvas's Markdown or the highlighter builds it again), the fonts (their files are named by their content) and the
+  /// engines that set formulas and diagrams
+  static let layoutBuild: String = {
+    var info = Dl_info()
+    let binary =
+      dladdr(#dsohandle, &info) != 0 && info.dli_fname != nil
+      ? MeasuredSizes.stamp(URL(filePath: String(cString: info.dli_fname))) : "?"
+    let assets = MarkdownAssets.assets
+    let fonts =
+      ((try? FileManager.default.contentsOfDirectory(
+        atPath: assets.appending(path: "assets").path(percentEncoded: false)))
+      ?? []).filter { $0.hasSuffix(".woff2") }.sorted()
+    return ([binary, MeasuredSizes.stamp(assets.appending(path: "engines.js"))] + fonts).joined(separator: "\n")
+  }()
 
   /// Whether the canvas shows its Markdown this way: on unless `defaults write <the app's domain> WebNotes -bool YES`
   /// puts the web page back. A switch for the change-over only: it goes once the native editor has replaced the web one
@@ -41,6 +81,8 @@ package final class NativeNotes: NoteDisplay {
   /// for them (the app starts this as it launches)
   package static func warmUp() {
     Task.detached(priority: .utility) { MarkdownAssets.warmUp(math: try? MarkdownAssets.engines()) }
+    // its queries compiled meanwhile: tens of milliseconds the first Note with code, or the first board, waits for
+    Task.detached(priority: .utility) { _ = NativeNotes.highlighter }
   }
 
   // MARK: NoteDisplay
@@ -75,15 +117,31 @@ package final class NativeNotes: NoteDisplay {
     await web.cachedPicture(of: file, width: width, dark: dark)
   }
 
+  /// From the sizes kept on disk, else laid out now (and kept)
   package func metrics(of notes: [NoteSizeRequest], priority: Int) async throws -> [NoteMetrics?] {
-    await withTaskGroup(of: (Int, NoteMetrics?).self) { g in
+    let sizes = self.sizes
+    return await withTaskGroup(of: (Int, NoteMetrics?, SizeKey?).self) { g in
       for (i, n) in notes.enumerated() {
-        g.addTask { (i, self.measure(n)) }
+        g.addTask {
+          let key = sizes?.key(n, extra: self.remoteStamps(n.note.markdown))
+          if let key, let kept = sizes?.read(key) { return (i, kept, nil) }
+          return (i, self.measure(n), key)
+        }
       }
       var out = [NoteMetrics?](repeating: nil, count: notes.count)
-      for await (i, m) in g { out[i] = m }
+      var keep: [(SizeKey, NoteMetrics)] = []
+      for await (i, m, key) in g {
+        out[i] = m
+        if let m, let key { keep.append((key, m)) }
+      }
+      sizes?.write(keep)
       return out
     }
+  }
+
+  /// Its pictures at web addresses as read so far: a Note measured without one is measured again once it is read
+  private func remoteStamps(_ markdown: String) -> [String] {
+    Scene.remoteImages(markdown).map { MeasuredSizes.stamp(CanvasView.remoteFile($0, in: pictures)) }
   }
 
   package func firstGlyphs(of notes: [NoteSizeRequest]) async throws -> [(size: CGSize, first: CGPoint?)?] {
@@ -95,6 +153,22 @@ package final class NativeNotes: NoteDisplay {
       let size = l.size(height: nil)
       let o = l.origin(in: size)
       return (size, l.layout.firstGlyph.map { CGPoint(x: $0.x + o.x, y: $0.y + o.y) })
+    }
+  }
+
+  /// The Notes in view of a board about to show laid out now, in order (nearest the middle first): while its scene is
+  /// made, so drawing them, which the board waits for, finds them laid out or being laid out
+  func prepare(_ notes: [NoteSizeRequest]) {
+    guard !notes.isEmpty else { return }
+    Task.detached(priority: .userInitiated) {
+      await withTaskGroup(of: Void.self) { g in
+        for n in notes {
+          g.addTask {
+            _ = try? self.laid(
+              n.note, width: n.width, folder: n.folder, look: n.look, dark: n.dark, refs: n.refs, hideHead: n.hideHead)
+          }
+        }
+      }
     }
   }
 
@@ -156,9 +230,11 @@ package final class NativeNotes: NoteDisplay {
     }
     let key = Key(
       note: note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead, read: read)
-    if let hit = layouts.get(key) { return hit }
+    if let hit = layouts.take(key) { return hit }
+    var made = false
+    defer { if !made { layouts.drop(key) } }
     let text = note.markdown
-    let math = NativeNotes.needsEngines(text) ? try MarkdownAssets.engines() : nil
+    let math = NativeNotes.needsEngines(text) ? try engines() : nil
     var card = MarkdownLooks.card(Self.style(note), look: look, dark: dark)
     // lines as WebKit sets them while Notes are edited in it, so starting to edit moves no line
     card.theme.metrics.flooredLeading = false
@@ -199,6 +275,7 @@ package final class NativeNotes: NoteDisplay {
       layout: layout, card: card, starts: starts, source: text, skipped: skipped, width: width,
       across: across ?? inner)
     layouts.put(key, l)
+    made = true
     return l
   }
 
@@ -366,7 +443,8 @@ package final class NativeNotes: NoteDisplay {
     var mathPreamble: String { "" }
   }
 
-  /// One for every Note: its grammars' queries are made once
+  /// One for the app, every Note's and the canvas's code cards' (CanvasView.highlighter): its grammars' queries are
+  /// compiled once, tens of milliseconds and as many megabytes
   static let highlighter = Highlighter()
 
   /// A fence's language as the highlighter names its grammars
@@ -403,35 +481,52 @@ package final class NativeNotes: NoteDisplay {
   /// Layouts by least recent use. A layout holds its lines, glyph runs and formula paths: a few kB for a short Note, a
   /// few hundred for a long one with formulas. The bound covers the largest boards' Notes twice over (a board and the
   /// same board in the other appearance) with room for a few more boards, at a few tens of MB at most
-  final class Layouts: Sendable {
-    private struct State {
-      var store: [Key: (laid: Laid, used: UInt64)] = [:]
-      var clock: UInt64 = 0
-    }
-    private let state = Mutex(State())
+  /// One layout of a Note is made at a time: a second thread asking for it while it is being made waits for that one
+  /// (a board laying its Notes in view out ahead, `prepare`, and drawing them a moment later)
+  final class Layouts: @unchecked Sendable {
+    private var store: [Key: (laid: Laid, used: UInt64)] = [:]
+    private var clock: UInt64 = 0
+    private var making: Set<Key> = []
+    private let cond = NSCondition()
     let capacity: Int
 
     init(capacity: Int) { self.capacity = capacity }
 
-    var count: Int { state.withLock { $0.store.count } }
+    var count: Int { cond.withLock { store.count } }
 
-    func get(_ k: Key) -> Laid? {
-      state.withLock { s in
-        guard let v = s.store[k] else { return nil }
-        s.clock += 1
-        s.store[k] = (v.laid, s.clock)
+    /// The layout kept for `k`, after waiting for one being made on another thread; nil: the caller makes it, and
+    /// `put`s it or `drop`s the key
+    func take(_ k: Key) -> Laid? {
+      cond.lock()
+      defer { cond.unlock() }
+      while making.contains(k) { cond.wait() }
+      if let v = store[k] {
+        clock += 1
+        store[k] = (v.laid, clock)
         return v.laid
       }
+      making.insert(k)
+      return nil
     }
 
     func put(_ k: Key, _ v: Laid) {
-      state.withLock { s in
-        s.clock += 1
-        s.store[k] = (v, s.clock)
-        guard s.store.count > capacity else { return }
+      cond.withLock {
+        making.remove(k)
+        cond.broadcast()
+        clock += 1
+        store[k] = (v, clock)
+        guard store.count > capacity else { return }
         // over the bound: the least recently used tenth goes at once, so this sort runs once per that many layouts
-        let old = s.store.sorted { $0.value.used < $1.value.used }.prefix(max(1, capacity / 10))
-        for (key, _) in old { s.store[key] = nil }
+        let old = store.sorted { $0.value.used < $1.value.used }.prefix(max(1, capacity / 10))
+        for (key, _) in old { store[key] = nil }
+      }
+    }
+
+    /// None was made for `k` (it threw)
+    func drop(_ k: Key) {
+      cond.withLock {
+        making.remove(k)
+        cond.broadcast()
       }
     }
   }
