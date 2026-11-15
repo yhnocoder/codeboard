@@ -154,10 +154,6 @@ public struct MarkdownTheme: Sendable, Hashable {
     public var bodySize: Double = 13.5
     /// line-height of body text, as a multiple of its size
     public var lineHeight: Double = 1.6
-    /// where a line box puts its baseline: half the leading floored, as Chrome lays a line out (the reference page and
-    /// VS Code), or not, as WebKit does. The Mac app sets it off while it still edits Notes in WebKit (NoteEditor), so
-    /// starting to edit moves no line; it goes when the native editor replaces that one
-    public var flooredLeading = true
     /// font-weight of body text
     public var bodyWeight: Double = 400
     /// letter-spacing of all text, px (CSS inherits it as a length: headings get the body's, h1 sets its own)

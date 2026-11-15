@@ -379,6 +379,15 @@ struct LayoutBuilder {
     return tb.frame.maxY
   }
 
+  /// Where the first line-break opportunity after `start` is (the end of the word there, with its spaces)
+  static func nextBreak(_ s: NSString, from start: Int, _ n: Int) -> Int {
+    let t = CFStringTokenizerCreate(
+      nil, s, CFRange(location: start, length: n - start), kCFStringTokenizerUnitLineBreak, nil)
+    guard CFStringTokenizerAdvanceToNextToken(t) != [] else { return n }
+    let r = CFStringTokenizerGetCurrentTokenRange(t)
+    return r.location + r.length
+  }
+
   /// CSS line boxes: every line is `lineHeight` × the font size tall, its baseline where half-leading puts the strut
   /// font's ascent; an atom taller than that makes its line taller
   func setText(
@@ -387,7 +396,7 @@ struct LayoutBuilder {
   ) -> TextBlock {
     let strut = FontBook.font(style.families, size: style.size, weight: style.weight, italic: style.italic)
     let lh = lineHeight * style.size
-    let strutAbove = FontBook.baseline(strut, lineHeight: lh, floored: theme.metrics.flooredLeading)
+    let strutAbove = FontBook.baseline(strut, lineHeight: lh)
     var lines: [TextBlock.Line] = []
     var top = y
     let attr = d.string
@@ -411,6 +420,9 @@ struct LayoutBuilder {
       {
         len = nl - start + 1
       }
+      // min-content (a Text as narrow as it goes, laid out 1 wide): lines break only where a line may break, a word
+      // whole, as CSS measures it; the typesetter would break inside a word that does not fit
+      if wrap, width <= 1 { len = max(len, Self.nextBreak(attr.string as NSString, from: start, n) - start) }
       len = max(1, len)
       let line = CTTypesetterCreateLine(ts, CFRange(location: start, length: len))
       var above = strutAbove
@@ -566,7 +578,7 @@ struct LayoutBuilder {
       } else {
         let font = FontBook.font(style.families, size: style.size, weight: 400)
         let base =
-          y + FontBook.baseline(font, lineHeight: CGFloat(m.lineHeight) * style.size, floored: m.flooredLeading)
+          y + FontBook.baseline(font, lineHeight: CGFloat(m.lineHeight) * style.size)
         let a = Int(FontBook.ascentDescent(font).0)
         let dia = CGFloat((a * 2 / 3 + 1) / 2)
         let r = CGRect(

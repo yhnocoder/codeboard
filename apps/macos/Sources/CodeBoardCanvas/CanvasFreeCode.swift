@@ -73,8 +73,6 @@ extension CanvasView {
       guard let self else { return }
       Task { await self.endEditing(w) }
     }
-    editor.onRef = nil
-    editor.onElsewhere = nil
     editor.view.escape = nil
     closeRefPeek()
     let r = scene!.items[i].rect

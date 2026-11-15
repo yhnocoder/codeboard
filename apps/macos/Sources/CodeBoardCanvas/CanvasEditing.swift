@@ -1256,7 +1256,7 @@ extension CanvasView {
         let at = boardRect(r.box, on: r.card)
         Task {
           await endEditing()
-          beginEditing(r.card, at: CGPoint(x: at.midX, y: at.midY), openRef: true)
+          beginEditing(r.card, at: CGPoint(x: at.midX, y: at.midY))
         }
         return
       }

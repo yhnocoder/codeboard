@@ -1,10 +1,11 @@
 import AppKit
 import CodeBoardCanvas
+import CodeBoardMarkdown
+import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardNotes
-import WebKit
 
-// LookCompare --writing <out folder> [--native]: Notes, Texts and Boxes written in, in each theme light and dark, at 2x, off screen
+// LookCompare --writing <out folder>: Notes, Texts and Boxes written in, in each theme light and dark, at 2x, off screen
 // (a window far off every screen; Core Animation and the editor's own picture, never the screen):
 // - writing-<theme>: each card at rest | while written in (its paper and the editor's picture of it, as the canvas
 //   shows it then) | the pixels that differ, in magenta; report.txt has the counts
@@ -12,6 +13,7 @@ import WebKit
 // - switch-<theme>: a Text | the Box it became | both at half strength over each other (the text must not move)
 // - scale-<theme>: a Text | its corner dragged out (during) | let go
 // - wrap-<theme>: a Text as wide as its text | its right side dragged in: it wraps there
+// - refs-<theme>: the [[ list open in a Note being written, with another board's cards
 // The content is made up: Chinese, bold, inline code, a formula and a list. Each text ends in words: entering puts the
 // caret at the end (as on the web board), and a formula the caret is on shows its source there.
 
@@ -54,12 +56,12 @@ enum WritingSheets {
       ])
   }
 
-  @MainActor static func run(out: URL, native: Bool = false) -> Never {
+  @MainActor static func run(out: URL) -> Never {
     let app = NSApplication.shared
     app.setActivationPolicy(.prohibited)
     Task { @MainActor in
       do {
-        try await draw(out: out, native: native)
+        try await draw(out: out)
         exit(0)
       } catch {
         FileHandle.standardError.write(Data("\(error)\n".utf8))
@@ -78,7 +80,7 @@ enum WritingSheets {
     let doc: BoardDocument
     var time: TimeInterval = 1
 
-    init(root: URL, notes: NoteRenderer, display: any NoteDisplay, theme: Theme) async throws {
+    init(root: URL, notes: NoteRenderer, display: NativeNotes, theme: Theme) async throws {
       let fm = FileManager.default
       try? fm.removeItem(at: root)
       let package = root.appending(path: "Writing.board")
@@ -92,9 +94,9 @@ enum WritingSheets {
         backing: .buffered, defer: false)
       window.isReleasedWhenClosed = false
       let host = NSView(frame: canvas.frame)
+      host.wantsLayer = true
       host.addSubview(canvas)
       window.contentView = host
-      canvas.noteEditor.drawOffScreen()
       // under the desktop picture too, as test windows are: never seen even where a screen reaches that far
       window.level = .underDesktop
       window.orderFrontRegardless()
@@ -129,35 +131,28 @@ enum WritingSheets {
 
     func release(_ at: CGPoint) { canvas.mouseUp(with: mouse(.leftMouseUp, at)) }
 
-    /// Writes in a card and types `text`, the editor left open
-    func writeInto(_ id: String, _ text: String) async throws {
+    /// Writes in a card, the editor left open
+    func write(_ id: String) throws -> MarkdownEditorView {
       canvas.beginEditing(CardID(rawValue: id))
-      let deadline = ContinuousClock.now + .seconds(60)
-      while !canvas.noteEditor.view.shown {
-        guard ContinuousClock.now < deadline else { throw NoteRenderError.page("the editor did not mount") }
-        try await Task.sleep(for: .milliseconds(5))
-      }
-      canvas.noteEditor.type(text)
-      _ = try await canvas.noteEditor.view.callAsyncJavaScript(
-        "for (let i = 0; i < 6; i++) await new Promise(r => requestAnimationFrame(r)); return 1", contentWorld: .page)
+      guard let v = canvas.writerView else { throw NoteRenderError.page("no editor for \(id)") }
+      // its caret drawn though the window is never key
+      v.alwaysShowsCaret = true
+      return v
     }
 
-    /// A picture of the canvas with the editor's web view (its card and its open menus) drawn over it where it is
-    func withEditor(_ base: CGImage) async throws -> CGImage {
-      let view = canvas.noteEditor.view
-      let c = WKSnapshotConfiguration()
-      c.afterScreenUpdates = true
-      let image = try await view.takeSnapshot(configuration: c)
-      guard let web = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
-        let ctx = CGContext(
-          data: nil, width: base.width, height: base.height, bitsPerComponent: 8, bytesPerRow: 0,
-          space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue)
-      else { return base }
-      let f = canvas.convert(view.frame, from: view.superview)
-      ctx.draw(base, in: CGRect(x: 0, y: 0, width: base.width, height: base.height))
-      ctx.draw(
-        web, in: CGRect(x: f.minX * 2, y: CGFloat(base.height) - f.maxY * 2, width: f.width * 2, height: f.height * 2))
-      return ctx.makeImage() ?? base
+    /// Writes in a card and types `text` at its end, the editor left open
+    func writeInto(_ id: String, _ text: String) throws -> MarkdownEditorView {
+      let v = try write(id)
+      v.doCommand(by: #selector(NSResponder.moveToEndOfDocument(_:)))
+      v.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
+      return v
+    }
+
+    /// The canvas with the editor over it (and its toolbar, menus and previews), off screen
+    func withEditor() throws -> CGImage {
+      guard let root = window.contentView, let layer = root.layer else { throw CocoaError(.featureUnsupported) }
+      root.displayIfNeeded()
+      return try EditSheets.render(layer, size: WritingSheets.size, scale: 2)
     }
 
     /// What the board shows now, once the canvas has the document's board and every bitmap is drawn again
@@ -198,15 +193,13 @@ enum WritingSheets {
     try b.encoded().write(to: p.appending(path: Vault.boardFileName))
   }
 
-  /// `native`: the canvas shows its Markdown at rest with the native component (NativeNotes), so `writing-` compares
-  /// that picture with the web editor's
-  @MainActor static func draw(out: URL, native: Bool) async throws {
+  @MainActor static func draw(out: URL) async throws {
     let fm = FileManager.default
     let root = fm.temporaryDirectory.appending(path: "look-writing-\(ProcessInfo.processInfo.processIdentifier)")
     defer { try? fm.removeItem(at: root) }
     try fm.createDirectory(at: out, withIntermediateDirectories: true)
     let notes = NoteRenderer(cache: root.appending(path: "cache"))
-    let display: any NoteDisplay = native ? NativeNotes(web: notes) : notes
+    let display = NativeNotes(web: notes)
     var report = ""
     for theme in Theme.all.flatMap({ [$0, Theme.named($0.id, dark: true)] }) {
       let suffix = theme.id.rawValue + (theme.dark ? "-dark" : "")
@@ -308,13 +301,17 @@ enum WritingSheets {
       // the [[ list open in the Note being written, with another board's cards
       r = try await rig()
       try otherBoard(in: vault)
-      try await r.writeInto("n1", " [[")
-      let list = try await r.withEditor(try r.picture())
+      let v = try r.writeInto("n1", " [[")
+      while !r.canvas.refListRead { try await Task.sleep(for: .milliseconds(5)) }
+      // the list as it opens once its candidates are read
+      v.insertText("调", replacementRange: NSRange(location: NSNotFound, length: 0))
+      let list = try r.withEditor()
       let n = r.rect("n1")
       write(
         r.cut(list, CGRect(x: n.minX - 30, y: n.minY - 20, width: n.width + 420, height: n.height + 330)), out,
         "refs-\(suffix)")
       r.close()
+
     }
     try report.write(to: out.appending(path: "report.txt"), atomically: true, encoding: .utf8)
     print(report)

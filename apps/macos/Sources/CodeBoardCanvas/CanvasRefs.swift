@@ -46,18 +46,11 @@ extension CanvasView {
     refClicked(.card(r.card, boardRect(r.box, on: r.card)), r.box.ref, r.box.target, go: false, writing: false)
   }
 
-  /// A ref pressed in a web view: the editor's (on the card being written in) or the popup's; nil: the second press
-  /// of a double-click on one, which drops what the first began
-  func refPressed(_ p: RefPress?, inPopup: Bool) {
+  /// A ref pressed in the sidenote popup; nil: the second press of a double-click on one, which drops what the first
+  /// began
+  func refPressed(_ p: RefPress?) {
     guard let p else { return cancelRefGo() }
-    if inPopup {
-      refClicked(.popup(p.rect), p.ref, p.target, go: p.go, writing: p.writing)
-    } else if let id = editing?.id {
-      let v = noteEditor.view.convert(p.rect, to: self)
-      let r = CGRect(
-        origin: camera.board(v.origin), size: CGSize(width: v.width / camera.zoom, height: v.height / camera.zoom))
-      refClicked(.card(id, r), p.ref, p.target, go: p.go, writing: true)
-    }
+    refClicked(.popup(p.rect), p.ref, p.target, go: p.go, writing: p.writing)
   }
 
   /// A click on a ref (`writing`: in an editor, whose caret stays: the camera only moves, nothing is selected)

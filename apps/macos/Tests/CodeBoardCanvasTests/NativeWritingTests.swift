@@ -24,7 +24,7 @@ import Testing
   }
 
   @Test func enteringAndLeavingWithNothingTypedChangesNothing() async throws {
-    let r = try await Rig(zoom: 1, native: true)
+    let r = try await Rig(zoom: 1)
     defer { r.close() }
     let start = r.bytes
     let onDisk = try Data(contentsOf: r.file)
@@ -50,7 +50,7 @@ import Testing
   /// with all of it, which undoes to the text before
   @Test func whatIsTypedAndComposedIsWrittenAsOneStepThatUndoes() async throws {
     Pinyin.install()
-    let r = try await Rig(zoom: 1, native: true)
+    let r = try await Rig(zoom: 1)
     defer {
       Pinyin.windows.remove(r.window.windowNumber)
       r.close()
@@ -93,7 +93,7 @@ import Testing
 
   /// Keys typed the moment the double-click that writes in a Note ends: all of them, in order, where its caret went
   @Test func keysTypedAtOnceAfterADoubleClickAllReachTheNote() async throws {
-    let r = try await Rig(zoom: 1, native: true)
+    let r = try await Rig(zoom: 1)
     defer { r.close() }
     r.doubleClick(CGPoint(x: 40, y: 60))
     r.press("xy")
@@ -119,7 +119,7 @@ import Testing
       arrows: [
         Arrow(id: ArrowID(rawValue: "a1"), from: Endpoint(card: cid("n2")), to: Endpoint(card: cid("n1"), block: last))
       ])
-    let r = try await Rig(board, zoom: 1, native: true)
+    let r = try await Rig(board, zoom: 1)
     defer { r.close() }
     r.click(r.centre("n1"))
     r.key(36)
@@ -146,7 +146,7 @@ import Testing
           id: cid("w"), x: 0, y: 200, width: 180,
           content: .own(CardContent(body: .text(TextCard(text: "Threads wait", wrap: true))))),
       ])
-    let r = try await Rig(board, zoom: 1, native: true)
+    let r = try await Rig(board, zoom: 1)
     defer { r.close() }
     let none = NSRange(location: NSNotFound, length: 0)
     r.click(r.centre("t"))
@@ -189,7 +189,7 @@ import Testing
       arrows: [
         Arrow(id: ArrowID(rawValue: "a1"), from: Endpoint(card: cid("n2")), to: Endpoint(card: cid("n1"), block: last))
       ])
-    let r = try await Rig(board, zoom: 1, native: true)
+    let r = try await Rig(board, zoom: 1)
     defer { r.close() }
     let a = ArrowID(rawValue: "a1")
     let before = try #require(r.canvas.arrowPoints(a)?.end)
@@ -213,7 +213,7 @@ import Testing
 
   /// An empty new Note shows its placeholder until something is typed in it
   @Test func anEmptyNoteShowsItsPlaceholderUntilItIsTypedIn() async throws {
-    let r = try await Rig(zoom: 1, native: true)
+    let r = try await Rig(zoom: 1)
     defer { r.close() }
     r.canvas.createInView(.note)
     await r.until("writing") { r.canvas.editing?.ready == true }
@@ -250,7 +250,7 @@ import Testing
   /// candidates are read; a row picked is written as [[its title#^its id]], drawn as what it points at at once, and is
   /// the first of the recent ones the next list offers
   @Test func doubleBracketsInANoteOfferTheBoardsCardsAndAPickedOneIsDrawnAsFound() async throws {
-    let r = try await Rig(sidenoteBoard(), zoom: 1, native: true)
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
     defer { r.close() }
     CanvasView.recentRefs = []
     let t1 = r.rect("t1")

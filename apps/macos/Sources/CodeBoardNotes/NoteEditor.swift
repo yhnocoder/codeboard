@@ -5,11 +5,11 @@ import ImageIO
 import UniformTypeIdentifiers
 import WebKit
 
-/// The Note page's editor in a web view of its own that takes the keyboard (page.html?edit): one Note, Text or Box at a
-/// time, laid out as the snapshots are (same page, same editor, the 100 % layout under a CSS transform), so what is shown
-/// while editing is what the canvas shows at rest, apart from the caret. The card sits `margin` points in from the web
-/// view's top left so the editor's menus have room; the pointer goes through the web view everywhere but on the card and
-/// on the editor's own menus. Made once and kept: entering editing only mounts the Note.
+/// The Note page's code editor in a web view of its own that takes the keyboard (page.html?edit): one Free code card at a
+/// time, laid out as the canvas lays its code out (the 100 % layout under a CSS transform), so what is shown while
+/// editing is what the canvas shows at rest, apart from the caret. The card sits `margin` points in from the web view's
+/// top left so the editor's menus have room; the pointer goes through the web view everywhere but on the card and on
+/// the editor's own menus. Made once and kept: entering editing only mounts the code.
 @MainActor
 public final class NoteEditor: NSObject {
   /// What the editing ended with: the Markdown written (nil: unchanged) and the layout, and whether the layout changed
@@ -38,15 +38,6 @@ public final class NoteEditor: NSObject {
   public var onSize: ((CGSize) -> Void)?
   /// The editor left by itself (Esc), with what was written
   public var onDone: ((Written) -> Void)?
-  /// A ref picked from the [[ list: the board it is on when that is another (nil: this one) and its id
-  public var onPicked: ((_ group: String?, _ id: String) -> Void)?
-  /// A press on a drawn [[ref]] (its label and the id written with it, its box in the web view, ⌘ held), or the second
-  /// press of a double-click on one (nil), which opens its source
-  public var onRef: ((RefPress?) -> Void)?
-  /// A press anywhere else in it
-  public var onElsewhere: (() -> Void)?
-  /// Where a pasted or dropped picture is stored: the folder whose `images/` it goes into (the board's package)
-  public var imagesFolder: URL?
   /// Code's colours as the board's token classes in HTML, one line per line (text, language), for code being written
   public var highlight: (@MainActor (String, String) -> String?)?
   private let signal = EditorSignal()
@@ -56,7 +47,6 @@ public final class NoteEditor: NSObject {
     view = EditorWebView(frame: CGRect(x: 0, y: 0, width: 400, height: 300), configuration: config)
     super.init()
     config.userContentController.add(signal, name: "note")
-    config.userContentController.addScriptMessageHandler(ImageSaver(self), contentWorld: .page, name: "image")
     config.userContentController.addScriptMessageHandler(CodeColours(self), contentWorld: .page, name: "highlight")
     view.setValue(false, forKey: "drawsBackground")
     view.shown = false
@@ -72,41 +62,6 @@ public final class NoteEditor: NSObject {
   /// otherwise counts such a view as hidden (as NotePage)
   package func drawOffScreen() {
     view.setValue(false, forKey: "windowOcclusionDetectionEnabled")
-  }
-
-  /// Mounts `note` (on a card `width` wide, `height` tall or as tall as its content) in the board theme `look` and
-  /// appearance, at zoom `k`, its card `margin` points in, the caret at `caret` (card points at 100 %) or at the end, and
-  /// takes the keyboard; returns its size at 100 %
-  public func begin(
-    _ note: NoteBody, width: Double, height: Double?, folder: URL, look: String, dark: Bool, refs: [NoteRef] = [],
-    refList: RefCandidates? = nil, k: Double, margin: Double, caret: CGPoint?, open: Bool = false,
-    placeholder: String, hideHead: Bool = false
-  ) async throws -> CGSize {
-    // the page focuses what it mounts, which gives the view the keyboard before it is shown: keys typed from then on
-    // wait for `replay`, behind those typed before
-    view.held = []
-    await ready()
-    view.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-    view.cardRect = .zero
-    view.uiRects = []
-    let json = try PageNote(
-      note, width: width, height: height, look: look, dark: dark, refs: refs, hideHead: hideHead
-    ).json()
-    let list = try refList.map { String(decoding: try JSONEncoder().encode($0), as: UTF8.self) }
-    let args: [String: Any] = [
-      "note": json, "images": NoteRenderer.images(folder).absoluteString, "k": k, "margin": margin,
-      "placeholder": placeholder, "caret": caret.map { ["x": $0.x, "y": $0.y] } ?? NSNull(),
-      "list": list ?? NSNull(), "open": open,
-    ]
-    let r = try await view.callAsyncJavaScript(
-      "return await edit.begin({note: JSON.parse(note), images, k, margin, caret, open, placeholder,"
-        + " refList: list === null ? null : JSON.parse(list)})", arguments: args, contentWorld: .page)
-    guard let d = r as? [String: Any], let w = d["width"] as? Double, let h = d["height"] as? Double else {
-      throw NoteRenderError.page("the editor answered \(String(describing: r))")
-    }
-    let size = CGSize(width: w, height: h)
-    place(size: size, k: k, margin: margin)
-    return size
   }
 
   /// Mounts a Free code card's code (`lines` from `start`, in `language`) in the code editor, on a card `width` wide
@@ -244,11 +199,6 @@ public final class NoteEditor: NSObject {
       if let w = m["width"] as? Double, let h = m["height"] as? Double { onSize?(CGSize(width: w, height: h)) }
     case "done":
       if let w = Self.written(m) { onDone?(w) }
-    case "picked":
-      if let id = m["id"] as? String { onPicked?(m["group"] as? String, id) }
-    case "ref": if let p = RefPress(m) { onRef?(p) }
-    case "refDouble": onRef?(nil)
-    case "elsewhere": onElsewhere?()
     case "ui":
       let rects = (m["rects"] as? [[String: Double]]) ?? []
       view.uiRects = rects.map {
@@ -258,7 +208,7 @@ public final class NoteEditor: NSObject {
     }
   }
 
-  // MARK: Pictures pasted or dropped
+  // MARK: Pictures pasted
 
   /// Stores a picture given as a data: URL in `images/` of `folder` as the old host named them (the first 16 hex digits
   /// of its SHA-1, its size in pixels, its type: `<sha>-<w>x<h>.<ext>`; an SVG without a size `<sha>.svg`), written
@@ -269,6 +219,11 @@ public final class NoteEditor: NSObject {
       dataURL[..<comma].hasSuffix(";base64"),
       let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...]))
     else { return nil }
+    return try store(data, in: folder)
+  }
+
+  /// The same, for the picture's bytes (a paste or a drop in the native editor)
+  public nonisolated static func store(_ data: Data, in folder: URL) throws -> String? {
     guard data.count <= 10 << 20, let (ext, size) = kind(of: data) else { return nil }
     let sha = Insecure.SHA1.hash(data: data).map { String(format: "%02x", $0) }.joined().prefix(16)
     let name = size.map { "\(sha)-\($0.0)x\($0.1).\(ext)" } ?? "\(sha).\(ext)"
@@ -425,21 +380,6 @@ private final class EditorSignal: NSObject, WKScriptMessageHandler {
       return
     }
     editor?.received(message.body)
-  }
-}
-
-@MainActor
-private final class ImageSaver: NSObject, WKScriptMessageHandlerWithReply {
-  weak var editor: NoteEditor?
-  init(_ e: NoteEditor) { editor = e }
-
-  func userContentController(
-    _ c: WKUserContentController, didReceive message: WKScriptMessage
-  ) async -> (Any?, String?) {
-    guard let m = message.body as? [String: Any], let url = m["dataUrl"] as? String, let folder = editor?.imagesFolder
-    else { return (nil, nil) }
-    let address = try? await Task.detached { try NoteEditor.store(dataURL: url, in: folder) }.value
-    return (address ?? nil, nil)
   }
 }
 

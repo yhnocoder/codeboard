@@ -69,7 +69,7 @@ func render(_ l: MarkdownLayout, scale: CGFloat) -> CGContext {
 }
 
 @Suite struct LayoutTests {
-  func layout(_ src: String, width: CGFloat = 332) -> MarkdownLayout {
+  func layout(_ src: String, width: CGFloat? = 332) -> MarkdownLayout {
     _ = boardFonts
     return MarkdownLayout.make(
       MarkdownDocument(src), width: width, theme: testTheme, layout: nil, resources: TestResources())
@@ -81,6 +81,16 @@ func render(_ l: MarkdownLayout, scale: CGFloat) -> CGContext {
     #expect(l.blockFrames.count == d.blocks.count)
     for (a, b) in zip(l.blockFrames, l.blockFrames.dropFirst()) { #expect(b.minY >= a.maxY) }
     #expect(l.size.height >= l.blockFrames.last!.maxY)
+  }
+
+  /// Laid out as narrow as it goes (min-content, a Text's least width): as wide as its widest word, which stays whole,
+  /// and Chinese, which may break between any two characters, as wide as one
+  @Test func theLeastWidthIsTheWidestWordWhole() {
+    let least = layout("Threads wait at the barrier", width: 1).widestLine
+    let words = ["Threads", "wait", "at", "the", "barrier"].map { layout($0, width: nil).widestLine }
+    #expect(abs(least - words.max()!) < 0.01, "\(least) for words \(words)")
+    let han = layout("线程在这里等待", width: 1).widestLine
+    #expect(abs(han - layout("等", width: nil).widestLine) < 1, "\(han)")
   }
 
   /// guideline 4: a one-word definition reads as a link definition; it is shown as its source

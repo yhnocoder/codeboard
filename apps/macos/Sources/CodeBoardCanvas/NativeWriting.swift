@@ -36,6 +36,30 @@ extension CanvasView: MarkdownEditorDelegate {
 
   public func editor(_ e: MarkdownEditorView, open url: URL) { openURL(url) }
 
+  /// A plain click on a drawn ref that resolves, in the card written in: gone to once the double-click time is over, or
+  /// previewed beside it, as a click on it at rest (refClicked); the camera only moves and the caret stays
+  /// (Editable.tsx onRef, subboards.ts goToNearCard)
+  public func editor(_ e: MarkdownEditorView, activate label: String, target: String?) -> Bool {
+    guard let ed = editing, let i = editingIndex, let s = scene else { return false }
+    // ponytail: the first ref drawn with that label and target; two alike in one Note preview beside the first
+    let r = e.core.layout.drawnRefs.first { $0.label == label && $0.target == target }?.rect ?? .zero
+    let card = editingRect(s.items[i].rect)
+    let at = r.offsetBy(dx: card.minX + ed.inset.x, dy: card.minY + ed.inset.y)
+    refClicked(.card(ed.id, at), label, target, go: false, writing: true)
+    return true
+  }
+
+  /// The second press of a double-click on a ref: the editor opens its source, and its first click's going there is
+  /// dropped (subboards.ts goAfterDblClick)
+  public func editor(_ e: MarkdownEditorView, doubleClickedRef label: String, target: String?) { cancelRefGo() }
+
+  /// A picture pasted or dropped while writing: kept in the board's images by its content (as the web editor's
+  /// saveImage kept it), its address what the Note writes
+  public func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String? {
+    guard let (board, vault) = shown else { return nil }
+    return try? NoteEditor.store(data, in: vault.url(of: board.path))
+  }
+
   /// The [[ list (md/load.ts editorOpts' refs), as the sidenote popup's
   public func editor(_ e: MarkdownEditorView, refMenu query: String) -> MarkdownRefMenu {
     SidenotePop.refMenu(editing?.writer === e ? editing?.refList : nil, query: query)
@@ -66,6 +90,8 @@ extension CanvasView {
     v.delegate = self
     // a click in a window that is not key goes to it as to the canvas
     v.acceptsFirstClick = acceptsFirstMouse(for: nil)
+    // a scroll or pinch over it moves the board, as over the canvas (where the window's monitor does not see it first)
+    v.handOver = { [weak self] in self?.take($0, at: $0.locationInWindow) ?? false }
     v.placeholder = n.content.isText ? "Type something…" : "Type / for blocks"
     // its own layer: a zoom gesture scales that, nothing drawn anew
     v.wantsLayer = true
@@ -183,6 +209,14 @@ extension CanvasView {
 
   /// What is written so far: the editor's text when it changed from what the card had, its layout, and its blocks then
   /// and now (MarkdownSourceOps.blockStarts, as the web page's noteBlocks)
+  /// What an input method is composing when the writing ends is written as typed, as a field losing its focus commits
+  /// it (the web board's editor, WebKit's blur)
+  func commitComposing(_ ed: Editing) {
+    guard let v = ed.writer, v.hasMarkedText() else { return }
+    v.unmarkText()
+    v.inputContext?.discardMarkedText()
+  }
+
   func nativeWritten(_ ed: Editing) -> NoteEditor.Written? {
     guard let v = ed.writer else { return nil }
     let text = v.source

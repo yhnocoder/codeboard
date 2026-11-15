@@ -582,8 +582,7 @@ struct InlineBuilder {
         }
         let strut = FontBook.font(cs.families, size: cs.size, weight: cs.weight)
         let text = BoxText(
-          d.string, width: capWidth, lineHeight: cs.size * CGFloat(m.captionLineHeight), strut: strut, center: true,
-          floored: theme.metrics.flooredLeading)
+          d.string, width: capWidth, lineHeight: cs.size * CGFloat(m.captionLineHeight), strut: strut, center: true)
         figure = FigureBox(
           image: size, caption: text, captionX: (w - capWidth) / 2,
           captionGap: (CGFloat(m.captionMargin[0]), CGFloat(m.captionMargin[1])))
@@ -601,8 +600,7 @@ struct InlineBuilder {
       let strut = FontBook.font(ls.families, size: 11.5)
       figure = FigureBox(
         brokenLabel: BoxText(
-          label, width: nil, lineHeight: 11.5 * 1.5, strut: strut, center: false,
-          floored: theme.metrics.flooredLeading))
+          label, width: nil, lineHeight: 11.5 * 1.5, strut: strut, center: false))
     }
     // inline-block, vertical-align: middle, 4px margins (a broken one's too: the editor draws it in .md-img as an image):
     // centred on the baseline plus half an x-height
@@ -639,7 +637,7 @@ struct InlineBuilder {
     let strut = FontBook.font(style.families, size: style.size, weight: style.weight)
     let lh = CGFloat(theme.metrics.lineHeight) * style.size
     let text = BoxText(
-      sub.out.string, width: nil, lineHeight: lh, strut: strut, center: false, floored: theme.metrics.flooredLeading)
+      sub.out.string, width: nil, lineHeight: lh, strut: strut, center: false)
     // the note: 1.1em of the hand font, line height 1.15, in the annotation's colour
     var ns = style
     ns.families = theme.fonts.hand.isEmpty ? theme.fonts.body : theme.fonts.hand
@@ -650,7 +648,7 @@ struct InlineBuilder {
     let noteFont = FontBook.font(ns.families, size: ns.size)
     let noteText = BoxText(
       NSAttributedString(string: note, attributes: attributes(ns)), width: nil, lineHeight: ns.size * 1.15,
-      strut: noteFont, center: false, floored: theme.metrics.flooredLeading)
+      strut: noteFont, center: false)
     let box = AnnotBox(text: text, note: noteText, color: c, below: below, fontSize: style.size)
     let a = AtomBox(.annot(box), width: box.width, ascent: box.baseline, descent: box.height - box.baseline)
     // its words carry the highlight and lines around it; drawn under the whole box too, they would sit under the tint

@@ -291,12 +291,12 @@ enum FontBook {
   }
   private static let metrics = Cache<FontID, (CGFloat, CGFloat)>()
 
-  /// The baseline's distance below the top of a CSS line box `lineHeight` points tall: half the leading, floored as
-  /// Chrome does (`floored`) or as it is, as WebKit does, then the ascent
-  static func baseline(_ f: CTFont, lineHeight: CGFloat, floored: Bool) -> CGFloat {
+  /// The baseline's distance below the top of a CSS line box `lineHeight` points tall: half the leading floored, as
+  /// Chrome lays a line out (the reference page and VS Code), then the ascent
+  static func baseline(_ f: CTFont, lineHeight: CGFloat) -> CGFloat {
     let (a, d) = ascentDescent(f)
     let half = (lineHeight - (a + d)) / 2
-    return (floored ? half.rounded(.down) : half) + a
+    return half.rounded(.down) + a
   }
 
   struct FontID: Hashable {

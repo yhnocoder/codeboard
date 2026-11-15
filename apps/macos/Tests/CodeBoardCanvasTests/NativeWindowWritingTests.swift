@@ -20,7 +20,7 @@ import Testing
   }
 
   func rig(_ cards: [Card]) async throws -> Rig {
-    try await Rig(Board(id: BoardID(rawValue: "window"), cards: cards), zoom: 1, native: true)
+    try await Rig(Board(id: BoardID(rawValue: "window"), cards: cards), zoom: 1)
   }
 
   func writer(_ r: Rig) throws -> MarkdownEditorView { try #require(r.canvas.editing?.writer) }

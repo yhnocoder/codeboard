@@ -31,6 +31,9 @@ public protocol MarkdownEditorDelegate: AnyObject {
   /// a plain click on a drawn [[reference]] that resolves (onRef): true when the host took it (its preview, or going
   /// there), and the caret stays where it was; false makes it an ordinary click (its source opens)
   func editor(_ e: MarkdownEditorView, activate label: String, target: String?) -> Bool
+  /// the second press of a double-click on a drawn [[reference]] that resolves: the editor opens its source, and what
+  /// the host began for its first click (going there once the double-click time is over) is dropped
+  func editor(_ e: MarkdownEditorView, doubleClickedRef label: String, target: String?)
 }
 
 extension MarkdownEditorDelegate {
@@ -42,6 +45,7 @@ extension MarkdownEditorDelegate {
   public func editor(_ e: MarkdownEditorView, open url: URL) { NSWorkspace.shared.open(url) }
   public func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String? { nil }
   public func editor(_ e: MarkdownEditorView, activate label: String, target: String?) -> Bool { false }
+  public func editor(_ e: MarkdownEditorView, doubleClickedRef label: String, target: String?) {}
   public func editor(_ e: MarkdownEditorView, classify text: String) -> MDPaste.HostCode? { nil }
   /// an Open panel for pictures
   public func editorPicksImage(_ e: MarkdownEditorView) -> (Data, String)? {
@@ -727,6 +731,11 @@ public final class MarkdownEditorView: NSView {
     followed = isEditing ? (core.selection, core.source) : nil
   }
 
+  /// a scroll or pinch the editor does not use, offered to its host first (a canvas moves its board): true when taken
+  public var handOver: ((NSEvent) -> Bool)?
+
+  public override func magnify(with e: NSEvent) { if handOver?(e) != true { super.magnify(with: e) } }
+
   /// a sideways scroll (or ⇧ and the wheel) over a table wider than the Note or a code block with long lines scrolls
   /// that, not the card; a vertical one goes on to the page, and a gesture that starts mostly vertical stays vertical
   public override func scrollWheel(with e: NSEvent) {
@@ -741,7 +750,10 @@ public final class MarkdownEditorView: NSView {
     if wheelAcross == nil, dx != 0 || dy != 0 { wheelAcross = abs(dx) > abs(dy) }
     let p = convert(e.locationInWindow, from: nil)
     let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
-    guard wheelAcross == true else { return super.scrollWheel(with: e) }
+    guard wheelAcross == true else {
+      if handOver?(e) == true { return }
+      return super.scrollWheel(with: e)
+    }
     if let b = core.layout.codeScroll(at: at) {
       let cur = core.layout.codeScrollX[b.start] ?? 0
       let next = min(b.room, max(0, cur - dx / zoom))
@@ -1881,10 +1893,11 @@ public final class MarkdownEditorView: NSView {
   /// the toolbar comes up once the selection has stood still for TOOLBAR_SETTLE, the button up
   private func scheduleToolbar() {
     let s = core.selection
-    // none for a selection in code (bubble.tsx want(): not where the parent is code)
+    // none for a selection in code (bubble.tsx want(): not where the parent is code), nor for ⌘A's (only for a text
+    // selection, which ProseMirror's select-all is not)
     let leaf = MarkdownEditing.context(at: s.range.lowerBound, in: core.document).leaf
-    guard !s.isEmpty, !holdsToolbar, core.selectedImage == nil, core.marked == nil, tableDrag == nil, resizing == nil,
-      leaf != .code, leaf != .source,
+    guard !s.isEmpty, s != core.selectedAll, !holdsToolbar, core.selectedImage == nil, core.marked == nil,
+      tableDrag == nil, resizing == nil, leaf != .code, leaf != .source,
       MarkdownEditing.run(at: s.range.lowerBound, in: core.document)?.kind == .inline
     else {
       toolbarTimer?.invalidate()
@@ -2119,6 +2132,9 @@ public final class MarkdownEditorView: NSView {
     {
       note(.key("click on a reference", did: "activated [[\(label)]] (taken by the host)"))
       return
+    }
+    if e.clickCount == 2, let (label, target) = resolvedRef(at: at) {
+      delegate?.editor(self, doubleClickedRef: label, target: target)
     }
     guard isEditing else {
       // the static picture: a drag selects its text, a click without one starts editing there (the board's selected

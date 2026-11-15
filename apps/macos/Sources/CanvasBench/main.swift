@@ -15,7 +15,6 @@ import CodeBoardModel
 //            in a window below the desktop picture that is never activated; with --note-cache <folder> the Note
 //            snapshots are kept there across runs (a relaunch with the disk cache filled); with --pictures <folder> the
 //            board pictures and the cameras they were taken at are kept there (the app's first board after a launch)
-//            Its Notes are drawn by the web page unless --native (the native Markdown component, as the app draws them)
 //            With --early-scroll: a scroll of one screen as soon as each board is installed instead of the pan and zoom
 //   --import <folder> the vault is that VS Code storage folder (.codeboard) imported into a new temporary vault first
 //   --arrows the same drags on two boards made for it (ArrowBoards): a card with twenty arrows, a Section of twenty
@@ -131,14 +130,14 @@ final class App: NSObject, NSApplicationDelegate {
   /// Below the desktop picture, never activated nor made key: its frames are ticked by OpenFrames
   private func runOpenFrames() {
     // as the app does as it launches
-    if native { NativeNotes.warmUp() }
+    NativeNotes.warmUp()
     let frame = CGRect(x: 0, y: 0, width: 1440, height: 900)
     let w = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
     w.level = .underDesktop
     let cache =
       keptNoteCache ?? FileManager.default.temporaryDirectory.appending(path: "canvasbench-notes-\(UUID().uuidString)")
     if keptNoteCache == nil { noteCache = cache }
-    let canvas = CanvasView(frame: frame, noteCache: cache, native: native)
+    let canvas = CanvasView(frame: frame, noteCache: cache)
     canvas.picturesFolder = keptPictures
     w.contentView = canvas
     w.orderFrontRegardless()
@@ -172,7 +171,6 @@ let arrows = args.contains("--arrows")
 let drag = arrows || args.contains("--drag")
 let openFrames = args.contains("--open-frames")
 let earlyScroll = args.contains("--early-scroll")
-let native = args.contains("--native")
 var keptNoteCache: URL?
 if let i = args.firstIndex(of: "--note-cache"), i + 1 < args.count {
   keptNoteCache = URL(filePath: args[i + 1])

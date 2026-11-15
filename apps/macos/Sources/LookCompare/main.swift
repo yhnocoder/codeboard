@@ -26,7 +26,7 @@ let args = CommandLine.arguments
 if args.count == 3, args[1] == "--texts" { TextSheets.run(out: URL(filePath: args[2])) }
 if args.count == 3, args[1] == "--edit" { EditSheets.run(out: URL(filePath: args[2])) }
 if args.count >= 3, args[1] == "--writing" {
-  WritingSheets.run(out: URL(filePath: args[2]), native: args.dropFirst(3).contains("--native"))
+  WritingSheets.run(out: URL(filePath: args[2]))
 }
 if args.count == 3, args[1] == "--arrows" { ArrowSheets.run(out: URL(filePath: args[2])) }
 if args.count == 3, args[1] == "--sidenotes" { SidenoteSheets.run(out: URL(filePath: args[2])) }
@@ -40,7 +40,7 @@ if args.count >= 3, args[1] == "--stage6" {
 guard args.count == 3 else {
   FileHandle.standardError.write(
     Data(
-      "usage: LookCompare <storage folder> <out folder> | --texts <out folder> | --edit <out folder> | --writing <out folder> [--native] | --arrows <out folder>\n"
+      "usage: LookCompare <storage folder> <out folder> | --texts <out folder> | --edit <out folder> | --writing <out folder> | --arrows <out folder>\n"
         .utf8))
   exit(2)
 }

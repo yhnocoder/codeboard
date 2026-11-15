@@ -7,13 +7,11 @@ import {
   createMarkdown,
   markTags,
   mdBlockStarts,
-  staticTextRange,
   texBrackets,
   type Markdown,
   type MdLayout,
   type RefBroken,
   type RefTarget,
-  type StaticTextRange,
 } from "@yhnocoder/markdown";
 import {
   type MdEditorHandle,
@@ -24,7 +22,6 @@ import {
   warmUp,
 } from "@yhnocoder/markdown/editor";
 import { codeEditor } from "@yhnocoder/markdown/code-editor";
-import { TOOLBAR_SETTLE } from "@yhnocoder/markdown/ui";
 import "@yhnocoder/markdown/katex.css";
 import "../../../../packages/board/src/fonts.css";
 import "../../../../packages/board/src/styles.css";
@@ -37,7 +34,7 @@ import { imageScale } from "../../../../packages/core/src/image";
 import { NEW_CARD_W } from "../../../../packages/core/src/layout";
 import { langInfo } from "../../../../packages/analysis/src/langs";
 import { pop } from "./pop";
-import { openRefAt, watchRefs } from "./refclick";
+import { watchRefs } from "./refclick";
 import { type QData, qlist } from "./qlist";
 import { palette } from "./palette";
 
@@ -472,8 +469,7 @@ type RefList = {
 type Posted =
   | { type: "size"; width: number; height: number }
   | ({ type: "done" } & Ended)
-  | { type: "ui"; rects: { x: number; y: number; width: number; height: number }[] }
-  | { type: "picked"; group: string | null; id: string };
+  | { type: "ui"; rects: { x: number; y: number; width: number; height: number }[] };
 const post = (m: Posted) => window.webkit?.messageHandlers.note.postMessage(m);
 
 /** The card being edited: its slot is placed `margin` px in from the page's top left, so the editor's menus have room */
@@ -484,7 +480,7 @@ type Ended = {
   layoutChanged: boolean;
   blocks: { was: string[] | null; now: string[] | null } | null;
 };
-/** What the editing needs of its editor: the Markdown editor's, or the code editor's made to look like it */
+/** What the editing needs of its editor: the code editor's, made to look like the Markdown editor's */
 type Handle = Pick<MdEditorHandle, "value" | "layout" | "destroy" | "type" | "placeCaret">;
 type Editing = {
   slot: Slot;
@@ -495,7 +491,6 @@ type Editing = {
   ended: Ended | null;
 };
 let editing: Editing | undefined;
-const margin = () => Number(document.documentElement.dataset.margin ?? 0);
 
 /** The editor's DOM as it is now, kept in its place as static content once the editor is gone: what was typed stays
  *  on screen until native has its picture under the web view (no caret, no selection) */
@@ -509,78 +504,6 @@ function keepStatic(e: Editing) {
   copy.classList.add("kept");
   body.append(copy);
   box.style.display = "none";
-}
-
-const HEADS = ":is(h1, h2, h3, h4, h5, h6):first-child";
-/** The heading's block: its height and the space under it, in the card's own pixels (NoteBody block) */
-const block = (e: HTMLElement) => {
-  const r = e.getBoundingClientRect();
-  return r.height * (e.offsetWidth / r.width || 1) + parseFloat(getComputedStyle(e).marginBottom);
-};
-const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-/** A Note whose header shows its leading heading, written in (the board's NoteBody foldHeader): entering, the header
- *  folds away (the body over it) and the heading slides out of the body's top edge; leaving, the other way, and then
- *  the heading is hidden as the canvas's picture has it. The card keeps its height on every frame; 220 ms, the
- *  canvas fading its header's title with it. Resolves when done */
-function fold(card: HTMLElement, entering: boolean): Promise<void> {
-  const face = card.querySelector<HTMLElement>(":scope > .cface");
-  const head = face?.querySelector<HTMLElement>(":scope > .chead");
-  const body = face?.querySelector<HTMLElement>(":scope > .nbody");
-  if (!face || !head || !body || !body.classList.contains("hidehead")) return Promise.resolve();
-  const h = body.querySelector<HTMLElement>(`.md-pm > ${HEADS}`);
-  let H: number, p0: number, p1: number;
-  if (entering) {
-    H = head.offsetHeight;
-    p0 = parseFloat(getComputedStyle(body).paddingTop);
-    face.style.setProperty("--fold-h", `${H}px`);
-    face.style.setProperty("--fold-p0", `${p0}px`);
-    body.classList.remove("unfolded");
-    head.classList.add("fold");
-    body.classList.add("fold");
-  } else {
-    H = parseFloat(face.style.getPropertyValue("--fold-h")) || head.offsetHeight;
-    p0 = parseFloat(face.style.getPropertyValue("--fold-p0")) || 0;
-  }
-  const blk = h ? block(h) : 0;
-  if (entering) {
-    p1 = Math.max(6, H + p0 - blk);
-    face.style.setProperty("--fold-pt", `${p1}px`);
-  } else p1 = parseFloat(getComputedStyle(body).paddingTop);
-  const settle = () => {
-    if (entering) return;
-    head.classList.remove("fold");
-    body.classList.remove("fold");
-    body.classList.add("unfolded");
-  };
-  if (reduced()) {
-    settle();
-    return Promise.resolve();
-  }
-  const opts: KeyframeAnimationOptions = {
-    duration: 220,
-    easing: "cubic-bezier(.2, .8, .2, 1)",
-    fill: entering ? "none" : "forwards",
-  };
-  const dir = <T>(a: T, b: T) => (entering ? [a, b] : [b, a]);
-  const anims = [
-    body.animate(dir({ paddingTop: `${p0}px` }, { paddingTop: `${p1}px` }) as Keyframe[], opts),
-    head.animate(dir({ marginBottom: "0px" }, { marginBottom: `${-H}px` }) as Keyframe[], opts),
-    // what of the heading is above the body's top edge while it slides is cut off
-    body.animate(
-      [{ clipPath: "inset(0 -100vmax -100vmax -100vmax)" }, { clipPath: "inset(0 -100vmax -100vmax -100vmax)" }],
-      opts,
-    ),
-  ];
-  if (h)
-    anims.push(h.animate(dir({ marginTop: `${-blk}px`, opacity: 0 }, { marginTop: "0px", opacity: 1 }) as Keyframe[], opts));
-  return new Promise((done) => {
-    anims[0].onfinish = anims[0].oncancel = () => {
-      settle();
-      for (const a of anims) a.cancel();
-      done();
-    };
-  });
 }
 
 /** Ends the editing: what was written (text null when nothing changed) and its layout; the content stays shown until
@@ -711,36 +634,6 @@ addEventListener(
   true,
 );
 
-/** A press on a Note as a place in its text, read on its static render (the web board's interact.ts staticSpot): the
- *  character before the point, inside the same text, else the one after; "end" below the last block. Not on the
- *  editor's own text: beside a line's end WebKit's point there lands among its hidden syntax (between a link's text
- *  and its "(url)"), and what was typed broke the link */
-type NoteSpot = { char: StaticTextRange; after: boolean } | "end";
-function staticSpot(md: HTMLElement, x: number, y: number): NoteSpot | undefined {
-  const last = md.lastElementChild;
-  if (!last) return undefined;
-  if (y >= last.getBoundingClientRect().bottom) return "end";
-  const c = document.caretRangeFromPoint(x, y);
-  if (!c || !md.contains(c.startContainer)) return undefined;
-  const before = () => {
-    const all = document.createRange();
-    all.selectNodeContents(md);
-    all.setEnd(c.startContainer, c.startOffset);
-    const b = staticTextRange(md, all);
-    return b && { char: { from: b.to - 1, to: b.to, text: b.text[b.text.length - 1] }, after: true };
-  };
-  const after = () => {
-    const rest = document.createRange();
-    rest.setStart(c.startContainer, c.startOffset);
-    rest.setEnd(md, md.childNodes.length);
-    const r = staticTextRange(md, rest);
-    return r && { char: { from: r.from, to: r.from + 1, text: r.text[0] }, after: false };
-  };
-  return (
-    (c.startContainer.nodeType === 3 && c.startOffset > 0 ? (before() ?? after()) : (after() ?? before())) ?? undefined
-  );
-}
-
 const edit = {
   /** Tests: the editor takes the focus `ms` late from now on, as on a busy machine (WebKit gives the view its input
    *  context only once the page has focused something editable) */
@@ -759,11 +652,6 @@ const edit = {
   },
   /** The keydowns seen so far */
   keysSeen: () => keysSeen,
-  /** Tests: whether the format bar is up once a selection made now has waited as long as the bar does (TOOLBAR_SETTLE) */
-  barAfterSettle: () =>
-    new Promise<boolean>((r) =>
-      setTimeout(() => requestAnimationFrame(() => r(!!document.querySelector(".md-bubble"))), TOOLBAR_SETTLE),
-    ),
   /** Tests: the compositions ended so far (an input method's text committed or cancelled, or the page ending it) */
   compositionEnds: () => compositionEnds,
   /** Resolves once `n` keydowns have been seen, or after `ms` (a key that reaches no page) */
@@ -771,114 +659,6 @@ const edit = {
     const until = performance.now() + ms;
     while (keysSeen < n && performance.now() < until) await new Promise((r) => setTimeout(r, 1));
     return keysSeen >= n;
-  },
-  /** Mounts `note` in the editor, `margin` px from the page's top left, at zoom k, takes the keyboard and puts the
-   *  caret at `caret` (card px at 100 %), else at the end; resolves with its size once laid out */
-  async begin(a: {
-    note: Note;
-    images: string;
-    k: number;
-    margin: number;
-    caret: { x: number; y: number } | null;
-    /** The press was a double-click on the ref drawn at the caret: its source opens */
-    open: boolean;
-    placeholder: string;
-    refList: RefList | null;
-  }) {
-    edit.clear();
-    setLook(a.note.look, a.note.dark);
-    document.documentElement.dataset.margin = String(a.margin);
-    const made = cardFor(a.note);
-    const s = newSlot("edit", made.card);
-    s.slot.classList.add("shown");
-    s.slot.style.left = `${a.margin}px`;
-    s.slot.style.top = `${a.margin}px`;
-    s.slot.style.transform = a.k === 1 ? "" : `scale(${a.k})`;
-    const isText = "text" in a.note.style;
-    const e: Editing = {
-      slot: s,
-      original: a.note.text,
-      layout: a.note.layout,
-      ended: null,
-      editor: undefined as unknown as MdEditorHandle,
-    };
-    const md = mdFor(a.images, a.note.refs, () => a.refList);
-    // the press on the Note as drawn, read on its static render, which the editor then replaces (Editable.tsx)
-    let spot: NoteSpot | undefined;
-    if (a.caret) {
-      const html = md.render(a.note.text);
-      made.body.innerHTML = html;
-      md.hydrate(made.body, html);
-      // the body is an editor's (.editing), which the board's rule hiding a heading the header shows skips (page.css)
-      made.body.classList.add("spot");
-      await settled([made.card], true);
-      spot = staticSpot(made.body, a.margin + a.caret.x * a.k, a.margin + a.caret.y * a.k);
-      made.body.classList.remove("spot");
-      made.body.textContent = "";
-    }
-    const list = a.refList;
-    e.editor = mountEditor(md, made.body, {
-      value: a.note.text,
-      // the web board's [[ list (md/load.ts editorOpts)
-      refs: list
-        ? {
-            items: () => list.items,
-            menu: "Link to Card",
-            empty: "Nothing with that title",
-            groups: () => list.groups,
-            recent: () => list.recent,
-            here: "This board",
-            foot: () => list.foot,
-            picked: (p) => {
-              list.recent = [p, ...list.recent.filter((r) => r.group !== p.group || r.id !== p.id)].slice(0, 3);
-              post({ type: "picked", group: p.group ?? null, id: p.id });
-            },
-          }
-        : undefined,
-      layout: a.note.layout,
-      placeholder: a.placeholder,
-      headingChip: !isText,
-      scrollOwnBox: true,
-      // the board's menus, bars and buttons (cm/load.ts BOARD_CLASSES)
-      classes: { menu: "ctx", bar: "pill", button: "tbtn" },
-      onDone: (v, l) => {
-        // the header unfolds first, the heading going back into it
-        void fold(made.card, false).then(() => {
-          const r = end(e, v, l === undefined ? e.layout : l);
-          if (r) post({ type: "done", ...r });
-        });
-      },
-      saveImage: (dataUrl, name) =>
-        (window.webkit?.messageHandlers as unknown as { image: { postMessage(m: unknown): Promise<string | null> } })
-          .image.postMessage({ dataUrl, name })
-          .catch(() => null),
-    });
-    s.editor = e.editor;
-    editing = e;
-    let last = "";
-    new ResizeObserver(() => {
-      const r = made.card.getBoundingClientRect();
-      const k = Number(s.slot.dataset.k ?? 1);
-      const size = { width: r.width / k, height: r.height / k };
-      const key = `${size.width} ${size.height}`;
-      if (key === last) return;
-      last = key;
-      post({ type: "size", ...size });
-    }).observe(made.card);
-    s.slot.dataset.k = String(a.k);
-    // a Note whose header shows its heading: the header folds away, the heading coming out of the body (its card as tall
-    // as before, so the size below is the card's)
-    void fold(made.card, true);
-    await settled([made.card]);
-    if (a.caret) {
-      const x = a.margin + a.caret.x * a.k,
-        y = a.margin + a.caret.y * a.k;
-      if (spot === "end") e.editor.placeCaret("end");
-      else if (!spot || !e.editor.placeCaret({ visible: spot.char, after: spot.after })) e.editor.placeCaret({ x, y });
-      if (a.open) openRefAt(x, y);
-    } else e.editor.placeCaret("end");
-    const r = made.card.getBoundingClientRect();
-    return { width: r.width / a.k, height: r.height / a.k };
   },
   /** Mounts a Free code card's code in the code editor, as the board's FreeEdit does: the card `width` wide, its code
    *  `top` below the card's top (under its header, which the canvas draws), at zoom k, `margin` px from the page's top
@@ -1021,11 +801,7 @@ const edit = {
     if (!editing) return null;
     const e = editing;
     if (e.ended) return e.ended;
-    const value = e.editor.value();
-    const layout = e.editor.layout();
-    await fold(e.slot.card, false);
-    if (e.ended) return e.ended;
-    const r = end(e, value, layout);
+    const r = end(e, e.editor.value(), e.editor.layout());
     e.editor.destroy();
     return r;
   },
@@ -1053,7 +829,7 @@ if (paletteMode) {
   palette.start({ mdFor, setLook });
   (window as unknown as { palette: typeof palette }).palette = palette;
 }
-if (editMode || popMode) watchRefs((m) => window.webkit?.messageHandlers.note.postMessage(m));
+if (popMode) watchRefs((m) => window.webkit?.messageHandlers.note.postMessage(m));
 // A press on the card's own paper outside its text (below the last line, its padding) keeps the editor's focus and
 // caret: the editor saves and leaves when its focus goes, so the second press of a double-click on a Note's empty body,
 // which lands here once its first press has the editor up, would end the writing it began. A press on another card is

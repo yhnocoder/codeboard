@@ -52,7 +52,10 @@ let package = Package(
       name: "Accept", dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardModel", "MarkdownDemoKit"]),
     .executableTarget(
       name: "LookCompare",
-      dependencies: ["CodeBoardCanvas", "CodeBoardModel", "CodeBoardNotes", "CodeBoardSyntax", "CodeBoardShell"]),
+      dependencies: [
+        "CodeBoardCanvas", "CodeBoardModel", "CodeBoardNotes", "CodeBoardSyntax", "CodeBoardShell", "CodeBoardMarkdown",
+        "CodeBoardMarkdownUI",
+      ]),
     .executableTarget(
       name: "Drive", dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardModel", "CodeBoardNotes"]),
     .testTarget(name: "CodeBoardModelTests", dependencies: ["CodeBoardModel"], resources: [.copy("Fixtures")]),

@@ -444,7 +444,7 @@ extension CanvasView {
     case .picked(let group, let card): rememberRef(group: group, card)
     case .ref(let r):
       refPop = p
-      refPressed(r, inPopup: true)
+      refPressed(r)
     case .elsewhere: closeRefPeek()
     case .openLink(let u): openLink(u)
     case .menu(let n, let xy):

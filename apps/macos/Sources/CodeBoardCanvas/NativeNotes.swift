@@ -12,8 +12,8 @@ import Synchronization
 /// the native Markdown component: laid out once at 100 % per card width, look and appearance (kept by least recent use),
 /// drawn on the caller's thread at any scale, many at once. Its pictures come from the canvas's own image cache, decoded
 /// for the width they are drawn at; code is coloured by the canvas's highlighter. SVG image cards are still drawn by the
-/// web page (`web`), which also does the Note page's other work. Editing still goes through the web editor (`NoteEditor`)
-/// until the native editor takes it over.
+/// web page (`web`), which also does the Note page's other work. What is written in a Note is laid out by it too
+/// (`editorLayout`, NativeWriting).
 package final class NativeNotes: NoteDisplay {
   let web: NoteRenderer
   let images: DecodeCache
@@ -90,10 +90,6 @@ package final class NativeNotes: NoteDisplay {
       ?? []).filter { $0.hasSuffix(".woff2") }.sorted()
     return ([binary, MeasuredSizes.stamp(assets.appending(path: "engines.js"))] + fonts).joined(separator: "\n")
   }()
-
-  /// Whether the canvas shows its Markdown this way: on unless `defaults write <the app's domain> WebNotes -bool YES`
-  /// puts the web page back. A switch for the change-over only: it goes once the native editor has replaced the web one
-  static var on: Bool { !UserDefaults.standard.bool(forKey: "WebNotes") }
 
   /// The fonts, the layout code and the formula engines used once, off the main thread, so the first board does not pay
   /// for them (the app starts this as it launches)
@@ -307,9 +303,7 @@ package final class NativeNotes: NoteDisplay {
     defer { if !made { layouts.drop(key) } }
     let text = note.markdown
     let math = NativeNotes.needsEngines(text) ? try engines() : nil
-    var card = MarkdownLooks.card(Self.style(note), look: look, dark: dark)
-    // lines as WebKit sets them while Notes are edited in it, so starting to edit moves no line
-    card.theme.metrics.flooredLeading = false
+    let card = MarkdownLooks.card(Self.style(note), look: look, dark: dark)
     let starts = MarkdownSourceOps.blockStarts(text)
     // the header shows the leading heading: the body starts at the block after it (page.css .nbody.hidehead)
     var shown = text

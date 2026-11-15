@@ -80,10 +80,3 @@ export function watchRefs(post: (m: RefPosted) => void) {
     true,
   );
 }
-
-/** Opens the source of the ref drawn at a point of the page as a press on it does (a double-click on the board's Note
- *  started this editing on it) */
-export function openRefAt(x: number, y: number) {
-  const r = liveRef(document.elementFromPoint(x, y));
-  r?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, detail: 2 }));
-}

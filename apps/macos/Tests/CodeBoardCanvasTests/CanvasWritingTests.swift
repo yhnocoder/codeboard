@@ -4,10 +4,11 @@ import CodeBoardNotes
 import Testing
 
 @testable import CodeBoardCanvas
+@testable import CodeBoardMarkdownUI
 
-// Writing in Notes, Texts and Boxes on the canvas, with the web board's editor over the card (needs the built Note page,
-// as CanvasEditTests): entering and leaving with nothing typed changes nothing, a session is one step, a new card left
-// empty leaves none, and what another writer changes meanwhile merges with what is typed.
+// Writing in Notes, Texts and Boxes on the canvas, with the native Markdown component's editor over the card (the Rig
+// needs the built Note page, as CanvasEditTests): entering and leaving with nothing typed changes nothing, a session is
+// one step, a new card left empty leaves none, and what another writer changes meanwhile merges with what is typed.
 
 extension Rig {
   /// Presses keys as the keyboard does, through the window to whoever takes them, with no wait between them
@@ -46,7 +47,7 @@ extension Rig {
     send(mouse(.leftMouseUp, p, clicks: 2))
   }
 
-  /// Types into the editor and waits for its layout to follow (the native one's follows at once)
+  /// Types into the editor: the native one's layout follows at once, Free code's web one's after a frame
   func type(_ text: String) async {
     if let v = canvas.editing?.writer {
       return v.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
@@ -57,6 +58,8 @@ extension Rig {
 }
 
 @MainActor @Suite(.serialized) struct CanvasWritingTests {
+  func writer(_ r: Rig) throws -> MarkdownEditorView { try #require(r.canvas.editing?.writer) }
+
   @Test(arguments: ["n1", "t1", "b1"])
   func enteringAndLeavingWithNothingTypedChangesNothing(id: String) async throws {
     let r = try await Rig(zoom: 1)
@@ -67,18 +70,19 @@ extension Rig {
     r.doubleClick(p)
     await r.editorReady()
     #expect(r.canvas.editing?.id == cid(id))
-    #expect(r.canvas.noteEditor.view.shown)
-    #expect(r.canvas.noteEditor.view.superview === r.canvas.superview)
-    // the web view lies over the card: the card's frame on screen is its card rect
-    let card = r.canvas.noteEditor.view.convert(r.canvas.noteEditor.view.cardRect, to: r.canvas)
-    let shown = r.canvas.camera.view(r.rect(id).origin)
-    #expect(abs(card.minX - shown.x) < 0.5 && abs(card.minY - shown.y) < 0.5)
+    let v = try writer(r)
+    #expect(v.superview === r.canvas.superview && r.window.firstResponder === v)
+    // over the card, its text where the card's picture has it (NativeCanvasTests: no line moves)
+    let ed = try #require(r.canvas.editing)
+    let text = r.canvas.camera.view(CGPoint(x: r.rect(id).minX + ed.inset.x, y: r.rect(id).minY + ed.inset.y))
+    let top = r.canvas.convert(v.frame, from: v.superview).origin
+    #expect(abs(top.x - text.x) < 0.5 && abs(top.y - text.y) < 0.5, "\(top) \(text)")
     // a click on the bare canvas leaves
     r.click(CGPoint(x: 800, y: 330))
     while r.canvas.isEditing { try await Task.sleep(for: .milliseconds(5)) }
     #expect(r.bytes == start)
     #expect(!r.doc.history.canUndo, "no step")
-    #expect(!r.canvas.noteEditor.view.shown)
+    #expect(v.superview == nil)
     r.doc.flush()
     #expect(try Data(contentsOf: r.file) == onDisk, "board.json byte for byte")
   }
@@ -124,23 +128,6 @@ extension Rig {
     await r.settle()
     r.doc.undo()
     #expect(r.doc.board.arrows[0].to.block == last)
-  }
-
-  @Test func keysPressedWhileTheEditorMountsReachIt() async throws {
-    let r = try await Rig(zoom: 1)
-    defer { r.close() }
-    r.click(r.centre("b1"))
-    r.key(36)
-    // before the editor is there
-    #expect(r.canvas.editing?.ready == false)
-    let e = NSEvent.keyEvent(
-      with: .keyDown, location: .zero, modifierFlags: [], timestamp: 2000, windowNumber: r.window.windowNumber,
-      context: nil, characters: "!", charactersIgnoringModifiers: "!", isARepeat: false, keyCode: 18)!
-    r.send(e)
-    #expect(r.canvas.editing?.keys.count == 1)
-    await r.editorReady()
-    #expect(r.canvas.editing?.keys.isEmpty == true, "given to the editor")
-    await r.canvas.endEditing()
   }
 
   @Test(arguments: [1, 0.5] as [CGFloat])
@@ -208,28 +195,9 @@ extension Rig {
     await c.endEditing()
   }
 
-  /// interact.ts staticSpot: a double-click beside the end of a line that ends in a link puts the caret after the link's
-  /// last letter, as on the board, and what is typed lengthens its text; not between its text and its hidden address,
-  /// where WebKit's point in the editor's own text lands, and what is typed broke the link
-  @Test func aDoubleClickBesideALineEndingInALinkWritesInTheLinksText() async throws {
-    let note = Card(
-      id: cid("n1"), x: 100, y: 100, width: 400,
-      content: .own(CardContent(body: .note(Note(text: "See the [docs](https://e.x)")))))
-    let r = try await Rig(Board(id: BoardID(rawValue: "link"), cards: [note]), zoom: 1)
-    defer { r.close() }
-    let n = r.rect("n1")
-    let line = try #require(r.canvas.scene?.placed[cid("n1")]?.blocks?.first)
-    r.doubleClick(CGPoint(x: n.maxX - 8, y: n.minY + line.y + line.line / 2))
-    await r.editorReady()
-    await r.type("XY")
-    await r.canvas.endEditing()
-    let got = r.doc.board.card(cid("n1"))?.writing
-    #expect(got == "See the [docsXY](https://e.x)", "\(got ?? "nil")")
-  }
-
   /// interact.ts staticSpot: a double-click below the last line of a Note whose header shows its heading puts the caret
-  /// at the end, as on the board. The press is read on a static render of the Note, which showed the heading in the body
-  /// and so had the lines lower by its height than the canvas draws them: the press landed on the first line's end
+  /// at the end, as on the board (the web editor read the press on a render that showed the heading in the body, its
+  /// lines lower by the heading's height than the canvas draws them, and put the caret on the first line's end)
   @Test func aDoubleClickBelowTheLastLineOfANoteWithItsHeadingInTheHeaderWritesAtTheEnd() async throws {
     let note = Card(
       id: cid("n1"), x: 100, y: 100, width: 300,
@@ -248,126 +216,9 @@ extension Rig {
     #expect(got?.hasSuffix("a number.XY") == true, "\(got ?? "nil")")
   }
 
-  /// A person's double-click on the one selected Note: its first click begins writing, and its second comes while the
-  /// editor is still mounting or once it is up; either way the writing goes on and what is typed next is written, as in
-  /// main, where the second click lands in the editor
-  @Test func theSecondClickOfADoubleClickOnTheSelectedNoteKeepsTheWritingGoing() async throws {
-    let r = try await Rig(zoom: 1)
-    defer { r.close() }
-    let c = r.canvas
-    let n = r.rect("n1")
-    // on its words, in the window (its left edge is off it), clear of n2 over its middle
-    let body = CGPoint(x: n.minX + 80, y: n.minY + c.theme.headerHeight + 14)
-    /// Keys pressed through the window, once the editor's page shows them
-    func typed(_ keys: String) async {
-      r.press(keys)
-      await r.until("\(keys) typed") {
-        let t = try? await c.noteEditor.view.evaluateJavaScript("document.body.innerText") as? String
-        return t?.contains(keys) == true
-      }
-    }
-    r.click(body)
-    await r.settle()
-    #expect(r.doc.selection == [.card(cid("n1"))] && !c.isEditing)
-    // the second press while the editor mounts
-    r.click(body)
-    await r.until("writing begun") { c.editing != nil }
-    let first = try #require(c.editing?.session)
-    #expect(c.editing?.ready == false && !c.noteEditor.view.shown, "still mounting")
-    r.click(through: body, clicks: 2)
-    await r.until("mounted or ended") { c.editing?.ready != false }
-    #expect(c.editing?.session == first, "still writing")
-    await typed("xy")
-    await c.endEditing()
-    #expect(r.card("n1").writing?.contains("xy") == true, "what was typed after it is written")
-    await r.settle()
-    // the second press once the editor is up: AppKit sends it where the first went, the canvas, which hands it on
-    r.click(through: body)
-    await r.editorReady()
-    let second = try #require(c.editing?.session)
-    #expect(
-      r.window.contentView?.hitTest(r.at(body))?.isDescendant(of: c.noteEditor.view) == true,
-      "the editor is under the pointer")
-    r.click(through: body, clicks: 2)
-    // the page has had the press and two frames after it
-    for _ in 0..<2 {
-      _ = try? await c.noteEditor.view.evaluateJavaScript("new Promise(r => requestAnimationFrame(() => r(1)))")
-    }
-    await r.settle()
-    #expect(c.editing?.session == second, "still writing")
-    await typed("ab")
-    await c.endEditing()
-    #expect(r.card("n1").writing?.contains("ab") == true)
-  }
-
-  /// interact.ts clickEdit: a double-click on a word of the one selected Note, through the window. Its first click opens
-  /// the editor and its second, which lands in the editor, only puts the caret there: what is typed goes into the word,
-  /// none of it replaced (WebKit took that press as a double-click and selected the word). A double-click once the
-  /// editor is open still selects a word
-  @Test func theSecondClickOfTheDoubleClickThatOpensTheEditorSelectsNoWord() async throws {
-    let text = "The vocabulary maps each word to a number."
-    let note = Card(
-      id: cid("n1"), x: 100, y: 100, width: 300, content: .own(CardContent(body: .note(Note(text: text)))))
-    let r = try await Rig(Board(id: BoardID(rawValue: "word"), cards: [note]), zoom: 1)
-    defer { r.close() }
-    let c = r.canvas
-    let v = c.noteEditor.view
-    func js(_ s: String) async -> Any? { try? await v.callAsyncJavaScript(s, contentWorld: .page) }
-    // where a word is: read on the editor, which lays the Note out where the canvas draws it
-    r.click(r.centre("n1"))
-    r.key(36)
-    await r.editorReady()
-    func word(_ w: String) async throws -> CGPoint {
-      let at = try #require(
-        await js(
-          """
-          const t = document.querySelector('.ProseMirror p').firstChild, i = t.data.indexOf(w), g = document.createRange();
-          g.setStart(t, i + 2); g.setEnd(t, i + 3); const b = g.getBoundingClientRect();
-          return [b.x + b.width / 2, b.y + b.height / 2];
-          """.replacingOccurrences(of: "w)", with: "\"\(w)\")")) as? [Double])
-      let inWindow = v.convert(CGPoint(x: at[0], y: at[1]), to: nil)
-      return c.camera.board(c.convert(inWindow, from: nil))
-    }
-    let vocabulary = try await word("vocabulary")
-    let number = try await word("number")
-    await c.endEditing()
-    await r.settle()
-    #expect(r.doc.selection == [.card(cid("n1"))] && !c.isEditing)
-    func frames() async {
-      for _ in 0..<3 { _ = await js("await new Promise(r => requestAnimationFrame(r)); return 1") }
-    }
-    func selected() async -> String? { await js("return getSelection().toString()") as? String }
-    // the double-click on "vocabulary": its first click opens the editor, its second lands in it once it is up
-    r.click(through: vocabulary)
-    await r.editorReady()
-    #expect(
-      r.window.contentView?.hitTest(r.at(vocabulary))?.isDescendant(of: v) == true, "the editor is under the pointer")
-    r.click(through: vocabulary, clicks: 2)
-    await frames()
-    let first = await selected()
-    #expect(first == "", "no word selected: \(first ?? "nil")")
-    r.press("xy")
-    await r.until("xy typed") { (await js("return document.body.innerText") as? String)?.contains("xy") == true }
-    // a double-click in the editor now selects the word
-    // straight to the editor, the view under the pointer, as the window gives it: through the window's sendEvent, this
-    // second double-click ends the test process: the window is not key and the editor takes no first mouse, so AppKit
-    // posts the press back to the event queue, and posting stops the main run loop the tests run on (TestWatch)
-    for k in [1, 2] {
-      v.mouseDown(with: r.mouse(.leftMouseDown, number, clicks: k))
-      v.mouseUp(with: r.mouse(.leftMouseUp, number, clicks: k))
-    }
-    await frames()
-    #expect(await selected()?.trimmingCharacters(in: .whitespaces) == "number")
-    _ = await js("getSelection().collapseToEnd()")
-    await c.endEditing()
-    let got = r.card("n1").writing ?? ""
-    #expect(got.contains("xy") && got.replacingOccurrences(of: "xy", with: "") == text, "\(got)")
-  }
-
   /// The second press of a double-click on the selected Note's empty body, below its text, once the editor its first
-  /// click opened is up: the window gives it to the editor's page, where it lands on the paper outside the text. The
-  /// writing goes on (the editor ends when its focus leaves, and a press on its own paper must not take it), so what is
-  /// typed next is written and no letter reaches the board's shortcuts
+  /// click opened is up: the window gives it to the editor, where it lands on the paper outside the text. The writing
+  /// goes on, so what is typed next is written and no letter reaches the board's shortcuts
   @Test func theSecondPressOfADoubleClickOnTheEmptyBodyKeepsTheWritingGoing() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }
@@ -382,21 +233,12 @@ extension Rig {
     r.click(through: blank)
     await r.editorReady()
     let session = try #require(c.editing?.session)
-    #expect(
-      r.window.contentView?.hitTest(r.at(blank))?.isDescendant(of: c.noteEditor.view) == true,
-      "the editor is under the pointer")
+    let v = try writer(r)
     r.click(through: blank, clicks: 2)
-    // the page has had the press, the focus change it would make and what that sets off
-    for _ in 0..<3 {
-      _ = try? await c.noteEditor.view.evaluateJavaScript("new Promise(r => requestAnimationFrame(() => r(1)))")
-    }
     await r.settle()
     #expect(c.editing?.session == session, "still writing")
     r.press("ab")
-    await r.until("ab typed") {
-      let t = try? await c.noteEditor.view.evaluateJavaScript("document.body.innerText") as? String
-      return t?.contains("ab") == true || !c.isEditing
-    }
+    #expect(v.source.contains("ab"))
     await c.endEditing()
     #expect(r.card("n1").writing?.contains("ab") == true, "what was typed after it is written")
     #expect(r.doc.board.cards.count == cards, "no card made by a letter")
@@ -430,8 +272,9 @@ extension Rig {
     await r.type("A first line")
     let before = try #require(r.canvas.editing?.size)
     let deadline = ContinuousClock.now + .seconds(60)
+    let v = try writer(r)
     for _ in 0..<6 {
-      try await r.canvas.noteEditor.view.evaluateJavaScript("document.execCommand('insertParagraph')")
+      v.doCommand(by: #selector(NSResponder.insertNewline(_:)))
       await r.type("another line")
     }
     while (r.canvas.editing?.size?.height ?? 0) <= before.height + 60, ContinuousClock.now < deadline {
@@ -528,10 +371,8 @@ extension CanvasWritingTests {
     await r.canvas.endEditing()
   }
 
-  @Test(arguments: [false, true]) func aBoxTakesItsFillsAndTextAndBoxKeepTheFirstLetterInPlace(native: Bool)
-    async throws
-  {
-    let r = try await Rig(zoom: 1, native: native)
+  @Test func aBoxTakesItsFillsAndTextAndBoxKeepTheFirstLetterInPlace() async throws {
+    let r = try await Rig(zoom: 1)
     defer { r.close() }
     r.click(r.centre("b1"))
     r.click(try button(r, "b1", .fill(.blue)))
@@ -608,68 +449,6 @@ extension CanvasWritingTests {
 }
 
 extension CanvasWritingTests {
-  /// A pinch while writing: the web view stays, its layer scaled over the card as the camera zooms, with nothing drawn,
-  /// asked for or swapped in until the gesture ends (frames ticking as the display link gives them); at rest the editor
-  /// shows itself at the new zoom, and what was typed survives
-  @Test func zoomingWhileWritingScalesTheEditorsLayerThenShowsItAtTheNewZoomAtRest() async throws {
-    let r = try await Rig(zoom: 1)
-    defer { r.close() }
-    r.click(r.centre("t1"))
-    r.key(36)
-    await r.editorReady()
-    await r.type(" now")
-    await r.idle()
-    let editor = r.canvas.noteEditor
-    let i = try #require(r.canvas.index(of: .card(cid("t1"))))
-    let paper = r.canvas.items[i].box
-    let before = r.breaks
-    let host = try #require(editor.view.superview)
-    let margin = editor.view.cardRect.minX
-    let around = CGPoint(x: 500, y: 350)
-    var t: TimeInterval = 1
-    r.canvas.pinch(by: 1.05, around: around, at: t, began: true, ended: false)
-    for _ in 0..<12 {
-      t += 1.0 / 120
-      r.canvas.pinch(by: 1.02, around: around, at: t, began: false, ended: false)
-      r.canvas.tick(at: t)
-      #expect(editor.view.shown, "the web view stays")
-      #expect(r.canvas.items[i].box === paper, "no picture swapped in")
-      // its layer covers the card where the camera shows it now
-      let z = r.canvas.camera.zoom
-      let k = try #require(r.canvas.editing?.shownZoom)
-      let o = r.canvas.camera.view(r.rect("t1").origin)
-      let size = try #require(r.canvas.editing?.size)
-      let card = r.canvas.convert(CGRect(x: o.x, y: o.y, width: size.width * z, height: size.height * z), to: host)
-      let f = z / k
-      let want = card.insetBy(dx: -margin * f, dy: -margin * f)
-      let got = try #require(editor.view.layer?.frame)
-      #expect(
-        abs(got.minX - want.minX) < 0.5 && abs(got.minY - want.minY) < 0.5 && abs(got.width - want.width) < 0.5,
-        "layer \(got) over \(want)")
-    }
-    #expect(r.canvas.editing?.zooming == true)
-    #expect(r.breaks == before, "nothing drawn, decoded, asked for or swapped during the gesture")
-    t += 1.0 / 120
-    r.canvas.pinch(by: 1, around: around, at: t, began: false, ended: true)
-    await r.idle()
-    let deadline = ContinuousClock.now + .seconds(20)
-    while r.canvas.editing?.zooming == true, ContinuousClock.now < deadline {
-      r.tick()
-      try await Task.sleep(for: .milliseconds(5))
-    }
-    #expect(r.canvas.editing?.zooming == false)
-    #expect(r.canvas.editing?.shownZoom == r.canvas.camera.zoom)
-    #expect(editor.view.shown)
-    #expect(editor.view.layer?.affineTransform() == .identity)
-    // the web view's card lies on the card at the new zoom
-    let card = editor.view.convert(editor.view.cardRect, to: r.canvas)
-    let at = r.canvas.camera.view(r.rect("t1").origin)
-    #expect(abs(card.minX - at.x) < 0.5 && abs(card.minY - at.y) < 0.5)
-    #expect(abs(card.width - r.rect("t1").width * r.canvas.camera.zoom) < 1.5)
-    await r.canvas.endEditing()
-    #expect(r.card("t1").writing == "Threads wait at the barrier now", "what was typed survives the zoom")
-  }
-
   @Test func aPictureGivenToTheEditorGoesIntoTheBoardsImages() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }
@@ -677,11 +456,7 @@ extension CanvasWritingTests {
     await r.editorReady()
     // the editor's saveImage, as a paste or a drop calls it
     let png = try Data(contentsOf: r.file.deletingLastPathComponent().appending(path: "images/p.png"))
-    let address =
-      try await r.canvas.noteEditor.view.callAsyncJavaScript(
-        "return await window.webkit.messageHandlers.image.postMessage({dataUrl: u, name: 'p.png'})",
-        arguments: ["u": "data:image/png;base64," + png.base64EncodedString()], contentWorld: .page) as? String
-    let name = try #require(address)
+    let name = try #require(r.canvas.editor(try writer(r), saveImage: png, name: "p.png"))
     #expect(name.hasPrefix("images/") && name.hasSuffix("-400x200.png"))
     let stored = r.file.deletingLastPathComponent().appending(path: name)
     #expect(try Data(contentsOf: stored) == png)
@@ -690,47 +465,19 @@ extension CanvasWritingTests {
 }
 
 extension CanvasWritingTests {
-  /// The editor leaves by itself when its web view loses focus and posts "done"; a click outside meanwhile asks it to
-  /// finish too. Whichever comes first, what was typed is written: here the "done" never reaches the canvas (it is
-  /// what arrived late and was dropped), and the click outside must still get the text
-  @Test func whatWasTypedIsWrittenWhenTheEditorLeftByItselfBeforeTheClickOutside() async throws {
-    let r = try await Rig(zoom: 1)
-    defer { r.close() }
-    r.click(r.centre("t1"))
-    r.key(36)
-    await r.editorReady()
-    await r.type(" now")
-    let editor = r.canvas.noteEditor
-    editor.onDone = nil
-    // focus leaves the editor; it finishes on the timer after the blur
-    _ = try await editor.view.callAsyncJavaScript(
-      "document.activeElement.blur(); await new Promise(r => setTimeout(r, 20)); return 1", contentWorld: .page)
-    r.click(CGPoint(x: 800, y: 330))
-    while r.canvas.isEditing { try await Task.sleep(for: .milliseconds(5)) }
-    #expect(r.card("t1").writing == "Threads wait at the barrier now")
-    #expect(r.doc.undoName == "Edit Text")
-  }
-
-  /// Focus leaving in the middle of an IME composition (started and updated when focus goes; WebKit then commits it, as it
-  /// does when a field loses focus): what is composed is written
+  /// A click outside in the middle of an input method's composition: what is composed is written, as a field that loses
+  /// its focus commits it
   @Test func focusLeavingMidCompositionWritesWhatIsComposed() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }
     r.click(r.centre("t1"))
     r.key(36)
     await r.editorReady()
-    let editor = r.canvas.noteEditor
-    _ = try await editor.view.callAsyncJavaScript(
-      """
-      const pm = document.querySelector(".ProseMirror");
-      pm.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true, data: "" }));
-      document.execCommand("insertText", false, "屏障");
-      pm.dispatchEvent(new CompositionEvent("compositionupdate", { bubbles: true, data: "屏障" }));
-      await new Promise(r => requestAnimationFrame(() => r(1)));
-      pm.blur();
-      pm.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "屏障" }));
-      return 1
-      """, contentWorld: .page)
+    let v = try writer(r)
+    v.doCommand(by: #selector(NSResponder.moveToEndOfDocument(_:)))
+    v.setMarkedText(
+      "屏障", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+    #expect(v.hasMarkedText())
     r.click(CGPoint(x: 800, y: 330))
     while r.canvas.isEditing { try await Task.sleep(for: .milliseconds(5)) }
     #expect(r.card("t1").writing == "Threads wait at the barrier屏障")
@@ -738,17 +485,6 @@ extension CanvasWritingTests {
 }
 
 extension CanvasWritingTests {
-  /// What the open [[ list shows, row by row (the editor's menu in the page)
-  func refRows(_ r: Rig) async throws -> [String] {
-    let rows = try await r.canvas.noteEditor.view.callAsyncJavaScript(
-      """
-      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-      return [...document.querySelectorAll(".md-pick .md-list .tx, .md-pick .md-gh, .md-pick .md-foot")]
-        .map(n => n.textContent.trim()).filter(Boolean)
-      """, contentWorld: .page)
-    return rows as? [String] ?? []
-  }
-
   /// Another board in the Rig's vault: "Memory Model", a Note titled Coalescing in its Section Caches
   func otherBoard(_ r: Rig) throws {
     let p = r.root.appending(path: "Memory Model.board")
@@ -765,7 +501,7 @@ extension CanvasWritingTests {
   }
 
   /// [[ opens the web board's list: this board's titled cards and Sections, then the other board's cards; picking one
-  /// writes it as main does, `[[label#^id]]`, and the ref shows what it points at at once
+  /// writes it as main does, `[[label#^id]]`, and the ref is drawn as what it points at at once
   @Test func doubleBracketListsTheCardsAndWritesThePickWithItsID() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }
@@ -773,31 +509,20 @@ extension CanvasWritingTests {
     r.click(r.centre("t1"))
     r.key(36)
     await r.editorReady()
+    let v = try writer(r)
     await r.type(" [[")
-    let rows = try await refRows(r)
-    for want in ["n1", "n2", "m1", "L1", "Group", "Memory Model", "Coalescing", "5 titled cards · 2 boards"] {
+    await r.until("the list, once its candidates are read") { r.canvas.editing?.refList != nil }
+    let menu = r.canvas.editor(v, refMenu: "")
+    let rows = menu.local.map(\.title) + menu.groups.flatMap { [$0.title] + $0.items.map(\.title) }
+    for want in ["n1", "n2", "m1", "L1", "Group", "Memory Model", "Coalescing"] {
       #expect(rows.contains { $0.contains(want) }, "\(want) in \(rows)")
     }
     #expect(!rows.contains { $0.contains("Threads wait") }, "a Text without a heading is not listed")
-    let menu = try await r.canvas.noteEditor.view.callAsyncJavaScript(
-      "return document.querySelector('.md-pick')?.className ?? null", contentWorld: .page)
-    #expect((menu as? String)?.contains("ctx") == true, "the board's menu look: \(String(describing: menu))")
     await r.type("n2")
-    await r.type("\n")
+    v.doCommand(by: #selector(NSResponder.insertNewline(_:)))
     // the caret away from it (beside it, the editor shows a ref's source)
-    await r.type("and on")
-    // the ref drawn in the text shows its card's title (what the list gave for it), once the editor has drawn it
-    var shown: String?
-    let deadline = ContinuousClock.now + .seconds(5)
-    while shown?.contains("n2") != true, ContinuousClock.now < deadline {
-      shown =
-        try await r.canvas.noteEditor.view.callAsyncJavaScript(
-          "await new Promise(r => requestAnimationFrame(r));"
-            + " return document.querySelector('.ProseMirror[contenteditable=true] .md-ref')?.textContent ?? null",
-          contentWorld: .page)
-        as? String
-    }
-    #expect(shown?.contains("n2") == true, "the ref shows its card: \(String(describing: shown))")
+    await r.type(" and on")
+    #expect(v.core.layout.drawnRefs.contains { $0.target == "n2" }, "drawn as found")
     await r.canvas.endEditing()
     #expect(r.card("t1").writing == "Threads wait at the barrier [[n2#^n2]] and on")
     #expect(CanvasView.recentRefs.first.map { [$0.board, $0.id] } == ["edit-sample", "n2"])
@@ -810,8 +535,10 @@ extension CanvasWritingTests {
     r.click(r.centre("t1"))
     r.key(36)
     await r.editorReady()
-    await r.type(" [[Coalesc")
-    await r.type("\n")
+    await r.type(" [[")
+    await r.until("the list, once its candidates are read") { r.canvas.editing?.refList != nil }
+    await r.type("Coalesc")
+    try writer(r).doCommand(by: #selector(NSResponder.insertNewline(_:)))
     await r.canvas.endEditing()
     #expect(r.card("t1").writing == "Threads wait at the barrier [[Memory Model › Coalescing#^mem/m9]]")
   }
@@ -819,10 +546,10 @@ extension CanvasWritingTests {
 
 extension CanvasWritingTests {
   /// What is typed reaches the board and the disk every couple of seconds while the card is written in, with no undo
-  /// step and without the canvas redrawing the card under the web view; leaving makes the whole writing one step
-  @Test(arguments: [false, true])
-  func whatIsTypedIsDraftedOntoTheDiskWhileWritingAndLeavingIsStillOneStep(native: Bool) async throws {
-    let r = try await Rig(zoom: 1, native: native)
+  /// step and without the canvas redrawing the card under the editor; leaving makes the whole writing one step
+  @Test
+  func whatIsTypedIsDraftedOntoTheDiskWhileWritingAndLeavingIsStillOneStep() async throws {
+    let r = try await Rig(zoom: 1)
     defer { r.close() }
     r.click(r.centre("t1"))
     r.key(36)
@@ -837,7 +564,7 @@ extension CanvasWritingTests {
     }
     #expect(r.card("t1").writing == "Threads wait at the barrier now")
     #expect(!r.doc.history.canUndo, "a draft is no step")
-    #expect(r.canvas.items[i].box === paper, "the card under the web view is not drawn again for it")
+    #expect(r.canvas.items[i].box === paper, "the card under the editor is not drawn again for it")
     r.doc.flush()
     #expect(
       try Board(decoding: Data(contentsOf: r.file), file: r.file).card(cid("t1"))?.writing
@@ -855,14 +582,10 @@ extension CanvasWritingTests {
 
 extension CanvasWritingTests {
   /// Selects everything in the editor and deletes it, as ⌘A ⌫ does
-  func emptyEditor(_ r: Rig) async throws {
-    _ = try await r.canvas.noteEditor.view.callAsyncJavaScript(
-      """
-      document.execCommand("selectAll");
-      document.execCommand("delete");
-      await new Promise(r => requestAnimationFrame(r));
-      return 1
-      """, contentWorld: .page)
+  func emptyEditor(_ r: Rig) throws {
+    let v = try writer(r)
+    v.selectAll(nil)
+    v.doCommand(by: #selector(NSResponder.deleteBackward(_:)))
   }
 
   /// A Text with an arrow to it, emptied while written in (⌘A ⌫, then a pause past a draft): the draft does not take it off the board, nor
@@ -878,11 +601,9 @@ extension CanvasWritingTests {
     r.click(r.centre("t1"))
     r.key(36)
     await r.editorReady()
-    try await emptyEditor(r)
-    let emptied = await r.canvas.noteEditor.peek()
-    #expect(
-      emptied?.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true,
-      "blank: \(String(describing: emptied?.text))")
+    try emptyEditor(r)
+    let emptied = try writer(r).source
+    #expect(emptied.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "blank: \(emptied)")
     await r.canvas.saveDraft()
     #expect(r.doc.board.card(cid("t1")) != nil && r.doc.board.arrows.contains { $0.id.rawValue == "a9" })
     r.doc.flush()
@@ -907,7 +628,7 @@ extension CanvasWritingTests {
     await r.type("abc")
     await r.canvas.saveDraft()
     #expect(r.doc.board.card(id)?.writing == "abc")
-    try await emptyEditor(r)
+    try emptyEditor(r)
     await r.canvas.saveDraft()
     #expect(r.doc.board.card(id)?.writing == "abc", "the last draft stays")
     await r.type("x")
@@ -916,14 +637,15 @@ extension CanvasWritingTests {
     #expect(r.doc.history.undoSteps.map(\.name) == ["New Text"])
   }
 
-  /// Typing at once after a double-click on the board, before the new Text's editor is there: every key reaches it
+  /// Typing at once after a double-click on the board, before the new Text is made: every key reaches it
   @Test func keysTypedAtOnceAfterADoubleClickAllReachTheNewText() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }
     r.doubleClick(CGPoint(x: 800, y: 330))
     r.press("hi a")
-    // the moment the editor takes the keyboard, before what was typed meanwhile reaches it (a slow machine's case)
-    while r.window.firstResponder !== r.canvas.noteEditor.view { await Task.yield() }
+    await r.until("the editor has the keyboard") {
+      r.canvas.editing?.writer.map { r.window.firstResponder === $0 } == true
+    }
     let id = try #require(r.canvas.editing?.id)
     r.press("b\u{1b}")
     await r.until("left") { !r.canvas.isEditing }
@@ -940,9 +662,7 @@ extension CanvasWritingTests {
     await r.editorReady()
     let id = try #require(c.editing?.id)
     await r.type("第一条想法")
-    _ = try await c.noteEditor.view.callAsyncJavaScript(
-      "document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))",
-      contentWorld: .page)
+    r.press("\u{1b}")
     await r.until("left") { !c.isEditing }
     #expect(r.doc.selection == [.card(id)])
     let before = r.rect(id.rawValue)
@@ -960,11 +680,13 @@ extension CanvasWritingTests {
     defer { r.close() }
     r.doubleClick(r.centre("m1"))
     await r.editorReady()
-    let v = r.canvas.noteEditor.view
+    let v = try writer(r)
     v.selectAll(nil)
-    let bar = try await v.callAsyncJavaScript("return await edit.barAfterSettle()", contentWorld: .page) as? Bool
-    #expect(bar == false, "the format bar came up")
-    let sel = try await v.callAsyncJavaScript("return getSelection().toString()", contentWorld: .page) as? String
-    #expect(sel?.contains("m1") == true && sel?.contains("few words") == true, "\(sel ?? "nil")")
+    // past the time a selection waits for its bar
+    try await Task.sleep(for: .seconds(MarkdownTiming.toolbarSettle * 2))
+    #expect(!v.toolbarShown, "the format bar came up")
+    let all = v.core.selection.range
+    let sel = (v.source as NSString).substring(with: NSRange(location: all.lowerBound, length: all.count))
+    #expect(sel.contains("m1") && sel.contains("few words"), "\(sel)")
   }
 }

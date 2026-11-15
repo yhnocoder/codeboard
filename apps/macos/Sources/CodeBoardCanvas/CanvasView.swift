@@ -21,10 +21,8 @@ public enum Arrival: Equatable, Sendable {
 public final class CanvasView: NSView {
   /// The design allows one snapshot web view in the app, so every canvas shares one renderer
   static let sharedNotes = NoteRenderer()
-  /// What draws the app's Notes at rest: the native component (warmed up off the main thread from the app's launch,
-  /// `warmUp`), or the web page while the change-over switch says so (`NativeNotes.on`)
-  static let sharedDisplay: any NoteDisplay = {
-    guard NativeNotes.on else { return sharedNotes }
+  /// What draws the app's Notes: the native component (warmed up off the main thread from the app's launch, `warmUp`)
+  static let sharedDisplay: NativeNotes = {
     NativeNotes.warmUp()
     return NativeNotes(web: sharedNotes, images: sharedImages, kept: NativeNotes.defaultKept)
   }()
@@ -39,8 +37,8 @@ public final class CanvasView: NSView {
   var shownAt = 0
   /// The web page's other work: pastes, added pictures, Free code's language
   let notes: NoteRenderer
-  /// What draws and measures the Markdown shown at rest and SVG pictures
-  let display: any NoteDisplay
+  /// What draws and measures the Markdown shown at rest and SVG pictures, and lays out what is written in a Note
+  let display: NativeNotes
   var theme = Theme.warmInk
   /// The board shown, to show again in another theme
   var shown: (board: VaultBoard, vault: Vault)?
@@ -461,25 +459,18 @@ public final class CanvasView: NSView {
     self.init(frame: frame, notes: CanvasView.sharedNotes, display: CanvasView.sharedDisplay)
   }
 
-  /// With a Note renderer of its own, its snapshots cached in `noteCache` (CanvasBench and tests: not the app's cache)
+  /// With a Note renderer of its own, its snapshots, measured sizes, formulas and diagrams kept in `noteCache`
+  /// (CanvasBench and tests: not the app's cache), as the app keeps them
   package convenience init(frame: NSRect, noteCache: URL) {
-    self.init(frame: frame, notes: NoteRenderer(cache: noteCache))
-  }
-
-  /// The same, its Markdown drawn by the native component (`native`) or the web page
-  package convenience init(frame: NSRect, noteCache: URL, native: Bool) {
     let web = NoteRenderer(cache: noteCache)
-    // its measured sizes, formulas and diagrams kept there too, as the app keeps them beside its snapshots
-    self.init(
-      frame: frame, notes: web, display: native ? NativeNotes(web: web, kept: noteCache.appending(path: "native")) : web
-    )
+    self.init(frame: frame, notes: web, display: NativeNotes(web: web, kept: noteCache.appending(path: "native")))
   }
 
-  /// With that Note renderer (CanvasBench: one for several canvases, as the app's), which draws its Notes unless
-  /// `display` does
-  package init(frame: NSRect, notes: NoteRenderer, display: (any NoteDisplay)? = nil) {
+  /// With that Note renderer (CanvasBench: one for several canvases, as the app's), and its Markdown drawn by `display`
+  /// (by default one of its own, with nothing kept on disk)
+  package init(frame: NSRect, notes: NoteRenderer, display: NativeNotes? = nil) {
     self.notes = notes
-    self.display = display ?? notes
+    self.display = display ?? NativeNotes(web: notes)
     super.init(frame: frame)
     // in a test process: no menu, alert or panel ever comes up
     TestGuard.install()
@@ -602,16 +593,13 @@ public final class CanvasView: NSView {
     let open = document?.board
     // where the camera will be once it is installed (install: arriving, else kept, else the board's top left at 100 %)
     let opensAt = keepCamera ? camera : arriving ?? keptCamera(of: board, in: vault)
-    let native = display is NativeNotes
     let work = Task.detached(priority: .userInitiated) {
       let package = vault.url(of: board.path)
       let b = try open ?? vault.board(at: board.path)
       let measures = Scene.measures(b, package: package, vault: vault)
       let sizes = await CanvasView.measure(measures, theme: theme, display: display)
-      if let native = display as? NativeNotes {
-        native.prepare(
-          CanvasView.inView(measures, of: b, sizes: sizes, camera: opensAt, size: size, theme: theme, backing: backing))
-      }
+      display.prepare(
+        CanvasView.inView(measures, of: b, sizes: sizes, camera: opensAt, size: size, theme: theme, backing: backing))
       let inlines = Scene.inlineMeasures(b, package: package, vault: vault, theme: theme)
       let inline = await CanvasView.measureInline(inlines, theme: theme, display: display)
       // the Note display's, compiled as the app starts: one in the app
@@ -638,7 +626,7 @@ public final class CanvasView: NSView {
             // would read as blank until its picture came. Out of view its overview is the one kept on disk, else its
             // paper at first, and the queue draws it right after the board shows (RestPlan), so the board does not
             // wait for every Note's
-            if native, inView,
+            if inView,
               let snap = await CanvasView.picture(it, scale: opening, theme: theme, display: display, priority: 1),
               let drawn = CanvasView.compose(it, snap, scale: opening, theme: theme, images: images)
             {

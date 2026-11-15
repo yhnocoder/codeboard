@@ -15,7 +15,7 @@ import CodeBoardNotes
   /// The Note renderer its canvases share (nil: the app's)
   private let notes: NoteRenderer?
   /// What draws its tabs' Markdown when `notes` is given (a test's): the native component, or the web page when nil
-  private let display: (any NoteDisplay)?
+  private let display: NativeNotes?
   /// 摘要切换, and who writes a summary again (nil: no AI key, no ↻), for every canvas
   var summarySwitch = SummarySwitch.default {
     didSet { for p in panes.values { p.canvas.summarySwitch = summarySwitch } }
@@ -102,7 +102,7 @@ import CodeBoardNotes
     return a
   }
 
-  init(shell: Shell, notes: NoteRenderer? = nil, display: (any NoteDisplay)? = nil) {
+  init(shell: Shell, notes: NoteRenderer? = nil, display: NativeNotes? = nil) {
     self.shell = shell
     self.notes = notes
     self.display = display
@@ -391,7 +391,7 @@ final class Pane: NSView {
   func arriving(_ a: Arrival) { pending = a }
   private let problem = NSTextField(wrappingLabelWithString: "")
 
-  init(notes: NoteRenderer?, display: (any NoteDisplay)?) {
+  init(notes: NoteRenderer?, display: NativeNotes?) {
     canvas = notes.map { CanvasView(frame: .zero, notes: $0, display: display) } ?? CanvasView()
     super.init(frame: .zero)
     canvas.autoresizingMask = [.width, .height]

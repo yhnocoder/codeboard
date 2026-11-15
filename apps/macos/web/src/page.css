@@ -57,26 +57,11 @@ body {
   max-height: var(--pop-max, 560px);
 }
 /* A Note whose header shows its leading heading: not shown again in the body (the board's .nbody.hidehead, which the
-   page's bodies, always editors, would not match); while it is written in, the header folds away and it shows (fold) */
+   page's bodies, always editors, would not match) */
 .render .nbody.hidehead .md-pm > :is(h1, h2, h3, h4, h5, h6):first-child {
   display: none;
 }
 .render .nbody.hidehead .md-pm > :nth-child(2) {
-  margin-top: 0;
-}
-.nbody.hidehead.unfolded .md-pm > :is(h1, h2, h3, h4, h5, h6):first-child {
-  display: none;
-}
-.nbody.hidehead.unfolded .md-pm > :nth-child(2) {
-  margin-top: 0;
-}
-/* The static render a press is read on (page.ts begin), laid out as the canvas draws the Note: with the heading shown
-   its lines were lower by the heading's height than where they are drawn, and a press below the last line landed on
-   an earlier one */
-.nbody.hidehead.spot > :is(h1, h2, h3, h4, h5, h6):first-child {
-  display: none;
-}
-.nbody.hidehead.spot > :nth-child(2) {
   margin-top: 0;
 }
 /* ⌘K (palette.ts): the board's transitions, as main runs them */
