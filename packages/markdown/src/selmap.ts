@@ -7,6 +7,9 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 const LEAF_CHAR = "￼";
 /** 静态显示里一个节点占一整块、在文档里是一个叶子节点的：算一个字（.md-fig = 带图注的图，图注是图的属性） */
 const LEAF = ".katex, .math, .md-ref, .fnref, .md-emoji, .md-toc, .md-html, .md-fig, .md-imgerr, img, br, hr";
+/** Drawn as something shorter than their text, which data-src keeps: a Mermaid diagram (its code), a long address written as
+ *  it is (url.ts, shown as its site) */
+const SHORT = ".mmd, .md-short";
 /** 静态显示里有、文档的字里没有的：{字|批注} 的标签（批注是标注的属性）、表格的图注（表格的属性） */
 const EXTRA = ["md-annot-n", "md-cap"];
 
@@ -38,7 +41,7 @@ export function staticTextRange(root: HTMLElement, range: Range): StaticTextRang
     const e = n as HTMLElement;
     if (EXTRA.some((c) => e.classList.contains(c))) return;
     // Mermaid：挂上页面后换成了图，文档里是代码块的原文
-    const mmd = e.classList.contains("mmd");
+    const mmd = e.matches(SHORT);
     if (mmd || e.matches(LEAF)) {
       const s = mmd ? (e.dataset.src ?? "") : LEAF_CHAR;
       if (from < 0 && (e === range.startContainer || e.contains(range.startContainer))) from = text.length;
@@ -69,7 +72,7 @@ export function staticDomRange(root: HTMLElement, from: number, to: number): Ran
     if (node.nodeType === 3) len = (node as Text).data.length;
     else if (node.nodeType === 1) {
       const e = node as HTMLElement,
-        mmd = e.classList.contains("mmd");
+        mmd = e.matches(SHORT);
       if (EXTRA.some((c) => e.classList.contains(c))) return false;
       if (!mmd && !e.matches(LEAF)) {
         for (const k of e.childNodes) if (visit(k)) return true;

@@ -56,10 +56,13 @@ function staticInline(raw: string, md: Md): string {
  *  it. cap: where in its caption it was clicked (the rendered caption's text and the offset in it), for the caret in the source */
 export type ImageClick = (view: EditorView, from: number, open: boolean, cap: CaptionHit | null) => void;
 export type CaptionHit = { text: string; at: number };
+/** What a press on a drawn [[reference]] (el) does other than open its source: true when it was taken */
+export type RefClick = (view: EditorView, el: HTMLElement) => boolean;
 
 /**
  * The drawn form of a hidden atom, at the start of its source. A press puts the caret into the source (caret(from)),
- * which then shows; an image is selected or opened (onImage) and can also be dragged, which moves its source.
+ * which then shows; an image is selected or opened (onImage) and can also be dragged, which moves its source; a single click on a
+ * [[reference]] goes to onRef first, and the caret stays where it was when that takes it.
  * wrap: the formatting the atom sits in, outermost first (a widget is not inside the inline decorations around it)
  */
 export function atomWidget(
@@ -69,6 +72,7 @@ export function atomWidget(
   onCaret: (view: EditorView, pos: number) => void,
   wrap: Tag[] = [],
   onImage?: ImageClick,
+  onRef?: RefClick,
 ): ToDOM {
   return (view, getPos) => {
     const md = mdOf(view.state);
@@ -145,6 +149,8 @@ export function atomWidget(
       el.addEventListener("mousedown", (ev) => {
         if (ev.button !== 0) return;
         ev.preventDefault();
+        if (a.type === "ref" && ev.detail < 2 && !ev.metaKey && !ev.ctrlKey && !ev.shiftKey && onRef?.(view, el))
+          return;
         const from = getPos();
         if (from != null) onCaret(view, caret(from));
       });

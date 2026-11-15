@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { blockInfo, flat, type Span } from "../src/editor/spans";
-import { shortUrl } from "../src/editor/links";
+import { shortUrl } from "../src/url";
 
 // What the editor draws for a paragraph's source: where each span is, which characters are its markers, the text inside
 const at = (text: string, sp: Span) => ({
