@@ -459,6 +459,86 @@ actor RigTurns {
     #expect(r.doc.history.undoSteps.count == 2)
   }
 
+  /// Held, an arrow glides as main's does (keymap.ts glide, state/timing.ts NUDGE_*): the OS repeats move nothing; past
+  /// 300 ms it moves every frame at 0.04 points per millisecond on screen, easing up to six times that over 1.5 s, in
+  /// whole world points with the rest carried; another arrow joining starts the speed-up over; one step at the last key
+  /// up; the window losing the keys ends it too. Frames and presses are on the rig's clock
+  @Test(arguments: [1, 0.5] as [CGFloat])
+  func heldArrowKeysGlideFasterTheLongerTheyAreHeld(zoom: CGFloat) async throws {
+    let r = try await Rig(zoom: zoom)
+    defer { r.close() }
+    r.click(r.centre("b1"))
+    func shown() -> CGVector {
+      if case .nudge(let m)? = r.canvas.gesture?.kind { return m.d }
+      return .zero
+    }
+    func repeatKey(_ code: UInt16) {
+      r.send(
+        NSEvent.keyEvent(
+          with: .keyDown, location: .zero, modifierFlags: [], timestamp: r.next(0.016),
+          windowNumber: r.window.windowNumber, context: nil, characters: " ", charactersIgnoringModifiers: " ",
+          isARepeat: true, keyCode: code)!)
+    }
+    // main's glide, frame by frame from `from` (when the speed-up began) over the frames at `times`
+    func glide(_ times: [TimeInterval], from t0: TimeInterval, last: TimeInterval) -> (Double, TimeInterval) {
+      var acc = 0.0
+      var moved = 0.0
+      var last = last
+      for now in times {
+        let dt = min(50, (now - last) * 1000)
+        let t = (now - t0) * 1000
+        last = now
+        guard t > 300 else { continue }
+        let k = min(1, (t - 300) / 1500)
+        acc += 0.04 * (1 + 5 * k * k * (3 - 2 * k)) / zoom * dt
+        moved += acc.rounded(.towardZero)
+        acc -= acc.rounded(.towardZero)
+      }
+      return (moved, last)
+    }
+    let unit = max(1, (1 / zoom).rounded())
+    r.key(124, up: false)
+    let t0 = r.time
+    for _ in 0..<5 { repeatKey(124) }
+    #expect(shown() == CGVector(dx: unit, dy: 0), "repeats move nothing")
+    var times: [TimeInterval] = []
+    // the repeats took 80 ms of it
+    for _ in 0..<12 {
+      r.tick()
+      times.append(r.time)
+    }
+    #expect(shown() == CGVector(dx: unit, dy: 0), "nothing glides before 300 ms")
+    for _ in 0..<108 {
+      r.tick()
+      times.append(r.time)
+    }
+    let (right, last) = glide(times, from: t0, last: t0)
+    #expect(right > 100, "faster the longer: \(right)")
+    #expect(shown() == CGVector(dx: unit + right, dy: 0))
+    // down joins: a step at once, then the speed-up over, both ways at once
+    r.key(125, up: false)
+    let t1 = r.time
+    var more: [TimeInterval] = []
+    for _ in 0..<30 {
+      r.tick()
+      more.append(r.time)
+    }
+    let (both, _) = glide(more, from: t1, last: last)
+    #expect(shown() == CGVector(dx: unit + right + both, dy: unit + both))
+    #expect(r.card("b1").x == 500, "not saved while held")
+    r.keyUp(124)
+    r.keyUp(125)
+    #expect(r.card("b1").x == 500 + unit + right + both && r.card("b1").y == 200 + unit + both)
+    #expect(r.doc.history.undoSteps.count == 1)
+    // the window losing the keys: the key up never comes here, so the hold ends there
+    r.key(123, up: false)
+    NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: r.window)
+    #expect(r.canvas.gesture == nil && r.doc.history.undoSteps.count == 2)
+    let x = r.card("b1").x
+    for _ in 0..<40 { r.tick() }
+    #expect(r.card("b1").x == x)
+  }
+
   @Test(arguments: [1, 0.5] as [CGFloat])
   func eachKindResizesByItsOwnHandles(zoom: CGFloat) async throws {
     let r = try await Rig(zoom: zoom)

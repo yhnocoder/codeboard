@@ -374,7 +374,7 @@ public final class CanvasView: NSView {
   /// Each Text's narrowest width (its longest word), once measured
   var leastWidths: [CardID: CGFloat] = [:]
   /// Arrow keys held for the nudge under way
-  var nudging: Set<UInt16> = []
+  var nudgeHold: NudgeHold?
   /// The cards ⌘C copied on this board (the pasteboard data that stands for them) and how many times they were pasted
   /// since (actions/shared.ts copied)
   var copied: (board: BoardID, data: Data, n: Int)?
@@ -1119,6 +1119,7 @@ public final class CanvasView: NSView {
       // decoding and drawing free large blocks that the allocator would otherwise keep, counted in the footprint
       DispatchQueue.global(qos: .utility).async { _ = malloc_zone_pressure_relief(nil, 0) }
     }
+    glideNudge(at: time)
     stepFrameEase(at: time)
     stepTidySlide(at: time)
     if motion.isResting && queue.isIdle && onFrame == nil && gesture == nil && !levels.isAnimating
