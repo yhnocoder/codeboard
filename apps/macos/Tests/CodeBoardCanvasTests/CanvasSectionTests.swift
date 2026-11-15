@@ -516,4 +516,22 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
       #expect(r.canvas.dropLit.isEmpty)
     }
   }
+
+  /// A locked Section's title starts with main's lock (.slabel .lockb: a 16 square, its title 2 after it); a release on
+  /// it unlocks the Section, one step
+  @Test func aLockedSectionsTitleStartsWithItsUnlockButton() async throws {
+    let r = try await Rig(sections(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let g = gid("g2")
+    let open = try #require(c.sectionTitle(g))
+    r.doc.edit("Lock") { $0.setLocked([.section(g)], true) }
+    await r.settle()
+    let locked = try #require(c.sectionTitle(g))
+    #expect(locked.minX == open.minX && locked.width == open.width + 18, "\(open) \(locked)")
+    let at = CGPoint(x: locked.minX + (c.theme.frame == .tray ? 6 : 0) + 8, y: locked.midY)
+    r.send(r.mouse(.mouseMoved, at))
+    r.click(at)
+    #expect(r.doc.board.section(g)?.locked == false && r.doc.undoName == "Unlock")
+  }
 }

@@ -313,7 +313,10 @@ struct Scene: Sendable {
       } else {
         guard
           let (drawing, size, code) = Scene.card(
-            c, content, board: board, folder: folder, measured: sizes[c.id]?.size, theme: t, highlighter: highlighter,
+            c, content, board: board, folder: folder,
+            // whole points, as main lays a card out by its offsetWidth and offsetHeight (Card.tsx read)
+            measured: sizes[c.id].map { CGSize(width: $0.size.width.rounded(), height: $0.size.height.rounded()) },
+            theme: t, highlighter: highlighter,
             refs: refs, fetching: fetching.contains(c.id), always: always)
         else { continue }
         part = Part(
@@ -347,12 +350,14 @@ struct Scene: Sendable {
       }
     }
     func titleWidth(_ s: Section) -> CGFloat {
+      let lock = s.locked ? Drawing.sectionLock : 0
       if s.collapsed {
-        return Drawing.foldedTitleWidth(
-          s.title, count: counts[s.id] ?? 0, badge: CanvasView.titleBadge(s.id, in: notes) ?? 0, t)
+        return lock
+          + Drawing.foldedTitleWidth(
+            s.title, count: counts[s.id] ?? 0, badge: CanvasView.titleBadge(s.id, in: notes) ?? 0, t)
       }
       // a tray's label has 6 before its text and 2 after, a brush title 2 after
-      return s.title.isEmpty ? 0 : Drawing.width(s.title, t.sectionTitleFont) + (t.frame == .tray ? 8 : 2)
+      return s.title.isEmpty ? 0 : lock + Drawing.width(s.title, t.sectionTitleFont) + (t.frame == .tray ? 8 : 2)
     }
     var frameOf: [SectionID: CGRect] = [:]
     var visiting = Set<SectionID>()
@@ -403,7 +408,7 @@ struct Scene: Sendable {
             drawing: .label(
               .init(
                 text: s.title, kind: .section, count: s.collapsed ? counts[s.id] ?? 0 : nil,
-                badge: s.collapsed ? CanvasView.titleBadge(s.id, in: notes) ?? 0 : 0)),
+                badge: s.collapsed ? CanvasView.titleBadge(s.id, in: notes) ?? 0 : 0, locked: s.locked)),
             tilt: 0))
       }
     }

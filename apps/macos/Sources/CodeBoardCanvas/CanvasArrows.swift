@@ -217,7 +217,10 @@ extension CanvasView {
       return
     }
     let at = s.collapsed ? theme.foldedTitleAt : theme.sectionTitleAt
-    writeInPlace(.title(id), s.title, at: CGPoint(x: f.rect.minX + at.x, y: f.rect.minY + at.y), select: .section(id))
+    // after its lock, which stays (.slabel: .lockb before .sname)
+    let lock = s.locked ? Drawing.sectionLock : 0
+    writeInPlace(
+      .title(id), s.title, at: CGPoint(x: f.rect.minX + at.x + lock, y: f.rect.minY + at.y), select: .section(id))
   }
 
   /// The item a field stands in for

@@ -213,6 +213,8 @@ public final class CanvasView: NSView {
   package var menuShown: ((NSMenu, CGPoint) -> Void)?
   /// The Text or Box raised over its neighbours (its item index)
   var raised: Int?
+  /// The handles drawn on the selected Texts and Boxes, in their cards' layers
+  var textHandleLayers: [CALayer] = []
   /// The latest refresh (tests wait for it)
   package var refreshing: Task<Void, Never>?
   /// Selection rings, handles: over the cards, in board units
