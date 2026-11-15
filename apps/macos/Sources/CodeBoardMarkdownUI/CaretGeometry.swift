@@ -324,7 +324,7 @@ extension BlockLayout {
           guard t.display.toSource[j] + shifts[i] == range.lowerBound else { continue }
           guard r.solidOnHover else { return nil }
           let x0 = l.origin.x + CTLineGetOffsetForStringIndex(l.line, j, nil) - sx(i, t)
-          return CGRect(x: x0 + 2, y: tops[i] + l.origin.y - 1, width: r.width - 4, height: 1)
+          return CGRect(x: x0 + 2, y: tops[i] + l.origin.y + r.descent - 1, width: r.width - 4, height: 1)
         }
       }
     }

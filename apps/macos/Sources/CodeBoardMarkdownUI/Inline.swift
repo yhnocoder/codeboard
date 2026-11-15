@@ -496,9 +496,7 @@ struct InlineBuilder {
     case .ref(let label, let target):
       let box = RefBox(
         label: label, target: target, hit: resources.ref(label: label, target: target), style: style, theme: theme)
-      // an inline block that hides its overflow sits on the line's baseline by its bottom edge (CSS 2 10.8.1): the box
-      // rises its whole height above the baseline, its own text a descent higher, and a line holding one grows
-      let a = AtomBox(.ref(box), width: box.width, ascent: box.ascent + box.descent, descent: 0)
+      let a = AtomBox(.ref(box), width: box.width, ascent: box.ascent, descent: box.descent)
       var attrs = attributes(style)
       attrs[NSAttributedString.Key(kCTRunDelegateAttributeName as String)] = Self.delegate(a)
       attrs[Attr.atom] = a
@@ -558,7 +556,8 @@ struct InlineBuilder {
     if let n = natural, n.width > 0, n.height > 0 {
       // a CSS px is a point: the image at its own size, at most the body's width; {width=N%} a share of the body
       let w = min(img.width.map { CGFloat($0) * bodyWidth } ?? n.width, bodyWidth)
-      let size = CGSize(width: w, height: (w * n.height / n.width).rounded())
+      // not rounded: the page keeps a fraction of a pixel (layout units of 1/64)
+      let size = CGSize(width: w, height: w * n.height / n.width)
       let cap = img.caption.trimmingCharacters(in: .whitespacesAndNewlines)
       if cap.isEmpty {
         figure = FigureBox(image: size, caption: nil, captionX: 0, captionGap: (0, 0))
@@ -602,8 +601,9 @@ struct InlineBuilder {
           label, width: nil, lineHeight: 11.5 * 1.5, strut: strut, center: false,
           floored: theme.metrics.flooredLeading))
     }
-    // inline-block, vertical-align: middle, 4px margins: centred on the baseline plus half an x-height
-    let margin = natural == nil ? 0 : CGFloat(m.imageMargin)
+    // inline-block, vertical-align: middle, 4px margins (a broken one's too: the editor draws it in .md-img as an image):
+    // centred on the baseline plus half an x-height
+    let margin = CGFloat(m.imageMargin)
     let font = FontBook.font(style.families, size: style.size, weight: style.weight)
     let mid = CTFontGetXHeight(font) / 2
     let half = figure.height / 2 + margin

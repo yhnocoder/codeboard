@@ -220,7 +220,9 @@ struct LayoutBuilder {
   private func gapKind(_ b: MDBlock) -> GapKind {
     switch b.kind {
     case .paragraph: .p
-    case .list, .quote, .code, .mermaid, .table, .math: .block
+    case .list, .quote, .code, .table, .math: .block
+    // a drawn diagram is a div (.mmd), which takes no paragraph gap (gaps.ts); one shown as its source is a code block
+    case .mermaid: resources.diagrams == nil ? .block : .none
     default: .none
     }
   }
@@ -467,7 +469,7 @@ struct LayoutBuilder {
         case .annot(let box):
           items.append(.annot(box, CGPoint(x: x, y: l.origin.y - box.baseline)))
         case .ref(let box):
-          items.append(.ref(box, CGPoint(x: x, y: l.origin.y - box.descent)))
+          items.append(.ref(box, CGPoint(x: x, y: l.origin.y)))
         case .spacer:
           break
         }
@@ -884,7 +886,8 @@ struct LayoutBuilder {
       end = paragraph(
         cap.text, cap.inlines, x: x, width: width, y: end, style: cs, lineHeight: CGFloat(m.captionLineHeight),
         center: true)
-      end += CGFloat(m.captionMargin[1])
+      // the caption's margin below meets the figure's own below it (.md-tfig) and they collapse into the larger
+      end += max(0, CGFloat(m.captionMargin[1] - m.tableMargin))
     }
     return end
   }

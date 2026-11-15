@@ -8,7 +8,13 @@ final class RefBox: @unchecked Sendable {
   enum Mark {
     case arrow
     case warn
-    case seal(MarkdownSeal, CTLine, color: MDColor, size: CGSize)
+    case seal(MarkdownSeal, CTLine, color: MDColor, size: CGSize, outer: Outer?)
+  }
+  /// a two-part seal's first half: its letters in its colour, and how wide that half is
+  struct Outer {
+    let line: CTLine
+    let color: MDColor
+    let width: CGFloat
   }
   let mark: Mark
   let title: CTLine?
@@ -51,18 +57,29 @@ final class RefBox: @unchecked Sendable {
     case .found(let title, let seal):
       text = title
       if let seal {
-        let f = FontBook.font(theme.fonts.body, size: size * 0.72, weight: 600)
-        let l = CTLineCreateWithAttributedString(
-          NSAttributedString(
-            string: seal.text,
-            attributes: [
-              NSAttributedString.Key(kCTFontAttributeName as String): f,
-              NSAttributedString.Key(kCTForegroundColorAttributeName as String): c.surface.cg,
-            ]))
+        let fs = size * 0.72
+        let f = FontBook.font(theme.fonts.body, size: fs, weight: 600)
+        func letters(_ s: String, _ color: MDColor) -> CTLine {
+          CTLineCreateWithAttributedString(
+            NSAttributedString(
+              string: s,
+              attributes: [
+                NSAttributedString.Key(kCTFontAttributeName as String): f,
+                NSAttributedString.Key(kCTForegroundColorAttributeName as String): color.cg,
+              ]))
+        }
+        let l = letters(seal.text, c.surface)
         let tw = CGFloat(CTLineGetTypographicBounds(l, nil, nil, nil))
-        let h = 1.36 * size * 0.72
+        let h = 1.36 * fs
         let sc = theme.marks.seals[seal.color] ?? c.accent
-        mark = .seal(seal, l, color: sc, size: CGSize(width: max(h, tw + 2 * 0.34 * size * 0.72), height: h))
+        // two halves pad their letters 0.4em each and leave the box's own padding out (.md-seal.two > span)
+        let outer = seal.outer.map { o in
+          let oc = theme.marks.seals[o.color] ?? c.accent
+          let ol = letters(o.text, oc)
+          return Outer(line: ol, color: oc, width: CGFloat(CTLineGetTypographicBounds(ol, nil, nil, nil)) + 0.8 * fs)
+        }
+        let w = outer.map { $0.width + tw + 0.8 * fs } ?? max(h, tw + 2 * 0.34 * fs)
+        mark = .seal(seal, l, color: sc, size: CGSize(width: w, height: h), outer: outer)
         if seal.alone { line = nil }
       }
     case .broken(let place, let title, let badge):
@@ -94,7 +111,7 @@ final class RefBox: @unchecked Sendable {
       NSAttributedString.Key(kCTForegroundColorAttributeName as String): color.cg,
     ]
     let alone = {
-      if case .seal(let s, _, _, _) = mark { return s.alone }
+      if case .seal(let s, _, _, _, _) = mark { return s.alone }
       return false
     }()
     title = alone ? nil : CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attrs))
@@ -116,7 +133,7 @@ final class RefBox: @unchecked Sendable {
     case .warn:
       let w = CTLineCreateWithAttributedString(NSAttributedString(string: "⚠ ", attributes: attrs))
       x += CGFloat(CTLineGetTypographicBounds(w, nil, nil, nil))
-    case .seal(_, _, _, let s): x += s.width + (alone ? 0 : 0.4 * size)
+    case .seal(_, _, _, let s, _): x += s.width + (alone ? 0 : 0.4 * size)
     }
     titleX = x
     if let t = title { x += CGFloat(CTLineGetTypographicBounds(t, nil, nil, nil)) }
@@ -128,10 +145,10 @@ final class RefBox: @unchecked Sendable {
     descent = lh - ascent
   }
 
-  /// draws the box with its own text's baseline starting at `o` (its bottom edge `descent` below)
+  /// draws the box with its baseline starting at `o`
   func draw(at o: CGPoint, _ ctx: CGContext) {
     let alone = {
-      if case .seal(let s, _, _, _) = mark { return s.alone }
+      if case .seal(let s, _, _, _, _) = mark { return s.alone }
       return false
     }()
     let edge: CGFloat = alone ? 2 : 3
@@ -164,17 +181,34 @@ final class RefBox: @unchecked Sendable {
           string: "⚠",
           attributes: [NSAttributedString.Key(kCTForegroundColorAttributeName as String): color.alpha(0.9).cg]))
       line(f, CGPoint(x: o.x + edge, y: o.y), ctx)
-    case .seal(_, let l, let c, let s):
+    case .seal(_, let l, let c, let s, let outer):
       // raised .12em, centred on the cap height
       let r = CGRect(x: o.x + edge, y: o.y - 0.12 * size * 0.72 - s.height * 0.78, width: s.width, height: s.height)
-      ctx.setFillColor(c.cg)
-      ctx.addPath(CGPath(roundedRect: r, cornerWidth: 3, cornerHeight: 3, transform: nil))
-      ctx.fillPath()
-      let tw = CGFloat(CTLineGetTypographicBounds(l, nil, nil, nil))
-      let font =
-        (CTRunGetAttributes((CTLineGetGlyphRuns(l) as! [CTRun])[0]) as NSDictionary)[kCTFontAttributeName] as! CTFont
-      let cap = CTFontGetCapHeight(font)
-      line(l, CGPoint(x: r.midX - tw / 2, y: r.midY + cap / 2 + 0.03 * size * 0.72), ctx)
+      let rounded = CGPath(roundedRect: r, cornerWidth: 3, cornerHeight: 3, transform: nil)
+      var own = r
+      if let ou = outer {
+        // the first half: its letters in its colour on a 13 % tint, the whole seal ringed in it (an inset shadow, which
+        // the second half's fill covers)
+        ctx.saveGState()
+        ctx.addPath(rounded)
+        ctx.clip()
+        ctx.setFillColor(ou.color.alpha(0.13).cg)
+        ctx.fill(r)
+        ctx.setStrokeColor(ou.color.cg)
+        ctx.setLineWidth(2)
+        ctx.addPath(rounded)
+        ctx.strokePath()
+        own = CGRect(x: r.minX + ou.width, y: r.minY, width: r.width - ou.width, height: r.height)
+        ctx.setFillColor(c.cg)
+        ctx.fill(own)
+        ctx.restoreGState()
+        sealLetters(ou.line, in: CGRect(x: r.minX, y: r.minY, width: ou.width, height: r.height), ctx)
+      } else {
+        ctx.setFillColor(c.cg)
+        ctx.addPath(rounded)
+        ctx.fillPath()
+      }
+      sealLetters(l, in: own, ctx)
     }
     if let t = title {
       line(t, CGPoint(x: o.x + titleX, y: o.y), ctx)
@@ -200,6 +234,15 @@ final class RefBox: @unchecked Sendable {
         ctx.strokePath()
       }
     }
+  }
+
+  /// a seal's letters centred in `r` on their cap height, a little low (.md-seal-t: trim to cap and alphabetic, .03em down)
+  private func sealLetters(_ l: CTLine, in r: CGRect, _ ctx: CGContext) {
+    let tw = CGFloat(CTLineGetTypographicBounds(l, nil, nil, nil))
+    let font =
+      (CTRunGetAttributes((CTLineGetGlyphRuns(l) as! [CTRun])[0]) as NSDictionary)[kCTFontAttributeName] as! CTFont
+    let cap = CTFontGetCapHeight(font)
+    line(l, CGPoint(x: r.midX - tw / 2, y: r.midY + cap / 2 + 0.03 * fontSize * 0.72), ctx)
   }
 
   private func line(_ l: CTLine, _ at: CGPoint, _ ctx: CGContext) {

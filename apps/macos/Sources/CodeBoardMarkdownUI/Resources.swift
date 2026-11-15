@@ -57,10 +57,21 @@ public struct MarkdownSeal: Sendable, Hashable {
   public var color: String
   /// the reference is to that place itself: only the seal is drawn
   public var alone: Bool
-  public init(text: String, color: String, alone: Bool) {
+  /// the other book it is in, drawn as the first half (markdown.css .md-seal.two): its few letters and its seal colour
+  public var outer: Outer?
+  public struct Outer: Sendable, Hashable {
+    public var text: String
+    public var color: String
+    public init(text: String, color: String) {
+      self.text = text
+      self.color = color
+    }
+  }
+  public init(text: String, color: String, alone: Bool, outer: Outer? = nil) {
     self.text = text
     self.color = color
     self.alone = alone
+    self.outer = outer
   }
 }
 
