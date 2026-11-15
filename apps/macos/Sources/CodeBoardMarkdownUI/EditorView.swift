@@ -151,6 +151,9 @@ public final class MarkdownEditorView: NSView {
   private var toolbarTimer: Timer?
   /// the selection the toolbar is for, so a change hides it until the new one settles
   private var toolbarFor: MDSelection?
+  /// a format applied while the toolbar is up (its button or the shortcut): the selection it moves to is the same text,
+  /// so the toolbar stays and only follows it (hidden and shown again after the settle, it blinked under the pointer)
+  private var restyling = false
   let band = CodeBand()
   /// the languages a code block's band offers (name written into the fence, label shown); the host's
   public var codeLanguages: [(name: String, label: String)] = []
@@ -1859,7 +1862,8 @@ public final class MarkdownEditorView: NSView {
       toolbar.hide()
       return
     }
-    if toolbarFor == s, !toolbar.isHidden {
+    if toolbarFor == s || restyling, !toolbar.isHidden {
+      toolbarFor = s
       placeToolbar()
       return
     }
@@ -1897,7 +1901,10 @@ public final class MarkdownEditorView: NSView {
       default: nil
       }
     if let kind {
+      restyling = true
+      defer { restyling = false }
       core.command(.toggle(kind))
+      changed()
     } else if id == "link" {
       openLinkBox()
     } else if id == "annot" {
@@ -1905,7 +1912,12 @@ public final class MarkdownEditorView: NSView {
     } else if id == "math" {
       // $…$ around the selection, or off again
       let st = MDEditState(source: core.source, selection: core.selection)
-      if let e = MarkdownEditing.wrap("$", "$", in: st, document: core.document) { core.apply(e) }
+      if let e = MarkdownEditing.wrap("$", "$", in: st, document: core.document) {
+        restyling = true
+        defer { restyling = false }
+        core.apply(e)
+        changed()
+      }
     }
     note(.key("toolbar \(id)", did: "selection \(core.selection.anchor)…\(core.selection.head)"))
     changed()
@@ -2623,6 +2635,8 @@ public final class MarkdownEditorView: NSView {
       }
     guard let c else { return super.performKeyEquivalent(with: e) }
     begin()
+    if case .toggle = c { restyling = true }
+    defer { restyling = false }
     let did = core.command(c)
     note(.key(Self.mods(e) + key.uppercased(), did: did ? "\(c)" : "\(c): nothing here"))
     changed()

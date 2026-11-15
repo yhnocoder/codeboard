@@ -241,6 +241,8 @@ final class CodeBand: NSView {
     }
     /// the delete actions: hovered in the warning colour (.md-bb.danger:hover)
     static let danger: Set<String> = ["delRow", "delCol"]
+    // main's .md-bb has no :active; Luna asked for the board buttons' press here too (2026-11-15)
+    override var pressInk: Double? { 0.12 }
     var fill = MDColor(0.95, 0.95, 0.95, 1)
     var radius: CGFloat = 12
     var table = false
@@ -364,11 +366,23 @@ final class CodeBand: NSView {
       defer { ctx.endTransparencyLayer() }
       ctx.setAlpha(CGFloat(shown))
       for (p, box) in innerRects() {
-        let over = hovered == p.id
+        let held = pressed == p.id
+        let over = hovered == p.id || held
         let danger = over && Self.danger.contains(p.id)
+        ctx.saveGState()
+        defer { ctx.restoreGState() }
+        if held {
+          ctx.translateBy(x: box.midX, y: box.midY)
+          ctx.scaleBy(x: Self.pressScale, y: Self.pressScale)
+          ctx.translateBy(x: -box.midX, y: -box.midY)
+        }
         if p.on || over {
-          // .md-bb.on and :hover: the ink at 6.5 % behind it (the language picker 6 %), a delete in the warning's 14 %
-          let chip = danger ? theme.colors.warn.alpha(0.14) : theme.colors.ink.alpha(p.kind.isLanguage ? 0.06 : 0.065)
+          // .md-bb.on and :hover: the ink at 6.5 % behind it (the language picker 6 %), a delete in the warning's 14 %;
+          // held, the board's pressed step (.tbtn:active 12 %), a delete's warning as much deeper
+          let chip =
+            danger
+            ? theme.colors.warn.alpha(held ? 0.24 : 0.14)
+            : theme.colors.ink.alpha(held ? 0.12 : p.kind.isLanguage ? 0.06 : 0.065)
           let k: CGFloat = p.kind.isLanguage ? 6 : 6.5
           ctx.addPath(CGPath(roundedRect: box, cornerWidth: k * zoom, cornerHeight: k * zoom, transform: nil))
           ctx.setFillColor(chip.cg)

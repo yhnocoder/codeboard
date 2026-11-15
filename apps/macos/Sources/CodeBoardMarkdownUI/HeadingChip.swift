@@ -16,6 +16,8 @@ final class HeadingChip: HoverControls {
   override func controls() -> [(id: String, box: CGRect, tip: String)] { [("chip", bounds, "")] }
   override var fade: Double { MarkdownTiming.headingChipFade }
   override var hoverInk: Double { 0.085 }
+  // main's chip has no :active; Luna asked for the board buttons' press on every control of a Note (2026-11-15)
+  override var pressInk: Double? { 0.12 }
 
   /// over the heading's first line: `baseline` its first baseline, `left` where its text starts (editor view points)
   func place(baseline: CGFloat, left: CGFloat) {
@@ -35,6 +37,11 @@ final class HeadingChip: HoverControls {
     ]
     let look = look("chip")
     if look.ink > 0, let ctx = NSGraphicsContext.current?.cgContext {
+      if look.scale != 1 {
+        ctx.translateBy(x: bounds.midX, y: bounds.midY)
+        ctx.scaleBy(x: look.scale, y: look.scale)
+        ctx.translateBy(x: -bounds.midX, y: -bounds.midY)
+      }
       ctx.addPath(CGPath(roundedRect: bounds, cornerWidth: 3.5 * zoom, cornerHeight: 3.5 * zoom, transform: nil))
       ctx.setFillColor(theme.colors.ink.alpha(look.ink).cg)
       ctx.fillPath()
