@@ -1,0 +1,12 @@
+# 拖着的 Note 盖在 Text 上面（main 的 .card.lift z-index 10），落下以后回到原来的层
+zoom 1
+center @ctext
+warp @cnote+150,14
+down
+move @cnote+150,120 300
+move @cnote+150,214 300
+shot over
+up
+wait 600
+expect cnote.y > 250
+shot landed
