@@ -219,7 +219,7 @@ private func freeBoard() -> Board {
     r.click(line2)
     await r.settle()
     #expect(r.doc.selection == [.card(cid("f"))] && !c.isEditing, "the click that selects it")
-    r.click(CGPoint(x: card.midX, y: card.minY + 10))
+    r.click(clearOfButtons(c, cid("f"), CGPoint(x: card.minX + 15, y: card.minY + 10)))
     await r.settle()
     #expect(!c.isEditing, "its head")
     r.click(line2)
@@ -257,13 +257,15 @@ private func freeBoard() -> Board {
     let c = r.canvas
     func head(_ id: String, _ x: CGFloat) -> CGPoint {
       let k = r.rect(id)
-      return CGPoint(x: x < 0 ? k.maxX + x : k.minX + x, y: k.minY + c.theme.headerHeight / 2)
+      return clearOfButtons(
+        c, cid(id), CGPoint(x: x < 0 ? k.maxX + x : k.minX + x, y: k.minY + c.theme.headerHeight / 2))
     }
     func title(_ id: String) -> String? {
       if case .own(let k)? = r.doc.board.card(cid(id))?.content { k.title } else { nil }
     }
-    // a titled head past its title: nothing
-    r.doubleClick(head("f", -40))
+    // a titled head past its title, short of its buttons: nothing
+    let first = try #require(c.head(cid("f"))?.buttons.map(\.1.minX).min())
+    r.doubleClick(head("f", first - 8))
     await r.settle()
     #expect(c.inPlace == nil && !c.isEditing)
     // on the title: its field, with the title
@@ -333,4 +335,12 @@ private func freeBoard() -> Board {
     r.doc.undo()
     #expect(r.doc.board.card(id2) == nil, "one undo takes it away")
   }
+}
+
+/// A point on a card's header that is on none of its buttons: a press there must not act (a menu, a copy)
+@MainActor private func clearOfButtons(_ c: CanvasView, _ id: CardID, _ p: CGPoint) -> CGPoint {
+  let at = c.index(of: .card(id)).map { c.scene!.items[$0].rect.origin } ?? .zero
+  let on = c.head(id)?.buttons.first { $0.1.offsetBy(dx: at.x, dy: at.y).contains(p) }
+  #expect(on == nil, "\(p) is on the \(String(describing: on?.0)) button")
+  return p
 }
