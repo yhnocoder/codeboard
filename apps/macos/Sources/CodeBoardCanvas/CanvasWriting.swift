@@ -43,6 +43,8 @@ struct Editing {
   var code = false
   var codeView: CodeEditorView?
   var codeText: String?
+  /// What stands on Free code's lines, following them while they are written
+  var written: WrittenLines?
   /// Leaving: a Note whose header folded away while it was written in shows its header again
   var unfolding = false
   /// The editor it writes with, kept to the end (the canvas may have left its window by then: a tab closed)
@@ -185,6 +187,7 @@ extension CanvasView {
     if case .code(var c) = it.drawing {
       c.layout.rows = []
       c.layout.bands = []
+      c.inline = []
       it.drawing = .code(c)
     }
     let scale = Levels.scale(camera.zoom, backing: backing, size: it.bitmapSize)
@@ -255,7 +258,9 @@ extension CanvasView {
     withoutAnimation {
       showPaper()
       positionEditor()
-      if let id = editing?.id, let s = scene {
+      if editing?.code == true {
+        rerouteWritten()
+      } else if let id = editing?.id, let s = scene {
         let touching = s.arrows.indices.filter { s.arrows[$0].from == id || s.arrows[$0].to == id }
         reroute(touching) { c in
           guard var p = s.placed[c] else { return nil }

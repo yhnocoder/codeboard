@@ -83,6 +83,10 @@ extension CanvasView {
     keysAhead = nil
     e.size = CGSize(width: card.width, height: top + v.height)
     e.ready = true
+    let ends = doc.board.arrows.contains { a in
+      [a.from, a.to].contains { $0.card == id && $0.segment == seg.id && $0.line != nil }
+    }
+    e.written = WrittenLines(seg, drawn: c, ends: ends)
     editing = e
     v.onHeight = { [weak self] in self?.editorSized(CGSize(width: card.width, height: top + $0)) }
     v.onExit = { [weak self] in
@@ -96,7 +100,12 @@ extension CanvasView {
     } else {
       v.change { $0.select(CodeSelection(0)) }
     }
+    v.onChange = { [weak self] _ in self?.followWrittenLines() }
+    v.onLayout = { [weak self] in self?.writtenLaidOut() }
+    followWrittenLines()
     host.addSubview(v, positioned: .above, relativeTo: self)
+    v.wantsLayer = true
+    showWrittenNotes()
     // what it does not use (a scroll, a pinch) is the board's, as over any card
     v.nextResponder = self
     withoutAnimation {
@@ -119,6 +128,158 @@ extension CanvasView {
       style: theme.codeStyle, metrics: m.lines, numberColor: theme.number,
       selection: theme.accent.copy(alpha: 0.26) ?? theme.accent, currentLine: theme.hlrow, band: Drawing.band,
       padTop: m.padTop, padBottom: m.padBottom)
+  }
+}
+
+/// What stands on a Free code card's lines while it is written, as it was drawn: Highlights, their Always Show sidenotes
+/// and the arrow ends on its lines; each follows its lines from the text as it was to the text as it is (LineAnchors, as
+/// writeFreeCode makes them follow when it is written), so the editor's own undo brings them back with the lines
+struct WrittenLines {
+  let lines: [String]
+  let start: Int
+  let segment: SegmentID
+  let highlights: [ClosedRange<Int>]
+  /// The Highlights with Always Show sidenotes, and the sidenotes as drawn, in the same order
+  let always: [CodeLayout.Always]
+  let notes: [Drawing.InlineNote]
+  /// How far right of the gutter each group's sidenotes start, the hidden indent put back
+  let noteX: [CGFloat]
+  var text: String
+  var map: LineAnchors
+  /// The sidenotes' pictures over the editor
+  var layers: [CALayer] = []
+  /// Anything stands on the lines: else nothing is followed as the text changes
+  let any: Bool
+
+  init(_ seg: Segment, drawn c: Drawing.Code, ends: Bool) {
+    lines = seg.lines
+    start = seg.firstLine
+    segment = seg.id
+    highlights = seg.highlights
+    always = c.layout.inline.map(\.always)
+    notes = c.inline
+    noteX = c.layout.inline.map { $0.x - c.layout.shift }
+    text = seg.lines.joined(separator: "\n")
+    map = LineAnchors(from: seg.lines, start: seg.firstLine, to: seg.lines, start: seg.firstLine)
+    any = ends || !highlights.isEmpty || !always.isEmpty
+  }
+}
+
+extension CanvasView {
+  /// The written text's Highlights and the room under them for their Always Show sidenotes, where their lines are now
+  func followWrittenLines() {
+    guard let v = editing?.codeView, var w = editing?.written, w.any else { return }
+    if v.editor.text != w.text {
+      w.text = v.editor.text
+      w.map = LineAnchors(from: w.lines, start: w.start, to: w.text.components(separatedBy: "\n"), start: w.start)
+      editing?.written = w
+    }
+    // the room goes in the order of the lines it is under, as CodeLayout puts it
+    let under = w.always.indices.compactMap { k in w.map.range(w.always[k].lines).map { (k: k, lines: $0) } }
+      .sorted { ($0.lines.upperBound, $0.k) < ($1.lines.upperBound, $1.k) }
+    let room = under.map { u in
+      CodeLines.Insertion(afterLine: u.lines.upperBound, height: w.always[u.k].notes.reduce(0) { $0 + $1.height })
+    }
+    v.decorations.bands = w.highlights.compactMap { h in
+      w.map.range(h).map { r in
+        CodeDecorations.Band(lines: r, through: under.firstIndex { w.always[$0.k].lines == h }, color: theme.highlight)
+      }
+    }
+    if v.insertions != room { v.insertions = room }
+  }
+
+  /// The editor laid its lines out again: the sidenotes and the arrow ends on its lines go where their lines are
+  func writtenLaidOut() {
+    placeWrittenNotes()
+    rerouteWritten()
+  }
+
+  /// The Always Show sidenotes' pictures, put over the editor's room for them
+  func showWrittenNotes() {
+    guard let v = editing?.codeView, var w = editing?.written, !w.notes.isEmpty, let parent = v.layer else { return }
+    let scale = backing * max(1, camera.zoom)
+    for n in w.notes {
+      let l = CALayer()
+      l.contentsScale = scale
+      parent.addSublayer(l)
+      w.layers.append(l)
+      let look = theme.id.rawValue
+      Task { [notes, theme] in
+        let snap = try? await notes.snapshot(
+          of: .inline(n.text), width: n.frame.width, height: nil, folder: n.folder, scale: scale, look: look,
+          dark: theme.dark, refs: n.refs, priority: 1)
+        l.contents = snap?.surface
+      }
+    }
+    editing?.written = w
+    placeWrittenNotes()
+  }
+
+  func placeWrittenNotes() {
+    guard let v = editing?.codeView, let w = editing?.written, !w.layers.isEmpty else { return }
+    // each group's room: the editor's inserted rows, in the order the room was given
+    let room = v.layout.lines.rows.compactMap { r -> (Int, CGFloat)? in
+      if case .inserted(let i) = r.kind { (i, r.y) } else { nil }
+    }
+    let under = w.always.indices.compactMap { k in w.map.range(w.always[k].lines).map { (k: k, lines: $0) } }
+      .sorted { ($0.lines.upperBound, $0.k) < ($1.lines.upperBound, $1.k) }
+    var first = 0
+    var at: [Int: Int] = [:]
+    for (k, g) in w.always.enumerated() {
+      at[k] = first
+      first += g.notes.count
+    }
+    withoutAnimation {
+      for l in w.layers { l.isHidden = true }
+      for (i, y0) in room where i < under.count {
+        let k = under[i].k
+        var y = y0
+        for (j, m) in w.always[k].notes.enumerated() {
+          let n = (at[k] ?? 0) + j
+          guard n < w.layers.count else { continue }
+          w.layers[n].frame = CGRect(x: v.gutter + w.noteX[k], y: y, width: w.notes[n].frame.width, height: m.height)
+          w.layers[n].isHidden = false
+          y += m.height
+        }
+      }
+    }
+  }
+
+  /// The arrows of the card being written, their ends on its lines where the lines are now, an end whose line is gone
+  /// at the header in the lost look (lines.ts moveLineRefs)
+  func rerouteWritten() {
+    guard let ed = editing, let v = ed.codeView, let w = ed.written, let s = scene else { return }
+    let id = ed.id
+    let touching = s.arrows.indices.filter { s.arrows[$0].from == id || s.arrows[$0].to == id }
+    guard !touching.isEmpty else { return }
+    func follow(_ e: Endpoint) -> Endpoint {
+      guard e.card == id, e.segment == w.segment, let l = e.line else { return e }
+      var n = e
+      if let m = w.map.line(l) {
+        n.line = m
+      } else {
+        n.segment = nil
+        n.line = nil
+        n.lost = true
+      }
+      return n
+    }
+    reroute(
+      touching,
+      model: { a in
+        var b = a
+        b.from = follow(a.from)
+        b.to = follow(a.to)
+        return b
+      },
+      placed: { c in
+        guard var p = s.placed[c] else { return nil }
+        if c == id {
+          p.rect = self.editingRect(p.rect)
+          p.code?.layout.segmentLines = [v.layout.lines]
+        }
+        return p
+      })
   }
 }
 

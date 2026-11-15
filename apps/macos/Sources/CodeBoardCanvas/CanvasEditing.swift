@@ -1694,10 +1694,12 @@ extension CanvasView {
   }
 
   /// Routes these arrows again with their cards where `placed` has them, and moves their labels
-  func reroute(_ indices: [Int], placed: (CardID) -> Scene.Placed?) {
+  func reroute(
+    _ indices: [Int], model: (CodeBoardModel.Arrow) -> CodeBoardModel.Arrow = { $0 }, placed: (CardID) -> Scene.Placed?
+  ) {
     guard let s = scene else { return }
     for i in indices where i < arrowGroups.count {
-      let a = s.arrowModels[i]
+      let a = model(s.arrowModels[i])
       guard let from = placed(a.from.card), let to = placed(a.to.card) else { continue }
       let (arrow, label) = Scene.route(a, from: from, to: to, theme: theme)
       routedArrows[i] = arrow
