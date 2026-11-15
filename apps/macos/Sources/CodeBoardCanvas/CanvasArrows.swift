@@ -560,5 +560,3 @@ extension CanvasView: NSTextFieldDelegate {
     }
   }
 }
-
-// trial for the test selection on CI, taken out before the merge
