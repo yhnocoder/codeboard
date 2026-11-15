@@ -2,7 +2,8 @@ import AppKit
 import CodeBoardModel
 
 // In a test process nothing may come up on the screen or wait for a person: a menu, an alert, an open or save panel, a
-// modal window, an address opened in the browser or a file shown in Finder; nor may it write the owner's clipboard. As the
+// modal window, an address opened in the browser or a file shown in Finder; nor may it write the owner's clipboard or
+// change their cursor. As the
 // system Trash refuses a test (Vault.systemTrash), so do these, from the root: each way AppKit puts one up is replaced,
 // in a test process only, by one that writes down what would have shown and returns at once (a menu: nothing picked; a
 // modal: cancelled), and the general pasteboard is one of the process's own. A sheet on a window under the desktop (the
@@ -31,6 +32,14 @@ import CodeBoardModel
   package static var guardsPasteboard: Bool { installed && pasteboardGuarded }
 
   nonisolated(unsafe) private static var pasteboardGuarded = false
+
+  /// Whether NSCursor's ways to the screen (set, push, pop, hide) are replaced by this process's own cursor
+  package static var guardsCursor: Bool { installed && cursorGuarded }
+
+  nonisolated(unsafe) private static var cursorGuarded = false
+  /// The cursor set last in the process, and those pushed under it
+  nonisolated(unsafe) private static var cursor = NSCursor.arrow
+  nonisolated(unsafe) private static var cursors: [NSCursor] = []
 
   private static let installed: Bool = {
     guard Vault.underTest else { return false }
@@ -144,6 +153,32 @@ import CodeBoardModel
     pasteboardGuarded = replace(
       object_getClass(NSPasteboard.self)!, NSSelectorFromString("generalPasteboard"),
       imp_implementationWithBlock(general))
+    // the cursor: set, pushed, popped, hidden and shown here stays this process's own. AppKit documents no rule for
+    // what a process that is not in front does to the person's cursor, so a test never asks it to; NSCursor.current
+    // answers with the last one set, as tests read it
+    let cursorClass: AnyClass = object_getClass(NSCursor.self)!
+    let setCursor: @convention(block) (NSCursor) -> Void = { c in cursor = c }
+    let pushCursor: @convention(block) (NSCursor) -> Void = { c in
+      cursors.append(cursor)
+      cursor = c
+    }
+    let popCursor: @convention(block) (AnyObject) -> Void = { _ in cursor = cursors.popLast() ?? .arrow }
+    let currentCursor: @convention(block) (AnyObject) -> NSCursor = { _ in cursor }
+    let hideCursor: @convention(block) (AnyObject) -> Void = { _ in }
+    let hideUntilMoved: @convention(block) (AnyObject, Bool) -> Void = { _, _ in }
+    cursorGuarded =
+      [
+        replace(NSCursor.self, #selector(NSCursor.set), imp_implementationWithBlock(setCursor)),
+        replace(NSCursor.self, #selector(NSCursor.push), imp_implementationWithBlock(pushCursor)),
+        replace(
+          NSCursor.self, #selector(NSCursor.pop as (NSCursor) -> () -> Void), imp_implementationWithBlock(popCursor)),
+        replace(cursorClass, #selector(NSCursor.pop as () -> Void), imp_implementationWithBlock(popCursor)),
+        replace(cursorClass, NSSelectorFromString("currentCursor"), imp_implementationWithBlock(currentCursor)),
+        replace(cursorClass, #selector(NSCursor.hide), imp_implementationWithBlock(hideCursor)),
+        replace(cursorClass, #selector(NSCursor.unhide), imp_implementationWithBlock(hideCursor)),
+        replace(
+          cursorClass, #selector(NSCursor.setHiddenUntilMouseMoves(_:)), imp_implementationWithBlock(hideUntilMoved)),
+      ].allSatisfy { $0 }
     // an address or file opened, or shown in Finder: the owner's browser, apps and Finder, never; written down
     let workspace: AnyClass = NSWorkspace.self
     let open: @convention(block) (NSWorkspace, NSURL) -> Bool = { _, u in

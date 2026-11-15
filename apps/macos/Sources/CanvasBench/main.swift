@@ -8,7 +8,7 @@ import CodeBoardModel
 //   --bench  opens the board (every board when none is named), runs the scripted pan and zoom segments on it and opens it
 //            again, prints one JSON object per board on stdout and quits. The window floats on top: a covered window
 //            gets no frames
-//   --memory see MemoryRun
+//   --memory see MemoryRun; in a window below the desktop picture that is never activated
 //   --drag   see DragBench: drags on a copy of each board named (every board when none is), in a window never on screen
 //   --open-frames  what each frame shows while each board named opens, then while it is panned and zoomed (OpenFrames),
 //            in a window below the desktop picture that is never activated; with --note-cache <folder> the Note
@@ -57,15 +57,11 @@ final class App: NSObject, NSApplicationDelegate {
     let root = NSView(frame: w.contentLayoutRect)
     root.addSubview(canvas)
     w.contentView = root
-    w.makeKeyAndOrderFront(nil)
-    w.makeFirstResponder(canvas)
-    if bench || memory != nil {
-      w.level = .floating
-      w.orderFrontRegardless()
-    }
-    NSApp.activate()
     window = w
     if let memory {
+      // below the desktop picture, never activated nor made key: the memory run waits for redraws, not for frames
+      w.level = .underDesktop
+      w.orderFrontRegardless()
       canvas.removeFromSuperview()
       Task {
         do {
@@ -77,6 +73,13 @@ final class App: NSObject, NSApplicationDelegate {
       }
       return
     }
+    w.makeKeyAndOrderFront(nil)
+    w.makeFirstResponder(canvas)
+    if bench {
+      w.level = .floating
+      w.orderFrontRegardless()
+    }
+    NSApp.activate()
     let meter = Meter(canvas)
     self.meter = meter
     if hud { meter.showHUD(in: root) }
