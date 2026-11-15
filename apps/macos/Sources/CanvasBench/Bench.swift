@@ -2,8 +2,11 @@ import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
 
-/// Per display-link frame: how long the main thread worked on it (from the canvas's frame callback until the run loop
-/// went idle, Core Animation's commit included), frames dropped before it, and what the canvas looked like after it.
+/// Per frame: how long the main thread worked on it (from the canvas's frame callback until the run loop went idle,
+/// Core Animation's commit included), frames dropped before it, and what the canvas looked like after it. A frame is
+/// the display link's, or with `ticking` one of a 60 Hz timer's on a stepped clock (a window below the desktop picture
+/// gets no display frames): then "dropped" counts ticks the main thread made late, not frames the display missed, and
+/// what the window server and the GPU take is not seen
 @MainActor
 final class Meter {
   struct Frame {
@@ -19,7 +22,7 @@ final class Meter {
 
   private let canvas: CanvasView
   /// The bench's input, given each frame before the canvas moves
-  var drive: ((CADisplayLink) -> Void)?
+  var drive: ((CFTimeInterval) -> Void)?
   /// Each frame's record, delivered at the start of the next one
   var record: ((Frame) -> Void)?
   private var pending: Frame?
@@ -31,9 +34,24 @@ final class Meter {
   private var recent: [Frame] = []
   private var lastHUD: CFTimeInterval = 0
 
-  init(_ canvas: CanvasView) {
+  private var timer: Timer?
+
+  init(_ canvas: CanvasView, ticking: Bool = false) {
     self.canvas = canvas
-    canvas.onFrame = { [weak self] l in self?.frame(l) }
+    if ticking {
+      canvas.steppedClock = { CACurrentMediaTime() }
+      let t = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+        MainActor.assumeIsolated {
+          let now = CACurrentMediaTime()
+          self?.frame(at: now, duration: 1.0 / 60)
+          self?.canvas.tick(at: now)
+        }
+      }
+      RunLoop.main.add(t, forMode: .common)
+      timer = t
+    } else {
+      canvas.onFrame = { [weak self] l in self?.frame(at: l.timestamp, duration: l.duration) }
+    }
     let o = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, true, Int.max) {
       [weak self] _, _ in MainActor.assumeIsolated { self?.idle() }
     }
@@ -53,8 +71,7 @@ final class Meter {
     label = l
   }
 
-  private func frame(_ l: CADisplayLink) {
-    let now = l.timestamp
+  private func frame(at now: CFTimeInterval, duration: CFTimeInterval) {
     if var p = pending {
       p.moved = canvas.shownRect != viewBefore
       p.lowRes = canvas.lowRes
@@ -64,12 +81,12 @@ final class Meter {
       record?(p)
       hud(p)
     }
-    let dropped = lastTime.map { max(0, Int(((now - $0) / l.duration).rounded()) - 1) } ?? 0
+    let dropped = lastTime.map { max(0, Int(((now - $0) / duration).rounded()) - 1) } ?? 0
     lastTime = now
     pending = Frame(time: now, dropped: dropped)
     viewBefore = canvas.shownRect
     tickStart = CACurrentMediaTime()
-    drive?(l)
+    drive?(now)
   }
 
   private func idle() {
@@ -204,7 +221,7 @@ final class Bench {
     begin(now: CACurrentMediaTime())
     await withCheckedContinuation { c in
       done = c
-      meter.drive = { [weak self] l in self?.drive(l) }
+      meter.drive = { [weak self] now in self?.drive(now) }
       meter.record = { [weak self] f in self?.record(f) }
     }
     meter.drive = nil
@@ -215,7 +232,7 @@ final class Bench {
     begin(now: CACurrentMediaTime())
     await withCheckedContinuation { c in
       done = c
-      meter.drive = { [weak self] l in self?.drive(l) }
+      meter.drive = { [weak self] now in self?.drive(now) }
       meter.record = { [weak self] f in self?.record(f) }
     }
     meter.drive = nil
@@ -307,8 +324,7 @@ final class Bench {
     }
   }
 
-  private func drive(_ l: CADisplayLink) {
-    let now = l.timestamp
+  private func drive(_ now: CFTimeInterval) {
     switch step {
     case .prepare(let since):
       if seg.fillMs == nil, canvas.isSettled { seg.fillMs = ((now - since) * 1000).rounded() }
