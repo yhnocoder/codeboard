@@ -98,6 +98,8 @@ struct Scene: Sendable {
     var width: Double
     var height: Double?
     var tilted: Bool
+    /// Locked itself: its header shows the lock
+    var locked: Bool
     var measured: NoteMetrics?
     /// The arrow ends on it (a code card marks the lines they start from)
     var ends: [Endpoint]
@@ -300,7 +302,8 @@ struct Scene: Sendable {
         }
       }()
       if let p = previous?.parts[c.id], p.content == content, p.width == c.width, p.height == c.height,
-        p.tilted == c.tilted, p.measured == sizes[c.id], p.ends == mine, p.always == always,
+        p.tilted == c.tilted, p.locked == (c.locked == true), p.measured == sizes[c.id], p.ends == mine,
+        p.always == always,
         p.alwaysText == alwaysText,
         !showsOthers || previous?.vaultSeen == vaultSeen,
         previous?.fetching.contains(c.id) == fetching.contains(c.id)
@@ -314,7 +317,9 @@ struct Scene: Sendable {
             refs: refs, fetching: fetching.contains(c.id), always: always)
         else { continue }
         part = Part(
-          content: content, width: c.width, height: c.height, tilted: c.tilted, measured: sizes[c.id], ends: mine,
+          content: content, width: c.width, height: c.height, tilted: c.tilted, locked: c.locked == true,
+          measured: sizes[c.id],
+          ends: mine,
           drawing: drawing, size: size, code: code, always: always, alwaysText: alwaysText)
       }
       parts[c.id] = part
@@ -608,7 +613,7 @@ struct Scene: Sendable {
               id: m.id, text: md, frame: CGRect(x: layout.gutter + i.x, y: y, width: w, height: m.height),
               folder: folder, refs: refs.refs(in: md))
           }
-        })
+        }, locked: c.locked == true)
       return (.code(d), CGSize(width: c.width, height: top + body), (layout, top, code.segments.map(\.id)))
     case .note(let n):
       let title = content.title ?? heading(n.text)
@@ -616,7 +621,7 @@ struct Scene: Sendable {
       let size = CGSize(width: c.width, height: c.height ?? measured?.height ?? c.width * 0.6)
       let note = Drawing.Note(
         id: c.id.rawValue, title: title, content: .note(n), folder: folder, height: c.height,
-        refs: refs.refs(in: n.text), hideHead: content.hidesHeading)
+        refs: refs.refs(in: n.text), hideHead: content.hidesHeading, locked: c.locked == true)
       return (.note(note), size, nil)
     case .text(let text):
       // as wide as its text unless it wraps at the card's width
