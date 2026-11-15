@@ -325,4 +325,32 @@ func webBoard() -> Board {
     r.doubleClick(CGPoint(x: lr.minX + x + 10, y: lr.minY + c.theme.headerHeight / 2))
     #expect(c.inPlace != nil, "the title is written")
   }
+
+  /// Measured on the web board (Chromium, Warm Ink): a site line is 11.5 × 1.5 tall, so a text Web card with a title,
+  /// a line of description and its site is 88; a Link List's title starts at 27 (.chead's 10, .kind's 10 wide box, a
+  /// gap of 7), after a 16 point link icon; a Rich row is its bookmark's height alone (82 here), a line between rows
+  @Test func aRichRowAndTheListsTitleAreWhereTheWebBoardHasThem() async throws {
+    let meta = { (t: String, d: String) in WebMeta(title: t, description: d, site: "Example", fetchedAt: 1) }
+    var b = webBoard()
+    b.cards.append(
+      Card(
+        id: cid("rich"), x: 0, y: 1200, width: 420,
+        content: .own(
+          CardContent(
+            title: "Reading",
+            body: .links(
+              LinkList(
+                items: [
+                  LinkList.Item(id: "j1", url: "https://a.org/x", meta: meta("Batching notes", "How requests batch.")),
+                  LinkList.Item(id: "j2", url: "https://b.org/y", meta: meta("Paging notes", "How pages are kept.")),
+                ], rich: true))))))
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    #expect(r.rect("text").height == 88)
+    let (_, rect, lay) = try #require(c.linksAt(cid("rich")))
+    #expect(lay.rows.map(\.rect.height) == [82, 82], "\(lay.rows.map(\.rect))")
+    #expect(lay.rows[1].rect.minY == lay.rows[0].rect.maxY + 1 && rect.height == 36 + 2 + 82 + 1 + 82 + 3)
+    #expect(LinksLayout.titleX(c.theme) == 27)
+  }
 }

@@ -184,7 +184,7 @@ extension CanvasView {
   /// Whether a board point is on a Link List's title in its header (interact.ts: a double-click on .ctitle renames it)
   func onListTitle(_ id: CardID, _ p: CGPoint) -> Bool {
     guard let (l, r, _) = linksAt(id) else { return false }
-    let x = r.minX + (theme.id == .inkWash ? 14 : 30)
+    let x = r.minX + LinksLayout.titleX(theme)
     let w = max(Drawing.width(l.title, WebFonts(theme).header), 40)
     return p.y < r.minY + theme.headerHeight && p.x >= x && p.x <= x + w
   }
@@ -207,7 +207,7 @@ extension CanvasView {
         placeholder: title ? w.page.domain : "Description")
     case (.listTitle, .links):
       guard let (l, r, _) = linksAt(id) else { return }
-      let x: CGFloat = theme.id == .inkWash ? 14 : 30
+      let x = LinksLayout.titleX(theme)
       let box = CGRect(x: r.minX + x - 2, y: r.minY + theme.headerHeight / 2 - 10, width: 200, height: 20)
       writeInPlace(.web(id, what), l.title, at: box.origin, select: .card(id), box: box, font: f.header)
     case (.row(let item), .links):
