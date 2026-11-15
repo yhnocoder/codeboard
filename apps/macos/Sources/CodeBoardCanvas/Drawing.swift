@@ -200,11 +200,7 @@ enum Drawing: Sendable {
       case .note:
         // folded away as it is written in: no header bar under the editor's heading (.chead.fold: transparent)
         Drawing.paper(ctx, r, t, id: n.id, rule: n.folded ? nil : true)
-        if n.folded {
-          Drawing.edge(ctx, r, t)
-          return decodes
-        }
-        Drawing.noteHeader(ctx, n, width: size.width, t)
+        if !n.folded { Drawing.noteHeader(ctx, n, width: size.width, t) }
         Drawing.edge(ctx, r, t)
       case .text(let text) where text.look == .box:
         let p = Drawing.squircle(r, t.cardRadius)

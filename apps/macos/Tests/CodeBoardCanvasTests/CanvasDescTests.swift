@@ -49,6 +49,28 @@ private func descBoard(code: String? = nil, image: String? = nil) -> Board {
     #expect(r.rect("i").height == bareImage.height + idesc.height)
   }
 
+  /// Free code written in: its code's editor under the header and the description, where its code is drawn, the
+  /// description still on the paper above it
+  @Test func freeCodeIsWrittenUnderItsDescription() async throws {
+    let r = try await Rig(descBoard(code: "Why it **runs** first"), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let p = try #require(c.scene?.placed[cid("f")])
+    let top = try #require(p.code?.top)
+    #expect(top > c.theme.headerHeight)
+    c.beginCodeEditing(cid("f"))
+    await r.until("writing") { c.editing?.ready == true }
+    let v = try #require(c.editing?.codeView)
+    let shown = c.convert(v.frame, from: v.superview)
+    let card = c.camera.view(p.rect.origin)
+    #expect(abs(shown.minY - (card.y + top)) < 0.5, "\(shown.minY) vs \(card.y + top)")
+    #expect(abs((c.editing?.size?.height ?? 0) - (top + v.height)) < 0.5, "the card as tall as all of it")
+    let i = try #require(c.index(of: .card(cid("f"))))
+    guard case .code(let d)? = c.writingItem(i)?.drawing else { return #expect(Bool(false)) }
+    #expect(d.desc != nil, "the description on the paper it is written on")
+    await c.endEditing()
+  }
+
   @Test func writtenFromTheMenuAsOneStep() async throws {
     let r = try await Rig(descBoard(), zoom: 1)
     defer { r.close() }

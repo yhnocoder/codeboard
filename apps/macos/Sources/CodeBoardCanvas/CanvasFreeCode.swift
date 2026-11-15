@@ -63,7 +63,8 @@ extension CanvasView {
     if !fresh { doc.beginWriting(id) }
     closeRefPeek()
     let text = seg.lines.joined(separator: "\n")
-    let top = c.framed ? theme.headerHeight : 0
+    // under its header and description, where its code is drawn
+    let top = c.top
     let v = CodeEditorView(text: text, look: codeLook, firstNumber: seg.firstLine, wrap: code.wrap)
     v.continuing = continuing
     v.pasteboard = pasteboard

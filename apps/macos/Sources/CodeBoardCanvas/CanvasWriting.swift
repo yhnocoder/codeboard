@@ -58,6 +58,8 @@ struct Editing {
   /// The native editor a Note, Text or Box is written with (NativeWriting), what the card's Markdown was when the
   /// writing began, the card's look, where the editor's text starts in the card (points at 100 %) and its stored height
   var writer: MarkdownEditorView?
+  /// While a zoom goes on, a picture of what the native editor showed, scaled in its place (positionNativeEditor)
+  var zoomPicture: CALayer?
   var was = ""
   var look: MarkdownLooks.Card?
   var inset = CGPoint.zero
@@ -106,23 +108,7 @@ extension CanvasView {
   /// lays it out, in place of its layers (they come back when nothing was written)
   /// `fade`: what was shown fades out over it (a folded header's title going or coming back, with the editor's fold)
   func showPaper(fade: Bool = false) {
-    guard let ed = editing, ed.ready, !ed.ending, let i = editingIndex, let s = scene else { return }
-    var it = s.items[i]
-    if case .note(var n) = it.drawing, n.hideHead {
-      n.folded = true
-      it.drawing = .note(n)
-    }
-    if let size = ed.size {
-      it.rect.size.height = size.height
-      if case .note(let n) = it.drawing, n.content.isText { it.rect.size.width = size.width }
-    }
-    // Free code: its header and paper, the code being the editor's
-    if case .code(var c) = it.drawing {
-      c.layout.rows = []
-      c.layout.bands = []
-      c.inline = []
-      it.drawing = .code(c)
-    }
+    guard let ed = editing, ed.ready, !ed.ending, let i = editingIndex, let it = writingItem(i) else { return }
     let scale = Levels.scale(camera.zoom, backing: backing, size: it.bitmapSize)
     let paper = CanvasView.render(it, scale: scale, theme: theme, images: images).surface
     let l = ItemLayers(it, overview: (paper, scale, .paper), shadow: it.drawing.framed ? cardShadow : nil)
@@ -153,6 +139,25 @@ extension CanvasView {
   }
 
   /// Where the card is drawn while written in (its size as the editor lays it out)
+  /// The card written in as the canvas shows it then: a Note whose header hides with its title folded, as tall (a Text
+  /// as wide) as the editor lays it out, a Free code card's header and paper only (the code being the editor's)
+  func writingItem(_ i: Int) -> Scene.Item? {
+    guard var it = scene?.items[i] else { return nil }
+    if case .note(var n) = it.drawing, n.hideHead {
+      n.folded = true
+      it.drawing = .note(n)
+    }
+    it.rect = editingRect(it.rect)
+    // Free code: its header and paper, the code being the editor's
+    if case .code(var c) = it.drawing {
+      c.layout.rows = []
+      c.layout.bands = []
+      c.inline = []
+      it.drawing = .code(c)
+    }
+    return it
+  }
+
   func editingRect(_ base: CGRect) -> CGRect {
     guard let ed = editing, let size = ed.size, let i = editingIndex else { return base }
     var r = base
@@ -213,11 +218,15 @@ extension CanvasView {
   func cameraMovedWhileEditing() {
     guard let ed = editing, ed.ready, !ed.ending else { return }
     if camera.zoom != ed.shownZoom, ed.codeView == nil { editing?.zooming = true }
+    // no caret blink (each a whole drawing of the editor, tens of ms for a long Note) and no hovering while the camera
+    // moves; the next rest thaws it
+    if let v = ed.writer, !v.frozen { v.freeze() }
     positionEditor()
   }
 
   /// At rest after a zoom: the editor draws itself at the zoom now shown
   func restAfterEditingZoom() {
+    if let v = editing?.writer, v.frozen { v.thaw() }
     guard let ed = editing, ed.zooming, !ed.ending else { return }
     restNativeEditor()
   }
@@ -398,7 +407,10 @@ extension CanvasView {
     if let v = ed.writer ?? ed.codeView {
       // asked first: once it is out of the window, the window is its own first responder
       let keys = window?.firstResponder === v || window?.firstResponder == nil
-      withoutAnimation { v.removeFromSuperview() }
+      withoutAnimation {
+        v.removeFromSuperview()
+        ed.zoomPicture?.removeFromSuperlayer()
+      }
       if keys { window?.makeFirstResponder(self) }
     }
     // the writing that ends is still this one (one ended at once meanwhile leaves the canvas's next alone)
@@ -554,7 +566,7 @@ extension CanvasView {
     beginEditing(id)
     while editing?.ready == false { try? await Task.sleep(for: .milliseconds(5)) }
     var picture: CGImage?
-    if let ed = editing, let v = ed.writer, let size = ed.size, let s = scene {
+    if let ed = editing, let v = ed.writer, let size = ed.size, let it = writingItem(i) {
       // the native editor's own drawing, where it lies on the card, over the card's paper
       let snap = Raster.surface(size: size, scale: scale) { ctx in
         ctx.translateBy(x: ed.inset.x, y: ed.inset.y)
@@ -564,8 +576,6 @@ extension CanvasView {
         v.draw(v.bounds)
         NSGraphicsContext.restoreGraphicsState()
       }
-      var it = s.items[i]
-      it.rect = editingRect(it.rect)
       picture = snap.flatMap {
         CanvasView.compose(it, NoteSnapshot(surface: $0, size: size), scale: scale, theme: theme, images: images)
       }.flatMap(Self.image)

@@ -62,8 +62,9 @@ private func writingBoard() -> Board {
       #expect(
         abs(rest.height - editing.height) <= 1, "\(id): \(rest.height) px tall at rest, \(editing.height) written in")
       // the lines' rows of ink, at rest and in the editor: the best match is where they are (a caret or a formula's
-      // source may differ, the lines may not move)
-      #expect(shift(rest, editing) == 0, "\(id): the lines moved")
+      // source may differ, the lines may not move); a Note's header folds away for its heading, under it nothing moves
+      let header = id == "n" ? Int(r.canvas.theme.headerHeight * CGFloat(rest.width) / before.width) : 0
+      #expect(shift(rest, editing, from: header) == 0, "\(id): the lines moved")
       await r.settle()
       #expect(r.rect(id) == before, "\(id): \(r.rect(id)) after, \(before) before")
     }
@@ -102,8 +103,8 @@ private func writingBoard() -> Board {
   }
 
   /// The vertical shift (device pixels, -6…6) at which the rows of ink of `b` best match those of `a`
-  private func shift(_ a: CGImage, _ b: CGImage) -> Int {
-    let (ra, rb) = (rows(a), rows(b))
+  private func shift(_ a: CGImage, _ b: CGImage, from top: Int) -> Int {
+    let (ra, rb) = (Array(rows(a).dropFirst(top)), Array(rows(b).dropFirst(top)))
     var best = (Int.max, 0)
     for dy in -6...6 {
       var s = 0
