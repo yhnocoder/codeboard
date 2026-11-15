@@ -245,5 +245,8 @@ import UniformTypeIdentifiers
     #expect(web.url == "https://example.com/a")
     #expect(c.document?.selection == [.card(card.id)] && c.document?.history.undoSteps.last?.name == "New Web Card")
     await edit.until("its page read", in: w) { read == [URL(string: "https://example.com/a")!] }
+    // its page is read for the card, never opened in the browser
+    #expect(TestGuard.guardsOpening)
+    #expect(!TestGuard.shown.contains { $0.hasPrefix("open: ") && $0.contains("example.com") }, "\(TestGuard.shown)")
   }
 }
