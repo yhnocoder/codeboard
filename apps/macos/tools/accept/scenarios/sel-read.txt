@@ -1,0 +1,18 @@
+# sel：在正在编辑的 Note 正文上拖动选字，两边选中的字和范围（ProseMirror 的位置）一样
+zoom 1
+center @cnote+150,60
+expect sel = none
+dbl @cnote+150,90
+wait 600
+expect sel.range = 54-54
+drag @cnote+30,60 @cnote+150,60 400
+wait 300
+expect sel = "e vocabulary maps " 14-32
+key esc
+wait 300
+dbl @cnote+150,90
+wait 600
+drag @cnote+30,75 @cnote+150,75 400
+wait 300
+expect sel = "mber." 49-54
+key esc

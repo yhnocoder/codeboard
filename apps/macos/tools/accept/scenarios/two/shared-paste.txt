@@ -1,5 +1,6 @@
 # 别的白板上复制的卡，粘贴过来就是同一张卡（main：默认贴成共享卡，⌥⌘V 才是副本）：在这边改，原来那块白板上也变。两块白板：--storage apps/macos/tools/accept/storage-two --only mac
 # storage: storage-two
+# only: mac
 zoom 1
 click @cown
 key cmd+c

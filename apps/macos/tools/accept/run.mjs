@@ -2,7 +2,7 @@
 // The acceptance runner (README.md): runs scenario files on the Mac app and on the web board VS Code shows, side by side,
 // with a hand's pointer, and writes recordings, screenshots and a report to apps/macos/.build-accept/<scenario>/.
 //   node apps/macos/tools/accept/run.mjs <scenario.txt>… [--only mac|web] [--video] [--theme warm-ink|ink-wash] [--dark]
-//     [--scale 2] [--storage <folder>] [--skip-build] [--debug] [--keep | --attach | --stop]
+//     [--scale 2] [--storage <folder>] [--skip-build] [--debug | --release] [--keep | --attach | --stop]
 // --keep leaves both sides running after the scenarios; later runs with --attach go on in them (no build, no start: a
 // few seconds per run, for trying out targets and expectations); --stop ends them.
 // It prints one line per scenario and side (expectations passed, failed, not checkable) and exits 1 when one failed.
@@ -19,7 +19,7 @@ const mac = path.join(repo, "apps/macos");
 const outRoot = path.join(mac, ".build-accept");
 const argv = process.argv.slice(2);
 const opt = (k) => (argv.includes(k) ? argv[argv.indexOf(k) + 1] : undefined);
-const only = opt("--only");
+
 const valued = ["--only", "--storage", "--theme", "--scale"];
 const scenarios = argv.filter((a, i) => !a.startsWith("--") && !valued.includes(argv[i - 1]));
 // what a scenario needs, named in its own lines so nobody has to remember the flags: "# storage: <folder>" (relative to
@@ -32,6 +32,8 @@ function declared(key, flag, fallback) {
 }
 const storage = path.resolve(opt("--storage") ?? path.join(here, declared("storage", "--storage", "storage") ?? "storage"));
 const theme = declared("theme", "--theme", undefined);
+// "# only: mac": a scenario of what only the Mac app has (its sidebar, several boards)
+const only = declared("only", "--only", undefined);
 // the look under test and the pixels per point of recordings and shots, the same on both sides
 const lookEnv = {
   ...(theme ? { ACCEPT_THEME: theme } : {}),
@@ -42,9 +44,13 @@ const sides = only ? [only] : ["mac", "web"];
 const attach = argv.includes("--attach") || argv.includes("--stop");
 const run = (cmd, a, cwd = repo) => execFileSync(cmd, a, { cwd, stdio: "inherit" });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-if (!scenarios.length && !argv.includes("--stop")) throw new Error("usage: run.mjs <scenario.txt>… [--only mac|web] [--video] [--skip-build] [--debug]");
+if (!scenarios.length && !argv.includes("--stop")) throw new Error("usage: run.mjs <scenario.txt>… [--only mac|web] [--video] [--skip-build] [--debug | --release]");
 const video = argv.includes("--video");
-const config = argv.includes("--debug") ? "debug" : "release";
+// the driver's build: debug (an app change builds in seconds) unless what is measured needs the app as people get it,
+// release (a change takes one to two minutes): with --release, or when a scenario records (rec) or times (expect answer)
+const timed = scenarios.some((f) => /^(\w+:\s*)?(rec |expect answer)/m.test(fs.readFileSync(f, "utf8")));
+const config = argv.includes("--release") || (timed && !argv.includes("--debug")) ? "release" : "debug";
+if (!attach && scenarios.length) console.log(`driver: ${config} build${config === "release" && !argv.includes("--release") ? " (a scenario records or times)" : ""}`);
 
 // ---- build: the driver app (its own name and bundle id, never the app in use) and the web side
 fs.mkdirSync(outRoot, { recursive: true });
@@ -161,7 +167,7 @@ class Driver {
     const hung = this.alive();
     if (hung) process.kill(this.pid, "SIGTERM");
     // what the app kept for the next start (its cameras), in the log of the run that ends: why a camera did not come back
-    const kept = fs.existsSync(cameraFile(this.id, this.vault)) ? fs.readFileSync(cameraFile(this.id, this.vault), "utf8").replace(/\s+/g, "") : "none";
+    const kept = !this.vault ? "(web)" : fs.existsSync(cameraFile(this.id, this.vault)) ? fs.readFileSync(cameraFile(this.id, this.vault), "utf8").replace(/\s+/g, "") : "none";
     fs.appendFileSync(this.log, `reopen: ${hung ? "did not quit in 5 s, terminated" : "quit"}; cameras kept ${kept}\n`);
     this.opened = (this.opened ?? 0) + 1;
     fs.renameSync(this.log, path.join(this.dir, `log-${this.opened}.txt`));
@@ -243,7 +249,8 @@ class Driver {
     const limit = 30000 + (asked.length ? Math.max(...asked) : 0) + (/^(stop|rec|quit)\b/.test(line) ? 30000 : 0);
     for (let t = 0; t < limit; t += 20) {
       const l = this.lines().find((x) => re.test(x));
-      if (l) return l.includes(" -> ") ? l.slice(l.indexOf(" -> ") + 4) : "";
+      // a result of more than one line (a menu's items) comes on one, its line breaks written \\n
+      if (l) return l.includes(" -> ") ? l.slice(l.indexOf(" -> ") + 4).replaceAll("\\n", "\n") : "";
       if (!this.alive()) throw new Error(`${this.side} driver exited${this.why()}: see ${this.dir}/stdout.txt`);
       await sleep(20);
     }
@@ -444,6 +451,19 @@ async function geom(d, id, needSection = false, aim = false) {
   g.bottom = g.h === undefined ? undefined : g.y + g.h;
   return g;
 }
+// what sel reads in a page (one line: it goes through the drivers' FIFOs)
+const SEL = `(() => {
+  const a = document.activeElement, pm = a && a.closest && a.closest(".ProseMirror"), ed = pm && pm.editor;
+  if (ed) { const { from, to } = ed.state.selection; return JSON.stringify([ed.state.doc.textBetween(from, to, "\\n"), from + "-" + to]); }
+  if (a && typeof a.selectionStart === "number") return JSON.stringify([a.value.slice(a.selectionStart, a.selectionEnd), a.selectionStart + "-" + a.selectionEnd]);
+  const s = getSelection();
+  const editable = a && a.isContentEditable;
+  if (!s || !s.rangeCount || (s.isCollapsed && !editable)) return "none";
+  const r = s.getRangeAt(0), pre = document.createRange(), root = editable ? a : document.body;
+  pre.setStart(root, 0); pre.setEnd(r.startContainer, r.startOffset);
+  const from = pre.toString().length;
+  return JSON.stringify([s.toString(), from + "-" + (from + r.toString().length)]);
+})()`.replaceAll("\n", " ");
 async function subject(d, subj) {
   const [id, field] = subj.split(".");
   // focus: what keys go to now (the Mac's first responder, e.g. OnBoardField's NSTextView; the page's focused element)
@@ -451,6 +471,17 @@ async function subject(d, subj) {
   if (subj === "dialog") return (await d.send("dialog")) || "none";
   // row:<title>: whether the sidebar shows that board's or folder's row (shown, none)
   if (subj.startsWith("row:")) return (await d.send(`row ${subj.slice(4)}`)) === "none" ? "none" : "shown";
+  // sel, sel.text, sel.range: the selected text where keys go and its range (from-to; a caret: n-n; none): in a
+  // ProseMirror editor (a Note, on both sides the same editor) its positions, in a field its offsets, elsewhere the
+  // page selection's text offsets in the focused editable; in the Mac app's native text views their own offsets
+  if (id === "sel") {
+    const r = d.side === "web" ? await d.send(`eval ${SEL}`) : await d.send(`sel ${SEL}`);
+    if (!r.startsWith("[")) return "none";
+    const [text, range] = JSON.parse(r.replaceAll("\n", "\\n")); // JSON has no line breaks: send made them of its \\n
+    return field === "text" ? text : field === "range" ? range : `${JSON.stringify(text)} ${range}`;
+  }
+  // opened: what the app asked to open outside itself so far, one per line (none); the drivers open nothing
+  if (subj === "opened") return d.send("opened");
   if (subj === "focus") {
     const r = await d.send("focused");
     return r || "none";
@@ -504,7 +535,7 @@ function judge(got, op, want) {
   }
   throw new Error(`no such op: ${op}`);
 }
-const shown = (v) => (typeof v === "number" ? String(Math.round(v * 10) / 10) : String(v));
+const shown = (v) => (typeof v === "number" ? String(Math.round(v * 10) / 10) : String(v).replaceAll("\n", " | "));
 
 /** How long the window took to answer the last input before log line `upto` (ms), from the recorded frames */
 async function answerTime(d, upto) {
@@ -585,9 +616,26 @@ async function differ(a, b) {
 }
 
 async function cut(d, name, [target, w, h]) {
-  const [x, y] = (await point(d, target)).split(" ").map(Number);
-  const [ox, oy] = (await d.send("origin")).split(" ").map(Number);
   const [, , z] = await cam(d);
+  // no size: the thing itself with a margin around it, the same on both sides: a card, Section, label, marker or sticker
+  // (@id: 16 board units around it) or a part of the chrome (@ui.<part>: 8 points around it)
+  if (w === undefined) {
+    const u = /^@ui\.(\w+)$/.exec(target), id = /^@([\w-]+)$/.exec(target)?.[1];
+    if (u) {
+      const r = await d.send(`ui ${u[1]}`);
+      if (!/^-?[\d.]+ /.test(r)) throw new Error(`${d.side}: no ${u[1]} in the chrome (${r})`);
+      const [, , uw, uh] = r.split(" ").map(Number);
+      [target, w, h] = [`${target}:tl`, (uw + 16) / z, (uh + 16) / z];
+      const [tx, ty] = (await point(d, target)).split(" ").map(Number);
+      target = `${tx - 8} ${ty - 8}`;
+    } else if (id) {
+      const g = await geom(d, id, false, true);
+      if (typeof g !== "object" || g.h === undefined) throw new Error(`${d.side}: ${id} has no known size to cut (give W H)`);
+      [target, w, h] = [`@${id}+-16,-16`, g.w + 32, g.h + 32];
+    } else throw new Error(`shot: a size W H is needed with ${target}`);
+  }
+  const [x, y] = (/^-?[\d.]+ -?[\d.]+$/.test(target) ? target : await point(d, target)).split(" ").map(Number);
+  const [ox, oy] = (await d.send("origin")).split(" ").map(Number);
   const s = Number(lookEnv.ACCEPT_SCALE);
   const full = path.join(d.dir, `${name}.png`);
   const meta = await sharp(full).metadata();
@@ -712,7 +760,8 @@ for (const file of scenarios) {
       if (!line || line.startsWith("#")) continue;
       const m = /^(mac|web):\s*(.*)$/.exec(line);
       const cmd = m ? m[2] : line;
-      const [verb, arg, op, want] = cmd.split(" ");
+      // what an expect wants is the rest of the line (a selected text has spaces)
+      const [verb, arg, op, ...rest] = cmd.split(" "), want = rest.join(" ");
       if (verb === "rec") recs.add(arg);
       if (verb === "shot") shots.add(arg);
       // shot <name> @target W H: also the board rectangle W × H (board units) from the target, cut out on each side,

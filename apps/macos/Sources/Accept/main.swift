@@ -265,6 +265,76 @@ extension FileManager {
 swizzle(
   FileManager.self, #selector(FileManager.trashItem(at:resultingItemURL:)),
   #selector(FileManager.accTrashItem(at:resultingItemURL:)))
+/// Nothing this run opens reaches the Mac: an address, a file or an app the app asks NSWorkspace to open (a Web card's
+/// page, a link, Reveal in Finder) is written down instead (the opened command), and the browser of the person using
+/// the Mac never opens
+let opened = Mutex<[String]>([])
+func keepOpened(_ what: String) {
+  opened.withLock { $0.append(what) }
+  log("opened (not really): \(what)")
+}
+extension NSWorkspace {
+  @objc(accOpenURL:) func accOpen(_ url: URL) -> Bool {
+    keepOpened(url.absoluteString)
+    return true
+  }
+  @objc(accOpenURL:configuration:completionHandler:) func accOpen(
+    _ url: URL, configuration: NSWorkspace.OpenConfiguration,
+    completionHandler: (@Sendable (NSRunningApplication?, (any Error)?) -> Void)?
+  ) {
+    keepOpened(url.absoluteString)
+    completionHandler?(nil, nil)
+  }
+  @objc(accOpenURLs:withApplicationAtURL:configuration:completionHandler:) func accOpen(
+    _ urls: [URL], withApplicationAt app: URL, configuration: NSWorkspace.OpenConfiguration,
+    completionHandler: (@Sendable (NSRunningApplication?, (any Error)?) -> Void)?
+  ) {
+    for u in urls { keepOpened("\(u.absoluteString) with \(app.lastPathComponent)") }
+    completionHandler?(nil, nil)
+  }
+  @objc(accOpenApplicationAtURL:configuration:completionHandler:) func accOpenApplication(
+    at app: URL, configuration: NSWorkspace.OpenConfiguration,
+    completionHandler: (@Sendable (NSRunningApplication?, (any Error)?) -> Void)?
+  ) {
+    keepOpened("app \(app.path)")
+    completionHandler?(nil, nil)
+  }
+  @objc(accActivateFileViewerSelectingURLs:) func accActivateFileViewer(selecting urls: [URL]) {
+    for u in urls { keepOpened("reveal \(u.path)") }
+  }
+  @objc(accSelectFile:inFileViewerRootedAtPath:) func accSelectFile(_ path: String?, root: String) -> Bool {
+    keepOpened("reveal \(path ?? root)")
+    return true
+  }
+  @objc(accOpenFile:) func accOpenFile(_ path: String) -> Bool {
+    keepOpened(path)
+    return true
+  }
+  @objc(accOpenFile:withApplication:) func accOpenFile(_ path: String, app: String?) -> Bool {
+    keepOpened("\(path) with \(app ?? "its app")")
+    return true
+  }
+}
+for (o, r) in [
+  ("openURL:", "accOpenURL:"),
+  ("openURL:configuration:completionHandler:", "accOpenURL:configuration:completionHandler:"),
+  (
+    "openURLs:withApplicationAtURL:configuration:completionHandler:",
+    "accOpenURLs:withApplicationAtURL:configuration:completionHandler:"
+  ),
+  ("openApplicationAtURL:configuration:completionHandler:", "accOpenApplicationAtURL:configuration:completionHandler:"),
+  ("activateFileViewerSelectingURLs:", "accActivateFileViewerSelectingURLs:"),
+  ("selectFile:inFileViewerRootedAtPath:", "accSelectFile:inFileViewerRootedAtPath:"), ("openFile:", "accOpenFile:"),
+  ("openFile:withApplication:", "accOpenFile:withApplication:"),
+] {
+  let ours = method_getImplementation(class_getInstanceMethod(NSWorkspace.self, Selector(r))!)
+  swizzle(NSWorkspace.self, Selector(o), Selector(r))
+  // the workspace the app is handed must answer with ours (a subclass of its own would open for real): checked here,
+  // before anything could be opened
+  guard let cls = object_getClass(NSWorkspace.shared), class_getMethodImplementation(cls, Selector(o)) == ours else {
+    fatalError("NSWorkspace \(o) is not caught")
+  }
+}
 /// The window server's word to a window's views that it is key (web views learn it so)
 func tellKey(_ w: NSWindow) {
   NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: w)
@@ -533,6 +603,9 @@ func strings(_ x: Any) -> [String] {
 
   /// Views that answer acceptsFirstMouse themselves (overriding NSView's, which is swizzled) answer yes too: the
   /// window is key for the person, the window server just does not know it
+  /// A context menu read with `menu` and not yet closed (pick, Esc, a press); the release of the press that closed it
+  var menuOpen = false
+  var swallowUp = false
   var firstMouse: Set<ObjectIdentifier> = []
   func acceptFirstMouse(at p: NSPoint, in w: NSWindow) {
     guard let root = w.contentView?.superview else { return }
@@ -1046,6 +1119,25 @@ func strings(_ x: Any) -> [String] {
     func d(_ i: Int, _ def: Double = 0) -> Double { i < a.count ? Double(a[i]) ?? def : def }
     // a number that is not one (nan, inf) would leave a move going towards it for ever
     if a.dropFirst().contains(where: { Double($0).map { !$0.isFinite } ?? false }) { return "error: not a number" }
+    // A context menu read with `menu` is open until a pick, Esc or a press, as on the web side and for a person: AppKit
+    // shows no menu here, so the driver keeps it open, and the Esc or the press that closes it reaches no view
+    if menuOpen, ["key", "down", "click", "dbl", "drag"].contains(cmd) {
+      menuOpen = false
+      if cmd == "key", a.count > 1, a[1] == "esc" {
+        log("esc closes the menu")
+        return ""
+      }
+      if cmd != "key" {
+        if ["click", "dbl"].contains(cmd), a.count > 2 { await move(to: screen(d(1), d(2)), ms: 300) }
+        log("the press closes the menu")
+        swallowUp = cmd == "down"
+        return ""
+      }
+    }
+    if cmd == "up", swallowUp {
+      swallowUp = false
+      return ""
+    }
     switch cmd {
     case "move":  // move x y [ms]
       await move(to: screen(d(1), d(2)), ms: d(3, 350))
@@ -1086,7 +1178,10 @@ func strings(_ x: Any) -> [String] {
     case "keys": await keys(String(line.dropFirst(5)).replacingOccurrences(of: "\\n", with: "\n"))
     case "ime": await ime(String(line.dropFirst(4)).split(separator: "|").map(String.init))
     case "wait": try? await Task.sleep(for: .milliseconds(Int(d(1, 200))))
-    case "menu": return await contextMenu()
+    case "menu":
+      let r = await contextMenu()
+      menuOpen = r != "none" && r != "no window"
+      return r
     // dialog: the dialog that is up (an app-modal alert or panel, or a sheet on the window): its text and its buttons
     case "dialog":
       guard let d = NSApp.modalWindow ?? win?.attachedSheet else { return "none" }
@@ -1098,7 +1193,11 @@ func strings(_ x: Any) -> [String] {
         return "no button \(title): \(dialogText(d))"
       }
       b.perform(#selector(NSButton.performClick(_:)), with: nil, afterDelay: 0, inModes: [.common])
-    case "pick": pick(String(line.dropFirst(5)))
+    // opened: what the app asked to open so far (addresses, files, apps; none), one per line, in order: nothing opened
+    case "opened": return opened.withLock { $0.isEmpty ? "none" : $0.joined(separator: "\n") }
+    case "pick":
+      menuOpen = false
+      pick(String(line.dropFirst(5)))
     case "hit": return hitInfo(vPointer)
     // ax id: where the canvas's accessibility element with this identifier (a card or Section, when the app exposes
     // them) is now, in board units: x y width height
@@ -1194,6 +1293,18 @@ func strings(_ x: Any) -> [String] {
       return "frames \(r)"
     case "shot":
       Recorder.shot(name: a[1], driver: self)
+    // sel <script>: the selected text and its range where keys go, as [text, "from-to"] in JSON: a native text view's
+    // own (UTF-16 offsets); in a web view (the Note editor's page), what the runner's script reads there
+    case "sel":
+      let fr = (gKey ?? win)?.firstResponder
+      if let t = fr as? NSTextView {
+        let r = t.selectedRange()
+        let d = try? JSONSerialization.data(
+          withJSONObject: [(t.string as NSString).substring(with: r), "\(r.location)-\(r.location + r.length)"])
+        return d.map { String(decoding: $0, as: UTF8.self) } ?? "none"
+      }
+      guard let wv = fr as? WKWebView else { return "none" }
+      return (try? await wv.evaluateJavaScript(String(line.dropFirst(4)))) as? String ?? "none"
     case "js":  // a diagnostic: script in the web view that is first responder
       guard let wv = (gKey ?? win)?.firstResponder as? WKWebView else { return "first responder is no web view" }
       do {
@@ -1289,7 +1400,8 @@ func strings(_ x: Any) -> [String] {
         n += 1
         log("start \(n) \(l)")
         let r = await run(l)
-        log("done \(n) \(l)\(r.isEmpty ? "" : " -> " + r)")
+        // on one line: a menu's items, the opened addresses (the runner reads it back)
+        log("done \(n) \(l)\(r.isEmpty ? "" : " -> " + r.replacingOccurrences(of: "\n", with: "\\n"))")
       }
       running = false
     }
