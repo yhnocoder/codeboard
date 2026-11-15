@@ -4,8 +4,7 @@ import Testing
 
 @testable import CodeBoardCanvas
 
-// The web board's keys (packages/board/src/keymap.ts) on the real canvas, as apps/macos/review/parity-keys-menus.md
-// lists them: each press goes where the window sends it (keys with ⌘ to performKeyEquivalent before the app menu, the
+// The web board's keys (packages/board/src/keymap.ts) on the real canvas: each press goes where the window sends it (keys with ⌘ to performKeyEquivalent before the app menu, the
 // rest to keyDown). The app menu's own keys are checked in CodeBoardShellTests/ParityMenuKeysTests.
 
 private func keysBoard() -> Board {

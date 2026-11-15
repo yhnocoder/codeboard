@@ -365,7 +365,7 @@ import CodeBoardShell
     if !notes.isEmpty { report += "\n\nnotes:\n" + notes.joined(separator: "\n") }
     try? (report + "\n").write(to: out.appending(path: "report.txt"), atomically: true, encoding: .utf8)
     Sheet.write(frames: frames, from: out, to: out.appending(path: "sheet.png"), every: scenario.sheetEvery)
-    // twelve frames across the whole walk, small: what goes into review/
+    // twelve frames across the whole walk, small: an overview to look at
     let shots = frames.filter { $0.image != nil }.count
     Sheet.write(
       frames: frames, from: out, to: out.appending(path: "strip.png"), every: max(1, (shots + 11) / 12), width: 280)

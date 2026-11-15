@@ -32,12 +32,6 @@ if args.count == 3, args[1] == "--refs" { RefSheets.run(out: URL(filePath: args[
 if args.count >= 3, args[1] == "--stage6" {
   Stage6Sheets.run(out: URL(filePath: args[2]), main: args.count > 3 ? URL(filePath: args[3]) : nil)
 }
-if args.count == 4, args[1] == "--stage7" {
-  Stage7Sheets.run(out: URL(filePath: args[2]), main: URL(filePath: args[3]))
-}
-if args.count == 5, args[1] == "--stage8" {
-  Stage8Sheets.run(out: URL(filePath: args[2]), main: URL(filePath: args[3]), storage: URL(filePath: args[4]))
-}
 guard args.count == 3 else {
   FileHandle.standardError.write(
     Data(

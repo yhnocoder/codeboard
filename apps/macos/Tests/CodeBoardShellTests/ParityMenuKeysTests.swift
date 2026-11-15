@@ -4,7 +4,7 @@ import Testing
 
 @testable import CodeBoardShell
 
-// The app menu's keys that are the web board's (packages/board/src/keymap.ts; apps/macos/review/parity-keys-menus.md):
+// The app menu's keys that are the web board's (packages/board/src/keymap.ts):
 // what each key equivalent does is its item's action
 
 @MainActor private func items(_ m: NSMenu) -> [NSMenuItem] {

@@ -10,6 +10,8 @@ the reason; anything else that differs is a bug.
 - **A pinch over a card being written in zooms the whole board**, as everywhere else on the board.
 - **⇧⌘[ and ⇧⌘] always switch tabs**, as everywhere on macOS. ⌘[ and ⌘] go back and forward; Bring to Front and Send
   to Back are ⌥⇧⌘F and ⌥⇧⌘B.
+- **Turn into Board** works as the Mac app has it.
+- **Remove on the Shelf** says what it does in a tooltip; it is not red.
 
 ## Decided in step 2
 

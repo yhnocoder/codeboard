@@ -4,8 +4,8 @@ import Testing
 
 @testable import CodeBoardCanvas
 
-// The web board's context menus (packages/board/src/actions/menus.ts and the files apps/macos/review/
-// parity-keys-menus.md names) on the real canvas: each menu's items in order with its separators, their keys, which are
+// The web board's context menus (packages/board/src/actions/menus.ts and the files its items call) on
+// the real canvas: each menu's items in order with its separators, their keys, which are
 // off, and what some of them do.
 
 private func gid(_ s: String) -> SectionID { SectionID(rawValue: s) }
