@@ -634,11 +634,13 @@ struct Scene: Sendable {
         refs: refs.refs(in: n.text), hideHead: content.hidesHeading, locked: c.locked == true)
       return (.note(note), size, nil)
     case .text(let text):
-      // as wide as its text unless it wraps at the card's width
-      var size = CGSize(width: c.width, height: measured?.height ?? c.width * 0.6)
+      // as wide as its text unless it wraps at the card's width; as tall as its text unless its card keeps a height an
+      // old file gave it (Card.tsx: s.height = h, the page drawing it that tall: a Text's words at its top, a Box's
+      // centred)
+      var size = CGSize(width: c.width, height: c.height ?? measured?.height ?? c.width * 0.6)
       if !text.wrap, let m = measured { size.width = m.width }
       let note = Drawing.Note(
-        id: c.id.rawValue, title: nil, content: .text(text), folder: folder, height: nil,
+        id: c.id.rawValue, title: nil, content: .text(text), folder: folder, height: c.height,
         refs: refs.refs(in: text.text))
       return (.note(note), size, nil)
     case .image(let img):

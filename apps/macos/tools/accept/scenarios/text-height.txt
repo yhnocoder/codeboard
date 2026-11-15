@@ -1,5 +1,4 @@
 # 旧文件里 Text、Mark、Free Text 存着的高度照 main 留着、画出来：卡就是那么高，字不裁（cards/Card.tsx 的 height；migrate.ts 只去掉 Box 的）
-# known mac: Scene 还按字的高度画 Text（B 在做）
 zoom 1
 center @ctext
 expect ctext.h ~ 60
