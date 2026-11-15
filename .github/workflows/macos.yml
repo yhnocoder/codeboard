@@ -84,8 +84,8 @@ jobs:
   app:
     name: app
     runs-on: xcode-27
-    # only against a job that hangs: a PR that changes much is not cut short (one that changed a module at the bottom
-    # and most above it needed about 12 minutes on a slow runner), and the full run takes about 14
+    # only against a job that hangs: a PR that changes much compiles and runs more and is not cut short (compiling
+    # everything alone takes 2 to 4.5 minutes, depending on the runner), and the full run takes about 14 minutes
     timeout-minutes: 25
     env:
       BOX_PREBUILT: "1" # the app does not use box, so the setup leaves out Rust
