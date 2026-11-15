@@ -658,9 +658,17 @@ enum Raster {
     ctx.restoreGState()
   }
 
-  /// A bitmap of `size` board units and `bleed` more on each side at `scale` device pixels per unit, drawn y-down with the
+  /// `bleed` board units as a bitmap at `scale` device pixels per unit has them: whole pixels, so the item's own edge
+  /// is on a pixel of it (half a pixel of bleed at 1x put the edge between two, and the bitmap's corner on a pixel moved
+  /// the card by half a point)
+  static func bleed(_ bleed: CGFloat, at scale: CGFloat) -> CGFloat {
+    scale > 0 ? (bleed * scale - 1e-6).rounded(.up) / scale : bleed
+  }
+
+  /// A bitmap of `size` board units and `bleed` (rounded up to whole pixels) more on each side at `scale` device pixels per unit, drawn y-down with the
   /// origin at the size's top left, as an IOSurface Core Animation shows without a copy
   static func surface(size: CGSize, scale: CGFloat, bleed: CGFloat = 0, _ draw: (CGContext) -> Void) -> IOSurface? {
+    let bleed = Self.bleed(bleed, at: scale)
     let w = max(1, Int(((size.width + 2 * bleed) * scale).rounded(.up)))
     let h = max(1, Int(((size.height + 2 * bleed) * scale).rounded(.up)))
     guard

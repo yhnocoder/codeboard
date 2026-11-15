@@ -818,11 +818,12 @@ public final class CanvasView: NSView {
     /// where the stretch by a fraction of a pixel would resample it all
     func fill(_ l: CALayer, _ s: IOSurface?, scale: CGFloat) {
       l.contents = s
-      let whole = box.bounds.insetBy(dx: -bleed, dy: -bleed)
       guard let s, scale > 0 else {
-        l.frame = whole
+        l.frame = box.bounds.insetBy(dx: -bleed, dy: -bleed)
         return
       }
+      let b = Raster.bleed(bleed, at: scale)
+      let whole = box.bounds.insetBy(dx: -b, dy: -b)
       let covers = CGSize(width: CGFloat(s.width) / scale, height: CGFloat(s.height) / scale)
       // one drawn at another size (a picture of other proportions) stays stretched over the item
       let near = abs(covers.width - whole.width) * scale < 1.5 && abs(covers.height - whole.height) * scale < 1.5
@@ -1415,8 +1416,8 @@ public final class CanvasView: NSView {
     placeItems(onPixels: camera.zoom * backing)
   }
 
-  /// Each item's box where the scene has it, or (`onPixels`: device pixels per board unit) its bitmaps' corner moved to
-  /// the nearest of them
+  /// Each item's box where the scene has it, or (`onPixels`: device pixels per board unit) its corner moved to the
+  /// nearest of them
   func placeItems(onPixels k: CGFloat? = nil) {
     guard let scene, scene.items.count == items.count else { return }
     func off(_ v: CGFloat) -> CGFloat { k.map { ((v * $0).rounded() - v * $0) / $0 } ?? 0 }
@@ -1426,7 +1427,8 @@ public final class CanvasView: NSView {
       for (it, l) in zip(scene.items, items) where it.tilt == 0 && l.box.animation(forKey: "position") == nil {
         if case .card(let id)? = it.owner, slid[id] != nil { continue }
         let r = it.rect
-        l.box.position = CGPoint(x: r.midX + off(r.minX - it.bleed), y: r.midY + off(r.minY - it.bleed))
+        // the item's own corner: its bitmaps' bleed is whole pixels at the scale they are drawn for
+        l.box.position = CGPoint(x: r.midX + off(r.minX), y: r.midY + off(r.minY))
       }
     }
   }

@@ -358,7 +358,8 @@ extension CanvasView {
       surface = CanvasView.render(it, scale: scale, theme: theme, images: images).surface
     }
     guard let surface else { return nil }
-    return RefPeek.Picture(surface: surface, size: it.rect.size, bleed: it.bleed, k: k, header: theme.headerHeight)
+    return RefPeek.Picture(
+      surface: surface, size: it.rect.size, bleed: Raster.bleed(it.bleed, at: scale), k: k, header: theme.headerHeight)
   }
 
   /// Esc in a web view over the canvas: a preview open closes first

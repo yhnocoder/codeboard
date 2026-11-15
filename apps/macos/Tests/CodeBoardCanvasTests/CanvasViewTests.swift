@@ -212,10 +212,15 @@ import Testing
         Card(
           id: cid("t"), x: 400.25, y: 60.6, width: 200,
           content: .own(CardContent(body: .text(TextCard(text: "A Text", wrap: false))))),
+        // on whole board units: at a zoom where they are whole device pixels it does not move at all
+        Card(
+          id: cid("w"), x: 40, y: 300, width: 240,
+          content: .own(CardContent(body: .note(Note(text: "On whole units."))))),
       ])
   }
 
-  @Test(arguments: [1, 0.83] as [CGFloat])
+  /// 0.5: one device pixel a board unit on a 2x screen, as 1 is on CI's 1x one
+  @Test(arguments: [1, 0.83, 0.5] as [CGFloat])
   func atRestEveryItemInViewStartsOnADevicePixel(zoom: CGFloat) async throws {
     let rig = try await Rig(RestOnPixelsTests.board(), zoom: nil)
     defer { rig.close() }
@@ -234,14 +239,31 @@ import Testing
     func whole(_ v: CGFloat) -> Bool { abs(v - v.rounded()) < 1e-6 }
     let view = c.camera.visible(c.bounds.size)
     var seen = 0
+    var pixelForPixel = 0
     for (it, l) in zip(try #require(c.scene).items, c.items) where l.bitmapFrame.intersects(view) {
       seen += 1
-      let o = CGPoint(x: t.m41 + l.bitmapFrame.minX * t.m11, y: t.m42 + l.bitmapFrame.minY * t.m22)
-      #expect(whole(o.x * c.backing) && whole(o.y * c.backing), "\(String(describing: it.owner)) at \(o)")
+      // the item's own corner, and its bitmap's when shown pixel for pixel (drawn at this zoom's scale): its bleed is
+      // whole pixels
+      let sharp = [(l.held, l.heldScale), (l.rest, l.restScale ?? 0)].first { abs($0.1 - k) < 1e-6 }?.0
+      let bitmap = (sharp?.frame ?? .null).offsetBy(dx: l.box.frame.minX, dy: l.box.frame.minY)
+      let corners =
+        [("corner", l.box.frame.minX, l.box.frame.minY)]
+        + (sharp != nil ? [("bitmap", bitmap.minX, bitmap.minY)] : [])
+      if corners.count > 1 { pixelForPixel += 1 }
+      for (name, x, y) in corners {
+        let o = CGPoint(x: t.m41 + x * t.m11, y: t.m42 + y * t.m22)
+        #expect(whole(o.x * c.backing) && whole(o.y * c.backing), "\(String(describing: it.owner))'s \(name) at \(o)")
+      }
       // each moved less than half a device pixel from where the board has it
       #expect(abs(l.box.position.x - it.rect.midX) * k <= 0.5 && abs(l.box.position.y - it.rect.midY) * k <= 0.5)
+      if whole(it.rect.minX * k) && whole(it.rect.minY * k) {
+        #expect(
+          l.box.position == CGPoint(x: it.rect.midX, y: it.rect.midY),
+          "\(String(describing: it.owner)) on whole pixels stays: \(l.box.position)")
+      }
     }
     #expect(seen >= 2)
+    #expect(zoom != 1 || pixelForPixel >= 2, "shown pixel for pixel at 100 %: \(pixelForPixel)")
     // a zoom puts them back where the board has them
     c.place(zoom: zoom * 1.1, centre: asked)
     c.placeItems()
