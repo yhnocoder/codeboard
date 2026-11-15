@@ -11,8 +11,8 @@ import Testing
   func vault() throws -> Vault {
     let root = FileManager.default.temporaryDirectory.appending(path: "demo-vault-\(UUID().uuidString)")
     let v = Vault(root: root)
-    func note(_ text: String, _ style: NoteStyle = .note, layout: NoteLayout? = nil) -> CardContent {
-      CardContent(body: .note(Note(text: text, style: style, layout: layout)))
+    func note(_ text: String, layout: NoteLayout? = nil) -> CardContent {
+      CardContent(body: .note(Note(text: text, layout: layout)))
     }
     let board = Board(
       id: BoardID(rawValue: "b1"),
@@ -20,7 +20,7 @@ import Testing
         Card(id: CardID(rawValue: "low"), x: 0, y: 300, width: 300, content: .own(note("Lower"))),
         Card(
           id: CardID(rawValue: "label"), x: 0, y: 0, width: 300,
-          content: .own(note("A label", .text(size: .body, bold: false)))),
+          content: .own(CardContent(body: .text(TextCard(text: "A label", wrap: true))))),
         Card(
           id: CardID(rawValue: "pic"), x: 0, y: 10, width: 300,
           content: .own(CardContent(body: .image(ImageCard(source: .file("a.png")))))),

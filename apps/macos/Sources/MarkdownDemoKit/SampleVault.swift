@@ -15,19 +15,19 @@ enum SampleVault {
 
   static func write(to root: URL) throws {
     let v = Vault(root: root)
-    func card(_ id: String, _ y: Double, _ text: String, _ style: NoteStyle = .note, width: Double = 420) -> Card {
+    func card(_ id: String, _ y: Double, _ text: String, _ look: TextCard? = nil, width: Double = 420) -> Card {
       Card(
         id: CardID(rawValue: id), x: 0, y: y, width: width,
-        content: .own(CardContent(body: .note(Note(text: text, style: style)))))
+        content: .own(CardContent(body: look.map { .text($0) } ?? .note(Note(text: text)))))
     }
     let long = (1...120).map { "Paragraph \($0): the scheduler picks the sequences that fit and runs one step." }
       .joined(separator: "\n\n")
     let board = Board(
       id: BoardID(rawValue: "sample-step"),
       cards: [
-        card("title", 0, "Engine step", .text(size: .title, bold: true), width: 420),
+        card("title", 0, "", TextCard(text: "**Engine step**", fontSize: 32, wrap: true), width: 420),
         card("sample", 80, sample.replacingOccurrences(of: "(picture.png", with: "(images/picture.png")),
-        card("box", 1400, "A **box** with a note on it", .box(fill: .yellow), width: 300),
+        card("box", 1400, "", TextCard(text: "A **box** with a note on it", look: .box, wrap: true), width: 300),
         card("svg", 1450, "A drawing:\n\n![a made-up diagram](images/diagram-240x120.svg)"),
         card("second", 1500, secondSample),
         card("long", 1800, "# A long Note\n\n" + long),
@@ -88,7 +88,7 @@ enum DerivedVault {
     for b in boards { try upgrade(v.url(of: b.path).appending(path: Vault.boardFileName)) }
     func notes(_ b: Board) -> [String] {
       b.cards.compactMap {
-        if case .own(let c) = $0.content, case .note(let n) = c.body, n.style == .note { return n.text }
+        if case .own(let c) = $0.content, case .note(let n) = c.body { return n.text }
         return nil
       }
     }
@@ -108,7 +108,7 @@ enum DerivedVault {
     func edit(_ what: String, _ change: (String) -> String?) {
       let order = board.cards.indices.filter { !touched.contains($0) } + board.cards.indices.filter(touched.contains)
       for i in order {
-        guard case .own(var c) = board.cards[i].content, case .note(var n) = c.body, n.style == .note,
+        guard case .own(var c) = board.cards[i].content, case .note(var n) = c.body,
           let t = change(n.text), t != n.text
         else { continue }
         n.text = t
@@ -182,13 +182,13 @@ enum DerivedVault {
       board.cards.append(
         Card(
           id: CardID(rawValue: "demo-title"), x: first.x, y: first.y - 90, width: 520,
-          content: .own(CardContent(body: .note(Note(text: title, style: .text(size: .title, bold: true)))))))
+          content: .own(CardContent(body: .text(TextCard(text: "**\(title)**", fontSize: 32, wrap: true))))))
       let head = notes(original).lazy.flatMap(lines).first { $0.hasPrefix("#") }?.drop(while: { $0 == "#" })
         .trimmingCharacters(in: .whitespaces)
       board.cards.append(
         Card(
           id: CardID(rawValue: "demo-box"), x: first.x - 340, y: first.y, width: 300,
-          content: .own(CardContent(body: .note(Note(text: "**\(head ?? title)**", style: .box(fill: .yellow)))))))
+          content: .own(CardContent(body: .text(TextCard(text: "**\(head ?? title)**", look: .box, wrap: true))))))
       done += ["text title", "box"]
     }
     try board.encoded().write(to: v.url(of: entry.path).appending(path: Vault.boardFileName))
