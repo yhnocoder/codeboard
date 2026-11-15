@@ -182,6 +182,8 @@ extension Rig {
       Pinyin.windows.remove(r.window.windowNumber)
       r.close()
     }
+    // a key window, as the one a person types in (CanvasFreeCodeTests has the same)
+    KeyWindows.add(r.window)
     if late { await r.editorFocusesLate() }
     let before = r.doc.board.card(cid(id))?.writing ?? ""
     Pinyin.windows.insert(r.window.windowNumber)

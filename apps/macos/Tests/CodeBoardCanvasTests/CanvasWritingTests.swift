@@ -224,6 +224,27 @@ extension Rig {
     #expect(got == "See the [docsXY](https://e.x)", "\(got ?? "nil")")
   }
 
+  /// interact.ts staticSpot: a double-click below the last line of a Note whose header shows its heading puts the caret
+  /// at the end, as on the board. The press is read on a static render of the Note, which showed the heading in the body
+  /// and so had the lines lower by its height than the canvas draws them: the press landed on the first line's end
+  @Test func aDoubleClickBelowTheLastLineOfANoteWithItsHeadingInTheHeaderWritesAtTheEnd() async throws {
+    let note = Card(
+      id: cid("n1"), x: 100, y: 100, width: 300,
+      content: .own(CardContent(body: .note(Note(text: "# Why words\nThe vocabulary maps each word to a number.")))))
+    let r = try await Rig(Board(id: BoardID(rawValue: "heading"), cards: [note]), zoom: 1)
+    defer { r.close() }
+    let n = r.rect("n1")
+    let last = try #require(r.canvas.scene?.placed[cid("n1")]?.blocks?.last)
+    let below = n.minY + last.y + last.h
+    #expect(n.maxY - below > 4, "room below the last line")
+    r.doubleClick(CGPoint(x: n.minX + 150, y: (below + n.maxY) / 2))
+    await r.editorReady()
+    await r.type("XY")
+    await r.canvas.endEditing()
+    let got = r.doc.board.card(cid("n1"))?.writing
+    #expect(got?.hasSuffix("a number.XY") == true, "\(got ?? "nil")")
+  }
+
   /// A person's double-click on the one selected Note: its first click begins writing, and its second comes while the
   /// editor is still mounting or once it is up; either way the writing goes on and what is typed next is written, as in
   /// main, where the second click lands in the editor
