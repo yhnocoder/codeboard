@@ -98,6 +98,47 @@ extension CodeLines {
   }
 }
 
+extension CodeLines {
+  /// Where a range of lines is drawn, for the host to put something against them
+  public struct LineFrame: Equatable, Sendable {
+    /// From the top of the range's first row to the bottom of its last: a wrapped line's rows, and the folds and room
+    /// between its lines, with them; across `width`
+    public var rect: CGRect
+    /// The first row of the range's first shown line (a fold's row when it is folded)
+    public var first: CGRect
+    /// Every line of the range is folded away: `rect` is the rows of the folds that hold them
+    public var folded: Bool
+  }
+
+  /// Where `lines` are drawn, across a body `width` wide; nil when none of them has a row (blank lines left out)
+  public func frame(of lines: ClosedRange<Int>, width: CGFloat) -> LineFrame? {
+    var top: CGFloat?
+    var bottom: CGFloat = 0
+    var first: CGRect?
+    var shown = false
+    for r in rows {
+      let on: Bool
+      switch r.kind {
+      case .line(let n, _, _, _): on = lines.contains(n)
+      case .fold(let f): on = f.overlaps(lines)
+      case .inserted: on = false
+      }
+      guard on else { continue }
+      let row = CGRect(x: 0, y: r.y, width: width, height: r.height)
+      if case .line = r.kind, !shown {
+        shown = true
+        first = row
+      }
+      first = first ?? row
+      top = top ?? r.y
+      bottom = r.y + r.height
+    }
+    guard let top, let first else { return nil }
+    return LineFrame(
+      rect: CGRect(x: 0, y: top, width: width, height: bottom - top), first: first, folded: !shown)
+  }
+}
+
 extension CodeDraw {
   /// The backgrounds of the rows' lines that have one, across `width`
   public static func backgrounds(

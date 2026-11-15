@@ -73,6 +73,8 @@ struct CodeLayout: Equatable, Sendable {
   }
 
   var rows: [Placed] = []
+  /// Each segment's lines as the code component laid them out, which `rows` are made of: where a line is drawn
+  var segmentLines: [CodeLines] = []
   /// Left edge of the code
   var gutter: CGFloat
   /// Spaces of indentation every shown line has, hidden: the code moves left by them, less a small pad (the board's
@@ -102,6 +104,7 @@ struct CodeLayout: Equatable, Sendable {
     var rows: [Placed] = []
     var bands: [ClosedRange<CGFloat>] = []
     var inline: [Inline] = []
+    var segs: [CodeLines] = []
     // the least indent of each Inline's shown lines, in columns
     var leads: [Int] = []
     func put(_ r: Row, _ h: CGFloat) {
@@ -165,12 +168,14 @@ struct CodeLayout: Equatable, Sendable {
         }
       }
       y = lines.bottom
+      segs.append(lines)
       for h in s.highlights {
         // down to the end of the sidenotes shown under it (CodeBody bandStyle: ends, the .hx-end's bottom)
         if let span = lines.span(h, through: under.lastIndex { groups[$0.k].lines == h }) { bands.append(span) }
       }
     }
     self.rows = rows
+    segmentLines = segs
     self.bands = bands
     height = y + m.padBottom
     // core lines.ts commonIndent, over the rows shown
@@ -203,12 +208,11 @@ struct CodeLayout: Equatable, Sendable {
       }
   }
 
-  /// The middle of the row of a segment's line, when it is shown
+  /// The middle of a segment's line's first row (CodeLines.frame), when it is shown: nil when it is folded away
   func lineY(segment: Int, line: Int) -> CGFloat? {
-    for p in rows {
-      if case .line(let s, let n?, _, _) = p.row, s == segment, n == line { return p.y + p.height / 2 }
-    }
-    return nil
+    guard segment < segmentLines.count, let f = segmentLines[segment].frame(of: line...line, width: 0), !f.folded
+    else { return nil }
+    return f.first.midY
   }
 
   static func path(_ s: Segment) -> String? {

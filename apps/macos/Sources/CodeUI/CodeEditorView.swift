@@ -55,6 +55,9 @@ public final class CodeEditorView: NSView {
   /// Escape, ⌘↩
   public var onExit: (() -> Void)?
   public var onHeight: ((CGFloat) -> Void)?
+  /// The lines are laid out again (their text, the width, room after them, colours): what `frame(ofLines:)` answers
+  /// may have changed
+  public var onLayout: (() -> Void)?
   /// Presses of a multi-click that began outside the view and goes on in it (the click that opened it): they count from
   /// the first press made here, so the second press of the double-click that opened the editor only places the caret.
   /// A single press ends it
@@ -160,6 +163,12 @@ public final class CodeEditorView: NSView {
     }
     needsDisplay = true
     placeCaret()
+    onLayout?()
+  }
+
+  /// Where `lines` are drawn in the view (its own points, at zoom 1); nil when none is shown
+  public func frame(ofLines lines: ClosedRange<Int>) -> CodeLines.LineFrame? {
+    layout.lines.frame(of: lines, width: bounds.width)
   }
 
   /// The lines in view (by the rows as last laid out), all of them before there is a view

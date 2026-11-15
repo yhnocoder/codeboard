@@ -67,4 +67,22 @@ private func kinds(_ l: CodeLines) -> [CodeLines.Kind] { l.rows.map(\.kind) }
     #expect(l.span(4...4, through: 0) == CGFloat(64)...114)
     #expect(l.lineRows.map(\.line) == [1, 4])
   }
+
+  /// A range of lines' frame: its rows from the first to the last, a wrapped line's all of them, the folds among them;
+  /// lines all folded away are the fold's row, marked folded; lines left out have none
+  @Test func aRangeOfLinesIsFramedByItsRowsAndAFoldStandsInForWhatItHolds() {
+    let l = CodeLines(
+      lines: ["a = 1", String(repeating: "b", count: 15), "", "c", "d"], folds: [4...5], hideBlankLines: true,
+      wrapColumns: 10, top: 6, metrics: m)
+    let wrapped = l.frame(of: 2...2, width: 300)
+    #expect(wrapped?.rect == CGRect(x: 0, y: 26, width: 300, height: 40) && wrapped?.folded == false)
+    #expect(wrapped?.first == CGRect(x: 0, y: 26, width: 300, height: 20))
+    #expect(l.frame(of: 1...2, width: 300)?.rect == CGRect(x: 0, y: 6, width: 300, height: 60))
+    #expect(l.frame(of: 3...3, width: 300) == nil)
+    let fold = l.frame(of: 4...4, width: 300)
+    #expect(
+      fold?.folded == true && fold?.rect == CGRect(x: 0, y: 66, width: 300, height: 24) && fold?.first == fold?.rect)
+    let some = l.frame(of: 2...5, width: 300)
+    #expect(some?.folded == false && some?.rect == CGRect(x: 0, y: 26, width: 300, height: 64))
+  }
 }
