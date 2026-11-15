@@ -98,6 +98,25 @@ final class NotePage {
     return d
   }
 
+  /// Each Markdown's top-level blocks as the Markdown package splits them (nil: it cannot be split)
+  func blocks(_ mds: [String]) async throws -> [[String]?] {
+    await signal.ready()
+    let r = try await view.callAsyncJavaScript("return note.blocks(m)", arguments: ["m": mds], contentWorld: .page)
+    guard let a = r as? [Any], a.count == mds.count else {
+      throw NoteRenderError.page("the page answered \(String(describing: r))")
+    }
+    return a.map { $0 as? [String] }
+  }
+
+  /// core exportOrder of a board in main's shape (what the order reads of it) and a scope in main's
+  func exportOrder(_ board: [String: Any], _ scope: [String: Any]) async throws -> [String] {
+    await signal.ready()
+    let r = try await view.callAsyncJavaScript(
+      "return note.exportOrder(b, s)", arguments: ["b": board, "s": scope], contentWorld: .page)
+    guard let ids = r as? [String] else { throw NoteRenderError.page("the page answered \(String(describing: r))") }
+    return ids
+  }
+
   /// Where each mounted Note's first glyph is from its top left at 100 % (nil: it has no text)
   func firstGlyphs(_ ids: [String]) async throws -> [String: CGPoint] {
     let r = try await view.callAsyncJavaScript("return note.first(ids)", arguments: ["ids": ids], contentWorld: .page)

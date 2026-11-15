@@ -255,7 +255,7 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     let m = r.canvas.moreMenu()
     #expect(
       titles(m) == [
-        "Undo", "Redo", "-", "Rename Board…", "Copy Path", "Edit Mark…", "-", "Settings…", "Theme",
+        "Undo", "Redo", "-", "Rename Board…", "Copy Path", "Edit Mark…", "Export…", "-", "Settings…", "Theme",
         "Keyboard Shortcuts", "Copy Diagnostics",
       ])
     fire(item(m, "Keyboard Shortcuts"))

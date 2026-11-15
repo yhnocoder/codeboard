@@ -328,8 +328,8 @@ extension CanvasView {
 
   // MARK: The toolbar's ⋯
 
-  /// The toolbar's ⋯ (Chrome.tsx more, the toolbar not narrow): Undo, Redo, Copy Path (the board's file), Settings…,
-  /// Theme ▸; Settings and the themes are the app's own items, which answer them on the responder chain
+  /// The toolbar's ⋯ (Chrome.tsx more, the toolbar not narrow): Undo, Redo, Copy Path (the board's file), Export…,
+  /// Settings…, Theme ▸; Settings and the themes are the app's own items, which answer them on the responder chain
   public func moreMenu() -> NSMenu {
     let m = NSMenu()
     m.addItem(key(action("Undo", #selector(undo(_:))), "z", .command))
@@ -339,6 +339,10 @@ extension CanvasView {
     m.addItem(NSMenuItem(title: "Rename Board…", action: Selector(("renameBoard:")), keyEquivalent: ""))
     m.addItem(copyPathItem([]))
     m.addItem(NSMenuItem(title: "Edit Mark…", action: Selector(("editMark:")), keyEquivalent: ""))
+    // main's hint, without the HTML snapshot the app does not make
+    let export = menuItem("Export…") { [weak self] in self?.openExport() }
+    export.toolTip = "Markdown or PNG"
+    m.addItem(export)
     m.addItem(.separator())
     m.addItem(NSMenuItem(title: "Settings…", action: Selector(("showSettings:")), keyEquivalent: ","))
     let themes = Theme.all.map { t in
