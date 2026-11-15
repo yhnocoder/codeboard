@@ -51,17 +51,25 @@ import Testing
     #expect(c.textHandleCards == [cid("a")])
   }
 
-  /// Once a card dropped beside it has landed, a Text or Box selected alone is over it again (main: .landing 10 until
-  /// landed, .sel.solo 7)
+  /// Once a card dropped beside it has landed, a Text or Box selected alone is over it again; one dragged and still
+  /// selected alone stays over the cards round it once it has landed (main: .landing 10 until landed, .sel.solo 7)
   @Test func aLoneSelectedTextIsOverItsNeighboursOnceTheDropHasLanded() async throws {
     let r = try await Rig(Self.board(), zoom: 1)
     defer { r.close() }
     let c = r.canvas
     func z(_ id: String) -> CGFloat { c.index(of: .card(cid(id))).map { c.items[$0].box.zPosition } ?? -9 }
     r.drag(CGPoint(x: 200, y: 15), CGPoint(x: 195, y: 15))
-    await r.until("b landed") { z("b") == 0 }
+    func landed(_ id: String) -> Bool {
+      c.index(of: .card(cid(id))).map { c.items[$0].box.animation(forKey: "lift") == nil } ?? false
+    }
+    await r.until("b landed") { landed("b") }
     r.doc.select([.card(cid("a"))])
     await r.settle()
     #expect(z("a") > z("b"), "a \(z("a")), b \(z("b"))")
+    // a dragged: still selected alone, over b once landed
+    r.drag(CGPoint(x: 20, y: 15), CGPoint(x: 25, y: 15))
+    await r.until("a landed") { landed("a") }
+    await r.settle()
+    #expect(r.doc.selection == [.card(cid("a"))] && z("a") > z("b"), "a \(z("a")), b \(z("b"))")
   }
 }

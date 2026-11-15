@@ -119,7 +119,11 @@ extension CanvasView {
     CATransaction.setDisableActions(true)
     CATransaction.setCompletionBlock {
       MainActor.assumeIsolated {
-        if box.animation(forKey: "lift") == nil { box.zPosition = 0 }
+        // landed: back among the others, unless it is the Text selected alone, which stays over them (raiseText)
+        if box.animation(forKey: "lift") == nil {
+          box.zPosition = 0
+          self.raiseText()
+        }
         for l in box.sublayers ?? [] where l.name == "lift" && l.opacity == 0 { l.removeFromSuperlayer() }
       }
     }
