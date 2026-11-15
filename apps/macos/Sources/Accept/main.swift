@@ -809,7 +809,9 @@ func strings(_ x: Any) -> [String] {
       let cg = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)!
       cg.timestamp = now()
       cg.flags = CGEventFlags(rawValue: UInt64(f.rawValue))
-      let u = Array((f.contains(.command) ? chars : shown).utf16)
+      // ⇧ makes a letter a capital with ⌘ too, as a real ⇧⌘Z is "Z" (a menu's key equivalent "Z")
+      let letter = chars.count == 1 && chars.first!.isLetter
+      let u = Array((f.contains(.command) && !letter ? chars : shown).utf16)
       cg.keyboardSetUnicodeString(stringLength: u.count, unicodeString: u)
       cg.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(w.windowNumber))
       guard let e0 = NSEvent(cgEvent: cg) else { return }

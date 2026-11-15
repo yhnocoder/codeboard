@@ -1,0 +1,17 @@
+# 换白板后撤销：每块白板有自己的撤销栈（main：history.ts 每块白板一份）。First 上移动共享卡，换到 Second 按 ⌘Z 不撤销 First 的移动；回到 First 再 ⌘Z 才撤销。--only mac
+# storage: storage-two
+zoom 1
+center @csub:c
+drag @csub:c @csub:c+40,0 300
+wait 400
+mark
+click @row:Second
+wait 1200
+key cmd+z
+wait 400
+click @row:First
+wait 1200
+expect csub.x = was
+key cmd+z
+wait 400
+expect csub.x = was-40

@@ -234,6 +234,28 @@ final class FakeWriter: SummaryWriter, @unchecked Sendable {
     #expect(r.doc.board.summary(for: sec1) == before)
   }
 
+  // Summaries.tsx: the body is a contenteditable in the column, so a line more grows it downward
+  @Test func aBodyWrittenLongerGrowsDownwardWithItsRing() async throws {
+    let r = try await Rig(summaryBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    atSummaries(r)
+    let col = try column(r, sec1)
+    r.click(CGPoint(x: col.rect.minX + 2 * CGFloat(c.summaryLayout!.padding), y: col.rect.minY + col.bodyTop + 30))
+    let ed = try #require(c.summaryEditor)
+    let host = try #require(ed.superview)
+    let top = c.convert(ed.frame, from: host).minY
+    let tall = ed.frame.height
+    ed.setSelectedRange(NSRange(location: ed.string.utf16.count, length: 0))
+    ed.insertText(String(repeating: " 再写一句更长的话", count: 12), replacementRange: ed.selectedRange())
+    let f = c.convert(ed.frame, from: host)
+    let used = ed.layoutManager!.usedRect(for: ed.textContainer!).height
+    #expect(abs(f.minY - top) < 0.5, "its top stays: \(f.minY) was \(top)")
+    #expect(
+      ed.frame.height > tall && ed.frame.height >= used - 0.5, "it grows to hold the text: \(ed.frame.height), \(used)")
+    #expect(ed.ring.frame.contains(ed.frame), "its ring goes round it")
+  }
+
   @Test func aScrollOverASummaryBeingWrittenMovesTheBoard() async throws {
     let r = try await Rig(summaryBoard(), zoom: 1)
     defer { r.close() }

@@ -1,0 +1,31 @@
+# 撤销的边缘：栈空时 ⌘Z、⇧⌘Z 什么都不做；一次移动撤销过头再重做回来；正在写时 ⌘Z 只撤销打的字，写完后再撤销才是移动（main：history.ts，Editable 的编辑器自己的撤销）
+zoom 1
+center @cyellow:c
+key cmd+z
+key cmd+shift+z
+wait 300
+expect cyellow.x = 600
+drag @cyellow:c @cyellow:c+40,0 300
+wait 400
+expect cyellow.x = 640
+key cmd+z
+key cmd+z
+key cmd+z
+wait 400
+expect cyellow.x = 600
+key cmd+shift+z
+key cmd+shift+z
+wait 400
+expect cyellow.x = 640
+dbl @cblue:c
+wait 800
+type  more
+key cmd+z
+wait 400
+key esc
+wait 800
+expect cblue.text lacks more
+expect cyellow.x = 640
+key cmd+z
+wait 400
+expect cyellow.x = 600
