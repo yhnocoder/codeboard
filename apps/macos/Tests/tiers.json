@@ -1,6 +1,6 @@
 {
   "maxAreas": 3,
-  "heavy": ["CodeBoardModel", "CodeCore"],
+  "heavy": ["CodeBoardModel"],
   "targets": {
     "CodeCoreTests": {
       "changed": "whole",
