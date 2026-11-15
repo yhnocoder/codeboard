@@ -1,5 +1,0 @@
-toolbar: the bottom toolbar as the window shows it, idle and while a Note is written in
-
-ok   jumped: none
-ok   flash: none
-FAIL toolbar has its tools: frame 0 (open): spread 0; frame 1 (open): spread 0; frame 2 (open): spread 0; frame 3 (open): spread 0; frame 4 (in): spread 0; frame 5 (in): spread 0
