@@ -21,6 +21,13 @@ public enum Arrival: Equatable, Sendable {
 public final class CanvasView: NSView {
   /// The design allows one snapshot web view in the app, so every canvas shares one renderer
   static let sharedNotes = NoteRenderer()
+  /// What draws the app's Notes at rest: the native component (warmed up off the main thread as the first canvas is
+  /// made), or the web page while the change-over switch says so (`NativeNotes.on`)
+  static let sharedDisplay: any NoteDisplay = {
+    guard NativeNotes.on else { return sharedNotes }
+    NativeNotes.warmUp()
+    return NativeNotes(web: sharedNotes, images: sharedImages)
+  }()
   /// Pictures decoded for drawing, by file: one cache for every canvas, as tabs often show the same images
   static let sharedImages = DecodeCache(cap: 128 << 20)
   /// Every canvas alive, for the one budget they share
@@ -444,12 +451,18 @@ public final class CanvasView: NSView {
   package private(set) var ruleBreaks = (redraws: 0, decodes: 0, swaps: 0, noteRequests: 0, noteSwaps: 0)
 
   public convenience override init(frame: NSRect) {
-    self.init(frame: frame, notes: CanvasView.sharedNotes)
+    self.init(frame: frame, notes: CanvasView.sharedNotes, display: CanvasView.sharedDisplay)
   }
 
   /// With a Note renderer of its own, its snapshots cached in `noteCache` (CanvasBench and tests: not the app's cache)
   package convenience init(frame: NSRect, noteCache: URL) {
     self.init(frame: frame, notes: NoteRenderer(cache: noteCache))
+  }
+
+  /// The same, its Markdown drawn by the native component (`native`) or the web page
+  package convenience init(frame: NSRect, noteCache: URL, native: Bool) {
+    let web = NoteRenderer(cache: noteCache)
+    self.init(frame: frame, notes: web, display: native ? NativeNotes(web: web) : web)
   }
 
   /// With that Note renderer (CanvasBench: one for several canvases, as the app's), which draws its Notes unless

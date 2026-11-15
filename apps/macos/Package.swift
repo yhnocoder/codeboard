@@ -39,7 +39,10 @@ let package = Package(
     .target(name: "CodeBoardTestGuard", dependencies: ["CodeBoardModel"]),
     .target(
       name: "CodeBoardCanvas",
-      dependencies: ["CodeBoardModel", "CodeBoardSyntax", "CodeBoardNotes", "CodeBoardTestGuard"]),
+      dependencies: [
+        "CodeBoardModel", "CodeBoardSyntax", "CodeBoardNotes", "CodeBoardTestGuard", "CodeBoardMarkdown",
+        "CodeBoardMarkdownUI",
+      ]),
     .target(name: "CodeBoardShell", dependencies: ["CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes"]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
     .executableTarget(name: "CanvasBench", dependencies: ["CodeBoardCanvas", "CodeBoardNotes"]),
@@ -62,9 +65,9 @@ let package = Package(
   ]
 )
 
-// The native Markdown component (apps/macos/docs/markdown-guideline.md), self-contained: no target of the app depends
-// on it yet, and it depends on none of the app's but CodeBoardSyntax, which only the look tool uses for code colours,
-// and the test guard, which its editor installs in a test process as the canvas does
+// The native Markdown component (apps/macos/docs/markdown-guideline.md), self-contained: the canvas draws its Markdown
+// at rest with it, and it depends on none of the app's targets but the test guard, which its editor installs in a test
+// process as the canvas does (CodeBoardSyntax colours code for the look tool only)
 package.targets += [
   // Markdown parsed the way @yhnocoder/markdown parses it, with source ranges, and its editing rules (guideline 6.2)
   .target(name: "CodeBoardMarkdown"),
