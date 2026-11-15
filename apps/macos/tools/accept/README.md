@@ -99,7 +99,7 @@ Mac 这边复制粘贴用的是这个进程自己的私有剪贴板，碰不到�
 
 ## 定时全量里
 
-每 6 小时的定时全量（`regular.yml` 调 `macos.yml`，`acceptance: true`）跑 `ci.txt` 里的场景：`node ci.mjs --shard k/n`，按场景声明的 storage、theme、only 分组，每组一次 `run.mjs --ci`。`--ci` 只看功能、不计时（`answer` 记成 n/a）、不录像（去掉 `rec` / `stop`）、用 debug 的驱动，每个场景每一侧截三张：开始、中间、结束（`ci-1-start`、`ci-2-middle`、`ci-3-end`），连同报告传成那次运行的产物。CI 的虚拟 Mac 比桌上的慢，每一行多给 120 秒应答。不进 `ci.txt` 的和原因写在它开头：计时的、受负载影响的、开在屏幕上的，以及 Mac 侧按文字瞄准的（CI 的虚拟 Mac 上 Vision 读不了字）。PR 上只跑 `smoke.txt`（`ci.mjs --list smoke.txt`）：每个主要功能区一条快的场景，都在默认 storage 上，一个 job 6 分钟以内；全量太久，macOS 的机器又少。
+每 6 小时的定时全量（`regular.yml` 调 `macos.yml`，`everything: true`）跑 `ci.txt` 里的场景：`node ci.mjs --shard k/n`，按场景声明的 storage、theme、only 分组，每组一次 `run.mjs --ci`。`--ci` 只看功能、不计时（`answer` 记成 n/a）、不录像（去掉 `rec` / `stop`）、用 debug 的驱动，每个场景每一侧截三张：开始、中间、结束（`ci-1-start`、`ci-2-middle`、`ci-3-end`），连同报告传成那次运行的产物。CI 的虚拟 Mac 比桌上的慢，每一行多给 120 秒应答。不进 `ci.txt` 的和原因写在它开头：计时的、受负载影响的、开在屏幕上的，以及 Mac 侧按文字瞄准的（CI 的虚拟 Mac 上 Vision 读不了字）。PR 上只跑 `smoke.txt`（`ci.mjs --list smoke.txt`）：每个主要功能区一条快的场景，都在默认 storage 上，一个 job 6 分钟以内；全量太久，macOS 的机器又少。
 
 ## 驱动的结构
 
