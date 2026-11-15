@@ -138,11 +138,29 @@ final class TextBlock {
   var caret = false
   /// its widest line's width, trailing spaces left out (what it would take without wrapping, max-content)
   let widest: CGFloat
+  /// the unwrapped code block it is a line of, which scrolls its lines across on their own (nil: anything else)
+  var scroller: CodeScroller?
   init(display: DisplayText, lines: [Line], frame: CGRect, widest: CGFloat = 0) {
     self.display = display
     self.lines = lines
     self.frame = frame
     self.widest = widest
+  }
+}
+
+/// An unwrapped code block's lines, one horizontal scroller (the board's .nbody pre.md-code overflow-x: auto): its lines
+/// shift and are cut at the panel's padding box, while the panel stays
+final class CodeScroller {
+  /// the panel, in its layout's points
+  let box: CGRect
+  /// how far its lines can scroll: the widest line and the padding after it past the panel's right edge
+  let room: CGFloat
+  /// where its body starts, in its layout's source offsets (what the scroll is kept by)
+  let start: Int
+  init(box: CGRect, room: CGFloat, start: Int) {
+    self.box = box
+    self.room = room
+    self.start = start
   }
 }
 
@@ -636,6 +654,15 @@ struct LayoutBuilder {
     let h = yy + pv - y
     let box = CGRect(x: x, y: y, width: width, height: h)
     items.append(.fill(box, radius: CGFloat(m.codeRadius), theme.colors.codeBlock))
+    if !wraps {
+      // Chrome counts the end padding into a scroller's width, so the longest line can scroll clear of the edge
+      let right = inner.reduce(x) { r, it in
+        guard case .text(let t) = it else { return r }
+        return max(r, t.frame.minX + t.widest + ph)
+      }
+      let s = CodeScroller(box: box, room: max(0, right - box.maxX), start: body.lowerBound)
+      for case .text(let t) in inner { t.scroller = s }
+    }
     // a long line is cut at the block's edge (overflow: hidden on the padding box)
     items.append(.clip(box, inner))
     return y + h

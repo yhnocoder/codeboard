@@ -123,12 +123,18 @@ extension BlockLayout {
     let piece: Int
     let shift: Int
     let top: CGFloat
-    /// how far its block is scrolled across (a table wider than the Note)
+    /// how far its text is scrolled across (a table wider than the Note, an unwrapped code block's long lines)
     let left: CGFloat
   }
 
   /// how far piece `i` is scrolled across
   func sx(_ i: Int) -> CGFloat { scrollX[i] ?? 0 }
+
+  /// how far text `t` of piece `i` is scrolled across: its piece's scroll and its code block's
+  func sx(_ i: Int, _ t: TextBlock) -> CGFloat {
+    guard let c = t.scroller, !codeScrollX.isEmpty else { return sx(i) }
+    return sx(i) + (codeScrollX[c.start + shifts[i]] ?? 0)
+  }
 
   func pieceIndex(_ offset: Int) -> Int? { MarkdownEditing.blockHolding(offset, in: document) }
 
@@ -138,7 +144,7 @@ extension BlockLayout {
     let texts = pieces[i].layout.caretTexts
     guard let t = texts.first(where: { $0.holds(q) }) ?? texts.last(where: { $0.sourceStart <= q }) ?? texts.first
     else { return nil }
-    return Spot(text: t, piece: i, shift: shifts[i], top: tops[i], left: sx(i))
+    return Spot(text: t, piece: i, shift: shifts[i], top: tops[i], left: sx(i, t))
   }
 
   /// Where the caret is drawn
@@ -184,20 +190,21 @@ extension BlockLayout {
     }
     guard probe >= 0 else { return MDCaret(MarkdownEditing.start(of: document)) }
     i = probe
-    let local = CGPoint(x: p.x + sx(i), y: p.y - tops[i])
-    var best: (TextBlock, Int)?
+    var best: (TextBlock, Int, CGPoint)?
     var bestD = CGFloat.infinity
     for t in pieces[i].layout.caretTexts {
+      // in the text's own points: a code block's lines are scrolled on their own
+      let local = CGPoint(x: p.x + sx(i, t), y: p.y - tops[i])
       for (k, l) in t.lines.enumerated() {
         let dy = local.y < l.top ? l.top - local.y : local.y > l.top + l.height ? local.y - l.top - l.height : 0
         let dx = local.x < t.frame.minX ? t.frame.minX - local.x : local.x > t.frame.maxX ? local.x - t.frame.maxX : 0
         if dy * 1000 + dx < bestD {
           bestD = dy * 1000 + dx
-          best = (t, k)
+          best = (t, k, local)
         }
       }
     }
-    guard let (t, k) = best else { return MDCaret(MarkdownEditing.start(of: document)) }
+    guard let (t, k, local) = best else { return MDCaret(MarkdownEditing.start(of: document)) }
     var c = t.hit(local, line: k)
     c.offset += shifts[i]
     return c
@@ -207,8 +214,8 @@ extension BlockLayout {
   public func atom(at p: CGPoint) -> Range<Int>? {
     guard !pieces.isEmpty else { return nil }
     let i = min(firstPieceIndex(atOrBelow: p.y), pieces.count - 1)
-    let local = CGPoint(x: p.x + sx(i), y: p.y - tops[i])
     for t in pieces[i].layout.caretTexts {
+      let local = CGPoint(x: p.x + sx(i, t), y: p.y - tops[i])
       for l in t.lines where local.y >= l.top && local.y <= l.top + l.height {
         for run in CTLineGetGlyphRuns(l.line) as! [CTRun] {
           let attrs = CTRunGetAttributes(run) as NSDictionary
@@ -238,7 +245,7 @@ extension BlockLayout {
           guard t.display.toSource[j] + d == range.lowerBound else { continue }
           let x0 = l.origin.x + CTLineGetOffsetForStringIndex(l.line, j, nil)
           return CGRect(
-            x: x0 - sx(i), y: tops[i] + l.origin.y - a.ascent, width: a.width, height: a.ascent + a.descent)
+            x: x0 - sx(i, t), y: tops[i] + l.origin.y - a.ascent, width: a.width, height: a.ascent + a.descent)
         }
       }
     }
@@ -265,7 +272,15 @@ extension BlockLayout {
           let x0 = t.x(s, line: k)
           var x1 = t.x(e, line: k)
           if past { x1 = max(x1, x0) + 4 }
-          out.append(CGRect(x: x0 - sx(i), y: tops[i] + l.top, width: max(0, x1 - x0), height: l.height))
+          var r = CGRect(x: x0 - sx(i, t), y: tops[i] + l.top, width: max(0, x1 - x0), height: l.height)
+          if let c = t.scroller {
+            // cut at the panel with the lines it covers; one scrolled out of sight keeps its line's place, empty
+            let box = c.box.offsetBy(dx: -sx(i), dy: 0)
+            let lo = min(max(r.minX, box.minX), box.maxX)
+            let hi = max(min(r.maxX, box.maxX), lo)
+            r = CGRect(x: lo, y: r.minY, width: hi - lo, height: r.height)
+          }
+          out.append(r)
         }
       }
     }
@@ -290,8 +305,7 @@ extension BlockLayout {
   /// past the first or last line, the document's start or end
   public func vertical(_ c: MDCaret, x vx: CGFloat, down: Bool) -> MDCaret {
     guard let s = spot(c.offset) else { return c }
-    // the column in the block's own points (a table scrolled across)
-    let x = vx + s.left
+    // the column in the Note's points; each text it lands on takes it into its own (a table or a code block scrolled)
     let t = s.text
     let j = t.displayIndex(c.offset - s.shift)
     let k = t.lineIndex(j, upstream: c.upstream)
@@ -300,7 +314,7 @@ extension BlockLayout {
     let probeY = down ? s.top + line.top + line.height + 0.5 : s.top + line.top - 0.5
     if down ? k < t.lines.count - 1 : k > 0 {
       let n = t.lines[k + (down ? 1 : -1)]
-      var r = t.hit(CGPoint(x: x, y: n.top + n.height / 2), line: k + (down ? 1 : -1))
+      var r = t.hit(CGPoint(x: vx + s.left, y: n.top + n.height / 2), line: k + (down ? 1 : -1))
       r.offset += s.shift
       return r
     }
@@ -313,24 +327,25 @@ extension BlockLayout {
       if let n = candidates.first(where: { down ? $0.frame.minY >= ly + line.height - 0.5 : $0.frame.maxY <= ly + 0.5 })
       {
         let nk = down ? 0 : n.lines.count - 1
-        var r = n.hit(CGPoint(x: x, y: n.lines[nk].top + n.lines[nk].height / 2), line: nk)
+        var r = n.hit(CGPoint(x: vx + sx(s.piece, n), y: n.lines[nk].top + n.lines[nk].height / 2), line: nk)
         r.offset += s.shift
         return r
       }
     }
     _ = probeY
-    return firstText(from: s.piece + (down ? 1 : -1), down: down, x: x)
+    return firstText(from: s.piece + (down ? 1 : -1), down: down, x: vx)
       ?? MDCaret(down ? MarkdownEditing.end(of: document) : MarkdownEditing.start(of: document))
   }
 
-  /// the place nearest x on the first line (going down) or the last line (going up) of the first piece with text from i
+  /// the place nearest x (in the Note's points) on the first line (going down) or the last line (going up) of the first
+  /// piece with text from i
   private func firstText(from start: Int, down: Bool, x: CGFloat) -> MDCaret? {
     var i = start
     while i >= 0, i < pieces.count {
       let ts = pieces[i].layout.caretTexts
       if let n = down ? ts.first : ts.last {
         let nk = down ? 0 : n.lines.count - 1
-        var r = n.hit(CGPoint(x: x, y: n.lines[nk].top + n.lines[nk].height / 2), line: nk)
+        var r = n.hit(CGPoint(x: x + sx(i, n), y: n.lines[nk].top + n.lines[nk].height / 2), line: nk)
         r.offset += shifts[i]
         return r
       }
@@ -382,5 +397,44 @@ extension BlockLayout {
     guard !pieces.isEmpty else { return nil }
     let i = min(firstPieceIndex(atOrBelow: p.y), pieces.count - 1)
     return p.y >= tops[i] - 8 && p.y <= tops[i] + pieces[i].height + 8 ? i : nil
+  }
+}
+
+extension BlockLayout {
+  /// An unwrapped code block whose lines are wider than its panel: where its body starts in the document (its
+  /// `codeScrollX` key), its panel in the Note's points (as drawn, with its piece's scroll), and how far it can scroll
+  public struct CodeScroll: Equatable, Sendable {
+    public let start: Int
+    public let box: CGRect
+    public let room: CGFloat
+  }
+
+  private func codeScrolls(in i: Int) -> [CodeScroll] {
+    var out: [CodeScroll] = []
+    for case .clip(_, let inner) in pieces[i].layout.items {
+      guard case .text(let t)? = inner.first, let c = t.scroller, c.room > 0.5 else { continue }
+      out.append(CodeScroll(start: c.start + shifts[i], box: c.box.offsetBy(dx: -sx(i), dy: tops[i]), room: c.room))
+    }
+    return out
+  }
+
+  /// The code blocks that can scroll across, in document order
+  public var codeScrolls: [CodeScroll] {
+    pieces.indices.filter { pieces[$0].added.codes > 0 }.flatMap { codeScrolls(in: $0) }
+  }
+
+  /// The code block that can scroll across under a point of the Note, if any
+  public func codeScroll(at p: CGPoint) -> CodeScroll? {
+    guard !pieces.isEmpty else { return nil }
+    let i = min(firstPieceIndex(atOrBelow: p.y), pieces.count - 1)
+    return codeScrolls(in: i).first { $0.box.contains(p) }
+  }
+
+  /// The code block that can scroll across holding a source offset (the caret's), if any
+  public func codeScroll(holding offset: Int) -> CodeScroll? {
+    guard let s = spot(offset), let c = s.text.scroller, c.room > 0.5, s.text.holds(offset - s.shift) else {
+      return nil
+    }
+    return CodeScroll(start: c.start + s.shift, box: c.box.offsetBy(dx: -sx(s.piece), dy: s.top), room: c.room)
   }
 }

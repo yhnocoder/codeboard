@@ -86,6 +86,9 @@ public final class BlockLayout: @unchecked Sendable {
   /// how far a block wider than the Note (a table) is scrolled across, by piece: drawn shifted and cut at the Note's
   /// edges, and the caret's geometry shifted with it (markdown.css .tableWrapper overflow-x: auto)
   public var scrollX: [Int: CGFloat] = [:]
+  /// how far an unwrapped code block's lines are scrolled across inside its panel, by where its body starts in the
+  /// document: only the lines shift, cut at the panel, which stays (with the piece's own `scrollX` added)
+  public var codeScrollX: [Int: CGFloat] = [:]
   /// the caret whose constructs show their markers (editing); nil: nowhere, the static picture
   public private(set) var head: Int?
 
@@ -266,18 +269,52 @@ public final class BlockLayout: @unchecked Sendable {
         ctx.clip(to: CGRect(x: -2, y: y - 4, width: width + 4, height: pieces[i].height + 8))
       }
       ctx.translateBy(x: -s, y: y)
-      pieces[i].layout.draw(in: ctx, scale: scale, clip: clip.offsetBy(dx: s, dy: -y)) { slot in
-        image(slot.moved(by: y))
+      let local = clip.offsetBy(dx: s, dy: -y)
+      let slot = { (m: MarkdownImageSlot) in image(m.moved(by: y)) }
+      let p = pieces[i].layout
+      let scrolled = codeScrollX.isEmpty ? [] : scrolledCodes(p.items, shift: shifts[i])
+      if scrolled.isEmpty {
+        p.draw(in: ctx, scale: scale, clip: local, image: slot)
+      } else {
+        // the panels where they are, then each scrolled block's lines shifted inside its panel
+        let still = MarkdownLayout(
+          size: p.size, blockFrames: p.blockFrames, images: p.images,
+          items: p.items.map { it in
+            if case .clip(let r, _) = it, scrolled.contains(where: { $0.box == r }) { return .clip(r, []) }
+            return it
+          }, theme: p.theme, mathTextFont: p.mathTextFont)
+        still.draw(in: ctx, scale: scale, clip: local, image: slot)
+        for c in scrolled where c.box.intersects(local) {
+          let lines = MarkdownLayout(
+            size: p.size, blockFrames: [], images: [], items: c.lines, theme: p.theme, mathTextFont: p.mathTextFont)
+          ctx.saveGState()
+          ctx.clip(to: c.box)
+          ctx.translateBy(x: -c.x, y: 0)
+          lines.draw(in: ctx, scale: scale, clip: local.intersection(c.box).offsetBy(dx: c.x, dy: 0), image: slot)
+          ctx.restoreGState()
+        }
       }
       ctx.restoreGState()
       i += 1
     }
   }
 
-  /// The filled box (a code block's panel) drawn around a point of the Note, nil when none is: what a band sits on
+  /// A piece's code blocks scrolled away from 0: each one's panel, its lines and how far they are scrolled
+  private func scrolledCodes(_ items: [Item], shift: Int) -> [(box: CGRect, lines: [Item], x: CGFloat)] {
+    items.compactMap { it in
+      guard case .clip(let r, let inner) = it, case .text(let t)? = inner.first, let c = t.scroller,
+        let x = codeScrollX[c.start + shift], x != 0
+      else { return nil }
+      return (r, inner, x)
+    }
+  }
+
+  /// The filled box (a code block's panel) drawn around a point of the Note (the caret's at `offset`), nil when none
+  /// is: what a band sits on
   public func panel(around p: CGPoint, of offset: Int, color: MDColor) -> CGRect? {
     guard let i = pieceIndex(offset) else { return nil }
-    let local = CGPoint(x: p.x + (scrollX[i] ?? 0), y: p.y - tops[i])
+    // the point is on the caret's text, shifted with its code block's lines; the panel is not
+    let local = CGPoint(x: p.x + (spot(offset)?.left ?? sx(i)), y: p.y - tops[i])
     func find(_ items: [Item]) -> CGRect? {
       for it in items {
         switch it {

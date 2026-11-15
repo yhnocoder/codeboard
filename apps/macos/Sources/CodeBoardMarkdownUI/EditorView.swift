@@ -83,6 +83,8 @@ public final class MarkdownEditorView: NSView {
       guard isEditing != oldValue else { return }
       // measured from here: a switch made by a host, with no input event of its own to time it from
       begin()
+      // the static picture and the editor are separate scrollers on the page: a code block starts unscrolled in each
+      codeScroll = []
       if isEditing {
         core.select(core.selection)
         // over its siblings: what floats past its edges (a menu, the toolbar, a preview) is drawn above the next card,
@@ -494,7 +496,7 @@ public final class MarkdownEditorView: NSView {
     }
     if isEditing, blinkOn, alwaysShowsCaret || window?.firstResponder === self,
       let c = core.caretRect.map(slid).map(offImage),
-      tableDrag == nil
+      tableDrag == nil, !caretScrolledAway(c)
     {
       // two device pixels wide whatever the zoom, on the caret's line; a gap's caret is a short line in ink, as on main
       let w = 2 / scale
@@ -506,6 +508,12 @@ public final class MarkdownEditorView: NSView {
       }
     }
     ctx.restoreGState()
+  }
+
+  /// the caret is in a code block scrolled by hand so that it is past the panel's edge: cut off with its line
+  private func caretScrolledAway(_ c: CGRect) -> Bool {
+    guard let b = core.layout.codeScroll(holding: core.caret.offset) else { return false }
+    return c.minX < b.box.minX - 0.5 || c.minX > b.box.maxX + 0.5
   }
 
   private func restartBlink() {
@@ -572,12 +580,24 @@ public final class MarkdownEditorView: NSView {
     }
   }
 
-  // MARK: tables wider than the Note
+  // MARK: tables wider than the Note, unwrapped code blocks with long lines
 
   /// how far each table wider than the Note is scrolled across, by where its source starts
   private var tableScroll: [Int: CGFloat] = [:]
+  /// how far each unwrapped code block is scrolled across, in document order with where its body started then
+  private var codeScroll: [(start: Int, x: CGFloat)] = []
+  /// the selection and text the caret was last kept in view for: a scroll by hand stays until either changes
+  private var followed: (MDSelection, String)?
+  /// whether the trackpad gesture going on scrolls across (it started mostly sideways); nil before it decides
+  private var wheelAcross: Bool?
 
-  /// the tables' scroll offsets onto the layout's pieces, the caret's table scrolled to keep it in view
+  /// the tables' and code blocks' scroll offsets onto the layout, the caret's table or code block scrolled to keep it in
+  /// view
+  private func applyScroll() {
+    applyTableScroll()
+    applyCodeScroll()
+  }
+
   private func applyTableScroll() {
     let doc = core.document
     var kept: [Int: CGFloat] = [:]
@@ -601,13 +621,61 @@ public final class MarkdownEditorView: NSView {
     tableScroll = kept
   }
 
-  /// a sideways scroll over a table wider than the Note scrolls the table, not the card (a vertical one goes on to
-  /// the page)
+  private func applyCodeScroll() {
+    let l = core.layout
+    let blocks = l.codeScrolls
+    // an edit above a block moves where it starts: the same blocks in the same order keep their offsets by place
+    let byPlace = blocks.count == codeScroll.count
+    var kept: [(start: Int, x: CGFloat)] = []
+    l.codeScrollX = [:]
+    let follow = isEditing && (followed.map { $0.0 != core.selection || $0.1 != core.source } ?? true)
+    let caret = follow ? l.codeScroll(holding: core.caret.offset) : nil
+    for (k, b) in blocks.enumerated() {
+      let was = byPlace ? codeScroll[k].x : codeScroll.first { $0.start == b.start }?.x ?? 0
+      var s = min(b.room, was)
+      if b == caret, let r = l.caretRect(core.caret) {
+        // the caret in view, 12 points inside the panel (r is where it is unscrolled)
+        if r.minX - s < b.box.minX + 12 {
+          s = max(0, r.minX - b.box.minX - 12)
+          // what is left scrolled would hide only padding: the line's start shows whole
+          if s < CGFloat(l.theme.metrics.codePadding[1]) - 12 + 0.5 { s = 0 }
+        }
+        if r.maxX - s > b.box.maxX - 12 { s = min(b.room, r.maxX - b.box.maxX + 12) }
+      }
+      kept.append((b.start, s))
+      if s > 0 { l.codeScrollX[b.start] = s }
+    }
+    codeScroll = kept
+    followed = isEditing ? (core.selection, core.source) : nil
+  }
+
+  /// a sideways scroll (or ⇧ and the wheel) over a table wider than the Note or a code block with long lines scrolls
+  /// that, not the card; a vertical one goes on to the page, and a gesture that starts mostly vertical stays vertical
   public override func scrollWheel(with e: NSEvent) {
+    var dx = e.scrollingDeltaX
+    var dy = e.scrollingDeltaY
+    if e.modifierFlags.contains(.shift), dx == 0 { (dx, dy) = (dy, 0) }
+    // a trackpad gesture decides once, on its first move; its momentum follows it; a wheel's click decides alone
+    let legacy = e.phase.isEmpty && e.momentumPhase.isEmpty
+    if legacy || e.phase.contains(.began) || e.phase.contains(.mayBegin) { wheelAcross = nil }
+    if wheelAcross == nil, dx != 0 || dy != 0 { wheelAcross = abs(dx) > abs(dy) }
     let p = convert(e.locationInWindow, from: nil)
     let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
-    guard abs(e.scrollingDeltaX) > abs(e.scrollingDeltaY), let i = core.layout.block(at: at),
-      case .table(let t) = core.document.blocks[i].kind
+    guard wheelAcross == true else { return super.scrollWheel(with: e) }
+    if let b = core.layout.codeScroll(at: at) {
+      let cur = core.layout.codeScrollX[b.start] ?? 0
+      let next = min(b.room, max(0, cur - dx / zoom))
+      if let k = codeScroll.firstIndex(where: { $0.start == b.start }) {
+        codeScroll[k].x = next
+      } else {
+        codeScroll.append((b.start, next))
+      }
+      core.layout.codeScrollX[b.start] = next > 0 ? next : nil
+      showBand()
+      needsDisplay = true
+      return
+    }
+    guard let i = core.layout.block(at: at), case .table(let t) = core.document.blocks[i].kind
     else { return super.scrollWheel(with: e) }
     let cur = core.layout.scrollX[i] ?? 0
     let cells = core.layout.cellBoxes(of: t).joined().filter { $0 != .zero }
@@ -615,7 +683,7 @@ public final class MarkdownEditorView: NSView {
     let wide = cells.reduce(first) { $0.union($1) }.maxX + cur + 1
     let room = wide - core.layout.width
     guard room > 0.5 else { return super.scrollWheel(with: e) }
-    let next = min(room, max(0, cur - e.scrollingDeltaX / zoom))
+    let next = min(room, max(0, cur - dx / zoom))
     tableScroll[core.document.blocks[i].range.lowerBound] = next
     core.layout.scrollX[i] = next > 0 ? next : nil
     showBand()
@@ -623,7 +691,7 @@ public final class MarkdownEditorView: NSView {
   }
 
   private func changed() {
-    applyTableScroll()
+    applyScroll()
     let before = frame.size
     resize()
     if frame.size != before { delegate?.editor(self, didResize: core.layout.size) }
