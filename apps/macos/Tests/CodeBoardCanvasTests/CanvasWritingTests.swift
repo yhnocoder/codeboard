@@ -399,6 +399,53 @@ extension Rig {
     #expect(r.doc.board.cards.count == cards, "no card made by a letter")
   }
 
+  /// A press below the last line of the Note being written in, on its card's paper: the caret goes to the end, as a
+  /// press there puts it when it opens the editor, and the writing goes on
+  @Test func aPressBelowTheLastLineWhileWritingPutsTheCaretAtTheEnd() async throws {
+    let text = "First line.\n\nLast one."
+    let note = Card(
+      id: cid("n1"), x: 100, y: 100, width: 300, content: .own(CardContent(body: .note(Note(text: text)))))
+    let r = try await Rig(Board(id: BoardID(rawValue: "below"), cards: [note]), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let v = c.noteEditor.view
+    func js(_ s: String) async -> Any? { try? await v.callAsyncJavaScript(s, contentWorld: .page) }
+    r.click(r.centre("n1"))
+    r.key(36)
+    await r.editorReady()
+    let session = try #require(c.editing?.session)
+    // a press at the start of the first line, then one 4 px below the last line, in the card's bottom padding
+    let at = try #require(
+      await js(
+        """
+        const f = document.querySelector('.md-pm').firstElementChild.getBoundingClientRect();
+        const b = document.querySelector('.md-pm').lastElementChild.getBoundingClientRect();
+        return [f.left + 1, (f.top + f.bottom) / 2, b.left + 200, b.bottom + 4];
+        """) as? [Double])
+    func board(_ x: Double, _ y: Double) -> CGPoint {
+      c.camera.board(c.convert(v.convert(CGPoint(x: x, y: y), to: nil), from: nil))
+    }
+    let start = board(at[0], at[1])
+    let below = board(at[2], at[3])
+    #expect(below.y < r.rect("n1").maxY, "on the card")
+    #expect(r.window.contentView?.hitTest(r.at(below))?.isDescendant(of: v) == true, "the editor is under the pointer")
+    // straight to the editor, the view under the pointer, as the window gives it to a key window's (the tests' is not
+    // key, and the editor takes no first mouse)
+    for q in [start, below] {
+      v.mouseDown(with: r.mouse(.leftMouseDown, q, clicks: 1))
+      v.mouseUp(with: r.mouse(.leftMouseUp, q, clicks: 1))
+    }
+    // the page has had both presses (WebKit gives it the second once the first is handled; a key can go ahead of it)
+    for _ in 0..<3 { _ = await js("await new Promise(r => requestAnimationFrame(r)); return 1") }
+    r.press("x")
+    await r.until("x typed") {
+      (await js("return document.querySelector('.md-pm').innerText") as? String)?.contains("x") == true
+    }
+    #expect(c.editing?.session == session, "still writing")
+    await c.endEditing()
+    #expect(r.card("n1").writing == text + "x")
+  }
+
   @Test func aNewCardWrittenInIsOneStep() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }
