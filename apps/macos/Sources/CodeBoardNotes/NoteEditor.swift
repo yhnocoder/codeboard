@@ -343,6 +343,12 @@ public final class EditorWebView: WKWebView {
     return super.performKeyEquivalent(with: e)
   }
 
+  /// The Edit menu's Select All goes to the page's editor as its own ⌘A (WebKit's would select the page's text, which
+  /// the Note editor takes as a text selection and shows its format bar for)
+  public override func selectAll(_ sender: Any?) {
+    evaluateJavaScript("edit.selectAll()")
+  }
+
   /// Hands a key to the page; false when something over the canvas took it (Esc closing a ref's preview)
   @discardableResult func deliver(_ e: NSEvent) -> Bool {
     if e.keyCode == 53, escape?() == true { return false }

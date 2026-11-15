@@ -415,17 +415,20 @@ extension CanvasView {
     let text = written?.text
     let id = ed.id
     let note = !(ed.card.textCard != nil)
+    // a Free code card's language follows what the text now looks like (writeFreeCode, freeLang), asked of the page first
+    var guessed: String?
+    if ed.code, let text { guessed = try? await notes.freeLanguage(text) }
     if ed.code && ed.fresh {
       // a new card: written, one step with its making; left empty, gone with none (code.ts writeFreeCode, env.fresh)
       let keep = !(text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       doc.settleWriting(keep: keep, "New Code") { b in
-        if keep, let text { b.writeFreeCode(id, text: text) }
+        if keep, let text { b.writeFreeCode(id, text: text, guessed: guessed) }
       }
     } else if ed.code {
       // one step from where the writing began; none when nothing changed
       doc.settleWriting(keep: true, "Edit Code") { b in
         if b.card(id) == nil { b.cards.append(ed.card) }
-        if let text { b.writeFreeCode(id, text: text) }
+        if let text { b.writeFreeCode(id, text: text, guessed: guessed) }
       }
     } else if ed.fresh {
       let keep = !(text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

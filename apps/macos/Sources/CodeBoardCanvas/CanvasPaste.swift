@@ -48,8 +48,19 @@ extension CanvasView {
     }
   }
 
-  /// Any other text: what it is read as, then its card; `p` the board menu's point, else the pointer's (⌘V), else none
-  func pasteText(at p: CGPoint?) -> Bool {
+  /// Where text just copied from a card goes when pasted again (clipboard.ts pasteNear): down and right of that card,
+  /// 36 further with each paste, over whatever is there; nil for any other text, or once the card is not on this board
+  func pasteNear(_ text: String) -> CGPoint? {
+    let trim = { (s: String) in s.trimmingCharacters(in: .whitespacesAndNewlines) }
+    guard let c = lastCopy, trim(c.text) == trim(text), let r = liveRect(.card(c.card)) else { return nil }
+    lastCopy?.n += 1
+    let k = 36 * CGFloat(c.n + 1)
+    return CGPoint(x: r.minX + k, y: r.minY + k)
+  }
+
+  /// Any other text: what it is read as, then its card; `p` the board menu's point, else the pointer's (⌘V), else none;
+  /// `exact`: code goes at `p` itself, not the nearest free place from it (addCards exact)
+  func pasteText(at p: CGPoint?, exact: Bool = false) -> Bool {
     guard let s = pasteboard.string(forType: .string), !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     else { return false }
     let at = p
@@ -57,12 +68,12 @@ extension CanvasView {
     Task { [weak self, weak doc] in
       let kind = (try? await self?.notes.paste(s)) ?? .note(s)
       guard let self, document === doc else { return }
-      pasted(kind, at: at)
+      pasted(kind, at: at, exact: exact)
     }
     return true
   }
 
-  private func pasted(_ kind: PastedText, at p: CGPoint?) {
+  private func pasted(_ kind: PastedText, at p: CGPoint?, exact: Bool) {
     switch kind {
     case .note(let md):
       // newWriting: its top left where asked, else 40 above the middle of the view
@@ -78,7 +89,8 @@ extension CanvasView {
       // newFreeCode: a Note's width, as tall as its lines up to 520
       let lines = text.components(separatedBy: "\n")
       let size = CGSize(width: Board.newNoteWidth, height: min(520, 52 + Double(lines.count) * 19))
-      let at = pastePlace(size, at: p, besideSelection: true)
+      var at = pastePlace(size, at: p, besideSelection: true)
+      if exact, let p { at = CGPoint(x: p.x.rounded(), y: p.y.rounded()) }
       let id = CardID(rawValue: Board.newID("card-"))
       let seg = Segment(
         id: SegmentID(rawValue: Board.newID("s")), source: nil, language: language, firstLine: 1, lines: lines)

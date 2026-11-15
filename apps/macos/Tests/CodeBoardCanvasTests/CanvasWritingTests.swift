@@ -752,4 +752,19 @@ extension CanvasWritingTests {
     #expect(after.minX == before.minX - 200 && after.minY == before.minY - 100 && after.width == before.width)
     #expect(r.doc.history.undoSteps.map(\.name) == ["New Text", "Move"])
   }
+
+  /// ⌘A in a Note being written (the Edit menu's Select All, sent to the editor's view) selects all of it as the
+  /// editor's own ⌘A does, so no format bar comes up (bubble.tsx: for a text selection only)
+  @Test func selectAllInANoteSelectsItAllWithNoFormatBar() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    r.doubleClick(r.centre("m1"))
+    await r.editorReady()
+    let v = r.canvas.noteEditor.view
+    v.selectAll(nil)
+    let bar = try await v.callAsyncJavaScript("return await edit.barAfterSettle()", contentWorld: .page) as? Bool
+    #expect(bar == false, "the format bar came up")
+    let sel = try await v.callAsyncJavaScript("return getSelection().toString()", contentWorld: .page) as? String
+    #expect(sel?.contains("m1") == true && sel?.contains("few words") == true, "\(sel ?? "nil")")
+  }
 }

@@ -36,6 +36,8 @@ enum Drawing: Sendable {
     var framed: Bool
     /// Its Always Show sidenotes, which the Note renderer draws (CanvasView.picture), each at its frame in the card
     var inline: [InlineNote] = []
+    /// Locked itself: its header starts with the lock (.lockb)
+    var locked = false
   }
 
   /// An Always Show sidenote in a code card: its Markdown, drawn at `frame` (card points), its images in `folder`
@@ -62,6 +64,8 @@ enum Drawing: Sendable {
     var hideHead = false
     /// Its header folded away while it is written in: the heading shows in the body instead (NoteBody foldHeader)
     var folded = false
+    /// Locked itself: its header starts with the lock (.lockb)
+    var locked = false
 
     /// A Box's fill; nil for a Note or a Text
     var boxFill: BoxFill? {
@@ -507,7 +511,7 @@ enum Drawing: Sendable {
       right -= w + 8 + t.headerGap
     }
     right -= reserve
-    var x = t.headerPad
+    var x = lockFirst(ctx, c.locked, t)
     if let g = c.glyph, let font = g == "ƒ" ? t.kindGlyph : t.kindGlyphMono {
       text(ctx, g, font, t.ink3, x: x + (10 - width(g, font)) / 2, midY: mid, width: .infinity)
       x += 10 + t.headerGap
@@ -520,9 +524,36 @@ enum Drawing: Sendable {
     }
   }
 
+  /// A locked card's header starts with its lock (.lockb: an 18 square, the header's gap after it); where the rest starts
+  static func lockFirst(_ ctx: CGContext, _ locked: Bool, _ t: Theme) -> CGFloat {
+    guard locked else { return t.headerPad }
+    lock(ctx, in: CGRect(x: t.headerPad, y: t.headerHeight / 2 - 9, width: 18, height: 18), t.ink2)
+    return t.headerPad + 18 + t.headerGap
+  }
+
+  /// The lock icon (icons.tsx lock) at 12 in the middle of `r`, stroked 1.4 of its 16 units (.lockb svg)
+  static func lock(_ ctx: CGContext, in r: CGRect, _ color: CGColor) {
+    ctx.saveGState()
+    ctx.translateBy(x: r.midX - 6, y: r.midY - 6)
+    ctx.scaleBy(x: 0.75, y: 0.75)
+    ctx.addPath(lockPath)
+    ctx.setStrokeColor(color)
+    ctx.setLineWidth(1.4)
+    ctx.setLineCap(.round)
+    ctx.setLineJoin(.round)
+    ctx.strokePath()
+    ctx.restoreGState()
+  }
+
+  static var lockPath: CGPath {
+    SVGPath.parse(
+      "M2.5 7H13.5A.5 .5 0 0 1 14 7.5V13.5A.5 .5 0 0 1 13.5 14H2.5A.5 .5 0 0 1 2 13.5V7.5A.5 .5 0 0 1 2.5 7zM5 7V5a3 3 0 0 1 6 0v2"
+    )
+  }
+
   /// A Note's title bar: ¶ and its title, up to its ··· (and the hover buttons' `reserve`)
   static func noteHeader(_ ctx: CGContext, _ n: Note, width w: CGFloat, _ t: Theme, reserve: CGFloat = 0) {
-    var x = t.headerPad
+    var x = lockFirst(ctx, n.locked, t)
     if let g = t.kindGlyph {
       text(ctx, "¶", g, t.ink3, x: x + (10 - width("¶", g)) / 2, midY: t.headerHeight / 2, width: 10)
       x += 10 + t.headerGap

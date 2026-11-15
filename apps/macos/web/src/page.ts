@@ -22,6 +22,7 @@ import {
   warmUp,
 } from "@yhnocoder/markdown/editor";
 import { codeEditor } from "@yhnocoder/markdown/code-editor";
+import { TOOLBAR_SETTLE } from "@yhnocoder/markdown/ui";
 import "@yhnocoder/markdown/katex.css";
 import "../../../../packages/board/src/fonts.css";
 import "../../../../packages/board/src/styles.css";
@@ -638,8 +639,20 @@ const edit = {
       setTimeout(() => focus.call(this, o), ms);
     };
   },
+  /** The Edit menu's Select All: ⌘A pressed in the editor that has the focus, so its own key binding selects (the Note
+   *  editor's is the whole document, which shows no format bar); WebKit's select-all only when nothing takes it */
+  selectAll() {
+    const at = document.activeElement ?? document.body;
+    const key = { key: "a", code: "KeyA", metaKey: true, bubbles: true, cancelable: true };
+    if (at.dispatchEvent(new KeyboardEvent("keydown", key))) document.execCommand("selectAll");
+  },
   /** The keydowns seen so far */
   keysSeen: () => keysSeen,
+  /** Tests: whether the format bar is up once a selection made now has waited as long as the bar does (TOOLBAR_SETTLE) */
+  barAfterSettle: () =>
+    new Promise<boolean>((r) =>
+      setTimeout(() => requestAnimationFrame(() => r(!!document.querySelector(".md-bubble"))), TOOLBAR_SETTLE),
+    ),
   /** Resolves once `n` keydowns have been seen, or after `ms` (a key that reaches no page) */
   async seen(n: number, ms: number) {
     const until = performance.now() + ms;
