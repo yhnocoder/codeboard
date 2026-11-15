@@ -134,9 +134,7 @@ extension CanvasView {
     case .copy: copyCode(id)
     case .split: if !h.faint.contains(.split) { splitByHeadings(id) }
     case .open:
-      if case .own(let k)? = doc.board.card(id)?.content, case .web(let w) = k.body, let u = URL(string: w.url) {
-        openURL(u)
-      }
+      if case .own(let k)? = doc.board.card(id)?.content, case .web(let w) = k.body { openLink(w.url) }
     case .lang, .more:
       guard let r = h.buttons.first(where: { $0.0 == a })?.1, let i = index(of: .card(id)) else { return }
       // under the button (main's below(el)), in the view

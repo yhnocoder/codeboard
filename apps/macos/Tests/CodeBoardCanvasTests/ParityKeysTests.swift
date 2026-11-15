@@ -338,6 +338,26 @@ private func keysBoard() -> Board {
     #expect(opened == [URL(string: "https://www.example.org/posts/one")!])
   }
 
+  /// Only a web page or a mail address opens (host handlers.ts openLink, which every open goes through): a Web card
+  /// pointing at a file opens nothing
+  @Test func returnOpensNoFileAddress() async throws {
+    let r = try await rig()
+    defer { r.close() }
+    var opened: [URL] = []
+    r.canvas.openURL = { opened.append($0) }
+    r.doc.edit("Edit") { b in
+      guard let i = b.cards.firstIndex(where: { $0.id == cid("w1") }), case .own(var k) = b.cards[i].content,
+        case .web(var w) = k.body
+      else { return }
+      w.url = "file:///Applications/Calculator.app"
+      k.body = .web(w)
+      b.cards[i].content = .own(k)
+    }
+    r.doc.select([.card(cid("w1"))])
+    press(r, 36, "\r")
+    #expect(opened.isEmpty)
+  }
+
   /// ⇧⌘B with no card selected makes nothing and says so (subboards.ts turnIntoBoard)
   @Test func commandShiftBWithNoCardSelectedSaysToSelectCards() async throws {
     let r = try await rig()
