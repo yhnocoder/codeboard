@@ -674,11 +674,13 @@ func strings(_ x: Any) -> [String] {
   var rec: Recorder?
 
   var win: NSWindow? { gMain }
+  /// The board in front: the canvas of the tab shown (each open tab has one; the others are hidden)
   var canvas: NSView? {
-    func find(_ v: NSView) -> NSView? {
-      String(describing: Swift.type(of: v)) == "CanvasView" ? v : v.subviews.lazy.compactMap(find).first
+    func all(_ v: NSView) -> [NSView] {
+      String(describing: Swift.type(of: v)) == "CanvasView" ? [v] : v.subviews.flatMap(all)
     }
-    return win?.contentView.flatMap(find)
+    let found = win?.contentView.map(all) ?? []
+    return found.first { !$0.isHiddenOrHasHiddenAncestor } ?? found.first
   }
   /// The canvas's camera, read from its stored property `camera` (a board point at the view's top-left and a zoom:
   /// three doubles), so the driver needs nothing public from the app and works on any version of it
