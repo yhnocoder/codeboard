@@ -1,8 +1,12 @@
 name: CI
+# Nothing here builds or tests the native apps (apps/macos: macos.yml, apps/android: android.yml), so a change to those
+# folders alone starts no run; a change that also touches anything else runs everything, as before
 on:
   push:
     branches: [main, "dev/**"]
+    paths-ignore: ["apps/macos/**", "apps/android/**"]
   pull_request:
+    paths-ignore: ["apps/macos/**", "apps/android/**"]
 # Read-only by default; the report job pushes screenshots (ci-screenshots branch) and edits the PR description
 permissions:
   contents: read
