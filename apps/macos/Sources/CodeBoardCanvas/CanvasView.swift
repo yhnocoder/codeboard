@@ -312,6 +312,8 @@ public final class CanvasView: NSView {
   /// A question on another board picked in the list: that board is to open and go to it
   /// Another board to open, and what to go to on it once shown
   public var onOpenBoard: ((BoardID, Arrival?) -> Void)?
+  /// Over a sub-board: the breadcrumb, and the move in or out under way (CanvasCrumbs.swift)
+  let crumbsBar = CrumbsBar()
   /// A board to delete (a sub-board card's Delete Board…): the shell asks first; whether it went
   public var onDeleteBoard: (@MainActor (BoardID) async -> Bool)?
   /// A ref clicked: what goes there once the double-click time is over
@@ -552,6 +554,7 @@ public final class CanvasView: NSView {
     if !keepCamera { self.keepCamera(now: true) }
     shown = (board, vault)
     install(scene, overviews: overviews, shadow: shadow, theme: theme, keepCamera: keepCamera)
+    if keepCamera { showCrumbs() } else { boardArrived() }
   }
 
   /// The sizes the Note renderer gives the Notes without a stored height: from what it kept, else measured in the web
