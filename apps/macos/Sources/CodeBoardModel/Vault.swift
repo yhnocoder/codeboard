@@ -108,7 +108,9 @@ public struct Vault: Sendable {
         }
       }
     }
-    for name in names.sorted(by: { $0.localizedStandardCompare($1) == .orderedAscending }) {
+    // by the names shown, a package's without `.board` ("Plan" before "Plan copy"), as Finder lists them
+    func shown(_ n: String) -> String { n.hasSuffix(".\(Vault.packageExtension)") ? String(n.dropLast(6)) : n }
+    for name in names.sorted(by: { shown($0).localizedStandardCompare(shown($1)) == .orderedAscending }) {
       let entry = dir.appending(path: name)
       var isDir: ObjCBool = false
       guard FileManager.default.fileExists(atPath: entry.path, isDirectory: &isDir), isDir.boolValue else { continue }

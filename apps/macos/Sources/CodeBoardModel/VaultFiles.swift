@@ -147,13 +147,36 @@ extension Vault {
     }
   }
 
-  /// A package built under a hidden name beside where it goes, then renamed there whole
-  private func writePackage(_ b: Board, at path: String) throws {
+  /// Duplicate Board (host storage boards.ts duplicate): a copy beside it, "<title> copy" (or "… copy 2"…), a board of
+  /// its own (a new id) whose own cards have new ids, what hangs on them following, so they are not taken for the
+  /// original's; shared cards stay the same cards. The rest of the package (its pictures) is copied as it is
+  @discardableResult
+  public func duplicateBoard(at path: String) throws -> VaultBoard {
+    var b = try board(at: path)
+    b.id = BoardID(rawValue: Board.newID("b"))
+    for c in b.cards {
+      if case .own = c.content { b.renameCard(c.id, to: CardID(rawValue: Board.newID("c"))) }
+    }
+    let from = url(of: path)
+    let folder = path.split(separator: "/").dropLast().joined(separator: "/")
+    let name = freeName(in: folder, "\(from.deletingPathExtension().lastPathComponent) copy", package: true)
+    let to = Vault.join(folder, "\(name).\(Vault.packageExtension)")
+    try writePackage(b, at: to, copying: from)
+    return VaultBoard(id: b.id, title: name, path: to)
+  }
+
+  /// A package built under a hidden name beside where it goes (`copying`: from that package's files, its board file
+  /// then written over in the copy), then renamed there whole
+  private func writePackage(_ b: Board, at path: String, copying: URL? = nil) throws {
     let to = url(of: path)
     let parent = to.deletingLastPathComponent()
     let hidden = parent.appending(path: ".\(to.lastPathComponent).new-\(UUID().uuidString)")
     do {
-      try FileManager.default.createDirectory(at: hidden, withIntermediateDirectories: false)
+      if let copying {
+        try FileManager.default.copyItem(at: copying, to: hidden)
+      } else {
+        try FileManager.default.createDirectory(at: hidden, withIntermediateDirectories: false)
+      }
       try b.encoded().write(to: hidden.appending(path: Vault.boardFileName))
     } catch {
       try? FileManager.default.removeItem(at: hidden)

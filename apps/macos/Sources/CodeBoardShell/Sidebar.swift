@@ -247,16 +247,28 @@ private struct BoardRow: View {
       }
     }
     .draggable(VaultDrag.payload(board.path))
-    .contextMenu { MenuItems(entries: shell.menu(board: board)) }
+    .contextMenu { MenuItems(entries: shell.menu(board: board), moveTo: shell.moveTargets(board: board)) }
   }
 }
 
 private struct MenuItems: View {
   let entries: [Shell.MenuEntry]
+  /// What "Move to" opens
+  var moveTo: [(title: String, run: () -> Void)] = []
 
   var body: some View {
     ForEach(entries.indices, id: \.self) { i in
-      if let e = entries[i] { Button(e.title, action: e.run) } else { Divider() }
+      if let e = entries[i] {
+        if e.title == "Move to" {
+          Menu("Move to") {
+            ForEach(moveTo.indices, id: \.self) { k in Button(moveTo[k].title, action: moveTo[k].run) }
+          }
+        } else {
+          Button(e.title, action: e.run)
+        }
+      } else {
+        Divider()
+      }
     }
   }
 }

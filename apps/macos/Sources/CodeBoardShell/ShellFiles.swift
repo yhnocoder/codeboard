@@ -32,8 +32,25 @@ extension Shell {
   /// A board's row menu
   public func menu(board: VaultBoard) -> [MenuEntry] {
     [
-      ("Rename", { self.renaming = .board(board.id) }), ("Edit Mark…", { self.sealEditing = board.id }), nil,
+      ("Rename", { self.renaming = .board(board.id) }), ("Edit Mark…", { self.sealEditing = board.id }),
+      ("Duplicate Board", { self.duplicate(board) }),
+      // the sidebar shows moveTargets(board:) under it
+      ("Move to", {}), nil,
     ] + fileEntries(board.path) + [nil, ("Delete", { self.trashAsked(board.path, self.boardQuestion(board)) })]
+  }
+
+  /// Duplicate Board: a copy beside it in its folder (VaultFiles duplicateBoard), not opened (host actions.ts)
+  public func duplicate(_ board: VaultBoard) {
+    files { v in try v.duplicateBoard(at: board.path) }
+  }
+
+  /// Move to ▸ (host actions.ts moveToGroup, with the vault's folders for its groups): the top level and every folder,
+  /// `Parent › Child`, but the one it is in
+  public func moveTargets(board: VaultBoard) -> [(title: String, run: () -> Void)] {
+    guard let tree else { return [] }
+    let here = board.path.split(separator: "/").dropLast().joined(separator: "/")
+    let all = [("", "Top Level")] + tree.allFolders.dropFirst().map { ($0.path, $0.path.replacing("/", with: " › ")) }
+    return all.filter { $0.0 != here }.map { path, title in (title, { _ = self.move(board.path, into: path) }) }
   }
 
   /// The row of a board that cannot be read: shown in Finder, its file's path copied, or deleted

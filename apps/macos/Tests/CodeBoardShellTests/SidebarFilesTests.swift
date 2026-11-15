@@ -158,8 +158,11 @@ import Testing
     #expect(pb.string(forType: .string) == bad.appending(path: Vault.boardFileName).path(percentEncoded: false))
     let vb = try #require(shell.tree?.boards.first)
     let titles = shell.menu(board: vb).map { $0?.title ?? "-" }
-    #expect(titles == ["Rename", "Edit Mark…", "-", "Reveal in Finder", "Copy Path", "-", "Delete"], "\(titles)")
-    shell.menu(board: vb)[4]?.run()
+    #expect(
+      titles == [
+        "Rename", "Edit Mark…", "Duplicate Board", "Move to", "-", "Reveal in Finder", "Copy Path", "-", "Delete",
+      ], "\(titles)")
+    shell.menu(board: vb)[6]?.run()
     #expect(
       pb.string(forType: .string)
         == vault.url(of: good.path).appending(path: Vault.boardFileName).path(percentEncoded: false))
@@ -191,5 +194,46 @@ import Testing
     }
     while asked.count < 2 { try await Task.sleep(for: .milliseconds(5)) }
     #expect(asked == ["Its 3 boards go to the Trash with it.", "Its 1 board goes to the Trash with it."])
+  }
+
+  /// Duplicate Board (host boards.ts duplicate): a copy beside it named "… copy", a board of its own (new id), its own
+  /// cards new ids with their arrows following, shared cards the same cards, its pictures copied; not opened. Move to:
+  /// the top level and every other folder; chosen, the board goes there
+  @Test func duplicateBoardCopiesItBesideItAndMoveToTakesItToAFolder() throws {
+    let (vault, shell, _) = try vault()
+    defer { try? fm.removeItem(at: vault.root) }
+    try vault.newFolder(in: "", name: "A")
+    try vault.newFolder(in: "A", name: "B")
+    let note = { (id: String) in
+      Card(id: CardID(rawValue: id), x: 0, y: 0, width: 200, content: .own(CardContent(body: .note(Note(text: id)))))
+    }
+    let orig = try vault.newBoard(
+      in: "A", title: "Plan",
+      board: Board(
+        id: BoardID(rawValue: "plan"), cards: [note("n1"), note("n2")],
+        arrows: [
+          Arrow(
+            id: ArrowID(rawValue: "a1"), from: Endpoint(card: CardID(rawValue: "n1")),
+            to: Endpoint(card: CardID(rawValue: "n2")))
+        ]))
+    let images = vault.url(of: orig.path).appending(path: "images")
+    try fm.createDirectory(at: images, withIntermediateDirectories: true)
+    try Data("png".utf8).write(to: images.appending(path: "p.png"))
+    shell.apply(Result { try vault.tree() })
+    let vb = try #require(shell.tree?.allBoards.first { $0.id == orig.id })
+    shell.menu(board: vb).compactMap { $0 }.first { $0.title == "Duplicate Board" }?.run()
+    let a = try #require(shell.tree?.folders.first { $0.name == "A" })
+    #expect(a.boards.map(\.title) == ["Plan", "Plan copy"], "by their names, as Finder lists them")
+    let copy = try #require(a.boards.first { $0.title == "Plan copy" })
+    #expect(copy.id != orig.id && shell.current?.board != copy.id)
+    let b = try vault.board(at: copy.path)
+    #expect(b.cards.count == 2 && Set(b.cards.map(\.id.rawValue)).isDisjoint(with: ["n1", "n2"]))
+    #expect(b.arrows.first.map { [$0.from.card, $0.to.card] } == b.cards.map(\.id))
+    #expect(fm.fileExists(atPath: vault.url(of: copy.path).appending(path: "images/p.png").path(percentEncoded: false)))
+    // Move to: everywhere but where it is
+    let targets = shell.moveTargets(board: copy)
+    #expect(targets.map(\.title) == ["Top Level", "A › B"])
+    targets[1].run()
+    #expect(shell.tree?.folders.first { $0.name == "A" }?.folders.first?.boards.map(\.title) == ["Plan copy"])
   }
 }
