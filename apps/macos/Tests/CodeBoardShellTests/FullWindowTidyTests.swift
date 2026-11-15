@@ -184,10 +184,10 @@ import Testing
     let h = try #require(doc.board.section(gid("h")))
     #expect([g.x, g.y, h.x, h.y] == [1000, 0, 1000, 328], "\([g.x, g.y, h.x, h.y])")
     #expect(place(w, "m") == [1040 + g.x - 1000, 80 + g.y])
-    // its frame eases, once the board is drawn again after the step (a busy machine draws it a little later)
+    // the scene with its new place comes in a moment after the step, its frame easing there
     await env.until("its frame eases", in: w) {
-      guard let at = c.scene?.frames.firstIndex(where: { $0.id == gid("h") }), let ls = c.sections.sublayers,
-        at < ls.count
+      guard c.shownBoard == doc.board, let at = c.scene?.frames.firstIndex(where: { $0.id == gid("h") }),
+        let ls = c.sections.sublayers, at < ls.count
       else { return false }
       return ls[at].animation(forKey: "ease") != nil
     }

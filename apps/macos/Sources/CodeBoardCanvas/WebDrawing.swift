@@ -76,7 +76,8 @@ struct WebLayout {
 
   static let titleLine: CGFloat = 13.5 * 1.4
   static let descLine: CGFloat = 12 * 1.5
-  static let siteLine: CGFloat = 15
+  /// .wsite: 11.5 at the card's line height of 1.5
+  static let siteLine: CGFloat = 11.5 * 1.5
   static let pathLine: CGFloat = 11 * 1.45
 
   /// The card's whole layout at `width`: as the card (small: a Link List's rich row)
@@ -245,6 +246,10 @@ struct LinksLayout {
   /// Each row's rect and its bookmark's layout (Rich) or its compact parts
   var rows: [(rect: CGRect, rich: WebLayout?, compact: WebLayout?)]
 
+  /// Where the title starts in the header: Warm Ink's .chead padding 10, the icon's .kind box 10 wide (the 16 point
+  /// icon overflows it), a gap of 7; Ink Wash shows no icon
+  static func titleX(_ t: Theme) -> CGFloat { t.id == .inkWash ? 14 : 10 + 10 + 7 }
+
   static func of(_ l: Drawing.Links, width w: CGFloat, _ t: Theme) -> LinksLayout {
     var y = t.headerHeight + 2
     var rows: [(CGRect, WebLayout?, WebLayout?)] = []
@@ -252,8 +257,8 @@ struct LinksLayout {
       let last = i == l.rows.count - 1
       if r.rich {
         let b = WebLayout.of(r.page, style: .automatic, width: w, small: true, loading: false, t)
-        rows.append((CGRect(x: 0, y: y + 2, width: w, height: b.height + 3), b, nil))
-        y += 2 + b.height + 3 + (last ? 0 : 1)
+        rows.append((CGRect(x: 0, y: y, width: w, height: b.height), b, nil))
+        y += b.height + (last ? 0 : 1)
       } else {
         let c = WebLayout.compactRow(r.page, width: w, t)
         rows.append((CGRect(x: 0, y: y, width: w, height: 32), nil, c))
@@ -496,20 +501,20 @@ extension Drawing {
     paper(ctx, r, t, id: l.id, rule: true)
     let f = WebFonts(t)
     let ink = t.id == .inkWash
-    var x: CGFloat = ink ? 14 : 10
+    var x = LinksLayout.titleX(t)
     let mid = t.headerHeight / 2
     if !ink {
+      // .kind's .ico: 16 by 16 from the top of its 18 point line box, a 1 point stroke moved half a point up and left,
+      // in .kind's ink-3
       ctx.saveGState()
-      ctx.translateBy(x: x, y: mid - 6.5)
-      ctx.scaleBy(x: 13 / 16, y: 13 / 16)
+      ctx.translateBy(x: 10 - 0.5, y: mid - 9.5 - 0.5)
       ctx.addPath(SVGPath.parse(WebIcons.link))
-      ctx.setStrokeColor(t.ink2)
-      ctx.setLineWidth(1.4)
+      ctx.setStrokeColor(t.ink3)
+      ctx.setLineWidth(1)
       ctx.setLineCap(.round)
       ctx.setLineJoin(.round)
       ctx.strokePath()
       ctx.restoreGState()
-      x += 13 + 7
     }
     let count = "\(l.rows.count)"
     let cw = width(count, f.count) + 12

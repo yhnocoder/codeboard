@@ -27,6 +27,25 @@ private func board(_ id: String, in package: URL) throws {
   #expect(try Vault(root: root).board(at: "Papers/Attention/Heads.board").id == BoardID(rawValue: "b2"))
 }
 
+/// A board whose file cannot be read is listed as one that cannot be opened, with why; the rest of the tree reads as
+/// ever (host sidebar.ts: "Can't open"). A folder's own board that cannot be read leaves the folder without one
+@Test func aBoardThatCannotBeReadIsListedApartAndTheTreeStillReads() throws {
+  let root = try scratch()
+  try board("b1", in: root.appending(path: "Good.board"))
+  let bad = root.appending(path: "Papers/Bad.board")
+  try FileManager.default.createDirectory(at: bad, withIntermediateDirectories: true)
+  try Data("{ not json".utf8).write(to: bad.appending(path: Vault.boardFileName))
+  try FileManager.default.createDirectory(
+    at: root.appending(path: "Papers/\(Vault.folderBoardName)"), withIntermediateDirectories: true)
+  try board("b2", in: root.appending(path: "Papers/Fine.board"))
+  let tree = try Vault(root: root).tree()
+  #expect(tree.allBoards.map(\.id.rawValue) == ["b1", "b2"])
+  let papers = try #require(tree.folders.first)
+  #expect(papers.folderBoard == nil)
+  #expect(papers.unreadable.map(\.title) == ["Bad"] && papers.unreadable.first?.path == "Papers/Bad.board")
+  #expect(papers.unreadable.first?.reason.isEmpty == false)
+}
+
 @Test func boardsOfOtherVersionsAreListedAndRefusedWhenOpened() throws {
   let root = try scratch()
   var files: [URL] = []
