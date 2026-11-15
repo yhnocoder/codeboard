@@ -1052,28 +1052,12 @@ public final class CanvasView: NSView {
     }
   }
 
-  /// A press of any button stops a glide at once, before the press is hit-tested; what is under the pointer is worked
-  /// out again for the camera there
+  /// A glide stopped at once (by anything pressed in the window: `BoardWindow`); what is under the pointer is worked out
+  /// again for the camera there
   func stopGlide() {
     guard case .glide = motion.phase else { return }
     motion.stopGlide(at: lastTick)
     if let w = pointerInWindow { rehover(convert(w, from: nil)) }
-  }
-
-  /// The board under what floats over it: the canvas it is in (the dock, the Shelf, the palette, the shortcut list) or
-  /// the one beside it in its pane (the toolbar, a ref's preview)
-  static func under(_ overlay: NSView) -> CanvasView? {
-    var v = overlay.superview
-    while let s = v {
-      if let c = (s as? CanvasView) ?? s.subviews.lazy.compactMap({ $0 as? CanvasView }).first { return c }
-      v = s.superview
-    }
-    return nil
-  }
-
-  public override func otherMouseDown(with e: NSEvent) {
-    stopGlide()
-    super.otherMouseDown(with: e)
   }
 
   /// Input moved the camera: rest work is cancelled
@@ -1458,5 +1442,29 @@ public final class CanvasView: NSView {
     cancelRedraws()
     applyCamera()
     arrive()
+  }
+}
+
+/// A window boards are shown in. Anything pressed in it (any mouse button, a key) and fingers put on the trackpad stop
+/// its boards' glides before the event goes on, whatever view it goes to: the canvas, what floats over it, a web view
+/// on it or a field that takes the press for itself (main: any input stops the board where it is)
+open class BoardWindow: NSWindow {
+  open override func sendEvent(_ e: NSEvent) {
+    if BoardWindow.stopsGlide(e), let v = contentView?.superview ?? contentView { BoardWindow.stopGlides(in: v) }
+    super.sendEvent(e)
+  }
+
+  static func stopsGlide(_ e: NSEvent) -> Bool {
+    switch e.type {
+    case .leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown, .smartMagnify: true
+    case .scrollWheel: !e.phase.isDisjoint(with: [.mayBegin, .began])
+    case .magnify: e.phase.contains(.began)
+    default: false
+    }
+  }
+
+  @MainActor static func stopGlides(in v: NSView) {
+    if let c = v as? CanvasView { c.stopGlide() }
+    for s in v.subviews { stopGlides(in: s) }
   }
 }
