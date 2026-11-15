@@ -1,0 +1,11 @@
+# 第二个标签：⌘ 点侧栏 Second 在新标签里打开，@卡片 按前面那个标签的白板算；⌃Tab 换到下一个标签（First）
+# storage: storage-two
+# only: mac
+zoom 1
+click @row:Second cmd
+wait 1500
+expect cother.w > 0
+key ctrl+tab
+wait 800
+expect cown.w > 0
+expect cother.w = missing

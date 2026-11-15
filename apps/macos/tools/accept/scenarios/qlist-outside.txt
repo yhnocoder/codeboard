@@ -8,11 +8,16 @@ click @ui.questions:c+-150,-60
 wait 300
 mac: expect press has ListWebView
 web: expect press has qlist
-# the row pressed opens its question's sidenote popup on the web side, over the middle of the board, and Esc does not
-# always close it: the press outside goes to the empty board above it (it landed on the popup's edge on CI)
+# the row pressed opens its question's sidenote popup on the web side, and Esc does not always close it (not while its
+# field has the focus). A press outside closes only the layers above the first that does not close so (overlay.ts):
+# with the popup still open the list stayed. So everything is closed first, by presses on the empty board above, and
+# the list opened alone
 key esc
 wait 300
-key esc
+click @ui.questions:c+-500,-600
+wait 300
+click @ui.questions:c+-500,-600
+wait 300
 click @ui.questions
 # (a machine under load opens it later: the press outside must come after it is open)
 wait 1200

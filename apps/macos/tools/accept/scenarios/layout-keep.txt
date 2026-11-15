@@ -36,10 +36,10 @@ wait 2500
 move @ui.zoomout 600
 move @cnote+150,90 600
 wait 300
-mac: expect focus has EditorWebView
+mac: expect focus has EditorWebView|MarkdownEditorView|CodeEditorView
 type  q2
 wait 300
-mac: expect focus has EditorWebView
+mac: expect focus has EditorWebView|MarkdownEditorView|CodeEditorView
 key esc
 wait 500
 center @ctext+130,30
@@ -50,10 +50,10 @@ wait 2500
 move @ui.zoomout 600
 move @ctext+130,30 600
 wait 300
-mac: expect focus has EditorWebView
+mac: expect focus has EditorWebView|MarkdownEditorView|CodeEditorView
 type  q2
 wait 300
-mac: expect focus has EditorWebView
+mac: expect focus has EditorWebView|MarkdownEditorView|CodeEditorView
 key esc
 wait 500
 center @cyellow+65,30
@@ -64,10 +64,10 @@ wait 2500
 move @ui.zoomout 600
 move @cyellow+65,30 600
 wait 300
-mac: expect focus has EditorWebView
+mac: expect focus has EditorWebView|MarkdownEditorView|CodeEditorView
 type  q2
 wait 300
-mac: expect focus has EditorWebView
+mac: expect focus has EditorWebView|MarkdownEditorView|CodeEditorView
 key esc
 wait 500
 center @cfree+200,46
@@ -78,10 +78,10 @@ wait 2500
 move @ui.zoomout 600
 move @cfree+200,46 600
 wait 300
-mac: expect focus has EditorWebView
+mac: expect focus has EditorWebView|MarkdownEditorView|CodeEditorView
 type  q2
 wait 300
-mac: expect focus has EditorWebView
+mac: expect focus has EditorWebView|MarkdownEditorView|CodeEditorView
 key esc
 wait 500
 expect cnote.text has q1

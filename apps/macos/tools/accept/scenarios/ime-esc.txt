@@ -9,7 +9,7 @@ wait 100
 key esc
 mac: expect answer < 300
 wait 800
-expect focus lacks EditorWebView
+expect focus lacks EditorWebView|MarkdownEditorView|CodeEditorView
 expect focus lacks ProseMirror
 expect cnote.text has 你好
 shot note
@@ -20,7 +20,7 @@ ime ni|nih|你好
 wait 100
 key esc
 wait 800
-expect focus lacks EditorWebView
+expect focus lacks EditorWebView|MarkdownEditorView|CodeEditorView
 expect focus lacks ProseMirror
 expect ctext.text has 你好
 center @cyellow
@@ -30,7 +30,7 @@ ime ni|nih|你好
 wait 100
 key esc
 wait 800
-expect focus lacks EditorWebView
+expect focus lacks EditorWebView|MarkdownEditorView|CodeEditorView
 expect focus lacks ProseMirror
 expect cyellow.text has 你好
 center @cfree
@@ -40,7 +40,7 @@ ime ni|nih|你好
 wait 100
 key esc
 wait 800
-expect focus lacks EditorWebView
+expect focus lacks EditorWebView|MarkdownEditorView|CodeEditorView
 expect focus lacks cm-content
 # the web side keeps no Free code edit in this harness (typed text is not there either after Esc)
 mac: expect cfree.text has 你好
