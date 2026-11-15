@@ -1,0 +1,21 @@
+# 同一张 Note 连续三次「双击、打字、Esc」：每次都进入编辑，打的字都写进卡里（不会每隔一次落到画布上）
+zoom 1
+center @cnote+150,180
+dbl @cnote+150,62
+wait 600
+type  one
+key esc
+wait 900
+dbl @cnote+150,62
+wait 600
+type  two
+key esc
+wait 900
+dbl @cnote+150,62
+wait 600
+type  three
+key esc
+wait 900
+expect cnote.text has one
+expect cnote.text has two
+expect cnote.text has three

@@ -1,0 +1,14 @@
+# A card on the Shelf found with ⌘K comes back flying out of the dock's Shelf button, growing as it goes, then sits where
+# it was (actions/shelf.ts takeOutCard, putBack, flyOut); both sides
+zoom 1
+key cmd+k
+wait 400
+type Put aside
+wait 400
+rec fly
+key return
+wait 900
+stop
+expect cshelf1.x = 200
+expect cshelf1.y = 900
+shot landed @cshelf1

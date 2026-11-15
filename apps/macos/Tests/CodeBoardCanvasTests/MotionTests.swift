@@ -26,14 +26,20 @@ import Testing
     #expect(Camera.fit(CGRect(x: 0, y: 0, width: 100, height: 100), in: CGSize(width: 1000, height: 1000)).zoom == 1)
   }
 
-  @Test func limitsReachTenPercentAndHalfTheFit() {
-    #expect(ZoomLimits(fit: 0.08).min == 0.04)
-    #expect(ZoomLimits(fit: 1).min == 0.1)
-    #expect(ZoomLimits(fit: 1).max == 2)
+  /// main summaryMinZoom: the whole board fills about 77 % of the view, from 2 % to 50 %; 10 % on an empty board
+  @Test func limitsReachTheFitShrunk() {
+    let view = CGSize(width: 1000, height: 1000)
+    #expect(
+      abs(ZoomLimits(view: view, content: CGRect(x: 0, y: 0, width: 4000, height: 2000)).min - 0.25 * 0.96 / 1.3) < 1e-9
+    )
+    #expect(ZoomLimits(view: view, content: CGRect(x: 0, y: 0, width: 400, height: 200)).min == 0.5)
+    #expect(ZoomLimits(view: view, content: CGRect(x: 0, y: 0, width: 400_000, height: 200)).min == 0.02)
+    #expect(ZoomLimits(view: view, content: .zero).min == 0.1)
+    #expect(ZoomLimits(view: view, content: .zero).max == 2)
   }
 
   @Test func rubberBandStretchesAtMostFifteenPercent() {
-    let l = ZoomLimits(fit: 1)
+    let l = ZoomLimits(min: 0.1)
     #expect(l.rubber(1.5) == 1.5)
     #expect(l.rubber(2.4) > 2 && l.rubber(2.4) < l.rubber(4))
     #expect(l.rubber(100) < 2.3 + 1e-9)
@@ -42,7 +48,7 @@ import Testing
 }
 
 @Suite struct MotionTests {
-  let limits = ZoomLimits(fit: 0.5)
+  let limits = ZoomLimits(min: 0.25)
 
   @Test func speedIsOneToOneUpToTheKneeThenCompressed() {
     let dt = 1.0 / 120

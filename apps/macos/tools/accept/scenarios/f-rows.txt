@@ -1,0 +1,36 @@
+# Lane F's rows that had view tests only, gone through in a real window on both sides: S on a selected card opens its
+# sidenote popup ready to write (keymap.ts addSidenote, actions/notes.ts addSidenoteUI); the canvas's and several
+# cards' menus (menus.ts canvasItems, multiItems: Add Sidenote, Insert Board ▸, Turn into Board…); ⌘⇧B turns the
+# selected card into a board (keymap.ts turnIntoBoard, actions/subboards.ts cardsToFrame)
+key esc
+zoom 1
+center @cgreen+100,-60
+click @cgreen:c
+wait 300
+keys s
+wait 800
+shot s-key @cyellow+-20,-40 700 260
+mac: expect focus has PopWebView
+web: expect focus has ncomp
+key esc
+wait 300
+key esc
+wait 300
+move @cgreen+60,120 200
+menu
+key esc
+wait 300
+click @cgreen:c
+click @cpink:c shift
+wait 300
+move @cpink:c 200
+menu
+key esc
+wait 300
+click @cgreen:c
+key cmd+shift+b
+wait 800
+shot turn-asked @cyellow+-20,-40 700 260
+key return
+wait 1000
+shot turned @cyellow+-20,-40 700 260

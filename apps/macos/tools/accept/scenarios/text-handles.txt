@@ -1,0 +1,19 @@
+# Text and Box: their heights, and their handles: one selected, two selected, and one pressed against its neighbour (main: .hw and .mkgrip in the card, a solo selected Text above the cards round it); both sides
+zoom 1
+center @cblue+-20,60
+locate ctext cyellow cblue cgreen cpink cpaper cmark cfreetext
+click @cyellow+65,30
+wait 400
+shot one @cyellow+-30,-30 330 200
+click @cblue+65,30 cmd
+wait 400
+shot two @cyellow+-30,-30 330 200
+key esc
+drag @cblue+65,30 @cblue+30,30 400
+wait 400
+click @cyellow+40,30
+wait 400
+shot over @cyellow+-30,-30 330 200
+click @cblue+80,30
+wait 400
+shot under @cyellow+-30,-30 330 200

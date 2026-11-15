@@ -1,0 +1,17 @@
+# 共享卡在一块白板上改了，另一块白板上也是改过的样子（main：卡库里的同一张卡，两块白板都摆着它）。两块白板：--storage apps/macos/tools/accept/storage-two --only mac
+# storage: storage-two
+# only: mac
+zoom 1
+center @cshared+160,130
+shot before @cshared+-20,-20 400 340
+dbl @cshared+160,62
+wait 600
+type  zebra
+key esc
+wait 900
+expect cshared.text has zebra
+click @row:Second
+wait 1500
+center @cshared+160,130
+expect cshared.text has zebra
+shot second @cshared+-20,-20 400 340

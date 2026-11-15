@@ -1,0 +1,31 @@
+# ⌘K, ⌘F and the toolbar's Search open the search palette over the board, its field taking the keys (⌘F on this board); Esc closes it, the camera unmoved
+zoom 1
+center @cnote
+expect ui.search.right <= ui.more.x
+expect ui.search.x >= ui.bar.x
+mark
+click @ui.search
+wait 700
+mac: expect focus has WKWebView
+web: expect focus has input.pin
+key esc
+wait 400
+mac: expect focus lacks WKWebView
+web: expect focus lacks input.pin
+expect cam.x = was
+expect cam.y = was
+key cmd+k
+wait 700
+mac: expect focus has WKWebView
+web: expect focus has input.pin
+key esc
+wait 400
+key cmd+f
+wait 700
+mac: expect focus has WKWebView
+web: expect focus has input.pin
+shot thisboard @cnote+-324,-350 948 600
+key esc
+wait 400
+mac: expect focus lacks WKWebView
+expect cam.x = was

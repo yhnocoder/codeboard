@@ -1,0 +1,14 @@
+# Row 16, Warm Ink: the right group as main's Dock (Chrome.tsx): Shelf, Zoom Out, the zoom, Zoom In, Fit to Window in one pill at the bottom right, level with the toolbar, which never overlaps it; ⋯ in the toolbar
+zoom 1
+# main overlaps its two groups at this width (centred and right-aligned at ~1000 pt): only the Mac is held to it
+mac: expect ui.dock.x > ui.bar.right
+expect ui.shelf.x >= ui.dock.x
+expect ui.shelf.right <= ui.zoomout.x
+expect ui.zoomout.right <= ui.zoom.x
+expect ui.zoom.right <= ui.zoomin.x
+expect ui.zoomin.right <= ui.fit.x
+expect ui.fit.right <= ui.dock.right
+expect ui.dock.bottom ~ ui.bar.bottom
+expect ui.more.right <= ui.bar.right
+expect ui.dockblur.w = ui.dock.w
+shot dock

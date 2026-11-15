@@ -1,0 +1,858 @@
+import AppKit
+import CodeBoardModel
+import CodeBoardNotes
+import Testing
+import UniformTypeIdentifiers
+import WebKit
+
+@testable import CodeBoardCanvas
+
+// Editing on the real canvas, driven by mouse and key events made in this process for a window of its own (never
+// on screen: far off it, so nothing reaches the screen, the pointer or another app), at two zooms. The events go straight
+// to the canvas's handlers, as the window would deliver them: a window off screen is never key, and NSWindow drops the
+// first click on a window that is not. The Note page renders
+// the Texts and Boxes, so these need the built page (node web/build.mjs) and a login session, as CanvasNoteTests.
+
+func cid(_ s: String) -> CardID { CardID(rawValue: s) }
+private func gid(_ s: String) -> SectionID { SectionID(rawValue: s) }
+
+/// Two overlapping Notes, a Text, a Box, an image, a Section with a Note in it, a locked Note and an arrow
+func sample() -> Board {
+  func note(_ id: String, x: Double, y: Double, section: String? = nil, locked: Bool = false) -> Card {
+    Card(
+      id: cid(id), x: x, y: y, width: 240, height: 160, section: section.map(gid), locked: locked,
+      content: .own(CardContent(body: .note(Note(text: "# \(id)\n\nA plan in a few words.")))))
+  }
+  return Board(
+    id: BoardID(rawValue: "edit-sample"),
+    cards: [
+      note("n1", x: 0, y: 0),
+      note("n2", x: 100, y: 60),
+      Card(
+        id: cid("t1"), x: 500, y: 0, width: 220,
+        content: .own(CardContent(body: .text(TextCard(text: "Threads wait at the barrier", wrap: true))))),
+      Card(
+        id: cid("b1"), x: 500, y: 200, width: 180,
+        content: .own(CardContent(body: .text(TextCard(text: "Check the bounds", look: .box, wrap: true))))),
+      Card(
+        id: cid("i1"), x: 900, y: 0, width: 200,
+        content: .own(CardContent(body: .image(ImageCard(source: .file("p.png")))))),
+      note("m1", x: 50, y: 480, section: "g1"),
+      note("L1", x: 900, y: 500, locked: true),
+    ],
+    arrows: [Arrow(id: ArrowID(rawValue: "a1"), from: Endpoint(card: cid("n1")), to: Endpoint(card: cid("m1")))],
+    sections: [Section(id: gid("g1"), title: "Group", x: 0, y: 400, width: 600, height: 400)])
+}
+
+/// A 400 × 200 picture
+private func png(_ url: URL) throws {
+  let ctx = try #require(
+    CGContext(
+      data: nil, width: 400, height: 200, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+  ctx.setFillColor(CGColor(red: 0.2, green: 0.4, blue: 0.8, alpha: 1))
+  ctx.fill(CGRect(x: 0, y: 0, width: 400, height: 200))
+  let image = try #require(ctx.makeImage())
+  let dest = try #require(CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil))
+  CGImageDestinationAddImage(dest, image, nil)
+  #expect(CGImageDestinationFinalize(dest))
+}
+
+/// Lets one rig at a time be open: every rig's Notes are drawn by the one renderer (one web page, a picture at a time)
+/// and each opens web views of its own, so rigs side by side queue behind each other, on a runner's few cores past
+/// their waits; tests that open none still run side by side
+actor RigTurns {
+  private var taken = false
+  private var waiting: [CheckedContinuation<Void, Never>] = []
+
+  func take() async {
+    guard taken else {
+      taken = true
+      return
+    }
+    await withCheckedContinuation { waiting.append($0) }
+  }
+
+  func give() {
+    if waiting.isEmpty { taken = false } else { waiting.removeFirst().resume() }
+  }
+}
+
+/// A board in a vault of its own, open in a canvas in a window of its own
+@MainActor final class Rig {
+  static let turns = RigTurns()
+
+  let root: URL
+  let window: NSWindow
+  let canvas: CanvasView
+  let doc: BoardDocument
+  let file: URL
+  static let notes = NoteRenderer(
+    cache: FileManager.default.temporaryDirectory.appending(path: "canvas-edit-cache-\(UUID().uuidString)"))
+
+  /// Whether it holds the turn (a second rig a test opens alongside its first shares the first's)
+  private let turn: Bool
+
+  init(
+    _ board: Board = sample(), zoom: CGFloat?, pasteboard: NSPasteboard? = nil, root given: URL? = nil,
+    alongside: Rig? = nil, pictures: (@Sendable (URL) async -> Data?)? = nil
+  ) async throws {
+    let mine = alongside == nil
+    turn = mine
+    if mine { await Rig.turns.take() }
+    // from here on the test is watched: one stuck past the limit ends the process, saying which it was
+    if mine { TestWatch.started(Test.current.map { "\($0.id)" } ?? "a test") }
+    var opened = false
+    defer {
+      if !opened && mine {
+        TestWatch.ended()
+        Task { await Rig.turns.give() }
+      }
+    }
+    _ = NSApplication.shared
+    let page = NoteRenderer.bundledPage.appending(path: "page.html").path(percentEncoded: false)
+    try #require(FileManager.default.fileExists(atPath: page), "build the Note page first: node web/build.mjs")
+    let fm = FileManager.default
+    root = given ?? fm.temporaryDirectory.appending(path: "canvas-edit-\(UUID().uuidString)")
+    let name = "\(board.id.rawValue).board"
+    let package = root.appending(path: name)
+    try fm.createDirectory(at: package.appending(path: Vault.imagesFolder), withIntermediateDirectories: true)
+    try png(package.appending(path: Vault.imagesFolder).appending(path: "p.png"))
+    file = package.appending(path: Vault.boardFileName)
+    try board.encoded().write(to: file)
+    let f = file
+    doc = try BoardDocument { f }
+    canvas = CanvasView(frame: CGRect(x: 0, y: 0, width: 1000, height: 700), notes: Rig.notes)
+    // never the general pasteboard: that is the person's own clipboard
+    canvas.pasteboard = pasteboard ?? NSPasteboard(name: NSPasteboard.Name("codeboard-tests-\(UUID().uuidString)"))
+    // never the network, never the person's caches
+    canvas.fetchPicture = pictures ?? { _ in nil }
+    canvas.pictureCache = root.appending(path: "pictures")
+    window = BoardWindow(
+      contentRect: CGRect(x: -30000, y: -30000, width: 1000, height: 700), styleMask: [.titled], backing: .buffered,
+      defer: false)
+    window.isReleasedWhenClosed = false
+    window.level = .underDesktop
+    // the canvas in a view of its own, as in a tab: the editor's web view goes over it there
+    let host = NSView(frame: canvas.frame)
+    host.addSubview(canvas)
+    window.contentView = host
+    canvas.noteEditor.drawOffScreen()
+    canvas.sidenotePop.drawOffScreen()
+    canvas.questionList.drawOffScreen()
+    // under the desktop: the web view runs its animation frames only in a window that is ordered in
+    window.orderFrontRegardless()
+    // the rig's frames are the canvas's only ones and its clock: the display link, which runs on a machine whose
+    // display is awake (a CI runner) and not on one asleep, would put frames of its own between a test's steps
+    canvas.steppedClock = { [weak self] in self?.time ?? 0 }
+    try await canvas.show(
+      doc, at: VaultBoard(id: board.id, title: "B", path: name), in: Vault(root: root), theme: .warmInk)
+    // nil: the camera the board opens at
+    if let zoom { canvas.place(zoom: zoom, centre: CGPoint(x: 550, y: 400)) }
+    // from rest: a test's gestures start with no redraw of the setup's under way, as a person's do on a board drawn
+    await idle()
+    opened = true
+  }
+
+  func close() {
+    canvas.pasteboard.releaseGlobally()
+    doc.flush()
+    canvas.leave()
+    window.close()
+    try? FileManager.default.removeItem(at: root)
+    if turn {
+      TestWatch.ended()
+      Task { await Rig.turns.give() }
+    }
+  }
+
+  /// A board point in the window's coordinates
+  func at(_ p: CGPoint) -> CGPoint { canvas.convert(canvas.camera.view(p), to: nil) }
+
+  /// The time of the rig's last frame or event: each moves it on by its step, from the latest frame the canvas had
+  /// (a test that gives its own times goes on from those), never by the wall clock, so what eases or glides takes as
+  /// many frames on a slow runner as here
+  private(set) lazy var time: TimeInterval = CACurrentMediaTime()
+
+  func next(_ step: TimeInterval) -> TimeInterval {
+    time = max(time, canvas.lastTick) + step
+    return time
+  }
+
+  func mouse(_ type: NSEvent.EventType, _ p: CGPoint, _ flags: NSEvent.ModifierFlags = [], clicks: Int = 1) -> NSEvent {
+    let time = next(0.016)
+    return NSEvent.mouseEvent(
+      with: type, location: at(p), modifierFlags: flags, timestamp: time, windowNumber: window.windowNumber,
+      context: nil, eventNumber: 0, clickCount: clicks, pressure: 1)!
+  }
+
+  /// What the window does with a mouse or key event: any glide stopped first (BoardWindow), then to the canvas's handler
+  func send(_ e: NSEvent) {
+    if BoardWindow.stopsGlide(e), let v = window.contentView { BoardWindow.stopGlides(in: v) }
+    switch e.type {
+    case .leftMouseDown: canvas.mouseDown(with: e)
+    case .leftMouseDragged: canvas.mouseDragged(with: e)
+    case .leftMouseUp: canvas.mouseUp(with: e)
+    case .mouseMoved: canvas.mouseMoved(with: e)
+    case .keyDown: canvas.keyDown(with: e)
+    case .keyUp: canvas.keyUp(with: e)
+    default: Issue.record("no handler for \(e.type)")
+    }
+  }
+
+  func click(_ p: CGPoint, _ flags: NSEvent.ModifierFlags = []) {
+    send(mouse(.leftMouseDown, p, flags))
+    send(mouse(.leftMouseUp, p, flags))
+  }
+
+  /// Presses at `from`, moves to `to` in steps (board points), and releases; `during` runs before the release
+  func drag(
+    _ from: CGPoint, _ to: CGPoint, _ flags: NSEvent.ModifierFlags = [], steps: Int = 8, during: () -> Void = {}
+  ) {
+    send(mouse(.leftMouseDown, from, flags))
+    for i in 1...steps {
+      let k = CGFloat(i) / CGFloat(steps)
+      let p = CGPoint(x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k)
+      send(mouse(.leftMouseDragged, p, flags))
+    }
+    during()
+    send(mouse(.leftMouseUp, to, flags))
+  }
+
+  func key(_ code: UInt16, _ flags: NSEvent.ModifierFlags = [], up: Bool = true) {
+    let time = next(0.016)
+    // what the key types: the board matches letters by it (keymap.ts e.key)
+    let chars = [53: "\u{1b}", 51: "\u{7f}", 1: "s"][code] ?? " "
+    for type in up ? [NSEvent.EventType.keyDown, .keyUp] : [.keyDown] {
+      send(
+        NSEvent.keyEvent(
+          with: type, location: .zero, modifierFlags: flags, timestamp: time, windowNumber: window.windowNumber,
+          context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code)!)
+    }
+  }
+
+  func keyUp(_ code: UInt16) {
+    send(
+      NSEvent.keyEvent(
+        with: .keyUp, location: .zero, modifierFlags: [], timestamp: time, windowNumber: window.windowNumber,
+        context: nil, characters: " ", charactersIgnoringModifiers: " ", isARepeat: false, keyCode: code)!)
+  }
+
+  /// Once the scene shows the board as the document has it
+  func settle() async {
+    while canvas.shownBoard != doc.board {
+      await canvas.refreshing?.value
+      await Task.yield()
+    }
+  }
+
+  /// Once the canvas is at rest with no redraw queued or running: what a gesture after this counts is its own
+  func idle() async {
+    let deadline = ContinuousClock.now + .seconds(60)
+    while !(canvas.queue.isIdle && canvas.tasks.isEmpty && canvas.motion.isResting) {
+      if ContinuousClock.now > deadline {
+        let q = canvas.queue
+        let page = await pageState(canvas.noteEditor.view)
+        Issue.record(
+          "the canvas did not come to rest: \(q.pending.count) redraws to start, \(q.running) running, \(q.ready.count) to show, \(canvas.tasks.count) tasks, motion \(canvas.motion.phase); the editor's page \(page)"
+        )
+        return
+      }
+      tick()
+      try? await Task.sleep(for: .milliseconds(2))
+    }
+  }
+
+  /// Whether a web view's page counts as shown and how many animation frames it runs in 200 ms (WebKit stops them in a
+  /// page it takes for hidden)
+  func pageState(_ v: WKWebView) async -> String {
+    let js = """
+      let n = 0; const f = () => { n++; requestAnimationFrame(f) }; requestAnimationFrame(f);
+      await new Promise(r => setTimeout(r, 200));
+      return `${document.visibilityState}, ${n} frames in 200 ms`
+      """
+    return (try? await v.callAsyncJavaScript(js, contentWorld: .page) as? String) ?? "not answering"
+  }
+
+  /// Once `f` holds, frames ticking meanwhile (what the web views do comes back on its own time)
+  func until(_ what: String, _ f: () async -> Bool) async {
+    let deadline = ContinuousClock.now + .seconds(20)
+    while await !f() {
+      if ContinuousClock.now > deadline {
+        Issue.record("\(what): not within 20 s")
+        return
+      }
+      tick()
+      try? await Task.sleep(for: .milliseconds(5))
+    }
+  }
+
+  /// A frame, as the display link gives one (it does not run while the display sleeps)
+  func tick() { canvas.tick(at: next(1.0 / 60)) }
+
+  func card(_ id: String) -> Card { doc.board.card(cid(id))! }
+  /// Where the scene draws a card
+  func rect(_ id: String) -> CGRect { canvas.scene!.items[canvas.index(of: .card(cid(id)))!].rect }
+  func centre(_ id: String) -> CGPoint { CGPoint(x: rect(id).midX, y: rect(id).midY) }
+  var bytes: Data { try! doc.board.encoded() }
+  var breaks: Int {
+    let b = canvas.ruleBreaks
+    return b.redraws + b.decodes + b.swaps + b.noteRequests + b.noteSwaps
+  }
+}
+
+@MainActor @Suite(.serialized) struct CanvasEditTests {
+  @Test(arguments: [1, 0.5] as [CGFloat])
+  func hitTestingFindsTheTopCardTitlesSectionsAndHandles(zoom: CGFloat) async throws {
+    let r = try await Rig(zoom: zoom)
+    defer { r.close() }
+    let c = r.canvas
+    // n2 lies over n1 where they overlap
+    #expect(c.hitCard(CGPoint(x: 150, y: 100)) == cid("n2"))
+    #expect(c.hitCard(CGPoint(x: 20, y: 20)) == cid("n1"))
+    #expect(c.hitCard(CGPoint(x: 400, y: 300)) == nil)
+    #expect(c.deepestSection(CGPoint(x: 400, y: 700)) == gid("g1"))
+    let title = try #require(c.scene?.items.first { $0.owner == .sectionTitle(gid("g1")) }?.rect)
+    #expect(c.hitSectionTitle(CGPoint(x: title.midX, y: title.midY)) == gid("g1"))
+    // a handle is taken within 6 view points of it, whatever the zoom
+    r.doc.select([.card(cid("n1"))])
+    let corner = c.camera.view(CGPoint(x: 240, y: 160))
+    #expect(c.hitHandle(CGPoint(x: corner.x + 5, y: corner.y - 5))?.1 == [.right, .bottom])
+    #expect(c.hitHandle(CGPoint(x: corner.x + 9, y: corner.y)) == nil)
+    // a Text has its side edges and its corner; an image its right edge and corner
+    #expect(Set(c.resizeEdges(.card(cid("t1"))).map(\.rawValue)) == [1, 2, 10])
+    #expect(Set(c.resizeEdges(.card(cid("i1"))).map(\.rawValue)) == [2, 10])
+    // a locked card has none
+    r.doc.select([.card(cid("L1"))])
+    #expect(c.hitHandle(c.camera.view(CGPoint(x: 1140, y: 660))) == nil)
+  }
+
+  @Test(arguments: [1, 0.5] as [CGFloat])
+  func clicksShiftAndCommandClicksEscapeAndSelectAll(zoom: CGFloat) async throws {
+    let r = try await Rig(zoom: zoom)
+    defer { r.close() }
+    r.click(r.centre("t1"))
+    #expect(r.doc.selection == [.card(cid("t1"))])
+    r.click(r.centre("b1"), .shift)
+    #expect(r.doc.selection == [.card(cid("t1")), .card(cid("b1"))])
+    // a click on a Text of several selected keeps them all (interact.ts cardPointerDown: a Text has no body, so no
+    // multiBody); one on a Note's body leaves only that one
+    r.click(r.centre("t1"))
+    #expect(r.doc.selection == [.card(cid("t1")), .card(cid("b1"))])
+    r.click(CGPoint(x: 40, y: 40), .shift)
+    r.click(CGPoint(x: 40, y: 100))
+    #expect(r.doc.selection == [.card(cid("n1"))])
+    r.doc.select([.card(cid("t1")), .card(cid("b1"))])
+    r.click(r.centre("t1"), .command)
+    #expect(r.doc.selection == [.card(cid("b1"))])
+    // a Section's blank inside selects it; its title too
+    r.click(CGPoint(x: 450, y: 750))
+    #expect(r.doc.selection == [.section(gid("g1"))])
+    r.key(53)
+    #expect(r.doc.selection.isEmpty)
+    r.canvas.selectAll(nil)
+    #expect(r.doc.selection.count == 7, "every card but the locked one, and the Section")
+    #expect(!r.doc.selection.contains(.card(cid("L1"))))
+    r.click(CGPoint(x: 800, y: 330))
+    #expect(r.doc.selection.isEmpty, "a click on the bare canvas")
+    #expect(!r.doc.history.canUndo, "selecting is no step")
+  }
+
+  @Test(arguments: [1, 0.5] as [CGFloat])
+  func theMarqueeTakesWhatItTouchesAndSectionsWhollyInside(zoom: CGFloat) async throws {
+    let r = try await Rig(zoom: zoom)
+    defer { r.close() }
+    // from the bare canvas across the Section and onto the locked card
+    r.drag(CGPoint(x: -30, y: 380), CGPoint(x: 950, y: 830))
+    #expect(r.doc.selection == [.section(gid("g1")), .card(cid("m1"))])
+    // ⇧ adds to what was selected
+    r.drag(CGPoint(x: 480, y: -20), CGPoint(x: 510, y: 210), .shift)
+    #expect(r.doc.selection == [.section(gid("g1")), .card(cid("m1")), .card(cid("t1")), .card(cid("b1"))])
+    #expect(r.canvas.marquee.path == nil, "gone once released")
+  }
+
+  @Test func redrawsCancelledWithoutAGestureAreNoBreak() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    await r.idle()
+    // redraws under way at another zoom, then the camera placed again (no gesture): they are cancelled and finish late
+    for _ in 0..<5 {
+      r.canvas.place(zoom: 0.7, centre: CGPoint(x: 550, y: 400))
+      r.tick()
+      #expect(!r.canvas.tasks.isEmpty, "redraws started")
+      r.canvas.place(zoom: 1.4, centre: CGPoint(x: 550, y: 400))
+      await r.idle()
+    }
+    #expect(r.breaks == 0, "work a placement cancelled is not work during a gesture")
+  }
+
+  @Test(arguments: [1, 0.5] as [CGFloat])
+  func draggingACardIsOneStepThatOnlyMovesLayersAndJoinsTheSectionItLandsIn(zoom: CGFloat) async throws {
+    let r = try await Rig(zoom: zoom)
+    defer { r.close() }
+    let start = r.bytes
+    let from = r.centre("t1")
+    let layer = r.canvas.items[r.canvas.index(of: .card(cid("t1")))!]
+    let contents = layer.held.contents as AnyObject?
+    let breaks = r.breaks
+    var arrowPath: CGPath?
+    // n2 lies over n1's middle
+    let n1 = CGPoint(x: 40, y: 40)
+    r.click(n1)
+    // n1 into the Section: its arrow follows during the drag
+    let arrowBefore = (r.canvas.arrowGroups[0].first as? CAShapeLayer)?.path
+    r.drag(n1, CGPoint(x: 100, y: 540)) {
+      arrowPath = (r.canvas.arrowGroups[0].first as? CAShapeLayer)?.path
+    }
+    #expect(arrowPath != nil && arrowPath != arrowBefore)
+    #expect(r.card("n1").x == 60 && r.card("n1").y == 500)
+    #expect(r.card("n1").section == gid("g1"))
+    #expect(r.doc.undoName == "Move" && r.doc.history.undoSteps.count == 1)
+    await r.settle()
+    // t1 moved by a drag of its own, without being selected first, to where none of its edges and middles is within 12
+    // of another's (lining up reaches that far at zoom 0.5)
+    r.drag(from, CGPoint(x: from.x - 60, y: from.y + 300)) {
+      #expect(r.breaks == breaks, "nothing is drawn, decoded, requested or swapped during the drag")
+      #expect(layer.held.contents as AnyObject? === contents)
+    }
+    #expect(r.card("t1").x == 440 && r.card("t1").y == 300)
+    #expect(r.doc.selection == [.card(cid("t1"))])
+    await r.settle()
+    #expect(r.canvas.items[r.canvas.index(of: .card(cid("t1")))!] === layer, "it keeps its layers and bitmaps")
+    // undo all: back to the very bytes
+    r.doc.undo()
+    r.doc.undo()
+    #expect(r.bytes == start)
+    #expect(r.doc.selection == [.card(cid("n1"))], "undo restores the selection the step started with")
+    r.doc.redo()
+    r.doc.redo()
+    #expect(r.card("t1").x == 440 && r.card("n1").section == gid("g1"))
+    // the drag out takes it out
+    await r.settle()
+    // by a corner m1 does not cover
+    r.drag(CGPoint(x: 270, y: 650), CGPoint(x: 1570, y: 650))
+    #expect(r.card("n1").section == nil)
+  }
+
+  @Test(arguments: [1, 0.5] as [CGFloat])
+  func draggingASectionCarriesWhatIsInItButALockedCardStays(zoom: CGFloat) async throws {
+    let r = try await Rig(zoom: zoom)
+    defer { r.close() }
+    let title = try #require(r.canvas.scene?.items.first { $0.owner == .sectionTitle(gid("g1")) }?.rect)
+    r.drag(CGPoint(x: title.midX, y: title.midY), CGPoint(x: title.midX + 100, y: title.midY + 20))
+    let g = try #require(r.doc.board.section(gid("g1")))
+    #expect(g.x == 100 && g.y == 420)
+    #expect(r.card("m1").x == 150 && r.card("m1").y == 500)
+    #expect(r.doc.history.undoSteps.count == 1)
+    // the locked card does not move
+    r.doc.select([])
+    r.drag(r.centre("L1"), CGPoint(x: r.centre("L1").x - 200, y: r.centre("L1").y))
+    #expect(r.card("L1").x == 900)
+    #expect(r.doc.history.undoSteps.count == 1)
+  }
+
+  @Test(arguments: [1, 0.5] as [CGFloat])
+  func arrowKeysNudgeOnePointOnScreenAndTenWithShiftAsOneStep(zoom: CGFloat) async throws {
+    let r = try await Rig(zoom: zoom)
+    defer { r.close() }
+    r.click(r.centre("b1"))
+    r.key(124, up: false)
+    r.key(124, up: false)
+    r.key(125, up: false)
+    #expect(r.card("b1").x == 500, "not saved until the keys are up")
+    r.keyUp(124)
+    r.keyUp(125)
+    let unit = max(1, (1 / zoom).rounded())
+    #expect(r.card("b1").x == 500 + 2 * unit && r.card("b1").y == 200 + unit)
+    #expect(r.doc.history.undoSteps.count == 1)
+    r.key(123, .shift)
+    let left = Double(500 + 2 * unit - (10 / zoom).rounded())
+    #expect(r.card("b1").x == left)
+    #expect(r.doc.history.undoSteps.count == 2)
+  }
+
+  /// Held, an arrow glides as main's does (keymap.ts glide, state/timing.ts NUDGE_*): the OS repeats move nothing; past
+  /// 300 ms it moves every frame at 0.04 points per millisecond on screen, easing up to six times that over 1.5 s, in
+  /// whole world points with the rest carried; another arrow joining starts the speed-up over; one step at the last key
+  /// up; the window losing the keys ends it too. Frames and presses are on the rig's clock
+  @Test(arguments: [1, 0.5] as [CGFloat])
+  func heldArrowKeysGlideFasterTheLongerTheyAreHeld(zoom: CGFloat) async throws {
+    let r = try await Rig(zoom: zoom)
+    defer { r.close() }
+    r.click(r.centre("b1"))
+    func shown() -> CGVector {
+      if case .nudge(let m)? = r.canvas.gesture?.kind { return m.d }
+      return .zero
+    }
+    func repeatKey(_ code: UInt16) {
+      r.send(
+        NSEvent.keyEvent(
+          with: .keyDown, location: .zero, modifierFlags: [], timestamp: r.next(0.016),
+          windowNumber: r.window.windowNumber, context: nil, characters: " ", charactersIgnoringModifiers: " ",
+          isARepeat: true, keyCode: code)!)
+    }
+    // main's glide, frame by frame from `from` (when the speed-up began) over the frames at `times`
+    func glide(_ times: [TimeInterval], from t0: TimeInterval, last: TimeInterval) -> (Double, TimeInterval) {
+      var acc = 0.0
+      var moved = 0.0
+      var last = last
+      for now in times {
+        let dt = min(50, (now - last) * 1000)
+        let t = (now - t0) * 1000
+        last = now
+        guard t > 300 else { continue }
+        let k = min(1, (t - 300) / 1500)
+        acc += 0.04 * (1 + 5 * k * k * (3 - 2 * k)) / zoom * dt
+        moved += acc.rounded(.towardZero)
+        acc -= acc.rounded(.towardZero)
+      }
+      return (moved, last)
+    }
+    let unit = max(1, (1 / zoom).rounded())
+    r.key(124, up: false)
+    let t0 = r.time
+    for _ in 0..<5 { repeatKey(124) }
+    #expect(shown() == CGVector(dx: unit, dy: 0), "repeats move nothing")
+    var times: [TimeInterval] = []
+    // the repeats took 80 ms of it
+    for _ in 0..<12 {
+      r.tick()
+      times.append(r.time)
+    }
+    #expect(shown() == CGVector(dx: unit, dy: 0), "nothing glides before 300 ms")
+    for _ in 0..<108 {
+      r.tick()
+      times.append(r.time)
+    }
+    let (right, last) = glide(times, from: t0, last: t0)
+    #expect(right > 100, "faster the longer: \(right)")
+    #expect(shown() == CGVector(dx: unit + right, dy: 0))
+    // down joins: a step at once, then the speed-up over, both ways at once
+    r.key(125, up: false)
+    let t1 = r.time
+    var more: [TimeInterval] = []
+    for _ in 0..<30 {
+      r.tick()
+      more.append(r.time)
+    }
+    let (both, _) = glide(more, from: t1, last: last)
+    #expect(shown() == CGVector(dx: unit + right + both, dy: unit + both))
+    #expect(r.card("b1").x == 500, "not saved while held")
+    r.keyUp(124)
+    r.keyUp(125)
+    #expect(r.card("b1").x == 500 + unit + right + both && r.card("b1").y == 200 + unit + both)
+    #expect(r.doc.history.undoSteps.count == 1)
+    // the window losing the keys: the key up never comes here, so the hold ends there
+    r.key(123, up: false)
+    NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: r.window)
+    #expect(r.canvas.gesture == nil && r.doc.history.undoSteps.count == 2)
+    let x = r.card("b1").x
+    for _ in 0..<40 { r.tick() }
+    #expect(r.card("b1").x == x)
+  }
+
+  @Test(arguments: [1, 0.5] as [CGFloat])
+  func eachKindResizesByItsOwnHandles(zoom: CGFloat) async throws {
+    let r = try await Rig(zoom: zoom)
+    defer { r.close() }
+    // a Note: width and height from its corner (to 320, off m1's right edge at 290, which it would line up with)
+    r.click(CGPoint(x: 40, y: 40))
+    r.drag(CGPoint(x: 240, y: 160), CGPoint(x: 320, y: 200))
+    #expect(r.card("n1").width == 320 && r.card("n1").height == 200)
+    // a Text's side edge: the width it wraps at, never below its longest word
+    await r.settle()
+    r.click(r.centre("t1"))
+    let t = r.rect("t1")
+    r.drag(CGPoint(x: t.maxX, y: t.midY), CGPoint(x: t.maxX + 80, y: t.midY))
+    #expect(r.card("t1").width == 300)
+    await r.settle()
+    let t2 = r.rect("t1")
+    r.drag(CGPoint(x: t2.maxX, y: t2.midY), CGPoint(x: t2.minX - 400, y: t2.midY))
+    let least = try #require(r.canvas.leastWidths[cid("t1")])
+    #expect(least > 60 && least < 120, "as wide as \"barrier\": \(least)")
+    #expect(abs(r.card("t1").width - least.rounded()) <= 1)
+    // a Box's corner: its text size, its width with it
+    await r.settle()
+    r.click(r.centre("b1"))
+    let b = r.rect("b1")
+    r.drag(CGPoint(x: b.maxX, y: b.maxY), CGPoint(x: b.maxX + b.width, y: b.maxY + b.height))
+    guard case .own(let content) = r.card("b1").content, case .text(let box) = content.body else {
+      Issue.record("b1 is a Box")
+      return
+    }
+    #expect(box.fontSize == 40 && r.card("b1").width == 360)
+    // far past the largest size: 240
+    await r.settle()
+    let b2 = r.rect("b1")
+    r.drag(CGPoint(x: b2.maxX, y: b2.maxY), CGPoint(x: b2.maxX + 6000, y: b2.maxY + 6000))
+    if case .own(let c) = r.card("b1").content, case .text(let box) = c.body { #expect(box.fontSize == 240) }
+    // an image keeps its aspect
+    await r.settle()
+    r.click(r.centre("i1"))
+    let i = r.rect("i1")
+    #expect(i.height == 100)
+    r.drag(CGPoint(x: i.maxX, y: i.maxY), CGPoint(x: i.maxX + 100, y: i.maxY + 10))
+    #expect(r.card("i1").width == 300 && r.card("i1").height == nil)
+    await r.settle()
+    #expect(r.rect("i1").height == 150)
+    // a Section's frame: what it now covers joins it
+    let g = try #require(r.doc.board.section(gid("g1")))
+    r.doc.select([.section(gid("g1"))])
+    r.drag(CGPoint(x: g.x + g.width, y: g.y + g.height), CGPoint(x: 1200, y: 900))
+    let g2 = try #require(r.doc.board.section(gid("g1")))
+    #expect(g2.width == 1200 && g2.height == 500)
+    #expect(r.card("L1").section == nil, "locked: not taken in")
+    #expect(r.doc.history.undoSteps.count == 7)
+  }
+
+  @Test func deleteCopyPasteAndDuplicateWithinAndBetweenBoards() async throws {
+    let board = NSPasteboard(name: NSPasteboard.Name("codeboard-tests-\(UUID().uuidString)"))
+    defer { board.releaseGlobally() }
+    let r = try await Rig(zoom: 1, pasteboard: board)
+    defer { r.close() }
+    let start = r.bytes
+    r.doc.select([.card(cid("n1")), .card(cid("m1"))])
+    r.canvas.copy(nil)
+    r.canvas.paste(nil)
+    #expect(r.doc.board.cards.count == 9 && r.doc.selection.count == 2)
+    let pasted = r.doc.selection.compactMap(\.card).compactMap(r.doc.board.card).sorted { $0.y < $1.y }
+    #expect(pasted.map(\.x) == [36, 86] && pasted.map(\.y) == [36, 516], "36 down and right (pasteCopied)")
+    #expect(r.doc.board.arrows.count == 2, "the arrow between them comes along")
+    r.canvas.duplicate(nil)
+    #expect(r.doc.board.cards.count == 11)
+    r.key(51)
+    #expect(r.doc.board.cards.count == 9 && r.doc.selection.isEmpty)
+    // into another board
+    var other = Board(id: BoardID(rawValue: "other"))
+    other.cards = []
+    let s = try await Rig(other, zoom: 1, pasteboard: board, alongside: r)
+    defer { s.close() }
+    s.canvas.paste(nil)
+    #expect(s.doc.board.cards.count == 2 && s.doc.board.arrows.count == 1)
+    #expect(s.doc.board.cards.allSatisfy { $0.section == nil }, "no Section to be in there")
+    for _ in 0..<3 { r.doc.undo() }
+    #expect(r.bytes == start)
+  }
+
+  @Test func arrangeLockTiltAndTheContextMenu() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorItem ? "-" : $0.title } ?? [] }
+    let n1 = CGPoint(x: 40, y: 40)
+    let menu = r.canvas.menu(for: r.mouse(.rightMouseDown, n1))
+    #expect(r.doc.selection == [.card(cid("n1"))], "right-click selects what is under it")
+    #expect(titles(menu) == ["Add Sidenote", "-", "Arrange", "Copy Path", "-", "Delete"])
+    #expect(
+      titles(menu?.items[2].submenu) == [
+        "Bring to Front", "Bring Forward", "Send Backward", "Send to Back", "-", "Tilt", "Lock",
+      ])
+    r.canvas.bringToFront(nil)
+    #expect(r.doc.board.cards.last?.id == cid("n1"))
+    r.canvas.sendToBack(nil)
+    #expect(r.doc.board.cards.first?.id == cid("n1"))
+    r.canvas.tilt(nil)
+    #expect(r.card("n1").tilted)
+    r.canvas.lock(nil)
+    #expect(r.card("n1").locked)
+    #expect(titles(r.canvas.menu(for: r.mouse(.rightMouseDown, n1))?.items[2].submenu).last == "Unlock")
+    // locked: it does not move, and ⌫ leaves it
+    await r.settle()
+    r.drag(n1, CGPoint(x: 340, y: 40))
+    r.key(51)
+    #expect(r.card("n1").x == 0)
+    // several (menus.ts multiItems)
+    r.doc.select([.card(cid("t1")), .card(cid("b1"))])
+    #expect(
+      titles(r.canvas.menu(for: r.mouse(.rightMouseDown, r.centre("t1"))))
+        == [
+          "Connect with Arrow", "Move to Section", "Move to New Section", "Move to Shelf", "Turn into Board…", "Lock",
+          "Tilt", "Tidy Up", "Arrange", "Copy Paths", "-", "Cut", "Copy", "Duplicate", "Delete",
+        ])
+    // a Section's
+    #expect(
+      titles(r.canvas.menu(for: r.mouse(.rightMouseDown, CGPoint(x: 450, y: 750))))
+        == [
+          "Fit Content", "Color", "Lock", "-", "Add Sidenote", "Collapse", "Copy Path", "-", "Remove Section",
+        ])
+    #expect(r.doc.undoName == "Lock" && r.doc.history.undoSteps.count == 4)
+  }
+
+  @Test(arguments: [1, 0.5] as [CGFloat])
+  func scrollAndPinchMoveOnlyTheCamera(zoom: CGFloat) async throws {
+    let r = try await Rig(zoom: zoom)
+    defer { r.close() }
+    let start = r.bytes
+    let origin = r.canvas.camera.origin
+    let e = try #require(
+      CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: -40, wheel2: -20, wheel3: 0))
+    // in the window's middle, through the window (its location the window's own, as a posted event's)
+    e.location = CGPoint(x: 500, y: (NSScreen.screens.first?.frame.height ?? 0) - 350)
+    r.window.sendEvent(try #require(NSEvent(cgEvent: e)))
+    // the content follows the fingers up and left (shaped as a trackpad's deltas are)
+    #expect(r.canvas.camera.origin.y > origin.y && r.canvas.camera.origin.x > origin.x)
+    // NSEvent makes no magnify events: the pinch is given as its handler gets it
+    let z = r.canvas.camera.zoom
+    r.canvas.pinch(by: 1.2, around: CGPoint(x: 500, y: 350), at: 1, began: true, ended: false)
+    r.canvas.pinch(by: 1.1, around: CGPoint(x: 500, y: 350), at: 1.016, began: false, ended: true)
+    #expect(r.canvas.camera.zoom > z * 1.2)
+    // a click still lands where the card is drawn
+    r.click(r.centre("b1"))
+    #expect(r.doc.selection == [.card(cid("b1"))])
+    #expect(r.bytes == start && !r.doc.history.canUndo)
+  }
+
+  @Test func aChangeOnDiskIsShownWithoutAStep() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    var theirs = sample()
+    theirs.move([.card(cid("b1"))], dx: 0, dy: 300)
+    try theirs.encoded().write(to: r.file)
+    r.doc.diskChanged()
+    await r.settle()
+    #expect(r.rect("b1").minY == 500 && !r.doc.history.canUndo)
+  }
+
+  /// Where the board was left is kept on this machine (main camsOf): written once the camera has been still a moment,
+  /// never while a gesture is under way
+  @Test func aCameraIsWrittenOnceStillAndNeverDuringAGesture() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    let store = CameraStore(
+      folder: FileManager.default.temporaryDirectory.appending(path: "cameras-\(UUID().uuidString)"))
+    defer { try? FileManager.default.removeItem(at: store.folder) }
+    r.canvas.cameras = store
+    let (board, vault) = try #require(r.canvas.shown)
+    r.canvas.place(zoom: 0.8, centre: CGPoint(x: 300, y: 200))
+    #expect(store.cameras(for: vault).isEmpty, "not at once")
+    await r.until("written") { store.cameras(for: vault)[board.id] != nil }
+    let cam = r.canvas.currentCamera
+    #expect(
+      store.cameras(for: vault)[board.id] == BoardCamera(x: cam.origin.x, y: cam.origin.y, zoom: cam.zoom))
+    // a press on the empty board: a marquee under way while the camera moves; written only once it ends
+    r.canvas.cameraDelay = .milliseconds(1)
+    r.send(r.mouse(.leftMouseDown, CGPoint(x: 800, y: 380)))
+    #expect(r.canvas.gesture != nil)
+    r.canvas.place(zoom: 0.6, centre: CGPoint(x: 300, y: 200))
+    await r.canvas.cameraSave?.value
+    #expect(store.cameras(for: vault)[board.id]?.zoom == 0.8, "not during the gesture")
+    r.send(r.mouse(.leftMouseUp, CGPoint(x: 800, y: 380)))
+    await r.until("written after it") { store.cameras(for: vault)[board.id]?.zoom == 0.6 }
+  }
+
+  /// The middle of a button of the chip, on the board
+  func chipPoint(_ r: Rig, _ b: ChipButton) throws -> CGPoint {
+    let rect = try #require(r.canvas.chipRect())
+    let c = try #require(r.canvas.pasteChip)
+    let l = ChipLayout.layout(ref: c.ref, font: ChipLayout.font(r.canvas.theme))
+    let at = b == .copy ? l.copy : l.reference
+    let z = r.canvas.camera.zoom
+    return CGPoint(x: rect.minX + at.midX / z, y: rect.minY + at.midY / z)
+  }
+
+  /// The chip's buttons are buttons (main's .tbtn): a press only shows them pressed (.tbtn:active), the release over the
+  /// same button acts, a press moved off it before the release does nothing, and the chip stays
+  @Test func aChipButtonActsOnTheReleaseOverItAndNotWhenLetGoOffIt() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    r.doc.select([.card(cid("n2"))])
+    r.canvas.duplicate(nil)
+    await r.settle()
+    let reference = try chipPoint(r, .reference)
+    r.send(r.mouse(.leftMouseDown, reference))
+    #expect(r.canvas.chipPressed == .reference && r.canvas.pasteChip?.ref == false, "pressed, nothing done yet")
+    r.send(r.mouse(.leftMouseDragged, CGPoint(x: reference.x, y: reference.y + 60)))
+    r.send(r.mouse(.leftMouseUp, CGPoint(x: reference.x, y: reference.y + 60)))
+    #expect(r.canvas.chipPressed == nil && r.canvas.pasteChip?.ref == false, "let go off it: nothing")
+    #expect(r.doc.history.undoSteps.count == 1, "only the ⌘D")
+    r.send(r.mouse(.leftMouseDown, reference))
+    r.send(r.mouse(.leftMouseDragged, CGPoint(x: reference.x + 60, y: reference.y)))
+    r.send(r.mouse(.leftMouseDragged, reference))
+    r.send(r.mouse(.leftMouseUp, reference))
+    #expect(r.canvas.chipPressed == nil && r.canvas.pasteChip?.ref == true, "let go over it again: Reference")
+    // pressed on one button, let go over the other: nothing
+    let copy = try chipPoint(r, .copy)
+    r.send(r.mouse(.leftMouseDown, copy))
+    r.send(r.mouse(.leftMouseDragged, try chipPoint(r, .reference)))
+    r.send(r.mouse(.leftMouseUp, try chipPoint(r, .reference)))
+    #expect(r.canvas.pasteChip?.ref == true)
+  }
+
+  /// Under Warm Ink the chip is main's .pill: 14 of radius with the board's squircle corners (styles.css --corner), not
+  /// a circular arc that makes it a capsule: 3.2 points in from a corner along its diagonal is inside the squircle
+  /// (2.2 in) and outside the arc (4.1 in)
+  @Test func theChipUnderWarmInkHasSquircleCorners() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    #expect(r.canvas.theme.id == .warmInk)
+    r.doc.select([.card(cid("n2"))])
+    r.canvas.duplicate(nil)
+    await r.settle()
+    let layer = try #require(r.canvas.chrome.sublayers?.first { $0.zPosition == 15 })
+    let image = try #require(layer.contents.map { $0 as! CGImage })
+    let bitmap = NSBitmapImageRep(cgImage: image)
+    let scale = CGFloat(image.width) / layer.bounds.width
+    let at = Int(((ChipLayout.margin + 3.2) * scale).rounded(.down))
+    let alpha = try #require(bitmap.colorAt(x: at, y: at)?.alphaComponent)
+    #expect(alpha > 0.8, "the glass reaches \(alpha)")
+  }
+
+  /// main's pastechip: a paste or ⌘D on the board gives Copy ✓ | Reference under the copies; Reference makes each copy
+  /// the same card as its original (both marked, the mark going to the other place), Copy a card of its own again
+  @Test func aCopyOnItsBoardOffersReferenceThenFollowsItsOriginal() async throws {
+    let board = NSPasteboard(name: NSPasteboard.Name("codeboard-tests-\(UUID().uuidString)"))
+    defer { board.releaseGlobally() }
+    let r = try await Rig(zoom: 1, pasteboard: board)
+    defer { r.close() }
+    r.doc.select([.card(cid("n1"))])
+    r.canvas.copy(nil)
+    r.canvas.paste(nil)
+    let copy = try #require(r.doc.selection.first?.card)
+    #expect(r.canvas.pasteChip?.pairs.map(\.copy) == [copy] && r.canvas.pasteChip?.pairs.map(\.of) == [cid("n1")])
+    #expect(r.canvas.pasteChip?.ref == false && r.canvas.toastText == "Pasted a copy")
+    // under the copy once it is drawn, right-aligned with it, 8 below; the same size at any zoom
+    await r.settle()
+    let chip = try #require(r.canvas.chipRect())
+    let cr = r.canvas.liveRect(.card(copy))!
+    #expect(chip.maxX == cr.maxX && chip.minY == cr.maxY + 8 && chip.height == 30)
+    #expect(r.canvas.chrome.sublayers?.contains { $0.zPosition == 15 } == true)
+    // Reference: one step; the copy is the original's other place
+    r.click(try chipPoint(r, .reference))
+    #expect(r.canvas.pasteChip?.ref == true)
+    #expect(r.card("n1").same != nil && r.doc.board.card(copy)?.same == r.card("n1").same)
+    #expect(r.canvas.toastText == "Same card in 2 places: editing one changes the other")
+    // Copy again: a card of its own; and Reference once more
+    r.click(try chipPoint(r, .copy))
+    #expect(r.doc.board.card(copy)?.same == nil && r.card("n1").same == nil)
+    #expect(r.canvas.toastText == "Detached: this is its own copy now" && r.canvas.pasteChip?.ref == false)
+    r.click(try chipPoint(r, .reference))
+    #expect(r.doc.board.card(copy)?.same != nil && r.canvas.pasteChip?.ref == true)
+    // each place marked; a click on the mark selects the other place, and as a press elsewhere closes the chip
+    await r.settle()
+    #expect(Set(r.canvas.twinSpots.map(\.card)) == [cid("n1"), copy])
+    let mark = try #require(r.canvas.twinSpots.first { $0.card == cid("n1") }).hit
+    r.click(CGPoint(x: mark.midX, y: mark.midY))
+    #expect(r.doc.selection == [.card(copy)] && r.canvas.pasteChip == nil)
+    // one place written in: the other follows
+    r.doc.edit("Write") { $0.write(cid("n1"), text: "both", layout: nil) }
+    if case .own(let c)? = r.doc.board.card(copy)?.content { #expect(c.body == .note(Note(text: "both"))) }
+    // ⌘D: the chip again; the copy moved closes it
+    r.doc.select([.card(cid("n2"))])
+    r.canvas.duplicate(nil)
+    let dup = try #require(r.doc.selection.first?.card)
+    #expect(r.canvas.pasteChip?.pairs.map(\.of) == [cid("n2")])
+    r.doc.edit("Move") { $0.move([.card(dup)], dx: 10, dy: 0) }
+    #expect(r.canvas.pasteChip == nil)
+    // it goes on its own once the pointer is not over it; not while it is
+    r.canvas.duplicate(nil)
+    await r.settle()
+    r.canvas.chipIdle = .milliseconds(1)
+    let over = try chipPoint(r, .copy)
+    r.send(r.mouse(.mouseMoved, over))
+    r.send(r.mouse(.mouseMoved, CGPoint(x: 800, y: 380)))
+    r.send(r.mouse(.mouseMoved, over))
+    await r.settle()
+    #expect(r.canvas.pasteChip != nil && r.canvas.chipHovered == .copy)
+    r.send(r.mouse(.mouseMoved, CGPoint(x: 800, y: 380)))
+    await r.until("the chip gone") { r.canvas.pasteChip == nil }
+  }
+}

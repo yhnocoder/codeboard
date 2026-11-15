@@ -1,0 +1,14 @@
+# 慢慢拖一张卡，左边到了离别的卡左边 6 点以内就对齐过去，沿着对齐的边画一条虚线（main interact.ts snapMove、styles.css .guide）；松手虚线就没了
+zoom 1
+center @cblue
+warp @cpaper+20,14
+down
+move @cpaper+0,60 400
+move @cpink+23,104 600
+wait 200
+shot guide @cyellow+-20,-20 520 300
+up
+wait 300
+expect cpaper.x = 760
+expect cpaper.y = 560
+shot after @cyellow+-20,-20 520 300

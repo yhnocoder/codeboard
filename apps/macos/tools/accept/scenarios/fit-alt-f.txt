@@ -1,0 +1,9 @@
+# 选中 Note，⌥F 适配内容：高度变成正好装下内容
+zoom 1
+center @cnote:c
+click @cnote+250,110
+mark
+key alt+f
+wait 700
+expect cnote.h != was
+shot fit @cnote+-20,-20 360 220

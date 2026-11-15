@@ -1,0 +1,7 @@
+# 打开没有存过镜头的白板：开在卡片上（不在摘要层），工具栏有哪些按钮
+rec open
+wait 1500
+cam
+info
+shot open
+stop

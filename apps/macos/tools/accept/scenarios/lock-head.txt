@@ -1,0 +1,26 @@
+# A locked code card and Note: main's lock button first in the header, the title after it; hovered, lit; a click unlocks; both sides
+zoom 1
+center @ccode+230,60
+click @ccode+200,18
+key cmd+shift+l
+key esc
+wait 400
+move @ccode+230,-60 200
+wait 400
+shot code @ccode+-10,-10 480 60
+move @ccode:tl+19,18 300
+wait 500
+shot lit @ccode+-10,-10 480 60
+center @cnote+150,60
+click @cnote+200,18
+key cmd+shift+l
+key esc
+wait 400
+move @cnote+150,-60 200
+wait 400
+shot note @cnote+-10,-10 320 60
+click @cnote:tl+19,18
+wait 500
+move @cnote+150,-60 200
+wait 400
+shot unlocked @cnote+-10,-10 320 60

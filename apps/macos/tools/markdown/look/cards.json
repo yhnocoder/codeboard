@@ -1,0 +1,12 @@
+[
+  { "name": "text-s", "style": { "text": { "wrap": false } }, "width": 300, "text": "调度器 Scheduler title" },
+  { "name": "text-body-wrap", "style": { "text": { "fontSize": 13.5, "wrap": true } }, "width": 300, "text": "# Head\n\nBody text with `code`, *emphasis* and a list:\n\n- one\n- two" },
+  { "name": "text-m-bold", "style": { "text": { "fontSize": 24, "wrap": false } }, "width": 300, "text": "**Bold text, 中文也是粗的。**" },
+  { "name": "text-xl-heading", "style": { "text": { "fontSize": 40, "wrap": false } }, "width": 300, "text": "## Big heading" },
+  { "name": "text-h1-small", "style": { "text": { "fontSize": 22, "wrap": false } }, "width": 300, "text": "# Big title\n\n### and a smaller one" },
+  { "name": "text-wrap-long", "style": { "text": { "fontSize": 16, "wrap": true } }, "width": 240, "text": "A longer sentence that has to wrap inside the width the card was given, 中文也要折行。" },
+  { "name": "box-yellow", "style": { "box": { "fill": "yellow", "wrap": false } }, "width": 220, "text": "A box with **centred** words" },
+  { "name": "box-blue", "style": { "box": { "fill": "blue", "fontSize": 16, "wrap": true } }, "width": 220, "text": "## Box heading\n\nand a line\n\n- a list stays left" },
+  { "name": "box-pink-code", "style": { "box": { "fill": "pink", "fontSize": 13.5, "wrap": true } }, "width": 260, "text": "`inline` code and a block:\n\n```python\nx = schedule(batch)\n```" },
+  { "name": "box-paper-xl", "style": { "box": { "fill": "paper", "fontSize": 30, "wrap": false } }, "width": 200, "text": "L size" }
+]

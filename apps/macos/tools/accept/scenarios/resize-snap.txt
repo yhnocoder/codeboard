@@ -1,0 +1,24 @@
+# 拖一张卡的右下角改大小：宽度拉到离别的卡同宽 6 点以内就取那个宽度，卡下面写着 same width · 300；右边拉到别的卡的边就对齐过去；按着 ⌘ 不吸（main layout.ts snapResize、interact.ts resizeDown、styles.css .ghint）
+zoom 1
+center @cnote
+warp @cnote:br+-5,-5
+down
+move @cnote:br+-9,-5 400
+wait 200
+shot hint @cnote+0,130 300 40
+up
+wait 300
+expect cnote.w = 300
+expect cnote.h = 140
+warp @cnote:br+-5,-5
+down
+move @cnote:br+-42,-5 400
+wait 200
+shot guide @cnote+200,-20 120 200
+up
+wait 300
+expect cnote.w = 260
+expect cnote.h = 140
+drag @cnote:br+-5,-5 @cnote:br+-9,-5 400 cmd
+wait 300
+expect cnote.w = 256

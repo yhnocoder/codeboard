@@ -1,0 +1,17 @@
+# Card header hover buttons and the grip: a code card, Free code and a Note hovered, a button lit; both sides
+zoom 1
+center @ccode+230,60
+move @ccode+200,80 300
+wait 400
+shot code @ccode+-10,-10 480 70
+center @cfree+150,60
+move @cfree+150,60 300
+wait 400
+shot free @cfree+-10,-10 320 140
+center @cnote+150,60
+move @cnote+150,80 300
+wait 400
+shot note @cnote+-10,-10 320 170
+move @cnote:tr+-50,18 200
+wait 400
+shot lit @cnote+-10,-10 320 60

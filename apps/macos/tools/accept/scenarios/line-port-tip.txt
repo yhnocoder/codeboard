@@ -1,0 +1,12 @@
+# A code line's port: resting on it shows "Drag to link this line" over the dot (cards/CodeBody.tsx .lport data-tip);
+# a side's port says "Drag to link"; both sides
+zoom 1
+center @ccode:c
+move @ccode+60,72 200
+move @ccode+0,72 200
+wait 700
+shot line @ccode+-120,0 360 140
+move @ccode:c 200
+move @ccode:b 200
+wait 700
+shot side @ccode:b+-180,-80 360 140

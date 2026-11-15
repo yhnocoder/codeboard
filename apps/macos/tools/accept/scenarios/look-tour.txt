@@ -1,0 +1,95 @@
+# 外观验收：每个部件在静止、悬停、选中、拖动中、编辑中各拍一张，同一缩放（只拍不判）
+zoom 1
+center @cfree+150,120
+wait 600
+shot rest-top
+# 悬停：卡头、Section 标题、箭头标签、Sticker、Sidenote
+move @cnote+150,12 500
+wait 700
+shot hover-note
+move @cfree+150,12 500
+wait 700
+shot hover-free
+move @ccode+230,12 500
+wait 700
+shot hover-code
+move @cnote+120,-12 400
+wait 700
+shot hover-sticker
+# 选中
+click @cnote+150,70
+wait 600
+shot sel-note
+click @ctext+130,30
+wait 600
+shot sel-text
+key esc
+click @cfree+150,12
+wait 600
+shot sel-free
+key esc
+wait 300
+# 编辑 Note、选中文字出格式条
+dbl @cnote+150,90
+wait 900
+shot edit-note
+key cmd+a
+wait 700
+shot edit-note-bar
+key esc
+wait 300
+key esc
+wait 500
+# Section 区
+center @sboxes+350,100
+wait 600
+shot rest-boxes
+move @sboxes+40,-10 500
+wait 700
+shot hover-section
+click @sboxes+40,-10
+wait 600
+shot sel-section
+key esc
+move @cyellow+65,30 500
+wait 700
+shot hover-box
+click @cyellow+65,30
+wait 600
+shot sel-box
+# 拖动中
+down
+move @cyellow+200,140 600
+wait 300
+shot drag-box
+up
+wait 600
+key cmd+z
+wait 600
+key esc
+# 编辑 Box
+dbl @cyellow+65,30
+wait 900
+shot edit-box
+key cmd+a
+wait 700
+shot edit-box-bar
+key esc
+wait 300
+key esc
+wait 500
+# 拖动 Note（带箭头和 Sidenote）
+center @cnote+150,120
+wait 500
+move @cnote+150,12 400
+down
+move @cnote+60,250 600
+wait 300
+shot drag-note
+up
+wait 600
+key cmd+z
+wait 600
+key esc
+wait 400
+shot after-undo

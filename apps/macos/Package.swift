@@ -36,14 +36,50 @@ let package = Package(
     ),
     .target(name: "CodeBoardNotes", dependencies: ["CodeBoardModel"]),
     .target(name: "CodeBoardCanvas", dependencies: ["CodeBoardModel", "CodeBoardSyntax", "CodeBoardNotes"]),
-    .target(name: "CodeBoardShell", dependencies: ["CodeBoardModel", "CodeBoardCanvas"]),
+    .target(name: "CodeBoardShell", dependencies: ["CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes"]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
     .executableTarget(name: "CanvasBench", dependencies: ["CodeBoardCanvas", "CodeBoardNotes"]),
-    .executableTarget(name: "LookCompare", dependencies: ["CodeBoardCanvas", "CodeBoardModel", "CodeBoardSyntax"]),
+    .executableTarget(name: "Accept", dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardModel"]),
+    .executableTarget(
+      name: "LookCompare",
+      dependencies: ["CodeBoardCanvas", "CodeBoardModel", "CodeBoardNotes", "CodeBoardSyntax", "CodeBoardShell"]),
+    .executableTarget(
+      name: "Drive", dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardModel", "CodeBoardNotes"]),
     .testTarget(name: "CodeBoardModelTests", dependencies: ["CodeBoardModel"], resources: [.copy("Fixtures")]),
     .testTarget(name: "CodeBoardSyntaxTests", dependencies: ["CodeBoardSyntax"]),
     .testTarget(name: "CodeBoardNotesTests", dependencies: ["CodeBoardNotes"]),
     .testTarget(name: "CodeBoardCanvasTests", dependencies: ["CodeBoardCanvas"]),
-    .testTarget(name: "CodeBoardShellTests", dependencies: ["CodeBoardShell"]),
+    .testTarget(name: "CodeBoardShellTests", dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardNotes"]),
   ]
 )
+
+// No warnings in our own Swift: a concurrency warning (Swift 6 downgrades some isolation errors from AppKit's overrides)
+// is as much a crash as an error, and the rest stay at zero with it. The native Markdown component's targets, added
+// below, are not under it yet
+for t in package.targets where t.name != "CTreeSitterScanners" {
+  t.swiftSettings = (t.swiftSettings ?? []) + [.treatAllWarnings(as: .error)]
+}
+
+// The native Markdown component (apps/macos/docs/markdown-guideline.md), self-contained: no target of the app depends
+// on it yet, and it depends on none of the app's but CodeBoardSyntax, which only the look tool uses for code colours
+package.targets += [
+  // Markdown parsed the way @yhnocoder/markdown parses it, with source ranges, and its editing rules (guideline 6.2)
+  .target(name: "CodeBoardMarkdown"),
+  // Markdown laid out and drawn with CoreText, edited in place; formulas and diagrams through JavaScriptCore (6.3)
+  .target(name: "CodeBoardMarkdownUI", dependencies: ["CodeBoardMarkdown"]),
+  .executableTarget(name: "MarkdownBench", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI"]),
+  .executableTarget(
+    name: "MarkdownLook", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeBoardSyntax"]),
+  .testTarget(name: "CodeBoardMarkdownTests", dependencies: ["CodeBoardMarkdown"], resources: [.copy("Fixtures")]),
+  .testTarget(name: "CodeBoardMarkdownUITests", dependencies: ["CodeBoardMarkdownUI"]),
+]
+// a window to try the component in, standing alone (tools/markdown/make-demo.sh packages it); code coloured by
+// CodeBoardSyntax, as the look tool colours it; a vault's Notes read with CodeBoardModel. The kit runs it in any process
+// (runMarkdownDemo), for a driver too
+package.targets += [
+  .target(
+    name: "MarkdownDemoKit",
+    dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeBoardSyntax", "CodeBoardModel"]),
+  .executableTarget(name: "MarkdownDemo", dependencies: ["MarkdownDemoKit"]),
+  .testTarget(name: "MarkdownDemoKitTests", dependencies: ["MarkdownDemoKit", "CodeBoardModel"]),
+]

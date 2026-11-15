@@ -1,0 +1,20 @@
+{
+ "version": 15,
+ "card": {
+  "id": "cshared",
+  "kind": "note",
+  "look": "note",
+  "md": "# Shared words\nOne card on two boards.\n\n![A hill](assets/7c3e9a51d2b04f68-240x150.png)"
+ },
+ "sidenotes": [
+  {
+   "id": "sntravel",
+   "kind": "text",
+   "md": "This note travels with the card.",
+   "at": {
+    "card": "cshared"
+   },
+   "alwaysShow": true
+  }
+ ]
+}

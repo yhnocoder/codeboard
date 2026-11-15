@@ -1,0 +1,18 @@
+# 捏合：在没在编辑的 Note 上、在正在编辑的 Note 上
+# known web: 在正在编辑的文字上捏合，VS Code 不缩放（有意把编辑框上的滚轮和捏合交给编辑框：interact.ts 的 ownsWheel）；Mac 版定为总是缩放白板
+zoom 1
+center @cnote+150,60
+move @cnote+150,70 300
+mark
+pinch 0.5 12
+wait 400
+expect cam.zoom > was
+zoom 1
+center @cnote+150,60
+dbl @cnote+150,70
+wait 800
+mark
+pinch 0.5 12
+wait 400
+expect cam.zoom > was
+key esc

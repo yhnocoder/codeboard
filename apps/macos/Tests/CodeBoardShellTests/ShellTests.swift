@@ -28,6 +28,22 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
 }
 
 @MainActor @Suite struct ShellTests {
+  /// Rename Board… and Edit Mark… in the toolbar's ⋯ (Chrome.tsx more): the open board's row shows in the sidebar, its
+  /// folders open, and is renamed in place or its seal edited there
+  @Test func renameBoardAndEditMarkShowTheOpenBoardsRow() {
+    let s = shell()
+    s.renameOpenBoard()
+    s.editOpenBoardMark()
+    #expect(s.renaming == nil && s.sealEditing == nil, "no board open: nothing")
+    s.show(id("d"))
+    s.sidebarShown = false
+    s.renameOpenBoard()
+    #expect(s.renaming == .board(id("d")) && s.expanded.contains("f") && s.sidebarShown)
+    s.renaming = nil
+    s.editOpenBoardMark()
+    #expect(s.sealEditing == id("d"))
+  }
+
   @Test func firstBoardOpensATab() {
     let s = shell()
     s.show(id("a"))
@@ -42,7 +58,7 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
     s.show(id("b"))
     #expect(s.tabs.count == 1)
     #expect(s.current?.board == id("b"))
-    #expect(s.current?.back == [id("a")])
+    #expect(s.current?.back.map(\.board) == [id("a")])
     s.goBack()
     #expect(s.current?.board == id("a"))
     #expect(s.canGoForward && !s.canGoBack)
@@ -51,7 +67,39 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
     s.goBack()
     s.show(id("c"))
     #expect(!s.canGoForward)
-    #expect(s.current?.back == [id("a")])
+    #expect(s.current?.back.map(\.board) == [id("a")])
+  }
+
+  /// A sub-board entered from its card (actions/subboards.ts enterFrame, host handlers.ts enterBoard): the boards it was
+  /// entered from are its crumbs; leaving to one (leaveBoard) shows it from where its camera was when it was left; back
+  /// and forward bring a board back with its crumbs, and a board shown otherwise has none
+  @Test func aSubBoardEnteredHasItsParentsAsCrumbsAndLeavingGoesBackToItsCamera() {
+    let s = shell()
+    s.show(id("a"))
+    let cam = Camera(origin: CGPoint(x: 10, y: 20), zoom: 1.5)
+    s.enter(id("b"), from: CardID(rawValue: "fb"), camera: cam)
+    #expect(s.current?.board == id("b"))
+    #expect(s.current?.crumbs == [Tab.Crumb(board: id("a"), frame: CardID(rawValue: "fb"), camera: cam)])
+    s.enter(id("c"), from: CardID(rawValue: "fc"), camera: nil)
+    #expect(s.current?.crumbs.map(\.board) == [id("a"), id("b")])
+    s.leave(to: 0)
+    #expect(s.current?.board == id("a") && s.current?.crumbs == [] && s.current?.arriving == cam)
+    s.goBack()
+    #expect(s.current?.board == id("c") && s.current?.crumbs.map(\.board) == [id("a"), id("b")])
+    s.leave()
+    #expect(s.current?.board == id("b") && s.current?.crumbs.map(\.board) == [id("a")])
+    s.show(id("d"))
+    #expect(s.current?.crumbs == [])
+    s.goBack()
+    #expect(s.current?.board == id("b") && s.current?.crumbs.map(\.board) == [id("a")])
+    s.apply(.success(tree([("b", "B.board"), ("c", "C.board")])))
+    #expect(s.current?.crumbs == [], "a parent gone from disk leaves the crumbs from it on")
+  }
+
+  @Test func aTabSavedBeforeCrumbsStillReads() throws {
+    let old = #"{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","board":"a","back":[{"board":"b"}],"forward":[]}"#
+    let t = try JSONDecoder().decode(Tab.self, from: Data(old.utf8))
+    #expect(t.board == id("a") && t.crumbs == [] && t.back.first?.crumbs == [])
   }
 
   @Test func aNewTabOpensAfterTheCurrentOneAndIsSelected() {
@@ -62,7 +110,7 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
     s.show(id("c"), newTab: true)
     #expect(s.tabs.map(\.board) == [id("a"), id("c"), id("b")])
     #expect(s.current?.board == id("c"))
-    #expect(s.current?.back == [])
+    #expect(s.current?.back.map(\.board) == [])
   }
 
   @Test func closingSelectsTheRightNeighbourThenTheLeft() {
@@ -155,18 +203,23 @@ private func tree(_ boards: [(String, String)] = [("a", "A.board"), ("b", "B.boa
     #expect(t.tabs.isEmpty && t.selected == nil)
   }
 
-  @Test func importSummaryCountsBoardsCardsFailuresAndLeftOut() {
+  @Test func importSummaryCountsBoardsCardsCopiesFailuresAndLeftOut() {
     let report = ImportReport(
       imported: [
-        .init(source: "a.json", destination: "A.board", skipped: [.init(kind: .webCard, ids: ["x", "y"])]),
-        .init(source: "g/b.json", destination: "g/B.board", skipped: [.init(kind: .sidenote, ids: ["s"])]),
+        .init(source: "a.json", destination: "A.board", skipped: [.init(kind: .compareCard, ids: ["x", "y"])]),
+        .init(source: "g/b.json", destination: "g/B.board", skipped: [.init(kind: .arrowSticker, ids: ["s"])]),
         .init(source: "cards/c.json", destination: ".codeboard/shared/c.json", skipped: []),
+        .init(source: "h.json", destination: "H copy.board", copyOf: "H.board", skipped: []),
       ],
       failed: [.malformed(URL(filePath: "/old/z.json"), "bad")])
     let summary = ImportSummary(report)
-    #expect(summary.title == "Imported 2 boards and 1 shared card")
-    #expect(summary.subtitle == "1 file could not be imported. 3 items left out, which this version does not show yet.")
-    #expect(summary.details == ["/old/z.json: bad", "sidenote: 1", "web card: 2"])
+    #expect(summary.title == "Imported 3 boards and 1 shared card")
+    #expect(
+      summary.subtitle
+        == "1 of them was in the vault already and came in as a copy, leaving what is there as it is. 1 file could not "
+        + "be imported. 3 items left out, which this version does not keep yet.")
+    #expect(
+      summary.details == ["/old/z.json: bad", "H copy.board: a copy of H.board", "compare card: 2", "arrow sticker: 1"])
   }
 
   @Test func theBoardPanelTakesTheCanvasThemesBackground() {
