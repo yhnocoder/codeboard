@@ -118,6 +118,64 @@ private func freeBoard() -> Board {
     #expect(got == "    return run(ids)1", "nothing of the composition kept: \(got)")
   }
 
+  /// Code's colours that come back while an input method's key is going in, after WebKit wrote the composing text and
+  /// before CodeMirror read the caret WebKit put (an answer can overtake that, as the key's own keydown does), leave the
+  /// composition alone: put in then, they set back the selection CodeMirror read in between, the composed text selected,
+  /// which WebKit takes as the end of the composition, and the commit landed beside what was composed ("n你"; web/src/
+  /// page.ts afterCaret). In a key window, as a person types: with no focus CodeMirror never reads WebKit's caret
+  @Test func coloursComingWhileComposingInCodeLeaveTheCompositionAlone() async throws {
+    Pinyin.install()
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer {
+      Pinyin.windows.remove(r.window.windowNumber)
+      r.close()
+    }
+    let c = r.canvas
+    let card = r.rect("f")
+    let code = try #require(c.scene?.placed[cid("f")]?.code)
+    let row = try #require(code.layout.row(segment: 0, line: 3))
+    r.doubleClick(CGPoint(x: card.maxX - 10, y: card.minY + code.top + row.y + row.height / 2))
+    await r.editorReady()
+    await r.pageFocused()
+    let v = c.noteEditor.view
+    func js(_ s: String) async -> Any? { try? await v.callAsyncJavaScript(s, contentWorld: .page) }
+    func last() async -> String {
+      await js("return [...document.querySelectorAll('.cm-line')].at(-1)?.textContent ?? ''") as? String ?? ""
+    }
+    // the colours native answers, held in the page and given once "ni" is in, just before CodeMirror reads WebKit's
+    // caret (its selectionchange); later ones as they come
+    _ = await js(
+      """
+      const h = webkit.messageHandlers.highlight, post = h.postMessage.bind(h), held = [];
+      window.given = false;
+      h.postMessage = (m) => new Promise((give) => post(m).then((html) => given ? give(html) : held.push(() => give(html))));
+      let ni = false;
+      addEventListener("input", (e) => (ni ||= e.data === "ni"), true);
+      document.addEventListener("selectionchange", () => {
+        if (!ni || given) return;
+        window.given = true;
+        for (const give of held.splice(0)) give();
+      }, true);
+      window.heldCount = () => held.length;
+      """)
+    Pinyin.windows.insert(r.window.windowNumber)
+    let ends = await js("return edit.compositionEnds()") as? Int ?? -1
+    await r.typeInTurn("n")
+    await r.until("the colours for n answered") { (await js("return heldCount()") as? Int ?? 0) > 0 }
+    await r.typeInTurn("i")
+    await r.until("composing ni, the colours given") {
+      let given = await js("return given") as? Bool == true
+      let text = await last()
+      return given && text.hasSuffix("ni")
+    }
+    _ = await js("await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))")
+    #expect(await js("return edit.compositionEnds()") as? Int == ends, "the composition goes on")
+    await r.typeInTurn(" ")
+    await r.until("committed") { await last().contains("你") }
+    #expect(await last() == "    return run(ids)你")
+    #expect(await js("return edit.compositionEnds()") as? Int == ends + 1, "one composition, ended by the commit")
+  }
+
   /// "ni" and Space typed at once after the double-click on code, before the editor is there: they go through the input
   /// method too, so 你 is written (CanvasIMETests.pinyinTypedAtOnceAfterTheDoubleClickIsComposed)
   @Test(arguments: [false, true])
