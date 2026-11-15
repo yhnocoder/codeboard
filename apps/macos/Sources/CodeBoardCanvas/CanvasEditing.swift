@@ -1950,14 +1950,30 @@ extension CanvasView {
 
   private var selectedCards: Set<CardID> { Set(document?.selection.compactMap(\.card) ?? []) }
 
-  /// The cards' clip on the pasteboard; nil: nothing to copy
+  /// The cards' clip on the pasteboard, and the first image card's picture as PNG for other apps (shared.ts copyCards,
+  /// imagedata.ts copyPicture); nil: nothing to copy
   private func putOnPasteboard(_ ids: Set<CardID>) -> Data? {
-    guard let doc = document, let (_, vault) = shown else { return nil }
+    guard let doc = document, let (board, vault) = shown else { return nil }
     let clip = doc.board.clip(ids) { try? vault.sharedCard($0) }
     guard !clip.isEmpty, let data = try? clip.encoded() else { return nil }
     pasteboard.clearContents()
     pasteboard.setData(data, forType: NSPasteboard.PasteboardType(Clip.pasteboardType))
+    let images = vault.url(of: board.path).appending(path: Vault.imagesFolder)
+    if let png = clip.cards.lazy.compactMap({ Self.picturePNG($0, in: images) }).first {
+      pasteboard.setData(png, forType: .png)
+    }
     return data
+  }
+
+  /// An image card's picture file as PNG (imagedata.ts clipboardPng: a PNG as it is, any other drawn once)
+  private static func picturePNG(_ card: Card, in images: URL) -> Data? {
+    guard case .own(let k) = card.content, case .image(let img) = k.body, case .file(let name) = img.source,
+      let data = try? Data(contentsOf: images.appending(path: name))
+    else { return nil }
+    if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) { return data }
+    return NSImage(data: data)?.cgImage(forProposedRect: nil, context: nil, hints: nil).flatMap {
+      NSBitmapImageRep(cgImage: $0).representation(using: .png, properties: [:])
+    }
   }
 
   /// Pastes what was copied (actions/shared.ts pasteFromBoard): cards cut on this board back where the pointer is, with
