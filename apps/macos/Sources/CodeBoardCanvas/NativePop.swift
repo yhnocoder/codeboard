@@ -90,8 +90,6 @@ package final class SidenotePop: NSObject {
     case ref(RefPress?)
     /// A press anywhere else in it
     case elsewhere
-    /// A right-click on a sidenote: its menu, at that point in the view
-    case menu(String, at: CGPoint)
     /// A link clicked (a free code's address, a link in a sidenote)
     case openLink(String)
   }
@@ -117,6 +115,8 @@ package final class SidenotePop: NSObject {
 
   package let view = PopView()
   var onAction: ((Action) -> Void)?
+  /// A sidenote's menu, for a right-click on it (notes.tsx noteMenu)
+  var menuOf: ((String) -> NSMenu?)?
   /// Its size as it changes (an entry added, a code sidenote opened, the input growing)
   var onSize: ((CGSize) -> Void)?
   /// Something in it is being written, or not any more
@@ -317,7 +317,7 @@ package final class SidenotePop: NSObject {
     let t = shown!.theme
     let s = SlipView(n, theme: t)
     let id = n.id
-    if !n.fixed { s.onMenu = { [weak self] p in self?.onAction?(.menu(id, at: p)) } }
+    if !n.fixed { s.onMenu = { [weak self] in self?.menuOf?(id) } }
     let place =
       n.place ? [PopButton.tool("Place on Board", Self.icon("place"), t) { [weak self] in self?.act(.place(id)) }] : []
     if let r = n.review {
@@ -1113,7 +1113,7 @@ final class SlipView: NSView, Writable {
     }
   }
   var onEdit: (() -> Void)?
-  var onMenu: ((CGPoint) -> Void)?
+  var onMenu: (() -> NSMenu?)?
   /// its tools (internal: tests read where they are)
   let bar = ToolBar()
   private var hovered = false {
@@ -1338,10 +1338,8 @@ final class SlipView: NSView, Writable {
     CATransaction.commit()
   }
 
-  override func rightMouseDown(with e: NSEvent) {
-    guard let onMenu, let v = popOf(self)?.view else { return super.rightMouseDown(with: e) }
-    onMenu(v.convert(e.locationInWindow, from: nil))
-  }
+  /// its menu as AppKit asks a view for one: shown by the right press, and read by whoever asks
+  override func menu(for e: NSEvent) -> NSMenu? { onMenu?() ?? super.menu(for: e) }
 }
 
 @MainActor private func popOf(_ v: NSView) -> SidenotePop? {

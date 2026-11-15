@@ -2,6 +2,7 @@ import AppKit
 import CodeBoardMarkdown
 import CodeBoardModel
 import CodeBoardNotes
+import CodeBoardTestGuard
 import Testing
 
 @testable import CodeBoardCanvas
@@ -651,8 +652,9 @@ extension CanvasSidenoteTests {
 }
 
 extension CanvasSidenoteTests {
-  /// A sidenote's menu (notes.tsx noteMenu): a right-click on it in the popup asks the app for its menu at the
-  /// pointer; a text sidenote's is Edit, Place on Board when it is on a card and asks nothing, then Delete Sidenote
+  /// A sidenote's menu (notes.tsx noteMenu): a right-click on it in the popup shows it, and it is the slip's menu as
+  /// AppKit asks a view for one (menu(for:)); a text sidenote's is Edit, Place on Board when it is on a card and asks
+  /// nothing, then Delete Sidenote
   @Test func aRightClickOnASidenoteGivesItsMenu() async throws {
     let r = try await Rig(sidenoteBoard(), zoom: 1)
     defer { r.close() }
@@ -661,24 +663,20 @@ extension CanvasSidenoteTests {
     let at = PopAt.lines(Lines(card: cid("c1"), segment: s1, range: 12...13))
     c.openPop(at)
     await opened(r, at)
-    let theirs = pop.onAction
-    var got: [SidenotePop.Action] = []
-    pop.onAction = { got.append($0) }
     let slip = try #require(pop.slip("l1"))
     let p = slip.convert(CGPoint(x: 30, y: 12), to: pop.view)
-    r.window.sendEvent(
-      NSEvent.mouseEvent(
-        with: .rightMouseDown, location: pop.view.convert(p, to: nil), modifierFlags: [], timestamp: 1,
-        windowNumber: r.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
-    guard case .menu(let n, let xy)? = got.first, got.count == 1 else {
-      Issue.record("asked for its menu: \(got)")
-      return
-    }
-    #expect(n == "l1" && hypot(xy.x - p.x, xy.y - p.y) < 0.01, "at the pointer")
-    pop.onAction = theirs
-    let m = c.sidenoteMenu(nid("l1"))
+    let press = NSEvent.mouseEvent(
+      with: .rightMouseDown, location: pop.view.convert(p, to: nil), modifierFlags: [], timestamp: 1,
+      windowNumber: r.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
     func titles(_ m: NSMenu) -> [String] { m.items.map { $0.isSeparatorItem ? "-" : $0.title } }
-    #expect(titles(m) == ["Edit", "Place on Board", "-", "Delete Sidenote"])
+    let asked = try #require(slip.menu(for: press))
+    #expect(titles(asked) == ["Edit", "Place on Board", "-", "Delete Sidenote"])
+    try #require(TestGuard.guardsContextMenus, "the menu guard is not in")
+    TestGuard.shown = []
+    r.window.sendEvent(press)
+    #expect(TestGuard.shown == ["menu: Edit | Place on Board | — | Delete Sidenote"], "shown by the press")
+    let m = c.sidenoteMenu(nid("l1"))
+    #expect(titles(m) == titles(asked))
     #expect(titles(c.sidenoteMenu(nid("g1"))) == ["Edit", "-", "Delete Sidenote"], "on a Section: no card to place by")
     r.doc.edit("x") {
       $0.sidenotes.append(

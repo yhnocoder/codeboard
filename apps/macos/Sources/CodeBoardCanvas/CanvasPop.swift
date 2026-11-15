@@ -138,6 +138,7 @@ extension CanvasView {
     host.addSubview(pop.view, positioned: .above, relativeTo: below)
     pop.pasteboard = pasteboard
     pop.onAction = { [weak self] in self?.popAction($0, in: p) }
+    pop.menuOf = { [weak self] n in self?.sidenoteMenu(SidenoteID(rawValue: n), in: p) }
     pop.findCode = { [weak self, weak p] q in p.map { self?.codeFound(q, for: $0) ?? [] } ?? [] }
     pop.view.escape = { [weak self] in self?.escapePeek() ?? false }
     pop.onSize = { [weak self] _ in self?.positionPop(p) }
@@ -447,10 +448,6 @@ extension CanvasView {
       refPressed(r)
     case .elsewhere: closeRefPeek()
     case .openLink(let u): openLink(u)
-    case .menu(let n, let xy):
-      let v = p.pop.view
-      sidenoteMenu(id(n), in: p).popUp(
-        positioning: nil, at: v.isFlipped ? xy : CGPoint(x: xy.x, y: v.bounds.height - xy.y), in: v)
     }
   }
 
