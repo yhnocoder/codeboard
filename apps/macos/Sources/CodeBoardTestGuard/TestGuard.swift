@@ -2,11 +2,12 @@ import AppKit
 import CodeBoardModel
 
 // In a test process nothing may come up on the screen or wait for a person: a menu, an alert, an open or save panel, a
-// modal window, an address opened in the browser or a file shown in Finder. As the system Trash refuses a test (Vault.systemTrash), so do these, from the root: each way AppKit
-// puts one up is replaced, in a test process only, by one that writes down what would have shown and returns at once
-// (a menu: nothing picked; a modal: cancelled). A sheet on a window under the desktop (the tests' own) is left alone:
-// it shows nowhere and tests answer it. Installed by the first canvas or shell a test makes; in the app it is never
-// installed.
+// modal window, an address opened in the browser or a file shown in Finder; nor may it write the owner's clipboard. As the
+// system Trash refuses a test (Vault.systemTrash), so do these, from the root: each way AppKit puts one up is replaced,
+// in a test process only, by one that writes down what would have shown and returns at once (a menu: nothing picked; a
+// modal: cancelled), and the general pasteboard is one of the process's own. A sheet on a window under the desktop (the
+// tests' own) is left alone: it shows nowhere and tests answer it. Installed by the first canvas, shell or Markdown
+// editor a test makes; in the app it is never installed.
 
 @MainActor package enum TestGuard {
   /// What would have come up, in order: "menu: Edit | Delete", "alert: Delete board?"
@@ -25,6 +26,11 @@ import CodeBoardModel
   package static var guardsOpening: Bool { installed && openGuarded }
 
   nonisolated(unsafe) private static var openGuarded = false
+
+  /// Whether NSPasteboard.general is a pasteboard of this process's own, never the system clipboard
+  package static var guardsPasteboard: Bool { installed && pasteboardGuarded }
+
+  nonisolated(unsafe) private static var pasteboardGuarded = false
 
   private static let installed: Bool = {
     guard Vault.underTest else { return false }
@@ -132,6 +138,12 @@ import CodeBoardModel
       return .abort
     }
     replace(NSApplication.self, #selector(NSApplication.runModal(for:)), imp_implementationWithBlock(runWindow))
+    // the clipboard: whatever asks for the general pasteboard gets this process's own
+    let own = NSPasteboard(name: NSPasteboard.Name("codeboard-tests-\(ProcessInfo.processInfo.processIdentifier)"))
+    let general: @convention(block) (AnyObject) -> NSPasteboard = { _ in own }
+    pasteboardGuarded = replace(
+      object_getClass(NSPasteboard.self)!, NSSelectorFromString("generalPasteboard"),
+      imp_implementationWithBlock(general))
     // an address or file opened, or shown in Finder: the owner's browser, apps and Finder, never; written down
     let workspace: AnyClass = NSWorkspace.self
     let open: @convention(block) (NSWorkspace, NSURL) -> Bool = { _, u in
@@ -178,7 +190,7 @@ import CodeBoardModel
   }()
 
   /// A window nobody sees: one of the tests' own, under the desktop
-  private static func hidden(_ w: NSWindow) -> Bool { w.level.rawValue <= NSWindow.Level.underDesktop.rawValue }
+  private static func hidden(_ w: NSWindow) -> Bool { w.level.rawValue < Int(CGWindowLevelForKey(.desktopWindow)) }
 
   private static func record(menu m: NSMenu?) {
     let titles = (m?.items ?? []).map { $0.isSeparatorItem ? "—" : $0.title }
@@ -192,46 +204,4 @@ import CodeBoardModel
     if !class_addMethod(c, sel, imp, method_getTypeEncoding(m)) { method_setImplementation(m, imp) }
     return true
   }
-}
-
-/// The tests' watchdog: a test whose board (its rig, its window) has been open over `limit` is stuck, waiting on what
-/// will never come; the process says which test it was and exits, so the run ends instead of hanging. The rigs say
-/// when a test starts and ends; the watch runs on a thread of its own, so a main thread held up does not stop it.
-package enum TestWatch {
-  package static let limit: TimeInterval = 120
-
-  nonisolated(unsafe) private static var running: (name: String, since: TimeInterval)?
-  private static let lock = NSLock()
-
-  /// A test began (its name as Swift Testing gives it)
-  package static func started(_ name: String) {
-    lock.withLock { running = (name, ProcessInfo.processInfo.systemUptime) }
-    _ = watching
-  }
-
-  package static func ended() { lock.withLock { running = nil } }
-
-  /// Over the limit: what to say, nil while within it
-  package static func overrun(at now: TimeInterval) -> String? {
-    lock.withLock {
-      guard let r = running, now - r.since > limit else { return nil }
-      return
-        "watchdog: \(r.name) has run \(Int(now - r.since)) s, over the \(Int(limit)) s a test may take; the test process exits\n"
-    }
-  }
-
-  private static let watching: Void = {
-    let t = Thread {
-      while true {
-        Thread.sleep(forTimeInterval: 1)
-        if let said = overrun(at: ProcessInfo.processInfo.systemUptime) {
-          FileHandle.standardError.write(Data(said.utf8))
-          FileHandle.standardOutput.write(Data(said.utf8))
-          _exit(70)
-        }
-      }
-    }
-    t.name = "test watchdog"
-    t.start()
-  }()
 }

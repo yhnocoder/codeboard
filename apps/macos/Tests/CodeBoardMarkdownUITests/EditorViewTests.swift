@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardMarkdown
+import CodeBoardTestGuard
 import Foundation
 import Testing
 
@@ -8,6 +9,17 @@ import Testing
 /// The editor view draws with the static picture's code: with the caret where it opens nothing, its pixels are the
 /// static layout's (guideline 8.5); keys reach the core through the system's key bindings
 @MainActor @Suite struct EditorViewTests {
+  /// A Markdown editor made in a test process puts the test guard in, as a canvas does: no menu, alert, panel, browser
+  /// or Finder comes up, and ⌘C, ⌘X and ⌘V go to the process's own pasteboard, never the owner's clipboard
+  @Test func anEditorPutsTheTestGuardIn() {
+    let l = BlockLayout(
+      MarkdownDocument("Some text"), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 0)
+    // first: asking the guard whether it is in puts it in
+    #expect(v.pasteboard.name != NSPasteboard.Name.general)
+    #expect(TestGuard.guardsContextMenus && TestGuard.guardsOpening && TestGuard.guardsPasteboard)
+  }
+
   static let text = """
     # Title with **bold**
 

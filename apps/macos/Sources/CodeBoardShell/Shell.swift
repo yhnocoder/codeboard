@@ -1,6 +1,7 @@
 import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
+import CodeBoardTestGuard
 import Observation
 
 /// A board tab: the board it shows and its own back / forward history, browser style, each board in it with where its

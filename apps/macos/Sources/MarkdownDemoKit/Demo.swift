@@ -9,6 +9,7 @@ import CodeBoardMarkdown
 import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardSyntax
+import CodeBoardTestGuard
 import ImageIO
 
 /// Images next to the file, formulas and diagrams through the engines, code coloured by the app's highlighter
@@ -259,6 +260,8 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   }
 
   init(text: String, folder: URL, cardWidth: Double) throws {
+    // in a test process: its alerts and open panels never come up (an editor puts the same guard in)
+    TestGuard.install()
     self.text = text
     self.folder = folder
     self.cardWidth = cardWidth

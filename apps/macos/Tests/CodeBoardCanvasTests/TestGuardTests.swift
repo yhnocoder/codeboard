@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardModel
+import CodeBoardTestGuard
 import Testing
 
 @testable import CodeBoardCanvas
@@ -85,6 +86,18 @@ import Testing
     TestGuard.shown = []
     r.canvas.openURL(web)
     #expect(TestGuard.shown == ["open: \(web)"])
+  }
+
+  /// The general pasteboard is the test process's own: what a test copies never reaches the owner's clipboard
+  @Test func theGeneralPasteboardIsTheProcesssOwn() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    try #require(TestGuard.guardsPasteboard, "the pasteboard guard is not in")
+    let pb = NSPasteboard.general
+    #expect(pb.name != NSPasteboard.Name.general && pb === NSPasteboard.general)
+    pb.clearContents()
+    pb.setString("only here", forType: .string)
+    #expect(NSPasteboard.general.string(forType: .string) == "only here")
   }
 
   @Test func theWatchdogSaysWhichTestRanOverItsLimit() {
