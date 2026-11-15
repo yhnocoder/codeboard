@@ -46,3 +46,18 @@ let boardFonts: Void = {
     #expect(FontBook.baseline(FontBook.font(["JetBrains Mono"], size: 12.5), lineHeight: 21.25) == 15)
   }
 }
+
+/// Where the fonts and engines are found: in the app when it carries them, else in the source tree's build (an app
+/// wrapped around a build's binary, as the acceptance driver's, carries none)
+@Suite struct AssetFolderTests {
+  @Test func anAppWithoutTheAssetsFindsTheBuildsAndOneWithThemItsOwn() throws {
+    let app = FileManager.default.temporaryDirectory.appending(path: "assets-\(UUID().uuidString).app")
+    defer { try? FileManager.default.removeItem(at: app) }
+    let carried = app.appending(path: "Contents/Resources/Assets")
+    try FileManager.default.createDirectory(at: carried, withIntermediateDirectories: true)
+    let build = MarkdownAssets.assets(in: app)
+    #expect(build != carried && FileManager.default.fileExists(atPath: build.appending(path: "engines.js").path))
+    try Data().write(to: carried.appending(path: "engines.js"))
+    #expect(MarkdownAssets.assets(in: app) == carried)
+  }
+}

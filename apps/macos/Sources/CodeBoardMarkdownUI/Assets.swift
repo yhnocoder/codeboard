@@ -7,13 +7,18 @@ import Foundation
 /// built by `node apps/macos/tools/markdown/assets.mjs` into apps/macos/.build-markdown. A host carries them in its bundle; tools and tests run from
 /// the source tree find them there.
 public enum MarkdownAssets {
-  /// Contents/Resources/Assets in an app bundle; outside one, which is only `swift run` and `swift test`,
-  /// apps/macos/.build-markdown of the source tree this was built from (#filePath: a path on the building machine, so
-  /// only for running in place), where `node apps/macos/tools/markdown/assets.mjs` puts them. An app without them finds
-  /// none, and its fonts and engines report that (`MarkdownAssetError`)
-  public static var assets: URL {
-    let bundle = Bundle.main.bundleURL
-    if bundle.pathExtension == "app" { return bundle.appending(path: "Contents/Resources/Assets") }
+  /// Contents/Resources/Assets of the app this runs in when it carries them; otherwise, as for `swift run`, `swift test`
+  /// or an app wrapped around a binary of the build, apps/macos/.build-markdown of the source tree this was built from
+  /// (#filePath: a path on the building machine, so only for running in place), where
+  /// `node apps/macos/tools/markdown/assets.mjs` puts them. Found in neither, the fonts and engines report that
+  /// (`MarkdownAssetError`)
+  public static var assets: URL { assets(in: Bundle.main.bundleURL) }
+
+  static func assets(in bundle: URL) -> URL {
+    let carried = bundle.appending(path: "Contents/Resources/Assets")
+    if FileManager.default.fileExists(atPath: carried.appending(path: "engines.js").path(percentEncoded: false)) {
+      return carried
+    }
     return URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../.build-markdown").standardized
   }
 

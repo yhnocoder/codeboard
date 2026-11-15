@@ -240,6 +240,32 @@ extension Rig {
     #expect(r.doc.board.cards.count == cards, "no card made by a letter")
   }
 
+  /// A Note copied and pasted on the same board, then written in at once with a double-click on the copy's text: what is
+  /// typed is the copy's, the original keeps its own (accept paste-copy)
+  @Test func aPastedNoteIsWrittenInByADoubleClickOnItsText() async throws {
+    let pb = NSPasteboard(name: NSPasteboard.Name("tests-\(UUID().uuidString)"))
+    defer { pb.releaseGlobally() }
+    let r = try await Rig(zoom: 1, pasteboard: pb)
+    defer { r.close() }
+    let was = try #require(r.card("n1").writing)
+    r.doc.select([.card(cid("n1"))])
+    r.canvas.copy(nil)
+    r.canvas.paste(nil)
+    let copy = try #require(r.canvas.pasteChip?.pairs.first?.copy)
+    await r.settle()
+    let at = r.rect(copy.rawValue)
+    r.doubleClick(CGPoint(x: at.minX + 150, y: at.minY + 62))
+    await r.editorReady()
+    #expect(r.canvas.editing?.id == copy, "writing in the copy")
+    r.press(" walrus")
+    r.press("\u{1b}")
+    await r.until("left") { !r.canvas.isEditing }
+    #expect(
+      r.doc.board.card(copy)?.writing?.contains("walrus") == true,
+      "\(String(describing: r.doc.board.card(copy)?.writing))")
+    #expect(r.card("n1").writing == was)
+  }
+
   @Test func aNewCardWrittenInIsOneStep() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }
