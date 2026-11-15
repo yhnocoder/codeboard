@@ -6,6 +6,7 @@
 import * as fs from "node:fs";
 import * as http from "node:http";
 import * as path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import type { AddressInfo } from "node:net";
 import * as os from "node:os";
 import { Emitter, type BoardToHost, type HostToBoard } from "@codeboard/core";
@@ -510,9 +511,18 @@ async function run(line: string): Promise<string> {
 const fifo = path.join(out, "cmd");
 let n = 0;
 log("web ready");
+// the FIFO held open both ways for the whole run: read to its end and opened again for each command, a line written
+// between our end-of-file and our close was dropped or waited for the next one (a side stalled for minutes on CI).
+// Reads block until a line comes, as before
+const fd = fs.openSync(fifo, fs.constants.O_RDWR);
+const chunk = Buffer.alloc(1 << 16);
+const utf8 = new StringDecoder("utf8");
+let pending = "";
 for (;;) {
-  const text = fs.readFileSync(fifo, "utf8");
-  for (const l of text.split("\n").filter(Boolean)) {
+  pending += utf8.write(chunk.subarray(0, fs.readSync(fd, chunk, 0, chunk.length, null)));
+  const lines = pending.split("\n");
+  pending = lines.pop() ?? "";
+  for (const l of lines.filter(Boolean)) {
     n++;
     let r = "";
     log(`start ${n} ${l}`);
