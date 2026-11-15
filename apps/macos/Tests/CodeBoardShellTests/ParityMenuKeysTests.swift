@@ -55,4 +55,11 @@ import Testing
     #expect(actions("]", [.command, .shift]) == [#selector(AppDelegate.showNextTab(_:))])
     #expect(actions("[", [.command, .shift]) == [#selector(AppDelegate.showPreviousTab(_:))])
   }
+
+  /// ⌃Tab and ⌃⇧Tab switch tabs too; ⇧Tab comes from a keyboard as a back tab
+  @Test func controlTabSwitchesTabsBothWays() {
+    #expect(actions("\t", .control) == [#selector(AppDelegate.showNextTab(_:))])
+    #expect(actions("\t", [.control, .shift]) == [#selector(AppDelegate.showPreviousTab(_:))])
+    #expect(actions("\u{19}", [.control, .shift]) == [#selector(AppDelegate.showPreviousTab(_:))])
+  }
 }
