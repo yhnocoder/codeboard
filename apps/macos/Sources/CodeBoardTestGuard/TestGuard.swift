@@ -1,21 +1,23 @@
 import AppKit
-import CodeBoardModel
 
 // In a test process nothing may come up on the screen or wait for a person: a menu, an alert, an open or save panel, a
 // modal window, an address opened in the browser or a file shown in Finder; nor may it write the owner's clipboard or
-// change their cursor. As the
-// system Trash refuses a test (Vault.systemTrash), so do these, from the root: each way AppKit puts one up is replaced,
-// in a test process only, by one that writes down what would have shown and returns at once (a menu: nothing picked; a
-// modal: cancelled), and the general pasteboard is one of the process's own. A sheet on a window under the desktop (the
-// tests' own) is left alone: it shows nowhere and tests answer it. Installed by the first canvas, shell or Markdown
-// editor a test makes; in the app it is never installed.
+// change their cursor. Each way AppKit puts one up is replaced, in a test process only, by one that writes down what
+// would have shown and returns at once (a menu: nothing picked; a modal: cancelled), and the general pasteboard is one of
+// the process's own. A sheet on a window under the desktop (the tests' own) is left alone: it shows nowhere and tests
+// answer it. Installed by the first view of an app's or a component's that a test makes (an editor, a window's
+// content); in an app it is never installed. It knows nothing of the app it guards, so a component carries it too.
 
 @MainActor package enum TestGuard {
-  /// What would have come up, in order: "menu: Edit | Delete", "alert: Delete board?"
+  /// What would have come up, in order: "menu: Edit | Delete", "alert: Delete the file?"
   nonisolated(unsafe) package static var shown: [String] = []
 
   /// Installs the guard once, in a test process only
   package static func install() { _ = installed }
+
+  /// Whether this process runs tests (swift test's runner, Xcode's): what Swift Testing and XCTest load is there
+  package static let underTest =
+    NSClassFromString("XCTestCase") != nil || ProcessInfo.processInfo.processName.hasPrefix("swiftpm-testing")
 
   /// Whether a menu's way up is replaced: tests check it before a real right press reaches a view
   package static var guardsContextMenus: Bool { installed && contextMenuGuarded }
@@ -42,7 +44,7 @@ import CodeBoardModel
   nonisolated(unsafe) private static var cursors: [NSCursor] = []
 
   private static let installed: Bool = {
-    guard Vault.underTest else { return false }
+    guard underTest else { return false }
     let menu: AnyClass = NSMenu.self
     let meta: AnyClass = object_getClass(menu)!
     // a view's own menu on a right press or ⌃ click: NSView rightMouseDown → _showMenuForEvent:, written down as the
@@ -148,7 +150,7 @@ import CodeBoardModel
     }
     replace(NSApplication.self, #selector(NSApplication.runModal(for:)), imp_implementationWithBlock(runWindow))
     // the clipboard: whatever asks for the general pasteboard gets this process's own
-    let own = NSPasteboard(name: NSPasteboard.Name("codeboard-tests-\(ProcessInfo.processInfo.processIdentifier)"))
+    let own = NSPasteboard(name: NSPasteboard.Name("tests-\(ProcessInfo.processInfo.processIdentifier)"))
     let general: @convention(block) (AnyObject) -> NSPasteboard = { _ in own }
     pasteboardGuarded = replace(
       object_getClass(NSPasteboard.self)!, NSSelectorFromString("generalPasteboard"),

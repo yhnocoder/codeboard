@@ -41,7 +41,7 @@ let package = Package(
     ),
     .target(name: "CodeBoardNotes", dependencies: ["CodeBoardModel"]),
     // what a test process may not show or touch (menus, alerts, panels, the browser, Finder, the clipboard), replaced
-    .target(name: "CodeBoardTestGuard", dependencies: ["CodeBoardModel"]),
+    .target(name: "CodeBoardTestGuard"),
     .target(
       name: "CodeBoardCanvas",
       dependencies: [

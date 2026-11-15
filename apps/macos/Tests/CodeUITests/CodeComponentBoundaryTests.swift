@@ -9,6 +9,8 @@ private let allowed: [String: Set<String>] = [
   "TreeSitterHighlight": [
     "CodeUI", "Foundation", "TreeSitter", "TreeSitterCUDA", "TreeSitterPython", "TreeSitterRust",
   ],
+  // the guard a component's tests run under (TestGuard: named so until the component's own package)
+  "CodeBoardTestGuard": ["AppKit"],
 ]
 
 @Test(arguments: allowed.keys.sorted())

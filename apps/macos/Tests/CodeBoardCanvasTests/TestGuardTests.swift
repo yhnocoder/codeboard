@@ -17,6 +17,11 @@ import Testing
         ObjectIdentifier.init))
   }
 
+  /// The guard tells a test process by itself, as the model does (Vault.underTest), with nothing of the app
+  @Test func theGuardKnowsATestProcessByItself() {
+    #expect(TestGuard.underTest && TestGuard.underTest == Vault.underTest)
+  }
+
   @Test func aRealRightPressOnAViewWithAMenuReturnsAtOnceAndShowsNothing() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }
