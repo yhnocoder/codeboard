@@ -38,8 +38,8 @@ package final class NativeNotes: NoteDisplay {
   static var on: Bool { !UserDefaults.standard.bool(forKey: "WebNotes") }
 
   /// The fonts, the layout code and the formula engines used once, off the main thread, so the first board does not pay
-  /// for them
-  static func warmUp() {
+  /// for them (the app starts this as it launches)
+  package static func warmUp() {
     Task.detached(priority: .utility) { MarkdownAssets.warmUp(math: try? MarkdownAssets.engines()) }
   }
 

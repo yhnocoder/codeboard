@@ -21,13 +21,15 @@ public enum Arrival: Equatable, Sendable {
 public final class CanvasView: NSView {
   /// The design allows one snapshot web view in the app, so every canvas shares one renderer
   static let sharedNotes = NoteRenderer()
-  /// What draws the app's Notes at rest: the native component (warmed up off the main thread as the first canvas is
-  /// made), or the web page while the change-over switch says so (`NativeNotes.on`)
+  /// What draws the app's Notes at rest: the native component (warmed up off the main thread from the app's launch,
+  /// `warmUp`), or the web page while the change-over switch says so (`NativeNotes.on`)
   static let sharedDisplay: any NoteDisplay = {
     guard NativeNotes.on else { return sharedNotes }
     NativeNotes.warmUp()
     return NativeNotes(web: sharedNotes, images: sharedImages)
   }()
+  /// Starts what draws Notes as the app launches, so its fonts and engines are ready sooner for the first board
+  public static func warmUp() { _ = sharedDisplay }
   /// Pictures decoded for drawing, by file: one cache for every canvas, as tabs often show the same images
   static let sharedImages = DecodeCache(cap: 128 << 20)
   /// Every canvas alive, for the one budget they share
@@ -591,6 +593,9 @@ public final class CanvasView: NSView {
     let known = CanvasView.highlighter
     let display = self.display
     let open = document?.board
+    // where the camera will be once it is installed (install: arriving, else kept, else the board's top left at 100 %)
+    let opensAt = keepCamera ? camera : arriving ?? keptCamera(of: board, in: vault)
+    let native = display is NativeNotes
     let (scene, overviews, shadow, highlighter, b, measures, sizes, inlines, inline) = try await Task.detached(
       priority: .userInitiated
     ) {
@@ -604,15 +609,28 @@ public final class CanvasView: NSView {
       let scene = Scene(
         b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes, inline: inline)
       let fit = Camera.fit(scene.bounds, in: size).zoom
+      let limits = ZoomLimits(view: size, content: scene.bounds)
+      let first =
+        opensAt.map { Camera(origin: $0.origin, zoom: limits.clamp($0.zoom)) } ?? Camera.opening(scene.bounds)
+      let firstView = first.visible(size)
       let overviews = await withTaskGroup(of: (Int, Overview).self) { g in
         for (i, it) in scene.items.enumerated() {
           g.addTask {
+            let inView = it.rect.insetBy(dx: -it.bleed, dy: -it.bleed).intersects(firstView)
             guard it.drawing.byRenderer else {
-              let s = Levels.scale(fit, backing: backing, size: it.bitmapSize)
+              // in view: at the zoom it opens at, sharp from the first frame, rather than the board's overview size
+              // enlarged until its own bitmap comes
+              let s = Levels.scale(
+                inView ? max(fit, min(first.zoom, limits.max)) : fit, backing: backing, size: it.bitmapSize)
               return (i, (CanvasView.render(it, scale: s, theme: theme, images: images).surface, s, .drawn))
             }
             let s = Levels.noteOverview(fit, backing: backing, size: it.bitmapSize)
-            if let snap = await CanvasView.picture(it, scale: s, theme: theme, display: display, priority: nil),
+            // Drawn natively (now, unlike a web one, which comes only from the disk cache here), a Note's overview is
+            // its paper at first: in view it is drawn sharp at the camera's zoom right after installing, and an
+            // overview of its text would show enlarged, blurred, until then; out of view the queue draws its overview
+            // right after the Notes in view (RestPlan), so the board shows without waiting for every Note's pictures
+            if !native,
+              let snap = await CanvasView.picture(it, scale: s, theme: theme, display: display, priority: nil),
               let drawn = CanvasView.compose(it, snap, scale: s, theme: theme, images: images)
             {
               return (i, (drawn, s, .drawn))
@@ -1226,10 +1244,15 @@ public final class CanvasView: NSView {
 
   /// Where the board shown was last left on this machine (main camsOf), a camera not written yet first
   var storedCamera: Camera? {
-    guard let (board, vault) = shown else { return nil }
+    guard let (board, vault) = shown, let c = keptCamera(of: board, in: vault) else { return nil }
+    return Camera(origin: c.origin, zoom: limits.clamp(c.zoom))
+  }
+
+  /// The camera a board was left at, its zoom not yet held to the board's limits
+  func keptCamera(of board: VaultBoard, in vault: Vault) -> Camera? {
     if let k = cameraToKeep, k.board == board.id, k.vault.root == vault.root { return k.camera }
     guard let c = cameras?.cameras(for: vault)[board.id] else { return nil }
-    return Camera(origin: CGPoint(x: c.x, y: c.y), zoom: limits.clamp(c.zoom))
+    return Camera(origin: CGPoint(x: c.x, y: c.y), zoom: c.zoom)
   }
 
   /// The camera come to rest is kept for the board, to open there next time: written once nothing has moved it for
@@ -1521,6 +1544,25 @@ public final class CanvasView: NSView {
         out.paper.insert(i)
       } else {
         out.drawn.insert(i)
+      }
+    }
+    return out
+  }
+
+  /// The items in view (by index) showing a bitmap at the display's resolution (`sharp`) and those showing one below it,
+  /// enlarged (`soft`); items showing nothing, or a Note only its paper, are in neither. Read only, for CanvasBench
+  package var resolutionInView: (sharp: Set<Int>, soft: Set<Int>) {
+    let view = camera.visible(bounds.size)
+    let z = min(camera.zoom, limits.max)
+    var out = (sharp: Set<Int>(), soft: Set<Int>())
+    for (i, l) in items.enumerated() where l.bitmapFrame.intersects(view) {
+      // what shows: the rest bitmap over the held one
+      let shown: CGFloat? = l.rest.contents != nil ? l.restScale : l.held.contents != nil ? l.heldScale : nil
+      guard let s = shown, !(l.note && l.pictureScale == 0) else { continue }
+      if s >= Levels.scale(z, backing: backing, size: l.bitmapFrame.size) * 0.98 {
+        out.sharp.insert(i)
+      } else {
+        out.soft.insert(i)
       }
     }
     return out
