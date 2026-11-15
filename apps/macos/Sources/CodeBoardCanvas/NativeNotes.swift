@@ -92,21 +92,32 @@ package final class NativeNotes: NoteDisplay {
     return ([binary, MeasuredSizes.stamp(assets.appending(path: "engines.js"))] + fonts).joined(separator: "\n")
   }()
 
+  private static let reported = Mutex(false)
+  /// Without its fonts every Note's layout fails (without engines.js every one with a formula or diagram), and the
+  /// layout's callers (drawing, writing, refs) can only skip the card: a build packaged without them showed blank Notes
+  /// that a double-click did not open, and said nothing. Said once a process, in the app's log and on stderr, with where
+  /// they were looked for (the launch's warm-up, or the first layout that fails)
+  static func report(_ error: any Error) {
+    guard
+      reported.withLock({ was in
+        defer { was = true }
+        return !was
+      })
+    else { return }
+    let said = "CodeBoard: Markdown assets missing or broken, Notes cannot be drawn or written in: \(error)"
+    Logger(subsystem: "CodeBoard", category: "assets").fault("\(said, privacy: .public)")
+    FileHandle.standardError.write(Data((said + "\n").utf8))
+  }
+
   /// The fonts, the layout code and the formula engines used once, off the main thread, so the first board does not pay
   /// for them (the app starts this as it launches)
   package static func warmUp() {
     Task.detached(priority: .utility) {
-      // without its fonts every Note's layout fails (without engines.js every one with a formula or diagram), and the
-      // layout's callers (drawing, writing, refs) can only skip the card: a build packaged without them showed blank
-      // Notes that a double-click did not open, and said nothing. Said here once, in the app's log and on stderr, with
-      // where they were looked for
       do {
         try MarkdownAssets.fonts.get()
         MarkdownAssets.warmUp(math: try MarkdownAssets.engines())
       } catch {
-        let said = "CodeBoard: Markdown assets missing or broken, Notes cannot be drawn or written in: \(error)"
-        Logger(subsystem: "CodeBoard", category: "assets").fault("\(said, privacy: .public)")
-        FileHandle.standardError.write(Data((said + "\n").utf8))
+        report(error)
         if (try? MarkdownAssets.fonts.get()) != nil { MarkdownAssets.warmUp(math: nil) }
       }
     }
@@ -307,6 +318,18 @@ package final class NativeNotes: NoteDisplay {
   }
 
   func laid(
+    _ note: NoteBody, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef], hideHead: Bool
+  ) throws -> Laid {
+    // the only errors a layout has: its assets' (every caller skips the card; said once here)
+    do {
+      return try laidOut(note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead)
+    } catch {
+      Self.report(error)
+      throw error
+    }
+  }
+
+  private func laidOut(
     _ note: NoteBody, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef], hideHead: Bool
   ) throws -> Laid {
     try MarkdownAssets.fonts.get()

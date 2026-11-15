@@ -3,6 +3,7 @@ import CodeBoardMarkdown
 import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardNotes
+import OSLog
 
 // Writing in a Note, Text or Box with the native Markdown component's editor (MarkdownEditorView) over the card, when
 // the canvas draws its Markdown natively: the editor lays the card out as its picture is (the same layout,
@@ -79,11 +80,17 @@ extension CanvasView {
   func beginNativeEditing(
     _ id: CardID, display: NativeNotes, note n: Drawing.Note, card: Card, caret: CGPoint?, host: NSView
   ) -> Bool {
-    guard
-      let l = try? display.laid(
+    let l: NativeNotes.Laid
+    do {
+      l = try display.laid(
         n.content, width: card.width, folder: n.folder, look: theme.id.rawValue, dark: theme.dark, refs: n.refs,
         hideHead: false)
-    else { return false }
+    } catch {
+      // a double-click that opens nothing says why, each time
+      Logger(subsystem: "CodeBoard", category: "writing").error(
+        "card \(id.rawValue, privacy: .public) cannot be written in: \(String(describing: error), privacy: .public)")
+      return false
+    }
     let text = n.content.markdown
     let layout = display.editorLayout(l, folder: n.folder, refs: n.refs, dark: theme.dark)
     let v = MarkdownEditorView(layout: layout, caret: (text as NSString).length)
