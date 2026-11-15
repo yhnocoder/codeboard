@@ -429,6 +429,23 @@ public struct CodeEditor: Sendable {
     record(CodeEdit(range: r, replacement: "", selection: CodeSelection(caret), undo: .command))
   }
 
+  /// The next match of `query` after the selection (or the one before it, back), round past the end, selected; false
+  /// when there is none
+  @discardableResult
+  public mutating func find(_ query: String, forward: Bool = true, caseSensitive: Bool = false) -> Bool {
+    guard !query.isEmpty else { return false }
+    var options: NSString.CompareOptions = caseSensitive ? [] : .caseInsensitive
+    if !forward { options.insert(.backwards) }
+    let s = selection.range
+    let first = forward ? NSRange(s.upperBound..<length) : NSRange(0..<s.lowerBound)
+    let wrap = NSRange(0..<length)
+    var r = ns.range(of: query, options: options, range: first)
+    if r.location == NSNotFound { r = ns.range(of: query, options: options, range: wrap) }
+    guard r.location != NSNotFound else { return false }
+    place(CodeSelection(anchor: r.location, head: NSMaxRange(r)))
+    return true
+  }
+
   /// Any edit (a paste the host shaped, a rule of its own): recorded for undo as it says
   public mutating func apply(_ e: CodeEdit) { record(e) }
 

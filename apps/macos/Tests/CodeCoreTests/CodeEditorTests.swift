@@ -295,4 +295,14 @@ import Testing
     e.setMarked("", selected: 0..<0)
     #expect(e.composition == nil && e.text == "x")
   }
+
+  @Test func findGoesOnFromTheSelectionAndRoundPastTheEnd() {
+    var (e, _) = editor("Ab ab AB", CodeSelection(1))
+    #expect(e.find("ab") && e.selection == CodeSelection(anchor: 3, head: 5))
+    #expect(e.find("ab") && e.selection == CodeSelection(anchor: 6, head: 8))
+    #expect(e.find("ab") && e.selection == CodeSelection(anchor: 0, head: 2))
+    #expect(e.find("ab", forward: false) && e.selection == CodeSelection(anchor: 6, head: 8))
+    #expect(e.find("ab", caseSensitive: true) && e.selection == CodeSelection(anchor: 3, head: 5))
+    #expect(!e.find("zz") && e.selection == CodeSelection(anchor: 3, head: 5))
+  }
 }

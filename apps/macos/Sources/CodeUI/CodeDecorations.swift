@@ -23,11 +23,16 @@ public struct CodeDecorations: @unchecked Sendable {
   public var bands: [Band]
   /// Drawn in the gutter's left padding, in the middle of the line's first row
   public var marks: [Int: CGImage]
+  /// A line number's own colour
+  public var numbers: [Int: CGColor]
 
-  public init(backgrounds: [Int: CGColor] = [:], bands: [Band] = [], marks: [Int: CGImage] = [:]) {
+  public init(
+    backgrounds: [Int: CGColor] = [:], bands: [Band] = [], marks: [Int: CGImage] = [:], numbers: [Int: CGColor] = [:]
+  ) {
     self.backgrounds = backgrounds
     self.bands = bands
     self.marks = marks
+    self.numbers = numbers
   }
 }
 

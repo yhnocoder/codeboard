@@ -68,6 +68,13 @@ public enum CodeDraw {
   public static func line(_ s: String, runs: [CodeRun], in ctx: CGContext, x: CGFloat, midY: CGFloat, style: CodeStyle)
   {
     guard !s.isEmpty else { return }
+    let f = style.font.ct
+    ctx.textPosition = CGPoint(x: x, y: midY + (CTFontGetAscent(f) - CTFontGetDescent(f)) / 2)
+    CTLineDraw(CTLineCreateWithAttributedString(attributed(s, runs: runs, style: style)), ctx)
+  }
+
+  /// A row's text in its runs' fonts and colours, as `line` draws it
+  public static func attributed(_ s: String, runs: [CodeRun], style: CodeStyle) -> NSAttributedString {
     let font = NSAttributedString.Key(kCTFontAttributeName as String)
     let color = NSAttributedString.Key(kCTForegroundColorAttributeName as String)
     let a = NSMutableAttributedString(string: s, attributes: [font: style.font.ct, color: style.ink])
@@ -80,9 +87,7 @@ public enum CodeDraw {
       a.addAttribute(color, value: look?.color ?? style.ink, range: range)
       if let f = look?.font { a.addAttribute(font, value: f, range: range) }
     }
-    let f = style.font.ct
-    ctx.textPosition = CGPoint(x: x, y: midY + (CTFontGetAscent(f) - CTFontGetDescent(f)) / 2)
-    CTLineDraw(CTLineCreateWithAttributedString(a), ctx)
+    return a
   }
 
   /// A line number ending at `right`, its middle at `midY`
