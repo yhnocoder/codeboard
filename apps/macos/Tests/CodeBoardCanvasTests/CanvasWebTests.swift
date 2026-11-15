@@ -418,7 +418,9 @@ func webBoard() -> Board {
     for k in 1...8 {
       let f = CGFloat(k) / 8
       r.send(
-        r.mouse(.leftMouseDragged, CGPoint(x: from.x + (onTitle.x - from.x) * f, y: from.y + (onTitle.y - from.y) * f), .option))
+        r.mouse(
+          .leftMouseDragged, CGPoint(x: from.x + (onTitle.x - from.x) * f, y: from.y + (onTitle.y - from.y) * f),
+          .option))
     }
     guard case .move(let m)? = c.gesture?.kind else {
       Issue.record("not a move")
@@ -439,7 +441,9 @@ func webBoard() -> Board {
     for k in 1...8 {
       let f = CGFloat(k) / 8
       r.send(
-        r.mouse(.leftMouseDragged, CGPoint(x: start.x + (sideTitle.x - start.x) * f, y: start.y + (sideTitle.y - start.y) * f)))
+        r.mouse(
+          .leftMouseDragged, CGPoint(x: start.x + (sideTitle.x - start.x) * f, y: start.y + (sideTitle.y - start.y) * f)
+        ))
     }
     guard case .move(let m2)? = c.gesture?.kind else {
       Issue.record("not a move")

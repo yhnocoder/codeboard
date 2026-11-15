@@ -769,7 +769,8 @@ extension CanvasView {
         roundedRect: CGRect(origin: .zero, size: size), cornerWidth: 14, cornerHeight: 14, transform: nil)
       peek.contentsScale = scale
       peek.contents = CanvasView.picture(size: size, scale: scale) { ctx in
-        ctx.addPath(CGPath(roundedRect: CGRect(origin: .zero, size: size), cornerWidth: 14, cornerHeight: 14, transform: nil))
+        ctx.addPath(
+          CGPath(roundedRect: CGRect(origin: .zero, size: size), cornerWidth: 14, cornerHeight: 14, transform: nil))
         ctx.clip()
         _ = Drawing.bookmark(
           ctx, page, b, in: CGRect(origin: .zero, size: size), loading: false, small: false, t, images: images,
