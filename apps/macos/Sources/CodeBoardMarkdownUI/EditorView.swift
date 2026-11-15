@@ -516,10 +516,62 @@ public final class MarkdownEditorView: NSView {
     super.cacheDisplay(in: r, to: rep)
   }
   static let stripHeight: CGFloat = 256
+  /// A strip's picture: two IOSurfaces taking turns, the one not shown brought up to date where it is behind (what
+  /// changed since it was shown, and what changes now) and shown in its turn. A new image for each key was copied and
+  /// colour-matched whole as Core Animation took it, 2-3 ms a key; a surface is shown as it is
   final class Strip {
     let layer = CALayer()
-    let ctx: CGContext
-    init(_ ctx: CGContext) { self.ctx = ctx }
+    private(set) var surfaces: [IOSurface] = []
+    private(set) var contexts: [CGContext] = []
+    /// the surface shown, and where the other is behind it (the view's points)
+    private(set) var front = 0
+    var behind = CGRect.null
+    var surface: IOSurface { surfaces[front] }
+    var ctx: CGContext { contexts[front] }
+
+    init?(width: Int, height: Int) {
+      guard let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+      for _ in 0..<2 {
+        guard
+          let s = IOSurface(properties: [
+            .width: width, .height: height, .bytesPerElement: 4, .pixelFormat: 0x4247_5241,  // 'BGRA'
+          ]),
+          let ctx = CGContext(
+            data: s.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: s.bytesPerRow,
+            space: space,
+            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        else { return nil }
+        // tagged, or Core Animation shows the pixels in the display's colour space
+        if let plist = space.copyPropertyList() { IOSurfaceSetValue(s as IOSurfaceRef, kIOSurfaceColorSpace, plist) }
+        ctx.setShouldSmoothFonts(false)
+        surfaces.append(s)
+        contexts.append(ctx)
+      }
+    }
+
+    /// The surface not shown made the one shown, pixel for pixel
+    func mirror() {
+      let (a, b) = (surfaces[front], surfaces[1 - front])
+      a.lock(options: .readOnly, seed: nil)
+      b.lock(options: [], seed: nil)
+      memcpy(b.baseAddress, a.baseAddress, a.bytesPerRow * a.height)
+      b.unlock(options: [], seed: nil)
+      a.unlock(options: .readOnly, seed: nil)
+      behind = .null
+    }
+
+    /// The other surface drawn where it is behind and over `r` by `draw` (given its context, y-down in the view's
+    /// points), then shown
+    func turn(_ r: CGRect, _ draw: (CGContext, CGRect) -> Void) {
+      let back = 1 - front
+      let s = surfaces[back]
+      s.lock(options: [], seed: nil)
+      draw(contexts[back], r.union(behind))
+      s.unlock(options: [], seed: nil)
+      behind = r
+      front = back
+      layer.contents = s
+    }
   }
   private(set) var strips: [Int: Strip] = [:]
   /// the width and backing scale the strips were made at
@@ -571,15 +623,9 @@ public final class MarkdownEditorView: NSView {
         if !r.isNull { paint(s, r, band) }
         continue
       }
-      let w = max(1, Int((bounds.width * scale).rounded(.up)))
-      guard
-        let space = CGColorSpace(name: CGColorSpace.sRGB),
-        let ctx = CGContext(
-          data: nil, width: w, height: Int(h * scale), bitsPerComponent: 8, bytesPerRow: 0, space: space,
-          bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
-      else { continue }
-      ctx.setShouldSmoothFonts(false)
-      let s = Strip(ctx)
+      guard let s = Strip(width: max(1, Int((bounds.width * scale).rounded(.up))), height: Int(h * scale)) else {
+        continue
+      }
       CATransaction.begin()
       CATransaction.setDisableActions(true)
       s.layer.frame = band
@@ -587,33 +633,32 @@ public final class MarkdownEditorView: NSView {
       layer.insertSublayer(s.layer, at: 0)
       CATransaction.commit()
       strips[i] = s
+      // drawn whole, and the same on its other surface
       paint(s, band, band)
+      s.mirror()
     }
     unpainted = .null
   }
 
   /// Draws `r` (the view's points) into the strip covering `band`
   private func paint(_ s: Strip, _ r: CGRect, _ band: CGRect) {
-    let ctx = s.ctx
-    let k = CGFloat(ctx.width) / band.width
-    // on whole device pixels: a pixel drawn in part would lose what was under it
-    let r = r.intersection(band).applying(CGAffineTransform(scaleX: k, y: k)).integral
-      .applying(CGAffineTransform(scaleX: 1 / k, y: 1 / k))
-    ctx.saveGState()
-    ctx.translateBy(x: 0, y: CGFloat(ctx.height))
-    ctx.scaleBy(x: k, y: -k)
-    ctx.translateBy(x: 0, y: -band.minY)
-    ctx.clip(to: r)
-    ctx.clear(r)
-    NSGraphicsContext.saveGraphicsState()
-    NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
-    draw(r)
-    NSGraphicsContext.restoreGraphicsState()
-    ctx.restoreGState()
-    CATransaction.begin()
-    CATransaction.setDisableActions(true)
-    s.layer.contents = ctx.makeImage()
-    CATransaction.commit()
+    s.turn(r) { ctx, r in
+      let k = CGFloat(ctx.width) / band.width
+      // on whole device pixels: a pixel drawn in part would lose what was under it
+      let r = r.intersection(band).applying(CGAffineTransform(scaleX: k, y: k)).integral
+        .applying(CGAffineTransform(scaleX: 1 / k, y: 1 / k))
+      ctx.saveGState()
+      ctx.translateBy(x: 0, y: CGFloat(ctx.height))
+      ctx.scaleBy(x: k, y: -k)
+      ctx.translateBy(x: 0, y: -band.minY)
+      ctx.clip(to: r)
+      ctx.clear(r)
+      NSGraphicsContext.saveGraphicsState()
+      NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
+      draw(r)
+      NSGraphicsContext.restoreGraphicsState()
+      ctx.restoreGState()
+    }
   }
 
   // MARK: drawing

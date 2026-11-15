@@ -162,8 +162,9 @@ import Testing
           NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
           view.draw(band)
           NSGraphicsContext.restoreGraphicsState()
-          let shown = s.layer.contents.map { $0 as! CGImage }
-          return shown?.dataProvider?.data as Data? == ctx.makeImage()?.dataProvider?.data as Data?
+          // the surface shown, and the other once brought up to date where it is behind
+          let want = ctx.makeImage()?.dataProvider?.data as Data?
+          return s.layer.contents as AnyObject? === s.surface && s.ctx.makeImage()?.dataProvider?.data as Data? == want
             && s.layer.frame == band
         }
     }
