@@ -333,6 +333,59 @@ extension Rig {
     #expect(r.doc.board.segment(cid("f"), s1)?.lines.last == "    return run(x)")
   }
 
+  /// The find bar has the web editor's buttons (Toggle Replace, Match Case, back, on, Close; Replace and All beside the
+  /// replacement) and its replace: ⌥⌘F opens it with the replacement, a click on a button does what its key does
+  @Test func theFindBarHasTheWebEditorsButtonsAndReplaces() async throws {
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer { r.close() }
+    r.doubleClick(try r.line("f", 1, x: 4))
+    await r.editorReady()
+    let v = try #require(r.code)
+    r.equivalent(3, "f", [.command, .option])
+    let bar = try #require(v.findBar)
+    let buttons = try #require(bar.buttons)
+    bar.layoutSubtreeIfNeeded()
+    #expect(bar.replacing && buttons.frame.width == 120 && buttons.frame.height == 54)
+    // a click on button `k` of row `row` (or at `x` in it), to the view under it as the window gives it on: the rig's
+    // window is never key, where a first click would only bring it forward
+    func click(_ k: Int, row: Int = 0, x: CGFloat? = nil) {
+      bar.layoutSubtreeIfNeeded()
+      let p = buttons.convert(CGPoint(x: x ?? CGFloat(k) * 24 + 12, y: CGFloat(row) * 30 + 12), to: nil)
+      let hit = r.window.contentView?.hitTest(r.window.contentView!.convert(p, from: nil))
+      #expect(hit === buttons)
+      for t in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+        let e = NSEvent.mouseEvent(
+          with: t, location: p, modifierFlags: [], timestamp: r.next(0.016), windowNumber: r.window.windowNumber,
+          context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+        if t == .leftMouseDown { hit?.mouseDown(with: e) } else { hit?.mouseUp(with: e) }
+      }
+    }
+    // "ids" is at 21, 33 and 52
+    bar.query.stringValue = "ids"
+    bar.onChange()
+    #expect(v.editor.selection.range == 21..<24)
+    click(3)
+    #expect(v.editor.selection.range == 33..<36, "Next Match")
+    click(2)
+    #expect(v.editor.selection.range == 21..<24, "Previous Match")
+    bar.replacement.stringValue = "xs"
+    click(0, row: 1, x: 29)
+    #expect(v.editor.text.hasPrefix("def step(batch):\n    xs = batch.ids"), "Replace")
+    #expect(v.editor.selection.range == 32..<35 && bar.count.stringValue == "1/2", "the next one, a unit sooner")
+    click(0, row: 1, x: 62 + 16)
+    #expect(!v.editor.text.contains("ids") && v.editor.text.hasSuffix("run(xs)"), "All")
+    v.undo(nil)
+    #expect(v.editor.text.contains("batch.ids") && v.editor.text.hasSuffix("run(ids)"), "All is one step")
+    bar.query.stringValue = "IDS"
+    click(1)
+    #expect(bar.caseSensitive && bar.count.stringValue == "0", "Match Case")
+    click(0)
+    bar.layoutSubtreeIfNeeded()
+    #expect(!bar.replacing && buttons.frame.height == 24, "Toggle Replace")
+    click(4)
+    #expect(v.findBar == nil && r.window.firstResponder === v, "Close")
+  }
+
   /// The find bar is the screen's size at any zoom, at the top right of the editor; a match out of view brings the board
   /// to it at the zoom it has
   @Test func theFindBarKeepsItsSizeAndAMatchOutOfViewIsBroughtIn() async throws {

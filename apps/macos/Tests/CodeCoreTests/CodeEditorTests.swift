@@ -305,4 +305,19 @@ import Testing
     #expect(e.find("ab", caseSensitive: true) && e.selection == CodeSelection(anchor: 3, head: 5))
     #expect(!e.find("zz") && e.selection == CodeSelection(anchor: 3, head: 5))
   }
+
+  /// Replace takes the selected match and selects the next (CodeMirror's replaceNext); All takes every match, one step
+  @Test func replaceTakesTheSelectedMatchAndAllTakeEveryOneAsOneStep() {
+    var (e, _) = editor("Ab ab AB", CodeSelection(1))
+    // not on a match: only the next one selected
+    #expect(e.replaceMatch("ab", with: "x") && e.text == "Ab ab AB" && e.selection == CodeSelection(anchor: 3, head: 5))
+    #expect(e.replaceMatch("ab", with: "x") && e.text == "Ab x AB" && e.selection == CodeSelection(anchor: 5, head: 7))
+    #expect(!e.replaceMatch("ab", with: "x", caseSensitive: true) && e.text == "Ab x AB", "no lower-case ab")
+    #expect(e.replaceAll("ab", with: "yz") == 2 && e.text == "yz x yz")
+    #expect(e.replaceAll("AB", with: "q", caseSensitive: true) == 0)
+    e.undo()
+    #expect(e.text == "Ab x AB")
+    e.undo()
+    #expect(e.text == "Ab ab AB")
+  }
 }

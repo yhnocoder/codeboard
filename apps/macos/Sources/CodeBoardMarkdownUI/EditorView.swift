@@ -213,17 +213,12 @@ public final class MarkdownEditorView: NSView {
     addSubview(headingChip)
     addSubview(findBar)
     findBar.buttons = findButtons
-    findButtons.onPress = { [weak self] id in
-      guard let self else { return }
-      switch id {
-      case "case":
-        self.findBar.caseSensitive.toggle()
-        self.refind(go: true)
-      case "back": self.stepMatch(false)
-      default: self.stepMatch(true)
-      }
+    findBar.onCase = { [weak self] _ in self?.refind(go: true) }
+    // the replacement shown or hidden: the bar keeps its top right corner
+    findBar.onResize = { [weak self] in
+      guard let b = self?.findBar else { return }
+      b.frame = CGRect(x: b.frame.maxX - b.size.width, y: b.frame.minY, width: b.size.width, height: b.size.height)
     }
-    findBar.onCase = { [weak self] on in self?.findButtons.caseOn = on }
     findBar.onChange = { [weak self] in self?.refind(go: true) }
     findBar.onStep = { [weak self] on in self?.stepMatch(on) }
     findBar.onReplace = { [weak self] all in self?.replaceMatch(all: all) }

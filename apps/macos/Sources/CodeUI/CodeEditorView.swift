@@ -69,6 +69,8 @@ public final class CodeEditorView: NSView {
   public var continuing = 0
   /// How the find bar looks; nil: there is none
   public var findLook: FindBar.Look?
+  /// The host's buttons for the find bar (FindBar.buttons), made with it
+  public var findButtons: (() -> NSView)?
   public private(set) var findBar: FindBar?
   /// A match was found and selected: where it is in the view, for the host to bring it into view
   public var onFound: ((CGRect) -> Void)?
@@ -390,10 +392,11 @@ public final class CodeEditorView: NSView {
   private func find(_ name: String) -> Bool {
     guard let look = findLook else { return false }
     switch name {
-    case "Meta-f":
+    // ⌥⌘F and ⌘H with the replacement (find.ts findKey)
+    case "Meta-f", "Meta-Alt-f", "Meta-h":
       let bar = findBar ?? makeFindBar()
       findFrom = editor.selection.range.lowerBound
-      bar.show(replace: false, look: look, in: .zero)
+      bar.show(replace: name != "Meta-f", look: look, in: .zero)
       placeFindBar()
       count()
     case "Meta-g", "Shift-Meta-g":
@@ -412,7 +415,11 @@ public final class CodeEditorView: NSView {
       self.findNext(forward: true)
     }
     bar.onStep = { [weak self] in self?.findNext(forward: $0) }
+    bar.onReplace = { [weak self] in self?.replaceFound(all: $0) }
+    bar.onCase = { [weak self] _ in self?.count() }
+    bar.onResize = { [weak self] in self?.placeFindBar() }
     bar.onClose = { [weak self] in self?.closeFind() }
+    bar.buttons = findButtons?()
     addSubview(bar)
     findBar = bar
     return bar
@@ -421,13 +428,34 @@ public final class CodeEditorView: NSView {
   /// The next (or the one before) of what the find bar holds
   public func findNext(forward: Bool) {
     guard let q = findBar?.query.stringValue, !q.isEmpty else { return count() }
+    let cs = findBar?.caseSensitive ?? false
     var found = false
-    change { found = $0.find(q, forward: forward) }
+    change { found = $0.find(q, forward: forward, caseSensitive: cs) }
     count()
-    let s = editor.selection.range
-    if found, let r = layout.rects(drawn(s.lowerBound)..<drawn(s.upperBound), right: bounds.width).first {
-      onFound?(r)
+    if found { revealFound() }
+  }
+
+  /// The match selected replaced by what the bar's replacement holds and the next one selected, or every match
+  /// replaced (one step for undo)
+  public func replaceFound(all: Bool) {
+    guard let bar = findBar, !bar.query.stringValue.isEmpty else { return }
+    let (q, with, cs) = (bar.query.stringValue, bar.replacement.stringValue, bar.caseSensitive)
+    var found = false
+    change {
+      if all {
+        $0.replaceAll(q, with: with, caseSensitive: cs)
+      } else {
+        found = $0.replaceMatch(q, with: with, caseSensitive: cs)
+      }
     }
+    count()
+    if found { revealFound() }
+  }
+
+  /// The match selected, for the host to bring into view
+  private func revealFound() {
+    let s = editor.selection.range
+    if let r = layout.rects(drawn(s.lowerBound)..<drawn(s.upperBound), right: bounds.width).first { onFound?(r) }
   }
 
   /// "this match / all of them" in the bar
@@ -442,7 +470,7 @@ public final class CodeEditorView: NSView {
     var all: [Int] = []
     var r = NSRange(location: 0, length: ns.length)
     while true {
-      let m = ns.range(of: q, options: .caseInsensitive, range: r)
+      let m = ns.range(of: q, options: bar.caseSensitive ? [] : .caseInsensitive, range: r)
       guard m.location != NSNotFound else { break }
       all.append(m.location)
       r = NSRange(location: NSMaxRange(m), length: ns.length - NSMaxRange(m))

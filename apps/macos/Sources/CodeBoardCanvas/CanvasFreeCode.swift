@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardNotes
 import CodeBoardSyntax
@@ -67,6 +68,9 @@ extension CanvasView {
     v.continuing = continuing
     v.pasteboard = pasteboard
     v.findLook = FindBar.Look(fill: theme.surface, line: theme.hair, radius: 8)
+    // the buttons a Note's find bar has, in the look's colours
+    let look = MarkdownLooks.theme(theme.id.rawValue, dark: theme.dark)
+    v.findButtons = { findButtons(look) }
     // a match out of view: the board moves to it, at the zoom it has
     v.onFound = { [weak self] m in
       guard let self, let r = self.scene?.placed[id]?.rect else { return }

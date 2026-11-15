@@ -446,6 +446,49 @@ public struct CodeEditor: Sendable {
     return true
   }
 
+  /// The selection replaced by `replacement` when it is a match of `query`, then the next match selected
+  /// (CodeMirror's replaceNext); not a match: the next one selected, nothing replaced. False when there is no match
+  @discardableResult
+  public mutating func replaceMatch(_ query: String, with replacement: String, caseSensitive: Bool = false) -> Bool {
+    guard !query.isEmpty else { return false }
+    let s = selection.range
+    let options: NSString.CompareOptions = caseSensitive ? [] : .caseInsensitive
+    if !s.isEmpty, ns.substring(with: NSRange(s)).compare(query, options: options) == .orderedSame {
+      let end = s.lowerBound + (replacement as NSString).length
+      record(CodeEdit(range: s, replacement: replacement, selection: CodeSelection(end), undo: .command))
+    }
+    return find(query, caseSensitive: caseSensitive)
+  }
+
+  /// Every match of `query` replaced, as one step for undo; how many there were
+  @discardableResult
+  public mutating func replaceAll(_ query: String, with replacement: String, caseSensitive: Bool = false) -> Int {
+    guard !query.isEmpty else { return 0 }
+    let options: NSString.CompareOptions = caseSensitive ? [] : .caseInsensitive
+    var matches: [NSRange] = []
+    var from = 0
+    while from < length {
+      let r = ns.range(of: query, options: options, range: NSRange(from..<length))
+      guard r.location != NSNotFound else { break }
+      matches.append(r)
+      from = NSMaxRange(r)
+    }
+    guard let first = matches.first, let last = matches.last else { return 0 }
+    // one edit from the first match to the end of the last, so it is one step
+    var out = ""
+    var at = first.location
+    for m in matches {
+      out += ns.substring(with: NSRange(at..<m.location)) + replacement
+      at = NSMaxRange(m)
+    }
+    let span = first.location..<NSMaxRange(last)
+    record(
+      CodeEdit(
+        range: span, replacement: out, selection: CodeSelection(first.location + (out as NSString).length),
+        undo: .command))
+    return matches.count
+  }
+
   /// Any edit (a paste the host shaped, a rule of its own): recorded for undo as it says
   public mutating func apply(_ e: CodeEdit) { record(e) }
 
