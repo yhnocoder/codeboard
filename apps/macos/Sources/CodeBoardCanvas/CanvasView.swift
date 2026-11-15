@@ -55,6 +55,10 @@ public final class CanvasView: NSView {
   /// Sub-board cards, Texts and Boxes, which the summary level shows as they are (main's .keeplay): always over the card
   /// level, never faded
   let kept = CALayer()
+  /// The alignment guides while something is dragged (CanvasEditing.swift showGuides), over the ports and handles
+  let guideLayer = CAShapeLayer()
+  /// A drag held still lines up after a moment
+  var snapSettle: Task<Void, Never>?
   /// Cards picked up by the pointer, until they have landed: over every card, Texts and Boxes too (main's .card.lift)
   let liftedLayer = CALayer()
   /// Where the board shown last is kept as a picture when it is left (nil: nowhere; the app's canvases keep it in its
@@ -432,7 +436,11 @@ public final class CanvasView: NSView {
     summaryLayer.allowsGroupOpacity = true
     summaryLayer.isHidden = true
     // the ports and handles over Texts and Boxes too (main's .eport is over its card's face); faded with the card level
-    for l in [cardLevel, kept, liftedLayer, chrome, summaryLayer, shelfHome, shelfDrag] { world.addSublayer(l) }
+    for l in [cardLevel, kept, liftedLayer, chrome, guideLayer, summaryLayer, shelfHome, shelfDrag] {
+      world.addSublayer(l)
+    }
+    guideLayer.fillColor = nil
+    guideLayer.opacity = 0.9
     backdrop.anchorPoint = .zero
     root.addSublayer(backdrop)
     root.addSublayer(world)
