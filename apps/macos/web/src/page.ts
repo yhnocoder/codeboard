@@ -790,8 +790,11 @@ const edit = {
       const html = md.render(a.note.text);
       made.body.innerHTML = html;
       md.hydrate(made.body, html);
+      // the body is an editor's (.editing), which the board's rule hiding a heading the header shows skips (page.css)
+      made.body.classList.add("spot");
       await settled([made.card], true);
       spot = staticSpot(made.body, a.margin + a.caret.x * a.k, a.margin + a.caret.y * a.k);
+      made.body.classList.remove("spot");
       made.body.textContent = "";
     }
     const list = a.refList;
