@@ -176,6 +176,54 @@ private func freeBoard() -> Board {
     #expect(await js("return edit.compositionEnds()") as? Int == ends + 1, "one composition, ended by the commit")
   }
 
+  /// Code's colours for one composing key that come back once WebKit has begun the next (its compositionupdate, before
+  /// it writes the composition anew) leave the composition alone: put in then, CodeMirror drew the line again under it,
+  /// the update was written beside the old one ("nni"), the commit came out as "n你", and leaving wrote that or, with
+  /// CodeMirror's own text left behind, nothing (pinyinTypedAtOnceAfterTheDoubleClickOnCodeIsComposed on a busy
+  /// machine: web/src/page.ts afterCaret)
+  @Test func coloursComingAsTheNextComposingKeyGoesInLeaveTheCompositionAlone() async throws {
+    Pinyin.install()
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer {
+      Pinyin.windows.remove(r.window.windowNumber)
+      r.close()
+    }
+    let c = r.canvas
+    let card = r.rect("f")
+    let code = try #require(c.scene?.placed[cid("f")]?.code)
+    let row = try #require(code.layout.row(segment: 0, line: 3))
+    r.doubleClick(CGPoint(x: card.maxX - 10, y: card.minY + code.top + row.y + row.height / 2))
+    await r.editorReady()
+    await r.pageFocused()
+    let v = c.noteEditor.view
+    func js(_ s: String) async -> Any? { try? await v.callAsyncJavaScript(s, contentWorld: .page) }
+    // the colours native answers, held in the page and given as "ni" begins to go in (the second key's update)
+    _ = await js(
+      """
+      const h = webkit.messageHandlers.highlight, post = h.postMessage.bind(h), held = [];
+      let given = false;
+      h.postMessage = (m) => new Promise((give) => post(m).then((html) => given ? give(html) : held.push(() => give(html))));
+      addEventListener("compositionupdate", (e) => {
+        if (e.data !== "ni" || given) return;
+        given = true;
+        for (const give of held.splice(0)) give();
+      }, true);
+      window.heldCount = () => held.length;
+      """)
+    Pinyin.windows.insert(r.window.windowNumber)
+    await r.typeInTurn("n")
+    await r.until("the colours for n answered") { (await js("return heldCount()") as? Int ?? 0) > 0 }
+    await r.typeInTurn("i ")
+    await r.until("committed") {
+      (await js("return [...document.querySelectorAll('.cm-line')].at(-1)?.textContent ?? ''") as? String)?
+        .contains("你") == true
+    }
+    r.press("\u{1b}")
+    await r.until("left") { !c.isEditing }
+    let lines = r.doc.board.segment(cid("f"), s1)?.lines ?? []
+    #expect(lines.last == "    return run(ids)你", "\(lines)")
+  }
+
   /// "ni" and Space typed at once after the double-click on code, before the editor is there: they go through the input
   /// method too, so 你 is written (CanvasIMETests.pinyinTypedAtOnceAfterTheDoubleClickIsComposed)
   @Test(arguments: [false, true])
@@ -186,6 +234,9 @@ private func freeBoard() -> Board {
       Pinyin.windows.remove(r.window.windowNumber)
       r.close()
     }
+    // a key window, as the one a person types in: in one that is not, the page has no focus and each key's
+    // composition ends at once, an order no input method gives
+    KeyWindows.add(r.window)
     if late { await r.editorFocusesLate() }
     let c = r.canvas
     let card = r.rect("f")
@@ -239,6 +290,33 @@ private func freeBoard() -> Board {
     await r.until("left") { !c.isEditing }
     let lines = r.doc.board.segment(cid("f"), s1)?.lines ?? []
     #expect(lines.last == "    return run(ids)你", "\(lines)")
+  }
+
+  /// ⌘/ comments the caret's line out with its language's line comment (FreeEdit.tsx: langInfo's), not always "//"
+  @Test func commandSlashCommentsTheLineOutInItsLanguage() async throws {
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let card = r.rect("f")
+    let code = try #require(c.scene?.placed[cid("f")]?.code)
+    let row = try #require(code.layout.row(segment: 0, line: 3))
+    r.doubleClick(CGPoint(x: card.maxX - 10, y: card.minY + code.top + row.y + row.height / 2))
+    await r.editorReady()
+    await r.until("the editor takes keys") { c.noteEditor.view.held == nil }
+    for t in [NSEvent.EventType.keyDown, .keyUp] {
+      r.window.sendEvent(
+        NSEvent.keyEvent(
+          with: t, location: .zero, modifierFlags: .command, timestamp: ProcessInfo.processInfo.systemUptime,
+          windowNumber: r.window.windowNumber, context: nil, characters: "/", charactersIgnoringModifiers: "/",
+          isARepeat: false, keyCode: 44)!)
+    }
+    await r.until("commented") {
+      (try? await c.noteEditor.view.callAsyncJavaScript(
+        "return [...document.querySelectorAll('.cm-line')].at(-1)?.textContent ?? ''", contentWorld: .page) as? String)?
+        .hasPrefix("    return") == false
+    }
+    await c.endEditing()
+    #expect(r.doc.board.segment(cid("f"), s1)?.lines.last == "    # return run(ids)")
   }
 
   @Test func keysTypedAtOnceAfterTheDoubleClickAreAllWritten() async throws {
