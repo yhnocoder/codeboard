@@ -464,6 +464,20 @@ extension CanvasView {
     }
     let z = camera.zoom
     let accent = theme.accent
+    let wasRinged = ringed
+    let oldRings = (chrome.sublayers ?? []).filter { $0.name == "ring" || $0.name == "glow" }
+    for l in oldRings {
+      guard let id = l.value(forKey: "card") as? String, let a = l.animation(forKey: "in") else { continue }
+      fading[CardID(rawValue: id), default: [:]][l.name ?? ""] = a
+    }
+    defer { fading = [:] }
+    ringed = []
+    defer {
+      fadeOut(
+        oldRings.filter { l in
+          (l.value(forKey: "card") as? String).map { !ringed.contains(CardID(rawValue: $0)) } ?? false
+        })
+    }
     withoutAnimation {
       chrome.sublayers = nil
       litArrows.sublayers = nil
@@ -476,7 +490,11 @@ extension CanvasView {
         guard let r = liveRect(item) else { continue }
         switch item {
         case .card(let id):
-          selectedLook(id, r, tilt: index(of: .card(id)).map { scene!.items[$0].tilt } ?? 0, into: chrome)
+          // being written in: no ring (the caret and the folded header say which)
+          if editing?.id == id, !isText(id) { continue }
+          selectedLook(
+            id, r, tilt: index(of: .card(id)).map { scene!.items[$0].tilt } ?? 0, into: chrome,
+            fadeIn: !wasRinged.contains(id))
         case .section(let id):
           if theme.id == .inkWash, let f = scene?.frames.first(where: { $0.id == id }), let strokes = f.strokes {
             brushed(r, strokes: strokes.cg)
@@ -514,34 +532,103 @@ extension CanvasView {
     }
   }
 
-  /// A selected card's look at `r` in `parent`: a Text's or Box's outline, Ink Wash's seal, else the ring
-  func selectedLook(_ id: CardID, _ r: CGRect, tilt: CGFloat, into parent: CALayer) {
+  /// A selected card's look at `r` in `parent`: a Text's or Box's outline, Ink Wash's seal, else the ring; `fadeIn`:
+  /// it was not selected before, so the ring comes in as main's does
+  func selectedLook(_ id: CardID, _ r: CGRect, tilt: CGFloat, into parent: CALayer, fadeIn: Bool = false) {
     let z = camera.zoom
     if isText(id) {
       outline(r, box: isBox(id), tilt: tilt, zoom: z, into: parent)
     } else if theme.id == .inkWash {
       parent.addSublayer(seal(on: r, tilt: tilt))
     } else {
-      ring(r, tilt: tilt, zoom: z, into: parent)
+      for l in ring(r, tilt: tilt) {
+        l.setValue(id.rawValue, forKey: "card")
+        // drawn again while it comes in: it goes on coming in, not from the start
+        if let going = fading[id]?[l.name ?? ""] {
+          l.add(going, forKey: "in")
+        } else if fadeIn {
+          Self.fadeIn(l)
+        }
+        parent.addSublayer(l)
+      }
+      if parent === chrome { ringed.insert(id) }
     }
   }
 
-  /// A selected card's ring (styles.css .card.sel): 1.5 view points of the accent over a 4.5 point halo of it at 16 %
-  private func ring(_ r: CGRect, tilt: CGFloat, zoom z: CGFloat, into parent: CALayer) {
-    for (width, alpha) in [(4.5, 0.16), (1.5, 1.0)] as [(CGFloat, CGFloat)] {
-      let l = CAShapeLayer()
-      let out = width / 2 / z
-      let ring = r.insetBy(dx: -out, dy: -out)
-      l.bounds = CGRect(origin: .zero, size: ring.size)
-      l.position = CGPoint(x: ring.midX, y: ring.midY)
-      let radius = theme.cardRadius + out
-      l.path = CGPath(roundedRect: l.bounds, cornerWidth: radius, cornerHeight: radius, transform: nil)
-      l.fillColor = nil
-      l.strokeColor = theme.accent.copy(alpha: alpha)
-      l.lineWidth = width / z
+  /// A line that is `w` on the board, never thinner on screen than a pixel
+  func boardLine(_ w: CGFloat) -> CGFloat { max(w, 1 / (camera.zoom * backing)) }
+
+  /// A selected card's ring in Warm Ink (themes.css .card > .cface::before: `0 0 0 1.5px accent, 0 0 4px 3px accent
+  /// 20%`, round as the card): a 1.5 line of the accent hugging the card on its own squircle corner, over a glow of it
+  /// blurred 4 and spread 3, outside the card only; sizes on the board, so they zoom with it
+  private func ring(_ r: CGRect, tilt: CGFloat) -> [CALayer] {
+    func turned(_ l: CALayer) -> CALayer {
+      l.frame = r
+      l.bounds = CGRect(origin: r.origin, size: r.size)
       if tilt != 0 { l.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
-      parent.addSublayer(l)
+      return l
     }
+    let glow = CALayer()
+    glow.name = "glow"
+    glow.shadowPath = Drawing.squircle(r.insetBy(dx: -3, dy: -3), theme.cardRadius + 3)
+    glow.shadowColor = theme.accent
+    glow.shadowOpacity = 0.2
+    glow.shadowRadius = 2
+    glow.shadowOffset = .zero
+    // a box shadow: none under the card
+    let mask = CAShapeLayer()
+    let around = CGMutablePath()
+    around.addRect(r.insetBy(dx: -20, dy: -20))
+    around.addPath(Drawing.squircle(r, theme.cardRadius))
+    mask.path = around
+    mask.fillRule = .evenOdd
+    glow.mask = mask
+    let w = boardLine(1.5)
+    let line = CAShapeLayer()
+    line.name = "ring"
+    line.path = Drawing.squircle(r.insetBy(dx: -w / 2, dy: -w / 2), theme.cardRadius + w / 2)
+    line.fillColor = nil
+    line.strokeColor = theme.accent
+    line.lineWidth = w
+    return [turned(glow), turned(line)]
+  }
+
+  /// A ring coming in (themes.css .card.sel > .cface::before): 120 ms, from 98.5 % of its size
+  static func fadeIn(_ l: CALayer) {
+    let o = CABasicAnimation(keyPath: "opacity")
+    o.fromValue = 0
+    o.toValue = 1
+    let k = CABasicAnimation(keyPath: "transform.scale")
+    k.fromValue = 0.985
+    k.toValue = 1
+    let g = CAAnimationGroup()
+    g.animations = [o, k]
+    g.duration = 0.12
+    g.timingFunction = CAMediaTimingFunction(name: .easeOut)
+    l.add(g, forKey: "in")
+  }
+
+  /// Rings of cards no longer selected go out over 90 ms (the card unselected, or now being written in)
+  func fadeOut(_ ls: [CALayer]) {
+    guard !ls.isEmpty else { return }
+    CATransaction.begin()
+    CATransaction.setCompletionBlock { [weak self] in
+      MainActor.assumeIsolated {
+        for l in ls where l.superlayer === self?.leavingChrome { l.removeFromSuperlayer() }
+      }
+    }
+    for l in ls {
+      l.removeAnimation(forKey: "in")
+      leavingChrome.addSublayer(l)
+      l.opacity = 0
+      let o = CABasicAnimation(keyPath: "opacity")
+      o.fromValue = 1
+      o.toValue = 0
+      o.duration = 0.09
+      o.timingFunction = CAMediaTimingFunction(name: .easeIn)
+      l.add(o, forKey: "out")
+    }
+    CATransaction.commit()
   }
 
   /// Ink Wash's selected card (themes.css #128): a small vermilion seal 选 over its top right corner, 24 board units

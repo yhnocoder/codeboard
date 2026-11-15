@@ -192,6 +192,12 @@ public final class CanvasView: NSView {
   package var refreshing: Task<Void, Never>?
   /// Selection rings, handles: over the cards, in board units
   let chrome = CALayer()
+  /// Rings of cards no longer selected, fading out over the board (drawChrome redraws `chrome` whole)
+  let leavingChrome = CALayer()
+  /// The cards whose ring was drawn last: a card new among them fades its ring in
+  var ringed: Set<CardID> = []
+  /// While the chrome is drawn again: the rings still coming in, by card and layer
+  var fading: [CardID: [String: CAAnimation]] = [:]
   /// The rubber band, in the view's units
   let marquee = CAShapeLayer()
   /// The arrows' layers, as `scene.arrows`
@@ -387,11 +393,13 @@ public final class CanvasView: NSView {
     wantsLayer = true
     for l in [
       world, cardLevel, kept, summaryLayer, sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers,
-      freeMarks, shelfHome, shelfDrag, chrome,
+      freeMarks, shelfHome, shelfDrag, chrome, leavingChrome,
     ] {
       l.anchorPoint = .zero
     }
-    for l in [sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers, freeMarks, chrome] {
+    for l in [
+      sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers, freeMarks, leavingChrome, chrome,
+    ] {
       cardLevel.addSublayer(l)
     }
     // faded as one: cards over one another do not show through each other halfway
