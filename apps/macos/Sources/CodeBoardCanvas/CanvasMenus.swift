@@ -78,8 +78,33 @@ extension CanvasView {
     m.addItem(arrange)
     m.addItem(copyPathItem([c.rawValue]))
     m.addItem(.separator())
-    m.addItem(key(action("Delete", #selector(delete(_:))), "\u{8}"))
+    // a shared card on several boards (menus.ts deleteItems): what it is and where, then this board or all of them
+    let on = document?.board.card(c)?.isShared == true ? boardsShowing(c).count : 0
+    guard on > 1, case .own(let k)? = document?.board.card(c)?.content else {
+      m.addItem(key(action("Delete", #selector(delete(_:))), "\u{8}"))
+      return m
+    }
+    let head = menuItem("\(cardTitle(k)) · on \(on) boards", enabled: false) {}
+    head.isEnabled = false
+    m.addItem(head)
+    m.addItem(key(action("Remove from This Board", #selector(delete(_:))), "\u{8}"))
+    m.addItem(key(menuItem("Delete Everywhere…") { [weak self] in self?.deleteEverywhere([c]) }, "\u{8}", .command))
     return m
+  }
+
+  /// Delete Everywhere… (⌘⌫; actions/shared.ts deleteEverywhere): the first of `ids` shared on several boards, asked
+  /// about by the shell, then gone from this board as one step and from the others; none such says why
+  func deleteEverywhere(_ ids: [CardID]) {
+    guard let doc = document else { return }
+    guard let id = ids.first(where: { doc.board.card($0)?.isShared == true && boardsShowing($0).count > 1 }),
+      case .own(let k)? = doc.board.card(id)?.content
+    else { return toast("Only linked cards on several boards can be deleted everywhere. Press ⌫ to delete.") }
+    guard let ask = onDeleteEverywhere else { return }
+    weak let d = doc
+    Task { [weak self] in
+      let n = await ask(id, cardTitle(k)) { d?.edit("Delete Everywhere", selection: []) { $0.delete([.card(id)]) } }
+      if let n, self?.document === d { self?.toast("Deleted from \(n) boards") }
+    }
   }
 
   /// A code card's View ▸ (kindItems view): what it hides, and its background
