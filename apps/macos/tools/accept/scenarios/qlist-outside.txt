@@ -8,6 +8,10 @@ click @ui.questions:c+-150,-60
 wait 300
 mac: expect press has ListWebView
 web: expect press has qlist
+# the row pressed may leave a popover of its own open (on CI the web side's, where the press outside then landed): Esc
+# twice, so the press outside lands on the board
+key esc
+wait 300
 key esc
 click @ui.questions
 # (a machine under load opens it later: the press outside must come after it is open)
