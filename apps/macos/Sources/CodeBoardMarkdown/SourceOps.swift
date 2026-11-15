@@ -82,8 +82,6 @@ public enum MarkdownSourceOps {
       guard let t = n.token else { continue }
       switch t.type {
       case "def": continue
-      // TipTap's code block reads a fenced block only when its fence starts the line: an indented fence makes nothing
-      case "code" where !t.codeIndented && !t.raw.hasPrefix("```") && !t.raw.hasPrefix("~~~"): continue
       case "list": nodes += Array(repeating: "list", count: listNodes(t))
       case "paragraph":
         // a "Table: …" paragraph right after a table becomes its caption

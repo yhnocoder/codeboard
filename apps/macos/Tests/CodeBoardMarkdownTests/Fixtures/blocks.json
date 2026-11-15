@@ -1153,7 +1153,9 @@
  },
  {
   "src": "  ```\n  indented fence\n   more\n  ```",
-  "starts": null,
+  "starts": [
+   0
+  ],
   "tokens": [
    {
     "type": "code",
@@ -1561,10 +1563,13 @@
  },
  {
   "src": "[label]: https://example.com\n\n[label] reference",
-  "starts": null,
+  "starts": [
+   0,
+   30
+  ],
   "tokens": [
    {
-    "type": "def",
+    "type": "refDefs",
     "raw": "[label]: https://example.com\n\n"
    },
    {
@@ -1576,11 +1581,14 @@
  },
  {
   "src": "[a]: x\n[a]: y\n\ntext",
-  "starts": null,
+  "starts": [
+   0,
+   15
+  ],
   "tokens": [
    {
-    "type": "def",
-    "raw": "[a]: x\n"
+    "type": "refDefs",
+    "raw": "[a]: x\n[a]: y\n\n"
    },
    {
     "type": "paragraph",
@@ -1599,6 +1607,154 @@
     "type": "paragraph",
     "raw": "para\n[def]: in paragraph",
     "text": "para\n[def]: in paragraph"
+   }
+  ]
+ },
+ {
+  "src": "[a]: x\n[b]: y \"t\"\n  [c]: <z>\npara after",
+  "starts": [
+   0,
+   29
+  ],
+  "tokens": [
+   {
+    "type": "refDefs",
+    "raw": "[a]: x\n[b]: y \"t\"\n  [c]: <z>\n"
+   },
+   {
+    "type": "paragraph",
+    "raw": "para after",
+    "text": "para after"
+   }
+  ]
+ },
+ {
+  "src": "- item\n\n  [a]: x\n\n- [b]: y\n\n[a] [b]",
+  "starts": [
+   0,
+   28
+  ],
+  "tokens": [
+   {
+    "type": "list",
+    "raw": "- item\n\n  [a]: x\n\n- [b]: y",
+    "ordered": false,
+    "start": null,
+    "loose": true,
+    "items": [
+     {
+      "raw": "- item\n\n  [a]: x\n\n",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "paragraph",
+        "raw": "item",
+        "text": "item"
+       },
+       {
+        "type": "space",
+        "raw": "\n\n"
+       },
+       {
+        "type": "refDefs",
+        "raw": "[a]: x\n"
+       }
+      ]
+     },
+     {
+      "raw": "- [b]: y",
+      "task": false,
+      "checked": null,
+      "tokens": [
+       {
+        "type": "refDefs",
+        "raw": "[b]: y"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "space",
+    "raw": "\n\n"
+   },
+   {
+    "type": "paragraph",
+    "raw": "[a] [b]",
+    "text": "[a] [b]"
+   }
+  ]
+ },
+ {
+  "src": "> [q]: x\n> quoted [q]",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "blockquote",
+    "raw": "> [q]: x\n> quoted [q]",
+    "tokens": [
+     {
+      "type": "refDefs",
+      "raw": "[q]: x\n"
+     },
+     {
+      "type": "paragraph",
+      "raw": "quoted [q]",
+      "text": "quoted [q]"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "src": "[a]:\n  https://x\n  'title'\n\n[a] and [b][a]",
+  "starts": [
+   0,
+   28
+  ],
+  "tokens": [
+   {
+    "type": "refDefs",
+    "raw": "[a]:\n  https://x\n  'title'\n\n"
+   },
+   {
+    "type": "paragraph",
+    "raw": "[a] and [b][a]",
+    "text": "[a] and [b][a]"
+   }
+  ]
+ },
+ {
+  "src": "[a]: x\n\n\n[b]: y\n[a]: z",
+  "starts": [
+   0,
+   9
+  ],
+  "tokens": [
+   {
+    "type": "refDefs",
+    "raw": "[a]: x\n\n\n"
+   },
+   {
+    "type": "refDefs",
+    "raw": "[b]: y\n[a]: z"
+   }
+  ]
+ },
+ {
+  "src": "   ~~~\n   tilde\n    more\n   ~~~",
+  "starts": [
+   0
+  ],
+  "tokens": [
+   {
+    "type": "code",
+    "raw": "   ~~~\n   tilde\n    more\n   ~~~",
+    "lang": "",
+    "text": "   tilde\n    more"
    }
   ]
  },

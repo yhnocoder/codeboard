@@ -1,17 +1,17 @@
 import Foundation
 
 /// marked's block lexer (Lexer.blockTokens and the block methods of its Tokenizer), with the block extensions the
-/// TypeScript package registers that this package supports: TipTap's table pre-pass, `$$` math blocks and TipTap's task
-/// lists. Footnotes, `<details>` and `[toc]` are not supported (they read as the paragraphs and HTML CommonMark makes of
-/// them), so their tokenizers are left out. Inline content is not tokenized here: blocks that have it are marked
+/// TypeScript package registers that this package supports: TipTap's table pre-pass, `$$` math blocks, TipTap's task
+/// lists and the package's run of link definitions (refDefs). Footnotes, `<details>` and `[toc]` are not supported (they
+/// read as the paragraphs and HTML CommonMark makes of them), so their tokenizers are left out. Inline content is not tokenized here: blocks that have it are marked
 /// `inline` and their text is read by InlineLexer when the document is built.
 struct BlockLexer {
   private var top = true
-  /// link definitions seen: a later definition of the same label is dropped, as marked does
+  /// link definitions seen: a later definition of the same label defines nothing, as in marked
   var links: Set<String> = []
 
   /// Every link reference definition, in order, with its offset in the text lexed and whether it took its label first
-  /// (a later one of the same label is dropped: no block)
+  /// (a later one of the same label defines nothing)
   private(set) var definitions: [Definition] = []
 
   static func lex(_ source: String) -> [Token] { lexing(source).tokens }
@@ -40,7 +40,7 @@ struct BlockLexer {
     }
     while !src.isEmpty {
       // extensions run first, the last registered first (marked unshifts them)
-      if let t = tableExtension(src) ?? blockMath(src) ?? taskList(src) ?? footnoteDef(src) {
+      if let t = tableExtension(src) ?? blockMath(src) ?? taskList(src) ?? footnoteDef(src) ?? refDefs(src) {
         take(t)
         tokens.append(t)
         continue
@@ -87,12 +87,11 @@ struct BlockLexer {
           last.raw = last.raw.hasSuffix("\n") ? last.raw + t.raw : last.raw + newline(after: last.raw) + t.raw
           last.text = last.text + newline(after: last.text) + t.raw
         } else if !links.contains(t.tag) {
-          links.insert(t.tag)
-          definitions.append(Definition(tag: t.tag, at: t.raw.source.lowerBound, first: true))
+          define(t)
           tokens.append(t)
         } else {
-          // a repeat: no block, but listed, since it becomes one when the definition before it goes
-          definitions.append(Definition(tag: t.tag, at: t.raw.source.lowerBound, first: false))
+          // a repeat: no block, but listed, since it defines its label when the definition before it goes
+          define(t)
         }
         continue
       }
@@ -409,7 +408,40 @@ struct BlockLexer {
     guard let m = MarkedRules.Block.def.exec(s) else { return nil }
     let t = Token("def", raw: src.prefix(m.range.length))
     t.tag = Other.multipleSpaceGlobal.replace(m.group(1, in: s)!.lowercased(), template: " ")
+    let ap = MarkedRules.Inline.anyPunctuation
+    t.href = m.group(2, in: s).map { ap.replace(Other.hrefBrackets.replace($0, template: "$1"), template: "$1") } ?? ""
+    t.title = m.group(3, in: s).map {
+      ap.replace(
+        ($0 as NSString).substring(with: NSRange(location: 1, length: ($0 as NSString).length - 2)), template: "$1")
+    }
     return t
+  }
+
+  /// A definition seen: it defines its label when no earlier one did
+  private mutating func define(_ t: Token) {
+    let first = links.insert(t.tag).inserted
+    definitions.append(
+      Definition(tag: t.tag, at: t.raw.source.lowerBound, first: first, href: t.href, title: t.title))
+  }
+
+  /// The package's refDefs: definitions one after another, up to a blank line, a footnote's definition or anything
+  /// else, as one block kept as written. Each defines its label as marked's own definition does
+  private mutating func refDefs(_ src: Mapped) -> Token? {
+    // a definition starts with [ after up to three spaces: anything else is not one, and need not be matched
+    let u = src.units
+    var lead = 0
+    while lead < 3, lead < u.count, u[lead] == 0x20 { lead += 1 }
+    guard lead < u.count, u[lead] == 0x5B else { return nil }
+    var n = 0
+    while true {
+      let rest = src.dropFirst(n)
+      if Ext.footnoteDefLine.test(rest.ns) { break }
+      guard let t = def(rest) else { break }
+      define(t)
+      n += t.raw.count
+      if Ext.blankLineEnd.test(t.raw.ns) || !t.raw.hasSuffix("\n") { break }
+    }
+    return n > 0 ? Token("refDefs", raw: src.prefix(n)) : nil
   }
 
   private func table(_ src: Mapped) -> Token? {
@@ -717,10 +749,39 @@ struct BlockLexer {
   }
 }
 
-/// A link reference definition: the label as marked keys it, its offset, and whether it took the label first (a later
-/// one of the same label is dropped)
+/// A link reference definition: the label as marked keys it, its offset, whether it took the label first (a later one
+/// of the same label defines nothing) and what it links to
 struct Definition: Sendable, Equatable {
   var tag: String
   var at: Int
   var first: Bool
+  var href: String
+  var title: String?
+
+  func shifted(_ d: Int) -> Definition {
+    var s = self
+    s.at += d
+    return s
+  }
+}
+
+/// A document's link definitions as its reference links read them: the first one of each label (schema.ts RefLinks)
+struct RefLinks: Sendable, Equatable {
+  struct Target: Sendable, Equatable {
+    var href: String
+    var title: String?
+  }
+  var map: [String: Target] = [:]
+
+  static let none = RefLinks()
+
+  init() {}
+
+  init(_ definitions: [Definition]) {
+    for d in definitions where d.first { map[d.tag] = Target(href: d.href, title: d.title) }
+  }
+
+  /// Whether a text's reference links read the definitions: one with a [ that cannot define a label itself (spans.ts
+  /// blockInfo: a definition's own label would read as a link)
+  static func read(in text: String) -> Bool { text.contains("[") && !Ext.mayDefine.test(text as NSString) }
 }

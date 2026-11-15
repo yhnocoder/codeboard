@@ -4,14 +4,14 @@ import Foundation
 /// `source`, as NSString and the TypeScript package count.
 public struct MarkdownDocument: Sendable, Equatable {
   public let source: String
-  /// top-level blocks in order; link reference definitions are blocks too (shown as their source)
+  /// top-level blocks in order; link reference definitions are blocks too (a run of them one block, shown as its
+  /// source)
   public let blocks: [MDBlock]
 
   /// the inline structure of each inline text, kept for reparse
   let inlineCache: InlineCache
-  /// every link reference definition, by offset, and whether it took its label first: only which labels are defined,
-  /// and where, matters to the rest of the document (a later definition of a defined label is no block at all; a
-  /// reference link is never resolved, shown as written)
+  /// every link reference definition, by offset, and whether it took its label first: the first of each label is what
+  /// the document's reference links ([text][label], [label][], [label]) link to
   let definitions: [Definition]
 
   public init(_ source: String) {
@@ -20,8 +20,9 @@ public struct MarkdownDocument: Sendable, Equatable {
 
   init(_ source: String, previous: InlineCache) {
     self.source = source
-    var builder = DocumentBuilder(cache: InlineCache(previous: previous), text: source as NSString)
     let lexed = BlockLexer.lexing(source)
+    let links = RefLinks(lexed.definitions)
+    var builder = DocumentBuilder(cache: InlineCache(previous: previous, links: links), text: source as NSString)
     blocks = builder.blocks(lexed.tokens)
     builder.cache.seal()
     inlineCache = builder.cache
@@ -46,9 +47,9 @@ public struct MarkdownDocument: Sendable, Equatable {
   /// it that the new window's own last block also satisfies, and that every fence, `$$` or HTML block opened in the window
   /// closes before; a window that does not end so takes in more blocks, twice as many each time, up to the document's end.
   /// Link reference definitions: the window is lexed knowing the labels defined before it, so a definition in it of one
-  /// of those is dropped as in the whole document; when the labels the window defines first are the ones it defined
-  /// before, every definition after it keeps its fate (a definition is dropped when an earlier one has its label), so the
-  /// rest stands. Otherwise (a definition made, removed or relabelled) the document is parsed whole.
+  /// of those defines nothing, as in the whole document; when the window defines first the labels it defined before,
+  /// with the same targets, every definition after it keeps its fate and every reference link its target, so the rest
+  /// stands. Otherwise (a definition made, removed, relabelled or pointed elsewhere) the document is parsed whole.
   /// Parsed whole too: an edit whose lines hold a `$$`, and one that adds or removes a `$` in a document holding `$$` (a
   /// `$$` block's body holds no `$` and runs across blank lines, so one `$` or `$$` more or less can pair or unpair others
   /// far away).
@@ -122,8 +123,7 @@ public struct MarkdownDocument: Sendable, Equatable {
       // the window's texts are looked up in, and added to, the store this document shares with its versions
       var builder = DocumentBuilder(cache: inlineCache, text: lexed as NSString)
       let parsed = builder.blocks(lexing.tokens).map { $0.shifted(start) }.filter { $0.range.lowerBound < end }
-      let windowDefinitions = lexing.definitions.map { Definition(tag: $0.tag, at: $0.at + start, first: $0.first) }
-        .filter { $0.at < end }
+      let windowDefinitions = lexing.definitions.map { $0.shifted(start) }.filter { $0.at < end }
       let lastSolid = parsed.last { !$0.range.isEmpty }
       // a fence, HTML block or container left open in the window runs on into the next block's line: the window's
       // blocks must all end before it
@@ -134,10 +134,9 @@ public struct MarkdownDocument: Sendable, Equatable {
       if j == nil || endsClean {
         let after = definitions.drop { $0.at < endOld }
         let oldWindow = definitions[before.count..<(definitions.count - after.count)]
-        // the window defines other labels first than it did: a definition of one of those after it may change fate
-        let was = Set(oldWindow.filter(\.first).map(\.tag))
-        let now = Set(windowDefinitions.filter(\.first).map(\.tag))
-        if was != now && !was.symmetricDifference(now).isDisjoint(with: after.map(\.tag)) {
+        // the window defines other labels first than it did, or links them elsewhere: a definition after it may change
+        // fate, a reference link anywhere its target
+        if RefLinks(Array(oldWindow)) != RefLinks(windowDefinitions) {
           return MarkdownDocument(new, previous: inlineCache)
         }
         let from = k > 0 ? solid[k] : 0
@@ -147,8 +146,7 @@ public struct MarkdownDocument: Sendable, Equatable {
         // the texts of the blocks the window replaced leave the store, unless the window has them again
         let kept = Set(parsed.flatMap(\.inlineTexts))
         inlineCache.forget(Set(blocks[from..<to].flatMap(\.inlineTexts)).subtracting(kept))
-        let defs =
-          Array(before) + windowDefinitions + after.map { Definition(tag: $0.tag, at: $0.at + delta, first: $0.first) }
+        let defs = Array(before) + windowDefinitions + after.map { $0.shifted(delta) }
         return MarkdownDocument(source: new, blocks: prefix + parsed + suffix, cache: inlineCache, definitions: defs)
       }
       step = max(1, step * 2)
@@ -430,14 +428,20 @@ final class InlineCache: @unchecked Sendable {
   private var spans: [String: [Span]] = [:]
   /// a whole parse's store reads this while it is built (`seal` lets it go)
   private var previous: InlineCache?
+  /// the document's link definitions, which its texts' reference links are read with
+  let links: RefLinks
   private let lock = NSLock()
 
-  init() {}
-  init(previous: InlineCache) { self.previous = previous }
+  init() { links = .none }
+  init(previous: InlineCache, links: RefLinks) {
+    self.previous = previous
+    self.links = links
+  }
 
   func spans(_ text: String) -> [Span] {
     if let s = lock.withLock({ spans[text] }) { return s }
-    let s = previous?.lookup(text) ?? Spans.of(text)
+    let reusable = previous.map { $0.links == links || !RefLinks.read(in: text) } ?? false
+    let s = (reusable ? previous?.lookup(text) : nil) ?? Spans.of(text, links: links)
     lock.withLock { spans[text] = s }
     return s
   }
@@ -550,8 +554,8 @@ struct DocumentBuilder {
       return inlineBlock(.paragraph, t.inlineText ?? t.text, r)
     case "heading":
       return inlineBlock(.heading(level: t.depth), t.text, r)
-    case "def":
-      // a link reference definition: shown as its source, nothing hidden
+    case "def", "refDefs":
+      // link reference definitions: shown as their source, nothing hidden
       return MDBlock(kind: .paragraph, range: r, inlines: [], inlineText: text(t.raw.trimmingEnd(0x0A)))
     case "blockquote":
       return MDBlock(kind: .quote(children: blocks(t.tokens)), range: r, inlines: [], inlineText: nil)

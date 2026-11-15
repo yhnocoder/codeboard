@@ -3029,6 +3029,38 @@
   "spans": []
  },
  {
+  "src": "para after",
+  "spans": []
+ },
+ {
+  "src": "[a] [b]",
+  "spans": []
+ },
+ {
+  "src": " ",
+  "spans": []
+ },
+ {
+  "src": "quoted [q]",
+  "spans": []
+ },
+ {
+  "src": "quoted ",
+  "spans": []
+ },
+ {
+  "src": "q",
+  "spans": []
+ },
+ {
+  "src": "[a] and [b][a]",
+  "spans": []
+ },
+ {
+  "src": " and ",
+  "spans": []
+ },
+ {
   "src": "![](images/a.png)",
   "spans": [
    {
@@ -3250,10 +3282,6 @@
  },
  {
   "src": "trailing spaces   ",
-  "spans": []
- },
- {
-  "src": " and ",
   "spans": []
  },
  {
@@ -4285,10 +4313,6 @@
     "kids": []
    }
   ]
- },
- {
-  "src": "q",
-  "spans": []
  },
  {
   "src": "\ncaption line",

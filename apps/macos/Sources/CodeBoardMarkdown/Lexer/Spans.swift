@@ -35,11 +35,12 @@ enum Spans {
   /// The placeholder an escaped \$ is read with (placeholders.ts ESC_DOLLAR): two characters still, offsets hold
   static let escDollar: UInt16 = 0xE024
 
-  static func of(_ body: String) -> [Span] {
+  /// links: the document's link definitions, which its reference links read (blockInfo)
+  static func of(_ body: String, links: RefLinks = .none) -> [Span] {
     if body.isEmpty { return [] }
     let src = JSRegex(#"\\\$"#, flags: "g").replace(body) { _, _ in "\\" + String(utf16CodeUnits: [escDollar], count: 1)
     }
-    let toks = InlineLexer.tokens(src)
+    let toks = InlineLexer.tokens(src, links: links.map.isEmpty || !RefLinks.read(in: body) ? .none : links)
     var out: [Span] = []
     walk(toks, src as NSString, 0, &out)
     return out

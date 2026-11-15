@@ -210,6 +210,57 @@ import Testing
     #expect(abs(after.y - during.y) < 1, "where the writing had it: \(during) → \(after)")
   }
 
+  /// A Note's link and footnote definitions are its own text: written in and left, it keeps them as written, and its
+  /// reference links ([text][label], [label][], [label]) still read as links to what they define (schema.ts refDefs)
+  @Test func aNotesDefinitionsAreKeptAsWrittenAndItsReferenceLinksReadThroughThem() async throws {
+    let text = """
+      # Refs
+
+      See [the docs][docs], [docs][] and [Other] here.
+
+      [docs]: https://example.com/docs "The docs"
+      [other]: <https://example.com/other>
+      [docs]: https://example.com/second
+
+      Text with a note[^1].
+
+      [^1]: the note
+          under it
+      """
+    let board = Board(
+      id: BoardID(rawValue: "defs"),
+      cards: [
+        Card(
+          id: cid("n1"), x: 0, y: 0, width: 320, height: 260,
+          content: .own(CardContent(body: .note(Note(text: text)))))
+      ])
+    let r = try await Rig(board, zoom: 1)
+    defer { r.close() }
+    r.doubleClick(CGPoint(x: 40, y: 40))
+    await r.until("writing") { r.canvas.editing?.ready == true }
+    let v = try writer(r)
+    let at = (text as NSString).range(of: " here.").location
+    v.core.select(MDSelection(at))
+    r.press("!")
+    r.press("\u{1b}")
+    await r.until("left") { !r.canvas.isEditing }
+    let written = try #require(r.card("n1").writing)
+    #expect(written == (text as NSString).replacingCharacters(in: NSRange(location: at, length: 0), with: "!"))
+    // the three reference links, to the first definition of each label
+    let doc = MarkdownDocument(written)
+    let links = doc.blocks[1].inlines.compactMap { i -> String? in
+      if case .link(let url) = i.kind { url } else { nil }
+    }
+    #expect(
+      links == ["https://example.com/docs", "https://example.com/docs", "https://example.com/other"],
+      "\(doc.blocks[1].inlines.map(\.kind))")
+    // the definitions one block, shown as written (the guideline), the footnote's definition with the line under it
+    #expect(doc.blocks.count == 5)
+    let defs = (written as NSString).range(of: "[docs]: https").location
+    #expect(doc.blocks[2].range.lowerBound == defs)
+    #expect((written as NSString).substring(with: NSRange(doc.blocks[2].range)).hasSuffix("example.com/second"))
+  }
+
   /// An empty new Note shows its placeholder until something is typed in it
   @Test func anEmptyNoteShowsItsPlaceholderUntilItIsTypedIn() async throws {
     let r = try await Rig(zoom: 1)

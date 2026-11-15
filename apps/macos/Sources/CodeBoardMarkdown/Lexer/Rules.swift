@@ -5,6 +5,7 @@ enum Other {
   static let codeRemoveIndent = JSRegex(#"^(?: {1,4}| {0,3}\t)"#, flags: "gm")
   static let indentCodeCompensation = JSRegex(#"^(\s+)(?:```)"#, flags: "")
   static let beginningSpace = JSRegex(#"^\s+"#, flags: "")
+  static let hrefBrackets = JSRegex(#"^<(.*)>$"#, flags: "")
   static let nonSpaceChar = JSRegex(#"[^ ]"#, flags: "")
   static let tabCharGlobal = JSRegex(#"\t"#, flags: "g")
   static let multipleSpaceGlobal = JSRegex(#"\s+"#, flags: "g")
@@ -69,6 +70,12 @@ enum Ext {
   static let footnoteDef = JSRegex(
     #"^\[\^([^\]\s]+)\]:[ \t]*([^\n]*(?:\n(?:(?: {2,}|\t)[^\n]*|[ \t]*(?=\n(?: {2,}|\t))))*)(?:\n+|$)"#, flags: "")
   static let footnoteDefStart = JSRegex(#"\n\[\^[^\]\s]+\]:"#, flags: "")
+  /// a footnote's definition, which ends a run of link definitions (schema.ts FN_DEF)
+  static let footnoteDefLine = JSRegex(#"^ {0,3}\[\^[^\]\s]+\]:"#, flags: "")
+  /// a line that may define a link label (schema.ts DEF_LINE)
+  static let mayDefine = JSRegex(#"^ {0,3}\[(?!\^)[^\]\n]+\]:"#, flags: "m")
+  /// a text that ends in a blank line
+  static let blankLineEnd = JSRegex(#"\n\s*\n$"#, flags: "")
   /// the line break that a blank (or whitespace-only) line follows
   static let blankLineAhead = JSRegex(#"\n[ \t]*(?:\n|$)"#, flags: "")
   static let taskStart = JSRegex(#"^\s*[-+*]\s+\[[ xX]\](?:[ \t]|$)"#, flags: "m")

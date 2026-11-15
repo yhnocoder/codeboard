@@ -29,14 +29,16 @@ final class InlineToken {
 
 /// marked's inline lexer (Lexer.inlineTokens and the inline methods of its Tokenizer), with the package's tokenizer
 /// overrides (emphasis, tags, links) and inline extensions, in marked's order: extensions first, the last registered
-/// first. Footnote references are not supported (`[^1]` reads as text). Link reference definitions are never resolved
-/// here, as in the TypeScript editor, whose lexer has none.
+/// first. Footnote references are not supported (`[^1]` reads as text). Reference links read the document's link
+/// definitions (`links`), as in the TypeScript editor (schema.ts inlineTokens).
 struct InlineLexer {
   private var inLink = false
   private var inRawBlock = false
+  private var links = RefLinks.none
 
-  static func tokens(_ src: String) -> [InlineToken] {
+  static func tokens(_ src: String, links: RefLinks = .none) -> [InlineToken] {
     var lx = InlineLexer()
+    lx.links = links
     return lx.inlineTokens(src)
   }
 
@@ -373,11 +375,16 @@ struct InlineLexer {
   }
   private static let outputLinkReplace = JSRegex(#"\\([\[\]])"#, flags: "g")
 
-  /// reflink / nolink without definitions: the [ (or !) is text
-  private func reflink(_ src: NSString) -> InlineToken? {
-    guard MarkedRules.Inline.reflink.test(src) || MarkedRules.Inline.nolink.test(src) else { return nil }
-    let first = src.substring(to: 1)
-    return InlineToken("text", raw: first)
+  /// marked's reflink and nolink: [text][label], [label][] and [label] link to the label's definition; without one the [
+  /// (or !) is text
+  private mutating func reflink(_ src: NSString) -> InlineToken? {
+    guard let m = MarkedRules.Inline.reflink.exec(src) ?? MarkedRules.Inline.nolink.exec(src) else { return nil }
+    let text = m.group(1, in: src) ?? ""
+    let label = m.group(2, in: src).flatMap { $0.isEmpty ? nil : $0 } ?? text
+    guard let target = links.map[Other.multipleSpaceGlobal.replace(label, template: " ").lowercased()] else {
+      return InlineToken("text", raw: src.substring(to: 1))
+    }
+    return outputLink(src.substring(with: m.range), label: text, href: target.href, title: target.title)
   }
 
   private mutating func emStrong(_ src: NSString, _ maskedFull: NSString, _ prevChar: String) -> InlineToken? {
