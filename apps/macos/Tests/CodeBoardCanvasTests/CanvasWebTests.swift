@@ -265,7 +265,7 @@ func webBoard() -> Board {
       c.menu(for: r.mouse(.rightMouseDown, CGPoint(x: lr3.midX, y: lr3.minY + lay3.rows[0].rect.midY))))
     #expect(
       rowMenu.items.map(\.title) == [
-        "Open in Browser", "Show as Rich", "Edit Title", "Retry Preview", "", "Move Out as Card", "Remove from List",
+        "Open in Browser", "Show as Rich", "Edit Title", "", "Move Out as Card", "Remove from List",
       ])
     (rowMenu.items[0].representedObject as? MenuAction)?.run()
     #expect(opened == [URL(string: "https://c.org/three")!])
@@ -274,5 +274,55 @@ func webBoard() -> Board {
       r.doc.edit("Remove from List") { $0.removeLinkItem(cid("list"), it.id) }
     }
     #expect(r.doc.board.card(cid("list")) == nil)
+  }
+
+  /// As actions/web.ts: a merge says how many links it made; Retry Preview is on a row whose read failed only; Move Out
+  /// as Card from the menu finds a free place right of the list; Refresh Preview that reads nothing again says so; a
+  /// Link List's title is written in place by a double-click (interact.ts, .ctitle)
+  @Test func mergeSaysHowManyMoveOutFindsRoomAndAFailedReadAgainIsSaid() async throws {
+    var b = webBoard()
+    // in the way of the place right of the list
+    b.cards.append(
+      Card(
+        id: cid("block"), x: 380 + 40, y: 800, width: 300, height: 200,
+        content: .own(CardContent(body: .note(Note(text: "block"))))))
+    if case .own(var k) = b.cards[6].content, case .links(var l) = k.body {
+      l.items[0].meta = WebMeta(fetchedAt: 1, failed: true)
+      k.body = .links(l)
+      b.cards[6].content = .own(k)
+    }
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let pages = Pages()
+    pages.page = .failure
+    c.fetchPage = pages.fetch
+    func rowMenu(_ i: Int) throws -> NSMenu {
+      let (_, lr, lay) = try #require(c.linksAt(cid("list")))
+      return try #require(
+        c.menu(for: r.mouse(.rightMouseDown, CGPoint(x: lr.midX, y: lr.minY + lay.rows[i].rect.midY))))
+    }
+    #expect(try rowMenu(0).item(withTitle: "Retry Preview") != nil)
+    #expect(try rowMenu(2).item(withTitle: "Retry Preview") == nil)
+    // Move Out as Card: clear of the card right of the list
+    try #require(try rowMenu(2).item(withTitle: "Move Out as Card")?.representedObject as? MenuAction).run()
+    let out = try #require(r.doc.selection.first?.card)
+    let placed = CGRect(x: r.card(out.rawValue).x, y: r.card(out.rawValue).y, width: 420, height: 112)
+    #expect(!placed.intersects(CGRect(x: 420, y: 800, width: 300, height: 200).insetBy(dx: -27, dy: -27)), "\(placed)")
+    // Refresh Preview read nothing again
+    c.refreshWeb(cid("auto"))
+    await r.until("read") { pages.asked.count == 1 && c.webFetching.isEmpty }
+    #expect(c.toastText == "Still nothing. The page may need a login: open it in your browser.")
+    // merged: how many links
+    await r.settle()
+    r.doc.select([.card(cid("text")), .card(cid("compact"))])
+    c.mergeSelected()
+    #expect(c.toastText == "Merged into a Link List · 2 links")
+    // the list's title written in place by a double-click on it
+    await r.settle()
+    let (_, lr, _) = try #require(c.linksAt(cid("list")))
+    let x: CGFloat = c.theme.id == .inkWash ? 14 : 30
+    r.doubleClick(CGPoint(x: lr.minX + x + 10, y: lr.minY + c.theme.headerHeight / 2))
+    #expect(c.inPlace != nil, "the title is written")
   }
 }

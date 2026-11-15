@@ -33,7 +33,8 @@ extension CanvasView {
 
   /// Reads a card's page (a row's, by `item`), off the main thread, and puts what was read on the card, no step; its
   /// pictures go into the board's images. Shown "Fetching preview…" meanwhile
-  package func fetchWeb(_ id: CardID, item: String? = nil, url: String) {
+  /// `retry`: asked for again (actions/web.ts retryMeta), so nothing read again is said
+  package func fetchWeb(_ id: CardID, item: String? = nil, url: String, retry: Bool = false) {
     guard let u = URL(string: url), let folder = imagesFolder else { return }
     let key = item.map { "\(id.rawValue)/\($0)" } ?? id.rawValue
     guard !webFetching.contains(key) else { return }
@@ -50,6 +51,8 @@ extension CanvasView {
       guard let self else { return }
       webFetching.remove(key)
       if item == nil { refresh() }
+      // main's toast also offers Open in Browser; toasts here have no buttons yet
+      if retry, meta.failed == true { toast("Still nothing. The page may need a login: open it in your browser.") }
     }
     webTasks[key] = task
   }
@@ -142,7 +145,7 @@ extension CanvasView {
   /// Refresh Preview, Retry: the page read again (what was read is overwritten)
   func refreshWeb(_ id: CardID) {
     guard case .own(let c)? = document?.board.card(id)?.content, case .web(let w) = c.body else { return }
-    fetchWeb(id, url: w.url)
+    fetchWeb(id, url: w.url, retry: true)
   }
 
   func setWebStyle(_ id: CardID, _ s: WebCard.Style) {
@@ -157,7 +160,11 @@ extension CanvasView {
     }
     var kept: CardID?
     doc.edit("Merge into Link List") { kept = $0.mergeLinks(order) }
-    if let kept { doc.select([.card(kept)]) }
+    guard let kept else { return }
+    doc.select([.card(kept)])
+    if case .own(let c)? = doc.board.card(kept)?.content, case .links(let l) = c.body {
+      toast("Merged into a Link List · \(l.items.count) links")
+    }
   }
 
   /// The selection is two or more Web cards and Link Lists only
@@ -172,6 +179,14 @@ extension CanvasView {
         default: return false
         }
       }
+  }
+
+  /// Whether a board point is on a Link List's title in its header (interact.ts: a double-click on .ctitle renames it)
+  func onListTitle(_ id: CardID, _ p: CGPoint) -> Bool {
+    guard let (l, r, _) = linksAt(id) else { return false }
+    let x = r.minX + (theme.id == .inkWash ? 14 : 30)
+    let w = max(Drawing.width(l.title, WebFonts(theme).header), 40)
+    return p.y < r.minY + theme.headerHeight && p.x >= x && p.x <= x + w
   }
 
   /// A text of a Web card or Link List written in place, all of it selected
@@ -290,8 +305,8 @@ extension CanvasView {
         self?.document?.edit("View") { $0.setLinkItemRich(id, item, !rich) }
       })
     m.addItem(menuItem("Edit Title") { [weak self] in self?.editWebText(id, .row(item)) })
-    if it.meta?.failed != false {
-      m.addItem(menuItem("Retry Preview") { [weak self] in self?.fetchWeb(id, item: item, url: it.url) })
+    if it.meta?.failed == true {
+      m.addItem(menuItem("Retry Preview") { [weak self] in self?.fetchWeb(id, item: item, url: it.url, retry: true) })
     }
     m.addItem(.separator())
     m.addItem(menuItem("Move Out as Card") { [weak self] in self?.takeOut(id, item, at: nil) })
@@ -308,8 +323,13 @@ extension CanvasView {
     guard let doc = document, let list = doc.board.card(id) else { return }
     let new = CardID(rawValue: Board.newID("card-"))
     let r = index(of: .card(id)).map { scene!.items[$0].rect }
-    let x = p.map { ($0.x - 20).rounded() } ?? ((r?.maxX ?? list.x + list.width) + 40).rounded()
-    let y = p.map { ($0.y - 16).rounded() } ?? list.y
+    // from the menu: right of the list, the first free place from there (core layout.ts findFree; a Web card's
+    // estimate is 112 tall)
+    let free = Self.findFree(
+      CGRect(x: (r?.maxX ?? list.x + list.width) + 40, y: list.y, width: Board.webWidth, height: 112),
+      others: scene?.placed.values.map(\.rect) ?? [])
+    let x = p.map { ($0.x - 20).rounded() } ?? free.x.rounded()
+    let y = p.map { ($0.y - 16).rounded() } ?? free.y.rounded()
     doc.edit("Move Out as Card", selection: [.card(new)]) { $0.takeOutLinkItem(id, item, as: new, x: x, y: y) }
   }
 
