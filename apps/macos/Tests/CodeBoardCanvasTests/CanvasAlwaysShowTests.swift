@@ -101,7 +101,7 @@ private func alwaysBoard(
     #expect(a.frame.minX == l.gutter + first.x && a.frame.minY == top + first.y)
     #expect(a.frame.width == l.inlineWidth(card: 420, x: first.x, metrics: m))
     let snap = try #require(
-      await CanvasView.picture(item, scale: 2, theme: c.theme, notes: c.notes, priority: 1), "drawn")
+      await CanvasView.picture(item, scale: 2, theme: c.theme, display: c.display, priority: 1), "drawn")
     #expect(ink(snap.surface, in: a.frame, scale: 2) > 20, "the note's text is there")
     #expect(ink(snap.surface, in: CGRect(x: 0, y: top, width: a.frame.minX - 2, height: a.frame.height), scale: 2) == 0)
   }

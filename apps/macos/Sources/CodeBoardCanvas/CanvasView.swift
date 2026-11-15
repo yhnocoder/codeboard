@@ -28,7 +28,10 @@ public final class CanvasView: NSView {
   static var clock = 0
   /// When it was last on screen and at rest (the clock's time)
   var shownAt = 0
+  /// The web page's other work: pastes, added pictures, Free code's language
   let notes: NoteRenderer
+  /// What draws and measures the Markdown shown at rest and SVG pictures
+  let display: any NoteDisplay
   var theme = Theme.warmInk
   /// The board shown, to show again in another theme
   var shown: (board: VaultBoard, vault: Vault)?
@@ -449,9 +452,11 @@ public final class CanvasView: NSView {
     self.init(frame: frame, notes: NoteRenderer(cache: noteCache))
   }
 
-  /// With that Note renderer (CanvasBench: one for several canvases, as the app's)
-  package init(frame: NSRect, notes: NoteRenderer) {
+  /// With that Note renderer (CanvasBench: one for several canvases, as the app's), which draws its Notes unless
+  /// `display` does
+  package init(frame: NSRect, notes: NoteRenderer, display: (any NoteDisplay)? = nil) {
     self.notes = notes
+    self.display = display ?? notes
     super.init(frame: frame)
     // in a test process: no menu, alert or panel ever comes up
     TestGuard.install()
@@ -570,7 +575,7 @@ public final class CanvasView: NSView {
     let backing = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
     let images = self.images
     let known = CanvasView.highlighter
-    let notes = self.notes
+    let display = self.display
     let open = document?.board
     let (scene, overviews, shadow, highlighter, b, measures, sizes, inlines, inline) = try await Task.detached(
       priority: .userInitiated
@@ -578,9 +583,9 @@ public final class CanvasView: NSView {
       let package = vault.url(of: board.path)
       let b = try open ?? vault.board(at: board.path)
       let measures = Scene.measures(b, package: package, vault: vault)
-      let sizes = await CanvasView.measure(measures, theme: theme, notes: notes)
+      let sizes = await CanvasView.measure(measures, theme: theme, display: display)
       let inlines = Scene.inlineMeasures(b, package: package, vault: vault, theme: theme)
-      let inline = await CanvasView.measureInline(inlines, theme: theme, notes: notes)
+      let inline = await CanvasView.measureInline(inlines, theme: theme, display: display)
       let highlighter = known ?? Highlighter()
       let scene = Scene(
         b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes, inline: inline)
@@ -593,7 +598,7 @@ public final class CanvasView: NSView {
               return (i, (CanvasView.render(it, scale: s, theme: theme, images: images).surface, s, .drawn))
             }
             let s = Levels.noteOverview(fit, backing: backing, size: it.bitmapSize)
-            if let snap = await CanvasView.picture(it, scale: s, theme: theme, notes: notes, priority: nil),
+            if let snap = await CanvasView.picture(it, scale: s, theme: theme, display: display, priority: nil),
               let drawn = CanvasView.compose(it, snap, scale: s, theme: theme, images: images)
             {
               return (i, (drawn, s, .drawn))
@@ -636,36 +641,37 @@ public final class CanvasView: NSView {
 
   /// The sizes the Note renderer gives the Notes without a stored height: from what it kept, else measured in the web
   /// view all together. A Note it could not measure is left out (`Scene` gives it a height of its own)
-  nonisolated static func measure(_ ms: [Scene.Measure], theme: Theme, notes: NoteRenderer) async -> [CardID:
+  nonisolated static func measure(_ ms: [Scene.Measure], theme: Theme, display: any NoteDisplay) async -> [CardID:
     NoteMetrics]
   {
     var out: [CardID: NoteMetrics] = [:]
-    let sizes = await metrics(ms, theme: theme, notes: notes)
+    let sizes = await metrics(ms, theme: theme, display: display)
     for (m, s) in zip(ms, sizes) { if let s { out[m.card] = s } }
     return out
   }
 
   /// The heights of the Always Show sidenotes in code cards (`Scene.inlineMeasures`), measured as `measure` does
-  nonisolated static func measureInline(_ ms: [Scene.Measure], theme: Theme, notes: NoteRenderer) async -> [SidenoteID:
+  nonisolated static func measureInline(_ ms: [Scene.Measure], theme: Theme, display: any NoteDisplay) async
+    -> [SidenoteID:
     NoteMetrics]
   {
     var out: [SidenoteID: NoteMetrics] = [:]
-    let sizes = await metrics(ms, theme: theme, notes: notes)
+    let sizes = await metrics(ms, theme: theme, display: display)
     for (m, s) in zip(ms, sizes) { if let id = m.sidenote, let s { out[id] = s } }
     return out
   }
 
-  private nonisolated static func metrics(_ ms: [Scene.Measure], theme: Theme, notes: NoteRenderer) async
+  private nonisolated static func metrics(_ ms: [Scene.Measure], theme: Theme, display: any NoteDisplay) async
     -> [NoteMetrics?]
   {
     guard !ms.isEmpty else { return [] }
     let requests = ms.map {
-      NoteRenderer.SizeRequest(
+      NoteSizeRequest(
         note: $0.note, width: $0.width, folder: $0.folder, look: theme.id.rawValue, dark: theme.dark, refs: $0.refs,
         hideHead: $0.hideHead)
     }
     // before any picture: the board waits for these
-    let sizes = try? await notes.metrics(of: requests, priority: 1)
+    let sizes = try? await display.metrics(of: requests, priority: 1)
     return sizes ?? []
   }
 
@@ -1296,12 +1302,12 @@ public final class CanvasView: NSView {
       nextTask += 1
       let epoch = gestureStarts
       if job.note {
-        let notes = self.notes
+        let display = self.display
         let priority = nextNote
         nextNote -= 1
         tasks[id] = Task.detached(priority: .userInitiated) { [weak self] in
           let r = await CanvasView.drawNote(
-            item, scale: job.scale, theme: theme, images: images, notes: notes, priority: priority)
+            item, scale: job.scale, theme: theme, images: images, display: display, priority: priority)
           await self?.finished(
             job, generation: generation, surface: r.surface, decodes: 0, cancelled: r.late, epoch: epoch, task: id)
         }
@@ -1371,10 +1377,10 @@ public final class CanvasView: NSView {
   /// bitmap when cancelled (a gesture started: a picture the web view was drawing still finishes, into the renderer's
   /// cache) or when the renderer failed. late: cancelled while the paper was being drawn under the picture
   nonisolated static func drawNote(
-    _ item: Scene.Item, scale: CGFloat, theme: Theme, images: DecodeCache, notes: NoteRenderer, priority: Int
+    _ item: Scene.Item, scale: CGFloat, theme: Theme, images: DecodeCache, display: any NoteDisplay, priority: Int
   ) async -> (surface: IOSurface?, late: Bool) {
     guard !Task.isCancelled,
-      let snap = await picture(item, scale: scale, theme: theme, notes: notes, priority: priority),
+      let snap = await picture(item, scale: scale, theme: theme, display: display, priority: priority),
       !Task.isCancelled
     else { return (nil, false) }
     let s = compose(item, snap, scale: scale, theme: theme, images: images)
@@ -1383,24 +1389,24 @@ public final class CanvasView: NSView {
 
   /// The Note renderer's picture of an item it draws, at a scale; with no priority only from its disk cache
   nonisolated static func picture(
-    _ item: Scene.Item, scale: CGFloat, theme: Theme, notes: NoteRenderer, priority: Int?
+    _ item: Scene.Item, scale: CGFloat, theme: Theme, display: any NoteDisplay, priority: Int?
   ) async -> NoteSnapshot? {
     switch item.drawing {
     case .note(let n):
       let look = theme.id.rawValue
       guard let priority else {
-        return await notes.cached(
+        return await display.cached(
           of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale, look: look,
           dark: theme.dark, refs: n.refs, hideHead: n.hideHead)
       }
-      return try? await notes.snapshot(
+      return try? await display.snapshot(
         of: n.content, width: item.rect.width, height: n.height, folder: n.folder, scale: scale, look: look,
         dark: theme.dark, refs: n.refs, hideHead: n.hideHead, priority: priority)
     case .image(let p):
       guard p.svg, let url = p.url else { return nil }
       let width = Int((item.rect.width * scale).rounded(.up))
-      guard let priority else { return await notes.cachedPicture(of: url, width: width, dark: theme.dark) }
-      return try? await notes.picture(of: url, width: width, dark: theme.dark, priority: priority)
+      guard let priority else { return await display.cachedPicture(of: url, width: width, dark: theme.dark) }
+      return try? await display.picture(of: url, width: width, dark: theme.dark, priority: priority)
     case .code(let c) where !c.inline.isEmpty:
       // each Always Show sidenote drawn by the renderer as a Note is, put where it goes in the card; none until all are
       var shots: [(NoteSnapshot, CGPoint)] = []
@@ -1408,13 +1414,13 @@ public final class CanvasView: NSView {
         let look = theme.id.rawValue
         let snap: NoteSnapshot?
         if let priority {
-          snap = try? await notes.snapshot(
+          snap = try? await display.snapshot(
             of: .inline(n.text), width: n.frame.width, height: nil, folder: n.folder, scale: scale, look: look,
-            dark: theme.dark, refs: n.refs, priority: priority)
+            dark: theme.dark, refs: n.refs, hideHead: false, priority: priority)
         } else {
-          snap = await notes.cached(
+          snap = await display.cached(
             of: .inline(n.text), width: n.frame.width, height: nil, folder: n.folder, scale: scale, look: look,
-            dark: theme.dark, refs: n.refs)
+            dark: theme.dark, refs: n.refs, hideHead: false)
         }
         guard let snap, !Task.isCancelled else { return nil }
         shots.append((snap, n.frame.origin))

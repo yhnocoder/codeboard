@@ -215,7 +215,7 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
       try? FileManager.default.removeItem(at: folder)
     }
     let box = NoteBody.text(TextCard(text: "Check the bounds", look: .box, wrap: true))
-    let req = NoteRenderer.SizeRequest(note: box, width: 180, folder: folder, look: "warm-ink", dark: false)
+    let req = NoteSizeRequest(note: box, width: 180, folder: folder, look: "warm-ink", dark: false)
     let r = NoteRenderer(cache: cache)
     let plain = try #require(try await r.firstGlyphs(of: [req])[0])
     // its picture drawn finer than the page's backing scale leaves it shown under a CSS scale there: what is measured
@@ -243,7 +243,7 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
       try Data(svg.utf8).write(to: folder.appending(path: "images/\(name)"))
     }
     for name in ["0123456789abcdef-40x20.svg", "fedcba9876543210.svg"] {
-      let req = NoteRenderer.SizeRequest(
+      let req = NoteSizeRequest(
         note: .note(Note(text: "A picture\n\n![](images/\(name))")), width: 300, folder: folder, look: "warm-ink",
         dark: false)
       let r = NoteRenderer(cache: cache)
@@ -264,7 +264,7 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
       try? FileManager.default.removeItem(at: folder)
     }
     let text = "调度 Scheduling\n\nRequests wait in the queue.\n\n- 每一步取一批\n- 再算一步"
-    let req = NoteRenderer.SizeRequest(
+    let req = NoteSizeRequest(
       note: .note(Note(text: text)), width: 300, folder: folder, look: "warm-ink", dark: false)
     let r = NoteRenderer(cache: cache)
     let m = try #require(try await r.metrics(of: [req], priority: 0)[0])
@@ -274,7 +274,7 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     #expect(zip(blocks, blocks.dropFirst()).allSatisfy { $0.y + $0.h <= $1.y + 0.5 }, "one under another")
     #expect(blocks.allSatisfy { $0.h > 0 && $0.line > 0 && $0.line <= $0.h + 0.5 && $0.y + $0.h <= m.size.height })
     // a Text has no blocks
-    let t = NoteRenderer.SizeRequest(
+    let t = NoteSizeRequest(
       note: .text(TextCard(text: text)), width: 300, folder: folder, look: "warm-ink", dark: false)
     #expect(try await r.metrics(of: [t], priority: 0)[0]?.blocks == nil)
     // read back from the disk cache, without the web view
@@ -375,7 +375,7 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     ]
     let r = NoteRenderer(cache: cache)
     let sizes = try await r.sizes(
-      of: notes.map { NoteRenderer.SizeRequest(note: $0.0, width: $0.1, folder: cache, look: "warm-ink", dark: false) },
+      of: notes.map { NoteSizeRequest(note: $0.0, width: $0.1, folder: cache, look: "warm-ink", dark: false) },
       priority: 0)
     // the long one is taller than the window the page starts with, the Text as wide as its text
     #expect(sizes[1].map { $0.height > 1500 } == true)
@@ -398,7 +398,7 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     }
     // measured on a dark board, every Note has the size it has on a light one
     let dark = try await r.sizes(
-      of: notes.map { NoteRenderer.SizeRequest(note: $0.0, width: $0.1, folder: cache, look: "warm-ink", dark: true) },
+      of: notes.map { NoteSizeRequest(note: $0.0, width: $0.1, folder: cache, look: "warm-ink", dark: true) },
       priority: 0)
     #expect(dark == sizes)
     // a fixed height and another look in between: the page lets the warm-ink Notes go and mounts them again

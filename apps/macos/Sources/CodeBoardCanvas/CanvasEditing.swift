@@ -175,7 +175,7 @@ extension CanvasView {
     refreshes += 1
     let n = refreshes
     let board = doc.board
-    let (theme, notes, images, backing) = (self.theme, self.notes, self.images, self.backing)
+    let (theme, display, images, backing) = (self.theme, self.display, self.images, self.backing)
     let known = measured
     let knownInline = measuredInline
     let fit = fitZoom
@@ -199,7 +199,7 @@ extension CanvasView {
             todo.append(m)
           }
         }
-        sizes.merge(await CanvasView.measure(todo, theme: theme, notes: notes)) { a, _ in a }
+        sizes.merge(await CanvasView.measure(todo, theme: theme, display: display)) { a, _ in a }
         // the Always Show sidenotes in code cards, measured again only when changed
         let ims = Scene.inlineMeasures(board, package: package, vault: vault, theme: theme)
         var inline: [SidenoteID: NoteMetrics] = [:]
@@ -212,7 +212,7 @@ extension CanvasView {
             inlineTodo.append(m)
           }
         }
-        inline.merge(await CanvasView.measureInline(inlineTodo, theme: theme, notes: notes)) { a, _ in a }
+        inline.merge(await CanvasView.measureInline(inlineTodo, theme: theme, display: display)) { a, _ in a }
         let s = Scene(
           board, package: package, vault: vault, theme: theme, highlighter: highlighter ?? Highlighter(), sizes: sizes,
           inline: inline, reusing: old, vaultSeen: seen, fetching: fetching, remote: remote)
@@ -221,7 +221,7 @@ extension CanvasView {
         var fresh: [Int: Fresh] = [:]
         for (i, it) in s.items.enumerated() where !CanvasView.keeps(it.owner.flatMap { before[$0] }, it, s.reused) {
           fresh[i] = await CanvasView.draw(
-            it, fit: fit, zoom: zoom, view: view, backing: backing, theme: theme, images: images, notes: notes)
+            it, fit: fit, zoom: zoom, view: view, backing: backing, theme: theme, images: images, display: display)
         }
         return (s, fresh, ms, sizes, ims, inline)
       }.value
@@ -265,13 +265,13 @@ extension CanvasView {
   /// shows bare paper where its text was
   nonisolated static func draw(
     _ it: Scene.Item, fit: CGFloat, zoom: CGFloat, view: CGRect, backing: CGFloat, theme: Theme, images: DecodeCache,
-    notes: NoteRenderer
+    display: any NoteDisplay
   ) async -> Fresh {
     func bitmap(_ scale: CGFloat) async -> (IOSurface?, NoteFace) {
       guard it.drawing.byRenderer else {
         return (render(it, scale: scale, theme: theme, images: images).surface, .drawn)
       }
-      if let snap = await picture(it, scale: scale, theme: theme, notes: notes, priority: 0),
+      if let snap = await picture(it, scale: scale, theme: theme, display: display, priority: 0),
         let s = compose(it, snap, scale: scale, theme: theme, images: images)
       {
         return (s, .drawn)
@@ -408,7 +408,7 @@ extension CanvasView {
     var fresh: [Int: Fresh] = [:]
     for (i, it) in s.items.enumerated() {
       fresh[i] = await CanvasView.draw(
-        it, fit: fit, zoom: zoom, view: view, backing: backing, theme: theme, images: images, notes: notes)
+        it, fit: fit, zoom: zoom, view: view, backing: backing, theme: theme, images: images, display: display)
     }
     reinstall(s, fresh: fresh)
   }
@@ -1819,11 +1819,11 @@ extension CanvasView {
   private func measureLeast(_ id: CardID, _ body: NoteBody, folder: URL) {
     guard leastWidths[id] == nil, case .text(var t) = body else { return }
     t.wrap = true
-    let req = NoteRenderer.SizeRequest(
+    let req = NoteSizeRequest(
       note: .text(t), width: 0, folder: folder, look: theme.id.rawValue, dark: theme.dark)
-    let notes = self.notes
+    let display = self.display
     Task {
-      guard let size = try? await notes.sizes(of: [req], priority: 0).first ?? nil else { return }
+      guard let size = try? await display.sizes(of: [req], priority: 0).first ?? nil else { return }
       leastWidths[id] = size.width
       if case .resize(var z)? = gesture?.kind, z.item == .card(id) {
         z.minSize.width = size.width
