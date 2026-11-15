@@ -70,7 +70,7 @@ extension MarkdownLayout {
           cap.draw(at: CGPoint(x: r.minX + f.captionX, y: r.minY + f.captionTop), ctx)
         }
       case .annot(let box, let o):
-        box.draw(at: o, ctx)
+        drawAnnot(box, o, ctx)
       case .diagram(let paths, let texts, let r):
         ctx.saveGState()
         ctx.translateBy(x: r.minX, y: r.minY)
@@ -159,20 +159,46 @@ extension MarkdownLayout {
 
   private func drawText(_ t: TextBlock, _ ctx: CGContext, _ clip: CGRect) {
     for l in t.lines where l.top < clip.maxY && l.top + l.height > clip.minY {
-      decorations(l, ctx, under: true)
+      decorations(l.line, l.origin, ctx, under: true)
       drawLine(l.line, at: l.origin, ctx)
-      decorations(l, ctx, under: false)
+      decorations(l.line, l.origin, ctx, under: false)
     }
   }
 
+  /// {text|note}: its tint, then its text drawn as body text is (highlights, code boxes, strike and link lines, references
+  /// and formulas), then the note and arrow
+  private func drawAnnot(_ box: AnnotBox, _ o: CGPoint, _ ctx: CGContext) {
+    box.drawTint(at: o, ctx)
+    let t = box.textOrigin(at: o)
+    for l in box.text.lines {
+      let origin = CGPoint(x: t.x + l.origin.x, y: t.y + l.origin.y)
+      decorations(l.line, origin, ctx, under: true)
+      drawLine(l.line, at: origin, ctx)
+      decorations(l.line, origin, ctx, under: false)
+      for run in CTLineGetGlyphRuns(l.line) as! [CTRun] {
+        let attrs = CTRunGetAttributes(run) as NSDictionary
+        guard let a = attrs[Attr.atom] as? AtomBox else { continue }
+        let x = origin.x + CTLineGetOffsetForStringIndex(l.line, CTRunGetStringRange(run).location, nil)
+        switch a.content {
+        case .ref(let r): r.draw(at: CGPoint(x: x, y: origin.y), ctx)
+        case .math(let pic, let size):
+          let color = LayoutBuilder.mdColor(attrs[kCTForegroundColorAttributeName] as! CGColor)
+          drawMath(pic, size: size, origin: CGPoint(x: x, y: origin.y), color: color, ctx)
+        case .image, .annot, .spacer: break
+        }
+      }
+    }
+    box.drawNote(at: o, ctx)
+  }
+
   /// what CoreText does not draw: inline code and kbd boxes and highlights under the text, strike lines over it
-  private func decorations(_ l: TextBlock.Line, _ ctx: CGContext, under: Bool) {
+  private func decorations(_ line: CTLine, _ origin: CGPoint, _ ctx: CGContext, under: Bool) {
     var boxes: [Int: (CGFloat, CGFloat, InlineBox, CTFont)] = [:]
-    for run in CTLineGetGlyphRuns(l.line) as! [CTRun] {
+    for run in CTLineGetGlyphRuns(line) as! [CTRun] {
       let attrs = CTRunGetAttributes(run) as NSDictionary
       let r = CTRunGetStringRange(run)
-      let x0 = l.origin.x + CTLineGetOffsetForStringIndex(l.line, r.location, nil)
-      let x1 = l.origin.x + CTLineGetOffsetForStringIndex(l.line, r.location + r.length, nil)
+      let x0 = origin.x + CTLineGetOffsetForStringIndex(line, r.location, nil)
+      let x1 = origin.x + CTLineGetOffsetForStringIndex(line, r.location + r.length, nil)
       let font = attrs[kCTFontAttributeName] as! CTFont
       let a = CTFontGetAscent(font)
       let d = CTFontGetDescent(font)
@@ -183,7 +209,7 @@ extension MarkdownLayout {
         }
         if let c = attrs[Attr.highlight] as? MDColor {
           let size = CTFontGetSize(font)
-          let top = l.origin.y - a
+          let top = origin.y - a
           let h = a + d + 0.12 * size
           switch theme.marks.highlightStyle {
           case .band:
@@ -199,7 +225,7 @@ extension MarkdownLayout {
         }
       } else {
         if let c = attrs[Attr.underline] as? MDColor {
-          let y = l.origin.y + CGFloat(theme.metrics.linkUnderlineOffset) + 0.5
+          let y = origin.y + CGFloat(theme.metrics.linkUnderlineOffset) + 0.5
           ctx.setStrokeColor(c.cg)
           ctx.setLineWidth(1)
           ctx.move(to: CGPoint(x: x0, y: y))
@@ -207,7 +233,7 @@ extension MarkdownLayout {
           ctx.strokePath()
         }
         guard let c = attrs[Attr.strike] as? MDColor else { continue }
-        let y = l.origin.y - CTFontGetXHeight(font) / 2
+        let y = origin.y - CTFontGetXHeight(font) / 2
         ctx.setStrokeColor(c.cg)
         ctx.setLineWidth(max(1, CTFontGetUnderlineThickness(font)))
         ctx.move(to: CGPoint(x: x0, y: y))
@@ -217,7 +243,7 @@ extension MarkdownLayout {
     }
     for (_, (x0, x1, box, font)) in boxes {
       let r = CGRect(
-        x: x0, y: l.origin.y - CTFontGetAscent(font), width: x1 - x0,
+        x: x0, y: origin.y - CTFontGetAscent(font), width: x1 - x0,
         height: CTFontGetAscent(font) + CTFontGetDescent(font))
       let p = CGPath(roundedRect: r, cornerWidth: box.radius, cornerHeight: box.radius, transform: nil)
       if let f = box.fill {

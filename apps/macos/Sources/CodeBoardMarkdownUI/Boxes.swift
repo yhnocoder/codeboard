@@ -132,17 +132,22 @@ final class AnnotBox: @unchecked Sendable {
     height = rail + text.size.height
   }
 
-  /// the box's top left at o
-  func draw(at o: CGPoint, _ ctx: CGContext) {
-    let textTop = below ? o.y : o.y + rail
+  /// the annotated text's top left, the box's top left at o
+  func textOrigin(at o: CGPoint) -> CGPoint { CGPoint(x: o.x, y: below ? o.y : o.y + rail) }
+
+  /// the tint under the annotated text, the box's top left at o: the text, with what formats it, goes over it (the
+  /// annotation is the outermost mark, its background under a highlight's or a code box's)
+  func drawTint(at o: CGPoint, _ ctx: CGContext) {
     ctx.setFillColor(color.alpha(0.16).cg)
     ctx.addPath(
       CGPath(
-        roundedRect: CGRect(x: o.x, y: textTop, width: width, height: text.size.height), cornerWidth: 3,
-        cornerHeight: 3,
-        transform: nil))
+        roundedRect: CGRect(origin: textOrigin(at: o), size: CGSize(width: width, height: text.size.height)),
+        cornerWidth: 3, cornerHeight: 3, transform: nil))
     ctx.fillPath()
-    text.draw(at: CGPoint(x: o.x, y: textTop), ctx)
+  }
+
+  /// the note and its arrow, the box's top left at o
+  func drawNote(at o: CGPoint, _ ctx: CGContext) {
     // the note, centred over the text; it may stick out to either side
     let noteTop = below ? o.y + height - note.size.height : o.y
     note.draw(at: CGPoint(x: o.x + (width - note.size.width) / 2, y: noteTop), ctx)

@@ -498,8 +498,8 @@ struct InlineBuilder {
       let start = out.string.length
       append("\u{FFFC}", attrs, source: [source])
       out.refs.append((NSRange(location: start, length: 1), label, target))
-    case .annotation(_, let note, let color, let below):
-      annotAtom(i, u, offsets, inner, note: note, color: color, below: below, source: source, style)
+    case .annotation(let text, let note, let color, let below):
+      annotAtom(text, note: note, color: color, below: below, source: source, style)
     case .math(let latex, let display):
       mathAtom(latex, display: display, source: source, style)
     case .image(let img):
@@ -607,14 +607,20 @@ struct InlineBuilder {
 
   /// {text|note}: an inline block, the annotated text on one line under (over) a rail with the note
   private mutating func annotAtom(
-    _ i: MDInline, _ u: [UInt16], _ offsets: [Int], _ inner: Range<Int>?, note: String, color: String, below: Bool,
-    source: Int, _ style: InlineStyle
+    _ words: String, note: String, color: String, below: Bool, source: Int, _ style: InlineStyle
   ) {
     let c = theme.marks.annotations[color] ?? theme.colors.link
-    var sub = InlineBuilder(theme: theme, resources: resources, imageCounts: imageCounts, bodyWidth: bodyWidth)
-    sub.out = DisplayText()
-    if let inner { sub.emit(u, offsets, inner, i.children, style) }
-    imageCounts = sub.imageCounts
+    // the annotated words are inline Markdown, drawn as the static render draws them (editor/widgets.ts staticInline),
+    // with the formatting around the annotation carried in: the annotation is the outermost mark (schema.ts), so a
+    // highlight, link or strike around it is drawn on its words, over its tint
+    var sub = InlineBuilder(theme: theme, resources: resources, imageCounts: [:], bodyWidth: bodyWidth)
+    let doc = MarkdownDocument(words)
+    if doc.blocks.count == 1, let b = doc.blocks.first, b.kind == .paragraph, let t = b.inlineText {
+      _ = sub.build(t, b.inlines, style)
+    } else {
+      // words that would read as a block of their own ("- x", "# x") are words here
+      _ = sub.build(MDText(string: words, offsets: Array(0...(words as NSString).length)), [], style)
+    }
     let strut = FontBook.font(style.families, size: style.size, weight: style.weight)
     let lh = CGFloat(theme.metrics.lineHeight) * style.size
     let text = BoxText(sub.out.string, width: nil, lineHeight: lh, strut: strut, center: false)
@@ -632,7 +638,12 @@ struct InlineBuilder {
       center: false)
     let box = AnnotBox(text: text, note: noteText, color: c, below: below, fontSize: style.size)
     let a = AtomBox(.annot(box), width: box.width, ascent: box.baseline, descent: box.height - box.baseline)
-    var attrs = attributes(style)
+    // its words carry the highlight and lines around it; drawn under the whole box too, they would sit under the tint
+    var outer = style
+    outer.highlight = nil
+    outer.underline = nil
+    outer.strike = nil
+    var attrs = attributes(outer)
     attrs[NSAttributedString.Key(kCTRunDelegateAttributeName as String)] = Self.delegate(a)
     attrs[Attr.atom] = a
     append("\u{FFFC}", attrs, source: [source])
