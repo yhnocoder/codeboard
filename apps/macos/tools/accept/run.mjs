@@ -62,6 +62,8 @@ const video = argv.includes("--video");
 // --ci: what continuous integration runs: function only, nothing timed (no recording, `expect answer` not checked), the
 // driver a debug build, and three shots of each scenario on each side (ci-1-start, ci-2-middle, ci-3-end) to look at
 const ci = argv.includes("--ci");
+// how long a driver may take past what a line asks for: CI's virtual Macs have stalled a side for over 30 s
+const slack = ci ? 120000 : 30000;
 // the driver's build: debug (an app change builds in seconds) unless what is measured needs the app as people get it,
 // release (a change takes one to two minutes): with --release, or when a scenario records (rec) or times (expect answer)
 const timed = scenarios.some((f) => /^(\w+:\s*)?(rec |expect answer)/m.test(fs.readFileSync(f, "utf8")));
@@ -300,17 +302,17 @@ class Driver {
       } catch (e) {
         if (e.code !== "ENXIO") throw e;
         if (!this.alive()) throw new Error(`${this.side} driver exited${this.why()}: see ${this.dir}/stdout.txt`);
-        if (t > 30000) throw new Error(`${this.side}: the driver has not read its commands for 30 s`);
+        if (t > slack) throw new Error(`${this.side}: the driver has not read its commands for ${slack / 1000} s`);
         await sleep(5);
       }
     }
     try { fs.writeSync(fd, `${line}\n`); } finally { fs.closeSync(fd); }
     const n = ++this.n;
     const re = new RegExp(`^\\S+ done ${n} `);
-    // a line answers within 30 s past the time it asks for (wait, move, drag…): a driver that hangs fails this line soon,
+    // a line answers within 30 s (CI: 120) past the time it asks for (wait, move, drag…): a driver that hangs fails this line soon,
     // not the run half an hour later
     const asked = line.split(" ").slice(1).map(Number).filter((x) => x >= 100 && x <= 60000);
-    const limit = 30000 + (asked.length ? Math.max(...asked) : 0) + (/^(stop|rec|quit)\b/.test(line) ? 30000 : 0);
+    const limit = slack + (asked.length ? Math.max(...asked) : 0) + (/^(stop|rec|quit)\b/.test(line) ? 30000 : 0);
     for (let t = 0; t < limit; t += 20) {
       const l = this.lines().find((x) => re.test(x));
       // a result of more than one line (a menu's items) comes on one: line breaks written \\n, backslashes \\\\
