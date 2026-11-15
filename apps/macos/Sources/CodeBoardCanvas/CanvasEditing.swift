@@ -316,6 +316,7 @@ extension CanvasView {
       l.add(a, forKey: "ease")
     }
     routedArrows = [:]
+    showTidySlide()
     if let h = hoveredArrow, !s.arrows.contains(where: { $0.id == h }) { hoveredArrow = nil }
     fieldShown()
     if let h = hoveredCard, index(of: .card(h)) == nil {

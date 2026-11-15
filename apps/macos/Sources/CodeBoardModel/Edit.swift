@@ -97,6 +97,34 @@ extension Board {
     selfCheck()
   }
 
+  /// Where Tidy Up put things (core commands/sections.ts tidyMove): cards to their new places, each Section by its offset
+  /// with every Section and card inside it
+  public mutating func tidyMove(
+    cards to: [CardID: (x: Double, y: Double)], sections by: [SectionID: (dx: Double, dy: Double)]
+  ) {
+    for i in cards.indices {
+      if let p = to[cards[i].id] {
+        cards[i].x = p.x
+        cards[i].y = p.y
+      }
+    }
+    var d: [SectionID: (dx: Double, dy: Double)] = [:]
+    for (id, o) in by { for s in sectionTree(id) where d[s] == nil { d[s] = o } }
+    for i in sections.indices {
+      if let o = d[sections[i].id] {
+        sections[i].x += o.dx
+        sections[i].y += o.dy
+      }
+    }
+    for i in cards.indices {
+      if let o = cards[i].section.flatMap({ d[$0] }) {
+        cards[i].x += o.dx
+        cards[i].y += o.dy
+      }
+    }
+    selfCheck()
+  }
+
   /// A card's frame from a resize: its place, width and height (nil: as tall as its content). A Text or Box never has
   /// a height
   public mutating func resize(_ id: CardID, x: Double, y: Double, width: Double, height: Double?) {
