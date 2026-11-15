@@ -145,6 +145,7 @@ extension CanvasView {
     let board = doc.board
     let (theme, notes, images, backing) = (self.theme, self.notes, self.images, self.backing)
     let known = measured
+    let knownInline = measuredInline
     let fit = fitZoom
     let seen = vaultSeen
     let zoom = camera.zoom
@@ -165,9 +166,22 @@ extension CanvasView {
           }
         }
         sizes.merge(await CanvasView.measure(todo, theme: theme, notes: notes)) { a, _ in a }
+        // the Always Show sidenotes in code cards, measured again only when changed
+        let ims = Scene.inlineMeasures(board, package: package, vault: vault, theme: theme)
+        var inline: [SidenoteID: NoteMetrics] = [:]
+        var inlineTodo: [Scene.Measure] = []
+        for m in ims {
+          guard let id = m.sidenote else { continue }
+          if let k = knownInline[id], k.note == m.note, k.width == m.width {
+            inline[id] = k.size
+          } else {
+            inlineTodo.append(m)
+          }
+        }
+        inline.merge(await CanvasView.measureInline(inlineTodo, theme: theme, notes: notes)) { a, _ in a }
         let s = Scene(
           board, package: package, vault: vault, theme: theme, highlighter: highlighter ?? Highlighter(), sizes: sizes,
-          reusing: old, vaultSeen: seen, fetching: fetching)
+          inline: inline, reusing: old, vaultSeen: seen, fetching: fetching)
         var before: [Scene.Owner: Scene.Item] = [:]
         for it in old.items { if let o = it.owner { before[o] = it } }
         var fresh: [Int: Fresh] = [:]
@@ -175,7 +189,7 @@ extension CanvasView {
           fresh[i] = await CanvasView.draw(
             it, fit: fit, zoom: zoom, view: view, backing: backing, theme: theme, images: images, notes: notes)
         }
-        return (s, fresh, ms, sizes)
+        return (s, fresh, ms, sizes, ims, inline)
       }.value
       guard n == refreshes, document === doc else { return }
       guard gesture == nil else {
@@ -185,6 +199,8 @@ extension CanvasView {
       shownBoard = board
       measured = [:]
       for m in r.2 { if let size = r.3[m.card] { measured[m.card] = (m.note, m.width, size) } }
+      measuredInline = [:]
+      for m in r.4 { if let id = m.sidenote, let size = r.5[id] { measuredInline[id] = (m.note, m.width, size) } }
       reinstall(r.0, fresh: r.1)
     }
   }
@@ -508,6 +524,7 @@ extension CanvasView {
       if let chip = chipLayer() { chrome.addSublayer(chip) }
       if let acts = sectionActsLayer() { chrome.addSublayer(acts) }
       drawHoverLine()
+      placeHeadActs()
       drawPorts()
       drawEndHandles()
       drawConnect()
@@ -906,6 +923,15 @@ extension CanvasView {
       NSCursor.arrow.set()
       return
     }
+    // a card header's button: the arrow over it, its card hovered
+    let head = headAct(at: camera.board(v))
+    hoverHead(head)
+    if head != nil {
+      hoverPorts(at: v)
+      NSCursor.arrow.set()
+      hover(nil)
+      return
+    }
     if hitStickerGrip(v) != nil {
       resizeCursor([.right, .bottom]).set()
       hover(nil)
@@ -955,6 +981,7 @@ extension CanvasView {
   public override func mouseExited(with e: NSEvent) {
     pointerInWindow = nil
     hoverChip(at: CGPoint(x: CGFloat.infinity, y: .infinity))
+    hoverHead(nil)
     hoverTitle(nil, act: nil)
     hoverSummary(nil)
     hover(nil)
@@ -1050,6 +1077,15 @@ extension CanvasView {
       }
       return
     }
+    // a card header's button
+    if let (id, a) = headAct(at: p) {
+      if e.clickCount == 1 {
+        hold(
+          over: { [weak self] in self?.headAct(at: $0).map { $0 == (id, a) } == true },
+          act: { [weak self] in self?.press(a, of: id) })
+      }
+      return
+    }
     // a press anywhere else on the board closes it (what is being written in it is added)
     if openPop != nil { openPop(nil) }
     // a sticker, or the selected one's grip
@@ -1083,8 +1119,16 @@ extension CanvasView {
         }
         return
       }
-      // a double-click on a Text's edge or corner does nothing (no Fit Content)
-      if hitHandle(v) == nil { doubleClick(at: p) }
+      // a card's grip, or a Note's bottom edge: Fit Content (Card.tsx .grip, .hb); a Text's edge or corner: nothing
+      if let (item, edges) = hitHandle(v) {
+        if case .card(let id) = item, !isText(id) {
+          var note = false
+          if case .note? = scene?.parts[id]?.content.body { note = true }
+          if edges == [.right, .bottom] || edges == .bottom && note { fitCards([id]) }
+        }
+      } else {
+        doubleClick(at: p)
+      }
       return
     }
     // a port: an arrow is drawn out of it
@@ -1871,14 +1915,16 @@ extension CanvasView {
     guard !clip.isEmpty else { return toast("Select a card to duplicate") }
     clip.arrows = []
     clip.sidenotes = []
-    offerReference(place(clip, dx: 48, dy: 48, name: "Duplicate", settle: false))
+    // left where they are, in view or not (duplicateSel moves no camera)
+    offerReference(place(clip, dx: 48, dy: 48, name: "Duplicate", settle: false, reveal: false))
   }
 
   /// The clip put on the board, what was made selected and brought into view; returns each card made with the one it
   /// was made from. `settle`: each card goes in the Section it lands in (board actions/shared.ts settleHome)
   @discardableResult
   private func place(
-    _ clip: Clip, dx: Double, dy: Double, name: String, shared: Bool = false, back: Bool = false, settle: Bool = true
+    _ clip: Clip, dx: Double, dy: Double, name: String, shared: Bool = false, back: Bool = false, settle: Bool = true,
+    reveal shows: Bool = true
   ) -> [(copy: CardID, of: CardID)] {
     guard let doc = document else { return [] }
     var b = doc.board
@@ -1894,7 +1940,7 @@ extension CanvasView {
       if settle { b.cards[i].section = home(of: r, frames: frames) }
     }
     doc.edit(name, selection: made) { $0 = b }
-    if !placed.isNull { reveal(placed) }
+    if shows && !placed.isNull { reveal(placed) }
     return copies
   }
 

@@ -254,7 +254,8 @@ extension CanvasView {
         }
         let w = min(
           1600, max(240, (wide.gutter + wide.shift + CGFloat(longest) * m.charWidth + m.padRight).rounded(.up)))
-        let h = CodeLayout(code, width: w, metrics: m).height
+        // with its Always Show sidenotes as tall as they were measured (at the width it had)
+        let h = CodeLayout(code, width: w, metrics: m, always: s.parts[id]?.always ?? []).height
         sizes.append((id, Double(w), h > m.maxAutoHeight ? Double(h) : nil))
       case .image(let img):
         guard case .file(let f) = img.source, let folder = imagesFolder,

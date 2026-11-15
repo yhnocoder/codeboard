@@ -157,6 +157,8 @@ public final class CanvasView: NSView {
   var shownBoard: Board?
   /// What the Note renderer measured, by card, with what it measured: a later scene measures only what changed
   var measured: [CardID: (note: NoteBody, width: Double, size: NoteMetrics)] = [:]
+  /// What the Note renderer measured of each Always Show sidenote in a code card, and for what
+  var measuredInline: [SidenoteID: (note: NoteBody, width: Double, size: NoteMetrics)] = [:]
   /// The pointer or key gesture under way; while one runs nothing is redrawn or swapped
   var gesture: Gesture? {
     didSet { if oldValue == nil && gesture != nil { gestureStarts += 1 } }
@@ -186,6 +188,12 @@ public final class CanvasView: NSView {
   var swatchesOpen: SectionID?
   var actsShown: SectionID?
   var actsImage: (key: String, image: CGImage)?
+  /// Cards' header buttons (CanvasHeadActs): the one under the pointer, each card's strip and what it was drawn for, the
+  /// hovered card's grip, and what puts a menu up when tests look at it instead
+  var hoveredHead: (CardID, HeadAct)?
+  var headShown: [CardID: (layer: CALayer, key: String, out: CFTimeInterval)] = [:]
+  var gripShown: (id: CardID, layer: CALayer)?
+  package var menuShown: ((NSMenu, CGPoint) -> Void)?
   /// The Text or Box raised over its neighbours (its item index)
   var raised: Int?
   /// The latest refresh (tests wait for it)
@@ -482,15 +490,18 @@ public final class CanvasView: NSView {
     let known = CanvasView.highlighter
     let notes = self.notes
     let open = document?.board
-    let (scene, overviews, shadow, highlighter, b, measures, sizes) = try await Task.detached(
+    let (scene, overviews, shadow, highlighter, b, measures, sizes, inlines, inline) = try await Task.detached(
       priority: .userInitiated
     ) {
       let package = vault.url(of: board.path)
       let b = try open ?? vault.board(at: board.path)
       let measures = Scene.measures(b, package: package, vault: vault)
       let sizes = await CanvasView.measure(measures, theme: theme, notes: notes)
+      let inlines = Scene.inlineMeasures(b, package: package, vault: vault, theme: theme)
+      let inline = await CanvasView.measureInline(inlines, theme: theme, notes: notes)
       let highlighter = known ?? Highlighter()
-      let scene = Scene(b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes)
+      let scene = Scene(
+        b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes, inline: inline)
       let fit = Camera.fit(scene.bounds, in: size).zoom
       let overviews = await withTaskGroup(of: (Int, Overview).self) { g in
         for (i, it) in scene.items.enumerated() {
@@ -514,13 +525,17 @@ public final class CanvasView: NSView {
       }
       // drawn here once, so installing it on the main thread finds it ready
       _ = theme.backdrop.flatMap(Backdrop.image)
-      return (scene, overviews, CanvasView.shadow(theme), highlighter, b, measures, sizes)
+      return (scene, overviews, CanvasView.shadow(theme), highlighter, b, measures, sizes, inlines, inline)
     }.value
     CanvasView.highlighter = highlighter
     guard load == loads else { return }
     shownBoard = b
     measured = [:]
     for m in measures { if let size = sizes[m.card] { measured[m.card] = (m.note, m.width, size) } }
+    measuredInline = [:]
+    for m in inlines {
+      if let id = m.sidenote, let size = inline[id] { measuredInline[id] = (m.note, m.width, size) }
+    }
     // the same board in another look: swapped in at rest, as a gesture may have started while it was drawn
     if keepCamera {
       await rest()
@@ -537,16 +552,34 @@ public final class CanvasView: NSView {
   nonisolated static func measure(_ ms: [Scene.Measure], theme: Theme, notes: NoteRenderer) async -> [CardID:
     NoteMetrics]
   {
+    var out: [CardID: NoteMetrics] = [:]
+    let sizes = await metrics(ms, theme: theme, notes: notes)
+    for (m, s) in zip(ms, sizes) { if let s { out[m.card] = s } }
+    return out
+  }
+
+  /// The heights of the Always Show sidenotes in code cards (`Scene.inlineMeasures`), measured as `measure` does
+  nonisolated static func measureInline(_ ms: [Scene.Measure], theme: Theme, notes: NoteRenderer) async -> [SidenoteID:
+    NoteMetrics]
+  {
+    var out: [SidenoteID: NoteMetrics] = [:]
+    let sizes = await metrics(ms, theme: theme, notes: notes)
+    for (m, s) in zip(ms, sizes) { if let id = m.sidenote, let s { out[id] = s } }
+    return out
+  }
+
+  private nonisolated static func metrics(_ ms: [Scene.Measure], theme: Theme, notes: NoteRenderer) async
+    -> [NoteMetrics?]
+  {
+    guard !ms.isEmpty else { return [] }
     let requests = ms.map {
       NoteRenderer.SizeRequest(
         note: $0.note, width: $0.width, folder: $0.folder, look: theme.id.rawValue, dark: theme.dark, refs: $0.refs,
         hideHead: $0.hideHead)
     }
     // before any picture: the board waits for these
-    let sizes = (try? await notes.metrics(of: requests, priority: 1)) ?? []
-    var out: [CardID: NoteMetrics] = [:]
-    for (m, s) in zip(ms, sizes) { out[m.card] = s }
-    return out
+    let sizes = try? await notes.metrics(of: requests, priority: 1)
+    return sizes ?? []
   }
 
   // MARK: Layers
@@ -1293,6 +1326,37 @@ public final class CanvasView: NSView {
       let width = Int((item.rect.width * scale).rounded(.up))
       guard let priority else { return await notes.cachedPicture(of: url, width: width, dark: theme.dark) }
       return try? await notes.picture(of: url, width: width, dark: theme.dark, priority: priority)
+    case .code(let c) where !c.inline.isEmpty:
+      // each Always Show sidenote drawn by the renderer as a Note is, put where it goes in the card; none until all are
+      var shots: [(NoteSnapshot, CGPoint)] = []
+      for n in c.inline {
+        let look = theme.id.rawValue
+        let snap: NoteSnapshot?
+        if let priority {
+          snap = try? await notes.snapshot(
+            of: .inline(n.text), width: n.frame.width, height: nil, folder: n.folder, scale: scale, look: look,
+            dark: theme.dark, refs: n.refs, priority: priority)
+        } else {
+          snap = await notes.cached(
+            of: .inline(n.text), width: n.frame.width, height: nil, folder: n.folder, scale: scale, look: look,
+            dark: theme.dark, refs: n.refs)
+        }
+        guard let snap, !Task.isCancelled else { return nil }
+        shots.append((snap, n.frame.origin))
+      }
+      guard
+        let s = Raster.surface(
+          size: item.rect.size, scale: scale,
+          { ctx in
+            for (snap, at) in shots {
+              let px = snap.surface
+              Raster.draw(
+                px, in: CGRect(x: at.x, y: at.y, width: CGFloat(px.width) / scale, height: CGFloat(px.height) / scale),
+                of: ctx)
+            }
+          })
+      else { return nil }
+      return NoteSnapshot(surface: s, size: item.rect.size)
     case .code, .label, .board, .web, .links:
       return nil
     }

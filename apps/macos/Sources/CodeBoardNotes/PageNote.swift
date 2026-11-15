@@ -1,15 +1,18 @@
 import CodeBoardModel
 import Foundation
 
-/// What the Note page draws: a Note's Markdown, or a Text's or Box's
+/// What the Note page draws: a Note's Markdown, or a Text's or Box's, or an Always Show sidenote's under its lines in a
+/// code card (CodeBody .inote)
 public enum NoteBody: Equatable, Sendable {
   case note(Note)
   case text(TextCard)
+  case inline(String)
 
   public var markdown: String {
     switch self {
     case .note(let n): n.text
     case .text(let t): t.text
+    case .inline(let md): md
     }
   }
 
@@ -17,6 +20,7 @@ public enum NoteBody: Equatable, Sendable {
     switch self {
     case .note(let n): n.layout
     case .text(let t): t.layout
+    case .inline: nil
     }
   }
 }
@@ -58,7 +62,7 @@ struct PageNote: Encodable {
     let body: NoteBody
     let hideHead: Bool
     private enum Keys: String, CodingKey {
-      case note, text
+      case note, text, inline
     }
     private enum TextKeys: String, CodingKey {
       case look, fill, fontSize, wrap, hideHead
@@ -77,6 +81,8 @@ struct PageNote: Encodable {
         try f.encode(t.fill, forKey: .fill)
         try f.encode(t.fontSize, forKey: .fontSize)
         try f.encode(t.wrap, forKey: .wrap)
+      case .inline:
+        _ = c.nestedContainer(keyedBy: TextKeys.self, forKey: .inline)
       }
     }
   }

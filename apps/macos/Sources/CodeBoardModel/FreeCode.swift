@@ -167,3 +167,23 @@ extension Board {
     return Double(common) / Double(max(tx.count, ty.count)) >= 0.34
   }
 }
+
+extension Board {
+  /// A Free code card's one segment
+  public func freeCodeSegment(_ id: CardID) -> Segment? {
+    guard isFreeCode(id), case .own(let c)? = card(id)?.content, case .code(let code) = c.body else { return nil }
+    return code.segments.first
+  }
+
+  /// A Free code card's language picked by hand, or (nil) following its text again: `guessed`, what its text looks like,
+  /// else as it was (core commands/code.ts setCodeLang)
+  public mutating func setFreeCodeLanguage(_ id: CardID, _ lang: String?, guessed: String? = nil) {
+    guard isFreeCode(id), let i = cards.firstIndex(where: { $0.id == id }), case .own(var c) = cards[i].content,
+      case .code(var code) = c.body
+    else { return }
+    code.segments[0].languagePicked = lang == nil ? nil : true
+    code.segments[0].language = lang ?? guessed ?? code.segments[0].language
+    c.body = .code(code)
+    cards[i].content = .own(c)
+  }
+}
