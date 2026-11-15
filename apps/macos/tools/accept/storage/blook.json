@@ -199,6 +199,55 @@
    "look": "box",
    "md": "todo",
    "fill": "pink"
+  },
+  {
+   "id": "cweb",
+   "kind": "web",
+   "url": "https://example.com/hills",
+   "meta": {
+    "title": "Hills of the north",
+    "desc": "A short walk along the ridge, with a view of the valley.",
+    "site": "Example",
+    "image": "7c3e9a51d2b04f68-240x150.png",
+    "at": 1763000000000
+   }
+  },
+  {
+   "id": "clinks",
+   "kind": "links",
+   "items": [
+    {
+     "id": "l1",
+     "url": "https://example.com/tokens",
+     "title": "Tokenizers explained",
+     "meta": {
+      "title": "Tokenizers explained",
+      "site": "Example",
+      "at": 1763000000000
+     }
+    },
+    {
+     "id": "l2",
+     "url": "https://example.org/vocab",
+     "title": "Building a vocabulary",
+     "meta": {
+      "title": "Building a vocabulary",
+      "desc": "From words to ids.",
+      "site": "Example",
+      "image": "7c3e9a51d2b04f68-240x150.png",
+      "at": 1763000000000
+     },
+     "rich": true
+    },
+    {
+     "id": "l3",
+     "url": "https://example.net/offline",
+     "meta": {
+      "failed": true,
+      "at": 1763000000000
+     }
+    }
+   ]
   }
  ],
  "place": {
@@ -328,6 +377,18 @@
     "sig": "6nybfv",
     "input": "yj7fvc"
    }
+  },
+  "cweb": {
+   "x": 1400,
+   "y": 300,
+   "w": 300,
+   "h": 260
+  },
+  "clinks": {
+   "x": 1400,
+   "y": 620,
+   "w": 300,
+   "h": 200
   }
  },
  "links": [

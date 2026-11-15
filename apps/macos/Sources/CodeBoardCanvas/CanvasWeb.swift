@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardModel
+import CryptoKit
 
 // Web cards and Link Lists on the canvas (the web board's actions/web.ts, menus.ts webMenu / linksMenu / rowMenu): a
 // link pasted makes a Web card (several lines of links, a Link List) whose page is read once, off the main thread, its
@@ -33,7 +34,8 @@ extension CanvasView {
 
   /// Reads a card's page (a row's, by `item`), off the main thread, and puts what was read on the card, no step; its
   /// pictures go into the board's images. Shown "Fetching preview…" meanwhile
-  package func fetchWeb(_ id: CardID, item: String? = nil, url: String) {
+  /// `retry`: asked for again (actions/web.ts retryMeta), so nothing read again is said
+  package func fetchWeb(_ id: CardID, item: String? = nil, url: String, retry: Bool = false) {
     guard let u = URL(string: url), let folder = imagesFolder else { return }
     let key = item.map { "\(id.rawValue)/\($0)" } ?? id.rawValue
     guard !webFetching.contains(key) else { return }
@@ -50,6 +52,8 @@ extension CanvasView {
       guard let self else { return }
       webFetching.remove(key)
       if item == nil { refresh() }
+      // main's toast also offers Open in Browser; toasts here have no buttons yet
+      if retry, meta.failed == true { toast("Still nothing. The page may need a login: open it in your browser.") }
     }
     webTasks[key] = task
   }
@@ -69,6 +73,32 @@ extension CanvasView {
     return WebMeta(
       title: p.title, description: p.description, site: p.site, image: file(p.image), icon: file(p.icon),
       fetchedAt: (Date().timeIntervalSince1970 * 1000).rounded(), failed: p.failed)
+  }
+
+  /// The pictures of image cards at web addresses not read yet, each read once (ImageBody.tsx: the browser reads an
+  /// <img> once and keeps it) and kept in the picture cache by its address's hash, so a later launch reads it there.
+  /// Asked from a redraw, which waits for a gesture's end, as does the redraw that puts the picture in
+  func fetchPictures(_ board: Board) {
+    for c in board.cards {
+      guard case .own(let k) = c.content, case .image(let img) = k.body, case .url(let s) = img.source,
+        remotePictures[s] == nil, remoteAsked.insert(s).inserted, let u = URL(string: s)
+      else { continue }
+      let hash = SHA256.hash(data: Data(s.utf8)).map { String(format: "%02x", $0) }.joined()
+      let file = pictureCache.appending(path: hash)
+      if FileManager.default.fileExists(atPath: file.path(percentEncoded: false)) {
+        remotePictures[s] = file
+        continue
+      }
+      let (fetch, folder) = (fetchPicture, pictureCache)
+      Task { [weak self] in
+        guard let data = await fetch(u),
+          (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil,
+          (try? data.write(to: file, options: .atomic)) != nil, let self
+        else { return }
+        remotePictures[s] = file
+        refresh()
+      }
+    }
   }
 
   // MARK: What is where
@@ -142,7 +172,7 @@ extension CanvasView {
   /// Refresh Preview, Retry: the page read again (what was read is overwritten)
   func refreshWeb(_ id: CardID) {
     guard case .own(let c)? = document?.board.card(id)?.content, case .web(let w) = c.body else { return }
-    fetchWeb(id, url: w.url)
+    fetchWeb(id, url: w.url, retry: true)
   }
 
   func setWebStyle(_ id: CardID, _ s: WebCard.Style) {
@@ -157,7 +187,11 @@ extension CanvasView {
     }
     var kept: CardID?
     doc.edit("Merge into Link List") { kept = $0.mergeLinks(order) }
-    if let kept { doc.select([.card(kept)]) }
+    guard let kept else { return }
+    doc.select([.card(kept)])
+    if case .own(let c)? = doc.board.card(kept)?.content, case .links(let l) = c.body {
+      toast("Merged into a Link List · \(l.items.count) links")
+    }
   }
 
   /// The selection is two or more Web cards and Link Lists only
@@ -172,6 +206,14 @@ extension CanvasView {
         default: return false
         }
       }
+  }
+
+  /// Whether a board point is on a Link List's title in its header (interact.ts: a double-click on .ctitle renames it)
+  func onListTitle(_ id: CardID, _ p: CGPoint) -> Bool {
+    guard let (l, r, _) = linksAt(id) else { return false }
+    let x = r.minX + LinksLayout.titleX(theme)
+    let w = max(Drawing.width(l.title, WebFonts(theme).header), 40)
+    return p.y < r.minY + theme.headerHeight && p.x >= x && p.x <= x + w
   }
 
   /// A text of a Web card or Link List written in place, all of it selected
@@ -192,7 +234,7 @@ extension CanvasView {
         placeholder: title ? w.page.domain : "Description")
     case (.listTitle, .links):
       guard let (l, r, _) = linksAt(id) else { return }
-      let x: CGFloat = theme.id == .inkWash ? 14 : 30
+      let x = LinksLayout.titleX(theme)
       let box = CGRect(x: r.minX + x - 2, y: r.minY + theme.headerHeight / 2 - 10, width: 200, height: 20)
       writeInPlace(.web(id, what), l.title, at: box.origin, select: .card(id), box: box, font: f.header)
     case (.row(let item), .links):
@@ -216,15 +258,10 @@ extension CanvasView {
   func commitWebText(_ id: CardID, _ w: WebText, _ text: String) {
     guard let doc = document else { return }
     switch w {
-    case .title: doc.edit("Edit Title") { $0.setWebText(id, title: text) }
+    // WebBody.tsx onTitle, the list's Editable: renameCard, the references to its old name following
+    case .title: doc.edit("Edit Title") { $0.renameCard(id, text) }
     case .description: doc.edit("Edit Description") { $0.setWebText(id, description: text) }
-    case .listTitle:
-      doc.edit("Rename") { b in
-        guard let i = b.cards.firstIndex(where: { $0.id == id }), case .own(var c) = b.cards[i].content else { return }
-        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        c.title = t.isEmpty || t == "Link List" ? nil : t
-        b.cards[i].content = .own(c)
-      }
+    case .listTitle: doc.edit("Rename") { $0.renameCard(id, text) }
     case .row(let item): doc.edit("Rename Link") { $0.renameLinkItem(id, item, text) }
     }
   }
@@ -290,8 +327,8 @@ extension CanvasView {
         self?.document?.edit("View") { $0.setLinkItemRich(id, item, !rich) }
       })
     m.addItem(menuItem("Edit Title") { [weak self] in self?.editWebText(id, .row(item)) })
-    if it.meta?.failed != false {
-      m.addItem(menuItem("Retry Preview") { [weak self] in self?.fetchWeb(id, item: item, url: it.url) })
+    if it.meta?.failed == true {
+      m.addItem(menuItem("Retry Preview") { [weak self] in self?.fetchWeb(id, item: item, url: it.url, retry: true) })
     }
     m.addItem(.separator())
     m.addItem(menuItem("Move Out as Card") { [weak self] in self?.takeOut(id, item, at: nil) })
@@ -308,8 +345,13 @@ extension CanvasView {
     guard let doc = document, let list = doc.board.card(id) else { return }
     let new = CardID(rawValue: Board.newID("card-"))
     let r = index(of: .card(id)).map { scene!.items[$0].rect }
-    let x = p.map { ($0.x - 20).rounded() } ?? ((r?.maxX ?? list.x + list.width) + 40).rounded()
-    let y = p.map { ($0.y - 16).rounded() } ?? list.y
+    // from the menu: right of the list, the first free place from there (core layout.ts findFree; a Web card's
+    // estimate is 112 tall)
+    let free = Self.findFree(
+      CGRect(x: (r?.maxX ?? list.x + list.width) + 40, y: list.y, width: Board.webWidth, height: 112),
+      others: scene?.placed.values.map(\.rect) ?? [])
+    let x = p.map { ($0.x - 20).rounded() } ?? free.x.rounded()
+    let y = p.map { ($0.y - 16).rounded() } ?? free.y.rounded()
     doc.edit("Move Out as Card", selection: [.card(new)]) { $0.takeOutLinkItem(id, item, as: new, x: x, y: y) }
   }
 

@@ -108,8 +108,8 @@ import Testing
     let tab = try #require(shell.selected)
     let pane = try #require(panes.panes[tab])
     // the window's tracking of the shell, which syncs the panes
-    pane.canvas.onEnterBoard = { id, card, camera in
-      shell.enter(id, from: card, camera: camera)
+    pane.canvas.onEnterBoard = { e in
+      shell.enter(e.board, from: e.frame, camera: e.camera)
       panes.sync()
     }
     await until("Outer shown") { pane.canvas.scene != nil && pane.document?.id == a }
@@ -128,6 +128,66 @@ import Testing
     await until("Outer again") { pane.canvas.shown?.board.id == a }
     #expect(pane.canvas.currentCamera == was)
     #expect(shell.current?.forward.map(\.board) == [b])
+  }
+
+  /// A [[ref]] to a card in a sub-board, all the way down: the sub-boards are entered in this tab, each on the way a
+  /// crumb, and the card is selected there (actions/subboards.ts openCardRef, enterFrame with reveal; host handlers.ts
+  /// enterBoard, core subboard.ts cardPath)
+  @Test func aRefToACardDownInSubBoardsEntersThemWithTheirCrumbsAndSelectsIt() async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appending(path: "panes-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: root) }
+    let vault = Vault(root: root)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let a = BoardID(rawValue: "a")
+    let b = BoardID(rawValue: "b")
+    let c = BoardID(rawValue: "c")
+    let f = CardID(rawValue: "f")
+    let g = CardID(rawValue: "g")
+    let deep = CardID(rawValue: "deep")
+    func sub(_ id: CardID, _ to: BoardID) -> Card {
+      Card(id: id, x: 0, y: 0, width: 400, content: .own(CardContent(body: .board(SubBoard(board: to)))))
+    }
+    try vault.newBoard(
+      in: "", title: "Inner",
+      board: Board(
+        id: c,
+        cards: [
+          Card(
+            id: deep, x: 1500, y: 900, width: 200, height: 100,
+            content: .own(CardContent(body: .note(Note(text: "# Deep")))))
+        ]))
+    try vault.newBoard(in: "", title: "Mid", board: Board(id: b, cards: [sub(g, c)]))
+    try vault.newBoard(in: "", title: "Outer", board: Board(id: a, cards: [sub(f, b)]))
+    let shell = Shell()
+    shell.open(vault, restoring: nil)
+    shell.apply(.success(try vault.tree()))
+    let panes = BoardPanes(shell: shell)
+    panes.frame = CGRect(x: 0, y: 0, width: 1000, height: 700)
+    shell.show(a)
+    panes.sync()
+    let tab = try #require(shell.selected)
+    let pane = try #require(panes.panes[tab])
+    await until("Outer shown") { pane.canvas.scene != nil && pane.document?.id == a }
+    let was = pane.canvas.currentCamera
+    pane.canvas.goToRef(.elsewhere(c, deep), writing: false)
+    // the window's tracking of the shell syncs the panes
+    await until("Inner shown") {
+      panes.sync()
+      return pane.canvas.shown?.board.id == c && pane.canvas.scene != nil
+    }
+    #expect(shell.current?.board == c && shell.tabs.count == 1)
+    #expect(
+      shell.current?.crumbs == [Tab.Crumb(board: a, frame: f, camera: was), Tab.Crumb(board: b, frame: g, camera: nil)])
+    #expect(pane.canvas.crumbs.map(\.board) == [a, b])
+    await until("the card selected") { pane.document?.selection == [.card(deep)] }
+    // its crumb goes back to Mid
+    shell.leave()
+    await until("Mid shown") {
+      panes.sync()
+      return pane.canvas.shown?.board.id == b
+    }
+    #expect(shell.current?.crumbs == [Tab.Crumb(board: a, frame: f, camera: was)])
   }
 
   @Test func anOpenFolderBoardKeepsACardForEachBoardAndSubfolderAndTheyCannotBeDeleted() async throws {
@@ -306,6 +366,49 @@ import Testing
     await until("A after a relaunch") { pane2.canvas.scene != nil && pane2.canvas.shown?.board.id == a }
     #expect(pane2.canvas.currentCamera == was)
     #expect(try fm.subpathsOfDirectory(atPath: root.path).allSatisfy { !$0.contains("camera") }, "not in the vault")
+  }
+
+  /// A board opened in a new tab (a relaunch, another window) shows the picture kept of it when it was left from the
+  /// tab's first frame: put up as the tab loads it, before any of its work, and the tab shown at once with it
+  @Test func aBoardOpenedInANewTabShowsItsPictureFromItsFirstFrame() async throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appending(path: "panes-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: root) }
+    let vault = Vault(root: root)
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let a = BoardID(rawValue: "a")
+    let note = Card(
+      id: CardID(rawValue: "n"), x: 100, y: 100, width: 200, height: 100,
+      content: .own(CardContent(body: .note(Note(text: "kept")))))
+    try vault.newBoard(in: "", title: "A", board: Board(id: a, cards: [note]))
+    let store = CameraStore(folder: root.appending(path: "cameras"))
+    let pictures = root.appending(path: "pictures")
+    func open() -> (Shell, BoardPanes) {
+      let shell = Shell()
+      shell.open(vault, restoring: nil)
+      shell.apply(.success(try! vault.tree()))
+      let panes = BoardPanes(shell: shell)
+      panes.cameras = store
+      panes.pictures = pictures
+      panes.frame = CGRect(x: 0, y: 0, width: 1000, height: 700)
+      return (shell, panes)
+    }
+    let (shell, panes) = open()
+    shell.show(a)
+    panes.sync()
+    let pane = try #require(shell.selected.flatMap { panes.panes[$0] })
+    await until("A shown") { pane.canvas.scene != nil && pane.canvas.isSettled }
+    await panes.close()
+    CanvasView.pictureWrites.sync {}
+    #expect(try fm.contentsOfDirectory(atPath: pictures.path(percentEncoded: false)).count == 1, "kept as it was left")
+    let (shell2, panes2) = open()
+    shell2.show(a)
+    panes2.sync()
+    let pane2 = try #require(shell2.selected.flatMap { panes2.panes[$0] })
+    // nothing awaited yet: the tab has its picture up and shows
+    #expect(pane2.canvas.pictureShown && pane2.ready && !pane2.isHidden)
+    // (out of a window no frame ticks, which is when the picture goes once the board is drawn: CanvasPictureTests)
+    await until("A loaded under it") { pane2.canvas.scene != nil }
   }
 
   /// main's paste onto another board: the cards copied are made shared cards on their board and pasted as the same

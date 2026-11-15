@@ -117,6 +117,8 @@ public struct ShellState: Codable, Equatable, Sendable {
   public var renaming: Renaming?
   /// Where deleted boards and folders go: the system Trash; tests give a stand-in
   public var trasher: Vault.Trasher = Vault.systemTrash
+  /// Where Copy Path puts the path: the general pasteboard; tests give one of their own
+  @ObservationIgnored public var pasteboard = NSPasteboard.general
   /// Asks a question before a delete, the first button the yes: a sheet on the main window (makeMainWindow); with no
   /// window to ask in, nothing is deleted
   @ObservationIgnored public var confirm: @MainActor (NSAlert) async -> Bool = { _ in false }
@@ -211,11 +213,19 @@ public struct ShellState: Codable, Equatable, Sendable {
   }
 
   /// The board a sub-board card shows, entered from it in the current tab: this board joins the crumbs, with where its
-  /// camera is (actions/subboards.ts enterFrame)
-  public func enter(_ board: BoardID, from frame: CardID, camera: Camera?) {
+  /// camera is (actions/subboards.ts enterFrame); on `through` the sub-board cards below it, each board on the way a
+  /// crumb shown from its own camera when gone back to (host handlers.ts enterBoard with reveal)
+  public func enter(
+    _ board: BoardID, from frame: CardID, camera: Camera?, through: [(frame: CardID, board: BoardID)] = []
+  ) {
     guard let i = currentIndex, tabs[i].board != board else { return }
-    let crumbs = tabs[i].crumbs + [Tab.Crumb(board: tabs[i].board, frame: frame, camera: camera)]
-    go(i, to: board, crumbs: crumbs, camera: nil)
+    var crumbs = tabs[i].crumbs + [Tab.Crumb(board: tabs[i].board, frame: frame, camera: camera)]
+    var to = board
+    for hop in through {
+      crumbs.append(Tab.Crumb(board: to, frame: hop.frame, camera: nil))
+      to = hop.board
+    }
+    go(i, to: to, crumbs: crumbs, camera: nil)
   }
 
   /// Back to the crumb at `depth` (the parent when nil), shown from where it was left (leaveBoard)

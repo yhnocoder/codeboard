@@ -70,8 +70,7 @@ Read strictly: the file must be exactly what the writer would write for the valu
 `null`, a left-out field (every non-optional field, including `false` and `[]`, is written) or another `version` is an
 error naming the file and the JSON path. So are broken references: a card twice (on the canvas and the shelf together),
 an arrow end, sidenote anchor or sticker on a card, segment or section that is not there, a section that does not exist or
-contains itself, an arrow width other than 1–3, a label position outside 0–1, a Text with a height or a font size outside
-10–240, a seal text that is not 1–5 CJK and 1–12 other characters without spaces.
+contains itself, an arrow width other than 1–3, a label position outside 0–1, a Text with a font size outside 10–240, a seal text that is not 1–5 CJK and 1–12 other characters without spaces.
 
 ### Versions: how format 2 grows (decided)
 
@@ -94,8 +93,10 @@ Optional fields (`?`) are left out when absent. Enums are an object with exactly
 `{"git": {…}}`, `{"note": {}}`: a new case (a resource source, an image from a resource) is a new key, not a format break.
 
 **Card**: `id, x, y, width, height?, measuredHeight?, section?, locked, tilted, summary?, same?` and either `content:
-CardContent` or `shared: true` (the content is `.codeboard/shared/<id>.json`, never both in a file). `height` absent: as tall as its content
-(always for a Text or Box); a code card's height leaves out its header and footer (they depend on the theme).
+CardContent` or `shared: true` (the content is `.codeboard/shared/<id>.json`, never both in a file). `height` absent: as tall as its content;
+a code card's height leaves out its header and footer (they depend on the theme). A Text or Box has a height only when its
+file gave it one (an old Mark's or Free Text's, kept by the extension's upgrade and drawn by its board, cards/Card.tsx): the
+card is that tall whatever its text, which is not cut off; no edit changes or removes it, as on the extension's board.
 `measuredHeight`: how tall the board drew it, kept for shelved cards only (their thumbnails are laid out without drawing
 them). `section`: the section the card is in, stored, not derived from geometry, because commands such as Move into
 Section set it directly. `tilted` and `summary` are the placement's, also for a shared card. `same` (同一块白板的共享卡, the extension's `same`):
@@ -367,4 +368,4 @@ holds more. Kinds:
   the vault's shared images already have for other bytes (left as it is)
 - `field` (`<owner id>.<field>`): any other field, known or unknown: e.g. `born`, `seq`, `marks`, `legend`, `hideNumbers`
   (it hides the call graph marks, which are not drawn; line numbers are always drawn), `place.collapsed`, `place.start`,
-  `segment.keep`, `keepOld`, a sub-board's `pcols`, a Note's `fill fs wrap`, a Text's height, a seal text or colour the format does not accept
+  `segment.keep`, `keepOld`, a sub-board's `pcols`, a Note's `fill fs wrap`, a seal text or colour the format does not accept

@@ -517,7 +517,8 @@ extension CanvasView {
 
   /// Place on Board (actions/notes.ts placeSidenote): the sidenote as a card at the nearest free place from 48 right of
   /// the card it is on and 20 down, an arrow to it from where it was, one step, selected, brought into view (addCards);
-  /// the popups showing it close
+  /// its popup stays (pinned, as every sidenote popup: placeSidenote's closePop() closes only the ones not pinned), and
+  /// goes once nothing is left in it
   func placeSidenote(_ n: SidenoteID) {
     guard let b = document?.board, let on = b.sidenote(n)?.anchor.card, let i = index(of: .card(on)),
       let r = scene?.items[i].rect
@@ -532,9 +533,6 @@ extension CanvasView {
     let at = pastePlace(size, at: CGPoint(x: r.maxX + 48, y: r.minY + 20), besideSelection: false)
     card.x = at.x
     card.y = at.y
-    if let scene {
-      for p in pops where popNotes(p.at, in: scene).contains(where: { $0.id == n }) { closePop(p) }
-    }
     settle(id, size, "Place on Board", reveal: true) { $0.placeSidenote(n, as: card) }
   }
 

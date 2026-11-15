@@ -72,8 +72,8 @@ extension CanvasView {
     if !go {
       switch place {
       case .card(let c) where !cardNear(c): return openRefPeek(key: key, at: at, card: c, on: nil)
-      // a card in a sub-board shown here is on this board for the rule: near, gone to; far, previewed
-      case .elsewhere(let b, let c) where !(inSubBoard(b, c).map { rectNear($0.block) } ?? false):
+      // a card in a sub-board is gone to: into the sub-board (actions/subboards.ts openCardRef)
+      case .elsewhere(let b, let c) where subPath(to: b) == nil:
         return openRefPeek(key: key, at: at, card: c, on: b)
       default: break
       }
@@ -119,14 +119,10 @@ extension CanvasView {
       moved()
     case .board(let b): onOpenBoard?(b, nil)
     case .elsewhere(let b, let c):
-      // in a sub-board shown here: its block in the map, the sub-board card selected
-      guard let (frame, block) = inSubBoard(b, c) else {
-        onOpenBoard?(b, .card(c))
-        return
-      }
-      if !writing { doc.select([.card(frame)]) }
-      reveal(block)
-      flash(block, tilt: 0, radius: 2.5, id: frame)
+      // in a sub-board (all the way down): entered, through the ones on the way, and brought to the card there
+      // (actions/subboards.ts openCardRef, enterFrame with reveal)
+      guard let path = subPath(to: b), let first = path.first else { return onOpenBoard?(b, .card(c)) ?? () }
+      enterSubBoard(first.frame, first.board, deeper: Array(path.dropFirst()), reveal: c)
     }
   }
 

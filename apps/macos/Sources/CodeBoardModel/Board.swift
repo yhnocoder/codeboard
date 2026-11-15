@@ -45,8 +45,8 @@ public struct Card: Equatable, Sendable {
   public var x: Double
   public var y: Double
   public var width: Double
-  /// nil: as tall as its content (always, for a Text or Box). A code card's height leaves out its header and footer, whose
-  /// size depends on the theme
+  /// nil: as tall as its content. A code card's height leaves out its header and footer, whose size depends on the theme.
+  /// A Text or Box has one only when its file gave it one (an old Mark's or Free Text's), and keeps it
   public var height: Double?
   /// How tall the board last drew it: kept for shelved cards, whose thumbnails are laid out without drawing them
   public var measuredHeight: Double?
@@ -246,7 +246,7 @@ public struct Note: Codable, Equatable, Sendable {
 }
 
 /// Markdown written straight on the board (a Text) or on a coloured box (a Box): one card in two looks, switched back and
-/// forth; never stored with a height, as tall as its text
+/// forth; as tall as its text unless its card keeps a height an old file gave it
 public struct TextCard: Codable, Equatable, Sendable {
   public enum Look: String, Codable, Sendable {
     case text, box

@@ -511,8 +511,9 @@ extension CanvasView {
     if let id = hitCard(p) {
       if openSubBoard(id) { return }
       if openPage(at: p) { return }
-      // a code card's title: written in place
+      // a code card's or a Link List's title: written in place
       if let t = codeTitle(id), t.hit.contains(p) { return editCodeTitle(id) }
+      if onListTitle(id, p) { return editWebText(id, .listTitle) }
       // its first click began writing it (clickEdit): the second keeps that
       if isFreeCode(id) {
         // its head is not its code (clickEditKind: .src)

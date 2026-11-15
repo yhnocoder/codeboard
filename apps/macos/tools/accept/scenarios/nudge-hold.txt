@@ -1,0 +1,16 @@
+# An arrow held: one point at once, nothing more before 300 ms, then a glide that speeds up the longer it is held;
+# one move when let go (keymap.ts glide); both sides
+zoom 1
+center @cnote:c
+click @cnote+250,110
+mark
+key right:down
+wait 150
+expect cnote.x <= was+2
+wait 1850
+key right:up
+wait 300
+expect cnote.x > was+150
+expect cnote.x < was+450
+expect cnote.y = was
+shot held @cnote+-20,-20 760 220

@@ -1,0 +1,47 @@
+# Retest: a Section is dragged by any part of its title strip (interact.ts sectionLabelDown on .slabel, but its
+# buttons and badge), not only its title text and grip; and a Text's format bar is drawn over the cards of its Section
+# (77e3050a: the bar in the chrome layer)
+key esc
+zoom 1
+center @sboxes+200,60
+drag @sboxes+2,17 @sboxes+2,77 400
+wait 300
+shot at2 @sboxes+-20,-20 300 120
+key cmd+z
+wait 300
+drag @sboxes+8,17 @sboxes+8,77 400
+wait 300
+shot at8 @sboxes+-20,-20 300 120
+key cmd+z
+wait 300
+drag @sboxes+30,17 @sboxes+30,77 400
+wait 300
+shot at30 @sboxes+-20,-20 300 120
+key cmd+z
+wait 300
+drag @sboxes+50,17 @sboxes+50,77 400
+wait 300
+shot at50 @sboxes+-20,-20 300 120
+key cmd+z
+wait 300
+drag @sboxes+66,17 @sboxes+66,77 400
+wait 300
+shot at66 @sboxes+-20,-20 300 120
+key cmd+z
+wait 300
+drag @sboxes+80,17 @sboxes+80,77 400
+wait 300
+shot at80 @sboxes+-20,-20 300 120
+key cmd+z
+wait 300
+drag @sboxes+100,17 @sboxes+100,77 400
+wait 300
+shot at100 @sboxes+-20,-20 300 120
+key cmd+z
+wait 300
+zoom 0.35
+center @cyellow:c
+click @cgreen:c
+wait 400
+shot bar @cyellow+-60,-80 600 300
+key esc

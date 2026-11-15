@@ -55,8 +55,21 @@ public final class CanvasView: NSView {
   /// Sub-board cards, Texts and Boxes, which the summary level shows as they are (main's .keeplay): always over the card
   /// level, never faded
   let kept = CALayer()
+  /// The alignment guides while something is dragged (CanvasEditing.swift showGuides), over the ports and handles
+  let guideLayer = CAShapeLayer()
+  /// A drag held still lines up after a moment
+  var snapSettle: Task<Void, Never>?
   /// Cards picked up by the pointer, until they have landed: over every card, Texts and Boxes too (main's .card.lift)
   let liftedLayer = CALayer()
+  /// Where the board shown last is kept as a picture when it is left (nil: nowhere; the app's panes keep it in its
+  /// caches, BoardPanes.pictures), and that picture over the view while the board opens again (CanvasPicture.swift)
+  package var picturesFolder: URL?
+  let picture = CALayer()
+  /// The camera the picture was taken at: moved from it, the picture goes
+  var pictureCamera: Camera?
+  package internal(set) var pictureShownAt: CFTimeInterval?
+  /// Another board is being opened: what is shown is the board left (or its picture), so input goes nowhere
+  var opening = false
   /// The summary level's columns (CanvasSummaries.swift)
   let summaryLayer = CALayer()
   /// Which level is shown and how it changes (SummaryLevels.swift)
@@ -227,7 +240,9 @@ public final class CanvasView: NSView {
   /// The hovered Text's or Box's line (drawHoverLine)
   var hoverLine: CALayer?
   var hoveredLine: Endpoint?
-  var hoveredPort: Port?
+  var hoveredPort: Port? {
+    didSet { showPortTip() }
+  }
   /// The label or title being written in place, and a written one's field until the board shows what it says
   var inPlace: InPlace?
   var closingField: NSTextField?
@@ -276,6 +291,14 @@ public final class CanvasView: NSView {
   package var openURL: (URL) -> Void = { NSWorkspace.shared.open($0) }
   /// Where the pointer is in the window (tests give their own: never the person's pointer); nil: the window's
   package var pointerInWindow: CGPoint?
+  /// How an image card's picture at a web address is read (tests give their own: never the network), and the folder the
+  /// pictures read are kept in, each once
+  package var fetchPicture: @Sendable (URL) async -> Data? = { try? await URLSession.shared.data(from: $0).0 }
+  package var pictureCache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+    .appending(path: "CodeBoard/Pictures")
+  /// The pictures at web addresses read so far, by address: their files; and the addresses asked for
+  var remotePictures: [String: URL] = [:]
+  var remoteAsked: Set<String> = []
   /// The pages being read now, by card ("card/row" for a list's row), and their tasks
   package var webFetching: Set<String> = []
   package var webTasks: [String: Task<Void, Never>] = [:]
@@ -310,6 +333,11 @@ public final class CanvasView: NSView {
   let crumbsBar = CrumbsBar()
   /// A board to delete (a sub-board card's Delete Board…): the shell asks first; whether it went
   public var onDeleteBoard: (@MainActor (BoardID) async -> Bool)?
+  /// The titles of the boards showing a shared card now, this one among them
+  package var boardsShowing: (CardID) -> [String] = { _ in [] }
+  /// Delete Everywhere of a shared card (its title): the shell asks, runs `here` (this board's step) and takes it from
+  /// the other boards; how many boards it was on, nil when not asked or not done
+  package var onDeleteEverywhere: (@MainActor (CardID, String, _ here: @MainActor () -> Void) async -> Int?)?
   /// A ref clicked: what goes there once the double-click time is over
   var refGo: Task<Void, Never>?
   /// How long a click on a ref waits for a second (tests shorten it)
@@ -364,6 +392,16 @@ public final class CanvasView: NSView {
   /// when let go over it (`over`), and does nothing when let go off it
   var held: (over: (CGPoint) -> Bool, act: () -> Void)?
   var chipInside = false
+  /// The bar over two or more selected cards, in view points (CanvasAlignBar.swift), its ⋯ panel in it
+  let alignBar = CALayer()
+  let alignMoreLayer = CALayer()
+  var alignMore = false
+  var alignFor: [CardID] = []
+  var alignHovered: AlignBarButton?
+  var alignPressed: AlignBarButton?
+  var alignBarDrawn: AlignBarLook?
+  /// A press the canvas was sent over the editor (the second of a double-click), handed on to it with its release
+  var pressToEditor = false
   var choosingChip = false
   /// How long the chip stays once the pointer is not over it (timing.ts PASTE_CHIP_IDLE)
   package var chipIdle = Duration.milliseconds(6000)
@@ -373,7 +411,7 @@ public final class CanvasView: NSView {
   /// Each Text's narrowest width (its longest word), once measured
   var leastWidths: [CardID: CGFloat] = [:]
   /// Arrow keys held for the nudge under way
-  var nudging: Set<UInt16> = []
+  var nudgeHold: NudgeHold?
   /// The cards ⌘C copied on this board (the pasteboard data that stands for them) and how many times they were pasted
   /// since (actions/shared.ts copied)
   var copied: (board: BoardID, data: Data, n: Int)?
@@ -403,7 +441,7 @@ public final class CanvasView: NSView {
     // in a test process: no menu, alert or panel ever comes up
     TestGuard.install()
     CanvasView.all.add(self)
-    registerForDraggedTypes([.string])
+    registerForDraggedTypes([.string, .fileURL])
     // layer-hosting: the canvas owns its layer tree, y-down like the board
     let root = CALayer()
     root.isGeometryFlipped = true
@@ -426,13 +464,24 @@ public final class CanvasView: NSView {
     summaryLayer.allowsGroupOpacity = true
     summaryLayer.isHidden = true
     // the ports and handles over Texts and Boxes too (main's .eport is over its card's face); faded with the card level
-    for l in [cardLevel, kept, liftedLayer, chrome, summaryLayer, shelfHome, shelfDrag] { world.addSublayer(l) }
+    for l in [cardLevel, kept, liftedLayer, chrome, guideLayer, summaryLayer, shelfHome, shelfDrag] {
+      world.addSublayer(l)
+    }
+    guideLayer.fillColor = nil
+    guideLayer.opacity = 0.9
     backdrop.anchorPoint = .zero
     root.addSublayer(backdrop)
     root.addSublayer(world)
+    picture.anchorPoint = .zero
+    picture.isHidden = true
+    root.addSublayer(picture)
     marquee.fillColor = nil
     root.addSublayer(marquee)
     toastLayer.isHidden = true
+    alignBar.isHidden = true
+    alignMoreLayer.isHidden = true
+    alignBar.addSublayer(alignMoreLayer)
+    root.addSublayer(alignBar)
     root.addSublayer(toastLayer)
     stickerGhost.anchorPoint = .zero
     stickerGhost.isHidden = true
@@ -494,6 +543,11 @@ public final class CanvasView: NSView {
     // a refresh under way is of what this load replaces
     refreshes += 1
     let load = loads
+    if !keepCamera {
+      opening = true
+      showPicture(board, in: vault, theme: theme)
+    }
+    defer { if load == loads { opening = false } }
     let size =
       bounds.isEmpty ? (window?.screen ?? NSScreen.main)?.frame.size ?? CGSize(width: 1440, height: 900) : bounds.size
     let backing = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
@@ -540,6 +594,8 @@ public final class CanvasView: NSView {
     }.value
     CanvasView.highlighter = highlighter
     guard load == loads else { return }
+    // the board left is kept where it was (and as it was), also when its camera never came to rest
+    if !keepCamera { self.keepCamera(now: true) }
     shownBoard = b
     measured = [:]
     for m in measures { if let size = sizes[m.card] { measured[m.card] = (m.note, m.width, size) } }
@@ -552,11 +608,13 @@ public final class CanvasView: NSView {
       await rest()
       guard load == loads else { return }
     }
-    // the board left is kept where it was, also when its camera never came to rest
-    if !keepCamera { self.keepCamera(now: true) }
     shown = (board, vault)
     install(scene, overviews: overviews, shadow: shadow, theme: theme, keepCamera: keepCamera)
     if keepCamera { showCrumbs() } else { boardArrived() }
+    // its pictures at web addresses: read now, or already kept from before (then drawn at once)
+    let kept = remotePictures.count
+    fetchPictures(b)
+    if remotePictures.count > kept { refresh() }
   }
 
   /// The sizes the Note renderer gives the Notes without a stored height: from what it kept, else measured in the web
@@ -903,7 +961,7 @@ public final class CanvasView: NSView {
     m.m42 = -camera.origin.y * camera.zoom
     withoutAnimation {
       world.sublayerTransform = m
-      if chrome.sublayers?.isEmpty == false { drawChrome() }
+      if chrome.sublayers?.isEmpty == false { drawChrome() } else { placeAlignBar() }
       if editing != nil { cameraMovedWhileEditing() }
       if !pops.isEmpty { positionPop() }
       if refPeek != nil { placeRefPeek() }
@@ -1118,10 +1176,12 @@ public final class CanvasView: NSView {
       // decoding and drawing free large blocks that the allocator would otherwise keep, counted in the footprint
       DispatchQueue.global(qos: .utility).async { _ = malloc_zone_pressure_relief(nil, 0) }
     }
+    glideNudge(at: time)
     stepFrameEase(at: time)
+    pictureCheck()
     stepTidySlide(at: time)
     if motion.isResting && queue.isIdle && onFrame == nil && gesture == nil && !levels.isAnimating
-      && frameEase.isEmpty && tidySlide?.started != true
+      && frameEase.isEmpty && picture.isHidden && tidySlide?.started != true
     {
       link?.isPaused = true
     }
@@ -1139,6 +1199,7 @@ public final class CanvasView: NSView {
   /// `cameraDelay`, and not while a gesture is under way; `now`: the board is being left (another board, its tab or
   /// window closed, the app quitting), written at once, where a gesture under way has it
   package func keepCamera(now: Bool = false) {
+    if now { keepPicture() }
     if let (board, vault) = shown, let store = cameras, scene != nil, camera != cameraKept {
       cameraKept = camera
       cameraToKeep = (store, vault, board.id, camera)

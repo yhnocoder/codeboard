@@ -40,6 +40,22 @@ private func copyBoard() -> Board {
 }
 
 @MainActor @Suite(.serialized) struct CanvasCopyTests {
+  /// ⌘C on an image card puts its picture on the pasteboard too, as PNG (actions/shared.ts copyCards, imagedata.ts
+  /// copyPicture): another app pastes the picture; the board still pastes the card
+  @Test func copyingAnImageCardPutsItsPictureOnThePasteboard() async throws {
+    let pb = NSPasteboard(name: NSPasteboard.Name("copy-\(UUID().uuidString)"))
+    let r = try await Rig(zoom: 1, pasteboard: pb)
+    defer { r.close() }
+    r.doc.select([.card(cid("i1")), .card(cid("n1"))])
+    r.canvas.copy(nil)
+    let file = r.file.deletingLastPathComponent().appending(path: Vault.imagesFolder).appending(path: "p.png")
+    #expect(pb.data(forType: .png) == (try Data(contentsOf: file)))
+    #expect(pb.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)) != nil)
+    r.doc.select([.card(cid("n1"))])
+    r.canvas.copy(nil)
+    #expect(pb.data(forType: .png) == nil, "no image card, no picture")
+  }
+
   /// The copies made, by the card each was made from
   func copies(_ r: Rig) throws -> [CardID: Card] {
     let pairs = try #require(r.canvas.pasteChip?.pairs)

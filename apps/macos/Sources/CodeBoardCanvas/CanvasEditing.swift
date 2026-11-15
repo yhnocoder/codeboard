@@ -54,6 +54,10 @@ struct Move {
   var frames: [Int]
   var arrows: [Int]
   var d = CGVector.zero
+  /// A pointer drag's snapping (interact.ts snapMove): what it lines up with, what moves (at the start), how fast
+  var targets: [CGRect] = []
+  var box = CGRect.null
+  var pace: Snap.Pace?
 }
 
 /// A resize from one of an item's handles
@@ -92,6 +96,21 @@ struct Resize {
 private let handleReach: CGFloat = 6
 /// How far the pointer moves before a press becomes a drag (view points)
 let dragSlop: CGFloat = 3
+
+/// Arrow keys held now (keymap.ts held): which and their way, Shift, when the speed-up began, the last frame, the part
+/// of a world point not moved yet
+struct NudgeHold {
+  /// state/timing.ts NUDGE_HOLD, NUDGE_RAMP (ms), NUDGE_SPEED (points a ms on screen), NUDGE_MAX
+  static let hold = 300.0
+  static let ramp = 1500.0
+  static let speed = 0.04
+  static let most = 6.0
+  var dirs: [UInt16: CGVector] = [:]
+  var shift = false
+  var t0: TimeInterval
+  var last: TimeInterval
+  var acc = CGVector.zero
+}
 
 extension CanvasView {
   // MARK: Showing a document
@@ -152,6 +171,8 @@ extension CanvasView {
     let view = camera.visible(bounds.size)
     let highlighter = CanvasView.highlighter
     let fetching = Set(webFetching.filter { !$0.contains("/") }.map(CardID.init(rawValue:)))
+    fetchPictures(board)
+    let remote = remotePictures
     refreshing = Task {
       let r = await Task.detached(priority: .userInitiated) {
         let package = vault.url(of: vb.path)
@@ -181,7 +202,7 @@ extension CanvasView {
         inline.merge(await CanvasView.measureInline(inlineTodo, theme: theme, notes: notes)) { a, _ in a }
         let s = Scene(
           board, package: package, vault: vault, theme: theme, highlighter: highlighter ?? Highlighter(), sizes: sizes,
-          inline: inline, reusing: old, vaultSeen: seen, fetching: fetching)
+          inline: inline, reusing: old, vaultSeen: seen, fetching: fetching, remote: remote)
         var before: [Scene.Owner: Scene.Item] = [:]
         for it in old.items { if let o = it.owner { before[o] = it } }
         var fresh: [Int: Fresh] = [:]
@@ -483,7 +504,13 @@ extension CanvasView {
     guard let doc = document, scene != nil else {
       chrome.sublayers = nil
       litArrows.sublayers = nil
+      placeAlignBar()
       return
+    }
+    if case .move? = gesture?.kind {
+    } else {
+      snapSettle?.cancel()
+      showGuides([])
     }
     let z = camera.zoom
     let before = selectedLooks
@@ -532,6 +559,7 @@ extension CanvasView {
       if let acts = sectionActsLayer() { chrome.addSublayer(acts) }
       drawHoverLine()
       placeHeadActs()
+      placeAlignBar()
       drawPorts()
       drawConnect()
       placeTextHandles()
@@ -938,6 +966,14 @@ extension CanvasView {
     guard gesture == nil else { return }
     if spaceHeld { return NSCursor.openHand.set() }
     hoverChip(at: camera.board(v))
+    let onBar = alignBarButton(at: v)
+    hoverAlignBar(onBar ?? nil)
+    if onBar != nil {
+      NSCursor.arrow.set()
+      hoverHead(nil)
+      hover(nil)
+      return
+    }
     if chipInside {
       NSCursor.arrow.set()
       hover(nil)
@@ -1014,6 +1050,7 @@ extension CanvasView {
   public override func mouseExited(with e: NSEvent) {
     pointerInWindow = nil
     hoverChip(at: CGPoint(x: CGFloat.infinity, y: .infinity))
+    hoverAlignBar(nil)
     hoverHead(nil)
     hoverTitle(nil, act: nil)
     hoverSummary(nil)
@@ -1029,15 +1066,38 @@ extension CanvasView {
   // MARK: Pointer
 
   public override func mouseDown(with e: NSEvent) {
+    if opening { return }
     // a press anywhere hides a button's tip (main's TooltipLayer on pointerdown)
     tips.press()
+    dropPicture()
     if spacePanDown(e) { return }
-    // a click outside the card being written in (on it, the web view takes it) ends the writing
-    if editing != nil { Task { await endEditing() } }
+    // AppKit sends a multi-click's later presses to the view its first went to: a double-click's second press over the
+    // editor its first press opened is the editor's, as in main
+    if editing != nil, let sv = noteEditor.view.superview,
+      noteEditor.view.hitTest(sv.convert(e.locationInWindow, from: nil)) != nil
+    {
+      pressToEditor = true
+      window?.makeFirstResponder(noteEditor.view)
+      return noteEditor.view.mouseDown(with: e)
+    }
+    // a click outside the card being written in ends the writing; on it while its editor is still mounting (that second
+    // press, which main's editor would have) the writing goes on
+    if let ed = editing, ed.ready || hitCard(camera.board(convert(e.locationInWindow, from: nil))) != ed.id {
+      Task { await endEditing() }
+    }
     window?.makeFirstResponder(self)
     guard let doc = document, scene != nil, gesture == nil else { return }
     let v = convert(e.locationInWindow, from: nil)
     let p = camera.board(v)
+    // the bar's buttons, acting on the release over them; a press anywhere else closes its panel
+    if let on = alignBarButton(at: v) {
+      if let b = on {
+        alignPressed = b
+        placeAlignBar()
+      }
+      return
+    }
+    if alignMore { setAlignMore(false) }
     // the chip's buttons; a press anywhere else closes it. A button acts on the release over it (main's .tbtn)
     if let on = chipButton(at: p) {
       if let b = on {
@@ -1216,8 +1276,10 @@ extension CanvasView {
   func hold(over: @escaping (CGPoint) -> Bool, act: @escaping () -> Void) { held = (over, act) }
 
   public override func mouseDragged(with e: NSEvent) {
+    if pressToEditor { return noteEditor.view.mouseDragged(with: e) }
     if spacePanDragged(e) { return }
     if chipPressed != nil { return hoverChip(at: camera.board(convert(e.locationInWindow, from: nil))) }
+    if alignPressed != nil { return hoverAlignBar(alignBarButton(at: convert(e.locationInWindow, from: nil)) ?? nil) }
     if held != nil { return }
     if let d = markDrag {
       let v = convert(e.locationInWindow, from: nil)
@@ -1255,7 +1317,7 @@ extension CanvasView {
           gesture = g
           return
         }
-        g.kind = .move(m)
+        g.kind = .move(snapping(m, from: g.startView))
       } else {
         let base = toggle ? doc.selection : []
         g.kind = .marquee(base: base)
@@ -1264,7 +1326,9 @@ extension CanvasView {
       gesture = g
       mouseDragged(with: e)
     case .move(var m):
-      m.d = CGVector(dx: p.x - g.start.x, dy: p.y - g.start.y)
+      dragMove(
+        &m, to: v, from: g, at: e.timestamp, unsnapped: !e.modifierFlags.isDisjoint(with: [.command, .control]),
+        still: false)
       g.kind = .move(m)
       gesture = g
       showMove(m)
@@ -1323,7 +1387,18 @@ extension CanvasView {
   }
 
   public override func mouseUp(with e: NSEvent) {
+    if pressToEditor {
+      pressToEditor = false
+      return noteEditor.view.mouseUp(with: e)
+    }
     if spacePanUp(e) { return }
+    if let b = alignPressed {
+      alignPressed = nil
+      let over = alignBarButton(at: convert(e.locationInWindow, from: nil)) == .some(b)
+      placeAlignBar()
+      if over { pressAlignBar(b) }
+      return
+    }
     if let b = chipPressed {
       chipPressed = nil
       if chipButton(at: camera.board(convert(e.locationInWindow, from: nil))) == .some(b) {
@@ -1431,6 +1506,85 @@ extension CanvasView {
     return Move(cards: cs, sections: secs, tops: tops, loose: loose, items: items, frames: frames, arrows: arrows)
   }
 
+  /// What a pointer drag lines up with (interact.ts startCardDrag / startSectionDrag): a card drag, every other card and
+  /// every Section frame; a Section drag, the frames but its own, those inside it and those round it, and the cards
+  /// outside it when it carries loose cards too
+  func snapping(_ m: Move, from v: CGPoint) -> Move {
+    guard let doc = document, let s = scene else { return m }
+    var m = m
+    m.pace = Snap.Pace(at: v, time: CACurrentMediaTime())
+    let loose = m.loose.compactMap { id in index(of: .card(id)).map { s.items[$0].rect } }
+    let cards: [CGRect] = s.items.compactMap { it in
+      guard case .card(let id)? = it.owner, !m.cards.contains(id) else { return nil }
+      return it.rect
+    }
+    if m.sections.isEmpty {
+      m.box = loose.reduce(CGRect.null) { $0.union($1) }
+      m.targets = cards + s.frames.map(\.rect)
+    } else {
+      var outer = Set<SectionID>()
+      for t in m.tops {
+        var q = doc.board.section(t)?.parent
+        while let id = q, outer.insert(id).inserted { q = doc.board.section(id)?.parent }
+      }
+      m.box = (s.frames.filter { m.tops.contains($0.id) }.map(\.rect) + loose).reduce(CGRect.null) { $0.union($1) }
+      m.targets =
+        s.frames.filter { !m.sections.contains($0.id) && !outer.contains($0.id) }.map(\.rect)
+        + (loose.isEmpty ? [] : cards)
+    }
+    return m
+  }
+
+  /// The move to where the pointer is, lined up with what is near when it goes slowly and ⌘ is not held (interact.ts
+  /// onMove); a pointer held still lines it up after SNAP_SETTLE
+  func dragMove(_ m: inout Move, to v: CGPoint, from g: Gesture, at t: TimeInterval, unsnapped: Bool, still: Bool) {
+    let z = camera.zoom
+    m.d = CGVector(dx: (v.x - g.startView.x) / z, dy: (v.y - g.startView.y) / z)
+    let fast = m.pace?.fast(v, at: t, still: still) ?? true
+    snapSettle?.cancel()
+    if !still {
+      snapSettle = Task { [weak self] in
+        try? await Task.sleep(for: Snap.Pace.settle)
+        guard let self, !Task.isCancelled, var g = gesture, case .move(var m) = g.kind else { return }
+        dragMove(&m, to: v, from: g, at: CACurrentMediaTime(), unsnapped: unsnapped, still: true)
+        g.kind = .move(m)
+        gesture = g
+        showMove(m)
+      }
+    }
+    var guides: [Guide] = []
+    if !unsnapped, !fast, !m.box.isNull {
+      let sn = Snap.move(m.box.offsetBy(dx: m.d.dx, dy: m.d.dy), to: m.targets, threshold: Snap.Pace.distance / z)
+      m.d.dx += sn.d.dx
+      m.d.dy += sn.d.dy
+      guides = sn.guides
+    }
+    showGuides(guides)
+  }
+
+  /// The guides, dashed lines 1 point wide in the faint ink, 8 past what lines up at either end (styles.css .guide)
+  func showGuides(_ gs: [Guide]) {
+    guard !gs.isEmpty || guideLayer.path != nil else { return }
+    let z = camera.zoom
+    let path = CGMutablePath()
+    for g in gs {
+      switch g.axis {
+      case .x:
+        path.move(to: CGPoint(x: g.at, y: g.from - 8))
+        path.addLine(to: CGPoint(x: g.at, y: g.to + 8))
+      case .y:
+        path.move(to: CGPoint(x: g.from - 8, y: g.at))
+        path.addLine(to: CGPoint(x: g.to + 8, y: g.at))
+      }
+    }
+    withoutAnimation {
+      guideLayer.path = gs.isEmpty ? nil : path
+      guideLayer.lineWidth = 1 / z
+      guideLayer.lineDashPattern = [NSNumber(value: 3 / z), NSNumber(value: 3 / z)]
+      guideLayer.strokeColor = theme.ink3.copy(alpha: 0.85)
+    }
+  }
+
   /// The moved layers where the move has them: cards and titles, frames, the arrows with an end on a moved card re-routed
   func showMove(_ m: Move) {
     guard let s = scene else { return }
@@ -1504,6 +1658,8 @@ extension CanvasView {
   /// Section in the one its title is in (board dragGroup)
   func commitMove(_ m: Move, name: String = "Move") {
     gesture = nil
+    snapSettle?.cancel()
+    showGuides([])
     land()
     let followed = Set(dragShown.keys)
     clearDrop()
@@ -1743,6 +1899,9 @@ extension CanvasView {
   // MARK: Keys
 
   public override func keyDown(with e: NSEvent) {
+    if opening { return }
+    // Esc closes the bar's open panel, and only that
+    if alignMore, e.keyCode == 53 { return setAlignMore(false) }
     guard document != nil else { return super.keyDown(with: e) }
     if editing != nil {
       // the editor is mounting: its keys wait for it, Esc among them, in the order typed
@@ -1758,22 +1917,35 @@ extension CanvasView {
 
   public override func keyUp(with e: NSEvent) {
     if e.keyCode == 49 { return releaseSpace() }
-    guard nudging.remove(e.keyCode) != nil else { return super.keyUp(with: e) }
-    if nudging.isEmpty, case .nudge(let m)? = gesture?.kind { commitMove(m) }
+    guard nudgeHold?.dirs.removeValue(forKey: e.keyCode) != nil else { return super.keyUp(with: e) }
+    if nudgeHold?.dirs.isEmpty == true { stopNudge() }
   }
 
-  /// An arrow key moves the selection one point on screen (⇧: ten); from the first key down to the last key up is one
-  /// step
+  public override func flagsChanged(with e: NSEvent) {
+    nudgeHold?.shift = e.modifierFlags.contains(.shift)
+    super.flagsChanged(with: e)
+  }
+
+  /// The last arrow up, the window or the keys gone: the nudge so far is one step
+  func stopNudge() {
+    nudgeHold = nil
+    if case .nudge(let m)? = gesture?.kind { commitMove(m) }
+  }
+
+  /// An arrow key moves the selection one point on screen (⇧: ten) at once; held past NUDGE_HOLD it glides on every
+  /// frame, faster the longer it is held (glideNudge). From the first key down to the last key up is one step
   func nudge(_ e: NSEvent) {
+    // the OS key repeat would move in uneven jumps at one fixed speed
+    if e.isARepeat && nudgeHold != nil { return }
     guard let doc = document else { return }
-    let step = (e.modifierFlags.contains(.shift) ? 10 : 1) / camera.zoom
-    let unit = max(1, step.rounded())
+    let shift = e.modifierFlags.contains(.shift)
+    let unit = max(1, ((shift ? 10 : 1) / camera.zoom).rounded())
     let d: CGVector =
       switch e.keyCode {
-      case 123: CGVector(dx: -unit, dy: 0)
-      case 124: CGVector(dx: unit, dy: 0)
-      case 125: CGVector(dx: 0, dy: unit)
-      default: CGVector(dx: 0, dy: -unit)
+      case 123: CGVector(dx: -1, dy: 0)
+      case 124: CGVector(dx: 1, dy: 0)
+      case 125: CGVector(dx: 0, dy: 1)
+      default: CGVector(dx: 0, dy: -1)
       }
     var m: Move
     switch gesture?.kind {
@@ -1783,18 +1955,53 @@ extension CanvasView {
       m = made
     default: return
     }
-    nudging.insert(e.keyCode)
-    m.d.dx += d.dx
-    m.d.dy += d.dy
+    let t = now
+    var h = nudgeHold ?? NudgeHold(t0: t, last: t)
+    // another arrow joining the hold (a diagonal) starts the speed-up over
+    h.dirs[e.keyCode] = d
+    h.shift = shift
+    h.t0 = t
+    h.acc = .zero
+    nudgeHold = h
+    m.d.dx += d.dx * unit
+    m.d.dy += d.dy * unit
     gesture = Gesture(kind: .nudge(m), startView: .zero, start: .zero)
     showMove(m)
+    wake()
+  }
+
+  /// A frame of arrows held (keymap.ts glide): past NUDGE_HOLD at NUDGE_SPEED points a millisecond on screen, easing up
+  /// to NUDGE_MAX times that over NUDGE_RAMP; whole world points like every other placement, the rest carried over
+  func glideNudge(at time: TimeInterval) {
+    guard var h = nudgeHold else { return }
+    guard case .nudge(var m)? = gesture?.kind else {
+      nudgeHold = nil
+      return
+    }
+    let dt = min(50, max(0, time - h.last) * 1000)
+    let t = (time - h.t0) * 1000
+    h.last = time
+    if t > NudgeHold.hold {
+      let r = min(1, (t - NudgeHold.hold) / NudgeHold.ramp)
+      let v = NudgeHold.speed * (1 + (NudgeHold.most - 1) * r * r * (3 - 2 * r)) * (h.shift ? 10 : 1) / camera.zoom
+      let sum = h.dirs.values.reduce(CGVector.zero) { CGVector(dx: $0.dx + $1.dx, dy: $0.dy + $1.dy) }
+      h.acc.dx += (sum.dx > 0 ? 1 : sum.dx < 0 ? -1 : 0) * v * dt
+      h.acc.dy += (sum.dy > 0 ? 1 : sum.dy < 0 ? -1 : 0) * v * dt
+      let move = CGVector(dx: h.acc.dx.rounded(.towardZero), dy: h.acc.dy.rounded(.towardZero))
+      h.acc.dx -= move.dx
+      h.acc.dy -= move.dy
+      if move != .zero {
+        m.d.dx += move.dx
+        m.d.dy += move.dy
+        gesture = Gesture(kind: .nudge(m), startView: .zero, start: .zero)
+        showMove(m)
+      }
+    }
+    nudgeHold = h
   }
 
   public override func resignFirstResponder() -> Bool {
-    if case .nudge(let m)? = gesture?.kind {
-      nudging = []
-      commitMove(m)
-    }
+    stopNudge()
     return super.resignFirstResponder()
   }
 
@@ -1838,14 +2045,30 @@ extension CanvasView {
 
   private var selectedCards: Set<CardID> { Set(document?.selection.compactMap(\.card) ?? []) }
 
-  /// The cards' clip on the pasteboard; nil: nothing to copy
+  /// The cards' clip on the pasteboard, and the first image card's picture as PNG for other apps (shared.ts copyCards,
+  /// imagedata.ts copyPicture); nil: nothing to copy
   private func putOnPasteboard(_ ids: Set<CardID>) -> Data? {
-    guard let doc = document, let (_, vault) = shown else { return nil }
+    guard let doc = document, let (board, vault) = shown else { return nil }
     let clip = doc.board.clip(ids) { try? vault.sharedCard($0) }
     guard !clip.isEmpty, let data = try? clip.encoded() else { return nil }
     pasteboard.clearContents()
     pasteboard.setData(data, forType: NSPasteboard.PasteboardType(Clip.pasteboardType))
+    let images = vault.url(of: board.path).appending(path: Vault.imagesFolder)
+    if let png = clip.cards.lazy.compactMap({ Self.picturePNG($0, in: images) }).first {
+      pasteboard.setData(png, forType: .png)
+    }
     return data
+  }
+
+  /// An image card's picture file as PNG (imagedata.ts clipboardPng: a PNG as it is, any other drawn once)
+  private static func picturePNG(_ card: Card, in images: URL) -> Data? {
+    guard case .own(let k) = card.content, case .image(let img) = k.body, case .file(let name) = img.source,
+      let data = try? Data(contentsOf: images.appending(path: name))
+    else { return nil }
+    if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) { return data }
+    return NSImage(data: data)?.cgImage(forProposedRect: nil, context: nil, hints: nil).flatMap {
+      NSBitmapImageRep(cgImage: $0).representation(using: .png, properties: [:])
+    }
   }
 
   /// Pastes what was copied (actions/shared.ts pasteFromBoard): cards cut on this board back where the pointer is, with
@@ -1864,7 +2087,7 @@ extension CanvasView {
     if gesture == nil, pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)) == nil {
       // ⌘V only: the board menu's Paste puts it where the menu was asked, as main's
       let near = at == nil ? pasteboard.string(forType: .string).flatMap(pasteNear) : nil
-      if pasteLinks(at: near ?? p) || pasteText(at: near ?? p, exact: near != nil) { return }
+      if pastePicture(at: p) || pasteLinks(at: near ?? p) || pasteText(at: near ?? p, exact: near != nil) { return }
     }
     guard let doc = document, gesture == nil, let here = shown?.board.id,
       let data = pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)),

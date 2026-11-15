@@ -11,7 +11,8 @@ import CodeBoardModel
 struct BoardKey {
   enum Action {
     case newNote, newText, newBox, addSidenote, fitWindow, fitSelection, zoom100, zoomIn, zoomOut, pan, open
-    case enterBoard, delete, turnIntoBoard, fitContent, tidyUp, tilt, shelve, wrap, nudge, hide, escape, help
+    case enterBoard, delete, deleteEverywhere, turnIntoBoard, fitContent, tidyUp, tilt, shelve, wrap, nudge, hide
+    case escape, help
   }
 
   /// A press: its modifiers, and what it types (letters and symbols, as e.key) or else the key itself (e.code)
@@ -87,6 +88,9 @@ struct BoardKey {
     BoardKey(show: "⌘X", label: "Cut", group: "Cards"),
     BoardKey(show: "⌘C", label: "Copy", group: "Cards"),
     BoardKey(action: .delete, presses: [code(51), code(117)], show: "⌫", label: "Delete", group: "Cards"),
+    BoardKey(
+      action: .deleteEverywhere, presses: [code(51, .command), code(117, .command)], show: "⌘⌫",
+      label: "Delete Everywhere (linked card)", group: "Cards"),
     BoardKey(show: "⇧⌘L", label: "Lock / Unlock", group: "Cards"),
     BoardKey(
       action: .turnIntoBoard, presses: [char("b", [.command, .shift])], show: "⇧⌘B", label: "Turn into Board",
@@ -149,6 +153,9 @@ extension CanvasView {
       guard let c = cards.first, case .board? = scene?.parts[c]?.content.body else { return false }
       openSubBoard(c)
     case .delete: delete(nil)
+    case .deleteEverywhere:
+      guard !cards.isEmpty else { return false }
+      deleteEverywhere(cards)
     case .turnIntoBoard: turnIntoBoard(nil)
     case .fitContent: fitContentKey()
     case .tidyUp:
@@ -361,7 +368,10 @@ extension CanvasView {
     if spacePan == nil { NSCursor.arrow.set() }
   }
 
-  @objc func windowResignedKey() { releaseSpace() }
+  @objc func windowResignedKey() {
+    releaseSpace()
+    stopNudge()
+  }
 
   /// A press with Space held starts a pan: the board follows the pointer as it does two fingers, and glides on from
   /// how fast it went when let go

@@ -123,7 +123,7 @@ func editSample() -> Board {
   b.resize(cid("n1"), x: 40, y: 90, width: 260, height: 300)
   #expect(b.card(cid("n1"))?.width == 260 && b.card(cid("n1"))?.height == 300)
   b.resize(cid("t1"), x: 1600, y: 0, width: 300, height: 99)
-  #expect(b.card(cid("t1"))?.height == nil, "a Text has no height")
+  #expect(b.card(cid("t1"))?.height == nil, "a Text's height is not a resize's (main: no Text has a bottom edge)")
   b.wrapText(cid("t1"), x: 1590, width: 140)
   guard case .own(let c)? = b.card(cid("t1"))?.content, case .text(let t) = c.body else {
     Issue.record("Text")

@@ -62,17 +62,13 @@ extension Board {
     editWeb(id) { $0.style = style }
   }
 
-  /// Its title or description written over the page's: blank, or the page's own, is none
-  public mutating func setWebText(_ id: CardID, title: String? = nil, description: String? = nil) {
+  /// Its description written over the page's: blank, or the page's own, is none (its title: renameCard)
+  public mutating func setWebText(_ id: CardID, description: String) {
     guard let i = cards.firstIndex(where: { $0.id == id }), case .own(var c) = cards[i].content,
       case .web(let w) = c.body
     else { return }
-    func clean(_ s: String, own: String?) -> String? {
-      let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-      return t.isEmpty || t == own ? nil : t
-    }
-    if let title { c.title = clean(title, own: w.meta?.title) }
-    if let description { c.description = clean(description, own: w.meta?.description) }
+    let t = description.trimmingCharacters(in: .whitespacesAndNewlines)
+    c.description = t.isEmpty || t == w.meta?.description ? nil : t
     cards[i].content = .own(c)
   }
 

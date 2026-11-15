@@ -49,7 +49,11 @@ func shelfBoard() -> Board {
     c.toggleShelf()
     let p = try #require(c.shelfPanel)
     #expect(p.frame.maxX == c.bounds.width - 12 && p.frame.minY == 12 && p.frame.width == 300)
-    #expect(p.ids.isEmpty && ShelfPanel.empty == "⌥S or drag to the Shelf button")
+    #expect(
+      p.ids.isEmpty
+        && ShelfPanel.empty
+          == "Nothing on the Shelf. Right-click a card or Section → Move to Shelf, or drag it onto the Shelf button."
+    )
     // Esc and a click on the board leave it open
     r.key(53)
     r.click(CGPoint(x: 900, y: 900))
@@ -98,6 +102,44 @@ func shelfBoard() -> Board {
     r.doc.undo()
     r.doc.undo()
     #expect(r.bytes == start)
+  }
+
+  /// With the panel closed it is said (actions/shelf.ts told): "Moved to Shelf", "Moved N cards to Shelf" for cards
+  /// only; with the panel open the picture shows it. Remove says "Removed from Shelf" and tells what it does
+  @Test func movingToTheShelfWithThePanelClosedIsSaidAndRemoveToo() async throws {
+    let r = try await Rig(shelfBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    r.doc.select([.card(cid("n1")), .card(cid("n2"))])
+    r.key(1, .option)
+    #expect(c.toastText == "Moved 2 cards to Shelf")
+    r.doc.select([.section(sid("g1"))])
+    r.key(1, .option)
+    #expect(c.toastText == "Moved to Shelf")
+    r.doc.undo()
+    c.toastText = nil
+    c.toggleShelf()
+    r.doc.select([.section(sid("g1"))])
+    r.key(1, .option)
+    #expect(c.toastText == nil)
+    let id = try #require(entry(r, holding: "m1"))
+    let remove = try #require(c.thumbMenu(id).item(withTitle: "Remove"))
+    #expect(remove.toolTip == "Delete it and what is in it")
+    try #require(remove.representedObject as? MenuAction).run()
+    #expect(c.toastText == "Removed from Shelf" && entry(r, holding: "m1") == nil)
+  }
+
+  /// Put Back selects the entry's Sections when it has any, else its cards (actions/shelf.ts putBack, dropEntry)
+  @Test func puttingBackASectionSelectsTheSection() async throws {
+    let r = try await Rig(shelfBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    r.doc.select([.section(sid("g1"))])
+    r.key(1, .option)
+    c.toggleShelf()
+    await drawn(r)
+    c.putBack(try #require(entry(r, holding: "m1")))
+    #expect(r.doc.selection == [.section(sid("g1"))])
   }
 
   @Test func aPictureClickedShowsItLargeBesideThePanelUntilClickedAgainEscOrAClickElsewhere() async throws {

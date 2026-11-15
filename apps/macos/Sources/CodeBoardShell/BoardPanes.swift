@@ -25,6 +25,10 @@ import CodeBoardNotes
   var cameras: CameraStore? {
     didSet { for p in panes.values { p.canvas.cameras = cameras } }
   }
+  /// Where every canvas keeps the picture of a board it left (nil: nowhere)
+  var pictures: URL? {
+    didSet { for p in panes.values { p.canvas.picturesFolder = pictures } }
+  }
 
   /// Asks a question (tests answer it themselves): a sheet on the window, Delete first. On the main actor: a closure
   /// without it runs off the main thread when awaited, where AppKit refuses to begin a sheet
@@ -40,10 +44,46 @@ import CodeBoardNotes
     )
   }
 
+  /// Delete Everywhere…'s question, in main's words (actions/shared.ts deleteEverywhere, commands boardsText); undo
+  /// brings the card back on this board only
+  static func deleteEverywhereQuestion(_ title: String, boards: [String]) -> NSAlert {
+    destroying(
+      "Delete “\(title)” everywhere?",
+      "This card is on \(boards.count) boards: \(boards.joined(separator: ", ")). Its arrows and sidenotes go too, on every board.",
+      "Delete Everywhere")
+  }
+
+  /// The boards showing shared card `id` now: an open one as it is edited, the others as their files hold them
+  // ponytail: reads every board not open on each ask (its menu, ⌘⌫); keep an index with the vault watcher if vaults grow
+  func boardsShowing(_ id: CardID) -> [VaultBoard] {
+    guard let vault = shell.vault else { return [] }
+    return (shell.tree?.allBoards ?? []).filter { b in
+      let board = documents[b.id]?.board ?? (try? vault.board(at: b.path))
+      return board?.cards.contains { $0.id == id && $0.isShared } == true
+    }
+  }
+
+  /// A shared card deleted everywhere from another board goes from this one as the host takes it (storage deleteEverywhere,
+  /// core cards.ts dropGone): no undo step here; a board not open is read, changed and written
+  private func remove(_ id: CardID, from b: VaultBoard) {
+    let doc =
+      documents[b.id]
+      ?? (try? BoardDocument(
+        file: { [weak shell] in
+          shell?.vault.flatMap { v in shell?.board(b.id).map { v.url(of: $0.path).appending(path: Vault.boardFileName) }
+          }
+        }, vault: shell.vault))
+    doc?.sync { $0.delete([.card(id)], ignoringLock: true) }
+    doc?.flush()
+  }
+
   /// The sidebar's Delete Folder: main's Delete Group question (actions.ts deleteGroup) in the words of what it does here,
   /// where the boards go with their folder
   static func deleteFolderQuestion(_ name: String, boards: Int) -> NSAlert {
-    destroying("Delete folder “\(name)”?", "Its \(boards) boards go to the Trash with it.", "Delete Folder")
+    destroying(
+      "Delete folder “\(name)”?",
+      boards == 1 ? "Its 1 board goes to the Trash with it." : "Its \(boards) boards go to the Trash with it.",
+      "Delete Folder")
   }
 
   /// A question before what undo does not bring back (a board or folder to the Trash): its button first and marked as
@@ -176,8 +216,12 @@ import CodeBoardNotes
         pane.canvas.summarySwitch = summarySwitch
         pane.canvas.summaryWriter = summaryWriter
         pane.canvas.cameras = cameras
+        pane.canvas.picturesFolder = pictures
         pane.onOpenBoard = { [weak self] in self?.shell.show($0) }
-        pane.canvas.onEnterBoard = { [weak self] in self?.shell.enter($0, from: $1, camera: $2) }
+        pane.canvas.onEnterBoard = { [weak self, weak pane] e in
+          if let c = e.reveal { pane?.arriving(.card(c)) }
+          self?.shell.enter(e.board, from: e.frame, camera: e.camera, through: e.deeper.map { ($0.frame, $0.board) })
+        }
         pane.canvas.onLeaveBoard = { [weak self] in self?.shell.leave(to: $0) }
         // a sub-board card's Delete Board…: asked as main asks (host handlers.ts deleteBoardAsked), then as the
         // sidebar's Delete, to the Trash
@@ -187,6 +231,17 @@ import CodeBoardNotes
           let n = (try? vault.board(at: b.path).cards.count) ?? 0
           guard await confirm(Self.deleteQuestion(b.title, cards: n), pane?.window) else { return false }
           return shell.trash(b.path)
+        }
+        pane.canvas.boardsShowing = { [weak self] id in self?.boardsShowing(id).map(\.title) ?? [] }
+        pane.canvas.onDeleteEverywhere = { [weak self, weak pane] id, title, here in
+          guard let self, let at = pane?.document?.id else { return nil }
+          let boards = boardsShowing(id)
+          guard await confirm(Self.deleteEverywhereQuestion(title, boards: boards.map(\.title)), pane?.window)
+          else { return nil }
+          here()
+          for b in boards where b.id != at { remove(id, from: b) }
+          shell.trash("\(Vault.appDataFolder)/\(Vault.sharedFolder)/\(id.rawValue).json")
+          return boards.count
         }
         pane.canvas.onVaultChanged = { [weak self] in self?.onVaultChanged?() }
         pane.canvas.onSetSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }
@@ -329,6 +384,8 @@ final class Pane: NSView {
   /// Another board to open in this tab (a question on it was picked, a ref to it clicked), and what to go to once it shows
   var onOpenBoard: ((BoardID) -> Void)?
   private var pending: Arrival?
+  /// Where the next board shown here is to be brought to
+  func arriving(_ a: Arrival) { pending = a }
   private let problem = NSTextField(wrappingLabelWithString: "")
 
   init(notes: NoteRenderer?) {
@@ -427,6 +484,11 @@ final class Pane: NSView {
     failed = false
     document = doc
     shown = at
+    // the picture kept of it, from the tab's first frame (the canvas at its size first: the picture is the view's);
+    // with it up the tab shows at once
+    canvas.frame = bounds
+    canvas.showPicture(at, in: vault, theme: theme)
+    if canvas.pictureShown { becomeReady() }
     if !ready {
       Task { [weak self] in
         try? await Task.sleep(for: Self.patience)

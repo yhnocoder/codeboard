@@ -23,7 +23,7 @@ extension Shell {
       (
         "Delete Folder",
         {
-          self.trashAsked(folder.path, BoardPanes.deleteFolderQuestion(folder.name, boards: folder.allBoards.count))
+          self.trashAsked(folder.path, BoardPanes.deleteFolderQuestion(folder.name, boards: folder.boardCount))
         }
       ))
     return m
@@ -32,8 +32,58 @@ extension Shell {
   /// A board's row menu
   public func menu(board: VaultBoard) -> [MenuEntry] {
     [
-      ("Rename", { self.renaming = .board(board.id) }), ("Edit Mark…", { self.sealEditing = board.id }), nil,
-      ("Delete", { self.trashAsked(board.path, self.boardQuestion(board)) }),
+      ("Rename", { self.renaming = .board(board.id) }), ("Edit Mark…", { self.sealEditing = board.id }),
+      ("Duplicate Board", { self.duplicate(board) }),
+      // the sidebar shows moveTargets(board:) under it
+      ("Move to", {}), nil,
+    ] + fileEntries(board.path) + [nil, ("Delete", { self.trashAsked(board.path, self.boardQuestion(board)) })]
+  }
+
+  /// Duplicate Board: a copy beside it in its folder (VaultFiles duplicateBoard), not opened (host actions.ts)
+  public func duplicate(_ board: VaultBoard) {
+    files { v in try v.duplicateBoard(at: board.path) }
+  }
+
+  /// Move to ▸ (host actions.ts moveToGroup, with the vault's folders for its groups): the top level and every folder,
+  /// `Parent › Child`, but the one it is in
+  public func moveTargets(board: VaultBoard) -> [(title: String, run: () -> Void)] {
+    guard let tree else { return [] }
+    let here = board.path.split(separator: "/").dropLast().joined(separator: "/")
+    let all = [("", "Top Level")] + tree.allFolders.dropFirst().map { ($0.path, $0.path.replacing("/", with: " › ")) }
+    return all.filter { $0.0 != here }.map { path, title in (title, { _ = self.move(board.path, into: path) }) }
+  }
+
+  /// The row of a board that cannot be read: shown in Finder, its file's path copied, or deleted
+  public func menu(unreadable b: VaultUnreadable) -> [MenuEntry] {
+    fileEntries(b.path) + [
+      nil,
+      (
+        "Delete",
+        {
+          self.trashAsked(
+            b.path,
+            BoardPanes.destroying(
+              "Delete board “\(b.title)”?", "Its file cannot be read. It goes to the Trash.", "Delete"))
+        }
+      ),
+    ]
+  }
+
+  /// Reveal in Finder and Copy Path (host commands.ts revealInFolder, copyBoardPath: the board file's path, said nothing
+  /// about)
+  private func fileEntries(_ path: String) -> [MenuEntry] {
+    guard let vault else { return [] }
+    let package = vault.url(of: path)
+    return [
+      ("Reveal in Finder", { NSWorkspace.shared.activateFileViewerSelecting([package]) }),
+      (
+        "Copy Path",
+        {
+          self.pasteboard.clearContents()
+          self.pasteboard.setString(
+            package.appending(path: Vault.boardFileName).path(percentEncoded: false), forType: .string)
+        }
+      ),
     ]
   }
 

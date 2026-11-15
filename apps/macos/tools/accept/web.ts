@@ -1,11 +1,17 @@
 // The acceptance driver's web side (README.md): the board VS Code shows, on a storage folder's first board, in headless
-// Chromium, taking the Mac driver's commands from <out>/cmd and logging to <out>/log.txt the same way.
+// Chromium, taking the Mac driver's commands from <out>/cmd and logging to <out>/log.txt the same way. Behind the page
+// runs the real host (startHost, as the extension runs it) on a copy of the storage folder: what the board asks it
+// (search, sub-boards, shared cards, links…) is answered, and edits are saved there.
 //   node web.mjs <storage> <out>   (run.mjs bundles and starts it)
 import * as fs from "node:fs";
 import * as http from "node:http";
 import * as path from "node:path";
 import type { AddressInfo } from "node:net";
-import { recordBoards } from "../../../../packages/tiles/src/record";
+import * as os from "node:os";
+import { Emitter, type BoardToHost, type HostToBoard } from "@codeboard/core";
+import { SETTINGS } from "@codeboard/core/settings";
+import { startHost, type BoardView } from "@codeboard/host";
+import { boardsWorkspace } from "../../../../packages/tiles/src/workspace";
 import { launch } from "../../../../tools/test/chromium.mjs";
 
 const [storage, out] = process.argv.slice(2);
@@ -20,32 +26,86 @@ const log = (s: string) => fs.appendFileSync(logf, `${now()} ${s}\n`);
 const TYPES: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".png": "image/png", ".svg": "image/svg+xml" };
 const server = http.createServer((req, res) => {
   const p = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
-  const f = p === "/page.html" ? path.join(here, "page.html") : p.startsWith("/board/") ? path.join(boardDist, p.slice(7)) : p.startsWith("/assets/") ? path.join(storage, "assets", p.slice(8)) : undefined;
+  const f = p === "/page.html" ? path.join(here, "page.html") : p.startsWith("/board/") ? path.join(boardDist, p.slice(7)) : p.startsWith("/file/") && p.slice(5).startsWith(tmp + "/") ? p.slice(5) : undefined;
   if (!f || !fs.existsSync(f) || !fs.statSync(f).isFile()) return void res.writeHead(404).end();
   res.writeHead(200, { "content-type": TYPES[path.extname(f)] ?? "application/octet-stream" });
   fs.createReadStream(f).pipe(res);
 });
 await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-const rec = await recordBoards(storage, boardDist);
-// ACCEPT_BOARD (part of its id): the storage board to open; the first one when unset
-const found = [...rec.messages].find(([k]) => process.env.ACCEPT_BOARD && String(k).includes(process.env.ACCEPT_BOARD)) ?? [...rec.messages][0];
-// the host opens no board it cannot read (a file the schema refuses), and says nothing here
-if (!found) throw new Error(`no board recorded from ${storage}: does each board file pass the schema (core's readBoardFile)?`);
-const [, recorded] = found;
 // the look under test: the theme setting the host sends, light or dark as VS Code's body class says
 const LOOK = process.env.ACCEPT_THEME ?? "warm-ink", DARK = process.env.ACCEPT_DARK === "1";
-// no keys forwarded: VS Code takes those (⌘D…) and sends them back as the same key action; here the board takes them itself
-const msgs = recorded.map((m: any) => (m.type === "init" ? { ...m, host: { ...m.host, forwardedKeys: [], settings: { ...m.host.settings, theme: LOOK } } } : m));
+
+// ---- the host: the storage folder copied in as a workspace's .codeboard (it writes there: edits, sub-boards, caches)
+const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "accept-web-")));
+const root = path.join(tmp, "ws");
+fs.cpSync(storage, path.join(root, ".codeboard"), { recursive: true });
+const ws = boardsWorkspace(root, path.join(tmp, "storage"));
+// the editor's settings: the look under test
+const conf = new Map<string, unknown>([[`codeboard.${SETTINGS.theme.key}`, LOOK]]);
+const confChanged = new Emitter<{ affects(key: string): boolean }>();
+ws.settings = {
+  get: <T>(k: string) => conf.get(k) as T | undefined,
+  set: async (k, v) => { conf.set(k, v); confChanged.fire({ affects: (x) => k === x || k.startsWith(`${x}.`) }); },
+  onDidChange: confChanged.event,
+};
+// VS Code's modal questions (Delete Board…): up until a `button` or a key answers them (dialog reads them)
+let asking: { text: string; actions: string[]; answer: (a: string | undefined) => void } | undefined;
+ws.ui = { ...ws.ui, warn: (text, _o, ...actions) => new Promise((answer) => { asking = { text, actions, answer: (a) => { asking = undefined; answer(a); } }; log(`host asks: ${text} [${actions.join("] [")}]`); }) };
+// what the board asks to open outside it (a Web card's page, a link, Reveal in Finder, a new window): written down for
+// the opened command, never opened
+const opened: string[] = [];
+const keepOpened = (what: string) => { opened.push(what); log(`opened (not really): ${what}`); };
+ws.ui = { ...ws.ui, openUrl: async (u) => keepOpened(u), openFolder: async (f) => keepOpened(`folder ${f}`), revealInOS: async (f) => keepOpened(`reveal ${f}`) };
+/** The one board view: what the host posts goes to the page once it is set up (theme, light or dark), in order */
+class PageView implements BoardView {
+  title = "";
+  visible = true;
+  active = true;
+  readonly message = new Emitter<BoardToHost>();
+  onMessage = this.message.event;
+  onDidActivate = new Emitter<void>().event;
+  onDidDispose = new Emitter<void>().event;
+  live = false;
+  held: HostToBoard[] = [];
+  out = Promise.resolve();
+  postMessage(m: HostToBoard) {
+    // no keys forwarded: VS Code takes those (⌘D…) and sends them back as the same key action; here the board takes them
+    if (m.type === "init") m = { ...m, host: { ...m.host, forwardedKeys: [] } };
+    log(`host → board ${m.type}${m.type === "reply" ? ` #${m.req}${m.data == null ? " (nothing)" : ""}` : ""}`);
+    if (!this.live) return void this.held.push(m);
+    this.out = this.out.then(() => page.evaluate((x) => (window as any).__deliver([x]), m as never)).catch((e) => log(`post failed: ${e}`));
+  }
+  reveal() {}
+  async focus() {}
+  dispose() {}
+  resourceUrl(dir: string) { return `${base}/file${dir}`; }
+}
+const view = new PageView();
+const host = startHost(ws, { globalState: { get: () => undefined, set: async () => {} }, openView: () => view }, { mediaDir: boardDist });
+await host.ready;
+const metas = await host.store.list();
+// ACCEPT_BOARD (part of its id): the storage board to open; else the first by name, as the Mac side opens the first row
+// of its sidebar
+const meta = metas.find((m) => process.env.ACCEPT_BOARD && m.id.includes(process.env.ACCEPT_BOARD)) ?? [...metas].sort((x, y) => x.name.localeCompare(y.name))[0];
+// the host opens no board it cannot read (a file the schema refuses), and says nothing here
+if (!meta) throw new Error(`no board in ${storage}: does each board file pass the schema (core's readBoardFile)?`);
 const browser = await launch();
-for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => void browser.close().finally(() => process.exit(0)));
+for (const sig of ["SIGTERM", "SIGINT"])
+  process.on(sig, () => void browser.close().finally(() => { host.dispose(); fs.rmSync(tmp, { recursive: true, force: true }); process.exit(0); }));
 const SCALE = Number(process.env.ACCEPT_SCALE ?? 1);
 const ctx = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: SCALE });
 // Chrome takes a dispatched wheel's delta in device pixels, so at --scale 2 a bare wheel(160) pans 80 CSS px
 const wheel = (dx: number, dy: number) => page.mouse.wheel(dx * SCALE, dy * SCALE);
 const page = await ctx.newPage();
+// a page the board opens itself (window.open, a link to a new tab) is closed at once
+ctx.on("page", (p) => { if (p !== page) { keepOpened(p.url()); void p.close(); } });
 page.on("pageerror", (e) => log(`pageerror ${e.message}`));
 page.on("console", (m) => { if (m.type() === "error") log(`console ${m.text()}`); });
+// what the board asks or tells the host
+// (each logged: a request and its reply, by number)
+await page.exposeFunction("__toHost", (m: BoardToHost & { req?: number }) => { log(`board → host ${m.type}${m.req !== undefined ? ` #${m.req}` : ""}`); view.message.fire(m); });
+await host.hub.show(meta.id, { preserveFocus: true });
 await page.goto(`${base}/page.html`);
 await page.waitForFunction(() => (window as any).__booted);
 // light or dark as VS Code says it; the look itself comes with the host's settings (init's theme), which the board
@@ -54,7 +114,9 @@ await page.evaluate((dk) => {
   document.body.className = dk ? "vscode-dark" : "vscode-light";
   document.documentElement.dataset.theme = dk ? "dark" : "light";
 }, DARK);
-await page.evaluate((ms) => (window as any).__deliver(ms), msgs);
+view.live = true;
+for (const m of view.held.splice(0)) view.postMessage(m);
+await page.waitForFunction(() => document.querySelector(".card"), undefined, { timeout: 30000 }).catch(() => log("no card drawn in 30 s"));
 log(`look ${await page.evaluate(() => `${document.documentElement.dataset.look} (html.${document.documentElement.className.split(" ").join(".")})`)}`);
 const cdp = await ctx.newCDPSession(page);
 let pos = { x: W / 2, y: H / 2 };
@@ -144,14 +206,14 @@ async function run(line: string): Promise<string> {
       for (let i = 0; i < steps; i++) { await hold(["Control"], () => wheel(0, -per * 100)); await sleep(8); }
       break;
     }
-    case "key": { log(`key down ${a[1]} at ${pos.x.toFixed(0)},${pos.y.toFixed(0)}`); const half = a[1].endsWith(":down") ? "down" : a[1].endsWith(":up") ? "up" : ""; const p = a[1].replace(/:(down|up)$/, "").split("+"); const k = p.pop()!; const name = [...mods(p.join("+")), keyName[k] ?? keyCode[k] ?? k].join("+"); if (half === "down") await page.keyboard.down(name); else if (half === "up") await page.keyboard.up(name); else await page.keyboard.press(name); break; }
+    case "key": if (asking && /^(esc|return)$/.test(a[1])) { log(`key ${a[1]} to the host's question`); asking.answer(a[1] === "return" ? asking.actions[0] : undefined); break; } { log(`key down ${a[1]} at ${pos.x.toFixed(0)},${pos.y.toFixed(0)}`); const half = a[1].endsWith(":down") ? "down" : a[1].endsWith(":up") ? "up" : ""; const p = a[1].replace(/:(down|up)$/, "").split("+"); const k = p.pop()!; const name = [...mods(p.join("+")), keyName[k] ?? keyCode[k] ?? k].join("+"); if (half === "down") await page.keyboard.down(name); else if (half === "up") await page.keyboard.up(name); else await page.keyboard.press(name); break; }
     // keys: key by key, as typed (a character shift makes, like ?, with shift held, as a person types it)
     case "keys": for (const ch of line.slice(5)) {
       const base = Object.entries(shifted).find(([, v]) => v === ch)?.[0];
       await page.keyboard.press(base ? `Shift+${keyCode[base] ?? base}` : ch === " " ? "Space" : ch); await sleep(30);
     } break;
     // dialog: the board's dialog that is up (its text and buttons); button <title>: click that button in it
-    case "dialog": return await page.evaluate(() => {
+    case "dialog": if (asking) return `app-modal: ${asking.text} [${asking.actions.join("] [")}] [Cancel ⎋]`; return await page.evaluate(() => {
       const d = [...document.querySelectorAll<HTMLElement>("[role=dialog], [role=alertdialog]")].find((e) => e.offsetParent);
       if (!d) return "none";
       const buttons = [...d.querySelectorAll("button")].map((b) => (b.textContent ?? "").trim()).filter(Boolean);
@@ -159,6 +221,7 @@ async function run(line: string): Promise<string> {
     });
     case "button": {
       const title = line.slice(7);
+      if (asking) { asking.answer(asking.actions.includes(title) ? title : undefined); break; }
       const r = await page.evaluate((title) => {
         const d = [...document.querySelectorAll<HTMLElement>("[role=dialog], [role=alertdialog]")].find((e) => e.offsetParent);
         const b = d && [...d.querySelectorAll("button")].find((x) => (x.textContent ?? "").trim() === title)?.getBoundingClientRect();
@@ -256,7 +319,17 @@ async function run(line: string): Promise<string> {
         case "zoomin": return at(box('.dock [aria-label="Zoom In"]'));
         case "fit": return at(box('.dock [aria-label="Fit to Window"]'));
         case "questions": return at(box(".dock .qlist-btn"));
+        // the bar over two or more selected cards (Canvas.tsx AlignBar) and its ⋯ panel
+        case "alignbar": return at(box(".alignbar.pill"));
+        case "newsection": return at(box('.alignbar [data-tip="Create Section"]'));
+        case "subboard": return at(box('.alignbar [data-tip^="Create Sub-board"]'));
+        case "alignmore": return at(box('.alignbar > .ib[aria-label="More"]'));
       }
+      const ops: Record<string, string> = {
+        alignleft: "Align Left", alignhcenter: "Align Centre", alignright: "Align Right", aligntop: "Align Top",
+        alignbottom: "Align Bottom", alignhdist: "Distribute Horizontally", alignvdist: "Distribute Vertically",
+      };
+      if (ops[name]) return at(box(`.alignmore.open [aria-label="${ops[name]}"]`));
       return "none";
     }, a[1]);
     // the card's words as the board shows them; the ids of the cards on it
@@ -276,6 +349,7 @@ async function run(line: string): Promise<string> {
       return out.join(" < ") || "body";
     });
     case "hit": return await hitAt(pos.x, pos.y);
+    case "opened": return opened.length ? opened.join("\n") : "none";
     case "pointer": return `${pos.x.toFixed(1)} ${pos.y.toFixed(1)}`;
     case "origin": return "0 0";
     case "menu": await page.mouse.down({ button: "right" }); await page.mouse.up({ button: "right" }); await sleep(200);
@@ -306,7 +380,7 @@ async function run(line: string): Promise<string> {
     case "shot": await page.screenshot({ path: path.join(out, `${a[1]}.png`) }); break;
     case "eval": return String(await page.evaluate(line.slice(5)));
     case "posted": return JSON.stringify(await page.evaluate(() => (window as any).__posted.splice(0).map((m: any) => m.type)));
-    case "quit": await browser.close(); process.exit(0);
+    case "quit": await browser.close(); host.dispose(); await host.flush(); fs.rmSync(tmp, { recursive: true, force: true }); process.exit(0);
     default: return "unknown command";
   }
   return "";
@@ -321,6 +395,6 @@ for (;;) {
     let r = "";
     log(`start ${n} ${l}`);
     try { r = await run(l); } catch (e) { r = `error ${(e as Error).message}`; }
-    log(`done ${n} ${l}${r ? " -> " + r : ""}`);
+    log(`done ${n} ${l}${r ? " -> " + r.replaceAll("\n", "\\n") : ""}`); // on one line (a menu's items)
   }
 }
