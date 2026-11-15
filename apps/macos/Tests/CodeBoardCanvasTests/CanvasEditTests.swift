@@ -100,8 +100,15 @@ actor RigTurns {
     let mine = alongside == nil
     turn = mine
     if mine { await Rig.turns.take() }
+    // from here on the test is watched: one stuck past the limit ends the process, saying which it was
+    if mine { TestWatch.started(Test.current.map { "\($0.id)" } ?? "a test") }
     var opened = false
-    defer { if !opened && mine { Task { await Rig.turns.give() } } }
+    defer {
+      if !opened && mine {
+        TestWatch.ended()
+        Task { await Rig.turns.give() }
+      }
+    }
     _ = NSApplication.shared
     let page = NoteRenderer.bundledPage.appending(path: "page.html").path(percentEncoded: false)
     try #require(FileManager.default.fileExists(atPath: page), "build the Note page first: node web/build.mjs")
@@ -150,7 +157,10 @@ actor RigTurns {
     canvas.leave()
     window.close()
     try? FileManager.default.removeItem(at: root)
-    if turn { Task { await Rig.turns.give() } }
+    if turn {
+      TestWatch.ended()
+      Task { await Rig.turns.give() }
+    }
   }
 
   /// A board point in the window's coordinates
