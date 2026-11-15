@@ -4,11 +4,9 @@ import Testing
 
 @testable import CodeBoardMarkdownUI
 
-/// the formula engine over the assets build's engines.js (node apps/macos/tools/markdown/assets.mjs makes it)
+/// the formula engine over the assets' engines.js, where the component finds it
 let engines: JSEngines? = {
-  let url = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../.build-markdown/engines.js")
-    .standardized
-  return try? JSEngines(script: url)
+  try? JSEngines(script: MarkdownAssets.assets.appending(path: "engines.js"))
 }()
 
 /// Never skipped when the engines are missing: a build without them fails here. Each test has a minute: an engine that
