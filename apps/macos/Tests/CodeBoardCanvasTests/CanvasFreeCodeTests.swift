@@ -204,6 +204,90 @@ private func freeBoard() -> Board {
     #expect(r.doc.board.segment(cid("f"), s1)?.lines.suffix(2) == ["    return run(ids)x = 1", "    y"])
   }
 
+  /// interact.ts clickEditKind "free": a click on the code of the one Free code card selected before the press writes it,
+  /// the caret where it was; not on its head, not sourced code
+  @Test func aClickOnTheOneSelectedFreeCodesCodeWritesIt() async throws {
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let card = r.rect("f")
+    let code = try #require(c.scene?.placed[cid("f")]?.code)
+    let row = try #require(code.layout.row(segment: 0, line: 2))
+    let line2 = CGPoint(x: card.minX + code.layout.gutter + 40, y: card.minY + code.top + row.y + row.height / 2)
+    r.click(line2)
+    await r.settle()
+    #expect(r.doc.selection == [.card(cid("f"))] && !c.isEditing, "the click that selects it")
+    r.click(CGPoint(x: card.midX, y: card.minY + 10))
+    await r.settle()
+    #expect(!c.isEditing, "its head")
+    r.click(line2)
+    await r.editorReady()
+    #expect(c.editing?.id == cid("f") && c.editing?.code == true)
+    let caretLine =
+      try await c.noteEditor.view.callAsyncJavaScript(
+        "const s = getSelection(); return s.anchorNode?.parentElement?.closest('.cm-line')?.textContent ?? null",
+        contentWorld: .page) as? String
+    #expect(caretLine == "    ids = batch.ids")
+    await c.endEditing()
+    let read = r.rect("r")
+    r.click(CGPoint(x: read.midX, y: read.maxY - 10))
+    r.click(CGPoint(x: read.midX, y: read.maxY - 10))
+    await r.settle()
+    #expect(!c.isEditing, "sourced code")
+  }
+
+  /// interact.ts cardPointerDown: a double-click on a code card's title (on an untitled Free code card's head anywhere)
+  /// writes its title where it is (CodeHead.tsx's Editable), one step; blank or the card's own title is none
+  /// (cards.ts renameCard); elsewhere on a titled head nothing is written
+  @Test func aDoubleClickOnACodeCardsTitleRenamesItWhereItIs() async throws {
+    var b = freeBoard()
+    b.cards.append(
+      Card(
+        id: cid("u"), x: 600, y: 100, width: 320,
+        content: .own(
+          CardContent(
+            body: .code(
+              CodeCard(segments: [
+                Segment(id: SegmentID(rawValue: "s3"), source: nil, language: "python", firstLine: 1, lines: ["y = 2"])
+              ]))))))
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    func head(_ id: String, _ x: CGFloat) -> CGPoint {
+      let k = r.rect(id)
+      return CGPoint(x: x < 0 ? k.maxX + x : k.minX + x, y: k.minY + c.theme.headerHeight / 2)
+    }
+    func title(_ id: String) -> String? {
+      if case .own(let k)? = r.doc.board.card(cid(id))?.content { k.title } else { nil }
+    }
+    // a titled head past its title: nothing
+    r.doubleClick(head("f", -40))
+    await r.settle()
+    #expect(c.inPlace == nil && !c.isEditing)
+    // on the title: its field, with the title
+    r.doubleClick(head("r", 40))
+    await r.settle()
+    #expect(c.inPlace?.what == .card(cid("r")) && c.inPlace?.field.stringValue == "Read" && !c.isEditing)
+    c.inPlace?.field.stringValue = "  Reader "
+    c.endInPlace(commit: true)
+    #expect(title("r") == "Reader" && r.doc.undoName == "Rename")
+    // blank: untitled again
+    r.doubleClick(head("f", 20))
+    await r.settle()
+    #expect(c.inPlace?.what == .card(cid("f")) && c.inPlace?.field.stringValue == "Free")
+    c.inPlace?.field.stringValue = " "
+    c.endInPlace(commit: true)
+    #expect(title("f") == nil)
+    // an untitled Free code card: anywhere on its head, empty
+    r.doubleClick(head("u", -40))
+    await r.settle()
+    #expect(c.inPlace?.what == .card(cid("u")) && c.inPlace?.field.stringValue == "")
+    c.inPlace?.field.stringValue = "Setup"
+    c.endInPlace(commit: true)
+    #expect(title("u") == "Setup")
+    #expect(r.doc.history.undoSteps.count == 3)
+  }
+
   @Test func sourcedCodeIsNotWrittenByADoubleClick() async throws {
     let r = try await Rig(freeBoard(), zoom: 1)
     defer { r.close() }

@@ -19,6 +19,35 @@ extension CanvasView {
     return true
   }
 
+  /// Where a code card's title is written on its head (board), and what it says there: an untitled Free code card's is
+  /// all of its head, empty (CodeHead.tsx: its .ctitle, shown on Free code only when it has a title)
+  func codeTitle(_ id: CardID) -> (box: CGRect, hit: CGRect, text: String)? {
+    guard let i = index(of: .card(id)), case .code(let d) = scene!.items[i].drawing, d.framed,
+      case .own(let own)? = document?.board.card(id)?.content, case .code = own.body
+    else { return nil }
+    let r = scene!.items[i].rect
+    var x = theme.headerPad
+    if let g = d.glyph, (g == "ƒ" ? theme.kindGlyph : theme.kindGlyphMono) != nil { x += 10 + theme.headerGap }
+    let free = document!.board.isFreeCode(id)
+    let box = CGRect(
+      x: r.minX + x - 2, y: r.minY + theme.headerHeight / 2 - 10, width: r.width - x - theme.headerPadRight + 4,
+      height: 20)
+    if free && own.title == nil {
+      return (box, CGRect(x: r.minX, y: r.minY, width: r.width, height: theme.headerHeight), "")
+    }
+    let hit = CGRect(
+      x: r.minX + x, y: r.minY, width: min(Drawing.width(d.title, theme.codeTitle), box.width),
+      height: theme.headerHeight)
+    return (box, hit, free ? (own.title ?? "") : cardTitle(own))
+  }
+
+  /// Writes a code card's title where it is drawn
+  func editCodeTitle(_ id: CardID) {
+    guard let t = codeTitle(id) else { return }
+    writeInPlace(
+      .card(id), t.text, at: t.box.origin, select: .card(id), box: t.box, font: theme.codeTitle, placeholder: "")
+  }
+
   /// Starts writing a Free code card's code, the caret where `caret` is on the board (nil: at the start); `fresh`: a
   /// card just made, which goes when left empty
   func beginCodeEditing(_ id: CardID, at caret: CGPoint? = nil, fresh: Bool = false) {

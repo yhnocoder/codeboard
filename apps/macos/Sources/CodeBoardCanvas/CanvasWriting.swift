@@ -499,14 +499,21 @@ extension CanvasView {
     if let id = hitCard(p) {
       if openSubBoard(id) { return }
       if openPage(at: p) { return }
+      // a code card's title: written in place
+      if let t = codeTitle(id), t.hit.contains(p) { return editCodeTitle(id) }
+      // its first click began writing it (clickEdit): the second keeps that
       if isFreeCode(id) {
+        // its head is not its code (clickEditKind: .src)
+        if codeTitle(id) != nil, let r = scene?.placed[id]?.rect, p.y < r.minY + theme.headerHeight { return }
         return editSoon {
+          if self.editing?.id == id { return }
           await self.endEditing()
           self.beginCodeEditing(id, at: p)
         }
       }
       guard isWriting(id) else { return }
       editSoon {
+        if self.editing?.id == id { return }
         await self.endEditing()
         self.beginEditing(id, at: p)
       }
@@ -516,6 +523,19 @@ extension CanvasView {
     } else {
       if !doc.selection.isEmpty { doc.select([]) }
       editSoon { await self.create(.text(.text), at: CGPoint(x: p.x, y: p.y - 12)) }
+    }
+  }
+
+  /// A click on the one card selected before the press (interact.ts cardClick, clickEditKind): on a Note's body it is
+  /// written in, on Free code's code that is written, the caret where it was; a Text or Box waits for a double-click
+  func clickEdit(_ id: CardID, at p: CGPoint) {
+    guard editing == nil, let doc = document, let i = index(of: .card(id)) else { return }
+    let head: CGFloat = if case .code(let c) = scene!.items[i].drawing, !c.framed { 0 } else { theme.headerHeight }
+    guard p.y >= scene!.items[i].rect.minY + head else { return }
+    if isFreeCode(id) {
+      editSoon { if self.editing == nil { self.beginCodeEditing(id, at: p) } }
+    } else if case .own(let c)? = doc.board.card(id)?.content, case .note = c.body, isWriting(id) {
+      editSoon { if self.editing == nil { self.beginEditing(id, at: p) } }
     }
   }
 

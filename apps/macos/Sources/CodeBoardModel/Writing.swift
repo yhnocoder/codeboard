@@ -36,6 +36,15 @@ extension Board {
       id: id, x: x, y: y, width: newNoteWidth, content: .own(CardContent(body: .code(CodeCard(segments: [seg])))))
   }
 
+  /// A card's title as written; blank or the card's own title is none (cards.ts renameCard)
+  public mutating func renameCard(_ id: CardID, _ title: String) {
+    guard let i = cards.firstIndex(where: { $0.id == id }), case .own(var c) = cards[i].content else { return }
+    let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    c.title = nil
+    if !t.isEmpty && t != cardTitle(c) { c.title = t }
+    cards[i].content = .own(c)
+  }
+
   /// A Note's, Text's or Box's Markdown and layout as written; one written empty goes (cards.ts writeNote)
   public mutating func write(_ id: CardID, text: String, layout: NoteLayout?) {
     guard let i = cards.firstIndex(where: { $0.id == id }), case .own(var c) = cards[i].content else { return }

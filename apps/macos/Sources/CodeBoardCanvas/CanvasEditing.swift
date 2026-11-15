@@ -1175,6 +1175,8 @@ extension CanvasView {
         refClicked(
           .card(r.card, boardRect(r.box, on: r.card)), r.box.ref, r.box.target, go: e.modifierFlags.contains(.command),
           writing: false)
+      } else if case .card(let id)? = item, was, !toggle, doc.selection == [.card(id)] {
+        clickEdit(id, at: g.start)
       }
       if let item {
         if toggle && was {
