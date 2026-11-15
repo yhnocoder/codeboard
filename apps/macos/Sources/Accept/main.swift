@@ -533,6 +533,9 @@ func strings(_ x: Any) -> [String] {
 
   /// Views that answer acceptsFirstMouse themselves (overriding NSView's, which is swizzled) answer yes too: the
   /// window is key for the person, the window server just does not know it
+  /// A context menu read with `menu` and not yet closed (pick, Esc, a press); the release of the press that closed it
+  var menuOpen = false
+  var swallowUp = false
   var firstMouse: Set<ObjectIdentifier> = []
   func acceptFirstMouse(at p: NSPoint, in w: NSWindow) {
     guard let root = w.contentView?.superview else { return }
@@ -1046,6 +1049,25 @@ func strings(_ x: Any) -> [String] {
     func d(_ i: Int, _ def: Double = 0) -> Double { i < a.count ? Double(a[i]) ?? def : def }
     // a number that is not one (nan, inf) would leave a move going towards it for ever
     if a.dropFirst().contains(where: { Double($0).map { !$0.isFinite } ?? false }) { return "error: not a number" }
+    // A context menu read with `menu` is open until a pick, Esc or a press, as on the web side and for a person: AppKit
+    // shows no menu here, so the driver keeps it open, and the Esc or the press that closes it reaches no view
+    if menuOpen, ["key", "down", "click", "dbl", "drag"].contains(cmd) {
+      menuOpen = false
+      if cmd == "key", a.count > 1, a[1] == "esc" {
+        log("esc closes the menu")
+        return ""
+      }
+      if cmd != "key" {
+        if ["click", "dbl"].contains(cmd), a.count > 2 { await move(to: screen(d(1), d(2)), ms: 300) }
+        log("the press closes the menu")
+        swallowUp = cmd == "down"
+        return ""
+      }
+    }
+    if cmd == "up", swallowUp {
+      swallowUp = false
+      return ""
+    }
     switch cmd {
     case "move":  // move x y [ms]
       await move(to: screen(d(1), d(2)), ms: d(3, 350))
@@ -1086,7 +1108,10 @@ func strings(_ x: Any) -> [String] {
     case "keys": await keys(String(line.dropFirst(5)).replacingOccurrences(of: "\\n", with: "\n"))
     case "ime": await ime(String(line.dropFirst(4)).split(separator: "|").map(String.init))
     case "wait": try? await Task.sleep(for: .milliseconds(Int(d(1, 200))))
-    case "menu": return await contextMenu()
+    case "menu":
+      let r = await contextMenu()
+      menuOpen = r != "none" && r != "no window"
+      return r
     // dialog: the dialog that is up (an app-modal alert or panel, or a sheet on the window): its text and its buttons
     case "dialog":
       guard let d = NSApp.modalWindow ?? win?.attachedSheet else { return "none" }
@@ -1098,7 +1123,9 @@ func strings(_ x: Any) -> [String] {
         return "no button \(title): \(dialogText(d))"
       }
       b.perform(#selector(NSButton.performClick(_:)), with: nil, afterDelay: 0, inModes: [.common])
-    case "pick": pick(String(line.dropFirst(5)))
+    case "pick":
+      menuOpen = false
+      pick(String(line.dropFirst(5)))
     case "hit": return hitInfo(vPointer)
     // ax id: where the canvas's accessibility element with this identifier (a card or Section, when the app exposes
     // them) is now, in board units: x y width height

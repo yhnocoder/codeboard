@@ -1,5 +1,6 @@
 # 别的白板复制，⌥⌘V 贴成独立副本：在这边改，原来那块白板上不变
 # storage: storage-two
+# only: mac
 zoom 1
 click @cown
 key cmd+c

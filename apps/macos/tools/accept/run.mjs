@@ -2,7 +2,7 @@
 // The acceptance runner (README.md): runs scenario files on the Mac app and on the web board VS Code shows, side by side,
 // with a hand's pointer, and writes recordings, screenshots and a report to apps/macos/.build-accept/<scenario>/.
 //   node apps/macos/tools/accept/run.mjs <scenario.txt>… [--only mac|web] [--video] [--theme warm-ink|ink-wash] [--dark]
-//     [--scale 2] [--storage <folder>] [--skip-build] [--debug] [--keep | --attach | --stop]
+//     [--scale 2] [--storage <folder>] [--skip-build] [--debug | --release] [--keep | --attach | --stop]
 // --keep leaves both sides running after the scenarios; later runs with --attach go on in them (no build, no start: a
 // few seconds per run, for trying out targets and expectations); --stop ends them.
 // It prints one line per scenario and side (expectations passed, failed, not checkable) and exits 1 when one failed.
@@ -19,7 +19,7 @@ const mac = path.join(repo, "apps/macos");
 const outRoot = path.join(mac, ".build-accept");
 const argv = process.argv.slice(2);
 const opt = (k) => (argv.includes(k) ? argv[argv.indexOf(k) + 1] : undefined);
-const only = opt("--only");
+
 const valued = ["--only", "--storage", "--theme", "--scale"];
 const scenarios = argv.filter((a, i) => !a.startsWith("--") && !valued.includes(argv[i - 1]));
 // what a scenario needs, named in its own lines so nobody has to remember the flags: "# storage: <folder>" (relative to
@@ -32,6 +32,8 @@ function declared(key, flag, fallback) {
 }
 const storage = path.resolve(opt("--storage") ?? path.join(here, declared("storage", "--storage", "storage") ?? "storage"));
 const theme = declared("theme", "--theme", undefined);
+// "# only: mac": a scenario of what only the Mac app has (its sidebar, several boards)
+const only = declared("only", "--only", undefined);
 // the look under test and the pixels per point of recordings and shots, the same on both sides
 const lookEnv = {
   ...(theme ? { ACCEPT_THEME: theme } : {}),
@@ -42,9 +44,13 @@ const sides = only ? [only] : ["mac", "web"];
 const attach = argv.includes("--attach") || argv.includes("--stop");
 const run = (cmd, a, cwd = repo) => execFileSync(cmd, a, { cwd, stdio: "inherit" });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-if (!scenarios.length && !argv.includes("--stop")) throw new Error("usage: run.mjs <scenario.txt>… [--only mac|web] [--video] [--skip-build] [--debug]");
+if (!scenarios.length && !argv.includes("--stop")) throw new Error("usage: run.mjs <scenario.txt>… [--only mac|web] [--video] [--skip-build] [--debug | --release]");
 const video = argv.includes("--video");
-const config = argv.includes("--debug") ? "debug" : "release";
+// the driver's build: debug (an app change builds in seconds) unless what is measured needs the app as people get it,
+// release (a change takes one to two minutes): with --release, or when a scenario records (rec) or times (expect answer)
+const timed = scenarios.some((f) => /^(\w+:\s*)?(rec |expect answer)/m.test(fs.readFileSync(f, "utf8")));
+const config = argv.includes("--release") || (timed && !argv.includes("--debug")) ? "release" : "debug";
+if (!attach && scenarios.length) console.log(`driver: ${config} build${config === "release" && !argv.includes("--release") ? " (a scenario records or times)" : ""}`);
 
 // ---- build: the driver app (its own name and bundle id, never the app in use) and the web side
 fs.mkdirSync(outRoot, { recursive: true });
@@ -161,7 +167,7 @@ class Driver {
     const hung = this.alive();
     if (hung) process.kill(this.pid, "SIGTERM");
     // what the app kept for the next start (its cameras), in the log of the run that ends: why a camera did not come back
-    const kept = fs.existsSync(cameraFile(this.id, this.vault)) ? fs.readFileSync(cameraFile(this.id, this.vault), "utf8").replace(/\s+/g, "") : "none";
+    const kept = !this.vault ? "(web)" : fs.existsSync(cameraFile(this.id, this.vault)) ? fs.readFileSync(cameraFile(this.id, this.vault), "utf8").replace(/\s+/g, "") : "none";
     fs.appendFileSync(this.log, `reopen: ${hung ? "did not quit in 5 s, terminated" : "quit"}; cameras kept ${kept}\n`);
     this.opened = (this.opened ?? 0) + 1;
     fs.renameSync(this.log, path.join(this.dir, `log-${this.opened}.txt`));
@@ -585,9 +591,26 @@ async function differ(a, b) {
 }
 
 async function cut(d, name, [target, w, h]) {
-  const [x, y] = (await point(d, target)).split(" ").map(Number);
-  const [ox, oy] = (await d.send("origin")).split(" ").map(Number);
   const [, , z] = await cam(d);
+  // no size: the thing itself with a margin around it, the same on both sides: a card, Section, label, marker or sticker
+  // (@id: 16 board units around it) or a part of the chrome (@ui.<part>: 8 points around it)
+  if (w === undefined) {
+    const u = /^@ui\.(\w+)$/.exec(target), id = /^@([\w-]+)$/.exec(target)?.[1];
+    if (u) {
+      const r = await d.send(`ui ${u[1]}`);
+      if (!/^-?[\d.]+ /.test(r)) throw new Error(`${d.side}: no ${u[1]} in the chrome (${r})`);
+      const [, , uw, uh] = r.split(" ").map(Number);
+      [target, w, h] = [`${target}:tl`, (uw + 16) / z, (uh + 16) / z];
+      const [tx, ty] = (await point(d, target)).split(" ").map(Number);
+      target = `${tx - 8} ${ty - 8}`;
+    } else if (id) {
+      const g = await geom(d, id, false, true);
+      if (typeof g !== "object" || g.h === undefined) throw new Error(`${d.side}: ${id} has no known size to cut (give W H)`);
+      [target, w, h] = [`@${id}+-16,-16`, g.w + 32, g.h + 32];
+    } else throw new Error(`shot: a size W H is needed with ${target}`);
+  }
+  const [x, y] = (/^-?[\d.]+ -?[\d.]+$/.test(target) ? target : await point(d, target)).split(" ").map(Number);
+  const [ox, oy] = (await d.send("origin")).split(" ").map(Number);
   const s = Number(lookEnv.ACCEPT_SCALE);
   const full = path.join(d.dir, `${name}.png`);
   const meta = await sharp(full).metadata();

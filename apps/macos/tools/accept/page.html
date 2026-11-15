@@ -21,7 +21,9 @@ window.__board = boot(
     listen: (fn) => (listener = fn),
     post: (m) => {
       window.__posted.push(m);
-      if ("req" in m) queueMicrotask(() => listener({ type: "reply", req: m.req, data: null }));
+      // to the real host behind the page (web.ts); without one, every request answered with nothing
+      if (window.__toHost) window.__toHost(m);
+      else if ("req" in m) queueMicrotask(() => listener({ type: "reply", req: m.req, data: null }));
     },
   },
   { selfCheck: false },
