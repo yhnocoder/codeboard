@@ -2,7 +2,8 @@
 // The acceptance runner (README.md): runs scenario files on the Mac app and on the web board VS Code shows, side by side,
 // with a hand's pointer, and writes recordings, screenshots and a report to apps/macos/.build-accept/<scenario>/.
 //   node apps/macos/tools/accept/run.mjs <scenario.txt>… [--only mac|web] [--video] [--theme warm-ink|ink-wash] [--dark]
-//     [--scale 2] [--storage <folder>] [--skip-build] [--debug | --release] [--keep | --attach | --stop]
+//     [--scale 2] [--storage <folder>] [--web <checkout>] [--mac app|demo] [--skip-build] [--debug | --release]
+//     [--keep | --attach | --stop]
 // --keep leaves both sides running after the scenarios; later runs with --attach go on in them (no build, no start: a
 // few seconds per run, for trying out targets and expectations); --stop ends them.
 // It prints one line per scenario and side (expectations passed, failed, not checkable) and exits 1 when one failed.
@@ -20,7 +21,7 @@ const outRoot = path.join(mac, ".build-accept");
 const argv = process.argv.slice(2);
 const opt = (k) => (argv.includes(k) ? argv[argv.indexOf(k) + 1] : undefined);
 
-const valued = ["--only", "--storage", "--theme", "--scale"];
+const valued = ["--only", "--storage", "--theme", "--scale", "--web", "--mac"];
 const scenarios = argv.filter((a, i) => !a.startsWith("--") && !valued.includes(argv[i - 1]));
 // what a scenario needs, named in its own lines so nobody has to remember the flags: "# storage: <folder>" (relative to
 // this folder: storage-two; else storage/) and "# theme: <theme>" (ink-wash; else the default). The flags win; scenarios
@@ -40,36 +41,56 @@ const lookEnv = {
   ...(argv.includes("--dark") ? { ACCEPT_DARK: "1" } : {}),
   ACCEPT_SCALE: opt("--scale") ?? "1",
 };
+// --mac demo: the Mac side is the native Markdown editor alone (MarkdownDemo, run in the driver: ACCEPT_APP=demo) on
+// the one Note card the scenario aims at, instead of the app; targets are placed from the demo's report and source reads
+// its saved file
+const demo = opt("--mac") === "demo";
+// --web <checkout>: the web side draws that checkout's board (a worktree of the latest main: the VS Code version to beat)
+const webRepo = path.resolve(opt("--web") ?? repo);
 const sides = only ? [only] : ["mac", "web"];
 const attach = argv.includes("--attach") || argv.includes("--stop");
 const run = (cmd, a, cwd = repo) => execFileSync(cmd, a, { cwd, stdio: "inherit" });
+// the Command Line Tools have no SwiftUI macro plugin (the app's @State does not compile): use Xcode's toolchain when
+// xcode-select points there and Xcode is installed
+if (!process.env.DEVELOPER_DIR && fs.existsSync("/Applications/Xcode.app")) {
+  const dev = execFileSync("xcode-select", ["-p"]).toString().trim();
+  if (dev.startsWith("/Library/Developer/CommandLineTools")) process.env.DEVELOPER_DIR = "/Applications/Xcode.app/Contents/Developer";
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 if (!scenarios.length && !argv.includes("--stop")) throw new Error("usage: run.mjs <scenario.txt>… [--only mac|web] [--video] [--skip-build] [--debug | --release]");
 const video = argv.includes("--video");
+// --ci: what continuous integration runs: function only, nothing timed (no recording, `expect answer` not checked), the
+// driver a debug build, and three shots of each scenario on each side (ci-1-start, ci-2-middle, ci-3-end) to look at
+const ci = argv.includes("--ci");
 // the driver's build: debug (an app change builds in seconds) unless what is measured needs the app as people get it,
 // release (a change takes one to two minutes): with --release, or when a scenario records (rec) or times (expect answer)
 const timed = scenarios.some((f) => /^(\w+:\s*)?(rec |expect answer)/m.test(fs.readFileSync(f, "utf8")));
-const config = argv.includes("--release") || (timed && !argv.includes("--debug")) ? "release" : "debug";
+const config = !ci && (argv.includes("--release") || (timed && !argv.includes("--debug"))) ? "release" : "debug";
 if (!attach && scenarios.length) console.log(`driver: ${config} build${config === "release" && !argv.includes("--release") ? " (a scenario records or times)" : ""}`);
 
 // ---- build: the driver app (its own name and bundle id, never the app in use) and the web side
 fs.mkdirSync(outRoot, { recursive: true });
-const app = path.join(outRoot, "CodeBoard Accept.app");
-const webBundle = path.join(outRoot, "web.mjs");
+const app = path.join(outRoot, demo ? "Markdown Accept.app" : "CodeBoard Accept.app");
+// the web side as the --web checkout has it: its packages bundled, its node_modules at run time (a checkout on another
+// branch has another board version and host)
+const webBundle = path.join(webRepo, "node_modules/.accept/web.mjs");
 // --skip-build skips the web board's builds; the driver and the Note page are always built (both are incremental)
 const skip = argv.includes("--skip-build");
 if (!attach && !skip && sides.includes("web")) {
-  run("npm", ["run", "build", "-w", "@yhnocoder/markdown"]);
-  run("npm", ["run", "build", "-w", "@codeboard/board"]);
+  run("npm", ["run", "build", "-w", "@yhnocoder/markdown"], webRepo);
+  run("npm", ["run", "build", "-w", "@codeboard/board"], webRepo);
 }
 if (!attach && sides.includes("mac")) {
-  run("node", ["apps/macos/web/build.mjs"]);  // the Note page of this checkout (cached: a fraction of a second)
+  // the Note page of this checkout (cached: a fraction of a second), or the demo's assets
+  run("node", [demo ? "apps/macos/tools/markdown/assets.mjs" : "apps/macos/web/build.mjs"]);
   run("swift", ["build", "-c", config, "--product", "Accept"], mac);
   const bin = execFileSync("swift", ["build", "-c", config, "--show-bin-path"], { cwd: mac }).toString().trim();
   fs.rmSync(app, { recursive: true, force: true });
   fs.mkdirSync(path.join(app, "Contents/MacOS"), { recursive: true });
   fs.copyFileSync(path.join(bin, "Accept"), path.join(app, "Contents/MacOS/Accept"));
-  fs.cpSync(path.join(mac, "web/dist"), path.join(app, "Contents/Resources/NotePage"), { recursive: true });
+  // the demo's fonts and formula engines (tools/markdown/make-demo.sh); the app's Note page
+  if (demo) fs.cpSync(path.join(mac, ".build-markdown"), path.join(app, "Contents/Resources/Assets"), { recursive: true });
+  else fs.cpSync(path.join(mac, "web/dist"), path.join(app, "Contents/Resources/NotePage"), { recursive: true });
 }
 if (!attach && sides.includes("web")) {
   await build({
@@ -85,9 +106,19 @@ if (!attach && sides.includes("web")) {
       {
         name: "npm-external",
         setup(b) {
-          b.onResolve({ filter: /^[^./]/ }, (r) =>
-            r.path.startsWith("@codeboard/") || r.path.startsWith("node:") ? undefined : { external: true },
-          );
+          // web.ts's paths into the repository (the tile recorder, the browser) taken from the --web checkout
+          b.onResolve({ filter: /^\.\.\// }, (r) => {
+            if (r.importer !== path.join(here, "web.ts")) return undefined;
+            const abs = path.resolve(here, r.path);
+            return b.resolve(`./${path.relative(repo, abs)}`, { resolveDir: webRepo, kind: r.kind });
+          });
+          b.onResolve({ filter: /^[^./]/ }, (r) => {
+            if (r.path.startsWith("node:")) return undefined;
+            if (!r.path.startsWith("@codeboard/")) return { external: true };
+            // web.ts's own imports from the --web checkout; theirs resolve beside them
+            if (r.importer !== path.join(here, "web.ts")) return undefined;
+            return b.resolve(r.path, { resolveDir: webRepo, kind: r.kind });
+          });
         },
       },
     ],
@@ -115,7 +146,28 @@ class Driver {
     fs.rmSync(this.dir, { recursive: true, force: true });
     fs.mkdirSync(this.dir, { recursive: true });
     execFileSync("mkfifo", [path.join(this.dir, "cmd")]);
-    this.env = { ...process.env, ...lookEnv, ACCEPT_OUT: this.dir, ACCEPT_FIFO: path.join(this.dir, "cmd"), ACCEPT_REPO: repo };
+    this.env = { ...process.env, ...lookEnv, ACCEPT_OUT: this.dir, ACCEPT_FIFO: path.join(this.dir, "cmd"), ACCEPT_REPO: repo, ACCEPT_WEB: webRepo };
+    if (this.side === "mac" && demo) {
+      // the card's Markdown in a folder of its own with the storage's assets beside it (images are read relative to it)
+      this.copy = fs.mkdtempSync(path.join(os.tmpdir(), "accept-demo-"));
+      // the cards the scenario names, in order: the first opens the demo, a second below it (--second)
+      for (const id of this.cards) {
+        const c = boardCards()[id];
+        if (!c) throw new Error(`demo: no card ${id} in ${storage}`);
+        fs.writeFileSync(path.join(this.copy, `${id}.md`), c.md ?? "");
+      }
+      if (fs.existsSync(path.join(storage, "assets"))) fs.cpSync(path.join(storage, "assets"), path.join(this.copy, "assets"), { recursive: true });
+      this.saved = path.join(this.copy, "saved.md");
+      this.place = path.join(this.copy, "report.json");
+            const width = String(boardPlace()[this.card]?.w ?? 360);
+      const args = [path.join(this.copy, `${this.card}.md`), "--width", width, "--save-to", this.saved, "--report", this.place];
+      if (this.cards[1]) args.push("--second", path.join(this.copy, `${this.cards[1]}.md`));
+      // / Image takes the storage's first picture, so no Open panel ever comes up
+      const pic = fs.existsSync(path.join(this.copy, "assets")) && fs.readdirSync(path.join(this.copy, "assets")).find((f) => /\.(png|jpe?g|gif)$/i.test(f));
+      if (pic) args.push("--pick-image", path.join(this.copy, "assets", pic));
+      Object.assign(this.env, { ACCEPT_APP: "demo", ACCEPT_DEMO_ARGS: JSON.stringify(args) });
+      if (this.onScreen) this.env.ACCEPT_ONSCREEN = "1";
+    }
     if (this.side === "mac") {
       // a vault of its own, imported from the storage folder; the app's own defaults start empty
       this.vault = fs.mkdtempSync(path.join(os.tmpdir(), "accept-vault-"));
@@ -136,7 +188,7 @@ class Driver {
     this.proc =
       this.side === "mac"
         ? spawn(path.join(app, "Contents/MacOS/Accept"), [], { env: this.env, stdio: ["ignore", outFd, outFd], detached: true })
-        : spawn("node", [webBundle, this.copy, this.dir], { env: this.env, cwd: repo, stdio: ["ignore", outFd, outFd], detached: true });
+        : spawn("node", [webBundle, this.copy, this.dir], { env: this.env, cwd: webRepo, stdio: ["ignore", outFd, outFd], detached: true });
     this.pid = this.proc.pid;
     // (an exited child stays a zombie that kill(pid, 0) still finds: its exit event is what says it is gone)
     // (this process's: one before it that was told to go and exits late must not mark the new one gone)
@@ -148,6 +200,18 @@ class Driver {
     // the Mac app starts on its sidebar (or on the board it had open): open the first board, as a person would
     // (until its canvas is there: a fixed wait sometimes clicked before the sidebar listed the board)
     if (this.side !== "mac") return;
+    if (demo) {
+      // the demo shows its card at once (⌥⌘0 lays the card out again in the window's new size, and the demo reports
+      // where it is); on screen (real-use) it is left as it opens: its size, its inspector
+      const begin = this.onScreen ? ["warp 500 400", "wait 1500", "focus", "move 300 500 200"]
+        : ["warp 700 500", "wait 1000", "focus", "key cmd+alt+0", "wait 300", "move 700 650 200"];
+      for (const c of begin) await this.send(c);
+      // the demo's Inspector shows its own process figures, which tick on their own: no answer of the Note's
+      this.ignore = [];
+      const r = await this.send("frame Inspector");
+      if (/^[\d.]+ [\d.]+ [\d.]+ [\d.]+$/.test(r)) this.ignore.push(r.split(" ").map(Number));
+      return;
+    }
     await this.send("warp 700 500");
     for (let i = 0; ; i++) {
       if ((await this.send("cam")) !== "no canvas") break;
@@ -181,7 +245,7 @@ class Driver {
       `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleName</key><string>CodeBoard Accept</string>
+  <key>CFBundleName</key><string>${demo ? "Markdown Accept" : "CodeBoard Accept"}</string>
   <key>CFBundleIdentifier</key><string>${this.id}</string>
   <key>CodeBoardFirstVault</key><string>${vault}</string>
   <key>CFBundleExecutable</key><string>Accept</string>
@@ -249,14 +313,16 @@ class Driver {
     const limit = 30000 + (asked.length ? Math.max(...asked) : 0) + (/^(stop|rec|quit)\b/.test(line) ? 30000 : 0);
     for (let t = 0; t < limit; t += 20) {
       const l = this.lines().find((x) => re.test(x));
-      // a result of more than one line (a menu's items) comes on one, its line breaks written \\n
-      if (l) return l.includes(" -> ") ? l.slice(l.indexOf(" -> ") + 4).replaceAll("\\n", "\n") : "";
+      // a result of more than one line (a menu's items) comes on one: line breaks written \\n, backslashes \\\\
+      if (l) return l.includes(" -> ") ? l.slice(l.indexOf(" -> ") + 4).replace(/\\(\\|n)/g, (_, c) => (c === "n" ? "\n" : "\\")) : "";
       if (!this.alive()) throw new Error(`${this.side} driver exited${this.why()}: see ${this.dir}/stdout.txt`);
       await sleep(20);
     }
     throw new Error(`${this.side}: no answer to ${line} within ${limit / 1000} s`);
   }
   async stop() {
+    // no driver started (start threw): writing to its FIFO would block with no reader
+    if (!this.proc) return;
     await Promise.race([this.send("quit").catch(() => {}), sleep(1500)]);
     if (this.alive()) process.kill(this.pid, "SIGTERM");
     await sleep(300);
@@ -276,6 +342,27 @@ class Driver {
 // ---- targets: @id is a card or Section on the board as each side has it now, at the middle of its top strip;
 // @id+dx,dy is that many board units from its top-left corner. The web board says where its element is; the Mac app's
 // place comes from its vault's board file and its camera.
+/** The storage folder's cards by id (its board files) */
+function boardCards() {
+  const out = {};
+  for (const f of fs.readdirSync(storage).filter((f) => f.endsWith(".json")))
+    for (const c of JSON.parse(fs.readFileSync(path.join(storage, f), "utf8")).cards ?? []) out[c.id] = c;
+  return out;
+}
+/** Where the storage folder's boards put their cards (x, y, w) */
+function boardPlace() {
+  const out = {};
+  for (const f of fs.readdirSync(storage).filter((f) => f.endsWith(".json")))
+    Object.assign(out, JSON.parse(fs.readFileSync(path.join(storage, f), "utf8")).place ?? {});
+  return out;
+}
+/** A card in the demo: its box in the window (content coordinates, top left origin) and the zoom, from its report */
+function demoCard(d, id) {
+  const r = JSON.parse(fs.readFileSync(d.place, "utf8"));
+  const i = Math.max(0, d.cards.indexOf(id));
+  const [x, y, w, h] = r.cards?.[i]?.card ?? r.card;
+  return { box: [x, y, x + w, y + h], zoom: r.zoom };
+}
 /** The board open in the Mac app: its file in the vault */
 async function macBoardFile(d) {
   const at = await d.send("board");
@@ -313,7 +400,47 @@ async function idOf(d, id) {
   if (!made.length) throw new Error(`${d.side}: no new card`);
   return made[made.length - 1];
 }
+// @id"words" (the middle of those words in that card), @id"words"< (just before them), @id"words"> (just after): found
+// on screen as a person reads them (the web side in the rendered page, the Mac side by text recognition on the window),
+// so a scenario aims at text, whatever each side's layout. A trailing +dx,dy moves that many points from there (a grip
+// beside a table row, the line under a heading)
+const TOKEN = /@[\w-]+"[^"]*"[<>]?(?:\+-?[\d.]+,-?[\d.]+)?|\S+/g;
 async function point(d, tok, onBoard = false) {
+  // @view:Class (the Mac side): the middle of the first view of that class, @view:Class< its left end, @view:Class> its
+  // right end, then +dx,dy points (a control the app draws in a view of its own, such as the selection toolbar's buttons)
+  const v = /^@view:([\w.]+)([<>]?)(?:\+(-?[\d.]+),(-?[\d.]+))?$/.exec(tok);
+  if (v) {
+    if (d.side !== "mac") throw new Error(`${tok}: a view is a Mac target`);
+    const r = await d.send(`frame ${v[1]} content`);
+    if (!/^[-\d.]+ [-\d.]+ [\d.]+ [\d.]+$/.test(r)) throw new Error(`mac: no view ${v[1]}`);
+    const [x, y, w, h] = r.split(" ").map(Number);
+    const px = v[2] === "<" ? x : v[2] === ">" ? x + w : x + w / 2;
+    return `${(px + Number(v[3] ?? 0)).toFixed(1)} ${(y + h / 2 + Number(v[4] ?? 0)).toFixed(1)}`;
+  }
+  // @id"words": see TOKEN
+  const t = /^@([\w-]+)"([^"]*)"([<>]?)(?:\+(-?[\d.]+),(-?[\d.]+))?$/.exec(tok);
+  if (t) {
+    const mode = t[3] === "<" ? "before" : t[3] === ">" ? "after" : "mid";
+    let r;
+    if (d.side === "web") r = await d.send(`find ${t[1]} ${mode} ${t[2]}`);
+    else if (demo) r = await d.send(`find ${demoCard(d, t[1]).box.map((v) => v.toFixed(1)).join(" ")} ${mode} ${t[2]}`);
+    else {
+      const g = await geom(d, t[1], false, true);
+      if (typeof g !== "object") throw new Error(`mac: no card ${t[1]}`);
+      const [x0, y0] = (await d.send(`where ${g.x} ${g.y}`)).split(" ").map(Number);
+      const [x1, y1] = (await d.send(`where ${g.x + g.w} ${g.y + (g.h ?? 1e5)}`)).split(" ").map(Number);
+      r = await d.send(`find ${x0.toFixed(1)} ${y0.toFixed(1)} ${x1.toFixed(1)} ${Math.min(y1, 5000).toFixed(1)} ${mode} ${t[2]}`);
+    }
+    if (!/^-?[\d.]+ -?[\d.]+$/.test(r)) throw new Error(`${d.side}: "${t[2]}" in ${t[1]}: ${r}`);
+    const [x, y] = r.split(" ").map(Number);
+    return `${(x + Number(t[4] ?? 0)).toFixed(1)} ${(y + Number(t[5] ?? 0)).toFixed(1)}`;
+  }
+  if (demo && d.side === "mac" && /^@[\w-]+(\+|$)/.test(tok)) {
+    const m = /^@([\w-]+)(?:\+(-?[\d.]+),(-?[\d.]+))?$/.exec(tok);
+    const { box, zoom } = demoCard(d, m[1]);
+    const [dx, dy] = m[2] === undefined ? [(box[2] - box[0]) / zoom / 2, 14] : [Number(m[2]), Number(m[3])];
+    return `${(box[0] + dx * zoom).toFixed(1)} ${(box[1] + dy * zoom).toFixed(1)}`;
+  }
   // @row:<title>: the Mac app's sidebar row of that board
   if (tok.startsWith("@row:")) {
     // (the sidebar lists the vault a moment after the app starts and after each change: wait a little for the row)
@@ -366,15 +493,33 @@ async function point(d, tok, onBoard = false) {
   return w;
 }
 async function resolve(d, line) {
+  // what is typed is text, not targets
+  if (/^(type|keys|ime) /.test(line)) return line;
   const out = [];
   // (a target a command presses or moves to must be on the board; plain x y can be anywhere in the window)
-  for (const tok of line.split(" ")) out.push(tok.startsWith("@") ? await point(d, tok, true) : tok);
+  for (const tok of line.match(TOKEN) ?? []) out.push(tok.startsWith("@") ? await point(d, tok, true) : tok);
   return out.join(" ");
 }
 async function cam(d) {
   const r = await d.send("cam");
   if (!/^-?[\d.]/.test(r)) throw new Error(`${d.side}: ${r} (is a board open?)`);
   return r.split(" ").map(Number);
+}
+/** source @id: a Note's Markdown as each side saved it (the Mac app in its vault, the web board in its last patch) */
+async function source(d, id) {
+  if (d.side === "web") return d.send(`source ${id}`);
+  // the demo writes its file after every change (the second card's beside it, .2.md); nothing written yet is the
+  // Markdown it opened
+  if (demo) {
+    const saved = d.cards.indexOf(id) === 1 ? d.saved.replace(/\.md$/, ".2.md") : d.saved;
+    return fs.readFileSync(fs.existsSync(saved) ? saved : path.join(d.copy, `${id}.md`), "utf8");
+  }
+  const c = (await macSaved(d))[id];
+  if (!c) return "none";
+  const content = c.shared
+    ? JSON.parse(fs.readFileSync(path.join(d.vault, ".codeboard/shared", `${id}.json`), "utf8")).content
+    : c.content;
+  return content?.note?.text ?? content?.text?.text ?? "none";
 }
 /** the middle of the canvas (beside the Mac app's sidebar) */
 const center = async (d) => (await cam(d)).slice(3, 5);
@@ -513,6 +658,22 @@ async function subject(d, subj) {
   if (id === "cam") {
     const [x, y, zoom] = await cam(d);
     return { x, y, zoom }[field];
+  }
+  // clip: what is on the run's own clipboard, one type a line (text/plain: its text, image/png 240x150; none)
+  if (subj === "clip") return d.send("clipread");
+  // tip: the tooltip shown now (its text, a shortcut after it; none)
+  if (subj === "tip") return d.send("tip");
+  // <arrow>.x1|y1|x2|y2: where an arrow starts and ends as drawn now (board units; re-routed while its cards move)
+  if (["x1", "y1", "x2", "y2"].includes(field)) {
+    const r = await d.send(`ends ${await idOf(d, id)}`);
+    if (r === "none") return "missing";
+    let [x1, y1, x2, y2] = r.split(" ").map(Number);
+    if (d.side === "web") {
+      const [ox, oy] = (await d.send("where 0 0")).split(" ").map(Number);
+      const [, , z] = await cam(d);
+      [x1, y1, x2, y2] = [(x1 - ox) / z, (y1 - oy) / z, (x2 - ox) / z, (y2 - oy) / z];
+    }
+    return { x1, y1, x2, y2 }[field];
   }
   if (!field) throw new Error(`no such subject: ${subj}`);
   if (field === "text") return d.send(`text ${await idOf(d, id)}`);
@@ -653,10 +814,14 @@ const fpsOf = (dir) => {
   const t = fs.readFileSync(path.join(dir, "times.txt"), "utf8").split("\n").filter(Boolean).map((l) => Number(l.split(" ")[0]));
   return t.length > 1 ? (t.length - 1) / (t[t.length - 1] - t[0]) : 30;
 };
+// an ffmpeg built without freetype (Homebrew's) has no drawtext: the sides go unlabelled (Mac is always on the left)
+let drawtext;
 function sideBySide(out, name, have, dirs) {
+  drawtext ??= / drawtext /.test(execFileSync("ffmpeg", ["-hide_banner", "-filters"]).toString());
   const font = "/System/Library/Fonts/Helvetica.ttc";
-  const label = (i, side) =>
-    `[${i}]scale=-2:720,fps=30,drawtext=fontfile=${font}:text=${side === "mac" ? "Mac" : "VS Code"}:x=12:y=h-36:fontsize=24:fontcolor=red,tpad=stop_mode=clone:stop_duration=3[v${i}]`;
+  const text = (side) =>
+    drawtext ? `,drawtext=fontfile=${font}:text=${side === "mac" ? "Mac" : "VS Code"}:x=12:y=h-36:fontsize=24:fontcolor=red` : "";
+  const label = (i, side) => `[${i}]scale=-2:720,fps=30${text(side)},tpad=stop_mode=clone:stop_duration=3[v${i}]`;
   const ins = have.flatMap((s) => ["-framerate", fpsOf(path.join(dirs[s], name)).toFixed(2), "-i", path.join(dirs[s], name, "f%05d.png")]);
   const f = have.map((s, i) => label(i, s)).join(";");
   const stack = have.length > 1 ? `;[v0][v1]hstack=2:shortest=1,pad=ceil(iw/2)*2:ceil(ih/2)*2[o]` : ";[v0]pad=ceil(iw/2)*2:ceil(ih/2)*2[o]";
@@ -676,7 +841,8 @@ async function shotPair(out, name, have, dirs) {
 }
 
 /** Per side: each command's time, what each press landed on, and for recorded commands how long the window took to
- *  answer (first frame that changed after the command ended) and to settle (no change for 300 ms) */
+ *  answer (first frame that changed after the command ended; a key's from when it started; a click's from its first
+ *  press, against the window just before it) and to settle (no change for 300 ms) */
 async function report(d, out) {
   const rows = [];
   const lines = logLines(d);
@@ -690,7 +856,7 @@ async function report(d, out) {
     if (!done || /^(cam|rect|where|hit)\b/.test(done[2])) continue;
     const start = lines.find((x) => x.text.startsWith(`start ${done[1]} `));
     let answer = "";
-    if (/^(click|dbl|up|key|type|drag|menu)\b/.test(done[2])) {
+    if (/^(click|dbl|up|key|keys|type|ime|drag|menu)\b/.test(done[2])) {
       const a = await answered(lines, frames, l);
       if (a) {
         const ms = (t) => ((t - a.from) * 1000).toFixed(0);
@@ -701,6 +867,53 @@ async function report(d, out) {
   }
   const counts = Object.entries(inputs).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join(", ");
   fs.writeFileSync(path.join(out, `report-${d.side}.txt`), `inputs: ${counts}\n\n${rows.join("\n")}\n`);
+}
+
+// ---- idle: CPU and memory of a side over a few seconds at rest (recorded, never a failure). The Mac side is its one
+// process (the app and the driver: the driver sleeps meanwhile); the web side is the whole Chromium tree its driver
+// started (not the node driver). CPU from the processes' CPU time; memory as footprint (phys_footprint, what Activity
+// Monitor shows as Memory, JavaScriptCore's heaps included) and resident size
+function tree(root) {
+  const rows = execFileSync("ps", ["-axo", "pid=,ppid="]).toString().trim().split("\n").map((l) => l.trim().split(/\s+/).map(Number));
+  const kids = (p) => rows.filter((r) => r[1] === p).map((r) => r[0]);
+  const out = [];
+  const walk = (p) => kids(p).forEach((k) => (out.push(k), walk(k)));
+  walk(root);
+  return out;
+}
+function cpuSeconds(pids) {
+  if (!pids.length) return 0;
+  const t = execFileSync("ps", ["-o", "cputime=", "-p", pids.join(",")]).toString().trim().split("\n");
+  return t.reduce((s, x) => {
+    const [a, b, c] = x.trim().split(":").map(Number);
+    return s + (c === undefined ? a * 60 + b : a * 3600 + b * 60 + c);
+  }, 0);
+}
+function memory(pids) {
+  if (!pids.length) return { footprint: 0, rss: 0 };
+  const rss = execFileSync("ps", ["-o", "rss=", "-p", pids.join(",")]).toString().trim().split("\n").reduce((s, x) => s + Number(x), 0) / 1024;
+  let footprint = 0;
+  try {
+    const t = execFileSync("footprint", pids.flatMap((p) => ["-p", String(p)]), { stdio: ["ignore", "pipe", "ignore"] }).toString();
+    const unit = { KB: 1 / 1024, MB: 1, GB: 1024 };
+    for (const m of t.matchAll(/\[\d+\]: \S+\s+Footprint: ([\d.]+) (KB|MB|GB)/g)) footprint += Number(m[1]) * unit[m[2]];
+  } catch {}
+  return { footprint, rss };
+}
+async function idle(d, out, secs, label) {
+  const pids = () => (d.side === "mac" ? [d.proc.pid] : tree(d.proc.pid).filter((p) => p !== d.proc.pid));
+  const cpu = [];
+  let last = cpuSeconds(pids());
+  for (let i = 0; i < secs; i++) {
+    await sleep(1000);
+    const now = cpuSeconds(pids());
+    cpu.push(((now - last) / 1) * 100);
+    last = now;
+  }
+  const m = memory(pids());
+  const line = `idle ${label}: CPU ${cpu.map((c) => c.toFixed(1)).join(" ")} % (mean ${(cpu.reduce((a, b) => a + b, 0) / cpu.length).toFixed(1)}), footprint ${m.footprint.toFixed(0)} MB, resident ${m.rss.toFixed(0)} MB${d.side === "web" ? ` (${pids().length} Chromium processes)` : ""}`;
+  fs.appendFileSync(path.join(out, `results-${d.side}.txt`), `${line}\n\n`);
+  fs.appendFileSync(path.join(out, "idle.txt"), `${d.side} ${line}\n`);
 }
 
 // ---- a kept session (--keep, --attach, --stop)
@@ -737,8 +950,26 @@ for (const file of scenarios) {
   const ds = drivers.map((d) => d.side);
   running = drivers;
   const dirs = Object.fromEntries(drivers.map((d) => [d.side, d.dir]));
+  // the cards the scenario is about (the first it names, a second): the ones the demo opens
+  const named = [...fs.readFileSync(file, "utf8").replace(/^#.*$/gm, "").matchAll(/@(?!view:|row:|ui\.)([\w-]+)/g)].map((m) => m[1]);
+  // a line "screen on": the Mac side runs on screen as it opens (real-use), not hidden at the driver's size; off unless
+  // a scenario asks, since it puts a window in front of the person using the Mac
+  const onScreen = /^screen on$/m.test(fs.readFileSync(file, "utf8"));
+  const checks = [];
+  for (const d of drivers) {
+    d.onScreen = onScreen;
+    d.cards = [...new Set(named)].slice(0, 2);
+    d.card = d.cards[0];
+  }
   const recs = new Set(), shots = new Set();
-  const lines = fs.readFileSync(file, "utf8").split("\n").map((l, i) => ({ n: i + 1, text: l.trim() }));
+  let lines = fs.readFileSync(file, "utf8").split("\n").map((l, i) => ({ n: i + 1, text: l.trim() }));
+  if (ci) {
+    // nothing timed; a shot before the first step, one halfway and one after the last
+    const steps = lines.filter((l) => l.text && !l.text.startsWith("#") && !/^(\w+:\s*)?(rec|stop)\b/.test(l.text));
+    const shot = (k, n) => ({ n, text: `shot ci-${k}` });
+    const mid = steps[Math.floor(steps.length / 2)];
+    lines = [shot("1-start", 0), ...steps.flatMap((l) => (l === mid ? [shot("2-middle", l.n), l] : [l])), shot("3-end", lines.length)];
+  }
   // the subjects compared with `was`, taken at each `mark`
   const marked = [...new Set(lines.filter((l) => / was\b/.test(l.text)).map((l) => l.text.replace(/^(mac|web):\s*/, "").split(" ")[1]))];
   // `# known: <why>` (or `# known mac: <why>`, one side): a problem followed elsewhere; its failures are reported but do
@@ -758,22 +989,50 @@ for (const file of scenarios) {
     }
     for (const { n, text: line } of lines) {
       if (!line || line.startsWith("#")) continue;
-      const m = /^(mac|web):\s*(.*)$/.exec(line);
+      // mac: and web: send a line to one side; demo: and app: to the Mac side when it is the demo or the app (where
+      // their layouts differ: a native table's row grips, a native picture's size)
+      const m = /^(mac|web|demo|app):\s*(.*)$/.exec(line);
+      if (m && ((m[1] === "demo" && !demo) || (m[1] === "app" && demo))) continue;
+      const to = m && (m[1] === "demo" || m[1] === "app") ? "mac" : m?.[1];
       const cmd = m ? m[2] : line;
       // what an expect wants is the rest of the line (a selected text has spaces)
       const [verb, arg, op, ...rest] = cmd.split(" "), want = rest.join(" ");
       if (verb === "rec") recs.add(arg);
       if (verb === "shot") shots.add(arg);
+      const sources = {};
       // shot <name> @target W H: also the board rectangle W × H (board units) from the target, cut out on each side,
       // so the two sides' pictures of one part line up
       const crop = verb === "shot" && cmd.split(" ")[2]?.startsWith("@") ? cmd.split(" ").slice(2) : undefined;
       // a side whose driver exited (the app crashed) failed once, with why; its later lines are not run
-      const sent = drivers.filter((d) => (!m || m[1] === d.side) && !d.gone);
+      const sent = drivers.filter((d) => (!to || to === d.side) && !d.gone);
       // a line that cannot run (no such card, a height not known) fails as an expectation would, and the run goes on
       await Promise.all(
         sent
           .map((d) => (async () => {
             if (verb === "reopen") return d.reopen();
+            if (verb === "screen") return;
+            // report: the Markdown demo's own report at this moment (card and editor frames, zoom) into the results
+            if (verb === "report") {
+              if (demo && d.side === "mac") fs.appendFileSync(path.join(out, "results-mac.txt"), `report\n${fs.readFileSync(d.place, "utf8")}\n\n`);
+              return;
+            }
+            if (verb === "idle") return idle(d, out, Number(arg), cmd.split(" ")[2] ?? "idle");
+            if (verb === "covered") {
+              if (!(demo && d.side === "mac")) return;
+              const e = JSON.parse(fs.readFileSync(d.place, "utf8")).editor;
+              const r = await d.send(`covered ${e.map((v) => v.toFixed(1)).join(" ")}`);
+              checks.push(`${r.startsWith("COVERED") ? "FAIL" : "pass"} ${d.side} editor ${cmd.split(" ")[1] ?? ""}: ${r}`);
+              fs.appendFileSync(path.join(out, `results-${d.side}.txt`), `${cmd}\n${r}\n\n`);
+              return;
+            }
+            if (verb === "source") {
+              const md = await source(d, arg.slice(1));
+              sources[d.side] = md;
+              fs.appendFileSync(path.join(out, `results-${d.side}.txt`), `${cmd}\n${md}\n\n`);
+              return;
+            }
+            // the demo has one card, centred, at 100 % (its own zoom is a toolbar control, not a pinch)
+            if (demo && d.side === "mac" && (verb === "zoom" || verb === "center")) return;
             if (verb === "zoom") return zoomTo(d, Number(arg));
             if (verb === "center") return centerOn(d, arg);
             if (verb === "locate") {
@@ -796,6 +1055,7 @@ for (const file of scenarios) {
               return;
             }
             if (verb === "expect") {
+              if (arg === "answer" && ci) return results[d.side].push({ n, cmd, ok: undefined, got: "not timed in CI" });
               if (arg === "answer") return answers.push({ d, n, cmd, op, want, upto: d.lines().length });
               const got = await subject(d, arg);
               const base = /^was([+-][\d.]+)?$/.exec(want);
@@ -810,6 +1070,13 @@ for (const file of scenarios) {
               await d.send(`shot ${arg}`);
               return cut(d, arg, crop);
             }
+            // clip image <file> / drop <file> <point>: the file from the tools folder (storage/assets/…) or absolute
+            const file = (f) => path.resolve(here, f);
+            if (verb === "clip" && arg === "image") return void (await d.send(`clip image ${file(cmd.split(" ").slice(2).join(" "))}`));
+            if (verb === "drop") {
+              const r = await d.send(`drop ${file(arg)} ${await resolve(d, cmd.split(" ").slice(2).join(" "))}`);
+              return fs.appendFileSync(path.join(out, `results-${d.side}.txt`), `${cmd}\n${r}\n\n`);
+            }
             const r = await d.send(await resolve(d, cmd));
             if (r) fs.appendFileSync(path.join(out, `results-${d.side}.txt`), `${cmd}\n${r}\n\n`);
           })().catch((e) => {
@@ -817,6 +1084,11 @@ for (const file of scenarios) {
             results[d.side].push({ n, cmd, ok: false, got: d.gone ? `${e.message}; the lines after it were not run` : e.message });
           })),
       );
+      if (verb === "source" && sides.length > 1)
+        fs.appendFileSync(
+          path.join(out, "sources.txt"),
+          `${cmd}: ${sources.mac === sources.web ? "same" : `DIFFERENT\n--- mac\n${sources.mac}\n--- web\n${sources.web}`}\n`,
+        );
     }
   } finally {
     if (!argv.includes("--keep") && !attach) await Promise.all(drivers.map((d) => d.stop()));
@@ -834,6 +1106,19 @@ for (const file of scenarios) {
     }
   }
   for (const s of shots) await shotPair(out, s, ds, dirs);
+  // a window a person would see as blank or broken: a shot with (almost) nothing in it
+  for (const s of shots)
+    for (const side of sides) {
+      const f = path.join(out, side, `${s}.png`);
+      if (!fs.existsSync(f)) continue;
+      const st = await sharp(f).stats();
+      const spread = Math.max(...st.channels.slice(0, 3).map((c) => c.stdev));
+      checks.push(`${spread < 3 ? "FAIL" : "pass"} ${side} shot ${s}: ${spread < 3 ? "blank" : "drawn"} (spread ${spread.toFixed(1)})`);
+    }
+  if (checks.length) {
+    fs.writeFileSync(path.join(out, "checks.txt"), `${checks.join("\n")}\n`);
+    for (const c of checks.filter((c) => c.startsWith("FAIL"))) console.warn(`${name}: ${c}`);
+  }
   for (const d of drivers) await report(d, out);
   // one line per side, then only what failed or could not be checked
   for (const side of ds) {

@@ -16,7 +16,7 @@ import { launch } from "../../../../tools/test/chromium.mjs";
 
 const [storage, out] = process.argv.slice(2);
 const repo = process.env.ACCEPT_REPO ?? process.cwd();
-const boardDist = path.join(repo, "packages/board/dist");
+const boardDist = path.join(process.env.ACCEPT_WEB ?? repo, "packages/board/dist");
 const here = path.join(repo, "apps/macos/tools/accept");
 const W = Number(process.env.WEB_W ?? 1000), H = Number(process.env.WEB_H ?? 760);
 fs.mkdirSync(out, { recursive: true });
@@ -98,6 +98,8 @@ const ctx = await browser.newContext({ viewport: { width: W, height: H }, device
 // Chrome takes a dispatched wheel's delta in device pixels, so at --scale 2 a bare wheel(160) pans 80 CSS px
 const wheel = (dx: number, dy: number) => page.mouse.wheel(dx * SCALE, dy * SCALE);
 const page = await ctx.newPage();
+// this run's own clipboard in the page (clip.js): the board never reaches the browser's, which may be the Mac's
+await page.addInitScript({ path: path.join(here, "clip.js") });
 // a page the board opens itself (window.open, a link to a new tab) is closed at once
 ctx.on("page", (p) => { if (p !== page) { keepOpened(p.url()); void p.close(); } });
 page.on("pageerror", (e) => log(`pageerror ${e.message}`));
@@ -144,7 +146,9 @@ async function move(x: number, y: number, ms = 350) {
   pos = { x, y };
   await page.mouse.move(x, y);
 }
-const mods = (s?: string) => (s ? s.split("+").map((m) => ({ cmd: "Meta", shift: "Shift", alt: "Alt", opt: "Alt", ctrl: "Control" })[m] ?? m) : []);
+// ⌘ is the board's Mod key on a Mac; elsewhere (a Linux run of the web side) the board's Mod is Control
+const CMD = process.platform === "darwin" ? "Meta" : "Control";
+const mods = (s?: string) => (s ? s.split("+").map((m) => ({ cmd: CMD, shift: "Shift", alt: "Alt", opt: "Alt", ctrl: "Control" })[m] ?? m) : []);
 async function hold(ms: string[], f: () => Promise<void>) {
   for (const m of ms) await page.keyboard.down(m);
   await f();
@@ -154,6 +158,8 @@ async function hold(ms: string[], f: () => Promise<void>) {
 const shifted: Record<string, string> = { "`": "~", "1": "!", "2": "@", "3": "#", "4": "$", "5": "%", "6": "^", "7": "&", "8": "*", "9": "(", "0": ")", "-": "_", "=": "+", "[": "{", "]": "}", "\\": "|", ";": ":", "'": '"', ",": "<", ".": ">", "/": "?" };
 /** The keys of the characters shift changes, by code: Playwright makes "Shift+/" a "/" but "Shift+Slash" a "?" */
 const keyCode: Record<string, string> = { "`": "Backquote", "-": "Minus", "=": "Equal", "[": "BracketLeft", "]": "BracketRight", "\\": "Backslash", ";": "Semicolon", "'": "Quote", ",": "Comma", ".": "Period", "/": "Slash", ...Object.fromEntries([..."0123456789"].map((d) => [d, `Digit${d}`])) };
+/** what type takes: \\n is Return and \\s a space (a scenario line's trailing spaces are trimmed) */
+const typed = (s: string) => s.replace(/\\n/g, "\n").replace(/\\s/g, " ");
 const keyName: Record<string, string> = { return: "Enter", esc: "Escape", delete: "Backspace", fwddelete: "Delete", left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp", down: "ArrowDown", tab: "Tab", space: "Space", home: "Home", end: "End", pageup: "PageUp", pagedown: "PageDown", f2: "F2" };
 /** What a press lands on, as the Mac driver logs it: the element under the pointer and its ancestors' classes */
 const hitAt = (x: number, y: number) => page.evaluate(([x, y]) => {
@@ -162,6 +168,65 @@ const hitAt = (x: number, y: number) => page.evaluate(([x, y]) => {
     out.push(e.tagName.toLowerCase() + (e.classList.length ? "." + [...e.classList].slice(0, 2).join(".") : "") + ((e as HTMLElement).dataset?.id ? `#${(e as HTMLElement).dataset.id}` : ""));
   return out.join(" < ");
 }, [x, y]);
+/** find <card> before|mid|after <words>: where the words are on screen in that card, as a person would see them (only
+ *  text that is drawn: hidden markers are not), and the point just before, in the middle of or just after them */
+function findText([id, mode, text]: string[]) {
+  const card = document.querySelector(`.card[data-id="${CSS.escape(id)}"]`);
+  if (!card) return "no card";
+  const nodes: [Text, number][] = [];
+  let all = "";
+  const walk = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode() as Text | null; n; n = walk.nextNode() as Text | null) {
+    const r = document.createRange();
+    r.selectNodeContents(n);
+    if (!n.parentElement || getComputedStyle(n.parentElement).visibility === "hidden" || !r.getClientRects().length) continue;
+    nodes.push([n, all.length]);
+    all += n.data;
+  }
+  const i = all.indexOf(text);
+  if (i < 0 || !text) return `not found; read: ${all.slice(0, 300)}`;
+  const at = (k: number) => nodes.findLast(([, s]) => s <= k)!;
+  const [n0, s0] = at(i), [n1, s1] = at(i + text.length - 1);
+  const r = document.createRange();
+  r.setStart(n0, i - s0);
+  r.setEnd(n1, i + text.length - s1);
+  const rs = [...r.getClientRects()].filter((x) => x.width > 0);
+  const f = rs[0], l = rs[rs.length - 1];
+  const p = mode === "before" ? [f.left, f.top + f.height / 2] : mode === "after" ? [l.right, l.top + l.height / 2] : [(f.left + f.right) / 2, f.top + f.height / 2];
+  return p.map((v) => v.toFixed(1)).join(" ");
+}
+/** caret: where the caret is and what is around it, as the Mac side reads it from the text input system:
+ *  "x y h <height> | <12 before>[<selected>]<12 after>", line breaks as ⏎ */
+function caretAt() {
+  const s = getSelection();
+  if (!s?.rangeCount) return "no selection";
+  const r = s.getRangeAt(0);
+  const ed = r.startContainer.parentElement?.closest("[contenteditable=true], .cm-content") ?? document.body;
+  const side = (start: boolean) => {
+    const x = document.createRange();
+    x.selectNodeContents(ed);
+    if (start) x.setEnd(r.startContainer, r.startOffset);
+    else x.setStart(r.endContainer, r.endOffset);
+    return x.toString();
+  };
+  const box = [...r.getClientRects()][0] ?? r.getBoundingClientRect();
+  const nl = (t: string) => t.replace(/\n/g, "⏎");
+  return `${box.left.toFixed(1)} ${box.top.toFixed(1)} h ${box.height.toFixed(0)} | ${nl(side(true).slice(-12))}[${nl(s.toString())}]${nl(side(false).slice(0, 12))}`;
+}
+/** source <card>: the Note's Markdown as the board last sent it to the host (page.html keeps each card's last), else as
+ *  stored */
+async function sourceOf(id: string): Promise<string | undefined> {
+  const sent = await page.evaluate((id) => (window as any).__saved[id] as string | undefined, id);
+  return sent ?? storedCard(id);
+}
+function storedCard(id: string): string | undefined {
+  for (const f of fs.readdirSync(storage).filter((f) => f.endsWith(".json"))) {
+    const b = JSON.parse(fs.readFileSync(path.join(storage, f), "utf8"));
+    const c = (b.cards ?? []).find((x: { id: string }) => x.id === id);
+    if (c) return c.md ?? c.text;
+  }
+  return undefined;
+}
 async function pressed(right: boolean) { log(`press ${right ? "right" : "left"} at ${pos.x.toFixed(0)},${pos.y.toFixed(0)} on ${await hitAt(pos.x, pos.y)}`); }
 async function run(line: string): Promise<string> {
   const a = line.split(" ").filter(Boolean), d = (i: number, def = 0) => (i < a.length ? Number(a[i]) : def);
@@ -200,15 +265,24 @@ async function run(line: string): Promise<string> {
       }
       break;
     }
+    case "wheel": {
+      // a mouse wheel's clicks: lines of about 10 px (negative scrolls down, as on the Mac side)
+      const clicks = d(2, 10);
+      for (let i = 0; i < clicks; i++) {
+        await page.mouse.wheel(0, (-d(1) / clicks) * 10);
+        await sleep(30);
+      }
+      break;
+    }
     case "pinch": {
       // Chrome turns a trackpad pinch into wheel events with ctrlKey
       const steps = d(2, 12), per = Math.log(1 + d(1)) / steps;
       for (let i = 0; i < steps; i++) { await hold(["Control"], () => wheel(0, -per * 100)); await sleep(8); }
       break;
     }
-    case "key": if (asking && /^(esc|return)$/.test(a[1])) { log(`key ${a[1]} to the host's question`); asking.answer(a[1] === "return" ? asking.actions[0] : undefined); break; } { log(`key down ${a[1]} at ${pos.x.toFixed(0)},${pos.y.toFixed(0)}`); const half = a[1].endsWith(":down") ? "down" : a[1].endsWith(":up") ? "up" : ""; const p = a[1].replace(/:(down|up)$/, "").split("+"); const k = p.pop()!; const name = [...mods(p.join("+")), keyName[k] ?? keyCode[k] ?? k].join("+"); if (half === "down") await page.keyboard.down(name); else if (half === "up") await page.keyboard.up(name); else await page.keyboard.press(name); break; }
+    case "key": if (asking && /^(esc|return)$/.test(a[1])) { log(`key ${a[1]} to the host's question`); asking.answer(a[1] === "return" ? asking.actions[0] : undefined); break; } { log(`key down ${a[1]} at ${pos.x.toFixed(0)},${pos.y.toFixed(0)}`); const cv = /^cmd\+([cxv])$|^(?:shift\+cmd|cmd\+shift)\+(v)$/.exec(a[1]); /* ⌘C ⌘X ⌘V ⇧⌘V: the run's own clipboard (clip.js) */ if (cv) { const kind = { c: "copy", x: "cut", v: "paste" }[(cv[1] ?? cv[2]) as "c"]; await page.evaluate(([k, m]) => (window as any).__clipKey(k, m), [kind, a[1]]); await sleep(30); break; } const half = a[1].endsWith(":down") ? "down" : a[1].endsWith(":up") ? "up" : ""; const p = a[1].replace(/:(down|up)$/, "").split("+"); const k = p.pop()!; const name = [...mods(p.join("+")), keyName[k] ?? keyCode[k] ?? k].join("+"); if (half === "down") await page.keyboard.down(name); else if (half === "up") await page.keyboard.up(name); else await page.keyboard.press(name); break; }
     // keys: key by key, as typed (a character shift makes, like ?, with shift held, as a person types it)
-    case "keys": for (const ch of line.slice(5)) {
+    case "keys": for (const ch of typed(line.slice(5))) {
       const base = Object.entries(shifted).find(([, v]) => v === ch)?.[0];
       await page.keyboard.press(base ? `Shift+${keyCode[base] ?? base}` : ch === " " ? "Space" : ch); await sleep(30);
     } break;
@@ -231,7 +305,7 @@ async function run(line: string): Promise<string> {
       await move(r.x, r.y, 250); await pressed(false); await page.mouse.down(); await sleep(70); await page.mouse.up();
       break;
     }
-    case "type": for (const ch of line.slice(5).replace(/\\n/g, "\n")) { if (ch === "\n") await page.keyboard.press("Enter"); else await page.keyboard.insertText(ch); await sleep(35); } break;
+    case "type": for (const ch of typed(line.slice(5))) { if (ch === "\n") await page.keyboard.press("Enter"); else await page.keyboard.insertText(ch); await sleep(35); } break;
     case "ime": {
       const parts = line.slice(4).split("|");
       for (const s of parts.slice(0, -1)) { await cdp.send("Input.imeSetComposition", { text: s, selectionStart: s.length, selectionEnd: s.length }); await sleep(120); }
@@ -349,12 +423,59 @@ async function run(line: string): Promise<string> {
         out.push(e.tagName.toLowerCase() + [...e.classList].map((c) => `.${c}`).join(""));
       return out.join(" < ") || "body";
     });
+    case "find": return await page.evaluate(findText, [a[1], a[2], line.split(" ").slice(3).join(" ")]);
+    case "caret": return await page.evaluate(caretAt);
+    case "source": return (await sourceOf(a[1])) ?? "none";
     case "hit": return await hitAt(pos.x, pos.y);
+    // ends <arrow>: where its line starts and ends on the page (px): x1 y1 x2 y2
+    case "ends": return await page.evaluate((id) => {
+      const l = document.querySelector<SVGPathElement>(`path.lhit[data-link="${CSS.escape(id)}"]`);
+      const m = l?.getScreenCTM();
+      if (!l || !m) return "none";
+      const at = (t: number) => new DOMPoint(l.getPointAtLength(t).x, l.getPointAtLength(t).y).matrixTransform(m);
+      const [a, b] = [at(0), at(l.getTotalLength())];
+      return [a.x, a.y, b.x, b.y].map((v) => v.toFixed(1)).join(" ");
+    }, a[1]);
+    // tip: the tooltip shown (Menu.tsx TooltipLayer): its text and shortcut
+    case "tip": return await page.evaluate(() => {
+      const t = document.querySelector<HTMLElement>(".tip.show");
+      return t ? t.innerText.replace(/\s+/g, " ").trim() : "none";
+    });
+    // clip text <s> / clip image <file>: put that on the run's own clipboard (clip.js); clipread: what is on it
+    case "clip":
+      if (a[1] === "text") await page.evaluate((t) => (window as any).__clipSet([{ type: "text/plain", data: t }]), line.slice(10));
+      else if (a[1] === "image") await page.evaluate((b) => (window as any).__clipSet([{ type: "image/png", base64: b }]), fs.readFileSync(line.slice(11)).toString("base64"));
+      else return "usage: clip text <s> | clip image <file>";
+      break;
+    case "clipread": return await page.evaluate(() => (window as any).__clipRead());
+    // drop <file> <x> <y>: that file dragged in and let go there (dragenter, dragover, drop, as from the Finder)
+    case "drop": {
+      const file = a.slice(1, -2).join(" "), [x, y] = [d(a.length - 2), d(a.length - 1)];
+      const ext = path.extname(file).slice(1).toLowerCase();
+      const type = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", md: "text/markdown", txt: "text/plain" }[ext] ?? "application/octet-stream";
+      await move(x, y, 300);
+      return await page.evaluate(([b, name, type, x, y]) => {
+        const dt = new DataTransfer();
+        dt.items.add(new File([Uint8Array.from(atob(b), (c) => c.charCodeAt(0))], name, { type }));
+        const t = document.elementFromPoint(x, y) ?? document.body;
+        const ev = (k: string) => t.dispatchEvent(new DragEvent(k, { dataTransfer: dt, clientX: x, clientY: y, bubbles: true, cancelable: true, composed: true }));
+        ev("dragenter");
+        const over = !ev("dragover");
+        const took = !ev("drop");
+        return `${t.tagName.toLowerCase()}${t.className && typeof t.className === "string" ? `.${t.className.split(" ")[0]}` : ""} ${took ? "took it" : over ? "refused it" : "refused it (no dragover taken)"}`;
+      }, [fs.readFileSync(file).toString("base64"), path.basename(file), type, x, y] as const);
+    }
     case "opened": return opened.length ? opened.join("\n") : "none";
     case "pointer": return `${pos.x.toFixed(1)} ${pos.y.toFixed(1)}`;
     case "origin": return "0 0";
     case "menu": await page.mouse.down({ button: "right" }); await page.mouse.up({ button: "right" }); await sleep(200);
-      return await page.evaluate(() => [...document.querySelectorAll(".menu, [role=menu]")].map((m) => (m as HTMLElement).innerText).join("\n----\n"));
+      // the context menu (and a submenu open in it), one item a line as the Mac driver writes them: its label, (disabled),
+      // ✓, [its shortcut]; ---- a separator. Only .ctx: the selection bar's Align popover is a role=menu too, of icons
+      return await page.evaluate(() => [...document.querySelectorAll(".ctx.open")].map((m) => [...m.children].map((c) => {
+        if (c.tagName === "HR") return "----";
+        const b = c as HTMLButtonElement, k = b.querySelector("small")?.textContent;
+        return (b.querySelector(".lb")?.textContent ?? b.innerText) + (b.disabled ? " (disabled)" : "") + (b.querySelector(".ck svg") ? " ✓" : "") + (k ? ` [${k}]` : "");
+      }).join("\n")).join("\n----\n") || "none");
     case "pick": {
       // pick One/Two: move to each item as a person would (a submenu opens on the way) and click the last
       const levels = line.slice(5).split("/");
@@ -396,6 +517,7 @@ for (;;) {
     let r = "";
     log(`start ${n} ${l}`);
     try { r = await run(l); } catch (e) { r = `error ${(e as Error).message}`; }
-    log(`done ${n} ${l}${r ? " -> " + r.replaceAll("\n", "\\n") : ""}`); // on one line (a menu's items)
+    // one log line per result: line breaks escaped (run.mjs undoes it)
+    log(`done ${n} ${l}${r ? " -> " + r.replace(/\\/g, "\\\\").replace(/\n/g, "\\n") : ""}`);
   }
 }

@@ -1,0 +1,24 @@
+# 选中一个词，点选择工具条最后的批注按钮，写一句批注，再点别处：批注写回 Markdown（{字|批注}）
+# storage: storage-tasks
+zoom 1
+center @ntask"值"
+dbl @ntask"Last line"
+wait 600
+rec annotate
+dbl @ntask"scheduler"
+wait 500
+shot toolbar
+demo: click @view:SelectionToolbar>+-14,0
+web: click @ntask"scheduler"+109,-33
+wait 500
+shot notebox
+type 调度器在 scheduler.py
+wait 300
+shot typed
+click @ntask"Last line">
+wait 600
+shot after
+stop
+key esc
+wait 800
+source @ntask

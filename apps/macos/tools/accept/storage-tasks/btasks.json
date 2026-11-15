@@ -1,0 +1,44 @@
+{
+ "version": 15,
+ "id": "btasks",
+ "name": "Tasks",
+ "cards": [
+  {
+   "id": "ntask",
+   "kind": "note",
+   "look": "note",
+   "md": "# 任务 Tasks\n\nRead the scheduler notes before you change anything.\n\nMarks: **bold**, *italic*, ==highlight== and `code`; energy is $E = mc^2$.\n\n$$\n\\sum_{i=1}^{n} x_i^2\n$$\n\n```python\ndef step(batch):\n    return len(batch)\n```\n\n| 名字 | 值 |\n| --- | --- |\n| a | 1 |\n| b | 2 |\n\n![](assets/7c3e9a51d2b04f68-240x150.png \"图 2：示意\")\n\nSee [[Scheduler]] for more.\n\nLast line here."
+  },
+  {
+   "id": "nother",
+   "kind": "note",
+   "look": "note",
+   "md": "# Other card\n\nThe card the reference points at."
+  },
+  {
+   "id": "nsched",
+   "kind": "note",
+   "look": "note",
+   "md": "# Scheduler\n\nBatches the requests."
+  }
+ ],
+ "place": {
+  "ntask": {
+   "x": 80,
+   "y": 80,
+   "w": 420
+  },
+  "nother": {
+   "x": 560,
+   "y": 80,
+   "w": 300
+  },
+  "nsched": {
+   "x": 560,
+   "y": 260,
+   "w": 300
+  }
+ },
+ "links": [],
+ "sections": []
+}

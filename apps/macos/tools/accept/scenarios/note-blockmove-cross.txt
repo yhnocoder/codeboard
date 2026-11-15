@@ -1,0 +1,19 @@
+# 按住 ⌘ 把一个列表项从一张 Note 拖进另一张 Note 的开头：拖的过程中看得到要放到哪里，松开后两张都对、没丢字；再 ⌘Z 两张都回去
+# storage: storage-notes
+zoom 1
+center @nprose
+dbl @nprose"scheduler runs"
+wait 600
+rec cross
+drag @nprose"预填充一次" @ntable"Stages"<+0,-6 1200 cmd
+wait 800
+shot crossed
+source @nprose
+source @ntable
+key cmd+z
+wait 600
+stop
+key esc
+wait 500
+source @nprose
+source @ntable

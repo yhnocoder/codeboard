@@ -1,0 +1,55 @@
+{
+ "version": 15,
+ "id": "bnotes",
+ "name": "Note editing",
+ "cards": [
+  {
+   "id": "nprose",
+   "kind": "note",
+   "look": "note",
+   "md": "# 调度 Scheduler\n\n调度器把请求分成批次，每个批次在显存里保留键值缓存。\n\nThe scheduler runs **prefill** before *decode*; see ==the notes== and `step()`.\n\n- 预填充一次处理整段提示\n- decode 每步只生成一个 token\n\n1. first\n2. second"
+  },
+  {
+   "id": "ntable",
+   "kind": "note",
+   "look": "note",
+   "md": "Stages:\n\n| 阶段 | 做什么 | 耗时 |\n| --- | --- | --- |\n| prefill | 一次处理整段提示 | 12.5 |\n| decode | 每步生成一个 token | 0.8 |\n\nTable: the two stages"
+  },
+  {
+   "id": "ncode",
+   "kind": "note",
+   "look": "note",
+   "md": "Attention:\n\n$$\n\\mathrm{attn}(Q,K,V) = \\mathrm{softmax}\\left(\\frac{QK^\\top}{\\sqrt{d_k}}\\right)V\n$$\n\nInline $x_i^2$ too.\n\n```python\ndef step(self, batch):\n    return self.model(batch)\n```\n\nAfter the code."
+  },
+  {
+   "id": "nimage",
+   "kind": "note",
+   "look": "note",
+   "md": "A picture:\n\n![](assets/7c3e9a51d2b04f68-240x150.png \"图 1：一张图\")\n\nText after the picture."
+  }
+ ],
+ "place": {
+  "nprose": {
+   "x": 80,
+   "y": 80,
+   "w": 360
+  },
+  "ntable": {
+   "x": 500,
+   "y": 80,
+   "w": 380
+  },
+  "ncode": {
+   "x": 80,
+   "y": 520,
+   "w": 380
+  },
+  "nimage": {
+   "x": 500,
+   "y": 420,
+   "w": 300
+  }
+ },
+ "links": [],
+ "sections": []
+}

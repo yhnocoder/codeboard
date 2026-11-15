@@ -1,0 +1,29 @@
+// What continuous integration runs (.github/workflows/macos.yml, the accept job): the scenarios in ci.txt, grouped by
+// what they declare (# storage, # theme, # only: one run.mjs each), with --ci: function only, nothing timed, three
+// shots per scenario and side. --shard k/n runs every n-th scenario from the k-th (CI's jobs side by side); other
+// arguments go to every run.mjs (--only mac). Exits 1 when a group failed.
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+
+const here = import.meta.dirname;
+const list = fs.readFileSync(path.join(here, "ci.txt"), "utf8").split("\n").map((l) => l.replace(/#.*$/, "").trim()).filter(Boolean);
+const head = (f, key) => new RegExp(`^# ${key}: *(\\S+)`, "m").exec(fs.readFileSync(f, "utf8"))?.[1] ?? "";
+const argv = process.argv.slice(2);
+const shard = argv.includes("--shard") ? argv[argv.indexOf("--shard") + 1].split("/").map(Number) : [1, 1];
+const pass = argv.filter((a, i) => a !== "--shard" && argv[i - 1] !== "--shard");
+const groups = new Map();
+for (const s of list.filter((_, i) => i % shard[1] === shard[0] - 1)) {
+  const f = path.join(here, "scenarios", s);
+  if (!fs.existsSync(f)) throw new Error(`ci.txt: no scenario ${s}`);
+  const k = ["storage", "theme", "only"].map((x) => head(f, x)).join("|");
+  groups.set(k, [...(groups.get(k) ?? []), f]);
+}
+let failed = false, first = true;
+for (const [k, files] of groups) {
+  console.log(`\n== ${k.replace(/\|/g, " ").trim() || "default"}: ${files.length} scenarios`);
+  const args = [path.join(here, "run.mjs"), ...files, "--ci", ...(first ? [] : ["--skip-build"]), ...pass];
+  first = false;
+  failed ||= spawnSync("node", args, { stdio: "inherit" }).status !== 0;
+}
+process.exit(failed ? 1 : 0);
