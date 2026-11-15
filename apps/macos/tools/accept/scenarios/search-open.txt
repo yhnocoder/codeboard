@@ -1,5 +1,6 @@
-# ⌘K, ⌘F and the toolbar's Search open the search palette over the board, its field taking the keys (⌘F on this board); Esc closes it, the camera where it was
+# ⌘K, ⌘F and the toolbar's Search open the search palette over the board, its field taking the keys (⌘F on this board); Esc closes it, the camera unmoved
 zoom 1
+center @cnote
 expect ui.search.right <= ui.more.x
 expect ui.search.x >= ui.bar.x
 mark
