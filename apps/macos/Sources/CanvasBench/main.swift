@@ -14,6 +14,8 @@ import CodeBoardModel
 //            in a window below the desktop picture that is never activated; with --note-cache <folder> the Note
 //            snapshots are kept there across runs (a relaunch with the disk cache filled); with --pictures <folder> the
 //            board pictures and the cameras they were taken at are kept there (the app's first board after a launch)
+//            Its Notes are drawn by the web page unless --native (the native Markdown component, as the app draws them)
+//   --import <folder> the vault is that VS Code storage folder (.codeboard) imported into a new temporary vault first
 //   --arrows the same drags on two boards made for it (ArrowBoards): a card with twenty arrows, a Section of twenty
 //            cards with their arrows; no vault folder
 // Note snapshots are cached in a new temporary folder, never in the app's cache: every run draws its Notes anew
@@ -127,7 +129,7 @@ final class App: NSObject, NSApplicationDelegate {
     let cache =
       keptNoteCache ?? FileManager.default.temporaryDirectory.appending(path: "canvasbench-notes-\(UUID().uuidString)")
     if keptNoteCache == nil { noteCache = cache }
-    let canvas = CanvasView(frame: frame, noteCache: cache)
+    let canvas = CanvasView(frame: frame, noteCache: cache, native: native)
     canvas.picturesFolder = keptPictures
     w.contentView = canvas
     w.orderFrontRegardless()
@@ -159,6 +161,7 @@ let bench = args.contains("--bench")
 let arrows = args.contains("--arrows")
 let drag = arrows || args.contains("--drag")
 let openFrames = args.contains("--open-frames")
+let native = args.contains("--native")
 var keptNoteCache: URL?
 if let i = args.firstIndex(of: "--note-cache"), i + 1 < args.count {
   keptNoteCache = URL(filePath: args[i + 1])
@@ -173,6 +176,17 @@ var memory: URL?
 if let i = args.firstIndex(of: "--memory"), i + 1 < args.count {
   memory = URL(filePath: args[i + 1])
   args.removeSubrange(i...i + 1)
+}
+if let i = args.firstIndex(of: "--import"), i + 1 < args.count {
+  let into = FileManager.default.temporaryDirectory.appending(path: "canvasbench-import-\(UUID().uuidString)")
+  do {
+    _ = try LegacyImport.run(from: URL(filePath: args[i + 1]), to: into)
+  } catch {
+    FileHandle.standardError.write(Data("\(error)\n".utf8))
+    exit(1)
+  }
+  args.removeSubrange(i...i + 1)
+  args.insert(into.path(percentEncoded: false), at: 0)
 }
 args.removeAll { $0.hasPrefix("-") }
 if arrows {

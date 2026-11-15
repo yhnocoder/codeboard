@@ -25,17 +25,22 @@ struct Rects: Decodable {
 let args = CommandLine.arguments
 if args.count == 3, args[1] == "--texts" { TextSheets.run(out: URL(filePath: args[2])) }
 if args.count == 3, args[1] == "--edit" { EditSheets.run(out: URL(filePath: args[2])) }
-if args.count == 3, args[1] == "--writing" { WritingSheets.run(out: URL(filePath: args[2])) }
+if args.count >= 3, args[1] == "--writing" {
+  WritingSheets.run(out: URL(filePath: args[2]), native: args.dropFirst(3).contains("--native"))
+}
 if args.count == 3, args[1] == "--arrows" { ArrowSheets.run(out: URL(filePath: args[2])) }
 if args.count == 3, args[1] == "--sidenotes" { SidenoteSheets.run(out: URL(filePath: args[2])) }
 if args.count == 3, args[1] == "--refs" { RefSheets.run(out: URL(filePath: args[2])) }
+if args.count >= 3, args[1] == "--displays" {
+  DisplaySheets.run(out: URL(filePath: args[2]), only: Set(args.dropFirst(3)))
+}
 if args.count >= 3, args[1] == "--stage6" {
   Stage6Sheets.run(out: URL(filePath: args[2]), main: args.count > 3 ? URL(filePath: args[3]) : nil)
 }
 guard args.count == 3 else {
   FileHandle.standardError.write(
     Data(
-      "usage: LookCompare <storage folder> <out folder> | --texts <out folder> | --edit <out folder> | --writing <out folder> | --arrows <out folder>\n"
+      "usage: LookCompare <storage folder> <out folder> | --texts <out folder> | --edit <out folder> | --writing <out folder> [--native] | --arrows <out folder>\n"
         .utf8))
   exit(2)
 }

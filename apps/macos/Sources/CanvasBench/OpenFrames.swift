@@ -17,6 +17,13 @@ import CodeBoardModel
     var redraws = 0
     var swaps = 0
     var noteSwaps = 0
+    /// Notes asked of the display and pictures decoded while the gesture ran (the rule: none)
+    var noteRequests = 0
+    var decodes = 0
+    /// Ticks that came more than half a frame late (the main thread was busy: a frame dropped), and the longest gap
+    /// between two ticks
+    var late = 0
+    var worstGapMs = 0.0
   }
 
   struct Result: Encodable {
@@ -51,6 +58,9 @@ import CodeBoardModel
   let canvas: CanvasView
   private var timer: Timer?
   private var onFrame: (() -> Void)?
+  /// The time since the tick before this one
+  private var gap = 0.0
+  private var lastTick = 0.0
 
   init(canvas: CanvasView) {
     self.canvas = canvas
@@ -60,7 +70,10 @@ import CodeBoardModel
   private func startTicking() {
     timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { _ in
       MainActor.assumeIsolated {
-        self.canvas.tick(at: CACurrentMediaTime())
+        let now = CACurrentMediaTime()
+        self.gap = self.lastTick == 0 ? 0 : now - self.lastTick
+        self.lastTick = now
+        self.canvas.tick(at: now)
         self.onFrame?()
       }
     }
@@ -115,6 +128,8 @@ import CodeBoardModel
     func sample(_ p: inout Phase, opening: Bool) {
       let s = canvas.blankInView
       p.frames += 1
+      if gap > 1.5 / 60 { p.late += 1 }
+      p.worstGapMs = max(p.worstGapMs, (gap * 1000).rounded())
       let blank = s.empty.union(s.paper)
       if !blank.isEmpty { p.framesWithBlank += 1 }
       p.maxBlank = max(p.maxBlank, blank.count)
@@ -206,6 +221,8 @@ import CodeBoardModel
       p.redraws = after.redraws - before.redraws
       p.swaps = after.swaps - before.swaps
       p.noteSwaps = after.noteSwaps - before.noteSwaps
+      p.noteRequests = after.noteRequests - before.noteRequests
+      p.decodes = after.decodes - before.decodes
       if name == "pan" { r.pan = p } else { r.zoom = p }
       await frames(until: { self.canvas.isSettled }, each: {})
     }
