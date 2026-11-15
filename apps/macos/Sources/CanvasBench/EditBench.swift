@@ -173,16 +173,27 @@ import CodeBoardModel
       keys.append(all)
       keysMain.append(main)
     }
+    // the caret alone: fifteen to the left and back (the native editor's keys only)
+    var arrows: [Double] = []
+    if typeInto == nil {
+      for i in 0..<30 {
+        arrow(left: i < 15)
+        arrows.append(await interval(0.1).0)
+      }
+    }
     let written = await text(canvas)?.hasSuffix("jumps over") ?? false
     await canvas.endEditing()
     doc.undo()
-    let base = mean(idle)
-    let baseMain = mean(idleMain)
+    // the idle's median: a stray piece of other work in one of its tenths (the board settling) made the mean of keys
+    // less the mean of idle come out below zero
+    let base = percentile(idle, 0.5)
+    let baseMain = percentile(idleMain, 0.5)
     return [
       "written": written, "idleMsPer100ms": round2(base), "cpuMs": round2(mean(keys) - base),
       "cpuP90Ms": round2(percentile(keys, 0.9) - base), "mainMs": round2(mean(keysMain) - baseMain),
       // the worst key (a line wrapped, the first after the rest) and the first
       "cpuMaxMs": round2((keys.max() ?? 0) - base), "firstMs": round2((keys.first ?? 0) - base),
+      "arrowMs": arrows.isEmpty ? -1 : round2(mean(arrows) - base),
     ]
   }
 
@@ -240,6 +251,21 @@ import CodeBoardModel
           with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime + t,
           windowNumber: window.windowNumber, context: nil, characters: s, charactersIgnoringModifiers: s,
           isARepeat: false, keyCode: 0)
+      else { continue }
+      window.sendEvent(e)
+    }
+    window.displayIfNeeded()
+  }
+
+  /// ← or →, as the keyboard sends it
+  private func arrow(left: Bool) {
+    let c = String(UnicodeScalar(UInt16(left ? NSLeftArrowFunctionKey : NSRightArrowFunctionKey))!)
+    for (type, t) in [(NSEvent.EventType.keyDown, 0.0), (.keyUp, 0.01)] {
+      guard
+        let e = NSEvent.keyEvent(
+          with: type, location: .zero, modifierFlags: [.numericPad, .function],
+          timestamp: ProcessInfo.processInfo.systemUptime + t, windowNumber: window.windowNumber, context: nil,
+          characters: c, charactersIgnoringModifiers: c, isARepeat: false, keyCode: left ? 123 : 124)
       else { continue }
       window.sendEvent(e)
     }
