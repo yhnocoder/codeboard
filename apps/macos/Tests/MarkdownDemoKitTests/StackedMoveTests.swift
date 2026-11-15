@@ -131,4 +131,26 @@ import Testing
     let floating = a.subviews.filter { !$0.isHidden && !($0 is CodeBand) || ($0 as? CodeBand)?.shown == true }
     #expect(floating.isEmpty, "\(floating.map { String(describing: type(of: $0)) })")
   }
+
+  /// the caret put into a formula's command name by a click keeps the preview (her second click hid it behind a list
+  /// that did not show); typing a command opens the list in its place, Esc brings the preview back
+  @Test func aCaretPutIntoACommandKeepsThePreview() throws {
+    _ = NSApplication.shared
+    let demo = try Demo(text: sample, folder: sampleFolder(), cardWidth: 420)
+    demo.setUp()
+    _ = Check.lay(demo, width: 1000)
+    Self.kept.append(demo)
+    let e = demo.cards[0]
+    e.isEditing = true
+    let src = e.core.source as NSString
+    let name = src.range(of: "operatorname")
+    e.selection = MDSelection(name.location + 3)
+    #expect(!e.hints.shown)
+    let bs = src.range(of: "\\sqrt")
+    e.selection = MDSelection(bs.location + 1)
+    e.insertText("s", replacementRange: NSRange(location: NSNotFound, length: 0))
+    #expect(e.hints.shown)
+    e.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+    #expect(!e.hints.shown)
+  }
 }

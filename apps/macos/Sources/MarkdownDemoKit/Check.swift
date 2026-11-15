@@ -28,6 +28,17 @@ enum Check {
     demo.setUp()
     stage("window set up and laid out")
     var failures: [String] = []
+    // with a vault open, every board in it reads (a board the demo cannot read showed an alert instead)
+    var boardsRead = 0
+    if let v = demo.vault, let tree = try? v.tree() {
+      for b in tree.allBoards {
+        if (try? VaultNotes.notes(of: b.path, in: v)) != nil {
+          boardsRead += 1
+        } else {
+          failures.append("board \(b.id.rawValue) does not read")
+        }
+      }
+    }
     var layouts: [[String: Any]] = []
     for w in widths {
       let (layout, wrong) = lay(demo, width: w)
@@ -424,7 +435,7 @@ enum Check {
     stage("engines trimmed to one and collected")
     let result: [String: Any] = [
       "stages": stages, "layouts": layouts, "idleCpuPercent": idle, "tickingEditors": ticking, "onScreen": rests,
-      "events": ticks, "moveSettleMs": moveSettleMs, "bands": bands,
+      "events": ticks, "moveSettleMs": moveSettleMs, "bands": bands, "boardsRead": boardsRead,
       "failures": failures,
     ]
     if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]) {

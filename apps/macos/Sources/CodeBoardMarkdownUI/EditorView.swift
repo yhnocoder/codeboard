@@ -1661,7 +1661,12 @@ public final class MarkdownEditorView: NSView {
   }
 
   /// the command list while a \\command is typed in a formula
+  /// the edit count at the last look at the command list: a caret moved without an edit does not open it
+  private var hintsRevision = -1
+
   private func showHints() {
+    let typed = core.revision != hintsRevision
+    hintsRevision = core.revision
     guard isEditing, let f = core.formulaBeforeCaret,
       let t = MarkdownEditing.mathToken(f.tex, caret: (f.tex as NSString).length)
     else {
@@ -1670,6 +1675,9 @@ public final class MarkdownEditorView: NSView {
     }
     let from = f.start + t.from
     if hints.dismissedAt == from { return hints.hide() }
+    // the list comes up while a command is typed, not for a caret put into one (a click on \times hid the preview
+    // behind a list): as main's mathhints, which open on input
+    if !typed, !hints.shown { return hints.hide() }
     hints.dismissedAt = nil
     let tex = core.layout.resources.mathPreamble
     let items = MarkdownEditing.mathCompletions(t.query, tex: f.tex, preamble: tex)
