@@ -241,7 +241,7 @@ public final class CanvasView: NSView {
   var hoverLine: CALayer?
   var hoveredLine: Endpoint?
   var hoveredPort: Port? {
-    didSet { showPortTip() }
+    didSet { showTip() }
   }
   /// The label or title being written in place, and a written one's field until the board shows what it says
   var inPlace: InPlace?

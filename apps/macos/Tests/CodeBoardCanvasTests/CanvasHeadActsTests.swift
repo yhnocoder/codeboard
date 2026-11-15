@@ -119,6 +119,25 @@ private let seg = SegmentID(rawValue: "s1")
     #expect(c.gripShown == nil)
   }
 
+  /// A port's tip and a header button's are the canvas's one tip: straight from the port by the header onto ··· the
+  /// button's shows (the port let go of after the button was hovered does not take it away)
+  @Test func fromAPortOntoAHeaderButtonItsTipShows() async throws {
+    let r = try await Rig(Self.board(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let tips = ownTips(c)
+    hoverOver(r, r.centre("c"))
+    let more = try at(r, "c", .more)
+    let port = try #require(
+      c.ports(of: cid("c"), line: nil).min {
+        hypot($0.at.x - more.x, $0.at.y - more.y) < hypot($1.at.x - more.x, $1.at.y - more.y)
+      })
+    hoverOver(r, port.at)
+    #expect(c.hoveredPort == port && tips.shown?.tip == Tip("Drag to link"))
+    hoverOver(r, more)
+    #expect(c.hoveredHead?.1 == .more && tips.shown?.tip == Tip("More Actions"))
+  }
+
   @Test func aButtonActsOnTheReleaseOverItAndIsUndoneAsOne() async throws {
     let pb = NSPasteboard(name: NSPasteboard.Name("head-\(UUID().uuidString)"))
     pb.clearContents()

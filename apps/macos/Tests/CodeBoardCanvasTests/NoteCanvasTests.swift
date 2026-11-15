@@ -41,6 +41,33 @@ import Testing
       ])
   }
 
+  /// A Text or Box with a height of its own (an old Mark's or Free Text's) is that tall, whatever its text measures, its
+  /// width still its text's unless it wraps; the page draws it at that height (cards/Card.tsx: s.height = h)
+  @Test func aTextWithAHeightOfItsOwnIsThatTall() {
+    func tall(_ id: String, wrap: Bool, look: TextCard.Look = .text) -> Card {
+      Card(
+        id: CardID(rawValue: id), x: 0, y: 0, width: 300, height: 60,
+        content: .own(CardContent(body: .text(TextCard(text: "A mark", look: look, wrap: wrap)))))
+    }
+    let board = Board(
+      id: BoardID(rawValue: "b"), cards: [tall("mark", wrap: false), tall("box", wrap: true, look: .box)])
+    let package = URL(filePath: "/nonexistent-vault/B.board")
+    let sizes = [
+      CardID(rawValue: "mark"): CGSize(width: 87, height: 24), CardID(rawValue: "box"): CGSize(width: 300, height: 30),
+    ]
+    let s = Scene(
+      board, package: package, vault: vault, theme: .warmInk, highlighter: Highlighter(),
+      sizes: sizes.mapValues { NoteMetrics(size: $0) })
+    #expect(s.items.map(\.rect.size) == [CGSize(width: 87, height: 60), CGSize(width: 300, height: 60)])
+    for item in s.items {
+      guard case .note(let n) = item.drawing else {
+        Issue.record("\(item.rect): not drawn by the page")
+        continue
+      }
+      #expect(n.height == 60, "\(n.id)")
+    }
+  }
+
   /// A measured card is laid out at whole points, as main's cards are by offsetWidth and offsetHeight (Card.tsx read):
   /// what Tidy, arrows and the free-place search see
   @Test func aMeasuredCardIsLaidOutAtWholePoints() {
