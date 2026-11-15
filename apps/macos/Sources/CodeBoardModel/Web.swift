@@ -94,9 +94,10 @@ extension Board {
     cards[i].content = .own(c)
   }
 
-  /// Merge into Link List: two or more Web cards and Link Lists into one, the top one (the leftmost of a tie) kept with
-  /// its place and arrows, its rows first, then the others' in the order given; nil when fewer than two can be
-  public mutating func mergeLinks(_ ids: [CardID]) -> CardID? {
+  /// Merge into Link List: two or more Web cards and Link Lists into one, `target` (a drop's) or else the top one (the
+  /// leftmost of a tie) kept with its place and arrows, its rows first, then the others' in the order given; nil when
+  /// fewer than two can be
+  public mutating func mergeLinks(_ ids: [CardID], into target: CardID? = nil) -> CardID? {
     let parts: [(Card, [LinkList.Item])] = ids.compactMap { id in
       guard let c = card(id), case .own(let content) = c.content else { return nil }
       switch content.body {
@@ -107,7 +108,8 @@ extension Board {
       }
     }
     guard parts.count >= 2,
-      let keep = parts.min(by: { $0.0.y != $1.0.y ? $0.0.y < $1.0.y : $0.0.x < $1.0.x })?.0
+      let keep = parts.first(where: { $0.0.id == target })?.0
+        ?? parts.min(by: { $0.0.y != $1.0.y ? $0.0.y < $1.0.y : $0.0.x < $1.0.x })?.0
     else { return nil }
     var rich = false
     var items: [LinkList.Item] = []
