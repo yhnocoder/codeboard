@@ -109,11 +109,16 @@ extension CanvasView {
     }
   }
 
-  /// addImage: the cleaned picture in the board's images, an image card `width` wide where a pasted card goes
-  private func addImage(_ dataURL: String, width w: CGFloat, at p: CGPoint?, _ step: String) {
+  /// addImage: the cleaned picture in the board's images, an image card `width` wide where a pasted card goes; where
+  /// it went
+  @discardableResult
+  private func addImage(_ dataURL: String, width w: CGFloat, at p: CGPoint?, _ step: String) -> CGRect? {
     guard let (board, vault) = shown,
       let address = try? NoteEditor.store(dataURL: dataURL, in: vault.url(of: board.path))
-    else { return toast("Could not add the image") }
+    else {
+      toast("Could not add the image")
+      return nil
+    }
     let name = String(address.dropFirst(Vault.imagesFolder.count + 1))
     let size = CGSize(width: w, height: 160)
     let at = pastePlace(size, at: p, besideSelection: true)
@@ -122,6 +127,79 @@ extension CanvasView {
       $0.cards.append(
         Card(
           id: id, x: at.x, y: at.y, width: w, content: .own(CardContent(body: .image(ImageCard(source: .file(name)))))))
+    }
+    return CGRect(origin: at, size: size)
+  }
+
+  /// A picture file's bytes added as main's addImage adds them (an SVG cleaned, as wide as it shows: a PNG's
+  /// resolution, else `scale`), at `p`; where it went, nil when it was not added (said in a toast)
+  @discardableResult
+  func addPicture(_ data: Data, named name: String, scale: Double = 1, at p: CGPoint?, _ step: String) async -> CGRect?
+  {
+    let doc = document
+    guard let (ext, _) = NoteEditor.kind(of: data), let mime = UTType(filenameExtension: ext)?.preferredMIMEType else {
+      toast("\(name) is not a PNG, JPEG, WebP, GIF or SVG image.")
+      return nil
+    }
+    let made: (dataURL: String, width: Double)?
+    do {
+      made = try await notes.image("data:\(mime);base64,\(data.base64EncodedString())", scale: scale)
+    } catch {
+      toast("Could not add the image")
+      return nil
+    }
+    guard document === doc else { return nil }
+    guard let made else {
+      toast("This SVG image could not be read")
+      return nil
+    }
+    return addImage(made.dataURL, width: made.width, at: p, step)
+  }
+
+  /// A picture on the pasteboard (interact.ts paste: a picture before text that is no copied card; addImage): picture
+  /// files copied in Finder as when dropped, else the picture as an image card at `p`, as wide as it shows: a PNG's
+  /// resolution, else 1 for one copied from a page (it comes with HTML), the window's scale for a screenshot. False
+  /// when there is none
+  func pastePicture(at p: CGPoint?) -> Bool {
+    let files = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]
+    if let files, !files.isEmpty {
+      let v = camera.visible(bounds.size)
+      addPictureFiles(files, at: p ?? CGPoint(x: v.midX, y: v.midY))
+      return true
+    }
+    guard
+      let data = pasteboard.data(forType: .png)
+        ?? pasteboard.data(forType: .tiff).flatMap({
+          NSBitmapImageRep(data: $0)?.representation(using: .png, properties: [:])
+        })
+    else { return false }
+    let scale = pasteboard.types?.contains(.html) == true ? 1 : Double(window?.backingScaleFactor ?? 1)
+    Task { await addPicture(data, named: "pasted.png", scale: scale, at: p, "Paste") }
+    return true
+  }
+
+  /// Files dropped or pasted on the board (create.ts dropFiles): each picture an image card, in a row from `p` in their
+  /// order; any other file said in a toast and left out
+  func addPictureFiles(_ urls: [URL], at p: CGPoint) {
+    let pictures = Set(["png", "jpg", "jpeg", "gif", "webp", "svg"])
+    let others = urls.filter { !pictures.contains($0.pathExtension.lowercased()) }.map(\.lastPathComponent)
+    if let first = others.first {
+      toast(
+        "\(others.count > 1 ? "\(first) and \(others.count - 1) more aren't images" : "\(first) isn't an image"): only PNG, JPEG, GIF, WebP and SVG files can be dropped on the board"
+      )
+    }
+    let files = urls.filter { pictures.contains($0.pathExtension.lowercased()) }
+    Task {
+      var x = p.x
+      for f in files {
+        guard let data = try? Data(contentsOf: f) else {
+          toast("Could not add \(f.lastPathComponent)")
+          continue
+        }
+        if let r = await addPicture(data, named: f.lastPathComponent, at: CGPoint(x: x, y: p.y), "Add Image") {
+          x = r.maxX + Self.pasteGap
+        }
+      }
     }
   }
 
@@ -132,16 +210,10 @@ extension CanvasView {
     let doc = document
     Task { [weak self] in
       guard let url = await self?.pickImage(window), let self, document === doc else { return }
-      guard let data = try? Data(contentsOf: url), let (ext, _) = NoteEditor.kind(of: data),
-        let mime = UTType(filenameExtension: ext)?.preferredMIMEType
-      else { return toast("\(url.lastPathComponent) is not a PNG, JPEG, WebP, GIF or SVG image.") }
-      let made: (dataURL: String, width: Double)?
-      do {
-        made = try await notes.image("data:\(mime);base64,\(data.base64EncodedString())")
-      } catch { return toast("Could not add the image") }
-      guard document === doc else { return }
-      guard let made else { return toast("This SVG image could not be read") }
-      addImage(made.dataURL, width: made.width, at: nil, "New Image")
+      guard let data = try? Data(contentsOf: url) else {
+        return toast("\(url.lastPathComponent) is not a PNG, JPEG, WebP, GIF or SVG image.")
+      }
+      await addPicture(data, named: url.lastPathComponent, at: nil, "New Image")
     }
   }
 

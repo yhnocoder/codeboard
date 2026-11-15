@@ -342,9 +342,9 @@ async function pasted(text: string) {
 }
 
 /** A picture file added as main's addImage adds it (board actions/create.ts): an SVG cleaned, and its card as wide as
- * the picture shows (imageCardWidth: its pixels over a PNG's resolution, 24 to NEW_CARD_W); null for an SVG that
- * cannot be read */
-async function added(dataUrl: string) {
+ * the picture shows (imageCardWidth: its pixels over a PNG's resolution, else over `scale`, 24 to NEW_CARD_W); null
+ * for an SVG that cannot be read */
+async function added(dataUrl: string, scale = 1) {
   try {
     dataUrl = cleanImage(dataUrl);
   } catch {
@@ -353,14 +353,17 @@ async function added(dataUrl: string) {
   const img = new Image();
   img.src = dataUrl;
   await img.decode().catch(() => {});
-  let k = 1;
+  let k = scale;
   const png = /^data:image\/png;base64,/.exec(dataUrl);
   if (png) {
     const b64 = dataUrl.slice(png[0].length, png[0].length + 65536);
     try {
-      k = imageScale(Uint8Array.from(atob(b64.slice(0, b64.length - (b64.length % 4))), (ch) => ch.charCodeAt(0)));
+      k = imageScale(
+        Uint8Array.from(atob(b64.slice(0, b64.length - (b64.length % 4))), (ch) => ch.charCodeAt(0)),
+        scale,
+      );
     } catch {
-      /* not base64: 1 */
+      /* not base64: scale */
     }
   }
   return { dataUrl, width: Math.max(24, Math.min(NEW_CARD_W, Math.round((img.naturalWidth || 320) / k))) };

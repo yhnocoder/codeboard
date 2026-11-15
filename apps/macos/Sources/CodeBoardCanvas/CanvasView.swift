@@ -428,7 +428,7 @@ public final class CanvasView: NSView {
     // in a test process: no menu, alert or panel ever comes up
     TestGuard.install()
     CanvasView.all.add(self)
-    registerForDraggedTypes([.string])
+    registerForDraggedTypes([.string, .fileURL])
     // layer-hosting: the canvas owns its layer tree, y-down like the board
     let root = CALayer()
     root.isGeometryFlipped = true

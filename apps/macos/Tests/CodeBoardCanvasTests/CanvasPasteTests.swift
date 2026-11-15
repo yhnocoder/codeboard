@@ -151,6 +151,62 @@ import Testing
     #expect(wide.width == Board.newNoteWidth)
   }
 
+  /// A PNG `w` × `h` pixels at `scale` times 72 dpi (a Retina screenshot's is 2)
+  static func png(_ w: Int, _ h: Int, scale: CGFloat = 2) -> Data {
+    let rep = NSBitmapImageRep(
+      bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+      isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+    rep.size = NSSize(width: CGFloat(w) / scale, height: CGFloat(h) / scale)
+    return rep.representation(using: .png, properties: [:])!
+  }
+
+  /// A picture pasted (a screenshot; interact.ts paste, addImage): an image card where the pointer is, as wide as it
+  /// shows (400 pixels at 144 dpi are 200 wide), its file in the board's images, one step, selected
+  @Test func aPicturePastesAsAnImageCardAsWideAsItShows() async throws {
+    let (r, pb) = try await rig()
+    defer { r.close() }
+    pb.clearContents()
+    pb.setData(Self.png(400, 200), forType: .png)
+    r.canvas.mouseMoved(with: r.mouse(.mouseMoved, CGPoint(x: 700, y: 600)))
+    r.canvas.paste(nil)
+    await r.until("the pasted card") { r.doc.board.cards.count == 2 }
+    let c = try #require(r.doc.board.cards.last)
+    guard case .image(let img)? = body(c), case .file(let name) = img.source else {
+      Issue.record("not an image file: \(c)")
+      return
+    }
+    #expect(c.width == 200 && c.x == 700 && c.y == 600)
+    #expect(r.doc.selection == [.card(c.id)] && r.doc.undoName == "Paste")
+    let file = r.file.deletingLastPathComponent().appending(path: Vault.imagesFolder).appending(path: name)
+    #expect(FileManager.default.fileExists(atPath: file.path))
+  }
+
+  /// Files dragged in from Finder (create.ts dropFiles): each picture an image card, in a row from where they are let
+  /// go, in their order; a file that is no picture is said and left out
+  @Test func pictureFilesDroppedBecomeImageCardsInARow() async throws {
+    let (r, _) = try await rig()
+    defer { r.close() }
+    let dir = FileManager.default.temporaryDirectory.appending(path: "drop-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let a = dir.appending(path: "a.png")
+    let b = dir.appending(path: "b.png")
+    let t = dir.appending(path: "notes.txt")
+    try Self.png(400, 200).write(to: a)
+    try Self.png(200, 200).write(to: b)
+    try Data("x".utf8).write(to: t)
+    let drag = Drag(files: [a, t, b], at: r.at(CGPoint(x: 700, y: 600)))
+    #expect(r.canvas.draggingEntered(drag) == .copy)
+    #expect(r.canvas.performDragOperation(drag))
+    await r.until("both cards") { r.doc.board.cards.count == 3 }
+    let made = Array(r.doc.board.cards.dropFirst())
+    #expect(made.map(\.width) == [200, 100])
+    #expect(made.map(\.x) == [700, 700 + 200 + CanvasView.pasteGap] && made.map(\.y) == [600, 600])
+    #expect(
+      r.canvas.toastText
+        == "notes.txt isn't an image: only PNG, JPEG, GIF, WebP and SVG files can be dropped on the board")
+  }
+
   /// A link and a list of them (newWeb, newLinkList by addCards) from the pointer's place, as main's paste gives it
   /// (interact.ts worldAt(lastPointer())), the nearest free place there
   @Test func linksPasteFromThePointer() async throws {
@@ -197,4 +253,43 @@ import Testing
     let other = try await paste("def g():\n    return 2", r, pb, at: away)
     #expect(other.x == 700 && other.y == 500, "\(other.x), \(other.y)")
   }
+}
+
+/// A drag from Finder as the window gives it to the view: its files on a pasteboard of its own, let go at `at` (window
+/// points); no real dragging session
+@MainActor final class Drag: NSObject, @MainActor NSDraggingInfo {
+  let draggingPasteboard: NSPasteboard
+  let draggingLocation: NSPoint
+  init(files: [URL], at: NSPoint) {
+    draggingPasteboard = NSPasteboard(name: NSPasteboard.Name("drag-\(UUID().uuidString)"))
+    draggingPasteboard.clearContents()
+    draggingPasteboard.writeObjects(files as [NSURL])
+    draggingLocation = at
+  }
+  var draggingDestinationWindow: NSWindow? { nil }
+  var draggingSourceOperationMask: NSDragOperation { .copy }
+  var draggedImageLocation: NSPoint { draggingLocation }
+  var draggedImage: NSImage? { nil }
+  var draggingSource: Any? { nil }
+  var draggingSequenceNumber: Int { 1 }
+  func slideDraggedImage(to screenPoint: NSPoint) {}
+  var draggingFormation: NSDraggingFormation {
+    get { .default }
+    set {}
+  }
+  var animatesToDestination: Bool {
+    get { false }
+    set {}
+  }
+  var numberOfValidItemsForDrop: Int {
+    get { 1 }
+    set {}
+  }
+  func enumerateDraggingItems(
+    options enumOpts: NSDraggingItemEnumerationOptions = [], for view: NSView?, classes classArray: [AnyClass],
+    searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:],
+    using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void
+  ) {}
+  var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+  func resetSpringLoading() {}
 }

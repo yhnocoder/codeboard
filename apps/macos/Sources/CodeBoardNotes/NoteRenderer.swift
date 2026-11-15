@@ -203,14 +203,15 @@ public final class NoteRenderer {
   }
 
   /// A picture added from a file as main adds it (board actions/create.ts addImage): an SVG cleaned, and the width of its
-  /// card from its pixels and a PNG's resolution; nil for an SVG that cannot be read
-  public func image(_ dataURL: String) async throws -> (dataURL: String, width: Double)? {
+  /// card from its pixels and a PNG's resolution, else `scale` (a pasted screenshot's: the window's); nil for an SVG
+  /// that cannot be read
+  public func image(_ dataURL: String, scale: Double = 1) async throws -> (dataURL: String, width: Double)? {
     try await takeTurn(priority: Int.max)
     defer { endTurn() }
     do {
       let p = try page ?? NotePage(page: pageFolder)
       page = p
-      return try await p.added(dataURL)
+      return try await p.added(dataURL, scale: scale)
     } catch {
       page = nil
       throw error
