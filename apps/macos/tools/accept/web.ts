@@ -6,6 +6,7 @@
 import * as fs from "node:fs";
 import * as http from "node:http";
 import * as path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import type { AddressInfo } from "node:net";
 import * as os from "node:os";
 import { Emitter, type BoardToHost, type HostToBoard } from "@codeboard/core";
@@ -235,11 +236,11 @@ async function run(line: string): Promise<string> {
     case "move": await move(d(1), d(2), d(3, 350)); break;
     case "down": await pressed(a[1] === "right"); await page.mouse.down({ button: a[1] === "right" ? "right" : "left" }); break;
     case "up": await page.mouse.up({ button: a[1] === "right" ? "right" : "left" }); break;
-    case "click": case "dbl":
+    case "click": case "dbl": case "tri":
       if (a.length > 2) await move(d(1), d(2), 300);
       await sleep(60);
       await hold(mods(a[3]), async () => {
-        for (let i = 1; i <= (a[0] === "dbl" ? 2 : 1); i++) {
+        for (let i = 1; i <= ({ dbl: 2, tri: 3 }[a[0]] ?? 1); i++) {
           await pressed(false); await page.mouse.down({ clickCount: i }); await sleep(70); await page.mouse.up({ clickCount: i }); await sleep(90);
         }
       });
@@ -510,9 +511,18 @@ async function run(line: string): Promise<string> {
 const fifo = path.join(out, "cmd");
 let n = 0;
 log("web ready");
+// the FIFO held open both ways for the whole run: read to its end and opened again for each command, a line written
+// between our end-of-file and our close was dropped or waited for the next one (a side stalled for minutes on CI).
+// Reads block until a line comes, as before
+const fd = fs.openSync(fifo, fs.constants.O_RDWR);
+const chunk = Buffer.alloc(1 << 16);
+const utf8 = new StringDecoder("utf8");
+let pending = "";
 for (;;) {
-  const text = fs.readFileSync(fifo, "utf8");
-  for (const l of text.split("\n").filter(Boolean)) {
+  pending += utf8.write(chunk.subarray(0, fs.readSync(fd, chunk, 0, chunk.length, null)));
+  const lines = pending.split("\n");
+  pending = lines.pop() ?? "";
+  for (const l of lines.filter(Boolean)) {
     n++;
     let r = "";
     log(`start ${n} ${l}`);

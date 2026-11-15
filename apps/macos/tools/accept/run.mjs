@@ -703,7 +703,7 @@ const shown = (v) => (typeof v === "number" ? String(Math.round(v * 10) / 10) : 
 /** How long the window took to answer the last input before log line `upto` (ms), from the recorded frames */
 async function answerTime(d, upto) {
   const lines = logLines(d).slice(0, upto);
-  const last = lines.filter((l) => /^done \d+ (click|dbl|up|key|type|drag|menu|scroll|pinch)\b/.test(l.text)).pop();
+  const last = lines.filter((l) => /^done \d+ (click|dbl|tri|up|key|type|drag|menu|scroll|pinch)\b/.test(l.text)).pop();
   if (!last) return undefined;
   const a = await answered(lines, framesOf(d), last);
   return a === undefined ? undefined : a.first === undefined ? 3000 : (a.first - a.from) * 1000;
@@ -849,7 +849,7 @@ async function report(d, out) {
   const rows = [];
   const lines = logLines(d);
   const frames = framesOf(d);
-  const inputs = { move: 0, click: 0, dbl: 0, drag: 0, down: 0, key: 0, type: 0, scroll: 0, pinch: 0, menu: 0 };
+  const inputs = { move: 0, click: 0, dbl: 0, tri: 0, drag: 0, down: 0, key: 0, type: 0, scroll: 0, pinch: 0, menu: 0 };
   for (const l of lines) {
     const m = /^start (\d+) (\S+)/.exec(l.text);
     if (m && m[2] in inputs) inputs[m[2]]++;
@@ -858,7 +858,7 @@ async function report(d, out) {
     if (!done || /^(cam|rect|where|hit)\b/.test(done[2])) continue;
     const start = lines.find((x) => x.text.startsWith(`start ${done[1]} `));
     let answer = "";
-    if (/^(click|dbl|up|key|keys|type|ime|drag|menu)\b/.test(done[2])) {
+    if (/^(click|dbl|tri|up|key|keys|type|ime|drag|menu)\b/.test(done[2])) {
       const a = await answered(lines, frames, l);
       if (a) {
         const ms = (t) => ((t - a.from) * 1000).toFixed(0);
