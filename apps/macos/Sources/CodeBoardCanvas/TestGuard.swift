@@ -2,7 +2,7 @@ import AppKit
 import CodeBoardModel
 
 // In a test process nothing may come up on the screen or wait for a person: a menu, an alert, an open or save panel, a
-// modal window. As the system Trash refuses a test (Vault.systemTrash), so do these, from the root: each way AppKit
+// modal window, an address opened in the browser or a file shown in Finder. As the system Trash refuses a test (Vault.systemTrash), so do these, from the root: each way AppKit
 // puts one up is replaced, in a test process only, by one that writes down what would have shown and returns at once
 // (a menu: nothing picked; a modal: cancelled). A sheet on a window under the desktop (the tests' own) is left alone:
 // it shows nowhere and tests answer it. Installed by the first canvas or shell a test makes; in the app it is never
@@ -19,6 +19,12 @@ import CodeBoardModel
   package static var guardsContextMenus: Bool { installed && contextMenuGuarded }
 
   nonisolated(unsafe) private static var contextMenuGuarded = false
+
+  /// Whether NSWorkspace's ways out (open an address or file, show one in Finder) are replaced: tests check it before
+  /// anything that would open one
+  package static var guardsOpening: Bool { installed && openGuarded }
+
+  nonisolated(unsafe) private static var openGuarded = false
 
   private static let installed: Bool = {
     guard Vault.underTest else { return false }
@@ -126,6 +132,48 @@ import CodeBoardModel
       return .abort
     }
     replace(NSApplication.self, #selector(NSApplication.runModal(for:)), imp_implementationWithBlock(runWindow))
+    // an address or file opened, or shown in Finder: the owner's browser, apps and Finder, never; written down
+    let workspace: AnyClass = NSWorkspace.self
+    let open: @convention(block) (NSWorkspace, NSURL) -> Bool = { _, u in
+      shown.append("open: \(u)")
+      return false
+    }
+    let openWith: @convention(block) (NSWorkspace, NSURL, AnyObject?, AnyObject?) -> Void = { _, u, _, done in
+      shown.append("open: \(u)")
+      guard let done else { return }
+      typealias Done = @convention(block) (NSRunningApplication?, NSError?) -> Void
+      unsafeBitCast(done, to: Done.self)(nil, NSError(domain: NSCocoaErrorDomain, code: NSUserCancelledError))
+    }
+    let openMany: @convention(block) (NSWorkspace, NSArray, NSURL, AnyObject?, AnyObject?) -> Void = {
+      _, us, _, _, done in
+      for u in us { shown.append("open: \(u)") }
+      guard let done else { return }
+      typealias Done = @convention(block) (NSRunningApplication?, NSError?) -> Void
+      unsafeBitCast(done, to: Done.self)(nil, NSError(domain: NSCocoaErrorDomain, code: NSUserCancelledError))
+    }
+    let reveal: @convention(block) (NSWorkspace, NSArray) -> Void = { _, us in
+      for case let u as URL in us { shown.append("reveal: \(u.path)") }
+    }
+    let select: @convention(block) (NSWorkspace, NSString?, NSString) -> Bool = { _, p, _ in
+      shown.append("reveal: \(p ?? "")")
+      return false
+    }
+    openGuarded =
+      [
+        replace(
+          workspace, #selector(NSWorkspace.open(_:) as (NSWorkspace) -> (URL) -> Bool),
+          imp_implementationWithBlock(open)),
+        replace(
+          workspace, #selector(NSWorkspace.open(_:configuration:completionHandler:)),
+          imp_implementationWithBlock(openWith)),
+        replace(
+          workspace, #selector(NSWorkspace.open(_:withApplicationAt:configuration:completionHandler:)),
+          imp_implementationWithBlock(openMany)),
+        replace(workspace, #selector(NSWorkspace.activateFileViewerSelecting(_:)), imp_implementationWithBlock(reveal)),
+        replace(
+          workspace, #selector(NSWorkspace.selectFile(_:inFileViewerRootedAtPath:)), imp_implementationWithBlock(select)
+        ),
+      ].allSatisfy { $0 }
     return true
   }()
 
