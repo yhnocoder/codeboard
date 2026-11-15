@@ -52,6 +52,11 @@ ws.settings = {
 // VS Code's modal questions (Delete Board…): up until a `button` or a key answers them (dialog reads them)
 let asking: { text: string; actions: string[]; answer: (a: string | undefined) => void } | undefined;
 ws.ui = { ...ws.ui, warn: (text, _o, ...actions) => new Promise((answer) => { asking = { text, actions, answer: (a) => { asking = undefined; answer(a); } }; log(`host asks: ${text} [${actions.join("] [")}]`); }) };
+// what the board asks to open outside it (a Web card's page, a link, Reveal in Finder, a new window): written down for
+// the opened command, never opened
+const opened: string[] = [];
+const keepOpened = (what: string) => { opened.push(what); log(`opened (not really): ${what}`); };
+ws.ui = { ...ws.ui, openUrl: async (u) => keepOpened(u), openFolder: async (f) => keepOpened(`folder ${f}`), revealInOS: async (f) => keepOpened(`reveal ${f}`) };
 /** The one board view: what the host posts goes to the page once it is set up (theme, light or dark), in order */
 class PageView implements BoardView {
   title = "";
@@ -93,6 +98,8 @@ const ctx = await browser.newContext({ viewport: { width: W, height: H }, device
 // Chrome takes a dispatched wheel's delta in device pixels, so at --scale 2 a bare wheel(160) pans 80 CSS px
 const wheel = (dx: number, dy: number) => page.mouse.wheel(dx * SCALE, dy * SCALE);
 const page = await ctx.newPage();
+// a page the board opens itself (window.open, a link to a new tab) is closed at once
+ctx.on("page", (p) => { if (p !== page) { keepOpened(p.url()); void p.close(); } });
 page.on("pageerror", (e) => log(`pageerror ${e.message}`));
 page.on("console", (m) => { if (m.type() === "error") log(`console ${m.text()}`); });
 // what the board asks or tells the host
@@ -331,6 +338,7 @@ async function run(line: string): Promise<string> {
       return out.join(" < ") || "body";
     });
     case "hit": return await hitAt(pos.x, pos.y);
+    case "opened": return opened.length ? opened.join("\n") : "none";
     case "pointer": return `${pos.x.toFixed(1)} ${pos.y.toFixed(1)}`;
     case "origin": return "0 0";
     case "menu": await page.mouse.down({ button: "right" }); await page.mouse.up({ button: "right" }); await sleep(200);
@@ -376,6 +384,6 @@ for (;;) {
     let r = "";
     log(`start ${n} ${l}`);
     try { r = await run(l); } catch (e) { r = `error ${(e as Error).message}`; }
-    log(`done ${n} ${l}${r ? " -> " + r : ""}`);
+    log(`done ${n} ${l}${r ? " -> " + r.replaceAll("\n", "\\n") : ""}`); // on one line (a menu's items)
   }
 }

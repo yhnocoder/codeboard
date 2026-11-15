@@ -249,7 +249,8 @@ class Driver {
     const limit = 30000 + (asked.length ? Math.max(...asked) : 0) + (/^(stop|rec|quit)\b/.test(line) ? 30000 : 0);
     for (let t = 0; t < limit; t += 20) {
       const l = this.lines().find((x) => re.test(x));
-      if (l) return l.includes(" -> ") ? l.slice(l.indexOf(" -> ") + 4) : "";
+      // a result of more than one line (a menu's items) comes on one, its line breaks written \\n
+      if (l) return l.includes(" -> ") ? l.slice(l.indexOf(" -> ") + 4).replaceAll("\\n", "\n") : "";
       if (!this.alive()) throw new Error(`${this.side} driver exited${this.why()}: see ${this.dir}/stdout.txt`);
       await sleep(20);
     }
@@ -457,6 +458,8 @@ async function subject(d, subj) {
   if (subj === "dialog") return (await d.send("dialog")) || "none";
   // row:<title>: whether the sidebar shows that board's or folder's row (shown, none)
   if (subj.startsWith("row:")) return (await d.send(`row ${subj.slice(4)}`)) === "none" ? "none" : "shown";
+  // opened: what the app asked to open outside itself so far, one per line (none); the drivers open nothing
+  if (subj === "opened") return d.send("opened");
   if (subj === "focus") {
     const r = await d.send("focused");
     return r || "none";
@@ -510,7 +513,7 @@ function judge(got, op, want) {
   }
   throw new Error(`no such op: ${op}`);
 }
-const shown = (v) => (typeof v === "number" ? String(Math.round(v * 10) / 10) : String(v));
+const shown = (v) => (typeof v === "number" ? String(Math.round(v * 10) / 10) : String(v).replaceAll("\n", " | "));
 
 /** How long the window took to answer the last input before log line `upto` (ms), from the recorded frames */
 async function answerTime(d, upto) {

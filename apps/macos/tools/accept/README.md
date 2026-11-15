@@ -25,7 +25,7 @@ node apps/macos/tools/accept/run.mjs --stop                  # 关掉留着的�
 - `<名字>.mp4`（`--video`）：`rec <名字>` 到 `stop` 之间的录像，左 Mac、右 VS Code，按真实帧时间播放，画着指针（按下时一个红圈），Mac 这边光标不是箭头时在指针旁写出光标名（系统光标按名字，改大小的按它画的箭头，如 `frameResize ↖↘`；app 自己画的写成 `custom(宽x高)`）。
 - `<名字>.png`：`shot <名字>` 那一刻两边并排（不缩小）；`mac/`、`web/` 里是各自的原图和每一帧。
 - `report-mac.txt`、`report-web.txt`：用了几次什么输入；每条命令花了多久；每次按下落在什么上（Mac 是视图链，网页是元素链，带卡 id）；录像中的点击、按键、拖动从输入到达 app（按下鼠标、按下键；拖动和 `up` 是松开）起多久画面开始变（answered）、多久停下（settled，300 ms 不变），比较帧时不看画上去的指针。
-- `results-*.txt`：有返回值的命令（`menu` 读出的菜单、`hit`、`info`…）。
+- `results-*.txt`：有返回值的命令（`menu` 读出的整份菜单，每项一行、子菜单缩进；`hit`、`info`…）的完整结果。
 
 ## 场景
 
@@ -65,7 +65,7 @@ node apps/macos/tools/accept/run.mjs --stop                  # 关掉留着的�
 
 `expect <对象> <比较> <值>`，每一边按自己当时的状态判：
 
-- 对象还有 `dialog`（弹着的框的字和按钮，没有是 `none`；配 `has`、`lacks`）、`row:<标题>`（Mac 侧栏里有没有这一行：`shown`、`none`；标题不能带空格）。
+- 对象还有 `dialog`（弹着的框的字和按钮，没有是 `none`；配 `has`、`lacks`）、`row:<标题>`（Mac 侧栏里有没有这一行：`shown`、`none`；标题不能带空格）、`opened`（app 到现在要打开的外部地址、文件和程序，按顺序每项一行，没有是 `none`；两边都只记下、不真的打开）。
 - 对象：`<id>.x|y|w|h|right|bottom`（卡或 Section 的位置大小，白板单位）、`ui.<部件>.x|y|w|h|right|bottom`（工具栏和右下角那组的部件，从白板左上角起的屏幕点：`bar`、`more`、`barink`（Ink Wash 那一笔的实心部分；别的主题是整条）、`barblur`（底下模糊的范围，没有时宽 0）、`brush`、`dock`、`dockink`、`dockblur`、`shelf`、`zoomout`、`zoom`、`zoomin`、`fit`、`questions`；Mac 由 app 的辅助功能元素 `ui-<部件>` 给出）、`<id>.section`（所在的 Section，没有是 `none`）、`<id>.text`（卡现在显示的字：Mac 是画布画这张卡用的内容，网页是卡的 innerText；配 `has`、`lacks`）、`cam.x|y|zoom`、`pointer.x|y`（指针在白板上的位置）、`press`（最后一次按下落在的视图链或元素链）、`hover`（连接点出在哪张卡上，没有是 `none`：Mac 读 app 的 CanvasTrace 里的悬停卡，网页读哪张卡的连接点带着尺寸）、`focus`（键盘现在进哪儿：Mac 的 first responder 和它所在的视图，比如正在写标签时是 `NSTextView < _NSKeyboardFocusClipView < OnBoardField`；网页的焦点元素和它的祖先，比如 `span.vlabel`）、`answer`（上一个点击、按键、拖动、滚动的输入到达 app 后多少毫秒画面开始变，算法同 report 的 answered，要在 `rec` 中）。
 - 比较：`=` `!=` `<` `<=` `>` `>=` `~`（差不超过 2）`has` `lacks`（文字包含）。
 - 值：数字、文字、另一个对象（`expect sboxes.bottom >= cyellow.bottom`）、`was`、`was+N`、`was-N`（`mark` 时这个对象的值）。
@@ -75,7 +75,7 @@ node apps/macos/tools/accept/run.mjs --stop                  # 关掉留着的�
 
 Mac 这边复制粘贴用的是这个进程自己的私有剪贴板，碰不到用 Mac 的人的剪贴板。网页那边不转发按键：VS Code 先拦下 ⌘D 这些键再转回给白板，这里白板自己接。
 
-`scenarios/` 里的场景：`b1/`（第 2 步第 1 批的交互验收）、`stale-hover`（指针不动时平移，连接点从原来的卡换到新到指针下的卡；捏合时跟着缩放）、`look-tour`、`look-tour2`（外观：各部件静止、悬停、选中、拖动中、编辑中各拍一张，只拍不判）、`section-follow`（拖动中 Section 跟着撑开）、`pan-over-edit`（编辑时平移经过这张卡不停）、`hover-tour`（经过各种卡头和 Section 标题时出现什么）、`new-text-flow`（不对照：新建、输入、拖进 Section 的完整流程）、`ime-esc`（拼音上屏后马上按 Esc，编辑要结束）、`label-edit`（箭头标签和 Section 标题的就地编辑：双击、右键 Edit Label、选中箭头按回车）、`summary-edit`（缩小推过摘要那一级，点摘要正文就地编辑）、`glide-stop`（只跑 Mac：滑行途中按下，相机立即停住）。`reopen-camera`（关掉 app 再打开，镜头不变）。第二轮交互验收的：`space-pan`、`space-pan2`（按住空格拖动平移）、`help-keys`（`?` 打开快捷键列表）、`sidenote-menu`、`badge-chevron`、`badge-chevron-iw`（Sidenote 标记和折叠箭头）、`sticker`、`dup-copy`、`paste-copy`、`paste-ref`、`fit-alt-f`、`hide-lines`、`layout-keep`，两块白板的 `two/two-delete-board`、`two/three-delete-board`、`two/two-alt-paste`。
+`scenarios/` 里的场景：`b1/`（第 2 步第 1 批的交互验收）、`stale-hover`（指针不动时平移，连接点从原来的卡换到新到指针下的卡；捏合时跟着缩放）、`look-tour`、`look-tour2`（外观：各部件静止、悬停、选中、拖动中、编辑中各拍一张，只拍不判）、`section-follow`（拖动中 Section 跟着撑开）、`pan-over-edit`（编辑时平移经过这张卡不停）、`hover-tour`（经过各种卡头和 Section 标题时出现什么）、`new-text-flow`（不对照：新建、输入、拖进 Section 的完整流程）、`ime-esc`（拼音上屏后马上按 Esc，编辑要结束）、`label-edit`（箭头标签和 Section 标题的就地编辑：双击、右键 Edit Label、选中箭头按回车）、`summary-edit`（缩小推过摘要那一级，点摘要正文就地编辑）、`glide-stop`（只跑 Mac：滑行途中按下，相机立即停住）。`reopen-camera`（关掉 app 再打开，镜头不变）。第二轮交互验收的：`space-pan`、`space-pan2`（按住空格拖动平移）、`help-keys`（`?` 打开快捷键列表）、`sidenote-menu`、`badge-chevron`、`badge-chevron-iw`（Sidenote 标记和折叠箭头）、`sticker`、`dup-copy`、`paste-copy`、`paste-ref`、`fit-alt-f`、`hide-lines`、`layout-keep`，两块白板的 `two/two-delete-board`、`two/three-delete-board`、`two/two-alt-paste`。`web-open`（选中 Web 卡按回车，地址只记下来；读 Web 卡的右键菜单）。
 
 测试白板（`storage/blook.json`）有各种卡、带标签和样式的箭头、两个 Section、Sticker、Sidenote，每个会被摘要的项都带着摘要；右下远处一张 `cfar`，让白板大到缩得到摘要那一级。右边还有一张 Web 卡 `cweb` 和一张 Link List `clinks`（三行：一行普通、一行大图、一行抓取失败），元数据和图都写在文件里，不联网。子白板卡在 `storage-two`（`csub`）。Shelf 上有两项（Note `cshelf1`、粉色 Box `cshelf2`），点 Shelf 按钮能看到面板。
 
@@ -103,6 +103,7 @@ Mac 这边是 `Accept` target（`apps/macos/Sources/Accept/main.swift`）：它�
 - 机器负载高时慢：一条场景两边约 5 分钟。看外观时用带目标的 `shot` 只剪需要的一块，别读整张并排图（费 token）。
 - 一行命令最多等 30 秒加它自己要的时长（`wait`、`move`…），超了这一行失败并写明。app 崩溃时（例如抛了 NSException）这一边立即失败，写出原因（stdout 里的那一行），后面的行不再跑。
 - 回车按默认按钮是驱动代做的：AppKit 只在窗口服务器给了 key 的窗口里让回车按默认按钮，驱动的窗口从来不是，不代做的话一个回车就删的框看起来也不删。Esc、按钮自己的键照常经 app。
+- app 要在外面打开的东西（Web 卡的网页、链接、在 Finder 里显示、程序）都不打开：Mac 上 NSWorkspace 的各个 open 换成只记下（启动时先查过 app 拿到的 workspace 用的是换过的，查不过驱动就退出，什么都没打开），网页这边宿主的 `openUrl` / `openFolder` / `revealInOS` 只记下，页面自己开的新页马上关掉；`opened` 读出来，日志里是 `opened (not really): …`。
 - app 送进废纸篓的东西进这次运行自己的文件夹（vault 旁边的 `-trash`，跑完和 vault 一起删），不进系统废纸篓。
 - 网页那边的驱动日志记下白板和宿主之间的每条消息（`board → host <类型> #<编号>`、`host → board reply #<编号>`，宿主什么都没回时写 `(nothing)`）。
 - 网页那边打开 storage 里按名字排第一的白板（和 Mac 打开侧栏第一行一致）；`ACCEPT_BOARD=<id 的一部分>` 换一块。网页按 `--scale` 放大滚轮的量（Chrome 收到的滚轮以设备像素计），两边平移的白板单位一样。

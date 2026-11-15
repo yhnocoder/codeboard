@@ -265,6 +265,76 @@ extension FileManager {
 swizzle(
   FileManager.self, #selector(FileManager.trashItem(at:resultingItemURL:)),
   #selector(FileManager.accTrashItem(at:resultingItemURL:)))
+/// Nothing this run opens reaches the Mac: an address, a file or an app the app asks NSWorkspace to open (a Web card's
+/// page, a link, Reveal in Finder) is written down instead (the opened command), and the browser of the person using
+/// the Mac never opens
+let opened = Mutex<[String]>([])
+func keepOpened(_ what: String) {
+  opened.withLock { $0.append(what) }
+  log("opened (not really): \(what)")
+}
+extension NSWorkspace {
+  @objc(accOpenURL:) func accOpen(_ url: URL) -> Bool {
+    keepOpened(url.absoluteString)
+    return true
+  }
+  @objc(accOpenURL:configuration:completionHandler:) func accOpen(
+    _ url: URL, configuration: NSWorkspace.OpenConfiguration,
+    completionHandler: (@Sendable (NSRunningApplication?, (any Error)?) -> Void)?
+  ) {
+    keepOpened(url.absoluteString)
+    completionHandler?(nil, nil)
+  }
+  @objc(accOpenURLs:withApplicationAtURL:configuration:completionHandler:) func accOpen(
+    _ urls: [URL], withApplicationAt app: URL, configuration: NSWorkspace.OpenConfiguration,
+    completionHandler: (@Sendable (NSRunningApplication?, (any Error)?) -> Void)?
+  ) {
+    for u in urls { keepOpened("\(u.absoluteString) with \(app.lastPathComponent)") }
+    completionHandler?(nil, nil)
+  }
+  @objc(accOpenApplicationAtURL:configuration:completionHandler:) func accOpenApplication(
+    at app: URL, configuration: NSWorkspace.OpenConfiguration,
+    completionHandler: (@Sendable (NSRunningApplication?, (any Error)?) -> Void)?
+  ) {
+    keepOpened("app \(app.path)")
+    completionHandler?(nil, nil)
+  }
+  @objc(accActivateFileViewerSelectingURLs:) func accActivateFileViewer(selecting urls: [URL]) {
+    for u in urls { keepOpened("reveal \(u.path)") }
+  }
+  @objc(accSelectFile:inFileViewerRootedAtPath:) func accSelectFile(_ path: String?, root: String) -> Bool {
+    keepOpened("reveal \(path ?? root)")
+    return true
+  }
+  @objc(accOpenFile:) func accOpenFile(_ path: String) -> Bool {
+    keepOpened(path)
+    return true
+  }
+  @objc(accOpenFile:withApplication:) func accOpenFile(_ path: String, app: String?) -> Bool {
+    keepOpened("\(path) with \(app ?? "its app")")
+    return true
+  }
+}
+for (o, r) in [
+  ("openURL:", "accOpenURL:"),
+  ("openURL:configuration:completionHandler:", "accOpenURL:configuration:completionHandler:"),
+  (
+    "openURLs:withApplicationAtURL:configuration:completionHandler:",
+    "accOpenURLs:withApplicationAtURL:configuration:completionHandler:"
+  ),
+  ("openApplicationAtURL:configuration:completionHandler:", "accOpenApplicationAtURL:configuration:completionHandler:"),
+  ("activateFileViewerSelectingURLs:", "accActivateFileViewerSelectingURLs:"),
+  ("selectFile:inFileViewerRootedAtPath:", "accSelectFile:inFileViewerRootedAtPath:"), ("openFile:", "accOpenFile:"),
+  ("openFile:withApplication:", "accOpenFile:withApplication:"),
+] {
+  let ours = method_getImplementation(class_getInstanceMethod(NSWorkspace.self, Selector(r))!)
+  swizzle(NSWorkspace.self, Selector(o), Selector(r))
+  // the workspace the app is handed must answer with ours (a subclass of its own would open for real): checked here,
+  // before anything could be opened
+  guard let cls = object_getClass(NSWorkspace.shared), class_getMethodImplementation(cls, Selector(o)) == ours else {
+    fatalError("NSWorkspace \(o) is not caught")
+  }
+}
 /// The window server's word to a window's views that it is key (web views learn it so)
 func tellKey(_ w: NSWindow) {
   NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: w)
@@ -1123,6 +1193,8 @@ func strings(_ x: Any) -> [String] {
         return "no button \(title): \(dialogText(d))"
       }
       b.perform(#selector(NSButton.performClick(_:)), with: nil, afterDelay: 0, inModes: [.common])
+    // opened: what the app asked to open so far (addresses, files, apps; none), one per line, in order: nothing opened
+    case "opened": return opened.withLock { $0.isEmpty ? "none" : $0.joined(separator: "\n") }
     case "pick":
       menuOpen = false
       pick(String(line.dropFirst(5)))
@@ -1316,7 +1388,8 @@ func strings(_ x: Any) -> [String] {
         n += 1
         log("start \(n) \(l)")
         let r = await run(l)
-        log("done \(n) \(l)\(r.isEmpty ? "" : " -> " + r)")
+        // on one line: a menu's items, the opened addresses (the runner reads it back)
+        log("done \(n) \(l)\(r.isEmpty ? "" : " -> " + r.replacingOccurrences(of: "\n", with: "\\n"))")
       }
       running = false
     }
