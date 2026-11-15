@@ -32,10 +32,9 @@ private func writingBoard() -> Board {
 
 @MainActor @Suite(.serialized) struct NativeCanvasTests {
   @Test func cardsAreAsTallAndATextAsWideAsTheNativeComponentMeasuresThem() async throws {
-    let r = try await Rig(writingBoard(), zoom: 1, native: true)
+    let r = try await Rig(writingBoard(), zoom: 1)
     defer { r.close() }
     let c = r.canvas
-    #expect(c.display is NativeNotes)
     let package = r.root.appending(path: "native.board")
     for m in Scene.measures(r.doc.board, package: package, vault: Vault(root: r.root)) {
       let id = m.card.rawValue
@@ -52,10 +51,8 @@ private func writingBoard() -> Board {
     }
   }
 
-  @Test(arguments: [false, true]) func startingAndStoppingToWriteMovesNoLineOfANoteATextOrABox(native: Bool)
-    async throws
-  {
-    let r = try await Rig(writingBoard(), zoom: 1, native: native)
+  @Test func startingAndStoppingToWriteMovesNoLineOfANoteATextOrABox() async throws {
+    let r = try await Rig(writingBoard(), zoom: 1)
     defer { r.close() }
     for id in ["n", "t", "b"] {
       let before = r.rect(id)
@@ -93,7 +90,7 @@ private func writingBoard() -> Board {
       case .nothing: nil
       }
     let pictures = HeldPictures(data)
-    let r = try await Rig(board, zoom: 1, pictures: { await pictures.load($0) }, native: true)
+    let r = try await Rig(board, zoom: 1, pictures: { await pictures.load($0) })
     defer { r.close() }
     await r.until("asked for at once") { pictures.asked.count == 1 }
     let without = r.rect("n").height

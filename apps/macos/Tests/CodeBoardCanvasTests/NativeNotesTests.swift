@@ -116,8 +116,9 @@ import Testing
     #expect(after.layouts.count == 2)
   }
 
-  /// A Note in view as a board opens is drawn ahead, and its picture is read back after a relaunch, not drawn again
-  @Test func aNoteInViewAsABoardOpensIsDrawnAheadAndReadBackAfterARelaunch() async throws {
+  /// A Note in view as a board opens is drawn ahead, and what the native display draws is read back after a relaunch, not
+  /// drawn again
+  @Test func aNotesPictureIsDrawnAheadAsABoardOpensAndReadBackAfterARelaunch() async throws {
     let kept = FileManager.default.temporaryDirectory.appending(path: "nn-kept-\(UUID().uuidString)")
     defer { try? FileManager.default.removeItem(at: kept) }
     let r = request("# Opening\n\nDrawn while the board is laid out.\n\n- one\n- two")
@@ -130,12 +131,21 @@ import Testing
     let before = NativeNotes(web: web, kept: kept)
     let drawn = try await shown(before)
     #expect(before.layouts.count == 1)
-    await before.openings?.written()
+    await before.drawn?.written()
     let after = NativeNotes(web: web, kept: kept)
     let read = try await shown(after)
     #expect(after.layouts.count == 0)
     #expect(read.size == drawn.size && read.surface.width == drawn.surface.width)
     #expect(read.surface.height == drawn.surface.height && read.surface.width == Int((r.width * 2).rounded(.up)))
+    // what the board takes from disk alone (a Note's overview as it opens): the picture kept, none at another scale
+    func onDisk(_ d: NativeNotes, _ scale: Double) async -> NoteSnapshot? {
+      await d.cached(
+        of: r.note, width: r.width, height: nil, folder: folder, scale: scale, look: r.look, dark: r.dark, refs: [],
+        hideHead: false)
+    }
+    let again = NativeNotes(web: web, kept: kept)
+    #expect(await onDisk(again, 2)?.size == drawn.size)
+    #expect(await onDisk(again, 3) == nil && again.layouts.count == 0)
   }
 
   @Test func aNoteAskedForOnManyThreadsAtOnceIsLaidOutOnce() async throws {

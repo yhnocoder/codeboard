@@ -877,7 +877,11 @@ public final class EditorCore {
     endLone()
     goalX = nil
     place(MDSelection(anchor: MarkdownEditing.start(of: document), head: MarkdownEditing.end(of: document)))
+    selectedAll = selection
   }
+
+  /// What ⌘A selected last: while it is the selection, it is ProseMirror's AllSelection, not a text selection
+  public private(set) var selectedAll: MDSelection?
 
   /// ⌘D: the word at the caret, as a double-click selects it
   public func selectWord() {

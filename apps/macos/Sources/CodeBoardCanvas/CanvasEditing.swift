@@ -135,7 +135,6 @@ extension CanvasView {
       stopObserving?()
       document = doc
       stopObserving = doc.observe { [weak self] in self?.documentChanged($0) }
-      _ = noteEditor  // its page loads while the board does
     }
     try await load(board, in: vault, theme: theme, keepCamera: false)
   }
@@ -1111,12 +1110,21 @@ extension CanvasView {
     if spacePanDown(e) { return }
     // AppKit sends a multi-click's later presses to the view its first went to: a double-click's second press over the
     // editor its first press opened is the editor's, as in main
-    if editing != nil, let v = Optional(editorView), let sv = v.superview,
-      v.hitTest(sv.convert(e.locationInWindow, from: nil)) != nil
+    if let w = writingView, let sv = w.superview,
+      w.hitTest(sv.convert(e.locationInWindow, from: nil)) != nil
     {
       pressToEditor = true
+      window?.makeFirstResponder(w)
+      return w.mouseDown(with: e)
+    }
+    // on the paper of the card written in natively, off its text: below the text the caret goes to the end, beside it
+    // nothing changes; the writing goes on
+    if let ed = editing, let v = ed.writer, hitCard(camera.board(convert(e.locationInWindow, from: nil))) == ed.id {
+      if v.convert(e.locationInWindow, from: nil).y > v.bounds.maxY {
+        v.doCommand(by: #selector(NSResponder.moveToEndOfDocument(_:)))
+      }
       window?.makeFirstResponder(v)
-      return v.mouseDown(with: e)
+      return
     }
     // a click outside the card being written in ends the writing; on it while its editor is still mounting (that second
     // press, which main's editor would have) the writing goes on
@@ -1247,12 +1255,15 @@ extension CanvasView {
         let at = boardRect(r.box, on: r.card)
         Task {
           await endEditing()
-          beginEditing(r.card, at: CGPoint(x: at.midX, y: at.midY), openRef: true)
+          beginEditing(r.card, at: CGPoint(x: at.midX, y: at.midY))
         }
         return
       }
-      // a card's grip, or a Note's bottom edge: Fit Content (Card.tsx .grip, .hb); a Text's edge or corner: nothing
-      if let (item, edges) = sectionEdgeOrHandle(v, p) {
+      // a card's grip, or a Note's bottom edge: Fit Content (Card.tsx .grip, .hb); a Text's edge or corner: nothing.
+      // Just inside a card's side its body is under the pointer (the board's side handles lie outside it): written in
+      if let (item, edges) = sectionEdgeOrHandle(v, p),
+        !(edges.isSubset(of: [.left, .right]) && item.card != nil && hitCard(p) == item.card)
+      {
         if case .card(let id) = item, !isText(id) {
           var note = false
           if case .note? = scene?.parts[id]?.content.body { note = true }
@@ -1322,7 +1333,7 @@ extension CanvasView {
   func hold(over: @escaping (CGPoint) -> Bool, act: @escaping () -> Void) { held = (over, act) }
 
   public override func mouseDragged(with e: NSEvent) {
-    if pressToEditor { return editorView.mouseDragged(with: e) }
+    if pressToEditor { return writingView?.mouseDragged(with: e) ?? () }
     if spacePanDragged(e) { return }
     if chipPressed != nil { return hoverChip(at: camera.board(convert(e.locationInWindow, from: nil))) }
     if alignPressed != nil { return hoverAlignBar(alignBarButton(at: convert(e.locationInWindow, from: nil)) ?? nil) }
@@ -1438,7 +1449,7 @@ extension CanvasView {
   public override func mouseUp(with e: NSEvent) {
     if pressToEditor {
       pressToEditor = false
-      return editorView.mouseUp(with: e)
+      return writingView?.mouseUp(with: e) ?? ()
     }
     if spacePanUp(e) { return }
     if let b = alignPressed {
@@ -2015,8 +2026,11 @@ extension CanvasView {
     // Esc closes the bar's open panel, and only that
     if alignMore, e.keyCode == 53 { return setAlignMore(false) }
     guard document != nil else { return super.keyDown(with: e) }
-    // Free code's editor is there at once: a key that reaches the canvas is its
-    if let v = editing?.codeView { return v.keyDown(with: e) }
+    if let v = writingView {
+      // the editor is there from the first: a key that came here is its
+      window?.makeFirstResponder(v)
+      return v.keyDown(with: e)
+    }
     if editing != nil {
       // the editor is mounting: its keys wait for it, Esc among them, in the order typed
       editing?.keys.append(e)

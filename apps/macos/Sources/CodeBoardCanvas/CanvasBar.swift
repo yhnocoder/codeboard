@@ -144,6 +144,20 @@ enum Icons {
   }
 
   /// `path` stroked as the board draws an icon (`.ico`), its square's top left at `at`, in a y-down context
+  /// The same at another size (`scale` times its 16 units), its line still 1 wide
+  static func stroke(_ path: CGPath, scale k: CGFloat, at: CGPoint, color: CGColor, in ctx: CGContext) {
+    ctx.saveGState()
+    ctx.translateBy(x: at.x - 0.5, y: at.y - 0.5)
+    ctx.scaleBy(x: k, y: k)
+    ctx.addPath(path)
+    ctx.setStrokeColor(color)
+    ctx.setLineWidth(1 / k)
+    ctx.setLineCap(.round)
+    ctx.setLineJoin(.round)
+    ctx.strokePath()
+    ctx.restoreGState()
+  }
+
   static func stroke(_ path: CGPath, at: CGPoint, color: CGColor, in ctx: CGContext) {
     ctx.saveGState()
     ctx.translateBy(x: at.x - 0.5, y: at.y - 0.5)

@@ -3,7 +3,7 @@ import Foundation
 
 /// How the canvas gets the Markdown it shows at rest (a Note's, a Text's or Box's, an Always Show sidenote's in a code
 /// card) and SVG pictures drawn and measured: a picture at a scale, what a Note measures at 100 %, where a Text's first
-/// glyph is. Editing is not part of it (`NoteEditor`).
+/// glyph is. Editing is not part of it (the canvas's native editors).
 public protocol NoteDisplay: AnyObject, Sendable {
   /// What draws: a picture or size kept for one build is not reused by another
   var build: String { get }

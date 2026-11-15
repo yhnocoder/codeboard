@@ -130,6 +130,12 @@ public struct Theme: Sendable {
   var accentInk = CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
   /// A resize's size hint (--guide)
   var guide = CGColor(srgbRed: 0x2f / 255, green: 0x7d / 255, blue: 0xe1 / 255, alpha: 1)
+  /// Selected text's tint, over the text so it reads through (markdown.css .md-pm ::selection: the accent at 26 %; Ink
+  /// Wash's themes.css: the ink at 13 %, 20 % dark)
+  var textSelection: NSColor {
+    let c = id == .inkWash ? ink.copy(alpha: dark ? 0.2 : 0.13) : accent.copy(alpha: 0.26)
+    return c.flatMap { NSColor(cgColor: $0) } ?? .selectedTextBackgroundColor
+  }
   /// A row's hover tint (--hlrow)
   var hlrow = CGColor(srgbRed: 60 / 255, green: 45 / 255, blue: 20 / 255, alpha: 0.07)
 

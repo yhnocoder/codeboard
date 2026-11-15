@@ -12,8 +12,8 @@ import TreeSitterHighlight
 /// the native Markdown component: laid out once at 100 % per card width, look and appearance (kept by least recent use),
 /// drawn on the caller's thread at any scale, many at once. Its pictures come from the canvas's own image cache, decoded
 /// for the width they are drawn at; code is coloured by the canvas's highlighter. SVG image cards are still drawn by the
-/// web page (`web`), which also does the Note page's other work. Editing still goes through the web editor (`NoteEditor`)
-/// until the native editor takes it over.
+/// web page (`web`), which also does the Note page's other work. What is written in a Note is laid out by it too
+/// (`editorLayout`, NativeWriting).
 package final class NativeNotes: NoteDisplay {
   let web: NoteRenderer
   let images: DecodeCache
@@ -25,9 +25,9 @@ package final class NativeNotes: NoteDisplay {
   let sizes: MeasuredSizes?
   /// Where its typeset formulas and diagrams are kept (nil: in this process only, by the engines)
   let formulas: URL?
-  /// The pictures of the Notes in view as a board opens (`prepare`), kept on disk: after a relaunch they are read, as
-  /// fast as the web renderer's kept pictures, rather than drawn while the board waits
-  let openings: MeasuredSizes?
+  /// The pictures it drew, kept on disk as the web renderer keeps its own: after a relaunch a board's Notes are read,
+  /// those in view as it opens and the overviews of the rest too, rather than drawn while it waits
+  let drawn: MeasuredSizes?
 
   /// `kept`: the folder its measured sizes, formulas and diagrams are kept in, nil for none
   init(web: NoteRenderer, images: DecodeCache, pictures: URL = CanvasView.pictures, kept: URL?) {
@@ -36,9 +36,9 @@ package final class NativeNotes: NoteDisplay {
     self.pictures = pictures
     sizes = kept.map { MeasuredSizes(folder: $0.appending(path: "sizes"), build: NativeNotes.layoutBuild) }
     formulas = kept?.appending(path: "formulas")
-    // a picture in view at 200 % on a 2x screen is a few megabytes, most of them paper: some hundred boards' openings
-    openings = kept.map {
-      MeasuredSizes(folder: $0.appending(path: "openings"), build: NativeNotes.layoutBuild, limit: 512 << 20)
+    // a picture at 200 % on a 2x screen is a few megabytes, most of them paper, an overview some kilobytes
+    drawn = kept.map {
+      MeasuredSizes(folder: $0.appending(path: "pictures"), build: NativeNotes.layoutBuild, limit: 1 << 30)
     }
   }
 
@@ -54,6 +54,17 @@ package final class NativeNotes: NoteDisplay {
 
   /// The engines, with what they made kept on disk when there is a folder for it; made the first time a Note needs them
   private let math = Mutex<(any MathTypesetter)?>(nil)
+  /// The layout an editor of the Note starts from: the one shown, laying out what is typed with the formula engines
+  /// whether or not the Note had a formula (one may be typed)
+  func editorLayout(_ l: Laid, folder: URL, refs: [NoteRef], dark: Bool) -> BlockLayout {
+    editorLayout(l.layout, folder: folder, refs: refs, dark: dark)
+  }
+
+  func editorLayout(_ l: BlockLayout, folder: URL, refs: [NoteRef], dark: Bool) -> BlockLayout {
+    let math = try? engines()
+    return l.copy(resources: Resources(folder: folder, pictures: pictures, refs: refs, math: math, dark: dark))
+  }
+
   private func engines() throws -> any MathTypesetter {
     if let m = math.withLock({ $0 }) { return m }
     let e = try MarkdownAssets.engines()
@@ -80,10 +91,6 @@ package final class NativeNotes: NoteDisplay {
     return ([binary, MeasuredSizes.stamp(assets.appending(path: "engines.js"))] + fonts).joined(separator: "\n")
   }()
 
-  /// Whether the canvas shows its Markdown this way: on unless `defaults write <the app's domain> WebNotes -bool YES`
-  /// puts the web page back. A switch for the change-over only: it goes once the native editor has replaced the web one
-  static var on: Bool { !UserDefaults.standard.bool(forKey: "WebNotes") }
-
   /// The fonts, the layout code and the formula engines used once, off the main thread, so the first board does not pay
   /// for them (the app starts this as it launches)
   package static func warmUp() {
@@ -104,22 +111,38 @@ package final class NativeNotes: NoteDisplay {
     {
       return s
     }
-    let l = try laid(note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead)
+    let r = NoteSizeRequest(
+      note: note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead)
     try Task.checkCancellation()
-    guard let s = draw(l, height: height, scale: CGFloat(scale), folder: folder, dark: dark) else {
-      throw CancellationError()
-    }
+    guard let s = picture(r, height: height, scale: scale) else { throw CancellationError() }
     return s
   }
 
-  /// Drawn now: it takes a few milliseconds, as long as reading a kept picture would
+  /// Only one kept on disk, as the web renderer's `cached`
   package func cached(
     of note: NoteBody, width: Double, height: Double?, folder: URL, scale: Double, look: String, dark: Bool,
     refs: [NoteRef], hideHead: Bool
   ) async -> NoteSnapshot? {
-    try? await snapshot(
-      of: note, width: width, height: height, folder: folder, scale: scale, look: look, dark: dark, refs: refs,
-      hideHead: hideHead, priority: 0)
+    let r = NoteSizeRequest(
+      note: note, width: width, folder: folder, look: look, dark: dark, refs: refs, hideHead: hideHead)
+    return keptKey(r, height: height, scale: scale).flatMap { drawn?.readPicture($0) }
+  }
+
+  /// A Note's picture: the one kept, else laid out and drawn now and kept; nil when cancelled (a gesture began)
+  private func picture(_ r: NoteSizeRequest, height: Double?, scale: Double) -> NoteSnapshot? {
+    let kept = keptKey(r, height: height, scale: scale)
+    if let kept, let s = drawn?.readPicture(kept) { return s }
+    guard
+      let l = try? laid(
+        r.note, width: r.width, folder: r.folder, look: r.look, dark: r.dark, refs: r.refs, hideHead: r.hideHead),
+      let s = draw(l, height: height, scale: CGFloat(scale), folder: r.folder, dark: r.dark)
+    else { return nil }
+    if let kept { drawn?.writePicture(s, kept) }
+    return s
+  }
+
+  private func keptKey(_ r: NoteSizeRequest, height: Double?, scale: Double) -> SizeKey? {
+    drawn?.key(r, height: height, scale: scale, extra: remoteStamps(r.note.markdown))
   }
 
   package func picture(of file: URL, width: Int, dark: Bool, priority: Int) async throws -> NoteSnapshot {
@@ -196,17 +219,7 @@ package final class NativeNotes: NoteDisplay {
     let tasks = notes.map { r, height, scale in
       let k = key(
         r.note, width: r.width, folder: r.folder, look: r.look, dark: r.dark, refs: r.refs, hideHead: r.hideHead)
-      let task = Task.detached(priority: .userInitiated) { () -> NoteSnapshot? in
-        let kept = self.openings?.key(r, height: height, scale: scale, extra: self.remoteStamps(r.note.markdown))
-        if let kept, let s = self.openings?.readPicture(kept) { return s }
-        guard
-          let l = try? self.laid(
-            r.note, width: r.width, folder: r.folder, look: r.look, dark: r.dark, refs: r.refs, hideHead: r.hideHead),
-          let s = self.draw(l, height: height, scale: CGFloat(scale), folder: r.folder, dark: r.dark)
-        else { return nil }
-        if let kept { self.openings?.writePicture(s, kept) }
-        return s
-      }
+      let task = Task.detached(priority: .userInitiated) { self.picture(r, height: height, scale: scale) }
       return (Ahead(key: k, height: height, scale: scale), task)
     }
     drawnAhead.withLock { $0 = Dictionary(tasks, uniquingKeysWith: { a, _ in a }) }
@@ -290,9 +303,7 @@ package final class NativeNotes: NoteDisplay {
     defer { if !made { layouts.drop(key) } }
     let text = note.markdown
     let math = NativeNotes.needsEngines(text) ? try engines() : nil
-    var card = MarkdownLooks.card(Self.style(note), look: look, dark: dark)
-    // lines as WebKit sets them while Notes are edited in it, so starting to edit moves no line
-    card.theme.metrics.flooredLeading = false
+    let card = MarkdownLooks.card(Self.style(note), look: look, dark: dark)
     let starts = MarkdownSourceOps.blockStarts(text)
     // the header shows the leading heading: the body starts at the block after it (page.css .nbody.hidehead)
     var shown = text

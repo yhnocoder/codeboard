@@ -179,12 +179,12 @@ extension Rig {
     #expect(r.hit(p) === r.canvas, "the card is in view")
     r.doubleClick(p)
     await r.editorReady()
-    // the editor's web view is what is under the pointer there
+    // the editor is what is under the pointer there
+    let v = try #require(r.canvas.writingView)
     let hit = r.hit(p)
     #expect(
-      hit.map { $0 === r.canvas.noteEditor.view || $0.isDescendant(of: r.canvas.noteEditor.view) } == true,
-      "under the pointer: \(hit.map { String(describing: type(of: $0)) } ?? "nothing"), editor at \(r.canvas.noteEditor.view.frame), point \(r.at(p))"
-    )
+      hit.map { $0 === v || $0.isDescendant(of: v) } == true,
+      "under the pointer: \(hit.map { String(describing: type(of: $0)) } ?? "nothing"), editor at \(v.frame)")
     let moved = r.scrollGesture(from: p)
     #expect(abs(moved - want) < 0.01, "over the editor: \(moved), on the bare board: \(want)")
     #expect(r.canvas.isEditing, "still writing")
@@ -209,20 +209,14 @@ extension Rig {
     let want = await baseline(r, dy: 12, momentum: momentum)
     r.doubleClick(CGPoint(x: 40, y: 40))
     await r.editorReady()
-    // the card in the web view (flipped, larger than the card) and in its host
-    let v = r.canvas.noteEditor.view
-    let card = CGRect(
-      x: v.frame.minX + v.cardRect.minX, y: v.frame.maxY - v.cardRect.maxY, width: v.cardRect.width,
-      height: v.cardRect.height)
     // just below the card: the board moving down brings the card under the still pointer
-    let w = CGPoint(x: card.midX, y: card.minY - 20)
-    let p = r.canvas.camera.board(r.canvas.convert(w, from: r.canvas.noteEditor.view.superview))
+    let card = r.rect("n1")
+    let p = CGPoint(x: card.midX, y: card.maxY + 20)
     #expect(r.hit(p) === r.canvas, "beside the card: the board")
+    let w = r.at(p)
     let moved = r.scrollGesture(from: p, dy: 12, momentum: momentum)
-    let under = r.window.contentView?.superview.flatMap { $0.hitTest($0.convert(w, from: r.canvas.superview)) }
-    #expect(
-      under.map { $0.isDescendant(of: r.canvas.noteEditor.view) || $0 === r.canvas.noteEditor.view } == true,
-      "the card came under the pointer: \(under.map { String(describing: type(of: $0)) } ?? "nothing")")
+    let now = r.canvas.camera.board(r.canvas.convert(w, from: nil))
+    #expect(card.contains(now), "the card came under the pointer: \(now) in \(card)")
     #expect(abs(moved - want) < 0.01, "moved \(moved), on the bare board \(want)")
     #expect(r.canvas.isEditing, "still writing")
   }

@@ -16,6 +16,16 @@ enum MathTag {
     return (body, star ? "\\text{\(label)}" : "\\text{(\(label))}")
   }
 
+  private static let command = try! NSRegularExpression(pattern: #"\\[A-Za-z]+"#)
+
+  /// Whether the formula has a Latin letter of its own, set in math italic (not one of a command's name)
+  static func hasLetter(_ latex: String) -> Bool {
+    let ns = latex as NSString
+    let bare = command.stringByReplacingMatches(
+      in: latex, range: NSRange(location: 0, length: ns.length), withTemplate: "")
+    return bare.contains { $0.isASCII && $0.isLetter }
+  }
+
   /// a tag drawn after an inline display formula, a quad apart (the formula's width grows by it)
   static func attach(_ tag: MathPicture, to pic: MathPicture) -> MathPicture {
     let gap = 1.0

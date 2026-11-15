@@ -8,6 +8,13 @@ import AppKit
 /// own (TipView)
 @MainActor
 class HoverControls: NSView {
+  /// A click in a window that is not key goes to it when it goes to the editor it floats on
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+    var v = superview
+    while let s = v, !(s is MarkdownEditorView) { v = s.superview }
+    return (v as? MarkdownEditorView)?.acceptsFirstClick ?? false
+  }
+
   /// the control under the pointer, by its id
   private(set) var hovered: String?
   /// the control the button went down on, while it is held

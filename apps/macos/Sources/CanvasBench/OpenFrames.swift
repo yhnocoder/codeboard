@@ -24,6 +24,8 @@ import CodeBoardModel
     /// between two ticks
     var late = 0
     var worstGapMs = 0.0
+    /// Frames with an item in view drawn below the display's resolution (enlarged: soft)
+    var framesWithSoft = 0
   }
 
   struct Result: Encodable {
@@ -62,6 +64,10 @@ import CodeBoardModel
     var filledLaterEmpty = 0
     var filledLaterPaper = 0
     var opening = Phase()
+    /// With `earlyScroll`: a scroll of one screen to the left in half a second, begun as soon as the board is
+    /// installed, and the frames after it until every item in view is drawn (the opening's other numbers are then left
+    /// out: the scroll changes them)
+    var early: Phase?
     var pan = Phase()
     var zoom = Phase()
     /// This process's footprint and the WebKit processes', MB, once the pan and the zoom are over and the canvas rests
@@ -73,6 +79,7 @@ import CodeBoardModel
   }
 
   let canvas: CanvasView
+  var earlyScroll = false
   private var timer: Timer?
   private var onFrame: (() -> Void)?
   /// The time since the tick before this one
@@ -190,6 +197,37 @@ import CodeBoardModel
     var paperAfterContent = Set<Int>()
     onFrame = { sample(&opening, opening: true) }
     try await canvas.show(b, in: vault, theme: .warmInk)
+    if earlyScroll {
+      var p = Phase()
+      shown = Set(canvas.blankInView.drawn)
+      let start = CACurrentMediaTime()
+      var last = start
+      var scrolled = false
+      await frames(
+        until: { scrolled && self.canvas.blankInView.empty.isEmpty && self.canvas.blankInView.paper.isEmpty },
+        limit: 3,
+        each: {
+          let now = CACurrentMediaTime()
+          let t = now - start
+          if !scrolled {
+            let dt = max(now - last, 1.0 / 240)
+            self.canvas.scroll(
+              by: CGVector(dx: t < 0.5 ? -self.canvas.bounds.width * 2 * dt : 0, dy: 0), at: now, began: p.frames == 0,
+              ended: t >= 0.5)
+            scrolled = t >= 0.5
+          }
+          last = now
+          sample(&p, opening: false)
+          if !self.canvas.resolutionInView.soft.isEmpty { p.framesWithSoft += 1 }
+        })
+      r.early = p
+      r.cards = canvas.cardRects.count
+      await frames(until: { self.canvas.isSettled }, each: {})
+      let e = JSONEncoder()
+      e.keyEncodingStrategy = .convertToSnakeCase
+      e.outputFormatting = [.sortedKeys]
+      return String(decoding: try e.encode(r), as: UTF8.self)
+    }
     await frames(
       until: { r.notesSharpMs != nil && r.allDrawnMs != nil && r.allSharpMs != nil },
       each: {

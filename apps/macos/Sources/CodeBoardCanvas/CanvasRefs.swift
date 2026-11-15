@@ -46,18 +46,11 @@ extension CanvasView {
     refClicked(.card(r.card, boardRect(r.box, on: r.card)), r.box.ref, r.box.target, go: false, writing: false)
   }
 
-  /// A ref pressed in a web view: the editor's (on the card being written in) or the popup's; nil: the second press
-  /// of a double-click on one, which drops what the first began
-  func refPressed(_ p: RefPress?, inPopup: Bool) {
+  /// A ref pressed in the sidenote popup; nil: the second press of a double-click on one, which drops what the first
+  /// began
+  func refPressed(_ p: RefPress?) {
     guard let p else { return cancelRefGo() }
-    if inPopup {
-      refClicked(.popup(p.rect), p.ref, p.target, go: p.go, writing: p.writing)
-    } else if let id = editing?.id {
-      let v = noteEditor.view.convert(p.rect, to: self)
-      let r = CGRect(
-        origin: camera.board(v.origin), size: CGSize(width: v.width / camera.zoom, height: v.height / camera.zoom))
-      refClicked(.card(id, r), p.ref, p.target, go: p.go, writing: true)
-    }
+    refClicked(.popup(p.rect), p.ref, p.target, go: p.go, writing: p.writing)
   }
 
   /// A click on a ref (`writing`: in an editor, whose caret stays: the camera only moves, nothing is selected)
@@ -275,7 +268,7 @@ extension CanvasView {
       peek.put = CGPoint(x: o.x + m - a.ref.x, y: o.y + m - a.ref.y)
     }
     refPeek = peek
-    host.addSubview(peek, positioned: .above, relativeTo: pops.last?.web.view ?? self)
+    host.addSubview(peek, positioned: .above, relativeTo: pops.last?.pop.view ?? self)
     let theme = self.theme
     let display = self.display
     let images = self.images
@@ -357,9 +350,9 @@ extension CanvasView {
       let b = camera.view(CGPoint(x: card.maxX, y: r.maxY))
       return (CGRect(x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y), camera.view(r.origin))
     case .popup(let r):
-      guard let p = refPop, p.shown, p.web.view.superview != nil else { return nil }
-      let v = p.web.view
-      let box = v.convert(CGRect(origin: p.web.origin, size: p.web.size), to: self)
+      guard let p = refPop, p.shown, p.pop.view.superview != nil else { return nil }
+      let v = p.pop.view
+      let box = v.convert(CGRect(origin: p.pop.origin, size: p.pop.size), to: self)
       return (box, v.convert(r, to: self).origin)
     }
   }

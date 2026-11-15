@@ -166,8 +166,6 @@ import Testing
   func opened(_ vault: Vault? = nil, cameras: CameraStore? = nil) async throws -> Window {
     let w = Window(try vault ?? self.vault(), board: board, cameras: cameras)
     await until("the board shown", in: w) { w.pane?.scene != nil && w.pane?.shown?.board.id == board }
-    // under the desktop the window counts as hidden, where WebKit would hold the editor page's frames (as the rig does)
-    w.canvas.noteEditor.drawOffScreen()
     w.window.contentView?.layoutSubtreeIfNeeded()
     await until("laid out", in: w) { w.canvas.window != nil && w.canvas.convert(w.canvas.bounds, to: nil).minX > 100 }
     // its first frames in
@@ -213,12 +211,14 @@ import Testing
     #expect(w.hit(p).map { $0 === c } == true, "the canvas under it: \(String(describing: w.hit(p)))")
     w.doubleClick(p)
     await until("the editor up", in: w) { c.editing?.ready == true }
-    #expect(w.keysIn(c.editorView), "the keyboard in the editor: \(String(describing: w.window.firstResponder))")
+    // the Markdown editor for a Note, Text or Box, Free code's own for code (CanvasView.writingView)
+    let editor = try #require(c.writingView)
+    #expect(w.keysIn(editor), "the keyboard in the editor: \(String(describing: w.window.firstResponder))")
     #expect(c.editing?.id == card)
     await w.sameSizeLayout()
     #expect(c.isEditing && c.editing?.id == card, "still writing")
     #expect(
-      w.keysIn(c.editorView), "the keyboard still in the editor: \(String(describing: w.window.firstResponder))")
+      w.keysIn(editor), "the keyboard still in the editor: \(String(describing: w.window.firstResponder))")
   }
 
   /// The app quit right after the camera moved (before it came to rest long enough to be written), then opened again

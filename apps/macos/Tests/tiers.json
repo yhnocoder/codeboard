@@ -41,7 +41,7 @@
         "SnapshotStoreTests",
         "RenderQueueTests",
         "NoteRendererTests/aNotesBlocksAreMeasuredWithItsSizeAndKeptWithIt",
-        "NoteEditorTests/itMountsTypesGrowsAndEndsWithWhatWasWritten"
+        "NoteImagesTests/aPictureIsStoredByItsContentOnce"
       ]
     },
     "MarkdownDemoKitTests": {
@@ -134,7 +134,7 @@
             "CodeBoardCanvas/CanvasAddNote.swift",
             "CodeBoardCanvas/CanvasQuestions.swift",
             "CodeBoardModel/Sidenotes.swift",
-            "CodeBoardNotes/SidenotePop.swift",
+            "CodeBoardCanvas/NativePop.swift",
             "CodeBoardNotes/QuestionListView.swift"
           ],
           "tests": ["CanvasSidenoteTests", "CanvasAlwaysShowTests"]
@@ -212,22 +212,21 @@
         "writing": {
           "sources": [
             "CodeBoardCanvas/CanvasWriting.swift",
+            "CodeBoardCanvas/NativeWriting.swift",
             "CodeBoardCanvas/CanvasBar.swift",
             "CodeBoardModel/Writing.swift",
-            "CodeBoardNotes/NoteEditor.swift"
+            "CodeBoardNotes/NoteImages.swift"
           ],
           "tests": [
             "CanvasWritingTests/enteringAndLeavingWithNothingTypedChangesNothing",
             "CanvasWritingTests/returnWritesInTheSelectedCardAndASessionIsOneStep",
+            "NativeWritingTests",
+            "NativeWindowWritingTests",
             "CanvasWritingTests/anArrowOnANotesBlockFollowsItWhenTheWritingEndsAndUndoPutsItBack",
-            "CanvasWritingTests/keysPressedWhileTheEditorMountsReachIt",
             "CanvasWritingTests/aDoubleClickOnTheCanvasMakesATextThatGoesWhenLeftEmpty",
             "CanvasWritingTests/aClickOnTheOneSelectedNotesBodyWritesInIt",
-            "CanvasWritingTests/aDoubleClickBesideALineEndingInALinkWritesInTheLinksText",
             "CanvasWritingTests/aDoubleClickBelowTheLastLineOfANoteWithItsHeadingInTheHeaderWritesAtTheEnd",
-            "CanvasWritingTests/theSecondClickOfADoubleClickOnTheSelectedNoteKeepsTheWritingGoing",
             "CanvasWritingTests/theSecondPressOfADoubleClickOnTheEmptyBodyKeepsTheWritingGoing",
-            "CanvasWritingTests/theSecondClickOfTheDoubleClickThatOpensTheEditorSelectsNoWord",
             "CanvasWritingTests/aNewCardWrittenInIsOneStep",
             "CanvasWritingTests/theCardGrowsAsItIsTypedIn",
             "CanvasWritingTests/whatIsTypedWinsOverAnotherWritersTextAndTheRestMerges",
@@ -235,9 +234,7 @@
             "CanvasWritingTests/theBarSizesATextOneStepEach",
             "CanvasWritingTests/aBoxTakesItsFillsAndTextAndBoxKeepTheFirstLetterInPlace",
             "CanvasWritingTests/theToolbarShowsItsNineToolsAndMakesNoteTextAndBoxInTheViewsMiddle",
-            "CanvasWritingTests/zoomingWhileWritingScalesTheEditorsLayerThenShowsItAtTheNewZoomAtRest",
             "CanvasWritingTests/aPictureGivenToTheEditorGoesIntoTheBoardsImages",
-            "CanvasWritingTests/whatWasTypedIsWrittenWhenTheEditorLeftByItselfBeforeTheClickOutside",
             "CanvasWritingTests/focusLeavingMidCompositionWritesWhatIsComposed",
             "CanvasWritingTests/doubleBracketListsTheCardsAndWritesThePickWithItsID",
             "CanvasWritingTests/aCardOnAnotherBoardIsWrittenWithTheBoardsName",

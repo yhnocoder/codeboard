@@ -6,15 +6,16 @@ import CodeBoardModel
 //        CanvasBench <vault folder> <five board ids or titles> --memory <folder>
 //   --hud    frame rate, dropped frames, main-thread time per frame, pixels held and footprint over the canvas
 //   --bench  opens the board (every board when none is named), runs the scripted pan and zoom segments on it and opens it
-//            again, prints one JSON object per board on stdout and quits. The window floats on top: a covered window
-//            gets no frames
+//            again, prints one JSON object per board on stdout and quits. The window is below the desktop picture and
+//            never activated; its frames are ticked at 60 Hz (Meter): dropped frames are ticks the main thread made late,
+//            and the window server's and the GPU's share of a frame is not measured
 //   --memory see MemoryRun; in a window below the desktop picture that is never activated
 //   --drag   see DragBench: drags on a copy of each board named (every board when none is), in a window never on screen
 //   --open-frames  what each frame shows while each board named opens, then while it is panned and zoomed (OpenFrames),
 //            in a window below the desktop picture that is never activated; with --note-cache <folder> the Note
 //            snapshots are kept there across runs (a relaunch with the disk cache filled); with --pictures <folder> the
 //            board pictures and the cameras they were taken at are kept there (the app's first board after a launch)
-//            Its Notes are drawn by the web page unless --native (the native Markdown component, as the app draws them)
+//            With --early-scroll: a scroll of one screen as soon as each board is installed instead of the pan and zoom
 //   --code   heavy code cards made for it (CodeCards): the whole board drawn offscreen again and again (CPU time), then
 //            --open-frames on it; no vault folder
 //   --import <folder> the vault is that VS Code storage folder (.codeboard) imported into a new temporary vault first
@@ -75,14 +76,16 @@ final class App: NSObject, NSApplicationDelegate {
       }
       return
     }
-    w.makeKeyAndOrderFront(nil)
-    w.makeFirstResponder(canvas)
     if bench {
-      w.level = .floating
+      // below the desktop picture, never activated nor made key, its frames ticked by the meter
+      w.level = .underDesktop
       w.orderFrontRegardless()
+    } else {
+      w.makeKeyAndOrderFront(nil)
+      w.makeFirstResponder(canvas)
+      NSApp.activate()
     }
-    NSApp.activate()
-    let meter = Meter(canvas)
+    let meter = Meter(canvas, ticking: bench)
     self.meter = meter
     if hud { meter.showHUD(in: root) }
     Task {
@@ -129,14 +132,14 @@ final class App: NSObject, NSApplicationDelegate {
   /// Below the desktop picture, never activated nor made key: its frames are ticked by OpenFrames
   private func runOpenFrames() {
     // as the app does as it launches
-    if native { NativeNotes.warmUp() }
+    NativeNotes.warmUp()
     let frame = CGRect(x: 0, y: 0, width: 1440, height: 900)
     let w = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
     w.level = .underDesktop
     let cache =
       keptNoteCache ?? FileManager.default.temporaryDirectory.appending(path: "canvasbench-notes-\(UUID().uuidString)")
     if keptNoteCache == nil { noteCache = cache }
-    let canvas = CanvasView(frame: frame, noteCache: cache, native: native)
+    let canvas = CanvasView(frame: frame, noteCache: cache)
     canvas.picturesFolder = keptPictures
     w.contentView = canvas
     w.orderFrontRegardless()
@@ -150,6 +153,7 @@ final class App: NSObject, NSApplicationDelegate {
         }
       }
       let run = OpenFrames(canvas: canvas)
+      run.earlyScroll = earlyScroll
       for b in boards {
         do {
           print(try await run.run(b, in: vault, pictures: keptPictures))
@@ -176,7 +180,7 @@ let arrows = args.contains("--arrows")
 let drag = arrows || args.contains("--drag")
 let code = args.contains("--code")
 let openFrames = code || args.contains("--open-frames")
-let native = args.contains("--native")
+let earlyScroll = args.contains("--early-scroll")
 var keptNoteCache: URL?
 if let i = args.firstIndex(of: "--note-cache"), i + 1 < args.count {
   keptNoteCache = URL(filePath: args[i + 1])
@@ -248,7 +252,7 @@ guard !chosen.isEmpty else {
 _ = webKitFootprint()
 let app = NSApplication.shared
 // --drag shows nothing: no Dock icon, no menu bar, never the active app
-app.setActivationPolicy(drag ? .prohibited : openFrames ? .accessory : .regular)
+app.setActivationPolicy(drag ? .prohibited : openFrames || bench || memory != nil ? .accessory : .regular)
 let delegate = App(
   vault: vault, boards: chosen, hud: hud, bench: bench, memory: memory, drag: drag, openFrames: openFrames)
 app.delegate = delegate

@@ -32,6 +32,9 @@ public protocol MarkdownEditorDelegate: AnyObject {
   /// a plain click on a drawn [[reference]] that resolves (onRef): true when the host took it (its preview, or going
   /// there), and the caret stays where it was; false makes it an ordinary click (its source opens)
   func editor(_ e: MarkdownEditorView, activate label: String, target: String?) -> Bool
+  /// the second press of a double-click on a drawn [[reference]] that resolves: the editor opens its source, and what
+  /// the host began for its first click (going there once the double-click time is over) is dropped
+  func editor(_ e: MarkdownEditorView, doubleClickedRef label: String, target: String?)
 }
 
 extension MarkdownEditorDelegate {
@@ -43,6 +46,7 @@ extension MarkdownEditorDelegate {
   public func editor(_ e: MarkdownEditorView, open url: URL) { NSWorkspace.shared.open(url) }
   public func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String? { nil }
   public func editor(_ e: MarkdownEditorView, activate label: String, target: String?) -> Bool { false }
+  public func editor(_ e: MarkdownEditorView, doubleClickedRef label: String, target: String?) {}
   public func editor(_ e: MarkdownEditorView, classify text: String) -> MDPaste.HostCode? { nil }
   /// an Open panel for pictures
   public func editorPicksImage(_ e: MarkdownEditorView) -> (Data, String)? {
@@ -67,6 +71,27 @@ public final class MarkdownEditorView: NSView {
   /// The selection's source exactly as copied, beside the plain text and HTML: a paste in any Note reads it back as it
   /// was (ProseMirror's own slice in the web's copies), never through the HTML, which loses == marks and code lines
   public static let sourceType = NSPasteboard.PasteboardType("com.yhnocoder.codeboard.markdown")
+  /// What an empty editor shows where its text would start, in the lightest ink, until something is typed (the web
+  /// editor's Placeholder: only while the whole of it is empty)
+  public var placeholder: String? {
+    didSet { if placeholder != oldValue { needsDisplay = true } }
+  }
+  private var placeholderLaid: (key: String, width: CGFloat, theme: MarkdownTheme, layout: MarkdownLayout)?
+
+  private func drawPlaceholder(_ ctx: CGContext, scale: CGFloat, clip: CGRect) {
+    guard let p = placeholder, core.source.isEmpty, core.marked == nil else { return }
+    let l = core.layout
+    var theme = l.theme
+    theme.colors.ink = theme.colors.ink3
+    if placeholderLaid?.key != p || placeholderLaid?.width != l.width || placeholderLaid?.theme != theme {
+      // laid out as a paragraph of its words (a host's placeholder is plain words)
+      let doc = MarkdownDocument(p)
+      let laid = MarkdownLayout.make(doc, width: l.width, theme: theme, layout: nil, resources: l.resources)
+      placeholderLaid = (p, l.width, theme, laid)
+    }
+    placeholderLaid?.layout.draw(in: ctx, scale: scale, clip: clip) { _ in nil }
+  }
+
   /// device-independent scale of the drawing (the canvas's zoom)
   public var zoom: CGFloat = 1 {
     didSet {
@@ -309,7 +334,11 @@ public final class MarkdownEditorView: NSView {
       MainActor.assumeIsolated { self?.changed() }
     }
     c.onRelayout = { [weak self] in
-      MainActor.assumeIsolated { self?.restyleChrome() }
+      MainActor.assumeIsolated {
+        self?.restyleChrome()
+        // laid out at another width: its frame and what floats over it follow
+        self?.changed()
+      }
     }
     c.onChange = { [weak self] source in
       MainActor.assumeIsolated {
@@ -472,6 +501,7 @@ public final class MarkdownEditorView: NSView {
       ctx.draw(pic, in: CGRect(origin: .zero, size: r.size))
       ctx.restoreGState()
     }
+    drawPlaceholder(ctx, scale: scale, clip: clip)
     drawHoverLine(ctx, clip)
     drawTableFlip(ctx)
     drawMathProblem(ctx)
@@ -716,6 +746,11 @@ public final class MarkdownEditorView: NSView {
     followed = isEditing ? (core.selection, core.source) : nil
   }
 
+  /// a scroll or pinch the editor does not use, offered to its host first (a canvas moves its board): true when taken
+  public var handOver: ((NSEvent) -> Bool)?
+
+  public override func magnify(with e: NSEvent) { if handOver?(e) != true { super.magnify(with: e) } }
+
   /// a sideways scroll (or ⇧ and the wheel) over a table wider than the Note or a code block with long lines scrolls
   /// that, not the card; a vertical one goes on to the page, and a gesture that starts mostly vertical stays vertical
   public override func scrollWheel(with e: NSEvent) {
@@ -730,7 +765,10 @@ public final class MarkdownEditorView: NSView {
     if wheelAcross == nil, dx != 0 || dy != 0 { wheelAcross = abs(dx) > abs(dy) }
     let p = convert(e.locationInWindow, from: nil)
     let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
-    guard wheelAcross == true else { return super.scrollWheel(with: e) }
+    guard wheelAcross == true else {
+      if handOver?(e) == true { return }
+      return super.scrollWheel(with: e)
+    }
     if let b = core.layout.codeScroll(at: at) {
       let cur = core.layout.codeScrollX[b.start] ?? 0
       let next = min(b.room, max(0, cur - dx / zoom))
@@ -1875,10 +1913,11 @@ public final class MarkdownEditorView: NSView {
   /// the toolbar comes up once the selection has stood still for TOOLBAR_SETTLE, the button up
   private func scheduleToolbar() {
     let s = core.selection
-    // none for a selection in code (bubble.tsx want(): not where the parent is code)
+    // none for a selection in code (bubble.tsx want(): not where the parent is code), nor for ⌘A's (only for a text
+    // selection, which ProseMirror's select-all is not)
     let leaf = MarkdownEditing.context(at: s.range.lowerBound, in: core.document).leaf
-    guard !s.isEmpty, !holdsToolbar, core.selectedImage == nil, core.marked == nil, tableDrag == nil, resizing == nil,
-      leaf != .code, leaf != .source,
+    guard !s.isEmpty, s != core.selectedAll, !holdsToolbar, core.selectedImage == nil, core.marked == nil,
+      tableDrag == nil, resizing == nil, leaf != .code, leaf != .source,
       MarkdownEditing.run(at: s.range.lowerBound, in: core.document)?.kind == .inline
     else {
       toolbarTimer?.invalidate()
@@ -2088,7 +2127,7 @@ public final class MarkdownEditorView: NSView {
   /// where the pointer last pressed in the view: the toolbar does not come up over it
   var lastPress: CGPoint?
 
-  public override func mouseDown(with e: NSEvent) {
+  private func pressed(_ e: NSEvent) {
     begin()
     tipView.press()
     lastPress = convert(e.locationInWindow, from: nil)
@@ -2113,6 +2152,9 @@ public final class MarkdownEditorView: NSView {
     {
       note(.key("click on a reference", did: "activated [[\(label)]] (taken by the host)"))
       return
+    }
+    if e.clickCount == 2, let (label, target) = resolvedRef(at: at) {
+      delegate?.editor(self, doubleClickedRef: label, target: target)
     }
     guard isEditing else {
       // the static picture: a drag selects its text, a click without one starts editing there (the board's selected
@@ -2185,6 +2227,43 @@ public final class MarkdownEditorView: NSView {
     changed()
   }
 
+  /// A plain ↵ outside a code block, with no list open: true when the host took it (it ends the host's field)
+  public var onReturn: (() -> Bool)?
+
+  /// The click count of the host's click that opened the editor, until the next press here: the press that goes on
+  /// with it (a double-click whose first click opened the editor) is taken as a click of its own, so it only puts the
+  /// caret where it is (interact.ts clickEdit: main keeps that second press from selecting a word); the presses after
+  /// it keep their counts, so a third still selects the paragraph
+  public var openedBy: Int?
+  /// the press taken as a single click is under way: its drags and release are too
+  private var openingPress = false
+  /// Whether a click in its window when that is not key goes to it at once (the host's own rule, as its canvas's)
+  public var acceptsFirstClick = false
+
+  public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { acceptsFirstClick }
+
+  public override func mouseDown(with e: NSEvent) {
+    openingPress = openedBy.map { e.clickCount == $0 + 1 } ?? false
+    openedBy = nil
+    pressed(openingPress ? Self.single(e) : e)
+  }
+
+  public override func mouseDragged(with e: NSEvent) { dragged(openingPress ? Self.single(e) : e) }
+
+  public override func mouseUp(with e: NSEvent) {
+    let single = openingPress
+    openingPress = false
+    released(single ? Self.single(e) : e)
+  }
+
+  /// The same event as the first press of a click
+  private static func single(_ e: NSEvent) -> NSEvent {
+    NSEvent.mouseEvent(
+      with: e.type, location: e.locationInWindow, modifierFlags: e.modifierFlags, timestamp: e.timestamp,
+      windowNumber: e.windowNumber, context: nil, eventNumber: e.eventNumber, clickCount: 1, pressure: e.pressure)
+      ?? e
+  }
+
   /// the drawn [[reference]] under a point that resolves: its label and target
   func resolvedRef(at p: CGPoint) -> (String, String?)? {
     guard let r = core.layout.atom(at: p), let i = MarkdownEditing.inline(r, in: core.document),
@@ -2231,6 +2310,16 @@ public final class MarkdownEditorView: NSView {
   public func enter(at p: CGPoint) {
     core.mouseDown(at: p, clicks: 1, extend: false)
     core.mouseUp()
+    // beside the end of a line that ends in a link: after the link's last letter, so what is typed lengthens its text
+    // (interact.ts staticSpot), not after its folded address, where it would follow the link
+    let h = core.selection.head
+    if core.selection.isEmpty,
+      let l = MarkdownEditing.linkPlace(
+        in: MDEditState(source: core.source, selection: MDSelection(h)), document: core.document),
+      l.exists, h == l.range.upperBound
+    {
+      core.select(MDSelection(l.range.lowerBound + 1 + (l.text as NSString).length))
+    }
     isEditing = true
     core.settle()
     changed()
@@ -2404,7 +2493,7 @@ public final class MarkdownEditorView: NSView {
   /// a press on the static picture, and whether it has moved into a drag (a selection) yet
   private var pressed: (at: CGPoint, dragged: Bool)?
 
-  public override func mouseDragged(with e: NSEvent) {
+  private func dragged(_ e: NSEvent) {
     if let from = imageDragFrom {
       let p = convert(e.locationInWindow, from: nil)
       guard hypot(p.x / zoom - from.x, p.y / zoom - from.y) * zoom > 4 else { return }
@@ -2472,7 +2561,7 @@ public final class MarkdownEditorView: NSView {
     autoscroll(with: e)
   }
 
-  public override func mouseUp(with e: NSEvent) {
+  private func released(_ e: NSEvent) {
     // timed from the release (a drag's frames before it are their own)
     begin()
     defer { writeLeftLink() }
@@ -2706,6 +2795,13 @@ public final class MarkdownEditorView: NSView {
         return
       default: break
       }
+    }
+    // a host's field that ↵ ends (a sidenote's: NoteComposer.tsx SnField); ⇧↵ is a line break, a code block takes ↵
+    if selector == #selector(insertNewline(_:)), let onReturn,
+      !(NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false),
+      core.codeBlock(at: core.selection.head) == nil, onReturn()
+    {
+      return
     }
     begin()
     defer {

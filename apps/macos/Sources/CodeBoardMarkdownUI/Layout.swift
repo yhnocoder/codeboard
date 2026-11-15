@@ -34,12 +34,13 @@ public final class MarkdownLayout: @unchecked Sendable {
   static func roundedUp(_ y: CGFloat) -> CGFloat { ceil(y * 100 - 1e-6) / 100 }
 
   /// Lays the document out `width` points wide (nil: as wide as its widest paragraph line or code line, max-content;
-  /// tables, formulas, diagrams and images do not widen it)
+  /// tables, formulas, diagrams and images do not widen it); `head`: the caret, whose constructs show their markers
   public static func make(
     _ document: MarkdownDocument, width: CGFloat?, theme: MarkdownTheme, layout: MDLayoutInfo?,
-    resources: MarkdownResources
+    resources: MarkdownResources, head: Int? = nil
   ) -> MarkdownLayout {
     var b = LayoutBuilder(theme: theme, resources: resources, info: layout, width: width ?? 100_000)
+    b.head = head
     b.setSource(document.source)
     let frames = b.top(document.blocks)
     let w = width ?? ceil(b.widest)
@@ -379,6 +380,15 @@ struct LayoutBuilder {
     return tb.frame.maxY
   }
 
+  /// Where the first line-break opportunity after `start` is (the end of the word there, with its spaces)
+  static func nextBreak(_ s: NSString, from start: Int, _ n: Int) -> Int {
+    let t = CFStringTokenizerCreate(
+      nil, s, CFRange(location: start, length: n - start), kCFStringTokenizerUnitLineBreak, nil)
+    guard CFStringTokenizerAdvanceToNextToken(t) != [] else { return n }
+    let r = CFStringTokenizerGetCurrentTokenRange(t)
+    return r.location + r.length
+  }
+
   /// CSS line boxes: every line is `lineHeight` × the font size tall, its baseline where half-leading puts the strut
   /// font's ascent; an atom taller than that makes its line taller
   func setText(
@@ -387,7 +397,7 @@ struct LayoutBuilder {
   ) -> TextBlock {
     let strut = FontBook.font(style.families, size: style.size, weight: style.weight, italic: style.italic)
     let lh = lineHeight * style.size
-    let strutAbove = FontBook.baseline(strut, lineHeight: lh, floored: theme.metrics.flooredLeading)
+    let strutAbove = FontBook.baseline(strut, lineHeight: lh)
     var lines: [TextBlock.Line] = []
     var top = y
     let attr = d.string
@@ -415,6 +425,9 @@ struct LayoutBuilder {
       {
         len = nl - start + 1
       }
+      // min-content (a Text as narrow as it goes, laid out 1 wide): lines break only where a line may break, a word
+      // whole, as CSS measures it; the typesetter would break inside a word that does not fit
+      if wrap, width <= 1 { len = max(len, Self.nextBreak(attr.string as NSString, from: start, n) - start) }
       len = max(1, len)
       let line = CTTypesetterCreateLine(ts, CFRange(location: start, length: len))
       var above = strutAbove
@@ -570,7 +583,7 @@ struct LayoutBuilder {
       } else {
         let font = FontBook.font(style.families, size: style.size, weight: 400)
         let base =
-          y + FontBook.baseline(font, lineHeight: CGFloat(m.lineHeight) * style.size, floored: m.flooredLeading)
+          y + FontBook.baseline(font, lineHeight: CGFloat(m.lineHeight) * style.size)
         let a = Int(FontBook.ascentDescent(font).0)
         let dia = CGFloat((a * 2 / 3 + 1) / 2)
         let r = CGRect(
@@ -761,10 +774,8 @@ struct LayoutBuilder {
   mutating func mathBlock(
     _ latex: String, x: CGFloat, width: CGFloat, y: CGFloat, style: InlineStyle, keep: Int? = nil
   ) -> CGFloat {
-    // .math pads 2px above and below and the formula's display margin is 2px more (markdown.css); half a point more
-    // stands for KaTeX's struts, which make its boxes that much taller than MathJax's on average over the look samples
-    // (the tall ones, a sum with limits or two aligned rows, by up to 3 pt; one-line ones not at all)
-    let pad: CGFloat = 4.5
+    // .math pads 2px above and below and the formula's display margin is 2px more (markdown.css)
+    let pad: CGFloat = 4
     let size = style.size * 1.08
     let (body, tag) = MathTag.split(latex)
     var result = resources.math.map { $0.typeset(body, display: true, preamble: resources.mathPreamble) }
@@ -781,8 +792,22 @@ struct LayoutBuilder {
       var style = style
       if faded { style.color = style.color.alpha(0.4) }
       let w = CGFloat(pic.width) * size
-      let h = CGFloat(pic.height) * size
-      let base = y + pad + CGFloat(pic.baseline) * size
+      // KaTeX's formula is one line of .katex (line-height 1.2): at least the boxes Chrome gives the line's text, each
+      // font's hhea ascent and descent rounded to whole pixels with the rest of the line height split evenly, of
+      // KaTeX_Main and, when the formula has a letter, KaTeX_Math
+      func line(_ ascent: CGFloat, _ descent: CGFloat) -> (CGFloat, CGFloat) {
+        let (a, d) = ((ascent * size).rounded(), (descent * size).rounded())
+        let half = (1.2 * size - a - d) / 2
+        return (a + half, d + half)
+      }
+      var (lineAbove, lineBelow) = line(0.903, 0.272)
+      if MathTag.hasLetter(body) {
+        let m = line(0.717, 0.218)
+        (lineAbove, lineBelow) = (max(lineAbove, m.0), max(lineBelow, m.1))
+      }
+      let above = max(CGFloat(pic.baseline) * size, lineAbove)
+      let h = above + max(CGFloat(pic.height - pic.baseline) * size, lineBelow)
+      let base = y + pad + above
       // centred; a tag at the right edge on the formula's baseline, as KaTeX places it
       items.append(.math(pic, size: size, origin: CGPoint(x: x + max(0, (width - w) / 2), y: base), color: style.color))
       if let tag, case .ok(let t) = tex.typeset(tag, display: false, preamble: resources.mathPreamble) {

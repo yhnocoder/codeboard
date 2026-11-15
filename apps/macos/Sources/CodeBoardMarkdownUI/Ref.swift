@@ -141,7 +141,7 @@ final class RefBox: @unchecked Sendable {
     if let b = badge { x += 4 + CGFloat(CTLineGetTypographicBounds(b, nil, nil, nil)) }
     width = x + edge
     let lh = 1.32 * size
-    ascent = FontBook.baseline(font, lineHeight: lh, floored: theme.metrics.flooredLeading)
+    ascent = FontBook.baseline(font, lineHeight: lh)
     descent = lh - ascent
   }
 

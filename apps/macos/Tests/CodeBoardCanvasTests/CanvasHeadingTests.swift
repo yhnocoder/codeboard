@@ -51,15 +51,8 @@ import Testing
     await rig.editorReady()
     #expect(
       abs((c.editing?.size?.height ?? 0) - before.height) < 1, "\(String(describing: c.editing?.size)), was \(before)")
-    // once the fold has run: the heading shown in the body, the header folded
-    await rig.until("folded") {
-      let r = try? await c.noteEditor.view.callAsyncJavaScript(
-        "const h = document.querySelector('#root .slot.shown .md-pm > h1');"
-          + " return !!h && h.getAnimations().length === 0 && h.getBoundingClientRect().height > 10"
-          + " && !!document.querySelector('#root .slot.shown .chead.fold')",
-        contentWorld: .page)
-      return r as? Bool == true
-    }
+    // the heading in the body the editor writes, the header folded
+    #expect(c.editing?.writer?.source.hasPrefix("# KV cache budget") == true)
     #expect(abs((c.editing?.size?.height ?? 0) - before.height) < 1, "\(String(describing: c.editing?.size))")
     guard case .note(let shown) = try item(c, "n0").drawing else {
       Issue.record("not a Note")
@@ -70,9 +63,7 @@ import Testing
     if leave == "click" {
       rig.click(CGPoint(x: 900, y: 600))
     } else {
-      _ = try await c.noteEditor.view.callAsyncJavaScript(
-        "document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))",
-        contentWorld: .page)
+      rig.press("\u{1b}")
     }
     await rig.until("left") { !c.isEditing }
     #expect(!rig.doc.history.canUndo)

@@ -43,10 +43,10 @@ private func writeOtherBoard(_ root: URL) throws {
   try b.encoded().write(to: p.appending(path: Vault.boardFileName))
 }
 
-@MainActor func refRig(native: Bool = false) async throws -> Rig {
+@MainActor func refRig() async throws -> Rig {
   let root = FileManager.default.temporaryDirectory.appending(path: "canvas-refs-\(UUID().uuidString)")
   try writeOtherBoard(root)
-  let r = try await Rig(refBoard(), zoom: 1, root: root, native: native)
+  let r = try await Rig(refBoard(), zoom: 1, root: root)
   r.canvas.refWait = .milliseconds(60)
   return r
 }
@@ -59,13 +59,14 @@ extension Rig {
     return canvas.boardRect(b, on: cid(c))
   }
 
-  /// A press and release in a web view over the canvas, at a point of it (its own points), as the window delivers them
+  /// A press and release in a view over the canvas (the editor), at a point of it (its own points), as the window
+  /// delivers them
   func click(in view: NSView, at p: CGPoint, clicks: Int = 1) {
     mouse(.leftMouseDown, in: view, at: p, clicks: clicks)
     mouse(.leftMouseUp, in: view, at: p, clicks: clicks)
   }
 
-  /// A press or a release alone, in a web view over the canvas
+  /// A press or a release alone, in a view over the canvas
   func mouse(_ type: NSEvent.EventType, in view: NSView, at p: CGPoint, clicks: Int = 1) {
     let e = NSEvent.mouseEvent(
       with: type, location: view.convert(p, to: nil), modifierFlags: [],
@@ -90,11 +91,8 @@ extension Rig {
 extension CanvasWritingTests {
   @MainActor @Suite struct RefClicks {
 
-    /// native: the refs where the native component draws them (NativeNotes measures them from its layout)
-    @Test(arguments: [false, true]) func aNearCardIsGoneToSelectedAndFlashedOnceTheDoubleClickTimeIsOver(native: Bool)
-      async throws
-    {
-      let r = try await refRig(native: native)
+    @Test func aNearCardIsGoneToSelectedAndFlashedOnceTheDoubleClickTimeIsOver() async throws {
+      let r = try await refRig()
       defer { r.close() }
       let near = try #require(await r.refBox("Near"))
       #expect(r.canvas.cardNear(cid("near")) && !r.canvas.safeView.contains(r.rect("near")), "near, not in view")
@@ -120,12 +118,8 @@ extension CanvasWritingTests {
       await r.editorReady()
       #expect(r.canvas.editing?.id == cid("n1"))
       // its chip gone: the source is written out, the caret in it
-      await r.until("the ref's source open") {
-        (try? await r.canvas.noteEditor.view.callAsyncJavaScript(
-          "return !!document.querySelector('.ProseMirror[contenteditable=true]')"
-            + " && ![...document.querySelectorAll('.ProseMirror .md-ref')].some(e => e.dataset.ref === 'Near')",
-          contentWorld: .page) as? Bool) == true
-      }
+      let v = try #require(r.canvas.editing?.writer)
+      #expect(!v.core.layout.drawnRefs.contains { $0.label.hasPrefix("Near") }, "the ref's source open")
       try await Task.sleep(for: .milliseconds(150))
       r.tick()
       #expect(r.canvas.flashed == nil && r.canvas.camera == camera, "the first click's go-to dropped")
@@ -294,30 +288,15 @@ extension CanvasWritingTests {
       r.click(CGPoint(x: 150, y: 120))
       r.key(36)
       await r.editorReady()
-      let ed = r.canvas.noteEditor.view
-      // the ref drawn in the editor, its middle in the web view's points
-      var box: CGRect?
-      await r.until("the ref drawn") {
-        let d =
-          try? await ed.callAsyncJavaScript(
-            "const r = [...document.querySelectorAll('.ProseMirror .md-ref')].find(e => e.dataset.ref === 'Near');"
-              + " if (!r) return null; const b = r.getBoundingClientRect(); return [b.x, b.y, b.width, b.height]",
-            contentWorld: .page) as? [Double]
-        if let d { box = CGRect(x: d[0], y: d[1], width: d[2], height: d[3]) }
-        return box != nil
-      }
-      let b = try #require(box)
-      r.click(in: ed, at: CGPoint(x: b.midX, y: b.midY))
+      let v = try #require(r.canvas.editing?.writer)
+      // the ref drawn in the editor, its middle in the editor's points
+      let b = try #require(v.core.layout.drawnRefs.first { $0.label.hasPrefix("Near") }?.rect)
+      r.click(in: v, at: CGPoint(x: b.midX * v.zoom, y: b.midY * v.zoom))
       await r.until("gone to") { r.canvas.flashed == cid("near") }
       #expect(r.canvas.editing?.id == cid("n1"), "still writing")
       #expect(r.doc.selection == [.card(cid("n1"))], "nothing selected")
-      // the ref still drawn as its chip (its source not opened), once the editor has drawn its frame
-      await r.until("the ref still a chip") {
-        (try? await ed.callAsyncJavaScript(
-          "await new Promise(r => requestAnimationFrame(r));"
-            + " return [...document.querySelectorAll('.ProseMirror .md-ref')].some(e => e.dataset.ref === 'Near')",
-          contentWorld: .page) as? Bool) == true
-      }
+      // the ref still drawn as its chip (its source not opened)
+      #expect(v.core.layout.drawnRefs.contains { $0.label.hasPrefix("Near") }, "the ref still a chip")
       await r.canvas.endEditing()
       #expect(!r.doc.history.canUndo)
     }
@@ -326,6 +305,15 @@ extension CanvasWritingTests {
 
 extension CanvasSidenoteTests {
   @MainActor @Suite struct RefClicksInPopup {
+    /// Where a sidenote's first drawn ref is in the popup's view
+    func refBox(_ pop: SidenotePop) -> CGRect? {
+      for s in pop.slips {
+        guard let b = s.body, let r = b.layout.drawnRefs.first else { continue }
+        return b.convert(r.rect, to: pop.view)
+      }
+      return nil
+    }
+
     /// In the sidenote popup: beside the popup
     @Test func aRefInASidenoteIsPreviewedBesideThePopup() async throws {
       let r = try await refRig()
@@ -334,17 +322,8 @@ extension CanvasSidenoteTests {
       let pop = c.sidenotePop
       c.openPop(.spot(.card(cid("n1"))))
       await r.until("the popup") { c.popShown != nil && pop.size.height > 0 }
-      var box: CGRect?
-      await r.until("its ref drawn") {
-        let d =
-          await pop.run(
-            "const r = document.querySelector('.slip .md-ref'); if (!r) return null;"
-              + " const b = r.getBoundingClientRect(); return [b.x, b.y, b.width, b.height]") as? [Double]
-        if let d { box = CGRect(x: d[0], y: d[1], width: d[2], height: d[3]) }
-        return box != nil
-      }
-      let b = try #require(box)
-      r.click(in: pop.view, at: CGPoint(x: b.midX, y: b.midY))
+      let b = try #require(refBox(pop))
+      r.click(pop: pop.view, at: CGPoint(x: b.midX, y: b.midY))
       await r.until("the preview drawn") { c.refPeek?.ready == true }
       let f = try #require(r.peekFrame)
       let popup = pop.view.convert(CGRect(origin: pop.origin, size: pop.size), to: c)
@@ -354,34 +333,24 @@ extension CanvasSidenoteTests {
       await r.until("closed") { c.refPeek == nil }
     }
 
-    /// A press on a ref that no click follows (what was pressed is drawn again before the release, or the pointer
-    /// goes off it): the release is the ref's, the next click in the popup is not
-    @Test func aPressOnARefThatNoClickFollowsLeavesTheNextClickAlone() async throws {
+    /// A press on a ref is the ref's alone: the next click in the popup is its own (the ? pressed), and a press
+    /// elsewhere in the popup closes the preview
+    @Test func aPressOnARefLeavesTheNextClickAlone() async throws {
       let r = try await refRig()
       defer { r.close() }
       let c = r.canvas
       let pop = c.sidenotePop
       c.openPop(.spot(.card(cid("n1"))), write: true)
       await r.until("the popup") { c.popShown != nil && pop.size.height > 0 }
-      await r.until("the input") { await pop.run("return !!document.querySelector('.ncomp-ask')") as? Bool == true }
-      var box: CGRect?
-      await r.until("its ref drawn") {
-        let d =
-          await pop.run(
-            "const r = document.querySelector('.slip .md-ref'); if (!r) return null;"
-              + " const b = r.getBoundingClientRect(); return [b.x, b.y, b.width, b.height]") as? [Double]
-        if let d { box = CGRect(x: d[0], y: d[1], width: d[2], height: d[3]) }
-        return box != nil
-      }
-      let b = try #require(box)
-      r.mouse(.leftMouseDown, in: pop.view, at: CGPoint(x: b.midX, y: b.midY))
+      let b = try #require(refBox(pop))
+      r.click(pop: pop.view, at: CGPoint(x: b.midX, y: b.midY))
       await r.until("the press taken") { c.refPeek != nil }
-      // the ref drawn again under the pointer: the release is on another element, and no click comes
-      _ = await pop.run("const r = document.querySelector('.slip .md-ref'); r.replaceWith(r.cloneNode(true))")
-      r.mouse(.leftMouseUp, in: pop.view, at: CGPoint(x: b.midX, y: b.midY))
-      _ = await pop.run("return 0")
-      _ = await pop.run("pop.click('.ncomp-ask')")
-      #expect(await pop.run("return !!document.querySelector('.ncomp-ask.on')") as? Bool == true, "the ? pressed")
+      let q = try #require(PopButton.find("Question", in: pop.view))
+      r.click(pop: pop.view, at: q.convert(CGPoint(x: q.bounds.midX, y: q.bounds.midY), to: pop.view))
+      #expect(q.on, "the ? pressed")
+      let s = try #require(pop.slips.first)
+      r.click(pop: pop.view, at: s.convert(CGPoint(x: s.bounds.midX, y: 4), to: pop.view))
+      await r.until("a press elsewhere closes the preview") { c.refPeek == nil }
     }
   }
 }

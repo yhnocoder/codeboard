@@ -41,7 +41,10 @@ import Testing
       let vault = Vault(root: root)
       shell.open(vault, restoring: nil)
       shell.apply(.success(try vault.tree()))
-      panes = BoardPanes(shell: shell, notes: WritingWhenClosingTests.notes)
+      let notes = WritingWhenClosingTests.notes
+      panes = BoardPanes(
+        shell: shell, notes: notes,
+        display: NativeNotes(web: notes, pictures: root.appending(path: "pictures")))
       panes.frame = CGRect(x: 0, y: 0, width: 900, height: 600)
       // under the desktop, never key: the web view runs its animation frames only in a window that is ordered in
       window = NSWindow(
@@ -59,16 +62,26 @@ import Testing
 
     /// Writes " and then" in the card and leaves it being written in
     func write() async throws {
-      canvas.noteEditor.drawOffScreen()
+      // once the board is shown: the native editor is there as soon as the writing begins
       let deadline = ContinuousClock.now + .seconds(60)
-      while !(canvas.isEditing && canvas.noteEditor.view.shown) {
-        try #require(ContinuousClock.now < deadline, "the editor did not mount")
-        if !canvas.isEditing { canvas.beginEditing(card) }
+      while canvas.scene == nil {
+        try #require(ContinuousClock.now < deadline, "the board did not show")
         try await Task.sleep(for: .milliseconds(5))
       }
-      canvas.noteEditor.type(" and then")
-      _ = try await canvas.noteEditor.view.callAsyncJavaScript(
-        "await new Promise(r => requestAnimationFrame(r)); return 1", contentWorld: .page)
+      canvas.beginEditing(card)
+      // keys as the window gives them to the editor that took them
+      let v = try #require(canvas.editing?.writer)
+      try #require(window.firstResponder === v)
+      for ch in " and then" {
+        for t in [NSEvent.EventType.keyDown, .keyUp] {
+          window.sendEvent(
+            NSEvent.keyEvent(
+              with: t, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+              windowNumber: window.windowNumber, context: nil, characters: String(ch),
+              charactersIgnoringModifiers: String(ch), isARepeat: false, keyCode: 0)!)
+        }
+      }
+      try #require(v.source == "Threads wait and then")
     }
 
     func onDisk() throws -> String? {
@@ -107,6 +120,19 @@ import Testing
     #expect(got == "Threads wait and then", "\(s.listing())")
   }
 
+  /// The tab closed and the app quitting at once, with no wait between (what AppDelegate applicationShouldTerminate does):
+  /// the native editor's text is the card's at any moment
+  @Test func quittingRightAfterTheTabClosedHasWhatWasTypedOnDisk() async throws {
+    let s = try Setup()
+    defer { s.close() }
+    try await s.write()
+    s.shell.close(try #require(s.shell.selected))
+    s.panes.sync()
+    if s.panes.isEditing { await s.panes.endEditing() }
+    #expect(s.panes.flush().isEmpty)
+    #expect(try s.onDisk() == "Threads wait and then")
+  }
+
   @Test func anotherVaultWritesWhatIsBeingTypedBeforeTheBoardsAreLetGo() async throws {
     let s = try Setup()
     defer { s.close() }
@@ -132,10 +158,6 @@ import Testing
       w = FullWindowEditTests.Window(vault, board: board.id)
       file = try #require(w.shell.board(board.id).map { vault.url(of: $0.path).appending(path: Vault.boardFileName) })
       try await until("the board shown") { self.w.pane?.scene != nil && self.w.pane?.shown?.board.id == board.id }
-      // under the desktop the window counts as covered, where WebKit would hold the page's frames; a view hidden in it
-      // still counts as not shown, which is what closing a tab does to its pane
-      w.canvas.noteEditor.drawOffScreen()
-      w.canvas.sidenotePop.drawOffScreen()
     }
 
     func onDisk() throws -> Board { try Board(decoding: Data(contentsOf: file), file: file) }
@@ -152,13 +174,9 @@ import Testing
     /// Writes `text` in `card` and leaves it being written in
     func write(_ text: String, in card: CardID) async throws {
       let c = w.canvas
-      try await until("the editor up") {
-        if !c.isEditing { c.beginEditing(card) }
-        return c.editing?.ready == true && c.noteEditor.view.shown
-      }
-      c.noteEditor.type(text)
-      _ = try await c.noteEditor.view.callAsyncJavaScript(
-        "await new Promise(r => requestAnimationFrame(r)); return 1", contentWorld: .page)
+      c.beginEditing(card)
+      let v = try #require(c.editing?.writer)
+      v.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
     }
 
     /// ⌘W (AppDelegate closeTab) and the window's tracking taking the pane away, then at once quitting (what
@@ -246,10 +264,9 @@ extension WritingWhenClosingTests {
     let at = PopAt.spot(.card(card))
     c.openPop(at, write: true)
     try await s.until("the popup's input") {
-      guard c.popShown == at, c.sidenotePop.view.alphaValue == 1 else { return false }
-      return await c.sidenotePop.run("return !!document.querySelector('.ProseMirror')") as? Bool == true
+      c.popShown == at && c.sidenotePop.view.alphaValue == 1 && c.sidenotePop.field != nil
     }
-    _ = await c.sidenotePop.run("pop.type(t)", ["t": "why wait"])
+    c.sidenotePop.field?.insertText("why wait", replacementRange: NSRange(location: NSNotFound, length: 0))
     #expect(try await s.closeTabAndThen("quit"), "quit ended")
     let got = try s.onDisk().sidenotes(at: .card(card)).map(\.body)
     #expect(got == [.text(TextNote(text: "why wait"))])

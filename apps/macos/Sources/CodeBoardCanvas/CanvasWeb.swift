@@ -109,11 +109,9 @@ extension CanvasView {
       guard let self else { return }
       if kept {
         remotePictures[s] = file
-      } else if let native = display as? NativeNotes {
-        // shown as nothing while it was read, as a broken image from now on
-        native.pictureFailed(s)
       } else {
-        return
+        // shown as nothing while it was read, as a broken image from now on
+        display.pictureFailed(s)
       }
       // the Notes showing it are measured again: they grow by the picture
       measured = measured.filter { !Scene.remoteImages($0.value.note.markdown).contains(s) }
