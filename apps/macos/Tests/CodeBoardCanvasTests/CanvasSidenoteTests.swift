@@ -801,3 +801,32 @@ extension CanvasSidenoteTests {
     #expect(urls == [URL(string: "https://gist.github.com/x")!], "the file link is not opened")
   }
 }
+
+extension CanvasSidenoteTests {
+  /// A closed popup's web view is taken again at once by its own canvas, whose popup work runs one after another; another
+  /// canvas's popup gets it only once its closing has run, which would otherwise clear what that popup shows
+  @Test func aClosedPopupsWebViewGoesToAnotherCanvasOnlyOnceItsClosingHasRun() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    let other = try await Rig(sidenoteBoard(), zoom: 1, alongside: r)
+    defer {
+      other.close()
+      r.close()
+    }
+    let at = PopAt.lines(Lines(card: cid("c1"), segment: s1, range: 12...13))
+    r.canvas.openPop(at)
+    await opened(r, at)
+    let web = r.canvas.sidenotePop
+    r.canvas.openPop(nil)
+    r.canvas.openPop(at)
+    #expect(r.canvas.sidenotePop === web, "its own canvas's next popup")
+    await opened(r, at)
+    r.canvas.openPop(nil)
+    other.canvas.openPop(at)
+    let pop = other.canvas.sidenotePop
+    #expect(pop !== web, "not another canvas's while its closing has not run")
+    await opened(other, at)
+    await r.canvas.popTask?.value
+    #expect(pop.view.alphaValue == 1 && other.canvas.popShown == at)
+    #expect(await pop.run("return document.querySelectorAll('.slip').length") as? Int == 2, "what it shows kept")
+  }
+}

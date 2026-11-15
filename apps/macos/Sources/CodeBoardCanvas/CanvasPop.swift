@@ -49,15 +49,14 @@ struct PopAnchor {
 }
 
 extension CanvasView {
-  /// The popup web views no popup shows, kept for the next ones (a web view takes a while to load its page).
-  /// ponytail: shared by every canvas; one given back is taken again before its closing has run only by this canvas,
-  /// whose popup work runs one after another
+  /// The popup web views no popup shows, kept for the next ones (a web view takes a while to load its page); shared by
+  /// every canvas, each given back only once its closing has run (`closingPops` until then)
   static var idlePops: [SidenotePop] = []
 
   /// The newest popup's web view, else the one the next popup takes
   package var sidenotePop: SidenotePop {
     if let p = pops.last { return p.web }
-    if let p = CanvasView.idlePops.last { return p }
+    if let p = closingPops.last?.web ?? CanvasView.idlePops.last { return p }
     let p = SidenotePop()
     CanvasView.idlePops.append(p)
     return p
@@ -91,7 +90,7 @@ extension CanvasView {
       p = open
       p.held = nil
     } else {
-      p = Popup(at, CanvasView.idlePops.popLast() ?? SidenotePop())
+      p = Popup(at, closingPops.popLast()?.web ?? CanvasView.idlePops.popLast() ?? SidenotePop())
       pops.append(p)
     }
     placeMarks()
@@ -103,10 +102,15 @@ extension CanvasView {
   func closePop(_ p: Popup) {
     guard let i = pops.firstIndex(where: { $0 === p }) else { return }
     pops.remove(at: i)
-    CanvasView.idlePops.append(p.web)
+    closingPops.append(p)
     placeMarks()
     onPop?(openPop)
-    queuePop { await self.letGo(p) }
+    queuePop {
+      await self.letGo(p)
+      guard let k = self.closingPops.firstIndex(where: { $0 === p }) else { return }
+      self.closingPops.remove(at: k)
+      CanvasView.idlePops.append(p.web)
+    }
   }
 
   /// The popups' showing, updating and closing, one after another
