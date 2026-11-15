@@ -464,19 +464,10 @@ extension CanvasView {
     }
     let z = camera.zoom
     let accent = theme.accent
-    let wasRinged = ringed
-    let oldRings = (chrome.sublayers ?? []).filter { $0.name == "ring" || $0.name == "glow" }
-    for l in oldRings {
-      guard let id = l.value(forKey: "card") as? String, let a = l.animation(forKey: "in") else { continue }
-      fading[CardID(rawValue: id), default: [:]][l.name ?? ""] = a
-    }
-    defer { fading = [:] }
-    ringed = []
+    let before = selectedLooks
+    selectedLooks = [:]
     defer {
-      fadeOut(
-        oldRings.filter { l in
-          (l.value(forKey: "card") as? String).map { !ringed.contains(CardID(rawValue: $0)) } ?? false
-        })
+      for (id, ls) in before where selectedLooks[id] == nil { Self.fadeOut(ls) }
     }
     withoutAnimation {
       chrome.sublayers = nil
@@ -490,11 +481,18 @@ extension CanvasView {
         guard let r = liveRect(item) else { continue }
         switch item {
         case .card(let id):
-          // being written in: no ring (the caret and the folded header say which)
-          if editing?.id == id, !isText(id) { continue }
-          selectedLook(
-            id, r, tilt: index(of: .card(id)).map { scene!.items[$0].tilt } ?? 0, into: chrome,
-            fadeIn: !wasRinged.contains(id))
+          guard let i = index(of: .card(id)) else { continue }
+          let box = items[i].box
+          let old = before[id] ?? []
+          let looks = selectedLook(id, box.bounds, tilt: 0, into: box, fadeIn: old.isEmpty)
+          // drawn again while it comes in: it goes on coming in, not from the start
+          for l in looks {
+            if let was = old.first(where: { $0.name == l.name }), let a = was.animation(forKey: "in") {
+              l.add(a, forKey: "in")
+            }
+          }
+          for l in old { l.removeFromSuperlayer() }
+          selectedLooks[id] = looks
         case .section(let id):
           if theme.id == .inkWash, let f = scene?.frames.first(where: { $0.id == id }), let strokes = f.strokes {
             brushed(r, strokes: strokes.cg)
@@ -532,27 +530,26 @@ extension CanvasView {
     }
   }
 
-  /// A selected card's look at `r` in `parent`: a Text's or Box's outline, Ink Wash's seal, else the ring; `fadeIn`:
-  /// it was not selected before, so the ring comes in as main's does
-  func selectedLook(_ id: CardID, _ r: CGRect, tilt: CGFloat, into parent: CALayer, fadeIn: Bool = false) {
+  /// A selected card's look at `r` in `parent` (the card's own layer, or a picture of it): a Text's or Box's outline,
+  /// Ink Wash's seal, else the ring; `fadeIn`: it was not selected before, so it comes in as main's does. Its layers
+  @discardableResult
+  func selectedLook(_ id: CardID, _ r: CGRect, tilt: CGFloat, into parent: CALayer, fadeIn: Bool = false) -> [CALayer] {
     let z = camera.zoom
+    let looks: [CALayer]
     if isText(id) {
-      outline(r, box: isBox(id), tilt: tilt, zoom: z, into: parent)
+      looks = [outline(r, box: isBox(id), tilt: tilt, zoom: z)]
     } else if theme.id == .inkWash {
-      parent.addSublayer(seal(on: r, tilt: tilt))
+      looks = [seal(on: r, tilt: tilt)]
     } else {
-      for l in ring(r, tilt: tilt) {
-        l.setValue(id.rawValue, forKey: "card")
-        // drawn again while it comes in: it goes on coming in, not from the start
-        if let going = fading[id]?[l.name ?? ""] {
-          l.add(going, forKey: "in")
-        } else if fadeIn {
-          Self.fadeIn(l)
-        }
-        parent.addSublayer(l)
-      }
-      if parent === chrome { ringed.insert(id) }
+      looks = ring(r, tilt: tilt)
+      if fadeIn { looks.forEach(Self.fadeIn) }
     }
+    for l in looks {
+      // over the card's content, under its stickers and markers
+      l.zPosition = 3
+      parent.addSublayer(l)
+    }
+    return looks
   }
 
   /// A line that is `w` on the board, never thinner on screen than a pixel
@@ -608,18 +605,14 @@ extension CanvasView {
     l.add(g, forKey: "in")
   }
 
-  /// Rings of cards no longer selected go out over 90 ms (the card unselected, or now being written in)
-  func fadeOut(_ ls: [CALayer]) {
-    guard !ls.isEmpty else { return }
+  /// A card's look when it is no longer selected: out over 90 ms where it is, then gone
+  static func fadeOut(_ ls: [CALayer]) {
     CATransaction.begin()
-    CATransaction.setCompletionBlock { [weak self] in
-      MainActor.assumeIsolated {
-        for l in ls where l.superlayer === self?.leavingChrome { l.removeFromSuperlayer() }
-      }
+    CATransaction.setCompletionBlock {
+      MainActor.assumeIsolated { for l in ls where l.opacity == 0 { l.removeFromSuperlayer() } }
     }
     for l in ls {
       l.removeAnimation(forKey: "in")
-      leavingChrome.addSublayer(l)
       l.opacity = 0
       let o = CABasicAnimation(keyPath: "opacity")
       o.fromValue = 1
@@ -635,6 +628,7 @@ extension CanvasView {
   /// square, its middle 7 out and 5 up from the corner, turned 6 degrees; no ring
   private func seal(on r: CGRect, tilt: CGFloat) -> CALayer {
     let box = CALayer()
+    box.name = "seal"
     box.bounds = CGRect(x: 0, y: 0, width: r.width, height: r.height)
     box.position = CGPoint(x: r.midX, y: r.midY)
     if tilt != 0 { box.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
@@ -715,9 +709,9 @@ extension CanvasView {
 
   /// A selected Text's or Box's frame (styles.css .card.text.sel): a 1.5 point line of the accent, 2 out from a Text
   /// (3 from a Box), round as the card's corners
-  private func outline(_ r: CGRect, box: Bool, tilt: CGFloat, zoom z: CGFloat, into parent: CALayer) {
+  private func outline(_ r: CGRect, box: Bool, tilt: CGFloat, zoom z: CGFloat) -> CALayer {
     let gap: CGFloat = box ? 3 : 2
-    let w = 1.5 / z
+    let w = boardLine(1.5)
     let o = r.insetBy(dx: -gap - w / 2, dy: -gap - w / 2)
     let l = CAShapeLayer()
     l.bounds = CGRect(origin: .zero, size: o.size)
@@ -728,7 +722,8 @@ extension CanvasView {
     l.strokeColor = theme.accent
     l.lineWidth = w
     if tilt != 0 { l.setAffineTransform(CGAffineTransform(rotationAngle: tilt)) }
-    parent.addSublayer(l)
+    l.name = "outline"
+    return l
   }
 
   /// A Text's or Box's handles where they are drawn (board units): a pill on each side edge for the width it wraps at,
@@ -1355,6 +1350,7 @@ extension CanvasView {
         return p
       }
     }
+    lift(m)
     // the Sections the dragged cards are in or go into grow round them as they go (springs: not without animation)
     if !m.loose.isEmpty { followDrag(m) }
     showDrop(m)
@@ -1407,6 +1403,7 @@ extension CanvasView {
   /// Section in the one its title is in (board dragGroup)
   func commitMove(_ m: Move, name: String = "Move") {
     gesture = nil
+    land()
     let followed = Set(dragShown.keys)
     clearDrop()
     guard let doc = document, let s = scene else { return }

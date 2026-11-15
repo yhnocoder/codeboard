@@ -7,11 +7,15 @@ import Testing
 // A selected card's look in Warm Ink (themes.css :root.look-warm-ink .card > .cface::before): a 1.5 px line of the
 // accent around the card, on its own squircle corner (the line hugs the card, no gap), over a 4 px blur of the accent at
 // 20 % spread 3 px; sizes on the board, so they zoom with it (never thinner on screen than a pixel); it fades in over
-// 120 ms growing from 98.5 %, and out over 90 ms. A card being written in shows none.
+// 120 ms growing from 98.5 %, and out over 90 ms. It is part of the card (in its layer, as main's is in .cface), so it
+// moves, scales and tilts with it, and stays while the card is written in.
 
 @MainActor @Suite(.serialized) struct CanvasSelectionLookTests {
-  func ring(_ c: CanvasView) -> CAShapeLayer? { c.chrome.sublayers?.first { $0.name == "ring" } as? CAShapeLayer }
-  func glow(_ c: CanvasView) -> CALayer? { c.chrome.sublayers?.first { $0.name == "glow" } }
+  func ring(_ c: CanvasView) -> CAShapeLayer? {
+    c.selectedLooks[cid("n1")]?.first { $0.name == "ring" } as? CAShapeLayer
+  }
+  func glow(_ c: CanvasView) -> CALayer? { c.selectedLooks[cid("n1")]?.first { $0.name == "glow" } }
+  func box(_ c: CanvasView) -> CALayer? { c.index(of: .card(cid("n1"))).map { c.items[$0].box } }
 
   @Test func theRingHugsTheCardOnItsOwnCornerOverASoftGlow() async throws {
     let r = try await Rig(zoom: 1)
@@ -19,8 +23,9 @@ import Testing
     let c = r.canvas
     r.doc.select([.card(cid("n1"))])
     c.drawChrome()
-    let card = r.rect("n1")
+    let card = try #require(box(c)).bounds
     let l = try #require(ring(c))
+    #expect(l.superlayer === box(c), "in the card's own layer")
     // the line's middle 0.75 out: its inner edge on the card's edge
     let want = Drawing.squircle(card.insetBy(dx: -0.75, dy: -0.75), c.theme.cardRadius + 0.75)
     #expect(l.path == want, "on the card's own squircle: \(String(describing: l.path?.boundingBox)) for \(card)")
@@ -56,18 +61,20 @@ import Testing
     #expect(abs(w * c.camera.zoom * c.backing - max(1, 1.5 * c.camera.zoom * c.backing)) < 0.001, "\(w)")
   }
 
-  @Test func aCardBeingWrittenInShowsNoRing() async throws {
+  /// Written in, the card keeps its ring as main's does, in the paper's layer, without coming in again
+  @Test func aCardBeingWrittenInKeepsItsRing() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }
     let c = r.canvas
     r.doubleClick(CGPoint(x: 40, y: 40))
     await r.editorReady()
-    c.drawChrome()
-    #expect(ring(c) == nil && glow(c) == nil, "writing: no ring, no glow")
+    await r.until("its paper shown") { ring(c)?.superlayer === box(c) && c.editing?.ready == true }
+    let l = try #require(ring(c))
+    #expect(l.animation(forKey: "in") == nil || l.animation(forKey: "in")?.beginTime ?? 0 > 0, "not from the start")
+    #expect(l.opacity == 1)
     r.press("\u{1b}")
     await r.until("left") { !c.isEditing }
-    c.drawChrome()
-    #expect(ring(c) != nil, "selected again: the ring")
+    #expect(ring(c)?.superlayer === box(c) && ring(c)?.opacity == 1, "selected: the ring, in the card's layer")
   }
 
   @Test func theRingFadesInGrowingAndFadesOut() async throws {
@@ -79,13 +86,14 @@ import Testing
     let l = try #require(ring(c))
     let fade = try #require(l.animation(forKey: "in") as? CAAnimationGroup)
     #expect(abs(fade.duration - 0.12) < 0.001)
-    // drawn again while it comes in: it goes on, not from the start
     c.drawChrome()
-    #expect(ring(c)?.animation(forKey: "in")?.beginTime == fade.beginTime)
+    #expect(ring(c)?.animation(forKey: "in")?.beginTime == fade.beginTime, "it goes on coming in, not from the start")
+    let shown = try #require(ring(c))
     r.doc.select([])
     c.drawChrome()
-    let out = try #require(c.leavingChrome.sublayers?.first)
-    let gone = try #require(out.animation(forKey: "out"))
+    #expect(ring(c) == nil)
+    let gone = try #require(shown.animation(forKey: "out"))
+    #expect(shown.opacity == 0 && shown.superlayer === box(c), "going out where it was")
     #expect(abs(gone.duration - 0.09) < 0.001)
   }
 }
