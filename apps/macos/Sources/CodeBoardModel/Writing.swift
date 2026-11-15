@@ -28,6 +28,14 @@ extension Board {
     }
   }
 
+  /// An empty Free code card with its top left corner at (x, y): a Note's width, Python (create.ts newFreeCode)
+  public static func newFreeCode(id: CardID, x: Double, y: Double) -> Card {
+    let seg = Segment(
+      id: SegmentID(rawValue: Board.newID("s")), source: nil, language: "python", firstLine: 1, lines: [""])
+    return Card(
+      id: id, x: x, y: y, width: newNoteWidth, content: .own(CardContent(body: .code(CodeCard(segments: [seg])))))
+  }
+
   /// A Note's, Text's or Box's Markdown and layout as written; one written empty goes (cards.ts writeNote)
   public mutating func write(_ id: CardID, text: String, layout: NoteLayout?) {
     guard let i = cards.firstIndex(where: { $0.id == id }), case .own(var c) = cards[i].content else { return }
