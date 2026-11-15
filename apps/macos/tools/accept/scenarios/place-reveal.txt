@@ -1,0 +1,15 @@
+# Place on Board: the card made from a sidenote out at the window's right edge is brought into view, the zoom kept
+zoom 1
+center @cnote:r+-250,0
+click @sn1:c
+wait 700
+move @sn1:c+0,33 300
+mark
+menu
+pick Place on Board
+wait 900
+locate new
+cam
+expect cam.zoom = 1
+expect cam.x != was
+shot placed
