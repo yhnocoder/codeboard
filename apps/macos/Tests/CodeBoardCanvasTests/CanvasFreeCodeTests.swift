@@ -1,10 +1,10 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
 import CodeCore
 import CodeUI
 import Testing
+import TreeSitterHighlight
 
 @testable import CodeBoardCanvas
 

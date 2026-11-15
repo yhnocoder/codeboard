@@ -2,9 +2,9 @@ import AppKit
 import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
 import CodeCore
 import CodeUI
+import TreeSitterHighlight
 
 // Writing Free code on the canvas (the board's cards/FreeEdit.tsx): a double-click on a Free code card's code opens the
 // code component's editor (CodeUI's CodeEditorView) over the card's body, laid out and drawn as the canvas lays out and
@@ -80,7 +80,7 @@ extension CanvasView {
     let runs = h.tokens(lines: seg.lines, language: seg.language).map {
       $0.map { CodeRun(columns: $0.columns, style: $0.kind.rawValue) }
     }
-    v.colors = CodeColors(SyntaxColors(session: HighlightSession(h), language: seg.language), text: text, runs: runs)
+    v.colors = CodeColors(TreeSitterColors(HighlightSession(h), language: seg.language), text: text, runs: runs)
     v.change { $0.lineComment = CodeEditing.lineComment(language: seg.language) }
     v.frame.size = CGSize(width: card.width, height: v.height)
     var e = Editing(doc: doc, id: id, fresh: fresh, card: card, shownZoom: camera.zoom)
@@ -306,18 +306,5 @@ extension CanvasView {
         }
         return p
       })
-  }
-}
-
-/// The canvas's highlighter, colouring code as it is edited: one session a card being written, which parses again
-/// only what an edit changed and colours only the lines asked for
-struct SyntaxColors: CodeHighlighter {
-  let session: HighlightSession
-  let language: String
-
-  @concurrent func runs(of text: String, lines: Range<Int>) async -> [[CodeRun]]? {
-    session.tokens(lines: text.components(separatedBy: "\n"), language: language, wanted: lines).map {
-      $0.map { CodeRun(columns: $0.columns, style: $0.kind.rawValue) }
-    }
   }
 }

@@ -1,8 +1,8 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
 import SwiftUI
+import TreeSitterHighlight
 
 // Clicks on [[refs]] (the web board's ui/Md.tsx openRef, ui/pops/cardpeek.tsx, actions/subboards.ts openCardRef,
 // cardNear, goToNearCard, goAfterDblClick): in a Note, Text or Box at rest, in the one being written in, in the sidenote

@@ -1,8 +1,8 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
 import CodeUI
+import TreeSitterHighlight
 
 /// A complete description of how the board looks, which the drawing code only reads: colours, fonts, sizes, and the few
 /// ways of drawing that are not values (`Paper`, `Header`, `Line`…), each a small closed set the drawing code switches on.

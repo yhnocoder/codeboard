@@ -4,27 +4,42 @@ import TreeSitterCUDA
 import TreeSitterPython
 import TreeSitterRust
 
-/// The tree-sitter grammars, by the language table of packages/analysis/src/langs.ts: Triton and TileLang are Python,
-/// and C, C++ and CUDA all read with the CUDA grammar (a superset of C++ with the same node names).
-enum Grammar {
-  case python, rust, cuda
+/// A tree-sitter grammar and its highlight query, for the languages it is named by. The highlight query's captures are
+/// the colour classes (`kw`, `op`, `fn`, `str`, `com`, `num`, `self`, `p`), `plain`, and the steps the highlighter does
+/// in code (`callee`, `macro`, `prefix`, `fmt`, `doc`, `dec`; see `Query.Action`); its predicates `#any-of?` and
+/// `#match?`. Python, Rust and C, C++ and CUDA come built in; a host adds others with `Highlighter(grammars:)`.
+public struct Grammar: @unchecked Sendable {
+  /// The language names it colours
+  public let names: [String]
+  /// The grammar's TSLanguage, which tree-sitter never changes
+  let language: OpaquePointer
+  let query: Query
+  /// What a piece cut from the middle of a file may start inside (a string or comment over several lines): parsed
+  /// after each of these too when the plain parse has errors
+  let openings: [String]
+  /// The indent all lines share taken off before parsing (Python reads an indented first line as an error)
+  let dedent: Bool
 
-  init?(language: String) {
-    switch language {
-    case "python", "triton", "tilelang": self = .python
-    case "c", "cpp", "cuda-cpp": self = .cuda
-    case "rust": self = .rust
-    default: return nil
-    }
+  /// `language`: the grammar's `tree_sitter_<name>()`; `highlights`: its highlight query, in the captures above
+  public init(
+    names: [String], language: OpaquePointer, highlights: String, openings: [String] = [], dedent: Bool = false
+  ) {
+    self.names = names
+    self.language = language
+    query = Query(language, highlights, name: names.first ?? "?")
+    self.openings = openings
+    self.dedent = dedent
   }
 
-  var language: OpaquePointer {
-    switch self {
-    case .python: tree_sitter_python()
-    case .rust: tree_sitter_rust()
-    case .cuda: tree_sitter_cuda()
-    }
-  }
+  /// Python, and Triton and TileLang, which are Python
+  public static let python = Grammar(
+    names: ["python", "triton", "tilelang"], language: tree_sitter_python(), highlights: pythonQuery,
+    openings: ["\"\"\"", "'''"], dedent: true)
+  public static let rust = Grammar(
+    names: ["rust"], language: tree_sitter_rust(), highlights: rustQuery, openings: ["/*"])
+  /// C, C++ and CUDA, all read with the CUDA grammar (a superset of C++ with the same node names)
+  public static let cuda = Grammar(
+    names: ["c", "cpp", "cuda-cpp"], language: tree_sitter_cuda(), highlights: cudaQuery, openings: ["/*"])
 }
 
 /// A parsed text. Lives only inside one `tokens` call.
@@ -34,10 +49,10 @@ final class Tree {
 
   /// nil for an empty text, or when the grammar does not fit this runtime (a pin mistake): the code shows as
   /// plain text.
-  init?(_ grammar: Grammar, _ text: [UInt16]) {
+  init?(_ language: OpaquePointer, _ text: [UInt16]) {
     let parser = ts_parser_new()
     defer { ts_parser_delete(parser) }
-    guard ts_parser_set_language(parser, grammar.language) else { return nil }
+    guard ts_parser_set_language(parser, language) else { return nil }
     let tree = text.withUnsafeBytes { bytes in
       bytes.baseAddress.flatMap {
         ts_parser_parse_string_encoding(
@@ -122,11 +137,11 @@ final class Query: @unchecked Sendable {
   /// By pattern index
   let predicates: [[Predicate]]
 
-  init(_ grammar: Grammar, _ source: String) {
+  init(_ language: OpaquePointer, _ source: String, name: String) {
     var offset: UInt32 = 0
     var error = TSQueryErrorNone
-    guard let raw = ts_query_new(grammar.language, source, UInt32(source.utf8.count), &offset, &error) else {
-      preconditionFailure("highlight query for \(grammar): error \(error.rawValue) at \(offset)")
+    guard let raw = ts_query_new(language, source, UInt32(source.utf8.count), &offset, &error) else {
+      preconditionFailure("highlight query for \(name): error \(error.rawValue) at \(offset)")
     }
     self.raw = raw
     func string(_ id: UInt32, _ get: (OpaquePointer, UInt32, UnsafeMutablePointer<UInt32>) -> UnsafePointer<CChar>?)

@@ -23,8 +23,9 @@ let package = Package(
     .target(name: "CodeUI", dependencies: ["CodeCore"]),
     .target(name: "CodeBoardModel", dependencies: ["CodeCore"]),
     .target(
-      name: "CodeBoardSyntax",
+      name: "TreeSitterHighlight",
       dependencies: [
+        "CodeUI",
         .product(name: "TreeSitter", package: "tree-sitter"),
         .product(name: "TreeSitterPython", package: "tree-sitter-python"),
         .product(name: "TreeSitterRust", package: "tree-sitter-rust"),
@@ -44,23 +45,23 @@ let package = Package(
     .target(
       name: "CodeBoardCanvas",
       dependencies: [
-        "CodeBoardModel", "CodeBoardSyntax", "CodeBoardNotes", "CodeBoardTestGuard", "CodeBoardMarkdown",
+        "CodeBoardModel", "TreeSitterHighlight", "CodeBoardNotes", "CodeBoardTestGuard", "CodeBoardMarkdown",
         "CodeBoardMarkdownUI", "CodeUI",
       ]),
     .target(name: "CodeBoardShell", dependencies: ["CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes"]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
-    .executableTarget(name: "CanvasBench", dependencies: ["CodeBoardCanvas", "CodeBoardNotes", "CodeBoardSyntax"]),
+    .executableTarget(name: "CanvasBench", dependencies: ["CodeBoardCanvas", "CodeBoardNotes", "TreeSitterHighlight"]),
     // the acceptance driver (tools/accept/README.md): it runs CodeBoard, or with ACCEPT_APP=demo the Markdown demo, in
     // its own process
     .executableTarget(
       name: "Accept", dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardModel", "MarkdownDemoKit"]),
     .executableTarget(
       name: "LookCompare",
-      dependencies: ["CodeBoardCanvas", "CodeBoardModel", "CodeBoardNotes", "CodeBoardSyntax", "CodeBoardShell"]),
+      dependencies: ["CodeBoardCanvas", "CodeBoardModel", "CodeBoardNotes", "TreeSitterHighlight", "CodeBoardShell"]),
     .executableTarget(
       name: "Drive", dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardModel", "CodeBoardNotes"]),
     .testTarget(name: "CodeBoardModelTests", dependencies: ["CodeBoardModel"], resources: [.copy("Fixtures")]),
-    .testTarget(name: "CodeBoardSyntaxTests", dependencies: ["CodeBoardSyntax"]),
+    .testTarget(name: "TreeSitterHighlightTests", dependencies: ["TreeSitterHighlight"]),
     .testTarget(name: "CodeBoardNotesTests", dependencies: ["CodeBoardNotes"]),
     .testTarget(name: "CodeBoardCanvasTests", dependencies: ["CodeBoardCanvas", "CodeBoardTestGuard"]),
     .testTarget(name: "CodeCoreTests", dependencies: ["CodeCore"], resources: [.copy("Fixtures")]),
@@ -73,7 +74,7 @@ let package = Package(
 
 // The native Markdown component (apps/macos/docs/markdown-guideline.md), self-contained: the canvas draws its Markdown
 // at rest with it, and it depends on none of the app's targets but the test guard, which its editor installs in a test
-// process as the canvas does (CodeBoardSyntax colours code for the look tool only)
+// process as the canvas does (TreeSitterHighlight colours code for the look tool only)
 package.targets += [
   // Markdown parsed the way @yhnocoder/markdown parses it, with source ranges, and its editing rules (guideline 6.2)
   .target(name: "CodeBoardMarkdown", dependencies: ["CodeCore"]),
@@ -81,18 +82,18 @@ package.targets += [
   .target(name: "CodeBoardMarkdownUI", dependencies: ["CodeBoardMarkdown", "CodeUI", "CodeBoardTestGuard"]),
   .executableTarget(name: "MarkdownBench", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI"]),
   .executableTarget(
-    name: "MarkdownLook", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeBoardSyntax"]),
+    name: "MarkdownLook", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "TreeSitterHighlight"]),
   .testTarget(name: "CodeBoardMarkdownTests", dependencies: ["CodeBoardMarkdown"], resources: [.copy("Fixtures")]),
   .testTarget(name: "CodeBoardMarkdownUITests", dependencies: ["CodeBoardMarkdownUI", "CodeBoardTestGuard"]),
 ]
 // a window to try the component in, standing alone (tools/markdown/make-demo.sh packages it); code coloured by
-// CodeBoardSyntax, as the look tool colours it; a vault's Notes read with CodeBoardModel. The kit runs it in any process
+// TreeSitterHighlight, as the look tool colours it; a vault's Notes read with CodeBoardModel. The kit runs it in any process
 // (runMarkdownDemo), for a driver too
 package.targets += [
   .target(
     name: "MarkdownDemoKit",
     dependencies: [
-      "CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeBoardSyntax", "CodeBoardModel", "CodeBoardTestGuard",
+      "CodeBoardMarkdown", "CodeBoardMarkdownUI", "TreeSitterHighlight", "CodeBoardModel", "CodeBoardTestGuard",
     ]),
   .executableTarget(name: "MarkdownDemo", dependencies: ["MarkdownDemoKit"]),
   .testTarget(name: "MarkdownDemoKitTests", dependencies: ["MarkdownDemoKit", "CodeBoardModel", "CodeBoardTestGuard"]),

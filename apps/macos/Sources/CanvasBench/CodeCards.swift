@@ -1,7 +1,7 @@
 import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
-import CodeBoardSyntax
+import TreeSitterHighlight
 
 /// `--code`: a board made here of heavy code cards (long functions with tabs and long lines, half of them wrapped, many
 /// Highlights, Always Show sidenotes under some, hidden runs), then (1) the whole board drawn offscreen in one go

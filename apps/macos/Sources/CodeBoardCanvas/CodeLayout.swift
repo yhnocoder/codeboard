@@ -1,7 +1,7 @@
 import CodeBoardModel
-import CodeBoardSyntax
 import CodeUI
 import CoreGraphics
+import TreeSitterHighlight
 
 /// Sizes of a code card's body, the same in every theme (the board's: 11 px code on 20 px rows): a card holds the same
 /// code whatever the look.

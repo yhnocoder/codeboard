@@ -2,8 +2,8 @@ import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
 import Foundation
+import TreeSitterHighlight
 
 // LookCompare --displays <out folder> [names…]: the Markdown the canvas shows at rest drawn by both Note displays, the
 // web page's (NoteRenderer) and the native component's (NativeNotes), card by card as the canvas draws it (its paper,

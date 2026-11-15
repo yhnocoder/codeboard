@@ -8,12 +8,12 @@ import AppKit
 import CodeBoardMarkdown
 import CodeBoardMarkdownUI
 import CodeBoardModel
-import CodeBoardSyntax
 import CodeBoardTestGuard
 import ImageIO
+import TreeSitterHighlight
 
 /// Images next to the file, formulas and diagrams through the engines, code coloured by the app's highlighter
-/// (CodeBoardSyntax); no references
+/// (TreeSitterHighlight); no references
 /// Pictures pasted or dropped into the demo: kept in memory under the address written for them (the demo never writes a
 /// file)
 final class Pasted: @unchecked Sendable {

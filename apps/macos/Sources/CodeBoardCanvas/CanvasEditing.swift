@@ -1,8 +1,8 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
 import QuartzCore
+import TreeSitterHighlight
 
 // Editing on the canvas, after the web board's interact.ts and gesture.ts with the Mac's conventions: select (click,
 // ⇧/⌘-click, marquee, ⌘A, Esc), move (drag, arrow keys), resize (per kind), delete, copy, cut, paste, duplicate, stacking

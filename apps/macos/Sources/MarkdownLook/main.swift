@@ -3,15 +3,15 @@
 //   swift run MarkdownLook <jobs.json> <out dir> <look> <dark 0|1> <scale>
 // jobs.json: [{name, text, style (as board.json writes it), width, height?, folder, refs}], refs as the web board's
 // resolver gives them ({label, target, hit: {title, seal?} or {broken: "place" | "item", title, badge}}). Each card is
-// drawn on the look's paper, as the canvas draws it under the content; its code coloured by CodeBoardSyntax, whose
+// drawn on the look's paper, as the canvas draws it under the content; its code coloured by TreeSitterHighlight, whose
 // tokens are written to tokens.json for the web side to colour the same code alike.
 import CodeBoardMarkdown
 import CodeBoardMarkdownUI
-import CodeBoardSyntax
 import CoreGraphics
 import Foundation
 import ImageIO
 import Synchronization
+import TreeSitterHighlight
 
 struct Job: Decodable {
   var name: String
@@ -99,7 +99,7 @@ func hits(_ r: [Job.Ref]) -> [String: MarkdownRefHit] {
 }
 
 /// A card's resources: its folder's images (sizes read from their headers), the references as resolved, code coloured
-/// by CodeBoardSyntax, the engines
+/// by TreeSitterHighlight, the engines
 struct LookResources: MarkdownResources {
   let folder: URL
   let refs: [String: MarkdownRefHit]
@@ -118,7 +118,7 @@ struct LookResources: MarkdownResources {
   var mathPreamble: String { "" }
 }
 
-/// a code fence's language as CodeBoardSyntax names its grammars; nil: not coloured
+/// a code fence's language as TreeSitterHighlight names its grammars; nil: not coloured
 let fenceLanguages: [String: String] = [
   "python": "python", "py": "python", "python3": "python", "triton": "triton", "tilelang": "tilelang",
   "c": "c", "h": "c", "cpp": "cpp", "c++": "cpp", "cc": "cpp", "cxx": "cpp", "hpp": "cpp", "cuda": "cuda-cpp",

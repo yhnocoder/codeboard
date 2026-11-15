@@ -2,8 +2,8 @@ import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
 import Foundation
+import TreeSitterHighlight
 
 // LookCompare --texts <out folder>: Texts and Boxes of made-up content drawn as the canvas shows them at rest (the Note
 // page's picture over the canvas's paper), at several sizes, in every fill, wrapped and not, in each theme light and dark:

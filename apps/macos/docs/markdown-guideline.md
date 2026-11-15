@@ -497,7 +497,7 @@ public protocol MarkdownResources: Sendable {
   var mathPreamble: String { get }
 }
 
-/// 代码的颜色类，和 CodeBoardSyntax 的 TokenClass 一一对应，颜色取自 MarkdownTheme.CodeColors
+/// 代码的颜色类，和 TreeSitterHighlight 的 TokenClass 一一对应，颜色取自 MarkdownTheme.CodeColors
 public enum MarkdownTokenKind: Sendable, Hashable {
   case keyword, `operator`, function, string, comment, number, receiver, punctuation
 }

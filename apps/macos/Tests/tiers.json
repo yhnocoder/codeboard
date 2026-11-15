@@ -14,7 +14,7 @@
       "changed": "whole",
       "important": "whole"
     },
-    "CodeBoardSyntaxTests": {
+    "TreeSitterHighlightTests": {
       "changed": "whole",
       "important": "whole"
     },
@@ -199,7 +199,7 @@
             "CodeBoardCanvas/CodeLayout.swift",
             "CodeBoardModel/FreeCode.swift",
             "CodeBoardModel/FreeLanguage.swift",
-            "CodeBoardSyntax",
+            "TreeSitterHighlight",
             "CodeCore",
             "CodeUI"
           ],

@@ -1,10 +1,10 @@
 import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
 import CoreGraphics
 import Foundation
 import ImageIO
+import TreeSitterHighlight
 import UniformTypeIdentifiers
 
 // The Swift half of the look comparison (tools/look/compare.mjs runs it after the web half): the fixture storage folder

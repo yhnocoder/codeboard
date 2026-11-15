@@ -6,6 +6,9 @@ import Testing
 private let allowed: [String: Set<String>] = [
   "CodeCore": ["Foundation"],
   "CodeUI": ["AppKit", "CodeCore", "CoreGraphics", "CoreText", "Foundation", "QuartzCore"],
+  "TreeSitterHighlight": [
+    "CodeUI", "Foundation", "TreeSitter", "TreeSitterCUDA", "TreeSitterPython", "TreeSitterRust",
+  ],
 ]
 
 @Test(arguments: allowed.keys.sorted())

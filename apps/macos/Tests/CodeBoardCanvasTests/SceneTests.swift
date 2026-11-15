@@ -1,8 +1,8 @@
 import CodeBoardModel
-import CodeBoardSyntax
 import CoreGraphics
 import Foundation
 import Testing
+import TreeSitterHighlight
 
 @testable import CodeBoardCanvas
 

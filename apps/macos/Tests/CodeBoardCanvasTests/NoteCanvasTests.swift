@@ -1,8 +1,8 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
 import Testing
+import TreeSitterHighlight
 
 @testable import CodeBoardCanvas
 

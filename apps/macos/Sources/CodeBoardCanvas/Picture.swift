@@ -1,8 +1,8 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
 import Synchronization
+import TreeSitterHighlight
 
 /// A card's soft shadow, as CSS draws an outer box-shadow: only outside the card
 enum Shadow {

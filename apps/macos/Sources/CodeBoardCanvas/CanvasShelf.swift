@@ -1,7 +1,7 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
+import TreeSitterHighlight
 
 // The Shelf (the web board's ui/ShelfPanel.tsx, actions/shelf.ts, Chrome.tsx's dock button, styles.css .shelf, .spk): a
 // place to keep cards and Sections aside, off the board. The button at the bottom right, with how many entries there

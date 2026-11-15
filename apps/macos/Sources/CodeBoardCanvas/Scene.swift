@@ -1,8 +1,8 @@
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
 import CoreGraphics
 import Foundation
+import TreeSitterHighlight
 
 /// Everything the canvas shows of one board, worked out once when it opens: the items that get bitmaps (cards, section
 /// titles, arrow labels), the section frames and the arrows. Board units, y-down.

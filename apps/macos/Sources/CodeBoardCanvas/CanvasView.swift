@@ -1,9 +1,9 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
 import CodeBoardTestGuard
 import QuartzCore
+import TreeSitterHighlight
 
 /// What to go to on a board once it is shown: a question (the question list), a card (a ref to it)
 public enum Arrival: Equatable, Sendable {

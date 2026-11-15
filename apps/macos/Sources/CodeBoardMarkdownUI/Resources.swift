@@ -40,7 +40,7 @@ public enum DiagramResult: Sendable, Hashable {
   case error(String)
 }
 
-/// A code token's colour class, one to one with CodeBoardSyntax's TokenClass
+/// A code token's colour class, one to one with TreeSitterHighlight's TokenClass
 public enum MarkdownTokenKind: Sendable, Hashable {
   case keyword, `operator`, function, string, comment, number, receiver, punctuation
 }

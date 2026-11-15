@@ -3,10 +3,10 @@ import CodeBoardMarkdown
 import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
 import Foundation
 import IOSurface
 import Synchronization
+import TreeSitterHighlight
 
 /// The Markdown the canvas shows at rest (a Note's, a Text's or Box's, an Always Show sidenote's) laid out and drawn by
 /// the native Markdown component: laid out once at 100 % per card width, look and appearance (kept by least recent use),

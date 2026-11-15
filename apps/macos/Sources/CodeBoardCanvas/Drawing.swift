@@ -1,9 +1,9 @@
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
 import CodeUI
 import CoreText
 import IOSurface
+import TreeSitterHighlight
 
 /// What one item's bitmap shows. Drawn off the main thread at any scale: a producer gets the item's size, a scale and
 /// the theme and draws into a context whose origin is the item's top left; it may draw `bleed(theme)` past each side

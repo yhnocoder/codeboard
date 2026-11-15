@@ -1,7 +1,7 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
+import TreeSitterHighlight
 
 // The sidenote popups on the canvas (web board state/pop.ts, ui/pops/index.tsx besidePos, PopFrame; notes.tsx): every
 // one is pinned as it opens (actions/notes.ts pinMarker, openSpot, openAddNote), so several stay open together, each in a

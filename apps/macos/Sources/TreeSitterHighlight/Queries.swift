@@ -1,8 +1,8 @@
-// The highlight queries. Capture names are the board's classes (kw, op, fn, str, com, num, self, p) or a step the
+// The highlight queries. Capture names are the colour classes (kw, op, fn, str, com, num, self, p) or a step the
 // highlighter does in code (see `Query.Action`). Painting order: longer (outer) spans first, shorter (inner) ones over
 // them, spans of equal length in pattern order, so a later pattern wins on the same node.
 
-/// C / C++ / CUDA: the query of packages/analysis/src/highlight.ts unchanged, so code cards keep the VS Code board's colours.
+/// C / C++ / CUDA: the query of packages/analysis/src/highlight.ts unchanged: the colours VS Code gives C, C++ and CUDA.
 let cudaQuery = #"""
   (comment) @com
 
@@ -59,7 +59,7 @@ let cudaQuery = #"""
   ["<<<" ">>>"] @kw
   """#
 
-/// Python: what the board's shiki grammar (MagicPython with the css-variables theme, mapped by core's tokenClass) shows.
+/// Python: what shiki's grammar (MagicPython with the css-variables theme, mapped by core's tokenClass) shows.
 let pythonQuery = #"""
   (comment) @com
   (string) @str
@@ -120,7 +120,7 @@ let pythonQuery = #"""
   (decorator) @dec
   """#
 
-/// Rust: what the board's shiki grammar shows (all types and capitalised names in the function colour, `.` a keyword).
+/// Rust: what shiki's grammar shows (all types and capitalised names in the function colour, `.` a keyword).
 let rustQuery = #"""
   [(line_comment) (block_comment)] @com
   [(string_literal) (raw_string_literal) (char_literal)] @str

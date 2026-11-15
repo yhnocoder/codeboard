@@ -1,6 +1,6 @@
-import CodeBoardSyntax
 import Foundation
 import Testing
+import TreeSitterHighlight
 
 let highlighter = Highlighter()
 
