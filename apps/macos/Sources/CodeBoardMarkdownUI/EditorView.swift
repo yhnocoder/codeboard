@@ -1711,6 +1711,7 @@ public final class MarkdownEditorView: NSView {
     let caret = CGRect(x: c.minX * zoom, y: c.minY * zoom, width: 1, height: c.height * zoom)
     typedMenu.show(items, token: t, under: caret, theme: core.layout.theme, foot: foot)
     fit(typedMenu, to: caret)
+    lift(typedMenu)
   }
 
   /// groups whose "N more" was taken: all their items listed
@@ -2007,6 +2008,7 @@ public final class MarkdownEditorView: NSView {
     let caret = CGRect(x: c.minX * zoom, y: c.minY * zoom, width: 1, height: c.height * zoom)
     hints.show(items, token: (from, t.query), under: caret, theme: core.layout.theme, resources: core.layout.resources)
     fit(hints, to: caret)
+    lift(hints)
   }
 
   /// where the previewed formula's TeX starts in the source
@@ -2104,6 +2106,28 @@ public final class MarkdownEditorView: NSView {
   /// A popup the caret or a formula anchors, shown under `anchor`: flipped above it when under would run off what the
   /// window shows and above has more room, and kept 6 points inside it across (main's place(): flip and shift, pad 6,
   /// in the viewport)
+  /// Where the typed lists go when what holds the editor cuts what hangs out of it (a popup's tray while it scrolls):
+  /// a view over it, the list placed there where it would be (the web's lists are the page's own, menu.tsx)
+  public weak var floatHost: NSView?
+
+  /// A list just placed in the editor's points, moved into `floatHost` at the same place
+  private func lift(_ v: NSView) {
+    guard let h = floatHost, h.window === window, !v.isHidden else { return }
+    let f = v.frame
+    if v.superview !== h { h.addSubview(v) }
+    v.frame = h.convert(f, from: self)
+  }
+
+  /// the lists lifted out come back with the editor leaving its window, not left behind in their host
+  public override func viewWillMove(toWindow w: NSWindow?) {
+    super.viewWillMove(toWindow: w)
+    guard w == nil else { return }
+    for v in [typedMenu, hints] where v.superview !== self {
+      v.isHidden = true
+      addSubview(v)
+    }
+  }
+
   func fit(_ v: NSView, to anchor: CGRect) {
     guard !v.isHidden else { return }
     let b = shownArea()

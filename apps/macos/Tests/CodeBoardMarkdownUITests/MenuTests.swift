@@ -124,3 +124,30 @@ import Testing
     #expect(v.core.source.hasPrefix("See [[Other board") && host.picked == ["Other board"])
   }
 }
+
+/// A field whose holder cuts what hangs out of it (a popup's tray while it scrolls): its [[ list goes over the host it
+/// names, where it would be
+@MainActor @Suite struct LiftedMenuTests {
+  @Test func theListIsLiftedIntoItsHost() {
+    _ = boardFonts
+    let host = FlippedHost(frame: CGRect(x: 0, y: 0, width: 600, height: 400))
+    let clip = FlippedHost(frame: CGRect(x: 20, y: 30, width: 320, height: 40))
+    clip.clipsToBounds = true
+    host.addSubview(clip)
+    let l = BlockLayout(MarkdownDocument("See "), width: 300, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 4)
+    clip.addSubview(v)
+    let h = RefMenuGroupTests.Host()
+    v.delegate = h
+    v.floatHost = host
+    v.selection = MDSelection(4)
+    for ch in "[[" { v.insertText(String(ch), replacementRange: NSRange(location: NSNotFound, length: 0)) }
+    #expect(v.typedMenu.shown && v.typedMenu.superview === host)
+    let caret = host.convert(v.core.caretRect ?? .zero, from: v)
+    #expect(abs(v.typedMenu.frame.minY - (caret.maxY + 4)) < 0.5, "\(v.typedMenu.frame) under \(caret)")
+  }
+
+  final class FlippedHost: NSView {
+    override var isFlipped: Bool { true }
+  }
+}

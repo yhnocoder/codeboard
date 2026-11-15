@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardMarkdown
 import CodeBoardModel
 import CodeBoardNotes
 import Testing
@@ -847,5 +848,53 @@ extension CanvasSidenoteTests {
     #expect(pop.press("https://gist.github.com/x", in: "k1"))
     #expect(pop.press("file:///Applications/Calculator.app", in: "k2"))
     #expect(urls == [URL(string: "https://gist.github.com/x")!], "the file link is not opened")
+  }
+}
+
+extension CanvasSidenoteTests {
+  /// What a question's slip and a field in the popup do as the web popup does
+  @MainActor @Suite struct PopupAsMain {
+    /// A question's tools sit over its own text, not over the slip with its answers (.qbody > .kt), and opened from
+    /// the question list its slip pulses once (.slip.flash)
+    @Test func aQuestionsToolsSitOverItsTextAndItFlashesWhenGoneTo() async throws {
+      var b = sidenoteBoard(question: true)
+      let i = try #require(b.sidenotes.firstIndex { $0.id.rawValue == "w1" })
+      b.sidenotes[i].body = .text(
+        TextNote(text: "整张卡", question: Question(at: 1000, answers: [.init(id: "a1", text: "答", at: 2000)])))
+      let r = try await Rig(b, zoom: 1)
+      defer { r.close() }
+      let c = r.canvas
+      let pop = c.sidenotePop
+      c.openPop(.spot(.card(cid("n1"))), focus: nid("w1"))
+      await r.until("the popup") { c.popShown != nil && pop.size.height > 0 }
+      let s = try #require(pop.slip("w1"))
+      let body = try #require(s.body).frame
+      let answer = try #require(s.answers.first).frame
+      #expect(abs(s.bar.frame.minY - (body.minY - 4)) < 0.5 && abs(s.bar.frame.maxX - (s.bounds.width + 6)) < 0.5)
+      #expect(s.bar.frame.maxY < answer.minY, "over the question's text, clear of its answer")
+      #expect(s.flashRing?.animation(forKey: "flash") != nil, "it pulses")
+      #expect(pop.slip("b1")?.flashRing == nil, "only the one gone to")
+    }
+
+    /// A click on a drawn ref in a field being written goes to the canvas as one in a sidenote's text: a far card is
+    /// previewed, and the field keeps its text and its caret
+    @Test func aRefClickedInAFieldIsPreviewed() async throws {
+      let r = try await refRig()
+      defer { r.close() }
+      let c = r.canvas
+      let pop = c.sidenotePop
+      c.openPop(.spot(.card(cid("n1"))))
+      await r.until("the popup") { c.popShown != nil && pop.size.height > 0 }
+      let s = try #require(pop.slip("s1"))
+      s.onEdit?()
+      let e = try #require(s.writing)
+      // the caret away from the ref: one it is beside shows its source
+      e.selection = MDSelection(0)
+      let caret = e.selection
+      let ref = try #require(e.core.layout.drawnRefs.first)
+      r.click(in: e, at: CGPoint(x: ref.rect.midX * e.zoom, y: ref.rect.midY * e.zoom))
+      await r.until("the preview drawn") { c.refPeek?.ready == true }
+      #expect(e.selection == caret && s.writing === e)
+    }
   }
 }
