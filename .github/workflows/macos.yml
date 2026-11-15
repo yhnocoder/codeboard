@@ -2,6 +2,8 @@ name: macOS
 # The native Mac app (apps/macos): build, unit tests and swift-format's lint. It targets the latest macOS only, so it
 # needs the image with Xcode 27 (a preview image on GitHub for now); the newest Xcode on it is selected, which is the
 # toolchain the app is developed with.
+# Two jobs side by side: the canvas tests, which open one window at a time (RigTurns) and so take as long as all the
+# other test targets together, and everything else with the lint.
 on:
   pull_request:
     paths: ["apps/macos/**", ".github/workflows/macos.yml"]
@@ -12,9 +14,61 @@ concurrency:
   group: macos-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 jobs:
+  # The acceptance scenarios (apps/macos/tools/accept, ci.mjs): the app driven in its own process beside the web board
+  # in headless Chromium, function only (nothing timed), three shots per scenario and side as an artifact. Its own jobs,
+  # so the unit tests report first; the scenarios in two halves side by side
+  accept:
+    name: accept (${{ matrix.shard }})
+    runs-on: xcode-27
+    timeout-minutes: 30
+    env:
+      BOX_PREBUILT: "1" # the web side's host runs without box (Related by Meaning off), as the app does
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/2", "2/2"]
+    steps:
+      - uses: actions/checkout@v6
+      # the web board and its Markdown package, the app's Note page
+      - uses: ./.github/actions/setup
+        with:
+          build: npm run build -w @yhnocoder/markdown && npm run build -w @codeboard/board && node apps/macos/web/build.mjs
+      - name: Select the newest Xcode
+        run: |
+          sudo xcode-select -s "$(find /Applications -maxdepth 1 -type d -name 'Xcode_*.app' | sort -V | tail -1)"
+          swift --version
+      - uses: actions/cache@v5
+        with:
+          path: |
+            apps/macos/.build/repositories
+            apps/macos/.build/checkouts
+          key: swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}
+      - run: npx playwright-core install chromium
+      # (the boards were built above: --skip-build leaves the web builds out; the driver is built, debug, either way)
+      - run: node apps/macos/tools/accept/ci.mjs --shard ${{ matrix.shard }} --skip-build
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: accept-${{ strategy.job-index }}
+          path: |
+            apps/macos/.build-accept/*/*.png
+            apps/macos/.build-accept/*/*.txt
+            apps/macos/.build-accept/*/*/log.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
   app:
+    name: app (${{ matrix.part }})
     runs-on: xcode-27
     timeout-minutes: 15
+    env:
+      BOX_PREBUILT: "1" # the app does not use box, so the setup leaves out Rust
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { part: canvas, tests: "--filter CodeBoardCanvasTests" }
+          - { part: rest, tests: "--skip CodeBoardCanvasTests", lint: true }
     defaults:
       run: { working-directory: apps/macos }
     steps:
@@ -28,6 +82,15 @@ jobs:
         run: |
           sudo xcode-select -s "$(find /Applications -maxdepth 1 -type d -name 'Xcode_*.app' | sort -V | tail -1)"
           swift --version
-      - run: swift build
-      - run: swift test
-      - run: swift format lint --strict -r Sources Tests Package.swift
+      # cloning tree-sitter and its grammars with their whole history took about a minute and a half on every run
+      - uses: actions/cache@v5
+        with:
+          path: |
+            apps/macos/.build/repositories
+            apps/macos/.build/checkouts
+          key: swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}
+      # one build of the app, its tools and the tests: swift build then swift test compiled twice
+      - run: swift build --build-tests
+      - run: swift test --skip-build ${{ matrix.tests }}
+      - if: matrix.lint
+        run: swift format lint --strict -r Sources Tests Package.swift
