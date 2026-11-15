@@ -1811,7 +1811,10 @@ func strings(_ x: Any) -> [String] {
       return String(format: "%.0f %.0f", x, 91 + 29 * Double(i))
     case "quit":
       ownPasteboard.releaseGlobally()
-      NSApp.terminate(nil)
+      // from the run loop, as ⌘Q comes: called in this command's main-queue block, an app that answers .terminateLater
+      // waits in a nested run loop that runs no more main-queue blocks, so its main-actor work (the last save of a
+      // card being written in, its time limits) never runs and the quit hangs
+      NSApp.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 0, inModes: [.common])
     default: return "unknown command"
     }
     return ""
