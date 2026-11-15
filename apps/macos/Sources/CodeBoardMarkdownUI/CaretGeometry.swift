@@ -312,7 +312,7 @@ extension BlockLayout {
   }
 
   /// The line under a [[reference]] drawn for the source `range`, when it is one a hover draws solid: a reference that
-  /// finds its card, in the link colour (.md-ref:hover; a reference that finds nothing keeps its hairline)
+  /// finds its target, in the link colour (.md-ref:hover; a reference that finds nothing keeps its hairline)
   public func refLine(_ range: Range<Int>) -> CGRect? {
     guard let i = pieceIndex(range.lowerBound) else { return nil }
     for t in pieces[i].layout.caretTexts {

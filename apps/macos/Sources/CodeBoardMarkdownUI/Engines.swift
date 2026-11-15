@@ -113,7 +113,7 @@ public final class JSEngines: MathTypesetter, DiagramRenderer, @unchecked Sendab
     for e in kept { JSGarbageCollect(e.context.jsGlobalContextRef) }
   }
 
-  /// converts these formulas now, so later drawing finds them ready (opening a vault, say)
+  /// converts these formulas now, so later drawing finds them ready (opening a folder of notes, say)
   public func prepare(_ formulas: [(latex: String, display: Bool)], preamble: String) async {
     await withTaskGroup(of: Void.self) { g in
       for f in formulas { g.addTask { _ = self.typeset(f.latex, display: f.display, preamble: preamble) } }

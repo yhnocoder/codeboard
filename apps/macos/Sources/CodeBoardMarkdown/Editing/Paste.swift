@@ -6,7 +6,7 @@ public struct MDPaste: Sendable, Equatable {
   public var plain: String?
   public var htmlMarkdown: String?
   public var vscodeLanguage: String?
-  /// what the host's code classifier says of the plain text (the board's, as main asks it): code in a language, or not
+  /// what the host's code classifier says of the plain text (as the web editor's host asks its own): code in a language, or not
   /// code; nil when the host has none, and the component's own rules decide
   public var hostCode: HostCode?
   public enum HostCode: Sendable, Equatable {
@@ -118,7 +118,7 @@ extension MarkdownEditing {
 
   /// Whether pasted plain text is code, and its language ("" when none can be named); nil for prose. Two or more lines
   /// that read as code and no Markdown structure (a fence, a link, a list, a quote, a table, a formula). The web asks the
-  /// board's classifier; this reads the lines itself: statement ends, braces, indentation and keywords
+  /// host's classifier; this reads the lines itself: statement ends, braces, indentation and keywords
   public static func codeLanguage(_ text: String) -> String? {
     let lines = text.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
     guard lines.count >= 2 else { return nil }

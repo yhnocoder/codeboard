@@ -1,6 +1,6 @@
 import AppKit
 
-/// The board's own tooltip (ui/Menu.tsx TooltipLayer, styles.css .tip), for what the Note shows and for the controls
+/// The web page's own tooltip (ui/Menu.tsx TooltipLayer, styles.css .tip), for what the Note shows and for the controls
 /// floating on it. It comes up once the pointer has rested TIP_DELAY on something with a tip, at once while another is
 /// up or for TIP_WARM after one went; it goes when the pointer leaves, presses, scrolls, or the Note moves or zooms
 /// under it. Above what it is about, 8 points off, flipped below when there is no room and shifted to stay 4 points
@@ -95,14 +95,14 @@ final class TipView: NSView {
     fade.fromValue = 0
     fade.toValue = 1
     fade.duration = MarkdownTiming.tipShow
-    // the board's --out
+    // the web page's --out
     fade.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
     layer?.add(fade, forKey: "show")
   }
 
   // MARK: its look
 
-  /// .tip: 4 and 8 of padding, 11.5 text at the board's line height (1.5), the keys in the code font at 10.5, 8 apart
+  /// .tip: 4 and 8 of padding, 11.5 text at the web page's line height (1.5), the keys in the code font at 10.5, 8 apart
   static let padding = CGSize(width: 8, height: 4)
   static let lineHeight: CGFloat = 11.5 * 1.5
   static let gap: CGFloat = 8

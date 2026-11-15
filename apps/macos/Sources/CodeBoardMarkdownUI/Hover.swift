@@ -1,10 +1,10 @@
 import AppKit
 
-/// A view of clickable controls as main's buttons behave (markdown.css .md-bb, the board's .tbtn): the control under the
+/// A view of clickable controls as main's buttons behave (markdown.css .md-bb, the web page's .tbtn): the control under the
 /// pointer is `hovered`, the one the button went down on `pressed` until it comes up, wherever the pointer goes (CSS
 /// :active), and a control acts on the release over the one it went down on (a click), never on a release elsewhere.
 /// The view draws each control with `look(_:)`, the background eased over `fade` when main eases it. The pointer is a
-/// pointing hand over a control (cursor: pointer) and an arrow elsewhere; a control's name is its tooltip, the board's
+/// pointing hand over a control (cursor: pointer) and an arrow elsewhere; a control's name is its tooltip, the web page's
 /// own (TipView)
 @MainActor
 class HoverControls: NSView {

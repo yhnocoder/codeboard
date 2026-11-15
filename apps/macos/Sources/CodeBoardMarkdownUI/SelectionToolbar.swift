@@ -4,9 +4,9 @@ import CodeBoardMarkdown
 /// The selection's toolbar (editor/bubble.tsx): once a selection has stood still for TOOLBAR_SETTLE with the button up,
 /// a row of buttons over its first line (under it when there is no room above), at the screen's own size. While editing:
 /// Bold, Italic, Strikethrough, Highlight, Inline Code, Link, Inline Math, Handwritten Note; on the static picture's
-/// selection only Bold and Highlight (the board's static toolbar). A button is pressed when the selection is wrapped in
+/// selection only Bold and Highlight (the web page's static toolbar). A button is pressed when the selection is wrapped in
 /// its markers; a click toggles them (one undo step). No labels: the web's icons say it (MarkdownIcons), the tooltips
-/// name them and their keys; a thin separator between the marks and Link, as on the web. Its buttons are the board's
+/// name them and their keys; a thin separator between the marks and Link, as on the web. Its buttons are the web page's
 /// (.tbtn with .md-bubble .md-btn.md-ib): the ink at 7 % behind on hover, eased over 120 ms, 12 % and a little smaller
 /// while pressed; a pressed one (its marks are on) in the accent on --row
 @MainActor

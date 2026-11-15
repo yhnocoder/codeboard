@@ -14,7 +14,7 @@ public enum MarkdownTiming {
   public static let bandHide = 0.110
   public static let bandGrace = 0.080
   public static let tableSlide = 0.160
-  /// the board's own tooltip (state/timing.ts TIP_DELAY, TIP_WARM; styles.css .tip.show): shows after the pointer rests
+  /// the web page's own tooltip (state/timing.ts TIP_DELAY, TIP_WARM; styles.css .tip.show): shows after the pointer rests
   /// this long, at once this long after the last one went, fading in over tipShow
   public static let tipDelay = 0.500
   public static let tipWarm = 0.800
@@ -51,7 +51,7 @@ public enum MarkdownTiming {
   /// CSS ease-out, cubic-bezier(0, 0, .58, 1)
   public static func easeOut(_ t: Double) -> Double { bezier(t, 0, 0, 0.58, 1) }
 
-  /// the board's --out, cubic-bezier(.2, .8, .2, 1)
+  /// the web page's --out, cubic-bezier(.2, .8, .2, 1)
   public static func out(_ t: Double) -> Double { bezier(t, 0.2, 0.8, 0.2, 1) }
 
   /// cubic-bezier(x1, y1, x2, y2): the share of the way done `t` (0…1) of the time in

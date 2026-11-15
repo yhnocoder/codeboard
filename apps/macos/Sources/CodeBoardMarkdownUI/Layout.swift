@@ -150,7 +150,7 @@ final class TextBlock {
   }
 }
 
-/// An unwrapped code block's lines, one horizontal scroller (the board's .nbody pre.md-code overflow-x: auto): its lines
+/// An unwrapped code block's lines, one horizontal scroller (the web page's .nbody pre.md-code overflow-x: auto): its lines
 /// shift and are cut at the panel's padding box, while the panel stays
 final class CodeScroller {
   /// the panel, in its layout's points
@@ -746,7 +746,7 @@ struct LayoutBuilder {
       return open ? y : code(body: body, language: "mermaid", b: b, x: x, width: width, y: y)
     }
     let src = sourceText(body)
-    // pele's node corners: half the board's --md-radius (markdown.css .mmd --pele-radius)
+    // pele's node corners: half the web page's --md-radius (markdown.css .mmd --pele-radius)
     let corner = m.radius / 2
     var result = r.diagram(src, fonts: theme.fonts.body, maxWidth: nil, cornerRadius: corner)
     if case .ok(let w, _, _, _) = result, CGFloat(w) > width {

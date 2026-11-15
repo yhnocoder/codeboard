@@ -2,7 +2,7 @@ import CoreGraphics
 import CoreText
 import Foundation
 
-/// A drawn [[reference]] that found what it names: a host takes presses on it (the web board's
+/// A drawn [[reference]] that found what it names: a host takes presses on it (the web editor's
 /// `.md-ref:not(.missing):not(.gone)`), its box without the reference's 2-point margins
 public struct MarkdownDrawnRef: Sendable, Equatable {
   public var label: String

@@ -24,10 +24,10 @@ extension MarkdownEditorView {
   /// The pointer's shape at a point (the view's points) with these modifiers: the resize arrows over a table's column
   /// and row edges and an image's handles, an open hand over a table grip, a pointing hand over a link's words (its
   /// markers written out too with ⌘ held) and over a drawn atom other than a picture, the I-beam over text while
-  /// editing; on the static picture the arrow, a pointing hand over a link and a [[reference]] that finds its card
+  /// editing; on the static picture the arrow, a pointing hand over a link and a [[reference]] that finds its target
   public func cursor(at p: CGPoint, modifiers: NSEvent.ModifierFlags = []) -> NSCursor {
     let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
-    // the board's .md-link and .md-ref take the pointer; a reference that finds nothing does nothing there
+    // the web page's .md-link and .md-ref take the pointer; a reference that finds nothing does nothing there
     // (.md-ref.missing:not(.md-atom))
     guard isEditing else { return link(at: at) != nil || ref(at: at)?.found == true ? .pointingHand : .arrow }
     // a selected image's width grips on its sides (markdown.css .md-imgrip: ew-resize)
@@ -66,7 +66,7 @@ extension MarkdownEditorView {
     return nil
   }
 
-  /// the drawn [[reference]] under a point: its source and whether it finds its card
+  /// the drawn [[reference]] under a point: its source and whether it finds its target
   func ref(at: CGPoint) -> (range: Range<Int>, found: Bool)? {
     guard let r = core.layout.atom(at: at), let i = MarkdownEditing.inline(r, in: core.document),
       case .atom(.ref(let label, let target)) = i.kind

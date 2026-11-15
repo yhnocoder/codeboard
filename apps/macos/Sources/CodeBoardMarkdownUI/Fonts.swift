@@ -223,7 +223,7 @@ enum FontBook {
     return withoutLigatures(CTFontCreateWithName(name, CTFontGetSize(fb), &m))
   }
 
-  /// the italic face, when asked for: a separate file for the board's fonts, so the family is asked for it by trait
+  /// the italic face, when asked for: a separate file for the host's fonts, so the family is asked for it by trait
   private static func face(_ f: CTFont, _ k: Key) -> CTFont {
     guard k.italic else { return f }
     let family = CTFontCopyFamilyName(f) as String
@@ -273,7 +273,7 @@ enum FontBook {
 
   /// The ascent and descent a CSS line box uses, as Chrome on the Mac reads them: a font file's hhea values (CoreText
   /// reports the typo ones for some, Source Serif's 0.77 em instead of hhea's 1.04), the system font's as CoreText gives
-  /// them, both rounded to whole pixels. With these the baseline lands where the web board puts it
+  /// them, both rounded to whole pixels. With these the baseline lands where the web page puts it
   static func ascentDescent(_ f: CTFont) -> (CGFloat, CGFloat) {
     metrics.get(FontID(f)) {
       let size = CTFontGetSize(f)

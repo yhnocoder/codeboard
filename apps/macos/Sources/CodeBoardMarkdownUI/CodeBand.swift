@@ -241,7 +241,7 @@ final class CodeBand: NSView {
     }
     /// the delete actions: hovered in the warning colour (.md-bb.danger:hover)
     static let danger: Set<String> = ["delRow", "delCol"]
-    // main's .md-bb has no :active; Luna asked for the board buttons' press here too (2026-11-15)
+    // main's .md-bb has no :active; Luna asked for the web page's button press here too (2026-11-15)
     override var pressInk: Double? { 0.12 }
     var fill = MDColor(0.95, 0.95, 0.95, 1)
     var radius: CGFloat = 12
@@ -378,7 +378,7 @@ final class CodeBand: NSView {
         }
         if p.on || over {
           // .md-bb.on and :hover: the ink at 6.5 % behind it (the language picker 6 %), a delete in the warning's 14 %;
-          // held, the board's pressed step (.tbtn:active 12 %), a delete's warning as much deeper
+          // held, the web page's pressed step (.tbtn:active 12 %), a delete's warning as much deeper
           let chip =
             danger
             ? theme.colors.warn.alpha(held ? 0.24 : 0.14)

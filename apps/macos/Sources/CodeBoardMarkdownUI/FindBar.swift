@@ -2,7 +2,7 @@ import AppKit
 import CodeBoardMarkdown
 import CodeUI
 
-/// The find bar's buttons as the board's (find.ts: Toggle Replace, Match Case, back, on, Close; Replace and All beside
+/// The find bar's buttons as the web editor's (find.ts: Toggle Replace, Match Case, back, on, Close; Replace and All beside
 /// the replacement; .md-findbar .md-btn.md-ib with .tbtn): 24 square, 7 round, the ink at 7 % behind on hover, 12 % and
 /// a little smaller while pressed, all at once; Match Case and Toggle Replace in the accent on --row while on. Their tips
 /// name them and their keys. Each does what its key does in the bar they are in (FindBar.perform), whose state they show
@@ -62,7 +62,7 @@ final class FindButtons: HoverControls {
 
   override func draw(_ dirtyRect: NSRect) {
     guard let theme, let ctx = NSGraphicsContext.current?.cgContext else { return }
-    // Ink Wash squares the board's buttons; elsewhere the find bar's are 7 round
+    // Ink Wash squares the web page's buttons; elsewhere the find bar's are 7 round
     let k = theme.controls.buttonRadius < 7 ? CGFloat(theme.controls.buttonRadius) : 7
     let replacing = bar?.replacing == true
     for c in controls() {

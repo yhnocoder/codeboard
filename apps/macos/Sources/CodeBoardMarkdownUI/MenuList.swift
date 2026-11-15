@@ -43,7 +43,7 @@ public struct MarkdownRefCandidate: Sendable, Hashable {
   /// what [[label#^target]] writes
   public var label: String
   public var target: String?
-  /// the row's title, and where it is (a board's name), shown after it
+  /// the row's title, and where it is (its place's name), shown after it
   public var title: String
   public var crumb: String?
   public init(label: String, target: String?, title: String, crumb: String? = nil) {
@@ -197,7 +197,7 @@ final class MenuList: NSView {
       let accentInk = NSColor(cgColor: theme.colors.accentInk.cg) ?? .white
       let ink = on ? accentInk : ink
       let faint = on ? accentInk.withAlphaComponent(0.75) : faint
-      // one line each, cut with an ellipsis: the hint (a crumb, "12 cards") at the right, the title in what is left
+      // one line each, cut with an ellipsis: the hint (a crumb, "12 items") at the right, the title in what is left
       let cut = NSMutableParagraphStyle()
       cut.lineBreakMode = .byTruncatingTail
       let hs = (it.hint as NSString).size(withAttributes: [.font: small])

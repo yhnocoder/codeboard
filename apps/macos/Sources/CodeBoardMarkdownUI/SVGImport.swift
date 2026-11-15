@@ -86,7 +86,7 @@ final class SVGImport: NSObject, XMLParserDelegate {
     case "rect":
       let n = { (k: String) in CGFloat(Double(a[k] ?? "0") ?? 0) }
       let (x, y, w, h) = (n("x"), n("y"), n("width"), n("height"))
-      // pele sets the radius through style (rx: var(--_r)): the board's, half --md-radius
+      // pele sets the radius through style (rx: var(--_r)): the web page's, half --md-radius
       let rx = a["rx"] != nil ? n("rx") : CGFloat(rxStyle ?? (a["style"]?.contains("rx:") == true ? cornerRadius : 0))
       let d =
         rx > 0

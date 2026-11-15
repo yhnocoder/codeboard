@@ -100,7 +100,7 @@ final class LinkBox: NSView, NSTextFieldDelegate {
   }
 }
 
-/// The link box's two text buttons (.md-linkacts .md-linkbtn: 24 high, 8 points of padding, 12-point text), the board's
+/// The link box's two text buttons (.md-linkacts .md-linkbtn: 24 high, 8 points of padding, 12-point text), the web page's
 /// buttons (.tbtn): the ink at 7 % behind and the text in the ink on hover, 12 % and a little smaller while pressed,
 /// all at once (.tbtn has no transition); a click acts
 @MainActor

@@ -47,7 +47,7 @@ public struct MarkdownTheme: Sendable, Hashable {
     public var warn: MDColor
     /// --k-fn: links and references
     public var link: MDColor
-    /// headings, when not the text's own ink (a Mark writes in its colour, its headings stay in the board's ink)
+    /// headings, when not the text's own ink (a Mark writes in its colour, its headings stay in the page's ink)
     public var heading: MDColor?
     public init(
       ink: MDColor, ink2: MDColor, ink3: MDColor, surface: MDColor, fill: MDColor, codeBlock: MDColor, hair: MDColor,
@@ -250,7 +250,7 @@ public struct MarkdownTheme: Sendable, Hashable {
     }
   }
 
-  /// The board's own controls around the Markdown (styles.css .tip and .tbtn): its tooltip and its buttons
+  /// The web page's own controls around the Markdown (styles.css .tip and .tbtn): its tooltip and its buttons
   public struct Controls: Sendable, Hashable {
     /// .tip: --tip-bg, --tip-ink and its corners
     public var tipBackground = MDColor(34 / 255, 32 / 255, 28 / 255, 0.92)
@@ -258,7 +258,7 @@ public struct MarkdownTheme: Sendable, Hashable {
     public var tipRadius: Double = 8.5
     /// .tbtn's corners
     public var buttonRadius: Double = 8.5
-    /// .tbtn.on's background (--row); nil: the accent at 9 %, as the board mixes it
+    /// .tbtn.on's background (--row); nil: the accent at 9 %, as the web page mixes it
     public var row: MDColor?
     public init() {}
   }

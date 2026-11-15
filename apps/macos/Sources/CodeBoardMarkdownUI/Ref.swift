@@ -2,7 +2,7 @@ import CoreGraphics
 import CoreText
 import Foundation
 
-/// A [[reference]] as the web board draws it (markdown.css .md-ref): an inline block 1.32em tall with a line along its
+/// A [[reference]] as the web editor draws it (markdown.css .md-ref): an inline block 1.32em tall with a line along its
 /// bottom; before the title an arrow, or the target's seal, or ⚠ when its place is gone; after it a badge
 final class RefBox: @unchecked Sendable {
   enum Mark {
@@ -21,10 +21,10 @@ final class RefBox: @unchecked Sendable {
   let badge: CTLine?
   let color: MDColor
   let lineColor: MDColor?
-  /// its line turns solid in the link colour under the pointer (.md-ref:hover): a reference that finds its card
+  /// its line turns solid in the link colour under the pointer (.md-ref:hover): a reference that finds its target
   let solidOnHover: Bool
   let strike: MDColor?
-  /// the badge struck through (the board it names is gone: .md-ref.gone > .bd)
+  /// the badge struck through (the place it names is gone: .md-ref.gone > .bd)
   let badgeStruck: Bool
   let fontSize: CGFloat
   let width: CGFloat

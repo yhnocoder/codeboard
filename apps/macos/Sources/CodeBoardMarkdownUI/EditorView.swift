@@ -26,7 +26,7 @@ public protocol MarkdownEditorDelegate: AnyObject {
   func editor(_ e: MarkdownEditorView, saveImage data: Data, name: String) -> String?
   /// the / menu's Image: the host lets the user pick a picture (its bytes and file name), nil when none was picked
   func editorPicksImage(_ e: MarkdownEditorView) -> (Data, String)?
-  /// whether pasted plain text is code, and in which language (the host's classifier, as main uses the board's); nil
+  /// whether pasted plain text is code, and in which language (the host's classifier, as the web editor's host gives its own); nil
   /// leaves it to the component's own rules
   func editor(_ e: MarkdownEditorView, classify text: String) -> MDPaste.HostCode?
   /// a plain click on a drawn [[reference]] that resolves (onRef): true when the host took it (its preview, or going
@@ -99,7 +99,7 @@ public final class MarkdownEditorView: NSView {
       resize()
       // what floats over the Note follows it to its new scale (a toolbar left behind covered the word it was for)
       if zoom != oldValue {
-        // what a tip is about moved from under it (the board's tip goes on the wheel that zooms)
+        // what a tip is about moved from under it (the web page's tip goes on the wheel that zooms)
         tipView.hide()
         restyleChrome()
       }
@@ -134,7 +134,7 @@ public final class MarkdownEditorView: NSView {
       codeScroll = []
       if isEditing {
         core.select(core.selection)
-        // over its siblings: what floats past its edges (a menu, the toolbar, a preview) is drawn above the next card,
+        // over its siblings: what floats past its edges (a menu, the toolbar, a preview) is drawn above the next view,
         // not under it (a [[ menu's lower rows showed the next Note's text through them)
         raiseOverSiblingNotes()
       } else {
@@ -168,7 +168,7 @@ public final class MarkdownEditorView: NSView {
   /// replacement replaces the current match, ⌘↵ all of them as one undo step; Esc closes it. At the screen's own size
   let findBar = FindBar()
   let findButtons = FindButtons()
-  /// the board's own tooltip, for what the Note shows and for the controls floating on it
+  /// the web page's own tooltip, for what the Note shows and for the controls floating on it
   let tipView = TipView()
   /// pictures sliding to where the caret's moving put them (IMAGE_SLIDE): from, to, since; and where each was
   private var slides: [String: (from: CGRect, to: CGRect, since: CFTimeInterval)] = [:]
@@ -658,7 +658,7 @@ public final class MarkdownEditorView: NSView {
   }
 
   /// Puts this Note just above the other Notes beside it, every other view keeping its order (a host's overlays stay
-  /// above): what floats past its edges is drawn, and hit, over the next card
+  /// above): what floats past its edges is drawn, and hit, over the next view
   private func raiseOverSiblingNotes() {
     guard let sv = superview else { return }
     let views = sv.subviews
@@ -747,13 +747,13 @@ public final class MarkdownEditorView: NSView {
     followed = isEditing ? (core.selection, core.source) : nil
   }
 
-  /// a scroll or pinch the editor does not use, offered to its host first (a canvas moves its board): true when taken
+  /// a scroll or pinch the editor does not use, offered to its host first (a canvas moves): true when taken
   public var handOver: ((NSEvent) -> Bool)?
 
   public override func magnify(with e: NSEvent) { if handOver?(e) != true { super.magnify(with: e) } }
 
   /// a sideways scroll (or ⇧ and the wheel) over a table wider than the Note or a code block with long lines scrolls
-  /// that, not the card; a vertical one goes on to the page, and a gesture that starts mostly vertical stays vertical
+  /// that, not the host's view; a vertical one goes on to the page, and a gesture that starts mostly vertical stays vertical
   public override func scrollWheel(with e: NSEvent) {
     // the wheel pans, zooms or scrolls what is under the pointer: what a tip is about moves away (ui/Menu.tsx)
     tipView.hide()
@@ -2158,8 +2158,8 @@ public final class MarkdownEditorView: NSView {
       delegate?.editor(self, doubleClickedRef: label, target: target)
     }
     guard isEditing else {
-      // the static picture: a drag selects its text, a click without one starts editing there (the board's selected
-      // card: singleSelectedBodySelectsText, clickSelectedCardEdits)
+      // the static picture: a drag selects its text, a click without one starts editing there (the web page's selected
+      // frame: singleSelectedBodySelectsText, clickSelectedCardEdits)
       pressed = (at, false)
       core.mouseDown(at: at, clicks: 1, extend: false)
       changed()
@@ -2342,8 +2342,8 @@ public final class MarkdownEditorView: NSView {
     ]
   }
 
-  /// the image grips reach past the editor's edge (as on the web, into the card's padding): a press there is still the
-  /// editor's, not the card's under it (which ends editing)
+  /// the image grips reach past the editor's edge (as on the web, into the frame's padding): a press there is still the
+  /// editor's, not the host's view under it (which ends editing)
   public override func hitTest(_ point: NSPoint) -> NSView? {
     // what floats on the Note may reach past its edges (the heading chip in the left padding, a band over a first block):
     // a press there is still its, which AppKit would not route outside the view's frame
@@ -2797,7 +2797,7 @@ public final class MarkdownEditorView: NSView {
       default: break
       }
     }
-    // a host's field that ↵ ends (a sidenote's: NoteComposer.tsx SnField); ⇧↵ is a line break, a code block takes ↵
+    // a host's field that ↵ ends (a one-line note's: NoteComposer.tsx SnField); ⇧↵ is a line break, a code block takes ↵
     if selector == #selector(insertNewline(_:)), let onReturn,
       !(NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false),
       core.codeBlock(at: core.selection.head) == nil, onReturn()

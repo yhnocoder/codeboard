@@ -1,6 +1,6 @@
 import AppKit
 
-/// SVG pictures for a host's image path: ImageIO does not read SVG, the web board draws it (sanitised, md/images.ts).
+/// SVG pictures for a host's image path: ImageIO does not read SVG, the web editor draws it (sanitised, md/images.ts).
 /// Scripts, event handlers, foreignObject and references to anything outside the file are taken out first; the rest is
 /// drawn by the system's SVG renderer at the pixel size asked for, so it stays sharp at any zoom. That renderer ignores
 /// @media blocks, custom properties declared anywhere but :root and light-dark(): the stylesheet is resolved for the
