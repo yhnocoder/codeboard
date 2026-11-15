@@ -1000,6 +1000,8 @@ extension CanvasView {
   // MARK: Pointer
 
   public override func mouseDown(with e: NSEvent) {
+    if opening { return }
+    dropPicture()
     if spacePanDown(e) { return }
     // a click outside the card being written in (on it, the web view takes it) ends the writing
     if editing != nil { Task { await endEditing() } }
@@ -1712,6 +1714,7 @@ extension CanvasView {
   // MARK: Keys
 
   public override func keyDown(with e: NSEvent) {
+    if opening { return }
     guard document != nil else { return super.keyDown(with: e) }
     if editing != nil {
       // the editor is mounting: its keys wait for it, Esc among them, in the order typed

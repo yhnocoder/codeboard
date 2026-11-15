@@ -57,6 +57,15 @@ public final class CanvasView: NSView {
   let kept = CALayer()
   /// Cards picked up by the pointer, until they have landed: over every card, Texts and Boxes too (main's .card.lift)
   let liftedLayer = CALayer()
+  /// Where the board shown last is kept as a picture when it is left (nil: nowhere; the app's canvases keep it in its
+  /// caches), and that picture over the view while the board opens again (CanvasPicture.swift)
+  package var picturesFolder: URL?
+  let picture = CALayer()
+  /// The camera the picture was taken at: moved from it, the picture goes
+  var pictureCamera: Camera?
+  package internal(set) var pictureShownAt: CFTimeInterval?
+  /// Another board is being opened: what is shown is the board left (or its picture), so input goes nowhere
+  var opening = false
   /// The summary level's columns (CanvasSummaries.swift)
   let summaryLayer = CALayer()
   /// Which level is shown and how it changes (SummaryLevels.swift)
@@ -395,6 +404,7 @@ public final class CanvasView: NSView {
   /// With that Note renderer (CanvasBench: one for several canvases, as the app's)
   package init(frame: NSRect, notes: NoteRenderer) {
     self.notes = notes
+    picturesFolder = notes === CanvasView.sharedNotes ? CanvasView.defaultPictures : nil
     super.init(frame: frame)
     // in a test process: no menu, alert or panel ever comes up
     TestGuard.install()
@@ -426,6 +436,9 @@ public final class CanvasView: NSView {
     backdrop.anchorPoint = .zero
     root.addSublayer(backdrop)
     root.addSublayer(world)
+    picture.anchorPoint = .zero
+    picture.isHidden = true
+    root.addSublayer(picture)
     marquee.fillColor = nil
     root.addSublayer(marquee)
     toastLayer.isHidden = true
@@ -490,6 +503,11 @@ public final class CanvasView: NSView {
     // a refresh under way is of what this load replaces
     refreshes += 1
     let load = loads
+    if !keepCamera {
+      opening = true
+      showPicture(board, in: vault, theme: theme)
+    }
+    defer { if load == loads { opening = false } }
     let size =
       bounds.isEmpty ? (window?.screen ?? NSScreen.main)?.frame.size ?? CGSize(width: 1440, height: 900) : bounds.size
     let backing = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
@@ -536,6 +554,8 @@ public final class CanvasView: NSView {
     }.value
     CanvasView.highlighter = highlighter
     guard load == loads else { return }
+    // the board left is kept where it was (and as it was), also when its camera never came to rest
+    if !keepCamera { self.keepCamera(now: true) }
     shownBoard = b
     measured = [:]
     for m in measures { if let size = sizes[m.card] { measured[m.card] = (m.note, m.width, size) } }
@@ -548,8 +568,6 @@ public final class CanvasView: NSView {
       await rest()
       guard load == loads else { return }
     }
-    // the board left is kept where it was, also when its camera never came to rest
-    if !keepCamera { self.keepCamera(now: true) }
     shown = (board, vault)
     install(scene, overviews: overviews, shadow: shadow, theme: theme, keepCamera: keepCamera)
   }
@@ -1114,8 +1132,9 @@ public final class CanvasView: NSView {
       DispatchQueue.global(qos: .utility).async { _ = malloc_zone_pressure_relief(nil, 0) }
     }
     stepFrameEase(at: time)
+    pictureCheck()
     if motion.isResting && queue.isIdle && onFrame == nil && gesture == nil && !levels.isAnimating
-      && frameEase.isEmpty
+      && frameEase.isEmpty && picture.isHidden
     {
       link?.isPaused = true
     }
@@ -1133,6 +1152,7 @@ public final class CanvasView: NSView {
   /// `cameraDelay`, and not while a gesture is under way; `now`: the board is being left (another board, its tab or
   /// window closed, the app quitting), written at once, where a gesture under way has it
   package func keepCamera(now: Bool = false) {
+    if now { keepPicture() }
     if let (board, vault) = shown, let store = cameras, scene != nil, camera != cameraKept {
       cameraKept = camera
       cameraToKeep = (store, vault, board.id, camera)

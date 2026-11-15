@@ -25,7 +25,8 @@ public final class NoteRenderer {
   }
 
   private let pageFolder: URL
-  private let build: String
+  /// The Note page's build: what draws a Note, its stylesheets and fonts
+  public let build: String
   private let store: SnapshotStore
   private var page: NotePage?
   private var busy = false
