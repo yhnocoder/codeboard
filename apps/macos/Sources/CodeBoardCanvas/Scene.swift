@@ -579,7 +579,10 @@ struct Scene: Sendable {
       let tokens = code.segments.map { highlighter.tokens(lines: $0.lines, language: $0.language) }
       let layout = CodeLayout(code, tokens: tokens, width: c.width, metrics: t.metrics, always: always)
       let s = code.segments.first
-      let title = content.title ?? s?.symbol?.name ?? s?.scope ?? s.flatMap(CodeLayout.path).map(file) ?? "Code"
+      // Free code shows its own title only, none when it has none (CodeHead.tsx)
+      let free = s.map { $0.source == nil } ?? false
+      let named = s?.symbol?.name ?? s?.scope ?? s.flatMap(CodeLayout.path).map(file) ?? "Code"
+      let title = content.title ?? (free ? "" : named)
       let path = s.flatMap { s in CodeLayout.path(s).map { "\(file($0)):\(s.firstLine)" } }
       let top = code.framed ? t.headerHeight : 0
       let body = c.height ?? min(layout.height, t.metrics.maxAutoHeight)

@@ -190,4 +190,26 @@ private let seg = SegmentID(rawValue: "s1")
     r.send(r.mouse(.leftMouseUp, corner, clicks: 2))
     #expect(r.card("n").height == nil && r.doc.undoName == "Fit Content")
   }
+
+  /// Free code's header shows its own title only, none when it has none; code from a file its symbol (CodeHead.tsx: a
+  /// free card's title is `c.title ?? ""`, shown only when set)
+  @Test func untitledFreeCodeShowsNoTitle() async throws {
+    var b = Self.board()
+    let titled = Segment(id: SegmentID(rawValue: "s3"), source: nil, language: "python", firstLine: 1, lines: ["y = 2"])
+    b.cards.append(
+      Card(
+        id: cid("named"), x: 0, y: 1100, width: 420,
+        content: .own(CardContent(title: "Mine", body: .code(CodeCard(segments: [titled]))))))
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    func title(_ id: String) -> String? {
+      guard let i = r.canvas.index(of: .card(cid(id))), case .code(let d) = r.canvas.scene?.items[i].drawing else {
+        return nil
+      }
+      return d.title
+    }
+    #expect(title("f") == "")
+    #expect(title("named") == "Mine")
+    #expect(title("c") == "a.py")
+  }
 }
