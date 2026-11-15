@@ -70,6 +70,19 @@ import Testing
     #expect((m.frame.height - 8).truncatingRemainder(dividingBy: 26) == 0)
   }
 
+  /// a table made from the / menu: a header and two rows of two empty columns, as wide as its content asks (at least
+  /// main's 128 points), not the Note's width (her choice, 11-15, as main)
+  @Test func aNewTableIsSizedByItsContent() {
+    // what the / menu's Table writes (Menus.swift)
+    let v = view("Text\n\n|  |  |\n|---|---|\n|  |  |\n|  |  |", caret: 0)
+    guard let b = v.core.document.blocks.last, case .table(let t) = b.kind else { return #expect(Bool(false)) }
+    #expect(t.rows.count == 3 && t.rows[0].count == 2)
+    let cells = v.core.layout.cellBoxes(of: t).joined()
+    let box = cells.dropFirst().reduce(cells.first!) { $0.union($1) }
+    #expect(box.width < 200 && box.width >= 126)
+    #expect(v.core.layout.width == 400)
+  }
+
   /// the toolbar over a selection on the last line: above it, 8 points off, as main places it; never where the pointer
   /// just pressed (a press on the line above went to the toolbar's Link and opened the link box)
   @Test func theToolbarSitsAboveTheSelectionAndAwayFromThePress() {
