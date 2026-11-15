@@ -367,8 +367,9 @@ test("cardLinkPaste", async () => {
   await dragOver(pg, "line");
   await paste(pg, "https://example.com/x");
   const web = await lastLine();
-  // on nothing: a reference to the card
-  await pg.keyboard.press("End");
+  // on nothing: a reference to the card, at the end of the Note (End alone goes only to the end of the line as drawn, and the
+  // links make it wrap where the fonts say)
+  await pg.keyboard.press("Control+End");
   await paste(pg, ".codeboard/b1.json#k1");
   const bare = await lastLine();
   await pg.keyboard.press("Escape");

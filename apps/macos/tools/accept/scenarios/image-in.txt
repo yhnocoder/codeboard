@@ -1,0 +1,33 @@
+# 图片进来：往本次运行自己的剪贴板放一张图并读出来；在空白处 ⌘V、拖一个图片文件进来，各出一张图片卡；在正在编辑的 Note 里 ⌘V、拖进来，图进了 Note（看 note-paste、note-drop 两张图）
+# known mac: the canvas takes neither a pasted picture nor a dropped file yet (only a Note being edited does)
+zoom 1
+center @cweb+0,-200
+expect clip = none
+clip image storage/assets/7c3e9a51d2b04f68-240x150.png
+expect clip has image/png
+expect clip has 240x150
+move @cweb+0,-200 200
+key cmd+v
+wait 800
+expect new.w > 0
+key cmd+z
+wait 300
+drop storage/assets/7c3e9a51d2b04f68-240x150.png @cweb+0,-220
+wait 800
+expect new.w > 0
+center @cnote+150,60
+dbl @cnote+150,90
+wait 600
+clip image storage/assets/7c3e9a51d2b04f68-240x150.png
+key cmd+v
+wait 1200
+shot note-paste @cnote
+key esc
+wait 800
+dbl @cnote+150,60
+wait 600
+drop storage/assets/7c3e9a51d2b04f68-240x150.png @cnote+150,60
+wait 1200
+shot note-drop @cnote
+key esc
+wait 800

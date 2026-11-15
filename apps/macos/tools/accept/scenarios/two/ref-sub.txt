@@ -1,6 +1,7 @@
 # A [[ref]] to a card in a sub-board enters the sub-board, its breadcrumb "‹ First › Third", and selects the card there
 # (actions/subboards.ts openCardRef: enterFrame with reveal). --only mac
 # storage: storage-two
+# only: mac
 zoom 1
 center @cown:c
 dbl @cown:c

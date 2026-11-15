@@ -12,8 +12,10 @@ import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardShell
+import MarkdownDemoKit
 import ObjectiveC
 import Synchronization
+import Vision
 import WebKit
 
 setbuf(stdout, nil)
@@ -68,6 +70,9 @@ var gKey: NSWindow? {
 weak var gMain: NSWindow?
 var cursorName = "arrow"
 var lastMenu: NSMenu?
+/// ACCEPT_ONSCREEN: the app's windows where and as big as it makes them, in front like any app's, instead of under the
+/// desktop picture at the driver's size. Off unless asked: it puts a window in front of the person using the Mac
+let onScreen = env["ACCEPT_ONSCREEN"] != nil
 let deskLevel = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) - 1)
 
 func log(_ s: String) {
@@ -114,14 +119,14 @@ extension NSWindow {
     if styleMask.contains(.titled), gMain == nil, !(self is NSPanel) {
       gMain = self
       accMakeKeyAndOrderFront(sender)
-      setFrame(NSRect(origin: NSPoint(x: 40, y: 40), size: winSize), display: true)
+      if !onScreen { setFrame(NSRect(origin: NSPoint(x: 40, y: 40), size: winSize), display: true) }
       return
     }
     accMakeKeyAndOrderFront(sender)
   }
-  @objc func accSetLevel(_ l: NSWindow.Level) { accSetLevel(deskLevel) }
+  @objc func accSetLevel(_ l: NSWindow.Level) { accSetLevel(onScreen ? l : deskLevel) }
   @objc func accOrderWindow(_ place: NSWindow.OrderingMode, relativeTo other: Int) {
-    level = deskLevel
+    if !onScreen { level = deskLevel }
     accOrderWindow(place, relativeTo: other)
   }
   /// Behind the desktop picture the window counts as covered, and WebKit stops drawing in covered windows; for the
@@ -212,12 +217,22 @@ extension NSCursor {
   @objc class func accSetHiddenUntilMouseMoves(_ f: Bool) {}
 }
 
+/// An item's shortcut as the web board's menus write it: ⌃⌥⇧⌘ then the key (⇧⌘L, ⌥S, ⌫)
+func shortcut(_ i: NSMenuItem) -> String {
+  let m = i.keyEquivalentModifierMask
+  let k = i.keyEquivalent
+  let shift = m.contains(.shift) || (k.count == 1 && k.uppercased() == k && k.lowercased() != k)
+  let mods = [(m.contains(.control), "⌃"), (m.contains(.option), "⌥"), (shift, "⇧"), (m.contains(.command), "⌘")]
+  let keys: [String: String] = ["\u{8}": "⌫", "\u{7f}": "⌫", "\r": "↩", "\u{1b}": "⎋", " ": "Space", "\t": "⇥"]
+  return mods.filter(\.0).map(\.1).joined() + (keys[k] ?? k.uppercased())
+}
+
 func describe(_ m: NSMenu, _ indent: String = "") -> String {
   m.update()
   return m.items.map { i in
     if i.isSeparatorItem { return indent + "----" }
     var s = indent + i.title + (i.isEnabled ? "" : " (disabled)") + (i.state == .on ? " ✓" : "")
-    if !i.keyEquivalent.isEmpty { s += " [\(i.keyEquivalentModifierMask.rawValue):\(i.keyEquivalent)]" }
+    if !i.keyEquivalent.isEmpty { s += " [\(shortcut(i))]" }
     if let sub = i.submenu { s += "\n" + describe(sub, indent + "  ") }
     return s
   }.joined(separator: "\n")
@@ -265,6 +280,66 @@ extension FileManager {
 swizzle(
   FileManager.self, #selector(FileManager.trashItem(at:resultingItemURL:)),
   #selector(FileManager.accTrashItem(at:resultingItemURL:)))
+/// What a pasteboard holds, one type a line, named as the web side names them: text and its first 80 characters, a
+/// picture and its size in pixels
+func clipText(_ p: NSPasteboard) -> String {
+  let names: [NSPasteboard.PasteboardType: String] = [
+    .string: "text/plain", .png: "image/png", .tiff: "image/tiff", .html: "text/html", .fileURL: "file",
+  ]
+  let out = (p.types ?? []).map { t -> String in
+    let n = names[t] ?? t.rawValue
+    if t == .string || t == .html || t == .fileURL {
+      let words = (p.string(forType: t) ?? "").split(whereSeparator: \.isWhitespace)
+      return "\(n): \(words.joined(separator: " ").prefix(80))"
+    }
+    if t == .png || t == .tiff, let d = p.data(forType: t), let r = NSBitmapImageRep(data: d) {
+      return "\(n) \(r.pixelsWide)x\(r.pixelsHigh)"
+    }
+    return "\(n) \(p.data(forType: t)?.count ?? 0) bytes"
+  }
+  return out.isEmpty ? "none" : out.joined(separator: "\n")
+}
+
+/// A drag from the Finder as a destination sees it: a file on a pasteboard of its own, at a point of the window
+final class FileDrag: NSObject, NSDraggingInfo {
+  let window: NSWindow
+  let at: NSPoint
+  let pasteboard: NSPasteboard
+  init(_ url: URL, window: NSWindow, at: NSPoint) {
+    self.window = window
+    self.at = at
+    pasteboard = NSPasteboard(name: .init("\(ownPasteboardName.rawValue).drag"))
+    pasteboard.clearContents()
+    pasteboard.writeObjects([url as NSURL])
+  }
+  var draggingDestinationWindow: NSWindow? { window }
+  var draggingSourceOperationMask: NSDragOperation { [.copy, .link, .generic] }
+  var draggingLocation: NSPoint { at }
+  var draggedImageLocation: NSPoint { at }
+  var draggedImage: NSImage? { nil }
+  var draggingPasteboard: NSPasteboard { pasteboard }
+  var draggingSource: Any? { nil }
+  var draggingSequenceNumber: Int { 1 }
+  func slideDraggedImage(to screenPoint: NSPoint) {}
+  var draggingFormation: NSDraggingFormation = .default
+  var animatesToDestination = false
+  var numberOfValidItemsForDrop = 1
+  func enumerateDraggingItems(
+    options enumOpts: NSDraggingItemEnumerationOptions = [], for view: NSView?, classes classArray: [AnyClass],
+    searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:],
+    using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void
+  ) {
+    var stop: ObjCBool = false
+    for (i, o) in (pasteboard.readObjects(forClasses: classArray, options: searchOptions) ?? []).enumerated() {
+      guard let w = o as? NSPasteboardWriting else { continue }
+      block(NSDraggingItem(pasteboardWriter: w), i, &stop)
+      if stop.boolValue { break }
+    }
+  }
+  var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+  func resetSpringLoading() {}
+}
+
 /// Nothing this run opens reaches the Mac: an address, a file or an app the app asks NSWorkspace to open (a Web card's
 /// page, a link, Reveal in Finder) is written down instead (the opened command), and the browser of the person using
 /// the Mac never opens
@@ -586,15 +661,22 @@ func strings(_ x: Any) -> [String] {
   }
   /// A screen point in the main window's content coordinates (what move and click take)
   func local(_ p: NSPoint) -> String {
-    guard let w = win, let c = w.contentView else { return "?" }
-    let l = c.convert(w.convertPoint(fromScreen: p), from: nil)
+    guard let l = content(p) else { return "?" }
     return String(format: "%.0f,%.0f", l.x, l.y)
+  }
+
+  /// Content coordinates are points from the content view's top left, flipped or not (an app's may be either)
+  func content(_ screenPoint: NSPoint) -> NSPoint? {
+    guard let w = win, let c = w.contentView else { return nil }
+    let l = c.convert(w.convertPoint(fromScreen: screenPoint), from: nil)
+    return c.isFlipped ? l : NSPoint(x: l.x, y: c.bounds.height - l.y)
   }
 
   /// Content coordinates (top-left origin, points) to screen
   func screen(_ x: Double, _ y: Double) -> NSPoint {
     guard let w = win, let c = w.contentView else { return .zero }
-    return w.convertPoint(toScreen: c.convert(NSPoint(x: x, y: y), to: nil))
+    let v = c.isFlipped ? NSPoint(x: x, y: y) : NSPoint(x: x, y: c.bounds.height - y)
+    return w.convertPoint(toScreen: c.convert(v, to: nil))
   }
   /// The window of this app under a screen point, frontmost first
   func window(at p: NSPoint) -> NSWindow? {
@@ -756,7 +838,7 @@ func strings(_ x: Any) -> [String] {
       count = l.count + 1
     }
     lastDown = (now, vPointer, count)
-    log("press \(right ? "right" : "left") at \(local(vPointer)) on \(hitInfo(vPointer))")
+    log("press \(right ? "right" : "left") ×\(count) at \(local(vPointer)) on \(hitInfo(vPointer))")
     vButtons |= right ? 2 : 1
     post(right ? .rightMouseDown : .leftMouseDown, at: vPointer, clicks: count)
   }
@@ -766,6 +848,30 @@ func strings(_ x: Any) -> [String] {
     // web views made by the click learn that their window is key, as they would from the window server
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
       if let w = gKey ?? gMain { tellKey(w) }
+    }
+  }
+
+  /// A mouse wheel turned: clicks of a few lines each, no gesture phases (what a stock NSScrollView scrolls by at once)
+  func wheel(lines: Double, clicks: Int) async {
+    let h = NSScreen.screens[0].frame.height
+    for _ in 0..<max(1, clicks) {
+      guard
+        let cg = CGEvent(
+          scrollWheelEvent2Source: nil, units: .line, wheelCount: 1,
+          wheel1: Int32((lines / Double(max(1, clicks))).rounded()),
+          wheel2: 0, wheel3: 0)
+      else { return }
+      let wp = window(at: vPointer)?.convertPoint(fromScreen: vPointer) ?? vPointer
+      cg.location = CGPoint(x: wp.x, y: h - wp.y)
+      if let w = window(at: vPointer) {
+        cg.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(w.windowNumber))
+        cg.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(w.windowNumber))
+      }
+      guard let e = NSEvent(cgEvent: cg) else { return }
+      if let w = window(at: vPointer) { w.sendEvent(e) } else { NSApp.postEvent(e, atStart: false) }
+      try? await Task.sleep(for: .milliseconds(30))
+      refreshAreas()
+      track(dragging: false, moved: false)
     }
   }
 
@@ -983,6 +1089,138 @@ func strings(_ x: Any) -> [String] {
     vFlags = []
   }
 
+  /// What type and keys take: \\n is Return and \\s a space (a scenario line's trailing spaces are trimmed)
+  func typed(_ s: Substring) -> String {
+    s.replacingOccurrences(of: "\\n", with: "\n").replacingOccurrences(of: "\\s", with: " ")
+  }
+
+  /// Words as a person reads them: the main window's picture read by text recognition inside a box (content
+  /// coordinates), and the point just before, in the middle of or just after the first match, so a scenario aims at
+  /// text whatever the layout. Only what is drawn counts (hidden markers are not there to find)
+  func find(_ box: CGRect, _ mode: String, _ text: String) -> String {
+    guard let w = win else { return "no window" }
+    // at the window's own resolution (the recorder's 1x is too coarse to read small text)
+    let shot =
+      // (asked afresh: the display may have gone to sleep since the last shot)
+      Recorder.layers || screenOff()
+      ? Recorder.drawn(w) : WindowServer.createImage(.null, 1 << 3, UInt32(w.windowNumber), 1 << 0)?.takeRetainedValue()
+    guard let img = shot else { return "no picture of the window" }
+    let sx = CGFloat(img.width) / w.frame.width
+    let sy = CGFloat(img.height) / w.frame.height
+    // content coordinates to the picture's pixels (top-left origin) and back
+    func pixel(_ x: Double, _ y: Double) -> CGPoint {
+      let p = screen(x, y)
+      return CGPoint(x: (p.x - w.frame.minX) * sx, y: (w.frame.maxY - p.y) * sy)
+    }
+    let a = pixel(box.minX, box.minY)
+    let b = pixel(box.maxX, box.maxY)
+    let crop = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y)).integral
+      .intersection(CGRect(x: 0, y: 0, width: img.width, height: img.height))
+    guard !crop.isEmpty, let part = img.cropping(to: crop) else { return "box off the window" }
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .accurate
+    request.recognitionLanguages = ["zh-Hans", "en-US"]
+    request.usesLanguageCorrection = false
+    // small text on a 1x display is read far better at twice the size (only the picture read grows; the box found is
+    // normalized, so nothing else changes)
+    var read2 = part
+    if sx < 2,
+      let ctx = CGContext(
+        data: nil, width: part.width * 2, height: part.height * 2, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+    {
+      ctx.interpolationQuality = .high
+      ctx.draw(part, in: CGRect(x: 0, y: 0, width: part.width * 2, height: part.height * 2))
+      if let big = ctx.makeImage() { read2 = big }
+    }
+    // ACCEPT_DEBUG_FIND: the picture read, beside the log (find-<n>.png)
+    if env["ACCEPT_DEBUG_FIND"] != nil {
+      findShots += 1
+      Recorder.write(read2, to: outDir.appending(path: "find-\(findShots).png"))
+    }
+    do { try VNImageRequestHandler(cgImage: read2).perform([request]) } catch { return "text recognition: \(error)" }
+    var read: [String] = []
+    // Vision writes CJK-style punctuation (（）：，) where the page has ASCII and is unsure of case, and its best guess
+    // is not always right ("secona"): every candidate is searched, folded the same way as the words sought
+    let sought = Self.fold(text)
+    let results = request.results ?? []
+    for o in results { if let c = o.topCandidates(1).first { read.append(c.string) } }
+    // the words as written anywhere first; only then a line that reads them a letter off
+    for near in [false, true] {
+      for o in results {
+        for c in o.topCandidates(5) {
+          let folded = Self.fold(c.string)
+          guard let f = near ? Self.near(sought, in: folded) : folded.range(of: sought) else { continue }
+          // the folded string has the original's characters one for one
+          let lo = c.string.index(
+            c.string.startIndex, offsetBy: folded.distance(from: folded.startIndex, to: f.lowerBound))
+          let hi = c.string.index(lo, offsetBy: folded.distance(from: f.lowerBound, to: f.upperBound))
+          guard let found = try? c.boundingBox(for: lo..<hi)?.boundingBox else { continue }
+          // normalized, bottom-left origin in the crop
+          let nx = mode == "before" ? found.minX : mode == "after" ? found.maxX : found.midX
+          // just inside the word's edge (1.5 pt): its edge as read can lie a fraction outside the text, on what is beside it
+          let inside = mode == "before" ? 1.5 * sx : mode == "after" ? -1.5 * sx : 0
+          let ix = crop.minX + nx * crop.width + inside
+          let iy = crop.minY + (1 - found.midY) * crop.height
+          let p = NSPoint(x: w.frame.minX + ix / sx, y: w.frame.maxY - iy / sy)
+          guard let l = content(p) else { return "no content view" }
+          return String(format: "%.1f %.1f", l.x, l.y)
+        }
+      }
+    }
+    return "not found; read: \(read.joined(separator: " | "))"
+  }
+
+  /// Where words are in a line Vision misread a letter or so of ("scheauler" for "scheduler"): the first stretch of the
+  /// same length with at most one character in eight different (at least one)
+  static func near(_ sought: String, in line: String) -> Range<String.Index>? {
+    let w = Array(sought)
+    let l = Array(line)
+    guard w.count >= 4, l.count >= w.count else { return nil }
+    let allowed = max(1, w.count / 8)
+    for i in 0...(l.count - w.count) {
+      var off = 0
+      for k in 0..<w.count where l[i + k] != w[k] {
+        off += 1
+        if off > allowed { break }
+      }
+      if off <= allowed {
+        let lo = line.index(line.startIndex, offsetBy: i)
+        return lo..<line.index(lo, offsetBy: w.count)
+      }
+    }
+    return nil
+  }
+
+  /// Full-width punctuation as ASCII and letters in lower case, one character for each character
+  static func fold(_ s: String) -> String {
+    let wide: [Character: Character] = ["（": "(", "）": ")", "：": ":", "，": ",", "；": ";", "！": "!", "？": "?"]
+    return String(s.map { ch in wide[ch] ?? (ch.isASCII ? Character(ch.lowercased()) : ch) })
+  }
+
+  /// Where the caret is, as the text input system sees it in any editor (the native Note editor, a web view): its
+  /// place in content coordinates and height, then twelve characters on each side with the selection in brackets,
+  /// "x y h <height> | <before>[<selected>]<after>", line breaks as ⏎ (the web side answers in the same shape).
+  /// A WKWebView answers the synchronous calls with nothing (NSNotFound): it is an asynchronous text input client
+  /// (AppKit's NSTextInputClient_Async), so it is asked the same three questions that way
+  func caret() async -> String {
+    guard let c = client else { return "no text client" }
+    let input = TextInput(c)
+    let sel = await input.selectedRange()
+    guard sel.location != NSNotFound else { return "no selection" }
+    func text(_ r: NSRange) async -> String {
+      guard r.length > 0 else { return "" }
+      return (await input.text(r) ?? "").replacingOccurrences(of: "\n", with: "⏎")
+    }
+    let lo = max(0, sel.location - 12)
+    let before = await text(NSRange(location: lo, length: sel.location - lo))
+    let after = await text(NSRange(location: sel.location + sel.length, length: 12))
+    let selected = await text(sel)
+    let r = await input.rect(NSRange(location: sel.location, length: 0))
+    guard let top = content(NSPoint(x: r.minX, y: r.maxY)) else { return "no window" }
+    return String(format: "%.1f %.1f h %.0f | ", top.x, top.y, r.height) + "\(before)[\(selected)]\(after)"
+  }
+
   var client: NSTextInputClient? {
     let r = (gKey ?? win)?.firstResponder
     return r as? NSTextInputClient
@@ -1071,6 +1309,30 @@ func strings(_ x: Any) -> [String] {
       .map { $0.title + (keys[$0.keyEquivalent] ?? ($0.cell === d.defaultButtonCell ? " ⏎" : "")) }
     let kind = d === NSApp.modalWindow ? "app-modal" : "sheet"
     return "\(kind): \(texts.joined(separator: " | ")) [\(buttons.joined(separator: "] ["))]"
+  }
+
+  /// A file let go at a window point: the first view from the one under it out that takes a file drag (its
+  /// draggingEntered says an operation), then the drop as AppKit makes it. Says which view took it, or that none did
+  func drop(_ file: String, at p: NSPoint) async -> String {
+    guard let w = window(at: p), let root = w.contentView?.superview else { return "no window" }
+    let wp = w.convertPoint(fromScreen: p)
+    let info = FileDrag(URL(filePath: file), window: w, at: wp)
+    for v in sequence(first: root.hitTest(wp), next: { $0?.superview }).compactMap({ $0 }) {
+      guard !v.registeredDraggedTypes.isEmpty else { continue }
+      let op = v.draggingEntered(info)
+      guard !op.isEmpty else {
+        v.draggingExited(info)
+        continue
+      }
+      _ = v.draggingUpdated(info)
+      try? await Task.sleep(for: .milliseconds(50))
+      _ = v.draggingUpdated(info)
+      let took = v.prepareForDragOperation(info) && v.performDragOperation(info)
+      v.concludeDragOperation(info)
+      log("drop \(file) on \(Swift.type(of: v)): \(took ? "taken" : "refused")")
+      return "\(Swift.type(of: v)) \(took ? "took it" : "refused it")"
+    }
+    return "no view takes a file there"
   }
 
   func contextMenu() async -> String {
@@ -1184,12 +1446,14 @@ func strings(_ x: Any) -> [String] {
       await scroll(
         dx: d(1), dy: d(2), steps: Int(d(3, 12)), cmd: a.count > 4 && a[4] == "cmd",
         still: a.count > 4 && a[4] == "still")
+    case "wheel":  // wheel lines [clicks]: a mouse wheel's clicks (no phases, by lines; positive scrolls up)
+      await wheel(lines: d(1), clicks: Int(d(2, 10)))
     case "pinch":  // pinch total (0.5 = 1.5x) [steps]
       await pinch(total: d(1), steps: Int(d(2, 12)))
     case "key": await key(a[1])
     case "mods": vFlags = mods(a.count > 1 ? a[1] : "")
-    case "type": await type(String(line.dropFirst(5)).replacingOccurrences(of: "\\n", with: "\n"))
-    case "keys": await keys(String(line.dropFirst(5)).replacingOccurrences(of: "\\n", with: "\n"))
+    case "type": await type(typed(line.dropFirst(5)))
+    case "keys": await keys(typed(line.dropFirst(5)))
     case "ime": await ime(String(line.dropFirst(4)).split(separator: "|").map(String.init))
     case "wait": try? await Task.sleep(for: .milliseconds(Int(d(1, 200))))
     case "menu":
@@ -1208,10 +1472,120 @@ func strings(_ x: Any) -> [String] {
       }
       b.perform(#selector(NSButton.performClick(_:)), with: nil, afterDelay: 0, inModes: [.common])
     // opened: what the app asked to open so far (addresses, files, apps; none), one per line, in order: nothing opened
+    // clip text <s> / clip image <file>: put that on this run's own pasteboard (the app's general one), as a copy
+    // elsewhere would (a picture as PNG and TIFF, as a screenshot leaves it)
+    case "clip":
+      let p = ownPasteboard
+      p.clearContents()
+      if a.count > 2, a[1] == "text" {
+        p.setString(String(line.dropFirst(10)), forType: .string)
+      } else if a.count > 2, a[1] == "image", let d = FileManager.default.contents(atPath: String(line.dropFirst(11))) {
+        p.setData(d, forType: .png)
+        if let t = NSImage(data: d)?.tiffRepresentation { p.setData(t, forType: .tiff) }
+      } else {
+        return "usage: clip text <s> | clip image <file>"
+      }
+    case "clipread": return clipText(ownPasteboard)
+    // drop <file> <x> <y>: that file dragged in from the Finder and let go there, to whichever view under the point takes
+    // it (its NSDraggingDestination methods, as AppKit calls them; nothing else is dragged)
+    case "drop":
+      let file = a.dropLast(2).dropFirst().joined(separator: " ")
+      return await drop(file, at: screen(d(a.count - 2), d(a.count - 1)))
     case "opened": return opened.withLock { $0.isEmpty ? "none" : $0.joined(separator: "\n") }
     case "pick":
       menuOpen = false
       pick(String(line.dropFirst(5)))
+    case "find":  // find x0 y0 x1 y1 before|mid|after words: where those words are on screen inside that box
+      let box = CGRect(x: d(1), y: d(2), width: d(3) - d(1), height: d(4) - d(2))
+      guard a.count > 6 else { return "find x0 y0 x1 y1 mode words" }
+      // looked at again a moment later, as a person would: one picture can catch the window mid-change (a Note's
+      // editor taking over from the canvas's drawing)
+      var r = ""
+      for i in 0..<4 {
+        if i > 0 { try? await Task.sleep(for: .milliseconds(250)) }
+        r = find(box, a[5], a[6...].joined(separator: " "))
+        if !r.hasPrefix("not found") { break }
+        log("find: \(r)")
+      }
+      return r
+    case "caret": return await caret()
+    // viewtext ViewClass: the text that view shows (its text views and labels, in order), as a person reads it off the screen
+    case "viewtext":
+      guard let w = win, let root = w.contentView?.superview ?? w.contentView else { return "no window" }
+      func find(_ v: NSView) -> NSView? {
+        "\(Swift.type(of: v))" == a[1] && !v.isHiddenOrHasHiddenAncestor ? v : v.subviews.lazy.compactMap(find).first
+      }
+      guard let v = find(root) else { return "none" }
+      var parts: [String] = []
+      func walk(_ x: NSView) {
+        if let t = x as? NSTextView {
+          parts.append(t.string)
+        } else if let l = x as? NSTextField {
+          parts.append(l.stringValue)
+        }
+        x.subviews.forEach(walk)
+      }
+      walk(v)
+      return parts.joined(separator: "\n")
+    // frame ViewClass [content]: where the first such view is in the recorded window picture (points from its top left),
+    // or with "content" in content coordinates (what move and click take)
+    case "frame":
+      guard let w = win, let root = w.contentView?.superview ?? w.contentView else { return "no window" }
+      func find(_ v: NSView) -> NSView? {
+        "\(Swift.type(of: v))" == a[1] && !v.isHiddenOrHasHiddenAncestor ? v : v.subviews.lazy.compactMap(find).first
+      }
+      guard let v = find(root) else { return "none" }
+      let f = v.convert(v.bounds, to: nil)
+      if a.count > 2, a[2] == "content", let cv = w.contentView {
+        let c = cv.convert(f, from: nil)
+        let y = cv.isFlipped ? c.minY : cv.bounds.height - c.maxY
+        return String(format: "%.1f %.1f %.1f %.1f", c.minX, y, c.width, c.height)
+      }
+      return String(format: "%.0f %.0f %.0f %.0f", f.minX, w.frame.height - f.maxY, f.width, f.height)
+    case "covered":  // covered x y w h: is the view with that frame (content coordinates) under something at rest?
+      guard let w = win, let cv = w.contentView, let root = cv.superview ?? Optional(cv) else { return "no window" }
+      let r = CGRect(x: d(1), y: d(2), width: d(3), height: d(4))
+      func frame(_ v: NSView) -> CGRect {
+        let f = v.convert(v.bounds, to: cv)
+        return cv.isFlipped ? f : CGRect(x: f.minX, y: cv.bounds.height - f.maxY, width: f.width, height: f.height)
+      }
+      func find(_ v: NSView) -> NSView? {
+        if !v.isHiddenOrHasHiddenAncestor, abs(frame(v).minX - r.minX) < 2, abs(frame(v).minY - r.minY) < 2,
+          abs(frame(v).width - r.width) < 2, abs(frame(v).height - r.height) < 2
+        {
+          return v
+        }
+        return v.subviews.lazy.compactMap(find).first
+      }
+      guard let target = find(cv) else { return "no view with that frame" }
+      // only what lies inside the window counts (a long Note runs on below it)
+      let shown = r.intersection(CGRect(origin: .zero, size: cv.bounds.size).insetBy(dx: 6, dy: 6))
+      guard shown.width > 4, shown.height > 4 else { return "COVERED: out of the window" }
+      var by: [String: Int] = [:]
+      var n = 0
+      for i in 0..<7 {
+        for j in 0..<7 {
+          n += 1
+          let p = NSPoint(
+            x: shown.minX + 2 + (shown.width - 4) * Double(i) / 6,
+            y: shown.minY + 2 + (shown.height - 4) * Double(j) / 6)
+          let wp = cv.convert(cv.isFlipped ? p : NSPoint(x: p.x, y: cv.bounds.height - p.y), to: nil)
+          // nothing of the window there (the editor squeezed out of sight) is as bad as something over it
+          guard let hit = root.hitTest(root.superview?.convert(wp, from: nil) ?? wp) else {
+            by["nothing (out of sight)", default: 0] += 1
+            continue
+          }
+          // the window's own frame (its border, its rounded corners) covers nothing
+          if hit !== target, !hit.isDescendant(of: target), hit !== root {
+            by["\(Swift.type(of: hit))", default: 0] += 1
+          }
+        }
+      }
+      if by.isEmpty {
+        return "clear (\(Swift.type(of: target)) at \(Int(r.minX)),\(Int(r.minY)) \(Int(r.width))x\(Int(r.height)))"
+      }
+      return "COVERED \(by.values.reduce(0, +))/\(n) points by "
+        + by.map { "\($0.key) \($0.value)" }.joined(separator: ", ")
     case "hit": return hitInfo(vPointer)
     // ax id: where the canvas's accessibility element with this identifier (a card or Section, when the app exposes
     // them) is now, in board units: x y width height
@@ -1258,6 +1632,15 @@ func strings(_ x: Any) -> [String] {
       let vp = NSPoint(x: (d(1) - cam.origin.x) * cam.zoom, y: (d(2) - cam.origin.y) * cam.zoom)
       let p = cv.convert(c.convert(vp, to: nil), from: nil)
       return String(format: "%.1f %.1f", p.x, p.y)
+    case "ends":  // ends <arrow>: where it starts and ends as drawn now, in board units: x1 y1 x2 y2 (CanvasTrace)
+      guard let c = canvas as? CanvasView, let e = c.trace.arrows[a[1]] else { return "none" }
+      return e.map { String(format: "%.1f", $0) }.joined(separator: " ")
+    case "tip":  // the tooltip shown now: AppKit's tooltip window and its text; none
+      for w in NSApp.windows where w.isVisible && String(describing: Swift.type(of: w)).contains("ToolTip") {
+        let t = views(in: w.contentView).compactMap { ($0 as? NSTextField)?.stringValue ?? ($0 as? NSTextView)?.string }
+        return t.joined(separator: " ").isEmpty ? "(a tooltip window with no text)" : t.joined(separator: " ")
+      }
+      return "none"
     case "trace":  // what the canvas shows now, as the app reports it (CanvasTrace): hovered card, editing, selection…
       guard let c = canvas as? CanvasView, let d = try? JSONEncoder().encode(c.trace) else { return "no canvas" }
       return String(decoding: d, as: UTF8.self)
@@ -1414,8 +1797,9 @@ func strings(_ x: Any) -> [String] {
         n += 1
         log("start \(n) \(l)")
         let r = await run(l)
-        // on one line: a menu's items, the opened addresses (the runner reads it back)
-        log("done \(n) \(l)\(r.isEmpty ? "" : " -> " + r.replacingOccurrences(of: "\n", with: "\\n"))")
+        // one log line per result (a menu's items, the opened addresses): \ and line breaks escaped, run.mjs undoes it
+        let one = r.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\n", with: "\\n")
+        log("done \(n) \(l)\(r.isEmpty ? "" : " -> " + one)")
       }
       running = false
     }
@@ -1660,6 +2044,67 @@ if let from = env["ACCEPT_IMPORT_FROM"], let to = env["ACCEPT_VAULT"] {
     log("imported: \(r.imported.count) boards, \(r.failed.count) failed")
   } catch { log("import failed: \(error)") }
 }
+nonisolated(unsafe) var findShots = 0
+/// The three questions caret asks a text input client: synchronously when it answers that way (an NSTextView), else
+/// through the asynchronous calls a WKWebView answers (selectedRangeWithCompletionHandler: and the like, which
+/// AppKit's text input context itself uses for it)
+@MainActor
+struct TextInput {
+  let client: NSTextInputClient
+  init(_ c: NSTextInputClient) { client = c }
+
+  private var object: NSObject? { client as? NSObject }
+  private func async(_ name: String) -> IMP? {
+    let s = NSSelectorFromString(name)
+    guard let o = object, o.responds(to: s) else { return nil }
+    return o.method(for: s)
+  }
+
+  func selectedRange() async -> NSRange {
+    let sync = client.selectedRange()
+    guard sync.location == NSNotFound, let o = object, let imp = async("selectedRangeWithCompletionHandler:") else {
+      return sync
+    }
+    typealias F = @convention(c) (NSObject, Selector, @escaping @convention(block) (NSRange) -> Void) -> Void
+    let f = unsafeBitCast(imp, to: F.self)
+    return await withCheckedContinuation { k in
+      f(o, NSSelectorFromString("selectedRangeWithCompletionHandler:")) { k.resume(returning: $0) }
+    }
+  }
+
+  func text(_ r: NSRange) async -> String? {
+    guard let o = object, let imp = async("attributedSubstringForProposedRange:completionHandler:") else {
+      var actual = NSRange()
+      return client.attributedSubstring(forProposedRange: r, actualRange: &actual)?.string
+    }
+    typealias F =
+      @convention(c) (
+        NSObject, Selector, NSRange, @escaping @convention(block) (NSAttributedString?, NSRange) -> Void
+      ) -> Void
+    let f = unsafeBitCast(imp, to: F.self)
+    return await withCheckedContinuation { k in
+      f(o, NSSelectorFromString("attributedSubstringForProposedRange:completionHandler:"), r) { s, _ in
+        k.resume(returning: s?.string)
+      }
+    }
+  }
+
+  func rect(_ r: NSRange) async -> NSRect {
+    guard let o = object, let imp = async("firstRectForCharacterRange:completionHandler:") else {
+      var actual = NSRange()
+      return client.firstRect(forCharacterRange: r, actualRange: &actual)
+    }
+    typealias F =
+      @convention(c) (NSObject, Selector, NSRange, @escaping @convention(block) (NSRect, NSRange) -> Void) -> Void
+    let f = unsafeBitCast(imp, to: F.self)
+    return await withCheckedContinuation { k in
+      f(o, NSSelectorFromString("firstRectForCharacterRange:completionHandler:"), r) { rect, _ in
+        k.resume(returning: rect)
+      }
+    }
+  }
+}
+
 func screenOff() -> Bool {
   CGDisplayIsAsleep(CGMainDisplayID()) != 0
     || (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false
@@ -1673,4 +2118,11 @@ log("driver ready, fifo \(fifoPath), \(screenState())")
 // the look under test: the theme in this app's own defaults, light or dark for this process only
 if let t = env["ACCEPT_THEME"] { UserDefaults.standard.set(t, forKey: "theme") }
 NSApplication.shared.appearance = NSAppearance(named: env["ACCEPT_DARK"] == "1" ? .darkAqua : .aqua)
+if env["ACCEPT_APP"] == "demo" {
+  // the Markdown demo window in this process instead (MarkdownDemoKit), with its own arguments
+  try MainActor.assumeIsolated {
+    let args = (try? JSONDecoder().decode([String].self, from: Data((env["ACCEPT_DEMO_ARGS"] ?? "[]").utf8))) ?? []
+    try runMarkdownDemo(arguments: args)
+  }
+}
 runApp()

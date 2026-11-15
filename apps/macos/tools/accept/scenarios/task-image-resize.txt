@@ -1,0 +1,25 @@
+# 选中图片，拖右边的把手分几步缩窄：把手上、拖到一半、再拖、松开、等图片定下来，各截一张；存下的宽度两边一样（storage-tasks）
+# storage: storage-tasks
+zoom 1
+center @ntask"值"
+dbl @ntask"Last line"
+wait 600
+rec resize
+click @ntask"：示"+11,-80
+wait 500
+move @ntask"：示"+116,-85 300
+wait 300
+shot grip
+down
+move @ntask"：示"+91,-85 300
+shot mid1
+move @ntask"：示"+56,-85 300
+shot mid2
+up
+shot released
+wait 1200
+shot settled
+stop
+key esc
+wait 800
+source @ntask
