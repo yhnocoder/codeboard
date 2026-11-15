@@ -95,6 +95,9 @@ import Testing
     defer { w.close() }
     let c = w.canvas
     let doc = try #require(c.document)
+    // the bitmaps compared are the ones it shows once its redraws after opening are in (the Notes' pictures come from the
+    // renderer, on its own time), so that only the slide could replace them
+    await env.until("its redraws in", in: w) { c.isSettled }
     var t = CACurrentMediaTime()
     c.steppedClock = { t }
     let i = try #require(c.index(of: .card(cid("b"))))
