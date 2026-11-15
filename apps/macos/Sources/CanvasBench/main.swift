@@ -10,6 +10,9 @@ import CodeBoardModel
 //            gets no frames
 //   --memory see MemoryRun
 //   --drag   see DragBench: drags on a copy of each board named (every board when none is), in a window never on screen
+//   --open-frames  what each frame shows while each board named opens, then while it is panned and zoomed (OpenFrames),
+//            in a window below the desktop picture that is never activated; with --note-cache <folder> the Note
+//            snapshots are kept there across runs (a relaunch with the disk cache filled)
 //   --arrows the same drags on two boards made for it (ArrowBoards): a card with twenty arrows, a Section of twenty
 //            cards with their arrows; no vault folder
 // Note snapshots are cached in a new temporary folder, never in the app's cache: every run draws its Notes anew
@@ -22,12 +25,14 @@ final class App: NSObject, NSApplicationDelegate {
   let bench: Bool
   let memory: URL?
   let drag: Bool
+  let openFrames: Bool
   var window: NSWindow?
   var meter: Meter?
   var noteCache: URL?
 
-  init(vault: Vault, boards: [VaultBoard], hud: Bool, bench: Bool, memory: URL?, drag: Bool) {
+  init(vault: Vault, boards: [VaultBoard], hud: Bool, bench: Bool, memory: URL?, drag: Bool, openFrames: Bool) {
     self.drag = drag
+    self.openFrames = openFrames
     self.vault = vault
     self.boards = boards
     self.hud = hud
@@ -37,6 +42,7 @@ final class App: NSObject, NSApplicationDelegate {
 
   func applicationDidFinishLaunching(_ n: Notification) {
     if drag { return runDrag() }
+    if openFrames { return runOpenFrames() }
     let screen = NSScreen.main?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
     let w = NSWindow(
       contentRect: screen.insetBy(dx: 40, dy: 30), styleMask: [.titled, .closable, .resizable, .miniaturizable],
@@ -112,6 +118,31 @@ final class App: NSObject, NSApplicationDelegate {
     }
   }
 
+  /// Below the desktop picture, never activated nor made key: its frames are ticked by OpenFrames
+  private func runOpenFrames() {
+    let frame = CGRect(x: 0, y: 0, width: 1440, height: 900)
+    let w = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
+    w.level = .underDesktop
+    let cache =
+      keptNoteCache ?? FileManager.default.temporaryDirectory.appending(path: "canvasbench-notes-\(UUID().uuidString)")
+    if keptNoteCache == nil { noteCache = cache }
+    let canvas = CanvasView(frame: frame, noteCache: cache)
+    w.contentView = canvas
+    w.orderFrontRegardless()
+    window = w
+    Task {
+      let run = OpenFrames(canvas: canvas)
+      for b in boards {
+        do {
+          print(try await run.run(b, in: vault))
+        } catch {
+          FileHandle.standardError.write(Data("\(b.path): \(error)\n".utf8))
+        }
+      }
+      NSApp.terminate(nil)
+    }
+  }
+
   func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
 
   func applicationWillTerminate(_ n: Notification) {
@@ -124,6 +155,12 @@ let hud = args.contains("--hud")
 let bench = args.contains("--bench")
 let arrows = args.contains("--arrows")
 let drag = arrows || args.contains("--drag")
+let openFrames = args.contains("--open-frames")
+var keptNoteCache: URL?
+if let i = args.firstIndex(of: "--note-cache"), i + 1 < args.count {
+  keptNoteCache = URL(filePath: args[i + 1])
+  args.removeSubrange(i...i + 1)
+}
 var memory: URL?
 if let i = args.firstIndex(of: "--memory"), i + 1 < args.count {
   memory = URL(filePath: args[i + 1])
@@ -154,7 +191,7 @@ do {
 }
 let named = args.dropFirst().compactMap { a in all.first { $0.id.rawValue == a || $0.title == a } }
 let chosen =
-  memory != nil || drag && args.count > 1
+  memory != nil || (drag || openFrames) && args.count > 1
   ? named : args.count > 1 ? Array(named.prefix(1)) : bench || drag ? all : Array(all.prefix(1))
 guard !chosen.isEmpty else {
   FileHandle.standardError.write(Data("no such board in \(folder)\n".utf8))
@@ -164,7 +201,8 @@ guard !chosen.isEmpty else {
 _ = webKitFootprint()
 let app = NSApplication.shared
 // --drag shows nothing: no Dock icon, no menu bar, never the active app
-app.setActivationPolicy(drag ? .prohibited : .regular)
-let delegate = App(vault: vault, boards: chosen, hud: hud, bench: bench, memory: memory, drag: drag)
+app.setActivationPolicy(drag ? .prohibited : openFrames ? .accessory : .regular)
+let delegate = App(
+  vault: vault, boards: chosen, hud: hud, bench: bench, memory: memory, drag: drag, openFrames: openFrames)
 app.delegate = delegate
 app.run()

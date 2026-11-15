@@ -1336,6 +1336,24 @@ public final class CanvasView: NSView {
     return p
   }
 
+  /// The items in view (by index): those showing something, those showing nothing at all, and the Notes showing only
+  /// their paper (none of their text yet). Read only, for CanvasBench
+  package var blankInView: (inView: Int, drawn: Set<Int>, empty: Set<Int>, paper: Set<Int>) {
+    let view = camera.visible(bounds.size)
+    var out = (inView: 0, drawn: Set<Int>(), empty: Set<Int>(), paper: Set<Int>())
+    for (i, l) in items.enumerated() where l.bitmapFrame.intersects(view) {
+      out.inView += 1
+      if l.held.contents == nil && l.rest.contents == nil {
+        out.empty.insert(i)
+      } else if l.note && l.pictureScale == 0 {
+        out.paper.insert(i)
+      } else {
+        out.drawn.insert(i)
+      }
+    }
+    return out
+  }
+
   /// Anything in view drawn below display resolution
   package var lowRes: Bool {
     let view = camera.visible(bounds.size)
