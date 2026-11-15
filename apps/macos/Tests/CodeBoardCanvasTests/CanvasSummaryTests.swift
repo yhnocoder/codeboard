@@ -278,14 +278,19 @@ final class FakeWriter: SummaryWriter, @unchecked Sendable {
     #expect(abs(moved - want) < 0.01, "over the editor: \(moved), over the column: \(want)")
   }
 
-  @Test func rewriteOnlyWithAWriterFollowsTheHandEditAndAFailureKeepsTheText() async throws {
+  /// ↻ always shows, as main's (Summaries.tsx .sumre): pressed with no AI key, it says the key is not set and where to
+  /// set it (imageai.ts aiFailed nokey: "No DeepSeek API key", with Set DeepSeek API Key… and AI Settings…)
+  @Test func rewriteFollowsTheHandEditAFailureKeepsTheTextAndWithNoKeyItSaysWhereToSetIt() async throws {
     let r = try await Rig(summaryBoard(), zoom: 1)
     defer { r.close() }
     let c = r.canvas
     atSummaries(r)
-    // no key: no ↻
     c.hoverSummary(sec1)
-    #expect(c.summaryButtons.sublayers?.isEmpty ?? true)
+    let re = try #require(c.summaryButtons.sublayers?.first)
+    #expect(c.summaryButtons.sublayers?.count == 1)
+    r.click(c.summaryButtons.convert(CGPoint(x: re.frame.midX, y: re.frame.midY), to: c.summaryLayer))
+    #expect(c.toastText == "No DeepSeek API key · Set it in Settings… (⌘,)")
+    #expect(!c.summaryWriting.contains(sec1) && r.doc.board.summary(for: sec1) != nil)
     c.hoverSummary(nil)
     let w = FakeWriter()
     c.summaryWriter = w
@@ -330,9 +335,9 @@ final class FakeWriter: SummaryWriter, @unchecked Sendable {
     atSummaries(r)
     #expect(try column(r, sec1).text.stale)
     c.hoverSummary(sec1)
-    // no writer: ✓ 保留 alone, with the dot
-    let keep = try #require(c.summaryButtons.sublayers?.first)
-    #expect(c.summaryButtons.sublayers?.count == 1 && keep.sublayers?.count == 2)
+    // ↻ with the dot, then ✓ 保留, a writer or not
+    let buttons = c.summaryButtons.sublayers ?? []
+    #expect(buttons.count == 2 && buttons.first?.sublayers?.count == 2 && buttons.last?.sublayers?.count == 1)
     c.keepSummary(sec1)
     #expect(!r.doc.board.summaryPending(sec1) && r.doc.undoName == "Keep Summary")
     await r.settle()

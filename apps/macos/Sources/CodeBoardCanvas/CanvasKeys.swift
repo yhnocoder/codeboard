@@ -39,6 +39,9 @@ struct BoardKey {
 
   static let groups = ["Create", "View", "Cards", "Code", "Board"]
 
+  /// The key a row with this label shows (keymap.ts kbd: its first)
+  static func show(of label: String) -> String? { all.first { $0.label == label }?.show }
+
   /// In keymap.ts's order, groups and words, the rows the app has: the first row that matches and applies takes the key.
   /// The rows with no action are shown only: gestures, and the keys the app menu answers (Mac-only ones among them:
   /// tabs, the sidebar, the vault), which CodeBoardShellTests holds to the menu
