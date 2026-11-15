@@ -482,6 +482,10 @@
           "tests": ["FullWindowSheetTests"]
         }
       }
+    },
+    "MarkdownEditorDemoTests": {
+      "changed": "whole",
+      "important": "whole"
     }
   }
 }

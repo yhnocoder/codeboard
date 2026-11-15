@@ -19,6 +19,14 @@ private let allowed: [String: Set<String>] = [
     "AppKit", "CodeBoardMarkdown", "CodeBoardTestGuard", "CodeUI", "CoreGraphics", "CoreText", "Foundation",
     "JavaScriptCore", "Synchronization",
   ],
+  // the component's own bench and demo, in its sample look
+  "MarkdownBench": [
+    "AppKit", "CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeUI", "CoreGraphics", "Foundation", "ImageIO",
+    "UniformTypeIdentifiers",
+  ],
+  "MarkdownEditorDemo": [
+    "AppKit", "CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeUI", "Foundation", "ImageIO", "TreeSitterHighlight",
+  ],
 ]
 /// The components' own targets, by the names they keep until the split
 private let ownNames = ["CodeBoardMarkdownUI", "CodeBoardMarkdown", "CodeBoardTestGuard"]

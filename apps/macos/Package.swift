@@ -85,6 +85,11 @@ package.targets += [
   // Markdown laid out and drawn with CoreText, edited in place; formulas and diagrams through JavaScriptCore (6.3)
   .target(name: "CodeBoardMarkdownUI", dependencies: ["CodeBoardMarkdown", "CodeUI", "CodeBoardTestGuard"]),
   .executableTarget(name: "MarkdownBench", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeUI"]),
+  // the component on its own: a .md file read and edited in its sample look, its code coloured by TreeSitterHighlight
+  .executableTarget(
+    name: "MarkdownEditorDemo",
+    dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeUI", "TreeSitterHighlight"]),
+  .testTarget(name: "MarkdownEditorDemoTests", dependencies: ["MarkdownEditorDemo", "CodeBoardTestGuard"]),
   .executableTarget(
     name: "MarkdownLook", dependencies: ["CodeBoardMarkdown", "CodeBoardMarkdownUI", "CodeUI", "TreeSitterHighlight"]),
   .testTarget(name: "CodeBoardMarkdownTests", dependencies: ["CodeBoardMarkdown"], resources: [.copy("Fixtures")]),
