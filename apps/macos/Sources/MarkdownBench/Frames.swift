@@ -5,7 +5,7 @@ import CodeBoardMarkdownUI
 /// `MarkdownBench --frames <script.json> --out <folder>`: plays a scripted input sequence into the editor without a window
 /// and writes the editor's picture after each step as frame-001.png, frame-002.png… (2x), and steps.json with what each
 /// step was, the selection after it and the main thread's time it took. For acceptance evidence beside the web's frames
-/// of the same script. The script: {"text": "...", "width": 360, "look": "warm-ink", "dark": false, "steps": [...]},
+/// of the same script, in the component's sample look. The script: {"text": "...", "width": 360, "dark": false, "steps": [...]},
 /// each step one of {"type": "abc"} (each character a key), {"key": "enter|backspace|delete|tab|shiftEnter"},
 /// {"move": "left|right|up|down|wordLeft|wordRight|lineStart|lineEnd", "extend": bool}, {"select": [anchor, head]},
 /// {"command": "bold|italic|code|highlight|strike|h1…h6|body"}, {"marked": "pinyin"}, {"commit": "中"}, {"undo": true},
@@ -18,7 +18,6 @@ enum Frames {
   struct Script: Decodable {
     var text: String
     var width: Double?
-    var look: String?
     var dark: Bool?
     var steps: [Step]
   }
@@ -45,23 +44,21 @@ enum Frames {
   static func run(_ script: URL, out: URL) throws {
     let s = try JSONDecoder().decode(Script.self, from: Data(contentsOf: script))
     try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
-    try MarkdownAssets.fonts.get()
     let resources = BenchResources(math: try MarkdownAssets.engines())
-    let card = MarkdownLooks.card(.note, look: s.look ?? "warm-ink", dark: s.dark ?? false)
-    let width = CGFloat(s.width ?? 360) - card.padding[1] - card.padding[3]
-    let layout = BlockLayout(
-      MarkdownDocument(s.text), width: width, theme: card.theme, layout: nil, resources: resources)
+    let theme = BenchLook.theme(dark: s.dark ?? false)
+    let width = CGFloat(s.width ?? 360) - 2 * BenchLook.side
+    let layout = BlockLayout(MarkdownDocument(s.text), width: width, theme: theme, layout: nil, resources: resources)
     let v = MarkdownEditorView(layout: layout, caret: 0)
     v.alwaysShowsCaret = true
-    v.caretColor = NSColor(cgColor: card.theme.colors.accent.cg) ?? .controlAccentColor
-    v.selectionColor = NSColor(cgColor: card.theme.colors.accent.alpha(0.26).cg) ?? .selectedTextBackgroundColor
+    v.caretColor = NSColor(cgColor: theme.colors.accent.cg) ?? .controlAccentColor
+    v.selectionColor = NSColor(cgColor: theme.colors.accent.alpha(0.26).cg) ?? .selectedTextBackgroundColor
     var log: [[String: Any]] = []
-    try frame(v, card, 0, out)
+    try frame(v, theme, 0, out)
     for (i, step) in s.steps.enumerated() {
       let t = cpu()
       let did = play(step, v)
       let ms = cpu() - t
-      let drawMs = try frame(v, card, i + 1, out)
+      let drawMs = try frame(v, theme, i + 1, out)
       log.append([
         "step": i + 1, "did": did, "anchor": v.selection.anchor, "head": v.selection.head,
         "ms": (ms * 1000).rounded() / 1000, "drawMs": (drawMs * 1000).rounded() / 1000,
@@ -177,20 +174,19 @@ enum Frames {
     return "nothing"
   }
 
-  /// the editor's picture on its card's paper, 2x; the main thread's time the editor's drawing took
+  /// the editor's picture on its paper, 2x; the main thread's time the editor's drawing took
   @discardableResult
-  static func frame(_ v: MarkdownEditorView, _ card: MarkdownLooks.Card, _ n: Int, _ out: URL) throws -> Double {
-    let size = CGSize(
-      width: v.core.layout.size.width + card.padding[1] + card.padding[3], height: v.core.layout.size.height + 24)
+  static func frame(_ v: MarkdownEditorView, _ theme: MarkdownTheme, _ n: Int, _ out: URL) throws -> Double {
+    let size = CGSize(width: v.core.layout.size.width + 2 * BenchLook.side, height: v.core.layout.size.height + 24)
     let scale: CGFloat = 2
     let ctx = CGContext(
       data: nil, width: Int(size.width * scale), height: Int(size.height * scale), bitsPerComponent: 8, bytesPerRow: 0,
       space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
-    ctx.setFillColor(card.theme.colors.surface.cg)
+    ctx.setFillColor(theme.colors.surface.cg)
     ctx.fill(CGRect(x: 0, y: 0, width: ctx.width, height: ctx.height))
     ctx.translateBy(x: 0, y: CGFloat(ctx.height))
     ctx.scaleBy(x: scale, y: -scale)
-    ctx.translateBy(x: card.padding[3], y: 12)
+    ctx.translateBy(x: BenchLook.side, y: 12)
     NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
     let t = cpu()
     v.draw(CGRect(origin: .zero, size: v.core.layout.size))

@@ -2,7 +2,7 @@ import Foundation
 
 // The Markdown component's benches, without a window, each printing one JSON object (thread CPU or wall time, see each):
 //   MarkdownBench --editor               what a key costs while a 1200-paragraph Note is edited (EditorBench)
-//   MarkdownBench --notes                the synthetic Notes laid out and drawn, per look (NotesBench)
+//   MarkdownBench --notes                the synthetic Notes laid out and drawn, light and dark (NotesBench)
 //   MarkdownBench --write-notes <folder> writes the synthetic Notes and their pictures there (for the web side)
 //   MarkdownBench --write-editor-note <file>  writes --editor's 1200-paragraph Note there (for the web side)
 //   MarkdownBench --hold notes|editor    the forty Notes laid out and drawn at 2x (or the 1200-paragraph Note open for

@@ -7,13 +7,11 @@ import Foundation
 enum Hold {
   /// The forty Notes laid out and drawn once at 2x, or the 1200-paragraph Note opened for editing with its view drawn
   static func make(_ what: String) throws -> [AnyObject] {
-    try MarkdownAssets.fonts.get()
     let resources = BenchResources(math: try MarkdownAssets.engines())
     if what == "editor" {
-      let card = MarkdownLooks.card(.note, look: "warm-ink", dark: false)
       let l = BlockLayout(
-        MarkdownDocument(EditorBench.document(definitions: false)), width: 360 - card.padding[1] - card.padding[3],
-        theme: card.theme, layout: nil, resources: resources)
+        MarkdownDocument(EditorBench.document(definitions: false)), width: BenchLook.width,
+        theme: BenchLook.theme(dark: false), layout: nil, resources: resources)
       let core = EditorCore(layout: l, caret: 0)
       _ = NotesBench.draw(l, scale: 2, clip: CGRect(x: 0, y: 0, width: l.size.width, height: 800))
       return [l, core]
@@ -22,7 +20,7 @@ enum Hold {
   }
 
   static func laidOut(
-    resources: BenchResources, notes: [(name: String, text: String, style: MarkdownLooks.Style)]
+    resources: BenchResources, notes: [(name: String, text: String)]
   ) -> [AnyObject] {
     final class Kept: @unchecked Sendable {
       let lock = NSLock()
@@ -32,9 +30,8 @@ enum Hold {
     DispatchQueue.concurrentPerform(iterations: notes.count) { i in
       autoreleasepool {
         let n = notes[i]
-        let card = MarkdownLooks.card(n.style, look: "warm-ink", dark: false)
         let l = BlockLayout(
-          MarkdownDocument(n.text), width: 360 - card.padding[1] - card.padding[3], theme: card.theme, layout: nil,
+          MarkdownDocument(n.text), width: BenchLook.width, theme: BenchLook.theme(dark: false), layout: nil,
           resources: resources)
         _ = NotesBench.draw(l, scale: 2)
         kept.lock.withLock { kept.layouts.append(l) }
@@ -43,13 +40,12 @@ enum Hold {
     return kept.layouts
   }
 
-  /// From a cold process: fonts, engines and the warm-up, then one Note shown (laid out and drawn at 2x), then all forty at once
+  /// From a cold process: the engines and the warm-up, then one Note shown (laid out and drawn at 2x), then all forty at once
   static func first() throws -> [String: Double] {
     let t0 = Date()
-    try MarkdownAssets.fonts.get()
     let resources = BenchResources(math: try MarkdownAssets.engines())
     // as a host starts: the warm-up (the web page warms its editor up while it loads, which its start counts too)
-    MarkdownAssets.warmUp(math: resources.math)
+    MarkdownAssets.warmUp(math: resources.math, themes: [BenchLook.theme(dark: false), BenchLook.theme(dark: true)])
     let t1 = Date()
     let notes = SyntheticNotes.all()
     _ = laidOut(resources: resources, notes: [notes[0]])

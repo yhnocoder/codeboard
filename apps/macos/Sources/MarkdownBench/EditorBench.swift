@@ -67,14 +67,12 @@ enum EditorBench {
   }
 
   static func row(_ text: String, anchor: String, script: Script) throws -> [String: Any] {
-    try MarkdownAssets.fonts.get()
     let resources = BenchResources(math: try MarkdownAssets.engines())
-    let card = MarkdownLooks.card(.note, look: "warm-ink", dark: false)
-    let width = 360 - card.padding[1] - card.padding[3]
+    let width = BenchLook.width
     // the Note shown (laid out for the display), then opened for editing (a copy of that layout)
     let t0 = cpu()
     let shownLayout = BlockLayout(
-      MarkdownDocument(text), width: width, theme: card.theme, layout: nil, resources: resources)
+      MarkdownDocument(text), width: width, theme: BenchLook.theme(dark: false), layout: nil, resources: resources)
     let t1 = cpu()
     let editor = shownLayout.copy(resources: resources)
     let entered = cpu() - t1

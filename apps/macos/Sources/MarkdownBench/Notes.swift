@@ -7,8 +7,7 @@ import ImageIO
 import UniformTypeIdentifiers
 
 /// Forty made-up Notes of every kind of content (prose in English and Chinese, lists, tables, code, formulas, a
-/// diagram, images) and the Text and Box looks: what `--notes` times and what `--write-notes` writes out for the web
-/// side of a comparison. Nothing in it comes from a real board
+/// diagram, images): what `--notes` times and what `--write-notes` writes out for the web side of a comparison
 enum SyntheticNotes {
   static let prose = [
     "The scheduler takes one step of the batch: it picks the sequences that fit, runs the model once and appends a "
@@ -37,9 +36,9 @@ enum SyntheticNotes {
   static let diagram =
     "```mermaid\nflowchart LR\n  A[请求] --> B{有空闲块?}\n  B -->|是| C[Prefill]\n  B -->|否| D[等待]\n```"
 
-  /// The Notes: name, Markdown, look style
-  static func all() -> [(name: String, text: String, style: MarkdownLooks.Style)] {
-    var out: [(String, String, MarkdownLooks.Style)] = []
+  /// The Notes: name, Markdown
+  static func all() -> [(name: String, text: String)] {
+    var out: [(String, String)] = []
     for i in 0..<40 {
       var parts = ["# Note \(i + 1)", prose[i % 3]]
       if i % 2 == 0 { parts.append(code[i / 2 % 2]) }
@@ -51,13 +50,7 @@ enum SyntheticNotes {
       }
       if i == 17 { parts.append(diagram) }
       parts.append(prose[(i + 1) % 3])
-      let style: MarkdownLooks.Style =
-        switch i % 10 {
-        case 7: .text(size: 13.5, wrap: true)
-        case 8: .box(size: 16, wrap: true)
-        default: .note
-        }
-      out.append(("note-\(i + 1)", parts.joined(separator: "\n\n"), style))
+      out.append(("note-\(i + 1)", parts.joined(separator: "\n\n")))
     }
     return out
   }
@@ -75,14 +68,7 @@ enum SyntheticNotes {
     var list: [[String: Any]] = []
     for n in all() {
       try n.text.write(to: folder.appending(path: n.name + ".md"), atomically: true, encoding: .utf8)
-      // the card style as board.json writes it
-      let style: [String: Any] =
-        switch n.style {
-        case .note, .sidenote: ["note": [String: Any]()]
-        case .text(let size, let wrap): ["text": ["fontSize": size, "wrap": wrap]]
-        case .box(let size, let wrap): ["box": ["fill": "blue", "fontSize": size, "wrap": wrap]]
-        }
-      list.append(["name": n.name, "style": style])
+      list.append(["name": n.name, "style": ["note": [String: Any]()]])
     }
     try JSONSerialization.data(withJSONObject: list, options: [.prettyPrinted]).write(
       to: folder.appending(path: "notes.json"))
@@ -108,6 +94,13 @@ enum SyntheticNotes {
   }
 }
 
+/// The look the benches lay out in: the component's sample look, 360 wide with 14 on either side
+enum BenchLook {
+  static let side: CGFloat = 14
+  static let width: CGFloat = 360 - 2 * side
+  static func theme(dark: Bool) -> MarkdownTheme { .sample(dark: dark) }
+}
+
 /// The bench's resources: the engines, and the synthetic pictures' sizes (never decoded: images are drawn as empty
 /// places, which costs what the host's decoded image would not)
 struct BenchResources: MarkdownResources {
@@ -121,28 +114,27 @@ struct BenchResources: MarkdownResources {
   var mathPreamble: String { "" }
 }
 
-/// `MarkdownBench --notes`: each synthetic Note laid out afresh and drawn at 100 % and 200 %, in every look and
-/// appearance, and all of them laid out and drawn on every core at once as a board opens
+/// `MarkdownBench --notes`: each synthetic Note laid out afresh and drawn at 100 % and 200 %, light and dark, and all
+/// of them laid out and drawn on every core at once as a page of them opens
 enum NotesBench {
   static func run() throws -> [String: Any] {
     let t = Date()
-    try MarkdownAssets.fonts.get()
     let engines = try MarkdownAssets.engines()
     let warm = Date().timeIntervalSince(t) * 1000
     let resources = BenchResources(math: engines)
     let notes = SyntheticNotes.all()
-    var out: [String: Any] = ["fonts_and_engines_ms": (warm * 10).rounded() / 10, "notes": notes.count]
-    for look in ["warm-ink", "ink-wash"] {
+    var out: [String: Any] = ["engines_ms": (warm * 10).rounded() / 10, "notes": notes.count]
+    do {
       for dark in [false, true] {
         var layouts: [Double] = []
         var d1: [Double] = []
         var d2: [Double] = []
         var laid: [BlockLayout] = []
         for n in notes {
-          let card = MarkdownLooks.card(n.style, look: look, dark: dark)
-          let w = 360 - card.padding[1] - card.padding[3]
           let a = Date()
-          let l = BlockLayout(MarkdownDocument(n.text), width: w, theme: card.theme, layout: nil, resources: resources)
+          let l = BlockLayout(
+            MarkdownDocument(n.text), width: BenchLook.width, theme: BenchLook.theme(dark: dark), layout: nil,
+            resources: resources)
           layouts.append(Date().timeIntervalSince(a) * 1000)
           laid.append(l)
         }
@@ -154,15 +146,14 @@ enum NotesBench {
         DispatchQueue.concurrentPerform(iterations: notes.count) { i in
           autoreleasepool {
             let n = notes[i]
-            let card = MarkdownLooks.card(n.style, look: look, dark: dark)
             let l = BlockLayout(
-              MarkdownDocument(n.text), width: 360 - card.padding[1] - card.padding[3], theme: card.theme, layout: nil,
+              MarkdownDocument(n.text), width: BenchLook.width, theme: BenchLook.theme(dark: dark), layout: nil,
               resources: resources)
             _ = draw(l, scale: 1)
           }
         }
         let parallel = Date().timeIntervalSince(all) * 1000
-        out["\(look)\(dark ? " dark" : "")"] = [
+        out[dark ? "dark" : "light"] = [
           "layout_median": pct(layouts, 0.5), "layout_p95": pct(layouts, 0.95), "draw100_median": pct(d1, 0.5),
           "draw100_p95": pct(d1, 0.95), "draw200_median": pct(d2, 0.5), "draw200_p95": pct(d2, 0.95),
           "all_parallel": (parallel * 100).rounded() / 100,
