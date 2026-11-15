@@ -441,7 +441,7 @@ func footprint(_ pid: pid_t = getpid()) -> Int {
 /// so `webKitFootprint()` must be called once before anything starts a web view
 private let webKitBefore = webKitProcesses()
 
-private func webKitProcesses() -> Set<pid_t> {
+func webKitProcesses() -> Set<pid_t> {
   var pids = [pid_t](repeating: 0, count: 8192)
   let n = Int(proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size)))
   var path = [CChar](repeating: 0, count: 4096)
