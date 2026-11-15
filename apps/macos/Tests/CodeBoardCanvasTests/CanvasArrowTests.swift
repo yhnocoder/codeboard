@@ -242,7 +242,11 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     let dropped = label.box.position
     await r.settle()
     #expect(r.canvas.items[li] === label, "it keeps its layer")
-    #expect(hypot(label.box.position.x - dropped.x, label.box.position.y - dropped.y) < 0.5, "where it was let go")
+    // where it was let go, its bitmap's corner on the nearest device pixel at rest (placeItems onPixels): at most half a
+    // pixel each way, a board unit at 50 % on a 1x screen
+    let half = 0.5 / (zoom * r.canvas.backing) + 0.001
+    let moved = (label.box.position.x - dropped.x, label.box.position.y - dropped.y)
+    #expect(abs(moved.0) <= half && abs(moved.1) <= half, "where it was let go: \(moved), half a pixel \(half)")
     #expect(r.doc.selection == [.arrow(aid("a1"))])
     // its menu: back to the middle, then no label
     let menu = r.canvas.labelMenu(aid("a1"))
