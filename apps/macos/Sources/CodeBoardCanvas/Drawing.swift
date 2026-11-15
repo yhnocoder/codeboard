@@ -171,8 +171,7 @@ enum Drawing: Sendable {
     case .note(let n):
       switch n.content {
       case .note:
-        // folded away as it is written in: no header bar under the editor's heading (.chead.fold: transparent)
-        Drawing.paper(ctx, r, t, id: n.id, rule: n.folded ? nil : true)
+        Drawing.paper(ctx, r, t, id: n.id, rule: !n.folded)
         if n.folded {
           Drawing.edge(ctx, r, t)
           return decodes

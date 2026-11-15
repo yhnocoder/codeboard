@@ -1028,18 +1028,6 @@ extension CanvasView {
 
   public override func mouseDown(with e: NSEvent) {
     if spacePanDown(e) { return }
-    // a header button of the Note being written (its editor lets the press through): acts on the release over it, the
-    // writing going on, the editor keeping the keyboard
-    if let ed = editing, !ed.code, let (id, a) = headAct(at: camera.board(convert(e.locationInWindow, from: nil))),
-      id == ed.id
-    {
-      if e.clickCount == 1 {
-        hold(
-          over: { [weak self] in self?.headAct(at: $0).map { $0 == (id, a) } == true },
-          act: { [weak self] in self?.press(a, of: id) })
-      }
-      return
-    }
     // a click outside the card being written in (on it, the web view takes it) ends the writing
     if editing != nil { Task { await endEditing() } }
     window?.makeFirstResponder(self)

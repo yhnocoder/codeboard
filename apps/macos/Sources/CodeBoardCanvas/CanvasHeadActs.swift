@@ -16,8 +16,6 @@ enum HeadAct: Equatable {
   case open
   /// A locked card's lock, first in its header (.lockb): Unlock
   case unlock
-  /// A Note being written: Markdown Source (.ib.mdsrc, ⌘/)
-  case source
 }
 
 extension CanvasView {
@@ -33,8 +31,6 @@ extension CanvasView {
     var parts = 0
     /// A Web card's: its two buttons on glass over its top right corner (.wacts), no header behind them
     var floating = false
-    /// A Note written in whose header folded away (.chead.fold): its buttons only, over the editor's heading
-    var folded = false
   }
 
   /// The language picker's languages and the label of any language (analysis langs.ts LANG_TABLE, those picked first)
@@ -63,7 +59,6 @@ extension CanvasView {
     var right: CGFloat
     var acts: [HeadAct]
     var h: Head
-    var source: (HeadAct, CGRect)?
     switch it.drawing {
     case .web:
       // ↗ and ⋯ over the top right corner, 22 square, 7 in, 2 apart (web.css .wacts)
@@ -91,22 +86,12 @@ extension CanvasView {
       if card.height == nil { h.faint.insert(.fit) }
       if parts == 0 { h.faint.insert(.split) }
       right = Drawing.headerRight(nil, width: w, t)
-      // being written: M↓ before its ··· (shown while editing); one whose header shows its heading folds it away, its
-      // M↓ and ··· only (.chead.fold > .ib)
-      if let ed = editing, ed.id == id, !ed.code, ed.ready {
-        h.folded = n.hideHead && !ed.unfolding
-        if h.folded { acts = [] }
-        if noteEditor.sourceMode { h.on.insert(.source) }
-        let sw = (Drawing.width("M↓", HeadActs.sourceFont) + 12).rounded(.up)
-        source = (.source, CGRect(x: right - sw, y: y, width: sw, height: 26))
-      }
     default:
       return nil
     }
-    // right to left, 2 apart (.hov > span gap), anchored right, before M↓ when it shows; the title gives way for them
-    // and the gap before them
-    var x = source.map { $0.1.minX - t.headerGap } ?? right
-    var buttons: [(HeadAct, CGRect)] = source.map { [$0] } ?? []
+    // right to left, 2 apart (.hov > span gap), anchored right; the title gives way for them and the gap before them
+    var x = right
+    var buttons: [(HeadAct, CGRect)] = []
     for a in acts.reversed() {
       if a == .lang, let label = h.lang {
         let lw = (Drawing.width(label, HeadActs.langFont) + 10).rounded(.up)
@@ -126,7 +111,7 @@ extension CanvasView {
       default: false
       }
     let lockb = CGRect(x: t.headerPad, y: t.headerHeight / 2 - 9, width: 18, height: 18)
-    h.buttons = (locked && !h.folded ? [(.unlock, lockb)] : []) + buttons.reversed() + [more]
+    h.buttons = (locked ? [(.unlock, lockb)] : []) + buttons.reversed() + [more]
     h.reserve = right - (x + 2) + t.headerGap
     return h
   }
@@ -158,7 +143,6 @@ extension CanvasView {
     case .wrap: toggleWrap([id])
     case .copy: copyCode(id)
     case .unlock: doc.edit("Unlock") { $0.setLocked([.card(id)], false) }
-    case .source: noteEditor.toggleSource()
     case .split: if !h.faint.contains(.split) { splitByHeadings(id) }
     case .open:
       if case .own(let k)? = doc.board.card(id)?.content, case .web(let w) = k.body { openLink(w.url) }
@@ -268,7 +252,6 @@ extension CanvasView {
     case .more: "More Actions"
     case .open: "Open in Browser  Double-click"
     case .unlock: "Unlock"
-    case .source: "Markdown Source  ⌘/"
     }
   }
 
@@ -297,8 +280,7 @@ extension CanvasView {
       let hovered = hoveredHead?.0 == id ? hoveredHead?.1 : nil
       let size = box.bounds.size
       let key =
-        "\(h.drawing) \(h.buttons.map(\.1)) \(h.on) \(h.faint) \(String(describing: hovered)) \(size) \(theme.id) "
-        + "\(theme.dark) \(scale)"
+        "\(h.drawing) \(h.on) \(h.faint) \(String(describing: hovered)) \(size) \(theme.id) \(theme.dark) \(scale)"
       let l: CALayer
       if let shown = headShown[id] {
         l = shown.layer
@@ -381,11 +363,6 @@ enum HeadActs {
     Font.board("JetBrainsMono-400-600", size: 10.5, weight: 500) ?? Font.mono(10.5, .medium)
   }
 
-  /// M↓'s font: 600 11.5 mono (.ib.mdsrc)
-  static var sourceFont: Font {
-    Font.board("JetBrainsMono-400-600", size: 11.5, weight: 600) ?? Font.mono(11.5, .semibold)
-  }
-
   static var wrap: CGPath { SVGPath.parse("M2 4h12M2 8h10a2 2 0 1 1 0 4H9M11 10l-2 2 2 2M2 12h4") }
   static var copy: CGPath {
     SVGPath.parse(
@@ -402,12 +379,11 @@ enum HeadActs {
     ctx.clip(
       to: CGRect(
         x: t.headerPad - 4, y: 2, width: size.width - t.headerPadRight - (t.headerPad - 4), height: t.headerHeight - 4))
-    // folded away: nothing behind its buttons but the editor's heading
-    switch h.folded ? nil : h.drawing {
-    case .code(let c)?:
+    switch h.drawing {
+    case .code(let c):
       Drawing.paper(ctx, card, t, id: c.id, rule: false)
       Drawing.header(ctx, c, card, t, reserve: h.reserve)
-    case .note(let n)?:
+    case .note(let n):
       Drawing.paper(ctx, card, t, id: n.id, rule: true)
       Drawing.noteHeader(ctx, n, width: size.width, t, reserve: h.reserve)
     default: break
@@ -426,19 +402,6 @@ enum HeadActs {
           ctx.fillPath()
         }
         Drawing.text(ctx, label, HeadActs.langFont, lit ? t.ink : t.ink3, x: r.minX + 5, midY: r.midY, width: .infinity)
-        continue
-      }
-      if a == .source {
-        // .ib.mdsrc: M↓ in 600 11.5 mono; on (.on), the accent's tint behind it and the accent
-        let on = h.on.contains(.source)
-        if on || lit {
-          ctx.addPath(CGPath(roundedRect: r, cornerWidth: 8.5, cornerHeight: 8.5, transform: nil))
-          ctx.setFillColor(on ? t.accent.copy(alpha: 0.14) ?? t.hlrow : t.ink.copy(alpha: 0.07) ?? t.hlrow)
-          ctx.fillPath()
-        }
-        let tw = Drawing.width("M↓", sourceFont)
-        Drawing.text(
-          ctx, "M↓", sourceFont, on ? t.accent : lit ? t.ink : t.ink2, x: r.midX - tw / 2, midY: r.midY, width: tw)
         continue
       }
       if a == .unlock {
@@ -472,7 +435,7 @@ enum HeadActs {
         case .wrap: wrap
         case .copy: copy
         case .split: splitH
-        case .more, .lang, .open, .unlock, .source: CGMutablePath()
+        case .more, .lang, .open, .unlock: CGMutablePath()
         }
       ctx.saveGState()
       if faint { ctx.setAlpha(0.35) }

@@ -106,12 +106,6 @@ extension CanvasView {
     editor.onRef = { [weak self] in self?.refPressed($0, inPopup: false) }
     editor.onElsewhere = { [weak self] in self?.closeRefPeek() }
     editor.view.escape = { [weak self] in self?.escapePeek() ?? false }
-    // the header's buttons are the canvas's, drawn under the editor: presses on them come through to it
-    editor.view.passes = { [weak self] p in
-      guard let self, let ed = self.editing, !ed.code else { return false }
-      return self.headAct(at: self.camera.board(self.convert(p, from: self.superview)))?.0 == ed.id
-    }
-    editor.onSourceMode = { [weak self] in self?.drawChrome() }
     closeRefPeek()
     editor.onPicked = { group, id in
       let b = group ?? doc.board.id.rawValue

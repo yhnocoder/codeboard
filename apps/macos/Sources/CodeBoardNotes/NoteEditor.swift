@@ -22,16 +22,6 @@ public final class NoteEditor: NSObject {
     public var blocks: (was: [String]?, now: [String]?)?
   }
 
-  /// The Note shows its Markdown source (⌘/, the header's M↓), as the editor says
-  public private(set) var sourceMode = false
-  /// The source mode changed
-  public var onSourceMode: (() -> Void)?
-
-  /// The header's M↓: the Note as its Markdown source, or back (md/load.ts toggleNoteSource)
-  public func toggleSource() {
-    view.evaluateJavaScript("edit.toggleSource()")
-  }
-
   public let view: EditorWebView
   /// Who is writing with it now (a canvas): the one that began last; one that began before it leaves the editor alone
   public weak var owner: AnyObject?
@@ -86,7 +76,6 @@ public final class NoteEditor: NSObject {
     // the page focuses what it mounts, which gives the view the keyboard before it is shown: keys typed from then on
     // wait for `replay`, behind those typed before
     view.held = []
-    sourceMode = false
     await ready()
     view.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
     view.cardRect = .zero
@@ -251,9 +240,6 @@ public final class NoteEditor: NSObject {
     case "ref": if let p = RefPress(m) { onRef?(p) }
     case "refDouble": onRef?(nil)
     case "elsewhere": onElsewhere?()
-    case "sourceMode":
-      sourceMode = m["on"] as? Bool ?? false
-      onSourceMode?()
     case "ui":
       let rects = (m["rects"] as? [[String: Double]]) ?? []
       view.uiRects = rects.map {
@@ -341,10 +327,6 @@ public final class EditorWebView: WKWebView {
   /// Keys that wait while the keys typed before the editor was there are handed to it (NoteEditor.replay)
   package var held: [NSEvent]?
 
-  /// Presses at a point (in the superview) that go to the view under it instead: the card's header buttons the canvas
-  /// draws there
-  package var passes: ((NSPoint) -> Bool)?
-
   public override func keyDown(with e: NSEvent) {
     if held != nil {
       held?.append(e)
@@ -375,7 +357,7 @@ public final class EditorWebView: WKWebView {
   }
 
   public override func hitTest(_ point: NSPoint) -> NSView? {
-    guard shown, let sv = superview, passes?(point) != true else { return nil }
+    guard shown, let sv = superview else { return nil }
     let p = convert(point, from: sv)
     // a WKWebView is flipped
     let inside = cardRect.insetBy(dx: -6, dy: -6).contains(p) || uiRects.contains { $0.contains(p) }
