@@ -177,6 +177,8 @@ import CodeBoardNotes
         pane.canvas.summaryWriter = summaryWriter
         pane.canvas.cameras = cameras
         pane.onOpenBoard = { [weak self] in self?.shell.show($0) }
+        pane.canvas.onEnterBoard = { [weak self] in self?.shell.enter($0, from: $1, camera: $2) }
+        pane.canvas.onLeaveBoard = { [weak self] in self?.shell.leave(to: $0) }
         // a sub-board card's Delete Board…: asked as main asks (host handlers.ts deleteBoardAsked), then as the
         // sidebar's Delete, to the Trash
         pane.canvas.onDeleteBoard = { [weak self, weak pane] id in
@@ -196,6 +198,9 @@ import CodeBoardNotes
         addSubview(pane)
       }
       let theme = shell.look
+      pane.canvas.crumbs = tab.crumbs.map {
+        CrumbShown(board: $0.board, frame: $0.frame, name: shell.board($0.board)?.title ?? "Board")
+      }
       if let vault = shell.vault, let at = shell.board(tab.board),
         pane.document?.id != tab.board || pane.shown?.path != at.path || pane.failed && reload
       {

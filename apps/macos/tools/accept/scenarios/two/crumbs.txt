@@ -1,0 +1,31 @@
+# 进出子白板（main：ui/Crumbs.tsx、actions/subboards.ts enterFrame / leaveBoard）：双击子白板卡进 Third，左上角面包屑「‹ First › Third」，名字从卡上飞过去；点面包屑里的 First 回去，镜头回到进去前；再进去，Esc 回去。--only mac
+# storage: storage-two
+zoom 1
+center @csub:c
+wait 300
+mark
+expect csub.x = 860
+rec in
+dbl @csub:c
+wait 900
+stop
+expect ui.crumbs.w > 60
+expect cthird.x = 80
+expect ui.crumbcur.w > 30
+expect ui.crumb0.w > 20
+shot inside
+rec out
+click @ui.crumb0:c
+wait 900
+stop
+expect csub.x = 860
+expect cam.x = was
+expect cam.y = was
+dbl @csub:c
+wait 900
+expect ui.crumbs.w > 60
+expect cthird.x = 80
+key esc
+wait 900
+expect csub.x = 860
+expect cam.x = was

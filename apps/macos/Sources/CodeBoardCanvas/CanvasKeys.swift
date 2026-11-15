@@ -105,7 +105,7 @@ struct BoardKey {
     BoardKey(show: "⇧⌘Z", label: "Redo", group: "Board"),
     BoardKey(show: "⌘,", label: "Settings", group: "Board"),
     BoardKey(action: .help, presses: [char("?")], show: "?", label: "Keyboard Shortcuts", group: "Board"),
-    BoardKey(action: .escape, presses: [code(53)], show: "Esc", label: "Cancel · Deselect", group: "Board"),
+    BoardKey(action: .escape, presses: [code(53)], show: "Esc", label: "Cancel · Deselect · Back to the parent board", group: "Board"),
     BoardKey(show: "⌘O", label: "Open Vault…", group: "Board"),
     BoardKey(show: "⇧⌘I", label: "Import Old Boards…", group: "Board"),
     BoardKey(show: "⌘W", label: "Close Tab", group: "Board"),
@@ -198,7 +198,7 @@ extension CanvasView {
     return true
   }
 
-  /// Esc: a ref's preview, the mode, else the popup, else the selection
+  /// Esc: a ref's preview, the mode, else the popup, else the selection, else back to the parent board
   private func escape() {
     if keysPanel != nil { return toggleKeys() }
     if refPeek != nil { return closeRefPeek() }
@@ -208,6 +208,8 @@ extension CanvasView {
     if cancelMode() { return }
     if openPop != nil { return openPop(nil) }
     if lineSel != nil { return clearLineSel() }
+    // over a sub-board with nothing selected: back to the parent board (subboards.ts canLeave)
+    if gesture == nil, !crumbs.isEmpty, document?.selection.isEmpty == true { return leaveBoard() }
     if gesture == nil { document?.select([]) }
   }
 

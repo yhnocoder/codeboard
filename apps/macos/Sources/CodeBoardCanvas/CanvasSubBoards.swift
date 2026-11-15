@@ -1,7 +1,7 @@
 import AppKit
 import CodeBoardModel
 
-// Sub-board cards on the canvas: a double-click opens the board one shows in this tab (onOpenBoard), as main's does.
+// Sub-board cards on the canvas: a double-click enters the board one shows in this tab, as main's does (CanvasCrumbs).
 
 extension CanvasView {
   /// The vault changed on disk (a board renamed, moved, made or changed elsewhere): sub-board cards are drawn again
@@ -35,10 +35,10 @@ extension CanvasView {
     return nil
   }
 
-  /// Opens the board a sub-board card shows in this tab; whether it is one
+  /// Enters the board a sub-board card shows, in this tab (CanvasCrumbs.swift); whether it is one
   @discardableResult func openSubBoard(_ id: CardID) -> Bool {
     guard case .board? = scene?.parts[id]?.content.body else { return false }
-    if !isGone(id), let b = subBoardTarget(id) { onOpenBoard?(b, nil) }
+    if !isGone(id), let b = subBoardTarget(id) { enterSubBoard(id, b) }
     return true
   }
 
