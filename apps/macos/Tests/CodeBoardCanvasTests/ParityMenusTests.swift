@@ -137,7 +137,8 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
         "Add Sidenote", "-", "Open All in Browser", "View", "Rename", "Arrange", "Copy Path", "-", "Delete",
       ])
     let code = menu(r, at: r.centre("c1"))
-    #expect(titles(code) == ["Add Sidenote", "-", "View", "Arrange", "Copy Path", "-", "Delete"])
+    #expect(titles(code) == ["Add Sidenote", "-", "Add", "View", "Arrange", "Copy Path", "-", "Delete"])
+    #expect(titles(item(code, "Add")?.submenu) == ["Description"])
     #expect(
       titles(item(code, "View")?.submenu) == [
         "Hide Blank Lines", "Hide Comments", "Hide Docstrings", "Show All Hidden Lines", "-", "Background",

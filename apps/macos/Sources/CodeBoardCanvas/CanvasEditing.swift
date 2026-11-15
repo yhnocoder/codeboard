@@ -1114,6 +1114,8 @@ extension CanvasView {
     // and the text selected at rest (the browser's selection goes with a press)
     clearRestText()
     if spacePanDown(e) { return }
+    // a press anywhere but in it writes the description being written (its editor takes its own presses)
+    if descWriting != nil { endDesc() }
     // a header button of the card written in (its M↓, its ···): the writing goes on, the keys stay in the editor
     if let ed = editing, ed.writer != nil,
       let (id, a) = headAct(at: camera.board(convert(e.locationInWindow, from: nil))), id == ed.id

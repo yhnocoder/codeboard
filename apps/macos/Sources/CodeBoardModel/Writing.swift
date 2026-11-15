@@ -48,6 +48,14 @@ extension Board {
     renameTitleRefs(from: old, to: cardTitle(c).trimmingCharacters(in: .whitespacesAndNewlines))
   }
 
+  /// A card's description as written, its Markdown trimmed; blank is none (cards.ts setCardDesc)
+  public mutating func setDescription(_ id: CardID, _ text: String) {
+    guard let i = cards.firstIndex(where: { $0.id == id }), case .own(var c) = cards[i].content else { return }
+    let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    c.description = t.isEmpty ? nil : t
+    cards[i].content = .own(c)
+  }
+
   /// edit/notes.ts renameTitleRefs: references by title to the old name ([[old]], no id, any case) follow wherever the
   /// board keeps Markdown (mdrefs.ts eachMarkdown), and only where a reference is read, so not in code
   mutating func renameTitleRefs(from: String, to: String) {

@@ -77,7 +77,7 @@ enum SyntheticNotes {
       // the card style as board.json writes it
       let style: [String: Any] =
         switch n.style {
-        case .note, .sidenote: ["note": [String: Any]()]
+        case .note, .sidenote, .desc: ["note": [String: Any]()]
         case .text(let size, let wrap): ["text": ["fontSize": size, "wrap": wrap]]
         case .box(let size, let wrap): ["box": ["fill": "blue", "fontSize": size, "wrap": wrap]]
         }

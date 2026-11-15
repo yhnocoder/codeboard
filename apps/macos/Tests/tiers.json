@@ -243,6 +243,10 @@
           "sources": ["CodeBoardCanvas/CanvasRestText.swift"],
           "tests": ["CanvasRestTextTests"]
         },
+        "descriptions": {
+          "sources": ["CodeBoardCanvas/CanvasDesc.swift"],
+          "tests": ["CanvasDescTests"]
+        },
         "refs": {
           "sources": ["CodeBoardCanvas/CanvasRefs.swift", "CodeBoardCanvas/Refs.swift", "CodeBoardNotes/NoteRef.swift"],
           "tests": [

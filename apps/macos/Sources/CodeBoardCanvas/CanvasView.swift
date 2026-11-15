@@ -213,6 +213,8 @@ public final class CanvasView: NSView {
   /// The editor showing itself at rest at a new zoom
   var editingRests: Task<Void, Never>?
   var editingEnds: Task<Void, Never>?
+  /// A card's description being written in place (CanvasDesc)
+  var descWriting: DescWriting?
   /// An editor is on its way (a double-click, a new card): the keys typed until it is there, for it
   var keysAhead: [NSEvent]?
   /// The floating bar's bitmap and what it shows
@@ -1084,6 +1086,7 @@ public final class CanvasView: NSView {
       world.sublayerTransform = m
       if chrome.sublayers?.isEmpty == false { drawChrome() } else { placeAlignBar() }
       if editing != nil { cameraMovedWhileEditing() }
+      if descWriting != nil { placeDesc() }
       if !pops.isEmpty { positionPop() }
       if refPeek != nil { placeRefPeek() }
       if summaryButtons.superlayer != nil {

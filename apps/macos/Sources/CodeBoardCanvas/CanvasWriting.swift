@@ -501,6 +501,7 @@ extension CanvasView {
 
   /// Stops writing without waiting (the canvas leaves its document, its tab is hidden)
   func dropEditing() {
+    endDesc()
     guard editing != nil, !endEditingNow() else { return }
     Task { await endEditing() }
   }

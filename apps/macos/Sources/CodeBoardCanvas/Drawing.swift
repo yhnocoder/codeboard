@@ -1,3 +1,4 @@
+import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardNotes
 import CodeBoardSyntax
@@ -19,6 +20,24 @@ enum Drawing: Sendable {
   case web(Web)
   case links(Links)
 
+  /// A card's description (Card.tsx Desc, styles.css .cdesc): its Markdown laid out by the Markdown component, as
+  /// tall as it is with its padding and the line under it
+  struct Desc: Sendable {
+    var layout: BlockLayout
+    var card: MarkdownLooks.Card
+    var height: CGFloat
+
+    /// Drawn `y` from the card's top, as wide as the card: its text, then the line under it (.cdesc border-bottom)
+    func draw(_ ctx: CGContext, y: CGFloat, width: CGFloat, scale: CGFloat, _ t: Theme) {
+      ctx.saveGState()
+      ctx.translateBy(x: 0, y: y)
+      card.draw(layout, in: ctx, size: CGSize(width: width, height: height - 1), scale: scale) { _ in nil }
+      ctx.restoreGState()
+      ctx.setFillColor(t.line)
+      ctx.fill(CGRect(x: 0, y: y + height - 1, width: width, height: 1))
+    }
+  }
+
   struct Code: Sendable {
     /// The card's id: picks its paper
     var id: String
@@ -38,6 +57,10 @@ enum Drawing: Sendable {
     var inline: [InlineNote] = []
     /// Locked itself: its header starts with the lock (.lockb)
     var locked = false
+    /// Its description under its header (Card.tsx Desc in .carea), its code below it
+    var desc: Desc?
+    /// Where its code starts: under its header and description
+    var top: CGFloat = 0
   }
 
   /// An Always Show sidenote in a code card: its Markdown, drawn at `frame` (card points), its images in `folder`
@@ -80,6 +103,8 @@ enum Drawing: Sendable {
     var fileSize: CGSize
     var frame: Int
     var framed: Bool
+    /// Its description under the picture (Card.tsx ImageView's Desc)
+    var desc: Desc?
 
     /// Drawn by the Note renderer (WebKit), as the web board's <img> draws it
     var svg: Bool { url?.pathExtension.lowercased() == "svg" }
@@ -158,9 +183,10 @@ enum Drawing: Sendable {
     case .code(let c):
       if c.framed { Drawing.paper(ctx, r, t, id: c.id, rule: false) }
       Drawing.code(ctx, c, r, t)
+      c.desc?.draw(ctx, y: t.headerHeight, width: r.width, scale: scale, t)
       // its Always Show sidenotes, cut where its body ends as its rows are
       if let px = picture {
-        let top = c.framed ? t.headerHeight : 0
+        let top = c.top
         ctx.saveGState()
         ctx.clip(to: CGRect(x: 0, y: top, width: r.width, height: r.height - top))
         Raster.draw(
@@ -204,11 +230,22 @@ enum Drawing: Sendable {
           px, in: CGRect(x: 0, y: 0, width: CGFloat(px.width) / scale, height: CGFloat(px.height) / scale), of: ctx)
       }
     case .image(let p):
-      if p.framed { Drawing.paper(ctx, r, t, id: p.id, rule: nil) }
-      let shape = Drawing.squircle(r, t.cardRadius)
+      // the picture over the card's width, its description (on the card's paper) under it
+      let full = r
+      let r = CGRect(x: 0, y: 0, width: full.width, height: full.height - (p.desc?.height ?? 0))
+      if p.framed || p.desc != nil { Drawing.paper(ctx, full, t, id: p.id, rule: nil) }
+      if let d = p.desc {
+        ctx.saveGState()
+        ctx.addPath(Drawing.squircle(full, t.cardRadius))
+        ctx.clip()
+        d.draw(ctx, y: r.maxY, width: full.width, scale: scale, t)
+        ctx.restoreGState()
+      }
+      let shape = Drawing.squircle(full, t.cardRadius)
       ctx.saveGState()
       ctx.addPath(shape)
       ctx.clip()
+      ctx.clip(to: r)
       if let px = picture {
         // as wide as the card and as tall as its proportions (.imgb img)
         Raster.draw(
@@ -233,7 +270,7 @@ enum Drawing: Sendable {
         }
       }
       ctx.restoreGState()
-      if p.framed { Drawing.edge(ctx, r, t) }
+      if p.framed || p.desc != nil { Drawing.edge(ctx, full, t) }
     case .board(let b):
       decodes += Drawing.subBoard(ctx, b, r, t, scale: scale)
     case .web(let w):
@@ -410,7 +447,7 @@ enum Drawing: Sendable {
 
   private static func code(_ ctx: CGContext, _ c: Code, _ r: CGRect, _ t: Theme) {
     let m = t.metrics
-    let top = c.framed ? t.headerHeight : 0
+    let top = c.top
     if c.framed { header(ctx, c, r, t) }
     ctx.saveGState()
     ctx.clip(to: CGRect(x: 0, y: top, width: r.width, height: r.height - top))
