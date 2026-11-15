@@ -83,16 +83,18 @@ if (!attach && !skip && sides.includes("web")) {
   run("npm", ["run", "build", "-w", "@codeboard/board"], webRepo);
 }
 if (!attach && sides.includes("mac")) {
-  // the Note page of this checkout (cached: a fraction of a second), or the demo's assets
-  run("node", [demo ? "apps/macos/tools/markdown/assets.mjs" : "apps/macos/web/build.mjs"]);
+  // what make-app.sh carries in the bundle: the Note page of this checkout and the native Markdown component's fonts
+  // and formula engines (both cached: a fraction of a second)
+  run("node", ["apps/macos/web/build.mjs"]);
+  run("node", ["apps/macos/tools/markdown/assets.mjs"]);
   run("swift", ["build", "-c", config, "--product", "Accept"], mac);
   const bin = execFileSync("swift", ["build", "-c", config, "--show-bin-path"], { cwd: mac }).toString().trim();
   fs.rmSync(app, { recursive: true, force: true });
   fs.mkdirSync(path.join(app, "Contents/MacOS"), { recursive: true });
   fs.copyFileSync(path.join(bin, "Accept"), path.join(app, "Contents/MacOS/Accept"));
-  // the demo's fonts and formula engines (tools/markdown/make-demo.sh); the app's Note page
-  if (demo) fs.cpSync(path.join(mac, ".build-markdown"), path.join(app, "Contents/Resources/Assets"), { recursive: true });
-  else fs.cpSync(path.join(mac, "web/dist"), path.join(app, "Contents/Resources/NotePage"), { recursive: true });
+  // where make-app.sh puts them (and make-demo.sh the demo's): the app finds them in its own bundle, as a person's does
+  fs.cpSync(path.join(mac, ".build-markdown"), path.join(app, "Contents/Resources/Assets"), { recursive: true });
+  if (!demo) fs.cpSync(path.join(mac, "web/dist"), path.join(app, "Contents/Resources/NotePage"), { recursive: true });
 }
 if (!attach && sides.includes("web")) {
   await build({
