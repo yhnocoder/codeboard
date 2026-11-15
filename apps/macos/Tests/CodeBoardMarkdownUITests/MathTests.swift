@@ -63,6 +63,16 @@ struct MathTests {
     #expect(p.width > 1.5 && p.width < 2.2)
   }
 
+  /// A one-line display formula is as tall as Chrome makes KaTeX's line: its fonts' rounded ascents and descents in
+  /// line-height 1.2, 2 px of padding and 2 of margin above and below (measured in Chrome at 13.5 px: 26.484)
+  @Test func aOneLineDisplayFormulaIsAsTallAsKaTeXsLine() {
+    let l = MarkdownLayout.make(
+      MarkdownDocument("$$x^2+y^2$$"), width: 332, theme: testTheme, layout: nil,
+      resources: MathResources(math: engines))
+    #expect(abs(l.blockFrames[0].height - 26.484) < 0.05, "\(l.blockFrames[0].height)")
+    #expect(MathTag.hasLetter("x^2+y^2") && !MathTag.hasLetter("\\frac{1}{2} + \\sqrt{3}"))
+  }
+
   @Test func atagIsDrawnAtTheRightEdgeOfABlock() {
     let l = MarkdownLayout.make(
       MarkdownDocument("$$\nE = mc^2 \\tag{1}\n$$"), width: 332, theme: testTheme, layout: nil,

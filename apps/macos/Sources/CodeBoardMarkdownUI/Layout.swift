@@ -713,10 +713,8 @@ struct LayoutBuilder {
   mutating func mathBlock(
     _ latex: String, x: CGFloat, width: CGFloat, y: CGFloat, style: InlineStyle, keep: Int? = nil
   ) -> CGFloat {
-    // .math pads 2px above and below and the formula's display margin is 2px more (markdown.css); half a point more
-    // stands for KaTeX's struts, which make its boxes that much taller than MathJax's on average over the look samples
-    // (the tall ones, a sum with limits or two aligned rows, by up to 3 pt; one-line ones not at all)
-    let pad: CGFloat = 4.5
+    // .math pads 2px above and below and the formula's display margin is 2px more (markdown.css)
+    let pad: CGFloat = 4
     let size = style.size * 1.08
     let (body, tag) = MathTag.split(latex)
     var result = resources.math.map { $0.typeset(body, display: true, preamble: resources.mathPreamble) }
@@ -733,8 +731,22 @@ struct LayoutBuilder {
       var style = style
       if faded { style.color = style.color.alpha(0.4) }
       let w = CGFloat(pic.width) * size
-      let h = CGFloat(pic.height) * size
-      let base = y + pad + CGFloat(pic.baseline) * size
+      // KaTeX's formula is one line of .katex (line-height 1.2): at least the boxes Chrome gives the line's text, each
+      // font's hhea ascent and descent rounded to whole pixels with the rest of the line height split evenly, of
+      // KaTeX_Main and, when the formula has a letter, KaTeX_Math
+      func line(_ ascent: CGFloat, _ descent: CGFloat) -> (CGFloat, CGFloat) {
+        let (a, d) = ((ascent * size).rounded(), (descent * size).rounded())
+        let half = (1.2 * size - a - d) / 2
+        return (a + half, d + half)
+      }
+      var (lineAbove, lineBelow) = line(0.903, 0.272)
+      if MathTag.hasLetter(body) {
+        let m = line(0.717, 0.218)
+        (lineAbove, lineBelow) = (max(lineAbove, m.0), max(lineBelow, m.1))
+      }
+      let above = max(CGFloat(pic.baseline) * size, lineAbove)
+      let h = above + max(CGFloat(pic.height - pic.baseline) * size, lineBelow)
+      let base = y + pad + above
       // centred; a tag at the right edge on the formula's baseline, as KaTeX places it
       items.append(.math(pic, size: size, origin: CGPoint(x: x + max(0, (width - w) / 2), y: base), color: style.color))
       if let tag, case .ok(let t) = tex.typeset(tag, display: false, preamble: resources.mathPreamble) {
