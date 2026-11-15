@@ -1,0 +1,35 @@
+# Questions list: a press on the board outside it closes it (QuestionList.tsx: its Overlay closes on a press outside); first a row is pressed where it is, to know the place
+key esc
+zoom 1
+center @cnote:c
+click @ui.questions
+wait 600
+click @ui.questions:c+-150,-60
+wait 300
+mac: expect press has ListWebView
+web: expect press has qlist
+key esc
+click @ui.questions
+wait 600
+click @ui.questions:c+-300,-400
+wait 300
+click @ui.questions:c+-150,-60
+wait 300
+mac: expect press lacks ListWebView
+web: expect press lacks qlist
+# its button closes it, and opens it again
+click @ui.questions
+wait 600
+click @ui.questions
+wait 300
+click @ui.questions:c+-150,-60
+wait 300
+mac: expect press lacks ListWebView
+web: expect press lacks qlist
+click @ui.questions
+wait 600
+click @ui.questions:c+-150,-60
+wait 300
+mac: expect press has ListWebView
+web: expect press has qlist
+key esc
