@@ -245,4 +245,28 @@ import Testing
     await r.canvas.endEditing()
     #expect(r.doc.board.cards.count == sample().cards.count, "left empty, it goes")
   }
+
+  /// [[ in a Note written in natively opens the board's reference list (md/load.ts editorOpts' refs) once its
+  /// candidates are read; a row picked is written as [[its title#^its id]], drawn as what it points at at once, and is
+  /// the first of the recent ones the next list offers
+  @Test func doubleBracketsInANoteOfferTheBoardsCardsAndAPickedOneIsDrawnAsFound() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1, native: true)
+    defer { r.close() }
+    CanvasView.recentRefs = []
+    let t1 = r.rect("t1")
+    r.doubleClick(CGPoint(x: t1.midX, y: t1.midY))
+    await r.until("writing") { r.canvas.editing?.ready == true }
+    let v = try writer(r)
+    v.doCommand(by: #selector(NSResponder.moveToEndOfDocument(_:)))
+    v.insertText(" [[调", replacementRange: NSRange(location: NSNotFound, length: 0))
+    await r.until("the list, once its candidates are read") { r.canvas.editing?.refList != nil }
+    v.insertText("度", replacementRange: NSRange(location: NSNotFound, length: 0))
+    #expect(r.canvas.editor(v, refMenu: "调度").local.map(\.title) == ["调度 Scheduling", "调度 Section"])
+    v.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+    v.insertText(" 好", replacementRange: NSRange(location: NSNotFound, length: 0))
+    #expect(v.source.hasSuffix("[[调度 Scheduling#^n1]] 好"), "\(v.source)")
+    #expect(v.core.layout.drawnRefs.contains { $0.target == "n1" }, "drawn as found")
+    #expect(CanvasView.recentRefs.first.map { [$0.board, $0.id] } == [r.doc.board.id.rawValue, "n1"])
+    await r.canvas.endEditing()
+  }
 }

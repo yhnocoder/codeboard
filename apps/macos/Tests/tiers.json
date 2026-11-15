@@ -126,7 +126,7 @@
             "CodeBoardCanvas/CanvasAddNote.swift",
             "CodeBoardCanvas/CanvasQuestions.swift",
             "CodeBoardModel/Sidenotes.swift",
-            "CodeBoardNotes/SidenotePop.swift",
+            "CodeBoardCanvas/NativePop.swift",
             "CodeBoardNotes/QuestionListView.swift"
           ],
           "tests": ["CanvasSidenoteTests", "CanvasAlwaysShowTests"]

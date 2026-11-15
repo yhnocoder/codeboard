@@ -573,7 +573,7 @@ enum Drawing: Sendable {
   }
 
   /// A row of code in its token colours, with its middle at midY (the body's clip cuts it)
-  private static func codeLine(
+  static func codeLine(
     _ ctx: CGContext, _ s: String, _ tokens: [Token], _ t: Theme, x: CGFloat, midY: CGFloat
   ) {
     guard !s.isEmpty else { return }

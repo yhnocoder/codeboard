@@ -137,9 +137,27 @@ extension Board {
   @discardableResult
   public mutating func addSidenote(_ id: SidenoteID, text: String, at anchor: Anchor, question: Double? = nil) -> Bool {
     let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !t.isEmpty, holds(anchor) else { return false }
-    var n = Sidenote(
-      id: id, anchor: anchor, body: .text(TextNote(text: t, question: question.map { Question(at: $0) })))
+    guard !t.isEmpty else { return false }
+    return add(
+      Sidenote(id: id, anchor: anchor, body: .text(TextNote(text: t, question: question.map { Question(at: $0) }))))
+  }
+
+  /// A code sidenote of those lines added (core addSidenotes with a Code one: NoteComposer's code search), as a text
+  /// one is; its code a segment of its own, nothing highlighted, hidden or annotated in it
+  @discardableResult
+  public mutating func addCodeSidenote(_ id: SidenoteID, code: Segment, at anchor: Anchor) -> Bool {
+    var s = code
+    s.id = SegmentID(rawValue: Board.newID("s"))
+    s.highlights = []
+    s.hidden = []
+    s.annotations = []
+    return add(Sidenote(id: id, anchor: anchor, body: .code(s)))
+  }
+
+  private mutating func add(_ sidenote: Sidenote) -> Bool {
+    guard holds(sidenote.anchor) else { return false }
+    var n = sidenote
+    let anchor = n.anchor
     if let l = anchor.lines {
       if card(l.card)?.isShared == true {
         n.boardOnly = true

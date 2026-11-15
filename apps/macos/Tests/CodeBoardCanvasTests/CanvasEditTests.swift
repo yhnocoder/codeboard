@@ -141,7 +141,6 @@ actor RigTurns {
     host.addSubview(canvas)
     window.contentView = host
     canvas.noteEditor.drawOffScreen()
-    canvas.sidenotePop.drawOffScreen()
     canvas.questionList.drawOffScreen()
     // under the desktop: the web view runs its animation frames only in a window that is ordered in
     window.orderFrontRegardless()

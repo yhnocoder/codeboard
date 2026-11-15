@@ -342,6 +342,8 @@ public final class CanvasView: NSView {
   var hoveredMark: Int?
   /// The sidenote popups open, the newest last (state/pop.ts pops)
   var pops: [Popup] = []
+  /// The popup the next one opened takes, made before (tests hold it before it opens)
+  var nextPop: SidenotePop?
   /// A sidenote popup opened or closed: the newest one open now (tests)
   package var onPop: ((PopAt?) -> Void)?
   /// The popups' showing, updating and closing, one after another

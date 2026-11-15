@@ -2191,6 +2191,9 @@ public final class MarkdownEditorView: NSView {
     changed()
   }
 
+  /// A plain ↵ outside a code block, with no list open: true when the host took it (it ends the host's field)
+  public var onReturn: (() -> Bool)?
+
   /// The click count of the host's click that opened the editor, until the next press here: the press that goes on
   /// with it (a double-click whose first click opened the editor) is taken as a click of its own, so it only puts the
   /// caret where it is (interact.ts clickEdit: main keeps that second press from selecting a word); the presses after
@@ -2756,6 +2759,13 @@ public final class MarkdownEditorView: NSView {
         return
       default: break
       }
+    }
+    // a host's field that ↵ ends (a sidenote's: NoteComposer.tsx SnField); ⇧↵ is a line break, a code block takes ↵
+    if selector == #selector(insertNewline(_:)), let onReturn,
+      !(NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false),
+      core.codeBlock(at: core.selection.head) == nil, onReturn()
+    {
+      return
     }
     begin()
     defer {

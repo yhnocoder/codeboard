@@ -56,6 +56,8 @@ struct Editing {
   var across: CGFloat?
   /// A Note's blocks where the native editor has them now, for what is on them (nil: where the scene has them)
   var blocks: [NoteBlock]?
+  /// What the native editor's [[ list offers (read once the writing has begun)
+  var refList: RefCandidates?
 }
 
 /// The card sits this far in from the web view's top left (view points), so the editor's menus have room: it places them

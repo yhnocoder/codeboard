@@ -35,6 +35,16 @@ extension CanvasView: MarkdownEditorDelegate {
   public func editorDidBegin(_ e: MarkdownEditorView) {}
 
   public func editor(_ e: MarkdownEditorView, open url: URL) { openURL(url) }
+
+  /// The [[ list (md/load.ts editorOpts' refs), as the sidenote popup's
+  public func editor(_ e: MarkdownEditorView, refMenu query: String) -> MarkdownRefMenu {
+    SidenotePop.refMenu(editing?.writer === e ? editing?.refList : nil, query: query)
+  }
+
+  public func editor(_ e: MarkdownEditorView, pickedRef r: MarkdownRefCandidate) {
+    guard let p = SidenotePop.picked(r) else { return }
+    rememberRef(group: p.group, p.id)
+  }
 }
 
 extension CanvasView {
@@ -100,7 +110,17 @@ extension CanvasView {
     editing?.keys = []
     for k in keys { v.keyDown(with: k) }
     drawChrome()
-    if let session = editing?.session { keepDrafts(session) }
+    if let session = editing?.session {
+      keepDrafts(session)
+      // the [[ list's candidates, and what they point at for a ref picked from it (drawn as found at once)
+      let refs = n.refs
+      Task { [weak self, weak v] in
+        guard let list = await self?.refCandidates(), let self, let v, self.editing?.session == session else { return }
+        self.editing?.refList = list
+        v.core.relayout(
+          display.editorLayout(v.core.layout, folder: n.folder, refs: refs + list.refs, dark: self.theme.dark))
+      }
+    }
     return true
   }
 

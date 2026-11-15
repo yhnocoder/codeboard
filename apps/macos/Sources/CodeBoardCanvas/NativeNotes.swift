@@ -57,8 +57,12 @@ package final class NativeNotes: NoteDisplay {
   /// The layout an editor of the Note starts from: the one shown, laying out what is typed with the formula engines
   /// whether or not the Note had a formula (one may be typed)
   func editorLayout(_ l: Laid, folder: URL, refs: [NoteRef], dark: Bool) -> BlockLayout {
+    editorLayout(l.layout, folder: folder, refs: refs, dark: dark)
+  }
+
+  func editorLayout(_ l: BlockLayout, folder: URL, refs: [NoteRef], dark: Bool) -> BlockLayout {
     let math = try? engines()
-    return l.layout.copy(resources: Resources(folder: folder, pictures: pictures, refs: refs, math: math, dark: dark))
+    return l.copy(resources: Resources(folder: folder, pictures: pictures, refs: refs, math: math, dark: dark))
   }
 
   private func engines() throws -> any MathTypesetter {
