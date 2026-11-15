@@ -163,6 +163,48 @@ extension Rig {
     #expect(r.canvas.index(of: .card(id)) == nil)
   }
 
+  /// interact.ts cardPointerDown / cardClick: a click on the body of the one Note selected before the press writes in it,
+  /// the caret where it was; not the click that selects it, a click on its head, a ⇧-click, one of several selected or
+  /// a Text's (Texts and Boxes are written by a double-click); the double-click's second press keeps the one session
+  @Test func aClickOnTheOneSelectedNotesBodyWritesInIt() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let n = r.rect("n1")
+    let body = CGPoint(x: n.minX + 40, y: n.maxY - 30)
+    let head = CGPoint(x: n.minX + 40, y: n.minY + 10)
+    r.click(body)
+    await r.settle()
+    #expect(r.doc.selection == [.card(cid("n1"))] && !c.isEditing, "the click that selects it")
+    r.click(head)
+    await r.settle()
+    #expect(!c.isEditing, "its head")
+    r.click(body, .shift)
+    await r.settle()
+    #expect(!c.isEditing, "a ⇧-click")
+    r.doc.select([.card(cid("n1")), .card(cid("t1"))])
+    r.click(body)
+    await r.settle()
+    #expect(r.doc.selection == [.card(cid("n1"))] && !c.isEditing, "one of several: only it stays selected")
+    r.click(r.centre("t1"))
+    r.click(r.centre("t1"))
+    await r.settle()
+    #expect(!c.isEditing, "a Text's")
+    r.click(body)
+    r.click(body)
+    await r.editorReady()
+    #expect(c.editing?.id == cid("n1"))
+    await c.endEditing()
+    #expect(!r.doc.history.canUndo)
+    // the double-click on it selected: its first click began writing, its second keeps it
+    r.doubleClick(body)
+    await r.editorReady()
+    let first = c.editing?.session
+    await r.settle()
+    #expect(c.editing?.session == first && first != nil)
+    await c.endEditing()
+  }
+
   @Test func aNewCardWrittenInIsOneStep() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }

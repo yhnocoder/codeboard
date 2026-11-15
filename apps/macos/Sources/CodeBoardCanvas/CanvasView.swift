@@ -55,6 +55,8 @@ public final class CanvasView: NSView {
   /// Sub-board cards, Texts and Boxes, which the summary level shows as they are (main's .keeplay): always over the card
   /// level, never faded
   let kept = CALayer()
+  /// Cards picked up by the pointer, until they have landed: over every card, Texts and Boxes too (main's .card.lift)
+  let liftedLayer = CALayer()
   /// The summary level's columns (CanvasSummaries.swift)
   let summaryLayer = CALayer()
   /// Which level is shown and how it changes (SummaryLevels.swift)
@@ -406,7 +408,8 @@ public final class CanvasView: NSView {
     layer = root
     wantsLayer = true
     for l in [
-      world, cardLevel, kept, summaryLayer, sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers,
+      world, cardLevel, kept, liftedLayer, summaryLayer, sections, dropLayer, below, arrows, litArrows, above, cards,
+      freeStickers,
       freeMarks, shelfHome, shelfDrag, chrome,
     ] {
       l.anchorPoint = .zero
@@ -419,7 +422,7 @@ public final class CanvasView: NSView {
     summaryLayer.allowsGroupOpacity = true
     summaryLayer.isHidden = true
     // the ports and handles over Texts and Boxes too (main's .eport is over its card's face); faded with the card level
-    for l in [cardLevel, kept, chrome, summaryLayer, shelfHome, shelfDrag] { world.addSublayer(l) }
+    for l in [cardLevel, kept, liftedLayer, chrome, summaryLayer, shelfHome, shelfDrag] { world.addSublayer(l) }
     backdrop.anchorPoint = .zero
     root.addSublayer(backdrop)
     root.addSublayer(world)
@@ -721,7 +724,7 @@ public final class CanvasView: NSView {
       backdropImage = theme.backdrop.flatMap(Backdrop.image)
       backdrop.contents = backdropImage
       placeBackdrop()
-      for l in [sections, dropLayer, below, arrows, above, cards, kept] { l.sublayers = nil }
+      for l in [sections, dropLayer, below, arrows, above, cards, kept, liftedLayer] { l.sublayers = nil }
       for f in s.frames { sections.addSublayer(CanvasView.frameLayer(f, theme)) }
       items = s.items.enumerated().map { i, it in
         ItemLayers(it, overview: overviews[i], shadow: it.drawing.framed ? shadow : nil)
@@ -1399,6 +1402,24 @@ public final class CanvasView: NSView {
       if s >= Levels.scale(z, backing: backing, size: r.size) * 0.98 { p.sharp += 1 }
     }
     return p
+  }
+
+  /// The items in view (by index): those showing something, those showing nothing at all, and the Notes showing only
+  /// their paper (none of their text yet). Read only, for CanvasBench
+  package var blankInView: (inView: Int, drawn: Set<Int>, empty: Set<Int>, paper: Set<Int>) {
+    let view = camera.visible(bounds.size)
+    var out = (inView: 0, drawn: Set<Int>(), empty: Set<Int>(), paper: Set<Int>())
+    for (i, l) in items.enumerated() where l.bitmapFrame.intersects(view) {
+      out.inView += 1
+      if l.held.contents == nil && l.rest.contents == nil {
+        out.empty.insert(i)
+      } else if l.note && l.pictureScale == 0 {
+        out.paper.insert(i)
+      } else {
+        out.drawn.insert(i)
+      }
+    }
+    return out
   }
 
   /// Anything in view drawn below display resolution

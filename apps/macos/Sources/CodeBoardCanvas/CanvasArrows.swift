@@ -31,6 +31,8 @@ struct InPlace {
     case board(CardID, VaultBoard)
     /// A Web card's title or description, a Link List's name, one of its rows' titles (CanvasWeb.swift)
     case web(CardID, WebText)
+    /// A code card's title, on its head (CodeHead.tsx's .ctitle)
+    case card(CardID)
   }
 
   var what: What
@@ -223,7 +225,7 @@ extension CanvasView {
     switch w {
     case .label(let id): index(of: .arrowLabel(id))
     case .title(let id): index(of: .sectionTitle(id))
-    case .board, .web: nil
+    case .board, .web, .card: nil
     }
   }
 
@@ -254,6 +256,7 @@ extension CanvasView {
     field.wantsLayer = true
     field.delegate = self
     if case .web = what { field.textColor = NSColor(cgColor: theme.ink) }
+    if case .card = what { field.textColor = NSColor(cgColor: theme.ink) }
     inPlace = InPlace(what: what, field: field, before: text, at: at, box: box, font: font)
     withoutAnimation {
       if let i = inPlaceItem(what) { items[i].box.isHidden = true }
@@ -277,7 +280,9 @@ extension CanvasView {
     let text = ip.field.stringValue.isEmpty ? (ip.field.placeholderString ?? "") : ip.field.stringValue
     let v = camera.view(ip.at)
     let r: CGRect
-    if let box = ip.box {
+    if var box = ip.box {
+      // a code card's title is as wide as what it says (its .ctitle grows as it is typed in)
+      if case .card = ip.what { box.size.width = min(box.width, max(40, Drawing.width(text, font) + 8)) }
       r = CGRect(origin: camera.view(box.origin), size: CGSize(width: box.width * z, height: box.height * z))
     } else if label {
       let pad: CGFloat = theme.label == .box ? 13 : 33
@@ -341,6 +346,9 @@ extension CanvasView {
       case .title(let id) where doc.board.section(id) != nil && !(text.isEmpty && ip.before == Board.untitledSection):
         name = "Rename Section"
         change = { $0.renameSection(id, text) }
+      case .card(let id) where doc.board.card(id) != nil:
+        name = "Rename"
+        change = { $0.renameCard(id, text) }
       default: break
       }
     }
