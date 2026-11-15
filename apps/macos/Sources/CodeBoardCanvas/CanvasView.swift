@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardNotes
 import CodeBoardTestGuard
@@ -466,12 +467,17 @@ public final class CanvasView: NSView {
 
   /// With that Note renderer (CanvasBench: one for several canvases, as the app's), and its Markdown drawn by `display`
   /// (by default one of its own, with nothing kept on disk)
+  /// The pasteboard type of a Note's source as copied
+  static let markdownSource = NSPasteboard.PasteboardType("com.yhnocoder.codeboard.markdown")
+
   package init(frame: NSRect, notes: NoteRenderer, display: NativeNotes? = nil) {
     self.notes = notes
     self.display = display ?? NativeNotes(web: notes)
     super.init(frame: frame)
     // in a test process: no menu, alert or panel ever comes up
     TestGuard.install()
+    // what a Note copies is read back as its source by every Note, those copied by earlier versions too
+    MarkdownEditorView.sourceType = CanvasView.markdownSource
     CanvasView.all.add(self)
     registerForDraggedTypes([.string, .fileURL])
     // layer-hosting: the canvas owns its layer tree, y-down like the board

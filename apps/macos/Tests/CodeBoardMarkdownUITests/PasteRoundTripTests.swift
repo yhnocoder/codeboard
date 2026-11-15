@@ -29,6 +29,11 @@ import Testing
     v.paste(item)
   }
 
+  /// With no type of the host's, the source goes as Markdown's own
+  @Test func theSourceGoesAsMarkdownsOwnTypeUnlessTheHostNamesOne() {
+    #expect(MarkdownEditorView.sourceType.rawValue == "net.daringfireball.markdown")
+  }
+
   @Test func highlightedTextKeepsItsMarks() {
     let (v, pb) = view()
     copyAndPasteAtEnd(v, (Self.src as NSString).range(of: "a ==hi== b"))

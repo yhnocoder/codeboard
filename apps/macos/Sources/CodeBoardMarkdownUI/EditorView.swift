@@ -68,9 +68,10 @@ public final class MarkdownEditorView: NSView {
   /// where ⌘C, ⌘X and ⌘V go (the general pasteboard; a test's own). Lazy: taken after init has put the test guard in,
   /// so in a test process the general pasteboard is already the process's own
   public lazy var pasteboard = NSPasteboard.general
-  /// The selection's source exactly as copied, beside the plain text and HTML: a paste in any Note reads it back as it
-  /// was (ProseMirror's own slice in the web's copies), never through the HTML, which loses == marks and code lines
-  public static let sourceType = NSPasteboard.PasteboardType("com.yhnocoder.codeboard.markdown")
+  /// The selection's source exactly as copied, beside the plain text and HTML: a paste in any editor reads it back as
+  /// it was (ProseMirror's own slice in the web's copies), never through the HTML, which loses == marks and code lines.
+  /// Markdown's own type unless the host names one of its own (what its earlier copies carry), before its first editor
+  public static var sourceType = NSPasteboard.PasteboardType("net.daringfireball.markdown")
   /// What an empty editor shows where its text would start, in the lightest ink, until something is typed (the web
   /// editor's Placeholder: only while the whole of it is empty)
   public var placeholder: String? {
