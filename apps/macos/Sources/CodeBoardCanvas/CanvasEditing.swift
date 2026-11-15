@@ -97,6 +97,21 @@ private let handleReach: CGFloat = 6
 /// How far the pointer moves before a press becomes a drag (view points)
 let dragSlop: CGFloat = 3
 
+/// Arrow keys held now (keymap.ts held): which and their way, Shift, when the speed-up began, the last frame, the part
+/// of a world point not moved yet
+struct NudgeHold {
+  /// state/timing.ts NUDGE_HOLD, NUDGE_RAMP (ms), NUDGE_SPEED (points a ms on screen), NUDGE_MAX
+  static let hold = 300.0
+  static let ramp = 1500.0
+  static let speed = 0.04
+  static let most = 6.0
+  var dirs: [UInt16: CGVector] = [:]
+  var shift = false
+  var t0: TimeInterval
+  var last: TimeInterval
+  var acc = CGVector.zero
+}
+
 extension CanvasView {
   // MARK: Showing a document
 
@@ -1048,6 +1063,7 @@ extension CanvasView {
 
   public override func mouseDown(with e: NSEvent) {
     if opening { return }
+    Tips.shared.press()
     dropPicture()
     if spacePanDown(e) { return }
     // AppKit sends a multi-click's later presses to the view its first went to: a double-click's second press over the
@@ -1896,22 +1912,35 @@ extension CanvasView {
 
   public override func keyUp(with e: NSEvent) {
     if e.keyCode == 49 { return releaseSpace() }
-    guard nudging.remove(e.keyCode) != nil else { return super.keyUp(with: e) }
-    if nudging.isEmpty, case .nudge(let m)? = gesture?.kind { commitMove(m) }
+    guard nudgeHold?.dirs.removeValue(forKey: e.keyCode) != nil else { return super.keyUp(with: e) }
+    if nudgeHold?.dirs.isEmpty == true { stopNudge() }
   }
 
-  /// An arrow key moves the selection one point on screen (⇧: ten); from the first key down to the last key up is one
-  /// step
+  public override func flagsChanged(with e: NSEvent) {
+    nudgeHold?.shift = e.modifierFlags.contains(.shift)
+    super.flagsChanged(with: e)
+  }
+
+  /// The last arrow up, the window or the keys gone: the nudge so far is one step
+  func stopNudge() {
+    nudgeHold = nil
+    if case .nudge(let m)? = gesture?.kind { commitMove(m) }
+  }
+
+  /// An arrow key moves the selection one point on screen (⇧: ten) at once; held past NUDGE_HOLD it glides on every
+  /// frame, faster the longer it is held (glideNudge). From the first key down to the last key up is one step
   func nudge(_ e: NSEvent) {
+    // the OS key repeat would move in uneven jumps at one fixed speed
+    if e.isARepeat && nudgeHold != nil { return }
     guard let doc = document else { return }
-    let step = (e.modifierFlags.contains(.shift) ? 10 : 1) / camera.zoom
-    let unit = max(1, step.rounded())
+    let shift = e.modifierFlags.contains(.shift)
+    let unit = max(1, ((shift ? 10 : 1) / camera.zoom).rounded())
     let d: CGVector =
       switch e.keyCode {
-      case 123: CGVector(dx: -unit, dy: 0)
-      case 124: CGVector(dx: unit, dy: 0)
-      case 125: CGVector(dx: 0, dy: unit)
-      default: CGVector(dx: 0, dy: -unit)
+      case 123: CGVector(dx: -1, dy: 0)
+      case 124: CGVector(dx: 1, dy: 0)
+      case 125: CGVector(dx: 0, dy: 1)
+      default: CGVector(dx: 0, dy: -1)
       }
     var m: Move
     switch gesture?.kind {
@@ -1921,18 +1950,53 @@ extension CanvasView {
       m = made
     default: return
     }
-    nudging.insert(e.keyCode)
-    m.d.dx += d.dx
-    m.d.dy += d.dy
+    let t = now
+    var h = nudgeHold ?? NudgeHold(t0: t, last: t)
+    // another arrow joining the hold (a diagonal) starts the speed-up over
+    h.dirs[e.keyCode] = d
+    h.shift = shift
+    h.t0 = t
+    h.acc = .zero
+    nudgeHold = h
+    m.d.dx += d.dx * unit
+    m.d.dy += d.dy * unit
     gesture = Gesture(kind: .nudge(m), startView: .zero, start: .zero)
     showMove(m)
+    wake()
+  }
+
+  /// A frame of arrows held (keymap.ts glide): past NUDGE_HOLD at NUDGE_SPEED points a millisecond on screen, easing up
+  /// to NUDGE_MAX times that over NUDGE_RAMP; whole world points like every other placement, the rest carried over
+  func glideNudge(at time: TimeInterval) {
+    guard var h = nudgeHold else { return }
+    guard case .nudge(var m)? = gesture?.kind else {
+      nudgeHold = nil
+      return
+    }
+    let dt = min(50, max(0, time - h.last) * 1000)
+    let t = (time - h.t0) * 1000
+    h.last = time
+    if t > NudgeHold.hold {
+      let r = min(1, (t - NudgeHold.hold) / NudgeHold.ramp)
+      let v = NudgeHold.speed * (1 + (NudgeHold.most - 1) * r * r * (3 - 2 * r)) * (h.shift ? 10 : 1) / camera.zoom
+      let sum = h.dirs.values.reduce(CGVector.zero) { CGVector(dx: $0.dx + $1.dx, dy: $0.dy + $1.dy) }
+      h.acc.dx += (sum.dx > 0 ? 1 : sum.dx < 0 ? -1 : 0) * v * dt
+      h.acc.dy += (sum.dy > 0 ? 1 : sum.dy < 0 ? -1 : 0) * v * dt
+      let move = CGVector(dx: h.acc.dx.rounded(.towardZero), dy: h.acc.dy.rounded(.towardZero))
+      h.acc.dx -= move.dx
+      h.acc.dy -= move.dy
+      if move != .zero {
+        m.d.dx += move.dx
+        m.d.dy += move.dy
+        gesture = Gesture(kind: .nudge(m), startView: .zero, start: .zero)
+        showMove(m)
+      }
+    }
+    nudgeHold = h
   }
 
   public override func resignFirstResponder() -> Bool {
-    if case .nudge(let m)? = gesture?.kind {
-      nudging = []
-      commitMove(m)
-    }
+    stopNudge()
     return super.resignFirstResponder()
   }
 

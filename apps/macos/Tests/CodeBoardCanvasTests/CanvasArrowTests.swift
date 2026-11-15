@@ -314,6 +314,47 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     return order(ca[k]) > order(cb[k])
   }
 
+  /// A port says what dragging it does once the pointer rests on it (cards/CodeBody.tsx .lport, Card.tsx .eport
+  /// data-tip): a code line's "Drag to link this line", a side's "Drag to link", centred over the dot; off the ports it
+  /// goes, and a press takes it away. The tips' clock is the test's
+  @Test func aPortsTipSaysWhatDraggingItDoes() async throws {
+    let r = try await Rig(arrows(more: true), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let tips = Tips.shared
+    let (after, now) = (tips.after, tips.now)
+    var pending: [@MainActor () -> Void] = []
+    tips.after = { pending.append($1) }
+    tips.now = { 1000 }
+    defer {
+      tips.press()
+      tips.after = after
+      tips.now = now
+    }
+    tips.press()
+    let l1 = Endpoint(card: cid("c1"), segment: SegmentID(rawValue: "s1"), line: 1)
+    let y1 = try #require(c.lineMiddle(l1))
+    c.mouseMoved(with: r.mouse(.mouseMoved, CGPoint(x: 800, y: y1)))
+    #expect(tips.shown == nil && pending.isEmpty, "over the line, not its port")
+    let left = try #require(c.ports(of: cid("c1"), line: l1).first { $0.end == l1 && $0.side == .left })
+    c.mouseMoved(with: r.mouse(.mouseMoved, left.at))
+    #expect(c.hoveredPort == left && tips.shown == nil && pending.count == 1, "it waits TIP_DELAY")
+    pending.removeFirst()()
+    #expect(tips.shown?.tip == Tip("Drag to link this line") && tips.shown?.in === c)
+    let tv = try #require(r.window.contentView?.subviews.compactMap { $0 as? TipView }.first)
+    let dot = c.convert(c.camera.view(left.at), to: nil)
+    #expect(abs(tv.convert(tv.bounds, to: nil).midX - dot.x) <= 1, "centred over the dot")
+    // off it: gone; onto a side's port within TIP_WARM: at once
+    c.mouseMoved(with: r.mouse(.mouseMoved, r.centre("n1")))
+    #expect(tips.shown == nil)
+    let side = try #require(c.ports(of: cid("n1"), line: nil).first { $0.side == .bottom })
+    c.mouseMoved(with: r.mouse(.mouseMoved, side.at))
+    #expect(tips.shown?.tip == Tip("Drag to link"))
+    r.send(r.mouse(.leftMouseDown, side.at))
+    #expect(tips.shown == nil, "a press takes it away")
+    r.send(r.mouse(.leftMouseUp, side.at))
+  }
+
   @Test(arguments: [1, 0.5] as [CGFloat])
   func aCardsPortDrawsAnArrowToTheCardOrLineLetGoOnAndNothingOnTheCanvas(zoom: CGFloat) async throws {
     let r = try await Rig(arrows(more: true), zoom: zoom)

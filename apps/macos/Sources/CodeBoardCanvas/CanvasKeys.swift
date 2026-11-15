@@ -368,7 +368,10 @@ extension CanvasView {
     if spacePan == nil { NSCursor.arrow.set() }
   }
 
-  @objc func windowResignedKey() { releaseSpace() }
+  @objc func windowResignedKey() {
+    releaseSpace()
+    stopNudge()
+  }
 
   /// A press with Space held starts a pan: the board follows the pointer as it does two fingers, and glides on from
   /// how fast it went when let go

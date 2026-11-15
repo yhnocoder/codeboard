@@ -238,7 +238,9 @@ public final class CanvasView: NSView {
   /// The hovered Text's or Box's line (drawHoverLine)
   var hoverLine: CALayer?
   var hoveredLine: Endpoint?
-  var hoveredPort: Port?
+  var hoveredPort: Port? {
+    didSet { showPortTip() }
+  }
   /// The label or title being written in place, and a written one's field until the board shows what it says
   var inPlace: InPlace?
   var closingField: NSTextField?
@@ -399,7 +401,7 @@ public final class CanvasView: NSView {
   /// Each Text's narrowest width (its longest word), once measured
   var leastWidths: [CardID: CGFloat] = [:]
   /// Arrow keys held for the nudge under way
-  var nudging: Set<UInt16> = []
+  var nudgeHold: NudgeHold?
   /// The cards ⌘C copied on this board (the pasteboard data that stands for them) and how many times they were pasted
   /// since (actions/shared.ts copied)
   var copied: (board: BoardID, data: Data, n: Int)?
@@ -1160,6 +1162,7 @@ public final class CanvasView: NSView {
       // decoding and drawing free large blocks that the allocator would otherwise keep, counted in the footprint
       DispatchQueue.global(qos: .utility).async { _ = malloc_zone_pressure_relief(nil, 0) }
     }
+    glideNudge(at: time)
     stepFrameEase(at: time)
     pictureCheck()
     stepTidySlide(at: time)
