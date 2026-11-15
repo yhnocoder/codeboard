@@ -90,6 +90,11 @@ struct Resize {
   var minSize: CGSize
   /// A Text corner: the text size reached
   var fontSize: Double?
+  /// The other cards, which a card's right and bottom edges line up with (interact.ts resizeDown targets)
+  var targets: [CGRect] = []
+  /// Lined up: the guides, or the size it took from another card ("same width · 240")
+  var guides: [Guide] = []
+  var same: String?
 }
 
 /// How near a Text's handle the pointer must be to take it (view points)
@@ -486,10 +491,15 @@ extension CanvasView {
       placeAlignBar()
       return
     }
-    if case .move? = gesture?.kind {
-    } else {
+    switch gesture?.kind {
+    case .move?: break
+    case .resize(let z)?:
+      showGuides(z.guides)
+      showSizeHint(z)
+    default:
       snapSettle?.cancel()
       showGuides([])
+      showSizeHint(nil)
     }
     let z = camera.zoom
     let accent = theme.accent
@@ -1307,7 +1317,9 @@ extension CanvasView {
       }
       if hit != doc.selection { doc.select(hit) }
     case .resize(var z):
-      resizeTo(&z, CGVector(dx: p.x - g.start.x, dy: p.y - g.start.y))
+      resizeTo(
+        &z, CGVector(dx: p.x - g.start.x, dy: p.y - g.start.y),
+        snap: e.modifierFlags.isDisjoint(with: [.command, .control]))
       g.kind = .resize(z)
       gesture = g
       showResize(z)
@@ -1538,6 +1550,34 @@ extension CanvasView {
     }
   }
 
+  /// The size a resize took from another card under it, on the guide colour (Canvas.tsx sizeHint, styles.css .ghint)
+  func showSizeHint(_ z: Resize?) {
+    guard let z, let text = z.same else {
+      if !sizeHint.isHidden { withoutAnimation { sizeHint.isHidden = true } }
+      return
+    }
+    let font =
+      theme.id == .inkWash
+      ? Font.board("SourceSerif4-400-600", size: 10.5, weight: 600, opticalSize: true)
+        ?? Font(NSFont(name: "Georgia-Bold", size: 10.5) ?? NSFont.boldSystemFont(ofSize: 10.5))
+      : Font(NSFont.systemFont(ofSize: 10.5, weight: .semibold))
+    let size = CGSize(width: (Drawing.width(text, font) + 12).rounded(.up), height: 10.5 + 8)
+    let at = camera.view(CGPoint(x: z.rect.midX, y: z.rect.maxY + 8))
+    let color = theme.guide
+    withoutAnimation {
+      sizeHint.frame = CGRect(origin: CGPoint(x: (at.x - size.width / 2).rounded(), y: at.y.rounded()), size: size)
+      sizeHint.contents = CanvasView.picture(size: size, scale: backing) { ctx in
+        ctx.addPath(
+          CGPath(roundedRect: CGRect(origin: .zero, size: size), cornerWidth: 5.5, cornerHeight: 5.5, transform: nil))
+        ctx.setFillColor(color)
+        ctx.fillPath()
+        CanvasView.chipLabel(text, x: 6, midY: size.height / 2, font: font, color: .white, ctx)
+      }
+      sizeHint.contentsScale = backing
+      sizeHint.isHidden = false
+    }
+  }
+
   /// The moved layers where the move has them: cards and titles, frames, the arrows with an end on a moved card re-routed
   func showMove(_ m: Move) {
     guard let s = scene else { return }
@@ -1676,7 +1716,13 @@ extension CanvasView {
       default: break
       }
     }
-    let z = Resize(item: item, what: what, edges: edges, from: r, rect: r, minSize: minSize)
+    var z = Resize(item: item, what: what, edges: edges, from: r, rect: r, minSize: minSize)
+    if case .card(let id) = item {
+      z.targets = s.items.compactMap { it in
+        guard case .card(let o)? = it.owner, o != id else { return nil }
+        return it.rect
+      }
+    }
     gesture = Gesture(kind: .resize(z), startView: v, start: p)
     drawChrome()
   }
@@ -1698,8 +1744,9 @@ extension CanvasView {
     }
   }
 
-  /// The rect a resize has reached with the pointer moved by d (board units)
-  func resizeTo(_ z: inout Resize, _ d: CGVector) {
+  /// The rect a resize has reached with the pointer moved by d (board units); a card's right and bottom edges line up
+  /// with the other cards' edges and sizes unless `snap` is off (⌘ or ⌃ held), as interact.ts resizeDown
+  func resizeTo(_ z: inout Resize, _ d: CGVector, snap: Bool = false) {
     let f = z.from
     var r = f
     switch z.what {
@@ -1726,6 +1773,26 @@ extension CanvasView {
         r.size.height = max(z.minSize.height, f.height - d.dy)
         r.origin.y = f.maxY - r.height
       }
+    }
+    z.guides = []
+    z.same = nil
+    switch z.what {
+    case .card, .textWidth, .image:
+      guard snap, z.edges.isDisjoint(with: [.left, .top]) else { break }
+      var image = false
+      if case .image = z.what { image = true }
+      let sn = Snap.resize(
+        r, right: z.edges.contains(.right), bottom: z.edges.contains(.bottom) && !image, to: z.targets,
+        threshold: Snap.Pace.distance / camera.zoom)
+      r.size.width = max(z.minSize.width, sn.size.width)
+      // an image's height follows its width
+      r.size.height = image ? r.width * f.height / max(1, f.width) : sn.size.height
+      switch sn.same {
+      case .x?: z.same = "same width · \(Int(r.width.rounded()))"
+      case .y?: z.same = "same height · \(Int(r.height.rounded()))"
+      case nil: z.guides = sn.guides
+      }
+    default: break
     }
     z.rect = r
   }
@@ -1765,6 +1832,8 @@ extension CanvasView {
 
   func commitResize(_ z: Resize) {
     gesture = nil
+    showGuides([])
+    showSizeHint(nil)
     guard let doc = document, let s = scene else { return }
     let r = z.rect
     guard r != z.from else {

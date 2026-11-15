@@ -127,6 +127,8 @@ public struct Theme: Sendable {
   var ask = CGColor(srgbRed: 0xc4 / 255, green: 0x8a / 255, blue: 0x1f / 255, alpha: 1)
   var askInk = CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
   var accentInk = CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
+  /// A resize's size hint (--guide)
+  var guide = CGColor(srgbRed: 0x2f / 255, green: 0x7d / 255, blue: 0xe1 / 255, alpha: 1)
   /// A row's hover tint (--hlrow)
   var hlrow = CGColor(srgbRed: 60 / 255, green: 45 / 255, blue: 20 / 255, alpha: 0.07)
 
@@ -297,6 +299,7 @@ public struct Theme: Sendable {
       arrowWidth: 2,
       metrics: CodeMetrics(charWidth: code.advance))
     t.subName = serif(25, 600).tracked(-0.375)
+    t.guide = rgb(0xb8321f)
     t.subCount = serif(25, 500).tracked(-0.375)
     t.subGone = serif(12, 400)
     t.subLabel = serif(11, 600)
@@ -318,6 +321,7 @@ public struct Theme: Sendable {
     t.ask = rgb(0xe0b055)
     t.askInk = rgb(0x1d1c1a)
     t.accentInk = rgb(0x1d1c1a)
+    t.guide = rgb(0x5aa2ff)
     t.hlrow = rgb(0xfff0dc, 0.07)
     t.canvas = rgb(0x191816)
     t.surface = rgb(surface)
@@ -368,6 +372,7 @@ public struct Theme: Sendable {
     t.ask = rgb(0xe0b055)
     t.askInk = rgb(0x1d1c1a)
     t.accentInk = rgb(0x131312)
+    t.guide = rgb(0xd6533a)
     t.hlrow = rgb(0xe9e5da, 0.07)
     t.canvas = rgb(0x131312)
     t.backdrop = "ink-dark"

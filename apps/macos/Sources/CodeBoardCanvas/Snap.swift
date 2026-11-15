@@ -42,6 +42,42 @@ enum Snap {
     return (d, guides)
   }
 
+  /// core layout.ts snapResize: the dragged right (bottom) edge goes to the nearest of the others' left and right (top
+  /// and bottom) edges within `threshold`, or the width (height) to one of theirs; a guide along the edge it reached, and
+  /// `same` when it took a size (the width's first)
+  static func resize(_ r: CGRect, right: Bool, bottom: Bool, to others: [CGRect], threshold: CGFloat)
+    -> (size: CGSize, guides: [Guide], same: Guide.Axis?)
+  {
+    var size = r.size
+    var guides: [Guide] = []
+    var same: Guide.Axis?
+    /// The nearest within the threshold: an edge's distance, or a size's (same)
+    func best(_ edge: CGFloat, _ length: CGFloat, _ edges: (CGRect) -> [CGFloat], _ lengths: (CGRect) -> CGFloat)
+      -> (d: CGFloat, same: Bool)?
+    {
+      var b: (d: CGFloat, same: Bool)?
+      for o in others {
+        for v in edges(o) where abs(v - edge) <= threshold && (b == nil || abs(v - edge) < abs(b!.d)) {
+          b = (v - edge, false)
+        }
+        let d = lengths(o) - length
+        if abs(d) <= threshold && (b == nil || abs(d) < abs(b!.d)) { b = (d, true) }
+      }
+      return b
+    }
+    if right, let b = best(r.maxX, r.width, { [$0.minX, $0.maxX] }, \.width) {
+      size.width += b.d
+      guides.append(Guide(axis: .x, at: r.minX + size.width, from: r.minY, to: r.minY + size.height))
+      if b.same { same = .x }
+    }
+    if bottom, let b = best(r.maxY, r.height, { [$0.minY, $0.maxY] }, \.height) {
+      size.height += b.d
+      guides.append(Guide(axis: .y, at: r.minY + size.height, from: r.minX, to: r.minX + size.width))
+      if b.same { same = same ?? .y }
+    }
+    return (size, guides, same)
+  }
+
   /// interact.ts snapPace: dragged fast, nothing snaps (it moves smoothly); slowed down, it lines up. The pointer's
   /// speed on screen, smoothed; a pointer held still has no move events, so `settle` after the last move asks again with
   /// the speed at 0

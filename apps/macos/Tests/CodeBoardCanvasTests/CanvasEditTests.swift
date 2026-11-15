@@ -464,10 +464,10 @@ actor RigTurns {
   func eachKindResizesByItsOwnHandles(zoom: CGFloat) async throws {
     let r = try await Rig(zoom: zoom)
     defer { r.close() }
-    // a Note: width and height from its corner
+    // a Note: width and height from its corner (to 320, off m1's right edge at 290, which it would line up with)
     r.click(CGPoint(x: 40, y: 40))
-    r.drag(CGPoint(x: 240, y: 160), CGPoint(x: 300, y: 200))
-    #expect(r.card("n1").width == 300 && r.card("n1").height == 200)
+    r.drag(CGPoint(x: 240, y: 160), CGPoint(x: 320, y: 200))
+    #expect(r.card("n1").width == 320 && r.card("n1").height == 200)
     // a Text's side edge: the width it wraps at, never below its longest word
     await r.settle()
     r.click(r.centre("t1"))

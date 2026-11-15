@@ -57,6 +57,8 @@ public final class CanvasView: NSView {
   let kept = CALayer()
   /// The alignment guides while something is dragged (CanvasEditing.swift showGuides), over the ports and handles
   let guideLayer = CAShapeLayer()
+  /// A resize's "same width · 240" under the card, in view points (CanvasEditing.swift showSizeHint)
+  let sizeHint = CALayer()
   /// A drag held still lines up after a moment
   var snapSettle: Task<Void, Never>?
   /// Cards picked up by the pointer, until they have landed: over every card, Texts and Boxes too (main's .card.lift)
@@ -463,6 +465,8 @@ public final class CanvasView: NSView {
     root.addSublayer(picture)
     marquee.fillColor = nil
     root.addSublayer(marquee)
+    sizeHint.isHidden = true
+    root.addSublayer(sizeHint)
     toastLayer.isHidden = true
     alignBar.isHidden = true
     alignMoreLayer.isHidden = true
