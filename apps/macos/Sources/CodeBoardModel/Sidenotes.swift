@@ -220,7 +220,8 @@ extension Board {
   }
 
   /// The card Place on Board makes of a sidenote on a card (core edit/ops.ts sidenoteCard), at 0, 0: a text one a Note
-  /// of its Markdown, a code one a code card of its lines (a segment id of its own), a Note's width when it is a Note or
+  /// of its Markdown, a code one a code card of its lines (a segment id of its own) with its why as the card's
+  /// description, a Note's width when it is a Note or
   /// Free code, 480 when its lines are read from a file. Nil for a question, or one not on a card (main offers neither)
   public func sidenoteCard(_ id: SidenoteID, card: CardID) -> Card? {
     guard let n = sidenote(id), n.placeable else { return nil }
@@ -232,7 +233,7 @@ extension Board {
       seg.id = SegmentID(rawValue: Board.newID("s"))
       return Card(
         id: card, x: 0, y: 0, width: seg.source == nil ? Board.newNoteWidth : 480,
-        content: .own(CardContent(body: .code(CodeCard(segments: [seg])))))
+        content: .own(CardContent(description: n.why, body: .code(CodeCard(segments: [seg])))))
     }
   }
 

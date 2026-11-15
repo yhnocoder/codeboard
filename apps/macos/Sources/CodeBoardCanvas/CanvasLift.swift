@@ -54,6 +54,10 @@ extension CanvasView {
       let tilt = s.items[i].tilt
       let k = liftScale
       let warm = theme.id == .warmInk
+      // the grow animation only, no implicit one of the transform with it
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      defer { CATransaction.commit() }
       box.add(
         Self.grow(box, tilt: tilt, from: 1, to: k, stops: warm ? Self.springUp : nil, duration: warm ? 0.26 : 0.2),
         forKey: "lift")
@@ -112,6 +116,7 @@ extension CanvasView {
   private func settle(_ box: CALayer, tilt: CGFloat, since: CFTimeInterval) {
     let warm = theme.id == .warmInk
     CATransaction.begin()
+    CATransaction.setDisableActions(true)
     CATransaction.setCompletionBlock {
       MainActor.assumeIsolated {
         if box.animation(forKey: "lift") == nil { box.zPosition = 0 }

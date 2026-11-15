@@ -34,6 +34,17 @@ enum Drawing: Sendable {
     var linked: Set<[Int]>
     var layout: CodeLayout
     var framed: Bool
+    /// Its Always Show sidenotes, which the Note renderer draws (CanvasView.picture), each at its frame in the card
+    var inline: [InlineNote] = []
+  }
+
+  /// An Always Show sidenote in a code card: its Markdown, drawn at `frame` (card points), its images in `folder`
+  struct InlineNote: Sendable {
+    var id: SidenoteID
+    var text: String
+    var frame: CGRect
+    var folder: URL
+    var refs: [NoteRef]
   }
 
   struct Note: Sendable {
@@ -97,7 +108,8 @@ enum Drawing: Sendable {
     switch self {
     case .note: true
     case .image(let p): p.svg
-    case .code, .label, .board, .web, .links: false
+    case .code(let c): !c.inline.isEmpty
+    case .label, .board, .web, .links: false
     }
   }
 
@@ -137,6 +149,15 @@ enum Drawing: Sendable {
     case .code(let c):
       if c.framed { Drawing.paper(ctx, r, t, id: c.id, rule: false) }
       Drawing.code(ctx, c, r, t)
+      // its Always Show sidenotes, cut where its body ends as its rows are
+      if let px = picture {
+        let top = c.framed ? t.headerHeight : 0
+        ctx.saveGState()
+        ctx.clip(to: CGRect(x: 0, y: top, width: r.width, height: r.height - top))
+        Raster.draw(
+          px, in: CGRect(x: 0, y: 0, width: CGFloat(px.width) / scale, height: CGFloat(px.height) / scale), of: ctx)
+        ctx.restoreGState()
+      }
       if c.framed { Drawing.edge(ctx, r, t) }
     case .note(let n):
       switch n.content {
@@ -146,15 +167,7 @@ enum Drawing: Sendable {
           Drawing.edge(ctx, r, t)
           return decodes
         }
-        var x = t.headerPad
-        if let g = t.kindGlyph {
-          Drawing.text(
-            ctx, "¶", g, t.ink3, x: x + (10 - Drawing.width("¶", g)) / 2, midY: t.headerHeight / 2, width: 10)
-          x += 10 + t.headerGap
-        }
-        Drawing.text(
-          ctx, n.title ?? "Note", t.noteTitle, n.title == nil ? t.ink3 : t.ink, x: x, midY: t.headerHeight / 2,
-          width: size.width - x - t.headerPadRight)
+        Drawing.noteHeader(ctx, n, width: size.width, t)
         Drawing.edge(ctx, r, t)
       case .text(let text) where text.look == .box:
         let p = Drawing.squircle(r, t.cardRadius)
@@ -171,7 +184,8 @@ enum Drawing: Sendable {
         ctx.setStrokeColor(t.boxEdge)
         ctx.setLineWidth(1.25)
         ctx.strokePath()
-      case .text:
+      // a code card's Always Show sidenotes are drawn with it, never as an item of their own
+      case .text, .inline:
         break
       }
       // transparent around the content, pixel for pixel from the top left
@@ -442,6 +456,9 @@ enum Drawing: Sendable {
         text(ctx, path, t.code, t.ink2, x: x0 + 14, midY: mid, width: bar.width - 20)
       case .function(let name):
         text(ctx, name, t.codePath, t.ink3, x: l.gutter, midY: mid, width: r.width - l.gutter - m.padRight)
+      case .notes:
+        // the Note renderer's: drawn over the card (`picture`)
+        break
       }
     }
     if l.dedent > 0 { dedentMark(ctx, levels: min(4, max(1, Int((CGFloat(l.dedent) / 4).rounded()))), l, r, t) }
@@ -463,10 +480,20 @@ enum Drawing: Sendable {
     ctx.restoreGState()
   }
 
-  /// A code card's title bar: kind, title and path from the left; the arrows ending on it and its version from the right
-  private static func header(_ ctx: CGContext, _ c: Code, _ r: CGRect, _ t: Theme) {
+  /// Where a header's items end on the right: before its ··· (its place kept whether it shows or not: styles.css
+  /// .cmenu) and, on a code card, its version and the arrows ending on it; the hover buttons end here
+  static func headerRight(_ c: Code?, width w: CGFloat, _ t: Theme) -> CGFloat {
+    var right = w - t.headerPadRight - 26 - t.headerGap
+    if let v = c?.version { right -= width(v, t.codePath) + 10 + t.headerGap }
+    if let n = c?.linkedIn, n > 0 { right -= width("← \(n)", t.linkedIn) + 8 + t.headerGap }
+    return right
+  }
+
+  /// A code card's title bar: kind, title and path from the left; the arrows ending on it and its version from the right,
+  /// left of the ···; `reserve`: room the hover buttons take there, the title giving way for them
+  static func header(_ ctx: CGContext, _ c: Code, _ r: CGRect, _ t: Theme, reserve: CGFloat = 0) {
     let mid = t.headerHeight / 2
-    var right = r.width - t.headerPadRight
+    var right = r.width - t.headerPadRight - 26 - t.headerGap
     if let v = c.version {
       // the chip's own padding
       let w = width(v, t.codePath)
@@ -479,6 +506,7 @@ enum Drawing: Sendable {
       text(ctx, s, t.linkedIn, t.ink3, x: right - 4 - w, midY: mid, width: w)
       right -= w + 8 + t.headerGap
     }
+    right -= reserve
     var x = t.headerPad
     if let g = c.glyph, let font = g == "ƒ" ? t.kindGlyph : t.kindGlyphMono {
       text(ctx, g, font, t.ink3, x: x + (10 - width(g, font)) / 2, midY: mid, width: .infinity)
@@ -490,6 +518,18 @@ enum Drawing: Sendable {
     if let p = c.path, pathWidth > 0 {
       text(ctx, p, t.codePath, t.ink3, x: x + titleWidth + t.headerGap + 3, midY: mid, width: pathWidth)
     }
+  }
+
+  /// A Note's title bar: ¶ and its title, up to its ··· (and the hover buttons' `reserve`)
+  static func noteHeader(_ ctx: CGContext, _ n: Note, width w: CGFloat, _ t: Theme, reserve: CGFloat = 0) {
+    var x = t.headerPad
+    if let g = t.kindGlyph {
+      text(ctx, "¶", g, t.ink3, x: x + (10 - width("¶", g)) / 2, midY: t.headerHeight / 2, width: 10)
+      x += 10 + t.headerGap
+    }
+    text(
+      ctx, n.title ?? "Note", t.noteTitle, n.title == nil ? t.ink3 : t.ink, x: x, midY: t.headerHeight / 2,
+      width: headerRight(nil, width: w, t) - reserve - x)
   }
 
   /// A row of code in its token colours, with its middle at midY (the body's clip cuts it)

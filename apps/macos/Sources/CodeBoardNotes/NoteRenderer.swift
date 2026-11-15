@@ -201,6 +201,20 @@ public final class NoteRenderer {
     }
   }
 
+  /// The language Free code's text looks like, as the board guesses it (core freeLang); nil when it cannot tell
+  public func freeLanguage(_ text: String) async throws -> String? {
+    try await takeTurn(priority: Int.max)
+    defer { endTurn() }
+    do {
+      let p = try page ?? NotePage(page: pageFolder)
+      page = p
+      return try await p.freeLanguage(text)
+    } catch {
+      page = nil
+      throw error
+    }
+  }
+
   /// Each Markdown's top-level blocks as the Note page splits them (the board's md/blocks.ts noteBlocks); nil for one
   /// that cannot be split
   public func blocks(of mds: [String]) async throws -> [[String]?] {

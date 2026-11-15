@@ -28,7 +28,7 @@ import "../../../../packages/board/src/styles.css";
 import "@yhnocoder/markdown/style.css";
 import "../../../../packages/board/src/themes.css";
 import "./page.css";
-import { classifyPaste } from "../../../../packages/core/src/paste";
+import { classifyPaste, guessLang, pythonDialect } from "../../../../packages/core/src/paste";
 import { exportOrder, type ExportScope } from "../../../../packages/core/src/export";
 import type { Board } from "../../../../packages/core/src/model";
 import { cleanSvg, svgDataUrl } from "../../../../packages/board/src/md/images";
@@ -42,7 +42,8 @@ type Note = {
   layout: MdLayout | null;
   style:
     | { note: { hideHead?: boolean } }
-    | { text: { look: "text" | "box"; fill: string; fontSize: number; wrap: boolean } };
+    | { text: { look: "text" | "box"; fill: string; fontSize: number; wrap: boolean } }
+    | { inline: Record<string, never> };
   width: number;
   height: number | null;
   /** The board theme's id: html[data-look] and its class, as the board's settings apply it (actions/settings.ts applyLook) */
@@ -122,13 +123,29 @@ let shown: Slot | undefined;
 const frames = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
 /** The card and body classes Card.tsx and NoteBody.tsx give each kind, with the variables they set on the card */
-function cardFor(n: Note): { card: HTMLDivElement; body: HTMLDivElement } {
+/** `outer`: what goes in the slot when it is not the card itself (an Always Show note's .inotes) */
+function cardFor(n: Note): { card: HTMLDivElement; body: HTMLDivElement; outer?: HTMLElement } {
+  const s = n.style;
+  if ("inline" in s) {
+    // an Always Show sidenote under its lines in a code card (CodeBody .inotes > .inote): the canvas draws the code,
+    // the page this note, as wide as the card leaves it
+    const c = document.createElement("div");
+    const body = document.createElement("div");
+    c.className = "inote";
+    c.style.width = `${n.width}px`;
+    c.style.maxWidth = "none";
+    body.className = "nbody editing md";
+    c.append(body);
+    const wrap = document.createElement("div");
+    wrap.className = "inotes";
+    wrap.append(c);
+    return { card: c, body, outer: wrap };
+  }
   const c = document.createElement("div");
   const face = document.createElement("div");
   const body = document.createElement("div");
   face.className = "cface";
   c.append(face);
-  const s = n.style;
   if ("note" in s) {
     c.className = "card note";
     // the header keeps its height (the canvas draws the header itself)
@@ -254,10 +271,10 @@ async function measure(ids: string[]): Promise<Record<string, Size>> {
   return out;
 }
 
-function newSlot(id: string, card: HTMLElement): Slot {
+function newSlot(id: string, card: HTMLElement, outer: HTMLElement = card): Slot {
   const slot = document.createElement("div");
   slot.className = "slot";
-  slot.append(card);
+  slot.append(outer);
   root.append(slot);
   const s: Slot = { slot, card };
   slots.set(id, s);
@@ -321,6 +338,11 @@ async function pasted(text: string) {
 window.note = {
   /** What a paste of plain text makes (pasted) */
   paste: pasted,
+  /** The language Free code's text looks like, null when it cannot tell (core commands/code.ts freeLang) */
+  lang(text: string) {
+    const g = guessLang(text);
+    return g === "python" ? pythonDialect(text) : g;
+  },
   /** Each Markdown's top-level blocks (noteBlocks): what an export names an arrow's end on a block by */
   blocks: (mds: string[]) => mds.map(noteBlocks),
   /** The cards an export takes, in order (core exportOrder), of a board given as what the order reads of it */
@@ -331,7 +353,7 @@ window.note = {
       if (slots.has(id)) continue;
       setLook(n.look, n.dark);
       const made = cardFor(n);
-      const s = newSlot(id, made.card);
+      const s = newSlot(id, made.card, made.outer);
       if ("note" in n.style) s.md = n.text;
       s.editor = mountEditor(mdFor(images, n.refs), made.body, {
         value: n.text,
@@ -567,6 +589,10 @@ if (editMode) watchUi();
 // would overtake it)
 let keysSeen = 0;
 addEventListener("keydown", (e) => e.isTrusted && keysSeen++, true);
+// code colours asked for and not yet put in (each is put in by the editor as soon as it comes): one that comes between
+// two keys of an input method redraws the line under its composition, and what it commits lands beside the text it
+// had marked instead of over it, so a key is handed over only once the colours its predecessor asked for are in
+let hlAsked = 0;
 // Both editors keep a rule for Safari, where the key that commits a composition (a Space, a digit, Enter) reached the
 // page after compositionend: they skip the first key after a composition ends as that one (prosemirror-view
 // inOrNearComposition, CodeMirror's compositionPendingKey). WebKit now gives the page that key first, before the
@@ -621,11 +647,17 @@ const edit = {
   },
   /** The keydowns seen so far */
   keysSeen: () => keysSeen,
-  /** Resolves once `n` keydowns have been seen, or after `ms` (a key that reaches no page) */
+  /** Resolves once `n` keydowns have been seen and the code colours they asked for are in, or after `ms` (a key that
+   *  reaches no page) */
   async seen(n: number, ms: number) {
     const until = performance.now() + ms;
-    while (keysSeen < n && performance.now() < until) await new Promise((r) => setTimeout(r, 1));
-    return keysSeen >= n;
+    const tick = () => new Promise((r) => setTimeout(r, 1));
+    while (keysSeen < n && performance.now() < until) await tick();
+    if (keysSeen < n) return false;
+    // what the key did asks for its colours in a microtask after it
+    await tick();
+    while (hlAsked > 0 && performance.now() < until) await tick();
+    return hlAsked === 0;
   },
   /** Mounts `note` in the editor, `margin` px from the page's top left, at zoom k, takes the keyboard and puts the
    *  caret at `caret` (card px at 100 %), else at the end; resolves with its size once laid out */
@@ -784,7 +816,15 @@ const edit = {
       wrap: a.wrap,
       gutter: { start: a.start },
       html: a.html ?? undefined,
-      highlight: handler ? (t) => handler.postMessage({ text: t, lang }).catch(() => null) : undefined,
+      highlight: handler
+        ? (t) => {
+            hlAsked++;
+            return handler
+              .postMessage({ text: t, lang })
+              .catch(() => null)
+              .finally(() => setTimeout(() => hlAsked--));
+          }
+        : undefined,
       stopPointerDown: true,
       find: true,
       classes: { menu: "ctx", bar: "pill", button: "tbtn" },

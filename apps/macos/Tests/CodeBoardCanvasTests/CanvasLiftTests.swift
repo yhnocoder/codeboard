@@ -28,6 +28,7 @@ import Testing
     let t = CATransform3DGetAffineTransform(b.transform)
     #expect(abs(q.applying(t).x - q.x) < 0.001 && abs(q.applying(t).y - q.y) < 0.001)
     #expect(b.animation(forKey: "lift") != nil && b.zPosition == 1)
+    #expect(b.animationKeys() == ["lift"], "no implicit animation with it: \(b.animationKeys() ?? [])")
     let shadows = (b.sublayers ?? []).filter { $0.name == "lift" }
     #expect(shadows.map(\.shadowRadius) == [5, 30] && shadows.map(\.shadowOffset.height) == [4, 30])
     // its ring is in its layer: it moves and grows with it, never a frame behind
@@ -36,6 +37,7 @@ import Testing
     let landed = try #require(box(r, "n1"))
     #expect(CATransform3DIsIdentity(landed.transform), "back to its size")
     #expect(landed.animation(forKey: "lift") != nil, "landing")
+    #expect(landed.animationKeys() == ["lift"], "\(landed.animationKeys() ?? [])")
     await r.settle()
     // drawn again after the move: still landing in its new layer (when it is within the landing's time)
     if let again = box(r, "n1"), again !== landed, CACurrentMediaTime() - (c.landings[cid("n1")] ?? 0) < 0.4 {

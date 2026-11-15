@@ -96,4 +96,37 @@ import Testing
     #expect(shown.opacity == 0 && shown.superlayer === box(c), "going out where it was")
     #expect(abs(gone.duration - 0.09) < 0.001)
   }
+
+  /// Under the pointer a Text shows a dashed 1 point line of the faint ink 2 out (styles.css .card.text:hover), a Box a
+  /// solid one of the accent at 45 % 3 out (.card.text.box:hover:not(.sel)), in the card's layer; a Note nothing, and
+  /// a selected one only its selected look
+  @Test func aTextOrBoxUnderThePointerShowsItsHoverLine() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    func hover(_ id: String) -> CAShapeLayer? {
+      c.index(of: .card(cid(id))).flatMap { c.items[$0].box.sublayers?.first { $0.name == "hover" } as? CAShapeLayer }
+    }
+    c.mouseMoved(with: r.mouse(.mouseMoved, r.centre("t1")))
+    let t = try #require(hover("t1"))
+    let tb = c.items[try #require(c.index(of: .card(cid("t1"))))].box.bounds
+    #expect(t.lineDashPattern?.isEmpty == false && t.lineWidth == 1 && t.strokeColor == c.theme.ink3)
+    #expect(t.frame == tb.insetBy(dx: -2.5, dy: -2.5), "its line's middle 2.5 out: \(t.frame)")
+    c.mouseMoved(with: r.mouse(.mouseMoved, r.centre("b1")))
+    #expect(hover("t1") == nil, "gone when the pointer leaves")
+    let b = try #require(hover("b1"))
+    #expect(b.lineDashPattern == nil && b.strokeColor == c.theme.accent.copy(alpha: 0.45))
+    #expect(b.frame == c.items[c.index(of: .card(cid("b1")))!].box.bounds.insetBy(dx: -3.5, dy: -3.5))
+    c.mouseMoved(with: r.mouse(.mouseMoved, r.centre("n1")))
+    #expect(hover("b1") == nil && hover("n1") == nil, "a Note has none")
+    r.click(r.centre("t1"))
+    #expect(hover("t1") == nil, "selected: its outline only")
+    // hovered when a drag of another card starts: gone while it is dragged (main shows no hover then)
+    r.doc.select([])
+    c.mouseMoved(with: r.mouse(.mouseMoved, r.centre("t1")))
+    #expect(hover("t1") != nil)
+    r.drag(r.centre("b1"), CGPoint(x: r.centre("b1").x, y: r.centre("b1").y + 80)) {
+      #expect(hover("t1") == nil, "none while a card is dragged")
+    }
+  }
 }

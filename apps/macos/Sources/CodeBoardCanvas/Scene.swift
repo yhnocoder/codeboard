@@ -104,6 +104,9 @@ struct Scene: Sendable {
     var drawing: Drawing
     var size: CGSize
     var code: (layout: CodeLayout, top: CGFloat, segments: [SegmentID])?
+    /// A code card's Always Show sidenotes as measured, and their text
+    var always: [[CodeLayout.Always]] = []
+    var alwaysText: [String] = []
   }
 
   /// The tilt of a tilted card, as the board's (counter-clockwise)
@@ -119,6 +122,71 @@ struct Scene: Sendable {
     var folder: URL
     var refs: [NoteRef]
     var hideHead = false
+    /// An Always Show sidenote under its lines in the code card `card` (its height is the row it takes)
+    var sidenote: SidenoteID?
+  }
+
+  /// A code card's segments as the board shows them: the segment's own Highlights and this board's own sidenotes' lines
+  /// (core shownRanges)
+  static func shown(_ code: CodeCard, card: CardID, board: Board) -> CodeCard {
+    var code = code
+    for i in code.segments.indices {
+      let s = code.segments[i]
+      code.segments[i].highlights = board.highlights(card, s.id, own: s.highlights)
+    }
+    return code
+  }
+
+  /// Per segment, each Highlight's Always Show sidenotes, in the board's order (highlights.ts useHighlights: h.always)
+  static func always(_ code: CodeCard, card: CardID, board: Board) -> [[(lines: ClosedRange<Int>, notes: [Sidenote])]] {
+    var out: [[(lines: ClosedRange<Int>, notes: [Sidenote])]] = []
+    for s in code.segments {
+      var groups: [(lines: ClosedRange<Int>, notes: [Sidenote])] = []
+      for h in s.highlights {
+        var notes: [Sidenote] = []
+        for n in board.sidenotes {
+          guard case .text(let t) = n.body, t.alwaysShow, let l = n.anchor.lines, l.card == card, l.segment == s.id,
+            h.contains(l.range.lowerBound), h.contains(l.range.upperBound)
+          else { continue }
+          notes.append(n)
+        }
+        if !notes.isEmpty { groups.append((h, notes)) }
+      }
+      out.append(groups)
+    }
+    return out
+  }
+
+  static func text(_ n: Sidenote) -> String { if case .text(let t) = n.body { t.text } else { "" } }
+
+  /// The Always Show sidenotes the Note renderer must measure, each at the width it is drawn at in its code card
+  static func inlineMeasures(_ board: Board, package: URL, vault: Vault, theme t: Theme) -> [Measure] {
+    guard board.sidenotes.contains(where: { if case .text(let x) = $0.body { x.alwaysShow } else { false } }) else {
+      return []
+    }
+    let refs = RefResolver(board, package: package, vault: vault)
+    var out: [Measure] = []
+    for c in board.cards {
+      guard let (content, folder) = content(of: c, package: package, vault: vault), case .code(let own) = content.body
+      else { continue }
+      let code = shown(own, card: c.id, board: board)
+      let groups = always(code, card: c.id, board: board)
+      guard groups.contains(where: { !$0.isEmpty }) else { continue }
+      let zero = groups.map { g in
+        g.map { CodeLayout.Always(lines: $0.lines, notes: $0.notes.map { .init(id: $0.id, height: 0) }) }
+      }
+      let layout = CodeLayout(code, width: c.width, metrics: t.metrics, always: zero)
+      for i in layout.inline {
+        let w = layout.inlineWidth(card: c.width, x: i.x, metrics: t.metrics)
+        for m in i.always.notes {
+          guard let n = board.sidenote(m.id) else { continue }
+          let md = text(n)
+          out.append(
+            Measure(card: c.id, note: .inline(md), width: w, folder: folder, refs: refs.refs(in: md), sidenote: m.id))
+        }
+      }
+    }
+    return out
   }
 
   /// The Notes the renderer must measure before the scene can be made
@@ -160,7 +228,7 @@ struct Scene: Sendable {
   /// Note renderer measured of each Note in `measures`
   init(
     _ board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter,
-    sizes: [CardID: NoteMetrics] = [:],
+    sizes: [CardID: NoteMetrics] = [:], inline: [SidenoteID: NoteMetrics] = [:],
     reusing previous: Scene? = nil, vaultSeen: Int = 0, fetching: Set<CardID> = []
   ) {
     self.vaultSeen = vaultSeen
@@ -199,12 +267,25 @@ struct Scene: Sendable {
       }
       var content = found
       // the Highlights the board shows: the segment's own and this board's own sidenotes' lines (core shownRanges)
-      if case .code(var code) = content.body {
-        for i in code.segments.indices {
-          let s = code.segments[i]
-          code.segments[i].highlights = board.highlights(c.id, s.id, own: s.highlights)
-        }
+      var always: [[CodeLayout.Always]] = []
+      var alwaysText: [String] = []
+      if case .code(let own) = content.body {
+        let code = Scene.shown(own, card: c.id, board: board)
         content.body = .code(code)
+        // its Always Show sidenotes once measured
+        for g in Scene.always(code, card: c.id, board: board) {
+          var seg: [CodeLayout.Always] = []
+          for (lines, notes) in g {
+            var ms: [CodeLayout.Always.Measured] = []
+            for n in notes {
+              guard let h = inline[n.id]?.size.height else { continue }
+              ms.append(.init(id: n.id, height: h))
+              alwaysText.append(Scene.text(n))
+            }
+            if !ms.isEmpty { seg.append(CodeLayout.Always(lines: lines, notes: ms)) }
+          }
+          always.append(seg)
+        }
       }
       let tilt = c.tilted ? Scene.tilt : 0
       let mine = ends[c.id] ?? []
@@ -219,7 +300,8 @@ struct Scene: Sendable {
         }
       }()
       if let p = previous?.parts[c.id], p.content == content, p.width == c.width, p.height == c.height,
-        p.tilted == c.tilted, p.measured == sizes[c.id], p.ends == mine,
+        p.tilted == c.tilted, p.measured == sizes[c.id], p.ends == mine, p.always == always,
+        p.alwaysText == alwaysText,
         !showsOthers || previous?.vaultSeen == vaultSeen,
         previous?.fetching.contains(c.id) == fetching.contains(c.id)
       {
@@ -229,11 +311,11 @@ struct Scene: Sendable {
         guard
           let (drawing, size, code) = Scene.card(
             c, content, board: board, folder: folder, measured: sizes[c.id]?.size, theme: t, highlighter: highlighter,
-            refs: refs, fetching: fetching.contains(c.id))
+            refs: refs, fetching: fetching.contains(c.id), always: always)
         else { continue }
         part = Part(
           content: content, width: c.width, height: c.height, tilted: c.tilted, measured: sizes[c.id], ends: mine,
-          drawing: drawing, size: size, code: code)
+          drawing: drawing, size: size, code: code, always: always, alwaysText: alwaysText)
       }
       parts[c.id] = part
       let r = CGRect(origin: CGPoint(x: c.x, y: c.y), size: part.size)
@@ -487,7 +569,7 @@ struct Scene: Sendable {
 
   private static func card(
     _ c: Card, _ content: CardContent, board: Board, folder: URL, measured: CGSize?, theme t: Theme,
-    highlighter: Highlighter, refs: RefResolver, fetching: Bool = false
+    highlighter: Highlighter, refs: RefResolver, fetching: Bool = false, always: [[CodeLayout.Always]] = []
   ) -> (
     Drawing, CGSize, (layout: CodeLayout, top: CGFloat, segments: [SegmentID])?
   )? {
@@ -495,7 +577,7 @@ struct Scene: Sendable {
     switch content.body {
     case .code(let code):
       let tokens = code.segments.map { highlighter.tokens(lines: $0.lines, language: $0.language) }
-      let layout = CodeLayout(code, tokens: tokens, width: c.width, metrics: t.metrics)
+      let layout = CodeLayout(code, tokens: tokens, width: c.width, metrics: t.metrics, always: always)
       let s = code.segments.first
       let title = content.title ?? s?.symbol?.name ?? s?.scope ?? s.flatMap(CodeLayout.path).map(file) ?? "Code"
       let path = s.flatMap { s in CodeLayout.path(s).map { "\(file($0)):\(s.firstLine)" } }
@@ -512,7 +594,18 @@ struct Scene: Sendable {
       let d = Drawing.Code(
         id: c.id.rawValue, title: title, path: code.segments.count > 1 ? nil : path, glyph: glyph(code),
         version: s.flatMap(version), linkedIn: board.arrows.count { $0.to.card == c.id }, linked: linked,
-        layout: layout, framed: code.framed)
+        layout: layout, framed: code.framed,
+        inline: layout.inline.flatMap { i in
+          let w = layout.inlineWidth(card: c.width, x: i.x, metrics: t.metrics)
+          var y = top + i.y
+          return i.always.notes.map { m in
+            let md = board.sidenote(m.id).map(Scene.text) ?? ""
+            defer { y += m.height }
+            return Drawing.InlineNote(
+              id: m.id, text: md, frame: CGRect(x: layout.gutter + i.x, y: y, width: w, height: m.height),
+              folder: folder, refs: refs.refs(in: md))
+          }
+        })
       return (.code(d), CGSize(width: c.width, height: top + body), (layout, top, code.segments.map(\.id)))
     case .note(let n):
       let title = content.title ?? heading(n.text)
