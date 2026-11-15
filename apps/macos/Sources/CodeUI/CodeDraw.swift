@@ -82,6 +82,15 @@ public enum CodeDraw {
     let font = NSAttributedString.Key(kCTFontAttributeName as String)
     let color = NSAttributedString.Key(kCTForegroundColorAttributeName as String)
     let a = NSMutableAttributedString(string: s, attributes: [font: style.font.ct, color: style.ink])
+    apply(runs, style: style, to: a)
+    return a
+  }
+
+  /// The runs' colours and fonts put on a line already in the code font (a host's own text, with attributes of its
+  /// own), as `attributed` puts them
+  public static func apply(_ runs: [CodeRun], style: CodeStyle, to a: NSMutableAttributedString) {
+    let font = NSAttributedString.Key(kCTFontAttributeName as String)
+    let color = NSAttributedString.Key(kCTForegroundColorAttributeName as String)
     let units = a.length
     for run in runs {
       let r = run.columns.clamped(to: 0..<units)
@@ -91,7 +100,6 @@ public enum CodeDraw {
       a.addAttribute(color, value: look?.color ?? style.ink, range: range)
       if let f = look?.font { a.addAttribute(font, value: f, range: range) }
     }
-    return a
   }
 
   /// A line number ending at `right`, its middle at `midY`

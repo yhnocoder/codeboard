@@ -626,6 +626,19 @@ struct LayoutBuilder {
     let lh = CGFloat(m.codeLineHeight)
     // laid out as code is (CodeLines): tabs to their stops, a wrapped line cut where its characters reach the width
     let regular = FontBook.font(theme.fonts.mono, size: CGFloat(m.codeSize), weight: 400, ligatures: true)
+    // and coloured as code is (CodeDraw): each kind's colour, keywords' weight, comments' italic
+    let kinds: [MarkdownTokenKind] = [
+      .keyword, .operator, .function, .string, .comment, .number, .receiver, .punctuation,
+    ]
+    let codeStyle = CodeStyle(
+      font: CodeFont(regular), ink: theme.code.plain.cg,
+      runs: kinds.map { k in
+        theme.code.kinds[k].map { c in
+          CodeStyle.Run(
+            color: c.cg,
+            font: k == .keyword || k == .operator ? keyword : k == .comment && theme.code.italicComments ? italic : nil)
+        }
+      })
     let cm = CodeLineMetrics(
       row: lh, fold: 0, padLeft: 0, numberGap: 0, padRight: 0, charWidth: CodeDraw.width("0", CodeFont(regular)),
       font: CodeFont(regular))
@@ -662,24 +675,13 @@ struct LayoutBuilder {
         string: shown,
         attributes: InlineBuilder(theme: theme, resources: resources, imageCounts: [:], bodyWidth: width).attributes(
           style))
-      for t in tokens?[safe: i] ?? [] {
-        guard let c = theme.code.kinds[t.kind], t.columns.upperBound < column.count else { continue }
-        let t = MarkdownToken(
-          columns: column[t.columns.lowerBound]..<column[t.columns.upperBound], kind: t.kind)
-        attr.addAttribute(
-          NSAttributedString.Key(kCTForegroundColorAttributeName as String), value: c.cg,
-          range: NSRange(location: t.columns.lowerBound, length: t.columns.count))
-        if let keyword, t.kind == .keyword || t.kind == .operator {
-          attr.addAttribute(
-            NSAttributedString.Key(kCTFontAttributeName as String), value: keyword,
-            range: NSRange(location: t.columns.lowerBound, length: t.columns.count))
-        }
-        if t.kind == .comment && theme.code.italicComments {
-          attr.addAttribute(
-            NSAttributedString.Key(kCTFontAttributeName as String), value: italic,
-            range: NSRange(location: t.columns.lowerBound, length: t.columns.count))
-        }
+      // the tokens at the columns shown (a tab is its spaces)
+      let runs = (tokens?[safe: i] ?? []).compactMap { t -> CodeRun? in
+        guard theme.code.kinds[t.kind] != nil, t.columns.upperBound < column.count, let k = kinds.firstIndex(of: t.kind)
+        else { return nil }
+        return CodeRun(columns: column[t.columns.lowerBound]..<column[t.columns.upperBound], style: UInt8(k))
       }
+      CodeDraw.apply(runs, style: codeStyle, to: attr)
       var d = DisplayText()
       d.string = attr
       d.toSource = toSource
