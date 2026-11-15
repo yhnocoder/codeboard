@@ -7,11 +7,13 @@ import {
   createMarkdown,
   markTags,
   mdBlockStarts,
+  staticTextRange,
   texBrackets,
   type Markdown,
   type MdLayout,
   type RefBroken,
   type RefTarget,
+  type StaticTextRange,
 } from "@yhnocoder/markdown";
 import {
   type MdEditorHandle,
@@ -687,6 +689,36 @@ addEventListener(
   true,
 );
 
+/** A press on a Note as a place in its text, read on its static render (the web board's interact.ts staticSpot): the
+ *  character before the point, inside the same text, else the one after; "end" below the last block. Not on the
+ *  editor's own text: beside a line's end WebKit's point there lands among its hidden syntax (between a link's text
+ *  and its "(url)"), and what was typed broke the link */
+type NoteSpot = { char: StaticTextRange; after: boolean } | "end";
+function staticSpot(md: HTMLElement, x: number, y: number): NoteSpot | undefined {
+  const last = md.lastElementChild;
+  if (!last) return undefined;
+  if (y >= last.getBoundingClientRect().bottom) return "end";
+  const c = document.caretRangeFromPoint(x, y);
+  if (!c || !md.contains(c.startContainer)) return undefined;
+  const before = () => {
+    const all = document.createRange();
+    all.selectNodeContents(md);
+    all.setEnd(c.startContainer, c.startOffset);
+    const b = staticTextRange(md, all);
+    return b && { char: { from: b.to - 1, to: b.to, text: b.text[b.text.length - 1] }, after: true };
+  };
+  const after = () => {
+    const rest = document.createRange();
+    rest.setStart(c.startContainer, c.startOffset);
+    rest.setEnd(md, md.childNodes.length);
+    const r = staticTextRange(md, rest);
+    return r && { char: { from: r.from, to: r.from + 1, text: r.text[0] }, after: false };
+  };
+  return (
+    (c.startContainer.nodeType === 3 && c.startOffset > 0 ? (before() ?? after()) : (after() ?? before())) ?? undefined
+  );
+}
+
 const edit = {
   /** Tests: the editor takes the focus `ms` late from now on, as on a busy machine (WebKit gives the view its input
    *  context only once the page has focused something editable) */
@@ -749,6 +781,16 @@ const edit = {
       editor: undefined as unknown as MdEditorHandle,
     };
     const md = mdFor(a.images, a.note.refs, () => a.refList);
+    // the press on the Note as drawn, read on its static render, which the editor then replaces (Editable.tsx)
+    let spot: NoteSpot | undefined;
+    if (a.caret) {
+      const html = md.render(a.note.text);
+      made.body.innerHTML = html;
+      md.hydrate(made.body, html);
+      await settled([made.card], true);
+      spot = staticSpot(made.body, a.margin + a.caret.x * a.k, a.margin + a.caret.y * a.k);
+      made.body.textContent = "";
+    }
     const list = a.refList;
     e.editor = mountEditor(md, made.body, {
       value: a.note.text,
@@ -806,7 +848,8 @@ const edit = {
     if (a.caret) {
       const x = a.margin + a.caret.x * a.k,
         y = a.margin + a.caret.y * a.k;
-      e.editor.placeCaret({ x, y });
+      if (spot === "end") e.editor.placeCaret("end");
+      else if (!spot || !e.editor.placeCaret({ visible: spot.char, after: spot.after })) e.editor.placeCaret({ x, y });
       if (a.open) openRefAt(x, y);
     } else e.editor.placeCaret("end");
     const r = made.card.getBoundingClientRect();
