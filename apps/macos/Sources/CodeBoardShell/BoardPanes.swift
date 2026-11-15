@@ -9,6 +9,9 @@ import CodeBoardNotes
 @MainActor final class BoardPanes: NSView {
   let shell: Shell
   private(set) var panes: [Tab.ID: Pane] = [:]
+  /// Tabs closed while a card in them was being written in, until what was typed is on their board's disk: no longer
+  /// in `panes`, so quitting and another vault wait for them here
+  private var closing: [Tab.ID: Task<Void, Never>] = [:]
   private var front: Tab.ID?
   /// A canvas changed the vault's files (a board made or renamed there)
   var onVaultChanged: (() -> Void)?
@@ -193,9 +196,10 @@ import CodeBoardNotes
       panes[id] = nil
       if pane.canvas.isEditing {
         pane.isHidden = true
-        Task {
+        closing[id] = Task { [weak self] in
           await pane.canvas.endEditing()
           pane.close()
+          self?.closing[id] = nil
         }
       } else {
         pane.close()
@@ -317,12 +321,14 @@ import CodeBoardNotes
     return unsaved.sorted { $0.title < $1.title }
   }
 
-  /// Ends the writing in any card, what was typed written to its board (quitting)
+  /// Ends the writing in any card, what was typed written to its board (quitting); a tab closed while it was being
+  /// written in, until its board is written
   func endEditing() async {
+    for t in Array(closing.values) { await t.value }
     for pane in panes.values { await pane.canvas.endEditing() }
   }
 
-  var isEditing: Bool { panes.values.contains { $0.canvas.isEditing } }
+  var isEditing: Bool { !closing.isEmpty || panes.values.contains { $0.canvas.isEditing } }
 
   /// Another vault: what is being written in a card goes to its board, then what was open is written and let go
   func close() async {

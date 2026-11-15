@@ -95,11 +95,13 @@ import Testing
     let s = try Setup()
     defer { s.close() }
     try await s.write()
-    let canvas = s.canvas
     s.shell.close(try #require(s.shell.selected))
     s.panes.sync()
-    let deadline = ContinuousClock.now + .seconds(30)
-    while canvas.isEditing, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+    // the closed tab's writing still ends after its tab has gone: what quitting (or another vault) asks and waits for
+    // right now. The card's writing ends a step before its board is written (Pane.close), so the canvas no longer
+    // writing is not yet the board on disk
+    #expect(s.panes.isEditing, "still writing what the closed tab had")
+    await s.panes.endEditing()
     // read on its own: a value that differs is shown (an expectation with a `try` in it shows none), an error says what
     let got = try s.onDisk()
     #expect(got == "Threads wait and then", "\(s.listing())")
