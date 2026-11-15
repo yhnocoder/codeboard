@@ -698,8 +698,10 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     // an SVG drawn at twice its box's width at the zoom (sharp on the display; again when the zoom grows past it)
     if !slot.src.contains("://"), let d = try? Data(contentsOf: url), MarkdownSVG.isSVG(d) {
       let want = slot.pixelWidth(at: 2 * max(1, zoom))
-      let key = url.path + "@\(want)" + (dark ? "-dark" : "")
-      if let i = images[key] { return i }
+      // one drawing per file and look, drawn again only when a wider one is wanted: a picture being resized is that
+      // one drawing scaled into its box every frame, never a new drawing a step (drawings swapped in mid-drag flickered)
+      let key = url.path + (dark ? "@dark" : "@light")
+      if let i = images[key], i.width >= want { return i }
       let i = MarkdownSVG.image(d, pixelWidth: want, dark: dark)
       images[key] = i
       return i

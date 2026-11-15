@@ -123,7 +123,12 @@ extension BlockLayout {
     let piece: Int
     let shift: Int
     let top: CGFloat
+    /// how far its block is scrolled across (a table wider than the Note)
+    let left: CGFloat
   }
+
+  /// how far piece `i` is scrolled across
+  func sx(_ i: Int) -> CGFloat { scrollX[i] ?? 0 }
 
   func pieceIndex(_ offset: Int) -> Int? { MarkdownEditing.blockHolding(offset, in: document) }
 
@@ -133,7 +138,7 @@ extension BlockLayout {
     let texts = pieces[i].layout.caretTexts
     guard let t = texts.first(where: { $0.holds(q) }) ?? texts.last(where: { $0.sourceStart <= q }) ?? texts.first
     else { return nil }
-    return Spot(text: t, piece: i, shift: shifts[i], top: tops[i])
+    return Spot(text: t, piece: i, shift: shifts[i], top: tops[i], left: sx(i))
   }
 
   /// Where the caret is drawn
@@ -147,7 +152,7 @@ extension BlockLayout {
     guard let s = spot(c.offset) else { return nil }
     let j = s.text.displayIndex(c.offset - s.shift)
     let k = s.text.lineIndex(j, upstream: c.upstream)
-    return s.text.caretBox(j, line: k).offsetBy(dx: 0, dy: s.top)
+    return s.text.caretBox(j, line: k).offsetBy(dx: -s.left, dy: s.top)
   }
 
   /// The caret place a point is nearest (a click): the nearest line of text in the nearest block that has text
@@ -179,7 +184,7 @@ extension BlockLayout {
     }
     guard probe >= 0 else { return MDCaret(MarkdownEditing.start(of: document)) }
     i = probe
-    let local = CGPoint(x: p.x, y: p.y - tops[i])
+    let local = CGPoint(x: p.x + sx(i), y: p.y - tops[i])
     var best: (TextBlock, Int)?
     var bestD = CGFloat.infinity
     for t in pieces[i].layout.caretTexts {
@@ -202,7 +207,7 @@ extension BlockLayout {
   public func atom(at p: CGPoint) -> Range<Int>? {
     guard !pieces.isEmpty else { return nil }
     let i = min(firstPieceIndex(atOrBelow: p.y), pieces.count - 1)
-    let local = CGPoint(x: p.x, y: p.y - tops[i])
+    let local = CGPoint(x: p.x + sx(i), y: p.y - tops[i])
     for t in pieces[i].layout.caretTexts {
       for l in t.lines where local.y >= l.top && local.y <= l.top + l.height {
         for run in CTLineGetGlyphRuns(l.line) as! [CTRun] {
@@ -232,7 +237,8 @@ extension BlockLayout {
           let j = CTRunGetStringRange(run).location
           guard t.display.toSource[j] + d == range.lowerBound else { continue }
           let x0 = l.origin.x + CTLineGetOffsetForStringIndex(l.line, j, nil)
-          return CGRect(x: x0, y: tops[i] + l.origin.y - a.ascent, width: a.width, height: a.ascent + a.descent)
+          return CGRect(
+            x: x0 - sx(i), y: tops[i] + l.origin.y - a.ascent, width: a.width, height: a.ascent + a.descent)
         }
       }
     }
@@ -259,7 +265,7 @@ extension BlockLayout {
           let x0 = t.x(s, line: k)
           var x1 = t.x(e, line: k)
           if past { x1 = max(x1, x0) + 4 }
-          out.append(CGRect(x: x0, y: tops[i] + l.top, width: max(0, x1 - x0), height: l.height))
+          out.append(CGRect(x: x0 - sx(i), y: tops[i] + l.top, width: max(0, x1 - x0), height: l.height))
         }
       }
     }
@@ -282,8 +288,10 @@ extension BlockLayout {
 
   /// ↑ / ↓: the place on the line above or below nearest `x` (the column the caret keeps while it goes up and down);
   /// past the first or last line, the document's start or end
-  public func vertical(_ c: MDCaret, x: CGFloat, down: Bool) -> MDCaret {
+  public func vertical(_ c: MDCaret, x vx: CGFloat, down: Bool) -> MDCaret {
     guard let s = spot(c.offset) else { return c }
+    // the column in the block's own points (a table scrolled across)
+    let x = vx + s.left
     let t = s.text
     let j = t.displayIndex(c.offset - s.shift)
     let k = t.lineIndex(j, upstream: c.upstream)
@@ -362,7 +370,7 @@ extension BlockLayout {
           let t = texts.first(where: { $0.holds(q) && $0.sourceStart == q }) ?? texts.first(where: { $0.holds(q) })
             ?? cell.text.offsets.lazy.compactMap({ o in texts.first(where: { $0.holds(o - d) }) }).first
         else { return .zero }
-        return t.frame.offsetBy(dx: 0, dy: tops[i]).insetBy(dx: -ph, dy: -pv)
+        return t.frame.offsetBy(dx: -sx(i), dy: tops[i]).insetBy(dx: -ph, dy: -pv)
       }
     }
   }

@@ -436,7 +436,8 @@ public final class EditorCore {
   /// source is written once, on release, by setImageWidth), the text below following it
   public func previewImageWidth(_ share: Double) {
     guard let (range, img) = selectedImage else { return }
-    let want = MarkdownSourceOps.setImageWidth(source, src: img.src, nth: nth(of: range, src: img.src), width: share)
+    let want = MarkdownSourceOps.setImageWidth(
+      source, src: img.src, nth: nth(of: range, src: img.src), width: share, exact: true)
     let shown = layout.document.source
     guard want != shown, let e = Self.diff(shown, want) else { return }
     let next = layout.document.reparse(replacing: e.range, with: e.replacement)

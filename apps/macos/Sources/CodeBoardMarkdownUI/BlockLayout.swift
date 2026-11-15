@@ -83,6 +83,9 @@ public final class BlockLayout: @unchecked Sendable {
   let memo = LayoutMemo()
   /// blocks drawn off their place while they slide to it (FLIP after a move), offset by block index
   var drawOffsets: [Int: CGFloat] = [:]
+  /// how far a block wider than the Note (a table) is scrolled across, by piece: drawn shifted and cut at the Note's
+  /// edges, and the caret's geometry shifted with it (markdown.css .tableWrapper overflow-x: auto)
+  public var scrollX: [Int: CGFloat] = [:]
   /// the caret whose constructs show their markers (editing); nil: nowhere, the static picture
   public private(set) var head: Int?
 
@@ -257,8 +260,13 @@ public final class BlockLayout: @unchecked Sendable {
       }
       ctx.saveGState()
       if marks[i] == .dim { ctx.setAlpha(0.35) }
-      ctx.translateBy(x: 0, y: y)
-      pieces[i].layout.draw(in: ctx, scale: scale, clip: clip.offsetBy(dx: 0, dy: -y)) { slot in
+      let s = scrollX[i] ?? 0
+      // a table is cut at the Note's edges, where it is scrolled to
+      if case .table = document.blocks[i].kind {
+        ctx.clip(to: CGRect(x: -2, y: y - 4, width: width + 4, height: pieces[i].height + 8))
+      }
+      ctx.translateBy(x: -s, y: y)
+      pieces[i].layout.draw(in: ctx, scale: scale, clip: clip.offsetBy(dx: s, dy: -y)) { slot in
         image(slot.moved(by: y))
       }
       ctx.restoreGState()
@@ -269,7 +277,7 @@ public final class BlockLayout: @unchecked Sendable {
   /// The filled box (a code block's panel) drawn around a point of the Note, nil when none is: what a band sits on
   public func panel(around p: CGPoint, of offset: Int, color: MDColor) -> CGRect? {
     guard let i = pieceIndex(offset) else { return nil }
-    let local = CGPoint(x: p.x, y: p.y - tops[i])
+    let local = CGPoint(x: p.x + (scrollX[i] ?? 0), y: p.y - tops[i])
     func find(_ items: [Item]) -> CGRect? {
       for it in items {
         switch it {
@@ -280,7 +288,7 @@ public final class BlockLayout: @unchecked Sendable {
       }
       return nil
     }
-    return find(pieces[i].layout.items).map { $0.offsetBy(dx: 0, dy: tops[i]) }
+    return find(pieces[i].layout.items).map { $0.offsetBy(dx: -(scrollX[i] ?? 0), dy: tops[i]) }
   }
 
   /// The images to draw, where they are in the whole Note

@@ -119,11 +119,12 @@ import Testing
     #expect(v.core.selectedImage != nil)
     let g = CGPoint(x: f0.maxX, y: f0.midY)
     send(.leftMouseDown, g)
+    // a point a frame to the left: the width follows by two points every step (it once moved in whole-percent steps)
     var last = f0.width
-    for dx in [-3.0, -6, -9, -12, -15] {
+    for dx in stride(from: -1.0, through: -20, by: -1) {
       send(.leftMouseDragged, CGPoint(x: g.x + dx, y: g.y))
       let f = v.core.layout.images[0].frame
-      #expect(f.width <= last)
+      #expect(abs(last - f.width - 2) < 0.1, "\(dx): \(last) → \(f.width)")
       #expect(v.imageBox == f)
       last = f.width
     }
@@ -169,5 +170,29 @@ import Testing
     #expect(v.band.shown)
     #expect(v.band.bandFrame.maxX <= v.bounds.maxX + 0.5)
     #expect(v.band.partRect("more") != nil)
+  }
+}
+
+/// A table wider than its Note scrolls across inside it (it was cut off): a sideways scroll over it moves the table, the
+/// caret moved to its last column scrolls it into view, and what is drawn and hit follows the scroll
+@MainActor @Suite struct WideTableScrollTests {
+  @Test func theTableScrollsAndTheCaretStaysInView() {
+    _ = boardFonts
+    let cols = 1...10
+    let src =
+      "| " + cols.map { "H\($0)" }.joined(separator: " | ") + " |\n|" + String(repeating: "---|", count: 10) + "\n| "
+      + cols.map { "cell\($0) words" }.joined(separator: " | ") + " |"
+    let l = BlockLayout(MarkdownDocument(src), width: 320, theme: testTheme, layout: nil, resources: TestResources())
+    let v = MarkdownEditorView(layout: l, caret: 2)
+    v.isEditing = true
+    let last = (src as NSString).range(of: "cell10").location + 2
+    v.selection = MDSelection(last)
+    let r = v.core.caretRect!
+    #expect(r.minX >= 0 && r.maxX <= 320)
+    #expect((v.core.layout.scrollX[0] ?? 0) > 0)
+    // a press where the caret is drawn finds that place again
+    v.core.mouseDown(at: CGPoint(x: r.midX, y: r.midY), clicks: 1, extend: false)
+    v.core.mouseUp()
+    #expect(abs(v.core.selection.head - last) <= 1)
   }
 }

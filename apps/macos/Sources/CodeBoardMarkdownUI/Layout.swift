@@ -845,7 +845,8 @@ struct LayoutBuilder {
     inner.append(
       .stroke(frame.insetBy(dx: 0.5, dy: 0.5), radius: CGFloat(m.tableRadius) - 0.5, theme.colors.hair, width: 1))
     widestTable(frame)
-    items.append(.clip(CGRect(x: x, y: y - 1, width: width, height: frame.height + 2), inner))
+    // all of it, past the Note's width too: the Note's edges cut it where it is scrolled to (BlockLayout.draw)
+    items.append(.clip(CGRect(x: x, y: y - 1, width: max(width, tableW), height: frame.height + 2), inner))
     var end = yy
     if let cap = t.caption {
       var cs = style

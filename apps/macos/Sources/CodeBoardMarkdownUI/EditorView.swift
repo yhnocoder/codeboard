@@ -452,22 +452,28 @@ public final class MarkdownEditorView: NSView {
         gripHover.row.flatMap { g.rows[safe: $0] }.map(rowGrip),
         gripHover.col.flatMap { g.cols[safe: $0] }.map(colGrip),
       ]
+      let colors = core.layout.theme.colors
       for r in grips.compactMap({ $0 }) {
         let pill = CGPath(roundedRect: r, cornerWidth: 3, cornerHeight: 3, transform: nil)
+        // the pointer on it: the accent, its dots in the accent's ink (.md-tgrip:hover)
+        let over = gripPointer.map { r.insetBy(dx: -4, dy: -3).contains($0) } ?? false
         ctx.saveGState()
         ctx.setShadow(
-          offset: CGSize(width: 0, height: 1), blur: 2,
-          color: CGColor(srgbRed: 50 / 255, green: 35 / 255, blue: 10 / 255, alpha: 0.13))
+          offset: CGSize(width: 0, height: 1), blur: over ? 3 : 2,
+          color: over
+            ? colors.accent.alpha(0.35).cg : CGColor(srgbRed: 50 / 255, green: 35 / 255, blue: 10 / 255, alpha: 0.13))
         ctx.addPath(pill)
-        ctx.setFillColor(core.layout.theme.colors.surface.cg)
+        ctx.setFillColor((over ? colors.accent : colors.surface).cg)
         ctx.fillPath()
         ctx.restoreGState()
-        ctx.addPath(pill)
-        ctx.setStrokeColor(core.layout.theme.colors.hair.cg)
-        ctx.setLineWidth(0.5)
-        ctx.strokePath()
+        if !over {
+          ctx.addPath(pill)
+          ctx.setStrokeColor(colors.hair.cg)
+          ctx.setLineWidth(0.5)
+          ctx.strokePath()
+        }
         // its dots (the grip's handle)
-        ctx.setFillColor(core.layout.theme.colors.ink3.cg)
+        ctx.setFillColor(over ? colors.accentInk.alpha(0.92).cg : colors.ink3.cg)
         let vertical = r.height > r.width
         for k in [-1.0, 1.0] {
           let c = vertical ? CGPoint(x: r.midX, y: r.midY + k * 2.5) : CGPoint(x: r.midX + k * 2.5, y: r.midY)
@@ -537,7 +543,58 @@ public final class MarkdownEditorView: NSView {
     needsDisplay = true
   }
 
+  // MARK: tables wider than the Note
+
+  /// how far each table wider than the Note is scrolled across, by where its source starts
+  private var tableScroll: [Int: CGFloat] = [:]
+
+  /// the tables' scroll offsets onto the layout's pieces, the caret's table scrolled to keep it in view
+  private func applyTableScroll() {
+    let doc = core.document
+    var kept: [Int: CGFloat] = [:]
+    let caret = core.selection.isEmpty ? core.selection.head : nil
+    for (i, b) in doc.blocks.enumerated() {
+      guard case .table(let t) = b.kind else { continue }
+      core.layout.scrollX[i] = nil
+      let cells = core.layout.cellBoxes(of: t).joined().filter { $0 != .zero }
+      guard let first = cells.first else { continue }
+      let wide = cells.reduce(first) { $0.union($1) }.maxX + 1
+      let room = max(0, wide - core.layout.width)
+      var s = min(room, tableScroll[b.range.lowerBound] ?? 0)
+      if let c = caret, b.range.contains(c), let r = core.layout.caretRect(MDCaret(c)) {
+        // the caret in view, 12 points from either edge (r is where it is unscrolled)
+        if r.minX - s < 12 { s = max(0, r.minX - 12) }
+        if r.maxX - s > core.layout.width - 12 { s = min(room, r.maxX - core.layout.width + 12) }
+      }
+      if s > 0 { kept[b.range.lowerBound] = s }
+      core.layout.scrollX[i] = s > 0 ? s : nil
+    }
+    tableScroll = kept
+  }
+
+  /// a sideways scroll over a table wider than the Note scrolls the table, not the card (a vertical one goes on to
+  /// the page)
+  public override func scrollWheel(with e: NSEvent) {
+    let p = convert(e.locationInWindow, from: nil)
+    let at = CGPoint(x: p.x / zoom, y: p.y / zoom)
+    guard abs(e.scrollingDeltaX) > abs(e.scrollingDeltaY), let i = core.layout.block(at: at),
+      case .table(let t) = core.document.blocks[i].kind
+    else { return super.scrollWheel(with: e) }
+    let cur = core.layout.scrollX[i] ?? 0
+    let cells = core.layout.cellBoxes(of: t).joined().filter { $0 != .zero }
+    guard let first = cells.first else { return super.scrollWheel(with: e) }
+    let wide = cells.reduce(first) { $0.union($1) }.maxX + cur + 1
+    let room = wide - core.layout.width
+    guard room > 0.5 else { return super.scrollWheel(with: e) }
+    let next = min(room, max(0, cur - e.scrollingDeltaX / zoom))
+    tableScroll[core.document.blocks[i].range.lowerBound] = next
+    core.layout.scrollX[i] = next > 0 ? next : nil
+    showBand()
+    needsDisplay = true
+  }
+
   private func changed() {
+    applyTableScroll()
     let before = frame.size
     resize()
     if frame.size != before { delegate?.editor(self, didResize: core.layout.size) }
@@ -727,7 +784,8 @@ public final class MarkdownEditorView: NSView {
       let rows = t.table.rows.count
       let cols = t.table.rows.first?.count ?? 0
       // over the part of the table the Note shows: a table wider than the Note scrolls, its band does not run off
-      let shownW = max(0, min(g.box.width, core.layout.width - max(0, g.box.minX)))
+      let shownX = max(0, g.box.minX)
+      let shownW = max(0, min(g.box.maxX, core.layout.width) - shownX)
       // as many actions as that width holds, the most used first; the rest in ⋯
       let room = shownW - (8 + 7 + 8 + 27) - (6 + 14 + 6 + 8 + 40)
       var keep = Set<String>()
@@ -757,7 +815,7 @@ public final class MarkdownEditorView: NSView {
       }
       parts.append(.init(id: "more", kind: .icon("dots"), tip: "More"))
       band.place(
-        over: CGRect(x: g.box.minX * zoom, y: g.box.minY * zoom, width: shownW * zoom, height: 1),
+        over: CGRect(x: shownX * zoom, y: g.box.minY * zoom, width: shownW * zoom, height: 1),
         key: "table \(t.block.lowerBound)", zoom: zoom, theme: core.layout.theme, parts: parts,
         fill: core.layout.theme.colors.fill, table: true, radius: 6)
       band.show(true)
@@ -1251,6 +1309,14 @@ public final class MarkdownEditorView: NSView {
   /// A picture the caret's moving put elsewhere (its source opened or closed, no edit made) slides there over
   /// IMAGE_SLIDE instead of jumping (editor/imageslide.ts); an edit moves pictures at once
   private func slideImages() {
+    // while a grip is dragged the picture is where the pointer puts it, every frame: no slide toward it (each step
+    // started one, the picture lagging and jumping inside its ring)
+    if resizing != nil {
+      slides = [:]
+      imageFrames = [:]
+      framesAt = -1
+      return
+    }
     var now: [String: CGRect] = [:]
     for slot in core.layout.images { now["\(slot.src)#\(slot.nth)"] = slot.frame }
     if framesAt == core.revision {
@@ -1922,7 +1988,23 @@ public final class MarkdownEditorView: NSView {
   /// the cell under the pointer in the caret's table: its row and column, whose grips show
   private var gripHover: (row: Int?, col: Int?) = (nil, nil)
 
+  /// where the pointer is, for a grip's hover
+  private var gripPointer: CGPoint?
+
   func hoverGrips(_ at: CGPoint) {
+    let was = gripPointer
+    gripPointer = at
+    if let g = tableGrips, let w = was,
+      [
+        gripHover.row.flatMap { g.rows[safe: $0] }.map(rowGrip),
+        gripHover.col.flatMap { g.cols[safe: $0] }.map(colGrip),
+      ]
+      .compactMap({ $0 }).contains(where: {
+        $0.insetBy(dx: -4, dy: -3).contains(w) != $0.insetBy(dx: -4, dy: -3).contains(at)
+      })
+    {
+      needsDisplay = true
+    }
     var next: (row: Int?, col: Int?) = (nil, nil)
     if let g = tableGrips, g.box.insetBy(dx: -4, dy: -4).contains(at) {
       // a grip keeps its row or column while the pointer is on it, past the cell's edge

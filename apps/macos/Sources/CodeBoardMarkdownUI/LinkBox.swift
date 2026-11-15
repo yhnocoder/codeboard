@@ -8,8 +8,8 @@ import CodeBoardMarkdown
 final class LinkBox: NSView, NSTextFieldDelegate {
   let text = NSTextField()
   let url = NSTextField()
-  private let open = NSButton()
-  private let remove = NSButton()
+  /// Open and Remove Link, text buttons in a row under the fields (bubble.tsx md-linkacts)
+  let acts = LinkActs()
   var place: MDLinkPlace?
   var onWrite: (MDLinkPlace, String, String) -> Void = { _, _, _ in }
   var onOpen: (String) -> Void = { _ in }
@@ -27,21 +27,10 @@ final class LinkBox: NSView, NSTextFieldDelegate {
       f.delegate = self
       addSubview(f)
     }
-    open.image = NSImage(systemSymbolName: "arrow.up.right.square", accessibilityDescription: "Open")
-    open.toolTip = "Open"
-    // a symbol every supported macOS has (a missing one leaves the button its title, "Button", cut off at the edge)
-    remove.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Remove Link")
-    remove.toolTip = "Remove Link"
-    for b in [open, remove] {
-      b.title = ""
-      b.imagePosition = .imageOnly
-      b.bezelStyle = .accessoryBarAction
-      b.isBordered = false
-      b.target = self
-      addSubview(b)
+    addSubview(acts)
+    acts.onPress = { [weak self] id in
+      if id == "open" { self?.openLink() } else { self?.removeLink() }
     }
-    open.action = #selector(openLink)
-    remove.action = #selector(removeLink)
     isHidden = true
   }
 
@@ -53,9 +42,8 @@ final class LinkBox: NSView, NSTextFieldDelegate {
   override func layout() {
     super.layout()
     text.frame = CGRect(x: 10, y: 10, width: 300, height: 24)
-    url.frame = CGRect(x: 10, y: 40, width: 244, height: 24)
-    open.frame = CGRect(x: 258, y: 40, width: 24, height: 24)
-    remove.frame = CGRect(x: 286, y: 40, width: 24, height: 24)
+    url.frame = CGRect(x: 10, y: 40, width: 300, height: 24)
+    acts.frame = CGRect(x: 8, y: 68, width: 304, height: 26)
   }
 
   /// a new look or appearance while shown
@@ -73,9 +61,10 @@ final class LinkBox: NSView, NSTextFieldDelegate {
     // under the link, from its start, kept inside the Note's width where it fits (place.ts bottom-start, shifted)
     let w: CGFloat = 320
     let room = superview?.bounds.width ?? w
-    frame = CGRect(x: max(0, min(r.minX, room - w)), y: r.maxY + 6, width: w, height: 74)
+    frame = CGRect(x: max(0, min(r.minX, room - w)), y: r.maxY + 6, width: w, height: 100)
     isHidden = false
-    remove.isHidden = !p.exists
+    acts.theme = theme
+    acts.removes = p.exists
     window?.makeFirstResponder(p.exists || p.text.isEmpty == false ? url : text)
   }
 
@@ -86,12 +75,12 @@ final class LinkBox: NSView, NSTextFieldDelegate {
     onClose()
   }
 
-  @objc private func openLink() {
+  private func openLink() {
     let u = url.stringValue.trimmingCharacters(in: .whitespaces)
     if !u.isEmpty { onOpen(u) }
   }
 
-  @objc private func removeLink() {
+  private func removeLink() {
     guard let p = place else { return }
     onWrite(p, text.stringValue, "")
     close()
@@ -108,5 +97,57 @@ final class LinkBox: NSView, NSTextFieldDelegate {
       return true
     }
     return false
+  }
+}
+
+/// The link box's two text buttons (.md-linkacts .md-linkbtn: 24 high, 8 points of padding, 12-point text), with the
+/// hover of main's buttons (the ink at 6.5 % behind, the text in the ink) and a pointing hand
+@MainActor
+final class LinkActs: HoverControls {
+  var theme: MarkdownTheme? { didSet { needsDisplay = true } }
+  /// whether Remove Link shows (a link that exists)
+  var removes = true {
+    didSet {
+      needsDisplay = true
+      refreshTips()
+    }
+  }
+  var onPress: (String) -> Void = { _ in }
+  override var isFlipped: Bool { true }
+  private let font = NSFont.systemFont(ofSize: 12)
+
+  override func controls() -> [(id: String, box: CGRect, tip: String)] {
+    var x: CGFloat = 0
+    var out: [(id: String, box: CGRect, tip: String)] = []
+    for (id, title) in [("open", "Open"), ("remove", "Remove Link")] where id == "open" || removes {
+      let w = ceil((title as NSString).size(withAttributes: [.font: font]).width) + 16
+      out.append((id, CGRect(x: x, y: 1, width: w, height: 24), ""))
+      x += w + 2
+    }
+    return out
+  }
+
+  override func draw(_ dirtyRect: NSRect) {
+    guard let theme, let ctx = NSGraphicsContext.current?.cgContext else { return }
+    for c in controls() {
+      let over = hovered == c.id
+      if over {
+        ctx.addPath(CGPath(roundedRect: c.box, cornerWidth: 6, cornerHeight: 6, transform: nil))
+        ctx.setFillColor(theme.colors.ink.alpha(0.065).cg)
+        ctx.fillPath()
+      }
+      let title = c.id == "open" ? "Open" : "Remove Link"
+      let a: [NSAttributedString.Key: Any] = [
+        .font: font,
+        .foregroundColor: NSColor(cgColor: (over ? theme.colors.ink : theme.colors.ink2).cg) ?? .labelColor,
+      ]
+      let sz = (title as NSString).size(withAttributes: a)
+      (title as NSString).draw(at: CGPoint(x: c.box.minX + 8, y: c.box.midY - sz.height / 2), withAttributes: a)
+    }
+  }
+
+  override func mouseDown(with e: NSEvent) {
+    let p = convert(e.locationInWindow, from: nil)
+    if let c = controls().first(where: { $0.box.contains(p) }) { onPress(c.id) }
   }
 }

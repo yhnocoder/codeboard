@@ -261,11 +261,15 @@ public enum MarkdownSourceOps {
   }
 
   /// The nth image at src at this share of the body's width (0–1; nil: the full width), written as {width=N%}
-  public static func setImageWidth(_ source: String, src: String, nth: Int, width: Double?) -> String {
+  /// `exact`: to a hundredth of a percent (a drag's live preview, which follows the pointer), else a whole percent (what a
+  /// release writes)
+  public static func setImageWidth(_ source: String, src: String, nth: Int, width: Double?, exact: Bool = false)
+    -> String
+  {
     guard let was = image(source, src: src, nth: nth) else { return source }
-    let pct = width.map { min(100, max(1, ($0 * 100).rounded())) }
+    let pct = width.map { min(100, max(1, exact ? ($0 * 10000).rounded() / 100 : ($0 * 100).rounded())) }
     let want = ImageAttributes(width: pct.flatMap { $0 >= 100 ? nil : $0 }, frame: was.frame, loop: was.loops)
-    if want.width == was.width.map({ ($0 * 100).rounded() }) { return source }
+    if want.width == was.width.map({ ($0 * 10000).rounded() / 100 }) { return source }
     return rewriteAttributes(source, src: src, nth: nth, want)
   }
 
@@ -279,7 +283,8 @@ public enum MarkdownSourceOps {
     guard let back = image(out, src: src, nth: nth) else { return source }
     // the width read back as a whole percent: 0.57 × 100 is 56.99999…, and an exact compare refused 57 % and 55 %
     let ok =
-      back.width.map { ($0 * 100).rounded() } == want.width && back.frame == want.frame && back.loops == want.loop
+      back.width.map { ($0 * 10000).rounded() / 100 } == want.width && back.frame == want.frame
+      && back.loops == want.loop
     return ok ? out : source
   }
 
