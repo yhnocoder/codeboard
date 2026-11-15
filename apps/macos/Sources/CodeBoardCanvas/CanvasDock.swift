@@ -308,7 +308,6 @@ package final class CanvasDock: NSView {
   package override func mouseMoved(with e: NSEvent) { hover = part(at: convert(e.locationInWindow, from: nil)) }
   package override func mouseExited(with e: NSEvent) { hover = nil }
   package override func mouseDown(with e: NSEvent) {
-    CanvasView.under(self)?.stopGlide()
     pressed = part(at: convert(e.locationInWindow, from: nil))
   }
   package override func mouseUp(with e: NSEvent) {

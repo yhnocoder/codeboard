@@ -5,7 +5,7 @@ import SwiftUI
 /// The D2 window: sidebar on the window's own warm-grey ground, the board as a floating rounded panel with its tabs in
 /// its top bar. Traffic lights, the sidebar toggle, back / forward and the tabs share one title line, sidebar shown or not.
 @MainActor func makeMainWindow(shell: Shell) -> (NSWindow, BoardPanes) {
-  let window = NSWindow(
+  let window = BoardWindow(
     contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
     styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
     backing: .buffered, defer: false)

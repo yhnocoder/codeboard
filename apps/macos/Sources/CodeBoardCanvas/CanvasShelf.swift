@@ -726,7 +726,6 @@ package final class ShelfPanel: NSView {
   private var down = false
 
   package override func mouseDown(with e: NSEvent) {
-    CanvasView.under(self)?.stopGlide()
     down = closeRect.contains(convert(e.locationInWindow, from: nil))
   }
   package override func mouseUp(with e: NSEvent) {
@@ -826,7 +825,6 @@ package final class ShelfThumb: NSView {
   }
 
   package override func mouseDown(with e: NSEvent) {
-    CanvasView.under(self)?.stopGlide()
     press = convert(e.locationInWindow, from: nil)
     dragging = false
   }
@@ -923,7 +921,6 @@ package final class ShelfPreview: NSView {
   private var down = false
 
   package override func mouseDown(with e: NSEvent) {
-    CanvasView.under(self)?.stopGlide()
     down = buttonRect.contains(convert(e.locationInWindow, from: nil))
   }
   package override func mouseUp(with e: NSEvent) {

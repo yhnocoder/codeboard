@@ -484,7 +484,6 @@ public final class CanvasToolbar: NSView {
   public override func mouseMoved(with e: NSEvent) { hover = button(at: convert(e.locationInWindow, from: nil)) }
   public override func mouseExited(with e: NSEvent) { hover = nil }
   public override func mouseDown(with e: NSEvent) {
-    CanvasView.under(self)?.stopGlide()
     pressed = button(at: convert(e.locationInWindow, from: nil))
   }
 
