@@ -1,0 +1,22 @@
+# An arrow's label dragged slides along its line only, its box kept clear of the cards at the ends (canvas/Labels.tsx
+# labelDrag, dragT). Pressed again where it slid to, over the Section's edge, the label still takes the press (it is
+# over the Sections and their edges) and slides back toward its start; the Section stays as it was
+# known mac: the Section's edge under the label takes the press and the Section is resized (NEED SEAM, lane-f.log)
+# (CanvasEditing mouseDown asks hitHandle before hitArrowLabel)
+key esc
+zoom 1
+center @ccode+500,300
+shot before @ccode+380,180 400 300
+drag @lwide:c @lwide:c+40,30 500
+wait 300
+shot along @ccode+380,180 400 300
+drag @lwide:c @lwide:c+-200,-200 500
+wait 300
+shot far @ccode+380,180 400 300
+expect sboxes.x = 580
+expect sboxes.y = 350
+expect sboxes.w = 700
+key cmd+z
+key cmd+z
+wait 300
+shot undone @ccode+380,180 400 300
