@@ -330,6 +330,9 @@ public final class CanvasView: NSView {
   package var onPop: ((PopAt?) -> Void)?
   /// The popups' showing, updating and closing, one after another
   var popTask: Task<Void, Never>?
+  /// The popups closed here whose closing has not run yet: only this canvas's next popup may take one's web view, its
+  /// showing queued after that closing; another canvas's would be cleared by it
+  var closingPops: [Popup] = []
   /// The popup the [[ref]] previewed was pressed in
   var refPop: Popup?
   /// The open questions the toolbar was told of; the question list open, under the toolbar button at that rect, with
