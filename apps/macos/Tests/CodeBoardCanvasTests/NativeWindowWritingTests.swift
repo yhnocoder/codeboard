@@ -1,10 +1,10 @@
 import AppKit
 import CodeBoardMarkdown
-import CodeBoardMarkdownUI
 import CodeBoardModel
 import Testing
 
 @testable import CodeBoardCanvas
+@testable import CodeBoardMarkdownUI
 
 // Writing in a card with the native editor, everything through the window as a person does it: presses go where the
 // window's hit test puts them (the canvas, or the editor over the card), keys to its first responder, an input method's
@@ -305,6 +305,138 @@ import Testing
     }
     #expect(v.core.selection == MDSelection(anchor: 4, head: 14))
     #expect(r.window.firstResponder === v)
+    r.press("\u{1b}")
+    await r.until("left") { !r.canvas.isEditing }
+  }
+
+  // MARK: the editor's chrome on the canvas (the UX thread's findings, against what the web board's editor does)
+
+  /// A point of a view's own (flipped) coordinates on the board
+  func board(_ r: Rig, _ v: NSView, _ p: CGPoint) -> CGPoint {
+    r.canvas.camera.board(r.canvas.convert(v.convert(p, to: nil), from: nil))
+  }
+
+  /// The selection toolbar over a word on a Note's first line: above it, over the card's header, as the web board's
+  /// bar sits (8 above the selection), never over the line under it; its buttons take a press through the window there,
+  /// outside the editor's frame. After a zoom it sits over the word at the new zoom
+  @Test func theSelectionToolbarSitsAboveTheFirstLineTakesPressesAndFollowsTheZoom() async throws {
+    let r = try await rig([note("n1", x: 100, y: 100, Self.text + "\n\nA second paragraph.")])
+    defer { r.close() }
+    r.click(through: r.centre("n1"))
+    r.press("\r")
+    await r.until("writing") { r.canvas.editing?.writer != nil }
+    let v = try writer(r)
+    let word = (Self.text as NSString).range(of: "vocabulary")
+    v.core.select(MDSelection(anchor: word.location, head: NSMaxRange(word)))
+    v.placeToolbar()
+    #expect(!v.toolbar.isHidden)
+    let sel = try #require(v.core.selectionRects.first)
+    let below = try #require(v.core.rects(for: 60..<61).first)
+    #expect(abs(v.toolbar.frame.maxY - (sel.minY - 8)) < 0.5, "above the word: \(v.toolbar.frame) over \(sel)")
+    #expect(v.toolbar.frame.maxY <= sel.minY && v.toolbar.frame.minY < 0, "over the header, off the next lines")
+    #expect(below.minY > sel.maxY)
+    // Bold, pressed where it is drawn
+    let bold = try #require(v.toolbar.controls().first { $0.id == "bold" })
+    let at = board(r, v.toolbar, CGPoint(x: bold.box.midX, y: bold.box.midY))
+    #expect(r.window.contentView?.hitTest(r.at(at))?.isDescendant(of: v) == true, "the toolbar is under the pointer")
+    r.click(through: at)
+    #expect(v.source.hasPrefix("The **vocabulary** maps"), "\(v.source)")
+    // a zoom: at rest the toolbar is over the word at the new zoom
+    v.placeToolbar()
+    var t: TimeInterval = 1
+    // about the card's top left, which stays in view, so above the word there is still room for it
+    let corner = r.rect("n1").origin
+    r.canvas.pinch(by: 1.2, around: corner, at: t, began: true, ended: false)
+    for _ in 0..<4 {
+      t += 1.0 / 120
+      r.canvas.pinch(by: 1.05, around: corner, at: t, began: false, ended: false)
+      r.canvas.tick(at: t)
+    }
+    t += 1.0 / 120
+    r.canvas.pinch(by: 1, around: corner, at: t, began: false, ended: true)
+    await r.until("at rest") { r.canvas.editing?.zooming == false && r.canvas.motion.isResting }
+    let z = v.zoom
+    #expect(z > 1.2)
+    let now = try #require(v.core.selectionRects.first)
+    #expect(!v.toolbar.isHidden && abs(v.toolbar.frame.maxY - (now.minY * z - 8)) < 1, "\(v.toolbar.frame) at \(z)")
+    r.press("\u{1b}")
+    await r.until("left") { !r.canvas.isEditing }
+  }
+
+  /// A click on a link while it is written in opens the link's box, the caret where it was: no source shown, no line
+  /// moved (the web editor's handleClick)
+  @Test func aClickOnALinkOpensItsBoxAndMovesNoLine() async throws {
+    let r = try await rig([
+      note("n1", x: 100, y: 100, width: 260, "Read the [long notes on paging](https://e.x/a/b) first.")
+    ])
+    defer { r.close() }
+    r.click(through: r.centre("n1"))
+    r.press("\r")
+    await r.until("writing") { r.canvas.editing?.writer != nil }
+    let v = try writer(r)
+    v.core.select(MDSelection(2))
+    let frames = v.core.layout.blockFrames
+    let head = v.core.layout.head
+    let link = try #require(v.core.rects(for: 12..<16).first)
+    r.click(through: board(r, v, CGPoint(x: link.midX * v.zoom, y: link.midY * v.zoom)))
+    #expect(!v.linkBox.isHidden && v.linkBox.place?.text == "long notes on paging")
+    #expect(v.core.selection == MDSelection(2) && v.core.layout.head == head && v.core.layout.blockFrames == frames)
+    // Esc closes the box, the keys back in the text; the next leaves
+    r.press("\u{1b}")
+    #expect(v.linkBox.isHidden && r.window.firstResponder === v && r.canvas.isEditing)
+    r.press("\u{1b}")
+    await r.until("left") { !r.canvas.isEditing }
+    #expect(r.card("n1").writing == "Read the [long notes on paging](https://e.x/a/b) first.")
+  }
+
+  /// Return at the end of a task item makes a new unchecked one, as the web editor does (- [x] done ↵ new: - [ ] new)
+  @Test func returnAtTheEndOfATaskItemMakesAnUncheckedOne() async throws {
+    let r = try await rig([note("n1", x: 100, y: 100, "- [x] hash full blocks\n- [ ] evict the least used")])
+    defer { r.close() }
+    r.click(through: r.centre("n1"))
+    r.press("\r")
+    await r.until("writing") { r.canvas.editing?.writer != nil }
+    let v = try writer(r)
+    v.core.select(MDSelection(("- [x] hash full blocks" as NSString).length))
+    r.press("\r")
+    r.press("new")
+    r.press("\u{1b}")
+    await r.until("left") { !r.canvas.isEditing }
+    #expect(r.card("n1").writing == "- [x] hash full blocks\n- [ ] new\n- [ ] evict the least used")
+  }
+
+  /// The pointer over a link while it is written in: the hand and its line drawn solid (the board's .md-link:hover);
+  /// over a table's cell: its band and the grips of its row and column, as the web editor's table overlay
+  @Test func hoveringALinkAndATableShowsWhatTheWebEditorShows() async throws {
+    let r = try await rig([
+      note("n1", x: 100, y: 100, width: 320, "See [the notes](https://e.x) here.\n\n| a | b |\n|---|---|\n| 1 | 2 |")
+    ])
+    defer { r.close() }
+    r.click(through: r.centre("n1"))
+    r.press("\r")
+    await r.until("writing") { r.canvas.editing?.writer != nil }
+    let v = try writer(r)
+    v.core.select(MDSelection(0))
+    /// The pointer moved to a point of the layout, as the editor's tracking area gives it the move
+    func move(_ p: CGPoint) {
+      let w = v.convert(CGPoint(x: p.x * v.zoom, y: p.y * v.zoom), to: nil)
+      v.mouseMoved(
+        with: NSEvent.mouseEvent(
+          with: .mouseMoved, location: w, modifierFlags: [], timestamp: 0, windowNumber: r.window.windowNumber,
+          context: nil, eventNumber: 0, clickCount: 0, pressure: 0)!)
+    }
+    let words = try #require(v.core.rects(for: 6..<9).first)
+    move(CGPoint(x: words.midX, y: words.midY))
+    #expect(v.hoveredLine != nil, "its line solid")
+    #expect(v.cursor(at: CGPoint(x: words.midX, y: words.midY)) == .pointingHand)
+    guard case .table(let t) = v.core.document.blocks[1].kind else {
+      Issue.record("no table")
+      return
+    }
+    let cell = v.core.layout.cellBoxes(of: t)[1][1]
+    move(CGPoint(x: cell.midX, y: cell.midY))
+    #expect(v.band.shown && v.band.table != nil, "the table's band")
+    #expect(v.cursor(at: CGPoint(x: v.core.layout.cellBoxes(of: t)[1][0].minX + 6, y: cell.midY)) == .openHand)
     r.press("\u{1b}")
     await r.until("left") { !r.canvas.isEditing }
   }
