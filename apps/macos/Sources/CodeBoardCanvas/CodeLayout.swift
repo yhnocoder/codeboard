@@ -35,8 +35,9 @@ struct CodeMetrics: Equatable, Sendable {
 /// A code card's rows and where they sit in its body (y from the body's top).
 struct CodeLayout: Equatable, Sendable {
   enum Row: Equatable, Sendable {
-    /// A line, or (`number` nil) the continuation of a wrapped one; tokens in UTF-16 columns of `text`
-    case line(segment: Int, number: Int?, text: String, tokens: [Token] = [])
+    /// A line, or (`number` nil) the continuation of a wrapped one; tokens in UTF-16 columns of `text`, their styles the
+    /// highlighter's token classes
+    case line(segment: Int, number: Int?, text: String, tokens: [CodeRun] = [])
     /// Lines not shown (hidden, or between two segments), of the segment they belong to (the next one, between two)
     case gap(segment: Int, from: Int, to: Int)
     case file(String)
@@ -154,12 +155,9 @@ struct CodeLayout: Equatable, Sendable {
       for r in lines.rows {
         switch r.kind {
         case .line(let n, let wrapped, let text, let runs):
-          let tokens = runs.compactMap { run in
-            TokenClass(rawValue: run.style).map { Token(columns: run.columns, kind: $0) }
-          }
           rows.append(
             Placed(
-              row: .line(segment: si, number: wrapped ? nil : n, text: text, tokens: tokens), y: r.y, height: r.height))
+              row: .line(segment: si, number: wrapped ? nil : n, text: text, tokens: runs), y: r.y, height: r.height))
           if !wrapped { top[n] = r.y }
           bottom[n] = r.y + r.height
         case .fold(let f):

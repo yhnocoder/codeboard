@@ -2,6 +2,7 @@ import AppKit
 import CodeBoardModel
 import CodeBoardNotes
 import CodeBoardSyntax
+import CodeUI
 
 /// A complete description of how the board looks, which the drawing code only reads: colours, fonts, sizes, and the few
 /// ways of drawing that are not values (`Paper`, `Header`, `Line`…), each a small closed set the drawing code switches on.
@@ -440,18 +441,10 @@ public struct Theme: Sendable {
   }
 }
 
-/// CTFont is immutable and documented safe to use from any thread, but the SDK does not mark it Sendable
-struct Font: @unchecked Sendable {
-  let ct: CTFont
-  /// Extra space after each character (CSS letter-spacing), points
-  var tracking: CGFloat = 0
+typealias Font = CodeFont
 
-  init(_ f: CTFont, tracking: CGFloat = 0) {
-    ct = f
-    self.tracking = tracking
-  }
-
-  init(_ f: NSFont) { ct = f }
+extension CodeFont {
+  init(_ f: NSFont) { self.init(f as CTFont) }
 
   /// One character's advance (the code font is monospaced)
   var advance: CGFloat {
@@ -520,4 +513,31 @@ enum BoardFonts {
     ["JetBrainsMono-400-600", "JetBrainsMono-400i", "SourceSerif4-400-600", "SourceSerif4-400i", "ZhiMangXing-latin"]
       .allSatisfy { loaded[$0] != nil }
   }
+}
+
+extension Theme {
+  /// A code card's code as the code component draws it: its runs' styles are the highlighter's token classes
+  var codeStyle: CodeStyle {
+    var runs = [CodeStyle.Run?](repeating: nil, count: Int(TokenClass.allCases.map(\.rawValue).max() ?? 0) + 1)
+    for k in TokenClass.allCases {
+      let font: CTFont? =
+        switch k {
+        case .comment: codeComment.ct
+        case .keyword, .operator: codeKeyword.ct
+        default: nil
+        }
+      runs[Int(k.rawValue)] = CodeStyle.Run(color: syntax[k] ?? ink, font: font)
+    }
+    return CodeStyle(font: code, ink: ink, runs: runs)
+  }
+
+  /// A run of hidden lines' row: "··· N lines hidden (a–b) · Show"
+  var foldStyle: CodeFoldStyle {
+    CodeFoldStyle(fill: hiddenRow, line: hair, label: small, labelColor: ink3, action: smallStrong, actionColor: ink2)
+  }
+}
+
+extension CodeRun {
+  /// The highlighter's class the run is drawn in (`Theme.codeStyle`)
+  var kind: TokenClass? { TokenClass(rawValue: style) }
 }

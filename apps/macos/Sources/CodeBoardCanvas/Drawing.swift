@@ -1,6 +1,7 @@
 import CodeBoardModel
 import CodeBoardNotes
 import CodeBoardSyntax
+import CodeUI
 import CoreText
 import IOSurface
 
@@ -430,34 +431,23 @@ enum Drawing: Sendable {
       ctx.fillPath()
     }
     let numberRight = l.gutter - m.numberGap
+    let style = t.codeStyle
+    let fold = t.foldStyle
     for p in l.rows {
       let mid = p.y + p.height / 2
       switch p.row {
-      case .line(let si, let n, let s, let tokens):
+      case .line(let si, let n, let s, let runs):
         if let n {
-          let ns = String(n)
           let color = c.linked.contains([si, n]) ? t.linkedNumber : t.number
-          text(ctx, ns, t.code, color, x: numberRight - width(ns, t.code), midY: mid, width: .infinity)
+          CodeDraw.number(n, in: ctx, right: numberRight, midY: mid, font: t.code, color: color)
         }
-        codeLine(ctx, s, tokens, t, x: l.gutter + l.shift, midY: mid)
+        CodeDraw.line(s, runs: runs, in: ctx, x: l.gutter + l.shift, midY: mid, style: style)
       case .gap(_, let a, let b):
-        let row = CGRect(x: 0, y: p.y + 1, width: r.width, height: p.height - 2)
-        ctx.setFillColor(t.hiddenRow)
-        ctx.fill(row)
-        ctx.setStrokeColor(t.hair)
-        ctx.setLineWidth(1)
-        ctx.setLineDash(phase: 0, lengths: [3, 3])
-        ctx.strokeLineSegments(between: [
-          CGPoint(x: 0, y: row.minY + 0.5), CGPoint(x: r.width, y: row.minY + 0.5), CGPoint(x: 0, y: row.maxY - 0.5),
-          CGPoint(x: r.width, y: row.maxY - 0.5),
-        ])
-        ctx.setLineDash(phase: 0, lengths: [])
         let n = b - a + 1
-        let what = "··· \(n) line\(n > 1 ? "s" : "") hidden (\(a == b ? "\(a)" : "\(a)–\(b)")) · "
-        let x = l.gutter + 8
-        text(ctx, what, t.small, t.ink3, x: x, midY: mid, width: r.width - x - 8)
-        let shown = x + width(what, t.small) + 5
-        text(ctx, "Show", t.smallStrong, t.ink2, x: shown, midY: mid, width: r.width - shown - 8)
+        CodeDraw.fold(
+          in: ctx, row: CGRect(x: 0, y: p.y, width: r.width, height: p.height), x: l.gutter + 8,
+          label: "··· \(n) line\(n > 1 ? "s" : "") hidden (\(a == b ? "\(a)" : "\(a)–\(b)")) · ", action: "Show",
+          style: fold)
       case .file(let path):
         let x0 = max(0, l.gutter - 58)
         let bar = CGRect(x: x0, y: p.y + 2, width: r.width - 12 - x0, height: p.height - 4)
@@ -572,55 +562,16 @@ enum Drawing: Sendable {
       width: headerRight(nil, width: w, t) - reserve - x)
   }
 
-  /// A row of code in its token colours, with its middle at midY (the body's clip cuts it)
-  private static func codeLine(
-    _ ctx: CGContext, _ s: String, _ tokens: [Token], _ t: Theme, x: CGFloat, midY: CGFloat
-  ) {
-    guard !s.isEmpty else { return }
-    let font = NSAttributedString.Key(kCTFontAttributeName as String)
-    let color = NSAttributedString.Key(kCTForegroundColorAttributeName as String)
-    let a = NSMutableAttributedString(string: s, attributes: [font: t.code.ct, color: t.ink])
-    let units = a.length
-    for tok in tokens {
-      let r = tok.columns.clamped(to: 0..<units)
-      guard !r.isEmpty else { continue }
-      let range = NSRange(location: r.lowerBound, length: r.count)
-      a.addAttribute(color, value: t.syntax[tok.kind] ?? t.ink, range: range)
-      switch tok.kind {
-      case .comment: a.addAttribute(font, value: t.codeComment.ct, range: range)
-      case .keyword, .operator: a.addAttribute(font, value: t.codeKeyword.ct, range: range)
-      default: break
-      }
-    }
-    let f = t.code.ct
-    ctx.textPosition = CGPoint(x: x, y: midY + (CTFontGetAscent(f) - CTFontGetDescent(f)) / 2)
-    CTLineDraw(CTLineCreateWithAttributedString(a), ctx)
-  }
-
-  static func line(_ s: String, _ font: Font, _ color: CGColor? = nil) -> CTLine {
-    var attrs: [CFString: Any] = [kCTFontAttributeName: font.ct]
-    if let color { attrs[kCTForegroundColorAttributeName] = color }
-    if font.tracking != 0 { attrs[kCTKernAttributeName] = font.tracking }
-    return CTLineCreateWithAttributedString(CFAttributedStringCreate(nil, s as CFString, attrs as CFDictionary))
-  }
+  static func line(_ s: String, _ font: Font, _ color: CGColor? = nil) -> CTLine { CodeDraw.line(s, font, color) }
 
   /// One line of text with its middle at midY, cut with an ellipsis to `width`
   static func text(
     _ ctx: CGContext, _ s: String, _ font: Font, _ color: CGColor, x: CGFloat, midY: CGFloat, width w: CGFloat
   ) {
-    guard !s.isEmpty, w > 0 else { return }
-    var l = line(s, font, color)
-    if w.isFinite, CTLineGetTypographicBounds(l, nil, nil, nil) > w + 0.5 {
-      l = CTLineCreateTruncatedLine(l, w, .end, line("…", font, color)) ?? l
-    }
-    let f = font.ct
-    ctx.textPosition = CGPoint(x: x, y: midY + (CTFontGetAscent(f) - CTFontGetDescent(f)) / 2)
-    CTLineDraw(l, ctx)
+    CodeDraw.text(s, in: ctx, font: font, color: color, x: x, midY: midY, width: w)
   }
 
-  static func width(_ s: String, _ font: Font) -> CGFloat {
-    CTLineGetTypographicBounds(line(s, font), nil, nil, nil)
-  }
+  static func width(_ s: String, _ font: Font) -> CGFloat { CodeDraw.width(s, font) }
 
   /// A rounded rectangle with the board's squircle corners (CSS corner-shape: squircle, a superellipse of exponent 4)
   static func squircle(_ r: CGRect, _ radius: CGFloat) -> CGPath {
