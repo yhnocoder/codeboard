@@ -36,10 +36,11 @@ jobs:
         shard: ${{ fromJSON(inputs.everything && '["1/2", "2/2"]' || '["1/1"]') }}
     steps:
       - uses: actions/checkout@v6
-      # the web board and its Markdown package, the app's Note page
+      # the web board and its Markdown package, the app's Note page, and the fonts and formula engines the app's native
+      # Markdown draws with (under a second)
       - uses: ./.github/actions/setup
         with:
-          build: npm run build -w @yhnocoder/markdown && npm run build -w @codeboard/board && node apps/macos/web/build.mjs
+          build: npm run build -w @yhnocoder/markdown && npm run build -w @codeboard/board && node apps/macos/web/build.mjs && node apps/macos/tools/markdown/assets.mjs
       - name: Select the newest Xcode
         run: |
           sudo xcode-select -s "$(find /Applications -maxdepth 1 -type d -name 'Xcode_*.app' | sort -V | tail -1)"
