@@ -19,5 +19,5 @@ wait 900
 shot placed @cnote+-20,-20 800 400
 click @cnote+420,24
 wait 200
-mac: expect press has PopWebView
+mac: expect press has PopWebView|PopView
 web: expect press has pop

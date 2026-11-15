@@ -494,7 +494,10 @@ if let wk = NSClassFromString("WKWebView") {
   swizzle(wk, #selector(getter: NSView.inputContext), #selector(NSResponder.accInputContext))
 }
 /// A trace: which of these views each scroll event reached
-for name in ["CodeBoardCanvas.CanvasView", "CodeBoardNotes.EditorWebView", "WKWebView"]
+for name in [
+  "CodeBoardCanvas.CanvasView", "CodeBoardNotes.EditorWebView", "CodeBoardMarkdownUI.MarkdownEditorView",
+  "CodeUI.CodeEditorView", "WKWebView",
+]
 where env["ACCEPT_TRACE_SCROLL"] != nil {
   guard let cls = NSClassFromString(name), let m = class_getInstanceMethod(cls, #selector(NSView.scrollWheel(with:)))
   else { continue }
@@ -534,14 +537,16 @@ if let m = class_getInstanceMethod(NSTextInputContext.self, #selector(NSTextInpu
 /// bindings (StandardKeyBinding.dict) as a US layout gives them, else the key's characters inserted; never the system's
 /// input methods
 final class ScriptedContext: NSTextInputContext {
-  nonisolated(unsafe) static var made: [ObjectIdentifier: ScriptedContext] = [:]
+  /// One per view, let go with it: a view made where a gone one was (the native editor, made anew for each card) must
+  /// not get the gone one's context, whose client is gone (no key reached it)
+  nonisolated(unsafe) static let made = NSMapTable<NSView, ScriptedContext>.weakToStrongObjects()
   nonisolated(unsafe) static let bindings: [String: Any] =
     NSDictionary(contentsOfFile: "/System/Library/Frameworks/AppKit.framework/Resources/StandardKeyBinding.dict")
     as? [String: Any] ?? [:]
   static func of(_ v: NSView, _ c: NSTextInputClient) -> ScriptedContext {
-    if let x = made[ObjectIdentifier(v)] { return x }
+    if let x = made.object(forKey: v) { return x }
     let x = ScriptedContext(client: c)
-    made[ObjectIdentifier(v)] = x
+    made.setObject(x, forKey: v)
     return x
   }
   override func handleEvent(_ e: NSEvent) -> Bool {
@@ -669,11 +674,13 @@ func strings(_ x: Any) -> [String] {
   var rec: Recorder?
 
   var win: NSWindow? { gMain }
+  /// The board in front: the canvas of the tab shown (each open tab has one; the others are hidden)
   var canvas: NSView? {
-    func find(_ v: NSView) -> NSView? {
-      String(describing: Swift.type(of: v)) == "CanvasView" ? v : v.subviews.lazy.compactMap(find).first
+    func all(_ v: NSView) -> [NSView] {
+      String(describing: Swift.type(of: v)) == "CanvasView" ? [v] : v.subviews.flatMap(all)
     }
-    return win?.contentView.flatMap(find)
+    let found = win?.contentView.map(all) ?? []
+    return found.first { !$0.isHiddenOrHasHiddenAncestor } ?? found.first
   }
   /// The canvas's camera, read from its stored property `camera` (a board point at the view's top-left and a zoom:
   /// three doubles), so the driver needs nothing public from the app and works on any version of it

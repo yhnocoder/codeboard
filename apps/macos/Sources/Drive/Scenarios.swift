@@ -2,6 +2,9 @@ import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
 
+/// The views a card is written in: the web editor, or the native Markdown and code editors that replace it
+let editorViews: Set<String> = ["EditorWebView", "MarkdownEditorView", "CodeEditorView"]
+
 /// One walk through the app: its boards (made-up content), what the hands do, and what must hold in the recording
 struct Scenario {
   var name: String
@@ -153,7 +156,7 @@ func spread(_ f: Driver.Frame, _ r: [Double], in folder: URL) -> Double? {
               guard let ca = a.canvas?.camera, let cb = b.canvas?.camera else { continue }
               if abs((cb[1] - ca[1]) * cb[2]) < 1, b.label == a.label, b.n != f.last?.n { stalls.append(b.n) }
             }
-            let under = f.contains { $0.hit == "EditorWebView" }
+            let under = f.contains { editorViews.contains($0.hit ?? "") }
             return Verdict(
               check: label + " carries the card under the pointer", ok: under && stalls.isEmpty && f.count > 10,
               detail: "editor under the pointer: \(under); frames where the board stood still: \(stalls.prefix(6))")
@@ -329,7 +332,7 @@ func spread(_ f: Driver.Frame, _ r: [Double], in folder: URL) -> Double? {
         { (frames: [Driver.Frame]) -> Verdict in
           let under = Set(labelled(frames, "scroll into the editor").compactMap(\.hit))
           return Verdict(
-            check: "the Note came under the pointer", ok: under.contains("EditorWebView"),
+            check: "the Note came under the pointer", ok: !under.isDisjoint(with: editorViews),
             detail: "under the pointer meanwhile: \(under.sorted().joined(separator: ", "))")
         },
         { (frames: [Driver.Frame]) -> Verdict in
