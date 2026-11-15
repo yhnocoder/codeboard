@@ -297,6 +297,70 @@ extension Rig {
     #expect(r.card("n1").writing?.contains("ab") == true)
   }
 
+  /// interact.ts clickEdit: a double-click on a word of the one selected Note, through the window. Its first click opens
+  /// the editor and its second, which lands in the editor, only puts the caret there: what is typed goes into the word,
+  /// none of it replaced (WebKit took that press as a double-click and selected the word). A double-click once the
+  /// editor is open still selects a word
+  @Test func theSecondClickOfTheDoubleClickThatOpensTheEditorSelectsNoWord() async throws {
+    let text = "The vocabulary maps each word to a number."
+    let note = Card(
+      id: cid("n1"), x: 100, y: 100, width: 300, content: .own(CardContent(body: .note(Note(text: text)))))
+    let r = try await Rig(Board(id: BoardID(rawValue: "word"), cards: [note]), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let v = c.noteEditor.view
+    func js(_ s: String) async -> Any? { try? await v.callAsyncJavaScript(s, contentWorld: .page) }
+    // where a word is: read on the editor, which lays the Note out where the canvas draws it
+    r.click(r.centre("n1"))
+    r.key(36)
+    await r.editorReady()
+    func word(_ w: String) async throws -> CGPoint {
+      let at = try #require(
+        await js(
+          """
+          const t = document.querySelector('.ProseMirror p').firstChild, i = t.data.indexOf(w), g = document.createRange();
+          g.setStart(t, i + 2); g.setEnd(t, i + 3); const b = g.getBoundingClientRect();
+          return [b.x + b.width / 2, b.y + b.height / 2];
+          """.replacingOccurrences(of: "w)", with: "\"\(w)\")")) as? [Double])
+      let inWindow = v.convert(CGPoint(x: at[0], y: at[1]), to: nil)
+      return c.camera.board(c.convert(inWindow, from: nil))
+    }
+    let vocabulary = try await word("vocabulary")
+    let number = try await word("number")
+    await c.endEditing()
+    await r.settle()
+    #expect(r.doc.selection == [.card(cid("n1"))] && !c.isEditing)
+    func frames() async {
+      for _ in 0..<3 { _ = await js("await new Promise(r => requestAnimationFrame(r)); return 1") }
+    }
+    func selected() async -> String? { await js("return getSelection().toString()") as? String }
+    // the double-click on "vocabulary": its first click opens the editor, its second lands in it once it is up
+    r.click(through: vocabulary)
+    await r.editorReady()
+    #expect(
+      r.window.contentView?.hitTest(r.at(vocabulary))?.isDescendant(of: v) == true, "the editor is under the pointer")
+    r.click(through: vocabulary, clicks: 2)
+    await frames()
+    let first = await selected()
+    #expect(first == "", "no word selected: \(first ?? "nil")")
+    r.press("xy")
+    await r.until("xy typed") { (await js("return document.body.innerText") as? String)?.contains("xy") == true }
+    // a double-click in the editor now selects the word
+    // straight to the editor, the view under the pointer, as the window gives it: through the window's sendEvent, this
+    // second double-click ends the test process: the window is not key and the editor takes no first mouse, so AppKit
+    // posts the press back to the event queue, and posting stops the main run loop the tests run on (TestWatch)
+    for k in [1, 2] {
+      v.mouseDown(with: r.mouse(.leftMouseDown, number, clicks: k))
+      v.mouseUp(with: r.mouse(.leftMouseUp, number, clicks: k))
+    }
+    await frames()
+    #expect(await selected()?.trimmingCharacters(in: .whitespaces) == "number")
+    _ = await js("getSelection().collapseToEnd()")
+    await c.endEditing()
+    let got = r.card("n1").writing ?? ""
+    #expect(got.contains("xy") && got.replacingOccurrences(of: "xy", with: "") == text, "\(got)")
+  }
+
   /// The second press of a double-click on the selected Note's empty body, below its text, once the editor its first
   /// click opened is up: the window gives it to the editor's page, where it lands on the paper outside the text. The
   /// writing goes on (the editor ends when its focus leaves, and a press on its own paper must not take it), so what is
