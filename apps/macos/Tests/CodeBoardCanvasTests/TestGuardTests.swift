@@ -129,4 +129,12 @@ import Testing
     TestWatch.ended()
     #expect(TestWatch.overrun(at: now + TestWatch.limit + 2) == nil)
   }
+
+  @Test func anExitInTheMiddleOfATestSaysWhichTestItCutShort() {
+    TestWatch.started("Suite/cut()")
+    defer { TestWatch.ended() }
+    #expect(TestWatch.cutShort()?.contains("Suite/cut()") == true)
+    TestWatch.ended()
+    #expect(TestWatch.cutShort() == nil)
+  }
 }

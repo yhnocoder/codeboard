@@ -1,0 +1,475 @@
+{
+  "maxAreas": 3,
+  "heavy": ["CodeBoardModel"],
+  "targets": {
+    "CodeBoardModelTests": {
+      "changed": "whole",
+      "important": "whole"
+    },
+    "CodeBoardSyntaxTests": {
+      "changed": "whole",
+      "important": "whole"
+    },
+    "CodeBoardMarkdownTests": {
+      "changed": "whole",
+      "important": [
+        "ParityTests",
+        "BlockMoveTests",
+        "DocumentTests/readsTheBlocks",
+        "DocumentTests/inlineRangesPointIntoTheSourceThroughQuoteMarkers",
+        "CaretTests/markersShowAroundTheCaretAndAreWalkedThroughThere",
+        "MathHintTests/theCommandBeingTyped"
+      ]
+    },
+    "CodeBoardMarkdownUITests": {
+      "changed": "whole",
+      "important": ["LayoutTests", "MathTests", "EditorCoreTests", "CodeBlockTests", "WebParityTests"]
+    },
+    "CodeBoardNotesTests": {
+      "extra": ["web"],
+      "changed": "whole",
+      "important": [
+        "SnapshotKeyTests",
+        "SnapshotStoreTests",
+        "RenderQueueTests",
+        "NoteRendererTests/aNotesBlocksAreMeasuredWithItsSizeAndKeptWithIt",
+        "NoteEditorTests/itMountsTypesGrowsAndEndsWithWhatWasWritten"
+      ]
+    },
+    "MarkdownDemoKitTests": {
+      "changed": "whole",
+      "important": ["SampleMoveTests", "VaultNotesTests"]
+    },
+    "CodeBoardCanvasTests": {
+      "changed": "files",
+      "important": [
+        "canvasIsLayerBacked",
+        "ByteLRUTests",
+        "CameraTests",
+        "ChooseModeTests",
+        "CodeLayoutTests",
+        "ConnectTests",
+        "LabelPlacementTests",
+        "LevelsTests",
+        "MotionTests",
+        "NoteLevelsTests",
+        "NoteSizeTests",
+        "PrototypeMotionTests",
+        "RedrawQueueTests",
+        "RefTests",
+        "RestPlanTests",
+        "RestWeightTests",
+        "SceneTests",
+        "SeededTests",
+        "SummaryLevelsTests",
+        "ThemeTests",
+        "WebFetchTests",
+        "TestGuardTests/theWatchdogSaysWhichTestRanOverItsLimit",
+        "TestGuardTests/aRealRightPressOnAViewWithAMenuReturnsAtOnceAndShowsNothing",
+        "CanvasWritingTests/aNewCardWrittenInIsOneStep",
+        "CanvasWritingTests/theToolbarShowsItsNineToolsAndMakesNoteTextAndBoxInTheViewsMiddle",
+        "CanvasEditTests/draggingACardIsOneStepThatOnlyMovesLayersAndJoinsTheSectionItLandsIn",
+        "CanvasEditTests/scrollAndPinchMoveOnlyTheCamera",
+        "CanvasFreeCodeTests/keysTypedAtOnceAfterTheDoubleClickAreAllWritten",
+        "CanvasSectionTests/theToolbarsSectionDrawsAFrameThatTakesWhatItCoversAndItsTitleIsWrittenAtOnce",
+        "CanvasArrowTests/aCardsPortDrawsAnArrowToTheCardOrLineLetGoOnAndNothingOnTheCanvas",
+        "CanvasSidenoteTests/writtenInThePopupASidenoteOrQuestionIsAddedAndTheInputStaysForTheNext",
+        "CanvasCopyTests/pasteTakesTheArrowsAmongThemAndTravellingSidenotesAndLandsInItsSection",
+        "CanvasPasteTests/plainTextPastesAsANoteWhereMainPutsIt",
+        "CanvasStickerTests/thePaletteOffersTheGlyphsAndAnEmojiAndAPickedOneFollowsThePointerUntilAClickPutsItDown",
+        "CanvasShelfTests/cardsDraggedOntoTheButtonGoOntoTheShelfInOneStep",
+        "CanvasSelectionLookTests/theRingFadesInGrowingAndFadesOut",
+        "CanvasSummaryTests/theSummaryLevelIsLaidOutAndDrawnWhenTheBoardIsShown",
+        "CanvasWebTests/aPastedLinkIsAWebCardWhosePageIsReadOnceWithItsPictureKeptOneStep",
+        "CanvasSubBoardTests/aSubBoardIsEnteredWithItsNameFlyingToTheBreadcrumbAndEscLeavesIt",
+        "CanvasWritingTests/RefClicks/aFarCardIsPreviewedBesideTheNoteAndItsArrowGoesThere",
+        "CanvasIMETests/anEscDuringACompositionCancelsOnlyTheComposition",
+        "ParityMenusTests/aNotesMenuIsAddSidenoteThenArrangeCopyPathAndDelete",
+        "ParityKeysTests/nTAndRMakeANoteATextAndABoxAtThePointer",
+        "CanvasOpeningTests/aBoardOpensAt100PercentWithItsTopLeftCorner80In",
+        "CanvasSnapTests/aSlowDragLinesUpAFastOneDoesNotAndCommandNever",
+        "CanvasGlideTests/aSwipeLetGoGlidesAsFarAsMotionSaysThenRests",
+        "CanvasAccessibilityTests/cardsAndSectionsAreElementsWhereTheyAreDrawn",
+        "CanvasPictureTests/aPictureOfTheBoardAsItWasIsNotShownOnceItChanged",
+        "CanvasHeadActsTests/eachKindHasMainsButtonsWhereMainPutsThem"
+      ],
+      "broad": [
+        "CodeBoardCanvas/CanvasView.swift",
+        "CodeBoardCanvas/Scene.swift",
+        "CodeBoardCanvas/Theme.swift",
+        "CodeBoardCanvas/Drawing.swift",
+        "CodeBoardCanvas/CanvasTrace.swift",
+        "CodeBoardCanvas/SVGPath.swift"
+      ],
+      "areas": {
+        "arrows": {
+          "sources": [
+            "CodeBoardCanvas/ArrowRoute.swift",
+            "CodeBoardCanvas/CanvasArrows.swift",
+            "CodeBoardCanvas/CanvasPorts.swift",
+            "CodeBoardModel/Arrows.swift"
+          ],
+          "tests": ["CanvasArrowTests", "CanvasInPlaceTests", "ConnectTests", "LabelPlacementTests", "CloseCardsTests"]
+        },
+        "sections": {
+          "sources": [
+            "CodeBoardCanvas/CanvasSections.swift",
+            "CodeBoardCanvas/CanvasSectionActs.swift",
+            "CodeBoardCanvas/CanvasTitleTone.swift"
+          ],
+          "tests": ["CanvasSectionTests"]
+        },
+        "sidenotes and questions": {
+          "sources": [
+            "CodeBoardCanvas/CanvasMarks.swift",
+            "CodeBoardCanvas/CanvasPop.swift",
+            "CodeBoardCanvas/CanvasAddNote.swift",
+            "CodeBoardCanvas/CanvasQuestions.swift",
+            "CodeBoardModel/Sidenotes.swift",
+            "CodeBoardNotes/SidenotePop.swift",
+            "CodeBoardNotes/QuestionListView.swift"
+          ],
+          "tests": ["CanvasSidenoteTests", "CanvasAlwaysShowTests"]
+        },
+        "stickers": {
+          "sources": [
+            "CodeBoardCanvas/CanvasStickers.swift",
+            "CodeBoardCanvas/StickerArt.swift",
+            "CodeBoardModel/Stickers.swift"
+          ],
+          "tests": ["CanvasStickerTests", "ButtonReleaseTests/theStickerPalettesSlotsActOnTheReleaseOverThem"]
+        },
+        "sub-boards": {
+          "sources": [
+            "CodeBoardCanvas/CanvasSubBoards.swift",
+            "CodeBoardCanvas/CanvasCrumbs.swift",
+            "CodeBoardCanvas/SubBoardMap.swift",
+            "CodeBoardModel/SubBoards.swift"
+          ],
+          "tests": [
+            "CanvasSubBoardTests",
+            "ParityMenusTests/aSubBoardCardsMenuOpensRemovesFromThisBoardAndDeletesTheBoard",
+            "CanvasWritingTests/RefClicks/aCardInASubBoardShownHereIsGoneToIntoTheSubBoard"
+          ]
+        },
+        "summaries": {
+          "sources": [
+            "CodeBoardCanvas/CanvasSummaries.swift",
+            "CodeBoardCanvas/SummaryArt.swift",
+            "CodeBoardCanvas/SummaryLevels.swift",
+            "CodeBoardModel/Summaries.swift"
+          ],
+          "tests": ["CanvasSummaryTests", "SummaryLevelsTests"]
+        },
+        "web cards": {
+          "sources": [
+            "CodeBoardCanvas/CanvasWeb.swift",
+            "CodeBoardCanvas/WebDrawing.swift",
+            "CodeBoardCanvas/WebFetch.swift",
+            "CodeBoardModel/Web.swift"
+          ],
+          "tests": ["CanvasWebTests", "WebFetchTests", "ParityKeysTests/returnOpensAWebCardsPage"]
+        },
+        "copy and paste": {
+          "sources": [
+            "CodeBoardCanvas/CanvasPaste.swift",
+            "CodeBoardCanvas/CanvasPasteChip.swift",
+            "CodeBoardModel/Clip.swift"
+          ],
+          "tests": [
+            "CanvasPasteTests",
+            "CanvasCopyTests",
+            "CanvasCopyPlacesTests",
+            "CanvasRevealTests",
+            "CanvasEditTests/aCopyOnItsBoardOffersReferenceThenFollowsItsOriginal",
+            "CanvasEditTests/deleteCopyPasteAndDuplicateWithinAndBetweenBoards"
+          ]
+        },
+        "free code": {
+          "sources": [
+            "CodeBoardCanvas/CanvasFreeCode.swift",
+            "CodeBoardCanvas/CodeLayout.swift",
+            "CodeBoardModel/FreeCode.swift",
+            "CodeBoardSyntax"
+          ],
+          "tests": ["CanvasFreeCodeTests", "CodeLayoutTests"]
+        },
+        "writing": {
+          "sources": [
+            "CodeBoardCanvas/CanvasWriting.swift",
+            "CodeBoardCanvas/CanvasBar.swift",
+            "CodeBoardModel/Writing.swift",
+            "CodeBoardNotes/NoteEditor.swift"
+          ],
+          "tests": [
+            "CanvasWritingTests/enteringAndLeavingWithNothingTypedChangesNothing",
+            "CanvasWritingTests/returnWritesInTheSelectedCardAndASessionIsOneStep",
+            "CanvasWritingTests/anArrowOnANotesBlockFollowsItWhenTheWritingEndsAndUndoPutsItBack",
+            "CanvasWritingTests/keysPressedWhileTheEditorMountsReachIt",
+            "CanvasWritingTests/aDoubleClickOnTheCanvasMakesATextThatGoesWhenLeftEmpty",
+            "CanvasWritingTests/aClickOnTheOneSelectedNotesBodyWritesInIt",
+            "CanvasWritingTests/aDoubleClickBesideALineEndingInALinkWritesInTheLinksText",
+            "CanvasWritingTests/aDoubleClickBelowTheLastLineOfANoteWithItsHeadingInTheHeaderWritesAtTheEnd",
+            "CanvasWritingTests/theSecondClickOfADoubleClickOnTheSelectedNoteKeepsTheWritingGoing",
+            "CanvasWritingTests/theSecondPressOfADoubleClickOnTheEmptyBodyKeepsTheWritingGoing",
+            "CanvasWritingTests/theSecondClickOfTheDoubleClickThatOpensTheEditorSelectsNoWord",
+            "CanvasWritingTests/aNewCardWrittenInIsOneStep",
+            "CanvasWritingTests/theCardGrowsAsItIsTypedIn",
+            "CanvasWritingTests/whatIsTypedWinsOverAnotherWritersTextAndTheRestMerges",
+            "CanvasWritingTests/aCardDeletedElsewhereWhileWrittenInComesBackWithWhatWasTyped",
+            "CanvasWritingTests/theBarSizesATextOneStepEach",
+            "CanvasWritingTests/aBoxTakesItsFillsAndTextAndBoxKeepTheFirstLetterInPlace",
+            "CanvasWritingTests/theToolbarShowsItsNineToolsAndMakesNoteTextAndBoxInTheViewsMiddle",
+            "CanvasWritingTests/zoomingWhileWritingScalesTheEditorsLayerThenShowsItAtTheNewZoomAtRest",
+            "CanvasWritingTests/aPictureGivenToTheEditorGoesIntoTheBoardsImages",
+            "CanvasWritingTests/whatWasTypedIsWrittenWhenTheEditorLeftByItselfBeforeTheClickOutside",
+            "CanvasWritingTests/focusLeavingMidCompositionWritesWhatIsComposed",
+            "CanvasWritingTests/doubleBracketListsTheCardsAndWritesThePickWithItsID",
+            "CanvasWritingTests/aCardOnAnotherBoardIsWrittenWithTheBoardsName",
+            "CanvasWritingTests/whatIsTypedIsDraftedOntoTheDiskWhileWritingAndLeavingIsStillOneStep",
+            "CanvasWritingTests/aDraftOfAnEmptiedCardKeepsTheCardAndWhatPointsAtIt",
+            "CanvasWritingTests/aDraftOfAnEmptiedNewCardKeepsIt",
+            "CanvasWritingTests/keysTypedAtOnceAfterADoubleClickAllReachTheNewText",
+            "CanvasWritingTests/aNewTextPressedOnItsEdgeIsDragged",
+            "CanvasWritingTests/selectAllInANoteSelectsItAllWithNoFormatBar"
+          ]
+        },
+        "names": {
+          "sources": ["CodeBoardCanvas/SealEditor.swift"],
+          "tests": ["NameFieldTests"]
+        },
+        "scrolling while writing": {
+          "sources": ["CodeBoardCanvas/CanvasWheel.swift"],
+          "tests": ["CanvasWheelTests"]
+        },
+        "refs": {
+          "sources": ["CodeBoardCanvas/CanvasRefs.swift", "CodeBoardCanvas/Refs.swift", "CodeBoardNotes/NoteRef.swift"],
+          "tests": [
+            "CanvasWritingTests/RefClicks",
+            "CanvasSidenoteTests/RefClicksInPopup",
+            "RefTests",
+            "CanvasWritingTests/doubleBracketListsTheCardsAndWritesThePickWithItsID"
+          ]
+        },
+        "shelf": {
+          "sources": ["CodeBoardCanvas/CanvasShelf.swift", "CodeBoardModel/Shelf.swift"],
+          "tests": ["CanvasShelfTests"]
+        },
+        "toolbar and dock": {
+          "sources": [
+            "CodeBoardCanvas/CanvasToolbar.swift",
+            "CodeBoardCanvas/CanvasDock.swift",
+            "CodeBoardCanvas/CanvasTips.swift",
+            "CodeBoardCanvas/CanvasShortcuts.swift"
+          ],
+          "tests": [
+            "ToolbarWindowTests",
+            "ButtonReleaseTests",
+            "CanvasSidenoteTests/theDocksPartsInOrderAndWhatEachDoes",
+            "CanvasSidenoteTests/theDockShowsTheZoomAndWhileQuestionsAreOpenTheirCount",
+            "ParityKeysTests/questionMarkOpensTheShortcutListInMainsGroupsAndWords",
+            "ParityMenusTests/theToolbarsMoreMenu",
+            "ParityMenusTests/theToolbarsGlassIsItsSquircleOrItsStroke",
+            "CanvasArrowTests/aPortsTipSaysWhatDraggingItDoes"
+          ]
+        },
+        "menus and keys": {
+          "sources": ["CodeBoardCanvas/CanvasMenus.swift", "CodeBoardCanvas/CanvasKeys.swift"],
+          "tests": ["ParityMenusTests", "ParityKeysTests", "MenuWalkTests"]
+        },
+        "moving and aligning cards": {
+          "sources": [
+            "CodeBoardCanvas/CanvasEditing.swift",
+            "CodeBoardCanvas/CanvasLift.swift",
+            "CodeBoardCanvas/CanvasAlignBar.swift",
+            "CodeBoardCanvas/Snap.swift",
+            "CodeBoardModel/Align.swift"
+          ],
+          "tests": [
+            "CanvasEditTests",
+            "CanvasLiftTests",
+            "CanvasAlignBarTests",
+            "CanvasSnapTests",
+            "CanvasTextHandlesTests"
+          ]
+        },
+        "card headers": {
+          "sources": ["CodeBoardCanvas/CanvasHeadActs.swift", "CodeBoardModel/HeadingSplit.swift"],
+          "tests": ["CanvasHeadActsTests", "CanvasHeadingTests"]
+        },
+        "camera": {
+          "sources": [
+            "CodeBoardCanvas/Camera.swift",
+            "CodeBoardCanvas/Motion.swift",
+            "CodeBoardModel/CameraStore.swift"
+          ],
+          "tests": [
+            "CameraTests",
+            "MotionTests",
+            "PrototypeMotionTests",
+            "CanvasGlideTests",
+            "CanvasOpeningTests",
+            "CanvasEditTests/scrollAndPinchMoveOnlyTheCamera",
+            "CanvasEditTests/aCameraIsWrittenOnceStillAndNeverDuringAGesture",
+            "ParityKeysTests/commandPlusMinusAndOneZoom",
+            "ParityKeysTests/spaceAndDragPansEvenOverACard"
+          ]
+        },
+        "drawing at rest": {
+          "sources": [
+            "CodeBoardCanvas/Levels.swift",
+            "CodeBoardCanvas/RedrawQueue.swift",
+            "CodeBoardCanvas/DecodeCache.swift"
+          ],
+          "tests": [
+            "LevelsTests",
+            "RestPlanTests",
+            "RedrawQueueTests",
+            "ByteLRUTests",
+            "NoteLevelsTests",
+            "RestWeightTests",
+            "CanvasEditTests/redrawsCancelledWithoutAGestureAreNoBreak"
+          ]
+        },
+        "look": {
+          "sources": ["CodeBoardCanvas/Ink.swift", "CodeBoardCanvas/Strokes.swift", "CodeBoardCanvas/Picture.swift"],
+          "tests": ["ThemeTests", "SeededTests", "CanvasSelectionLookTests"]
+        },
+        "pictures": {
+          "sources": ["CodeBoardCanvas/CanvasPicture.swift"],
+          "tests": [
+            "CanvasPictureTests",
+            "CanvasRemoteImageTests",
+            "CanvasNoteTests/anSVGPictureIsDrawnByTheNoteRenderer"
+          ]
+        },
+        "notes": {
+          "sources": [
+            "CodeBoardNotes/NoteRenderer.swift",
+            "CodeBoardNotes/NotePage.swift",
+            "CodeBoardNotes/NoteMetrics.swift",
+            "CodeBoardNotes/NoteSnapshot.swift",
+            "CodeBoardNotes/PageNote.swift",
+            "CodeBoardNotes/RenderQueue.swift",
+            "CodeBoardNotes/SnapshotKey.swift",
+            "CodeBoardNotes/SnapshotStore.swift"
+          ],
+          "tests": ["CanvasNoteTests", "NoteSizeTests", "NoteLevelsTests"]
+        },
+        "accessibility": {
+          "sources": ["CodeBoardCanvas/CanvasAccessibility.swift"],
+          "tests": ["CanvasAccessibilityTests"]
+        },
+        "test guard": {
+          "sources": ["CodeBoardCanvas/TestWatch.swift", "CodeBoardTestGuard"],
+          "tests": ["TestGuardTests"]
+        },
+        "native notes": {
+          "sources": [
+            "CodeBoardCanvas/NativeNotes.swift",
+            "CodeBoardCanvas/KeptMath.swift",
+            "CodeBoardNotes/MeasuredSizes.swift"
+          ],
+          "tests": [
+            "NativeNotesTests",
+            "NativeNotesKeptTests",
+            "NativeCanvasTests",
+            "CanvasArrowTests/anArrowOnANotesBlockMeetsTheNoteAtThatBlock"
+          ]
+        }
+      }
+    },
+    "CodeBoardShellTests": {
+      "changed": "files",
+      "important": [
+        "ShellTests/aSubBoardEnteredHasItsParentsAsCrumbsAndLeavingGoesBackToItsCamera",
+        "ShellTests/theStateRoundTripsThroughRelaunch",
+        "BoardPanesTests/aBoardOpensWhereItWasLeftAndAtTheCameraItsImportBrought",
+        "BoardPanesTests/aSharedCardEditedOnOneBoardShowsOnTheOtherWithItsImagesAndTravellingSidenote",
+        "DeleteTests/aDeletedBoardGoesToTheTrashWholeAndNothingElseChanges",
+        "SidebarFilesTests/duplicateBoardCopiesItBesideItAndMoveToTakesItToAFolder",
+        "FullWindowSearchTests/commandKSearchesEveryBoardAndReturnOpensTheCardsBoard",
+        "FullWindowEditTests/whatIsTypedInOutsideTheBoardsKeepsTheKeys",
+        "WritingWhenClosingTests/closingTheTabWritesWhatIsBeingTyped",
+        "FullWindowSheetTests/quittingWithUnsavedChangesAsksInASheet",
+        "ParityMenuKeysTests/orderKeysAreTheAppsOwnAndBracketsSwitchTabs"
+      ],
+      "broad": [
+        "CodeBoardShell/AppDelegate.swift",
+        "CodeBoardShell/ShellTheme.swift",
+        "CodeBoardShell/ShellPictures.swift"
+      ],
+      "areas": {
+        "tabs": {
+          "sources": ["CodeBoardShell/Shell.swift", "CodeBoardShell/TabStrip.swift"],
+          "tests": [
+            "ShellTests",
+            "ParityMenuKeysTests/controlMinusAndCommandBracketsGoBackAndForward",
+            "ParityMenuKeysTests/orderKeysAreTheAppsOwnAndBracketsSwitchTabs"
+          ]
+        },
+        "board panes": {
+          "sources": ["CodeBoardShell/BoardPanes.swift", "CodeBoardModel/SharedCards.swift"],
+          "tests": [
+            "BoardPanesTests",
+            "MissingCardTests",
+            "FullWindowDeleteEverywhereTests",
+            "aQuestionBeforeDeletingTakesAPressToGoAhead"
+          ]
+        },
+        "sidebar and files": {
+          "sources": [
+            "CodeBoardShell/Sidebar.swift",
+            "CodeBoardShell/ShellFiles.swift",
+            "CodeBoardShell/VaultWatcher.swift",
+            "CodeBoardCanvas/CanvasVaultDrop.swift",
+            "CodeBoardCanvas/SealEditor.swift",
+            "CodeBoardModel/VaultFiles.swift"
+          ],
+          "tests": ["SidebarFilesTests", "DeleteTests", "OpeningWritesNothingTests", "WritingWhenClosingTests"]
+        },
+        "search": {
+          "sources": [
+            "CodeBoardShell/ShellSearch.swift",
+            "CodeBoardNotes/SearchPanel.swift",
+            "CodeBoardModel/Search.swift"
+          ],
+          "tests": ["FullWindowSearchTests"]
+        },
+        "keys and the shortcut list": {
+          "sources": ["CodeBoardCanvas/CanvasShortcuts.swift", "CodeBoardCanvas/CanvasKeys.swift"],
+          "tests": ["FullWindowKeysTests", "ParityMenuKeysTests"]
+        },
+        "summary writing": {
+          "sources": [
+            "CodeBoardShell/SummaryAI.swift",
+            "CodeBoardShell/SettingsWindow.swift",
+            "CodeBoardModel/SummaryAI.swift",
+            "CodeBoardModel/SummaryPrompt.swift"
+          ],
+          "tests": ["SummaryWriterTests"]
+        },
+        "tidy": {
+          "sources": [
+            "CodeBoardCanvas/CanvasTidy.swift",
+            "CodeBoardCanvas/CanvasTidySlide.swift",
+            "CodeBoardNotes/Tidy.swift"
+          ],
+          "tests": ["FullWindowTidyTests"]
+        },
+        "window": {
+          "sources": ["CodeBoardShell/MainWindow.swift"],
+          "tests": ["FullWindowEditTests", "FullWindowToolbarTests", "topGlassCoversTheBarAndDissolvesBelowIt"]
+        },
+        "glide": {
+          "sources": ["CodeBoardCanvas/Motion.swift"],
+          "tests": ["FullWindowGlideTests"]
+        },
+        "sheets": {
+          "sources": ["CodeBoardShell/ImportAlert.swift", "CodeBoardCanvas/CanvasDiagnostics.swift"],
+          "tests": ["FullWindowSheetTests"]
+        }
+      }
+    }
+  }
+}

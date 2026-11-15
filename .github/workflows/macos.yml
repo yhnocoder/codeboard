@@ -2,16 +2,17 @@ name: macOS
 # The native Mac app (apps/macos): build, unit tests and swift-format's lint. It targets the latest macOS only, so it
 # needs the image with Xcode 27 (a preview image on GitHub for now); the newest Xcode on it is selected, which is the
 # toolchain the app is developed with.
-# Two jobs side by side: the canvas tests, which open one window at a time (RigTurns) and so take as long as all the
-# other test targets together, and everything else with the lint. The acceptance scenarios run instead when the regular
-# full run calls this (regular.yml): too long for every PR, and macOS runners are few.
+# A PR runs two jobs, each meant to end in under 6 minutes: app (one build, the important unit tests and those of what
+# the PR changed, picked by tools/tests/pick.mjs from Tests/tiers.json, and the lint) and accept (smoke) (the acceptance
+# scenarios in smoke.txt). The regular full run (regular.yml) calls this with everything: every unit test in app and
+# the whole acceptance list in two accept jobs.
 on:
   pull_request:
     paths: ["apps/macos/**", ".github/workflows/macos.yml"]
   workflow_call:
     inputs:
-      acceptance:
-        description: "Run the acceptance scenarios instead of the build, unit tests and lint (the regular full run)"
+      everything:
+        description: "Run every unit test and the whole acceptance list (the regular full run)"
         type: boolean
         default: false
 permissions:
@@ -21,38 +22,51 @@ concurrency:
   cancel-in-progress: true
 jobs:
   # The acceptance scenarios (apps/macos/tools/accept, ci.mjs): the app driven in its own process beside the web board
-  # in headless Chromium, function only (nothing timed), three shots per scenario and side as an artifact; the scenarios
-  # in two halves side by side. Only in the regular full run
+  # in headless Chromium, function only (nothing timed), three shots per scenario and side as an artifact. A PR runs the
+  # few in smoke.txt in one job; the regular full run all of ci.txt, in two halves side by side
   accept:
-    name: accept (${{ matrix.shard }})
-    if: ${{ inputs.acceptance }}
+    name: accept (${{ inputs.everything && matrix.shard || 'smoke' }})
     runs-on: xcode-27
-    timeout-minutes: 30
+    # as for app below: meant to end in under 6 minutes on a PR, which a slow runner without a kept build does not
+    # (6.4 minutes seen)
+    timeout-minutes: ${{ inputs.everything && 30 || 8 }}
     env:
       BOX_PREBUILT: "1" # the web side's host runs without box (Related by Meaning off), as the app does
     strategy:
       fail-fast: false
       matrix:
-        shard: ["1/2", "2/2"]
+        shard: ${{ fromJSON(inputs.everything && '["1/2", "2/2"]' || '["1/1"]') }}
     steps:
       - uses: actions/checkout@v6
-      # the web board and its Markdown package, the app's Note page
+      # the web board and its Markdown package, the app's Note page, and the fonts and formula engines the app's native
+      # Markdown draws with (under a second)
       - uses: ./.github/actions/setup
         with:
-          build: npm run build -w @yhnocoder/markdown && npm run build -w @codeboard/board && node apps/macos/web/build.mjs
+          build: npm run build -w @yhnocoder/markdown && npm run build -w @codeboard/board && node apps/macos/web/build.mjs && node apps/macos/tools/markdown/assets.mjs
       - name: Select the newest Xcode
         run: |
           sudo xcode-select -s "$(find /Applications -maxdepth 1 -type d -name 'Xcode_*.app' | sort -V | tail -1)"
           swift --version
-      - uses: actions/cache@v5
+      # the last regular full run's build (see the app job): the driver is in it, so only what changed since is compiled
+      - id: built
+        uses: actions/cache/restore@v5
+        with:
+          path: apps/macos/.build
+          key: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.sha }}
+          restore-keys: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-
+      - if: ${{ !steps.built.outputs.cache-matched-key }}
+        uses: actions/cache@v5
         with:
           path: |
             apps/macos/.build/repositories
             apps/macos/.build/checkouts
           key: swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}
+      - run: node apps/macos/tools/ci/source-times.mjs
       - run: npx playwright-core install chromium
       # (the boards were built above: --skip-build leaves the web builds out; the driver is built, debug, either way)
-      - run: node apps/macos/tools/accept/ci.mjs --shard ${{ matrix.shard }} --skip-build
+      - run: >-
+          node apps/macos/tools/accept/ci.mjs --list ${{ inputs.everything && 'ci.txt' || 'smoke.txt' }}
+          --shard ${{ matrix.shard }} --skip-build
       - if: always()
         uses: actions/upload-artifact@v6
         with:
@@ -68,22 +82,21 @@ jobs:
           retention-days: 14
 
   app:
-    name: app (${{ matrix.part }})
-    if: ${{ !inputs.acceptance }}
+    name: app
     runs-on: xcode-27
-    timeout-minutes: 15
+    # a PR's job is meant to end in under 6 minutes, but without a kept build (the first PRs after a change to
+    # Package.resolved) compiling everything takes up to 4.5 minutes on a slow runner, and a limit at 6 would turn that
+    # into a red PR
+    timeout-minutes: ${{ inputs.everything && 25 || 8 }}
     env:
       BOX_PREBUILT: "1" # the app does not use box, so the setup leaves out Rust
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { part: canvas, tests: "--filter CodeBoardCanvasTests" }
-          - { part: rest, tests: "--skip CodeBoardCanvasTests", lint: true }
     defaults:
       run: { working-directory: apps/macos }
     steps:
+      # on a PR the checkout is the merge commit, so its first parent is the base branch and the diff to it is exactly
+      # the PR's changes (pick.mjs --base HEAD^1)
       - uses: actions/checkout@v6
+        with: { fetch-depth: 2 }
       # the page that draws Notes (apps/macos/web, over the Markdown package's build); the Notes tests render through it.
       # The native Markdown component's fonts and formula engines (apps/macos/tools/markdown/assets.mjs); its tests use them
       - uses: ./.github/actions/setup
@@ -93,15 +106,37 @@ jobs:
         run: |
           sudo xcode-select -s "$(find /Applications -maxdepth 1 -type d -name 'Xcode_*.app' | sort -V | tail -1)"
           swift --version
-      # cloning tree-sitter and its grammars with their whole history took about a minute and a half on every run
-      - uses: actions/cache@v5
+      # A PR starts from the build the last regular full run made on main (.build, about 500 MB), so it compiles only
+      # what differs from it: compiling everything takes 2 to 4.5 minutes, depending on the runner. The regular run
+      # itself starts from nothing, so a wrong kept build lasts 6 hours at most. A cache saved on the default branch is
+      # readable by every PR's run
+      - id: built
+        if: ${{ !inputs.everything }}
+        uses: actions/cache/restore@v5
+        with:
+          path: apps/macos/.build
+          key: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.sha }}
+          restore-keys: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-
+      # without a kept build: the clones of tree-sitter and its grammars with their whole history, which took about a
+      # minute and a half to fetch on every run
+      - if: ${{ !steps.built.outputs.cache-matched-key }}
+        uses: actions/cache@v5
         with:
           path: |
             apps/macos/.build/repositories
             apps/macos/.build/checkouts
           key: swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}
+      # the times the kept build saw on the sources (source-times.mjs), or everything would be compiled again
+      - run: node tools/ci/source-times.mjs
       # one build of the app, its tools and the tests: swift build then swift test compiled twice
       - run: swift build --build-tests
-      - run: swift test --skip-build ${{ matrix.tests }}
-      - if: matrix.lint
+      # saved here, not at the end of the job, so that a failing test does not lose the build
+      - if: ${{ inputs.everything }}
+        uses: actions/cache/save@v5
+        with:
+          path: apps/macos/.build
+          key: swift-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.sha }}
+      # every test in the regular full run; on a PR the important ones and those of what it changed (Tests/tiers.json)
+      - run: node tools/tests/pick.mjs ${{ inputs.everything && '--all' || '--base HEAD^1' }}
+      - if: ${{ !cancelled() }}
         run: swift format lint --strict -r Sources Tests Package.swift

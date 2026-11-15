@@ -487,6 +487,7 @@ extension CanvasView {
       editor.clear()
       // left before what it held was handed over
       editor.view.held = nil
+      editor.view.openedBy = nil
     }
     editingOriginal = nil
     editing = nil
@@ -545,10 +546,20 @@ extension CanvasView {
     guard editing == nil, let doc = document, let i = index(of: .card(id)) else { return }
     let head: CGFloat = if case .code(let c) = scene!.items[i].drawing, !c.framed { 0 } else { theme.headerHeight }
     guard p.y >= scene!.items[i].rect.minY + head else { return }
+    // the press that goes on with this click (its double-click's second) is part of opening the editor
+    let opened = { if self.editing?.id == id { self.noteEditor.view.openedBy = 1 } }
     if isFreeCode(id) {
-      editSoon { if self.editing == nil { self.beginCodeEditing(id, at: p) } }
+      editSoon {
+        guard self.editing == nil else { return }
+        self.beginCodeEditing(id, at: p)
+        opened()
+      }
     } else if case .own(let c)? = doc.board.card(id)?.content, case .note = c.body, isWriting(id) {
-      editSoon { if self.editing == nil { self.beginEditing(id, at: p) } }
+      editSoon {
+        guard self.editing == nil else { return }
+        self.beginEditing(id, at: p)
+        opened()
+      }
     }
   }
 

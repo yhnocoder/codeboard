@@ -327,6 +327,38 @@ public final class EditorWebView: WKWebView {
   /// Keys that wait while the keys typed before the editor was there are handed to it (NoteEditor.replay)
   package var held: [NSEvent]?
 
+  /// The click count of the click on the canvas that opened the editor, until the next press here: a press that goes
+  /// on with that click (a double-click whose first click opened it) is part of opening the editor, and is given to
+  /// the page as a click of its own, which only puts the caret where it is (interact.ts clickEdit: main keeps that
+  /// second press from selecting a word). AppKit's click count tells it, the system's double-click time and distance
+  /// in it. The presses after it keep their counts: a third still selects the paragraph, as main's does
+  package var openedBy: Int?
+  /// The press given as a single click is on: its drags and release are too
+  private var openingPress = false
+
+  public override func mouseDown(with e: NSEvent) {
+    let continues = openedBy.map { e.clickCount == $0 + 1 } ?? false
+    openedBy = nil
+    openingPress = continues
+    super.mouseDown(with: continues ? Self.single(e) : e)
+  }
+
+  public override func mouseDragged(with e: NSEvent) { super.mouseDragged(with: openingPress ? Self.single(e) : e) }
+
+  public override func mouseUp(with e: NSEvent) {
+    let single = openingPress
+    openingPress = false
+    super.mouseUp(with: single ? Self.single(e) : e)
+  }
+
+  /// The same event as the first press of a click
+  private static func single(_ e: NSEvent) -> NSEvent {
+    NSEvent.mouseEvent(
+      with: e.type, location: e.locationInWindow, modifierFlags: e.modifierFlags, timestamp: e.timestamp,
+      windowNumber: e.windowNumber, context: nil, eventNumber: e.eventNumber, clickCount: 1, pressure: e.pressure)
+      ?? e
+  }
+
   public override func keyDown(with e: NSEvent) {
     if held != nil {
       held?.append(e)
