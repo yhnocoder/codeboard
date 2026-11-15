@@ -60,4 +60,13 @@ let boardFonts: Void = {
     try Data().write(to: carried.appending(path: "engines.js"))
     #expect(MarkdownAssets.assets(in: app) == carried)
   }
+
+  /// The fonts are the host's: those it names must be there, whatever they are
+  @Test func theFontsAreTheOnesTheHostNames() throws {
+    let folder = MarkdownAssets.assets.appending(path: "assets")
+    let mono = MarkdownFontFiles(needed: ["JetBrainsMono-400-600-"], families: [("JetBrainsMono-", "JetBrains Mono")])
+    #expect((try? MarkdownAssets.register(mono, in: folder).get()) != nil)
+    let other = MarkdownFontFiles(needed: ["NotAFont-"], families: [])
+    #expect(throws: MarkdownAssetError.fontsMissing(folder)) { try MarkdownAssets.register(other, in: folder).get() }
+  }
 }

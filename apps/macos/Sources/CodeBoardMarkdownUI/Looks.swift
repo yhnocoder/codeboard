@@ -35,6 +35,23 @@ public enum MarkdownLooks {
   /// --display: titles and h1
   static let display = ["Source Serif 4", "Songti SC"]
 
+  /// The board's fonts (MarkdownAssets.fontFiles): the faces every look draws text with, the families' files by the
+  /// family each holds (its name as a font list asks for it: the hand font names its family after its default
+  /// instance), and Yozai, the Chinese handwriting, in chunks. Zhi Mang Xing is the canvas's own (section titles); the
+  /// web board's other fonts no look here draws with
+  public static let fontFiles = MarkdownFontFiles(
+    needed: ["SourceSerif4-400-600-", "JetBrainsMono-400-600-", "ShantellSans-300-800-", "Yozai-400-00-"],
+    families: [
+      ("SourceSerif4-", "Source Serif 4"), ("JetBrainsMono-", "JetBrains Mono"),
+      ("ShantellSans-", "Shantell Sans Light"),
+    ],
+    chunked: [("Yozai-", "Yozai")])
+
+  /// A Note in each look, light and dark (MarkdownAssets.warmUp)
+  public static var warmUpThemes: [MarkdownTheme] {
+    ["warm-ink", "ink-wash"].flatMap { look in [false, true].map { card(.note, look: look, dark: $0).theme } }
+  }
+
   public static func theme(_ look: String, dark: Bool) -> MarkdownTheme {
     let c: (String) -> MDColor = { MDColor(hex: $0) }
     let rgba: (Double, Double, Double, Double) -> MDColor = { MDColor($0 / 255, $1 / 255, $2 / 255, $3) }
