@@ -108,6 +108,31 @@ import Testing
     check(e)
   }
 
+  /// An input method's commits are steps as typing is, by time only, as the web board's editor makes them (measured in
+  /// Chromium, the commits through CDP's composition: typing and a commit 0.1 s after it one step, 0.8 s after it two;
+  /// two commits 0.1 s apart one, 0.8 s apart two; typing at once after a commit one, 0.8 s after it two)
+  @Test(arguments: [
+    ("ab", 0.1, "你", 1), ("ab", 0.8, "你", 2), ("你", 0.1, "好", 1), ("你", 0.8, "好", 2), ("你", 0, "ab", 1),
+    ("你", 0.8, "ab", 2),
+  ])
+  func inputMethodCommitsAreUndoneAsTypingIsByTheTimeBetween(first: String, gap: Double, then: String, steps: Int) {
+    let (e, clock) = core("start", caret: 5)
+    func put(_ s: String) {
+      guard s.unicodeScalars.allSatisfy(\.isASCII) else {
+        // composed: the keys' pinyin marked as it grows, then the word
+        for k in ["n", "ni"] { e.setMarked(k, selected: NSRange(location: k.utf16.count, length: 0)) }
+        return e.insert(s)
+      }
+      type(e, s)
+    }
+    put(first)
+    clock.t += gap
+    put(then)
+    #expect(e.source == "start" + first + then)
+    e.undo()
+    #expect(e.source == (steps == 1 ? "start" : "start" + first))
+  }
+
   @Test func typingIsOneUndoStepUntilAPauseOrAMove() {
     let (e, clock) = core("start", caret: 5)
     type(e, " abc")
