@@ -40,7 +40,7 @@ type PopNote =
       place: boolean;
       review?: string;
       kind: "code";
-      head: { title: string; where: string; version: string };
+      head: { title: string; where: string; version: string; url?: string };
       start: number;
       html: string[];
       /** Why it is there, under its code (notes.tsx .sn-why) */
@@ -84,7 +84,8 @@ type Posted =
   | { type: "remove" }
   | { type: "close" }
   | { type: "writing"; on: boolean }
-  | { type: "picked"; group: string | null; id: string };
+  | { type: "picked"; group: string | null; id: string }
+  | { type: "openLink"; url: string };
 
 const post = (m: Posted) => window.webkit?.messageHandlers.note.postMessage(m);
 
@@ -429,6 +430,16 @@ function codeOf(n: Extract<PopNote, { kind: "code" }>): DocumentFragment {
   const f = document.createDocumentFragment();
   const head = el("div", "sn-head", el("b", "", n.head.title));
   if (n.head.where) head.append(el("span", "", `· ${n.head.where}`));
+  // free code: where it was pasted from (notes.tsx CodeHead)
+  const url = n.head.url;
+  if (url) {
+    const a = el("a", "lnk", url);
+    a.addEventListener("click", (e) => {
+      e.stopPropagation();
+      post({ type: "openLink", url });
+    });
+    head.append(a);
+  }
   head.append(el("span", "grow"));
   if (n.head.version) head.append(el("span", "rev sm", n.head.version));
   const lines = el("div", "pc-in");

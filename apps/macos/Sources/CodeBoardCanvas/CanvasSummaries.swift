@@ -487,6 +487,7 @@ extension CanvasView {
     ed.look = look
     ed.em = em
     ed.onEnd = { [weak self] commit in self?.endSummaryEdit(commit: commit) }
+    ed.onChange = { [weak self] in self?.placeSummaryEditor() }
     ed.handOver = { [weak self] in self?.take($0, at: $0.locationInWindow) ?? false }
     ed.load(sum.text)
     summaryEditor = ed
@@ -519,10 +520,17 @@ extension CanvasView {
     let r = CGRect(
       x: c.rect.minX + pad, y: c.rect.minY + c.bodyTop, width: c.rect.width - 2 * pad,
       height: max(c.full - c.bodyTop - pad, 1.5 * ed.em))
-    let v = CGRect(origin: camera.view(r.origin), size: CGSize(width: r.width * z, height: r.height * z))
+    var v = CGRect(origin: camera.view(r.origin), size: CGSize(width: r.width * z, height: r.height * z))
     ed.zoom = z
     ed.frame = convert(v, to: host)
     ed.restyle()
+    // a line more grows it downward, as main's contenteditable body
+    if let lm = ed.layoutManager, let tc = ed.textContainer {
+      lm.ensureLayout(for: tc)
+      v.size.height = max(v.height, lm.usedRect(for: tc).height.rounded(.up))
+      ed.frame = convert(v, to: host)
+      ed.restyle()
+    }
   }
 
   /// The edit kept (one step: Edit Summary) or left
@@ -654,6 +662,7 @@ final class SummaryEditor: NSTextView {
   var em: CGFloat = 60
   var zoom: CGFloat = 1
   var onEnd: ((Bool) -> Void)?
+  var onChange: (() -> Void)?
   /// Behind the field: its paper and ring
   let ring = OnBoardView()
   var handOver: ((NSEvent) -> Bool)? {
@@ -672,7 +681,15 @@ final class SummaryEditor: NSTextView {
     drawsBackground = false
     textContainerInset = .zero
     textContainer?.lineFragmentPadding = 0
+    // its height is the canvas's to set (placeSummaryEditor): sized by itself it grows from its origin, which in an
+    // unflipped superview is its bottom
+    isVerticallyResizable = false
     wantsLayer = true
+  }
+
+  override func didChangeText() {
+    super.didChangeText()
+    onChange?()
   }
 
   /// The look at the zoom shown: its sizes are view points here, not board units

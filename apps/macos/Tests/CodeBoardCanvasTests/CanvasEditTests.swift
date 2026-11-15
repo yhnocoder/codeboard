@@ -125,7 +125,7 @@ actor RigTurns {
     canvas = CanvasView(frame: CGRect(x: 0, y: 0, width: 1000, height: 700), notes: Rig.notes)
     // never the general pasteboard: that is the person's own clipboard
     canvas.pasteboard = pasteboard ?? NSPasteboard(name: NSPasteboard.Name("codeboard-tests-\(UUID().uuidString)"))
-    window = NSWindow(
+    window = BoardWindow(
       contentRect: CGRect(x: -30000, y: -30000, width: 1000, height: 700), styleMask: [.titled], backing: .buffered,
       defer: false)
     window.isReleasedWhenClosed = false
@@ -183,8 +183,9 @@ actor RigTurns {
       context: nil, eventNumber: 0, clickCount: clicks, pressure: 1)!
   }
 
-  /// What the window does with a mouse or key event: to the canvas's handler
+  /// What the window does with a mouse or key event: any glide stopped first (BoardWindow), then to the canvas's handler
   func send(_ e: NSEvent) {
+    if BoardWindow.stopsGlide(e), let v = window.contentView { BoardWindow.stopGlides(in: v) }
     switch e.type {
     case .leftMouseDown: canvas.mouseDown(with: e)
     case .leftMouseDragged: canvas.mouseDragged(with: e)

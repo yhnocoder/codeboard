@@ -163,6 +163,48 @@ extension Rig {
     #expect(r.canvas.index(of: .card(id)) == nil)
   }
 
+  /// interact.ts cardPointerDown / cardClick: a click on the body of the one Note selected before the press writes in it,
+  /// the caret where it was; not the click that selects it, a click on its head, a ⇧-click, one of several selected or
+  /// a Text's (Texts and Boxes are written by a double-click); the double-click's second press keeps the one session
+  @Test func aClickOnTheOneSelectedNotesBodyWritesInIt() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let n = r.rect("n1")
+    let body = CGPoint(x: n.minX + 40, y: n.maxY - 30)
+    let head = CGPoint(x: n.minX + 40, y: n.minY + 10)
+    r.click(body)
+    await r.settle()
+    #expect(r.doc.selection == [.card(cid("n1"))] && !c.isEditing, "the click that selects it")
+    r.click(head)
+    await r.settle()
+    #expect(!c.isEditing, "its head")
+    r.click(body, .shift)
+    await r.settle()
+    #expect(!c.isEditing, "a ⇧-click")
+    r.doc.select([.card(cid("n1")), .card(cid("t1"))])
+    r.click(body)
+    await r.settle()
+    #expect(r.doc.selection == [.card(cid("n1"))] && !c.isEditing, "one of several: only it stays selected")
+    r.click(r.centre("t1"))
+    r.click(r.centre("t1"))
+    await r.settle()
+    #expect(!c.isEditing, "a Text's")
+    r.click(body)
+    r.click(body)
+    await r.editorReady()
+    #expect(c.editing?.id == cid("n1"))
+    await c.endEditing()
+    #expect(!r.doc.history.canUndo)
+    // the double-click on it selected: its first click began writing, its second keeps it
+    r.doubleClick(body)
+    await r.editorReady()
+    let first = c.editing?.session
+    await r.settle()
+    #expect(c.editing?.session == first && first != nil)
+    await c.endEditing()
+  }
+
   @Test func aNewCardWrittenInIsOneStep() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }
@@ -338,10 +380,10 @@ extension CanvasWritingTests {
     let bar = CanvasToolbar(frame: CGRect(x: 0, y: 0, width: 300, height: 100))
     #expect(bar.tools == [.note, .text, .box, .section, .arrow, .sticker])
     // the web board's sizes: Warm Ink 4 + 6 × 30 + 5 × 2 + 4 wide, 36 tall; Ink Wash 22 + 6 × 30 + 5 + 34, 46; then
-    // ⋯ after a separator (gap, 0.5 with 4 each side, gap, 30)
-    #expect(bar.barSize == CGSize(width: 198 + 2 + 8.5 + 2 + 30, height: 36))
+    // Search and ⋯ after a separator (gap, 0.5 with 4 each side, gap, 30, gap, 30)
+    #expect(bar.barSize == CGSize(width: 198 + 2 + 8.5 + 2 + 30 + 2 + 30, height: 36))
     bar.theme = .inkWash
-    #expect(bar.barSize == CGSize(width: 241 + 1 + 8.5 + 1 + 30, height: 46))
+    #expect(bar.barSize == CGSize(width: 241 + 1 + 8.5 + 1 + 30 + 1 + 30, height: 46))
     var used: [Tool] = []
     bar.onTool = {
       used.append($0)

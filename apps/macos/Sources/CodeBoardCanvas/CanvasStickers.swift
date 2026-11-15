@@ -614,7 +614,6 @@ package final class StickerPalette: NSView {
   private var down: Int?
 
   package override func mouseDown(with e: NSEvent) {
-    CanvasView.under(self)?.stopGlide()
     down = slot(at: convert(e.locationInWindow, from: nil))
   }
 

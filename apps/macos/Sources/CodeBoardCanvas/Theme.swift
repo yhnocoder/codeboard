@@ -425,6 +425,14 @@ public struct Theme: Sendable {
       .pink: mix(0.78, 0xe3a0b4),
     ]
   }
+
+  /// A selected Section's colour (styles.css --sect-sel): Warm Ink's own orange, else the accent (Ink Wash's --zhu)
+  var sectionSelected: CGColor {
+    guard id == .warmInk else { return accent }
+    return dark
+      ? CGColor(srgbRed: 0xe3 / 255, green: 0xa2 / 255, blue: 0x73 / 255, alpha: 1)
+      : CGColor(srgbRed: 0xbb / 255, green: 0x74 / 255, blue: 0x42 / 255, alpha: 1)
+  }
 }
 
 /// CTFont is immutable and documented safe to use from any thread, but the SDK does not mark it Sendable

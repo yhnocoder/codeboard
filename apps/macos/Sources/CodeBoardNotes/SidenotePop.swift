@@ -32,10 +32,13 @@ public final class SidenotePop: NSObject {
       public var title: String
       public var `where`: String
       public var version: String
-      public init(title: String, where w: String, version: String) {
+      /// Free code: the address it was pasted from, a link (notes.tsx CodeHead)
+      public var url: String?
+      public init(title: String, where w: String, version: String, url: String? = nil) {
         self.title = title
         self.where = w
         self.version = version
+        self.url = url
       }
     }
     /// A sidenote: text (`md`, `q` when a question) or code (`head`, `start`, `html`: each line's highlighted HTML).
@@ -133,6 +136,8 @@ public final class SidenotePop: NSObject {
     case elsewhere
     /// A right-click on a sidenote: its menu, at that point in the view
     case menu(String, at: CGPoint)
+    /// A link clicked (a free code's address)
+    case openLink(String)
   }
 
   /// The room around the popup in the web view: its shadow's on every side, and the [[ list's below it (or above,
@@ -280,6 +285,7 @@ public final class SidenotePop: NSObject {
     case "ref": RefPress(m).map { onAction?(.ref($0)) }
     case "refDouble": onAction?(.ref(nil))
     case "elsewhere": onAction?(.elsewhere)
+    case "openLink": onAction?(.openLink(s("url")))
     default: break
     }
   }

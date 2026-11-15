@@ -532,7 +532,6 @@ package final class RefPeek: NSView {
   }
 
   package override func mouseDown(with e: NSEvent) {
-    CanvasView.under(self)?.stopGlide()
     let p = convert(e.locationInWindow, from: nil)
     goDown = goRect.contains(p)
     if goDown { return }

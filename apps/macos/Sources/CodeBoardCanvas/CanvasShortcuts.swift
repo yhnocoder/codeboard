@@ -36,7 +36,7 @@ package final class KeysPanel: NSView, NSSearchFieldDelegate {
   /// No shortcut matches: its sentence
   let empty = NSTextField(labelWithString: "")
   private let close = CAShapeLayer()
-  private let scroll = NSScrollView()
+  let scroll = NSScrollView()
   private static let header: CGFloat = 36
 
   init(theme: Theme, groups: [Group]) {
@@ -178,6 +178,8 @@ package final class KeysPanel: NSView, NSSearchFieldDelegate {
     let t = theme
     func label(_ s: String, _ font: NSFont, _ color: CGColor, x: CGFloat, y: CGFloat, w: CGFloat) -> CGFloat {
       let f = NSTextField(wrappingLabelWithString: s)
+      // not selectable, as main's list (.chrome: user-select none)
+      f.isSelectable = false
       f.font = font
       f.textColor = NSColor(cgColor: color)
       f.preferredMaxLayoutWidth = w
@@ -214,7 +216,6 @@ package final class KeysPanel: NSView, NSSearchFieldDelegate {
   private var down = false
 
   package override func mouseDown(with e: NSEvent) {
-    CanvasView.under(self)?.stopGlide()
     down = closeRect.contains(convert(e.locationInWindow, from: nil))
   }
   package override func mouseUp(with e: NSEvent) {

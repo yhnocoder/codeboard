@@ -10,6 +10,8 @@ import CodeBoardNotes
 extension CanvasView {
   /// One list for the app
   static var sharedList: QuestionListView?
+  /// Watches for a press outside the list while it is open
+  static var listOutside: Any?
 
   package var questionList: QuestionListView {
     if let l = CanvasView.sharedList { return l }
@@ -92,6 +94,17 @@ extension CanvasView {
     list.onPick = { [weak self] board, note in self?.pickQuestion(board, note) }
     list.onClose = { [weak self] in self?.closeQuestionList() }
     list.onSize = { [weak self] _ in self?.placeList() }
+    // a press anywhere else in the window closes it (QuestionList.tsx: its Overlay is `outside`); its button toggles it
+    CanvasView.listOutside = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) {
+      [weak self] e in
+      guard let self, e.window === self.window, let host = list.view.superview else { return e }
+      if !self.listButton.contains(self.convert(e.locationInWindow, from: nil)),
+        list.view.hitTest(host.convert(e.locationInWindow, from: nil)) == nil
+      {
+        self.closeQuestionList()
+      }
+      return e
+    }
     let b = doc.board
     Task {
       // the other boards' questions: their files read off the main thread
@@ -126,6 +139,8 @@ extension CanvasView {
   public func closeQuestionList() {
     guard listShown else { return }
     listShown = false
+    if let m = CanvasView.listOutside { NSEvent.removeMonitor(m) }
+    CanvasView.listOutside = nil
     listOthers = []
     questionList.close()
     dock.listOpen = false

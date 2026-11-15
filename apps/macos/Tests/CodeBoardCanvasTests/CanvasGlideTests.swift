@@ -77,11 +77,12 @@ import Testing
   }
 
   enum Stop: String, CaseIterable {
-    case press, rightPress, otherPress, scroll, mayBegin, pinch
+    case press, rightPress, otherPress, key, scroll, mayBegin, pinch
   }
 
-  /// Mid-glide a press of any button on the board (a right press before its menu is built), fingers on the trackpad
-  /// again (moving or not yet), or a pinch beginning stops it where it is: the next frames move nothing
+  /// Mid-glide a press of any button or a key, as the window gets it (BoardWindow stops the glide before the event goes
+  /// on), fingers on the trackpad again (moving or not yet), or a pinch beginning stops it where it is: the next frames
+  /// move nothing
   @Test(arguments: Stop.allCases) func aGlideStopsAtOnce(by stop: Stop) async throws {
     let r = try await rig()
     defer { r.close() }
@@ -92,10 +93,16 @@ import Testing
     let w = r.at(between)
     let p = c.camera.board(c.convert(w, from: nil))
     switch stop {
-    case .press: r.send(r.mouse(.leftMouseDown, p))
-    // what AppKit's right press asks first; the menu is never shown here
-    case .rightPress: _ = c.menu(for: r.mouse(.rightMouseDown, p))
-    case .otherPress: c.otherMouseDown(with: r.mouse(.otherMouseDown, p))
+    case .press: r.window.sendEvent(r.mouse(.leftMouseDown, p))
+    // through the window to the board, whose menu is written down, never shown (TestGuard)
+    case .rightPress:
+      try #require(TestGuard.guardsContextMenus, "the menu guard is not in")
+      TestGuard.shown = []
+      r.window.sendEvent(r.mouse(.rightMouseDown, p))
+      #expect(TestGuard.shown.first?.hasPrefix("menu: ") == true, "\(TestGuard.shown)")
+    case .otherPress: r.window.sendEvent(r.mouse(.otherMouseDown, p))
+    // a key nothing is bound to
+    case .key: r.window.sendEvent(r.keyEvent("j", code: 38))
     case .scroll: r.deliver(r.gesture(at: w, phase: 1, t: r.next(1.0 / 120)))
     case .mayBegin: r.deliver(r.gesture(at: w, phase: 128, t: r.next(1.0 / 120)))
     case .pinch: r.deliver(r.gesture(at: w, phase: 1, pinch: 0, t: r.next(1.0 / 120)))
@@ -104,7 +111,7 @@ import Testing
     #expect(!gliding(c), "\(stop.rawValue): still gliding after it")
     for _ in 0..<3 { r.tick() }
     #expect(c.camera == there, "\(stop.rawValue): moved on to \(c.camera.origin) from \(there.origin)")
-    if stop == .press { r.send(r.mouse(.leftMouseUp, p)) }
+    if stop == .press { r.window.sendEvent(r.mouse(.leftMouseUp, p)) }
   }
 
   /// At the stop the hover is worked out again for the camera there: the card under the resting pointer is hovered
@@ -124,7 +131,7 @@ import Testing
     try #require(gliding(c) && under() != nil, "a card under the pointer mid-glide")
     // the hover as nothing had set it: the stop alone must set it again
     c.hoveredCard = nil
-    _ = c.menu(for: r.mouse(.rightMouseDown, c.camera.board(c.convert(w, from: nil))))
+    r.window.sendEvent(r.mouse(.otherMouseDown, c.camera.board(c.convert(w, from: nil))))
     #expect(
       c.hoveredCard == under(), "hovered \(String(describing: c.hoveredCard)), under \(String(describing: under()))")
   }
@@ -230,5 +237,13 @@ import Testing
       if came == nil, let u = under() { came = u }
     }
     #expect(came != nil, "a card came under the pointer while it glided")
+  }
+}
+
+extension Rig {
+  func keyEvent(_ chars: String, code: UInt16) -> NSEvent {
+    NSEvent.keyEvent(
+      with: .keyDown, location: .zero, modifierFlags: [], timestamp: next(0.016), windowNumber: window.windowNumber,
+      context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code)!
   }
 }

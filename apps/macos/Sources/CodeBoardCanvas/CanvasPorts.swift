@@ -7,7 +7,7 @@ import QuartzCore
 // card one at each end of the line under the pointer; dragging one draws an arrow to the card or line let go on, the side
 // it left from kept. Let go on the canvas, nothing is made. The card aimed at grows a little and shows as selected, a line
 // aimed at is tinted. The ends of the one arrow selected can be dragged to another card or line the same way (the web
-// board has no such handles: asked for here).
+// board has no such handles: asked for here); nothing is drawn at them, a selected arrow is its accent line as main's.
 
 /// A port a new arrow is drawn from: a card's side, or one end of a code line
 struct Port: Equatable {
@@ -160,19 +160,6 @@ extension CanvasView {
     let p = camera.board(v)
     let reach = 7 / camera.zoom
     return endHandles().first { hypot($0.1.x - p.x, $0.1.y - p.y) <= reach }?.0
-  }
-
-  func drawEndHandles() {
-    guard gesture == nil || connecting == nil else { return }
-    let rad = portRadius
-    for (_, at) in endHandles() {
-      let l = CAShapeLayer()
-      l.path = CGPath(ellipseIn: CGRect(x: at.x - rad, y: at.y - rad, width: 2 * rad, height: 2 * rad), transform: nil)
-      l.fillColor = theme.surface
-      l.strokeColor = theme.accent
-      l.lineWidth = 1.5 * rad / 4.5
-      chrome.addSublayer(l)
-    }
   }
 
   // MARK: Connecting

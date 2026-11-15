@@ -44,6 +44,8 @@ public final class CanvasToolbar: NSView {
   public var onTool: ((Tool) -> Void)?
   /// The ⋯ button clicked (Chrome.tsx More), at its rect in this view
   public var onMore: ((CGRect) -> Void)?
+  /// The Search button clicked (Chrome.tsx: the palette on all boards)
+  public var onSearch: (() -> Void)?
   public private(set) var tools: [Tool] = Tool.made
   public var theme: Theme = .warmInk {
     didSet { if !theme.same(as: oldValue) { restyle() } }
@@ -91,9 +93,9 @@ public final class CanvasToolbar: NSView {
   /// The bar's own size (without the room around it)
   var barSize: CGSize {
     let n = CGFloat(tools.count)
-    // a separator (.sep, 0.5 wide with 4 each side) and ⋯ (a button as a tool's)
+    // a separator (.sep, 0.5 wide with 4 each side), Search and ⋯ (buttons as a tool's)
     let gap: CGFloat = theme.id == .inkWash ? 1 : 2
-    let more = gap + 8.5 + gap + 30
+    let more = gap + 8.5 + gap + 30 + gap + 30
     return theme.id == .inkWash
       ? CGSize(width: 22 + n * 30 + (n - 1) * 1 + more + 34, height: 46)
       : CGSize(width: 8 + n * 30 + (n - 1) * 2 + more, height: 36)
@@ -102,13 +104,14 @@ public final class CanvasToolbar: NSView {
   /// A tool's button in this view
   public func rect(of tool: Tool) -> CGRect? { tools.firstIndex(of: tool).map { buttonRects()[$0] } }
 
-  /// Where the separator before ⋯ and ⋯ are in the view
-  func extraRects() -> (sep: CGRect, more: CGRect) {
+  /// Where the separator after the tools, Search and ⋯ are in the view
+  func extraRects() -> (sep: CGRect, search: CGRect, more: CGRect) {
     let b = barRect
     let gap: CGFloat = theme.id == .inkWash ? 1 : 2
     let last = buttonRects().last ?? CGRect(x: b.minX, y: b.minY, width: 0, height: 0)
     let x = last.maxX + gap
-    return (Self.sep(x: x, midY: last.midY), CGRect(x: x + 8.5 + gap, y: last.minY, width: 30, height: 28))
+    let search = CGRect(x: x + 8.5 + gap, y: last.minY, width: 30, height: 28)
+    return (Self.sep(x: x, midY: last.midY), search, search.offsetBy(dx: 30 + gap, dy: 0))
   }
 
   /// A separator (.sep: 0.5 × 16 with 4 each side) starting at `x`
@@ -167,14 +170,22 @@ public final class CanvasToolbar: NSView {
   /// What `image` draws after the tools
   var extrasDrawn: Extras {
     let r = extraRects()
-    return Extras(sep: r.sep, more: r.more, moreLit: hover == -3 || pressed == -3)
+    return Extras(
+      sep: r.sep, search: r.search, more: r.more, searchLit: hover == -2 || pressed == -2,
+      searchPressed: pressed == -2, moreLit: hover == -3 || pressed == -3)
   }
 
   struct Extras {
     var sep: CGRect
+    var search: CGRect
     var more: CGRect
+    var searchLit = false
+    var searchPressed = false
     var moreLit: Bool
   }
+
+  /// icons.tsx search: a lens
+  static let searchIcon = SVGPath.parse("M12 7A5 5 0 1 1 2 7A5 5 0 1 1 12 7ZM10.6 10.6L14 14")
 
   /// The blur under the glass (Warm Ink's backdrop-filter, Ink Wash's inside its stroke)
   static func makeGlass() -> NSVisualEffectView {
@@ -344,9 +355,13 @@ public final class CanvasToolbar: NSView {
     }
   }
 
-  /// The separator and ⋯: three dots 3 across, 5 apart (Icon more)
+  /// The separator, Search (a tool's button) and ⋯: three dots 3 across, 5 apart (Icon more)
   static func drawExtras(_ e: Extras, theme t: Theme, look: BarLook, in ctx: CGContext) {
     drawSep(e.sep, theme: t, look: look, in: ctx)
+    if e.searchLit { lit(e.search, theme: t, ink: look.ink, pressed: e.searchPressed, in: ctx) }
+    Icons.stroke(
+      searchIcon, at: CGPoint(x: e.search.minX + 7, y: e.search.minY + 6),
+      color: t.id == .inkWash || e.searchLit ? look.ink : look.ink2, in: ctx)
     if e.moreLit { lit(e.more, theme: t, ink: look.ink, pressed: false, in: ctx) }
     ctx.setFillColor(e.moreLit || t.id == .inkWash ? look.ink : look.ink2)
     for k in -1...1 {
@@ -475,16 +490,16 @@ public final class CanvasToolbar: NSView {
         owner: self))
   }
 
-  /// The tool under a point; -3: ⋯
+  /// The tool under a point; -2: Search, -3: ⋯
   func button(at p: CGPoint) -> Int? {
     if let i = buttonRects().firstIndex(where: { $0.contains(p) }) { return i }
-    return extraRects().more.contains(p) ? -3 : nil
+    let e = extraRects()
+    return e.search.contains(p) ? -2 : e.more.contains(p) ? -3 : nil
   }
 
   public override func mouseMoved(with e: NSEvent) { hover = button(at: convert(e.locationInWindow, from: nil)) }
   public override func mouseExited(with e: NSEvent) { hover = nil }
   public override func mouseDown(with e: NSEvent) {
-    CanvasView.under(self)?.stopGlide()
     pressed = button(at: convert(e.locationInWindow, from: nil))
   }
 
@@ -492,7 +507,13 @@ public final class CanvasToolbar: NSView {
     let at = button(at: convert(e.locationInWindow, from: nil))
     defer { pressed = nil }
     guard let at, at == pressed else { return }
-    if at == -3 { onMore?(extraRects().more) } else { onTool?(tools[at]) }
+    if at == -3 {
+      onMore?(extraRects().more)
+    } else if at == -2 {
+      onSearch?()
+    } else {
+      onTool?(tools[at])
+    }
   }
 
   public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -502,6 +523,7 @@ public final class CanvasToolbar: NSView {
     let b = barRect
     var parts = [
       uiElement("bar", b, in: self), uiElement("more", extraRects().more, label: "More", in: self),
+      uiElement("search", extraRects().search, label: "Search", in: self),
       uiElement("barink", theme.id == .inkWash ? Self.inkBody(b) : b, in: self),
       uiElement("barblur", glass.isHidden ? CGRect(origin: b.origin, size: .zero) : glass.frame, in: self),
     ]
