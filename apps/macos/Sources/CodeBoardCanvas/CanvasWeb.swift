@@ -14,6 +14,13 @@ enum WebText: Equatable {
   case row(String)
 }
 
+/// The Link List row under the pointer; `grip`: on its ⋮⋮
+struct RowHover: Equatable {
+  var card: CardID
+  var item: String
+  var grip = false
+}
+
 /// A Link List's row dragged: to another place in the list, or out of the card
 struct RowDrag {
   var card: CardID
@@ -182,11 +189,16 @@ extension CanvasView {
   /// Merge into Link List: the selected Web cards and Link Lists, one step; the list selected
   func mergeSelected() {
     guard let doc = document else { return }
-    let order = doc.selection.compactMap(\.card).sorted { a, b in
-      (index(of: .card(a)) ?? 0) < (index(of: .card(b)) ?? 0)
-    }
+    merge(doc.selection.compactMap(\.card))
+  }
+
+  /// Web cards and Link Lists merged into `target` (a drop's) or the top one, one step; the list selected, how many
+  /// links it has said (actions/web.ts mergeIntoLinkList)
+  func merge(_ ids: [CardID], into target: CardID? = nil) {
+    guard let doc = document else { return }
+    let order = ids.sorted { a, b in (index(of: .card(a)) ?? 0) < (index(of: .card(b)) ?? 0) }
     var kept: CardID?
-    doc.edit("Merge into Link List") { kept = $0.mergeLinks(order) }
+    doc.edit("Merge into Link List") { kept = $0.mergeLinks(target.map { [$0] + order } ?? order, into: target) }
     guard let kept else { return }
     doc.select([.card(kept)])
     if case .own(let c)? = doc.board.card(kept)?.content, case .links(let l) = c.body {
@@ -357,12 +369,14 @@ extension CanvasView {
 
   // MARK: Dragging a row
 
-  /// A press on a row of a Link List (not its header): the row is dragged, in a locked list too (the web board hides
-  /// only a locked card's own grips, not its rows')
+  /// A press on a row's ⋮⋮ (WebBody.tsx .lgrip): the row is dragged, in a locked list too (the web board hides only a
+  /// locked card's own grips, not its rows'); a press elsewhere on the row is the card's
   func pressRow(_ e: NSEvent, view v: CGPoint, board p: CGPoint) -> Bool {
     guard e.clickCount == 1, let doc = document, let row = linkRow(at: p),
-      let (l, _, _) = linksAt(row.card)
+      let (l, _, _) = linksAt(row.card), rowGrip(row.card, row.index)?.contains(p) == true
     else { return false }
+    hoveredRow = nil
+    closeRowPeek()
     if doc.selection != [.card(row.card)] { doc.select([.card(row.card)]) }
     let page = l.rows[row.index].page
     gesture = Gesture(
@@ -432,5 +446,353 @@ extension CanvasView {
     } else {
       takeOut(d.card, d.item, at: camera.board(v))
     }
+  }
+
+  // MARK: Merging by a drag
+
+  /// How long dragged Web cards stay over another's title before letting go merges them (timing.ts MERGE_HOLD)
+  static let mergeHoldTime: Duration = .milliseconds(400)
+
+  /// Whether a card is a Web card or a Link List
+  func isWebKind(_ id: CardID) -> Bool {
+    guard case .own(let c)? = document?.board.card(id)?.content else { return false }
+    switch c.body {
+    case .web, .links: return true
+    default: return false
+    }
+  }
+
+  /// The Web card or Link List whose title is under the pointer while only Web cards and Link Lists are dragged
+  /// (interact.ts webHead: a list's .chead, a Web card's .wtitle)
+  func mergeTarget(_ m: Move, at p: CGPoint) -> CardID? {
+    guard m.sections.isEmpty, !m.cards.isEmpty, m.cards.allSatisfy(isWebKind),
+      let id = hitCard(p, skip: m.cards), isWebKind(id)
+    else { return nil }
+    if let (_, r, _) = linksAt(id) { return p.y < r.minY + theme.headerHeight ? id : nil }
+    guard let (_, r, b) = webAt(id) else { return nil }
+    let lh = WebLayout.titleLine
+    let title = CGRect(
+      x: r.minX, y: r.minY + b.title.at.y, width: r.width, height: CGFloat(max(1, b.title.lines.count)) * lh)
+    return title.contains(p) ? id : nil
+  }
+
+  /// Where the drag aims: over a title, armed by ⌥ at once or after MERGE_HOLD there (it stays armed while the
+  /// pointer stays on that card); off any, no merge
+  func aimMerge(_ m: inout Move, at p: CGPoint, alt: Bool) {
+    guard let target = mergeTarget(m, at: p) else {
+      mergeHold?.cancel()
+      m.merge = nil
+      return
+    }
+    if alt {
+      mergeHold?.cancel()
+      m.merge = MergeDrop(card: target, armed: true)
+      return
+    }
+    if m.merge?.card == target { return }
+    m.merge = MergeDrop(card: target, armed: false)
+    mergeHold?.cancel()
+    mergeHold = Task { [weak self] in
+      try? await Task.sleep(for: Self.mergeHoldTime)
+      guard let self, !Task.isCancelled, var g = gesture, case .move(var m) = g.kind, m.merge?.card == target
+      else { return }
+      m.merge?.armed = true
+      g.kind = .move(m)
+      gesture = g
+      drawChrome()
+    }
+  }
+
+  /// Let go armed: the cards back where the drag started, then merged into the card under them, one step
+  func dropMerge(_ m: Move, into target: CardID) {
+    gesture = nil
+    snapSettle?.cancel()
+    showGuides([])
+    land()
+    clearDrop()
+    showScene(arrows: m.arrows, items: m.items, frames: m.frames)
+    merge(Array(m.cards), into: target)
+    drawChrome()
+  }
+
+  /// The card a merge would go into, lit (styles.css .card.merge-arm: a 1.5 ring of --k-fn at 60 %; armed,
+  /// .merge-hot: 2.5 of it over 6 of --hi) and, armed, "Release to merge" 8 above it at the size it has on screen
+  /// (Canvas.tsx DropHint)
+  func drawMergeDrop() {
+    var drop: MergeDrop?
+    if case .move(let m)? = gesture?.kind { drop = m.merge }
+    withoutAnimation {
+      mergeHint.removeFromSuperlayer()
+      guard let drop, let i = index(of: .card(drop.card)), let s = scene else { return }
+      let r = s.items[i].rect
+      let fn = theme.syntax[.function] ?? theme.accent
+      let k = theme.cardRadius
+      func ring(_ out: CGFloat, _ w: CGFloat, _ c: CGColor) {
+        let l = CAShapeLayer()
+        let d = out - w / 2
+        l.path = Drawing.squircle(r.insetBy(dx: -d, dy: -d), k + d)
+        l.fillColor = nil
+        l.strokeColor = c
+        l.lineWidth = w
+        chrome.addSublayer(l)
+      }
+      guard drop.armed else { return ring(1.5, 1.5, fn.copy(alpha: 0.6) ?? fn) }
+      ring(6, 6, fn.copy(alpha: theme.dark ? 0.2 : 0.16) ?? fn)
+      ring(2.5, 2.5, fn)
+      let text = "Release to merge"
+      let font = Font(NSFont.systemFont(ofSize: 11.5, weight: .semibold))
+      let size = CGSize(width: (Drawing.width(text, font) + 20).rounded(.up), height: 23.5)
+      let bottom = camera.view(CGPoint(x: r.midX, y: r.minY - 8))
+      mergeHint.frame = CGRect(
+        x: (bottom.x - size.width / 2).rounded(), y: (bottom.y - size.height).rounded(), width: size.width,
+        height: size.height)
+      mergeHint.cornerRadius = 8.5
+      mergeHint.backgroundColor = fn
+      mergeHint.shadowColor = CGColor(gray: 0, alpha: 1)
+      mergeHint.shadowOpacity = 0.14
+      mergeHint.shadowRadius = 8
+      mergeHint.shadowOffset = CGSize(width: 0, height: 4)
+      mergeHint.contentsScale = backing
+      mergeHint.contents = CanvasView.picture(size: size, scale: backing) { ctx in
+        Drawing.text(ctx, text, font, CGColor(gray: 1, alpha: 1), x: 10, midY: size.height / 2, width: .infinity)
+      }
+      layer?.addSublayer(mergeHint)
+    }
+  }
+
+  // MARK: A row hovered
+
+  /// A row's ⋮⋮ on the board (web.css .lgrip): 12 by 22 at the row's left edge, level with its middle, a Rich row's
+  /// 22 from its top
+  func rowGrip(_ id: CardID, _ i: Int) -> CGRect? {
+    guard let (l, r, lay) = linksAt(id), i < lay.rows.count, i < l.rows.count else { return nil }
+    let rr = lay.rows[i].rect
+    let mid = l.rows[i].rich ? rr.minY + 22 : rr.midY
+    return CGRect(x: r.minX, y: r.minY + mid - 11, width: 12, height: 22)
+  }
+
+  /// The tools of a row (.ltools), card points: right 8, 5 down a Compact row, 12 over a Rich one's top (4 down the
+  /// first); 2 round three buttons 22 by 20, 2 apart
+  static func rowToolsPill(_ rr: CGRect, rich: Bool, first: Bool, width w: CGFloat) -> CGRect {
+    let top: CGFloat = rich ? (first ? 4 : -12) : 5
+    return CGRect(x: w - 8 - 74, y: rr.minY + top, width: 74, height: 24)
+  }
+
+  /// The hovered row's tools as header buttons of its list, in card points
+  func rowTools(_ id: CardID) -> [(HeadAct, CGRect)] {
+    guard let h = hoveredRow, h.card == id, let (l, r, lay) = linksAt(id),
+      let i = l.rows.firstIndex(where: { $0.id == h.item }), i < lay.rows.count
+    else { return [] }
+    let pill = Self.rowToolsPill(lay.rows[i].rect, rich: l.rows[i].rich, first: i == 0, width: r.width)
+    return RowTool.allCases.enumerated().map { k, t in
+      (.row(h.item, t), CGRect(x: pill.minX + 2 + CGFloat(k) * 24, y: pill.minY + 2, width: 22, height: 20))
+    }
+  }
+
+  func isRichRow(_ d: Drawing, _ item: String) -> Bool {
+    if case .links(let l) = d { l.rows.first { $0.id == item }?.rich == true } else { false }
+  }
+
+  /// A row's tool pressed (WebBody.tsx LinkRow .ltools)
+  func pressRowTool(_ id: CardID, _ item: String, _ t: RowTool) {
+    guard let doc = document, case .own(let c)? = doc.board.card(id)?.content, case .links(let l) = c.body,
+      let it = l.items.first(where: { $0.id == item })
+    else { return }
+    switch t {
+    case .rich:
+      let rich = linksAt(id)?.0.rows.first { $0.id == item }?.rich ?? false
+      doc.edit("View") { $0.setLinkItemRich(id, item, !rich) }
+    case .open: openLink(it.url)
+    case .remove:
+      hoveredRow = nil
+      closeRowPeek()
+      doc.edit("Remove from List") { $0.removeLinkItem(id, item) }
+    }
+  }
+
+  /// The row under the pointer hovered (.lrow:hover): on its tools it stays the row they are of, though a Rich row's
+  /// stand over the row above; a Compact row shows its whole bookmark beside the card after WEB_PEEK_DELAY
+  func hoverRow(at p: CGPoint) {
+    if let (_, a) = headAct(at: p), case .row = a { return }
+    let row = linkRow(at: p).flatMap { r -> RowHover? in
+      guard levels.level == .cards else { return nil }
+      return RowHover(card: r.card, item: r.item, grip: rowGrip(r.card, r.index)?.contains(p) == true)
+    }
+    guard row != hoveredRow else { return }
+    let was = hoveredRow
+    hoveredRow = row
+    if row?.card != was?.card || row?.item != was?.item {
+      closeRowPeek()
+      if let row, linksAt(row.card)?.0.rows.first(where: { $0.id == row.item })?.rich == false {
+        rowPeekWait = Task { [weak self] in
+          try? await Task.sleep(for: Self.webPeekDelay)
+          guard let self, !Task.isCancelled, hoveredRow?.card == row.card, hoveredRow?.item == row.item,
+            gesture == nil, editing == nil, inPlace == nil
+          else { return }
+          showRowPeek(row)
+        }
+      }
+    }
+    drawChrome()
+  }
+
+  /// How long a Compact row is hovered before its bookmark shows (timing.ts WEB_PEEK_DELAY)
+  static let webPeekDelay: Duration = .milliseconds(550)
+
+  /// The hovered row's tint, ⋮⋮ and tools, in its card's layer, under the header's (placeHeadActs calls this)
+  func placeRowHover() {
+    let shown: (RowHover, Int, CALayer, Drawing.Links, LinksLayout)? = hoveredRow.flatMap { h in
+      guard levels.level == .cards, let ci = index(of: .card(h.card)), let (l, _, lay) = linksAt(h.card),
+        let i = l.rows.firstIndex(where: { $0.id == h.item }), i < lay.rows.count
+      else { return nil }
+      return (h, i, items[ci].box, l, lay)
+    }
+    guard let (h, i, box, l, lay) = shown else {
+      rowHoverShown?.layer.removeFromSuperlayer()
+      rowHoverShown = nil
+      return
+    }
+    let size = box.bounds.size
+    let lit = hoveredHead.flatMap { $0.0 == h.card ? $0.1 : nil }
+    let scale = (restZoom ?? camera.zoom) * backing
+    let rr = lay.rows[i].rect
+    let key = "\(h) \(String(describing: lit)) \(size) \(rr) \(l.rows[i].rich) \(theme.id) \(theme.dark) \(scale)"
+    if let s = rowHoverShown, s.key == key, s.layer.superlayer === box { return }
+    // room round the card for the tools' shadow
+    let pad: CGFloat = 24
+    let t = theme
+    let rich = l.rows[i].rich
+    let pill = Self.rowToolsPill(rr, rich: rich, first: i == 0, width: size.width)
+    let tools = rowTools(h.card)
+    withoutAnimation {
+      rowHoverShown?.layer.removeFromSuperlayer()
+      let layer = CALayer()
+      layer.zPosition = 3.4
+      layer.frame = CGRect(origin: .zero, size: size).insetBy(dx: -pad, dy: -pad)
+      layer.contentsGravity = .resize
+      layer.contents = CanvasView.picture(size: layer.bounds.size, scale: scale) { ctx in
+        ctx.translateBy(x: pad, y: pad)
+        Self.drawRowHover(
+          ctx, row: rr, card: size, rich: rich, grip: h.grip, pill: pill, tools: tools, lit: lit, t, scale: scale)
+      }
+      box.addSublayer(layer)
+      rowHoverShown = (layer, key)
+    }
+  }
+
+  /// web.css .lrow:hover (--hlrow, within the card's corners), .lgrip (⋮⋮ 10 points, -2 apart, ink-3; ink on it) and
+  /// .ltools (surface, 10 round, --sh-float; its buttons 7 round, --hlrow and ink when hovered, ink-2 icons 12 square)
+  static func drawRowHover(
+    _ ctx: CGContext, row rr: CGRect, card: CGSize, rich: Bool, grip: Bool, pill: CGRect, tools: [(HeadAct, CGRect)],
+    lit: HeadAct?, _ t: Theme, scale: CGFloat
+  ) {
+    ctx.saveGState()
+    ctx.addPath(Drawing.squircle(CGRect(origin: .zero, size: card), t.cardRadius))
+    ctx.clip()
+    ctx.setFillColor(t.hlrow)
+    ctx.fill(rr)
+    ctx.restoreGState()
+    let gf = Font(NSFont.systemFont(ofSize: 10)).tracked(-2)
+    let mid = rich ? rr.minY + 22 : rr.midY
+    Drawing.text(
+      ctx, "⋮⋮", gf, grip ? t.ink : t.ink3, x: (12 - Drawing.width("⋮⋮", gf)) / 2, midY: mid, width: .infinity)
+    var look = BarLook.of(t)
+    look.ring = t.hair
+    look.shadows =
+      t.dark
+      ? [(2, 6, -1, CGColor(gray: 0, alpha: 0.35)), (10, 28, -8, CGColor(gray: 0, alpha: 0.55))]
+      : [
+        (2, 6, -1, CGColor(srgbRed: 50 / 255, green: 35 / 255, blue: 10 / 255, alpha: 0.08)),
+        (10, 28, -8, CGColor(srgbRed: 50 / 255, green: 35 / 255, blue: 10 / 255, alpha: 0.18)),
+      ]
+    WritingBar.float(pill, radius: 10, look: look, glass: t.surface, scale: scale, in: ctx)
+    for (a, r) in tools {
+      guard case .row(_, let tool) = a else { continue }
+      let on = lit == a
+      if on {
+        ctx.addPath(CGPath(roundedRect: r, cornerWidth: 7, cornerHeight: 7, transform: nil))
+        ctx.setFillColor(t.hlrow)
+        ctx.fillPath()
+      }
+      let path =
+        switch tool {
+        case .rich: SVGPath.parse(rich ? WebIcons.compact : WebIcons.rich)
+        case .open: HeadActs.external
+        case .remove: SVGPath.parse(WebIcons.close)
+        }
+      ctx.saveGState()
+      ctx.translateBy(x: r.midX - 6, y: r.midY - 6)
+      ctx.scaleBy(x: 0.75, y: 0.75)
+      Icons.stroke(path, at: .zero, color: on ? t.ink : t.ink2, in: ctx)
+      ctx.restoreGState()
+    }
+  }
+
+  // MARK: A Compact row's bookmark beside the card
+
+  /// web.css .lpeek: the row's bookmark 340 wide on the surface, 14 round, in a float's shadow, 10 right of the card
+  /// and 8 above the row's top (left of the card when the right has no room), at the size it has on screen; in over
+  /// 140 ms from 4 to the left
+  func showRowPeek(_ h: RowHover) {
+    guard let (l, r, lay) = linksAt(h.card), let i = l.rows.firstIndex(where: { $0.id == h.item }),
+      i < lay.rows.count
+    else { return }
+    closeRowPeek()
+    let page = l.rows[i].page
+    let t = theme
+    let b = WebLayout.of(page, style: .automatic, width: 340, small: false, loading: false, t)
+    let size = CGSize(width: 340, height: b.height)
+    let cardView = CGRect(origin: camera.view(r.origin), size: CGSize(width: r.width * camera.zoom, height: 0))
+    let top = camera.view(CGPoint(x: r.minX, y: r.minY + lay.rows[i].rect.minY)).y - 8
+    // place.ts: flip (8 in from the edges; neither side fitting, the one that overflows less, the right on a tie),
+    // then shifted 8 inside on both axes
+    let right = cardView.maxX + 10
+    let left = cardView.minX - 10 - size.width
+    let over = (right + size.width - (bounds.maxX - 8), bounds.minX + 8 - left)
+    var x = over.0 <= 0 || over.0 <= over.1 ? right : left
+    x = min(max(x, bounds.minX + 8), bounds.maxX - 8 - size.width)
+    let y = min(max(top, bounds.minY + 8), bounds.maxY - 8 - size.height)
+    let images = images
+    let scale = backing
+    let peek = CALayer()
+    withoutAnimation {
+      peek.frame = CGRect(origin: CGPoint(x: x.rounded(), y: y.rounded()), size: size)
+      peek.cornerRadius = 14
+      peek.backgroundColor = t.surface
+      peek.borderColor = t.hair
+      peek.borderWidth = 0.5
+      peek.shadowColor = CGColor(gray: 0, alpha: 1)
+      peek.shadowOpacity = t.dark ? 0.5 : 0.22
+      peek.shadowRadius = 16
+      peek.shadowOffset = CGSize(width: 0, height: 12)
+      peek.shadowPath = CGPath(
+        roundedRect: CGRect(origin: .zero, size: size), cornerWidth: 14, cornerHeight: 14, transform: nil)
+      peek.contentsScale = scale
+      peek.contents = CanvasView.picture(size: size, scale: scale) { ctx in
+        ctx.addPath(CGPath(roundedRect: CGRect(origin: .zero, size: size), cornerWidth: 14, cornerHeight: 14, transform: nil))
+        ctx.clip()
+        _ = Drawing.bookmark(
+          ctx, page, b, in: CGRect(origin: .zero, size: size), loading: false, small: false, t, images: images,
+          scale: scale)
+      }
+      layer?.addSublayer(peek)
+    }
+    let o = CABasicAnimation(keyPath: "opacity")
+    o.fromValue = 0
+    let m = CABasicAnimation(keyPath: "transform.translation.x")
+    m.fromValue = -4
+    let g = CAAnimationGroup()
+    g.animations = [o, m]
+    g.duration = 0.14
+    g.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
+    peek.add(g, forKey: "in")
+    rowPeek = (peek, h)
+  }
+
+  func closeRowPeek() {
+    rowPeekWait?.cancel()
+    rowPeekWait = nil
+    rowPeek?.layer.removeFromSuperlayer()
+    rowPeek = nil
   }
 }

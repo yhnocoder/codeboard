@@ -309,7 +309,8 @@ extension CanvasView {
     var frames = Dictionary(s.frames.map { ($0.id, $0.rect) }, uniquingKeysWith: { a, _ in a })
     for id in m.sections { frames[id] = frames[id]?.offsetBy(dx: dx, dy: dy) }
     var lit = Set<SectionID>()
-    for id in m.loose {
+    // merging: into no Section (interact.ts: movingHome null while there is a drop)
+    for id in m.merge == nil ? m.loose : [] {
       guard let i = index(of: .card(id)) else { continue }
       if let h = home(of: s.items[i].rect.offsetBy(dx: dx, dy: dy), frames: frames, skip: m.sections),
         h != doc.board.card(id)?.section

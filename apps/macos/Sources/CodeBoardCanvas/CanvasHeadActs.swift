@@ -10,12 +10,18 @@ import CodeBoardNotes
 // they move, lift and tilt with it. A button acts on the release over it.
 
 /// A button of a card's header
-enum HeadAct: Equatable {
+enum HeadAct: Hashable {
   case fit, wrap, copy, lang, split, more
   /// A Web card's Open in Browser
   case open
   /// A locked card's lock, first in its header (.lockb): Unlock
   case unlock
+  /// A hovered Link List row's tools (.ltools): Show as Compact / Rich, Open in Browser, Remove from List
+  case row(String, RowTool)
+}
+
+enum RowTool: CaseIterable {
+  case rich, open, remove
 }
 
 extension CanvasView {
@@ -69,8 +75,8 @@ extension CanvasView {
       ]
       return h
     case .links:
-      // only its ···: its title keeps clear of it already
-      return Head(drawing: it.drawing, buttons: [more], reserve: 0)
+      // its ···: its title keeps clear of it already; the hovered row's tools
+      return Head(drawing: it.drawing, buttons: [more] + rowTools(id), reserve: 0)
     case .code(let c) where c.framed:
       guard case .code(let code)? = s.parts[id]?.content.body, let seg = code.segments.first else { return nil }
       let free = doc.board.isFreeCode(id)
@@ -143,6 +149,7 @@ extension CanvasView {
     case .wrap: toggleWrap([id])
     case .copy: copyCode(id)
     case .unlock: doc.edit("Unlock") { $0.setLocked([.card(id)], false) }
+    case .row(let item, let tool): pressRowTool(id, item, tool)
     case .split: if !h.faint.contains(.split) { splitByHeadings(id) }
     case .open:
       if case .own(let k)? = doc.board.card(id)?.content, case .web(let w) = k.body { openLink(w.url) }
@@ -256,6 +263,12 @@ extension CanvasView {
     case .more: Tip("More Actions")
     case .open: Tip("Open in Browser", kbd: "Double-click")
     case .unlock: Tip("Unlock", kbd: BoardKey.show(of: "Lock / Unlock"))
+    case .row(let item, let tool):
+      switch tool {
+      case .rich: Tip(isRichRow(h.drawing, item) ? "Show as Compact" : "Show as Rich")
+      case .open: Tip("Open in Browser")
+      case .remove: Tip("Remove from List")
+      }
     }
   }
 
@@ -333,6 +346,7 @@ extension CanvasView {
       headShown[id] = (l, key, h.floating ? 0.12 : 0.16)
     }
     placeGrip()
+    placeRowHover()
   }
 
   /// The hovered card's grip (.grip::after): 1.5 of ink-3 round the corner, concentric with the card's, at 0.7; none on
@@ -416,6 +430,8 @@ enum HeadActs {
     }
     ctx.restoreGState()
     for (a, r) in h.buttons {
+      // drawn with the row (placeRowHover)
+      if case .row = a { continue }
       let lit = hovered == a
       if h.floating {
         floating(a, in: r, lit: lit, t, ctx)
@@ -461,7 +477,7 @@ enum HeadActs {
         case .wrap: wrap
         case .copy: copy
         case .split: splitH
-        case .more, .lang, .open, .unlock: CGMutablePath()
+        case .more, .lang, .open, .unlock, .row: CGMutablePath()
         }
       ctx.saveGState()
       if faint { ctx.setAlpha(0.35) }

@@ -58,6 +58,14 @@ struct Move {
   var targets: [CGRect] = []
   var box = CGRect.null
   var pace: Snap.Pace?
+  /// Web cards over another's title: merged into it on the release once armed (interact.ts drop "merge")
+  var merge: MergeDrop?
+}
+
+struct MergeDrop: Equatable {
+  var card: CardID
+  /// Held there MERGE_HOLD, or ⌥ down: the release merges
+  var armed: Bool
 }
 
 /// A resize from one of an item's handles
@@ -407,8 +415,8 @@ extension CanvasView {
 
   // MARK: Hit testing
 
-  /// The topmost card drawn at a board point
-  func hitCard(_ p: CGPoint) -> CardID? {
+  /// The topmost card drawn at a board point (`skip`: as if these were not there, the cards a drag carries)
+  func hitCard(_ p: CGPoint, skip: Set<CardID> = []) -> CardID? {
     guard let s = scene else { return nil }
     // the kept cards (sub-boards, Texts, Boxes) are drawn over the others, so they are hit first; at the summary level
     // only they are there
@@ -419,7 +427,7 @@ extension CanvasView {
     let all = s.items[s.cardsFrom..<s.labelsFrom].reversed()
     let order = all.filter(\.kept) + (levels.level == .summaries ? [] : all.filter { !$0.kept })
     for it in order {
-      guard case .card(let id)? = it.owner else { continue }
+      guard case .card(let id)? = it.owner, !skip.contains(id) else { continue }
       if it.rect.contains(p) { return id }
       // a sub-board card's name and count above it are the card's
       if case .board = it.drawing,
@@ -543,6 +551,7 @@ extension CanvasView {
       chrome.sublayers = nil
       litArrows.sublayers = nil
       drawArrowChrome()
+      drawMergeDrop()
       for item in doc.selection {
         if case .sticker(let id) = item {
           stickerChrome(id)
@@ -1011,6 +1020,8 @@ extension CanvasView {
       NSCursor.arrow.set()
       return
     }
+    // a Link List's row: tinted, its ⋮⋮ and tools shown
+    hoverRow(at: camera.board(v))
     // a card header's button: the arrow over it, its card hovered
     let head = headAct(at: camera.board(v))
     hoverHead(head)
@@ -1062,6 +1073,9 @@ extension CanvasView {
       resizeCursor(edge).set()
     } else if arrow != nil {
       NSCursor.pointingHand.set()
+    } else if hoveredRow?.grip == true {
+      // .lgrip: cursor grab
+      NSCursor.openHand.set()
     } else {
       NSCursor.arrow.set()
     }
@@ -1073,6 +1087,7 @@ extension CanvasView {
     hoverChip(at: CGPoint(x: CGFloat.infinity, y: .infinity))
     hoverAlignBar(nil)
     hoverHead(nil)
+    hoverRow(at: CGPoint(x: CGFloat.infinity, y: .infinity))
     hoverTitle(nil, act: nil)
     hoverSummary(nil)
     hover(nil)
@@ -1091,6 +1106,8 @@ extension CanvasView {
     // a press anywhere hides a button's tip (main's TooltipLayer on pointerdown)
     tips.press()
     dropPicture()
+    // a press anywhere puts away a row's bookmark (WebBody.tsx: pointerdown leaves the row)
+    closeRowPeek()
     if spacePanDown(e) { return }
     // AppKit sends a multi-click's later presses to the view its first went to: a double-click's second press over the
     // editor its first press opened is the editor's, as in main
@@ -1355,9 +1372,10 @@ extension CanvasView {
       gesture = g
       mouseDragged(with: e)
     case .move(var m):
+      aimMerge(&m, at: p, alt: e.modifierFlags.contains(.option))
       dragMove(
-        &m, to: v, from: g, at: e.timestamp, unsnapped: !e.modifierFlags.isDisjoint(with: [.command, .control]),
-        still: false)
+        &m, to: v, from: g, at: e.timestamp,
+        unsnapped: !e.modifierFlags.isDisjoint(with: [.command, .control]) || m.merge != nil, still: false)
       g.kind = .move(m)
       gesture = g
       showMove(m)
@@ -1480,11 +1498,14 @@ extension CanvasView {
       }
     case .move(let m):
       armShelf(nil)
+      mergeHold?.cancel()
       if overShelf(convert(e.locationInWindow, from: nil)) {
         // let go on the Shelf's button or panel: onto the Shelf, not moved
         gesture = nil
         clearDrop()
         shelve(cards: m.cards, sections: Set(m.tops), offset: m.d)
+      } else if let t = m.merge, t.armed {
+        dropMerge(m, into: t.card)
       } else {
         commitMove(m)
       }

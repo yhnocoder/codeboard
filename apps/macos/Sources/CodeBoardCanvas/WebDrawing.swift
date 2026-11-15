@@ -276,7 +276,8 @@ extension WebLayout {
     let dw = min(Drawing.width(p.domain, f.site) + 1, 0.4 * (w - 26))
     let x0: CGFloat = 14 + 14 + 8
     let tw = w - 12 - x0 - 8 - dw
-    let title = Drawing.wrap(p.title ?? p.domain, f.rowTitle, t.ink, width: tw, max: 1)
+    // .lt: nowrap, text-overflow ellipsis (cut at a letter, not a word)
+    let title = [Drawing.cut(p.title ?? p.domain, f.rowTitle, t.ink, tw)]
     return WebLayout(
       shape: .compact, height: 32, image: nil, title: (title, CGPoint(x: x0, y: (32 - 12.5 * 1.3) / 2), f.rowTitle),
       desc: [], descAt: .zero, site: nil, fav: CGRect(x: 14, y: 9, width: 14, height: 14),
@@ -549,6 +550,11 @@ extension Drawing {
 }
 
 enum WebIcons {
+  /// icons.tsx compact, rich and close
+  static let compact = "M2 4h12M2 8h12M2 12h12"
+  static let rich =
+    "M2.5 2H5.5A.5 .5 0 0 1 6 2.5V5.5A.5 .5 0 0 1 5.5 6H2.5A.5 .5 0 0 1 2 5.5V2.5A.5 .5 0 0 1 2.5 2zM2.5 10H5.5A.5 .5 0 0 1 6 10.5V13.5A.5 .5 0 0 1 5.5 14H2.5A.5 .5 0 0 1 2 13.5V10.5A.5 .5 0 0 1 2.5 10zM9 3h5M9 6h5M9 11h5M9 14h5"
+  static let close = "M12 4 4 12M4 4l8 8"
   /// icons.tsx link
   static let link =
     "M6.67 8.67a3.33 3.33 0 0 0 5.03.36l2-2a3.33 3.33 0 0 0-4.71-4.71L7.84 3.46M9.33 7.33a3.33 3.33 0 0 0-5.03-.36l-2 2a3.33 3.33 0 0 0 4.71 4.71l1.14-1.14"

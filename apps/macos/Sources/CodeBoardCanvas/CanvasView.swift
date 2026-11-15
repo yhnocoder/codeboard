@@ -260,6 +260,16 @@ public final class CanvasView: NSView {
   var toastShown = 0
   /// The Sections a drag would drop cards into, tinted under the cards
   let dropLayer = CALayer()
+  /// The Link List row under the pointer (tinted, its ⋮⋮ and tools shown), its layer, and the bookmark a Compact row
+  /// shows beside the card after WEB_PEEK_DELAY
+  var hoveredRow: RowHover?
+  var rowHoverShown: (layer: CALayer, key: String)?
+  var rowPeek: (layer: CALayer, row: RowHover)?
+  var rowPeekWait: Task<Void, Never>?
+  /// Arms a merge once the dragged Web cards have stayed over a card's title MERGE_HOLD
+  var mergeHold: Task<Void, Never>?
+  /// "Release to merge" over the card it would merge into, in the view's units
+  let mergeHint = CALayer()
   /// The frames as the drop tint was worked out (the dragged Sections moved)
   var dropFrames: [SectionID: CGRect] = [:]
   /// Sidenote markers free on the board (a card's and a Section's are in their own layers)
