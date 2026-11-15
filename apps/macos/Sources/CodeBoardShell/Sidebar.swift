@@ -47,6 +47,34 @@ private struct FolderContents: View {
     ForEach(folder.boards, id: \.id) { board in
       BoardRow(shell: shell, board: board, depth: depth)
     }
+    ForEach(folder.unreadable, id: \.path) { board in
+      UnreadableRow(shell: shell, board: board, depth: depth)
+    }
+  }
+}
+
+/// A board whose file cannot be read (sidebar.ts: a warning row, "Can't open"): its name, why on hover, its menu; it
+/// opens nothing
+private struct UnreadableRow: View {
+  let shell: Shell
+  let board: VaultUnreadable
+  let depth: Int
+
+  var body: some View {
+    Row(depth: depth, selected: false, target: false) {
+      Color.clear.frame(width: 14, height: 1)
+      Image(systemName: "exclamationmark.triangle").font(.system(size: 11)).foregroundStyle(ShellTheme.muted)
+        .frame(width: 16, height: 16)
+    } label: {
+      HStack(spacing: 6) {
+        Text(board.title).lineLimit(1).foregroundStyle(ShellTheme.muted)
+        Text("Can't open").font(.system(size: 11.5)).foregroundStyle(ShellTheme.muted)
+      }
+    } trailing: {
+      EmptyView()
+    }
+    .help(board.reason)
+    .contextMenu { MenuItems(entries: shell.menu(unreadable: board)) }
   }
 }
 

@@ -43,7 +43,10 @@ import CodeBoardNotes
   /// The sidebar's Delete Folder: main's Delete Group question (actions.ts deleteGroup) in the words of what it does here,
   /// where the boards go with their folder
   static func deleteFolderQuestion(_ name: String, boards: Int) -> NSAlert {
-    destroying("Delete folder “\(name)”?", "Its \(boards) boards go to the Trash with it.", "Delete Folder")
+    destroying(
+      "Delete folder “\(name)”?",
+      boards == 1 ? "Its 1 board goes to the Trash with it." : "Its \(boards) boards go to the Trash with it.",
+      "Delete Folder")
   }
 
   /// A question before what undo does not bring back (a board or folder to the Trash): its button first and marked as

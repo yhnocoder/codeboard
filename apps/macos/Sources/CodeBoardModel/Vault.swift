@@ -102,8 +102,10 @@ public struct Vault: Sendable {
       var isDir: ObjCBool = false
       if FileManager.default.fileExists(atPath: own.path, isDirectory: &isDir), isDir.boolValue {
         let child = "\(path)/\(Vault.folderBoardName)"
-        let (id, seal) = try boardHead(in: own.appending(path: Vault.boardFileName))
-        out.folderBoard = VaultBoard(id: id, title: name, path: child, isFolderBoard: true, seal: seal)
+        // one that cannot be read: the folder is shown without it
+        if let (id, seal) = try? boardHead(in: own.appending(path: Vault.boardFileName)) {
+          out.folderBoard = VaultBoard(id: id, title: name, path: child, isFolderBoard: true, seal: seal)
+        }
       }
     }
     for name in names.sorted(by: { $0.localizedStandardCompare($1) == .orderedAscending }) {
@@ -114,8 +116,13 @@ public struct Vault: Sendable {
       if entry.pathExtension == Vault.packageExtension {
         let file = entry.appending(path: Vault.boardFileName)
         let title = entry.deletingPathExtension().lastPathComponent
-        let (id, seal) = try boardHead(in: file)
-        out.boards.append(VaultBoard(id: id, title: title, path: child, seal: seal))
+        // one that cannot be read is listed as such, and the rest reads as ever (sidebar.ts "Can't open")
+        do {
+          let (id, seal) = try boardHead(in: file)
+          out.boards.append(VaultBoard(id: id, title: title, path: child, seal: seal))
+        } catch {
+          out.unreadable.append(VaultUnreadable(title: title, path: child, reason: "\(error)"))
+        }
       } else {
         out.folders.append(try folder(at: child, name: entry.lastPathComponent))
       }
@@ -157,6 +164,8 @@ public struct VaultFolder: Equatable, Sendable {
   public var boards: [VaultBoard]
   /// Its own board (`.folder.board` in it), titled with its name
   public var folderBoard: VaultBoard?
+  /// Its board packages whose file cannot be read, in the same order
+  public var unreadable: [VaultUnreadable] = []
 
   public init(
     name: String, path: String, folders: [VaultFolder], boards: [VaultBoard], folderBoard: VaultBoard? = nil
@@ -170,6 +179,9 @@ public struct VaultFolder: Equatable, Sendable {
 
   /// Every board in this folder and below, folder boards too
   public var allBoards: [VaultBoard] { (folderBoard.map { [$0] } ?? []) + boards + folders.flatMap(\.allBoards) }
+
+  /// How many board packages are in it and below, folder boards and those that cannot be read too
+  public var boardCount: Int { allBoards.count + allFolders.reduce(0) { $0 + $1.unreadable.count } }
 
   /// Every folder in it and below, itself first
   public var allFolders: [VaultFolder] { [self] + folders.flatMap(\.allFolders) }
@@ -203,6 +215,13 @@ public struct VaultFolder: Equatable, Sendable {
 public enum FolderEntry: Hashable, Sendable {
   case board(BoardID)
   case folder(String)
+}
+
+/// A board package whose file cannot be read: what the sidebar lists instead of it
+public struct VaultUnreadable: Equatable, Sendable {
+  public var title: String
+  public var path: String
+  public var reason: String
 }
 
 public struct VaultBoard: Equatable, Sendable {

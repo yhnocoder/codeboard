@@ -117,6 +117,8 @@ public struct ShellState: Codable, Equatable, Sendable {
   public var renaming: Renaming?
   /// Where deleted boards and folders go: the system Trash; tests give a stand-in
   public var trasher: Vault.Trasher = Vault.systemTrash
+  /// Where Copy Path puts the path: the general pasteboard; tests give one of their own
+  @ObservationIgnored public var pasteboard = NSPasteboard.general
   /// Asks a question before a delete, the first button the yes: a sheet on the main window (makeMainWindow); with no
   /// window to ask in, nothing is deleted
   @ObservationIgnored public var confirm: @MainActor (NSAlert) async -> Bool = { _ in false }

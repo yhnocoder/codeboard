@@ -1,7 +1,9 @@
+import AppKit
 import CodeBoardModel
 import Foundation
 import Testing
 
+@testable import CodeBoardCanvas
 @testable import CodeBoardShell
 
 // What the sidebar does to the vault's files, through the shell and the open boards: renames and moves that open tabs,
@@ -130,5 +132,64 @@ import Testing
     #expect(tree.sealClash(b.id, "PX", .teal)?.id == a.id)
     #expect(tree.sealClash(top.id, "PX", .teal) == nil)
     #expect(tree.sealClash(book.id, "PX", .teal).map { [a.id, b.id].contains($0.id) } == true)
+  }
+
+  /// A board that cannot be read does not take the tree with it: it is listed with why, and its menu shows it in
+  /// Finder, copies its file's path or deletes it. A board's menu has Reveal in Finder and Copy Path too
+  /// (host commands.ts revealInFolder, copyBoardPath: the board file's path)
+  @Test func aBoardThatCannotBeReadIsListedAndBoardsRevealAndCopyTheirPath() throws {
+    let (vault, shell, _) = try vault()
+    defer { try? fm.removeItem(at: vault.root) }
+    let good = try vault.newBoard(in: "", title: "Good")
+    let bad = vault.root.appending(path: "Bad.board")
+    try fm.createDirectory(at: bad, withIntermediateDirectories: true)
+    try Data("{ not json".utf8).write(to: bad.appending(path: Vault.boardFileName))
+    let pb = NSPasteboard(name: NSPasteboard.Name("sidebar-\(UUID().uuidString)"))
+    shell.pasteboard = pb
+    shell.apply(Result { try vault.tree() })
+    #expect(shell.treeError == nil && shell.tree?.boards.map(\.title) == ["Good"])
+    let row = try #require(shell.tree?.unreadable.first)
+    let menu = shell.menu(unreadable: row)
+    #expect(menu.map { $0?.title ?? "-" } == ["Reveal in Finder", "Copy Path", "-", "Delete"])
+    TestGuard.shown = []
+    menu[0]?.run()
+    #expect(TestGuard.shown == ["reveal: \(bad.path(percentEncoded: false))"], "\(TestGuard.shown)")
+    menu[1]?.run()
+    #expect(pb.string(forType: .string) == bad.appending(path: Vault.boardFileName).path(percentEncoded: false))
+    let vb = try #require(shell.tree?.boards.first)
+    let titles = shell.menu(board: vb).map { $0?.title ?? "-" }
+    #expect(titles == ["Rename", "Edit Mark…", "-", "Reveal in Finder", "Copy Path", "-", "Delete"], "\(titles)")
+    shell.menu(board: vb)[4]?.run()
+    #expect(
+      pb.string(forType: .string)
+        == vault.url(of: good.path).appending(path: Vault.boardFileName).path(percentEncoded: false))
+  }
+
+  /// Delete Folder says how many boards go to the Trash with it, those that cannot be read and those in its folders
+  /// counted, one in the singular
+  @Test func deleteFolderSaysHowManyBoardsGoWithIt() async throws {
+    let (vault, shell, _) = try vault()
+    defer { try? fm.removeItem(at: vault.root) }
+    try vault.newFolder(in: "", name: "F")
+    try vault.newFolder(in: "F", name: "G")
+    _ = try vault.newBoard(in: "F", title: "One")
+    _ = try vault.newBoard(in: "F/G", title: "Two")
+    let bad = vault.root.appending(path: "F/Bad.board")
+    try fm.createDirectory(at: bad, withIntermediateDirectories: true)
+    try Data("{".utf8).write(to: bad.appending(path: Vault.boardFileName))
+    try vault.newFolder(in: "", name: "H")
+    _ = try vault.newBoard(in: "H", title: "Three")
+    shell.apply(Result { try vault.tree() })
+    var asked: [String] = []
+    shell.confirm = { a in
+      asked.append(a.informativeText)
+      return false
+    }
+    for name in ["F", "H"] {
+      let f = try #require(shell.tree?.folders.first { $0.name == name })
+      shell.menu(folder: f).compactMap { $0 }.first { $0.title == "Delete Folder" }?.run()
+    }
+    while asked.count < 2 { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(asked == ["Its 3 boards go to the Trash with it.", "Its 1 board goes to the Trash with it."])
   }
 }
