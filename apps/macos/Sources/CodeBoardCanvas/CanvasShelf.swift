@@ -12,6 +12,19 @@ import CodeBoardSyntax
 // Putting back never zooms and moves the camera only as far as needed to show what came back.
 
 /// An entry as the panel shows it: where its cards and Sections were, and their box (board units)
+/// What a Put Back brings onto the board, to fly out once the board shows it (CanvasView.flyOut)
+struct FlyOut {
+  /// An entry's picture on screen: its box drawn at `k`, its top left at `at` (view points)
+  struct Picture {
+    var at: CGPoint
+    var k: CGFloat
+    var box: CGRect
+  }
+  var cards: [CardID]
+  var sections: [SectionID]
+  var from: Picture?
+}
+
 struct ShelfShown {
   var entry: ShelfEntry
   var cards: [(CardID, CGRect)]
@@ -310,12 +323,97 @@ extension CanvasView {
   /// Put Back: the entry where it was, its cards in front and selected; the camera pans only to show it
   package func putBack(_ id: String) {
     guard let doc = document, let s = shelfShown.first(where: { $0.entry.id == id }) else { return }
+    let from = pictureOf(s)
     closePreview()
     showHome(nil)
     var back: (cards: [CardID], sections: [SectionID])?
     doc.edit("Put Back") { back = $0.unshelve(id) }
-    if let back { select(back) }
+    if let back {
+      select(back)
+      flyingOut = FlyOut(cards: back.cards, sections: back.sections, from: from)
+    }
     reveal(put: s.box)
+  }
+
+  /// Where an entry's picture is in this view (its box drawn at `k` with its top left at `at`): the large one, else its
+  /// thumbnail, else one the size of the dock's Shelf button on it (actions/shelf.ts pictureOf, dockPicture)
+  func pictureOf(_ s: ShelfShown) -> FlyOut.Picture? {
+    if previewing == s.entry.id, let v = shelfPreview {
+      let r = v.convert(v.bounds.insetBy(dx: 12, dy: 12), to: self)
+      return FlyOut.Picture(at: r.origin, k: r.width / s.box.width, box: s.box)
+    }
+    let k: CGFloat
+    let c: CGPoint
+    if let p = shelfPanel, let pic = p.pictureRect(s.entry.id) {
+      let r = p.convert(pic, to: self)
+      (k, c) = (s.thumbScale, CGPoint(x: r.midX, y: r.midY))
+    } else if let r = shelfButton {
+      (k, c) = (14 / max(s.box.width, s.box.height), CGPoint(x: r.midX, y: r.midY))
+    } else {
+      return nil
+    }
+    return FlyOut.Picture(
+      at: CGPoint(x: c.x - s.box.width * k / 2, y: c.y - s.box.height * k / 2), k: k, box: s.box)
+  }
+
+  /// What came back flies out of its picture (`from`), or grows where it was dropped; the arrows to the rest of the
+  /// board fade in as it lands (actions/shelf.ts flyOut). Run on the scene that first shows it, before it is drawn
+  func flyOut(_ f: FlyOut) {
+    guard let s = scene else { return }
+    let cards = Set(f.cards)
+    let ease = CAMediaTimingFunction(controlPoints: 0.2, 0.7, 0.25, 1)
+    func fly(_ l: CALayer, _ r: CGRect, card: Bool) {
+      var parts: [CAAnimation] = []
+      let scale = CABasicAnimation(keyPath: "transform.scale")
+      let opacity = CABasicAnimation(keyPath: "opacity")
+      if let from = f.from {
+        let at = CGPoint(
+          x: from.at.x + (r.midX - from.box.minX) * from.k, y: from.at.y + (r.midY - from.box.minY) * from.k)
+        let move = CABasicAnimation(keyPath: "position")
+        move.fromValue = camera.board(at)
+        move.toValue = l.position
+        parts.append(move)
+        scale.fromValue = from.k / camera.zoom
+        opacity.fromValue = Float(0.9)
+      } else {
+        scale.fromValue = CGFloat(0.96)
+        opacity.fromValue = Float(0)
+      }
+      scale.toValue = CGFloat(1)
+      opacity.toValue = Float(1)
+      parts += [scale, opacity]
+      // a card flies over the other cards
+      if card {
+        let over = CABasicAnimation(keyPath: "zPosition")
+        (over.fromValue, over.toValue) = (CGFloat(60), CGFloat(60))
+        parts.append(over)
+      }
+      let g = CAAnimationGroup()
+      g.animations = parts
+      g.duration = Self.flyTime
+      g.timingFunction = ease
+      l.add(g, forKey: "flyOut")
+    }
+    for (i, it) in s.items.enumerated() where i < items.count {
+      switch it.owner {
+      case .card(let c)? where cards.contains(c): fly(items[i].box, it.rect, card: true)
+      case .sectionTitle(let g)? where f.sections.contains(g): fly(items[i].box, it.rect, card: false)
+      default: break
+      }
+    }
+    for (i, fr) in s.frames.enumerated() where f.sections.contains(fr.id) {
+      if let ls = sections.sublayers, i < ls.count { fly(ls[i], fr.rect, card: false) }
+    }
+    for (i, a) in s.arrows.enumerated() where i < arrowGroups.count && (cards.contains(a.from) || cards.contains(a.to))
+    {
+      for l in arrowGroups[i] {
+        let fade = CAKeyframeAnimation(keyPath: "opacity")
+        fade.values = [Float(0), 0, 1]
+        fade.keyTimes = [0, 0.75, 1]
+        fade.duration = Self.flyTime * 1.3
+        l.add(fade, forKey: "fadeIn")
+      }
+    }
   }
 
   /// The camera, its zoom kept, moved just far enough for `box` to be seen with 24 points round it (seenArea); a box
@@ -367,7 +465,10 @@ extension CanvasView {
       }
       var back: (cards: [CardID], sections: [SectionID])?
       doc.edit("Put Back") { back = $0.unshelve(id, dx: dx, dy: dy, into: into) }
-      if let back { select(back) }
+      if let back {
+        select(back)
+        flyingOut = FlyOut(cards: back.cards, sections: back.sections, from: nil)
+      }
     }
   }
 

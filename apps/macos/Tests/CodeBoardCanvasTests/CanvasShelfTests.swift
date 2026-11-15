@@ -213,6 +213,59 @@ func shelfBoard() -> Board {
     #expect(seen.insetBy(dx: m - 0.5, dy: 0).minY <= box.minY)
   }
 
+  /// Put Back flies what comes back out of its picture (the large one, else the thumbnail, else the dock's button), each
+  /// card from its place in the picture to its own, growing as it goes; dragged out, it grows where it lands; the arrows
+  /// to the rest of the board fade in as it lands (actions/shelf.ts flyOut: 420 ms, cubic(.2, .7, .25, 1); the arrows
+  /// 1.3 times as long, unseen until 75 %). The animations are on the layers from the scene that first shows them
+  @Test func whatIsPutBackFliesOutOfItsPictureAndItsArrowsFadeIn() async throws {
+    let r = try await Rig(shelfBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    c.toggleShelf()
+    r.doc.select([.card(cid("n1"))])
+    r.key(1, .option)
+    await r.settle()
+    await drawn(r)
+    let id = try #require(entry(r, holding: "n1"))
+    let s = try #require(c.shelfShown.first { $0.entry.id == id })
+    let p = try #require(c.shelfPanel)
+    let pic = p.convert(try #require(p.pictureRect(id)), to: c)
+    let k = s.thumbScale
+    func flight(_ id: String) -> CAAnimationGroup? {
+      c.index(of: .card(cid(id))).flatMap { c.items[$0].box.animation(forKey: "flyOut") as? CAAnimationGroup }
+    }
+    func part(_ g: CAAnimationGroup?, _ key: String) -> CABasicAnimation? {
+      g?.animations?.compactMap { $0 as? CABasicAnimation }.first { $0.keyPath == key }
+    }
+    c.putBack(id)
+    await r.settle()
+    let g = try #require(flight("n1"), "n1 flies")
+    #expect(g.duration == 0.42)
+    // from the middle of the thumbnail, where its picture is drawn, at the picture's scale
+    let from = try #require(part(g, "position")?.fromValue as? CGPoint)
+    let fromView = c.camera.view(from)
+    #expect(abs(fromView.x - pic.midX) <= 1 && abs(fromView.y - pic.midY) <= 1, "\(fromView) \(pic)")
+    #expect(abs((part(g, "transform.scale")?.fromValue as? CGFloat ?? 0) - k / c.camera.zoom) < 0.001)
+    #expect(part(g, "opacity")?.fromValue as? Float == 0.9)
+    #expect(part(g, "position")?.toValue as? CGPoint == CGPoint(x: 120, y: 80))
+    let fade = try #require(c.arrowGroups.first?.first?.animation(forKey: "fadeIn") as? CAKeyframeAnimation)
+    #expect((fade.values as? [NSNumber])?.map(\.floatValue) == [0, 0, 1])
+    #expect(fade.keyTimes?.map(\.doubleValue) == [0, 0.75, 1])
+    #expect(abs(fade.duration - 0.546) < 1e-9)
+    // dragged out: it grows where it lands, from 96 % and unseen
+    r.doc.select([.card(cid("n2"))])
+    r.key(1, .option)
+    await r.settle()
+    let id2 = try #require(entry(r, holding: "n2"))
+    // on the left of the board, clear of the panel
+    c.dragOut(id2, .ended, at: c.convert(CGPoint(x: 60, y: c.bounds.midY), to: nil), grab: .zero)
+    #expect(entry(r, holding: "n2") == nil, "back on the board")
+    await r.settle()
+    let grow = try #require(flight("n2"), "n2 grows")
+    #expect(part(grow, "position") == nil && part(grow, "transform.scale")?.fromValue as? CGFloat == 0.96)
+    #expect(part(grow, "opacity")?.fromValue as? Float == 0)
+  }
+
   @Test func hoveringAPictureOutlinesWhereItReturnsWhenThatIsSeen() async throws {
     let r = try await Rig(shelfBoard(), zoom: 1)
     defer { r.close() }
