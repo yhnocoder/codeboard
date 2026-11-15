@@ -105,6 +105,12 @@ jobs:
     uses: ./.github/workflows/android.yml
     with: { everything: true }
 
+  # the Mac app's acceptance scenarios beside the web board (macos.yml's accept jobs, apps/macos/tools/accept/ci.txt; too
+  # long for every PR); not part of the report to the results issue: a failure shows on this run
+  macos:
+    uses: ./.github/workflows/macos.yml
+    with: { acceptance: true }
+
   repeat:
     needs: harness
     if: ${{ !cancelled() }}

@@ -3,11 +3,17 @@ name: macOS
 # needs the image with Xcode 27 (a preview image on GitHub for now); the newest Xcode on it is selected, which is the
 # toolchain the app is developed with.
 # Two jobs side by side: the canvas tests, which open one window at a time (RigTurns) and so take as long as all the
-# other test targets together, and everything else with the lint.
+# other test targets together, and everything else with the lint. The acceptance scenarios run instead when the regular
+# full run calls this (regular.yml): too long for every PR, and macOS runners are few.
 on:
   pull_request:
     paths: ["apps/macos/**", ".github/workflows/macos.yml"]
   workflow_call:
+    inputs:
+      acceptance:
+        description: "Run the acceptance scenarios instead of the build, unit tests and lint (the regular full run)"
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -15,10 +21,11 @@ concurrency:
   cancel-in-progress: true
 jobs:
   # The acceptance scenarios (apps/macos/tools/accept, ci.mjs): the app driven in its own process beside the web board
-  # in headless Chromium, function only (nothing timed), three shots per scenario and side as an artifact. Its own jobs,
-  # so the unit tests report first; the scenarios in two halves side by side
+  # in headless Chromium, function only (nothing timed), three shots per scenario and side as an artifact; the scenarios
+  # in two halves side by side. Only in the regular full run
   accept:
     name: accept (${{ matrix.shard }})
+    if: ${{ inputs.acceptance }}
     runs-on: xcode-27
     timeout-minutes: 30
     env:
@@ -62,6 +69,7 @@ jobs:
 
   app:
     name: app (${{ matrix.part }})
+    if: ${{ !inputs.acceptance }}
     runs-on: xcode-27
     timeout-minutes: 15
     env:
