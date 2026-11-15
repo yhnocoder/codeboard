@@ -693,8 +693,9 @@ function judge(got, op, want) {
     case "<=": return got <= n;
     case ">": return got > n;
     case ">=": return got >= n;
-    case "has": return String(got).includes(want);
-    case "lacks": return !String(got).includes(want);
+    // has A|B: any of them (a view's class on one build or another: EditorWebView|MarkdownEditorView); lacks A|B: none
+    case "has": return want.split("|").some((w) => String(got).includes(w));
+    case "lacks": return !want.split("|").some((w) => String(got).includes(w));
   }
   throw new Error(`no such op: ${op}`);
 }

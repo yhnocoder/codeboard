@@ -494,7 +494,10 @@ if let wk = NSClassFromString("WKWebView") {
   swizzle(wk, #selector(getter: NSView.inputContext), #selector(NSResponder.accInputContext))
 }
 /// A trace: which of these views each scroll event reached
-for name in ["CodeBoardCanvas.CanvasView", "CodeBoardNotes.EditorWebView", "WKWebView"]
+for name in [
+  "CodeBoardCanvas.CanvasView", "CodeBoardNotes.EditorWebView", "CodeBoardMarkdownUI.MarkdownEditorView",
+  "CodeUI.CodeEditorView", "WKWebView",
+]
 where env["ACCEPT_TRACE_SCROLL"] != nil {
   guard let cls = NSClassFromString(name), let m = class_getInstanceMethod(cls, #selector(NSView.scrollWheel(with:)))
   else { continue }

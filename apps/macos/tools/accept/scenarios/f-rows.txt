@@ -10,7 +10,7 @@ wait 300
 keys s
 wait 800
 shot s-key @cyellow+-20,-40 700 260
-mac: expect focus has PopWebView
+mac: expect focus has PopWebView|PopView
 web: expect focus has ncomp
 key esc
 wait 300
