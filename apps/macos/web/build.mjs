@@ -1,4 +1,4 @@
-// Bundles the Note page (src/) with the Markdown package's build and the board's stylesheets into dist/, which the app
+// Bundles the Note page (src/) and Tidy Up's layout (tidy.js) with the Markdown package's build and the board's stylesheets into dist/, which the app
 // loads from file URLs. dist/build-id is a hash of everything in it: Note snapshots drawn by another build are not reused.
 import { build } from "esbuild";
 import { createHash } from "node:crypto";
@@ -18,6 +18,16 @@ await build({
   entryNames: "page",
   loader: { ".woff2": "file", ".woff": "file", ".ttf": "file", ".svg": "file" },
   assetNames: "assets/[name]-[hash]",
+  minify: true,
+  logLevel: "warning",
+});
+// Tidy Up's layout with ELK (1.6 MB): a script of its own, loaded by the tidy web view the first time it is used
+await build({
+  entryPoints: [join(here, "src/tidy.ts")],
+  bundle: true,
+  format: "iife",
+  target: "safari18",
+  outfile: join(out, "tidy.js"),
   minify: true,
   logLevel: "warning",
 });

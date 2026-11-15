@@ -11,7 +11,7 @@ import CodeBoardModel
 struct BoardKey {
   enum Action {
     case newNote, newText, newBox, addSidenote, fitWindow, fitSelection, zoom100, zoomIn, zoomOut, pan, open
-    case enterBoard, delete, turnIntoBoard, fitContent, tilt, shelve, wrap, nudge, hide, escape, help
+    case enterBoard, delete, turnIntoBoard, fitContent, tidyUp, tilt, shelve, wrap, nudge, hide, escape, help
   }
 
   /// A press: its modifiers, and what it types (letters and symbols, as e.key) or else the key itself (e.code)
@@ -89,6 +89,7 @@ struct BoardKey {
       action: .turnIntoBoard, presses: [char("b", [.command, .shift])], show: "⇧⌘B", label: "Turn into Board",
       group: "Cards"),
     BoardKey(action: .fitContent, presses: [code(3, .option)], show: "⌥F", label: "Fit Content", group: "Cards"),
+    BoardKey(action: .tidyUp, presses: [code(17, .option)], show: "⌥T", label: "Tidy Up", group: "Cards"),
     BoardKey(action: .tilt, presses: [code(17, [.option, .shift])], show: "⌥⇧T", label: "Tilt", group: "Cards"),
     BoardKey(action: .shelve, presses: [code(1, .option)], show: "⌥S", label: "Move to Shelf", group: "Cards"),
     BoardKey(action: .wrap, presses: [code(6, .option)], show: "⌥Z", label: "Wrap Lines", group: "Cards"),
@@ -145,6 +146,9 @@ extension CanvasView {
     case .delete: delete(nil)
     case .turnIntoBoard: turnIntoBoard(nil)
     case .fitContent: fitContentKey()
+    case .tidyUp:
+      guard canTidyUp else { return false }
+      tidyUp()
     case .tilt:
       guard !cards.isEmpty else { return false }
       tilt(nil)

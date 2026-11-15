@@ -117,7 +117,8 @@ private func keysBoard() -> Board {
           ("↵", "Open the card selected (an arrow alone: its label)"), ("⌘↵", "Open the selected board frame"),
           ("⌘D", "Duplicate"), ("⌥⇧⌘F", "Bring to Front"), ("⌥⇧⌘B", "Send to Back"), ("⌘X", "Cut"), ("⌘C", "Copy"),
           ("⌫", "Delete"), ("⇧⌘L", "Lock / Unlock"), ("⇧⌘B", "Turn into Board"), ("⌥F", "Fit Content"),
-          ("⌥⇧T", "Tilt"), ("⌥S", "Move to Shelf"), ("⌥Z", "Wrap Lines"), ("Arrows", "Nudge (⇧ = 10px on screen)"),
+          ("⌥T", "Tidy Up"), ("⌥⇧T", "Tilt"), ("⌥S", "Move to Shelf"), ("⌥Z", "Wrap Lines"),
+          ("Arrows", "Nudge (⇧ = 10px on screen)"),
         ]
       ),
       ("Code", [("Click line numbers", "Select lines (⇧ extends)"), ("H", "Hide lines")]),

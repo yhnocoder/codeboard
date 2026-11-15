@@ -324,3 +324,17 @@ func editSample() -> Board {
   #expect(other.cards.count == 1 && other.cards[0].section == nil && other.stickers.isEmpty)
   #expect(other.problem() == nil)
 }
+
+/// core commands/sections.ts tidyMove: cards to where Tidy Up put them, each Section by its offset with every Section
+/// and card inside it
+@Test func tidyMovePlacesCardsAndCarriesSections() {
+  var b = editSample()
+  b.tidyMove(
+    cards: [cid("c1"): (x: 1300, y: 40), cid("t1"): (x: 1600, y: 0)], sections: [gid("g1"): (dx: 10, dy: -20)])
+  #expect(b.card(cid("c1")).map { [$0.x, $0.y] } == [1300, 40])
+  #expect(b.card(cid("t1")).map { [$0.x, $0.y] } == [1600, 0])
+  #expect(b.section(gid("g1")).map { [$0.x, $0.y] } == [10, -20])
+  #expect(b.section(gid("g2")).map { [$0.x, $0.y] } == [410, 30])
+  #expect(b.card(cid("n1")).map { [$0.x, $0.y] } == [60, 80])
+  #expect(b.card(cid("n2")).map { [$0.x, $0.y] } == [510, 80])
+}

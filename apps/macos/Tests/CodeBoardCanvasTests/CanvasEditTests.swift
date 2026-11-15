@@ -574,7 +574,7 @@ actor RigTurns {
       titles(r.canvas.menu(for: r.mouse(.rightMouseDown, r.centre("t1"))))
         == [
           "Connect with Arrow", "Move to Section", "Move to New Section", "Move to Shelf", "Turn into Board…", "Lock",
-          "Tilt", "Arrange", "Copy Paths", "-", "Cut", "Copy", "Duplicate", "Delete",
+          "Tilt", "Tidy Up", "Arrange", "Copy Paths", "-", "Cut", "Copy", "Duplicate", "Delete",
         ])
     // a Section's
     #expect(

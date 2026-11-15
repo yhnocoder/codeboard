@@ -342,6 +342,8 @@ public final class CanvasView: NSView {
   /// The frames easing towards where the drag has them, each a spring that keeps its speed as the target moves
   var frameEase: [SectionID: FrameEase] = [:]
   var frameEaseAt: TimeInterval?
+  /// Tidy Up's slide (CanvasTidySlide.swift)
+  var tidySlide: TidySlide?
   /// The zoom that fits the board, which overviews are drawn for
   var fitZoom: CGFloat = 1
   /// The framed cards' shadow, made once per theme
@@ -716,6 +718,7 @@ public final class CanvasView: NSView {
     cardShadow = shadow
     scene = s
     routedArrows = [:]
+    tidySlide = nil
     hoveredArrow = nil
     mode = nil
     dropLit = []
@@ -1114,8 +1117,9 @@ public final class CanvasView: NSView {
       DispatchQueue.global(qos: .utility).async { _ = malloc_zone_pressure_relief(nil, 0) }
     }
     stepFrameEase(at: time)
+    stepTidySlide(at: time)
     if motion.isResting && queue.isIdle && onFrame == nil && gesture == nil && !levels.isAnimating
-      && frameEase.isEmpty
+      && frameEase.isEmpty && tidySlide?.started != true
     {
       link?.isPaused = true
     }
