@@ -44,9 +44,10 @@ import Testing
     (e, _) = core("- one\n- two", caret: 11)
     e.key(.enter)
     #expect(e.source == "- one\n- two\n- ")
-    // an empty item ends the list
+    // an empty last item ends the list: an empty paragraph after it, the caret in it
     e.key(.enter)
-    #expect(e.source == "- one\n- two\n")
+    #expect(e.source == "- one\n- two\n\n")
+    #expect(e.selection == MDSelection(13))
     (e, _) = core("1. one", caret: 6)
     e.key(.enter)
     #expect(e.source == "1. one\n2. ")

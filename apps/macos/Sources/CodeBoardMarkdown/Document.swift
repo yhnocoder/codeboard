@@ -20,7 +20,7 @@ public struct MarkdownDocument: Sendable, Equatable {
 
   init(_ source: String, previous: InlineCache) {
     self.source = source
-    var builder = DocumentBuilder(cache: InlineCache(previous: previous))
+    var builder = DocumentBuilder(cache: InlineCache(previous: previous), text: source as NSString)
     let lexed = BlockLexer.lexing(source)
     blocks = builder.blocks(lexed.tokens)
     builder.cache.seal()
@@ -120,7 +120,7 @@ public struct MarkdownDocument: Sendable, Equatable {
       let before = definitions.prefix { $0.at < start }
       let lexing = BlockLexer.lexing(lexed, defined: Set(before.map(\.tag)))
       // the window's texts are looked up in, and added to, the store this document shares with its versions
-      var builder = DocumentBuilder(cache: inlineCache)
+      var builder = DocumentBuilder(cache: inlineCache, text: lexed as NSString)
       let parsed = builder.blocks(lexing.tokens).map { $0.shifted(start) }.filter { $0.range.lowerBound < end }
       let windowDefinitions = lexing.definitions.map { Definition(tag: $0.tag, at: $0.at + start, first: $0.first) }
         .filter { $0.at < end }
@@ -471,6 +471,8 @@ extension MDBlock {
 
 struct DocumentBuilder {
   let cache: InlineCache
+  /// the text being parsed, in the offsets its tokens map to
+  let text: NSString
 
   /// Blocks of a token list. Where TipTap reads blank lines as empty paragraphs (the top level, quotes and list items:
   /// parseBlockChildren), they are blocks too: an empty paragraph the web board shows as a blank line
@@ -665,8 +667,15 @@ struct DocumentBuilder {
     }
     let items = t.items.map { i -> MDListItem in
       let mr = Mapped.markerRange(i.raw, task: i.task)
-      return MDListItem(
-        range: range(i.raw), markerRange: mr, checked: i.task ? i.checked : nil, children: blocks(i.tokens))
+      let r = range(i.raw)
+      var children = blocks(i.tokens)
+      if children.isEmpty {
+        // an item with only its marker still has a line of text to hold the caret, after the marker's space
+        let space = mr.upperBound < text.length && [0x20, 0x09].contains(text.character(at: mr.upperBound))
+        let at = mr.upperBound + (space ? 1 : 0)
+        children = [inlineBlock(.paragraph, Mapped("", at: at), at..<at)]
+      }
+      return MDListItem(range: r, markerRange: mr, checked: i.task ? i.checked : nil, children: children)
     }
     return MDList(marker: marker, tight: !t.loose, items: items)
   }

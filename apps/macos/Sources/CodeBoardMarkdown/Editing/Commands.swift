@@ -47,8 +47,12 @@ extension MarkdownEditing {
     case .block(let t): return toggleBlock(t, in: state, document: document)
     case .insertTable: return insertBlockAfter(table: true, in: state, document: document)
     case .insertMathBlock: return insertBlockAfter(table: false, in: state, document: document)
-    case .indent: return indentItem(true, in: state, document: document)
-    case .outdent: return indentItem(false, in: state, document: document)
+    case .indent:
+      return context(at: state.selection.head, in: document).item == nil
+        ? nil : sinkItems(in: state, document: document)
+    case .outdent:
+      return context(at: state.selection.head, in: document).item == nil
+        ? nil : liftItems(in: state, document: document)
     case .headingStep(let d):
       // ⌘= a level up (body text to 6, 1 stays 1), ⌘- a level down (6 to body text): editor/typora.ts
       return heading(
@@ -397,31 +401,6 @@ extension MarkdownEditing {
     }
     let at = c.block.upperBound
     return MDEdit(range: at..<at, replacement: "\n\n" + block, selection: MDSelection(at + 2 + caretIn), undo: .command)
-  }
-
-  /// ⌘] / ⌘[ in a list item: the item's lines indented by its marker's width (it nests under the item before), or
-  /// taken back out by that much
-  public static func indentItem(_ deeper: Bool, in state: MDEditState, document d: MarkdownDocument) -> MDEdit? {
-    guard let (item, _, _) = context(at: state.selection.head, in: d).item else { return nil }
-    let ns = state.source as NSString
-    let first = ns.lineRange(for: NSRange(location: item.markerRange.lowerBound, length: 0))
-    let width = item.markerRange.count + 1
-    var lines = ns.lineRange(for: NSRange(location: first.location, length: item.range.upperBound - first.location))
-    if NSMaxRange(lines) > 0, NSMaxRange(lines) <= ns.length, ns.character(at: NSMaxRange(lines) - 1) == 0x0A {
-      lines.length -= 1
-    }
-    let pad = String(repeating: " ", count: width)
-    let text = ns.substring(with: lines)
-    let out = text.components(separatedBy: "\n").map { l -> String in
-      if deeper { return l.isEmpty ? l : pad + l }
-      let spaces = l.prefix { $0 == " " }.count
-      return String(l.dropFirst(min(spaces, width)))
-    }.joined(separator: "\n")
-    guard out != text else { return nil }
-    let firstDelta = deeper ? width : -min(width, (ns.substring(with: first) as String).prefix { $0 == " " }.count)
-    return MDEdit(
-      range: lines.location..<NSMaxRange(lines), replacement: out,
-      selection: MDSelection(max(lines.location, state.selection.head + firstDelta)), undo: .command)
   }
 }
 

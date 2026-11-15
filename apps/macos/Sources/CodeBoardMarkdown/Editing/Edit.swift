@@ -124,7 +124,12 @@ extension MarkdownEditing {
       return delete(at: sel.head, forward: forward, ns, document)
     case .tab, .shiftTab:
       if let e = tableKey(key, state, document) { return e }
-      guard context(at: sel.head, in: document).leaf == .code else { return nil }
+      let ctx = context(at: sel.head, in: document)
+      // in a list item's text: the items sink or lift (TipTap's ListItem keys); nothing elsewhere outside code
+      if ctx.leaf != .code {
+        guard ctx.item != nil else { return nil }
+        return key == .tab ? sinkItems(in: state, document: document) : liftItems(in: state, document: document)
+      }
       let lines = ns.lineRange(for: NSRange(location: sel.range.lowerBound, length: sel.range.count))
       let multi = ns.substring(with: NSRange(location: sel.range.lowerBound, length: sel.range.count)).contains("\n")
       if key == .tab, !multi { return insert(codeIndent, replacing: sel.range) }
@@ -261,9 +266,8 @@ extension MarkdownEditing {
       let after = NSRange(
         location: item.markerRange.upperBound, length: max(0, item.range.upperBound - item.markerRange.upperBound))
       if r.isEmpty, ns.substring(with: after).trimmingCharacters(in: .whitespaces).isEmpty {
-        let markerLine = ns.lineRange(for: NSRange(location: item.markerRange.lowerBound, length: 0)).location
-        let end = max(q, item.range.upperBound)
-        return MDEdit(range: markerLine..<end, replacement: "", selection: MDSelection(markerLine), undo: .command)
+        // TipTap's splitListItem lifts an empty item
+        return leaveItem(at: q, item, list, ns, d)
       }
       let markerLine = ns.lineRange(for: NSRange(location: item.markerRange.lowerBound, length: 0)).location
       let indent = ns.substring(with: NSRange(location: markerLine, length: item.markerRange.lowerBound - markerLine))
@@ -282,6 +286,25 @@ extension MarkdownEditing {
       return insert("\n" + bare + "\n" + prefix, replacing: r)
     }
     return insert("\n\n", replacing: r)
+  }
+
+  /// An item lifted as TipTap's liftListItem does: a nested one up a level, a top-level one out of its list as a
+  /// paragraph. An empty item amid a top-level list has no Markdown that keeps an empty paragraph between the list's two
+  /// halves (they read as one loose list again), so it only goes
+  static func leaveItem(at q: Int, _ item: MDListItem, _ list: MDList, _ ns: NSString, _ d: MarkdownDocument) -> MDEdit?
+  {
+    let text = NSRange(
+      location: item.markerRange.upperBound, length: max(0, item.range.upperBound - item.markerRange.upperBound))
+    let empty = ns.substring(with: text).trimmingCharacters(in: .whitespaces).isEmpty
+    let nested = listPath(at: q, in: d).count >= 2
+    if nested || !empty || list.items.last?.range == item.range {
+      return liftItems(in: MDEditState(source: ns as String, selection: MDSelection(q)), document: d)
+    }
+    // its line goes, the caret at the end of the item before
+    let markerLine = ns.lineRange(for: NSRange(location: item.markerRange.lowerBound, length: 0)).location
+    let end = max(q, item.range.upperBound)
+    let from = max(0, markerLine - 1)
+    return MDEdit(range: from..<end, replacement: "", selection: MDSelection(from), undo: .command)
   }
 
   /// The marker of a new item after `item`, from that item's own marker: a list may mix bullets and tasks, so a task
@@ -346,10 +369,9 @@ extension MarkdownEditing {
           selection: MDSelection(c.block.lowerBound),
           undo: .command)
       }
-      // the first paragraph of a list item: out of the list, to body text
-      if let (item, _, first) = c.item, first, case .paragraph = c.leaf {
-        let markerLine = ns.lineRange(for: NSRange(location: item.markerRange.lowerBound, length: 0)).location
-        return MDEdit(range: markerLine..<r.first, replacement: "", selection: MDSelection(markerLine), undo: .command)
+      // the first paragraph of a list item: the item lifted (typora.ts Backspace: liftListItem)
+      if let (item, list, first) = c.item, first, case .paragraph = c.leaf {
+        return leaveItem(at: q, item, list, ns, d)
       }
       // the first paragraph of a quote: out of it
       if let (quote, first) = c.quote, first, case .paragraph = c.leaf {
