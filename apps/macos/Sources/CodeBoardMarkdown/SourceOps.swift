@@ -29,7 +29,7 @@ public enum MarkdownSourceOps {
         var run: [Token] = []
         for (i, item) in t.items.enumerated() {
           if let last = run.last, taskItemStart.test(last.raw.ns) != taskItemStart.test(item.raw.ns) {
-            var part = t
+            let part = t
             part.items = run
             starts.append(from)
             blocks.append(part)
@@ -38,7 +38,7 @@ public enum MarkdownSourceOps {
           }
           run.append(item)
           if i == t.items.count - 1 {
-            var part = t
+            let part = t
             part.items = run
             starts.append(from)
             blocks.append(part)

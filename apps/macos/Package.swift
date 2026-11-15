@@ -62,13 +62,6 @@ let package = Package(
   ]
 )
 
-// No warnings in our own Swift: a concurrency warning (Swift 6 downgrades some isolation errors from AppKit's overrides)
-// is as much a crash as an error, and the rest stay at zero with it. The native Markdown component's targets, added
-// below, are not under it yet
-for t in package.targets where t.name != "CTreeSitterScanners" {
-  t.swiftSettings = (t.swiftSettings ?? []) + [.treatAllWarnings(as: .error)]
-}
-
 // The native Markdown component (apps/macos/docs/markdown-guideline.md), self-contained: no target of the app depends
 // on it yet, and it depends on none of the app's but CodeBoardSyntax, which only the look tool uses for code colours,
 // and the test guard, which its editor installs in a test process as the canvas does
@@ -95,3 +88,9 @@ package.targets += [
   .executableTarget(name: "MarkdownDemo", dependencies: ["MarkdownDemoKit"]),
   .testTarget(name: "MarkdownDemoKitTests", dependencies: ["MarkdownDemoKit", "CodeBoardModel", "CodeBoardTestGuard"]),
 ]
+// No warnings in our own Swift (the Markdown component included, so after its targets): a concurrency warning (Swift 6 downgrades some isolation errors from AppKit's overrides)
+// is as much a crash as an error, and the rest stay at zero with it. The native Markdown component's targets, added
+// below, are not under it yet
+for t in package.targets where t.name != "CTreeSitterScanners" {
+  t.swiftSettings = (t.swiftSettings ?? []) + [.treatAllWarnings(as: .error)]
+}

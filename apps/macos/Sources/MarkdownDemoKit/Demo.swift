@@ -848,7 +848,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     }
     drawing[key] = width
     svgDraws.background += 1
-    DispatchQueue.global(qos: .userInitiated).async {
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
       let i = MarkdownSVG.image(d, pixelWidth: width, dark: dark)
       DispatchQueue.main.async { [weak self] in
         guard let self else { return }
