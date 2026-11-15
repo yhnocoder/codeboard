@@ -163,7 +163,8 @@ import Testing
     }
   }
 
-  func opened(_ vault: Vault? = nil, cameras: CameraStore? = nil) async throws -> Window {
+  func opened(_ vault: Vault? = nil, board: BoardID? = nil, cameras: CameraStore? = nil) async throws -> Window {
+    let board = board ?? self.board
     let w = Window(try vault ?? self.vault(), board: board, cameras: cameras)
     await until("the board shown", in: w) { w.pane?.scene != nil && w.pane?.shown?.board.id == board }
     w.window.contentView?.layoutSubtreeIfNeeded()
