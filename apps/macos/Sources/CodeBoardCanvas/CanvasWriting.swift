@@ -52,6 +52,8 @@ struct Editing {
   var look: MarkdownLooks.Card?
   var inset = CGPoint.zero
   var storedHeight: Double?
+  /// How wide a Text's text measures, when that sets its width (as wide as its text, or as narrow as its longest word)
+  var across: CGFloat?
 }
 
 /// The card sits this far in from the web view's top left (view points), so the editor's menus have room: it places them
@@ -100,9 +102,7 @@ extension CanvasView {
     editing?.keys = keysAhead ?? []
     keysAhead = nil
     closeRefPeek()
-    // a Note with the native editor; a Text or Box with the web page's until the native one lays them out at their
-    // own width (its next step; then the web editor's writing goes)
-    if let native = display as? NativeNotes, !card.isText {
+    if let native = display as? NativeNotes {
       if !beginNativeEditing(id, display: native, note: n, card: card, caret: caret, host: host) { editing = nil }
       return
     }

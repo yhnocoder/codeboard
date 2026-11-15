@@ -121,6 +121,19 @@ public final class BlockLayout: @unchecked Sendable {
     BlockLayout(copying: self, resources: resources)
   }
 
+  /// Its text laid out anew at another width, with the same look and resources (a Text as wide as its text, which
+  /// changes as it is written in)
+  public func laid(width w: CGFloat) -> BlockLayout {
+    BlockLayout(document, width: w, theme: theme, layout: info, resources: resources)
+  }
+
+  /// How wide its widest line is laid out at `width`: nil unwrapped (max-content), 1 its least width (min-content); the
+  /// markers the caret shows count
+  public func widestLine(at width: CGFloat?) -> CGFloat {
+    MarkdownLayout.make(document, width: width, theme: theme, layout: info, resources: resources, head: head)
+      .widestLine
+  }
+
   private init(copying o: BlockLayout, resources: MarkdownResources) {
     document = o.document
     width = o.width

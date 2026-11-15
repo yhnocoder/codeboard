@@ -297,7 +297,11 @@ public final class MarkdownEditorView: NSView {
       MainActor.assumeIsolated { self?.changed() }
     }
     c.onRelayout = { [weak self] in
-      MainActor.assumeIsolated { self?.restyleChrome() }
+      MainActor.assumeIsolated {
+        self?.restyleChrome()
+        // laid out at another width: its frame and what floats over it follow
+        self?.changed()
+      }
     }
     c.onChange = { [weak self] source in
       MainActor.assumeIsolated {

@@ -130,4 +130,46 @@ import Testing
     r.doc.undo()
     #expect(r.doc.board.arrows[0].to.block == last)
   }
+
+  /// A Text as wide as its text widens as it is typed in and narrows as it is taken away, on one line all the while; a
+  /// Text that wraps at its width keeps it and grows taller
+  @Test func aTextIsAsWideAsWhatIsTypedAndOneThatWrapsKeepsItsWidth() async throws {
+    let board = Board(
+      id: BoardID(rawValue: "texts"),
+      cards: [
+        Card(
+          id: cid("t"), x: 0, y: 0, width: 200,
+          content: .own(CardContent(body: .text(TextCard(text: "Short", wrap: false))))),
+        Card(
+          id: cid("w"), x: 0, y: 200, width: 180,
+          content: .own(CardContent(body: .text(TextCard(text: "Threads wait", wrap: true))))),
+      ])
+    let r = try await Rig(board, zoom: 1, native: true)
+    defer { r.close() }
+    let none = NSRange(location: NSNotFound, length: 0)
+    r.click(r.centre("t"))
+    r.key(36)
+    await r.until("writing") { r.canvas.editing?.ready == true }
+    var v = try writer(r)
+    let narrow = try #require(r.canvas.editing?.size)
+    v.insertText(" and a good deal longer than it was", replacementRange: none)
+    let wide = try #require(r.canvas.editing?.size)
+    #expect(wide.width > narrow.width + 100, "\(narrow) → \(wide)")
+    #expect(abs(wide.height - narrow.height) < 0.5, "one line: \(narrow) → \(wide)")
+    #expect(abs(r.canvas.liveRect(.card(cid("t")))!.width - wide.width) < 0.5, "the card follows")
+    for _ in 0..<15 { v.doCommand(by: #selector(NSResponder.deleteBackward(_:))) }
+    let back = try #require(r.canvas.editing?.size)
+    #expect(back.width < wide.width - 50 && back.width > narrow.width)
+    await r.canvas.endEditing()
+    #expect(r.card("t").writing == "Short and a good deal lon")
+    r.click(r.centre("w"))
+    r.key(36)
+    await r.until("writing") { r.canvas.editing?.ready == true }
+    v = try writer(r)
+    let one = try #require(r.canvas.editing?.size)
+    v.insertText(" at the barrier for the others to come", replacementRange: none)
+    let more = try #require(r.canvas.editing?.size)
+    #expect(more.width == one.width && more.height > one.height + 10, "\(one) → \(more)")
+    await r.canvas.endEditing()
+  }
 }

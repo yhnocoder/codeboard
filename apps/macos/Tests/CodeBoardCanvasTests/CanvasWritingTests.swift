@@ -525,19 +525,21 @@ extension CanvasWritingTests {
     await r.canvas.endEditing()
   }
 
-  @Test func aBoxTakesItsFillsAndTextAndBoxKeepTheFirstLetterInPlace() async throws {
-    let r = try await Rig(zoom: 1)
+  @Test(arguments: [false, true]) func aBoxTakesItsFillsAndTextAndBoxKeepTheFirstLetterInPlace(native: Bool)
+    async throws
+  {
+    let r = try await Rig(zoom: 1, native: native)
     defer { r.close() }
     r.click(r.centre("b1"))
     r.click(try button(r, "b1", .fill(.blue)))
     #expect(r.card("b1").textCard?.fill == .blue && r.doc.undoName == "Fill")
     await r.settle()
-    // where its first letter is on the board, as the Note page lays it out
+    // where its first letter is on the board, as the canvas's display lays it out
     func first(_ id: String) async throws -> CGPoint {
       let c = r.card(id)
       let t = try #require(c.textCard)
       let folder = r.file.deletingLastPathComponent()
-      let m = try await Rig.notes.firstGlyphs(of: [
+      let m = try await r.canvas.display.firstGlyphs(of: [
         .init(note: .text(t), width: c.width, folder: folder, look: "warm-ink", dark: false)
       ])
       let p = try #require(m[0]?.first)

@@ -1121,7 +1121,9 @@ extension CanvasView {
     // on the paper of the card written in natively, off its text: below the text the caret goes to the end, beside it
     // nothing changes; the writing goes on
     if let ed = editing, let v = ed.writer, hitCard(camera.board(convert(e.locationInWindow, from: nil))) == ed.id {
-      if v.convert(e.locationInWindow, from: nil).y > v.bounds.maxY { v.moveToEndOfDocument(nil) }
+      if v.convert(e.locationInWindow, from: nil).y > v.bounds.maxY {
+        v.doCommand(by: #selector(NSResponder.moveToEndOfDocument(_:)))
+      }
       window?.makeFirstResponder(v)
       return
     }

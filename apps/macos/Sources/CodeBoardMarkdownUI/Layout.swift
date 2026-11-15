@@ -33,12 +33,13 @@ public final class MarkdownLayout: @unchecked Sendable {
   static func roundedUp(_ y: CGFloat) -> CGFloat { ceil(y * 100 - 1e-6) / 100 }
 
   /// Lays the document out `width` points wide (nil: as wide as its widest paragraph line or code line, max-content;
-  /// tables, formulas, diagrams and images do not widen it)
+  /// tables, formulas, diagrams and images do not widen it); `head`: the caret, whose constructs show their markers
   public static func make(
     _ document: MarkdownDocument, width: CGFloat?, theme: MarkdownTheme, layout: MDLayoutInfo?,
-    resources: MarkdownResources
+    resources: MarkdownResources, head: Int? = nil
   ) -> MarkdownLayout {
     var b = LayoutBuilder(theme: theme, resources: resources, info: layout, width: width ?? 100_000)
+    b.head = head
     b.setSource(document.source)
     let frames = b.top(document.blocks)
     let w = width ?? ceil(b.widest)

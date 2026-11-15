@@ -4,18 +4,25 @@ import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardNotes
 
-// Writing in a Note (a Text and a Box next) with the native Markdown component's editor (MarkdownEditorView) over the
-// card, when the canvas draws its Markdown natively: the editor lays the card out as its picture is (the same layout,
+// Writing in a Note, Text or Box with the native Markdown component's editor (MarkdownEditorView) over the card, when
+// the canvas draws its Markdown natively: the editor lays the card out as its picture is (the same layout,
 // copied), so entering changes no pixel but the caret. It is there at once: keys go to it from the first, through its own
 // input context (an input method composes in it), and what is written is the editor's text at any moment, so leaving
 // needs no round trip. A Note whose header shows its heading has the header folded away while it is written in, the
-// heading in the body where the rest of the text does not move (NoteBody foldHeader).
+// heading in the body where the rest of the text does not move (NoteBody foldHeader). A Text that is as wide as its
+// text widens and narrows with what is typed (styles.css .card.text:not(.wrapw) max-content); a Box holds its text in
+// its middle.
 
 extension CanvasView: MarkdownEditorDelegate {
-  public func editor(_ e: MarkdownEditorView, didChange source: String) {}
+  public func editor(_ e: MarkdownEditorView, didChange source: String) {
+    guard let ed = editing, ed.writer === e else { return }
+    fitText(e, ed)
+  }
 
   public func editor(_ e: MarkdownEditorView, didResize size: CGSize) {
     guard let ed = editing, ed.writer === e else { return }
+    // the markers the caret shows may widen a Text's line (the text itself changing comes through didChange)
+    fitText(e, ed)
     editorSized(writingSize(ed))
   }
 
@@ -33,7 +40,7 @@ extension CanvasView {
   /// The view written in while a card is: the native editor, else the web one
   var writingView: NSView? { editing.map { $0.writer ?? noteEditor.view } }
 
-  /// Starts writing in a Note with the native editor; false when it cannot lay the card out
+  /// Starts writing in a Note, Text or Box with the native editor; false when it cannot lay the card out
   func beginNativeEditing(
     _ id: CardID, display: NativeNotes, note n: Drawing.Note, card: Card, caret: CGPoint?, host: NSView
   ) -> Bool {
@@ -60,14 +67,17 @@ extension CanvasView {
     // where its text starts in the card, as its picture has it; a heading the header showed is in the body now, the
     // header folded over it, and what follows it stays where it was (page.ts fold: the body's padding becomes the
     // header's height and its own less the heading's block, at least 6)
-    var top = l.card.header + l.card.padding[0]
+    let stored = n.height.map { Double($0) }
+    var top = l.origin(in: l.size(height: stored)).y
     if n.hideHead, layout.blockFrames.count > 1 { top = max(6, top - layout.blockFrames[1].minY) }
     editing?.writer = v
     editing?.was = text
     editing?.look = l.card
-    let stored = n.height.map { Double($0) }
-    editing?.inset = CGPoint(x: l.origin(in: l.size(height: stored)).x, y: top)
+    editing?.inset = CGPoint(x: l.card.padding[3], y: top)
     editing?.storedHeight = stored
+    if l.card.natural || card.width <= 0 { editing?.across = l.across }
+    // the caret shows its construct's markers, which may widen a Text's line
+    if let ed = editing { fitText(v, ed) }
     guard let ed = editing else { return false }
     editing?.size = writingSize(ed)
     editing?.ready = true
@@ -90,13 +100,27 @@ extension CanvasView {
     return true
   }
 
-  /// The card's size at 100 % as the editor lays it out: its stored height, or its content's with the room around it
+  /// The card's size at 100 % as the editor lays it out: as wide as its text when that sets its width, else its own;
+  /// its stored height, or its content's with the room around it
   func writingSize(_ ed: Editing) -> CGSize {
     guard let v = ed.writer, let look = ed.look else { return ed.size ?? .zero }
-    let width = ed.size?.width ?? CGFloat(ed.card.width)
+    let p = look.padding
+    let width = ed.across.map { $0 + p[1] + p[3] } ?? CGFloat(ed.card.width)
     if let h = ed.storedHeight { return CGSize(width: width, height: CGFloat(h)) }
     let content = max(v.core.layout.size.height, look.minContent)
-    return CGSize(width: width, height: ed.inset.y + content + look.padding[2])
+    return CGSize(width: width, height: ed.inset.y + content + p[2])
+  }
+
+  /// A Text as wide as its text (or as narrow as its longest word) laid out again at its widest line's width as that
+  /// changes: what is typed never wraps it, what is taken away narrows it (NativeNotes laid)
+  func fitText(_ v: MarkdownEditorView, _ ed: Editing) {
+    guard let look = ed.look, ed.across != nil, !v.hasMarkedText() else { return }
+    let l = v.core.layout
+    let w = l.widestLine(at: look.natural ? nil : 1)
+    editing?.across = w
+    let inner = max(1, ceil(w))
+    if inner != l.width { v.core.relayout(l.laid(width: inner)) }
+    if let ed = editing { editorSized(writingSize(ed)) }
   }
 
   /// The editor over the card: its text's top left on the card's, at the camera's zoom on whole device pixels; during a
