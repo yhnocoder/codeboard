@@ -113,22 +113,7 @@ extension CanvasView {
   /// lays it out, in place of its layers (they come back when nothing was written)
   /// `fade`: what was shown fades out over it (a folded header's title going or coming back, with the editor's fold)
   func showPaper(fade: Bool = false) {
-    guard let ed = editing, ed.ready, !ed.ending, let i = editingIndex, let s = scene else { return }
-    var it = s.items[i]
-    if case .note(var n) = it.drawing, n.hideHead {
-      n.folded = true
-      it.drawing = .note(n)
-    }
-    if let size = ed.size {
-      it.rect.size.height = size.height
-      if case .note(let n) = it.drawing, n.content.isText { it.rect.size.width = size.width }
-    }
-    // Free code: its header and paper, the code being the editor's
-    if case .code(var c) = it.drawing {
-      c.layout.rows = []
-      c.layout.bands = []
-      it.drawing = .code(c)
-    }
+    guard let ed = editing, ed.ready, !ed.ending, let i = editingIndex, let it = writingItem(i) else { return }
     let scale = Levels.scale(camera.zoom, backing: backing, size: it.bitmapSize)
     let paper = CanvasView.render(it, scale: scale, theme: theme, images: images).surface
     let l = ItemLayers(it, overview: (paper, scale, .paper), shadow: it.drawing.framed ? cardShadow : nil)
@@ -159,6 +144,23 @@ extension CanvasView {
   }
 
   /// Where the card is drawn while written in (its size as the editor lays it out)
+  /// The card written in as the canvas shows it then: a Note whose header hides with its title folded, as tall (a Text
+  /// as wide) as the editor lays it out, a Free code card's header and paper only (the code being the editor's)
+  func writingItem(_ i: Int) -> Scene.Item? {
+    guard var it = scene?.items[i] else { return nil }
+    if case .note(var n) = it.drawing, n.hideHead {
+      n.folded = true
+      it.drawing = .note(n)
+    }
+    it.rect = editingRect(it.rect)
+    if case .code(var c) = it.drawing {
+      c.layout.rows = []
+      c.layout.bands = []
+      it.drawing = .code(c)
+    }
+    return it
+  }
+
   func editingRect(_ base: CGRect) -> CGRect {
     guard let ed = editing, let size = ed.size, let i = editingIndex else { return base }
     var r = base
@@ -270,10 +272,9 @@ extension CanvasView {
     }
     if editing?.pictured == false {
       guard let ed = editing, let size = ed.size, let i = editingIndex,
-        let snap = await editor.snapshot(size: size, k: ed.shownZoom), atRest(), let s = scene, editingIndex == i
+        let snap = await editor.snapshot(size: size, k: ed.shownZoom), atRest(), editingIndex == i,
+        let it = writingItem(i)
       else { return }
-      var it = s.items[i]
-      it.rect = editingRect(it.rect)
       let scale = ed.shownZoom * backing
       guard let surface = CanvasView.compose(it, snap, scale: scale, theme: theme, images: images) else { return }
       withoutAnimation {
@@ -647,7 +648,7 @@ extension CanvasView {
     beginEditing(id)
     while editing?.ready == false { try? await Task.sleep(for: .milliseconds(5)) }
     var picture: CGImage?
-    if let ed = editing, let v = ed.writer, let size = ed.size, let s = scene {
+    if let ed = editing, let v = ed.writer, let size = ed.size, let it = writingItem(i) {
       // the native editor's own drawing, where it lies on the card, over the card's paper
       let snap = Raster.surface(size: size, scale: scale) { ctx in
         ctx.translateBy(x: ed.inset.x, y: ed.inset.y)
@@ -657,17 +658,13 @@ extension CanvasView {
         v.draw(v.bounds)
         NSGraphicsContext.restoreGraphicsState()
       }
-      var it = s.items[i]
-      it.rect = editingRect(it.rect)
       picture = snap.flatMap {
         CanvasView.compose(it, NoteSnapshot(surface: $0, size: size), scale: scale, theme: theme, images: images)
       }.flatMap(Self.image)
-    } else if let ed = editing, let size = ed.size, let s = scene,
+    } else if let ed = editing, let size = ed.size, let it = writingItem(i),
       let snap = await noteEditor.snapshot(size: size, k: camera.zoom),
       abs(Double(snap.surface.width) - Double(size.width * scale).rounded(.up)) <= 1
     {
-      var it = s.items[i]
-      it.rect = editingRect(it.rect)
       picture = CanvasView.compose(it, snap, scale: scale, theme: theme, images: images)
         .flatMap(Self.image)
     }
