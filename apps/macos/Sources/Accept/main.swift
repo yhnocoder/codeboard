@@ -265,6 +265,26 @@ func tellKey(_ w: NSWindow) {
   NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: w)
   NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: w)
 }
+// Which window is under a point, as the window server says: this app's window under the virtual pointer, where it would
+// be for a person (it lies below the desktop picture here). WebKit sets the cursor its page asks for only when its window
+// is the one under the mouse, so the cursor over a web view's text was never set
+if let m = class_getClassMethod(NSWindow.self, #selector(NSWindow.windowNumber(at:belowWindowWithWindowNumber:))) {
+  typealias Imp = @convention(c) (AnyClass, Selector, NSPoint, Int) -> Int
+  let orig = unsafeBitCast(method_getImplementation(m), to: Imp.self)
+  let block: @convention(block) (AnyClass, NSPoint, Int) -> Int = { cls, p, below in
+    let sel = #selector(NSWindow.windowNumber(at:belowWindowWithWindowNumber:))
+    // (asked off the main thread too: then the window server's answer)
+    guard below == 0, Thread.isMainThread else { return orig(cls, sel, p, below) }
+    let mine = MainActor.assumeIsolated {
+      NSApp.orderedWindows.first {
+        $0.isVisible && $0.frame.contains(p) && $0.alphaValue > 0 && !$0.ignoresMouseEvents
+      }?
+      .windowNumber
+    }
+    return mine ?? orig(cls, sel, p, below)
+  }
+  method_setImplementation(m, imp_implementationWithBlock(block))
+}
 swizzle(NSPasteboard.self, #selector(getter: NSPasteboard.general), #selector(NSPasteboard.accGeneral), meta: true)
 swizzle(
   NSPasteboard.self, NSSelectorFromString("pasteboardWithName:"), #selector(NSPasteboard.accNamed(_:)), meta: true)
@@ -828,29 +848,23 @@ func strings(_ x: Any) -> [String] {
   }
 
   /// Text typed key by key: each character a keyDown and keyUp as a plain layout sends them
+  /// Text typed key by key, each through `key` as the window server's key events (WebKit takes no other: posted
+  /// NSEvents were lost in the web editors); a character shift makes (?, !, A) with shift held, as a person types it
   func keys(_ text: String) async {
-    guard let w = gKey ?? win else { return }
     for ch in text {
+      let c = String(ch)
       if ch == "\n" {
         await key("return")
-        continue
-      }
-      let c = String(ch)
-      // a character shift makes (?, !, …): its key with shift, as a person types it
-      if let base = Self.shifted.first(where: { $0.value == c })?.key {
+      } else if ch == " " {
+        await key("space")
+      } else if let base = Self.shifted.first(where: { $0.value == c })?.key {
         await key("shift+\(base)")
-        continue
-      }
-      let code = Self.codes[c.lowercased()] ?? (c == " " ? 49 : 0)
-      let f: NSEvent.ModifierFlags = ch.isUppercase ? [.shift] : []
-      for t in [NSEvent.EventType.keyDown, .keyUp] {
-        NSApp.postEvent(
-          NSEvent.keyEvent(
-            with: t, location: .zero, modifierFlags: f, timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: w.windowNumber, context: nil, characters: c, charactersIgnoringModifiers: c.lowercased(),
-            isARepeat: false, keyCode: code)!, atStart: false)
-        _ = w
-        try? await Task.sleep(for: .milliseconds(30))
+      } else if ch.isUppercase, Self.codes[c.lowercased()] != nil {
+        await key("shift+\(c.lowercased())")
+      } else if Self.codes[c] != nil {
+        await key(c)
+      } else {
+        log("keys: no key for \(c) (type it instead)")
       }
     }
   }
