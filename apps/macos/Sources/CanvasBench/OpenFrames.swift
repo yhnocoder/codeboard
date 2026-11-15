@@ -118,14 +118,16 @@ import CodeBoardModel
     var paperAfterContent = Set<Int>()
     onFrame = { sample(&opening, opening: true) }
     try await canvas.show(b, in: vault, theme: .warmInk)
-    await frames(until: { r.notesSharpMs != nil && r.allDrawnMs != nil }) {
-      sample(&opening, opening: true)
-      if r.firstContentMs != nil {
-        let s = self.canvas.blankInView
-        emptyAfterContent.formUnion(s.empty)
-        paperAfterContent.formUnion(s.paper)
-      }
-    }
+    await frames(
+      until: { r.notesSharpMs != nil && r.allDrawnMs != nil },
+      each: {
+        sample(&opening, opening: true)
+        if r.firstContentMs != nil {
+          let s = self.canvas.blankInView
+          emptyAfterContent.formUnion(s.empty)
+          paperAfterContent.formUnion(s.paper)
+        }
+      })
     r.filledLater = emptyAfterContent.union(paperAfterContent).count
     r.filledLaterEmpty = emptyAfterContent.count
     r.filledLaterPaper = paperAfterContent.count
@@ -138,42 +140,44 @@ import CodeBoardModel
     // a pan across the board at 100 %, then a zoom from 50 % to 200 % around the middle, each 2 s; then rest
     let bb = canvas.boardBounds
     canvas.place(zoom: 1, centre: CGPoint(x: bb.minX + canvas.bounds.width / 2, y: bb.midY))
-    await frames(until: { self.canvas.isSettled }) {}
+    await frames(until: { self.canvas.isSettled }, each: {})
     for name in ["pan", "zoom"] {
       var p = Phase()
       if name == "zoom" {
         canvas.place(zoom: 0.5, centre: CGPoint(x: bb.midX, y: bb.midY))
-        await frames(until: { self.canvas.isSettled }) {}
+        await frames(until: { self.canvas.isSettled }, each: {})
       }
       shown = Set(canvas.blankInView.drawn)
       let before = canvas.ruleBreaks
       let start = CACurrentMediaTime()
       var last = start
       let centre = CGPoint(x: canvas.bounds.midX, y: canvas.bounds.midY)
-      await frames(until: { CACurrentMediaTime() - start > 2.1 }) {
-        let now = CACurrentMediaTime()
-        let t = now - start
-        let dt = max(now - last, 1.0 / 240)
-        last = now
-        if name == "pan" {
-          let span = max(bb.width - self.canvas.bounds.width, self.canvas.bounds.width)
-          self.canvas.scroll(
-            by: CGVector(dx: t < 2 ? -span / 2 * dt : 0, dy: 0), at: now, began: t == 0 || p.frames == 0,
-            ended: t >= 2)
-        } else {
-          let k = min(t / 2, 1)
-          let target = 0.5 * pow(4, k)
-          self.canvas.pinch(
-            by: target / self.canvas.zoom, around: centre, at: now, began: p.frames == 0, ended: k >= 1)
-        }
-        sample(&p, opening: false)
-      }
+      await frames(
+        until: { CACurrentMediaTime() - start > 2.1 },
+        each: {
+          let now = CACurrentMediaTime()
+          let t = now - start
+          let dt = max(now - last, 1.0 / 240)
+          last = now
+          if name == "pan" {
+            let span = max(bb.width - self.canvas.bounds.width, self.canvas.bounds.width)
+            self.canvas.scroll(
+              by: CGVector(dx: t < 2 ? -span / 2 * dt : 0, dy: 0), at: now, began: t == 0 || p.frames == 0,
+              ended: t >= 2)
+          } else {
+            let k = min(t / 2, 1)
+            let target = 0.5 * pow(4, k)
+            self.canvas.pinch(
+              by: target / self.canvas.zoom, around: centre, at: now, began: p.frames == 0, ended: k >= 1)
+          }
+          sample(&p, opening: false)
+        })
       let after = canvas.ruleBreaks
       p.redraws = after.redraws - before.redraws
       p.swaps = after.swaps - before.swaps
       p.noteSwaps = after.noteSwaps - before.noteSwaps
       if name == "pan" { r.pan = p } else { r.zoom = p }
-      await frames(until: { self.canvas.isSettled }) {}
+      await frames(until: { self.canvas.isSettled }, each: {})
     }
     let e = JSONEncoder()
     e.keyEncodingStrategy = .convertToSnakeCase
