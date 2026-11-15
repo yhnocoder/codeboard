@@ -415,7 +415,13 @@ extension CanvasView {
     let text = written?.text
     let id = ed.id
     let note = !(ed.card.textCard != nil)
-    if ed.code {
+    if ed.code && ed.fresh {
+      // a new card: written, one step with its making; left empty, gone with none (code.ts writeFreeCode, env.fresh)
+      let keep = !(text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      doc.settleWriting(keep: keep, "New Code") { b in
+        if keep, let text { b.writeFreeCode(id, text: text) }
+      }
+    } else if ed.code {
       // one step from where the writing began; none when nothing changed
       doc.settleWriting(keep: true, "Edit Code") { b in
         if b.card(id) == nil { b.cards.append(ed.card) }
@@ -552,6 +558,20 @@ extension CanvasView {
       await Task.yield()
     }
     beginEditing(id, fresh: true)
+  }
+
+  /// A new Free code card with its top left at `p` (board), its code written at once; left empty it goes with no step
+  /// (create.ts newFreeCode, code.ts newBlankCode)
+  public func createCode(at p: CGPoint) async {
+    guard let doc = document else { return }
+    if editing != nil { await endEditing() }
+    let id = CardID(rawValue: Board.newID("card-"))
+    doc.addFresh(Board.newFreeCode(id: id, x: p.x.rounded(), y: p.y.rounded()))
+    while index(of: .card(id)) == nil, doc.board.card(id) != nil, document === doc {
+      await refreshing?.value
+      await Task.yield()
+    }
+    beginCodeEditing(id, fresh: true)
   }
 
   /// The toolbar's Note, Text and Box: in the middle of the view (create.ts newWriting: x by its width, 40 above the
