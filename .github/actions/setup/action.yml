@@ -1,5 +1,5 @@
 name: Setup
-description: Node 22 with npm 12, the npm cache, Rust with its build cache (packages/box), npm ci and a build of the checked-out tree (or of the tree in `dir`)
+description: Node 22 with npm 12, the npm cache, Rust with its build cache (packages/box; not with BOX_PREBUILT set), npm ci and a build of the checked-out tree (or of the tree in `dir`)
 inputs:
   dir:
     description: Directory of the checkout to install and build
@@ -14,10 +14,13 @@ runs:
       with: { node-version: 22, cache: npm, cache-dependency-path: "${{ inputs.dir }}/package-lock.json" }
     - shell: bash
       run: npm i -g npm@12.2.1
-    # box (packages/box, the index service behind Related by Meaning) is Rust: the full build compiles it, incrementally from the cache
+    # box (packages/box, the index service behind Related by Meaning) is Rust: the full build compiles it, incrementally from the cache.
+    # A job with BOX_PREBUILT set builds no box, so it needs no Rust either
     - uses: dtolnay/rust-toolchain@stable
+      if: env.BOX_PREBUILT == ''
       with: { components: clippy }
     - uses: Swatinem/rust-cache@v2
+      if: env.BOX_PREBUILT == ''
       with: { workspaces: "${{ inputs.dir }}/packages/box", cache-on-failure: true }
     - shell: bash
       working-directory: ${{ inputs.dir }}

@@ -35,6 +35,8 @@ jobs:
   # here and the jobs still end in about 3 minutes
   harness-plan:
     runs-on: ubuntu-24.04
+    # it builds only the Markdown package: BOX_PREBUILT leaves out Rust and its cache (packages/box)
+    env: { BOX_PREBUILT: "1" }
     timeout-minutes: 10
     outputs:
       shards: ${{ steps.plan.outputs.shards }}
@@ -58,6 +60,8 @@ jobs:
   harness:
     needs: harness-plan
     runs-on: ubuntu-24.04
+    # the harness never starts box: BOX_PREBUILT skips compiling it (about 40 s a job even with the cache)
+    env: { BOX_PREBUILT: "1" }
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -97,6 +101,9 @@ jobs:
 
   perf:
     runs-on: ubuntu-24.04
+    # the benchmarks never start box: BOX_PREBUILT skips compiling it on both sides (head about 40 s with the cache, the base
+    # checkout 2.5 to 3 minutes without one); base commits' builds read it too
+    env: { BOX_PREBUILT: "1" }
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
