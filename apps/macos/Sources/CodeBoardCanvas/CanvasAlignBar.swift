@@ -2,14 +2,15 @@ import AppKit
 import CodeBoardModel
 
 // The bar over two or more selected cards (main's canvas/Canvas.tsx AlignBar, styles.css .alignbar and .alignmore):
-// Create Section, Create Sub-board | ⋯, which opens Align (five) and Distribute (two). It is in view points, the same
-// size at any zoom, 12 above the cards (below them when the board's title row is in the way) and kept inside the view;
-// its buttons act on the release over them. Main's Tidy Up waits for the tidy-up itself.
+// Create Section, Create Sub-board, Tidy Up | ⋯, which opens Align (five) and Distribute (two). It is in view points,
+// the same size at any zoom, 12 above the cards (below them when the board's title row is in the way) and kept inside
+// the view; its buttons act on the release over them.
 
 /// What a button of the bar does
 enum AlignBarButton: Hashable {
   case section
   case subBoard
+  case tidy
   case more
   case align(AlignOp)
 }
@@ -55,7 +56,9 @@ enum AlignBarLayout {
       "M2 2h12M2 14h12M4.5 6H11.5A.5 .5 0 0 1 12 6.5V9.5A.5 .5 0 0 1 11.5 10H4.5A.5 .5 0 0 1 4 9.5V6.5A.5 .5 0 0 1 4.5 6z"
     ),
   ]
-  /// icons.tsx newSection, subBoard
+  /// icons.tsx newSection, subBoard, tidy
+  static let tidy =
+    "M3 2H5A1 1 0 0 1 6 3V5A1 1 0 0 1 5 6H3A1 1 0 0 1 2 5V3A1 1 0 0 1 3 2zM11 2H13A1 1 0 0 1 14 3V5A1 1 0 0 1 13 6H11A1 1 0 0 1 10 5V3A1 1 0 0 1 11 2zM3 10H5A1 1 0 0 1 6 11V13A1 1 0 0 1 5 14H3A1 1 0 0 1 2 13V11A1 1 0 0 1 3 10zM11 10H13A1 1 0 0 1 14 11V13A1 1 0 0 1 13 14H11A1 1 0 0 1 10 13V11A1 1 0 0 1 11 10z"
   static let newSection = "M4 3H12A2 2 0 0 1 14 5V11A2 2 0 0 1 12 13H4A2 2 0 0 1 2 11V5A2 2 0 0 1 4 3zM2 6h12"
   static let subBoard =
     "M4 2H12A2 2 0 0 1 14 4V12A2 2 0 0 1 12 14H4A2 2 0 0 1 2 12V4A2 2 0 0 1 4 2zM6 5H10A1 1 0 0 1 11 6V10A1 1 0 0 1 10 11H6A1 1 0 0 1 5 10V6A1 1 0 0 1 6 5z"
@@ -81,7 +84,7 @@ enum AlignBarLayout {
   static func bar(_ font: Font) -> (buttons: [(AlignBarButton, CGRect)], sep: CGRect, width: CGFloat) {
     var x: CGFloat = 4
     var buttons: [(AlignBarButton, CGRect)] = []
-    for (b, word) in [(AlignBarButton.section, "Create Section"), (.subBoard, "Create Sub-board")] {
+    for (b, word) in [(AlignBarButton.section, "Create Section"), (.subBoard, "Create Sub-board"), (.tidy, "Tidy Up")] {
       let w = 10 + 16 + 6 + Drawing.width(word, font) + 10
       buttons.append((b, CGRect(x: x, y: 4, width: w, height: 30)))
       x += w + 2
@@ -239,6 +242,9 @@ extension CanvasView {
     case .subBoard:
       setAlignMore(false)
       turnIntoBoard(nil)
+    case .tidy:
+      setAlignMore(false)
+      tidyUp()
     case .more: setAlignMore(!alignMore)
     case .align(let op):
       guard let doc = document else { return }
@@ -276,13 +282,13 @@ extension CanvasView {
       for (b, r) in l.buttons {
         paintAlignButton(b, in: r, lit: b == .more && alignMore, look: look, ctx) { color in
           switch b {
-          case .section, .subBoard:
-            Icons.stroke(
-              SVGPath.parse(b == .section ? AlignBarLayout.newSection : AlignBarLayout.subBoard),
-              at: CGPoint(x: r.minX + 10, y: r.midY - 8), color: color, in: ctx)
-            Self.chipLabel(
-              b == .section ? "Create Section" : "Create Sub-board", x: r.minX + 10 + 16 + 6, midY: r.midY, font: font,
-              color: color, ctx)
+          case .section, .subBoard, .tidy:
+            let (icon, word) =
+              b == .section
+              ? (AlignBarLayout.newSection, "Create Section")
+              : b == .subBoard ? (AlignBarLayout.subBoard, "Create Sub-board") : (AlignBarLayout.tidy, "Tidy Up")
+            Icons.stroke(SVGPath.parse(icon), at: CGPoint(x: r.minX + 10, y: r.midY - 8), color: color, in: ctx)
+            Self.chipLabel(word, x: r.minX + 10 + 16 + 6, midY: r.midY, font: font, color: color, ctx)
           default:
             // icons.tsx more: three filled squares of 2
             ctx.setFillColor(color)
@@ -325,7 +331,7 @@ extension CanvasView {
     let ink = theme.id == .inkWash
     let hovered = alignHovered == b
     let pressed = alignPressed == b
-    let tbtn = b == .section || b == .subBoard
+    let tbtn = [.section, .subBoard, .tidy].contains(b)
     let color = ink || tbtn || hovered || lit ? look.ink : look.ink2
     ctx.saveGState()
     defer { ctx.restoreGState() }

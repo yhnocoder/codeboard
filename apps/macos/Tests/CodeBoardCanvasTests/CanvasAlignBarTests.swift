@@ -77,6 +77,12 @@ import Testing
     }
     await r.settle()
     #expect(!c.alignBar.isHidden)
+    // Tidy Up: the two laid out as core's tidy does, one step (Canvas.tsx's bar, edit.ts tidyUp)
+    let tidied = r.doc.history.undoSteps.count
+    r.click(on(.tidy))
+    await r.until("tidied") { r.doc.undoName == "Tidy Up" }
+    #expect(r.doc.history.undoSteps.count == tidied + 1 && r.doc.selection.count == 2)
+    await r.settle()
     // Create Section: a Section round them, the two in it
     r.click(on(.section))
     await r.settle()

@@ -6,7 +6,9 @@ import Testing
 
 // Alignment while dragging (interact.ts snapPace / snapMove, core layout.ts): slowed down, what is dragged lines up with
 // the edges and middles of the other cards and the Sections within 6 points on screen, a dashed guide along what lines
-// up; dragged fast it follows the pointer exactly, ⌘ held it never lines up, and held still it lines up after a moment
+// up; dragged fast it follows the pointer exactly, ⌘ held it never lines up, and held still it lines up after a moment.
+// Resized by its right or bottom edge, a card's edge lines up with the others' edges, or its size takes one of theirs
+// with "same width · 240" under it (layout.ts snapResize, interact.ts resizeDown)
 
 @MainActor @Suite(.serialized) struct CanvasSnapTests {
   @Test func theLeftEdgeGoesToAnotherCardsWithItsGuide() {
@@ -82,5 +84,48 @@ import Testing
     await r.until("lined up once still") { c.guideLayer.path != nil }
     r.send(r.mouse(.leftMouseUp, CGPoint(x: from.x - 3, y: from.y + 40)))
     #expect(r.card("b1").x == 500)
+  }
+
+  @Test func aResizedEdgeGoesToAnotherCardsEdgeOrItsSize() {
+    let o = [CGRect(x: 300, y: 0, width: 200, height: 100)]
+    // the right edge 3 short of the other's left: there, with a guide down the edge
+    let edge = Snap.resize(CGRect(x: 0, y: 0, width: 297, height: 50), right: true, bottom: false, to: o, threshold: 6)
+    #expect(edge.size == CGSize(width: 300, height: 50) && edge.same == nil)
+    #expect(edge.guides == [Guide(axis: .x, at: 300, from: 0, to: 50)])
+    // 4 wider than the other: its width; the bottom 2 short of the other's height: that too, the width named first
+    let same = Snap.resize(
+      CGRect(x: 0, y: 200, width: 204, height: 98), right: true, bottom: true, to: o, threshold: 6)
+    #expect(same.size == CGSize(width: 200, height: 100) && same.same == .x)
+    // an edge not dragged stays
+    let none = Snap.resize(CGRect(x: 0, y: 0, width: 297, height: 50), right: false, bottom: false, to: o, threshold: 6)
+    #expect(none.size == CGSize(width: 297, height: 50) && none.guides.isEmpty)
+  }
+
+  @Test(arguments: [1, 0.5] as [CGFloat])
+  func aCardResizedLinesUpWithTheOthersUnlessCommandIsHeld(zoom: CGFloat) async throws {
+    let r = try await Rig(zoom: zoom)
+    defer { r.close() }
+    let c = r.canvas
+    r.click(CGPoint(x: 40, y: 40))
+    // n1's corner to 244 × 180: n2's width, 240, named under it, and no guide
+    r.drag(CGPoint(x: 240, y: 160), CGPoint(x: 244, y: 180)) {
+      #expect(!c.sizeHint.isHidden, "the size it took, named")
+      #expect(c.guideLayer.path == nil)
+      #expect(c.gesture.flatMap { if case .resize(let z) = $0.kind { z.same } else { nil } } == "same width · 240")
+    }
+    #expect(r.card("n1").width == 240 && r.card("n1").height == 180)
+    #expect(c.sizeHint.isHidden)
+    await r.settle()
+    // to 337 wide: its right edge on n2's, at 340, with a guide
+    r.drag(CGPoint(x: 240, y: 180), CGPoint(x: 337, y: 180)) {
+      #expect(c.guideLayer.path != nil, "a guide down the edge")
+      #expect(c.sizeHint.isHidden)
+    }
+    #expect(r.card("n1").width == 340)
+    #expect(c.guideLayer.path == nil, "none once let go")
+    await r.settle()
+    // ⌘ held: where the pointer took it
+    r.drag(CGPoint(x: 340, y: 180), CGPoint(x: 337, y: 180), .command)
+    #expect(r.card("n1").width == 337)
   }
 }

@@ -335,6 +335,14 @@ actor RigTurns {
     #expect(r.doc.selection == [.card(cid("t1"))])
     r.click(r.centre("b1"), .shift)
     #expect(r.doc.selection == [.card(cid("t1")), .card(cid("b1"))])
+    // a click on a Text of several selected keeps them all (interact.ts cardPointerDown: a Text has no body, so no
+    // multiBody); one on a Note's body leaves only that one
+    r.click(r.centre("t1"))
+    #expect(r.doc.selection == [.card(cid("t1")), .card(cid("b1"))])
+    r.click(CGPoint(x: 40, y: 40), .shift)
+    r.click(CGPoint(x: 40, y: 100))
+    #expect(r.doc.selection == [.card(cid("n1"))])
+    r.doc.select([.card(cid("t1")), .card(cid("b1"))])
     r.click(r.centre("t1"), .command)
     #expect(r.doc.selection == [.card(cid("b1"))])
     // a Section's blank inside selects it; its title too
@@ -547,10 +555,10 @@ actor RigTurns {
   func eachKindResizesByItsOwnHandles(zoom: CGFloat) async throws {
     let r = try await Rig(zoom: zoom)
     defer { r.close() }
-    // a Note: width and height from its corner
+    // a Note: width and height from its corner (to 320, off m1's right edge at 290, which it would line up with)
     r.click(CGPoint(x: 40, y: 40))
-    r.drag(CGPoint(x: 240, y: 160), CGPoint(x: 300, y: 200))
-    #expect(r.card("n1").width == 300 && r.card("n1").height == 200)
+    r.drag(CGPoint(x: 240, y: 160), CGPoint(x: 320, y: 200))
+    #expect(r.card("n1").width == 320 && r.card("n1").height == 200)
     // a Text's side edge: the width it wraps at, never below its longest word
     await r.settle()
     r.click(r.centre("t1"))
