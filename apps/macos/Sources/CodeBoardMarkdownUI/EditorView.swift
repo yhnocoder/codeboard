@@ -66,6 +66,27 @@ public final class MarkdownEditorView: NSView {
   /// The selection's source exactly as copied, beside the plain text and HTML: a paste in any Note reads it back as it
   /// was (ProseMirror's own slice in the web's copies), never through the HTML, which loses == marks and code lines
   public static let sourceType = NSPasteboard.PasteboardType("com.yhnocoder.codeboard.markdown")
+  /// What an empty editor shows where its text would start, in the lightest ink, until something is typed (the web
+  /// editor's Placeholder: only while the whole of it is empty)
+  public var placeholder: String? {
+    didSet { if placeholder != oldValue { needsDisplay = true } }
+  }
+  private var placeholderLaid: (key: String, width: CGFloat, theme: MarkdownTheme, layout: MarkdownLayout)?
+
+  private func drawPlaceholder(_ ctx: CGContext, scale: CGFloat, clip: CGRect) {
+    guard let p = placeholder, core.source.isEmpty, core.marked == nil else { return }
+    let l = core.layout
+    var theme = l.theme
+    theme.colors.ink = theme.colors.ink3
+    if placeholderLaid?.key != p || placeholderLaid?.width != l.width || placeholderLaid?.theme != theme {
+      // laid out as a paragraph of its words (a host's placeholder is plain words)
+      let doc = MarkdownDocument(p)
+      let laid = MarkdownLayout.make(doc, width: l.width, theme: theme, layout: nil, resources: l.resources)
+      placeholderLaid = (p, l.width, theme, laid)
+    }
+    placeholderLaid?.layout.draw(in: ctx, scale: scale, clip: clip) { _ in nil }
+  }
+
   /// device-independent scale of the drawing (the canvas's zoom)
   public var zoom: CGFloat = 1 {
     didSet {
@@ -464,6 +485,7 @@ public final class MarkdownEditorView: NSView {
       ctx.draw(pic, in: CGRect(origin: .zero, size: r.size))
       ctx.restoreGState()
     }
+    drawPlaceholder(ctx, scale: scale, clip: clip)
     drawHoverLine(ctx, clip)
     drawTableFlip(ctx)
     drawMathProblem(ctx)

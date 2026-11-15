@@ -17,6 +17,7 @@ extension CanvasView: MarkdownEditorDelegate {
   public func editor(_ e: MarkdownEditorView, didChange source: String) {
     guard let ed = editing, ed.writer === e else { return }
     fitText(e, ed)
+    followBlocks(e)
   }
 
   public func editor(_ e: MarkdownEditorView, didResize size: CGSize) {
@@ -53,6 +54,7 @@ extension CanvasView {
     let layout = display.editorLayout(l, folder: n.folder, refs: n.refs, dark: theme.dark)
     let v = MarkdownEditorView(layout: layout, caret: (text as NSString).length)
     v.delegate = self
+    v.placeholder = n.content.isText ? "Type something…" : "Type / for blocks"
     // its own layer: a zoom gesture scales that, nothing drawn anew
     v.wantsLayer = true
     // copies and pastes go where the canvas's do (a test's own pasteboard, never the person's in one)
@@ -171,6 +173,26 @@ extension CanvasView {
     return NoteEditor.Written(
       text: changed ? text : nil, layout: layout, layoutChanged: layoutChanged,
       blocks: changed ? (CanvasView.blocks(of: ed.was), CanvasView.blocks(of: text)) : nil)
+  }
+
+  /// What is on a block of the Note written in follows the block as it is typed in: its blocks where the editor has
+  /// them now, each under the fingerprint it had when the writing began (Blocks.map, as the end of the writing rebases
+  /// what is on them); only for a Note with an arrow on a block
+  func followBlocks(_ v: MarkdownEditorView) {
+    func onBlock(_ e: Endpoint) -> Bool { e.card == editing?.id && e.block != nil }
+    guard let ed = editing, let look = ed.look, look.header > 0, let s = scene,
+      s.arrowModels.contains(where: { onBlock($0.from) || onBlock($0.to) }),
+      let now = Self.blocks(of: v.source), let was = Self.blocks(of: ed.was)
+    else { return }
+    let boxes = v.core.layout.blockBoxes
+    guard boxes.count == now.count else { return }
+    var sigs = now.map(BlockRef.sig)
+    for (i, k) in Blocks.map(was, now).enumerated() { if let k { sigs[k] = BlockRef.sig(was[i]) } }
+    editing?.blocks = boxes.enumerated().map { k, b in
+      NoteBlock(
+        sig: sigs[k], y: Double(ed.inset.y + b.frame.minY), h: Double(b.frame.height), line: Double(b.firstLine))
+    }
+    withoutAnimation { rerouteEditing() }
   }
 
   /// A Note's top-level blocks, each one's Markdown (the web page's noteBlocks); nil when it cannot be split

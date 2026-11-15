@@ -54,6 +54,8 @@ struct Editing {
   var storedHeight: Double?
   /// How wide a Text's text measures, when that sets its width (as wide as its text, or as narrow as its longest word)
   var across: CGFloat?
+  /// A Note's blocks where the native editor has them now, for what is on them (nil: where the scene has them)
+  var blocks: [NoteBlock]?
 }
 
 /// The card sits this far in from the web view's top left (view points), so the editor's menus have room: it places them
@@ -259,16 +261,24 @@ extension CanvasView {
     withoutAnimation {
       showPaper()
       positionEditor()
-      if let id = editing?.id, let s = scene {
-        let touching = s.arrows.indices.filter { s.arrows[$0].from == id || s.arrows[$0].to == id }
-        reroute(touching) { c in
-          guard var p = s.placed[c] else { return nil }
-          if c == id { p.rect = self.editingRect(p.rect) }
-          return p
-        }
-      }
+      rerouteEditing()
     }
     drawChrome()
+  }
+
+  /// The arrows on the card written in, to it as it is now: its size, and its blocks where the native editor has them
+  func rerouteEditing() {
+    guard let id = editing?.id, let s = scene else { return }
+    let touching = s.arrows.indices.filter { s.arrows[$0].from == id || s.arrows[$0].to == id }
+    let blocks = editing?.blocks
+    reroute(touching) { c in
+      guard var p = s.placed[c] else { return nil }
+      if c == id {
+        p.rect = self.editingRect(p.rect)
+        if let blocks { p.blocks = blocks }
+      }
+      return p
+    }
   }
 
   // MARK: Zooming while writing

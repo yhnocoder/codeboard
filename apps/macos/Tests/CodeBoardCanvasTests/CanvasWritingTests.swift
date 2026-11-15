@@ -46,8 +46,11 @@ extension Rig {
     send(mouse(.leftMouseUp, p, clicks: 2))
   }
 
-  /// Types into the editor and waits for its layout to follow
+  /// Types into the editor and waits for its layout to follow (the native one's follows at once)
   func type(_ text: String) async {
+    if let v = canvas.editing?.writer {
+      return v.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
+    }
     canvas.noteEditor.type(text)
     _ = try? await canvas.noteEditor.view.evaluateJavaScript("new Promise(r => requestAnimationFrame(() => r(1)))")
   }
@@ -817,8 +820,9 @@ extension CanvasWritingTests {
 extension CanvasWritingTests {
   /// What is typed reaches the board and the disk every couple of seconds while the card is written in, with no undo
   /// step and without the canvas redrawing the card under the web view; leaving makes the whole writing one step
-  @Test func whatIsTypedIsDraftedOntoTheDiskWhileWritingAndLeavingIsStillOneStep() async throws {
-    let r = try await Rig(zoom: 1)
+  @Test(arguments: [false, true])
+  func whatIsTypedIsDraftedOntoTheDiskWhileWritingAndLeavingIsStillOneStep(native: Bool) async throws {
+    let r = try await Rig(zoom: 1, native: native)
     defer { r.close() }
     r.click(r.centre("t1"))
     r.key(36)

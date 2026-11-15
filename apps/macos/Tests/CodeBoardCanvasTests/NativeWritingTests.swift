@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardMarkdown
 import CodeBoardMarkdownUI
 import CodeBoardModel
 import CodeBoardNotes
@@ -171,5 +172,76 @@ import Testing
     let more = try #require(r.canvas.editing?.size)
     #expect(more.width == one.width && more.height > one.height + 10, "\(one) → \(more)")
     await r.canvas.endEditing()
+  }
+
+  /// While the Note is typed in, an arrow on one of its blocks stays on that block as blocks above it grow (onChange,
+  /// as the end of the writing rebases it)
+  @Test func anArrowOnABlockFollowsItWhileTheNoteIsTypedIn() async throws {
+    let text = "# Steps\n\nRequests wait in the queue.\n\n每一步取一批"
+    let last = BlockRef(index: 2, hash: BlockRef.sig("每一步取一批"))
+    let board = Board(
+      id: BoardID(rawValue: "live"),
+      cards: [
+        Card(id: cid("n1"), x: 0, y: 0, width: 300, content: .own(CardContent(body: .note(Note(text: text))))),
+        Card(id: cid("n2"), x: 500, y: 0, width: 240, content: .own(CardContent(body: .note(Note(text: "Other"))))),
+      ],
+      arrows: [
+        Arrow(id: ArrowID(rawValue: "a1"), from: Endpoint(card: cid("n2")), to: Endpoint(card: cid("n1"), block: last))
+      ])
+    let r = try await Rig(board, zoom: 1, native: true)
+    defer { r.close() }
+    let a = ArrowID(rawValue: "a1")
+    let before = try #require(r.canvas.arrowPoints(a)?.end)
+    r.click(CGPoint(x: 40, y: 60))
+    r.key(36)
+    await r.until("writing") { r.canvas.editing?.ready == true }
+    let v = try writer(r)
+    // at the end of the queue's paragraph, a new paragraph of two lines
+    v.core.select(MDSelection(("# Steps\n\nRequests wait in the queue." as NSString).length))
+    v.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+    v.insertText(
+      "Then each step takes a batch of them and runs it to the end of its words",
+      replacementRange: NSRange(location: NSNotFound, length: 0))
+    let during = try #require(r.canvas.arrowPoints(a)?.end)
+    #expect(during.y > before.y + 30, "on its block, lower now: \(before) → \(during)")
+    await r.canvas.endEditing()
+    await r.settle()
+    let after = try #require(r.canvas.arrowPoints(a)?.end)
+    #expect(abs(after.y - during.y) < 1, "where the writing had it: \(during) → \(after)")
+  }
+
+  /// An empty new Note shows its placeholder until something is typed in it
+  @Test func anEmptyNoteShowsItsPlaceholderUntilItIsTypedIn() async throws {
+    let r = try await Rig(zoom: 1, native: true)
+    defer { r.close() }
+    r.canvas.createInView(.note)
+    await r.until("writing") { r.canvas.editing?.ready == true }
+    let v = try writer(r)
+    /// How many pixels of its first line it inks, drawn off screen (an empty editor is no taller than its caret)
+    func inked() throws -> Int {
+      let (w, h) = (Int(v.bounds.width), 30)
+      let ctx = try #require(
+        CGContext(
+          data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+      ctx.translateBy(x: 0, y: CGFloat(h))
+      ctx.scaleBy(x: 1, y: -1)
+      NSGraphicsContext.saveGraphicsState()
+      NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
+      v.draw(CGRect(x: 0, y: 0, width: w, height: h))
+      NSGraphicsContext.restoreGraphicsState()
+      let data = try #require(ctx.data).assumingMemoryBound(to: UInt8.self)
+      return (0..<(w * h)).filter { data[$0 * 4 + 3] > 80 }.count
+    }
+    // the caret off: it blinks
+    v.freeze()
+    #expect(v.placeholder == "Type / for blocks")
+    #expect(try inked() > 20, "its placeholder")
+    v.insertText("x", replacementRange: NSRange(location: NSNotFound, length: 0))
+    let one = try inked()
+    v.doCommand(by: #selector(NSResponder.deleteBackward(_:)))
+    #expect(try inked() > one, "back once it is empty again")
+    await r.canvas.endEditing()
+    #expect(r.doc.board.cards.count == sample().cards.count, "left empty, it goes")
   }
 }
