@@ -95,7 +95,7 @@ actor RigTurns {
 
   init(
     _ board: Board = sample(), zoom: CGFloat?, pasteboard: NSPasteboard? = nil, root given: URL? = nil,
-    alongside: Rig? = nil, pictures: (@Sendable (URL) async -> Data?)? = nil
+    alongside: Rig? = nil, pictures: (@Sendable (URL) async -> Data?)? = nil, native: Bool = false
   ) async throws {
     let mine = alongside == nil
     turn = mine
@@ -122,7 +122,10 @@ actor RigTurns {
     try board.encoded().write(to: file)
     let f = file
     doc = try BoardDocument { f }
-    canvas = CanvasView(frame: CGRect(x: 0, y: 0, width: 1000, height: 700), notes: Rig.notes)
+    // native: its Markdown at rest drawn by the native component, as the app's canvas draws it (CanvasView.sharedDisplay)
+    canvas = CanvasView(
+      frame: CGRect(x: 0, y: 0, width: 1000, height: 700), notes: Rig.notes,
+      display: native ? NativeNotes(web: Rig.notes, pictures: root.appending(path: "pictures")) : nil)
     // never the general pasteboard: that is the person's own clipboard
     canvas.pasteboard = pasteboard ?? NSPasteboard(name: NSPasteboard.Name("codeboard-tests-\(UUID().uuidString)"))
     // never the network, never the person's caches

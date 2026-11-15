@@ -64,8 +64,11 @@ private func alwaysBoard(
     l.rows.filter { if case .notes = $0.row { true } else { false } }
   }
 
-  @Test func anAlwaysShownSidenoteIsDrawnUnderItsLinesAndTheCardGrows() async throws {
-    let r = try await Rig(alwaysBoard(), zoom: 1)
+  /// native: its notes measured and drawn by the native component, as the app does (NativeNotes)
+  @Test(arguments: [false, true]) func anAlwaysShownSidenoteIsDrawnUnderItsLinesAndTheCardGrows(native: Bool)
+    async throws
+  {
+    let r = try await Rig(alwaysBoard(), zoom: 1, native: native)
     defer { r.close() }
     await r.settle()
     let (l, top) = try layout(r, "c1")

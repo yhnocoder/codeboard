@@ -319,7 +319,8 @@ public final class CanvasView: NSView {
   /// How an image card's picture at a web address is read (tests give their own: never the network), and the folder the
   /// pictures read are kept in, each once
   package var fetchPicture: @Sendable (URL) async -> Data? = { try? await URLSession.shared.data(from: $0).0 }
-  package var pictureCache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+  package var pictureCache = CanvasView.pictures
+  nonisolated static let pictures = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
     .appending(path: "CodeBoard/Pictures")
   /// The pictures at web addresses read so far, by address: their files; and the addresses asked for
   var remotePictures: [String: URL] = [:]

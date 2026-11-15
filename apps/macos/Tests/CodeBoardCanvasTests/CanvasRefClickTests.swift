@@ -43,10 +43,10 @@ private func writeOtherBoard(_ root: URL) throws {
   try b.encoded().write(to: p.appending(path: Vault.boardFileName))
 }
 
-@MainActor func refRig() async throws -> Rig {
+@MainActor func refRig(native: Bool = false) async throws -> Rig {
   let root = FileManager.default.temporaryDirectory.appending(path: "canvas-refs-\(UUID().uuidString)")
   try writeOtherBoard(root)
-  let r = try await Rig(refBoard(), zoom: 1, root: root)
+  let r = try await Rig(refBoard(), zoom: 1, root: root, native: native)
   r.canvas.refWait = .milliseconds(60)
   return r
 }
@@ -90,8 +90,11 @@ extension Rig {
 extension CanvasWritingTests {
   @MainActor @Suite struct RefClicks {
 
-    @Test func aNearCardIsGoneToSelectedAndFlashedOnceTheDoubleClickTimeIsOver() async throws {
-      let r = try await refRig()
+    /// native: the refs where the native component draws them (NativeNotes measures them from its layout)
+    @Test(arguments: [false, true]) func aNearCardIsGoneToSelectedAndFlashedOnceTheDoubleClickTimeIsOver(native: Bool)
+      async throws
+    {
+      let r = try await refRig(native: native)
       defer { r.close() }
       let near = try #require(await r.refBox("Near"))
       #expect(r.canvas.cardNear(cid("near")) && !r.canvas.safeView.contains(r.rect("near")), "near, not in view")
