@@ -1024,6 +1024,8 @@ extension CanvasView {
     // a Section's title, its grip and its controls: all the arrow, as main's buttons and chrome (styles.css)
     let bp = camera.board(v)
     if hitCard(bp) == nil, let id = titleHover(at: bp) {
+      // hovered first, so its controls are there to be found on the first move onto it too
+      if id != hoveredTitle { hoverTitle(id, act: nil) }
       hoverTitle(id, act: sectionAct(at: bp)?.1)
       NSCursor.arrow.set()
       hover(nil)
@@ -1065,7 +1067,8 @@ extension CanvasView {
 
   public override func mouseDown(with e: NSEvent) {
     if opening { return }
-    Tips.shared.press()
+    // a press anywhere hides a button's tip (main's TooltipLayer on pointerdown)
+    tips.press()
     dropPicture()
     if spacePanDown(e) { return }
     // AppKit sends a multi-click's later presses to the view its first went to: a double-click's second press over the

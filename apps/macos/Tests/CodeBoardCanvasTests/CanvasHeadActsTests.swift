@@ -10,6 +10,17 @@ import Testing
 
 private let seg = SegmentID(rawValue: "s1")
 
+/// The canvas's tips its own, shown as soon as the pointer rests (the delay is the toolbar tests')
+@MainActor func ownTips(_ c: CanvasView) -> Tips {
+  let t = Tips()
+  t.after = { _, f in f() }
+  c.tips = t
+  return t
+}
+
+/// The tip shown in the rig's window
+@MainActor func tipView(_ r: Rig) -> TipView? { r.window.contentView?.subviews.compactMap { $0 as? TipView }.first }
+
 @MainActor @Suite(.serialized) struct CanvasHeadActsTests {
   static func board() -> Board {
     func own(_ b: CardContent.Body) -> Card.Content { .own(CardContent(body: b)) }
@@ -57,13 +68,13 @@ private let seg = SegmentID(rawValue: "s1")
     #expect(free.buttons.map(\.0) == [.fit, .wrap, .copy, .lang, .more] && free.lang == "Python")
     let n = try #require(c.head(cid("n")))
     #expect(n.buttons.map(\.0) == [.fit, .split, .more] && n.faint.isEmpty)
-    #expect(c.headTip(.split, n) == "Split by Headings · 3 cards, linked by arrows")
-    #expect(c.headTip(.fit, n) == "Fit Content  ⌥F")
+    #expect(c.headTip(.split, n) == Tip("Split by Headings · 3 cards, linked by arrows"))
+    #expect(c.headTip(.fit, n) == Tip("Fit Content", kbd: "⌥F"))
     // nothing to do: faint, and the tip says why
     let plain = try #require(c.head(cid("plain")))
     #expect(plain.faint == [.fit, .split])
-    #expect(c.headTip(.fit, plain) == "Fit Content · already as tall as its content")
-    #expect(c.headTip(.split, plain) == "Split by Headings · no headings to split at")
+    #expect(c.headTip(.fit, plain) == Tip("Fit Content · already as tall as its content", kbd: "⌥F"))
+    #expect(c.headTip(.split, plain) == Tip("Split by Headings · no headings to split at"))
     #expect(c.head(cid("img")) == nil)
     // a Web card's ↗ and ⋯ on glass over its top right corner; a Link List's ··· in its header
     let web = try #require(c.head(cid("w")))
@@ -117,14 +128,20 @@ private let seg = SegmentID(rawValue: "s1")
     func wraps() -> Bool {
       if case .own(let k) = r.card("c").content, case .code(let code) = k.body { code.wrap } else { false }
     }
+    let tips = ownTips(c)
     hoverOver(r, r.centre("c"))
     let wrap = try at(r, "c", .wrap)
     // pressed and moved off: nothing
     r.drag(wrap, CGPoint(x: 500, y: 650))
     #expect(!wraps() && !r.doc.history.canUndo)
     hoverOver(r, wrap)
-    #expect(c.hoveredHead?.1 == .wrap && c.toolTip == "Wrap Lines  ⌥Z")
+    // main's tip, not the system's: over the button, centred, its key after it; gone with the press
+    #expect(c.hoveredHead?.1 == .wrap && tips.shown?.tip == Tip("Wrap Lines", kbd: "⌥Z") && c.toolTip == nil)
+    let over = try #require(r.window.contentView).convert(c.viewPoint(wrap), from: c)
+    let tv = try #require(tipView(r))
+    #expect(abs(tv.frame.midX - over.x) <= 1, "\(tv.frame) over \(over)")
     r.click(wrap)
+    #expect(tips.shown == nil)
     #expect(wraps() && r.doc.undoName == "Wrap Lines" && r.doc.selection.isEmpty)
     r.doc.undo()
     #expect(!wraps())
@@ -238,10 +255,11 @@ private let seg = SegmentID(rawValue: "s1")
       #expect(h.buttons.dropFirst().allSatisfy { $0.1.minX > lockAt.maxX + t.headerGap }, "\(id)")
     }
     #expect(c.head(cid("n"))?.buttons.contains { $0.0 == .unlock } == false)
+    let tips = ownTips(c)
     hoverOver(r, r.centre("lock"))
     let at = CGPoint(x: r.rect("lock").minX + lockAt.midX, y: r.rect("lock").minY + lockAt.midY)
     hoverOver(r, at)
-    #expect(c.hoveredHead?.1 == .unlock && c.toolTip == "Unlock")
+    #expect(c.hoveredHead?.1 == .unlock && tips.shown?.tip == Tip("Unlock", kbd: "⇧⌘L"))
     r.click(at)
     #expect(r.card("lock").locked != true && r.doc.undoName == "Unlock")
     await r.settle()
