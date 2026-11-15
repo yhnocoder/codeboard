@@ -86,7 +86,7 @@ public enum MarkdownLooks {
       warm
       ? .init(highlight: hl, annotations: annots, seals: seals(dark: dark))
       : .init(
-        highlight: colors.accent.alpha(0.55), highlightStyle: .brush(height: 0.42), annotations: annots,
+        highlight: colors.accent.alpha(0.85), highlightStyle: .brush(height: 0.42), annotations: annots,
         seals: seals(dark: dark))
     // markdown.css .mmd: pele's colours from the theme (surfaces are the ink mixed into the paper)
     func mix(_ k: Double) -> MDColor {

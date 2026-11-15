@@ -44,6 +44,9 @@ enum Attr {
   static let link = NSAttributedString.Key("md.link")
   static let underline = NSAttributedString.Key("md.underline")
   static let ref = NSAttributedString.Key("md.ref")
+  /// the style's own font, kept when a run is set in a fallback: a box, highlight or strike line sits by the element's
+  /// font as the page's do, not by whichever font each script fell back to
+  static let face = NSAttributedString.Key("md.face")
 }
 
 /// Something drawn in place of its source: its size and how it sits on the line
@@ -448,6 +451,7 @@ struct InlineBuilder {
     var a: [NSAttributedString.Key: Any] = [
       NSAttributedString.Key(kCTFontAttributeName as String): font,
       NSAttributedString.Key(kCTForegroundColorAttributeName as String): s.color.cg,
+      Attr.face: font,
     ]
     if let c = s.strike { a[Attr.strike] = c }
     if let c = s.highlight { a[Attr.highlight] = c }

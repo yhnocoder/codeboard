@@ -193,98 +193,146 @@ extension MarkdownLayout {
 
   /// what CoreText does not draw: inline code and kbd boxes and highlights under the text, strike lines over it
   private func decorations(_ line: CTLine, _ origin: CGPoint, _ ctx: CGContext, under: Bool) {
-    var boxes: [Int: (CGFloat, CGFloat, InlineBox, CTFont)] = [:]
-    for run in CTLineGetGlyphRuns(line) as! [CTRun] {
-      let attrs = CTRunGetAttributes(run) as NSDictionary
-      let r = CTRunGetStringRange(run)
-      let x0 = origin.x + CTLineGetOffsetForStringIndex(line, r.location, nil)
-      let x1 = origin.x + CTLineGetOffsetForStringIndex(line, r.location + r.length, nil)
-      let font = attrs[kCTFontAttributeName] as! CTFont
+    let spans = Self.decorationSpans(line, under: under)
+    // boxes last: a code span's background lies over the highlight around it, as the inner element's does on the page
+    for (kind, s) in spans.filter({ $0.1.box == nil }) + spans.filter({ $0.1.box != nil }) {
+      let font = s.face
       let a = CTFontGetAscent(font)
       let d = CTFontGetDescent(font)
-      if under {
-        if let id = attrs[Attr.boxID] as? Int, let box = attrs[Attr.box] as? InlineBox {
-          let was = boxes[id]
-          boxes[id] = (min(was?.0 ?? x0, x0), max(was?.1 ?? x1, x1), box, was?.3 ?? font)
+      let size = CTFontGetSize(font)
+      let x0 = origin.x + s.x0
+      let x1 = origin.x + s.x1
+      switch kind {
+      case .highlight(let c):
+        // the mark's box: its font's ascent and descent and .12em below (markdown.css mark)
+        let top = origin.y - a
+        let h = a + d + 0.12 * size
+        switch theme.marks.highlightStyle {
+        case .band:
+          ctx.setFillColor(c.cg)
+          ctx.fill(
+            CGRect(
+              x: x0, y: top + h * CGFloat(theme.metrics.highlightFrom), width: x1 - x0,
+              height: h * (1 - CGFloat(theme.metrics.highlightFrom))))
+        case .brush(let em):
+          brush(CGRect(x: x0, y: top + h - CGFloat(em) * size, width: x1 - x0, height: CGFloat(em) * size), c, ctx)
         }
-        if let c = attrs[Attr.highlight] as? MDColor {
-          let size = CTFontGetSize(font)
-          let top = origin.y - a
-          let h = a + d + 0.12 * size
-          switch theme.marks.highlightStyle {
-          case .band:
-            // the lower 42 % of the text box and .12em below it (markdown.css mark)
-            ctx.setFillColor(c.cg)
-            ctx.fill(
-              CGRect(
-                x: x0, y: top + h * CGFloat(theme.metrics.highlightFrom), width: x1 - x0,
-                height: h * (1 - CGFloat(theme.metrics.highlightFrom))))
-          case .brush(let em):
-            brush(CGRect(x: x0, y: top + h - CGFloat(em) * size, width: x1 - x0, height: CGFloat(em) * size), c, ctx)
-          }
-        }
-      } else {
-        if let c = attrs[Attr.underline] as? MDColor {
-          let y = origin.y + CGFloat(theme.metrics.linkUnderlineOffset) + 0.5
-          ctx.setStrokeColor(c.cg)
-          ctx.setLineWidth(1)
-          ctx.move(to: CGPoint(x: x0, y: y))
-          ctx.addLine(to: CGPoint(x: x1, y: y))
-          ctx.strokePath()
-        }
-        guard let c = attrs[Attr.strike] as? MDColor else { continue }
+      case .underline(let c):
+        let y = origin.y + CGFloat(theme.metrics.linkUnderlineOffset) + 0.5
+        ctx.setStrokeColor(c.cg)
+        ctx.setLineWidth(1)
+        ctx.move(to: CGPoint(x: x0, y: y))
+        ctx.addLine(to: CGPoint(x: x1, y: y))
+        ctx.strokePath()
+      case .strike(let c):
         let y = origin.y - CTFontGetXHeight(font) / 2
         ctx.setStrokeColor(c.cg)
         ctx.setLineWidth(max(1, CTFontGetUnderlineThickness(font)))
         ctx.move(to: CGPoint(x: x0, y: y))
         ctx.addLine(to: CGPoint(x: x1, y: y))
         ctx.strokePath()
-      }
-    }
-    for (_, (x0, x1, box, font)) in boxes {
-      let r = CGRect(
-        x: x0, y: origin.y - CTFontGetAscent(font), width: x1 - x0,
-        height: CTFontGetAscent(font) + CTFontGetDescent(font))
-      let p = CGPath(roundedRect: r, cornerWidth: box.radius, cornerHeight: box.radius, transform: nil)
-      if let f = box.fill {
-        ctx.setFillColor(f.cg)
-        ctx.addPath(p)
-        ctx.fillPath()
-      }
-      if let s = box.stroke {
-        ctx.setStrokeColor(s.cg)
-        ctx.setLineWidth(0.5)
-        ctx.addPath(
-          CGPath(
-            roundedRect: r.insetBy(dx: 0.25, dy: 0.25), cornerWidth: box.radius, cornerHeight: box.radius,
-            transform: nil))
-        ctx.strokePath()
-        // kbd's key shadow: a line along the bottom
-        ctx.setFillColor(s.cg)
-        ctx.fill(CGRect(x: r.minX + box.radius / 2, y: r.maxY, width: r.width - box.radius, height: 1))
+      case .box:
+        guard let box = s.box else { continue }
+        let r = CGRect(x: x0, y: origin.y - a, width: x1 - x0, height: a + d)
+        let p = CGPath(roundedRect: r, cornerWidth: box.radius, cornerHeight: box.radius, transform: nil)
+        if let f = box.fill {
+          ctx.setFillColor(f.cg)
+          ctx.addPath(p)
+          ctx.fillPath()
+        }
+        if let s = box.stroke {
+          ctx.setStrokeColor(s.cg)
+          ctx.setLineWidth(0.5)
+          ctx.addPath(
+            CGPath(
+              roundedRect: r.insetBy(dx: 0.25, dy: 0.25), cornerWidth: box.radius, cornerHeight: box.radius,
+              transform: nil))
+          ctx.strokePath()
+          // kbd's key shadow: a line along the bottom
+          ctx.setFillColor(s.cg)
+          ctx.fill(CGRect(x: r.minX + box.radius / 2, y: r.maxY, width: r.width - box.radius, height: 1))
+        }
       }
     }
   }
 
-  /// Ink Wash's highlight: a thin vermilion stroke of uneven weight along the bottom of the box, thicker in the middle,
-  /// its ends tapered (themes.css --hl-brush)
+  private enum Decoration: Hashable {
+    case highlight(MDColor)
+    case underline(MDColor)
+    case strike(MDColor)
+    /// an inline code or kbd box, by its id
+    case box(Int)
+  }
+
+  private struct DecorationSpan {
+    var x0: CGFloat, x1: CGFloat
+    var face: CTFont
+    /// the face is the text's own, not an inline box's that the span started on
+    var settled: Bool
+    /// where the next run must start to carry on this span
+    var end: Int
+    var box: InlineBox?
+  }
+
+  /// One span per decoration and stretch of text on a line, however many runs the typesetter cut it into (each script
+  /// falls back to its own font, an atom is a run of its own): a highlight or line drawn per run breaks up at each one,
+  /// as the page's never does. Boxes join by their id, the rest while their runs follow on with the same colour; the
+  /// span is placed by the style's own font, never a fallback's, so it keeps one height along the line.
+  private static func decorationSpans(_ line: CTLine, under: Bool) -> [(Decoration, DecorationSpan)] {
+    var out: [(Decoration, DecorationSpan)] = []
+    var open: [Decoration: Int] = [:]
+    for run in CTLineGetGlyphRuns(line) as! [CTRun] {
+      let attrs = CTRunGetAttributes(run) as NSDictionary
+      let r = CTRunGetStringRange(run)
+      guard r.length > 0 else { continue }
+      let x0 = CTLineGetOffsetForStringIndex(line, r.location, nil)
+      let x1 = CTLineGetOffsetForStringIndex(line, r.location + r.length, nil)
+      let face = (attrs[Attr.face] ?? attrs[kCTFontAttributeName]) as! CTFont
+      let box = attrs[Attr.box] as? InlineBox
+      var kinds: [Decoration] = []
+      if under {
+        if let id = attrs[Attr.boxID] as? Int, box != nil { kinds.append(.box(id)) }
+        if let c = attrs[Attr.highlight] as? MDColor { kinds.append(.highlight(c)) }
+      } else {
+        if let c = attrs[Attr.underline] as? MDColor { kinds.append(.underline(c)) }
+        if let c = attrs[Attr.strike] as? MDColor { kinds.append(.strike(c)) }
+      }
+      for k in kinds {
+        let isBox = if case .box = k { true } else { false }
+        if let i = open[k], isBox || out[i].1.end == r.location {
+          out[i].1.x0 = min(out[i].1.x0, x0, x1)
+          out[i].1.x1 = max(out[i].1.x1, x0, x1)
+          out[i].1.end = r.location + r.length
+          // a highlight or strike that starts on a code span sits by the text around it
+          if !out[i].1.settled, box == nil {
+            out[i].1.face = face
+            out[i].1.settled = true
+          }
+        } else {
+          open[k] = out.count
+          let span = DecorationSpan(
+            x0: min(x0, x1), x1: max(x0, x1), face: face, settled: isBox || box == nil, end: r.location + r.length,
+            box: isBox ? box : nil)
+          out.append((k, span))
+        }
+      }
+    }
+    return out
+  }
+
+  /// Ink Wash's highlight: a thin vermilion stroke of uneven weight, its ends tapered, stretched over the box
+  /// (themes.css --hl-brush: this path on a 120 × 8 grid)
   private func brush(_ r: CGRect, _ c: MDColor, _ ctx: CGContext) {
     guard r.width > 1 else { return }
-    let t = r.height * 0.32
-    let mid = r.maxY - r.height * 0.42
-    let p = CGMutablePath()
-    p.move(to: CGPoint(x: r.minX, y: mid))
-    p.addCurve(
-      to: CGPoint(x: r.maxX, y: mid - t * 0.2), control1: CGPoint(x: r.minX + r.width * 0.3, y: mid - t * 0.6),
-      control2: CGPoint(x: r.minX + r.width * 0.7, y: mid - t * 0.5))
-    p.addCurve(
-      to: CGPoint(x: r.minX, y: mid), control1: CGPoint(x: r.minX + r.width * 0.7, y: mid + t * 0.6),
-      control2: CGPoint(x: r.minX + r.width * 0.3, y: mid + t * 0.7))
-    p.closeSubpath()
+    ctx.saveGState()
+    ctx.translateBy(x: r.minX, y: r.minY)
+    ctx.scaleBy(x: r.width / 120, y: r.height / 8)
     ctx.setFillColor(c.cg)
-    ctx.addPath(p)
+    ctx.addPath(SVGShapes.path(Self.brushPath))
     ctx.fillPath()
+    ctx.restoreGState()
   }
+  static let brushPath = "M1 5.2C18 3.6 34 4.6 52 4.1S88 3.2 119 4.4L118.6 5.6C96 6.2 72 5.4 54 6.1S20 6.8 1.4 6.4Z"
 
   /// Where a point lands: a link, a reference, a task box, an image, or the source offset of the nearest character
   public func hit(_ point: CGPoint) -> MarkdownHit {
