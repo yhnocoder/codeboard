@@ -6,8 +6,9 @@
 //                                                          (the working tree against the ref, untracked files too)
 // --dry prints the selection and runs nothing. Otherwise it prints the same (and adds it to $GITHUB_STEP_SUMMARY) and
 // runs swift test --skip-build in apps/macos with it, after swift build --build-tests. Either way it first checks every
-// name in tiers.json against the test sources and fails on one that is gone or ambiguous.
-import { execFileSync, spawnSync } from "node:child_process";
+// name in tiers.json against the test sources and fails on one that is gone or ambiguous; after a run it fails when a
+// test product printed no summary of its run or ran another number of tests than were picked for it.
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -166,10 +167,12 @@ const under = (file, dir) => file === dir || file.startsWith(`${dir}/`);
 
 const lines = [];
 const filters = [];
+const expected = [];
 let filtered = 0;
 for (const t of targets) {
   if (all) {
     lines.push(`${t.name}: all ${t.tests.length} tests`);
+    expected.push({ name: t.name, count: t.tests.length });
     continue;
   }
   const own = changed.filter((f) => under(f, `Tests/${t.name}`) || t.tier.sources.some((s) => under(f, s)));
@@ -180,6 +183,7 @@ for (const t of targets) {
     lines.push(`${t.name}: all ${t.tests.length} tests (${why})`);
     filters.push(wholeFilter(t.name));
     filtered += t.tests.length;
+    expected.push({ name: t.name, count: t.tests.length });
     continue;
   }
   const picked = new Map();
@@ -208,6 +212,7 @@ for (const t of targets) {
   lines.push(`${t.name}: ${count} of ${t.tests.length} tests: ${entries}${files}`);
   filters.push(...picked.keys());
   filtered += count;
+  if (count) expected.push({ name: t.name, count });
 }
 const args = ["test", "--skip-build", ...filters.flatMap((f) => ["--filter", f])];
 const total = targets.reduce((a, t) => a + t.tests.length, 0);
@@ -222,4 +227,54 @@ process.stdout.write(`${summary}\n`);
 if (dry) process.exit(0);
 if (process.env.GITHUB_STEP_SUMMARY)
   fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Mac app unit tests\n\n\`\`\`\n${summary}\n\`\`\`\n`);
-process.exit(spawnSync("swift", args, { cwd: app, stdio: "inherit" }).status ?? 1);
+
+// A test process can end with status 0 before it ran all its tests (seen when something under test stopped the main
+// run loop): it prints no summary, and swift test still exits 0. So every product's summary line must be there, with
+// the number of tests picked for it. The lines name no product, so the numbers are compared as a multiset; a product
+// with nothing picked is left out on both sides
+const output = [];
+const status = await new Promise((done) => {
+  const run = spawn("swift", args, { cwd: app, stdio: ["inherit", "pipe", "pipe"] });
+  const pass = (to) => (chunk) => {
+    to.write(chunk);
+    output.push(chunk);
+  };
+  run.stdout.on("data", pass(process.stdout));
+  run.stderr.on("data", pass(process.stderr));
+  run.on("error", (e) => {
+    process.stderr.write(`pick.mjs: cannot run swift: ${e.message}\n`);
+    done(1);
+  });
+  run.on("close", (code) => done(code ?? 1));
+});
+const text = Buffer.concat(output)
+  .toString("utf8")
+  .replace(/\x1b\[[0-9;]*m/g, "");
+const reported = [...text.matchAll(/Test run with (\d+) tests? in \d+ suites? (?:passed|failed)/g)]
+  .map((m) => Number(m[1]))
+  .filter((n) => n > 0);
+const left = [...reported];
+let unmatched = 0;
+for (const { count } of expected) {
+  if (left.includes(count)) left.splice(left.indexOf(count), 1);
+  else unmatched++;
+}
+const silent = expected.length - reported.length;
+const problem =
+  silent > 0
+    ? `${silent} of ${expected.length} test products ended without the summary of their run: a test process ` +
+      "stopped early, and the tests it had not reached did not run"
+    : unmatched || left.length
+      ? "the test products ran other numbers of tests than were picked"
+      : "";
+const sides = [
+  `  picked:   ${expected.map((e) => `${e.name} ${e.count}`).join(", ")}`,
+  `  reported: ${reported.join(", ") || "nothing"}`,
+].join("\n");
+process.exitCode = status;
+if (problem && status === 0) {
+  process.stderr.write(`pick.mjs: ${problem}\n${sides}\n`);
+  if (process.env.GITHUB_STEP_SUMMARY)
+    fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `**${problem}**\n\n\`\`\`\n${sides}\n\`\`\`\n`);
+  process.exitCode = 1;
+} else if (silent > 0) process.stderr.write(`pick.mjs: ${problem}\n`);
