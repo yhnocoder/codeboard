@@ -88,9 +88,10 @@ final class SelectionToolbar: HoverControls {
         ctx.addPath(CGPath(roundedRect: r.insetBy(dx: 2, dy: 2), cornerWidth: 5, cornerHeight: 5, transform: nil))
         ctx.fillPath()
       } else if hovered == b.id {
-        // :hover: the ink at 6.5 % behind it, the icon in the ink
-        ctx.setFillColor(theme.colors.ink.alpha(0.065).cg)
-        ctx.addPath(CGPath(roundedRect: r.insetBy(dx: 2, dy: 2), cornerWidth: 5, cornerHeight: 5, transform: nil))
+        // :hover as the board's buttons (.tbtn): the ink at 7 % behind it, 8.5 round, the icon in the ink
+        ctx.setFillColor(theme.colors.ink.alpha(0.07).cg)
+        ctx.addPath(
+          CGPath(roundedRect: r.insetBy(dx: 1, dy: 1), cornerWidth: 8.5, cornerHeight: 8.5, transform: nil))
         ctx.fillPath()
       }
       if Self.separated.contains(b.id) {
