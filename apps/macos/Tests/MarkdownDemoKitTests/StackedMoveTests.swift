@@ -153,4 +153,32 @@ import Testing
     e.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
     #expect(!e.hints.shown)
   }
+
+  /// a card's right edge dragged from narrow to wide: the card is laid out again at every step, at the width the drag
+  /// gives (both edges move), and the numbers of the drag are kept for the HUD
+  @Test func aCardsEdgeDragRelaysItOut() throws {
+    _ = NSApplication.shared
+    let demo = try Demo(text: sample, folder: sampleFolder(), cardWidth: 420)
+    demo.secondText = secondSample
+    demo.setUp()
+    _ = Check.lay(demo, width: 1400)
+    Self.kept.append(demo)
+    let w = demo.window!
+    w.alphaValue = 0.02
+    w.ignoresMouseEvents = true
+    w.setFrameOrigin(CGPoint(x: -30000, y: -30000))
+    w.orderFrontRegardless()
+    defer { w.orderOut(nil) }
+    let r = demo.page.cardRects[0]
+    let p = CGPoint(x: r.maxX - 2, y: r.midY)
+    #expect(demo.edgeDown(p))
+    for k in stride(from: -80.0, through: 400, by: 4) {
+      demo.edgeDragged(CGPoint(x: p.x + k / 2, y: p.y))
+    }
+    demo.edgeUp()
+    #expect(abs(demo.sheets[0].width - 820) < 0.5)
+    #expect(abs(demo.cards[0].core.layout.width - (820 - 28)) < 1)
+    #expect(demo.dragStats?.frames == 121)
+    #expect(demo.widthLine != nil)
+  }
 }

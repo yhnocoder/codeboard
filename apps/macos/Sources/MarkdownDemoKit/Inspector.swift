@@ -26,6 +26,8 @@ final class Inspector: NSView {
   private var lastCounts = (notes: 0, paper: 0, ticks: 0)
   /// the window, zoom, look and appearance, for a report (the demo's)
   var context: () -> String = { "" }
+  /// a line more for the HUD (the last card-width drag's numbers)
+  var extra: () -> String? = { nil }
   /// memory by what holds it, measured when asked (walking the address space costs tens of ms: never per second)
   private var parts = ""
   private let copyButton = NSButton(title: "Copy report", target: nil, action: nil)
@@ -38,7 +40,7 @@ final class Inspector: NSView {
     wantsLayer = true
     layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
     hudLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-    hudLabel.maximumNumberOfLines = 6
+    hudLabel.maximumNumberOfLines = 7
     hudLabel.lineBreakMode = .byTruncatingTail
     hudLabel.frame = CGRect(x: 14, y: 600 - 92, width: 300 - 28, height: 82)
     hudLabel.autoresizingMask = [.width, .minYMargin]
@@ -116,8 +118,9 @@ final class Inspector: NSView {
       format: "draws/s %d (paper %d)   link frames/s %d", c.notes - lastCounts.notes, c.paper - lastCounts.paper,
       c.ticks - lastCounts.ticks)
     lastCounts = c
-    let next = String(
-      format: "memory %@   CPU %.0f %%\n%@\nlast key %@   last frame %@\n%@", mem, pct, parts, key, draw, per)
+    let next =
+      String(format: "memory %@   CPU %.0f %%\n%@\nlast key %@   last frame %@\n%@", mem, pct, parts, key, draw, per)
+      + (extra().map { "\n" + $0 } ?? "")
     // the panel is laid out again only when a number changed: the HUD must not cost what it measures
     guard next != hud else { return }
     hud = next

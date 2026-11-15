@@ -216,7 +216,27 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
       else { return false }
       return onDrop(url)
     }
-    override func mouseDown(with event: NSEvent) { onClick() }
+    /// a card's right edge pressed (0), dragged (1), let go (2): true when the press was on one
+    var onEdge: (Int, CGPoint) -> Bool = { _, _ in false }
+    var isEdge: (CGPoint) -> Bool = { _ in false }
+    private var edging = false
+    override func mouseDown(with event: NSEvent) {
+      edging = onEdge(0, convert(event.locationInWindow, from: nil))
+      if !edging { onClick() }
+    }
+    override func mouseDragged(with event: NSEvent) {
+      if edging { _ = onEdge(1, convert(event.locationInWindow, from: nil)) }
+    }
+    override func mouseUp(with event: NSEvent) {
+      if edging { _ = onEdge(2, convert(event.locationInWindow, from: nil)) }
+      edging = false
+    }
+    /// the resize pointer over each card's right edge
+    override func resetCursorRects() {
+      for r in cardRects {
+        addCursorRect(CGRect(x: r.maxX - 6, y: r.minY, width: 10, height: r.height), cursor: .resizeLeftRight)
+      }
+    }
     var paper = NSColor.windowBackgroundColor
     var card = NSColor.textBackgroundColor
     /// each card's fill (nil: none, a Text on the paper)
@@ -287,13 +307,24 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
       let what = self.vault != nil ? "a board, \(self.cards.count) cards" : "a file, \(self.cards.count) cards"
       return
         "window \(Int(size.width)) × \(Int(size.height)) pt at \(w.backingScaleFactor)x, zoom \(Int(self.zoom * 100)) %, "
-        + "\(self.look), \(self.dark ? "dark" : "light"), \(what)"
+        + "\(self.look), \(self.dark ? "dark" : "light"), \(what)" + (self.widthLine.map { ", " + $0 } ?? "")
     }
+    inspector.extra = { [weak self] in self?.widthLine }
     inspector.counts = { [weak self] in
       guard let self else { return (0, 0, 0) }
       return (self.cards.reduce(0) { $0 + $1.draws }, self.page.draws, MarkdownEditorView.linkTicks)
     }
     page.onClick = { [weak self] in for c in self?.cards ?? [] { c.isEditing = false } }
+    page.onEdge = { [weak self] phase, p in
+      guard let self else { return false }
+      switch phase {
+      case 0: return self.edgeDown(p)
+      case 1: self.edgeDragged(p)
+      default: self.edgeUp()
+      }
+      return true
+    }
+    page.isEdge = { [weak self] p in self?.edgeCard(at: p) != nil }
     page.registerForDraggedTypes([.fileURL])
     page.onDrop = { [weak self] url in
       guard let self, self.open(any: url) else { return false }
@@ -358,6 +389,8 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   /// every card goes: the next rebuild makes new editors for new texts
   func clearCards() {
     images = [:]
+    widths = [:]
+    dragStats = nil
     for c in cards { c.removeFromSuperview() }
     cards = []
   }
@@ -508,10 +541,90 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   /// What the cards show: a vault's board (its Markdown cards, each with its own image folder, layout info, style and
   /// width), else the file and a second Note, as Notes of the demo's width
   var sheets: [VaultNote] {
-    vaultNotes
+    let notes =
+      vaultNotes
       ?? ([text] + (secondText.map { [$0] } ?? [])).enumerated().map {
         VaultNote(id: "\($0.offset)", text: $0.element, folder: folder, width: cardWidth)
       }
+    // widths changed here (the toolbar's for all, a card's edge for one), never written back
+    return notes.enumerated().map { i, n in
+      var n = n
+      n.width = widths[i] ?? allWidth ?? n.width
+      return n
+    }
+  }
+
+  // MARK: card widths
+
+  /// a card's width set by dragging its edge, and the toolbar's width for every card; reset with the board
+  var widths: [Int: Double] = [:]
+  var allWidth: Double?
+  static let widthRange = 240.0...1600.0
+  /// the edge drag under way: the card, its width and the pointer's x at the press
+  private var widthDrag: (card: Int, from: Double, x: CGFloat)?
+  /// the last drag's per-frame relayout (ms, last and worst) and frames over a display frame's time
+  private(set) var dragStats: (last: Double, worst: Double, frames: Int, dropped: Int)?
+
+  /// card `i` laid out again at `width`: only it, every frame of a drag (no picture stretched)
+  func setWidth(_ width: Double, of i: Int) {
+    guard cards.indices.contains(i) else { return }
+    let t0 = ProcessInfo.processInfo.systemUptime
+    widths[i] = min(Self.widthRange.upperBound, max(Self.widthRange.lowerBound, width))
+    let n = sheets[i]
+    let card = Self.card(n.style, look: look, dark: dark)
+    let e = cards[i]
+    let layout = BlockLayout(
+      e.core.document, width: n.width - card.padding[1] - card.padding[3], theme: card.theme,
+      layout: e.core.layout.info,
+      resources: live(for: n.folder))
+    e.core.relayout(layout)
+    e.setFrameSize(CGSize(width: ceil(layout.size.width * zoom), height: ceil(layout.size.height * zoom)))
+    e.needsDisplay = true
+    place()
+    e.displayIfNeeded()
+    let ms = (ProcessInfo.processInfo.systemUptime - t0) * 1000
+    let s = dragStats ?? (0, 0, 0, 0)
+    dragStats = (ms, max(s.worst, ms), s.frames + 1, s.dropped + (ms > 1000.0 / 60 ? 1 : 0))
+  }
+
+  /// the toolbar's width: every card at once
+  @objc func setAllWidths(_ s: NSSlider) {
+    allWidth = s.doubleValue
+    widths = [:]
+    dragStats = nil
+    rebuild()
+  }
+
+  /// a press on a card's right edge (its last 6 points and 4 past it)
+  func edgeCard(at p: CGPoint) -> Int? {
+    page.cardRects.indices.first { i in
+      let r = page.cardRects[i]
+      return p.y >= r.minY && p.y <= r.maxY && p.x >= r.maxX - 6 && p.x <= r.maxX + 4
+    }
+  }
+
+  func edgeDown(_ p: CGPoint) -> Bool {
+    guard let i = edgeCard(at: p) else { return false }
+    widthDrag = (i, sheets[i].width, p.x)
+    dragStats = nil
+    return true
+  }
+
+  func edgeDragged(_ p: CGPoint) {
+    guard let d = widthDrag else { return }
+    // both edges move: the cards stand centred in the column
+    setWidth(d.from + Double(2 * (p.x - d.x) / zoom), of: d.card)
+  }
+
+  func edgeUp() { widthDrag = nil }
+
+  /// the last width drag's numbers, for the HUD and the report
+  var widthLine: String? {
+    dragStats.map {
+      String(
+        format: "width drag: relayout last %.1f ms, worst %.1f ms, %d frames, %d dropped", $0.last, $0.worst,
+        $0.frames, $0.dropped)
+    }
   }
 
   /// A style's card as the demo draws it: without the header strip a board draws over a Note (its title bar), which the
@@ -662,6 +775,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     let bottom = max(rects.last?.maxY ?? 0, grow?.to.last?.maxY ?? 0)
     page.frame = CGRect(x: 0, y: 0, width: w, height: bottom + 40)
     page.cardRects = rects
+    page.window?.invalidateCursorRects(for: page)
     for (i, (e, r)) in zip(cards, rects).enumerated() {
       let card = card(i)
       e.setFrameOrigin(CGPoint(x: r.minX + card.padding[3] * zoom, y: r.minY + (card.header + card.padding[0]) * zoom))
@@ -896,7 +1010,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
 
 extension Demo: NSToolbarDelegate {
   static let items: [NSToolbarItem.Identifier] = [
-    .init("inspector"), .init("board"), .init("look"), .init("dark"), .flexibleSpace, .init("zoom"),
+    .init("inspector"), .init("board"), .init("look"), .init("dark"), .flexibleSpace, .init("width"), .init("zoom"),
   ]
   func toolbarDefaultItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] { Self.items }
   func toolbarAllowedItemIdentifiers(_ t: NSToolbar) -> [NSToolbarItem.Identifier] { Self.items }
@@ -924,6 +1038,13 @@ extension Demo: NSToolbarDelegate {
         labels: ["Light", "Dark"], trackingMode: .selectOne, target: self, action: #selector(setDark(_:)))
       c.selectedSegment = 0
       item.view = c
+    case "width":
+      let s = NSSlider(
+        value: cardWidth, minValue: Self.widthRange.lowerBound, maxValue: Self.widthRange.upperBound, target: self,
+        action: #selector(setAllWidths(_:)))
+      s.frame.size.width = 140
+      s.toolTip = "Card width"
+      item.view = s
     case "zoom":
       let s = NSSlider(value: 100, minValue: 50, maxValue: 200, target: self, action: #selector(setZoom(_:)))
       s.frame.size.width = 160
