@@ -337,7 +337,9 @@ package final class SidenotePop: NSObject {
     case .text(let md, let q, let lines, let always):
       s.always = always
       let width = Self.width - 2 * Self.pad - (q == nil ? 0 : 32)
-      s.body = body(md, width: width, edit: n.fixed ? nil : { [weak s] in s?.onEdit?() })
+      s.body = body(
+        md, width: width, edit: n.fixed ? nil : { [weak s] in s?.onEdit?() },
+        toggle: n.fixed ? nil : { [weak self] text in self?.onAction?(.write(id, text)) })
       s.onEdit =
         n.fixed
         ? nil
@@ -397,7 +399,9 @@ package final class SidenotePop: NSObject {
     let id = n.id
     let v = AnswerView(theme: t)
     let width = Self.width - 2 * Self.pad - 32 - 13
-    v.body = body(a.md, width: width, edit: n.fixed ? nil : { [weak v] in v?.onEdit?() })
+    v.body = body(
+      a.md, width: width, edit: n.fixed ? nil : { [weak v] in v?.onEdit?() },
+      toggle: n.fixed ? nil : { [weak self] text in self?.onAction?(.writeAnswer(id, answer: a.id, text)) })
     if !n.fixed {
       v.onEdit = { [weak self, weak v] in
         guard let self, let v else { return }
@@ -424,12 +428,13 @@ package final class SidenotePop: NSObject {
   }
 
   /// A piece of Markdown drawn as the board draws a sidenote's (.hxpop .sb.nbody); a double-click writes in it, a
-  /// click on a drawn ref or link goes to the canvas
+  /// click on a drawn ref or link goes to the canvas, one on a task's box writes it checked or not (Md onToggle)
   private func body(
-    _ md: String, width: CGFloat, edit: (() -> Void)?
+    _ md: String, width: CGFloat, edit: (() -> Void)?, toggle: ((String) -> Void)?
   ) -> MDBody {
     let b = MDBody(layout: layout(md, width: width, editing: false), folder: shown!.folder, dark: shown!.theme.dark)
     b.onDouble = edit
+    if let toggle { b.onTask = { k in MarkdownSourceOps.toggleTask(md, nth: k).map(toggle) } }
     b.onRef = { [weak self, weak b] r in
       guard let self, let b else { return }
       guard let r else {
@@ -1398,6 +1403,8 @@ final class MDBody: NSView {
   var onDouble: (() -> Void)?
   var onRef: (((label: String, target: String?, rect: CGRect, go: Bool)?) -> Void)?
   var onLink: ((String) -> Void)?
+  /// a task's box clicked: the nth task in its source
+  var onTask: ((Int) -> Void)?
 
   init(layout: BlockLayout, folder: URL, dark: Bool) {
     self.layout = layout
@@ -1435,6 +1442,10 @@ final class MDBody: NSView {
       return
     }
     popOf(self)?.pressedElsewhere()
+    if e.clickCount == 1, let onTask, let k = layout.task(at: p) {
+      onTask(k)
+      return
+    }
     if e.clickCount == 1, let l = layout.link(at: p) {
       onLink?(l.url)
       return

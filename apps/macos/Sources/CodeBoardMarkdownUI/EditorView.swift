@@ -2160,6 +2160,19 @@ public final class MarkdownEditorView: NSView {
       changed()
       return
     }
+    // a press on a task's box checks or unchecks it, the caret where it was (TipTap's TaskItem checkbox)
+    if e.clickCount == 1, let k = core.layout.task(at: at), let next = MarkdownSourceOps.toggleTask(core.source, nth: k)
+    {
+      let (a, b) = (core.source as NSString, next as NSString)
+      var i = 0
+      while i < a.length, a.character(at: i) == b.character(at: i) { i += 1 }
+      core.apply(
+        MDEdit(
+          range: i..<(i + 1), replacement: b.substring(with: NSRange(location: i, length: 1)),
+          selection: core.selection, undo: .command))
+      changed()
+      return
+    }
     // a press on a selected image's picture may start dragging it out (not on its grips, which overlap its edges: they
     // resize it; taken as a click on the picture, their release opened its source)
     if let box = imageBox, box.contains(at), e.clickCount == 1, !onImageGrip(at, box) {

@@ -1242,6 +1242,13 @@ extension CanvasView {
       return
     }
     if pressRow(e, view: v, board: p) { return }
+    // a task's checkbox on a card at rest: checked or unchecked on the release over it
+    if e.clickCount == 1, let t = taskAt(p) {
+      hold(
+        over: { [weak self] in self?.taskAt($0).map { $0.card == t.card && $0.nth == t.nth } == true },
+        act: { [weak self] in self?.toggleTask(t) })
+      return
+    }
     // a ref's preview closes, but on the press on its ref (which closes it too, as its second click)
     refPress = e.clickCount == 1 ? refAt(p) : nil
     if let peek = refPeek,

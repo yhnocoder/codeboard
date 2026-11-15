@@ -245,7 +245,8 @@
             "CanvasWritingTests/RefClicks",
             "CanvasSidenoteTests/RefClicksInPopup",
             "RefTests",
-            "CanvasWritingTests/doubleBracketListsTheCardsAndWritesThePickWithItsID"
+            "CanvasWritingTests/doubleBracketListsTheCardsAndWritesThePickWithItsID",
+            "CanvasTaskTests"
           ]
         },
         "shelf": {
