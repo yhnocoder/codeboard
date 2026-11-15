@@ -1,6 +1,7 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
+import CodeBoardSyntax
 import CodeCore
 import CodeUI
 import Testing
@@ -280,6 +281,29 @@ extension Rig {
 
   /// ⌘F opens the editor's find bar over the card: what is typed is found from the caret on, ⌘G and ↩ find the next,
   /// ⇧⌘G the one before, going round; Esc closes the bar only, the found text selected and the keys the editor's
+  /// Lines written are coloured as soon as the highlighter has them (a frame or two), not left in plain ink
+  @Test func linesWrittenAreColouredOnceTheHighlighterHasThem() async throws {
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer { r.close() }
+    r.doubleClick(try r.line("f", 1, x: 400))
+    await r.editorReady()
+    let v = try #require(r.code)
+    func runs(_ n: Int) -> [CodeRun]? {
+      for row in v.layout.lineRows {
+        if case .line(let number, false, _, let runs) = row.kind, number == n { return runs }
+      }
+      return nil
+    }
+    #expect(runs(1)?.isEmpty == false, "coloured as drawn")
+    r.press("\r")
+    v.insertText("x = run(1)", replacementRange: none)
+    r.press("\r")
+    v.insertText("return x", replacementRange: none)
+    await r.until("the new lines coloured") { runs(2)?.isEmpty == false && runs(3)?.isEmpty == false }
+    // `return` a keyword, `run` a call
+    #expect(runs(3)?.contains { $0.style == TokenClass.keyword.rawValue } == true)
+  }
+
   @Test func commandFFindsInTheCodeBeingWritten() async throws {
     let r = try await Rig(freeBoard(), zoom: 1)
     defer { r.close() }
