@@ -66,6 +66,51 @@ import Testing
     #expect(a == b)
   }
 
+  /// A key redraws only the rows of the block it changed (with the caret's old and new place), and what that redraw
+  /// leaves on the old picture is the picture of the new text; a key that makes a block redraws all below it
+  @Test func aKeyRedrawsOnlyWhereThePictureChanged() throws {
+    _ = boardFonts
+    let text = (0..<40).map { "Paragraph \($0) with **bold** and `code` in it." }.joined(separator: "\n\n")
+    let view = MarkdownEditorView(
+      layout: BlockLayout(
+        MarkdownDocument(text), width: 320, theme: testTheme, layout: nil, resources: TestResources()),
+      caret: (text as NSString).range(of: "Paragraph 20 with").upperBound)
+    view.alwaysShowsCaret = true
+    let size = view.frame.size
+    let ctx = CGContext(
+      data: nil, width: Int(size.width * 2), height: Int(size.height * 2), bitsPerComponent: 8,
+      bytesPerRow: Int(size.width * 2) * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    ctx.translateBy(x: 0, y: size.height * 2)
+    ctx.scaleBy(x: 2, y: -2)
+    func draw(_ r: CGRect) {
+      ctx.saveGState()
+      ctx.clip(to: r)
+      ctx.clear(r)
+      NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
+      view.draw(r)
+      NSGraphicsContext.current = nil
+      ctx.restoreGState()
+    }
+    func pixels() -> [UInt8] {
+      Array(
+        UnsafeBufferPointer(start: ctx.data!.assumingMemoryBound(to: UInt8.self), count: ctx.bytesPerRow * ctx.height))
+    }
+    let all = CGRect(origin: .zero, size: size)
+    draw(all)
+    view.insertText("x", replacementRange: NSRange(location: NSNotFound, length: 0))
+    let block = view.core.layout.blockFrames[20]
+    let area = try #require(view.changedArea())
+    #expect(area.minY >= block.minY - 20 && area.maxY <= block.maxY + 20, "\(area) for \(block)")
+    draw(area.insetBy(dx: -1, dy: -1).integral)
+    let patched = pixels()
+    draw(all)
+    #expect(patched == pixels(), "the redrawn rows on the old picture are the new picture")
+    view.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+    let below = try #require(view.changedArea())
+    #expect(below.maxY >= view.core.layout.size.height - 1, "a new block moves all below it")
+  }
+
   @Test func keysGoThroughTheSystemsBindings() {
     _ = boardFonts
     let view = MarkdownEditorView(

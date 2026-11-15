@@ -401,6 +401,7 @@ public final class MarkdownEditorView: NSView {
   public override var acceptsFirstResponder: Bool { true }
   public override func becomeFirstResponder() -> Bool {
     restartBlink()
+    needsDisplay = true
     return true
   }
   public override func resignFirstResponder() -> Bool {
@@ -430,12 +431,60 @@ public final class MarkdownEditorView: NSView {
   public func thaw() {
     frozen = false
     restartBlink()
+    needsDisplay = true
   }
 
   private func resize() {
     let s = core.layout.size
-    setFrameSize(CGSize(width: ceil(s.width * zoom), height: ceil(s.height * zoom)))
+    let size = CGSize(width: ceil(s.width * zoom), height: ceil(s.height * zoom))
+    guard size != frame.size else { return }
+    setFrameSize(size)
     needsDisplay = true
+  }
+
+  /// What the last draw showed: each block's piece and box, and the boxes of the caret, the selection and an input
+  /// method's text, so that a change redraws only where they differ (a key in a long Note redrew all of it, tens of ms
+  /// of the main thread, its glyphs drawn unquantized). Whatever else was on the paper (find matches, a hovered link,
+  /// table grips, a slide, a picked image, the placeholder…) makes the next change redraw everything
+  private var drawnState: (pieces: [ObjectIdentifier], frames: [CGRect], marks: [CGRect], extras: Bool)?
+
+  private var drawState: (pieces: [ObjectIdentifier], frames: [CGRect], marks: [CGRect], extras: Bool) {
+    let l = core.layout
+    let caret = core.caretRect.map { [$0, offImage($0)] } ?? []
+    let extras =
+      !matches.isEmpty || hoveredLine != nil || !slides.isEmpty || blockSlide != nil || tableFlip != nil
+      || tableDrag != nil || preview.problemAt != nil || core.selectedImage != nil || gripBox.row != nil
+      || gripBox.col != nil || tableGrips != nil || !l.drawOffsets.isEmpty || !l.marks.isEmpty
+      || !l.scrollX.isEmpty || !l.codeScrollX.isEmpty || (placeholder != nil && core.source.isEmpty)
+    return (l.pieces.map(ObjectIdentifier.init), l.blockFrames, caret + core.selectionRects + core.markedRects, extras)
+  }
+
+  /// Marks for redrawing what a change made differ from what was drawn
+  private func invalidateChanged() {
+    guard let dirty = changedArea() else {
+      needsDisplay = true
+      return
+    }
+    guard !dirty.isNull else { return }
+    setNeedsDisplay(dirty.applying(CGAffineTransform(scaleX: zoom, y: zoom)).insetBy(dx: -1, dy: -1))
+  }
+
+  /// Where what is drawn now differs from the last draw, in the layout's points: nil, everywhere; null, nowhere
+  func changedArea() -> CGRect? {
+    let now = drawState
+    guard let was = drawnState, !was.extras, !now.extras else { return nil }
+    var dirty = CGRect.null
+    for i in 0..<max(was.pieces.count, now.pieces.count)
+    where was.pieces[safe: i] != now.pieces[safe: i] || was.frames[safe: i] != now.frames[safe: i] {
+      // a block draws a little past its box (descenders, a quote's bar, a code panel's shadow): its rows, widened
+      for f in [was.frames[safe: i], now.frames[safe: i]].compactMap({ $0 }) {
+        dirty = dirty.union(CGRect(x: 0, y: f.minY - 8, width: core.layout.width, height: f.height + 16))
+      }
+    }
+    if was.marks != now.marks {
+      for r in was.marks + now.marks { dirty = dirty.union(r.insetBy(dx: -4, dy: -2)) }
+    }
+    return dirty
   }
 
   // MARK: drawing
@@ -452,7 +501,10 @@ public final class MarkdownEditorView: NSView {
     draws += 1
     // a slide is drawn where its clock says, whether or not its display link has run since
     if let b = blockSlide { stepBlocks(at: CACurrentMediaTime() - b.since) }
-    defer { lastDrawMs = BlockLayout.cpu() - started }
+    defer {
+      drawnState = drawState
+      lastDrawMs = BlockLayout.cpu() - started
+    }
     guard let ctx = NSGraphicsContext.current?.cgContext else { return }
     let scale = zoom * (window?.backingScaleFactor ?? 2)
     ctx.saveGState()
@@ -606,7 +658,7 @@ public final class MarkdownEditorView: NSView {
     blink?.invalidate()
     blink = nil
     blinkOn = true
-    needsDisplay = true
+    setNeedsDisplay(caretBounds)
     // the caret blinks only where it is drawn: editing, and taking the keys (a static picture costs nothing at rest)
     guard !frozen, isEditing, alwaysShowsCaret || window?.firstResponder === self else { return }
     blink = Timer.scheduledTimer(withTimeInterval: MarkdownTiming.blinkOn, repeats: false) { [weak self] _ in
@@ -792,6 +844,7 @@ public final class MarkdownEditorView: NSView {
     let before = frame.size
     resize()
     if frame.size != before { delegate?.editor(self, didResize: core.layout.size) }
+    invalidateChanged()
     restartBlink()
     slideImages()
     showHeadingChip()
