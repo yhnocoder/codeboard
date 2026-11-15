@@ -150,16 +150,12 @@ struct CodeLayout: Equatable, Sendable {
           CodeLines.Insertion(
             afterLine: groups[u.k].lines.upperBound, height: groups[u.k].notes.reduce(0) { $0 + $1.height })
         })
-      var top: [Int: CGFloat] = [:]
-      var bottom: [Int: CGFloat] = [:]
       for r in lines.rows {
         switch r.kind {
         case .line(let n, let wrapped, let text, let runs):
           rows.append(
             Placed(
               row: .line(segment: si, number: wrapped ? nil : n, text: text, tokens: runs), y: r.y, height: r.height))
-          if !wrapped { top[n] = r.y }
-          bottom[n] = r.y + r.height
         case .fold(let f):
           rows.append(Placed(row: .gap(segment: si, from: f.lowerBound, to: f.upperBound), y: r.y, height: r.height))
         case .inserted(let i):
@@ -170,14 +166,8 @@ struct CodeLayout: Equatable, Sendable {
       }
       y = lines.bottom
       for h in s.highlights {
-        let shown = h.filter { top[$0] != nil }
         // down to the end of the sidenotes shown under it (CodeBody bandStyle: ends, the .hx-end's bottom)
-        let under = inline.last { $0.segment == si && $0.always.lines == h }.map { i in
-          i.y + i.always.notes.reduce(0) { $0 + $1.height }
-        }
-        if let a = shown.first, let b = shown.last, let t = top[a], let e = bottom[b] {
-          bands.append(t...max(e, under ?? e))
-        }
+        if let span = lines.span(h, through: under.lastIndex { groups[$0.k].lines == h }) { bands.append(span) }
       }
     }
     self.rows = rows

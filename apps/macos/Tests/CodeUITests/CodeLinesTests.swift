@@ -55,4 +55,16 @@ private func kinds(_ l: CodeLines) -> [CodeLines.Kind] { l.rows.map(\.kind) }
     #expect(CodeLines.dedent([" a", "    b"], metrics: m) == (0, 0))
     #expect(CodeLines.indent("\t  x", tabWidth: 4) == 6)
   }
+
+  @Test func aRunOfLinesSpansItsShownRowsAndTheRoomItReaches() {
+    var l = CodeLines(
+      lines: ["abcdef", "", "x", "y"], folds: [3...3], hideBlankLines: true, wrapColumns: 4, metrics: m)
+    l.insert([.init(afterLine: 4, height: 30)])
+    // line 1 wraps into two rows; 2 is left out; 3 is folded; 4 is shown, the room after it
+    #expect(l.span(1...2) == CGFloat(0)...40)
+    #expect(l.span(2...3) == nil)
+    #expect(l.span(1...4) == CGFloat(0)...84)
+    #expect(l.span(4...4, through: 0) == CGFloat(64)...114)
+    #expect(l.lineRows.map(\.line) == [1, 4])
+  }
 }

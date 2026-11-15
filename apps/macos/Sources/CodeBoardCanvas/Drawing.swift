@@ -408,6 +408,9 @@ enum Drawing: Sendable {
     ].map(ctx.convertToUserSpace)
   }
 
+  /// A Highlight's band (styles.css .hx): 4 into the gutter, 14 short of the right, 2 inside its rows
+  static let band = CodeBandShape(left: -4, right: 14, inset: 2, radius: 6)
+
   private static func code(_ ctx: CGContext, _ c: Code, _ r: CGRect, _ t: Theme) {
     let m = t.metrics
     let top = c.framed ? t.headerHeight : 0
@@ -416,19 +419,17 @@ enum Drawing: Sendable {
     ctx.clip(to: CGRect(x: 0, y: top, width: r.width, height: r.height - top))
     ctx.translateBy(x: 0, y: top)
     let l = c.layout
-    for p in l.rows {
-      if case .line(let s, let n?, _, _) = p.row, c.linked.contains([s, n]) {
-        ctx.setFillColor(t.linkedRow)
-        ctx.fill(CGRect(x: 0, y: p.y, width: r.width, height: p.height))
+    // rows arrows start from, segment by segment
+    var linked: [Int: [Int: CGColor]] = [:]
+    for k in c.linked where k.count == 2 { linked[k[0], default: [:]][k[1]] = t.linkedRow }
+    for (si, colors) in linked.sorted(by: { $0.key < $1.key }) {
+      let rows = l.rows.lazy.compactMap { p -> CodeLines.LineRow? in
+        if case .line(si, let n?, _, _) = p.row { CodeLines.LineRow(line: n, y: p.y, height: p.height) } else { nil }
       }
+      CodeDraw.backgrounds(colors, rows: rows, in: ctx, width: r.width)
     }
     for b in l.bands {
-      let band = CGRect(
-        x: l.gutter - 4, y: b.lowerBound + 2, width: r.width - 14 - (l.gutter - 4),
-        height: b.upperBound - b.lowerBound - 4)
-      ctx.addPath(CGPath(roundedRect: band, cornerWidth: 6, cornerHeight: 6, transform: nil))
-      ctx.setFillColor(t.highlight)
-      ctx.fillPath()
+      CodeDraw.band(b, color: t.highlight, in: ctx, gutter: l.gutter, width: r.width, shape: Drawing.band)
     }
     let numberRight = l.gutter - m.numberGap
     let style = t.codeStyle
