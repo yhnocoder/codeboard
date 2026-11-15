@@ -485,6 +485,7 @@ package final class SidenotePop: NSObject {
     e.delegate = self
     e.acceptsFirstClick = true
     e.wantsLayer = true
+    e.selectionColor = shown!.theme.textSelection
     e.pasteboard = pasteboard
     let (folder, dark) = (shown!.folder, shown!.theme.dark)
     e.image = { [weak e] slot in

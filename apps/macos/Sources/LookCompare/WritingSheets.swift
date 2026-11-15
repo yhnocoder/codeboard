@@ -13,6 +13,8 @@ import CodeBoardNotes
 // - switch-<theme>: a Text | the Box it became | both at half strength over each other (the text must not move)
 // - scale-<theme>: a Text | its corner dragged out (during) | let go
 // - wrap-<theme>: a Text as wide as its text | its right side dragged in: it wraps there
+// - native-<theme>: Notes, a Text and a Box written in with the native editor: the caret, a selection with its toolbar,
+//   the caret in a code block, in a formula (its source and preview) and in a table
 // - refs-<theme>: the [[ list open in a Note being written, with another board's cards
 // The content is made up: Chinese, bold, inline code, a formula and a list. Each text ends in words: entering puts the
 // caret at the end (as on the web board), and a formula the caret is on shows its source there.
@@ -53,6 +55,33 @@ enum WritingSheets {
           "b1",
           TextCard(text: "Check **bounds** `i < n`\n\n- 中文一项\n- $a+b$ summed", look: .box, fill: .blue, wrap: true),
           x: 400, y: 300, width: 240),
+        Card(
+          id: CardID(rawValue: "n2"), x: 760, y: 0, width: 380,
+          content: .own(
+            CardContent(
+              body: .note(
+                Note(
+                  text: """
+                    ## KV cache 块表
+
+                    每个序列的 block table 把逻辑块映射到物理块：
+
+                    ```python
+                    def allocate(self, seq):
+                        for i in range(seq.num_blocks):
+                            block = self.free_blocks.pop()
+                            seq.block_table.append(block)
+                    ```
+
+                    $$
+                    \\text{blocks} = \\left\\lceil \\frac{n}{B} \\right\\rceil
+                    $$
+
+                    | 字段 | 含义 |
+                    | --- | --- |
+                    | `block_size` | 每块 token 数 |
+                    | `num_blocks` | 物理块总数 |
+                    """))))),
       ])
   }
 
@@ -146,6 +175,16 @@ enum WritingSheets {
       v.doCommand(by: #selector(NSResponder.moveToEndOfDocument(_:)))
       v.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
       return v
+    }
+
+    /// The caret at the end of the first `match` in the text written in, or `match` selected; what comes up for it (a
+    /// formula's source, the selection's toolbar) once it has waited as the editor waits
+    func place(_ v: MarkdownEditorView, at match: String, select: Bool = false) async throws {
+      let r = (v.source as NSString).range(of: match)
+      guard r.location != NSNotFound else { throw NoteRenderError.page("no \(match) in \(v.source)") }
+      v.core.select(select ? MDSelection(anchor: r.location, head: NSMaxRange(r)) : MDSelection(NSMaxRange(r)))
+      v.coreChanged()
+      try await Task.sleep(for: .seconds(MarkdownTiming.toolbarSettle + 0.3))
     }
 
     /// The canvas with the editor over it (and its toolbar, menus and previews), off screen
@@ -312,6 +351,30 @@ enum WritingSheets {
         "refs-\(suffix)")
       r.close()
 
+      // the native editor while it writes: the caret, a selection and its toolbar, the caret in code, a formula, a table
+      r = try await rig()
+      func shot(_ id: String, _ match: String, select: Bool = false) async throws -> CGImage {
+        let v = try r.write(id)
+        try await r.place(v, at: match, select: select)
+        let c = r.rect(id)
+        let img = r.cut(
+          try r.withEditor(), CGRect(x: c.minX - 60, y: c.minY - 64, width: c.width + 120, height: c.height + 140))
+        await r.canvas.endEditing()
+        await r.settle()
+        return img
+      }
+      let prose = [
+        try await shot("n1", "attention."), try await shot("n1", "prefill", select: true),
+        try await shot("t1", "到此"), try await shot("b1", "bounds", select: true),
+      ]
+      let blocks = [
+        try await shot("n2", "free_blocks"), try await shot("n2", "\\frac"), try await shot("n2", "物理块总数"),
+      ]
+      write(
+        try column(
+          [try EditSheets.strip(prose, theme: theme), try EditSheets.strip(blocks, theme: theme)], theme: theme),
+        out, "native-\(suffix)")
+      r.close()
     }
     try report.write(to: out.appending(path: "report.txt"), atomically: true, encoding: .utf8)
     print(report)

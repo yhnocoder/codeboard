@@ -32,6 +32,7 @@ import Testing
     await r.until("writing") { r.canvas.editing?.ready == true }
     let v = try writer(r)
     #expect(r.canvas.editing?.id == cid("n1") && r.window.firstResponder === v)
+    #expect(v.selectionColor.alphaComponent < 0.3, "selected text reads through its tint (.md-pm ::selection)")
     // its text where the card's picture has it
     let (shown, expected) = textOrigin(r, "n1", v)
     #expect(abs(shown.x - expected.x) < 0.5 && abs(shown.y - expected.y) < 0.5, "\(shown) \(expected)")

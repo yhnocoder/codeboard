@@ -90,6 +90,7 @@ extension CanvasView {
     v.delegate = self
     // a click in a window that is not key goes to it as to the canvas
     v.acceptsFirstClick = acceptsFirstMouse(for: nil)
+    v.selectionColor = theme.textSelection
     // a scroll or pinch over it moves the board, as over the canvas (where the window's monitor does not see it first)
     v.handOver = { [weak self] in self?.take($0, at: $0.locationInWindow) ?? false }
     v.placeholder = n.content.isText ? "Type something…" : "Type / for blocks"
