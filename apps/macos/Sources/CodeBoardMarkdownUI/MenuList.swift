@@ -120,9 +120,11 @@ final class MenuList: NSView {
   }
 
   /// the pointer over a row makes it the chosen one (menu.tsx onPointerEnter), without scrolling the list
-  override func mouseMoved(with e: NSEvent) {
-    let p = convert(e.locationInWindow, from: nil)
-    let i = Int((p.y + scrolled - 4) / rowHeight)
+  override func mouseMoved(with e: NSEvent) { point(at: convert(e.locationInWindow, from: nil)) }
+
+  /// the row under a point in the panel, as the list is scrolled now, is the chosen one
+  func point(at p: CGPoint) {
+    let i = Int(((p.y + scrolled - 4) / rowHeight).rounded(.down))
     guard i >= 0, i < items.count, items[i].takes, i != chosen else { return }
     chosen = i
     needsDisplay = true
@@ -187,16 +189,24 @@ final class MenuList: NSView {
       let accentInk = NSColor(cgColor: theme.colors.accentInk.cg) ?? .white
       let ink = on ? accentInk : ink
       let faint = on ? accentInk.withAlphaComponent(0.75) : faint
-      (it.title as NSString).draw(
-        in: CGRect(x: row.minX + indent, y: row.midY - 8, width: row.width - 90 - indent + 8, height: 18),
-        withAttributes: [
-          .font: it.style == .brow ? NSFont.systemFont(ofSize: 12.5, weight: .medium) : font,
-          .foregroundColor: it.style == .more ? faint : ink,
-        ])
+      // one line each, cut with an ellipsis: the hint (a crumb, "12 cards") at the right, the title in what is left
+      let cut = NSMutableParagraphStyle()
+      cut.lineBreakMode = .byTruncatingTail
       let hs = (it.hint as NSString).size(withAttributes: [.font: small])
+      let hintW = it.hint.isEmpty ? 0 : min(ceil(hs.width), 120)
       (it.hint as NSString).draw(
-        at: CGPoint(x: row.maxX - 8 - min(hs.width, 120), y: row.midY - hs.height / 2),
-        withAttributes: [.font: small, .foregroundColor: faint])
+        with: CGRect(x: row.maxX - 8 - hintW, y: row.midY - hs.height / 2, width: hintW, height: hs.height),
+        options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
+        attributes: [.font: small, .foregroundColor: faint, .paragraphStyle: cut])
+      (it.title as NSString).draw(
+        with: CGRect(
+          x: row.minX + indent, y: row.midY - 8, width: max(0, row.width - indent - 8 - hintW - (hintW > 0 ? 10 : 0)),
+          height: 18),
+        options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
+        attributes: [
+          .font: it.style == .brow ? NSFont.systemFont(ofSize: 12.5, weight: .medium) : font,
+          .foregroundColor: it.style == .more ? faint : ink, .paragraphStyle: cut,
+        ])
     }
   }
 }

@@ -68,4 +68,35 @@ import Testing
     e.undo(nil)
     #expect(e.core.source == before)
   }
+
+  /// Card one edited with its floating pieces up (a table's band, the heading chip, the selection toolbar, the note
+  /// box, the find bar), then editing moves to card two: nothing of card one's stays over its static picture (a table's
+  /// band stayed, the caret left in its cell)
+  @Test func leavingANoteTakesItsChromeAway() throws {
+    _ = NSApplication.shared
+    let demo = try Demo(text: sample, folder: sampleFolder(), cardWidth: 420)
+    demo.secondText = secondSample
+    demo.setUp()
+    _ = Check.lay(demo, width: 1000)
+    Self.kept.append(demo)
+    let (a, b) = (demo.cards[0], demo.cards[1])
+    a.isEditing = true
+    let cell = (a.core.source as NSString).range(of: "prefill |").location + 2
+    a.selection = MDSelection(cell)
+    #expect(a.band.shown)
+    a.isEditing = false
+    b.isEditing = true
+    #expect(!a.band.shown)
+    // and the rest, each shown then left
+    a.isEditing = true
+    a.selection = MDSelection(4)
+    a.openFind(replace: false)
+    let w = (a.core.source as NSString).range(of: "scheduler")
+    a.selection = MDSelection(anchor: w.location, head: NSMaxRange(w))
+    a.placeToolbar()
+    a.openNoteBox()
+    a.isEditing = false
+    let floating = a.subviews.filter { !$0.isHidden && !($0 is CodeBand) || ($0 as? CodeBand)?.shown == true }
+    #expect(floating.isEmpty, "\(floating.map { String(describing: type(of: $0)) })")
+  }
 }

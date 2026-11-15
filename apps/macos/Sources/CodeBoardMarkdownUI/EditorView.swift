@@ -85,9 +85,17 @@ public final class MarkdownEditorView: NSView {
       begin()
       if isEditing {
         core.select(core.selection)
+        // over its siblings: what floats past its edges (a menu, the toolbar, a preview) is drawn above the next card,
+        // not under it (a [[ menu's lower rows showed the next Note's text through them)
+        raiseOverSiblingNotes()
       } else {
         leaveLinkBox(later: false)
         sizePicker.close()
+        noteBox.isHidden = true
+        if !findBar.isHidden {
+          findBar.isHidden = true
+          matches = []
+        }
         // leaving: nothing stays selected, the static picture again
         core.select(MDSelection(core.selection.head))
         core.layout.setHead(nil)
@@ -543,6 +551,27 @@ public final class MarkdownEditorView: NSView {
     needsDisplay = true
   }
 
+  /// Puts this Note just above the other Notes beside it, every other view keeping its order (a host's overlays stay
+  /// above): what floats past its edges is drawn, and hit, over the next card
+  private func raiseOverSiblingNotes() {
+    guard let sv = superview else { return }
+    let views = sv.subviews
+    guard let me = views.firstIndex(where: { $0 === self }),
+      let top = views.lastIndex(where: { $0 is MarkdownEditorView }), top > me
+    else { return }
+    var rank: [ObjectIdentifier: Double] = [:]
+    for (i, v) in views.enumerated() { rank[ObjectIdentifier(v)] = Double(i) }
+    rank[ObjectIdentifier(self)] = Double(top) + 0.5
+    withUnsafePointer(to: rank) { p in
+      sv.sortSubviews(
+        { a, b, ctx in
+          let r = ctx!.assumingMemoryBound(to: [ObjectIdentifier: Double].self).pointee
+          let (x, y) = (r[ObjectIdentifier(a)] ?? 0, r[ObjectIdentifier(b)] ?? 0)
+          return x < y ? .orderedAscending : x > y ? .orderedDescending : .orderedSame
+        }, context: UnsafeMutableRawPointer(mutating: p))
+    }
+  }
+
   // MARK: tables wider than the Note
 
   /// how far each table wider than the Note is scrolled across, by where its source starts
@@ -821,13 +850,18 @@ public final class MarkdownEditorView: NSView {
       band.show(true)
       return
     }
-    // gone after BAND_GRACE, so passing from the block to its band does not drop it
+    // gone after BAND_GRACE, so passing from the block to its band does not drop it; at once when editing ends (the caret
+    // left in a table's cell kept a table's band up over the static picture)
     bandTimer?.invalidate()
     guard band.shown else { return }
+    if !isEditing {
+      band.show(false)
+      return
+    }
     bandTimer = Timer.scheduledTimer(withTimeInterval: MarkdownTiming.bandGrace, repeats: false) { [weak self] _ in
       MainActor.assumeIsolated {
-        guard let self, self.bandBlock == nil,
-          MarkdownEditing.tablePlace(at: self.core.selection.head, in: self.core.document) == nil
+        guard let self, !self.isEditing || self.bandBlock == nil,
+          !self.isEditing || MarkdownEditing.tablePlace(at: self.core.selection.head, in: self.core.document) == nil
         else { return }
         self.band.show(false)
       }

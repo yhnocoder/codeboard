@@ -35,6 +35,27 @@ import Testing
     #expect(v.typedMenu.frame.minY >= v.bounds.minY)
   }
 
+  /// the pointer stepped down through a long menu's rows, then again after the list is scrolled: the chosen row is
+  /// the row under the pointer at every step (it followed only sometimes)
+  @Test func theChosenRowFollowsThePointer() {
+    let v = view((1...20).map { "Line \($0)" }.joined(separator: "\n\n"), caret: 0)
+    v.selection = MDSelection((v.core.source as NSString).length)
+    v.insertText(" /", replacementRange: NSRange(location: NSNotFound, length: 0))
+    let m = v.typedMenu
+    for k in 0..<10 {
+      m.point(at: CGPoint(x: 40, y: 4 + 26 * CGFloat(k) + 13))
+      #expect(m.chosen == k)
+    }
+    // down the keys to the list's last rows (15 of them): it scrolls
+    for _ in 0..<4 { m.step(1) }
+    // scrolled now: the row under the same point is a later one
+    m.point(at: CGPoint(x: 40, y: 4 + 13))
+    #expect(m.chosen > 0)
+    let before = m.chosen
+    m.point(at: CGPoint(x: 40, y: 4 + 26 + 13))
+    #expect(m.chosen == before + 1)
+  }
+
   /// the toolbar over a selection on the last line: above it, 8 points off, as main places it; never where the pointer
   /// just pressed (a press on the line above went to the toolbar's Link and opened the link box)
   @Test func theToolbarSitsAboveTheSelectionAndAwayFromThePress() {
