@@ -15,8 +15,9 @@ extension Board {
     return code.segments.count == 1 && code.segments[0].source == nil
   }
 
-  /// Writes a Free code card's text (trailing white space dropped, as the board does)
-  public mutating func writeFreeCode(_ id: CardID, text: String) {
+  /// Writes a Free code card's text (trailing white space dropped, as the board does); its language becomes `guessed`,
+  /// what the text looks like, unless it was picked by hand or nothing was guessed
+  public mutating func writeFreeCode(_ id: CardID, text: String, guessed: String? = nil) {
     guard isFreeCode(id), let i = cards.firstIndex(where: { $0.id == id }), case .own(var c) = cards[i].content,
       case .code(var code) = c.body
     else { return }
@@ -27,6 +28,7 @@ extension Board {
     guard lines != old.lines else { return }
     var ns = old
     ns.lines = lines
+    if old.languagePicked != true, let guessed { ns.language = guessed }
     let map = Board.lineMap(old.lines, old.firstLine, lines, ns.firstLine)
     ns.hidden = old.hidden.compactMap { Board.mapRange(map, $0) }
     ns.highlights = Board.union(old.highlights.compactMap { Board.mapRange(map, $0) })

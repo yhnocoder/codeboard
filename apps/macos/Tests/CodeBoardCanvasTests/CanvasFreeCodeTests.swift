@@ -214,4 +214,34 @@ private func freeBoard() -> Board {
     await r.settle()
     #expect(!r.canvas.isEditing)
   }
+
+  /// Written, Free code's language is what its new text looks like (the page's guess), unless it was picked by hand
+  /// (commands/code.ts writeFreeCode, freeLang)
+  @Test func writtenFreeCodeTakesTheLanguageItsTextLooksLike() async throws {
+    let rust = ["fn main() {", "    let v: Vec<u32> = Vec::new();", "    println!(\"{}\", v.len());", "}"]
+    func free(_ id: String, y: Double, picked: Bool?) -> Card {
+      let s = Segment(
+        id: SegmentID(rawValue: "s-\(id)"), source: nil, language: "python", firstLine: 1, lines: rust,
+        languagePicked: picked)
+      return Card(
+        id: cid(id), x: 100, y: y, width: 360, content: .own(CardContent(body: .code(CodeCard(segments: [s])))))
+    }
+    let board = Board(
+      id: BoardID(rawValue: "lang"), cards: [free("auto", y: 100, picked: nil), free("picked", y: 400, picked: true)])
+    let r = try await Rig(board, zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    for id in ["auto", "picked"] {
+      let card = r.rect(id)
+      let code = try #require(c.scene?.placed[cid(id)]?.code)
+      let row = try #require(code.layout.row(segment: 0, line: 4))
+      r.doubleClick(CGPoint(x: card.minX + code.layout.gutter + 4, y: card.minY + code.top + row.y + row.height / 2))
+      await r.editorReady()
+      await r.type("\n// done")
+      await c.endEditing()
+      let s = try #require(r.doc.board.freeCodeSegment(cid(id)))
+      #expect(s.lines.count == 5 && r.doc.undoName == "Edit Code", "\(s.lines)")
+      #expect(s.language == (id == "auto" ? "rust" : "python"), "\(id): \(s.language)")
+    }
+  }
 }
