@@ -1260,8 +1260,11 @@ extension CanvasView {
         }
         return
       }
-      // a card's grip, or a Note's bottom edge: Fit Content (Card.tsx .grip, .hb); a Text's edge or corner: nothing
-      if let (item, edges) = sectionEdgeOrHandle(v, p) {
+      // a card's grip, or a Note's bottom edge: Fit Content (Card.tsx .grip, .hb); a Text's edge or corner: nothing.
+      // Just inside a card's side its body is under the pointer (the board's side handles lie outside it): written in
+      if let (item, edges) = sectionEdgeOrHandle(v, p),
+        !(edges.isSubset(of: [.left, .right]) && item.card != nil && hitCard(p) == item.card)
+      {
         if case .card(let id) = item, !isText(id) {
           var note = false
           if case .note? = scene?.parts[id]?.content.body { note = true }

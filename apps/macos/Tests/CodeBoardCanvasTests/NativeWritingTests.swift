@@ -49,8 +49,12 @@ import Testing
   /// Keys through the window, an input method's composition (several keys, then the word), Esc: one "Edit Note" step
   /// with all of it, which undoes to the text before
   @Test func whatIsTypedAndComposedIsWrittenAsOneStepThatUndoes() async throws {
+    Pinyin.install()
     let r = try await Rig(zoom: 1, native: true)
-    defer { r.close() }
+    defer {
+      Pinyin.windows.remove(r.window.windowNumber)
+      r.close()
+    }
     // where n2 does not lie over it
     r.click(CGPoint(x: 40, y: 40))
     r.key(36)
@@ -60,29 +64,26 @@ import Testing
     var now = 0.0
     v.core.clock = { now }
     r.press(" ab")
-    // as an input method's context gives a composition to its client: marked text growing key by key, then the word
-    let none = NSRange(location: NSNotFound, length: 0)
-    func compose(_ keys: [String], _ word: String) {
-      for marked in keys {
-        v.setMarkedText(marked, selectedRange: NSRange(location: marked.utf16.count, length: 0), replacementRange: none)
-      }
-      #expect(v.hasMarkedText())
-      v.insertText(word, replacementRange: none)
-      #expect(!v.hasMarkedText())
-    }
+    // through the window to the editor's input context, where the input method composes the letters and Space commits
+    Pinyin.windows.insert(r.window.windowNumber)
     now += 1
-    compose(["n", "ni", "nih", "niha", "nihao"], "你好")
+    r.press("ni")
+    #expect(v.hasMarkedText())
+    r.press(" ")
+    #expect(!v.hasMarkedText())
     now += 1
-    compose(["s", "sh", "shi", "shij", "shiji", "shijie"], "世界")
-    // Undo in the Edit menu, as it goes from the window's first responder: the last word the input method gave only, not
-    // the one before nor its composing (VS Code's steps), and Redo brings it back
-    #expect(r.window.firstResponder?.tryToPerform(#selector(CanvasView.undo(_:)), with: nil) == true)
+    r.press("hao ")
     #expect(v.source == "# n1\n\nA plan in a few words. ab你好")
+    // Undo in the Edit menu, as it goes from the window's first responder: the last word the input method gave only, not
+    // the one before nor its composing (the web editor's steps), and Redo brings it back
+    #expect(r.window.firstResponder?.tryToPerform(#selector(CanvasView.undo(_:)), with: nil) == true)
+    #expect(v.source == "# n1\n\nA plan in a few words. ab你")
     #expect(r.window.firstResponder?.tryToPerform(#selector(CanvasView.redo(_:)), with: nil) == true)
-    #expect(v.source == "# n1\n\nA plan in a few words. ab你好世界")
+    #expect(v.source == "# n1\n\nA plan in a few words. ab你好")
+    Pinyin.windows.remove(r.window.windowNumber)
     r.press("\u{1b}")
     await r.until("left") { !r.canvas.isEditing }
-    #expect(r.card("n1").writing == "# n1\n\nA plan in a few words. ab你好世界")
+    #expect(r.card("n1").writing == "# n1\n\nA plan in a few words. ab你好")
     #expect(r.doc.undoName == "Edit Note")
     await r.settle()
     r.doc.undo()

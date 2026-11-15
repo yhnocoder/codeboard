@@ -624,7 +624,10 @@ extension CanvasView {
     let head: CGFloat = if case .code(let c) = scene!.items[i].drawing, !c.framed { 0 } else { theme.headerHeight }
     guard p.y >= scene!.items[i].rect.minY + head else { return }
     // the press that goes on with this click (its double-click's second) is part of opening the editor
-    let opened = { if self.editing?.id == id { self.noteEditor.view.openedBy = 1 } }
+    let opened = {
+      guard self.editing?.id == id else { return }
+      if let v = self.editing?.writer { v.openedBy = 1 } else { self.noteEditor.view.openedBy = 1 }
+    }
     if isFreeCode(id) {
       editSoon {
         guard self.editing == nil else { return }

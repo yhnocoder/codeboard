@@ -206,6 +206,7 @@
             "CanvasWritingTests/enteringAndLeavingWithNothingTypedChangesNothing",
             "CanvasWritingTests/returnWritesInTheSelectedCardAndASessionIsOneStep",
             "NativeWritingTests",
+            "NativeWindowWritingTests",
             "CanvasWritingTests/anArrowOnANotesBlockFollowsItWhenTheWritingEndsAndUndoPutsItBack",
             "CanvasWritingTests/keysPressedWhileTheEditorMountsReachIt",
             "CanvasWritingTests/aDoubleClickOnTheCanvasMakesATextThatGoesWhenLeftEmpty",

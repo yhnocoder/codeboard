@@ -54,6 +54,8 @@ extension CanvasView {
     let layout = display.editorLayout(l, folder: n.folder, refs: n.refs, dark: theme.dark)
     let v = MarkdownEditorView(layout: layout, caret: (text as NSString).length)
     v.delegate = self
+    // a click in a window that is not key goes to it as to the canvas
+    v.acceptsFirstClick = acceptsFirstMouse(for: nil)
     v.placeholder = n.content.isText ? "Type something…" : "Type / for blocks"
     // its own layer: a zoom gesture scales that, nothing drawn anew
     v.wantsLayer = true

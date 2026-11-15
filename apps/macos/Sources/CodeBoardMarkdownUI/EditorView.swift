@@ -2094,7 +2094,7 @@ public final class MarkdownEditorView: NSView {
   /// where the pointer last pressed in the view: the toolbar does not come up over it
   var lastPress: CGPoint?
 
-  public override func mouseDown(with e: NSEvent) {
+  private func pressed(_ e: NSEvent) {
     begin()
     tipView.press()
     lastPress = convert(e.locationInWindow, from: nil)
@@ -2191,6 +2191,40 @@ public final class MarkdownEditorView: NSView {
     changed()
   }
 
+  /// The click count of the host's click that opened the editor, until the next press here: the press that goes on
+  /// with it (a double-click whose first click opened the editor) is taken as a click of its own, so it only puts the
+  /// caret where it is (interact.ts clickEdit: main keeps that second press from selecting a word); the presses after
+  /// it keep their counts, so a third still selects the paragraph
+  public var openedBy: Int?
+  /// the press taken as a single click is under way: its drags and release are too
+  private var openingPress = false
+  /// Whether a click in its window when that is not key goes to it at once (the host's own rule, as its canvas's)
+  public var acceptsFirstClick = false
+
+  public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { acceptsFirstClick }
+
+  public override func mouseDown(with e: NSEvent) {
+    openingPress = openedBy.map { e.clickCount == $0 + 1 } ?? false
+    openedBy = nil
+    pressed(openingPress ? Self.single(e) : e)
+  }
+
+  public override func mouseDragged(with e: NSEvent) { dragged(openingPress ? Self.single(e) : e) }
+
+  public override func mouseUp(with e: NSEvent) {
+    let single = openingPress
+    openingPress = false
+    released(single ? Self.single(e) : e)
+  }
+
+  /// The same event as the first press of a click
+  private static func single(_ e: NSEvent) -> NSEvent {
+    NSEvent.mouseEvent(
+      with: e.type, location: e.locationInWindow, modifierFlags: e.modifierFlags, timestamp: e.timestamp,
+      windowNumber: e.windowNumber, context: nil, eventNumber: e.eventNumber, clickCount: 1, pressure: e.pressure)
+      ?? e
+  }
+
   /// the drawn [[reference]] under a point that resolves: its label and target
   func resolvedRef(at p: CGPoint) -> (String, String?)? {
     guard let r = core.layout.atom(at: p), let i = MarkdownEditing.inline(r, in: core.document),
@@ -2237,6 +2271,16 @@ public final class MarkdownEditorView: NSView {
   public func enter(at p: CGPoint) {
     core.mouseDown(at: p, clicks: 1, extend: false)
     core.mouseUp()
+    // beside the end of a line that ends in a link: after the link's last letter, so what is typed lengthens its text
+    // (interact.ts staticSpot), not after its folded address, where it would follow the link
+    let h = core.selection.head
+    if core.selection.isEmpty,
+      let l = MarkdownEditing.linkPlace(
+        in: MDEditState(source: core.source, selection: MDSelection(h)), document: core.document),
+      l.exists, h == l.range.upperBound
+    {
+      core.select(MDSelection(l.range.lowerBound + 1 + (l.text as NSString).length))
+    }
     isEditing = true
     core.settle()
     changed()
@@ -2410,7 +2454,7 @@ public final class MarkdownEditorView: NSView {
   /// a press on the static picture, and whether it has moved into a drag (a selection) yet
   private var pressed: (at: CGPoint, dragged: Bool)?
 
-  public override func mouseDragged(with e: NSEvent) {
+  private func dragged(_ e: NSEvent) {
     if let from = imageDragFrom {
       let p = convert(e.locationInWindow, from: nil)
       guard hypot(p.x / zoom - from.x, p.y / zoom - from.y) * zoom > 4 else { return }
@@ -2478,7 +2522,7 @@ public final class MarkdownEditorView: NSView {
     autoscroll(with: e)
   }
 
-  public override func mouseUp(with e: NSEvent) {
+  private func released(_ e: NSEvent) {
     // timed from the release (a drag's frames before it are their own)
     begin()
     defer { writeLeftLink() }
