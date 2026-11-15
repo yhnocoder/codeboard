@@ -310,7 +310,7 @@ extension CanvasView {
         if let f = fresh[i] {
           let l = ItemLayers(it, overview: f.overview, shadow: it.drawing.framed ? shadow : nil)
           if let (surface, scale) = f.sharp {
-            l.held.contents = surface
+            l.fill(l.held, surface, scale: scale)
             l.heldSurface = surface
             l.heldScale = scale
           }

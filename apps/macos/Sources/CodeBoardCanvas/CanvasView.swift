@@ -118,6 +118,8 @@ public final class CanvasView: NSView {
     set { levels.mode = newValue }
   }
   var camera = Camera(origin: .zero, zoom: 1)
+  /// The camera the world was last put on device pixels at, at rest (`settleOnPixels`)
+  var settledAt: Camera?
   /// Where the next board shown is shown from (back to a board: where it was), instead of all of it in view
   public var arriving: Camera?
   /// This canvas changed the vault's files (a board made or renamed): the shell reads the tree again
@@ -791,8 +793,24 @@ public final class CanvasView: NSView {
         box.addSublayer(l)
       }
       held.minificationFilter = .trilinear
-      held.contents = overview
+      fill(held, overview, scale: o.scale)
       rest.minificationFilter = .linear
+    }
+
+    /// A slot's bitmap over as much of the board as its pixels cover at its scale (its sides are rounded up to whole
+    /// pixels), not stretched over the item's own size: so at the zoom it was drawn for it is shown pixel for pixel,
+    /// where the stretch by a fraction of a pixel would resample it all
+    func fill(_ l: CALayer, _ s: IOSurface?, scale: CGFloat) {
+      l.contents = s
+      let whole = box.bounds.insetBy(dx: -bleed, dy: -bleed)
+      guard let s, scale > 0 else {
+        l.frame = whole
+        return
+      }
+      let covers = CGSize(width: CGFloat(s.width) / scale, height: CGFloat(s.height) / scale)
+      // one drawn at another size (a picture of other proportions) stays stretched over the item
+      let near = abs(covers.width - whole.width) * scale < 1.5 && abs(covers.height - whole.height) * scale < 1.5
+      l.frame = near ? CGRect(origin: whole.origin, size: covers) : whole
     }
 
     /// What its bitmaps cover on the board
@@ -805,7 +823,7 @@ public final class CanvasView: NSView {
 
     func showOverview() {
       guard face.mayShowOverview(holdsOwn: heldSurface != nil) else { return }
-      held.contents = overview
+      fill(held, overview, scale: overviewScale)
       heldSurface = nil
       heldScale = overviewScale
       coverHeld()
@@ -817,18 +835,18 @@ public final class CanvasView: NSView {
       switch job.slot {
       case .held:
         if fades { CanvasView.fadeIn(held, over: held.contents) }
-        held.contents = s
+        fill(held, s, scale: job.scale)
         heldSurface = s
         heldScale = job.scale
       case .rest:
         if fades { CanvasView.fadeIn(rest, over: rest.contents) }
-        rest.contents = s
+        fill(rest, s, scale: job.scale)
         restScale = job.scale
       case .overview:
         overview = s
         if heldSurface == nil {
           if fades { CanvasView.fadeIn(held, over: held.contents) }
-          held.contents = s
+          fill(held, s, scale: job.scale)
         }
       }
       coverHeld()
@@ -843,11 +861,11 @@ public final class CanvasView: NSView {
 
     func clearRest() {
       if let s = rest.contents as? IOSurface, let scale = restScale, face.keepsRest(holdsOwn: heldSurface != nil) {
-        held.contents = s
+        fill(held, s, scale: scale)
         heldSurface = s
         heldScale = scale
       }
-      rest.contents = nil
+      fill(rest, nil, scale: 0)
       restScale = nil
       coverHeld()
     }
@@ -1048,6 +1066,12 @@ public final class CanvasView: NSView {
     m.m22 = camera.zoom
     m.m41 = -camera.origin.x * camera.zoom
     m.m42 = -camera.origin.y * camera.zoom
+    // at rest on device pixels (settleOnPixels): the camera itself stays where it is
+    if settledAt == camera {
+      let b = backing
+      m.m41 = (m.m41 * b).rounded() / b
+      m.m42 = (m.m42 * b).rounded() / b
+    }
     withoutAnimation {
       world.sublayerTransform = m
       if chrome.sublayers?.isEmpty == false { drawChrome() } else { placeAlignBar() }
@@ -1068,6 +1092,7 @@ public final class CanvasView: NSView {
           l.clearRest()
           l.held.minificationFilter = .trilinear
         }
+        placeItems()
       }
       // the pointer at rest over what moved under it
       if let w = pointerInWindow { rehover(convert(w, from: nil)) }
@@ -1319,6 +1344,7 @@ public final class CanvasView: NSView {
 
   /// At rest: what each item should hold now, within what the other canvases leave of the budget
   func arrive() {
+    if scene != nil, onScreen { settleOnPixels() }
     keepCamera()
     guard scene != nil, onScreen else { return }
     CanvasView.clock += 1
@@ -1355,6 +1381,34 @@ public final class CanvasView: NSView {
     queue.replace(with: plan.jobs.filter { $0.item != writing })
     restAfterEditingZoom()
     wake()
+  }
+
+  /// At rest every item's bitmaps start on a device pixel: Core Animation resamples a layer placed between two, which
+  /// softens all of it (half a pixel off kept 55 % of a line of text's edge contrast at 100 % on a 2x screen, 44 % on a
+  /// 1x one). The world's translation goes to the nearest device pixel (the camera itself does not move: what is
+  /// pressed and where the board opens next are where they were), then each item that is not tilted is moved by what is
+  /// left of its own position at this zoom: each by less than half a device pixel, with no animation. The camera moving
+  /// takes the world's translation back, a zoom the items too (`placeItems`), and the next rest settles them again; a
+  /// pan keeps the items' moves, as it moves everything by the same amount
+  func settleOnPixels() {
+    if settledAt != camera {
+      settledAt = camera
+      applyCamera()
+    }
+    placeItems(onPixels: camera.zoom * backing)
+  }
+
+  /// Each item's box where the scene has it, or (`onPixels`: device pixels per board unit) its bitmaps' corner moved to
+  /// the nearest of them
+  func placeItems(onPixels k: CGFloat? = nil) {
+    guard let scene, scene.items.count == items.count else { return }
+    func off(_ v: CGFloat) -> CGFloat { k.map { ((v * $0).rounded() - v * $0) / $0 } ?? 0 }
+    withoutAnimation {
+      for (it, l) in zip(scene.items, items) where it.tilt == 0 && l.box.animation(forKey: "position") == nil {
+        let r = it.rect
+        l.box.position = CGPoint(x: r.midX + off(r.minX - it.bleed), y: r.midY + off(r.minY - it.bleed))
+      }
+    }
   }
 
   /// Each frame at rest: start redraws up to the limit, swap in finished ones within the frame's budget
@@ -1608,9 +1662,10 @@ public final class CanvasView: NSView {
     let view = camera.visible(bounds.size)
     let z = min(camera.zoom, limits.max)
     var out = (inView: 0, between: 0, capped: 0)
+    let t = world.sublayerTransform
     for l in items where l.bitmapFrame.intersects(view) {
       out.inView += 1
-      let o = camera.view(l.bitmapFrame.origin)
+      let o = CGPoint(x: t.m41 + l.bitmapFrame.minX * t.m11, y: t.m42 + l.bitmapFrame.minY * t.m22)
       let (x, y) = (o.x * backing, o.y * backing)
       if abs(x - x.rounded()) > 0.02 || abs(y - y.rounded()) > 0.02 { out.between += 1 }
       if Levels.cap(l.bitmapFrame.size) < z * backing * 0.98 { out.capped += 1 }
