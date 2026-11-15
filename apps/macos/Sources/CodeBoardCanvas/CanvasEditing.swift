@@ -751,7 +751,8 @@ extension CanvasView {
   func drawHoverLine() {
     hoverLine?.removeFromSuperlayer()
     hoverLine = nil
-    guard let id = hoveredCard, isText(id), document?.selection.contains(.card(id)) == false,
+    // none while a card is dragged or anything else is under way, as main's
+    guard gesture == nil, let id = hoveredCard, isText(id), document?.selection.contains(.card(id)) == false,
       let i = index(of: .card(id))
     else { return }
     let box = items[i].box

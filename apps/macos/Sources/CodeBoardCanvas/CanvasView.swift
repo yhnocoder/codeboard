@@ -392,6 +392,8 @@ public final class CanvasView: NSView {
   package init(frame: NSRect, notes: NoteRenderer) {
     self.notes = notes
     super.init(frame: frame)
+    // in a test process: no menu, alert or panel ever comes up
+    TestGuard.install()
     CanvasView.all.add(self)
     registerForDraggedTypes([.string])
     // layer-hosting: the canvas owns its layer tree, y-down like the board

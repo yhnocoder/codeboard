@@ -95,7 +95,10 @@ public struct ShellState: Codable, Equatable, Sendable {
     case folder(String)
   }
 
-  public init() {}
+  public init() {
+    // in a test process: no menu, alert or panel ever comes up
+    TestGuard.install()
+  }
 
   public var current: Tab? { tabs.first { $0.id == selected } }
 
