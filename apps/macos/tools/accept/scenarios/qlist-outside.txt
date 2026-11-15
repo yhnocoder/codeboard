@@ -8,15 +8,15 @@ click @ui.questions:c+-150,-60
 wait 300
 mac: expect press has ListWebView
 web: expect press has qlist
-# the row pressed may leave a popover of its own open (on CI the web side's, where the press outside then landed): Esc
-# twice, so the press outside lands on the board
+# the row pressed opens its question's sidenote popup on the web side, over the middle of the board, and Esc does not
+# always close it: the press outside goes to the empty board above it (it landed on the popup's edge on CI)
 key esc
 wait 300
 key esc
 click @ui.questions
 # (a machine under load opens it later: the press outside must come after it is open)
 wait 1200
-click @ui.questions:c+-300,-400
+click @ui.questions:c+-500,-600
 wait 600
 click @ui.questions:c+-150,-60
 wait 300
