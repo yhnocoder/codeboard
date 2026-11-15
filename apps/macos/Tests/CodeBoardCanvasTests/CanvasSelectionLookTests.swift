@@ -121,5 +121,12 @@ import Testing
     #expect(hover("b1") == nil && hover("n1") == nil, "a Note has none")
     r.click(r.centre("t1"))
     #expect(hover("t1") == nil, "selected: its outline only")
+    // hovered when a drag of another card starts: gone while it is dragged (main shows no hover then)
+    r.doc.select([])
+    c.mouseMoved(with: r.mouse(.mouseMoved, r.centre("t1")))
+    #expect(hover("t1") != nil)
+    r.drag(r.centre("b1"), CGPoint(x: r.centre("b1").x, y: r.centre("b1").y + 80)) {
+      #expect(hover("t1") == nil, "none while a card is dragged")
+    }
   }
 }

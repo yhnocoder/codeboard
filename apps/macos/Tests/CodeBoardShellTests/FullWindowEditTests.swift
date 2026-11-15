@@ -74,6 +74,8 @@ import Testing
     var canvas: CanvasView { pane! }
 
     init(_ vault: Vault, board: BoardID, cameras: CameraStore? = nil) {
+      // from here on the test is watched: one stuck past the limit ends the process, saying which it was
+      TestWatch.started(Test.current.map { "\($0.id)" } ?? "a test")
       self.vault = vault
       shell = Shell()
       shell.open(vault, restoring: nil)
@@ -88,6 +90,7 @@ import Testing
     }
 
     func close(keepingVault: Bool = false) {
+      TestWatch.ended()
       window.orderOut(nil)
       if !keepingVault { try? FileManager.default.removeItem(at: vault.root) }
     }
