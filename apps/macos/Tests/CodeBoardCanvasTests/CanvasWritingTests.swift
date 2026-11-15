@@ -276,6 +276,44 @@ extension Rig {
     #expect(r.card("n1").writing?.contains("ab") == true)
   }
 
+  /// The second press of a double-click on the selected Note's empty body, below its text, once the editor its first
+  /// click opened is up: the window gives it to the editor's page, where it lands on the paper outside the text. The
+  /// writing goes on (the editor ends when its focus leaves, and a press on its own paper must not take it), so what is
+  /// typed next is written and no letter reaches the board's shortcuts
+  @Test func theSecondPressOfADoubleClickOnTheEmptyBodyKeepsTheWritingGoing() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let n = r.rect("n1")
+    // below its two lines, in the window (its left edge is off it), clear of n2
+    let blank = CGPoint(x: n.minX + 80, y: n.maxY - 10)
+    let cards = r.doc.board.cards.count
+    r.click(blank)
+    await r.settle()
+    #expect(r.doc.selection == [.card(cid("n1"))] && !c.isEditing)
+    r.click(through: blank)
+    await r.editorReady()
+    let session = try #require(c.editing?.session)
+    #expect(
+      r.window.contentView?.hitTest(r.at(blank))?.isDescendant(of: c.noteEditor.view) == true,
+      "the editor is under the pointer")
+    r.click(through: blank, clicks: 2)
+    // the page has had the press, the focus change it would make and what that sets off
+    for _ in 0..<3 {
+      _ = try? await c.noteEditor.view.evaluateJavaScript("new Promise(r => requestAnimationFrame(() => r(1)))")
+    }
+    await r.settle()
+    #expect(c.editing?.session == session, "still writing")
+    r.press("ab")
+    await r.until("ab typed") {
+      let t = try? await c.noteEditor.view.evaluateJavaScript("document.body.innerText") as? String
+      return t?.contains("ab") == true || !c.isEditing
+    }
+    await c.endEditing()
+    #expect(r.card("n1").writing?.contains("ab") == true, "what was typed after it is written")
+    #expect(r.doc.board.cards.count == cards, "no card made by a letter")
+  }
+
   @Test func aNewCardWrittenInIsOneStep() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }

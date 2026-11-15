@@ -1,0 +1,29 @@
+# 同一张 Note 五轮「在正文空白处双击、打字、Esc」（第二轮起 Note 已选中，单击就让编辑器出来，双击的第二下按命中测试落进编辑器）：每轮都写进卡里，字母不落到画布上
+# only: mac
+zoom 1
+center @cnote+150,60
+dbl @cnote+150,120
+keys north
+key esc
+wait 1500
+expect cnote.text has north
+dbl @cnote+150,120
+keys thorn
+key esc
+wait 1500
+expect cnote.text has thorn
+dbl @cnote+150,120
+keys short
+key esc
+wait 1500
+expect cnote.text has short
+dbl @cnote+150,120
+keys hunts
+key esc
+wait 1500
+expect cnote.text has hunts
+dbl @cnote+150,120
+keys strain
+key esc
+wait 1500
+expect cnote.text has strain
