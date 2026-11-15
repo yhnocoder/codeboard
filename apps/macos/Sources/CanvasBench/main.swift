@@ -14,6 +14,8 @@ import CodeBoardModel
 //            in a window below the desktop picture that is never activated; with --note-cache <folder> the Note
 //            snapshots are kept there across runs (a relaunch with the disk cache filled); with --pictures <folder> the
 //            board pictures and the cameras they were taken at are kept there (the app's first board after a launch)
+//   --code   heavy code cards made for it (CodeCards): the whole board drawn offscreen again and again (CPU time), then
+//            --open-frames on it; no vault folder
 //   --arrows the same drags on two boards made for it (ArrowBoards): a card with twenty arrows, a Section of twenty
 //            cards with their arrows; no vault folder
 // Note snapshots are cached in a new temporary folder, never in the app's cache: every run draws its Notes anew
@@ -133,6 +135,13 @@ final class App: NSObject, NSApplicationDelegate {
     w.orderFrontRegardless()
     window = w
     Task {
+      if code {
+        for b in boards {
+          do { print(try CodeCards.draw(b, in: vault)) } catch {
+            FileHandle.standardError.write(Data("\(error)\n".utf8))
+          }
+        }
+      }
       let run = OpenFrames(canvas: canvas)
       for b in boards {
         do {
@@ -158,7 +167,8 @@ let hud = args.contains("--hud")
 let bench = args.contains("--bench")
 let arrows = args.contains("--arrows")
 let drag = arrows || args.contains("--drag")
-let openFrames = args.contains("--open-frames")
+let code = args.contains("--code")
+let openFrames = code || args.contains("--open-frames")
 var keptNoteCache: URL?
 if let i = args.firstIndex(of: "--note-cache"), i + 1 < args.count {
   keptNoteCache = URL(filePath: args[i + 1])
@@ -180,6 +190,16 @@ if arrows {
   args = [root.path(percentEncoded: false)]
   do {
     _ = try ArrowBoards.make(in: root)
+  } catch {
+    FileHandle.standardError.write(Data("\(error)\n".utf8))
+    exit(1)
+  }
+}
+if code {
+  let root = FileManager.default.temporaryDirectory.appending(path: "canvasbench-code-\(UUID().uuidString)")
+  args = [root.path(percentEncoded: false)]
+  do {
+    _ = try CodeCards.make(in: root)
   } catch {
     FileHandle.standardError.write(Data("\(error)\n".utf8))
     exit(1)
