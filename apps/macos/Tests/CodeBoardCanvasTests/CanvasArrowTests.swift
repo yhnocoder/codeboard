@@ -383,6 +383,11 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     r.click(try #require(r.canvas.scene?.arrows.first?.mid))
     let ends = r.canvas.endHandles()
     #expect(ends.count == 2)
+    // nothing drawn at them: a selected arrow is only its accent line, as main's (the ends still take the pointer)
+    let dots = (r.canvas.chrome.sublayers ?? []).filter {
+      $0 is CAShapeLayer && ($0 as! CAShapeLayer).path?.boundingBox.width ?? 0 < 12
+    }
+    #expect(dots.isEmpty, "\(dots.count) dots")
     let to = try #require(ends.first { $0.0 == .to }?.1)
     let breaks = r.breaks
     let line = r.canvas.arrowGroups[0]

@@ -184,6 +184,8 @@ public final class CanvasView: NSView {
   /// A Section title's controls (CanvasSectionActs): the title hovered and its control, the Section whose swatches are
   /// open, the Section whose controls show, their bitmap
   var hoveredTitle: SectionID?
+  /// The Section titles shown in another colour (toneTitles)
+  var toned: [SectionID: Tone] = [:]
   var hoveredAct: SectionAct?
   var swatchesOpen: SectionID?
   var actsShown: SectionID?
