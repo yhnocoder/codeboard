@@ -157,6 +157,27 @@ private func segment(_ id: String, path: String? = "src/engine.py", first: Int, 
     #expect(s.bounds == CGRect(x: 0, y: 0, width: 1100, height: 496))
   }
 
+  /// A line past what a card of fixed height or at the cap shows: its arrow leaves from the bottom of the card's code,
+  /// as on the web board (geo.ts lineY clamps to the code's visible part)
+  @Test func anArrowFromALinePastWhatACardShowsLeavesFromTheBottomOfItsCode() throws {
+    let lines = (1...100).map { "x\($0)" }
+    let long = card("l", x: 0, y: 0, .code(CodeCard(segments: [segment("a", first: 1, lines)])))
+    let fixed = card("f", x: 0, y: 600, height: 100, .code(CodeCard(segments: [segment("a", first: 1, lines)])))
+    let note = card("n", x: 600, y: 300, height: 120, .note(Note(text: "# Idea")))
+    func from(_ c: Card, _ line: Int) -> Arrow {
+      Arrow(
+        id: ArrowID(rawValue: "\(c.id.rawValue)\(line)"),
+        from: Endpoint(card: c.id, segment: SegmentID(rawValue: "a"), line: line), to: Endpoint(card: note.id))
+    }
+    let s = scene(
+      Board(
+        id: BoardID(rawValue: "b"), cards: [long, fixed, note],
+        arrows: [from(long, 90), from(fixed, 50), from(fixed, 2)]))
+    let ends = try s.arrows.map { try #require($0.pts.first?.y) }
+    // the long card at the cap, 496 tall; the fixed one 136 from 600; line 2 is shown: 36 header + 6 padding + 20 + 10
+    #expect(ends == [496, 736, 672])
+  }
+
   @Test func anArrowFromALineLeavesFromThatRowAndSkipsMissingSharedCards() {
     let code = card("c", x: 0, y: 0, .code(CodeCard(segments: [segment("a", first: 10, ["a", "b", "c"])])))
     let note = card("n", x: 600, y: 0, height: 120, .note(Note(text: "# Idea")))

@@ -446,7 +446,8 @@ struct Scene: Sendable {
       if !e.lost, let l = e.line, let c = p.code, let si = e.segment.flatMap({ c.segments.firstIndex(of: $0) }),
         let y = c.layout.lineY(segment: si, line: l)
       {
-        return p.rect.minY + c.top + y
+        // a line past what a card of fixed or capped height shows: at the bottom of its code (geo.ts lineY, clamped)
+        return min(p.rect.minY + c.top + y, p.rect.maxY)
       }
       return p.folded ? p.rect.midY : p.rect.minY + t.headerHeight / 2
     }
