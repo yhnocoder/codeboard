@@ -199,17 +199,50 @@ extension CanvasView {
     var frame = convert(CGRect(origin: o, size: v.frame.size), to: host)
     frame.origin.x = (frame.origin.x * backing).rounded() / backing
     frame.origin.y = (frame.origin.y * backing).rounded() / backing
+    // the size the editor has, not the conversion's: one a hair off (412.0000000000001) made it lay out and draw again
+    // on every move of the camera
+    frame.size = v.frame.size
     withoutAnimation {
-      v.layer?.setAffineTransform(.identity)
-      if v.frame != frame { v.frame = frame }
-      if ed.zooming, let layer = v.layer {
-        let corner = convert(o, to: host)
-        let a = layer.position
-        let f = camera.zoom / k
-        layer.setAffineTransform(
-          CGAffineTransform(a: f, b: 0, c: 0, d: f, tx: (1 - f) * (corner.x - a.x), ty: (1 - f) * (corner.y - a.y)))
+      // (a window off screen may have the editor's layer in no tree yet: then over its host's)
+      guard ed.zooming, let layer = v.layer, let under = layer.superlayer ?? host.layer else {
+        editing?.zoomPicture?.removeFromSuperlayer()
+        editing?.zoomPicture = nil
+        v.layer?.opacity = 1
+        if v.frame != frame { v.frame = frame }
+        return
       }
+      // a zoom: a picture of what the editor shows is scaled in its place, the editor unscaled and see-through
+      // meanwhile (still taking the keys). Scaled itself, AppKit drew it again at every scale its layer was shown at
+      // (a layer-backed view's contents scale follows its transform): most of each frame of a pinch. The editor stays
+      // where the zoom found it: moved, AppKit drew the part of it newly in the window again on every frame, unseen
+      let picture = ed.zoomPicture ?? zoomPicture(of: v, over: under, above: layer)
+      editing?.zoomPicture = picture
+      layer.opacity = 0
+      picture.setAffineTransform(.identity)
+      // (a view's frame in its host is its layer's in the host's layer)
+      picture.frame = frame
+      let corner = convert(o, to: host)
+      let a = picture.position
+      let f = camera.zoom / k
+      picture.setAffineTransform(
+        CGAffineTransform(a: f, b: 0, c: 0, d: f, tx: (1 - f) * (corner.x - a.x), ty: (1 - f) * (corner.y - a.y)))
     }
+  }
+
+  /// What the editor shows now, at its scale, in a layer of its own next to it: the editor layer's own contents (no
+  /// drawing; the editor draws no more until the rest, frozen), else drawn now
+  private func zoomPicture(of v: MarkdownEditorView, over under: CALayer, above layer: CALayer) -> CALayer {
+    let picture = CALayer()
+    picture.contentsGravity = .resize
+    picture.contentsScale = layer.contentsScale
+    if let shown = layer.contents {
+      picture.contents = shown
+    } else if let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) {
+      v.cacheDisplay(in: v.bounds, to: rep)
+      picture.contents = rep.cgImage
+    }
+    if layer.superlayer === under { under.insertSublayer(picture, above: layer) } else { under.addSublayer(picture) }
+    return picture
   }
 
   /// At rest after a zoom: the editor draws itself at the zoom now shown, in the same frame its scaling goes

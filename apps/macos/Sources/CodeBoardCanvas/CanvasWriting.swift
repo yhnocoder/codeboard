@@ -48,6 +48,8 @@ struct Editing {
   /// The native editor a Note, Text or Box is written with (NativeWriting), what the card's Markdown was when the
   /// writing began, the card's look, where the editor's text starts in the card (points at 100 %) and its stored height
   var writer: MarkdownEditorView?
+  /// While a zoom goes on, a picture of what the native editor showed, scaled in its place (positionNativeEditor)
+  var zoomPicture: CALayer?
   var was = ""
   var look: MarkdownLooks.Card?
   var inset = CGPoint.zero
@@ -219,6 +221,9 @@ extension CanvasView {
   func cameraMovedWhileEditing() {
     guard let ed = editing, ed.ready, !ed.ending else { return }
     if camera.zoom != ed.shownZoom { editing?.zooming = true }
+    // no caret blink (each a whole drawing of the editor, tens of ms for a long Note) and no hovering while the camera
+    // moves; the next rest thaws it
+    if let v = ed.writer, !v.frozen { v.freeze() }
     positionEditor()
   }
 
@@ -249,6 +254,7 @@ extension CanvasView {
   /// At rest after a zoom: a picture of what the editor shows takes its place while it draws itself at the zoom now
   /// shown (a picture at rest, never during the gesture), then the editor over the card's paper again
   func restAfterEditingZoom() {
+    if let v = editing?.writer, v.frozen { v.thaw() }
     guard let ed = editing, ed.zooming, !ed.ending, editingRests == nil else { return }
     if ed.writer != nil { return restNativeEditor() }
     editingRests = Task {
@@ -476,7 +482,10 @@ extension CanvasView {
     if let v = ed.writer {
       // asked first: once it is out of the window, the window is its own first responder
       let keys = window?.firstResponder === v || window?.firstResponder == nil
-      withoutAnimation { v.removeFromSuperview() }
+      withoutAnimation {
+        v.removeFromSuperview()
+        ed.zoomPicture?.removeFromSuperlayer()
+      }
       if keys { window?.makeFirstResponder(self) }
     } else if let editor, mine {
       withoutAnimation {

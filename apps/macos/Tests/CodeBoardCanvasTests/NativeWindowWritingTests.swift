@@ -260,8 +260,10 @@ import Testing
     return n
   }
 
-  /// Pinching and panning the board while a card is written in: the editor's layer scales over the card frame by frame
-  /// (nothing drawn anew), the caret and the selection stay, and at rest it shows itself at the new zoom
+  /// Pinching and panning the board while a card is written in: a picture of what the editor showed (its own layer's
+  /// contents) scales over the card frame by frame while the editor, unscaled, frozen, see-through and still, keeps the
+  /// keys (scaled itself, AppKit drew it again at every scale; moved, the part newly in the window); the caret and the selection stay, and at rest the editor
+  /// shows itself at the new zoom with the picture gone
   @Test func pinchingAndPanningWhileWritingScaleTheEditorAndKeepTheSelection() async throws {
     let r = try await rig([note("n1", x: 100, y: 100, Self.text)])
     defer { r.close() }
@@ -273,6 +275,8 @@ import Testing
     await r.idle()
     let host = try #require(v.superview)
     let before = r.breaks
+    let shown = v.layer?.contents
+    let still = v.frame
     /// Where the editor's text should start now, in its host, and how big at the camera's zoom
     func want() throws -> CGRect {
       let ed = try #require(r.canvas.editing)
@@ -288,12 +292,17 @@ import Testing
       t += 1.0 / 120
       r.canvas.pinch(by: 1.02, around: around, at: t, began: false, ended: false)
       r.canvas.tick(at: t)
-      let got = try #require(v.layer?.frame)
+      let picture = try #require(r.canvas.editing?.zoomPicture)
+      let got = picture.frame
       let w = try want()
       // its text's top left where the card's is (its height is whole device pixels, the text's is not)
       #expect(
         abs(got.minX - w.minX) < 1 && abs(got.maxY - w.maxY) < 1 && abs(got.width - w.width) < 1,
-        "its layer \(got) over \(w)")
+        "the picture \(got) over \(w)")
+      // what the editor showed (drawn once when the window off screen never had it shown)
+      #expect(picture.contents != nil && (shown == nil || picture.contents as AnyObject? === shown as AnyObject?))
+      #expect(v.layer?.opacity == 0 && v.layer?.affineTransform() == .identity && v.frozen)
+      #expect(v.frame == still, "the editor stays where the zoom found it")
     }
     #expect(r.canvas.editing?.zooming == true)
     #expect(r.breaks == before, "nothing drawn, decoded, asked for or swapped during the gesture")
@@ -301,6 +310,7 @@ import Testing
     r.canvas.pinch(by: 1, around: around, at: t, began: false, ended: true)
     await r.until("at rest") { r.canvas.editing?.zooming == false && r.canvas.motion.isResting }
     #expect(abs(v.zoom - r.canvas.camera.zoom) < 0.001 && v.layer?.affineTransform() == .identity)
+    #expect(r.canvas.editing?.zoomPicture == nil && v.layer?.opacity == 1 && !v.frozen, "the editor itself again")
     #expect(v.core.selection == MDSelection(anchor: 4, head: 14), "the selection kept")
     // a pan moves it with the card, at the same scale
     for k in 0..<6 {
