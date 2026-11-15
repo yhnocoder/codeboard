@@ -95,7 +95,7 @@ actor RigTurns {
 
   init(
     _ board: Board = sample(), zoom: CGFloat?, pasteboard: NSPasteboard? = nil, root given: URL? = nil,
-    alongside: Rig? = nil
+    alongside: Rig? = nil, pictures: (@Sendable (URL) async -> Data?)? = nil
   ) async throws {
     let mine = alongside == nil
     turn = mine
@@ -125,6 +125,9 @@ actor RigTurns {
     canvas = CanvasView(frame: CGRect(x: 0, y: 0, width: 1000, height: 700), notes: Rig.notes)
     // never the general pasteboard: that is the person's own clipboard
     canvas.pasteboard = pasteboard ?? NSPasteboard(name: NSPasteboard.Name("codeboard-tests-\(UUID().uuidString)"))
+    // never the network, never the person's caches
+    canvas.fetchPicture = pictures ?? { _ in nil }
+    canvas.pictureCache = root.appending(path: "pictures")
     window = BoardWindow(
       contentRect: CGRect(x: -30000, y: -30000, width: 1000, height: 700), styleMask: [.titled], backing: .buffered,
       defer: false)

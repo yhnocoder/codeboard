@@ -171,6 +171,8 @@ extension CanvasView {
     let view = camera.visible(bounds.size)
     let highlighter = CanvasView.highlighter
     let fetching = Set(webFetching.filter { !$0.contains("/") }.map(CardID.init(rawValue:)))
+    fetchPictures(board)
+    let remote = remotePictures
     refreshing = Task {
       let r = await Task.detached(priority: .userInitiated) {
         let package = vault.url(of: vb.path)
@@ -200,7 +202,7 @@ extension CanvasView {
         inline.merge(await CanvasView.measureInline(inlineTodo, theme: theme, notes: notes)) { a, _ in a }
         let s = Scene(
           board, package: package, vault: vault, theme: theme, highlighter: highlighter ?? Highlighter(), sizes: sizes,
-          inline: inline, reusing: old, vaultSeen: seen, fetching: fetching)
+          inline: inline, reusing: old, vaultSeen: seen, fetching: fetching, remote: remote)
         var before: [Scene.Owner: Scene.Item] = [:]
         for it in old.items { if let o = it.owner { before[o] = it } }
         var fresh: [Int: Fresh] = [:]
@@ -2040,14 +2042,30 @@ extension CanvasView {
 
   private var selectedCards: Set<CardID> { Set(document?.selection.compactMap(\.card) ?? []) }
 
-  /// The cards' clip on the pasteboard; nil: nothing to copy
+  /// The cards' clip on the pasteboard, and the first image card's picture as PNG for other apps (shared.ts copyCards,
+  /// imagedata.ts copyPicture); nil: nothing to copy
   private func putOnPasteboard(_ ids: Set<CardID>) -> Data? {
-    guard let doc = document, let (_, vault) = shown else { return nil }
+    guard let doc = document, let (board, vault) = shown else { return nil }
     let clip = doc.board.clip(ids) { try? vault.sharedCard($0) }
     guard !clip.isEmpty, let data = try? clip.encoded() else { return nil }
     pasteboard.clearContents()
     pasteboard.setData(data, forType: NSPasteboard.PasteboardType(Clip.pasteboardType))
+    let images = vault.url(of: board.path).appending(path: Vault.imagesFolder)
+    if let png = clip.cards.lazy.compactMap({ Self.picturePNG($0, in: images) }).first {
+      pasteboard.setData(png, forType: .png)
+    }
     return data
+  }
+
+  /// An image card's picture file as PNG (imagedata.ts clipboardPng: a PNG as it is, any other drawn once)
+  private static func picturePNG(_ card: Card, in images: URL) -> Data? {
+    guard case .own(let k) = card.content, case .image(let img) = k.body, case .file(let name) = img.source,
+      let data = try? Data(contentsOf: images.appending(path: name))
+    else { return nil }
+    if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) { return data }
+    return NSImage(data: data)?.cgImage(forProposedRect: nil, context: nil, hints: nil).flatMap {
+      NSBitmapImageRep(cgImage: $0).representation(using: .png, properties: [:])
+    }
   }
 
   /// Pastes what was copied (actions/shared.ts pasteFromBoard): cards cut on this board back where the pointer is, with
@@ -2066,7 +2084,7 @@ extension CanvasView {
     if gesture == nil, pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)) == nil {
       // ⌘V only: the board menu's Paste puts it where the menu was asked, as main's
       let near = at == nil ? pasteboard.string(forType: .string).flatMap(pasteNear) : nil
-      if pasteLinks(at: near ?? p) || pasteText(at: near ?? p, exact: near != nil) { return }
+      if pastePicture(at: p) || pasteLinks(at: near ?? p) || pasteText(at: near ?? p, exact: near != nil) { return }
     }
     guard let doc = document, gesture == nil, let here = shown?.board.id,
       let data = pasteboard.data(forType: NSPasteboard.PasteboardType(Clip.pasteboardType)),

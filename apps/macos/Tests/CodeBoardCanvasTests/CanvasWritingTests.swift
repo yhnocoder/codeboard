@@ -205,6 +205,25 @@ extension Rig {
     await c.endEditing()
   }
 
+  /// interact.ts staticSpot: a double-click beside the end of a line that ends in a link puts the caret after the link's
+  /// last letter, as on the board, and what is typed lengthens its text; not between its text and its hidden address,
+  /// where WebKit's point in the editor's own text lands, and what is typed broke the link
+  @Test func aDoubleClickBesideALineEndingInALinkWritesInTheLinksText() async throws {
+    let note = Card(
+      id: cid("n1"), x: 100, y: 100, width: 400,
+      content: .own(CardContent(body: .note(Note(text: "See the [docs](https://e.x)")))))
+    let r = try await Rig(Board(id: BoardID(rawValue: "link"), cards: [note]), zoom: 1)
+    defer { r.close() }
+    let n = r.rect("n1")
+    let line = try #require(r.canvas.scene?.placed[cid("n1")]?.blocks?.first)
+    r.doubleClick(CGPoint(x: n.maxX - 8, y: n.minY + line.y + line.line / 2))
+    await r.editorReady()
+    await r.type("XY")
+    await r.canvas.endEditing()
+    let got = r.doc.board.card(cid("n1"))?.writing
+    #expect(got == "See the [docsXY](https://e.x)", "\(got ?? "nil")")
+  }
+
   /// A person's double-click on the one selected Note: its first click begins writing, and its second comes while the
   /// editor is still mounting or once it is up; either way the writing goes on and what is typed next is written, as in
   /// main, where the second click lands in the editor

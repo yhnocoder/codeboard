@@ -90,10 +90,10 @@ final class NotePage {
   }
 
   /// A picture's cleaned data: URL and its card's width (page.ts added); nil for an SVG that cannot be read
-  func added(_ dataURL: String) async throws -> (dataURL: String, width: Double)? {
+  func added(_ dataURL: String, scale: Double) async throws -> (dataURL: String, width: Double)? {
     await signal.ready()
     let r = try await view.callAsyncJavaScript(
-      "return await note.added(u)", arguments: ["u": dataURL], contentWorld: .page)
+      "return await note.added(u, k)", arguments: ["u": dataURL, "k": scale], contentWorld: .page)
     guard let d = r as? [String: Any] else { return nil }
     guard let u = d["dataUrl"] as? String, let w = d["width"] as? Double else {
       throw NoteRenderError.page("the page answered \(d)")

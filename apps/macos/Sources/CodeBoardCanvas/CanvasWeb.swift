@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardModel
+import CryptoKit
 
 // Web cards and Link Lists on the canvas (the web board's actions/web.ts, menus.ts webMenu / linksMenu / rowMenu): a
 // link pasted makes a Web card (several lines of links, a Link List) whose page is read once, off the main thread, its
@@ -72,6 +73,32 @@ extension CanvasView {
     return WebMeta(
       title: p.title, description: p.description, site: p.site, image: file(p.image), icon: file(p.icon),
       fetchedAt: (Date().timeIntervalSince1970 * 1000).rounded(), failed: p.failed)
+  }
+
+  /// The pictures of image cards at web addresses not read yet, each read once (ImageBody.tsx: the browser reads an
+  /// <img> once and keeps it) and kept in the picture cache by its address's hash, so a later launch reads it there.
+  /// Asked from a redraw, which waits for a gesture's end, as does the redraw that puts the picture in
+  func fetchPictures(_ board: Board) {
+    for c in board.cards {
+      guard case .own(let k) = c.content, case .image(let img) = k.body, case .url(let s) = img.source,
+        remotePictures[s] == nil, remoteAsked.insert(s).inserted, let u = URL(string: s)
+      else { continue }
+      let hash = SHA256.hash(data: Data(s.utf8)).map { String(format: "%02x", $0) }.joined()
+      let file = pictureCache.appending(path: hash)
+      if FileManager.default.fileExists(atPath: file.path(percentEncoded: false)) {
+        remotePictures[s] = file
+        continue
+      }
+      let (fetch, folder) = (fetchPicture, pictureCache)
+      Task { [weak self] in
+        guard let data = await fetch(u),
+          (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil,
+          (try? data.write(to: file, options: .atomic)) != nil, let self
+        else { return }
+        remotePictures[s] = file
+        refresh()
+      }
+    }
   }
 
   // MARK: What is where
