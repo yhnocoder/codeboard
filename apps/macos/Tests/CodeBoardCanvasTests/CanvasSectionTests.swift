@@ -530,6 +530,19 @@ private func titles(_ m: NSMenu?) -> [String] { m?.items.map { $0.isSeparatorIte
     let locked = try #require(c.sectionTitle(g))
     #expect(locked.minX == open.minX && locked.width == open.width + 18, "\(open) \(locked)")
     let at = CGPoint(x: locked.minX + (c.theme.frame == .tray ? 6 : 0) + 8, y: locked.midY)
+    let tips = ownTips(c)
+    r.send(r.mouse(.mouseMoved, at))
+    #expect(tips.shown?.tip == Tip("Unlock Section"))
+    // the controls' tips (SectionTools.tsx data-tip, data-kbd)
+    let acts = c.actsLayout(g)
+    for (a, tip) in [
+      (SectionAct.fit, Tip("Fit Content · the Section is locked", kbd: "⌥F")), (.color, Tip("Color")),
+      (.lock, Tip("Unlock", kbd: "⇧⌘L")),
+    ] {
+      let p = try #require(acts.first { $0.0 == a }?.1)
+      r.send(r.mouse(.mouseMoved, CGPoint(x: p.midX, y: p.midY)))
+      #expect(tips.shown?.tip == tip, "\(a)")
+    }
     r.send(r.mouse(.mouseMoved, at))
     r.click(at)
     #expect(r.doc.board.section(g)?.locked == false && r.doc.undoName == "Unlock")

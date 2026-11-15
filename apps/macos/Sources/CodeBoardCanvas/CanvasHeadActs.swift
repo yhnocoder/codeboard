@@ -238,20 +238,24 @@ extension CanvasView {
     }
   }
 
-  /// What a button says when the pointer rests on it (its data-tip and key)
-  func headTip(_ a: HeadAct, _ h: Head) -> String {
+  /// What a button says when the pointer rests on it (its data-tip and data-kbd)
+  func headTip(_ a: HeadAct, _ h: Head) -> Tip {
     switch a {
     case .fit:
-      h.faint.contains(.fit) ? "Fit Content · already as tall as its content" : "Fit Content  ⌥F"
-    case .wrap: "Wrap Lines  ⌥Z"
-    case .copy: "Copy Code"
-    case .lang: "Change Language"
+      Tip(
+        h.faint.contains(.fit) ? "Fit Content · already as tall as its content" : "Fit Content",
+        kbd: BoardKey.show(of: "Fit Content"))
+    case .wrap: Tip("Wrap Lines", kbd: BoardKey.show(of: "Wrap Lines"))
+    case .copy: Tip("Copy Code")
+    case .lang: Tip("Change Language")
     case .split:
-      h.parts > 0
-        ? "Split by Headings · \(h.parts + 1) cards, linked by arrows" : "Split by Headings · no headings to split at"
-    case .more: "More Actions"
-    case .open: "Open in Browser  Double-click"
-    case .unlock: "Unlock"
+      Tip(
+        h.parts > 0
+          ? "Split by Headings · \(h.parts + 1) cards, linked by arrows" : "Split by Headings · no headings to split at"
+      )
+    case .more: Tip("More Actions")
+    case .open: Tip("Open in Browser", kbd: "Double-click")
+    case .unlock: Tip("Unlock", kbd: BoardKey.show(of: "Lock / Unlock"))
     }
   }
 
@@ -259,8 +263,28 @@ extension CanvasView {
   func hoverHead(_ on: (CardID, HeadAct)?) {
     guard on?.0 != hoveredHead?.0 || on?.1 != hoveredHead?.1 else { return }
     hoveredHead = on
-    toolTip = on.flatMap { o in head(o.0).map { headTip(o.1, $0) } }
+    showTip()
     drawChrome()
+  }
+
+  /// The tip of the header or Section button under the pointer, over it in the view (main's TooltipLayer)
+  func showTip() {
+    var tip: (Tip, CGRect)?
+    if let (id, a) = hoveredHead, let h = head(id), let r = h.buttons.first(where: { $0.0 == a })?.1,
+      let i = index(of: .card(id))
+    {
+      let box = items[i].box
+      tip = (headTip(a, h), box.convert(r, to: box.superlayer))
+    } else if let id = hoveredTitle, let a = hoveredAct, let t = sectionTip(a, of: id),
+      let r = actsLayout(id).first(where: { $0.0 == a })?.1
+    {
+      tip = (t, r)
+    }
+    let v = tip.map { t in
+      let (a, b) = (camera.view(CGPoint(x: t.1.minX, y: t.1.minY)), camera.view(CGPoint(x: t.1.maxX, y: t.1.maxY)))
+      return CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
+    }
+    tips.hover(tip?.0, v ?? .zero, in: self, theme: theme)
   }
 
   /// The header strips and grips of the cards showing them, in the cards' own layers (drawChrome calls this)

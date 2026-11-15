@@ -988,6 +988,8 @@ extension CanvasView {
     // a Section's title, its grip and its controls: all the arrow, as main's buttons and chrome (styles.css)
     let bp = camera.board(v)
     if hitCard(bp) == nil, let id = titleHover(at: bp) {
+      // hovered first, so its controls are there to be found on the first move onto it too
+      if id != hoveredTitle { hoverTitle(id, act: nil) }
       hoverTitle(id, act: sectionAct(at: bp)?.1)
       NSCursor.arrow.set()
       hover(nil)
@@ -1027,6 +1029,8 @@ extension CanvasView {
   // MARK: Pointer
 
   public override func mouseDown(with e: NSEvent) {
+    // a press anywhere hides a button's tip (main's TooltipLayer on pointerdown)
+    tips.press()
     if spacePanDown(e) { return }
     // a click outside the card being written in (on it, the web view takes it) ends the writing
     if editing != nil { Task { await endEditing() } }

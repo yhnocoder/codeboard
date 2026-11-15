@@ -138,7 +138,21 @@ extension CanvasView {
     if id != hoveredTitle { swatchesOpen = nil }
     hoveredTitle = id
     hoveredAct = act
+    showTip()
     drawChrome()
+  }
+
+  /// What a control says when the pointer rests on it (SectionTools.tsx, Sections.tsx .lockb data-tip and data-kbd)
+  func sectionTip(_ a: SectionAct, of id: SectionID) -> Tip? {
+    guard let s = document?.board.section(id) else { return nil }
+    return switch a {
+    case .grip, .fold: nil
+    case .fit: Tip(fitBlocked(id).map { "Fit Content · \($0)" } ?? "Fit Content", kbd: BoardKey.show(of: "Fit Content"))
+    case .color: Tip("Color")
+    case .swatch(let c): CanvasView.sectionColors.first { $0.0 == c }.map { Tip($0.1) }
+    case .lock: Tip(s.locked ? "Unlock" : "Lock", kbd: BoardKey.show(of: "Lock / Unlock"))
+    case .unlock: Tip("Unlock Section")
+    }
   }
 
   /// The controls as a chrome layer (board units), fading in when they come
