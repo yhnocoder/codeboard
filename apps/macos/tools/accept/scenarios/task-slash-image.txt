@@ -1,4 +1,4 @@
-# 在一行后面回车，打 /image 选中：Image 拿 demo 给的图片（--pick-image，不弹打开面板），图片写进 Markdown
+# 在一行后面回车，打 /image 选中：Image 拿 demo 给的图片（--pick-image），app 里是打开面板事先设好的答案（panel，面板不弹出），图片写进 Markdown
 # storage: storage-tasks
 zoom 1
 center @ntask"值"
@@ -7,6 +7,7 @@ wait 600
 rec image
 click @ntask"anything.">
 key return
+app: panel storage/assets/7c3e9a51d2b04f68-240x150.png
 keys /image
 wait 500
 shot menu
