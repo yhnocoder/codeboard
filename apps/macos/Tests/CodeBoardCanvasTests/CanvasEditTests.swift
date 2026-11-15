@@ -332,6 +332,14 @@ actor RigTurns {
     #expect(r.doc.selection == [.card(cid("t1"))])
     r.click(r.centre("b1"), .shift)
     #expect(r.doc.selection == [.card(cid("t1")), .card(cid("b1"))])
+    // a click on a Text of several selected keeps them all (interact.ts cardPointerDown: a Text has no body, so no
+    // multiBody); one on a Note's body leaves only that one
+    r.click(r.centre("t1"))
+    #expect(r.doc.selection == [.card(cid("t1")), .card(cid("b1"))])
+    r.click(CGPoint(x: 40, y: 40), .shift)
+    r.click(CGPoint(x: 40, y: 100))
+    #expect(r.doc.selection == [.card(cid("n1"))])
+    r.doc.select([.card(cid("t1")), .card(cid("b1"))])
     r.click(r.centre("t1"), .command)
     #expect(r.doc.selection == [.card(cid("b1"))])
     // a Section's blank inside selects it; its title too

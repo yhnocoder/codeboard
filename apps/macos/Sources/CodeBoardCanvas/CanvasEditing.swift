@@ -1402,7 +1402,8 @@ extension CanvasView {
       if let item {
         if toggle && was {
           doc.select(doc.selection.subtracting([item]))
-        } else if !toggle && doc.selection.count > 1 {
+        } else if !toggle && doc.selection.count > 1 && !(item.card.map(isText) ?? false) {
+          // one of several: only it stays, a Text all of them (it has no body to press: interact.ts multiBody)
           doc.select([item])
         }
       } else if let s = inside {
