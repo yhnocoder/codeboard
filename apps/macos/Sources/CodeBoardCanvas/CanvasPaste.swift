@@ -1,6 +1,7 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
+import UniformTypeIdentifiers
 
 // Text pasted on the board (board actions/create.ts pasteText, addCards, newWriting, newWeb, newFreeCode, addImage;
 // web.ts newLinkList; core layout.ts findFree, besideFree, estSize; state/sections.ts settleHome): web addresses are
@@ -101,24 +102,54 @@ extension CanvasView {
             content: .own(CardContent(body: .code(CodeCard(segments: [seg]))))))
       }
     case .svg(let url, let natural):
-      // addImage: the cleaned file in the board's images, as wide as it is (24 to a Note's width)
-      guard let (board, vault) = shown,
-        let address = try? NoteEditor.store(dataURL: url, in: vault.url(of: board.path))
-      else { return toast("Could not add the image") }
-      let name = String(address.dropFirst(Vault.imagesFolder.count + 1))
-      let w = max(24, min(Board.newNoteWidth, (natural > 0 ? natural : 320).rounded()))
-      let size = CGSize(width: w, height: 160)
-      let at = pastePlace(size, at: p, besideSelection: true)
-      let id = CardID(rawValue: Board.newID("card-"))
-      settle(id, size, "Paste", reveal: true) {
-        $0.cards.append(
-          Card(
-            id: id, x: at.x, y: at.y, width: w, content: .own(CardContent(body: .image(ImageCard(source: .file(name)))))
-          ))
-      }
+      // addImage: as wide as it is, 24 to a Note's width
+      addImage(url, width: max(24, min(Board.newNoteWidth, (natural > 0 ? natural : 320).rounded())), at: p, "Paste")
     case .none(let why):
       if let why { toast(why) }
     }
+  }
+
+  /// addImage: the cleaned picture in the board's images, an image card `width` wide where a pasted card goes
+  private func addImage(_ dataURL: String, width w: CGFloat, at p: CGPoint?, _ step: String) {
+    guard let (board, vault) = shown,
+      let address = try? NoteEditor.store(dataURL: dataURL, in: vault.url(of: board.path))
+    else { return toast("Could not add the image") }
+    let name = String(address.dropFirst(Vault.imagesFolder.count + 1))
+    let size = CGSize(width: w, height: 160)
+    let at = pastePlace(size, at: p, besideSelection: true)
+    let id = CardID(rawValue: Board.newID("card-"))
+    settle(id, size, step, reveal: true) {
+      $0.cards.append(
+        Card(
+          id: id, x: at.x, y: at.y, width: w, content: .own(CardContent(body: .image(ImageCard(source: .file(name)))))))
+    }
+  }
+
+  /// The toolbar's Image (create.ts newImage, host handlers.ts pickImage): a picture file chosen in the open panel
+  /// added as an image card, as wide as the picture shows, where a pasted card goes
+  public func newImage() {
+    guard let window else { return }
+    let doc = document
+    Task { [weak self] in
+      guard let url = await self?.pickImage(window), let self, document === doc else { return }
+      guard let data = try? Data(contentsOf: url), let (ext, _) = NoteEditor.kind(of: data),
+        let mime = UTType(filenameExtension: ext)?.preferredMIMEType
+      else { return toast("\(url.lastPathComponent) is not a PNG, JPEG, WebP, GIF or SVG image.") }
+      let made: (dataURL: String, width: Double)?
+      do {
+        made = try await notes.image("data:\(mime);base64,\(data.base64EncodedString())")
+      } catch { return toast("Could not add the image") }
+      guard document === doc else { return }
+      guard let made else { return toast("This SVG image could not be read") }
+      addImage(made.dataURL, width: made.width, at: nil, "New Image")
+    }
+  }
+
+  static func askImageFile(_ window: NSWindow) async -> URL? {
+    let panel = NSOpenPanel()
+    panel.allowedContentTypes = [.png, .jpeg, .webP, .gif, .svg]
+    panel.prompt = "Add Image"
+    return await panel.beginSheetModal(for: window) == .OK ? panel.url : nil
   }
 
   /// A new card added in one step and selected, in the Section its rect (`size` at where it is put) covers by more than

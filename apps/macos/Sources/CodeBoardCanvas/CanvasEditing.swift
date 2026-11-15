@@ -288,7 +288,7 @@ extension CanvasView {
       }
       // every layer is at zPosition 0 again
       raised = nil
-      for l in [below, cards, above, kept] { l.sublayers = nil }
+      for l in [below, cards, above, kept, liftedLayer] { l.sublayers = nil }
       for (i, l) in next.enumerated() { home(of: i, in: s).addSublayer(l.box) }
       sections.sublayers = nil
       for f in s.frames { sections.addSublayer(CanvasView.frameLayer(f, theme)) }
@@ -303,6 +303,8 @@ extension CanvasView {
     }
     scene = s
     items = next
+    // cards let go a moment ago go on landing over the others
+    withoutAnimation { relanding() }
     easeFrames(from: shownFrames, in: s)
     for (l, from) in movedTitles {
       let a = CASpringAnimation(keyPath: "position")
@@ -314,6 +316,7 @@ extension CanvasView {
       l.add(a, forKey: "ease")
     }
     routedArrows = [:]
+    showTidySlide()
     if let h = hoveredArrow, !s.arrows.contains(where: { $0.id == h }) { hoveredArrow = nil }
     fieldShown()
     if let h = hoveredCard, index(of: .card(h)) == nil {
@@ -522,6 +525,7 @@ extension CanvasView {
         case .arrow, .sticker: break
         }
       }
+      toneTitles()
       raiseText()
       if let bar = barLayer() { chrome.addSublayer(bar) }
       if let chip = chipLayer() { chrome.addSublayer(chip) }
@@ -529,7 +533,6 @@ extension CanvasView {
       drawHoverLine()
       placeHeadActs()
       drawPorts()
-      drawEndHandles()
       drawConnect()
       placeTextHandles()
     }
@@ -694,17 +697,18 @@ extension CanvasView {
 
   /// A selected Section (styles.css .sect.sel): the accent edge, a 3 point halo of it at 18 % and a 7 % wash
   private func framed(_ r: CGRect, zoom z: CGFloat) {
+    let colour = theme.sectionSelected
     let wash = CAShapeLayer()
     wash.path = Drawing.squircle(r, theme.sectionRadius)
-    wash.fillColor = theme.accent.copy(alpha: 0.07)
-    wash.strokeColor = theme.accent
-    wash.lineWidth = 1 / z
+    wash.fillColor = colour.copy(alpha: 0.07)
+    wash.strokeColor = colour
+    wash.lineWidth = boardLine(0.5)
     let halo = CAShapeLayer()
-    let out = 1.5 / z
+    let out: CGFloat = 1.5
     halo.path = Drawing.squircle(r.insetBy(dx: -out, dy: -out), theme.sectionRadius + out)
     halo.fillColor = nil
-    halo.strokeColor = theme.accent.copy(alpha: 0.18)
-    halo.lineWidth = 3 / z
+    halo.strokeColor = colour.copy(alpha: 0.18)
+    halo.lineWidth = 3
     chrome.addSublayer(halo)
     chrome.addSublayer(wash)
   }
@@ -773,7 +777,8 @@ extension CanvasView {
   func drawHoverLine() {
     hoverLine?.removeFromSuperlayer()
     hoverLine = nil
-    guard let id = hoveredCard, isText(id), document?.selection.contains(.card(id)) == false,
+    // none while a card is dragged or anything else is under way, as main's
+    guard gesture == nil, let id = hoveredCard, isText(id), document?.selection.contains(.card(id)) == false,
       let i = index(of: .card(id))
     else { return }
     let box = items[i].box
@@ -1347,6 +1352,8 @@ extension CanvasView {
         refClicked(
           .card(r.card, boardRect(r.box, on: r.card)), r.box.ref, r.box.target, go: e.modifierFlags.contains(.command),
           writing: false)
+      } else if case .card(let id)? = item, was, !toggle, doc.selection == [.card(id)] {
+        clickEdit(id, at: g.start)
       }
       if let item {
         if toggle && was {

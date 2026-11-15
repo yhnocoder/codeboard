@@ -50,4 +50,64 @@ import Testing
     r.doc.undo()
     #expect(r.doc.board == board)
   }
+
+  /// Into a sub-board and out (subboards.ts enterFrame, leaveBoard, boardShown; Crumbs.tsx): the card's name hidden
+  /// and its copy flying to the breadcrumb while the board fades out; the shell asked once it has; the board entered
+  /// fading in from 1.03 with the breadcrumb, its current crumb hidden until the name lands. Esc deselects first, then
+  /// leaves: the name flies back, the board fades out growing, and the parent's card hides its name until it lands
+  @Test func aSubBoardIsEnteredWithItsNameFlyingToTheBreadcrumbAndEscLeavesIt() async throws {
+    let board = Board(id: BoardID(rawValue: "here"), cards: [note("a", x: 100, y: 100), note("c", x: 900, y: 500)])
+    let r = try await Rig(board, zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let vault = Vault(root: r.root)
+    r.doc.select([.card(cid("a"))])
+    c.turnIntoBoard(nil)
+    await r.until("the name's field") { c.inPlace != nil }
+    c.endInPlace(commit: true)
+    let frame = try #require(r.doc.board.cards.first { $0.id != cid("c") }?.id)
+    let child = try #require(try vault.tree().boards.first { $0.id != board.id })
+    await r.until("the card drawn") { c.index(of: .card(frame)) != nil }
+    var entered: (BoardID, CardID, Camera)?
+    c.onEnterBoard = { entered = ($0, $1, $2) }
+    var left: [Int?] = []
+    c.onLeaveBoard = { left.append($0) }
+    r.doc.select([])
+    let cam = c.currentCamera
+    #expect(c.openSubBoard(frame))
+    let box = try #require(c.index(of: .card(frame)).map { c.items[$0].box })
+    #expect(box.mask != nil, "the card's name hidden while its copy flies")
+    #expect(c.crumbsBar.stage.sublayers?.count == 1)
+    #expect(c.world.opacity == 0 && c.world.animation(forKey: "opacity") != nil)
+    #expect(entered == nil, "asked once the board has faded")
+    await r.until("the shell asked") { entered != nil }
+    #expect(entered?.0 == child.id && entered?.1 == frame && entered?.2 == cam)
+    // the shell gives the crumbs at once; they show with the board entered
+    c.crumbs = [CrumbShown(board: board.id, frame: frame, name: "Here")]
+    #expect(c.crumbsBar.isHidden)
+    let doc = try BoardDocument { vault.url(of: child.path).appending(path: Vault.boardFileName) }
+    try await c.show(doc, at: child, in: vault, theme: .warmInk)
+    #expect(!c.crumbsBar.isHidden && c.crumbsBar.parents.map(\.name) == ["Here"] && c.crumbsBar.current == child.title)
+    #expect(c.crumbsBar.hidesCurrent, "the current crumb waits for the name")
+    #expect(c.world.opacity == 1 && c.world.animation(forKey: "transform") != nil)
+    await r.until("landed") { c.crumbsBar.move == nil }
+    #expect(!c.crumbsBar.hidesCurrent && c.crumbsBar.stage.sublayers?.isEmpty != false)
+    // Esc: a selection goes first, then back to the parent
+    doc.select([.card(cid("a"))])
+    r.key(53)
+    #expect(doc.selection.isEmpty && left.isEmpty)
+    r.key(53)
+    #expect(c.crumbsBar.hidesCurrent && c.crumbsBar.stage.sublayers?.count == 1)
+    #expect(c.world.opacity == 0)
+    await r.until("the shell asked to leave") { !left.isEmpty }
+    #expect(left == [0])
+    c.crumbs = []
+    c.arriving = cam
+    try await c.show(r.doc, at: VaultBoard(id: board.id, title: "B", path: "here.board"), in: vault, theme: .warmInk)
+    #expect(c.crumbsBar.isHidden && c.currentCamera == cam)
+    let back = try #require(c.index(of: .card(frame)).map { c.items[$0].box })
+    #expect(back.mask != nil, "its name hidden until the copy lands on it")
+    await r.until("landed back") { c.crumbsBar.move == nil }
+    #expect(back.mask == nil && c.crumbsBar.stage.sublayers?.isEmpty != false)
+  }
 }

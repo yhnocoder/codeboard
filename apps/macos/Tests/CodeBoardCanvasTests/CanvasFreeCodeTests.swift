@@ -118,6 +118,64 @@ private func freeBoard() -> Board {
     #expect(got == "    return run(ids)1", "nothing of the composition kept: \(got)")
   }
 
+  /// Code's colours that come back while an input method's key is going in, after WebKit wrote the composing text and
+  /// before CodeMirror read the caret WebKit put (an answer can overtake that, as the key's own keydown does), leave the
+  /// composition alone: put in then, they set back the selection CodeMirror read in between, the composed text selected,
+  /// which WebKit takes as the end of the composition, and the commit landed beside what was composed ("n你"; web/src/
+  /// page.ts afterCaret). In a key window, as a person types: with no focus CodeMirror never reads WebKit's caret
+  @Test func coloursComingWhileComposingInCodeLeaveTheCompositionAlone() async throws {
+    Pinyin.install()
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer {
+      Pinyin.windows.remove(r.window.windowNumber)
+      r.close()
+    }
+    let c = r.canvas
+    let card = r.rect("f")
+    let code = try #require(c.scene?.placed[cid("f")]?.code)
+    let row = try #require(code.layout.row(segment: 0, line: 3))
+    r.doubleClick(CGPoint(x: card.maxX - 10, y: card.minY + code.top + row.y + row.height / 2))
+    await r.editorReady()
+    await r.pageFocused()
+    let v = c.noteEditor.view
+    func js(_ s: String) async -> Any? { try? await v.callAsyncJavaScript(s, contentWorld: .page) }
+    func last() async -> String {
+      await js("return [...document.querySelectorAll('.cm-line')].at(-1)?.textContent ?? ''") as? String ?? ""
+    }
+    // the colours native answers, held in the page and given once "ni" is in, just before CodeMirror reads WebKit's
+    // caret (its selectionchange); later ones as they come
+    _ = await js(
+      """
+      const h = webkit.messageHandlers.highlight, post = h.postMessage.bind(h), held = [];
+      window.given = false;
+      h.postMessage = (m) => new Promise((give) => post(m).then((html) => given ? give(html) : held.push(() => give(html))));
+      let ni = false;
+      addEventListener("input", (e) => (ni ||= e.data === "ni"), true);
+      document.addEventListener("selectionchange", () => {
+        if (!ni || given) return;
+        window.given = true;
+        for (const give of held.splice(0)) give();
+      }, true);
+      window.heldCount = () => held.length;
+      """)
+    Pinyin.windows.insert(r.window.windowNumber)
+    let ends = await js("return edit.compositionEnds()") as? Int ?? -1
+    await r.typeInTurn("n")
+    await r.until("the colours for n answered") { (await js("return heldCount()") as? Int ?? 0) > 0 }
+    await r.typeInTurn("i")
+    await r.until("composing ni, the colours given") {
+      let given = await js("return given") as? Bool == true
+      let text = await last()
+      return given && text.hasSuffix("ni")
+    }
+    _ = await js("await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))")
+    #expect(await js("return edit.compositionEnds()") as? Int == ends, "the composition goes on")
+    await r.typeInTurn(" ")
+    await r.until("committed") { await last().contains("你") }
+    #expect(await last() == "    return run(ids)你")
+    #expect(await js("return edit.compositionEnds()") as? Int == ends + 1, "one composition, ended by the commit")
+  }
+
   /// "ni" and Space typed at once after the double-click on code, before the editor is there: they go through the input
   /// method too, so 你 is written (CanvasIMETests.pinyinTypedAtOnceAfterTheDoubleClickIsComposed)
   @Test(arguments: [false, true])
@@ -206,6 +264,90 @@ private func freeBoard() -> Board {
     #expect(r.doc.board.segment(cid("f"), s1)?.lines.suffix(2) == ["    return run(ids)x = 1", "    y"])
   }
 
+  /// interact.ts clickEditKind "free": a click on the code of the one Free code card selected before the press writes it,
+  /// the caret where it was; not on its head, not sourced code
+  @Test func aClickOnTheOneSelectedFreeCodesCodeWritesIt() async throws {
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let card = r.rect("f")
+    let code = try #require(c.scene?.placed[cid("f")]?.code)
+    let row = try #require(code.layout.row(segment: 0, line: 2))
+    let line2 = CGPoint(x: card.minX + code.layout.gutter + 40, y: card.minY + code.top + row.y + row.height / 2)
+    r.click(line2)
+    await r.settle()
+    #expect(r.doc.selection == [.card(cid("f"))] && !c.isEditing, "the click that selects it")
+    r.click(CGPoint(x: card.midX, y: card.minY + 10))
+    await r.settle()
+    #expect(!c.isEditing, "its head")
+    r.click(line2)
+    await r.editorReady()
+    #expect(c.editing?.id == cid("f") && c.editing?.code == true)
+    let caretLine =
+      try await c.noteEditor.view.callAsyncJavaScript(
+        "const s = getSelection(); return s.anchorNode?.parentElement?.closest('.cm-line')?.textContent ?? null",
+        contentWorld: .page) as? String
+    #expect(caretLine == "    ids = batch.ids")
+    await c.endEditing()
+    let read = r.rect("r")
+    r.click(CGPoint(x: read.midX, y: read.maxY - 10))
+    r.click(CGPoint(x: read.midX, y: read.maxY - 10))
+    await r.settle()
+    #expect(!c.isEditing, "sourced code")
+  }
+
+  /// interact.ts cardPointerDown: a double-click on a code card's title (on an untitled Free code card's head anywhere)
+  /// writes its title where it is (CodeHead.tsx's Editable), one step; blank or the card's own title is none
+  /// (cards.ts renameCard); elsewhere on a titled head nothing is written
+  @Test func aDoubleClickOnACodeCardsTitleRenamesItWhereItIs() async throws {
+    var b = freeBoard()
+    b.cards.append(
+      Card(
+        id: cid("u"), x: 600, y: 100, width: 320,
+        content: .own(
+          CardContent(
+            body: .code(
+              CodeCard(segments: [
+                Segment(id: SegmentID(rawValue: "s3"), source: nil, language: "python", firstLine: 1, lines: ["y = 2"])
+              ]))))))
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    func head(_ id: String, _ x: CGFloat) -> CGPoint {
+      let k = r.rect(id)
+      return CGPoint(x: x < 0 ? k.maxX + x : k.minX + x, y: k.minY + c.theme.headerHeight / 2)
+    }
+    func title(_ id: String) -> String? {
+      if case .own(let k)? = r.doc.board.card(cid(id))?.content { k.title } else { nil }
+    }
+    // a titled head past its title: nothing
+    r.doubleClick(head("f", -40))
+    await r.settle()
+    #expect(c.inPlace == nil && !c.isEditing)
+    // on the title: its field, with the title
+    r.doubleClick(head("r", 40))
+    await r.settle()
+    #expect(c.inPlace?.what == .card(cid("r")) && c.inPlace?.field.stringValue == "Read" && !c.isEditing)
+    c.inPlace?.field.stringValue = "  Reader "
+    c.endInPlace(commit: true)
+    #expect(title("r") == "Reader" && r.doc.undoName == "Rename")
+    // blank: untitled again
+    r.doubleClick(head("f", 20))
+    await r.settle()
+    #expect(c.inPlace?.what == .card(cid("f")) && c.inPlace?.field.stringValue == "Free")
+    c.inPlace?.field.stringValue = " "
+    c.endInPlace(commit: true)
+    #expect(title("f") == nil)
+    // an untitled Free code card: anywhere on its head but its buttons, empty
+    r.doubleClick(head("u", 60))
+    await r.settle()
+    #expect(c.inPlace?.what == .card(cid("u")) && c.inPlace?.field.stringValue == "")
+    c.inPlace?.field.stringValue = "Setup"
+    c.endInPlace(commit: true)
+    #expect(title("u") == "Setup")
+    #expect(r.doc.history.undoSteps.count == 3)
+  }
+
   @Test func sourcedCodeIsNotWrittenByADoubleClick() async throws {
     let r = try await Rig(freeBoard(), zoom: 1)
     defer { r.close() }
@@ -213,6 +355,41 @@ private func freeBoard() -> Board {
     r.doubleClick(CGPoint(x: card.midX, y: card.maxY - 10))
     await r.settle()
     #expect(!r.canvas.isEditing)
+  }
+
+  /// The board's New Code (menus.ts canvasMenu, create.ts newFreeCode): a Free code card at the point, its code being
+  /// written at once; left with nothing written it goes with no step (env.fresh), written it is one step "New Code"
+  @Test func newCodeLeftEmptyGoesAndWrittenIsOneStep() async throws {
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    func newCode() throws {
+      let item = try #require(c.boardMenu(at: CGPoint(x: 600, y: 120)).items.first { $0.title == "New Code" })
+      (item.representedObject as? MenuAction)?.run()
+    }
+    let cards = r.doc.board.cards.count
+    try newCode()
+    await r.editorReady()
+    let id = try #require(c.editing?.id)
+    #expect(c.editing?.code == true && c.editing?.fresh == true)
+    let made = try #require(r.doc.board.card(id))
+    #expect(made.x == 600 && made.y == 120 && made.width == Board.newNoteWidth && r.doc.board.isFreeCode(id))
+    await c.endEditing()
+    #expect(r.doc.board.cards.count == cards && r.doc.board.card(id) == nil, "left empty: gone")
+    #expect(r.doc.history.undoSteps.isEmpty, "with no step")
+    try newCode()
+    await r.editorReady()
+    let id2 = try #require(c.editing?.id)
+    await r.type("x = 1")
+    await c.endEditing()
+    guard case .own(let written)? = r.doc.board.card(id2)?.content, case .code(let code) = written.body else {
+      Issue.record("no code card")
+      return
+    }
+    #expect(code.segments.first?.lines == ["x = 1"])
+    #expect(r.doc.history.undoSteps.map(\.name) == ["New Code"])
+    r.doc.undo()
+    #expect(r.doc.board.card(id2) == nil, "one undo takes it away")
   }
 
   /// Written, Free code's language is what its new text looks like (the page's guess), unless it was picked by hand

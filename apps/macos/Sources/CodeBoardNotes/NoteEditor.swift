@@ -278,7 +278,7 @@ public final class NoteEditor: NSObject {
   }
 
   /// The picture's type by its first bytes, and its size in pixels when it has one
-  nonisolated static func kind(of data: Data) -> (String, (Int, Int)?)? {
+  public nonisolated static func kind(of data: Data) -> (String, (Int, Int)?)? {
     let head = [UInt8](data.prefix(16))
     let ext: String
     if head.starts(with: [0x89, 0x50, 0x4E, 0x47]) {

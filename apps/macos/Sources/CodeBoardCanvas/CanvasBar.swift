@@ -90,6 +90,15 @@ enum Icons {
     return p
   }
 
+  /// icons.tsx code: < and >
+  static var code: CGPath { SVGPath.parse("M10.5 11.5 14 8l-3.5-3.5M5.5 4.5 2 8l3.5 3.5") }
+  /// icons.tsx image: a frame with the sun and a hill
+  static var image: CGPath {
+    SVGPath.parse(
+      "M2.5 2H13.5A.5 .5 0 0 1 14 2.5V13.5A.5 .5 0 0 1 13.5 14H2.5A.5 .5 0 0 1 2 13.5V2.5A.5 .5 0 0 1 2.5 2zM7 6A1 1 0 1 1 5 6A1 1 0 1 1 7 6ZM14 10l-2.3-2.3a1 1 0 0 0-1.4 0L4 14"
+    )
+  }
+
   /// icons.tsx arrowLink: a ring with a bent arrow
   /// icons.tsx sticker: a sheet with a turned corner and a smile
   static var sticker: CGPath {

@@ -539,3 +539,35 @@ private func pixels(_ s: IOSurface) -> [UInt8] {
     #expect(darkRGB(60, 20) == Array(rgb(60, 20).prefix(3)), "variable, dark: \(darkRGB(60, 20))")
   }
 }
+
+/// A picture file's card width as main's addImage gives it (create.ts imageCardWidth): its pixels over a PNG's resolution
+/// (144 dpi: half), 24 to a Note's width; an SVG cleaned; one that cannot be read, nil
+@Test @MainActor func aPicturesCardIsAsWideAsItShows() async throws {
+  _ = NSApplication.shared
+  let page = NoteRenderer.bundledPage.appending(path: "page.html").path(percentEncoded: false)
+  try #require(FileManager.default.fileExists(atPath: page), "build the Note page first: node web/build.mjs")
+  let cache = try tempFolder()
+  defer { try? FileManager.default.removeItem(at: cache) }
+  func png(_ w: Int, dpi: Int?) throws -> String {
+    let ctx = try #require(
+      CGContext(
+        data: nil, width: w, height: 20, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+    let out = NSMutableData()
+    let dest = try #require(CGImageDestinationCreateWithData(out, "public.png" as CFString, 1, nil))
+    CGImageDestinationAddImage(
+      dest, try #require(ctx.makeImage()),
+      dpi.map { [kCGImagePropertyDPIWidth: $0, kCGImagePropertyDPIHeight: $0] as CFDictionary })
+    #expect(CGImageDestinationFinalize(dest))
+    return "data:image/png;base64,\((out as Data).base64EncodedString())"
+  }
+  let r = NoteRenderer(cache: cache)
+  #expect(try await r.image(try png(400, dpi: 144))?.width == 200)
+  #expect(try await r.image(try png(1000, dpi: nil))?.width == 381)
+  #expect(try await r.image(try png(10, dpi: nil))?.width == 24)
+  let svg =
+    #"<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" width="120" height="40"><rect width="120" height="40"/></svg>"#
+  let made = try #require(try await r.image("data:image/svg+xml;base64,\(Data(svg.utf8).base64EncodedString())"))
+  #expect(made.width == 120 && made.dataURL.hasPrefix("data:image/svg+xml"))
+  #expect(try await r.image("data:image/svg+xml;base64,\(Data("<svg".utf8).base64EncodedString())") == nil)
+}

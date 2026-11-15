@@ -201,6 +201,21 @@ public final class NoteRenderer {
     }
   }
 
+  /// A picture added from a file as main adds it (board actions/create.ts addImage): an SVG cleaned, and the width of its
+  /// card from its pixels and a PNG's resolution; nil for an SVG that cannot be read
+  public func image(_ dataURL: String) async throws -> (dataURL: String, width: Double)? {
+    try await takeTurn(priority: Int.max)
+    defer { endTurn() }
+    do {
+      let p = try page ?? NotePage(page: pageFolder)
+      page = p
+      return try await p.added(dataURL)
+    } catch {
+      page = nil
+      throw error
+    }
+  }
+
   /// The language Free code's text looks like, as the board guesses it (core freeLang); nil when it cannot tell
   public func freeLanguage(_ text: String) async throws -> String? {
     try await takeTurn(priority: Int.max)

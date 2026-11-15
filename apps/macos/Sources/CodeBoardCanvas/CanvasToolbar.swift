@@ -4,20 +4,23 @@ import CodeBoardModel
 // The toolbar at the bottom of the board (Chrome.tsx .bbar), as the web board draws it in each look (its computed
 // styles measured in Chromium): in Warm Ink a glass pill over the board, blurred under it; in Ink Wash one pale stroke
 // of ink with a brush resting at its end (state/ink.ts barSvg). Its buttons are 30 × 28 with a 16-unit icon. The tools
-// are laid out in the web board's order; those not made here yet are left out.
+// are laid out in the web board's order; those not made here yet are left out. Code and Image are main's menus with
+// one item each here (New Code: From GitHub and Add Function are not made; New Image: Paste Image Text and New SVG from
+// Text ask an AI model), so each is that item's button, without the menu's chevron.
 
 /// A tool of the toolbar, in its order
 public enum Tool: CaseIterable, Sendable {
-  case note, text, box, image, web, section, arrow, sticker
+  case note, text, box, code, image, web, section, arrow, sticker
 
   /// What can be made from the Mac app's toolbar now
-  public static let made: [Tool] = [.note, .text, .box, .section, .arrow, .sticker]
+  public static let made: [Tool] = [.note, .text, .box, .code, .image, .section, .arrow, .sticker]
 
   var name: String {
     switch self {
     case .note: "Note"
     case .text: "Text"
     case .box: "Box"
+    case .code: "Code"
     case .image: "Image"
     case .web: "Web"
     case .section: "Section"
@@ -31,6 +34,8 @@ public enum Tool: CaseIterable, Sendable {
     case .note: Icons.note()
     case .text: Icons.text()
     case .box: Icons.box()
+    case .code: Icons.code
+    case .image: Icons.image
     case .section: Icons.section()
     case .arrow: Icons.arrowLink()
     case .sticker: Icons.sticker
@@ -44,6 +49,8 @@ public final class CanvasToolbar: NSView {
   public var onTool: ((Tool) -> Void)?
   /// The ⋯ button clicked (Chrome.tsx More), at its rect in this view
   public var onMore: ((CGRect) -> Void)?
+  /// The Search button clicked (Chrome.tsx: the palette on all boards)
+  public var onSearch: (() -> Void)?
   public private(set) var tools: [Tool] = Tool.made
   public var theme: Theme = .warmInk {
     didSet { if !theme.same(as: oldValue) { restyle() } }
@@ -91,9 +98,9 @@ public final class CanvasToolbar: NSView {
   /// The bar's own size (without the room around it)
   var barSize: CGSize {
     let n = CGFloat(tools.count)
-    // a separator (.sep, 0.5 wide with 4 each side) and ⋯ (a button as a tool's)
+    // a separator (.sep, 0.5 wide with 4 each side), Search and ⋯ (buttons as a tool's)
     let gap: CGFloat = theme.id == .inkWash ? 1 : 2
-    let more = gap + 8.5 + gap + 30
+    let more = gap + 8.5 + gap + 30 + gap + 30
     return theme.id == .inkWash
       ? CGSize(width: 22 + n * 30 + (n - 1) * 1 + more + 34, height: 46)
       : CGSize(width: 8 + n * 30 + (n - 1) * 2 + more, height: 36)
@@ -102,13 +109,14 @@ public final class CanvasToolbar: NSView {
   /// A tool's button in this view
   public func rect(of tool: Tool) -> CGRect? { tools.firstIndex(of: tool).map { buttonRects()[$0] } }
 
-  /// Where the separator before ⋯ and ⋯ are in the view
-  func extraRects() -> (sep: CGRect, more: CGRect) {
+  /// Where the separator after the tools, Search and ⋯ are in the view
+  func extraRects() -> (sep: CGRect, search: CGRect, more: CGRect) {
     let b = barRect
     let gap: CGFloat = theme.id == .inkWash ? 1 : 2
     let last = buttonRects().last ?? CGRect(x: b.minX, y: b.minY, width: 0, height: 0)
     let x = last.maxX + gap
-    return (Self.sep(x: x, midY: last.midY), CGRect(x: x + 8.5 + gap, y: last.minY, width: 30, height: 28))
+    let search = CGRect(x: x + 8.5 + gap, y: last.minY, width: 30, height: 28)
+    return (Self.sep(x: x, midY: last.midY), search, search.offsetBy(dx: 30 + gap, dy: 0))
   }
 
   /// A separator (.sep: 0.5 × 16 with 4 each side) starting at `x`
@@ -167,14 +175,22 @@ public final class CanvasToolbar: NSView {
   /// What `image` draws after the tools
   var extrasDrawn: Extras {
     let r = extraRects()
-    return Extras(sep: r.sep, more: r.more, moreLit: hover == -3 || pressed == -3)
+    return Extras(
+      sep: r.sep, search: r.search, more: r.more, searchLit: hover == -2 || pressed == -2,
+      searchPressed: pressed == -2, moreLit: hover == -3 || pressed == -3)
   }
 
   struct Extras {
     var sep: CGRect
+    var search: CGRect
     var more: CGRect
+    var searchLit = false
+    var searchPressed = false
     var moreLit: Bool
   }
+
+  /// icons.tsx search: a lens
+  static let searchIcon = SVGPath.parse("M12 7A5 5 0 1 1 2 7A5 5 0 1 1 12 7ZM10.6 10.6L14 14")
 
   /// The blur under the glass (Warm Ink's backdrop-filter, Ink Wash's inside its stroke)
   static func makeGlass() -> NSVisualEffectView {
@@ -344,9 +360,13 @@ public final class CanvasToolbar: NSView {
     }
   }
 
-  /// The separator and ⋯: three dots 3 across, 5 apart (Icon more)
+  /// The separator, Search (a tool's button) and ⋯: three dots 3 across, 5 apart (Icon more)
   static func drawExtras(_ e: Extras, theme t: Theme, look: BarLook, in ctx: CGContext) {
     drawSep(e.sep, theme: t, look: look, in: ctx)
+    if e.searchLit { lit(e.search, theme: t, ink: look.ink, pressed: e.searchPressed, in: ctx) }
+    Icons.stroke(
+      searchIcon, at: CGPoint(x: e.search.minX + 7, y: e.search.minY + 6),
+      color: t.id == .inkWash || e.searchLit ? look.ink : look.ink2, in: ctx)
     if e.moreLit { lit(e.more, theme: t, ink: look.ink, pressed: false, in: ctx) }
     ctx.setFillColor(e.moreLit || t.id == .inkWash ? look.ink : look.ink2)
     for k in -1...1 {
@@ -475,15 +495,47 @@ public final class CanvasToolbar: NSView {
         owner: self))
   }
 
-  /// The tool under a point; -3: ⋯
+  /// The tool under a point; -2: Search, -3: ⋯
   func button(at p: CGPoint) -> Int? {
     if let i = buttonRects().firstIndex(where: { $0.contains(p) }) { return i }
-    return extraRects().more.contains(p) ? -3 : nil
+    let e = extraRects()
+    return e.search.contains(p) ? -2 : e.more.contains(p) ? -3 : nil
   }
 
-  public override func mouseMoved(with e: NSEvent) { hover = button(at: convert(e.locationInWindow, from: nil)) }
-  public override func mouseExited(with e: NSEvent) { hover = nil }
+  /// What a button says (Chrome.tsx data-tip, data-kbd); Code and Image say their one item. Search says what the app
+  /// searches: main's also searches functions and files
+  func tip(_ i: Int) -> Tip? {
+    switch i {
+    case -2: return Tip("Search Cards · ? Shortcuts", kbd: BoardKey.show(of: "Search"))
+    case -3: return Tip("More")
+    case tools.indices:
+      return switch tools[i] {
+      case .note: Tip("New Note", kbd: BoardKey.show(of: "New Note"))
+      case .text: Tip("New Text", kbd: BoardKey.show(of: "New Text"))
+      case .box: Tip("New Box", kbd: BoardKey.show(of: "New Box"))
+      case .section: Tip("Draw a Section")
+      case .arrow: Tip("Select two cards, or pick a card then click another")
+      case .sticker: Tip("Add a Sticker")
+      case let t: Tip("New \(t.name)")
+      }
+    default: return nil
+    }
+  }
+
+  func rect(ofButton i: Int) -> CGRect {
+    i == -2 ? extraRects().search : i == -3 ? extraRects().more : buttonRects()[i]
+  }
+
+  public override func mouseMoved(with e: NSEvent) {
+    hover = button(at: convert(e.locationInWindow, from: nil))
+    Tips.shared.hover(hover.flatMap(tip), hover.map { rect(ofButton: $0) } ?? .zero, in: self, theme: theme)
+  }
+  public override func mouseExited(with e: NSEvent) {
+    hover = nil
+    Tips.shared.hover(nil, in: self, theme: theme)
+  }
   public override func mouseDown(with e: NSEvent) {
+    Tips.shared.press()
     pressed = button(at: convert(e.locationInWindow, from: nil))
   }
 
@@ -491,7 +543,13 @@ public final class CanvasToolbar: NSView {
     let at = button(at: convert(e.locationInWindow, from: nil))
     defer { pressed = nil }
     guard let at, at == pressed else { return }
-    if at == -3 { onMore?(extraRects().more) } else { onTool?(tools[at]) }
+    if at == -3 {
+      onMore?(extraRects().more)
+    } else if at == -2 {
+      onSearch?()
+    } else {
+      onTool?(tools[at])
+    }
   }
 
   public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -501,6 +559,7 @@ public final class CanvasToolbar: NSView {
     let b = barRect
     var parts = [
       uiElement("bar", b, in: self), uiElement("more", extraRects().more, label: "More", in: self),
+      uiElement("search", extraRects().search, label: "Search", in: self),
       uiElement("barink", theme.id == .inkWash ? Self.inkBody(b) : b, in: self),
       uiElement("barblur", glass.isHidden ? CGRect(origin: b.origin, size: .zero) : glass.frame, in: self),
     ]
@@ -523,16 +582,26 @@ public final class CanvasToolbar: NSView {
 }
 
 extension CanvasView {
-  /// A tool of the toolbar: a new Note, Text or Box in the middle of the view, written in at once
+  /// A tool of the toolbar: a new Note, Text, Box or Free code in the middle of the view, written in at once; a picture
+  /// file as a new image card
   public func use(_ tool: Tool) {
     switch tool {
     case .note: createInView(.note)
     case .text: createInView(.text(.text))
     case .box: createInView(.text(.box))
+    case .code: newCodeInView()
+    case .image: newImage()
     case .section: useSection()
     case .arrow: useArrow()
     default: break
     }
+  }
+
+  /// The toolbar's Code: a new Free code card 60 above the middle of the view, written in at once (create.ts
+  /// newFreeCode with no point)
+  func newCodeInView() {
+    let v = camera.visible(bounds.size)
+    editSoon { await self.createCode(at: CGPoint(x: v.midX - Board.newNoteWidth / 2, y: v.midY - 60)) }
   }
 }
 

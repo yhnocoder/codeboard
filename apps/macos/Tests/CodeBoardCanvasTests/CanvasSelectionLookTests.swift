@@ -10,6 +10,8 @@ import Testing
 // 120 ms growing from 98.5 %, and out over 90 ms. It is part of the card (in its layer, as main's is in .cface), so it
 // moves, scales and tilts with it, and stays while the card is written in.
 
+private func gid(_ s: String) -> SectionID { SectionID(rawValue: s) }
+
 @MainActor @Suite(.serialized) struct CanvasSelectionLookTests {
   func ring(_ c: CanvasView) -> CAShapeLayer? {
     c.selectedLooks[cid("n1")]?.first { $0.name == "ring" } as? CAShapeLayer
@@ -121,5 +123,43 @@ import Testing
     #expect(hover("b1") == nil && hover("n1") == nil, "a Note has none")
     r.click(r.centre("t1"))
     #expect(hover("t1") == nil, "selected: its outline only")
+    // hovered when a drag of another card starts: gone while it is dragged (main shows no hover then)
+    r.doc.select([])
+    c.mouseMoved(with: r.mouse(.mouseMoved, r.centre("t1")))
+    #expect(hover("t1") != nil)
+    r.drag(r.centre("b1"), CGPoint(x: r.centre("b1").x, y: r.centre("b1").y + 80)) {
+      #expect(hover("t1") == nil, "none while a card is dragged")
+    }
+  }
+
+  /// A selected Section in Warm Ink (styles.css .sect.sel, --sect-sel): its edge 0.5 and a ring 3 out at 18 % in its own
+  /// orange (#bb7442), a wash of it at 7 %, on the board (they zoom with it); its title in it too (.slabel.sel), and in
+  /// the ink while the pointer is on it (.slabel:hover)
+  @Test(arguments: [1.0, 2.0] as [CGFloat])
+  func aSelectedSectionAndItsTitleTakeTheSectionColour(_ zoom: CGFloat) async throws {
+    let r = try await Rig(zoom: zoom)
+    defer { r.close() }
+    let c = r.canvas
+    let orange = CGColor(srgbRed: 0xbb / 255, green: 0x74 / 255, blue: 0x42 / 255, alpha: 1)
+    #expect(c.theme.sectionSelected == orange)
+    func tone() -> CALayer? {
+      c.index(of: .sectionTitle(gid("g1"))).flatMap { c.items[$0].box.sublayers?.first { $0.name == "tone" } }
+    }
+    #expect(tone() == nil)
+    r.doc.select([.section(gid("g1"))])
+    c.drawChrome()
+    let shapes = (c.chrome.sublayers ?? []).compactMap { $0 as? CAShapeLayer }
+    let edge = try #require(shapes.first { $0.fillColor == orange.copy(alpha: 0.07) })
+    #expect(edge.strokeColor == orange && edge.lineWidth == c.boardLine(0.5), "\(edge.lineWidth)")
+    let ring = try #require(shapes.first { $0.strokeColor == orange.copy(alpha: 0.18) })
+    #expect(ring.lineWidth == 3)
+    #expect(c.titleTone(gid("g1")) == orange && tone()?.contents != nil, "its title in the orange")
+    r.doc.select([])
+    c.drawChrome()
+    #expect(tone() == nil && c.titleTone(gid("g1")) == nil)
+    let title = try #require(c.sectionTitle(gid("g1")))
+    c.mouseMoved(with: r.mouse(.mouseMoved, CGPoint(x: title.midX, y: title.midY)))
+    #expect(c.hoveredTitle == gid("g1"))
+    #expect(c.titleTone(gid("g1")) == c.theme.ink && tone() != nil, "deeper under the pointer")
   }
 }

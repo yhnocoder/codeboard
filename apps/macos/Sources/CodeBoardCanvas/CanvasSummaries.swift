@@ -296,15 +296,14 @@ extension CanvasView {
     }
   }
 
-  /// ↻ (an AI key set), the stale dot on it, ✓ 保留 (stale): 20 view points, after the title's last line, kept that size
-  /// at any zoom
+  /// ↻ with the stale dot on it, ✓ 保留 (stale), as main's (Summaries.tsx .sumre, with a key or not): 20 view points,
+  /// after the title's last line, kept that size at any zoom
   func placeSummaryButtons(_ c: SummaryColumn) {
     summaryButtons.removeFromSuperlayer()
     summaryButtons.sublayers = nil
     guard let doc = document else { return }
     let pending = doc.board.summary(for: c.col.key) != nil && c.text.stale
     let writing = summaryWriting.contains(c.col.key)
-    guard summaryWriter != nil || pending else { return }
     let z = camera.zoom
     let k = 1 / z
     let ink = theme.ink
@@ -342,8 +341,8 @@ extension CanvasView {
       summaryButtons.addSublayer(b)
       x += 24
     }
-    if summaryWriter != nil { button(SummaryIcons.rewrite, dot: pending, spin: writing) }
-    if pending, !writing { button(SummaryIcons.keep, dot: summaryWriter == nil, spin: false) }
+    button(SummaryIcons.rewrite, dot: pending, spin: writing)
+    if pending, !writing { button(SummaryIcons.keep, dot: false, spin: false) }
     let end = c.open?.titleEnd ?? c.titleEnd
     // 0.3em of the title's font after its end
     let at = CGPoint(x: c.rect.minX + end.x + 0.3 * 0.8 * em(), y: c.rect.minY + end.y)
@@ -360,7 +359,7 @@ extension CanvasView {
     guard let k = summaryHover, summaryButtons.superlayer != nil else { return nil }
     let local = summaryButtons.convert(p, from: summaryLayer)
     for (i, b) in (summaryButtons.sublayers ?? []).enumerated() where b.frame.insetBy(dx: -2, dy: -2).contains(local) {
-      return (k, summaryWriter == nil || i == 1)
+      return (k, i == 1)
     }
     return nil
   }
@@ -487,6 +486,7 @@ extension CanvasView {
     ed.look = look
     ed.em = em
     ed.onEnd = { [weak self] commit in self?.endSummaryEdit(commit: commit) }
+    ed.onChange = { [weak self] in self?.placeSummaryEditor() }
     ed.handOver = { [weak self] in self?.take($0, at: $0.locationInWindow) ?? false }
     ed.load(sum.text)
     summaryEditor = ed
@@ -519,10 +519,17 @@ extension CanvasView {
     let r = CGRect(
       x: c.rect.minX + pad, y: c.rect.minY + c.bodyTop, width: c.rect.width - 2 * pad,
       height: max(c.full - c.bodyTop - pad, 1.5 * ed.em))
-    let v = CGRect(origin: camera.view(r.origin), size: CGSize(width: r.width * z, height: r.height * z))
+    var v = CGRect(origin: camera.view(r.origin), size: CGSize(width: r.width * z, height: r.height * z))
     ed.zoom = z
     ed.frame = convert(v, to: host)
     ed.restyle()
+    // a line more grows it downward, as main's contenteditable body
+    if let lm = ed.layoutManager, let tc = ed.textContainer {
+      lm.ensureLayout(for: tc)
+      v.size.height = max(v.height, lm.usedRect(for: tc).height.rounded(.up))
+      ed.frame = convert(v, to: host)
+      ed.restyle()
+    }
   }
 
   /// The edit kept (one step: Edit Summary) or left
@@ -564,8 +571,9 @@ extension CanvasView {
   /// The AI writes this one summary again: it breathes meanwhile; the answer is one step (Rewrite Summary); a failure
   /// leaves the old text as it was
   func rewriteSummary(_ key: SummaryKey) {
-    guard let doc = document, let writer = summaryWriter, !summaryWriting.contains(key), let (vb, vault) = shown
-    else { return }
+    // no key: where to set it (imageai.ts aiFailed nokey, whose toast offers Set DeepSeek API Key… and AI Settings…)
+    guard let writer = summaryWriter else { return toast("No DeepSeek API key · Set it in Settings… (⌘,)") }
+    guard let doc = document, !summaryWriting.contains(key), let (vb, vault) = shown else { return }
     let package = vault.url(of: vb.path)
     let contents: CardContents = { Scene.content(of: $0, package: package, vault: vault)?.0 }
     let board = doc.board
@@ -654,6 +662,7 @@ final class SummaryEditor: NSTextView {
   var em: CGFloat = 60
   var zoom: CGFloat = 1
   var onEnd: ((Bool) -> Void)?
+  var onChange: (() -> Void)?
   /// Behind the field: its paper and ring
   let ring = OnBoardView()
   var handOver: ((NSEvent) -> Bool)? {
@@ -672,7 +681,15 @@ final class SummaryEditor: NSTextView {
     drawsBackground = false
     textContainerInset = .zero
     textContainer?.lineFragmentPadding = 0
+    // its height is the canvas's to set (placeSummaryEditor): sized by itself it grows from its origin, which in an
+    // unflipped superview is its bottom
+    isVerticallyResizable = false
     wantsLayer = true
+  }
+
+  override func didChangeText() {
+    super.didChangeText()
+    onChange?()
   }
 
   /// The look at the zoom shown: its sizes are view points here, not board units

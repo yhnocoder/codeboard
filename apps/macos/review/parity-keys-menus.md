@@ -19,7 +19,7 @@ The app: `Sources/CodeBoardCanvas/CanvasKeys.swift` (`boardKey`, reached from `k
 | N / T / R | New Note / Text / Box, top left at the pointer, written in | same (middle of the view when the pointer is off the board) |
 | S | Add Sidenote: on the lines selected, the one card or Section, else free at the pointer | same |
 | ⇧⌘V | Paste Image Text (AI reads the picture) | gap: AI |
-| ⌘K, ⌘F | Search, Search This Board (the palette) | gap: no palette yet |
+| ⌘K, ⌘F | Search, Search This Board (the palette) | same for cards and sidenotes (View ▸ Search…, Search This Board…; the toolbar's Search): main's palette, its groups, preview and keys, Tab between all boards and this one; gap: functions, files, entry points, Add Function, Related by Meaning, ⌥↵, marks and feedback (⌥↑↓, ⌘.) |
 | ⇧1 | Fit to Window (everything, at most 100 %) | same |
 | ⇧2 | Fit Selection (at most 140 %; nothing selected: Fit to Window) | same |
 | ⌘0 | Fit All | same |
@@ -51,7 +51,7 @@ The app: `Sources/CodeBoardCanvas/CanvasKeys.swift` (`boardKey`, reached from `k
 | H | Hide the lines selected | same (hidden runs they touch merge into one) |
 | ⌘Z / ⇧⌘Z, ⌘Y | Undo / Redo | same (Edit menu) |
 | ⌘, | Settings | same (app menu) |
-| ? | Keyboard Shortcuts | same: pinned at the board's top right (12 / 56 / 60, 380 wide), on the theme's opaque paper in its fonts, made from the key table (CanvasKeys BoardKey.all: main's rows the app has, in main's groups and words, and the app menu's keys, Mac-only ones among them); its X; ? or Esc closes it. Main's Search… (Settings' Filter shortcuts…) is a filter field in the list itself. Not listed (not in the app): Paste Image Text, the editor's rows, Search ⌘K / ⌘F, animated image keys, Merge, Turn into a Code Sidenote, ⌘] / ⌘[ and ⇧⌘] / ⇧⌘[ as layer order, bold / highlight in a Note at rest, Delete Everywhere, Tidy Up, the Code group's call and peek rows, Copy code, Walkthrough |
+| ? | Keyboard Shortcuts | same: pinned at the board's top right (12 / 56 / 60, 380 wide), on the theme's opaque paper in its fonts, made from the key table (CanvasKeys BoardKey.all: main's rows the app has, in main's groups and words, and the app menu's keys, Mac-only ones among them); its X; ? or Esc closes it. Main's Search… (Settings' Filter shortcuts…) is a filter field in the list itself. Not listed (not in the app): Paste Image Text, the editor's rows, animated image keys, Merge, Turn into a Code Sidenote, ⌘] / ⌘[ and ⇧⌘] / ⇧⌘[ as layer order, bold / highlight in a Note at rest, Delete Everywhere, Tidy Up, the Code group's call and peek rows, Copy code, Walkthrough |
 | Esc | Cancel the tool, stop waiting for AI, deselect the sticker, back to the parent board, deselect | same but gap: back to the parent board |
 
 ## Context menus (main: `actions/menus.ts`, `actions/edit.ts` arrangeItem, `actions/stickers.ts`, `actions/shelf.ts`,

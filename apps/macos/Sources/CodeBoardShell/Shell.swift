@@ -13,12 +13,44 @@ public struct Tab: Codable, Equatable, Identifiable, Sendable {
   /// Where the board is to be shown from when it is next loaded (gone back or forward to it); nil: all of it in view
   public var arriving: Camera?
 
+  /// The boards a sub-board was entered from, outermost first (main's breadcrumb): each its board, the sub-board card
+  /// it was entered by and its camera then
+  public var crumbs: [Crumb] {
+    get { crumbList ?? [] }
+    set { crumbList = newValue.isEmpty ? nil : newValue }
+  }
+  // optional on disk: tabs saved before crumbs read as having none
+  private var crumbList: [Crumb]?
+
   public struct Visit: Codable, Equatable, Sendable {
     public var board: BoardID
     public var camera: Camera?
+    public var crumbs: [Crumb] {
+      get { crumbList ?? [] }
+      set { crumbList = newValue.isEmpty ? nil : newValue }
+    }
+    private var crumbList: [Crumb]?
 
-    public init(board: BoardID, camera: Camera? = nil) {
+    public init(board: BoardID, camera: Camera? = nil, crumbs: [Crumb] = []) {
       self.board = board
+      self.camera = camera
+      self.crumbs = crumbs
+    }
+
+    enum CodingKeys: String, CodingKey {
+      case board, camera
+      case crumbList = "crumbs"
+    }
+  }
+
+  public struct Crumb: Codable, Equatable, Sendable {
+    public var board: BoardID
+    public var frame: CardID
+    public var camera: Camera?
+
+    public init(board: BoardID, frame: CardID, camera: Camera?) {
+      self.board = board
+      self.frame = frame
       self.camera = camera
     }
   }
@@ -26,6 +58,11 @@ public struct Tab: Codable, Equatable, Identifiable, Sendable {
   public init(board: BoardID) {
     id = UUID()
     self.board = board
+  }
+
+  enum CodingKeys: String, CodingKey {
+    case id, board, back, forward, arriving
+    case crumbList = "crumbs"
   }
 }
 
@@ -149,9 +186,14 @@ public struct ShellState: Codable, Equatable, Sendable {
       treeError = nil
       byID = Dictionary(tree.allBoards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
       for tab in tabs where byID[tab.board] == nil { close(tab.id) }
+      // a crumb whose board is gone cuts the crumbs there: what is past it is no way back
+      func kept(_ cs: [Tab.Crumb]) -> [Tab.Crumb] { Array(cs.prefix { byID[$0.board] != nil }) }
       for i in tabs.indices {
         tabs[i].back.removeAll { byID[$0.board] == nil }
         tabs[i].forward.removeAll { byID[$0.board] == nil }
+        tabs[i].crumbs = kept(tabs[i].crumbs)
+        for j in tabs[i].back.indices { tabs[i].back[j].crumbs = kept(tabs[i].back[j].crumbs) }
+        for j in tabs[i].forward.indices { tabs[i].forward[j].crumbs = kept(tabs[i].forward[j].crumbs) }
       }
     }
   }
@@ -165,10 +207,31 @@ public struct ShellState: Codable, Equatable, Sendable {
       return
     }
     guard tabs[i].board != board else { return }
-    tabs[i].back.append(Tab.Visit(board: tabs[i].board, camera: cameraNow?()))
+    go(i, to: board, crumbs: [], camera: nil)
+  }
+
+  /// The board a sub-board card shows, entered from it in the current tab: this board joins the crumbs, with where its
+  /// camera is (actions/subboards.ts enterFrame)
+  public func enter(_ board: BoardID, from frame: CardID, camera: Camera?) {
+    guard let i = currentIndex, tabs[i].board != board else { return }
+    let crumbs = tabs[i].crumbs + [Tab.Crumb(board: tabs[i].board, frame: frame, camera: camera)]
+    go(i, to: board, crumbs: crumbs, camera: nil)
+  }
+
+  /// Back to the crumb at `depth` (the parent when nil), shown from where it was left (leaveBoard)
+  public func leave(to depth: Int? = nil) {
+    guard let i = currentIndex, !tabs[i].crumbs.isEmpty else { return }
+    let cs = tabs[i].crumbs
+    let d = max(0, min(cs.count - 1, depth ?? cs.count - 1))
+    go(i, to: cs[d].board, crumbs: Array(cs[..<d]), camera: cs[d].camera)
+  }
+
+  private func go(_ i: Int, to board: BoardID, crumbs: [Tab.Crumb], camera: Camera?) {
+    tabs[i].back.append(Tab.Visit(board: tabs[i].board, camera: cameraNow?(), crumbs: tabs[i].crumbs))
     tabs[i].forward = []
     tabs[i].board = board
-    tabs[i].arriving = nil
+    tabs[i].crumbs = crumbs
+    tabs[i].arriving = camera
   }
 
   /// The camera a tab's board was to be shown from has been used
@@ -203,15 +266,17 @@ public struct ShellState: Codable, Equatable, Sendable {
 
   public func goBack() {
     guard let i = currentIndex, let to = tabs[i].back.popLast() else { return }
-    tabs[i].forward.append(Tab.Visit(board: tabs[i].board, camera: cameraNow?()))
+    tabs[i].forward.append(Tab.Visit(board: tabs[i].board, camera: cameraNow?(), crumbs: tabs[i].crumbs))
     tabs[i].board = to.board
+    tabs[i].crumbs = to.crumbs
     tabs[i].arriving = to.camera
   }
 
   public func goForward() {
     guard let i = currentIndex, let to = tabs[i].forward.popLast() else { return }
-    tabs[i].back.append(Tab.Visit(board: tabs[i].board, camera: cameraNow?()))
+    tabs[i].back.append(Tab.Visit(board: tabs[i].board, camera: cameraNow?(), crumbs: tabs[i].crumbs))
     tabs[i].board = to.board
+    tabs[i].crumbs = to.crumbs
     tabs[i].arriving = to.camera
   }
 

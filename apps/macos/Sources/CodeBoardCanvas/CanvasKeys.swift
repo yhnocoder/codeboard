@@ -11,7 +11,7 @@ import CodeBoardModel
 struct BoardKey {
   enum Action {
     case newNote, newText, newBox, addSidenote, fitWindow, fitSelection, zoom100, zoomIn, zoomOut, pan, open
-    case enterBoard, delete, turnIntoBoard, fitContent, tilt, shelve, wrap, nudge, hide, escape, help
+    case enterBoard, delete, turnIntoBoard, fitContent, tidyUp, tilt, shelve, wrap, nudge, hide, escape, help
   }
 
   /// A press: its modifiers, and what it types (letters and symbols, as e.key) or else the key itself (e.code)
@@ -39,6 +39,9 @@ struct BoardKey {
 
   static let groups = ["Create", "View", "Cards", "Code", "Board"]
 
+  /// The key a row with this label shows (keymap.ts kbd: its first)
+  static func show(of label: String) -> String? { all.first { $0.label == label }?.show }
+
   /// In keymap.ts's order, groups and words, the rows the app has: the first row that matches and applies takes the key.
   /// The rows with no action are shown only: gestures, and the keys the app menu answers (Mac-only ones among them:
   /// tabs, the sidebar, the vault), which CodeBoardShellTests holds to the menu
@@ -50,6 +53,8 @@ struct BoardKey {
     BoardKey(action: .addSidenote, presses: [char("s")], show: "S", label: "Add Sidenote", group: "Create"),
     BoardKey(show: "⌘V", label: "Paste code, link or image", group: "Create"),
     BoardKey(show: "⌥⌘V", label: "Paste as Copy", group: "Create"),
+    BoardKey(show: "⌘K", label: "Search", group: "View"),
+    BoardKey(show: "⌘F", label: "Search This Board", group: "View"),
     BoardKey(action: .fitWindow, presses: [code(18, .shift)], show: "⇧1", label: "Fit to Window", group: "View"),
     BoardKey(action: .fitSelection, presses: [code(19, .shift)], show: "⇧2", label: "Fit Selection", group: "View"),
     BoardKey(action: .fitWindow, presses: [code(29, .command)], show: "⌘0", label: "Fit All", group: "View"),
@@ -87,6 +92,7 @@ struct BoardKey {
       action: .turnIntoBoard, presses: [char("b", [.command, .shift])], show: "⇧⌘B", label: "Turn into Board",
       group: "Cards"),
     BoardKey(action: .fitContent, presses: [code(3, .option)], show: "⌥F", label: "Fit Content", group: "Cards"),
+    BoardKey(action: .tidyUp, presses: [code(17, .option)], show: "⌥T", label: "Tidy Up", group: "Cards"),
     BoardKey(action: .tilt, presses: [code(17, [.option, .shift])], show: "⌥⇧T", label: "Tilt", group: "Cards"),
     BoardKey(action: .shelve, presses: [code(1, .option)], show: "⌥S", label: "Move to Shelf", group: "Cards"),
     BoardKey(action: .wrap, presses: [code(6, .option)], show: "⌥Z", label: "Wrap Lines", group: "Cards"),
@@ -99,7 +105,9 @@ struct BoardKey {
     BoardKey(show: "⇧⌘Z", label: "Redo", group: "Board"),
     BoardKey(show: "⌘,", label: "Settings", group: "Board"),
     BoardKey(action: .help, presses: [char("?")], show: "?", label: "Keyboard Shortcuts", group: "Board"),
-    BoardKey(action: .escape, presses: [code(53)], show: "Esc", label: "Cancel · Deselect", group: "Board"),
+    BoardKey(
+      action: .escape, presses: [code(53)], show: "Esc", label: "Cancel · Deselect · Back to the parent board",
+      group: "Board"),
     BoardKey(show: "⌘O", label: "Open Vault…", group: "Board"),
     BoardKey(show: "⇧⌘I", label: "Import Old Boards…", group: "Board"),
     BoardKey(show: "⌘W", label: "Close Tab", group: "Board"),
@@ -143,6 +151,9 @@ extension CanvasView {
     case .delete: delete(nil)
     case .turnIntoBoard: turnIntoBoard(nil)
     case .fitContent: fitContentKey()
+    case .tidyUp:
+      guard canTidyUp else { return false }
+      tidyUp()
     case .tilt:
       guard !cards.isEmpty else { return false }
       tilt(nil)
@@ -182,14 +193,14 @@ extension CanvasView {
     if isWriting(c) {
       beginEditing(c)
     } else if case .own(let k)? = doc.board.card(c)?.content, case .web(let w) = k.body {
-      if let u = URL(string: w.url) { openURL(u) }
+      openLink(w.url)
     } else if !openSubBoard(c) {
       return false
     }
     return true
   }
 
-  /// Esc: a ref's preview, the mode, else the popup, else the selection
+  /// Esc: a ref's preview, the mode, else the popup, else the selection, else back to the parent board
   private func escape() {
     if keysPanel != nil { return toggleKeys() }
     if refPeek != nil { return closeRefPeek() }
@@ -199,6 +210,8 @@ extension CanvasView {
     if cancelMode() { return }
     if openPop != nil { return openPop(nil) }
     if lineSel != nil { return clearLineSel() }
+    // over a sub-board with nothing selected: back to the parent board (subboards.ts canLeave)
+    if gesture == nil, !crumbs.isEmpty, document?.selection.isEmpty == true { return leaveBoard() }
     if gesture == nil { document?.select([]) }
   }
 

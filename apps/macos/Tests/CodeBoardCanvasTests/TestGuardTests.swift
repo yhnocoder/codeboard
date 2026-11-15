@@ -60,6 +60,31 @@ import Testing
     #expect(seen().subtracting(before).isEmpty, "a window came up")
   }
 
+  /// Opening an address or showing a file in Finder reaches no browser, app or Finder window: written down, refused
+  @Test func opensAndFinderRevealsAreWrittenDownAndGoNowhere() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    // never called unless NSWorkspace's ways out are replaced: they would open the owner's browser or Finder
+    try #require(TestGuard.guardsOpening, "the open guard is not in")
+    TestGuard.shown = []
+    let web = URL(string: "https://example.invalid/guard")!
+    let file = URL(fileURLWithPath: NSTemporaryDirectory())
+    #expect(!NSWorkspace.shared.open(web))
+    var failed: Error?
+    NSWorkspace.shared.open(web, configuration: NSWorkspace.OpenConfiguration()) { _, e in failed = e }
+    #expect(failed != nil)
+    NSWorkspace.shared.activateFileViewerSelecting([file])
+    #expect(!NSWorkspace.shared.selectFile(file.path, inFileViewerRootedAtPath: ""))
+    #expect(
+      TestGuard.shown == [
+        "open: \(web)", "open: \(web)", "reveal: \(file.path)", "reveal: \(file.path)",
+      ], "\(TestGuard.shown)")
+    // the canvas's own way out goes there too
+    TestGuard.shown = []
+    r.canvas.openURL(web)
+    #expect(TestGuard.shown == ["open: \(web)"])
+  }
+
   @Test func theWatchdogSaysWhichTestRanOverItsLimit() {
     let now = ProcessInfo.processInfo.systemUptime
     TestWatch.started("Suite/stuck()")

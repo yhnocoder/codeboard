@@ -55,6 +55,8 @@ public final class CanvasView: NSView {
   /// Sub-board cards, Texts and Boxes, which the summary level shows as they are (main's .keeplay): always over the card
   /// level, never faded
   let kept = CALayer()
+  /// Cards picked up by the pointer, until they have landed: over every card, Texts and Boxes too (main's .card.lift)
+  let liftedLayer = CALayer()
   /// The summary level's columns (CanvasSummaries.swift)
   let summaryLayer = CALayer()
   /// Which level is shown and how it changes (SummaryLevels.swift)
@@ -184,6 +186,8 @@ public final class CanvasView: NSView {
   /// A Section title's controls (CanvasSectionActs): the title hovered and its control, the Section whose swatches are
   /// open, the Section whose controls show, their bitmap
   var hoveredTitle: SectionID?
+  /// The Section titles shown in another colour (toneTitles)
+  var toned: [SectionID: Tone] = [:]
   var hoveredAct: SectionAct?
   var swatchesOpen: SectionID?
   var actsShown: SectionID?
@@ -281,24 +285,14 @@ public final class CanvasView: NSView {
   var markLayers: [CALayer] = []
   var marksZoom: CGFloat = 0
   var hoveredMark: Int?
-  /// The sidenote popup open, by what it shows
-  var openPop: PopAt?
-  /// A sidenote popup opened or closed (tests)
+  /// The sidenote popups open, the newest last (state/pop.ts pops)
+  var pops: [Popup] = []
+  /// A sidenote popup opened or closed: the newest one open now (tests)
   package var onPop: ((PopAt?) -> Void)?
-  /// What the popup web view shows (kept until it lets it go: what a closing ends is still added there), the key it
-  /// shows it under, and the [[ list for its inputs
-  var popShown: PopAt?
-  var popKey = ""
-  var popRefList: RefCandidates?
-  /// Dragged away: its top left from its marker's, in board units
-  package var popHeld: CGVector?
-  /// Its top left in the view now, and where a drag of it began
-  package var popAt = CGPoint.zero
-  var popDragFrom: CGPoint?
-  /// The dashed line back to the marker of a popup dragged away, in the view's units
-  let popLine = CAShapeLayer()
-  /// The popup's showing and updating, one after another
+  /// The popups' showing, updating and closing, one after another
   var popTask: Task<Void, Never>?
+  /// The popup the [[ref]] previewed was pressed in
+  var refPop: Popup?
   /// The open questions the toolbar was told of; the question list open, under the toolbar button at that rect, with
   /// the other boards' questions it lists
   var shownQuestions = -1
@@ -310,6 +304,8 @@ public final class CanvasView: NSView {
   /// A question on another board picked in the list: that board is to open and go to it
   /// Another board to open, and what to go to on it once shown
   public var onOpenBoard: ((BoardID, Arrival?) -> Void)?
+  /// Over a sub-board: the breadcrumb, and the move in or out under way (CanvasCrumbs.swift)
+  let crumbsBar = CrumbsBar()
   /// A board to delete (a sub-board card's Delete Board…): the shell asks first; whether it went
   public var onDeleteBoard: (@MainActor (BoardID) async -> Bool)?
   /// A ref clicked: what goes there once the double-click time is over
@@ -340,12 +336,17 @@ public final class CanvasView: NSView {
   /// The frames easing towards where the drag has them, each a spring that keeps its speed as the target moves
   var frameEase: [SectionID: FrameEase] = [:]
   var frameEaseAt: TimeInterval?
+  /// Tidy Up's slide (CanvasTidySlide.swift)
+  var tidySlide: TidySlide?
   /// The zoom that fits the board, which overviews are drawn for
   var fitZoom: CGFloat = 1
   /// The framed cards' shadow, made once per theme
   var cardShadow: (IOSurface, margin: CGFloat)?
   /// Where Copy writes and Paste reads; tests give their own
   package var pasteboard = NSPasteboard.general
+  /// The picture file New Image adds, asked in the open panel as a sheet on the window; tests answer it (a panel made
+  /// in the test process stops its main run loop)
+  package var pickImage: (NSWindow) async -> URL? = CanvasView.askImageFile
   /// Cards copied on another board, pasted here: the shell makes them shared cards on that board (`Board.share`) and
   /// gives the ids they have there now (old → new) and its title; nil: that board cannot take it now (they come as
   /// copies). With no cards it only gives the title
@@ -409,7 +410,8 @@ public final class CanvasView: NSView {
     layer = root
     wantsLayer = true
     for l in [
-      world, cardLevel, kept, summaryLayer, sections, dropLayer, below, arrows, litArrows, above, cards, freeStickers,
+      world, cardLevel, kept, liftedLayer, summaryLayer, sections, dropLayer, below, arrows, litArrows, above, cards,
+      freeStickers,
       freeMarks, shelfHome, shelfDrag, chrome,
     ] {
       l.anchorPoint = .zero
@@ -422,7 +424,7 @@ public final class CanvasView: NSView {
     summaryLayer.allowsGroupOpacity = true
     summaryLayer.isHidden = true
     // the ports and handles over Texts and Boxes too (main's .eport is over its card's face); faded with the card level
-    for l in [cardLevel, kept, chrome, summaryLayer, shelfHome, shelfDrag] { world.addSublayer(l) }
+    for l in [cardLevel, kept, liftedLayer, chrome, summaryLayer, shelfHome, shelfDrag] { world.addSublayer(l) }
     backdrop.anchorPoint = .zero
     root.addSublayer(backdrop)
     root.addSublayer(world)
@@ -552,6 +554,7 @@ public final class CanvasView: NSView {
     if !keepCamera { self.keepCamera(now: true) }
     shown = (board, vault)
     install(scene, overviews: overviews, shadow: shadow, theme: theme, keepCamera: keepCamera)
+    if keepCamera { showCrumbs() } else { boardArrived() }
   }
 
   /// The sizes the Note renderer gives the Notes without a stored height: from what it kept, else measured in the web
@@ -716,6 +719,7 @@ public final class CanvasView: NSView {
     cardShadow = shadow
     scene = s
     routedArrows = [:]
+    tidySlide = nil
     hoveredArrow = nil
     mode = nil
     dropLit = []
@@ -724,7 +728,7 @@ public final class CanvasView: NSView {
       backdropImage = theme.backdrop.flatMap(Backdrop.image)
       backdrop.contents = backdropImage
       placeBackdrop()
-      for l in [sections, dropLayer, below, arrows, above, cards, kept] { l.sublayers = nil }
+      for l in [sections, dropLayer, below, arrows, above, cards, kept, liftedLayer] { l.sublayers = nil }
       for f in s.frames { sections.addSublayer(CanvasView.frameLayer(f, theme)) }
       items = s.items.enumerated().map { i, it in
         ItemLayers(it, overview: overviews[i], shadow: it.drawing.framed ? shadow : nil)
@@ -755,7 +759,6 @@ public final class CanvasView: NSView {
     applyLevels(levels.frame(at: now))
     applyCamera()
     arrive()
-    stylePopLine()
     // another board: its popup goes; the same one drawn again (another theme): it follows
     if openPop != nil, !keepCamera { openPop(nil) }
     placeMarks()
@@ -900,7 +903,7 @@ public final class CanvasView: NSView {
       world.sublayerTransform = m
       if chrome.sublayers?.isEmpty == false { drawChrome() }
       if editing != nil { cameraMovedWhileEditing() }
-      if popShown != nil { positionPop() }
+      if !pops.isEmpty { positionPop() }
       if refPeek != nil { placeRefPeek() }
       if summaryButtons.superlayer != nil {
         summaryButtons.setAffineTransform(CGAffineTransform(scaleX: 1 / camera.zoom, y: 1 / camera.zoom))
@@ -1114,8 +1117,9 @@ public final class CanvasView: NSView {
       DispatchQueue.global(qos: .utility).async { _ = malloc_zone_pressure_relief(nil, 0) }
     }
     stepFrameEase(at: time)
+    stepTidySlide(at: time)
     if motion.isResting && queue.isIdle && onFrame == nil && gesture == nil && !levels.isAnimating
-      && frameEase.isEmpty
+      && frameEase.isEmpty && tidySlide?.started != true
     {
       link?.isPaused = true
     }
@@ -1402,6 +1406,24 @@ public final class CanvasView: NSView {
       if s >= Levels.scale(z, backing: backing, size: r.size) * 0.98 { p.sharp += 1 }
     }
     return p
+  }
+
+  /// The items in view (by index): those showing something, those showing nothing at all, and the Notes showing only
+  /// their paper (none of their text yet). Read only, for CanvasBench
+  package var blankInView: (inView: Int, drawn: Set<Int>, empty: Set<Int>, paper: Set<Int>) {
+    let view = camera.visible(bounds.size)
+    var out = (inView: 0, drawn: Set<Int>(), empty: Set<Int>(), paper: Set<Int>())
+    for (i, l) in items.enumerated() where l.bitmapFrame.intersects(view) {
+      out.inView += 1
+      if l.held.contents == nil && l.rest.contents == nil {
+        out.empty.insert(i)
+      } else if l.note && l.pictureScale == 0 {
+        out.paper.insert(i)
+      } else {
+        out.drawn.insert(i)
+      }
+    }
+    return out
   }
 
   /// Anything in view drawn below display resolution

@@ -204,7 +204,9 @@ extension CanvasView {
     }
     editingOriginal = editingOriginal ?? items[i]
     items[i] = l
-    // its selected look into the paper, in the same frame (main keeps it while the card is written in)
+    // its stickers and markers onto the paper, and its selected look, in the same frame (main keeps them while the card
+    // is written in: they are in its face)
+    placeMarks()
     drawChrome()
   }
 
@@ -415,10 +417,16 @@ extension CanvasView {
     let text = written?.text
     let id = ed.id
     let note = !(ed.card.textCard != nil)
-    if ed.code {
-      // its language follows what the text now looks like (writeFreeCode, freeLang), asked of the page first
-      var guessed: String?
-      if let text { guessed = try? await notes.freeLanguage(text) }
+    // a Free code card's language follows what the text now looks like (writeFreeCode, freeLang), asked of the page first
+    var guessed: String?
+    if ed.code, let text { guessed = try? await notes.freeLanguage(text) }
+    if ed.code && ed.fresh {
+      // a new card: written, one step with its making; left empty, gone with none (code.ts writeFreeCode, env.fresh)
+      let keep = !(text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      doc.settleWriting(keep: keep, "New Code") { b in
+        if keep, let text { b.writeFreeCode(id, text: text, guessed: guessed) }
+      }
+    } else if ed.code {
       // one step from where the writing began; none when nothing changed
       doc.settleWriting(keep: true, "Edit Code") { b in
         if b.card(id) == nil { b.cards.append(ed.card) }
@@ -465,7 +473,8 @@ extension CanvasView {
         original.box.removeAnimation(forKey: "fold")
         items[i].box.superlayer?.replaceSublayer(items[i].box, with: original.box)
         items[i] = original
-        // its selected look into the layer it is back in, in the same frame
+        // its stickers, markers and selected look into the layer it is back in, in the same frame
+        placeMarks()
         drawChrome()
       }
     }
@@ -502,14 +511,21 @@ extension CanvasView {
     if let id = hitCard(p) {
       if openSubBoard(id) { return }
       if openPage(at: p) { return }
+      // a code card's title: written in place
+      if let t = codeTitle(id), t.hit.contains(p) { return editCodeTitle(id) }
+      // its first click began writing it (clickEdit): the second keeps that
       if isFreeCode(id) {
+        // its head is not its code (clickEditKind: .src)
+        if codeTitle(id) != nil, let r = scene?.placed[id]?.rect, p.y < r.minY + theme.headerHeight { return }
         return editSoon {
+          if self.editing?.id == id { return }
           await self.endEditing()
           self.beginCodeEditing(id, at: p)
         }
       }
       guard isWriting(id) else { return }
       editSoon {
+        if self.editing?.id == id { return }
         await self.endEditing()
         self.beginEditing(id, at: p)
       }
@@ -519,6 +535,19 @@ extension CanvasView {
     } else {
       if !doc.selection.isEmpty { doc.select([]) }
       editSoon { await self.create(.text(.text), at: CGPoint(x: p.x, y: p.y - 12)) }
+    }
+  }
+
+  /// A click on the one card selected before the press (interact.ts cardClick, clickEditKind): on a Note's body it is
+  /// written in, on Free code's code that is written, the caret where it was; a Text or Box waits for a double-click
+  func clickEdit(_ id: CardID, at p: CGPoint) {
+    guard editing == nil, let doc = document, let i = index(of: .card(id)) else { return }
+    let head: CGFloat = if case .code(let c) = scene!.items[i].drawing, !c.framed { 0 } else { theme.headerHeight }
+    guard p.y >= scene!.items[i].rect.minY + head else { return }
+    if isFreeCode(id) {
+      editSoon { if self.editing == nil { self.beginCodeEditing(id, at: p) } }
+    } else if case .own(let c)? = doc.board.card(id)?.content, case .note = c.body, isWriting(id) {
+      editSoon { if self.editing == nil { self.beginEditing(id, at: p) } }
     }
   }
 
@@ -535,6 +564,20 @@ extension CanvasView {
       await Task.yield()
     }
     beginEditing(id, fresh: true)
+  }
+
+  /// A new Free code card with its top left at `p` (board), its code written at once; left empty it goes with no step
+  /// (create.ts newFreeCode, code.ts newBlankCode)
+  public func createCode(at p: CGPoint) async {
+    guard let doc = document else { return }
+    if editing != nil { await endEditing() }
+    let id = CardID(rawValue: Board.newID("card-"))
+    doc.addFresh(Board.newFreeCode(id: id, x: p.x.rounded(), y: p.y.rounded()))
+    while index(of: .card(id)) == nil, doc.board.card(id) != nil, document === doc {
+      await refreshing?.value
+      await Task.yield()
+    }
+    beginCodeEditing(id, fresh: true)
   }
 
   /// The toolbar's Note, Text and Box: in the middle of the view (create.ts newWriting: x by its width, 40 above the

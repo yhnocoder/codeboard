@@ -1,0 +1,43 @@
+# Sidenote popups stay open together (state/pop.ts openPop keeps the pinned ones; actions/notes.ts pinMarker pins every
+# sidenote popup it opens): a second marker clicked leaves the first popup open; its own marker closes one; Esc and a
+# press on the canvas close them all (ui/pops/index.tsx Popovers: closeAllPops; interact.ts canvasPointerDown)
+key esc
+zoom 0.5
+center @cnote+360,140
+click @sn1:c
+wait 700
+click @sn2:c
+wait 700
+shot at @cfree+-60,-40 1800 1000
+# the first is still open: its title bar takes the press
+click @sn1:c+60,0
+wait 200
+mac: expect press has PopWebView
+web: expect press has pop
+# its marker closes it only
+click @sn1:c
+wait 500
+click @sn1:c+60,0
+wait 200
+mac: expect press lacks PopWebView
+web: expect press lacks pop
+# open again; Esc closes both
+click @sn1:c
+wait 700
+key esc
+wait 500
+click @sn1:c+60,0
+wait 200
+mac: expect press lacks PopWebView
+web: expect press lacks pop
+# both again; a press on the canvas closes them all
+click @sn1:c
+wait 700
+click @sn2:c
+wait 700
+click @cfree+500,170
+wait 500
+click @sn1:c+60,0
+wait 200
+mac: expect press lacks PopWebView
+web: expect press lacks pop

@@ -7,7 +7,7 @@ import CodeBoardNotes
 /// instant. One pane is on screen: the selected tab's once its board is drawn; until then the one before it stays, so
 /// opening a tab never passes through an empty canvas
 @MainActor final class BoardPanes: NSView {
-  private let shell: Shell
+  let shell: Shell
   private(set) var panes: [Tab.ID: Pane] = [:]
   private var front: Tab.ID?
   /// A canvas changed the vault's files (a board made or renamed there)
@@ -177,6 +177,8 @@ import CodeBoardNotes
         pane.canvas.summaryWriter = summaryWriter
         pane.canvas.cameras = cameras
         pane.onOpenBoard = { [weak self] in self?.shell.show($0) }
+        pane.canvas.onEnterBoard = { [weak self] in self?.shell.enter($0, from: $1, camera: $2) }
+        pane.canvas.onLeaveBoard = { [weak self] in self?.shell.leave(to: $0) }
         // a sub-board card's Delete Board…: asked as main asks (host handlers.ts deleteBoardAsked), then as the
         // sidebar's Delete, to the Trash
         pane.canvas.onDeleteBoard = { [weak self, weak pane] id in
@@ -196,6 +198,9 @@ import CodeBoardNotes
         addSubview(pane)
       }
       let theme = shell.look
+      pane.canvas.crumbs = tab.crumbs.map {
+        CrumbShown(board: $0.board, frame: $0.frame, name: shell.board($0.board)?.title ?? "Board")
+      }
       if let vault = shell.vault, let at = shell.board(tab.board),
         pane.document?.id != tab.board || pane.shown?.path != at.path || pane.failed && reload
       {
@@ -287,6 +292,8 @@ import CodeBoardNotes
     let now = Focus(tab: id, board: pane.document?.id)
     if now != focused {
       focused = now
+      // what the search palette found was on the board that was in front
+      closeSearch()
       pane.takeKeys()
     }
   }
@@ -338,6 +345,7 @@ final class Pane: NSView {
       }
     }
     canvas.onMode = { [weak self] in self?.toolbar.active = $0 }
+    toolbar.onSearch = { [weak self] in _ = self?.tryToPerform(#selector(BoardPanes.searchBoards(_:)), with: nil) }
     // ⋯ opens upward from its left, 6 over it (Chrome.tsx more)
     toolbar.onMore = { [weak self] r in
       guard let self else { return }

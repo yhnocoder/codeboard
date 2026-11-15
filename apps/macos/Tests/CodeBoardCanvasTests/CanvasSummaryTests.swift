@@ -234,6 +234,28 @@ final class FakeWriter: SummaryWriter, @unchecked Sendable {
     #expect(r.doc.board.summary(for: sec1) == before)
   }
 
+  // Summaries.tsx: the body is a contenteditable in the column, so a line more grows it downward
+  @Test func aBodyWrittenLongerGrowsDownwardWithItsRing() async throws {
+    let r = try await Rig(summaryBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    atSummaries(r)
+    let col = try column(r, sec1)
+    r.click(CGPoint(x: col.rect.minX + 2 * CGFloat(c.summaryLayout!.padding), y: col.rect.minY + col.bodyTop + 30))
+    let ed = try #require(c.summaryEditor)
+    let host = try #require(ed.superview)
+    let top = c.convert(ed.frame, from: host).minY
+    let tall = ed.frame.height
+    ed.setSelectedRange(NSRange(location: ed.string.utf16.count, length: 0))
+    ed.insertText(String(repeating: " 再写一句更长的话", count: 12), replacementRange: ed.selectedRange())
+    let f = c.convert(ed.frame, from: host)
+    let used = ed.layoutManager!.usedRect(for: ed.textContainer!).height
+    #expect(abs(f.minY - top) < 0.5, "its top stays: \(f.minY) was \(top)")
+    #expect(
+      ed.frame.height > tall && ed.frame.height >= used - 0.5, "it grows to hold the text: \(ed.frame.height), \(used)")
+    #expect(ed.ring.frame.contains(ed.frame), "its ring goes round it")
+  }
+
   @Test func aScrollOverASummaryBeingWrittenMovesTheBoard() async throws {
     let r = try await Rig(summaryBoard(), zoom: 1)
     defer { r.close() }
@@ -256,14 +278,19 @@ final class FakeWriter: SummaryWriter, @unchecked Sendable {
     #expect(abs(moved - want) < 0.01, "over the editor: \(moved), over the column: \(want)")
   }
 
-  @Test func rewriteOnlyWithAWriterFollowsTheHandEditAndAFailureKeepsTheText() async throws {
+  /// ↻ always shows, as main's (Summaries.tsx .sumre): pressed with no AI key, it says the key is not set and where to
+  /// set it (imageai.ts aiFailed nokey: "No DeepSeek API key", with Set DeepSeek API Key… and AI Settings…)
+  @Test func rewriteFollowsTheHandEditAFailureKeepsTheTextAndWithNoKeyItSaysWhereToSetIt() async throws {
     let r = try await Rig(summaryBoard(), zoom: 1)
     defer { r.close() }
     let c = r.canvas
     atSummaries(r)
-    // no key: no ↻
     c.hoverSummary(sec1)
-    #expect(c.summaryButtons.sublayers?.isEmpty ?? true)
+    let re = try #require(c.summaryButtons.sublayers?.first)
+    #expect(c.summaryButtons.sublayers?.count == 1)
+    r.click(c.summaryButtons.convert(CGPoint(x: re.frame.midX, y: re.frame.midY), to: c.summaryLayer))
+    #expect(c.toastText == "No DeepSeek API key · Set it in Settings… (⌘,)")
+    #expect(!c.summaryWriting.contains(sec1) && r.doc.board.summary(for: sec1) != nil)
     c.hoverSummary(nil)
     let w = FakeWriter()
     c.summaryWriter = w
@@ -308,9 +335,9 @@ final class FakeWriter: SummaryWriter, @unchecked Sendable {
     atSummaries(r)
     #expect(try column(r, sec1).text.stale)
     c.hoverSummary(sec1)
-    // no writer: ✓ 保留 alone, with the dot
-    let keep = try #require(c.summaryButtons.sublayers?.first)
-    #expect(c.summaryButtons.sublayers?.count == 1 && keep.sublayers?.count == 2)
+    // ↻ with the dot, then ✓ 保留, a writer or not
+    let buttons = c.summaryButtons.sublayers ?? []
+    #expect(buttons.count == 2 && buttons.first?.sublayers?.count == 2 && buttons.last?.sublayers?.count == 1)
     c.keepSummary(sec1)
     #expect(!r.doc.board.summaryPending(sec1) && r.doc.undoName == "Keep Summary")
     await r.settle()
