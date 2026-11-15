@@ -40,7 +40,7 @@ extension CanvasView {
   /// or a title
   var onBoardViews: [NSView] {
     var out: [NSView] = []
-    if editing != nil, noteEditor.view.superview === superview { out.append(noteEditor.view) }
+    if editing != nil, editorView.superview === superview { out.append(editorView) }
     if let f = inPlace?.field { out.append(f) }
     if let ed = summaryEditor { out += [ed, ed.ring] }
     return out

@@ -1111,12 +1111,12 @@ extension CanvasView {
     if spacePanDown(e) { return }
     // AppKit sends a multi-click's later presses to the view its first went to: a double-click's second press over the
     // editor its first press opened is the editor's, as in main
-    if editing != nil, let sv = noteEditor.view.superview,
-      noteEditor.view.hitTest(sv.convert(e.locationInWindow, from: nil)) != nil
+    if editing != nil, let v = Optional(editorView), let sv = v.superview,
+      v.hitTest(sv.convert(e.locationInWindow, from: nil)) != nil
     {
       pressToEditor = true
-      window?.makeFirstResponder(noteEditor.view)
-      return noteEditor.view.mouseDown(with: e)
+      window?.makeFirstResponder(v)
+      return v.mouseDown(with: e)
     }
     // a click outside the card being written in ends the writing; on it while its editor is still mounting (that second
     // press, which main's editor would have) the writing goes on
@@ -1322,7 +1322,7 @@ extension CanvasView {
   func hold(over: @escaping (CGPoint) -> Bool, act: @escaping () -> Void) { held = (over, act) }
 
   public override func mouseDragged(with e: NSEvent) {
-    if pressToEditor { return noteEditor.view.mouseDragged(with: e) }
+    if pressToEditor { return editorView.mouseDragged(with: e) }
     if spacePanDragged(e) { return }
     if chipPressed != nil { return hoverChip(at: camera.board(convert(e.locationInWindow, from: nil))) }
     if alignPressed != nil { return hoverAlignBar(alignBarButton(at: convert(e.locationInWindow, from: nil)) ?? nil) }
@@ -1438,7 +1438,7 @@ extension CanvasView {
   public override func mouseUp(with e: NSEvent) {
     if pressToEditor {
       pressToEditor = false
-      return noteEditor.view.mouseUp(with: e)
+      return editorView.mouseUp(with: e)
     }
     if spacePanUp(e) { return }
     if let b = alignPressed {
@@ -2013,6 +2013,8 @@ extension CanvasView {
     // Esc closes the bar's open panel, and only that
     if alignMore, e.keyCode == 53 { return setAlignMore(false) }
     guard document != nil else { return super.keyDown(with: e) }
+    // Free code's editor is there at once: a key that reaches the canvas is its
+    if let v = editing?.codeView { return v.keyDown(with: e) }
     if editing != nil {
       // the editor is mounting: its keys wait for it, Esc among them, in the order typed
       editing?.keys.append(e)

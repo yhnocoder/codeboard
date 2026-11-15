@@ -70,11 +70,16 @@ public enum CodeEditing {
     }
   }
 
-  /// A language's line comment: `#` for Python and the shells and their kin, `--` for SQL, Lua and Haskell, else `//`
+  /// A language's line comment, by its name or an alias of it (packages/analysis langs.ts): `#` for Python and its
+  /// dialects, the shells, YAML, TOML, Ruby, R, Perl, diffs and plain text, `--` for SQL, Lua and Haskell, `;` for INI,
+  /// else `//`
   public static func lineComment(language: String?) -> String {
     switch language?.lowercased() {
-    case "python", "py", "python3", "sh", "bash", "shell", "zsh", "yaml", "yml", "toml", "ruby", "rb", "r": "#"
+    case "python", "py", "python3", "triton", "tilelang", "shellscript", "bash", "sh", "zsh", "shell", "console",
+      "yaml", "yml", "toml", "ruby", "rb", "r", "perl", "pl", "diff", "patch", "plaintext", "text", "txt":
+      "#"
     case "sql", "lua", "haskell", "hs": "--"
+    case "ini", "cfg": ";"
     default: "//"
     }
   }

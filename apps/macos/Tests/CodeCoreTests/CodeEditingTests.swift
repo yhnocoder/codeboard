@@ -44,5 +44,6 @@ import Testing
         to: "// a\nb") == "// // a\n// b")
     #expect(CodeEditing.lineComment(language: "Python") == "#" && CodeEditing.lineComment(language: "lua") == "--")
     #expect(CodeEditing.lineComment(language: nil) == "//")
+    #expect(["triton", "ini", "txt"].map { CodeEditing.lineComment(language: $0) } == ["#", ";", "#"])
   }
 }

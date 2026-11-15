@@ -55,6 +55,10 @@ public final class CodeEditorView: NSView {
   /// Escape, ⌘↩
   public var onExit: (() -> Void)?
   public var onHeight: ((CGFloat) -> Void)?
+  /// Presses of a multi-click that began outside the view and goes on in it (the click that opened it): they count from
+  /// the first press made here, so the second press of the double-click that opened the editor only places the caret.
+  /// A single press ends it
+  public var continuing = 0
   /// Where copy, cut and paste go (tests give their own)
   public var pasteboard = NSPasteboard.general
   /// The code's height: its rows and padding
@@ -81,6 +85,8 @@ public final class CodeEditorView: NSView {
 
   public override var isFlipped: Bool { true }
   public override var acceptsFirstResponder: Bool { true }
+  /// A press in a window that is not key places the caret at once, as a press on a text field does
+  public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
   public override func becomeFirstResponder() -> Bool {
     defer { placeCaret() }
@@ -247,10 +253,7 @@ public final class CodeEditorView: NSView {
 
   public override func keyDown(with e: NSEvent) {
     // an input method's keys are its own while it composes
-    guard editor.composition == nil else {
-      if inputContext?.handleEvent(e) != true { interpretKeyEvents([e]) }
-      return
-    }
+    guard editor.composition == nil else { return interpretKeyEvents([e]) }
     let name = Self.name(e)
     switch name {
     case "Escape", "Meta-Enter":
@@ -325,7 +328,9 @@ public final class CodeEditorView: NSView {
     window?.makeFirstResponder(self)
     if editor.composition != nil, inputContext?.handleEvent(e) == true { return }
     let (q, assoc) = hit(e)
-    change { $0.press(at: q, clicks: e.clickCount, extend: e.modifierFlags.contains(.shift), assoc: assoc) }
+    if e.clickCount <= 1 { continuing = 0 }
+    let clicks = max(1, e.clickCount - continuing)
+    change { $0.press(at: q, clicks: clicks, extend: e.modifierFlags.contains(.shift), assoc: assoc) }
   }
 
   public override func mouseDragged(with e: NSEvent) {

@@ -1,6 +1,7 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
+import CodeUI
 import QuartzCore
 
 // Writing in a Note, Text or Box on the canvas, with the web board's own editor (NoteEditor: the Note page in a web view
@@ -38,8 +39,10 @@ struct Editing {
   var drafted = false
   /// This writing, among others of the same card
   let session = UUID()
-  /// Free code, in the code editor (CanvasFreeCode)
+  /// Free code, in the code editor (CanvasFreeCode): its view, and the text it began with
   var code = false
+  var codeView: CodeEditorView?
+  var codeText: String?
   /// Leaving: a Note whose header folded away while it was written in shows its header again
   var unfolding = false
   /// The editor it writes with, kept to the end (the canvas may have left its window by then: a tab closed)
@@ -68,6 +71,9 @@ extension CanvasView {
   }
 
   var editingIndex: Int? { editing.flatMap { index(of: .card($0.id)) } }
+
+  /// The view the card being written is written in: Free code's own editor, else the window's Note editor
+  var editorView: NSView { editing?.codeView ?? noteEditor.view }
 
   /// Whether a card can be written in here: a Note, Text or Box of its own content
   func isWriting(_ id: CardID) -> Bool {
@@ -221,11 +227,18 @@ extension CanvasView {
 
   /// The web view over the card, the card `editorMargin` in from its top left
   func positionEditor() {
-    guard let ed = editing, let i = editingIndex, let host = noteEditor.view.superview else { return }
-    if ed.zooming && !ed.pictured { return scaleEditor() }
+    guard let ed = editing, let i = editingIndex else { return }
     let r = editingRect(scene!.items[i].rect)
     let z = camera.zoom
     let o = camera.view(r.origin)
+    // Free code: its body scaled with the camera every frame, laid out again only when its width changes
+    if let v = ed.codeView, let host = v.superview {
+      let top = ed.size.map { $0.height - v.height } ?? 0
+      let body = CGRect(x: o.x, y: o.y + top * z, width: r.width * z, height: v.height * z)
+      return v.place(convert(body, to: host), zoom: z)
+    }
+    guard let host = noteEditor.view.superview else { return }
+    if ed.zooming && !ed.pictured { return scaleEditor() }
     let card = CGRect(x: o.x, y: o.y, width: r.width * z, height: r.height * z)
     let frame = convert(card.insetBy(dx: -editorMargin, dy: -editorMargin), to: host)
     if noteEditor.view.frame != frame { noteEditor.view.frame = frame }
@@ -261,7 +274,7 @@ extension CanvasView {
   /// rest the editor shows itself at the new zoom. A pan only moves the web view with the card
   func cameraMovedWhileEditing() {
     guard let ed = editing, ed.ready, !ed.ending else { return }
-    if camera.zoom != ed.shownZoom { editing?.zooming = true }
+    if camera.zoom != ed.shownZoom, ed.codeView == nil { editing?.zooming = true }
     positionEditor()
   }
 
@@ -357,6 +370,10 @@ extension CanvasView {
   /// ends). Never a blank text: writing one deletes the card with what points at it, which only the end of the writing
   /// may do; the board keeps the last draft (or what the card had) until there is text again
   package func saveDraft() async {
+    if let ed = editing, ed.ready, !ed.ending, let v = ed.codeView {
+      if v.editor.text != ed.codeText { ed.doc.draft { $0.writeFreeCode(ed.id, text: v.editor.text) } }
+      return
+    }
     guard let ed = editing, ed.ready, !ed.ending, let w = await noteEditor.peek(), editing?.session == ed.session,
       editing?.ending == false, w.text != nil || w.layoutChanged || ed.drafted
     else { return }
@@ -413,13 +430,13 @@ extension CanvasView {
     // another canvas (another tab) took the editor since: it is that one's now, this one only writes what it was given
     let mine = { editor.owner === self }
     var written = given
-    if ed.ready, written == nil, mine() { written = await editor.finish() }
-    let text = written?.text
+    if ed.ready, written == nil, ed.codeView == nil, mine() { written = await editor.finish() }
+    let text = ed.codeView.map { $0.editor.text == ed.codeText ? nil : $0.editor.text } ?? written?.text
     let id = ed.id
     let note = !(ed.card.textCard != nil)
     // a Free code card's language follows what the text now looks like (writeFreeCode, freeLang), asked of the page first
     var guessed: String?
-    if ed.code, let text { guessed = try? await notes.freeLanguage(text) }
+    if ed.code, let text { guessed = FreeLanguage.guess(text) }
     if ed.code && ed.fresh {
       // a new card: written, one step with its making; left empty, gone with none (code.ts writeFreeCode, env.fresh)
       let keep = !(text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -478,7 +495,11 @@ extension CanvasView {
         drawChrome()
       }
     }
-    if mine() {
+    if let v = ed.codeView {
+      if window?.firstResponder === v { window?.makeFirstResponder(self) }
+      withoutAnimation { v.removeFromSuperview() }
+      CATransaction.flush()
+    } else if mine() {
       withoutAnimation {
         editor.view.shown = false
         editor.view.layer?.setAffineTransform(.identity)
@@ -522,7 +543,7 @@ extension CanvasView {
         return editSoon {
           if self.editing?.id == id { return }
           await self.endEditing()
-          self.beginCodeEditing(id, at: p)
+          self.beginCodeEditing(id, at: p, continuing: 2)
         }
       }
       guard isWriting(id) else { return }
@@ -551,8 +572,7 @@ extension CanvasView {
     if isFreeCode(id) {
       editSoon {
         guard self.editing == nil else { return }
-        self.beginCodeEditing(id, at: p)
-        opened()
+        self.beginCodeEditing(id, at: p, continuing: 1)
       }
     } else if case .own(let c)? = doc.board.card(id)?.content, case .note = c.body, isWriting(id) {
       editSoon {

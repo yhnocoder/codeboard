@@ -23,7 +23,6 @@ import {
   type RefPick,
   warmUp,
 } from "@yhnocoder/markdown/editor";
-import { codeEditor } from "@yhnocoder/markdown/code-editor";
 import { TOOLBAR_SETTLE } from "@yhnocoder/markdown/ui";
 import "@yhnocoder/markdown/katex.css";
 import "../../../../packages/board/src/fonts.css";
@@ -31,11 +30,10 @@ import "../../../../packages/board/src/styles.css";
 import "@yhnocoder/markdown/style.css";
 import "../../../../packages/board/src/themes.css";
 import "./page.css";
-import { classifyPaste, guessLang, pythonDialect } from "../../../../packages/core/src/paste";
+import { classifyPaste } from "../../../../packages/core/src/paste";
 import { cleanImage, cleanSvg, svgDataUrl } from "../../../../packages/board/src/md/images";
 import { imageScale } from "../../../../packages/core/src/image";
 import { NEW_CARD_W } from "../../../../packages/core/src/layout";
-import { langInfo } from "../../../../packages/analysis/src/langs";
 import { pop } from "./pop";
 import { openRefAt, watchRefs } from "./refclick";
 import { type QData, qlist } from "./qlist";
@@ -375,11 +373,6 @@ window.note = {
   paste: pasted,
   /** A picture file's cleaned data: URL and its card's width (added) */
   added,
-  /** The language Free code's text looks like, null when it cannot tell (core commands/code.ts freeLang) */
-  lang(text: string) {
-    const g = guessLang(text);
-    return g === "python" ? pythonDialect(text) : g;
-  },
   /** Mounts Notes at 100 % (each one not mounted yet, under its id) and measures them all */
   async mount(list: { id: string; note: Note; images: string }[]) {
     for (const { id, note: n, images } of list) {
@@ -484,13 +477,11 @@ type Ended = {
   layoutChanged: boolean;
   blocks: { was: string[] | null; now: string[] | null } | null;
 };
-/** What the editing needs of its editor: the Markdown editor's, or the code editor's made to look like it */
-type Handle = Pick<MdEditorHandle, "value" | "layout" | "destroy" | "type" | "placeCaret">;
 type Editing = {
   slot: Slot;
   original: string;
   layout: MdLayout | null;
-  editor: Handle;
+  editor: MdEditorHandle;
   /** What it ended with, once ended (the editor leaving by itself or native finishing it, whichever came first) */
   ended: Ended | null;
 };
@@ -657,50 +648,6 @@ addEventListener("compositionend", (e) => {
   if (compositionKeys <= compositionUpdates || !(e.target instanceof Element)) return;
   e.target.dispatchEvent(new KeyboardEvent("keydown", { key: "Process", bubbles: true, cancelable: true }));
 });
-// WebKit writes a composition's text with that text selected and puts the caret where the input method says only after
-// the input event; CodeMirror reads the selection in between (its MutationObserver) and keeps the text selected until
-// WebKit's selectionchange. Whatever it draws before then puts that selection back, and WebKit takes a selection the
-// page sets as the end of the composition: code's colours coming back in between ended it, and the commit landed beside
-// what was composed ("n你"). Colours that come then wait for that selectionchange, and for CodeMirror to have read it.
-// They wait too for the composition to end: a line drawn again while it goes on, even between its keys, lost WebKit's
-// composition, whose next update was written beside the old text ("nni"), with CodeMirror's own text left behind (keys
-// typed at once on a busy machine). The composing text shows uncoloured until then
-let caretDue: Promise<void> | null = null;
-let caretCame = () => {};
-let composing = false;
-const hold = () => {
-  composing = true;
-  caretDue ??= new Promise((r) => (caretCame = r));
-};
-// (WebKit sends a composition's first beforeinput before or after its compositionstart)
-addEventListener("compositionstart", hold, true);
-addEventListener("beforeinput", (e) => (e as InputEvent).inputType === "insertCompositionText" && hold(), true);
-addEventListener(
-  "input",
-  (e) => {
-    if ((e as InputEvent).inputType !== "insertCompositionText" || caretDue) return;
-    caretDue = new Promise((r) => (caretCame = r));
-  },
-  true,
-);
-const caretIn = () => {
-  if (!caretDue || composing) return;
-  caretDue = null;
-  setTimeout(caretCame);
-};
-document.addEventListener("selectionchange", caretIn);
-addEventListener(
-  "compositionend",
-  () => {
-    composing = false;
-    caretIn();
-  },
-  true,
-);
-const afterCaret = async <T>(v: T) => {
-  while (caretDue) await caretDue;
-  return v;
-};
 // an Esc the input method took to cancel its composition: WebKit gives it as Escape with keyCode 229 (Chromium as
 // Process), and the editors' Esc would leave
 addEventListener(
@@ -880,117 +827,6 @@ const edit = {
     const r = made.card.getBoundingClientRect();
     return { width: r.width / a.k, height: r.height / a.k };
   },
-  /** Mounts a Free code card's code in the code editor, as the board's FreeEdit does: the card `width` wide, its code
-   *  `top` below the card's top (under its header, which the canvas draws), at zoom k, `margin` px from the page's top
-   *  left; the caret at `caret` (card px at 100 %), else at the start. Colours come from native (the `highlight`
-   *  handler: the board's token classes as HTML), so entering and leaving change no colour. Resolves with its size */
-  async code(a: {
-    look: string;
-    dark: boolean;
-    k: number;
-    margin: number;
-    width: number;
-    top: number;
-    text: string;
-    lang: string;
-    start: number;
-    wrap: boolean;
-    html: string | null;
-    caret: { x: number; y: number } | null;
-  }) {
-    edit.clear();
-    setLook(a.look, a.dark);
-    document.documentElement.dataset.margin = String(a.margin);
-    // Card.tsx and CodeBody.tsx: the card, its face, its body, the code (the header keeps its place, drawn by the canvas)
-    const card = document.createElement("div");
-    card.className = "card ccard editing";
-    card.style.width = `${a.width}px`;
-    const face = document.createElement("div");
-    face.className = "cface";
-    face.style.paddingTop = `${a.top}px`;
-    const body = document.createElement("div");
-    body.className = a.wrap ? "cbody editing wrap" : "cbody editing";
-    const code = document.createElement("div");
-    const lines = a.text.split("\n").length;
-    code.className = "code freecode";
-    code.style.setProperty("--nd", String(String(a.start + lines - 1).length));
-    body.append(code);
-    face.append(body);
-    card.append(face);
-    const s = newSlot("edit", card);
-    s.slot.classList.add("shown");
-    s.slot.style.left = `${a.margin}px`;
-    s.slot.style.top = `${a.margin}px`;
-    s.slot.style.transform = a.k === 1 ? "" : `scale(${a.k})`;
-    s.slot.dataset.k = String(a.k);
-    const handler = (
-      window.webkit?.messageHandlers as unknown as {
-        highlight?: { postMessage(m: unknown): Promise<string | null> };
-      }
-    ).highlight;
-    const lang = a.lang;
-    const e: Editing = {
-      slot: s,
-      original: a.text,
-      layout: null,
-      ended: null,
-      editor: undefined as unknown as Handle,
-    };
-    const ed = codeEditor({
-      parent: code,
-      text: a.text,
-      lang,
-      wrap: a.wrap,
-      gutter: { start: a.start },
-      html: a.html ?? undefined,
-      highlight: handler ? (t) => handler.postMessage({ text: t, lang }).then(afterCaret, () => null) : undefined,
-      stopPointerDown: true,
-      find: true,
-      // ⌘/ (FreeEdit.tsx)
-      comment: (l) => langInfo(l)?.comment,
-      classes: { menu: "ctx", bar: "pill", button: "tbtn" },
-      // Esc, ⌘↵ (FreeEdit onExit)
-      onExit: () => {
-        const r = end(e, ed.text() === e.original ? null : ed.text(), null);
-        if (r) post({ type: "done", ...r });
-      },
-      onChange: (t) => {
-        code.style.setProperty("--nd", String(String(a.start + t.split("\n").length - 1).length));
-      },
-    });
-    const v = ed.view;
-    e.editor = {
-      value: () => ed.text(),
-      layout: () => null,
-      destroy: () => ed.destroy(),
-      type: (t: string) => v.dispatch(v.state.replaceSelection(t), { userEvent: "input.type", scrollIntoView: false }),
-      placeCaret: (at) => {
-        const pos = at === "end" ? v.state.doc.length : "x" in at ? v.posAtCoords(at, false) : 0;
-        v.dispatch({ selection: { anchor: pos } });
-        v.focus();
-        return true;
-      },
-    };
-    editing = e;
-    let last = "";
-    new ResizeObserver(() => {
-      const r = card.getBoundingClientRect();
-      const k = Number(s.slot.dataset.k ?? 1);
-      const size = { width: r.width / k, height: r.height / k };
-      const key = `${size.width} ${size.height}`;
-      if (key === last) return;
-      last = key;
-      post({ type: "size", ...size });
-    }).observe(card);
-    await settled([card]);
-    if (a.caret) e.editor.placeCaret({ x: a.margin + a.caret.x * a.k, y: a.margin + a.caret.y * a.k });
-    else {
-      v.dispatch({ selection: { anchor: 0 } });
-      v.focus();
-    }
-    const r = card.getBoundingClientRect();
-    return { width: r.width / a.k, height: r.height / a.k };
-  },
   /** The zoom it is shown at; resolves once drawn so */
   async zoom(k: number) {
     if (!editing) return;
@@ -1063,7 +899,7 @@ if (editMode)
     "mousedown",
     (e) => {
       const t = e.target as Element | null;
-      if (!t?.closest?.("[contenteditable], input, textarea, select, button, a[href], [tabindex], .cm-editor, .mdui"))
+      if (!t?.closest?.("[contenteditable], input, textarea, select, button, a[href], [tabindex], .mdui"))
         e.preventDefault();
     },
     true,

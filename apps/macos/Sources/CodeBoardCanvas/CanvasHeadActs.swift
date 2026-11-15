@@ -189,7 +189,7 @@ extension CanvasView {
   /// Free code's languages (edit.ts langMenu): Auto-detect, with what its text looks like, then the languages to pick
   func languageMenu(_ id: CardID) async -> NSMenu? {
     guard let doc = document, let s = doc.board.freeCodeSegment(id) else { return nil }
-    let auto = try? await notes.freeLanguage(s.lines.joined(separator: "\n"))
+    let auto = FreeLanguage.guess(s.lines.joined(separator: "\n"))
     let picked = s.languagePicked == true
     let m = NSMenu()
     m.addItem(
