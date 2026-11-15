@@ -190,3 +190,5 @@ extension Board {
     removeLinkItem(id, item)
   }
 }
+
+// trial for the test selection on CI, taken out before the merge
