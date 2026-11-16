@@ -81,7 +81,7 @@ import PDFKit
       let key = pane.openKey(a.entry)
       return ((key.flatMap { k in elsewhere { $0.key == k }?.pane }) ?? pane).openEntry(a.entry)
     }
-    if WebReading.reveal(a, in: pane) { return }
+    if WebReading.reveal(a, in: pane, elsewhere: { k in k.flatMap { k in elsewhere { $0.key == k }?.pane } }) { return }
     let t = PDFTarget.entry(a.entry, version: place.version)
     guard let tab = (elsewhere { $0.key == t.key }?.pane ?? pane).openPDF(t) else { return }
     PDFTabView.reveal(place, in: tab)

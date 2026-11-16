@@ -57,8 +57,11 @@ extension WebReading {
   }
 
   /// A web entry's place shown in a web tab: a page saved whole in the saved page's tab, at its block when the reader
-  /// can scroll to it; else the page online, in the tab already on it. False for an entry that is not a web page's
-  @MainActor @discardableResult public static func reveal(_ a: SourceAnchor, in pane: ReadingPane) -> Bool {
+  /// can scroll to it; else the page online, in the tab already on it, in another window's pane (`elsewhere`, by the
+  /// tab's key) when that has it. False for an entry that is not a web page's
+  @MainActor @discardableResult public static func reveal(
+    _ a: SourceAnchor, in pane: ReadingPane, elsewhere: (String?) -> ReadingPane? = { _ in nil }
+  ) -> Bool {
     guard let found = pane.entries[a.entry], case .web(let address) = found.entry.origin,
       let url = URL(string: address)
     else { return false }
@@ -66,11 +69,12 @@ extension WebReading {
       case .page(let hash, _, _) = v.content
     {
       let page = Page.saved(hash: hash, address: url, title: found.entry.title)
-      let tab = pane.open(found.entry.title, key: page.key, kind: kind, payload: page.payload)
+      let tab = (elsewhere(page.key) ?? pane).open(found.entry.title, key: page.key, kind: kind, payload: page.payload)
       if case .id(let id) = p.block { WebPageView.reveal(id, range: p.range, in: tab) }
       return true
     }
-    pane.open(found.entry.title, key: key(for: url), kind: kind, payload: ["url": address])
+    let online = key(for: url)
+    (elsewhere(online) ?? pane).open(found.entry.title, key: online, kind: kind, payload: ["url": address])
     return true
   }
 }
