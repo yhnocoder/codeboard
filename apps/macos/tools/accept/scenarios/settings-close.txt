@@ -1,6 +1,5 @@
 # Settings 开着、接着键时按 ⌘W：关掉的是 Settings，白板的标签还在
 # only: mac
-# known: File 菜单的 Close Tab（⌘W）是不指定目标的动作，从 Settings 沿响应链一直传到 AppDelegate.closeTab，关的是主窗口白板的标签；真键盘也一样
 key cmd+,
 wait 600
 expect windows has "Settings" key

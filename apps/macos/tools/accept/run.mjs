@@ -383,9 +383,9 @@ class Driver {
     const n = ++this.n;
     const re = new RegExp(`^\\S+ done ${n} `);
     // a line answers within 30 s (CI: 120) past the time it asks for (wait, move, drag…): a driver that hangs fails this line soon,
-    // not the run half an hour later
+    // not the run half an hour later. Text recognition's first read in a process loads its model, about 30 s more
     const asked = line.split(" ").slice(1).map(Number).filter((x) => x >= 100 && x <= 60000);
-    const limit = slack + (asked.length ? Math.max(...asked) : 0) + (/^(stop|rec|quit)\b/.test(line) ? 30000 : 0);
+    const limit = slack + (asked.length ? Math.max(...asked) : 0) + (/^(stop|rec|quit|find|wtext)\b/.test(line) ? 30000 : 0);
     for (let t = 0; t < limit; t += 20) {
       const l = this.lines().find((x) => re.test(x));
       // a result of more than one line (a menu's items) comes on one: line breaks written \\n, backslashes \\\\
@@ -734,8 +734,12 @@ async function subject(d, subj) {
   // <title>", * on the one shown) and "pane shown|hidden"; webviews: each web view's address, title, whether it is
   // shown and what its page says of its visibility (Mac only)
   if (subj.startsWith("entry:")) return d.send(`entries ${subj.slice(6)}`);
-  if (["readtabs", "webviews", "subpv", "vaultstamp", "windows", "board"].includes(subj)) return d.send(subj);
-  if (subj.startsWith("wtext:")) return d.send(`wtext ${subj.slice(6)}`);
+  if (["readtabs", "webviews", "subpv", "vaultstamp", "windows", "board", "shelfpv"].includes(subj)) return d.send(subj);
+  // (not checkable where the machine has no text recognition: a CI runner answers "text recognition: unknownError")
+  if (subj.startsWith("wtext:")) {
+    const r = await d.send(`wtext ${subj.slice(6)}`);
+    return r.startsWith("text recognition:") ? undefined : r;
+  }
   if (subj.startsWith("cols:")) return d.send(`cols ${subj.slice(5)}`);
   // file:board / file:<path in the vault>: what the Mac app wrote there, read from disk (expect … has / lacks)
   if (subj.startsWith("file:") && d.side === "mac") {
@@ -1095,7 +1099,7 @@ for (const file of scenarios) {
     lines = [shot("1-start", 0), ...kept.flatMap((l) => (l === mid ? [shot("2-middle", l.n), l] : [l])), shot("3-end", lines.length)];
   }
   // the subjects compared with `was`, taken at each `mark`
-  const marked = [...new Set(lines.filter((l) => / was\b/.test(l.text)).map((l) => l.text.replace(/^(mac|web):\s*/, "").split(" ")[1]))];
+  const marked = [...new Set(lines.filter((l) => !l.text.startsWith("#") && / was\b/.test(l.text)).map((l) => l.text.replace(/^(mac|web):\s*/, "").split(" ")[1]))];
   // `# known: <why>` (or `# known mac: <why>`, one side): a problem followed elsewhere; its failures are reported but do
   // not fail the run
   const knownOf = (side) =>

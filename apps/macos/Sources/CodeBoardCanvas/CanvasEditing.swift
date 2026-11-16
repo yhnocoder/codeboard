@@ -135,10 +135,12 @@ extension CanvasView {
   /// Shows an open board and edits it: what the document changes (an edit here, undo, another writer) is shown as it
   /// changes
   public func show(_ doc: BoardDocument, at board: VaultBoard, in vault: Vault, theme: Theme) async throws {
-    if document !== doc {
+    if document?.document !== doc {
       stopObserving?()
-      document = doc
-      stopObserving = doc.observe { [weak self] in self?.documentChanged($0) }
+      document?.leave()
+      let seat = doc.seat(for: self)
+      document = seat
+      stopObserving = seat.observe { [weak self] in self?.documentChanged($0) }
     }
     try await load(board, in: vault, theme: theme, keepCamera: false)
   }
@@ -152,6 +154,7 @@ extension CanvasView {
     mode = nil
     stopObserving?()
     stopObserving = nil
+    document?.leave()
     document = nil
     shelfChanged()
   }

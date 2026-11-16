@@ -2006,6 +2006,11 @@ func strings(_ x: Any) -> [String] {
         }
       }
       return titles.isEmpty ? "none" : titles.joined(separator: "\n")
+    // shelfpv: the Shelf entry shown large beside the Shelf (its id) and whether the Shelf is open; none
+    case "shelfpv":
+      guard let c = canvas else { return "no canvas" }
+      guard let id = c.previewing, c.shelfPreview?.superview != nil else { return "none" }
+      return "\(id) panel \(c.shelfPanel == nil ? "closed" : "open")"
     // windows: the app's visible windows front to back, one per line: its number (what #n names), title, key, main
     case "windows":
       let ws = shown()
