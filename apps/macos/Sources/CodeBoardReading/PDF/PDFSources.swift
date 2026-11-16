@@ -72,9 +72,17 @@ import PDFKit
     return p
   }
 
+  /// The reading pane of another window on screen with a tab that `holds` takes, and that tab (WindowSet); nil: none
+  public var elsewhere: (_ holds: (ReadingTab) -> Bool) -> (pane: ReadingPane, tab: ReadingTab.ID)? = { _ in nil }
+
+  /// A card's source, in its tab: in another window's reading pane when that has it open, else in this one
   public func reveal(_ a: SourceAnchor) {
-    guard let place = a.place else { return pane.openEntry(a.entry) }
-    guard let tab = pane.openPDF(.entry(a.entry, version: place.version)) else { return }
+    guard let place = a.place else {
+      let key = pane.openKey(a.entry)
+      return ((key.flatMap { k in elsewhere { $0.key == k }?.pane }) ?? pane).openEntry(a.entry)
+    }
+    let t = PDFTarget.entry(a.entry, version: place.version)
+    guard let tab = (elsewhere { $0.key == t.key }?.pane ?? pane).openPDF(t) else { return }
     PDFTabView.reveal(place, in: tab)
   }
 

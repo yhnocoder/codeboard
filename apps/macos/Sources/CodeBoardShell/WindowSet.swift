@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardCanvas
 import CodeBoardModel
 import Observation
 
@@ -17,8 +18,13 @@ struct SavedWindow: Codable, Equatable {
   let session: VaultSession
   let documents: BoardDocuments
   private(set) var all: [Entry] = []
-  /// The window last made key or main: `main` when AppKit has none (the app not active, or under a driver)
-  @ObservationIgnored private weak var front: Entry?
+  /// The windows by when they were last made key or main, the latest first: `main` when AppKit has none (the app not
+  /// active, or under a driver), and where what has no place in one window goes
+  @ObservationIgnored private var recent: [Entry] = []
+  /// Whether a window is on screen: not miniaturized, not covered whole. Tests, whose windows never are, say
+  @ObservationIgnored var onScreen: (NSWindow) -> Bool = {
+    $0.isVisible && !$0.isMiniaturized && $0.occlusionState.contains(.visible)
+  }
   /// Each shell before its window is made, and each window's panes once made (the app delegate's settings)
   @ObservationIgnored var prepare: (Shell) -> Void = { _ in }
   @ObservationIgnored var configure: (BoardPanes) -> Void = { _ in }
@@ -58,12 +64,27 @@ struct SavedWindow: Codable, Equatable {
     }
 
     func windowWillClose(_ notification: Notification) { set?.closed(self) }
-    func windowDidBecomeKey(_ notification: Notification) { set?.front = self }
-    func windowDidBecomeMain(_ notification: Notification) { set?.front = self }
+    func windowDidBecomeKey(_ notification: Notification) { set?.cameToFront(self) }
+    func windowDidBecomeMain(_ notification: Notification) { set?.cameToFront(self) }
   }
 
   /// The window menu actions act on: AppKit's main window, else the one last in front, else the first
-  var main: Entry? { all.first { $0.window === NSApp.mainWindow } ?? front ?? all.first }
+  var main: Entry? { all.first { $0.window === NSApplication.shared.mainWindow } ?? recent.first ?? all.first }
+
+  fileprivate func cameToFront(_ e: Entry) {
+    recent.removeAll { $0 === e }
+    recent.insert(e, at: 0)
+  }
+
+  /// Every window but `e` on screen, the latest used first
+  private func others(than e: Entry) -> [Entry] {
+    (recent + all.filter { w in !recent.contains { $0 === w } }).filter { $0 !== e && onScreen($0.window) }
+  }
+
+  /// The window other than `e` that shows `board` (its selected tab on it, its canvas drawing it, on screen)
+  func showing(_ board: BoardID, besides e: Entry) -> Entry? {
+    others(than: e).first { $0.shell.current?.board == board && $0.panes.shownCanvas?.document?.id == board }
+  }
 
   /// The board window `window` is (or a sheet on it); nil: `main`, and so for a window that is none of them
   func entry(of window: NSWindow?) -> Entry? {
@@ -79,6 +100,28 @@ struct SavedWindow: Codable, Equatable {
     window.delegate = e
     window.title = shell.vault?.root.lastPathComponent ?? "CodeBoard"
     panes.syncEverywhere = { [weak self] in self?.sync(reload: $0) }
+    // a click on this window's board that goes to another board's card or question: there, in a window showing it
+    panes.arriveElsewhere = { [weak self, weak e] board, arrival in
+      guard let self, let e, let canvas = showing(board, besides: e)?.panes.shownCanvas else { return false }
+      switch arrival {
+      case .card(let c): canvas.arrive(at: c)
+      case .question(let q): canvas.showQuestion(q)
+      }
+      return true
+    }
+    // collected with no board tab here: to the board of the latest used window that shows one
+    panes.collectElsewhere = { [weak self, weak e] c in
+      guard let self, let e else { return }
+      others(than: e).lazy.compactMap(\.panes.shownCanvas).first?.collect(c)
+    }
+    // a source open in another window's reading pane is gone to there
+    shell.sources.elsewhere = { [weak self, weak e] holds in
+      guard let self, let e else { return nil }
+      for o in others(than: e) {
+        if let t = o.shell.reading.tabs.first(where: holds) { return (o.shell.reading, t.id) }
+      }
+      return nil
+    }
     configure(panes)
     all.append(e)
     return e
@@ -119,6 +162,7 @@ struct SavedWindow: Codable, Equatable {
   private func closed(_ e: Entry) {
     e.panes.leaveAll()
     all.removeAll { $0 === e }
+    recent.removeAll { $0 === e }
   }
 
   // MARK: What is the app's
