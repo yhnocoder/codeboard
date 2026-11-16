@@ -12,14 +12,17 @@ public struct ArxivPaper: Equatable, Sendable {
   public var authors: [String]
   /// When its first version came out
   public var year: Int?
+  /// Where it was published, when its authors told arXiv (its journal reference)
+  public var venue: String?
   /// Its newest version's number
   public var latest: Int
 
-  public init(id: String, title: String, authors: [String], year: Int?, latest: Int) {
+  public init(id: String, title: String, authors: [String], year: Int?, venue: String? = nil, latest: Int) {
     self.id = id
     self.title = title
     self.authors = authors
     self.year = year
+    self.venue = venue
     self.latest = latest
   }
 }
@@ -84,7 +87,9 @@ public struct Arxiv: Sendable {
     guard let e = feed.entries.first, let latest = Self.parse(e.id).flatMap(\.version) else { throw .notFound(id) }
     let title = e.title.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     return ArxivPaper(
-      id: id, title: title, authors: e.authors, year: Int(e.published.prefix(4)), latest: latest)
+      id: id, title: title, authors: e.authors, year: Int(e.published.prefix(4)),
+      venue: e.venue.isEmpty ? nil : e.venue.split(whereSeparator: \.isWhitespace).joined(separator: " "),
+      latest: latest)
   }
 
   /// Version `version` of the paper's PDF
@@ -148,7 +153,7 @@ extension Vault {
     let now = Entry.now
     let e = Entry(
       id: EntryID(rawValue: Board.newID("e")), title: paper.title, added: now, origin: .arxiv(paper.id),
-      authors: paper.authors, year: paper.year,
+      authors: paper.authors, year: paper.year, venue: paper.venue,
       versions: [
         Version(
           id: VersionID(rawValue: Board.newID("v")), label: "v\(version)", added: now, language: "en",
@@ -169,6 +174,7 @@ private final class AtomFeed: NSObject, XMLParserDelegate {
     var id = ""
     var title = ""
     var published = ""
+    var venue = ""
     var authors: [String] = []
   }
 
@@ -207,6 +213,7 @@ private final class AtomFeed: NSObject, XMLParserDelegate {
     case "id": item?.id = t
     case "title": item?.title = t
     case "published": item?.published = t
+    case "arxiv:journal_ref", "journal_ref": item?.venue = t
     default: break
     }
     text = ""

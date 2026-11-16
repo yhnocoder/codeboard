@@ -19,7 +19,7 @@ private func everything() -> Entry {
   let colors: [Highlight.Color] = [.yellow, .green, .blue, .pink, .purple]
   return Entry(
     id: EntryID(rawValue: "e-attention"), title: "Attention Is All You Need", added: 1_700_000_000_000,
-    origin: .arxiv("1706.03762"), authors: ["Ashish Vaswani", "Noam Shazeer"], year: 2017,
+    origin: .arxiv("1706.03762"), authors: ["Ashish Vaswani", "Noam Shazeer"], year: 2017, venue: "NeurIPS 2017",
     versions: [
       Version(id: v1, label: "v7", added: 1_700_000_000_000, content: .pdf(file: "1706.03762v7.pdf")),
       Version(
@@ -69,7 +69,7 @@ private func at(_ json: inout [String: Any], _ list: String, _ i: Int, _ change:
 
 @Test func resourceFileRoundTripsEveryFieldAndKind() throws {
   let kinds: [Resource.Field.Kind] = [.text, .number, .date, .checkbox]
-  let presets: [ResourcePreset] = [.papers, .web, .files]
+  let presets: [ResourcePreset] = [.papers, .web, .files, .images, .blank]
   for preset in presets {
     let r = Resource(
       id: ResourceID(rawValue: "r1"), preset: preset,

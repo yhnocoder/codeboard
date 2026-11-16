@@ -277,7 +277,8 @@ public enum FolderEntry: Hashable, Sendable {
 
 /// What a resource's list starts with (its columns and actions); it does not limit what an entry may be
 public enum ResourcePreset: String, Codable, Sendable {
-  case papers, web, files
+  /// `images`: a grid of pictures; `blank`: nothing but the title and the columns the user adds
+  case papers, web, files, images, blank
 }
 
 /// A resource package as the tree lists it, its entries not read
