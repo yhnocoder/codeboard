@@ -291,6 +291,7 @@ extension CodeTabView {
   func flash(_ lines: ClosedRange<Int>) {
     guard let code, let r = code.frame(ofLines: lines)?.rect else { return }
     flashView.frame = CGRect(x: 0, y: r.minY, width: page.bounds.width, height: r.height)
+    flashed = lines
     flashView.layer?.backgroundColor = context.bar.accent.copy(alpha: 0.13)
     let a = CAKeyframeAnimation(keyPath: "opacity")
     a.values = [0, 1, 1, 0]

@@ -501,7 +501,8 @@ private let source = """
     tab.paneView.sync()
     try await until("located") { CodeTabView.live[id]?.view?.code != nil }
     let v = try #require(CodeTabView.live[id]?.view)
-    try await until("marked") { v.flashView.layer?.animation(forKey: "flash") != nil }
+    // what was marked, not the fade itself: that is over in under two seconds, however late this is asked
+    try await until("marked") { v.flashed == 5...6 }
     #expect(v.bar.note == "Card from abc1234")
     let f = try #require(v.code?.frame(ofLines: 5...6)?.rect)
     #expect(abs(v.flashView.frame.minY - f.minY) < 0.5 && abs(v.flashView.frame.height - f.height) < 0.5)

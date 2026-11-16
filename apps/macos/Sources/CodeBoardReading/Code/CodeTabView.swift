@@ -71,6 +71,8 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
   var placesPinned = false
   /// Lines to mark once the file is read
   var flashWanted: ClosedRange<Int>?
+  /// The lines last marked a moment
+  var flashed: ClosedRange<Int>?
   /// A press on a marked line's thin line, until it is let go: not the code's
   var pressOnMark: Int?
   /// The open code tabs' views, and what `locate` is waiting for a tab's view to show
