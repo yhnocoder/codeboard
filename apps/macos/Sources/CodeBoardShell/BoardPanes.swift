@@ -118,6 +118,11 @@ import CodeBoardNotes
       guard let self, let t = self.shell.selected, let p = self.panes[t], p.document != nil else { return nil }
       return p.canvas.currentCamera
     }
+    // what the reading pane collects goes to the board of the selected tab
+    shell.onCollect = { [weak self] c in
+      guard let self, let t = self.shell.selected else { return }
+      self.panes[t]?.canvas.collect(c)
+    }
     shell.beforeFiles = { [weak self] in self?.flush() }
     shell.afterFiles = { [weak self] in self?.sync(reload: true) }
     shell.setSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }
@@ -228,6 +233,7 @@ import CodeBoardNotes
         pane.canvas.summaryWriter = summaryWriter
         pane.canvas.cameras = cameras
         pane.canvas.picturesFolder = pictures
+        pane.canvas.sources = shell.sources
         pane.onOpenBoard = { [weak self] in self?.shell.show($0) }
         pane.canvas.onEnterBoard = { [weak self, weak pane] e in
           if let c = e.reveal { pane?.arriving(.card(c)) }
