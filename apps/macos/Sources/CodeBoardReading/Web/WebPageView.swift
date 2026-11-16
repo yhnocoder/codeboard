@@ -424,12 +424,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     guard context.pane.vault != nil, let url = web.url, ["http", "https"].contains(url.scheme) else { return }
     let title = web.title ?? ""
     Task {
-      let script =
-        scripts == nil
-        ? nil
-        : try? await web.callAsyncJavaScript(
-          "return await shiyiCapture.meta()", contentWorld: WebReading.scriptWorld)
-      let meta = WebMeta(script: script, title: title)
+      let meta = scripts == nil ? WebMeta(script: nil, title: title) : await pageMeta(title: title)
       let name = meta.title ?? WebAddress.shown(url)
       do {
         let item = SavedItem(
@@ -442,6 +437,34 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
         showSave(.failed("The link could not be saved: \(error.localizedDescription)"))
       }
     }
+  }
+
+  /// How long the metadata script is waited for before a link is saved with the page's title alone
+  static let metaWait: Duration = .seconds(2)
+
+  /// The page's metadata as its script reads it, or from its title alone when the script gives nothing in
+  /// `metaWait`: asked while the page is being left for another, WebKit never answers the call, and the link must
+  /// still be saved
+  private func pageMeta(title: String) async -> WebMeta {
+    let answer = Task { @MainActor [web] () -> WebMeta? in
+      let read = try? await web.callAsyncJavaScript(
+        "return await shiyiCapture.meta()", contentWorld: WebReading.scriptWorld)
+      return read.map { WebMeta(script: $0, title: title) }
+    }
+    let read = await withCheckedContinuation { (c: CheckedContinuation<WebMeta?, Never>) in
+      var open = true
+      func give(_ meta: WebMeta?) {
+        guard open else { return }
+        open = false
+        c.resume(returning: meta)
+      }
+      Task { @MainActor in give(await answer.value) }
+      Task { @MainActor in
+        try? await Task.sleep(for: Self.metaWait)
+        give(nil)
+      }
+    }
+    return read ?? WebMeta(script: nil, title: title)
   }
 
   /// The page captured whole, kept by the saving service and listed as one more version of its entry

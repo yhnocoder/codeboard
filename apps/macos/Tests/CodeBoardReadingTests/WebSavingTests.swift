@@ -29,6 +29,7 @@ import WebKit
     switch r.path.prefix(while: { $0 != "?" }) {
     case "/a": .html("<title>Page A</title><a id='next' href='/b'>to B</a>")
     case "/b": .html("<title>Page B</title>")
+    case "/mute": .html("<title>Page Mute</title>")
     case "/asset": LoopbackServer.Response(body: "asset for \(r.headers["cookie"] ?? "no cookie")")
     default: LoopbackServer.Response(status: "404 Not Found", body: "<title>Missing</title>")
     }
@@ -153,6 +154,18 @@ import WebKit
     #expect(meta.title == "Page A" && meta.description == "A made-up page" && meta.site == "Loopback")
     #expect(meta.icon == .url(url("/icon.png").absoluteString) && meta.image == .url(url("/cover.png").absoluteString))
     #expect(entry.added == meta.fetchedAt, "when the page was read, not when the service answers")
+  }
+
+  /// The metadata script that never answers (as WebKit never does for a call made while the page is being left) does
+  /// not keep the link from being saved: after `metaWait` it is saved with the page's title alone
+  @Test func aLinkIsSavedWhenTheMetadataScriptNeverAnswers() async throws {
+    let (v, tabs) = try tab("/mute")
+    defer { done(tabs) }
+    try await loaded(v, "Page Mute")
+    v.saveMenu().performActionForItem(at: 0)
+    try await until("the link saved") { v.saveState == .saved(.link) }
+    let meta = try #require(try web().first?.1.first?.meta)
+    #expect(meta.title == "Page Mute" && meta.description == nil)
   }
 
   /// Saving a page whole: the script's fetch is answered with the tab's cookie, its two chunks written in order, the
