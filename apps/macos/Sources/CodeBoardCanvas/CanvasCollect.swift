@@ -48,10 +48,13 @@ extension CanvasView {
       // as a pasted picture is (an SVG is refused: a paste has it cleaned first); its source the entry the page is
       guard let picture = collectedPicture(url) else { return nil }
       return Card(
-        id: id, x: p.x, y: p.y, width: w.rounded(),
+        id: id, x: p.x, y: p.y, width: Self.pictureWidth(w),
         content: .own(CardContent(source: c.source, body: .image(ImageCard(source: picture, alt: alt)))))
     }
   }
+
+  /// A web picture's card as wide as a pasted picture's (addImage, the Note page's `added`): its width, 24 to a Note's
+  private static func pictureWidth(_ w: Double) -> Double { max(24, min(Board.newNoteWidth, w.rounded())) }
 
   /// An http(s) address as it is, a data: picture's bytes in the board's images by their content (already when its card
   /// is first in hand); nil for anything else
@@ -70,7 +73,8 @@ extension CanvasView {
     switch c.body {
     case .note: CGSize(width: Board.newNoteWidth, height: 160)
     case .image(_, let w, let h): c.source == nil ? nil : CGSize(width: w.rounded(), height: h)
-    case .picture(_, _, let w, let h): w > 0 && h > 0 ? CGSize(width: w.rounded(), height: w.rounded() * h / w) : nil
+    case .picture(_, _, let w, let h):
+      w > 0 && h > 0 ? CGSize(width: Self.pictureWidth(w), height: Self.pictureWidth(w) * h / w) : nil
     }
   }
 

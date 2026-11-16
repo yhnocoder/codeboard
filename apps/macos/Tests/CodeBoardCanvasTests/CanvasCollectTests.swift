@@ -27,9 +27,9 @@ extension CanvasPasteTests {
     }
 
     /// A web page's picture: the page (an entry with no place) as its source
-    static func picture(_ url: String) -> Collected {
+    static func picture(_ url: String, width: Double = 300) -> Collected {
       Collected(
-        body: .picture(url: url, alt: "A heron", width: 300, height: 150),
+        body: .picture(url: url, alt: "A heron", width: width, height: width / 2),
         source: SourceAnchor(entry: EntryID(rawValue: "e1")),
         title: "Sparse Gradient Notes", label: "")
     }
@@ -112,14 +112,21 @@ extension CanvasPasteTests {
       #expect(
         img.source == .url(url) && img.alt == "A heron" && k.source == SourceAnchor(entry: EntryID(rawValue: "e1")))
       #expect(c.width == 300 && r.doc.selection == [.card(c.id)] && r.doc.history.undoSteps.count == 1)
-      await r.until("its picture read") { r.canvas.remotePictures[url] != nil }
-      await r.until("its card drawn") { r.canvas.index(of: .card(c.id)) != nil }
-      let it = try #require(r.canvas.index(of: .card(c.id)).map { r.canvas.scene!.items[$0] })
-      guard case .image(let p) = it.drawing else {
-        Issue.record("not drawn as an image: \(it.drawing)")
-        return
+      // drawn once its picture is read: as tall as its proportions make its width
+      func pictureHeight(_ id: CardID) -> CGFloat? {
+        guard let i = r.canvas.index(of: .card(id)), let it = r.canvas.scene?.items[i], case .image(let p) = it.drawing,
+          p.url != nil
+        else { return nil }
+        return it.rect.height - p.below
       }
-      #expect(it.rect.height - p.below == 150, "as tall as its proportions make it")
+      await r.until("drawn with its picture") { pictureHeight(c.id) != nil }
+      #expect(pictureHeight(c.id) == 150)
+      // a huge one: as wide as a pasted picture can be
+      #expect(r.canvas.collect(Self.picture("https://example.com/hero.png", width: 3000)))
+      let h = try #require(r.doc.board.cards.last)
+      #expect(h.width == Board.newNoteWidth)
+      await r.until("drawn with its picture") { pictureHeight(h.id) != nil }
+      #expect(pictureHeight(h.id).map { abs($0 - Board.newNoteWidth / 2) < 0.01 } == true)
     }
 
     @Test func aDataPictureIsKeptInTheBoardsImagesAndOneThatIsNoPictureIsRefused() async throws {
