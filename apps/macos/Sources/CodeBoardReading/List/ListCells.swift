@@ -4,10 +4,12 @@ import CodeBoardResources
 /// The list's table: Return and a double-click open a row (`onOpen`), a single click selects it, ↑ and ↓ as any table
 final class ListTable: NSTableView {
   var onOpen: (Int) -> Void = { _ in }
+  var onDelete: () -> Void = {}
 
   override func keyDown(with event: NSEvent) {
     switch event.specialKey {
     case .carriageReturn?, .enter?: if selectedRow >= 0 { onOpen(selectedRow) }
+    case .delete?, .deleteForward?: onDelete()
     default: super.keyDown(with: event)
     }
   }
@@ -16,6 +18,14 @@ final class ListTable: NSTableView {
     let row = row(at: convert(event.locationInWindow, from: nil))
     guard event.clickCount == 2, row >= 0 else { return super.mouseDown(with: event) }
     onOpen(row)
+  }
+
+  /// A right-click on a row outside the selection selects it first: the menu's Delete deletes what is selected
+  override func menu(for event: NSEvent) -> NSMenu? {
+    let row = row(at: convert(event.locationInWindow, from: nil))
+    guard row >= 0 else { return nil }
+    if !selectedRowIndexes.contains(row) { selectRowIndexes([row], byExtendingSelection: false) }
+    return super.menu(for: event)
   }
 }
 
