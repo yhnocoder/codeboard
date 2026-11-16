@@ -108,6 +108,9 @@ func fakeArxiv(latest: Int) -> Arxiv {
     let t = try w.tab(try #require(w.pane.openPDF(.entry(p.entry.id, version: VersionID(rawValue: "v7")))))
     let translate = try #require(t.versions.translate)
     #expect(translate.accessibilityIdentifier() == "ui-versiontranslate" && translate.isEnabled)
+    // an action, lighter than the version shown: the bar's ink faded, not bold
+    let ink = { (b: NSButton) in b.attributedTitle.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor }
+    #expect((ink(translate)?.alphaComponent ?? 1) < (ink(t.versions.segments[1])?.alphaComponent ?? 0))
     translate.performClick(nil)
     let job = try #require(queue.jobs.first)
     #expect(job.paper == "1706.03762v7" && job.label == "v7 中文" && job.version == VersionID(rawValue: "v7"))
@@ -116,6 +119,8 @@ func fakeArxiv(latest: Int) -> Arxiv {
     let item = try #require(t.versions.job)
     #expect(item.accessibilityIdentifier() == "ui-versionjob" && item.title == "译文 · failed")
     #expect(t.versions.translate == nil)
+    // red from the moment it fails, before any hover or press
+    #expect(item.layer?.backgroundColor == NSColor.systemRed.withAlphaComponent(0.14).cgColor)
     item.performClick(nil)
     #expect(!t.note.isHidden && t.note.text.stringValue.hasPrefix("tongtu doctor:"))
     #expect(t.note.button.accessibilityIdentifier() == "ui-versionretry")

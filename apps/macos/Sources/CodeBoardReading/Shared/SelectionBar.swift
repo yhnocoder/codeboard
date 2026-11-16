@@ -136,11 +136,15 @@ final class BarButton: NSButton {
   var on = false {
     didSet { shade() }
   }
+  /// Its fill when neither on nor hovered (a failed job's red)
+  var base: CGColor? {
+    didSet { shade() }
+  }
   private var hovered = false {
     didSet { shade() }
   }
 
-  private func shade() { layer?.backgroundColor = hovered || on ? (on ? lit.copy(alpha: 0.12) : lit) : nil }
+  private func shade() { layer?.backgroundColor = hovered || on ? (on ? lit.copy(alpha: 0.12) : lit) : base }
 
   /// In the bar's ink
   func ink(_ look: ReadingBarLook) {

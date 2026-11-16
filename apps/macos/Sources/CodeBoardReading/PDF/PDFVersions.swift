@@ -87,10 +87,7 @@ final class VersionsBar: NSView {
     job = s.job.map { state in
       let b = textButton(Self.jobTitle(state), id: "ui-versionjob")
       b.action = #selector(pressedJob)
-      if case .failed = state {
-        b.toolTip = "The translation failed: click for why, and Retry"
-        b.wantsLayer = true
-      }
+      if case .failed = state { b.toolTip = "The translation failed: click for why, and Retry" }
       b.layer?.addSublayer(jobLine)
       return b
     }
@@ -142,9 +139,6 @@ final class VersionsBar: NSView {
         jobLine.frame = CGRect(x: 4, y: job.bounds.height - 3, width: w * (p.fraction ?? 1), height: 1.5)
       default: jobLine.isHidden = true
       }
-      if case .failed = state {
-        job.layer?.backgroundColor = NSColor.systemRed.withAlphaComponent(0.14).cgColor
-      }
       CATransaction.commit()
     }
   }
@@ -165,7 +159,10 @@ final class VersionsBar: NSView {
     b.ink(look)
     guard b !== more else { return }
     let failed = b === job && { if case .failed? = shown?.job { true } else { false } }()
-    let ink = failed ? NSColor.systemRed : NSColor(cgColor: look.ink) ?? .labelColor
+    b.base = failed ? NSColor.systemRed.withAlphaComponent(0.14).cgColor : nil
+    // "+ 译文" an action in the bar's secondary ink, lighter than the segment lit
+    let plain = NSColor(cgColor: look.ink) ?? .labelColor
+    let ink = failed ? NSColor.systemRed : b === translate ? plain.withAlphaComponent(0.62) : plain
     b.attributedTitle = NSAttributedString(
       string: b.title,
       attributes: [
