@@ -262,7 +262,52 @@ extension CanvasSubBoardTests {
 }
 
 extension CanvasSubBoardTests {
-  /// dropRight and dropTitles: before the first expanded one whose middle is below where it is let go, the lowest of
+  /// On a shared sub-board card the columns are the shared card's, as on the web board, where pcols is a field of the
+  /// card and the whole card is what the card library keeps (patch.ts sharedOf): two columns go into its own file, not
+  /// the board's, and another board showing it takes them in
+  @Test func aSharedSubBoardCardsColumnsGoWithTheSharedCard() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(path: "canvas-edit-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let vault = Vault(root: root)
+    let kid = try vault.newBoard(
+      in: "", title: "Kid",
+      board: Board(id: BoardID(rawValue: "kid"), cards: [note("k1", x: 0, y: 0), note("k2", x: 400, y: 0)]))
+    let f = cid("f")
+    try FileManager.default.createDirectory(at: vault.sharedFolderURL, withIntermediateDirectories: true)
+    try SharedCard(id: f, content: CardContent(body: .board(SubBoard(board: kid.id)))).encoded()
+      .write(to: vault.sharedFolderURL.appending(path: "f.json"))
+    let ref = Card(id: f, x: 100, y: 100, width: 560, height: 360, content: .shared)
+    let other = try vault.newBoard(in: "", title: "Other", board: Board(id: BoardID(rawValue: "other"), cards: [ref]))
+    let r = try await Rig(Board(id: BoardID(rawValue: "here"), cards: [ref]), zoom: 1, root: root)
+    defer { r.close() }
+    let c = r.canvas
+    let doc = try BoardDocument(file: { r.file }, vault: vault)
+    try await c.show(doc, at: VaultBoard(id: doc.board.id, title: "B", path: "here.board"), in: vault, theme: .warmInk)
+    await r.until("the map drawn") { block(r, "k2") != nil }
+    let docB = try BoardDocument(file: { vault.url(of: other.path).appending(path: Vault.boardFileName) }, vault: vault)
+    func columns(_ d: BoardDocument) -> Bool? {
+      if case .own(let k) = d.board.card(f)?.content, case .board(let s) = k.body { s.twoColumnPreview } else { nil }
+    }
+    r.click(try #require(block(r, "k1")))
+    r.click(try #require(block(r, "k2")))
+    await r.until("both drawn") { c.subPreviews.drawn[f]?.count == 2 }
+    let b = try #require(c.previewActs(f).first { $0.0 == .columns(f, 2) }?.1)
+    r.click(CGPoint(x: b.midX, y: b.midY))
+    await r.until("the change drawn") { c.shownBoard == doc.board }
+    doc.flush()
+    #expect(columns(doc) == true && doc.history.undoSteps.isEmpty)
+    let lay = try #require(c.previewLayout(f))
+    #expect(lay.boxes[cid("k2")]?.minY == lay.boxes[cid("k1")]?.minY)
+    // in the shared card's file; the board file keeps only the reference
+    #expect(try vault.sharedCard(f).content.body == .board(SubBoard(board: kid.id, twoColumnPreview: true)))
+    #expect(!(try String(decoding: Data(contentsOf: r.file), as: UTF8.self).contains("previewColumns")))
+    // the other board showing it follows
+    #expect(columns(docB) == false)
+    docB.diskChanged()
+    #expect(columns(docB) == true && !docB.isDirty)
+  }
+
+  /// dropRight and dropTitles:before the first expanded one whose middle is below where it is let go, the lowest of
   /// four then first in the title rows; into the title rows at the line and place let go on
   @Test func aPreviewLetGoOnTheRightOrTheTitleRowsGoesWhereTheWebBoardPutsIt() {
     let f = CGRect(x: 0, y: 0, width: 100, height: 100)

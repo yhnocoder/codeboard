@@ -364,7 +364,8 @@ extension CanvasView {
     if case .board(let s)? = scene?.parts[frame]?.content.body, s.twoColumnPreview { 2 } else { 1 }
   }
 
-  /// One column or two, the sub-board card's own setting: saved, not an undo step (setPreviewCols)
+  /// One column or two, the sub-board card's own setting: saved, not an undo step (setPreviewCols). On a shared card it
+  /// is the shared card's, in its own file and on every board showing it, as pcols is on the web board (patch.ts sharedOf)
   func setPreviewColumns(_ frame: CardID, _ n: Int) {
     document?.sync { b in
       guard let i = b.cards.firstIndex(where: { $0.id == frame }), case .own(var k) = b.cards[i].content,
