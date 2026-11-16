@@ -449,3 +449,240 @@ extension CanvasStickerTests {
     r.canvas.cancelPlacing()
   }
 }
+
+/// Two Notes with an arrow between them, a third Note 40 under the middle of the arrow's line, and a sticker on the
+/// arrow at its middle, 40 above it (the web board's on: {link, t})
+func arrowStickerBoard(folded: Bool = false) -> Board {
+  func note(_ id: String, _ x: Double, _ y: Double, section: SectionID? = nil) -> Card {
+    Card(
+      id: cid(id), x: x, y: y, width: 200, height: 100, section: section,
+      content: .own(CardContent(body: .note(Note(text: "# \(id)\n\nA step.")))))
+  }
+  let g = SectionID(rawValue: "g1")
+  return Board(
+    id: BoardID(rawValue: "arrow-stickers"),
+    cards: [
+      note("a", 0, 0, section: folded ? g : nil), note("b", 600, 0, section: folded ? g : nil), note("c", 300, 56),
+    ],
+    arrows: [Arrow(id: ArrowID(rawValue: "ab"), from: Endpoint(card: cid("a")), to: Endpoint(card: cid("b")))],
+    sections: folded ? [Section(id: g, title: "Steps", x: -40, y: -60, width: 900, height: 240, collapsed: true)] : [],
+    stickers: [
+      Sticker(
+        id: StickerID(rawValue: "k1"), glyph: .builtin(.zap),
+        anchor: .arrow(ArrowID(rawValue: "ab"), position: 0.5, x: -16, y: -40, size: nil))
+    ])
+}
+
+extension CanvasStickerTests {
+  var ab: ArrowID { ArrowID(rawValue: "ab") }
+
+  func pts(_ c: CanvasView) throws -> [CGPoint] { try #require(c.livePts(ab)) }
+
+  func on(_ pts: [CGPoint], _ t: CGFloat, dx: CGFloat = 0, dy: CGFloat = 0) -> CGPoint {
+    let q = ArrowRoute.bezAt(pts, t)
+    return CGPoint(x: q.x + dx, y: q.y + dy)
+  }
+
+  /// The arrow's line is level (its two cards side by side): a point beside it is that far from it
+  func level(_ c: CanvasView) throws -> CGFloat {
+    let p = try pts(c)
+    try #require(p.allSatisfy { abs($0.y - p[0].y) < 0.01 }, "a level line: \(p)")
+    return p[0].y
+  }
+
+  @Test(arguments: [0.5, 1, 2] as [CGFloat])
+  func aStickerOnAnArrowIsDrawnAtItsPlaceAlongTheCurvePlusItsOffset(zoom: CGFloat) async throws {
+    let r = try await Rig(arrowStickerBoard(), zoom: zoom)
+    defer { r.close() }
+    let c = r.canvas
+    let k1 = try spot(c, "k1")
+    let q = on(try pts(c), 0.5)
+    #expect(k1.board == CGRect(x: q.x - 16, y: q.y - 40, width: 32, height: 32) && k1.owner == nil)
+    // over the cards, as the web board's .lw layer is
+    let i = try #require(c.stickerSpots.firstIndex { $0.id == kid("k1") })
+    #expect(c.stickerLayers[i].superlayer === c.freeStickers && c.stickerLayers[i].position == k1.board.origin)
+    #expect(c.stickerAt(centre(k1)) == i)
+  }
+
+  @Test func aStickerOnAnArrowIsNotDrawnWhileItsArrowIsNot() async throws {
+    let r = try await Rig(arrowStickerBoard(folded: true), zoom: 1)
+    defer { r.close() }
+    #expect(r.canvas.livePts(ab) == nil, "both ends folded into one Section: no arrow")
+    #expect(r.canvas.stickerSpots.isEmpty && r.canvas.stickerLayers.isEmpty)
+  }
+
+  /// A card at an end dragged: the arrow is routed again each frame and the sticker's layer moves with it, nothing
+  /// else drawn again
+  @Test(arguments: [0.5, 1, 2] as [CGFloat])
+  func aStickerOnAnArrowFollowsItWhileAnEndCardMoves(zoom: CGFloat) async throws {
+    let r = try await Rig(arrowStickerBoard(), zoom: zoom)
+    defer { r.close() }
+    let c = r.canvas
+    let i = try #require(c.stickerSpots.firstIndex { $0.id == kid("k1") })
+    let layer = c.stickerLayers[i]
+    let was = layer.position
+    let breaks = r.breaks
+    let from = r.centre("b")
+    var steps = 0
+    r.drag(from, CGPoint(x: from.x + 40, y: from.y + 300)) {
+      r.tick()
+      let now = on(try! pts(c), 0.5, dx: -16, dy: -40)
+      #expect(c.stickerLayers[i] === layer, "the same layer, moved")
+      #expect(abs(layer.position.x - now.x) < 0.01 && abs(layer.position.y - now.y) < 0.01)
+      #expect(layer.position.y > was.y + 50, "it went down with the line")
+      #expect(r.breaks == breaks)
+      steps += 1
+    }
+    #expect(steps == 1)
+    await r.settle()
+    let k1 = try spot(c, "k1")
+    #expect(k1.board.origin == on(try pts(c), 0.5, dx: -16, dy: -40))
+    #expect(sticker(r, "k1")?.anchor == .arrow(ab, position: 0.5, x: -16, y: -40, size: nil), "it stays as it was")
+  }
+
+  /// Put down 20 view points beside the line it goes on the arrow, at the place nearest its middle; 30 away, or with
+  /// ⌥, free (actions/stickers.ts MAG_LINK 24)
+  @Test(arguments: [0.5, 1, 2] as [CGFloat])
+  func aStickerPutDownBesideAnArrowGoesOnIt(zoom: CGFloat) async throws {
+    let r = try await Rig(arrowStickerBoard(), zoom: zoom)
+    defer { r.close() }
+    let c = r.canvas
+    let y = try level(c)
+    let p = try pts(c)
+    let at = on(p, 0.3, dy: -20 / zoom)
+    c.beginPlacing(.builtin(.flag))
+    r.click(at)
+    let t = ArrowRoute.nearestT(p, at)
+    let q = on(p, t)
+    #expect(abs(t - 0.3) < 0.02)
+    #expect(
+      r.doc.board.stickers.last?.anchor
+        == .arrow(ab, position: Double(t), x: (at.x - 16 - q.x).rounded(), y: (at.y - 16 - q.y).rounded(), size: nil))
+    #expect(abs(y - q.y) < 0.01)
+    c.beginPlacing(.builtin(.flag))
+    r.click(on(p, 0.3, dy: -30 / zoom))
+    #expect(r.doc.board.stickers.last.map { if case .canvas = $0.anchor { true } else { false } } == true)
+    c.beginPlacing(.builtin(.flag))
+    r.click(at, .option)
+    #expect(r.doc.board.stickers.last.map { if case .canvas = $0.anchor { true } else { false } } == true)
+  }
+
+  /// Under the pointer, the card it is on; else the nearer of a card within 40 and an arrow within 24 (actions/stickers.ts
+  /// targetAt: one distance for both)
+  @Test func aCardUnderThePointerAndThenTheNearerOfACardAndAnArrowTakeTheSticker() async throws {
+    let r = try await Rig(arrowStickerBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let y = try level(c)
+    let top = r.rect("c").minY
+    let x = r.rect("c").midX
+    try #require(top - y > 8 && top - y < 48, "the card under the line, nearer than twice the arrow's snap")
+    // halfway between them, each within its snap: the nearer, by half a point
+    let half = (y + top) / 2
+    #expect(c.stickerTarget(CGPoint(x: x, y: half - 0.25), free: false) == .arrow(ab))
+    #expect(c.stickerTarget(CGPoint(x: x, y: half + 0.25), free: false) == .card(cid("c")))
+    #expect(c.stickerTarget(CGPoint(x: x, y: top + 1), free: false) == .card(cid("c")), "under the pointer")
+    #expect(c.stickerTarget(CGPoint(x: x, y: y), free: false) == .arrow(ab), "on the line")
+    #expect(c.stickerTarget(CGPoint(x: x, y: y), free: true) == nil)
+    #expect(c.stickerTarget(CGPoint(x: x, y: y - 30), free: false) == nil)
+  }
+
+  /// Selected, a dashed line from its place on the arrow to its middle, with a dot at that place (Picker.tsx .tether);
+  /// not while it is dragged off, nor when something else is selected
+  @Test(arguments: [0.25, 1, 2] as [CGFloat])
+  func aSelectedStickerOnAnArrowIsTetheredToItsPlace(zoom: CGFloat) async throws {
+    let r = try await Rig(arrowStickerBoard(), zoom: zoom)
+    defer { r.close() }
+    let c = r.canvas
+    // as far out as the camera goes
+    let zoom = c.camera.zoom
+    #expect(c.tether.sublayers?.isEmpty ?? true)
+    let k1 = try spot(c, "k1")
+    r.click(centre(k1))
+    #expect(r.doc.selection == [.sticker(kid("k1"))])
+    let parts = try #require(c.tether.sublayers as? [CAShapeLayer])
+    #expect(parts.count == 2 && c.tether.superlayer === c.freeStickers)
+    let q = on(try pts(c), 0.5)
+    #expect(parts[0].lineDashPattern == [3, 3] && parts[0].lineWidth == 1 / zoom)
+    #expect(parts[0].strokeColor == c.theme.accent && parts[1].fillColor == c.theme.accent)
+    func near(_ a: CGRect?, _ b: CGRect) -> Bool {
+      guard let a else { return false }
+      return [a.minX - b.minX, a.minY - b.minY, a.maxX - b.maxX, a.maxY - b.maxY].allSatisfy { abs($0) < 0.001 }
+    }
+    // from the place to its middle
+    #expect(near(parts[0].path?.boundingBoxOfPath, CGRect(x: q.x, y: q.y - 24, width: 0, height: 24)))
+    let rad = 3 / max(zoom, 0.5)
+    #expect(near(parts[1].path?.boundingBoxOfPath, CGRect(x: q.x - rad, y: q.y - rad, width: 2 * rad, height: 2 * rad)))
+    r.drag(centre(k1), CGPoint(x: centre(k1).x + 300, y: centre(k1).y + 300)) {
+      #expect(c.tether.sublayers?.isEmpty ?? true, "dragged off: none")
+    }
+    r.doc.undo()
+    await r.settle()
+    r.click(r.centre("c"))
+    #expect(c.tether.sublayers?.isEmpty ?? true)
+  }
+
+  /// Dragged, the arrow it would go on is lit; let go on a card it goes on the card, on empty canvas it is free; each
+  /// one step
+  @Test(arguments: [0.5, 1, 2] as [CGFloat])
+  func aStickerDraggedOffAnArrowGoesOnACardOrTheCanvasAndBack(zoom: CGFloat) async throws {
+    let r = try await Rig(arrowStickerBoard(), zoom: zoom)
+    defer { r.close() }
+    let c = r.canvas
+    let start = r.bytes
+    let y = try level(c)
+    // nearer the line: still on it, at its new place
+    let k1 = try spot(c, "k1")
+    let to = CGPoint(x: centre(k1).x + 60, y: y - 10 / zoom)
+    r.drag(centre(k1), to) {
+      #expect(c.litArrows.sublayers?.isEmpty == false, "the arrow is lit")
+      #expect(c.dropAim == nil)
+    }
+    #expect(c.litArrows.sublayers?.isEmpty ?? true)
+    let p = try pts(c)
+    let box = CGRect(x: k1.board.minX + 60, y: k1.board.minY + (to.y - centre(k1).y), width: 32, height: 32)
+    let t = ArrowRoute.nearestT(p, CGPoint(x: box.midX, y: box.midY))
+    let q = on(p, t)
+    #expect(
+      sticker(r, "k1")?.anchor
+        == .arrow(ab, position: Double(t), x: (box.minX - q.x).rounded(), y: (box.minY - q.y).rounded(), size: nil))
+    await r.settle()
+    // onto the card
+    let cr = r.rect("c")
+    r.drag(centre(try spot(c, "k1")), CGPoint(x: cr.midX, y: cr.maxY - 20)) { #expect(c.dropAim != nil) }
+    #expect(sticker(r, "k1")?.anchor.card == cid("c") && r.doc.undoName == "Move Sticker")
+    await r.settle()
+    // onto the canvas, far from everything
+    r.drag(centre(try spot(c, "k1")), CGPoint(x: cr.midX, y: cr.maxY + 400))
+    #expect(sticker(r, "k1").map { if case .canvas = $0.anchor { true } else { false } } == true)
+    #expect(r.doc.history.undoSteps.count == 3)
+    r.doc.undo()
+    r.doc.undo()
+    r.doc.undo()
+    #expect(r.bytes == start)
+  }
+
+  /// Detach from Arrow (actions/stickers.ts detachSticker): free where it is drawn, its size kept, one step
+  @Test(arguments: [0.5, 2] as [CGFloat])
+  func detachFromArrowLeavesItWhereItIsDrawn(zoom: CGFloat) async throws {
+    var b = arrowStickerBoard()
+    b.stickers[0].anchor = .arrow(ab, position: 0.25, x: 7, y: -50, size: 48)
+    let r = try await Rig(b, zoom: zoom)
+    defer { r.close() }
+    let c = r.canvas
+    let start = r.bytes
+    let drawn = try spot(c, "k1").board
+    let menu = c.stickerMenu(kid("k1"))
+    let titles = menu.items.map { $0.isSeparatorItem ? "-" : $0.title }
+    #expect(titles == ["Color", "Size", "Detach from Arrow", "-", "Delete"])
+    let detach = try #require(menu.item(withTitle: "Detach from Arrow"))
+    #expect(detach.toolTip == "Keep it here on the canvas")
+    (detach.representedObject as? MenuAction)?.run()
+    #expect(sticker(r, "k1")?.anchor == .canvas(x: drawn.minX.rounded(), y: drawn.minY.rounded(), size: 48))
+    #expect(r.doc.undoName == "Detach Sticker" && r.doc.history.undoSteps.count == 1)
+    await r.settle()
+    #expect(try spot(c, "k1").board.origin == CGPoint(x: drawn.minX.rounded(), y: drawn.minY.rounded()))
+    r.doc.undo()
+    #expect(r.bytes == start)
+  }
+}

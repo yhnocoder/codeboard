@@ -531,6 +531,7 @@ extension CanvasView {
     guard let doc = document, scene != nil else {
       chrome.sublayers = nil
       litArrows.sublayers = nil
+      tether.sublayers = nil
       placeAlignBar()
       return
     }
@@ -553,6 +554,7 @@ extension CanvasView {
     withoutAnimation {
       chrome.sublayers = nil
       litArrows.sublayers = nil
+      tether.sublayers = nil
       drawArrowChrome()
       drawMergeDrop()
       for item in doc.selection {
@@ -1759,16 +1761,19 @@ extension CanvasView {
     drawChrome()
   }
 
-  /// Routes these arrows again with their cards where `placed` has them, and moves their labels
+  /// Routes these arrows again with their cards where `placed` has them, and moves their labels and stickers
   func reroute(
     _ indices: [Int], model: (CodeBoardModel.Arrow) -> CodeBoardModel.Arrow = { $0 }, placed: (CardID) -> Scene.Placed?
   ) {
     guard let s = scene else { return }
+    var routed: [ArrowID: [CGPoint]] = [:]
+    defer { followArrows(routed) }
     for i in indices where i < arrowGroups.count {
       let a = model(s.arrowModels[i])
       guard let from = placed(a.from.card), let to = placed(a.to.card) else { continue }
       let (arrow, label) = Scene.route(a, from: from, to: to, theme: theme)
       routedArrows[i] = arrow
+      routed[a.id] = arrow.pts
       let ls = CanvasView.arrowLayers(arrow, theme)
       let old = arrowGroups[i]
       if let first = old.first {

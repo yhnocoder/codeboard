@@ -72,6 +72,9 @@ extension CanvasView {
 
   func arrowIndex(_ id: ArrowID) -> Int? { scene?.arrows.firstIndex { $0.id == id } }
 
+  /// The curve [start, c1, c2, end] an arrow is drawn on now (re-routed while its cards move); nil when it is not drawn
+  func livePts(_ id: ArrowID) -> [CGPoint]? { arrowIndex(id).flatMap(liveArrow)?.pts }
+
   /// Where an arrow is drawn: its start, the middle of its line and its end (LookCompare)
   package func arrowPoints(_ id: ArrowID) -> (start: CGPoint, mid: CGPoint, end: CGPoint)? {
     guard let i = arrowIndex(id), let a = liveArrow(i) else { return nil }
@@ -185,6 +188,8 @@ extension CanvasView {
     guard let doc = document, let s = scene else { return }
     var on = Set(doc.selection.compactMap(\.arrow))
     if let h = hoveredArrow { on.insert(h) }
+    // the one a dragged sticker would go on (.edge.on for isBindHot)
+    if case .sticker(let d)? = gesture?.kind, case .arrow(let h)? = d.aim { on.insert(h) }
     // the one whose end is being moved is drawn where the end goes
     if let id = connecting?.arrow { on.remove(id) }
     for (i, a) in s.arrows.enumerated() where on.contains(a.id) {
@@ -390,21 +395,9 @@ extension CanvasView {
   /// The place on the line nearest the pointer (less the grab) where the box keeps clear of the end cards, sampled at
   /// 0.01 (geom.ts nearestT, labelpos.ts dragT); the middle when none is clear
   static func dragT(_ d: LabelDrag, _ p: CGPoint) -> CGFloat {
-    let x = p.x - d.grab.dx
-    let y = p.y - d.grab.dy
-    var best: CGFloat = 0.5
-    var bd = CGFloat.infinity
-    for i in 0...100 {
-      let t = CGFloat(i) / 100
-      let q = ArrowRoute.bezAt(d.pts, t)
-      guard ArrowRoute.boxClear(q, d.box, d.ends) else { continue }
-      let dd = (q.x - x) * (q.x - x) + (q.y - y) * (q.y - y)
-      if dd < bd {
-        bd = dd
-        best = t
-      }
+    ArrowRoute.nearestT(d.pts, CGPoint(x: p.x - d.grab.dx, y: p.y - d.grab.dy)) {
+      ArrowRoute.boxClear($0, d.box, d.ends)
     }
-    return best
   }
 
   func showLabelDrag(_ d: LabelDrag) {
