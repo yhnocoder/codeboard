@@ -70,6 +70,7 @@ Note 里的字按字找，像人看着屏幕找字一样：`@<id>"几个字"` �
 | `center <目标>` | 无惯性地平移，直到这个目标在窗口中间 |
 | `rec <名字>` / `stop` | 开始、停止录像 |
 | `shot <名字> [<目标> [W H]]` | 截图；带目标时另从目标起剪下 W × H 个白板单位，两边剪的是白板上同一块，并排图逐部件对齐（整窗口图存为 `<名字>-window.png`）；只写 `@id`（卡、Section、标签、Sidenote 标记、Sticker）就剪它自己外加 16 个白板单位，只写 `@ui.<部件>` 就剪那个部件外加 8 点，两边同一个写法 |
+| `mac: uisel <部件>` | Mac：辅助功能元素 `ui-<部件>` 里选中的字（PDF 标签页的页面：`uisel pdfview`），没选中是空；选中后的小条按钮是 `ui.selectionadd`、`ui.selectionhighlight`、`ui.selectioncopy`，整条是 `ui.selectionbar` |
 | `hit` / `info` / `cam` / `canvas` | 指针下是什么 / 焦点、窗口、光标、弹着的框 / 相机 / 白板在窗口里的范围 |
 | `mac: trace` | app 自己报的画布状态（CanvasTrace：各卡和 Section 画在哪、悬停、正在写、选中、first responder、层级），JSON |
 | `locate [id…]` | 打出卡和 Section 现在在两边白板上和窗口里的位置（不写 id 就是全部） |

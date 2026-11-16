@@ -1697,6 +1697,15 @@ func strings(_ x: Any) -> [String] {
       guard let el = walk(root) else { return "none" }
       let r = c.convert(w.convertFromScreen(el.accessibilityFrame()), from: nil)  // the canvas is y-down
       return String(format: "%.1f %.1f %.1f %.1f", r.minX, r.minY, r.width, r.height)
+    // uisel name: the text selected in the app's element "ui-<name>" (a PDF tab's pages: uisel pdfview), "" when none
+    case "uisel":
+      guard let root = win?.contentView else { return "none" }
+      func walk(_ v: NSView) -> NSView? {
+        if v.isHidden { return nil }
+        return v.accessibilityIdentifier() == "ui-\(a[1])" ? v : v.subviews.lazy.compactMap(walk).first
+      }
+      guard let v = walk(root) else { return "none" }
+      return v.accessibilitySelectedText() ?? ""
     case "origin":  // the content view's top-left in the window's picture (points): shots are of the whole window
       guard let w = win, let cv = w.contentView else { return "0 0" }
       return String(format: "%.1f %.1f", cv.frame.minX, w.frame.height - cv.frame.maxY)
