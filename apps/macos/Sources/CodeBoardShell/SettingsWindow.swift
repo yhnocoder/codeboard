@@ -1,11 +1,14 @@
 import AppKit
 import CodeBoardModel
+import CodeBoardResources
 
 /// The Settings window: how the board switches to its summaries (摘要切换), the AI key, and the address and model the
 /// summaries are asked of (the VS Code settings ai.deepseekBaseUrl and ai.deepseekModel; empty: DeepSeek's, shown as
 /// the fields' placeholders). The key is saved to the KeyStore when the field is committed (Return, leaving it, closing
 /// the window); a saved key is never shown, the field then holds a stand-in that shows as dots, and clearing it removes
 /// the key. The address and the model are saved the same way, to the defaults.
+/// Where tongtu is (translating papers) is this machine's: typed, or chosen with Choose…; empty, it is looked for
+/// in PATH and the usual places.
 @MainActor final class SettingsWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate {
   /// What the field holds while a key is saved; committed unchanged, it keeps the key
   static let saved = String(repeating: "•", count: 12)
@@ -16,6 +19,8 @@ import CodeBoardModel
   let keyStatus = NSTextField(labelWithString: "")
   let baseURLField = NSTextField()
   let modelField = NSTextField()
+  let tongtuField = NSTextField()
+  let tongtuStatus = NSTextField(labelWithString: "")
   private let settings: AISettings
   private let keys: any KeyStore
   var onSwitchChange: (SummarySwitch) -> Void = { _ in }
@@ -26,7 +31,7 @@ import CodeBoardModel
     self.settings = settings
     self.keys = keys
     window = NSWindow(
-      contentRect: CGRect(x: 0, y: 0, width: 420, height: 190), styleMask: [.titled, .closable], backing: .buffered,
+      contentRect: CGRect(x: 0, y: 0, width: 460, height: 240), styleMask: [.titled, .closable], backing: .buffered,
       defer: false)
     super.init()
     window.title = "Settings"
@@ -53,12 +58,25 @@ import CodeBoardModel
     }
     keyStatus.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
     keyStatus.textColor = .secondaryLabelColor
+    tongtuField.placeholderString = "found in PATH or ~/.local/bin"
+    tongtuField.stringValue = settings.tongtuPath
+    tongtuField.delegate = self
+    tongtuField.target = self
+    tongtuField.action = #selector(commitTongtu(_:))
+    tongtuField.widthAnchor.constraint(equalToConstant: 260).isActive = true
+    tongtuStatus.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+    tongtuStatus.textColor = .secondaryLabelColor
+    let choose = NSButton(title: "Choose…", target: self, action: #selector(chooseTongtu(_:)))
+    choose.controlSize = .small
+    let tongtuRow = NSStackView(views: [tongtuField, choose])
     let grid = NSGridView(views: [
       [NSTextField(labelWithString: "摘要切换"), switchControl],
       [NSTextField(labelWithString: "API Key"), keyField],
       [NSGridCell.emptyContentView, keyStatus],
       [NSTextField(labelWithString: "API Base URL"), baseURLField],
       [NSTextField(labelWithString: "Model"), modelField],
+      [NSTextField(labelWithString: "tongtu"), tongtuRow],
+      [NSGridCell.emptyContentView, tongtuStatus],
     ])
     grid.rowSpacing = 10
     grid.column(at: 0).xPlacement = .trailing
@@ -74,6 +92,7 @@ import CodeBoardModel
     ])
     window.contentView = content
     showKey()
+    showTongtu()
     window.center()
   }
 
@@ -122,5 +141,37 @@ import CodeBoardModel
   func windowWillClose(_ notification: Notification) {
     commitKey(nil)
     commitAI(nil)
+  @objc func commitTongtu(_ sender: Any?) {
+    let typed = tongtuField.stringValue.trimmingCharacters(in: .whitespaces)
+    guard typed != settings.tongtuPath else { return }
+    settings.tongtuPath = typed
+    showTongtu()
+  }
+
+  @objc func chooseTongtu(_ sender: Any?) {
+    let panel = NSOpenPanel()
+    panel.canChooseDirectories = false
+    panel.directoryURL = URL(filePath: NSString("~/.local/bin").expandingTildeInPath)
+    panel.prompt = "Choose"
+    panel.beginSheetModal(for: window) { [weak self] r in
+      guard r == .OK, let self, let url = panel.url else { return }
+      self.tongtuField.stringValue = url.path
+      self.commitTongtu(nil)
+    }
+  }
+
+  private func showTongtu() {
+    let found = Tongtu.find(setting: settings.tongtuPath)
+    tongtuStatus.stringValue =
+      found.map { "使用 \($0.path)" }
+      ?? (settings.tongtuPath.isEmpty ? "未找到 tongtu：翻译不可用" : "这里没有可执行的 tongtu")
+  }
+
+  func controlTextDidEndEditing(_ obj: Notification) {
+    if obj.object as? NSTextField === tongtuField { commitTongtu(nil) } else { commitKey(nil) }
+  }
+  func windowWillClose(_ notification: Notification) {
+    commitKey(nil)
+    commitTongtu(nil)
   }
 }

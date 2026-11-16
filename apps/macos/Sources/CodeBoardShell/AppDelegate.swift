@@ -1,6 +1,7 @@
 import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
+import CodeBoardResources
 
 /// Starts the app; the executable's only call
 @MainActor public func runApp() {
@@ -74,6 +75,12 @@ import CodeBoardModel
     panes.cameras = cameras
     // beside the cameras: Application Support/<this app's id>
     shell.machineFolder = cameras?.folder.deletingLastPathComponent()
+    // tongtu's work, beside it: never in the vault
+    shell.reading.translations = shell.machineFolder.map { folder in
+      Translations(folder: folder.appending(path: "Translations", directoryHint: .isDirectory)) {
+        Tongtu.find(setting: AISettings(defaults: .standard).tongtuPath)
+      }
+    }
     panes.pictures = CanvasView.defaultPictures
     let ai = AISettings(defaults: .standard)
     let keys = KeychainKeyStore()

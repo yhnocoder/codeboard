@@ -3,6 +3,7 @@ import CodeBoardModel
 import CodeBoardResources
 import Foundation
 import PDFKit
+import Synchronization
 import Testing
 
 @testable import CodeBoardReading
@@ -74,6 +75,52 @@ import Testing
     #expect(shell.reading.tabs.allSatisfy { $0.kind == "pdf" } && shell.reading.shown)
     #expect(shell.reading.selected == shell.reading.tabs[1].id)
     #expect(!shell.addPDFs([other], to: r), "nothing to add")
+  }
+
+  @Test func addArxivPaperMakesAnEntryOpensItAndTheSameIdAgainOpensThatEntry() async throws {
+    let (vault, shell, r) = try vault()
+    defer { try? fm.removeItem(at: vault.root) }
+    let asked = Mutex<[String]>([])
+    shell.reading.arxiv = Arxiv { req in
+      let url = req.url!.absoluteString
+      asked.withLock { $0.append(url) }
+      let known = url.contains("1706.03762")
+      let body =
+        !known
+        ? "<feed xmlns=\"http://www.w3.org/2005/Atom\"></feed>"
+        : url.contains("api/query")
+          ? "<feed xmlns=\"http://www.w3.org/2005/Atom\"><entry><id>http://arxiv.org/abs/1706.03762v7</id>"
+            + "<published>2017-06-12T17:57:34Z</published><title>Attention Is All You Need</title>"
+            + "<author><name>Ashish Vaswani</name></author></entry></feed>" : "%PDF-1.4 v7"
+      return (Data(body.utf8), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }
+    let machine = fm.temporaryDirectory.appending(path: "machine-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: machine) }
+    shell.reading.translations = Translations(folder: machine, tongtu: { nil })
+    // the row's menu: Add arXiv Paper… asks with the sheet (here: nothing shown)
+    var sheetFor: VaultResource?
+    shell.askArxiv = { sheetFor = $0 }
+    shell.menu(resource: r).compactMap { $0 }.first { $0.title == "Add arXiv Paper…" }?.run()
+    #expect(sheetFor == r)
+
+    #expect(await shell.addArxiv("attention", translate: false, to: r) == "“attention” is not an arXiv id or address.")
+    #expect(await shell.addArxiv("2401.00001", translate: false, to: r) == "arXiv has no paper 2401.00001.")
+    #expect(await shell.addArxiv("https://arxiv.org/abs/1706.03762", translate: true, to: r) == nil)
+    let e = try #require(shell.reading.entries.arxiv("1706.03762"))
+    #expect(e.path == "Papers.resource/Attention Is All You Need" && e.entry.authors == ["Ashish Vaswani"])
+    #expect(e.entry.versions.map(\.label) == ["v7"])
+    #expect(try Data(contentsOf: vault.url(of: "\(e.path)/1706.03762v7.pdf")) == Data("%PDF-1.4 v7".utf8))
+    let tab = try #require(shell.reading.tabs.first)
+    #expect(shell.reading.tabs.count == 1 && tab.kind == "pdf" && tab.title == "Attention Is All You Need")
+    #expect(tab.payload == ["entry": e.entry.id.rawValue, "version": e.entry.versions[0].id.rawValue])
+    #expect(shell.reading.translations?.jobs.map(\.paper) == ["1706.03762v7"], "Translate ticked")
+    #expect(asked.withLock { $0.last } == "https://arxiv.org/pdf/1706.03762v7")
+
+    // again, as arXiv:…: that entry, not a second one, and nothing asked of arXiv
+    let before = asked.withLock { $0.count }
+    #expect(await shell.addArxiv("arXiv:1706.03762v7", translate: false, to: r) == nil)
+    #expect(asked.withLock { $0.count } == before)
+    #expect(try vault.items(in: r.path).count == 1 && shell.reading.tabs.count == 1)
   }
 
   @Test func addToBoardAndOptionReturnHandTheSameCollectedPassageToTheShell() throws {
