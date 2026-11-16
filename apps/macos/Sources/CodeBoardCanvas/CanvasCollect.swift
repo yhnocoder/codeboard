@@ -7,7 +7,8 @@ import TreeSitterHighlight
 // place of the view; dragged over the board, the card as it will be is in hand, centred on the pointer as a sticker
 // being placed is, and let go it lands there. Either way it is selected, one step, in the Section it lands in. A web
 // address dragged alone (a resource list's web page, a link from a page or a browser) is held and let go the same way,
-// as the Web card a pasted address makes, its page read once it lands.
+// as the Web card a pasted address makes, its page read once it lands. Several rows of a resource's list dragged at once
+// are several items: each a card, in a row to the right of the first, which alone is in hand, all of them one step.
 
 /// What a drag over the board holds that becomes a card
 enum Held: Equatable {
@@ -18,8 +19,9 @@ enum Held: Equatable {
 /// A collected card in hand while its drag is over the board: laid out and drawn once, then only moved
 struct InHand {
   var drag: Int
-  var held: Held
-  /// The pointer's board point: the card's middle
+  /// Each a card; the first the one in hand
+  var held: [Held]
+  /// The pointer's board point: the first card's middle
   var at: CGPoint
   /// Its size and layers once laid out
   var size: CGSize?
@@ -33,7 +35,7 @@ extension CanvasView {
   /// image with no source to draw it from)
   @discardableResult public func collect(_ c: Collected) -> Bool {
     guard document != nil, let size = heldSize(.collected(c)) else { return false }
-    return add(.collected(c), at: pastePlace(size, at: nil, besideSelection: false), size: size, reveal: true)
+    return add([(.collected(c), pastePlace(size, at: nil, besideSelection: false), size)], reveal: true)
   }
 
   /// The card held, its top left at `p`: a Note as wide as a new one, an image card at the block's width, a Web card
@@ -83,13 +85,29 @@ extension CanvasView {
       ?? pb.string(forType: .string).flatMap(webAddress)).map(Held.web)
   }
 
-  /// `reveal`: brought into view when it is not (a card let go where the pointer is: the camera stays)
-  /// A Web card's page read once it is there
-  @discardableResult private func add(_ h: Held, at p: CGPoint, size: CGSize, reveal: Bool = false) -> Bool {
-    let id = CardID(rawValue: Board.newID("card-"))
-    guard let card = heldCard(h, id: id, at: p) else { return false }
-    settle(id, size, "Add to Board", reveal: reveal) { $0.cards.append(card) }
-    if case .web(let url) = h { fetchWeb(id, url: url) }
+  /// What a drag holds, a card for each of its items that is one: one item as `held` reads it; of several (rows of a
+  /// list), each a collected card or a web address, files left to the board's own drop
+  func helds(_ pb: NSPasteboard) -> [Held] {
+    let items = pb.pasteboardItems ?? []
+    guard items.count > 1 else { return held(pb).map { [$0] } ?? [] }
+    return items.compactMap { item in
+      if let data = item.data(forType: Self.collectedType) { return (try? Collected(data: data)).map(Held.collected) }
+      guard !item.types.contains(.fileURL) else { return nil }
+      return (item.string(forType: .URL) ?? item.string(forType: .string)).flatMap(webAddress).map(Held.web)
+    }
+  }
+
+  /// Each card held, its top left at its point, added in one step; `reveal`: brought into view when they are not (cards
+  /// let go where the pointer is: the camera stays). A Web card's page read once it is there
+  @discardableResult private func add(_ held: [(Held, CGPoint, CGSize)], reveal: Bool = false) -> Bool {
+    let made = held.compactMap { h, p, size in
+      heldCard(h, id: CardID(rawValue: Board.newID("card-")), at: p).map { (card: $0, size: size, held: h) }
+    }
+    guard !made.isEmpty else { return false }
+    settle(made.map { ($0.card.id, $0.size) }, "Add to Board", reveal: reveal) {
+      $0.cards.append(contentsOf: made.map(\.card))
+    }
+    for m in made { if case .web(let url) = m.held { fetchWeb(m.card.id, url: url) } }
     return true
   }
 
@@ -105,28 +123,37 @@ extension CanvasView {
       placeHand()
       return .copy
     }
-    guard let held = held(info.draggingPasteboard) else { return nil }
-    guard document != nil, heldSize(held) != nil else { return [] }
+    let all = helds(info.draggingPasteboard)
+    guard !all.isEmpty else { return nil }
+    let held = all.filter { heldSize($0) != nil }
+    guard document != nil, let first = held.first else { return [] }
     dropHand()
     inHand = InHand(drag: info.draggingSequenceNumber, held: held, at: at)
     // the card in hand is the picture: the drag's own is not drawn over the board (AppKit gives it back off the board)
     info.enumerateDraggingItems(
       options: [], for: self, classes: [NSPasteboardItem.self], searchOptions: [:]
     ) { item, _, _ in item.imageComponentsProvider = { [] } }
-    layOutHand(held, drag: info.draggingSequenceNumber)
+    layOutHand(first, drag: info.draggingSequenceNumber)
     return .copy
   }
 
-  /// Let go over the board: its card where the one in hand was, selected, the board taking the keys. Nil for any other
-  /// drag
+  /// Let go over the board: its card where the one in hand was, any others in a row to its right, the room a pasted
+  /// card keeps between them, top to top; all selected, the board taking the keys. Nil for any other drag
   func dropCollected(_ info: NSDraggingInfo) -> Bool? {
     let hand = inHand?.drag == info.draggingSequenceNumber ? inHand : nil
-    guard let c = hand?.held ?? held(info.draggingPasteboard) else { return nil }
+    let all = hand?.held ?? helds(info.draggingPasteboard)
+    guard !all.isEmpty else { return nil }
     dropHand()
-    guard document != nil, let size = hand?.size ?? heldSize(c) else { return false }
+    let sized = all.enumerated().compactMap { i, h in ((i == 0 ? hand?.size : nil) ?? heldSize(h)).map { (h, $0) } }
+    guard document != nil, let first = sized.first?.1 else { return false }
     let p = camera.board(convert(info.draggingLocation, from: nil))
-    guard add(c, at: CGPoint(x: (p.x - size.width / 2).rounded(), y: (p.y - size.height / 2).rounded()), size: size)
-    else { return false }
+    var at = CGPoint(x: (p.x - first.width / 2).rounded(), y: (p.y - first.height / 2).rounded())
+    var placed: [(Held, CGPoint, CGSize)] = []
+    for (h, size) in sized {
+      placed.append((h, at, size))
+      at.x += (size.width + Self.pasteGap).rounded()
+    }
+    guard add(placed) else { return false }
     window?.makeFirstResponder(self)
     return true
   }
