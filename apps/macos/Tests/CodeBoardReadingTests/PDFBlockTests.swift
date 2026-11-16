@@ -269,6 +269,68 @@ import Testing
   }
 }
 
+/// A block's rects go round other text in the page's string (top to bottom, not in reading order), and a block runs
+/// on to the next page: made here on BlockPaper's pages
+@MainActor @Suite struct PDFBlockTextTests {
+  @Test func aBlocksTextIsWhatItsRectsHoldAndASpanAcrossPagesIsRevealedAgain() throws {
+    let doc = try #require(PDFDocument(data: makePDF(BlockPaper.pages)))
+    func rect(_ page: Int, _ text: String) throws -> BlockList.Rect {
+      let p = try #require(doc.page(at: page - 1))
+      let str = try #require(p.string) as NSString
+      let r = try #require(p.selection(for: str.range(of: text))).bounds(for: p)
+      return BlockList.Rect(page: page, x0: r.minX, y0: r.minY, x1: r.maxX, y1: r.maxY)
+    }
+    let tex =
+      "The river runs north past the mill.\nFigure 1: A boat.\nBirds rest (1) by the bank.\nE = mc2 (1)\n"
+      + "Evening light falls on the water."
+    let paper = Paper(
+      list: BlockList(blocks: [
+        BlockList.Block(
+          id: "X", kind: "text", firstLine: 1, lastLine: 2,
+          rects: [try rect(1, "The river runs north past the mill."), try rect(1, "Figure 1: A boat.")]),
+        BlockList.Block(
+          id: "Y", kind: "text", firstLine: 3, lastLine: 3, rects: [try rect(1, "Birds rest (1) by the bank.")]),
+        BlockList.Block(
+          id: "Z", kind: "text", firstLine: 4, lastLine: 5,
+          rects: [try rect(1, "E = mc2 (1)"), try rect(2, "Evening light falls on the water.")]),
+      ]), source: tex)
+    let v = VersionID(rawValue: "zh")
+    let x = try #require(paper.block("X"))
+    #expect(PDFBlocks.characters(of: x, in: doc).count == 2, "not the lines between")
+    // rects that end before each line's last full-width punctuation, as a CJK line's do: one range, the punctuation in it
+    // (U+FF61: the full stop the fonts here keep as text; a drawn "。" or "，" does not come back as itself)
+    let cjk = try #require(PDFDocument(data: makePDF(["The river runs north\u{FF61}\nBirds rest by the bank\u{FF61}"])))
+    let cjkPage = try #require(cjk.page(at: 0))
+    let cjkText = try #require(cjkPage.string) as NSString
+    func cjkRect(_ text: String) throws -> BlockList.Rect {
+      let r = try #require(cjkPage.selection(for: cjkText.range(of: text))).bounds(for: cjkPage)
+      return BlockList.Rect(page: 1, x0: r.minX, y0: r.minY, x1: r.maxX, y1: r.maxY)
+    }
+    let w = BlockList.Block(
+      id: "W", kind: "text", firstLine: 1, lastLine: 1,
+      rects: [try cjkRect("The river runs north"), try cjkRect("Birds rest by the bank")])
+    let wr = PDFBlocks.characters(of: w, in: cjk).map(\.1)
+    #expect(
+      wr.count == 1 && wr.first.map(cjkText.substring) == "The river runs north\u{FF61}\nBirds rest by the bank\u{FF61}"
+    )
+    let whole = try #require(PDFBlocks.selection(of: x, in: doc))
+    #expect(PDFBlocks.places(whole, in: doc, paper: paper, version: v) == [Place(version: v, block: .id("X"))])
+    // from page 1 to page 2, in one block
+    let (p1, p2) = (try #require(doc.page(at: 0)), try #require(doc.page(at: 1)))
+    let from = (try #require(p1.string) as NSString).range(of: "mc2").location
+    let to = (try #require(p2.string) as NSString).range(of: "light").upperBound - 1
+    let s = try #require(doc.selection(from: p1, atCharacterIndex: from, to: p2, atCharacterIndex: to))
+    let places = PDFBlocks.places(s, in: doc, paper: paper, version: v)
+    #expect(places.map(\.block) == [.id("X"), .id("Z")], "the selection takes in X's last line too")
+    let z = try #require(places.last)
+    let range = try #require(z.range)
+    let zText = try #require(paper.block("Z").flatMap(paper.text)) as NSString
+    #expect(zText.substring(with: NSRange(range)) == "mc2 (1)\nEvening light")
+    let back = try #require(PDFBlocks.selection([z], in: doc, paper: paper)?.string)
+    #expect(back.hasPrefix("mc2") && back.hasSuffix("light") && back.count < 25)
+  }
+}
+
 extension BlockPaper {
   /// A block's rects on its first page together
   @MainActor func anchorBlock(_ t: PDFTabView, _ id: String) -> CGSize? {

@@ -8,19 +8,58 @@ import PDFKit
 // a link in the PDF previews the block it goes to. A version without a list is a plain PDF (PDFPlaces).
 
 enum PDFBlocks {
-  /// The characters of `b`'s text on its pages, as PDFKit has them: by page (from 1), the range of the page's string
-  /// its rects hold
+  /// The characters of `b`'s text on its pages, as PDFKit has them: by page (from 1), the ranges of the page's string
+  /// its rects hold, in the string's order, those with only white space and full-width punctuation between them as one,
+  /// each with the full-width punctuation right after it (a CJK line's last `。` or `，` is outside its rect). A block's
+  /// lines in a
+  /// column are one range; a block whose lines go round other text in the page's string (a caption, the other column:
+  /// its rects are top to bottom, not in reading order) is several, so that text is not the block's
   static func characters(of b: BlockList.Block, in doc: PDFDocument) -> [(Int, NSRange)] {
     var out: [(Int, NSRange)] = []
     for n in Set(b.rects.map(\.page)).sorted() {
       guard n >= 1, n <= doc.pageCount, let page = doc.page(at: n - 1) else { continue }
+      let str = (page.string ?? "") as NSString
       let ranges = b.rects.filter { $0.page == n }.compactMap { page.selection(for: $0.rect) }.flatMap { s in
         (0..<s.numberOfTextRanges(on: page)).map { s.range(at: $0, on: page) }
-      }.filter { $0.location != NSNotFound && $0.length > 0 }
-      guard let lo = ranges.map(\.location).min(), let hi = ranges.map(\.upperBound).max() else { continue }
-      out.append((n, NSRange(location: lo, length: hi - lo)))
+      }.filter { $0.location != NSNotFound && $0.length > 0 && $0.upperBound <= str.length }
+      var merged: [NSRange] = []
+      for r in ranges.sorted(by: { $0.location < $1.location }) {
+        if let last = merged.last,
+          r.location <= last.upperBound
+            || str.substring(with: NSRange(location: last.upperBound, length: r.location - last.upperBound))
+              .utf16.allSatisfy({ Character(UnicodeScalar($0) ?? " ").isWhitespace || Self.fullWidth($0) })
+        {
+          merged[merged.count - 1] = NSUnionRange(last, r)
+        } else {
+          merged.append(r)
+        }
+      }
+      merged = merged.map { r in
+        var end = r.upperBound
+        while end < str.length, Self.fullWidth(str.character(at: end)) { end += 1 }
+        return NSRange(location: r.location, length: end - r.location)
+      }
+      out += merged.map { (n, $0) }
     }
     return out
+  }
+
+  /// CJK punctuation and full-width forms: `。` `，` `、` `（`
+  static func fullWidth(_ c: unichar) -> Bool { (0x3000...0x303F).contains(c) || (0xFF00...0xFFEF).contains(c) }
+
+  /// A block's PDF text: its characters (characters(of:)) joined with "\n", and where each range of them is in it
+  static func text(of b: BlockList.Block, in doc: PDFDocument) -> (
+    string: String, parts: [(page: Int, range: NSRange, at: Int)]
+  ) {
+    var string = ""
+    var parts: [(page: Int, range: NSRange, at: Int)] = []
+    for (n, r) in characters(of: b, in: doc) {
+      guard let str = doc.page(at: n - 1)?.string as NSString? else { continue }
+      if !parts.isEmpty { string += "\n" }
+      parts.append((n, r, string.utf16.count))
+      string += str.substring(with: r)
+    }
+    return (string, parts)
   }
 
   /// A block's text selected whole
@@ -43,47 +82,39 @@ enum PDFBlocks {
   /// holds the whole block (or the block's TeX is not there), else with the span of the block's TeX it is of when
   /// that is found (Spans), else without; a page it is on where no block is, as a plain PDF's place
   static func places(_ s: PDFSelection, in doc: PDFDocument, paper: Paper, version: VersionID) -> [Place] {
-    var touched: [String: [(page: Int, part: NSRange, whole: NSRange)]] = [:]
-    var bare: [Int] = []
+    var selected: [Int: [NSRange]] = [:]
     for page in s.pages {
-      let n = doc.index(for: page) + 1
-      let ranges = (0..<s.numberOfTextRanges(on: page)).map { s.range(at: $0, on: page) }
+      selected[doc.index(for: page) + 1] = (0..<s.numberOfTextRanges(on: page)).map { s.range(at: $0, on: page) }
         .filter { $0.location != NSNotFound && $0.length > 0 }
-      var any = false
-      for b in readable(paper) where b.rects.contains(where: { $0.page == n }) {
-        for (bn, whole) in characters(of: b, in: doc) where bn == n {
-          for r in ranges {
-            guard let i = r.intersection(whole), i.length > 0 else { continue }
-            touched[b.id, default: []].append((n, i, whole))
-            any = true
-          }
+    }
+    var touched = Set<Int>()
+    var out: [Place] = []
+    for b in readable(paper) where b.rects.contains(where: { selected[$0.page] != nil }) {
+      let t = text(of: b, in: doc)
+      // what is selected of it, in its PDF text
+      var covered: [Range<Int>] = []
+      for p in t.parts {
+        for r in selected[p.page] ?? [] {
+          guard let i = r.intersection(p.range), i.length > 0 else { continue }
+          let from = p.at + i.location - p.range.location
+          covered.append(from..<(from + i.length))
+          touched.insert(p.page)
         }
       }
-      if !any { bare.append(n) }
-    }
-    var out: [Place] = []
-    for b in paper.list.blocks {
-      guard let parts = touched[b.id] else { continue }
-      let pages = Set(characters(of: b, in: doc).map(\.0))
-      let whole = Set(parts.filter { $0.part == $0.whole }.map(\.page)) == pages
-      var range: Range<Int>?
-      if !whole, let text = paper.text(b) {
-        let selected = parts.compactMap { p in
-          (doc.page(at: p.page - 1)?.string as NSString?)?.substring(with: p.part)
-        }.joined(separator: " ")
-        range = Spans.range(of: selected, in: text)
-      }
+      guard let lo = covered.map(\.lowerBound).min(), let hi = covered.map(\.upperBound).max() else { continue }
+      let whole = covered.reduce(0) { $0 + $1.count } >= t.parts.reduce(0) { $0 + $1.range.length }
+      let range = whole ? nil : paper.text(b).flatMap { Spans.range(of: lo..<hi, in: t.string, text: $0) }
       out.append(Place(version: version, block: .id(b.id), range: range))
     }
     let pagePlaces = PDFPlaces.places(s, in: doc, version: version).filter {
-      if case .page(let n, _) = $0.block { return bare.contains(n) }
+      if case .page(let n, _) = $0.block { return !touched.contains(n) }
       return false
     }
     return out + pagePlaces
   }
 
-  /// Places of a version read by blocks as one selection: a block's span found again in its PDF text (Spans; on a
-  /// block on one page), else the whole block; a page's as a plain PDF's. Objects have no text selection
+  /// Places of a version read by blocks as one selection: a block's span found again in its PDF text (Spans), else
+  /// the whole block; a page's as a plain PDF's. Objects have no text selection
   static func selection(_ places: [Place], in doc: PDFDocument, paper: Paper) -> PDFSelection? {
     var out: PDFSelection?
     func add(_ s: PDFSelection?) {
@@ -96,14 +127,19 @@ enum PDFBlocks {
         continue
       }
       guard let b = paper.block(id), !b.isObject else { continue }
-      let chars = characters(of: b, in: doc)
-      if let range = p.range, chars.count == 1, let text = paper.text(b), let page = doc.page(at: chars[0].0 - 1),
-        let pdf = (page.string as NSString?)?.substring(with: chars[0].1),
-        let r = Spans.range(of: range, in: text, pdf: pdf)
-      {
-        add(page.selection(for: NSRange(location: chars[0].1.location + r.lowerBound, length: r.count)))
-      } else {
+      let t = text(of: b, in: doc)
+      guard let range = p.range, let tex = paper.text(b), let r = Spans.range(of: range, in: tex, pdf: t.string) else {
         add(selection(of: b, in: doc))
+        continue
+      }
+      // back from the block's PDF text to its pages' strings
+      for part in t.parts {
+        let lo = max(r.lowerBound, part.at)
+        let hi = min(r.upperBound, part.at + part.range.length)
+        guard lo < hi else { continue }
+        add(
+          doc.page(at: part.page - 1)?.selection(
+            for: NSRange(location: part.range.location + lo - part.at, length: hi - lo)))
       }
     }
     return out

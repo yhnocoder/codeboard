@@ -199,11 +199,12 @@ func utf16Slice(_ s: String, _ r: Range<Int>) -> Substring {
 }
 
 /// Spans of a selection found in a block's text, and back. The PDF's glyphs and the TeX file's characters do not
-/// correspond one to one; a span is found by matching: both sides with what TeX does not print taken out
-/// (commands' names, braces, `$`, comments, the arguments of \cite, \ref, \label and their kin) and every space left
-/// out, the first and last eight characters of the selection must each be found exactly once in the block (the last
-/// after the first); the span then runs from where the first begins to where the last ends, widened to whole brace
-/// groups and `$…$` pairs. Anything else (an end found twice, not at all) is no span: the place is the whole block
+/// correspond one to one (commands, a formula's symbols, ligatures, hyphens at line ends, citations' numbers); a span is
+/// found by aligning the two: both sides with what TeX does not print taken out (commands' names, braces, `$`, `_`, `^`,
+/// comments, the arguments of \cite, \ref, \label and their kin) and every space left out, their characters are matched
+/// as the longest sequence they have in common (the standard library's diff), and a span runs from the first matched
+/// character of the selection to its last, in the TeX widened to whole brace groups and `$…$` pairs. A selection with
+/// fewer than half of its characters matched is no span: the place is the whole block
 public enum Spans {
   /// What is matched of a text: its printed characters, spaces left out, each with where it is in the text (UTF-16)
   public struct Printed: Equatable {
@@ -242,7 +243,7 @@ public enum Spans {
         var j = i + 1
         while j < u.count, letter(u[j]) { j += 1 }
         if j == i + 1 {
-          if j < u.count, !"\\()[]".utf16.contains(u[j]) {
+          if j < u.count, "%&#_{}$".utf16.contains(u[j]) {
             out.units.append(u[j])
             out.at.append(j)
           }
@@ -253,7 +254,7 @@ public enum Spans {
         i = j
         if drop.contains(name) { skipGroup(&i) }
         continue
-      case 123, 125, 36:  // { } $
+      case 123, 125, 36, 94, 95:  // { } $ ^ _
         break
       case 32, 9, 10, 13, 126:  // spaces, ~
         break
@@ -276,41 +277,51 @@ public enum Spans {
     return out
   }
 
-  /// Where `needle`'s first and last eight units are each found once in `hay` (the last from the first on): the indices
-  /// of `hay` they cover, first to last
-  static func locate(_ needle: [UInt16], in hay: [UInt16]) -> ClosedRange<Int>? {
-    guard !needle.isEmpty, !hay.isEmpty else { return nil }
-    let k = min(8, needle.count)
-    let head = Array(needle.prefix(k))
-    let tail = Array(needle.suffix(k))
-    func all(_ p: [UInt16], from: Int) -> [Int] {
-      guard hay.count >= p.count, from <= hay.count - p.count else { return [] }
-      return (from...(hay.count - p.count)).filter { i in hay[i..<(i + p.count)].elementsEqual(p) }
+  /// The units of `to` matched with those of `from` that are in `range` (positions in `from`'s text), first to last;
+  /// nil when fewer than half of them are matched
+  static func matched(_ range: Range<Int>, of from: Printed, in to: Printed) -> ClosedRange<Int>? {
+    let picked = from.at.indices.filter { range.contains(from.at[$0]) }
+    guard !picked.isEmpty else { return nil }
+    var removed = Set<Int>()
+    var inserted = Set<Int>()
+    for change in to.units.difference(from: from.units) {
+      switch change {
+      case .remove(let o, _, _): removed.insert(o)
+      case .insert(let o, _, _): inserted.insert(o)
+      }
     }
-    let heads = all(head, from: 0)
-    guard heads.count == 1, let a = heads.first else { return nil }
-    let tails = all(tail, from: a)
-    guard tails.count == 1, let b = tails.first else { return nil }
-    return a...(b + k - 1)
+    // the units both keep, paired in order
+    var pair = [Int?](repeating: nil, count: from.units.count)
+    var j = 0
+    for i in from.units.indices where !removed.contains(i) {
+      while inserted.contains(j) { j += 1 }
+      pair[i] = j
+      j += 1
+    }
+    let hits = picked.compactMap { pair[$0] }
+    guard hits.count * 2 >= picked.count, let a = hits.first, let b = hits.last else { return nil }
+    return a...b
   }
 
-  /// The span of the block's TeX `text` (UTF-16) that a selection of PDF `selected` is of; nil: not found surely
-  public static func range(of selected: String, in text: String) -> Range<Int>? {
+  /// The span of the block's TeX `text` (UTF-16) that the characters `selected` of the block's PDF text `pdf` print;
+  /// nil: not found surely
+  public static func range(of selected: Range<Int>, in pdf: String, text: String) -> Range<Int>? {
     let hay = printed(tex: text)
-    guard let found = locate(printed(pdf: selected).units, in: hay.units) else { return nil }
+    guard let found = matched(selected, of: printed(pdf: pdf), in: hay) else { return nil }
     return widened(hay.at[found.lowerBound]..<(hay.at[found.upperBound] + 1), in: text)
   }
 
-  /// The span of the PDF string `pdf` that a span `range` of the TeX `text` prints; nil: not found surely
+  /// The span of the block's PDF text `pdf` that a span `range` of its TeX `text` prints; nil: not found surely
   public static func range(of range: Range<Int>, in text: String, pdf: String) -> Range<Int>? {
-    let part = printed(tex: String(utf16Slice(text, range)))
     let hay = printed(pdf: pdf)
-    guard let found = locate(part.units, in: hay.units) else { return nil }
+    guard let found = matched(range, of: printed(tex: text), in: hay) else { return nil }
     return hay.at[found.lowerBound]..<(hay.at[found.upperBound] + 1)
   }
 
-  /// A span grown to hold whole brace groups and `$` pairs: `runs \emph{north` → `runs \emph{north}`
-  static func widened(_ r: Range<Int>, in text: String) -> Range<Int> {
+  /// A span grown to hold whole brace groups and `$` pairs: `runs \emph{north` → `runs \emph{north}`, `x$ is` →
+  /// `$x$ is`; a group is taken whole only when that adds no more than `reach` characters (a command wrapping the
+  /// paragraph, as a revision's markup does, is not), else the span keeps that end
+  static func widened(_ r: Range<Int>, in text: String, reach: Int = 32) -> Range<Int> {
     let u = Array(text.utf16)
     var from = max(0, r.lowerBound)
     var to = min(r.upperBound, u.count)
@@ -329,15 +340,21 @@ public enum Spans {
       return (opens, closes)
     }
     // a close with no open: back to its group's open, and the command it is the argument of
-    while balance().closes > 0, from > 0 { from -= 1 }
+    let start = from
+    while balance().closes > 0, from > 0, start - from < reach { from -= 1 }
+    if balance().closes > 0 { from = start }
     if from < u.count, u[from] == 123 || (from > 0 && u[from - 1] == 123) {
       var j = u[from] == 123 ? from : from - 1
       while j > 0, (65...90).contains(u[j - 1]) || (97...122).contains(u[j - 1]) { j -= 1 }
       if j > 0, u[j - 1] == 92 { from = j - 1 }
     }
-    while balance().opens > 0, to < u.count { to += 1 }
-    let dollars = (from..<to).filter { u[$0] == 36 && ($0 == 0 || u[$0 - 1] != 92) }.count
-    if dollars % 2 == 1, let next = u[to...].firstIndex(of: 36) { to = next + 1 }
+    let end = to
+    while balance().opens > 0, to < u.count, to - end < reach { to += 1 }
+    if balance().opens > 0 { to = end }
+    // a span starting in a formula takes it from its `$`; one ending in a formula, to its closing `$`
+    func dollar(_ i: Int) -> Bool { u[i] == 36 && (i == 0 || u[i - 1] != 92) }
+    if (0..<from).filter(dollar).count % 2 == 1, let open = (0..<from).last(where: dollar) { from = open }
+    if (from..<to).filter(dollar).count % 2 == 1, let close = (to..<u.count).first(where: dollar) { to = close + 1 }
     return from..<to
   }
 }

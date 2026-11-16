@@ -124,25 +124,35 @@ func samplePaper(source: String? = paperTeX) throws -> Paper {
     #expect(Numbering.equationNumbers("\\begin{equation*}x\\end{equation*}").count == 0)
   }
 
-  @Test func aSelectionsSpanInTheBlocksTeXIsFoundByItsEndsOrNotAtAll() throws {
+  @Test func aSelectionsSpanInTheBlocksTeXIsFoundByAligningTheTwo() throws {
     let p = try samplePaper()
     let text = try #require(p.text(p.block("PAR-2-0")!))
-    func span(_ selected: String) -> String? {
-      Spans.range(of: selected, in: text).map { String(utf16Slice(text, $0)) }
+    // the block's text as a PDF prints it: the reference's number, a word broken at the line's end
+    let pdf = "The river runs north past the mill today. Birds rest (1) at 5% of the bank."
+    func span(_ selected: String, in pdf: String = pdf) -> String? {
+      let r = (pdf as NSString).range(of: selected)
+      return Spans.range(of: r.location..<r.upperBound, in: pdf, text: text).map { String(utf16Slice(text, $0)) }
     }
     #expect(span("runs north past") == "runs \\emph{north} past")
     #expect(span("north") == "\\emph{north}", "a whole argument takes its command")
     #expect(span("the mill today. Birds") == "the \\textbf{mill}~today.\nBirds")
     #expect(
-      span("Birds rest (1) at 5% of the") == "Birds rest (\\ref{eq:e}) at 5\\% of the", "the ends found, the middle not"
-    )
-    #expect(span("nowhere to be found") == nil)
-    #expect(Spans.range(of: "ab", in: "ab ab ab") == nil, "an end found twice")
+      span("Birds rest (1) at 5% of the") == "Birds rest (\\ref{eq:e}) at 5\\% of the", "the number is not in the TeX")
+    // a word found twice in the block: the one selected
+    let second = (pdf as NSString).range(of: "the", options: .backwards)
+    let theTeX = (text as NSString).range(of: "the", options: .backwards)
+    #expect(
+      Spans.range(of: second.location..<second.upperBound, in: pdf, text: text) == theTeX.location..<theTeX.upperBound)
+    let broken = "The river runs north past the mill to-\nday. Birds rest (1) at 5% of the bank."
+    #expect(span("mill to-\nday", in: broken) == "\\textbf{mill}~today")
+    #expect(span("ﬃ", in: "ﬃ" + pdf) == nil, "nothing of it in the TeX")
     // and back: the PDF's characters a span of the TeX prints
-    let pdf = "The river runs north past the mill today. Birds rest (1) at 5% of the bank."
     let at = (text as NSString).range(of: "at 5\\% of the bank.")
     let r = try #require(Spans.range(of: at.location..<(at.location + at.length), in: text, pdf: pdf))
     #expect(String(utf16Slice(pdf, r)) == "at 5% of the bank.")
+    let mill = (text as NSString).range(of: "\\textbf{mill}~today")
+    let back = try #require(Spans.range(of: mill.location..<mill.upperBound, in: text, pdf: broken))
+    #expect(String(utf16Slice(broken, back)) == "mill to-\nday")
   }
 
   @Test func aBlocksTeXAsMarkdownAndAsAFormula() throws {
@@ -251,6 +261,19 @@ func samplePaper(source: String? = paperTeX) throws -> Paper {
       blocks.allSatisfy { b in p.block(at: CGPoint(x: 100, y: b.rects[0].y0 + 10), page: b.rects[0].page)?.id == b.id })
     #expect(p.block(at: CGPoint(x: 100, y: 25), page: 31) == nil)
     #expect(p.target(of: CGPoint(x: 100, y: 55), page: 7)?.id == "B7-1")
+  }
+
+  @Test func aSpanIsWidenedToItsFormulaButNotToAGroupWrappingTheParagraph() throws {
+    let text = "Let $x_1$ be big."
+    let pdf = "Let x1 be big."
+    let one = (pdf as NSString).range(of: "1 be")
+    let r = try #require(Spans.range(of: one.location..<one.upperBound, in: pdf, text: text))
+    #expect(String(utf16Slice(text, r)) == "$x_1$ be")
+    let wrapped = "\\change{A long sentence that runs on for a while here.} Then more."
+    let printed = "A long sentence that runs on for a while here. Then more."
+    let end = (printed as NSString).range(of: "here. Then more")
+    let w = try #require(Spans.range(of: end.location..<end.upperBound, in: printed, text: wrapped))
+    #expect(String(utf16Slice(wrapped, w)) == "here.} Then more")
   }
 
   @Test func aSourceLinesTitleIsCutAtAColonWhenThatKeepsThreeWords() {
