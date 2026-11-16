@@ -4,19 +4,10 @@ import PackageDescription
 let package = Package(
   name: "CodeBoard",
   platforms: [.macOS(.v27)],
-  // the code and Markdown components (CodeCore, CodeUI, TreeSitterHighlight, MarkdownCore, MarkdownUI) and the test
-  // guard: a package of their own, knowing nothing of CodeBoard
+  // the code and Markdown components (CodeCore, CodeUI, TreeSitterCore, TreeSitterHighlight, MarkdownCore, MarkdownUI)
+  // and the test guard: a package of their own, knowing nothing of CodeBoard; tree-sitter and its grammars come with it
   dependencies: [
-    .package(url: "https://github.com/yhnocoder/better-swift-markdown", branch: "main"),
-    // tree-sitter and the grammars, as the package pins them, for CodeBoardAnalysis
-    .package(url: "https://github.com/tree-sitter/tree-sitter", exact: "0.25.10"),
-    .package(url: "https://github.com/tree-sitter/tree-sitter-python", exact: "0.25.0"),
-    // untagged: v0.24.0 and six commits
-    .package(
-      url: "https://github.com/tree-sitter/tree-sitter-rust",
-      revision: "261b20226c04ef601adbdf185a800512a5f66291"
-    ),
-    .package(url: "https://github.com/yhnocoder/tree-sitter-cuda", exact: "0.21.2-cb.3"),
+    .package(url: "https://github.com/yhnocoder/better-swift-markdown", branch: "main")
   ],
   targets: [
     .target(name: "CodeBoardModel", dependencies: [.product(name: "CodeCore", package: "better-swift-markdown")]),
@@ -50,7 +41,8 @@ let package = Package(
     // the acceptance driver (tools/accept/README.md): it runs CodeBoard, or with ACCEPT_APP=demo the Markdown demo, in
     // its own process
     .executableTarget(
-      name: "Accept", dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardModel", "MarkdownDemoKit"]),
+      name: "Accept",
+      dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardModel", "CodeBoardResources", "MarkdownDemoKit"]),
     .executableTarget(
       name: "LookCompare",
       dependencies: [
@@ -86,19 +78,20 @@ let package = Package(
       ]),
     .executableTarget(name: "MarkdownDemo", dependencies: ["MarkdownDemoKit"]),
     // Code analysis for reading code (symbols, calls, selections, peek, cross-language boundaries), a port of
-    // packages/analysis with its tests as the specification. Foundation and tree-sitter only, with its own small
-    // tree-sitter wrapper instead of TreeSitterHighlight's; no target depends on it yet. TreeSitterHighlight is linked,
-    // not imported: it carries the Python grammar's external scanner, which the grammar's package leaves out
+    // packages/analysis with its tests as the specification. Foundation and the package's TreeSitterCore only, whose
+    // trees the highlighter colours too; no target depends on it yet
     .target(
       name: "CodeBoardAnalysis",
-      dependencies: [
-        .product(name: "TreeSitter", package: "tree-sitter"),
-        .product(name: "TreeSitterPython", package: "tree-sitter-python"),
-        .product(name: "TreeSitterRust", package: "tree-sitter-rust"),
-        .product(name: "TreeSitterCUDA", package: "tree-sitter-cuda"),
-        .product(name: "TreeSitterHighlight", package: "better-swift-markdown"),
-      ]),
-    .testTarget(name: "CodeBoardAnalysisTests", dependencies: ["CodeBoardAnalysis"], resources: [.copy("Fixtures")]),
+      dependencies: [.product(name: "TreeSitterCore", package: "better-swift-markdown")]),
+    .testTarget(
+      name: "CodeBoardAnalysisTests",
+      dependencies: ["CodeBoardAnalysis", .product(name: "TreeSitterCore", package: "better-swift-markdown")],
+      resources: [.copy("Fixtures")]),
+    // What the host knows of the code folders a board reads, a port of packages/host's code logic: analyses kept by
+    // content, the workspace's name index, the background work's priorities, over a CodeWorkspace (a folder on disk,
+    // FolderWorkspace). Foundation and CodeBoardAnalysis only
+    .target(name: "CodeBoardWorkspace", dependencies: ["CodeBoardAnalysis"]),
+    .testTarget(name: "CodeBoardWorkspaceTests", dependencies: ["CodeBoardWorkspace", "CodeBoardAnalysis"]),
     .testTarget(name: "CodeBoardModelTests", dependencies: ["CodeBoardModel"], resources: [.copy("Fixtures")]),
     .testTarget(name: "CodeBoardNotesTests", dependencies: ["CodeBoardNotes"]),
     .testTarget(

@@ -255,15 +255,24 @@ import Testing
   }
 }
 
-/// A drag from Finder as the window gives it to the view: its files on a pasteboard of its own, let go at `at` (window
-/// points); no real dragging session
+/// A drag from Finder as the window gives it to the view: its files (or what a test wrote) on a pasteboard of its own,
+/// at `at` (window points, moved by the test); no real dragging session
 @MainActor final class Drag: NSObject, @MainActor NSDraggingInfo {
   let draggingPasteboard: NSPasteboard
-  let draggingLocation: NSPoint
+  var draggingLocation: NSPoint
+  /// The items handed to the destination to change the pictures of
+  var items: [NSDraggingItem] = []
   init(files: [URL], at: NSPoint) {
     draggingPasteboard = NSPasteboard(name: NSPasteboard.Name("drag-\(UUID().uuidString)"))
     draggingPasteboard.clearContents()
     draggingPasteboard.writeObjects(files as [NSURL])
+    draggingLocation = at
+  }
+  /// What `write` puts on the drag's pasteboard
+  init(at: NSPoint, _ write: (NSPasteboard) -> Void) {
+    draggingPasteboard = NSPasteboard(name: NSPasteboard.Name("drag-\(UUID().uuidString)"))
+    draggingPasteboard.clearContents()
+    write(draggingPasteboard)
     draggingLocation = at
   }
   var draggingDestinationWindow: NSWindow? { nil }
@@ -289,7 +298,14 @@ import Testing
     options enumOpts: NSDraggingItemEnumerationOptions = [], for view: NSView?, classes classArray: [AnyClass],
     searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:],
     using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void
-  ) {}
+  ) {
+    var stop: ObjCBool = false
+    for (i, it) in (draggingPasteboard.pasteboardItems ?? []).enumerated() {
+      let d = NSDraggingItem(pasteboardWriter: it)
+      items.append(d)
+      block(d, i, &stop)
+    }
+  }
   var springLoadingHighlight: NSSpringLoadingHighlight { .none }
   func resetSpringLoading() {}
 }

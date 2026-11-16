@@ -78,7 +78,7 @@ extension CanvasView {
       return e
     }
     axElements = kept
-    return out + chromeElements()
+    return out + footElements() + chromeElements()
   }
 
   /// The toolbar's and the dock's parts

@@ -1,6 +1,7 @@
 import CodeBoardAnalysis
 import Foundation
 import Testing
+import TreeSitterCore
 
 // The whole-file analysis of nano-vllm's Python files and of packages/analysis/test/analysis.test.ts's samples equals
 // what the TypeScript analysis gives, field by field (Fixtures, from tools/analysis/fixtures.mjs). Also: analysis by

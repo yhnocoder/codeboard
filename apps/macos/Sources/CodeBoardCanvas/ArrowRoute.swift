@@ -228,6 +228,24 @@ enum ArrowRoute {
       x: a * p[0].x + b * p[1].x + c * p[2].x + d * p[3].x, y: a * p[0].y + b * p[1].y + c * p[2].y + d * p[3].y)
   }
 
+  /// The place on the curve nearest `x`, sampled at 0.01 (geom.ts nearestT); `ok` leaves out places that cannot be
+  /// taken, and none left is the middle
+  static func nearestT(_ p: [CGPoint], _ x: CGPoint, ok: (CGPoint) -> Bool = { _ in true }) -> CGFloat {
+    var best: CGFloat = 0.5
+    var bd = CGFloat.infinity
+    for i in 0...100 {
+      let t = CGFloat(i) / 100
+      let q = bezAt(p, t)
+      guard ok(q) else { continue }
+      let d = (q.x - x.x) * (q.x - x.x) + (q.y - x.y) * (q.y - x.y)
+      if d < bd {
+        bd = d
+        best = t
+      }
+    }
+    return best
+  }
+
   /// The box a curve really covers (its control points can stick out much further): the ends plus where x or y turns
   static func bezBox(_ p: [CGPoint]) -> CGRect {
     var lo = [min(p[0].x, p[3].x), min(p[0].y, p[3].y)]

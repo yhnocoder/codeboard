@@ -2,14 +2,17 @@ import AppKit
 import CodeBoardModel
 
 // Stickers on the canvas (the web board's stickers/Layer.tsx, Picker.tsx, actions/stickers.ts, styles.css .stk): a free
-// one over the cards, one on a card in the card's own layer (it moves with it, nothing redrawn), one on a code line as a
-// chip in the line numbers (a dot by a Highlight's count). Each is vector layers in its glyph's box (StickerArt), so a
-// move, a resize or a zoom never redraws a bitmap; an emoji's text is drawn again only at rest, as the markers are.
+// one over the cards, one on a card in the card's own layer (it moves with it, nothing redrawn), one on an arrow over the
+// cards at its place along the curve (Picker.tsx LinkStickers: moved with the arrow as it is routed again, with a dashed
+// tether to that place while selected), one on a code line as a chip in the line numbers (a dot by a Highlight's
+// count). Each is vector layers in its glyph's box (StickerArt), so a move, a resize or a zoom never redraws a bitmap;
+// an emoji's text is drawn again only at rest, as the markers are.
 //
 // The toolbar's Sticker opens the palette; a glyph picked follows the pointer with no button held and a click puts it
-// down, selected: on a code line's number, on a card, by one within 40 px, else free (⌥: free). Esc puts nothing down.
-// A sticker is dragged (let go on a card or by one within 40 px it goes on it), resized by its corner grip when
-// selected, and its menu has its colours and Delete. Its label is its tip and its spoken name.
+// down, selected: on a code line's number, on the card or arrow under it, by a card within 40 px or an arrow within 24
+// (the nearer), else free (⌥: free). Esc puts nothing down. A sticker is dragged (let go, it goes on what it would be
+// put down on, lit meanwhile), resized by its corner grip when selected, and its menu has its colours, Size, Detach and
+// Delete. Its label is its tip and its spoken name.
 
 struct StickerSpot {
   var id: StickerID
@@ -25,6 +28,15 @@ struct StickerSpot {
   var line: Bool
   /// Shrunk to a dot by a Highlight's count on its line
   var dot = false
+  /// The arrow it is on and where along it (0…1): `frame` is then its box from that place
+  var arrow: ArrowID? = nil
+  var t: CGFloat = 0
+}
+
+/// What a sticker put down or let go goes on
+enum StickerTarget: Equatable {
+  case card(CardID)
+  case arrow(ArrowID)
 }
 
 /// A sticker pressed: moved or resized from where it was, and where it is now (board units)
@@ -34,6 +46,8 @@ struct StickerDrag {
   var from: CGRect
   var to: CGRect
   var moved = false
+  /// What it would go on if let go now (lit)
+  var aim: StickerTarget? = nil
 }
 
 extension CanvasView {
@@ -42,6 +56,8 @@ extension CanvasView {
   static let dotSize: CGFloat = 7
   /// How near a card a sticker put down beside it goes on it, in view points (Picker.tsx SNAP)
   static let stickerSnap: CGFloat = 40
+  /// And near an arrow's line (actions/stickers.ts MAG_LINK)
+  static let arrowSnap: CGFloat = 24
 
   /// The stickers of the board shown, where they are now
   func computeStickers() -> [StickerSpot] {
@@ -65,8 +81,15 @@ extension CanvasView {
           StickerSpot(
             id: k.id, glyph: k.glyph, color: k.color, owner: c, frame: f, board: f.offsetBy(dx: r.minX, dy: r.minY),
             line: false))
-      // one on an arrow is not drawn yet
-      case .arrow: continue
+      // not drawn while its arrow is not
+      case .arrow(let a, let t, let x, let y, let s):
+        guard let pts = livePts(a) else { continue }
+        let q = ArrowRoute.bezAt(pts, t)
+        let f = CGRect(origin: CGPoint(x: x, y: y), size: StickerArt.boxSize(k.glyph, size: s ?? Sticker.defaultSize))
+        out.append(
+          StickerSpot(
+            id: k.id, glyph: k.glyph, color: k.color, owner: nil, frame: f, board: f.offsetBy(dx: q.x, dy: q.y),
+            line: false, arrow: a, t: t))
       case .line(let c, let seg, let n):
         guard let r = rects[c], let p = scene.placed[c], !p.folded, let code = p.code,
           case .code(let card)? = scene.parts[c]?.content.body,
@@ -112,12 +135,26 @@ extension CanvasView {
     }
   }
 
+  /// The stickers on these arrows where they are drawn now (`pts`: re-routed, a card at an end moving): their layers
+  /// moved, nothing else
+  func followArrows(_ pts: [ArrowID: [CGPoint]]) {
+    withoutAnimation {
+      for (i, s) in stickerSpots.enumerated() where i < stickerLayers.count {
+        guard let p = s.arrow.flatMap({ pts[$0] }) else { continue }
+        let q = ArrowRoute.bezAt(p, s.t)
+        stickerSpots[i].board.origin = CGPoint(x: q.x + s.frame.minX, y: q.y + s.frame.minY)
+        stickerLayers[i].position = stickerSpots[i].board.origin
+      }
+    }
+  }
+
   /// A sticker's layer: its glyph at its frame, a soft shadow under one on the board or a card (.stk.canvas .glyph)
   func stickerLayer(_ s: StickerSpot) -> CALayer {
     let l = StickerArt.layer(
       s.glyph, color: s.color, size: s.frame.height, theme: theme, pixels: backing * camera.zoom)
     l.name = "sticker"
-    l.position = s.frame.origin
+    // one on an arrow is over the cards, as a free one: at its place on the board
+    l.position = s.owner == nil ? s.board.origin : s.frame.origin
     l.zPosition = 4
     if !s.line { StickerArt.shadow(l, s.glyph, size: s.frame.height, pixels: backing * camera.zoom) }
     return l
@@ -159,7 +196,8 @@ extension CanvasView {
   }
 
   /// A selected sticker's look, in board units: the accent ring round its glyph 2 points out (.stk.sel), the grip at
-  /// its corner, and the dashed frame round the card it is on (.card.bind-anchor)
+  /// its corner, the dashed frame round the card it is on (.card.bind-anchor), and from the place on the arrow it is on
+  /// a dashed line to its middle with a dot at that place (Picker.tsx .tether), under it
   func stickerChrome(_ id: StickerID) {
     guard let i = stickerSpots.firstIndex(where: { $0.id == id }) else { return }
     let s = stickerSpots[i]
@@ -172,8 +210,25 @@ extension CanvasView {
     ring.strokeColor = theme.accent
     ring.lineWidth = 1.5 / z
     chrome.addSublayer(ring)
-    var onCard = s.owner != nil && !s.line
-    if case .sticker(let d)? = gesture?.kind, d.id == id, d.moved, !d.resize { onCard = false }
+    var lifted = false
+    if case .sticker(let d)? = gesture?.kind, d.id == id, d.moved, !d.resize { lifted = true }
+    let onCard = s.owner != nil && !s.line && !lifted
+    if !lifted, let a = s.arrow, let pts = livePts(a) {
+      let q = ArrowRoute.bezAt(pts, s.t)
+      let line = CAShapeLayer()
+      let path = CGMutablePath()
+      path.move(to: q)
+      path.addLine(to: CGPoint(x: r.minX + r.height / 2, y: r.minY + r.height / 2))
+      line.path = path
+      line.strokeColor = theme.accent
+      line.lineWidth = 1 / z
+      line.lineDashPattern = [3, 3]
+      let dot = CAShapeLayer()
+      let rad = 3 / max(z, 0.5)
+      dot.path = CGPath(ellipseIn: CGRect(x: q.x - rad, y: q.y - rad, width: 2 * rad, height: 2 * rad), transform: nil)
+      dot.fillColor = theme.accent
+      tether.sublayers = [line, dot]
+    }
     if onCard, let c = s.owner, let cr = index(of: .card(c)).map({ scene!.items[$0].rect }) {
       let frame = CAShapeLayer()
       let out = 5.0
@@ -249,17 +304,25 @@ extension CanvasView {
         }
         d.to = d.from.offsetBy(dx: dx, dy: dy)
         l.position = d.to.origin
+        // a card is ringed; an arrow is lit as the arrows under the pointer are (drawArrowChrome)
+        d.aim = stickerTarget(p, free: NSEvent.modifierFlags.contains(.option))
         dropAim?.removeFromSuperlayer()
-        dropAim = stickerTarget(p, free: NSEvent.modifierFlags.contains(.option)).flatMap { aimLayer(.card($0)) }
+        dropAim = nil
+        if case .card(let c)? = d.aim { dropAim = aimLayer(.card(c)) }
       }
     }
     d.moved = true
   }
 
-  /// The card a sticker put down or let go with the pointer at `p` goes on: the one under it, else the nearest within
-  /// the snap distance (⌥: none)
-  func stickerTarget(_ p: CGPoint, free: Bool) -> CardID? {
-    free ? nil : hitCard(p) ?? cardNear(p)
+  /// What a sticker put down or let go with the pointer at `p` goes on (actions/stickers.ts targetAt): what is under it,
+  /// the topmost of an arrow's label, a card and an arrow's line, else the nearest card or arrow within its snap distance
+  /// (⌥: nothing)
+  func stickerTarget(_ p: CGPoint, free: Bool) -> StickerTarget? {
+    guard !free else { return nil }
+    if let a = hitArrowLabel(p) { return .arrow(a) }
+    if let c = hitCard(p) { return .card(c) }
+    if let a = hitArrow(p) { return .arrow(a) }
+    return targetNear(p)
   }
 
   /// Let go with the pointer at `p`: where it now is, or its new size, one step
@@ -273,7 +336,7 @@ extension CanvasView {
     if d.resize {
       doc.edit("Resize Sticker") { $0.setStickerSize(d.id, Double(d.to.height)) }
     } else {
-      let anchor = anchorFor(d.to, card: stickerTarget(p, free: free), size: Double(d.to.height))
+      let anchor = anchorFor(d.to, on: stickerTarget(p, free: free), size: Double(d.to.height))
       doc.edit("Move Sticker") { $0.moveSticker(d.id, to: anchor) }
     }
     // let go where it was: back in its place
@@ -281,11 +344,23 @@ extension CanvasView {
     drawChrome()
   }
 
-  /// A sticker's place for a box on the board: on that card from its top left, or free
-  func anchorFor(_ r: CGRect, card: CardID?, size: Double?) -> Sticker.Anchor {
+  /// A sticker's place for a box on the board: on that card from its top left, on that arrow from the place along it
+  /// nearest the box's middle (actions/stickers.ts bindAt), or free
+  func anchorFor(_ r: CGRect, on target: StickerTarget?, size: Double?) -> Sticker.Anchor {
     let size = size == Sticker.defaultSize ? nil : size
-    if let c = card, let cr = index(of: .card(c)).map({ scene!.items[$0].rect }) {
-      return .card(c, x: Double((r.minX - cr.minX).rounded()), y: Double((r.minY - cr.minY).rounded()), size: size)
+    switch target {
+    case .card(let c)?:
+      if let cr = index(of: .card(c)).map({ scene!.items[$0].rect }) {
+        return .card(c, x: Double((r.minX - cr.minX).rounded()), y: Double((r.minY - cr.minY).rounded()), size: size)
+      }
+    case .arrow(let a)?:
+      if let pts = livePts(a) {
+        let t = ArrowRoute.nearestT(pts, CGPoint(x: r.minX + r.height / 2, y: r.minY + r.height / 2))
+        let q = ArrowRoute.bezAt(pts, t)
+        return .arrow(
+          a, position: Double(t), x: Double((r.minX - q.x).rounded()), y: Double((r.minY - q.y).rounded()), size: size)
+      }
+    case nil: break
     }
     return .canvas(x: Double(r.minX.rounded()), y: Double(r.minY.rounded()), size: size)
   }
@@ -344,22 +419,34 @@ extension CanvasView {
     } else {
       let size = StickerArt.boxSize(g, size: Sticker.defaultSize)
       let r = CGRect(x: p.x - size.width / 2, y: p.y - size.height / 2, width: size.width, height: size.height)
-      anchor = anchorFor(r, card: stickerTarget(p, free: free), size: nil)
+      anchor = anchorFor(r, on: stickerTarget(p, free: free), size: nil)
     }
     let id = StickerID(rawValue: Board.newID("k"))
     doc.edit("Add Sticker", selection: [.sticker(id)]) { $0.addSticker(Sticker(id: id, glyph: g, anchor: anchor)) }
   }
 
-  /// The nearest card within the snap distance of a board point
-  func cardNear(_ p: CGPoint) -> CardID? {
-    let reach = Self.stickerSnap / camera.zoom
-    var best: (CardID, CGFloat)?
-    for it in scene?.items ?? [] {
+  /// The nearest card within 40 view points of a board point or arrow within 24, whichever is nearer (a tie: the card)
+  func targetNear(_ p: CGPoint) -> StickerTarget? {
+    guard let s = scene else { return nil }
+    let z = camera.zoom
+    var best: (StickerTarget, CGFloat)?
+    for it in s.items {
       guard case .card(let c)? = it.owner else { continue }
       let dx = max(it.rect.minX - p.x, 0, p.x - it.rect.maxX)
       let dy = max(it.rect.minY - p.y, 0, p.y - it.rect.maxY)
-      let d = hypot(dx, dy)
-      if d <= reach, d < best?.1 ?? .infinity { best = (c, d) }
+      let d = hypot(dx, dy) * z
+      if d <= Self.stickerSnap, d < best?.1 ?? .infinity { best = (.card(c), d) }
+    }
+    let m = Self.arrowSnap / z
+    for i in s.arrows.indices {
+      guard let a = liveArrow(i) else { continue }
+      // the curve is inside its control points' box: one farther than the snap from that is not looked along
+      let xs = a.pts.map(\.x)
+      let ys = a.pts.map(\.y)
+      guard p.x >= xs.min()! - m, p.x <= xs.max()! + m, p.y >= ys.min()! - m, p.y <= ys.max()! + m else { continue }
+      let q = ArrowRoute.bezAt(a.pts, ArrowRoute.nearestT(a.pts, p))
+      let d = hypot(q.x - p.x, q.y - p.y) * z
+      if d <= Self.arrowSnap, d < best?.1 ?? .infinity { best = (.arrow(a.id), d) }
     }
     return best?.0
   }
@@ -396,8 +483,8 @@ extension CanvasView {
 
   // MARK: The menu
 
-  /// A sticker's menu (actions/stickers.ts stickerMenu): its colours (not an emoji's), Size ▸ and Detach from Card,
-  /// Delete
+  /// A sticker's menu (actions/stickers.ts stickerMenu): its colours (not an emoji's), Size ▸ and Detach from Card or
+  /// Arrow, Delete
   func stickerMenu(_ id: StickerID) -> NSMenu {
     let m = NSMenu()
     // an emoji has its own colours
@@ -411,7 +498,7 @@ extension CanvasView {
               menuItem(name, checked: k.color?.uppercased() == hex) { pick(hex) }
             }))
     }
-    // one on the board or on a card: its size; on a card, Detach keeps it where it is drawn, on the board
+    // one on the board, a card or an arrow: its size; on a card or an arrow, Detach keeps it where it is drawn, free
     if let k = document?.board.sticker(id), let now = k.size {
       m.addItem(
         submenu(
@@ -421,11 +508,17 @@ extension CanvasView {
               self?.document?.edit("Sticker Size") { $0.setStickerSize(id, n) }
             }
           }))
-      if case .card(_, _, _, let size) = k.anchor, let at = stickerSpots.first(where: { $0.id == id })?.board {
-        let detach = menuItem("Detach from Card") { [weak self] in
+      let on: (title: String, size: Double?)? =
+        switch k.anchor {
+        case .card(_, _, _, let s): ("Detach from Card", s)
+        case .arrow(_, _, _, _, let s): ("Detach from Arrow", s)
+        case .canvas, .line: nil
+        }
+      if let on, let at = stickerSpots.first(where: { $0.id == id })?.board {
+        let detach = menuItem(on.title) { [weak self] in
           self?.document?.edit("Detach Sticker") { b in
             guard let i = b.stickers.firstIndex(where: { $0.id == id }) else { return }
-            b.stickers[i].anchor = .canvas(x: at.minX.rounded(), y: at.minY.rounded(), size: size)
+            b.stickers[i].anchor = .canvas(x: at.minX.rounded(), y: at.minY.rounded(), size: on.size)
           }
         }
         detach.toolTip = "Keep it here on the canvas"

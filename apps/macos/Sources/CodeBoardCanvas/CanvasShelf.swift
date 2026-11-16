@@ -227,11 +227,16 @@ extension CanvasView {
       for (i, f) in scene.frames.enumerated() where pick.sections.contains(f.id) {
         if let ls = self.sections.sublayers, i < ls.count { ls[i].isHidden = true }
       }
+      var gone = Set<ArrowID>()
       for (i, a) in scene.arrows.enumerated() where i < arrowGroups.count {
-        if picked.contains(a.from) || picked.contains(a.to) { for l in arrowGroups[i] { l.isHidden = true } }
+        guard picked.contains(a.from) || picked.contains(a.to) else { continue }
+        for l in arrowGroups[i] { l.isHidden = true }
+        gone.insert(a.id)
       }
       for (i, s) in stickerSpots.enumerated() where i < stickerLayers.count {
-        if s.owner.map(picked.contains) == true { stickerLayers[i].isHidden = true }
+        if s.owner.map(picked.contains) == true || s.arrow.map(gone.contains) == true {
+          stickerLayers[i].isHidden = true
+        }
       }
     }
     let id = Board.newID("sh")

@@ -197,7 +197,9 @@ private final class RootView: NSView {
     let first = a.reading && left ? reading : panel
     for p in [panel, reading] {
       p.barHeight = 2 * (line - inset)
-      p.tabsLeading = !a.sidebar && p === first ? controls.frame.maxX + inset - p.frame.minX : inset
+      // as far from the panel's left edge as from its top, where the tab's corner is concentric with the panel's
+      let corner = (p.barHeight - ShellTheme.tabHeight) / 2 - ShellTheme.stripPadding
+      p.tabsLeading = !a.sidebar && p === first ? controls.frame.maxX + inset - p.frame.minX : corner
       p.layoutSubtreeIfNeeded()
     }
   }
@@ -485,24 +487,19 @@ final class ChromeIconButton: NSButton {
   }
 }
 
-/// The canvas runs on under the top bar, so cards pass under the tabs: there they are behind a material in the canvas
-/// colour, which dissolves into the canvas over a few points below the bar so it has no edge. Core Animation composites
-/// it on the GPU; nothing here runs per frame
-final class TopGlass: NSVisualEffectView {
+/// The canvas runs on under the top bar, so cards pass under the tabs: there they are behind the canvas colour, which
+/// dissolves over a few points below the bar so it has no edge and the board shows through it. Only the colour: a
+/// material under it showed through the dissolve as a pale band. Core Animation composites it on the GPU; nothing here
+/// runs per frame
+final class TopGlass: NSView {
   var theme = Theme.warmInk { didSet { retint() } }
   private var bar: CGFloat = 0
-  private let tint = GradientView()
+  let gradient = CAGradientLayer()
 
   override init(frame: NSRect) {
     super.init(frame: frame)
-    blendingMode = .withinWindow
-    material = ShellTheme.glassMaterial
-    // The rest of the panel looks the same when the window is in the background, so the row does too
-    state = .active
-    maskImage = TopGlass.mask
-    tint.frame = bounds
-    tint.autoresizingMask = [.width, .height]
-    addSubview(tint)
+    layer = gradient
+    wantsLayer = true
     retint()
   }
 
@@ -520,27 +517,11 @@ final class TopGlass: NSVisualEffectView {
     retint()
   }
 
-  /// The material's own mask stretches its one opaque row over the bar; the tint, which it does not mask, fades along
-  /// the same curve
   private func retint() {
     let stops = TopGlass.stops(bar: bar)
-    tint.gradient.colors = stops.map { theme.canvas.copy(alpha: ShellTheme.glassTint * $0.alpha) ?? theme.canvas }
-    tint.gradient.locations = stops.map { NSNumber(value: Double($0.at)) }
+    gradient.colors = stops.map { theme.canvas.copy(alpha: $0.alpha) ?? theme.canvas }
+    gradient.locations = stops.map { NSNumber(value: Double($0.at)) }
   }
-
-  private static let mask: NSImage = {
-    let d = ShellTheme.glassDissolve
-    let stops = TopGlass.stops(bar: 1)
-    let img = NSImage(size: NSSize(width: 1, height: 1 + d), flipped: true) { r in
-      NSGradient(
-        colors: stops.map { NSColor(white: 0, alpha: $0.alpha) }, atLocations: stops.map(\.at), colorSpace: .sRGB
-      )?.draw(in: r, angle: 90)
-      return true
-    }
-    img.capInsets = NSEdgeInsets(top: 0, left: 0, bottom: d, right: 0)
-    img.resizingMode = .stretch
-    return img
-  }()
 
   /// Opacity down the glass, at fractions of its height: whole over the bar, then out to nothing along a smoothstep
   static func stops(bar: CGFloat) -> [(at: CGFloat, alpha: CGFloat)] {
@@ -552,23 +533,6 @@ final class TopGlass: NSVisualEffectView {
         return ((bar + t * d) / (bar + d), 1 - t * t * (3 - 2 * t))
       }
   }
-}
-
-private final class GradientView: NSView {
-  let gradient = CAGradientLayer()
-
-  override init(frame: NSRect) {
-    super.init(frame: frame)
-    layer = gradient
-    wantsLayer = true
-  }
-
-  @available(*, unavailable)
-  required init?(coder: NSCoder) {
-    fatalError("GradientView is not loaded from nibs")
-  }
-
-  override var isFlipped: Bool { true }
 }
 
 private final class FlippedView: NSView {

@@ -10,6 +10,10 @@
       "changed": "whole",
       "important": "whole"
     },
+    "CodeBoardWorkspaceTests": {
+      "changed": "whole",
+      "important": "whole"
+    },
     "CodeBoardMarkdownLooksTests": {
       "changed": "whole",
       "important": "whole"
@@ -163,6 +167,7 @@
           "sources": [
             "CodeBoardCanvas/CanvasPaste.swift",
             "CodeBoardCanvas/CanvasPasteChip.swift",
+            "CodeBoardCanvas/CanvasCollect.swift",
             "CodeBoardModel/Clip.swift"
           ],
           "tests": [
@@ -335,7 +340,7 @@
           "tests": ["ThemeTests", "SeededTests", "CanvasSelectionLookTests"]
         },
         "pictures": {
-          "sources": ["CodeBoardCanvas/CanvasPicture.swift"],
+          "sources": ["CodeBoardCanvas/CanvasPicture.swift", "CodeBoardCanvas/CanvasSources.swift"],
           "tests": [
             "CanvasPictureTests",
             "CanvasRemoteImageTests",
