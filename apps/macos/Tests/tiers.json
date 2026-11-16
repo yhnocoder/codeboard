@@ -423,10 +423,12 @@
           "sources": [
             "CodeBoardShell/BoardPanes.swift",
             "CodeBoardShell/BoardDocuments.swift",
+            "CodeBoardShell/WindowSet.swift",
             "CodeBoardModel/SharedCards.swift"
           ],
           "tests": [
             "BoardPanesTests",
+            "WindowSetTests",
             "MissingCardTests",
             "FullWindowDeleteEverywhereTests",
             "aQuestionBeforeDeletingTakesAPressToGoAhead"
@@ -573,7 +575,7 @@
         },
         "reading: list": {
           "sources": ["CodeBoardReading/List"],
-          "tests": ["ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab"]
+          "tests": ["ListReadingTests", "ListAddingTests", "ListDragTests", "ListDeleteTests"]
         },
         "reading: shared": {
           "sources": ["CodeBoardReading/Shared", "CodeBoardModel/Collected.swift"],

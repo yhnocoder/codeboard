@@ -115,10 +115,12 @@ struct BoardKey {
     BoardKey(
       action: .escape, presses: [code(53)], show: "Esc", label: "Cancel · Deselect · Back to the parent board",
       group: "Board"),
+    BoardKey(show: "⌘N", label: "New Window", group: "Board"),
     BoardKey(show: "⌘O", label: "Open Vault…", group: "Board"),
     BoardKey(show: "⇧⌘I", label: "Import Old Boards…", group: "Board"),
     BoardKey(show: "⌘W", label: "Close Tab", group: "Board"),
     BoardKey(show: "⇧⌘W", label: "Close Window", group: "Board"),
+    BoardKey(show: "⌃⌥⌘B", label: "Record Bug Report", group: "Board"),
   ]
 }
 

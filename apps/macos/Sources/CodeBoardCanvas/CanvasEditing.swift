@@ -142,6 +142,8 @@ extension CanvasView {
       let seat = doc.seat(for: self)
       document = seat
       stopObserving = seat.observe { [weak self] in self?.documentChanged($0) }
+      // another window's canvas starts writing on this board: what is typed here goes to the board first
+      seat.onWritingTaken = { [weak self] in self?.endEditingNow() }
     }
     try await load(board, in: vault, theme: theme, keepCamera: false)
   }
@@ -163,8 +165,9 @@ extension CanvasView {
   private func documentChanged(_ change: BoardDocument.Change) {
     guard let doc = document else { return }
     chipFollowBoard()
-    // a draft of the card being written in: the web view shows it already; its picture comes when the writing ends
-    if change == .draft { return drawChrome() }
+    // a draft of the card being written in here: the editor shows it already, its picture comes when the writing
+    // ends; another canvas's (another window on the board) is drawn as it comes
+    if change == .draft, isEditing { return drawChrome() }
     // only the selection changed (a marquee under way too): its rings follow at once
     if doc.board != shownBoard { refresh() } else { drawChrome() }
     shelfChanged()

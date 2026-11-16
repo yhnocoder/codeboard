@@ -82,4 +82,49 @@ import Testing
     #expect(c.shownBoard?.card(cid("t1"))?.textCard?.text == "Threads wait here" && r.doc.undoName == "Edit Text")
     #expect(a.selection.isEmpty && b.selection == [.card(cid("t1"))])
   }
+
+  @Test func whatIsTypedThroughOneCanvasIsDrawnInTheOtherAsItIsDraftedAndItsEndIsHeardThereWhenItAddsNothing()
+    async throws
+  {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    let c = try await second(r)
+    defer {
+      c.leave()
+      c.removeFromSuperview()
+    }
+    let a = try #require(r.canvas.document)
+    let b = try #require(c.document)
+    a.beginWriting(cid("t1"))
+    a.draft { $0.write(cid("t1"), text: "Threads wait", layout: nil) }
+    await r.until("the draft drawn in the other canvas") {
+      c.tick(at: r.next(1.0 / 60))
+      return c.shownBoard?.card(cid("t1"))?.textCard?.text == "Threads wait"
+    }
+    // ended with what its drafts put there: the board is as it was, the other seat still hears of the step
+    var heard = 0
+    let stop = b.observe { _ in heard += 1 }
+    a.settleWriting(keep: true, "Edit Text") { $0.write(cid("t1"), text: "Threads wait", layout: nil) }
+    stop()
+    #expect(heard == 1 && b.undoName == "Edit Text")
+  }
+
+  @Test func writingInTheSecondCanvasEndsTheFirstsWritingKeptAsItsOwnStep() async throws {
+    let r = try await Rig(zoom: 1)
+    defer { r.close() }
+    let c = try await second(r)
+    defer {
+      c.leave()
+      c.removeFromSuperview()
+    }
+    r.canvas.beginEditing(cid("t1"))
+    await r.editorReady()
+    await r.type("Later ")
+    c.beginEditing(cid("n1"))
+    #expect(!r.canvas.isEditing && c.isEditing)
+    #expect(r.doc.undoName == "Edit Text" && r.doc.board.card(cid("t1"))?.writing?.contains("Later") == true)
+    await c.endEditing()
+    #expect(
+      !c.isEditing && r.doc.undoName == "Edit Text" && r.doc.board.card(cid("t1"))?.writing?.contains("Later") == true)
+  }
 }

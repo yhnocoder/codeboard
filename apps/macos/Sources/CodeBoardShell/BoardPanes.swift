@@ -106,7 +106,7 @@ import CodeBoardNotes
       self.panes[t]?.canvas.collect(c)
     }
     shell.beforeFiles = { [weak self] in self?.flush() }
-    shell.afterFiles = { [weak self] in self?.sync(reload: true) }
+    shell.afterFiles = { [weak self] in self?.syncEverywhere(true) }
     shell.setSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }
     shell.entryLeft = { [weak self] in self?.boardDocuments.entryLeft($0, $1) }
     shell.folderRenamed = { [weak self] in self?.boardDocuments.folderRenamed($0, $1, $2) }
@@ -137,7 +137,7 @@ import CodeBoardNotes
     guard let vault = shell.vault, boardDocuments.setSeal(id, seal, done: done) else { return }
     // ponytail: the whole tree is read again on each change typed; keep the seals in memory if large vaults lag
     shell.apply(Result { try vault.tree() })
-    sync(reload: true)
+    syncEverywhere(true)
   }
 
   @available(*, unavailable)
@@ -145,10 +145,20 @@ import CodeBoardNotes
     fatalError("BoardPanes is not loaded from nibs")
   }
 
+  /// The vault changed: every window's panes take it in, and the app's documents once (`WindowSet.sync`); alone, these
+  lazy var syncEverywhere: (_ reload: Bool) -> Void = { [weak self] in self?.sync(reload: $0) }
+
   /// Follows the tabs: new tabs get a canvas, closed tabs lose theirs (what is being written in a card and then the
   /// board written first), a tab now on another board shows it. `reload`: the vault changed on disk, so every open
   /// board takes in what changed there.
   func sync(reload: Bool = false) {
+    if reload { boardDocuments.diskChanged() }
+    follow(reload: reload)
+    boardDocuments.keepFolderBoardsUp()
+  }
+
+  /// This window's part of `sync`: its tabs and canvases; the documents are the app's
+  func follow(reload: Bool) {
     let live = Set(shell.tabs.map(\.id))
     for (id, pane) in panes where !live.contains(id) {
       panes[id] = nil
@@ -164,7 +174,6 @@ import CodeBoardNotes
       }
     }
     if reload {
-      boardDocuments.diskChanged()
       for pane in panes.values where pane.document != nil { pane.canvas.vaultChanged() }
     }
     for tab in shell.tabs {
@@ -234,16 +243,19 @@ import CodeBoardNotes
         pane.restyle(theme)
       }
     }
-    boardDocuments.keepFolderBoardsUp()
     reveal()
   }
 
   /// Writes every board with changes not yet saved (quitting, another vault); returns the boards whose changes could
   /// not be written, by title, with why
   @discardableResult func flush() -> [(title: String, why: String)] {
-    // and where each board is looked at, not yet written while it was coming to rest (quitting)
-    for pane in panes.values { pane.canvas.keepCamera(now: true) }
+    keepCameras()
     return boardDocuments.flush()
+  }
+
+  /// Where each board is looked at, not yet written while it was coming to rest (quitting)
+  func keepCameras() {
+    for pane in panes.values { pane.canvas.keepCamera(now: true) }
   }
 
   /// Ends the writing in any card or sidenote popup, what was typed written to its board (quitting); a tab closed
@@ -265,6 +277,11 @@ import CodeBoardNotes
     await endEditing()
     flush()
     boardDocuments.closeAll()
+    leaveAll()
+  }
+
+  /// Its window closes: each canvas leaves its board, written first; the documents stay for the app's other windows
+  func leaveAll() {
     for pane in panes.values { pane.close() }
     panes = [:]
   }

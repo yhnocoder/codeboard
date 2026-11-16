@@ -127,7 +127,8 @@ private func keysBoard() -> Board {
         [
           ("⌘Z", "Undo"), ("⇧⌘Z", "Redo"), ("⌘,", "Settings"), ("?", "Keyboard Shortcuts"),
           ("Esc", "Cancel · Deselect · Back to the parent board"),
-          ("⌘O", "Open Vault…"), ("⇧⌘I", "Import Old Boards…"), ("⌘W", "Close Tab"), ("⇧⌘W", "Close Window"),
+          ("⌘N", "New Window"), ("⌘O", "Open Vault…"), ("⇧⌘I", "Import Old Boards…"), ("⌘W", "Close Tab"),
+          ("⇧⌘W", "Close Window"), ("⌃⌥⌘B", "Record Bug Report"),
         ]
       ),
     ]

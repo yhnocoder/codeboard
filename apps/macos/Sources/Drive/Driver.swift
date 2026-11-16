@@ -84,6 +84,14 @@ import CodeBoardShell
     }
   }
 
+  /// Another window of the app: under the desktop picture as the first, given the keys as a person's New Window would
+  /// be, the app still never activated
+  func opened(window w: NSWindow) {
+    w.level = .underDesktop
+    w.orderBack(nil)
+    w.makeKey()
+  }
+
   var canvases: [CanvasView] { window.contentView.map { CanvasView.all(in: $0) } ?? [] }
   /// The canvas of the tab shown
   var canvas: CanvasView? { canvases.first { !$0.isHiddenOrHasHiddenAncestor } }
