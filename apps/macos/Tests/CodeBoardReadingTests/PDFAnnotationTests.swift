@@ -174,7 +174,7 @@ import Testing
     #expect(t.pop == nil && fake.ended == 1, "what was being written is added as it closes")
     t.released(at: t.pdf.convert(CGPoint(x: mark.bounds.midX, y: mark.bounds.midY), from: page))
     #expect(t.highlightBar.isHidden && t.pop != nil && fake.shown.last?.notes.count == 2, "the popup, not the bar")
-    #expect(fake.shown.last?.write == false && fake.focused == 1)
+    #expect(fake.shown.last?.write == false && fake.focused == 2, "not written in, but it has the keys")
     for n in e.sidenotes { fake.act?(.delete(n.id)) }
     #expect(try entry(v).sidenotes.isEmpty && fake.shown.last?.notes.isEmpty == true && t.pop != nil)
     #expect(!page.annotations.contains { $0.type == "Circle" }, "no annotations: no mark")
@@ -216,6 +216,59 @@ import Testing
     fake.act?(.remove)
     e = try entry(v)
     #expect(e.highlights.isEmpty && e.sidenotes.isEmpty && t.pop == nil && t.highlightBar.isHidden)
+  }
+
+  /// A highlight removed with its annotations is one step the window's Undo brings back as it was (the entry's file
+  /// the same, ids, places, a question's answers and the lists' order), and Redo takes away again; the bar's Remove
+  /// of a highlight without annotations too
+  @Test func removingAHighlightIsUndoneAndRedone() throws {
+    let v = try PDFVault()
+    defer { v.remove() }
+    let (w, t, fake) = try clicked(v, "runs north")
+    defer { w.close() }
+    t.annotate()
+    fake.act?(.add("Which mill?", ask: true))
+    fake.act?(.add("A note", ask: false))
+    let q = try entry(v).sidenotes[0].id
+    fake.act?(.answer(q, "The old one"))
+    t.dismiss()
+    // one made later, before it in neither list
+    try highlighted(w, t, "far bank")
+    t.showHighlight([try #require(try entry(v).highlights.last)])
+    t.annotate()
+    fake.act?(.add("Which bank?", ask: false))
+    t.dismiss()
+    let file = v.vault.url(of: try #require(t.entryPath)).appending(path: Vault.entryFileName)
+    let before = try Data(contentsOf: file)
+    let all = try entry(v)
+    t.released(at: try point(on: t))
+    #expect(t.shownHighlight.first?.id == all.highlights[0].id)
+    fake.act?(.remove)
+    #expect(try entry(v).highlights.map(\.id) == [all.highlights[1].id])
+    let removed = try entry(v)
+    #expect(removed.sidenotes.map(\.note.text) == ["Which bank?"])
+    let undo = try #require(t.undoManager)
+    #expect(undo === w.window.undoManager && undo.canUndo && undo.undoActionName == "Remove Highlight")
+    undo.undo()
+    #expect(try Data(contentsOf: file) == before && t.entry == all)
+    let page = try #require(t.pdf.document?.page(at: 0))
+    let drawn = page.annotations.map(\.type)
+    #expect(drawn.filter { $0 == "Highlight" }.count == 2 && drawn.contains("Circle"), "drawn again")
+    #expect(undo.canRedo && undo.redoActionName == "Remove Highlight")
+    undo.redo()
+    let redone = try entry(v)
+    #expect(redone.highlights.count == 1 && redone.sidenotes.count == 1)
+    undo.undo()
+    #expect(try Data(contentsOf: file) == before)
+    // the bar's Remove, nothing written on it
+    try highlighted(w, t, "mill")
+    let plain = try Data(contentsOf: file)
+    let mill = try #require(try entry(v).highlights.last)
+    t.showHighlight([mill])
+    press(t.highlightBar.buttons[1])
+    #expect(try entry(v).highlights.count == 2)
+    undo.undo()
+    #expect(try Data(contentsOf: file) == plain)
   }
 
   /// The look changed while it is open: shown again in it, what was being written in it added first

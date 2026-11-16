@@ -267,10 +267,12 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
     dismiss()
   }
 
-  /// The tab closed (or its window): what floats over the window goes with it
+  /// The tab closed (or its window): what floats over the window goes with it, and its steps from the window's undo
   override func viewWillMove(toWindow newWindow: NSWindow?) {
     super.viewWillMove(toWindow: newWindow)
-    if newWindow == nil { dismiss() }
+    guard newWindow == nil else { return }
+    dismiss()
+    undoManager?.removeAllActions(withTarget: self)
   }
 
   /// `lines` (page space) in this view (y-down)

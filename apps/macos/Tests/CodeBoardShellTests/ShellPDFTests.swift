@@ -526,4 +526,72 @@ import Testing
     paneView.sync()
     #expect(t.pop == nil && pop.view.superview == nil)
   }
+
+  /// A key as the window hands it to the view that has the keys
+  func key(_ characters: String, _ code: UInt16, to v: NSView) {
+    let e = NSEvent.keyEvent(
+      with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: v.window?.windowNumber ?? 0,
+      context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code)!
+    v.keyDown(with: e)
+  }
+
+  /// A highlight with annotations clicked: its popup has the keys, plain keys do nothing there or on the page, Esc
+  /// closes it and gives the keys back to the tab. Its Remove Highlight takes the annotations with it in one step the
+  /// window's Undo (from the tab) brings back as they were, and Redo takes away again
+  @Test func anAnnotatedHighlightClickedTakesTheKeysAndItsRemovalIsUndone() async throws {
+    let (vault, shell, window, t) = try highlightedTab()
+    defer {
+      window.contentView = nil
+      window.close()
+      try? fm.removeItem(at: vault.root)
+    }
+    t.annotate()
+    let first = try sidenotePop(t)
+    type(first, "Which mill?")
+    enter(first)
+    try await until("the next input") { first.field != nil }
+    #expect(first.press("Question"))
+    type(first, "Why north?")
+    enter(first)
+    let q = try #require(try entry(shell).sidenotes.last?.id.rawValue)
+    #expect(first.press("Answer", in: q))
+    type(first, "Upstream")
+    enter(first)
+    t.dismiss()
+    let page = try #require(t.pdf.document?.page(at: 0))
+    let lit = try #require(page.annotations.first { $0.type == "Highlight" }).bounds
+    let at = t.pdf.convert(CGPoint(x: lit.midX, y: lit.midY), from: page)
+
+    t.released(at: at)
+    let pop = try sidenotePop(t)
+    #expect(window.firstResponder === pop.view, "the popup has the keys")
+    let clip = try #require(t.pdf.documentView?.enclosingScrollView?.contentView)
+    let scrolled = clip.bounds.origin
+    key(" ", 49, to: pop.view)
+    key("j", 38, to: pop.view)
+    #expect(clip.bounds.origin == scrolled && t.pop != nil && window.firstResponder === pop.view, "plain keys: nothing")
+    key("\u{1b}", 53, to: pop.view)
+    #expect(t.pop == nil && window.firstResponder === t, "Esc closes it, the keys back in the tab")
+
+    let file = vault.url(of: try #require(t.entryPath)).appending(path: Vault.entryFileName)
+    let before = try Data(contentsOf: file)
+    #expect(try entry(shell).sidenotes.count == 2)
+    t.released(at: at)
+    // what was typed above is the window's undo too: the removal is a step of its own, as when it is its own event
+    window.undoManager?.removeAllActions()
+    #expect(try sidenotePop(t).press("Remove Highlight"))
+    var e = try entry(shell)
+    #expect(e.highlights.isEmpty && e.sidenotes.isEmpty && t.pop == nil && window.firstResponder === t)
+    #expect(t.tryToPerform(#selector(CanvasView.undo(_:)), with: nil))
+    #expect(try Data(contentsOf: file) == before, "the entry's file as it was")
+    #expect(page.annotations.contains { $0.type == "Highlight" } && page.annotations.contains { $0.type == "Circle" })
+    #expect(t.tryToPerform(#selector(CanvasView.redo(_:)), with: nil))
+    e = try entry(shell)
+    #expect(e.highlights.isEmpty && e.sidenotes.isEmpty)
+    #expect(t.tryToPerform(#selector(CanvasView.undo(_:)), with: nil))
+    #expect(try Data(contentsOf: file) == before)
+    // back, and clicked: its annotations
+    t.released(at: at)
+    #expect(try sidenotePop(t).slips.count == 2)
+  }
 }
