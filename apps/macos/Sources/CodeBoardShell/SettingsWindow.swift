@@ -21,6 +21,7 @@ import CodeBoardResources
   let modelField = NSTextField()
   let tongtuField = NSTextField()
   let tongtuStatus = NSTextField(labelWithString: "")
+  private(set) var grid = NSGridView()
   private let settings: AISettings
   private let keys: any KeyStore
   var onSwitchChange: (SummarySwitch) -> Void = { _ in }
@@ -56,20 +57,25 @@ import CodeBoardResources
       f.action = #selector(commitAI(_:))
       f.widthAnchor.constraint(equalToConstant: 260).isActive = true
     }
-    keyStatus.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-    keyStatus.textColor = .secondaryLabelColor
     tongtuField.placeholderString = "found in PATH or ~/.local/bin"
     tongtuField.stringValue = settings.tongtuPath
     tongtuField.delegate = self
     tongtuField.target = self
     tongtuField.action = #selector(commitTongtu(_:))
     tongtuField.widthAnchor.constraint(equalToConstant: 260).isActive = true
-    tongtuStatus.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-    tongtuStatus.textColor = .secondaryLabelColor
+    // the status lines under the key and tongtu: one line as wide as the fields, a long path cut in its middle
+    for status in [keyStatus, tongtuStatus] {
+      status.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+      status.textColor = .secondaryLabelColor
+      status.usesSingleLineMode = true
+      status.lineBreakMode = .byTruncatingMiddle
+      status.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+      status.widthAnchor.constraint(equalToConstant: 260).isActive = true
+    }
     let choose = NSButton(title: "Choose…", target: self, action: #selector(chooseTongtu(_:)))
     choose.controlSize = .small
     let tongtuRow = NSStackView(views: [tongtuField, choose])
-    let grid = NSGridView(views: [
+    grid = NSGridView(views: [
       [NSTextField(labelWithString: "摘要切换"), switchControl],
       [NSTextField(labelWithString: "API Key"), keyField],
       [NSGridCell.emptyContentView, keyStatus],
@@ -115,7 +121,8 @@ import CodeBoardResources
       showKey()
       onKeyChange(keys.key() != nil)
     } catch {
-      keyStatus.stringValue = "Could not save the key: \(error)"
+      showKeyStatus("Could not save the key: \(error)")
+      keyStatus.toolTip = keyStatus.stringValue
     }
   }
 
@@ -132,7 +139,13 @@ import CodeBoardResources
   private func showKey() {
     let has = keys.key() != nil
     keyField.stringValue = has ? Self.saved : ""
-    keyStatus.stringValue = has ? "已保存" : ""
+    showKeyStatus(has ? "已保存" : "")
+  }
+
+  /// The line under the key; empty, its row folds away, so no gap is left between the key and the address
+  private func showKeyStatus(_ s: String) {
+    keyStatus.stringValue = s
+    grid.cell(for: keyStatus)?.row?.isHidden = s.isEmpty
   }
 
   @objc func commitTongtu(_ sender: Any?) {
@@ -159,6 +172,7 @@ import CodeBoardResources
     tongtuStatus.stringValue =
       found.map { "使用 \($0.path)" }
       ?? (settings.tongtuPath.isEmpty ? "未找到 tongtu：翻译不可用" : "这里没有可执行的 tongtu")
+    tongtuStatus.toolTip = found?.path
   }
 
   func controlTextDidEndEditing(_ obj: Notification) {
