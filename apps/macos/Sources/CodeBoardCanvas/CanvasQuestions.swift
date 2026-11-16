@@ -5,7 +5,9 @@ import CodeBoardNotes
 // The questions (web board ui/QuestionList.tsx, actions/questions.ts, core questions.ts): the toolbar's ? with how many
 // of this board's are open, and their list over it, this board's from the scene, the other boards' read from the vault
 // when it opens. A row takes the camera to its question and opens its popup there; one on another board opens that
-// board first (onOpenBoard), which then goes to it (showQuestion).
+// board first (onOpenBoard), which then goes to it (showQuestion). The questions on the entries' passages (papers'
+// and PDFs' annotations, from the source provider) are rows too, each entry a group of its own after the boards; a row
+// shows its passage in the reading pane.
 
 extension CanvasView {
   /// One list for the app
@@ -14,6 +16,9 @@ extension CanvasView {
   static var listOutside: Any?
   /// The canvas the list is open on: opening it on another closes it there first, as there is one list
   static weak var listOwner: CanvasView?
+
+  /// The group an entry's questions are listed under: not a board id
+  static let entryGroup = "entry:"
 
   package var questionList: QuestionListView {
     if let l = CanvasView.sharedList { return l }
@@ -92,11 +97,28 @@ extension CanvasView {
   ) -> QuestionListView.Shown {
     let resolver = RefResolver(b, package: vault.url(of: vb.path), vault: vault)
     let mine = Self.items(b, notes: scene?.notes ?? b.sidenotes, board: vb, title: resolver.title)
+    let entries = entryItems()
     return QuestionListView.Shown(
       look: theme.id.rawValue, dark: theme.dark, board: .init(id: vb.id.rawValue, name: vb.title),
       boards: [.init(id: vb.id.rawValue, name: vb.title)]
-        + others.map { .init(id: $0.0.id.rawValue, name: $0.0.title) },
-      questions: mine + others.flatMap(\.1))
+        + others.map { .init(id: $0.0.id.rawValue, name: $0.0.title) } + entries.groups,
+      questions: mine + others.flatMap(\.1) + entries.rows)
+  }
+
+  /// The entries' questions as rows, each entry a group titled with it; where: its place as its source line shows it
+  func entryItems() -> (groups: [QuestionListView.Shown.Board], rows: [QuestionListView.Shown.Item]) {
+    guard let p = sources else { return ([], []) }
+    var groups: [QuestionListView.Shown.Board] = []
+    let rows = p.questions().compactMap { q -> QuestionListView.Shown.Item? in
+      guard let asked = q.note.question else { return nil }
+      let group = Self.entryGroup + q.anchor.entry.rawValue
+      if !groups.contains(where: { $0.id == group }) { groups.append(.init(id: group, name: q.entryTitle)) }
+      let line = RefResolver.firstLine(q.note.text)
+      return .init(
+        board: group, note: q.sidenote.rawValue, line: line.isEmpty ? "(no text)" : line,
+        where: p.sourceLabel(q.anchor)?.number ?? "", done: asked.done, at: asked.at)
+    }
+    return (groups, rows)
   }
 
   /// The dock's ? pressed: the list opens over it (its bottom right 12 above the button's top, 6 right of it), or
@@ -163,11 +185,15 @@ extension CanvasView {
     window?.makeFirstResponder(self)
   }
 
-  /// A row picked: the list closes; on this board the camera goes to it, else its board opens
+  /// A row picked: the list closes; on this board the camera goes to it, else its board opens; an entry's shows its
+  /// passage in the reading pane
   func pickQuestion(_ board: String, _ note: String) {
     closeQuestionList()
     let id = SidenoteID(rawValue: note)
-    if board == document?.board.id.rawValue {
+    if board.hasPrefix(Self.entryGroup) {
+      let entry = EntryID(rawValue: String(board.dropFirst(Self.entryGroup.count)))
+      if let q = sources?.questions(in: entry).first(where: { $0.sidenote == id }) { sources?.reveal(q.anchor) }
+    } else if board == document?.board.id.rawValue {
       showQuestion(id)
     } else {
       onOpenBoard?(BoardID(rawValue: board), .question(id))

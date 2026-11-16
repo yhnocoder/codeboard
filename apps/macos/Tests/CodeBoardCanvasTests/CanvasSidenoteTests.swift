@@ -630,6 +630,62 @@ extension CanvasSidenoteTests {
 }
 
 extension CanvasSidenoteTests {
+  /// The questions on entries' passages (a paper's or a PDF's annotations, from the source provider): every board's
+  /// scope lists them, each entry a group titled with it after the boards, where its source line's number, the resolved
+  /// ones only with Show Resolved; the list follows the provider's changes; a row shows its passage in the reading pane,
+  /// the camera still
+  @Test func entriesQuestionsAreListedUnderTheirEntriesAndARowShowsItsPassage() async throws {
+    func q(_ id: String, _ entry: String, _ text: String, at: Double, done: Bool = false) -> EntryQuestion {
+      EntryQuestion(
+        anchor: anchor(entry, id), sidenote: nid(id),
+        note: TextNote(text: text, question: Question(at: at, done: done)), entryTitle: entry == "e1" ? "注意力" : "A PDF")
+    }
+    let fake = FakeSources()
+    fake.labels["e1"] = SourceLabel(title: "注意力", number: "p. 12", icon: .paper)
+    fake.entryQuestions = [q("eq1", "e1", "为什么缩放", at: 3000), q("eq2", "e1", "Done one", at: 4000, done: true)]
+    fake.entryQuestions.append(q("eq3", "e2", "Which kernel?", at: 2000))
+    let r = try await Rig(sidenoteBoard(question: true), zoom: 1, sources: fake)
+    defer { r.close() }
+    let c = r.canvas
+    let list = c.questionList
+    func rows() async -> String? {
+      await list.run(
+        "return [...document.querySelectorAll('.qlist-row')].map(e => e.dataset.q + ' ' + e.querySelector('.qlist-w')"
+          + ".textContent + (e.classList.contains('done') ? ' done' : '')).join('|')") as? String
+    }
+    c.toggleQuestionList(under: CGRect(x: 600, y: 650, width: 40, height: 24))
+    await r.until("the list shows") { list.view.alphaValue == 1 }
+    #expect(await rows() == "w1 调度 Scheduling", "not on this board")
+    _ = await list.run("document.querySelector('.qlist-clear').click()")
+    #expect(await rows() == "w1 调度 Scheduling|eq1 p. 12|eq3 ")
+    let groups =
+      await list.run(
+        "return [...document.querySelectorAll('.qlist-group')].map(e => e.textContent).join('|')") as? String
+    #expect(groups?.hasSuffix("|注意力|A PDF") == true)
+    _ = await list.run("document.querySelector('.ib').click()")
+    #expect(await rows() == "w1 调度 Scheduling|eq2 p. 12 done|eq1 p. 12|eq3 ", "newest first")
+    fake.entryQuestions.append(q("eq4", "e2", "Asked later", at: 5000))
+    fake.onSourcesChanged?()
+    await r.until("the new one listed") { await rows() == "w1 调度 Scheduling|eq2 p. 12 done|eq1 p. 12|eq4 |eq3 " }
+    var opened = false
+    c.onOpenBoard = { _, _ in opened = true }
+    let there = c.camera
+    _ = await list.run("document.querySelector('.qlist-row[data-q=\"eq3\"]').click()")
+    await r.until("its passage shown") { !fake.revealed.isEmpty }
+    #expect(fake.revealed == [anchor("e2", "eq3")] && !c.listShown && !opened && c.camera == there)
+  }
+
+  /// No provider, or one with no questions: the list is the boards' alone
+  @Test func withoutEntriesQuestionsTheListIsTheBoardsAlone() async throws {
+    let r = try await Rig(sidenoteBoard(question: true), zoom: 1)
+    defer { r.close() }
+    #expect(r.canvas.entryItems().groups.isEmpty && r.canvas.entryItems().rows.isEmpty)
+    r.canvas.sources = FakeSources()
+    #expect(r.canvas.entryItems().groups.isEmpty && r.canvas.entryItems().rows.isEmpty)
+  }
+}
+
+extension CanvasSidenoteTests {
   /// The other boards are read with their shared cards (core collectQuestions): a question that travels with one is
   /// listed once, on the first board in the vault that shows it, this one among them; a board-only one on its lines
   /// says its file
