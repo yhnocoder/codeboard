@@ -359,6 +359,7 @@ final class WebBarButton: NSButton {
   /// Under the pointer the tint, chosen the pill and the icon in the accent, as the toolbar's tool in use
   private func paint() {
     layer?.backgroundColor = hovered && isEnabled ? lit : chosen ? pill : nil
+    alphaValue = isEnabled ? 1 : 0.4
     contentTintColor = NSColor(cgColor: chosen ? accent : tone ?? ink)
   }
 
@@ -417,6 +418,19 @@ final class WebChoice: NSControl {
 
   override var isEnabled: Bool {
     didSet { for b in buttons { b.isEnabled = isEnabled } }
+  }
+
+  /// A press on it while it is off: a control that is off takes no press of its own, and a press with no answer
+  /// looks broken
+  var onOffPress: (() -> Void)?
+
+  override func hitTest(_ point: NSPoint) -> NSView? {
+    let hit = super.hitTest(point)
+    return !isEnabled && hit != nil ? self : hit
+  }
+
+  override func mouseDown(with event: NSEvent) {
+    if isEnabled { super.mouseDown(with: event) } else { onOffPress?() }
   }
 
   /// Why it is off, over every button; on, each says its own name
@@ -526,6 +540,41 @@ final class WebAddressField: NSTextField {
 
 /// The addresses the history suggests for what is typed, opening upward from the bar, the best nearest it: the arrow
 /// keys move through them, a click goes to one
+/// A line said above the bar: why a button pressed while it is off does nothing here
+final class WebNote: WebGlass {
+  private let label = NSTextField(labelWithString: "")
+
+  override init(look: ReadingBarLook) {
+    super.init(look: look)
+    label.font = .systemFont(ofSize: 12)
+    label.lineBreakMode = .byTruncatingTail
+    content.addSubview(label)
+    setAccessibilityIdentifier("ui-webnote")
+    setAccessibilityRole(.staticText)
+    isHidden = true
+  }
+
+  var text: String { label.stringValue }
+
+  func say(_ text: String) {
+    label.stringValue = text
+    label.textColor = NSColor(cgColor: look.ink)
+    setAccessibilityValue(text)
+    isHidden = text.isEmpty
+  }
+
+  /// As wide as its line, up to `limit`
+  func size(limit: CGFloat) -> CGSize {
+    CGSize(width: min(limit, ceil(label.intrinsicContentSize.width) + 24), height: look.button.height)
+  }
+
+  override func layout() {
+    super.layout()
+    let h = ceil(label.intrinsicContentSize.height)
+    label.frame = CGRect(x: 12, y: (bounds.height - h) / 2, width: bounds.width - 24, height: h)
+  }
+}
+
 final class WebSuggestions: WebGlass {
   var onChoose: ((URL) -> Void)?
   private(set) var entries: [WebHistory.Entry] = []

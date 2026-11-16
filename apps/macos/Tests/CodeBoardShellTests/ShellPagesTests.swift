@@ -292,6 +292,27 @@ struct ShiyiWebTabTests {
     #expect((try await js(v, text) as? String)?.contains("long enough to be read") == true)
     #expect(server.asked == asked, "the saved page reached the loopback: \(server.asked.dropFirst(asked.count))")
 
+    // a selection on the saved page, said by the real page scripts: the bar over it, and the passage at its block
+    _ = try await js(
+      v,
+      """
+      const p = document.querySelector("#main p")
+      const r = document.createRange()
+      r.selectNodeContents(p)
+      getSelection().removeAllRanges()
+      getSelection().addRange(r)
+      """)
+    try await until("the selection said") { v.selection?.text.contains("long enough to be read") == true }
+    #expect(!v.selectionBar.isHidden)
+    let passage = try #require(v.collecting())
+    if case .id? = passage.source?.place?.block {
+    } else {
+      Issue.record("no block in \(String(describing: passage.source))")
+    }
+    #expect(
+      passage.body
+        == .note(markdown: "The article's text, long enough to be read as the body of the page and nothing else."))
+
     // the real page scripts' blocks, translated by a made-up translator and shown beside the original
     pane.entries = EntryIndex(vault, try vault.tree())
     let t = open(saved.payload) { texts, _, _ in texts.map { "译文：" + $0 } }

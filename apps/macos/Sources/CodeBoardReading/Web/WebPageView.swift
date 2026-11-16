@@ -23,6 +23,9 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   /// The page's scroll as it last said
   private var scrollY: Double = 0
   let suggestions: WebSuggestions
+  /// Why a button of the bar pressed while it is off does nothing, said above the bar for a few seconds
+  let note: WebNote
+  private var noteEnds: Task<Void, Never>?
   private let context: ReadingContext
   /// The saving service; none: links alone are saved, and a saved page is not on this Mac
   private let store: (any PageStore)?
@@ -141,6 +144,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     web = PageWebView(frame: .zero, configuration: config)
     bar = WebBar(look: context.bar)
     suggestions = WebSuggestions(look: context.bar)
+    note = WebNote(look: context.bar)
     editOnShow = page == .online(nil) && handed == nil
     super.init(frame: .zero)
     setAccessibilityIdentifier("ui-web")
@@ -172,6 +176,9 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     suggestions.isHidden = true
     suggestions.onChoose = { [weak self] url in self?.go(to: url) }
     addSubview(suggestions)
+    addSubview(note)
+    bar.extract.onOffPress = { [weak self] in self?.say(self?.bar.extract.toolTip) }
+    bar.translate.onOffPress = { [weak self] in self?.say(self?.bar.translate.toolTip) }
     addSubview(bar)
     bar.back.target = self
     bar.back.action = #selector(goBack(_:))
@@ -237,6 +244,20 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     suggestions.frame = CGRect(
       x: b.minX, y: b.minY - 6 - suggestions.height, width: b.width, height: suggestions.height)
     suggestions.textX = WebBar.addressX(bar.look)
+    let size = note.size(limit: b.width)
+    note.frame = CGRect(x: b.maxX - size.width, y: b.minY - 6 - size.height, width: size.width, height: size.height)
+  }
+
+  /// A line above the bar, gone after 5 seconds or when the page changes
+  private func say(_ text: String?) {
+    noteEnds?.cancel()
+    note.say(text ?? "")
+    needsLayout = true
+    guard text?.isEmpty == false else { return }
+    noteEnds = Task { [weak self] in
+      try? await Task.sleep(for: .seconds(5))
+      if !Task.isCancelled { self?.say(nil) }
+    }
   }
 
   /// The board toolbar's height and distance from the bottom, so that beside the board the two bars' edges are on one
@@ -253,6 +274,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     bar.look = look
     selectionBar.look = look
     suggestions.look = look
+    note.look = look
     needsLayout = true
   }
 
@@ -365,7 +387,10 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
       // a page online is gone to by its address, which leaving a saved page puts in place of its hash
       context.update(title: title, payload: payload, key: page.key ?? web.url.map(WebReading.key(for:)) ?? "")
     }
-    if web.url != savedFor { askSaved() }
+    if web.url != savedFor {
+      say(nil)
+      askSaved()
+    }
     bar.extract.isEnabled = onSaved && scripts != nil && store != nil
     bar.extract.toolTip =
       if bar.extract.isEnabled {
@@ -375,7 +400,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
       } else if store == nil {
         "Body view needs the saving service, which is not set up on this Mac"
       } else {
-        "Body view is for saved pages"
+        "Body view is for pages saved whole: save the full page first, with the button at the right"
       }
     showBodyTip()
     showTranslation()
@@ -600,7 +625,9 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
 
   /// Why the language buttons are off; none: they are on
   private var translationOff: String? {
-    if !onSaved { return "Translation is for pages saved whole: save the full page first" }
+    if !onSaved {
+      return "Translation is for pages saved whole: save the full page first, with the button at the right"
+    }
     if scripts == nil { return "Translation needs the saving service's page scripts, which are not on this Mac" }
     if translator == nil { return "Translation needs the AI, which is not set up" }
     if readerLacksBlocks { return "Translation needs newer page scripts of the saving service than those on this Mac" }
@@ -797,8 +824,8 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   }
 
   /// The reader said what is selected on the saved page; its blocks give the heading before it
-  func readerSelected(_ m: [String: Any]) {
-    selected(WebSelection(reader: m, scrollY: scrollY, blocks: blocks?.list ?? []))
+  func readerSelected(_ m: [String: Any]?) {
+    selected(m.flatMap { WebSelection(reader: $0, scrollY: scrollY, blocks: blocks?.list ?? []) })
   }
 
   /// The selection's lines in this view, where the page has scrolled them since it said

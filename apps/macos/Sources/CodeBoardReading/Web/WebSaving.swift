@@ -339,7 +339,8 @@ final class SavingRelay: NSObject, WKScriptMessageHandlerWithReply {
   ) {
     let body = message.body
     if let m = body as? [String: Any], m["type"] as? String == "selection" {
-      owner?.readerSelected(m)
+      // `{type, selection: {ranges, rect} | null}`
+      owner?.readerSelected(m["selection"] as? [String: Any])
       return replyHandler(nil, nil)
     }
     if let m = body as? [String: Any], m["type"] as? String == "picker" {

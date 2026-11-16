@@ -11,6 +11,11 @@ until webviews has "Page A"
 expect focus has PageWebView
 expect webviews has "Page A" view shown page visible
 until readtabs has * web: Page A
+expect ui.webnote.w = missing
+click @ui.webextract
+until ui.webnote.w > 100
+click @ui.webtranslate
+expect ui.webnote.w > 100
 click @view:PageWebView
 until webviews has "Page B"
 click @ui.webback
