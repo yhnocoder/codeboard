@@ -105,6 +105,7 @@ actor TestSaving: WebSaving {
   private(set) var pages: [Page] = []
   private var states: [URL: WebReading.Saved] = [:]
   private var ruleFiles: [String: [Data]] = [:]
+  private var files: [String: URL] = [:]
 
   func saveLink(_ meta: WebReading.PageMeta) { links.append(meta) }
 
@@ -116,8 +117,14 @@ actor TestSaving: WebSaving {
   func saved(_ url: URL) -> WebReading.Saved { states[url] ?? .unsaved }
   func rules(forHost host: String) -> [Data] { ruleFiles[host] ?? [] }
 
+  func savedPage(hash: String) throws -> URL {
+    guard let f = files[hash] else { throw CocoaError(.fileNoSuchFile) }
+    return f
+  }
+
   func set(_ url: URL, _ state: WebReading.Saved) { states[url] = state }
   func set(rules: [String], forHost host: String) { ruleFiles[host] = rules.map { Data($0.utf8) } }
+  func set(file: URL, forHash hash: String) { files[hash] = file }
 }
 
 /// Stand-ins for the saving service's page scripts, speaking their messages, written to a folder of their own
@@ -151,12 +158,32 @@ enum StandInScripts {
     }
     """
 
+  /// Marks the page as read and, in body mode, hides what the rule files' `body` selectors leave out, with an
+  /// attribute as the real one does
+  static let reader = """
+    document.documentElement.setAttribute("data-reader", "")
+    var shiyiReader = {
+      files: [], mode: "full",
+      apply({ files, url, mode }) { this.files = files; this.url = url; this.setMode(mode) },
+      setMode(mode) {
+        this.mode = mode
+        const keep = this.files.map(f => f.body).filter(Boolean).join(",")
+        for (const e of document.body.children) {
+          if (mode == "body" && keep && !e.matches(keep)) e.setAttribute("data-shiyi-hidden", "")
+          else e.removeAttribute("data-shiyi-hidden")
+        }
+      },
+      state() { return { mode: this.mode, url: this.url } },
+    }
+    """
+
   /// A new folder holding them
   static func folder() throws -> URL {
     let f = FileManager.default.temporaryDirectory.appending(path: "web-scripts-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: f, withIntermediateDirectories: true)
     try hooks.write(to: f.appending(path: "hooks.js"), atomically: true, encoding: .utf8)
     try capture.write(to: f.appending(path: "capture.js"), atomically: true, encoding: .utf8)
+    try reader.write(to: f.appending(path: "reader.js"), atomically: true, encoding: .utf8)
     return f
   }
 }

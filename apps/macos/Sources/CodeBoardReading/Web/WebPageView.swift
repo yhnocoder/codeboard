@@ -2,7 +2,8 @@ import AppKit
 import WebKit
 
 /// A web page filling its tab, with its bar floating over the page's bottom edge. The bar comes and goes as
-/// `WebBarVisibility` says, moving over the page: the page is never laid out again for it
+/// `WebBarVisibility` says, moving over the page: the page is never laid out again for it. A saved page is shown in
+/// the same view, under the app's own scheme with its scripts off, until the tab goes to an address
 final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUIDelegate {
   let web: WKWebView
   let bar: WebBar
@@ -27,6 +28,16 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   private var savedFor: URL?
   /// What the save button says now
   private(set) var saveState = WebBar.Save.off("")
+  /// The saved pages this tab opened, by hash: what the bar shows for them and the tab is told
+  private var savedPages: [String: (address: URL, title: String)] = [:]
+  private let userScripts: WKUserContentController
+  private let scroll: WKUserScript
+  /// Whose scripts the page gets: saved pages' or online ones'; none before the first page
+  private var scriptsForSaved: Bool?
+  /// The next page is one the tab loads, not one a saved page starts loading by itself
+  private var ownLoad = false
+  /// Loads a saved page started by itself (a refresh, a redirect), refused
+  private(set) var refused: [URL] = []
   private var historyFile: URL { context.dataDirectory.appending(path: "history.json") }
   static let slide: TimeInterval = 0.18
 
@@ -37,26 +48,26 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     addEventListener("scroll", () => webkit.messageHandlers.scroll.postMessage(scrollY), { passive: true })
     """
 
-  init(url: URL?, context: WebReading.Context) {
+  init(page: WebReading.Page, context: WebReading.Context) {
     self.context = context
     let config = WKWebViewConfiguration()
     config.websiteDataStore = context.websiteData
     config.applicationNameForUserAgent = WebReading.applicationName
+    config.setURLSchemeHandler(SavedPageHandler(saving: context.saving), forURLScheme: WebReading.savedScheme)
+    userScripts = config.userContentController
     let relay = ScrollRelay()
-    config.userContentController.add(relay, contentWorld: .defaultClient, name: "scroll")
-    config.userContentController.addUserScript(
-      WKUserScript(
-        source: Self.scrollScript, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .defaultClient))
+    userScripts.add(relay, contentWorld: .defaultClient, name: "scroll")
+    scroll = WKUserScript(
+      source: Self.scrollScript, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .defaultClient)
     scripts = WebScripts(context.scripts)
     let saving = SavingRelay()
-    if let scripts {
-      for s in scripts.online { config.userContentController.addUserScript(s) }
-      config.userContentController.addScriptMessageHandler(saving, contentWorld: WebReading.scriptWorld, name: "shiyi")
+    if scripts != nil {
+      userScripts.addScriptMessageHandler(saving, contentWorld: WebReading.scriptWorld, name: "shiyi")
     }
     web = WKWebView(frame: .zero, configuration: config)
     bar = WebBar(radius: context.look.radius)
     suggestions = WebSuggestions(radius: context.look.radius)
-    editOnShow = url == nil
+    editOnShow = page == .online(nil)
     super.init(frame: .zero)
     setAccessibilityIdentifier("ui-web")
     relay.owner = self
@@ -77,6 +88,8 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     bar.forward.action = #selector(goForward(_:))
     bar.save.target = self
     bar.save.action = #selector(saveClicked(_:))
+    bar.extract.target = self
+    bar.extract.action = #selector(extractChosen(_:))
     bar.address.delegate = self
     bar.address.onEdit = { [weak self] in self?.beginEditing() }
     observations = [
@@ -98,7 +111,12 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     }
     historyChanged()
     pageChanged()
-    if let url { web.load(URLRequest(url: url)) }
+    switch page {
+    case .online(let url): if let url { load(url) }
+    case .saved(let hash, let address, let title):
+      savedPages[hash] = (address, title)
+      load(WebReading.savedURL(hash))
+    }
   }
 
   @available(*, unavailable)
@@ -179,9 +197,30 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   @objc func goForward(_ sender: Any?) { web.goForward() }
 
   func go(to url: URL) {
-    web.load(URLRequest(url: url))
+    load(url)
     window?.makeFirstResponder(web)
     endEditing()
+  }
+
+  private func load(_ url: URL) {
+    ownLoad = true
+    web.load(URLRequest(url: url))
+  }
+
+  /// What the tab shows now: a saved page by the address it was saved from
+  var page: WebReading.Page {
+    guard let url = web.url, url.scheme == WebReading.savedScheme, let hash = url.host(), let s = savedPages[hash]
+    else { return .online(web.url) }
+    return .saved(hash: hash, address: s.address, title: s.title)
+  }
+
+  /// The address the bar shows and edits
+  private var address: URL? {
+    if case .saved(_, let address, _) = page { address } else { web.url }
+  }
+
+  private var onSaved: Bool {
+    if case .saved = page { true } else { false }
   }
 
   /// The site's data is gone: its page again by address, not `reload()`, which would send a form's answer again
@@ -189,7 +228,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     guard let url = web.url, let host = url.host(), domain.map({ WebReading.host(host, isOf: $0) }) ?? true else {
       return
     }
-    web.load(URLRequest(url: url))
+    load(url)
   }
 
   private func historyChanged() {
@@ -198,9 +237,52 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   }
 
   private func pageChanged() {
-    if !bar.address.isEditing { bar.address.show(WebAddress.shown(web.url)) }
-    context.changed(web.title, web.url)
+    if !bar.address.isEditing { bar.address.show(WebAddress.shown(address)) }
+    let page = page
+    if case .saved(_, _, let title) = page {
+      context.changed(web.title.flatMap { $0.isEmpty ? nil : $0 } ?? title, page)
+    } else {
+      context.changed(web.title, page)
+    }
     if web.url != savedFor { askSaved() }
+    bar.extract.isEnabled = onSaved && scripts != nil
+    bar.extract.toolTip =
+      if bar.extract.isEnabled {
+        nil
+      } else if scripts == nil {
+        "Body view needs the saving service's page scripts, which are not on this Mac"
+      } else {
+        "Body view is for saved pages"
+      }
+  }
+
+  /// A saved page runs none of its own scripts and gets the reader; an online page its scripts and the saving
+  /// service's. A saved page loads nothing by itself: only the tab takes it to another page
+  func webView(
+    _ webView: WKWebView, decidePolicyFor action: WKNavigationAction, preferences: WKWebpagePreferences,
+    decisionHandler: @escaping @MainActor (WKNavigationActionPolicy, WKWebpagePreferences) -> Void
+  ) {
+    guard action.targetFrame?.isMainFrame != false, let url = action.request.url else {
+      return decisionHandler(.allow, preferences)
+    }
+    let ours = ownLoad
+    ownLoad = false
+    let toSaved = url.scheme == WebReading.savedScheme
+    if onSaved, !toSaved, action.navigationType == .other, !ours {
+      refused.append(url)
+      return decisionHandler(.cancel, preferences)
+    }
+    preferences.allowsContentJavaScript = !toSaved
+    useScripts(forSaved: toSaved)
+    decisionHandler(.allow, preferences)
+  }
+
+  private func useScripts(forSaved saved: Bool) {
+    guard scriptsForSaved != saved else { return }
+    scriptsForSaved = saved
+    userScripts.removeAllUserScripts()
+    userScripts.addUserScript(scroll)
+    for s in (saved ? scripts?.saved : scripts?.online) ?? [] { userScripts.addUserScript(s) }
   }
 
   func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
@@ -210,6 +292,33 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
     handle(.loaded)
     record(counted: true)
+    read()
+  }
+
+  // MARK: Body or full page
+
+  private var readerMode: String { bar.extract.selectedSegment == 1 ? "full" : "body" }
+
+  /// A saved page loaded: the reader given its site's rule files, in the mode chosen
+  private func read() {
+    guard case .saved(_, let address, _) = page, scripts != nil, let saving = context.saving else { return }
+    let url = web.url
+    Task {
+      let files = await saving.rules(forHost: address.host() ?? "").compactMap {
+        try? JSONSerialization.jsonObject(with: $0)
+      }
+      guard web.url == url else { return }
+      _ = try? await web.callAsyncJavaScript(
+        "return await shiyiReader.apply({files, url, mode})",
+        arguments: ["files": files, "url": address.absoluteString, "mode": readerMode],
+        contentWorld: WebReading.scriptWorld)
+    }
+  }
+
+  @objc func extractChosen(_ sender: Any?) {
+    guard onSaved, scripts != nil else { return }
+    web.callAsyncJavaScript(
+      "return await shiyiReader.setMode(mode)", arguments: ["mode": readerMode], in: nil, in: WebReading.scriptWorld)
   }
 
   /// The page in the history: a visit when it has loaded, its title when that comes (often after it has loaded)
@@ -226,6 +335,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction,
     windowFeatures: WKWindowFeatures
   ) -> WKWebView? {
+    ownLoad = true
     webView.load(action.request)
     return nil
   }
@@ -261,7 +371,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   }
 
   @objc func saveLink(_ sender: Any?) {
-    guard let saving = context.saving, let url = web.url else { return }
+    guard let saving = context.saving, let url = web.url, ["http", "https"].contains(url.scheme) else { return }
     let title = web.title ?? ""
     Task {
       let script =
@@ -280,7 +390,9 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   }
 
   @objc func savePage(_ sender: Any?) {
-    guard capture == nil, scripts != nil, let saving = context.saving, let url = web.url else { return }
+    guard capture == nil, scripts != nil, let saving = context.saving, let url = web.url,
+      ["http", "https"].contains(url.scheme)
+    else { return }
     let (title, cookies) = (web.title ?? "", context.websiteData.httpCookieStore)
     let capture = WebCapture(web: web) { [weak self] stage in self?.showSave(.saving(stage: stage)) }
     self.capture = capture
@@ -313,7 +425,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   /// A new address: how it is saved, from the owner
   private func askSaved() {
     savedFor = web.url
-    saved = .unsaved
+    saved = if case .saved(let hash, _, _) = page { .page(hash: hash) } else { .unsaved }
     if capture == nil { showSaved() }
     guard let saving = context.saving, let url = web.url, ["http", "https"].contains(url.scheme) else { return }
     Task {
@@ -326,6 +438,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
 
   private func showSaved() {
     guard context.saving != nil else { return showSave(.off("Saving is not set up")) }
+    if onSaved { return showSave(.off("This is the page as it was saved")) }
     guard let url = web.url, ["http", "https"].contains(url.scheme) else {
       return showSave(.off("No page to save"))
     }
@@ -355,7 +468,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   }
 
   private func beginEditing() {
-    bar.address.stringValue = web.url?.absoluteString ?? ""
+    bar.address.stringValue = address?.absoluteString ?? ""
     typed = bar.address.stringValue
     handle(.editing(true))
     let file = historyFile
@@ -367,7 +480,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
 
   private func endEditing() {
     suggestions.show([])
-    bar.address.show(WebAddress.shown(web.url))
+    bar.address.show(WebAddress.shown(address))
     handle(.editing(false))
   }
 

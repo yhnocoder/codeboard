@@ -31,7 +31,7 @@ import WebKit
 
   /// A tab's view in a window never ordered in
   func tab(_ url: URL, store: WKWebsiteDataStore) -> (WebPageView, NSWindow) {
-    let view = WebPageView(url: url, context: WebReading.Context(dataDirectory: data, websiteData: store))
+    let view = WebPageView(page: .online(url), context: WebReading.Context(dataDirectory: data, websiteData: store))
     let window = NSWindow(
       contentRect: CGRect(x: -30000, y: -30000, width: 600, height: 500), styleMask: [.titled], backing: .buffered,
       defer: false)

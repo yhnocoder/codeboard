@@ -516,7 +516,8 @@
             "WebHistoryTests",
             "WebPageTests",
             "WebSiteDataTests",
-            "WebSavingTests"
+            "WebSavingTests",
+            "WebSavedPageTests"
           ]
         },
         "reading: list": {

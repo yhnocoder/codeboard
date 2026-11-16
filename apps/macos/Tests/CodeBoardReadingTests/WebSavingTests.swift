@@ -35,7 +35,7 @@ import WebKit
   ) -> (WebPageView, NSWindow) {
     let context = WebReading.Context(
       dataDirectory: data, websiteData: store, saving: saving, scripts: scripts ? self.scripts : nil)
-    let view = WebReading.makeView(url: url(path), context: context) as! WebPageView
+    let view = WebReading.makeView(.online(url(path)), context: context) as! WebPageView
     let window = NSWindow(
       contentRect: CGRect(x: -30000, y: -30000, width: 600, height: 500), styleMask: [.titled], backing: .buffered,
       defer: false)

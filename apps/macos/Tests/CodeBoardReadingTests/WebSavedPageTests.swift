@@ -1,0 +1,184 @@
+import AppKit
+import Foundation
+import Synchronization
+import Testing
+import WebKit
+
+@testable import CodeBoardReading
+
+/// A saved page in a web tab: made-up saved files served under the app's scheme, the loopback server standing for the
+/// web they came from and saying which requests reached it, in a window never ordered in
+@MainActor @Suite(.serialized) struct WebSavedPageTests {
+  let server: LoopbackServer
+  let asked: Asked
+  let data = FileManager.default.temporaryDirectory.appending(path: "web-saved-\(UUID().uuidString)")
+  let scripts: URL
+
+  /// The paths the server was asked for
+  final class Asked: Sendable {
+    private let paths = Mutex<[String]>([])
+    func add(_ path: String) { paths.withLock { $0.append(path) } }
+    var all: [String] { paths.withLock { $0 } }
+  }
+
+  init() async throws {
+    _ = NSApplication.shared
+    let asked = Asked()
+    self.asked = asked
+    server = try await LoopbackServer { r in
+      asked.add(r.path)
+      return Self.pages(r)
+    }
+    scripts = try StandInScripts.folder()
+    try FileManager.default.createDirectory(at: data, withIntermediateDirectories: true)
+  }
+
+  /// The page online, and an address that has moved to it
+  nonisolated static func pages(_ r: LoopbackServer.Request) -> LoopbackServer.Response {
+    switch r.path {
+    case "/a": .html("<title>Page A</title><p>online</p>")
+    case "/moved": LoopbackServer.Response(status: "302 Found", headers: ["Location": "/a"], body: "")
+    default: LoopbackServer.Response(status: "404 Not Found", body: "<title>Missing</title>")
+    }
+  }
+
+  func url(_ path: String) -> URL { URL(string: "http://127.0.0.1:\(server.port)\(path)")! }
+
+  static let hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+  /// A saved file that would reach the loopback every way a page can, and run a script if it could: an image, a
+  /// stylesheet, a frame, a refresh, an inline script and a handler
+  func savedFile(_ extra: String = "") -> String {
+    let web = "http://127.0.0.1:\(server.port)"
+    return """
+      <!doctype html><meta charset="utf-8"><title>Saved A</title>
+      <meta http-equiv="refresh" content="0; url=\(web)/refreshed">
+      <link rel="stylesheet" href="\(web)/style.css">
+      <style>#main { color: rgb(1, 2, 3) }</style>
+      <body onload="document.documentElement.setAttribute('data-ran', '')">
+      <nav id="nav">menu</nav><main id="main">the text</main>
+      <img id="pic" src="\(web)/pixel.png"><iframe src="\(web)/frame"></iframe>
+      <script>document.documentElement.setAttribute("data-ran", ""); fetch("\(web)/fetched")</script>
+      \(extra)
+      """
+  }
+
+  func tab(
+    _ page: WebReading.Page, html: String?, saving: TestSaving = TestSaving(), scripts: Bool = true,
+    rules: [String] = [], changed: @escaping (String?, WebReading.Page) -> Void = { _, _ in }
+  ) async throws -> (WebPageView, NSWindow) {
+    if let html {
+      let file = data.appending(path: "\(Self.hash).html")
+      try html.write(to: file, atomically: true, encoding: .utf8)
+      await saving.set(file: file, forHash: Self.hash)
+    }
+    await saving.set(rules: rules, forHost: "127.0.0.1")
+    let context = WebReading.Context(
+      dataDirectory: data, websiteData: .nonPersistent(), saving: saving, scripts: scripts ? self.scripts : nil,
+      changed: changed)
+    let view = WebReading.makeView(page, context: context) as! WebPageView
+    let window = NSWindow(
+      contentRect: CGRect(x: -30000, y: -30000, width: 600, height: 500), styleMask: [.titled], backing: .buffered,
+      defer: false)
+    window.isReleasedWhenClosed = false
+    window.contentView = view
+    window.layoutIfNeeded()
+    return (view, window)
+  }
+
+  func done(_ w: NSWindow) {
+    w.close()
+    try? FileManager.default.removeItem(at: data)
+    try? FileManager.default.removeItem(at: scripts)
+  }
+
+  var saved: WebReading.Page { .saved(hash: Self.hash, address: url("/moved"), title: "Saved A") }
+
+  /// Read in a world of the app's own: the page's world runs nothing on a saved page
+  func js(_ v: WebPageView, _ body: String) async throws -> Any? {
+    try await v.web.callAsyncJavaScript(body, contentWorld: .defaultClient)
+  }
+
+  func shown(_ v: WebPageView, _ title: String) async throws {
+    try await until(title) { v.web.title == title && !v.web.isLoading }
+  }
+
+  /// The saved file is shown as it was saved, its inline style kept; nothing of it runs and nothing reaches the
+  /// network, not even the refresh, which the tab refuses; the bar shows the address it was saved from and the tab
+  /// is told it shows the saved page
+  @Test func aSavedPageShowsWhatItHoldsAndNothingRunsOrIsFetched() async throws {
+    var heard: [WebReading.Page] = []
+    let (v, w) = try await tab(saved, html: savedFile()) { _, page in heard.append(page) }
+    defer { done(w) }
+    try await shown(v, "Saved A")
+    try await until("the refresh refused") { v.refused == [url("/refreshed")] }
+    #expect(try await js(v, "return document.documentElement.hasAttribute('data-ran')") as? Bool == false)
+    let color = try await js(v, "return getComputedStyle(document.getElementById('main')).color")
+    #expect(color as? String == "rgb(1, 2, 3)", "the inline style kept")
+    #expect(try await js(v, "return document.getElementById('pic').naturalWidth") as? Int == 0)
+    #expect(asked.all.isEmpty, "asked for \(asked.all)")
+    #expect(v.web.url == WebReading.savedURL(Self.hash) && v.page == saved && heard.last == saved)
+    #expect(v.bar.address.stringValue == "127.0.0.1" && !v.bar.save.isEnabled)
+    #expect(!FileManager.default.fileExists(atPath: data.appending(path: "history.json").path), "not a visit")
+  }
+
+  /// Going to the address shown leaves the saved page for the page online, in the same tab, following where it has
+  /// moved; back is the saved page again, still running nothing
+  @Test func goingToTheAddressLeavesTheSavedPageForTheOnlineOne() async throws {
+    var heard: [WebReading.Page] = []
+    let (v, w) = try await tab(saved, html: savedFile()) { _, page in heard.append(page) }
+    defer { done(w) }
+    try await shown(v, "Saved A")
+    v.openLocation(nil)
+    let editor = try #require(v.bar.address.currentEditor() as? NSTextView)
+    #expect(v.bar.address.stringValue == url("/moved").absoluteString)
+    editor.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+    try await shown(v, "Page A")
+    #expect(v.page == .online(url("/a")) && heard.last == .online(url("/a")))
+    #expect(asked.all == ["/moved", "/a"])
+    #expect(v.bar.back.isEnabled)
+    v.bar.back.performClick(nil)
+    try await until("the saved page again") { v.page == saved && !v.web.isLoading }
+    #expect(try await js(v, "return document.documentElement.hasAttribute('data-ran')") as? Bool == false)
+    #expect(asked.all == ["/moved", "/a"])
+  }
+
+  /// With the scripts, a saved page is read in body view with its site's rule files, and full page shows it all
+  /// again; the control is off, saying why, on an online page and without the scripts
+  @Test func bodyAndFullPageReadASavedPage() async throws {
+    let (v, w) = try await tab(saved, html: savedFile(), rules: [##"{"body":"#main"}"##])
+    defer { done(w) }
+    try await shown(v, "Saved A")
+    #expect(v.bar.extract.isEnabled && v.bar.extract.selectedSegment == 0)
+    let hidden = "return [...document.querySelectorAll('[data-shiyi-hidden]')].map(e => e.id).filter(Boolean).join(' ')"
+    try await until("body view") { try await js(v, hidden) as? String == "nav pic" }
+    v.bar.extract.selectedSegment = 1
+    NSApp.sendAction(v.bar.extract.action!, to: v.bar.extract.target, from: v.bar.extract)
+    try await until("full page") { try await js(v, hidden) as? String == "" }
+    v.bar.extract.selectedSegment = 0
+    NSApp.sendAction(v.bar.extract.action!, to: v.bar.extract.target, from: v.bar.extract)
+    try await until("body view again") { try await js(v, hidden) as? String == "nav pic" }
+
+    v.go(to: url("/a"))
+    try await shown(v, "Page A")
+    #expect(!v.bar.extract.isEnabled && v.bar.extract.toolTip?.isEmpty == false)
+    #expect(try await js(v, "return document.documentElement.hasAttribute('data-reader')") as? Bool == false)
+
+    let (bare, w2) = try await tab(saved, html: savedFile(), scripts: false)
+    defer { w2.close() }
+    try await shown(bare, "Saved A")
+    #expect(!bare.bar.extract.isEnabled && bare.bar.extract.toolTip?.contains("scripts") == true)
+  }
+
+  /// A saved page whose file is not on this Mac says so in the tab, which keeps the saved title
+  @Test func aSavedPageNotOnThisMacSaysSo() async throws {
+    var titles: [String?] = []
+    let (v, w) = try await tab(saved, html: nil) { title, _ in titles.append(title) }
+    defer { done(w) }
+    try await until("the page") { !v.web.isLoading && v.web.url != nil }
+    try await until("it says so") {
+      (try await js(v, "return document.body.innerText") as? String)?.contains("not on this Mac") == true
+    }
+    #expect(titles.last == "Saved A" && v.bar.address.stringValue == "127.0.0.1")
+  }
+}

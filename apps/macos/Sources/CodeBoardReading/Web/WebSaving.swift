@@ -1,7 +1,7 @@
 import Foundation
 import WebKit
 
-/// What a web tab asks its owner to do with what it saves, and to tell it what was saved
+/// What a web tab asks its owner to do with what it saves, and what it asks for of what was saved
 public protocol WebSaving: Sendable {
   func saveLink(_ meta: WebReading.PageMeta) async throws
   /// `file` is the page captured whole, one self-contained HTML file, the tab's until this returns. The saved page's
@@ -11,6 +11,8 @@ public protocol WebSaving: Sendable {
   func saved(_ url: URL) async -> WebReading.Saved
   /// The saving service's rule files for pages of `host`, as JSON; none when it has none or cannot be reached
   func rules(forHost host: String) async -> [Data]
+  /// The page saved as `hash`, as a file on this Mac; throws when it cannot be had here
+  func savedPage(hash: String) async throws -> URL
 }
 
 extension WebReading {
@@ -62,14 +64,17 @@ extension WebReading {
 struct WebScripts {
   var hooks: String
   var capture: String
+  var reader: String
 
   init?(_ folder: URL?) {
     guard let folder,
       let hooks = try? String(contentsOf: folder.appending(path: "hooks.js"), encoding: .utf8),
-      let capture = try? String(contentsOf: folder.appending(path: "capture.js"), encoding: .utf8)
+      let capture = try? String(contentsOf: folder.appending(path: "capture.js"), encoding: .utf8),
+      let reader = try? String(contentsOf: folder.appending(path: "reader.js"), encoding: .utf8)
     else { return nil }
     self.hooks = hooks
     self.capture = capture
+    self.reader = reader
   }
 
   /// Online pages: the hooks in the page's world at its start, the capture script in its own, in every frame
@@ -79,6 +84,11 @@ struct WebScripts {
       WKUserScript(
         source: capture, injectionTime: .atDocumentEnd, forMainFrameOnly: false, in: WebReading.scriptWorld),
     ]
+  }
+
+  /// Saved pages: the reader in its own world, in the page alone
+  @MainActor var saved: [WKUserScript] {
+    [WKUserScript(source: reader, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: WebReading.scriptWorld)]
   }
 }
 

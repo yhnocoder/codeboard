@@ -42,10 +42,10 @@ import WebKit
   /// A tab's view in a window never ordered in, with its own store unless one is given
   func tab(
     _ path: String?, store: WKWebsiteDataStore = .nonPersistent(),
-    changed: @escaping (String?, URL?) -> Void = { _, _ in }
+    changed: @escaping (String?, WebReading.Page) -> Void = { _, _ in }
   ) -> (WebPageView, NSWindow) {
     let context = WebReading.Context(dataDirectory: data, websiteData: store, changed: changed)
-    let view = WebReading.makeView(url: path.map(url), context: context) as! WebPageView
+    let view = WebReading.makeView(.online(path.map(url)), context: context) as! WebPageView
     let window = NSWindow(
       contentRect: CGRect(x: -30000, y: -30000, width: 600, height: 500), styleMask: [.titled], backing: .buffered,
       defer: false)
