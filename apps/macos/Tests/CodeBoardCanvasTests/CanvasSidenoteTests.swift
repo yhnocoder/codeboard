@@ -830,3 +830,30 @@ extension CanvasSidenoteTests {
     #expect(await pop.run("return document.querySelectorAll('.slip').length") as? Int == 2, "what it shows kept")
   }
 }
+
+extension CanvasSidenoteTests {
+  /// There is one question list: opened on another canvas (another tab), it closes on the one it was open on, which
+  /// then neither closes the other's with its next press nor shows its own board's questions in it
+  @Test func theQuestionListOpenedOnAnotherCanvasClosesOnTheFirst() async throws {
+    let r = try await Rig(sidenoteBoard(question: true), zoom: 1)
+    let other = try await Rig(sidenoteBoard(), zoom: 1, alongside: r)
+    defer {
+      other.close()
+      r.close()
+    }
+    let button = CGRect(x: 600, y: 650, width: 40, height: 24)
+    let list = r.canvas.questionList
+    r.canvas.toggleQuestionList(under: button)
+    // at once, while the first still reads the other boards' questions
+    other.canvas.toggleQuestionList(under: button)
+    #expect(!r.canvas.listShown && other.canvas.listShown)
+    await r.until("the list shows") { list.view.alphaValue == 1 }
+    #expect(list.view.superview === other.canvas.superview)
+    #expect(await list.run("return document.querySelectorAll('.qlist-row').length") as? Int == 0, "the other's board")
+    // closing where it no longer is does nothing to the one open
+    r.canvas.closeQuestionList()
+    #expect(other.canvas.listShown && list.view.alphaValue == 1)
+    other.canvas.closeQuestionList()
+    #expect(!other.canvas.listShown && CanvasView.listOutside == nil)
+  }
+}
