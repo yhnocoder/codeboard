@@ -85,6 +85,8 @@ public final class CanvasView: NSView {
   package internal(set) var pictureShownAt: CFTimeInterval?
   /// Another board is being opened: what is shown is the board left (or its picture), so input goes nowhere
   var opening = false
+  /// Awaited before a load's work starts, so that a test looks at the canvas while a board is still opening
+  var loadHold: (@Sendable () async -> Void)?
   /// The summary level's columns (CanvasSummaries.swift)
   let summaryLayer = CALayer()
   /// Which level is shown and how it changes (SummaryLevels.swift)
@@ -645,7 +647,9 @@ public final class CanvasView: NSView {
     let sources = open.map(sourceInfo) ?? [:]
     // where the camera will be once it is installed (install: arriving, else kept, else the board's top left at 100 %)
     let opensAt = keepCamera ? camera : arriving ?? keptCamera(of: board, in: vault)
+    let hold = loadHold
     let work = Task.detached(priority: .userInitiated) {
+      await hold?()
       let package = vault.url(of: board.path)
       let b = try open ?? vault.board(at: board.path)
       let measures = Scene.measures(b, package: package, vault: vault, sources: sources)

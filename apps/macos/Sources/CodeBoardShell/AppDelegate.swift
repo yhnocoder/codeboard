@@ -228,7 +228,18 @@ import CodeBoardResources
 
   /// The board's tabs; the reading pane answers the tab keys first while it has the keys (ReadingPaneView)
   @objc func closeTab(_ sender: Any?) {
-    if let tab = shell.selected { shell.close(tab) } else { window?.performClose(sender) }
+    // another window in front (Settings) is what ⌘W closes, not a tab of the window behind it
+    if let other = otherKeyWindow {
+      other.performClose(sender)
+    } else if let tab = shell.selected {
+      shell.close(tab)
+    } else {
+      window?.performClose(sender)
+    }
+  }
+
+  private var otherKeyWindow: NSWindow? {
+    NSApp.keyWindow.flatMap { $0 === window || $0.sheetParent != nil ? nil : $0 }
   }
 
   // Not toggleSidebar(_:): NSWindow answers that one itself (and disables it, having no split view)
@@ -268,7 +279,7 @@ import CodeBoardResources
     switch item.action {
     case #selector(importOldBoards(_:)): return shell.vault != nil && !shell.importing
     case #selector(closeTab(_:)):
-      item.title = shell.selected == nil ? "Close" : "Close Tab"
+      item.title = shell.selected == nil || otherKeyWindow != nil ? "Close" : "Close Tab"
       return window != nil
     case #selector(flipSidebar(_:)):
       item.title = shell.sidebarShown ? "Hide Sidebar" : "Show Sidebar"
