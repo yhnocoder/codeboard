@@ -630,6 +630,78 @@ extension CanvasSidenoteTests {
 }
 
 extension CanvasSidenoteTests {
+  /// The other boards are read with their shared cards (core collectQuestions): a question that travels with one is
+  /// listed once, on the first board in the vault that shows it, this one among them; a board-only one on its lines
+  /// says its file
+  @Test func otherBoardsQuestionsOnASharedCardAreListedOnceOnTheFirstBoardThatShowsIt() throws {
+    let fm = FileManager.default
+    let vault = Vault(root: fm.temporaryDirectory.appending(path: "questions-shared-\(UUID().uuidString)"))
+    defer { try? fm.removeItem(at: vault.root) }
+    try fm.createDirectory(at: vault.sharedFolderURL, withIntermediateDirectories: true)
+    let sc = cid("sc")
+    let seg = Segment(
+      id: s1, source: .file(path: "engine/sched.py", hash: nil), language: "python", firstLine: 10,
+      lines: ["def step():", "    take()", "    run()"])
+    try SharedCard(
+      id: sc, content: CardContent(body: .code(CodeCard(segments: [seg]))),
+      sidenotes: [
+        Sidenote(id: nid("tq"), anchor: .card(sc), body: .text(TextNote(text: "跟着卡走", question: Question(at: 7))))
+      ]
+    ).encoded().write(to: vault.sharedFolderURL.appending(path: "sc.json"))
+    for name in ["a", "m", "z"] {
+      var b = Board(
+        id: BoardID(rawValue: name), cards: [Card(id: sc, x: 0, y: 0, width: 300, content: .shared)])
+      if name == "z" {
+        b.sidenotes = [
+          Sidenote(
+            id: nid("bq"), anchor: .card(sc, segment: s1, lines: 11...11),
+            body: .text(TextNote(text: "只在这块", question: Question(at: 8))), boardOnly: true)
+        ]
+      }
+      try vault.newBoard(in: "", title: name, board: b)
+    }
+    let all = try vault.tree().allBoards
+    func listed(current id: String) throws -> [String: [String]] {
+      let vb = try #require(all.first { $0.id.rawValue == id })
+      let current = try vault.board(at: vb.path).inflated { try? vault.sharedCard($0) }
+      let others = CanvasView.otherQuestions(in: vault, current: current, at: vb)
+      return Dictionary(
+        uniqueKeysWithValues: others.map { o in (o.0.id.rawValue, o.1.map { "\($0.note) \($0.where)" }) })
+    }
+    #expect(try listed(current: "m") == ["a": ["tq sched.py 10–12"], "z": ["bq sched.py:11"]])
+    #expect(try listed(current: "a") == ["m": [], "z": ["bq sched.py:11"]], "on this board, so on no other")
+  }
+
+  /// Gone to from the list (actions/notes.ts goToQuestion, scenario questionOpensAfterFlight): a question out of view
+  /// is flown to, its card with room on its right for the popup, which opens only once the camera is at rest; one in
+  /// view opens where it is, the camera still
+  @Test func aQuestionOutOfViewIsFlownToAndItsPopupOpensOnceTheCameraIsAtRest() async throws {
+    let r = try await Rig(sidenoteBoard(question: true), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    c.place(zoom: 1, centre: CGPoint(x: 6000, y: 4000))
+    c.showQuestion(nid("w1"))
+    #expect(!c.motion.isResting, "a flight, not a jump")
+    var frames = 0
+    while !c.motion.isResting && frames < 600 {
+      #expect(c.pops.isEmpty, "no popup while the camera moves")
+      r.tick()
+      frames += 1
+      await Task.yield()
+    }
+    #expect(frames > 2 && c.motion.isResting)
+    let there = c.camera
+    await opened(r, .spot(.card(cid("n1"))))
+    #expect(c.camera == there)
+    let card = r.rect("n1")
+    #expect(c.safeView.contains(card.union(CGRect(x: card.maxX, y: card.minY, width: 500, height: 1))))
+    // in view: no move
+    c.showQuestion(nid("w1"))
+    #expect(c.motion.isResting && c.camera == there)
+    await opened(r, .spot(.card(cid("n1"))))
+    #expect(c.camera == there)
+  }
+
   @Test func theInputOpenedAtOnceOffersTheReferenceListOnceItsCandidatesCome() async throws {
     let r = try await Rig(sidenoteBoard(), zoom: 1)
     defer { r.close() }
