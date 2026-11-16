@@ -542,7 +542,9 @@
             "WebPageTests",
             "WebSiteDataTests",
             "WebSavingTests",
-            "WebSavedPageTests"
+            "WebSavedPageTests",
+            "WebTranslatingTests",
+            "WebTranslationTests"
           ]
         },
         "reading: list": {

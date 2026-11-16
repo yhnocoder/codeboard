@@ -5,8 +5,9 @@ import WebKit
 
 /// A web page filling its tab, with its bar floating over the page's bottom edge. The bar comes and goes as
 /// `WebBarVisibility` says, moving over the page: the page is never laid out again for it. A saved page is shown in
-/// the same view, under the app's own scheme with its scripts off, until the tab goes to an address. The tab follows
-/// what it shows (its title, what it saves), so that a session restored opens it again
+/// the same view, under the app's own scheme with its scripts off, until the tab goes to an address, and translated
+/// there block by block, its translations kept beside its entry. The tab follows what it shows (its title, what it
+/// saves, how a saved page is shown), so that a session restored opens it again
 final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUIDelegate, ReadingLookFollower {
   let web: WKWebView
   let bar: WebBar
@@ -43,6 +44,27 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   private var ownLoad = false
   /// Loads a saved page started by itself (a refresh, a redirect), refused
   private(set) var refused: [URL] = []
+  /// Translates saved pages' blocks; none: they are not translated
+  private let translator: WebReading.Translator?
+  /// How a saved page is shown
+  private(set) var language: WebReading.Language
+  /// The saved page's blocks as its reader gives them, with its numbering and the page's language; none before the
+  /// reader gave them
+  private(set) var blocks: (scheme: Int, lang: String?, list: [WebBlock])?
+  /// The reader was asked for the blocks and cannot give them
+  private var readerLacksBlocks = false
+  /// Where this saved page's translations are kept, and what they are now; none while its entry is not known
+  private var kept: Kept?
+  /// Why the kept translations could not be read: they are left as they are
+  private var keptError: String?
+  /// The translating under way
+  private(set) var translating: Task<Void, Never>?
+  /// Blocks translated of those asked for, while translating
+  private var progress: (done: Int, of: Int)?
+  /// Why the last translating left blocks out
+  private var translationFailure: String?
+  /// The translations' writes, each after the one before
+  private var writing: Task<Void, Never>?
   /// The views of open web tabs
   private static var live: [ReadingTab.ID: Weak] = [:]
   private struct Weak {
@@ -64,9 +86,14 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
 
   /// `scripts`: the folder of the saving service's page scripts; `websiteData`: where its sites keep their data. A tab
   /// opened for a page's new window is handed the configuration WebKit made for it, which WebKit loads itself
-  init(context: ReadingContext, store: (any PageStore)?, scripts: URL?, websiteData: WKWebsiteDataStore) {
+  init(
+    context: ReadingContext, store: (any PageStore)?, scripts: URL?, translate: WebReading.Translator?,
+    websiteData: WKWebsiteDataStore
+  ) {
     self.context = context
     self.store = store
+    translator = translate
+    language = context.payload["view"].flatMap(WebReading.Language.init) ?? .original
     let page = WebReading.Page(payload: context.payload)
     let handed = context.handed as? WKWebViewConfiguration
     // a new window's configuration is a copy of its opener's: its data store, which WebKit wants for both, and the
@@ -114,6 +141,9 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     bar.save.action = #selector(saveClicked(_:))
     bar.extract.target = self
     bar.extract.action = #selector(extractChosen(_:))
+    bar.translate.target = self
+    bar.translate.action = #selector(translateChosen(_:))
+    bar.translate.selectedSegment = WebReading.Language.allCases.firstIndex(of: language) ?? 0
     bar.address.delegate = self
     bar.address.onEdit = { [weak self] in self?.beginEditing() }
     observations = [
@@ -149,6 +179,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
 
   isolated deinit {
     if let clearedObserver { NotificationCenter.default.removeObserver(clearedObserver) }
+    translating?.cancel()
   }
 
   override var isFlipped: Bool { true }
@@ -177,6 +208,12 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     bar.look = look
     suggestions.look = look
     needsLayout = true
+  }
+
+  /// Taken out of the pane: its tab closed
+  override func viewDidMoveToSuperview() {
+    super.viewDidMoveToSuperview()
+    if superview == nil { translating?.cancel() }
   }
 
   override func viewDidMoveToWindow() {
@@ -278,8 +315,10 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
       let page = page
       let own = web.title.flatMap { $0.isEmpty ? nil : $0 }
       let title = if case .saved(_, _, let saved) = page { own ?? saved } else { own ?? WebAddress.shown(address) }
+      var payload = page.payload
+      if onSaved, language != .original { payload["view"] = language.rawValue }
       // a page online is gone to by no key: leaving a saved page clears its
-      context.update(title: title, payload: page.payload, key: page.key ?? "")
+      context.update(title: title, payload: payload, key: page.key ?? "")
     }
     if web.url != savedFor { askSaved() }
     bar.extract.isEnabled = onSaved && scripts != nil && store != nil
@@ -293,6 +332,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
       } else {
         "Body view is for saved pages"
       }
+    showTranslation()
   }
 
   /// A saved page runs none of its own scripts and gets the reader; an online page its scripts and the saving
@@ -328,6 +368,9 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     capture?.cancel()
   }
 
+  /// Another page in place of this one; one that fails to come leaves this one as it was
+  func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) { stopTranslating() }
+
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
     handle(.loaded)
     record(counted: true)
@@ -338,7 +381,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
 
   private var readerMode: String { bar.extract.selectedSegment == 1 ? "full" : "body" }
 
-  /// A saved page loaded: the reader given its site's rule files, in the mode chosen
+  /// A saved page loaded: the reader given its site's rule files, in the mode chosen, then asked for its blocks
   private func read() {
     guard case .saved(_, let address, _) = page, scripts != nil, let store else { return }
     let url = web.url
@@ -351,6 +394,8 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
         "return await shiyiReader.apply({files, url, mode})",
         arguments: ["files": files, "url": address.absoluteString, "mode": readerMode],
         contentWorld: WebReading.scriptWorld)
+      guard web.url == url else { return }
+      await readBlocks()
     }
   }
 
@@ -377,6 +422,169 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   ) -> WKWebView? {
     let title = action.request.url?.host() ?? "New Tab"
     return (context.open(title, kind: WebReading.kind, handing: configuration) as? WebPageView)?.web
+  }
+
+  // MARK: Translation
+
+  /// Where a saved page's translations are kept: the version of its entry it is, and what they are now
+  private struct Kept: Sendable {
+    var vault: Vault
+    var entry: String
+    var version: VersionID
+    var file: PageTranslations
+  }
+
+  /// Why the language buttons are off; none: they are on
+  private var translationOff: String? {
+    if !onSaved { return "Translation is for pages saved whole: save the full page first" }
+    if scripts == nil { return "Translation needs the saving service's page scripts, which are not on this Mac" }
+    if translator == nil { return "Translation needs the AI, which is not set up" }
+    if readerLacksBlocks { return "Translation needs newer page scripts of the saving service than those on this Mac" }
+    if blocks == nil { return "The page is being read" }
+    if let keptError { return keptError }
+    if kept == nil { return "Translations are kept in the page's entry, which is not in the open vault" }
+    return nil
+  }
+
+  private func showTranslation() {
+    bar.show(
+      translationOff.map(WebBar.Translate.off)
+        ?? progress.map { .translating(done: $0.done, of: $0.of) }
+        ?? translationFailure.map(WebBar.Translate.failed) ?? .ready)
+  }
+
+  /// The reader's blocks of the saved page, then its kept translations shown
+  private func readBlocks() async {
+    guard translator != nil else { return }
+    let r = try? await web.callAsyncJavaScript(
+      """
+      if (typeof shiyiReader.blocks != "function") return null
+      const r = await shiyiReader.blocks()
+      return { scheme: r.scheme, blocks: r.blocks, lang: document.documentElement.lang }
+      """, contentWorld: WebReading.scriptWorld)
+    guard let d = r as? [String: Any], let scheme = d["scheme"] as? Int, let list = d["blocks"] as? [Any] else {
+      readerLacksBlocks = true
+      return showTranslation()
+    }
+    let lang = (d["lang"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    blocks = (scheme, lang, list.compactMap(WebBlock.init(script:)))
+    showTranslation()
+    await takeKept()
+  }
+
+  /// The translations kept for this saved page in its entry, read and shown, and the page shown as the tab says
+  private func takeKept() async {
+    guard case .saved(let hash, _, _) = page, let blocks, let vault = context.pane.vault,
+      let found = context.pane.entries.all.lazy.compactMap({ f in
+        f.entry.versions.first { if case .page(hash, _, _) = $0.content { true } else { false } }.map { (f.path, $0.id) }
+      }).first
+    else { return showTranslation() }
+    let (entry, version) = found
+    do {
+      let file = try vault.translations(of: version, language: WebReading.translationLanguage, in: entry)
+      kept = Kept(
+        vault: vault, entry: entry, version: version,
+        file: file.flatMap { $0.scheme == blocks.scheme ? $0 : nil } ?? PageTranslations(scheme: blocks.scheme))
+    } catch {
+      keptError = "The page's translations could not be read: \(error)"
+      return showTranslation()
+    }
+    showTranslation()
+    let stored = kept?.file.blocks ?? [:]
+    var shown: [String: String] = [:]
+    for b in blocks.list {
+      if let t = stored[b.id], t.hash == b.hash { shown[b.id] = t.text }
+    }
+    if !shown.isEmpty { await setTranslations(shown) }
+    if language != .original { await show(language) }
+  }
+
+  private func setTranslations(_ texts: [String: String]) async {
+    _ = try? await web.callAsyncJavaScript(
+      "shiyiReader.setTranslations(texts)", arguments: ["texts": texts], contentWorld: WebReading.scriptWorld)
+  }
+
+  @objc func translateChosen(_ sender: Any?) {
+    language = WebReading.Language.allCases[bar.translate.selectedSegment]
+    pageChanged()
+    Task { await show(language) }
+  }
+
+  /// The page shown in `language`, the blocks it lacks translated
+  private func show(_ language: WebReading.Language) async {
+    guard translationOff == nil else { return }
+    _ = try? await web.callAsyncJavaScript(
+      "shiyiReader.setLanguage(language)", arguments: ["language": language.rawValue],
+      contentWorld: WebReading.scriptWorld)
+    if language != .original { translateRest() }
+  }
+
+  /// The blocks without a kept translation of their text translated, from the one at the top of the window, each
+  /// batch shown and kept as it comes
+  private func translateRest() {
+    guard translating == nil, let translator, let blocks, let stored = kept?.file.blocks else { return }
+    translationFailure = nil
+    translating = Task { [weak self, web] in
+      let top =
+        try? await web.callAsyncJavaScript(
+          "return shiyiReader.position()?.id ?? null", contentWorld: WebReading.scriptWorld) as? String
+      let batches = WebTranslating.batches(blocks.list, stored: stored, top: top)
+      guard !Task.isCancelled else { return }
+      self?.progress = (0, batches.reduce(0) { $0 + $1.count })
+      self?.showTranslation()
+      let outcome = await WebTranslating.run(
+        batches, from: blocks.lang, to: WebReading.translationLanguage, translate: translator
+      ) { [weak self] in self?.took($0) }
+      guard !Task.isCancelled else { return }
+      self?.ran(outcome)
+    }
+  }
+
+  private func took(_ done: [String: PageTranslations.Block]) {
+    guard var k = kept else { return }
+    k.file.blocks.merge(done) { $1 }
+    kept = k
+    progress?.done += done.count
+    showTranslation()
+    Task { await setTranslations(done.mapValues(\.text)) }
+    let before = writing
+    writing = Task { [weak self] in
+      await before?.value
+      guard let why = await Self.write(k) else { return }
+      self?.translationFailure = why
+      self?.showTranslation()
+    }
+  }
+
+  /// Off the main thread: a long page's file is written again after every batch
+  @concurrent private static func write(_ k: Kept) async -> String? {
+    do {
+      try k.vault.write(k.file, of: k.version, language: WebReading.translationLanguage, in: k.entry)
+      return nil
+    } catch {
+      return "The translations could not be saved: \(error)"
+    }
+  }
+
+  private func ran(_ outcome: WebTranslating.Outcome) {
+    translating = nil
+    progress = nil
+    let n = outcome.failed.count
+    if n > 0 {
+      let why = outcome.error.map { ": \($0.localizedDescription)" } ?? ""
+      translationFailure =
+        "\(n == 1 ? "A block" : "\(n) blocks") could not be translated\(why). Choose Side by Side or Translation "
+        + "again to try again"
+    }
+    showTranslation()
+  }
+
+  /// Leaving the page: its translating stops, and what was read of it is let go
+  private func stopTranslating() {
+    translating?.cancel()
+    translating = nil
+    (blocks, kept, keptError, progress, translationFailure, readerLacksBlocks) = (nil, nil, nil, nil, nil, false)
+    showTranslation()
   }
 
   // MARK: Saving
@@ -488,7 +696,10 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   }
 
   /// The vault's entries were read again
-  func entriesRead() { askSaved() }
+  func entriesRead() {
+    askSaved()
+    if blocks != nil, kept == nil, keptError == nil { Task { await takeKept() } }
+  }
 
   /// A new address, or the entries read again: how it is saved, from the vault
   private func askSaved() {
