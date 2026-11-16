@@ -313,4 +313,66 @@ import Testing
     #expect(fm.fileExists(atPath: trash.appending(path: "Papers 2017.resource/notes.pdf").path(percentEncoded: false)))
     #expect(shell.tree?.boards.map(\.title) == ["Engine"])
   }
+
+  /// A click on a resource's row opens its tab in the reading pane, a second goes to the same tab; renamed, the tab
+  /// takes the new name; gone from the vault, it closes
+  @Test func aResourcesRowOpensItsTabOnceAndTheTabFollowsTheResource() throws {
+    let (vault, shell, _) = try vault()
+    defer { try? fm.removeItem(at: vault.root) }
+    try resource(vault, "Papers.resource", id: "r1")
+    try resource(vault, "Notes.resource", id: "r2")
+    shell.apply(Result { try vault.tree() })
+    let papers = try #require(shell.tree?.resources.first { $0.title == "Papers" })
+    let notes = try #require(shell.tree?.resources.first { $0.title == "Notes" })
+    #expect(!shell.reading.shown)
+    shell.openResource(papers)
+    #expect(shell.reading.shown && shell.reading.tabs.map(\.title) == ["Papers"])
+    shell.openResource(notes)
+    shell.openResource(papers)
+    #expect(shell.reading.tabs.map(\.title) == ["Papers", "Notes"])
+    #expect(shell.reading.selected == shell.reading.tabs[0].id, "the same tab")
+    shell.rename(resource: papers, to: "Papers 2017")
+    #expect(shell.reading.tabs.map(\.title) == ["Papers 2017", "Notes"])
+    try fm.removeItem(at: vault.url(of: notes.path))
+    shell.apply(Result { try vault.tree() })
+    #expect(shell.reading.tabs.map(\.title) == ["Papers 2017"] && shell.reading.shown)
+  }
+
+  /// New Resource, beside New Board and New Folder: a package with its resource file and no entries, its row with 0,
+  /// its tab open and its name written in place; Delete Folder says the resources that go with the folder
+  @Test func newResourceMakesAnEmptyPackageWhoseNameIsWrittenAtOnce() async throws {
+    let (vault, shell, _) = try vault()
+    defer { try? fm.removeItem(at: vault.root) }
+    try vault.newFolder(in: "", name: "Reading")
+    shell.apply(Result { try vault.tree() })
+    let folder = try #require(shell.tree?.folder(at: "Reading"))
+    let menu = shell.menu(folder: folder)
+    #expect(menu.prefix(4).map { $0?.title ?? "-" } == ["New Board", "New Folder", "New Resource", "-"])
+    menu[2]?.run()
+    let made = try #require(shell.tree?.folder(at: "Reading")?.resources.first)
+    #expect(made.title == "New Resource" && made.path == "Reading/New Resource.resource" && made.entryCount == 0)
+    #expect(made.preset == .files)
+    #expect(fm.fileExists(atPath: vault.url(of: made.path).appending(path: Vault.resourceFileName).path))
+    #expect(shell.renaming == .resource(made.id) && shell.expanded.contains("Reading"))
+    #expect(shell.reading.tabs.map(\.title) == ["New Resource"])
+    shell.newResource(in: "")
+    #expect(shell.tree?.resources.map(\.title) == ["New Resource"], "at the top, a name of its own")
+    shell.newResource(in: "Reading")
+    #expect(shell.tree?.folder(at: "Reading")?.resources.map(\.title).sorted() == ["New Resource", "New Resource 2"])
+
+    try vault.newBoard(in: "Reading", title: "Plan")
+    shell.apply(Result { try vault.tree() })
+    var asked: [String] = []
+    shell.confirm = { a in
+      asked.append(a.informativeText)
+      return false
+    }
+    shell.menu(folder: try #require(shell.tree?.folder(at: "Reading"))).compactMap { $0 }
+      .first { $0.title == "Delete Folder" }?.run()
+    while asked.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(asked == ["Its 1 board and 2 resources go to the Trash with it."])
+    #expect(
+      BoardPanes.deleteFolderQuestion("F", boards: 0, resources: 1).informativeText
+        == "Its 1 resource goes to the Trash with it.")
+  }
 }

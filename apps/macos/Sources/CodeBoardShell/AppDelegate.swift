@@ -203,12 +203,15 @@ import CodeBoardModel
     }
   }
 
+  /// The board's tabs; the reading pane answers the tab keys first while it has the keys (ReadingPaneView)
   @objc func closeTab(_ sender: Any?) {
     if let tab = shell.selected { shell.close(tab) } else { window?.performClose(sender) }
   }
 
   // Not toggleSidebar(_:): NSWindow answers that one itself (and disables it, having no split view)
   @objc func flipSidebar(_ sender: Any?) { shell.sidebarShown.toggle() }
+  @objc func flipReadingPane(_ sender: Any?) { shell.reading.shown.toggle() }
+  @objc func moveReadingPane(_ sender: Any?) { shell.reading.side = shell.reading.side.other }
   /// The toolbar's ⋯ Rename Board… and Edit Mark…: in the sidebar
   @objc func renameBoard(_ sender: Any?) { shell.renameOpenBoard() }
   @objc func editMark(_ sender: Any?) { shell.editOpenBoardMark() }
@@ -241,6 +244,12 @@ import CodeBoardModel
       return window != nil
     case #selector(flipSidebar(_:)):
       item.title = shell.sidebarShown ? "Hide Sidebar" : "Show Sidebar"
+      return shell.vault != nil
+    case #selector(flipReadingPane(_:)):
+      item.title = shell.reading.shown ? "Hide Reading Pane" : "Show Reading Pane"
+      return shell.vault != nil
+    case #selector(moveReadingPane(_:)):
+      item.title = shell.reading.side == .right ? "Move Reading Pane to the Left" : "Move Reading Pane to the Right"
       return shell.vault != nil
     case #selector(renameBoard(_:)): return shell.current != nil
     case #selector(editMark(_:)):
@@ -306,6 +315,8 @@ import CodeBoardModel
 
     let view = NSMenu(title: "View")
     view.addItem(item("Hide Sidebar", #selector(flipSidebar(_:)), "s", [.command, .control]))
+    view.addItem(item("Show Reading Pane", #selector(flipReadingPane(_:)), "r", [.command, .control]))
+    view.addItem(withTitle: "Move Reading Pane to the Left", action: #selector(moveReadingPane(_:)), keyEquivalent: "")
     view.addItem(.separator())
     // the board panes answer these (ShellSearch.swift)
     view.addItem(withTitle: "Search…", action: #selector(BoardPanes.searchBoards(_:)), keyEquivalent: "k")

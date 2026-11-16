@@ -69,6 +69,7 @@ struct BoardKey {
     BoardKey(show: "⌘ + scroll / pinch", label: "Zoom", group: "View"),
     BoardKey(action: .pan, presses: [code(49)], show: "Space + drag / two fingers", label: "Pan", group: "View"),
     BoardKey(show: "⌃⌘S", label: "Hide Sidebar", group: "View"),
+    BoardKey(show: "⌃⌘R", label: "Show Reading Pane", group: "View"),
     BoardKey(show: "⇧⌘[ / ⌃⇧⇥", label: "Show Previous Tab", group: "View"),
     BoardKey(show: "⇧⌘] / ⌃⇥", label: "Show Next Tab", group: "View"),
     BoardKey(show: "⌃⌘F", label: "Enter Full Screen", group: "View"),

@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardModel
+import CodeBoardResources
 
 // The sidebar's changes to the vault's files (VaultFiles.swift does each one): what open boards have not written yet is
 // written first, then the one rename or new name, then the tree is read again at once, so tabs and documents follow
@@ -13,7 +14,8 @@ extension Shell {
   /// A folder's row menu
   public func menu(folder: VaultFolder) -> [MenuEntry] {
     var m: [MenuEntry] = [
-      ("New Board", { self.newBoard(in: folder.path) }), ("New Folder", { self.newFolder(in: folder.path) }), nil,
+      ("New Board", { self.newBoard(in: folder.path) }), ("New Folder", { self.newFolder(in: folder.path) }),
+      ("New Resource", { self.newResource(in: folder.path) }), nil,
       ("Rename", { self.renaming = .folder(folder.path) }), nil,
     ]
     if let own = folder.folderBoard {
@@ -23,7 +25,9 @@ extension Shell {
       (
         "Delete Folder",
         {
-          self.trashAsked(folder.path, BoardPanes.deleteFolderQuestion(folder.name, boards: folder.boardCount))
+          let resources = folder.allFolders.reduce(0) { $0 + $1.resources.count + $1.unreadableResources.count }
+          self.trashAsked(
+            folder.path, BoardPanes.deleteFolderQuestion(folder.name, boards: folder.boardCount, resources: resources))
         }
       ))
     return m
@@ -154,6 +158,19 @@ extension Shell {
     if !folder.isEmpty { expanded.insert(folder) }
     show(made.id)
     renaming = .board(made.id)
+  }
+
+  /// A new resource in `folder`, a list of files to begin with, its tab opened, its name written in place
+  public func newResource(in folder: String) {
+    var made: VaultResource?
+    files { v in
+      made = try v.newResource(
+        in: folder, title: v.freeName(in: folder, "New Resource", extension: Vault.resourceExtension), preset: .files)
+    }
+    guard let made else { return }
+    if !folder.isEmpty { expanded.insert(folder) }
+    openResource(made)
+    renaming = .resource(made.id)
   }
 
   /// Rename Board… (the toolbar's ⋯): the open board's row shown in the sidebar, its name written in place there; a
