@@ -97,8 +97,10 @@ public struct Version: Equatable, Sendable {
     /// A PDF in the entry's folder, the file there listing its blocks (without it, text by page only), and the TeX
     /// file there that the list's line numbers are of (only with a block list)
     case pdf(file: String, blocks: String? = nil, source: String? = nil)
-    /// A web page saved whole outside the vault, by its content fingerprint, and its size
-    case page(hash: String, bytes: Int)
+    /// A web page saved whole outside the vault, by its content fingerprint, and its size; the file in the entry's
+    /// folder listing its blocks as the reader cut them, once it was opened (so that a place in it can be named
+    /// without loading the page)
+    case page(hash: String, bytes: Int, blocks: String? = nil)
     /// Any other file in the entry's folder, opened as the system opens it; no places in it
     case file(String)
     /// A saved page translated block by block: the file in the entry's folder with each block's text in the
@@ -373,6 +375,7 @@ extension Version.Content: Codable {
   private struct Page: Codable {
     var hash: String
     var bytes: Int
+    var blocks: String?
   }
   private struct File: Codable {
     var file: String
@@ -392,7 +395,10 @@ extension Version.Content: Codable {
       self = .pdf(file: p.file, blocks: p.blocks, source: p.source)
     case .page:
       let p = try c.decode(Page.self, forKey: .page)
-      self = .page(hash: p.hash, bytes: p.bytes)
+      if let name = p.blocks, !Vault.isFileName(name) {
+        throw DecodingError.dataCorruptedError(forKey: .page, in: c, debugDescription: "\(name) is not a file name")
+      }
+      self = .page(hash: p.hash, bytes: p.bytes, blocks: p.blocks)
     case .file:
       let name = try c.decode(File.self, forKey: .file).file
       guard Vault.isFileName(name) else {
@@ -414,7 +420,8 @@ extension Version.Content: Codable {
     switch self {
     case .pdf(let file, let blocks, let source):
       try c.encode(PDF(file: file, blocks: blocks, source: source), forKey: .pdf)
-    case .page(let hash, let bytes): try c.encode(Page(hash: hash, bytes: bytes), forKey: .page)
+    case .page(let hash, let bytes, let blocks):
+      try c.encode(Page(hash: hash, bytes: bytes, blocks: blocks), forKey: .page)
     case .file(let name): try c.encode(File(file: name), forKey: .file)
     case .translation(let name): try c.encode(File(file: name), forKey: .translation)
     }

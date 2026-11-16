@@ -48,7 +48,7 @@ private struct Scratch {
 }
 
 private func pages(_ e: Entry) -> [String] {
-  e.versions.compactMap { if case .page(let hash, _) = $0.content { hash } else { nil } }
+  e.versions.compactMap { if case .page(let hash, _, _) = $0.content { hash } else { nil } }
 }
 
 private func item(_ id: String, at savedAt: Int64, _ url: String = "https://example.com/a", hash: String? = nil)
