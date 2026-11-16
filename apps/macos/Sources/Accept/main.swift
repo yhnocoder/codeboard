@@ -2470,4 +2470,7 @@ if env["ACCEPT_APP"] == "demo" {
     try runMarkdownDemo(arguments: args)
   }
 }
+// ⌃⌥⌘B stays with the person at the Mac: a scenario records a bug report from its menu item, without asking for
+// Screen Recording
+MainActor.assumeIsolated { BugRecorder.personal = false }
 runApp()

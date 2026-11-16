@@ -67,6 +67,7 @@ Note 里的字按字找，像人看着屏幕找字一样：`@<id>"几个字"` �
 | `report` | Markdown demo 那边：把 demo 这一刻的报告（卡和编辑器的框、缩放）写进 results |
 | `covered @<卡>` | Markdown demo 那边：这张卡的编辑器有没有被盖住，结果写进 `checks.txt`，被盖住算失败 |
 | `wait <ms>` | 等 |
+| `until <对象> <比较> <值>` | Waits until this holds, as `expect` would judge it (what the app does in its own time, such as a bug report's zip being revealed); fails after 30 s |
 | `zoom <倍数>` | 在窗口中间捏合，直到两边缩放都是这个倍数（外观对比前先对齐） |
 | `center <目标>` | 无惯性地平移，直到这个目标在窗口中间 |
 | `rec <名字>` / `stop` | 开始、停止录像 |
