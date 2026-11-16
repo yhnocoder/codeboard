@@ -3,10 +3,11 @@ import CodeBoardCanvas
 import CodeBoardModel
 import SwiftUI
 
-/// The vault tree under the title line: the vault's own row, then its folders and boards. A click shows a board in the
-/// current tab (⌘-click: a new tab); a folder's name opens its folder board when it has one, its triangle only opens
-/// and closes it; a double-click on a name renames it in place. Boards and folders are dragged between folders. Each
-/// board, and each folder with a folder board, has its seal at the far right; clicking it edits the seal.
+/// The vault tree under the title line: the vault's own row, then its folders, boards and resources. A click shows a
+/// board in the current tab (⌘-click: a new tab) and opens a resource (`Shell.onOpenResource`); a folder's name opens
+/// its folder board when it has one, its triangle only opens and closes it; a double-click on a name renames it in
+/// place. Boards, resources and folders are dragged between folders. Each board, and each folder with a folder board,
+/// has its seal at the far right, and each resource how many entries it has; clicking a seal edits it.
 struct Sidebar: View {
   let shell: Shell
 
@@ -50,11 +51,17 @@ private struct FolderContents: View {
     ForEach(folder.unreadable, id: \.path) { board in
       UnreadableRow(shell: shell, board: board, depth: depth)
     }
+    ForEach(folder.resources, id: \.id) { resource in
+      ResourceRow(shell: shell, resource: resource, depth: depth)
+    }
+    ForEach(folder.unreadableResources, id: \.path) { resource in
+      UnreadableRow(shell: shell, board: resource, depth: depth)
+    }
   }
 }
 
-/// A board whose file cannot be read (sidebar.ts: a warning row, "Can't open"): its name, why on hover, its menu; it
-/// opens nothing
+/// A board or resource whose file cannot be read (sidebar.ts: a warning row, "Can't open"): its name, why on hover, its
+/// menu; it opens nothing
 private struct UnreadableRow: View {
   let shell: Shell
   let board: VaultUnreadable
@@ -248,6 +255,36 @@ private struct BoardRow: View {
     }
     .draggable(VaultDrag.payload(board.path))
     .contextMenu { MenuItems(entries: shell.menu(board: board), moveTo: shell.moveTargets(board: board)) }
+  }
+}
+
+/// A resource: its name, and how many entries it has at the far right; a click opens it
+private struct ResourceRow: View {
+  let shell: Shell
+  let resource: VaultResource
+  let depth: Int
+
+  var body: some View {
+    Row(depth: depth, selected: false, target: false) {
+      Color.clear.frame(width: 14, height: 1)
+      Image(systemName: "list.bullet.rectangle").font(.system(size: 12)).foregroundStyle(ShellTheme.icon)
+        .frame(width: 16, height: 16)
+    } label: {
+      Name(shell: shell, renaming: .resource(resource.id), text: resource.title, bold: false) {
+        shell.rename(resource: resource, to: $0)
+      }
+    } trailing: {
+      Text("\(resource.entryCount)").font(.system(size: 11.5)).monospacedDigit().foregroundStyle(ShellTheme.muted)
+    }
+    .onTapGesture {
+      if isDoubleClick {
+        shell.renaming = .resource(resource.id)
+      } else {
+        shell.onOpenResource?(resource)
+      }
+    }
+    .draggable(VaultDrag.payload(resource.path))
+    .contextMenu { MenuItems(entries: shell.menu(resource: resource), moveTo: shell.moveTargets(resource: resource)) }
   }
 }
 

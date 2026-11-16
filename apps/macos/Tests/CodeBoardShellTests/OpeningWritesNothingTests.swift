@@ -131,4 +131,26 @@ import Testing
     let file = try #require(w.shell.board(fb)).path
     #expect(changed(before, files(v.root)) == ["/\(file)/\(Vault.boardFileName)"])
   }
+
+  /// Resources in the vault and in a folder with a folder board: listed, and nothing written, the folder board taking no
+  /// card for them (its cards are for boards and folders)
+  @Test func aVaultWithResourcesOpensWithoutWritingAnything() async throws {
+    let (v, fb) = try vault()
+    defer { try? fm.removeItem(at: v.root) }
+    for (path, id) in [("Papers.resource", "r1"), ("Book/Reading.resource", "r2")] {
+      let pkg = v.url(of: path)
+      try fm.createDirectory(at: pkg.appending(path: "Attention Is All You Need"), withIntermediateDirectories: true)
+      try Data(#"{"fields": [], "id": "\#(id)", "preset": "papers", "version": 1}"#.utf8)
+        .write(to: pkg.appending(path: Vault.resourceFileName))
+      try Data("{}".utf8).write(to: pkg.appending(path: "Attention Is All You Need/\(Vault.entryFileName)"))
+      try Data("%PDF".utf8).write(to: pkg.appending(path: "notes.pdf"))
+    }
+    try await inStep(v, fb)
+    let before = files(v.root)
+    let w = try await env.opened(v)
+    #expect(w.shell.tree?.allFolders.flatMap(\.resources).map(\.entryCount) == [2, 2])
+    try await showEveryBoard(w)
+    w.close(keepingVault: true)
+    #expect(changed(before, files(v.root)) == [])
+  }
 }
