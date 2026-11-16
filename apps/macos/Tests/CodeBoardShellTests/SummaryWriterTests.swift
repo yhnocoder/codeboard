@@ -109,6 +109,18 @@ private func withDefaults(_ body: (UserDefaults, String) throws -> Void) rethrow
     #expect(body["response_format"] == nil)
   }
 
+  /// Translation asks the same writer for longer answers; the summaries' writer, as the settings make it, does not
+  @Test func summariesAskForAnAnswerOf800Tokens() async throws {
+    SummaryStub.reset(.reply(status: 200, body: #"{"choices":[{"message":{"content":"一句话"}}]}"#))
+    let name = "codeboard-tests-\(UUID().uuidString)"
+    let d = try #require(UserDefaults(suiteName: name))
+    defer { d.removePersistentDomain(forName: name) }
+    _ = try await AISettings(defaults: d).writer(keys: MemoryKeyStore("sk-test"), session: SummaryStub.session)
+      .write(system: "s", user: "u")
+    let body = try JSONSerialization.jsonObject(with: #require(SummaryStub.lastBody)) as? [String: Any]
+    #expect(body?["max_tokens"] as? Int == 800)
+  }
+
   @Test func theBaseAndModelSettingsAreUsed() async throws {
     SummaryStub.reset(.reply(status: 200, body: #"{"choices":[{"message":{}}]}"#))
     // no content: empty text (summarize turns it into "DeepSeek returned an empty answer")

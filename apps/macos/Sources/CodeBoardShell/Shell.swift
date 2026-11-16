@@ -176,7 +176,7 @@ public struct ShellState: Codable, Equatable, Sendable {
     // in a test process: no menu, alert or panel ever comes up
     TestGuard.install()
     ReadingKinds.registerBuiltIn()
-    WebReading.register(saving: Self.webSaving, scripts: Self.webScripts)
+    WebReading.register(saving: Self.webSaving, scripts: Self.webScripts, translate: Self.webTranslate)
     self.session = session
     sources = ReadingSources(pane: reading)
     reading.makePop = { Self.annotationPop(act: $0, resized: $1) }
