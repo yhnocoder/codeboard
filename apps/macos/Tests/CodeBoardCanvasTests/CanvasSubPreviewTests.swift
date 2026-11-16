@@ -194,3 +194,69 @@ extension CanvasSubBoardTests {
     #expect(c.subPreviews.draws == draws && c.subPreviews.open[f]?.open == [cid("k1")])
   }
 }
+
+extension CanvasSubBoardTests {
+  /// The row above the card (.sbacts): one column or two, the card's own setting, saved and not an undo step; Hide and
+  /// Show; Clear. The preview under the pointer is ringed with its line to its block, its × says what it does
+  @Test func theRowAboveTheCardSetsColumnsHidesShowsAndClears() async throws {
+    let (r, _) = try await previewRig()
+    defer { r.close() }
+    let c = r.canvas
+    let f = cid("f")
+    r.click(try #require(block(r, "k1")))
+    r.click(try #require(block(r, "k2")))
+    await r.until("both drawn") { c.subPreviews.drawn[f]?.count == 2 }
+    func press(_ part: PreviewPart) throws {
+      let b = try #require(c.previewActs(f).first { $0.0 == part }?.1)
+      r.click(CGPoint(x: b.midX, y: b.midY))
+    }
+    func columns() -> Bool? {
+      if case .own(let k) = r.card("f").content, case .board(let s) = k.body { s.twoColumnPreview } else { nil }
+    }
+    func saved() throws -> Bool {
+      r.doc.flush()
+      return try String(decoding: Data(contentsOf: r.file), as: UTF8.self).contains("previewColumns")
+    }
+    #expect(columns() == false)
+    // two columns: side by side, kept with the card, no undo step
+    try press(.columns(f, 2))
+    await r.settle()
+    #expect(try columns() == true && saved())
+    #expect(r.doc.history.undoSteps.isEmpty)
+    var lay = try #require(c.previewLayout(f))
+    #expect(lay.boxes[cid("k2")]?.minX == lay.boxes[cid("k1")]!.maxX + 10)
+    #expect(lay.boxes[cid("k2")]?.minY == lay.boxes[cid("k1")]?.minY)
+    try press(.columns(f, 1))
+    await r.settle()
+    #expect(try columns() == false && !saved() && r.doc.history.undoSteps.isEmpty)
+    lay = try #require(c.previewLayout(f))
+    #expect(lay.boxes[cid("k2")]?.minX == lay.boxes[cid("k1")]?.minX)
+    // the pointer over a preview: ringed, its line drawn; over its ×, the tip
+    let box = try #require(lay.boxes[cid("k2")])
+    r.send(r.mouse(.mouseMoved, CGPoint(x: box.midX, y: box.maxY - 4)))
+    #expect(c.subPreviews.hover == .preview(f, cid("k2")))
+    #expect(c.subPreviews.shown[f]?.line.path != nil)
+    let x = PreviewArt.close(in: box)
+    r.send(r.mouse(.mouseMoved, CGPoint(x: x.midX, y: x.midY)))
+    #expect(c.previewTip()?.0 == Tip("Close"))
+    r.send(r.mouse(.mouseMoved, CGPoint(x: 50, y: 600)))
+    #expect(c.subPreviews.hover == nil && c.subPreviews.shown[f]?.line.path == nil)
+    // Hide: the previews go, the badges and the row stay; Show brings them back
+    try press(.fold(f))
+    #expect(c.subPreviews.open[f]?.fold == true && c.subPreviews.shown[f]?.previews.isHidden == true)
+    #expect(c.previewPart(at: CGPoint(x: box.midX, y: box.maxY - 4)) == nil)
+    #expect(c.subPreviews.shown[f]?.picks.sublayers?.isEmpty == false)
+    try press(.fold(f))
+    #expect(c.subPreviews.open[f]?.fold == false && c.subPreviews.shown[f]?.previews.isHidden == false)
+    // a block clicked while hidden shows them again
+    try press(.fold(f))
+    r.click(try #require(block(r, "k2")))
+    #expect(c.subPreviews.open[f]?.open == [cid("k1")] && c.subPreviews.open[f]?.fold == true)
+    r.click(try #require(block(r, "k2")))
+    #expect(c.subPreviews.open[f]?.open == [cid("k1"), cid("k2")] && c.subPreviews.open[f]?.fold == false)
+    // Clear: all close, the row and the badges go
+    try press(.clear(f))
+    #expect(c.subPreviews.open[f] == nil && c.subPreviews.shown[f] == nil && c.previewActs(f).isEmpty)
+    #expect(r.doc.history.undoSteps.isEmpty)
+  }
+}

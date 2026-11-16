@@ -6,8 +6,10 @@ import CodeBoardModel
 // sub-board card draws (a double-click enters the board there) opens a read-only preview of that card on the card's
 // right, numbered as the badge put on its block; up to three are expanded there, in one column or two, more open as title
 // rows under the card (on the right under the expanded ones when something lies under the card). A click on its block
-// again, or its ×, closes it. Which are open is the view's: never saved, never an undo step, gone with a board switch; a
-// preview whose card leaves the sub-board closes, as do all of a sub-board card that goes or whose board cannot be read.
+// again, or its ×, closes it; above the card's right, the count with Hide / Show, one column or two (the card's own
+// setting, saved, not an undo step) and Clear. Which are open is the view's: never saved, never an undo step, gone with a
+// board switch; a preview whose card leaves the sub-board closes, as do all of a sub-board card that goes or whose board
+// cannot be read. The preview under the pointer is ringed, a dashed line from its block to it.
 // They are drawn in the sub-board card's own layer, so a drag moves them with it; a preview's body is its card as the
 // board draws it (as a ref's preview, CanvasRefs.swift), read from its board off the main thread.
 
@@ -128,14 +130,19 @@ struct SubPreviews {
   @MainActor final class Shown {
     let group = CALayer()
     let picks = CALayer()
+    let acts = CALayer()
+    let line = CAShapeLayer()
     let previews = CALayer()
     var cards: [CardID: (layer: CALayer, key: String)] = [:]
     var picksKey = ""
+    var actsKey = ""
 
     init() {
       group.zPosition = 4
-      group.addSublayer(picks)
-      group.addSublayer(previews)
+      line.fillColor = nil
+      line.lineWidth = 1.2
+      line.lineDashPattern = [3, 3]
+      for l in [picks, acts, line, previews] { group.addSublayer(l) }
     }
   }
 
@@ -149,6 +156,8 @@ struct SubPreviews {
   /// Being drawn (sub-board card, card); what comes for another map or look than now is left unused
   var asked: Set<[CardID]> = []
   var shown: [CardID: Shown] = [:]
+  /// What the pointer is over
+  var hover: PreviewPart?
   /// How many previews have been drawn (tests: a drag draws none)
   var draws = 0
 }
@@ -158,6 +167,20 @@ enum PreviewPart: Equatable {
   case close(CardID, CardID)
   /// The rest of a preview: it takes the press
   case preview(CardID, CardID)
+  /// Above the sub-board card: Hide / Show, one column or two, Clear (.sbacts)
+  case fold(CardID)
+  case columns(CardID, Int)
+  case clear(CardID)
+
+  var isButton: Bool { if case .preview = self { false } else { true } }
+
+  /// The preview it is on
+  var preview: (frame: CardID, card: CardID)? {
+    switch self {
+    case .close(let f, let c), .preview(let f, let c): (f, c)
+    default: nil
+    }
+  }
 }
 
 extension CanvasView {
@@ -281,12 +304,61 @@ extension CanvasView {
         obstacles.append(o)
       }
     }
-    let columns = scene?.parts[frame].flatMap { p -> Int? in
-      if case .board(let sub) = p.content.body { sub.twoColumnPreview ? 2 : 1 } else { nil }
-    }
     return SubPreview.layout(
-      r, exp: pv.exp, tit: pv.tit, columns: columns ?? 1, height: { self.previewHeight(frame, $0) },
+      r, exp: pv.exp, tit: pv.tit, columns: previewColumns(frame), height: { self.previewHeight(frame, $0) },
       obstacles: obstacles)
+  }
+
+  /// A sub-board card's previews in one column or two (pvCols)
+  func previewColumns(_ frame: CardID) -> Int {
+    if case .board(let s)? = scene?.parts[frame]?.content.body, s.twoColumnPreview { 2 } else { 1 }
+  }
+
+  /// One column or two, the sub-board card's own setting: saved, not an undo step (setPreviewCols)
+  func setPreviewColumns(_ frame: CardID, _ n: Int) {
+    document?.sync { b in
+      guard let i = b.cards.firstIndex(where: { $0.id == frame }), case .own(var k) = b.cards[i].content,
+        case .board(var s) = k.body
+      else { return }
+      s.twoColumnPreview = n == 2
+      k.body = .board(s)
+      b.cards[i].content = .own(k)
+    }
+  }
+
+  /// Hide / Show (foldPreviews)
+  func foldSubPreviews(_ frame: CardID) {
+    subPreviews.open[frame]?.fold.toggle()
+    placeSubPreviews()
+  }
+
+  /// Clear (clearPreviews)
+  func clearSubPreviews(_ frame: CardID) {
+    subPreviews.open[frame] = nil
+    if subPreviews.hover.map({ previewFrame($0) == frame }) == true { subPreviews.hover = nil }
+    subPreviewsChanged()
+  }
+
+  private func previewFrame(_ p: PreviewPart) -> CardID {
+    switch p {
+    case .close(let f, _), .preview(let f, _), .fold(let f), .columns(let f, _), .clear(let f): f
+    }
+  }
+
+  /// The buttons above a sub-board card's right with previews open (.sbacts: 20 above it, 6 apart, at its right)
+  func previewActs(_ frame: CardID) -> [(PreviewPart, CGRect)] {
+    guard let pv = subPreviews.open[frame], let r = scene?.placed[frame]?.rect else { return [] }
+    let w = PreviewArt.actWidths(pv.open.count, fold: pv.fold)
+    let y = r.minY - 20 - 26
+    var x = r.maxX - w.clear
+    var out: [(PreviewPart, CGRect)] = [(.clear(frame), CGRect(x: x, y: y, width: w.clear, height: 26))]
+    x -= 6 + 49
+    // the switch: 2 in, two 22 square buttons 1 apart
+    out.append((.columns(frame, 1), CGRect(x: x + 2, y: y + 2, width: 22, height: 22)))
+    out.append((.columns(frame, 2), CGRect(x: x + 25, y: y + 2, width: 22, height: 22)))
+    x -= 6 + w.fold
+    out.append((.fold(frame), CGRect(x: x, y: y, width: w.fold, height: 26)))
+    return out
   }
 
   /// The previews' layers in their sub-board cards' boxes, each drawn again only when what it shows or the resting
@@ -309,7 +381,9 @@ extension CanvasView {
         if shown.group.superlayer !== box { box.addSublayer(shown.group) }
         shown.group.frame = box.bounds
         placePicks(map, pv, shown, in: r, scale: scale)
+        placeActs(frame, pv, shown, in: r, scale: scale)
         shown.previews.isHidden = pv.fold
+        placeLine(frame, pv, lay, map, shown, in: r)
         for (id, s) in shown.cards where !pv.open.contains(id) {
           s.layer.removeFromSuperlayer()
           shown.cards[id] = nil
@@ -319,11 +393,13 @@ extension CanvasView {
           let drawn = subPreviews.drawn[frame]?[id]
           let mini = pv.tit.contains(id)
           let kind = map.cards.first { $0.id == id }?.kind
-          let key = "\(n) \(mini) \(drawn?.serial ?? 0) \(b.size) \(theme.id) \(theme.dark) \(scale)"
+          let hot = subPreviews.hover?.preview.map { $0 == (frame, id) } == true
+          let lit = subPreviews.hover == .close(frame, id)
+          let key = "\(n) \(mini) \(drawn?.serial ?? 0) \(b.size) \(hot) \(lit) \(theme.id) \(theme.dark) \(scale)"
           var l = shown.cards[id]?.layer ?? CALayer()
           if shown.cards[id]?.key != key {
             l.removeFromSuperlayer()
-            l = previewLayer(drawn, n: n + 1, kind: kind, size: b.size, mini: mini, scale: scale)
+            l = previewLayer(drawn, n: n + 1, kind: kind, size: b.size, mini: mini, hot: hot, lit: lit, scale: scale)
             shown.previews.addSublayer(l)
             shown.cards[id] = (l, key)
           }
@@ -361,7 +437,8 @@ extension CanvasView {
   /// One preview (.sbpv): the card's shadow, its face with the header and the body; a title row (.mini) only its header
   /// in a hairline ring
   private func previewLayer(
-    _ d: SubPreviews.Drawn?, n: Int, kind: Skeleton.Card.Kind?, size: CGSize, mini: Bool, scale: CGFloat
+    _ d: SubPreviews.Drawn?, n: Int, kind: Skeleton.Card.Kind?, size: CGSize, mini: Bool, hot: Bool, lit: Bool,
+    scale: CGFloat
   ) -> CALayer {
     let t = theme
     let l = CALayer()
@@ -375,15 +452,21 @@ extension CanvasView {
     face.cornerRadius = radius
     face.cornerCurve = .continuous
     face.masksToBounds = true
-    if mini {
-      face.borderWidth = 0.5
-      face.borderColor = t.hair
+    // a title row in a hairline (its header lit under the pointer); the one under the pointer in the accent (.hot)
+    if mini || hot {
+      face.borderWidth = hot ? 1.5 : 0.5
+      face.borderColor = hot ? t.accent : t.hair
     }
     l.addSublayer(face)
     let head = CALayer()
     head.frame = CGRect(x: 0, y: 0, width: size.width, height: SubPreview.titleHeight)
     head.contents = CanvasView.picture(size: head.bounds.size, scale: scale) { ctx in
-      PreviewArt.header(ctx, n: n, name: d?.name ?? "", kind: kind, width: size.width, mini: mini, t)
+      if mini && hot {
+        ctx.setFillColor(t.hlrow)
+        ctx.fill(CGRect(origin: .zero, size: head.bounds.size))
+      }
+      PreviewArt.header(
+        ctx, n: n, name: d?.name ?? "", kind: kind, width: size.width, mini: mini, t, closeLit: lit, nameLit: hot)
     }
     head.contentsGravity = .resize
     face.addSublayer(head)
@@ -410,9 +493,93 @@ extension CanvasView {
     return l
   }
 
+  /// The button row above the card, one bitmap drawn again when what it shows or the resting zoom changes
+  private func placeActs(
+    _ frame: CardID, _ pv: SubPreview, _ shown: SubPreviews.Shown, in r: CGRect, scale: CGFloat
+  ) {
+    let acts = previewActs(frame)
+    guard let bounds = acts.map(\.1).reduce(nil, { ($0 ?? $1).union($1) }) else { return }
+    let lit = subPreviews.hover.flatMap { h in acts.first { $0.0 == h }?.0 }
+    let cols = previewColumns(frame)
+    let key =
+      "\(pv.open.count) \(pv.fold) \(cols) \(String(describing: lit)) \(r.size) \(theme.id) \(theme.dark) \(scale)"
+    shown.acts.frame = bounds.offsetBy(dx: -r.minX, dy: -r.minY)
+    guard shown.actsKey != key else { return }
+    shown.actsKey = key
+    let t = theme
+    shown.acts.contents = CanvasView.picture(size: bounds.size, scale: scale) { ctx in
+      ctx.translateBy(x: -bounds.minX, y: -bounds.minY)
+      PreviewArt.acts(ctx, acts, n: pv.open.count, fold: pv.fold, columns: cols, lit: lit, t)
+    }
+    shown.acts.contentsGravity = .resize
+  }
+
+  /// The dashed line from the block of the preview under the pointer to its header (.sbpvl): out of its left on the
+  /// right, out of its top in the title rows
+  private func placeLine(
+    _ frame: CardID, _ pv: SubPreview, _ lay: SubPreview.Layout, _ map: Skeleton, _ shown: SubPreviews.Shown,
+    in r: CGRect
+  ) {
+    shown.line.strokeColor = theme.accent.copy(alpha: 0.8)
+    guard !pv.fold, let (f, id) = subPreviews.hover?.preview, f == frame, let b = lay.boxes[id],
+      let k = Drawing.block(id, in: map, r)
+    else {
+      shown.line.path = nil
+      return
+    }
+    let o = CGPoint(x: -r.minX, y: -r.minY)
+    let a = CGPoint(x: k.midX + o.x, y: k.midY + o.y)
+    let tit = pv.tit.contains(id)
+    let z = CGPoint(x: b.minX + (tit ? 20 : 0) + o.x, y: b.minY + (tit ? 0 : 15) + o.y)
+    let path = CGMutablePath()
+    path.move(to: a)
+    path.addCurve(
+      to: z, control1: tit ? CGPoint(x: a.x, y: a.y + 50) : CGPoint(x: a.x + 60, y: a.y),
+      control2: tit ? CGPoint(x: z.x, y: z.y - 50) : CGPoint(x: z.x - 40, y: z.y))
+    shown.line.path = path
+    let dot = CAShapeLayer()
+    dot.path = CGPath(ellipseIn: CGRect(x: a.x - 2.5, y: a.y - 2.5, width: 5, height: 5), transform: nil)
+    dot.fillColor = theme.accent
+    shown.line.sublayers = [dot]
+  }
+
+  /// The pointer over the previews' parts: the preview under it ringed with its line, a button lit; whether it is
+  func hoverSubPreview(at p: CGPoint) -> Bool {
+    let part = gesture == nil ? previewPart(at: p) : nil
+    if part != subPreviews.hover {
+      subPreviews.hover = part
+      placeSubPreviews()
+      showTip()
+    }
+    return part != nil
+  }
+
+  /// The tip of the button under the pointer and where it is
+  func previewTip() -> (Tip, CGRect)? {
+    guard let h = subPreviews.hover else { return nil }
+    let tip: Tip
+    let r: CGRect?
+    switch h {
+    case .close(let f, let c):
+      tip = Tip("Close")
+      r = previewLayout(f)?.boxes[c].map(PreviewArt.close)
+    case .columns(let f, let n):
+      tip = Tip(n == 2 ? "Previews in two columns" : "Previews in one column")
+      r = previewActs(f).first { $0.0 == h }?.1
+    case .clear(let f):
+      tip = Tip("Close all previews")
+      r = previewActs(f).first { $0.0 == h }?.1
+    case .preview, .fold: return nil
+    }
+    return r.map { (tip, $0) }
+  }
+
   /// The preview part at a board point: the topmost, a title row over the expanded ones
   func previewPart(at p: CGPoint) -> PreviewPart? {
     guard levels.level == .cards else { return nil }
+    for frame in subPreviews.open.keys {
+      if let (part, _) = previewActs(frame).first(where: { $0.1.contains(p) }) { return part }
+    }
     for (frame, pv) in subPreviews.open where !pv.fold {
       guard let lay = previewLayout(frame) else { continue }
       for id in pv.tit.reversed() + pv.exp.reversed() {
@@ -427,17 +594,41 @@ extension CanvasView {
   /// A press on a preview: its buttons act on the release over them (hold); the rest takes the press
   func pressSubPreview(_ e: NSEvent, at p: CGPoint) -> Bool {
     guard let part = previewPart(at: p) else { return false }
-    if e.clickCount == 1, case .close(let frame, let card) = part {
-      hold(
-        over: { [weak self] in self?.previewPart(at: $0) == part },
-        act: { [weak self] in self?.toggleSubPreview(frame, card) })
+    if e.clickCount == 1, part.isButton {
+      hold(over: { [weak self] in self?.previewPart(at: $0) == part }, act: { [weak self] in self?.pressPreview(part) })
     }
     return true
   }
 
-  /// The previews and their buttons as accessibility elements (ui-subpreview, ui-subpreviewclose)
+  func pressPreview(_ part: PreviewPart) {
+    switch part {
+    case .close(let f, let c): toggleSubPreview(f, c)
+    case .fold(let f): foldSubPreviews(f)
+    case .columns(let f, let n): setPreviewColumns(f, n)
+    case .clear(let f): clearSubPreviews(f)
+    case .preview: break
+    }
+  }
+
+  /// The previews and their buttons as accessibility elements (ui-subpreview, ui-subpreviewclose, ui-subpreviewfold,
+  /// ui-subpreviewcols1, ui-subpreviewcols2, ui-subpreviewclear)
   func subPreviewElements() -> [Any] {
     var out: [Any] = []
+    for (frame, pv) in subPreviews.open {
+      for (part, r) in previewActs(frame) {
+        let (name, label): (String, String) =
+          switch part {
+          case .fold:
+            (
+              "subpreviewfold",
+              "\(pv.open.count) \(pv.open.count == 1 ? "preview" : "previews") · \(pv.fold ? "Show" : "Hide")"
+            )
+          case .columns(_, let n): ("subpreviewcols\(n)", n == 2 ? "Two columns" : "One column")
+          default: ("subpreviewclear", "Close all previews")
+          }
+        out.append(uiElement(name, viewRect(r), label: label, in: self))
+      }
+    }
     for (frame, pv) in subPreviews.open where !pv.fold {
       guard let lay = previewLayout(frame) else { continue }
       for id in pv.open {
@@ -498,7 +689,7 @@ enum PreviewArt {
   /// a line under it but on a title row
   static func header(
     _ ctx: CGContext, n: Int, name: String, kind: Skeleton.Card.Kind?, width: CGFloat, mini: Bool, _ t: Theme,
-    closeLit: Bool = false
+    closeLit: Bool = false, nameLit: Bool = false
   ) {
     let mid = SubPreview.titleHeight / 2
     let s = "\(n)"
@@ -511,7 +702,7 @@ enum PreviewArt {
     }
     let close = close(in: CGRect(x: 0, y: 0, width: width, height: SubPreview.titleHeight))
     let font = kind == .code ? mono : mini ? miniName : self.name
-    Drawing.text(ctx, name, font, mini ? t.ink2 : t.ink, x: x, midY: mid, width: close.minX - 6 - x)
+    Drawing.text(ctx, name, font, mini && !nameLit ? t.ink2 : t.ink, x: x, midY: mid, width: close.minX - 6 - x)
     if closeLit {
       ctx.addPath(CGPath(roundedRect: close, cornerWidth: 5, cornerHeight: 5, transform: nil))
       ctx.setFillColor(t.hlrow)
@@ -523,6 +714,72 @@ enum PreviewArt {
     guard !mini else { return }
     ctx.setFillColor(t.line)
     ctx.fill(CGRect(x: 0, y: SubPreview.titleHeight - 0.5, width: width, height: 0.5))
+  }
+
+  static let act = Font(NSFont.systemFont(ofSize: 12, weight: .medium))
+  static let actCount = Font(NSFont.systemFont(ofSize: 12, weight: .semibold))
+
+  /// After the count on Hide / Show
+  static func foldLabel(_ n: Int, fold: Bool) -> String {
+    " \(n == 1 ? "preview" : "previews") · \(fold ? "Show" : "Hide")"
+  }
+
+  /// Hide / Show's and Clear's widths (10 in either side, the chevron 11 wide 6 after the words)
+  static func actWidths(_ n: Int, fold: Bool) -> (fold: CGFloat, clear: CGFloat) {
+    (
+      10 + Drawing.width("\(n)", actCount) + Drawing.width(foldLabel(n, fold: fold), act) + 6 + 11 + 10,
+      10 + Drawing.width("Clear", act) + 10
+    )
+  }
+
+  /// The row above the card (.sbacts): each button on the surface in a hairline, 26 high, its corners 11; the switch's
+  /// buttons 22 high inside it, the one chosen on the accent's tint; a button under the pointer in the ink
+  static func acts(
+    _ ctx: CGContext, _ parts: [(PreviewPart, CGRect)], n: Int, fold: Bool, columns: Int, lit: PreviewPart?,
+    _ t: Theme
+  ) {
+    func plate(_ r: CGRect) {
+      ctx.addPath(Drawing.squircle(r, 11))
+      ctx.setFillColor(t.surface)
+      ctx.fillPath()
+      ctx.addPath(Drawing.squircle(r.insetBy(dx: -0.25, dy: -0.25), 11.25))
+      ctx.setStrokeColor(t.hair)
+      ctx.setLineWidth(0.5)
+      ctx.strokePath()
+    }
+    for (part, r) in parts {
+      let ink = part == lit ? t.ink : t.ink2
+      switch part {
+      case .fold:
+        plate(r)
+        let count = "\(n)"
+        let cw = Drawing.width(count, actCount)
+        Drawing.text(ctx, count, actCount, t.accent, x: r.minX + 10, midY: r.midY, width: cw + 1)
+        let label = foldLabel(n, fold: fold)
+        let lw = Drawing.width(label, act)
+        Drawing.text(ctx, label, act, ink, x: r.minX + 10 + cw, midY: r.midY, width: lw + 1)
+        // the chevron points up while they show (.sbfold .ico rotated), down when hidden
+        ctx.saveGState()
+        ctx.translateBy(x: r.maxX - 10 - 5.5, y: r.midY)
+        if !fold { ctx.scaleBy(x: 1, y: -1) }
+        Icons.stroke(SectionActs.chev, scale: 11 / 16, at: CGPoint(x: -5.5, y: -5.5), color: ink, in: ctx)
+        ctx.restoreGState()
+      case .clear:
+        plate(r)
+        Drawing.text(ctx, "Clear", act, ink, x: r.minX + 10, midY: r.midY, width: r.width - 20 + 1)
+      case .columns(_, let k):
+        if k == 1 { plate(CGRect(x: r.minX - 2, y: r.minY - 2, width: 49, height: 26)) }
+        if k == columns {
+          ctx.addPath(Drawing.squircle(r, 9))
+          ctx.setFillColor(t.accent.copy(alpha: 0.09) ?? t.hlrow)
+          ctx.fillPath()
+        }
+        let icon = SVGPath.parse(k == 2 ? "M2.5 2.5h4.5v11h-4.5zM9 2.5h4.5v11h-4.5z" : "M5.5 2.5h5v11h-5z")
+        let color = k == columns || part == lit ? t.ink : t.ink3
+        Icons.stroke(icon, scale: 12 / 16, at: CGPoint(x: r.midX - 6, y: r.midY - 6), color: color, in: ctx)
+      case .close, .preview: break
+      }
+    }
   }
 
   /// A kind's icon (BoardBody.tsx skelIcon)

@@ -1006,6 +1006,7 @@ extension CanvasView {
     defer { hoverSticker(onSticker) }
     if spaceHeld { return NSCursor.openHand.set() }
     hoverChip(at: camera.board(v))
+    let onPreview = hoverSubPreview(at: camera.board(v))
     let onBar = alignBarButton(at: v)
     hoverAlignBar(onBar ?? nil)
     if onBar != nil {
@@ -1042,6 +1043,11 @@ extension CanvasView {
     hoverHead(head)
     if head != nil {
       hoverPorts(at: v)
+      NSCursor.arrow.set()
+      hover(nil)
+      return
+    }
+    if onPreview {
       NSCursor.arrow.set()
       hover(nil)
       return
@@ -1106,6 +1112,7 @@ extension CanvasView {
     hoverRow(at: CGPoint(x: CGFloat.infinity, y: .infinity))
     hoverTitle(nil, act: nil)
     hoverSummary(nil)
+    _ = hoverSubPreview(at: CGPoint(x: CGFloat.infinity, y: .infinity))
     hover(nil)
     hoverMark(nil)
     guard gesture == nil, hoveredCard != nil else { return }
