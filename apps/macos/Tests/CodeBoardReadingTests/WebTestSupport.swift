@@ -205,8 +205,11 @@ enum StandInScripts {
   static let capture = """
     var shiyiCapture = {
       stopped: false,
-      meta: async () => ({ url: location.href, title: document.title, description: "A made-up page",
-        site_name: "Loopback", favicon: location.origin + "/icon.png", cover: location.origin + "/cover.png" }),
+      meta: async () => {
+        if (location.pathname == "/mute") await new Promise(() => {})
+        return { url: location.href, title: document.title, description: "A made-up page",
+          site_name: "Loopback", favicon: location.origin + "/icon.png", cover: location.origin + "/cover.png" }
+      },
       async savePage(files) {
         const post = m => webkit.messageHandlers.shiyi.postMessage(m)
         await post({ type: "stage", stage: "prepare" })
