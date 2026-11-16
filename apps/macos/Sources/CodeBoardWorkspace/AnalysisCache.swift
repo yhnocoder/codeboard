@@ -28,6 +28,18 @@ struct Lru<V> {
 
   func has(_ k: String) -> Bool { values[k] != nil }
 
+  /// Without touching it
+  func peek(_ k: String) -> V? { values[k] }
+
+  mutating func delete(_ k: String) {
+    if values.removeValue(forKey: k) != nil { order.removeAll { $0 == k } }
+  }
+
+  mutating func clear() {
+    values = [:]
+    order = []
+  }
+
   /// Least recently used first
   var keys: [String] { order }
 

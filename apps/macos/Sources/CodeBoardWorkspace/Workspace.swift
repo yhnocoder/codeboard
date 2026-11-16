@@ -2,8 +2,8 @@ import CodeBoardAnalysis
 import Foundation
 
 // What the code index needs of the folders it reads, as the host's Workspace (packages/core/src/workspace.ts) and the
-// helpers of packages/host/src/ws.ts give it: listing files, reading their current text, logging. File events reach the
-// index from its owner, who calls its methods.
+// helpers of packages/host/src/ws.ts give it: the roots, listing files, reading their current text, logging. File
+// events reach the index from its owner, who calls its methods.
 
 public enum LogLevel: String, Sendable {
   case info, warn, error
@@ -47,6 +47,8 @@ public struct FileQuery: Hashable, Sendable {
 
 /// The code folders the index reads. Sendable: the index reads files off its own isolation, several at once
 public protocol CodeWorkspace: Sendable {
+  /// The workspace roots, the first one first: a repository source's path is relative to it
+  var roots: [String] { get }
   /// The workspace root a path is under, if any
   func rootOf(_ abs: String) -> String?
   /// The files under the roots the query lists (absolute paths), at most max of them
