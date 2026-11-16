@@ -177,8 +177,8 @@ extension BoardPanes {
     closeSearch()
     guard let pane = frontPane else { return }
     guard p.board == pane.document?.id else {
-      // the canvas's way to another board: it opens in this tab, then goes to the card
-      pane.canvas.onOpenBoard?(p.board, .card(p.card))
+      // it opens in this tab, then goes to the card: never in another window, as a click on a board may
+      pane.open(p.board, at: .card(p.card))
       return
     }
     pane.canvas.arrive(at: p.card)

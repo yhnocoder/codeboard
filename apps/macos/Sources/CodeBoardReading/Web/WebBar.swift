@@ -86,7 +86,8 @@ class WebGlass: NSView {
 
 /// The bar floating over a web page: back and forward through the page's history, the address, body or full page,
 /// original, side by side or translation, and saving. Its buttons are the board toolbar's: flat icons in the look's
-/// ink, groups apart by its hairline separator
+/// ink, groups apart by its hairline separator. While the body is being corrected it says so and offers Cancel and
+/// Done alone
 final class WebBar: WebGlass {
   let back = WebBarButton("chevron.backward", "Back", "ui-webback")
   let forward = WebBarButton("chevron.forward", "Forward", "ui-webforward")
@@ -105,6 +106,12 @@ final class WebBar: WebGlass {
   let translated = NSView()
   /// The address keeps this much before what is to come gives way, the translation first
   static let addressMinWidth: CGFloat = 96
+  /// What correcting the body is at, in place of the address
+  let pickNote = NSTextField(labelWithString: "")
+  let pickCancel = WebBarButton("xmark", "Cancel", "ui-webpickcancel", titled: true)
+  let pickDone = WebBarButton("checkmark", "Done", "ui-webpickdone", titled: true)
+  /// The body being corrected; none: the bar as it always is
+  private(set) var picking: Picking?
 
   /// What the save button says now
   private var state = Save.off("")
@@ -120,9 +127,15 @@ final class WebBar: WebGlass {
     for c in [extract, translate, save] { c.isEnabled = false }
     for s in separators + [translated] { s.wantsLayer = true }
     translated.isHidden = true
+    pickNote.font = .systemFont(ofSize: 12)
+    pickNote.lineBreakMode = .byTruncatingTail
+    pickNote.cell?.usesSingleLineMode = true
+    pickNote.setAccessibilityIdentifier("ui-webpicknote")
+    for v in [pickNote, pickCancel, pickDone] { v.isHidden = true }
     for v in [back, forward, address.tint, address, extract, translate, translated, save] + separators {
       content.addSubview(v)
     }
+    for v in [pickNote, pickCancel, pickDone] { content.addSubview(v) }
     saving.style = .spinning
     saving.controlSize = .small
     saving.isDisplayedWhenStopped = false
@@ -189,6 +202,28 @@ final class WebBar: WebGlass {
     needsLayout = true
   }
 
+  /// Correcting the body: whether the reader has a change to keep, and why the last Done could not keep it
+  struct Picking: Equatable {
+    var changed = false
+    var failure: String?
+  }
+
+  func show(picking: Picking?) {
+    self.picking = picking
+    for v in [back, forward, address, save] { v.isHidden = picking != nil }
+    address.tint.isHidden = picking != nil || !address.isEditing
+    for v in [pickNote, pickCancel, pickDone] { v.isHidden = picking == nil }
+    pickNote.stringValue =
+      picking?.failure
+      ?? (picking?.changed == true
+        ? "Done keeps this as the site's rule, in the vault"
+        : "Click a part of the page to leave it out of the body, or a part left out to take it back")
+    pickNote.toolTip = pickNote.stringValue
+    pickNote.textColor = picking?.failure == nil ? NSColor(cgColor: look.ink) : .systemRed
+    pickDone.tone = picking?.changed == true ? look.accent : nil
+    needsLayout = true
+  }
+
   static func stageName(_ stage: String) -> String {
     switch stage {
     case "prepare": "getting the page ready"
@@ -202,7 +237,7 @@ final class WebBar: WebGlass {
   /// The buttons in the look's ink, the saved state and the chosen of a group in its accent
   override func restyle() {
     super.restyle()
-    for b in [back, forward, save] + extract.buttons + translate.buttons { b.restyle(look) }
+    for b in [back, forward, save, pickCancel, pickDone] + extract.buttons + translate.buttons { b.restyle(look) }
     for c in [extract, translate] { c.restyle(look) }
     for s in separators { s.layer?.backgroundColor = look.ring }
     address.tint.layer?.backgroundColor = look.ink.copy(alpha: 0.07)
@@ -210,6 +245,7 @@ final class WebBar: WebGlass {
     address.textColor = NSColor(cgColor: look.ink)
     show(state)
     show(translation)
+    show(picking: picking)
   }
 
   /// The buttons the size of the board toolbar's, 4 in and 2 apart as there; a group the toolbar's separator (0.5 ×
@@ -254,6 +290,14 @@ final class WebBar: WebGlass {
     address.tint.frame = CGRect(
       x: start - 2, y: ((h - button.height) / 2).rounded(), width: address.frame.width + 4,
       height: button.height)
+    guard picking != nil else { return }
+    for v in [extract, translate, translated] + separators { v.isHidden = true }
+    func titled(_ b: NSButton) -> CGFloat { ((b.cell?.cellSize.width ?? 0) + 12).rounded(.up) }
+    right = bounds.width - 4 - titled(pickDone)
+    place(pickDone, x: right, width: titled(pickDone), height: button.height)
+    right -= 2 + titled(pickCancel)
+    place(pickCancel, x: right, width: titled(pickCancel), height: button.height)
+    place(pickNote, x: 12, width: max(0, right - 6 - 12), height: pickNote.intrinsicContentSize.height)
   }
 }
 
@@ -276,11 +320,16 @@ final class WebBarButton: NSButton {
     didSet { paint() }
   }
 
-  init(_ symbol: String, _ name: String, _ id: String) {
+  /// `titled`: its name beside the icon, as words say more than an icon alone
+  init(_ symbol: String, _ name: String, _ id: String, titled: Bool = false) {
     super.init(frame: .zero)
     image = NSImage(systemSymbolName: symbol, accessibilityDescription: name)
     isBordered = false
-    imagePosition = .imageOnly
+    imagePosition = titled ? .imageLeading : .imageOnly
+    if titled {
+      title = name
+      font = .systemFont(ofSize: 12)
+    }
     imageScaling = .scaleNone
     symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
     focusRingType = .none
@@ -394,8 +443,14 @@ final class WebChoice: NSControl {
     }
   }
 
+  /// The chosen one pressed again, by its index
+  var onRepress: ((Int) -> Void)?
+
   @objc private func pressed(_ sender: NSButton) {
-    guard sender.tag != selectedSegment else { return }
+    guard sender.tag != selectedSegment else {
+      onRepress?(sender.tag)
+      return
+    }
     selectedSegment = sender.tag
     sendAction(action, to: target)
   }

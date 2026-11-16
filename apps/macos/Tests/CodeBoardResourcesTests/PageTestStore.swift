@@ -69,4 +69,6 @@ actor PageTestStore: PageStore {
   }
 
   func rules(forHost host: String) -> [Data] { rulesByHost[host] ?? [] }
+  func putRule(domain: String, _ rules: Data) {}
+  func setVault(_ folder: URL?) {}
 }

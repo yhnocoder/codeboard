@@ -412,10 +412,12 @@
           "sources": [
             "CodeBoardShell/Shell.swift",
             "CodeBoardShell/VaultSession.swift",
-            "CodeBoardShell/TabStrip.swift"
+            "CodeBoardShell/TabStrip.swift",
+            "CodeBoardShell/TabDrag.swift"
           ],
           "tests": [
             "ShellTests",
+            "WindowSetTests",
             "ParityMenuKeysTests/controlMinusAndCommandBracketsGoBackAndForward",
             "ParityMenuKeysTests/orderKeysAreTheAppsOwnAndBracketsSwitchTabs"
           ]
@@ -569,7 +571,8 @@
             "WebSavedPageTests",
             "WebTranslatingTests",
             "WebTranslationTests",
-            "WebSelectionTests"
+            "WebSelectionTests",
+            "WebPickingTests"
           ]
         },
         "reading: code": {
