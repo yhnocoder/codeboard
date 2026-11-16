@@ -90,6 +90,8 @@ public struct ReadingTab: Codable, Equatable, Identifiable, Sendable {
   @ObservationIgnored public var machineFolder: URL?
   /// arXiv, where a paper's newer versions come from; tests give one that answers without the network
   @ObservationIgnored public var arxiv = Arxiv()
+  /// doi.org, where a DOI's metadata comes from; tests give one that answers without the network
+  @ObservationIgnored public var doi = DOI()
   /// This machine's translations (the shell makes them); nil: none, and no "+ 译文"
   @ObservationIgnored public var translations: Translations?
   /// The popup a passage's annotations are shown and written in, made for a tab with what is done in it and its size

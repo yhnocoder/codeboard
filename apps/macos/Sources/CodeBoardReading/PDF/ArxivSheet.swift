@@ -1,9 +1,9 @@
 import AppKit
 
-/// Add arXiv Paper…: one field for an id or an address, Translate (off, with why, when tongtu is not found), Add and
-/// Cancel. While it adds, a spinner stands where Add was; what went wrong is said under the field in plain words, and
-/// the sheet stays for another try. The adding itself is the shell's (Shell.addArxiv), given as `add`: nil when it went
-/// through, else the message
+/// Add arXiv or DOI Paper…: one field for an arXiv id, a DOI or an address of either, Translate (off, with why, when
+/// tongtu is not found; an arXiv paper's only), Add and Cancel. While it adds, a spinner stands where Add was; what went
+/// wrong is said under the field in plain words, and the sheet stays for another try. The adding itself is the shell's
+/// (Shell.addPaper), given as `add`: nil when it went through, else the message
 @MainActor public final class ArxivSheet: NSObject, NSTextFieldDelegate {
   public let window: NSPanel
   let field = NSTextField()
@@ -22,7 +22,7 @@ import AppKit
     window = NSPanel(
       contentRect: CGRect(x: 0, y: 0, width: 420, height: 150), styleMask: [.titled], backing: .buffered, defer: true)
     super.init()
-    field.placeholderString = "1706.03762 or https://arxiv.org/abs/…"
+    field.placeholderString = "1706.03762, 10.1145/… or an address"
     field.delegate = self
     field.setAccessibilityIdentifier("ui-arxivfield")
     translate.setAccessibilityIdentifier("ui-arxivtranslate")
@@ -48,7 +48,7 @@ import AppKit
     error.textColor = .systemRed
     error.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
     error.setAccessibilityIdentifier("ui-arxiverror")
-    let title = NSTextField(labelWithString: "Add a paper from arXiv")
+    let title = NSTextField(labelWithString: "Add a paper from arXiv or by its DOI")
     title.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
     let content = NSView()
     for v in [title, field, translate, reason, error, spinner, cancelButton, addButton] as [NSView] {

@@ -70,11 +70,14 @@ extension PDFTabView {
       drawn.filter { $0.1.type == "Highlight" && ids.contains($0.1.userName ?? "") }.map { ($0.0, $0.1.bounds) })
   }
 
-  /// A click on a highlight: its bar over it, and its annotations under it when it has some
+  /// A click on a highlight: its bar over it, and its annotations under it when it has some, the popup taking the keys
+  /// (Esc closes it)
   func showHighlight(_ group: [Highlight]) {
     shownHighlight = group
     show(highlightBar, over: lines(of: group))
-    if let entry, !notes(of: group, in: entry).isEmpty { openPop() }
+    guard let entry, !notes(of: group, in: entry).isEmpty else { return }
+    openPop()
+    pop?.focus()
   }
 
   /// Annotate: the popup under the highlight, ready to write
@@ -82,15 +85,37 @@ extension PDFTabView {
 
   /// Remove: the highlights made together go from the entry, with what was written on them
   func removeShown() {
-    let group = shownHighlight
-    guard !group.isEmpty, let (e0, path, _) = madeEntry() else { return }
-    var e = e0
-    let ids = Set(group.map(\.id))
-    let gone = notes(of: group, in: e).map(\.id)
-    e.highlights.removeAll { ids.contains($0.id) }
-    e.sidenotes.removeAll { gone.contains($0.id) }
+    let ids = Set(shownHighlight.map(\.id))
+    guard !ids.isEmpty else { return }
     dismiss()
+    removeHighlights(ids)
+  }
+
+  /// Highlights gone from the entry with the annotations on their places, one step Undo brings back as they were
+  func removeHighlights(_ ids: Set<String>) {
+    guard let (e0, path, _) = madeEntry() else { return }
+    var e = e0
+    let places = e.highlights.filter { ids.contains($0.id) }.map(\.place)
+    let highlights = e.highlights.enumerated().filter { ids.contains($0.element.id) }.map { ($0.offset, $0.element) }
+    let notes = e.sidenotes.enumerated().filter { places.contains($0.element.place) }.map { ($0.offset, $0.element) }
+    guard !highlights.isEmpty else { return }
+    e.highlights.removeAll { ids.contains($0.id) }
+    e.sidenotes.removeAll { places.contains($0.place) }
     write(e, at: path)
+    undoManager?.registerUndo(withTarget: self) { $0.restore(highlights, notes) }
+    undoManager?.setActionName("Remove Highlight")
+  }
+
+  /// Removed highlights and annotations back where they were in the entry's lists (Undo); Redo removes them again
+  func restore(_ highlights: [(Int, Highlight)], _ notes: [(Int, EntrySidenote)]) {
+    guard let (e0, path, _) = madeEntry() else { return }
+    var e = e0
+    for (i, h) in highlights { e.highlights.insert(h, at: min(i, e.highlights.count)) }
+    for (i, n) in notes { e.sidenotes.insert(n, at: min(i, e.sidenotes.count)) }
+    write(e, at: path)
+    let ids = Set(highlights.map(\.1.id))
+    undoManager?.registerUndo(withTarget: self) { $0.removeHighlights(ids) }
+    undoManager?.setActionName("Remove Highlight")
   }
 
   /// The popup for the shown highlight (the board's sidenote popup), below its last line (above its first when there
@@ -145,13 +170,15 @@ extension PDFTabView {
   /// How far a popup wider than the tab stays in from the tab's right edge and the window's left
   static let popMargin: CGFloat = 8
 
-  /// The popup closed: what is being written in it is added first
+  /// The popup closed: what is being written in it is added first; the keys it had go back to the tab
   func closePop() {
     guard let p = pop else { return }
     pop = nil
+    let had = (window?.firstResponder as? NSView)?.isDescendant(of: p.view) == true
     p.end()
     unpin(p.view)
     p.view.removeFromSuperview()
+    if had, !isHiddenOrHasHiddenAncestor { window?.makeFirstResponder(self) }
   }
 
   /// What was done in the popup, written to the entry's file

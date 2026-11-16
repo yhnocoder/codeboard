@@ -253,14 +253,17 @@ text|number|date|checkbox`; an entry's value for it is in its `entry.json`.
 **entry.json**: `version, id, title, added, origin?, authors?: [String], year?, venue?, meta?: WebMeta, versions:
 [Version], highlights: [Highlight], sidenotes: [EntrySidenote], fields: {<field id>: String | Number | Bool}`. `added`
 and every time: ms since 1970. `venue`: where it was published, as its metadata says it (an arXiv paper's journal
-reference), absent when unknown. `origin` (where it came from, one of): `arxiv: {id}` (without a version: `1706.03762`), `doi: {doi}`,
+reference; a DOI's journal or proceedings, or for a book, report, thesis or dataset its publisher), absent when unknown. `origin` (where it came from, one of): `arxiv: {id}` (without a version: `1706.03762`), `doi: {doi}`,
 `web: {url}`. `meta` is what a page saved as a link keeps, exactly what a Web card keeps (its WebMeta), so a Web card made
 from the entry copies it as it is; its picture and icon are `{file}` (in `images/` in the entry's folder, as in a board
 package) or `{url}`, never a resource's. The web line saves one entry per address (the exact string, without its
 fragment).
 A date field's value is a `YYYY-MM-DD` string. A value for a field the resource does not define is kept and not shown.
 An entry that is only a file gets a folder and an `entry.json` (the file moved into it, one rename) the first time
-something needs its id: a highlight, a sidenote, a card taken from it.
+something needs its id: a highlight, a sidenote, a card taken from it. A PDF added to a resource whose preset is `papers` is an
+entry at once instead (`ReadingPane.addPaper`): titled from the PDF (its document info's title, else its first page's
+largest line, else its file's name), with the authors its document info names, then, when it carries an arXiv id or a
+DOI, filled in from arXiv or doi.org unless renamed meanwhile (`entry.json` only; the folder keeps its name).
 
 **Version** (one readable form of the entry; a paper's v1, its v2, a translation of either, one saving of a web page):
 `id, label?, added, language?, of?, content`. `label`: what its tab says (`v2`, `v2 中文`). `of`: the version this one

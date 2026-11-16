@@ -35,11 +35,12 @@ import Testing
     return url
   }
 
-  func vault() throws -> (Vault, Shell, VaultResource) {
+  /// A vault with one resource, Papers, of files (a PDF added stays a file alone) unless `preset` says otherwise
+  func vault(_ preset: ResourcePreset = .files) throws -> (Vault, Shell, VaultResource) {
     let root = fm.temporaryDirectory.appending(path: "shellpdf-\(UUID().uuidString)")
     try fm.createDirectory(at: root, withIntermediateDirectories: true)
     let vault = Vault(root: root)
-    let r = try vault.newResource(in: "", title: "Papers", preset: .papers)
+    let r = try vault.newResource(in: "", title: "Papers", preset: preset)
     let shell = Shell()
     shell.pasteboard = NSPasteboard(name: NSPasteboard.Name("shellpdf-\(UUID().uuidString)"))
     shell.open(vault, restoring: nil)
@@ -79,6 +80,26 @@ import Testing
     #expect(!shell.addPDFs([other], to: r), "nothing to add")
   }
 
+  @Test func aPDFAddedToAResourceOfPapersIsAPaperEntryAtOnceTitledFromThePDF() throws {
+    let (vault, shell, r) = try vault(.papers)
+    defer { try? fm.removeItem(at: vault.root) }
+    let titled = try outside("scan 7.pdf", "Rivers run north.")
+    defer { try? fm.removeItem(at: titled.deletingLastPathComponent()) }
+    // its document info's title, as a PDF writer sets it
+    let doc = try #require(PDFDocument(url: titled))
+    doc.documentAttributes = [PDFDocumentAttribute.titleAttribute: "Quiet Rivers"]
+    #expect(doc.write(to: titled))
+    #expect(shell.addPDFs([titled], to: r))
+    let items = try vault.items(in: r.path)
+    guard case .entry(let e, let path)? = items.first, items.count == 1 else {
+      Issue.record("\(items)")
+      return
+    }
+    #expect(e.title == "Quiet Rivers" && path == "Papers.resource/Quiet Rivers")
+    #expect(shell.reading.tabs.map(\.title) == ["Quiet Rivers"])
+    #expect(shell.reading.tabs.first?.payload == ["entry": e.id.rawValue, "version": e.versions[0].id.rawValue])
+  }
+
   @Test func addArxivPaperMakesAnEntryOpensItAndTheSameIdAgainOpensThatEntry() async throws {
     let (vault, shell, r) = try vault()
     defer { try? fm.removeItem(at: vault.root) }
@@ -99,15 +120,17 @@ import Testing
     let machine = fm.temporaryDirectory.appending(path: "machine-\(UUID().uuidString)")
     defer { try? fm.removeItem(at: machine) }
     shell.reading.translations = Translations(folder: machine, tongtu: { nil })
-    // the row's menu: Add arXiv Paper… asks with the sheet (here: nothing shown)
+    // the row's menu: Add arXiv or DOI Paper… asks with the sheet (here: nothing shown)
     var sheetFor: VaultResource?
     shell.askArxiv = { sheetFor = $0 }
-    shell.menu(resource: r).compactMap { $0 }.first { $0.title == "Add arXiv Paper…" }?.run()
+    shell.menu(resource: r).compactMap { $0 }.first { $0.title == "Add arXiv or DOI Paper…" }?.run()
     #expect(sheetFor == r)
 
-    #expect(await shell.addArxiv("attention", translate: false, to: r) == "“attention” is not an arXiv id or address.")
-    #expect(await shell.addArxiv("2401.00001", translate: false, to: r) == "arXiv has no paper 2401.00001.")
-    #expect(await shell.addArxiv("https://arxiv.org/abs/1706.03762", translate: true, to: r) == nil)
+    #expect(
+      await shell.addPaper("attention", translate: false, to: r)
+        == "“attention” is not an arXiv id, a DOI or an address of either.")
+    #expect(await shell.addPaper("2401.00001", translate: false, to: r) == "arXiv has no paper 2401.00001.")
+    #expect(await shell.addPaper("https://arxiv.org/abs/1706.03762", translate: true, to: r) == nil)
     let e = try #require(shell.reading.entries.arxiv("1706.03762"))
     #expect(e.path == "Papers.resource/Attention Is All You Need" && e.entry.authors == ["Ashish Vaswani"])
     #expect(e.entry.versions.map(\.label) == ["v7"])
@@ -120,9 +143,38 @@ import Testing
 
     // again, as arXiv:…: that entry, not a second one, and nothing asked of arXiv
     let before = asked.withLock { $0.count }
-    #expect(await shell.addArxiv("arXiv:1706.03762v7", translate: false, to: r) == nil)
+    #expect(await shell.addPaper("arXiv:1706.03762v7", translate: false, to: r) == nil)
     #expect(asked.withLock { $0.count } == before)
     #expect(try vault.items(in: r.path).count == 1 && shell.reading.tabs.count == 1)
+    // its arXiv DOI is that paper too
+    #expect(await shell.addPaper("https://doi.org/10.48550/arXiv.1706.03762", translate: false, to: r) == nil)
+    #expect(asked.withLock { $0.count } == before && shell.reading.tabs.count == 1)
+  }
+
+  @Test func addDOIPaperMakesAnEntryWithoutAVersionAndTheSameDOIAgainFindsIt() async throws {
+    let (vault, shell, r) = try vault()
+    defer { try? fm.removeItem(at: vault.root) }
+    let asked = Mutex<[URLRequest]>([])
+    shell.reading.doi = DOI { req in
+      asked.withLock { $0.append(req) }
+      let known = req.url!.absoluteString == "https://doi.org/10.1145/3292500.3330701"
+      let body = #"{"title": "Quiet Rivers", "author": [{"given": "Ada", "family": "Brook"}]}"#
+      return (
+        Data(body.utf8),
+        HTTPURLResponse(url: req.url!, statusCode: known ? 200 : 404, httpVersion: nil, headerFields: nil)!
+      )
+    }
+    #expect(await shell.addPaper("10.1000/none", translate: false, to: r) == "No paper has the DOI 10.1000/none.")
+    #expect(await shell.addPaper("doi:10.1145/3292500.3330701", translate: true, to: r) == nil)
+    shell.apply(.success(try vault.tree()))
+    let e = try #require(shell.reading.entries.doi("10.1145/3292500.3330701"))
+    #expect(e.path == "Papers.resource/Quiet Rivers" && e.entry.authors == ["Ada Brook"] && e.entry.versions.isEmpty)
+    // nothing to read in a tab: its resource's list shows it
+    #expect(shell.reading.tabs.map(\.kind) == ["list"])
+    let before = asked.withLock { $0.count }
+    #expect(
+      await shell.addPaper("https://doi.org/10.1145/3292500.3330701".uppercased(), translate: false, to: r) == nil)
+    #expect(try asked.withLock { $0.count } == before && vault.items(in: r.path).count == 1)
   }
 
   @Test func addToBoardAndOptionReturnHandTheSameCollectedPassageToTheShell() throws {
@@ -473,5 +525,73 @@ import Testing
     shell.addPDFs([other], to: r)
     paneView.sync()
     #expect(t.pop == nil && pop.view.superview == nil)
+  }
+
+  /// A key as the window hands it to the view that has the keys
+  func key(_ characters: String, _ code: UInt16, to v: NSView) {
+    let e = NSEvent.keyEvent(
+      with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: v.window?.windowNumber ?? 0,
+      context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code)!
+    v.keyDown(with: e)
+  }
+
+  /// A highlight with annotations clicked: its popup has the keys, plain keys do nothing there or on the page, Esc
+  /// closes it and gives the keys back to the tab. Its Remove Highlight takes the annotations with it in one step the
+  /// window's Undo (from the tab) brings back as they were, and Redo takes away again
+  @Test func anAnnotatedHighlightClickedTakesTheKeysAndItsRemovalIsUndone() async throws {
+    let (vault, shell, window, t) = try highlightedTab()
+    defer {
+      window.contentView = nil
+      window.close()
+      try? fm.removeItem(at: vault.root)
+    }
+    t.annotate()
+    let first = try sidenotePop(t)
+    type(first, "Which mill?")
+    enter(first)
+    try await until("the next input") { first.field != nil }
+    #expect(first.press("Question"))
+    type(first, "Why north?")
+    enter(first)
+    let q = try #require(try entry(shell).sidenotes.last?.id.rawValue)
+    #expect(first.press("Answer", in: q))
+    type(first, "Upstream")
+    enter(first)
+    t.dismiss()
+    let page = try #require(t.pdf.document?.page(at: 0))
+    let lit = try #require(page.annotations.first { $0.type == "Highlight" }).bounds
+    let at = t.pdf.convert(CGPoint(x: lit.midX, y: lit.midY), from: page)
+
+    t.released(at: at)
+    let pop = try sidenotePop(t)
+    #expect(window.firstResponder === pop.view, "the popup has the keys")
+    let clip = try #require(t.pdf.documentView?.enclosingScrollView?.contentView)
+    let scrolled = clip.bounds.origin
+    key(" ", 49, to: pop.view)
+    key("j", 38, to: pop.view)
+    #expect(clip.bounds.origin == scrolled && t.pop != nil && window.firstResponder === pop.view, "plain keys: nothing")
+    key("\u{1b}", 53, to: pop.view)
+    #expect(t.pop == nil && window.firstResponder === t, "Esc closes it, the keys back in the tab")
+
+    let file = vault.url(of: try #require(t.entryPath)).appending(path: Vault.entryFileName)
+    let before = try Data(contentsOf: file)
+    #expect(try entry(shell).sidenotes.count == 2)
+    t.released(at: at)
+    // what was typed above is the window's undo too: the removal is a step of its own, as when it is its own event
+    window.undoManager?.removeAllActions()
+    #expect(try sidenotePop(t).press("Remove Highlight"))
+    var e = try entry(shell)
+    #expect(e.highlights.isEmpty && e.sidenotes.isEmpty && t.pop == nil && window.firstResponder === t)
+    #expect(t.tryToPerform(#selector(CanvasView.undo(_:)), with: nil))
+    #expect(try Data(contentsOf: file) == before, "the entry's file as it was")
+    #expect(page.annotations.contains { $0.type == "Highlight" } && page.annotations.contains { $0.type == "Circle" })
+    #expect(t.tryToPerform(#selector(CanvasView.redo(_:)), with: nil))
+    e = try entry(shell)
+    #expect(e.highlights.isEmpty && e.sidenotes.isEmpty)
+    #expect(t.tryToPerform(#selector(CanvasView.undo(_:)), with: nil))
+    #expect(try Data(contentsOf: file) == before)
+    // back, and clicked: its annotations
+    t.released(at: at)
+    #expect(try sidenotePop(t).slips.count == 2)
   }
 }
