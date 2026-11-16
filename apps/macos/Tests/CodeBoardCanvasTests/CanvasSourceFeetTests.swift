@@ -16,6 +16,8 @@ import Testing
   /// The blocks' pictures asked for (entry, width), each answered with `picture` once let go
   var asked: [(entry: String, width: Int)] = []
   var picture: CGImage?
+  /// The entries' questions it says there are
+  var entryQuestions: [EntryQuestion] = []
   private var waiting: [CheckedContinuation<Void, Never>] = []
   var onSourcesChanged: (() -> Void)?
 
@@ -28,7 +30,9 @@ import Testing
   }
   func reveal(_ a: SourceAnchor) { revealed.append(a) }
   func mathPreamble(for a: SourceAnchor) -> String? { nil }
-  func questions(in entry: EntryID?) -> [EntryQuestion] { [] }
+  func questions(in entry: EntryID?) -> [EntryQuestion] {
+    entryQuestions.filter { entry == nil || $0.anchor.entry == entry }
+  }
   func setDone(_ done: Bool, question: SidenoteID, in entry: EntryID) throws {}
   func answer(_ text: String, question: SidenoteID, in entry: EntryID) throws -> String { "" }
 

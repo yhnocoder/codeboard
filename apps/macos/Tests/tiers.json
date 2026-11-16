@@ -408,7 +408,11 @@
       ],
       "areas": {
         "tabs": {
-          "sources": ["CodeBoardShell/Shell.swift", "CodeBoardShell/TabStrip.swift"],
+          "sources": [
+            "CodeBoardShell/Shell.swift",
+            "CodeBoardShell/VaultSession.swift",
+            "CodeBoardShell/TabStrip.swift"
+          ],
           "tests": [
             "ShellTests",
             "ParityMenuKeysTests/controlMinusAndCommandBracketsGoBackAndForward",

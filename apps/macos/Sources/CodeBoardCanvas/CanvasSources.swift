@@ -207,10 +207,12 @@ extension CanvasView {
     return out
   }
 
-  /// The provider said its entries changed: the feet are drawn again, and the pictures it had none of asked again
+  /// The provider said its entries changed: the feet are drawn again, the pictures it had none of asked again, and the
+  /// question list, open, lists the entries' questions again
   func sourcesChanged() {
     sourcePictures.asked = []
     refresh()
+    questionsChanged()
   }
 
   /// The resource blocks shown, each asked for at the width the zoom draws it at (as the redraws are)
