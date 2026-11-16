@@ -63,6 +63,8 @@ public struct Entry: Equatable, Sendable {
   public var origin: Origin?
   public var authors: [String]?
   public var year: Int?
+  /// What a page saved as a link keeps, as a Web card keeps it
+  public var meta: WebMeta?
   /// Its readable forms, each kept: none for an entry saved as a link alone
   public var versions: [Version]
   public var highlights: [Highlight]
@@ -72,7 +74,7 @@ public struct Entry: Equatable, Sendable {
 
   public init(
     id: EntryID, title: String, added: Double, origin: Origin? = nil, authors: [String]? = nil, year: Int? = nil,
-    versions: [Version] = [], highlights: [Highlight] = [], sidenotes: [EntrySidenote] = [],
+    meta: WebMeta? = nil, versions: [Version] = [], highlights: [Highlight] = [], sidenotes: [EntrySidenote] = [],
     fields: [String: Value] = [:]
   ) {
     self.id = id
@@ -81,6 +83,7 @@ public struct Entry: Equatable, Sendable {
     self.origin = origin
     self.authors = authors
     self.year = year
+    self.meta = meta
     self.versions = versions
     self.highlights = highlights
     self.sidenotes = sidenotes
@@ -176,6 +179,7 @@ extension Entry {
 
   /// The first id twice or reference that does not hold, as a message
   func problem() -> String? {
+    if meta?.fromResource == true { return "its page's picture is not a resource's" }
     var versionIDs = Set<VersionID>()
     for v in versions where !versionIDs.insert(v.id).inserted { return "version \(v.id.rawValue) is there twice" }
     for v in versions {
@@ -228,7 +232,7 @@ extension Resource: Codable {
 
 extension Entry: Codable {
   private enum Keys: String, CodingKey {
-    case version, id, title, added, origin, authors, year, versions, highlights, sidenotes, fields
+    case version, id, title, added, origin, authors, year, meta, versions, highlights, sidenotes, fields
   }
 
   public init(from decoder: any Decoder) throws {
@@ -238,7 +242,8 @@ extension Entry: Codable {
       id: try c.decode(EntryID.self, forKey: .id), title: try c.decode(String.self, forKey: .title),
       added: try c.decode(Double.self, forKey: .added), origin: try c.decodeIfPresent(Origin.self, forKey: .origin),
       authors: try c.decodeIfPresent([String].self, forKey: .authors),
-      year: try c.decodeIfPresent(Int.self, forKey: .year), versions: try c.decode([Version].self, forKey: .versions),
+      year: try c.decodeIfPresent(Int.self, forKey: .year), meta: try c.decodeIfPresent(WebMeta.self, forKey: .meta),
+      versions: try c.decode([Version].self, forKey: .versions),
       highlights: try c.decode([Highlight].self, forKey: .highlights),
       sidenotes: try c.decode([EntrySidenote].self, forKey: .sidenotes),
       fields: try c.decode([String: Value].self, forKey: .fields))
@@ -253,6 +258,7 @@ extension Entry: Codable {
     try c.encodeIfPresent(origin, forKey: .origin)
     try c.encodeIfPresent(authors, forKey: .authors)
     try c.encodeIfPresent(year, forKey: .year)
+    try c.encodeIfPresent(meta, forKey: .meta)
     try c.encode(versions, forKey: .versions)
     try c.encode(highlights, forKey: .highlights)
     try c.encode(sidenotes, forKey: .sidenotes)
