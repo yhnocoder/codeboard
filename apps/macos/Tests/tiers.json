@@ -427,7 +427,13 @@
             "CodeBoardCanvas/SealEditor.swift",
             "CodeBoardModel/VaultFiles.swift"
           ],
-          "tests": ["SidebarFilesTests", "DeleteTests", "OpeningWritesNothingTests", "WritingWhenClosingTests"]
+          "tests": [
+            "SidebarFilesTests",
+            "DeleteTests",
+            "OpeningWritesNothingTests",
+            "WritingWhenClosingTests",
+            "ShellPDFTests/addPDFCopiesTheFileUnderAFreeNameAndOpensItsTab"
+          ]
         },
         "search": {
           "sources": [
@@ -471,34 +477,43 @@
           "tests": ["FullWindowSheetTests"]
         },
         "reading pane": {
-          "sources": ["CodeBoardShell/MainWindow.swift", "CodeBoardShell/TabStrip.swift", "CodeBoardReading/Frame"],
-          "tests": ["FullWindowReadingTests", "ShellTests/theReadingPaneRoundTripsThroughRelaunch"]
+          "sources": [
+            "CodeBoardShell/MainWindow.swift",
+            "CodeBoardShell/TabStrip.swift",
+            "CodeBoardReading/Frame",
+            "CodeBoardReading/PDF",
+            "CodeBoardReading/Shared"
+          ],
+          "tests": ["FullWindowReadingTests", "ShellTests/theReadingPaneRoundTripsThroughRelaunch", "ShellPDFTests"]
         }
       }
     },
     "CodeBoardReadingTests": {
       "changed": "files",
-      "important": ["ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab"],
+      "important": [
+        "ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab",
+        "PDFPlaceTests/aSelectionAcrossPagesIsOnePlacePerPageAndComesBackWhole"
+      ],
       "areas": {
         "reading: frame": {
           "sources": ["CodeBoardReading/Frame"],
-          "tests": ["ReadingPaneTests", "readingImportsNeitherTheShellNorTheCanvas"]
+          "tests": ["ReadingPaneTests", "ReadingKindTests", "readingImportsNeitherTheShellNorTheCanvas"]
         },
         "reading: pdf": {
-          "sources": ["CodeBoardReading/PDF"],
-          "tests": ["ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab"]
+          "sources": ["CodeBoardReading/PDF", "CodeBoardResources"],
+          "tests": ["PDFPlaceTests", "PDFTabTests", "PDFSourceTests"]
         },
         "reading: web": {
           "sources": ["CodeBoardReading/Web"],
-          "tests": ["WebBarVisibilityTests", "WebAddressTests", "WebHistoryTests", "WebPageTests"]
+          "tests": ["WebBarVisibilityTests", "WebAddressTests", "WebHistoryTests", "WebPageTests", "WebSiteDataTests"]
         },
         "reading: list": {
           "sources": ["CodeBoardReading/List"],
           "tests": ["ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab"]
         },
         "reading: shared": {
-          "sources": ["CodeBoardReading/Shared"],
-          "tests": ["ReadingPaneTests/tabsOpenSwitchAndCloseAndTheSameKeyGoesToItsTab"]
+          "sources": ["CodeBoardReading/Shared", "CodeBoardModel/Collected.swift"],
+          "tests": ["SelectionBarPlaceTests", "SelectionBarTests"]
         }
       }
     },

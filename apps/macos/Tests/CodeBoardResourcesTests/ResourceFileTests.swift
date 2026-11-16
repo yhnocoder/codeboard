@@ -305,3 +305,32 @@ private func at(_ json: inout [String: Any], _ list: String, _ i: Int, _ change:
     try Resource(decoding: json(#"{"version": 2, "id": "r", "preset": "papers", "fields": []}"#), file: at)
   }
 }
+
+/// A page saved as a link keeps what a Web card keeps, coded as a Web card's: pictures as files or addresses
+@Test func anEntrysPageMetaRoundTripsAsAWebCardsAndIsLeftOutWhenAbsent() throws {
+  let meta = WebMeta(
+    title: "A field guide", description: "Birds of the river bank", site: "example.org",
+    image: .file("guide-1a2b.png"), icon: .url("https://example.org/favicon.ico"), fetchedAt: 1_700_000_000_000)
+  let e = Entry(
+    id: EntryID(rawValue: "e3"), title: "A field guide", added: 1, origin: .web("https://example.org/guide"),
+    meta: meta)
+  let data = try e.encoded()
+  #expect(try Entry(decoding: data, file: file) == e)
+  let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+  let card = try #require(
+    try JSONSerialization.jsonObject(with: try JSONEncoder().encode(meta)) as? [String: Any])
+  #expect(NSDictionary(dictionary: try #require(json["meta"] as? [String: Any])).isEqual(to: card))
+  #expect(!String(decoding: try everything().encoded(), as: UTF8.self).contains("\"meta\""))
+}
+
+@Test func anEntrysPageMetaWithAResourcesPictureIsRefused() throws {
+  let anchor = SourceAnchor(entry: EntryID(rawValue: "e1"), place: Place(version: v1, block: .page(1)))
+  let e = Entry(
+    id: EntryID(rawValue: "e3"), title: "A field guide", added: 1, meta: WebMeta(icon: .resource(anchor)))
+  #expect {
+    try Entry(decoding: try e.encoded(), file: file)
+  } throws: { error in
+    guard case .malformed(_, let why) = error as? VaultError else { return false }
+    return why == "its page's picture is not a resource's"
+  }
+}

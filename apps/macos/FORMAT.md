@@ -243,9 +243,13 @@ each with its own `version`, now 1. Names starting with `.` are not entries. Ope
 the list starts with; it does not limit what an entry may be. **Field** (a column the user added): `id, name, type:
 text|number|date|checkbox`; an entry's value for it is in its `entry.json`.
 
-**entry.json**: `version, id, title, added, origin?, authors?: [String], year?, versions: [Version], highlights:
-[Highlight], sidenotes: [EntrySidenote], fields: {<field id>: String | Number | Bool}`. `added` and every time: ms since
-1970. `origin` (where it came from, one of): `arxiv: {id}` (without a version: `1706.03762`), `doi: {doi}`, `web: {url}`.
+**entry.json**: `version, id, title, added, origin?, authors?: [String], year?, meta?: WebMeta, versions: [Version],
+highlights: [Highlight], sidenotes: [EntrySidenote], fields: {<field id>: String | Number | Bool}`. `added` and every
+time: ms since 1970. `origin` (where it came from, one of): `arxiv: {id}` (without a version: `1706.03762`), `doi: {doi}`,
+`web: {url}`. `meta` is what a page saved as a link keeps, exactly what a Web card keeps (its WebMeta), so a Web card made
+from the entry copies it as it is; its picture and icon are `{file}` (in `images/` in the entry's folder, as in a board
+package) or `{url}`, never a resource's. The web line saves one entry per address (the exact string, without its
+fragment).
 A date field's value is a `YYYY-MM-DD` string. A value for a field the resource does not define is kept and not shown.
 An entry that is only a file gets a folder and an `entry.json` (the file moved into it, one rename) the first time
 something needs its id: a highlight, a sidenote, a card taken from it.

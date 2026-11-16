@@ -12,6 +12,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   /// Where the bar is now, which lags `visibility` while it slides
   private var barShown = true
   private var observations: [NSKeyValueObservation] = []
+  private var clearedObserver: (any NSObjectProtocol)?
   /// Opened blank: the address is edited as soon as the view is in a window
   private var editOnShow: Bool
   /// What was typed, back in the address when the arrows return to it from the suggestions
@@ -31,6 +32,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     self.context = context
     let config = WKWebViewConfiguration()
     config.websiteDataStore = context.websiteData
+    config.applicationNameForUserAgent = WebReading.applicationName
     let relay = ScrollRelay()
     config.userContentController.add(relay, contentWorld: .defaultClient, name: "scroll")
     config.userContentController.addUserScript(
@@ -70,6 +72,12 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
       web.observe(\.canGoBack) { [weak self] _, _ in MainActor.assumeIsolated { self?.historyChanged() } },
       web.observe(\.canGoForward) { [weak self] _, _ in MainActor.assumeIsolated { self?.historyChanged() } },
     ]
+    clearedObserver = NotificationCenter.default.addObserver(
+      forName: WebReading.siteDataCleared, object: context.websiteData, queue: .main
+    ) { [weak self] note in
+      let domain = note.userInfo?["domain"] as? String
+      MainActor.assumeIsolated { self?.siteDataCleared(domain) }
+    }
     historyChanged()
     pageChanged()
     if let url { web.load(URLRequest(url: url)) }
@@ -77,6 +85,10 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
 
   @available(*, unavailable)
   required init?(coder: NSCoder) { fatalError("WebPageView is not loaded from nibs") }
+
+  isolated deinit {
+    if let clearedObserver { NotificationCenter.default.removeObserver(clearedObserver) }
+  }
 
   override var isFlipped: Bool { true }
 
@@ -152,6 +164,14 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     web.load(URLRequest(url: url))
     window?.makeFirstResponder(web)
     endEditing()
+  }
+
+  /// The site's data is gone: its page again by address, not `reload()`, which would send a form's answer again
+  private func siteDataCleared(_ domain: String?) {
+    guard let url = web.url, let host = url.host(), domain.map({ WebReading.host(host, isOf: $0) }) ?? true else {
+      return
+    }
+    web.load(URLRequest(url: url))
   }
 
   private func historyChanged() {

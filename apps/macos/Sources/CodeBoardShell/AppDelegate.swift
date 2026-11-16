@@ -72,6 +72,8 @@ import CodeBoardModel
     self.panes = panes
     panes.onVaultChanged = { [weak self] in self?.readTree(reloadBoards: true) }
     panes.cameras = cameras
+    // beside the cameras: Application Support/<this app's id>
+    shell.machineFolder = cameras?.folder.deletingLastPathComponent()
     panes.pictures = CanvasView.defaultPictures
     let ai = AISettings(defaults: .standard)
     let keys = KeychainKeyStore()
@@ -211,6 +213,7 @@ import CodeBoardModel
   // Not toggleSidebar(_:): NSWindow answers that one itself (and disables it, having no split view)
   @objc func flipSidebar(_ sender: Any?) { shell.sidebarShown.toggle() }
   @objc func flipReadingPane(_ sender: Any?) { shell.reading.shown.toggle() }
+  @objc func newWebTab(_ sender: Any?) { shell.openWeb(nil) }
   @objc func moveReadingPane(_ sender: Any?) { shell.reading.side = shell.reading.side.other }
   /// The toolbar's ⋯ Rename Board… and Edit Mark…: in the sidebar
   @objc func renameBoard(_ sender: Any?) { shell.renameOpenBoard() }
@@ -248,6 +251,7 @@ import CodeBoardModel
     case #selector(flipReadingPane(_:)):
       item.title = shell.reading.shown ? "Hide Reading Pane" : "Show Reading Pane"
       return shell.vault != nil
+    case #selector(newWebTab(_:)): return shell.vault != nil
     case #selector(moveReadingPane(_:)):
       item.title = shell.reading.side == .right ? "Move Reading Pane to the Left" : "Move Reading Pane to the Right"
       return shell.vault != nil
@@ -289,6 +293,11 @@ import CodeBoardModel
     let file = NSMenu(title: "File")
     file.addItem(withTitle: "Open Vault…", action: #selector(openVault(_:)), keyEquivalent: "o")
     file.addItem(item("Import Old Boards…", #selector(importOldBoards(_:)), "i", [.command, .shift]))
+    file.addItem(.separator())
+    // no keys yet: the shortcut list (CanvasKeys) has no rows for them
+    file.addItem(withTitle: "New Web Tab", action: #selector(newWebTab(_:)), keyEquivalent: "")
+    // a web tab's view answers it
+    file.addItem(withTitle: "Open Location…", action: NSSelectorFromString("openLocation:"), keyEquivalent: "")
     file.addItem(.separator())
     file.addItem(withTitle: "Close Tab", action: #selector(closeTab(_:)), keyEquivalent: "w")
     file.addItem(item("Close Window", #selector(NSWindow.performClose(_:)), "w", [.command, .shift]))
