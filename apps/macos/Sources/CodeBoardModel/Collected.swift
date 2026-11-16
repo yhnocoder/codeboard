@@ -73,4 +73,31 @@ public struct SourceLabel: Equatable, Sendable {
   func reveal(_ a: SourceAnchor)
   /// Called when an entry is renamed, removed or gets a version: feet and pictures are drawn again
   var onSourcesChanged: (() -> Void)? { get set }
+  /// The questions on an entry's passages (every entry's when nil), in the order they were written in each entry
+  func questions(in entry: EntryID?) -> [EntryQuestion]
+  /// A question marked done or not, in its entry's file
+  func setDone(_ done: Bool, question: SidenoteID, in entry: EntryID) throws
+  /// An answer added to a question, in its entry's file; the answer's id
+  @discardableResult func answer(_ text: String, question: SidenoteID, in entry: EntryID) throws -> String
+}
+
+extension SourceProvider {
+  /// Every entry's questions
+  public func questions() -> [EntryQuestion] { questions(in: nil) }
+}
+
+/// An annotation of an entry that is a question, and where it is
+public struct EntryQuestion: Equatable, Sendable {
+  public var anchor: SourceAnchor
+  public var sidenote: SidenoteID
+  /// Its Markdown, and its question (when asked, done, the answers)
+  public var note: TextNote
+  public var entryTitle: String
+
+  public init(anchor: SourceAnchor, sidenote: SidenoteID, note: TextNote, entryTitle: String) {
+    self.anchor = anchor
+    self.sidenote = sidenote
+    self.note = note
+    self.entryTitle = entryTitle
+  }
 }

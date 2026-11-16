@@ -157,7 +157,8 @@ import Testing
     t.pop?.addWritten()
     t.pop?.input.string = "Not a question"
     t.pop?.addWritten()
-    let s = ReadingSources(pane: w.pane)
+    // what the board asks, through the protocol
+    let s: any SourceProvider = ReadingSources(pane: w.pane)
     let e = try entry(v)
     let qs = s.questions()
     #expect(qs.count == 1 && s.questions(in: e.id) == qs && s.questions(in: EntryID(rawValue: "other")).isEmpty)

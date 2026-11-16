@@ -103,17 +103,8 @@ import PDFKit
 
   // MARK: Questions
 
-  /// An annotation of an entry that is a question, and where it is
-  public struct EntryQuestion: Equatable, Sendable {
-    public var anchor: SourceAnchor
-    public var sidenote: SidenoteID
-    /// Its Markdown, and its question (when asked, done, the answers)
-    public var note: TextNote
-    public var entryTitle: String
-  }
-
   /// The questions on an entry's passages (every entry's when nil), in the order they were written in each entry
-  public func questions(in entry: EntryID? = nil) -> [EntryQuestion] {
+  public func questions(in entry: EntryID?) -> [EntryQuestion] {
     let found = entry.map { pane.entries[$0].map { [$0] } ?? [] } ?? pane.entries.all
     return found.flatMap { f in
       f.entry.sidenotes.filter { $0.note.question != nil }.map {
