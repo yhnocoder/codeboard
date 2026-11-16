@@ -63,8 +63,10 @@ public struct ProcessGitRunner: GitRunner {
     p.executableURL = URL(filePath: exe)
     p.arguments = args
     p.currentDirectoryURL = URL(filePath: dir, directoryHint: .isDirectory)
-    // No terminal to answer a credential prompt: a fetch a partial clone starts on its own would wait for ever
-    p.environment = ProcessInfo.processInfo.environment.merging(["GIT_TERMINAL_PROMPT": "0"]) { _, x in x }
+    // No terminal to answer a credential prompt: a fetch a partial clone starts on its own would wait for ever.
+    // git's own words in English whatever the system's language: what is read from them ("fatal: ") stays the same
+    p.environment = ProcessInfo.processInfo.environment
+      .merging(["GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C"]) { _, x in x }
       .merging(environment) { _, x in x }
     let out = Pipe()
     let err = Pipe()

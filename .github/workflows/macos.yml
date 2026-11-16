@@ -4,9 +4,12 @@ name: macOS
 # toolchain the app is developed with.
 # A PR runs two jobs, each meant to end in under 6 minutes for an ordinary change: app (one build, the important unit
 # tests and those of what the PR changed, picked by tools/tests/pick.mjs from Tests/tiers.json, and the lint) and
-# accept (smoke) (the acceptance scenarios in smoke.txt). A PR that changes much compiles and runs more and takes
-# longer. The regular full run (regular.yml) calls this with everything: every unit test in app and
-# the whole acceptance list in two accept jobs.
+# accept (smoke) (the acceptance scenarios in smoke.txt, and those tools/ci/accept-list.mjs adds: the scenario files the
+# PR changed that ci.txt lists, at most 20). The PR's description can ask for more, on lines "Accept: name, name"
+# (scenarios) and "Mac tests: Name, Name" (unit tests, named as in tiers.json); they are read when a push starts a run,
+# so editing the description alone runs nothing. A PR that changes much compiles and runs more and takes longer. The
+# regular full run (regular.yml) calls this with everything: every unit test in app and the whole acceptance list in
+# two accept jobs, and the description is not read.
 on:
   pull_request:
     paths: ["apps/macos/**", ".github/workflows/macos.yml"]
@@ -41,7 +44,9 @@ jobs:
       matrix:
         shard: ${{ fromJSON(inputs.everything && '["1/2", "2/2"]' || '["1/1"]') }}
     steps:
+      # on a PR the checkout is the merge commit, and accept-list.mjs compares it with its first parent, the base
       - uses: actions/checkout@v6
+        with: { fetch-depth: 2 }
       # the web board and its Markdown package, the app's Note page, and the fonts and formula engines the app's native
       # Markdown draws with (under a second)
       - uses: ./.github/actions/setup
@@ -59,7 +64,9 @@ jobs:
       # the caches and the uploaded files. Without the token there is no netrc file, and the app runs without the service
       - name: Fetch the saving service
         run: if [ -f ~/.netrc ]; then SHIYI_NETRC="$HOME/.netrc" node apps/macos/tools/shiyi/fetch.mjs; fi
-      # the last regular full run's build (see the app job): the driver is in it, so only what changed since is compiled
+      # the last regular full run's build (see the app job): the driver is in it, so only what changed since is
+      # compiled. A PR that changes Package.resolved starts from the newest kept build of any: SwiftPM then fetches only
+      # the packages whose pins changed and compiles what depends on them
       - id: built
         uses: ./.github/actions/sealed-cache
         with:
@@ -67,9 +74,11 @@ jobs:
           name: build
           paths: apps/macos/.build
           key: sealed-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.sha }}
-          restore-keys: sealed-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-
+          restore-keys: |
+            sealed-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-
+            sealed-build-${{ runner.os }}-
           secret: ${{ secrets.SHIYI_READ_TOKEN }}
-      # without a kept build, the package clones (restored only: the app job saves them)
+      # without a kept build, the package clones (restored only: the app job saves them), those of other pins too
       - if: ${{ !steps.built.outputs.cache-matched-key }}
         uses: ./.github/actions/sealed-cache
         with:
@@ -79,13 +88,24 @@ jobs:
             apps/macos/.build/repositories
             apps/macos/.build/checkouts
           key: sealed-swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.run_id }}
-          restore-keys: sealed-swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-
+          restore-keys: |
+            sealed-swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-
+            sealed-swiftpm-${{ runner.os }}-
           secret: ${{ secrets.SHIYI_READ_TOKEN }}
       - run: node apps/macos/tools/ci/source-times.mjs
       - run: npx playwright-core install chromium
-      # (the boards were built above: --skip-build leaves the web builds out; the driver is built, debug, either way)
+      # A PR's list: smoke.txt and what the PR changed or its description names. The description is anyone's text, so it
+      # reaches the script only as an environment variable, which the script checks name by name
+      - name: Pick the acceptance scenarios
+        if: ${{ !inputs.everything }}
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node apps/macos/tools/ci/accept-list.mjs
+      # (the boards were built above: --skip-build leaves the web builds out; the driver is built, debug, either way).
+      # ci.mjs reads its list relative to tools/accept, and accept-list.mjs writes it to apps/macos/.build-ci
       - run: >-
-          node apps/macos/tools/accept/ci.mjs --list ${{ inputs.everything && 'ci.txt' || 'smoke.txt' }}
+          node apps/macos/tools/accept/ci.mjs
+          --list ${{ inputs.everything && 'ci.txt' || '../../.build-ci/accept-list.txt' }}
           --shard ${{ matrix.shard }} --skip-build
       - if: always()
         uses: actions/upload-artifact@v6
@@ -133,10 +153,12 @@ jobs:
       - name: Fetch the saving service
         run: if [ -f ~/.netrc ]; then SHIYI_NETRC="$HOME/.netrc" node tools/shiyi/fetch.mjs; fi
       # A PR starts from the build the last regular full run made on main (.build, about 500 MB), so it compiles only
-      # what differs from it: compiling everything takes 2 to 4.5 minutes, depending on the runner. The regular run
-      # itself starts from nothing, so a wrong kept build lasts 6 hours at most. A cache saved on the default branch is
-      # readable by every PR's run. It is sealed with SHIYI_READ_TOKEN (the sealed-cache action), because the build
-      # holds the private package and a pull request from a fork can restore caches saved on main
+      # what differs from it: compiling everything takes 2 to 4.5 minutes, depending on the runner. A PR that changes
+      # Package.resolved starts from the newest kept build of any: SwiftPM then fetches only the packages whose pins
+      # changed and compiles what depends on them. The regular run itself starts from nothing, so a wrong kept build
+      # lasts 6 hours at most. A cache saved on the default branch is readable by every PR's run. It is sealed with
+      # SHIYI_READ_TOKEN (the sealed-cache action), because the build holds the private package and a pull request from
+      # a fork can restore caches saved on main
       - id: built
         if: ${{ !inputs.everything }}
         uses: ./.github/actions/sealed-cache
@@ -145,12 +167,15 @@ jobs:
           name: build
           paths: apps/macos/.build
           key: sealed-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.sha }}
-          restore-keys: sealed-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-
+          restore-keys: |
+            sealed-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-
+            sealed-build-${{ runner.os }}-
           secret: ${{ secrets.SHIYI_READ_TOKEN }}
       # without a kept build: the clones of tree-sitter and its grammars with their whole history, which took about a
       # minute and a half to fetch on every run. They are saved after the build below when none were restored, under a
       # key of the run's own and found by its prefix, the newest first: clones sealed with a token that has since been
-      # replaced cannot be opened, and would otherwise be found again in every run
+      # replaced cannot be opened, and would otherwise be found again in every run. Clones made for another
+      # Package.resolved are taken too, since SwiftPM then fetches only the packages whose pins changed
       - id: packages
         if: ${{ !steps.built.outputs.cache-matched-key }}
         uses: ./.github/actions/sealed-cache
@@ -161,7 +186,9 @@ jobs:
             apps/macos/.build/repositories
             apps/macos/.build/checkouts
           key: sealed-swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.run_id }}
-          restore-keys: sealed-swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-
+          restore-keys: |
+            sealed-swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-
+            sealed-swiftpm-${{ runner.os }}-
           secret: ${{ secrets.SHIYI_READ_TOKEN }}
       # the times the kept build saw on the sources (source-times.mjs), or everything would be compiled again
       - run: node tools/ci/source-times.mjs
@@ -176,7 +203,10 @@ jobs:
           paths: apps/macos/.build
           key: sealed-build-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.sha }}
           secret: ${{ secrets.SHIYI_READ_TOKEN }}
-      - if: ${{ steps.packages.outcome == 'success' && !steps.packages.outputs.cache-matched-key }}
+      # (clones restored from another Package.resolved are saved again, for this one)
+      - if: >-
+          ${{ steps.packages.outcome == 'success' && !startsWith(steps.packages.outputs.cache-matched-key,
+          format('sealed-swiftpm-{0}-{1}-', runner.os, hashFiles('apps/macos/Package.resolved'))) }}
         uses: ./.github/actions/sealed-cache
         with:
           do: save
@@ -186,7 +216,10 @@ jobs:
             apps/macos/.build/checkouts
           key: sealed-swiftpm-${{ runner.os }}-${{ hashFiles('apps/macos/Package.resolved') }}-${{ github.run_id }}
           secret: ${{ secrets.SHIYI_READ_TOKEN }}
-      # every test in the regular full run; on a PR the important ones and those of what it changed (Tests/tiers.json)
-      - run: node tools/tests/pick.mjs ${{ inputs.everything && '--all' || '--base HEAD^1' }}
+      # every test in the regular full run; on a PR the important ones, those of what it changed (Tests/tiers.json) and
+      # those its description names on "Mac tests:" lines, handed over only as an environment variable (see accept)
+      - env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node tools/tests/pick.mjs ${{ inputs.everything && '--all' || '--base HEAD^1' }}
       - if: ${{ !cancelled() }}
         run: swift format lint --strict -r Sources Tests Package.swift

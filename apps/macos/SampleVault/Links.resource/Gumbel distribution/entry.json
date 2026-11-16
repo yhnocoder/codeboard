@@ -1,0 +1,22 @@
+{
+  "added": 1763280002000,
+  "fields": {},
+  "highlights": [],
+  "id": "e-gumbel",
+  "meta": {
+    "description": "Where the sampling trick on the board Sampling comes from.",
+    "failed": false,
+    "fetchedAt": 1763280000000,
+    "site": "Wikipedia",
+    "title": "Gumbel distribution"
+  },
+  "origin": {
+    "web": {
+      "url": "https://en.wikipedia.org/wiki/Gumbel_distribution"
+    }
+  },
+  "sidenotes": [],
+  "title": "Gumbel distribution",
+  "version": 1,
+  "versions": []
+}

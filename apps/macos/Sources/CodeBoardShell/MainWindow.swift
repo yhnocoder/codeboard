@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 /// The D2 window: sidebar on the window's own warm-grey ground, the board and the reading pane as floating rounded
 /// panels, each with its tabs in its top bar. Traffic lights, the sidebar toggle, back / forward and both panels' tabs
 /// share one title line, whichever is shown.
-@MainActor func makeMainWindow(shell: Shell) -> (NSWindow, BoardPanes) {
+@MainActor func makeMainWindow(shell: Shell, repositories: RepositoriesModel? = nil) -> (NSWindow, BoardPanes) {
   let window = BoardWindow(
     contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
     styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -20,7 +20,7 @@ import UniformTypeIdentifiers
   window.backgroundColor = ShellTheme.ground
   window.minSize = NSSize(width: 640, height: 400)
   window.isReleasedWhenClosed = false
-  let root = RootView(shell: shell)
+  let root = RootView(shell: shell, repositories: repositories)
   window.contentView = root
   let panes = root.panes
   shell.confirm = { [weak window, weak panes] alert in await panes?.confirm(alert, window) ?? false }
@@ -31,6 +31,14 @@ import UniformTypeIdentifiers
     panel.allowsMultipleSelection = true
     panel.prompt = "Add"
     return await panel.beginSheetModal(for: window) == .OK ? panel.urls : []
+  }
+  repositories?.askFolder = { [weak window] in
+    guard let window else { return nil }
+    let panel = NSOpenPanel()
+    panel.canChooseFiles = false
+    panel.canChooseDirectories = true
+    panel.prompt = "Add"
+    return await panel.beginSheetModal(for: window) == .OK ? panel.url : nil
   }
   shell.askArxiv = { [weak window, weak shell] resource in
     guard let window, let shell else { return }
@@ -89,7 +97,7 @@ private final class RootView: NSView {
     var side: ReadingPane.Side
   }
 
-  init(shell: Shell) {
+  init(shell: Shell, repositories: RepositoriesModel?) {
     self.shell = shell
     panes = BoardPanes(shell: shell)
     let empty = NSButton(title: "Open Vault…", target: nil, action: #selector(AppDelegate.openVault(_:)))
@@ -108,7 +116,7 @@ private final class RootView: NSView {
         if shell.reading.barLook != look { shell.reading.barLook = look }
         readingView?.sync()
       })
-    sidebar = ChromeHost(rootView: Sidebar(shell: shell))
+    sidebar = ChromeHost(rootView: Sidebar(shell: shell, repositories: repositories))
     controls = ChromeHost(rootView: TitleControls(shell: shell))
     edge = SidebarEdge(shell: shell)
     divider = ReadingDivider(pane: shell.reading)

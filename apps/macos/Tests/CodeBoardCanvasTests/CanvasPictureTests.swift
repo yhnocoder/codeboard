@@ -29,6 +29,20 @@ import Testing
     return Double(n) / Double(a.width * a.height)
   }
 
+  /// Holds the canvas's next loads open until `release` is called, and waits for one to begin: whether a load is
+  /// still under way after a yield depends on how fast its work ran
+  func held(_ c: CanvasView) -> (begun: () async -> Void, release: () -> Void) {
+    let (gate, open) = AsyncStream<Void>.makeStream()
+    c.loadHold = { for await _ in gate {} }
+    return (
+      { for _ in 0..<1000 where !c.opening { await Task.yield() } },
+      {
+        c.loadHold = nil
+        open.finish()
+      }
+    )
+  }
+
   @Test func aBoardOpenedAgainShowsItsLastPictureFromItsFirstFrameUntilItIsDrawn() async throws {
     let r = try await Rig(zoom: 1)
     defer { r.close() }
@@ -48,10 +62,12 @@ import Testing
     r.canvas.superview!.addSubview(c)
     defer { c.removeFromSuperview() }
     let at = VaultBoard(id: r.doc.board.id, title: "B", path: "\(r.doc.board.id.rawValue).board")
+    let hold = held(c)
     let opened = Task { try await c.show(r.doc, at: at, in: Vault(root: r.root), theme: .warmInk) }
-    await Task.yield()
+    await hold.begun()
     #expect(c.scene == nil && c.opening, "still opening")
     #expect(!c.picture.isHidden && c.picture.contents != nil && c.picture.frame == c.bounds, "its picture at once")
+    hold.release()
     // every frame until it is drawn: the picture, or every item in view drawn
     var frames = 0
     while c.scene == nil || !c.picture.isHidden {
@@ -103,11 +119,12 @@ import Testing
     try other.encoded().write(to: file)
     let doc = try BoardDocument { file }
     let p = r.centre("n1")
+    let hold = held(c)
     let opened = Task {
       try await c.show(
         doc, at: VaultBoard(id: other.id, title: "O", path: "other.board"), in: Vault(root: r.root), theme: .warmInk)
     }
-    await Task.yield()
+    await hold.begun()
     try #require(c.opening)
     // the board left is all on screen
     let b = c.blankInView
@@ -117,6 +134,7 @@ import Testing
     r.click(p)
     r.press("x")
     #expect(doc.selection.isEmpty && r.doc.selection.isEmpty && c.camera == cam && !c.isEditing)
+    hold.release()
     try await opened.value
     #expect(!c.opening && c.shownBoard?.id == other.id)
   }

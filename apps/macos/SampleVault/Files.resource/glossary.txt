@@ -1,0 +1,4 @@
+Prefill: the first pass over a prompt, all its tokens at once.
+Decode: one new token per sequence per step.
+Block: a fixed number of tokens' keys and values in the KV cache.
+Preempt: free a running sequence's blocks and put it back to wait.
