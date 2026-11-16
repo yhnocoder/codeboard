@@ -1908,9 +1908,10 @@ func strings(_ x: Any) -> [String] {
       var title = String(line.dropFirst(4))
       let chevron = title.hasSuffix(":chevron")
       if chevron { title.removeLast(8) }
-      guard let shell = NSApp.delegate.flatMap({ field($0, "shell") }), let tree = field(shell, "tree") else {
-        return "none"
-      }
+      // (what the windows share, the vault and its tree, is in the shell's session)
+      guard let shell = NSApp.delegate.flatMap({ field($0, "shell") }),
+        let tree = field(shell, "tree") ?? field(shell, "session", "tree")
+      else { return "none" }
       let open = field(shell, "expanded") as? Set<String> ?? []
       var rows: [(name: String, depth: Int)] = []
       func walk(_ f: Any, _ depth: Int) {
@@ -1991,8 +1992,9 @@ func strings(_ x: Any) -> [String] {
     // its name
     case "entries":
       let title = String(line.dropFirst(8))
-      guard let shell = NSApp.delegate.flatMap({ field($0, "shell") }), let vault = field(shell, "vault") as? Vault,
-        let tree = field(shell, "tree") as? VaultFolder
+      guard let shell = NSApp.delegate.flatMap({ field($0, "shell") }),
+        let vault = (field(shell, "vault") ?? field(shell, "session", "vault")) as? Vault,
+        let tree = (field(shell, "tree") ?? field(shell, "session", "tree")) as? VaultFolder
       else { return "no vault" }
       guard let r = tree.allFolders.flatMap(\.resources).first(where: { $0.title == title }) else {
         return "no resource \(title)"
