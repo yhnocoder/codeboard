@@ -6,7 +6,8 @@ import Testing
 
 /// A stand-in for tongtu in a folder of its own: `doctor`, `run <paper> --workdir <dir>` and `status <paper> --workdir
 /// <dir> --json` answered as the real one answers them (its status JSON, `out/<dir name>.zh.pdf` and `.zh.anchors.json`
-/// written at the end), each call written to `calls`. Files beside it change what it does: `doctor-fails`, `fail` (the
+/// written at the end), each call written to `calls`. Files beside it change what it does: `doctor-fails`,
+/// `doctor-unconfigured` (exit 3: a key missing), `fail` (the
 /// compile stage fails with a message), `hold` (a run waits in translate, 3 of 4 chunks done, until `<dir>/go` is there)
 struct FakeTongtu {
   let folder: URL
@@ -58,6 +59,10 @@ struct FakeTongtu {
       if [ -f "$here/doctor-fails" ]; then
         echo "  [missing] xelatex       compile engine (latexmk -xelatex)         xelatex not found in PATH"
         echo "environment incomplete: xelatex"; exit 1
+      fi
+      if [ -f "$here/doctor-unconfigured" ]; then
+        echo "  [missing] api key       translate (DEEPSEEK_API_KEY)              not set"
+        echo "configuration incomplete: api key"; exit 3
       fi
       echo "environment complete."; exit 0 ;;
     status)
@@ -255,6 +260,63 @@ struct FakeTongtu {
     #expect(r.tongtu.calls.filter { $0 == "run" }.count == 1, "not started alone")
     r.queue.cancel(r.job)
     await r.queue.settled()
+  }
+
+  @Test func aDoctorExitingThreeForAMissingKeyIsShownAndNothingRuns() async throws {
+    let r = try TranslationRig()
+    defer { r.remove() }
+    r.tongtu.mark("doctor-unconfigured")
+    r.queue.add(r.job)
+    await r.queue.settled()
+    guard case .failed(let why)? = r.queue.state(of: r.job) else {
+      Issue.record("not failed")
+      return
+    }
+    #expect(why.hasPrefix("tongtu doctor: [missing] api key") && why.hasSuffix("configuration incomplete: api key"))
+    #expect(r.tongtu.calls == ["doctor"])
+  }
+
+  @Test func aStatusIsReadWithOrWithoutWhetherARunIsGoingOn() throws {
+    let stages = #"[{"name":"fetch","status":"ok"},{"name":"translate","status":"absent","message":""}]"#
+    let old = try #require(
+      Tongtu.read(status: Data(#"{"stages":\#(stages),"translate_chunks":{"total":4,"done":1},"pdf":null}"#.utf8)))
+    #expect(old.progress == TranslationProgress(stage: "translate", fraction: 0.25) && old.running == nil)
+    let new = try #require(
+      Tongtu.read(
+        status: Data(
+          #"{"stages":\#(stages),"translate_chunks":{"total":4,"done":1},"running":true,"pid":4242,"later":{"a":1}}"#
+            .utf8)))
+    #expect(new.progress == old.progress && new.running == true && new.failure == nil)
+  }
+
+  @Test func aJobTongtuStillRunsAfterARelaunchIsShownRunningAndTakenInWhenItEnds() async throws {
+    let r = try TranslationRig()
+    defer { r.remove() }
+    // a job offered again, as a relaunch leaves it, whose run tongtu says goes on
+    let before = Translations(folder: r.machine, tongtu: { nil })
+    before.add(r.job)
+    await before.settled()
+    let dir = r.machine.appending(path: r.job.name)
+    try FileManager.default.createDirectory(at: dir.appending(path: "out"), withIntermediateDirectories: true)
+    func status(_ last: String, done: Int, running: Bool) throws {
+      let json = """
+        {"stages":[{"name":"fetch","status":"ok"},{"name":"translate","status":"\(last)"}],\
+        "translate_chunks":{"total":4,"done":\(done)},"running":\(running),"pid":\(running ? "4242" : "null")}
+        """
+      try json.write(to: dir.appending(path: "status.json"), atomically: true, encoding: .utf8)
+    }
+    try status("absent", done: 3, running: true)
+    let after = Translations(folder: r.machine, tongtu: { r.tongtu.exe }, poll: .milliseconds(20))
+    try await r.until("shown running") {
+      after.state(of: r.job) == .running(TranslationProgress(stage: "translate", fraction: 0.75))
+    }
+    #expect(!r.tongtu.calls.contains("run"), "not started again")
+    // its run ends: taken in as a version
+    let name = r.job.name
+    try Data("translated".utf8).write(to: dir.appending(path: "out/\(name).zh.pdf"))
+    try status("ok", done: 4, running: false)
+    try await r.until("taken in") { after.jobs.isEmpty }
+    #expect(try r.vault.entry(at: r.path).versions.map(\.label) == ["v7", "v7 中文"])
   }
 
   @Test func tongtuIsTheSettingElsePathElseTheUsualPlaces() throws {

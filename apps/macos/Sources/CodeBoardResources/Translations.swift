@@ -81,8 +81,9 @@ public enum Tongtu {
   }
 
   /// From `tongtu status --json`: the first stage not done (the one running while a run goes on; translate with its
-  /// chunks done out of all), and, for a run that stopped, the first stage that failed and its message
-  public static func read(status data: Data) -> (progress: TranslationProgress, failure: String?)? {
+  /// chunks done out of all), and, for a run that stopped, the first stage that failed and its message; whether a run
+  /// is going on, when the status says (`running`, newer tongtus). Keys not known here are passed over
+  public static func read(status data: Data) -> (progress: TranslationProgress, failure: String?, running: Bool?)? {
     struct Stage: Decodable {
       var name: String
       var status: String
@@ -95,21 +96,23 @@ public enum Tongtu {
     struct Status: Decodable {
       var stages: [Stage]
       var chunks: Chunks?
+      var running: Bool?
+      var pid: Int?
       enum CodingKeys: String, CodingKey {
-        case stages
+        case stages, running, pid
         case chunks = "translate_chunks"
       }
     }
     guard let s = try? JSONDecoder().decode(Status.self, from: data) else { return nil }
     guard let at = s.stages.first(where: { $0.status != "ok" }) else {
-      return (TranslationProgress(stage: "done", fraction: 1), nil)
+      return (TranslationProgress(stage: "done", fraction: 1), nil, s.running)
     }
     var fraction: Double?
     if at.name == "translate", let c = s.chunks, c.total > 0 { fraction = Double(c.done) / Double(c.total) }
     let failure =
       at.status == "absent"
       ? nil : [at.name, at.status, at.message ?? ""].filter { !$0.isEmpty }.joined(separator: ": ")
-    return (TranslationProgress(stage: at.name, fraction: fraction), failure)
+    return (TranslationProgress(stage: at.name, fraction: fraction), failure, s.running)
   }
 
   /// What a child is given: this process's environment with the usual places and TeX's in PATH (an app started from
@@ -171,7 +174,8 @@ public enum Tongtu {
     var failed: String?
   }
 
-  /// Jobs left from the last run are offered again as failed: started then, they are not started alone now
+  /// Jobs left from the last run are offered again as failed: started then, they are not started alone now; one that
+  /// tongtu says is still running (a run this app started before it quit) is shown running and followed until it ends
   public init(folder: URL, tongtu: @escaping () -> URL?, poll: Duration = .seconds(5)) {
     self.folder = folder
     self.tongtu = tongtu
@@ -181,6 +185,43 @@ public enum Tongtu {
       jobs.append(s.job)
       states[s.job] = .failed(s.failed ?? "CodeBoard quit before this translation was done. Retry to go on.")
     }
+    if !jobs.isEmpty { Task { [weak self] in await self?.followRunning() } }
+  }
+
+  /// The jobs offered again that tongtu says are running: shown running until their run ends, then taken in as one of
+  /// this queue's runs is (finish), or failed with tongtu's message
+  private func followRunning() async {
+    guard let exe = tongtu() else { return }
+    for job in jobs {
+      guard case .failed(let why)? = states[job] else { continue }
+      let dir = folder.appending(path: job.name, directoryHint: .isDirectory)
+      var read = await status(exe, job, dir)
+      guard read?.running == true else { continue }
+      while let r = read, r.running == true {
+        set(job, .running(r.progress))
+        try? await Task.sleep(for: poll)
+        guard states[job] != nil else { break }
+        read = await status(exe, job, dir)
+      }
+      guard states[job] != nil else { continue }
+      guard read?.progress.stage == "done" else {
+        fail(job, read?.failure ?? why)
+        continue
+      }
+      do {
+        try finish(job, dir)
+        drop(job)
+      } catch {
+        fail(job, "\(error)")
+      }
+    }
+  }
+
+  /// What `tongtu status` says of a job's work folder; nil when it says nothing readable
+  private func status(_ exe: URL, _ job: TranslationJob, _ dir: URL) async -> (
+    progress: TranslationProgress, failure: String?, running: Bool?
+  )? {
+    Tongtu.read(status: Data(await Tongtu.exec(exe, ["status", job.paper, "--workdir", dir.path, "--json"]).1.utf8))
   }
 
   /// tongtu's absence in a few words, nil when it is there
@@ -265,8 +306,7 @@ public enum Tongtu {
     var failure: String?
     while p.isRunning {
       try? await Task.sleep(for: poll)
-      let (code, out) = await Tongtu.exec(exe, ["status", job.paper, "--workdir", dir.path, "--json"])
-      if code == 0, let read = Tongtu.read(status: Data(out.utf8)) {
+      if let read = await status(exe, job, dir) {
         failure = read.failure
         if p.isRunning { set(job, .running(read.progress)) }
       }
@@ -277,8 +317,7 @@ public enum Tongtu {
       return drop(job)
     }
     guard p.terminationStatus == 0 else {
-      let (_, out) = await Tongtu.exec(exe, ["status", job.paper, "--workdir", dir.path, "--json"])
-      let said = Tongtu.read(status: Data(out.utf8))?.failure ?? failure
+      let said = await status(exe, job, dir)?.failure ?? failure
       let tail = (try? String(contentsOf: log, encoding: .utf8))?.split(separator: "\n").suffix(3).joined(
         separator: "\n")
       return fail(job, said ?? tail ?? "tongtu stopped (exit status \(p.terminationStatus)).")
