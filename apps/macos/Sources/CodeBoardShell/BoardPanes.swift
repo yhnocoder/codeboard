@@ -26,6 +26,12 @@ import CodeBoardReading
   var arriveElsewhere: ((BoardID, Arrival) -> Bool)?
   /// What the reading pane collects while this window has no board tab: to another window's board (WindowSet)
   var collectElsewhere: ((Collected) -> Void)?
+  /// The board collecting goes to with no board tab here (`collectElsewhere`'s)
+  var boardElsewhere: (() -> Board?)?
+  /// Where a card drag's pointer out of a canvas goes (the window set's)
+  weak var cardDragging: CardDragging? {
+    didSet { for p in panes.values { p.canvas.cardDragging = cardDragging } }
+  }
   /// The canvas of the selected tab, once its board is shown
   var shownCanvas: CanvasView? {
     shell.selected.flatMap { panes[$0] }.flatMap { $0.document == nil ? nil : $0.canvas }
@@ -270,6 +276,7 @@ import CodeBoardReading
     }
     pane.canvas.onSetSeal = { [weak self] in self?.setSeal($0, $1, done: $2) }
     pane.canvas.shareOnBoard = { [weak self] in self?.boardDocuments.share($0, $1) }
+    pane.canvas.cardDragging = cardDragging
     pane.canvas.onVaultDrop = { [weak self, weak pane] path, p in
       guard let self, let id = pane?.document?.id else { return }
       self.vaultDrop(path, at: p, on: id)

@@ -4,12 +4,13 @@ import CodeBoardModel
 import CodeBoardReading
 import Observation
 
-/// One window as saved: its shell's state and where it was, on which screen
+/// One window as saved: its shell's state and where it was, on which screen (the display's UUID), and where it goes
+/// back to when that screen is plugged in again. Its frame is the one it has out of full screen
 struct SavedWindow: Codable, Equatable {
   var shell: ShellState
   var frame: CGRect?
-  /// The screen's display number (NSScreenNumber)
-  var screen: UInt32?
+  var display: String?
+  var home: ScreenPlace?
 }
 
 /// The app's board windows, each with its own shell and panes, over the one session and the one table of open boards.
@@ -26,6 +27,8 @@ struct SavedWindow: Codable, Equatable {
   @ObservationIgnored var onScreen: (NSWindow) -> Bool = {
     $0.isVisible && !$0.isMiniaturized && $0.occlusionState.contains(.visible)
   }
+  /// The screens there are now; tests make them up
+  @ObservationIgnored var screens: () -> [Screen] = { Screen.current() }
   /// Each shell before its window is made, and each window's panes once made (the app delegate's settings)
   @ObservationIgnored var prepare: (Shell) -> Void = { _ in }
   @ObservationIgnored var configure: (BoardPanes) -> Void = { _ in }
@@ -37,6 +40,8 @@ struct SavedWindow: Codable, Equatable {
   /// A board tab dragged out of its row, every window's, and a reading tab
   @ObservationIgnored private(set) var tabDrag: TabDrag!
   @ObservationIgnored private(set) var readingDrag: TabDrag!
+  /// Cards dragged out of a canvas, every window's
+  @ObservationIgnored private(set) var cardDrag: CardDrag!
   static let stateKey = "windows"
   /// What one window saved before there were several
   static let oldStateKey = "shell"
@@ -46,6 +51,10 @@ struct SavedWindow: Codable, Equatable {
     documents = BoardDocuments(session: session)
     tabDrag = TabDrag(set: self, kind: .board)
     readingDrag = TabDrag(set: self, kind: .reading)
+    cardDrag = CardDrag(set: self)
+    NotificationCenter.default.addObserver(
+      forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+    ) { [weak self] _ in MainActor.assumeIsolated { self?.screensChanged() } }
   }
 
   @MainActor final class Entry: NSObject, NSWindowDelegate {
@@ -69,6 +78,21 @@ struct SavedWindow: Codable, Equatable {
         window.close()
       }
       return false
+    }
+
+    /// Where it is on its screen, while that screen is there (a move the system makes as its screen goes is not one)
+    var placed: ScreenPlace?
+    /// Where it goes back to when that screen is back
+    var home: ScreenPlace?
+    /// Its frame before it went full screen, while it is
+    var windowed: CGRect?
+
+    func windowDidMove(_ notification: Notification) { set?.moved(self) }
+    func windowDidResize(_ notification: Notification) { set?.moved(self) }
+    func windowWillEnterFullScreen(_ notification: Notification) { windowed = window.frame }
+    func windowDidExitFullScreen(_ notification: Notification) {
+      windowed = nil
+      set?.moved(self)
     }
 
     func windowWillClose(_ notification: Notification) { set?.closed(self) }
@@ -101,9 +125,10 @@ struct SavedWindow: Codable, Equatable {
   }
 
   /// A board window over `shell`: the first keeps its frame as "main", the others theirs in the saved state
-  @discardableResult func add(_ shell: Shell) -> Entry {
+  /// `frameName`: the frame a window saved under that name before windows were saved with their state
+  @discardableResult func add(_ shell: Shell, frameName: String? = nil) -> Entry {
     let (window, panes) = makeMainWindow(
-      shell: shell, repositories: repositories, documents: documents, frameName: all.isEmpty ? "main" : nil)
+      shell: shell, repositories: repositories, documents: documents, frameName: frameName)
     let e = Entry(window: window, shell: shell, panes: panes, set: self)
     window.delegate = e
     window.title = shell.vault?.root.lastPathComponent ?? "CodeBoard"
@@ -118,6 +143,10 @@ struct SavedWindow: Codable, Equatable {
       return true
     }
     // collected with no board tab here: to the board of the latest used window that shows one
+    panes.boardElsewhere = { [weak self, weak e] in
+      guard let self, let e else { return nil }
+      return others(than: e).lazy.compactMap(\.panes.shownCanvas).first?.document?.board
+    }
     panes.collectElsewhere = { [weak self, weak e] c in
       guard let self, let e else { return }
       others(than: e).lazy.compactMap(\.panes.shownCanvas).first?.collect(c)
@@ -131,6 +160,7 @@ struct SavedWindow: Codable, Equatable {
       return nil
     }
     shell.tabDragging = tabDrag
+    panes.cardDragging = cardDrag
     shell.reading.tabDragger = readingDrag
     // a window that shows only its reading pane closes with its last reading tab
     shell.reading.lastClosed = { [weak e] in
@@ -172,10 +202,11 @@ struct SavedWindow: Codable, Equatable {
     }
     shell.treeChanged()
     let e = add(shell)
-    if let f = saved?.frame, let s = saved?.screen, NSScreen.screens.contains(where: { $0.number == s }) {
-      e.window.setFrame(f, display: false)
+    if let saved {
+      place(e, saved)
     } else if let from {
       e.window.setFrame(from.window.frame.offsetBy(dx: 24, dy: -24), display: false)
+      moved(e)
     }
     e.panes.sync()
     return e
@@ -274,6 +305,28 @@ struct SavedWindow: Codable, Equatable {
     e.window.contentView.flatMap { Self.view($0, "ui-readingpane") } as? ReadingPaneView
   }
 
+  // MARK: Cards between windows
+
+  /// The board canvas under `p` on screen, in the window in front there: nil when what is in front there is not a
+  /// board canvas (another of the app's windows, a sidebar, a reading pane, nothing)
+  func canvas(at p: CGPoint) -> (entry: Entry, canvas: CanvasView)? {
+    let z = NSApplication.shared.orderedWindows
+    let rank = { (w: NSWindow) in z.firstIndex(of: w) ?? .max }
+    let under = all.filter { onScreen($0.window) && $0.window.frame.contains(p) }.sorted {
+      rank($0.window) < rank($1.window)
+    }
+    guard let e = under.first else { return nil }
+    // another of the app's windows in front of it there (a picture that follows the pointer takes no clicks)
+    if let front = z.first(where: { $0.isVisible && !$0.ignoresMouseEvents && $0.frame.contains(p) }),
+      front !== e.window, rank(front) < rank(e.window)
+    {
+      return nil
+    }
+    guard let c = e.panes.shownCanvas, !c.isHiddenOrHasHiddenAncestor else { return nil }
+    let r = e.window.convertToScreen(c.convert(c.visibleRect, to: nil))
+    return r.contains(p) ? (e, c) : nil
+  }
+
   // MARK: Tab rows
 
   /// The window whose tabs of `kind` hold `tab`
@@ -332,6 +385,50 @@ struct SavedWindow: Codable, Equatable {
     return (e, tabs.count)
   }
 
+  // MARK: Screens
+
+  /// The first window at launch, as `saved` left it. One saved with no frame of its own (nothing saved, or saved
+  /// before there were several windows) takes the frame kept under `frameName` then, else the middle of the screen
+  @discardableResult func addFirst(_ shell: Shell, saved: SavedWindow?, frameName: String = "main") -> Entry {
+    let e = add(shell, frameName: saved?.frame == nil ? frameName : nil)
+    if let saved { place(e, saved) } else { moved(e) }
+    return e
+  }
+
+  /// A saved window where it goes for the screens there are now (ScreenPlaces.atLaunch); one saved with no frame stays
+  /// where it was made
+  func place(_ e: Entry, _ saved: SavedWindow) {
+    guard let f = saved.frame else { return moved(e) }
+    let (frame, home) = ScreenPlaces.atLaunch(frame: f, screen: saved.display, home: saved.home, screens: screens())
+    e.window.setFrame(frame, display: false)
+    e.home = home
+    moved(e)
+  }
+
+  /// A window moved or resized: its new place, unless the screen it was on is gone (the system moving it off that)
+  func moved(_ e: Entry) {
+    guard e.windowed == nil else { return }
+    let screens = screens()
+    if let p = e.placed, !screens.contains(where: { $0.id == p.screen }) { return }
+    e.placed = ScreenPlaces.screen(of: e.window.frame, in: screens).map {
+      ScreenPlace(screen: $0.id, frame: e.window.frame)
+    }
+  }
+
+  /// Screens came or went: each window whose screen is gone goes to one that is here and keeps its place as its home;
+  /// one whose home screen is back goes back there (ScreenPlaces.screensChanged)
+  func screensChanged() {
+    let screens = screens()
+    for e in all where e.windowed == nil {
+      let r = ScreenPlaces.screensChanged(frame: e.window.frame, placed: e.placed, home: e.home, screens: screens)
+      e.home = r.home
+      if let f = r.frame { e.window.setFrame(f, display: true) }
+      e.placed = ScreenPlaces.screen(of: e.window.frame, in: screens).map {
+        ScreenPlace(screen: $0.id, frame: e.window.frame)
+      }
+    }
+  }
+
   private func closed(_ e: Entry) {
     e.panes.leaveAll()
     all.removeAll { $0 === e }
@@ -385,13 +482,11 @@ struct SavedWindow: Codable, Equatable {
   /// saved stays for the next launch)
   func save(in defaults: UserDefaults) {
     let windows = all.compactMap { e in
-      e.shell.state.map { SavedWindow(shell: $0, frame: e.window.frame, screen: e.window.screen?.number) }
+      e.shell.state.map {
+        SavedWindow(shell: $0, frame: e.windowed ?? e.window.frame, display: e.placed?.screen, home: e.home)
+      }
     }
     guard !windows.isEmpty, let data = try? JSONEncoder().encode(windows) else { return }
     defaults.set(data, forKey: Self.stateKey)
   }
-}
-
-extension NSScreen {
-  var number: UInt32? { (deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value }
 }
