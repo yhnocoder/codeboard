@@ -336,12 +336,20 @@ private struct GitHubForm: View {
             .fixedSize(horizontal: false, vertical: true)
         }
       }
-      Picker("", selection: $lightweight) {
-        Choice(title: "Lightweight", detail: "Commit history only; file contents are downloaded when read").tag(true)
-        Choice(title: "Full", detail: "Everything at once").tag(false)
+      // The system's segmented control: its choices are read by accessibility and reached with the keyboard
+      Picker("Clone", selection: $lightweight) {
+        Text("Lightweight").tag(true)
+        Text("Full").tag(false)
       }
-      .pickerStyle(.radioGroup)
+      .pickerStyle(.segmented)
       .labelsHidden()
+      .accessibilityIdentifier("repository-clone-kind")
+      Text(
+        lightweight
+          ? "Commit history only; file contents are downloaded when read." : "Everything is downloaded at once."
+      )
+      .font(.system(size: 11.5)).foregroundStyle(ShellTheme.muted)
+      .fixedSize(horizontal: false, vertical: true)
       HStack {
         Spacer()
         Button("Cancel", action: done).keyboardShortcut(.cancelAction)
@@ -356,18 +364,5 @@ private struct GitHubForm: View {
 
   private func add() {
     if let e = model.addGitHub(address, lightweight: lightweight) { error = e } else { done() }
-  }
-
-  private struct Choice: View {
-    let title: String
-    let detail: String
-
-    var body: some View {
-      VStack(alignment: .leading, spacing: 1) {
-        Text(title)
-        Text(detail).font(.system(size: 11.5)).foregroundStyle(ShellTheme.muted)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-    }
   }
 }
