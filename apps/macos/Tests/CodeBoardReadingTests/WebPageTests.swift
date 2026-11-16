@@ -225,6 +225,10 @@ import WebKit
     func shows(_ title: String, _ path: String) -> Bool {
       tabs.tab(v)?.title == title && tabs.tab(v)?.payload == ["url": url(path).absoluteString]
     }
+    let file = tabs.data.appending(path: "history.json")
+    func visits(_ path: String) async -> Int? {
+      await WebHistoryFile.shared.read(file).entries.first { $0.url == url(path) }?.count
+    }
     try await until("page A") { v.web.title == "Page A" && !v.web.isLoading && shows("Page A", "/a") }
     #expect(!v.bar.back.isEnabled && !v.bar.forward.isEnabled)
     #expect(v.bar.address.stringValue == "127.0.0.1" && tabs.tab(v)?.key == nil)
@@ -232,17 +236,18 @@ import WebKit
     try await until("page B") { v.web.title == "Page B" && !v.web.isLoading && shows("Page B", "/b") }
     #expect(v.bar.back.isEnabled && !v.bar.forward.isEnabled)
     v.bar.back.performClick(nil)
-    try await until("back on page A") { v.web.title == "Page A" && v.bar.forward.isEnabled && shows("Page A", "/a") }
+    // the forward button and the title come at the commit, the visit only when the page has finished: going on
+    // before that stops the load, and the visit is never counted
+    try await until("back on page A") {
+      v.web.title == "Page A" && !v.web.isLoading && v.bar.forward.isEnabled && shows("Page A", "/a")
+    }
+    try await until("page A's second visit written") { await visits("/a") == 2 }
     #expect(!v.bar.back.isEnabled)
     v.bar.forward.performClick(nil)
     try await until("forward on page B") {
-      v.web.title == "Page B" && !v.bar.forward.isEnabled && shows("Page B", "/b")
+      v.web.title == "Page B" && !v.web.isLoading && !v.bar.forward.isEnabled && shows("Page B", "/b")
     }
-    let file = tabs.data.appending(path: "history.json")
-    try await until("both visits written") {
-      let h = await WebHistoryFile.shared.read(file)
-      return h.entries.first { $0.url == url("/a") }?.count == 2 && h.entries.contains { $0.url == url("/b") }
-    }
+    try await until("page B's second visit written") { await visits("/b") == 2 }
     let h = await WebHistoryFile.shared.read(file)
     #expect(h.entries.first { $0.url == url("/a") }?.title == "Page A")
   }
