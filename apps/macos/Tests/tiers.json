@@ -399,6 +399,7 @@
         "WritingWhenClosingTests/closingTheTabWritesWhatIsBeingTyped",
         "FullWindowSheetTests/quittingWithUnsavedChangesAsksInASheet",
         "ParityMenuKeysTests/orderKeysAreTheAppsOwnAndBracketsSwitchTabs",
+        "FullWindowKeysTests/everyKeyOfTheAppMenuIsListed",
         "FullWindowReadingTests/thePaneIsHiddenAtFirstAndItsSwitchShowsAndHidesIt"
       ],
       "broad": [
