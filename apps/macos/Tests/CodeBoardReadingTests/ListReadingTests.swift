@@ -346,7 +346,11 @@ import Testing
     v.pane.select(listTab)
     v.paneView.sync()
     doubleClick(list, row: at("Harbour log"))
-    #expect(v.pane.tabs.contains { $0.kind == "web" && $0.payload == ["url": "http://127.0.0.1:9/harbour"] })
+    #expect(
+      v.pane.tabs.contains {
+        $0.kind == "web" && $0.payload == ["url": "http://127.0.0.1:9/harbour"]
+          && $0.key == "web:http://127.0.0.1:9/harbour"
+      })
 
     let page = ["url": "http://127.0.0.1:9/quay", "hash": ListVault.newer, "title": "Quay plans"]
     for _ in 0..<2 {

@@ -129,12 +129,18 @@ extension ReadingPane {
     open(ListRow(.entry(found.entry, path: found.path), vault: vault))
   }
 
-  /// What a row opens, opened: a PDF in its tab, a page online in a new web tab, a saved page in its web tab (gone to
-  /// when it is open, by its hash)
+  /// What a row opens, opened: a PDF in its tab, a page in its web tab (gone to when it is open: a saved page by its
+  /// hash, a page online by its address without the fragment)
   func open(_ row: ListRow) {
     switch row.opens {
     case .pdf(let t): openPDF(t)
-    case .web(let p): open(row.title, key: p.key, kind: WebReading.kind, payload: p.payload)
+    case .web(let p):
+      var key = p.key
+      if key == nil, case .online(let url?) = p, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+        parts.fragment = nil
+        key = parts.string.map { "web:" + $0 }
+      }
+      open(row.title, key: key, kind: WebReading.kind, payload: p.payload)
     case nil: break
     }
   }
