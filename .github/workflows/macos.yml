@@ -16,6 +16,10 @@ on:
         description: "Run every unit test and the whole acceptance list (the regular full run)"
         type: boolean
         default: false
+    secrets:
+      # a called workflow gets no secret it is not handed (see the private-package action)
+      SHIYI_READ_TOKEN:
+        required: false
 permissions:
   contents: read
 concurrency:
@@ -47,6 +51,9 @@ jobs:
         run: |
           sudo xcode-select -s "$(find /Applications -maxdepth 1 -type d -name 'Xcode_*.app' | sort -V | tail -1)"
           swift --version
+      # before anything resolves the package's dependencies
+      - uses: ./.github/actions/private-package
+        with: { token: "${{ secrets.SHIYI_READ_TOKEN }}" }
       # the last regular full run's build (see the app job): the driver is in it, so only what changed since is compiled
       - id: built
         uses: actions/cache/restore@v5
@@ -105,6 +112,9 @@ jobs:
         run: |
           sudo xcode-select -s "$(find /Applications -maxdepth 1 -type d -name 'Xcode_*.app' | sort -V | tail -1)"
           swift --version
+      # before anything resolves the package's dependencies
+      - uses: ./.github/actions/private-package
+        with: { token: "${{ secrets.SHIYI_READ_TOKEN }}" }
       # A PR starts from the build the last regular full run made on main (.build, about 500 MB), so it compiles only
       # what differs from it: compiling everything takes 2 to 4.5 minutes, depending on the runner. The regular run
       # itself starts from nothing, so a wrong kept build lasts 6 hours at most. A cache saved on the default branch is

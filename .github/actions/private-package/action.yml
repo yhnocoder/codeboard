@@ -1,0 +1,31 @@
+name: Private package
+description: Lets SwiftPM read the Mac app's private dependency, the package in yhnocoder/shiyi, with a read-only token
+inputs:
+  token:
+    description: The repository secret SHIYI_READ_TOKEN (fine-grained, Contents read-only on yhnocoder/shiyi); empty where the run cannot read secrets
+runs:
+  using: composite
+  steps:
+    # SwiftPM clones the package with git and downloads its binary target (an asset of a private release, addressed as
+    # https://api.github.com/repos/<owner>/<repo>/releases/assets/<id>.zip) itself; both take a name and password for
+    # a host from ~/.netrc, and neither can be handed a token another way. A pull request from a fork cannot read the
+    # secret: nothing is written, and resolving the package fails there once the app depends on it
+    - shell: bash
+      # outside the checkout, whose git settings carry the workflow's own token for github.com
+      working-directory: ${{ runner.temp }}
+      env:
+        TOKEN: ${{ inputs.token }}
+        GIT_TERMINAL_PROMPT: "0"
+      run: |
+        if [ -z "$TOKEN" ]; then
+          echo "::notice::SHIYI_READ_TOKEN is not readable here (a pull request from a fork?): ~/.netrc is not written."
+          exit 0
+        fi
+        umask 077
+        printf 'machine %s login yhnocoder password %s\n' github.com "$TOKEN" api.github.com "$TOKEN" > ~/.netrc
+        chmod 600 ~/.netrc
+        # the two ways SwiftPM will use it, so that an expired token is named here and not only by a failing build
+        git ls-remote -q https://github.com/yhnocoder/shiyi HEAD > /dev/null 2>&1 ||
+          echo "::warning::git cannot read yhnocoder/shiyi with SHIYI_READ_TOKEN (expired, or without access to it?)"
+        [ "$(curl -s -o /dev/null -w '%{http_code}' --netrc https://api.github.com/repos/yhnocoder/shiyi)" = 200 ] ||
+          echo "::warning::api.github.com does not answer for yhnocoder/shiyi with SHIYI_READ_TOKEN (expired, or without access to it?)"
