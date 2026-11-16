@@ -113,11 +113,12 @@ func stickerBoard() -> Board {
     #expect(!ghost.isHidden && ghost.opacity == 0.85)
     #expect(abs(ghost.position.x + ghost.bounds.width / 2 - c.camera.view(free).x) < 0.01)
     #expect(r.doc.board.stickers.count == 5)
-    // a click on the board: free there, centred on the click, one step, not selected
+    // a click on the board: free there, centred on the click, one step, selected
     r.click(free)
     let added = try #require(r.doc.board.stickers.last)
     #expect(added.glyph == .builtin(.star) && added.anchor == .canvas(x: 244, y: 404, size: nil))
-    #expect(r.doc.undoName == "Add Sticker" && r.doc.selection.isEmpty && c.placing == nil && ghost.isHidden)
+    #expect(r.doc.undoName == "Add Sticker" && r.doc.selection == [.sticker(added.id)])
+    #expect(c.placing == nil && ghost.isHidden)
 
     // on a card: on it, from its top left
     c.beginPlacing(.builtin(.heart))
@@ -138,7 +139,7 @@ func stickerBoard() -> Board {
     let c1 = r.rect("c1")
     r.click(CGPoint(x: c1.minX + code.layout.gutter / 2, y: c1.minY + code.top + row.y + row.height / 2))
     #expect(r.doc.board.stickers.last?.anchor == .line(cid("c1"), segment: s1, line: 13))
-    #expect(r.doc.selection.isEmpty, "no lines are selected either")
+    #expect(r.doc.selection == [.sticker(r.doc.board.stickers.last!.id)], "the sticker, no lines")
     // Esc: nothing put down
     let count = r.doc.board.stickers.count
     c.beginPlacing(.emoji("🎯"))
@@ -366,5 +367,74 @@ extension CanvasStickerTests {
     #expect(sticker(r, "k2")?.anchor == .canvas(x: drawn.minX.rounded(), y: drawn.minY.rounded(), size: 40))
     #expect(r.doc.history.undoSteps.last?.name == "Detach Sticker")
     #expect(!titles(c.stickerMenu(kid("k3"))).contains("Size"))
+  }
+}
+
+extension CanvasStickerTests {
+  /// A sticker put down is the selection (actions/stickers.ts placeStickerAt), and undo takes it and its selection back
+  @Test func aStickerPutDownIsSelected() async throws {
+    let r = try await Rig(stickerBoard(), zoom: 1)
+    defer { r.close() }
+    r.canvas.beginPlacing(.builtin(.zap))
+    r.click(CGPoint(x: 260, y: 420))
+    let id = try #require(r.doc.board.stickers.last?.id)
+    #expect(r.doc.selection == [.sticker(id)])
+    await r.settle()
+    #expect(r.canvas.selectedSticker.map { r.canvas.stickerSpots[$0].id } == id, "its ring and grip are drawn")
+    r.doc.undo()
+    #expect(r.doc.selection.isEmpty && r.doc.board.stickers.count == 5)
+  }
+
+  /// Let go just outside a card, within 40 points of it, a sticker goes on it, and the card is ringed while it is over
+  /// there (the web board's stickerMagnet: 22 above the card); ⌥ keeps it free
+  @Test(arguments: [0.5, 1, 2] as [CGFloat])
+  func aStickerLetGoBesideACardGoesOnIt(zoom: CGFloat) async throws {
+    let r = try await Rig(stickerBoard(), zoom: zoom)
+    defer { r.close() }
+    let c = r.canvas
+    let n1 = r.rect("n1")
+    let k1 = try spot(c, "k1")
+    let above = CGPoint(x: n1.minX + 30, y: n1.minY - 22 / zoom)
+    r.drag(centre(k1), above) { #expect(c.dropAim != nil, "the card it would go on is ringed") }
+    #expect(sticker(r, "k1")?.anchor.card == cid("n1") && c.dropAim == nil)
+    await r.settle()
+    r.drag(centre(try spot(c, "k1")), CGPoint(x: above.x + 20, y: above.y), .option)
+    #expect(sticker(r, "k1")?.anchor.card == nil)
+    // farther than 40 points: free
+    await r.settle()
+    r.drag(centre(try spot(c, "k1")), CGPoint(x: above.x, y: n1.minY - 60 / zoom))
+    #expect(sticker(r, "k1")?.anchor.card == nil)
+  }
+
+  /// A built-in sticker is named by its label (glyphs.tsx BUILTIN): the palette's tip over it, the tip over one on the
+  /// board and what VoiceOver says; an emoji is named by itself
+  @Test func builtInStickersAreNamedByTheirLabels() async throws {
+    let r = try await Rig(stickerBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let tips = ownTips(c)
+    let star = try #require(StickerPalette.slots.firstIndex { $0.glyph == .builtin(.star) })
+    let todo = try #require(StickerPalette.slots.firstIndex { $0.glyph == .builtin(.todoText) })
+    let p = StickerPalette(theme: c.theme)
+    #expect(p.tip(star) == Tip("Important") && p.tip(todo) == Tip("TODO"))
+    #expect(p.tip(StickerPalette.slots.count - 1) == nil, "the emoji button")
+    c.mouseMoved(with: r.mouse(.mouseMoved, centre(try spot(c, "k1"))))
+    #expect(tips.shown?.tip == Tip("Important"))
+    c.mouseMoved(with: r.mouse(.mouseMoved, centre(try spot(c, "k5"))))
+    #expect(tips.shown?.tip == Tip("🔥"))
+    c.mouseMoved(with: r.mouse(.mouseMoved, CGPoint(x: 260, y: 700)))
+    #expect(tips.shown == nil)
+    #expect(c.spokenName(of: .item(.sticker(kid("k3")))) == "Understood")
+    #expect(c.spokenName(of: .item(.sticker(kid("k5")))) == "🔥")
+  }
+
+  /// Picking a glyph says how to put it down (actions/stickers.ts pickSticker)
+  @Test func placingAStickerSaysHowInAToast() async throws {
+    let r = try await Rig(stickerBoard(), zoom: 1)
+    defer { r.close() }
+    r.canvas.toggleStickerPalette(above: CGRect(x: 480, y: 640, width: 30, height: 28))
+    r.canvas.stickerPalette?.press(0)
+    #expect(r.canvas.toastText == "Click a code line, a card or empty canvas to place it · Esc to cancel")
+    r.canvas.cancelPlacing()
   }
 }

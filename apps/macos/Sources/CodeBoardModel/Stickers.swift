@@ -20,6 +20,23 @@ extension BuiltinSticker {
     case .todoText: "#8B6FD6"
     }
   }
+
+  /// What it means, its tip and spoken name (glyphs.tsx BUILTIN)
+  public var label: String {
+    switch self {
+    case .star: "Important"
+    case .exclaim: "Attention"
+    case .check: "Understood"
+    case .flag: "Flag"
+    case .zap: "Performance"
+    case .bug: "Bug"
+    case .todo: "To Check"
+    case .heart: "Favourite"
+    case .hourglass: "Later"
+    case .warning: "Careful"
+    case .todoText: "TODO"
+    }
+  }
 }
 
 extension Sticker {
@@ -32,6 +49,14 @@ extension Sticker {
   /// Its glyph's own colour; nil for an emoji, which has its own colours
   public static func ownColor(_ g: Glyph) -> String? {
     if case .builtin(let b) = g { b.color } else { nil }
+  }
+
+  /// Its tip and spoken name (actions/stickers.ts stickerLabel): a built-in's label, an emoji itself
+  public static func label(_ g: Glyph) -> String {
+    switch g {
+    case .builtin(let b): b.label
+    case .emoji(let e): e
+    }
   }
 
   /// The colour it is drawn in
