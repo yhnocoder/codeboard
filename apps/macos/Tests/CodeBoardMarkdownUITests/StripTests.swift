@@ -156,4 +156,17 @@ private final class Flipped: NSView {
     r.show()
     #expect(r.wrong().isEmpty, "\(r.wrong())")
   }
+
+  /// A host that moves the editor when it grows (bringing a new band into view, drawn there and then) loses nothing of
+  /// the change that grew it
+  @Test func aChangeThatGrowsTheEditorIsDrawnWhenItsHostMovesIt() {
+    let r = StripRig(caretAt: "Paragraph 4 with **bold** and `code` in it.")
+    defer { r.close() }
+    let mover = Mover(by: 300)
+    r.view.delegate = mover
+    r.view.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+    r.view.insertText("A new paragraph", replacementRange: NSRange(location: NSNotFound, length: 0))
+    r.show()
+    #expect(r.wrong().isEmpty, "\(r.wrong())")
+  }
 }
