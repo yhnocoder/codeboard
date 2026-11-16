@@ -11,9 +11,19 @@ public enum WebReading {
   /// folder of the saving service's page scripts (`hooks.js`, `capture.js`, `reader.js`), read as each tab opens; none
   /// there: nothing is saved whole and a saved page is not read in body view
   @MainActor public static func register(saving: (any PageStore)?, scripts: URL?) {
-    ReadingKinds.register(kind, icon: "globe") {
-      WebPageView(context: $0, store: saving, scripts: scripts, websiteData: websiteData)
-    }
+    register(saving: saving, scripts: scripts, websiteData: websiteData)
+  }
+
+  /// The vault's entries read again, as the shell reads them after opening the vault, often after a tab restored at
+  /// launch has loaded its page: each open tab asks again how its page is saved
+  @MainActor static func register(saving: (any PageStore)?, scripts: URL?, websiteData: WKWebsiteDataStore) {
+    ReadingKinds.register(
+      kind, icon: "globe",
+      follow: { tab, _ in
+        WebPageView.view(of: tab.id)?.entriesRead()
+        return tab.title
+      },
+      make: { WebPageView(context: $0, store: saving, scripts: scripts, websiteData: websiteData) })
   }
 
   /// Every web tab's store: one fixed identifier, so that sign-ins outlive the tab and the app. WebKit keeps it where

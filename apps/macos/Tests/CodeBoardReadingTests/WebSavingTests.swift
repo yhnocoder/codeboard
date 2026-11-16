@@ -118,6 +118,23 @@ import WebKit
     #expect(!off.bar.save.isEnabled && off.bar.save.toolTip?.isEmpty == false)
   }
 
+  /// A tab restored at launch loads its page before the shell has read the vault's entries: once it has, the button
+  /// says how the page is saved, without leaving it
+  @Test func aTabLoadedBeforeTheEntriesAreReadShowsHowItsPageIsSavedOnceTheyAre() async throws {
+    let r = try vault.newResource(in: "", title: "Pages", preset: .web)
+    try vault.save(SavedItem(id: "l", kind: .link, url: url("/a").absoluteString, title: "A", savedAt: 1), in: r.path)
+    let tabs = try WebTabs(vault: vault, scripts: scripts)
+    defer { done(tabs) }
+    tabs.pane.entries = EntryIndex()
+    let v = tabs.open(["url": url("/a").absoluteString])
+    try await loaded(v, "Page A")
+    #expect(v.saveState == .saved(.unsaved))
+    tabs.pane.entries = EntryIndex(vault, try vault.tree())
+    tabs.pane.follow { ReadingKinds.follow($0, in: tabs.pane) }
+    #expect(v.saveState == .saved(.link) && v.bar.save.toolTip == "Saved as a Link")
+    #expect(tabs.tab(v)?.title == "Page A" && v.web.url == url("/a"))
+  }
+
   /// With the scripts, a link takes what the metadata script read, its pictures by address; the service keeps the
   /// link too; the hooks ran in the page's own world
   @Test func aLinkTakesTheMetadataTheScriptRead() async throws {

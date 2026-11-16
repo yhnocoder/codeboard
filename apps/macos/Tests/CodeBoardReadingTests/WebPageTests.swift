@@ -162,6 +162,31 @@ import WebKit
     #expect(s.rows[1].layer?.backgroundColor != nil)
   }
 
+  /// The bar has its own cursor, not the one the page under it set: the arrow over it and its buttons, the text cursor
+  /// only over the address being edited; a move of the pointer over the bar does not reach the page
+  @Test func theBarOwnsItsCursorAndThePageHearsNoPointerUnderIt() throws {
+    let (v, tabs) = try tab("/long")
+    defer { tabs.close() }
+    let bar = v.bar
+    #expect(bar.trackingAreas.contains { $0.owner === bar && $0.options.contains(.cursorUpdate) })
+    #expect(v.suggestions.trackingAreas.contains { $0.owner === v.suggestions && $0.options.contains(.cursorUpdate) })
+    func at(_ view: NSView) -> CGPoint {
+      bar.convert(CGPoint(x: view.frame.midX, y: view.frame.midY), from: view.superview)
+    }
+    #expect([bar.back, bar.save, bar.extract, bar.address].allSatisfy { bar.cursor(at: at($0)) === NSCursor.arrow })
+    v.openLocation(nil)
+    #expect(bar.address.isEditing && bar.cursor(at: at(bar.address)) === NSCursor.iBeam)
+    #expect(bar.cursor(at: at(bar.back)) === NSCursor.arrow && v.suggestions.cursor(at: .zero) === NSCursor.arrow)
+    tabs.window.makeFirstResponder(v.web)
+
+    // WebKit hands a page no made-up pointer move in a window off screen: what it would be given is asked
+    let page = try #require(v.web as? PageWebView)
+    let over = v.convert(CGPoint(x: bar.frame.midX, y: bar.frame.midY), to: nil)
+    #expect(page.covered(at: over) && !page.covered(at: v.convert(CGPoint(x: 100, y: 50), to: nil)))
+    bar.isHidden = true
+    #expect(!page.covered(at: over), "the bar slid away: the page has the pointer")
+  }
+
   /// Another theme or appearance reaches an open tab's bar and suggestions: Ink Wash's taller, square bar, dark
   @Test func anOpenTabsBarTakesTheBoardsNewLook() throws {
     let (v, tabs) = try tab("/long")

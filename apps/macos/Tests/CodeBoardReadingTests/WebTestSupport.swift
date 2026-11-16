@@ -179,10 +179,7 @@ actor TestStore: PageStore {
 
   /// A new web tab showing what `payload` names, selected; its view
   func open(_ payload: [String: String] = [:]) -> WebPageView {
-    let (store, scripts, websiteData) = (store, scripts, websiteData)
-    ReadingKinds.register(WebReading.kind, icon: "globe") {
-      WebPageView(context: $0, store: store, scripts: scripts, websiteData: websiteData)
-    }
+    WebReading.register(saving: store, scripts: scripts, websiteData: websiteData)
     let id = pane.open("New Tab", kind: WebReading.kind, payload: payload)
     paneView.sync()
     window.layoutIfNeeded()

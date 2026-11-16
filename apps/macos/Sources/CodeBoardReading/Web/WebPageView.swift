@@ -43,6 +43,14 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   private var ownLoad = false
   /// Loads a saved page started by itself (a refresh, a redirect), refused
   private(set) var refused: [URL] = []
+  /// The views of open web tabs
+  private static var live: [ReadingTab.ID: Weak] = [:]
+  private struct Weak {
+    weak var view: WebPageView?
+  }
+
+  static func view(of tab: ReadingTab.ID) -> WebPageView? { live[tab]?.view }
+
   /// None when the shell gave the tab no folder of its own on this Mac: no history is kept
   private var historyFile: URL? { context.dataFolder?.appending(path: "history.json") }
   static let slide: TimeInterval = 0.18
@@ -73,7 +81,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     if self.scripts != nil {
       userScripts.addScriptMessageHandler(saving, contentWorld: WebReading.scriptWorld, name: "shiyi")
     }
-    web = WKWebView(frame: .zero, configuration: config)
+    web = PageWebView(frame: .zero, configuration: config)
     bar = WebBar(look: context.bar)
     suggestions = WebSuggestions(look: context.bar)
     editOnShow = page == .online(nil)
@@ -118,6 +126,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
       let domain = note.userInfo?["domain"] as? String
       MainActor.assumeIsolated { self?.siteDataCleared(domain) }
     }
+    Self.live[context.tab] = Weak(view: self)
     historyChanged()
     pageChanged()
     switch page {
@@ -462,7 +471,10 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     }
   }
 
-  /// A new address: how it is saved, from the vault
+  /// The vault's entries were read again
+  func entriesRead() { askSaved() }
+
+  /// A new address, or the entries read again: how it is saved, from the vault
   private func askSaved() {
     savedFor = web.url
     saved =
@@ -552,6 +564,21 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     default: return false
     }
     return true
+  }
+}
+
+/// The page's web view, which leaves the pointer to what floats over it (the bar, the suggestions): a move over them
+/// does not reach the page, which would set its own cursor (a text cursor over its text) over theirs
+final class PageWebView: WKWebView {
+  override func mouseMoved(with event: NSEvent) {
+    if !covered(at: event.locationInWindow) { super.mouseMoved(with: event) }
+  }
+
+  /// Something shown floats over this point of the window
+  func covered(at point: CGPoint) -> Bool {
+    guard let up = superview else { return false }
+    let p = up.convert(point, from: nil)
+    return up.subviews.contains { $0 !== self && !$0.isHidden && $0.frame.contains(p) }
   }
 }
 
