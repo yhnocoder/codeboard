@@ -359,7 +359,7 @@ public func launchVals(_ lm: LaunchMacro, _ kernelHead: String, _ fnText: String
 private let templateCallRe = JSRegex(#"^[A-Za-z_]\w*\s*<"#)
 
 /// CUDA's kernel<8, 768><<<…>>>: the template arguments written at the launch (`col` in UTF-16 code units)
-public func launchTemplateArgs(_ lineText: String, _ col: Int) -> [String] {
+public func launchTemplateArgs(_ lineText: String, col: Int) -> [String] {
   let rest = JSText(JSText(lineText).slice(col))
   guard let m = templateCallRe.first(rest) else { return [] }
   let open = m.end - 1

@@ -126,7 +126,7 @@ private let pybind = """
     let src = "TORCH_LIBRARY(ns, m) {\n  m.impl(\"f\", [](Tensor x) { return x; });\n  m.impl(\"g\", kCPU);\n}\n"
     #expect(torchLibDefs(src, "f") == [Registration(line: 2, lambda: true, how: "m.impl")])
     #expect(torchLibDefs(src, "g") == [])
-    #expect(torchOpOf(name: "x", recv: nil) == nil)
+    #expect(torchOpOf(name: "x") == nil)
   }
 }
 
@@ -240,13 +240,13 @@ private let launchCuh = """
 
   @Test func templateArgumentsAtAChevronLaunch() {
     let line = "  dispatch<8, kNumThreads><<<grid, 256>>>(p);"
-    #expect(launchTemplateArgs(line, 2) == ["8", "kNumThreads"])
+    #expect(launchTemplateArgs(line, col: 2) == ["8", "kNumThreads"])
     #expect(
       bindLaunch(
         "template <int kNumRanks, int kNumThreads>\n__global__ void dispatch(", ["8", "kNumThreads"],
         "constexpr int kNumThreads = 768;")
         == [BoundVal(name: "kNumRanks", value: "8"), BoundVal(name: "kNumThreads", value: "768")])
-    #expect(launchTemplateArgs("  plain<<<1, 1>>>();", 2) == [])
+    #expect(launchTemplateArgs("  plain<<<1, 1>>>();", col: 2) == [])
     #expect(
       templateParams(
         "template <bool kLow, int kNumRDMARanks,\n          int kNumTopk = get_num(kNumRDMARanks)>\n__global__ void __launch_bounds__(((kW + 1) * 32), 1)"
@@ -255,7 +255,7 @@ private let launchCuh = """
 
   @Test func launchColumnsCountInUTF16() {
     let line = "/*注😀*/ k<2, kN><<<1, 1>>>();"
-    #expect(launchTemplateArgs(line, 8) == ["2", "kN"])
+    #expect(launchTemplateArgs(line, col: 8) == ["2", "kN"])
     #expect(
       bindLaunch("template <int A>", ["some_quite_long_expression(with, args, inside)"], "")
         == [BoundVal(name: "A", value: "some_quite_long_expression(with…")])

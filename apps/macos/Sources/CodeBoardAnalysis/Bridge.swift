@@ -348,7 +348,7 @@ private let torchOpsRe = JSRegex(#"(?:^|\.)torch\.ops\.(\w+)\.(\w+)(?:\.(\w+))?$
 
 /// torch.ops.sgl_kernel.awq_marlin_repack(.default) → namespace, name and overload (torch.ops.aten.add.Tensor →
 /// Tensor; `default` is none)
-public func torchOpOf(name: String, recv: String?) -> TorchOp? {
+public func torchOpOf(name: String, recv: String? = nil) -> TorchOp? {
   guard let m = torchOpsRe.exec("\(recv ?? "").\(name)") else { return nil }
   let ns = m[1] ?? ""
   let op = m[2] ?? ""

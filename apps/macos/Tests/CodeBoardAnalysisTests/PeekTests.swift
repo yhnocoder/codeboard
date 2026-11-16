@@ -40,7 +40,7 @@ private let module = #"""
 @Suite struct PeekPlanTests {
   @Test func aFieldShowsEveryFieldOfItsClass() throws {
     let (a, lines) = nano("nanovllm/config.py")
-    let p = peekPlan(a, lines, 17, word: "config.kvcache_block_size")
+    let p = peekPlan(a, lines, line: 17, word: "config.kvcache_block_size")
     #expect(p.kind == .field)
     #expect(p.rows == [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
     #expect(p.head == "class Config")
@@ -49,7 +49,7 @@ private let module = #"""
 
   @Test func aFunctionShowsItsSignatureAndFirstLinesWithoutTheDocstring() throws {
     let (a, lines) = nano("nanovllm/utils/loader.py")
-    let p = peekPlan(a, lines, 12)
+    let p = peekPlan(a, lines, line: 12)
     #expect(p.kind == .function)
     #expect(p.rows == [12, 13, 14, 15])
     #expect(p.more == 28 - 15)
@@ -58,9 +58,9 @@ private let module = #"""
 
   @Test func aFieldOrModuleAssignmentOverSeveralLinesIsShownWhole() throws {
     let (a, lines) = analyzed(fields)
-    let f = peekPlan(a, lines, 2)
+    let f = peekPlan(a, lines, line: 2)
     #expect([2, 3, 4, 5].allSatisfy(f.rows.contains))
-    let m = peekPlan(a, lines, 8)
+    let m = peekPlan(a, lines, line: 8)
     #expect([8, 9, 10, 11].allSatisfy(m.rows.contains))
     #expect(
       f
@@ -73,7 +73,7 @@ private let module = #"""
   @Test func selfAssignmentsInInitShowEverySelfAssignmentOfThatMethod() throws {
     let (a, lines) = nano("nanovllm/engine/scheduler.py")
     let l = try #require(lines.firstIndex { JSRegex(#"self\.max_num_seqs\s*="#).test($0) }) + 1
-    let p = peekPlan(a, lines, l)
+    let p = peekPlan(a, lines, line: l)
     #expect(p.kind == .field)
     #expect(p.rows.contains(l))
     #expect(p.rows.count > 2)
@@ -82,9 +82,9 @@ private let module = #"""
 
   @Test func aModuleHasOnlyDocsNoSource() throws {
     let (a, lines) = analyzed(module)
-    #expect(isModuleDef(lines, 1, 0, "mp"))
-    #expect(!isModuleDef(["mp = 1"], 1, 0, "mp"))
-    let p = peekPlan(a, lines, 1, word: "mp", module: true)
+    #expect(isModuleDef(lines, line: 1, col: 0, word: "mp"))
+    #expect(!isModuleDef(["mp = 1"], line: 1, col: 0, word: "mp"))
+    let p = peekPlan(a, lines, line: 1, word: "mp", module: true)
     #expect(p.kind == .module)
     #expect(p.rows == [])
     #expect(p.sig == "(module) mp")
@@ -95,11 +95,11 @@ private let module = #"""
   }
 
   @Test func moduleDefinitionsLookAtTheLastPartOfTheName() {
-    #expect(isModuleDef(["import x"], 1, 0, "torch.mp"))
-    #expect(!isModuleDef(["# 模块 mp"], 1, 0, "a.mp"))
-    #expect(!isModuleDef(["x"], 2, 0, "mp"))
+    #expect(isModuleDef(["import x"], line: 1, col: 0, word: "torch.mp"))
+    #expect(!isModuleDef(["# 模块 mp"], line: 1, col: 0, word: "a.mp"))
+    #expect(!isModuleDef(["x"], line: 2, col: 0, word: "mp"))
     // ASCII word boundaries: a Chinese character next to the name is not a word character in JavaScript
-    #expect(!isModuleDef(["中mp中"], 1, 0, "mp"))
+    #expect(!isModuleDef(["中mp中"], line: 1, col: 0, word: "mp"))
   }
 }
 

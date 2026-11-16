@@ -45,7 +45,7 @@ private func nonZero(_ n: Int) -> Int? { n == 0 ? nil : n }
 private let nonWordRe = JSRegex(#"[^\w]"#)
 
 /// Whether a definition is a module: the start of a file, with a first line that does not have the name
-public func isModuleDef(_ lines: [String], _ line: Int, _ col: Int, _ word: String) -> Bool {
+public func isModuleDef(_ lines: [String], line: Int, col: Int, word: String) -> Bool {
   if line != 1 || col != 0 { return false }
   let w = word.jsSplit(".").last ?? ""
   let name = nonWordRe.replace(w, global: true, with: "")
@@ -127,7 +127,7 @@ private let assignRe = JSRegex(#"^\s*\w[\w.]*\s*(:[^=]*)?="#)
 
 /// How the source part of a peek at a definition on `line` is taken. `word` is the name looked up; `module` says the
 /// definition is a module.
-public func peekPlan(_ a: FileAnalysis, _ lines: [String], _ line: Int, word: String? = nil, module: Bool = false)
+public func peekPlan(_ a: FileAnalysis, _ lines: [String], line: Int, word: String? = nil, module: Bool = false)
   -> PeekPlan
 {
   let word = (word ?? "").jsSplit(".").last ?? ""
