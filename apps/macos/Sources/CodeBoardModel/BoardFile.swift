@@ -791,7 +791,13 @@ extension ImageSource: Codable {
       }
       self = .file(name)
     case .url: self = .url(try c.decode(String.self, forKey: .url))
-    case .resource: self = .resource(try c.decode(SourceAnchor.self, forKey: .resource))
+    case .resource:
+      let a = try c.decode(SourceAnchor.self, forKey: .resource)
+      guard a.place != nil else {
+        throw DecodingError.dataCorruptedError(
+          forKey: .resource, in: c, debugDescription: "a picture's resource names no place in its entry")
+      }
+      self = .resource(a)
     }
   }
 
@@ -871,21 +877,22 @@ extension Place.Block: Codable {
   }
 }
 
-/// A Place with the entry's id beside its fields, in one object
+/// A Place with the entry's id beside its fields, in one object; the entry's id alone for the entry as a whole
 extension SourceAnchor: Codable {
   private enum Keys: String, CodingKey {
-    case entry
+    case entry, version, block, range
   }
 
   public init(from decoder: any Decoder) throws {
-    self.init(
-      entry: try decoder.container(keyedBy: Keys.self).decode(EntryID.self, forKey: .entry),
-      place: try Place(from: decoder))
+    let c = try decoder.container(keyedBy: Keys.self)
+    // any of a place's fields there: a place, read as strictly as one
+    let placed = [Keys.version, .block, .range].contains(where: c.contains)
+    self.init(entry: try c.decode(EntryID.self, forKey: .entry), place: placed ? try Place(from: decoder) : nil)
   }
 
   public func encode(to encoder: any Encoder) throws {
     var c = encoder.container(keyedBy: Keys.self)
     try c.encode(entry, forKey: .entry)
-    try place.encode(to: encoder)
+    try place?.encode(to: encoder)
   }
 }

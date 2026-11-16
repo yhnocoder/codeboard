@@ -28,11 +28,15 @@ import PDFKit
   }
 
   public func sourceLabel(_ a: SourceAnchor) -> SourceLabel? {
-    guard let found = pane.entries[a.entry], found.entry.versions.contains(where: { $0.id == a.place.version }) else {
-      return nil
+    guard let found = pane.entries[a.entry] else { return nil }
+    // the entry as a whole: its title alone
+    guard let place = a.place else {
+      if case .web = found.entry.origin { return SourceLabel(title: found.entry.title, number: nil, icon: .site) }
+      return SourceLabel(title: Paper.shortTitle(found.entry.title), number: nil, icon: .paper)
     }
+    guard found.entry.versions.contains(where: { $0.id == place.version }) else { return nil }
     var number: String?
-    switch a.place.block {
+    switch place.block {
     case .page(let n, _): number = "p. \(n)"
     case .id(let id): number = paper(a)?.labels[id]
     }
@@ -55,11 +59,12 @@ import PDFKit
 
   /// The block list and TeX of the anchor's version, read once; nil for a version without a list
   func paper(_ a: SourceAnchor) -> Paper? {
-    let key = "\(a.entry.rawValue)/\(a.place.version.rawValue)"
+    guard let place = a.place else { return nil }
+    let key = "\(a.entry.rawValue)/\(place.version.rawValue)"
     if let kept = papers[key] { return kept }
     var p: Paper?
     if let vault = pane.vault, let found = pane.entries[a.entry],
-      let v = found.entry.versions.first(where: { $0.id == a.place.version })
+      let v = found.entry.versions.first(where: { $0.id == place.version })
     {
       p = Paper.read(v.content, in: vault.url(of: found.path))
     }
@@ -68,23 +73,34 @@ import PDFKit
   }
 
   public func reveal(_ a: SourceAnchor) {
-    guard let tab = pane.openPDF(.entry(a.entry, version: a.place.version)) else { return }
-    PDFTabView.reveal(a.place, in: tab)
+    guard let place = a.place else { return revealEntry(a.entry) }
+    guard let tab = pane.openPDF(.entry(a.entry, version: place.version)) else { return }
+    PDFTabView.reveal(place, in: tab)
+  }
+
+  /// The entry as a whole shown: a page's address in a web tab, else its first version that is a PDF
+  private func revealEntry(_ id: EntryID) {
+    guard let e = pane.entries[id]?.entry else { return }
+    if case .web(let address) = e.origin, let url = URL(string: address) {
+      pane.open(url.host() ?? e.title, kind: "web", payload: ["url": url.absoluteString])
+    } else if let v = e.versions.first(where: { if case .pdf = $0.content { true } else { false } }) {
+      pane.openPDF(.entry(id, version: v.id))
+    }
   }
 
   /// The page a page block is on and its region (in the page's space, from its crop box's bottom left; the whole box
   /// without a rect); a listed block's first page and its frame there (Paper.frame, as framed when it is clicked)
   private func region(_ a: SourceAnchor) -> (page: PDFPage, rect: CGRect)? {
-    guard let found = pane.locate(.entry(a.entry, version: a.place.version), scanning: false),
+    guard let place = a.place, let found = pane.locate(.entry(a.entry, version: place.version), scanning: false),
       let doc = document(found.url)
     else { return nil }
-    if case .id(let id) = a.place.block {
+    if case .id(let id) = place.block {
       guard let paper = paper(a), let b = paper.block(id), let n = b.firstPage, n <= doc.pageCount,
         let page = doc.page(at: n - 1), let r = paper.frame(b, on: n, within: page.bounds(for: .cropBox))
       else { return nil }
       return (page, r)
     }
-    guard case .page(let n, let rect) = a.place.block, n >= 1, n <= doc.pageCount, let page = doc.page(at: n - 1)
+    guard case .page(let n, let rect) = place.block, n >= 1, n <= doc.pageCount, let page = doc.page(at: n - 1)
     else { return nil }
     let box = page.bounds(for: .cropBox)
     let r = rect.map { CGRect(x: box.minX + $0.x, y: box.minY + $0.y, width: $0.width, height: $0.height) } ?? box

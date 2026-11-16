@@ -89,7 +89,7 @@ extension CanvasView {
   }
 
   /// The card of a sub-board card's map drawn under `p`, the topmost
-  private func mapCard(at p: CGPoint, of id: CardID) -> CardID? {
+  func mapCard(at p: CGPoint, of id: CardID) -> CardID? {
     guard case .board(let d)? = scene?.parts[id]?.drawing, let map = d.map, let r = scene?.placed[id]?.rect else {
       return nil
     }

@@ -137,6 +137,7 @@
             "CodeBoardCanvas/CanvasSubBoards.swift",
             "CodeBoardCanvas/CanvasCrumbs.swift",
             "CodeBoardCanvas/SubBoardMap.swift",
+            "CodeBoardCanvas/CanvasSubPreviews.swift",
             "CodeBoardModel/SubBoards.swift"
           ],
           "tests": [
