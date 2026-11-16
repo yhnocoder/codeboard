@@ -996,6 +996,8 @@ extension CanvasView {
   /// rest, as the web board's :hover and pointer moves follow it
   func rehover(_ v: CGPoint) {
     guard gesture == nil else { return }
+    var onSticker: StickerID?
+    defer { hoverSticker(onSticker) }
     if spaceHeld { return NSCursor.openHand.set() }
     hoverChip(at: camera.board(v))
     let onBar = alignBarButton(at: v)
@@ -1040,6 +1042,7 @@ extension CanvasView {
     }
     if let i = stickerAt(camera.board(v)), markAt(camera.board(v)) == nil {
       (stickerSpots[i].line ? NSCursor.pointingHand : NSCursor.openHand).set()
+      onSticker = stickerSpots[i].id
       hover(nil)
       return
     }
@@ -1571,7 +1574,8 @@ extension CanvasView {
       commitDraw(
         from: g.start, to: camera.board(v), moved: hypot(v.x - g.startView.x, v.y - g.startView.y) >= dragSlop)
     case .sticker(let d):
-      commitSticker(d, free: e.modifierFlags.contains(.option))
+      let p = camera.board(convert(e.locationInWindow, from: nil))
+      commitSticker(d, at: p, free: e.modifierFlags.contains(.option))
     case .row(let d):
       commitRow(d, view: convert(e.locationInWindow, from: nil))
     case .nudge, .still:

@@ -230,6 +230,8 @@ public final class CanvasView: NSView {
   /// Cards' header buttons (CanvasHeadActs): the one under the pointer, each card's strip and what it was drawn for, the
   /// hovered card's grip, and what puts a menu up when tests look at it instead
   var hoveredHead: (CardID, HeadAct)?
+  /// The sticker under the pointer, its label the tip (Picker.tsx .stk data-tip)
+  var hoveredSticker: StickerID?
   /// The buttons' tips (main's one TooltipLayer, shared with the toolbar and the dock); tests give a canvas its own
   var tips = Tips.shared
   var headShown: [CardID: (layer: CALayer, key: String, out: CFTimeInterval)] = [:]
