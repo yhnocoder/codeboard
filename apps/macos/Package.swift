@@ -42,7 +42,10 @@ let package = Package(
     // its own process
     .executableTarget(
       name: "Accept",
-      dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardModel", "CodeBoardResources", "MarkdownDemoKit"]),
+      dependencies: [
+        "CodeBoardShell", "CodeBoardCanvas", "CodeBoardModel", "CodeBoardReading", "CodeBoardResources",
+        "MarkdownDemoKit",
+      ]),
     .executableTarget(
       name: "LookCompare",
       dependencies: [
