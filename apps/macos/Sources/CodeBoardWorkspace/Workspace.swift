@@ -2,8 +2,8 @@ import CodeBoardAnalysis
 import Foundation
 
 // What the code index needs of the folders it reads, as the host's Workspace (packages/core/src/workspace.ts) and the
-// helpers of packages/host/src/ws.ts give it: the roots, listing files, reading their current text, logging. File
-// events reach the index from its owner, who calls its methods.
+// helpers of packages/host/src/ws.ts give it: the roots, listing files, reading their current text, the language
+// servers (Language.swift), logging. File events reach the index from its owner, who calls its methods.
 
 public enum LogLevel: String, Sendable {
   case info, warn, error
@@ -57,6 +57,8 @@ public protocol CodeWorkspace: Sendable {
   func readText(_ abs: String) async -> String?
   /// The language an editor shows an open file in (a segment's lang); nil when it is not open
   func openLanguage(_ abs: String) -> String?
+  /// The language servers; none by default (NoLanguage)
+  var language: any CodeLanguage { get }
   func log(_ level: LogLevel, _ text: String)
 }
 

@@ -4,7 +4,7 @@ import Foundation
 // (NSRegularExpression) with JavaScript's meaning of `\w`, `\d`, `\s`, `\b`, `.`, `^` and `$` (ICU's are Unicode-aware
 // and see more line terminators). Match offsets are UTF-16 code units, as NSRange's and JavaScript's are.
 
-func escapeRegExp(_ s: String) -> String {
+package func escapeRegExp(_ s: String) -> String {
   var out = ""
   for c in s.unicodeScalars {
     if ".*+?^${}()|[]\\".unicodeScalars.contains(c) { out.append("\\") }

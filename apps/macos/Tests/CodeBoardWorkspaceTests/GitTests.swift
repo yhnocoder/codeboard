@@ -147,8 +147,14 @@ import Testing
   /// An executable script standing in for git
   private func script(_ dir: String, _ body: String) throws -> String {
     let f = dir + "/git"
-    try write(f, "#!/bin/sh\n" + body + "\n")
-    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: f)
+    // Written by a shell, not by this process: a file this process has open for writing is also open in any child
+    // another test forks at that moment, and running it then fails as "text file busy"
+    let sh = Process()
+    sh.executableURL = URL(filePath: "/bin/sh")
+    sh.arguments = ["-c", #"printf '%s\n' "$2" > "$1" && chmod 755 "$1""#, "sh", f, "#!/bin/sh\n" + body]
+    try sh.run()
+    sh.waitUntilExit()
+    guard sh.terminationStatus == 0 else { throw CocoaError(.fileWriteUnknown) }
     return f
   }
 
