@@ -519,6 +519,10 @@
           ],
           "tests": ["RepositoriesBlockTests", "ShellCodeTests"]
         },
+        "calls": {
+          "sources": ["CodeBoardShell/ShellCalls.swift", "CodeBoardWorkspace/Expand.swift", "CodeBoardWorkspace/Crossing.swift"],
+          "tests": ["ShellCallsTests"]
+        },
         "web": {
           "sources": [
             "CodeBoardShell/ShellWeb.swift",
