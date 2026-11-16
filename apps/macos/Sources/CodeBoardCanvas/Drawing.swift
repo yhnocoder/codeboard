@@ -93,6 +93,8 @@ enum Drawing: Sendable {
     var locked = false
     /// Its source under its text (CanvasSources.swift)
     var foot: Foot?
+    /// The macro definitions its formulas are typeset with: a Note collected from a paper has the paper's
+    var preamble = ""
 
     /// A Box's fill; nil for a Note or a Text
     var boxFill: BoxFill? {

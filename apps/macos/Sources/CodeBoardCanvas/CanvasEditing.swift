@@ -193,11 +193,11 @@ extension CanvasView {
     refreshing = Task {
       let r = await Task.detached(priority: .userInitiated) {
         let package = vault.url(of: vb.path)
-        let ms = Scene.measures(board, package: package, vault: vault)
+        let ms = Scene.measures(board, package: package, vault: vault, sources: sources)
         var sizes: [CardID: NoteMetrics] = [:]
         var todo: [Scene.Measure] = []
         for m in ms {
-          if let k = known[m.card], k.note == m.note, k.width == m.width {
+          if let k = known[m.card], k.note == m.note, k.width == m.width, k.preamble == m.preamble {
             sizes[m.card] = k.size
           } else {
             todo.append(m)
@@ -236,7 +236,7 @@ extension CanvasView {
       }
       shownBoard = board
       measured = [:]
-      for m in r.2 { if let size = r.3[m.card] { measured[m.card] = (m.note, m.width, size) } }
+      for m in r.2 { if let size = r.3[m.card] { measured[m.card] = (m.note, m.width, m.preamble, size) } }
       measuredInline = [:]
       for m in r.4 { if let id = m.sidenote, let size = r.5[id] { measuredInline[id] = (m.note, m.width, size) } }
       reinstall(r.0, fresh: r.1)

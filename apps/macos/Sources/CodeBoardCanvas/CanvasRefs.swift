@@ -38,7 +38,7 @@ extension CanvasView {
       let card = doc.board.card(c),
       let l = try? display.laid(
         n.content, width: card.width, folder: n.folder, look: theme.id.rawValue, dark: theme.dark, refs: n.refs,
-        hideHead: n.hideHead)
+        hideHead: n.hideHead, preamble: n.preamble)
     else { return [] }
     let r = scene!.items[i].rect
     let o = l.origin(in: l.size(height: n.height.map { Double($0) }))
@@ -312,6 +312,7 @@ extension CanvasView {
     let here = doc.board
     let backing = self.backing
     let room = max(120, min(RefPeek.width, bounds.width - RefPeek.edge))
+    let info: @MainActor @Sendable (Board) -> [String: Scene.Source] = { [weak self] in self?.sourceInfo($0) ?? [:] }
     Task {
       let picture = await Task.detached { () -> RefPeek.Picture? in
         var source = here
@@ -326,7 +327,7 @@ extension CanvasView {
         guard let card = source.card(c) else { return nil }
         return await CanvasView.peekPicture(
           card, board: source.id, package: package, vault: vault, theme: theme, display: display, images: images,
-          room: room, backing: backing)
+          room: room, backing: backing, sources: info)
       }.value
       guard refPeek === peek else { return }
       guard let picture else { return closeRefPeek() }
@@ -335,19 +336,22 @@ extension CanvasView {
     }
   }
 
-  /// The card alone drawn as the board draws it, `room` points wide at most, cut at the preview's height
+  /// The card alone drawn as the board draws it, `room` points wide at most, cut at the preview's height; `sources`:
+  /// what the provider says of its source, asked on the main thread (sourceInfo)
   nonisolated static func peekPicture(
     _ card: Card, board: BoardID, package: URL, vault: Vault, theme: Theme, display: any NoteDisplay,
     images: DecodeCache,
-    room: CGFloat, backing: CGFloat
+    room: CGFloat, backing: CGFloat, sources info: @MainActor @Sendable (Board) -> [String: Scene.Source]
   ) async -> RefPeek.Picture? {
     var lone = card
     lone.section = nil
     let b = Board(id: board, cards: [lone])
-    let measures = Scene.measures(b, package: package, vault: vault)
+    let sources = await info(b)
+    let measures = Scene.measures(b, package: package, vault: vault, sources: sources)
     let sizes = await CanvasView.measure(measures, theme: theme, display: display)
     let highlighter = await MainActor.run { CanvasView.highlighter } ?? Highlighter()
-    let scene = Scene(b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes)
+    let scene = Scene(
+      b, package: package, vault: vault, theme: theme, highlighter: highlighter, sizes: sizes, sources: sources)
     guard let it = scene.items.first(where: { $0.owner == .card(card.id) }) else { return nil }
     let k = min(1, room / max(1, it.rect.width))
     let scale = k * backing

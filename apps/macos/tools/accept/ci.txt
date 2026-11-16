@@ -92,3 +92,5 @@ two/tab-front.txt
 two/vault-switch.txt
 undo-edges.txt
 web-open.txt
+web-save-page.txt
+web-tab.txt
