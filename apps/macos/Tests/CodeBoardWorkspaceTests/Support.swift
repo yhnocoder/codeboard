@@ -39,6 +39,7 @@ final class TestWorkspace: CodeWorkspace {
   init(_ root: String) { folder = FolderWorkspace(root: root) }
 
   var root: String { folder.root }
+  var roots: [String] { folder.roots }
   var finds: Int { state.withLock { $0.finds } }
   func setUnsaved(_ abs: String, _ text: String?) { state.withLock { $0.unsaved[abs] = text } }
 

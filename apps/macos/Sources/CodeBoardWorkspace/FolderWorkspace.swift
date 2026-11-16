@@ -10,6 +10,8 @@ public struct FolderWorkspace: CodeWorkspace {
     logged = log
   }
 
+  public var roots: [String] { [root] }
+
   public func rootOf(_ abs: String) -> String? {
     abs == root || abs.utf8.starts(with: (root + "/").utf8) ? root : nil
   }
