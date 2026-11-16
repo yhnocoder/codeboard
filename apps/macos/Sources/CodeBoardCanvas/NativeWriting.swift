@@ -159,6 +159,8 @@ extension CanvasView {
       Task { [weak self, weak v] in
         guard let list = await self?.refCandidates(), let self, let v, self.editing?.session == session else { return }
         self.editing?.refList = list
+        // composing: the layout is not of the editor's source (the popup's fields wait the same way)
+        guard v.core.marked == nil else { return }
         v.core.relayout(
           display.editorLayout(
             v.core.layout, folder: n.folder, refs: refs + list.refs, dark: self.theme.dark, preamble: n.preamble))

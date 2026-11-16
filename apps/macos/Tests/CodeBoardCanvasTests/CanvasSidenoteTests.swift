@@ -1177,6 +1177,27 @@ extension CanvasSidenoteTests {
     r.type(pop, "!")
     #expect(field.source == "why wai!t")
   }
+
+  @Test func thePopupBroughtInStepWithTheBoardWhileAnInputMethodComposesKeepsTheComposition() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let at = PopAt.spot(.card(cid("n1")))
+    c.openPop(at, write: true)
+    await opened(r, at)
+    let pop = c.sidenotePop
+    let field = try #require(pop.field)
+    await r.until("the input has the keys") { r.window.firstResponder === field }
+    r.type(pop, "why ")
+    let none = NSRange(location: NSNotFound, length: 0)
+    field.setMarkedText("deng", selectedRange: NSRange(location: 4, length: 0), replacementRange: none)
+    #expect(field.hasMarkedText())
+    c.refreshPop()
+    await c.popTask?.value
+    #expect(pop.field === field && field.hasMarkedText(), "still composing in the same input")
+    field.insertText("等", replacementRange: none)
+    #expect(field.source == "why 等")
+  }
 }
 
 // The welcome back hint (host boards.ts welcomeOf, ui/QuestionList.tsx WelcomeHint): when it shows and what it says
