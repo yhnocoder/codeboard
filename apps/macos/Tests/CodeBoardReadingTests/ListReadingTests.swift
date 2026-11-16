@@ -489,7 +489,9 @@ import Testing
     defer { v.remove() }
     let (_, list) = try await v.openList()
     #expect(list.rows.isEmpty && list.table.numberOfRows == 0)
-    #expect(!list.empty.isHidden && list.empty.stringValue == "No entries yet" && list.empty.font?.pointSize == 12)
+    #expect(
+      !list.empty.isHidden && list.empty.stringValue == "Drop PDFs here or paste an arXiv address"
+        && list.empty.font?.pointSize == 12)
     list.table.keyDown(with: down)
     list.table.keyDown(with: returnKey)
     #expect(list.selected == nil && v.pane.tabs.count == 1)

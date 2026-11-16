@@ -298,7 +298,8 @@ import WebKit
       await WebHistoryFile.shared.read(file).entries.filter { $0.count == 1 && $0.title.hasPrefix("Page") }.count == 2
     }
     v.openLocation(nil)
-    try await until("the history read") { v.history.entries.count == 2 }
+    // (both titles, not two entries: the ⌘L above may have read the file before page B's title was written)
+    try await until("the history read") { v.history.entries.filter { $0.title.hasPrefix("Page") }.count == 2 }
     editor = try #require(field.currentEditor() as? NSTextView)
     editor.insertText("page", replacementRange: editor.selectedRange())
     #expect(v.suggestions.entries.map(\.title).sorted() == ["Page A", "Page B"] && !v.suggestions.isHidden)
