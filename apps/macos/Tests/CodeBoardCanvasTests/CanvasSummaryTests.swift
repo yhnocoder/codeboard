@@ -407,6 +407,37 @@ final class FakeWriter: SummaryWriter, @unchecked Sendable {
     #expect(try over(sec1, 1) == Tip("保留 · Keep this summary as it is for these changes"))
   }
 
+  /// .sumnone: a column with no title of its own yet and nothing written (an untitled loose Note) is hidden at rest,
+  /// though its picture has its square; hovered it shows, with its ↻, and it stays while it is being written
+  @Test func aColumnWithNothingToShowIsHiddenUntilHovered() async throws {
+    var b = summaryBoard()
+    b.cards.append(
+      Card(
+        id: cid("plain"), x: 3000, y: 1400, width: 600, content: .own(CardContent(body: .note(Note(text: "随手记一句。"))))))
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    atSummaries(r)
+    let k = SummaryKey.card(cid("plain"))
+    let col = try column(r, k)
+    #expect(col.none && col.layer.opacity == 0)
+    #expect(c.summaryColumns.filter { $0.col.key != k }.allSatisfy { !$0.none && $0.layer.opacity == 1 })
+    // what it would show: its square alone
+    let px = try #require(col.image.dataProvider?.data as Data?)
+    #expect(px.contains { $0 != 0 })
+    c.hoverSummary(k)
+    #expect(col.layer.opacity == 1 && c.summaryButtons.sublayers?.count == 1)
+    c.hoverSummary(nil)
+    #expect(col.layer.opacity == 0)
+    c.hoverSummary(k)
+    c.summaryWriting.insert(k)
+    c.hoverSummary(nil)
+    #expect(col.layer.opacity == 1)
+    c.summaryWriting.remove(k)
+    c.showNone(col)
+    #expect(col.layer.opacity == 0)
+  }
+
   /// imageai.ts aiFailed: a failed ↻ says why, per cause, and the text stays as it was
   @Test func aFailedRewriteSaysWhyInAToast() async throws {
     let r = try await Rig(summaryBoard(), zoom: 1)

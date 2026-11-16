@@ -29,6 +29,8 @@ struct SummaryColumn {
   var rect: CGRect { CGRect(x: col.rect.x, y: col.rect.y, width: col.rect.w, height: col.rect.h) }
   /// Its title row, where a double-click flies to it
   var titleRect: CGRect { CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: bodyTop) }
+  /// No title of its own yet and nothing written (.sumnone): nothing but its square to show
+  var none: Bool { text.title.isEmpty && text.code == nil && text.text == nil && col.image == nil }
 }
 
 /// A column's picture, kept while what it shows stays the same
@@ -160,6 +162,7 @@ extension CanvasView {
       }
     }
     summaryColumns = columns
+    for c in columns { showNone(c) }
     for k in summaryWriting { breathe(k, true) }
     if let ed = summaryEditor {
       if let c = columns.first(where: { $0.col.key == ed.key }) {
@@ -269,10 +272,13 @@ extension CanvasView {
         summaryButtons.removeFromSuperlayer()
       }
     }
+    let old = summaryColumns.first { $0.col.key == summaryHover }
     summaryHover = key
+    if let old { showNone(old) }
     guard let key, let i = summaryColumns.firstIndex(where: { $0.col.key == key }) else { return }
     let c = summaryColumns[i]
     withoutAnimation {
+      c.layer.opacity = 1
       c.layer.zPosition = 3
       c.panel.zPosition = 2.5
       // a title cut at two lines shows whole (its picture drawn with it whole, made with the others)
@@ -294,6 +300,12 @@ extension CanvasView {
       placeSummaryButtons(c)
     }
     if c.full > c.rect.height + 1 { fade(c.panel, to: 1, duration: 0.14) }
+  }
+
+  /// A column with nothing to show yet is hidden at rest unless it is being written (.sumnone): hovered, it shows its ↻
+  func showNone(_ c: SummaryColumn) {
+    guard c.none else { return }
+    withoutAnimation { c.layer.opacity = summaryHover == c.col.key || summaryWriting.contains(c.col.key) ? 1 : 0 }
   }
 
   /// The board's summary font size (S)
@@ -630,6 +642,7 @@ extension CanvasView {
       if document === d {
         if case .failure(let f)? = r { toast(f.toast) }
         breathe(key, false)
+        if let c = summaryColumns.first(where: { $0.col.key == key }) { showNone(c) }
         if let i = summaryColumns.firstIndex(where: { $0.col.key == key }), summaryHover == key {
           placeSummaryButtons(summaryColumns[i])
         }
