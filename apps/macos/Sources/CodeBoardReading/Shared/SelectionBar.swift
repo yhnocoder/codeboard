@@ -117,13 +117,14 @@ public final class SelectionBar: NSView {
     }
   }
 
-  /// Where the bar goes over a selection whose lines are `lines` (y-down, the view's units), in the part of the view
-  /// shown, `visible`: `gap` above the first line, starting where that line starts; below the last line only when
-  /// there is no room above; near the edges shifted sideways only, to stay inside. Neither place is over a line of the
-  /// selection, though it may cover the text around it
+  /// Where the bar goes over a selection whose lines are `lines` in reading order (y-down, the view's units), in the
+  /// part of the view shown, `visible`: `gap` above the first line, starting where that line starts; below the last
+  /// line only when there is no room above; near the edges shifted sideways only, to stay inside. The first and last
+  /// lines are the reading order's, not the highest and lowest: a selection from low in a left column to high in the
+  /// right one has its bar over where it starts. A selection down one column is never under the bar, though the bar
+  /// may cover the text around it
   public static func origin(size: CGSize, lines: [CGRect], visible: CGRect, gap: CGFloat = 6) -> CGPoint {
-    guard let first = lines.min(by: { $0.minY < $1.minY }), let last = lines.max(by: { $0.maxY < $1.maxY })
-    else { return visible.origin }
+    guard let first = lines.first, let last = lines.last else { return visible.origin }
     let x = max(visible.minX, min(first.minX, visible.maxX - size.width))
     let above = first.minY - gap - size.height
     return CGPoint(x: x, y: above >= visible.minY ? above : last.maxY + gap)

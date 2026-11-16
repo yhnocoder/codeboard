@@ -22,6 +22,54 @@ enum PDFPlaces {
     .sorted { $0.0 < $1.0 }.map(\.1)
   }
 
+  /// The paragraph a line is in, as well as a page's lines tell it: the run of lines around `line` (indices into
+  /// `lines`, a page's lines in reading order, y-up as PDFKit gives them) where each line follows the one before it
+  /// (`follows`); a plain PDF has no blocks of its own
+  static func block(around line: Int, in lines: [CGRect]) -> ClosedRange<Int> {
+    guard lines.indices.contains(line) else { return line...line }
+    var from = line
+    var to = line
+    while from > 0, follows(lines[from - 1], lines[from]) { from -= 1 }
+    while to < lines.count - 1, follows(lines[to], lines[to + 1]) { to += 1 }
+    return from...to
+  }
+
+  /// Whether `b` goes on the paragraph of `a`, the line before it in reading order: it is the next line down (its
+  /// middle between half a line and 1.6 lines below, so a blank line between them ends it), in the same column (they
+  /// overlap across half the narrower), not indented past `a` by more than 0.8 of a line's height (a paragraph's
+  /// indented first line starts a new one), and `a` does not end short of `b` by more than two lines' heights and
+  /// three tenths of the wider line (a paragraph's last line is short; a ragged right edge is not). Line height: the
+  /// taller of the two
+  static func follows(_ a: CGRect, _ b: CGRect) -> Bool {
+    let h = max(a.height, b.height)
+    let down = a.midY - b.midY
+    let overlap = min(a.maxX, b.maxX) - max(a.minX, b.minX)
+    return down >= 0.5 * h && down <= 1.6 * h && overlap > 0.5 * min(a.width, b.width) && b.minX - a.minX <= 0.8 * h
+      && a.maxX >= b.maxX - max(2 * h, 0.3 * max(a.width, b.width))
+  }
+
+  /// The paragraph of `page` that `selection` (a line, as PDFKit selects one on a triple click) starts in, selected
+  /// whole; nil when the selection is on no line of the page
+  static func paragraph(of selection: PDFSelection, on page: PDFPage) -> PDFSelection? {
+    guard let all = page.selection(for: page.bounds(for: .cropBox)) else { return nil }
+    let lines = all.selectionsByLine().filter { !($0.string ?? "").isEmpty }
+    let at = selection.bounds(for: page)
+    let rects = lines.map { $0.bounds(for: page) }
+    guard
+      let i = rects.indices.max(by: {
+        rects[$0].intersection(at).width * rects[$0].intersection(at).height
+          < rects[$1].intersection(at).width * rects[$1].intersection(at).height
+      }), rects[i].intersects(at)
+    else { return nil }
+    let ranges = block(around: i, in: rects).flatMap { k in
+      (0..<lines[k].numberOfTextRanges(on: page)).map { lines[k].range(at: $0, on: page) }
+    }.filter { $0.location != NSNotFound }
+    guard let from = ranges.map(\.location).min(), let to = ranges.map({ $0.location + $0.length }).max() else {
+      return nil
+    }
+    return page.selection(for: NSRange(location: from, length: to - from))
+  }
+
   /// The text of places of a plain PDF as one selection; nil when none is on a page of `doc`
   static func selection(_ places: [Place], in doc: PDFDocument) -> PDFSelection? {
     var out: PDFSelection?

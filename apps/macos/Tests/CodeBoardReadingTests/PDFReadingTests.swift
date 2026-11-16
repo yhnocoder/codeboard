@@ -45,6 +45,39 @@ import Testing
     #expect(PDFPlaces.selection([Place(version: v, block: .page(3), range: 0..<4)], in: doc) == nil)
     #expect(PDFPlaces.selection([Place(version: v, block: .id("b1"))], in: doc) == nil)
   }
+
+  @Test func aParagraphIsTheRunOfLinesThatFollowOneAnotherDownOneColumn() {
+    // y-up, 12 high, 14 apart: an indented first line, two full lines, a short last one; a blank line; another
+    // paragraph; then the top of the next column
+    func line(_ y: CGFloat, _ x: CGFloat = 20, _ right: CGFloat = 140) -> CGRect {
+      CGRect(x: x, y: y, width: right - x, height: 12)
+    }
+    let lines = [
+      line(300, 32), line(286), line(272), line(258, 20, 80),
+      line(230, 32), line(216), line(202),
+      line(300, 160, 280), line(286, 160, 280),
+    ]
+    #expect(PDFPlaces.block(around: 1, in: lines) == 0...3)
+    #expect(PDFPlaces.block(around: 3, in: lines) == 0...3)
+    #expect(PDFPlaces.block(around: 4, in: lines) == 4...6, "the blank line and the indent end the first")
+    #expect(PDFPlaces.block(around: 6, in: lines) == 4...6, "the next column is not the paragraph's")
+    #expect(PDFPlaces.block(around: 8, in: lines) == 7...8)
+    // a ragged right edge stays one paragraph
+    #expect(PDFPlaces.block(around: 0, in: [line(300, 20, 130), line(286, 20, 140), line(272, 20, 120)]) == 0...2)
+    #expect(PDFPlaces.block(around: 5, in: lines.prefix(2).map { $0 }) == 5...5)
+  }
+
+  @Test func aLineSelectedGrowsToItsParagraphOnThePage() throws {
+    let doc = try #require(
+      PDFDocument(
+        data: makePDF(["The river runs north past the mill.\nBirds rest on the far bank.\n\nEvening light."])))
+    let page = try #require(doc.page(at: 0))
+    let text = try #require(page.string) as NSString
+    let line = try #require(page.selection(for: text.range(of: "Birds rest on the far bank.")))
+    let p = try #require(PDFPlaces.paragraph(of: line, on: page))
+    #expect(p.string?.contains("The river runs north") == true && p.string?.contains("far bank.") == true)
+    #expect(p.string?.contains("Evening") == false)
+  }
 }
 
 // A PDF tab: PDFKit's view and selection, the bar over a selection, Copy, Add to Board, Highlight, what is written
@@ -229,6 +262,50 @@ import Testing
     #expect(t.pdf.isHidden && t.pdf.document == nil)
     w.pane.follow { ReadingKinds.follow($0, in: w.pane) }
     #expect(w.pane.tabs.isEmpty)
+  }
+
+  @Test func theBarOfASelectionAcrossColumnsGoesOverWhereItStartsInReadingOrder() throws {
+    let v = try PDFVault(
+      data: makeColumnsPDF(
+        "Alpha one\nAlpha two\nAlpha three\nAlpha four\nAlpha five", "Beta one\nBeta two\nBeta three"))
+    defer { v.remove() }
+    let w = try PDFWindow(v)
+    defer { w.close() }
+    let t = try w.tab(try #require(w.pane.openPDF(.file(v.file))))
+    let page = try #require(t.pdf.document?.page(at: 0))
+    let text = try #require(page.string) as NSString
+    let from = text.range(of: "Alpha four").location
+    let to = text.range(of: "Beta two")
+    let s = try #require(
+      t.pdf.document?.selection(
+        from: page, atCharacterIndex: from, to: page, atCharacterIndex: to.location + to.length - 1))
+    t.pdf.setCurrentSelection(s, animate: false)
+    t.released()
+    func inView(_ r: CGRect) -> CGRect { t.convert(t.pdf.convert(r, from: page), from: t.pdf) }
+    let lines = s.selectionsByLine().map { inView($0.bounds(for: page)) }
+    let first = try #require(lines.first)
+    #expect(s.selectionsByLine().first?.string?.hasPrefix("Alpha four") == true)
+    #expect(lines.contains { $0.minY < first.minY - 20 }, "a line of the right column is higher")
+    #expect(!t.bar.isHidden)
+    #expect(
+      abs(t.bar.frame.maxY - (first.minY - 6)) < 0.5 && abs(t.bar.frame.minX - first.minX) < 0.5, "\(t.bar.frame)")
+  }
+
+  @Test func aTripleClickedLineBecomesItsParagraph() throws {
+    let v = try PDFVault(pages: [
+      "The river runs north past the mill.\nBirds rest on the far bank.\n\nEvening light."
+    ])
+    defer { v.remove() }
+    let w = try PDFWindow(v)
+    defer { w.close() }
+    let t = try w.tab(try #require(w.pane.openPDF(.file(v.file))))
+    let page = try #require(t.pdf.document?.page(at: 0))
+    let text = try #require(page.string) as NSString
+    t.pdf.setCurrentSelection(page.selection(for: text.range(of: "Birds rest on the far bank.")), animate: false)
+    t.selectParagraph()
+    t.released()
+    #expect(t.selectedText?.hasPrefix("The river runs north") == true && t.selectedText?.hasSuffix("far bank.") == true)
+    #expect(!t.bar.isHidden)
   }
 }
 

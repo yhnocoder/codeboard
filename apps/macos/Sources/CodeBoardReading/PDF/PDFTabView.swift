@@ -196,9 +196,9 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
     lines.map { ($0.0, convert(pdf.convert($0.1, from: $0.0), from: pdf)) }
   }
 
-  /// A bar over lines in this view (the selection bar's rule)
+  /// A bar over lines in this view, in reading order (the selection bar's rule)
   func show(_ b: SelectionBar, over lines: [(PDFPage, CGRect)]) {
-    guard let first = lines.min(by: { $0.1.minY < $1.1.minY }) else { return unpin(b) }
+    guard let first = lines.first else { return unpin(b) }
     pin(b, at: SelectionBar.origin(size: b.size, lines: lines.map(\.1), visible: bounds), on: first.0)
   }
 
@@ -207,6 +207,14 @@ final class PDFTabView: NSView, NSDraggingSource, ReadingLookFollower {
   var selectedText: String? {
     guard let s = pdf.currentSelection?.string, !s.isEmpty else { return nil }
     return s
+  }
+
+  /// A triple click: the line PDFKit selected grows to its paragraph (PDFPlaces.block)
+  func selectParagraph() {
+    guard let s = pdf.currentSelection, let page = s.pages.first, let p = PDFPlaces.paragraph(of: s, on: page) else {
+      return
+    }
+    pdf.setCurrentSelection(p, animate: false)
   }
 
   /// The selection's lines in this view (y-down)
@@ -457,6 +465,7 @@ final class PagesView: PDFView {
     tab.dismiss()
     // PDFKit follows the drag itself until the mouse lets go
     super.mouseDown(with: event)
+    if event.clickCount == 3 { tab.selectParagraph() }
     tab.released(at: p)
   }
 
