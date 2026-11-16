@@ -28,6 +28,7 @@ private func everything() -> Entry {
       Version(
         id: VersionID(rawValue: "v3"), added: 1_700_000_200_000, content: .page(hash: "9f86d081884c7d65", bytes: 52_113)
       ),
+      Version(id: VersionID(rawValue: "v4"), label: "slides", added: 1_700_000_250_000, content: .file("talk.key")),
     ],
     highlights: colors.enumerated().map { i, c in
       Highlight(id: "h\(i)", place: i.isMultiple(of: 2) ? page : block, color: c, at: 1_700_000_300_000 + Double(i))
@@ -178,16 +179,21 @@ private func at(_ json: inout [String: Any], _ list: String, _ i: Int, _ change:
 
 @Test func readingAnEntryRefusesWhatTheWriterWouldNotWrite() throws {
   let cases: [(String, (inout [String: Any]) -> Void)] = [
-    ("extra: not in format", { $0["extra"] = 1 }),
+    // in the entry file's own format and version
+    ("extra: not in entry format 1 as this CodeBoard knows it; a newer CodeBoard", { $0["extra"] = 1 }),
     ("year: null, which is never written", { $0["year"] = NSNull() }),
     ("highlights: missing", { $0["highlights"] = nil }),
     (
-      "versions[0].content: no kind this CodeBoard knows",
+      "versions[0].content: no kind this CodeBoard knows: not in entry format 1 as",
       { j in at(&j, "versions", 0) { $0["content"] = ["epub": [String: Any]()] } }
     ),
     (
       "versions[0].content.pdf: ../x.pdf is not a file name",
       { j in at(&j, "versions", 0) { $0["content"] = ["pdf": ["file": "../x.pdf"]] } }
+    ),
+    (
+      "versions[3].content.file: .key is not a file name",
+      { j in at(&j, "versions", 3) { $0["content"] = ["file": ["file": ".key"]] } }
     ),
     ("origin.arxiv: 1706.03762v7: an id without a version", { $0["origin"] = ["arxiv": ["id": "1706.03762v7"]] }),
     (
@@ -263,7 +269,12 @@ private func at(_ json: inout [String: Any], _ list: String, _ i: Int, _ change:
       return why.hasPrefix(message)
     }
   }
-  #expect(throws: VaultError.newerFormat(file, 2)) { try Entry(decoding: try edited { $0["version"] = 2 }, file: file) }
+  #expect(throws: VaultError.newerFormat(file, 2, reads: 1)) {
+    try Entry(decoding: try edited { $0["version"] = 2 }, file: file)
+  }
+  #expect(
+    VaultError.newerFormat(file, 2, reads: 1).description.contains(
+      "version 2, written by a newer CodeBoard; this one reads version 1."))
   #expect(throws: VaultError.olderFormat(file, 0)) { try Entry(decoding: try edited { $0["version"] = 0 }, file: file) }
 }
 
@@ -277,12 +288,20 @@ private func at(_ json: inout [String: Any], _ list: String, _ i: Int, _ change:
   for bad in [
     #"{"version": 1, "id": "r", "preset": "videos", "fields": []}"#,
     #"{"version": 1, "id": "r", "preset": "papers"}"#,
-    #"{"version": 1, "id": "r", "preset": "papers", "fields": [], "title": "Papers"}"#,
     #"{"version": 1, "id": "r", "preset": "papers", "fields": [{"id": "a", "name": "A", "type": "url"}]}"#,
   ] {
     #expect(throws: VaultError.self) { try Resource(decoding: json(bad), file: at) }
   }
-  #expect(throws: VaultError.newerFormat(at, 2)) {
+  #expect(
+    throws: VaultError.malformed(
+      at,
+      "title: not in resource format 1 as this CodeBoard knows it; a newer CodeBoard may have written it. Update "
+        + "CodeBoard to open the file (it is left as it is)")
+  ) {
+    try Resource(
+      decoding: json(#"{"version": 1, "id": "r", "preset": "papers", "fields": [], "title": "Papers"}"#), file: at)
+  }
+  #expect(throws: VaultError.newerFormat(at, 2, reads: 1)) {
     try Resource(decoding: json(#"{"version": 2, "id": "r", "preset": "papers", "fields": []}"#), file: at)
   }
 }

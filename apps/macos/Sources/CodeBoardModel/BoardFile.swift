@@ -7,8 +7,8 @@ import Foundation
 public enum VaultError: Error, Equatable, CustomStringConvertible {
   case unreadable(URL, String)
   case malformed(URL, String)
-  /// Written by a newer CodeBoard in a format version this one does not read
-  case newerFormat(URL, Int)
+  /// Written by a newer CodeBoard in a format version this one does not read; `reads`: the version it reads of that file
+  case newerFormat(URL, Int, reads: Int = Board.version)
   /// A format version from before this one, which it no longer reads
   case olderFormat(URL, Int)
   case duplicateBoardID(BoardID, [URL])
@@ -22,8 +22,8 @@ public enum VaultError: Error, Equatable, CustomStringConvertible {
     switch self {
     case .unreadable(let file, let why): "\(file.path): cannot be read: \(why)"
     case .malformed(let file, let why): "\(file.path): \(why)"
-    case .newerFormat(let file, let v):
-      "\(file.path): format version \(v), written by a newer CodeBoard; this one reads version \(Board.version). "
+    case .newerFormat(let file, let v, let reads):
+      "\(file.path): format version \(v), written by a newer CodeBoard; this one reads version \(reads). "
         + "Update CodeBoard to open it (the file is left as it is)"
     case .olderFormat(let file, let v):
       "\(file.path): format version \(v), from an early build, which this one no longer reads; import the board again "
@@ -279,7 +279,10 @@ package func canonicalJSON(_ value: some Encodable) throws -> Data {
   return Data(out + [UInt8(ascii: "\n")])
 }
 
-package func strictDecode<T: Codable>(_ type: T.Type, from data: Data, file: URL, version: Int) throws -> T {
+/// `format`: what the file's format is called in what is said of it ("format" for a board's: "not in format 2 …")
+package func strictDecode<T: Codable>(
+  _ type: T.Type, from data: Data, file: URL, version: Int, format: String = "format"
+) throws -> T {
   let raw: Any
   do {
     raw = try JSONSerialization.jsonObject(with: data)
@@ -288,7 +291,7 @@ package func strictDecode<T: Codable>(_ type: T.Type, from data: Data, file: URL
   }
   guard let object = raw as? [String: Any] else { throw VaultError.malformed(file, "not a JSON object") }
   guard let v = object["version"] as? Int else { throw VaultError.malformed(file, "no format version") }
-  guard v <= version else { throw VaultError.newerFormat(file, v) }
+  guard v <= version else { throw VaultError.newerFormat(file, v, reads: version) }
   // a breaking change raises the version: an upgrade step from the version before goes here (FORMAT.md, Versions)
   guard v == version else { throw VaultError.olderFormat(file, v) }
   let value: T
@@ -299,33 +302,39 @@ package func strictDecode<T: Codable>(_ type: T.Type, from data: Data, file: URL
   } catch let DecodingError.typeMismatch(_, context), let DecodingError.valueNotFound(_, context),
     let DecodingError.dataCorrupted(context)
   {
-    throw VaultError.malformed(file, "\(pathText(context.codingPath)): \(context.debugDescription)")
+    let why = context.debugDescription
+    let what = why == unknownKind ? "\(why): \(newerField(format, version))" : why
+    throw VaultError.malformed(file, "\(pathText(context.codingPath)): \(what)")
   }
   let again = try JSONSerialization.jsonObject(with: canonicalJSON(value))
-  if let (path, what) = firstDifference(raw, again, at: "") {
+  if let (path, what) = firstDifference(raw, again, at: "", newer: newerField(format, version)) {
     throw VaultError.malformed(file, "\(path.isEmpty ? "(root)" : path): \(what)")
   }
   return value
 }
 
 /// What an older build says of a field or kind a newer one added (FORMAT.md, Versions): it never drops it
-package let newerField =
-  "not in format \(Board.version) as this CodeBoard knows it; a newer CodeBoard may have written it. "
-  + "Update CodeBoard to open the file (it is left as it is)"
+private func newerField(_ format: String, _ version: Int) -> String {
+  "not in \(format) \(version) as this CodeBoard knows it; a newer CodeBoard may have written it. "
+    + "Update CodeBoard to open the file (it is left as it is)"
+}
+
+/// What `theCase` says of a kind this build does not know; `strictDecode` adds what an older build says of it
+private let unknownKind = "no kind this CodeBoard knows"
 
 private func pathText(_ path: [any CodingKey]) -> String {
   path.map { $0.intValue.map { "[\($0)]" } ?? ".\($0.stringValue)" }.joined().trimmingPrefix(".").description
 }
 
 /// The path of the first place where what was read differs from what the writer writes for it, and how
-private func firstDifference(_ a: Any, _ b: Any, at path: String) -> (String, String)? {
+private func firstDifference(_ a: Any, _ b: Any, at path: String, newer: String) -> (String, String)? {
   if let x = a as? [String: Any], let y = b as? [String: Any] {
     for key in Set(x.keys).union(y.keys).sorted() {
       let here = path.isEmpty ? key : "\(path).\(key)"
       switch (x[key], y[key]) {
-      case (let xv?, let yv?): if let d = firstDifference(xv, yv, at: here) { return d }
+      case (let xv?, let yv?): if let d = firstDifference(xv, yv, at: here, newer: newer) { return d }
       case (is NSNull, nil): return (here, "null, which is never written")
-      case (_?, nil): return (here, newerField)
+      case (_?, nil): return (here, newer)
       default: return (here, "missing")
       }
     }
@@ -334,7 +343,7 @@ private func firstDifference(_ a: Any, _ b: Any, at path: String) -> (String, St
   if let x = a as? [Any], let y = b as? [Any] {
     guard x.count == y.count else { return (path, "not as the writer writes it") }
     for (i, (xv, yv)) in zip(x, y).enumerated() {
-      if let d = firstDifference(xv, yv, at: "\(path)[\(i)]") { return d }
+      if let d = firstDifference(xv, yv, at: "\(path)[\(i)]", newer: newer) { return d }
     }
     return nil
   }
@@ -347,7 +356,7 @@ private func firstDifference(_ a: Any, _ b: Any, at path: String) -> (String, St
 package func theCase<K: CodingKey>(of c: KeyedDecodingContainer<K>) throws -> K {
   // a kind this build does not know is not in allKeys
   guard c.allKeys.count == 1, let key = c.allKeys.first else {
-    let what = c.allKeys.isEmpty ? "no kind this CodeBoard knows: " + newerField : "more than one kind"
+    let what = c.allKeys.isEmpty ? unknownKind : "more than one kind"
     throw DecodingError.dataCorrupted(.init(codingPath: c.codingPath, debugDescription: what))
   }
   return key

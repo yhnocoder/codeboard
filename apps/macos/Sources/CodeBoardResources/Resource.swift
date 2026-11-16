@@ -95,6 +95,8 @@ public struct Version: Equatable, Sendable {
     case pdf(file: String, blocks: String? = nil)
     /// A web page saved whole outside the vault, by its content fingerprint, and its size
     case page(hash: String, bytes: Int)
+    /// Any other file in the entry's folder, opened as the system opens it; no places in it
+    case file(String)
   }
 
   public var id: VersionID
@@ -156,7 +158,7 @@ extension Resource {
   public func encoded() throws -> Data { try canonicalJSON(self) }
 
   public init(decoding data: Data, file: URL) throws {
-    self = try strictDecode(Resource.self, from: data, file: file, version: Resource.version)
+    self = try strictDecode(Resource.self, from: data, file: file, version: Resource.version, format: "resource format")
     var ids = Set<String>()
     for f in fields where !ids.insert(f.id).inserted {
       throw VaultError.malformed(file, "field \(f.id) is there twice")
@@ -168,7 +170,7 @@ extension Entry {
   public func encoded() throws -> Data { try canonicalJSON(self) }
 
   public init(decoding data: Data, file: URL) throws {
-    self = try strictDecode(Entry.self, from: data, file: file, version: Entry.version)
+    self = try strictDecode(Entry.self, from: data, file: file, version: Entry.version, format: "entry format")
     if let problem = problem() { throw VaultError.malformed(file, problem) }
   }
 
@@ -346,7 +348,7 @@ extension Version: Codable {
 
 extension Version.Content: Codable {
   private enum Keys: String, CodingKey {
-    case pdf, page
+    case pdf, page, file
   }
   private struct PDF: Codable {
     var file: String
@@ -355,6 +357,9 @@ extension Version.Content: Codable {
   private struct Page: Codable {
     var hash: String
     var bytes: Int
+  }
+  private struct File: Codable {
+    var file: String
   }
 
   public init(from decoder: any Decoder) throws {
@@ -369,6 +374,12 @@ extension Version.Content: Codable {
     case .page:
       let p = try c.decode(Page.self, forKey: .page)
       self = .page(hash: p.hash, bytes: p.bytes)
+    case .file:
+      let name = try c.decode(File.self, forKey: .file).file
+      guard Vault.isFileName(name) else {
+        throw DecodingError.dataCorruptedError(forKey: .file, in: c, debugDescription: "\(name) is not a file name")
+      }
+      self = .file(name)
     }
   }
 
@@ -377,6 +388,7 @@ extension Version.Content: Codable {
     switch self {
     case .pdf(let file, let blocks): try c.encode(PDF(file: file, blocks: blocks), forKey: .pdf)
     case .page(let hash, let bytes): try c.encode(Page(hash: hash, bytes: bytes), forKey: .page)
+    case .file(let name): try c.encode(File(file: name), forKey: .file)
     }
   }
 }
