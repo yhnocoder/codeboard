@@ -3,6 +3,7 @@ import CodeBoardModel
 import CoreGraphics
 import Foundation
 import MarkdownUI
+import os
 
 // A card's source at its foot (FORMAT.md CardContent.source; an image card showing a resource's block names it too):
 // the entry's icon, its short title in the second ink and its own number in the third, never a page; at a Note's bottom
@@ -14,8 +15,10 @@ extension Drawing {
   /// One card's source as drawn: the title is cut first, the number only once the title is gone. One whose entry is
   /// gone says so in the third ink, as a ref that finds nothing and a sub-board card whose board is gone do
   struct Foot: Sendable, Equatable {
-    enum Icon: Sendable {
+    enum Icon: Sendable, Equatable {
       case paper, site
+      /// A site's own icon, decoded small (SourcePictures)
+      case image(CGImage)
     }
 
     enum Part: Sendable {
@@ -41,12 +44,17 @@ extension Drawing {
     /// What one whose entry is gone says
     static let gone = "Source not found"
 
-    /// From what the provider says of it; nil: its entry is gone
-    init(_ anchor: SourceAnchor, _ l: SourceLabel?) {
+    /// From what the provider says of it; nil: its entry is gone. A site's own icon not read yet: the globe
+    init(_ anchor: SourceAnchor, _ l: SourceLabel?, siteIcon: CGImage? = nil) {
       self.anchor = anchor
       title = l?.title ?? Foot.gone
       number = l?.number
-      icon = l?.icon == .site ? .site : .paper
+      icon =
+        switch l?.icon {
+        case .site?: .site
+        case .image?: siteIcon.map(Icon.image) ?? .site
+        default: .paper
+        }
       missing = l == nil
     }
 
@@ -129,6 +137,15 @@ extension Drawing {
           Drawing.text(ctx, p.text, t.small, p.color, x: p.rect.minX, midY: p.rect.midY, width: p.rect.width)
           continue
         }
+        if case .image(let img) = icon {
+          ctx.saveGState()
+          ctx.addPath(CGPath(roundedRect: p.rect, cornerWidth: 3, cornerHeight: 3, transform: nil))
+          ctx.clip()
+          ctx.interpolationQuality = .high
+          Drawing.drawContained(ctx, img, in: p.rect)
+          ctx.restoreGState()
+          continue
+        }
         // Lucide's file-text and globe, 24 units, stroked 2
         ctx.saveGState()
         ctx.translateBy(x: p.rect.minX, y: p.rect.minY)
@@ -199,7 +216,8 @@ extension CanvasView {
       guard case .own(let k) = c.content, let a = Scene.anchor(k) else { continue }
       let key = Scene.key(a)
       guard out[key] == nil else { continue }
-      var s = Scene.Source(foot: Drawing.Foot(a, p.sourceLabel(a)))
+      let label = p.sourceLabel(a)
+      var s = Scene.Source(foot: Drawing.Foot(a, label, siteIcon: siteIcon(label)))
       if case .image(let img) = k.body, case .resource = img.source {
         s.size = p.blockSize(a)
         s.picture = sourcePictures.widest(key)
@@ -242,6 +260,28 @@ extension CanvasView {
     }
   }
 
+  /// A source's site icon when it is in; else it is read (once, until the sources change) off the main thread and the
+  /// board drawn again with it. Only a file on this Mac is read: anything else keeps the globe
+  func siteIcon(_ l: SourceLabel?) -> CGImage? {
+    guard case .image(let url)? = l?.icon, url.isFileURL else { return nil }
+    let key = SourcePictures.iconKey(url)
+    if let img = sourcePictures.widest(key.anchor) { return img }
+    guard sourcePictures.asked.insert(key).inserted else { return nil }
+    sourcePictures.reading[key] = Task { [weak self] in
+      let img = await Task.detached(priority: .utility) { Drawing.thumbnail(url, CGFloat(key.width)) }.value
+      guard let self else { return }
+      sourcePictures.reading[key] = nil
+      guard let img else {
+        Logger(subsystem: Bundle.main.bundleIdentifier ?? "CodeBoard", category: "sources")
+          .error("A site icon could not be read: \(url.path)")
+        return
+      }
+      sourcePictures.put(key, img)
+      refresh()
+    }
+    return nil
+  }
+
   /// The source at a board point: the foot of a card at rest (not one being written in)
   func footAt(_ p: CGPoint) -> SourceAnchor? {
     guard let id = hitCard(p), editing?.id != id, let i = index(of: .card(id)), let it = scene?.items[i],
@@ -278,6 +318,11 @@ struct SourcePictures {
   private var lru = ByteLRU<Key>(cap: 64 << 20)
   private var images: [Key: CGImage] = [:]
   var asked: Set<Key> = []
+  /// The site icons being read, done once they are in (or could not be read)
+  var reading: [Key: Task<Void, Never>] = [:]
+
+  /// A site icon's key: its address, at one size (12 pt up to zoom 2.6 on a 2x screen; icons are rarely larger)
+  static func iconKey(_ url: URL) -> Key { Key(anchor: "icon " + url.absoluteString, width: 64) }
 
   /// The width a picture at least `pixels` wide is asked at: a power of two from 128, DecodeCache's levels
   static func level(_ pixels: Int) -> Int {
@@ -296,6 +341,10 @@ struct SourcePictures {
 
   mutating func put(_ k: Key, _ img: CGImage) {
     images[k] = img
-    for old in lru.insert(k, bytes: img.bytesPerRow * img.height) { images[old] = nil }
+    // one let go is asked again when next needed
+    for old in lru.insert(k, bytes: img.bytesPerRow * img.height) {
+      images[old] = nil
+      asked.remove(old)
+    }
   }
 }

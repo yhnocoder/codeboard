@@ -1,4 +1,5 @@
 import AppKit
+import CodeBoardDiagnostics
 import CodeBoardModel
 import CodeBoardNotes
 import MarkdownCore
@@ -1257,11 +1258,13 @@ public final class CanvasView: NSView {
   }
 
   package func scroll(by d: CGVector, at t: TimeInterval, began: Bool, ended: Bool) {
+    if began || ended { Diag.event(began ? "pan.began" : "pan.ended", camera.diag) }
     motion.scroll(d, at: t, began: began, ended: ended, camera: &camera)
     moved()
   }
 
   package func pinch(by f: CGFloat, around p: CGPoint, at t: TimeInterval, began: Bool, ended: Bool) {
+    if began || ended { Diag.event(began ? "pinch.began" : "pinch.ended", camera.diag) }
     let before = camera
     motion.pinch(by: f, at: p, time: t, began: began, ended: ended, limits: limits, camera: &camera)
     zoomStep(from: before, around: p, wheelNotch: false, at: t)
@@ -1417,6 +1420,7 @@ public final class CanvasView: NSView {
 
   /// At rest: what each item should hold now, within what the other canvases leave of the budget
   func arrive() {
+    Diag.event("camera.rest", camera.diag)
     if scene != nil, onScreen { settleOnPixels() }
     keepCamera()
     guard scene != nil, onScreen else { return }

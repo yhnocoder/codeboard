@@ -109,6 +109,19 @@ extension NSEvent {
   @objc class func accModifierFlags() -> NSEvent.ModifierFlags { vFlags }
 }
 
+/// The window the driver works in (its targets, reads, keys and shots), main and key as for a person who brought it to
+/// the front: what AppKit would announce is announced
+@MainActor func becomeCurrent(_ w: NSWindow) {
+  let (oldMain, oldKey) = (gMain, keyWindowSet)
+  gMain = w
+  gKey = w
+  let nc = NotificationCenter.default
+  if let o = oldKey, o !== w { nc.post(name: NSWindow.didResignKeyNotification, object: o) }
+  if let o = oldMain, o !== w { nc.post(name: NSWindow.didResignMainNotification, object: o) }
+  nc.post(name: NSWindow.didBecomeMainNotification, object: w)
+  nc.post(name: NSWindow.didBecomeKeyNotification, object: w)
+}
+
 extension NSWindow {
   @objc func accIsKeyWindow() -> Bool { self === gKey }
   @objc func accIsMainWindow() -> Bool { self === gMain }
@@ -122,6 +135,19 @@ extension NSWindow {
       gMain = self
       accMakeKeyAndOrderFront(sender)
       if !onScreen { setFrame(NSRect(origin: NSPoint(x: 40, y: 40), size: winSize), display: true) }
+      return
+    }
+    // another window of the app's own kind (File > New Window) becomes the main one, as it does for a person, at the
+    // driver's size beside the last, so that windows side by side are each in view and in its shots
+    if let m = gMain, m !== self, !isVisible, type(of: self) == type(of: m), !(self is NSPanel) {
+      accMakeKeyAndOrderFront(sender)
+      if !onScreen {
+        let right =
+          NSApp.windows.filter { $0.isVisible && type(of: $0) == type(of: m) && $0 !== self }
+          .map(\.frame.maxX).max() ?? m.frame.maxX
+        setFrame(NSRect(origin: NSPoint(x: right + 20, y: 40), size: winSize), display: true)
+      }
+      becomeCurrent(self)
       return
     }
     accMakeKeyAndOrderFront(sender)
@@ -761,8 +787,14 @@ func strings(_ x: Any) -> [String] {
     }
   }
 
+  /// The window a button went down in: AppKit sends that window the drag and the release, wherever the pointer is
+  weak var pressedIn: NSWindow?
   func post(_ type: NSEvent.EventType, at p: NSPoint, clicks: Int = 0) {
-    guard let w = window(at: p) ?? (vButtons != 0 ? win : nil) else { return }
+    let held: [NSEvent.EventType] = [.leftMouseDragged, .rightMouseDragged, .leftMouseUp, .rightMouseUp]
+    guard let w = (held.contains(type) ? pressedIn : nil) ?? window(at: p) ?? (vButtons != 0 ? win : nil) else {
+      return
+    }
+    if type == .leftMouseDown || type == .rightMouseDown { pressedIn = w }
     if type == .leftMouseDown || type == .rightMouseDown { acceptFirstMouse(at: p, in: w) }
     let e = NSEvent.mouseEvent(
       with: type, location: w.convertPoint(fromScreen: p), modifierFlags: vFlags,
@@ -1161,8 +1193,13 @@ func strings(_ x: Any) -> [String] {
     s.replacingOccurrences(of: "\\n", with: "\n").replacingOccurrences(of: "\\s", with: " ")
   }
 
-  /// The app's visible windows, front to back; or the one a title or #n names
-  func shown() -> [NSWindow] { NSApp.orderedWindows.filter { $0.isVisible && !$0.title.isEmpty || $0 === gMain } }
+  /// The app's visible windows in the order they were made (their numbers stay as others come and go in front); or the
+  /// one a title or #n names
+  func shown() -> [NSWindow] {
+    NSApp.windows.filter { $0.isVisible && !$0.title.isEmpty || $0 === gMain }.sorted {
+      $0.windowNumber < $1.windowNumber
+    }
+  }
   func shown(_ ref: String) -> NSWindow? {
     let ws = shown()
     if ref.hasPrefix("#"), let n = Int(ref.dropFirst()) { return n >= 1 && n <= ws.count ? ws[n - 1] : nil }
@@ -2011,7 +2048,17 @@ func strings(_ x: Any) -> [String] {
       guard let c = canvas else { return "no canvas" }
       guard let id = c.previewing, c.shelfPreview?.superview != nil else { return "none" }
       return "\(id) panel \(c.shelfPanel == nil ? "closed" : "open")"
-    // windows: the app's visible windows front to back, one per line: its number (what #n names), title, key, main
+    // window <window>: work in that window from now on (a title, or #n from windows): it becomes main and key, and
+    // targets, reads, keys and shots are its
+    case "window":
+      let ref = a.count > 1 ? a[1] : ""
+      guard let w = shown(ref) else { return "no window \(ref)" }
+      w.orderFront(nil)
+      becomeCurrent(w)
+      refreshAreas()
+      return "window \(w.title)"
+    // windows: the app's visible windows in the order they were made, one per line: its number (what #n names), title,
+    // key, main
     case "windows":
       let ws = shown()
       return ws.isEmpty
@@ -2423,4 +2470,7 @@ if env["ACCEPT_APP"] == "demo" {
     try runMarkdownDemo(arguments: args)
   }
 }
+// ⌃⌥⌘B stays with the person at the Mac: a scenario records a bug report from its menu item, without asking for
+// Screen Recording
+MainActor.assumeIsolated { BugRecorder.personal = false }
 runApp()

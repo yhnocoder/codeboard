@@ -13,6 +13,9 @@ swift build -c release
 bin=$(swift build -c release --show-bin-path)
 app="build/$name.app"
 first=""
+# the commit it was built from, in bug reports (+dirty: with changes not committed)
+commit=$(git rev-parse HEAD 2>/dev/null || echo unknown)
+if [ -n "$(git status --porcelain 2>/dev/null)" ]; then commit="$commit+dirty"; fi
 if [ -n "$first_vault" ]; then first="<key>CodeBoardFirstVault</key><string>$first_vault</string>"; fi
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS"
@@ -27,6 +30,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$version</string>
   <key>CFBundleVersion</key><string>$version</string>
+  <key>CodeBoardCommit</key><string>$commit</string>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>LSMinimumSystemVersion</key><string>27.0</string>
   <key>NSHighResolutionCapable</key><true/>

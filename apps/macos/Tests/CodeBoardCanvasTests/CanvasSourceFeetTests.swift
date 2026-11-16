@@ -1,6 +1,7 @@
 import AppKit
 import CodeBoardModel
 import IOSurface
+import ImageIO
 import MarkdownUI
 import Testing
 
@@ -222,6 +223,43 @@ extension CanvasRemoteImageTests {
       await r.until("drawn again") { foot(r, "n1")?.title == "Sparse Gradient Notes" }
       await other.until("drawn again in the other") { foot(other, "n1")?.title == "Sparse Gradient Notes" }
       #expect(foot(r, "n1")?.missing == false)
+    }
+
+    @Test func aSitesOwnIconIsDrawnOnceReadAndOneNotReadKeepsTheGlobeTriedOnce() async throws {
+      let dir = FileManager.default.temporaryDirectory.appending(path: "site-icons-\(UUID().uuidString)")
+      try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let icon = dir.appending(path: "icon.png")
+      let out = try #require(CGImageDestinationCreateWithURL(icon as CFURL, "public.png" as CFString, 1, nil))
+      CGImageDestinationAddImage(out, flat(16, 16), nil)
+      #expect(CGImageDestinationFinalize(out))
+      let missing = dir.appending(path: "none.png")
+      let web = try #require(URL(string: "https://example.com/favicon.ico"))
+      let fake = FakeSources()
+      fake.labels["w1"] = SourceLabel(title: "A Field Guide to Kernels", number: nil, icon: .image(icon))
+      fake.labels["w2"] = SourceLabel(title: "A Page", number: nil, icon: .image(missing))
+      fake.labels["w3"] = SourceLabel(title: "Far Away", number: nil, icon: .image(web))
+      let r = try await Rig(
+        Board(
+          id: BoardID(rawValue: "site-icons"),
+          cards: [
+            note("n1", x: 100, source: anchor("w1")), note("n2", x: 500, source: anchor("w2")),
+            note("n3", x: 900, source: anchor("w3")),
+          ]), zoom: 1, sources: fake)
+      defer { r.close() }
+      let (got, gone) = (SourcePictures.iconKey(icon), SourcePictures.iconKey(missing))
+      for k in [got, gone] { await r.canvas.sourcePictures.reading[k]?.value }
+      let read = try #require(r.canvas.sourcePictures.widest(got.anchor))
+      #expect(read.width == 16 && read.height == 16, "decoded no larger than it is")
+      await r.until("drawn with it") { foot(r, "n1")?.icon == .image(read) }
+      #expect(foot(r, "n2")?.icon == .site && foot(r, "n3")?.icon == .site, "the globe")
+      // the one that could not be read is not read again on a redraw; an address on the web is never read
+      #expect(r.canvas.sourcePictures.widest(gone.anchor) == nil && r.canvas.sourcePictures.asked.contains(gone))
+      r.canvas.refresh()
+      #expect(r.canvas.sourcePictures.reading.isEmpty, "not read again")
+      await r.idle()
+      #expect(foot(r, "n2")?.icon == .site && foot(r, "n1")?.icon == .image(read))
+      #expect(!r.canvas.sourcePictures.asked.contains(SourcePictures.iconKey(web)))
     }
 
     func picture(_ r: Rig, _ id: String) -> Drawing.Picture? {

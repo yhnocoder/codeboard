@@ -72,6 +72,8 @@ struct OpenAISummaryWriter: SummaryWriter {
   var session = URLSession.shared
   /// For the whole exchange (SUMMARY_TIMEOUT)
   var timeout = Duration.seconds(60)
+  /// The longest answer asked for, in tokens: a summary's
+  var answerTokens = 800
 
   var endpoint: URL? {
     var base = baseURL.isEmpty ? Self.defaultBase : baseURL
@@ -91,7 +93,7 @@ struct OpenAISummaryWriter: SummaryWriter {
     req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
     let body: [String: Any] = [
       "model": model.isEmpty ? Self.defaultModel : model,
-      "max_tokens": 800,
+      "max_tokens": answerTokens,
       "temperature": 0.2,
       "stream": false,
       // deepseek-flash otherwise thinks first and spends max_tokens on it; other servers ignore it

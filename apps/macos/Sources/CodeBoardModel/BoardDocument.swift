@@ -1,3 +1,4 @@
+import CodeBoardDiagnostics
 import Foundation
 
 /// One open board: the board as edited, its undo history, saving by itself and taking in what another writer changed.
@@ -39,9 +40,26 @@ import Foundation
     get { mainPlace.selection }
     set { mainPlace.selection = newValue }
   }
+
+  /// What is selected, for a bug report: the ids in order
+  nonisolated static func describe(_ items: Set<Item>) -> String {
+    guard !items.isEmpty else { return "none" }
+    return items.map { i -> String in
+      switch i {
+      case .card(let id): "card \(id.rawValue)"
+      case .section(let id): "section \(id.rawValue)"
+      case .arrow(let id): "arrow \(id.rawValue)"
+      case .sticker(let id): "sticker \(id.rawValue)"
+      }
+    }.sorted().joined(separator: ", ")
+  }
   public private(set) var history = History()
   /// Why the file on disk cannot be read now; saving waits while it is set
-  public private(set) var problem: String?
+  public private(set) var problem: String? {
+    didSet {
+      if Diag.isRecording, let problem, problem != oldValue { Diag.event("error", ["where": "save", "what": problem]) }
+    }
+  }
 
   /// How long after the last change it is written
   public static let saveDelay = Duration.milliseconds(300)
@@ -211,6 +229,7 @@ import Foundation
     } else {
       history.record(name, from: board, to: b, selection: (before, now), epoch: derived)
     }
+    Diag.event("edit", ["name": name])
     board = b
     place.selection = now
     keepSelections(on: b, but: place)
@@ -361,7 +380,8 @@ import Foundation
   fileprivate func undo(by place: Place) {
     var b = board
     let epoch = history.undoSteps.last?.epoch ?? derived
-    guard let sel = history.undo(&b) else { return }
+    guard let sel = history.undo(&b) else { return Diag.event("undo", ["name": "nothing to undo"]) }
+    Diag.event("undo", ["name": history.redoSteps.last?.name ?? ""])
     replayDerived(after: epoch, on: &b)
     board = b
     place.selection = sel.filter { b.has($0) }
@@ -372,7 +392,8 @@ import Foundation
   fileprivate func redo(by place: Place) {
     var b = board
     let epoch = history.redoSteps.last?.epoch ?? derived
-    guard let sel = history.redo(&b) else { return }
+    guard let sel = history.redo(&b) else { return Diag.event("redo", ["name": "nothing to redo"]) }
+    Diag.event("redo", ["name": history.undoSteps.last?.name ?? ""])
     replayDerived(after: epoch, on: &b)
     board = b
     place.selection = sel.filter { b.has($0) }
@@ -493,7 +514,14 @@ import Foundation
 extension BoardDocument {
   /// What one seat has of its own: its selection and who watches it
   fileprivate final class Place {
-    var selection: Set<Item> = []
+    /// Every seat's selection is said to a bug report being recorded, whichever canvas it is
+    var selection: Set<Item> = [] {
+      didSet {
+        if Diag.isRecording, selection != oldValue {
+          Diag.event("selection", ["items": BoardDocument.describe(selection)])
+        }
+      }
+    }
     var observers: [UUID: (Change) -> Void] = [:]
   }
 

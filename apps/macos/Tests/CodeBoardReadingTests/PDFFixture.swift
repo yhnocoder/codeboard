@@ -24,6 +24,27 @@ func makePDF(_ pages: [String]) -> Data {
   return data as Data
 }
 
+/// A one-page paper made here: `title` (when given) drawn large at the top, `body` small under it; `info` its document
+/// info's Title and Author
+func makePaperPDF(title: String?, body: String, info: (title: String?, author: String?) = (nil, nil)) -> Data {
+  let data = NSMutableData()
+  var box = CGRect(x: 0, y: 0, width: 300, height: 400)
+  var aux: [CFString: String] = [:]
+  aux[kCGPDFContextTitle] = info.title
+  aux[kCGPDFContextAuthor] = info.author
+  let ctx = CGContext(consumer: CGDataConsumer(data: data as CFMutableData)!, mediaBox: &box, aux as CFDictionary)!
+  ctx.beginPDFPage(nil)
+  NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
+  (title as NSString?)?.draw(
+    in: CGRect(x: 20, y: 300, width: 260, height: 80), withAttributes: [.font: NSFont.boldSystemFont(ofSize: 22)])
+  (body as NSString).draw(
+    in: CGRect(x: 20, y: 20, width: 260, height: 270), withAttributes: [.font: NSFont.systemFont(ofSize: 10)])
+  NSGraphicsContext.current = nil
+  ctx.endPDFPage()
+  ctx.closePDF()
+  return data as Data
+}
+
 /// A page of two columns, each string drawn in its own from the top: the left from x 20 to 140, the right from 160
 func makeColumnsPDF(_ left: String, _ right: String) -> Data {
   let data = NSMutableData()
