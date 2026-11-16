@@ -15,7 +15,17 @@ import os
 final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUIDelegate, ReadingLookFollower {
   let web: PageWebView
   let bar: WebBar
-  private(set) var selectionBar: SelectionBar!
+  /// The bar over the selection: on a page saved whole it has Highlight too
+  var selectionBar: SelectionBar { onSaved ? markBar : plainBar }
+  private var plainBar: SelectionBar!
+  private var markBar: SelectionBar!
+  /// The bar over a highlight that was clicked, and that highlight
+  private(set) var highlightBar: SelectionBar!
+  /// The highlight that was clicked (WebHighlights.swift), where it was in this view then, and the popup with what is
+  /// written on it while that is open
+  var shownHighlight: String?
+  var shownHighlightRect = CGRect.zero
+  var pop: AnnotationPop?
   /// The picture of the page being dragged now, as the page's script last said
   var draggedImage: WebImage?
   /// What is selected now, as the page's script last said
@@ -26,12 +36,12 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   /// Why a button of the bar pressed while it is off does nothing, said above the bar for a few seconds
   let note: WebNote
   private var noteEnds: Task<Void, Never>?
-  private let context: ReadingContext
+  let context: ReadingContext
   /// The saving service; none: links alone are saved, and a saved page is not on this Mac
   private let store: (any PageStore)?
   private(set) var visibility = WebBarVisibility()
   /// Where the bar is now, which lags `visibility` while it slides
-  private var barShown = true
+  private(set) var barShown = true
   private var observations: [NSKeyValueObservation] = []
   private var clearedObserver: (any NSObjectProtocol)?
   /// Opened blank: the address is edited as soon as the view is in a window
@@ -134,6 +144,8 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     selecting = WKUserScript(
       source: WebReading.selectionScript, injectionTime: .atDocumentStart, forMainFrameOnly: true,
       in: WebReading.selectionWorld)
+    let marked = HighlightRelay()
+    userScripts.add(marked, contentWorld: WebReading.selectionWorld, name: "highlight")
     let dragged = ImageRelay()
     userScripts.add(dragged, contentWorld: WebReading.selectionWorld, name: "image")
     self.scripts = WebScripts(scripts)
@@ -152,23 +164,37 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     saving.owner = self
     selected.owner = self
     dragged.owner = self
+    marked.owner = self
     web.allowsBackForwardNavigationGestures = true
     web.navigationDelegate = self
     web.uiDelegate = self
     web.autoresizingMask = [.width, .height]
     web.setAccessibilityIdentifier("ui-webpage")
     addSubview(web)
-    selectionBar = SelectionBar(
+    let add = SelectionAction(icon: "rectangle.stack.badge.plus", name: "Add to Board", id: "ui-selectionadd") {
+      [weak self] in self?.collect()
+    }
+    let copy = SelectionAction(icon: "doc.on.doc", name: "Copy", id: "ui-selectioncopy") {
+      [weak self] in self?.copySelection()
+    }
+    let mark = SelectionAction(icon: "highlighter", name: "Highlight", id: "ui-selectionhighlight") {
+      [weak self] in self?.highlight()
+    }
+    plainBar = SelectionBar([add, copy], look: context.bar)
+    markBar = SelectionBar([add, mark, copy], look: context.bar)
+    highlightBar = SelectionBar(
       [
-        SelectionAction(icon: "rectangle.stack.badge.plus", name: "Add to Board", id: "ui-selectionadd") {
-          [weak self] in self?.collect()
+        SelectionAction(icon: "text.bubble", name: "Annotate", id: "ui-highlightannotate") {
+          [weak self] in self?.openPop(write: true)
         },
-        SelectionAction(icon: "doc.on.doc", name: "Copy", id: "ui-selectioncopy") {
-          [weak self] in self?.copySelection()
+        SelectionAction(icon: "trash", name: "Remove", id: "ui-highlightremove") {
+          [weak self] in self?.removeShownHighlight()
         },
-      ], look: context.bar)
-    selectionBar.isHidden = true
-    addSubview(selectionBar)
+      ], id: "ui-highlightbar", look: context.bar)
+    for b in [plainBar!, markBar!, highlightBar!] {
+      b.isHidden = true
+      addSubview(b)
+    }
     web.onKey = { [weak self] in self?.collectKey($0) ?? false }
     web.dragsSelection = { [weak self] in self?.dragsSelection(at: $0) }
     web.dragsImage = { [weak self] in self?.draggedImage != nil && self?.context.pane.vault != nil }
@@ -272,7 +298,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
 
   func barLookChanged(_ look: ReadingBarLook) {
     bar.look = look
-    selectionBar.look = look
+    for b in [plainBar!, markBar!, highlightBar!] { b.look = look }
     suggestions.look = look
     note.look = look
     needsLayout = true
@@ -281,12 +307,16 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   /// Taken out of the pane: its tab closed
   override func viewDidMoveToSuperview() {
     super.viewDidMoveToSuperview()
-    if superview == nil { translating?.cancel() }
+    if superview == nil {
+      translating?.cancel()
+      closePop()
+    }
   }
 
   override func viewDidHide() {
     super.viewDidHide()
-    selectionBar.isHidden = true
+    for b in [plainBar!, markBar!, highlightBar!] { b.isHidden = true }
+    closePop()
   }
 
   override func viewDidUnhide() {
@@ -326,6 +356,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   fileprivate func scrolled(to y: CGFloat) {
     scrollY = y
     handle(.scrolled(y))
+    showHighlight(nil)
     if selection != nil { placeSelectionBar() }
   }
 
@@ -432,7 +463,14 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     scriptsForSaved = saved
     userScripts.removeAllUserScripts()
     userScripts.addUserScript(scroll)
-    if !saved { userScripts.addUserScript(selecting) }
+    if saved {
+      userScripts.addUserScript(
+        WKUserScript(
+          source: WebReading.highlightScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true,
+          in: WebReading.selectionWorld))
+    } else {
+      userScripts.addUserScript(selecting)
+    }
     userScripts.addUserScript(
       WKUserScript(
         source: WebReading.imageScript, injectionTime: .atDocumentStart, forMainFrameOnly: true,
@@ -482,6 +520,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
       readerPicks = picks as? Bool == true
       showBodyTip()
       await readBlocks()
+      drawHighlights()
       revealPending()
     }
   }
@@ -495,7 +534,8 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     guard onSaved, scripts != nil else { return }
     showBodyTip()
     web.callAsyncJavaScript(
-      "return await shiyiReader.setMode(mode)", arguments: ["mode": readerMode], in: nil, in: WebReading.scriptWorld)
+      "return await shiyiReader.setMode(mode)", arguments: ["mode": readerMode], in: nil, in: WebReading.scriptWorld
+    ) { [weak self] _ in self?.drawHighlights() }
   }
 
   // MARK: Correcting the body
@@ -711,7 +751,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   }
 
   /// The entry a page saved whole is a version of: its folder, the entry and the version
-  private func savedVersion(_ hash: String) -> (String, Entry, VersionID)? {
+  func savedVersion(_ hash: String) -> (String, Entry, VersionID)? {
     context.pane.entries.all.lazy.compactMap { f in
       f.entry.versions.first { if case .page(hash, _, _) = $0.content { true } else { false } }.map {
         (f.path, f.entry, $0.id)
@@ -736,6 +776,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     _ = try? await web.callAsyncJavaScript(
       "shiyiReader.setLanguage(language)", arguments: ["language": language.rawValue],
       contentWorld: WebReading.scriptWorld)
+    drawHighlights()
     if language != .original { translateRest() }
   }
 
@@ -839,10 +880,12 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   /// The selection bar over the selection by the reading pane's rule, above the web bar when it shows
   private func placeSelectionBar() {
     let lines = selectionLines
+    (onSaved ? plainBar : markBar)?.isHidden = true
     guard !lines.isEmpty, !isHiddenOrHasHiddenAncestor else {
       selectionBar.isHidden = true
       return
     }
+    showHighlight(nil)
     let visible = barShown ? CGRect(x: 0, y: 0, width: bounds.width, height: max(0, bar.frame.minY - 6)) : bounds
     selectionBar.frame = CGRect(
       origin: SelectionBar.origin(size: selectionBar.size, lines: lines, visible: visible), size: selectionBar.size)
@@ -1058,6 +1101,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
   /// The vault's entries were read again
   func entriesRead() {
     askSaved()
+    drawHighlights()
     if blocks != nil, kept == nil, keptError == nil { Task { await takeKept() } }
   }
 
