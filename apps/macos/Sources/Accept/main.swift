@@ -11,6 +11,7 @@
 import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
+import CodeBoardResources
 import CodeBoardShell
 import MarkdownDemoKit
 import ObjectiveC
@@ -1462,6 +1463,36 @@ func strings(_ x: Any) -> [String] {
     }
   }
 
+  /// menubar Menu/Item[/Item…]: that item of the menu bar chosen as the menu does it when a person picks it (its action
+  /// through the responder chain, the item as sender), after each menu on the way is brought up to date as before it
+  /// shows (its delegate's menuNeedsUpdate, then the app's validation): an item the app disables is not chosen. No menu
+  /// is shown
+  func menubar(_ path: String) -> String {
+    guard var menu = NSApp.mainMenu else { return "no menu bar" }
+    let parts = path.split(separator: "/").map(String.init)
+    for (i, title) in parts.enumerated() {
+      menu.delegate?.menuNeedsUpdate?(menu)
+      menu.update()
+      guard let item = menu.items.first(where: { $0.title == title }) else {
+        let titles = menu.items.filter { !$0.isSeparatorItem }.map(\.title)
+        return
+          "no item \(title) in \(menu.title.isEmpty ? "the menu bar" : menu.title): \(titles.joined(separator: " | "))"
+      }
+      if i < parts.count - 1 {
+        guard let sub = item.submenu else { return "\(title) opens no menu" }
+        menu = sub
+        continue
+      }
+      guard item.submenu == nil else { return "\(path) opens a menu" }
+      guard item.isEnabled else { return "\(path) is disabled" }
+      // from the run loop, as pick does: an item that runs a modal session from its action must not hold the queue
+      menu.perform(#selector(NSMenu.accPerform(_:)), with: item, afterDelay: 0, inModes: [.common])
+      log("menu bar: chose \(path) (not shown)")
+      return "chose \(path)"
+    }
+    return "no item"
+  }
+
   func run(_ line: String) async -> String {
     let a = line.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
     guard let cmd = a.first else { return "" }
@@ -1580,6 +1611,7 @@ func strings(_ x: Any) -> [String] {
     case "pick":
       menuOpen = false
       pick(String(line.dropFirst(5)))
+    case "menubar": return menubar(String(line.dropFirst(8)))
     case "find":  // find x0 y0 x1 y1 before|mid|after words: where those words are on screen inside that box
       let box = CGRect(x: d(1), y: d(2), width: d(3) - d(1), height: d(4) - d(2))
       guard a.count > 6 else { return "find x0 y0 x1 y1 mode words" }
@@ -1819,17 +1851,25 @@ func strings(_ x: Any) -> [String] {
         let r = try await wv.evaluateJavaScript(String(line.dropFirst(3)))
         return String(describing: r)
       } catch { return "js error \(error)" }
+    // webviews: every web view in the app's windows, one per line: its class, address and page title, whether it is
+    // shown (in a window, not hidden, not see-through, not empty) and what its page says of itself
+    // (document.visibilityState: WebKit makes a page hidden in a window it takes for covered, and stops drawing it)
     case "webviews":
-      var out: [String] = []
+      var found: [WKWebView] = []
       func walk(_ v: NSView) {
-        if let e = v as? WKWebView {
-          out.append(
-            "\(Swift.type(of: e)) frame \(e.frame) alpha \(e.alphaValue) hidden \(e.isHiddenOrHasHiddenAncestor)")
-        }
+        if let e = v as? WKWebView { found.append(e) }
         v.subviews.forEach(walk)
       }
-      win?.contentView.map(walk)
-      return out.joined(separator: "\n")
+      for w in NSApp.orderedWindows where w.isVisible { (w.contentView?.superview ?? w.contentView).map(walk) }
+      var out: [String] = []
+      for e in found {
+        let shown = e.window != nil && !e.isHiddenOrHasHiddenAncestor && e.alphaValue > 0 && !e.bounds.isEmpty
+        let page = (try? await e.evaluateJavaScript("document.visibilityState")) as? String ?? "unknown"
+        out.append(
+          "\(Swift.type(of: e)) \(e.url?.absoluteString ?? "-") \"\(e.title ?? "")\" view \(shown ? "shown" : "hidden") page \(page)"
+        )
+      }
+      return out.isEmpty ? "none" : out.joined(separator: "\n")
     case "mainmenu": return NSApp.mainMenu.map { describe($0) } ?? "none"
     case "focus":  // what AppKit announces when the app comes to the front with its window key
       NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApp)
@@ -1870,12 +1910,49 @@ func strings(_ x: Any) -> [String] {
           rows.append((field(sub, "name") as? String ?? "", depth))
           if let p = field(sub, "path") as? String, open.contains(p) { walk(sub, depth + 1) }
         }
-        for b in field(f, "boards") as? [Any] ?? [] { rows.append((field(b, "title") as? String ?? "", depth)) }
+        // then, as the sidebar lists them, the boards, the boards that cannot be read, the resources and the resources
+        // that cannot be read
+        for key in ["boards", "unreadable", "resources", "unreadableResources"] {
+          for b in field(f, key) as? [Any] ?? [] { rows.append((field(b, "title") as? String ?? "", depth)) }
+        }
       }
       walk(tree, 0)
       guard let i = rows.firstIndex(where: { $0.name == title }) else { return "none" }
       let x = chevron ? 10 + 2 + 18 * Double(rows[i].depth) + 7 : 90
       return String(format: "%.0f %.0f", x, 91 + 29 * Double(i))
+    // entries <resource title>: that resource's entries as they are in the vault now, one title per line in Finder's
+    // order (none), as the reading pane's list reads them: an entry folder's title from its entry file, a file alone by
+    // its name
+    case "entries":
+      let title = String(line.dropFirst(8))
+      guard let shell = NSApp.delegate.flatMap({ field($0, "shell") }), let vault = field(shell, "vault") as? Vault,
+        let tree = field(shell, "tree") as? VaultFolder
+      else { return "no vault" }
+      guard let r = tree.allFolders.flatMap(\.resources).first(where: { $0.title == title }) else {
+        return "no resource \(title)"
+      }
+      guard let items = try? vault.items(in: r.path) else { return "unreadable" }
+      let titles = items.map { item -> String in
+        switch item {
+        case .entry(let e, _): e.title
+        case .file(let p): ((p as NSString).lastPathComponent as NSString).deletingPathExtension
+        case .unreadable(let p, _): "\((p as NSString).lastPathComponent) (unreadable)"
+        }
+      }
+      return titles.isEmpty ? "none" : titles.joined(separator: "\n")
+    // readtabs: the reading pane's tabs, one per line: its kind ("" a blank page), its title, * on the one shown; then
+    // whether the pane is shown
+    case "readtabs":
+      guard let shell = NSApp.delegate.flatMap({ field($0, "shell") }), let pane = field(shell, "reading") else {
+        return "no reading pane"
+      }
+      let selected = field(pane, "selected").map { "\($0)" }
+      let tabs = (field(pane, "tabs") as? [Any] ?? []).map { t in
+        let mark = field(t, "id").map { "\($0)" } == selected ? "* " : ""
+        return "\(mark)\(field(t, "kind") as? String ?? ""): \(field(t, "title") as? String ?? "")"
+      }
+      return (tabs.isEmpty ? ["none"] : tabs).joined(separator: "\n")
+        + "\npane \(field(pane, "shown") as? Bool == true ? "shown" : "hidden")"
     case "quit":
       ownPasteboard.releaseGlobally()
       // from the run loop, as ⌘Q comes: called in this command's main-queue block, an app that answers .terminateLater

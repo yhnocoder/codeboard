@@ -28,6 +28,9 @@ struct Lru<V> {
 
   func has(_ k: String) -> Bool { values[k] != nil }
 
+  /// Least recently used first
+  var keys: [String] { order }
+
   private mutating func touch(_ k: String) {
     order.removeAll { $0 == k }
     order.append(k)
