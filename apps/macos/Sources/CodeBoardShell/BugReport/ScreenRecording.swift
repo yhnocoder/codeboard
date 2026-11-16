@@ -38,11 +38,14 @@ final class ScreenRecording: NSObject, SCStreamOutput, SCStreamDelegate, @unchec
     var started = false
     var frames = 0
     var error: String?
+    /// The first frame's time from the press: a few hundredths of a second when the sample times are the host clock's
+    var first: Double?
   }
   private let state = Mutex(State())
 
   var frames: Int { state.withLock { $0.frames } }
   var error: String? { state.withLock { $0.error } }
+  var firstFrame: Double? { state.withLock { $0.first } }
 
   private init(
     url: URL, stream: SCStream, writer: AVAssetWriter, input: AVAssetWriterInput.SampleBufferReceiver, t0: Double,
@@ -143,6 +146,7 @@ final class ScreenRecording: NSObject, SCStreamOutput, SCStreamDelegate, @unchec
       // the sample times are the host clock's, as Diag.now(): starting the session at the press makes the video's
       // time the report's
       let pts = buffer.presentationTimeStamp.seconds
+      state.withLock { $0.first = pts - t0 }
       let start = min(t0, pts)
       writer.startSession(atSourceTime: CMTime(seconds: start, preferredTimescale: 1_000_000))
     }

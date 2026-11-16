@@ -229,7 +229,7 @@ import CodeBoardResources
         case .success(let v):
           if let url = await v.stop() {
             files.append(ReportFile("video.mp4", copying: url))
-            meta.video = "video.mp4, \(v.frames) frames"
+            meta.video = "video.mp4, \(v.frames) frames, the first at \(String(format: "%.3f", v.firstFrame ?? 0)) s"
           } else {
             notes.append("No video: \(v.error ?? "no frame was recorded")")
           }
