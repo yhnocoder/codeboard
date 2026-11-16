@@ -179,6 +179,9 @@ public actor Repositories {
     // Deleted before it is forgotten: a clone that could not be deleted stays listed
     if case .clone = all[i].kind, at.path.hasPrefix(inside), FileManager.default.fileExists(atPath: at.path) {
       try FileManager.default.removeItem(at: at)
+      // the owner's folder with it once it holds no other clone: rmdir takes only an empty one
+      let owner = at.deletingLastPathComponent().path
+      if (owner + "/").hasPrefix(inside), owner + "/" != inside { rmdir(owner) }
     }
     all.remove(at: i)
     try save()

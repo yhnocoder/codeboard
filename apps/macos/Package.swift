@@ -34,6 +34,7 @@ let package = Package(
       name: "CodeBoardShell",
       dependencies: [
         "CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes", "CodeBoardReading", "CodeBoardResources",
+        "CodeBoardWorkspace",
         .product(name: "Shiyi", package: "shiyi"),
       ]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
@@ -46,7 +47,10 @@ let package = Package(
     // its own process
     .executableTarget(
       name: "Accept",
-      dependencies: ["CodeBoardShell", "CodeBoardCanvas", "CodeBoardModel", "CodeBoardResources", "MarkdownDemoKit"]),
+      dependencies: [
+        "CodeBoardShell", "CodeBoardCanvas", "CodeBoardModel", "CodeBoardReading", "CodeBoardResources",
+        "MarkdownDemoKit",
+      ]),
     .executableTarget(
       name: "LookCompare",
       dependencies: [
@@ -114,7 +118,7 @@ let package = Package(
     .testTarget(
       name: "CodeBoardShellTests",
       dependencies: [
-        "CodeBoardShell", "CodeBoardCanvas", "CodeBoardNotes",
+        "CodeBoardShell", "CodeBoardCanvas", "CodeBoardNotes", "CodeBoardWorkspace",
         .product(name: "TestGuard", package: "better-swift-markdown"),
       ]),
     // the reading pane beside the board and what its tabs show (PDF/, Web/, List/, Shared/); AppKit, PDFKit, the model

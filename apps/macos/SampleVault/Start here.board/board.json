@@ -1,0 +1,400 @@
+{
+  "arrows": [
+    {
+      "dashed": false,
+      "endHead": true,
+      "from": {
+        "card": "c-welcome",
+        "lost": false
+      },
+      "id": "a-open",
+      "label": "open it",
+      "startHead": false,
+      "to": {
+        "card": "c-sub",
+        "lost": false
+      },
+      "width": 2
+    },
+    {
+      "dashed": true,
+      "endHead": true,
+      "from": {
+        "card": "c-picture",
+        "lost": false
+      },
+      "id": "a-size",
+      "label": "how big?",
+      "startHead": false,
+      "to": {
+        "card": "c-formula",
+        "lost": false
+      },
+      "width": 2
+    }
+  ],
+  "cards": [
+    {
+      "content": {
+        "text": {
+          "fill": "yellow",
+          "fontSize": 40,
+          "look": "text",
+          "text": "# Welcome to CodeBoard",
+          "wrap": false
+        }
+      },
+      "id": "c-title",
+      "locked": false,
+      "tilted": false,
+      "width": 700,
+      "x": 80,
+      "y": 40
+    },
+    {
+      "content": {
+        "note": {
+          "text": "This vault is a sample: change anything, it is a copy.\n\n- **Pan** with two fingers, **zoom** with a pinch or ⌘ and the wheel.\n- **Double-click** a card to edit it; drag its header to move it.\n- Zoom far out: Sections and cards show their **summaries**.\n- Click the badge on a card to open its **sidenotes**.\n- Open [[Scheduler]] through the sub-board card on the right.\n- The **Shelf** button holds two cards put aside.\n- In the sidebar, open **Papers**, **Links** and **Files**."
+        },
+        "title": "Things to try"
+      },
+      "id": "c-welcome",
+      "locked": false,
+      "summary": {
+        "at": 1763280000000,
+        "edited": true,
+        "input": "lyfczm",
+        "pairs": [
+          {
+            "ai": "",
+            "at": 1763280000000,
+            "user": "**things to try** here"
+          }
+        ],
+        "sig": "1swbfhs",
+        "text": "**things to try** here"
+      },
+      "tilted": false,
+      "width": 460,
+      "x": 80,
+      "y": 150
+    },
+    {
+      "content": {
+        "text": {
+          "fill": "yellow",
+          "fontSize": 20,
+          "look": "box",
+          "text": "A **Box** is Markdown on a coloured box. Drag a side edge to wrap it.",
+          "wrap": true
+        }
+      },
+      "id": "c-tip",
+      "locked": false,
+      "tilted": false,
+      "width": 300,
+      "x": 80,
+      "y": 820
+    },
+    {
+      "content": {
+        "description": "A picture made for this vault.",
+        "image": {
+          "alt": "KV cache blocks",
+          "framed": true,
+          "loops": false,
+          "source": {
+            "file": "kv-blocks.png"
+          }
+        },
+        "title": "Blocks"
+      },
+      "id": "c-picture",
+      "locked": false,
+      "tilted": false,
+      "width": 520,
+      "x": 80,
+      "y": 500
+    },
+    {
+      "content": {
+        "note": {
+          "text": "For $L$ layers, $H$ key/value heads of size $d$, $b$ bytes a value and $T$ tokens:\n\n$$\n\\text{KV bytes} = 2 \\cdot L \\cdot H \\cdot d \\cdot b \\cdot T\n$$\n\n| model | $L$ | $H$ | $d$ | per token |\n| --- | --- | --- | --- | --- |\n| tiny | 24 | 8 | 64 | 48 KiB |\n| small | 28 | 8 | 128 | 112 KiB |"
+        },
+        "title": "How big is the cache?"
+      },
+      "id": "c-formula",
+      "locked": false,
+      "summary": {
+        "at": 1763280000000,
+        "edited": true,
+        "input": "midu93",
+        "pairs": [
+          {
+            "ai": "",
+            "at": 1763280000000,
+            "user": "cache size: **2·L·H·d·b·T**"
+          }
+        ],
+        "sig": "ga1skh",
+        "text": "cache size: **2·L·H·d·b·T**"
+      },
+      "tilted": false,
+      "width": 460,
+      "x": 700,
+      "y": 500
+    },
+    {
+      "content": {
+        "board": {
+          "board": "b-scheduler"
+        }
+      },
+      "height": 340,
+      "id": "c-sub",
+      "locked": false,
+      "tilted": false,
+      "width": 480,
+      "x": 1240,
+      "y": 120
+    },
+    {
+      "id": "c-shared",
+      "locked": false,
+      "shared": true,
+      "tilted": false,
+      "width": 340,
+      "x": 700,
+      "y": 820
+    },
+    {
+      "content": {
+        "web": {
+          "meta": {
+            "description": "Nano vLLM: a lightweight vLLM implementation built from scratch.",
+            "failed": false,
+            "fetchedAt": 1763280000000,
+            "site": "GitHub",
+            "title": "GeeeekExplorer/nano-vllm"
+          },
+          "style": "text",
+          "url": "https://github.com/GeeeekExplorer/nano-vllm"
+        }
+      },
+      "id": "c-web",
+      "locked": false,
+      "section": "s-reading",
+      "tilted": false,
+      "width": 440,
+      "x": 1280,
+      "y": 620
+    },
+    {
+      "content": {
+        "links": {
+          "items": [
+            {
+              "id": "l1",
+              "meta": {
+                "failed": false,
+                "fetchedAt": 1763280000000,
+                "site": "arXiv",
+                "title": "Efficient Memory Management for Large Language Model Serving with PagedAttention"
+              },
+              "title": "PagedAttention (arXiv 2309.06180)",
+              "url": "https://arxiv.org/abs/2309.06180"
+            },
+            {
+              "id": "l2",
+              "title": "Gumbel distribution",
+              "url": "https://en.wikipedia.org/wiki/Gumbel_distribution"
+            }
+          ],
+          "rich": false
+        },
+        "title": "Further reading"
+      },
+      "id": "c-links",
+      "locked": false,
+      "section": "s-reading",
+      "tilted": false,
+      "width": 440,
+      "x": 1280,
+      "y": 740
+    }
+  ],
+  "hideComments": false,
+  "id": "b-start",
+  "sections": [
+    {
+      "collapsed": false,
+      "description": "Links kept on the board. The same pages are in the resource **Links** in the sidebar.",
+      "height": 340,
+      "id": "s-reading",
+      "locked": false,
+      "summary": {
+        "at": 1763280000000,
+        "edited": true,
+        "input": "1k3iupr",
+        "pairs": [
+          {
+            "ai": "",
+            "at": 1763280000000,
+            "user": "**nano-vllm** and **PagedAttention**"
+          }
+        ],
+        "sig": "v5yd1j",
+        "text": "**nano-vllm** and **PagedAttention**"
+      },
+      "title": "Reading",
+      "width": 520,
+      "x": 1240,
+      "y": 560
+    }
+  ],
+  "shelf": [
+    {
+      "arrows": [],
+      "at": 1763280600000,
+      "cards": [
+        {
+          "content": {
+            "note": {
+              "text": "### Put aside\nCards on the Shelf wait here. Drag one back onto the board."
+            }
+          },
+          "id": "c-later",
+          "locked": false,
+          "measuredHeight": 120,
+          "tilted": false,
+          "width": 360,
+          "x": 80,
+          "y": 1400
+        }
+      ],
+      "id": "shelf-1",
+      "sections": [],
+      "stickers": []
+    },
+    {
+      "arrows": [],
+      "at": 1763280700000,
+      "cards": [
+        {
+          "content": {
+            "text": {
+              "fill": "pink",
+              "fontSize": 20,
+              "look": "box",
+              "text": "A pink Box, shelved",
+              "wrap": true
+            }
+          },
+          "id": "c-later-box",
+          "locked": false,
+          "measuredHeight": 80,
+          "tilted": false,
+          "width": 240,
+          "x": 480,
+          "y": 1400
+        }
+      ],
+      "id": "shelf-2",
+      "sections": [],
+      "stickers": []
+    }
+  ],
+  "sidenotes": [
+    {
+      "anchor": {
+        "card": {
+          "card": "c-formula"
+        }
+      },
+      "boardOnly": false,
+      "id": "n-size",
+      "lineRemoved": false,
+      "text": {
+        "alwaysShow": true,
+        "text": "$T$ counts every token of every sequence in the batch."
+      }
+    },
+    {
+      "anchor": {
+        "card": {
+          "card": "c-picture"
+        }
+      },
+      "boardOnly": false,
+      "id": "n-why256",
+      "lineRemoved": false,
+      "text": {
+        "alwaysShow": false,
+        "question": {
+          "answers": [],
+          "at": 1763280500000,
+          "done": false
+        },
+        "text": "Why 256 tokens a block, and not 16?"
+      }
+    }
+  ],
+  "stickers": [
+    {
+      "anchor": {
+        "canvas": {
+          "size": 36,
+          "x": 40,
+          "y": 50
+        }
+      },
+      "glyph": {
+        "builtin": "star"
+      },
+      "id": "st-star"
+    },
+    {
+      "anchor": {
+        "card": {
+          "card": "c-tip",
+          "x": 270,
+          "y": -14
+        }
+      },
+      "glyph": {
+        "builtin": "check"
+      },
+      "id": "st-check"
+    },
+    {
+      "anchor": {
+        "card": {
+          "card": "c-welcome",
+          "size": 36,
+          "x": 420,
+          "y": -18
+        }
+      },
+      "glyph": {
+        "emoji": "👋"
+      },
+      "id": "st-wave"
+    },
+    {
+      "anchor": {
+        "arrow": {
+          "arrow": "a-open",
+          "position": 0.5,
+          "size": 28,
+          "x": -16,
+          "y": 8
+        }
+      },
+      "glyph": {
+        "builtin": "heart"
+      },
+      "id": "st-heart"
+    }
+  ],
+  "version": 2
+}
