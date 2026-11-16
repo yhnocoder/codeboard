@@ -80,7 +80,7 @@ public struct Arxiv: Sendable {
   public func paper(_ id: String) async throws(ArxivError) -> ArxivPaper {
     var q = URLComponents(string: "https://export.arxiv.org/api/query")!
     q.queryItems = [URLQueryItem(name: "id_list", value: id)]
-    let data = try await get(q.url!)
+    let data = try await get(q.url!, of: id)
     let feed = AtomFeed(data)
     guard feed.read else { throw .unreadable }
     // an id arXiv does not know: no entry, or one whose id is the API's error page
@@ -94,12 +94,13 @@ public struct Arxiv: Sendable {
 
   /// Version `version` of the paper's PDF
   public func pdf(_ id: String, version: Int) async throws(ArxivError) -> Data {
-    let data = try await get(URL(string: "https://arxiv.org/pdf/\(id)v\(version)")!)
+    let data = try await get(URL(string: "https://arxiv.org/pdf/\(id)v\(version)")!, of: "\(id)v\(version)")
     guard data.starts(with: Data("%PDF".utf8)) else { throw .notFound("\(id)v\(version)") }
     return data
   }
 
-  private func get(_ url: URL) async throws(ArxivError) -> Data {
+  /// `paper`: what was asked for, as a paper not found is named
+  private func get(_ url: URL, of paper: String) async throws(ArxivError) -> Data {
     var req = URLRequest(url: url, timeoutInterval: 60)
     req.setValue("CodeBoard", forHTTPHeaderField: "User-Agent")
     let data: Data
@@ -111,7 +112,7 @@ public struct Arxiv: Sendable {
     }
     switch response.statusCode {
     case 200..<300: return data
-    case 404: throw .notFound(url.lastPathComponent)
+    case 404: throw .notFound(paper)
     default: throw .http(response.statusCode)
     }
   }

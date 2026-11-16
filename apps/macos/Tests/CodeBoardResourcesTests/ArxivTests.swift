@@ -94,6 +94,8 @@ final class FakeArxiv: Sendable {
       let fake = FakeArxiv([FakeArxiv.api: Data(body.utf8)])
       await #expect(throws: ArxivError.notFound("1706.03762")) { try await fake.arxiv.paper("1706.03762") }
     }
+    // the API itself answering 404: the paper asked for is named, not the address's last part
+    await #expect(throws: ArxivError.notFound("1706.03762")) { try await FakeArxiv([:]).arxiv.paper("1706.03762") }
     let offline = Arxiv { _ in throw URLError(.notConnectedToInternet) }
     do {
       _ = try await offline.paper("1706.03762")
