@@ -34,12 +34,7 @@ extension WebReading {
       if case .id(let id) = p.block { WebPageView.reveal(id, range: p.range, in: tab) }
       return true
     }
-    if let tab = pane.tabs.first(where: { $0.kind == kind && $0.payload == ["url": address] }) {
-      pane.select(tab.id)
-      pane.shown = true
-    } else {
-      pane.open(found.entry.title, kind: kind, payload: ["url": address])
-    }
+    pane.open(found.entry.title, key: key(for: url), kind: kind, payload: ["url": address])
     return true
   }
 }

@@ -128,7 +128,8 @@ import WebKit
     editor.doCommand(by: #selector(NSResponder.insertNewline(_:)))
     try await shown(v, "Page A")
     #expect(v.page == .online(url("/a")) && tabs.tab(v)?.payload == ["url": url("/a").absoluteString])
-    #expect(tabs.tab(v)?.title == "Page A" && tabs.tab(v)?.key == nil, "no longer gone to by the saved page's hash")
+    #expect(
+      tabs.tab(v)?.title == "Page A" && tabs.tab(v)?.key == WebReading.key(for: url("/a")), "gone to by its address")
     #expect(asked.all == ["/moved", "/a"])
     #expect(v.bar.back.isEnabled)
     v.bar.back.performClick(nil)

@@ -346,8 +346,8 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
       let title = if case .saved(_, _, let saved) = page { own ?? saved } else { own ?? WebAddress.shown(address) }
       var payload = page.payload
       if onSaved, language != .original { payload["view"] = language.rawValue }
-      // a page online is gone to by no key: leaving a saved page clears its
-      context.update(title: title, payload: payload, key: page.key ?? "")
+      // a page online is gone to by its address, which leaving a saved page puts in place of its hash
+      context.update(title: title, payload: payload, key: page.key ?? web.url.map(WebReading.key(for:)) ?? "")
     }
     if web.url != savedFor { askSaved() }
     bar.extract.isEnabled = onSaved && scripts != nil && store != nil

@@ -353,7 +353,9 @@ public struct ShellState: Codable, Equatable, Sendable {
 
   /// A new web tab in the reading pane, on `url` or blank, shown with the keys (Web/ makes its view)
   public func openWeb(_ url: URL?) {
-    reading.open(url?.host() ?? "New Tab", kind: "web", payload: url.map { ["url": $0.absoluteString] } ?? [:])
+    reading.open(
+      url?.host() ?? "New Tab", key: url.map(WebReading.key(for:)), kind: "web",
+      payload: url.map { ["url": $0.absoluteString] } ?? [:])
   }
 
   /// A passage collected from the reading pane (its selection bar's Add to Board, ⌥↵): kept, and handed to the board's
