@@ -207,6 +207,11 @@ enum StandInScripts {
       stopped: false,
       meta: async () => {
         if (location.pathname == "/mute") await new Promise(() => {})
+        if (location.pathname == "/late") {
+          await new Promise(done => {
+            const t = setInterval(() => { if (document.documentElement.dataset.answer) { clearInterval(t); done() } }, 5)
+          })
+        }
         return { url: location.href, title: document.title, description: "A made-up page",
           site_name: "Loopback", favicon: location.origin + "/icon.png", cover: location.origin + "/cover.png" }
       },

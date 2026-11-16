@@ -418,53 +418,36 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     capture.cancel()
   }
 
-  /// The link in its entry in the vault, with what the metadata script read of the page when there is one. The
-  /// saving service, when there is one, is told afterwards: it may have to start first, and the button answers now
+  /// The link in its entry in the vault at once, by the page's title, so that the button, the sidebar and the lists
+  /// answer the press. What the metadata script reads of the page is added when it answers (asked while the page is
+  /// being left for another, WebKit never answers, and the link stays as it is); the saving service, when there is
+  /// one, is told afterwards too: it may have to start first
   @objc func saveLink(_ sender: Any?) {
     guard context.pane.vault != nil, let url = web.url, ["http", "https"].contains(url.scheme) else { return }
-    let title = web.title ?? ""
+    let first = WebMeta(script: nil, title: web.title ?? "")
+    let name = first.title ?? WebAddress.shown(url)
+    let item = SavedItem(
+      id: "", kind: .link, url: url.absoluteString, title: name, savedAt: Int64(first.fetchedAt ?? 0))
+    do {
+      try context.pane.saveWeb(item, meta: first)
+    } catch {
+      showSave(.failed("The link could not be saved: \(error.localizedDescription)"))
+      return
+    }
+    if saved == .unsaved { saved = .link }
+    if capture == nil { showSaved() }
+    if let store { Task { _ = try? await store.saveLink(PageLink(url: item.url, title: name)) } }
+    guard scripts != nil else { return }
     Task {
-      let meta = scripts == nil ? WebMeta(script: nil, title: title) : await pageMeta(title: title)
-      let name = meta.title ?? WebAddress.shown(url)
-      do {
-        let item = SavedItem(
-          id: "", kind: .link, url: url.absoluteString, title: name, savedAt: Int64(meta.fetchedAt ?? 0))
-        try context.pane.saveWeb(item, meta: meta)
-        if web.url == url, saved == .unsaved { saved = .link }
-        if capture == nil { showSaved() }
-        if let store { Task { _ = try? await store.saveLink(PageLink(url: item.url, title: name)) } }
-      } catch {
-        showSave(.failed("The link could not be saved: \(error.localizedDescription)"))
-      }
+      guard
+        let read = try? await web.callAsyncJavaScript(
+          "return await shiyiCapture.meta()", contentWorld: WebReading.scriptWorld)
+      else { return }
+      let meta = WebMeta(script: read, title: name)
+      var named = item
+      named.title = meta.title ?? name
+      try? context.pane.saveWeb(named, meta: meta)
     }
-  }
-
-  /// How long the metadata script is waited for before a link is saved with the page's title alone
-  static let metaWait: Duration = .seconds(2)
-
-  /// The page's metadata as its script reads it, or from its title alone when the script gives nothing in
-  /// `metaWait`: asked while the page is being left for another, WebKit never answers the call, and the link must
-  /// still be saved
-  private func pageMeta(title: String) async -> WebMeta {
-    let answer = Task { @MainActor [web] () -> WebMeta? in
-      let read = try? await web.callAsyncJavaScript(
-        "return await shiyiCapture.meta()", contentWorld: WebReading.scriptWorld)
-      return read.map { WebMeta(script: $0, title: title) }
-    }
-    let read = await withCheckedContinuation { (c: CheckedContinuation<WebMeta?, Never>) in
-      var open = true
-      func give(_ meta: WebMeta?) {
-        guard open else { return }
-        open = false
-        c.resume(returning: meta)
-      }
-      Task { @MainActor in give(await answer.value) }
-      Task { @MainActor in
-        try? await Task.sleep(for: Self.metaWait)
-        give(nil)
-      }
-    }
-    return read ?? WebMeta(script: nil, title: title)
   }
 
   /// The page captured whole, kept by the saving service and listed as one more version of its entry
