@@ -283,4 +283,15 @@ import Testing
     let c = try #require(await s.blockImage(anchor, pixelWidth: 300))
     #expect(c !== a && s.document(url) !== doc)
   }
+
+  @Test func theQuestionButtonIsFilledWhileWhatIsWrittenWillBeAsked() {
+    let look = ReadingBarLook.warmInk(dark: false)
+    let pop = AnnotationPop(notes: [], width: 280, look: look)
+    #expect(pop.ask.layer?.backgroundColor != look.ask)
+    pop.ask.performClick(nil)
+    #expect(pop.ask.state == .on && pop.ask.layer?.backgroundColor == look.ask)
+    pop.input.string = "why"
+    pop.addWritten()
+    #expect(pop.ask.state == .off && pop.ask.layer?.backgroundColor != look.ask, "off again for the next one")
+  }
 }

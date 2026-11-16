@@ -59,10 +59,13 @@ public final class AnnotationPop: NSView, NSTextViewDelegate {
     scroll.layer?.cornerRadius = 7
     scroll.layer?.borderWidth = 0.5
     ask.setButtonType(.pushOnPushOff)
-    ask.title = "?"
-    ask.bezelStyle = .badge
+    ask.isBordered = false
+    ask.wantsLayer = true
+    ask.layer?.cornerRadius = 7
     ask.toolTip = "Ask as a Question"
     ask.setAccessibilityIdentifier("ui-annotationquestion")
+    ask.target = self
+    ask.action = #selector(showAsked)
     add.title = "Add"
     add.bezelStyle = .push
     add.toolTip = "Add"
@@ -129,6 +132,7 @@ public final class AnnotationPop: NSView, NSTextViewDelegate {
   }
 
   private func restyle() {
+    showAsked()
     appearance = NSAppearance(named: look.dark ? .darkAqua : .aqua)
     guard let l = layer else { return }
     l.backgroundColor = look.paper
@@ -154,6 +158,19 @@ public final class AnnotationPop: NSView, NSTextViewDelegate {
     onAdd?(text, ask.state == .on)
     input.string = ""
     ask.state = .off
+    showAsked()
+  }
+
+  /// On, the "?" is filled with the questions' colour: what is written will be asked
+  @objc private func showAsked() {
+    let on = ask.state == .on
+    ask.layer?.backgroundColor = on ? look.ask : look.ink.copy(alpha: 0.07)
+    ask.attributedTitle = NSAttributedString(
+      string: "?",
+      attributes: [
+        .foregroundColor: on ? NSColor.white : NSColor(cgColor: look.ink) ?? .labelColor,
+        .font: NSFont.systemFont(ofSize: 12.5, weight: .semibold),
+      ])
   }
 
   @objc private func removeNote(_ sender: NSButton) {
