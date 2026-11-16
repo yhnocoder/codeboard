@@ -214,11 +214,14 @@ import WebKit
   }
 
   /// Saving a page whole: the script's fetch is answered with the tab's cookie, its two chunks written in order, the
-  /// rule files of its host handed to it; the service gets the one file, and the page's entry one version of the hash
-  /// it gave, which the button then shows; the file is gone after
+  /// rule files of its host handed to it, the vault's own first; the service gets the one file, and the page's entry
+  /// one version of the hash it gave, which the button then shows; the file is gone after
   @Test func aFullPageIsCapturedKeptByTheServiceAndListedInTheVault() async throws {
     let store = TestStore()
-    await store.set(rules: [##"{"body":"#main"}"##], forHost: "127.0.0.1")
+    await store.set(
+      rules: [##"{"domain":"127.0.0.1","origin":"builtin","rules":{"variants":[{"body":"#main"}]}}"##],
+      forHost: "127.0.0.1")
+    try vault.writeSiteRules(Data(##"{"variants":[{"hide":["#ad"]}]}"##.utf8), domain: "127.0.0.1")
     let websiteData = WKWebsiteDataStore.nonPersistent()
     let cookie = try #require(
       HTTPCookie(properties: [.name: "session", .value: "made-up-token", .domain: "127.0.0.1", .path: "/"]))
@@ -234,7 +237,8 @@ import WebKit
     let page = try #require(await store.pages.first)
     #expect(
       page.html == "<!doctype html><title>Page A</title><p id=asset>asset for session=made-up-token 200</p>"
-        + ##"<p id=rules>[{"body":"#main"}]</p>"##)
+        + ##"<p id=rules>vault 127.0.0.1 {"variants":[{"hide":["#ad"]}]} | "##
+        + ##"builtin 127.0.0.1 {"variants":[{"body":"#main"}]}</p>"##)
     #expect(page.capture == PageCapture(url: url("/a").absoluteString, title: "Page A"))
     try await until("the button says so") { v.saveState == .saved(.page(hash: TestStore.hash(1))) }
     #expect(v.capture == nil && !FileManager.default.fileExists(atPath: page.file.path))

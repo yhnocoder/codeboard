@@ -225,7 +225,8 @@ enum StandInScripts {
         if (this.stopped) return { ok: false, code: "cancelled", message: "" }
         const asset = await post({ type: "fetch", url: location.origin + "/asset", accept: "text/plain", timeout_ms: 5000 })
         const parts = ["<!doctype html><title>" + document.title + "</title>",
-          "<p id=asset>" + atob(asset.base64) + " " + asset.status + "</p><p id=rules>" + JSON.stringify(files) + "</p>"]
+          "<p id=asset>" + atob(asset.base64) + " " + asset.status + "</p><p id=rules>"
+            + files.map(f => f.origin + " " + f.domain + " " + JSON.stringify(f.rules)).join(" | ") + "</p>"]
         for (const [seq, text] of parts.entries()) {
           const r = await post({ type: "chunk", seq, text })
           if (!r.ok) return { ok: false, code: "internal", message: r.error }
@@ -236,18 +237,21 @@ enum StandInScripts {
     }
     """
 
-  /// Marks the page as read and, in body mode, hides what the rule files' `body` selectors leave out, with an
-  /// attribute as the real one does. A reader older than translation: no blocks
+  /// Marks the page as read and, in body mode, hides what the first rule file's first variant leaves out (outside
+  /// its `body`, or one of its `hide`), with an attribute as the real one does; the rule files as the real ones come,
+  /// `{domain, origin, rules}`. A reader older than translation and picking: no blocks, no `pick`
   static let olderReader = """
     document.documentElement.setAttribute("data-reader", "")
     var shiyiReader = {
       files: [], mode: "full",
       apply({ files, url, mode }) { this.files = files; this.url = url; this.setMode(mode) },
+      variant() { return this.draft ?? this.files.map(f => f.rules?.variants?.[0]).find(Boolean) ?? {} },
       setMode(mode) {
         this.mode = mode
-        const keep = this.files.map(f => f.body).filter(Boolean).join(",")
+        const { body, hide = [] } = this.variant()
         for (const e of document.body.children) {
-          if (mode == "body" && keep && !e.matches(keep)) e.setAttribute("data-shiyi-hidden", "")
+          const out = (body && !e.matches(body)) || hide.some(h => e.matches(h))
+          if (mode == "body" && out) e.setAttribute("data-shiyi-hidden", "")
           else e.removeAttribute("data-shiyi-hidden")
         }
       },
@@ -259,7 +263,9 @@ enum StandInScripts {
   /// `1.b2`… in document order, each with a hash of its text; translations shown under each block (`both`, as a
   /// `[data-shiyi-translation]` after it) or in its place (`translation`). Whatever it shows, the block at the top of
   /// the window stays there, as the real one promises. What is selected in one block, said as it changes (`selection`
-  /// messages) and asked (`selection()`); `scrolledTo`, the last block it was asked to scroll to
+  /// messages) and asked (`selection()`); `scrolledTo`, the last block it was asked to scroll to. Picking: a click on
+  /// a part of the body with an id leaves it out (`hide`) or takes it back, said in `picker` messages; Escape leaves;
+  /// `ruleFile()` is the vault's file, else the first, with the picked variant in place of its own when it changed
   static let reader =
     olderReader + "\n"
       + """
@@ -276,7 +282,7 @@ enum StandInScripts {
         },
         hash(t) { let h = 5381; for (const c of t) h = (h * 33 + c.codePointAt(0)) >>> 0; return h.toString(16) },
         blocks() {
-          const keep = this.files.map(f => f.body).filter(Boolean).join(",")
+          const keep = this.variant().body
           return { scheme: 1, blocks: this.els().map(e => {
             const kind = this.kinds[e.tagName], text = e.dataset.shiyiOriginal
             const b = { id: e.dataset.shiyiId, kind, text, textHash: this.hash(text), inBody: !keep || !!e.closest(keep),
@@ -334,6 +340,38 @@ enum StandInScripts {
           return [a.dataset.shiyiId ? range : { ...range, fromTranslation: true }]
         },
       })
+      Object.assign(shiyiReader, {
+        picking: false, changed: false, draft: null,
+        pick(on) {
+          if (on == this.picking) return
+          this.picking = on
+          this.changed = false
+          const v = this.variant()
+          this.draft = on ? { ...v, hide: [...(v.hide ?? [])] } : null
+          this.setMode(this.mode)
+          this.post()
+        },
+        post() {
+          webkit.messageHandlers.shiyi.postMessage({ type: "picker", picking: this.picking, changed: this.changed })
+        },
+        ruleFile() {
+          const rules = (this.files.find(f => f.origin == "vault") ?? this.files[0])?.rules ?? {}
+          return { domain: new URL(this.url).hostname, rules: this.changed ? { ...rules, variants: [this.draft] } : rules }
+        },
+        state() { return { mode: this.mode, url: this.url, picking: this.picking, changed: this.changed } },
+      })
+      document.addEventListener("click", e => {
+        const r = shiyiReader, part = r.picking && e.target.closest("body > [id]")
+        if (!part) return
+        e.preventDefault()
+        const h = "#" + part.id, i = r.draft.hide.indexOf(h)
+        if (i < 0) r.draft.hide.push(h)
+        else r.draft.hide.splice(i, 1)
+        r.changed = true
+        r.setMode(r.mode)
+        r.post()
+      }, true)
+      document.addEventListener("keydown", e => { if (shiyiReader.picking && e.key == "Escape") shiyiReader.pick(false) })
       document.addEventListener("selectionchange", () => {
         const ranges = shiyiReader.selection()
         const r = ranges.length ? getSelection().getRangeAt(0).getBoundingClientRect() : null
