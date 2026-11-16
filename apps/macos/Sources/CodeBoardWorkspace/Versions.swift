@@ -145,3 +145,109 @@ extension Sources {
       exact: sameLines(lineSlice(lines, at.start - 1, at.end), seg.text))
   }
 }
+
+/// One side of a version diff (the protocol's DiffData side, without its highlighted HTML)
+public struct DiffSide: Hashable, Sendable {
+  public var label: String
+  public var path: String
+  public var start: Int
+  public var text: [String]
+
+  public init(label: String, path: String, start: Int, text: [String]) {
+    self.label = label
+    self.path = path
+    self.start = start
+    self.text = text
+  }
+}
+
+/// The pinned lines against a newer version (handlers.ts diff's DiffData). newSeg: the segment there, which Update and
+/// Duplicate as New Version take (nil when it cannot be updated); note: why not (found in several places, the symbol
+/// gone)
+public struct VersionDiff: Hashable, Sendable {
+  public var title: String
+  public var left: DiffSide
+  public var right: DiffSide
+  public var note: String?
+  public var newSeg: CodeSegment?
+
+  public init(title: String, left: DiffSide, right: DiffSide, note: String? = nil, newSeg: CodeSegment? = nil) {
+    self.title = title
+    self.left = left
+    self.right = right
+    self.note = note
+    self.newSeg = newSeg
+  }
+}
+
+extension Sources {
+  /// handlers.ts diff: the segment against HEAD (a git version not uncommitted), else against the working file;
+  /// `worktree`: against the working file whatever its version (Uncommitted Changes). Its last change (git log -L) is
+  /// not read
+  public func diff(_ seg: CodeSegment, worktree: Bool = false) async throws(GitError) -> VersionDiff {
+    let name = seg.symbol?.qual ?? "\(NodePath.basename(seg.path)) \(seg.start)–\(seg.end)"
+    let title = worktree ? "Uncommitted Changes · \(name)" : "New Version · \(name)"
+    let left = DiffSide(
+      label: worktree ? versionLabel(seg.version) : "Pinned \(versionLabel(seg.version))", path: seg.path,
+      start: seg.start, text: seg.text)
+    func empty(_ label: String, note: String? = nil) -> VersionDiff {
+      VersionDiff(
+        title: title, left: left, right: DiffSide(label: label, path: seg.path, start: seg.start, text: []), note: note)
+    }
+    guard let abs = absOf(seg), hasLocalFile(seg.src) else { return empty("No newer version") }
+    var text: String?
+    var label = ""
+    var version = seg.version
+    let isGit: Bool
+    var uncommitted = false
+    if case .git(_, let u) = seg.version {
+      isGit = true
+      uncommitted = u
+    } else {
+      isGit = false
+    }
+    let root = isGit ? try await git.repoRootOf(abs) : nil
+    let rel = root.map { NodePath.relative($0, abs) } ?? seg.path
+    if worktree || !isGit || uncommitted {
+      text = await lookup.readText(abs)
+      if case .git(let commit, _) = seg.version {
+        label = "Working Tree"
+        var head: String?
+        if let root { head = try await git.headOf(root) }
+        version = .git(commit: head ?? commit, uncommitted: true)
+      } else {
+        label = "Installed \(await currentVersionLabel(abs, seg.version))"
+        if let text { version = await currentVersion(abs, seg.version, text) }
+      }
+    } else if let root {
+      guard let sha = try await git.headOf(root) else { return empty("Not found") }
+      text = try await git.showFile(root, sha, rel)
+      label = "HEAD \(sha.prefix(7))"
+      version = .git(commit: sha)
+    }
+    guard let text else { return empty(label.isEmpty ? "Not found" : label) }
+    let lines = splitLines(text)
+    let found = locateSeg(seg, lines, symbols(seg.lang, text))
+    guard case .at(let at)? = found else {
+      return empty(label, note: found == .many ? "Found in several places" : "Symbol not found (removed or renamed)")
+    }
+    let now = lineSlice(lines, at.start - 1, at.end)
+    var ns = seg
+    ns.start = at.start
+    ns.end = at.end
+    ns.text = now
+    ns.version = version
+    return VersionDiff(
+      title: title, left: left, right: DiffSide(label: label, path: seg.path, start: at.start, text: now), newSeg: ns)
+  }
+}
+
+/// core model.ts versionLabel (long)
+public func versionLabel(_ v: SegmentVersion) -> String {
+  switch v {
+  case .git(let commit, _): String(commit.prefix(7))
+  case .pkg(let name, let version): "\(name) \(version)"
+  case .hash(let h): "Unknown version · \(h.prefix(4))"
+  case .none: "No commit"
+  }
+}

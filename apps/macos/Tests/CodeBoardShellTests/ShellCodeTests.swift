@@ -1,5 +1,7 @@
+import AppKit
 import CodeBoardModel
 import CodeBoardWorkspace
+import CodeCore
 import Foundation
 import Testing
 
@@ -426,4 +428,161 @@ private final class Told: @unchecked Sendable {
   }
 
   func close() { try? FileManager.default.removeItem(at: vault.root) }
+}
+
+// The code tabs' and the sidebar's repositories followed on disk (ShellCodeFiles.swift, RepositoriesModel): a tab's
+// text follows a commit and an edit not committed, keeping the line at its top and a selection whose lines did not
+// change; the marks of cards' lines move with it; its bar's commit follows HEAD; a deleted file says so and comes back
+// where it was; the name index hears of files added and removed; the sidebar's tree lists its open folders again and
+// reads HEAD again
+
+/// Sixty lines, then the engine: its class at line 62
+private let long = (1...60).map { "v\($0) = \($0)" }.joined(separator: "\n") + "\n\n" + engine + "\n"
+
+/// A repository added to a list of the test's own, its file in a code tab of a pane of no window, the board of card
+/// "x" on its class's lines; nothing waits a pause
+@MainActor private final class Followed {
+  let r: String
+  let data: String
+  let model: RepositoriesModel
+  let boards: TwoBoards
+  let code: ShellCode
+  let pane = ReadingPane()
+  let view: ReadingPaneView
+  let f: CodeFile
+  var tab: CodeTabView!
+
+  init() async throws {
+    ReadingKinds.registerBuiltIn()
+    r = try folder(["e.py": long], repo: true)
+    data = try folder([:], repo: false)
+    model = RepositoriesModel(folder: URL(filePath: data), runner: ProcessGitRunner(), defaults: nil)
+    model.pause = { _ in }
+    await model.addFolder(r)
+    f = CodeFile(repository: r, name: "e", path: "e.py")
+    let git = try #require(model.git)
+    let maker = ShellCode(git: git, board: { nil })
+    let s = try #require(await maker.segment(f, CodePick(text: long, lines: 62...64)))
+    let boards = try TwoBoards(a: [card("x", [s])], b: [])
+    self.boards = boards
+    code = ShellCode(git: git, board: { boards.a.board }, boards: { boards.boards })
+    code.repositories = model
+    code.files.pause = { _ in }
+    code.pane = pane
+    pane.codeHost = code
+    pane.commitOf = { [weak model] in await model?.head(of: $0) }
+    view = ReadingPaneView(pane: pane)
+    view.frame = CGRect(x: 0, y: 0, width: 500, height: 400)
+  }
+
+  func open() async throws {
+    pane.openCode(f, preview: false)
+    view.sync()
+    tab = try #require(view.views[pane.tabs[0].id] as? CodeTabView)
+    try await until("read") { tab.code != nil && !tab.onBoards.isEmpty && !tab.bar.commit.stringValue.isEmpty }
+    // a file written before the watcher started is not heard of
+    try await until("watched") { code.files.listening.contains(r) }
+    tab.layoutSubtreeIfNeeded()
+  }
+
+  func write(_ text: String, commit: Bool) throws {
+    try text.write(toFile: r + "/e.py", atomically: true, encoding: .utf8)
+    if commit { try git(r, "commit", "-qam", "change") }
+  }
+
+  var head: String { (try? git(r, "rev-parse", "--short=7", "HEAD")) ?? "" }
+
+  func close() {
+    boards.close()
+    for d in [r, data] { try? FileManager.default.removeItem(atPath: d) }
+  }
+}
+
+@MainActor @Suite(.serialized) struct ShellCodeFilesTests {
+  @Test func aCodeTabFollowsItsFileThroughACommitAnEditAndADelete() async throws {
+    let t = try await Followed()
+    defer { t.close() }
+    try await t.open()
+    let v = try #require(t.tab)
+    #expect(v.bar.commit.stringValue == t.head && v.onBoards.map(\.lines) == [62...64])
+    v.go(to: 30)
+    let text = try #require(v.text)
+    v.code?.change { $0.select(CodeSelection(anchor: text.starts[39], head: text.starts[39] + 8)) }
+    #expect(v.topLine == 30)
+    // five lines committed above: the text follows, the same lines at the top and selected, the marks moved
+    let first = t.head
+    try t.write("a = 1\nb = 2\nc = 3\nd = 4\ne = 5\n" + long, commit: true)
+    try await until("read again") { v.text?.lineCount == text.lineCount + 5 }
+    #expect(v.topLine == 35)
+    let s = try #require(v.code?.editor.selection.range)
+    #expect((v.code!.editor.text as NSString).substring(with: NSRange(s)) == "v40 = 40")
+    try await until("the commit") { v.bar.commit.stringValue == t.head && t.head != first }
+    try await until("the marks") { v.onBoards.map(\.lines) == [67...69] }
+    // the selected line edited, not committed: the selection goes, the place stays
+    let edited = "a = 1\nb = 2\nc = 3\nd = 4\ne = 5\n" + long.replacingOccurrences(of: "v40 = 40", with: "v40 = 41")
+    try t.write(edited, commit: false)
+    try await until("read again") { v.code?.editor.text == edited }
+    #expect(v.code?.editor.selection.isEmpty == true && v.topLine == 35)
+    // deleted: said; back: shown where it was
+    try FileManager.default.removeItem(atPath: t.r + "/e.py")
+    try await until("gone") { v.code == nil && !v.message.isHidden }
+    #expect(v.message.stringValue == CodeReading.gone && v.onBoards.isEmpty)
+    try t.write(long, commit: false)
+    try await until("back") { v.code?.editor.text == long && v.message.isHidden }
+    v.layoutSubtreeIfNeeded()
+    #expect(v.topLine == 35)
+  }
+
+  /// A checkout's thousands of events, heard in a burst: its tabs are told once
+  @Test func aBurstOfChangesIsTakenTogether() async throws {
+    let t = try await Followed()
+    defer { t.close() }
+    try await t.open()
+    let told = Told()
+    let token = NotificationCenter.default.addObserver(
+      forName: CodeReading.filesChanged, object: t.pane, queue: nil
+    ) { _ in told.n += 1 }
+    defer { NotificationCenter.default.removeObserver(token) }
+    for i in 0..<2000 {
+      t.code.files.heard(t.r, RepoWatcher.Heard(files: [t.r + "/e.py", t.r + "/f\(i).py"]))
+    }
+    try await until("told") { told.n == 1 }
+    await Task.yield()
+    #expect(told.n == 1)
+  }
+
+  @Test func theNameIndexHearsOfFilesAddedAndRemoved() async throws {
+    let t = try await Followed()
+    defer { t.close() }
+    try await t.open()
+    try await until("indexed") { await !t.code.symbols("Engine").isEmpty }
+    try "def fresh_name():\n    return 1\n".write(toFile: t.r + "/n.py", atomically: true, encoding: .utf8)
+    try await until("added") { await t.code.symbols("fresh_name").map(\.label) == ["fresh_name"] }
+    try FileManager.default.removeItem(atPath: t.r + "/n.py")
+    try await until("removed") { await t.code.symbols("fresh_name").isEmpty }
+  }
+
+  @Test func theSidebarsTreeListsItsOpenFoldersAgainAndReadsHEADAgain() async throws {
+    let t = try await Followed()
+    defer { t.close() }
+    let m = t.model
+    try FileManager.default.createDirectory(atPath: t.r + "/pkg", withIntermediateDirectories: true)
+    try "x\n".write(toFile: t.r + "/pkg/a.py", atomically: true, encoding: .utf8)
+    let repo = try #require(m.list.first)
+    await m.open(repo)
+    await m.toggle("pkg")
+    m.click("pkg/a.py", preview: true)
+    #expect(m.rows.map(\.path) == ["pkg", "pkg/a.py", "e.py"])
+    try "y\n".write(toFile: t.r + "/pkg/b.py", atomically: true, encoding: .utf8)
+    try "z\n".write(toFile: t.r + "/top.py", atomically: true, encoding: .utf8)
+    try await until("listed again") { m.rows.map(\.path) == ["pkg", "pkg/a.py", "pkg/b.py", "e.py", "top.py"] }
+    #expect(m.expanded == ["pkg"] && m.selected == "pkg/a.py", "what is open and selected stays")
+    try FileManager.default.removeItem(atPath: t.r + "/pkg/b.py")
+    try await until("gone from the tree") { !m.rows.map(\.path).contains("pkg/b.py") }
+    let before = try #require(m.head)
+    try git(t.r, "add", "-A")
+    try git(t.r, "commit", "-qm", "more")
+    try await until("HEAD read again") { m.head == t.head && m.head != before }
+    m.close()
+  }
 }

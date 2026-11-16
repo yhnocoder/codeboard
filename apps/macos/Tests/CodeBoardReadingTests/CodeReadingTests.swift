@@ -144,11 +144,10 @@ private let nanoVllm = URL(filePath: #filePath).deletingLastPathComponent()
     #expect(t.lineCount == 121 && !t.runs.isEmpty && t.runs.contains { !$0.isEmpty }, "coloured")
   }
 
-  /// Missing, binary, too large: a line says so in place of the code; text that is no UTF-8 and CR LF ends read
+  /// Missing, binary: a line says so in place of the code; text that is no UTF-8 and CR LF ends read
   @Test func aFileThatCannotBeShownSaysWhy() throws {
     let root = try folder([
       "bin.dat": Data([0x7f, 0x45, 0x4c, 0x46, 0, 1, 2]),
-      "big.txt": Data(repeating: 0x61, count: CodeReading.maxBytes + 1),
       "latin.py": Data("x = 'caf\u{e9}'\r\ny = 2\r\n".utf8.map { $0 == 0xc3 ? 0xe9 : $0 }.filter { $0 != 0xa9 }),
     ])
     defer { try? FileManager.default.removeItem(at: root) }
@@ -157,7 +156,6 @@ private let nanoVllm = URL(filePath: #filePath).deletingLastPathComponent()
     }
     #expect(said("gone.py")?.contains("cannot be read") == true)
     #expect(said("bin.dat") == "This is a binary file.")
-    #expect(said("big.txt")?.contains("too large") == true)
     guard case .text(let t) = CodeReading.load(root.appending(path: "latin.py")) else {
       Issue.record("latin.py is shown")
       return
@@ -174,8 +172,6 @@ private let nanoVllm = URL(filePath: #filePath).deletingLastPathComponent()
     saved.openCode(CodeFile(repository: root.path, name: "repo", path: "pkg/a.py"), preview: false)
     let p = ReadingPane()
     p.pasteboard = NSPasteboard(name: NSPasteboard.Name("cb-code-\(UUID().uuidString)"))
-    // the board's look has a band on the caret's line; a reader has no caret, so no band
-    p.codeLook.currentLine = CGColor(gray: 0.5, alpha: 0.1)
     p.restore(saved.state)
     let pv = ReadingPaneView(pane: p)
     pv.frame = CGRect(x: 0, y: 0, width: 500, height: 400)
@@ -183,7 +179,7 @@ private let nanoVllm = URL(filePath: #filePath).deletingLastPathComponent()
     let v = try #require(pv.views[p.tabs[0].id] as? CodeTabView)
     try await until("the file read") { v.code != nil }
     #expect(v.code?.editor.text == "class A:\n    def f(self):\n        return 1\n" && v.message.isHidden)
-    #expect(v.code?.look.currentLine == nil, "no band on the caret's line when the file opens")
+    #expect(v.code?.isEditable == false, "read only: no caret, nor a band on its line")
     #expect(v.bar.place == CodeBar.Place(repository: "repo", folders: ["pkg"], file: "a.py", function: "A"))
     // in a window of its own, never shown: a press selects in the code and leaves the keys with the tab
     let window = NSWindow(contentRect: pv.frame, styleMask: [.borderless], backing: .buffered, defer: true)
@@ -201,10 +197,8 @@ private let nanoVllm = URL(filePath: #filePath).deletingLastPathComponent()
     #expect(window.contentView?.hitTest(v.page.convert(CGPoint(x: 100, y: 30), to: nil)) === v.page)
     v.page.mouseDown(with: try press(.leftMouseDown, clicks: 2))
     v.page.mouseUp(with: try press(.leftMouseUp, clicks: 2))
-    #expect(window.firstResponder === v, "the keys stay with the tab")
+    #expect(window.firstResponder === v.code, "the keys go with the press, and on to the tab when not the code's")
     #expect(v.code?.editor.selection.isEmpty == false, "a double-click selects a word")
-    v.barLookChanged(.warmInk(dark: true))
-    #expect(v.code?.look.currentLine == nil, "nor after a press and a change of look")
     let key = try #require(
       NSEvent.keyEvent(
         with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
@@ -231,6 +225,14 @@ private let nanoVllm = URL(filePath: #filePath).deletingLastPathComponent()
     try await until("the file read") { v.code != nil }
     v.layoutSubtreeIfNeeded()
     #expect(v.topLine == 1 && !v.bar.back.isEnabled)
+    // ↓ in the code: not the read-only code's, it scrolls the tab a line
+    let down = try #require(
+      NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: [.function, .numericPad], timestamp: 0, windowNumber: 0,
+        context: nil, characters: "\u{F701}", charactersIgnoringModifiers: "\u{F701}", isARepeat: false, keyCode: 125))
+    v.code?.keyDown(with: down)
+    #expect(v.topLine == 2)
+    v.go(to: 1)
     v.toggleOutline(nil)
     #expect(v.listing == .outline && v.list.items.count == 200 && v.list.selected == 0)
     let row = try #require(v.list.rows.first { $0.titleLabel.stringValue == "f120" })

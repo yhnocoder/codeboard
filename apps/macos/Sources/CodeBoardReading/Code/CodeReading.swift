@@ -14,9 +14,6 @@ public enum CodeReading {
     ReadingKinds.register(kind, make: { CodeTabView(context: $0) })
   }
 
-  /// Files larger than this are not shown: the component lays a text out whole, on the main thread
-  static let maxBytes = 1 << 20
-
   /// The look code is drawn in before the shell gives the board's (tests, a pane without a board)
   @MainActor static let plainLook: CodeEditorView.Look = {
     let ns = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
@@ -30,6 +27,13 @@ public enum CodeReading {
       numberColor: CGColor(gray: 0.6, alpha: 1), selection: CGColor(gray: 0.5, alpha: 0.25), currentLine: nil,
       band: CodeBandShape(left: -4, right: 14, inset: 2, radius: 6), padTop: 6, padBottom: 8)
   }()
+
+  /// Posted by the shell for a pane: files its code tabs show changed on disk (userInfo "files": [CodeFile]); each is
+  /// read again
+  public static let filesChanged = Notification.Name("CodeReading.filesChanged")
+  /// Posted by the shell for a pane: repositories' commits moved (userInfo "repositories": [String], their folders);
+  /// each tab of them reads its commit again
+  public static let commitsChanged = Notification.Name("CodeReading.commitsChanged")
 
   /// Compiled queries, shared by every code tab
   static let highlighter = Highlighter()
@@ -84,24 +88,19 @@ public enum CodeReading {
     }
   }
 
+  static let gone = "This file cannot be read. It may have been moved or deleted."
+
   enum Loaded: Sendable {
     case text(Text)
     /// What the tab says in place of the file
     case quiet(String)
   }
 
-  /// Off the main actor: the file read, analysed and coloured; one that is not there, binary, too large or
-  /// unreadable gets a line saying so
+  /// Off the main actor: the file read, analysed and coloured (the component lays out only the lines drawn, so a file
+  /// of any size is shown); one that is not there, binary or unreadable gets a line saying so
   static func load(_ url: URL) -> Loaded {
     let path = url.path(percentEncoded: false)
-    guard let size = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int else {
-      return .quiet("This file cannot be read. It may have been moved or deleted.")
-    }
-    guard size <= maxBytes else {
-      let shown = ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)
-      let most = ByteCountFormatter.string(fromByteCount: Int64(maxBytes), countStyle: .file)
-      return .quiet("This file is too large to show here (\(shown); files up to \(most) are shown).")
-    }
+    guard FileManager.default.fileExists(atPath: path) else { return .quiet(gone) }
     guard let data = FileManager.default.contents(atPath: path) else { return .quiet("This file cannot be read.") }
     // git's test for a binary file: a NUL in its first 8000 bytes
     if data.prefix(8000).contains(0) { return .quiet("This is a binary file.") }
@@ -308,6 +307,11 @@ extension ReadingPane {
   /// `note`: a quiet line on its bar, as the commit a card opened there is from (nil: none)
   public func openCode(_ f: CodeFile, locating lines: ClosedRange<Int>?, note: String?) {
     CodeTabView.locate(lines, note: note, in: openCode(f, preview: false))
+  }
+
+  /// The files the code tabs show
+  public var codeFiles: [CodeFile] {
+    tabs.compactMap { $0.kind == CodeReading.kind ? CodeFile(payload: $0.payload) : nil }
   }
 
   /// The file the current tab shows, when it is a code tab

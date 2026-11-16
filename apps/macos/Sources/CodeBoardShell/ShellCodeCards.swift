@@ -314,9 +314,15 @@ extension ShellCode {
     return CodeFile(repository: root, name: name, path: path)
   }
 
-  /// An offer taken: the repository added, then the file opened again once it is (a clone once it is done); the file
-  /// as it is now opened
-  func take(_ o: Missing.Offer, lightweight: Bool, for s: Segment, say: @escaping @MainActor (Missing?) -> Void) async {
+  /// An offer taken: the repository added, then the file opened again once it is (a clone once it is done), or
+  /// `then` done instead; the file as it is now opened
+  func take(
+    _ o: Missing.Offer, lightweight: Bool, for s: Segment, say: @escaping @MainActor (Missing?) -> Void,
+    then: (@MainActor () async -> Void)? = nil
+  ) async {
+    let again: @MainActor () async -> Void = { [weak self] in
+      if let then { await then() } else { await self?.open(s, say: say) }
+    }
     guard let repositories else { return }
     switch o {
     case .clone(let address):
@@ -324,11 +330,11 @@ extension ShellCode {
       say(nil)
       let key = (try? GitHubRepo(address: address)).map { repositoryKey("https://github.com/\($0.owner)/\($0.name)") }
       await repositories.clones.last { $0.key == key }?.task?.value
-      if repositories.list.contains(where: { $0.remote.map(repositoryKey) == key }) { await open(s, say: say) }
+      if repositories.list.contains(where: { $0.remote.map(repositoryKey) == key }) { await again() }
     case .folder(let path):
       await repositories.addFolder(path)
       if let why = repositories.notice { return say(Missing(message: why)) }
-      await open(s, say: say)
+      await again()
     case .current(let f):
       say(nil)
       await show(s, in: f, root: nil)

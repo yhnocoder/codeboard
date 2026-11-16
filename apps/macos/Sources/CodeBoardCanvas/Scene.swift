@@ -118,6 +118,8 @@ struct Scene: Sendable {
     var alwaysText: [String] = []
     /// What the source provider said of its source
     var source: Source?
+    /// A code card's version marks, which only its header shows
+    var mark = Drawing.Mark()
   }
 
   /// The tilt of a tilted card, as the board's (counter-clockwise)
@@ -244,7 +246,7 @@ struct Scene: Sendable {
     _ board: Board, package: URL, vault: Vault, theme t: Theme, highlighter: Highlighter,
     sizes: [CardID: NoteMetrics] = [:], inline: [SidenoteID: NoteMetrics] = [:],
     reusing previous: Scene? = nil, vaultSeen: Int = 0, fetching: Set<CardID> = [], remote: [String: URL] = [:],
-    sources: [String: Source] = [:]
+    sources: [String: Source] = [:], versions: [SegmentID: VersionState] = [:]
   ) {
     self.vaultSeen = vaultSeen
     self.fetching = fetching
@@ -306,8 +308,15 @@ struct Scene: Sendable {
       }
       let tilt = c.tilted ? Scene.tilt : 0
       let mine = ends[c.id] ?? []
-      let part: Part
+      var part: Part
       let source = Scene.anchor(content).flatMap { sources[Scene.key($0)] }
+      var mark = Drawing.Mark()
+      if case .code(let code) = content.body {
+        var unknown = false
+        if case .file(_, _?)? = code.segments.first?.source { unknown = true }
+        mark = Drawing.Mark(
+          version: code.version(versions), uncommitted: code.uncommitted(versions), unknown: unknown)
+      }
       // what is drawn from other boards: a sub-board's map, the titles and seals of [[refs]]
       let showsOthers = {
         switch content.body {
@@ -326,7 +335,14 @@ struct Scene: Sendable {
         Scene.remoteAddresses(content).allSatisfy({ previous?.remote[$0] == remote[$0] }), p.source == source
       {
         part = p
-        reused.insert(c.id)
+        if p.mark == mark {
+          reused.insert(c.id)
+        } else if case .code(var d) = p.drawing {
+          // only the header changes: the code's layout is kept, the card drawn again
+          d.mark = mark
+          part.drawing = .code(d)
+          part.mark = mark
+        }
       } else {
         guard
           let (drawing, size, code) = Scene.card(
@@ -334,13 +350,13 @@ struct Scene: Sendable {
             // whole points, as main lays a card out by its offsetWidth and offsetHeight (Card.tsx read)
             measured: sizes[c.id].map { CGSize(width: $0.size.width.rounded(), height: $0.size.height.rounded()) },
             theme: t, highlighter: highlighter,
-            refs: refs, fetching: fetching.contains(c.id), always: always, remote: remote, sources: sources)
+            refs: refs, fetching: fetching.contains(c.id), always: always, remote: remote, sources: sources, mark: mark)
         else { continue }
         part = Part(
           content: content, width: c.width, height: c.height, tilted: c.tilted, locked: c.locked == true,
           measured: sizes[c.id],
           ends: mine,
-          drawing: drawing, size: size, code: code, always: always, alwaysText: alwaysText, source: source)
+          drawing: drawing, size: size, code: code, always: always, alwaysText: alwaysText, source: source, mark: mark)
       }
       parts[c.id] = part
       let r = CGRect(origin: CGPoint(x: c.x, y: c.y), size: part.size)
@@ -620,7 +636,7 @@ struct Scene: Sendable {
   private static func card(
     _ c: Card, _ content: CardContent, board: Board, folder: URL, measured: CGSize?, theme t: Theme,
     highlighter: Highlighter, refs: RefResolver, fetching: Bool = false, always: [[CodeLayout.Always]] = [],
-    remote: [String: URL] = [:], sources: [String: Source] = [:]
+    remote: [String: URL] = [:], sources: [String: Source] = [:], mark: Drawing.Mark = Drawing.Mark()
   ) -> (
     Drawing, CGSize, (layout: CodeLayout, top: CGFloat, segments: [SegmentID])?
   )? {
@@ -653,7 +669,8 @@ struct Scene: Sendable {
       }
       let d = Drawing.Code(
         id: c.id.rawValue, title: title, path: code.segments.count > 1 ? nil : path, glyph: glyph(code),
-        version: s.flatMap(version), linkedIn: board.arrows.count { $0.to.card == c.id }, linked: linked,
+        version: Scene.versionLabel(code), mark: mark, linkedIn: board.arrows.count { $0.to.card == c.id },
+        linked: linked,
         layout: layout, framed: code.framed,
         inline: layout.inline.flatMap { i in
           let w = layout.inlineWidth(card: c.width, x: i.x, metrics: t.metrics)
@@ -822,7 +839,25 @@ struct Scene: Sendable {
     case .git(_, let commit, _, _, _): String(commit.prefix(7))
     case .package(let name, let version, _): "\(name) \(version)"
     case .file(_, let hash?): String(hash.prefix(4))
-    case .file(_, nil), nil: nil
+    case .file(_, nil): "No commit"
+    case nil: nil
+    }
+  }
+
+  /// A code card's chip (CodeHead.tsx revLabel): its first segment's version, "Mixed" when its segments from files are
+  /// of several versions (core mixedVersions); none for Free code
+  static func versionLabel(_ c: CodeCard) -> String? {
+    let vs = c.segments.compactMap { $0.source.map(version(of:)) }
+    if Set(vs).count > 1 { return "Mixed" }
+    return c.segments.first.flatMap(version)
+  }
+
+  /// What a source's version is, without where its file is (core sameVersion)
+  private static func version(of s: CodeSource) -> String {
+    switch s {
+    case .git(_, let commit, _, let u, _): "git \(commit) \(u)"
+    case .package(let name, let version, _): "pkg \(name) \(version)"
+    case .file(_, let hash): "hash \(hash ?? "")"
     }
   }
 }
