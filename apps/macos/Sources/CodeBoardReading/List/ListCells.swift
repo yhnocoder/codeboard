@@ -1,23 +1,44 @@
 import AppKit
 import CodeBoardResources
 
-/// The list's table: Return and a double-click open a row (`onOpen`), a single click selects it, ↑ and ↓ as any table
+/// The list's table: Return and a double-click open a row (`onOpen`), a single click selects it, ↑ and ↓ as any table.
+/// A field's cell takes them first (`onEdit`, false: not taken): a double-click, or Return in the column last clicked,
+/// edits it, a single click on one that edits by a menu shows it (`click`)
 final class ListTable: NSTableView {
   var onOpen: (Int) -> Void = { _ in }
   var onDelete: () -> Void = {}
+  var onEdit: (_ row: Int, _ column: Int, _ click: Bool) -> Bool = { _, _, _ in false }
+  /// A ⌘-click on a cell, taken (true) before it changes the selection
+  var onCommandClick: (_ row: Int, _ column: Int) -> Bool = { _, _ in false }
+  /// The column of the last click on a row
+  private(set) var lastColumn = -1
 
   override func keyDown(with event: NSEvent) {
     switch event.specialKey {
-    case .carriageReturn?, .enter?: if selectedRow >= 0 { onOpen(selectedRow) }
+    case .carriageReturn?, .enter?:
+      if selectedRow >= 0, !onEdit(selectedRow, lastColumn, false) { onOpen(selectedRow) }
     case .delete?, .deleteForward?: onDelete()
     default: super.keyDown(with: event)
     }
   }
 
   override func mouseDown(with event: NSEvent) {
-    let row = row(at: convert(event.locationInWindow, from: nil))
-    guard event.clickCount == 2, row >= 0 else { return super.mouseDown(with: event) }
-    onOpen(row)
+    let at = convert(event.locationInWindow, from: nil)
+    let (row, col) = (row(at: at), column(at: at))
+    lastColumn = col
+    if event.clickCount == 2, row >= 0 {
+      if !onEdit(row, col, false) { onOpen(row) }
+      return
+    }
+    let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
+    if event.clickCount == 1, flags == .command, row >= 0, col >= 0, onCommandClick(row, col) { return }
+    super.mouseDown(with: event)
+    // a plain click let go in its cell, not a drag or a selection extended
+    let plain = event.modifierFlags.intersection([.command, .shift, .option, .control]).isEmpty
+    guard event.clickCount == 1, row >= 0, col >= 0, plain, let up = NSApp.currentEvent, up.type == .leftMouseUp
+    else { return }
+    let end = convert(up.locationInWindow, from: nil)
+    if self.row(at: end) == row, column(at: end) == col { _ = onEdit(row, col, true) }
   }
 
   /// A right-click on a row outside the selection selects it first: the menu's Delete deletes what is selected
@@ -33,6 +54,13 @@ final class ListTable: NSTableView {
 /// column's darker with its chevron, a hairline under them all. A click sorts, as on any table header
 final class ListHeaderView: NSTableHeaderView {
   var ink = NSColor.labelColor
+  /// A right-click's menu, by the column under it
+  var onMenu: (Int) -> NSMenu? = { _ in nil }
+
+  override func menu(for event: NSEvent) -> NSMenu? {
+    let col = column(at: convert(event.locationInWindow, from: nil))
+    return col >= 0 ? onMenu(col) : nil
+  }
 
   override func draw(_ dirtyRect: NSRect) {
     guard let table = tableView else { return }
@@ -44,8 +72,16 @@ final class ListHeaderView: NSTableHeaderView {
       let attrs: [NSAttributedString.Key: Any] = [
         .font: font, .foregroundColor: ink.withAlphaComponent(sorted ? 0.75 : 0.5),
       ]
-      let title = col.title as NSString
-      let size = title.size(withAttributes: attrs)
+      // the + that adds a field, in the middle of its narrow column
+      let add = col.identifier.rawValue == ListColumn.addID
+      let title = (add ? "+" : col.title) as NSString
+      let size = title.size(withAttributes: add ? attrs.merging([.font: NSFont.systemFont(ofSize: 14)]) { $1 } : attrs)
+      if add {
+        title.draw(
+          at: CGPoint(x: (r.midX - size.width / 2).rounded(), y: (r.midY - size.height / 2).rounded()),
+          withAttributes: attrs.merging([.font: NSFont.systemFont(ofSize: 14)]) { $1 })
+        continue
+      }
       // on the cells' text, which a label draws 2 in from its frame
       let x = r.minX + ListCell.inset + 2
       let y = (r.midY - size.height / 2).rounded()
@@ -91,6 +127,11 @@ final class ListCell: NSTableCellView {
   let detail = NSTextField(labelWithString: "")
   let status = NSTextField(labelWithString: "")
   let retry = NSButton(title: "Retry", target: nil, action: nil)
+  /// A checkbox field's box, toggled by one click (`onToggle`)
+  let check = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+  var onToggle: ((Bool) -> Void)?
+  /// Under a select field's label: its option's colour, rounded
+  let pill = NSView()
   /// The boards column: names fitted to the width on each layout
   private var names: [String]?
   private var twoLines = false
@@ -113,6 +154,13 @@ final class ListCell: NSTableCellView {
     retry.action = #selector(retried)
     retry.setAccessibilityIdentifier("ui-listretry")
     addSubview(retry)
+    check.target = self
+    check.action = #selector(toggled)
+    check.setAccessibilityIdentifier("ui-listcheck")
+    addSubview(check)
+    pill.wantsLayer = true
+    pill.layer?.cornerRadius = 8
+    addSubview(pill, positioned: .below, relativeTo: line)
   }
 
   @available(*, unavailable)
@@ -153,10 +201,20 @@ final class ListCell: NSTableCellView {
     detail.isHidden = c.detail == nil && onRetry == nil
     status.isHidden = status.stringValue.isEmpty
     self.retry.isHidden = onRetry == nil
+    onToggle = nil
+    let box = c.field?.type == .checkbox
+    check.isHidden = !box
+    line.isHidden = box
+    if let f = c.field, box { check.state = row.fields[f.id] == .bool(true) ? .on : .off }
+    let tint = c.field.flatMap { ListColumn.tint(of: $0, row) }
+    pill.isHidden = tint == nil
+    pill.layer?.backgroundColor = tint?.cgColor
+    if tint != nil { line.textColor = ink.withAlphaComponent(0.85) }
     needsLayout = true
   }
 
   @objc private func retried() { onRetry?() }
+  @objc private func toggled() { onToggle?(check.state == .on) }
 
   override func layout() {
     super.layout()
@@ -177,6 +235,13 @@ final class ListCell: NSTableCellView {
     if let names { line.stringValue = EntryBoards.fit(names, width: w - 4, font: line.font ?? .systemFont(ofSize: 12)) }
     let lineTop = line.font?.pointSize == 13 ? top : top + 1
     line.frame = CGRect(x: Self.inset, y: lineTop, width: max(0, right - Self.inset), height: 17)
+    if !pill.isHidden {
+      // the label inside its pill, the pill as wide as the label needs and no wider than the cell
+      line.frame.origin.x += 6
+      line.frame.size.width = max(0, min(ceil(line.intrinsicContentSize.width), line.frame.width - 12))
+      pill.frame = CGRect(x: Self.inset, y: lineTop, width: line.frame.width + 12, height: 17)
+    }
+    check.frame = CGRect(x: Self.inset, y: top, width: 18, height: 17)
     detail.frame = CGRect(x: Self.inset, y: top + 17, width: max(0, w), height: 14)
   }
 }

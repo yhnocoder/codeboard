@@ -61,6 +61,8 @@ struct ListRow: Equatable {
   var boards: [String] = []
   /// Its paper's translation going on or failed
   var translation: Translation?
+  /// Its values for the resource's fields, by field id
+  var fields: [String: Entry.Value] = [:]
 
   init(_ item: ResourceItem, vault: Vault?) {
     var file: String?
@@ -69,6 +71,7 @@ struct ListRow: Equatable {
       key = path
       id = e.id
       title = e.title
+      fields = e.fields
       authors = e.authors ?? []
       venue = e.venue
       year = e.year
@@ -161,18 +164,35 @@ extension ReadingPane {
 /// header is clicked, narrowed by the filter at the top right. A click selects a row, ↑ ↓ move the selection, a
 /// double-click or Return opens it in a tab. An empty resource says how to add to it. Files dropped on it, what ⌘V
 /// pastes and what the + beside the filter chooses are added to it as its preset takes them (ListAdding.swift); ⌫ or the
-/// row menu's Delete deletes the selected rows (ListDelete.swift). Sort and filter are the tab's, not saved
+/// row menu's Delete deletes the selected rows (ListDelete.swift). The resource's own fields are columns after the
+/// preset's, added, renamed and deleted from the header and edited in their cells (ListFields.swift). Sort and filter
+/// are the tab's, not saved
 final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NSTableViewDelegate {
   /// The open list tabs' views by their tab, for their kind's follow to reach
   static let live = NSMapTable<NSUUID, ListTabView>.strongToWeakObjects()
 
   let context: ReadingContext
   /// Every item, in Finder's order
-  private(set) var rows: [ListRow] = []
+  var rows: [ListRow] = []
   /// What the table shows: sorted and filtered
   private(set) var shown: [ListRow] = []
   private(set) var columns: [ListColumn] = []
   private(set) var preset: ResourcePreset?
+  /// The resource shown, its fields as its file said them at the last read, and the vault's boards (id, title) in tree
+  /// order, for the board fields
+  private(set) var resource: VaultResource?
+  private(set) var fields: [Resource.Field] = []
+  private(set) var boardList: [(id: BoardID, title: String)] = []
+  private var boardNames: [String: String] = [:]
+  /// How a name is asked for (a new option's, an option renamed); nil: cancelled. Tests give their own
+  var askName: @MainActor (_ title: String, _ name: String, NSWindow?) async -> String? = {
+    await ListTabView.askNameAlert($0, $1, in: $2)
+  }
+  /// A field's deleting being asked about, a name being asked for (tests wait for them)
+  var fieldTask: Task<Void, Never>?
+  /// The text field over a cell or a header while a value or a field's name is typed, and what its text is committed
+  /// with (false: not taken)
+  var typing: (field: NSTextField, commit: (String) -> Bool)?
   /// The last lookup of which boards each entry is on; the one going on (tests wait for it)
   private var boardsOf: [EntryID: [String]] = [:]
   private(set) var boardsRead: Task<Void, Never>?
@@ -195,7 +215,7 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
   /// A delete going on: its boards looked up, its question asked (tests wait for it)
   var deleting: Task<Void, Never>?
   let table = ListTable()
-  private let header = ListHeaderView()
+  let header = ListHeaderView()
   private let scroll = NSScrollView()
   private var watching: [any NSObjectProtocol] = []
 
@@ -234,6 +254,9 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
     table.dataSource = self
     table.delegate = self
     table.onOpen = { [weak self] in self?.open($0) }
+    table.onEdit = { [weak self] in self?.edit(row: $0, column: $1, click: $2) ?? false }
+    table.onCommandClick = { [weak self] in self?.commandClick(row: $0, column: $1) ?? false }
+    header.onMenu = { [weak self] in self?.headerMenu($0) }
     table.onDelete = { [weak self] in self?.delete(nil) }
     table.menu = NSMenu()
     table.menu?.addItem(withTitle: "Delete", action: #selector(delete(_:)), keyEquivalent: "").target = self
@@ -285,10 +308,14 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
   /// The resource's entries as they are now, and (off the main thread) which boards they are on; a resource gone or
   /// unreadable lists nothing
   func show(_ resource: VaultResource?, tree: VaultFolder?) {
-    if let p = resource?.preset, p != preset { configure(p) }
     let vault = context.pane.vault
+    self.resource = resource
+    if let tree { boardList = tree.allBoards.map { ($0.id, $0.title) } }
+    let changed = resource.map {
+      configure($0.preset, fields: (try? vault?.resource(at: $0.path))?.fields ?? fields)
+    }
     let new = (resource.flatMap { try? vault?.items(in: $0.path) } ?? []).map { decorated(ListRow($0, vault: vault)) }
-    if new != rows {
+    if new != rows || changed == true {
       rows = new
       reload()
     }
@@ -301,29 +328,47 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
     }
   }
 
-  private func configure(_ p: ResourcePreset) {
-    preset = p
-    columns = ListColumn.of(p)
-    for c in table.tableColumns { table.removeTableColumn(c) }
-    for c in columns {
-      let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(c.id))
-      col.title = c.title
-      col.width = c.width
-      col.minWidth = c.minWidth
-      col.sortDescriptorPrototype = NSSortDescriptor(key: c.id, ascending: c.ascending)
-      col.resizingMask = c.id == "title" ? [.autoresizingMask, .userResizingMask] : .userResizingMask
-      table.addTableColumn(col)
+  /// The preset's columns, then the fields', then the + that adds one: table columns kept (with their widths) while
+  /// their column stays, made for new ones, dropped for gone ones. Whether what the columns say may have changed
+  private func configure(_ p: ResourcePreset, fields: [Resource.Field]) -> Bool {
+    let boards = Dictionary(boardList.map { ($0.id.rawValue, $0.title) }, uniquingKeysWith: { a, _ in a })
+    let fresh = p != preset
+    let changed = fresh || fields != self.fields || boards != boardNames
+    guard changed else { return false }
+    (preset, self.fields, boardNames) = (p, fields, boards)
+    columns = ListColumn.of(p) + fields.map { ListColumn.field($0, boards: boards) }
+    let ids = columns.map(\.id) + [ListColumn.addID]
+    for col in table.tableColumns where !ids.contains(col.identifier.rawValue) { table.removeTableColumn(col) }
+    for (i, id) in ids.enumerated() {
+      let c = columns.first { $0.id == id }
+      let col =
+        table.tableColumn(withIdentifier: NSUserInterfaceItemIdentifier(id))
+        ?? {
+          let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
+          col.width = c?.width ?? 28
+          col.minWidth = c?.minWidth ?? 28
+          col.sortDescriptorPrototype = c.map { NSSortDescriptor(key: $0.id, ascending: $0.ascending) }
+          col.resizingMask = id == "title" ? [.autoresizingMask, .userResizingMask] : c == nil ? [] : .userResizingMask
+          if c == nil { col.headerToolTip = "Add Field" }
+          table.addTableColumn(col)
+          return col
+        }()
+      col.title = c?.title ?? ""
+      if let at = table.tableColumns.firstIndex(of: col), at != i { table.moveColumn(at, toColumn: i) }
     }
+    header.needsDisplay = true
+    guard fresh else { return true }
     table.rowHeight = twoLines ? 42 : 28
     table.sortDescriptors = ListColumn.defaultSort(p)
     addButton.isHidden = p == .web
     addButton.toolTip = p == .papers ? "Add PDFs…" : "Add Files…"
     if rows.isEmpty { empty.stringValue = Self.emptyText(p) }
     needsLayout = true
+    return true
   }
 
   /// A row with what is known of it beyond its item: its boards, its translation
-  private func decorated(_ row: ListRow) -> ListRow {
+  func decorated(_ row: ListRow) -> ListRow {
     var r = row
     guard let id = row.id else { return r }
     r.boards = boardsOf[id] ?? []
@@ -342,9 +387,11 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
     reload()
   }
 
-  /// The rows sorted and filtered again, the selected one kept selected while it is shown
-  private func reload() {
-    let key = selected.map { shown[$0].key }
+  /// The rows sorted and filtered again, the selected one kept selected while it is shown (under its new key when it
+  /// was `moved`)
+  func reload(moved: (from: String, to: String)? = nil) {
+    var key = selected.map { shown[$0].key }
+    if let moved, key == moved.from { key = moved.to }
     shown = columns.filtered(columns.sorted(rows, by: table.sortDescriptors), by: search.stringValue)
     table.reloadData()
     if let key, let i = shown.firstIndex(where: { $0.key == key }) {
@@ -424,6 +471,10 @@ final class ListTabView: NSView, ReadingLookFollower, NSTableViewDataSource, NST
     guard let id = tableColumn?.identifier, let c = columns.first(where: { $0.id == id.rawValue }) else { return nil }
     let cell = tableView.makeView(withIdentifier: id, owner: nil) as? ListCell ?? ListCell(id)
     cell.show(c, shown[row], ink: ink, twoLines: twoLines) { [weak self] in self?.context.pane.translations?.retry($0) }
+    if let f = c.field, f.type == .checkbox {
+      let key = shown[row].key
+      cell.onToggle = { [weak self] in self?.set(.bool($0), of: f.id, at: key) }
+    }
     return cell
   }
 }

@@ -12,17 +12,34 @@ public struct Resource: Equatable, Sendable {
   /// A column the user added; an entry's value for it is in its entry file
   public struct Field: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, Sendable {
-      case text, number, date, checkbox
+      case text, number, date, checkbox, select, board
+    }
+
+    /// One of a select field's labels; an entry's value is its id, so renaming it changes no entry
+    public struct Option: Codable, Equatable, Sendable {
+      public var id: String
+      public var name: String
+      /// Absent: the colour of its place in the list
+      public var color: Highlight.Color?
+
+      public init(id: String, name: String, color: Highlight.Color? = nil) {
+        self.id = id
+        self.name = name
+        self.color = color
+      }
     }
 
     public var id: String
     public var name: String
     public var type: Kind
+    /// A select field's labels in the user's order (always there, maybe empty); no other kind has them
+    public var options: [Option]?
 
-    public init(id: String, name: String, type: Kind) {
+    public init(id: String, name: String, type: Kind, options: [Option]? = nil) {
       self.id = id
       self.name = name
       self.type = type
+      self.options = options ?? (type == .select ? [] : nil)
     }
   }
 
@@ -171,10 +188,33 @@ extension Resource {
 
   public init(decoding data: Data, file: URL) throws {
     self = try strictDecode(Resource.self, from: data, file: file, version: Resource.version, format: "resource format")
+    if let problem = problem() { throw VaultError.malformed(file, problem) }
+  }
+
+  /// A field id twice, or the first field's problem, as a message: what is refused when read and never written
+  func problem() -> String? {
     var ids = Set<String>()
-    for f in fields where !ids.insert(f.id).inserted {
-      throw VaultError.malformed(file, "field \(f.id) is there twice")
+    for f in fields {
+      guard ids.insert(f.id).inserted else { return "field \(f.id) is there twice" }
+      if let problem = f.problem() { return "field \(f.id): \(problem)" }
     }
+    return nil
+  }
+}
+
+extension Resource.Field {
+  /// Options where its kind does not have them, or one without its id or name, or with another's
+  func problem() -> String? {
+    guard let options else { return type == .select ? "a select field without its options" : nil }
+    guard type == .select else { return "options on a \(type.rawValue) field" }
+    var ids = Set<String>()
+    var names = Set<String>()
+    for o in options {
+      guard !o.id.isEmpty, !o.name.isEmpty else { return "an option without its id or name" }
+      guard ids.insert(o.id).inserted else { return "option \(o.id) is there twice" }
+      guard names.insert(o.name).inserted else { return "option name \(o.name) is there twice" }
+    }
+    return nil
   }
 }
 

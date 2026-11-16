@@ -46,7 +46,7 @@ extension ListTabView {
   func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
     guard shown.indices.contains(row) else { return nil }
     var r = shown[row]
-    if r.id == nil, case .pdf(.file(let path))? = r.opens { r.id = promoted(path) }
+    if r.id == nil, case .pdf(.file(let path))? = r.opens { r.id = promoted(path)?.entry.id }
     return r.dragItem
   }
 
@@ -59,9 +59,10 @@ extension ListTabView {
     show(r, tree: tree)
   }
 
-  /// A PDF that is a file alone made an entry of the same name, as its PDF tab makes it (PDFTabView.madeEntry); nil
-  /// when it cannot be: a tab has it open as a file (that tab would lose it), or it could not be moved
-  private func promoted(_ path: String) -> EntryID? {
+  /// A file alone made an entry of the same name with `fields`, a PDF as its PDF tab makes it (PDFTabView.madeEntry),
+  /// any other file a version that is the file; nil when it cannot be: a tab has it open as a file (that tab
+  /// would lose it), or it could not be moved. The entry and its folder's path
+  func promoted(_ path: String, fields: [String: Entry.Value] = [:]) -> (entry: Entry, path: String)? {
     guard let vault = context.pane.vault, !context.pane.tabs.contains(where: { $0.key == PDFTarget.file(path).key })
     else { return nil }
     let name = (path as NSString).lastPathComponent
@@ -69,12 +70,16 @@ extension ListTabView {
     let now = Entry.now
     let e = Entry(
       id: EntryID(rawValue: Board.newID("e")), title: (name as NSString).deletingPathExtension, added: now,
-      versions: [Version(id: VersionID(rawValue: Board.newID("v")), added: now, content: .pdf(file: file))])
+      versions: [
+        Version(
+          id: VersionID(rawValue: Board.newID("v")), added: now,
+          content: (name as NSString).pathExtension.lowercased() == "pdf" ? .pdf(file: file) : .file(file))
+      ], fields: fields)
     guard let at = try? vault.promote(file: path, to: e, as: file) else {
       NSSound.beep()
       return nil
     }
     context.pane.entries.update(e, at: at)
-    return e.id
+    return (e, at)
   }
 }
