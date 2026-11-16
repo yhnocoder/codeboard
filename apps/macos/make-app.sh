@@ -40,6 +40,9 @@ mkdir -p "$app/Contents/Resources"
 cp -R web/dist "$app/Contents/Resources/NotePage"
 cp -R .build-markdown "$app/Contents/Resources/Assets"
 cp -R "$bin/better-swift-markdown_MarkdownUI.bundle" "$app/Contents/Resources/"
+# the saving service and its page scripts, when tools/shiyi/fetch.mjs has fetched them
+if [ -x .build-shiyi/shiyi ]; then cp .build-shiyi/shiyi "$app/Contents/Resources/"; fi
+if [ -d .build-shiyi/scripts ]; then cp -R .build-shiyi/scripts "$app/Contents/Resources/ShiyiScripts"; fi
 plutil -lint -s "$app/Contents/Info.plist"
 codesign --force --sign - "$app"
 echo "built $(pwd)/$app"

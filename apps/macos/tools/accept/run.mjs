@@ -120,6 +120,11 @@ if (!attach && sides.includes("mac")) {
   // where make-app.sh puts them (and make-demo.sh the demo's): the app finds them in its own bundle, as a person's does
   fs.cpSync(path.join(mac, ".build-markdown"), path.join(app, "Contents/Resources/Assets"), { recursive: true });
   if (!demo) fs.cpSync(path.join(mac, "web/dist"), path.join(app, "Contents/Resources/NotePage"), { recursive: true });
+  // the saving service and its page scripts, as make-app.sh carries them, when tools/shiyi/fetch.mjs has fetched them
+  const shiyi = path.join(mac, ".build-shiyi");
+  if (fs.existsSync(path.join(shiyi, "shiyi"))) fs.copyFileSync(path.join(shiyi, "shiyi"), path.join(app, "Contents/Resources/shiyi"));
+  if (fs.existsSync(path.join(shiyi, "scripts")))
+    fs.cpSync(path.join(shiyi, "scripts"), path.join(app, "Contents/Resources/ShiyiScripts"), { recursive: true });
 }
 if (!attach && sides.includes("web")) {
   await build({
@@ -389,6 +394,12 @@ class Driver {
     if (this.id) {
       execFileSync("sh", ["-c", `defaults delete ${this.id} >/dev/null 2>&1 || true`]);
       const lib = path.join(os.homedir(), "Library");
+      // the saving service the app started on its own data folder (ShellPages.swift): the pid listening on its socket
+      const sock = path.join(lib, "Application Support", this.id, "Shiyi/shiyi.sock");
+      try {
+        const pids = fs.existsSync(sock) ? execFileSync("lsof", ["-t", sock]).toString().split("\n").filter(Boolean) : [];
+        for (const pid of pids.map(Number)) if (pid !== process.pid) process.kill(pid, "SIGKILL");
+      } catch {}
       for (const d of ["Preferences/" + this.id + ".plist", "Application Support/" + this.id, "Caches/" + this.id, "WebKit/" + this.id, "HTTPStorages/" + this.id, "HTTPStorages/" + this.id + ".binarycookies", "Saved Application State/" + this.id + ".savedState"])
         fs.rmSync(path.join(lib, d), { recursive: true, force: true });
     }
