@@ -7,9 +7,9 @@ import CodeBoardModel
 // move, a resize or a zoom never redraws a bitmap; an emoji's text is drawn again only at rest, as the markers are.
 //
 // The toolbar's Sticker opens the palette; a glyph picked follows the pointer with no button held and a click puts it
-// down: on a code line's number, on a card, by one within 40 px, else free (⌥: free). Esc puts nothing down. A sticker
-// is dragged (let go on a card it goes on it), resized by its corner grip when selected, and its menu has its colours
-// and Delete.
+// down, selected: on a code line's number, on a card, by one within 40 px, else free (⌥: free). Esc puts nothing down.
+// A sticker is dragged (let go on a card or by one within 40 px it goes on it), resized by its corner grip when
+// selected, and its menu has its colours and Delete. Its label is its tip and its spoken name.
 
 struct StickerSpot {
   var id: StickerID
@@ -199,6 +199,13 @@ extension CanvasView {
 
   // MARK: Pointer
 
+  /// The sticker under the pointer: its tip shows
+  func hoverSticker(_ id: StickerID?) {
+    guard id != hoveredSticker else { return }
+    hoveredSticker = id
+    showTip()
+  }
+
   /// A press on a sticker or the selected one's grip: it is selected and the drag begins. True when the press is taken
   func pressSticker(_ e: NSEvent, view v: CGPoint, board p: CGPoint) -> Bool {
     guard let doc = document else { return false }
@@ -243,19 +250,20 @@ extension CanvasView {
         d.to = d.from.offsetBy(dx: dx, dy: dy)
         l.position = d.to.origin
         dropAim?.removeFromSuperlayer()
-        dropAim = stickerTarget(d.to, free: NSEvent.modifierFlags.contains(.option)).flatMap { aimLayer(.card($0)) }
+        dropAim = stickerTarget(p, free: NSEvent.modifierFlags.contains(.option)).flatMap { aimLayer(.card($0)) }
       }
     }
     d.moved = true
   }
 
-  /// The card a sticker let go at `r` goes on: the one under its middle (⌥: none)
-  func stickerTarget(_ r: CGRect, free: Bool) -> CardID? {
-    free ? nil : hitCard(CGPoint(x: r.midX, y: r.midY))
+  /// The card a sticker put down or let go with the pointer at `p` goes on: the one under it, else the nearest within
+  /// the snap distance (⌥: none)
+  func stickerTarget(_ p: CGPoint, free: Bool) -> CardID? {
+    free ? nil : hitCard(p) ?? cardNear(p)
   }
 
-  /// Let go: where it now is, or its new size, one step
-  func commitSticker(_ d: StickerDrag, free: Bool) {
+  /// Let go with the pointer at `p`: where it now is, or its new size, one step
+  func commitSticker(_ d: StickerDrag, at p: CGPoint, free: Bool) {
     gesture = nil
     withoutAnimation {
       dropAim?.removeFromSuperlayer()
@@ -265,7 +273,7 @@ extension CanvasView {
     if d.resize {
       doc.edit("Resize Sticker") { $0.setStickerSize(d.id, Double(d.to.height)) }
     } else {
-      let anchor = anchorFor(d.to, card: stickerTarget(d.to, free: free), size: Double(d.to.height))
+      let anchor = anchorFor(d.to, card: stickerTarget(p, free: free), size: Double(d.to.height))
       doc.edit("Move Sticker") { $0.moveSticker(d.id, to: anchor) }
     }
     // let go where it was: back in its place
@@ -300,6 +308,7 @@ extension CanvasView {
         if bounds.contains(v) { moveGhost(to: v) }
       }
     }
+    toast("Click a code line, a card or empty canvas to place it · Esc to cancel")
     onMode?(activeTool)
   }
 
@@ -322,7 +331,7 @@ extension CanvasView {
     onMode?(activeTool)
   }
 
-  /// The click while placing: the sticker goes down there, one step, not selected
+  /// The click while placing: the sticker goes down there, one step, selected
   package func putSticker(at p: CGPoint, free: Bool) {
     guard let g = placing, let doc = document else { return }
     cancelPlacing()
@@ -335,10 +344,10 @@ extension CanvasView {
     } else {
       let size = StickerArt.boxSize(g, size: Sticker.defaultSize)
       let r = CGRect(x: p.x - size.width / 2, y: p.y - size.height / 2, width: size.width, height: size.height)
-      anchor = anchorFor(r, card: free ? nil : hitCard(p) ?? cardNear(p), size: nil)
+      anchor = anchorFor(r, card: stickerTarget(p, free: free), size: nil)
     }
     let id = StickerID(rawValue: Board.newID("k"))
-    doc.edit("Add Sticker") { $0.addSticker(Sticker(id: id, glyph: g, anchor: anchor)) }
+    doc.edit("Add Sticker", selection: [.sticker(id)]) { $0.addSticker(Sticker(id: id, glyph: g, anchor: anchor)) }
   }
 
   /// The nearest card within the snap distance of a board point
@@ -362,8 +371,6 @@ extension CanvasView {
     if stickerPalette != nil { return closeStickerPalette() }
     cancelPlacing()
     let p = StickerPalette(theme: theme)
-    let chosen = selectedSticker.map { stickerSpots[$0].glyph }
-    p.chosen = chosen
     p.onPick = { [weak self] g in self?.pickSticker(g) }
     let size = p.fittingSize
     var x = button.midX - size.width / 2
@@ -381,14 +388,9 @@ extension CanvasView {
     onMode?(activeTool)
   }
 
-  /// A glyph picked: the selected sticker takes it (its colour back to the glyph's own), else it is placed
+  /// A glyph picked is placed, whatever is selected (actions/stickers.ts pickSticker)
   package func pickSticker(_ g: Sticker.Glyph) {
     closeStickerPalette()
-    if let i = selectedSticker, let doc = document {
-      let id = stickerSpots[i].id
-      doc.edit("Change Sticker") { $0.setStickerGlyph(id, g) }
-      return
-    }
     beginPlacing(g)
   }
 
@@ -447,10 +449,6 @@ extension CanvasView {
 /// glyphs in eight columns, the TODO tag two wide, and one button for the system's emoji
 package final class StickerPalette: NSView {
   package var onPick: ((Sticker.Glyph) -> Void)?
-  /// The selected sticker's glyph, ringed
-  var chosen: Sticker.Glyph? {
-    didSet { draw() }
-  }
   let theme: Theme
   private var hover: Int? {
     didSet { if hover != oldValue { draw() } }
@@ -584,16 +582,15 @@ package final class StickerPalette: NSView {
       for (i, cell) in cells.enumerated() {
         for l in cell.sublayers ?? [] where l.name == "ring" { l.removeFromSuperlayer() }
         let g = Self.slots[i].glyph
-        let on = g != nil && g == chosen
-        guard on || hover == i, let art = cell.sublayers?.first else { continue }
+        guard hover == i, let art = cell.sublayers?.first else { continue }
         let ring = CAShapeLayer()
         ring.name = "ring"
         ring.position = art.position
         ring.path =
           g.map { StickerArt.outline($0, size: 22, out: 2.75) }
           ?? CGPath(ellipseIn: CGRect(x: -2.75, y: -2.75, width: 27.5, height: 27.5), transform: nil)
-        ring.fillColor = on ? nil : t.hlrow
-        ring.strokeColor = on ? t.accent : t.ink3.copy(alpha: 0.5)
+        ring.fillColor = t.hlrow
+        ring.strokeColor = t.ink3.copy(alpha: 0.5)
         ring.lineWidth = 1.5
         cell.addSublayer(ring)
       }
@@ -610,12 +607,22 @@ package final class StickerPalette: NSView {
         rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
   }
 
-  package override func mouseMoved(with e: NSEvent) { hover = slot(at: convert(e.locationInWindow, from: nil)) }
-  package override func mouseExited(with e: NSEvent) { hover = nil }
+  /// A glyph's label as its tip (Picker.tsx data-tip); the emoji button has none
+  func tip(_ i: Int) -> Tip? { Self.slots[i].glyph.map { Tip(Sticker.label($0)) } }
+
+  package override func mouseMoved(with e: NSEvent) {
+    hover = slot(at: convert(e.locationInWindow, from: nil))
+    Tips.shared.hover(hover.flatMap(tip), hover.map { Self.rects()[$0] } ?? .zero, in: self, theme: theme)
+  }
+  package override func mouseExited(with e: NSEvent) {
+    hover = nil
+    Tips.shared.hover(nil, in: self, theme: theme)
+  }
   /// The slot pressed: a click on it is a press and a release over it (main's <button>)
   private var down: Int?
 
   package override func mouseDown(with e: NSEvent) {
+    Tips.shared.press()
     down = slot(at: convert(e.locationInWindow, from: nil))
   }
 
