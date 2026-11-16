@@ -215,7 +215,7 @@ enum StandInScripts {
           })
         }
         return { url: location.href, title: document.title, description: "A made-up page",
-          site_name: "Loopback", favicon: location.origin + "/icon.png", cover: location.origin + "/cover.png" }
+          site_name: "Loopback", favicon: document.documentElement.dataset.icon || location.origin + "/icon.png", cover: location.origin + "/cover.png" }
       },
       async savePage(files) {
         const post = m => webkit.messageHandlers.shiyi.postMessage(m)

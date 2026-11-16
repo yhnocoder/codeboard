@@ -45,16 +45,13 @@ extension WebReading {
     return byBlock[id]
   }
 
-  /// The site's own icon when it can be drawn: the file kept with the entry, or an https address
+  /// The site's own icon when it can be drawn: the file kept with the entry (the board draws files only)
   @MainActor private static func icon(of found: EntryIndex.Found, in pane: ReadingPane) -> SourceLabel.Icon {
     switch found.entry.meta?.icon {
     case .file(let name)?:
       guard Vault.isFileName(name), let vault = pane.vault else { return .site }
       let file = vault.url(of: found.path).appending(path: Vault.imagesFolder).appending(path: name)
       return FileManager.default.fileExists(atPath: file.path) ? .image(file) : .site
-    case .url(let address)?:
-      guard let url = URL(string: address), url.scheme == "https", url.host() != nil else { return .site }
-      return .image(url)
     default: return .site
     }
   }

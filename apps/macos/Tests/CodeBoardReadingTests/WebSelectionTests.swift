@@ -362,7 +362,7 @@ import WebKit
     #expect(WebReading.sourceLabel(SourceAnchor(entry: entry.id, place: place), in: tabs.pane)?.number == "Kept")
   }
 
-  /// The source line's icon is the site's own when it can be drawn: the file kept in the entry's images, or an https
+  /// The source line's icon is the site's own when it can be drawn: the file kept in the entry's images, never an
   /// address; otherwise the site's mark
   @Test func aWebSourcesIconIsTheSitesOwnWhenItCanBeDrawn() throws {
     let resource = try vault.newResource(in: "", title: "Web", preset: .web).path
@@ -383,7 +383,7 @@ import WebKit
     #expect(icon(.file("gone.png")) == .site, "not kept")
     #expect(icon(.file("../icon.svg")) == .site, "not a file name")
     let https = "https://example.com/favicon.ico"
-    #expect(icon(.url(https)) == .image(URL(string: https)!))
+    #expect(icon(.url(https)) == .site, "the board draws files only")
     #expect(icon(.url("http://example.com/favicon.ico")) == .site)
     #expect(icon(.url("data:image/png;base64,AAAA")) == .site)
     #expect(icon(nil) == .site)

@@ -71,10 +71,37 @@ extension ReadingPane {
   }
 
   /// What was saved, in its entry in the web resource with what was read of the page; the entries know it at once
-  func saveWeb(_ item: SavedItem, meta: WebMeta) throws {
-    guard let vault else { return }
+  @discardableResult
+  func saveWeb(_ item: SavedItem, meta: WebMeta) throws -> String? {
+    guard let vault else { return nil }
     let path = try vault.save(item, in: WebReading.webResource(in: vault), meta: meta)
     entries.update(try vault.entry(at: path), at: path)
+    return path
+  }
+
+  /// The site's icon read once and kept with the entry as a file, so that a card's source line draws it without the
+  /// network: a bitmap of at most 1 MB (an SVG, or anything else, leaves the entry with the icon's address)
+  func keepIcon(of item: SavedItem, meta: WebMeta) async {
+    guard case .url(let address)? = meta.icon, let url = URL(string: address),
+      ["http", "https", "data"].contains(url.scheme)
+    else { return }
+    var request = URLRequest(url: url)
+    request.timeoutInterval = 10
+    guard let (data, _) = try? await URLSession(configuration: .ephemeral).data(for: request),
+      data.count <= 1_000_000, NSBitmapImageRep(data: data) != nil, let vault,
+      let path = try? vault.save(item, in: WebReading.webResource(in: vault))
+    else { return }
+    let known = ["png", "ico", "jpg", "jpeg", "gif", "webp"]
+    let ending = url.scheme == "data" ? "" : url.pathExtension.lowercased()
+    let name = "icon." + (known.contains(ending) ? ending : "png")
+    let folder = vault.url(of: path).appending(path: Vault.imagesFolder)
+    var kept = meta
+    kept.icon = .file(name)
+    do {
+      try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+      try data.write(to: folder.appending(path: name), options: .atomic)
+      try saveWeb(item, meta: kept)
+    } catch {}
   }
 }
 

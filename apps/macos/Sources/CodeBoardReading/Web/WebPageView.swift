@@ -847,7 +847,8 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
       let meta = WebMeta(script: read, title: name)
       var named = item
       named.title = meta.title ?? name
-      try? context.pane.saveWeb(named, meta: meta)
+      _ = try? context.pane.saveWeb(named, meta: meta)
+      await context.pane.keepIcon(of: named, meta: meta)
     }
   }
 
