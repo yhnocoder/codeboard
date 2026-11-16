@@ -63,7 +63,8 @@ if ! grep -q 'yhnocoder/shiyi' "$app/Package.swift"; then
   echo "This checkout does not use the package yet: nothing to resolve." >&2
   exit 0
 fi
-if out=$(cd "$app" && swift package --netrc-file "$file" resolve 2>&1); then
+# (resolve.sh: git, which clones the repository, is signed in with the file too, for that run only)
+if out=$(SHIYI_NETRC="$file" sh "$app/tools/shiyi/resolve.sh" 2>&1); then
   echo "The Mac app's packages resolved." >&2
 else
   echo "Resolving the Mac app's packages failed:" >&2

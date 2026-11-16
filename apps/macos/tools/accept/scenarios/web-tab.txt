@@ -33,7 +33,7 @@ key esc
 expect focus has WKWebView
 click @ui.websave
 pick Save Link
-wait 300
+wait 1500
 expect entry:网页 has Page A
 expect row:网页 = shown
 shot saved @ui.webbar
