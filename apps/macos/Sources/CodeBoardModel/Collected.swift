@@ -11,6 +11,9 @@ public struct Collected: Codable, Equatable, Sendable {
     case note(markdown: String)
     /// A block's picture; its natural size in points
     case image(alt: String?, width: Double, height: Double)
+    /// A picture with an address of its own (an `<img>` of a web page): an http(s) address or a base64 `data:` one;
+    /// its natural size in CSS px
+    case picture(url: String, alt: String?, width: Double, height: Double)
   }
 
   public static let pasteboardType = "com.yhnocoder.codeboard.collected"
