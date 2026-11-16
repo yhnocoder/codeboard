@@ -1,0 +1,98 @@
+# This repository is public, and a pull request from a fork can restore any cache saved on the default branch. The
+# Mac build holds the private package from yhnocoder/shiyi, so its caches are kept as one file encrypted with
+# SHIYI_READ_TOKEN: whoever can open that file can already read the private repository.
+name: Sealed cache
+description: Restores or saves paths as one cache entry, a tar file encrypted with a repository secret
+inputs:
+  do:
+    description: restore or save
+    required: true
+  name:
+    description: A short name for the sealed file
+    required: true
+  paths:
+    description: The paths to keep, relative to the repository root, separated by newlines or spaces
+    required: true
+  key:
+    description: The cache key
+    required: true
+  restore-keys:
+    description: Prefixes of keys to restore when the key itself is not there (restore only)
+    required: false
+    default: ""
+  secret:
+    description: The repository secret SHIYI_READ_TOKEN, the passphrase; empty where the run cannot read secrets
+    required: true
+outputs:
+  cache-hit:
+    description: true only when the exact key was restored and unpacked
+    value: ${{ steps.unpack.outputs.cache-hit }}
+  cache-matched-key:
+    description: The key restored and unpacked; empty when nothing was unpacked
+    value: ${{ steps.unpack.outputs.cache-matched-key }}
+runs:
+  using: composite
+  steps:
+    - if: ${{ inputs.do != 'restore' && inputs.do != 'save' }}
+      shell: bash
+      env: { DO: "${{ inputs.do }}" }
+      run: |
+        echo "::error::sealed-cache: do must be restore or save, not '$DO'"
+        exit 1
+    - if: ${{ inputs.secret == '' }}
+      shell: bash
+      env: { NAME: "${{ inputs.name }}", DO: "${{ inputs.do }}" }
+      run: |
+        if [ "$DO" = restore ]; then outcome="it starts without it"; else outcome="it is not saved"; fi
+        echo "::notice::The $NAME cache is sealed with SHIYI_READ_TOKEN, which this run cannot read (a pull request from a fork?): $outcome."
+
+    - id: restore
+      if: ${{ inputs.do == 'restore' && inputs.secret != '' }}
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ runner.temp }}/sealed-cache/${{ inputs.name }}.tar.zst.enc
+        key: ${{ inputs.key }}
+        restore-keys: ${{ inputs.restore-keys }}
+    # the outputs are set here, not taken from the cache step, so that a file that cannot be unpacked counts as a miss
+    - id: unpack
+      if: ${{ inputs.do == 'restore' && inputs.secret != '' }}
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        SEAL: ${{ inputs.secret }}
+        FILE: ${{ runner.temp }}/sealed-cache/${{ inputs.name }}.tar.zst.enc
+        PATHS: ${{ inputs.paths }}
+        MATCHED: ${{ steps.restore.outputs.cache-matched-key }}
+        HIT: ${{ steps.restore.outputs.cache-hit }}
+      run: |
+        set -f
+        if [ -n "$MATCHED" ]; then
+          if bash "$GITHUB_ACTION_PATH/seal.sh" unpack "$FILE" $PATHS; then
+            echo "cache-matched-key=$MATCHED" >> "$GITHUB_OUTPUT"
+            if [ "$HIT" = true ]; then echo "cache-hit=true" >> "$GITHUB_OUTPUT"; else echo "cache-hit=false" >> "$GITHUB_OUTPUT"; fi
+          else
+            echo "::warning::The sealed cache $MATCHED could not be unpacked; this run starts without it."
+          fi
+        fi
+        # as large as the cache itself
+        rm -f "$FILE"
+
+    - if: ${{ inputs.do == 'save' && inputs.secret != '' }}
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        SEAL: ${{ inputs.secret }}
+        FILE: ${{ runner.temp }}/sealed-cache/${{ inputs.name }}.tar.zst.enc
+        PATHS: ${{ inputs.paths }}
+      run: |
+        set -f
+        bash "$GITHUB_ACTION_PATH/seal.sh" pack "$FILE" $PATHS
+    - if: ${{ inputs.do == 'save' && inputs.secret != '' }}
+      uses: actions/cache/save@v5
+      with:
+        path: ${{ runner.temp }}/sealed-cache/${{ inputs.name }}.tar.zst.enc
+        key: ${{ inputs.key }}
+    - if: ${{ always() && inputs.do == 'save' && inputs.secret != '' }}
+      shell: bash
+      env: { FILE: "${{ runner.temp }}/sealed-cache/${{ inputs.name }}.tar.zst.enc" }
+      run: rm -f "$FILE"
