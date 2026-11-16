@@ -104,7 +104,9 @@ extension CanvasView {
       scene?.placed[id].map { Rect(x: $0.rect.minX, y: $0.rect.minY, width: $0.rect.width, height: $0.rect.height) }
     }
     var copy = doc.board
-    guard let made = copy.extract(ids, rects: rects, child: child, frame: frame) else { return }
+    guard let made = copy.extract(ids, rects: rects, child: child, frame: frame, auto: here.isFolderBoard) else {
+      return
+    }
     // named as main names it: the Section selected, else the first card's title up to its first space or bracket
     let resolver = RefResolver(doc.board, package: vault.url(of: here.path), vault: vault)
     let sec = doc.selection.compactMap(\.section).compactMap { doc.board.section($0)?.title }.first { !$0.isEmpty }
@@ -113,7 +115,7 @@ extension CanvasView {
     let title = vault.freeName(in: folder, Vault.packageName(for: sec ?? word ?? "New Board"), package: true)
     guard let at = try? vault.newBoard(in: folder, title: title, board: made) else { return }
     doc.edit("Turn into Board", selection: [.card(frame)]) {
-      _ = $0.extract(ids, rects: rects, child: child, frame: frame)
+      _ = $0.extract(ids, rects: rects, child: child, frame: frame, auto: here.isFolderBoard)
     }
     nameInPlace(frame, at)
   }

@@ -51,6 +51,32 @@ import Testing
     #expect(r.doc.board == board)
   }
 
+  /// On a folder board the new board is in the folder itself: the card left behind is its automatic one, so keeping
+  /// the folder board up with its folder adds none
+  @Test func cardsTurnedIntoABoardOnAFolderBoardLeaveItsOneAutomaticCard() async throws {
+    let r = try await Rig(Board(id: BoardID(rawValue: "here")), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let vault = Vault(root: r.root)
+    try vault.newFolder(in: "", name: "Plans")
+    let fb = try vault.newFolderBoard(in: "Plans")
+    let file = vault.url(of: fb.path).appending(path: Vault.boardFileName)
+    try Board(id: fb.id, cards: [note("a", x: 100, y: 100), note("c", x: 900, y: 500)]).encoded().write(to: file)
+    let doc = try BoardDocument { file }
+    try await c.show(doc, at: fb, in: vault, theme: .warmInk)
+    doc.select([.card(cid("a"))])
+    c.turnIntoBoard(nil)
+    await r.until("the name's field") { c.inPlace != nil }
+    c.endInPlace(commit: true)
+    let folder = try #require(try vault.tree().folder(at: "Plans"))
+    let child = try #require(folder.boards.first)
+    doc.sync { $0.keepUp(with: folder.entries) }
+    let showing = doc.board.cards.filter {
+      if case .own(let x) = $0.content, case .board(let s) = x.body { s.target == .board(child.id) } else { false }
+    }
+    #expect(showing.count == 1 && doc.board.isAuto(showing[0].id))
+  }
+
   /// Into a sub-board and out (subboards.ts enterFrame, leaveBoard, boardShown; Crumbs.tsx): the card's name hidden
   /// and its copy flying to the breadcrumb while the board fades out; the shell asked once it has; the board entered
   /// fading in from 1.03 with the breadcrumb, its current crumb hidden until the name lands. Esc deselects first, then
