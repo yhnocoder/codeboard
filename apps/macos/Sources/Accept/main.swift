@@ -898,6 +898,14 @@ func strings(_ x: Any) -> [String] {
       count = l.count + 1
     }
     lastDown = (now, vPointer, count)
+    // a left press in another of the app's windows (Settings, a panel) makes it key, as the window server does for a
+    // real click, so the keys that follow go to it (a panel that becomes key only if needed: when the view pressed
+    // needs it, a text field)
+    if !right, let w = window(at: vPointer), w !== gKey, w.canBecomeKey {
+      let hit = w.contentView?.superview?.hitTest(
+        w.contentView!.superview!.convert(w.convertPoint(fromScreen: vPointer), from: nil))
+      if !((w as? NSPanel)?.becomesKeyOnlyIfNeeded ?? false) || hit?.needsPanelToBecomeKey == true { w.makeKey() }
+    }
     log("press \(right ? "right" : "left") ×\(count) at \(local(vPointer)) on \(hitInfo(vPointer))")
     vButtons |= right ? 2 : 1
     post(right ? .rightMouseDown : .leftMouseDown, at: vPointer, clicks: count)
@@ -1607,12 +1615,17 @@ func strings(_ x: Any) -> [String] {
     // frame ViewClass [content]: where the first such view is in the recorded window picture (points from its top left),
     // or with "content" in content coordinates (what move and click take)
     case "frame":
-      guard let w = win, let root = w.contentView?.superview ?? w.contentView else { return "no window" }
+      guard let w = win else { return "no window" }
       func find(_ v: NSView) -> NSView? {
         "\(Swift.type(of: v))" == a[1] && !v.isHiddenOrHasHiddenAncestor ? v : v.subviews.lazy.compactMap(find).first
       }
-      guard let v = find(root) else { return "none" }
-      let f = v.convert(v.bounds, to: nil)
+      // in the main window, else in another of the app's windows (Settings), front to back; in the main window's
+      // coordinates either way
+      let windows = [w] + NSApp.orderedWindows.filter { $0 !== w && $0.isVisible }
+      guard let v = windows.lazy.compactMap({ ($0.contentView?.superview ?? $0.contentView).flatMap(find) }).first,
+        let vw = v.window
+      else { return "none" }
+      let f = w.convertFromScreen(vw.convertToScreen(v.convert(v.bounds, to: nil)))
       if a.count > 2, a[2] == "content", let cv = w.contentView {
         let c = cv.convert(f, from: nil)
         let y = cv.isFlipped ? c.minY : cv.bounds.height - c.maxY
