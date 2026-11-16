@@ -123,7 +123,7 @@ import CodeBoardResources
       do {
         return .success(
           try await ScreenRecording.start(
-            window: number, frame: frame, excluding: excluded, to: url, t0: t0, ask: Self.personal))
+            window: number, frame: frame, excluding: excluded, to: url, t0: t0, personal: Self.personal))
       } catch { return .failure(error) }
     }
     r.limit = Task { [weak self] in

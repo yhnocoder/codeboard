@@ -33,7 +33,7 @@ struct ReportSources: Sendable {
 
   static var defaultCodeRoots: [URL] {
     let home = URL(filePath: NSHomeDirectory(), directoryHint: .isDirectory)
-    return ["Projects", "Developer", "Code", "code", "src", "repos", "GitHub", "Documents/GitHub", "work"].map {
+    return ["Projects", "Developer", "Code", "code", "src", "repos", "GitHub", "work"].map {
       home.appending(path: $0, directoryHint: .isDirectory)
     }
   }
@@ -274,7 +274,10 @@ enum ReportContents {
       for bad in r.paths.keys.sorted() where safePath(bad) == nil {
         unresolved.append("\(bad) (outside its repository)")
       }
-      if let diff = Git.data(root, ["diff", "HEAD", "--no-color", "--no-ext-diff", "--"] + paths), !diff.isEmpty {
+      // with no path after `--` git gives the whole repository's changes
+      if !paths.isEmpty,
+        let diff = Git.data(root, ["diff", "HEAD", "--no-color", "--no-ext-diff", "--"] + paths), !diff.isEmpty
+      {
         out.files.append(ReportFile("\(base)/uncommitted.diff", diff))
       }
       for path in paths {

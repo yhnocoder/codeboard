@@ -81,6 +81,20 @@ import Testing
     #expect(s.codeRoots.isEmpty)
   }
 
+  /// Listing a folder under Documents makes the system ask the person for it
+  @Test func theDocumentsFolderIsNotAmongTheCodeFolders() {
+    #expect(!ReportSources.defaultCodeRoots.contains { $0.path.contains("/Documents") })
+  }
+
+  /// A driver's run records no video, even on a Mac where its process may record the screen
+  @Test func aDriversRunRecordsNoVideo() async {
+    let url = FileManager.default.temporaryDirectory.appending(path: "bug-report-\(UUID().uuidString).mp4")
+    await #expect(throws: ScreenRecording.Failure.self) {
+      _ = try await ScreenRecording.start(window: 0, frame: .zero, excluding: [], to: url, t0: 0, personal: false)
+    }
+    #expect(!FileManager.default.fileExists(atPath: url.path))
+  }
+
   /// A key typed into a password field keeps its code and modifiers, not its character
   @MainActor @Test func whatIsTypedIntoAPasswordFieldIsLeftOut() throws {
     let w = NSWindow(
