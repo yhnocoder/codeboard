@@ -90,7 +90,7 @@ private func n1(_ b: Board) -> Card? { b.card(CardID(rawValue: "n1")) }
   @Test func aFileItCannotReadIsNeverWrittenOver() throws {
     let (doc, file) = try opened()
     doc.edit("Move") { $0.move([.card(CardID(rawValue: "n1"))], dx: 5, dy: 0) }
-    let newer = Data(#"{"version": 3, "id": "b"}"#.utf8)
+    let newer = Data(#"{"version": 4, "id": "b"}"#.utf8)
     try newer.write(to: file)
     doc.diskChanged()
     #expect(doc.problem?.contains("newer CodeBoard") == true)

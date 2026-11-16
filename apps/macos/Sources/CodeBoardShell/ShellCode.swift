@@ -33,6 +33,8 @@ import os
   var found: [LinesKey: ClosedRange<Int>?] = [:]
   /// A change is being told, on the next turn
   var telling = false
+  /// The code annotations heard, and what stops it (ShellCodeNotes.swift)
+  var notesHeard: (store: ObjectIdentifier, stop: () -> Void)?
   /// Which code cards of the window's boards have a newer version (ShellVersions.swift)
   lazy var versions = ShellVersions(code: self)
   /// The code tabs' and the sidebar's repositories followed on disk (ShellCodeFiles.swift)

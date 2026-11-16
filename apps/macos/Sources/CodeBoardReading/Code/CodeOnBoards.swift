@@ -106,6 +106,8 @@ extension CodeReading {
 final class CodeMarks: NSView {
   let here = CAShapeLayer()
   let other = CAShapeLayer()
+  /// A dot at the first line of each sidenote of the file (CodeNotesTab.swift)
+  let notes = CAShapeLayer()
   /// Where the line is across the gutter's left padding, and how wide; the pointer is over it within `hit`
   static let x: CGFloat = 5
   static let width: CGFloat = 2.5
@@ -114,7 +116,7 @@ final class CodeMarks: NSView {
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
-    for l in [other, here] { layer?.addSublayer(l) }
+    for l in [other, here, notes] { layer?.addSublayer(l) }
   }
 
   @available(*, unavailable)
@@ -142,12 +144,26 @@ final class CodeMarks: NSView {
     other.fillColor = look.accent.copy(alpha: 0.32)
     CATransaction.commit()
   }
+
+  /// A dot centred at each y, at `x`
+  func drawNotes(at ys: [CGFloat], x: CGFloat, look: ReadingBarLook) {
+    let p = CGMutablePath()
+    for y in ys { p.addEllipse(in: CGRect(x: x - 3, y: y - 3, width: 6, height: 6)) }
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    notes.path = p
+    notes.fillColor = look.accent
+    CATransaction.commit()
+  }
 }
 
 extension CodeTabView {
   // MARK: Lines on boards
 
-  @objc func boardsChanged(_ note: Notification) { readOnBoards() }
+  @objc func boardsChanged(_ note: Notification) {
+    readOnBoards()
+    readAnnotations()
+  }
 
   /// What is on boards asked again for the file as it is shown; an answer for an older asking is dropped
   func readOnBoards() {
@@ -170,7 +186,7 @@ extension CodeTabView {
     func spans(_ ls: Set<Int>) -> [ClosedRange<CGFloat>] {
       CodeReading.runs(ls).compactMap { v.frame(ofLines: $0).map { $0.rect.minY...$0.rect.maxY } }
     }
-    marks.frame = CGRect(x: 0, y: 0, width: CodeMarks.hit, height: v.height)
+    marks.frame = CGRect(x: 0, y: 0, width: Self.noteHit.upperBound, height: v.height)
     marks.draw(here: spans(here), other: spans(other), look: context.bar)
   }
 
@@ -188,6 +204,10 @@ extension CodeTabView {
   /// The pointer over a marked line's thin line: the cards it is on listed beside it, unless a click goes straight
   /// to its one card; off it and off the list, a list it opened closes
   func hoverMarks(at p: CGPoint?) -> Bool {
+    if let p, noteLine(at: p) != nil {
+      NSCursor.pointingHand.set()
+      return true
+    }
     if let p, let line = markedLine(at: p) {
       let cs = CodeReading.cards(on: line...line, onBoards)
       if CodeReading.straight(cs) == nil, listing != .places || placesLine != line {

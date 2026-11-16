@@ -79,6 +79,14 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
   var flashed: ClosedRange<Int>?
   /// A press on a marked line's thin line, until it is let go: not the code's
   var pressOnMark: Int?
+  // The repository's Highlights and sidenotes on the file (CodeNotesTab.swift)
+  var annotations = CodeAnnotations()
+  var annotationsAsked = 0
+  /// Behind the highlighted lines, in the page under the code
+  let highlightView = CodeHighlights()
+  /// The popup of sidenotes open, and the lines it is on
+  var notePop: AnnotationPop?
+  var popLines: ClosedRange<Int>?
   /// The open code tabs' views, and what `locate` is waiting for a tab's view to show
   static var live: [ReadingTab.ID: Weak] = [:]
   static var pendingLocate: [ReadingTab.ID: (ClosedRange<Int>?, String?)] = [:]
@@ -123,6 +131,12 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
         },
         SelectionAction(icon: "square.stack", name: "On Boards", id: "ui-selectionplaces") {
           [weak self] in self?.showSelectionPlaces()
+        },
+        SelectionAction(icon: "highlighter", name: "Highlight", id: "ui-selectionhighlight") {
+          [weak self] in self?.highlightSelection()
+        },
+        SelectionAction(icon: "text.bubble", name: "Sidenote S", id: "ui-selectionsidenote") {
+          [weak self] in self?.sidenoteSelection()
         },
       ], look: context.bar)
     selectionBar.isHidden = true
@@ -201,6 +215,7 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
       took(t)
       page.addSubview(v, positioned: .below, relativeTo: nil)
       page.addSubview(flashView, positioned: .below, relativeTo: v)
+      page.addSubview(highlightView, positioned: .below, relativeTo: flashView)
       needsLayout = true
       layoutSubtreeIfNeeded()
       if let line = pending { go(to: line) }
@@ -210,6 +225,7 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
       }
       placeChanged()
       readOnBoards()
+      readAnnotations()
     }
   }
 
@@ -289,9 +305,12 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
       if code != nil {
         code?.removeFromSuperview()
         flashView.removeFromSuperview()
+        highlightView.removeFromSuperview()
+        closeNotePop()
         code = nil
         text = nil
         onBoards = []
+        annotations = CodeAnnotations()
         marks.draw(here: [], other: [], look: context.bar)
         hideSelectionBar()
         closeList()
@@ -327,6 +346,7 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
     go(to: top)
     placeChanged()
     readOnBoards()
+    readAnnotations()
     if selection != nil { selectionSettled() }
   }
 
@@ -419,6 +439,7 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
     message.textColor = NSColor(cgColor: look.ink.copy(alpha: 0.55) ?? look.ink)
     code?.look = context.pane.codeLook
     drawMarks()
+    drawAnnotations()
     needsLayout = true
   }
 
@@ -430,6 +451,7 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
     placeChanged()
     if listing == .definitions || listing == .places { closeList() }
     placeFloats()
+    placeNotePop()
   }
 
   private func placeChanged() {
@@ -497,6 +519,10 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
   /// A press on the code: handed to the component's view to select (the keys go with it); ⌘ goes to the definition of
   /// the name pressed; a press on the selection may drag it out
   func pressed(_ e: NSEvent) {
+    if e.clickCount == 1, let line = noteLine(at: convert(e.locationInWindow, from: nil)) {
+      pressOnMark = line
+      return clickNote(line)
+    }
     pressOnMark = e.clickCount == 1 ? markedLine(at: convert(e.locationInWindow, from: nil)) : nil
     if let line = pressOnMark { return clickMark(line) }
     closeList()
@@ -540,6 +566,12 @@ final class CodeTabView: NSView, ReadingLookFollower, NSTextFieldDelegate, NSMen
       event.keyCode == 36 || event.keyCode == 76
     {
       return addKey()
+    }
+    // S: a sidenote on the selection, as on the board
+    if event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.capsLock).isEmpty,
+      event.charactersIgnoringModifiers?.lowercased() == "s", selectionPick != nil
+    {
+      return sidenoteSelection()
     }
     interpretKeyEvents([event])
   }

@@ -16,9 +16,12 @@ public enum LegacyImport {
   /// board already there (found by id, wherever it is now) comes in as a copy, under a new id, and so does a shared card
   /// whose file there has other content. `cameras`: where each old board (by its old id) was looked at, as `cameras(for:)`
   /// reads them; the report gives them by the id each board has in the vault, and they are kept in `store` for it (this
-  /// machine's state, never the vault)
+  /// machine's state, never the vault). `key`: a git source's repository key (`CodeNotes.key`): the Highlights and text
+  /// sidenotes on lines of code of a repository with one go into its file in `.codeboard/code/`, before the board is
+  /// written (FORMAT.md, Code annotations); without one they stay on the cards
   public static func run(
-    from source: URL, to destination: URL, cameras: [String: BoardCamera] = [:], store: CameraStore? = nil
+    from source: URL, to destination: URL, cameras: [String: BoardCamera] = [:], store: CameraStore? = nil,
+    key: @escaping @Sendable (CodeSource) -> String? = { _ in nil }
   ) throws -> ImportReport {
     try checkPlaces(source: source, destination: destination)
     let fm = FileManager.default
@@ -36,6 +39,7 @@ public enum LegacyImport {
     }
     var run = Run(source: source, vault: vault)
     run.oldCameras = cameras
+    run.key = key
     try run.sharedCards()
     // the library cards are written with the boards' copies known, as a copy's Markdown may refer to them
     try run.boards(inVault: inVault)
@@ -193,6 +197,7 @@ private struct Run {
   var shared: [String: SharedState] = [:]
   var oldCameras: [String: BoardCamera] = [:]
   var cameras: [BoardID: BoardCamera] = [:]
+  var key: @Sendable (CodeSource) -> String? = { _ in nil }
   /// The library cards upgraded to version 17, for the titles of references to them
   var sharedJSON: [String: NSDictionary] = [:]
 
@@ -513,7 +518,15 @@ private struct Run {
     let building = parent.appending(path: ".\(name).import-\(UUID().uuidString)")
     do {
       try makeFolder(building)
-      try place(try board.encoded(), at: building.appending(path: Vault.boardFileName))
+      // the repositories' files first: a board without its code's annotations is never there before they are
+      let (flat, notes) = CodeNotes.extract(board, key: key)
+      if !notes.isEmpty {
+        if let failing = LegacyImport.failing, failing(CodeFiles.folder(vault)) {
+          throw CocoaError(.fileWriteNoPermission)
+        }
+        try CodeFiles.add(notes, folder: CodeFiles.folder(vault))
+      }
+      try place(try flat.encoded(), at: building.appending(path: Vault.boardFileName))
       let (skips, _) = try copyImages(m, into: building.appending(path: Vault.imagesFolder))
       try rename(building, to: parent.appending(path: name))
       return skips

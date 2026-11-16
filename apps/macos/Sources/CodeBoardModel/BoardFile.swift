@@ -43,7 +43,7 @@ extension Board {
   public func encoded() throws -> Data { try canonicalJSON(deflated().board) }
 
   public init(decoding data: Data, file: URL) throws {
-    self = try strictDecode(Board.self, from: data, file: file, version: Board.version)
+    self = try strictDecode(Board.self, from: data, file: file, version: Board.version, upgrades: true)
     for c in cards + shelf.flatMap(\.cards) where c.isShared && c.content != .shared {
       throw VaultError.malformed(file, "card \(c.id.rawValue): a shared card's content is in its own file")
     }
@@ -159,6 +159,8 @@ extension Segment {
     if source != nil, url != nil { return "segment \(id.rawValue) has a source and a url" }
     if source != nil, languagePicked != nil { return "segment \(id.rawValue) has a source and a picked language" }
     if languagePicked == false { return "segment \(id.rawValue): a picked language is true or absent" }
+    if keep == false || keepOld == false { return "segment \(id.rawValue): keep and keepOld are true or absent" }
+    if source == nil, keep != nil || keepOld != nil { return "segment \(id.rawValue): keep and keepOld need a source" }
     return nil
   }
 }
@@ -180,7 +182,7 @@ extension SharedCard {
   public func encoded() throws -> Data { try canonicalJSON(self) }
 
   public init(decoding data: Data, file: URL) throws {
-    self = try strictDecode(SharedCard.self, from: data, file: file, version: SharedCard.version)
+    self = try strictDecode(SharedCard.self, from: data, file: file, version: SharedCard.version, upgrades: true)
     if let problem = problem() { throw VaultError.malformed(file, problem) }
   }
 }
@@ -208,6 +210,7 @@ extension CardContent {
   func problem() -> String? {
     switch body {
     case .code(let code):
+      if code.annotationsHidden == false { return "annotationsHidden is true or absent" }
       var ids = Set<SegmentID>()
       for s in code.segments {
         guard ids.insert(s.id).inserted else { return "segment \(s.id.rawValue) is there twice" }
@@ -290,9 +293,11 @@ package func canonicalJSON(_ value: some Encodable) throws -> Data {
   return Data(out + [UInt8(ascii: "\n")])
 }
 
-/// `format`: what the file's format is called in what is said of it ("format" for a board's: "not in format 2 …")
+/// `format`: what the file's format is called in what is said of it ("format" for a board's: "not in format 3 …").
+/// `upgrades`: the version before is read too (a board's and a shared card's 2: the same shape; what moves out of it,
+/// its code's annotations, is moved by the document that opens it, `CodeNotes.adopt`)
 package func strictDecode<T: Codable>(
-  _ type: T.Type, from data: Data, file: URL, version: Int, format: String = "format"
+  _ type: T.Type, from data: Data, file: URL, version: Int, format: String = "format", upgrades: Bool = false
 ) throws -> T {
   let raw: Any
   do {
@@ -304,7 +309,7 @@ package func strictDecode<T: Codable>(
   guard let v = object["version"] as? Int else { throw VaultError.malformed(file, "no format version") }
   guard v <= version else { throw VaultError.newerFormat(file, v, reads: version) }
   // a breaking change raises the version: an upgrade step from the version before goes here (FORMAT.md, Versions)
-  guard v == version else { throw VaultError.olderFormat(file, v) }
+  guard v == version || (upgrades && v == version - 1) else { throw VaultError.olderFormat(file, v) }
   let value: T
   do {
     value = try JSONDecoder().decode(T.self, from: data)
@@ -317,7 +322,11 @@ package func strictDecode<T: Codable>(
     let what = why == unknownKind ? "\(why): \(newerField(format, version))" : why
     throw VaultError.malformed(file, "\(pathText(context.codingPath)): \(what)")
   }
-  let again = try JSONSerialization.jsonObject(with: canonicalJSON(value))
+  var again = try JSONSerialization.jsonObject(with: canonicalJSON(value))
+  if v != version, var o = again as? [String: Any] {
+    o["version"] = v
+    again = o
+  }
   if let (path, what) = firstDifference(raw, again, at: "", newer: newerField(format, version)) {
     throw VaultError.malformed(file, "\(path.isEmpty ? "(root)" : path): \(what)")
   }

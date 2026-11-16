@@ -49,7 +49,7 @@ private func board(_ id: String, in package: URL) throws {
 @Test func boardsOfOtherVersionsAreListedAndRefusedWhenOpened() throws {
   let root = try scratch()
   var files: [URL] = []
-  for (name, version) in [("A", 1), ("B", 3)] {
+  for (name, version) in [("A", 1), ("B", 4)] {
     let package = root.appending(path: "\(name).board")
     try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
     let file = package.appending(path: Vault.boardFileName)
@@ -59,8 +59,8 @@ private func board(_ id: String, in package: URL) throws {
   let vault = Vault(root: root)
   #expect(try vault.tree().allBoards.map(\.title) == ["A", "B"])
   #expect(throws: VaultError.olderFormat(files[0], 1)) { try vault.board(at: "A.board") }
-  #expect(throws: VaultError.newerFormat(files[1], 3)) { try vault.board(at: "B.board") }
-  #expect(VaultError.newerFormat(files[1], 3).description.contains("Update CodeBoard"))
+  #expect(throws: VaultError.newerFormat(files[1], 4)) { try vault.board(at: "B.board") }
+  #expect(VaultError.newerFormat(files[1], 4).description.contains("Update CodeBoard"))
 }
 
 @Test func sharedCardIDsCannotLeaveTheirFolder() throws {

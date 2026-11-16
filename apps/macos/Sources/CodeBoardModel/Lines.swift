@@ -220,3 +220,21 @@ extension Board {
     cards[i].content = .own(k)
   }
 }
+
+extension Board {
+  /// Keep (core keepVersion): the segment stays on its version, its newer one not marked until the code changes again
+  public mutating func keepVersion(_ card: CardID, _ seg: SegmentID) {
+    updateSegments { c, s in if c == card, s.id == seg, s.source != nil { s.keep = true } }
+  }
+
+  /// Keep Old Version (core keepOldVersion): the card's segments whose code is not found stay as saved, not marked
+  /// lost again
+  public mutating func keepOldVersion(_ card: CardID, _ segs: Set<SegmentID>) {
+    updateSegments { c, s in if c == card, segs.contains(s.id), s.source != nil { s.keepOld = true } }
+  }
+
+  /// A kept version's code changed again: the segments are kept no more, their newer version marked
+  public mutating func unkeep(_ segs: Set<SegmentID>) {
+    updateSegments { _, s in if segs.contains(s.id) { s.keep = nil } }
+  }
+}

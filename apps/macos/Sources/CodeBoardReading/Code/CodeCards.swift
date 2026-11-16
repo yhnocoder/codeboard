@@ -28,6 +28,49 @@ import CodeBoardModel
   /// A card's place: on the board in front, brought into view and selected; else its board shown (in its tab when one
   /// has it) and the card brought into view there
   func go(to card: CodeOnBoard)
+  /// The repository's Highlights and sidenotes on the file as the tab shows it (`text`), at their lines there. Asked
+  /// again when `CodeReading.boardsChanged` is posted for the pane
+  func annotations(_ f: CodeFile, text: String) async -> CodeAnnotations
+  /// The pick's lines highlighted in the repository's file, with a sidenote on them when `note` is given (a question
+  /// when `ask`); false when the repository has no file for them (no key: a shallow clone without a remote)
+  func annotate(_ f: CodeFile, _ pick: CodePick, note: String?, ask: Bool) async -> Bool
+  /// One of the file's sidenotes changed; `nil` from `change`: deleted
+  func changeNote(_ f: CodeFile, _ id: SidenoteID, _ change: @escaping (TextNote) -> TextNote?) async
+  /// Highlights and sidenotes of the file gone from the repository's file
+  func remove(_ f: CodeFile, highlights: Set<String>, notes: Set<SidenoteID>) async
+}
+
+/// What a repository keeps on a file's lines, at their lines in the file as a tab shows it
+public struct CodeAnnotations: Equatable, Sendable {
+  public struct Mark: Equatable, Sendable {
+    public var id: String
+    public var lines: ClosedRange<Int>
+
+    public init(id: String, lines: ClosedRange<Int>) {
+      self.id = id
+      self.lines = lines
+    }
+  }
+
+  public struct Note: Equatable, Sendable {
+    public var id: SidenoteID
+    public var lines: ClosedRange<Int>
+    public var note: TextNote
+
+    public init(id: SidenoteID, lines: ClosedRange<Int>, note: TextNote) {
+      self.id = id
+      self.lines = lines
+      self.note = note
+    }
+  }
+
+  public var highlights: [Mark]
+  public var notes: [Note]
+
+  public init(highlights: [Mark] = [], notes: [Note] = []) {
+    self.highlights = highlights
+    self.notes = notes
+  }
 }
 
 /// Lines of the file as shown taken to the board, as the VS Code version takes them: a snippet with the function it is

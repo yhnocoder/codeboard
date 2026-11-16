@@ -187,3 +187,26 @@ public actor Repositories {
     try save()
   }
 }
+
+extension GitCache {
+  /// A repository's first commit as its key without a remote (FORMAT.md, Code annotations): `root:<hash>`, of the
+  /// lowest hash when it has several roots; nil in a shallow clone (its root is not there) or when git cannot say. A
+  /// machine's path is never in it
+  public func rootKey(_ root: String) async -> String? {
+    guard
+      case .exited(0, let shallow, _)? = try? await runner.run(
+        ["rev-parse", "--is-shallow-repository"], in: root, environment: ["LC_ALL": "C"]),
+      shallow.trimmingCharacters(in: .whitespacesAndNewlines) == "false",
+      case .exited(0, let out, _)? = try? await runner.run(
+        ["rev-list", "--max-parents=0", "HEAD"], in: root, environment: ["LC_ALL": "C"]),
+      let first = out.split(whereSeparator: \.isNewline).map(String.init).filter({ !$0.isEmpty }).min()
+    else { return nil }
+    return "root:\(first)"
+  }
+
+  /// The key a repository's code annotations are kept under: its remote's (`repositoryKey`), else its first commit's
+  public func annotationsKey(_ root: String, remote: String?) async -> String? {
+    if let remote { return repositoryKey(remote) }
+    return await rootKey(root)
+  }
+}

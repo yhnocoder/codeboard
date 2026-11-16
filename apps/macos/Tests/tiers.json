@@ -516,9 +516,10 @@
             "CodeBoardReading/Code",
             "CodeBoardShell/ShellCode.swift",
             "CodeBoardShell/ShellCodeCards.swift",
-            "CodeBoardShell/ShellCodeFiles.swift"
+            "CodeBoardShell/ShellCodeFiles.swift",
+            "CodeBoardShell/ShellCodeNotes.swift"
           ],
-          "tests": ["RepositoriesBlockTests", "ShellCodeTests", "ShellCodeFilesTests"]
+          "tests": ["RepositoriesBlockTests", "ShellCodeTests", "ShellCodeFilesTests", "ShellCodeNotesTests"]
         },
         "versions": {
           "sources": [

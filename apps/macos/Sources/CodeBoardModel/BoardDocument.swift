@@ -73,6 +73,11 @@ import Foundation
   private let vault: Vault?
   /// Each shared card file read or written, as its bytes were then (nil: it was not there)
   private var sharedData: [CardID: Data?] = [:]
+  /// Where the annotations of its sourced code are (the vault's); nil: they stay on its cards
+  private let code: CodeNotes?
+  private var stopCode: (() -> Void)?
+  /// The file holds what is the repositories' now (an older version's): it is written, without it, at the next save
+  private var rewrite = false
   private var saving: Task<Void, Never>?
   /// The document's own seat's selection and observers, kept while the document is open, whoever sits there
   private let mainPlace = Place()
@@ -81,8 +86,9 @@ import Foundation
   /// The other seats taken, as long as they are held
   private var others: [Held] = []
 
-  /// The document of the board in `file`, as read now, its shared cards read in from `vault`
-  public init(file: @escaping () -> URL?, vault: Vault? = nil) throws {
+  /// The document of the board in `file`, as read now, its shared cards read in from `vault`, its code's annotations
+  /// from `code` (what the file still has of them taken in there first: FORMAT.md, Versions)
+  public init(file: @escaping () -> URL?, vault: Vault? = nil, code: CodeNotes? = nil) throws {
     guard let url = file() else { throw CocoaError(.fileNoSuchFile) }
     let data: Data
     do {
@@ -92,14 +98,72 @@ import Foundation
     }
     self.vault = vault
     self.file = file
+    self.code = code
     var shared: [CardID: Data?] = [:]
-    let b = Self.inflate(try Board(decoding: data, file: url), vault, &shared)
+    var b = Self.inflate(try Board(decoding: data, file: url), vault, &shared)
     sharedData = shared
+    if let code {
+      rewrite = code.stripped(b) != b
+      code.adopt(b)
+      code.show(&b)
+      codeSpots = code.spotsShown(b)
+    }
     id = b.id
     board = b
     base = b
     baseData = data
+    stopCode = code?.observe { [weak self] in self?.codeChanged() }
+    if rewrite { scheduleSave() }
   }
+
+  isolated deinit { stopCode?() }
+
+  /// Its repositories' annotations changed (here, on another board, in a code tab): shown as they are now, on the board
+  /// and in what undo and the writing go back to, no undo step
+  private func codeChanged() {
+    guard let code, !settling else { return }
+    // segments whose repository's key became known: what they have is taken in first, never lost to what it has
+    let fresh = code.spotsShown(board).subtracting(codeSpots)
+    if !fresh.isEmpty {
+      settling = true
+      code.adopt(board, only: fresh)
+      settling = false
+    }
+    var b = board
+    code.show(&b)
+    codeSpots = code.spotsShown(b)
+    code.show(&base)
+    if var w = writing {
+      code.show(&w.before)
+      writing = w
+    }
+    guard b != board else { return }
+    board = b
+    history.keep(holdingOn: b)
+    keepSelections(on: b)
+    notify(.merge)
+  }
+
+  private var settling = false
+
+  /// What a change did to the code's annotations done to its repositories', `b` in step with them (`settle`: false,
+  /// only shown as they are)
+  private func settleCode(_ before: Board, _ b: inout Board, settle: Bool = true) {
+    guard let code else { return }
+    let same =
+      before.sidenotes == b.sidenotes && before.cards.map(\.content) == b.cards.map(\.content)
+      && before.cards.map(\.id) == b.cards.map(\.id) && before.shelf == b.shelf
+    guard !same || codeSeen != code.generation else { return }
+    settling = true
+    if settle { code.settle(before, &b) } else { code.show(&b) }
+    settling = false
+    codeSeen = code.generation
+    if settle { codeSpots = code.spotsShown(b) }
+  }
+
+  private var codeSeen = -1
+  /// The segments the board showed its repositories' annotations on, when it was last brought in step with them
+  private var codeSpots: Set<CodeSpot> = []
 
   /// `b` with its shared cards read in from the vault, noting each file's bytes in `read`
   private static func inflate(_ b: Board, _ vault: Vault?, _ read: inout [CardID: Data?]) -> Board {
@@ -137,17 +201,26 @@ import Foundation
       board.putShared(card)
       base.putShared(card)
       writing?.before.putShared(card)
+      code?.show(&board)
+      code?.show(&base)
+      if let code { codeSpots = code.spotsShown(board) }
+      if var w = writing {
+        code?.show(&w.before)
+        writing = w
+      }
       history.keep(holdingOn: board)
       changed = changed || board != before
     }
     return changed
   }
 
-  /// The change, and 同一块白板的共享卡 kept the same after it
-  private func apply(_ change: (inout Board) -> Void, to b: inout Board) {
+  /// The change, and 同一块白板的共享卡 kept the same after it, and what it did to the code's annotations done to its
+  /// repositories' (`settle`: false, for what the writing's step starts from: it is done once, on the board)
+  private func apply(_ change: (inout Board) -> Void, to b: inout Board, settle: Bool = true) {
     let before = b
     change(&b)
     b.syncTwins(since: before)
+    settleCode(before, &b, settle: settle)
   }
 
   /// Called after every change of the board or of the document's own seat's selection; returns what stops it
@@ -223,7 +296,7 @@ import Foundation
       // a card is being written in: the step is taken on the board without what is typed so far (its drafts), so that
       // undoing it never brings a draft back; the writing's own step starts from after it
       var nb = w.before
-      apply(change, to: &nb)
+      apply(change, to: &nb, settle: false)
       history.record(name, from: w.before, to: nb, selection: (before, now), epoch: derived)
       w.before = nb
       writing = w
@@ -244,7 +317,7 @@ import Foundation
     apply(change, to: &b)
     guard b != board else { return }
     if var w = writing {
-      apply(change, to: &w.before)
+      apply(change, to: &w.before, settle: false)
       writing = w
     }
     board = b
@@ -276,7 +349,7 @@ import Foundation
     derivedLog.append((derived, change))
     trimDerived()
     if var w = writing {
-      apply(change, to: &w.before)
+      apply(change, to: &w.before, settle: false)
       writing = w
     }
     var b = board
@@ -298,7 +371,7 @@ import Foundation
 
   /// The derived changes made since a step was recorded, run again on the board it put back
   private func replayDerived(after epoch: Int, on b: inout Board) {
-    for d in derivedLog where d.n > epoch { apply(d.change, to: &b) }
+    for d in derivedLog where d.n > epoch { apply(d.change, to: &b, settle: false) }
   }
 
   // MARK: Writing in a card
@@ -365,7 +438,11 @@ import Foundation
     var b = board
     apply(change, to: &b)
     let dropped = w.isNew && !keep
-    if dropped { b.delete([.card(w.id)]) }
+    if dropped {
+      let was = b
+      b.delete([.card(w.id)])
+      settleCode(was, &b)
+    }
     let now = (dropped ? w.selection : w.place.selection).filter { b.has($0) }
     let recorded = !dropped && b != w.before
     if recorded { history.record(name, from: w.before, to: b, selection: (w.selection, now)) }
@@ -403,6 +480,7 @@ import Foundation
     guard let sel = history.undo(&b) else { return Diag.event("undo", ["name": "nothing to undo"]) }
     Diag.event("undo", ["name": history.redoSteps.last?.name ?? ""])
     replayDerived(after: epoch, on: &b)
+    settleCode(board, &b)
     board = b
     place.selection = sel.filter { b.has($0) }
     keepSelections(on: b, but: place)
@@ -415,6 +493,7 @@ import Foundation
     guard let sel = history.redo(&b) else { return Diag.event("redo", ["name": "nothing to redo"]) }
     Diag.event("redo", ["name": history.undoSteps.last?.name ?? ""])
     replayDerived(after: epoch, on: &b)
+    settleCode(board, &b)
     board = b
     place.selection = sel.filter { b.has($0) }
     keepSelections(on: b, but: place)
@@ -430,7 +509,7 @@ import Foundation
 
   private func scheduleSave() {
     saving?.cancel()
-    guard isDirty else { return }
+    guard isDirty || rewrite else { return }
     saving = Task { [weak self] in
       try? await Task.sleep(for: BoardDocument.saveDelay)
       guard !Task.isCancelled else { return }
@@ -446,19 +525,22 @@ import Foundation
     guard let url = file() else { return }
     if let disk = try? Data(contentsOf: url), disk != baseData || problem != nil { take(disk, from: url) }
     if refreshShared() { notify(.merge) }
-    guard problem == nil, isDirty else { return }
+    guard problem == nil, isDirty || rewrite else { return }
     // never a file that cannot be read back: it stays unsaved, and says why
     if let p = board.problem() ?? board.twinProblem() {
       problem = "\(url.path): not saved, as it would not read back: \(p)"
       return
     }
     do {
-      let (flat, shared) = board.deflated()
+      // the repositories' files first: a board written without its code's annotations never is before they are there
+      try code?.flush()
+      let (flat, shared) = (code?.stripped(board) ?? board).deflated()
       for card in shared { try writeShared(card, package: url.deletingLastPathComponent()) }
       let data = try canonicalJSON(flat)
       if data != baseData { try data.write(to: url, options: .atomic) }
       base = board
       baseData = data
+      rewrite = false
     } catch {
       problem = "\(url.path): cannot be written: \(error.localizedDescription)"
     }
@@ -506,11 +588,18 @@ import Foundation
   }
 
   private func take(_ data: Data, from url: URL) {
-    let theirs: Board
+    var theirs: Board
     do {
       var read: [CardID: Data?] = [:]
       theirs = Self.inflate(try Board(decoding: data, file: url), vault, &read)
       sharedData.merge(read) { $1 }
+      if let code {
+        // a file of an older version, written meanwhile, brings its code's annotations
+        settling = true
+        code.adopt(theirs)
+        settling = false
+        code.show(&theirs)
+      }
     } catch {
       // never written over: it stays as the other writer left it until it can be read
       problem = String(describing: error)
@@ -519,6 +608,10 @@ import Foundation
     problem = nil
     var merged = Board.merge(base: base, mine: board, disk: theirs)
     merged.syncTwins(since: board)
+    if let code {
+      code.show(&merged)
+      codeSpots = code.spotsShown(merged)
+    }
     // what the writing's step will start from takes in the other writer's changes too, so undoing it leaves them
     if let w = writing { writing?.before = Board.merge(base: base, mine: w.before, disk: theirs) }
     base = theirs
