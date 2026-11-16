@@ -65,10 +65,12 @@ extension CanvasView {
     guard let s = pasteboard.string(forType: .string), !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     else { return false }
     let at = p
-    let doc = document
-    Task { [weak self, weak doc] in
+    // the board it was pasted on, though another be shown by the time it is read: the document, as the canvas gives its
+    // seat up then
+    weak let doc = document?.document
+    Task { [weak self] in
       let kind = (try? await self?.notes.paste(s)) ?? .note(s)
-      guard let self, document === doc else { return }
+      guard let self, document?.document === doc else { return }
       pasted(kind, at: at, exact: exact)
     }
     return true
