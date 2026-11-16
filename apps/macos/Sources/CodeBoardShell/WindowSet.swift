@@ -357,13 +357,18 @@ struct SavedWindow: Codable, Equatable {
 
   // MARK: Screens
 
-  /// A saved window where it goes for the screens there are now (ScreenPlaces.atLaunch); one saved with no frame in the
-  /// middle of the main screen
+  /// The first window at launch, as `saved` left it. One saved with no frame of its own (nothing saved, or saved
+  /// before there were several windows) takes the frame kept under `frameName` then, else the middle of the screen
+  @discardableResult func addFirst(_ shell: Shell, saved: SavedWindow?, frameName: String = "main") -> Entry {
+    let e = add(shell, frameName: saved?.frame == nil ? frameName : nil)
+    if let saved { place(e, saved) } else { moved(e) }
+    return e
+  }
+
+  /// A saved window where it goes for the screens there are now (ScreenPlaces.atLaunch); one saved with no frame stays
+  /// where it was made
   func place(_ e: Entry, _ saved: SavedWindow) {
-    guard let f = saved.frame else {
-      e.window.center()
-      return moved(e)
-    }
+    guard let f = saved.frame else { return moved(e) }
     let (frame, home) = ScreenPlaces.atLaunch(frame: f, screen: saved.display, home: saved.home, screens: screens())
     e.window.setFrame(frame, display: false)
     e.home = home

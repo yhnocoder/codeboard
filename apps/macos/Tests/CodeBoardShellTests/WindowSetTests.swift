@@ -144,6 +144,24 @@ import Testing
     #expect(WindowSet.saved(in: defaults).count == 2)
   }
 
+  /// What one window saved before there were several has no frame: its window takes the frame kept under its name
+  /// then (in the test process's own defaults here, under a name of its own), not the middle of the screen
+  @Test func whatOneWindowSavedBeforeOpensAtTheFrameKeptUnderItsName() throws {
+    let (set, first, _, vault) = try twoWindows()
+    defer { try? FileManager.default.removeItem(at: vault.root) }
+    let name = "WindowSetTests-\(UUID().uuidString)"
+    defer { UserDefaults.standard.removeObject(forKey: "NSWindow Frame \(name)") }
+    let kept = CGRect(x: 210, y: 130, width: 980, height: 690)
+    first.window.setFrame(kept, display: false)
+    first.window.saveFrame(usingName: name)
+    let old = SavedWindow(shell: try #require(first.shell.state))
+    let s = Shell(session: set.session)
+    s.vaultOpened(restoring: old.shell)
+    let e = set.addFirst(s, saved: old, frameName: name)
+    #expect(e.window.frame == kept && e.placed == ScreenPlace(screen: "S1", frame: kept))
+    #expect(e.window.frameAutosaveName.isEmpty)
+  }
+
   // MARK: Where things open
 
   /// The first window on A, the second on B, both drawn; every window counted on screen

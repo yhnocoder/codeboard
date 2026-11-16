@@ -110,10 +110,8 @@ import CodeBoardResources
       panes.summarySwitch = ai.summarySwitch
       panes.summaryWriter = keys.key() != nil ? ai.writer(keys: keys) : nil
     }
-    // where it was (the frame kept under "main" when nothing was saved with the windows yet)
-    let firstEntry = windows.add(first, frameName: savedWindows.isEmpty ? "main" : nil)
-    if let w = savedWindows.first { windows.place(firstEntry, w) }
-    let window = firstEntry.window
+    // where it was (the frame kept under "main" when the windows' state has none)
+    let window = windows.addFirst(first, saved: savedWindows.first).window
     if let driver {
       windows.present = { driver.opened(window: $0) }
       windows.focus = { $0.makeKey() }
