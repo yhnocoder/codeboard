@@ -365,12 +365,18 @@ final class WebAddressField: NSTextField {
 
   var isEditing: Bool { currentEditor() != nil }
 
+  /// The press that began the editing: the window makes a field it is pressed on first responder before handing it
+  /// the press, which would put the caret where it was pressed
+  private var pressedIn: NSEvent?
+
   override func mouseDown(with event: NSEvent) {
-    if isEditing { return super.mouseDown(with: event) }
+    defer { pressedIn = nil }
+    if isEditing, event !== pressedIn { return super.mouseDown(with: event) }
     window?.makeFirstResponder(self)
   }
 
   override func becomeFirstResponder() -> Bool {
+    pressedIn = NSApp.currentEvent.flatMap { $0.type == .leftMouseDown ? $0 : nil }
     onEdit?()
     alignment = .natural
     tint.isHidden = false
