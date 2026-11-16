@@ -65,7 +65,8 @@ import WebKit
 
   func tab(
     _ page: WebReading.Page, html: String?, saving: TestSaving = TestSaving(), scripts: Bool = true,
-    rules: [String] = [], changed: @escaping (String?, WebReading.Page) -> Void = { _, _ in }
+    rules: [String] = [], store: WKWebsiteDataStore = .nonPersistent(),
+    changed: @escaping (String?, WebReading.Page) -> Void = { _, _ in }
   ) async throws -> (WebPageView, NSWindow) {
     if let html {
       let file = data.appending(path: "\(Self.hash).html")
@@ -74,7 +75,7 @@ import WebKit
     }
     await saving.set(rules: rules, forHost: "127.0.0.1")
     let context = WebReading.Context(
-      dataDirectory: data, websiteData: .nonPersistent(), saving: saving, scripts: scripts ? self.scripts : nil,
+      dataDirectory: data, websiteData: store, saving: saving, scripts: scripts ? self.scripts : nil,
       changed: changed)
     let view = WebReading.makeView(page, context: context) as! WebPageView
     let window = NSWindow(
@@ -168,6 +169,30 @@ import WebKit
     defer { w2.close() }
     try await shown(bare, "Saved A")
     #expect(!bare.bar.extract.isEnabled && bare.bar.extract.toolTip?.contains("scripts") == true)
+  }
+
+  /// The bar comes and goes on a saved page as on any: the scroll script runs in the app's world with the page's
+  /// own scripts off; clearing the sites' data leaves a saved page as it is
+  @Test func theBarComesAndGoesOnASavedPage() async throws {
+    let store = WKWebsiteDataStore.nonPersistent()
+    let long = "<!doctype html><title>Saved long</title><body style='margin:0'><div style='height:20000px'>long</div>"
+    let (v, w) = try await tab(saved, html: long, store: store)
+    defer { done(w) }
+    try await shown(v, "Saved long")
+    let page = v.web.frame
+    _ = try await js(v, "scrollTo(0, 400)")
+    try await until("the first offset heard") { v.visibility.offset == 400 }
+    _ = try await js(v, "scrollTo(0, 3000)")
+    try await until("the bar hidden") { !v.visibility.shown }
+    _ = try await js(v, "scrollTo(0, 2900)")
+    try await until("the bar shown") { v.visibility.shown }
+    _ = try await js(v, "scrollTo(0, 5000)")
+    try await until("the bar hidden again") { !v.visibility.shown }
+    _ = try await js(v, "scrollTo(0, 0)")
+    try await until("the bar shown at the top") { v.visibility.shown }
+    #expect(v.web.frame == page)
+    await WebReading.clearAll(in: store)
+    #expect(!v.web.isLoading && v.page == saved, "not loaded again")
   }
 
   /// A saved page whose file is not on this Mac says so in the tab, which keeps the saved title

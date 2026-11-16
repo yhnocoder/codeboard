@@ -223,11 +223,12 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     if case .saved = page { true } else { false }
   }
 
-  /// The site's data is gone: its page again by address, not `reload()`, which would send a form's answer again
+  /// The site's data is gone: its page again by address, not `reload()`, which would send a form's answer again. A
+  /// saved page has no site data to lose
   private func siteDataCleared(_ domain: String?) {
-    guard let url = web.url, let host = url.host(), domain.map({ WebReading.host(host, isOf: $0) }) ?? true else {
-      return
-    }
+    guard let url = web.url, ["http", "https"].contains(url.scheme), let host = url.host(),
+      domain.map({ WebReading.host(host, isOf: $0) }) ?? true
+    else { return }
     load(url)
   }
 
