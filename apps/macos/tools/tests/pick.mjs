@@ -7,6 +7,8 @@
 // change reached it only through a "heavy" module, whose rebuild already takes the job's time), and a "changed":
 // "files" target runs each of its areas whose sources name a changed file (none for a file in its "broad"), unless
 // more than "maxAreas" of them did. A changed test file runs the suites it declares, and a "whole" target whole.
+// On a PR (--base) the description's lines "Mac tests: Name, Name" (PR_BODY, from the workflow) add tests, each named as
+// tiers.json names them and found in exactly one test target; a name that is not found fails the run. --all ignores them.
 // --dry prints the selection and runs nothing. Otherwise it prints the same (and adds it to $GITHUB_STEP_SUMMARY) and
 // runs swift test --skip-build in apps/macos with it, after swift build --build-tests. Either way it first checks
 // tiers.json against Package.swift and the sources: every target and test it names must be there, once, and every
@@ -15,6 +17,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { namesIn, shown } from "../ci/description.mjs";
 
 const app = path.resolve(import.meta.dirname, "../..");
 const testsDir = path.join(app, "Tests");
@@ -157,12 +160,14 @@ const sourceFiles = (dir) =>
 const under = (file, dir) => file === dir || file.startsWith(`${dir}/`);
 
 // What a test entry names: a suite (with the suites nested in it) or one test, by its suite path and function
-function resolve(t, entry) {
+function lookup(t, entry) {
   const asSuite = t.suites.has(entry) ? [{ suite: entry }] : [];
   const cut = entry.lastIndexOf("/");
   const [suite, fn] = cut < 0 ? ["", entry] : [entry.slice(0, cut), entry.slice(cut + 1)];
-  const asTest = t.tests.filter((x) => x.suite === suite && x.name === fn);
-  const found = [...asSuite, ...asTest];
+  return [...asSuite, ...t.tests.filter((x) => x.suite === suite && x.name === fn)];
+}
+function resolve(t, entry) {
+  const found = lookup(t, entry);
   if (found.length === 0) problems.push(`${t.name}: ${entry} is neither a suite nor a test there`);
   if (found.length > 1) problems.push(`${t.name}: ${entry} names ${found.length} things there (a suite or overloads)`);
   return found[0];
@@ -219,6 +224,30 @@ for (const t of targets.filter((x) => x.tier.changed === "files"))
       problems.push(`${t.name}: ${file} is in no area and not in "broad"; add it to the area its tests are in`);
   }
 if (problems.length) fail(`Tests/tiers.json does not match the sources:\n  ${problems.join("\n  ")}`);
+
+// The description is anyone's text: a name is looked up only when it has the shape of one, and one refused is shown
+// quoted, so that it cannot write a line of its own into the log
+const asked = new Map();
+if (base) {
+  const refused = [];
+  for (const entry of new Set(namesIn(process.env.PR_BODY, "Mac tests"))) {
+    const found = /^[A-Za-z_]\w*(?:\/[A-Za-z_]\w*)*$/.test(entry)
+      ? targets.flatMap((t) => lookup(t, entry).map((r) => ({ t, r })))
+      : [];
+    if (found.length === 1) asked.set(found[0].t, [...(asked.get(found[0].t) ?? []), { entry, r: found[0].r }]);
+    else if (found.length === 0) refused.push(`${shown(entry)} is neither a suite nor a test in any test target`);
+    else {
+      const where = [...new Set(found.map((f) => f.t.name))];
+      refused.push(
+        where.length > 1
+          ? `${shown(entry)} is in ${where.length} test targets (${where.join(", ")})`
+          : `${shown(entry)} names ${found.length} things in ${where[0]} (a suite and a test, or overloads)`,
+      );
+    }
+  }
+  if (refused.length)
+    fail(`the description's Mac tests: lines name what pick.mjs cannot run:\n  ${refused.join("\n  ")}`);
+}
 
 // Swift Testing matches a filter against a test's ID: the module, then the suites and the function with its argument
 // labels, written Module.Suite/function(label:) (either separator is accepted). An ID can end in its source location,
@@ -279,7 +308,9 @@ for (const t of targets) {
     why.push(
       ...onlyHeavy.map((m) => `depends on ${m}: ${listed(hits.filter((c) => c.module === m).map((c) => c.file))}`),
     );
+  const named = asked.get(t) ?? [];
   if (t.tier.important === "whole" || (t.tier.changed === "whole" && why.length)) {
+    if (named.length) why.push(`named in the description, run with the rest: ${named.map((n) => n.entry).join(", ")}`);
     lines.push(`${t.name}: all ${t.tests.length} tests (${why.join("; ") || "important"})`);
     filters.push(wholeFilter(t.name));
     filtered += t.tests.length;
@@ -331,6 +362,11 @@ for (const t of targets) {
     }
     if (fromFiles.length) reasons.push(`from changed test files: ${fromFiles.join("; ")}`);
   } else reasons.push(...heavyWhy);
+  if (named.length) {
+    named.forEach((n) => add(n.r));
+    const count = new Set(named.flatMap((n) => matching(n.r))).size;
+    reasons.push(`named in the description (${count} tests): ${named.map((n) => n.entry).join(", ")}`);
+  }
   const count = new Set([...picked.values()].flat()).size;
   lines.push(`${t.name}: ${count} of ${t.tests.length} tests`, ...reasons.map((r) => `  ${r}`));
   filters.push(...picked.keys());
