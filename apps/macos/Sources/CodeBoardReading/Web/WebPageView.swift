@@ -144,6 +144,7 @@ final class WebPageView: NSView, NSTextFieldDelegate, WKNavigationDelegate, WKUI
     let b = barFrame(shown: true)
     suggestions.frame = CGRect(
       x: b.minX, y: b.minY - 6 - suggestions.height, width: b.width, height: suggestions.height)
+    suggestions.textX = WebBar.addressX(bar.look)
   }
 
   /// The board toolbar's height and distance from the bottom, so that beside the board the two bars' edges are on one

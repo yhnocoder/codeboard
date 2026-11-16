@@ -67,6 +67,101 @@ import WebKit
     #expect([v.bar.back, v.bar.forward, v.bar.save].allSatisfy { $0.toolTip?.isEmpty == false })
   }
 
+  /// The bar's groups are the toolbar's flat buttons, not stock controls: each a radio group whose chosen one has the
+  /// toolbar's pill under an icon in the accent, off ones dimmed with why on each; the board toolbar's hairline between
+  /// the groups at the right; a narrow pane drops the translation first, then body or full page, and their separators
+  @Test func theBarsGroupsAreTheToolbarsFlatButtons() throws {
+    let (v, tabs) = try tab("/long")
+    defer { tabs.close() }
+    let look = tabs.pane.barLook
+    let bar = v.bar
+    #expect(
+      ([bar.back, bar.forward, bar.save] + bar.extract.buttons + bar.translate.buttons).allSatisfy {
+        !$0.isBordered && $0.frame.size == look.button && $0.symbolConfiguration == bar.back.symbolConfiguration
+      })
+    for c in [bar.extract, bar.translate] {
+      #expect(c.accessibilityRole() == .radioGroup && c.frame.height == look.button.height && !c.isHidden)
+      #expect(c.buttons.allSatisfy { $0.accessibilityRole() == .radioButton && !$0.isEnabled })
+      #expect(c.buttons[0].chosen && c.buttons.dropFirst().allSatisfy { !$0.chosen })
+      #expect(
+        c.buttons[0].contentTintColor?.cgColor == look.accent && c.buttons[1].contentTintColor?.cgColor == look.ink)
+      #expect(c.buttons[0].layer?.backgroundColor != nil && c.buttons[1].layer?.backgroundColor == nil)
+    }
+    #expect(
+      bar.extract.accessibilityValue() as? String == "Body"
+        && bar.extract.buttons[0].accessibilityValue() as? Bool == true)
+    #expect(bar.extract.buttons.allSatisfy { $0.toolTip == bar.extract.toolTip && $0.toolTip?.isEmpty == false })
+    let seps = bar.separators.filter { !$0.isHidden }
+    #expect(seps.count == 2 && seps.allSatisfy { $0.frame.size == CGSize(width: 0.5, height: 16) })
+    #expect(seps.allSatisfy { $0.layer?.backgroundColor == look.ring })
+    let xs =
+      [bar.extract.frame.maxX, seps[1].frame.midX, bar.translate.frame.minX, bar.translate.frame.maxX]
+      + [seps[0].frame.midX, bar.save.frame.minX]
+    #expect(xs == xs.sorted(), "body | translation | save")
+    #expect(bar.address.frame.minX == WebBar.addressX(look) && bar.address.frame.maxX < bar.extract.frame.minX)
+
+    tabs.window.setContentSize(CGSize(width: 360, height: 500))
+    tabs.window.layoutIfNeeded()
+    #expect(bar.translate.isHidden && !bar.extract.isHidden && bar.separators.filter { !$0.isHidden }.count == 1)
+    #expect(bar.address.frame.width >= WebBar.addressMinWidth)
+    tabs.window.setContentSize(CGSize(width: 280, height: 500))
+    tabs.window.layoutIfNeeded()
+    #expect(bar.translate.isHidden && bar.extract.isHidden && bar.separators.allSatisfy(\.isHidden))
+    #expect(bar.address.frame.width >= WebBar.addressMinWidth && bar.address.frame.maxX < bar.save.frame.minX)
+  }
+
+  /// A press on another of a group chooses it, moves the mark and sends the action; on the chosen one nothing
+  @Test func aGroupChoosesWhatIsPressed() {
+    final class Heard: NSObject {
+      var times = 0
+      @objc func chosen(_ sender: Any?) { times += 1 }
+    }
+    let c = WebChoice([("doc.plaintext", "Body"), ("doc.richtext", "Full Page")], "ui-test")
+    let heard = Heard()
+    c.target = heard
+    c.action = #selector(Heard.chosen(_:))
+    c.buttons[0].performClick(nil)
+    #expect(heard.times == 0 && c.selectedSegment == 0)
+    c.buttons[1].performClick(nil)
+    #expect(heard.times == 1 && c.selectedSegment == 1 && c.accessibilityValue() as? String == "Full Page")
+    #expect(c.buttons[1].chosen && !c.buttons[0].chosen && c.buttons[0].accessibilityValue() as? Bool == false)
+    #expect(c.buttons.map { $0.accessibilityIdentifier() } == ["ui-test0", "ui-test1"])
+  }
+
+  /// A suggestion is one line: the title in the ink, then the address without its scheme but with its path, lighter;
+  /// the text starts under the address's in the bar; the row under the pointer or chosen by the arrows is lit
+  @Test func suggestionsLineUpWithTheAddressAndTellPagesOfASiteApart() throws {
+    let look = ReadingBarLook.warmInk(dark: false)
+    let s = WebSuggestions(look: look)
+    s.frame = CGRect(x: 0, y: 0, width: 420, height: 100)
+    let now = Date()
+    s.show([
+      WebHistory.Entry(url: url("/a/b?c=1"), title: "Page", lastVisit: now, count: 1),
+      WebHistory.Entry(url: url("/z"), title: "Page", lastVisit: now, count: 1),
+      WebHistory.Entry(url: url("/"), title: "", lastVisit: now, count: 1),
+    ])
+    s.frame.size.height = s.height
+    s.layoutSubtreeIfNeeded()
+    #expect(s.height == 3 * look.button.height + 8)
+    #expect(
+      s.rows.map(\.addressLabel.stringValue) == ["127.0.0.1:\(server.port)/a/b?c=1", "127.0.0.1:\(server.port)/z", ""])
+    #expect(s.rows[2].titleLabel.stringValue == "127.0.0.1:\(server.port)", "no title: the address in its place")
+    for r in s.rows {
+      #expect(r.convert(r.titleLabel.frame, to: s).minX == WebBar.addressX(look))
+      #expect(r.titleLabel.textColor?.cgColor == look.ink && r.titleLabel.maximumNumberOfLines == 1)
+      #expect(r.addressLabel.lineBreakMode == .byTruncatingMiddle && r.addressLabel.textColor?.cgColor != look.ink)
+      #expect(r.layer?.backgroundColor == nil)
+    }
+    #expect(s.rows[0].addressLabel.frame.minX > s.rows[0].titleLabel.frame.maxX)
+    _ = s.move(by: 1)
+    #expect(s.rows[0].chosen && s.rows[0].layer?.backgroundColor != nil && s.rows[1].layer?.backgroundColor == nil)
+    let enter = NSEvent.enterExitEvent(
+      with: .mouseEntered, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
+      eventNumber: 0, trackingNumber: 0, userData: nil)
+    s.rows[1].mouseEntered(with: try #require(enter))
+    #expect(s.rows[1].layer?.backgroundColor != nil)
+  }
+
   /// Another theme or appearance reaches an open tab's bar and suggestions: Ink Wash's taller, square bar, dark
   @Test func anOpenTabsBarTakesTheBoardsNewLook() throws {
     let (v, tabs) = try tab("/long")
@@ -158,11 +253,13 @@ import WebKit
     let w = tabs.window
     let field = v.bar.address
     #expect(field.isEditing && v.visibility.shown)
+    #expect(!field.isBezeled && !field.isBordered && !field.drawsBackground, "plain text on the bar")
+    #expect(!field.tint.isHidden && field.tint.frame.height == tabs.pane.barLook.button.height)
     var editor = try #require(field.currentEditor() as? NSTextView)
     editor.insertText("127.0.0.1:\(server.port)/a", replacementRange: editor.selectedRange())
     editor.doCommand(by: #selector(NSResponder.insertNewline(_:)))
     try await until("page A") { v.web.title == "Page A" && !v.web.isLoading }
-    #expect(!field.isEditing && field.stringValue == "127.0.0.1")
+    #expect(!field.isEditing && field.stringValue == "127.0.0.1" && field.tint.isHidden)
     _ = try await js(v, "document.getElementById('next').click(); 0")
     try await until("page B") { v.web.title == "Page B" && !v.web.isLoading }
 
