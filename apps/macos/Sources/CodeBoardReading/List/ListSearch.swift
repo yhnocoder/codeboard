@@ -5,8 +5,9 @@ import PDFKit
 
 // ⌘K's Resources group: the vault's entries found by their title and authors, or by their text. The text is what the
 // app already reads: a version's block list (its blocks' TeX as Markdown), a plain PDF's pages as PDFKit gives them,
-// a saved page's translation file. A saved page's own text is not searched: nothing reads its blocks file yet. Every
-// word typed must be in the title and authors, or in one passage (a block, a page, a translated block); an entry found
+// a saved page's blocks file (the newest saved page's, which the list opens; one never opened has none) and its
+// translation files. Every word typed must be in the title and authors, or in one passage (a block, a page, a page's
+// block, a translated block: at the page's block it translates); an entry found
 // in several passages is listed once, at the passage whose best sentence scores highest (BoardSearch.fuzzy, word by
 // word), with how many matched.
 
@@ -114,6 +115,7 @@ public actor ResourceTexts {
     let text = p.text as NSString
     let sentence = text.substring(with: r)
     let place = Place(version: p.version, block: p.block, range: p.markdown == nil ? r.lowerBound..<r.upperBound : nil)
+    let label = p.label.isEmpty ? nil : Self.short(p.label)
     let anchor = SourceAnchor(entry: f.entry.id, place: place)
     // a page: what is around the sentence; a block: itself
     let around = NSRange(
@@ -122,12 +124,12 @@ public actor ResourceTexts {
     return (
       s,
       ResourceHit(
-        entry: f.entry.id, title: f.entry.title, context: Self.near(sentence, words), label: p.label, count: count,
+        entry: f.entry.id, title: f.entry.title, context: Self.near(sentence, words), label: label, count: count,
         anchor: anchor,
         collect: Collected(
           body: .note(markdown: p.markdown ?? sentence.trimmingCharacters(in: .whitespacesAndNewlines)),
           source: anchor, title: f.entry.title, label: p.label),
-        preview: preview, where: "\(f.entry.title) › \(p.label)")
+        preview: preview, where: label.map { "\(f.entry.title) › \($0)" } ?? f.entry.title)
     )
   }
 
@@ -153,6 +155,12 @@ public actor ResourceTexts {
     return "…" + ns.substring(from: at - 30)
   }
 
+  /// A label on one line, cut after 40 characters
+  static func short(_ s: String) -> String {
+    let line = s.replacing(/\s+/, with: " ")
+    return line.count > 40 ? line.prefix(39) + "…" : line
+  }
+
   /// The resource an entry's folder is in, by its title
   static func resource(_ path: String) -> String {
     let parts = path.split(separator: "/")
@@ -166,28 +174,39 @@ public actor ResourceTexts {
     switch v.content {
     case .pdf(let file, let blocks, let source): [file] + [blocks, source].compactMap { $0 }
     case .translation(let file): [file]
-    case .page, .file: []
+    case .page(_, _, let blocks): blocks.map { [$0] } ?? []
+    case .file: []
     }
+  }
+
+  /// The versions of `e` whose text is searched: every one but the saved pages, of which only the newest, the one the
+  /// list opens
+  static func searched(_ e: Entry) -> [Version] {
+    let pages = e.versions.filter { if case .page = $0.content { true } else { false } }
+    let newest = pages.max { $0.added < $1.added }?.id
+    return e.versions.filter { v in if case .page = v.content { v.id == newest } else { true } }
   }
 
   /// `f`'s passages, read again only when one of the files they come from changed
   func passages(_ f: EntryIndex.Found, vault: Vault) -> [Passage] {
     let folder = vault.url(of: f.path)
     let stamp = Dictionary(
-      f.entry.versions.flatMap(Self.files).map { name in
+      Self.searched(f.entry).flatMap(Self.files).map { name in
         let url = folder.appending(path: name)
         let date = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
         return (url.path, date ?? .distantPast)
       }, uniquingKeysWith: { a, _ in a })
     if let k = kept[f.entry.id], k.stamp == stamp { return k.passages }
-    let out = f.entry.versions.flatMap { Self.read($0, of: f, vault: vault, folder: folder) }
+    let out = Self.searched(f.entry).flatMap { Self.read($0, of: f, vault: vault, folder: folder) }
     kept[f.entry.id] = (stamp, out)
     return out
   }
 
   static func read(_ v: Version, of f: EntryIndex.Found, vault: Vault, folder: URL) -> [Passage] {
-    func passage(_ block: Place.Block, _ label: String, _ text: String, md: String?) -> Passage {
-      Passage(version: v.id, block: block, label: label, text: text, low: text.lowercased(), markdown: md)
+    func passage(_ block: Place.Block, _ label: String, _ text: String, md: String?, in version: VersionID? = nil)
+      -> Passage
+    {
+      Passage(version: version ?? v.id, block: block, label: label, text: text, low: text.lowercased(), markdown: md)
     }
     switch v.content {
     case .pdf(let file, _, _):
@@ -208,8 +227,17 @@ public actor ResourceTexts {
       guard let of = v.of, let lang = v.language,
         let t = try? vault.translations(of: of, language: lang, in: f.path)
       else { return [] }
+      // at the page's block it translates: the reader's ids are the page's
       return t.blocks.sorted { $0.key < $1.key }.map { id, b in
-        passage(.id(id), v.label ?? lang, b.text, md: b.text)
+        passage(.id(id), v.label ?? lang, b.text, md: b.text, in: of)
+      }
+    case .page(_, _, let name?):
+      // each block under the nearest heading at or before it, as a web card's source line
+      guard let blocks = try? vault.pageBlocks(name, in: f.path) else { return [] }
+      var heading = ""
+      return blocks.compactMap { b in
+        if b.kind == "heading" { heading = b.text }
+        return b.text.isEmpty ? nil : passage(.id(b.id), heading, b.text, md: b.text)
       }
     case .page, .file: return []
     }
@@ -217,9 +245,15 @@ public actor ResourceTexts {
 }
 
 extension ReadingPane {
-  /// A search result opened: a place of a PDF version shown as a card's source is, anything else its entry opened
+  /// A search result opened: a place of a PDF version or of a saved page shown as a card's source is, anything else
+  /// its entry opened
   public func open(found a: SourceAnchor) {
     if let p = a.place, let tab = openPDF(.entry(a.entry, version: p.version)) { return PDFTabView.reveal(p, in: tab) }
+    if let p = a.place, case .page? = entries[a.entry]?.entry.versions.first(where: { $0.id == p.version })?.content,
+      WebReading.reveal(a, in: self)
+    {
+      return
+    }
     openEntry(a.entry)
   }
 }

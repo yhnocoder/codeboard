@@ -85,4 +85,43 @@ import Testing
     #expect(await texts.search("mills", in: all, vault: vault, only: here).isEmpty)
     #expect(await texts.search("estuary", in: all, vault: vault, only: here).map(\.entry) == [estuary])
   }
+
+  /// A saved page's blocks searched once the page has them, each a passage under its heading, found at its block; its
+  /// translation's blocks at the page's blocks they translate
+  @Test func aSavedPagesBlocksAndItsTranslationAreFoundAtTheirBlock() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(path: "listsearch-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let vault = Vault(root: root)
+    let r = try vault.newResource(in: "", title: "Web", preset: .web)
+    let path = try vault.save(
+      SavedItem(
+        id: "p1", kind: .page, url: "https://example.org/mills", title: "Mill notes", savedAt: 1_000,
+        pageHash: String(repeating: "1", count: 64), bytes: 100),
+      in: r.path)
+    let v1 = VersionID(rawValue: "v1")
+    let texts = ResourceTexts()
+    func all() throws -> [EntryIndex.Found] { EntryIndex(vault, try vault.tree()).all }
+
+    // never opened: no blocks, its title only
+    #expect(try await texts.search("sluice", in: all(), vault: vault).isEmpty)
+    #expect(try await texts.search("mill notes", in: all(), vault: vault).first?.count == 0)
+
+    try vault.writePageBlocks(
+      [
+        PageBlock(id: "1.b1", kind: "heading", level: 2, hash: "h1", text: "Gates"),
+        PageBlock(id: "1.b2", kind: "paragraph", hash: "h2", text: "The pond filled. Then the sluice opened."),
+      ], of: v1, in: path)
+    let h = try #require(try await texts.search("sluice", in: all(), vault: vault).first)
+    #expect(h.anchor.place == Place(version: v1, block: .id("1.b2")))
+    #expect(h.context == "Then the sluice opened." && h.label == "Gates" && h.where == "Mill notes › Gates")
+    #expect(h.collect?.body == .note(markdown: "The pond filled. Then the sluice opened."))
+    #expect(h.collect?.source == h.anchor && h.collect?.label == "Gates" && h.collect?.title == "Mill notes")
+
+    try vault.write(
+      PageTranslations(scheme: 1, blocks: ["1.b2": .init(hash: "h2", text: "Die Schleuse öffnete sich.")]), of: v1,
+      language: "de", in: path)
+    let t = try #require(try await texts.search("schleuse", in: all(), vault: vault).first)
+    #expect(t.anchor.place == Place(version: v1, block: .id("1.b2")))
+  }
 }
