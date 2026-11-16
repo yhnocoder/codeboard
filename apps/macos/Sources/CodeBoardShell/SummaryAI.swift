@@ -1,3 +1,4 @@
+import CodeBoardCanvas
 import CodeBoardModel
 import Foundation
 import Security
@@ -144,6 +145,7 @@ struct AISettings {
   static let baseURLKey = "ai.baseURL"
   static let modelKey = "ai.model"
   static let tongtuKey = "tongtu.path"
+  static let welcomeKey = "questions.welcomeBack"
   let defaults: UserDefaults
 
   var summarySwitch: SummarySwitch {
@@ -165,6 +167,13 @@ struct AISettings {
   var tongtuPath: String {
     get { defaults.string(forKey: Self.tongtuKey) ?? "" }
     nonmutating set { defaults.set(newValue, forKey: Self.tongtuKey) }
+  }
+
+  /// When reopening a board, whether a hint says how many of its questions are still open (not an AI setting, kept
+  /// with them in the app's defaults)
+  var welcomeBack: WelcomeBack {
+    get { defaults.string(forKey: Self.welcomeKey).flatMap(WelcomeBack.init) ?? .default }
+    nonmutating set { defaults.set(newValue.rawValue, forKey: Self.welcomeKey) }
   }
 
   /// The writer these settings and `keys` describe
