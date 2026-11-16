@@ -214,6 +214,28 @@ private let seg = SegmentID(rawValue: "s1")
     #expect(opened == [URL(string: "https://site.test/post")!])
   }
 
+  /// The header strip is drawn again when what it shows changes, which its key tells: the header, never a code card's
+  /// lines, which took 50 ms to describe on a 400-line card each time a card started to be written
+  @Test func aCodeCardsHeaderStripIsKeyedWithoutItsLines() async throws {
+    let lines = (1...400).map { "x\($0) = run(batch.ids[\($0)])" }
+    let long = Segment(id: seg, source: nil, language: "python", firstLine: 1, lines: lines)
+    let board = Board(
+      id: BoardID(rawValue: "long"),
+      cards: [
+        Card(id: cid("l"), x: 0, y: 0, width: 420, content: .own(CardContent(body: .code(CodeCard(segments: [long])))))
+      ])
+    let r = try await Rig(board, zoom: 1)
+    defer { r.close() }
+    let h = try #require(r.canvas.head(cid("l")))
+    #expect(String(describing: h.drawing).count > 20_000)
+    #expect(String(describing: h.header).count < 2_000)
+    guard case .code(let c) = h.header else {
+      Issue.record("not a code card's header")
+      return
+    }
+    #expect(c.layout.rows.isEmpty && c.layout.segmentLines.isEmpty)
+  }
+
   @Test func doubleClickingTheGripFitsTheCard() async throws {
     let r = try await Rig(Self.board(), zoom: 1)
     defer { r.close() }

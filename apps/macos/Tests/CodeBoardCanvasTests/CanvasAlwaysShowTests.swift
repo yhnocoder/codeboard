@@ -3,6 +3,8 @@ import CodeBoardModel
 import CodeBoardNotes
 import Testing
 
+import struct CodeCore.CodeSelection
+
 @testable import CodeBoardCanvas
 
 // An Always Show sidenote in its code card (CodeBody .inotes, highlights.ts useHighlights): drawn by the Note renderer
@@ -101,7 +103,7 @@ private func alwaysBoard(
     #expect(a.frame.minX == l.gutter + first.x && a.frame.minY == top + first.y)
     #expect(a.frame.width == l.inlineWidth(card: 420, x: first.x, metrics: m))
     let snap = try #require(
-      await CanvasView.picture(item, scale: 2, theme: c.theme, notes: c.notes, priority: 1), "drawn")
+      await CanvasView.picture(item, scale: 2, theme: c.theme, display: c.display, priority: 1), "drawn")
     #expect(ink(snap.surface, in: a.frame, scale: 2) > 20, "the note's text is there")
     #expect(ink(snap.surface, in: CGRect(x: 0, y: top, width: a.frame.minX - 2, height: a.frame.height), scale: 2) == 0)
   }
@@ -153,6 +155,97 @@ private func alwaysBoard(
     #expect(abs((arrowLow() ?? 0) - low) < 1)
     r.doc.redo()
     await r.until("shorter again") { abs(r.rect("c1").height - (tall - one)) < 0.01 }
+  }
+
+  /// Written, Free code's Highlights, their Always Show sidenotes and the arrow ends on its lines follow the lines as
+  /// they move (LineAnchors, as writeFreeCode makes them follow); the editor's undo brings them back with the lines, and
+  /// an end whose line goes is at the header in the lost look (lines.ts moveLineRefs), as it is once written
+  @Test func whileFreeCodeIsWrittenWhatIsOnItsLinesFollowsThem() async throws {
+    let r = try await Rig(alwaysBoard(arrow: true), zoom: 1)
+    defer { r.close() }
+    await r.settle()
+    let c = r.canvas
+    let s = try #require(c.scene)
+    let i = try #require(s.arrowModels.firstIndex { $0.id == ArrowID(rawValue: "l") })
+    let (l, top) = try layout(r, "c1")
+    let card = r.rect("c1")
+    let drawn = try #require(s.arrows[i].pts.first?.y)
+    let heights = l.inline.map { $0.always.notes.reduce(0) { $0 + $1.height } }
+    let row10 = try #require(l.row(segment: 0, line: 10))
+    let p = CGPoint(x: card.maxX - 10, y: card.minY + top + row10.y + 10)
+    r.doubleClick(p)
+    await r.editorReady()
+    let v = try #require(c.editing?.codeView)
+    func endY() -> CGFloat? { c.routedArrows[i]?.pts.first?.y }
+    func line(_ n: Int) -> CGFloat? { v.frame(ofLines: n...n).map { card.minY + top + $0.first.midY } }
+    // as drawn: the bands, the room under them, the end on line 15
+    #expect(v.decorations.bands.map(\.lines) == [12...13, 14...14])
+    #expect(v.insertions == [.init(afterLine: 13, height: heights[0]), .init(afterLine: 14, height: heights[1])])
+    #expect(endY() == nil || endY() == drawn)
+    // a line written above them: everything one line down
+    r.press("\r")
+    v.insertText("x = 1", replacementRange: NSRange(location: NSNotFound, length: 0))
+    #expect(v.decorations.bands.map(\.lines) == [13...14, 15...15])
+    #expect(v.insertions.map(\.afterLine) == [14, 15])
+    #expect(endY() == line(16) && endY() == drawn + 20)
+    let room = v.layout.lines.rows.compactMap { if case .inserted = $0.kind { $0.y } else { nil } }
+    let layers = c.editing?.written?.layers ?? []
+    #expect(layers.count == 3 && layers.first?.frame.minY == room.first && layers.last?.frame.minY == room.last)
+    // undone in the editor: back where they were
+    while v.editor.text.contains("x = 1") { v.undo(nil) }
+    #expect(v.decorations.bands.map(\.lines) == [12...13, 14...14] && endY() == drawn)
+    // the end's line gone: at the header, lost
+    let ns = v.editor.text as NSString
+    let last = ns.range(of: "\n    return batch")
+    v.change { $0.select(CodeSelection(anchor: last.location, head: NSMaxRange(last))) }
+    v.perform(.deleteBackward)
+    #expect(endY() == card.minY + c.theme.headerHeight / 2 && c.routedArrows[i]?.color == c.theme.arrowLost)
+    r.press("\u{1b}")
+    await r.until("left") { !c.isEditing }
+    #expect(r.doc.board.arrows.first?.from.lost == true)
+  }
+}
+
+extension CanvasAlwaysShowTests {
+  /// While Free code is written, a Highlight's count in the line numbers stays level with the Highlight's first line as
+  /// lines are written above it, and goes with the Highlight's lines
+  @Test func whileFreeCodeIsWrittenItsHighlightCountsFollowTheirLines() async throws {
+    let r = try await Rig(alwaysBoard(), zoom: 1)
+    defer { r.close() }
+    await r.settle()
+    let c = r.canvas
+    let (l, top) = try layout(r, "c1")
+    let row10 = try #require(l.row(segment: 0, line: 10))
+    let card = r.rect("c1")
+    r.doubleClick(CGPoint(x: card.maxX - 10, y: card.minY + top + row10.y + 10))
+    await r.editorReady()
+    let v = try #require(c.editing?.codeView)
+    func counts() -> [ClosedRange<Int>: CALayer] {
+      Dictionary(
+        uniqueKeysWithValues: c.marks.indices.compactMap { i in
+          guard c.marks[i].owner == .card(cid("c1")), c.marks[i].gutter, case .lines(let ls) = c.marks[i].at else {
+            return nil
+          }
+          return (ls.range, c.markLayers[i])
+        })
+    }
+    func level(_ layer: CALayer?, _ line: Int) -> Bool {
+      guard let layer, let f = v.frame(ofLines: line...line), !layer.isHidden else { return false }
+      return abs(layer.frame.minY - (top + f.first.minY + 3.5)) < 0.01
+    }
+    #expect(counts().count == 2 && level(counts()[12...13], 12) && level(counts()[14...14], 14))
+    // a line written above them: each one line down, with its Highlight
+    r.press("\r")
+    v.insertText("x = 1", replacementRange: NSRange(location: NSNotFound, length: 0))
+    #expect(level(counts()[12...13], 13) && level(counts()[14...14], 15))
+    // the blank line's Highlight gone with its line: its count with it
+    let ns = v.editor.text as NSString
+    let blank = ns.range(of: "\n\n")
+    v.change { $0.select(CodeSelection(anchor: blank.location, head: blank.location + 1)) }
+    v.perform(.deleteBackward)
+    #expect(level(counts()[12...13], 13) && counts()[14...14]?.isHidden == true)
+    r.press("\u{1b}")
+    await r.until("left") { !c.isEditing }
   }
 }
 

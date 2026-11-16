@@ -2,6 +2,7 @@ import AppKit
 import CodeBoardModel
 import Foundation
 import ImageIO
+import TestGuard
 import Testing
 import UniformTypeIdentifiers
 

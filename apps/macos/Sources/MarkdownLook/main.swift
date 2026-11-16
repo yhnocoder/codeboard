@@ -1,17 +1,19 @@
-// Draws cards with the Markdown component (CodeBoardMarkdownUI, its looks in MarkdownLooks) into PNGs, for comparing with the
+import CodeBoardMarkdownLooks
+import CodeUI
+import CoreGraphics
+import Foundation
+import ImageIO
+// Draws cards with the Markdown component (MarkdownUI, its looks in MarkdownLooks) into PNGs, for comparing with the
 // web board (tools/markdown/look.mjs):
 //   swift run MarkdownLook <jobs.json> <out dir> <look> <dark 0|1> <scale>
 // jobs.json: [{name, text, style (as board.json writes it), width, height?, folder, refs}], refs as the web board's
 // resolver gives them ({label, target, hit: {title, seal?} or {broken: "place" | "item", title, badge}}). Each card is
-// drawn on the look's paper, as the canvas draws it under the content; its code coloured by CodeBoardSyntax, whose
+// drawn on the look's paper, as the canvas draws it under the content; its code coloured by TreeSitterHighlight, whose
 // tokens are written to tokens.json for the web side to colour the same code alike.
-import CodeBoardMarkdown
-import CodeBoardMarkdownUI
-import CodeBoardSyntax
-import CoreGraphics
-import Foundation
-import ImageIO
+import MarkdownCore
+import MarkdownUI
 import Synchronization
+import TreeSitterHighlight
 
 struct Job: Decodable {
   var name: String
@@ -36,6 +38,11 @@ struct Job: Decodable {
       var text: String
       var color: String
       var alone: Bool?
+      var outer: Outer?
+      struct Outer: Decodable {
+        var text: String
+        var color: String
+      }
     }
   }
 }
@@ -82,19 +89,24 @@ func hits(_ r: [Job.Ref]) -> [String: MarkdownRefHit] {
         .broken(place: broken == "place", title: h.title, badge: (h.badge ?? "").isEmpty ? nil : h.badge)
       } else {
         .found(
-          title: h.title, seal: h.seal.map { MarkdownSeal(text: $0.text, color: $0.color, alone: $0.alone ?? false) })
+          title: h.title,
+          seal: h.seal.map {
+            MarkdownSeal(
+              text: $0.text, color: $0.color, alone: $0.alone ?? false,
+              outer: $0.outer.map { MarkdownSeal.Outer(text: $0.text, color: $0.color) })
+          })
       }
   }
   return out
 }
 
 /// A card's resources: its folder's images (sizes read from their headers), the references as resolved, code coloured
-/// by CodeBoardSyntax, the engines
+/// by TreeSitterHighlight, the engines
 struct LookResources: MarkdownResources {
   let folder: URL
   let refs: [String: MarkdownRefHit]
   let math: MathTypesetter?
-  let colour: @Sendable ([String], String) -> [[MarkdownToken]]?
+  let colour: @Sendable ([String], String) -> [[CodeRun]]?
   var diagrams: DiagramRenderer? { math as? DiagramRenderer }
   func imageSize(_ src: String) -> CGSize? {
     guard !src.contains("://"), let s = CGImageSourceCreateWithURL(folder.appending(path: src) as CFURL, nil),
@@ -104,11 +116,11 @@ struct LookResources: MarkdownResources {
     return CGSize(width: w, height: h)
   }
   func ref(label: String, target: String?) -> MarkdownRefHit? { refs[label + "\u{0}" + (target ?? "")] }
-  func highlight(lines: [String], language: String) -> [[MarkdownToken]]? { colour(lines, language) }
+  func highlight(lines: [String], language: String) -> [[CodeRun]]? { colour(lines, language) }
   var mathPreamble: String { "" }
 }
 
-/// a code fence's language as CodeBoardSyntax names its grammars; nil: not coloured
+/// a code fence's language as TreeSitterHighlight names its grammars; nil: not coloured
 let fenceLanguages: [String: String] = [
   "python": "python", "py": "python", "python3": "python", "triton": "triton", "tilelang": "tilelang",
   "c": "c", "h": "c", "cpp": "cpp", "c++": "cpp", "cc": "cpp", "cxx": "cpp", "hpp": "cpp", "cuda": "cuda-cpp",
@@ -127,10 +139,6 @@ let dark = a[4] == "1"
 let scale = CGFloat(Double(a[5])!)
 try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
 let highlighter = Highlighter()
-let kinds: [TokenClass: MarkdownTokenKind] = [
-  .keyword: .keyword, .operator: .operator, .function: .function, .string: .string, .comment: .comment,
-  .number: .number, .receiver: .receiver, .punctuation: .punctuation,
-]
 let classes: [MarkdownTokenKind: String] = [
   .keyword: "kw", .operator: "kw op", .function: "fn", .string: "str", .comment: "com", .number: "num",
   .receiver: "self", .punctuation: "p",
@@ -138,7 +146,7 @@ let classes: [MarkdownTokenKind: String] = [
 /// what the web side colours each code block with: "language\u0000code" → each line's [from, to, class]
 let tokensOut = Mutex([String: [[[String]]]]())
 let paper = MarkdownLooks.theme(look, dark: dark).colors.surface
-try MarkdownAssets.fonts.get()
+try MarkdownLooks.fonts.get()
 let engines = try MarkdownAssets.engines()
 
 for job in jobs {
@@ -148,11 +156,14 @@ for job in jobs {
     colour: { lines, language in
       guard let grammar = fenceLanguages[language.lowercased()] else { return nil }
       let tokens = highlighter.tokens(lines: lines, language: grammar).map { line in
-        line.map { MarkdownToken(columns: $0.columns, kind: kinds[$0.kind] ?? .punctuation) }
+        line.map { CodeRun(columns: $0.columns, style: $0.kind.rawValue) }
       }
       tokensOut.withLock {
         $0[language + "\u{0}" + lines.joined(separator: "\n")] = tokens.map { line in
-          line.map { ["\($0.columns.lowerBound)", "\($0.columns.upperBound)", classes[$0.kind] ?? "p"] }
+          line.map { run in
+            let kind = MarkdownTokenKind(rawValue: run.style).flatMap { classes[$0] } ?? "p"
+            return ["\(run.columns.lowerBound)", "\(run.columns.upperBound)", kind]
+          }
         }
       }
       return tokens

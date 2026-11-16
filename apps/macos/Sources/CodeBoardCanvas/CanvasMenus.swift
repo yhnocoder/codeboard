@@ -75,7 +75,7 @@ extension CanvasView {
       if let id = s.board { m.addItem(menuItem("Delete Board…") { [weak self] in self?.deleteBoard(id) }) }
       return m
     }
-    for i in webMenuItems(c) + linksMenuItems(c) + codeMenuItems(c) { m.addItem(i) }
+    for i in descMenuItems(c) + webMenuItems(c) + linksMenuItems(c) + codeMenuItems(c) { m.addItem(i) }
     m.addItem(arrange)
     m.addItem(copyPathItem([c.rawValue]))
     m.addItem(.separator())
@@ -106,6 +106,18 @@ extension CanvasView {
       let n = await ask(id, cardTitle(k)) { d?.edit("Delete Everywhere", selection: []) { $0.delete([.card(id)]) } }
       if let n, self?.document === d { self?.toast("Deleted from \(n) boards") }
     }
+  }
+
+  /// A code or image card's description, written in place (menus.ts: a code card's Description / Edit Description, an
+  /// image's Add Description / Edit Description)
+  func descMenuItems(_ id: CardID) -> [NSMenuItem] {
+    guard writesDescription(id), case .own(let k)? = document?.board.card(id)?.content else { return [] }
+    let has = k.description != nil
+    let edit: () -> Void = { [weak self] in self?.editDescription(id) }
+    // an image's is its own item; a code card's goes in its Add ▸ (menus.ts kindItems: Generated Code and the
+    // process tags, not drawn here, go there too)
+    if case .image = k.body { return [menuItem(has ? "Edit Description" : "Add Description", edit)] }
+    return [submenu("Add", [menuItem(has ? "Edit Description" : "Description", edit)])]
   }
 
   /// A code card's View ▸ (kindItems view): what it hides, and its background

@@ -7,7 +7,7 @@ import CodeBoardModel
 /// snapshot of it, with nothing laid out again. Requests waiting for the web view go by priority and can be cancelled
 /// (cancel the calling task). Letting go of the renderer closes the web view.
 @MainActor
-public final class NoteRenderer {
+public final class NoteRenderer: NoteDisplay {
   /// The built Note page inside the app (Contents/Resources/NotePage), else `web/dist` in this package's source tree
   /// (`swift run`, `swift test`)
   public nonisolated static var bundledPage: URL {
@@ -110,38 +110,9 @@ public final class NoteRenderer {
     ).2
   }
 
-  /// A Note to measure: on a card `width` wide that is as tall as its content, its images resolving against `folder`
-  public struct SizeRequest: Sendable {
-    public var note: NoteBody
-    public var width: Double
-    public var folder: URL
-    public var look: String
-    public var dark: Bool
-    public var refs: [NoteRef]
-    public var hideHead: Bool
-
-    public init(
-      note: NoteBody, width: Double, folder: URL, look: String, dark: Bool, refs: [NoteRef] = [], hideHead: Bool = false
-    ) {
-      self.note = note
-      self.width = width
-      self.folder = folder
-      self.look = look
-      self.dark = dark
-      self.refs = refs
-      self.hideHead = hideHead
-    }
-  }
-
-  /// The size at 100 % of each Note (a Free Text: as wide as its text too), in order: what `snapshot` with no height
-  /// gives as its size, without drawing it; nil for one that could not be measured
-  public func sizes(of notes: [SizeRequest], priority: Int) async throws -> [CGSize?] {
-    try await metrics(of: notes, priority: priority).map { $0?.size }
-  }
-
   /// What `sizes` gives, with each Note's blocks as laid out. Those not kept with the snapshots are measured in the web
   /// view together, in one turn, and stay mounted there for their pictures
-  public func metrics(of notes: [SizeRequest], priority: Int) async throws -> [NoteMetrics?] {
+  public func metrics(of notes: [NoteSizeRequest], priority: Int) async throws -> [NoteMetrics?] {
     var out = [NoteMetrics?](repeating: nil, count: notes.count)
     var missing: [(i: Int, key: SnapshotKey, json: String, images: URL, look: Look)] = []
     for (i, n) in notes.enumerated() {
@@ -218,23 +189,9 @@ public final class NoteRenderer {
     }
   }
 
-  /// The language Free code's text looks like, as the board guesses it (core freeLang); nil when it cannot tell
-  public func freeLanguage(_ text: String) async throws -> String? {
-    try await takeTurn(priority: Int.max)
-    defer { endTurn() }
-    do {
-      let p = try page ?? NotePage(page: pageFolder)
-      page = p
-      return try await p.freeLanguage(text)
-    } catch {
-      page = nil
-      throw error
-    }
-  }
-
   /// Each Note's size at 100 % and where its first glyph is from its top left (nil when it has none), measured now: what
   /// a Text keeps in place when it becomes a Box (the board measures it the same way, notes.ts setTextLook)
-  public func firstGlyphs(of notes: [SizeRequest]) async throws -> [(size: CGSize, first: CGPoint?)?] {
+  public func firstGlyphs(of notes: [NoteSizeRequest]) async throws -> [(size: CGSize, first: CGPoint?)?] {
     try await takeTurn(priority: 0)
     defer { endTurn() }
     var out = [(size: CGSize, first: CGPoint?)?](repeating: nil, count: notes.count)

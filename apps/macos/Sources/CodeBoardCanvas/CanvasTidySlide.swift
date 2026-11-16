@@ -60,6 +60,8 @@ extension CanvasView {
       tidySlide = t
     }
     placeSlid(t, s)
+    // landed: on device pixels, as every card at rest
+    if tidySlide == nil { settleOnPixels() }
   }
 
   private func placeSlid(_ t: TidySlide, _ s: Scene) {

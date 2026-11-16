@@ -2,7 +2,8 @@ import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardNotes
-import WebKit
+import MarkdownCore
+import MarkdownUI
 
 // LookCompare --writing <out folder>: Notes, Texts and Boxes written in, in each theme light and dark, at 2x, off screen
 // (a window far off every screen; Core Animation and the editor's own picture, never the screen):
@@ -12,6 +13,9 @@ import WebKit
 // - switch-<theme>: a Text | the Box it became | both at half strength over each other (the text must not move)
 // - scale-<theme>: a Text | its corner dragged out (during) | let go
 // - wrap-<theme>: a Text as wide as its text | its right side dragged in: it wraps there
+// - native-<theme>: Notes, a Text and a Box written in with the native editor: the caret, a selection with its toolbar,
+//   the caret in a code block, in a formula (its source and preview) and in a table
+// - refs-<theme>: the [[ list open in a Note being written, with another board's cards
 // The content is made up: Chinese, bold, inline code, a formula and a list. Each text ends in words: entering puts the
 // caret at the end (as on the web board), and a formula the caret is on shows its source there.
 
@@ -51,6 +55,33 @@ enum WritingSheets {
           "b1",
           TextCard(text: "Check **bounds** `i < n`\n\n- 中文一项\n- $a+b$ summed", look: .box, fill: .blue, wrap: true),
           x: 400, y: 300, width: 240),
+        Card(
+          id: CardID(rawValue: "n2"), x: 760, y: 0, width: 380,
+          content: .own(
+            CardContent(
+              body: .note(
+                Note(
+                  text: """
+                    ## KV cache 块表
+
+                    每个序列的 block table 把逻辑块映射到物理块：
+
+                    ```python
+                    def allocate(self, seq):
+                        for i in range(seq.num_blocks):
+                            block = self.free_blocks.pop()
+                            seq.block_table.append(block)
+                    ```
+
+                    $$
+                    \\text{blocks} = \\left\\lceil \\frac{n}{B} \\right\\rceil
+                    $$
+
+                    | 字段 | 含义 |
+                    | --- | --- |
+                    | `block_size` | 每块 token 数 |
+                    | `num_blocks` | 物理块总数 |
+                    """))))),
       ])
   }
 
@@ -78,7 +109,7 @@ enum WritingSheets {
     let doc: BoardDocument
     var time: TimeInterval = 1
 
-    init(root: URL, notes: NoteRenderer, theme: Theme) async throws {
+    init(root: URL, notes: NoteRenderer, display: NativeNotes, theme: Theme) async throws {
       let fm = FileManager.default
       try? fm.removeItem(at: root)
       let package = root.appending(path: "Writing.board")
@@ -86,15 +117,17 @@ enum WritingSheets {
       let file = package.appending(path: Vault.boardFileName)
       try WritingSheets.board().encoded().write(to: file)
       doc = try BoardDocument { file }
-      canvas = CanvasView(frame: CGRect(origin: .zero, size: WritingSheets.size), notes: notes)
+      canvas = CanvasView(frame: CGRect(origin: .zero, size: WritingSheets.size), notes: notes, display: display)
       window = NSWindow(
         contentRect: CGRect(origin: CGPoint(x: -30000, y: -30000), size: WritingSheets.size), styleMask: [.titled],
         backing: .buffered, defer: false)
       window.isReleasedWhenClosed = false
       let host = NSView(frame: canvas.frame)
+      host.wantsLayer = true
       host.addSubview(canvas)
       window.contentView = host
-      canvas.noteEditor.drawOffScreen()
+      // under the desktop picture too, as test windows are: never seen even where a screen reaches that far
+      window.level = .underDesktop
       window.orderFrontRegardless()
       let at = VaultBoard(id: doc.id, title: "Writing", path: "Writing.board")
       try await canvas.show(doc, at: at, in: Vault(root: root), theme: theme)
@@ -127,35 +160,38 @@ enum WritingSheets {
 
     func release(_ at: CGPoint) { canvas.mouseUp(with: mouse(.leftMouseUp, at)) }
 
-    /// Writes in a card and types `text`, the editor left open
-    func writeInto(_ id: String, _ text: String) async throws {
+    /// Writes in a card, the editor left open
+    func write(_ id: String) throws -> MarkdownEditorView {
       canvas.beginEditing(CardID(rawValue: id))
-      let deadline = ContinuousClock.now + .seconds(60)
-      while !canvas.noteEditor.view.shown {
-        guard ContinuousClock.now < deadline else { throw NoteRenderError.page("the editor did not mount") }
-        try await Task.sleep(for: .milliseconds(5))
-      }
-      canvas.noteEditor.type(text)
-      _ = try await canvas.noteEditor.view.callAsyncJavaScript(
-        "for (let i = 0; i < 6; i++) await new Promise(r => requestAnimationFrame(r)); return 1", contentWorld: .page)
+      guard let v = canvas.writerView else { throw NoteRenderError.page("no editor for \(id)") }
+      // its caret drawn though the window is never key
+      v.alwaysShowsCaret = true
+      return v
     }
 
-    /// A picture of the canvas with the editor's web view (its card and its open menus) drawn over it where it is
-    func withEditor(_ base: CGImage) async throws -> CGImage {
-      let view = canvas.noteEditor.view
-      let c = WKSnapshotConfiguration()
-      c.afterScreenUpdates = true
-      let image = try await view.takeSnapshot(configuration: c)
-      guard let web = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
-        let ctx = CGContext(
-          data: nil, width: base.width, height: base.height, bitsPerComponent: 8, bytesPerRow: 0,
-          space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue)
-      else { return base }
-      let f = canvas.convert(view.frame, from: view.superview)
-      ctx.draw(base, in: CGRect(x: 0, y: 0, width: base.width, height: base.height))
-      ctx.draw(
-        web, in: CGRect(x: f.minX * 2, y: CGFloat(base.height) - f.maxY * 2, width: f.width * 2, height: f.height * 2))
-      return ctx.makeImage() ?? base
+    /// Writes in a card and types `text` at its end, the editor left open
+    func writeInto(_ id: String, _ text: String) throws -> MarkdownEditorView {
+      let v = try write(id)
+      v.doCommand(by: #selector(NSResponder.moveToEndOfDocument(_:)))
+      v.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
+      return v
+    }
+
+    /// The caret at the end of the first `match` in the text written in, or `match` selected; what comes up for it (a
+    /// formula's source, the selection's toolbar) once it has waited as the editor waits
+    func place(_ v: MarkdownEditorView, at match: String, select: Bool = false) async throws {
+      let r = (v.source as NSString).range(of: match)
+      guard r.location != NSNotFound else { throw NoteRenderError.page("no \(match) in \(v.source)") }
+      v.core.select(select ? MDSelection(anchor: r.location, head: NSMaxRange(r)) : MDSelection(NSMaxRange(r)))
+      v.coreChanged()
+      try await Task.sleep(for: .seconds(MarkdownTiming.toolbarSettle + 0.3))
+    }
+
+    /// The canvas with the editor over it (and its toolbar, menus and previews), off screen
+    func withEditor() throws -> CGImage {
+      guard let root = window.contentView, let layer = root.layer else { throw CocoaError(.featureUnsupported) }
+      root.displayIfNeeded()
+      return try EditSheets.render(layer, size: WritingSheets.size, scale: 2)
     }
 
     /// What the board shows now, once the canvas has the document's board and every bitmap is drawn again
@@ -202,11 +238,12 @@ enum WritingSheets {
     defer { try? fm.removeItem(at: root) }
     try fm.createDirectory(at: out, withIntermediateDirectories: true)
     let notes = NoteRenderer(cache: root.appending(path: "cache"))
+    let display = NativeNotes(web: notes)
     var report = ""
     for theme in Theme.all.flatMap({ [$0, Theme.named($0.id, dark: true)] }) {
       let suffix = theme.id.rawValue + (theme.dark ? "-dark" : "")
       let vault = root.appending(path: "vault")
-      func rig() async throws -> Rig { try await Rig(root: vault, notes: notes, theme: theme) }
+      func rig() async throws -> Rig { try await Rig(root: vault, notes: notes, display: display, theme: theme) }
 
       // at rest and written in
       var r = try await rig()
@@ -303,12 +340,42 @@ enum WritingSheets {
       // the [[ list open in the Note being written, with another board's cards
       r = try await rig()
       try otherBoard(in: vault)
-      try await r.writeInto("n1", " [[")
-      let list = try await r.withEditor(try r.picture())
+      let v = try r.writeInto("n1", " [[")
+      while !r.canvas.refListRead { try await Task.sleep(for: .milliseconds(5)) }
+      // the list as it opens once its candidates are read
+      v.insertText("调", replacementRange: NSRange(location: NSNotFound, length: 0))
+      // past the header's fold (220 ms): its title faded out, as it is once the list is read
+      try await Task.sleep(for: .seconds(0.3))
+      let list = try r.withEditor()
       let n = r.rect("n1")
       write(
         r.cut(list, CGRect(x: n.minX - 30, y: n.minY - 20, width: n.width + 420, height: n.height + 330)), out,
         "refs-\(suffix)")
+      r.close()
+
+      // the native editor while it writes: the caret, a selection and its toolbar, the caret in code, a formula, a table
+      r = try await rig()
+      func shot(_ id: String, _ match: String, select: Bool = false) async throws -> CGImage {
+        let v = try r.write(id)
+        try await r.place(v, at: match, select: select)
+        let c = r.rect(id)
+        let img = r.cut(
+          try r.withEditor(), CGRect(x: c.minX - 60, y: c.minY - 64, width: c.width + 120, height: c.height + 140))
+        await r.canvas.endEditing()
+        await r.settle()
+        return img
+      }
+      let prose = [
+        try await shot("n1", "attention."), try await shot("n1", "prefill", select: true),
+        try await shot("t1", "到此"), try await shot("b1", "bounds", select: true),
+      ]
+      let blocks = [
+        try await shot("n2", "free_blocks"), try await shot("n2", "\\frac"), try await shot("n2", "物理块总数"),
+      ]
+      write(
+        try column(
+          [try EditSheets.strip(prose, theme: theme), try EditSheets.strip(blocks, theme: theme)], theme: theme),
+        out, "native-\(suffix)")
       r.close()
     }
     try report.write(to: out.appending(path: "report.txt"), atomically: true, encoding: .utf8)

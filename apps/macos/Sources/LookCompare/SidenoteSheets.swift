@@ -6,8 +6,8 @@ import QuartzCore
 import WebKit
 
 // LookCompare --sidenotes <out folder>: sidenotes on a board of made-up content, drawn off screen at 2x in each theme
-// light and dark: <out>/<sheet>-<theme>[-dark].png. The canvas is drawn by Core Animation; the popup and the question
-// list are web views over it, drawn by WebKit's snapshot of each where it is.
+// light and dark: <out>/<sheet>-<theme>[-dark].png. The canvas and the popup are drawn by Core Animation; the question
+// list is a web view over it, drawn by WebKit's snapshot of it where it is.
 
 enum SidenoteSheets {
   static let size = CGSize(width: 1400, height: 760)
@@ -127,9 +127,9 @@ enum SidenoteSheets {
       let host = NSView(frame: canvas.frame)
       host.addSubview(canvas)
       window.contentView = host
-      canvas.noteEditor.drawOffScreen()
-      canvas.sidenotePop.drawOffScreen()
       canvas.questionList.drawOffScreen()
+      // under the desktop, as the tests' windows: ordered in for the web views' frames, never in front of anything
+      window.level = .underDesktop
       window.orderFrontRegardless()
       // a folder board ("<folder>/.folder") is titled with its folder's name
       let parts = sheet.split(separator: "/").map(String.init)
@@ -164,36 +164,44 @@ enum SidenoteSheets {
       await frames()
     }
 
-    func frames() async {
-      _ = await canvas.sidenotePop.run(
-        "for (let i = 0; i < 6; i++) await new Promise(r => requestAnimationFrame(r)); return 1")
-      await canvas.drawAll()
-    }
+    func frames() async { await canvas.drawAll() }
 
-    func js(_ s: String, _ args: [String: Any] = [:]) async -> Any? { await canvas.sidenotePop.run(s, args) }
+    /// Typed into the popup's field with the keys, as if typed
+    func type(_ s: String) {
+      canvas.sidenotePop.field?.insertText(s, replacementRange: NSRange(location: NSNotFound, length: 0))
+    }
 
     /// The canvas with the popup and the list drawn over it where they are
     func picture() async throws -> CGImage {
       var img = try EditSheets.render(canvas.layer!, size: SidenoteSheets.size, scale: 2)
-      for view in [canvas.sidenotePop.view as WKWebView, canvas.questionList.view] where view.alphaValue > 0 {
-        img = try await over(img, view)
+      let pop = canvas.sidenotePop.view
+      if pop.alphaValue > 0, pop.superview != nil, let l = pop.layer {
+        pop.displayIfNeeded()
+        img = over(img, try EditSheets.render(l, size: pop.frame.size, scale: 2), pop.frame)
+      }
+      let list = canvas.questionList.view
+      if list.alphaValue > 0 {
+        let c = WKSnapshotConfiguration()
+        c.afterScreenUpdates = true
+        if let web = try await list.takeSnapshot(configuration: c).cgImage(
+          forProposedRect: nil, context: nil, hints: nil)
+        {
+          img = over(img, web, list.frame)
+        }
       }
       return img
     }
 
-    func over(_ base: CGImage, _ view: WKWebView) async throws -> CGImage {
-      let c = WKSnapshotConfiguration()
-      c.afterScreenUpdates = true
-      let image = try await view.takeSnapshot(configuration: c)
-      guard let web = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+    func over(_ base: CGImage, _ top: CGImage, _ frame: CGRect) -> CGImage {
+      guard
         let ctx = CGContext(
           data: nil, width: base.width, height: base.height, bitsPerComponent: 8, bytesPerRow: 0,
           space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue)
       else { return base }
-      let f = canvas.convert(view.frame, from: view.superview)
+      let f = canvas.convert(frame, from: canvas.superview)
       ctx.draw(base, in: CGRect(x: 0, y: 0, width: base.width, height: base.height))
       ctx.draw(
-        web, in: CGRect(x: f.minX * 2, y: CGFloat(base.height) - f.maxY * 2, width: f.width * 2, height: f.height * 2))
+        top, in: CGRect(x: f.minX * 2, y: CGFloat(base.height) - f.maxY * 2, width: f.width * 2, height: f.height * 2))
       return ctx.makeImage() ?? base
     }
 
@@ -279,11 +287,9 @@ enum SidenoteSheets {
       r.canvas.showPop(nil)
       await r.until { r.canvas.popShownAt == nil }
       await r.open(blockAt, write: true)
-      await r.until { await r.js("return !!document.querySelector('.ncomp .ProseMirror')") as? Bool == true }
       // the [[ list comes with the candidates, read once the popup is open
-      try? await Task.sleep(for: .milliseconds(400))
-      _ = await r.js("pop.type(t)", ["t": "参见 [[调"])
-      await r.until { await r.js("return !!document.querySelector('.md-pick')") as? Bool == true }
+      await r.until { r.canvas.sidenotePop.shown?.refList != nil }
+      r.type("参见 [[调")
       await r.frames()
       let typed = try await r.picture()
       var box = (r.canvas.popBox ?? .zero).insetBy(dx: -40, dy: -40)
@@ -296,9 +302,8 @@ enum SidenoteSheets {
       r = try await rig()
       await r.open(lines)
       cuts = [r.aroundPop(try await r.picture(), lines)]
-      _ = await r.js("pop.click('.reply')")
-      await r.until { await r.js("return !!document.querySelector('.ans-in .ProseMirror')") as? Bool == true }
-      _ = await r.js("pop.type(t)", ["t": "和 KV cache 的块数有关。"])
+      r.canvas.sidenotePop.press("Answer")
+      r.type("和 KV cache 的块数有关。")
       await r.frames()
       cuts.append(r.aroundPop(try await r.picture(), lines))
       r.canvas.showPop(nil)
@@ -307,9 +312,8 @@ enum SidenoteSheets {
       r.close()
       r = try await rig()
       await r.open(card, write: true)
-      await r.until { await r.js("return !!document.querySelector('.ncomp .ProseMirror')") as? Bool == true }
-      _ = await r.js("pop.click('.ncomp-ask')")
-      _ = await r.js("pop.type(t)", ["t": "decode 一步要多久？"])
+      r.canvas.sidenotePop.press("Question")
+      r.type("decode 一步要多久？")
       await r.frames()
       cuts.append(r.aroundPop(try await r.picture(), card))
       r.close()
@@ -319,7 +323,7 @@ enum SidenoteSheets {
       r = try await rig()
       await r.open(code)
       cuts = [r.aroundPop(try await r.picture(), code)]
-      _ = await r.js("pop.click('.sn-code.long')")
+      r.canvas.sidenotePop.openCode("k1")
       await r.frames()
       cuts.append(r.aroundPop(try await r.picture(), code))
       r.close()

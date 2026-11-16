@@ -1,12 +1,17 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
+import CodeCore
+import CodeUI
 import Testing
+import TreeSitterHighlight
 
 @testable import CodeBoardCanvas
 
-// Writing Free code (the board's FreeEdit): the code editor over the card puts every line where the canvas drew it and
-// colours it as the canvas did; what is typed becomes one step, the card grows with it, and sourced code is not written.
+// Writing Free code (the board's FreeEdit) in the code component's editor (CodeEditorView) over the card: every line
+// where the canvas drew it, coloured as the canvas did; what is typed becomes one step, the card grows with it, and
+// sourced code is not written. A full window under the desktop picture (Rig); keys go through the window to the view
+// that has them, an input method's through its input context (CanvasIMETests' Pinyin), as a person's do.
 
 private func freeBoard() -> Board {
   let free = Segment(
@@ -27,6 +32,51 @@ private func freeBoard() -> Board {
     ])
 }
 
+private let none = NSRange(location: NSNotFound, length: 0)
+
+extension Rig {
+  /// The code editor over the card being written
+  var code: CodeEditorView? { canvas.editing?.codeView }
+
+  /// A key with modifiers, as the keyboard sends it, through the window
+  func press(_ code: UInt16, _ chars: String, _ flags: NSEvent.ModifierFlags) {
+    for t in [NSEvent.EventType.keyDown, .keyUp] {
+      window.sendEvent(
+        NSEvent.keyEvent(
+          with: t, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+          windowNumber: window.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
+          isARepeat: false, keyCode: code)!)
+    }
+  }
+
+  /// A key with ⌘ as the app gets it: offered to the window's views as a key equivalent first (NSApplication.sendEvent),
+  /// sent to the first responder when none takes it
+  func equivalent(_ code: UInt16, _ chars: String, _ flags: NSEvent.ModifierFlags) {
+    for t in [NSEvent.EventType.keyDown, .keyUp] {
+      let e = NSEvent.keyEvent(
+        with: t, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+        windowNumber: window.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
+        isARepeat: false, keyCode: code)!
+      if t == .keyDown, window.performKeyEquivalent(with: e) { continue }
+      window.sendEvent(e)
+    }
+  }
+
+  /// The middle of a line of Free code card `id`, `x` in from its gutter (past its end: a large x)
+  func line(_ id: String, _ n: Int, x: CGFloat = 40) throws -> CGPoint {
+    let card = rect(id)
+    let code = try #require(canvas.scene?.placed[cid(id)]?.code)
+    let row = try #require(code.layout.row(segment: 0, line: n))
+    return CGPoint(
+      x: min(card.maxX - 10, card.minX + code.layout.gutter + x), y: card.minY + code.top + row.y + row.height / 2)
+  }
+
+  /// The caret's line, 1 on
+  var caretLine: Int? {
+    code.map { v in (v.editor.text as NSString).substring(to: v.editor.selection.head).count { $0 == "\n" } + 1 }
+  }
+}
+
 @MainActor @Suite(.serialized) struct CanvasFreeCodeTests {
   @Test func freeCodeIsWrittenWhereItIsDrawnAsOneStep() async throws {
     let r = try await Rig(freeBoard(), zoom: 1)
@@ -34,60 +84,43 @@ private func freeBoard() -> Board {
     let c = r.canvas
     let card = r.rect("f")
     let code = try #require(c.scene?.placed[cid("f")]?.code)
-    let row = try #require(code.layout.row(segment: 0, line: 2))
-    // a double-click on line 2: the editor opens with the caret on it
-    r.doubleClick(CGPoint(x: card.minX + code.layout.gutter + 40, y: card.minY + code.top + row.y + row.height / 2))
+    r.doubleClick(try r.line("f", 2, x: 1000))
     await r.editorReady()
+    let v = try #require(r.code)
     #expect(c.editing?.id == cid("f") && c.editing?.code == true)
-    // every line's text where the canvas drew it (card points at 100 %), and coloured
-    let js = """
-      const card = document.querySelector('#root .slot.shown .card').getBoundingClientRect();
-      return [...document.querySelectorAll('.cm-line')].map(l => {
-        const t = document.createRange(); t.selectNodeContents(l); const b = t.getBoundingClientRect();
-        return [b.x - card.x, b.y - card.y, b.height, l.querySelectorAll('span[class]').length];
-      });
-      """
-    let lines = try #require(
-      try await c.noteEditor.view.callAsyncJavaScript(js, contentWorld: .page) as? [[Double]])
-    #expect(lines.count == 3)
-    for (k, l) in lines.enumerated() {
+    #expect(v.window === r.window && v.superview === c.superview && r.window.firstResponder === v)
+    // over the card's body, every line in the row and from the gutter the canvas drew it in, coloured
+    let body = c.convert(v.frame, from: v.superview)
+    let shown = c.camera.view(CGPoint(x: card.minX, y: card.minY + code.top))
+    #expect(abs(body.minX - shown.x) < 0.01 && abs(body.minY - shown.y) < 0.01)
+    #expect(v.gutter == code.layout.gutter)
+    for (k, row) in v.layout.lineRows.enumerated() {
       let p = try #require(code.layout.row(segment: 0, line: k + 1))
-      // the text box is the font's line box, centred in the 20 point row
-      #expect(abs(l[1] + l[2] / 2 - (code.top + p.y + p.height / 2)) < 1, "line \(k + 1): \(l), row \(p)")
-      #expect(
-        abs(l[0] - code.layout.gutter) < 1, "line \(k + 1) starts at \(l[0]), the canvas's at \(code.layout.gutter)")
-      #expect(l[3] > 0, "line \(k + 1) coloured")
+      #expect(row.y == p.y && row.height == p.height, "line \(k + 1)")
+      if case .line(_, _, _, let runs) = row.kind { #expect(!runs.isEmpty, "line \(k + 1) coloured") }
     }
-    // the caret on line 2
-    let caretLine =
-      try await c.noteEditor.view.callAsyncJavaScript(
-        "const s = getSelection(); return s.anchorNode?.parentElement?.closest('.cm-line')?.textContent ?? null",
-        contentWorld: .page) as? String
-    #expect(caretLine == "    ids = batch.ids")
+    #expect(r.caretLine == 2)
     // a new line typed: the card grows by a row
     let before = c.editing?.size?.height ?? 0
-    await r.type("\n    out = 1")
-    await r.until("the card grew") { (c.editing?.size?.height ?? 0) >= before + 19 }
-    let typed = try? await c.noteEditor.view.callAsyncJavaScript(
-      "return [...document.querySelectorAll('.cm-line')].map(l => l.textContent)", contentWorld: .page)
-    let page = await r.pageState(c.noteEditor.view)
-    #expect(
-      (c.editing?.size?.height ?? 0) >= before + 19,
-      "\(c.editing?.size?.height ?? 0) from \(before), lines \(String(describing: typed)), page \(page)")
+    r.press("\r")
+    v.insertText("out = 1", replacementRange: none)
+    #expect(c.editing?.size?.height == before + 20)
+    #expect(v.editor.text.hasSuffix("    ids = batch.ids\n    out = 1\n    return run(ids)"))
+    // its own undo while it is written
+    v.undo(nil)
+    #expect(!v.editor.text.contains("out = 1"))
+    v.redo(nil)
     // Esc leaves: one step, the text written, the sourced card untouched
-    _ = try await c.noteEditor.view.callAsyncJavaScript(
-      "document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))",
-      contentWorld: .page)
+    r.press("\u{1b}")
     await r.until("left") { !c.isEditing }
+    #expect(v.superview == nil && r.window.firstResponder === c)
     #expect(r.doc.board.segment(cid("f"), s1)?.lines.count == 4)
     #expect(r.doc.history.undoSteps.map(\.name) == ["Edit Code"])
     r.doc.undo()
     #expect(r.doc.board.segment(cid("f"), s1)?.lines.count == 3)
   }
 
-  /// Typing at once after the double-click, before the editor is there, and leaving with ⌘↵ as fast: nothing is lost
-  /// (Return indents, as CodeMirror does on the board)
-  /// Writing code through an input method: an Esc while "ni" is composed only cancels it (CanvasIMETests' Pinyin)
+  /// Writing code through an input method: an Esc while "ni" is composed only cancels it
   @Test func anEscDuringACompositionInCodeCancelsOnlyTheComposition() async throws {
     Pinyin.install()
     let r = try await Rig(freeBoard(), zoom: 1)
@@ -95,34 +128,20 @@ private func freeBoard() -> Board {
       Pinyin.windows.remove(r.window.windowNumber)
       r.close()
     }
-    let c = r.canvas
-    let card = r.rect("f")
-    let code = try #require(c.scene?.placed[cid("f")]?.code)
-    let row = try #require(code.layout.row(segment: 0, line: 3))
-    r.doubleClick(CGPoint(x: card.maxX - 10, y: card.minY + code.top + row.y + row.height / 2))
+    r.doubleClick(try r.line("f", 3, x: 1000))
     await r.editorReady()
-    func last() async -> String {
-      (try? await c.noteEditor.view.callAsyncJavaScript(
-        "return [...document.querySelectorAll('.cm-line')].at(-1)?.textContent ?? ''", contentWorld: .page) as? String)
-        ?? ""
-    }
     Pinyin.windows.insert(r.window.windowNumber)
-    await r.typeInTurn("ni")
-    await r.until("composing") { await last().hasSuffix("ni") }
+    r.press("ni")
+    let v = try #require(r.code)
+    #expect(v.hasMarkedText() && v.editor.text.hasSuffix("run(ids)"))
     r.press("\u{1b}")
-    // a key after it, with nothing composed: once it is written, whatever the Esc did has happened
+    #expect(r.canvas.isEditing && !v.hasMarkedText(), "the Esc cancelled the composition only")
     r.press("1")
-    await r.until("1 written") { await last().hasSuffix("1") }
-    #expect(c.isEditing, "the Esc cancelled the composition only")
-    let got = await last()
-    #expect(got == "    return run(ids)1", "nothing of the composition kept: \(got)")
+    #expect(v.editor.text.hasSuffix("    return run(ids)1"), "nothing of the composition kept: \(v.editor.text)")
   }
 
-  /// Code's colours that come back while an input method's key is going in, after WebKit wrote the composing text and
-  /// before CodeMirror read the caret WebKit put (an answer can overtake that, as the key's own keydown does), leave the
-  /// composition alone: put in then, they set back the selection CodeMirror read in between, the composed text selected,
-  /// which WebKit takes as the end of the composition, and the commit landed beside what was composed ("n你"; web/src/
-  /// page.ts afterCaret). In a key window, as a person types: with no focus CodeMirror never reads WebKit's caret
+  /// Code's colours that come back while an input method composes on the line they colour: the line is drawn again,
+  /// and the composition goes on and is committed once
   @Test func coloursComingWhileComposingInCodeLeaveTheCompositionAlone() async throws {
     Pinyin.install()
     let r = try await Rig(freeBoard(), zoom: 1)
@@ -130,132 +149,46 @@ private func freeBoard() -> Board {
       Pinyin.windows.remove(r.window.windowNumber)
       r.close()
     }
-    let c = r.canvas
-    let card = r.rect("f")
-    let code = try #require(c.scene?.placed[cid("f")]?.code)
-    let row = try #require(code.layout.row(segment: 0, line: 3))
-    r.doubleClick(CGPoint(x: card.maxX - 10, y: card.minY + code.top + row.y + row.height / 2))
+    r.doubleClick(try r.line("f", 3, x: 1000))
     await r.editorReady()
-    await r.pageFocused()
-    let v = c.noteEditor.view
-    func js(_ s: String) async -> Any? { try? await v.callAsyncJavaScript(s, contentWorld: .page) }
-    func last() async -> String {
-      await js("return [...document.querySelectorAll('.cm-line')].at(-1)?.textContent ?? ''") as? String ?? ""
+    let v = try #require(r.code)
+    let colors = try #require(v.colors)
+    var came = 0
+    let draw = colors.ready
+    colors.ready = {
+      draw?()
+      came += 1
     }
-    // the colours native answers, held in the page and given once "ni" is in, just before CodeMirror reads WebKit's
-    // caret (its selectionchange); later ones as they come
-    _ = await js(
-      """
-      const h = webkit.messageHandlers.highlight, post = h.postMessage.bind(h), held = [];
-      window.given = false;
-      h.postMessage = (m) => new Promise((give) => post(m).then((html) => given ? give(html) : held.push(() => give(html))));
-      let ni = false;
-      addEventListener("input", (e) => (ni ||= e.data === "ni"), true);
-      document.addEventListener("selectionchange", () => {
-        if (!ni || given) return;
-        window.given = true;
-        for (const give of held.splice(0)) give();
-      }, true);
-      window.heldCount = () => held.length;
-      """)
+    // a key that asks for colours, then a composition begun before they come
+    v.insertText(" +", replacementRange: none)
     Pinyin.windows.insert(r.window.windowNumber)
-    let ends = await js("return edit.compositionEnds()") as? Int ?? -1
-    await r.typeInTurn("n")
-    await r.until("the colours for n answered") { (await js("return heldCount()") as? Int ?? 0) > 0 }
-    await r.typeInTurn("i")
-    await r.until("composing ni, the colours given") {
-      let given = await js("return given") as? Bool == true
-      let text = await last()
-      return given && text.hasSuffix("ni")
-    }
-    _ = await js("await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))")
-    #expect(await js("return edit.compositionEnds()") as? Int == ends, "the composition goes on")
-    await r.typeInTurn(" ")
-    await r.until("committed") { await last().contains("你") }
-    #expect(await last() == "    return run(ids)你")
-    #expect(await js("return edit.compositionEnds()") as? Int == ends + 1, "one composition, ended by the commit")
+    r.press("n")
+    await r.until("the colours came") { came > 0 }
+    #expect(v.hasMarkedText() && v.markedRange().length == 1, "still composing after the line was drawn again")
+    r.press("i ")
+    #expect(!v.hasMarkedText() && v.editor.text.hasSuffix("run(ids) +你"), "\(v.editor.text)")
   }
 
-  /// Code's colours for one composing key that come back once WebKit has begun the next (its compositionupdate, before
-  /// it writes the composition anew) leave the composition alone: put in then, CodeMirror drew the line again under it,
-  /// the update was written beside the old one ("nni"), the commit came out as "n你", and leaving wrote that or, with
-  /// CodeMirror's own text left behind, nothing (pinyinTypedAtOnceAfterTheDoubleClickOnCodeIsComposed on a busy
-  /// machine: web/src/page.ts afterCaret)
-  @Test func coloursComingAsTheNextComposingKeyGoesInLeaveTheCompositionAlone() async throws {
+  /// "ni" and Space typed at once after the double-click on code, before the editor is there: they go through the
+  /// input method too, so 你 is written (CanvasIMETests.pinyinTypedAtOnceAfterTheDoubleClickIsComposed)
+  @Test func pinyinTypedAtOnceAfterTheDoubleClickOnCodeIsComposed() async throws {
     Pinyin.install()
     let r = try await Rig(freeBoard(), zoom: 1)
     defer {
       Pinyin.windows.remove(r.window.windowNumber)
       r.close()
     }
-    let c = r.canvas
-    let card = r.rect("f")
-    let code = try #require(c.scene?.placed[cid("f")]?.code)
-    let row = try #require(code.layout.row(segment: 0, line: 3))
-    r.doubleClick(CGPoint(x: card.maxX - 10, y: card.minY + code.top + row.y + row.height / 2))
-    await r.editorReady()
-    await r.pageFocused()
-    let v = c.noteEditor.view
-    func js(_ s: String) async -> Any? { try? await v.callAsyncJavaScript(s, contentWorld: .page) }
-    // the colours native answers, held in the page and given as "ni" begins to go in (the second key's update)
-    _ = await js(
-      """
-      const h = webkit.messageHandlers.highlight, post = h.postMessage.bind(h), held = [];
-      let given = false;
-      h.postMessage = (m) => new Promise((give) => post(m).then((html) => given ? give(html) : held.push(() => give(html))));
-      addEventListener("compositionupdate", (e) => {
-        if (e.data !== "ni" || given) return;
-        given = true;
-        for (const give of held.splice(0)) give();
-      }, true);
-      window.heldCount = () => held.length;
-      """)
     Pinyin.windows.insert(r.window.windowNumber)
-    await r.typeInTurn("n")
-    await r.until("the colours for n answered") { (await js("return heldCount()") as? Int ?? 0) > 0 }
-    await r.typeInTurn("i ")
-    await r.until("committed") {
-      (await js("return [...document.querySelectorAll('.cm-line')].at(-1)?.textContent ?? ''") as? String)?
-        .contains("你") == true
-    }
-    r.press("\u{1b}")
-    await r.until("left") { !c.isEditing }
-    let lines = r.doc.board.segment(cid("f"), s1)?.lines ?? []
-    #expect(lines.last == "    return run(ids)你", "\(lines)")
-  }
-
-  /// "ni" and Space typed at once after the double-click on code, before the editor is there: they go through the input
-  /// method too, so 你 is written (CanvasIMETests.pinyinTypedAtOnceAfterTheDoubleClickIsComposed)
-  @Test(arguments: [false, true])
-  func pinyinTypedAtOnceAfterTheDoubleClickOnCodeIsComposed(late: Bool) async throws {
-    Pinyin.install()
-    let r = try await Rig(freeBoard(), zoom: 1)
-    defer {
-      Pinyin.windows.remove(r.window.windowNumber)
-      r.close()
-    }
-    // a key window, as the one a person types in: in one that is not, the page has no focus and each key's
-    // composition ends at once, an order no input method gives
-    KeyWindows.add(r.window)
-    if late { await r.editorFocusesLate() }
-    let c = r.canvas
-    let card = r.rect("f")
-    let code = try #require(c.scene?.placed[cid("f")]?.code)
-    let row = try #require(code.layout.row(segment: 0, line: 3))
-    Pinyin.windows.insert(r.window.windowNumber)
-    r.doubleClick(CGPoint(x: card.maxX - 10, y: card.minY + code.top + row.y + row.height / 2))
+    r.doubleClick(try r.line("f", 3, x: 1000))
     r.press("ni ")
     await r.editorReady()
-    await r.until("the keys handed over") { c.noteEditor.view.held == nil }
     r.press("\u{1b}")
-    await r.until("left") { !c.isEditing }
+    await r.until("left") { !r.canvas.isEditing }
     let lines = r.doc.board.segment(cid("f"), s1)?.lines ?? []
     #expect(lines.last == "    return run(ids)你", "\(lines)")
   }
 
-  /// Code through an input method: "ni", Space and at once ⌘↵ or Esc leave with 你 written (as
-  /// CanvasIMETests.anEscAtOnceAfterTheCommitLeavesWithTheText: CodeMirror's rule for the key that commits a
-  /// composition takes the Space, not them)
+  /// Code through an input method: "ni", Space and at once ⌘↵ or Esc leave with 你 written
   @Test(arguments: [53, 36] as [UInt16])
   func aKeyAtOnceAfterTheCommitInCodeIsTaken(key: UInt16) async throws {
     Pinyin.install()
@@ -264,30 +197,12 @@ private func freeBoard() -> Board {
       Pinyin.windows.remove(r.window.windowNumber)
       r.close()
     }
-    let c = r.canvas
-    let card = r.rect("f")
-    let code = try #require(c.scene?.placed[cid("f")]?.code)
-    let row = try #require(code.layout.row(segment: 0, line: 3))
-    r.doubleClick(CGPoint(x: card.maxX - 10, y: card.minY + code.top + row.y + row.height / 2))
+    r.doubleClick(try r.line("f", 3, x: 1000))
     await r.editorReady()
     Pinyin.windows.insert(r.window.windowNumber)
-    await r.typeInTurn("ni ")
-    // the key as soon as 你 is there to see (CodeMirror reads the commit from the page just after the composition ends)
-    await r.until("你 written") {
-      (try? await c.noteEditor.view.callAsyncJavaScript(
-        "return [...document.querySelectorAll('.cm-line')].at(-1)?.textContent ?? ''", contentWorld: .page) as? String)?
-        .hasSuffix("你") == true
-    }
-    let flags: NSEvent.ModifierFlags = key == 36 ? .command : []
-    let chars = key == 36 ? "\r" : "\u{1b}"
-    for t in [NSEvent.EventType.keyDown, .keyUp] {
-      r.window.sendEvent(
-        NSEvent.keyEvent(
-          with: t, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
-          windowNumber: r.window.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
-          isARepeat: false, keyCode: key)!)
-    }
-    await r.until("left") { !c.isEditing }
+    r.press("ni ")
+    r.press(key, key == 36 ? "\r" : "\u{1b}", key == 36 ? .command : [])
+    await r.until("left") { !r.canvas.isEditing }
     let lines = r.doc.board.segment(cid("f"), s1)?.lines ?? []
     #expect(lines.last == "    return run(ids)你", "\(lines)")
   }
@@ -296,49 +211,22 @@ private func freeBoard() -> Board {
   @Test func commandSlashCommentsTheLineOutInItsLanguage() async throws {
     let r = try await Rig(freeBoard(), zoom: 1)
     defer { r.close() }
-    let c = r.canvas
-    let card = r.rect("f")
-    let code = try #require(c.scene?.placed[cid("f")]?.code)
-    let row = try #require(code.layout.row(segment: 0, line: 3))
-    r.doubleClick(CGPoint(x: card.maxX - 10, y: card.minY + code.top + row.y + row.height / 2))
+    r.doubleClick(try r.line("f", 3, x: 1000))
     await r.editorReady()
-    await r.until("the editor takes keys") { c.noteEditor.view.held == nil }
-    for t in [NSEvent.EventType.keyDown, .keyUp] {
-      r.window.sendEvent(
-        NSEvent.keyEvent(
-          with: t, location: .zero, modifierFlags: .command, timestamp: ProcessInfo.processInfo.systemUptime,
-          windowNumber: r.window.windowNumber, context: nil, characters: "/", charactersIgnoringModifiers: "/",
-          isARepeat: false, keyCode: 44)!)
-    }
-    await r.until("commented") {
-      (try? await c.noteEditor.view.callAsyncJavaScript(
-        "return [...document.querySelectorAll('.cm-line')].at(-1)?.textContent ?? ''", contentWorld: .page) as? String)?
-        .hasPrefix("    return") == false
-    }
-    await c.endEditing()
+    r.press(44, "/", .command)
+    await r.canvas.endEditing()
     #expect(r.doc.board.segment(cid("f"), s1)?.lines.last == "    # return run(ids)")
   }
 
+  /// Every key typed at once after the double-click, before the editor is there, is written in order (Return indents)
   @Test func keysTypedAtOnceAfterTheDoubleClickAreAllWritten() async throws {
     let r = try await Rig(freeBoard(), zoom: 1)
     defer { r.close() }
-    let c = r.canvas
-    let card = r.rect("f")
-    let code = try #require(c.scene?.placed[cid("f")]?.code)
-    let row = try #require(code.layout.row(segment: 0, line: 3))
-    // past the end of the last line
-    r.doubleClick(CGPoint(x: card.maxX - 10, y: card.minY + code.top + row.y + row.height / 2))
+    r.doubleClick(try r.line("f", 3, x: 1000))
     r.press("x = 1\ry")
-    // ⌘↵ leaves, whatever completion shows (Esc closes that first, as on the board)
-    for t in [NSEvent.EventType.keyDown, .keyUp] {
-      r.window.sendEvent(
-        NSEvent.keyEvent(
-          with: t, location: .zero, modifierFlags: .command, timestamp: ProcessInfo.processInfo.systemUptime,
-          windowNumber: r.window.windowNumber, context: nil, characters: "\r", charactersIgnoringModifiers: "\r",
-          isARepeat: false, keyCode: 36)!)
-    }
+    r.press(36, "\r", .command)
     await r.editorReady()
-    await r.until("left") { !c.isEditing }
+    await r.until("left") { !r.canvas.isEditing }
     #expect(r.doc.board.segment(cid("f"), s1)?.lines.suffix(2) == ["    return run(ids)x = 1", "    y"])
   }
 
@@ -349,9 +237,7 @@ private func freeBoard() -> Board {
     defer { r.close() }
     let c = r.canvas
     let card = r.rect("f")
-    let code = try #require(c.scene?.placed[cid("f")]?.code)
-    let row = try #require(code.layout.row(segment: 0, line: 2))
-    let line2 = CGPoint(x: card.minX + code.layout.gutter + 40, y: card.minY + code.top + row.y + row.height / 2)
+    let line2 = try r.line("f", 2)
     r.click(line2)
     await r.settle()
     #expect(r.doc.selection == [.card(cid("f"))] && !c.isEditing, "the click that selects it")
@@ -360,18 +246,195 @@ private func freeBoard() -> Board {
     #expect(!c.isEditing, "its head")
     r.click(line2)
     await r.editorReady()
-    #expect(c.editing?.id == cid("f") && c.editing?.code == true)
-    let caretLine =
-      try await c.noteEditor.view.callAsyncJavaScript(
-        "const s = getSelection(); return s.anchorNode?.parentElement?.closest('.cm-line')?.textContent ?? null",
-        contentWorld: .page) as? String
-    #expect(caretLine == "    ids = batch.ids")
+    #expect(c.editing?.id == cid("f") && c.editing?.code == true && r.caretLine == 2)
     await c.endEditing()
     let read = r.rect("r")
     r.click(CGPoint(x: read.midX, y: read.maxY - 10))
     r.click(CGPoint(x: read.midX, y: read.maxY - 10))
     await r.settle()
     #expect(!c.isEditing, "sourced code")
+  }
+
+  /// A double-click on the selected card's code: its first press opens the editor, its second only puts the caret there
+  /// and selects no word (as VS Code's board); a double-click once it is open selects the word
+  @Test func theDoubleClickThatOpensTheEditorPutsTheCaretAndSelectsNoWord() async throws {
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer { r.close() }
+    let p = try r.line("f", 2, x: 4 + 4 * r.canvas.theme.metrics.charWidth + 2)
+    r.click(p)
+    await r.settle()
+    // its first press and release open the editor; the second press comes once it is there, as a person's does
+    r.send(r.mouse(.leftMouseDown, p))
+    r.send(r.mouse(.leftMouseUp, p))
+    await r.editorReady()
+    r.send(r.mouse(.leftMouseDown, p, clicks: 2))
+    r.send(r.mouse(.leftMouseUp, p, clicks: 2))
+    let v = try #require(r.code)
+    // line 2 is "    ids = batch.ids", from offset 17: "ids" is 21..<24
+    #expect(v.editor.selection.isEmpty && (21...24).contains(v.editor.selection.head), "no word: \(v.editor.selection)")
+    // open: a double-click selects the word (the window hands its presses to the editor over the card)
+    r.doubleClick(p)
+    #expect(v.editor.selection.range == 21..<24, "\(v.editor.selection)")
+    await r.canvas.endEditing()
+    #expect(!r.doc.history.canUndo)
+  }
+
+  /// ⌘F opens the editor's find bar over the card: what is typed is found from the caret on, ⌘G and ↩ find the next,
+  /// ⇧⌘G the one before, going round; Esc closes the bar only, the found text selected and the keys the editor's
+  /// Lines written are coloured as soon as the highlighter has them (a frame or two), not left in plain ink
+  @Test func linesWrittenAreColouredOnceTheHighlighterHasThem() async throws {
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer { r.close() }
+    r.doubleClick(try r.line("f", 1, x: 400))
+    await r.editorReady()
+    let v = try #require(r.code)
+    func runs(_ n: Int) -> [CodeRun]? {
+      for row in v.layout.lineRows {
+        if case .line(let number, false, _, let runs) = row.kind, number == n { return runs }
+      }
+      return nil
+    }
+    #expect(runs(1)?.isEmpty == false, "coloured as drawn")
+    r.press("\r")
+    v.insertText("x = run(1)", replacementRange: none)
+    r.press("\r")
+    v.insertText("return x", replacementRange: none)
+    await r.until("the new lines coloured") { runs(2)?.isEmpty == false && runs(3)?.isEmpty == false }
+    // `return` a keyword, `run` a call
+    #expect(runs(3)?.contains { $0.style == TokenClass.keyword.rawValue } == true)
+  }
+
+  @Test func commandFFindsInTheCodeBeingWritten() async throws {
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer { r.close() }
+    r.doubleClick(try r.line("f", 1, x: 4))
+    await r.editorReady()
+    let v = try #require(r.code)
+    r.equivalent(3, "f", .command)
+    let bar = try #require(v.findBar)
+    #expect(bar.isDescendant(of: v) && (r.window.firstResponder as? NSView)?.isDescendant(of: bar) == true)
+    // "ids" is at 21, 33 and 52
+    r.press("ids")
+    #expect(v.editor.selection.range == 21..<24)
+    r.equivalent(5, "g", .command)
+    #expect(v.editor.selection.range == 33..<36)
+    r.press("\r")
+    #expect(v.editor.selection.range == 52..<55)
+    r.equivalent(5, "g", .command)
+    #expect(v.editor.selection.range == 21..<24, "round the end")
+    r.equivalent(5, "G", [.command, .shift])
+    #expect(v.editor.selection.range == 52..<55, "back round the start")
+    r.press("\u{1b}")
+    #expect(v.findBar == nil && r.window.firstResponder === v && r.canvas.isEditing)
+    r.press("x")
+    #expect(v.editor.text.hasSuffix("run(x)"))
+    r.press("\u{1b}")
+    await r.until("left") { !r.canvas.isEditing }
+    #expect(r.doc.board.segment(cid("f"), s1)?.lines.last == "    return run(x)")
+  }
+
+  /// The find bar has the web editor's buttons (Toggle Replace, Match Case, back, on, Close; Replace and All beside the
+  /// replacement) and its replace: ⌥⌘F opens it with the replacement, a click on a button does what its key does
+  @Test func theFindBarHasTheWebEditorsButtonsAndReplaces() async throws {
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer { r.close() }
+    r.doubleClick(try r.line("f", 1, x: 4))
+    await r.editorReady()
+    let v = try #require(r.code)
+    r.equivalent(3, "f", [.command, .option])
+    let bar = try #require(v.findBar)
+    let buttons = try #require(bar.buttons)
+    bar.layoutSubtreeIfNeeded()
+    #expect(bar.replacing && buttons.frame.width == 120 && buttons.frame.height == 54)
+    // a click on button `k` of row `row` (or at `x` in it), to the view under it as the window gives it on: the rig's
+    // window is never key, where a first click would only bring it forward
+    func click(_ k: Int, row: Int = 0, x: CGFloat? = nil) {
+      bar.layoutSubtreeIfNeeded()
+      let p = buttons.convert(CGPoint(x: x ?? CGFloat(k) * 24 + 12, y: CGFloat(row) * 30 + 12), to: nil)
+      let hit = r.window.contentView?.hitTest(r.window.contentView!.convert(p, from: nil))
+      #expect(hit === buttons)
+      for t in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+        let e = NSEvent.mouseEvent(
+          with: t, location: p, modifierFlags: [], timestamp: r.next(0.016), windowNumber: r.window.windowNumber,
+          context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+        if t == .leftMouseDown { hit?.mouseDown(with: e) } else { hit?.mouseUp(with: e) }
+      }
+    }
+    // "ids" is at 21, 33 and 52
+    bar.query.stringValue = "ids"
+    bar.onChange()
+    #expect(v.editor.selection.range == 21..<24)
+    click(3)
+    #expect(v.editor.selection.range == 33..<36, "Next Match")
+    click(2)
+    #expect(v.editor.selection.range == 21..<24, "Previous Match")
+    bar.replacement.stringValue = "xs"
+    click(0, row: 1, x: 29)
+    #expect(v.editor.text.hasPrefix("def step(batch):\n    xs = batch.ids"), "Replace")
+    #expect(v.editor.selection.range == 32..<35 && bar.count.stringValue == "1/2", "the next one, a unit sooner")
+    click(0, row: 1, x: 62 + 16)
+    #expect(!v.editor.text.contains("ids") && v.editor.text.hasSuffix("run(xs)"), "All")
+    v.undo(nil)
+    #expect(v.editor.text.contains("batch.ids") && v.editor.text.hasSuffix("run(ids)"), "All is one step")
+    bar.query.stringValue = "IDS"
+    click(1)
+    #expect(bar.caseSensitive && bar.count.stringValue == "0", "Match Case")
+    click(0)
+    bar.layoutSubtreeIfNeeded()
+    #expect(!bar.replacing && buttons.frame.height == 24, "Toggle Replace")
+    click(4)
+    #expect(v.findBar == nil && r.window.firstResponder === v, "Close")
+  }
+
+  /// The find bar is the screen's size at any zoom, at the top right of the editor; a match out of view brings the board
+  /// to it at the zoom it has
+  @Test func theFindBarKeepsItsSizeAndAMatchOutOfViewIsBroughtIn() async throws {
+    let r = try await Rig(freeBoard(), zoom: 2)
+    defer { r.close() }
+    let c = r.canvas
+    r.doubleClick(try r.line("f", 1, x: 4))
+    await r.editorReady()
+    let v = try #require(r.code)
+    r.equivalent(3, "f", .command)
+    let bar = try #require(v.findBar)
+    #expect(abs(bar.convert(bar.bounds, to: nil).width - bar.size.width) < 0.5, "at 200 %")
+    // the code's last line out of view, below it
+    let line3 = try r.line("f", 3)
+    c.place(zoom: 2, centre: CGPoint(x: line3.x, y: line3.y - c.bounds.height / 2))
+    await r.idle()
+    #expect(!c.safeView.contains(line3))
+    r.press("run")
+    await r.idle()
+    #expect(v.editor.selection.range == 48..<51 && c.camera.zoom == 2)
+    #expect(c.safeView.contains(line3), "brought into view")
+    #expect(abs(bar.convert(bar.bounds, to: nil).width - bar.size.width) < 0.5)
+  }
+
+  /// Two fingers while code is written: a scroll moves the board and a pinch zooms it, the editor over the card all the
+  /// while, scaled with it and not laid out again; the writing goes on
+  @Test func panAndPinchWhileWritingCodeMoveTheBoardAndTheEditorWithIt() async throws {
+    let r = try await Rig(freeBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    r.doubleClick(try r.line("f", 2))
+    await r.editorReady()
+    let v = try #require(r.code)
+    let rows = v.layout.lineRows
+    func over() -> Bool {
+      let body = c.convert(v.frame, from: v.superview)
+      let o = c.camera.view(CGPoint(x: r.rect("f").minX, y: r.rect("f").minY + c.theme.headerHeight))
+      return abs(body.minX - o.x) < 0.5 && abs(body.minY - o.y) < 0.5
+    }
+    let at = CGPoint(x: r.rect("f").midX, y: r.rect("f").midY)
+    #expect(r.scrollGesture(from: at, dy: 12) != 0 && over())
+    await r.idle()
+    #expect(r.pinchGesture(at: at) > 1 && over())
+    #expect(abs(v.frame.width / v.bounds.width - c.camera.zoom) < 0.001 && v.layout.lineRows == rows)
+    await r.idle()
+    #expect(c.isEditing && r.window.firstResponder === v)
+    v.insertText("z", replacementRange: none)
+    await c.endEditing()
+    #expect(r.doc.board.segment(cid("f"), s1)?.lines.count == 3 && r.doc.undoName == "Edit Code")
   }
 
   /// interact.ts cardPointerDown: a double-click on a code card's title (on an untitled Free code card's head anywhere)
@@ -460,7 +523,7 @@ private func freeBoard() -> Board {
     try newCode()
     await r.editorReady()
     let id2 = try #require(c.editing?.id)
-    await r.type("x = 1")
+    r.code?.insertText("x = 1", replacementRange: none)
     await c.endEditing()
     guard case .own(let written)? = r.doc.board.card(id2)?.content, case .code(let code) = written.body else {
       Issue.record("no code card")
@@ -472,7 +535,7 @@ private func freeBoard() -> Board {
     #expect(r.doc.board.card(id2) == nil, "one undo takes it away")
   }
 
-  /// Written, Free code's language is what its new text looks like (the page's guess), unless it was picked by hand
+  /// Written, Free code's language is what its new text looks like (FreeLanguage, the board's guess), unless it was picked by hand
   /// (commands/code.ts writeFreeCode, freeLang)
   @Test func writtenFreeCodeTakesTheLanguageItsTextLooksLike() async throws {
     let rust = ["fn main() {", "    let v: Vec<u32> = Vec::new();", "    println!(\"{}\", v.len());", "}"]
@@ -494,7 +557,8 @@ private func freeBoard() -> Board {
       let row = try #require(code.layout.row(segment: 0, line: 4))
       r.doubleClick(CGPoint(x: card.minX + code.layout.gutter + 4, y: card.minY + code.top + row.y + row.height / 2))
       await r.editorReady()
-      await r.type("\n// done")
+      r.code?.perform(.newline)
+      r.code?.insertText("// done", replacementRange: none)
       await c.endEditing()
       let s = try #require(r.doc.board.freeCodeSegment(cid(id)))
       #expect(s.lines.count == 5 && r.doc.undoName == "Edit Code", "\(s.lines)")

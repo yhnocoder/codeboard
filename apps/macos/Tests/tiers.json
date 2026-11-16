@@ -6,28 +6,13 @@
       "changed": "whole",
       "important": "whole"
     },
-    "CodeBoardSyntaxTests": {
-      "changed": "whole",
-      "important": "whole"
-    },
     "CodeBoardAnalysisTests": {
       "changed": "whole",
       "important": "whole"
     },
-    "CodeBoardMarkdownTests": {
+    "CodeBoardMarkdownLooksTests": {
       "changed": "whole",
-      "important": [
-        "ParityTests",
-        "BlockMoveTests",
-        "DocumentTests/readsTheBlocks",
-        "DocumentTests/inlineRangesPointIntoTheSourceThroughQuoteMarkers",
-        "CaretTests/markersShowAroundTheCaretAndAreWalkedThroughThere",
-        "MathHintTests/theCommandBeingTyped"
-      ]
-    },
-    "CodeBoardMarkdownUITests": {
-      "changed": "whole",
-      "important": ["LayoutTests", "MathTests", "EditorCoreTests", "CodeBlockTests", "WebParityTests"]
+      "important": "whole"
     },
     "CodeBoardNotesTests": {
       "extra": ["web"],
@@ -37,7 +22,7 @@
         "SnapshotStoreTests",
         "RenderQueueTests",
         "NoteRendererTests/aNotesBlocksAreMeasuredWithItsSizeAndKeptWithIt",
-        "NoteEditorTests/itMountsTypesGrowsAndEndsWithWhatWasWritten"
+        "NoteImagesTests/aPictureIsStoredByItsContentOnce"
       ]
     },
     "MarkdownDemoKitTests": {
@@ -130,7 +115,7 @@
             "CodeBoardCanvas/CanvasAddNote.swift",
             "CodeBoardCanvas/CanvasQuestions.swift",
             "CodeBoardModel/Sidenotes.swift",
-            "CodeBoardNotes/SidenotePop.swift",
+            "CodeBoardCanvas/NativePop.swift",
             "CodeBoardNotes/QuestionListView.swift"
           ],
           "tests": ["CanvasSidenoteTests", "CanvasAlwaysShowTests"]
@@ -194,29 +179,32 @@
             "CodeBoardCanvas/CanvasFreeCode.swift",
             "CodeBoardCanvas/CodeLayout.swift",
             "CodeBoardModel/FreeCode.swift",
-            "CodeBoardSyntax"
+            "CodeBoardModel/FreeLanguage.swift"
           ],
-          "tests": ["CanvasFreeCodeTests", "CodeLayoutTests"]
+          "tests": [
+            "CanvasFreeCodeTests",
+            "CodeLayoutTests",
+            "CanvasAlwaysShowTests/whileFreeCodeIsWrittenWhatIsOnItsLinesFollowsThem"
+          ]
         },
         "writing": {
           "sources": [
             "CodeBoardCanvas/CanvasWriting.swift",
+            "CodeBoardCanvas/NativeWriting.swift",
             "CodeBoardCanvas/CanvasBar.swift",
             "CodeBoardModel/Writing.swift",
-            "CodeBoardNotes/NoteEditor.swift"
+            "CodeBoardNotes/NoteImages.swift"
           ],
           "tests": [
             "CanvasWritingTests/enteringAndLeavingWithNothingTypedChangesNothing",
             "CanvasWritingTests/returnWritesInTheSelectedCardAndASessionIsOneStep",
+            "NativeWritingTests",
+            "NativeWindowWritingTests",
             "CanvasWritingTests/anArrowOnANotesBlockFollowsItWhenTheWritingEndsAndUndoPutsItBack",
-            "CanvasWritingTests/keysPressedWhileTheEditorMountsReachIt",
             "CanvasWritingTests/aDoubleClickOnTheCanvasMakesATextThatGoesWhenLeftEmpty",
             "CanvasWritingTests/aClickOnTheOneSelectedNotesBodyWritesInIt",
-            "CanvasWritingTests/aDoubleClickBesideALineEndingInALinkWritesInTheLinksText",
             "CanvasWritingTests/aDoubleClickBelowTheLastLineOfANoteWithItsHeadingInTheHeaderWritesAtTheEnd",
-            "CanvasWritingTests/theSecondClickOfADoubleClickOnTheSelectedNoteKeepsTheWritingGoing",
             "CanvasWritingTests/theSecondPressOfADoubleClickOnTheEmptyBodyKeepsTheWritingGoing",
-            "CanvasWritingTests/theSecondClickOfTheDoubleClickThatOpensTheEditorSelectsNoWord",
             "CanvasWritingTests/aNewCardWrittenInIsOneStep",
             "CanvasWritingTests/theCardGrowsAsItIsTypedIn",
             "CanvasWritingTests/whatIsTypedWinsOverAnotherWritersTextAndTheRestMerges",
@@ -224,9 +212,7 @@
             "CanvasWritingTests/theBarSizesATextOneStepEach",
             "CanvasWritingTests/aBoxTakesItsFillsAndTextAndBoxKeepTheFirstLetterInPlace",
             "CanvasWritingTests/theToolbarShowsItsNineToolsAndMakesNoteTextAndBoxInTheViewsMiddle",
-            "CanvasWritingTests/zoomingWhileWritingScalesTheEditorsLayerThenShowsItAtTheNewZoomAtRest",
             "CanvasWritingTests/aPictureGivenToTheEditorGoesIntoTheBoardsImages",
-            "CanvasWritingTests/whatWasTypedIsWrittenWhenTheEditorLeftByItselfBeforeTheClickOutside",
             "CanvasWritingTests/focusLeavingMidCompositionWritesWhatIsComposed",
             "CanvasWritingTests/doubleBracketListsTheCardsAndWritesThePickWithItsID",
             "CanvasWritingTests/aCardOnAnotherBoardIsWrittenWithTheBoardsName",
@@ -246,13 +232,22 @@
           "sources": ["CodeBoardCanvas/CanvasWheel.swift"],
           "tests": ["CanvasWheelTests"]
         },
+        "text at rest": {
+          "sources": ["CodeBoardCanvas/CanvasRestText.swift"],
+          "tests": ["CanvasRestTextTests"]
+        },
+        "descriptions": {
+          "sources": ["CodeBoardCanvas/CanvasDesc.swift"],
+          "tests": ["CanvasDescTests"]
+        },
         "refs": {
           "sources": ["CodeBoardCanvas/CanvasRefs.swift", "CodeBoardCanvas/Refs.swift", "CodeBoardNotes/NoteRef.swift"],
           "tests": [
             "CanvasWritingTests/RefClicks",
             "CanvasSidenoteTests/RefClicksInPopup",
             "RefTests",
-            "CanvasWritingTests/doubleBracketListsTheCardsAndWritesThePickWithItsID"
+            "CanvasWritingTests/doubleBracketListsTheCardsAndWritesThePickWithItsID",
+            "CanvasTaskTests"
           ]
         },
         "shelf": {
@@ -299,7 +294,7 @@
         },
         "card headers": {
           "sources": ["CodeBoardCanvas/CanvasHeadActs.swift", "CodeBoardModel/HeadingSplit.swift"],
-          "tests": ["CanvasHeadActsTests", "CanvasHeadingTests"]
+          "tests": ["CanvasHeadActsTests", "CanvasHeadingTests", "CanvasSourceTests"]
         },
         "camera": {
           "sources": [
@@ -365,8 +360,22 @@
           "tests": ["CanvasAccessibilityTests"]
         },
         "test guard": {
-          "sources": ["CodeBoardCanvas/TestGuard.swift"],
+          "sources": ["CodeBoardCanvas/TestWatch.swift"],
           "tests": ["TestGuardTests"]
+        },
+        "native notes": {
+          "sources": [
+            "CodeBoardCanvas/NativeNotes.swift",
+            "CodeBoardCanvas/KeptMath.swift",
+            "CodeBoardNotes/MeasuredSizes.swift"
+          ],
+          "tests": [
+            "NativeNotesTests",
+            "NativeNotesKeptTests",
+            "NativeSVGPicturesTests",
+            "NativeCanvasTests",
+            "CanvasArrowTests/anArrowOnANotesBlockMeetsTheNoteAtThatBlock"
+          ]
         }
       }
     },

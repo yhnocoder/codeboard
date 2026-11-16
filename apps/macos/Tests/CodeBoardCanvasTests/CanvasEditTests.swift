@@ -122,7 +122,10 @@ actor RigTurns {
     try board.encoded().write(to: file)
     let f = file
     doc = try BoardDocument { f }
-    canvas = CanvasView(frame: CGRect(x: 0, y: 0, width: 1000, height: 700), notes: Rig.notes)
+    // its Markdown drawn by the native component, as the app's canvas draws it (CanvasView.sharedDisplay)
+    canvas = CanvasView(
+      frame: CGRect(x: 0, y: 0, width: 1000, height: 700), notes: Rig.notes,
+      display: NativeNotes(web: Rig.notes, pictures: root.appending(path: "pictures")))
     // never the general pasteboard: that is the person's own clipboard
     canvas.pasteboard = pasteboard ?? NSPasteboard(name: NSPasteboard.Name("codeboard-tests-\(UUID().uuidString)"))
     // never the network, never the person's caches
@@ -133,12 +136,10 @@ actor RigTurns {
       defer: false)
     window.isReleasedWhenClosed = false
     window.level = .underDesktop
-    // the canvas in a view of its own, as in a tab: the editor's web view goes over it there
+    // the canvas in a view of its own, as in a tab: the editors go over it there
     let host = NSView(frame: canvas.frame)
     host.addSubview(canvas)
     window.contentView = host
-    canvas.noteEditor.drawOffScreen()
-    canvas.sidenotePop.drawOffScreen()
     canvas.questionList.drawOffScreen()
     // under the desktop: the web view runs its animation frames only in a window that is ordered in
     window.orderFrontRegardless()
@@ -252,26 +253,14 @@ actor RigTurns {
     while !(canvas.queue.isIdle && canvas.tasks.isEmpty && canvas.motion.isResting) {
       if ContinuousClock.now > deadline {
         let q = canvas.queue
-        let page = await pageState(canvas.noteEditor.view)
         Issue.record(
-          "the canvas did not come to rest: \(q.pending.count) redraws to start, \(q.running) running, \(q.ready.count) to show, \(canvas.tasks.count) tasks, motion \(canvas.motion.phase); the editor's page \(page)"
+          "the canvas did not come to rest: \(q.pending.count) redraws to start, \(q.running) running, \(q.ready.count) to show, \(canvas.tasks.count) tasks, motion \(canvas.motion.phase)"
         )
         return
       }
       tick()
       try? await Task.sleep(for: .milliseconds(2))
     }
-  }
-
-  /// Whether a web view's page counts as shown and how many animation frames it runs in 200 ms (WebKit stops them in a
-  /// page it takes for hidden)
-  func pageState(_ v: WKWebView) async -> String {
-    let js = """
-      let n = 0; const f = () => { n++; requestAnimationFrame(f) }; requestAnimationFrame(f);
-      await new Promise(r => setTimeout(r, 200));
-      return `${document.visibilityState}, ${n} frames in 200 ms`
-      """
-    return (try? await v.callAsyncJavaScript(js, contentWorld: .page) as? String) ?? "not answering"
   }
 
   /// Once `f` holds, frames ticking meanwhile (what the web views do comes back on its own time)
@@ -396,12 +385,12 @@ actor RigTurns {
     let contents = layer.held.contents as AnyObject?
     let breaks = r.breaks
     var arrowPath: CGPath?
-    // n2 lies over n1's middle
-    let n1 = CGPoint(x: 40, y: 40)
+    // n2 lies over n1's middle; n1 by its header (a drag on the body of the one card selected selects its text)
+    let n1 = CGPoint(x: 40, y: 15)
     r.click(n1)
     // n1 into the Section: its arrow follows during the drag
     let arrowBefore = (r.canvas.arrowGroups[0].first as? CAShapeLayer)?.path
-    r.drag(n1, CGPoint(x: 100, y: 540)) {
+    r.drag(n1, CGPoint(x: 100, y: 515)) {
       arrowPath = (r.canvas.arrowGroups[0].first as? CAShapeLayer)?.path
     }
     #expect(arrowPath != nil && arrowPath != arrowBefore)

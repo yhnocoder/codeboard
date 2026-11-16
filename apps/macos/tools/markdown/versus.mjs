@@ -16,6 +16,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { launch } from "../../../../tools/test/chromium.mjs";
+import { componentRoot } from "./component.mjs";
 import { buildPage } from "./page/build.mjs";
 
 const here = import.meta.dirname;
@@ -23,8 +24,10 @@ const mac = path.join(here, "../..");
 const work = fs.mkdtempSync(path.join(os.tmpdir(), "md-versus-"));
 const jsonOut = process.argv.includes("--json") ? process.argv[process.argv.indexOf("--json") + 1] : null;
 
-execFileSync("swift", ["build", "-c", "release", "--product", "MarkdownBench"], { cwd: mac, stdio: "inherit" });
-const bench = path.join(mac, ".build/release/MarkdownBench");
+// MarkdownBench is the better-swift-markdown package's
+const pkg = componentRoot();
+execFileSync("swift", ["build", "-c", "release", "--product", "MarkdownBench"], { cwd: pkg, stdio: "inherit" });
+const bench = path.join(pkg, ".build/release/MarkdownBench");
 const run = (...a) => execFileSync(bench, a, { encoding: "utf8", maxBuffer: 64 << 20 });
 const notesDir = path.join(work, "notes");
 run("--write-notes", notesDir);

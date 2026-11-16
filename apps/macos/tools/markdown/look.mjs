@@ -1,5 +1,5 @@
 // The Note look comparison: each card drawn by the web board (the reference page, page/: the web editor in headless
-// Chromium) and by the native Markdown component (swift run MarkdownLook: CodeBoardMarkdownUI and its looks), side by
+// Chromium) and by the native Markdown component (swift run MarkdownLook: the package's MarkdownUI and the board's looks), side by
 // side with their difference, per theme and appearance. The cards: every look/*.md as a Note 360 wide, and the styled
 // cards of look/cards.json (Text and Box at their sizes, wrapped or as wide as their text); [[refs]] resolve as look/refs.json says; code is coloured by
 // the app's highlighter on both sides. Output in apps/macos/.build-look/markdown/<look>[-dark]/<name>.png (web | native
@@ -48,7 +48,13 @@ const webRefs = refs.map((r) => ({
   ...r,
   hit: r.hit.broken
     ? r.hit
-    : { id: "", title: r.hit.title, ...(r.hit.seal && { seal: { ...r.hit.seal, color: `var(--seal-${r.hit.seal.color})` } }) },
+    : { id: "", title: r.hit.title, ...(r.hit.seal && {
+          seal: {
+            ...r.hit.seal,
+            color: `var(--seal-${r.hit.seal.color})`,
+            ...(r.hit.seal.outer && { outer: { ...r.hit.seal.outer, color: `var(--seal-${r.hit.seal.outer.color})` } }),
+          },
+        }) },
 }));
 for (const { look, dark } of looks) {
   const dir = path.join(out, `${look}${dark ? "-dark" : ""}`);

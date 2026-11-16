@@ -1,6 +1,6 @@
 import AppKit
-import CodeBoardMarkdown
-import CodeBoardMarkdownUI
+import MarkdownCore
+import MarkdownUI
 
 /// The panel at the window's right: the selection in source offsets and the caret's block as source, what the editor
 /// last copied and pasted, and its last 50 events, newest first, each with the main thread's time it cost. It reads

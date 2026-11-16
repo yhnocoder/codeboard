@@ -1,8 +1,8 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
 import Testing
+import TreeSitterHighlight
 
 @testable import CodeBoardCanvas
 
@@ -119,15 +119,14 @@ import Testing
     let at = VaultBoard(id: board.id, title: "B", path: "B.board")
     let frame = CGRect(x: 0, y: 0, width: 800, height: 600)
 
-    // measured before it is shown: the tall Note's height is its content's, no more than paper so far
+    // measured before it is shown: the tall Note's height is its content's; both in view, drawn as the board shows
     let first = CanvasView(frame: frame, noteCache: cache)
     try await first.show(at, in: vault, theme: .warmInk)
     let bounds = first.boardBounds
     #expect(bounds.height > 300)
-    #expect(first.noteProgress.overviews == 0 && first.noteProgress.notes == 2)
+    #expect(first.noteProgress.overviews == 2 && first.noteProgress.notes == 2, "\(first.noteProgress)")
 
     // a level's bitmap: the paper with the picture over it, much more ink than the paper alone
-    let renderer = NoteRenderer(cache: cache)
     let sizes = [CardID(rawValue: "tall"): CGSize(width: 300, height: bounds.height)]
     let scene = Scene(
       board, package: package, vault: vault, theme: .warmInk, highlighter: Highlighter(),
@@ -135,24 +134,16 @@ import Testing
     let images = DecodeCache(cap: 1 << 20)
     let composed = try #require(
       await CanvasView.drawNote(
-        scene.items[0], scale: 2, theme: .warmInk, images: images, notes: renderer, priority: 0
+        scene.items[0], scale: 2, theme: .warmInk, images: images, display: first.display, priority: 0
       ).surface)
     let paper = try #require(CanvasView.render(scene.items[0], scale: 2, theme: .warmInk, images: images).surface)
     // and the sheet's hairline ring, half a unit round it
     #expect(composed.width == 602 && composed.height == Int(((bounds.height + 1) * 2).rounded(.up)))
     #expect(ink(composed) > ink(paper) + 2000)
 
-    // the overviews the canvas asks for, in the cache: a re-open shows them at once, at the same sizes
+    // a re-open, its sizes and pictures read from what the first kept, shows them at once, at the same sizes
     let fit = Camera.fit(bounds, in: frame.size).zoom
     let backing = NSScreen.main?.backingScaleFactor ?? 2
-    for (it, height) in zip(scene.items, [nil, nil] as [Double?]) {
-      guard case .note(let n) = it.drawing else { continue }
-      _ = try await renderer.snapshot(
-        of: n.content, width: it.rect.width, height: height, folder: package,
-        scale: Levels.noteOverview(fit, backing: backing, size: it.bitmapSize), look: Theme.warmInk.id.rawValue,
-        dark: false, refs: n.refs, hideHead: n.hideHead, priority: 0)
-    }
-    await renderer.written()
     let again = CanvasView(frame: frame, noteCache: cache)
     try await again.show(at, in: vault, theme: .warmInk)
     #expect(again.boardBounds == bounds)
@@ -192,7 +183,7 @@ import Testing
     #expect(bgra(paper, 50, 50) == [0, 0, 0, 0])
     let drawn = try #require(
       await CanvasView.drawNote(
-        item, scale: 2, theme: .warmInk, images: images, notes: NoteRenderer(cache: cache), priority: 0
+        item, scale: 2, theme: .warmInk, images: images, display: NoteRenderer(cache: cache), priority: 0
       ).surface)
     #expect(drawn.width == 400 && drawn.height == 200)
     let bar = bgra(drawn, 50, 50).map(Int.init)

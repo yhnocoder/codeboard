@@ -1,8 +1,8 @@
 import CodeBoardModel
-import CodeBoardSyntax
 import CoreGraphics
 import Foundation
 import Testing
+import TreeSitterHighlight
 
 @testable import CodeBoardCanvas
 
@@ -43,6 +43,18 @@ private func segment(_ id: String, path: String? = "src/engine.py", first: Int, 
     #expect(l.height == 122)
     #expect(l.lineY(segment: 0, line: 11) == 60)
     #expect(l.lineY(segment: 0, line: 9) == nil)
+  }
+
+  /// A wrapped line's arrow ends meet it at the middle of all its rows, as the web board's lineY does (the middle of the
+  /// line's element)
+  @Test func aWrappedLinesMiddleIsTheMiddleOfAllItsRows() throws {
+    let s = segment("a", first: 1, ["x = 1", "y = " + String(repeating: "value + ", count: 12) + "0", "z = 3"])
+    let l = CodeLayout(CodeCard(segments: [s], wrap: true), width: 240, metrics: metrics)
+    let two = try #require(l.row(segment: 0, line: 2))
+    let three = try #require(l.row(segment: 0, line: 3))
+    #expect(three.y - two.y > 2 * two.height, "wraps to three rows or more")
+    #expect(l.lineY(segment: 0, line: 2) == (two.y + three.y) / 2)
+    #expect(l.lineY(segment: 0, line: 3) == three.y + three.height / 2)
   }
 
   @Test func anotherFileOrFunctionIsMarked() {
@@ -143,6 +155,27 @@ private func segment(_ id: String, path: String? = "src/engine.py", first: Int, 
     let heights: [CGFloat] = [90, 496, 136]
     #expect(s.items.map(\.rect.height) == heights)
     #expect(s.bounds == CGRect(x: 0, y: 0, width: 1100, height: 496))
+  }
+
+  /// A line past what a card of fixed height or at the cap shows: its arrow leaves from the bottom of the card's code,
+  /// as on the web board (geo.ts lineY clamps to the code's visible part)
+  @Test func anArrowFromALinePastWhatACardShowsLeavesFromTheBottomOfItsCode() throws {
+    let lines = (1...100).map { "x\($0)" }
+    let long = card("l", x: 0, y: 0, .code(CodeCard(segments: [segment("a", first: 1, lines)])))
+    let fixed = card("f", x: 0, y: 600, height: 100, .code(CodeCard(segments: [segment("a", first: 1, lines)])))
+    let note = card("n", x: 600, y: 300, height: 120, .note(Note(text: "# Idea")))
+    func from(_ c: Card, _ line: Int) -> Arrow {
+      Arrow(
+        id: ArrowID(rawValue: "\(c.id.rawValue)\(line)"),
+        from: Endpoint(card: c.id, segment: SegmentID(rawValue: "a"), line: line), to: Endpoint(card: note.id))
+    }
+    let s = scene(
+      Board(
+        id: BoardID(rawValue: "b"), cards: [long, fixed, note],
+        arrows: [from(long, 90), from(fixed, 50), from(fixed, 2)]))
+    let ends = try s.arrows.map { try #require($0.pts.first?.y) }
+    // the long card at the cap, 496 tall; the fixed one 136 from 600; line 2 is shown: 36 header + 6 padding + 20 + 10
+    #expect(ends == [496, 736, 672])
   }
 
   @Test func anArrowFromALineLeavesFromThatRowAndSkipsMissingSharedCards() {

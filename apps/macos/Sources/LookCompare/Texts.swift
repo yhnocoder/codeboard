@@ -2,8 +2,8 @@ import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
 import Foundation
+import TreeSitterHighlight
 
 // LookCompare --texts <out folder>: Texts and Boxes of made-up content drawn as the canvas shows them at rest (the Note
 // page's picture over the canvas's paper), at several sizes, in every fill, wrapped and not, in each theme light and dark:
@@ -66,11 +66,11 @@ enum TextSheets {
     for theme in Theme.all.flatMap({ [$0, Theme.named($0.id, dark: true)] }) {
       let name = "texts-" + theme.id.rawValue + (theme.dark ? "-dark" : "")
       let first = await Picture.draw(
-        board: b, package: package, vault: vault, theme: theme, highlighter: highlighter, notes: notes,
+        board: b, package: package, vault: vault, theme: theme, highlighter: highlighter, display: notes,
         rect: CGRect(x: 0, y: 0, width: 1, height: 1), scale: 1, backdrop: false)
       let bounds = first.cards.values.reduce(CGRect.null) { $0.union($1) }.insetBy(dx: -40, dy: -40)
       let (img, _) = await Picture.draw(
-        board: b, package: package, vault: vault, theme: theme, highlighter: highlighter, notes: notes, rect: bounds,
+        board: b, package: package, vault: vault, theme: theme, highlighter: highlighter, display: notes, rect: bounds,
         scale: 2, backdrop: true)
       guard let img else { throw CocoaError(.fileWriteUnknown) }
       write(img, out.appending(path: "\(name).png"))

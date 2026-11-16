@@ -123,6 +123,14 @@ export const blocks = [
   "[label]: https://example.com\n\n[label] reference",
   "[a]: x\n[a]: y\n\ntext",
   "para\n[def]: in paragraph",
+  // runs of definitions (schema.ts refDefs): up to a line that is none, in lists and quotes, over lines
+  "[a]: x\n[b]: y \"t\"\n  [c]: <z>\npara after",
+  "- item\n\n  [a]: x\n\n- [b]: y\n\n[a] [b]",
+  "> [q]: x\n> quoted [q]",
+  "[a]:\n  https://x\n  'title'\n\n[a] and [b][a]",
+  "[a]: x\n\n\n[b]: y\n[a]: z",
+  // fences indented by 1–3 spaces (#216), ~~~ too
+  "   ~~~\n   tilde\n    more\n   ~~~",
   "![](images/a.png)\n\n![b](images/b.png \"caption\"){width=50%}",
   "line one  \nline two\n\nline three\\\nline four",
   "Table: not after table",

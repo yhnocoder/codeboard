@@ -12,6 +12,8 @@ import CodeBoardNotes
 /// A button of a card's header
 enum HeadAct: Hashable {
   case fit, wrap, copy, lang, split, more
+  /// A Note being written in: its Markdown Source (M↓, ⌘/), left of its ··· (NoteBody.tsx .ib.mdsrc)
+  case source
   /// A Web card's Open in Browser
   case open
   /// A locked card's lock, first in its header (.lockb): Unlock
@@ -37,6 +39,22 @@ extension CanvasView {
     var parts = 0
     /// A Web card's: its two buttons on glass over its top right corner (.wacts), no header behind them
     var floating = false
+
+    /// What the strip is drawn from: the drawing less a code card's lines, which take long to describe and which the
+    /// strip does not show (a 400-line card's took 50 ms each time a card started to be written)
+    var header: Drawing {
+      guard case .code(var c) = drawing else { return drawing }
+      c.layout.rows = []
+      c.layout.segmentLines = []
+      c.layout.bands = []
+      c.layout.inline = []
+      c.inline = []
+      c.linked = []
+      return .code(c)
+    }
+    /// A Note written in whose header is its heading: the header folds away under the editor, which draws the heading,
+    /// and only its ··· stays (.chead.fold > .ib)
+    var folded = false
   }
 
   /// The language picker's languages and the label of any language (analysis langs.ts LANG_TABLE, those picked first)
@@ -86,12 +104,25 @@ extension CanvasView {
       right = Drawing.headerRight(c, width: w, t)
     case .note(let n):
       guard case .note = n.content, !n.folded, case .note(let note)? = s.parts[id]?.content.body else { return nil }
+      // while it is written in natively, its M↓ before the ··· (on in the accent while the editor shows the source)
+      var source: [(HeadAct, CGRect)] = []
+      if let ed = editing, ed.id == id, ed.ready, !ed.ending, let v = ed.writer {
+        let sw = (Drawing.width("M↓", HeadActs.sourceFont) + 12).rounded(.up)
+        source = [(.source, CGRect(x: more.1.minX - t.headerGap - sw, y: y, width: sw, height: 26))]
+        // as showPaper folds it
+        if n.hideHead {
+          return Head(
+            drawing: it.drawing, buttons: source + [more], reserve: 0, on: v.isSourceMode ? [.source] : [],
+            folded: true)
+        }
+      }
       acts = [.fit, .split]
       let parts = HeadingSplit(note.text)?.parts.count ?? 0
-      h = Head(drawing: it.drawing, buttons: [], reserve: 0, parts: parts)
+      h = Head(drawing: it.drawing, buttons: source, reserve: 0, parts: parts)
+      if editing?.writer?.isSourceMode == true, !source.isEmpty { h.on.insert(.source) }
       if card.height == nil { h.faint.insert(.fit) }
       if parts == 0 { h.faint.insert(.split) }
-      right = Drawing.headerRight(nil, width: w, t)
+      right = (source.first?.1.minX).map { $0 - t.headerGap } ?? Drawing.headerRight(nil, width: w, t)
     default:
       return nil
     }
@@ -117,7 +148,7 @@ extension CanvasView {
       default: false
       }
     let lockb = CGRect(x: t.headerPad, y: t.headerHeight / 2 - 9, width: 18, height: 18)
-    h.buttons = (locked ? [(.unlock, lockb)] : []) + buttons.reversed() + [more]
+    h.buttons = (locked ? [(.unlock, lockb)] : []) + buttons.reversed() + h.buttons + [more]
     h.reserve = right - (x + 2) + t.headerGap
     return h
   }
@@ -151,6 +182,12 @@ extension CanvasView {
     case .unlock: doc.edit("Unlock") { $0.setLocked([.card(id)], false) }
     case .row(let item, let tool): pressRowTool(id, item, tool)
     case .split: if !h.faint.contains(.split) { splitByHeadings(id) }
+    case .source:
+      // the keys stay in the editor (data-md-keep)
+      guard let v = writerView, editing?.id == id else { return }
+      v.toggleSourceMode()
+      window?.makeFirstResponder(v)
+      drawChrome()
     case .open:
       if case .own(let k)? = doc.board.card(id)?.content, case .web(let w) = k.body { openLink(w.url) }
     case .lang, .more:
@@ -189,7 +226,7 @@ extension CanvasView {
   /// Free code's languages (edit.ts langMenu): Auto-detect, with what its text looks like, then the languages to pick
   func languageMenu(_ id: CardID) async -> NSMenu? {
     guard let doc = document, let s = doc.board.freeCodeSegment(id) else { return nil }
-    let auto = try? await notes.freeLanguage(s.lines.joined(separator: "\n"))
+    let auto = FreeLanguage.guess(s.lines.joined(separator: "\n"))
     let picked = s.languagePicked == true
     let m = NSMenu()
     m.addItem(
@@ -227,12 +264,12 @@ extension CanvasView {
       return (Double(it.rect.minX), Double(it.rect.minY), Double(it.rect.width), Double(it.rect.height))
     }
     let theme = theme
-    let notes = notes
+    let display = display
     Task { [weak self] in
       if self?.editing?.id == id { await self?.endEditing() }
       var hs: [Double] = []
       for md in [sp.pre] + sp.parts.map(\.md) {
-        let m = await CanvasView.measure([measure(md)], theme: theme, notes: notes)[c.id]
+        let m = await CanvasView.measure([measure(md)], theme: theme, display: display)[c.id]
         hs.append(m.map { Double($0.size.height) } ?? 0)
       }
       guard let self, self.document === doc else { return }
@@ -261,6 +298,7 @@ extension CanvasView {
           ? "Split by Headings · \(h.parts + 1) cards, linked by arrows" : "Split by Headings · no headings to split at"
       )
     case .more: Tip("More Actions")
+    case .source: Tip("Markdown Source", kbd: "⌘/")
     case .open: Tip("Open in Browser", kbd: "Double-click")
     case .unlock: Tip("Unlock", kbd: BoardKey.show(of: "Lock / Unlock"))
     case .row(let item, let tool):
@@ -319,7 +357,7 @@ extension CanvasView {
       let hovered = hoveredHead?.0 == id ? hoveredHead?.1 : nil
       let size = box.bounds.size
       let key =
-        "\(h.drawing) \(h.on) \(h.faint) \(String(describing: hovered)) \(size) \(theme.id) \(theme.dark) \(scale)"
+        "\(h.header) \(h.folded) \(h.buttons.map(\.0)) \(h.on) \(h.faint) \(String(describing: hovered)) \(size) \(theme.id) \(theme.dark) \(scale)"
       let l: CALayer
       if let shown = headShown[id] {
         l = shown.layer
@@ -402,6 +440,10 @@ enum HeadActs {
   static var langFont: Font {
     Font.board("JetBrainsMono-400-600", size: 10.5, weight: 500) ?? Font.mono(10.5, .medium)
   }
+  /// M↓'s font: 600 11.5 mono (.ib.mdsrc)
+  static var sourceFont: Font {
+    Font.board("JetBrainsMono-400-600", size: 11.5, weight: 600) ?? Font.mono(11.5, .semibold)
+  }
 
   static var wrap: CGPath { SVGPath.parse("M2 4h12M2 8h10a2 2 0 1 1 0 4H9M11 10l-2 2 2 2M2 12h4") }
   static var copy: CGPath {
@@ -419,11 +461,12 @@ enum HeadActs {
     ctx.clip(
       to: CGRect(
         x: t.headerPad - 4, y: 2, width: size.width - t.headerPadRight - (t.headerPad - 4), height: t.headerHeight - 4))
-    switch h.drawing {
-    case .code(let c):
+    // folded: the editor's heading shows through
+    switch h.folded ? nil : h.drawing {
+    case .code(let c)?:
       Drawing.paper(ctx, card, t, id: c.id, rule: false)
       Drawing.header(ctx, c, card, t, reserve: h.reserve)
-    case .note(let n):
+    case .note(let n)?:
       Drawing.paper(ctx, card, t, id: n.id, rule: true)
       Drawing.noteHeader(ctx, n, width: size.width, t, reserve: h.reserve)
     default: break
@@ -456,6 +499,18 @@ enum HeadActs {
         }
         continue
       }
+      if a == .source {
+        // .ib.mdsrc: its letters, lit as any button; on, the accent's 14 % behind it and the letters in the accent
+        let on = h.on.contains(a)
+        if on || lit {
+          ctx.addPath(CGPath(roundedRect: r, cornerWidth: 8.5, cornerHeight: 8.5, transform: nil))
+          ctx.setFillColor(on ? t.accent.copy(alpha: 0.14) ?? t.hlrow : t.ink.copy(alpha: 0.07) ?? t.hlrow)
+          ctx.fillPath()
+        }
+        Drawing.text(
+          ctx, "M↓", sourceFont, on ? t.accent : lit ? t.ink : t.ink2, x: r.minX + 6, midY: r.midY, width: .infinity)
+        continue
+      }
       let faint = h.faint.contains(a)
       if lit && !faint {
         ctx.addPath(CGPath(roundedRect: r, cornerWidth: 8.5, cornerHeight: 8.5, transform: nil))
@@ -477,7 +532,7 @@ enum HeadActs {
         case .wrap: wrap
         case .copy: copy
         case .split: splitH
-        case .more, .lang, .open, .unlock, .row: CGMutablePath()
+        case .more, .lang, .open, .unlock, .row, .source: CGMutablePath()
         }
       ctx.saveGState()
       if faint { ctx.setAlpha(0.35) }

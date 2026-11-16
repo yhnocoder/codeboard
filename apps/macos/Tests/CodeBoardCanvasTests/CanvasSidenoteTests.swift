@@ -1,9 +1,12 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
+import MarkdownCore
+import TestGuard
 import Testing
 
 @testable import CodeBoardCanvas
+@testable import MarkdownUI
 
 // Sidenotes on the real canvas (as CanvasEditTests: a window of its own far off screen, events straight to the canvas,
 // frames ticked by the test): a marker for each kind of anchor where the web board puts it, hit areas that keep their
@@ -128,8 +131,42 @@ func sidenoteBoard(question: Bool = false) -> Board {
   }
 }
 
+extension Rig {
+  /// A press and release through the window at a point of the popup's view, as a person's click arrives
+  func click(pop v: NSView, at p: CGPoint, clicks: Int = 1) {
+    for t in [NSEvent.EventType.leftMouseDown, .leftMouseUp] { mouse(t, pop: v, at: p, clicks: clicks) }
+  }
+
+  func mouse(_ t: NSEvent.EventType, pop v: NSView, at p: CGPoint, clicks: Int = 1) {
+    window.sendEvent(
+      NSEvent.mouseEvent(
+        with: t, location: v.convert(p, to: nil), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+        windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: clicks, pressure: 1)!)
+  }
+
+  /// Typed into the popup's field, as the keys type it
+  func type(_ pop: SidenotePop, _ s: String) {
+    pop.field?.insertText(s, replacementRange: NSRange(location: NSNotFound, length: 0))
+  }
+
+  /// ↵ or Esc in the popup's field, as the key binding sends it
+  func enter(_ pop: SidenotePop) { pop.field?.doCommand(by: #selector(NSResponder.insertNewline(_:))) }
+  func escape(_ pop: SidenotePop) {
+    if let f = pop.field {
+      f.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+    } else {
+      pop.view.cancelOperation(nil)
+    }
+  }
+}
+
+extension SidenotePop {
+  func slip(_ id: String) -> SlipView? { slips.first { $0.note.id == id } }
+  var order: [String] { slips.map(\.note.id) }
+}
+
 extension CanvasSidenoteTests {
-  /// The popup's box in the canvas's points, as its web view shows it
+  /// The popup's box in the canvas's points, as its view shows it
   func popBox(_ c: CanvasView) -> CGRect {
     let p = c.sidenotePop
     return p.view.convert(CGRect(origin: p.origin, size: p.size), to: c)
@@ -299,11 +336,7 @@ extension CanvasSidenoteTests {
     let r = try await Rig(sidenoteBoard(), zoom: 1)
     defer { r.close() }
     let c = r.canvas
-    func head() async -> [String] {
-      await c.sidenotePop.run(
-        "return [...document.querySelectorAll('.hh button')].map((b) => b.getAttribute('aria-label'))") as? [String]
-        ?? []
-    }
+    func head() async -> [String] { c.sidenotePop.labels() }
     let empty = PopAt.spot(.point(x: 900, y: 900))
     c.openPop(empty, write: true)
     await opened(r, empty)
@@ -323,48 +356,92 @@ extension CanvasSidenoteTests {
     let at = PopAt.spot(.card(cid("t1")))
     c.openPop(at, write: true)
     await opened(r, at)
-    await r.until("the input is ready") {
-      await pop.run("return !!document.querySelector('.ProseMirror')") as? Bool == true
-    }
-    _ = await pop.run("pop.type(t)", ["t": "第二条 sidenote"])
-    _ = await pop.run("pop.press('Enter')")
+    #expect(r.window.firstResponder === pop.field, "the input has the keys")
+    r.type(pop, "第二条 sidenote")
+    r.enter(pop)
     await r.until("added") { r.doc.board.sidenotes(at: .card(cid("t1"))).count == 2 }
     #expect(r.doc.board.sidenotes(at: .card(cid("t1"))).last?.body == .text(TextNote(text: "第二条 sidenote")))
     // in place, and the next one is written in a new input
-    await r.until("shown") { await pop.run("return document.querySelectorAll('.slip').length") as? Int == 2 }
-    #expect(await pop.run("return !!document.querySelector('.ncomp .ProseMirror')") as? Bool == true)
+    await r.until("shown") { pop.slips.count == 2 }
+    #expect(pop.bottom is Composer && r.window.firstResponder === pop.field)
     // the ? makes it a question; after ↵ the row is the + again
-    _ = await pop.run("pop.click('.ncomp-ask')")
-    _ = await pop.run("pop.type(t)", ["t": "为什么等?"])
-    _ = await pop.run("pop.press('Enter')")
+    pop.press("Question")
+    #expect(r.window.firstResponder === pop.field, "the ? takes no focus")
+    r.type(pop, "为什么等?")
+    r.enter(pop)
     await r.until("asked") { r.doc.board.sidenotes(at: .card(cid("t1"))).count == 3 }
     #expect(r.doc.board.sidenotes(at: .card(cid("t1"))).last?.isOpenQuestion == true)
-    await r.until("the + again") { await pop.run("return !!document.querySelector('.tray > .add')") as? Bool == true }
+    #expect((pop.bottom as? PopButton)?.label == "Add Sidenote", "the + again")
     await r.settle()
     // its marker is a ? now
     #expect(c.marks.first { $0.at == at }?.ask == true)
     // answered under the question, then resolved by its tick
-    await r.until("its reply row") { await pop.run("return pop.click('.reply')") as? Bool == true }
-    await r.until("the answer's input") {
-      await pop.run("return !!document.querySelector('.ans-in .ProseMirror')") as? Bool == true
-    }
-    _ = await pop.run("pop.type(t)", ["t": "因为 [[备注"])
-    await r.until("the [[ list") { !pop.view.uiRects.isEmpty }
-    _ = await pop.run("pop.press('Escape')")
-    _ = await pop.run("pop.press('Escape')")
-    await r.until("answered") { r.doc.board.sidenotes(at: .card(cid("t1"))).last?.question?.answers.count == 1 }
     let q = try #require(r.doc.board.sidenotes(at: .card(cid("t1"))).last)
-    await r.until("its tick") {
-      await pop.run("return !!document.querySelector('.slip.ask.open .kt button')") as? Bool == true
-    }
-    _ = await pop.run("pop.click('.slip.ask.open .kt button')")
+    await r.until("its reply row") { pop.slip(q.id.rawValue)?.reply != nil }
+    #expect(pop.press("Answer", in: q.id.rawValue))
+    #expect(pop.slip(q.id.rawValue)?.answering != nil && r.window.firstResponder === pop.field)
+    r.type(pop, "因为 [[调")
+    await r.until("the [[ list, once its candidates come") { pop.field?.typedMenu.shown == true }
+    // the first Esc closes the list, the second ends the answer, which is added
+    r.escape(pop)
+    r.escape(pop)
+    await r.until("answered") { r.doc.board.sidenote(q.id)?.question?.answers.count == 1 }
+    await r.until("drawn") { pop.slip(q.id.rawValue)?.answers.count == 1 }
+    #expect(pop.press("Resolve", in: q.id.rawValue))
     await r.until("resolved") { r.doc.board.sidenote(q.id)?.question?.done == true }
-    await r.until("drawn resolved") {
-      await pop.run("return document.querySelectorAll('.slip.ask.done').length") as? Int == 1
-    }
-    #expect(await pop.run("return document.querySelectorAll('.reply').length") as? Int == 0)
+    await r.until("drawn resolved") { pop.slip(q.id.rawValue)?.question == true }
+    #expect(pop.slip(q.id.rawValue)?.reply == nil, "no reply row on a resolved one")
     // one step each, undone in turn
     #expect(r.doc.history.undoSteps.map(\.name) == ["Add Sidenote", "Add Question", "Answer", "Resolve"])
+    // with nothing being written, Esc closes the popup
+    r.escape(pop)
+    await r.until("closed") { c.popShown == nil }
+  }
+
+  /// The input's code switch (NoteComposer.tsx): a search of code by its function's or file's name, ↑↓ and ↵ add the
+  /// one chosen as a code sidenote of its own lines, one step; Esc leaves the search, adding nothing
+  @Test func theInputsCodeSwitchSearchesCodeAndAddsACodeSidenote() async throws {
+    var b = sidenoteBoard()
+    let seg = Segment(
+      id: SegmentID(rawValue: "s9"), source: .file(path: "engine/block_manager.py", hash: nil), language: "python",
+      firstLine: 40, lines: ["def can_allocate(self, seq):", "    return True"],
+      symbol: Symbol(name: "BlockManager.can_allocate", kind: .function), highlights: [40...40])
+    b.cards.append(
+      Card(id: cid("c9"), x: 0, y: 700, width: 400, content: .own(CardContent(body: .code(CodeCard(segments: [seg]))))))
+    let r = try await Rig(b, zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let pop = c.sidenotePop
+    let at = PopAt.spot(.card(cid("t1")))
+    c.openPop(at, write: true)
+    await opened(r, at)
+    #expect(pop.labels(in: nil) == ["Delete Sidenotes", "Close"])
+    #expect(pop.press("Code"))
+    let composer = try #require(pop.bottom as? Composer)
+    let search = try #require(composer.search)
+    #expect(composer.editor == nil && r.window.firstResponder === search.currentEditor())
+    search.stringValue = "alloc"
+    pop.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: search))
+    #expect(composer.found.map(\.label) == ["BlockManager.can_allocate"])
+    #expect(composer.found.first?.detail == "engine/block_manager.py:40 · This board")
+    let tv = NSTextView()
+    #expect(pop.control(search, textView: tv, doCommandBy: #selector(NSResponder.insertNewline(_:))))
+    await r.until("added") { r.doc.board.sidenotes(at: .card(cid("t1"))).count == 2 }
+    let n = try #require(r.doc.board.sidenotes(at: .card(cid("t1"))).last)
+    guard case .code(let made) = n.body else {
+      Issue.record("a code sidenote")
+      return
+    }
+    #expect(made.lines == seg.lines && made.symbol == seg.symbol && made.id != seg.id && made.highlights.isEmpty)
+    #expect(r.doc.undoName == "Add Sidenote")
+    await r.until("its slip, head and lines") { pop.slip(n.id.rawValue)?.code?.lines == seg.lines }
+    #expect(pop.slip(n.id.rawValue)?.head?.title == "BlockManager.can_allocate")
+    // the input goes on, as text again; switched again, Esc leaves the search with nothing added
+    #expect(composer.mode == .text && composer.editor != nil)
+    pop.press("Code")
+    #expect(pop.control(composer.search!, textView: tv, doCommandBy: #selector(NSResponder.cancelOperation(_:))))
+    #expect((pop.bottom as? PopButton)?.label == "Add Sidenote")
+    #expect(r.doc.board.sidenotes(at: .card(cid("t1"))).count == 2)
   }
 }
 
@@ -393,12 +470,9 @@ extension CanvasSidenoteTests {
     let at = PopAt.lines(Lines(card: cid("c1"), segment: s1, range: 10...11))
     await opened(r, at)
     let pop = c.sidenotePop
-    await r.until("its input") {
-      await pop.run("return !!document.querySelector('.ncomp .ProseMirror')") as? Bool == true
-    }
-    #expect(await pop.run("return document.querySelector('.hh .rng').textContent") as? String == "10–11")
-    _ = await pop.run("pop.type(t)", ["t": "两行"])
-    _ = await pop.run("pop.press('Enter')")
+    #expect(pop.shown?.range == "10–11")
+    r.type(pop, "两行")
+    r.enter(pop)
     await r.until("on them, a Highlight made") {
       r.doc.board.sidenotes.contains { $0.body == .text(TextNote(text: "两行")) }
     }
@@ -564,28 +638,23 @@ extension CanvasSidenoteTests {
     let at = PopAt.spot(.card(cid("t1")))
     c.openPop(at, write: true)
     await opened(r, at)
-    await r.until("its input") {
-      await pop.run("return !!document.querySelector('.ncomp .ProseMirror')") as? Bool == true
-    }
-    _ = await pop.run("pop.type(t)", ["t": "见 [[调"])
-    await r.until("the [[ list with this board's Note") {
-      await pop.run("return document.querySelector('.md-pick')?.textContent ?? ''") as? String ?? "" != ""
-    }
-    #expect((await pop.run("return document.querySelector('.md-pick').textContent") as? String)?.contains("调度") == true)
+    r.type(pop, "见 [[调")
+    await r.until("the [[ list with this board's Note") { pop.field?.typedMenu.shown == true }
+    let f = try #require(pop.field)
+    #expect(f.typedMenu.items.contains { $0.title.contains("调度") })
+    #expect(!pop.view.panel.clipsToBounds, "the list hangs out of the popup")
     // picked, the ref is drawn as what it points at at once (the list came after the input was made)
-    _ = await pop.run("pop.press(k)", ["k": "Enter"])
-    _ = await pop.run("pop.type(t)", ["t": " 好"])
-    await r.until("the picked ref drawn as found") {
-      await pop.run(
-        "const r = document.querySelector('.ncomp .md-ref'); return !!r && !r.classList.contains('missing')"
-          + " && r.textContent.includes('调度')") as? Bool == true
-    }
+    r.enter(pop)
+    r.type(pop, " 好")
+    #expect(f.source.hasPrefix("见 [[调度") && f.source.hasSuffix(" 好"))
+    #expect(f.core.layout.drawnRefs.contains { $0.label.contains("调度") }, "drawn as found")
   }
 }
 
 extension CanvasSidenoteTests {
-  /// A sidenote's menu (notes.tsx noteMenu): a right-click on it in the popup asks the app for its menu at the
-  /// pointer; a text sidenote's is Edit, Place on Board when it is on a card and asks nothing, then Delete Sidenote
+  /// A sidenote's menu (notes.tsx noteMenu): a right-click on it in the popup shows it, and it is the slip's menu as
+  /// AppKit asks a view for one (menu(for:)); a text sidenote's is Edit, Place on Board when it is on a card and asks
+  /// nothing, then Delete Sidenote
   @Test func aRightClickOnASidenoteGivesItsMenu() async throws {
     let r = try await Rig(sidenoteBoard(), zoom: 1)
     defer { r.close() }
@@ -594,19 +663,20 @@ extension CanvasSidenoteTests {
     let at = PopAt.lines(Lines(card: cid("c1"), segment: s1, range: 12...13))
     c.openPop(at)
     await opened(r, at)
-    let theirs = pop.onAction
-    var got: [SidenotePop.Action] = []
-    pop.onAction = { got.append($0) }
-    _ = await pop.run(
-      """
-      document.querySelector('.slip[data-note="l1"]').dispatchEvent(
-        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 40 }))
-      """)
-    await r.until("asked for its menu") { got == [.menu("l1", at: CGPoint(x: 30, y: 40))] }
-    pop.onAction = theirs
-    let m = c.sidenoteMenu(nid("l1"))
+    let slip = try #require(pop.slip("l1"))
+    let p = slip.convert(CGPoint(x: 30, y: 12), to: pop.view)
+    let press = NSEvent.mouseEvent(
+      with: .rightMouseDown, location: pop.view.convert(p, to: nil), modifierFlags: [], timestamp: 1,
+      windowNumber: r.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
     func titles(_ m: NSMenu) -> [String] { m.items.map { $0.isSeparatorItem ? "-" : $0.title } }
-    #expect(titles(m) == ["Edit", "Place on Board", "-", "Delete Sidenote"])
+    let asked = try #require(slip.menu(for: press))
+    #expect(titles(asked) == ["Edit", "Place on Board", "-", "Delete Sidenote"])
+    try #require(TestGuard.guardsContextMenus, "the menu guard is not in")
+    TestGuard.shown = []
+    r.window.sendEvent(press)
+    #expect(TestGuard.shown == ["menu: Edit | Place on Board | — | Delete Sidenote"], "shown by the press")
+    let m = c.sidenoteMenu(nid("l1"))
+    #expect(titles(m) == titles(asked))
     #expect(titles(c.sidenoteMenu(nid("g1"))) == ["Edit", "-", "Delete Sidenote"], "on a Section: no card to place by")
     r.doc.edit("x") {
       $0.sidenotes.append(
@@ -618,16 +688,19 @@ extension CanvasSidenoteTests {
     }
     #expect(titles(c.sidenoteMenu(nid("k1"))) == ["Place on Board", "-", "Delete Sidenote"])
     (m.items.first?.representedObject as? MenuAction)?.run()
-    await r.until("written in") {
-      await pop.run("return !!document.querySelector('.sn-edit')") as? Bool == true
-    }
+    #expect(pop.slip("l1")?.writing != nil && r.window.firstResponder === pop.field, "written in")
+    // written in place: ↵ saves it, one step
+    r.type(pop, " 再")
+    r.enter(pop)
+    await r.until("saved") { Scene.text(r.doc.board.sidenote(nid("l1"))!) == "取一批 再" }
+    #expect(r.doc.undoName == "Edit Sidenote" && pop.slip("l1")?.writing == nil)
     (m.items.last?.representedObject as? MenuAction)?.run()
     #expect(r.doc.board.sidenote(nid("l1")) == nil && r.doc.undoName == "Delete Sidenote")
   }
 
-  /// The popup's buttons are main's <button>s in its page: a press and a release off one does nothing, a click acts,
-  /// and a mouse click leaves no focus ring (button:focus-visible)
-  @Test func thePopupsButtonsActOnTheReleaseOverThemWithNoFocusRing() async throws {
+  /// The popup's buttons are main's <button>s: a press and a release off one does nothing, a click acts, and a press
+  /// takes no keys from where they are
+  @Test func thePopupsButtonsActOnTheReleaseOverThemAndTakeNoFocus() async throws {
     let r = try await Rig(sidenoteBoard(), zoom: 1)
     defer { r.close() }
     let c = r.canvas
@@ -635,20 +708,15 @@ extension CanvasSidenoteTests {
     let at = PopAt.spot(.point(x: 300, y: 600))
     c.openPop(at)
     await opened(r, at)
-    let xy = try #require(
-      await pop.run(
-        """
-        const b = document.querySelector('[aria-label="Close"]').getBoundingClientRect();
-        return [b.x + b.width / 2, b.y + b.height / 2]
-        """) as? [Double])
-    let close = CGPoint(x: xy[0], y: xy[1])
+    let b = try #require(PopButton.find("Close", in: pop.view))
     let v = pop.view
-    func ring() async -> Bool? { await pop.run("return !!document.querySelector(':focus-visible')") as? Bool }
-    r.mouse(.leftMouseDown, in: v, at: close)
-    r.mouse(.leftMouseUp, in: v, at: CGPoint(x: close.x - 120, y: close.y + 60))
-    #expect(await ring() == false, "pressed: no ring")
+    let close = b.convert(CGPoint(x: b.bounds.midX, y: b.bounds.midY), to: v)
+    let before = r.window.firstResponder
+    r.mouse(.leftMouseDown, pop: v, at: close)
+    r.mouse(.leftMouseUp, pop: v, at: CGPoint(x: close.x - 120, y: close.y + 60))
+    #expect(r.window.firstResponder === before, "pressed: the keys stay where they were")
     #expect(c.openPop == at, "let go off it: still open")
-    r.click(in: v, at: close)
+    r.click(pop: v, at: close)
     await r.until("closed by the click") { c.openPop == nil }
   }
 }
@@ -660,11 +728,7 @@ extension CanvasSidenoteTests {
     let r = try await Rig(sidenoteBoard(question: true), zoom: 1)
     defer { r.close() }
     let c = r.canvas
-    func tools(_ n: String) async -> [String] {
-      await c.sidenotePop.run(
-        "return [...document.querySelectorAll(s)].map((b) => b.getAttribute('aria-label'))",
-        ["s": ".slip[data-note=\"\(n)\"] .kt button"]) as? [String] ?? []
-    }
+    func tools(_ n: String) async -> [String] { c.sidenotePop.labels(in: n) }
     let lines = PopAt.lines(Lines(card: cid("c1"), segment: s1, range: 12...13))
     c.openPop(.spot(.section(gid("g1"))))
     await opened(r, .spot(.section(gid("g1"))))
@@ -679,7 +743,7 @@ extension CanvasSidenoteTests {
     #expect(await tools("l1") == ["Edit", "Always Show", "Place on Board", "Delete Sidenote"])
     // pressed: a Note of its text beside the card, an arrow to it from the Highlight's first line, one step, selected
     let from = r.rect("c1")
-    _ = await c.sidenotePop.run("pop.click(s)", ["s": ".slip[data-note=\"l1\"] [aria-label=\"Place on Board\"]"])
+    #expect(c.sidenotePop.press("Place on Board", in: "l1"))
     await r.until("placed") { r.doc.board.sidenote(nid("l1")) == nil }
     let id = try #require(r.doc.selection.first?.card)
     let card = try #require(r.doc.board.card(id))
@@ -691,10 +755,7 @@ extension CanvasSidenoteTests {
     #expect(r.doc.undoName == "Place on Board" && c.openPop == lines)
     await c.popTask?.value
     #expect(c.popShown == lines && c.sidenotePop.view.alphaValue == 1, "the popup stays")
-    func slips() async -> [String] {
-      await c.sidenotePop.run("return [...document.querySelectorAll('.slip')].map((s) => s.dataset.note)") as? [String]
-        ?? []
-    }
+    func slips() async -> [String] { c.sidenotePop.order }
     await r.until("it shows the other one") { await slips() == ["l2"] }
     // from 48 right of the card and 20 down, the nearest place clear of the others
     await r.settle()
@@ -719,19 +780,15 @@ extension CanvasSidenoteTests {
     let at = PopAt.lines(Lines(card: cid("c1"), segment: s1, range: 12...13))
     c.openPop(at)
     await opened(r, at)
-    func order() async -> [String] {
-      await pop.run("return [...document.querySelectorAll('.slip')].map((s) => s.dataset.note)") as? [String] ?? []
-    }
+    func order() async -> [String] { pop.order }
     #expect(await order() == ["l1", "l2"])
-    _ = await pop.run("pop.click(s)", ["s": ".slip[data-note=\"l1\"] [aria-label=\"Always Show\"]"])
+    #expect(pop.press("Always Show", in: "l1"))
     await r.until("always shown") {
       if case .text(let t)? = r.doc.board.sidenote(nid("l1"))?.body { t.alwaysShow } else { false }
     }
     #expect(r.doc.undoName == "Always Show")
     await r.until("drawn so") {
-      await pop.run(
-        "return document.querySelector('.slip[data-note=\"l1\"]').classList.contains('always') && !!document.querySelector('.slip[data-note=\"l1\"] [aria-label=\"Always Show\"].on')"
-      ) as? Bool == true
+      pop.slip("l1")?.always == true && pop.slip("l1")?.tools.first { $0.label == "Always Show" }?.on == true
     }
     #expect(await order() == ["l2", "l1"], "the ones always shown last")
     // a second look: said in the slip, and Mark Reviewed there and in its menu
@@ -743,16 +800,11 @@ extension CanvasSidenoteTests {
       c.sidenoteMenu(nid("l2")).items.map { $0.isSeparatorItem ? "-" : $0.title } == [
         "Edit", "Place on Board", "Mark Reviewed", "-", "Delete Sidenote",
       ])
-    await r.until("its second look said") {
-      await pop.run("return document.querySelector('.slip[data-note=\"l2\"] .sn-why.review span')?.textContent")
-        as? String == "Line changed in v2, check it"
-    }
-    _ = await pop.run("pop.click(s)", ["s": ".slip[data-note=\"l2\"] .sn-why.review .tbtn"])
+    await r.until("its second look said") { pop.slip("l2")?.review == "Line changed in v2, check it" }
+    #expect(pop.press("Mark Reviewed", in: "l2"))
     await r.until("reviewed") { r.doc.board.sidenote(nid("l2"))?.review == nil }
     #expect(r.doc.undoName == "Mark Reviewed")
-    await r.until("its line gone") {
-      await pop.run("return document.querySelectorAll('.sn-why.review').length") as? Int == 0
-    }
+    await r.until("its line gone") { pop.slip("l2")?.review == nil }
   }
 
   /// A code sidenote's "why" is its line under the code (notes.tsx .sn-why)
@@ -768,9 +820,7 @@ extension CanvasSidenoteTests {
     let at = PopAt.spot(.card(cid("t1")))
     r.canvas.openPop(at)
     await opened(r, at)
-    let why = await r.canvas.sidenotePop.run(
-      "return document.querySelector('.slip[data-note=\"k1\"] .sn-why')?.textContent ?? null")
-    #expect(why as? String == "where it is called")
+    #expect(r.canvas.sidenotePop.slip("k1")?.why == "where it is called")
   }
 
   /// A free code sidenote's head links where it was pasted from (notes.tsx CodeHead); a click opens a web page, never a
@@ -793,19 +843,64 @@ extension CanvasSidenoteTests {
     r.canvas.openPop(at)
     await opened(r, at)
     let pop = r.canvas.sidenotePop
-    for id in ["k1", "k2"] {
-      _ = await pop.run("document.querySelector('.slip[data-note=\"\(id)\"] .sn-head a.lnk').click()")
-    }
-    await r.until("the page opened") { !urls.isEmpty }
-    _ = await pop.run("return 0")
+    #expect(pop.press("https://gist.github.com/x", in: "k1"))
+    #expect(pop.press("file:///Applications/Calculator.app", in: "k2"))
     #expect(urls == [URL(string: "https://gist.github.com/x")!], "the file link is not opened")
   }
 }
 
 extension CanvasSidenoteTests {
-  /// A closed popup's web view is taken again at once by its own canvas, whose popup work runs one after another; another
-  /// canvas's popup gets it only once its closing has run, which would otherwise clear what that popup shows
-  @Test func aClosedPopupsWebViewGoesToAnotherCanvasOnlyOnceItsClosingHasRun() async throws {
+  /// What a question's slip and a field in the popup do as the web popup does
+  @MainActor @Suite struct PopupAsMain {
+    /// A question's tools sit over its own text, not over the slip with its answers (.qbody > .kt), and opened from
+    /// the question list its slip pulses once (.slip.flash)
+    @Test func aQuestionsToolsSitOverItsTextAndItFlashesWhenGoneTo() async throws {
+      var b = sidenoteBoard(question: true)
+      let i = try #require(b.sidenotes.firstIndex { $0.id.rawValue == "w1" })
+      b.sidenotes[i].body = .text(
+        TextNote(text: "整张卡", question: Question(at: 1000, answers: [.init(id: "a1", text: "答", at: 2000)])))
+      let r = try await Rig(b, zoom: 1)
+      defer { r.close() }
+      let c = r.canvas
+      let pop = c.sidenotePop
+      c.openPop(.spot(.card(cid("n1"))), focus: nid("w1"))
+      await r.until("the popup") { c.popShown != nil && pop.size.height > 0 }
+      let s = try #require(pop.slip("w1"))
+      let body = try #require(s.body).frame
+      let answer = try #require(s.answers.first).frame
+      #expect(abs(s.bar.frame.minY - (body.minY - 4)) < 0.5 && abs(s.bar.frame.maxX - (s.bounds.width + 6)) < 0.5)
+      #expect(s.bar.frame.maxY < answer.minY, "over the question's text, clear of its answer")
+      #expect(s.flashRing?.animation(forKey: "flash") != nil, "it pulses")
+      #expect(pop.slip("b1")?.flashRing == nil, "only the one gone to")
+    }
+
+    /// A click on a drawn ref in a field being written goes to the canvas as one in a sidenote's text: a far card is
+    /// previewed, and the field keeps its text and its caret
+    @Test func aRefClickedInAFieldIsPreviewed() async throws {
+      let r = try await refRig()
+      defer { r.close() }
+      let c = r.canvas
+      let pop = c.sidenotePop
+      c.openPop(.spot(.card(cid("n1"))))
+      await r.until("the popup") { c.popShown != nil && pop.size.height > 0 }
+      let s = try #require(pop.slip("s1"))
+      s.onEdit?()
+      let e = try #require(s.writing)
+      // the caret away from the ref: one it is beside shows its source
+      e.selection = MDSelection(0)
+      let caret = e.selection
+      let ref = try #require(e.core.layout.drawnRefs.first)
+      r.click(in: e, at: CGPoint(x: ref.rect.midX * e.zoom, y: ref.rect.midY * e.zoom))
+      await r.until("the preview drawn") { c.refPeek?.ready == true }
+      #expect(e.selection == caret && s.writing === e)
+    }
+  }
+}
+
+extension CanvasSidenoteTests {
+  /// A popup closed on one canvas is that canvas's next one; another canvas's popup is its own, so a closing on one
+  /// board leaves what another board's popup shows as it is (#244: the web popup's shared web views)
+  @Test func aPopupClosedOnOneCanvasLeavesAnotherCanvasesPopupAsItShows() async throws {
     let r = try await Rig(sidenoteBoard(), zoom: 1)
     let other = try await Rig(sidenoteBoard(), zoom: 1, alongside: r)
     defer {
@@ -815,19 +910,35 @@ extension CanvasSidenoteTests {
     let at = PopAt.lines(Lines(card: cid("c1"), segment: s1, range: 12...13))
     r.canvas.openPop(at)
     await opened(r, at)
-    let web = r.canvas.sidenotePop
-    r.canvas.openPop(nil)
-    r.canvas.openPop(at)
-    #expect(r.canvas.sidenotePop === web, "its own canvas's next popup")
-    await opened(r, at)
+    let first = r.canvas.sidenotePop
     r.canvas.openPop(nil)
     other.canvas.openPop(at)
     let pop = other.canvas.sidenotePop
-    #expect(pop !== web, "not another canvas's while its closing has not run")
+    #expect(pop !== first, "another canvas's popup is its own")
     await opened(other, at)
     await r.canvas.popTask?.value
     #expect(pop.view.alphaValue == 1 && other.canvas.popShown == at)
-    #expect(await pop.run("return document.querySelectorAll('.slip').length") as? Int == 2, "what it shows kept")
+    #expect(pop.order.count == 2, "what it shows kept: \(pop.order)")
+  }
+}
+
+extension CanvasSidenoteTests {
+  /// A popup closed is let go, with its view and what it searched (each one opened stayed, held by its own closures)
+  @Test func aClosedPopupIsLetGo() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    defer { r.close() }
+    let at = PopAt.lines(Lines(card: cid("c1"), segment: s1, range: 12...13))
+    weak var popup: Popup?
+    weak var pop: SidenotePop?
+    do {
+      r.canvas.openPop(at, write: true)
+      await opened(r, at)
+      popup = r.canvas.pops.last
+      pop = r.canvas.sidenotePop
+      r.canvas.openPop(nil)
+      await r.canvas.popTask?.value
+    }
+    await r.until("the closed popup is let go") { popup == nil && pop == nil }
   }
 }
 

@@ -79,6 +79,16 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     // the whole card at its header, and so the heading, which the header shows and the body does not (the board's
     // blockY: a block not drawn is met at the header); each other block lower than the one before it, inside the card
     #expect(y("w") == y("b0") && y("w") < y("b2") && y("b2") < y("b3") && y("b3") < card.maxY)
+    // at the middle of the block as the native component lays it out, found there by its Markdown
+    let notes = r.canvas.display
+    let l = try notes.laid(
+      .note(Note(text: text)), width: 300, folder: r.root, look: "warm-ink", dark: false, refs: [], hideHead: true)
+    let shown = l.layout.document.source as NSString
+    for (a, md) in [("b2", "- 再算一步"), ("b3", "结尾 the end")] {
+      let box = try #require(l.layout.blockBox(containing: shown.range(of: md).location))
+      let o = l.origin(in: l.size(height: height))
+      #expect(abs(y(a) - (card.minY + o.y + box.frame.midY)) < 1e-6, "\(a)")
+    }
   }
 
   @Test(arguments: [1, 0.5] as [CGFloat])
@@ -232,7 +242,11 @@ private func fire(_ m: NSMenu?, _ path: String...) {
     let dropped = label.box.position
     await r.settle()
     #expect(r.canvas.items[li] === label, "it keeps its layer")
-    #expect(hypot(label.box.position.x - dropped.x, label.box.position.y - dropped.y) < 0.5, "where it was let go")
+    // where it was let go, its bitmap's corner on the nearest device pixel at rest (placeItems onPixels): at most half a
+    // pixel each way, a board unit at 50 % on a 1x screen
+    let half = 0.5 / (zoom * r.canvas.backing) + 0.001
+    let moved = (label.box.position.x - dropped.x, label.box.position.y - dropped.y)
+    #expect(abs(moved.0) <= half && abs(moved.1) <= half, "where it was let go: \(moved), half a pixel \(half)")
     #expect(r.doc.selection == [.arrow(aid("a1"))])
     // its menu: back to the middle, then no label
     let menu = r.canvas.labelMenu(aid("a1"))

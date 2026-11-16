@@ -2,6 +2,7 @@ import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
 import Observation
+import TestGuard
 
 /// A board tab: the board it shows and its own back / forward history, browser style, each board in it with where its
 /// view was. Boards are held by id, so a board renamed or moved on disk stays in its tab.

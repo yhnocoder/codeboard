@@ -511,7 +511,7 @@ if let wk = NSClassFromString("WKWebView") {
 }
 /// A trace: which of these views each scroll event reached
 for name in [
-  "CodeBoardCanvas.CanvasView", "CodeBoardNotes.EditorWebView", "CodeBoardMarkdownUI.MarkdownEditorView",
+  "CodeBoardCanvas.CanvasView", "CodeBoardNotes.EditorWebView", "MarkdownUI.MarkdownEditorView",
   "CodeUI.CodeEditorView", "WKWebView",
 ]
 where env["ACCEPT_TRACE_SCROLL"] != nil {

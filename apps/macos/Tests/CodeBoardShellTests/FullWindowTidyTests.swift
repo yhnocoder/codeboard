@@ -127,7 +127,8 @@ import Testing
     #expect(c.tidySlide == nil && shown.count > 20, "the slide ends, a frame at a time: \(shown.count) frames")
     #expect(
       abs(shown[0].x - before.midX) < 0.5 && abs(shown[0].y - before.midY) < 0.5, "from where it was: \(shown[0])")
-    #expect(shown.last == CGPoint(x: to.midX, y: to.midY))
+    // landed where the scene has it: its corner is on whole board units, so on device pixels on a 1x screen too
+    #expect(shown.last == CGPoint(x: to.midX, y: to.midY), "landed: \(shown.last.map { "\($0)" } ?? "nowhere")")
     let target = CGPoint(x: to.midX, y: to.midY)
     let left = shown.map { hypot($0.x - target.x, $0.y - target.y) }
     #expect(zip(left, left.dropFirst()).allSatisfy { $1 <= $0 + 0.01 }, "never back: \(left)")

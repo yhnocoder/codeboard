@@ -1,7 +1,7 @@
 import AppKit
 import CodeBoardModel
 import CodeBoardNotes
-import CodeBoardSyntax
+import TreeSitterHighlight
 
 // The Shelf (the web board's ui/ShelfPanel.tsx, actions/shelf.ts, Chrome.tsx's dock button, styles.css .shelf, .spk): a
 // place to keep cards and Sections aside, off the board. The button at the bottom right, with how many entries there
@@ -167,13 +167,13 @@ extension CanvasView {
       arrows: e.arrows.filter { ids.contains($0.from.card) && ids.contains($0.to.card) },
       sections: e.sections, stickers: e.stickers)
     let t = theme
-    let notes = notes
+    let display = display
     let highlighter = CanvasView.highlighter ?? Highlighter()
     let package = vault.url(of: vb.path)
     let rect = s.box.insetBy(dx: -2, dy: -2)
     Task {
       let r = await Picture.draw(
-        board: mini, package: package, vault: vault, theme: t, highlighter: highlighter, notes: notes, rect: rect,
+        board: mini, package: package, vault: vault, theme: t, highlighter: highlighter, display: display, rect: rect,
         scale: scale, backdrop: false)
       done(r.image)
     }

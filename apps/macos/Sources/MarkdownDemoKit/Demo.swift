@@ -5,14 +5,17 @@
 // The toolbar switches the look (Warm Ink, Ink Wash), light and dark, and the zoom (50 to 200 %, also ⌥⌘= ⌥⌘- ⌥⌘0). Images
 // are read relative to the file. Typing edits the text shown; the file is never written.
 import AppKit
-import CodeBoardMarkdown
-import CodeBoardMarkdownUI
+import CodeBoardMarkdownLooks
 import CodeBoardModel
-import CodeBoardSyntax
+import CodeUI
 import ImageIO
+import MarkdownCore
+import MarkdownUI
+import TestGuard
+import TreeSitterHighlight
 
 /// Images next to the file, formulas and diagrams through the engines, code coloured by the app's highlighter
-/// (CodeBoardSyntax); no references
+/// (TreeSitterHighlight); no references
 /// Pictures pasted or dropped into the demo: kept in memory under the address written for them (the demo never writes a
 /// file)
 final class Pasted: @unchecked Sendable {
@@ -41,10 +44,6 @@ struct FileResources: MarkdownResources {
     "h": "c", "cpp": "cpp", "c++": "cpp", "cc": "cpp", "cxx": "cpp", "hpp": "cpp", "cuda": "cuda-cpp", "cu": "cuda-cpp",
     "cuh": "cuda-cpp", "cuda-cpp": "cuda-cpp", "rust": "rust", "rs": "rust",
   ]
-  static let kinds: [TokenClass: MarkdownTokenKind] = [
-    .keyword: .keyword, .operator: .operator, .function: .function, .string: .string, .comment: .comment,
-    .number: .number, .receiver: .receiver, .punctuation: .punctuation,
-  ]
   var diagrams: DiagramRenderer? { math as? DiagramRenderer }
   func imageSize(_ src: String) -> CGSize? {
     if let p = pasted.picture(src) { return CGSize(width: p.width, height: p.height) }
@@ -64,10 +63,10 @@ struct FileResources: MarkdownResources {
     Self.sampleCards.contains { $0.caseInsensitiveCompare(label) == .orderedSame }
       ? .found(title: label, seal: nil) : nil
   }
-  func highlight(lines: [String], language: String) -> [[MarkdownToken]]? {
+  func highlight(lines: [String], language: String) -> [[CodeRun]]? {
     guard let grammar = Self.grammars[language.lowercased()] else { return nil }
     return highlighter.tokens(lines: lines, language: grammar).map { line in
-      line.map { MarkdownToken(columns: $0.columns, kind: Self.kinds[$0.kind] ?? .punctuation) }
+      line.map { CodeRun(columns: $0.columns, style: $0.kind.rawValue) }
     }
   }
   var mathPreamble: String { "" }
@@ -259,10 +258,14 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
   }
 
   init(text: String, folder: URL, cardWidth: Double) throws {
+    // in a test process: its alerts and open panels never come up (an editor puts the same guard in)
+    TestGuard.install()
+    // a Note's [[reference]] points at a card, as on the board
+    MarkdownEditing.referenceTitle = "Link to Card"
     self.text = text
     self.folder = folder
     self.cardWidth = cardWidth
-    try MarkdownAssets.fonts.get()
+    try MarkdownLooks.fonts.get()
     resources = FileResources(folder: folder, pasted: Pasted(), math: try MarkdownAssets.engines())
   }
 
@@ -270,7 +273,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     // warm up off the main thread, as a host does at launch
     let math = resources.math
     DispatchQueue.global(qos: .userInitiated).async {
-      MarkdownAssets.warmUp(math: math)
+      MarkdownLooks.warmUp(math: math)
       // the first display ran beside the warm-up and may have made a second engine: once quiet, one is enough
       DispatchQueue.main.asyncAfter(deadline: .now() + 3) { (math as? JSEngines)?.trim() }
     }
@@ -694,7 +697,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     // a Note on its card, a Box on its fill, a Text on the paper
     page.fills = notes.map { n in
       switch n.style {
-      case .note: page.card
+      case .note, .sidenote, .desc: page.card
       case .text: nil
       case .box: n.fill.map { Self.boxFill($0, surface: surface) } ?? page.card
       }
@@ -845,7 +848,7 @@ final class Demo: NSObject, NSApplicationDelegate, MarkdownEditorDelegate {
     }
     drawing[key] = width
     svgDraws.background += 1
-    DispatchQueue.global(qos: .userInitiated).async {
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
       let i = MarkdownSVG.image(d, pixelWidth: width, dark: dark)
       DispatchQueue.main.async { [weak self] in
         guard let self else { return }
