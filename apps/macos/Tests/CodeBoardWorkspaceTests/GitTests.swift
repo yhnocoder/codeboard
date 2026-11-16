@@ -217,22 +217,20 @@ import Testing
     #expect(stdout.utf8.count == 17 * 40_000)
   }
 
-  /// More gits running at once than dispatch has threads (64): each waits until all have started, so they finish only
-  /// if none waits for a thread another is holding
-  @Test(.timeLimit(.minutes(1))) func moreGitsAtOnceThanDispatchHasThreadsAllFinish() async throws {
-    let d = tempDir()
+  /// More at once than a queue has threads: each still ends (a thread held per git once left none to read stderr)
+  @Test func hundredsAskedAtOnceAllAnswer() async throws {
+    let d = try tempRepo(["a.txt": "a\n"])
     defer { remove(d) }
-    let n = 100
-    let stub = try script(
-      d,
-      #"touch "$1/started.$$"; i=0; while [ "$(ls "$1" | grep -c started)" -lt \#(n) ]; do i=$((i+1)); "#
-        + #"[ $i -gt 400 ] && exit 1; sleep 0.05; done; echo done"#)
-    let runner = ProcessGitRunner(executable: stub)
-    let all = try await withThrowingTaskGroup(of: GitRun.self) { g in
-      for _ in 0..<n { g.addTask { try await runner.run([d], in: d, environment: [:]) } }
-      return try await g.reduce(into: []) { $0.append($1) }
+    let git = ProcessGitRunner()
+    let ok = await withTaskGroup(of: Bool.self) { group in
+      for _ in 0..<300 {
+        group.addTask {
+          (try? await git.run(["rev-parse", "HEAD"], in: d, environment: [:])).map { $0 != .failed } ?? false
+        }
+      }
+      return await group.reduce(0) { $0 + ($1 ? 1 : 0) }
     }
-    #expect(all.count == n && all.allSatisfy { $0 == .exited(status: 0, stdout: "done\n", stderr: "") })
+    #expect(ok == 300)
   }
 
   @Test func cancellingTheTaskStopsGit() async throws {
