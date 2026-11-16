@@ -7,8 +7,8 @@ import Foundation
 public enum VaultError: Error, Equatable, CustomStringConvertible {
   case unreadable(URL, String)
   case malformed(URL, String)
-  /// Written by a newer CodeBoard in a format version this one does not read
-  case newerFormat(URL, Int)
+  /// Written by a newer CodeBoard in a format version this one does not read; `reads`: the version it reads of that file
+  case newerFormat(URL, Int, reads: Int = Board.version)
   /// A format version from before this one, which it no longer reads
   case olderFormat(URL, Int)
   case duplicateBoardID(BoardID, [URL])
@@ -22,8 +22,8 @@ public enum VaultError: Error, Equatable, CustomStringConvertible {
     switch self {
     case .unreadable(let file, let why): "\(file.path): cannot be read: \(why)"
     case .malformed(let file, let why): "\(file.path): \(why)"
-    case .newerFormat(let file, let v):
-      "\(file.path): format version \(v), written by a newer CodeBoard; this one reads version \(Board.version). "
+    case .newerFormat(let file, let v, let reads):
+      "\(file.path): format version \(v), written by a newer CodeBoard; this one reads version \(reads). "
         + "Update CodeBoard to open it (the file is left as it is)"
     case .olderFormat(let file, let v):
       "\(file.path): format version \(v), from an early build, which this one no longer reads; import the board again "
@@ -120,6 +120,15 @@ extension Board {
       }
     }
     var stickerIDs = Set<StickerID>()
+    // a sticker on an arrow is on one of its own scope's: the board's, or its shelf entry's
+    let scoped = [(stickers, arrows)] + shelf.map { ($0.stickers, $0.arrows) }
+    for (list, among) in scoped {
+      for k in list {
+        if let a = k.anchor.arrow, !among.contains(where: { $0.id == a }) {
+          return "sticker \(k.id.rawValue): no arrow \(a.rawValue)"
+        }
+      }
+    }
     for k in stickers + shelf.flatMap(\.stickers) {
       guard stickerIDs.insert(k.id).inserted else { return "sticker \(k.id.rawValue) is there twice" }
       if let p = k.problem() { return "sticker \(k.id.rawValue): \(p)" }
@@ -157,9 +166,11 @@ extension Segment {
 extension Sticker {
   func problem() -> String? {
     switch anchor {
-    case .canvas(_, _, let size?), .card(_, _, _, let size?): if size <= 0 { return "size \(size)" }
+    case .canvas(_, _, let size?), .card(_, _, _, let size?), .arrow(_, _, _, _, let size?):
+      if size <= 0 { return "size \(size)" }
     default: break
     }
+    if case .arrow(_, let t, _, _, _) = anchor, !(0...1).contains(t) { return "position \(t) on its arrow" }
     if case .emoji(let e) = glyph, e.count != 1 { return "\(e) is not one emoji" }
     return nil
   }
@@ -207,18 +218,29 @@ extension CardContent {
       if !TextCard.fontSizes.contains(t.fontSize) { return "font size \(t.fontSize) is outside 10…240" }
     case .image(let image):
       if let f = image.stillFrame, f < 1 { return "still frame \(f)" }
+      if case .resource = image.source, source != nil { return "its picture is a resource's: it has no source besides" }
     case .links(let list):
       var ids = Set<String>()
       for item in list.items where !ids.insert(item.id).inserted { return "link \(item.id) is there twice" }
-    case .note, .web, .board: break
+      if list.items.contains(where: { $0.meta?.fromResource == true }) { return "a link's picture is not a resource's" }
+    case .web(let web):
+      if web.meta?.fromResource == true { return "a web card's picture is not a resource's" }
+    case .note, .board: break
     }
     return nil
   }
 }
 
+extension WebMeta {
+  /// Its picture or icon names a resource's block: never written (a page's pictures are files or addresses)
+  fileprivate var fromResource: Bool {
+    [image, icon].contains { if case .resource? = $0 { true } else { false } }
+  }
+}
+
 /// Sorted keys, two-space indent, one value per line; empty lists and objects and lists of numbers (line ranges, sizes)
 /// stay on one line. Foundation's pretty printing spreads `[]` over three lines and writes `"key" : value`
-func canonicalJSON(_ value: some Encodable) throws -> Data {
+package func canonicalJSON(_ value: some Encodable) throws -> Data {
   let encoder = JSONEncoder()
   encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
   let compact = Array(try encoder.encode(value))
@@ -268,7 +290,10 @@ func canonicalJSON(_ value: some Encodable) throws -> Data {
   return Data(out + [UInt8(ascii: "\n")])
 }
 
-func strictDecode<T: Codable>(_ type: T.Type, from data: Data, file: URL, version: Int) throws -> T {
+/// `format`: what the file's format is called in what is said of it ("format" for a board's: "not in format 2 …")
+package func strictDecode<T: Codable>(
+  _ type: T.Type, from data: Data, file: URL, version: Int, format: String = "format"
+) throws -> T {
   let raw: Any
   do {
     raw = try JSONSerialization.jsonObject(with: data)
@@ -277,7 +302,7 @@ func strictDecode<T: Codable>(_ type: T.Type, from data: Data, file: URL, versio
   }
   guard let object = raw as? [String: Any] else { throw VaultError.malformed(file, "not a JSON object") }
   guard let v = object["version"] as? Int else { throw VaultError.malformed(file, "no format version") }
-  guard v <= version else { throw VaultError.newerFormat(file, v) }
+  guard v <= version else { throw VaultError.newerFormat(file, v, reads: version) }
   // a breaking change raises the version: an upgrade step from the version before goes here (FORMAT.md, Versions)
   guard v == version else { throw VaultError.olderFormat(file, v) }
   let value: T
@@ -288,33 +313,39 @@ func strictDecode<T: Codable>(_ type: T.Type, from data: Data, file: URL, versio
   } catch let DecodingError.typeMismatch(_, context), let DecodingError.valueNotFound(_, context),
     let DecodingError.dataCorrupted(context)
   {
-    throw VaultError.malformed(file, "\(pathText(context.codingPath)): \(context.debugDescription)")
+    let why = context.debugDescription
+    let what = why == unknownKind ? "\(why): \(newerField(format, version))" : why
+    throw VaultError.malformed(file, "\(pathText(context.codingPath)): \(what)")
   }
   let again = try JSONSerialization.jsonObject(with: canonicalJSON(value))
-  if let (path, what) = firstDifference(raw, again, at: "") {
+  if let (path, what) = firstDifference(raw, again, at: "", newer: newerField(format, version)) {
     throw VaultError.malformed(file, "\(path.isEmpty ? "(root)" : path): \(what)")
   }
   return value
 }
 
 /// What an older build says of a field or kind a newer one added (FORMAT.md, Versions): it never drops it
-let newerField =
-  "not in format \(Board.version) as this CodeBoard knows it; a newer CodeBoard may have written it. "
-  + "Update CodeBoard to open the file (it is left as it is)"
+private func newerField(_ format: String, _ version: Int) -> String {
+  "not in \(format) \(version) as this CodeBoard knows it; a newer CodeBoard may have written it. "
+    + "Update CodeBoard to open the file (it is left as it is)"
+}
+
+/// What `theCase` says of a kind this build does not know; `strictDecode` adds what an older build says of it
+private let unknownKind = "no kind this CodeBoard knows"
 
 private func pathText(_ path: [any CodingKey]) -> String {
   path.map { $0.intValue.map { "[\($0)]" } ?? ".\($0.stringValue)" }.joined().trimmingPrefix(".").description
 }
 
 /// The path of the first place where what was read differs from what the writer writes for it, and how
-private func firstDifference(_ a: Any, _ b: Any, at path: String) -> (String, String)? {
+private func firstDifference(_ a: Any, _ b: Any, at path: String, newer: String) -> (String, String)? {
   if let x = a as? [String: Any], let y = b as? [String: Any] {
     for key in Set(x.keys).union(y.keys).sorted() {
       let here = path.isEmpty ? key : "\(path).\(key)"
       switch (x[key], y[key]) {
-      case (let xv?, let yv?): if let d = firstDifference(xv, yv, at: here) { return d }
+      case (let xv?, let yv?): if let d = firstDifference(xv, yv, at: here, newer: newer) { return d }
       case (is NSNull, nil): return (here, "null, which is never written")
-      case (_?, nil): return (here, newerField)
+      case (_?, nil): return (here, newer)
       default: return (here, "missing")
       }
     }
@@ -323,7 +354,7 @@ private func firstDifference(_ a: Any, _ b: Any, at path: String) -> (String, St
   if let x = a as? [Any], let y = b as? [Any] {
     guard x.count == y.count else { return (path, "not as the writer writes it") }
     for (i, (xv, yv)) in zip(x, y).enumerated() {
-      if let d = firstDifference(xv, yv, at: "\(path)[\(i)]") { return d }
+      if let d = firstDifference(xv, yv, at: "\(path)[\(i)]", newer: newer) { return d }
     }
     return nil
   }
@@ -333,10 +364,10 @@ private func firstDifference(_ a: Any, _ b: Any, at path: String) -> (String, St
 // MARK: Coding where the JSON shape is not the synthesized one
 
 /// An enum is one object with exactly one key, naming the case
-private func theCase<K: CodingKey>(of c: KeyedDecodingContainer<K>) throws -> K {
+package func theCase<K: CodingKey>(of c: KeyedDecodingContainer<K>) throws -> K {
   // a kind this build does not know is not in allKeys
   guard c.allKeys.count == 1, let key = c.allKeys.first else {
-    let what = c.allKeys.isEmpty ? "no kind this CodeBoard knows: " + newerField : "more than one kind"
+    let what = c.allKeys.isEmpty ? unknownKind : "more than one kind"
     throw DecodingError.dataCorrupted(.init(codingPath: c.codingPath, debugDescription: what))
   }
   return key
@@ -451,7 +482,7 @@ extension Card: Codable {
 
 extension CardContent: Codable {
   private enum Keys: String, CodingKey {
-    case title, description, code, note, text, image, web, links, board
+    case title, description, source, code, note, text, image, web, links, board
   }
   private enum Kind: String, CodingKey {
     case code, note, text, image, web, links, board
@@ -471,13 +502,15 @@ extension CardContent: Codable {
       }
     self.init(
       title: try c.decodeIfPresent(String.self, forKey: .title),
-      description: try c.decodeIfPresent(String.self, forKey: .description), body: body)
+      description: try c.decodeIfPresent(String.self, forKey: .description),
+      source: try c.decodeIfPresent(SourceAnchor.self, forKey: .source), body: body)
   }
 
   public func encode(to encoder: any Encoder) throws {
     var c = encoder.container(keyedBy: Keys.self)
     try c.encodeIfPresent(title, forKey: .title)
     try c.encodeIfPresent(description, forKey: .description)
+    try c.encodeIfPresent(source, forKey: .source)
     switch body {
     case .code(let code): try c.encode(code, forKey: .code)
     case .note(let note): try c.encode(note, forKey: .note)
@@ -492,7 +525,7 @@ extension CardContent: Codable {
 
 extension SubBoard: Codable {
   private enum Keys: String, CodingKey {
-    case board, folder, auto
+    case board, folder, auto, previewColumns
   }
 
   public init(from decoder: any Decoder) throws {
@@ -500,9 +533,15 @@ extension SubBoard: Codable {
     let board = try c.decodeIfPresent(BoardID.self, forKey: .board)
     let folder = try c.decodeIfPresent(String.self, forKey: .folder)
     let auto = try c.decodeIfPresent(Bool.self, forKey: .auto) ?? false
+    let columns = try c.decodeIfPresent(Int.self, forKey: .previewColumns)
+    if let columns, columns != 2 {
+      throw DecodingError.dataCorruptedError(
+        forKey: .previewColumns, in: c, debugDescription: "\(columns): written only as 2")
+    }
+    let two = columns == 2
     switch (board, folder) {
-    case (let b?, nil): self.init(board: b, auto: auto)
-    case (nil, let f?) where auto && !f.isEmpty: self.init(folder: f)
+    case (let b?, nil): self.init(board: b, auto: auto, twoColumnPreview: two)
+    case (nil, let f?) where auto && !f.isEmpty: self.init(folder: f, twoColumnPreview: two)
     default:
       throw DecodingError.dataCorrupted(
         .init(codingPath: c.codingPath, debugDescription: "a board card has a board, or a folder and auto"))
@@ -516,6 +555,7 @@ extension SubBoard: Codable {
     case .folder(let f): try c.encode(f, forKey: .folder)
     }
     if auto { try c.encode(true, forKey: .auto) }
+    if twoColumnPreview { try c.encode(2, forKey: .previewColumns) }
   }
 }
 
@@ -607,7 +647,7 @@ extension Sticker: Codable {
     case builtin, emoji
   }
   private enum AnchorKeys: String, CodingKey {
-    case canvas, card, line
+    case canvas, card, line, arrow
   }
   private struct Canvas: Codable {
     var x: Double
@@ -624,6 +664,13 @@ extension Sticker: Codable {
     var card: CardID
     var segment: SegmentID
     var line: Int
+  }
+  private struct OnArrow: Codable {
+    var arrow: ArrowID
+    var position: Double
+    var x: Double
+    var y: Double
+    var size: Double?
   }
 
   public init(from decoder: any Decoder) throws {
@@ -646,6 +693,9 @@ extension Sticker: Codable {
     case .line:
       let p = try a.decode(Line.self, forKey: .line)
       anchor = .line(p.card, segment: p.segment, line: p.line)
+    case .arrow:
+      let p = try a.decode(OnArrow.self, forKey: .arrow)
+      anchor = .arrow(p.arrow, position: p.position, x: p.x, y: p.y, size: p.size)
     }
     self.init(
       id: try c.decode(StickerID.self, forKey: .id), glyph: glyph,
@@ -668,6 +718,8 @@ extension Sticker: Codable {
       try a.encode(OnCard(card: card, x: x, y: y, size: size), forKey: .card)
     case .line(let card, let segment, let line):
       try a.encode(Line(card: card, segment: segment, line: line), forKey: .line)
+    case .arrow(let arrow, let position, let x, let y, let size):
+      try a.encode(OnArrow(arrow: arrow, position: position, x: x, y: y, size: size), forKey: .arrow)
     }
   }
 }
@@ -726,7 +778,7 @@ extension CodeSource: Codable {
 
 extension ImageSource: Codable {
   private enum Keys: String, CodingKey {
-    case file, url
+    case file, url, resource
   }
 
   public init(from decoder: any Decoder) throws {
@@ -739,6 +791,7 @@ extension ImageSource: Codable {
       }
       self = .file(name)
     case .url: self = .url(try c.decode(String.self, forKey: .url))
+    case .resource: self = .resource(try c.decode(SourceAnchor.self, forKey: .resource))
     }
   }
 
@@ -747,6 +800,92 @@ extension ImageSource: Codable {
     switch self {
     case .file(let name): try c.encode(name, forKey: .file)
     case .url(let url): try c.encode(url, forKey: .url)
+    case .resource(let anchor): try c.encode(anchor, forKey: .resource)
     }
+  }
+}
+
+extension Place: Codable {
+  private enum Keys: String, CodingKey {
+    case version, block, range
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: Keys.self)
+    let range = try c.decodeIfPresent(Range<Int>.self, forKey: .range)
+    if let r = range, r.isEmpty || r.lowerBound < 0 {
+      throw DecodingError.dataCorruptedError(
+        forKey: .range, in: c, debugDescription: "[\(r.lowerBound), \(r.upperBound)]: not 0 ≤ from < to")
+    }
+    self.init(
+      version: try c.decode(VersionID.self, forKey: .version), block: try c.decode(Block.self, forKey: .block),
+      range: range)
+  }
+
+  public func encode(to encoder: any Encoder) throws {
+    var c = encoder.container(keyedBy: Keys.self)
+    try c.encode(version, forKey: .version)
+    try c.encode(block, forKey: .block)
+    try c.encodeIfPresent(range, forKey: .range)
+  }
+}
+
+extension Place.Block: Codable {
+  private enum Keys: String, CodingKey {
+    case id, page
+  }
+  private struct Page: Codable {
+    var page: Int
+    var rect: [Double]?
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: Keys.self)
+    switch try theCase(of: c) {
+    case .id: self = .id(try c.decode(String.self, forKey: .id))
+    case .page:
+      let p = try c.decode(Page.self, forKey: .page)
+      guard p.page >= 1 else {
+        throw DecodingError.dataCorruptedError(
+          forKey: .page, in: c, debugDescription: "page \(p.page): pages are from 1")
+      }
+      var rect: Place.Rect?
+      if let r = p.rect {
+        guard r.count == 4, r[2] > 0, r[3] > 0 else {
+          throw DecodingError.dataCorruptedError(
+            forKey: .page, in: c, debugDescription: "a rect is [x, y, width, height] with a width and height above 0")
+        }
+        rect = Place.Rect(x: r[0], y: r[1], width: r[2], height: r[3])
+      }
+      self = .page(p.page, rect: rect)
+    }
+  }
+
+  public func encode(to encoder: any Encoder) throws {
+    var c = encoder.container(keyedBy: Keys.self)
+    switch self {
+    case .id(let id): try c.encode(id, forKey: .id)
+    case .page(let page, let r):
+      try c.encode(Page(page: page, rect: r.map { [$0.x, $0.y, $0.width, $0.height] }), forKey: .page)
+    }
+  }
+}
+
+/// A Place with the entry's id beside its fields, in one object
+extension SourceAnchor: Codable {
+  private enum Keys: String, CodingKey {
+    case entry
+  }
+
+  public init(from decoder: any Decoder) throws {
+    self.init(
+      entry: try decoder.container(keyedBy: Keys.self).decode(EntryID.self, forKey: .entry),
+      place: try Place(from: decoder))
+  }
+
+  public func encode(to encoder: any Encoder) throws {
+    var c = encoder.container(keyedBy: Keys.self)
+    try c.encode(entry, forKey: .entry)
+    try place.encode(to: encoder)
   }
 }

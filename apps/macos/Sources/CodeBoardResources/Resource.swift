@@ -1,0 +1,415 @@
+import CodeBoardModel
+import Foundation
+
+// A resource's two kinds of file (FORMAT.md, Resources): resource.json in its package, entry.json in each entry's folder.
+// Written and read as board.json is (BoardFile.swift: deterministic, strict, the same rules for growing), each file with
+// its own version.
+
+/// resource.json: what the list is, and the columns the user added
+public struct Resource: Equatable, Sendable {
+  public static let version = 1
+
+  /// A column the user added; an entry's value for it is in its entry file
+  public struct Field: Codable, Equatable, Sendable {
+    public enum Kind: String, Codable, Sendable {
+      case text, number, date, checkbox
+    }
+
+    public var id: String
+    public var name: String
+    public var type: Kind
+
+    public init(id: String, name: String, type: Kind) {
+      self.id = id
+      self.name = name
+      self.type = type
+    }
+  }
+
+  public var id: ResourceID
+  public var preset: ResourcePreset
+  public var fields: [Field]
+
+  public init(id: ResourceID, preset: ResourcePreset, fields: [Field] = []) {
+    self.id = id
+    self.preset = preset
+    self.fields = fields
+  }
+}
+
+/// entry.json: one entry of a resource, known by its id wherever its folder is
+public struct Entry: Equatable, Sendable {
+  public static let version = 1
+
+  /// Where it came from
+  public enum Origin: Equatable, Sendable {
+    /// Without a version: `1706.03762`
+    case arxiv(String)
+    case doi(String)
+    case web(String)
+  }
+
+  /// Its value for one of the resource's fields; a date's is a `YYYY-MM-DD` string
+  public enum Value: Equatable, Sendable {
+    case text(String)
+    case number(Double)
+    case bool(Bool)
+  }
+
+  public var id: EntryID
+  public var title: String
+  /// When it was added (ms since 1970)
+  public var added: Double
+  public var origin: Origin?
+  public var authors: [String]?
+  public var year: Int?
+  /// Its readable forms, each kept: none for an entry saved as a link alone
+  public var versions: [Version]
+  public var highlights: [Highlight]
+  public var sidenotes: [EntrySidenote]
+  /// By field id; one the resource does not define is kept
+  public var fields: [String: Value]
+
+  public init(
+    id: EntryID, title: String, added: Double, origin: Origin? = nil, authors: [String]? = nil, year: Int? = nil,
+    versions: [Version] = [], highlights: [Highlight] = [], sidenotes: [EntrySidenote] = [],
+    fields: [String: Value] = [:]
+  ) {
+    self.id = id
+    self.title = title
+    self.added = added
+    self.origin = origin
+    self.authors = authors
+    self.year = year
+    self.versions = versions
+    self.highlights = highlights
+    self.sidenotes = sidenotes
+    self.fields = fields
+  }
+}
+
+/// One readable form of an entry: a paper's v1, its v2, a translation of either, one saving of a web page
+public struct Version: Equatable, Sendable {
+  public enum Content: Equatable, Sendable {
+    /// A PDF in the entry's folder, and the file there listing its blocks; without it, text by page only
+    case pdf(file: String, blocks: String? = nil)
+    /// A web page saved whole outside the vault, by its content fingerprint, and its size
+    case page(hash: String, bytes: Int)
+    /// Any other file in the entry's folder, opened as the system opens it; no places in it
+    case file(String)
+  }
+
+  public var id: VersionID
+  /// What its tab says (`v2`, `v2 中文`)
+  public var label: String?
+  public var added: Double
+  /// BCP 47 (`zh`, `en`)
+  public var language: String?
+  /// The version this one translates: their blocks correspond by order
+  public var of: VersionID?
+  public var content: Content
+
+  public init(
+    id: VersionID, label: String? = nil, added: Double, language: String? = nil, of: VersionID? = nil,
+    content: Content
+  ) {
+    self.id = id
+    self.label = label
+    self.added = added
+    self.language = language
+    self.of = of
+    self.content = content
+  }
+}
+
+public struct Highlight: Codable, Equatable, Sendable {
+  public enum Color: String, Codable, Sendable {
+    case yellow, green, blue, pink, purple
+  }
+
+  public var id: String
+  /// Never a region of a page
+  public var place: Place
+  public var color: Color
+  public var at: Double
+
+  public init(id: String, place: Place, color: Color, at: Double) {
+    self.id = id
+    self.place = place
+    self.color = color
+    self.at = at
+  }
+}
+
+/// An annotation: a board's text sidenote (its Markdown, whether it shows open, its question) on a place of the entry
+public struct EntrySidenote: Equatable, Sendable {
+  public var id: SidenoteID
+  public var place: Place
+  public var note: TextNote
+
+  public init(id: SidenoteID, place: Place, note: TextNote) {
+    self.id = id
+    self.place = place
+    self.note = note
+  }
+}
+
+extension Resource {
+  public func encoded() throws -> Data { try canonicalJSON(self) }
+
+  public init(decoding data: Data, file: URL) throws {
+    self = try strictDecode(Resource.self, from: data, file: file, version: Resource.version, format: "resource format")
+    var ids = Set<String>()
+    for f in fields where !ids.insert(f.id).inserted {
+      throw VaultError.malformed(file, "field \(f.id) is there twice")
+    }
+  }
+}
+
+extension Entry {
+  public func encoded() throws -> Data { try canonicalJSON(self) }
+
+  public init(decoding data: Data, file: URL) throws {
+    self = try strictDecode(Entry.self, from: data, file: file, version: Entry.version, format: "entry format")
+    if let problem = problem() { throw VaultError.malformed(file, problem) }
+  }
+
+  /// The first id twice or reference that does not hold, as a message
+  func problem() -> String? {
+    var versionIDs = Set<VersionID>()
+    for v in versions where !versionIDs.insert(v.id).inserted { return "version \(v.id.rawValue) is there twice" }
+    for v in versions {
+      if let of = v.of, of == v.id || !versionIDs.contains(of) {
+        return "version \(v.id.rawValue): no other version \(of.rawValue) to translate"
+      }
+    }
+    var ids = Set<String>()
+    for h in highlights {
+      guard ids.insert(h.id).inserted else { return "highlight \(h.id) is there twice" }
+      guard versionIDs.contains(h.place.version) else {
+        return "highlight \(h.id): no version \(h.place.version.rawValue)"
+      }
+      if case .page(_, _?) = h.place.block { return "highlight \(h.id): on a region of a page" }
+    }
+    var noteIDs = Set<SidenoteID>()
+    for n in sidenotes {
+      guard noteIDs.insert(n.id).inserted else { return "sidenote \(n.id.rawValue) is there twice" }
+      guard versionIDs.contains(n.place.version) else {
+        return "sidenote \(n.id.rawValue): no version \(n.place.version.rawValue)"
+      }
+    }
+    return nil
+  }
+}
+
+// MARK: Coding where the JSON shape is not the synthesized one
+
+extension Resource: Codable {
+  private enum Keys: String, CodingKey {
+    case version, id, preset, fields
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: Keys.self)
+    _ = try c.decode(Int.self, forKey: .version)
+    self.init(
+      id: try c.decode(ResourceID.self, forKey: .id), preset: try c.decode(ResourcePreset.self, forKey: .preset),
+      fields: try c.decode([Field].self, forKey: .fields))
+  }
+
+  public func encode(to encoder: any Encoder) throws {
+    var c = encoder.container(keyedBy: Keys.self)
+    try c.encode(Resource.version, forKey: .version)
+    try c.encode(id, forKey: .id)
+    try c.encode(preset, forKey: .preset)
+    try c.encode(fields, forKey: .fields)
+  }
+}
+
+extension Entry: Codable {
+  private enum Keys: String, CodingKey {
+    case version, id, title, added, origin, authors, year, versions, highlights, sidenotes, fields
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: Keys.self)
+    _ = try c.decode(Int.self, forKey: .version)
+    self.init(
+      id: try c.decode(EntryID.self, forKey: .id), title: try c.decode(String.self, forKey: .title),
+      added: try c.decode(Double.self, forKey: .added), origin: try c.decodeIfPresent(Origin.self, forKey: .origin),
+      authors: try c.decodeIfPresent([String].self, forKey: .authors),
+      year: try c.decodeIfPresent(Int.self, forKey: .year), versions: try c.decode([Version].self, forKey: .versions),
+      highlights: try c.decode([Highlight].self, forKey: .highlights),
+      sidenotes: try c.decode([EntrySidenote].self, forKey: .sidenotes),
+      fields: try c.decode([String: Value].self, forKey: .fields))
+  }
+
+  public func encode(to encoder: any Encoder) throws {
+    var c = encoder.container(keyedBy: Keys.self)
+    try c.encode(Entry.version, forKey: .version)
+    try c.encode(id, forKey: .id)
+    try c.encode(title, forKey: .title)
+    try c.encode(added, forKey: .added)
+    try c.encodeIfPresent(origin, forKey: .origin)
+    try c.encodeIfPresent(authors, forKey: .authors)
+    try c.encodeIfPresent(year, forKey: .year)
+    try c.encode(versions, forKey: .versions)
+    try c.encode(highlights, forKey: .highlights)
+    try c.encode(sidenotes, forKey: .sidenotes)
+    try c.encode(fields, forKey: .fields)
+  }
+}
+
+extension Entry.Origin: Codable {
+  private enum Keys: String, CodingKey {
+    case arxiv, doi, web
+  }
+  private struct Arxiv: Codable {
+    var id: String
+  }
+  private struct DOI: Codable {
+    var doi: String
+  }
+  private struct Web: Codable {
+    var url: String
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: Keys.self)
+    switch try theCase(of: c) {
+    case .arxiv:
+      let id = try c.decode(Arxiv.self, forKey: .arxiv).id
+      if id.contains(/v[0-9]+$/) {
+        throw DecodingError.dataCorruptedError(
+          forKey: .arxiv, in: c, debugDescription: "\(id): an id without a version")
+      }
+      self = .arxiv(id)
+    case .doi: self = .doi(try c.decode(DOI.self, forKey: .doi).doi)
+    case .web: self = .web(try c.decode(Web.self, forKey: .web).url)
+    }
+  }
+
+  public func encode(to encoder: any Encoder) throws {
+    var c = encoder.container(keyedBy: Keys.self)
+    switch self {
+    case .arxiv(let id): try c.encode(Arxiv(id: id), forKey: .arxiv)
+    case .doi(let doi): try c.encode(DOI(doi: doi), forKey: .doi)
+    case .web(let url): try c.encode(Web(url: url), forKey: .web)
+    }
+  }
+}
+
+/// A bare JSON string, number or true / false
+extension Entry.Value: Codable {
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.singleValueContainer()
+    if let b = try? c.decode(Bool.self) {
+      self = .bool(b)
+    } else if let n = try? c.decode(Double.self) {
+      self = .number(n)
+    } else {
+      self = .text(try c.decode(String.self))
+    }
+  }
+
+  public func encode(to encoder: any Encoder) throws {
+    var c = encoder.singleValueContainer()
+    switch self {
+    case .text(let s): try c.encode(s)
+    case .number(let n): try c.encode(n)
+    case .bool(let b): try c.encode(b)
+    }
+  }
+}
+
+extension Version: Codable {
+  private enum Keys: String, CodingKey {
+    case id, label, added, language, of, content
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: Keys.self)
+    self.init(
+      id: try c.decode(VersionID.self, forKey: .id), label: try c.decodeIfPresent(String.self, forKey: .label),
+      added: try c.decode(Double.self, forKey: .added), language: try c.decodeIfPresent(String.self, forKey: .language),
+      of: try c.decodeIfPresent(VersionID.self, forKey: .of), content: try c.decode(Content.self, forKey: .content))
+  }
+
+  public func encode(to encoder: any Encoder) throws {
+    var c = encoder.container(keyedBy: Keys.self)
+    try c.encode(id, forKey: .id)
+    try c.encodeIfPresent(label, forKey: .label)
+    try c.encode(added, forKey: .added)
+    try c.encodeIfPresent(language, forKey: .language)
+    try c.encodeIfPresent(of, forKey: .of)
+    try c.encode(content, forKey: .content)
+  }
+}
+
+extension Version.Content: Codable {
+  private enum Keys: String, CodingKey {
+    case pdf, page, file
+  }
+  private struct PDF: Codable {
+    var file: String
+    var blocks: String?
+  }
+  private struct Page: Codable {
+    var hash: String
+    var bytes: Int
+  }
+  private struct File: Codable {
+    var file: String
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: Keys.self)
+    switch try theCase(of: c) {
+    case .pdf:
+      let p = try c.decode(PDF.self, forKey: .pdf)
+      for name in [p.file] + (p.blocks.map { [$0] } ?? []) where !Vault.isFileName(name) {
+        throw DecodingError.dataCorruptedError(forKey: .pdf, in: c, debugDescription: "\(name) is not a file name")
+      }
+      self = .pdf(file: p.file, blocks: p.blocks)
+    case .page:
+      let p = try c.decode(Page.self, forKey: .page)
+      self = .page(hash: p.hash, bytes: p.bytes)
+    case .file:
+      let name = try c.decode(File.self, forKey: .file).file
+      guard Vault.isFileName(name) else {
+        throw DecodingError.dataCorruptedError(forKey: .file, in: c, debugDescription: "\(name) is not a file name")
+      }
+      self = .file(name)
+    }
+  }
+
+  public func encode(to encoder: any Encoder) throws {
+    var c = encoder.container(keyedBy: Keys.self)
+    switch self {
+    case .pdf(let file, let blocks): try c.encode(PDF(file: file, blocks: blocks), forKey: .pdf)
+    case .page(let hash, let bytes): try c.encode(Page(hash: hash, bytes: bytes), forKey: .page)
+    case .file(let name): try c.encode(File(file: name), forKey: .file)
+    }
+  }
+}
+
+/// Its id and place, then the text sidenote's own fields beside them in one object
+extension EntrySidenote: Codable {
+  private enum Keys: String, CodingKey {
+    case id, place
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let c = try decoder.container(keyedBy: Keys.self)
+    self.init(
+      id: try c.decode(SidenoteID.self, forKey: .id), place: try c.decode(Place.self, forKey: .place),
+      note: try TextNote(from: decoder))
+  }
+
+  public func encode(to encoder: any Encoder) throws {
+    var c = encoder.container(keyedBy: Keys.self)
+    try c.encode(id, forKey: .id)
+    try c.encode(place, forKey: .place)
+    try note.encode(to: encoder)
+  }
+}

@@ -1,7 +1,7 @@
 import Foundation
 
-// Stickers (core commands/stickers.ts, edit/refs.ts pruneStickers): marks put on the board, on a card or in a code
-// card's line numbers. Their colour is kept only where it is not the glyph's own.
+// Stickers (core commands/stickers.ts, edit/refs.ts pruneStickers): marks put on the board, on a card or an arrow, or
+// in a code card's line numbers. Their colour is kept only where it is not the glyph's own.
 
 extension BuiltinSticker {
   /// Its own colour (glyphs.tsx BUILTIN)
@@ -65,7 +65,7 @@ extension Sticker {
   /// Its size on the board (a line's is the line numbers', not its own)
   public var size: Double? {
     switch anchor {
-    case .canvas(_, _, let s), .card(_, _, _, let s): s ?? Sticker.defaultSize
+    case .canvas(_, _, let s), .card(_, _, _, let s), .arrow(_, _, _, _, let s): s ?? Sticker.defaultSize
     case .line: nil
     }
   }
@@ -94,11 +94,12 @@ extension Board {
     switch stickers[i].anchor {
     case .canvas(let x, let y, _): stickers[i].anchor = .canvas(x: x, y: y, size: s)
     case .card(let c, let x, let y, _): stickers[i].anchor = .card(c, x: x, y: y, size: s)
+    case .arrow(let a, let t, let x, let y, _): stickers[i].anchor = .arrow(a, position: t, x: x, y: y, size: s)
     case .line: break
     }
   }
 
-  /// Where it is now: free on the board or on a card (a line's stays in its line)
+  /// Where it is now: free on the board, on a card or on an arrow (a line's stays in its line)
   public mutating func moveSticker(_ id: StickerID, to anchor: Sticker.Anchor) {
     guard let i = stickers.firstIndex(where: { $0.id == id }) else { return }
     if case .line = stickers[i].anchor { return }

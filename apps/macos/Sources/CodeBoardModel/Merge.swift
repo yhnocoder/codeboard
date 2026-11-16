@@ -42,11 +42,18 @@ extension Board {
       case .point: break
       }
     }
+    var arrowIDs = Set<ArrowID>()
     for k in local(mine.stickers, base.stickers) {
       switch k.anchor {
       case .card(let c, _, _, _), .line(let c, _, _): cardIDs.insert(c)
+      case .arrow(let a, _, _, _, _): arrowIDs.insert(a)
       case .canvas: break
       }
+    }
+    // an arrow kept for its sticker keeps the cards at its ends
+    for a in mine.arrows where arrowIDs.contains(a.id) && !arrows.contains(where: { $0.id == a.id }) {
+      arrows.append(a)
+      cardIDs.formUnion([a.from.card, a.to.card])
     }
     for c in mine.cards where cardIDs.contains(c.id) && card(c.id) == nil { cards.append(c) }
     for s in mine.sections where sectionIDs.contains(s.id) && section(s.id) == nil { sections.append(s) }

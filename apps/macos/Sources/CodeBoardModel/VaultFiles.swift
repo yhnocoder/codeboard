@@ -1,6 +1,7 @@
 import Foundation
 
-// Changes to the vault's files from the app (the sidebar): boards and folders made, renamed, moved and deleted. Each is
+// Changes to the vault's files from the app (the sidebar): boards, resources and folders made, renamed, moved and
+// deleted. Each is
 // one rename or one new name in the file system (a package is built under a hidden name first, then renamed into place
 // whole); nothing is ever written over (`renamex_np` with RENAME_EXCL); deleting moves to the system Trash, never removes.
 // Boards refer to each other by id, so a board renamed or moved keeps every ref and sub-board card to it.
@@ -9,9 +10,14 @@ extension Vault {
   /// A name nothing in `folder` has (as APFS compares names: without case, normalised): `base`, else `base 2`, `base 3`…
   /// `package`: for a board (its package name, `.board` added)
   public func freeName(in folder: String, _ base: String, package: Bool) -> String {
+    freeName(in: folder, base, extension: package ? Vault.packageExtension : nil)
+  }
+
+  /// The same for a name with this extension added (`Vault.resourceExtension` for a resource)
+  public func freeName(in folder: String, _ base: String, extension: String?) -> String {
     let names = Set(
       ((try? FileManager.default.contentsOfDirectory(atPath: url(of: folder).path)) ?? []).map(Vault.fold))
-    let ext = package ? ".\(Vault.packageExtension)" : ""
+    let ext = `extension`.map { ".\($0)" } ?? ""
     var n = 1
     while true {
       let name = n == 1 ? base : "\(base) \(n)"
@@ -28,7 +34,7 @@ extension Vault {
     let name = Vault.packageName(for: title)
     let b = board ?? Board(id: BoardID(rawValue: Board.newID("b")))
     let path = Vault.join(folder, "\(name).\(Vault.packageExtension)")
-    try writePackage(b, at: path)
+    try writePackage(b.encoded(), named: Vault.boardFileName, at: path)
     return VaultBoard(id: b.id, title: name, path: path)
   }
 
@@ -37,7 +43,7 @@ extension Vault {
   public func newFolderBoard(in folder: String) throws -> VaultBoard {
     let b = Board(id: BoardID(rawValue: Board.newID("b")))
     let path = Vault.join(folder, Vault.folderBoardName)
-    try writePackage(b, at: path)
+    try writePackage(b.encoded(), named: Vault.boardFileName, at: path)
     let name = folder.split(separator: "/").last.map(String.init) ?? ""
     return VaultBoard(id: b.id, title: name, path: path, isFolderBoard: true)
   }
@@ -66,6 +72,14 @@ extension Vault {
     return path
   }
 
+  /// A resource package renamed (its title is its name); its new path
+  @discardableResult
+  public func rename(resource: VaultResource, to title: String) throws -> String {
+    let path = Vault.join(resource.folder, "\(Vault.packageName(for: title)).\(Vault.resourceExtension)")
+    try move(resource.path, to: path)
+    return path
+  }
+
   /// A folder renamed (its folder board's title with it); its new path
   @discardableResult
   public func rename(folder: String, to name: String) throws -> String {
@@ -75,7 +89,7 @@ extension Vault {
     return path
   }
 
-  /// A board package or a folder moved into `folder`, its name kept; its new path
+  /// A board or resource package or a folder moved into `folder`, its name kept; its new path
   @discardableResult
   public func move(_ path: String, into folder: String) throws -> String {
     guard folder != path, !folder.hasPrefix(path + "/") else {
@@ -104,7 +118,7 @@ extension Vault {
   public static let underTest =
     NSClassFromString("XCTestCase") != nil || ProcessInfo.processInfo.processName.hasPrefix("swiftpm-testing")
 
-  /// A board package or a folder (with all in it) to the trash, never removed outright; only something in the vault, not
+  /// A board or resource package or a folder (with all in it) to the trash, never removed outright; only something in the vault, not
   /// the vault itself. Where it went
   @discardableResult
   public func trash(_ path: String, with trasher: Trasher = Vault.systemTrash) throws -> URL? {
@@ -140,7 +154,7 @@ extension Vault {
     try Vault.rename(a, to: b)
   }
 
-  static func rename(_ from: URL, to: URL) throws {
+  package static func rename(_ from: URL, to: URL) throws {
     guard renamex_np(from.path, to.path, UInt32(RENAME_EXCL)) == 0 else {
       if errno == EEXIST { throw VaultError.exists(to) }
       throw VaultError.unwritable(to, String(cString: strerror(errno)))
@@ -161,13 +175,13 @@ extension Vault {
     let folder = path.split(separator: "/").dropLast().joined(separator: "/")
     let name = freeName(in: folder, "\(from.deletingPathExtension().lastPathComponent) copy", package: true)
     let to = Vault.join(folder, "\(name).\(Vault.packageExtension)")
-    try writePackage(b, at: to, copying: from)
+    try writePackage(b.encoded(), named: Vault.boardFileName, at: to, copying: from)
     return VaultBoard(id: b.id, title: name, path: to)
   }
 
-  /// A package built under a hidden name beside where it goes (`copying`: from that package's files, its board file
-  /// then written over in the copy), then renamed there whole
-  private func writePackage(_ b: Board, at path: String, copying: URL? = nil) throws {
+  /// A package built under a hidden name beside where it goes, with `data` as its file `named` (`copying`: from that
+  /// package's files, that file then written over in the copy), then renamed there whole
+  package func writePackage(_ data: Data, named file: String, at path: String, copying: URL? = nil) throws {
     let to = url(of: path)
     let parent = to.deletingLastPathComponent()
     let hidden = parent.appending(path: ".\(to.lastPathComponent).new-\(UUID().uuidString)")
@@ -177,7 +191,7 @@ extension Vault {
       } else {
         try FileManager.default.createDirectory(at: hidden, withIntermediateDirectories: false)
       }
-      try b.encoded().write(to: hidden.appending(path: Vault.boardFileName))
+      try data.write(to: hidden.appending(path: file))
     } catch {
       try? FileManager.default.removeItem(at: hidden)
       throw VaultError.unwritable(to, error.localizedDescription)
@@ -188,12 +202,15 @@ extension Vault {
     }
   }
 
-  static func join(_ folder: String, _ name: String) -> String { folder.isEmpty ? name : "\(folder)/\(name)" }
+  package static func join(_ folder: String, _ name: String) -> String { folder.isEmpty ? name : "\(folder)/\(name)" }
 
-  /// A folder name for what was typed, as a package's is made (`packageName(for:)`), and never ending in `.board`
+  /// A folder name for what was typed, as a package's is made (`packageName(for:)`), and never ending in `.board` or
+  /// `.resource` (it would be taken for a package)
   public static func folderName(for name: String) -> String {
     var n = packageName(for: name)
-    while n.lowercased().hasSuffix(".\(packageExtension)") { n.removeLast(packageExtension.count + 1) }
+    while let ext = [packageExtension, resourceExtension].first(where: { n.lowercased().hasSuffix(".\($0)") }) {
+      n.removeLast(ext.count + 1)
+    }
     n = n.trimmingCharacters(in: .whitespaces)
     return n.isEmpty ? "Untitled" : n
   }

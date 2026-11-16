@@ -254,8 +254,8 @@ extension Board {
 
   // MARK: Reference upkeep
 
-  /// What points at a card, segment or Section that is not there goes, as deleting it would take it (core pruneRefs):
-  /// arrows, sidenotes and stickers on it; a card's or Section's home that is gone is none; a shelved card that is on
+  /// What points at a card, segment, Section or arrow that is not there goes, as deleting it would take it (core
+  /// pruneRefs): arrows, sidenotes and stickers on it (an arrow's stickers on the arrows of their own scope); a card's or Section's home that is gone is none; a shelved card that is on
   /// the canvas too leaves the shelf, and a shelf entry left empty goes. After a delete and after a merge
   public mutating func prune() {
     var segments: [CardID: Set<SegmentID>?] = [:]
@@ -292,20 +292,22 @@ extension Board {
       case .point: false
       }
     }
-    func stickerHolds(_ k: Sticker) -> Bool {
+    func stickerHolds(_ k: Sticker, _ among: [Arrow]) -> Bool {
       switch k.anchor {
       case .canvas: true
       case .card(let c, _, _, _): holds(c, nil)
       case .line(let c, let s, _): holds(c, s)
+      case .arrow(let a, _, _, _, _): among.contains { $0.id == a }
       }
     }
-    stickers.removeAll { !stickerHolds($0) }
+    stickers.removeAll { !stickerHolds($0, arrows) }
     for i in cards.indices where cards[i].section.map(sectionIDs.contains) == false { cards[i].section = nil }
     for i in sections.indices where sections[i].parent.map(sectionIDs.contains) == false { sections[i].parent = nil }
     for e in shelf.indices {
       shelf[e].cards.removeAll { onCanvas.contains($0.id) }
       shelf[e].arrows.removeAll { !holds($0.from.card, $0.from.segment) || !holds($0.to.card, $0.to.segment) }
-      shelf[e].stickers.removeAll { !stickerHolds($0) }
+      let among = shelf[e].arrows
+      shelf[e].stickers.removeAll { !stickerHolds($0, among) }
       for i in shelf[e].cards.indices where shelf[e].cards[i].section.map(sectionIDs.contains) == false {
         shelf[e].cards[i].section = nil
       }

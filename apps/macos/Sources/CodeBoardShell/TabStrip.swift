@@ -1,10 +1,37 @@
 import AppKit
+import CodeBoardReading
 import SwiftUI
 
-/// The board tabs in the panel's top bar: a click selects on mouse down, a drag reorders, the strip scrolls sideways
-/// with faded edges when it overflows and keeps the selected tab in view
-struct TabStrip: View {
-  let shell: Shell
+/// A tab as a strip shows it
+struct StripTab: Identifiable, Equatable {
+  let id: UUID
+  let title: String
+}
+
+/// What a tab strip shows and acts on: the board's tabs (the shell) or the reading pane's
+@MainActor protocol TabSource: AnyObject {
+  var stripTabs: [StripTab] { get }
+  var selected: UUID? { get }
+  func select(_ tab: UUID)
+  func close(_ tab: UUID)
+  func move(_ tab: UUID, to index: Int)
+}
+
+extension Shell: TabSource {
+  var stripTabs: [StripTab] { tabs.map { StripTab(id: $0.id, title: board($0.board)?.title ?? "") } }
+}
+
+extension ReadingPane: TabSource {
+  var stripTabs: [StripTab] { tabs.map { StripTab(id: $0.id, title: $0.title) } }
+}
+
+/// Where a strip's tabs measure their frames
+private let tabSpace = "tabs"
+
+/// The tabs in a panel's top bar, the board's and the reading pane's alike: a click selects on mouse down, a drag
+/// reorders, the strip scrolls sideways with faded edges when it overflows and keeps the selected tab in view
+struct TabStrip<Source: TabSource>: View {
+  let source: Source
   @State private var frames: [Tab.ID: CGRect] = [:]
   @State private var drag: (tab: Tab.ID, grabX: CGFloat, dx: CGFloat)?
   /// Whether there is more strip beyond the left and right edge
@@ -14,21 +41,20 @@ struct TabStrip: View {
     ScrollViewReader { proxy in
       ScrollView(.horizontal) {
         HStack(spacing: 2) {
-          ForEach(shell.tabs) { tab in
+          ForEach(source.stripTabs) { tab in
             TabItem(
-              title: shell.board(tab.board)?.title ?? "", selected: tab.id == shell.selected,
-              close: { shell.close(tab.id) }
+              title: tab.title, selected: tab.id == source.selected, close: { source.close(tab.id) }
             )
             .id(tab.id)
             .offset(x: offset(of: tab.id))
             .zIndex(drag?.tab == tab.id ? 1 : 0)
-            .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(Self.space)) }) { frames[tab.id] = $0 }
+            .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(tabSpace)) }) { frames[tab.id] = $0 }
             .gesture(reorder(tab.id))
           }
         }
         .padding(.horizontal, 2)
         .frame(maxHeight: .infinity)
-        .coordinateSpace(.named(Self.space))
+        .coordinateSpace(.named(tabSpace))
       }
       .scrollIndicators(.never)
       .onScrollGeometryChange(
@@ -36,17 +62,15 @@ struct TabStrip: View {
         of: { [$0.contentOffset.x > 0.5, $0.contentOffset.x + $0.containerSize.width < $0.contentSize.width - 0.5] }
       ) { more = $1 }
       .mask(fades)
-      .onChange(of: shell.selected) { _, tab in
+      .onChange(of: source.selected) { _, tab in
         if let tab { withAnimation(.snappy(duration: 0.2)) { proxy.scrollTo(tab) } }
       }
-      // Titles, and so widths, arrive with the tree (restored tabs have none before it)
-      .onChange(of: shell.tree) {
-        if let tab = shell.selected { proxy.scrollTo(tab) }
+      // Titles, and so widths, may arrive later (a board's with the tree: restored tabs have none before it)
+      .onChange(of: source.stripTabs.map(\.title)) {
+        if let tab = source.selected { proxy.scrollTo(tab) }
       }
     }
   }
-
-  private nonisolated static let space = "tabs"
 
   private func offset(of tab: Tab.ID) -> CGFloat {
     guard let drag, drag.tab == tab, let frame = frames[tab] else { return 0 }
@@ -65,19 +89,20 @@ struct TabStrip: View {
   }
 
   private func reorder(_ tab: Tab.ID) -> some Gesture {
-    DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.space))
+    DragGesture(minimumDistance: 0, coordinateSpace: .named(tabSpace))
       .onChanged { value in
         if drag?.tab != tab {
-          shell.select(tab)
+          source.select(tab)
           drag = (tab, frames[tab]?.minX ?? 0, 0)
         }
         drag?.dx = abs(value.translation.width) < 4 && drag?.dx == 0 ? 0 : value.translation.width
-        guard let drag, let i = shell.tabs.firstIndex(where: { $0.id == tab }), let frame = frames[tab] else { return }
+        let tabs = source.stripTabs
+        guard let drag, let i = tabs.firstIndex(where: { $0.id == tab }), let frame = frames[tab] else { return }
         let center = drag.grabX + drag.dx + frame.width / 2
-        if i + 1 < shell.tabs.count, let next = frames[shell.tabs[i + 1].id], center > next.midX {
-          withAnimation(.snappy(duration: 0.18)) { shell.move(tab, to: i + 1) }
-        } else if i > 0, let prev = frames[shell.tabs[i - 1].id], center < prev.midX {
-          withAnimation(.snappy(duration: 0.18)) { shell.move(tab, to: i - 1) }
+        if i + 1 < tabs.count, let next = frames[tabs[i + 1].id], center > next.midX {
+          withAnimation(.snappy(duration: 0.18)) { source.move(tab, to: i + 1) }
+        } else if i > 0, let prev = frames[tabs[i - 1].id], center < prev.midX {
+          withAnimation(.snappy(duration: 0.18)) { source.move(tab, to: i - 1) }
         }
       }
       .onEnded { _ in withAnimation(.snappy(duration: 0.18)) { drag = nil } }

@@ -1,5 +1,6 @@
 import AppKit
 import CodeBoardModel
+import CodeBoardResources
 
 // The sidebar's changes to the vault's files (VaultFiles.swift does each one): what open boards have not written yet is
 // written first, then the one rename or new name, then the tree is read again at once, so tabs and documents follow
@@ -13,7 +14,8 @@ extension Shell {
   /// A folder's row menu
   public func menu(folder: VaultFolder) -> [MenuEntry] {
     var m: [MenuEntry] = [
-      ("New Board", { self.newBoard(in: folder.path) }), ("New Folder", { self.newFolder(in: folder.path) }), nil,
+      ("New Board", { self.newBoard(in: folder.path) }), ("New Folder", { self.newFolder(in: folder.path) }),
+      ("New Resource", { self.newResource(in: folder.path) }), nil,
       ("Rename", { self.renaming = .folder(folder.path) }), nil,
     ]
     if let own = folder.folderBoard {
@@ -23,7 +25,9 @@ extension Shell {
       (
         "Delete Folder",
         {
-          self.trashAsked(folder.path, BoardPanes.deleteFolderQuestion(folder.name, boards: folder.boardCount))
+          let resources = folder.allFolders.reduce(0) { $0 + $1.resources.count + $1.unreadableResources.count }
+          self.trashAsked(
+            folder.path, BoardPanes.deleteFolderQuestion(folder.name, boards: folder.boardCount, resources: resources))
         }
       ))
     return m
@@ -36,7 +40,29 @@ extension Shell {
       ("Duplicate Board", { self.duplicate(board) }),
       // the sidebar shows moveTargets(board:) under it
       ("Move to", {}), nil,
-    ] + fileEntries(board.path) + [nil, ("Delete", { self.trashAsked(board.path, self.boardQuestion(board)) })]
+    ] + fileEntries(board.path, Vault.boardFileName) + [
+      nil, ("Delete", { self.trashAsked(board.path, self.boardQuestion(board)) }),
+    ]
+  }
+
+  /// A resource's row menu: what a board's has that a resource has too
+  public func menu(resource: VaultResource) -> [MenuEntry] {
+    let n = resource.entryCount
+    return [("Rename", { self.renaming = .resource(resource.id) }), ("Move to", {}), nil]
+      + fileEntries(resource.path, Vault.resourceFileName) + [
+        nil,
+        (
+          "Delete",
+          {
+            self.trashAsked(
+              resource.path,
+              BoardPanes.destroying(
+                "Delete resource “\(resource.title)”?",
+                n == 1 ? "Its 1 entry goes to the Trash with it." : "Its \(n) entries go to the Trash with it.",
+                "Delete"))
+          }
+        ),
+      ]
   }
 
   /// Duplicate Board: a copy beside it in its folder (VaultFiles duplicateBoard), not opened (host actions.ts)
@@ -46,16 +72,21 @@ extension Shell {
 
   /// Move to ▸ (host actions.ts moveToGroup, with the vault's folders for its groups): the top level and every folder,
   /// `Parent › Child`, but the one it is in
-  public func moveTargets(board: VaultBoard) -> [(title: String, run: () -> Void)] {
+  public func moveTargets(board: VaultBoard) -> [(title: String, run: () -> Void)] { moveTargets(board.path) }
+
+  public func moveTargets(resource: VaultResource) -> [(title: String, run: () -> Void)] { moveTargets(resource.path) }
+
+  private func moveTargets(_ from: String) -> [(title: String, run: () -> Void)] {
     guard let tree else { return [] }
-    let here = board.path.split(separator: "/").dropLast().joined(separator: "/")
+    let here = from.split(separator: "/").dropLast().joined(separator: "/")
     let all = [("", "Top Level")] + tree.allFolders.dropFirst().map { ($0.path, $0.path.replacing("/", with: " › ")) }
-    return all.filter { $0.0 != here }.map { path, title in (title, { _ = self.move(board.path, into: path) }) }
+    return all.filter { $0.0 != here }.map { path, title in (title, { _ = self.move(from, into: path) }) }
   }
 
-  /// The row of a board that cannot be read: shown in Finder, its file's path copied, or deleted
+  /// The row of a board or resource that cannot be read: shown in Finder, its file's path copied, or deleted
   public func menu(unreadable b: VaultUnreadable) -> [MenuEntry] {
-    fileEntries(b.path) + [
+    let resource = (b.path as NSString).pathExtension == Vault.resourceExtension
+    return fileEntries(b.path, resource ? Vault.resourceFileName : Vault.boardFileName) + [
       nil,
       (
         "Delete",
@@ -63,15 +94,17 @@ extension Shell {
           self.trashAsked(
             b.path,
             BoardPanes.destroying(
-              "Delete board “\(b.title)”?", "Its file cannot be read. It goes to the Trash.", "Delete"))
+              "Delete \(resource ? "resource" : "board") “\(b.title)”?",
+              "Its file cannot be read. It goes to the Trash.",
+              "Delete"))
         }
       ),
     ]
   }
 
-  /// Reveal in Finder and Copy Path (host commands.ts revealInFolder, copyBoardPath: the board file's path, said nothing
-  /// about)
-  private func fileEntries(_ path: String) -> [MenuEntry] {
+  /// Reveal in Finder and Copy Path (host commands.ts revealInFolder, copyBoardPath: the path of the package's `file`,
+  /// said nothing about)
+  private func fileEntries(_ path: String, _ file: String) -> [MenuEntry] {
     guard let vault else { return [] }
     let package = vault.url(of: path)
     return [
@@ -81,7 +114,7 @@ extension Shell {
         {
           self.pasteboard.clearContents()
           self.pasteboard.setString(
-            package.appending(path: Vault.boardFileName).path(percentEncoded: false), forType: .string)
+            package.appending(path: file).path(percentEncoded: false), forType: .string)
         }
       ),
     ]
@@ -125,6 +158,19 @@ extension Shell {
     if !folder.isEmpty { expanded.insert(folder) }
     show(made.id)
     renaming = .board(made.id)
+  }
+
+  /// A new resource in `folder`, a list of files to begin with, its tab opened, its name written in place
+  public func newResource(in folder: String) {
+    var made: VaultResource?
+    files { v in
+      made = try v.newResource(
+        in: folder, title: v.freeName(in: folder, "New Resource", extension: Vault.resourceExtension), preset: .files)
+    }
+    guard let made else { return }
+    if !folder.isEmpty { expanded.insert(folder) }
+    openResource(made)
+    renaming = .resource(made.id)
   }
 
   /// Rename Board… (the toolbar's ⋯): the open board's row shown in the sidebar, its name written in place there; a
@@ -171,6 +217,12 @@ extension Shell {
     files { v in try v.rename(board: board, to: t) }
   }
 
+  public func rename(resource: VaultResource, to title: String) {
+    let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !t.isEmpty, t != resource.title else { return }
+    files { v in try v.rename(resource: resource, to: t) }
+  }
+
   public func rename(folder path: String, to name: String) {
     let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !n.isEmpty, n != path.split(separator: "/").last.map(String.init) else { return }
@@ -183,7 +235,7 @@ extension Shell {
     if let to { follow(path, to) }
   }
 
-  /// A board package or a folder moved into `folder` (the vault itself: ""); its new path
+  /// A board or resource package or a folder moved into `folder` (the vault itself: ""); its new path
   @discardableResult
   public func move(_ path: String, into folder: String) -> String? {
     var to: String?

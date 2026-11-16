@@ -38,7 +38,9 @@ let package = Package(
         .product(name: "MarkdownUI", package: "better-swift-markdown"),
         .product(name: "CodeUI", package: "better-swift-markdown"),
       ]),
-    .target(name: "CodeBoardShell", dependencies: ["CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes"]),
+    .target(
+      name: "CodeBoardShell",
+      dependencies: ["CodeBoardModel", "CodeBoardCanvas", "CodeBoardNotes", "CodeBoardReading", "CodeBoardResources"]),
     .executableTarget(name: "CodeBoard", dependencies: ["CodeBoardShell"]),
     .executableTarget(
       name: "CanvasBench",
@@ -116,11 +118,18 @@ let package = Package(
         "CodeBoardShell", "CodeBoardCanvas", "CodeBoardNotes",
         .product(name: "TestGuard", package: "better-swift-markdown"),
       ]),
+    // the reading pane beside the board and what its tabs show (PDF/, Web/, List/, Shared/); AppKit only, below the shell
+    .target(name: "CodeBoardReading"),
+    .testTarget(name: "CodeBoardReadingTests", dependencies: ["CodeBoardReading"]),
     .testTarget(
       name: "MarkdownDemoKitTests",
       dependencies: [
         "MarkdownDemoKit", "CodeBoardModel", .product(name: "TestGuard", package: "better-swift-markdown"),
       ]),
+    // a resource's files (FORMAT.md, Resources): resource.json and its entries read and written; Foundation and the
+    // model only
+    .target(name: "CodeBoardResources", dependencies: ["CodeBoardModel"]),
+    .testTarget(name: "CodeBoardResourcesTests", dependencies: ["CodeBoardResources"]),
   ]
 )
 
