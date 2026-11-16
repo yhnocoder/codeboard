@@ -405,4 +405,19 @@ import Testing
       BoardPanes.deleteFolderQuestion("F", boards: 0, resources: 1).informativeText
         == "Its 1 resource goes to the Trash with it.")
   }
+
+  /// New Resource ▸ offers every preset and makes one of the chosen preset; New Resource itself still makes Files
+  @Test func newResourceKindsMakeTheChosenPreset() throws {
+    let (vault, shell, _) = try vault()
+    defer { try? fm.removeItem(at: vault.root) }
+    let kinds = shell.newResourceKinds(in: "")
+    #expect(kinds.map(\.title) == ["Papers", "Web Pages", "Files", "Images", "Blank"])
+    try #require(kinds.first { $0.title == "Web Pages" }).run()
+    let made = try #require(shell.tree?.resources.first)
+    let json = try String(contentsOf: vault.url(of: made.path).appending(path: Vault.resourceFileName), encoding: .utf8)
+    #expect(made.preset == .web && json.filter { !$0.isWhitespace }.contains("\"preset\":\"web\""))
+    #expect(shell.renaming == .resource(made.id))
+    shell.newResource(in: "")
+    #expect(shell.tree?.resources.first { $0.id != made.id }?.preset == .files)
+  }
 }
