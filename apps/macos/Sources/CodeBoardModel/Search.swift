@@ -50,7 +50,7 @@ public enum BoardSearch {
 
   /// What `q` (trimmed, not empty) finds, best first, 60 at most
   public static func search(_ q: String, in boards: [Source], here: BoardID, thisBoard: Bool) -> [Item] {
-    let ql = q.lowercased()
+    let ws = words(q)
     var scored: [(s: Double, item: Item)] = []
     var seen: [CardID: Int] = [:]
     var seenNotes = Set<SidenoteID>()
@@ -71,8 +71,8 @@ public enum BoardSearch {
           continue
         }
         let t = cardTitle(content)
-        let s = max(fuzzy(q, t), body(content).lowercased().contains(ql) ? 20 : -1)
-        guard s >= 0 else { continue }
+        let low = body(content).lowercased()
+        guard let s = everyWord(ws, { max(fuzzy($0, t), low.contains($0) ? 20 : -1) }) else { continue }
         let item = Item(
           kind: .card, label: t, detail: "\(c.isShared ? "⧉ " : "")\(mine ? "This board" : src.name)",
           board: src.id.rawValue, card: c.id.rawValue, shelf: entry,
@@ -85,8 +85,9 @@ public enum BoardSearch {
         let host = b.card(on) ?? shelved.first { $0.card.id == on }?.card
         if host?.isShared == true, !n.boardOnly, !seenNotes.insert(n.id).inserted { continue }
         let t = sidenoteText(n)
-        guard !t.isEmpty, t.lowercased().contains(ql) else { continue }
-        let line = t.components(separatedBy: "\n").first { $0.lowercased().contains(ql) } ?? t
+        let tl = t.lowercased()
+        guard !t.isEmpty, ws.allSatisfy({ tl.contains($0) }) else { continue }
+        let line = t.components(separatedBy: "\n").first { l in ws.contains { l.lowercased().contains($0) } } ?? t
         let title: String? = host.flatMap { if case .own(let c) = $0.content { cardTitle(c) } else { nil } }
         scored.append(
           (
@@ -106,6 +107,22 @@ public enum BoardSearch {
   }
 
   // MARK: Matching (core rank.ts), in UTF-16 units as JavaScript counts
+
+  /// The words of a query, lowercased: each must be found, in any order and anywhere
+  public static func words(_ q: String) -> [String] {
+    q.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+  }
+
+  /// The sum of every word's score; nil when one scores below 0 (is not found)
+  public static func everyWord(_ words: [String], _ score: (String) -> Double) -> Double? {
+    var total = 0.0
+    for w in words {
+      let s = score(w)
+      guard s >= 0 else { return nil }
+      total += s
+    }
+    return total
+  }
 
   static func wordStart(_ s: [UInt16], _ k: Int) -> Bool {
     guard k > 0 else { return true }

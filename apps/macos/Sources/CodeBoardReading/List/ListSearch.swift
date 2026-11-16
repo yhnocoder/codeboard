@@ -63,7 +63,7 @@ public actor ResourceTexts {
   public func search(
     _ q: String, in entries: [EntryIndex.Found], vault: Vault, only: Set<EntryID>? = nil
   ) -> [ResourceHit] {
-    let words = q.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+    let words = BoardSearch.words(q)
     guard !words.isEmpty else { return [] }
     var scored: [(s: Double, hit: ResourceHit)] = []
     for f in entries where only?.contains(f.entry.id) ?? true {
@@ -83,13 +83,7 @@ public actor ResourceTexts {
   /// Every word in the title or the authors: the sum of their best scores; nil when one is in neither
   static func metaScore(_ words: [String], _ e: Entry) -> Double? {
     let authors = (e.authors ?? []).joined(separator: ", ")
-    var total = 0.0
-    for w in words {
-      let s = max(BoardSearch.fuzzy(w, e.title), BoardSearch.fuzzy(w, authors))
-      guard s >= 0 else { return nil }
-      total += s
-    }
-    return total
+    return BoardSearch.everyWord(words) { max(BoardSearch.fuzzy($0, e.title), BoardSearch.fuzzy($0, authors)) }
   }
 
   static func metaHit(_ f: EntryIndex.Found) -> ResourceHit {
