@@ -336,31 +336,18 @@ extension CanvasView {
     return submenu(
       "Insert Board",
       others.map { o in
-        menuItem(o.title) { [weak self] in self?.insertBoard(o, at: p, in: vault, tree: tree) }
+        menuItem(o.title) { [weak self] in self?.insertBoard(o, at: p) }
       })
   }
 
-  private func insertBoard(_ child: VaultBoard, at p: CGPoint, in vault: Vault, tree: VaultFolder) {
-    guard let doc = document, let (here, _) = shown else { return }
-    // the boards each board shows as sub-boards, read once
-    let byID = Dictionary(tree.allBoards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    var seen: Set<BoardID> = []
-    func holds(_ b: BoardID) -> Bool {
-      guard seen.insert(b).inserted, let vb = byID[b],
-        let file = try? vault.board(at: vb.path)
-      else { return false }
-      return file.cards.contains { c in
-        guard case .own(let k) = c.content, case .board(let s) = k.body, case .board(let t) = s.target else {
-          return false
-        }
-        return t == here.id || holds(t)
-      }
-    }
-    if holds(child.id) {
+  private func insertBoard(_ child: VaultBoard, at p: CGPoint) {
+    guard let (here, _) = shown else { return }
+    if holdsThisBoard(child.id) {
       return toast("Can’t put \(child.title) inside \(here.title): \(here.title) is already inside \(child.title).")
     }
     let id = CardID(rawValue: Board.newID("c"))
-    doc.edit("Insert Board", selection: [.card(id)]) {
+    // filed in the Section it lands in (settleHome)
+    settle(id, CGSize(width: 560, height: 360), "Insert Board") {
       $0.cards.append(
         Card(
           id: id, x: p.x, y: p.y, width: 560, height: 360,

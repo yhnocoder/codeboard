@@ -448,7 +448,7 @@ extension CanvasView {
     // on an arrow or its label: its label is written
     if let id = arrowAt(p) { return editLabel(id) }
     if let id = hitCard(p) {
-      if openSubBoard(id) { return }
+      if openSubBoard(id, at: p) { return }
       if openPage(at: p) { return }
       // a code card's or a Link List's title: written in place
       if let t = codeTitle(id), t.hit.contains(p) { return editCodeTitle(id) }
