@@ -18,12 +18,20 @@ extension CanvasPasteTests {
       body: .image(alt: "Figure 3: loss over steps", width: 320, height: 180), source: anchor("e1", "fig3"),
       title: "Sparse Gradient Notes", label: "Figure 3")
 
-    func rig() async throws -> (Rig, FakeSources) {
+    func rig(pictures: (@Sendable (URL) async -> Data?)? = nil) async throws -> (Rig, FakeSources) {
       let fake = FakeSources()
       fake.labels["e1"] = SourceLabel(title: "Sparse Gradient Notes", number: "2405.01234", icon: .paper)
       fake.sizes["e1"] = CGSize(width: 320, height: 180)
       fake.picture = flat(640, 360)
-      return (try await Rig(CanvasPasteTests.board(), zoom: 1, sources: fake), fake)
+      return (try await Rig(CanvasPasteTests.board(), zoom: 1, pictures: pictures, sources: fake), fake)
+    }
+
+    /// A web page's picture: the page (an entry with no place) as its source
+    static func picture(_ url: String, width: Double = 300) -> Collected {
+      Collected(
+        body: .picture(url: url, alt: "A heron", width: width, height: width / 2),
+        source: SourceAnchor(entry: EntryID(rawValue: "e1")),
+        title: "Sparse Gradient Notes", label: "")
     }
 
     /// A drag from a reading pane: the collected JSON (or `raw`) and a plain string, at a board point
@@ -86,6 +94,69 @@ extension CanvasPasteTests {
       none.source = nil
       #expect(!r.canvas.collect(none) && r.doc.board.cards.count == before.count + 1)
       #expect(r.doc.history.undoSteps.count == 1)
+    }
+
+    @Test func aWebPictureIsAnImageCardAtItsAddressWithThePageAsItsSource() async throws {
+      // read through the test's own loader: never the network
+      let png = CanvasPasteTests.png(600, 300)
+      let (r, _) = try await rig(pictures: { _ in png })
+      defer { r.close() }
+      let before = Set(r.doc.board.cards.map(\.id))
+      let url = "https://example.com/heron.png"
+      #expect(r.canvas.collect(Self.picture(url)))
+      let c = try added(r, before)
+      guard case .own(let k) = c.content, case .image(let img) = k.body else {
+        Issue.record("not an image card: \(c)")
+        return
+      }
+      #expect(
+        img.source == .url(url) && img.alt == "A heron" && k.source == SourceAnchor(entry: EntryID(rawValue: "e1")))
+      #expect(c.width == 300 && r.doc.selection == [.card(c.id)] && r.doc.history.undoSteps.count == 1)
+      // drawn once its picture is read: as tall as its proportions make its width
+      func pictureHeight(_ id: CardID) -> CGFloat? {
+        guard let i = r.canvas.index(of: .card(id)), let it = r.canvas.scene?.items[i], case .image(let p) = it.drawing,
+          p.url != nil
+        else { return nil }
+        return it.rect.height - p.below
+      }
+      await r.until("drawn with its picture") { pictureHeight(c.id) != nil }
+      #expect(pictureHeight(c.id) == 150)
+      // a huge one: as wide as a pasted picture can be
+      #expect(r.canvas.collect(Self.picture("https://example.com/hero.png", width: 3000)))
+      let h = try #require(r.doc.board.cards.last)
+      #expect(h.width == Board.newNoteWidth)
+      await r.until("drawn with its picture") { pictureHeight(h.id) != nil }
+      #expect(pictureHeight(h.id).map { abs($0 - Board.newNoteWidth / 2) < 0.01 } == true)
+    }
+
+    @Test func aDataPictureIsKeptInTheBoardsImagesAndOneThatIsNoPictureIsRefused() async throws {
+      let (r, _) = try await rig()
+      defer { r.close() }
+      let before = Set(r.doc.board.cards.map(\.id))
+      let png = "data:image/png;base64," + CanvasPasteTests.png(600, 300).base64EncodedString()
+      #expect(r.canvas.collect(Self.picture(png)))
+      let c = try added(r, before)
+      guard case .own(let k) = c.content, case .image(let img) = k.body, case .file(let name) = img.source else {
+        Issue.record("not an image file: \(c)")
+        return
+      }
+      #expect(k.source != nil && img.alt == "A heron" && c.width == 300)
+      let file = r.file.deletingLastPathComponent().appending(path: Vault.imagesFolder).appending(path: name)
+      #expect(FileManager.default.fileExists(atPath: file.path(percentEncoded: false)))
+      // not a picture, not base64, an SVG (a paste cleans it first), no address of either kind: nothing
+      for bad in [
+        "data:text/plain;base64," + Data("plain words".utf8).base64EncodedString(), "data:image/png,abc",
+        "data:image/svg+xml;base64," + Data("<svg xmlns='http://www.w3.org/2000/svg'/>".utf8).base64EncodedString(),
+        "file:///etc/hosts",
+      ] {
+        #expect(!r.canvas.collect(Self.picture(bad)), "\(bad)")
+      }
+      let d = try drag(Self.picture("data:image/png;base64,AAAA"), at: CGPoint(x: 700, y: 500), r)
+      defer { d.draggingPasteboard.releaseGlobally() }
+      _ = r.canvas.draggingEntered(d)
+      #expect(!r.canvas.performDragOperation(d))
+      r.canvas.draggingEnded(d)
+      #expect(r.doc.board.cards.count == before.count + 1 && r.doc.history.undoSteps.count == 1)
     }
 
     @Test(arguments: [1, 0.5] as [CGFloat])

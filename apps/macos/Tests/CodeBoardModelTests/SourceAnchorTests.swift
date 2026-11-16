@@ -151,4 +151,24 @@ private func board(_ contents: [CardContent]) -> Board {
   // a file's picture with a source is fine
   let ok = board([CardContent(source: anchor, body: .image(ImageCard(source: .file("fig1.png"))))])
   #expect(try Board(decoding: try ok.encoded(), file: file) == ok)
+  // and an address's (a web page's picture, the page its source)
+  let page = board([
+    CardContent(source: SourceAnchor(entry: anchor.entry), body: .image(ImageCard(source: .url("https://e/p.png"))))
+  ])
+  #expect(try Board(decoding: try page.encoded(), file: file) == page)
+}
+
+/// What a reading tab hands the board, as it goes on the pasteboard: a web page's picture round-trips, and payloads
+/// written before it still read
+@Test func collectedPicturesRoundTripAndOldPayloadsStillRead() throws {
+  let picture = Collected(
+    body: .picture(url: "https://e/p.png", alt: nil, width: 300, height: 150),
+    source: SourceAnchor(entry: anchor.entry),
+    title: "Herons", label: "")
+  #expect(try Collected(data: picture.data()) == picture)
+  let old = Data(
+    (#"[{"body":{"note":{"markdown":"Birds"}},"title":"T","label":"p. 2"},"#
+      + #"{"body":{"image":{"width":320,"height":180}},"title":"T","label":"Figure 3"}]"#).utf8)
+  let read = try JSONDecoder().decode([Collected].self, from: old)
+  #expect(read.map(\.body) == [.note(markdown: "Birds"), .image(alt: nil, width: 320, height: 180)])
 }
