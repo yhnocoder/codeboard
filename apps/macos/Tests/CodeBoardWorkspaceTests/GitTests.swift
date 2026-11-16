@@ -217,6 +217,22 @@ import Testing
     #expect(stdout.utf8.count == 17 * 40_000)
   }
 
+  /// More at once than a queue has threads: each still ends (a thread held per git once left none to read stderr)
+  @Test func hundredsAskedAtOnceAllAnswer() async throws {
+    let d = try tempRepo(["a.txt": "a\n"])
+    defer { remove(d) }
+    let git = ProcessGitRunner()
+    let ok = await withTaskGroup(of: Bool.self) { group in
+      for _ in 0..<300 {
+        group.addTask {
+          (try? await git.run(["rev-parse", "HEAD"], in: d, environment: [:])).map { $0 != .failed } ?? false
+        }
+      }
+      return await group.reduce(0) { $0 + ($1 ? 1 : 0) }
+    }
+    #expect(ok == 300)
+  }
+
   @Test func cancellingTheTaskStopsGit() async throws {
     let d = tempDir()
     defer { remove(d) }

@@ -40,6 +40,14 @@ extension GitRunner {
 
 /// git on a Process. The process is waited for off Swift's concurrency threads; cancelling the task stops it
 public struct ProcessGitRunner: GitRunner {
+  /// A few gits at a time, the rest wait their turn without holding a thread: a board of many cards asks for each at
+  /// once, and a thread blocked per git would use up the threads everything else waits for
+  private static let turns: OperationQueue = {
+    let q = OperationQueue()
+    q.maxConcurrentOperationCount = 8
+    return q
+  }()
+
   /// The git to run; nil: the first git on PATH
   public let executable: String?
 
@@ -75,7 +83,7 @@ public struct ProcessGitRunner: GitRunner {
     p.standardInput = FileHandle.nullDevice
     let job = Job(p, out: out.fileHandleForReading, err: err.fileHandleForReading)
     let end = await withTaskCancellationHandler {
-      await withCheckedContinuation { c in DispatchQueue.global().async { c.resume(returning: job.wait()) } }
+      await withCheckedContinuation { c in Self.turns.addOperation { c.resume(returning: job.wait()) } }
     } onCancel: {
       job.cancel()
     }
@@ -133,12 +141,15 @@ private final class Job: Sendable {
     case .some(let why?): return .notStarted(why)
     case .none: break
     }
-    // Both pipes are read at once: git stops writing to one while the other is full
+    // Both pipes are read at once: git stops writing to one while the other is full. On a thread of its own: a
+    // shared queue with every thread waiting for a git would never get to it
     let errData = Mutex(Data())
     let group = DispatchGroup()
-    DispatchQueue.global().async(group: group) { [held] in
+    group.enter()
+    Thread.detachNewThread { [held] in
       let d = held.err.readDataToEndOfFile()
       errData.withLock { $0 = d }
+      group.leave()
     }
     let outData = held.out.readDataToEndOfFile()
     group.wait()
