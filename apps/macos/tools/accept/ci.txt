@@ -58,6 +58,7 @@ sel-read.txt
 sel-redbl.txt
 settings-keys.txt
 select-all-bar.txt
+sidebar-hide-chrome.txt
 sidenote-menu.txt
 snap-guide.txt
 space-pan.txt

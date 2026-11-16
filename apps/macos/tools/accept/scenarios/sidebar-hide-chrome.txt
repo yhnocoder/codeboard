@@ -1,14 +1,93 @@
 # only: mac
-# 收起侧栏后白板变宽：右下角那组和工具栏马上按新的宽度排，不用等重启；再展开回到原处
+# 收起侧栏后白板变宽：右下角那组、工具栏和标签栏马上按新的宽度排，不用等重启；再展开回到原处。来回多次：标签栏偶尔（约六次里一次）留在原处
 zoom 1
 wait 400
 mark
 key cmd+ctrl+s
-wait 900
-shot hidden
+wait 700
 expect ui.dock.right > was+100
 expect ui.bar.x > was+50
+expect ui.boardtabs.w > was+30
 key cmd+ctrl+s
-wait 900
+wait 700
 expect ui.dock.right ~ was
 expect ui.bar.x ~ was
+expect ui.boardtabs.x ~ was
+expect ui.boardtabs.w ~ was
+key cmd+ctrl+s
+wait 700
+expect ui.dock.right > was+100
+expect ui.bar.x > was+50
+expect ui.boardtabs.w > was+30
+key cmd+ctrl+s
+wait 700
+expect ui.dock.right ~ was
+expect ui.bar.x ~ was
+expect ui.boardtabs.x ~ was
+expect ui.boardtabs.w ~ was
+key cmd+ctrl+s
+wait 700
+expect ui.dock.right > was+100
+expect ui.bar.x > was+50
+expect ui.boardtabs.w > was+30
+key cmd+ctrl+s
+wait 700
+expect ui.dock.right ~ was
+expect ui.bar.x ~ was
+expect ui.boardtabs.x ~ was
+expect ui.boardtabs.w ~ was
+key cmd+ctrl+s
+wait 700
+expect ui.dock.right > was+100
+expect ui.bar.x > was+50
+expect ui.boardtabs.w > was+30
+key cmd+ctrl+s
+wait 700
+expect ui.dock.right ~ was
+expect ui.bar.x ~ was
+expect ui.boardtabs.x ~ was
+expect ui.boardtabs.w ~ was
+key cmd+ctrl+s
+wait 700
+expect ui.dock.right > was+100
+expect ui.bar.x > was+50
+expect ui.boardtabs.w > was+30
+key cmd+ctrl+s
+wait 700
+expect ui.dock.right ~ was
+expect ui.bar.x ~ was
+expect ui.boardtabs.x ~ was
+expect ui.boardtabs.w ~ was
+key cmd+ctrl+s
+wait 700
+expect ui.dock.right > was+100
+expect ui.bar.x > was+50
+expect ui.boardtabs.w > was+30
+key cmd+ctrl+s
+wait 700
+expect ui.dock.right ~ was
+expect ui.bar.x ~ was
+expect ui.boardtabs.x ~ was
+expect ui.boardtabs.w ~ was
+key cmd+ctrl+s
+wait 700
+expect ui.dock.right > was+100
+expect ui.bar.x > was+50
+expect ui.boardtabs.w > was+30
+key cmd+ctrl+s
+wait 700
+expect ui.dock.right ~ was
+expect ui.bar.x ~ was
+expect ui.boardtabs.x ~ was
+expect ui.boardtabs.w ~ was
+key cmd+ctrl+s
+wait 700
+expect ui.dock.right > was+100
+expect ui.bar.x > was+50
+expect ui.boardtabs.w > was+30
+key cmd+ctrl+s
+wait 700
+expect ui.dock.right ~ was
+expect ui.bar.x ~ was
+expect ui.boardtabs.x ~ was
+expect ui.boardtabs.w ~ was
