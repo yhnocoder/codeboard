@@ -1091,3 +1091,34 @@ extension CanvasSidenoteTests {
     #expect(pop.key == nil)
   }
 }
+
+extension CanvasSidenoteTests {
+  /// The popup is moved by its title bar while a sidenote is being written in it: what was typed, the caret and the
+  /// keys stay where they were, and nothing is added
+  @Test func draggingThePopupByItsTitleBarKeepsWhatIsBeingWritten() async throws {
+    let r = try await Rig(sidenoteBoard(), zoom: 1)
+    defer { r.close() }
+    let c = r.canvas
+    let at = PopAt.spot(.card(cid("n1")))
+    let notes = r.doc.board.sidenotes
+    c.openPop(at, write: true)
+    await opened(r, at)
+    let pop = c.sidenotePop
+    let field = try #require(pop.field)
+    await r.until("the input has the keys") { r.window.firstResponder === field }
+    r.type(pop, "why wait")
+    field.doCommand(by: #selector(NSResponder.moveLeft(_:)))
+    let caret = field.selectedRange()
+    let was = popBox(c).origin
+    let grip = pop.view.grip
+    r.mouse(.leftMouseDown, pop: grip, at: CGPoint(x: 40, y: 10))
+    for i in 1...4 { r.mouse(.leftMouseDragged, pop: grip, at: CGPoint(x: 40 - 20 * i, y: 10 + 15 * i)) }
+    r.mouse(.leftMouseUp, pop: grip, at: CGPoint(x: -40, y: 70))
+    #expect(popBox(c).origin != was, "moved")
+    #expect(pop.field === field && field.source == "why wait", "what was typed, in the same input")
+    #expect(r.window.firstResponder === field && field.selectedRange() == caret, "the keys and the caret")
+    #expect(r.doc.board.sidenotes == notes, "nothing added")
+    r.type(pop, "!")
+    #expect(field.source == "why wai!t")
+  }
+}
