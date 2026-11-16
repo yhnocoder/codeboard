@@ -11,6 +11,8 @@ public struct Collected: Codable, Equatable, Sendable {
     case note(markdown: String)
     /// A block's picture; its natural size in points
     case image(alt: String?, width: Double, height: Double)
+    /// Lines of a file read in a code tab, a code card's one segment with its source
+    case code(Segment)
   }
 
   public static let pasteboardType = "com.yhnocoder.codeboard.collected"
