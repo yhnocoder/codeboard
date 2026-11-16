@@ -35,7 +35,7 @@ import UniformTypeIdentifiers
     shell.reading.commitOf = { [weak repositories] in await repositories?.head(of: $0) }
     // code taken to this window's board, ⌘-click's definitions
     shell.reading.codeHost = repositories.git.map {
-      ShellCode(git: $0, board: { [weak root] in root?.panes.frontBoard })
+      ShellCode(git: $0, board: { [weak root] in root?.panes.addBoard })
     }
     track { [weak shell, weak repositories] in
       let f = shell?.reading.currentCode

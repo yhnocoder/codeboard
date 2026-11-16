@@ -170,4 +170,7 @@ import os
 extension BoardPanes {
   /// The board the selected tab shows; nil while there is none
   var frontBoard: Board? { shell.selected.flatMap { panes[$0]?.canvas.document?.board } }
+  /// The board code taken from the reading pane goes to, as Add to Board's: this window's, else with no board tab
+  /// here the latest used window's that shows one
+  var addBoard: Board? { shell.selected == nil ? boardElsewhere?() : frontBoard }
 }
