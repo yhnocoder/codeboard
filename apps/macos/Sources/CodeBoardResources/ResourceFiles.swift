@@ -32,9 +32,10 @@ extension Vault {
     return try Resource(decoding: readFile(file), file: file)
   }
 
-  /// The resource file written to the package at `path`, all at once
+  /// The resource file written to the package at `path`, all at once; one that would not read back is not written
   public func write(_ resource: Resource, at path: String) throws {
     let file = url(of: path).appending(path: Vault.resourceFileName)
+    if let problem = resource.problem() { throw VaultError.unwritable(file, problem) }
     do {
       try resource.encoded().write(to: file, options: .atomic)
     } catch {

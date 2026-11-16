@@ -188,11 +188,17 @@ extension Resource {
 
   public init(decoding data: Data, file: URL) throws {
     self = try strictDecode(Resource.self, from: data, file: file, version: Resource.version, format: "resource format")
+    if let problem = problem() { throw VaultError.malformed(file, problem) }
+  }
+
+  /// A field id twice, or the first field's problem, as a message: what is refused when read and never written
+  func problem() -> String? {
     var ids = Set<String>()
     for f in fields {
-      guard ids.insert(f.id).inserted else { throw VaultError.malformed(file, "field \(f.id) is there twice") }
-      if let problem = f.problem() { throw VaultError.malformed(file, "field \(f.id): \(problem)") }
+      guard ids.insert(f.id).inserted else { return "field \(f.id) is there twice" }
+      if let problem = f.problem() { return "field \(f.id): \(problem)" }
     }
+    return nil
   }
 }
 

@@ -251,11 +251,13 @@ each with its own `version`, now 1. Names starting with `.` are not entries. Ope
 and actions the list starts with (`images`: a grid of pictures; `blank`: the title and only the columns the user adds);
 it does not limit what an entry may be. **Field** (a column the user added, listed in the order the columns show):
 `id, name, type: text|number|date|checkbox|select|board, options?: [{id, name, color?}]`; an entry's value for it is in
-its `entry.json`. A new field's id is made as other ids are (`Board.newID`); renaming it changes only `name`, deleting
-it only drops it from `fields` (entries keep their values). `options`, a `select` field's labels in the user's order,
-is always written for one (maybe `[]`) and never for another kind. An option's `id` is `option-` and a random string;
-ids and names are not empty and not twice in one field. `color` is a highlight's (`yellow|green|blue|pink|purple`);
-absent, the option takes the colour of its place in the list. A file breaking any of this is refused.
+its `entry.json`. A new field's id is `f` and 8 random lowercase letters and digits (`Board.newID("f")`), not twice in
+`fields`; renaming it changes only `name`, deleting it only drops it from `fields` (entries keep their values).
+`options`, a `select` field's labels in the user's order, is always written for one (maybe `[]`) and never for another
+kind. An option's `id` is `option-` and 8 random lowercase letters and digits; ids and names are not empty and not twice
+in one field (names compared exactly: `Done` and `done` are two). `color` is a highlight's
+(`yellow|green|blue|pink|purple`); absent, the option takes the colour of its place in the list. A file breaking any of
+this is refused when read, and never written.
 
 **entry.json**: `version, id, title, added, origin?, authors?: [String], year?, venue?, meta?: WebMeta, versions:
 [Version], highlights: [Highlight], sidenotes: [EntrySidenote], fields: {<field id>: String | Number | Bool}`. `added`

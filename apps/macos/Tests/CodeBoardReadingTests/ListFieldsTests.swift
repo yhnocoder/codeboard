@@ -85,6 +85,44 @@ private func resource(_ fields: String) throws -> Resource {
     }
   }
 
+  /// A resource the reader would refuse is not written: the file stays as it was
+  @Test func writingRefusesWhatReadingWouldAndLeavesTheFile() throws {
+    let v = try ListVault()
+    defer { v.remove() }
+    let file = v.vault.url(of: v.resource.path).appending(path: "resource.json")
+    let before = try Data(contentsOf: file)
+    var twice = try v.vault.resource(at: v.resource.path)
+    twice.fields = [Field(id: "f1", name: "A", type: .text), Field(id: "f1", name: "B", type: .number)]
+    #expect(throws: VaultError.unwritable(file, "field f1 is there twice")) {
+      try v.vault.write(twice, at: v.resource.path)
+    }
+    var names = twice
+    names.fields = [
+      Field(id: "s", name: "S", type: .select, options: [.init(id: "o1", name: "A"), .init(id: "o2", name: "A")])
+    ]
+    #expect(throws: VaultError.unwritable(file, "field s: option name A is there twice")) {
+      try v.vault.write(names, at: v.resource.path)
+    }
+    #expect(try Data(contentsOf: file) == before)
+  }
+
+  /// Option names are told apart as reading tells them: by case too
+  @Test func optionNamesDifferingInCaseAreTwo() async throws {
+    let options = #"[{"id": "o1", "name": "Done"}, {"id": "o2", "name": "done"}]"#
+    let read = try resource(#"[{"id": "s", "name": "S", "type": "select", "options": \#(options)}]"#)
+    #expect(read.fields[0].options?.map(\.name) == ["Done", "done"])
+    let v = try ListVault()
+    defer { v.remove() }
+    let (_, list) = try await v.openList()
+    let s = try #require(list.addField(.select))
+    #expect(list.addOption("Done", to: s.id, at: v.paperPath) && list.addOption("done", to: s.id, at: v.paperPath))
+    #expect(!list.addOption("Done", to: s.id, at: v.paperPath))
+    #expect(try v.vault.resource(at: v.resource.path).fields[0].options?.map(\.name) == ["Done", "done"])
+    // a change the reader would refuse: a beep, the file as it was
+    #expect(!list.changeResource { $0.fields.append($0.fields[0]) })
+    #expect(try v.vault.resource(at: v.resource.path).fields.count == 1)
+  }
+
   /// A field added: one more in the file and a column after the preset's (before the +), named for its kind; renamed
   /// from its header, an empty name not taken
   @Test func aFieldAddedIsInTheFileAndAColumnAfterThePresets() async throws {
