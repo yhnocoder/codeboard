@@ -1,7 +1,7 @@
 import AppKit
 import CodeBoardCanvas
 
-/// Cards dragged out of a canvas (it asks at every step while the pointer is out of its view): their picture follows
+/// Cards dragged out of a canvas onto another window's (it asks at every step from then on): their picture follows
 /// the pointer in a borderless window of its own, moved as a whole, and the board canvas in front under the pointer
 /// marks where they would land. Let go there: on another board, Copy there and Paste here (shared cards); on the same
 /// board shown in another window, they move there. Anywhere else, or after Esc, nothing changes
@@ -17,6 +17,11 @@ import CodeBoardCanvas
 
   init(set: WindowSet) {
     self.set = set
+  }
+
+  /// Only another window's board canvas, in front under the pointer
+  func takesCards(from canvas: CanvasView, at p: CGPoint) -> Bool {
+    set?.canvas(at: p).map { $0.canvas !== canvas } ?? false
   }
 
   func cardsOut(of canvas: CanvasView, at p: CGPoint, picture made: () -> (NSImage, CGPoint)?) {

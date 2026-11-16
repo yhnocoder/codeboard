@@ -2,8 +2,11 @@ import AppKit
 import CodeBoardModel
 
 /// Cards dragged out of their canvas, to another window's canvas (the app's windows: the canvas knows none of them).
-/// The canvas tells where the pointer is on screen while it is out of its view, with a picture of the cards made once
+/// Out of its view the canvas asks whether another canvas takes them there; until one does, the drag stays its own
+/// wherever the pointer is. Taken, the canvas tells where the pointer is on screen, with a picture of the cards made once
 @MainActor public protocol CardDragging: AnyObject {
+  /// Whether the pointer at `p` on screen, out of `canvas`'s view, is over a canvas that takes its cards
+  func takesCards(from canvas: CanvasView, at p: CGPoint) -> Bool
   /// The pointer at `p` on screen, out of `canvas`'s view, dragging its `cardsOut`; `picture` (made when first asked):
   /// the cards as drawn and where the pointer is in it (y down)
   func cardsOut(of canvas: CanvasView, at p: CGPoint, picture: () -> (NSImage, CGPoint)?)
@@ -25,8 +28,9 @@ public struct CardsOut {
 }
 
 extension CanvasView {
-  /// A card drag's pointer out of the view goes to `cardDragging`: the cards go back where they were while it is out,
-  /// and nothing is drawn; back over the view, the drag goes on. True: out (the drag does nothing here)
+  /// A card drag's pointer out of the view over another window's canvas goes to `cardDragging`: the cards go back where
+  /// they were while it is out, and nothing is drawn; back over the view, the drag goes on. Anywhere else out of the
+  /// view (the sidebar, the reading pane, past the window) it stays this drag. True: out (the drag does nothing here)
   func dragOut(_ m: Move, _ g: Gesture, _ e: NSEvent) -> Bool {
     guard let hook = cardDragging, let w = window else { return false }
     let v = convert(e.locationInWindow, from: nil)
@@ -41,11 +45,12 @@ extension CanvasView {
       return true
     }
     if cardsOut == nil {
-      guard let (board, vault) = shown, let doc = document else { return false }
+      let p = w.convertPoint(toScreen: e.locationInWindow)
+      guard hook.takesCards(from: self, at: p), let (board, vault) = shown, let doc = document else { return false }
       let picture = cardsPicture(m, at: v)
       cardsOut = CardsOut(board: board.id, clip: doc.board.clip(m.cards) { try? vault.sharedCard($0) }, grab: g.start)
       putBack(m)
-      hook.cardsOut(of: self, at: w.convertPoint(toScreen: e.locationInWindow), picture: { picture })
+      hook.cardsOut(of: self, at: p, picture: { picture })
       return true
     }
     if cardsOut?.stayed == false {
