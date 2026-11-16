@@ -411,7 +411,7 @@ extension CanvasView {
 
   /// A press at the summary level: a column, else one of the cards shown there as they are (sub-boards, Texts, Boxes),
   /// pressed and dragged as at the card level, else the canvas (a marquee over those cards)
-  func pressAtSummaries(_ e: NSEvent, view v: CGPoint, board p: CGPoint, _ doc: BoardDocument) {
+  func pressAtSummaries(_ e: NSEvent, view v: CGPoint, board p: CGPoint, _ doc: BoardDocument.Seat) {
     if pressSummary(e, view: v, board: p) { return }
     let item = hitCard(p).map { Item.card($0) }
     if e.clickCount >= 2 {
@@ -622,7 +622,10 @@ extension CanvasView {
     guard board.summaryRequest(key, contents: contents) != nil else { return }
     summaryWriting.insert(key)
     breathe(key, true)
-    weak let d = doc
+    // the board asked for, though another be shown by the time it answers: the canvas gives its seat up then, and the
+    // step is the document's; while this canvas is still on the board it is its seat's, with its selection
+    weak let d = doc.document
+    weak let seat = doc
     Task { [weak self] in
       // the examples: the user's own edits on every board of the vault (main: every board the host has read), this one
       // as it is now
@@ -638,8 +641,14 @@ extension CanvasView {
       guard let self else { return }
       summaryWriting.remove(key)
       // a failure leaves the text as it was
-      if case .success(let s)? = r, let d { d.edit("Rewrite Summary") { _ = $0.putSummary(s, for: key) } }
-      if document === d {
+      if case .success(let s)? = r {
+        if let seat {
+          seat.edit("Rewrite Summary") { _ = $0.putSummary(s, for: key) }
+        } else {
+          d?.edit("Rewrite Summary") { _ = $0.putSummary(s, for: key) }
+        }
+      }
+      if document?.document === d {
         if case .failure(let f)? = r { toast(f.toast) }
         breathe(key, false)
         if let c = summaryColumns.first(where: { $0.col.key == key }) { showNone(c) }

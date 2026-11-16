@@ -1,0 +1,4 @@
+model,layers,kv_heads,head_dim,bytes_per_value
+tiny,24,8,64,2
+small,28,8,128,2
+medium,36,8,128,2

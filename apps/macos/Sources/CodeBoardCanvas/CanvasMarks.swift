@@ -132,9 +132,10 @@ extension CanvasView {
             return m.card == c && m.segment == seg.id && h.contains(m.range.lowerBound)
               && h.contains(m.range.upperBound)
           }
-          guard !notes.isEmpty, let row = h.lazy.compactMap({ code.layout.row(segment: si, line: $0) }).first else {
-            continue
-          }
+          guard !notes.isEmpty, let row = h.lazy.compactMap({ code.layout.row(segment: si, line: $0) }).first,
+            // past what a card of fixed or capped height shows: clipped, as in the web board's scrolling code (.cbody)
+            code.top + row.y + row.height <= r.height
+          else { continue }
           let ask = notes.contains(where: \.isOpenQuestion)
           let text = ask ? "?" : "\(notes.count)"
           let w = max(Self.gutterMarkSize, (Drawing.width(text, Self.markFont(gutter: true)) + 7).rounded(.up))

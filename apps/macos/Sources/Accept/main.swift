@@ -11,6 +11,7 @@
 import AppKit
 import CodeBoardCanvas
 import CodeBoardModel
+import CodeBoardReading
 import CodeBoardResources
 import CodeBoardShell
 import MarkdownDemoKit
@@ -124,6 +125,9 @@ extension NSWindow {
       return
     }
     accMakeKeyAndOrderFront(sender)
+    // again once it is in: while it was ordered in, AppKit asked who is key, and a window not yet visible handed key
+    // back to the main window (gKey), so a Settings window came up with the keys still going to the board
+    gKey = self
   }
   @objc func accSetLevel(_ l: NSWindow.Level) { accSetLevel(onScreen ? l : deskLevel) }
   @objc func accOrderWindow(_ place: NSWindow.OrderingMode, relativeTo other: Int) {
@@ -694,31 +698,19 @@ func strings(_ x: Any) -> [String] {
 
   var win: NSWindow? { gMain }
   /// The board in front: the canvas of the tab shown (each open tab has one; the others are hidden)
-  var canvas: NSView? {
-    func all(_ v: NSView) -> [NSView] {
-      String(describing: Swift.type(of: v)) == "CanvasView" ? [v] : v.subviews.flatMap(all)
-    }
+  var canvas: CanvasView? {
+    func all(_ v: NSView) -> [CanvasView] { (v as? CanvasView).map { [$0] } ?? v.subviews.flatMap(all) }
     let found = win?.contentView.map(all) ?? []
     return found.first { !$0.isHiddenOrHasHiddenAncestor } ?? found.first
   }
-  /// The canvas's camera, read from its stored property `camera` (a board point at the view's top-left and a zoom:
-  /// three doubles), so the driver needs nothing public from the app and works on any version of it
-  func camera(_ c: NSView) -> (origin: CGPoint, zoom: CGFloat)? {
-    var cls: AnyClass? = object_getClass(c)
-    while let k = cls {
-      var n: UInt32 = 0
-      if let ivars = class_copyIvarList(k, &n) {
-        defer { free(ivars) }
-        for i in 0..<Int(n) where ivar_getName(ivars[i]).map({ String(cString: $0) }) == "camera" {
-          let raw = Unmanaged.passUnretained(c).toOpaque() + ivar_getOffset(ivars[i])
-          let v = raw.assumingMemoryBound(to: Double.self)
-          guard v[2] > 0.001, v[2] < 100 else { return nil }  // not a camera after all
-          return (CGPoint(x: v[0], y: v[1]), v[2])
-        }
-      }
-      cls = class_getSuperclass(k)
-    }
-    return nil
+  /// The canvas's camera: a board point at the view's top-left and a zoom
+  func camera(_ c: CanvasView) -> (origin: CGPoint, zoom: CGFloat)? { (c.camera.origin, c.camera.zoom) }
+  /// Whether a sub-board card shows its previews in two columns (its saved setting); nil: no such sub-board card
+  func twoColumns(_ c: CanvasView, _ id: String) -> Bool? {
+    guard let card = c.document?.board.cards.first(where: { $0.id.rawValue == id }),
+      case .own(let content) = card.content, case .board(let sub) = content.body
+    else { return nil }
+    return sub.twoColumnPreview
   }
   /// A screen point in the main window's content coordinates (what move and click take)
   func local(_ p: NSPoint) -> String {
@@ -798,7 +790,7 @@ func strings(_ x: Any) -> [String] {
       walk(root)
     }
     let ts = ProcessInfo.processInfo.systemUptime
-    func ev(_ t: NSEvent.EventType, _ v: NSView?) -> NSEvent {
+    func ev(_ t: NSEvent.EventType, _ v: NSView?, _ area: NSTrackingArea? = nil) -> NSEvent {
       let ww = v?.window ?? w ?? win!
       let lp = ww.convertPoint(fromScreen: p)
       if t == .mouseMoved {
@@ -808,18 +800,20 @@ func strings(_ x: Any) -> [String] {
       }
       return NSEvent.enterExitEvent(
         with: t, location: lp, modifierFlags: vFlags, timestamp: ts, windowNumber: ww.windowNumber, context: nil,
-        eventNumber: 0, trackingNumber: 0, userData: nil)!
+        // the area's own number, as AppKit sends it (event.trackingArea is that area): SwiftUI's hover takes only an
+        // enter or exit of its own area
+        eventNumber: 0, trackingNumber: area.map { unsafeBitCast($0, to: Int.self) } ?? 0, userData: nil)!
     }
     for (id, a) in inside where now[id] == nil {
       inside[id] = nil
       if a.options.contains(.mouseEnteredAndExited) {
-        tell(a.owner, #selector(NSResponder.mouseExited(with:)), ev(.mouseExited, nil))
+        tell(a.owner, #selector(NSResponder.mouseExited(with:)), ev(.mouseExited, nil, a))
       }
     }
     for (id, (a, v)) in now where inside[id] == nil {
       inside[id] = a
       if a.options.contains(.mouseEnteredAndExited) {
-        tell(a.owner, #selector(NSResponder.mouseEntered(with:)), ev(.mouseEntered, v))
+        tell(a.owner, #selector(NSResponder.mouseEntered(with:)), ev(.mouseEntered, v, a))
       }
     }
     if !dragging && moved {
@@ -1165,6 +1159,36 @@ func strings(_ x: Any) -> [String] {
   /// What type and keys take: \\n is Return and \\s a space (a scenario line's trailing spaces are trimmed)
   func typed(_ s: Substring) -> String {
     s.replacingOccurrences(of: "\\n", with: "\n").replacingOccurrences(of: "\\s", with: " ")
+  }
+
+  /// The app's visible windows, front to back; or the one a title or #n names
+  func shown() -> [NSWindow] { NSApp.orderedWindows.filter { $0.isVisible && !$0.title.isEmpty || $0 === gMain } }
+  func shown(_ ref: String) -> NSWindow? {
+    let ws = shown()
+    if ref.hasPrefix("#"), let n = Int(ref.dropFirst()) { return n >= 1 && n <= ws.count ? ws[n - 1] : nil }
+    return ws.first { $0.title == ref }
+  }
+  /// A window drawn off screen: its layers when it has them, else its views as they draw themselves
+  func picture(_ w: NSWindow) -> CGImage? {
+    if let img = Recorder.drawn(w) { return img }
+    guard let root = w.contentView?.superview ?? w.contentView,
+      let rep = root.bitmapImageRepForCachingDisplay(in: root.bounds)
+    else { return nil }
+    root.cacheDisplay(in: root.bounds, to: rep)
+    return rep.cgImage
+  }
+  /// Every line of words in a picture, top to bottom and left to right
+  func words(_ img: CGImage) -> String {
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .accurate
+    request.recognitionLanguages = ["zh-Hans", "en-US"]
+    request.usesLanguageCorrection = false
+    do { try VNImageRequestHandler(cgImage: img).perform([request]) } catch { return "text recognition: \(error)" }
+    let lines = (request.results ?? []).sorted {
+      abs($0.boundingBox.midY - $1.boundingBox.midY) > 0.01
+        ? $0.boundingBox.midY > $1.boundingBox.midY : $0.boundingBox.minX < $1.boundingBox.minX
+    }.compactMap { $0.topCandidates(1).first?.string }
+    return lines.isEmpty ? "none" : lines.joined(separator: "\n")
   }
 
   /// Words as a person reads them: the main window's picture read by text recognition inside a box (content
@@ -1772,7 +1796,7 @@ func strings(_ x: Any) -> [String] {
       let p = cv.convert(c.convert(vp, to: nil), from: nil)
       return String(format: "%.1f %.1f", p.x, p.y)
     case "ends":  // ends <arrow>: where it starts and ends as drawn now, in board units: x1 y1 x2 y2 (CanvasTrace)
-      guard let c = canvas as? CanvasView, let e = c.trace.arrows[a[1]] else { return "none" }
+      guard let c = canvas, let e = c.trace.arrows[a[1]] else { return "none" }
       return e.map { String(format: "%.1f", $0) }.joined(separator: " ")
     case "tip":  // the tooltip shown now: AppKit's tooltip window and its text; none
       for w in NSApp.windows where w.isVisible && String(describing: Swift.type(of: w)).contains("ToolTip") {
@@ -1781,7 +1805,7 @@ func strings(_ x: Any) -> [String] {
       }
       return "none"
     case "trace":  // what the canvas shows now, as the app reports it (CanvasTrace): hovered card, editing, selection…
-      guard let c = canvas as? CanvasView, let d = try? JSONEncoder().encode(c.trace) else { return "no canvas" }
+      guard let c = canvas, let d = try? JSONEncoder().encode(c.trace) else { return "no canvas" }
       return String(decoding: d, as: UTF8.self)
     case "focused":  // where keys go: the first responder and the views it is in
       var chain: [String] = []
@@ -1897,8 +1921,7 @@ func strings(_ x: Any) -> [String] {
       return "none"
     // board: the open board's package, relative to the vault
     case "board":
-      guard let c = canvas, let p = field(c, "shown", "board", "path") as? String else { return "none" }
-      return p
+      return canvas?.shown?.board.path ?? "none"
     // row title[:chevron]: where the sidebar's row of the board or folder with this title is, in the window (what move
     // and click take), or its folder's chevron (what opens and closes it). From the sidebar's own list (SwiftUI exposes
     // no accessibility elements for it here) and its layout (Sidebar.swift): the rows as it lists them (each folder,
@@ -1908,22 +1931,19 @@ func strings(_ x: Any) -> [String] {
       var title = String(line.dropFirst(4))
       let chevron = title.hasSuffix(":chevron")
       if chevron { title.removeLast(8) }
-      // (what the windows share, the vault and its tree, is in the shell's session)
-      guard let shell = NSApp.delegate.flatMap({ field($0, "shell") }),
-        let tree = field(shell, "tree") ?? field(shell, "session", "tree")
-      else { return "none" }
-      let open = field(shell, "expanded") as? Set<String> ?? []
+      guard let shell = shell(of: win), let tree = shell.tree else { return "none" }
       var rows: [(name: String, depth: Int)] = []
-      func walk(_ f: Any, _ depth: Int) {
-        for sub in field(f, "folders") as? [Any] ?? [] {
-          rows.append((field(sub, "name") as? String ?? "", depth))
-          if let p = field(sub, "path") as? String, open.contains(p) { walk(sub, depth + 1) }
+      func walk(_ f: VaultFolder, _ depth: Int) {
+        for sub in f.folders {
+          rows.append((sub.name, depth))
+          if shell.expanded.contains(sub.path) { walk(sub, depth + 1) }
         }
         // then, as the sidebar lists them, the boards, the boards that cannot be read, the resources and the resources
         // that cannot be read
-        for key in ["boards", "unreadable", "resources", "unreadableResources"] {
-          for b in field(f, key) as? [Any] ?? [] { rows.append((field(b, "title") as? String ?? "", depth)) }
-        }
+        let titles =
+          f.boards.map(\.title) + f.unreadable.map(\.title) + f.resources.map(\.title)
+          + f.unreadableResources.map(\.title)
+        rows += titles.map { ($0, depth) }
       }
       walk(tree, 0)
       guard let i = rows.firstIndex(where: { $0.name == title }) else { return "none" }
@@ -1937,21 +1957,11 @@ func strings(_ x: Any) -> [String] {
         let l = (x as? [Any] ?? []).map { field($0, "rawValue") as? String ?? "\($0)" }
         return l.isEmpty ? "-" : l.joined(separator: ",")
       }
-      func deep(_ x: Any, _ label: String, _ depth: Int = 0) -> Any? {
-        guard depth < 8 else { return nil }
-        for ch in Mirror(reflecting: x).children {
-          if ch.label == label { return ch.value }
-          if let v = deep(ch.value, label, depth + 1) { return v }
-        }
-        return nil
-      }
-      let cards = field(c, "document", "board", "cards") as? [Any] ?? []
       var out: [String] = []
       for kv in Mirror(reflecting: open).children {
         let pair = Mirror(reflecting: kv.value).children.map(\.value)
         guard pair.count == 2, let frame = field(pair[0], "rawValue") as? String else { continue }
-        let card = cards.first { field($0, "id", "rawValue") as? String == frame }
-        let two = card.flatMap { deep($0, "twoColumnPreview") } as? Bool == true
+        let two = twoColumns(c, frame) == true
         let pv = pair[1]
         out.append(
           "\(frame) open \(ids(field(pv, "open"))) exp \(ids(field(pv, "exp"))) tit \(ids(field(pv, "tit"))) fold \(field(pv, "fold") as? Bool == true) cols \(two ? 2 : 1)"
@@ -1961,17 +1971,8 @@ func strings(_ x: Any) -> [String] {
     // cols <card>: a sub-board card's saved preview columns (1 or 2), with or without previews open
     case "cols":
       guard let c = canvas else { return "no canvas" }
-      func deep(_ x: Any, _ label: String, _ depth: Int = 0) -> Any? {
-        guard depth < 8 else { return nil }
-        for ch in Mirror(reflecting: x).children {
-          if ch.label == label { return ch.value }
-          if let v = deep(ch.value, label, depth + 1) { return v }
-        }
-        return nil
-      }
-      let cards = field(c, "document", "board", "cards") as? [Any] ?? []
-      guard let card = cards.first(where: { field($0, "id", "rawValue") as? String == a[1] }) else { return "none" }
-      return deep(card, "twoColumnPreview") as? Bool == true ? "2" : "1"
+      guard let two = twoColumns(c, a[1]) else { return "none" }
+      return two ? "2" : "1"
     // vaultstamp: every file in the vault with its size and modification time, as one digest (a number): it changes
     // when anything is written there
     case "vaultstamp":
@@ -1992,10 +1993,7 @@ func strings(_ x: Any) -> [String] {
     // its name
     case "entries":
       let title = String(line.dropFirst(8))
-      guard let shell = NSApp.delegate.flatMap({ field($0, "shell") }),
-        let vault = (field(shell, "vault") ?? field(shell, "session", "vault")) as? Vault,
-        let tree = (field(shell, "tree") ?? field(shell, "session", "tree")) as? VaultFolder
-      else { return "no vault" }
+      guard let shell = shell(of: win), let vault = shell.vault, let tree = shell.tree else { return "no vault" }
       guard let r = tree.allFolders.flatMap(\.resources).first(where: { $0.title == title }) else {
         return "no resource \(title)"
       }
@@ -2008,19 +2006,38 @@ func strings(_ x: Any) -> [String] {
         }
       }
       return titles.isEmpty ? "none" : titles.joined(separator: "\n")
+    // shelfpv: the Shelf entry shown large beside the Shelf (its id) and whether the Shelf is open; none
+    case "shelfpv":
+      guard let c = canvas else { return "no canvas" }
+      guard let id = c.previewing, c.shelfPreview?.superview != nil else { return "none" }
+      return "\(id) panel \(c.shelfPanel == nil ? "closed" : "open")"
+    // windows: the app's visible windows front to back, one per line: its number (what #n names), title, key, main
+    case "windows":
+      let ws = shown()
+      return ws.isEmpty
+        ? "none"
+        : ws.enumerated().map { i, w in
+          "\(i + 1) \"\(w.title)\"" + (w === gKey ? " key" : "") + (w === gMain ? " main" : "")
+        }.joined(separator: "\n")
+    // wshot <window> <name>: one window's picture as <name>.png, drawn off screen (a window away from the main one is
+    // in no shot); wtext <window>: the words text recognition reads in it, a line each, top to bottom. <window> is a
+    // title, or #n from windows
+    case "wshot", "wtext":
+      let ref = a.count > 1 ? a[1] : ""
+      guard let w = shown(ref) else { return "no window \(ref)" }
+      guard let img = picture(w) else { return "no picture of \(ref)" }
+      if a[0] == "wshot" {
+        guard a.count > 2 else { return "wshot <window> <name>" }
+        Recorder.write(img, to: outDir.appending(path: a[2] + ".png"))
+        return ""
+      }
+      return words(img)
     // readtabs: the reading pane's tabs, one per line: its kind ("" a blank page), its title, * on the one shown; then
     // whether the pane is shown
     case "readtabs":
-      guard let shell = NSApp.delegate.flatMap({ field($0, "shell") }), let pane = field(shell, "reading") else {
-        return "no reading pane"
-      }
-      let selected = field(pane, "selected").map { "\($0)" }
-      let tabs = (field(pane, "tabs") as? [Any] ?? []).map { t in
-        let mark = field(t, "id").map { "\($0)" } == selected ? "* " : ""
-        return "\(mark)\(field(t, "kind") as? String ?? ""): \(field(t, "title") as? String ?? "")"
-      }
-      return (tabs.isEmpty ? ["none"] : tabs).joined(separator: "\n")
-        + "\npane \(field(pane, "shown") as? Bool == true ? "shown" : "hidden")"
+      guard let pane = shell(of: win)?.reading else { return "no reading pane" }
+      let tabs = pane.tabs.map { t in "\(t.id == pane.selected ? "* " : "")\(t.kind): \(t.title)" }
+      return (tabs.isEmpty ? ["none"] : tabs).joined(separator: "\n") + "\npane \(pane.shown ? "shown" : "hidden")"
     case "quit":
       ownPasteboard.releaseGlobally()
       // from the run loop, as ⌘Q comes: called in this command's main-queue block, an app that answers .terminateLater

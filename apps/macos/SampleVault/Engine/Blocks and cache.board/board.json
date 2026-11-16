@@ -1,0 +1,217 @@
+{
+  "arrows": [
+    {
+      "dashed": false,
+      "endHead": true,
+      "from": {
+        "card": "c-figure",
+        "lost": false
+      },
+      "id": "a-found",
+      "label": "found again by hash",
+      "startHead": false,
+      "to": {
+        "card": "c-hash",
+        "line": 39,
+        "lost": false,
+        "segment": "seg-hash"
+      },
+      "width": 2
+    },
+    {
+      "dashed": true,
+      "endHead": true,
+      "from": {
+        "card": "c-quote",
+        "lost": false
+      },
+      "id": "a-quote",
+      "startHead": false,
+      "to": {
+        "card": "c-figure",
+        "lost": false
+      },
+      "width": 2
+    }
+  ],
+  "cards": [
+    {
+      "content": {
+        "code": {
+          "framed": true,
+          "hide": {
+            "blankLines": false,
+            "comments": false,
+            "docstrings": false
+          },
+          "segments": [
+            {
+              "annotations": [],
+              "firstLine": 35,
+              "hidden": [],
+              "highlights": [
+                [38, 39]
+              ],
+              "id": "seg-hash",
+              "language": "python",
+              "lines": [
+                "    @classmethod",
+                "    def compute_hash(cls, token_ids: list[int], prefix: int = -1):",
+                "        h = xxhash.xxh64()",
+                "        if prefix != -1:",
+                "            h.update(prefix.to_bytes(8, \"little\"))",
+                "        h.update(np.array(token_ids).tobytes())",
+                "        return h.intdigest()"
+              ],
+              "source": {
+                "git": {
+                  "commit": "bb823b3e06983d71485a8e1f23715ebd87d98ef8",
+                  "path": "nanovllm/engine/block_manager.py",
+                  "repository": "https://github.com/GeeeekExplorer/nano-vllm",
+                  "uncommitted": false
+                }
+              },
+              "symbol": {
+                "kind": "function",
+                "name": "BlockManager.compute_hash"
+              }
+            }
+          ],
+          "wrap": false
+        }
+      },
+      "id": "c-hash",
+      "locked": false,
+      "tilted": false,
+      "width": 600,
+      "x": 80,
+      "y": 80
+    },
+    {
+      "content": {
+        "code": {
+          "framed": true,
+          "hide": {
+            "blankLines": false,
+            "comments": false,
+            "docstrings": false
+          },
+          "segments": [
+            {
+              "annotations": [],
+              "firstLine": 43,
+              "hidden": [],
+              "highlights": [],
+              "id": "seg-alloc",
+              "language": "python",
+              "lines": [
+                "    def _allocate_block(self) -> int:",
+                "        block_id = self.free_block_ids.popleft()",
+                "        block = self.blocks[block_id]",
+                "        assert block.ref_count == 0",
+                "        if block.hash != -1 and self.hash_to_block_id.get(block.hash) == block_id:",
+                "            del self.hash_to_block_id[block.hash]",
+                "        block.reset()",
+                "        self.used_block_ids.add(block_id)",
+                "        return block_id"
+              ],
+              "source": {
+                "git": {
+                  "commit": "bb823b3e06983d71485a8e1f23715ebd87d98ef8",
+                  "path": "nanovllm/engine/block_manager.py",
+                  "repository": "https://github.com/GeeeekExplorer/nano-vllm",
+                  "uncommitted": false
+                }
+              },
+              "symbol": {
+                "kind": "function",
+                "name": "BlockManager._allocate_block"
+              }
+            }
+          ],
+          "wrap": false
+        }
+      },
+      "id": "c-alloc",
+      "locked": false,
+      "tilted": false,
+      "width": 600,
+      "x": 80,
+      "y": 360
+    },
+    {
+      "content": {
+        "note": {
+          "text": "> Two sequences with the same prompt prefix can point at the same blocks.\n\nTaken from the paper in **Papers**: the source at the card's foot opens it at that place."
+        },
+        "source": {
+          "block": {
+            "page": {
+              "page": 1
+            }
+          },
+          "entry": "e-paged-kv",
+          "range": [422, 493],
+          "version": "v1"
+        },
+        "title": "Shared prefixes"
+      },
+      "id": "c-quote",
+      "locked": false,
+      "tilted": false,
+      "width": 420,
+      "x": 780,
+      "y": 80
+    },
+    {
+      "content": {
+        "description": "A region of page 2 of the paper, drawn from the PDF itself.",
+        "image": {
+          "alt": "Figure 1 of the sample paper",
+          "framed": true,
+          "loops": false,
+          "source": {
+            "resource": {
+              "block": {
+                "page": {
+                  "page": 2,
+                  "rect": [10, 390, 400, 160]
+                }
+              },
+              "entry": "e-paged-kv",
+              "version": "v1"
+            }
+          }
+        }
+      },
+      "id": "c-figure",
+      "locked": false,
+      "tilted": false,
+      "width": 420,
+      "x": 780,
+      "y": 400
+    }
+  ],
+  "hideComments": false,
+  "id": "b-blocks",
+  "sections": [],
+  "shelf": [],
+  "sidenotes": [],
+  "stickers": [
+    {
+      "anchor": {
+        "card": {
+          "card": "c-hash",
+          "size": 36,
+          "x": 560,
+          "y": -16
+        }
+      },
+      "glyph": {
+        "emoji": "🔑"
+      },
+      "id": "st-key"
+    }
+  ],
+  "version": 2
+}

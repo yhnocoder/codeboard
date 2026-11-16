@@ -1,0 +1,11 @@
+# Settings 开着、接着键时按 ⌘W：关掉的是 Settings，白板的标签还在
+# only: mac
+key cmd+,
+wait 600
+expect windows has "Settings" key
+expect wtext:Settings has tongtu
+wshot Settings settings
+key cmd+w
+wait 600
+expect windows lacks Settings
+expect board != none
